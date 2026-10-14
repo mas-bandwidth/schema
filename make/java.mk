@@ -163,6 +163,21 @@ tables-java-zero-cost: bin/schema
 		{ echo "ZERO-COST GATE FAILED: a table-free unit's packet output is not the committed one"; exit 1; }
 	@echo "tables Java zero-cost gate: a table-free unit emits no table code at all"
 
+# THE JAVA TABLE SOURCES ARE FORMAT-CANONICAL (issue #424). `google-java-format`
+# is the language's one formatting authority, so an emitter that has to be
+# hand-reflowed is an emitter that drifts. The gate holds every generated Java
+# table unit to what the formatter would write, and SKIPS cleanly where the
+# formatter is not on PATH rather than passing unchecked text off as clean.
+GOOGLE_JAVA_FORMAT ?= google-java-format
+.PHONY: tables-java-clean
+tables-java-clean: build/tables-generated-java/.stamp
+	@if ! command -v $(GOOGLE_JAVA_FORMAT) >/dev/null 2>&1; then \
+		echo "SKIP tables-java-clean: $(GOOGLE_JAVA_FORMAT) is not installed"; exit 0; \
+	fi; \
+	$(GOOGLE_JAVA_FORMAT) --dry-run --set-exit-if-changed $$(find build/tables-generated-java -name '*.java') && \
+	echo "tables Java: google-java-format clean over the generated table units"
+test-java: tables-java-clean
+
 # EVERY generated unit compiles, warnings as errors, under the CONSUMER's javac
 # — the same flags the type wire's Java legs use, so a warning here is a build
 # failure in a consumer's tree and not only in ours.
