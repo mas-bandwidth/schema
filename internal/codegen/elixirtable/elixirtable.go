@@ -4,14 +4,16 @@
 // unit's BuildVersion module, emitted only when the unit declares tables.
 //
 // THE ACCELERATOR TIER. A block is POINTED AT and a cook is OPENED; neither
-// parses a wire, so both reach every fixed table of the unit. The TABLE WIRE
-// itself — the codecs, the reflection descriptors and the text form of
-// docs/SPEC-TABLES.md §3, §4, §8 and §16 in their id-table form — is not
-// emitted for Elixir. The port that once stood here wrote the form that
-// preceded the id-table wire, which the current specification does not
-// describe and the C++ reference does not open; it was removed rather than
-// carried (schema#515 is the row that brings the wire to Elixir). ROADMAP.md
-// marks the cells.
+// parses a wire, so both reach every fixed table of the unit. Beside them the
+// VARIABLE FORM is emitted for the whole variable class: the id-table wire's
+// codec, the reflection descriptors and the text form of docs/SPEC-TABLES.md
+// §3, §4, §8 and §16 in their id-table form — pointers to tables and the flat
+// node table, blobs (*bytes, *string), unbounded arrays of scalar, string and
+// enum elements and arrays of pointers, the remaining scalars, and nested
+// tables by value. A unit that is only a map or a union is refused by name
+// (§11). A unit that also carries unbounded arrays still generates: the roots
+// that reach a map, a union, or an enum-keyed array are uncarried and answer
+// an error, and the driver writes <case>.absent rather than a wrong byte.
 package elixirtable
 
 import (
@@ -75,16 +77,15 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	blocks := ir.Blocks(u)
 	ns := ir.GoExportName(u.Package)
 
-	// THE VARIABLE FORM'S BOUNDARY (docs/SPEC-TABLES.md §11): the card slice
-	// this backend carries is admitted; every other variable-class construct is
-	// refused by name rather than mis-encoded. THE REFUSAL IS THE VARIABLE
-	// FORM'S OWN. A unit the BLOCK, COOK or FIXED form already serves emits
-	// those forms as it did before — none of them reads or writes a form-`1`
-	// byte, so a variable table beside them is not mis-encoded by anything this
-	// leg writes, and refusing the whole unit would take the block and cook
-	// surfaces down with it (docs/SPEC-TABLES.md §2.7, §3.4). The boundary
-	// therefore binds a unit the variable form OWNS: one whose closure holds no
-	// fixed table, which is where the wire this card teaches is the only answer.
+	// THE VARIABLE FORM'S BOUNDARY (docs/SPEC-TABLES.md §11). A unit whose
+	// closure holds no fixed table is the variable form's own, and a construct
+	// outside the class is refused by name rather than mis-encoded. A unit the
+	// block, cook or fixed form already serves still emits those forms, and
+	// the variable form (form byte 1) is emitted beside them for every
+	// variable table. Refusing that mixed unit here would take the accelerators
+	// down with the wire (docs/SPEC-TABLES.md §2.7, §3.4). A root in it that
+	// reaches a map, a union, or an enum-keyed array is named uncarried and
+	// answers an error (§2.4, §2.6, §2.8); the driver writes <case>.absent.
 	if !closureHoldsFixedTable(u, closure) {
 		if err := refuseCardUnsupportedVariableConstructs(u); err != nil {
 			return nil, err
@@ -132,9 +133,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		}
 	}
 
-	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: this backend's
-	// FIRST table WIRE. Form 1 is still deferred to schema#515 and nothing here
-	// reads or writes one.
+	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: the FIXED
+	// tables' wire. The variable form (form byte 1) is emitted below for the
+	// variable class; this is the fixed tables' own, laid out by the plan.
 	fixed, err := generateFixed(u, ns, lineage)
 	if err != nil {
 		return nil, err
@@ -143,12 +144,12 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 
 	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1: the id-table
 	// wire the card constructs read and write byte for byte as the Go, C, C++
-	// and C# backends do. It is emitted for the unit the variable form OWNS —
-	// one whose closure holds no fixed table, which is where the card's slice
-	// is the only answer — and not for a unit the fixed form already serves.
-	if !closureHoldsFixedTable(u, closure) {
-		maps.Copy(out, generateVariableForm(u, ns))
-	}
+	// and C# backends do. It is emitted for every unit whose closure holds a
+	// table, beside the fixed form. A mixed unit (graphdemo, listdemo) gets
+	// both. A fixed-only unit (tblp1, tblp3) gets it too: its conformance wire
+	// is form byte 1, and an optional and a by-value nest are one framing
+	// (§2.3), so those instances answer rather than write <case>.absent.
+	maps.Copy(out, generateVariableForm(u, ns))
 
 	out[BuildVersionModule+".ex"] = buildVersionModule(u, ns)
 

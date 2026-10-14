@@ -24,9 +24,9 @@
 //	compiled once from the writer's own layout and cached by hash lands the
 //	record onto the prefill first, and the SAME projection reads the result.
 //
-// NOTHING HERE IS TAKEN FROM FORM 1, which this backend does not carry at all
-// (schema#515): there is no field reference, no kind byte, no length, no
-// trailer and no probe anywhere in it.
+// NOTHING HERE IS TAKEN FROM FORM 1. Form 1 lives in variableform.go: field
+// references, kind bytes, lengths and the id-table trailer. This file is form
+// 3 only, so none of those appear in it.
 package elixirtable
 
 import (

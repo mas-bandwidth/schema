@@ -42,8 +42,19 @@ func writeModuleDir(t *testing.T, dir string, files map[string][]byte) []string 
 		}
 		names = append(names, name)
 	}
+	// BuildVersion.ex must load FIRST: a Cook or Block module names its
+	// build_version at COMPILE time through a module attribute, and `elixir -r`
+	// loads files in the order given, so a sorted order that put <Base>Cook.ex
+	// before BuildVersion.ex would fail to compile the corpus.
 	sort.Strings(names)
-	return names
+	first := []string{BuildVersionModule + ".ex"}
+	rest := make([]string, 0, len(names))
+	for _, n := range names {
+		if n != BuildVersionModule+".ex" {
+			rest = append(rest, n)
+		}
+	}
+	return append(first, rest...)
 }
 
 // runProbe writes probe.exs beside the generated modules and runs it with the
