@@ -50,6 +50,7 @@ func generateRetainFiles(u *ir.Unit) (map[string][]byte, error) {
 // (docs/SPEC-TABLES.md §3), reused unchanged; the retain half adds only the
 // unknown arm's capture and the tail's emit.
 func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
+	st = variableStruct(st)
 	var b strings.Builder
 	b.WriteString("import java.nio.charset.StandardCharsets;\n\n")
 	fmt.Fprintf(&b, "public final class %sRetain {\n", st.Name)
@@ -281,6 +282,10 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 	m := varMember(f)
 	fieldRef := fmt.Sprintf("%sVariable.F_%s", st.Name, m)
 	switch {
+	case isStruct(f) && f.Array == ir.ArrayNone && !f.Type.Pointer:
+		fmt.Fprintf(b, "        if(v.%s!=null){int mark=w.ids.count;long ref=w.ref(%s);TableVariable.Writer sw=w.sub(new byte[1<<20]);path[2*depth]=%d;path[2*depth+1]=0;%sRetain.writeBodyRetain(sw,nodes,v.%s,retain,report,path,depth+1);if(sw.off>1){w.putLeb(ref);w.put8(13);w.putLeb(sw.off);w.putBytes(sw.buf,0,sw.off);}else w.ids.count=mark;}\n", m, fieldRef, ordinal, f.Type.Name, m)
+	case f.Type.Kind == ir.TWString:
+		fmt.Fprintf(b, "        if (v.%s.length != 0) { w.putLeb(w.ref(%s)); w.put8(33); w.putLeb(v.%s.length * 2L); for (char c : v.%s) { w.put8(c); w.put8(c >>> 8); } }\n", m, fieldRef, m, m)
 	case isScalarArray(f):
 		writeArrayFieldSaveRef(b, f, fieldRef)
 	case f.Type.Kind == ir.TString && f.Type.Blob():
@@ -291,7 +296,7 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 		fmt.Fprintf(b, "        if (v.%s) { w.putLeb(w.ref(%s)); w.put8(1); w.put8(1); }\n", m, fieldRef)
 	case f.Type.Kind == ir.TInt && f.Type.Width <= 32:
 		k := variableWireKind(f)
-		fmt.Fprintf(b, "        if (v.%s != 0) { w.putLeb(w.ref(%s)); w.put8(%d); w.put32(v.%s); }\n", m, fieldRef, k, m)
+		fmt.Fprintf(b, "        if (v.%s != 0) { w.putLeb(w.ref(%s)); w.put8(%d); w.put%d(v.%s); }\n", m, fieldRef, k, ir.TableKindWidth(k)*8, m)
 	case f.Type.Kind == ir.TInt:
 		k := variableWireKind(f)
 		fmt.Fprintf(b, "        if (v.%s != 0L) { w.putLeb(w.ref(%s)); w.put8(%d); w.put64(v.%s); }\n", m, fieldRef, k, m)
@@ -369,6 +374,25 @@ public final class TableRetain {
                 int p=at+5+8*depth;
                 int f=(bytes[p]&255)|((bytes[p+1]&255)<<8)|((bytes[p+2]&255)<<16)|((bytes[p+3]&255)<<24);
                 match=f==field;
+            }
+            if (!match) { System.arraycopy(bytes,at,bytes,write,len); write+=len; }
+            at+=len;
+        }
+        used=write;
+    }
+
+    // A winning duplicate map key replaces the entry itself and every child.
+    void discardPath(int[] path, int depth) {
+        int write = 0;
+        for (int at = 0; at < used;) {
+            int len = (bytes[at]&255)|((bytes[at+1]&255)<<8)|((bytes[at+2]&255)<<16)|((bytes[at+3]&255)<<24);
+            int d = bytes[at+4]&255;
+            boolean match = d >= depth;
+            for (int k = 0; match && k < depth; k++) {
+                int p = at+5+8*k;
+                int f=(bytes[p]&255)|((bytes[p+1]&255)<<8)|((bytes[p+2]&255)<<16)|((bytes[p+3]&255)<<24);
+                int i=(bytes[p+4]&255)|((bytes[p+5]&255)<<8)|((bytes[p+6]&255)<<16)|((bytes[p+7]&255)<<24);
+                match = f==path[2*k] && i==path[2*k+1];
             }
             if (!match) { System.arraycopy(bytes,at,bytes,write,len); write+=len; }
             at+=len;

@@ -51,6 +51,7 @@ public int unknown;
         public int clamped;
         public boolean malformed;
         public int widened;
+        public int duplicate;
         public boolean refused;
         public String reason;
         public int retained;
@@ -594,6 +595,28 @@ public int unknown;
         if (index == 1) { report.kindMismatch++; return null; }
         if (index < 2 || recs == null || index - 2 >= recs.length) { report.malformed = true; return null; }
         return recs[(int) (index - 2)].bytes;
+    }
+
+    // Wide values use UTF-16 code units in the public value API. Wire bytes
+    // are always little endian, independent of the cooked region's order.
+    static boolean wideValid(char[] text) {
+        if (text == null) return false;
+        for (int i = 0; i < text.length; i++) {
+            char c = text[i];
+            if (c == 0 || Character.isLowSurrogate(c)) return false;
+            if (Character.isHighSurrogate(c)) {
+                if (++i == text.length || !Character.isLowSurrogate(text[i])) return false;
+            }
+        }
+        return true;
+    }
+
+    static char[] wideClamp(char[] text, int bound, Report report) {
+        if (text.length <= bound) return text;
+        int keep = bound;
+        if (keep > 0 && Character.isHighSurrogate(text[keep - 1])) keep--;
+        report.clamped++;
+        return java.util.Arrays.copyOf(text, keep);
     }
 
     // NodeTable is a load-side holder: the root body's node records, filled
@@ -1184,6 +1207,8 @@ func variableWireKind(f *ir.Field) int {
 			return 17
 		}
 		return 12
+	case ir.TWString:
+		return 33
 	case ir.TBytes:
 		if f.Type.Blob() {
 			return 17
@@ -1328,6 +1353,8 @@ func variableValueType(f *ir.Field) string {
 		return "double"
 	case ir.TString:
 		return "String"
+	case ir.TWString:
+		return "char[]"
 	case ir.TBytes:
 		return "byte[]"
 	case ir.TNamed:
@@ -1407,6 +1434,8 @@ func variableDefault(f *ir.Field) string {
 		return "0.0d"
 	case ir.TString:
 		return "\"\""
+	case ir.TWString:
+		return "new char[0]"
 	case ir.TBytes:
 		return "null"
 	case ir.TNamed:
@@ -1423,6 +1452,7 @@ func variableDefault(f *ir.Field) string {
 }
 
 func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
+	st = variableStruct(st)
 	tables := cardVariableTables(u)
 	var b strings.Builder
 	b.WriteString("import java.nio.charset.StandardCharsets;\n")
@@ -1430,6 +1460,8 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("import java.util.List;\n\n")
 	fmt.Fprintf(&b, "public final class %sVariable {\n", st.Name)
 	b.WriteString("    private " + st.Name + "Variable() {}\n\n")
+
+	writeVariableMapHelpers(&b, u, st)
 
 	// The value class
 	fmt.Fprintf(&b, "    public static final class Value {\n")
@@ -1480,6 +1512,12 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        if (v == null) { return true; }\n")
 	for _, f := range st.Fields {
 		m := varMember(f)
+		if f.IsMap() {
+			fmt.Fprintf(&b, "        v.%s = order_%s(v.%s);\n", m, m, m)
+		}
+		if f.Type.Kind == ir.TWString {
+			fmt.Fprintf(&b, "        if (!TableVariable.wideValid(v.%s) || v.%s.length > %d) return false;\n", m, m, f.Type.Size)
+		}
 		switch {
 		case f.Type.Kind == ir.TString && f.Type.Blob():
 			fmt.Fprintf(&b, "        if (v.%s != null) { if (!g.recordPointer(v.%s, TableVariable.STRING_ID, v.%s.getBytes(StandardCharsets.UTF_8), true)) return false; }\n", m, m, m)
@@ -1694,7 +1732,15 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	writeJsonCodec(&b, u, st)
 
 	b.WriteString("}\n")
-	return b.String(), nil
+	source := b.String()
+	if st.IsMapEntry() {
+		// Entries are codec bodies reached through their holder, never roots
+		// (SPEC-TABLES §2.8). Keep root conveniences out of the public API.
+		for _, signature := range []string{"byte[] save(", "Value load(", "long loadMeasure(", "byte[] toJson(", "Value fromJson("} {
+			source = strings.ReplaceAll(source, "public static "+signature, "private static "+signature)
+		}
+	}
+	return source, nil
 }
 
 func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
@@ -2051,8 +2097,14 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 }
 
 func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
+	if f.IsMap() {
+		writeJsonMapValue(b, u, st, f)
+		return
+	}
 	m := varMember(f)
 	switch {
+	case f.Type.Kind == ir.TWString:
+		fmt.Fprintf(b, "        TableJson.esc(b, new String(v.%s));\n", m)
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "        if (v.%s.isEmpty()) { b.append(\"[]\"); } else {\n", m)
@@ -2125,8 +2177,14 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 }
 
 func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
+	if f.IsMap() {
+		readJsonMapValue(b, u, st, f)
+		return
+	}
 	m := varMember(f)
 	switch {
+	case f.Type.Kind == ir.TWString:
+		fmt.Fprintf(b, "                if (in.peek() == '\"') { String text = in.scanString(); if (text != null) { char[] units = text.toCharArray(); if (!TableVariable.wideValid(units)) { in.rep.malformed = true; v.%s = new char[0]; } else { v.%s = TableVariable.wideClamp(units, %d, in.rep); } } } else { in.skipValue(); in.rep.kindMismatch++; }\n", m, m, f.Type.Size)
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		b.WriteString("                if (in.peek() == '[') {\n")
@@ -2219,8 +2277,14 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 }
 
 func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int) {
+	if f.IsMap() {
+		writeMapFieldRead(b, u, st, f, retain, ordinal)
+		return
+	}
 	m := varMember(f)
 	switch {
+	case f.Type.Kind == ir.TWString:
+		fmt.Fprintf(b, "                if (kind == 33) { TableVariable.Reader text = r.body(); if (text != null) { if (((text.limit - text.off) & 1) != 0) { report.malformed = true; v.%s = new char[0]; } else { char[] units = new char[(text.limit - text.off) / 2]; for (int i = 0; i < units.length; i++) units[i] = (char) (text.get8() | text.get8() << 8); if (!TableVariable.wideValid(units)) { report.malformed = true; v.%s = new char[0]; } else { v.%s = TableVariable.wideClamp(units, %d, report); } } } } else { r.skip(kind); report.kindMismatch++; }\n", m, m, m, f.Type.Size)
 	case isPointerArray(f):
 		fmt.Fprintf(b, "                if (kind == 14) {\n")
 		fmt.Fprintf(b, "                    TableVariable.Reader ar = r.body();\n")
@@ -2387,7 +2451,18 @@ func writeIntFieldRead(b *strings.Builder, f *ir.Field, m string) {
 	k := variableWireKind(f)
 	width := f.Type.Width
 	read, has := "r.get32()", "4"
-	if width > 32 {
+	switch ir.TableKindWidth(k) {
+	case 1:
+		read, has = "r.get8()", "1"
+		if f.Type.Signed {
+			read = "(byte) r.get8()"
+		}
+	case 2:
+		read, has = "r.get16()", "2"
+		if f.Type.Signed {
+			read = "(short) r.get16()"
+		}
+	case 8:
 		read, has = "r.get64()", "8"
 	}
 	var widen []int
@@ -2402,6 +2477,13 @@ func writeIntFieldRead(b *strings.Builder, f *ir.Field, m string) {
 			widen = append(widen, 8)
 		}
 	}
+	allowed := widen[:0]
+	for _, candidate := range widen {
+		if ir.TableKindWidth(candidate) < ir.TableKindWidth(k) {
+			allowed = append(allowed, candidate)
+		}
+	}
+	widen = allowed
 	cond := fmt.Sprintf("kind == %d", k)
 	for _, w := range widen {
 		if w != k {
@@ -2524,6 +2606,8 @@ func writeArrayElemSave(b *strings.Builder, f *ir.Field, m string) {
 func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
 	m := varMember(f)
 	switch {
+	case f.Type.Kind == ir.TWString:
+		fmt.Fprintf(b, "        if (v.%s.length != 0) { w.putLeb(w.ref(F_%s)); w.put8(33); w.putLeb(v.%s.length * 2L); for (char c : v.%s) { w.put8(c); w.put8(c >>> 8); } }\n", m, m, m, m)
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
@@ -2595,7 +2679,7 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 	case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits) && f.Type.Width <= 32:
 		k := variableWireKind(f)
 		def := variableDefault(f)
-		fmt.Fprintf(b, "        if (v.%s != %s) { w.putLeb(w.ref(F_%s)); w.put8(%d); w.put32(v.%s); }\n", m, def, m, k, m)
+		fmt.Fprintf(b, "        if (v.%s != %s) { w.putLeb(w.ref(F_%s)); w.put8(%d); w.put%d(v.%s); }\n", m, def, m, k, ir.TableKindWidth(k)*8, m)
 	case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits):
 		k := variableWireKind(f)
 		def := variableDefault(f)

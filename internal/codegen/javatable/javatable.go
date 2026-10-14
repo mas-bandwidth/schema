@@ -445,6 +445,11 @@ func refuseVariableFormClosure(st *ir.Struct, seen map[string]bool) error {
 		if why := variableFormRefusal(f); why != "" {
 			return fmt.Errorf("table %s field %s: %s is not carried by the Java variable form (docs/SPEC-TABLES.md §11)", st.Name, f.Name, why)
 		}
+		if f.IsMap() {
+			if err := refuseVariableFormClosure(f.MapEntry, seen); err != nil {
+				return err
+			}
+		}
 		if f.Type.Kind == ir.TNamed {
 			if target, ok := f.Type.Ref.(*ir.Struct); ok {
 				if err := refuseVariableFormClosure(target, seen); err != nil {
@@ -471,7 +476,7 @@ func cardVariableTables(u *ir.Unit) []*ir.Struct {
 	var out []*ir.Struct
 	seen := map[string]bool{}
 	for _, st := range u.Tables {
-		if st == nil || st.IsMapEntry() || seen[st.Name] {
+		if st == nil || seen[st.Name] {
 			continue
 		}
 		if refuseVariableFormClosure(st, map[string]bool{}) == nil {
@@ -480,7 +485,7 @@ func cardVariableTables(u *ir.Unit) []*ir.Struct {
 		}
 	}
 	for _, st := range u.Structs {
-		if st == nil || st.IsMapEntry() || seen[st.Name] {
+		if st == nil || seen[st.Name] {
 			continue
 		}
 		if refuseVariableFormClosure(st, map[string]bool{}) == nil {
@@ -499,9 +504,6 @@ func cardVariableTables(u *ir.Unit) []*ir.Struct {
 // (docs/SPEC-TABLES.md §2, §11). The *string and *bytes byte buffers (§2.5) are
 // carried; a pointer to a table by value is not.
 func variableFormRefusal(f *ir.Field) string {
-	if f.IsMap() {
-		return "a map (docs/SPEC-TABLES.md §2.8)"
-	}
 	if f.Type.Optional {
 		return "an optional ?T (docs/SPEC-TABLES.md §2.3)"
 	}
@@ -550,8 +552,6 @@ func variableFormRefusal(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TFixed:
 		return "a fixed(I, F) kind (docs/SPEC-TABLES.md §15)"
-	case ir.TWString:
-		return "a wstring(N) kind (docs/SPEC-TABLES.md §15)"
 	case ir.TInt:
 		if f.Type.Width > 64 {
 			return "a wide int128 kind (docs/SPEC-TABLES.md §15)"
