@@ -424,6 +424,7 @@ public int unknown;
         public String value;
         public byte[] bytes;
         public Object table;
+        public boolean textMalformed;
         public NodeRecord(long typeId, byte[] body) { this.typeId = typeId; this.body = body; }
     }
 
@@ -471,6 +472,7 @@ public int unknown;
                 if (!textValid(rec.body, 0, rec.body.length)) {
                     r.report.malformed = true;
                     rec.typeId = 0;
+                    rec.textMalformed = true;
                 } else {
                     rec.value = new String(rec.body, java.nio.charset.StandardCharsets.UTF_8);
                 }
@@ -1658,7 +1660,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "                    }\n")
 	fmt.Fprintf(&b, "                } else if (rec.typeId == TableVariable.BYTES_ID) {\n")
 	fmt.Fprintf(&b, "                    rec.bytes = rec.body;\n")
-	fmt.Fprintf(&b, "                } else if (rec.typeId != 0) { // §3.1: malformed text was already cleared, not unknown.\n")
+	fmt.Fprintf(&b, "                } else if (!rec.textMalformed) { // §3.1: a cleared text node is damage; an actual id of zero is unknown.\n")
 	fmt.Fprintf(&b, "                    rec.table = createNode(rec.typeId);\n")
 	fmt.Fprintf(&b, "                    if (rec.table == null) {\n")
 	fmt.Fprintf(&b, "                        report.unknown++;\n")
