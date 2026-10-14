@@ -793,7 +793,7 @@ public final class Driver {
                     if (wire.length>0 && ((wire[0]==1&&owner.getSimpleName().endsWith("Variable"))
                             ||(wire[0]==3&&owner.getSimpleName().endsWith("Fixed")))) measure=method;
                 }
-                if (measure==null) {spillAbsent(out,name);continue;}
+                if (measure==null) {spillAbsent(out,name);spillAbsent(out,name+"-be");continue;}
                 Class<?> valueType=measure.getParameterTypes()[0];
                 java.lang.reflect.Method from=cook.getMethod("cookFrom",valueType,byte[].class,int.class);
                 Class<?> codec=valueType.getEnclosingClass();
@@ -816,7 +816,7 @@ public final class Driver {
                     for (java.lang.reflect.Method method:codec.getMethods()) if(method.getName().equals("load"))load=method;
                     int count=(Integer)load.invoke(null,values,1,wire,plan,new short[65536],image,rep);
                     if(count!=1)return failInt(name+": fixed load refused");
-                } else {spillAbsent(out,name);continue;}
+                } else {spillAbsent(out,name);spillAbsent(out,name+"-be");continue;}
                 long size=(Long)measure.invoke(null,value);
                 if(size<0||size>Integer.MAX_VALUE)return failInt(name+": cook measure refused");
                 for(int order=1;order<=2;order++) {
@@ -824,7 +824,7 @@ public final class Driver {
                     if(!(Boolean)from.invoke(null,value,bytes,order))return failInt(name+": cook write refused");
                     spill(out,name+(order==2?"-be":""),bytes);
                 }
-            } catch(ClassNotFoundException absent) {spillAbsent(out,name);}
+            } catch(ClassNotFoundException absent) {spillAbsent(out,name);spillAbsent(out,name+"-be");}
             catch(ReflectiveOperationException broken) {throw new IOException(name+": cook-write",broken);}
         }
         return 0;
