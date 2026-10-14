@@ -323,6 +323,45 @@ cards-conformance-create: cards-driver-go
 cards-conformance-go: build/conformance-harness cards-driver-go
 	./build/conformance-harness cards --corpus tables/cards/conformance --driver 'build/cards-driver-go' --require $(CARDS_REQUIRE)
 
+# ONE GATE FOR EVERY LEG (the-cards-page-and-roadmap-name-every-language): runs
+# cards-conformance-go and every cards-<lang>-conformance target across all nine
+# languages with CARDS_REQUIRE set to all nine surfaces (load, save, render,
+# parse, bounds, upgrade, edit, taskhash, view), continuing after a failure so
+# the full matrix is collected, prints one `<leg> <surface> pass n/m` (or FAIL /
+# absent) line per leg and surface, and exits nonzero if any leg fails, answers
+# a required surface absent, or has no target.
+CARDS_ALL_SURFACES := load,save,render,parse,bounds,upgrade,edit,taskhash,view
+.PHONY: cards-conformance-all
+cards-conformance-all:
+	@mkdir -p build/cards-conformance-all
+	@fail=0; \
+	for leg in go c cpp cs rust java js dart elixir; do \
+		if [ "$$leg" = "go" ]; then target=cards-conformance-go; else target=cards-$$leg-conformance; fi; \
+		log=build/cards-conformance-all/$$leg.log; \
+		if ! $(MAKE) -n $$target >/dev/null 2>&1; then \
+			echo "$$leg FAIL: missing target $$target"; \
+			fail=1; \
+			continue; \
+		fi; \
+		if $(MAKE) --no-print-directory $$target CARDS_REQUIRE=$(CARDS_ALL_SURFACES) CARDS_CPP_SURFACES=$(CARDS_ALL_SURFACES) CARDS_JAVA_REQUIRE=$(CARDS_ALL_SURFACES) > "$$log" 2>&1; then \
+			status=0; \
+		else \
+			status=$$?; fail=1; \
+		fi; \
+		lines=$$(sed -n "s/^cards /$$leg /p" "$$log"); \
+		if [ -z "$$lines" ]; then \
+			cat "$$log"; \
+			echo "$$leg FAIL: $$target exited $$status without surface lines"; \
+			fail=1; \
+			continue; \
+		fi; \
+		printf '%s\n' "$$lines"; \
+		for s in load save render parse bounds upgrade edit taskhash view; do \
+			printf '%s\n' "$$lines" | grep -qE "^$$leg $$s pass [1-9][0-9]*/[1-9][0-9]*$$" || fail=1; \
+		done; \
+	done; \
+	exit $$fail
+
 # THE NEGATIVE CONTROL (STEP 6): copy expected/ into build/, flip one byte of one
 # render answer and one taskhash answer, run the check against the copy, and
 # require it to fail naming those two surfaces while the rest pass.
