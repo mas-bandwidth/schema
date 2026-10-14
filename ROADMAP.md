@@ -61,7 +61,7 @@ This work is on the sprint branch sprint/schema-vt-core and is not yet on main. 
 | Select known layouts and refuse unsupported input | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Static plans, record sizes and caller capacity | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Layout and definition hashes | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Fixed closure and record limits | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Fixed closure and record limits | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Retirement floors and supported versions | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Remove obsolete runtime and forward-read paths | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Numeric widening and backward-read landing rules | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -113,7 +113,7 @@ This work is on the sprint branch sprint/schema-vt-core and is not yet on main. 
 | String, byte-buffer and flags defaults | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Save and load fixed-form files | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Constant body size and file-size measurement | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| complete | 84% | 78% | 85% | 82% | 85% | 80% | 91% | 87% | 87% |
+| complete | 84% | 78% | 87% | 82% | 85% | 80% | 91% | 87% | 87% |
 
 [Source data](docs/roadmap.sexp)
 

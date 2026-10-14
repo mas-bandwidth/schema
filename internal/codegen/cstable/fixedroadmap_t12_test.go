@@ -23,6 +23,7 @@ func TestFixedRoadmapCSharpT12PlansVersions(t *testing.T) {
 	}{
 		{"cs/R32", t12R32},
 		{"cs/R7", t12R7},
+		{"cs/R14", t12R14},
 		{"cs/R15", t12R15},
 	}
 	for _, tc := range tests {
@@ -153,6 +154,28 @@ func t12R7(t *testing.T) {
 	if strings.Contains(text, "HashOf(") {
 		t.Error("R7: the emitted runtime still defines TableFixedWire.HashOf, a layout hasher nothing calls")
 	}
+}
+
+// t12R14 holds cs/R14 to §5.2's PLAN: the runtime names layout_record_too_large
+// for an entry whose source extent reaches past the writer's OWN declared
+// record size, refusing the plan WHOLE and never landing a short read. The
+// check is the reference's TableFixedSrcEnd (docs/FIXED-FORM-ALGORITHM.md §5.2,
+// docs/FIXED-FORM-BILL-READS-BACKWARD.md §12.5) carried into the compiled plan:
+// the record bound is the writer's root size, the over-reach is recorded on the
+// compiler, the compile answers -3, and the lineage lane carries the name.
+func t12R14(t *testing.T) {
+	runtime := t12Norm(tableFixedWireSource)
+	t12Has(t, runtime, "public static uint SrcEnd(in TableFixedEntry e)", "R14 the entry bound is carried")
+	t12Has(t, runtime, "public bool TooLarge;", "R14 the over-reach is recorded")
+	t12Has(t, runtime, "public uint Record;", "R14 the writer's declared record is carried")
+	t12Has(t, runtime, "if (Record != 0 && SrcEnd(stamped) > Record) { TooLarge = true; return; }", "R14 an entry reaching past the writer's declared record")
+	t12Has(t, runtime, "if (c.TooLarge) { return -3; }", "R14 the plan is refused WHOLE")
+	t12Has(t, runtime, `lane.Why = "layout_record_too_large";`, "R14 the lane carries the name")
+	t12Has(t, runtime, "Record = EntryAt(theirs, 0).Size", "R14 the record bound is the writer's root size")
+	// The generated build carries the runtime, so the ban is on the emitted
+	// build and not on this package's constant alone.
+	text := t12Retire(t, 0)
+	t12Has(t, text, "SrcEnd", "R14 the emitted build carries the entry bound")
 }
 
 // t12R15 holds cs/R15 to §5.6's retirement list and §5.3 step 5: the four

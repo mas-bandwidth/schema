@@ -5477,6 +5477,8 @@ namespace Bench
                     public TableReport Report;
                     public byte ArgW; // the CURRENT union's tag width, stamped onto every guarded push
                     public bool WantGuarded; // THE WALK RUNS TWICE, unguarded first (§5.9 #42)
+                    public bool TooLarge; // ONE ENTRY PAST THE WRITER'S RECORD, which refuses the plan WHOLE (§5.2)
+                    public uint Record;  // the WRITER's declared root size, the bound every entry's source extent is held to
 
                     public void Push(in TableFixedEntry e)
                     {
@@ -5489,6 +5491,11 @@ namespace Bench
                         {
                             stamped.ArgW = ArgW == 0 ? (byte)1 : ArgW;
                         }
+                        // ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE
+                        // (docs/FIXED-FORM-ALGORITHM.md §5.2). The bound is the writer's
+                        // declared root size and not this reader's: an entry that reached
+                        // past it would read the NEXT record's bytes.
+                        if (Record != 0 && SrcEnd(stamped) > Record) { TooLarge = true; return; }
                         int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
                         int room = Capacity - (Pool + entrySize - 1) / entrySize;
                         if (Count >= room) { Overflow = true; return; }
@@ -5843,7 +5850,11 @@ namespace Bench
                         Capacity = plan.Length,
                         Report = report,
                         ArgW = 1,
-                        WantGuarded = false
+                        WantGuarded = false,
+                        // THE WRITER'S RECORD IS THE BOUND ON EVERY ENTRY (§5.2): the
+                        // root's declared size, taken from the layout this plan is
+                        // compiled against.
+                        Record = EntryAt(theirs, 0).Size
                     };
                     // PASS 1: UNGUARDED entries only, counting the census. PASS 2:
                     // guarded entries only, COUNTING NOTHING (§5.9 #42) — the unknown
@@ -5853,6 +5864,9 @@ namespace Bench
                     c.WantGuarded = true;
                     c.Report = null;
                     MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0, true);
+                    // ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE, by its
+                    // own name: -3 is layout_record_too_large, -1 the plan storage.
+                    if (c.TooLarge) { return -3; }
                     if (c.Overflow) { return -1; }
                     // COALESCE inside each half, never across the split (§5.9 #42). The
                     // destination is a slot index, so a merge demands the SAME slot and
@@ -5957,6 +5971,14 @@ namespace Bench
                             TableFixedEntry[] buffer = new TableFixedEntry[room];
                             TableReport census = new TableReport();
                             int made = Compile(parsed, my_layout, dst, buffer, census, out int split);
+                            if (made == -3)
+                            {
+                                // AN ENTRY PAST THE WRITER'S DECLARED RECORD is a bug in
+                                // the lock and not a wire event (§5.8 row 6): the reader
+                                // owes the name and not a crash.
+                                lane.Why = "layout_record_too_large";
+                                break;
+                            }
                             if (made < 0)
                             {
                                 if (room >= (1 << 18)) { lane.Why = "plan_too_large"; break; }
@@ -6052,6 +6074,55 @@ namespace Bench
                             return v;
                         }
                     }
+                }
+
+                // THE GUARD'S WIDTH, clamped (§5.2): 0 reads as 1, and nothing above 8
+                // is a width an ordinal is stored at.
+                private static uint ArgWidth(byte w)
+                {
+                    return w == 0 ? 1u : (w > 8 ? 8u : (uint)w);
+                }
+
+                // SrcEnd is the last source byte, EXCLUSIVE, an entry reads — the guard
+                // included, because a guarded entry loads the tag before anything else.
+                // It is the bound the plan is held to against the writer's declared
+                // record size (docs/FIXED-FORM-ALGORITHM.md §5.2, the reference's
+                // TableFixedSrcEnd).
+                public static uint SrcEnd(in TableFixedEntry e)
+                {
+                    uint end;
+                    if (e.Op == Const)
+                    {
+                        // a constant reads no source at all, EXCEPT the union's None
+                        // const, which reads the writer's raw tag to count a clamp
+                        // past DstSize arms — it has a source reach.
+                        end = (e.Aux == 0 && e.DstSize != 0) ? e.Src + e.Size : 0u;
+                    }
+                    else if (e.Op == Count)
+                    {
+                        end = e.Src + 4; // Size is the BOUND, not a byte count
+                    }
+                    else if (e.Op == Text)
+                    {
+                        end = e.Src + 4 + e.Size;
+                    }
+                    else
+                    {
+                        end = e.Src + e.Size;
+                    }
+                    if (e.Guard != NoGuard)
+                    {
+                        uint g = e.Guard + ArgWidth(e.ArgW);
+                        if (g > end) { end = g; }
+                    }
+                    // THE OUTER TAG IS READ BEFORE THE ENTRY TOO (§4.1), so its bytes are
+                    // part of the entry's source reach.
+                    if (e.ArgW2 != 0)
+                    {
+                        uint g = e.Guard2 + ArgWidth(e.ArgW2);
+                        if (g > end) { end = g; }
+                    }
+                    return end;
                 }
 
                 // THE WIDEN SCRATCH IS THE CALLER'S, AND IT IS HOISTED OUT OF THE RECORD
