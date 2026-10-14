@@ -1,6 +1,7 @@
 package golang
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,6 +19,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rust"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -573,5 +575,108 @@ func TestEnumNameTakesTheEnumType(t *testing.T) {
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("a typed EnumName call does not compile: %v\n%s", err, out)
+	}
+}
+
+// TestGoCompressedFloatClampsTheTopOfRange pins the writer's integer clamp
+// (SPEC §4.3): once the step count reaches [2^23, 2^24) the float32 ulp is 1,
+// and n*steps + 0.5 at n = 1.0 is a tie that rounds to even — an unclamped
+// writer emits steps+1 for a legal top-of-range value (8388610 for 8388609, or
+// 2^24 into a 24-bit field for 16777215). The generated writer must clamp the
+// integer to the step count. The run half, behind slowtest.Gate, compiles the
+// generated code, writes the top value, reads it back exactly, and
+// byte-compares against the C++ reference's bytes — the same clamped step
+// count, packed LSB-first (SPEC §4.3).
+func TestGoCompressedFloatClampsTheTopOfRange(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		max   string
+		steps uint64
+		bits  int
+	}{
+		{"8388609", "8388609.0", 8388609, 24},
+		{"16777215", "16777215.0", 16777215, 24},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			files := generateGo(t, "Clamp"+tc.name,
+				fmt.Sprintf("package t\n\ntype T { f float32 | min = 0.0, max = %s, resolution = 1.0 }\n", tc.max))
+			body := funcBody(t, files, "func WriteT(")
+			clamp := fmt.Sprintf("if integerValue > %d { integerValue = %d }", tc.steps, tc.steps)
+			if !strings.Contains(strings.Join(strings.Fields(body), " "), clamp) {
+				t.Errorf("the top-of-range writer emits no clamp: want %q in WriteT\n%s", clamp, body)
+			}
+			t.Run("roundtrip", func(t *testing.T) {
+				t.Parallel()
+				runCompressedFloatClampProbe(t, files, tc.steps, tc.bits)
+			})
+		})
+	}
+}
+
+// runCompressedFloatClampProbe compiles the generated Go and runs it against the
+// serialize.go runtime: the top value writes the clamped step count (byte-identical
+// to the C++ reference, whose clamp writes the same integer) and reads back
+// exactly. Behind slowtest.Gate — it shells out to the Go toolchain.
+func runCompressedFloatClampProbe(t *testing.T, files map[string][]byte, steps uint64, bits int) {
+	t.Helper()
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated writer)")
+
+	var ref [8]byte
+	binary.LittleEndian.PutUint64(ref[:], steps)
+	reference := ref[:bits/8]
+
+	probe := fmt.Sprintf(`package t
+
+import (
+	"bytes"
+	"testing"
+
+	"github.com/mas-bandwidth/serialize.go"
+)
+
+func TestClampTopOfRange(t *testing.T) {
+	top := float32(%d)
+	stream := serialize.NewWriteStream(make([]byte, 4096))
+	if err := WriteT(stream, &T{F: top}); err != nil {
+		t.Fatalf("write: %%v", err)
+	}
+	stream.Flush()
+	if err := stream.Err(); err != nil {
+		t.Fatalf("flush: %%v", err)
+	}
+	wire := stream.Data()
+	if !bytes.Equal(wire, %#v) {
+		t.Fatalf("wire = %% x, want %% x — the C++ reference clamps to the step count", wire, %#v)
+	}
+	var got T
+	if err := ReadT(serialize.NewReadStream(wire), &got); err != nil {
+		t.Fatalf("read of the top value refused: %%v", err)
+	}
+	if got.F != top {
+		t.Fatalf("read back %%v, want %%v", got.F, top)
+	}
+}
+`, steps, reference, reference)
+
+	runtime, err := filepath.Abs("../../../../serialize.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
+	files["clamp_test.go"] = []byte(probe)
+
+	dir := t.TempDir()
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("the clamped writer failed its probe: %v\n%s", err, out)
 	}
 }
