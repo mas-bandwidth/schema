@@ -202,11 +202,14 @@ function forgedCounts(check, bench, fixed, corpusDir) {
     ["entities count", AT_ENTITIES, 9999, 8, (v) => v.EntitiesCount],
     ["entities count, negative", AT_ENTITIES, -1, 0, (v) => v.EntitiesCount],
     ["stats count", AT_STATS, 0x7fffffff, 80, (v) => v.StatsCount],
-    ["player_name length", AT_NAME, 9999, 15, (v) => v.PlayerNameLength],
+    ["player_name length", AT_NAME, 9999, 15, (v) => v.PlayerNameLength, (bytes) => {
+      bytes.fill(0x41, BODY + AT_NAME + 4, BODY + AT_NAME + 4 + 15);
+    }],
     ["payload length", AT_PAYLOAD, 9999, 16, (v) => v.PayloadLength],
   ];
-  for (const [what, at, plant, bound, get] of forged) {
+  for (const [what, at, plant, bound, get, prep] of forged) {
     const bytes = oneRecord();
+    if (prep) { prep(bytes); }
     new DataView(bytes.buffer).setInt32(BODY + at, plant, true);
     const r = read(bytes);
     check(r.n === 1 && !r.report.malformed && r.report.refused === 0,
@@ -215,6 +218,21 @@ function forgedCounts(check, bench, fixed, corpusDir) {
       `IDENTITY CLAMP: a forged ${what} of ${plant} reaches the consumer as this reader's bound ${bound} (got ${get(r.v)})`);
     check(r.report.clamped === 1,
       `IDENTITY CLAMP: a forged ${what} moves clamped exactly once (got ${r.report.clamped})`);
+  }
+
+  // §4.5 fix 11 and §5.3: a forged player_name length over the writer's zero
+  // bytes clamps to 15 and then fails the content check over those 15 used
+  // units; REFUSE is total, so no counter moves and PlayerNameLength stays 0.
+  {
+    const bytes = oneRecord();
+    new DataView(bytes.buffer).setInt32(BODY + AT_NAME, 9999, true);
+    const r = read(bytes);
+    check(r.n === -1 && r.report.refused === bench.TableFixedRefusal.TextIllFormed && !r.report.malformed,
+      `IDENTITY REFUSE: a forged player_name length over the writer's zero bytes refuses with TextIllFormed (n=${r.n} refused=${r.report.refused} malformed=${r.report.malformed})`);
+    check(r.report.clamped === 0 && r.report.widened === 0,
+      `IDENTITY REFUSE: REFUSE is total — clamped and widened stay 0 on player_name length over the writer's zero bytes (clamped=${r.report.clamped} widened=${r.report.widened})`);
+    check(r.v.PlayerNameLength === 0,
+      `IDENTITY REFUSE: REFUSE is total — destination PlayerNameLength stays 0 on player_name length over the writer's zero bytes (got ${r.v.PlayerNameLength})`);
   }
 
   // A COUNT ALREADY IN BOUNDS IS NOT TOUCHED, and the counter does not move

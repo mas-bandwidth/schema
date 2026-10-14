@@ -39,7 +39,7 @@ func jsScalarRead(kind int, elemSize int64, at string) string {
 	case tkBool:
 		return fmt.Sprintf("view.getUint8(%s) !== 0", at)
 	case tkF32:
-		return fmt.Sprintf("view.getFloat32(%s, true)", at)
+		return fmt.Sprintf("((b) => { if ((b & 0x7f800000) === 0x7f800000 && (b & 0x007fffff) !== 0) { const c = new DataView(new ArrayBuffer(8)), p = b & 0x007fffff; c.setUint32(4, ((b & 0x80000000) | 0x7ff00000 | (p >>> 3)) >>> 0, true); c.setUint32(0, ((p & 7) << 29) >>> 0, true); return c.getFloat64(0, true); } const s = b < 0 ? -1 : 1, e = (b >>> 23) & 0xff, m = b & 0x007fffff; return e === 0 ? s * m * 1.401298464324817e-45 : e === 0xff ? s * Infinity : s * (m | 0x00800000) * (2 ** (e - 150)); })(view.getUint32(%s, true) | 0)", at)
 	case tkF64:
 		return fmt.Sprintf("view.getFloat64(%s, true)", at)
 	case tkI8, tkI16, tkI32, tkI64:
