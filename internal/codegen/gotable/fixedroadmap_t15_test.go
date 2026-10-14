@@ -125,7 +125,7 @@ func chainOf(t *testing.T, plan []TableFixedEntry, count int32) []TableFixedGuar
 		}
 		links := make([]TableFixedGuardLink, e.GuardCount)
 		for j := range links {
-			links[j] = tableFixedGuardLinkAt(plan, e, uint32(j))
+			links[j] = e.guardLink(plan, uint32(j))
 		}
 		// THE INNERMOST TWO STILL RIDE THE TWO LANES (the special case).
 		if e.Guard != links[depth-1].Guard || e.Guard2 != links[depth-2].Guard {

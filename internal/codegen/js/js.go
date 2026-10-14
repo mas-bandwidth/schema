@@ -238,6 +238,15 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 			g.emitUnionFunctions(d)
 		}
 	}
+	// A UNION WHOSE ARM IS A UNION is a table-closure construct
+	// (docs/SPEC-TABLES.md §2.6): ir keeps it out of Unions and the decls, so the
+	// loop above never sees it, yet a fixed table reads its value into this
+	// class and its arms answer to the OUTER tag through the guard chain
+	// (docs/FIXED-FORM-ALGORITHM.md §4.1). It has no packet wire, so it takes the
+	// class and the tag object and none of the packet functions.
+	for _, un := range g.file.TableUnions {
+		g.emitUnion(un)
+	}
 }
 
 // emitTagEnum emits a tag enum as a frozen plain object — the JS translation
@@ -507,8 +516,14 @@ func (g *gen) emitUnion(d *ir.Union) {
 		if v.Void() {
 			continue // a PAYLOAD-FREE arm has no storage (SPEC §4.8)
 		}
-		g.addRef(v.Type, v.Type)
-		g.pf("    this.%s = new %s();\n", ir.GoExportName(v.Name), v.Type)
+		// A TABLE UNION's arm may itself be a union (docs/SPEC-TABLES.md §2.6),
+		// whose class name is the arm field's type and not the packet arm's.
+		armType := v.Type
+		if armType == "" && v.F != nil {
+			armType = v.F.Type.Name
+		}
+		g.addRef(armType, armType)
+		g.pf("    this.%s = new %s();\n", ir.GoExportName(v.Name), armType)
 	}
 	g.pf("  }\n}\n\n")
 }

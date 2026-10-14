@@ -95,23 +95,24 @@ type TableFixedGuardLink struct {
 	ArgW  uint8
 }
 
-// tableFixedGuardLinkAt is link j of e's chain, read out of the pool laid behind
-// the plan's entries (§4.1: offset+count into the pool).
-func tableFixedGuardLinkAt(plan []TableFixedEntry, e TableFixedEntry, j uint32) TableFixedGuardLink {
+// guardLink is link j of e's chain, read out of the pool laid behind the plan's
+// entries (§4.1: offset+count into the pool). A method, so the unit's package
+// scope gains no name a schema could collide with.
+func (e TableFixedEntry) guardLink(plan []TableFixedEntry, j uint32) TableFixedGuardLink {
 	at := uintptr(e.GuardIndex) + uintptr(j)*unsafe.Sizeof(TableFixedGuardLink{})
 	return *(*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&plan[0]), at))
 }
 
-// tableFixedChainHolds is whether every link of a chain PAST TWO holds: an arm
-// inside an arm inside an arm answers to EVERY enclosing tag, the outermost
-// first (docs/FIXED-FORM-ALGORITHM.md §4.1). A chain of one or two is the
-// two-lane special case, already tested on Guard and Guard2.
-func tableFixedChainHolds(plan []TableFixedEntry, p TableFixedEntry, src []byte) bool {
+// chainHolds is whether every link of a chain PAST TWO holds: an arm inside an
+// arm inside an arm answers to EVERY enclosing tag, the outermost first
+// (docs/FIXED-FORM-ALGORITHM.md §4.1). A chain of one or two is the two-lane
+// special case, already tested on Guard and Guard2.
+func (p TableFixedEntry) chainHolds(plan []TableFixedEntry, src []byte) bool {
 	if p.GuardCount <= 2 {
 		return true
 	}
 	for j := uint32(0); j < p.GuardCount; j++ {
-		l := tableFixedGuardLinkAt(plan, p, j)
+		l := p.guardLink(plan, j)
 		if tableFixedTagAt(src, l.Guard, l.ArgW) != l.Arg {
 			return false
 		}
@@ -418,7 +419,7 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			continue
 		}
 		// AND EVERY TAG FURTHER OUT, the guard chain past the two lanes (§4.1).
-		if p.GuardCount > 2 && !tableFixedChainHolds(plan, p, src) {
+		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
 			continue
 		}
 		switch p.Op {
@@ -594,7 +595,7 @@ func tableFixedForgedBounds(plan []TableFixedEntry, count int32, src []byte, rep
 		if p.ArgW2 != 0 && tableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
 			continue
 		}
-		if p.GuardCount > 2 && !tableFixedChainHolds(plan, p, src) {
+		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
 			continue
 		}
 		switch p.Op {
@@ -688,7 +689,7 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		if p.ArgW2 != 0 && tableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
 			continue
 		}
-		if p.GuardCount > 2 && !tableFixedChainHolds(plan, p, src) {
+		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
 			continue
 		}
 		unit := uint32(1)
@@ -1049,11 +1050,11 @@ type tableFixedCompiler struct {
 	report *TableReport
 }
 
-// tableFixedLayGuards lays one guard chain into the plan's pool, behind the
-// entries and 8-aligned, and answers its byte offset from the plan's base
+// layGuards lays one guard chain into the plan's pool, behind the entries and
+// 8-aligned, and answers its byte offset from the plan's base
 // (docs/FIXED-FORM-ALGORITHM.md §4.1: offset+count into a pool of links). Pool
 // storage that meets the entries is plan_too_large, as for a remap table.
-func tableFixedLayGuards(c *tableFixedCompiler, links []TableFixedGuardLink) uint32 {
+func (c *tableFixedCompiler) layGuards(links []TableFixedGuardLink) uint32 {
 	bytes := int32(unsafe.Sizeof(TableFixedGuardLink{})) * int32(len(links))
 	total := int32(unsafe.Sizeof(TableFixedEntry{})) * c.capacity
 	c.pool = (c.pool + bytes + 7) &^ 7
@@ -1127,7 +1128,7 @@ func tableFixedPush(c *tableFixedCompiler, e TableFixedEntry) {
 			}
 		}
 		if !c.chainLaid {
-			c.chainAt = tableFixedLayGuards(c, c.chain)
+			c.chainAt = c.layGuards(c.chain)
 			c.chainLaid = true
 			if c.overflow {
 				return

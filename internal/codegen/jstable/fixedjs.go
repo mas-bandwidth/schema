@@ -736,6 +736,14 @@ func fixedDeclaredUnion(u *ir.Unit, name string) bool {
 				return true
 			}
 		}
+		// A UNION WHOSE ARM IS A UNION (a table union, ir.File.TableUnions) is a
+		// union too, declared by internal/codegen/js beside the file's decls
+		// (docs/FIXED-FORM-ALGORITHM.md §4.1).
+		for _, un := range f.TableUnions {
+			if un.Name == name {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -754,6 +762,13 @@ func fixedDeclaringFile(u *ir.Unit, name string) string {
 				if r.Name == name {
 					return f.Base
 				}
+			}
+		}
+		// A TABLE UNION's class is internal/codegen/js's too, emitted after the
+		// file's decls, so it is imported from the same module.
+		for _, un := range f.TableUnions {
+			if un.Name == name {
+				return f.Base
 			}
 		}
 	}
