@@ -254,7 +254,8 @@ static void negative_control()
     tblfx1::FxRoot wrong;
     tblfx1::FxRootReset( wrong );
     tblfx1::TableReport r;
-    tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded, body, (uint8_t *) &wrong, &r );
+    tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded, body, (uint8_t *) &wrong, &r,
+                           tblfx1::FxRootFixedGuards );
     const bool intact = wrong.nested.a == 33 && wrong.nested.b == 44 && wrong.renamed == 808;
     check( !intact, "NEGATIVE CONTROL: the wrong plan must NOT reproduce the record" );
 
@@ -911,8 +912,10 @@ static void union_text_case()
         tblut1::UtRootReset( wrong );
         tblut1::TableReport r;
         const uint8_t * body = w.data() + tblut1::kTableFixedHeaderBytes + 4 + tblut1::UtRootFixedLayoutBytes + 8;
+        // The copy keeps the identity plan's pooled guard chains, so it runs
+        // against the identity plan's pool, exactly as UtRootFixedLoad does.
         tblut1::TableFixedRun( shared.data(), tblut1::UtRootFixedPlanCount, tblut1::UtRootFixedPlanGuarded,
-                               body, (uint8_t *) &wrong, &r );
+                               body, (uint8_t *) &wrong, &r, tblut1::UtRootFixedGuards );
         check( wrong.pick.b.label_length != 7 || std::strcmp( wrong.pick.b.label, "seven77" ) != 0,
                "NEGATIVE CONTROL: one shared lane really does read the arm's string wrong" );
     }
@@ -1228,7 +1231,7 @@ static void bounds_case()
         tblfx1::TableReport r;
         const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
         tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded,
-                               body, (uint8_t *) &loose, &r );
+                               body, (uint8_t *) &loose, &r, tblfx1::FxRootFixedGuards );
         check( loose.renamed == 5000 && loose.gone == -7,
                "NEGATIVE CONTROL: the loop alone really does leave an out-of-range value standing" );
         check( r.clamped == 0, "NEGATIVE CONTROL: and counts nothing" );
@@ -1508,7 +1511,7 @@ static void text_content_case()
             tblfx1::TableReport r2;
             const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
             tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded,
-                                   body, (uint8_t *) &loose, &r2 );
+                                   body, (uint8_t *) &loose, &r2, tblfx1::FxRootFixedGuards );
             check( loose.label_length == 1 && (uint8_t) loose.label[0] == 0xFFu,
                    "NEGATIVE CONTROL: the loop alone really does leave a byte that is not text standing" );
             check( !r2.malformed, "NEGATIVE CONTROL: and says nothing about it" );
