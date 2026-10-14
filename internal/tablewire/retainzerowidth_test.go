@@ -73,6 +73,9 @@ func TestRetainReadOfZeroWidthElementRunIsBounded(t *testing.T) {
 		shape    ir.TableMessageShape
 		count    uint64
 		retained bool
+		// refused: the read refuses the batch as malformed before any
+		// retaining walk starts, which bounds it too
+		refused bool
 	}{
 		{
 			// THE CARD'S FIRST SHAPE: the count rides in zero bits
@@ -82,11 +85,16 @@ func TestRetainReadOfZeroWidthElementRunIsBounded(t *testing.T) {
 		{
 			// AND THE NESTED ONE: a counted outer run whose every element is a
 			// three-wide inner run of a zero-width element, so ten bytes an
-			// element against the announced count
+			// element against the announced count. The message skip refuses a
+			// remaining count the batch's bits cannot back at one bit an element
+			// (messagedecode.go, TestMessageSkipOfZeroWidthElementsIsBounded), so
+			// this hostile count is refused as malformed before the retaining
+			// walk is reached: the walk is bounded because it never starts.
 			name: "nested zero-width element run",
 			shape: ir.TableMessageShape{Min: 0, Max: 1 << 20, Elem: ir.TableKindArray,
 				Inner: &ir.TableMessageShape{Min: 3, Max: 3, Elem: ir.TableKindNoPayload, Inner: &ir.TableMessageShape{}}},
-			count: 1 << 20,
+			count:   1 << 20,
+			refused: true,
 		},
 		{
 			// A LEGAL RECORD FITS AND IS KEPT BYTE FOR BYTE AS BEFORE
@@ -109,6 +117,15 @@ func TestRetainReadOfZeroWidthElementRunIsBounded(t *testing.T) {
 			defer func() { msgWalkProbe = nil }()
 
 			n, ok, err := DecodeRetainMessages(m, []*tabletext.Instance{value}, data, v, []*Retain{store}, &report)
+			if c.refused {
+				if ok || err != nil || !report.Malformed {
+					t.Fatalf("a count the bits cannot back was not refused as malformed: %d %v %v %+v", n, ok, err, report)
+				}
+				if walked >= msgWalkProbeLimit {
+					t.Fatalf("the transcoding walk ran to the probe's limit before the refusal: %d elements", walked)
+				}
+				return
+			}
 			if n != 1 || !ok || err != nil || report.Malformed {
 				t.Fatalf("read: %d %v %v %+v", n, ok, err, report)
 			}
