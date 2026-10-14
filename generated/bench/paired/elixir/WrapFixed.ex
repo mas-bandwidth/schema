@@ -327,22 +327,31 @@ defmodule Bench.WrapFixed do
     # and a batch past the caller's room is a REFUSAL BY NAME. Step 9 runs
     # first and owns the ragged tail, so a `rest` that is not a whole number
     # of records passes this and the split reports `malformed`.
-    with :ok <- R.batch_within(byte_size(records), size + 8, bcap),
-         {:ok, bodies} <- fixed_table_fixed_split(records, hash, size, []) do
-      {values, report} =
-        Enum.map_reduce(bodies, report, fn body, report ->
-          {image, report} = R.run(plan, R.detach(body, copy), @fixed_table_prefill, report)
-          {value, c, m} = fixed_table_fixed_decode(image, 0, false)
-          {value, R.damaged(R.clamped(report, c), m)}
-        end)
+    # A CONTENT VIOLATION IN THE USED UNITS REFUSES THE WHOLE READ BY NAME
+    # (§4.5 fix 11): `R.text`, `R.wtext` and the compiled plan's text op all
+    # THROW `{:refuse, :text_ill_formed}`, and this is where the uniform
+    # refusal is caught, with no destination byte landed and every counter
+    # left at zero.
+    try do
+      with :ok <- R.batch_within(byte_size(records), size + 8, bcap),
+           {:ok, bodies} <- fixed_table_fixed_split(records, hash, size, []) do
+        {values, report} =
+          Enum.map_reduce(bodies, report, fn body, report ->
+            {image, report} = R.run(plan, R.detach(body, copy), @fixed_table_prefill, report)
+            {value, c, m} = fixed_table_fixed_decode(image, 0, false)
+            {value, R.damaged(R.clamped(report, c), m)}
+          end)
 
-      # THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, and only on a read that
-      # RETURNS (§5.9 #6): §5.4 says once per peer and never per record, and a
-      # refusal that came after would have moved a counter.
-      {:ok, values, R.census(report, census_u, census_k)}
-    else
-      {:error, :malformed} -> {:error, :malformed, %{report | malformed: true}}
-      {:error, why} -> {:error, why, report}
+        # THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, and only on a read that
+        # RETURNS (§5.9 #6): §5.4 says once per peer and never per record, and a
+        # refusal that came after would have moved a counter.
+        {:ok, values, R.census(report, census_u, census_k)}
+      else
+        {:error, :malformed} -> {:error, :malformed, %{report | malformed: true}}
+        {:error, why} -> {:error, why, report}
+      end
+    catch
+      :throw, {:refuse, why} -> {:error, why, report}
     end
   end
 

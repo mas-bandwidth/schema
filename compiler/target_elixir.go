@@ -73,10 +73,10 @@ func (elixirTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage
 	if err != nil {
 		return nil, err
 	}
-	// units that declare tables ALSO get <Base>Table.ex per file — the
-	// TABLE-wire codecs, the reflection descriptors, the text form and the two
-	// accelerators' READ side (docs/SPEC-TABLES.md); a table-free unit's output
-	// is byte-identical to what the packet emitter alone produces.
+	// units that declare tables ALSO get Table.ex, one variable-form codec per
+	// unit, beside <Base>Block.ex and <Base>Cook.ex (docs/SPEC-TABLES.md); a
+	// table-free unit's output is byte-identical to what the packet emitter
+	// alone produces.
 	tables, err := elixirtable.GenerateLineage(u, elixirTableLineage(u, lineage))
 	if err != nil {
 		return nil, err

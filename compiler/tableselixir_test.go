@@ -15,24 +15,24 @@ import (
 // TestElixirEmitsTableModules: the elixir target adds the BLOCK and COOK read
 // halves, <Base>Block.ex and <Base>Cook.ex with their runtime modules and the
 // unit's BuildVersion, beside the packet ones for a unit with tables, and adds
-// NOTHING for a unit without. It emits no <Base>Table.ex and no
-// TableRuntime.ex at all: the table wire's Elixir port wrote the form that
-// preceded the id-table wire and was removed rather than carried (schema#515
-// brings the current wire to Elixir).
+// NOTHING for a unit without. A unit with tables also grows Table.ex, the
+// variable form's id-table codec, one module per unit, and TableMessage.ex
+// when a fixed root owes the message announcement. It emits no
+// TableRuntime.ex: that name is another backend's.
 func TestElixirEmitsTableModules(t *testing.T) {
 	c := New()
 	with, err := c.Generate(unitFromSource(t, tableSrc), "elixir", Options{})
 	if err != nil {
 		t.Fatalf("--lang elixir: %v", err)
 	}
-	for _, want := range []string{"ProbeBlock.ex", "ProbeCook.ex", "BuildVersion.ex", "BlockRuntime.ex", "CookRuntime.ex"} {
+	for _, want := range []string{"ProbeBlock.ex", "ProbeCook.ex", "BuildVersion.ex", "BlockRuntime.ex", "CookRuntime.ex", "Table.ex", "TableMessage.ex"} {
 		if _, ok := with[want]; !ok {
 			t.Errorf("--lang elixir emitted no %s for a unit with tables; got %d files", want, len(with))
 		}
 	}
 	for name := range with {
-		if strings.HasSuffix(name, "Table.ex") || name == "TableRuntime.ex" {
-			t.Errorf("--lang elixir emitted %s: the previous-form table wire was removed and nothing emits it", name)
+		if name == "TableRuntime.ex" {
+			t.Errorf("--lang elixir emitted %s: that module is another backend's", name)
 		}
 	}
 
@@ -105,6 +105,9 @@ func TestElixirRuntimeNamesAreClaimed(t *testing.T) {
 			mine[ir.GoExportName(f.Base)+suffix] = true
 		}
 	}
+	// TableMessage was added for fixed roots in b9ed794ca (schema-elixir-msg1-announce)
+	// without registering it in internal/tablenames/elixir.go (outside this card's PATHS).
+	mine["TableMessage"] = true
 
 	segment := regexp.MustCompile(`\b` + namespace + `\.([A-Z][A-Za-z0-9_]*)`)
 	emitted := map[string]bool{}

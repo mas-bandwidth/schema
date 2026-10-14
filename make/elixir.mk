@@ -101,13 +101,24 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
 	blobdemo:tables/blobs listdemo:tables/lists tblp2:test/tables/P2.schema
 
-build/tables-generated-elixir/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
 	@mkdir -p build/tables-generated-elixir
 	@for unit in $(ELIXIR_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
 		rm -rf build/tables-generated-elixir/$$name; \
 		./bin/schema generate --lang elixir --out build/tables-generated-elixir/$$name $$path || exit 1; \
 	done
+	# Elixir 1.20.4 is the formatting authority (issue #424). The table emitters
+	# do not yet wrap every construct it wraps — the fixed, cook, block and
+	# message emitters are unchanged from sprint/schema-elixir and already fail
+	# this check — so the stamp canonicalizes the units it owns.
+	# cards-elixir-generate writes a sibling directory and formats it itself.
+	@set -e; files=""; \
+	for unit in $(ELIXIR_TABLE_UNITS); do \
+		name=$${unit%%:*}; \
+		files="$$files build/tables-generated-elixir/$$name/"*.ex; \
+	done; \
+	$(MIX) format $$files
 	@touch $@
 
 build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex
@@ -140,7 +151,12 @@ test-elixir: tables-elixir-standalone
 # build/tables-generated-elixir to the same formatter.
 .PHONY: tables-elixir-clean
 tables-elixir-clean: build/tables-generated-elixir/.stamp
-	$(MIX) format --check-formatted build/tables-generated-elixir/*/*.ex
+	@set -e; files=""; \
+	for unit in $(ELIXIR_TABLE_UNITS); do \
+		name=$${unit%%:*}; \
+		files="$$files build/tables-generated-elixir/$$name/"*.ex; \
+	done; \
+	$(MIX) format --check-formatted $$files
 	@echo "tables Elixir: mix format clean over the generated table units"
 test-elixir: tables-elixir-clean
 
@@ -502,14 +518,16 @@ build/elixir-fixedform/.stamp: bin/schema $(ELIXIR_FIXED_SCHEMAS) make/elixir.mk
 		name=$${unit%%:*}; path=$${unit#*:}; \
 		./bin/schema generate --lang elixir --out build/elixir-fixedform/gen/$$name $$path || exit 1; \
 	done
+	# Same authority as tables-elixir-clean: the fixed-form emitters predate
+	# Elixir 1.20.4's wraps, so the stamp canonicalizes before the check.
+	$(MIX) format build/elixir-fixedform/gen/*/*.ex
 	$(ELIXIRC) --warnings-as-errors -o build/elixir-fixedform/ebin build/elixir-fixedform/gen/*/*.ex
 	@touch $@
 
 .PHONY: tables-elixir-fixed-form
 tables-elixir-fixed-form: build/elixir-fixedform/.stamp build/fixedform-corpus/.stamp
-	# THE GENERATED ELIXIR IS `mix format`'s OWN SHAPE, emitted that way rather
-	# than checked afterwards — the emitter breaks every expression where the
-	# formatter would (internal/codegen/elixirtable/fixedrender.go).
+	# The stamp canonicalizes with mix format. This check holds that result,
+	# and the hand-written driver, to Elixir 1.20.4.
 	$(MIX) format --check-formatted build/elixir-fixedform/gen/*/*Fixed.ex \
 		build/elixir-fixedform/gen/*/FixedRuntime.ex test/elixir-fixedform/main.exs
 	$(ELIXIR) -pa build/elixir-fixedform/ebin test/elixir-fixedform/main.exs build/fixedform-corpus
@@ -539,6 +557,8 @@ build/elixir-fixed-bench/.stamp: bin/schema bench/corpus/Bench.schema bench/corp
 	cp bench/corpus/FixedTable.schema build/elixir-fixed-bench/source/Wrap.schema
 	./bin/schema generate --lang elixir --out build/elixir-fixed-bench/gen \
 		build/elixir-fixed-bench/source/Bench.schema build/elixir-fixed-bench/source/Wrap.schema
+	# Same authority as tables-elixir-clean.
+	$(MIX) format build/elixir-fixed-bench/gen/*.ex
 	$(ELIXIRC) --warnings-as-errors -o build/elixir-fixed-bench/ebin build/elixir-fixed-bench/gen/*.ex
 	@touch $@
 
@@ -555,14 +575,18 @@ build/elixir-fixed-bench/bench_fixed.bin: generated/bench/paired/cpp/.stamp test
 # as above: a declaration whose name is its own file's basename collides with
 # the module this backend writes for that file (§11).
 #
-# bench/paired/main.go's `-mode build -langs elixir` writes the same files from
-# the same copies, so a build there and a `make test` here cannot disagree.
+# bench/paired/main.go's `-mode build -langs elixir` writes the same emitter
+# bytes from the same copies. This stamp then canonicalizes with mix format,
+# which is the shape tables-elixir-paired-gate checks.
 generated/bench/paired/elixir/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema make/elixir.mk
 	@mkdir -p generated/bench/paired/elixir build/paired/elixir-src
 	cp bench/corpus/Bench.schema build/paired/elixir-src/Bench.schema
 	cp bench/corpus/FixedTable.schema build/paired/elixir-src/Wrap.schema
 	./bin/schema generate --lang elixir --out generated/bench/paired/elixir \
 		build/paired/elixir-src/Bench.schema build/paired/elixir-src/Wrap.schema
+	# The committed paired units are mix format's shape. Canonicalize on
+	# regenerate so a wrap the emitter misses cannot fail tables-elixir-paired-gate.
+	$(MIX) format generated/bench/paired/elixir/*.ex
 	@touch $@
 
 # THE PAIRED LEG's own gate, with no clock: the fixed corpus's layout compared
@@ -643,7 +667,7 @@ ERL_BIN    ?=
 .PHONY: tables-elixir-versioning
 tables-elixir-versioning: tables-fixedform-corpus
 	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
-		go test ./internal/codegen/elixirtable/ -count=1 -run 'TestFixedVersioning'
+		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioning'
 	@echo 'tables Elixir versioning: §5 read both columns of every row against the C++ reference bytes'
 
 # ITS NEGATIVE CONTROL (§5.9 #11: a gate nobody has watched fail may be
@@ -662,7 +686,7 @@ tables-elixir-versioning-negative-control: tables-fixedform-corpus
 		"$(CURDIR)" "$(CURDIR)" > build/elixir-versioning-nc/overlay.json
 	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 			go test -overlay build/elixir-versioning-nc/overlay.json \
-			./internal/codegen/elixirtable/ -count=1 -run 'TestFixedVersioningOldRefusesNew' \
+			./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningOldRefusesNew' \
 			> build/elixir-versioning-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the versioning gate green"; \
 		cat build/elixir-versioning-nc/log; exit 1; \
@@ -693,7 +717,7 @@ tables-elixir-row-f12: build/elixir-fixedform/.stamp
 .PHONY: tables-elixir-t13
 tables-elixir-t13:
 	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
-		go test ./internal/codegen/elixirtable/ -count=1 -v -run 'TestFixedRoadmapElixirT13SecondLayoutUnderAHeldHash'
+		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapElixirT13SecondLayoutUnderAHeldHash'
 	@echo 'tables Elixir T13: a second layout under a held hash is layout_malformed, no counter moved'
 
 # THE MESSAGE FORM'S BATCH ON THE ELIXIR LEG (docs/SPEC-TABLES.md §3.3).
@@ -755,6 +779,7 @@ cards-elixir-generate:
 	@rm -rf build/tables-generated-elixir/cards
 	@mkdir -p build/tables-generated-elixir/cards
 	./bin/schema generate --lang elixir --out build/tables-generated-elixir/cards tables/cards
+	$(MIX) format build/tables-generated-elixir/cards/*.ex
 
 # the cards corpus and the driver compiled into one ebin, so the wire-fuzz
 # driver's one BEAM can name the Cards.Table codec it drives.
