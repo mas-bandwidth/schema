@@ -57,22 +57,10 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 					flag bool
 					paths []PathText
 					body *string
-				}
-			`,
-			refuse: false,
-		},
-		{
-			name: "*bytes is refused by table and field name",
-			def: `package test
-				table Blobbed {
-					id string(64)
 					data *bytes
 				}
 			`,
-			refuse:    true,
-			table:     "Blobbed",
-			field:     "data",
-			construct: "*bytes",
+			refuse: false,
 		},
 		{
 			name: "map is refused by table and field name",

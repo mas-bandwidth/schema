@@ -3,11 +3,12 @@
 // for the card record's constructs and the remaining SCALAR KINDS — a plain
 // `table` root, tables as unbounded list elements, bool/int8/int16/int32/int64
 // and uint8/uint16/uint32/uint64 fields, `bits(N)`, `float32`/`float64`,
-// `string(N)`/`bytes(N)`, `*string` (the string kind of §2.5) and `[]T` of
-// tables (§2.9). Every other variable-class construct — a map, a union, a
-// bounded/counted array, an optional, a keyed array, the wide kinds, wstring,
-// `*bytes` and arrays of scalars/strings/enums/pointers — is refused by name in
-// checkUnsupportedConstructs (§11), and nothing here reads or writes one.
+// `string(N)`/`bytes(N)`, `*string`/`*bytes` (the two byte-buffer kinds of
+// §2.5) and `[]T` of tables (§2.9). Every other variable-class construct — a
+// map, a union, a bounded/counted array, an optional, a keyed array, the wide
+// kinds, wstring and arrays of scalars/strings/enums/pointers — is refused by
+// name in checkUnsupportedConstructs (§11), and nothing here reads or writes
+// one.
 //
 // THE WIRE MAP is pinned in testdata/cards/README.md against the Go leg's
 // committed byte oracle tables/cards/fuzz/card-populated.wire: the form byte,
@@ -63,15 +64,15 @@ func dartU64Literal(id uint64) string {
 // cardWireField reports whether a field is one of the card record's
 // constructs or a carried scalar kind (docs/SPEC-TABLES.md §2.1, §2.5, §2.9,
 // §3): bool, the integer/bits kinds of width below 128, float32/float64,
-// enum, string(N), bytes(N), *string (the string kind) and an unbounded []T of
-// table elements. Every other variable-class construct — a map, a union, a
-// bounded/counted array, an optional, a keyed array, *bytes, the wide kinds,
-// wstring — is NOT a card construct: the wire form is not claimed for it, and
-// the emitter must never mis-encode it (§11).
+// enum, string(N), bytes(N), *string/*bytes (the byte-buffer kinds) and an
+// unbounded []T of table elements. Every other variable-class construct — a
+// map, a union, a bounded/counted array, an optional, a keyed array, the wide
+// kinds, wstring — is NOT a card construct: the wire form is not claimed for
+// it, and the emitter must never mis-encode it (§11).
 func cardWireField(f *ir.Field) bool {
 	switch {
 	case f.Type.Blob():
-		return f.Type.Kind == ir.TString // *string only; *bytes is refused
+		return true // *string and *bytes, both blobs on the node table (§2.5)
 	case f.IsList():
 		return true
 	case f.Type.Kind == ir.TBool:
@@ -283,6 +284,7 @@ func (g *wireGen) emitConstants() {
 	g.pf("const int _kNodeTableId = %s; // 0xFFFFFFFFFFFFFFFF\n", dartU64Literal(ir.TableNodeWireId))
 	g.pf("const int _kBuildVersionId = %s; // 0xFFFFFFFFFFFFFFFE\n", dartU64Literal(ir.TableBuildVersionWireId))
 	g.pf("const int _kVocabularyId = %s; // 0xFFFFFFFFFFFFFFFD\n", dartU64Literal(ir.TableMessageVocabularyWireId))
+	g.pf("const int _kBytesBlobId = %s; // fnv1a64(\"bytes\")\n", dartU64Literal(ir.BytesWireTypeId))
 	g.pf("const int _kStringBlobId = %s; // fnv1a64(\"string\")\n\n", dartU64Literal(ir.StringWireTypeId))
 }
 
@@ -309,6 +311,7 @@ final class TableWireReport {
 final class WireState {
   final Map<int, int> refs = <int, int>{};
   final List<int> ids = <int>[];
+  final List<int> nodeTypes = <int>[];
   final List<List<int>> nodes = <List<int>>[];
   TableRetain? retain;
   TableWireReport? report;
@@ -342,12 +345,16 @@ final class WireState {
     return refFor(id);
   }
 
-  // nodeIndexForString numbers one *string blob node (§3.1): record k = node
-  // index k + 1. A blob reached twice is one record — two fields that loaded
-  // the same node, and so hold the same bytes, save the same index, matching
-  // the reference backends' first-visit numbering byte for byte (§3.1).
-  int nodeIndexForString(List<int> bytes) {
+  // nodeIndexForBlob numbers one *bytes/*string blob node (§3.1): record k =
+  // node index k + 1, keyed by the blob's reserved type id and its bytes. A
+  // blob reached twice is one record — two fields that loaded the same node,
+  // and so hold the same type and bytes, save the same index, matching the
+  // reference backends' first-visit numbering byte for byte (§3.1). A *bytes
+  // blob and a *string blob of equal bytes are two nodes: the type id tells
+  // them apart.
+  int nodeIndexForBlob(int typeId, List<int> bytes) {
     for (var i = 0; i < nodes.length; i++) {
+      if (nodeTypes[i] != typeId) continue;
       final existing = nodes[i];
       if (existing.length != bytes.length) continue;
       var same = true;
@@ -359,6 +366,7 @@ final class WireState {
       }
       if (same) return i + 2;
     }
+    nodeTypes.add(typeId);
     nodes.add(bytes);
     return nodes.length + 1;
   }
@@ -462,6 +470,7 @@ final class TableWireReader {
   int entryCount = 0;
   bool nodeTableGood = true;
   bool stringBlob = false;
+  bool bytesBlob = false;
   TableRetain? retain;
   List<int> path = <int>[];
 
@@ -486,6 +495,7 @@ final class TableWireReader {
       entryCount = parent.entryCount,
       nodeTableGood = parent.nodeTableGood,
       stringBlob = parent.stringBlob,
+      bytesBlob = parent.bytesBlob,
       retain = parent.retain,
       path = parent.path;
 
@@ -590,13 +600,14 @@ final class TableWireReader {
     }
   }
 
-  // resolveString turns a kind-17 node index into the *string it names
-  // (§3.1): 0 is null; 1 is the ROOT, which a *string can never be, so it is
-  // a kind mismatch; records 2.. are the node table's string blobs. An index
+  // resolveBlob turns a kind-17 node index into the blob bytes it names
+  // (§3.1): 0 is null; 1 is the ROOT, which a blob can never be, so it is a
+  // kind mismatch; records 2.. are the node table's blob records. An index
   // above node_count + 1 is malformed, and a record whose type id this reader
   // cannot name reads null — the unknown was counted once at the node table,
-  // not once per pointer (§3.1).
-  String? resolveString(int idx) {
+  // not once per pointer (§3.1). recognized is the flag that gates whether
+  // this root reaches that blob kind at all.
+  Uint8List? resolveBlob(int idx, int wantTypeId, bool recognized) {
     if (!nodeTableGood) return null;
     if (idx == 0) return null;
     if (idx == 1) {
@@ -608,9 +619,16 @@ final class TableWireReader {
       report.malformed = true;
       return null;
     }
-    if (!stringBlob || nodeTypes[rec] != _kStringBlobId) return null;
-    return utf8.decode(nodes[rec]);
+    if (!recognized || nodeTypes[rec] != wantTypeId) return null;
+    return Uint8List.fromList(nodes[rec]);
   }
+
+  String? resolveString(int idx) {
+    final b = resolveBlob(idx, _kStringBlobId, stringBlob);
+    return b == null ? null : utf8.decode(b);
+  }
+
+  Uint8List? resolveBytes(int idx) => resolveBlob(idx, _kBytesBlobId, bytesBlob);
 
   // open resolves the id table from the END of the wire (§3), then walks the
   // root body's framing to its terminator. 0 ok, 1 refused (a form byte this
@@ -704,13 +722,15 @@ final class TableWireReader {
           final bytes = Uint8List.fromList(data.sublist(pos, pos + blen));
           pos += blen;
           final typeId = refToId[typeRef] ?? 0;
-          if (stringBlob && typeId == _kStringBlobId) {
+          if (typeId == _kStringBlobId && stringBlob) {
             if (_lebValid(bytes, 0, bytes.length)) {
               nodeTypes.add(typeId);
             } else {
               report.malformed = true;
               nodeTypes.add(0);
             }
+          } else if (typeId == _kBytesBlobId && bytesBlob) {
+            nodeTypes.add(typeId);
           } else {
             report.unknown++;
             if (retain != null) report.retainLost++;
@@ -784,7 +804,11 @@ func (g *wireGen) emitStorage(st *ir.Struct) {
 		name := fieldMember(f)
 		switch {
 		case f.Type.Blob():
-			g.pf("  String? %s;\n", name)
+			if f.Type.Kind == ir.TString {
+				g.pf("  String? %s;\n", name)
+			} else {
+				g.pf("  Uint8List? %s;\n", name)
+			}
 		case f.IsList():
 			g.pf("  List<%s> %s = <%s>[];\n", f.Type.Name, name, f.Type.Name)
 		case f.Type.Kind == ir.TBool:
@@ -862,11 +886,15 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	expr := "v." + name
 	id := fieldId(f)
 	switch {
-	case f.Type.Blob(): // *string rides as a kind-17 node index (§2.5, §3.1)
+	case f.Type.Blob(): // *string/*bytes ride as a kind-17 node index (§2.5, §3.1)
 		g.pf("%sif (%s != null) {\n", ind, expr)
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindPtr)
-		g.pf("%s\tw.putLeb(w.state.nodeIndexForString(utf8.encode(%s!)));\n", ind, expr)
+		if f.Type.Kind == ir.TString {
+			g.pf("%s\tw.putLeb(w.state.nodeIndexForBlob(_kStringBlobId, utf8.encode(%s!)));\n", ind, expr)
+		} else {
+			g.pf("%s\tw.putLeb(w.state.nodeIndexForBlob(_kBytesBlobId, %s!));\n", ind, expr)
+		}
 		g.pf("%s}\n", ind)
 	case f.IsList(): // []T rides as kind 14, element kind 13 (§2.9, §3)
 		// The field's reference is interned BEFORE the element bodies, so the
@@ -1033,12 +1061,16 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 	id := fieldId(f)
 	g.pf("%scase %s:\n", ind, dartU64Literal(id))
 	switch {
-	case f.Type.Blob(): // *string rides as a kind-17 node index (§2.5, §3.1)
+	case f.Type.Blob(): // *string/*bytes ride as a kind-17 node index (§2.5, §3.1)
 		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindPtr)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal idx = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (idx == null) { r.report.malformed = true; return; }\n", ind)
-		g.pf("%s\t\tv.%s = r.resolveString(idx);\n", ind, name)
+		if f.Type.Kind == ir.TString {
+			g.pf("%s\t\tv.%s = r.resolveString(idx);\n", ind, name)
+		} else {
+			g.pf("%s\t\tv.%s = r.resolveBytes(idx);\n", ind, name)
+		}
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
 	case f.IsList(): // []T of tables rides as kind 14, element kind 13 (§2.9, §3)
@@ -1261,8 +1293,9 @@ func (g *wireGen) emitSave(st *ir.Struct) {
 	g.pf("\t\tw.putByte(%d);\n", wireKindString)
 	g.pf("\t\tfinal body = TableWireWriter(state);\n")
 	g.pf("\t\tbody.putLeb(state.nodes.length);\n")
-	g.pf("\t\tfor (final node in state.nodes) {\n")
-	g.pf("\t\t\tbody.putLeb(state.refFor(_kStringBlobId));\n")
+	g.pf("\t\tfor (var i = 0; i < state.nodes.length; i++) {\n")
+	g.pf("\t\t\tfinal node = state.nodes[i];\n")
+	g.pf("\t\t\tbody.putLeb(state.refFor(state.nodeTypes[i]));\n")
 	g.pf("\t\t\tbody.putLeb(node.length);\n")
 	g.pf("\t\t\tbody.putBytes(node);\n")
 	g.pf("\t\t}\n")
@@ -1283,11 +1316,12 @@ func (g *wireGen) emitSave(st *ir.Struct) {
 func (g *wireGen) emitLoad(st *ir.Struct) {
 	n := st.Name
 	fn := dartName(n) + "WireLoad"
-	_, strBlob := ir.PointerReachableBlobs(st)
 	g.pf("%s %s(Uint8List data, [TableWireReport? report]) {\n", n, fn)
 	g.pf("\tfinal v = %s();\n", n)
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
+	bytesBlob, strBlob := ir.PointerReachableBlobs(st)
 	g.pf("\tr.stringBlob = %v;\n", strBlob)
+	g.pf("\tr.bytesBlob = %v;\n", bytesBlob)
 	g.pf("\tr.path = [1];\n")
 	g.pf("\tif (report != null) r.report = report;\n")
 	g.pf("\tfinal verdict = r.open();\n")

@@ -1,7 +1,8 @@
 // THE TEXT FORM (docs/SPEC-TABLES.md §16), JSON in and out, for exactly the
 // card record's constructs — a plain `table` root, tables as unbounded list
-// elements, bool/int32/int64/enum fields, `string(N)`, `*string` and `[]T` of
-// tables — the same slice the wire form (wireform.go) carries on form byte 1.
+// elements, bool/int32/int64/enum fields, `string(N)`, `*string`, `*bytes`
+// (base64 in the text) and `[]T` of tables — the same slice the wire form
+// (wireform.go) carries on form byte 1.
 //
 // The writer renders one instance as one JSON text with the byte layout the
 // Go, C, C++ and C# backends write (docs/SPEC-TABLES.md §16.1): two-space
@@ -234,8 +235,12 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 	g.pf("\tout.raw(_jsonString(%s));\n", strconv.Quote(key))
 	g.pf("\tout.raw(': ');\n")
 	switch {
-	case f.Type.Blob(): // *string rides as a string or null (§2.5, §16.2)
-		g.pf("\tif (v.%s == null) { out.raw('null'); } else { out.raw(_jsonString(v.%s!)); }\n", name, name)
+	case f.Type.Blob(): // *string rides as a string or null; *bytes as base64 or null (§2.5, §16.2)
+		if f.Type.Kind == ir.TString {
+			g.pf("\tif (v.%s == null) { out.raw('null'); } else { out.raw(_jsonString(v.%s!)); }\n", name, name)
+		} else {
+			g.pf("\tif (v.%s == null) { out.raw('null'); } else { out.raw(_jsonString(base64Encode(v.%s!))); }\n", name, name)
+		}
 	case f.IsList(): // []T of tables rides as an array of objects (§2.9, §16.2)
 		g.pf("\tif (v.%s.isEmpty) {\n", name)
 		g.pf("\t\tout.raw('[]');\n")
@@ -291,9 +296,15 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 	g.pf("\t\t\tcase %s:\n", strconv.Quote(key))
 	switch {
 	case f.Type.Blob():
-		g.pf("\t\t\t\tif (val == null) { v.%s = null; }\n", name)
-		g.pf("\t\t\t\telse if (val is String) { v.%s = val; }\n", name)
-		g.pf("\t\t\t\telse { r.kindMismatch++; }\n")
+		if f.Type.Kind == ir.TString {
+			g.pf("\t\t\t\tif (val == null) { v.%s = null; }\n", name)
+			g.pf("\t\t\t\telse if (val is String) { v.%s = val; }\n", name)
+			g.pf("\t\t\t\telse { r.kindMismatch++; }\n")
+		} else {
+			g.pf("\t\t\t\tif (val == null) { v.%s = null; }\n", name)
+			g.pf("\t\t\t\telse if (val is String) { v.%s = base64Decode(val); }\n", name)
+			g.pf("\t\t\t\telse { r.kindMismatch++; }\n")
+		}
 		g.pf("\t\t\t\tbreak;\n")
 	case f.IsList():
 		g.pf("\t\t\t\tif (val is! List) { r.kindMismatch++; break; }\n")

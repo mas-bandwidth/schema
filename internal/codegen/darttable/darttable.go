@@ -332,12 +332,6 @@ func checkUnsupportedConstructs(u *ir.Unit) error {
 				return fmt.Errorf("table %s field %s: a union arm is refused in the Dart table backend (docs/SPEC-TABLES.md §2.6, §11)",
 					name, f.Name)
 			}
-			// *bytes, the byte-buffer kind (docs/SPEC-TABLES.md §2.5);
-			// *string is the card's optional scalar pointer and is kept.
-			if f.Type.Pointer && f.Type.Kind == ir.TBytes {
-				return fmt.Errorf("table %s field %s: *bytes is refused in the Dart table backend; cards use only *string (docs/SPEC-TABLES.md §2.5, §11)",
-					name, f.Name)
-			}
 			// pointers to tables outside an unbounded list element
 			// (docs/SPEC-TABLES.md §2.1)
 			if ref, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Pointer && f.Type.Kind == ir.TNamed && ref.IsTable && f.Array != ir.ArrayList {

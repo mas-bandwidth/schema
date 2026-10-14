@@ -87,6 +87,20 @@ func TestVariableClassBeyondCardConstructsDart(t *testing.T) {
 		}
 		scalarRoundTrip(t, wire)
 	})
+
+	t.Run("bytes blob", func(t *testing.T) {
+		t.Parallel()
+		u := buildUnit(t, bytesBlobDecl)
+		files, err := Generate(u)
+		if err != nil {
+			t.Fatalf("*bytes must be carried as a blob, never refused: %v", err)
+		}
+		wire, ok := files["BlobWire.dart"]
+		if !ok || len(wire) == 0 {
+			t.Fatal("Generate emitted no BlobWire.dart — *bytes gets no codec")
+		}
+		bytesBlobRoundTrip(t, wire)
+	})
 }
 
 // roundTripOracle loads a committed oracle .bin through the generated library's
@@ -205,3 +219,56 @@ table ScalarKinds {
 	blob  bytes(16)
 }
 `
+
+// bytesBlobDecl is the *bytes blob declaration written in the test: a byte
+// buffer beside a *string, so the two reserved node type ids are told apart on
+// the node table (§2.5, §3.1).
+const bytesBlobDecl = `package blob
+
+table Blob {
+	data  *bytes
+	caption *string
+}
+`
+
+// bytesBlobRoundTrip saves and loads a *bytes blob through its own generated
+// codec and requires the bytes to survive beside a *string in the same node
+// table, the way the two reserved blob ids must never be confused.
+func bytesBlobRoundTrip(t *testing.T, wire []byte) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "BlobWire.dart"), wire, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	probe := `import 'dart:io';
+import 'dart:typed_data';
+import 'BlobWire.dart';
+
+void main() {
+  final v = Blob();
+  v.data = Uint8List.fromList([1, 2, 3, 255]);
+  v.caption = 'cap';
+  final resaved = blobWireSave(v);
+  final w = blobWireLoad(resaved);
+  if (w.data == null || w.data!.length != 4 ||
+      w.data![0] != 1 || w.data![1] != 2 || w.data![2] != 3 || w.data![3] != 255 ||
+      w.caption != 'cap') {
+    stdout.writeln('FAIL: bytes blob did not survive the round trip');
+    exit(1);
+  }
+  stdout.writeln('ok');
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("bytes blob round trip over the generated library: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "ok") {
+		t.Fatalf("probe did not report ok: %s", out)
+	}
+}
