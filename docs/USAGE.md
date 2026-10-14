@@ -1863,12 +1863,10 @@ An ordinal-indexed array is a positional
 vocabulary, and a table has exactly one of those — `flags` — so the refusal is
 what keeps the closed class closed: you cannot reopen it by spelling the bound
 another way or folding it through a constant. `[E.Max]T` stays legal in
-a `type` no table reaches, where it is a plain array (SPEC-TABLES.md §2.4,
-§11). *Whether a `type` a table reaches keeps the spelling, or the table wire
-keys the array there too, is
-open ([#606](https://github.com/mas-bandwidth/schema/issues/606)), so a
-`type` a table reaches is not refused
-today.*
+a `type` no table reaches, where it is a plain array, and in a `type` a table
+reaches the table wire keys it: an enum-extent array rides under the keyed
+kind `16` wherever it is declared, so the closed class is closed one body away
+without a refusal (SPEC-TABLES.md §2.4, §11).
 
 A key enum counts as part of the table closure: it rides by variant name, so
 colliding variant names are refused for it too, with the diagnostic naming
