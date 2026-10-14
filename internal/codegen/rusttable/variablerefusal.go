@@ -84,16 +84,12 @@ func newVariableClass(u *ir.Unit) *variableClass {
 		vc.reason[n] = ""
 		for _, f := range st.Fields {
 			if why := variableFieldConstruct(f); why != "" {
-				// A map value of [N]T of a carried scalar is the entry's own row
+				// A map value of [N]T of a carried element is the entry's own row
 				// (docs/SPEC-TABLES.md §2.8).
 				if st.IsMapEntry() && f.Array == ir.ArrayFixed && mapValueArrayCarried(f) {
 					continue
 				}
 				vc.reason[n] = f.Name + ": " + why
-				break
-			}
-			if st.IsMapEntry() && f.Name == ir.MapValueFieldName && !mapValueSimple(f) {
-				vc.reason[n] = f.Name + ": a map value of this shape is outside the variable class this leg carries (§2.8)"
 				break
 			}
 		}
@@ -142,23 +138,28 @@ func (vc *variableClass) carried(name string) bool { return vc.reason[name] == "
 
 // variableFieldConstruct returns the construct's name on a field the variable
 // class this leg carries does not reach, and "" on every field it does: a
-// scalar of any int/uint/float/bits width, a string(N), a bytes(N), a *string
-// or *bytes blob (§2.5), an enum, a table nested by value or pointed at (§2.1,
-// §3.1), and an unbounded []T or bounded [..N]T array of scalar, enum, table or
-// pointer elements (§2.9). Whether a referenced TABLE is itself carried is the
-// table-level fixpoint's question ([newVariableClass]).
+// scalar of any int/uint/float/bits width (128-bit included), a string(N), a
+// bytes(N), a *string or *bytes blob (§2.5), an enum, a table nested by value
+// or pointed at (§2.1, §3.1), an optional ?T (§2.3), an enum-keyed array [E]T
+// (§2.4), a map[K]V (§2.8), a union or array of unions (§2.6), and an unbounded
+// []T or bounded [..N]T array (§2.9). Whether a referenced TABLE is itself
+// carried is the table-level fixpoint's question ([newVariableClass]).
 func variableFieldConstruct(f *ir.Field) string {
 	switch {
-	case f.Type.Optional:
-		return "optional ?T is outside the variable class this leg carries (§2.3)"
+	case f.Type.Optional && (f.Type.Pointer || f.Array == ir.ArrayFixed || f.KeyEnum != "" || f.IsMap()):
+		return "optional ?T of this shape is outside the variable class this leg carries (§2.3)"
 	case f.KeyEnum != "":
-		return "enum-keyed array [E]T is outside the variable class this leg carries (§2.4)"
-	case f.Type.Kind == ir.TInt && f.Type.Width == 128:
-		return "the 128-bit integer is outside the variable class this leg carries (§15)"
+		if f.KeyEnumRef == nil || f.Type.Pointer || f.Type.Optional || (classOf(f) != vScalar && classOf(f) != vEnum && classOf(f) != vTable) {
+			return "enum-keyed array [E]T is outside the variable class this leg carries (§2.4)"
+		}
+		inner := *f
+		inner.KeyEnum = ""
+		inner.KeyEnumRef = nil
+		inner.Array = ir.ArrayNone
+		inner.ArrayBound = 0
+		return variableFieldConstruct(&inner)
 	case f.Type.Kind == ir.TFixed:
 		return "the fixed-point kind is outside the variable class this leg carries (§15)"
-	case f.Array != ir.ArrayNone && unionOf(f) != nil:
-		return "arrays of unions are outside the variable class this leg carries (§2.6)"
 	case f.Type.Kind == ir.TWString:
 		return "wstring(N) is outside the variable class this leg carries (§3)"
 	case f.Guard != "":
@@ -177,6 +178,33 @@ func variableFieldConstruct(f *ir.Field) string {
 		if !ref.IsTable && !f.Type.Pointer {
 			return "a nested type is outside the variable class this leg carries (§2)"
 		}
+	case *ir.Union:
+		return unionFieldConstruct(ref, map[*ir.Union]bool{})
+	}
+	return ""
+}
+
+func unionFieldConstruct(un *ir.Union, seen map[*ir.Union]bool) string {
+	if un == nil || seen[un] {
+		return ""
+	}
+	seen[un] = true
+	for _, v := range un.Variants {
+		if v.Void() || v.F == nil {
+			continue
+		}
+		if v.Body() {
+			if v.Ref != nil && !v.Ref.IsTable {
+				return "arm " + v.Name + ": a nested type is outside the variable class this leg carries (§2)"
+			}
+			continue
+		}
+		if why := variableFieldConstruct(v.F); why != "" {
+			if v.F.Array == ir.ArrayFixed && mapValueArrayCarried(v.F) {
+				continue
+			}
+			return "arm " + v.Name + ": " + why
+		}
 	}
 	return ""
 }
@@ -188,20 +216,7 @@ func mapValueArrayCarried(f *ir.Field) bool {
 	inner := *f
 	inner.Array = ir.ArrayNone
 	inner.ArrayBound = 0
-	return variableFieldConstruct(&inner) == "" && mapValueSimple(&inner)
-}
-
-// mapValueSimple is a map value this leg's text and wire already spell: a
-// scalar, a string, bytes, or a blob (docs/SPEC-TABLES.md §2.8).
-func mapValueSimple(f *ir.Field) bool {
-	if f.Array != ir.ArrayNone && f.Array != ir.ArrayFixed {
-		return false
-	}
-	switch classOf(f) {
-	case vScalar, vString, vBytes, vBlob:
-		return true
-	}
-	return false
+	return variableFieldConstruct(&inner) == ""
 }
 
 // reached is the fixpoint's edge: a map's entry, a union arm's table, or a
@@ -258,9 +273,7 @@ func (vc *variableClass) reachedUnion(owner, field string, un *ir.Union, seen ma
 }
 
 func (vc *variableClass) reachName(owner, field, name string) (string, bool) {
-	if vf, ok := vc.file[name]; ok && vf != vc.file[owner] {
-		return fmt.Sprintf("%s: a table declared in another schema file (%s) is outside the variable class this leg carries (§11)", field, name), true
-	}
+	_ = owner
 	if why := vc.reason[name]; why != "" {
 		return fmt.Sprintf("%s: it reaches %s, whose %s", field, name, why), true
 	}

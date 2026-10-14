@@ -790,6 +790,61 @@ macro_rules! with_root {
                 use blobdemo::{catalog_from_json as $from_json, catalog_load as $load, catalog_save as $save, catalog_to_json_checked as $to_json};
                 Some($body)
             }
+            ("mapdemo", "Cells") => {
+                #[allow(unused_imports)]
+                use mapdemo::{cells_from_json as $from_json, cells_load as $load, cells_save as $save, cells_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Chunks") => {
+                #[allow(unused_imports)]
+                use mapdemo::{chunks_from_json as $from_json, chunks_load as $load, chunks_save as $save, chunks_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Crews") => {
+                #[allow(unused_imports)]
+                use mapdemo::{crews_from_json as $from_json, crews_load as $load, crews_save as $save, crews_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Depth") => {
+                #[allow(unused_imports)]
+                use mapdemo::{depth_from_json as $from_json, depth_load as $load, depth_save as $save, depth_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Docs") => {
+                #[allow(unused_imports)]
+                use mapdemo::{docs_from_json as $from_json, docs_load as $load, docs_save as $save, docs_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Fleet") => {
+                #[allow(unused_imports)]
+                use mapdemo::{fleet_from_json as $from_json, fleet_load as $load, fleet_save as $save, fleet_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Pairs") => {
+                #[allow(unused_imports)]
+                use mapdemo::{pairs_from_json as $from_json, pairs_load as $load, pairs_save as $save, pairs_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Slots") => {
+                #[allow(unused_imports)]
+                use mapdemo::{slots_from_json as $from_json, slots_load as $load, slots_save as $save, slots_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Spans") => {
+                #[allow(unused_imports)]
+                use mapdemo::{spans_from_json as $from_json, spans_load as $load, spans_save as $save, spans_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Trails") => {
+                #[allow(unused_imports)]
+                use mapdemo::{trails_from_json as $from_json, trails_load as $load, trails_save as $save, trails_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Runs") => {
+                #[allow(unused_imports)]
+                use mapdemo::{runs_from_json as $from_json, runs_load as $load, runs_save as $save, runs_to_json_checked as $to_json};
+                Some($body)
+            }
             _ => None,
         }
     }};

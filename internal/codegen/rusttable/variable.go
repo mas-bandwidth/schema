@@ -496,6 +496,7 @@ pub fn table_kind_width(kind: u8) -> usize {
         3 | 7 => 2,
         4 | 8 | 10 => 4,
         5 | 9 | 11 => 8,
+        18 | 19 => 16,
         _ => 0,
     }
 }
@@ -508,6 +509,8 @@ pub fn table_kind_widens(kind: u8, declared: u8) -> bool {
         3..=5 => (2..declared).contains(&kind),
         7..=9 => (6..declared).contains(&kind),
         11 => kind == 10,
+        18 => matches!(kind, 2..=5),
+        19 => matches!(kind, 6..=9),
         _ => false,
     }
 }
@@ -517,7 +520,7 @@ pub fn table_kind_widens(kind: u8, declared: u8) -> bool {
 /// end.
 pub fn table_scalar_read(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> Option<u64> {
     let w = table_kind_width(kind);
-    if w == 0 || *off + w > end {
+    if w == 0 || w > 8 || *off + w > end {
         return None;
     }
     let mut raw = 0u64;
@@ -528,6 +531,25 @@ pub fn table_scalar_read(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> O
     if matches!(kind, 2..=5) && w < 8 {
         let s = 64 - 8 * w as u32;
         raw = (((raw << s) as i64) >> s) as u64;
+    }
+    Some(raw)
+}
+
+/// Read one 128-bit scalar (or a narrower integer widened into it) at kind's
+/// own width (§3, §4): little-endian, sign-extended into u128 for signed kinds.
+pub fn scalar_read_128(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> Option<u128> {
+    let w = table_kind_width(kind);
+    if w == 0 || *off + w > end {
+        return None;
+    }
+    let mut raw = 0u128;
+    for i in 0..w {
+        raw |= (buf[*off + i] as u128) << (8 * i);
+    }
+    *off += w;
+    if matches!(kind, 2..=5) && w < 16 {
+        let s = 128 - 8 * w as u32;
+        raw = (((raw << s) as i128) >> s) as u128;
     }
     Some(raw)
 }
@@ -1174,6 +1196,7 @@ pub static KNOWN_IDS: &[u64] = &[
 		fmt.Fprintf(&b, "    0x%016x,\n", id)
 	}
 	b.WriteString("];\n")
+	b.WriteString(textHelpers())
 	text := b.String()
 	text = strings.Replace(text, "STRING_TYPE_ID_VALUE", fmt.Sprintf("0x%016x", ir.StringWireTypeId), 1)
 	text = strings.Replace(text, "BYTES_TYPE_ID_VALUE", fmt.Sprintf("0x%016x", ir.BytesWireTypeId), 1)
@@ -1192,8 +1215,15 @@ func cardVariableTableNames(g *gen) []string {
 		vc = newVariableClass(g.unit)
 		g.vc = vc
 	}
+	return fileVariableTableNames(g.unit, g.file, vc)
+}
+
+func fileVariableTableNames(u *ir.Unit, file *ir.File, vc *variableClass) []string {
+	if vc == nil {
+		vc = newVariableClass(u)
+	}
 	names := make([]string, 0)
-	for _, st := range g.file.Tables {
+	for _, st := range file.Tables {
 		if vc.emitted[st.Name] {
 			names = append(names, st.Name)
 		}

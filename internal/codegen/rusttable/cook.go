@@ -722,7 +722,9 @@ func (g *gen) emitCookNamedTextDefaults(st *ir.Struct, ind string) {
 
 func (g *gen) emitCookRowField(f *ir.Field) {
 	switch {
-	case f.Type.Pointer:
+	case f.IsMap(), f.IsList():
+		g.pf("    pub %s: [u64; 2],\n", f.Name)
+	case f.Type.Pointer && f.Array == ir.ArrayNone && f.KeyEnum == "":
 		g.pf("    pub %s: i64, // *%s: signed self-relative delta, zero is null (§6.3)\n", f.Name, f.Type.Name)
 	case f.Type.Kind == ir.TString:
 		g.pf("    pub %s: [u8; %d], // string(%s): buffer, used length beside it\n",
@@ -761,6 +763,9 @@ func (g *gen) emitCookRowField(f *ir.Field) {
 // wire rides the variant-name hash — so the slot is the plain unsigned, not
 // the wire newtype.
 func cookElemType(f *ir.Field) string {
+	if f.Type.Pointer {
+		return "i64"
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		return "bool"
@@ -855,7 +860,8 @@ func cookRowMembers(f *ir.Field) []string {
 	var names []string
 	names = append(names, f.Name)
 	switch {
-	case f.Type.Pointer:
+	case f.IsMap(), f.IsList():
+	case f.Type.Pointer && f.Array == ir.ArrayNone && f.KeyEnum == "":
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		names = append(names, f.Name+"_length")
 	case f.Array == ir.ArrayCounted && f.KeyEnum == "":
@@ -1256,17 +1262,23 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 		storage, elemSize = "TableCookStorage::Reference", 8
 	case f.Type.Pointer:
 		storage, elemSize = "TableCookStorage::Reference", 8
-		record = fmt.Sprintf("Some(%s)", fn(f.Type.Name, "cook_info"))
+		if g.cookable(f.Type.Name) {
+			record = fmt.Sprintf("Some(%s)", fn(f.Type.Name, "cook_info"))
+		}
+		if f.KeyEnum != "" || (f.Array != ir.ArrayNone && !f.IsList()) {
+			isArray = true
+			arrayBound = f.ArrayBound
+		}
 	case f.Type.Kind == ir.TString:
 		storage, elemSize, arrayBound = "TableCookStorage::String", f.Type.Size+1, f.Type.Size
 	case f.Type.Kind == ir.TBytes:
 		storage, elemSize, arrayBound, isArray = "TableCookStorage::Bytes", 1, f.Type.Size, true
 	default:
 		storage, elemSize = cookStorageOf(g.unit, f)
-		if isStruct(f) {
+		if isStruct(f) && g.cookable(f.Type.Name) {
 			record = fmt.Sprintf("Some(%s)", fn(f.Type.Name, "cook_info"))
 		}
-		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
+		if f.KeyEnum != "" || (f.Array != ir.ArrayNone && !f.IsList()) {
 			isArray = true
 			arrayBound = f.ArrayBound
 		}
