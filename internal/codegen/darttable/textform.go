@@ -82,6 +82,44 @@ func (g *wireGen) emitTextRuntime() {
 // the card's constructs can move — an unknown property, a kind mismatch, a
 // clamp.
 final class TableTextReport {
+  bool malformed = false;
+  final Expando<List<MapEntry<String,dynamic>>> _entries = Expando();
+  Iterable<MapEntry<dynamic,dynamic>> entries(Map obj) => _entries[obj] ?? obj.entries;
+
+  // Keep object properties in source order, including repeated identical keys.
+  // Core jsonDecode supplies primitive validation without losing map resets.
+  dynamic parse(String text) {
+    var pos=0;
+    void space(){while(pos<text.length && (text.codeUnitAt(pos)==32 || text.codeUnitAt(pos)==10 || text.codeUnitAt(pos)==13 || text.codeUnitAt(pos)==9)){pos++;}}
+    Never bad()=>throw FormatException('invalid JSON',text,pos);
+    String string(){
+      final start=pos++;var escaped=false;
+      while(pos<text.length){final c=text.codeUnitAt(pos++);if(escaped){escaped=false;continue;}if(c==92){escaped=true;continue;}if(c==34)return jsonDecode(text.substring(start,pos)) as String;}
+      return bad();
+    }
+    late dynamic Function() value;
+    value=(){
+      space();if(pos>=text.length)bad();
+      final c=text.codeUnitAt(pos);
+      if(c==34)return string();
+      if(c==123){
+        pos++;space();final out=<String,dynamic>{};final pairs=<MapEntry<String,dynamic>>[];_entries[out]=pairs;
+        if(pos<text.length&&text.codeUnitAt(pos)==125){pos++;return out;}
+        while(true){
+          space();if(pos>=text.length||text.codeUnitAt(pos)!=34)bad();final key=string();space();if(pos>=text.length||text.codeUnitAt(pos++)!=58)bad();
+          final item=value();out[key]=item;pairs.add(MapEntry(key,item));space();if(pos>=text.length)bad();final end=text.codeUnitAt(pos++);if(end==125)return out;if(end!=44)bad();
+        }
+      }
+      if(c==91){
+        pos++;space();final out=<dynamic>[];if(pos<text.length&&text.codeUnitAt(pos)==93){pos++;return out;}
+        while(true){out.add(value());space();if(pos>=text.length)bad();final end=text.codeUnitAt(pos++);if(end==93)return out;if(end!=44)bad();}
+      }
+      final start=pos;while(pos<text.length&&!<int>[32,9,10,13,44,93,125].contains(text.codeUnitAt(pos))){pos++;}
+      if(pos==start)bad();return jsonDecode(text.substring(start,pos));
+    };
+    final out=value();space();if(pos!=text.length)bad();return out;
+  }
+  int duplicate = 0;
   int unknown = 0;
   int kindMismatch = 0;
   int clamped = 0;
@@ -295,7 +333,7 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
     r.kindMismatch++;
     return null;
   }
-  final obj = Map<String, dynamic>.from(val);
+  final obj = val is Map<String,dynamic> ? val : Map<String, dynamic>.from(val);
   if (obj.containsKey('&node')) {
     final raw = obj['&node'];
     if (raw is! int || raw < 1) {
@@ -371,10 +409,13 @@ func (g *wireGen) emitTextToJsonBody(st *ir.Struct) {
 	g.pf("\t\tcomma = true;\n")
 	g.pf("\t}\n")
 	for _, f := range st.Fields {
+		close := g.optionalWalk(f, "\t")
 		g.pf("\tif (comma) out.raw(',');\n")
 		g.pf("\tcomma = true;\n")
 		g.emitTextToJsonField(st, f)
+		close()
 	}
+	g.pf("\tif(!comma){out.raw('}');return;}\n")
 	g.pf("\tout.line(depth);\n")
 	g.pf("\tout.raw('}');\n")
 	g.pf("}\n\n")
@@ -382,11 +423,17 @@ func (g *wireGen) emitTextToJsonBody(st *ir.Struct) {
 
 func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 	key := ir.TableFieldJsonKey(f)
-	name := fieldMember(f)
 	g.pf("\tout.line(depth + 1);\n")
 	g.pf("\tout.raw(_jsonString(%s));\n", strconv.Quote(key))
 	g.pf("\tout.raw(': ');\n")
+	g.emitTextToJsonValue(st, f)
+}
+
+func (g *wireGen) emitTextToJsonValue(st *ir.Struct, f *ir.Field) {
+	name := fieldMember(f)
 	switch {
+	case f.IsMap():
+		g.emitTextMapValue(st, f)
 	case f.Type.Blob(): // *string rides as a string or null; *bytes as base64 or null (§2.5, §16.2)
 		if f.Type.Kind == ir.TString {
 			g.pf("\tif (v.%s == null) { out.raw('null'); } else { out.raw(_jsonString(v.%s!)); }\n", name, name)
@@ -495,7 +542,7 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 	fn := dartName(st.Name) + "FromJsonFields"
 	g.pf("void %s(%s v, Map<String, dynamic> obj, TableTextReport r, _Share sh) {\n", fn, st.Name)
 	g.pf("\tfor (final entry in obj.entries) {\n")
-	g.pf("\t\tfinal key = entry.key;\n")
+	g.pf("\t\tif(r.malformed)return;\n\t\tfinal key = entry.key;\n")
 	g.pf("\t\tfinal val = entry.value;\n")
 	g.pf("\t\tswitch (key) {\n")
 	g.pf("\t\t\tcase '&node':\n\t\t\t\tbreak;\n")
@@ -512,7 +559,12 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 	key := ir.TableFieldJsonKey(f)
 	name := fieldMember(f)
 	g.pf("\t\t\tcase %s:\n", strconv.Quote(key))
+	if f.Type.Optional {
+		g.pf("if(val==null){v.%sPresent=false;break;}v.%sPresent=true;\n", name, name)
+	}
 	switch {
+	case f.IsMap():
+		g.emitTextReadMap(f)
 	case f.Type.Blob():
 		if f.Type.Kind == ir.TString {
 			g.pf("\t\t\t\tif (val == null) { v.%s = null; }\n", name)
@@ -538,7 +590,12 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tif (val is! List) { r.kindMismatch++; break; }\n")
 		et := dartListElemType(f)
 		g.pf("\t\t\t\tv.%s = <%s>[];\n", name, et)
-		g.pf("\t\t\t\tfor (final item in val) {\n")
+		if f.Array == ir.ArrayCounted {
+			g.pf("if(val.length>%d)r.clamped++;\n", f.ArrayBound)
+			g.pf("for(final item in val.take(%d)){\n", f.ArrayBound)
+		} else {
+			g.pf("\t\t\t\tfor (final item in val) {\n")
+		}
 		switch listElementKind(f) {
 		case wireKindTable:
 			g.pf("\t\t\t\t\tif (item is Map<String, dynamic>) {\n")
@@ -624,8 +681,11 @@ func (g *wireGen) emitTextCount(st *ir.Struct) {
 }
 
 func (g *wireGen) emitTextCountField(f *ir.Field, ind string) {
+	defer g.optionalWalk(f, ind)()
 	expr := "v." + fieldMember(f)
 	switch {
+	case f.IsMap():
+		g.pf("%sfor(final entry in %s.ordered(%s)){%sCount(sh,entry); }\n", ind, f.MapEntry.Name, expr, dartName(f.MapEntry.Name))
 	case isPointerTable(f):
 		ref := tableRef(f)
 		g.pf("%sif (%s != null) {\n", ind, expr)
@@ -677,7 +737,7 @@ func (g *wireGen) emitTextFromJson(st *ir.Struct) {
 	g.pf("%s %s(String text, [TableTextReport? report]) {\n", st.Name, fn)
 	g.pf("\tfinal r = report ?? TableTextReport();\n")
 	g.pf("\tfinal v = %s();\n", st.Name)
-	g.pf("\tfinal root = jsonDecode(text);\n")
+	g.pf("\tfinal root = r.parse(text);\n")
 	g.pf("\tif (root is Map<String, dynamic>) {\n")
 	g.pf("\t\t%sFromJsonFields(v, root, r, _Share());\n", dartName(st.Name))
 	g.pf("\t} else if (root is Map) {\n")

@@ -4,8 +4,9 @@
 // nesting, pointers *T, arrays of pointers []*T, counted [..N]T of a carried
 // element, tables as list elements, bool and the integer kinds below 128,
 // `bits(N)`, `float32`/`float64`, `string(N)`/`bytes(N)`, `*string`/`*bytes`,
-// and unbounded arrays of scalars, strings and enums. A map, a union, an
-// optional, a keyed array, a fixed positional array, the wide kinds and
+// unbounded arrays of scalars, strings and enums, carried-value maps and
+// optional scalars/tables/counted arrays. A union, a keyed array, a fixed
+// positional array, the wide kinds and
 // wstring stay refused by name in checkUnsupportedConstructs (§11) on a unit
 // the variable form owns, and nothing here encodes one.
 //
@@ -95,8 +96,9 @@ func isByValueTable(f *ir.Field) bool {
 // on form 1 (docs/SPEC-TABLES.md §2.1, §2.5, §2.9, §3): the scalar kinds below
 // 128, bits, the two floats, enum, string(N), bytes(N), *string/*bytes, a
 // pointer or by-value table whose target is itself carried, and a counted or
-// unbounded array of a carried element. A map, a union, an optional, a keyed
-// array, a fixed positional array, the wide kinds and wstring are not: the
+// unbounded array of a carried element, carried-value maps, and optional
+// scalars/tables/counted arrays. A union, a keyed array, a fixed positional
+// array, the wide kinds and wstring are not: the
 // wire form is not claimed for them (§11). seen breaks a pointer cycle — a
 // table already on the stack is carried if the rest of its fields are.
 func cardWireField(f *ir.Field) bool {
@@ -104,7 +106,10 @@ func cardWireField(f *ir.Field) bool {
 }
 
 func cardWireFieldSeen(f *ir.Field, seen map[string]bool) bool {
-	if f.Type.Optional || f.KeyEnum != "" || f.IsMap() || f.Type.Kind == ir.TMap {
+	if f.IsMap() {
+		return cardWireTableSeen(f.MapEntry, seen)
+	}
+	if f.KeyEnum != "" {
 		return false
 	}
 	if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
@@ -192,7 +197,7 @@ func variableRoots(u *ir.Unit) []*ir.Struct {
 	var roots []*ir.Struct
 	for _, name := range sortedTableNames(u) {
 		st := u.Tables[name]
-		if !variable[st.Name] || !cardWireTable(st) || named[st.Name] {
+		if st.IsMapEntry() || !variable[st.Name] || !cardWireTable(st) || named[st.Name] {
 			continue
 		}
 		roots = append(roots, st)
@@ -224,6 +229,9 @@ func wireClosure(u *ir.Unit) []*ir.Struct {
 		}
 		seen[st.Name] = true
 		for _, f := range st.Fields {
+			if f.IsMap() {
+				visit(f.MapEntry)
+			}
 			if ref := tableRef(f); ref != nil && (f.CountedOnWire() || f.Array == ir.ArrayNone) {
 				visit(ref)
 			}
@@ -406,6 +414,7 @@ func (g *wireGen) emitRuntime() {
 // verdict (§3). The four the card's closure can move are widened, clamped,
 // unknown and kindMismatch; malformed and refused are the verdict flags.
 final class TableWireReport {
+  int duplicate = 0;
   int unknown = 0;
   int kindMismatch = 0;
   int widened = 0;
@@ -1076,7 +1085,12 @@ func (g *wireGen) emitStorage(st *ir.Struct) {
 	g.pf("final class %s {\n", st.Name)
 	for _, f := range st.Fields {
 		name := fieldMember(f)
+		if f.Type.Optional {
+			g.pf("  bool %sPresent = false;\n", name)
+		}
 		switch {
+		case f.IsMap():
+			g.pf("  List<%s> %s = <%s>[];\n", f.MapEntry.Name, name, f.MapEntry.Name)
 		case f.Type.Blob():
 			if f.Type.Kind == ir.TString {
 				g.pf("  String? %s;\n", name)
@@ -1103,6 +1117,9 @@ func (g *wireGen) emitStorage(st *ir.Struct) {
 		default:
 			g.pf("  int %s = 0;\n", name)
 		}
+	}
+	if st.IsMapEntry() {
+		g.emitMapEntryHelpers(st)
 	}
 	g.pf("}\n\n")
 }
@@ -1161,10 +1178,16 @@ func (g *wireGen) emitSaveBody(st *ir.Struct) {
 // emitSaveField writes one field's header and payload when the field rides
 // (§3): the reference, the kind byte, then the value under the kind's row.
 func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
+	defer g.optionalWalk(f, ind)()
+	if f.Array == ir.ArrayCounted {
+		g.pf("%sif(v.%s.length>%d)throw StateError('invalid_value');\n", ind, fieldMember(f), f.ArrayBound)
+	}
 	name := fieldMember(f)
 	expr := "v." + name
 	id := fieldId(f)
 	switch {
+	case f.IsMap():
+		g.emitSaveMap(f, expr, ind, id, ordinal)
 	case f.Type.Blob(): // *string/*bytes ride as a kind-17 node index (§2.5, §3.1)
 		g.pf("%sif (%s != null) {\n", ind, expr)
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
@@ -1193,7 +1216,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 			g.emitSaveScalarList(f, expr, ind, id)
 		}
 	case f.Type.Kind == ir.TString:
-		g.pf("%sif (%s != %s) {\n", ind, expr, g.stringDefault(f))
+		g.pf("%sif (%s) {\n", ind, optionalRide(f, fmt.Sprintf("%s != %s", expr, g.stringDefault(f))))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindString)
 		g.pf("%s\tfinal b = utf8.encode(%s);\n", ind, expr)
@@ -1201,7 +1224,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tw.putBytes(b);\n", ind)
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TBytes: // bytes(N) rides as kind 14 over element kind 6 (§3)
-		g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+		g.pf("%sif (%s) {\n", ind, optionalRide(f, expr+".isNotEmpty"))
 		g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 		g.pf("%s\tfinal b = utf8.encode(%s);\n", ind, expr)
 		g.pf("%s\tfinal s = w.sub();\n", ind)
@@ -1214,7 +1237,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tw.putBytes(s.buf);\n", ind)
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TBool:
-		g.pf("%sif (%s != %v) {\n", ind, expr, f.HasDefault && f.DefBool)
+		g.pf("%sif (%s) {\n", ind, optionalRide(f, fmt.Sprintf("%s != %v", expr, f.HasDefault && f.DefBool)))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindBool)
 		g.pf("%s\tw.putByte(%s ? 1 : 0);\n", ind, expr)
@@ -1233,7 +1256,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		case 4:
 			put = "putU32"
 		}
-		g.pf("%sif (%s != %s) {\n", ind, expr, g.intDefault(f))
+		g.pf("%sif (%s) {\n", ind, optionalRide(f, fmt.Sprintf("%s != %s", expr, g.intDefault(f))))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, kind)
 		g.pf("%s\tw.%s(%s);\n", ind, put, expr)
@@ -1247,14 +1270,14 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 			bits = "_f32Bits"
 			put = "putU32"
 		}
-		g.pf("%sif (%s != %s) {\n", ind, expr, g.floatDefault(f))
+		g.pf("%sif (%s) {\n", ind, optionalRide(f, fmt.Sprintf("%s != %s", expr, g.floatDefault(f))))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, kind)
 		g.pf("%s\tw.%s(%s(%s));\n", ind, put, bits, expr)
 		g.pf("%s}\n", ind)
 	case enumRef(f) != nil:
 		e := enumRef(f)
-		g.pf("%sif (%s != %s) {\n", ind, expr, g.enumDefault(f))
+		g.pf("%sif (%s) {\n", ind, optionalRide(f, fmt.Sprintf("%s != %s", expr, g.enumDefault(f))))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindEnum)
 		g.pf("%s\tint vid;\n", ind)
@@ -1263,9 +1286,13 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 			vid := ir.TableWireId(e.VariantWireName(i))
 			g.pf("%s\t\tcase %d: vid = %s;\n", ind, i+1, dartU64Literal(vid))
 		}
-		g.pf("%s\t\tdefault: return;\n", ind)
+		if f.Type.Optional {
+			g.pf("%s\t\tdefault: vid = 0;\n", ind)
+		} else {
+			g.pf("%s\t\tdefault: return;\n", ind)
+		}
 		g.pf("%s\t}\n", ind)
-		g.pf("%s\tw.putLeb(w.refFor(vid));\n", ind)
+		g.pf("%s\tw.putLeb(vid == 0 ? 0 : w.refFor(vid));\n", ind)
 		g.pf("%s}\n", ind)
 	default:
 		// No other construct reaches this emitter: checkUnsupportedConstructs
@@ -1285,7 +1312,7 @@ func (g *wireGen) emitSaveByValue(f *ir.Field, expr, ind string, id uint64) {
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal b = w.sub();\n", ind)
 	g.pf("%s\t%sWireSaveBody(b, %s);\n", ind, dartName(ref.Name), expr)
-	g.pf("%s\tif (b.buf.length <= 1) {\n", ind)
+	g.pf("%s\tif (b.buf.length <= 1 && %v) {\n", ind, !f.Type.Optional)
 	g.pf("%s\t\tw.state.rollback(mark);\n", ind)
 	g.pf("%s\t} else {\n", ind)
 	g.pf("%s\t\tw.putLeb(ref);\n", ind)
@@ -1300,7 +1327,7 @@ func (g *wireGen) emitSaveByValue(f *ir.Field, expr, ind string, id uint64) {
 // the count the value decides, then one node index a slot, and a null slot
 // rides as 0. The field id is interned before the body.
 func (g *wireGen) emitSavePointerList(f *ir.Field, expr, ind string, id uint64) {
-	g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+	g.pf("%sif (%s) {\n", ind, optionalRide(f, expr+".isNotEmpty"))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindPtr)
@@ -1320,7 +1347,7 @@ func (g *wireGen) emitSavePointerList(f *ir.Field, expr, ind string, id uint64) 
 // field's reference is interned BEFORE the element bodies so the id table
 // stays in first-use order (§3).
 func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, ordinal int) {
-	g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+	g.pf("%sif (%s) {\n", ind, optionalRide(f, expr+".isNotEmpty"))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindTable)
@@ -1346,7 +1373,7 @@ func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, or
 // its variant id's reference. The count the value decides, then the payloads.
 func (g *wireGen) emitSaveScalarList(f *ir.Field, expr, ind string, id uint64) {
 	elemKind := listElementKind(f)
-	g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+	g.pf("%sif (%s) {\n", ind, optionalRide(f, expr+".isNotEmpty"))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, elemKind)
@@ -1421,7 +1448,11 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	g.pf("\t\t}\n")
 	g.pf("\t\tswitch (id) {\n")
 	for i, f := range st.Fields {
-		g.emitLoadField(f, "\t\t\t", i)
+		if st.IsMapEntry() && f.Name == ir.MapKeyFieldName {
+			g.pf("\t\t\tcase %s: if (!r.skipKind(kind)) { r.report.malformed = true; return; } break;\n", dartU64Literal(fieldId(f)))
+		} else {
+			g.emitLoadField(f, "\t\t\t", i)
+		}
 	}
 	g.pf("\t\t\tdefault:\n")
 	g.pf("\t\t\t\tr.report.unknown++;\n")
@@ -1457,7 +1488,10 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 	name := fieldMember(f)
 	id := fieldId(f)
 	g.pf("%scase %s:\n", ind, dartU64Literal(id))
+	g.emitOptionalReadPresence(f, ind)
 	switch {
+	case f.IsMap():
+		g.emitLoadMap(f, ind, ordinal)
 	case f.Type.Blob(): // *string/*bytes ride as a kind-17 node index (§2.5, §3.1)
 		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindPtr)
 		g.pf("%s\t{\n", ind)
@@ -1486,6 +1520,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\t\tfinal sub = TableWireReader.sub(r, r.pos, r.pos + len);\n", ind)
+		if f.Type.Optional {
+			g.pf("%s\t\tv.%s=%s();\n", ind, name, ref.Name)
+		}
 		g.pf("%s\t\t%s(sub, v.%s, true);\n", ind, dartName(ref.Name)+"WireLoadBody", name)
 		g.pf("%s\t\tif (sub.pos != sub.limit) { r.report.malformed = true; v.%s = %s(); }\n", ind, name, ref.Name)
 		g.pf("%s\t\tr.pos += len;\n", ind)
@@ -1499,7 +1536,6 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
 		g.pf("%s\t\tif (end > r.limit) { r.report.malformed = true; return; }\n", ind)
 		et := dartListElemType(f)
-		g.pf("%s\t\tv.%s = <%s>[];\n", ind, name, et)
 		g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
 		g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end);\n", ind)
 		g.pf("%s\t\tfinal elemKind = arr.readByte();\n", ind)
@@ -1516,7 +1552,13 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			g.pf("%s\t\t\tr.report.widened++;\n", ind)
 			g.pf("%s\t\t}\n", ind)
 		}
-		g.pf("%s\t\tfor (var i = 0; i < count; i++) {\n", ind)
+		g.pf("%s\t\tv.%s = <%s>[];\n", ind, name, et)
+		if f.Array == ir.ArrayCounted {
+			g.pf("%s\t\tfinal keep=count<0||count>%d?%d:count;if(keep!=count)r.report.clamped++;\n", ind, f.ArrayBound, f.ArrayBound)
+			g.pf("%s\t\tfor (var i=0;i<keep;i++){\n", ind)
+		} else {
+			g.pf("%s\t\tfor (var i = 0; i < count; i++) {\n", ind)
+		}
 		switch listElementKind(f) {
 		case wireKindTable:
 			g.pf("%s\t\t\tfinal elen = arr.readLeb();\n", ind)
@@ -1620,7 +1662,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\t\tdefault:\n", ind)
 		g.pf("%s\t\t\t\tr.report.kindMismatch++;\n", ind)
 		g.pf("%s\t\t\t\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n", ind)
-		g.pf("%s\t\t\t\tbreak;\n", ind)
+		g.pf("%s\t\t\t\tcontinue;\n", ind)
 		g.pf("%s\t\t}\n", ind)
 		if f.HasIntRange {
 			lo, hi := dartBoundLiteral(f.IntMin), dartBoundLiteral(f.IntMax)
@@ -1668,7 +1710,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\t\tdefault:\n", ind)
 		g.pf("%s\t\t\t\tr.report.kindMismatch++;\n", ind)
 		g.pf("%s\t\t\t\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n", ind)
-		g.pf("%s\t\t\t\tbreak;\n", ind)
+		g.pf("%s\t\t\t\tcontinue;\n", ind)
 		g.pf("%s\t\t}\n", ind)
 		if f.HasFloatRange {
 			g.pf("%s\t\tif (d < %s) { d = %s; r.report.clamped++; }\n", ind, fmtFloat(f.FMin), fmtFloat(f.FMin))
@@ -1842,8 +1884,11 @@ func (g *wireGen) emitNumber(st *ir.Struct) {
 }
 
 func (g *wireGen) emitNumberField(f *ir.Field, ind string) {
+	defer g.optionalWalk(f, ind)()
 	expr := "v." + fieldMember(f)
 	switch {
+	case f.IsMap():
+		g.pf("%sfor (final entry in %s.ordered(%s)) { %sNumber(s, entry, open); }\n", ind, f.MapEntry.Name, expr, dartName(f.MapEntry.Name))
 	case f.Type.Blob() && f.Array == ir.ArrayNone:
 		g.pf("%sif (%s != null) {\n", ind, expr)
 		if f.Type.Kind == ir.TString {
@@ -1990,10 +2035,16 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 	g.pf("\tvar at = 0;\n")
 	g.pf("\tfinal listFields = <int, List<int>>{\n")
 	for _, f := range st.Fields {
-		if !f.IsList() {
+		if !f.IsList() && !f.IsMap() {
 			continue
 		}
-		size, align := ir.ListElementLayout(g.unit, f)
+		var size, align int64
+		if f.IsMap() {
+			layout := ir.RecordLayout(g.unit, f.MapEntry)
+			size, align = layout.Size, layout.Align
+		} else {
+			size, align = ir.ListElementLayout(g.unit, f)
+		}
 		g.pf("\t\t%s: [%d, %d],\n", dartU64Literal(fieldId(f)), align, size)
 	}
 	g.pf("\t};\n")
