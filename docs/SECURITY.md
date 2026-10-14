@@ -62,6 +62,17 @@ the buffer. Specifically:
   exactly as a packet reader that accepts one is. In scope beside it is the
   framing: a length past a declared bound, and an odd `L` on a kind `33`
   payload or a `*wstring` blob, each refused before it drives a copy.
+- **A table read made to materialize more than the framing justifies.** The
+  pointer graph is flat and a node is materialized once however many pointers
+  name it, so references cannot multiply a record; and `LoadMeasure` returns
+  the exact region the framing commands before any allocation, so the caller
+  can refuse a size it will not pay. What a hostile wire CAN do is elide every
+  field so that TWO wire bytes — a record's type id reference and a zero
+  length — materialize the largest record the schema can place, so a table
+  read's amplification is bounded by that record (plus one directory entry)
+  per two wire bytes, times only the records the framing actually carries
+  (SPEC-TABLES §6.5). The wire fuzzer pins that maximum region-over-wire
+  ratio and a mutant above it is a divergence.
 - Any read that continues past the end of the stream instead of failing.
 - Integer overflow in a bit or byte count computed from wire data.
 - **Any divergence between the nine languages on the above** — if C++ refuses

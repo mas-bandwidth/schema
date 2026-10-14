@@ -2869,13 +2869,24 @@ build/schema_test_block_endian_be: build/tables-generated/.stamp test/tables/blo
 	@mkdir -p build
 	$(BE_CXX) $(BLOCK_CXXFLAGS) -static $(BLOCK_INCLUDES) test/tables/block_endian_main.cpp $(BLOCK_SOURCES) -o $@
 
-.PHONY: tables-big-endian
-tables-big-endian: build/schema_test_tables_be build/schema_test_maps_be build/schema_test_lists_be build/schema_test_arms_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
+# THE LEG IS INDEPENDENT PIECES, AND EACH IS ITS OWN TARGET (issue #684).
+# `make tables-big-endian` still runs all of them, in the same order, off the
+# same parallel prerequisite build — that is what `make test`, certify.yml and a
+# workstation ask for and none of it changes. What the split adds is that CI can
+# ask for ONE of them: the pieces share nothing but bin/schema and the generated
+# tree, and one job made the run pay their SUM. The CI job is a matrix of one
+# row per piece, so the longest piece is the job instead of the sum.
+.PHONY: tables-big-endian-tables
+tables-big-endian-tables: build/schema_test_tables_be
 	$(BE_RUN) ./build/schema_test_tables_be
+	@echo "big-endian leg: the wire crosses the byte order"
+
+.PHONY: tables-big-endian-collections
+tables-big-endian-collections: build/schema_test_maps_be build/schema_test_lists_be build/schema_test_arms_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
 	$(BE_RUN) ./build/schema_test_maps_be
 	$(BE_RUN) ./build/schema_test_lists_be
 	$(BE_RUN) ./build/schema_test_arms_be
-	@echo "big-endian leg: the wire crosses the byte order, a map's framing and its sorted entry array with it, a list's element array and the arrays a union arm holds"
+	@echo "big-endian leg: a map's framing and its sorted entry array cross the byte order with it, a list's element array and the arrays a union arm holds"
 	./build/schema_test_block_endian write build/block-host.bin
 	$(BE_RUN) ./build/schema_test_block_endian_be write build/block-target.bin
 	$(BE_RUN) ./build/schema_test_block_endian_be accept build/block-target.bin
@@ -2889,6 +2900,15 @@ tables-big-endian: build/schema_test_tables_be build/schema_test_maps_be build/s
 	./build/schema_test_cook accept Scene build/cook-open/Scene.cook
 	./build/schema_test_cook refuse Scene build/cook-open/Scene-be.cook
 	@echo "big-endian leg: a cook opens NATIVELY in the order it was cooked for, whole graph and all, and a cook of the other order is refused by the magic"
+
+# The prerequisites stay HERE, on the umbrella, so one `make -j
+# tables-big-endian` still builds all nine binaries in parallel and only then
+# runs anything. The pieces are submakes because their prerequisites are
+# already standing by the time this recipe runs.
+.PHONY: tables-big-endian
+tables-big-endian: build/schema_test_tables_be build/schema_test_maps_be build/schema_test_lists_be build/schema_test_arms_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
+	$(MAKE) tables-big-endian-tables
+	$(MAKE) tables-big-endian-collections
 	$(MAKE) tables-cook-endian
 	$(MAKE) tables-c-big-endian
 
@@ -2944,6 +2964,18 @@ tables-cook-endian: bin/schema
 # something else.
 .PHONY: tables-big-endian-negative-control
 tables-big-endian-negative-control: tables-big-endian
+	$(MAKE) tables-big-endian-control-only
+
+# THE CONTROL'S OWN RECIPE IS ITS OWN TARGET, `tables-big-endian-control-only`.
+# It shares nothing with the leg above but the tree it is cut from: it builds a
+# SABOTAGED compiler through the overlay, generates its OWN corpus into
+# build/tables-host-order, and compiles and runs that — none of the leg's nine
+# binaries appear in it. `tables-big-endian-negative-control` still runs the leg
+# and then the control, which is what `make test`, certify.yml and a workstation
+# ask for; CI asks for the control half in a job of its own, beside the job that
+# runs the leg, and the pair is the same pair.
+.PHONY: tables-big-endian-control-only
+tables-big-endian-control-only:
 	@mkdir -p build
 	@sed 's|void put16( uint16_t v ) { uint8_t b\[2\] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }|void put16( uint16_t v ) { raw( \&v, 2 ); } // SABOTAGED: host order|' \
 		internal/codegen/cpptable/cpptable.go > build/cpptable-host-order.gotext
@@ -4645,9 +4677,18 @@ bench-fixedform-measure: build/schema_bench_fixedform
 generated-current: bin/schema build/treelock
 	@test/generated-tree/verify
 
+# The link-and-citation gate (schema#337): every relative markdown link in the
+# tree resolves to a file and, where anchored, to a heading slug, and every
+# "PAGE.md §N.M" citation resolves to a numbered heading in that page. It was
+# scratch when docs/ moved (#336); internal/docgate is the standing form, and
+# `go test ./...` runs it too.
+.PHONY: docs-check
+docs-check:
+	go test ./internal/docgate -run TestPagesResolve -count=1
+
 # bench/corpus holds two units (one package per unit, SPEC §3.2), so the
 # corpus commands name each unit's file rather than the directory
-check: bin/schema
+check: bin/schema docs-check
 	./bin/schema check examples
 	./bin/schema check examples128
 	./bin/schema check examples-wide
@@ -4977,12 +5018,19 @@ tables-ref-ordinal-shared-negative-control:
 # THE C++ RELEASE GATE: the wire fuzzer at a long random pass, both builds,
 # and the retention leg beside it at the same length (docs/SPEC-TABLES.md
 # §6.6). certify.yml runs every `tables-<lang>-release` target by name.
+#
+# THE INT32_MAX BASE64 BEHAVIORAL REPRODUCTION (#746) rides here beside the
+# fuzzers: it is the run half of compiler/issue714_test.go's emitted-text pin.
+# A 2 GiB input and a ~2.8 GiB output under Clang UBSan cost about twenty
+# seconds and do not fit the owner's two-minute per-commit rule, which is why
+# the test gates itself on SCHEMA_CERTIFY_INT32_MAX and this target sets it.
 .PHONY: tables-cpp-release
 tables-cpp-release:
 	$(MAKE) tables-wire-fuzz N=500000
 	$(MAKE) tables-wire-fuzz SEED=2 N=500000
 	$(MAKE) tables-wire-fuzz-retain N=500000
 	$(MAKE) tables-wire-fuzz-retain SEED=2 N=500000
+	SCHEMA_SLOW=1 SCHEMA_CERTIFY_INT32_MAX=1 go test -count=1 -run '^TestIssue746Base64WriterInt32MaxUBSan$$' ./compiler
 
 .PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control
 tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control tables-wire-fuzz-wide-text-negative-control tables-wire-fuzz-message-text-oracle-negative-control tables-wire-fuzz-message-text-leg-negative-control tables-wire-fuzz-message-blob-oracle-negative-control tables-wire-fuzz-message-blob-leg-negative-control
@@ -5847,6 +5895,26 @@ conformance: build/conformance-harness build/conformance-cpp build/schema_test_c
 	$(CONFORMANCE_ENV) ./build/conformance-harness run \
 		$(if $(SKIPPED_LEGS),--skip $(subst $(skip_space),$(skip_comma),$(strip $(SKIPPED_LEGS))))
 
+# THE PUBLISHED MATRIX (issue #581): docs/MATRIX.md is generated from the one
+# manifest in the tree, docs/matrix.json, by the Go tool at tools/matrix. The
+# page is the board's table at the moment of the release — the
+# feature-by-language cells and one maturity state per language — and it ships
+# red: a ❌ cell and a language marked coming are honest states, never reasons
+# to hold a release or to hide a column.
+#
+# `matrix-check` is the CI gate (tools/matrix/matrix_test.go): it regenerates
+# the page and refuses when the committed one differs, so the published table
+# cannot drift from what the tree ships. `go test ./...`, which `make test`
+# runs, carries it too. `matrix-print` is what the release notes call: the
+# page's state line per language, in manifest order.
+.PHONY: matrix matrix-check matrix-print
+matrix:
+	go run ./tools/matrix write
+matrix-check:
+	go run ./tools/matrix check
+matrix-print:
+	@go run ./tools/matrix states
+
 # THE TABLES BENCH PASS (bench/tables/README.md): every leg under
 # bench/tables/*/leg, results under bench/tables/results/. A PUBLISHABLE
 # number is a box sitting under the estate's bench rules — core 15, server
@@ -6459,9 +6527,10 @@ slow-gate-coverage:
 	@mkdir -p build/slowgate
 	go test -json ./... > build/slowgate/all-plain.log 2>&1 || true
 	go run ./tools/slowgatescan -coverage build/slowgate/all-plain.log
-# THE VULNERABILITY GATE (tools/vuln/govulncheck.sh). `make` is the one entry,
-# so the gate both workflows run is a target here, and the retry-and-classify
-# logic is a committed script that `make test` holds to its fixtures — not
+# THE VULNERABILITY GATE. `make` is the one entry, so the gates both workflows
+# run are targets here: `vuln` runs the scanner pinned and direct, and the
+# retry-and-classify logic behind the nightly is a committed script
+# (tools/vuln/govulncheck.sh) that `make test` holds to its fixtures — not
 # lines of YAML duplicated into two files, where the first divergence between
 # the copies is nobody's to notice.
 #
@@ -6470,16 +6539,17 @@ slow-gate-coverage:
 # time, so a red run can never mean the scanner moved under us.
 GOVULNCHECK_VERSION ?= v1.7.0
 
-# `make vuln` is the pull-request gate: a database still unreachable after three
-# attempts is forgiven, loudly, because a contributor's diff cannot be judged by
-# vuln.go.dev's uptime. `make vuln-strict` is the nightly certification's gate:
-# the same three attempts, and then RED, because a certificate is a full run at
-# an exact SHA and an unreachable database certifies nothing. The two differ by
-# that flag and nothing else, and both exist so an outage always leaves a red
-# SOMEWHERE rather than nowhere.
+# `make vuln` is the pull-request gate and runs the scanner PINNED AND DIRECT,
+# with no retry and no classifier: any failure — an unreachable database
+# included — is RED, because a PR-tier gate that forgives an outage is a gate
+# that has silently stopped watching, and a new CVE is the one verdict that
+# changes with no commit here. `make vuln-strict` is the nightly certification's
+# gate: the same pin through the classifying script, three attempts against a
+# transient blip and then RED, because a certificate is a full run at an exact
+# SHA and an unreachable database certifies nothing.
 .PHONY: vuln
 vuln:
-	GOVULNCHECK_VERSION=$(GOVULNCHECK_VERSION) tools/vuln/govulncheck.sh run
+	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 .PHONY: vuln-strict
 vuln-strict:
