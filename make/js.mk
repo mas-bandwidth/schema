@@ -555,6 +555,19 @@ tables-js-variable-class:
 
 test-js: tables-js-variable-class
 
+# MAPS AND UNION ARMS ON THE VARIABLE WIRE (docs/SPEC-TABLES.md §2.3, §2.4, §2.6,
+# §2.8, §3): maps, union arms of any field type, optional ?T, enum-keyed arrays,
+# optional arrays and 128-bit scalars round-trip the variable wire byte for byte
+# against the Go oracle (TestMapsAndUnionArmsOnTheTableWireJavaScript), and the
+# refusal test no longer names those constructs (TestOtherVariableConstructsAreRefusedByName).
+# SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE rather than a skip.
+.PHONY: tables-js-variable-arms
+tables-js-variable-arms:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestMapsAndUnionArmsOnTheTableWireJavaScript|TestOtherVariableConstructsAreRefusedByName)$$'
+	@echo 'tables JS variable arms: maps, union arms, optional ?T and enum-keyed arrays round-trip the oracle bytes and are no longer refused by name'
+
+test-js: tables-js-variable-arms
+
 # js/F12 — "a second layout under a held hash" (docs/FIXED-FORM-ALGORITHM.md §2
 # row 5: "a known hash over different bytes is `layout_malformed`"; SPEC-TABLES
 # §3.4: "A second layout for a hash already held is refused by name"). The test
