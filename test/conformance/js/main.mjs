@@ -3,9 +3,10 @@
 // The twin of test/conformance/cpp/main.cpp and test/conformance/cs's Program,
 // and it is deliberately the same shape: one process per surface, every
 // expectation in the data, nothing literal here. It answers every surface this
-// backend has — the block form's open and its row dump, the cook's node dump,
-// both forgery batteries, the message form, and the variable form's wire,
-// report and text surfaces for the roots its variable wire carries.
+// backend has — the block form's open and its row dump, the cook's node dump
+// and its writer (§7.6), both forgery batteries, the message form, and the
+// variable form's wire, report and text surfaces for the roots its variable
+// wire carries.
 //
 //   node main.mjs <manifest> list
 //   node main.mjs <manifest> <surface> <outdir>
@@ -634,6 +635,67 @@ async function surfaceJsonWrite(lines, outDir) {
   }
 }
 
+// ---- the COOK WRITE surface (docs/SPEC-TABLES.md §7.6, §19.1)
+//
+// Measure, refuse a short buffer without writing, then cook both byte orders.
+// The rows this leg can answer are the variable roots whose wires it already
+// loads: graphdemo Scene and blobdemo Catalog. A fixed table's conformance
+// wire is form 1, and this leg's fixed reader is form 3 only (schema#516), so
+// those rows — and every construct the writer does not place yet — are
+// `<case>.absent` for both orders. A load that fails on a row this leg does
+// carry is a driver failure, not an absence.
+const cookWriteRows = [
+  ["graphdemo", "Scene", "pointers/GraphdemoVariable.js"],
+  ["blobdemo", "Catalog", "blobs/BlobdemoVariable.js"],
+];
+
+function cookWriteAbsent(outDir, name) {
+  writeFileSync(join(outDir, name + ".absent"),
+    "not answered on this leg: form-1 fixed wires (schema#516), optionals, keyed arrays, wide integers, messages, stream and scalars (docs/SPEC-TABLES.md §7.6)\n");
+}
+
+async function surfaceCookWrite(lines, outDir) {
+  const instances = kind(lines, "instance");
+  for (const f of kind(lines, "cook-write")) {
+    const inst = instances.find((c) => c[1] === f[1]);
+    if (inst === undefined) { fail("cook-write " + f[1] + " names no instance"); }
+    const row = cookWriteRows.find((r) => r[0] === inst[2] && r[1] === inst[3]);
+    if (row === undefined) {
+      cookWriteAbsent(outDir, f[1]);
+      cookWriteAbsent(outDir, f[1] + "-be");
+      continue;
+    }
+    let m;
+    try {
+      m = await load(row[2]);
+    } catch (e) {
+      fail(f[1] + ": " + row[2] + " did not load: " + e);
+    }
+    const loadValue = m[inst[3] + "Load"];
+    const measure = m[inst[3] + "CookMeasure"];
+    const from = m[inst[3] + "CookFrom"];
+    if (typeof loadValue !== "function" || typeof measure !== "function" || typeof from !== "function") {
+      fail(f[1] + ": cook write surface missing from " + row[2]);
+    }
+    const value = loadValue(new Uint8Array(readFileSync(inst[4])), new m.TableVariableReport());
+    if (value === null) { fail(f[1] + ": cook input did not load"); }
+    const size = measure(value);
+    if (typeof size !== "number" || size < 1) { fail(f[1] + ": cook measure refused"); }
+    for (const order of [1, 2]) {
+      const name = order === 2 ? f[1] + "-be" : f[1];
+      const backing = new Uint8Array(size);
+      backing.fill(0xa5);
+      const short = backing.subarray(0, size - 1);
+      if (from(value, short, order) !== false || backing.some((b) => b !== 0xa5)) {
+        fail(name + ": short capacity wrote bytes");
+      }
+      const buffer = new Uint8Array(size);
+      if (from(value, buffer, order) !== true) { fail(name + ": cook write refused"); }
+      writeFileSync(join(outDir, name), buffer);
+    }
+  }
+}
+
 // ---- main
 
 const args = process.argv.slice(2);
@@ -767,7 +829,7 @@ if (surface === "list") {
   // (§3.3). A row a surface cannot reach is `<case>.absent`, which the matrix
   // counts rather than reading as a feature the leg lacks. The retain surfaces
   // are absent whole: retention beyond the card constructs is its own row.
-  process.stdout.write("wire\nreport\njson-read\njson-write\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nmessage\n");
+  process.stdout.write("wire\nreport\njson-read\njson-write\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nmessage\n");
   process.exit(0);
 }
 if (args.length < 3) {
@@ -782,6 +844,7 @@ switch (surface) {
   case "json-write": await surfaceJsonWrite(lines, outDir); break;
   case "message": await surfaceMessage(lines, outDir); break;
   case "cook": surfaceCook(lines, outDir); break;
+  case "cook-write": await surfaceCookWrite(lines, outDir); break;
   case "cook-foreign": surfaceCookForeign(lines, outDir); break;
   case "block": surfaceBlock(lines, outDir); break;
   case "block-foreign": surfaceBlockForeign(lines, outDir); break;
