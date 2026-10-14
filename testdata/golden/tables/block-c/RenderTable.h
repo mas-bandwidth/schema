@@ -12086,6 +12086,7 @@ static SCHEMA_UNUSED const TableFixedEntry render_camera_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t render_camera_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_camera_fixed_plan_guarded = 1;
 static SCHEMA_UNUSED const TableFixedGuardLink render_camera_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t render_camera_fixed_guard_count = 0;
 
@@ -12372,6 +12373,7 @@ static SCHEMA_UNUSED const TableFixedEntry render_ship_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t render_ship_fixed_plan_count = 2;
 static SCHEMA_UNUSED const int32_t render_ship_fixed_plan_guarded = 2;
 static SCHEMA_UNUSED const TableFixedGuardLink render_ship_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t render_ship_fixed_guard_count = 0;
 
@@ -12654,6 +12656,7 @@ static SCHEMA_UNUSED const TableFixedEntry render_turret_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t render_turret_fixed_plan_count = 2;
 static SCHEMA_UNUSED const int32_t render_turret_fixed_plan_guarded = 2;
 static SCHEMA_UNUSED const TableFixedGuardLink render_turret_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t render_turret_fixed_guard_count = 0;
 
@@ -12941,6 +12944,7 @@ static SCHEMA_UNUSED const TableFixedEntry render_missile_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t render_missile_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_missile_fixed_plan_guarded = 1;
 static SCHEMA_UNUSED const TableFixedGuardLink render_missile_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t render_missile_fixed_guard_count = 0;
 
@@ -13230,6 +13234,7 @@ static SCHEMA_UNUSED const TableFixedEntry render_dynamic_prop_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t render_dynamic_prop_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_dynamic_prop_fixed_plan_guarded = 1;
 static SCHEMA_UNUSED const TableFixedGuardLink render_dynamic_prop_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t render_dynamic_prop_fixed_guard_count = 0;
 
@@ -13519,6 +13524,7 @@ static SCHEMA_UNUSED const TableFixedEntry render_static_prop_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t render_static_prop_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_static_prop_fixed_plan_guarded = 1;
 static SCHEMA_UNUSED const TableFixedGuardLink render_static_prop_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t render_static_prop_fixed_guard_count = 0;
 
@@ -13810,6 +13816,7 @@ static SCHEMA_UNUSED const TableFixedEntry render_cosmetic_prop_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t render_cosmetic_prop_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_cosmetic_prop_fixed_plan_guarded = 1;
 static SCHEMA_UNUSED const TableFixedGuardLink render_cosmetic_prop_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t render_cosmetic_prop_fixed_guard_count = 0;
 
@@ -14093,6 +14100,7 @@ static SCHEMA_UNUSED const TableFixedEntry render_laser_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t render_laser_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_laser_fixed_plan_guarded = 1;
 static SCHEMA_UNUSED const TableFixedGuardLink render_laser_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t render_laser_fixed_guard_count = 0;
 
@@ -14380,6 +14388,7 @@ static SCHEMA_UNUSED const TableFixedEntry render_explosion_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t render_explosion_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_explosion_fixed_plan_guarded = 1;
 static SCHEMA_UNUSED const TableFixedGuardLink render_explosion_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t render_explosion_fixed_guard_count = 0;
 

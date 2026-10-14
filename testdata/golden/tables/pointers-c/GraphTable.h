@@ -8060,6 +8060,7 @@ static SCHEMA_UNUSED const TableFixedEntry meta_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t meta_fixed_plan_count = 2;
 static SCHEMA_UNUSED const int32_t meta_fixed_plan_guarded = 2;
 static SCHEMA_UNUSED const TableFixedGuardLink meta_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t meta_fixed_guard_count = 0;
 
@@ -8312,6 +8313,7 @@ static SCHEMA_UNUSED const TableFixedEntry settings_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t settings_fixed_plan_count = 2;
 static SCHEMA_UNUSED const int32_t settings_fixed_plan_guarded = 2;
 static SCHEMA_UNUSED const TableFixedGuardLink settings_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t settings_fixed_guard_count = 0;
 

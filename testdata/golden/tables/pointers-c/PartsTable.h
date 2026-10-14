@@ -5523,6 +5523,7 @@ static SCHEMA_UNUSED const TableFixedEntry stamp_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t stamp_fixed_plan_count = 2;
 static SCHEMA_UNUSED const int32_t stamp_fixed_plan_guarded = 2;
 static SCHEMA_UNUSED const TableFixedGuardLink stamp_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t stamp_fixed_guard_count = 0;
 

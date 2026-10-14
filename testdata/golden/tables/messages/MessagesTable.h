@@ -3256,7 +3256,8 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             // A COUNTED LOCAL against a PEER whose array is too small to hold the
             // four-byte count is a mismatch the head subtraction below would
             // underflow: refuse it rather than land a count op that over-reads.
-            if ( d.counted && te.size < 4u ) { c.hostile = true; return; }
+            // break, as the C twin does, so both leave the switch the same way.
+            if ( d.counted && te.size < 4u ) { c.hostile = true; break; }
             const TableFixedLayoutEntry tel = TableFixedEntryAt( theirs, ti + 1 );
             const TableFixedLayoutEntry mel = TableFixedEntryAt( mine, mi + 1 );
             const uint32_t head = d.counted ? 4u : 0u;
@@ -15643,6 +15644,7 @@ constexpr int32_t UserFixedPlanGuarded = 1;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink UserFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t UserFixedGuardCount = 0;
 
@@ -15931,6 +15933,7 @@ constexpr int32_t ScriptFixedPlanGuarded = 2;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink ScriptFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t ScriptFixedGuardCount = 0;
 
@@ -16208,6 +16211,7 @@ constexpr int32_t SelectionFixedPlanGuarded = 1;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink SelectionFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t SelectionFixedGuardCount = 0;
 
@@ -16883,6 +16887,7 @@ constexpr int32_t RemoveTextFixedPlanGuarded = 1;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RemoveTextFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t RemoveTextFixedGuardCount = 0;
 
@@ -17667,6 +17672,7 @@ constexpr int32_t OpenDocumentFixedPlanGuarded = 3;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink OpenDocumentFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t OpenDocumentFixedGuardCount = 0;
 
@@ -17962,6 +17968,7 @@ constexpr int32_t SaveDocumentFixedPlanGuarded = 2;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink SaveDocumentFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t SaveDocumentFixedGuardCount = 0;
 

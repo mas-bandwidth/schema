@@ -5421,6 +5421,7 @@ static SCHEMA_UNUSED const TableFixedEntry tally_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t tally_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t tally_fixed_plan_guarded = 1;
 static SCHEMA_UNUSED const TableFixedGuardLink tally_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t tally_fixed_guard_count = 0;
 

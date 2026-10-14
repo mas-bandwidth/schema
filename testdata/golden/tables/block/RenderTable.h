@@ -3388,7 +3388,8 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             // A COUNTED LOCAL against a PEER whose array is too small to hold the
             // four-byte count is a mismatch the head subtraction below would
             // underflow: refuse it rather than land a count op that over-reads.
-            if ( d.counted && te.size < 4u ) { c.hostile = true; return; }
+            // break, as the C twin does, so both leave the switch the same way.
+            if ( d.counted && te.size < 4u ) { c.hostile = true; break; }
             const TableFixedLayoutEntry tel = TableFixedEntryAt( theirs, ti + 1 );
             const TableFixedLayoutEntry mel = TableFixedEntryAt( mine, mi + 1 );
             const uint32_t head = d.counted ? 4u : 0u;
@@ -15001,6 +15002,7 @@ constexpr int32_t RenderCameraFixedPlanGuarded = 1;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderCameraFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t RenderCameraFixedGuardCount = 0;
 
@@ -15337,6 +15339,7 @@ constexpr int32_t RenderShipFixedPlanGuarded = 2;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderShipFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t RenderShipFixedGuardCount = 0;
 
@@ -15680,6 +15683,7 @@ constexpr int32_t RenderTurretFixedPlanGuarded = 2;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderTurretFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t RenderTurretFixedGuardCount = 0;
 
@@ -16020,6 +16024,7 @@ constexpr int32_t RenderMissileFixedPlanGuarded = 1;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderMissileFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t RenderMissileFixedGuardCount = 0;
 
@@ -16365,6 +16370,7 @@ constexpr int32_t RenderDynamicPropFixedPlanGuarded = 1;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderDynamicPropFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t RenderDynamicPropFixedGuardCount = 0;
 
@@ -16711,6 +16717,7 @@ constexpr int32_t RenderStaticPropFixedPlanGuarded = 1;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderStaticPropFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t RenderStaticPropFixedGuardCount = 0;
 
@@ -17059,6 +17066,7 @@ constexpr int32_t RenderCosmeticPropFixedPlanGuarded = 1;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderCosmeticPropFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t RenderCosmeticPropFixedGuardCount = 0;
 
@@ -17400,6 +17408,7 @@ constexpr int32_t RenderLaserFixedPlanGuarded = 1;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderLaserFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t RenderLaserFixedGuardCount = 0;
 
@@ -17741,6 +17750,7 @@ constexpr int32_t RenderExplosionFixedPlanGuarded = 1;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderExplosionFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t RenderExplosionFixedGuardCount = 0;
 

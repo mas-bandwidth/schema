@@ -3495,7 +3495,8 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             // A COUNTED LOCAL against a PEER whose array is too small to hold the
             // four-byte count is a mismatch the head subtraction below would
             // underflow: refuse it rather than land a count op that over-reads.
-            if ( d.counted && te.size < 4u ) { c.hostile = true; return; }
+            // break, as the C twin does, so both leave the switch the same way.
+            if ( d.counted && te.size < 4u ) { c.hostile = true; break; }
             const TableFixedLayoutEntry tel = TableFixedEntryAt( theirs, ti + 1 );
             const TableFixedLayoutEntry mel = TableFixedEntryAt( mine, mi + 1 );
             const uint32_t head = d.counted ? 4u : 0u;
@@ -10432,6 +10433,7 @@ constexpr int32_t TeamConfigFixedPlanGuarded = 2;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink TeamConfigFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t TeamConfigFixedGuardCount = 0;
 
@@ -10702,6 +10704,7 @@ constexpr int32_t GunnerConfigFixedPlanGuarded = 2;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink GunnerConfigFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t GunnerConfigFixedGuardCount = 0;
 
@@ -10970,6 +10973,7 @@ constexpr int32_t TurretConfigFixedPlanGuarded = 4;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink TurretConfigFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t TurretConfigFixedGuardCount = 0;
 
@@ -11268,6 +11272,7 @@ constexpr int32_t HullConfigFixedPlanGuarded = 12;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink HullConfigFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t HullConfigFixedGuardCount = 0;
 
@@ -11672,6 +11677,7 @@ constexpr int32_t KeyedConfigFixedPlanGuarded = 43;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink KeyedConfigFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t KeyedConfigFixedGuardCount = 0;
 

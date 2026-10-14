@@ -7323,6 +7323,7 @@ static SCHEMA_UNUSED const TableFixedEntry gunner_settings_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t gunner_settings_fixed_plan_count = 3;
 static SCHEMA_UNUSED const int32_t gunner_settings_fixed_plan_guarded = 3;
 static SCHEMA_UNUSED const TableFixedGuardLink gunner_settings_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t gunner_settings_fixed_guard_count = 0;
 
@@ -7597,6 +7598,7 @@ static SCHEMA_UNUSED const TableFixedEntry ship_entry_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t ship_entry_fixed_plan_count = 8;
 static SCHEMA_UNUSED const int32_t ship_entry_fixed_plan_guarded = 8;
 static SCHEMA_UNUSED const TableFixedGuardLink ship_entry_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t ship_entry_fixed_guard_count = 0;
 
@@ -7863,6 +7865,7 @@ static SCHEMA_UNUSED const TableFixedEntry global_settings_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t global_settings_fixed_plan_count = 3;
 static SCHEMA_UNUSED const int32_t global_settings_fixed_plan_guarded = 3;
 static SCHEMA_UNUSED const TableFixedGuardLink global_settings_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t global_settings_fixed_guard_count = 0;
 
@@ -8253,6 +8256,7 @@ static SCHEMA_UNUSED const TableFixedEntry pack_config_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t pack_config_fixed_plan_count = 53;
 static SCHEMA_UNUSED const int32_t pack_config_fixed_plan_guarded = 53;
 static SCHEMA_UNUSED const TableFixedGuardLink pack_config_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t pack_config_fixed_guard_count = 0;
 

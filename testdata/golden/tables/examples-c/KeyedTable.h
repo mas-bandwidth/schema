@@ -7364,6 +7364,7 @@ static SCHEMA_UNUSED const TableFixedEntry team_config_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t team_config_fixed_plan_count = 2;
 static SCHEMA_UNUSED const int32_t team_config_fixed_plan_guarded = 2;
 static SCHEMA_UNUSED const TableFixedGuardLink team_config_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t team_config_fixed_guard_count = 0;
 
@@ -7595,6 +7596,7 @@ static SCHEMA_UNUSED const TableFixedEntry gunner_config_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t gunner_config_fixed_plan_count = 2;
 static SCHEMA_UNUSED const int32_t gunner_config_fixed_plan_guarded = 2;
 static SCHEMA_UNUSED const TableFixedGuardLink gunner_config_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t gunner_config_fixed_guard_count = 0;
 
@@ -7823,6 +7825,7 @@ static SCHEMA_UNUSED const TableFixedEntry turret_config_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t turret_config_fixed_plan_count = 4;
 static SCHEMA_UNUSED const int32_t turret_config_fixed_plan_guarded = 4;
 static SCHEMA_UNUSED const TableFixedGuardLink turret_config_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t turret_config_fixed_guard_count = 0;
 
@@ -8077,6 +8080,7 @@ static SCHEMA_UNUSED const TableFixedEntry hull_config_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t hull_config_fixed_plan_count = 12;
 static SCHEMA_UNUSED const int32_t hull_config_fixed_plan_guarded = 12;
 static SCHEMA_UNUSED const TableFixedGuardLink hull_config_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t hull_config_fixed_guard_count = 0;
 
@@ -8430,6 +8434,7 @@ static SCHEMA_UNUSED const TableFixedEntry keyed_config_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t keyed_config_fixed_plan_count = 43;
 static SCHEMA_UNUSED const int32_t keyed_config_fixed_plan_guarded = 43;
 static SCHEMA_UNUSED const TableFixedGuardLink keyed_config_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t keyed_config_fixed_guard_count = 0;
 

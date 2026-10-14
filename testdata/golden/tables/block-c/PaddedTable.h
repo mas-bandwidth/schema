@@ -4808,6 +4808,7 @@ static SCHEMA_UNUSED const TableFixedEntry padded_row_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t padded_row_fixed_plan_count = 8;
 static SCHEMA_UNUSED const int32_t padded_row_fixed_plan_guarded = 8;
 static SCHEMA_UNUSED const TableFixedGuardLink padded_row_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t padded_row_fixed_guard_count = 0;
 
@@ -5616,6 +5617,7 @@ static SCHEMA_UNUSED const TableFixedEntry padded_frame_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t padded_frame_fixed_plan_count = 516;
 static SCHEMA_UNUSED const int32_t padded_frame_fixed_plan_guarded = 516;
 static SCHEMA_UNUSED const TableFixedGuardLink padded_frame_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t padded_frame_fixed_guard_count = 0;
 

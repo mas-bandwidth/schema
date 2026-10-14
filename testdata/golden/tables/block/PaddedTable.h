@@ -3389,7 +3389,8 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             // A COUNTED LOCAL against a PEER whose array is too small to hold the
             // four-byte count is a mismatch the head subtraction below would
             // underflow: refuse it rather than land a count op that over-reads.
-            if ( d.counted && te.size < 4u ) { c.hostile = true; return; }
+            // break, as the C twin does, so both leave the switch the same way.
+            if ( d.counted && te.size < 4u ) { c.hostile = true; break; }
             const TableFixedLayoutEntry tel = TableFixedEntryAt( theirs, ti + 1 );
             const TableFixedLayoutEntry mel = TableFixedEntryAt( mine, mi + 1 );
             const uint32_t head = d.counted ? 4u : 0u;
@@ -6062,6 +6063,7 @@ constexpr int32_t PaddedRowFixedPlanGuarded = 8;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink PaddedRowFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t PaddedRowFixedGuardCount = 0;
 
@@ -6922,6 +6924,7 @@ constexpr int32_t PaddedFrameFixedPlanGuarded = 516;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink PaddedFrameFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t PaddedFrameFixedGuardCount = 0;
 

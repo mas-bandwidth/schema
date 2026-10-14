@@ -8793,6 +8793,7 @@ static SCHEMA_UNUSED const TableFixedEntry ranged_signed_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t ranged_signed_fixed_plan_count = 4;
 static SCHEMA_UNUSED const int32_t ranged_signed_fixed_plan_guarded = 4;
 static SCHEMA_UNUSED const TableFixedGuardLink ranged_signed_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t ranged_signed_fixed_guard_count = 0;
 
@@ -9080,6 +9081,7 @@ static SCHEMA_UNUSED const TableFixedEntry ranged_unsigned_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t ranged_unsigned_fixed_plan_count = 4;
 static SCHEMA_UNUSED const int32_t ranged_unsigned_fixed_plan_guarded = 4;
 static SCHEMA_UNUSED const TableFixedGuardLink ranged_unsigned_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t ranged_unsigned_fixed_guard_count = 0;
 
@@ -9341,6 +9343,7 @@ static SCHEMA_UNUSED const TableFixedEntry ranged_widths_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t ranged_widths_fixed_plan_count = 3;
 static SCHEMA_UNUSED const int32_t ranged_widths_fixed_plan_guarded = 3;
 static SCHEMA_UNUSED const TableFixedGuardLink ranged_widths_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t ranged_widths_fixed_guard_count = 0;
 
