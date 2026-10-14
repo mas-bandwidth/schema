@@ -69,9 +69,9 @@ func (g *wireGen) emitSaveFixedArray(f *ir.Field, expr, ind string, id uint64, o
 func (g *wireGen) emitLoadFixedArray(f *ir.Field, ind string, ordinal int) {
 	n, typ, def, elem := fieldMember(f), dartListElemType(f), g.wireElementDefault(f), listElementKind(f)
 	g.pf("%sif(kind!=14){r.report.kindMismatch++;if(!r.skipKind(kind)){r.report.malformed=true;return;}break;}\n", ind)
-	g.pf("%s{\n%s final length=r.readLeb();\n%s if(length==null||!r.has(length)){r.report.malformed=true;return;}\n%s final end=r.pos+length;final arr=TableWireReader.sub(r,r.pos,end);r.pos=end;\n%s if(!arr.has(2)){r.report.malformed=true;break;}\n%s final elemKind=arr.readByte();final count=arr.readLeb();\n%s if(count==null||count<0){r.report.malformed=true;break;}\n", ind, ind, ind, ind, ind, ind, ind)
+	g.pf("%s{\n%s final length=r.readLeb();\n%s if(length==null||!r.has(length)){r.report.malformed=true;return;}\n%s final end=r.pos+length;final arr=TableWireReader.sub(r,r.pos,end);r.pos=end;\n%s if(!arr.has(2)){break;}\n%s final elemKind=arr.readByte();final count=arr.readLeb();\n%s if(count==null){r.report.malformed=true;break;}\n", ind, ind, ind, ind, ind, ind, ind)
 	g.pf("%s if(elemKind!=%d){if(!_kindWidens(elemKind,%d)){r.report.kindMismatch++;break;}r.report.widened++;}\n", ind, elem, elem)
-	g.pf("%s final values=<%s>[];\n%s final keep=count>%d?%d:count;if(count!=keep)r.report.clamped++;\n%s for(var i=0;i<keep;i++){\n", ind, typ, ind, f.ArrayBound, f.ArrayBound, ind)
+	g.pf("%s final values=<%s>[];\n%s final keep=(count<0||count>%d)?%d:count;if(count!=keep)r.report.clamped++;\n%s for(var i=0;i<keep;i++){\n", ind, typ, ind, f.ArrayBound, f.ArrayBound, ind)
 	switch elem {
 	case wireKindTable:
 		g.pf("%s  final size=arr.readLeb();if(size==null||!arr.has(size)){r.report.malformed=true;break;}\n%s  var e=%s;final body=TableWireReader.sub(arr,arr.pos,arr.pos+size);arr.pos+=size;\n%s  body.path=[...r.path,%d,i];%sWireLoadBody(body,e,true);\n%s  if(body.pos!=body.limit){r.report.malformed=true;e=%s;}values.add(e);\n", ind, ind, def, ind, ordinal, dartName(f.Type.Name), ind, def)
@@ -80,5 +80,5 @@ func (g *wireGen) emitLoadFixedArray(f *ir.Field, ind string, ordinal int) {
 	default:
 		g.emitLoadScalarListElem(f, "values", "arr", ind)
 	}
-	g.pf("%s }\n%s if(count<=%d&&arr.pos!=arr.limit)r.report.malformed=true;\n%s while(values.length<%d){values.add(%s);}\n%s v.%s=values;\n%s}\n%sbreak;\n", ind, ind, f.ArrayBound, ind, f.ArrayBound, def, ind, n, ind, ind)
+	g.pf("%s }\n%s while(values.length<%d){values.add(%s);}\n%s v.%s=values;\n%s}\n%sbreak;\n", ind, ind, f.ArrayBound, def, ind, n, ind, ind)
 }

@@ -95,7 +95,7 @@ table Root { nums [3]int32
  grades [2]Grade }
 `)
 	source := fixedArrayWireHarness(t, u)
-	for _, want := range []string{"List<Item>.generate(2", "List<int>.filled(3, 0)", "v.nums.any((e) => e != 0)", "final keep=count>3?3:count"} {
+	for _, want := range []string{"List<Item>.generate(2", "List<int>.filled(3, 0)", "v.nums.any((e) => e != 0)", "final keep=(count<0||count>3)?3:count"} {
 		if !strings.Contains(source, want) {
 			t.Fatalf("missing helper shape %q", want)
 		}
@@ -152,6 +152,29 @@ table Root { nums [3]int32
 		if err != nil {
 			t.Fatal(err)
 		}
+		for _, key := range []string{"inert0", "inert1", "slack", "huge"} {
+			input, e := hex.DecodeString(fieldOf(t, string(out), key))
+			if e != nil {
+				t.Fatal(e)
+			}
+			dest := model.New(u.Tables["Root"])
+			var report tabletext.Report
+			if ok, e := tablewire.Decode(model, dest, input, &report); !ok || e != nil {
+				t.Fatalf("%s Go decode: %v %+v", key, e, report)
+			}
+			expected := []uint64{1, 2, 3}
+			if key == "slack" {
+				expected = []uint64{4, 0, 0}
+			}
+			for i, value := range expected {
+				if dest.Fields[0].Elems[i].U != value {
+					t.Fatalf("%s Go prefix differs", key)
+				}
+			}
+			if report.Malformed || report.KindMismatch != 0 || report.Clamped != fixedArrayExpectedClamps(key) || dest.Fields[4].Cell.U != 77 {
+				t.Fatalf("%s Go report differs %+v", key, report)
+			}
+		}
 		if !bytes.Equal(empty, wantDefault) {
 			t.Fatalf("all-default fixed arrays/first-use ids differ from Go\ngot%x\nwant%x", empty, wantDefault)
 		}
@@ -176,11 +199,11 @@ import 'ProbeWire.dart' as w;
 const numsId=%s;const afterId=%s;const rowsId=%s;
 void check(bool ok,String why){if(!ok)throw StateError(why);}
 String hex(Uint8List b)=>b.map((x)=>x.toRadixString(16).padLeft(2,'0')).join();
-Uint8List forged(int count,List<int> values,{int elem=4,bool truncated=false,bool duplicate=false}){
+Uint8List forged(int count,List<int> values,{int elem=4,int? tiny,bool duplicate=false,bool huge=false}){
  final state=w.WireState();final out=w.TableWireWriter(state)..putByte(1);final ref=out.refFor(numsId);
- void array(int n,List<int> xs,int ek){final body=out.sub()..putByte(ek)..putLeb(n);for(final x in xs){body.putU32(x);}out.putLeb(ref);out.putByte(14);out.putLeb(body.buf.length);out.putBytes(body.buf);}
+ void array(int n,List<int> xs,int ek){final body=out.sub()..putByte(ek);if(huge){body.putBytes([255,255,255,255,255,255,255,255,255,1]);}else{body.putLeb(n);}for(final x in xs){body.putU32(x);}out.putLeb(ref);out.putByte(14);out.putLeb(body.buf.length);out.putBytes(body.buf);}
  if(duplicate)array(3,[1,2,3],4);
- array(count,values,elem);
+ if(tiny!=null){out.putLeb(ref);out.putByte(14);out.putLeb(tiny);if(tiny==1)out.putByte(4);}else{array(count,values,elem);}
  out.putLeb(out.refFor(afterId));out.putByte(4);out.putU32(77);out.putByte(0);for(final id in state.ids){out.putU64(id);}out.putU64(state.ids.length);return Uint8List.fromList(out.buf);
 }
 Uint8List forgedRows(){
@@ -200,9 +223,12 @@ void main(){
  check(identical(back.refs[0],back.refs[1])&&back.refs[0]!.value==23,'pointer slots preserve node identity');
  final d=w.Root();final base=w.rootWireSave(d);print('empty '+hex(base));d.presentPresent=true;final present=w.rootWireSave(d);check(present.length>base.length,'present whole-default rides');
  final p=w.rootWireLoad(present);check(p.presentPresent&&p.present.join(',')=='0,0,0','present defaults retained');
+ for(final tiny in [0,1]){final input=forged(0,[],tiny:tiny,duplicate:true);final report=w.TableWireReport();final kept=w.rootWireLoad(input,report);check(!report.malformed&&report.kindMismatch==0&&report.clamped==0&&kept.nums.join(',')=='1,2,3'&&kept.after==77,'inert header preserves previous value');print('inert$tiny '+hex(input));}
+ final slack=forged(1,[4,5]);final sr=w.TableWireReport();final sv=w.rootWireLoad(slack,sr);check(!sr.malformed&&sr.clamped==0&&sv.nums.join(',')=='4,0,0'&&sv.after==77,'unread field slack is inert');print('slack '+hex(slack));
  final short=w.rootWireLoad(forged(1,[4]));check(short.nums.join(',')=='4,0,0'&&short.after==77,'short prefix padding');
  final zero=w.rootWireLoad(forged(0,[],duplicate:true));check(zero.nums.join(',')=='0,0,0','last duplicate replaces whole array');
  final over=w.TableWireReport();final capped=w.rootWireLoad(forged(4,[1,2,3,4]),over);check(over.clamped==1&&!over.malformed&&capped.nums.join(',')=='1,2,3'&&capped.after==77,'count clamp');
+ final hugeReport=w.TableWireReport();final hugeInput=forged(0,[1,2,3],huge:true);final hugeValue=w.rootWireLoad(hugeInput,hugeReport);check(!hugeReport.malformed&&hugeReport.clamped==1&&hugeValue.nums.join(',')=='1,2,3'&&hugeValue.after==77,'uint64 count clamps unsigned');print('huge '+hex(hugeInput));
  final bad=w.TableWireReport();final prefix=w.rootWireLoad(forged(3,[4]),bad);check(bad.malformed&&prefix.nums.join(',')=='4,0,0'&&prefix.after==77,'damaged prefix and parent continuation');
  final mismatch=w.TableWireReport();final unchanged=w.rootWireLoad(forged(0,[],elem:1,duplicate:true),mismatch);check(mismatch.kindMismatch==1&&unchanged.nums.join(',')=='1,2,3'&&unchanged.after==77,'mismatch leaves last valid value');
  var refused=false;try{w.rootWireSave(w.Root()..nums=[1]);}catch(_){refused=true;}check(refused,'exact length validation');
@@ -249,4 +275,11 @@ table Root { truth bool = true
 			t.Fatalf("scalar %s must not be positional", f.Name)
 		}
 	}
+}
+
+func fixedArrayExpectedClamps(key string) int {
+	if key == "huge" {
+		return 1
+	}
+	return 0
 }
