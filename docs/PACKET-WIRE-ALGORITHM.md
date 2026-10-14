@@ -127,9 +127,13 @@ the byte primitive, not a separate schema item:
 ```
 PUT_BYTES(w, src, n):
     ALIGN_WRITE(w)
+    if w.scratch_bits != 0:
+        store LE qword w.scratch at w.data + 8*w.word_index
     copy n bytes of src to w.data at byte cursor w.bits_written/8
     w.bits_written += 8*n
+    w.word_index = w.bits_written / 64
     reload the trailing partial qword into w.scratch, masked to its tail bits
+    w.scratch_bits = w.bits_written % 64
 
 GET_BYTES(r, dst, n):
     ALIGN_READ(r)
