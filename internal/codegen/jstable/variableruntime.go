@@ -72,6 +72,8 @@ function TableVariableWidens(kind, declared) {
   switch (declared) {
     case 3: case 4: case 5: return kind >= 2 && kind < declared;
     case 7: case 8: case 9: return kind >= 6 && kind < declared;
+    case 18: return kind >= 2 && kind < declared;
+    case 19: return kind >= 6 && kind < declared;
     case 11: return kind === 10;
   }
   return false;
@@ -200,6 +202,7 @@ function TableVariableWriteInt(w, width, v) {
     case 1: w.u8(v); break;
     case 2: w.u16(v); break;
     case 4: w.u32(v); break;
+    case 16: w.u128(v); break;
     default: w.u64(BigInt.asUintN(64, v));
   }
 }
@@ -598,6 +601,8 @@ function TableVariableScalar(r, d, kind, report) {
     case 7: x = r.u16(); break;
     case 8: x = r.u32(); break;
     case 9: x = r.u64(); break;
+    case 18: x = r.i128(); break;
+    case 19: x = r.u128(); break;
     default: report.malformed = true; return undefined;
   }
   if (d.big && typeof x !== "bigint") { x = BigInt(x); }

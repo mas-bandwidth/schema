@@ -517,8 +517,9 @@ func (vc *variableClass) carried(name string) bool { return vc.reason[name] == "
 
 // variableFieldRefusal names the construct a field holds that this leg's
 // variable wire does not carry, as `Table.field: construct (cite)`. The empty
-// string is a field it carries: bool; every int width but 128 and every uint
-// width (§3); float32 and float64; bits(N) (§15); string(N) and bytes(N) (§3);
+// string is a field it carries: bool; every int and uint width including the
+// 128-bit wide scalars (§3); float32 and float64; bits(N) (§15); string(N) and
+// bytes(N) (§3);
 // *string and *bytes (§2.5); enums; a table nested by value (§3) or pointed at
 // (§2.1, §3.1); and an unbounded []T or a bounded [..N]T array of a table, a
 // pointer, a scalar or an enum element (§2.9) — a declared minimum, [Min..N]T,
@@ -547,9 +548,6 @@ func variableFieldRefusal(st *ir.Struct, f *ir.Field) string {
 	case ir.TBool, ir.TBits, ir.TFloat32, ir.TFloat64, ir.TString, ir.TBytes:
 		return ""
 	case ir.TInt:
-		if f.Type.Width == 128 {
-			return name + ": a " + ir.TableTypeSpelling(f) + " (docs/SPEC-TABLES.md §3)"
-		}
 		return ""
 	case ir.TFixed:
 		return name + ": a fixed/ufixed (docs/SPEC-TABLES.md §15)"

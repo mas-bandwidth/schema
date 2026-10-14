@@ -283,6 +283,7 @@ class TableVariableWriter {
   u32(v) { this.b.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff); }
   i32(v) { this.u32(v | 0); }
   u64(v) { for (let i = 0; i < 8; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
+  u128(v) { for (let i = 0; i < 16; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
   f64(v) {
     const d = TableVariableScratch;
     d.setFloat64(0, v, true);
@@ -332,6 +333,13 @@ class TableVariableReader {
     return v;
   }
   i64() { return BigInt.asIntN(64, this.u64()); }
+  u128() {
+    let v = 0n;
+    for (let i = 0; i < 16; i++) { v |= BigInt(this.b[this.at + i]) << BigInt(8 * i); }
+    this.at += 16;
+    return v;
+  }
+  i128() { return BigInt.asIntN(128, this.u128()); }
   f64() {
     const d = TableVariableScratch;
     for (let i = 0; i < 8; i++) { d.setUint8(i, this.b[this.at + i]); }
@@ -633,7 +641,7 @@ func jsFloat(v float64) string {
 // intIsBig reports whether an integer-shaped field (an int or a bits(N)) is
 // stored as a BigInt: exactly when its wire kind is eight bytes wide, the one
 // width a JavaScript number cannot hold whole.
-func intIsBig(f *ir.Field) bool { return ir.TableKindWidth(ir.TableWireScalarKind(f)) == 8 }
+func intIsBig(f *ir.Field) bool { return ir.TableKindWidth(ir.TableWireScalarKind(f)) >= 8 }
 
 // intLit renders an integer literal in the field's storage: a BigInt for an
 // eight-byte kind and a number otherwise.
