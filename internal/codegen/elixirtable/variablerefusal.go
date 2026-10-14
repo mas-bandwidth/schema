@@ -71,9 +71,11 @@ func refuseCardUnsupportedFields(st *ir.Struct) error {
 
 // cardUnsupportedVariableConstruct returns the construct's name on a field the
 // card slice does not carry, and "" on every field it does. *bytes and a
-// pointer to a table are carried. bits(N) stays refused until it is carried:
-// fieldDescriptor gives a bits field no t:, and save then raises key :t not found
-// (channel bits(6)).
+// pointer to a table are carried. bits(N) stays refused until it is carried.
+// A unit this form owns is refused here. A bits field on a fixed table that
+// shares the closure is described with t: :bits, and save/load refuse it by
+// name before the walk (channel bits(6) raised key :t not found when t: was
+// absent).
 func cardUnsupportedVariableConstruct(f *ir.Field) string {
 	switch {
 	case f.IsMap():

@@ -42,6 +42,43 @@ func TestCardConstructsAreNotRefused(t *testing.T) {
 	}
 }
 
+// TestBitsOnAFixedTableBesideAVariableTableKeepsTheKey pins the probe from
+// the #1895 review: field channel bits(6) on a fixed table that shares a
+// closure with a variable table. Generation of the fixed form must stand.
+// The variable descriptor must still carry t:, and save must refuse by name
+// before the walk. A missing t: raised key :t not found.
+func TestBitsOnAFixedTableBesideAVariableTableKeepsTheKey(t *testing.T) {
+	t.Parallel()
+
+	unit := &ir.Unit{
+		Package: "cards",
+		Tables: map[string]*ir.Struct{
+			"Patrol": {Name: "Patrol", IsTable: true, Fields: []*ir.Field{
+				{Name: "id", Type: ir.FieldType{Kind: ir.TInt, Width: 32}},
+			}},
+			"WeaponConfig": {Name: "WeaponConfig", IsTable: true, FixedDeclared: true, Fields: []*ir.Field{
+				{Name: "channel", Type: ir.FieldType{Kind: ir.TBits, Width: 6}},
+			}},
+		},
+	}
+
+	files, err := Generate(unit)
+	if err != nil {
+		t.Fatalf("a fixed table with bits(6) beside a variable table was refused whole: %v", err)
+	}
+	src, ok := files["Table.ex"]
+	if !ok {
+		t.Fatal("the variable module was not emitted")
+	}
+	text := string(src)
+	if !strings.Contains(text, `name: "channel"`) || !strings.Contains(text, "t: :bits") {
+		t.Fatal("channel bits(6) was described with no t:")
+	}
+	if !strings.Contains(text, "bits_refused") || !strings.Contains(text, "{:error, {:bits, name}}") {
+		t.Fatal("save does not refuse bits by name before the walk")
+	}
+}
+
 // TestFixedUnitWithRefusedVariableConstructStillGenerates pins the SCOPE of
 // the boundary (docs/SPEC-TABLES.md §11): a unit the fixed form owns that also
 // declares a variable table carrying a construct outside the card slice still

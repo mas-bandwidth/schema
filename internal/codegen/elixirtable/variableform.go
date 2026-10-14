@@ -131,7 +131,50 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 // §4 names.
 const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3) ----
 
+  # bits(N) is refused until it is carried. A missing t: used to raise
+  # key :t not found on the walk (channel bits(6)). save and load answer
+  # {:error, {:bits, name}} before that walk, including through a nested table.
+  defp bits_refused(desc), do: bits_refused(desc, MapSet.new())
+
+  defp bits_refused(desc, seen) do
+    id = desc.type_id
+
+    if MapSet.member?(seen, id) do
+      nil
+    else
+      seen = MapSet.put(seen, id)
+
+      Enum.find_value(desc.fields, fn f ->
+        table = Map.get(f, :table)
+        elem = Map.get(f, :elem)
+
+        cond do
+          Map.get(f, :t) == :bits ->
+            f.name
+
+          is_binary(table) and Map.has_key?(@tables, table) ->
+            bits_refused(Map.fetch!(@tables, table), seen)
+
+          is_binary(elem) and Map.has_key?(@tables, elem) ->
+            bits_refused(Map.fetch!(@tables, elem), seen)
+
+          true ->
+            nil
+        end
+      end)
+    end
+  end
+
   def save(table, value) when is_map(value) do
+    desc = Map.fetch!(@tables, table)
+
+    case bits_refused(desc) do
+      nil -> save_carried(table, value)
+      name -> {:error, {:bits, name}}
+    end
+  end
+
+  defp save_carried(table, value) do
     desc = Map.fetch!(@tables, table)
 
     # the node table's records in §3.1's first-visit order, one record per
@@ -478,6 +521,15 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # ---- the read side (docs/SPEC-TABLES.md §3, §4) ----
 
   def load(table, data) when is_binary(data) do
+    desc = Map.fetch!(@tables, table)
+
+    case bits_refused(desc) do
+      nil -> load_carried(table, data)
+      name -> {:error, {:bits, name}, empty_report()}
+    end
+  end
+
+  defp load_carried(table, data) when is_binary(data) do
     desc = Map.fetch!(@tables, table)
 
     case open(data) do
@@ -2781,6 +2833,10 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int) string {
 		}
 	case f.Type.Kind == ir.TBool:
 		b.WriteString(", t: :bool")
+	case f.Type.Kind == ir.TBits:
+		// bits(N) stays uncarried. The key has to be present: without it,
+		// save raised key :t not found (channel bits(6)).
+		b.WriteString(", t: :bits")
 	}
 	fmt.Fprintf(&b, ", shape: %s, bound: %s", cardShape(f), cardBound(f))
 	b.WriteString("},\n")
