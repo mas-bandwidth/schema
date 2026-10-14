@@ -183,10 +183,6 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 // (§3): a field at its declared default, an absent optional, an empty
 // string/bytes/wstring and an empty counted array all elide.
 func (g *fixedModule) messageRides(f *ir.Field, expr string) string {
-	if f.Type.Kind == ir.TFloat32 && f.Array == ir.ArrayNone {
-		// Numeric equality elides -0.0; the wire preserves its sign (§3).
-		return "(" + expr + " != " + g.gen.fixedZeroFor(f) + " || TableBitWriter._float32BitsFromDouble(" + expr + ") != TableBitWriter._float32BitsFromDouble(" + g.gen.fixedZeroFor(f) + "))"
-	}
 	if f.IsList() || f.IsMap() {
 		return expr + ".length > 0"
 	}

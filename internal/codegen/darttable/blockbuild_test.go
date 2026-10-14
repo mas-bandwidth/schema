@@ -32,6 +32,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -133,6 +134,7 @@ extension on Uint8List {
 // builder is emitted from, and against the leg's own reader.
 func TestBlockBuildAndCookWriteDart(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "dart")
 
 	u := unitFrom(t, blockBuildSchema)
 	files, err := dart.Generate(u)
