@@ -36,9 +36,9 @@ fixed table Root { stamp uint64
 const blockBuildCookSchema = blockBuilderSchema + `
 fixed table Config { scale float32 = 1.0
  samples [..3]uint64
- fixed_scalar fixed(12,4)
- fixed_array [..3]fixed(16,16)
- unsigned_fixed ufixed(8,8) }
+ fixed_scalar fixed(12,4) | min = -1024, max = 1024
+ fixed_array [..3]fixed(16,16) | min = -512, max = 512
+ unsigned_fixed ufixed(8,8) | min = 0, max = 250 }
 `
 
 // blockProbe is the Rust binary this test BUILDS AND RUNS: it calls the
