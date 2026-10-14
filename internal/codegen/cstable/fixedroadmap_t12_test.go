@@ -31,6 +31,8 @@ func TestFixedRoadmapCSharpT12PlansVersions(t *testing.T) {
 		{"cs/R7", t12R7},
 		{"cs/R14", t12R14},
 		{"cs/R15", t12R15},
+		{"cs/R29", t12R29},
+		{"cs/E3/other-required-widens", t12E3},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -409,6 +411,456 @@ static class ProbeMain
 	run.Env = append(os.Environ(), "DOTNET_NOLOGO=1", "DOTNET_CLI_TELEMETRY_OPTOUT=1")
 	runOut, runErr := run.CombinedOutput()
 	for _, c := range t12ForwardClamps {
+		t10Assert(t, runOut, runErr, c.id)
+	}
+}
+
+// t12R29 holds cs/R29's second half: the bounds pass clamping to the WRITER's
+// bounds. The writer carries its ranged leaves in the lineage entry; the
+// compiled lane's bounds pass holds a peer to what IT declared and never to
+// this reader's wider own (§4.6, bill §12.5, TableFixedClampKnownRanges).
+func t12R29(t *testing.T) {
+	writer := unitFrom(t, "package wband\n\nfixed table Band\n{\n    n int32 = 0 | min = 0, max = 100\n}\n")
+	reader := unitFrom(t, "package rband\n\nfixed table Band\n{\n    n int32 = 0 | min = 0, max = 200\n}\n")
+	we, ok := FixedLineageOf(writer, "Band")
+	if !ok {
+		t.Fatal("no lineage entry for the writer")
+	}
+	we.Ranges = []FixedRangeSpec{{Name: "n", Lo: 0, Hi: 100}}
+	files, err := GenerateLineage(reader, map[string][]FixedLineageEntry{"Band": {we}})
+	if err != nil {
+		t.Fatalf("GenerateLineage: %v", err)
+	}
+	var b strings.Builder
+	for _, data := range files {
+		b.Write(data)
+	}
+	text := t12Norm(b.String())
+	// The reader's own pass still holds the reader's wider own; the writer's
+	// carried pass holds the writer's narrower 0..100.
+	t12Has(t, text, "else if (value.N > 200) { value.N = 200; clamped++; }", "R29 the reader's own pass holds the reader's 0..200")
+	t12Has(t, text, "else if (value.N > 100) { value.N = 100; clamped++; }", "R29 the writer's carried pass holds the writer's 0..100")
+	t12Has(t, text, "BandFixedClampKnown0(Band value, TableReport report)", "R29 the writer's bounds are one clamp per lineage entry")
+	t12Has(t, text, "System.Action<Band, TableReport>[] BandFixedClampKnown", "R29 the writer's bounds dispatch by pick")
+	t12Has(t, text, "writerClamp = BandFixedClampKnown[pick];", "R29 the load selects the writer's bounds by the resolved lineage index")
+	t12Has(t, text, "writerClamp?.Invoke(values[k], report);", "R29 the compiled lane holds the writer's bounds after the run")
+
+	t.Run("forged", func(t *testing.T) {
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "" {
+			t.Skip("the writer-bound clamp runs under make tables-cs-fixed-roadmap")
+		}
+		t12R29Forged(t)
+	})
+}
+
+// t12R29ForgedBody writes the older writer's own file, forges the bounded field
+// to a value inside the reader's range but past the writer's bound, and reads
+// it back: the writer's 100 and one clamp, never the reader's 200. The negative
+// control is the reader's own wider range leaving the same value whole.
+const t12R29ForgedBody = `
+            var w = new @W@.Band();
+            w.N = 50;
+            byte[] wbuf = new byte[@W@.Schema.BandFixedMeasure(1)];
+            if (@W@.Schema.BandFixedSave(w, wbuf) < 0) { bad += ProbeLog.Fail(@NAME@, "the writer did not write its own file"); }
+            int wAt = 20 + (int)@W@.Schema.BandFixedLayoutBytes;
+            BinaryPrimitives.WriteInt32LittleEndian(wbuf.AsSpan(wAt + 8), 150);
+            var back = new Band();
+            TableReport r = new TableReport();
+            TableFixedEntry[] plan = new TableFixedEntry[8192];
+            long n = Schema.BandFixedLoad(back, wbuf, plan, r);
+            if (n != 1) { bad += ProbeLog.Fail(@NAME@, "the forged record did not read back: n=" + n + " " + r.Reason); }
+            if (back.N != 100) { bad += ProbeLog.Fail(@NAME@, "a value inside the reader's range but past the writer's bound did not land the writer's 100: " + back.N); }
+            if (r.Clamped != 1) { bad += ProbeLog.Fail(@NAME@, "the writer-bound clamp did not count once: " + r.Clamped); }
+            if (r.Refused || r.Malformed) { bad += ProbeLog.Fail(@NAME@, "a clean forged read refused or malformed: " + r.Reason); }
+            var own = new Band();
+            own.N = 150;
+            byte[] rbuf = new byte[Schema.BandFixedMeasure(1)];
+            if (Schema.BandFixedSave(own, rbuf) < 0) { bad += ProbeLog.Fail(@NAME@, "the reader did not write its own file"); }
+            var back2 = new Band();
+            TableReport r2 = new TableReport();
+            long n2 = Schema.BandFixedLoad(back2, rbuf, plan, r2);
+            if (n2 != 1) { bad += ProbeLog.Fail(@NAME@, "the reader's own file did not read back: n=" + n2 + " " + r2.Reason); }
+            if (back2.N != 150) { bad += ProbeLog.Fail(@NAME@, "the reader's own 0..200 did not leave 150 whole: " + back2.N); }
+            if (r2.Clamped != 0) { bad += ProbeLog.Fail(@NAME@, "a value inside the reader's range clamped on the identity read: " + r2.Clamped); }
+`
+
+// t12R29Forged builds the writer and reader into one assembly and runs the
+// forge-and-read probe through the SDK's Roslyn compiler and dotnet exec — the
+// t10 harness, no corpus — then reads the one verdict out of the run.
+func t12R29Forged(t *testing.T) {
+	t.Helper()
+	t10Discover(t)
+	writer := unitFrom(t, "package wband\n\nfixed table Band\n{\n    n int32 = 0 | min = 0, max = 100\n}\n")
+	reader := unitFrom(t, "package rband\n\nfixed table Band\n{\n    n int32 = 0 | min = 0, max = 200\n}\n")
+	we, ok := FixedLineageOf(writer, "Band")
+	if !ok {
+		t.Fatal("no lineage entry for the writer")
+	}
+	we.Ranges = []FixedRangeSpec{{Name: "n", Lo: 0, Hi: 100}}
+	dir := t.TempDir()
+	write := func(root string, files map[string][]byte) {
+		for name, data := range files {
+			p := filepath.Join(root, name)
+			if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	wpk, err := csharp.Generate(writer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wtb, err := Generate(writer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wgen := filepath.Join(dir, "gen", "w")
+	write(wgen, wpk)
+	write(wgen, wtb)
+	rpk, err := csharp.Generate(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rtb, err := GenerateLineage(reader, map[string][]FixedLineageEntry{"Band": {we}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rgen := filepath.Join(dir, "gen", "r")
+	write(rgen, rpk)
+	write(rgen, rtb)
+	rns := capitalize(reader.Package)
+	const id = "cs/R29"
+	body := strings.NewReplacer("@NAME@", fmt.Sprintf("%q", id), "@W@", capitalize(writer.Package)).Replace(t12R29ForgedBody)
+	src := fmt.Sprintf(`// generated by internal/codegen/cstable's t12 harness: the writer-bound clamp
+using System;
+using System.Buffers.Binary;
+
+namespace %s
+{
+    static class ProbeR29
+    {
+        public static int Run()
+        {
+            int bad = 0;
+%s
+            if (bad == 0) { Console.WriteLine("ROW " + %s + ": ok"); }
+            return bad;
+        }
+    }
+}
+`, rns, body, fmt.Sprintf("%q", id))
+	if err := os.WriteFile(filepath.Join(dir, "ProbeR29.cs"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	main := `using System;
+
+static class ProbeLog
+{
+    public static int Fail(string row, string what)
+    {
+        Console.WriteLine("ROW " + row + ": FAILED " + what);
+        return 1;
+    }
+}
+
+static class ProbeMain
+{
+    static int Main()
+    {
+        int bad = 0;
+        try
+        {
+            bad += ` + rns + `.ProbeR29.Run();
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine("ROW harness: FAILED " + e.ToString());
+            return 1;
+        }
+        Console.WriteLine(bad == 0 ? "cs t12 r29: green" : "cs t12 r29: FAILED");
+        return bad == 0 ? 0 : 1;
+    }
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "ProbeMain.cs"), []byte(main), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	topFiles, _ := filepath.Glob(filepath.Join(dir, "*.cs"))
+	genFiles, _ := filepath.Glob(filepath.Join(dir, "gen", "*", "*.cs"))
+	refs, _ := filepath.Glob(filepath.Join(t10refDir, "*.dll"))
+	args := []string{t10csc, "-nologo", "-langversion:latest", "-unsafe", "-out:" + filepath.Join(dir, "app.dll")}
+	for _, r := range refs {
+		args = append(args, "-r:"+r)
+	}
+	args = append(args, topFiles...)
+	args = append(args, genFiles...)
+	cmd := exec.Command(t10dotnet, append([]string{"exec"}, args...)...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "DOTNET_NOLOGO=1", "DOTNET_CLI_TELEMETRY_OPTOUT=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("the t12 r29 assembly did not compile: %s", t10Tail(string(out), err))
+	}
+
+	rtc := fmt.Sprintf(`{
+  "runtimeOptions": {
+    "tfm": "net10.0",
+    "framework": { "name": "Microsoft.NETCore.App", "version": %q }
+  }
+}
+`, t10refVersion)
+	if err := os.WriteFile(filepath.Join(dir, "app.runtimeconfig.json"), []byte(rtc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run := exec.Command(t10dotnet, "exec", filepath.Join(dir, "app.dll"))
+	run.Dir = dir
+	run.Env = append(os.Environ(), "DOTNET_NOLOGO=1", "DOTNET_CLI_TELEMETRY_OPTOUT=1")
+	runOut, runErr := run.CombinedOutput()
+	t10Assert(t, runOut, runErr, id)
+}
+
+// t12WidenCase is one widen-ladder fixture E3's write half writes and reads:
+// the older (narrower) writer and the newer (wider) reader, both under one
+// table name in two packages, so the two layouts are ONE LINEAGE.
+type t12WidenCase struct {
+	id     string
+	writer string // the older, narrower generation
+	reader string // the newer, wider generation
+	body   string // C# asserting the boundary values land widened, over `back`
+}
+
+var t12WidenCases = []t12WidenCase{
+	{id: "cs/E3/int_widen",
+		writer: "package w1\n\nfixed table T\n{\n    v int8\n}\n",
+		reader: "package r1\n\nfixed table T\n{\n    v int16\n}\n",
+		body: `
+            var w = new @W@.T[2];
+            w[0] = new @W@.T(); w[0].V = -128;
+            w[1] = new @W@.T(); w[1].V = 127;
+            byte[] buf = new byte[@W@.Schema.TFixedMeasure(2)];
+            if (@W@.Schema.TFixedSave(w, buf) < 0) { bad += ProbeLog.Fail(@NAME@, "int_widen writer did not write"); }
+            var back = new T[2];
+            TableReport r = new TableReport();
+            TableFixedEntry[] plan = new TableFixedEntry[8192];
+            long n = Schema.TFixedLoad(back, buf, plan, r);
+            if (n != 2) { bad += ProbeLog.Fail(@NAME@, "int_widen did not read 2: n=" + n + " " + r.Reason); }
+            if (back[0].V != -128 || back[1].V != 127) { bad += ProbeLog.Fail(@NAME@, "int8 did not sign-extend to int16: " + back[0].V + " " + back[1].V); }
+            if (r.Widened != 2) { bad += ProbeLog.Fail(@NAME@, "int_widen widened=" + r.Widened + ", want 2"); }
+`},
+	{id: "cs/E3/uint_widen",
+		writer: "package w2\n\nfixed table T\n{\n    v uint16\n}\n",
+		reader: "package r2\n\nfixed table T\n{\n    v uint32\n}\n",
+		body: `
+            var w = new @W@.T();
+            w.V = 65535;
+            byte[] buf = new byte[@W@.Schema.TFixedMeasure(1)];
+            if (@W@.Schema.TFixedSave(w, buf) < 0) { bad += ProbeLog.Fail(@NAME@, "uint_widen writer did not write"); }
+            var back = new T();
+            TableReport r = new TableReport();
+            TableFixedEntry[] plan = new TableFixedEntry[8192];
+            long n = Schema.TFixedLoad(back, buf, plan, r);
+            if (n != 1) { bad += ProbeLog.Fail(@NAME@, "uint_widen did not read: n=" + n + " " + r.Reason); }
+            if (back.V != 65535) { bad += ProbeLog.Fail(@NAME@, "uint16 65535 did not zero-extend across the band: " + back.V); }
+            if (r.Widened != 1) { bad += ProbeLog.Fail(@NAME@, "uint_widen widened=" + r.Widened + ", want 1"); }
+`},
+	{id: "cs/E3/float_widen",
+		writer: "package w3\n\nfixed table T\n{\n    v float32\n}\n",
+		reader: "package r3\n\nfixed table T\n{\n    v float64\n}\n",
+		body: `
+            var w = new @W@.T();
+            w.V = 3.5f;
+            byte[] buf = new byte[@W@.Schema.TFixedMeasure(1)];
+            if (@W@.Schema.TFixedSave(w, buf) < 0) { bad += ProbeLog.Fail(@NAME@, "float_widen writer did not write"); }
+            var back = new T();
+            TableReport r = new TableReport();
+            TableFixedEntry[] plan = new TableFixedEntry[8192];
+            long n = Schema.TFixedLoad(back, buf, plan, r);
+            if (n != 1) { bad += ProbeLog.Fail(@NAME@, "float_widen did not read: n=" + n + " " + r.Reason); }
+            if (back.V != 3.5) { bad += ProbeLog.Fail(@NAME@, "f32 3.5 did not widen to f64 3.5: " + back.V); }
+            if (r.Widened != 1) { bad += ProbeLog.Fail(@NAME@, "float_widen widened=" + r.Widened + ", want 1"); }
+`},
+	{id: "cs/E3/fixed_I_grow",
+		writer: "package w4\n\nfixed table T\n{\n    v fixed(4, 4) | min = -8, max = 7\n}\n",
+		reader: "package r4\n\nfixed table T\n{\n    v fixed(12, 4) | min = -8, max = 7\n}\n",
+		body: `
+            var w = new @W@.T[2];
+            w[0] = new @W@.T(); w[0].V = -128;
+            w[1] = new @W@.T(); w[1].V = 112;
+            byte[] buf = new byte[@W@.Schema.TFixedMeasure(2)];
+            if (@W@.Schema.TFixedSave(w, buf) < 0) { bad += ProbeLog.Fail(@NAME@, "fixed_I_grow writer did not write"); }
+            var back = new T[2];
+            TableReport r = new TableReport();
+            TableFixedEntry[] plan = new TableFixedEntry[8192];
+            long n = Schema.TFixedLoad(back, buf, plan, r);
+            if (n != 2) { bad += ProbeLog.Fail(@NAME@, "fixed_I_grow did not read 2: n=" + n + " " + r.Reason); }
+            if (back[0].V != -128 || back[1].V != 112) { bad += ProbeLog.Fail(@NAME@, "fixed(4,4) raw did not sign-extend to fixed(12,4): " + back[0].V + " " + back[1].V); }
+            if (r.Widened != 2) { bad += ProbeLog.Fail(@NAME@, "fixed_I_grow widened=" + r.Widened + ", want 2"); }
+`},
+}
+
+// t12E3 holds cs/E3/other-required-widens' write half: this leg's own writer
+// writes each widen-ladder fixture with non-default and boundary values, and
+// this leg's own reader reads them back widened. The ladder and the sign rule
+// are asserted in source at TestFixedRoadmapCSharpT04Versions/cs/E3/other-required-widens
+// and the read landings against the C++ bytes at TestFixedVersioning; what that
+// pair does not show is the writer producing the bytes, which is this.
+func t12E3(t *testing.T) {
+	t.Run("write-half", func(t *testing.T) {
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "" {
+			t.Skip("the widen-ladder write half runs under make tables-cs-fixed-roadmap")
+		}
+		t12E3Write(t)
+	})
+}
+
+// t12E3Write builds each widen pair into one assembly and runs it with the
+// SDK's Roslyn compiler and dotnet exec — the t10 harness, no corpus — then
+// reads each fixture's verdict out of the one run.
+func t12E3Write(t *testing.T) {
+	t.Helper()
+	t10Discover(t)
+	dir := t.TempDir()
+	write := func(root string, files map[string][]byte) {
+		for name, data := range files {
+			p := filepath.Join(root, name)
+			if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	var calls []string
+	for i, c := range t12WidenCases {
+		wu := unitFrom(t, c.writer)
+		ru := unitFrom(t, c.reader)
+		we, ok := FixedLineageOf(wu, "T")
+		if !ok {
+			t.Fatalf("%s: no lineage entry for the writer", c.id)
+		}
+		rns := capitalize(ru.Package)
+		wns := capitalize(wu.Package)
+		wgen := filepath.Join(dir, "gen", fmt.Sprintf("u%03d", i), "w")
+		rgen := filepath.Join(dir, "gen", fmt.Sprintf("u%03d", i), "r")
+		wpk, err := csharp.Generate(wu)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wtb, err := Generate(wu)
+		if err != nil {
+			t.Fatal(err)
+		}
+		write(wgen, wpk)
+		write(wgen, wtb)
+		rpk, err := csharp.Generate(ru)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rtb, err := GenerateLineage(ru, map[string][]FixedLineageEntry{"T": {we}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		write(rgen, rpk)
+		write(rgen, rtb)
+		probeClass := fmt.Sprintf("Probe%03d", i)
+		body := strings.NewReplacer("@NAME@", fmt.Sprintf("%q", c.id), "@W@", wns).Replace(c.body)
+		src := fmt.Sprintf(`// generated by internal/codegen/cstable's t12 harness: the widen-ladder write half
+using System;
+using System.Buffers.Binary;
+
+namespace %s
+{
+    static class %s
+    {
+        public static int Run()
+        {
+            int bad = 0;
+%s
+            if (bad == 0) { Console.WriteLine("ROW " + %s + ": ok"); }
+            return bad;
+        }
+    }
+}
+`, rns, probeClass, body, fmt.Sprintf("%q", c.id))
+		if err := os.WriteFile(filepath.Join(dir, probeClass+".cs"), []byte(src), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		calls = append(calls, fmt.Sprintf("            bad += %s.%s.Run();", rns, probeClass))
+	}
+	main := fmt.Sprintf(`using System;
+
+static class ProbeLog
+{
+    public static int Fail(string row, string what)
+    {
+        Console.WriteLine("ROW " + row + ": FAILED " + what);
+        return 1;
+    }
+}
+
+static class ProbeMain
+{
+    static int Main()
+    {
+        int bad = 0;
+        try
+        {
+%s
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine("ROW harness: FAILED " + e.ToString());
+            return 1;
+        }
+        Console.WriteLine(bad == 0 ? "cs t12 e3: every row green" : "cs t12 e3: " + bad + " FAILED");
+        return bad == 0 ? 0 : 1;
+    }
+}
+`, strings.Join(calls, "\n"))
+	if err := os.WriteFile(filepath.Join(dir, "ProbeMain.cs"), []byte(main), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	topFiles, _ := filepath.Glob(filepath.Join(dir, "*.cs"))
+	genFiles, _ := filepath.Glob(filepath.Join(dir, "gen", "*", "*", "*.cs"))
+	refs, _ := filepath.Glob(filepath.Join(t10refDir, "*.dll"))
+	args := []string{t10csc, "-nologo", "-langversion:latest", "-unsafe", "-out:" + filepath.Join(dir, "app.dll")}
+	for _, r := range refs {
+		args = append(args, "-r:"+r)
+	}
+	args = append(args, topFiles...)
+	args = append(args, genFiles...)
+	cmd := exec.Command(t10dotnet, append([]string{"exec"}, args...)...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "DOTNET_NOLOGO=1", "DOTNET_CLI_TELEMETRY_OPTOUT=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		for _, c := range t12WidenCases {
+			t10Assert(t, out, err, c.id)
+		}
+		t.Fatalf("the t12 widen assembly did not compile: %s", t10Tail(string(out), err))
+	}
+
+	rtc := fmt.Sprintf(`{
+  "runtimeOptions": {
+    "tfm": "net10.0",
+    "framework": { "name": "Microsoft.NETCore.App", "version": %q }
+  }
+}
+`, t10refVersion)
+	if err := os.WriteFile(filepath.Join(dir, "app.runtimeconfig.json"), []byte(rtc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run := exec.Command(t10dotnet, "exec", filepath.Join(dir, "app.dll"))
+	run.Dir = dir
+	run.Env = append(os.Environ(), "DOTNET_NOLOGO=1", "DOTNET_CLI_TELEMETRY_OPTOUT=1")
+	runOut, runErr := run.CombinedOutput()
+	for _, c := range t12WidenCases {
 		t10Assert(t, runOut, runErr, c.id)
 	}
 }

@@ -1854,6 +1854,34 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    TableFixedWire.LineagePlans(%sFixedKnown, %sFixedLayout, %sFixedDst, %sFixedHash);\n\n",
 		name, name, name, name)
 
+	// THE WRITER'S OWN BOUNDED LEAVES, per entry (ALGORITHM §4.6, bill §12.5):
+	// the compiled lane's bounds pass holds the PEER's declaration and never
+	// this reader's wider own, so each entry's ranged leaves ride as one clamp
+	// function over this reader's value. Only entries that carry them; the
+	// identity entry (last) has none, its writer being this reader.
+	entryBounds := g.fixedWriterBounds(st, entries, hash)
+	hasWriterBounds := entryBounds != nil
+	if hasWriterBounds {
+		for i, rows := range entryBounds {
+			if len(rows) == 0 {
+				continue
+			}
+			g.emitFixedWriterClamp(name, i, rows)
+		}
+		g.pf("// THE WRITER'S OWN BOUNDS per lineage entry, as one delegate array the\n")
+		g.pf("// load indexes by pick: null for the identity entry and for entries that\n")
+		g.pf("// bound nothing.\n")
+		g.pf("public static readonly System.Action<%s, TableReport>[] %sFixedClampKnown = new System.Action<%s, TableReport>[] {\n", name, name, name)
+		for i, rows := range entryBounds {
+			if len(rows) == 0 {
+				g.pf("    null,\n")
+			} else {
+				g.pf("    %sFixedClampKnown%d,\n", name, i)
+			}
+		}
+		g.pf("};\n\n")
+	}
+
 	g.pf("public static long %sFixedMeasure(long count)\n{\n", name)
 	g.pf("    return TableFixedWire.HeaderBytes + 4 + %sFixedLayoutBytes + count * %sFixedRecordBytes;\n}\n\n", name, name)
 
@@ -1945,6 +1973,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    int fillCount = 0;\n")
 	g.pf("    int census_unknown = 0;\n")
 	g.pf("    int census_kind = 0;\n")
+	if hasWriterBounds {
+		g.pf("    // THE WRITER'S OWN BOUNDS for the peer this file selected (ALGORITHM\n")
+		g.pf("    // §4.6, bill §12.5): held after the plan run, before this reader's own\n")
+		g.pf("    // pass, so a value forged past what the writer could have written lands\n")
+		g.pf("    // the writer's bound and counts, never this reader's wider own.\n")
+		g.pf("    System.Action<%s, TableReport> writerClamp = null;\n", name)
+	}
 	// THE IDENTITY LANE IS AN INDEX COMPARISON (§5.3): the reader's own entry is
 	// the LAST lineage entry (§5.2 appends the current layout last), so the lane
 	// is chosen by comparing the resolved lineage index with the reader's own
@@ -1976,6 +2011,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        // it lands only on a read that RETURNS: REFUSE moves no counter.\n")
 	g.pf("        census_unknown = lane.Unknown;\n")
 	g.pf("        census_kind = lane.KindMismatch;\n")
+	if hasWriterBounds {
+		g.pf("        writerClamp = %sFixedClampKnown[pick];\n", name)
+	}
 	g.pf("    }\n")
 	g.pf("    if (record_bytes <= 8 || rest %% record_bytes != 0)\n    {\n")
 	g.pf("        if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
@@ -2010,6 +2048,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// STEP 11's BOUNDS(out[rec]): straight-line code after the plan run, over
 	// STORAGE, so ONE pass covers BOTH plans (§4.6). A type that bounds nothing
 	// emits no pass and this line is not written at all.
+	if hasWriterBounds {
+		g.pf("        writerClamp?.Invoke(values[k], report);\n")
+	}
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        %sFixedClamp(values[k], report);\n", name)
 	}
