@@ -454,14 +454,42 @@ func variableCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Stru
 	}
 	seen[st.Name] = true
 	for _, f := range st.Fields {
-		if f.Type.Kind != ir.TNamed {
-			continue
-		}
-		if r, ok := f.Type.Ref.(*ir.Struct); ok {
+		for _, r := range variableFieldStructs(f) {
 			variableCollectTypes(r, seen, order)
 		}
 	}
 	*order = append(*order, st)
+}
+
+// variableFieldStructs is every struct one field line reaches DIRECTLY: the
+// table it names by value, by pointer or as an element; a map's generated
+// entry (§2.8); and each union arm's table or the structs its field line
+// reaches (§2.6), nested unions included. The codec closure and the refusal
+// fixpoint both walk it, so a carried root never reaches a table without a
+// codec.
+func variableFieldStructs(f *ir.Field) []*ir.Struct {
+	var out []*ir.Struct
+	if f.IsMap() {
+		return append(out, f.MapEntry)
+	}
+	if f.Type.Kind != ir.TNamed {
+		return nil
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		out = append(out, r)
+	case *ir.Union:
+		for _, arm := range r.Variants {
+			switch {
+			case arm.Void():
+			case arm.Body():
+				out = append(out, arm.Ref)
+			default:
+				out = append(out, variableFieldStructs(arm.F)...)
+			}
+		}
+	}
+	return out
 }
 
 // variableClass is one unit's answer to "does this leg carry that table on the
@@ -476,13 +504,32 @@ type variableClass struct {
 
 func newVariableClass(u *ir.Unit) *variableClass {
 	vc := &variableClass{reason: map[string]string{}}
-	names := make([]string, 0, len(u.Tables))
-	for n := range u.Tables {
+	// every struct the unit's tables reach — a map's generated entry and a
+	// union arm's table included, wherever the front end keeps them — is judged
+	// by the same fixpoint (variableFieldStructs)
+	structs := map[string]*ir.Struct{}
+	var reach func(st *ir.Struct)
+	reach = func(st *ir.Struct) {
+		if st == nil || structs[st.Name] != nil {
+			return
+		}
+		structs[st.Name] = st
+		for _, f := range st.Fields {
+			for _, r := range variableFieldStructs(f) {
+				reach(r)
+			}
+		}
+	}
+	for _, st := range u.Tables {
+		reach(st)
+	}
+	names := make([]string, 0, len(structs))
+	for n := range structs {
 		names = append(names, n)
 	}
 	sort.Strings(names)
 	for _, n := range names {
-		if refusals := tableVariableRefusals(u.Tables[n]); len(refusals) != 0 {
+		if refusals := tableVariableRefusals(structs[n]); len(refusals) != 0 {
 			vc.reason[n] = refusals[0]
 		} else {
 			vc.reason[n] = ""
@@ -496,15 +543,15 @@ func newVariableClass(u *ir.Unit) *variableClass {
 			if vc.reason[n] != "" {
 				continue
 			}
-			for _, f := range u.Tables[n].Fields {
-				ref, ok := f.Type.Ref.(*ir.Struct)
-				if !ok || f.Type.Kind != ir.TNamed {
-					continue
-				}
-				if why := vc.reason[ref.Name]; why != "" {
-					vc.reason[n] = fmt.Sprintf("%s.%s: it reaches %s, which this leg does not carry (%s)", n, f.Name, ref.Name, why)
-					changed = true
-					break
+		fields:
+			for _, f := range structs[n].Fields {
+				for _, ref := range variableFieldStructs(f) {
+					why := vc.reason[ref.Name]
+					if why != "" {
+						vc.reason[n] = fmt.Sprintf("%s.%s: it reaches %s, which this leg does not carry (%s)", n, f.Name, ref.Name, why)
+						changed = true
+						break fields
+					}
 				}
 			}
 		}
@@ -517,8 +564,9 @@ func (vc *variableClass) carried(name string) bool { return vc.reason[name] == "
 
 // variableFieldRefusal names the construct a field holds that this leg's
 // variable wire does not carry, as `Table.field: construct (cite)`. The empty
-// string is a field it carries: bool; every int width but 128 and every uint
-// width (§3); float32 and float64; bits(N) (§15); string(N) and bytes(N) (§3);
+// string is a field it carries: bool; every int and uint width including the
+// 128-bit wide scalars (§3); float32 and float64; bits(N) (§15); string(N) and
+// bytes(N) (§3);
 // *string and *bytes (§2.5); enums; a table nested by value (§3) or pointed at
 // (§2.1, §3.1); and an unbounded []T or a bounded [..N]T array of a table, a
 // pointer, a scalar or an enum element (§2.9) — a declared minimum, [Min..N]T,
@@ -526,14 +574,45 @@ func (vc *variableClass) carried(name string) bool { return vc.reason[name] == "
 // Whether a referenced TABLE is itself carried is the fixpoint's question
 // (newVariableClass).
 func variableFieldRefusal(st *ir.Struct, f *ir.Field) string {
-	name := st.Name + "." + f.Name
+	return variableFieldRefusalNamed(st.Name+"."+f.Name, f)
+}
+
+// variableFieldRefusalNamed is variableFieldRefusal under a name the caller
+// spells: a map's value and a union's arm are field lines too (§2.6, §2.8), so
+// they are judged by the same rules and refused under `Table.field: arm a` or
+// `Table.field: map value`.
+//
+// THE CARRIED SET GREW WITH js-carries-maps-and-union-arms-on-the-table-wire
+// (variablearms.go): a MAP whose key is a string(N) or an integer and whose
+// value is a carried field line (§2.8); a UNION, as a field or as an element of
+// []U / [..N]U, whose arms are payload-free, tables, or carried field lines
+// (§2.6, §3); an OPTIONAL ?T over a carried field line, arrays included (§2.3);
+// and an ENUM-KEYED ARRAY [E]T of a scalar, an enum or a table (§2.4, §3.2).
+func variableFieldRefusalNamed(name string, f *ir.Field) string {
 	switch {
-	case f.IsMap() || f.Type.Kind == ir.TMap:
-		return name + ": a map (docs/SPEC-TABLES.md §2.8)"
+	case f.IsMap():
+		key := ir.MapKeyField(f)
+		if key.Type.Kind != ir.TString && key.Type.Kind != ir.TInt {
+			return name + ": a map whose key is not a string(N) or an integer (docs/SPEC-TABLES.md §2.8)"
+		}
+		if key.Type.Kind == ir.TInt && key.Type.Width > 64 {
+			return name + ": a map keyed by a 128-bit integer (docs/SPEC-TABLES.md §2.8)"
+		}
+		return variableFieldRefusalNamed(name+" (map value)", ir.MapValueField(f))
+	case f.Type.Kind == ir.TMap:
+		return name + ": a map with no generated entry (docs/SPEC-TABLES.md §2.8)"
 	case f.KeyEnum != "":
-		return name + ": an enum-keyed array (docs/SPEC-TABLES.md §2.4)"
-	case f.Type.Optional:
-		return name + ": an optional ?T (docs/SPEC-TABLES.md §2.3)"
+		if f.KeyEnumRef == nil {
+			return name + ": an enum-keyed array of an enum this unit does not declare (docs/SPEC-TABLES.md §2.4)"
+		}
+		if f.Type.Pointer || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
+			return name + ": an enum-keyed array of pointers or strings (docs/SPEC-TABLES.md §2.4)"
+		}
+		if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
+			return name + ": an enum-keyed array of unions (docs/SPEC-TABLES.md §2.4)"
+		}
+	case f.Type.Optional && f.Type.Pointer:
+		return name + ": an optional pointer (docs/SPEC-TABLES.md §2.3)"
 	case f.Guard != "":
 		return name + ": a guarded field, an if group (docs/SPEC-TABLES.md §16.2)"
 	case f.HasFloatRange:
@@ -547,9 +626,6 @@ func variableFieldRefusal(st *ir.Struct, f *ir.Field) string {
 	case ir.TBool, ir.TBits, ir.TFloat32, ir.TFloat64, ir.TString, ir.TBytes:
 		return ""
 	case ir.TInt:
-		if f.Type.Width == 128 {
-			return name + ": a " + ir.TableTypeSpelling(f) + " (docs/SPEC-TABLES.md §3)"
-		}
 		return ""
 	case ir.TFixed:
 		return name + ": a fixed/ufixed (docs/SPEC-TABLES.md §15)"
@@ -565,7 +641,27 @@ func variableFieldRefusal(st *ir.Struct, f *ir.Field) string {
 			}
 			return ""
 		case *ir.Union:
-			return name + ": a union arm (docs/SPEC-TABLES.md §2.6)"
+			if f.Type.Pointer {
+				return name + ": a pointer to a union (docs/SPEC-TABLES.md §2.6)"
+			}
+			for _, arm := range ref.Variants {
+				armName := name + ": arm " + arm.Name
+				switch {
+				case arm.Void():
+				case arm.Body():
+					if !arm.Ref.IsTable {
+						return armName + ": a nested type (docs/SPEC-TABLES.md §2)"
+					}
+				default:
+					if arm.F.Type.Optional {
+						return armName + ": an optional arm (docs/SPEC-TABLES.md §2.6)"
+					}
+					if why := variableFieldRefusalNamed(armName, arm.F); why != "" {
+						return why
+					}
+				}
+			}
+			return ""
 		case *ir.Flags:
 			return name + ": a flags (docs/SPEC-TABLES.md §16)"
 		}

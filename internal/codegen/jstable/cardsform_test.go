@@ -41,26 +41,6 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 		want  string
 	}{
 		{
-			field: &ir.Field{Name: "m", Type: ir.FieldType{Kind: ir.TMap}, MapEntry: &ir.Struct{Name: "m_entry"}},
-			want:  "a map (docs/SPEC-TABLES.md §2.8)",
-		},
-		{
-			field: field("opt", ir.FieldType{Kind: ir.TInt, Signed: true, Width: 32, Optional: true}),
-			want:  "an optional ?T (docs/SPEC-TABLES.md §2.3)",
-		},
-		{
-			field: &ir.Field{Name: "ships", Type: ir.FieldType{Kind: ir.TInt, Signed: true, Width: 8}, KeyEnum: "ShipType", KeyEnumRef: &ir.Enum{Name: "ShipType", Max: 4}},
-			want:  "an enum-keyed array (docs/SPEC-TABLES.md §2.4)",
-		},
-		{
-			field: &ir.Field{Name: "arm", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Union{Name: "Pick"}}},
-			want:  "a union arm (docs/SPEC-TABLES.md §2.6)",
-		},
-		{
-			field: field("wide", ir.FieldType{Kind: ir.TInt, Signed: false, Width: 128}),
-			want:  "a uint128",
-		},
-		{
 			// a TABLE nested by value is carried (§3); a nested `type` is not
 			field: field("byval", ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "Kid"}}),
 			want:  "a nested type (docs/SPEC-TABLES.md §2)",
