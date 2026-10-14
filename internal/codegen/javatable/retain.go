@@ -112,7 +112,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		writeFieldRead(&b, u, st, f, true, i)
 	}
 	b.WriteString("            } else if (id == TableVariable.NODE_ID) {\n")
-	b.WriteString("                if (nt != null) { r.skip(kind); }\n")
+	b.WriteString("                if (nt != null && r.rootBody) { r.skip(kind); }\n")
 	b.WriteString("                else { report.malformed = true; return; }\n")
 	b.WriteString("            } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {\n")
 	b.WriteString("                report.malformed = true; return;\n")

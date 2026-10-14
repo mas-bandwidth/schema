@@ -69,6 +69,7 @@ public int unknown;
         public final long[] ids;
         public final Report report;
         public boolean fail;
+        public boolean rootBody;
 
         public Reader(byte[] buf, long[] ids, Report report) {
             this.buf = buf;
@@ -292,6 +293,7 @@ public int unknown;
         Reader r = new Reader(data, ids, report);
         r.off = 1;
         r.limit = base;
+        r.rootBody = true;
         return r;
     }
 
@@ -1541,7 +1543,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		writeFieldRead(&b, u, st, f, false, i)
 	}
 	b.WriteString("            } else if (id == TableVariable.NODE_ID) {\n")
-	b.WriteString("                if (nt != null) { r.skip(kind); }\n")
+	b.WriteString("                if (nt != null && r.rootBody) { r.skip(kind); }\n")
 	b.WriteString("                else { report.malformed = true; return false; }\n")
 	b.WriteString("            } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {\n")
 	b.WriteString("                report.malformed = true; return false;\n")
