@@ -132,9 +132,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		}
 	}
 
-	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: this backend's
-	// FIRST table WIRE. Form 1 is still deferred to schema#515 and nothing here
-	// reads or writes one.
+	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: the FIXED
+	// tables' wire. The variable form (form byte 1) is emitted below for the
+	// variable class; this is the fixed tables' own, laid out by the plan.
 	fixed, err := generateFixed(u, ns, lineage)
 	if err != nil {
 		return nil, err

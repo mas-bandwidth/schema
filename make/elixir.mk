@@ -91,10 +91,9 @@ generated/bench/elixir/.stamp: bin/schema $(SCHEMAS_BENCH)
 # graphdemo (tables/pointers) exercises the pointered variable class
 # (docs/SPEC-TABLES.md §2.1); blobdemo (tables/blobs) the byte buffers (§2.5);
 # listdemo (tables/lists) the unbounded arrays (§2.9); tblp1/tblp2/tblp3 the
-# evolution rows. The conformance matrix's cook, block and forgery surfaces —
-# the three this leg answers — name only graphdemo and blockdemo today; the
-# variable-class surfaces (wire, json-read, json-write, report) arrive with
-# the carry this card teaches.
+# evolution rows. The variable-class surfaces (wire, json-read, json-write,
+# report) answer every carried instance; a construct outside the class writes
+# <case>.absent rather than a wrong answer.
 ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
