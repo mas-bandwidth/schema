@@ -254,7 +254,7 @@ static void negative_control()
     tblfx1::FxRoot wrong;
     tblfx1::FxRootReset( wrong );
     tblfx1::TableReport r;
-    tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded, body, (uint8_t *) &wrong, &r );
+    tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded, body, (uint8_t *) &wrong, &r, tblfx1::FxRootFixedGuards );
     const bool intact = wrong.nested.a == 33 && wrong.nested.b == 44 && wrong.renamed == 808;
     check( !intact, "NEGATIVE CONTROL: the wrong plan must NOT reproduce the record" );
 
@@ -380,10 +380,19 @@ static std::vector<uint8_t> file_of( const std::vector<uint8_t> & layout )
     return f;
 }
 
+// THE THREE CLAUSES OF A LAYOUT REFUSAL (docs/FIXED-FORM-ALGORITHM.md §5.3: a
+// known hash whose layout bytes differ is REFUSE layout_malformed, and "REFUSE
+// is total: no counter moves, nothing is decoded, and not one destination byte
+// is written — the prefill included"). One: the read refuses under the one
+// name. Two: the DESTINATION IS PRESERVED — the storage is poisoned 0x5A AFTER
+// the Reset (before it, the Reset would erase the poison and the sweep would
+// prove nothing) and every byte is still 0x5A after the load. Three: no
+// counter moved and malformed stays false (the joint answer).
 static void refuses( std::vector<uint8_t> & broken, tblfx1::TableMessageReason want, const char * what )
 {
     tblfx1::FxRoot v;
     tblfx1::FxRootReset( v );
+    std::memset( (void *) &v, 0x5A, sizeof( v ) ); // the poison, after the Reset
     tblfx1::TableReport r;
     std::vector<tblfx1::TableFixedEntry> plan( 1024 );
     const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, broken.data(), (int64_t) broken.size(), plan.data(), 1024, NULL, &r );
@@ -392,8 +401,35 @@ static void refuses( std::vector<uint8_t> & broken, tblfx1::TableMessageReason w
     // record would be the damage the refusal exists to prevent.
     check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed,
            "a layout refusal sets nothing and counts nothing" );
+    // AND WROTE NOTHING: the sweep, every byte of the destination.
+    {
+        const uint8_t * p = (const uint8_t *) (const void *) &v;
+        size_t first = sizeof( v );
+        for ( size_t i = 0; i < sizeof( v ); ++i )
+        {
+            if ( p[i] != 0x5Au ) { first = i; break; }
+        }
+        if ( first != sizeof( v ) )
+            std::printf( "  refuses(): byte %zu of the destination is 0x%02x after: %s\n", first, (unsigned) p[first], what );
+        check( first == sizeof( v ), "a layout refusal writes nothing into the destination" );
+    }
 }
 
+// cpp/R9/seven-corruptions (docs/roadmap.sexp:835). THE SEVEN MALFORMATIONS OF
+// docs/FIXED-FORM-ALGORITHM.md §1.1, each mapped to the case below that drives
+// it under a KNOWN hash, and every one refused as the ONE name
+// `layout_malformed` (§5.3: under a known hash the layout is compared, never
+// walked, so there is no per-corruption name on the load path):
+//   §1.1 rule 1, the entry count fits the length, count != 0 — case 1 (count + 1) and case 1b (count 0)
+//   §1.1 rule 2, every kind in the closed set                 — case 2 (kind 200)
+//   §1.1 rule 3, a size matches its kind                      — case 4 (a uint32 in five bytes) and 4b (a table's size not the sum)
+//   §1.1 rule 4, a kind used as its definition allows         — case 3 (an array as the root)
+//   §1.1 rule 5, the pre-order walk consumes exactly count    — case 5 (the tree runs out) and 5b (the layout outlasts the tree)
+//   §1.1 rule 6, no size or partial sum passes 65536          — case 6 (a record of 65537) and 6b (a size that would wrap)
+//   §1.1 rule 7, nesting within the reader's walk bound       — case 7 (4096 nested optionals)
+// The residue (20 + L past the file) is layout_malformed too, and is not one of
+// the seven. Each case goes through refuses(), which asserts all three clauses:
+// the name, the destination preserved byte for byte, no counter moved.
 static void layout_validation()
 {
     // A KNOWN HASH whose layout BYTES differ is layout_malformed, one name for
@@ -839,7 +875,7 @@ static void bytes_row_case()
         tblfx2::FxRoot * back = (tblfx2::FxRoot *) (void *) storage.data();
         tblfx2::FxRootReset( *back );
         tblfx2::TableReport r;
-        tblfx2::TableFixedRun( plan.data(), made, guarded, body, (uint8_t *) back, &r );
+        tblfx2::TableFixedRun( plan.data(), made, guarded, body, (uint8_t *) back, &r, tblfx2::FxRootFixedGuards );
         const bool right = back->blob_length == 4 && back->blob[0] == 0xDE && back->blob[1] == 0xAD &&
                            back->blob[2] == 0xBE && back->blob[3] == 0xEF;
         if ( pass == 0 )
@@ -912,7 +948,7 @@ static void union_text_case()
         tblut1::TableReport r;
         const uint8_t * body = w.data() + tblut1::kTableFixedHeaderBytes + 4 + tblut1::UtRootFixedLayoutBytes + 8;
         tblut1::TableFixedRun( shared.data(), tblut1::UtRootFixedPlanCount, tblut1::UtRootFixedPlanGuarded,
-                               body, (uint8_t *) &wrong, &r );
+                               body, (uint8_t *) &wrong, &r, tblut1::UtRootFixedGuards );
         check( wrong.pick.b.label_length != 7 || std::strcmp( wrong.pick.b.label, "seven77" ) != 0,
                "NEGATIVE CONTROL: one shared lane really does read the arm's string wrong" );
     }
@@ -1228,7 +1264,7 @@ static void bounds_case()
         tblfx1::TableReport r;
         const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
         tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded,
-                               body, (uint8_t *) &loose, &r );
+                               body, (uint8_t *) &loose, &r, tblfx1::FxRootFixedGuards );
         check( loose.renamed == 5000 && loose.gone == -7,
                "NEGATIVE CONTROL: the loop alone really does leave an out-of-range value standing" );
         check( r.clamped == 0, "NEGATIVE CONTROL: and counts nothing" );
@@ -1264,7 +1300,7 @@ static void bounds_case()
         tblfx1::FxRootReset( held );
         tblfx1::TableReport r;
         const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
-        tblfx1::TableFixedRun( compiled.data(), made, guarded, body, (uint8_t *) &held, &r );
+        tblfx1::TableFixedRun( compiled.data(), made, guarded, body, (uint8_t *) &held, &r, tblfx1::FxRootFixedGuards );
         check( held.renamed == 5000 && held.gone == -7,
                "COMPILED, NEGATIVE CONTROL: the loop alone leaves an out-of-range value standing here too" );
         check( r.clamped == 0, "COMPILED, NEGATIVE CONTROL: and counts nothing" );
@@ -1372,7 +1408,7 @@ static void bounds_case()
         tblv1::CfgReset( held );
         tblv1::TableReport r;
         const uint8_t * body = vw.data() + tblv1::kTableFixedHeaderBytes + 4 + tblv1::CfgFixedLayoutBytes + 8;
-        tblv1::TableFixedRun( compiled.data(), made, guarded, body, (uint8_t *) &held, &r );
+        tblv1::TableFixedRun( compiled.data(), made, guarded, body, (uint8_t *) &held, &r, tblv1::CfgFixedGuards );
         check( held.a == 5000 && held.items[0] == 300,
                "live-count, compiled loop: nothing in the plan held either value" );
         check( r.clamped == 0, "live-count, compiled loop: and it counted nothing" );
@@ -1508,7 +1544,7 @@ static void text_content_case()
             tblfx1::TableReport r2;
             const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
             tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded,
-                                   body, (uint8_t *) &loose, &r2 );
+                                   body, (uint8_t *) &loose, &r2, tblfx1::FxRootFixedGuards );
             check( loose.label_length == 1 && (uint8_t) loose.label[0] == 0xFFu,
                    "NEGATIVE CONTROL: the loop alone really does leave a byte that is not text standing" );
             check( !r2.malformed, "NEGATIVE CONTROL: and says nothing about it" );
@@ -1771,7 +1807,7 @@ static void record_bound_case()
         body[8] = 'h'; body[9] = 'i';
         tblfx1::FxRoot v;
         tblfx1::FxRootReset( v );
-        tblfx1::TableFixedRun( plan.data(), made, guarded, body, (uint8_t *) (void *) &v, &r );
+        tblfx1::TableFixedRun( plan.data(), made, guarded, body, (uint8_t *) (void *) &v, &r, tblfx1::FxRootFixedGuards );
         check( v.keep == 4242u && v.label_length == 2 && v.label[0] == 'h' && v.label[1] == 'i',
                "W10: and it reads — the bound admits the last byte of the record" );
     }
