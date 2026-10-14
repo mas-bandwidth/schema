@@ -71,7 +71,7 @@ This work is on the sprint branch sprint/schema-vt-core and is not yet on main. 
 | Array counts and writer bounds | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Text lengths, code units and named refusals | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Scalar bounds and compressed floats | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ✅ | ❌ |
-| Full-width enum and union ordinals | ✅ | ❌ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Full-width enum and union ordinals | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Bool and present-byte normalization | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Live extents, read slack and prefill | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
 | Fixed-image writes and zeroed slack | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
@@ -113,7 +113,7 @@ This work is on the sprint branch sprint/schema-vt-core and is not yet on main. 
 | String, byte-buffer and flags defaults | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Save and load fixed-form files | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Constant body size and file-size measurement | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| complete | 85% | 82% | 82% | 82% | 89% | 82% | 94% | 87% | 89% |
+| complete | 85% | 84% | 82% | 84% | 89% | 82% | 94% | 87% | 91% |
 
 [Source data](docs/roadmap.sexp)
 
