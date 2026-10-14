@@ -445,6 +445,24 @@ tables-zero-cost-negative-control: build/tables-generated/.stamp
 	@grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" build/zero-cost-control/GuardedTable.h | grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u
 	@echo "negative control: a planted node symbol turns the zero-cost scan RED, and the reserved id alone does not"
 
+# THE ACCESSOR/DESCRIPTOR AGREEMENT GATE, the C++ half of the JavaScript J1
+# technique (docs/PORTING.md, schema#421): the generated accessor and the
+# generated descriptor are two independent derivations of one layout, so the
+# leg reads every field of a block and of a cook both ways and requires
+# agreement — including a pointer's SLOT, whose position is what a
+# self-relative delta is relative to (§6.3). The two controls move one
+# derivation — a generated block projection scalar four bytes, a cook pointer
+# slot eight — and each must turn the gate red, or the accessor half could be
+# reading the descriptors twice and nobody would know. The C++ half generates,
+# compiles and runs a probe of the reference emitter.
+.PHONY: tables-accessor-descriptor-agreement tables-accessor-negative-control tables-slot-negative-control
+tables-accessor-descriptor-agreement:
+	go test ./internal/codegen/cpptable -run '^TestCppAccessorDescriptorAgreement$$' -count=1
+tables-accessor-negative-control:
+	go test ./internal/codegen/cpptable -run '^TestCppAccessorDescriptorScalarNegativeControl$$' -count=1
+tables-slot-negative-control:
+	go test ./internal/codegen/cpptable -run '^TestCppAccessorDescriptorSlotNegativeControl$$' -count=1
+
 .PHONY: tables-json-walk
 tables-json-walk: build/tables-generated/.stamp
 	@rm -rf build/json-walk && mkdir -p build/json-walk
@@ -1850,6 +1868,50 @@ tables-runtime-home-negative-control: bin/schema tables-runtime-home
 	 fi; \
 	 echo "runtime home negative control: the file-order rule moves the runtime from $$base to $$added"
 
+# THE RUNTIME HOME IS THE PACKAGE (docs/PORTING.md J2). The C++ table emitter has
+# no <Package>Table.cs: it writes one header per unit file (out[f.Base+"Table.h"])
+# and lets an include guard admit the shared runtime exactly once per translation
+# unit. The guards are built from the PACKAGE — strings.ToUpper(pkg) in front of
+# every _SCHEMA_TABLE_* suffix — so the home is the guard NAME, not the file that
+# happens to sort first. The gate adds Aaa.schema, ahead of Guarded.schema, and
+# requires the sorted set of _SCHEMA_TABLE_ guards to stay TABLEDEMO_-prefixed and
+# identical across the two trees.
+.PHONY: tables-cpp-runtime-home
+tables-cpp-runtime-home: bin/schema
+	@rm -rf build/runtime-home-cpp && mkdir -p build/runtime-home-cpp/src
+	@cp tables/examples/*.schema build/runtime-home-cpp/src/
+	@printf 'package tabledemo\n\ntable AaaRow\n{\n    tag uint8\n}\n' > build/runtime-home-cpp/src/Aaa.schema
+	@./bin/schema generate --lang cpp --out build/runtime-home-cpp/base tables/examples
+	@./bin/schema generate --lang cpp --out build/runtime-home-cpp/added build/runtime-home-cpp/src
+	@base=$$(cd build/runtime-home-cpp/base && grep -ho '#ifndef [A-Z0-9_]*_SCHEMA_TABLE[A-Z0-9_]*' *Table.h | awk '{print $$2}' | sort -u); \
+	 added=$$(cd build/runtime-home-cpp/added && grep -ho '#ifndef [A-Z0-9_]*_SCHEMA_TABLE[A-Z0-9_]*' *Table.h | awk '{print $$2}' | sort -u); \
+	 if [ -z "$$base" ]; then echo "RUNTIME HOME GATE FAILED: the base tree has no _SCHEMA_TABLE_ guards — the gate is comparing two nothings"; exit 1; fi; \
+	 if [ -z "$$added" ]; then echo "RUNTIME HOME GATE FAILED: the added tree has no _SCHEMA_TABLE_ guards — the gate is comparing two nothings"; exit 1; fi; \
+	 for guard in $$base $$added; do \
+		case $$guard in TABLEDEMO_*) ;; *) echo "RUNTIME HOME GATE FAILED: guard $$guard is not prefixed TABLEDEMO_"; exit 1;; esac; \
+	 done; \
+	 if [ "$$base" != "$$added" ]; then echo "RUNTIME HOME GATE FAILED: the guard sets differ — base [$$base] vs added [$$added]"; exit 1; fi
+	@echo "runtime home gate (cpp): every _SCHEMA_TABLE_ guard is named by the package and the sorted set is identical across the two trees"
+
+.PHONY: tables-cpp-runtime-home-negative-control
+tables-cpp-runtime-home-negative-control: bin/schema tables-cpp-runtime-home
+	@sed 's|guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_PRIMITIVES"|guard := strings.ToUpper(ir.ProtocolIdHome(u)) + "_SCHEMA_TABLE_PRIMITIVES" // SABOTAGED: back to the file order|' \
+		internal/codegen/cpptable/cpptable.go > build/cppruntime-fileorder.gotext
+	@grep -q SABOTAGED build/cppruntime-fileorder.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/cppruntime-fileorder.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cppruntime-overlay.json
+	@go build -overlay=build/cppruntime-overlay.json -o build/schema-cppruntime-sabotaged ./cmd/schema
+	@rm -rf build/runtime-home-cpp/base-sabotage build/runtime-home-cpp/added-sabotage
+	@./build/schema-cppruntime-sabotaged generate --lang cpp --out build/runtime-home-cpp/base-sabotage tables/examples
+	@./build/schema-cppruntime-sabotaged generate --lang cpp --out build/runtime-home-cpp/added-sabotage build/runtime-home-cpp/src
+	@base=$$(cd build/runtime-home-cpp/base-sabotage && grep -ho '#ifndef [A-Z0-9_]*_SCHEMA_TABLE_PRIMITIVES[A-Z0-9_]*' *Table.h | awk '{print $$2}' | sort -u); \
+	 added=$$(cd build/runtime-home-cpp/added-sabotage && grep -ho '#ifndef [A-Z0-9_]*_SCHEMA_TABLE_PRIMITIVES[A-Z0-9_]*' *Table.h | awk '{print $$2}' | sort -u); \
+	 if [ "$$base" = "$$added" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the guard $$base — the gate is watching nothing"; exit 1; \
+	 fi; \
+	 echo "runtime home negative control (cpp): the file-order rule moves the guard from $$base to $$added"
+
 # DEFECT B's NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.7's DEPTH ONE, BOUNDED ONLY).
 # The dogfood found the C# blittable emitter projecting a bounded array INSIDE
 # a nested record out of line — a sixteen-byte triple where C++ put the whole
@@ -2781,6 +2843,20 @@ build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp tes
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 
+# THE C++ STEADY READ-PATH ALLOCATION GATE (docs/PORTING.md I1). The counting
+# global operator new in test/tables/main.cpp is live across Load, the indexed
+# and iterated reads, Measure and Save on the richest FIXED root; the run
+# prints the count and its in-process control plants one allocation and
+# requires the instrument to see it. #562's list audit and #615/#679's retain
+# counters hold their own paths; `make test` reaches this one through
+# build/schema_test_tables.
+.PHONY: tables-cpp-alloc
+tables-cpp-alloc: build/schema_test_tables
+	@./build/schema_test_tables > build/tables-cpp-alloc.log 2>&1 || { cat build/tables-cpp-alloc.log; exit 1; }
+	@grep -q "^tables allocation audit: 0 allocation" build/tables-cpp-alloc.log || \
+		{ echo "C++ allocation gate FAILED: the steady read path allocated"; cat build/tables-cpp-alloc.log; exit 1; }
+	@echo "C++ allocation gate: Load, the reads, Measure and Save leave the global allocation count at zero"
+
 # The SANITIZED twin (issue #277). The tables leg is where the pointer
 # machinery lives — an arena whose Lock() frees it one way, a packed region
 # read through self-relative deltas, a cooked file Open validates by walking
@@ -3114,6 +3190,93 @@ tables-pack-negative-control: tables-pack
 	fi
 	@echo "pack negative control: eliding a present ?T turns the golden red"
 
+# THE TEXT DIFFERENTIAL AGAINST A THIRD IMPLEMENTATION (docs/PORTING.md I13,
+# docs/SPEC-TABLES.md §17.1's third golden, schema#419). `tables-pack` pins TWO
+# hand-built instances; this target makes the instance RANDOM — N of them, on a
+# seed — so the differential reaches the float ties a pinned golden never does.
+# The driver draws each float32 leaf of the known-good PackConfig corpus wire
+# from one of two families (random bits, and ±(m+k/2^e) whose decimal expansion
+# ends in 5) and emits (wire, text); then the compiler's own Go engine
+# (`schema unpack`, written from the spec and from neither backend) reads the
+# same wire and writes its text, and the two texts are byte-compared, then the
+# other direction. -ffp-contract=off is load-bearing: a contracted multiply-add
+# would change a value this row is measuring the spelling of.
+#
+# JSON_DIFF_N / JSON_DIFF_SEED are this target's own knobs, not the fuzzers'
+# global N/SEED (sized for a 100000-mutant run); both overridable on the line.
+JSON_DIFF_N ?= 40
+JSON_DIFF_SEED ?= 419
+# the generated tree the driver compiles against; the negative control below
+# points these same variables at a sabotaged copy, so a build and its twin can
+# never drift into covering different code
+JSON_DIFF_GEN ?= build/tables-generated
+JSON_DIFF_INCLUDES := -I$(JSON_DIFF_GEN)/examples -Itest/tables -I$(SERIALIZE)
+# Pack.schema names no other file's types, so one .h/.cpp pair is the whole
+# dependency (internal/codegen/cpptable/cpptable.go:1703,1732)
+JSON_DIFF_SOURCES := $(JSON_DIFF_GEN)/examples/PackTable.cpp
+
+build/schema_test_json_differential: build/tables-generated/.stamp test/tables/json_differential_main.cpp
+	@mkdir -p build
+	$(CXX) $(PACK_CXXFLAGS) $(JSON_DIFF_INCLUDES) test/tables/json_differential_main.cpp $(JSON_DIFF_SOURCES) -o $@
+
+.PHONY: tables-json-differential
+tables-json-differential: build/tables-generated/.stamp build/schema_test_json_differential build/tables-pack.bin bin/schema
+	@rm -rf build/json-diff && mkdir -p build/json-diff
+	./build/schema_test_json_differential write build/tables-pack.bin $(JSON_DIFF_SEED) $(JSON_DIFF_N) build/json-diff
+	@i=0; while [ $$i -lt $(JSON_DIFF_N) ]; do \
+		./bin/schema unpack --one-file --root PackConfig --in build/json-diff/$$i.wire build/json-diff/$$i-text tables/examples || exit 1; \
+		cmp build/json-diff/$$i.cpp.json build/json-diff/$$i-text/PackConfig.json || exit 1; \
+		i=$$((i+1)); \
+	done
+	./build/schema_test_json_differential read $(JSON_DIFF_N) build/json-diff
+	@i=0; while [ $$i -lt $(JSON_DIFF_N) ]; do \
+		./bin/schema pack --root PackConfig --out build/json-diff/$$i.back.wire build/json-diff/$$i-text tables/examples || exit 1; \
+		cmp build/json-diff/$$i.wire build/json-diff/$$i.back.wire || exit 1; \
+		i=$$((i+1)); \
+	done
+	@echo "json differential: compared $(JSON_DIFF_N) instances — direction one (unpack vs ToJson), direction two (FromJson vs Save), and the engine's back direction (pack) — on seed $(JSON_DIFF_SEED)"
+
+# ITS NEGATIVE CONTROL: break ONE rule of the C++ float writer — widen the
+# round-trip check that decides an f32's spelling from strtof to strtod, so
+# "shortest that reads back at the field's own width" becomes "shortest that
+# reads back as a double", and every non-trivial float32 renders at nine digits
+# where the engine writes the short form. A differential that does not move when
+# one side's rounding rule is broken is worth nothing, so the target runs the
+# POSITIVE one first: a red positive gate can never pass as a successful
+# sabotage. The sabotaged source lives under build/ and reaches the compiler
+# through `go build -overlay`, so no tracked file is ever written to.
+.PHONY: tables-json-differential-negative-control
+tables-json-differential-negative-control: tables-json-differential
+	@rm -rf build/json-diff-nc && mkdir -p build/json-diff-nc
+	@sed 's|if ( (double) strtof( text, NULL ) == value ) { break; }|if ( (double) strtod( text, NULL ) == value ) { break; } // SABOTAGED: an f64 round-trip decides an f32 spelling|' \
+		internal/codegen/cpptable/json.go > build/json-diff-nc/json.go.txt
+	@cmp -s build/json-diff-nc/json.go.txt internal/codegen/cpptable/json.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@test "$$(grep -c SABOTAGED build/json-diff-nc/json.go.txt)" = "1" || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not land exactly once"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/json.go":"%s/build/json-diff-nc/json.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/json-diff-nc/overlay.json
+	@go build -overlay=build/json-diff-nc/overlay.json -o build/json-diff-nc/schema ./cmd/schema
+	@./build/json-diff-nc/schema generate --lang cpp --out build/json-diff-nc/examples tables/examples
+	@grep -rl SABOTAGED build/json-diff-nc/examples/ || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not reach the generated code"; exit 1; }
+	$(CXX) $(PACK_CXXFLAGS) -Ibuild/json-diff-nc/examples -Itest/tables -I$(SERIALIZE) \
+		test/tables/json_differential_main.cpp build/json-diff-nc/examples/PackTable.cpp \
+		-o build/json-diff-nc/schema_test_json_differential
+	@rm -rf build/json-diff-nc/run && mkdir -p build/json-diff-nc/run
+	./build/json-diff-nc/schema_test_json_differential write build/tables-pack.bin $(JSON_DIFF_SEED) $(JSON_DIFF_N) build/json-diff-nc/run
+	@i=0; while [ $$i -lt $(JSON_DIFF_N) ]; do \
+		./bin/schema unpack --one-file --root PackConfig --in build/json-diff-nc/run/$$i.wire build/json-diff-nc/run/$$i-text tables/examples || exit 1; \
+		i=$$((i+1)); \
+	done
+	@if ./build/json-diff-nc/schema_test_json_differential read $(JSON_DIFF_N) build/json-diff-nc/run > build/json-diff-nc/run.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the differential stayed green with strtof widened to strtod"; exit 1; \
+	fi
+	@grep -q "DIFF instance" build/json-diff-nc/run.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the differential went red, but not on a text mismatch"; cat build/json-diff-nc/run.log; exit 1; }
+	@echo "json differential negative control: an f64 round-trip deciding an f32 spelling turns the differential red"
+	@cat build/json-diff-nc/run.log
+
 build/schema_test_random: generated/cpp/.stamp test/random_main.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated/cpp -Itest test/random_main.cpp -o $@
@@ -3241,6 +3404,13 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-message-form-negative-control
 	$(MAKE) tables-zero-cost
 	$(MAKE) tables-zero-cost-negative-control
+	# THE ACCESSOR/DESCRIPTOR AGREEMENT (docs/PORTING.md J1, schema#421): the
+	# generated accessor and the generated descriptor are two independent
+	# derivations of one layout, read both ways on a block and a cook, with a
+	# scalar and a pointer-slot control that must each go red.
+	$(MAKE) tables-accessor-descriptor-agreement
+	$(MAKE) tables-accessor-negative-control
+	$(MAKE) tables-slot-negative-control
 	$(MAKE) tables-maps
 	$(MAKE) tables-maps-measure-refusals
 	$(MAKE) tables-json-map-walk
@@ -3330,9 +3500,13 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-block-home-negative-control
 	$(MAKE) tables-runtime-home
 	$(MAKE) tables-runtime-home-negative-control
+	$(MAKE) tables-cpp-runtime-home
+	$(MAKE) tables-cpp-runtime-home-negative-control
 	$(MAKE) tables-block-inline-array-negative-control
 	$(MAKE) tables-pack
 	$(MAKE) tables-pack-negative-control
+	$(MAKE) tables-json-differential
+	$(MAKE) tables-json-differential-negative-control
 	$(MAKE) tables-hostile-values
 	$(MAKE) tables-hostile-negative-control
 	./build/schema_test_random
@@ -4876,6 +5050,33 @@ tables-ref-ordinal-shared-negative-control:
 		  cat build/ref-ordinal-shared-nc/log; exit 1; }
 	@grep -m1 "VALUES MOVED" build/ref-ordinal-shared-nc/log
 	@echo "negative control: an ordinal recorded on the MISS alone loses the field an eliding generic-key slot shares its id with"
+
+# THE CPP NAME-CLAIM NEGATIVE CONTROL (docs/SPEC-TABLES.md §11, schema #414).
+# Every namespace-scope spelling of the C++ table runtime is either registered
+# in internal/tablenames or recorded in compiler's
+# TestCppEmittedRuntimeNamesAreClaimedOrRecorded, which holds the unregistered
+# remainder to a baseline list so the gap can only shrink. This plants one more
+# unregistered struct in the runtime through `go test -overlay` and requires
+# that test to go RED naming it. No tracked file is written to.
+.PHONY: tables-cpp-names-negative-control
+tables-cpp-names-negative-control:
+	@rm -rf build/cpp-names-nc && mkdir -p build/cpp-names-nc
+	@sed 's|^struct TableWideRange$$|struct TableBogusUnregistered {}\n\nstruct TableWideRange|' \
+		internal/codegen/cpptable/cpptable.go > build/cpp-names-nc/cpptable.go.txt
+	@cmp -s internal/codegen/cpptable/cpptable.go build/cpp-names-nc/cpptable.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the runtime moved"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/cpp-names-nc/cpptable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cpp-names-nc/overlay.json
+	@if go test -count=1 -overlay build/cpp-names-nc/overlay.json -run TestCppEmittedRuntimeNamesAreClaimedOrRecorded \
+			./compiler > build/cpp-names-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the name-claim test stayed green with an unregistered runtime struct planted"; \
+		cat build/cpp-names-nc/log; exit 1; \
+	fi
+	@grep -q "emits TableBogusUnregistered and internal/tablenames does not register it" build/cpp-names-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the test went red for some other reason"; \
+		  cat build/cpp-names-nc/log; exit 1; }
+	@grep -m1 "TableBogusUnregistered" build/cpp-names-nc/log
+	@echo "negative control: one unregistered runtime struct turns the C++ name-claim test RED"
 
 # THE C++ RELEASE GATE: the wire fuzzer at a long random pass, both builds,
 # and the retention leg beside it at the same length (docs/SPEC-TABLES.md

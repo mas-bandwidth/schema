@@ -16,6 +16,8 @@
         "tables-block-race-negative-control",
         "tables-c-ref-ordinal-negative-control",
         "tables-clamp-limits-negative-control",
+        "tables-cpp-names-negative-control",
+        "tables-cpp-runtime-home-negative-control",
         "tables-doctags-negative-controls",
         "tables-fixed-twin-negative-control",
         "tables-fixedform-run-copy-negative-control",
@@ -34,6 +36,8 @@
         "tables-was-negative-control",
         "tables-wasrows-negative-control",
         "tables-zero-cost-negative-control",
+        "tables-accessor-negative-control",
+        "tables-slot-negative-control",
         "toolchain-negative-control"
       ]
     },
@@ -258,6 +262,7 @@
       "when": "pull-request",
       "why": "the pack golden's framing control: elide a present `?T` in the Go encoder and the byte comparison against the C++ Save has to go red. Measured 7 s off one warm build.",
       "targets": [
+        "tables-json-differential-negative-control",
         "tables-pack-negative-control"
       ]
     },
