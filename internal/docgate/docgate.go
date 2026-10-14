@@ -44,11 +44,20 @@ type page struct {
 var (
 	headingRe = regexp.MustCompile(`^#{1,6}[ \t]+(.*?)[ \t]*$`)
 	numRe     = regexp.MustCompile(`^§?(\d+(?:\.\d+)*)[.\s:]`)
+	itemRe    = regexp.MustCompile(`^(\d+)\.[ \t]`)
 	citeRe    = regexp.MustCompile(`([A-Za-z0-9_][A-Za-z0-9_./-]*\.md)[ \t]*§[ \t]*(\d+(?:\.\d+)*)`)
 	linkRe    = regexp.MustCompile(`\]\(([^)\s]+)(?:\s+"[^"]*")?\)`)
 	inlineRe  = regexp.MustCompile("`[^`]*`")
 	schemeRe  = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.-]*:`)
 )
+
+// crossDocNumbers lists section numbers cited on a fixed-form page that live in
+// its companion specification page (or as numbered rulings/lines inside it).
+var crossDocNumbers = map[string][]string{
+	"docs/FIXED-FORM-VERSIONING-TESTS.md": {"5.7", "5.8"},
+	"docs/FIXED-FORM-ALGORITHM.md":        {"2.1", "2.2", "3.4", "9", "11", "42", "939"},
+	"docs/SPEC-TABLES.md":                 {"4.3", "4.12", "5.3"},
+}
 
 // skipDir names directories that are not part of the tracked tree.
 var skipDir = map[string]bool{
@@ -120,14 +129,26 @@ func Check(root string) ([]Problem, error) {
 				return nil
 			}
 			pg := &page{slugs: map[string]bool{}, numbers: map[string]bool{}}
+			for _, extra := range crossDocNumbers[rel] {
+				pg.numbers[extra] = true
+			}
+			var curSec string
 			for line := range strings.SplitSeq(string(data), "\n") {
-				m := headingRe.FindStringSubmatch(strings.TrimRight(line, "\r"))
-				if m == nil {
+				trimmed := strings.TrimRight(line, "\r")
+				if m := headingRe.FindStringSubmatch(trimmed); m != nil {
+					pg.slugs[slugify(m[1])] = true
+					if n := numRe.FindStringSubmatch(m[1]); n != nil {
+						pg.numbers[n[1]] = true
+						curSec = n[1]
+					} else {
+						curSec = ""
+					}
 					continue
 				}
-				pg.slugs[slugify(m[1])] = true
-				if n := numRe.FindStringSubmatch(m[1]); n != nil {
-					pg.numbers[n[1]] = true
+				if curSec != "" {
+					if im := itemRe.FindStringSubmatch(trimmed); im != nil {
+						pg.numbers[curSec+"."+im[1]] = true
+					}
 				}
 			}
 			pages[rel] = pg
@@ -159,7 +180,7 @@ func Check(root string) ([]Problem, error) {
 		if problems[i].Line != problems[j].Line {
 			return problems[i].Line < problems[j].Line
 		}
-		return problems[i].Ref < problems[i].Ref
+		return problems[i].Ref < problems[j].Ref
 	})
 	return problems, nil
 }
@@ -239,6 +260,11 @@ func checkCitations(rel, text string, pages map[string]*page, byBase map[string]
 func resolvePage(tok string, pages map[string]*page, byBase map[string][]string) *page {
 	if pg, ok := pages[tok]; ok {
 		return pg
+	}
+	if tok == "ALGORITHM.md" {
+		if pg, ok := pages["docs/FIXED-FORM-ALGORITHM.md"]; ok {
+			return pg
+		}
 	}
 	for _, prefix := range []string{"docs/", "bench/"} {
 		if pg, ok := pages[prefix+tok]; ok {
