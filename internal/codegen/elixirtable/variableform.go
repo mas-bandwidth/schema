@@ -528,7 +528,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         {:error, reason, empty_report()}
 
       {:ok, body, ids} ->
-        case entries(body, ids, desc.string_blob) do
+        case entries(body, ids, desc.string_blob, desc.variable) do
           {:error, _} ->
             {:error, :malformed, empty_report()}
 
@@ -617,14 +617,18 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   # entries walks the body once into {id, kind, payload} triples, splitting the
-  # node table out into its records (docs/SPEC-TABLES.md §3.1).
-  defp entries(bin, ids, string_blob), do: entries(bin, ids, string_blob, [], [])
+  # node table out into its records (docs/SPEC-TABLES.md §3.1). transport is
+  # true only for a variable root: that body carries the reserved node id as
+  # its own numbering and does not count it unknown. A fixed root, and every
+  # nested body, cannot name the id, so it joins the field list and counts
+  # once as unknown (§4).
+  defp entries(bin, ids, string_blob, transport), do: entries(bin, ids, string_blob, transport, [], [])
 
   # entries returns {:ok, fields, nodes} when the body ends at its terminator,
   # or {:stop, fields, nodes, remaining} when the walk stops, the fourth item
   # being the bytes the walk left un-consumed: 0 means the body ran off its own
   # end cleanly, which is the one stop that keeps the decoded prefix (§3).
-  defp entries(bin, ids, string_blob, acc, nodes) do
+  defp entries(bin, ids, string_blob, transport, acc, nodes) do
     case leb(bin) do
       :error ->
         {:stop, Enum.reverse(acc), nodes, byte_size(bin)}
@@ -649,22 +653,22 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                 else
                   case slice(rest2, kind) do
                     {:ok, payload, rest3} ->
-                      if id == @node_id do
-                        # the reserved node id is this reader's own (§3.1): the
-                        # root body reads it as the node table, and a body that
-                        # carries it under another kind steps over it, never
-                        # counting it unknown
+                      if id == @node_id and transport do
+                        # the reserved node id is a variable root's own transport
+                        # (§3.1): the body reads it as the node table, and a body
+                        # that carries it under another kind steps over it, never
+                        # counting it unknown. A fixed root has no such arm.
                         if kind == 12 do
                           case node_table(payload, ids, string_blob) do
-                            {:ok, ns} -> entries(rest3, ids, string_blob, acc, nodes ++ ns)
+                            {:ok, ns} -> entries(rest3, ids, string_blob, transport, acc, nodes ++ ns)
                             :error -> {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
                           end
                         else
-                          entries(rest3, ids, string_blob, acc, nodes)
+                          entries(rest3, ids, string_blob, transport, acc, nodes)
                         end
 
                       else
-                        entries(rest3, ids, string_blob, [{id, kind, payload} | acc], nodes)
+                        entries(rest3, ids, string_blob, transport, [{id, kind, payload} | acc], nodes)
                       end
 
                     :error ->
@@ -672,7 +676,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                       # cannot hold: the field still counts — unknown when the id
                       # is not this body's, a kind mismatch when it is — and the
                       # walk stops (§3, §4)
-                      if id == @node_id do
+                      if id == @node_id and transport do
                         {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
                       else
                         {:stop, Enum.reverse([{id, kind, <<>>} | acc]), nodes, byte_size(rest2)}
@@ -772,7 +776,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp decode_node_table(nodes, name, body, ids) do
     desc = Map.fetch!(@tables, name)
 
-    case entries(body, ids, desc.string_blob) do
+    case entries(body, ids, desc.string_blob, false) do
       {:ok, fields, []} ->
         {value, _report} = decode(desc, fields, nodes, ids)
         {:value, value}
@@ -938,7 +942,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       {_len, body} ->
         elem_desc = Map.fetch!(@tables, f.elem)
 
-        case entries(body, ids, elem_desc.string_blob) do
+        case entries(body, ids, elem_desc.string_blob, false) do
           {:ok, fields, []} ->
             {value, report} = decode(elem_desc, fields, nodes, ids)
             {:cont, value, report}
@@ -1192,7 +1196,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     if ends_early?(sub, ids) do
       {%{}, malformed_report()}
     else
-      case entries(sub, ids, false) do
+      case entries(sub, ids, false, false) do
         {:ok, fields, []} ->
           # a list element's report FOLDS into the enclosing one (§4): the
           # counters sum and malformed sticks, so an event inside an element
@@ -2232,7 +2236,7 @@ const variableRetainSource = `
         {:error, :malformed, report, retain}
 
       {:ok, body, ids} ->
-        case entries(body, ids, desc.string_blob) do
+        case entries(body, ids, desc.string_blob, desc.variable) do
           {:ok, fields, nodes} ->
             {value, report, retain} = decode_retain(desc, fields, nodes, ids, retain, report, [])
             report = if :malformed in nodes, do: %{report | malformed: true}, else: report
@@ -2467,7 +2471,7 @@ const variableRetainSource = `
     if ends_early?(sub, ids) do
       {%{}, malformed_report(), retain}
     else
-      case entries(sub, ids, false) do
+      case entries(sub, ids, false, false) do
         {:ok, fields, []} ->
           decode_retain(desc, fields, nodes, ids, retain, report, elem_path)
 
@@ -2874,7 +2878,11 @@ func tableDescriptor(u *ir.Unit, st *ir.Struct) string {
 	var b strings.Builder
 	ml := ir.RecordLayout(u, st)
 	_, str := ir.PointerReachableBlobs(st)
-	fmt.Fprintf(&b, "    %q => %%{size: %d, string_blob: %v, fields: [\n", st.Name, ml.Size, str)
+	// variable is this table's own class (docs/SPEC-TABLES.md §3.1). A variable
+	// root carries the node-table id as transport. A fixed root cannot name
+	// that id, so a body that brings one counts it unknown, once (§4).
+	fmt.Fprintf(&b, "    %q => %%{size: %d, string_blob: %v, variable: %v, fields: [\n",
+		st.Name, ml.Size, str, ir.VariableTables(u)[st.Name])
 	for i, f := range st.Fields {
 		b.WriteString("      " + fieldDescriptor(u, f, i))
 	}
