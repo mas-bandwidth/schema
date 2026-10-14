@@ -222,24 +222,64 @@ type Wide {
 	if text == "" {
 		t.Fatal("W.java not emitted")
 	}
-	// release: no unconditional checks in the text
+
+	// no unconditional throw anywhere: release never refuses or throws
 	for _, bad := range []string{
 		`throw new IllegalArgumentException("wstring length")`,
 		`throw new IllegalArgumentException("wstring null unit")`,
 	} {
 		if strings.Contains(text, bad) {
-			t.Logf("GENERATED TEXT:\n%s", text)
-			t.Errorf("release writer's text carries unconditional check %q", bad)
+			t.Errorf("release writer carries unconditional check %q", bad)
 		}
 	}
-	// debug still has the checks (via assert)
-	if !strings.Contains(text, "assert value.textLength >= 0;") {
-		t.Errorf("debug writer missing length >= check assert")
+
+	// The hot write body carries exactly one dormant assert — the single
+	// checkWrite predicate call — and no inline contract checks. Routing the
+	// checks through the predicate keeps them out of the hot body while the
+	// predicate's contract walk still runs them under -ea (issue #156).
+	write := funcBody(t, text, "public static int writeWide(")
+	if n := strings.Count(write, "assert "); n != 1 {
+		t.Errorf("writeWide carries %d asserts, want exactly the checkWrite predicate call", n)
 	}
-	if !strings.Contains(text, "assert value.textLength <= 2;") {
-		t.Errorf("debug writer missing length <= check assert")
+	if !strings.Contains(write, "assert checkWriteWide(value, data);") {
+		t.Errorf("writeWide missing its single checkWrite predicate call")
 	}
-	if !strings.Contains(text, "assert v != 0;") {
-		t.Errorf("debug writer missing null-unit check assert")
+	for _, bad := range []string{
+		"assert value.textLength",
+		"assert v != 0",
+		"throw ",
+	} {
+		if strings.Contains(write, bad) {
+			t.Errorf("writeWide carries an inline contract check %q", bad)
+		}
 	}
+
+	// The whole write contract, null units included, lives in checkWriteWide.
+	check := funcBody(t, text, "private static boolean checkWriteWide(")
+	for _, want := range []string{
+		"assert value.textLength >= 0;",
+		"assert value.textLength <= 2;",
+		"assert value.text[wideIndex] != 0;",
+	} {
+		if !strings.Contains(check, want) {
+			t.Errorf("checkWriteWide missing contract check %q", want)
+		}
+	}
+}
+
+// funcBody returns the text of the first function whose signature line
+// contains sig, from that signature through its outer closing brace (the
+// first line holding exactly four spaces and a closing brace).
+func funcBody(t *testing.T, text, sig string) string {
+	t.Helper()
+	i := strings.Index(text, sig)
+	if i < 0 {
+		t.Fatalf("function %q not found in generated text", sig)
+	}
+	rest := text[i:]
+	j := strings.Index(rest, "\n    }\n")
+	if j < 0 {
+		t.Fatalf("closing brace of %q not found", sig)
+	}
+	return rest[:j]
 }

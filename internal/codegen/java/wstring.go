@@ -8,12 +8,9 @@ import (
 
 func (g *gen) emitWriteWString(f *ir.Field, name, ind string) {
 	length := name + "Length"
-	g.pf("%sassert %s >= 0;\n", ind, length)
-	g.pf("%sassert %s <= %d;\n", ind, length, f.Type.Size)
 	g.emitWriteOffset(length, big.NewInt(0), big.NewInt(f.Type.Size), ind)
 	g.pf("%sfor (int wideIndex = 0; wideIndex < %s; wideIndex++) {\n", ind, length)
 	g.pf("%s    v = %s[wideIndex];\n", ind, name)
-	g.pf("%s    assert v != 0;\n", ind)
 	g.mergeW(32, ind+"    ")
 	g.pf("%s}\n", ind)
 }

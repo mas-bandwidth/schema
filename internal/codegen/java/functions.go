@@ -515,8 +515,13 @@ func (g *gen) emitCheckElem(f *ir.Field, name, iv, ind string) {
 
 func (g *gen) emitCheckScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		g.assertRange(name+"Length", big.NewInt(0), big.NewInt(f.Type.Size), true, ind)
+	case ir.TWString:
+		g.assertRange(name+"Length", big.NewInt(0), big.NewInt(f.Type.Size), true, ind)
+		g.pf("%sfor (int wideIndex = 0; wideIndex < %sLength; wideIndex++) {\n", ind, name)
+		g.pf("%s    assert %s[wideIndex] != 0;\n", ind, name)
+		g.pf("%s}\n", ind)
 	case ir.TFixed:
 		rawMin, rawMax, _ := fixedRaw(f)
 		if f.Type.Width == 128 {
