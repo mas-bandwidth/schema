@@ -991,6 +991,28 @@ Uint8List taskHash(Record record) {
 String taskHashHex(Record record) =>
     taskHash(record).map((v) => v.toRadixString(16).padLeft(2, '0')).join();
 
+// taskHashHexWithNeeds is the hash-negative-control frame: taskHash's logical
+// frame with the needs list inserted in schema declaration order, between
+// shared and test, so a driver that hashes needs — which the task hash excludes
+// (docs/SPEC-TABLES.md §5; tla/CardHops.tla: TaskHashStable) — produces a
+// different but still valid 64-digit digest. It is reached only through the
+// CARDS_DART_SABOTAGE_HASH test switch in bin/driver.dart, never by a customer.
+String taskHashHexWithNeeds(Record record) {
+  _refuseLossy(record.report);
+  final c = record.card;
+  final framed = <int>[];
+  _hashText(framed, c.body ?? '');
+  _hashList(framed, c.paths.map((e) => e.s).toList());
+  _hashList(framed, c.new_.map((e) => e.s).toList());
+  _hashList(framed, c.shared.map((e) => e.s).toList());
+  _hashList(framed, c.needs.map((e) => e.s).toList());
+  _hashText(framed, c.test);
+  _hashText(framed, c.done ?? '');
+  return sha256Bytes(framed)
+      .map((v) => v.toRadixString(16).padLeft(2, '0'))
+      .join();
+}
+
 void _validateStrings(String name, List<String> values, int bound) {
   for (final v in values) {
     if (utf8.encode(v).length > bound) {

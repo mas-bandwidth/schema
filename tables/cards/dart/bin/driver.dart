@@ -190,9 +190,16 @@ void one(String surface, Case c, String outdir) {
       try {
         final rec = load(wire);
         if (Platform.environment['CARDS_DART_SABOTAGE_HASH'] == '1') {
-          // the hash negative control: needs rides in the hash, so taskhash
-          // alone goes red.
-          writeFile(outdir, c.name, 'hex', utf8.encode('${taskHashHex(rec)}x'));
+          // the hash negative control: needs rides in the SHA-256 frame, so
+          // the digest is a valid 64-digit hex that differs from the task hash
+          // (which excludes needs), and taskhash alone goes red
+          // (tla/CardHops.tla: TaskHashStable).
+          writeFile(
+            outdir,
+            c.name,
+            'hex',
+            utf8.encode(taskHashHexWithNeeds(rec)),
+          );
         } else {
           writeFile(outdir, c.name, 'hex', utf8.encode(taskHashHex(rec)));
         }

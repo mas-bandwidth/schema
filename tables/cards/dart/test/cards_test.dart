@@ -405,6 +405,28 @@ void taskHashFramesLogicalFields() {
   }
 }
 
+// hashNegativeControlFramesNeeds pins the CARDS_DART_SABOTAGE_HASH switch's
+// alternate hash: it rides needs in the frame, so it is a valid 64-digit hex
+// that differs from taskHash (which excludes needs) for a card with needs, and
+// also for an empty-needs card (the empty list's count rides in the frame), so
+// the negative control goes red on taskhash alone, not on a hex artifact
+// (docs/SPEC-TABLES.md §5; tla/CardHops.tla: TaskHashStable).
+void hashNegativeControlFramesNeeds() {
+  final rec = load(
+    readBytes('tables/cards/conformance/cases/card-populated.wire'),
+  );
+  final sab = taskHashHexWithNeeds(rec);
+  check(sab.length == 64 && isHex(sab), 'sabotage hash is 64 hex digits');
+  check(sab != taskHashHex(rec), 'sabotage hash differs from the task hash');
+  final empty = load(
+    readBytes('tables/cards/conformance/cases/empty-consumers.wire'),
+  );
+  check(
+    taskHashHexWithNeeds(empty) != taskHashHex(empty),
+    'sabotage hash differs for an empty-needs card',
+  );
+}
+
 // fieldEditLeavesTheTaskHashAlone: needs/tier/priority/column/holder edits
 // change the wire and not the hash; a paths edit changes both; the body is
 // byte-equal throughout; refusals leave Wire byte-equal (CardHops
@@ -521,6 +543,7 @@ void main() {
   sha256MatchesFips180Vectors();
   upgradeMatchesGo();
   taskHashFramesLogicalFields();
+  hashNegativeControlFramesNeeds();
   fieldEditLeavesTheTaskHashAlone();
   viewWalksEveryField();
   sha256MatchesFips180Vectors();
