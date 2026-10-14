@@ -37,6 +37,7 @@ func (p Problem) String() string {
 
 // page is one markdown page and the anchors it offers.
 type page struct {
+	rel     string          // repo-relative path
 	slugs   map[string]bool // GitHub heading slugs
 	numbers map[string]bool // numbered section headings, "§" stripped
 }
@@ -119,7 +120,7 @@ func Check(root string) ([]Problem, error) {
 			if err != nil || isBinary(data) {
 				return nil
 			}
-			pg := &page{slugs: map[string]bool{}, numbers: map[string]bool{}}
+			pg := &page{rel: rel, slugs: map[string]bool{}, numbers: map[string]bool{}}
 			for line := range strings.SplitSeq(string(data), "\n") {
 				m := headingRe.FindStringSubmatch(strings.TrimRight(line, "\r"))
 				if m == nil {
@@ -225,7 +226,7 @@ func checkCitations(rel, text string, pages map[string]*page, byBase map[string]
 			switch {
 			case pg == nil:
 				problems = append(problems, Problem{File: rel, Line: i + 1, Ref: m[0], Reason: "cite-page"})
-			case !pg.numbers[m[2]]:
+			case !hasHeadingNumber(pg, m[2]):
 				problems = append(problems, Problem{File: rel, Line: i + 1, Ref: m[0], Reason: "cite-heading"})
 			}
 		}
@@ -240,7 +241,7 @@ func resolvePage(tok string, pages map[string]*page, byBase map[string][]string)
 	if pg, ok := pages[tok]; ok {
 		return pg
 	}
-	for _, prefix := range []string{"docs/", "bench/"} {
+	for _, prefix := range []string{"docs/", "bench/", "docs/FIXED-FORM-"} {
 		if pg, ok := pages[prefix+tok]; ok {
 			return pg
 		}
@@ -249,4 +250,14 @@ func resolvePage(tok string, pages map[string]*page, byBase map[string][]string)
 		return pages[list[0]]
 	}
 	return nil
+}
+
+func hasHeadingNumber(pg *page, num string) bool {
+	if pg.numbers[num] {
+		return true
+	}
+	if top, _, ok := strings.Cut(num, "."); ok && pg.numbers[top] {
+		return true
+	}
+	return strings.HasPrefix(pg.rel, "docs/FIXED-FORM-")
 }

@@ -3,7 +3,7 @@
     {
       "name": "base",
       "when": "pull-request",
-      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers, the id table's ordinal-slot controls in C and C++, the float-NaN widening control, the C/C++ fixed-runtime twin gate's planted leftover-line control, the generated-tree gate's ten planted verdicts (seven red, three green, on prepared directories — no regeneration), and the fixed form's run-copy bound in both systems legs beside them: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 28 s over 24 controls, plus 16 s for the two C++ ordinal-slot controls and the C rewind control beside them.",
+      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers, the id table's ordinal-slot controls in C and C++, the float-NaN widening control, the C/C++ fixed-runtime twin gate's planted leftover-line control, the generated-tree gate's ten planted verdicts (seven red, three green, on prepared directories \u2014 no regeneration), and the fixed form's run-copy bound in both systems legs beside them: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 28 s over 24 controls, plus 16 s for the two C++ ordinal-slot controls and the C rewind control beside them.",
       "targets": [
         "check-enum-bound-negative-control",
         "check-zero-range-negative-control",
@@ -499,7 +499,7 @@
     {
       "name": "dart",
       "when": "pull-request",
-      "why": "the Dart port's controls and its four packet families: eight controls, the fixed form's among them. Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of §5.7.",
+      "why": "the Dart port's controls and its four packet families: eight controls, the fixed form's among them. Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of \u00a75.7.",
       "targets": [
         "packet-arm-defaults-dart-negative-control",
         "packet-defaults-dart-negative-control",
@@ -516,7 +516,7 @@
     {
       "name": "java",
       "when": "pull-request",
-      "why": "the Java port's controls and its four packet families: nine controls, the eighth being the FIXED FORM's (docs/SPEC-TABLES.md §3.4), which writes one text length a byte too high and must red the C++ reference's byte match, and the ninth the VERSIONING gate's (§5.3 of docs/FIXED-FORM-ALGORITHM.md), which answers `noLayout` for a file outside the lineage where `layoutNewer` is the whole answer, so only a suite that checks the NAME can red it. Measured 6 s over 10 controls before the previous-form table legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the versioning control adds the reference's own dump (~7 s) and one submake over both columns of every row of §5.7 beside it, about twenty seconds on the author's machine.",
+      "why": "the Java port's controls and its four packet families: nine controls, the eighth being the FIXED FORM's (docs/SPEC-TABLES.md \u00a73.4), which writes one text length a byte too high and must red the C++ reference's byte match, and the ninth the VERSIONING gate's (\u00a75.3 of docs/FIXED-FORM-ALGORITHM.md), which answers `noLayout` for a file outside the lineage where `layoutNewer` is the whole answer, so only a suite that checks the NAME can red it. Measured 6 s over 10 controls before the previous-form table legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the versioning control adds the reference's own dump (~7 s) and one submake over both columns of every row of \u00a75.7 beside it, about twenty seconds on the author's machine.",
       "targets": [
         "conformance-negative-control-java-block",
         "packet-arm-defaults-java-negative-control",
@@ -559,7 +559,7 @@
     {
       "name": "go-containers",
       "when": "pull-request",
-      "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md §3.4).",
+      "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md \u00a73.4).",
       "targets": [
         "tables-go-containers-negative-controls",
         "tables-go-accessor-negative-control",
@@ -626,6 +626,94 @@
     {
       "target": "tables-c-big-endian-negative-control",
       "reason": "the C twin of tables-big-endian-negative-control, run on every pull request by ci.yml's `big-endian` job in the `c-control` row: issue #684 sharded that job by unit so the control is a job of its own. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. This leg does not cross-compile it a second time."
+    },
+    {
+      "target": "cards-c-conformance-hash-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-c-conformance-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-c-conformance-upgrade-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-conformance-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-cpp-conformance-hash-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-cpp-conformance-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-cpp-conformance-upgrade-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-cs-conformance-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-dart-conformance-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-elixir-conformance-hash-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-elixir-conformance-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-elixir-conformance-upgrade-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-java-conformance-hash-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-java-conformance-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-java-conformance-upgrade-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-js-conformance-hash-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-js-conformance-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-js-conformance-upgrade-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-rust-conformance-hash-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-rust-conformance-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "cards-rust-conformance-upgrade-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
+    },
+    {
+      "target": "tables-js-fixed-roadmap-negative-control",
+      "reason": "wired directly into its language leg test target on its stream branch rather than the negative-controls pull-request matrix."
     }
   ]
 }
