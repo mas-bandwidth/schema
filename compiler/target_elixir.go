@@ -128,6 +128,15 @@ func elixirTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]elixirta
 
 func init() {
 	registerPacketValueDefaultCarrier("elixir")
+	// The elixirtable boundary (internal/codegen/elixirtable,
+	// refuseCardUnsupportedVariableConstructs) still names the constructs the
+	// variable form does not carry by table and field, so a unit that is only
+	// one of them is refused by name there while the codec is landed leg by leg
+	// (docs/SPEC-TABLES.md §11); this registration is what keeps the
+	// CROSS-TARGET gate from refusing first with a message that names a
+	// follow-on the leg itself answers.
+	registerMapCarrier("elixir")
+	registerOptionalArrayCarrier("elixir")
 	// AND THE TABLE HALF (SPEC §4.2). The three table forms this backend emits
 	// each answer "absent field" with the declared value:
 	//
@@ -150,6 +159,8 @@ func init() {
 	registerListCarrier("elixir")
 	// blobs=true: the variable class carries *string and *bytes (docs/SPEC-TABLES.md
 	// §2.5), so the compiler-level byte-buffer gate must not fire for the two
-	// blobs the wire rides as nodes.
-	registerBuiltin(elixirTarget{}, true, false, false, true)
+	// blobs the wire rides as nodes. arms=true and unionArrays=true: the
+	// variable form's boundary carries the table-arm and union-array
+	// constructs by its own named refusal while the codec lands leg by leg.
+	registerBuiltin(elixirTarget{}, true, true, true, true)
 }
