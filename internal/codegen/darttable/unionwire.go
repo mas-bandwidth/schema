@@ -125,7 +125,7 @@ func (g *wireGen) emitTextUnionValue(f *ir.Field) {
 func (g *wireGen) emitTextReadUnion(f *ir.Field) {
 	expr := "v." + fieldMember(f)
 	u := unionRef(f)
-	g.pf("if(val is! Map<String,dynamic>){r.kindMismatch++;break;}final next=%s();if(val.isEmpty){%s=next;break;}final entries=r.entries(val).toList();if(entries.length!=1){r.malformed=true;%s=next;break;}final arm=entries.single;switch(arm.key){\n", u.Name, expr, expr)
+	g.pf("if(val is! Map<String,dynamic>){r.kindMismatch++;break;}final next=%s();if(val.isEmpty){%s=next;break;}final entries=r.entries(val).toList();final arm=entries.first;switch(arm.key){\n", u.Name, expr)
 	for i, a := range u.Variants {
 		g.pf("case %s:\n", strconv.Quote(a.Name))
 		if a.Void() {
@@ -134,5 +134,5 @@ func (g *wireGen) emitTextReadUnion(f *ir.Field) {
 			g.pf("if(arm.value is! Map<String,dynamic>){r.kindMismatch++;}else{%sFromJsonFields(next.%s,arm.value as Map<String,dynamic>,r,sh);next.type=%d;}break;\n", dartName(a.Ref.Name), fieldMember(a.F), i+1)
 		}
 	}
-	g.pf("default:r.unknown++;}%s=next;break;\n", expr)
+	g.pf("default:r.unknown++;}%s=next;if(entries.length>1)r.malformed=true;break;\n", expr)
 }

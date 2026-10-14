@@ -87,6 +87,7 @@ void main(){
   final reordered=moved.rootWireLoad(wire);if(hex(moved.rootWireSave(reordered))!=hex(wire))throw StateError('arm name identity across reorder');
   print(hex(wire));print(rootToJson(value).replaceAll('\n','|'));
  }
+ final malformed=TableTextReport();final prefix=rootFromJson('{"choice":{"item":{"value":9},"ping":null},"after":77}',malformed);print(hex(rootWireSave(prefix)));print('${malformed.malformed}');
  for(var mode=0;mode<7;mode++){final wire=forged(mode);final r=TableWireReport();final v=rootWireLoad(wire,r);print(hex(wire));print('${v.choice.type},${v.choice.item.value},${v.after},${r.malformed},${r.unknown},${r.kindMismatch}');}
 }`
 		for key, value := range map[string]uint64{"CHOICEID": fieldId(u.Tables["Root"].Fields[0]), "ITEMID": ir.TableWireId(u.TableUnions["Choice"].Variants[0].WireName()), "PINGID": ir.TableWireId(u.TableUnions["Choice"].Variants[1].WireName()), "AFTERID": fieldId(u.Tables["Root"].Fields[2])} {
@@ -106,7 +107,7 @@ void main(){
 				continue
 			}
 			lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-			if len(lines) != 2*len(cases)+14 {
+			if len(lines) != 2*len(cases)+16 {
 				t.Fatalf("output %s", out)
 			}
 			for i, input := range cases {
@@ -134,8 +135,24 @@ void main(){
 					t.Fatalf("JSON got %s want %s", lines[i*2+1], text)
 				}
 			}
+			v := m.New(u.Tables["Root"])
+			r := tabletext.Report{}
+			if m.Read(v, []byte(`{"choice":{"item":{"value":9},"ping":null},"after":77}`), &r) || !r.Malformed {
+				t.Fatal("Go malformed union oracle", r)
+			}
+			want, err := tablewire.Encode(m, v)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := hex.DecodeString(lines[2*len(cases)])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, want) || lines[2*len(cases)+1] != "true" {
+				t.Fatalf("malformed JSON union prefix got%x want%x report%s", got, want, lines[2*len(cases)+1])
+			}
 			for mode := 0; mode < 7; mode++ {
-				wire, err := hex.DecodeString(lines[2*len(cases)+mode*2])
+				wire, err := hex.DecodeString(lines[2*len(cases)+2+mode*2])
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -149,7 +166,7 @@ void main(){
 					value = v.Fields[0].Cell.Tab.Fields[0].Cell.I
 				}
 				want := fmt.Sprintf("%d,%d,%d,%v,%d,%d", v.Fields[0].Cell.U, value, v.Fields[2].Cell.I, r.Malformed, r.Unknown, r.KindMismatch)
-				got := lines[2*len(cases)+mode*2+1]
+				got := lines[2*len(cases)+2+mode*2+1]
 				if got != want {
 					t.Fatalf("forged mode%d got %s want %s", mode, got, want)
 				}
