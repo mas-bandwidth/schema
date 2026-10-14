@@ -422,8 +422,9 @@ func (g *blockGen) emitInlineAccessors(ml *ir.MemberLayout, bl *ir.BlockLayout, 
 		switch {
 		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 			g.pf("%s// %s: the USED length, and a view of the bytes it names\n", ind, tableFieldTypeName(f))
-			g.pf("%sint get %sLength => view.getInt32(%s + %d, Endian.little);\n",
-				ind, name, origin, facts.CountOffset)
+			g.pf("%sint get %sLength {\n", ind, name)
+			g.pf("%s  final used = view.getInt32(%s + %d, Endian.little);\n", ind, origin, facts.CountOffset)
+			g.pf("%s  return used < 0 || used > %d ? 0 : used;\n%s}\n", ind, f.Type.Size, ind)
 			// a Block owns its buffer; a ROW cursor holds only a view, so the
 			// caller hands the buffer the view was taken over
 			head, buffer := fmt.Sprintf("Uint8List get %sBytes", name), "bytes"
