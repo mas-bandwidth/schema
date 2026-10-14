@@ -10,13 +10,11 @@
 // THE ACCELERATOR TIER. A block is POINTED AT and a cook is OPENED; neither
 // parses a wire, so both reach every table of the unit whatever its closure
 // declares — a pointered unit's cooks open in full. In Java both are read at
-// explicit offsets out of a byte[] the consumer owns. The TABLE WIRE itself —
-// measure, save, load, the reflection descriptors and the JSON text form of
-// docs/SPEC-TABLES.md §3, §4, §8 and §16 in their id-table form — is not
-// emitted for Java. The port that once stood here wrote the form that preceded
-// the id-table wire, which the current specification does not describe and the
-// C++ reference does not open; it was removed rather than carried (schema#517
-// is the row that brings the wire to Java). ROADMAP.md marks the cells.
+// explicit offsets out of a byte[] the consumer owns. The TABLE WIRE — measure,
+// save, load, the reflection descriptors and the JSON text form of
+// docs/SPEC-TABLES.md §3, §4, §8 and §16 in their id-table form — rides the
+// FIXED form (§3.4) for every table, and the VARIABLE form (§3, form byte 1)
+// and MESSAGE form (§3.3) beside it (schema#517). ROADMAP.md marks the cells.
 //
 // The C++ backend (internal/codegen/cpptable) is the REFERENCE and the C#
 // backend (internal/codegen/cstable) is the worked managed-language port for
@@ -406,12 +404,12 @@ func checkNames(u *ir.Unit) error {
 // refuseVariableForm refuses, by name, every variable-class construct the card
 // record does not use (docs/SPEC-TABLES.md §2, §11). The VARIABLE FORM (§3,
 // form byte 1) is taught for plain `table` roots and tables as list elements,
-// bool/int32/int64/enum fields, string(N), the *string byte buffer (§2.5) and
-// unbounded lists of tables ([]T, §2.9). Every other variable-class construct
-// — a map (§2.8), a union arm (§2.6), a *bytes buffer, a pointer to a table
-// outside a list element (§2.1), an optional ?T (§2.3), an enum-keyed array
-// (§2.4) — is refused here, naming the table, the field and the construct, so
-// it is never mis-encoded and never silently dropped.
+// bool/int32/int64/enum fields, string(N), the *string and *bytes byte buffers
+// (§2.5) and unbounded lists of tables ([]T, §2.9). Every other
+// variable-class construct — a map (§2.8), a union arm (§2.6), a pointer to a
+// table outside a list element (§2.1), an optional ?T (§2.3), an enum-keyed
+// array (§2.4) — is refused here, naming the table, the field and the
+// construct, so it is never mis-encoded and never silently dropped.
 //
 // The refusal is scoped to the VARIABLE tables. A DECLARED `fixed table`
 // ([ir.Struct.FixedDeclared]) keeps the fixed form's own answers for optional
@@ -478,8 +476,8 @@ func cardVariableTables(u *ir.Unit) []*ir.Struct {
 
 // variableFormRefusal names the variable-class construct a field spells that
 // the Java variable form does not carry, or "" when it carries it
-// (docs/SPEC-TABLES.md §2, §11). The *string byte buffer (§2.5) is the card
-// construct and is carried; a pointer to a table by value is not.
+// (docs/SPEC-TABLES.md §2, §11). The *string and *bytes byte buffers (§2.5) are
+// carried; a pointer to a table by value is not.
 func variableFormRefusal(f *ir.Field) string {
 	if f.IsMap() {
 		return "a map (docs/SPEC-TABLES.md §2.8)"
@@ -495,7 +493,7 @@ func variableFormRefusal(f *ir.Field) string {
 		case f.Type.Kind == ir.TString && f.Type.Blob():
 			return "" // the *string byte buffer, the card's own construct (§2.5)
 		case f.Type.Kind == ir.TBytes && f.Type.Blob():
-			return "a *bytes byte buffer (docs/SPEC-TABLES.md §2.5)"
+			return "" // the *bytes byte buffer (§2.5)
 		default:
 			return "a pointer to a table outside a list element (docs/SPEC-TABLES.md §2.1)"
 		}
@@ -503,6 +501,25 @@ func variableFormRefusal(f *ir.Field) string {
 	if f.Type.Kind == ir.TNamed {
 		if _, ok := f.Type.Ref.(*ir.Union); ok {
 			return "a union (docs/SPEC-TABLES.md §2.6)"
+		}
+	}
+	// An UNBOUNDED ARRAY (§2.9) is carried for scalar, string, enum and flags
+	// elements, and for lists of tables ([]T). The element classes the
+	// variable form does not yet carry — bytes(N), fixed(I, F), wstring(N) and
+	// a 128-bit kind — are refused by name rather than mis-encoded as a single
+	// value. A union element is refused by the union rule above, array or not.
+	if f.Array == ir.ArrayList {
+		switch f.Type.Kind {
+		case ir.TBytes:
+			return "an unbounded array of bytes (docs/SPEC-TABLES.md §2.9)"
+		case ir.TFixed:
+			return "an unbounded array of a fixed(I, F) kind (docs/SPEC-TABLES.md §15)"
+		case ir.TWString:
+			return "an unbounded array of a wstring(N) kind (docs/SPEC-TABLES.md §15)"
+		case ir.TInt:
+			if f.Type.Width > 64 {
+				return "an unbounded array of a wide int128 kind (docs/SPEC-TABLES.md §15)"
+			}
 		}
 	}
 	switch f.Type.Kind {

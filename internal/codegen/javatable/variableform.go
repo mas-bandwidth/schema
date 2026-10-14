@@ -36,6 +36,7 @@ public final class TableVariable {
     // record rides under (fnv1a64("string")).
     public static final long NODE_ID = 0xFFFFFFFFFFFFFFFFL;
     public static final long STRING_ID = 0x704be0d8faaffc58L;
+    public static final long BYTES_ID = 0x2f2ec0474f1c4fe4L;
     public static final long BUILD_ID = 0xFFFFFFFFFFFFFFFEL;
     public static final long VOCAB_ID = 0xFFFFFFFFFFFFFFFDL;
 
@@ -215,6 +216,10 @@ public int unknown;
         public void put8(int b) {
             if (off >= buf.length) { overflow = true; return; }
             buf[off++] = (byte) b;
+        }
+
+        public void put16(int v) {
+            for (int i = 0; i < 2; i++) { put8((v >>> (8 * i)) & 0xff); }
         }
 
         public void put32(int v) {
@@ -415,6 +420,7 @@ public int unknown;
         public long typeId;
         public final byte[] body;
         public String value;
+        public byte[] bytes;
         public NodeRecord(long typeId, byte[] body) { this.typeId = typeId; this.body = body; }
     }
 
@@ -458,15 +464,19 @@ public int unknown;
         // type id this reader cannot name is an excluded class (§6.6): the
         // retaining read counts one retain_lost and never retains it.
         for (NodeRecord rec : list) {
-            if (rec.typeId != STRING_ID) {
+            if (rec.typeId == STRING_ID) {
+                if (!textValid(rec.body, 0, rec.body.length)) {
+                    r.report.malformed = true;
+                    rec.typeId = 0;
+                } else {
+                    rec.value = new String(rec.body, java.nio.charset.StandardCharsets.UTF_8);
+                }
+            } else if (rec.typeId == BYTES_ID) {
+                rec.bytes = rec.body;
+            } else {
                 r.report.unknown++;
                 if (retain) { r.report.retainLost++; }
                 rec.typeId = 0;
-            } else if (!textValid(rec.body, 0, rec.body.length)) {
-                r.report.malformed = true;
-                rec.typeId = 0;
-            } else {
-                rec.value = new String(rec.body, java.nio.charset.StandardCharsets.UTF_8);
             }
         }
         return list.toArray(new NodeRecord[0]);
@@ -573,6 +583,16 @@ public int unknown;
         return recs[(int) (index - 2)].value;
     }
 
+    // resolveBytes resolves one *bytes pointer index against the numbering
+    // (§3.1), exactly as resolveString resolves a *string: 0 is null, 1 is the
+    // ROOT (a kind mismatch), an index past the records is malformed.
+    public static byte[] resolveBytes(NodeRecord[] recs, long index, Report report) {
+        if (index == 0) { return null; }
+        if (index == 1) { report.kindMismatch++; return null; }
+        if (index < 2 || recs == null || index - 2 >= recs.length) { report.malformed = true; return null; }
+        return recs[(int) (index - 2)].bytes;
+    }
+
     // NodeTable is a load-side holder: the root body's node records, filled
     // when the reserved node-table field is met and read by every deferred
     // pointer index afterward (§3.1).
@@ -589,18 +609,32 @@ public int unknown;
     // first-visit order takes the next node index (2, 3, ...; the root is 1,
     // §3.1) and its body bytes, written once into the node table.
     public static final class NodeList {
-        private final java.util.ArrayList<byte[]> bodies = new java.util.ArrayList<>();
+        private static final class Entry {
+            final long typeId;
+            final byte[] body;
+            Entry(long typeId, byte[] body) { this.typeId = typeId; this.body = body; }
+        }
+        private final java.util.ArrayList<Entry> entries = new java.util.ArrayList<>();
         private final java.util.IdentityHashMap<String, Long> seen = new java.util.IdentityHashMap<>();
+        private final java.util.IdentityHashMap<byte[], Long> seenBytes = new java.util.IdentityHashMap<>();
         private int next = 2;
         public long ref(String s) {
             Long have = seen.get(s);
             if (have != null) { return have.longValue(); }
             seen.put(s, Long.valueOf(next));
-            bodies.add(s.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            entries.add(new Entry(STRING_ID, s.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
             return next++;
         }
-        public int size() { return bodies.size(); }
-        public byte[] body(int i) { return bodies.get(i); }
+        public long refBytes(byte[] b) {
+            Long have = seenBytes.get(b);
+            if (have != null) { return have.longValue(); }
+            seenBytes.put(b, Long.valueOf(next));
+            entries.add(new Entry(BYTES_ID, b));
+            return next++;
+        }
+        public int size() { return entries.size(); }
+        public long typeId(int i) { return entries.get(i).typeId; }
+        public byte[] body(int i) { return entries.get(i).body; }
     }
 }
 `
@@ -1009,6 +1043,11 @@ func variableWireKind(f *ir.Field) int {
 			return 17
 		}
 		return 12
+	case ir.TBytes:
+		if f.Type.Blob() {
+			return 17
+		}
+		return 0
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -1035,8 +1074,50 @@ func varMember(f *ir.Field) string {
 	return m
 }
 
+// isScalarArray reports an unbounded array whose element is a scalar, a
+// string, an enum or a flags mask — every element class the variable form
+// carries that is NOT a table (§2.9).
+func isScalarArray(f *ir.Field) bool {
+	if f.Array != ir.ArrayList {
+		return false
+	}
+	_, ok := f.Type.Ref.(*ir.Struct)
+	return !ok
+}
+
+// variableListElemType is the Java storage type of one element of an unbounded
+// scalar/string/enum/flags array (§2.9): a boxed cell for the list.
+func variableListElemType(f *ir.Field) string {
+	switch f.Type.Kind {
+	case ir.TBool:
+		return "Boolean"
+	case ir.TInt:
+		if f.Type.Width <= 32 {
+			return "Integer"
+		}
+		return "Long"
+	case ir.TFloat32:
+		return "Float"
+	case ir.TFloat64:
+		return "Double"
+	case ir.TString:
+		return "String"
+	case ir.TNamed:
+		switch f.Type.Ref.(type) {
+		case *ir.Enum:
+			return "Integer"
+		case *ir.Flags:
+			return "Long"
+		}
+	}
+	return "Object"
+}
+
 // variableValueType is a field's Java storage type in the generated value class.
 func variableValueType(f *ir.Field) string {
+	if isScalarArray(f) {
+		return "List<" + variableListElemType(f) + ">"
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		return "boolean"
@@ -1047,10 +1128,14 @@ func variableValueType(f *ir.Field) string {
 		return "long"
 	case ir.TString:
 		return "String"
+	case ir.TBytes:
+		return "byte[]"
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Enum:
 			return "int"
+		case *ir.Flags:
+			return "long"
 		case *ir.Struct:
 			if f.Array == ir.ArrayList {
 				return "List<" + f.Type.Name + "Variable.Value>"
@@ -1064,6 +1149,9 @@ func variableValueType(f *ir.Field) string {
 // variableDefault is a field's Java zero value in the generated value class. A
 // *string byte buffer is born null (absence), a string(N) born empty.
 func variableDefault(f *ir.Field) string {
+	if isScalarArray(f) {
+		return "new ArrayList<>()"
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		return "false"
@@ -1077,10 +1165,14 @@ func variableDefault(f *ir.Field) string {
 			return "null"
 		}
 		return "\"\""
+	case ir.TBytes:
+		return "null"
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Enum:
 			return "0"
+		case *ir.Flags:
+			return "0L"
 		case *ir.Struct:
 			if f.Array == ir.ArrayList {
 				return "new ArrayList<>()"
@@ -1107,7 +1199,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "    public static final class Value {\n")
 	for _, f := range st.Fields {
 		fmt.Fprintf(&b, "        public %s %s = %s;\n", variableValueType(f), varMember(f), variableDefault(f))
-		if f.Type.Kind == ir.TString && f.Type.Blob() {
+		if f.Type.Blob() {
 			fmt.Fprintf(&b, "        public long %sIdx;\n", varMember(f))
 		}
 	}
@@ -1164,6 +1256,8 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	for _, f := range st.Fields {
 		if f.Type.Kind == ir.TString && f.Type.Blob() {
 			fmt.Fprintf(&b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveString(nt.recs, v.%sIdx, report); }\n", varMember(f), varMember(f), varMember(f))
+		} else if f.Type.Kind == ir.TBytes && f.Type.Blob() {
+			fmt.Fprintf(&b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveBytes(nt.recs, v.%sIdx, report); }\n", varMember(f), varMember(f), varMember(f))
 		} else if f.Array == ir.ArrayList {
 			if elem, ok := f.Type.Ref.(*ir.Struct); ok {
 				fmt.Fprintf(&b, "        for (%sVariable.Value e : v.%s) { %sVariable.resolveNodes(e, nt, report); }\n", elem.Name, varMember(f), elem.Name)
@@ -1206,7 +1300,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "            nw.putLeb(nodes.size());\n")
 	fmt.Fprintf(&b, "            for (int i = 0; i < nodes.size(); i++) {\n")
 	fmt.Fprintf(&b, "                byte[] body = nodes.body(i);\n")
-	fmt.Fprintf(&b, "                nw.putLeb(nw.ref(TableVariable.STRING_ID));\n")
+	fmt.Fprintf(&b, "                nw.putLeb(nw.ref(nodes.typeId(i)));\n")
 	fmt.Fprintf(&b, "                nw.putLeb(body.length);\n")
 	fmt.Fprintf(&b, "                nw.putBytes(body, 0, body.length);\n")
 	fmt.Fprintf(&b, "            }\n")
@@ -1398,6 +1492,104 @@ func jsonIntRange(f *ir.Field) (min, max string) {
 	return min, max
 }
 
+// writeJsonArrayValue emits the writer's spelling of one unbounded scalar/
+// string/enum/flags array as a JSON array (docs/SPEC-TABLES.md §16.2).
+func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
+	m := varMember(f)
+	fmt.Fprintf(b, "        if (v.%s.isEmpty()) { b.append(\"[]\"); } else {\n", m)
+	b.WriteString("            b.append('[');\n")
+	fmt.Fprintf(b, "            for (int i = 0; i < v.%s.size(); i++) {\n", m)
+	b.WriteString("                if (i > 0) { b.append(','); }\n")
+	b.WriteString("                TableJson.indent(b, depth + 2);\n")
+	switch f.Type.Kind {
+	case ir.TBool:
+		fmt.Fprintf(b, "                b.append(v.%s.get(i) ? \"true\" : \"false\");\n", m)
+	case ir.TInt:
+		if f.Type.Width <= 32 {
+			fmt.Fprintf(b, "                b.append(Integer.toString(v.%s.get(i)));\n", m)
+		} else {
+			fmt.Fprintf(b, "                b.append(Long.toString(v.%s.get(i)));\n", m)
+		}
+	case ir.TFloat32:
+		fmt.Fprintf(b, "                b.append(Float.toString(v.%s.get(i)));\n", m)
+	case ir.TFloat64:
+		fmt.Fprintf(b, "                b.append(Double.toString(v.%s.get(i)));\n", m)
+	case ir.TString:
+		fmt.Fprintf(b, "                TableJson.esc(b, v.%s.get(i));\n", m)
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			fmt.Fprintf(b, "                switch (v.%s.get(i)) {\n", m)
+			for i := range ref.Variants {
+				fmt.Fprintf(b, "                    case %d: TableJson.esc(b, %q); break;\n", i+1, ref.Variants[i])
+			}
+			b.WriteString("                    default: TableJson.esc(b, \"None\"); break;\n                }\n")
+		case *ir.Flags:
+			fmt.Fprintf(b, "                b.append(Long.toString(v.%s.get(i)));\n", m)
+		}
+	}
+	b.WriteString("            }\n")
+	b.WriteString("            TableJson.indent(b, depth + 1);\n")
+	b.WriteString("            b.append(']');\n")
+	b.WriteString("        }\n")
+}
+
+// readJsonArrayValue emits the reader's spelling of one unbounded scalar/string/
+// enum/flags array, checking the JSON shape and counting a wrong one as a kind
+// mismatch (docs/SPEC-TABLES.md §16.2).
+func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
+	m := varMember(f)
+	b.WriteString("                if (in.peek() == '[') {\n")
+	b.WriteString("                    in.p++;\n")
+	b.WriteString("                    while (true) {\n")
+	b.WriteString("                        int ec = in.peek();\n")
+	b.WriteString("                        if (ec == ']') { in.p++; break; }\n")
+	b.WriteString("                        if (ec == 0) { in.bad = true; break; }\n")
+	switch f.Type.Kind {
+	case ir.TBool:
+		b.WriteString("                        if (ec == 't') { in.lit(\"true\"); v." + m + ".add(true); }\n")
+		b.WriteString("                        else if (ec == 'f') { in.lit(\"false\"); v." + m + ".add(false); }\n")
+		b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+	case ir.TInt:
+		if f.Type.Width <= 32 {
+			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add((int) in.integer(true, Integer.MIN_VALUE, Integer.MAX_VALUE)); }\n", m)
+		} else {
+			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.integer(true, Long.MIN_VALUE, Long.MAX_VALUE)); }\n", m)
+		}
+		b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+	case ir.TFloat32:
+		fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { boolean[] integ = new boolean[1]; v.%s.add(Float.parseFloat(in.scanNumber(integ))); }\n", m)
+		b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+	case ir.TFloat64:
+		fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { boolean[] integ = new boolean[1]; v.%s.add(Double.parseDouble(in.scanNumber(integ))); }\n", m)
+		b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+	case ir.TString:
+		fmt.Fprintf(b, "                        if (ec == '\"') { v.%s.add(in.scanString()); }\n", m)
+		b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			b.WriteString("                        if (ec == '\"') {\n")
+			b.WriteString("                            String s = in.scanString();\n")
+			for i := range ref.Variants {
+				fmt.Fprintf(b, "                            if (%q.equals(s)) { v.%s.add(%d); }\n", ref.Variants[i], m, i+1)
+				b.WriteString("                            else ")
+			}
+			fmt.Fprintf(b, "{ v.%s.add(0); in.rep.unknown++; }\n", m)
+			b.WriteString("                        } else { in.skipValue(); in.rep.kindMismatch++; }\n")
+		case *ir.Flags:
+			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.integer(false, 0L, Long.MAX_VALUE)); }\n", m)
+			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+		}
+	}
+	b.WriteString("                        ec = in.peek();\n")
+	b.WriteString("                        if (ec == ',') { in.p++; continue; }\n")
+	b.WriteString("                        if (ec == ']') { in.p++; break; }\n")
+	b.WriteString("                        in.bad = true; break;\n")
+	b.WriteString("                    }\n")
+	b.WriteString("                } else { in.skipValue(); in.rep.kindMismatch++; }\n")
+}
+
 // writeJsonFieldValue emits the writer's spelling of one field's value at the
 // field's own depth (docs/SPEC-TABLES.md §16.2), for the card's constructs:
 // bool, int32/int64, string(N), the *string byte buffer (§2.5), an enum by
@@ -1405,8 +1597,12 @@ func jsonIntRange(f *ir.Field) (min, max string) {
 func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
 	m := varMember(f)
 	switch {
+	case isScalarArray(f):
+		writeJsonArrayValue(b, u, st, f)
 	case f.Type.Kind == ir.TString && f.Type.Blob():
 		fmt.Fprintf(b, "        if (v.%s == null) { b.append(\"null\"); } else { TableJson.esc(b, v.%s); }\n", m, m)
+	case f.Type.Kind == ir.TBytes && f.Type.Blob():
+		fmt.Fprintf(b, "        if (v.%s == null) { b.append(\"null\"); } else { TableJson.esc(b, java.util.Base64.getEncoder().encodeToString(v.%s)); }\n", m, m)
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "        TableJson.esc(b, v.%s);\n", m)
 	case f.Type.Kind == ir.TBool:
@@ -1444,9 +1640,15 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
 	m := varMember(f)
 	switch {
+	case isScalarArray(f):
+		readJsonArrayValue(b, u, st, f)
 	case f.Type.Kind == ir.TString && f.Type.Blob():
 		fmt.Fprintf(b, "                if (in.peek() == 'n') { in.lit(\"null\"); v.%s = null; }\n", m)
 		fmt.Fprintf(b, "                else if (in.peek() == '\"') { v.%s = in.scanString(); }\n", m)
+		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
+	case f.Type.Kind == ir.TBytes && f.Type.Blob():
+		fmt.Fprintf(b, "                if (in.peek() == 'n') { in.lit(\"null\"); v.%s = null; }\n", m)
+		fmt.Fprintf(b, "                else if (in.peek() == '\"') { String s = in.scanString(); v.%s = java.util.Base64.getDecoder().decode(s); }\n", m)
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "                if (in.peek() == '\"') { v.%s = in.readString(%d); }\n", m, f.Type.Size)
@@ -1500,7 +1702,12 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int) {
 	m := varMember(f)
 	switch {
+	case isScalarArray(f):
+		writeArrayFieldRead(b, u, st, f)
 	case f.Type.Kind == ir.TString && f.Type.Blob():
+		fmt.Fprintf(b, "                if (kind == 17) { v.%sIdx = r.leb(); }\n", m)
+		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
+	case f.Type.Kind == ir.TBytes && f.Type.Blob():
 		fmt.Fprintf(b, "                if (kind == 17) { v.%sIdx = r.leb(); }\n", m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TString:
@@ -1522,6 +1729,62 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 				fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (ek == 13) { long n = ar.leb(); if (ar.fail) { } else if (n < 0 || n > 0x7FFFFFFFL || n > (long) (ar.limit - ar.off) / 2) { report.refused = true; } else { v.%s.clear(); for (long i = 0; i < n; i++) { TableVariable.Reader er = ar.body(); if (er == null) { break; } %sVariable.Value e = new %sVariable.Value(); %sVariable.readFields(er, e, null, report); if (er.off != er.limit) { report.malformed = true; e = new %sVariable.Value(); } v.%s.add(e); } } } else { report.kindMismatch++; } } } }\n", m, elem.Name, elem.Name, elem.Name, elem.Name, m)
 			}
 			fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
+		}
+	}
+}
+
+// writeArrayFieldRead emits the tolerant read of one unbounded scalar/string/
+// enum/flags array (docs/SPEC-TABLES.md §2.9, §4): kind 14, element kind checked
+// against the declaration, a count that is refused when it cannot be bounded,
+// and one element decoded at a time, a damaged element counting malformed.
+func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
+	m := varMember(f)
+	ek := ir.TableWireElemKind(f)
+	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (ek == %d) { long n = ar.leb(); if (ar.fail) { } else if (n < 0 || n > 0x7FFFFFFFL) { report.refused = true; } else { v.%s.clear(); ", ek, m)
+	writeArrayElemRead(b, f, m)
+	fmt.Fprintf(b, " } } else { report.kindMismatch++; } } } }\n")
+	fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
+}
+
+func writeArrayElemRead(b *strings.Builder, f *ir.Field, m string) {
+	ek := ir.TableWireElemKind(f)
+	w := ir.TableKindWidth(ek)
+	switch f.Type.Kind {
+	case ir.TBool:
+		fmt.Fprintf(b, "if (n > (long) (ar.limit - ar.off) / %d) { report.refused = true; } else { for (long i = 0; i < n; i++) { if (ar.has(1)) { v.%s.add(ar.get8() != 0); } else { report.malformed = true; ar.fail = true; break; } } }", w, m)
+	case ir.TInt:
+		read := ""
+		switch f.Type.Width {
+		case 8:
+			if f.Type.Signed {
+				read = "(byte) ar.get8()"
+			} else {
+				read = "(int) ar.get8()"
+			}
+		case 16:
+			if f.Type.Signed {
+				read = "(short) ar.get16()"
+			} else {
+				read = "(int) ar.get16()"
+			}
+		case 32:
+			read = "ar.get32()"
+		default:
+			read = "ar.get64()"
+		}
+		fmt.Fprintf(b, "if (n > (long) (ar.limit - ar.off) / %d) { report.refused = true; } else { for (long i = 0; i < n; i++) { if (ar.has(%d)) { v.%s.add(%s); } else { report.malformed = true; ar.fail = true; break; } } }", w, w, m, read)
+	case ir.TFloat32:
+		fmt.Fprintf(b, "if (n > (long) (ar.limit - ar.off) / 4) { report.refused = true; } else { for (long i = 0; i < n; i++) { if (ar.has(4)) { v.%s.add(Float.intBitsToFloat(ar.get32())); } else { report.malformed = true; ar.fail = true; break; } } }", m)
+	case ir.TFloat64:
+		fmt.Fprintf(b, "if (n > (long) (ar.limit - ar.off) / 8) { report.refused = true; } else { for (long i = 0; i < n; i++) { if (ar.has(8)) { v.%s.add(Double.longBitsToDouble(ar.get64())); } else { report.malformed = true; ar.fail = true; break; } } }", m)
+	case ir.TString:
+		fmt.Fprintf(b, "for (long i = 0; i < n; i++) { long L = ar.leb(); int len = (int) L; if (ar.fail) { break; } if (!ar.has(len)) { report.malformed = true; ar.fail = true; break; } if (!TableVariable.textValid(ar.buf, ar.off, len)) { report.malformed = true; v.%s.add(\"\"); } else { int keep = len; if (keep > %d) { keep = %d; while (keep > 0 && (ar.buf[ar.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } v.%s.add(new String(ar.buf, ar.off, keep, StandardCharsets.UTF_8)); } ar.off += len; }", m, f.Type.Size, f.Type.Size, m)
+	case ir.TNamed:
+		switch f.Type.Ref.(type) {
+		case *ir.Enum:
+			fmt.Fprintf(b, "for (long i = 0; i < n; i++) { long vref = ar.leb(); if (ar.fail) { break; } if (vref == 0) { v.%s.add(0); } else { long vid = ar.resolve(vref); if (!ar.fail) { v.%s.add(%sEnum(vid, report)); } } }", m, m, m)
+		case *ir.Flags:
+			fmt.Fprintf(b, "if (n > (long) (ar.limit - ar.off) / 8) { report.refused = true; } else { for (long i = 0; i < n; i++) { if (ar.has(8)) { v.%s.add(ar.get64()); } else { report.malformed = true; ar.fail = true; break; } } }", m)
 		}
 	}
 }
@@ -1574,12 +1837,73 @@ func writeIntFieldRead(b *strings.Builder, f *ir.Field, m string) {
 	b.WriteString("                } else { r.skip(kind); report.kindMismatch++; }\n")
 }
 
+// writeArrayFieldSave emits the canonical write of one unbounded scalar/string/
+// enum/flags array (docs/SPEC-TABLES.md §2.9, §3): kind 14, then an array body
+// of element kind (u8), element count (LEB) and the elements back to back.
+func writeArrayFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
+	writeArrayFieldSaveRef(b, f, "F_"+varMember(f))
+}
+
+// writeArrayFieldSaveRef is [writeArrayFieldSave] with the field's id spelled
+// through the reference the caller names — the variable class's own F_ constant,
+// or the retain class's <Type>Variable.F_ spelling (§6.6).
+func writeArrayFieldSaveRef(b *strings.Builder, f *ir.Field, fieldRef string) {
+	m := varMember(f)
+	ek := ir.TableWireElemKind(f)
+	fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+	fmt.Fprintf(b, "            w.putLeb(w.ref(%s)); w.put8(14);\n", fieldRef)
+	fmt.Fprintf(b, "            TableVariable.Writer aw = w.sub(new byte[1 << 20]);\n")
+	fmt.Fprintf(b, "            aw.put8(%d); aw.putLeb(v.%s.size());\n", ek, m)
+	writeArrayElemSave(b, f, m)
+	fmt.Fprintf(b, "            w.putLeb(aw.off); w.putBytes(aw.buf, 0, aw.off);\n")
+	fmt.Fprintf(b, "        }\n")
+}
+
+func writeArrayElemSave(b *strings.Builder, f *ir.Field, m string) {
+	switch f.Type.Kind {
+	case ir.TBool:
+		fmt.Fprintf(b, "            for (Boolean e : v.%s) { aw.put8(e ? 1 : 0); }\n", m)
+	case ir.TInt:
+		switch {
+		case f.Type.Width <= 8:
+			fmt.Fprintf(b, "            for (Integer e : v.%s) { aw.put8(e); }\n", m)
+		case f.Type.Width <= 16:
+			fmt.Fprintf(b, "            for (Integer e : v.%s) { aw.put16(e); }\n", m)
+		case f.Type.Width <= 32:
+			fmt.Fprintf(b, "            for (Integer e : v.%s) { aw.put32(e); }\n", m)
+		default:
+			fmt.Fprintf(b, "            for (Long e : v.%s) { aw.put64(e); }\n", m)
+		}
+	case ir.TFloat32:
+		fmt.Fprintf(b, "            for (Float e : v.%s) { aw.put32(Float.floatToIntBits(e)); }\n", m)
+	case ir.TFloat64:
+		fmt.Fprintf(b, "            for (Double e : v.%s) { aw.put64(Double.doubleToLongBits(e)); }\n", m)
+	case ir.TString:
+		fmt.Fprintf(b, "            for (String e : v.%s) { byte[] b = e.getBytes(StandardCharsets.UTF_8); aw.putLeb(b.length); aw.putBytes(b, 0, b.length); }\n", m)
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			fmt.Fprintf(b, "            for (Integer e : v.%s) { switch (e) {\n", m)
+			for i := range ref.Variants {
+				fmt.Fprintf(b, "                case %d: aw.putLeb(aw.ref(0x%016xL)); break;\n", i+1, ir.TableWireId(ref.VariantWireName(i)))
+			}
+			b.WriteString("                default: aw.putLeb(0); break;\n            } }\n")
+		case *ir.Flags:
+			fmt.Fprintf(b, "            for (Long e : v.%s) { aw.put64(e); }\n", m)
+		}
+	}
+}
+
 // writeFieldSave emits the canonical write of one field, eliding its default.
 func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
 	m := varMember(f)
 	switch {
+	case isScalarArray(f):
+		writeArrayFieldSave(b, u, st, f)
 	case f.Type.Kind == ir.TString && f.Type.Blob():
 		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(F_%s)); w.put8(17); w.putLeb(nodes.ref(v.%s)); }\n", m, m, m)
+	case f.Type.Kind == ir.TBytes && f.Type.Blob():
+		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(F_%s)); w.put8(17); w.putLeb(nodes.refBytes(v.%s)); }\n", m, m, m)
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) { byte[] b = v.%s.getBytes(StandardCharsets.UTF_8); w.putLeb(w.ref(F_%s)); w.put8(12); w.putLeb(b.length); w.putBytes(b, 0, b.length); }\n", m, m, m)
 	case f.Type.Kind == ir.TBool:
