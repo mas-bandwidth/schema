@@ -728,7 +728,7 @@ func (g *gen) emitCookRowField(f *ir.Field) {
 		g.pf("    pub %s: [u8; %d], // string(%s): buffer, used length beside it\n",
 			f.Name, f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
 		g.pf("    pub %s_length: i32,\n", f.Name)
-	case f.Type.Kind == ir.TWString, f.Type.Width > 64:
+	case f.Type.Kind == ir.TWString:
 		// WIDE TEXT's cooked storage (docs/SPEC-TABLES.md §7.2, and ir's own
 		// model in blocklayout.go): char16_t[N + 1] at two, then the int32 used
 		// length in CODE UNITS. Without this case a `wstring(N)` fell to the
