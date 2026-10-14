@@ -2462,6 +2462,7 @@ func (c *checker) checkTables() {
 	c.tableClosure = closure
 	c.checkTableArmsReached(closure)
 	c.checkPositionalEnumBoundInClosure()
+	c.keyTypeHeldEnumExtents()
 
 	names := make([]string, 0, len(closure))
 	for name := range closure {
