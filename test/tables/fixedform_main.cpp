@@ -554,7 +554,7 @@ static void form_header_cases()
     // residue, `malformed`, with nothing decoded and nothing written.
     {
         tblfx1::FxRoot v;
-        std::memset( &v, 0xAB, sizeof( v ) );
+        std::memset( (void *) &v, 0xAB, sizeof( v ) );
         const tblfx1::FxRoot poison = v;
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, good.data(), 0, plan.data(), 1024, NULL, &r );
@@ -570,7 +570,7 @@ static void form_header_cases()
     {
         const uint8_t short1[10] = { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
         tblfx1::FxRoot v;
-        std::memset( &v, 0xAB, sizeof( v ) );
+        std::memset( (void *) &v, 0xAB, sizeof( v ) );
         const tblfx1::FxRoot poison = v;
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, short1, 10, plan.data(), 1024, NULL, &r );
@@ -587,7 +587,7 @@ static void form_header_cases()
     {
         const uint8_t short2[3] = { 2, 1, 0 };
         tblfx1::FxRoot v;
-        std::memset( &v, 0xAB, sizeof( v ) );
+        std::memset( (void *) &v, 0xAB, sizeof( v ) );
         const tblfx1::FxRoot poison = v;
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, short2, 3, plan.data(), 1024, NULL, &r );
@@ -606,7 +606,7 @@ static void form_header_cases()
         std::vector<uint8_t> zero = good;
         zero[0] = 0;
         tblfx1::FxRoot v;
-        std::memset( &v, 0xAB, sizeof( v ) );
+        std::memset( (void *) &v, 0xAB, sizeof( v ) );
         const tblfx1::FxRoot poison = v;
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, zero.data(), (int64_t) zero.size(), plan.data(), 1024, NULL, &r );
@@ -625,7 +625,7 @@ static void form_header_cases()
         std::vector<uint8_t> reserved = good;
         reserved[3] = 1;
         tblfx1::FxRoot v;
-        std::memset( &v, 0xAB, sizeof( v ) );
+        std::memset( (void *) &v, 0xAB, sizeof( v ) );
         const tblfx1::FxRoot poison = v;
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, reserved.data(), (int64_t) reserved.size(), plan.data(), 1024, NULL, &r );
@@ -1137,7 +1137,7 @@ static void owed10_no_layout_writes_nothing_case()
     tblfu1::TableFixedPut64( w.data() + rec, 0xDEADBEEFCAFEBABEull );
 
     tblfu2::FuRoot back;
-    std::memset( &back, 0xAB, sizeof( back ) );
+    std::memset( (void *) &back, 0xAB, sizeof( back ) );
     const tblfu2::FuRoot poison = back;
     tblfu2::TableReport r;
     std::vector<tblfu2::TableFixedEntry> plan( 1024 );
@@ -1565,13 +1565,13 @@ static void guard_width_case()
     plan[1].argw = 2;
 
     std::memset( dst, 0, sizeof( dst ) );
-    std::memset( &r, 0, sizeof( r ) );
+    std::memset( (void *) &r, 0, sizeof( r ) );
     tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
     check( dst[2] == 0, "GUARD WIDTH: tag 0x0101 at width 2 does not take arm 1" );
 
     src[1] = 0x00;
     std::memset( dst, 0, sizeof( dst ) );
-    std::memset( &r, 0, sizeof( r ) );
+    std::memset( (void *) &r, 0, sizeof( r ) );
     tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
     check( dst[2] == 0xAA, "GUARD WIDTH: tag 0x0001 at width 2 takes arm 1" );
 
@@ -1580,7 +1580,7 @@ static void guard_width_case()
     src[1] = 0x01;
     plan[1].argw = 1;
     std::memset( dst, 0, sizeof( dst ) );
-    std::memset( &r, 0, sizeof( r ) );
+    std::memset( (void *) &r, 0, sizeof( r ) );
     tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
     check( dst[2] == 0xAA, "NEGATIVE CONTROL: a one-byte compare really does fire arm 1 on 0x0101" );
 
