@@ -151,6 +151,12 @@ func (g *gen) emitVariableCookElement(b *strings.Builder, f *ir.Field, x, dst st
 	default:
 		value := "*" + x + " as u64"
 		width := ir.TableKindWidth(scalarWireKind(f))
+		if f.Type.Kind == ir.TBits {
+			width = 4
+			if f.Type.Width > 32 {
+				width = 8
+			}
+		}
 		if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
 			value = "(" + x + ").to_bits() as u64"
 		}

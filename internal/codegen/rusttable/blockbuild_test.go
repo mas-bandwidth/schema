@@ -313,6 +313,8 @@ func goBlockBytes(t *testing.T, u *ir.Unit, counts map[string]int32) []byte {
 func TestBlockBuildAndCookWriteRust(t *testing.T) {
 	t.Parallel()
 
+	variableBitsCookProbeRun(t)
+	largeFixedCookInputProbeRun(t)
 	variableCookProbeRun(t)
 	goGot := goBuilderCookProbeRun(t)
 	wire, err := hex.DecodeString(goGot["WIRE"])
@@ -676,5 +678,101 @@ fn main(){
 	}
 	if got["REFUSE"] != "invalid_value unchanged" {
 		t.Errorf("card cook invalid measure/no-write refused incorrectly: %q", got["REFUSE"])
+	}
+}
+
+// Wire bits(10) uses two bytes; its cooked C ABI slot uses four.
+func variableBitsCookProbeRun(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("rustc"); err != nil {
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+			t.Fatalf("rustc required: %v", err)
+		}
+		t.Skipf("rustc absent: variable bits cook functional test: %v", err)
+	}
+	u := unitFrom(t, `package bitsprobe
+table BitsRoot {
+ b10 bits(10)
+ child *BitsRoot
+}
+`)
+	m := tabletext.NewModel(u)
+	inst := m.New(m.Lookup("BitsRoot"))
+	var report tabletext.Report
+	if !m.Read(inst, []byte(`{"b10": 1, "child": null}`), &report) {
+		t.Fatal(report)
+	}
+	wire, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	modules, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	for _, name := range []string{"variable_runtime.rs", "probe_table.rs", "probe_variable.rs"} {
+		if err := os.WriteFile(filepath.Join(root, name), modules[name], 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "wire.bin"), wire, 0600); err != nil {
+		t.Fatal(err)
+	}
+	source := `mod variable_runtime;mod probe_table;mod probe_variable;
+use variable_runtime::*;use probe_table::*;
+fn main(){let wire=std::fs::read("wire.bin").unwrap();let mut report=TableReport::default();let v=bits_root_load(&wire,&mut report).unwrap();
+for order in [1,2]{let n=bits_root_cook_measure(&v);assert!(n>0);let mut out=vec![0;n as usize];assert!(bits_root_cook_from(&v,&mut out,order));println!("{} {}",order,out.iter().map(|b|format!("{b:02x}")).collect::<String>());}}
+`
+	if err := os.WriteFile(filepath.Join(root, "main.rs"), []byte(source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("rustc", "--edition", "2024", "-O", "-o", "probe", "main.rs")
+	cmd.Dir = root
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("bits cook compile: %v\n%s", err, out)
+	}
+	cmd = exec.Command(filepath.Join(root, "probe"))
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("bits cook run: %v\n%s", err, out)
+	}
+	got := map[string]string{}
+	for _, line := range strings.Split(string(out), "\n") {
+		k, v, _ := strings.Cut(line, " ")
+		got[k] = v
+	}
+	for _, big := range []bool{false, true} {
+		want, err := tablecook.Cook(m, inst, tablecook.Options{Big: big})
+		if err != nil {
+			t.Fatal(err)
+		}
+		key := "1"
+		if big {
+			key = "2"
+		}
+		if got[key] != hex.EncodeToString(want) {
+			t.Errorf("bits(10) cooked ABI bytes differ in order %s", key)
+		}
+	}
+}
+
+// A form-3 ceiling must not remove a supported form-1 cook input.
+func largeFixedCookInputProbeRun(t *testing.T) {
+	t.Helper()
+	u := unitFrom(t, `package largeprobe
+table Large { raw bytes(70000) }
+`)
+	modules, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body strings.Builder
+	for _, data := range modules {
+		body.Write(data)
+	}
+	if !strings.Contains(body.String(), "pub fn large_load(") {
+		t.Fatal("large fixed cook input has no form-1 loader")
 	}
 }

@@ -165,9 +165,8 @@ func (g *gen) emitFixedWireRoot(st *ir.Struct) {
 	if !g.cookable(st.Name) || !g.cookWriteCarried(st) {
 		return
 	}
-	up := ir.RustConstName(st.Name)
 	g.pf("/// Form-1 file reader for a fixed root (SPEC-TABLES sections 3 and 4).\npub fn %s(data:&[u8],report:&mut TableFixedReport)->Option<%sRow> {\n", fn(st.Name, "load"), st.Name)
-	g.pf("    let (mut reader,ids)=TableFixedWireReader::open(data,report)?;\n    let mut image=vec![0u8;%s_FIXED_BODY_BYTES];\n    if !%s(&mut reader,&ids,&mut image,report){report.malformed=true;return None;}\n    let mut value=%sRow::default();\n    %s(&image,&mut value,report);\n", up, fn(st.Name, "node_body"), st.Name, fn(st.Name, "fixed_scatter"))
+	g.pf("    let (mut reader,ids)=TableFixedWireReader::open(data,report)?;\n    let mut image=vec![0u8;%d];\n    if !%s(&mut reader,&ids,&mut image,report){report.malformed=true;return None;}\n    let mut value=%sRow::default();\n    %s(&image,&mut value,report);\n", ir.TableFixedTypeBytes(st), fn(st.Name, "node_body"), st.Name, fn(st.Name, "fixed_scatter"))
 	if fixedRangeClampNeeded(st) {
 		g.pf("    let (mut clamped,mut damaged)=(0,0); %s(&mut value,&mut clamped,&mut damaged);report.clamped+=clamped as u32;if damaged!=0{report.malformed=true;}\n", fn(st.Name, "fixed_clamp_body"))
 	}
