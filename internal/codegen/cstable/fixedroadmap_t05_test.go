@@ -120,11 +120,11 @@ func t05Run(t *testing.T) string {
 func t05TextOp(t *testing.T) string {
 	t.Helper()
 	src := t05Run(t)
-	i := strings.Index(src, "case Text:")
-	if i < 0 {
+	_, after, ok := strings.Cut(src, "case Text:")
+	if !ok {
 		t.Fatal("t05: the read loop carries no `case Text:`")
 	}
-	rest := src[i+len("case Text:"):]
+	rest := after
 	if j := strings.Index(rest, "case Ordinal:"); j >= 0 {
 		rest = rest[:j]
 	}
@@ -171,11 +171,11 @@ func t05Load(t *testing.T) string {
 func t05TextUtf8Arm(t *testing.T) string {
 	t.Helper()
 	src := tableFixedWireSource
-	i := strings.Index(src, "case TextUtf8:")
-	if i < 0 {
+	_, after, ok := strings.Cut(src, "case TextUtf8:")
+	if !ok {
 		t.Fatal("t05: the runtime carries no `case TextUtf8:`")
 	}
-	rest := src[i+len("case TextUtf8:"):]
+	rest := after
 	if j := strings.Index(rest, "break;"); j >= 0 {
 		rest = rest[:j]
 	}
@@ -187,11 +187,11 @@ func t05TextUtf8Arm(t *testing.T) string {
 func t05TextWideArm(t *testing.T) string {
 	t.Helper()
 	src := tableFixedWireSource
-	i := strings.Index(src, "case TextWide:")
-	if i < 0 {
+	_, after, ok := strings.Cut(src, "case TextWide:")
+	if !ok {
 		t.Fatal("t05: the runtime carries no `case TextWide:`")
 	}
-	rest := src[i+len("case TextWide:"):]
+	rest := after
 	if j := strings.Index(rest, "break;"); j >= 0 {
 		rest = rest[:j]
 	}

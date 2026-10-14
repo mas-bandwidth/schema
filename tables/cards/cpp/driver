@@ -1,0 +1,15 @@
+#!/bin/sh
+# The C++ card conformance driver (tables/cards/conformance/FORMAT.md).
+# Run from the repository root. Dispatches to the built facade program.
+# CARDS_CPP_RENDER_FLIP=1 is the test-only switch: it changes one rendered byte
+# after a successful render, so the conformance check goes red on render only.
+set -eu
+status=0
+build/cards-cpp-driver "$@" || status=$?
+if [ "${CARDS_CPP_RENDER_FLIP:-}" = 1 ] && [ "${2:-}" = render ] && [ -n "${3:-}" ]; then
+    set -- "$3"/*.txt
+    if [ -f "$1" ]; then
+        printf '\000' | dd of="$1" bs=1 seek=0 count=1 conv=notrunc 2>/dev/null
+    fi
+fi
+exit "$status"

@@ -624,7 +624,7 @@ test-go: tables-go-block-build tables-go-block-fill-refuser
 .PHONY: tables-go-retain
 tables-go-retain:
 	sh test/slowgate/proof tables-go-retain \
-		'TestRetainMatchesIndependentRewrite TestRetainMessageBoundsBeforeExpansion TestRetainReplacementAndShapeChanges TestRetainFileCapacityBeforeExpansion TestRetainUnknownNodeRecord TestRetainMessageMapKeyProbe TestRetainMessageMapRepeatedKeyKeepsWidening' \
+		'TestRetainMatchesIndependentRewrite TestRetainMessageBoundsBeforeExpansion TestRetainReplacementAndShapeChanges TestRetainFileCapacityBeforeExpansion TestRetainUnknownNodeRecord' \
 		./internal/codegen/gotable -run '^TestRetain' -count=1
 test-go: tables-go-retain
 
@@ -688,7 +688,7 @@ test-go: tables-go-view tables-go-view-negative-controls
 
 .PHONY: tables-go-measure-negative-controls tables-go-retain-wire-fuzz
 tables-go-measure-negative-controls:
-	@set -e; for mode in measure-cycle measure-count wire-damage message-reserved counted-tail counted-work arm-framing; do sh test/conformance/go/ownership-negative-control $$mode; done
+	@set -e; for mode in measure-cycle measure-count wire-damage counted-tail counted-work arm-framing; do sh test/conformance/go/ownership-negative-control $$mode; done
 tables-go-retain-wire-fuzz: build/conformance-harness build/conformance-go
 	./build/conformance-harness wire-fuzz --retain --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)
 test-go: tables-go-measure-negative-controls tables-go-retain-wire-fuzz

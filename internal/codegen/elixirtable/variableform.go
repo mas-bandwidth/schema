@@ -976,9 +976,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     do: {"", %{report | kind_mismatch: report.kind_mismatch + 1}}
 
   defp json_read_field(%{t: :enum} = f, raw, report) when is_binary(raw) do
-    case Map.fetch(f.by_name, raw) do
-      {:ok, _id} -> {raw, report}
-      :error -> {nil, %{report | unknown: report.unknown + 1}}
+    # "None" is the reserved nil spelling (docs/SPEC-TABLES.md §16; the Go
+    # reference internal/tabletext/value.go EnumValue): it reads the nil variant
+    # exactly as value 0 does on the wire, and is never an unknown name.
+    case raw do
+      "None" -> {nil, report}
+      _ ->
+        case Map.fetch(f.by_name, raw) do
+          {:ok, _id} -> {raw, report}
+          :error -> {nil, %{report | unknown: report.unknown + 1}}
+        end
     end
   end
 
