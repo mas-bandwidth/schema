@@ -785,15 +785,18 @@ public final class Driver {
             String name=f[1];
             try {
                 Class<?> cook=Class.forName(f[2]+"."+f[3]+"Cook");
-                java.lang.reflect.Method measure=null, from=null;
-                for (java.lang.reflect.Method method:cook.getMethods()) {
-                    if (method.getName().equals("cookMeasure")) measure=method;
-                    if (method.getName().equals("cookFrom")) from=method;
-                }
-                if (measure==null||from==null) {spillAbsent(out,name);continue;}
-                Class<?> valueType=measure.getParameterTypes()[0];
-                Class<?> codec=valueType.getEnclosingClass();
                 byte[] wire=Files.readAllBytes(Paths.get(f[4]));
+                java.lang.reflect.Method measure=null;
+                for (java.lang.reflect.Method method:cook.getMethods()) {
+                    if (!method.getName().equals("cookMeasure")) continue;
+                    Class<?> owner=method.getParameterTypes()[0].getEnclosingClass();
+                    if (wire.length>0 && ((wire[0]==1&&owner.getSimpleName().endsWith("Variable"))
+                            ||(wire[0]==3&&owner.getSimpleName().endsWith("Fixed")))) measure=method;
+                }
+                if (measure==null) {spillAbsent(out,name);continue;}
+                Class<?> valueType=measure.getParameterTypes()[0];
+                java.lang.reflect.Method from=cook.getMethod("cookFrom",valueType,byte[].class,int.class);
+                Class<?> codec=valueType.getEnclosingClass();
                 Object value;
                 if (codec.getSimpleName().endsWith("Variable")) {
                     Class<?> report=Class.forName(f[2]+".TableVariable$Report");

@@ -385,14 +385,26 @@ func (g *cookGen) emit() {
 func (g *cookGen) emitWriter(ml *ir.MemberLayout) {
 	name := g.table.Name
 	typ, fixed := cookValueType(g.unit, g.table)
-	method := name
-	if !fixed {
-		method += "Variable"
+	types := []string{typ}
+	if fixed {
+		for _, st := range cardVariableTables(g.unit) {
+			if st.Name == name {
+				types = append(types, name+"Variable.Value")
+				break
+			}
+		}
 	}
-	g.f("    private static TableCookWriter plan(%s value) { return TableCookWriter.plan(value,%d,%d,0x%016xL,TableCookWriter::write%s); }\n", typ, cookRecordSize(g.unit, g.table), ml.Align, ir.TableWireId(g.table.WireName()), method)
-	g.f("    public static long cookMeasure(%s value) { TableCookWriter p=plan(value); return p==null?-1:p.total; }\n", typ)
-	g.f("    public static TableCookWriter.MeasureResult cookMeasureReason(%s value) { long size=cookMeasure(value); return new TableCookWriter.MeasureResult(size,size<0?\"invalid_value\":null); }\n", typ)
-	g.f("    public static boolean cookFrom(%s value,byte[] buffer,int order) { TableCookWriter p=plan(value); return p!=null&&p.finish(buffer,order); }\n", typ)
+	for _, typ := range types {
+		method := name
+		if strings.HasSuffix(typ, "Variable.Value") {
+			method += "Variable"
+		}
+
+		g.f("    private static TableCookWriter plan(%s value) { return TableCookWriter.plan(value,%d,%d,0x%016xL,TableCookWriter::write%s); }\n", typ, cookRecordSize(g.unit, g.table), ml.Align, ir.TableWireId(g.table.WireName()), method)
+		g.f("    public static long cookMeasure(%s value) { TableCookWriter p=plan(value); return p==null?-1:p.total; }\n", typ)
+		g.f("    public static TableCookWriter.MeasureResult cookMeasureReason(%s value) { long size=cookMeasure(value); return new TableCookWriter.MeasureResult(size,size<0?\"invalid_value\":null); }\n", typ)
+		g.f("    public static boolean cookFrom(%s value,byte[] buffer,int order) { TableCookWriter p=plan(value); return p!=null&&p.finish(buffer,order); }\n", typ)
+	}
 }
 
 func (g *cookGen) emitOpen(ml *ir.MemberLayout, align int64) {
