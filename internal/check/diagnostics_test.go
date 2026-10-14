@@ -591,6 +591,23 @@ func TestDiagnostics(t *testing.T) {
 		{name: "a table spelling the Go cook's descriptor graph",
 			src:  "package probe\n\ntable tableCookRecords\n{\n    n int32\n}\n",
 			want: "tableCookRecords"},
+		// ---- the ELIXIR bits-consumed entry, read_<name>_bits (schema#584,
+		// ---- SPEC §6.1 item 3) ----
+		// Every type and union generates read_<snake>_bits beside
+		// read_<snake>, so `type Frame` claims read_frame_bits and a
+		// `FrameBits` declared beside it would take the same module binding.
+		// Reverting the two addRust(..."_bits") lines in checkClaimedNames and
+		// addStructSymbols turns all three red: the unit compiles clean and the
+		// generated Elixir module defines read_frame_bits twice.
+		{name: "a type whose read entry is another type's bits entry",
+			src:  "package t\ntype Frame { x uint8 }\ntype FrameBits { y uint8 }\n",
+			want: "both generate the symbol read_frame_bits"},
+		{name: "a union whose read entry is another union's bits entry",
+			src:  "package t\ntype A { x uint8 }\nunion Frame\n{\n    a A\n    b A\n}\nunion FrameBits\n{\n    a A\n    b A\n}\n",
+			want: "both generate the symbol read_frame_bits"},
+		{name: "a type whose read entry is a union's bits entry",
+			src:  "package t\ntype A { x uint8 }\nunion Frame\n{\n    a A\n    b A\n}\ntype FrameBits { y uint8 }\n",
+			want: "both generate the symbol read_frame_bits"},
 		// ---- the ANNOUNCEMENT and REFUSAL vocabulary, beside a table ----
 		// These are the table wire's own names, and they are claimed where the
 		// generated table sources define them: in a unit that declares a table
@@ -700,6 +717,11 @@ func TestGoodCornersStillCompile(t *testing.T) {
 		// untouched (docs/SPEC-TABLES.md §11).
 		{name: "near-miss spellings of the table runtime's names",
 			src: "package t\nconst tableJsonMaxDepths = 5\ntype tableJsonInput { n int32 }\ntype TableReports { n int32 }\n"},
+		// THE BITS-ENTRY CLAIM IS EXACT (schema#584): read_frame_bits is
+		// claimed and nothing wider, so a near miss (FrameBit -> read_frame_bit)
+		// and a bare `Bits` (read_bits) beside `type Frame` stay legal.
+		{name: "near-miss spellings of the Elixir bits entry",
+			src: "package t\ntype Frame { x uint8 }\ntype FrameBit { y uint8 }\ntype Bits { z uint8 }\n"},
 		// THE PACKET-ONLY UNIT KEEPS THE TABLE RUNTIME'S OWN NAMES
 		// (docs/SPEC-TABLES.md §11). The every-unit claim rests on one
 		// reason, that the view file defines the name, and the announcement
