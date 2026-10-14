@@ -1078,7 +1078,7 @@ static partial class Program
                 continue; // the cook's battery is its own binary's
             }
             File.WriteAllText(Path.Combine(outDir, f[1]),
-                OpenBlock(f[3], File.ReadAllBytes(f[4]), long.Parse(f[5])));
+                OpenBlock(f[3], File.ReadAllBytes(f[4]), long.Parse(f[5]), false, f.Length > 6 ? f[6] : "0"));
         }
         return 0;
     }

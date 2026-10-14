@@ -23,7 +23,9 @@
         "tables-json-clamp-prefix-negative-control",
         "tables-json-keyed-dup-negative-control",
         "tables-json-list-walk-negative-controls",
+        "tables-json-map-walk-negative-controls",
         "tables-json-negative-control",
+        "tables-py-packet-negative-control",
         "tables-ref-ordinal-negative-control",
         "tables-ref-ordinal-shared-negative-control",
         "tables-retain-fixed-class-negative-control",
@@ -80,6 +82,14 @@
       ]
     },
     {
+      "name": "base-conformance-cpp",
+      "when": "pull-request",
+      "why": "The C++ reference's emitter-side conformance control, alone: it overlay-rebuilds the compiler, regenerates the whole C++ table tree through it and rebuilds the reference driver, which is the compile weight of a complete-driver rebuild. The driver-flip control in base-conformance shares a job with the harness controls; this one is the emitter rebuild they deliberately do not carry.",
+      "targets": [
+        "conformance-negative-control-cpp"
+      ]
+    },
+    {
       "name": "base-c-conformance",
       "when": "pull-request",
       "why": "The C JSON driver sabotage and the small message/retention compiler probes share one job. The expanded C driver must not share a job with the other two complete C driver rebuilds.",
@@ -111,6 +121,20 @@
       "why": "the C little-endian memcpy arm of table_writer_finish: overlay-rebuilds the C emitter, regenerates the soak units and requires the host soak golden to go red. Isolated from the other C overlay rebuilds the way base-c-foreign is. Host-only, so it is not on the s390x job that already runs tables-c-big-endian-negative-control. Measured 10 s over 1 control on the author's machine.",
       "targets": [
         "tables-c-little-endian-negative-control"
+      ]
+    },
+    {
+      "name": "base-cards",
+      "when": "pull-request",
+      "why": "the card conformance check's controls on the host toolchain: Go's (one render and one taskhash byte flipped in a copy of expected/), and the C and C++ drivers' three each (a test-only switch that changes one rendered byte, drops one retained upgrade byte, or changes one task-hash digit, each required to red exactly its own surface while the other eight pass). Go, the host C and C++ compilers and nothing else. Measured 15 s over 7 controls on the author's machine, each driver built once and shared by its three controls.",
+      "targets": [
+        "cards-conformance-negative-control",
+        "cards-c-conformance-negative-control",
+        "cards-c-conformance-upgrade-negative-control",
+        "cards-c-conformance-hash-negative-control",
+        "cards-cpp-conformance-negative-control",
+        "cards-cpp-conformance-upgrade-negative-control",
+        "cards-cpp-conformance-hash-negative-control"
       ]
     },
     {
@@ -403,8 +427,9 @@
     {
       "name": "cs",
       "when": "pull-request",
-      "why": "the C# port's conformance leg and its four packet families. Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "why": "the C# port's conformance leg and its four packet families. Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached. The card driver's control (one rendered byte changed, render alone must go red) rides here too: 2 s on the author's machine.",
       "targets": [
+        "cards-cs-conformance-negative-control",
         "conformance-negative-control-cs",
         "tables-cs-retain-negative-control",
         "tables-cs-pack-negative-control",
@@ -452,8 +477,11 @@
     {
       "name": "rust",
       "when": "pull-request",
-      "why": "the Rust port's name gate and its four packet families. Measured 3 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
+      "why": "the Rust port's name gate and its four packet families. Measured 3 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash, each required to red exactly its own surface) ride here too: 8 s over 3 controls on the author's machine.",
       "targets": [
+        "cards-rust-conformance-negative-control",
+        "cards-rust-conformance-upgrade-negative-control",
+        "cards-rust-conformance-hash-negative-control",
         "packet-arm-defaults-rust-negative-control",
         "packet-defaults-rust-negative-control",
         "packet-utf8-rust-negative-control",
@@ -466,8 +494,12 @@
     {
       "name": "js",
       "when": "pull-request",
-      "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families, with the FIXED FORM's two beside them \u2014 one byte off the write template, one off an optional's present byte, and \u00a75's own \u2014 the wrong name on a file outside the lineage \u2014 for thirteen controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost.",
+      "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families, with the FIXED FORM's two beside them \u2014 one byte off the write template, one off an optional's present byte, and \u00a75's own \u2014 the wrong name on a file outside the lineage \u2014 for thirteen controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash) and the fixed roadmap's layout-hash-collision control (the held layout's byte comparison dropped through go test -overlay, so the second layout under a held hash must red) ride here too: 6 s over 4 controls on the author's machine.",
       "targets": [
+        "cards-js-conformance-negative-control",
+        "cards-js-conformance-upgrade-negative-control",
+        "cards-js-conformance-hash-negative-control",
+        "tables-js-fixed-roadmap-negative-control",
         "packet-arm-defaults-js-flat-negative-control",
         "packet-arm-defaults-js-runtime-negative-control",
         "packet-defaults-js-negative-control",
@@ -489,8 +521,9 @@
     {
       "name": "dart",
       "when": "pull-request",
-      "why": "the Dart port's controls and its four packet families: eight controls, the fixed form's among them. Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of §5.7.",
+      "why": "the Dart port's controls and its four packet families: eight controls, the fixed form's among them. Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of §5.7. The card driver's control (one rendered byte changed, render alone must go red) rides here too: 2 s on the author's machine.",
       "targets": [
+        "cards-dart-conformance-negative-control",
         "packet-arm-defaults-dart-negative-control",
         "packet-defaults-dart-negative-control",
         "packet-utf8-dart-negative-control",
@@ -506,8 +539,11 @@
     {
       "name": "java",
       "when": "pull-request",
-      "why": "the Java port's controls and its four packet families: nine controls, the eighth being the FIXED FORM's (docs/SPEC-TABLES.md §3.4), which writes one text length a byte too high and must red the C++ reference's byte match, and the ninth the VERSIONING gate's (§5.3 of docs/FIXED-FORM-ALGORITHM.md), which answers `noLayout` for a file outside the lineage where `layoutNewer` is the whole answer, so only a suite that checks the NAME can red it. Measured 6 s over 10 controls before the previous-form table legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the versioning control adds the reference's own dump (~7 s) and one submake over both columns of every row of §5.7 beside it, about twenty seconds on the author's machine.",
+      "why": "the Java port's controls and its four packet families: nine controls, the eighth being the FIXED FORM's (docs/SPEC-TABLES.md §3.4), which writes one text length a byte too high and must red the C++ reference's byte match, and the ninth the VERSIONING gate's (§5.3 of docs/FIXED-FORM-ALGORITHM.md), which answers `noLayout` for a file outside the lineage where `layoutNewer` is the whole answer, so only a suite that checks the NAME can red it. Measured 6 s over 10 controls before the previous-form table legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the versioning control adds the reference's own dump (~7 s) and one submake over both columns of every row of §5.7 beside it, about twenty seconds on the author's machine. The card facade's three controls (render, upgrade, taskhash, each required to red exactly its own surface) ride here too: 6 s over 3 controls on the author's machine.",
       "targets": [
+        "cards-java-conformance-negative-control",
+        "cards-java-conformance-upgrade-negative-control",
+        "cards-java-conformance-hash-negative-control",
         "conformance-negative-control-java-block",
         "packet-arm-defaults-java-negative-control",
         "packet-defaults-java-negative-control",
@@ -524,8 +560,11 @@
     {
       "name": "elixir",
       "when": "pull-request",
-      "why": "the Elixir port's controls and its three packet families. Measured 1 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
+      "why": "the Elixir port's controls and its three packet families. Measured 1 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (one rendered byte, one dropped retained field, extra needs in the task hash, each required to red exactly its own surface) ride here too: 16 s over 3 controls on the author's machine.",
       "targets": [
+        "cards-elixir-conformance-negative-control",
+        "cards-elixir-conformance-upgrade-negative-control",
+        "cards-elixir-conformance-hash-negative-control",
         "packet-defaults-elixir-negative-control",
         "packet-utf8-elixir-negative-control",
         "packet-wide-elixir-negative-control",
@@ -613,11 +652,11 @@
     },
     {
       "target": "tables-big-endian-negative-control",
-      "reason": "the body of ci.yml's big-endian job, which runs it on every pull request already: the job cross-compiles the tables battery for s390x, runs it under qemu and then compiles it a second time for this control. Issue #684 owns moving that job, so the control is named here rather than placed in a group, and this leg does not cross-compile it a second time."
+      "reason": "the C++ byte-order control, run on every pull request by ci.yml's `big-endian` job in the `control` row as `tables-big-endian-control-only`: issue #684 sharded that job by unit so the control is its own job rather than the tail of the leg. The control cross-compiles the sabotaged tables battery for s390x and compiles it a second time; this leg does not cross-compile it a second time."
     },
     {
       "target": "tables-c-big-endian-negative-control",
-      "reason": "the C twin of tables-big-endian-negative-control: ci.yml's big-endian job runs it on every pull request already, after the C++ put16 control. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. Issue #684 owns the job's budget, so the control is named here rather than placed in a group."
+      "reason": "the C twin of tables-big-endian-negative-control, run on every pull request by ci.yml's `big-endian` job in the `c-control` row: issue #684 sharded that job by unit so the control is a job of its own. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. This leg does not cross-compile it a second time."
     }
   ]
 }

@@ -152,6 +152,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// (§2.3), so those instances answer rather than write <case>.absent.
 	maps.Copy(out, generateVariableForm(u, ns))
 
+	// the id-table wire's shared framing (docs/SPEC-TABLES.md §3, §5): the
+	// primitives every variable table's codecs call, emitted once per unit the
+	// way the two accelerators' runtimes are.
+	out[TableRuntimeModule+".ex"] = tableRuntimeModule(u, ns)
 	out[BuildVersionModule+".ex"] = buildVersionModule(u, ns)
 
 	// THE MESSAGE FORM'S ANNOUNCEMENT (docs/SPEC-TABLES.md §3.3): the surface a

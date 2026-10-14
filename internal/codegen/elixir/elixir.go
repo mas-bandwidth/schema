@@ -384,7 +384,41 @@ func (g *gen) emitFile() {
 			g.emitUnionModules(d)
 		}
 	}
+	for _, d := range tableUnionsOrder(g.file) {
+		g.emitUnionModules(d)
+	}
 	g.emitFileModule(order)
+}
+
+func tableUnionsOrder(f *ir.File) []*ir.Union {
+	if len(f.TableUnions) <= 1 {
+		return f.TableUnions
+	}
+	byName := make(map[string]*ir.Union, len(f.TableUnions))
+	for _, u := range f.TableUnions {
+		byName[u.Name] = u
+	}
+	seen := make(map[string]bool, len(f.TableUnions))
+	var out []*ir.Union
+	var visit func(u *ir.Union)
+	visit = func(u *ir.Union) {
+		if seen[u.Name] {
+			return
+		}
+		seen[u.Name] = true
+		for _, v := range u.Variants {
+			if v.F != nil && v.F.Type.Kind == ir.TNamed {
+				if dep := byName[v.F.Type.Name]; dep != nil {
+					visit(dep)
+				}
+			}
+		}
+		out = append(out, u)
+	}
+	for _, u := range f.TableUnions {
+		visit(u)
+	}
+	return out
 }
 
 // emitEnumModule emits an integer-constant namespace — the Elixir translation
@@ -446,7 +480,7 @@ func (g *gen) emitUnionModules(d *ir.Union) {
 		if v.Void() {
 			continue // a PAYLOAD-FREE arm has no storage (SPEC §4.8)
 		}
-		fields = append(fields, fmt.Sprintf("%s: %%%s{}", elixirName(v.Name), g.mod(v.Type)))
+		fields = append(fields, fmt.Sprintf("%s: %s", elixirName(v.Name), g.storageDefault(v.F)))
 	}
 	g.bpf("defmodule %s do\n", g.mod(d.Name))
 	g.emitModuleDoc(d.Doc)
@@ -554,7 +588,18 @@ const formatWidth = 98
 // defstruct defaults evaluate at compile time, where a symbolic reference
 // would impose a module-compile ordering the runtime surface never has.
 func (g *gen) storageDefault(f *ir.Field) string {
+	if f.Type.Optional || f.Type.Pointer {
+		return "nil"
+	}
+	if f.IsMap() {
+		return "%{}"
+	}
+	if f.KeyEnum != "" {
+		return fmt.Sprintf("List.duplicate(%s, %s)", g.scalarDefault(f), intLit64(f.KeyEnumRef.Max))
+	}
 	switch f.Array {
+	case ir.ArrayList:
+		return "[]"
 	case ir.ArrayCounted:
 		// a [A..B] count is born at A, the one wire-legal count a fresh
 		// value can carry (SPEC §4.6), so the list is born holding A
@@ -615,7 +660,12 @@ func (g *gen) scalarDefault(f *ir.Field) string {
 				return intLit(f.DefInt)
 			}
 			return "0"
-		case *ir.Struct, *ir.Union:
+		case *ir.Struct:
+			if ref.IsTable {
+				return "nil"
+			}
+			return fmt.Sprintf("%%%s{}", g.mod(t.Name))
+		case *ir.Union:
 			return fmt.Sprintf("%%%s{}", g.mod(t.Name))
 		}
 	}

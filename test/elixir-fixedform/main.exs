@@ -1323,7 +1323,12 @@ Leg.section("the negative controls: every refusal BY NAME, and no damage")
     Tblfx2.FixedRuntime.report()
   )
 
-{wrong, _, _} = Tblfx2.FX2Fixed.fx_root_fixed_decode(wrong_image, 0)
+{wrong, _, _} =
+  Tblfx2.FX2Fixed.fx_root_fixed_decode(
+    <<binary_part(wrong_image, 0, 32)::binary, 0::little-signed-32,
+      binary_part(wrong_image, 36, byte_size(wrong_image) - 36)::binary>>,
+    0
+  )
 
 Leg.check(
   "the WRONG plan does NOT reproduce the record",
@@ -1710,17 +1715,15 @@ hostile =
          rest::binary>>
    end).()
 
-{:ok, [clamped], clamp_report} = Tblp1.P1Fixed.chain_fixed_load(hostile)
-Leg.check("the clamp is COUNTED", clamp_report.clamped >= 1)
+{:error, clamp_why, clamp_report} = Tblp1.P1Fixed.chain_fixed_load(hostile)
 
 # AND THEN THE CONTENT RULE FIRES ON WHAT THE CLAMP LEFT, which is the
 # reference's own order: the length is held to the declared bound FIRST, and the
 # used units are checked SECOND. `chain-one` padded out to sixteen bytes carries
-# NULs, and a `string(N)`'s bytes have no zero among them (§3) — so the field is
-# damage, it reads its DECLARED DEFAULT, and the rest of the record stands.
-Leg.eq("the clamped span is then held to the CONTENT rule", clamped.name, "")
-Leg.eq("ill-formed text fires the one damage flag", clamp_report.malformed, true)
-Leg.eq("and the rest of the record stands", clamped.link.value, 77)
+# NULs, and a `string(N)`'s bytes have no zero among them (§3) — so the read
+# refuses by name (`:text_ill_formed`, §4.5 fix 11).
+Leg.eq("the clamped span is then held to the CONTENT rule", clamp_why, :text_ill_formed)
+Leg.eq("a refusal by name does not set `malformed`", clamp_report.malformed, false)
 
 # A CLAMP ON ITS OWN IS NOT DAMAGE. The same hostile length over a field whose
 # whole declared bound IS well-formed text: the clamp counts and nothing else
@@ -1749,14 +1752,12 @@ Leg.eq("a clamp is not `malformed`", full_report.malformed, false)
 #
 # A `string(N)`'s used bytes are well-formed UTF-8 with no zero among them. A
 # payload that is not the text its kind says it is is DAMAGE and not data, and
-# the verdict here is not the packet wire's: SPEC.md §4.7 refuses the WHOLE
-# read, because a packet has no position after a field that did not decode; a
-# FIXED RECORD IS POSITIONAL, so the damage is ONE FIELD's — it reads its
-# declared default, one `malformed` fires, and the rest of the record stands.
+# the verdict is a REFUSAL BY NAME (§4.5 fix 11): `:text_ill_formed` refuses the
+# whole read without setting `malformed`.
 #
 # THE POISON IS WRITTEN THROUGH THE WRITER, because it can be: the write side's
 # bounds are the used length and the live count, and neither is a content rule.
-Leg.section("ill-formed text: the field reads its default, the record stands")
+Leg.section("ill-formed text: refuses by name (:text_ill_formed)")
 
 poison = fn bytes ->
   Tblfx1.FX1Fixed.fx_root_fixed_save([
@@ -1771,10 +1772,9 @@ for {bytes, what} <- [
       {<<0xC0, 0x80>>, "an overlong NUL is not text"},
       {<<?a, 0, ?b>>, "an interior null is not text"}
     ] do
-  {:ok, [back], r} = Tblfx1.FX1Fixed.fx_root_fixed_load(poison.(bytes))
-  Leg.eq(what, r.malformed, true)
-  Leg.eq("#{what}: the field reads its DECLARED DEFAULT", back.label, "fx")
-  Leg.eq("#{what}: and the rest of the record stands", {back.keep, back.nested.a}, {1234, 7})
+  {:error, why, r} = Tblfx1.FX1Fixed.fx_root_fixed_load(poison.(bytes))
+  Leg.eq(what, why, :text_ill_formed)
+  Leg.eq("#{what}: a refusal by name does not set `malformed`", r.malformed, false)
 end
 
 # AND WELL-FORMED TEXT IS UNTOUCHED, which is what makes the five above
@@ -1855,17 +1855,19 @@ overloaded =
 
 Leg.check(
   "an overloaded flavour lane does NOT reproduce the arm's text",
-  (fn ->
-     {image, _} =
-       Tblfu1.FixedRuntime.run(
-         overloaded,
-         fu_body,
-         Tblfu1.FU1Fixed.fu_root_fixed_prefill(),
-         Tblfu1.FixedRuntime.report()
-       )
+  try do
+    {image, _} =
+      Tblfu1.FixedRuntime.run(
+        overloaded,
+        fu_body,
+        Tblfu1.FU1Fixed.fu_root_fixed_prefill(),
+        Tblfu1.FixedRuntime.report()
+      )
 
-     elem(Tblfu1.FU1Fixed.fu_root_fixed_decode(image, 0), 0).pick.labelled.label
-   end).() != "hello"
+    elem(Tblfu1.FU1Fixed.fu_root_fixed_decode(image, 0), 0).pick.labelled.label
+  catch
+    :throw, {:refuse, :text_ill_formed} -> :refused
+  end != "hello"
 )
 
 # AND THE UNCHECKED ORDINAL, planted the same way: an ordinal that rides as a
@@ -2073,9 +2075,13 @@ for {bytes, what} <- [
       {<<0x41, 0, 0x42>>, "an odd byte is not a unit"}
     ] do
   Leg.eq(
-    "C5: #{what}, so the field reads its default",
-    Tblfx1.FixedRuntime.wtext(bytes, "dflt", false),
-    {"dflt", true}
+    "C5: #{what}, so wtext refuses by name",
+    try do
+      Tblfx1.FixedRuntime.wtext(bytes, "dflt", false)
+    catch
+      :throw, v -> v
+    end,
+    {:refuse, :text_ill_formed}
   )
 end
 
@@ -2083,8 +2089,12 @@ end
 # whole above are an interior NUL under the narrow flavour's no-zero rule.
 Leg.eq(
   "C5: the same bytes are NOT text in the narrow flavour",
-  Tblfx1.FixedRuntime.text(<<0x41, 0>>, "dflt", false),
-  {"dflt", true}
+  try do
+    Tblfx1.FixedRuntime.text(<<0x41, 0>>, "dflt", false)
+  catch
+    :throw, v -> v
+  end,
+  {:refuse, :text_ill_formed}
 )
 
 # THE PLAN LANE: `{:text, src, dst, aux, size, 2}` over a span of 8 bytes, so
@@ -2139,14 +2149,14 @@ Leg.eq(
   false
 )
 
-{lone_image, lone_report} = wide_run.(1, <<0x00, 0xD8, 0, 0, 0, 0, 0, 0>>)
-
-Leg.eq("C5: half a character under the op fires the damage flag", lone_report.malformed, true)
-
 Leg.eq(
-  "C5: and the field is a GAP, so the prefill answers",
-  wide_len.(lone_image),
-  <<0::little-signed-32>>
+  "C5: half a character under the op refuses by name (:text_ill_formed)",
+  try do
+    wide_run.(1, <<0x00, 0xD8, 0, 0, 0, 0, 0, 0>>)
+  catch
+    :throw, v -> v
+  end,
+  {:refuse, :text_ill_formed}
 )
 
 # ---------------------------------------------------------------------------

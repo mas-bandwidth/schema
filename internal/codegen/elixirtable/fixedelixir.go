@@ -1342,10 +1342,12 @@ func (g *fixedGen) unionHelpers(u *ir.Union) {
 	snake := ir.RustSnake(u.Name)
 	tag := fixedUnionTagBytes(u)
 	widest := int64(0)
+	hasPayload := false
 	for _, v := range u.Variants {
 		if v.F == nil {
 			continue
 		}
+		hasPayload = true
 		if n := fixedFieldBytes(v.F); n > widest {
 			widest = n
 		}
@@ -1363,27 +1365,43 @@ func (g *fixedGen) unionHelpers(u *ir.Union) {
 		if v.F == nil {
 			continue
 		}
-		arms = append(arms, caseArm{label: fmt.Sprintf("%d", i+1), body: g.armWriter(v.F, "value."+v.Name, widest-fixedFieldBytes(v.F))})
+		arms = append(arms, caseArm{label: fmt.Sprintf("%d", i+1), body: g.armWriter(u, v.F, "value."+v.Name, widest-fixedFieldBytes(v.F))})
 	}
 	arms = append(arms, caseArm{label: "_", body: rawf("<<acc::binary, 0::size(%d)-unit(8)>>", widest)})
 	g.emitArms(arms, 6)
 	g.pf("    end\n")
 	g.pf("  end\n\n")
 
+	for _, v := range u.Variants {
+		if v.F == nil || v.F.Array == ir.ArrayNone {
+			continue
+		}
+		armFn := fmt.Sprintf("%s_fixed_write_%s", snake, ir.RustSnake(v.Name))
+		g.pf("  defp %s(v_%s, acc) do\n", armFn, v.Name)
+		g.emitLines(g.writeStatements(g.writePayload(v.F, "value"), 4))
+		g.pf("    acc\n")
+		g.pf("  end\n\n")
+	}
+
 	g.pf("  # union %s's projection: the tag, then the arm it names and no other. A TAG\n", u.Name)
 	g.pf("  # BEYOND THE DECLARED ARMS lands None and counts one `clamped`.\n")
-	g.pf("  def %s_fixed_decode(<<tag::little-unsigned-%d, arm::binary>>, c, m \\\\ false) do\n", snake, tag*8)
+	armVar := "arm"
+	if !hasPayload {
+		armVar = "_arm"
+	}
+	g.pf("  def %s_fixed_decode(<<tag::little-unsigned-%d, %s::binary>>, c, m \\\\ false) do\n", snake, tag*8, armVar)
 	g.pf("    case tag do\n")
 	first := true
 	for i, v := range u.Variants {
-		if v.F == nil {
-			continue
-		}
 		if !first {
 			g.pf("\n")
 		}
 		first = false
 		g.pf("      %d ->\n", i+1)
+		if v.F == nil {
+			g.pf("        {%%%s.%s{type: %d}, c, m}\n", g.ns, u.Name, i+1)
+			continue
+		}
 		for _, l := range g.armDecode(v.F, u, v.Name, i+1) {
 			g.pf("        %s\n", l)
 		}
@@ -1393,6 +1411,31 @@ func (g *fixedGen) unionHelpers(u *ir.Union) {
 	g.pf("    end\n")
 	g.pf("  end\n\n")
 
+	g.leafLists = nil
+	for _, v := range u.Variants {
+		if v.F == nil || !unionArmNeedsDecodeHelper(v.F) {
+			continue
+		}
+		armFn := fmt.Sprintf("%s_fixed_decode_%s", snake, ir.RustSnake(v.Name))
+		var r rseg
+		g.readPayload(&r, v.F, v.Name, raw("true"))
+		g.emitMatchHead("defp", armFn, r.match, []string{"c", "m"}, 2, "_::binary", nil)
+		g.emitPost(r.post, 4)
+		g.pf("    %s\n", triple(r.vals[0], raw("c"), raw("m")).render(4, 4, 0))
+		g.pf("  end\n\n")
+	}
+	for _, l := range g.leafLists {
+		g.emitForwardListBase("defp", l.name)
+		if k := listUnrollK(l.bytes); k > 1 {
+			g.emitUnrolledLeafList(l, k)
+		}
+		g.emitMatchHead("defp", l.name, []string{l.spec}, []string{"n", "c", "m"}, 2, "rest::binary", nil)
+		g.emitLines(g.assign("{tail, c, m}", call(l.name, raw("rest"), raw("n - 1"), l.count, raw("m")), 4))
+		g.pf("    {[%s | tail], c, m}\n", l.wrap.flat())
+		g.pf("  end\n\n")
+	}
+	g.leafLists = nil
+
 	g.pf("  # A RUN OF %s: the LIVE elements walked into a list, the count beside it.\n", u.Name)
 	g.emitForwardListBase("def", snake+"_fixed_list")
 	g.pf("  def %s_fixed_list(<<e::binary-size(%d), rest::binary>>, n, c, m) do\n", snake, total)
@@ -1400,6 +1443,17 @@ func (g *fixedGen) unionHelpers(u *ir.Union) {
 	g.pf("    {tail, c, m} = %s_fixed_list(rest, n - 1, c, m)\n", snake)
 	g.pf("    {[v | tail], c, m}\n")
 	g.pf("  end\n\n")
+}
+
+func unionArmNeedsDecodeHelper(f *ir.Field) bool {
+	if f.Array != ir.ArrayNone {
+		return true
+	}
+	switch f.Type.Kind {
+	case ir.TString, ir.TWString, ir.TBytes:
+		return true
+	}
+	return false
 }
 
 // caseArm is one arm of a generated `case`: its pattern and its body.
@@ -1437,8 +1491,39 @@ func (g *fixedGen) emitArms(arms []caseArm, col int) {
 
 // armWriter is ONE arm's bytes appended to `acc`, then the slack out to the
 // widest arm as a zero segment.
-func (g *fixedGen) armWriter(f *ir.Field, name string, slack int64) node {
-	if f.Type.Kind == ir.TNamed {
+func (g *fixedGen) armWriter(u *ir.Union, f *ir.Field, name string, slack int64) node {
+	if f.Array != ir.ArrayNone {
+		armName := strings.TrimPrefix(name, "value.")
+		into := fmt.Sprintf("%s_fixed_write_%s(%s, acc)", ir.RustSnake(u.Name), ir.RustSnake(armName), name)
+		if slack == 0 {
+			return raw(into)
+		}
+		return binNode{segs: []string{into + "::binary", fmt.Sprintf("0::size(%d)-unit(8)", slack)}}
+	}
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes:
+		segs := []string{
+			"acc::binary",
+			fmt.Sprintf("byte_size(%s)::little-signed-32", name),
+			fmt.Sprintf("%s::binary", name),
+			fmt.Sprintf("0::size(R.text_slack(%s, %d))-unit(8)", name, f.Type.Size),
+		}
+		if slack > 0 {
+			segs = append(segs, fmt.Sprintf("0::size(%d)-unit(8)", slack))
+		}
+		return binNode{segs: segs}
+	case ir.TWString:
+		segs := []string{
+			"acc::binary",
+			fmt.Sprintf("div(byte_size(%s), 2)::little-signed-32", name),
+			fmt.Sprintf("%s::binary", name),
+			fmt.Sprintf("0::size(R.text_slack(%s, %d))-unit(8)", name, 2*f.Type.Size),
+		}
+		if slack > 0 {
+			segs = append(segs, fmt.Sprintf("0::size(%d)-unit(8)", slack))
+		}
+		return binNode{segs: segs}
+	case ir.TNamed:
 		if r, ok := f.Type.Ref.(*ir.Struct); ok {
 			into := fmt.Sprintf("%s%s_fixed_write_into(%s, acc)", g.moduleOf(r), ir.RustSnake(r.Name), name)
 			if slack == 0 {
@@ -1470,6 +1555,12 @@ func (g *fixedGen) armWriter(f *ir.Field, name string, slack int64) node {
 // struct naming it, with the count moved by whatever the arm bounds.
 func (g *fixedGen) armDecode(f *ir.Field, u *ir.Union, field string, tag int) []string {
 	mod := g.ns + "." + u.Name
+	if unionArmNeedsDecodeHelper(f) {
+		return []string{
+			fmt.Sprintf("{v, c, m} = %s_fixed_decode_%s(arm, c, m)", ir.RustSnake(u.Name), ir.RustSnake(field)),
+			fmt.Sprintf("{%%%s{type: %d, %s: v}, c, m}", mod, tag, field),
+		}
+	}
 	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Struct); ok {
 			return []string{

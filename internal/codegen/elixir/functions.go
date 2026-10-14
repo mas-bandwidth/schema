@@ -775,37 +775,41 @@ func (g *gen) emitWriteFunction(name string, items []ir.Item) {
 	g.bpf("  end\n\n")
 }
 
-// emitReadFunction emits read_<name>(data, num_bits) -> {:ok, value} |
-// :error. st is the struct whose storage the locals rebuild; nil for the
-// standalone union surface (the body's one item binds local v instead).
+// emitReadFunction emits the PAIR: read_<name>_bits(data, num_bits) ->
+// {:ok, value, bits_read} | :error, which is SPEC §5's "Read reports bits
+// consumed" in the one idiom the BEAM has for it, and read_<name>(data,
+// num_bits) -> {:ok, value} | :error delegating to it, which is the shape
+// every caller already holds. st is the struct whose storage the locals
+// rebuild; nil for the standalone union surface (the body's one item binds
+// local v instead).
 func (g *gen) emitReadFunction(name string, st *ir.Struct, items []ir.Item) {
 	g.usesImport = true
 	snake := ir.RustSnake(name)
 	g.fn.Reset()
 	g.rdBreak()
 	g.withOwner(name, func() { g.emitReadItems(items, "v", "      ", false) })
-	g.pf("      # the final position is unobserved — the verdict and value are the surface\n")
-	g.pf("      _ = bits_read\n")
 	if st != nil {
 		var fields []string
 		for _, f := range st.Fields {
 			fields = append(fields, fmt.Sprintf("%s: %s", elixirName(f.Name), local("v", f)))
 		}
 		if len(fields) == 0 {
-			g.pf("      {:ok, %%%s{}}\n", g.mod(name))
+			g.pf("      {:ok, %%%s{}, bits_read}\n", g.mod(name))
 		} else {
 			g.structLit(&g.fn, "      ", "value = ", name, fields)
-			g.pf("      {:ok, value}\n")
+			g.pf("      {:ok, value, bits_read}\n")
 		}
 	} else {
-		g.pf("      {:ok, v}\n")
+		g.pf("      {:ok, v, bits_read}\n")
 	}
 	body := g.fn.String()
 
-	g.bpf("  # read_%s decodes the first num_bits of data — the family read verdict:\n", snake)
-	g.bpf("  # :error rejects the wire (bounds, ranges, wire constants, padding);\n")
-	g.bpf("  # hostile bytes never raise. No slack past the payload is required.\n")
-	g.bpf("  def read_%s(data, num_bits) when is_binary(data) and is_integer(num_bits) do\n", snake)
+	g.bpf("  # read_%s_bits decodes the first num_bits of data and REPORTS THE BITS\n", snake)
+	g.bpf("  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a\n")
+	g.bpf("  # second object behind the first in one buffer. :error rejects the wire\n")
+	g.bpf("  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No\n")
+	g.bpf("  # slack past the payload is required.\n")
+	g.readHead(snake + "_bits")
 	g.bpf("    try do\n")
 	g.bpf("      if num_bits > byte_size(data) * 8 do\n")
 	g.bpf("        # the payload cannot exceed the buffer behind it\n")
@@ -817,6 +821,29 @@ func (g *gen) emitReadFunction(name string, st *ir.Struct, items []ir.Item) {
 	g.bpf("      :invalid -> :error\n")
 	g.bpf("    end\n")
 	g.bpf("  end\n\n")
+
+	g.bpf("  # read_%s is read_%s_bits with the count dropped — the family read\n", snake, snake)
+	g.bpf("  # verdict, unchanged, and the entry every caller already holds.\n")
+	g.readHead(snake)
+	g.bpf("    case read_%s_bits(data, num_bits) do\n", snake)
+	g.bpf("      {:ok, value, _bits_read} -> {:ok, value}\n")
+	g.bpf("      :error -> :error\n")
+	g.bpf("    end\n")
+	g.bpf("  end\n\n")
+}
+
+// readHead writes a read entry's head, wrapping the guard onto its own line
+// when the one-line form is past the formatter's width — `mix format` is a
+// gate, so the emitter spells what the formatter would.
+func (g *gen) readHead(name string) {
+	const guard = " when is_binary(data) and is_integer(num_bits) do"
+	head := "  def read_" + name + "(data, num_bits)"
+	if len(head+guard) <= formatWidth {
+		g.bpf("%s%s\n", head, guard)
+		return
+	}
+	g.bpf("%s\n", head)
+	g.bpf("     %s\n", guard)
 }
 
 // local is the read-body local bound for a field under prefix pre.
