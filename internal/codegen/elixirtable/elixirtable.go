@@ -5,12 +5,13 @@
 //
 // THE ACCELERATOR TIER. A block is POINTED AT and a cook is OPENED; neither
 // parses a wire, so both reach every fixed table of the unit. Beside them the
-// VARIABLE FORM is emitted for the card constructs only: the id-table wire's
+// VARIABLE FORM is emitted for the whole variable class: the id-table wire's
 // codec, the reflection descriptors and the text form of docs/SPEC-TABLES.md
-// §3, §4, §8 and §16 in their id-table form, for a plain `table` root, tables
-// as list elements, bool/int32/int64/enum, string(N), *string and []T lists of
-// tables. The rest of the variable class is refused by name at the backend's
-// boundary (§11).
+// §3, §4, §8 and §16 in their id-table form — pointers to tables and the flat
+// node table, blobs (*bytes, *string), unbounded arrays of scalar, string and
+// enum elements and arrays of pointers, the remaining scalars, and nested
+// tables by value. A construct outside the class is refused by name at the
+// backend's boundary (§11).
 package elixirtable
 
 import (

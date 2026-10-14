@@ -44,8 +44,8 @@ walker's break is the backend's and not the data's:
 `conformance-negative-control-go-walk` breaks the Go walk's offset arithmetic.
 It has the same second half as every control here, and it is the point:
 `json-read` goes red and `json-write` stays green, which is what says the
-break is the READER's. (Elixir's card-slice text form has no walk control yet;
-the control arrives with the full variable class.)
+break is the READER's. (Elixir's text form covers the variable class now;
+its walk control still arrives with the full conformance battery.)
 
 ## The shape
 

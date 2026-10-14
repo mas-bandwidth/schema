@@ -105,16 +105,16 @@ func init() {
 	//     image: every field of the image is present by construction, so there
 	//     is no absent field for a default to answer and nothing to elide.
 	//
-	// The id-table wire (§3) is emitted for this backend for the card slice
-	// (docs/SPEC-TABLES.md §11); its codec elides a field at its declared
-	// default, so the elision claim stays true as the class widens.
+	// The id-table wire (§3) is emitted for this backend for the whole variable
+	// class (docs/SPEC-TABLES.md §2, §3); its codec elides a field at its
+	// declared default, so the elision claim stays true as the class widens.
 	// Registered the way go, java and rust register (target_go.go,
 	// target_java.go, target_rust.go): the append IS the registration.
 	valueDefaultTargets = append(valueDefaultTargets, "elixir")
 	registerWideTextCarrier("elixir")
 	registerListCarrier("elixir")
-	// blobs=true: the variable form's card slice carries *string (docs/SPEC-TABLES.md
-	// §2.5); *bytes stays refused at the elixirtable boundary (§11), so the
-	// compiler-level byte-buffer gate must not fire for the *string the card uses.
+	// blobs=true: the variable class carries *string and *bytes (docs/SPEC-TABLES.md
+	// §2.5), so the compiler-level byte-buffer gate must not fire for the two
+	// blobs the wire rides as nodes.
 	registerBuiltin(elixirTarget{}, true, false, false, true)
 }
