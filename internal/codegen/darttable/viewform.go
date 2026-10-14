@@ -15,41 +15,25 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// cardFieldKind is a field's table-wire kind (§3) among the card's closed set:
-// bool 1, int32 4, int64 5, string(N) 12, []T 14, *string 17, enum 30. A field
-// that is not a card construct is refused by name in checkUnsupportedConstructs
-// (§11) and never reaches the descriptor, so 0 is unreachable here.
+// cardFieldKind is a field's table-wire kind (§3): ir.TableWireFieldKind covers
+// the whole variable class (scalars, string(N), bytes(N), []T, [..N]T, *T,
+// *string, *bytes, enum).
 func cardFieldKind(f *ir.Field) int {
-	switch {
-	case f.Type.Blob():
-		return wireKindPtr
-	case f.IsList():
-		return wireKindArray
-	case f.Type.Kind == ir.TBool:
-		return wireKindBool
-	case f.Type.Kind == ir.TInt:
-		if f.Type.Width == 32 {
-			return wireKindI32
-		}
-		return wireKindI64
-	case f.Type.Kind == ir.TString:
-		return wireKindString
-	case f.Type.Kind == ir.TNamed && enumRef(f) != nil:
-		return wireKindEnum
-	}
-	return 0
+	return ir.TableWireFieldKind(f)
 }
 
-// cardFieldShape is a field's storage shape (§8.1, the card's three): "value"
-// for a scalar or a bounded string(N), "list" for an unbounded []T, and "blob"
-// for *string — the node-index pointer to a string blob (§2.5), the one shape a
-// walker must resolve before it steps.
+// cardFieldShape is a field's storage shape (§8.1): "value" for a scalar, a
+// bounded string(N)/bytes(N), an enum or a table nested by value; "list" for
+// an array ([]T and [..N]T, §2.9); "blob" for *string and *bytes (§2.5); and
+// "pointer" for *T (§2.1).
 func cardFieldShape(f *ir.Field) string {
 	switch {
+	case f.Array != ir.ArrayNone:
+		return "list"
 	case f.Type.Blob():
 		return "blob"
-	case f.IsList():
-		return "list"
+	case f.Type.Pointer:
+		return "pointer"
 	default:
 		return "value"
 	}
@@ -59,10 +43,10 @@ func cardFieldShape(f *ir.Field) string {
 // registry into the wire library (docs/SPEC-TABLES.md §8.1, §8.3).
 func (g *wireGen) emitDescriptors() {
 	g.pf("// THE DESCRIPTORS (docs/SPEC-TABLES.md §8.1, §8.3): one TableFieldInfo\n")
-	g.pf("// per field — name, wire kind, shape (value/list/blob) and declared\n")
-	g.pf("// bound — and one TableTypeInfo per table, so a walker reads a record\n")
-	g.pf("// by name and kind with no per-version struct. The registry lists the\n")
-	g.pf("// tables in declaration order and allocates nothing (§8.1).\n")
+	g.pf("// per field — name, wire kind, shape (value/list/blob/pointer) and\n")
+	g.pf("// declared bound — and one TableTypeInfo per table, so a walker reads a\n")
+	g.pf("// record by name and kind with no per-version struct. The registry lists\n")
+	g.pf("// the tables in declaration order and allocates nothing (§8.1).\n")
 	g.pf("final class TableFieldInfo {\n")
 	g.pf("\tfinal String name;\n")
 	g.pf("\tfinal int kind;\n")
@@ -89,19 +73,19 @@ func (g *wireGen) emitDescriptors() {
 }
 
 // emitFieldDescriptor emits one field's TableFieldInfo row: its name, its
-// kind, its shape, and its declared bound — the string(N) length, or the
-// declared min/max of a ranged integer, null where the declaration bounds
-// nothing (§8.1).
+// kind, its shape, and its declared bound — the string(N)/bytes(N)/[..N]T
+// bound, or the declared min/max of a ranged integer, null where the
+// declaration bounds nothing (§8.1).
 func (g *wireGen) emitFieldDescriptor(f *ir.Field) {
 	bound := "null"
 	min := "null"
 	max := "null"
-	switch {
-	case f.Type.Blob():
-		// *string is unbounded (§2.5): no declared bound.
-	case f.Type.Kind == ir.TString:
+	if f.Array == ir.ArrayCounted {
+		bound = fmt.Sprintf("%d", f.ArrayBound)
+	} else if f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && !f.Type.Blob() {
 		bound = fmt.Sprintf("%d", f.Type.Size)
-	case f.HasIntRange:
+	}
+	if f.HasIntRange {
 		min = f.IntMin.String()
 		max = f.IntMax.String()
 	}

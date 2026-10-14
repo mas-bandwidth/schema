@@ -13,12 +13,14 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../../../build/tables-generated-dart/blobs/BlobdemoWire.dart' as bd;
 import '../../../build/tables-generated-dart/block/BlockdemoBlock.dart';
 import '../../../build/tables-generated-dart/block/PaddedBlock.dart' as blk;
 import '../../../build/tables-generated-dart/block/RenderBlock.dart' as blk;
 import '../../../build/tables-generated-dart/cards/CardsWire.dart';
-import '../../../build/tables-generated-dart/pointers/GraphdemoCook.dart';
 import '../../../build/tables-generated-dart/pointers/GraphCook.dart' as ck;
+import '../../../build/tables-generated-dart/pointers/GraphdemoCook.dart';
+import '../../../build/tables-generated-dart/pointers/GraphdemoWire.dart' as gd;
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -35,6 +37,185 @@ void readManifest(String path) {
 }
 
 Iterable<List<String>> kind(String want) => lines.where((f) => f[0] == want);
+
+bool noText(List<String> f) => f.length > 5 && f[5] == 'no-text';
+
+void writeAbsent(String outDir, String name) {
+  File('$outDir/$name.absent').writeAsBytesSync(const <int>[]);
+}
+
+// ---- the VARIABLE-CLASS WIRE and TEXT surfaces (docs/SPEC-TABLES.md §3, §4, §16.7) ----
+
+class _ReportView {
+  final int unknown;
+  final int kindMismatch;
+  final int widened;
+  final int clamped;
+  final bool malformed;
+  final bool refused;
+
+  const _ReportView(
+    this.unknown,
+    this.kindMismatch,
+    this.widened,
+    this.clamped,
+    this.malformed,
+    this.refused,
+  );
+}
+
+class _VarCodec {
+  final (Uint8List, _ReportView) Function(Uint8List wire) roundTripWire;
+  final _ReportView Function(Uint8List wire) reportWire;
+  final Uint8List Function(String text) jsonToWire;
+  final (String, _ReportView) Function(Uint8List wire) wireToJson;
+
+  const _VarCodec({
+    required this.roundTripWire,
+    required this.reportWire,
+    required this.jsonToWire,
+    required this.wireToJson,
+  });
+}
+
+_ReportView _gdReport(gd.TableWireReport r) => _ReportView(
+  r.unknown,
+  r.kindMismatch,
+  r.widened,
+  r.clamped,
+  r.malformed,
+  r.refused,
+);
+
+_ReportView _bdReport(bd.TableWireReport r) => _ReportView(
+  r.unknown,
+  r.kindMismatch,
+  r.widened,
+  r.clamped,
+  r.malformed,
+  r.refused,
+);
+
+_VarCodec? _findVarCodec(String unit, String root) {
+  switch ('$unit:$root') {
+    case 'graphdemo:Scene':
+      return _VarCodec(
+        roundTripWire: (wire) {
+          final r = gd.TableWireReport();
+          final v = gd.sceneWireLoad(wire, r);
+          return (gd.sceneWireSave(v), _gdReport(r));
+        },
+        reportWire: (wire) {
+          final r = gd.TableWireReport();
+          gd.sceneWireLoad(wire, r);
+          return _gdReport(r);
+        },
+        jsonToWire: (text) => gd.sceneWireSave(gd.sceneFromJson(text)),
+        wireToJson: (wire) {
+          final r = gd.TableWireReport();
+          final v = gd.sceneWireLoad(wire, r);
+          return (gd.sceneToJson(v), _gdReport(r));
+        },
+      );
+    case 'blobdemo:Catalog':
+      return _VarCodec(
+        roundTripWire: (wire) {
+          final r = bd.TableWireReport();
+          final v = bd.catalogWireLoad(wire, r);
+          return (bd.catalogWireSave(v), _bdReport(r));
+        },
+        reportWire: (wire) {
+          final r = bd.TableWireReport();
+          bd.catalogWireLoad(wire, r);
+          return _bdReport(r);
+        },
+        jsonToWire: (text) => bd.catalogWireSave(bd.catalogFromJson(text)),
+        wireToJson: (wire) {
+          final r = bd.TableWireReport();
+          final v = bd.catalogWireLoad(wire, r);
+          return (bd.catalogToJson(v), _bdReport(r));
+        },
+      );
+    default:
+      return null;
+  }
+}
+
+int surfaceWire(String outDir) {
+  for (final f in kind('instance')) {
+    final codec = _findVarCodec(f[2], f[3]);
+    if (codec == null) {
+      writeAbsent(outDir, f[1]);
+      continue;
+    }
+    final wire = File(f[4]).readAsBytesSync();
+    final (saved, rep) = codec.roundTripWire(wire);
+    if (rep.refused || rep.malformed) {
+      stderr.writeln('driver: ${f[1]}: wire load failed on ${f[4]}');
+      return 1;
+    }
+    File('$outDir/${f[1]}').writeAsBytesSync(saved);
+  }
+  return 0;
+}
+
+int surfaceReport(String outDir) {
+  for (final f in kind('report')) {
+    final codec = _findVarCodec(f[2], f[3]);
+    if (codec == null) {
+      writeAbsent(outDir, f[1]);
+      continue;
+    }
+    final wire = File(f[4]).readAsBytesSync();
+    final rep = codec.reportWire(wire);
+    final malformed = rep.malformed ? 'true' : 'false';
+    final verdict = rep.refused ? 'refused' : 'read';
+    final text =
+        '${rep.unknown},${rep.kindMismatch},${rep.widened},${rep.clamped},0,$malformed,$verdict\n';
+    File('$outDir/${f[1]}').writeAsStringSync(text);
+  }
+  return 0;
+}
+
+int surfaceJsonRead(String outDir) {
+  for (final f in kind('instance')) {
+    if (noText(f)) {
+      continue;
+    }
+    final codec = _findVarCodec(f[2], f[3]);
+    if (codec == null) {
+      writeAbsent(outDir, f[1]);
+      continue;
+    }
+    final text = File(
+      'testdata/conformance/tables/json/${f[1]}.json',
+    ).readAsStringSync();
+    final saved = codec.jsonToWire(text);
+    File('$outDir/${f[1]}').writeAsBytesSync(saved);
+  }
+  return 0;
+}
+
+int surfaceJsonWrite(String outDir) {
+  for (final f in kind('instance')) {
+    if (noText(f)) {
+      continue;
+    }
+    final codec = _findVarCodec(f[2], f[3]);
+    if (codec == null) {
+      writeAbsent(outDir, '${f[1]}.json');
+      continue;
+    }
+    final wire = File(f[4]).readAsBytesSync();
+    final (text, rep) = codec.wireToJson(wire);
+    if (rep.refused || rep.malformed) {
+      stderr.writeln('driver: ${f[1]}: wire load failed on ${f[4]}');
+      return 1;
+    }
+    File('$outDir/${f[1]}.json').writeAsStringSync(text);
+  }
+  return 0;
+}
 
 Uint8List blockBuffer(Uint8List image, int extent, int pointer) {
   // A CLAIM SHORTER THAN THE IMAGE IS A TRUNCATION, so the buffer is the claim
@@ -649,10 +830,11 @@ int surfaceCook(String outDir) {
 }
 
 const String surfaces =
-    // the five WIRE-CARRYING surfaces are ABSENT: Dart emits no table wire
-    // (the port that wrote the wire's previous form was removed; schema#514
-    // brings the id-table form to Dart). The accelerators are current.
-    ''
+    // the variable-class wire and text surfaces (docs/SPEC-TABLES.md §3, §4,
+    // §16.7) answer the manifest's rows for graphdemo, blobdemo and listdemo
+    // (writing <case>.absent for rows outside this slice), beside the block
+    // and cook accelerators and the forgery batteries.
+    'wire\njson-read\njson-write\nreport\n'
     'cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
     'forgery\ncook-forgery\n';
 
@@ -821,6 +1003,14 @@ int run(List<String> args) {
   }
   final out = args[2];
   switch (surface) {
+    case 'wire':
+      return surfaceWire(out);
+    case 'json-read':
+      return surfaceJsonRead(out);
+    case 'json-write':
+      return surfaceJsonWrite(out);
+    case 'report':
+      return surfaceReport(out);
     case 'cook':
       return surfaceCook(out);
     case 'cook-foreign':

@@ -73,14 +73,20 @@ generated/bench/dart/.stamp: bin/schema $(SCHEMAS_BENCH)
 # The same corpus through the DART table backend (docs/SPEC-TABLES.md): the tables
 # corpus plus the evolution pair, generated at build time into build/ —
 # test-only, never part of the committed generated/ tree. The full unit is
-# generated (packet .dart + <Base>Block.dart + <Base>Cook.dart); Dart emits no
-# table wire (the previous-form port was removed; schema#514 brings the
-# id-table form), so only the two accelerators ride here.
-build/tables-generated-dart/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
+# generated (packet .dart + <Base>Block.dart + <Base>Cook.dart, and the wire
+# forms where the unit owns them).
+build/tables-generated-dart/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
-	# the POINTERED unit: its cook readers are the reason it is here.
+	# the POINTERED unit: its cook readers and its VARIABLE wire (GraphdemoWire.dart, §3.1).
 	./bin/schema generate --lang dart --out build/tables-generated-dart/pointers tables/pointers
+	# the BYTE-BUFFER unit (§2.5): *bytes and *string on the variable wire
+	# (BlobdemoWire.dart). tables/lists is NOT generated here: the compiler
+	# refuses the unit whole for dart because Mixed holds an array of unions
+	# (compiler/target_dart.go refuseUnionArrays, vt/union-arrays/dart), so its
+	# rows answer absent and the lists corpus rides
+	# TestVariableClassBeyondCardConstructsDart instead.
+	./bin/schema generate --lang dart --out build/tables-generated-dart/blobs tables/blobs
 	./bin/schema generate --lang dart --out build/tables-generated-dart/block tables/block
 	./bin/schema generate --lang dart --out build/tables-generated-dart/blockhome tables/blockhome
 	./bin/schema generate --lang dart --out build/tables-generated-dart/v1 test/tables/V1.schema
@@ -399,6 +405,20 @@ tables-dart-versioning-negative-control: tables-fixedform-corpus
 # standalone gate and its control, the forgery fuzzer and its control — the
 # long fuzz is `make tables-dart-release` — then the analyzer and the formatter
 # over every generated tree, and the packet tests, checked and compiled.
+# THE VARIABLE CLASS BEYOND THE CARD CONSTRUCTS (docs/SPEC-TABLES.md §2.1, §2.5,
+# §2.9, §3, §3.1, §16.7): table pointers over the flat node table, tables nested
+# by value, *string and *bytes blobs, unbounded and bounded arrays of scalar,
+# enum, table and pointer elements, the rest of the scalar kinds, bytes(N), the
+# escape kind and the text form's &node sharing — held byte for byte against the
+# Go oracle over tables/pointers, tables/blobs and tables/lists (and a probe unit
+# the oracle writes) by TestVariableClassBeyondCardConstructsDart, and every
+# construct the leg still refuses named by TestOtherVariableConstructsAreRefusedByName.
+# SCHEMA_REQUIRE_CORPUS=1 makes a missing dart a FAILURE rather than a skip.
+.PHONY: tables-dart-variable-class
+tables-dart-variable-class:
+	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test -count=1 -timeout 600s -v ./internal/codegen/darttable/ -run '^(TestVariableClassBeyondCardConstructsDart|TestOtherVariableConstructsAreRefusedByName)$$'
+	@echo 'tables Dart variable class: the class beyond the card constructs round-trips the oracle bytes and the rest is refused by name'
+
 .PHONY: test-dart
 test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp generated/bench/dart/.stamp
 	$(MAKE) tables-dart-clean
@@ -413,6 +433,7 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 	# AND IT READS BACKWARD (§5): every versioning row, both columns
 	$(MAKE) tables-dart-versioning
 	$(MAKE) tables-dart-versioning-negative-control
+	$(MAKE) tables-dart-variable-class
 	$(DART) analyze generated/dart generated/dart-ludicrous generated/bench/dart test/dart test/dart-ludicrous bench/dart
 	$(DART) format --set-exit-if-changed --output=none generated/dart generated/dart-ludicrous generated/bench/dart
 	cd test/dart && $(DART) --enable-asserts main.dart
