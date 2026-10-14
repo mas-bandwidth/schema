@@ -101,7 +101,7 @@ func literalMakeTargets(workflowText string) map[string]bool {
 	out := map[string]bool{}
 	for _, l := range lines("ci.yml", workflowText) {
 		fields := strings.Fields(l.text)
-		for i := 0; i < len(fields); i++ {
+		for i := range fields {
 			if fields[i] != "make" {
 				continue
 			}
