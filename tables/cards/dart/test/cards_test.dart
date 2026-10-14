@@ -19,6 +19,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../lib/cards.dart';
+import '../lib/sha256.dart';
 
 var failed = false;
 
@@ -260,7 +261,95 @@ void cardEnumNoneRoundTrips() {
   check(rec2.card.tier == 0, 'FromJSON reads tier None as zero');
 }
 
+String hex(List<int> bytes) {
+  final b = StringBuffer();
+  for (final x in bytes) {
+    b.write(x.toRadixString(16).padLeft(2, '0'));
+  }
+  return b.toString();
+}
+
+// sha256MatchesFips180Vectors pins the facade's SHA-256 to the three published
+// FIPS 180-4 vectors (empty input, "abc", and the 448-bit message), the
+// independent ground truth a correct implementation must reproduce.
+void sha256MatchesFips180Vectors() {
+  check(
+    hex(digestOf(utf8.encode(''))) ==
+        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    'SHA-256 of the empty string',
+  );
+  check(
+    hex(digestOf(utf8.encode('abc'))) ==
+        'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+    'SHA-256 of "abc"',
+  );
+  check(
+    hex(
+          digestOf(
+            utf8.encode(
+              'abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq',
+            ),
+          ),
+        ) ==
+        '248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1',
+    'SHA-256 of the 448-bit message',
+  );
+}
+
+// taskHashFramesLogicalFields pins the hash frame (docs/SPEC-TABLES.md §5) with
+// an independently written byte vector, shows body "a" with paths ["bc"] and
+// body "ab" with paths ["c"] hash differently, matches every expected .hex, and
+// shows the lossy refusal (tables/cards/edit.go TaskHash).
+void taskHashFramesLogicalFields() {
+  final base = fromJson(
+    '{"id":"x","body":"a","paths":[{"s":"bc"}],"test":"T","done_when":"d"}',
+  );
+  check(
+    hex(taskHash(base)) ==
+        'bc36e53437b6d6a9364abce0cbe34ba3ceb9d985c01adaeed1ff4344a54f95cf',
+    'the frame of body "a", paths ["bc"], test "T", done "d"',
+  );
+
+  final shifted = fromJson(
+    '{"id":"x","body":"ab","paths":[{"s":"c"}],"test":"T","done_when":"d"}',
+  );
+  check(
+    hex(taskHash(shifted)) ==
+        '9945767371c71f3f3d6c2171fd5350236f4cdaac4358005d4fa4613318789c72',
+    'the frame of body "ab", paths ["c"], test "T", done "d"',
+  );
+  check(
+    hex(taskHash(shifted)) != hex(taskHash(base)),
+    'body "a" paths ["bc"] and body "ab" paths ["c"] hash differently',
+  );
+
+  for (final name in [
+    'card-populated',
+    'initial-populated',
+    'empty-consumers',
+  ]) {
+    final rec = load(readBytes('tables/cards/conformance/cases/$name.wire'));
+    final want = readText('tables/cards/conformance/expected/$name.hex').trim();
+    check(hex(taskHash(rec)) == want, '$name matches its expected .hex');
+  }
+
+  final lossy = load(
+    readBytes('tables/cards/conformance/cases/future-note.wire'),
+  );
+  try {
+    taskHash(lossy);
+    check(false, 'a lossy record is refused');
+  } on CardException catch (e) {
+    check(
+      e.message.contains('loss events'),
+      'a lossy record is refused, never hashed (${e.message})',
+    );
+  }
+}
+
 void main() {
+  sha256MatchesFips180Vectors();
+  taskHashFramesLogicalFields();
   cardRoundTripsThePopulatedFixture();
   cardBoundsRefuseBeforePublishing();
   parseRenderMatchesGo();

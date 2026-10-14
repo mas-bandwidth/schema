@@ -20,6 +20,7 @@ import 'dart:typed_data';
 
 import '../../../../build/tables-generated-dart/cards/Card.dart';
 import '../../../../build/tables-generated-dart/cards/CardsWire.dart';
+import 'sha256.dart';
 
 // The generated types ride through the facade, the way the Go facade re-exports
 // `type Report = TableReport`: a customer imports cards.dart and gets the Card,
@@ -164,6 +165,70 @@ String render(Record record) {
     out.write(card.body);
   }
   return out.toString();
+}
+
+// ---- the task hash (tables/cards/edit.go, TaskHash) ----
+
+// taskHash returns the digest of a record's TASK: body, paths, new, shared,
+// test and done, in that order (docs/SPEC-TABLES.md §5). It refuses a record
+// whose read reported loss (unknown, mismatched, clamped, retain-lost or
+// malformed), because the "task" such a digest would cover is incomplete; the
+// attempt-bound rule keeps an apparently valid digest from covering silent
+// loss (tla/CardHops.tla TaskHashStable).
+Uint8List taskHash(Record record) {
+  refuseLossy(record.report);
+  final card = record.card;
+  final h = <int>[];
+  hashText(h, card.body ?? '');
+  hashPathTextList(h, card.paths);
+  hashPathTextList(h, card.new_);
+  hashPathTextList(h, card.shared);
+  hashText(h, card.test);
+  hashText(h, card.done ?? '');
+  return Uint8List.fromList(digestOf(h));
+}
+
+// refuseLossy names the read events that make a record unsafe to hash or
+// rewrite (docs/SPEC-TABLES.md §4, §6.6): a silent loss means the task the
+// digest would cover is incomplete.
+void refuseLossy(TableWireReport report) {
+  if (report.unknown > 0 ||
+      report.kindMismatch > 0 ||
+      report.clamped > 0 ||
+      report.retainLost > 0 ||
+      report.malformed) {
+    throw CardException(
+      'cards: record has loss events (unknown=${report.unknown} '
+      'kindMismatch=${report.kindMismatch} clamped=${report.clamped} '
+      'retainLost=${report.retainLost} malformed=${report.malformed}): '
+      'refused, never hashed or rewritten',
+    );
+  }
+}
+
+// hashU64 appends an unsigned 64-bit little-endian value (docs/SPEC-TABLES.md
+// §5: each frame length and list count is fixed-width little-endian).
+void hashU64(List<int> out, int v) {
+  for (var i = 0; i < 8; i++) {
+    out.add((v >>> (8 * i)) & 0xff);
+  }
+}
+
+// hashText appends one length-prefixed UTF-8 text, so text and element
+// boundaries cannot collide (docs/SPEC-TABLES.md §5).
+void hashText(List<int> out, String text) {
+  final bytes = utf8.encode(text);
+  hashU64(out, bytes.length);
+  out.addAll(bytes);
+}
+
+// hashPathTextList appends one list as a count then each length-prefixed
+// element (docs/SPEC-TABLES.md §5).
+void hashPathTextList(List<int> out, List<PathText> list) {
+  hashU64(out, list.length);
+  for (final e in list) {
+    hashText(out, e.s);
+  }
 }
 
 // checkCard is the checked-write helper: the customer bounds and the
