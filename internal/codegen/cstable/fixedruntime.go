@@ -295,17 +295,6 @@ const tableFixedWireSource = `
             return (double)f;
         }
 
-        public static ulong HashOf(ReadOnlySpan<byte> layout)
-        {
-            ulong h = 0xcbf29ce484222325ul;
-            for (int i = 0; i < layout.Length; ++i)
-            {
-                h ^= (ulong)layout[i];
-                h *= 0x100000001b3ul;
-            }
-            return h;
-        }
-
         public static TableFixedLayoutEntry EntryAt(TableFixedLayoutView b, int i)
         {
             ReadOnlySpan<byte> e = b.Bytes.Slice(4 + i * EntryBytes, EntryBytes);

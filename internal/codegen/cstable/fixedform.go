@@ -1945,7 +1945,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    int fillCount = 0;\n")
 	g.pf("    int census_unknown = 0;\n")
 	g.pf("    int census_kind = 0;\n")
-	g.pf("    if (hash != %sFixedHash)\n    {\n", name)
+	// THE IDENTITY LANE IS AN INDEX COMPARISON (§5.3): the reader's own entry is
+	// the LAST lineage entry (§5.2 appends the current layout last), so the lane
+	// is chosen by comparing the resolved lineage index with the reader's own
+	// index — never by recomputing or re-comparing the header's hash (§5.3, R7).
+	g.pf("    if (pick != %d)\n    {\n", len(entries)-1)
 	g.pf("        TableFixedLineagePlan lane = %sFixedLineagePlans[pick];\n", name)
 	g.pf("        if (lane.Why != null)\n        {\n")
 	g.pf("            if (report != null) { report.Refused = true; report.Reason = lane.Why; report.Verdict = TableWire.Verdict.Refused; }\n")
