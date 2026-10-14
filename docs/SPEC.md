@@ -249,10 +249,10 @@ quests or achievements growing weekly, cannot arise in one. The other
 positional vocabulary a table could have had is gone rather than excepted:
 a positional array whose bound folds from an enum is REFUSED BY NAME in a
 table body and a union arm, and the same array held by a `type` a table
-closure reaches is ruled on schema#606, by that refusal or by a keyed wire
-(SPEC-TABLES.md §2.4, §11), so
-`[E]T` is the table form and an enum a table reaches moves no slot when it
-changes. Flags is therefore the whole of the exception, and there is no
+closure reaches rides KEYED on the table wire (schema#606), so its kind `13`
+body moves no slot when the enum changes (SPEC-TABLES.md §2.4, §11): `[E]T` is
+the table form and a `type`-held enum-extent array keys like it. Flags is
+therefore the whole of the exception, and there is no
 second.
 
 **What reachability does not change is what the projection MEANS.** The
@@ -661,8 +661,9 @@ Bound       = IntExpr | ".." IntExpr | IntExpr ".." IntExpr .       // [N] exact
 AttrSection = "|" Attr { "," Attr } .                            // runs to END OF LINE: the newline
                                                                  // or a // comment terminates it —
                                                                  // nothing follows a qualification
-Attr        = ident "=" ( ConstExpr | ident | string )           // valued:    min = 0, max = 100,
-                                                                 //            cpp_include = "a.h"
+Attr        = ident "=" ( ConstExpr | QualIdent | string )       // valued:    min = 0, max = 100,
+                                                                 //            cpp_include = "a.h",
+                                                                 //            cpp_native = math::Vec2
             | ident .                                            // valueless: a TAG (§4.2) — legal
                                                                  // in every qualification section,
                                                                  // in an open namespace
@@ -670,6 +671,9 @@ Attr        = ident "=" ( ConstExpr | ident | string )           // valued:    m
                                                                  // each valued key declares whether
                                                                  // it takes an expression, a word,
                                                                  // or a quoted string)
+QualIdent   = ident { "::" ident } .                             // a `::`-qualified C++ type name:
+                                                                 // the global spelling the emitter
+                                                                 // writes verbatim (cpp_native, §4.2)
 
 If          = "if" [ "!" ] ident Block [ "else" Block ] NL .
 
@@ -1090,10 +1094,14 @@ property (§4.11) survive untouched.
 
 The rules:
 
-- **`cpp_native` takes an identifier** — the global (`::`-qualified) C++ type
-  name. **`cpp_include` takes a quoted header path** — the header declaring
-  it. They go together: one without the other is an error. String literals
-  (`"..."`, no escapes) exist in the grammar for attribute values only.
+- **`cpp_native` takes a C++ type name** — a bare identifier names a global
+  type, and a `::`-qualified name (`math::Vec2`) names one inside a
+  namespace. The emitter writes it `::`-qualified verbatim (`::GameVec2` for
+  the bare spelling, `::math::Vec2` for the qualified one), so a namespaced
+  engine type needs no global alias. **`cpp_include` takes a quoted header
+  path** — the header declaring it. They go together: one without the other
+  is an error. String literals (`"..."`, no escapes) exist in the grammar for
+  attribute values only.
 - **Inside the basis type's own generated header the mapping is off** —
   references there keep the basis name. The native header includes that
   header to derive from the basis; a mapped reference would be circular.
@@ -2802,8 +2810,12 @@ does not satisfy that control. These controls also run through `make test`.
 
 **Floating-point discipline.** Strict IEEE-754 arithmetic is the normative
 wire for compressed floats: a fused multiply-add diverges by one quantization
-step at boundary values, so all C and C++ conformance builds compile with
-`-ffp-contract=off`, and the golden-wire corpus pins compressed-float values
+step at boundary values, so every leg computes a compressed float's
+quantization without fused multiply-add — the C and C++ conformance builds
+compile with `-ffp-contract=off`, Go rounds each product explicitly (an
+explicit rounding conversion of each product), and java, cs and elixir rely
+on the language's strict semantics (Glenn, 2026-10-12, all features across
+all languages) — and the golden-wire corpus pins compressed-float values
 chosen to DISCRIMINATE — values where a fused or double-precision build
 produces a different step index — with the discrimination property itself
 asserted in the C and C++ legs, so a vector cannot quietly stop

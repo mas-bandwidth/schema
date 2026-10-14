@@ -7262,9 +7262,10 @@ static void test_form_byte_refusals()
 // and the byte counts say which walk ran.
 //
 // The other half of §3.1's sentence — a pointer inside an ABSENT OPTIONAL —
-// has no declaration yet: `?T` over a variable-length closure is a named
-// follow-on (§2.3, §15), and the walks gating on the presence companion, which
-// this change adds, is the precondition its diagnostic names.
+// is the same walk one field over: `Wrapped` holds a pointer and is
+// variable-length, `Guarded.optional` is `?Wrapped`, and the numbering, the
+// pack measure and the pack gate on the presence companion, so an absent
+// optional's table is not descended (schema#526, test_absent_optional_is_not_descended).
 static void test_unwritten_fields_are_not_edges()
 {
     static uint8_t wire[512];
@@ -7322,6 +7323,78 @@ static void test_unwritten_fields_are_not_edges()
     }
     // and the REGION is the same walk: a locked region holds the nodes the
     // numbering visited and no others, so its size moves with them
+    CHECK( control_need > need );
+}
+
+// ---- AN ABSENT OPTIONAL'S TABLE IS NOT DESCENDED (§3.1, schema#440, #526) --
+//
+// The second half of §3.1's sentence, declared now that the walks gate on the
+// presence companion. `Wrapped` holds a pointer and is variable-length, and
+// `Guarded.optional` is `?Wrapped`: an ABSENT optional's table is not
+// descended, so a pointer left in its slots costs no record — the writer and
+// the region `Lock` lays out both skip it. A PRESENT optional's table is an
+// edge like any other by-value nesting, and the pointer inside it is numbered.
+//
+// The control is the same value with the optional PRESENT: two records where
+// the absent one writes a single record, and the byte counts say which walk
+// ran. The pins are the tool's, so a plain conformance run holds the rule.
+static void test_absent_optional_is_not_descended()
+{
+    static uint8_t wire[512];
+    int64_t one = 0;
+    {
+        tblg1::GuardedBuilder b;
+        tblg1::Guarded * root = b.GetRoot();
+        root->at_rest = false;
+        root->always = b.Alloc<tblg1::Node>();
+        tblg1::NodeAt( b.arena, root->always )->value = 1;
+        root->optional_present = false;                 // ABSENT
+        root->optional.node = b.Alloc<tblg1::Node>();   // set, inside the absent table
+        tblg1::NodeAt( b.arena, root->optional.node )->value = 2;
+        one = tblg1::GuardedSave( b, wire, sizeof( wire ) );
+        CHECK( one > 0 );
+        CHECK( tblg1::GuardedMeasure( b ) == one );
+        pin_table_golden( "optional_absent_no_edge", wire, one );
+    }
+    // the numbering wrote ONE record, so exactly one node's body rides
+    tblg1::TableReport report;
+    int64_t need = tblg1::GuardedLoadMeasure( wire, one );
+    CHECK( need > 0 );
+    std::vector<uint8_t> region( (size_t) need );
+    const tblg1::Guarded * loaded = tblg1::GuardedLoad( region.data(), need, wire, one, &report );
+    CHECK( loaded != NULL && !report.malformed && report.unknown == 0 );
+    if ( loaded != NULL )
+    {
+        CHECK( tblg1::NodeAt( loaded->always ) != NULL && tblg1::NodeAt( loaded->always )->value == 1 );
+        CHECK( tblg1::NodeAt( loaded->optional.node ) == NULL ); // never written, never read
+    }
+
+    // THE CONTROL: the same value with the optional PRESENT
+    static uint8_t two_wire[512];
+    int64_t two = 0;
+    {
+        tblg1::GuardedBuilder b;
+        tblg1::Guarded * root = b.GetRoot();
+        root->at_rest = false;
+        root->always = b.Alloc<tblg1::Node>();
+        tblg1::NodeAt( b.arena, root->always )->value = 1;
+        root->optional_present = true;
+        root->optional.node = b.Alloc<tblg1::Node>();
+        tblg1::NodeAt( b.arena, root->optional.node )->value = 2;
+        two = tblg1::GuardedSave( b, two_wire, sizeof( two_wire ) );
+        CHECK( two > 0 );
+        pin_table_golden( "optional_present_edge", two_wire, two );
+    }
+    CHECK( two > one ); // two records against one
+    tblg1::TableReport control;
+    int64_t control_need = tblg1::GuardedLoadMeasure( two_wire, two );
+    std::vector<uint8_t> control_region( (size_t) control_need );
+    const tblg1::Guarded * all = tblg1::GuardedLoad( control_region.data(), control_need, two_wire, two, &control );
+    CHECK( all != NULL && !control.malformed );
+    if ( all != NULL )
+    {
+        CHECK( tblg1::NodeAt( all->optional.node ) != NULL && tblg1::NodeAt( all->optional.node )->value == 2 );
+    }
     CHECK( control_need > need );
 }
 
@@ -9253,6 +9326,7 @@ int main()
     test_pointer_arrays_elision();
     test_form_byte_refusals();
     test_unwritten_fields_are_not_edges();
+    test_absent_optional_is_not_descended();
     test_enum_kind_against_the_raw_integer();
     test_escape_and_payload_free_kinds();
     test_arm_kind_pins();

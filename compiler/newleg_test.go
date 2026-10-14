@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestNewLegRefusesExistingTargets(t *testing.T) {
@@ -86,6 +88,7 @@ func TestNewLegLuaFiles(t *testing.T) {
 }
 
 func TestNewLegLuaFixturePasses(t *testing.T) {
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated lua leg fixture)")
 	files, err := NewLeg("lua")
 	if err != nil {
 		t.Fatal(err)

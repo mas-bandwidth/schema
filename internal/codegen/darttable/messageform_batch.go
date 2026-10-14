@@ -264,6 +264,21 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 		g.pf("%sw.put(%s ? 1 : 0, 1);\n", ind, expr)
 		return
 	}
+	// A FLOAT CROSSES THE BIT LANE AS ITS IEEE-754 BITS (docs/SPEC-TABLES.md
+	// §3.3, the message form's scalar payload): float32 as its 32 bits and
+	// float64 as its 64, exactly the bits math.Float32bits/math.Float64bits
+	// hand the Go reference (internal/codegen/gotable/messagewrite.go:146).
+	// Never widened: kind 10's message width is 32 (ir.TableMessageValueBits).
+	// A little-endian ByteData view turns the double into that integer, the
+	// runtime's byte order, and the bit width rides as kind 10's own.
+	if kind == ir.TableKindF32 {
+		g.pf("%sw.put((ByteData(4)..setFloat32(0, %s, Endian.little)).getUint32(0, Endian.little), 32);\n", ind, expr)
+		return
+	}
+	if kind == ir.TableKindF64 {
+		g.pf("%sw.put((ByteData(8)..setFloat64(0, %s, Endian.little)).getUint64(0, Endian.little), 64);\n", ind, expr)
+		return
+	}
 	bits := ir.TableMessageValueBits(kind, shape)
 	if shape.Packing == ir.TableMessageRanged {
 		base := shape.Base
@@ -381,6 +396,20 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 	kind, shape := entry.Kind, entry.Shape
 	if kind == ir.TableKindBool {
 		g.pf("%s%s = r.bits.get(1) != 0;\n", ind, expr)
+		g.pf("%sif (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
+		return
+	}
+	// A FLOAT IS READ BACK FROM ITS IEEE-754 BITS (docs/SPEC-TABLES.md §3.3,
+	// the message form's scalar payload): float32 from its 32 bits and float64
+	// from its 64, never widened, through a little-endian ByteData view the way
+	// the rest of the runtime reads.
+	if kind == ir.TableKindF32 {
+		g.pf("%s%s = (ByteData(4)..setUint32(0, r.bits.get(32), Endian.little)).getFloat32(0, Endian.little);\n", ind, expr)
+		g.pf("%sif (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
+		return
+	}
+	if kind == ir.TableKindF64 {
+		g.pf("%s%s = (ByteData(8)..setUint64(0, r.bits.get(64), Endian.little)).getFloat64(0, Endian.little);\n", ind, expr)
 		g.pf("%sif (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
 		return
 	}

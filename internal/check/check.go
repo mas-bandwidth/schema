@@ -1857,6 +1857,31 @@ func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 		// the real case. A fixed default is declared in WHOLE UNITS — the same
 		// domain as the | min, max bounds — and must scale EXACTLY: v * 2^F an
 		// integer, so no rounding rule is ever involved in a default.
+		//
+		// An integer expression stays in big.Int end to end. Narrowing to
+		// float64 first rounds away the low bits above 2^53, and re-raising
+		// the precision cannot put them back, so both the exactness test and
+		// the range test would read the rounded value — an exact default of
+		// 9007199254740993 would be stored as 9007199254740992, and one equal
+		// to max 9223372036854775807 would round to 2^63 and be refused. Only
+		// a genuinely fractional (float-kind) expression takes the float path.
+		if c.exprKind(f.Default) == kindInt {
+			v, ok := c.evalInt(f.Default)
+			if !ok {
+				return
+			}
+			if out.HasIntRange && (v.Cmp(out.IntMin) < 0 || v.Cmp(out.IntMax) > 0) {
+				c.errf(f.Default.ExprPos(), "field %s: default %s is outside its range [%s, %s] (whole units)", f.Name, v, out.IntMin, out.IntMax)
+				return
+			}
+			raw := new(big.Int).Lsh(v, uint(out.Type.FracBits))
+			fv, _ := new(big.Float).SetInt(v).Float64()
+			out.HasDefault = true
+			out.DefInt = raw  // the RAW scaled integer — what storage initializes to
+			out.DefFloat = fv // the whole-unit value, for comments
+			out.DefExpr = nil // never render the units expression as the raw initializer
+			return
+		}
 		v, ok := c.evalFloat(f.Default)
 		if !ok {
 			return
@@ -2437,6 +2462,7 @@ func (c *checker) checkTables() {
 	c.tableClosure = closure
 	c.checkTableArmsReached(closure)
 	c.checkPositionalEnumBoundInClosure()
+	c.keyTypeHeldEnumExtents()
 
 	names := make([]string, 0, len(closure))
 	for name := range closure {
@@ -2542,107 +2568,8 @@ func (c *checker) checkTables() {
 	c.checkFixedTableClosures(names)
 	c.checkReservedWireIds(names)
 	c.checkTableVariantIdentity(names)
-	c.checkOptionalVariableClosures(names)
 	c.checkJsonKeysInClosure()
 	c.checkWasInClosure()
-}
-
-// checkOptionalVariableClosures refuses an OPTIONAL whose value's closure is
-// VARIABLE-LENGTH — `?T` and `?[N]T`/`?[..N]T` where T declares or nests a
-// pointer — as a named follow-on (docs/SPEC-TABLES.md §2.3, §15). An absent
-// field is not an edge (§3.1), so the authoring walks (the numbering, the
-// pack, Lock's sizing) must gate on the presence companion before an optional
-// field may hold pointer edges; until that gating lands, the refusal is what
-// keeps the two writers byte-identical. The derivation mirrors
-// ir.VariableTables over the checker's own members, because the unit is not
-// assembled yet when this runs.
-// unionVariable mirrors ir.VariableTables' arm rule over the checker's own
-// members (docs/SPEC-TABLES.md §2.2, §2.6): a POINTER arm makes the holder
-// variable, as does an arm naming a variable member or an arm that is a union
-// which is itself variable.
-func unionVariable(un *ir.Union, variable map[string]bool, seen map[*ir.Union]bool) bool {
-	if seen[un] {
-		return false
-	}
-	seen[un] = true
-	for _, v := range un.Variants {
-		if v.F == nil {
-			continue
-		}
-		if v.F.Type.Pointer {
-			return true
-		}
-		if v.Type != "" && variable[v.Type] {
-			return true
-		}
-		if inner, ok := v.F.Type.Ref.(*ir.Union); ok && unionVariable(inner, variable, seen) {
-			return true
-		}
-	}
-	return false
-}
-
-func (c *checker) checkOptionalVariableClosures(names []string) {
-	variable := map[string]bool{}
-	for changed := true; changed; {
-		changed = false
-		for _, name := range names {
-			if variable[name] {
-				continue
-			}
-			st := c.closureMember(name)
-			if st == nil {
-				continue
-			}
-			for _, f := range st.Fields {
-				if f.Type.Pointer {
-					variable[name] = true
-					break
-				}
-				if f.Type.Kind != ir.TNamed {
-					continue
-				}
-				switch ref := f.Type.Ref.(type) {
-				case *ir.Struct:
-					variable[name] = variable[name] || variable[ref.Name]
-				case *ir.Union:
-					// mode derivation runs through ARMS (§2.2, §2.6): a
-					// POINTER arm, an arm naming a variable table, or an arm
-					// that is a union which is itself variable
-					if unionVariable(ref, variable, map[*ir.Union]bool{}) {
-						variable[name] = true
-					}
-				}
-				if variable[name] {
-					break
-				}
-			}
-			if variable[name] {
-				changed = true
-			}
-		}
-	}
-	for _, name := range names {
-		st := c.closureMember(name)
-		if st == nil {
-			continue
-		}
-		pos := ast.Pos{}
-		if d, ok := c.astDecls[name]; ok {
-			pos = d.DeclPos()
-		}
-		for _, f := range st.Fields {
-			if !f.Type.Optional {
-				continue
-			}
-			ref, ok := f.Type.Ref.(*ir.Struct)
-			if !ok || !variable[ref.Name] {
-				continue
-			}
-			c.errf(pos, "%s.%s: ? on a value whose closure is variable-length is a named follow-on — %s holds a pointer, an absent field is not an edge, and the authoring walks must gate on the presence companion before an optional field may hold pointer edges; drop the ?, or point at the table instead (docs/SPEC-TABLES.md §2.3, §15)",
-				name, f.Name, ref.Name)
-		}
-	}
 }
 
 // checkJsonKeysInClosure refuses `json = "key"` on a field no table closure
@@ -3001,8 +2928,9 @@ func (c *checker) checkBlobSpelling(f *ast.Field, what string, inTable bool) boo
 // refused by name (docs/SPEC-TABLES.md §11). An optional is a table-body
 // construct: it costs one presence bool beside the value — the array and its
 // count included — and PRESENCE, not content, decides whether the field
-// rides. The variable-closure refusal runs later, in checkTables, because the
-// mode is a closure fact this function cannot see.
+// rides. An optional over a VARIABLE-length closure is legal (docs/SPEC-TABLES.md
+// §2.3): the one declaration-order walk gates every edge on the presence
+// companion, so an absent optional descends nothing and is not an edge (§3.1).
 func (c *checker) checkOptionalSpelling(f *ast.Field, out *ir.Field, inTable bool) bool {
 	spelling := "?" + scalarSpelling(f.Type)
 	if !inTable {
