@@ -417,7 +417,15 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		g.pf("%s            default: r.report->unknown++;%s break; // an arm this reader cannot name\n", ind, g.retainLostInline())
 		g.pf("%s        }\n", ind)
 		g.pf("%s        %s.offset += (int64_t) %s;\n", ind, rdr, length)
-		g.pf("%s    }\n%s}\n", ind, ind)
+		g.pf("%s    }\n", ind)
+		// AN ARM'S `L` FRAMES THE INNER UNION WHOLE (docs/SPEC-TABLES.md:3887):
+		// a nested-union arm whose reader stops short of its `L` leaves bytes
+		// inside the arm that no field claims — that arm's own framing damage,
+		// so the union reads None, malformed counts, and the parent reads on
+		// past `L` (:3900-3903). The body arm and the enum arm already check
+		// this (arms.go:284, arms.go:385).
+		g.pf("%s    if ( %s.offset != %s.size ) { %s = %s; r.report->malformed = true; }\n", ind, rdr, rdr, tag, none)
+		g.pf("%s}\n", ind)
 	default:
 		g.emitTableReadScalarFrom(f, kind, value, ind, rdr,
 			fmt.Sprintf("%s = %s; r.report->malformed = true; break;", tag, none))
