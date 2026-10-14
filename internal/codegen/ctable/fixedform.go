@@ -281,8 +281,17 @@ func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string
 func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base int64, count string, buf, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	elem := ir.TableFixedElementBytes(f)
-	g.pf("%s{\n%s    int64_t i;\n%s    for ( i = 0; i < (int64_t) %s; ++i )\n%s    {\n", ind, ind, ind, count, ind)
-	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s + %d + i * %d", buf, base, elem), expr+"[i]", indent+8)
+	// THE OUTERMOST INDEX IS `i`, as it always was; a loop nested inside one
+	// (an array arm of a union in an array element) takes i1, i2, ... so it
+	// never shadows the index it is inside.
+	i := "i"
+	if g.fixedLoopDepth > 0 {
+		i = fmt.Sprintf("i%d", g.fixedLoopDepth)
+	}
+	g.fixedLoopDepth++
+	defer func() { g.fixedLoopDepth-- }()
+	g.pf("%s{\n%s    int64_t %s;\n%s    for ( %s = 0; %s < (int64_t) %s; ++%s )\n%s    {\n", ind, ind, i, ind, i, i, count, i, ind)
+	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s + %d + %s * %d", buf, base, i, elem), expr+"["+i+"]", indent+8)
 	g.pf("%s    }\n%s}\n", ind, ind)
 }
 
@@ -328,7 +337,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 				// writes nothing under the tag. "A union writes the tag and the
 				// taken arm only" (docs/FIXED-FORM-ALGORITHM.md §3.1).
 				if v.F != nil {
-					g.emitFixedWriteElement(v.F, off+tag, buf, fmt.Sprintf("%s.as.%s", expr, v.Name), indent+8)
+					g.emitFixedWriteArm(v, off+tag, buf, expr, indent+8)
 				}
 				g.pf("%s        break;\n%s    }\n", ind, ind)
 			}
@@ -362,6 +371,30 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 		}
 		g.pf("%stable_fixed_put%d( %s + %d, (uint%d_t) %s );\n", ind, w*8, buf, off, w*8, expr)
 	}
+}
+
+/*
+emitFixedWriteArm writes one union arm's payload. An arm is a FIELD LINE
+(docs/SPEC-TABLES.md §2.6), so a text, bytes, counted-array or fixed-array
+arm owes the same store a table field of that type does: the used length or
+count, then the units or elements onto the template's zeros. A scalar,
+enum, flags, struct or nested union arm is one element. The C storage names
+a companioned arm's payload `as.<arm>.value` beside its `value_length` /
+`value_count` (armCompanioned), and every other arm `as.<arm>` itself.
+*/
+func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, off int64, buf, expr string, indent int) {
+	if !armCompanioned(v) && v.F.Array == ir.ArrayNone && v.F.KeyEnum == "" {
+		g.emitFixedWriteElement(v.F, off, buf, fmt.Sprintf("%s.as.%s", expr, v.Name), indent)
+		return
+	}
+	f := *v.F
+	val := expr + ".as."
+	f.Name = v.Name
+	if armCompanioned(v) {
+		val = expr + ".as." + v.Name + "."
+		f.Name = "value"
+	}
+	g.emitFixedWritePayload(&f, off, buf, val, indent)
 }
 
 // ---- the root's surface ----------------------------------------------------

@@ -107,6 +107,11 @@ func tableGet(width int) string { return fmt.Sprintf("table_reader_get%d", width
 type tableGen struct {
 	retain bool // emit the opt-in parallel body family
 
+	// fixedLoopDepth is how many fixed-form write loops enclose the one being
+	// emitted: an array arm of a union inside an array element nests a loop
+	// in a loop, and the inner index must not shadow the outer (-Wshadow).
+	fixedLoopDepth int
+
 	messageSlots     map[string]uint64
 	descriptorUnions map[string]bool
 	outside          bool // descriptors outside the checked table closure carry no wire ids
