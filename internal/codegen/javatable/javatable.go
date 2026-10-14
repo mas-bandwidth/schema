@@ -1,11 +1,14 @@
 // Package javatable emits a unit's Java table surface (docs/SPEC-TABLES.md):
-// the BLOCK form's read half in <Table>Block.java (§19) and the COOKED form's
-// read half in <Table>Cook.java (§7), the record accessors the two share
-// (<Name>Row.java), their reflection descriptors and the unit's build version
-// — plus the shared runtime those need, one PUBLIC TYPE PER FILE, which is
-// what Java's package scope is. It is emitted only when the unit declares
-// tables, and nothing when it declares none: a table-free unit's generated
-// Java is byte-identical with or without this package.
+// the BLOCK form's BUILD half (§19.1) and read half (§19.2) in
+// <Table>Block.java and the COOKED form's read half in <Table>Cook.java (§7),
+// the record accessors the two share (<Name>Row.java), their reflection
+// descriptors and the unit's build version — plus the shared runtime those
+// need, one PUBLIC TYPE PER FILE, which is what Java's package scope is. It is
+// emitted only when the unit declares tables, and nothing when it declares
+// none: a table-free unit's generated Java is byte-identical with or without
+// this package. The COOK WRITE (§7.6) — <T>CookMeasure, <T>CookMeasureReason
+// and <T>CookFrom, the Java spelling of gotable's cookwrite.go — is the one
+// named absence left on this surface.
 //
 // THE ACCELERATOR TIER. A block is POINTED AT and a cook is OPENED; neither
 // parses a wire, so both reach every table of the unit whatever its closure
