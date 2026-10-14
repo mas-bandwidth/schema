@@ -1280,7 +1280,7 @@ found a module name the packet emitter refuses — the drift a gate catches.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-cook-open` | ✅ `tables-c-usage` | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ❌ #418 | ❌ #418 | ❌ #514 | ❌ #418 |
+| ✅ `tables-cook-open` | ✅ `tables-c-usage` | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ✅ `tables-java-usage` | ❌ #418 | ❌ #514 | ❌ #418 |
 
 ### I13 — The text differential against a third implementation
 
@@ -1449,7 +1449,11 @@ so and passes.
 **Method.** Every generated table unit is held to what the language's
 analyzer or linter accepts and what its formatter writes, as a gate — so an
 emitter that drifts from the language's own conventions goes red on the
-diff rather than on a reviewer.
+diff rather than on a reviewer. Each leg runs its own authority over the
+generated table tree: `clang-format` for C++ and C, `gofmt` and `go vet` for
+Go, `dotnet format` for C#, `google-java-format` for Java, `eslint` for
+JavaScript, `dart format` and the analyzer for Dart, `cargo clippy` for Rust,
+and `mix format` for Elixir.
 
 **Reference.** `tables-dart-clean` (analyzer and `dart format
 --set-exit-if-changed`); `tables-rust-clippy`.
@@ -1464,7 +1468,7 @@ diff rather than on a reviewer.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #424 | ❌ #424 | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ❌ #424 | ❌ #424 | ❌ #424 | ✅ `tables-dart-clean` | ❌ #424 (the packet units are format-checked; the table units are not) |
+| ❌ #424 | ❌ #424 | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ❌ #424 | ✅ `tables-java-clean` (`google-java-format`) | ❌ #424 | ✅ `tables-dart-clean` | ❌ #424 (the packet units are format-checked; the table units are not) |
 
 ### J5 — The bench leg's golden gate runs before the clock
 
