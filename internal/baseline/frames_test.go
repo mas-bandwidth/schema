@@ -275,7 +275,7 @@ func TestEvolutionTableDocsAgreeWithTheGolden(t *testing.T) {
 func tableRow(t *testing.T, text, fragment string) string {
 	t.Helper()
 	var found []string
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "|") && strings.Contains(line, fragment) {
 			found = append(found, line)
 		}
