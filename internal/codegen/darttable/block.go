@@ -406,6 +406,13 @@ func (g *blockGen) emitRowCursor(record string, ml *ir.MemberLayout) {
 // expression for the record's first byte.
 func (g *blockGen) emitInlineAccessors(ml *ir.MemberLayout, bl *ir.BlockLayout, ind, origin string) {
 	for _, fl := range ml.Fields {
+		if fl.Field.Type.Kind == ir.TFloat32 && !fl.Field.Type.Pointer {
+			// A class owns its scratch view; no allocation rides a field read.
+			g.pf("%s", dartBlockFloat32Runtime)
+			break
+		}
+	}
+	for _, fl := range ml.Fields {
 		f := fl.Field
 		if bl != nil && ir.BlockOutOfLine(f) {
 			continue // the triple, emitted with its array
@@ -485,7 +492,7 @@ func (g *blockGen) readAt(f *ir.Field, at string) string {
 	case ir.TBool:
 		return fmt.Sprintf("view.getUint8(%s) != 0", at)
 	case ir.TFloat32:
-		return fmt.Sprintf("view.getFloat32(%s, Endian.little)", at)
+		return fmt.Sprintf("_doubleFromFloat32Bits(view.getUint32(%s, Endian.little))", at)
 	case ir.TFloat64:
 		return fmt.Sprintf("view.getFloat64(%s, Endian.little)", at)
 	}
@@ -772,3 +779,23 @@ func (g *blockGen) trimBlank() {
 	g.body.WriteString(text)
 	g.body.WriteString("\n")
 }
+
+// IEEE-754 payloads are data (SPEC-TABLES §3): hardware widening quiets a
+// signalling NaN, so preserve sign and mantissa in the double representation.
+const dartBlockFloat32Runtime = `
+  static final Float32List _float32Cell = Float32List(2);
+  static final Uint32List _float32Words = _float32Cell.buffer.asUint32List();
+  static final Float64List _float64Cell = _float32Cell.buffer.asFloat64List();
+  static final Uint64List _float64Words = _float32Cell.buffer.asUint64List();
+
+  static double _doubleFromFloat32Bits(int bits) {
+    if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {
+      _float64Words[0] = ((bits >>> 31) << 63) |
+          0x7ff0000000000000 | ((bits & 0x7fffff) << 29);
+      return _float64Cell[0];
+    }
+    _float32Words[0] = bits;
+    return _float32Cell[0];
+  }
+
+`

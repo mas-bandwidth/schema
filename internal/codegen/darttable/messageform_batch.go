@@ -50,6 +50,18 @@ func (g *fixedModule) messageNameSlot(id uint64) int {
 // once, in the unit's runtime home.
 func (g *fixedModule) emitMessageBatchRuntime() {
 	g.pf("%s", dartMessageBatchRuntime)
+	for _, entry := range ir.TableVocabulary(g.unit) {
+		shape := &entry.Shape
+		usesFloat32 := entry.Kind == ir.TableKindF32
+		for shape != nil {
+			usesFloat32 = usesFloat32 || shape.Elem == ir.TableKindF32
+			shape = shape.Inner
+		}
+		if usesFloat32 {
+			g.pf("%s", dartMessageFloat32Runtime)
+			break
+		}
+	}
 	g.pf("const int tableMessageRefBits = %d;\n", ir.TableMessageRefBits(len(ir.TableVocabulary(g.unit))))
 	g.pf("const int tableMessageBatchMax = 256;\n\n")
 }
@@ -169,6 +181,10 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 // (§3): a field at its declared default, an absent optional, an empty
 // string/bytes/wstring and an empty counted array all elide.
 func (g *fixedModule) messageRides(f *ir.Field, expr string) string {
+	if f.Type.Kind == ir.TFloat32 && f.Array == ir.ArrayNone {
+		// Numeric equality elides -0.0; the wire preserves its sign (§3).
+		return "(" + expr + " != " + g.gen.fixedZeroFor(f) + " || _float32BitsFromDouble(" + expr + ") != _float32BitsFromDouble(" + g.gen.fixedZeroFor(f) + "))"
+	}
 	if f.IsList() || f.IsMap() {
 		return expr + ".length > 0"
 	}
@@ -269,10 +285,10 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 	// float64 as its 64, exactly the bits math.Float32bits/math.Float64bits
 	// hand the Go reference (internal/codegen/gotable/messagewrite.go:146).
 	// Never widened: kind 10's message width is 32 (ir.TableMessageValueBits).
-	// A little-endian ByteData view turns the double into that integer, the
-	// runtime's byte order, and the bit width rides as kind 10's own.
+	// Float32 NaNs narrow in software so the signalling bit survives; the
+	// bit width remains kind 10's own. Float64 keeps its original bit view.
 	if kind == ir.TableKindF32 {
-		g.pf("%sw.put((ByteData(4)..setFloat32(0, %s, Endian.little)).getUint32(0, Endian.little), 32);\n", ind, expr)
+		g.pf("%sw.put(_float32BitsFromDouble(%s), 32);\n", ind, expr)
 		return
 	}
 	if kind == ir.TableKindF64 {
@@ -401,10 +417,10 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 	}
 	// A FLOAT IS READ BACK FROM ITS IEEE-754 BITS (docs/SPEC-TABLES.md §3.3,
 	// the message form's scalar payload): float32 from its 32 bits and float64
-	// from its 64, never widened, through a little-endian ByteData view the way
-	// the rest of the runtime reads.
+	// from its 64. Float32 NaNs widen in software; a hardware conversion would
+	// quiet a signalling NaN before a consumer could send it again.
 	if kind == ir.TableKindF32 {
-		g.pf("%s%s = (ByteData(4)..setUint32(0, r.bits.get(32), Endian.little)).getFloat32(0, Endian.little);\n", ind, expr)
+		g.pf("%s%s = _doubleFromFloat32Bits(r.bits.get(32));\n", ind, expr)
 		g.pf("%sif (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
 		return
 	}
@@ -586,4 +602,36 @@ bool tableMessageBatchClose(TableMessageReader r) {
   }
   return true;
 }
+`
+
+// The packet emitter's software conversion rule, repeated here because these
+// libraries cannot access another Dart library's private helpers (SPEC-TABLES §3).
+const dartMessageFloat32Runtime = `
+final Float32List _float32Cell = Float32List(2);
+final Uint32List _float32Words = _float32Cell.buffer.asUint32List();
+final Float64List _float64Cell = _float32Cell.buffer.asFloat64List();
+final Uint64List _float64Words = _float32Cell.buffer.asUint64List();
+
+int _float32BitsFromDouble(double value) {
+  if (!value.isNaN) {
+    _float32Cell[0] = value;
+    return _float32Words[0];
+  }
+  _float64Cell[0] = value;
+  final bits = _float64Words[0];
+  var mantissa = (bits >>> 29) & 0x7fffff;
+  if (mantissa == 0) mantissa = 0x400000;
+  return ((bits >>> 63) << 31) | 0x7f800000 | mantissa;
+}
+
+double _doubleFromFloat32Bits(int bits) {
+  if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {
+    _float64Words[0] = ((bits >>> 31) << 63) |
+        0x7ff0000000000000 | ((bits & 0x7fffff) << 29);
+    return _float64Cell[0];
+  }
+  _float32Words[0] = bits;
+  return _float32Cell[0];
+}
+
 `
