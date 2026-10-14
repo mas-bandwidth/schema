@@ -66,6 +66,9 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	c := &cookUnit{members: map[string]*ir.MemberLayout{}, skipped: map[string]string{}}
 	for _, name := range sortedKeys(u.Tables) {
 		st := u.Tables[name]
+		if st.IsMapEntry() {
+			continue
+		}
 		if why := cookableClosure(u, st); why != "" {
 			c.skipped[name] = why
 			continue
@@ -131,6 +134,9 @@ func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 			return ""
 		}
 		for _, f := range member.Fields {
+			if f.IsMap() {
+				return name + "." + f.Name + " map cook reader is not carried in this slice"
+			}
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}
