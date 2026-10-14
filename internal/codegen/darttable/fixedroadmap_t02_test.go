@@ -411,11 +411,13 @@ func t02W14(t *testing.T) {
 	src := t02Source(t, files)
 	lower := lowerFirst(st.Name)
 	// THE PLAN'S LANES, read off the emitted identity array: op, src, dst, size,
-	// aux, guard, arg, meta, argw. Two adjacent int32 fields are one run whose
+	// aux, guard, arg, meta, argw, guards, gcount. Two adjacent int32 fields are one run whose
 	// dst is x's own offset and whose size is the whole body.
 	identity := t02Rows(t, src, "final Int32List "+lower+"FixedIdentity")
-	if len(identity) != 1 || len(identity[0]) != 9 {
-		t.Fatalf("W14: the two adjacent int32 fields are one nine-lane run; got %d rows of %d lanes", len(identity), len(identity[0]))
+	// ELEVEN LANES: the nine, then the guard chain's offset+count
+	// (docs/FIXED-FORM-ALGORITHM.md §4.1), both zero on an unguarded run.
+	if len(identity) != 1 || len(identity[0]) != 11 {
+		t.Fatalf("W14: the two adjacent int32 fields are one eleven-lane run; got %d rows of %d lanes", len(identity), len(identity[0]))
 	}
 	// tFixedDst's first lane is the entry's own offset in the canonical image;
 	// its other four are the stride, the aux, the counted flag and the flavour.
