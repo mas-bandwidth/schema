@@ -1,12 +1,12 @@
 // driver.dart — the Dart leg of the card conformance set
 // (tables/cards/conformance/FORMAT.md). It answers the driver contract
 // test/conformance/README.md states — `<driver> <manifest> list` and
-// `<driver> <manifest> <surface> <outdir>` — over the five surfaces this card
-// owns (load, save, render, parse, bounds), through the facade in
-// tables/cards/dart/lib/cards.dart. The upgrade, edit, taskhash and view
-// surfaces belong to a-dart-card-upgrades-edits-and-walks-the-shared-corpus and
-// are answered absent (exit 2). It is the concrete side of tla/CardHops.tla:
-// every language's driver must answer the same bytes.
+// `<driver> <manifest> <surface> <outdir>` — over the seven surfaces this leg
+// answers (load, save, render, parse, bounds, taskhash, view), through the
+// facade in tables/cards/dart/lib/cards.dart. The upgrade and edit surfaces
+// belong to a-dart-card-upgrades-edits-and-walks-the-shared-corpus's retained
+// work and are answered absent (exit 2). It is the concrete side of
+// tla/CardHops.tla: every language's driver must answer the same bytes.
 //
 // A test-only environment switch, CARDS_DART_SABOTAGE=1, changes one rendered
 // byte so the negative control can prove the render surface goes red while the
@@ -17,7 +17,15 @@ import 'dart:io';
 
 import '../lib/cards.dart';
 
-const List<String> surfaces = ['load', 'save', 'render', 'parse', 'bounds'];
+const List<String> surfaces = [
+  'load',
+  'save',
+  'render',
+  'parse',
+  'bounds',
+  'taskhash',
+  'view',
+];
 
 class Case {
   final String surface;
@@ -146,7 +154,28 @@ void one(String surface, Case c, String outdir) {
         refuse(outdir, c.name, refusalClass(e));
       }
       break;
+    case 'taskhash':
+      final wire = File(c.input).readAsBytesSync();
+      final rec = load(wire);
+      try {
+        writeFile(outdir, c.name, 'hex', utf8.encode(hex(taskHash(rec))));
+      } on CardException catch (e) {
+        refuse(outdir, c.name, refusalClass(e));
+      }
+      break;
+    case 'view':
+      writeFile(outdir, c.name, 'txt', utf8.encode(view()));
+      break;
   }
+}
+
+// hex spells a digest as 64 lowercase hex digits (FORMAT.md "taskhash").
+String hex(List<int> bytes) {
+  final b = StringBuffer();
+  for (final x in bytes) {
+    b.write(x.toRadixString(16).padLeft(2, '0'));
+  }
+  return b.toString();
 }
 
 int run(List<String> args) {

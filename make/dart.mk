@@ -570,12 +570,11 @@ cards-dart-driver: cards-dart-generate
 	$(DART) compile exe -o build/cards-driver-dart tables/cards/dart/bin/driver.dart >/dev/null
 
 # cards-dart-conformance runs the harness `cards` subcommand over the Dart
-# driver with the five surfaces this card owns required; upgrade, edit, taskhash
-# and view are a-dart-card-upgrades-edits-and-walks-the-shared-corpus's and are
-# answered absent.
+# driver with the seven surfaces this leg answers required; upgrade and edit are
+# not yet answered by this leg and remain absent.
 .PHONY: cards-dart-conformance
 cards-dart-conformance: build/conformance-harness cards-dart-driver
-	./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/dart/driver --require load,save,render,parse,bounds
+	./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/dart/driver --require load,save,render,parse,bounds,taskhash,view
 
 # cards-dart-conformance-negative-control: the same check against the driver
 # with a test-only environment switch that changes one rendered byte, required

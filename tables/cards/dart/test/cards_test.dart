@@ -347,9 +347,72 @@ void taskHashFramesLogicalFields() {
   }
 }
 
+// viewWalksEveryField proves the view is the vocabulary (docs/SPEC-TABLES.md
+// §8, §8.1, FORMAT.md "The view"): it compares view() byte for byte with the Go
+// leg's expected view.txt, and with an explicit vocabulary written here (not
+// read from the descriptors), so a descriptor edit that changes the view is
+// caught against independent ground truth.
+void viewWalksEveryField() {
+  sameBytes(
+    utf8.encode(view()),
+    readBytes('tables/cards/conformance/expected/view.txt'),
+    'view matches the expected view.txt',
+  );
+
+  const vocabulary = <String>[
+    'Card id string value 64',
+    'Card sha string value 40',
+    'Card tier Tier value -',
+    'Card repo string value 96',
+    'Card _base string value 96',
+    'Card kind string value 24',
+    'Card priority Priority value -',
+    'Card stream string value 32',
+    'Card paths PathText list -',
+    'Card _new PathText list -',
+    'Card shared PathText list -',
+    'Card needs CardID list -',
+    'Card test string value 192',
+    'Card done string blob -',
+    'Card deadline_minutes int32 value -',
+    'Card source string blob -',
+    'Card epoch int32 value -',
+    'Card column Column value -',
+    'Card holder string value 32',
+    'Card attempt int32 value -',
+    'Card head string value 40',
+    'Card branch string value 128',
+    'Card body string blob -',
+    'Card extra KeyValue list -',
+    'Card consumers Consumer list -',
+    'CardID s string value 64',
+    'Consumer kind string value 16',
+    'Consumer who string value 32',
+    'Consumer route string value 48',
+    'Consumer model string value 64',
+    'Consumer started int64 value -',
+    'Consumer ended int64 value -',
+    'Consumer outcome string value 16',
+    'Consumer line string value 200',
+    'Consumer cost_micro_usd int64 value -',
+    'KeyValue key string value 32',
+    'KeyValue value string blob -',
+    'PathText s string value 192',
+  ];
+  final lines = view().split('\n').where((l) => l.isNotEmpty).toList();
+  check(
+    lines.length == vocabulary.length,
+    'the view has ${vocabulary.length} field lines',
+  );
+  for (var i = 0; i < vocabulary.length && i < lines.length; i++) {
+    check(lines[i] == vocabulary[i], 'view line ${i + 1} "${vocabulary[i]}"');
+  }
+}
+
 void main() {
   sha256MatchesFips180Vectors();
   taskHashFramesLogicalFields();
+  viewWalksEveryField();
   cardRoundTripsThePopulatedFixture();
   cardBoundsRefuseBeforePublishing();
   parseRenderMatchesGo();

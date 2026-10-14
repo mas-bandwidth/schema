@@ -804,6 +804,85 @@ Record buildOn(ParsedCard p, String body) {
   return Record._(wire, card, TableWireReport());
 }
 
+// ---- the view (docs/SPEC-TABLES.md §8, §8.1, §8.3) ----
+
+// viewTypeName resolves one descriptor row's schema element name (§8.1). The
+// generated descriptor carries the wire kind alone, so a list's element table
+// and an enum's type name are named here, keyed by the table and field the
+// registry lists: the view is the vocabulary a walker reads a record by name
+// and kind with.
+String viewTypeName(String table, TableFieldInfo f) {
+  switch (f.kind) {
+    case 1:
+      return 'bool';
+    case 4:
+      return 'int32';
+    case 5:
+      return 'int64';
+    case 12:
+    case 17:
+      return 'string';
+    case 14:
+      final e = _listElementType['$table.${f.name}'];
+      if (e != null) {
+        return e;
+      }
+      throw CardException('cards: list $table.${f.name} has no element type');
+    case 30:
+      final e = _enumTypeName['$table.${f.name}'];
+      if (e != null) {
+        return e;
+      }
+      throw CardException('cards: enum $table.${f.name} has no type name');
+  }
+  throw CardException('cards: field $table.${f.name} has kind ${f.kind}');
+}
+
+const Map<String, String> _listElementType = {
+  'Card.paths': 'PathText',
+  'Card._new': 'PathText',
+  'Card.shared': 'PathText',
+  'Card.needs': 'CardID',
+  'Card.extra': 'KeyValue',
+  'Card.consumers': 'Consumer',
+};
+
+const Map<String, String> _enumTypeName = {
+  'Card.tier': 'Tier',
+  'Card.priority': 'Priority',
+  'Card.column': 'Column',
+};
+
+// view walks the generated card unit's cardDescriptors() (TableFieldInfo and
+// TableTypeInfo, §8.1) and renders one line per field of every table, tables
+// sorted by name and each table's fields in declaration order (§8; FORMAT.md
+// "The view"): `<table> <field> <kind> <shape> <bound>`, where bound is the
+// declared string length or `-` when the field has none.
+String view() {
+  final descs = cardDescriptors();
+  final names = descs.keys.toList()..sort();
+  final out = StringBuffer();
+  for (final name in names) {
+    for (final f in descs[name]!.fields) {
+      var bound = '-';
+      if (f.shape == 'value' && f.bound != null) {
+        bound = '${f.bound}';
+      }
+      out.write(name);
+      out.write(' ');
+      out.write(f.name);
+      out.write(' ');
+      out.write(viewTypeName(name, f));
+      out.write(' ');
+      out.write(f.shape);
+      out.write(' ');
+      out.write(bound);
+      out.write('\n');
+    }
+  }
+  return out.toString();
+}
+
 // ---- render helpers (tables/cards/render.go) ----
 
 String tierString(int t) {
