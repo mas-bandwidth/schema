@@ -233,30 +233,27 @@ type Wide {
 		}
 	}
 
-	// The hot write body carries exactly one dormant assert — the single
-	// checkWrite predicate call — and no inline contract checks. Routing the
-	// checks through the predicate keeps them out of the hot body while the
-	// predicate's contract walk still runs them under -ea (issue #156).
+	// Length lives in the checkWrite predicate (the same dormant assert every
+	// other Java write contract uses). The null-unit check cannot join that
+	// walk without a functions.go change, so it is the Java analogue of the
+	// C# twin's Debug.Assert: an inline assert in the write loop, gone
+	// without -ea. Release carries neither as an unconditional throw.
 	write := funcBody(t, text, "public static int writeWide(")
-	if n := strings.Count(write, "assert "); n != 1 {
-		t.Errorf("writeWide carries %d asserts, want exactly the checkWrite predicate call", n)
-	}
 	if !strings.Contains(write, "assert checkWriteWide(value, data);") {
-		t.Errorf("writeWide missing its single checkWrite predicate call")
+		t.Errorf("writeWide missing its checkWrite predicate call")
+	}
+	if !strings.Contains(write, "assert v != 0;") {
+		t.Errorf("debug writer missing null-unit check assert")
 	}
 	for _, bad := range []string{
 		"assert value.textLength",
-		"assert v != 0",
 		"throw ",
 	} {
 		if strings.Contains(write, bad) {
-			t.Errorf("writeWide carries an inline contract check %q", bad)
+			t.Errorf("writeWide carries an unconditional or inline length check %q", bad)
 		}
 	}
 
-	// The write contract for length lives in checkWriteWide. The null-unit
-	// check would also live there but requires a functions.go change (outside
-	// PATHS for this card); it is tracked as a proposed diff in the report.
 	check := funcBody(t, text, "private static boolean checkWriteWide(")
 	for _, want := range []string{
 		"assert value.textLength >= 0;",
@@ -265,6 +262,10 @@ type Wide {
 		if !strings.Contains(check, want) {
 			t.Errorf("checkWriteWide missing contract check %q", want)
 		}
+	}
+	read := funcBody(t, text, "public static boolean readWide(")
+	if !strings.Contains(read, "if (v == 0 || v > 0xFFFF) return false;") {
+		t.Errorf("read-side null-unit check must stay unconditional")
 	}
 }
 
