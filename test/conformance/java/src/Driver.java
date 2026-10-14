@@ -778,6 +778,55 @@ public final class Driver {
         return 0;
     }
 
+    // Cook the same decoded storage that the wire codec exposes. Reflection
+    // selects generated types from manifest data; no root list can lag the unit.
+    private static int surfaceCookWrite(String out) throws IOException {
+        for (String[] f : kind("instance")) {
+            String name=f[1];
+            try {
+                Class<?> cook=Class.forName(f[2]+"."+f[3]+"Cook");
+                java.lang.reflect.Method measure=null, from=null;
+                for (java.lang.reflect.Method method:cook.getMethods()) {
+                    if (method.getName().equals("cookMeasure")) measure=method;
+                    if (method.getName().equals("cookFrom")) from=method;
+                }
+                if (measure==null||from==null) {spillAbsent(out,name);continue;}
+                Class<?> valueType=measure.getParameterTypes()[0];
+                Class<?> codec=valueType.getEnclosingClass();
+                byte[] wire=Files.readAllBytes(Paths.get(f[4]));
+                Object value;
+                if (codec.getSimpleName().endsWith("Variable")) {
+                    Class<?> report=Class.forName(f[2]+".TableVariable$Report");
+                    Object rep=report.getConstructor().newInstance();
+                    value=codec.getMethod("load",byte[].class,report).invoke(null,wire,rep);
+                    if (value==null||report.getField("refused").getBoolean(rep)) return failInt(name+": load refused");
+                } else if (codec.getSimpleName().endsWith("Fixed")) {
+                    value=valueType.getConstructor().newInstance();
+                    Object values=java.lang.reflect.Array.newInstance(valueType,1);
+                    java.lang.reflect.Array.set(values,0,value);
+                    Class<?> runtime=Class.forName(f[2]+".TableFixed");
+                    Class<?> report=Class.forName(f[2]+".TableFixed$Report");
+                    Object plan=runtime.getMethod("plan",int.class).invoke(null,4096);
+                    Object image=codec.getMethod("image").invoke(null);
+                    Object rep=report.getConstructor().newInstance();
+                    java.lang.reflect.Method load=null;
+                    for (java.lang.reflect.Method method:codec.getMethods()) if(method.getName().equals("load"))load=method;
+                    int count=(Integer)load.invoke(null,values,1,wire,plan,new short[65536],image,rep);
+                    if(count!=1)return failInt(name+": fixed load refused");
+                } else {spillAbsent(out,name);continue;}
+                long size=(Long)measure.invoke(null,value);
+                if(size<0||size>Integer.MAX_VALUE)return failInt(name+": cook measure refused");
+                for(int order=1;order<=2;order++) {
+                    byte[] bytes=new byte[(int)size];
+                    if(!(Boolean)from.invoke(null,value,bytes,order))return failInt(name+": cook write refused");
+                    spill(out,name+(order==2?"-be":""),bytes);
+                }
+            } catch(ClassNotFoundException absent) {spillAbsent(out,name);}
+            catch(ReflectiveOperationException broken) {throw new IOException(name+": cook-write",broken);}
+        }
+        return 0;
+    }
+
     public static int run(String[] args) throws IOException {
         if (args.length < 2) {
             System.err.println("usage: driver <manifest> list\n       driver <manifest> <surface> <outdir>");
@@ -792,7 +841,7 @@ public final class Driver {
             // case ABSENT, one by one.
             System.out.print("wire\nreport\njson-read\njson-write\n"
                     + "block\nblock-foreign\n"
-                    + "block-dump\nforgery\ncook\ncook-foreign\ncook-forgery\n");
+                    + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n");
             return 0;
         }
         if (args.length < 3) {
@@ -810,6 +859,7 @@ public final class Driver {
             case "block-dump": return surfaceBlockDump(out);
             case "forgery": return surfaceForgery(out);
             case "cook": return surfaceCook(out);
+            case "cook-write": return surfaceCookWrite(out);
             case "cook-foreign": return surfaceCookForeign(out);
             case "cook-forgery": return surfaceCookForgery(out);
             default: return 2;

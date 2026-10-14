@@ -1,4 +1,4 @@
-// THE COOKED FORM in Java (docs/SPEC-TABLES.md §7): the READ side, emitted ON THE
+// THE COOKED FORM in Java (docs/SPEC-TABLES.md §7): read and write, emitted ON THE
 // SIDE into <Table>Cook.java.
 //
 // A cook is a LOAD-TRUSTED-DATA-FROM-TOOLS format, not a wire. Tooling writes a
@@ -292,6 +292,8 @@ func generateCookFiles(u *ir.Unit, ck *cookUnit) (map[string][]byte, error) {
 		return out, nil
 	}
 	maps.Copy(out, cookRuntimeFiles(u))
+	writer := cookWriterUnit(u)
+	out["TableCookWriter.java"] = cookWriterFile(u, writer)
 	names := make([]string, 0, len(u.Tables))
 	for name := range u.Tables {
 		names = append(names, name)
@@ -305,7 +307,13 @@ func generateCookFiles(u *ir.Unit, ck *cookUnit) (map[string][]byte, error) {
 			b.WriteString("// absent, and it is absent by construction rather than by refusal. A consumer\n")
 			b.WriteString("// reaching for open gets a missing name from its own compiler, beside this\n")
 			b.WriteString("// file, which says why.\n")
-			fmt.Fprintf(&b, "public final class %sCook {\n    private %sCook() {}\n}\n", name, name)
+			fmt.Fprintf(&b, "public final class %sCook {\n    private %sCook() {}\n", name, name)
+			if writer.opens(name) {
+				g := &cookGen{unit: u, cook: writer, table: u.Tables[name]}
+				g.emitWriter(writer.members[name])
+				b.WriteString(g.b.String())
+			}
+			b.WriteString("}\n")
 			out[name+"Cook.java"] = javaFile(u, "the COOKED FORM's read half (docs/SPEC-TABLES.md §7).", b.String())
 			continue
 		}
@@ -361,6 +369,7 @@ func (g *cookGen) emit() {
 	g.f("    /** the ROOT's offset in data — the record at the region's base. Read it with\n")
 	g.f("     *  %sRow's accessors. */\n", name)
 	g.f("    public int root() { return region; }\n\n")
+	g.emitWriter(ml)
 	g.emitOpen(ml, align)
 	g.emitAt()
 	g.f("    /** this root's cook descriptors: constant data, so a reflective walk costs a\n")
@@ -368,6 +377,19 @@ func (g *cookGen) emit() {
 	g.f("     *  field column, so a walker reaches the whole graph from the root. */\n")
 	g.f("    public static TableCookInfo type() { return %sRow.cookInfo(); }\n", name)
 	g.f("}\n")
+}
+
+func (g *cookGen) emitWriter(ml *ir.MemberLayout) {
+	name := g.table.Name
+	typ, fixed := cookValueType(g.unit, g.table)
+	method := name
+	if !fixed {
+		method += "Variable"
+	}
+	g.f("    private static TableCookWriter plan(%s value) { return TableCookWriter.plan(value,%d,%d,0x%016xL,TableCookWriter::write%s); }\n", typ, cookRecordSize(g.unit, g.table), ml.Align, ir.TableWireId(g.table.WireName()), method)
+	g.f("    public static long cookMeasure(%s value) { TableCookWriter p=plan(value); return p==null?-1:p.total; }\n", typ)
+	g.f("    public static TableCookWriter.MeasureResult cookMeasureReason(%s value) { long size=cookMeasure(value); return new TableCookWriter.MeasureResult(size,size<0?\"invalid_value\":null); }\n", typ)
+	g.f("    public static boolean cookFrom(%s value,byte[] buffer,int order) { TableCookWriter p=plan(value); return p!=null&&p.finish(buffer,order); }\n", typ)
 }
 
 func (g *cookGen) emitOpen(ml *ir.MemberLayout, align int64) {

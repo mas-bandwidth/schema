@@ -436,7 +436,7 @@ tables-java-variable-class:
 .PHONY: tables-java-block-build
 tables-java-block-build:
 	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestBlockBuildAndCookWriteJava/blockBuild'
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestBlockBuildAndCookWriteJava|TestCookWriteJavaSharedGraph'
 	@echo 'tables Java block build: §19.1 writes the two committed block images byte-equal'
 
 test-java: tables-java-block-build

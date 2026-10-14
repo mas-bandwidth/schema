@@ -1,14 +1,14 @@
 // Package javatable emits a unit's Java table surface (docs/SPEC-TABLES.md):
 // the BLOCK form's BUILD half (§19.1) and read half (§19.2) in
-// <Table>Block.java and the COOKED form's read half in <Table>Cook.java (§7),
+// <Table>Block.java and the COOKED form's read/write surface in <Table>Cook.java (§7),
 // the record accessors the two share (<Name>Row.java), their reflection
 // descriptors and the unit's build version — plus the shared runtime those
 // need, one PUBLIC TYPE PER FILE, which is what Java's package scope is. It is
 // emitted only when the unit declares tables, and nothing when it declares
 // none: a table-free unit's generated Java is byte-identical with or without
-// this package. The COOK WRITE (§7.6) — <T>CookMeasure, <T>CookMeasureReason
-// and <T>CookFrom, the Java spelling of gotable's cookwrite.go — is the one
-// named absence left on this surface.
+// this package. Cook write (§7.6) spells Go's <T>CookMeasure,
+// <T>CookMeasureReason and <T>CookFrom as <T>Cook.cookMeasure,
+// cookMeasureReason and cookFrom.
 //
 // THE ACCELERATOR TIER. A block is POINTED AT and a cook is OPENED; neither
 // parses a wire, so both reach every table of the unit whatever its closure
@@ -234,7 +234,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	if !scope.Accelerators {
 		// The two ACCELERATORS need no wire codec: the BLOCK form (§19) reads
 		// bytes a producer wrote and the COOK (§7) reads a region the tooling
-		// wrote. Both are pure readers over a byte[] the consumer owns, so both
+		// wrote. Both read a byte[] the consumer owns, so both
 		// reach every table of the unit — a pointered unit's cooks open in full.
 		blocks := ir.Blocks(u)
 		ck := cookUnitOf(u)
