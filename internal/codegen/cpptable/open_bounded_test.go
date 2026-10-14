@@ -23,7 +23,7 @@ func tableOpenProbeComparisons(ids []uint64) (duplicate bool, comparisons int) {
 	seen := make([]uint64, slots)
 	used := make([]uint64, slots/64)
 	for _, id := range ids {
-		s := uint32((id * 0x9E3779B97F4A7C15) >> shift) & (slots - 1)
+		s := uint32((id*0x9E3779B97F4A7C15)>>shift) & (slots - 1)
 		for {
 			bit := uint64(1) << (s & 63)
 			if used[s>>6]&bit == 0 {
