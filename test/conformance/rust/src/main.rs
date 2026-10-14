@@ -888,6 +888,13 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
     }
 }
 
+fn surface_cook_write(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("cook-write") {
+        spill_absent(out, &f[1]);
+        spill_absent(out, &format!("{}-be", f[1]));
+    }
+}
+
 // ---------------------------------------------------------------------------
 
 fn main() {
@@ -909,7 +916,7 @@ fn main() {
             // case ABSENT, one by one; the message and retain surfaces are still
             // absent whole (the message form's batch and retention beyond the card
             // constructs are their own rows)
-            "wire\nreport\njson-read\njson-write\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery"
+            "wire\nreport\njson-read\njson-write\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write"
         );
         return;
     }
@@ -924,6 +931,7 @@ fn main() {
         "json-read" => surface_json_read(&manifest, out),
         "json-write" => surface_json_write(&manifest, out),
         "cook" => surface_cook(&manifest, out),
+        "cook-write" => surface_cook_write(&manifest, out),
         "cook-foreign" => surface_cook_foreign(&manifest, out),
         "block-foreign" => surface_block_foreign(&manifest, out),
         "block-dump" => surface_block_dump(&manifest, out),

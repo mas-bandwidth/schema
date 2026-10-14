@@ -84,7 +84,7 @@ func TestBlockBuildAndCookWriteRust(t *testing.T) {
 	// grows a block array, and its count check is the pin.
 	rowsBlock := string(generate(t, blockBuilderSchema)["probe_block.rs"])
 	for _, want := range []string{
-		"pub struct RootCounts {\n        pub rows: i32,\n        pub other: i32,\n    }",
+		"pub struct RootCounts {\n    pub rows: i32,\n    pub other: i32,\n}",
 		"if counts.rows < 0 || counts.rows as i64 > 65 {",
 		"if counts.other < 0 || counts.other as i64 > 3 {",
 	} {

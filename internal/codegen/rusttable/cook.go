@@ -1104,17 +1104,21 @@ pub unsafe fn table_cook_put(out: *mut u8, at: i64, value: u64, width: u32, orde
     if out.is_null() {
         return;
     }
-    for i in 0..width as usize {
-        let shift = if order == 2 { width as usize - 1 - i } else { i };
-        *out.add(at as usize + i) = (value >> (shift * 8)) as u8;
+    unsafe {
+        for i in 0..width as usize {
+            let shift = if order == 2 { width as usize - 1 - i } else { i };
+            *out.add(at as usize + i) = (value >> (shift * 8)) as u8;
+        }
     }
 }
 
 // table_cook_raw reads one slot's bytes at the width the descriptor names.
 unsafe fn table_cook_raw(p: *const u8, at: i64, width: u32) -> u64 {
     let mut v: u64 = 0;
-    for i in 0..width as usize {
-        v |= (*p.add(at as usize + i) as u64) << (i * 8);
+    unsafe {
+        for i in 0..width as usize {
+            v |= (*p.add(at as usize + i) as u64) << (i * 8);
+        }
     }
     v
 }
@@ -1128,19 +1132,19 @@ pub unsafe fn table_cook_write_record(p: *const u8, t: &TableCookInfo, out: *mut
         let f = &t.fields[i];
         let dest = at + f.offset as i64;
         if f.present_offset >= 0 {
-            let present = table_cook_raw(p, f.present_offset as i64, 1);
-            table_cook_put(out, at + f.present_offset as i64, if present != 0 { 1 } else { 0 }, 1, order);
+            let present = unsafe { table_cook_raw(p, f.present_offset as i64, 1) };
+            unsafe { table_cook_put(out, at + f.present_offset as i64, if present != 0 { 1 } else { 0 }, 1, order); }
         }
         match f.storage {
             TableCookStorage::String | TableCookStorage::Bytes => {
-                let used = table_cook_raw(p, f.count_offset as i64, 4) as i32;
+                let used = unsafe { table_cook_raw(p, f.count_offset as i64, 4) as i32 };
                 if used < 0 || used > f.array_bound {
                     return false;
                 }
-                table_cook_put(out, at + f.count_offset as i64, used as u64, 4, order);
-                for k in 0..used as isize {
-                    let v = table_cook_raw(p, f.offset as i64 + k, 1);
-                    table_cook_put(out, dest + k, v, 1, order);
+                unsafe { table_cook_put(out, at + f.count_offset as i64, used as u64, 4, order); }
+                for k in 0..used as i64 {
+                    let v = unsafe { table_cook_raw(p, f.offset as i64 + k, 1) };
+                    unsafe { table_cook_put(out, dest + k, v, 1, order); }
                 }
             }
             TableCookStorage::Record => {
@@ -1152,20 +1156,20 @@ pub unsafe fn table_cook_write_record(p: *const u8, t: &TableCookInfo, out: *mut
                     None => return false,
                 };
                 let count: i32 = if f.count_offset >= 0 {
-                    let used = table_cook_raw(p, f.count_offset as i64, 4) as i32;
+                    let used = unsafe { table_cook_raw(p, f.count_offset as i64, 4) as i32 };
                     if used < 0 || used > f.array_bound {
                         return false;
                     }
-                    table_cook_put(out, at + f.count_offset as i64, used as u64, 4, order);
+                    unsafe { table_cook_put(out, at + f.count_offset as i64, used as u64, 4, order); }
                     used
                 } else if f.is_array {
                     f.array_bound
                 } else {
                     1
                 };
-                for k in 0..count as isize {
-                    let src = p.add(f.offset as i64 + k * f.elem_size as isize);
-                    if !table_cook_write_record(src, info, out, dest + k * f.elem_size as i64, order) {
+                for k in 0..count as i64 {
+                    let src = unsafe { p.add((f.offset as i64 + k * f.elem_size as i64) as usize) };
+                    if unsafe { !table_cook_write_record(src, info, out, dest + k * f.elem_size as i64, order) } {
                         return false;
                     }
                 }
@@ -1175,23 +1179,23 @@ pub unsafe fn table_cook_write_record(p: *const u8, t: &TableCookInfo, out: *mut
             }
             _ => {
                 let count: i32 = if f.count_offset >= 0 {
-                    let used = table_cook_raw(p, f.count_offset as i64, 4) as i32;
+                    let used = unsafe { table_cook_raw(p, f.count_offset as i64, 4) as i32 };
                     if used < 0 || used > f.array_bound {
                         return false;
                     }
-                    table_cook_put(out, at + f.count_offset as i64, used as u64, 4, order);
+                    unsafe { table_cook_put(out, at + f.count_offset as i64, used as u64, 4, order); }
                     used
                 } else if f.is_array {
                     f.array_bound
                 } else {
                     1
                 };
-                for k in 0..count as isize {
-                    let v = table_cook_raw(p, f.offset as i64 + k * f.elem_size as isize, f.elem_size as u32);
+                for k in 0..count as i64 {
+                    let v = unsafe { table_cook_raw(p, f.offset as i64 + k * f.elem_size as i64, f.elem_size as u32) };
                     if f.storage == TableCookStorage::Bool {
-                        table_cook_put(out, dest + k * f.elem_size as i64, if v != 0 { 1 } else { 0 }, 1, order);
+                        unsafe { table_cook_put(out, dest + k * f.elem_size as i64, if v != 0 { 1 } else { 0 }, 1, order); }
                     } else {
-                        table_cook_put(out, dest + k * f.elem_size as i64, v, f.elem_size as u32, order);
+                        unsafe { table_cook_put(out, dest + k * f.elem_size as i64, v, f.elem_size as u32, order); }
                     }
                 }
             }
