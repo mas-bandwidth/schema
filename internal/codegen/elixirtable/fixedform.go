@@ -23,6 +23,8 @@
 package elixirtable
 
 import (
+	"strings"
+
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -137,6 +139,16 @@ func imageTermOffset(u *ir.Unit, t ir.TableFixedTerm) int64 {
 	if un := fixedNamedUnion(u, t.Type); un != nil {
 		if t.Member == "type" {
 			return 0
+		}
+		if arm, sub, ok := strings.Cut(t.Member, "."); ok && sub == "value" {
+			for _, v := range un.Variants {
+				if v.Name == arm && v.F != nil {
+					if v.F.Array == ir.ArrayCounted || v.F.Type.Kind == ir.TString || v.F.Type.Kind == ir.TWString || v.F.Type.Kind == ir.TBytes {
+						return fixedUnionTagBytes(un) + ir.TableFixedCountBytes
+					}
+					break
+				}
+			}
 		}
 		// every arm overlays the same byte: the tag's width, no C padding
 		return fixedUnionTagBytes(un)

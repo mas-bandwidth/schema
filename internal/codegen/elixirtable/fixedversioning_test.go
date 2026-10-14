@@ -1018,6 +1018,9 @@ func indentBody(body string) string {
 func TestFixedVersioningReadsTheManifest(t *testing.T) {
 	corpus := fixedCorpus(t)
 	if _, err := os.Stat(filepath.Join(corpus, "manifest.txt")); err != nil {
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s/manifest.txt is missing: %v", corpus, err)
+		}
 		t.Skip("the tree carries no corpus manifest")
 	}
 	fired := 0

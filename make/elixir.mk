@@ -763,11 +763,17 @@ tables-elixir-message-batch:
 	fi
 	@echo 'tables Elixir message batch: TestMessageFormBatchElixir ran under test-elixir with no subtest skipped'
 
+.PHONY: tables-elixir-fixed-roadmap-t12
+tables-elixir-fixed-roadmap-t12: tables-fixedform-corpus
+	SCHEMA_REQUIRE_CORPUS=1 SCHEMA_SLOW=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapElixirT12OrdinalsArms'
+	@echo 'tables Elixir T12: R27 manifest oracle, union-field-arms and payload-free-arms verified'
+
 test-elixir: tables-elixir-fixed-form tables-elixir-fixed-form-negative-control tables-elixir-fixed-bench
 test-elixir: tables-elixir-versioning tables-elixir-versioning-negative-control
 test-elixir: tables-elixir-message-batch
 test-elixir: tables-elixir-paired-gate
-test-elixir: tables-elixir-row-f12 tables-elixir-t13
+test-elixir: tables-elixir-row-f12 tables-elixir-t13 tables-elixir-fixed-roadmap-t12
 
 # ---------------------------------------------------------------------------
 # THE CARDS UNIT'S ELIXIR LEG (docs/SPEC-TABLES.md §2)
