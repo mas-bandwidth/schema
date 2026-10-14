@@ -78,7 +78,7 @@ generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .js + <Base>Table.js + the two accelerators' readers),
 # because a table's closure decodes into the packet emitter's own classes.
-build/tables-generated-js/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
+build/tables-generated-js/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema
 	@mkdir -p build/tables-generated-js
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
 	# the POINTERED unit: its FIXED surface is refused by name for every
@@ -98,6 +98,10 @@ build/tables-generated-js/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	./bin/schema generate --lang js --out build/tables-generated-js/blockhome tables/blockhome
 	./bin/schema generate --lang js --out build/tables-generated-js/v1 test/tables/V1.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/v2 test/tables/V2.schema
+	./bin/schema generate --lang js --out build/tables-generated-js/w1 test/tables/W1.schema
+	./bin/schema generate --lang js --out build/tables-generated-js/w2 test/tables/W2.schema
+	./bin/schema generate --lang js --out build/tables-generated-js/r1 test/tables/R1.schema
+	./bin/schema generate --lang js --out build/tables-generated-js/r2 test/tables/R2.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/p1 test/tables/P1.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/p3 test/tables/P3.schema
 	# THE MESSAGE FORM's WIDE-VOCABULARY units (docs/SPEC-TABLES.md §3.3): the
@@ -567,6 +571,21 @@ tables-js-variable-arms:
 	@echo 'tables JS variable arms: maps, union arms, optional ?T and enum-keyed arrays round-trip the oracle bytes and are no longer refused by name'
 
 test-js: tables-js-variable-arms
+
+# THE FIXED CLASS ON THE VARIABLE WIRE (docs/SPEC-TABLES.md §2, §2.7, §3, §3.1,
+# §10, §11, §14, §15): every fixed-class table emits a form-1 codec in
+# <Package>Variable.js, carrying declared defaults (int, bits, float, bool, enum,
+# string, bytes, flags), guarded fields, compressed floats, fixed-length arrays,
+# fixed(W, F) / ufixed(W, F), nested `type`, `flags` and `was` renames on tables,
+# variants, arms and type fields, byte for byte against the Go oracle
+# (TestFixedClassOnTableWireJavaScript).
+# SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE rather than a skip.
+.PHONY: tables-js-variable-fixed-class
+tables-js-variable-fixed-class:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestFixedClassOnTableWireJavaScript$$'
+	@echo 'tables JS variable fixed class: fixed-class tables, defaults, nested types, flags and renames round-trip the oracle bytes'
+
+test-js: tables-js-variable-fixed-class
 
 # js/F12 — "a second layout under a held hash" (docs/FIXED-FORM-ALGORITHM.md §2
 # row 5: "a known hash over different bytes is `layout_malformed`"; SPEC-TABLES

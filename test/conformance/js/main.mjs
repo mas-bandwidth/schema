@@ -562,6 +562,20 @@ async function surfaceMessage(lines, outDir) {
 // wire does not carry (a union, a map, an optional, an enum-keyed array) —
 // which the matrix counts as the row of work that is left, never as a pass.
 const wireRows = [
+  ["tabledemo", "RootConfig", "examples/TabledemoVariable.js"],
+  ["tabledemo", "ProfileConfig", "examples/TabledemoVariable.js"],
+  ["tabledemo", "LoadoutConfig", "examples/TabledemoVariable.js"],
+  ["tabledemo", "WideBlob", "examples/TabledemoVariable.js"],
+  ["tabledemo", "ArchiveConfig", "examples/TabledemoVariable.js"],
+  ["tabledemo", "KeyedConfig", "examples/TabledemoVariable.js"],
+  ["tblv1", "Cfg", "v1/Tblv1Variable.js"],
+  ["tblv2", "Cfg", "v2/Tblv2Variable.js"],
+  ["tblw1", "Fleet", "w1/Tblw1Variable.js"],
+  ["tblw2", "Fleet", "w2/Tblw2Variable.js"],
+  ["tblr1", "Cfg", "r1/Tblr1Variable.js"],
+  ["tblr2", "Cfg", "r2/Tblr2Variable.js"],
+  ["tblp1", "Chain", "p1/Tblp1Variable.js"],
+  ["tblp3", "Chain", "p3/Tblp3Variable.js"],
   ["graphdemo", "Scene", "pointers/GraphdemoVariable.js"],
   ["blobdemo", "Catalog", "blobs/BlobdemoVariable.js"],
 ];

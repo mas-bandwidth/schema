@@ -52,7 +52,7 @@ func keyedSlots(f *ir.Field) string {
 // cellIsDefault) and a reset slot holds.
 func (g *variableGen) keyedElemDesc(f *ir.Field) string {
 	d := g.elemDesc(f)
-	if tableOf(f) != nil {
+	if !f.Type.Pointer && tableOf(f) != nil {
 		return d
 	}
 	return strings.TrimSuffix(d, " }") + ", def: " + g.elemDefaultExpr(f) + " }"
@@ -127,7 +127,7 @@ func (g *variableGen) emitUnionDescriptors(closure []*ir.Struct) {
 				g.pf("      { name: %s, id: %s, k: %d, void: false, body: true, fw: 0, t: %s },\n", jsStr(arm.Name), id, armWireKind(arm), jsStr(arm.Ref.Name))
 			default:
 				g.pf("      { name: %s, id: %s, k: %d, void: false, body: false, fw: %d, f: %s },\n",
-					jsStr(arm.Name), id, armWireKind(arm), ir.ArmWireFixedWidth(arm.F), g.fieldDescNamed(arm.F, "value", 0))
+					jsStr(arm.Name), id, armWireKind(arm), ir.ArmWireFixedWidth(arm.F), g.fieldDescNamed(arm.F, "value", 0, nil))
 			}
 		}
 		g.pf("    ],\n")
@@ -210,9 +210,9 @@ function TableVariableLinkUnions(codecs, unions) {
 // fresh arm hold (tabletext FieldDefaultCell, NewArm)
 function TableVariableFieldDefault(fd) {
   switch (fd.s) {
-    case "bool": case "int": case "float": case "str": case "enum": return fd.def;
+    case "bool": case "int": case "flags": case "float": case "str": case "enum": return fd.def;
     case "bytes": return Uint8Array.from(fd.def);
-    case "arr": return [];
+    case "arr": return fd.fixed ? Array.from({ length: fd.bound }, () => TableVariableElemDefault(fd.e)) : [];
     case "tab": return fd.c.make();
     case "map": return new Map();
     case "keyed": return fd.slots.map(() => TableVariableElemDefault(fd.e));
@@ -249,7 +249,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
   const val = v[fd.n];
   switch (fd.s) {
     case "bool": TableVariableHeader(w, ids, fd, 1); w.u8(val ? 1 : 0); return true;
-    case "int": TableVariableHeader(w, ids, fd, fd.k); TableVariableWriteInt(w, fd.kw, val); return true;
+    case "int": case "flags": TableVariableHeader(w, ids, fd, fd.k); TableVariableWriteInt(w, fd.kw, val); return true;
     case "float":
       TableVariableHeader(w, ids, fd, fd.k);
       if (fd.f32) { w.u32(TableVariableNarrowF32(val)); } else { w.f64(val); }
@@ -399,7 +399,7 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
   const f = arm.f, x = val.value;
   switch (f.s) {
     case "bool": w.u8(x ? 1 : 0); return true;
-    case "int": TableVariableWriteInt(w, f.kw, x); return true;
+    case "int": case "flags": TableVariableWriteInt(w, f.kw, x); return true;
     case "float":
       if (f.f32) { w.u32(TableVariableNarrowF32(x)); } else { w.f64(x); }
       return true;

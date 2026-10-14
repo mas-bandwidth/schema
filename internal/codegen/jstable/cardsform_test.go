@@ -41,37 +41,12 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 		want  string
 	}{
 		{
-			// a TABLE nested by value is carried (§3); a nested `type` is not
-			field: field("byval", ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "Kid"}}),
-			want:  "a nested type (docs/SPEC-TABLES.md §2)",
-		},
-		{
-			field: &ir.Field{Name: "grid", Type: ir.FieldType{Kind: ir.TInt, Signed: true, Width: 32}, Array: ir.ArrayFixed, ArrayBound: 4},
-			want:  "a fixed-length array [N]T (docs/SPEC-TABLES.md §3)",
-		},
-		{
 			field: &ir.Field{Name: "words", Type: ir.FieldType{Kind: ir.TString, Size: 8}, Array: ir.ArrayList},
 			want:  "an array of strings or byte strings (docs/SPEC-TABLES.md §2.9)",
 		},
 		{
-			field: field("perms", ir.FieldType{Kind: ir.TNamed, Ref: &ir.Flags{Name: "Perm"}}),
-			want:  "a flags (docs/SPEC-TABLES.md §16)",
-		},
-		{
 			field: field("title", ir.FieldType{Kind: ir.TWString, Size: 8}),
 			want:  "a wstring(N) (docs/SPEC-TABLES.md §16)",
-		},
-		{
-			field: field("money", ir.FieldType{Kind: ir.TFixed, Signed: true, Width: 32}),
-			want:  "a fixed/ufixed (docs/SPEC-TABLES.md §15)",
-		},
-		{
-			field: &ir.Field{Name: "gated", Type: ir.FieldType{Kind: ir.TInt, Signed: true, Width: 32}, Guard: "mode == 1"},
-			want:  "a guarded field, an if group (docs/SPEC-TABLES.md §16.2)",
-		},
-		{
-			field: &ir.Field{Name: "squeezed", Type: ir.FieldType{Kind: ir.TFloat32}, HasFloatRange: true, FMin: 0, FMax: 1},
-			want:  "a compressed float (docs/SPEC-TABLES.md §3)",
 		},
 	} {
 		st := &ir.Struct{Name: "Probe", IsTable: true, Fields: []*ir.Field{tc.field}}
@@ -172,7 +147,7 @@ func TestFixedUnitWithRefusedVariableConstructStillGenerates(t *testing.T) {
 		Package: "cards",
 		Tables: map[string]*ir.Struct{
 			"Probe": {Name: "Probe", IsTable: true, Fields: []*ir.Field{
-				{Name: "opt", Type: ir.FieldType{Kind: ir.TInt, Signed: true, Width: 32, Optional: true}},
+				{Name: "title", Type: ir.FieldType{Kind: ir.TWString, Size: 8}},
 			}},
 			"Stamp": {Name: "Stamp", IsTable: true, FixedDeclared: true, Fields: []*ir.Field{
 				{Name: "id", Type: ir.FieldType{Kind: ir.TInt, Signed: true, Width: 32}},
