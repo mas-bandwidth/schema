@@ -101,6 +101,20 @@ func TestVariableClassBeyondCardConstructsDart(t *testing.T) {
 		}
 		bytesBlobRoundTrip(t, wire)
 	})
+
+	t.Run("scalar arrays", func(t *testing.T) {
+		t.Parallel()
+		u := buildUnit(t, scalarArraysDecl)
+		files, err := Generate(u)
+		if err != nil {
+			t.Fatalf("unbounded scalar/string/enum arrays must be carried, never refused: %v", err)
+		}
+		wire, ok := files["SarraysWire.dart"]
+		if !ok || len(wire) == 0 {
+			t.Fatal("Generate emitted no SarraysWire.dart — unbounded scalar arrays get no codec")
+		}
+		scalarArrayRoundTrip(t, wire)
+	})
 }
 
 // roundTripOracle loads a committed oracle .bin through the generated library's
@@ -275,6 +289,71 @@ void main() {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("bytes blob round trip over the generated library: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "ok") {
+		t.Fatalf("probe did not report ok: %s", out)
+	}
+}
+
+// scalarArraysDecl is the unbounded scalar/string/enum array declaration
+// written in the test: the five element classes §2.9 names, so a `[]T` with a
+// non-table element is carried as its element's own kind rather than mis-encoded
+// as a table body.
+const scalarArraysDecl = `package sarrays
+
+enum Grade { A, B, C }
+
+table Arrays {
+	ints   []int32
+	octets []uint8
+	flts   []float32
+	flags  []bool
+	grades []Grade
+}
+`
+
+// scalarArrayRoundTrip saves and loads the unbounded scalar/string/enum array
+// declaration through its own generated codec and requires every element value
+// to survive, the way a `[]T` with a non-table element must never be encoded
+// as a table body (docs/SPEC-TABLES.md §2.9, §3).
+func scalarArrayRoundTrip(t *testing.T, wire []byte) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "SarraysWire.dart"), wire, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	probe := `import 'dart:io';
+import 'SarraysWire.dart';
+
+void main() {
+  final v = Arrays();
+  v.ints = [1, -2, 300];
+  v.octets = [0, 200, 255];
+  v.flts = [1.5, -0.25];
+  v.flags = [true, false, true];
+  v.grades = [1, 3, 0];
+  final resaved = arraysWireSave(v);
+  final w = arraysWireLoad(resaved);
+  var ok = w.ints.length == 3 && w.ints[0] == 1 && w.ints[1] == -2 && w.ints[2] == 300;
+  ok = ok && w.octets.length == 3 && w.octets[0] == 0 && w.octets[1] == 200 && w.octets[2] == 255;
+  ok = ok && w.flts.length == 2 && w.flts[0] == 1.5 && w.flts[1] == -0.25;
+  ok = ok && w.flags.length == 3 && w.flags[0] == true && w.flags[1] == false && w.flags[2] == true;
+  ok = ok && w.grades.length == 3 && w.grades[0] == 1 && w.grades[1] == 3 && w.grades[2] == 0;
+  if (!ok) {
+    stdout.writeln('FAIL: scalar array values did not survive the round trip');
+    exit(1);
+  }
+  stdout.writeln('ok');
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("scalar array round trip over the generated library: %v\n%s", err, out)
 	}
 	if !strings.Contains(string(out), "ok") {
 		t.Fatalf("probe did not report ok: %s", out)
