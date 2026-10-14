@@ -751,6 +751,7 @@ Probe.A a = new Probe.A();
 Probe.Schema.TableReset(a);
 Probe.TableReport r = new Probe.TableReport();
 byte[] scratch = System.Array.Empty<byte>();
-Probe.Schema.TableFixedWire.Run(Probe.Schema.AFixedPlan, Probe.Schema.AFixedSlots, body, a, r, System.ReadOnlySpan<byte>.Empty, ref scratch);
+int forged = 0;
+Probe.Schema.TableFixedWire.Run(Probe.Schema.AFixedPlan, Probe.Schema.AFixedSlots, body, a, r, System.ReadOnlySpan<byte>.Empty, ref scratch, ref forged);
 if (a.P == b.X) { bad += ProbeLog.Fail("P4: this build's identity plan reproduced another schema's record"); }`)
 }

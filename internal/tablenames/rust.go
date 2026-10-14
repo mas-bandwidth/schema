@@ -23,7 +23,7 @@ func init() {
 		// any table on this list's own rule: a name free today is a
 		// collision the day a table in that unit becomes a fixed root.
 		Name{Name: "TableFixedForm", What: "the fixed form's form byte", RustConst: true},
-		Name{Name: "TableFixedNoGuard", What: "the guard offset a plan entry that belongs to no union arm carries", RustConst: true},
+		Name{Name: "TableFixedGuard", What: "one link of a plan guard chain: the tag offset, the arm to match and the argument width"},
 		Name{Name: "TableFixedOp", What: "the fixed form's plan ops — the whole set"},
 		Name{Name: "TableFixedEntry", What: "one plan entry: src, dst, size and the op that moves them"},
 		Name{Name: "TableFixedKnown", What: "one known layout of a lineage entry: its hash, its bytes and its record size — the Rust leg's spelling of the page's TableFixedKnownLayout"},
@@ -44,5 +44,17 @@ func init() {
 		Name{Name: "TableU128", What: "an unsigned 128-bit ROW SLOT, sixteen bytes aligned SIXTEEN on every target — Rust's own u128 takes the target's C alignment, which is eight on s390x"},
 		Name{Name: "TableI128", What: "a signed 128-bit ROW SLOT, sixteen bytes aligned SIXTEEN on every target"},
 		Name{Name: "BuildVersion", What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust, Java, Elixir and JavaScript put it at unit scope — Java in a file of its own name, Elixir as a module, JavaScript as a module-scope export — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},
+		// THE MESSAGE FORM's announcement runtime (docs/SPEC-TABLES.md §3.3),
+		// form byte 2. The reason enum is a crate-scope TYPE; the wire bytes and
+		// the two reserved field ids are crate-scope CONSTANTS (Rust's
+		// SCREAMING_SNAKE, mapped by ir.RustConstName), all claimed beside any
+		// table on this list's own rule.
+		Name{Name: "TableReason", What: "the message form's announcement refusal reasons, each one BY NAME (§3.3)"},
+		Name{Name: "TableWireForm", What: "the message form's wire form byte, 2 (§3.3)", RustConst: true},
+		Name{Name: "TableWireMessageForm", What: "the message form's announcement surface form byte, 2 (§3.3)", RustConst: true},
+		Name{Name: "TableBuildVersionFieldId", What: "the message form's reserved field id that carries the unit's build version (§3.3)", RustConst: true},
+		Name{Name: "TableMessageVocabularyFieldId", What: "the message form's reserved field id that carries the announced vocabulary (§3.3)", RustConst: true},
+		Name{Name: "TableNodeTableId", What: "the message form's reserved node table id (§3.3)", RustConst: true},
+		Name{Name: "TableMessageMaxBytes", What: "the message form's announcement payload ceiling (§3.3)", RustConst: true},
 	)
 }
