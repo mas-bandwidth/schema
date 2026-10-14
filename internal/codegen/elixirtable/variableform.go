@@ -1,9 +1,12 @@
 // THE VARIABLE FORM for Elixir (docs/SPEC-TABLES.md §3): form byte 1, the
-// id-table wire, for exactly the constructs the card record uses — a plain
-// `table` root and tables as list elements; bool, int32, int64 and enum with
-// their defaults and ranges; string(N); *string (the string blob, §2.5); and
-// unbounded lists of tables []T (§2.9). The rest of the variable class is
-// refused by name at the backend's boundary (§11) and never reaches here.
+// id-table wire, for the variable class beyond the card record — pointers to
+// tables and the flat node table (§2.1, §3.1), blobs (*bytes and *string,
+// §2.5), unbounded arrays of scalar, string and enum elements and arrays of
+// pointers (§2.9), the remaining scalars, and the text form (§16). A map
+// (§2.8) or a union the closure holds (§2.6) does not refuse a unit that also
+// carries those lists: the roots that reach one are named uncarried and
+// answer an error, so the driver writes <case>.absent rather than a wrong
+// byte (§11). A unit that is only that construct is still refused by name.
 //
 // The wire is the same bytes the Go, C, C++ and C# backends write
 // (docs/SPEC-TABLES.md §3, §3.1): the form byte, then a body of `(reference,
@@ -109,10 +112,92 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	b.WriteString("  # the unit registry (docs/SPEC-TABLES.md §8.3): the descriptors a tool\n")
 	b.WriteString("  # walks a record by name and kind with, no per-version struct on hand.\n")
 	b.WriteString("  def descriptors, do: @tables\n\n")
+	b.WriteString(uncarriedAttribute(uncarriedRootNames(u)))
 	b.WriteString(variableRuntimeSource)
 	b.WriteString(variableRetainSource)
 	b.WriteString("end\n")
 	return map[string][]byte{VariableTableModule + ".ex": []byte(b.String())}
+}
+
+// uncarriedRootNames names every table in the closure that reaches a map or a
+// union (docs/SPEC-TABLES.md §2.6, §2.8, §11). A map's generated entry is
+// uncarried on its own. The value type a map points at stays carried when no
+// field of that type is itself a map or a union: Item is a map's value and a
+// fixed table, and marking it uncarried would drop a root the wire still
+// carries. A holder is uncarried once a field of it names an uncarried table,
+// by value, by pointer or as an array element, so Army follows Squad. Names
+// are sorted.
+func uncarriedRootNames(u *ir.Unit) []string {
+	closure := ir.TableClosure(u)
+	poison := map[string]bool{}
+	changed := true
+	for changed {
+		changed = false
+		for name := range closure {
+			if poison[name] {
+				continue
+			}
+			st := u.Tables[name]
+			if st == nil {
+				continue
+			}
+			if reachesUncarried(st, poison) {
+				poison[name] = true
+				changed = true
+			}
+		}
+	}
+	names := make([]string, 0, len(poison))
+	for name := range poison {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// reachesUncarried reports a table the variable form must not walk
+// (docs/SPEC-TABLES.md §2.6, §2.8). A union arm's payload is not a field of
+// the arm's table, so Point stays carried when Hit's arm names it.
+func reachesUncarried(st *ir.Struct, poison map[string]bool) bool {
+	if st.IsMapEntry() {
+		return true
+	}
+	for _, f := range st.Fields {
+		if f.IsMap() {
+			return true
+		}
+		if f.Type.Kind != ir.TNamed {
+			continue
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Union:
+			return true
+		case *ir.Struct:
+			if poison[ref.Name] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// uncarriedAttribute is the module attribute the public clauses guard on, and
+// carried?/1 the wire-fuzz roster reads (docs/SPEC-TABLES.md §11). The list is
+// string literals so `table in @uncarried` is a legal guard. An empty list
+// never matches, and every root of that unit stays carried.
+func uncarriedAttribute(names []string) string {
+	var b strings.Builder
+	b.WriteString("  # roots that reach a map or a union (docs/SPEC-TABLES.md §2.6, §2.8, §11):\n")
+	b.WriteString("  # save, load and the text form answer an error, and the driver writes\n")
+	b.WriteString("  # <case>.absent. carried?/1 is what the wire-fuzz roster asks, so a\n")
+	b.WriteString("  # root answered false is a 0 and is never sent a mutant.\n")
+	b.WriteString("  @uncarried [\n")
+	for _, name := range names {
+		fmt.Fprintf(&b, "    %q,\n", name)
+	}
+	b.WriteString("  ]\n\n")
+	b.WriteString("  def carried?(table), do: table not in @uncarried\n\n")
+	return b.String()
 }
 
 // variableRuntimeSource is the id-table wire engine, driven by @tables. It is
@@ -120,6 +205,8 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 // first-use order, and load walks the body tolerantly reporting every event
 // §4 names.
 const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3) ----
+
+  def save(table, _value) when table in @uncarried, do: {:error, :uncarried}
 
   def save(table, value) when is_map(value) do
     desc = Map.fetch!(@tables, table)
@@ -415,6 +502,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   # ---- the read side (docs/SPEC-TABLES.md §3, §4) ----
+
+  def load(table, data) when is_binary(data) and table in @uncarried, do: {:error, :uncarried}
 
   def load(table, data) when is_binary(data) do
     desc = Map.fetch!(@tables, table)
@@ -1250,15 +1339,21 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # ---- the text form: JSON in and out of one table (docs/SPEC-TABLES.md §16) ----
   #
-  # The card's constructs only, one text for one table. The writer emits every
-  # field in declaration order, defaults included, pretty-printed two spaces per
-  # level and ending with exactly one newline (§16.1); the reader places every
-  # key it can name, counts the rest and clamps rather than truncating (§16.2).
+  # One text for one table of the variable class (docs/SPEC-TABLES.md §16). The
+  # writer emits every field in declaration order, defaults included,
+  # pretty-printed two spaces per level and ending with exactly one newline
+  # (§16.1); the reader places every key it can name, counts the rest and
+  # clamps rather than truncating (§16.2). A root in @uncarried answers an
+  # error and is not walked (§2.6, §2.8, §11).
+
+  def to_json(table, _value) when table in @uncarried, do: {:error, :uncarried}
 
   def to_json(table, value) when is_map(value) do
     desc = Map.fetch!(@tables, table)
     {:ok, IO.iodata_to_binary([json_object(desc, Map.merge(defaults(desc), value), 0), "\n"])}
   end
+
+  def from_json(table, _text) when table in @uncarried, do: {:error, :uncarried}
 
   def from_json(table, text) when is_binary(text) do
     desc = Map.fetch!(@tables, table)
@@ -1668,6 +1763,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # the measure to the framing's bound. A wire this reader cannot open, or a
   # list count past the storage cap, answers -1.
 
+  def load_measure(table, _data) when table in @uncarried, do: -1
+
   def load_measure(table, data) when is_binary(data) do
     desc = Map.fetch!(@tables, table)
 
@@ -1885,6 +1982,8 @@ const variableRetainSource = `
   # record the remaining capacity cannot hold whole is dropped and counted one
   # retain_lost (§6.6).
 
+  def load_retain(table, _data, retain, report) when table in @uncarried, do: {:error, :uncarried, report, retain}
+
   def load_retain(table, data, retain, report) when is_binary(data) do
     desc = Map.fetch!(@tables, table)
     # §6.6: a retention buffer belongs to one loaded region; the next LoadRetain
@@ -1916,6 +2015,8 @@ const variableRetainSource = `
     {:ok, bytes, _retain, _report} = save_retain_internal(table, value, retain, empty_report())
     byte_size(bytes)
   end
+
+  def save_retain(table, _value, retain, report) when table in @uncarried, do: {:error, :uncarried, report, retain}
 
   def save_retain(table, value, retain, report) when is_map(value) do
     {:ok, bytes, retain, report} = save_retain_internal(table, value, retain, report)
