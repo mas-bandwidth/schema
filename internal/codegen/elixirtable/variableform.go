@@ -365,7 +365,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       {idx_map, ids, order, acc}
     else
       {ref, ids, order} = intern(ids, order, f.id)
-      array = [<<8>>, leb_encode(byte_size(v)), v]
+      # bytes(N) is an array of u8. The element kind is 6, not 8: 8 is u32
+      # (docs/SPEC-TABLES.md §3, ir.TableKindU8).
+      array = [<<6>>, leb_encode(byte_size(v)), v]
       {idx_map, ids, order, [acc, leb_encode(ref), <<14>>, leb_encode(IO.iodata_length(array)), array]}
     end
   end
@@ -947,13 +949,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  # bytes(N) rides as an array of u8 (kind 14, element kind 8): L then the count
-  # and the bytes (docs/SPEC-TABLES.md §3). A count past the declared size clamps.
+  # bytes(N) rides as an array of u8 (kind 14, element kind 6): L then the count
+  # and the bytes (docs/SPEC-TABLES.md §3). Kind 8 is u32. A count past the
+  # declared size clamps.
   defp read_payload(%{t: :bytes} = f, payload, _nodes, _ids, report) do
     case leb(payload) do
       {_len, arr} ->
         case arr do
-          <<8, count_rest::binary>> ->
+          <<6, count_rest::binary>> ->
             case leb(count_rest) do
               {n, bytes} when byte_size(bytes) >= n ->
                 raw = binary_part(bytes, 0, n)
