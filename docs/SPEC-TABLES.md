@@ -239,6 +239,10 @@ reach.
   `BlockOpen` point at bytes the caller already has, and the reflection walk
   reads in place. The allocation in this document is a BUILDING cost, and
   building is TOOLING's path — the game points at the cook (§7).
+  **The id table's distinctness check is one of those reads.** The specified
+  maximum id-table entry count is 4096. Above that count TableOpen returns
+  damaged. The check does not allocate: it does not build a hash set and it
+  does not sort. Duplicate ids stay refused. Unknown ids stay legal (§3).
 
 **Backend status.** C++ is the reference; its generated text follows the
 C-like dialect of `serialize.h`, with library calls behind hooks (§13.9).
@@ -4011,6 +4015,12 @@ little-endian u64, and the body ends where the first entry begins.
   fields in the order they were written. **They are DISTINCT**: an id already
   in the table is referenced again and never appended twice, and a table that
   carries one id twice is malformed (below).
+- **The specified maximum id-table entry count is 4096.** Above that count
+  TableOpen returns damaged: the whole wire is malformed, nothing is decoded,
+  and one event is counted. The check does not allocate on the read path — it
+  does not build a hash set and it does not sort. Duplicate ids stay refused.
+  Unknown ids stay legal: an entry this reader cannot name is not damage at
+  open, and §4 counts `unknown` when a body names it.
 - **The table is why the wire pays for 64-bit identity once.** A file that
   names forty distinct ids across ten thousand fields carries forty ids, and
   every field header spends one byte on the reference where an inline id
@@ -4036,7 +4046,9 @@ puts framing damage:
 
 - **A table that cannot be read whole**: fewer than eight bytes in the file,
   or a count whose `8 × count + 8` runs past the front of the file, or a
-  count that leaves no room for the form byte, or bytes left over between the
+  count that leaves no room for the form byte, or an entry count above 4096
+  (the specified maximum id-table entry count; above that count TableOpen
+  returns damaged), or bytes left over between the
   root body's terminator and the first entry. The whole wire is malformed,
   nothing is decoded, and one event is counted. This is the one malformed
   case that stops the file rather than a nesting level, because every id in

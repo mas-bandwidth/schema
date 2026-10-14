@@ -1328,6 +1328,9 @@ const uint8_t kTableWireForm = 1;
 static const int32_t kTableProbeBound = 128;
 static const int32_t kTableProbeSlots = 256;
 static const int32_t kTableProbeShift = 56;   // 64 - 8, and 2^8 is kTableProbeSlots
+static const int64_t kTableIdTableMax = 4096; // the specified maximum id-table entry count (§3)
+static const int32_t kTableIdSlots = 8192;    // twice the maximum, so the probe stays at most half full
+static const int32_t kTableIdShift = 51;      // 64 - 13, and 2^13 is kTableIdSlots
 
 // TableOpen reads the form byte and the trailer, in that order, and hands back
 // the ROOT BODY. It answers one of three verdicts, because five zero counters
@@ -1345,6 +1348,39 @@ static const int32_t kTableProbeShift = 56;   // 64 - 8, and 2^8 is kTableProbeS
 //                     could not be walked to its own terminator. What it
 //                     decoded before that is kept, as everywhere on this wire.
 enum TableOpenVerdict { TableOpenOk, TableOpenRefused, TableOpenDamaged, TableOpenBodyStopped };
+
+#ifndef TABLE_OPEN_COMPARE
+#define TABLE_OPEN_COMPARE() ((void)0)
+#endif
+
+// One slot visit is one comparison. The array is a local of this function:
+// no hash set is allocated and nothing is sorted. An empty slot is ordinal 0,
+// so an id of 0 is an ordinary entry. Load stays at most one half.
+inline TableOpenVerdict TableOpenDistinctWide( const TableIdTable & table )
+{
+    uint16_t slots[ kTableIdSlots ];
+    memset( slots, 0, sizeof( slots ) );
+    for ( int64_t i = 0; i < table.count; i++ )
+    {
+        const uint64_t id = table.at( uint64_t( i ) + 1 );
+        uint32_t s = uint32_t( ( id * 0x9E3779B97F4A7C15ull ) >> kTableIdShift ) & uint32_t( kTableIdSlots - 1 );
+        bool placed = false;
+        for ( int32_t steps = 0; steps < kTableIdSlots; steps++ )
+        {
+            TABLE_OPEN_COMPARE();
+            if ( slots[s] == 0 )
+            {
+                slots[s] = (uint16_t) ( i + 1 );
+                placed = true;
+                break;
+            }
+            if ( table.at( slots[s] ) == id ) { return TableOpenDamaged; }
+            s = ( s + 1 ) & uint32_t( kTableIdSlots - 1 );
+        }
+        if ( !placed ) { return TableOpenDamaged; }
+    }
+    return TableOpenOk;
+}
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {
@@ -1378,8 +1414,11 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
     // empty-slot sentinel, because AN ENTRY IS fnv1a64( name ) AND NOTHING
     // ELSE (§3): a hash of 0 is an ordinary id, 0xFFFFFFFFFFFFFFFF is the node
     // table's, and there is no 64-bit value the wire holds back to mean "no
-    // id" — reference 0 is a POSITION and never an entry. Above the bound the
-    // pairwise walk runs unchanged, and no table is ever charged for both.
+    // id" — reference 0 is a POSITION and never an entry. Above that probe, and
+    // only up to kTableIdTableMax entries, TableOpenDistinctWide runs. Above
+    // the maximum, TableOpen returns damaged and the entries are not walked.
+    // Duplicate ids stay refused. Unknown ids stay legal. No table is charged
+    // for both probes.
     //
     // THE IDS ARE THE WRITER'S, SO THE WORST CASE IS THE ATTACKER'S, and it is
     // worth stating plainly. The multiply is invertible, so a hostile writer
@@ -1397,10 +1436,9 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
     // EXACTLY n of them where the pairwise walk makes n(n-1)/2 inner decodes
     // beside n-1 outer ones: 128 against 8,255 at n = 128. The comparisons
     // that remain are u64 loads out of one stack array. That is the trade.
-    // The bound sits at 128 in 256 slots, not higher, for two reasons that are
-    // not the comparison count: the worst case a hostile table can force stays
-    // bounded at 8,256 rather than 32,896, and the slots are 2 KB of stack
-    // rather than 4 KB. Every table this schema writes is far under it.
+    // The small probe stays at 128 in 256 slots so a short table does not pay
+    // for the wide one. The wide probe is the specified maximum, 4096 entries
+    // in 8192 slots.
     if ( table.count > 1 && table.count <= (int64_t) kTableProbeBound )
     {
         uint64_t seen[ kTableProbeSlots ];
@@ -1412,6 +1450,7 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
             uint32_t s = uint32_t( ( id * 0x9E3779B97F4A7C15ull ) >> kTableProbeShift ) & uint32_t( kTableProbeSlots - 1 );
             for ( ;; )
             {
+                TABLE_OPEN_COMPARE();
                 const uint64_t bit = 1ull << ( s & 63 );
                 if ( ( used[ s >> 6 ] & bit ) == 0 )
                 {
@@ -1424,16 +1463,13 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
             }
         }
     }
-    else
+    else if ( table.count > kTableIdTableMax )
     {
-        for ( int64_t i = 1; i < table.count; i++ )
-        {
-            const uint64_t id = table.at( uint64_t( i ) + 1 );
-            for ( int64_t j = 0; j < i; j++ )
-            {
-                if ( table.at( uint64_t( j ) + 1 ) == id ) { return TableOpenDamaged; }
-            }
-        }
+        return TableOpenDamaged;
+    }
+    else if ( table.count > (int64_t) kTableProbeBound )
+    {
+        if ( TableOpenDistinctWide( table ) != TableOpenOk ) { return TableOpenDamaged; }
     }
     body_bytes = bytes - span - 1;
     return TableOpenOk;

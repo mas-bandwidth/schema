@@ -443,6 +443,54 @@ func (r TableReader) EndsEarly() bool {
 	}
 }
 
+const tableIdTableMax = 4096
+const tableIdSlots = 8192
+
+// tableIdsDistinct reports whether the id table is within the specified
+// maximum and its entries are distinct. Above the maximum it returns false
+// without walking. An id of 0 is an ordinary entry. The slots are a local
+// array of ordinals: no hash set and no sort (docs/SPEC-TABLES.md §3).
+func tableIdsDistinct(ids []byte, n uint64) bool {
+	if n > tableIdTableMax {
+		return false
+	}
+	if n <= 1 {
+		return true
+	}
+	if n < 8 {
+		for i := uint64(1); i < n; i++ {
+			id := binary.LittleEndian.Uint64(ids[i*8:])
+			for j := uint64(0); j < i; j++ {
+				if id == binary.LittleEndian.Uint64(ids[j*8:]) {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	var slots [tableIdSlots]uint16
+	for i := uint64(0); i < n; i++ {
+		id := binary.LittleEndian.Uint64(ids[i*8:])
+		slot := uint32((id*0x9E3779B97F4A7C15)>>51) & (tableIdSlots - 1)
+		placed := false
+		for steps := 0; steps < tableIdSlots; steps++ {
+			if slots[slot] == 0 {
+				slots[slot] = uint16(i + 1)
+				placed = true
+				break
+			}
+			if id == binary.LittleEndian.Uint64(ids[(uint64(slots[slot])-1)*8:]) {
+				return false
+			}
+			slot = (slot + 1) & (tableIdSlots - 1)
+		}
+		if !placed {
+			return false
+		}
+	}
+	return true
+}
+
 func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict) {
 	r := TableReader{Report:report}
 	if len(data) == 0 { return r, TableOpenDamaged }
@@ -452,41 +500,11 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 	if n > uint64((len(data)-9)/8) { return r, TableOpenDamaged }
 	start := len(data)-8-int(n)*8
 	r.Buffer, r.Ids = data[1:start], data[start:len(data)-8]
-	// Count is attacker-capped by (bytes-9)/8. The open-addressed path runs
-	// only at 8<=n<=256 with 512 slots, compares the stored id not the hash,
-	// and caps probes at the slot count. n<8 stays pairwise: 21 comparisons
-	// at 7 versus 4.6 KiB of slot zeroing on every open, including a two-entry
-	// trailer. Exhausted probes and n>256 keep the pairwise walk, which is
-	// the same verdict. The mix is C's table_writer_id.
-	if n > 1 {
-		pairwise := n < 8 || n > 256
-		if !pairwise {
-			var seen [512]uint64
-			var used [512]uint8
-			for i := uint64(0); i < n; i++ {
-				id := binary.LittleEndian.Uint64(r.Ids[i*8:])
-				hash := id
-				hash ^= hash >> 33
-				hash *= 0xff51afd7ed558ccd
-				hash ^= hash >> 33
-				slot := uint32(hash) & 511
-				probes := uint32(0)
-				for ; probes < 512; probes++ {
-					if used[slot] == 0 { used[slot] = 1; seen[slot] = id; break }
-					if seen[slot] == id { return r, TableOpenDamaged }
-					slot = (slot + 1) & 511
-				}
-				if probes == 512 { pairwise = true; break }
-			}
-		}
-		if pairwise {
-			for i := 0; i < len(r.Ids); i += 8 {
-				id := binary.LittleEndian.Uint64(r.Ids[i:])
-				for j := 0; j < i; j += 8 {
-					if id == binary.LittleEndian.Uint64(r.Ids[j:]) { return r, TableOpenDamaged }
-				}
-			}
-		}
+	// The specified maximum id-table entry count is 4096. Above it the file
+	// is damaged and the entries are not walked. Duplicate ids are refused.
+	// Unknown ids stay legal (docs/SPEC-TABLES.md §3).
+	if n > tableIdTableMax || (n > 1 && !tableIdsDistinct(r.Ids, n)) {
+		return r, TableOpenDamaged
 	}
 	return r, TableOpenOk
 }

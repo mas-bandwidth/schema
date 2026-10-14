@@ -1461,6 +1461,32 @@ public static partial class TableWire
     static bool DistinctVocabulary(ReadOnlySpan<byte> vocabulary)
     {
         int count = vocabulary.Length / 8;
+        // The specified maximum id-table entry count is 4096. Above it the
+        // file is damaged and the entries are not walked. Duplicate ids are
+        // refused. Unknown ids stay legal: this check does not ask whether an
+        // id is named. The wide probe is a stack array, not a hash set and
+        // not a sort (docs/SPEC-TABLES.md §3).
+        const int TableIdTableMax = 4096;
+        if (count > TableIdTableMax) { return false; }
+        if (count > 256)
+        {
+            Span<ushort> slots = stackalloc ushort[8192];
+            slots.Clear();
+            for (int i = 0; i < count; i++)
+            {
+                ulong id = Read64(vocabulary, i * 8);
+                int slot = (int)((id * 0x9E3779B97F4A7C15UL) >> 51) & 8191;
+                bool placed = false;
+                for (int steps = 0; steps < 8192; steps++)
+                {
+                    if (slots[slot] == 0) { slots[slot] = (ushort)(i + 1); placed = true; break; }
+                    if (id == Read64(vocabulary, (slots[slot] - 1) * 8)) { return false; }
+                    slot = (slot + 1) & 8191;
+                }
+                if (!placed) { return false; }
+            }
+            return true;
+        }
         if (count >= 16 && count <= 256)
         {
             // One KiB, independent of the input's claimed count. Slots store
@@ -1482,8 +1508,9 @@ public static partial class TableWire
             }
             return true;
         }
-        // Tiny vocabularies avoid scratch initialization. Larger foreign
-        // vocabularies keep the existing allocation-free validation path.
+        // Fewer than 16 entries stay pairwise. A count above 256 already
+        // returned through the wide probe, and a count above the maximum
+        // already returned damaged.
         for (int i = 0; i < vocabulary.Length; i += 8)
         {
             ulong id = Read64(vocabulary, i);

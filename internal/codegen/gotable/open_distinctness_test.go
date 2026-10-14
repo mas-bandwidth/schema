@@ -23,12 +23,12 @@ func TestGoTableOpenDistinctnessIsBounded(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"n < 8 || n > 256",
-		"var seen [512]uint64",
-		"var used [512]uint8",
-		"probes < 512",
-		"seen[slot] == id",
-		"for i := 0; i < len(r.Ids); i += 8 {",
+		"tableIdTableMax = 4096",
+		"n > tableIdTableMax",
+		"n < 8",
+		"tableIdSlots = 8192",
+		"var slots [tableIdSlots]uint16",
+		"0x9E3779B97F4A7C15",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("tableOpen is missing %q", want)

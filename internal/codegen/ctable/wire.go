@@ -428,6 +428,34 @@ static SCHEMA_UNUSED int table_kind_widens( uint8_t kind, uint8_t declared )
     if ( declared == 19 ) { return kind >= 6 && kind <= 9; }
     return declared == 11 && kind == 10;
 }
+#ifndef TABLE_OPEN_COMPARE
+#define TABLE_OPEN_COMPARE() ((void)0)
+#endif
+/* The specified maximum id-table entry count is 4096 (docs/SPEC-TABLES.md §3).
+   Above it the file is damaged and the entries are not walked. The wide probe
+   is a local array of ordinals: no hash set and no sort. */
+static const uint64_t kTableIdTableMax = 4096;
+static SCHEMA_UNUSED int table_ids_distinct_wide( const TableReader * r, uint64_t count )
+{
+    uint16_t slots[8192];
+    uint64_t i;
+    memset( slots, 0, sizeof( slots ) );
+    for ( i = 0; i < count; i++ )
+    {
+        uint64_t id = table_reader_id_at( r, i + 1 );
+        uint32_t slot = (uint32_t) ( ( id * UINT64_C( 0x9E3779B97F4A7C15 ) ) >> 51 ) & 8191u;
+        int steps, placed = 0;
+        for ( steps = 0; steps < 8192; steps++ )
+        {
+            TABLE_OPEN_COMPARE();
+            if ( slots[slot] == 0 ) { slots[slot] = (uint16_t) ( i + 1 ); placed = 1; break; }
+            if ( id == table_reader_id_at( r, slots[slot] ) ) { return 0; }
+            slot = ( slot + 1 ) & 8191u;
+        }
+        if ( !placed ) { return 0; }
+    }
+    return 1;
+}
 @WIDEN_F32@static SCHEMA_UNUSED int table_wire_open( TableReader * r, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     uint64_t count, i, j; int64_t span; TableReader tail;
@@ -440,18 +468,20 @@ static SCHEMA_UNUSED int table_kind_widens( uint8_t kind, uint8_t declared )
     *r = table_reader_make( buffer + 1, bytes - span - 1, report );
     r->ids = buffer + bytes - span; r->id_count = count; r->nested = 0;
     /* THE ENTRIES ARE DISTINCT: a table that carries one id twice is malformed
-       for the whole wire (docs/SPEC-TABLES.md §3). Count is attacker-controlled
-       up to (bytes-9)/8; an unbounded stack table is a stack-overflow primitive.
-       The open-addressed path therefore runs only at count<=256 with 512 slots.
-       A slot occupied by a different id is not a duplicate: compare the stored
-       id, not the hash. Probe length is capped at the slot count so a colliding
-       attacker-chosen set cannot walk forever. Exhausted probes and counts
-       above the bound keep the pairwise walk, which is the same verdict. The
-       mix is table_writer_id's. */
+       for the whole wire (docs/SPEC-TABLES.md §3). The specified maximum
+       id-table entry count is 4096. Above it the file is damaged and the
+       entries are not walked. Up to 256 entries the small probe runs; above
+       that, and only through the maximum, the wide probe runs. A duplicate is
+       refused. An id this reader cannot name is not damage here. */
+    if ( count > kTableIdTableMax ) { report->malformed = 1; return 0; }
     if ( count > 1 )
     {
-        int pairwise = count > 256;
-        if ( !pairwise )
+        int pairwise = 0;
+        if ( count > 256 )
+        {
+            if ( !table_ids_distinct_wide( r, count ) ) { report->malformed = 1; return 0; }
+        }
+        else
         {
             uint64_t seen[512];
             uint8_t used[512];
