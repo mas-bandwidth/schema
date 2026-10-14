@@ -1,7 +1,8 @@
-// The COOKED FORM's read side for Elixir (docs/SPEC-TABLES.md §7): the header
-// match, the region where it lies, and the descriptors a region is read
-// through. PREVIEW, exactly as §7 says — a cook is a load-trusted-data format
-// and not a wire.
+// The COOKED FORM for Elixir (docs/SPEC-TABLES.md §7): the header match, the
+// region where it lies, and the descriptors a region is read through, plus the
+// write side cook_measure, cook_measure_reason and cook_from (§7.6) on the
+// unit's Table module. PREVIEW, exactly as §7 says — a cook is a
+// load-trusted-data format and not a wire.
 //
 // Tooling writes a region for one BUILD VERSION and that build points at it:
 // Open matches the header and returns the region. There is no walk, no fix-up
@@ -9,10 +10,8 @@
 // the region is a SUB-BINARY over the caller's own bytes, which the runtime
 // shares rather than copies.
 //
-// THE READING TIER. Elixir cannot cook: a region is a memory image of a
-// storage type, and a BEAM term has none. What it can do is open one and read
-// every slot at its offset, with a reference resolved through the eight-byte
-// SIGNED SELF-RELATIVE delta (§6.3) and a delta past the region refused.
+// THE READ AND WRITE TIER. Open matches the header and points. cook_from writes
+// the same bytes `schema cook` writes, in the order the caller names (§7.6).
 package elixirtable
 
 import (
@@ -74,8 +73,8 @@ const cookModuleBanner = `  @moduledoc """
   Open matches the header and returns the region — no walk, no fix-up, no copy.
   The region is a SUB-BINARY over the caller's own bytes.
 
-  READING ONLY. A region is a memory image of a storage type and a BEAM term
-  has none, so a cook arrives from a C++, C# or Rust build.
+  The write side is cook_measure, cook_measure_reason and cook_from on the
+  unit's Table module (docs/SPEC-TABLES.md §7.6).
   """
 
 `

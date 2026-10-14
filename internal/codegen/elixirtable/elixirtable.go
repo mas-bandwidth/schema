@@ -1,7 +1,8 @@
 // Package elixirtable emits the Elixir TABLE surface (docs/SPEC-TABLES.md):
-// the BLOCK form's read side in <Base>Block.ex (§19) and the COOKED form's
-// read side in <Base>Cook.ex (§7), with their shared runtime modules and the
-// unit's BuildVersion module, emitted only when the unit declares tables.
+// the BLOCK form's read and build sides in <Base>Block.ex (§19, §19.1) and the
+// COOKED form's read and write sides in <Base>Cook.ex and <ns>.Table (§7, §7.6),
+// with their shared runtime modules and the unit's BuildVersion module, emitted
+// only when the unit declares tables.
 //
 // THE ACCELERATOR TIER. A block is POINTED AT and a cook is OPENED; neither
 // parses a wire, so both reach every fixed table of the unit. Beside them the

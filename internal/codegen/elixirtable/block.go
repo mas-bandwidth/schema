@@ -1,5 +1,8 @@
-// The BLOCK FORM for Elixir (docs/SPEC-TABLES.md §19): the READ side, and only
-// the read side.
+// The BLOCK FORM for Elixir (docs/SPEC-TABLES.md §19): the read side and the
+// build side. A block is POINTED AT and, on this leg, also BUILT: block_begin
+// writes the prologue and the triples (docs/SPEC-TABLES.md §19.1) into a
+// zeroed extent the caller fills. The bytes are the Go builder's and the
+// pinned golden's.
 //
 // NOTHING DECLARES THIS FORM. Every fixed table has one, and it is emitted on
 // the side, in <Base>Block.ex, which a consumer calls only if it uses the form.
@@ -11,14 +14,10 @@
 // at a fixed pitch. This side reads those three facts out of the INSTANCE and
 // points at rows with them, never at its own constants.
 //
-// THE READING TIER, and what that costs here: Elixir cannot produce a block,
-// because a BEAM term has no layout a producer could write. What it CAN do is
-// read one, and the whole of §19.2's check list is expressed — the magic
-// bytewise, the build version, the byte order, each array's pitch against this
-// build's own, its count against the declared maximum, its extent inside the
-// block, and the BASE'S ALIGNMENT through the `lead` the caller states beside
-// the bytes, because a BEAM binary has no address a caller could place
-// (emitBlockOpen).
+// THE READING AND BUILDING TIER. A BEAM binary has no address, so the caller
+// states `lead` beside the bytes when opening (emitBlockOpen) and the builder
+// returns a fresh zeroed binary rather than a placed allocation. The layout
+// is still §19.1's: prologue, triples, rows at a 64-byte pitch.
 package elixirtable
 
 import (
@@ -86,9 +85,10 @@ const blockModuleBanner = `  @moduledoc """
   many there are and how far apart they sit — and then those rows, each array
   at a fixed pitch. This side reads those three facts and points.
 
-  READING ONLY. A BEAM term has no layout a producer could write, so a block
-  arrives from a C++, C# or Rust build and this module opens it. The bytes are
-  never copied: a row is a SUB-BINARY over the caller's own block.
+  READING AND BUILDING. block_begin writes the prologue and the triples into
+  a zeroed extent (docs/SPEC-TABLES.md §19.1). The caller fills rows at the
+  offsets the triples name. A row the builder returns is a SUB-BINARY over
+  that extent.
   """
 
 `
@@ -168,6 +168,71 @@ const blockRuntimeSource = `  @moduledoc """
   def rows(data, offset_of, count, stride) do
     Enum.map(0..(count - 1)//1, fn i -> slice(data, offset_of + i * stride, stride) end)
   end
+
+  # block_begin's shared half (docs/SPEC-TABLES.md §19.1). Counts are checked
+  # before any byte of the extent changes. The prologue and the triples are
+  # written; rows and padding stay the zeros the extent was allocated with.
+  # A count past the declared maximum, or a negative count, names the array
+  # and writes nothing.
+  def begin(counts, arrays, projection, build) when is_map(counts) and is_integer(projection) do
+    case Enum.reduce_while(arrays, :ok, fn a, _ ->
+           c = count_of(counts, a.name)
+
+           if c < 0 or c > a.max do
+             {:halt, {:error, %{array: a.name, count: c, maximum: a.max}}}
+           else
+             {:cont, :ok}
+           end
+         end) do
+      {:error, _} = err -> err
+      :ok -> lay(counts, arrays, projection, build)
+    end
+  end
+
+  def begin(_, _, _, _), do: false
+
+  defp count_of(counts, name) do
+    cond do
+      Map.has_key?(counts, name) -> counts[name]
+      Map.has_key?(counts, String.to_atom(name)) -> counts[String.to_atom(name)]
+      true -> 0
+    end
+  end
+
+  defp lay(counts, arrays, projection, build) do
+    {used, placed} =
+      Enum.reduce(arrays, {projection, []}, fn a, {offset, acc} ->
+        c = count_of(counts, a.name)
+        start = align_up(offset, a.start_align)
+        {start + c * a.stride, [{a, start, c} | acc]}
+      end)
+
+    bytes = align_up(used, align())
+    data = :binary.copy(<<0>>, bytes)
+    data = put64(data, 0, magic())
+    data = put64(data, 8, build)
+    data = put64(data, 16, byte_order())
+
+    data =
+      Enum.reduce(placed, data, fn {a, start, c}, data ->
+        data
+        |> put64(a.offset_of_offset, start)
+        |> put32(a.count_offset, c)
+        |> put32(a.stride_offset, a.stride)
+      end)
+
+    {:ok, data}
+  end
+
+  defp align_up(v, a), do: div(v + a - 1, a) * a
+
+  def put64(data, at, v), do: put(data, at, <<v::little-unsigned-64>>)
+  def put32(data, at, v), do: put(data, at, <<v::little-unsigned-32>>)
+
+  defp put(data, at, bytes) do
+    n = byte_size(bytes)
+    binary_part(data, 0, at) <> bytes <> binary_part(data, at + n, byte_size(data) - at - n)
+  end
 `
 
 type blockGen struct {
@@ -203,8 +268,36 @@ func (b *blockGen) emitBlock(bl *ir.BlockLayout) {
 
 	b.emitBlockArrays(bl)
 	b.emitBlockOpen(bl)
+	b.emitBlockBuild(bl)
 	b.emitBlockRows(bl)
 	b.emitBlockInfo(bl)
+}
+
+// emitBlockBuild is the producer half (docs/SPEC-TABLES.md §19.1): one function
+// per table, block_begin_<name>, which checks counts before it writes and then
+// writes only the prologue and the triples into a zeroed extent.
+func (b *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
+	lo := ir.RustSnake(bl.Table.Name)
+	arrays := lo + "_block_arrays()"
+	if len(bl.Arrays) == 0 {
+		arrays = "[]"
+	}
+	b.pf("  # block_begin_%s builds one block (docs/SPEC-TABLES.md §19.1).\n", lo)
+	b.pf("  # Measure is the count check; a failing count writes nothing. The\n")
+	b.pf("  # returned binary is the used extent, 64-aligned, prologue and triples\n")
+	b.pf("  # written, rows left zero for the caller to fill.\n")
+	b.pf("  def block_begin_%s(counts) do\n", lo)
+	b.pf("    B.begin(counts, %s, %d, @build_version)\n", arrays, bl.Projection.Size)
+	b.pf("  end\n\n")
+}
+
+// blockStartAlign is where one out-of-line array begins: aligned to
+// max(64, alignof(element)) (docs/SPEC-TABLES.md §19.1).
+func blockStartAlign(a ir.BlockArray) int64 {
+	if a.ElemAlign() > int64(ir.BlockAlign) {
+		return a.ElemAlign()
+	}
+	return int64(ir.BlockAlign)
 }
 
 func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
@@ -301,8 +394,8 @@ func (b *blockGen) emitBlockArrays(bl *ir.BlockLayout) {
 		b.pf("  # maximum beside them.\n")
 		b.pf("  @%s_block_arrays [\n", lo)
 		for _, a := range bl.Arrays {
-			b.pf("    %%{name: %q, offset_of_offset: %d, count_offset: %d, stride_offset: %d, stride: %d, max: %d},\n",
-				a.Field.Name, a.OffsetOfOffset, a.CountOffset, a.StrideOffset, a.Stride, a.Max)
+			b.pf("    %%{name: %q, offset_of_offset: %d, count_offset: %d, stride_offset: %d, stride: %d, max: %d, start_align: %d},\n",
+				a.Field.Name, a.OffsetOfOffset, a.CountOffset, a.StrideOffset, a.Stride, a.Max, blockStartAlign(a))
 		}
 		b.pf("  ]\n")
 		b.pf("  def %s_block_arrays, do: @%s_block_arrays\n\n", lo, lo)
