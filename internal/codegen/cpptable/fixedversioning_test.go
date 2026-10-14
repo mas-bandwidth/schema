@@ -222,12 +222,19 @@ int main( void )
 // cppRunVersionProbe runs its forge BEFORE the memset and Reset loop, so there
 // is no hook for 0x5A written after the reset and before the load, and a row
 // that asserts an ELEMENT DEFAULT cannot prove the prefill writes without it.
-// The per-row CHECK bodies are absent too — c's array_fixed_grow, field_append,
-// fixed_I_grow_element, int_widen and uint_widen each carry one, and two of
-// them need the poison. OLD-REFUSES-NEW is the second column and is not in this
-// card. Each of the three needs a change to cppRunVersionProbe's signature,
-// which this card is not; a named residual is honest, a silent one is the bug
-// this suite exists to close.
+// The per-row CHECK bodies are absent here too — c's array_fixed_grow,
+// field_append, fixed_I_grow_element, int_widen and uint_widen each carry one,
+// and two of them need the poison. OLD-REFUSES-NEW is the second column and is
+// not in this suite. ONE ROW IS CLOSED ELSEWHERE: fixed_I_grow_element's check
+// body (the four widened slots -1, -128, 0, 112, the brackets, the counters)
+// lives in fixedroadmap_t12_test.go's
+// TestFixedRoadmapCppT12PlansEvolution/cpp/E3/fixed-array-element/new-reads-old,
+// and its OLD-REFUSES-NEW column (layout_newer, the file's hash, every counter
+// zero, the poisoned destination untouched) in .../old-refuses-new, which
+// compiles the OLD generation alone through cppRunCapability. The other rows'
+// bodies, the poison hook and the OLD-REFUSES-NEW column for every row still
+// need a change to cppRunVersionProbe's signature; a named residual is honest,
+// a silent one is the bug this suite exists to close.
 
 type cppVersionRow struct {
 	row string
