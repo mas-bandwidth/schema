@@ -35,8 +35,8 @@
 (:id "dart/P1" :state :done :evidence ("internal/codegen/darttable/fixedform_test.go: TestFixedFormFU1FU2OnePath") :tested-revision "7d95233d9d75a87a95ebcf7998e4f36f9115b9b6")
 (:id "dart/W13" :state :done :evidence ("internal/codegen/darttable/fixedform_test.go: TestFixedLayoutMatchesReference") :tested-revision "7d95233d9d75a87a95ebcf7998e4f36f9115b9b6")
 (:id "dart/P2" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t08_test.go: TestFixedRoadmapDartT08ConformanceUnions/dart/P2") :tested-revision "7d95233d9d75a87a95ebcf7998e4f36f9115b9b6")
-(:id "dart/R27" :state :unknown :note "the manifest is the wire: build/fixedform-corpus/manifest.txt is the single value oracle, but the corpus is written only by test/tables/fixedform_dump.cpp against the ../serialize sibling runtime, which this checkout does not carry, so no manifest exists to assert")
-(:id "dart/P3" :state :unknown :note "hostile bytes, sweep + sanitizer: the byte-flip fuzz under a sanitizer runs over the C++ reference's corpus files, which ../serialize's absence leaves unwritten, so there is no oracle to sweep")
+(:id "dart/R27" :state :unknown :note "TestFixedRoadmapDartT12ExtentsWritesGuards/dart/R27 ran all 76 manifest files: 72 pass; fu1.bin byte 305 and old_float_widen.bin byte 106 quiet signalling NaN bits on resave; new_fixed_I_grow.bin and new_fixed_I_grow_element.bin manifest raw 1000 exceeds their declared raw maximum 112 and is correctly clamped, so those producer fixtures do not meet a byte-identity promise. No emitter repair belongs to this test-and-evidence card.")
+(:id "dart/P3" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t12_test.go: TestFixedRoadmapDartT12ExtentsWritesGuards/dart/P3") :tested-revision "883481c393cfb3dae8739ee1d75622c95cc6fe00")
 (:id "dart/P4" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t08_test.go: TestFixedRoadmapDartT08ConformanceUnions/dart/P4") :tested-revision "7d95233d9d75a87a95ebcf7998e4f36f9115b9b6")
 (:id "signed-integers/dart/valid-data" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t08_test.go: TestFixedRoadmapDartT08ConformanceUnions/signed-integers/dart/valid-data") :tested-revision "7d95233d9d75a87a95ebcf7998e4f36f9115b9b6")
 (:id "unsigned-integers/dart/valid-data" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t08_test.go: TestFixedRoadmapDartT08ConformanceUnions/unsigned-integers/dart/valid-data") :tested-revision "7d95233d9d75a87a95ebcf7998e4f36f9115b9b6")
@@ -70,3 +70,19 @@
 (:id "optional-arrays/dart/valid-data" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t09_test.go: TestFixedRoadmapDartT09Optionals/optional-arrays/dart/valid-data") :tested-revision "e16b83a32")
 (:id "scalar-defaults/dart/valid-data" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t09_test.go: TestFixedRoadmapDartT09Optionals/scalar-defaults/dart/valid-data") :tested-revision "1b5250ef6")
 (:id "text-bytes-flags-defaults/dart/valid-data" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t09_test.go: TestFixedRoadmapDartT09Optionals/text-bytes-flags-defaults/dart/valid-data") :tested-revision "e16b83a32")
+
+(:id "dart/C14" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t12_test.go: TestFixedRoadmapDartT12ExtentsWritesGuards/dart/C14") :tested-revision "883481c393cfb3dae8739ee1d75622c95cc6fe00")
+
+(:id "dart/W4" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t12_test.go: TestFixedRoadmapDartT12ExtentsWritesGuards/dart/W4") :tested-revision "883481c393cfb3dae8739ee1d75622c95cc6fe00")
+
+(:id "dart/W9" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t12_test.go: TestFixedRoadmapDartT12ExtentsWritesGuards/dart/W9") :tested-revision "883481c393cfb3dae8739ee1d75622c95cc6fe00")
+
+(:id "dart/W1" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t12_test.go: TestFixedRoadmapDartT12ExtentsWritesGuards/dart/W1") :tested-revision "883481c393cfb3dae8739ee1d75622c95cc6fe00")
+
+(:id "dart/W3" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t12_test.go: TestFixedRoadmapDartT12ExtentsWritesGuards/dart/W3") :tested-revision "883481c393cfb3dae8739ee1d75622c95cc6fe00")
+
+(:id "dart/W5" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t12_test.go: TestFixedRoadmapDartT12ExtentsWritesGuards/dart/W5") :tested-revision "883481c393cfb3dae8739ee1d75622c95cc6fe00")
+
+(:id "dart/W8" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t12_test.go: TestFixedRoadmapDartT12ExtentsWritesGuards/dart/W8") :tested-revision "883481c393cfb3dae8739ee1d75622c95cc6fe00")
+
+(:id "dart/W7" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t12_test.go: TestFixedRoadmapDartT12ExtentsWritesGuards/dart/W7") :tested-revision "883481c393cfb3dae8739ee1d75622c95cc6fe00")
