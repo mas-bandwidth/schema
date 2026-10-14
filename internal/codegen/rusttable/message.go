@@ -550,7 +550,7 @@ fn quantization(qmin: f32, qmax: f32, qres: f32) -> (u32, f32, u64, bool) {
     }
     let delta = qmax - qmin;
     let mut values = delta / qres;
-    if (delta - delta) != 0.0 || (values - values) != 0.0 {
+    if delta.is_nan() || values.is_nan() {
         return (0, 0.0, 0, false);
     }
     if !(values >= 1.0) {

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -248,14 +250,102 @@ func goBlockBytes(t *testing.T, u *ir.Unit, counts map[string]int32) []byte {
 	return buf
 }
 
+// cppOpensRustBlock compiles the C++ block reader for this same probe unit and
+// opens the bytes the Rust builder wrote (docs/SPEC-TABLES.md §19.2). The
+// reader is generated beside the probe, not build/schema_test_block: that
+// binary is the blockdemo record and has no mode that takes these bytes.
+func cppOpensRustBlock(t *testing.T, block []byte) {
+	t.Helper()
+	cxx, err := exec.LookPath("c++")
+	if err != nil {
+		t.Fatalf("c++ is not on PATH: %v", err)
+	}
+	u := unitFrom(t, blockBuildCookSchema)
+	files, err := cpp.Generate(u)
+	if err != nil {
+		t.Fatalf("the C++ data header did not generate: %v", err)
+	}
+	tables, err := cpptable.Generate(u)
+	if err != nil {
+		t.Fatalf("the C++ block reader did not generate: %v", err)
+	}
+	for name, data := range tables {
+		files[name] = data
+	}
+	root := t.TempDir()
+	for name, data := range files {
+		if strings.Contains(name, "/") {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(root, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const opener = `#include "ProbeBlock.h"
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
+int main(int argc, char** argv) {
+    if (argc != 2) return 2;
+    FILE* f = std::fopen(argv[1], "rb");
+    if (!f) return 2;
+    if (std::fseek(f, 0, SEEK_END) != 0) return 2;
+    long n = std::ftell(f);
+    if (n <= 0 || std::fseek(f, 0, SEEK_SET) != 0) return 2;
+    size_t bytes = (size_t)n;
+    size_t cap = (bytes + 63u) & ~(size_t)63u;
+    void* mem = std::aligned_alloc(64, cap);
+    if (!mem) return 2;
+    std::memset(mem, 0, cap);
+    if (std::fread(mem, 1, bytes, f) != bytes) return 2;
+    std::fclose(f);
+    probe::RootBlock::Const opened{};
+    probe::TableRefuseReason reason = probe::ok;
+    if (!probe::RootBlockOpen(opened, mem, (int64_t)bytes, &reason)) {
+        std::printf("CPP refuse %d\n", (int)reason);
+        std::free(mem);
+        return 1;
+    }
+    std::printf("CPP %u %u\n", opened.projection->rows.count, opened.projection->other.count);
+    std::free(mem);
+    return 0;
+}
+`
+	if err := os.WriteFile(filepath.Join(root, "cppopen.cpp"), []byte(opener), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(root, "cppopen")
+	cmd := exec.Command(cxx, "-std=c++17", "-O2", "-o", bin, "cppopen.cpp", "ProbeBlock.cpp")
+	cmd.Dir = root
+	if o, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("the C++ block reader did not build: %v\n%s", err, o)
+	}
+	path := filepath.Join(root, "block.bin")
+	if err := os.WriteFile(path, block, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(bin, path).CombinedOutput()
+	if err != nil {
+		t.Fatalf("the C++ reader did not open the Rust-built block (docs/SPEC-TABLES.md §19.2): %v\n%s", err, out)
+	}
+	got := strings.TrimSpace(string(out))
+	t.Logf("the C++ reader opened the Rust-built block: %s", got)
+	if got != "CPP 3 2" {
+		t.Errorf("the C++ reader opened the Rust-built block as %q, not rows=3 other=2 (docs/SPEC-TABLES.md §19.2)", got)
+	}
+}
+
 // TestBlockBuildAndCookWriteRust is docs/SPEC-TABLES.md §19.1 (the block build
 // side) and §7.6 (the cook write), held against the running runtime.
 //
 // THIS IS A FUNCTIONAL TEST: it compiles the emitted Rust runtime with rustc
-// and RUNS it, so it skips by name when rustc is absent and
-// SCHEMA_REQUIRE_CORPUS is unset, and fails by name when SCHEMA_REQUIRE_CORPUS=1.
-// The make target tables-rust-block-build runs it with that variable set, so
-// the target never passes on a SKIP.
+// and the emitted C++ block reader with c++, and RUNS both, so it skips by
+// name when either compiler is absent and SCHEMA_REQUIRE_CORPUS is unset, and
+// fails by name when SCHEMA_REQUIRE_CORPUS=1. The make target
+// tables-rust-block-build runs it with that variable set, so the target never
+// passes on a SKIP.
 //
 // THE PINS ARE THE RUNNING RUNTIME'S OWN BYTES, not the emitter's text: the
 // block image the Rust builder writes is compared byte for byte against the
@@ -263,9 +353,16 @@ func goBlockBytes(t *testing.T, u *ir.Unit, counts map[string]int32) []byte {
 // the block's own reader hands back are at the offsets the triples name, a
 // count past its bound refuses and changes nothing, the cook's measure is Go's
 // formula, a buffer short of the measure writes nothing, an order Go refuses
-// is refused, both orders ride, and what the writer wrote reads back.
+// is refused, both orders ride, what the writer wrote reads back, and the C++
+// block reader generated for this probe opens the Rust-built bytes.
 func TestBlockBuildAndCookWriteRust(t *testing.T) {
 	t.Parallel()
+	if _, err := exec.LookPath("c++"); err != nil {
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and c++ is not on PATH, so the C++ reader cannot open the Rust-built block: %v", err)
+		}
+		t.Skipf("c++ is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs the C++ reader: %v", err)
+	}
 
 	got := blockProbeRun(t, os.Getenv("SCHEMA_RUST_BLOCK_OUT"))
 
@@ -296,6 +393,9 @@ func TestBlockBuildAndCookWriteRust(t *testing.T) {
 		t.Errorf("the Rust block builder's bytes are not the Go builder's bytes (docs/SPEC-TABLES.md §19.1, gotable/blockbuild.go:49-56)\n  rust: %s\n  go:   %s\n  Go's offset_of, which the triples must carry: %s",
 			hex.EncodeToString(have), hex.EncodeToString(want), strings.Join(wantOffsets, " "))
 	}
+	// THE C++ READER OPENS THOSE BYTES (§19.2). The reader is generated for
+	// this probe, not build/schema_test_block: that binary is blockdemo.
+	cppOpensRustBlock(t, have)
 
 	// THE TRIPLES POINT AT THE BODIES: the reader indexes through offset_of,
 	// so a triple that named the END of the extent would hand back no rows.
