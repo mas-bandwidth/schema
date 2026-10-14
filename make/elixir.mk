@@ -327,6 +327,30 @@ packet-wide-elixir-negative-control: packet-wide-elixir
 test-elixir: packet-wide-elixir packet-wide-elixir-negative-control
 
 # ---------------------------------------------------------------------------
+# THE VARIABLE CLASS ON THE TABLE WIRE (docs/SPEC-TABLES.md §2, §3, §16)
+# ---------------------------------------------------------------------------
+#
+# THE VARIABLE FORM'S OWN GATE, the constructs beyond the card record: pointers
+# to tables and the flat node table (§2.1, §3.1), blobs (*bytes) (§2.5),
+# unbounded arrays of scalar, string and enum elements and arrays of pointers
+# (§2.9), the 64-bit id-table wire with the enum and escape kinds (§3), and the
+# variable-class text form (§16). TestVariableClassBeyondCardConstructsElixir
+# round-trips tables/pointers, tables/blobs, tables/lists and tblp2 through the
+# generated Elixir against the Go oracle bytes and text form; it is a FUNCTIONAL
+# test (it runs the leg's own toolchain through elixirBinary), so
+# SCHEMA_REQUIRE_CORPUS=1 turns a missing toolchain or corpus into a FAILURE,
+# never a skip. The shrunken refusal gate — TestOtherVariableConstructsAreRefusedByName,
+# now only map, optional, enum-keyed array, int128, fixed-point and union arms —
+# rides the same -run. The conformance run answers the wire, json-read,
+# json-write and report surfaces for the variable-class instances.
+.PHONY: tables-elixir-variable-class
+tables-elixir-variable-class: build/conformance/manifest.txt
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestVariableClassBeyondCardConstructsElixir|TestOtherVariableConstructsAreRefusedByName'
+	./build/conformance-harness run --only elixir
+
+test-elixir: tables-elixir-variable-class
+
+# ---------------------------------------------------------------------------
 # THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
 # ---------------------------------------------------------------------------
 #
