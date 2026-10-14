@@ -67,7 +67,7 @@ void main() {
   final bytes = Uint8List(b.RootBlock.blockMaxBytes);
   bytes.fillRange(0, bytes.length, 0xa5);
   final refusal = b.TableBlockRefusal();
-  final block = b.RootBlock.begin(bytes, 0, rows: 17, other: 2, refusal: refusal);
+  final block = b.RootBlock.begin(bytes, 0, rowsCount: 17, otherCount: 2, refusal: refusal);
   check(block != null, 'begin refused a count inside every declared maximum');
   if (block == null) {
     return;
@@ -85,14 +85,14 @@ void main() {
   // THE MAXIMUM REFUSAL, BY NAME, AND IT WRITES NOTHING (§19.1).
   final before = Uint8List.fromList(bytes);
   check(
-    b.RootBlock.begin(bytes, 0, rows: 66, other: 2, refusal: refusal) == null &&
+    b.RootBlock.begin(bytes, 0, rowsCount: 66, otherCount: 2, refusal: refusal) == null &&
         refusal.array == 'rows' &&
         refusal.count == 66 &&
         refusal.maximum == 65,
     'the maximum refusal: ${refusal.array} ${refusal.count} ${refusal.maximum}',
   );
   check(
-    b.RootBlock.begin(bytes, 0, rows: 17, other: -1, refusal: refusal) == null &&
+    b.RootBlock.begin(bytes, 0, rowsCount: 17, otherCount: -1, refusal: refusal) == null &&
         refusal.array == 'other' && refusal.count == -1,
     'the negative count refusal: ${refusal.array} ${refusal.count}',
   );

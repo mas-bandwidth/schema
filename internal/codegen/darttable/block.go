@@ -301,7 +301,7 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	head := fmt.Sprintf("  static %sBlock? begin(Uint8List bytes, int base, {", name)
 	var params []string
 	for _, a := range bl.Arrays {
-		params = append(params, fmt.Sprintf("required int %s", dartName(a.Field.Name)))
+		params = append(params, fmt.Sprintf("required int %sCount", dartName(a.Field.Name)))
 	}
 	params = append(params, "TableBlockRefusal? refusal")
 	one := head + strings.Join(params, ", ") + "}) {"
@@ -321,7 +321,7 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	g.pf("    if (refusal != null) {\n")
 	g.pf("      refusal.array = '';\n      refusal.count = 0;\n      refusal.maximum = 0;\n    }\n")
 	for _, a := range bl.Arrays {
-		field := dartName(a.Field.Name)
+		field := dartName(a.Field.Name) + "Count"
 		g.pf("    // the DECLARED MAXIMUM (§19.1): a count past it would run the array out\n")
 		g.pf("    // of the extent a consumer sizes by the maximum, so it is refused here\n")
 		g.pf("    // and again by [open] on the reader's side.\n")
@@ -342,7 +342,7 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	g.pf("    view.setUint64(base + 16, tableBlockByteOrder, Endian.little);\n")
 	g.pf("    var offset = projectionSize;\n")
 	for _, a := range bl.Arrays {
-		field := dartName(a.Field.Name)
+		field := dartName(a.Field.Name) + "Count"
 		alignment := int64(ir.BlockAlign)
 		if a.ElemAlign() > alignment {
 			alignment = a.ElemAlign()
