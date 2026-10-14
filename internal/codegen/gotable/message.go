@@ -126,7 +126,7 @@ func tableAnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
  v.Count=count;v.RefBits=tableMessageBits(uint64(count));if v.RefBits==0{v.RefBits=1};v.Announced=true;return true
 }
 func tableMessageKnownKind(k uint8)bool {return k<=33}
-func tableMessageKindBits(k uint8)int64 {if k==1{return 1};switch k {case 2,6,20,25:return 8;case 3,7,21,26:return 16;case 4,8,10,22,27:return 32;case 5,9,11,23,28:return 64;case 18,19,24,29:return 128};return -1}
+func tableMessageKindBits(k uint8)int64 {if k==0||k==32{return 0};if k==1{return 1};switch k {case 2,6,20,25:return 8;case 3,7,21,26:return 16;case 4,8,10,22,27:return 32;case 5,9,11,23,28:return 64;case 18,19,24,29:return 128};return -1}
 func tableMessageShapeRead(r *TableReader,k uint8)(s TableMessageShape,ok bool) {
  s.Kind=k;s.Bits=tableMessageKindBits(k)
  switch {case k>=2&&k<=10||k>=18&&k<=29:
@@ -147,7 +147,7 @@ func tableMessageSkip(r *TableBitReader,v *TableVocabulary,indexBits int64,e Tab
  case 15:ref,ok:=r.Get(v.RefBits);if !ok||ref==0{return ok};arm,ok:=v.Entry(ref);return ok&&arm.Id<0xfffffffffffffffd&&arm.Shape.Kind!=0&&tableMessageSkip(r,v,indexBits,arm,depth+1)
  case 12,33:n,ok:=tableMessageCount(r,s);if !ok{return false};width:=int64(16);if s.Kind==12 {width=8;if !r.Align(){return false}};return r.Skip(int64(n)*width)
  case 31:if !r.Align(){return false};n,ok:=r.Get(32);return ok&&r.Skip(int64(n)*8)
- case 14,16:n,ok:=tableMessageCount(r,s);if !ok{return false};if s.Kind==14&&e.Element.Kind==6&&!r.Align(){return false};if e.Element.Bits>=0 {width:=e.Element.Bits;if s.Kind==16 {width+=v.RefBits};return r.Skip(int64(n)*width)};for i:=uint64(0);i<n;i++ {if s.Kind==16&&!r.Skip(v.RefBits){return false};if !tableMessageSkip(r,v,indexBits,TableMessageEntry{Shape:e.Element},depth+1){return false}};return true
+ case 14,16:n,ok:=tableMessageCount(r,s);if !ok{return false};if s.Kind==14&&e.Element.Kind==6&&!r.Align(){return false};if e.Element.Bits>=0||e.Element.Kind==0||e.Element.Kind==32 {width:=e.Element.Bits;if width<0{width=0};if s.Kind==16 {width+=v.RefBits};return r.Skip(int64(n)*width)};for i:=uint64(0);i<n;i++ {if s.Kind==16&&!r.Skip(v.RefBits){return false};before:=r.Offset;if !tableMessageSkip(r,v,indexBits,TableMessageEntry{Shape:e.Element},depth+1)||r.Offset==before{return false}};return true
  };return s.Bits>=0&&r.Skip(s.Bits)
 }
 // Framing scans follow announced shapes; typed body reads diagnose reserved ids.
