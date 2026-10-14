@@ -457,6 +457,13 @@ tables-cs-fixed-t13:
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedRoadmapCSharpT13SecondLayoutForAHeldHash'
 	@echo 'tables C# fixed-t13: cs/F12 a second layout for a held hash is refused layout_malformed'
 
+.PHONY: tables-cs-fixed-t18
+tables-cs-fixed-t18:
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapCSharpT18UnionArms'
+	@echo 'tables C# fixed-t18: direct and payload-free union arms round-trip, tag-only arm storage'
+
+test-cs: tables-cs-fixed-t18
+
 .PHONY: tables-cs-fixed-roadmap
 tables-cs-fixed-roadmap:
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedRoadmapCSharpT12PlansVersions'
