@@ -19,6 +19,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../lib/cards.dart';
+import '../lib/sha256.dart';
 
 var failed = false;
 
@@ -260,11 +261,78 @@ void cardEnumNoneRoundTrips() {
   check(rec2.card.tier == 0, 'FromJSON reads tier None as zero');
 }
 
+// upgradeMatchesGo: every upgrade case yields the expected wire and report
+// byte for byte, or the expected refusal class; upgrade is idempotent;
+// retention storage one id short refuses retain-lost, input unchanged
+// (tla/CardVersioning.tla: NoFieldLost, RefusalKeepsOriginal).
+void upgradeMatchesGo() {
+  for (final name in [
+    'initial-populated',
+    'consumers-populated',
+    'empty-consumers',
+    'future-note',
+  ]) {
+    final wire = readBytes('tables/cards/conformance/cases/$name.wire');
+    final before = Uint8List.fromList(wire);
+    final r = upgrade(wire);
+    sameBytes(
+      r.wire,
+      readBytes('tables/cards/conformance/expected/$name.wire'),
+      'upgrade $name wire',
+    );
+    sameBytes(
+      utf8.encode(reportText(r.report)),
+      readBytes('tables/cards/conformance/expected/$name.report'),
+      'upgrade $name report',
+    );
+    sameBytes(wire, before, 'upgrade $name input unchanged');
+    final again = upgrade(r.wire);
+    sameBytes(again.wire, r.wire, 'upgrade $name idempotent');
+  }
+  try {
+    upgrade(readBytes('tables/cards/conformance/cases/truncated.wire'));
+    check(false, 'upgrade truncated refused');
+  } on CardException catch (_) {
+    check(true, 'upgrade truncated refused');
+  }
+  final future = readBytes('tables/cards/conformance/cases/future-note.wire');
+  final before = Uint8List.fromList(future);
+  try {
+    upgradeWithStorage(future, maxRetainBytes, 0);
+    check(false, 'upgrade one id short refused');
+  } on CardException catch (e) {
+    check(
+      e.message.contains('retained'),
+      'upgrade one id short names retain loss (${e.message})',
+    );
+  }
+  sameBytes(future, before, 'upgrade refused input unchanged');
+  final strictOk = readStrict(
+    readBytes('tables/cards/conformance/cases/card-populated.wire'),
+  );
+  check(strictOk.card.id.isNotEmpty, 'readStrict accepts a clean card');
+  try {
+    readStrict(future);
+    check(false, 'readStrict refuses unknown');
+  } on CardException catch (_) {
+    check(true, 'readStrict refuses unknown');
+  }
+}
+
+String reportText(TableWireReport r) =>
+    'Retained=${r.retained}\nRetainLost=${r.retainLost}\nWidened=${r.widened}\nUnknown=${r.unknown}\nKindMismatch=${r.kindMismatch}\nClamped=${r.clamped}\nDuplicate=0\nMalformed=${r.malformed}\n';
+
 void main() {
   cardRoundTripsThePopulatedFixture();
   cardBoundsRefuseBeforePublishing();
   parseRenderMatchesGo();
   cardEnumNoneRoundTrips();
+  upgradeMatchesGo();
+  sha256MatchesFips180Vectors();
+  upgradeMatchesGo();
+  taskHashFramesLogicalFields();
+  fieldEditLeavesTheTaskHashAlone();
+  viewWalksEveryField();
   if (failed) {
     print('cards_test: FAILED');
     exit(1);

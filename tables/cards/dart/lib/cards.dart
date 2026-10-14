@@ -18,6 +18,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'sha256.dart';
+
 import '../../../../build/tables-generated-dart/cards/Card.dart';
 import '../../../../build/tables-generated-dart/cards/CardsWire.dart';
 
@@ -50,11 +52,19 @@ class CardException implements Exception {
 // shallow copy of the caller's bytes escapes: the wire field is the caller's
 // bytes copied, and wire() returns a fresh copy (docs/SPEC-TABLES.md §6.2).
 class Record {
-  final Uint8List _wire;
-  final Card _card;
-  final TableWireReport _report;
+  Uint8List _wire;
+  Card _card;
+  TableWireReport _report;
 
   Record._(this._wire, this._card, this._report);
+
+  // _publish swaps the owned wire, card and report on complete success only;
+  // a refused edit leaves every field untouched (docs/SPEC-TABLES.md §6.2).
+  void _publish(Uint8List wire, Card card, TableWireReport report) {
+    _wire = wire;
+    _card = card;
+    _report = report;
+  }
 
   // wire returns a defensive copy of the record's wire bytes.
   Uint8List wire() => Uint8List.fromList(_wire);
@@ -815,3 +825,111 @@ void emitList(StringBuffer out, String key, List<String> elems) {
   }
   out.write('\n');
 }
+
+// ---- L3: the retained upgrade and the strict read (tables/cards/upgrade.go) ----
+
+// maxRetainBytes is the customer ceiling on the retained-record byte store:
+// fixed retention storage of 1 << 20 bytes per call, never grown
+// (docs/SPEC-TABLES.md §6.6).
+const int maxRetainBytes = 1 << 20;
+
+// maxRetainIds is the customer ceiling on the retained-id entry store: 4096
+// ids per call, never grown (docs/SPEC-TABLES.md §6.6).
+const int maxRetainIds = 4096;
+
+// UpgradeResult is a successful upgrade: the new wire and the accumulated
+// report (tables/cards/conformance/FORMAT.md).
+class UpgradeResult {
+  final Uint8List wire;
+  final TableWireReport report;
+  UpgradeResult(this.wire, this.report);
+}
+
+// upgrade rewrites wire through the generated retaining path so every field
+// the current declaration cannot name is preserved at the end of its own body
+// (§6.6; tla/CardVersioning.tla: NoFieldLost, BodyUnchanged,
+// RefusalKeepsOriginal). Unknown, Retained and Widened alone are not loss.
+UpgradeResult upgrade(Uint8List wire) =>
+    upgradeWithStorage(wire, maxRetainBytes, maxRetainIds);
+
+// upgradeWithStorage is upgrade with caller-owned retention storage, so a
+// capacity one id short can be shown to refuse with retain-lost
+// (tla/CardVersioning.tla: RefusalKeepsOriginal).
+UpgradeResult upgradeWithStorage(
+  Uint8List wire,
+  int retainBytes,
+  int retainIds,
+) {
+  if (retainBytes < 0 || retainIds < 0) {
+    throw CardException('cards: upgrade: negative retention capacity');
+  }
+  final input = Uint8List.fromList(wire);
+  final report = TableWireReport();
+  if (cardWireMeasure(input) < 0) {
+    cardWireLoad(input, report);
+    throw CardException('cards: upgrade: wire is not a card');
+  }
+  final retain = TableRetain(retainBytes, List<int>.filled(retainIds, 0));
+  final card = cardWireLoadRetain(input, retain, report);
+  if (report.refused) {
+    throw CardException('cards: upgrade: wire is not a card');
+  }
+  if (report.malformed) {
+    throw CardException('cards: upgrade: wire is malformed');
+  }
+  checkCard(card);
+  final out = cardWireSaveRetain(card, retain, report);
+  _lossErr(report);
+  return UpgradeResult(out, report);
+}
+
+// _lossErr names the report events that make a rewrite unsafe (§6.6):
+// RetainLost, KindMismatch, Clamped or Malformed refuse with no output.
+void _lossErr(TableWireReport report) {
+  if (report.retainLost > 0) {
+    throw CardException(
+      'cards: upgrade: ${report.retainLost} retained field(s) lost, refusing to replace',
+    );
+  }
+  if (report.kindMismatch > 0) {
+    throw CardException(
+      'cards: upgrade: ${report.kindMismatch} kind mismatch(es), refusing to replace',
+    );
+  }
+  if (report.clamped > 0) {
+    throw CardException(
+      'cards: upgrade: ${report.clamped} clamped value(s), refusing to replace',
+    );
+  }
+  if (report.malformed) {
+    throw CardException('cards: upgrade: malformed wire, refusing to replace');
+  }
+}
+
+// readStrict reads wire and refuses any data the current declaration cannot
+// support: Unknown, KindMismatch, Clamped, Malformed and every load failure
+// (docs/SPEC-TABLES.md §4).
+Record readStrict(Uint8List wire) {
+  final rec = load(wire);
+  final r = rec.report;
+  if (r.unknown > 0) {
+    throw CardException(
+      'cards: strict: ${r.unknown} unknown field(s), unsupported data',
+    );
+  }
+  if (r.kindMismatch > 0) {
+    throw CardException(
+      'cards: strict: ${r.kindMismatch} kind mismatch(es), unsupported data',
+    );
+  }
+  if (r.clamped > 0) {
+    throw CardException(
+      'cards: strict: ${r.clamped} clamped value(s), unsupported data',
+    );
+  }
+  if (r.malformed) {
+    throw CardException('cards: strict: malformed wire, unsupported data');
+  }
+  return rec;
+}
+
