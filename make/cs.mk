@@ -92,54 +92,60 @@ tables-cs-json-walk: build/tables-generated-cs/.stamp
 	done
 	@echo "tables C# generic-walk gate: one walker per unit, byte-identical across $$(ls build/json-walk-cs | wc -l | tr -d ' ') units"
 
+# THE C# CORPUS'S ONE GENERATION LIST, parameterised by generator binary and
+# output root for the same reason the C++ tables_generate (Main Makefile) is:
+# the zero-cost gate's block-less arm regenerates the whole corpus from a
+# sabotaged emitter, and a second copy of these lines would be a second corpus.
+define tables_generate_cs
+	$(1) generate --lang cs --out $(2)/examples tables/examples
+	$(1) generate --lang cs --out $(2)/pointers tables/pointers
+	$(1) generate --lang cs --out $(2)/block tables/block
+	$(1) generate --lang cs --out $(2)/blockhome tables/blockhome
+	$(1) generate --lang cs --out $(2)/v1 test/tables/V1.schema
+	$(1) generate --lang cs --out $(2)/v2 test/tables/V2.schema
+	$(1) generate --lang cs --out $(2)/p1 test/tables/P1.schema
+	$(1) generate --lang cs --out $(2)/p3 test/tables/P3.schema
+	$(1) generate --lang cs --out $(2)/fx1 test/tables/FX1.schema
+	$(1) generate --lang cs --out $(2)/fx2 test/tables/FX2.schema
+	$(1) generate --lang cs --out $(2)/k1 test/tables/K1.schema
+	$(1) generate --lang cs --out $(2)/k2 test/tables/K2.schema
+	$(1) generate --lang cs --out $(2)/csids test/tables/CsIds.schema
+	$(1) generate --lang cs --out $(2)/csunions test/tables/CsUnions.schema
+	$(1) generate --lang cs --out $(2)/csview test/tables/CsView.schema
+	$(1) generate --lang cs --out $(2)/messages tables/messages
+	$(1) generate --lang cs --out $(2)/m1 test/tables/M1.schema
+	$(1) generate --lang cs --out $(2)/m2 test/tables/M2.schema
+	$(1) generate --lang cs --out $(2)/a1 test/tables/A1.schema
+	$(1) generate --lang cs --out $(2)/a2 test/tables/A2.schema
+	$(1) generate --lang cs --out $(2)/scalars tables/scalars
+	$(1) generate --lang cs --out $(2)/scalars2 test/tables/Scalars2.schema
+	$(1) generate --lang cs --out $(2)/caption examples-wide/Caption.schema
+	$(1) generate --lang cs --out $(2)/blobs tables/blobs
+	$(1) generate --lang cs --out $(2)/p2 test/tables/P2.schema
+	$(1) generate --lang cs --out $(2)/w1 test/tables/W1.schema
+	$(1) generate --lang cs --out $(2)/w2 test/tables/W2.schema
+	$(1) generate --lang cs --out $(2)/lists tables/lists
+	$(1) generate --lang cs --out $(2)/maps tables/maps
+	$(1) generate --lang cs --out $(2)/stream tables/stream
+	$(1) generate --lang cs --out $(2)/g1 test/tables/G1.schema
+	$(1) generate --lang cs --out $(2)/backend tables/backend
+	$(1) generate --lang cs --out $(2)/vocab tables/vocab
+	$(1) generate --lang cs --out $(2)/vocab9 tables/vocab9
+	$(1) generate --lang cs --out $(2)/r1 test/tables/R1.schema
+	$(1) generate --lang cs --out $(2)/r2 test/tables/R2.schema
+	$(1) generate --lang cs --out $(2)/rt1 test/tables/RT1.schema
+	$(1) generate --lang cs --out $(2)/rt2 test/tables/RT2.schema
+	$(1) generate --lang cs --out $(2)/rt3 test/tables/RT3.schema
+	$(1) generate --lang cs --out $(2)/csretain1 test/tables/CsRetain1.schema
+	$(1) generate --lang cs --out $(2)/csretain2 test/tables/CsRetain2.schema
+	$(1) generate --lang cs --out $(2)/cscollections1 test/tables/CsCollections1.schema
+	$(1) generate --lang cs --out $(2)/cscollections2 test/tables/CsCollections2.schema
+	$(1) generate --lang cs --out $(2)/ut test/tables/UT.schema
+endef
+
 build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema examples-wide/Caption.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema
 	@mkdir -p build/tables-generated-cs
-	./bin/schema generate --lang cs --out build/tables-generated-cs/examples tables/examples
-	# The pointered unit carries managed wire storage and native cooked readers.
-	./bin/schema generate --lang cs --out build/tables-generated-cs/pointers tables/pointers
-	./bin/schema generate --lang cs --out build/tables-generated-cs/block tables/block
-	./bin/schema generate --lang cs --out build/tables-generated-cs/blockhome tables/blockhome
-	./bin/schema generate --lang cs --out build/tables-generated-cs/v1 test/tables/V1.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/v2 test/tables/V2.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/p1 test/tables/P1.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/p3 test/tables/P3.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/fx1 test/tables/FX1.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/fx2 test/tables/FX2.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/k1 test/tables/K1.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/k2 test/tables/K2.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/csids test/tables/CsIds.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/csunions test/tables/CsUnions.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/csview test/tables/CsView.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/messages tables/messages
-	./bin/schema generate --lang cs --out build/tables-generated-cs/m1 test/tables/M1.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/m2 test/tables/M2.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/a1 test/tables/A1.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/a2 test/tables/A2.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/scalars tables/scalars
-	./bin/schema generate --lang cs --out build/tables-generated-cs/scalars2 test/tables/Scalars2.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/caption examples-wide/Caption.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/blobs tables/blobs
-	./bin/schema generate --lang cs --out build/tables-generated-cs/p2 test/tables/P2.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/w1 test/tables/W1.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/w2 test/tables/W2.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/lists tables/lists
-	./bin/schema generate --lang cs --out build/tables-generated-cs/maps tables/maps
-	./bin/schema generate --lang cs --out build/tables-generated-cs/stream tables/stream
-	./bin/schema generate --lang cs --out build/tables-generated-cs/g1 test/tables/G1.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/backend tables/backend
-	./bin/schema generate --lang cs --out build/tables-generated-cs/vocab tables/vocab
-	./bin/schema generate --lang cs --out build/tables-generated-cs/vocab9 tables/vocab9
-	./bin/schema generate --lang cs --out build/tables-generated-cs/r1 test/tables/R1.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/r2 test/tables/R2.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/rt1 test/tables/RT1.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/rt2 test/tables/RT2.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/rt3 test/tables/RT3.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/csretain1 test/tables/CsRetain1.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/csretain2 test/tables/CsRetain2.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/cscollections1 test/tables/CsCollections1.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/cscollections2 test/tables/CsCollections2.schema
-	./bin/schema generate --lang cs --out build/tables-generated-cs/ut test/tables/UT.schema
-
+	$(call tables_generate_cs,./bin/schema,build/tables-generated-cs)
 	@touch $@
 
 # The C# twin of the C++ "no serialize include path" build: a generated
@@ -500,6 +506,28 @@ tables-cs-pack-negative-control: bin/schema
 .PHONY: tables-cs-message-blob-endian-negative-control
 tables-cs-message-blob-endian-negative-control: bin/schema
 	sh test/cs-tables/message-blob-endian-control "$(DOTNET)"
+
+# J1 — ACCESSOR AND DESCRIPTOR AGREEMENT (docs/PORTING.md, schema#421), the C#
+# half. The generated managed class's public fields and the generated
+# descriptor's delegates are two independent derivations of one layout, and a
+# reading tier that only ever walks the descriptor could read it twice and never
+# know. Go holds unsafe.Offsetof against f.Offset; C# has no f.Offset — its
+# TableFieldInfo carries DELEGATES (§8.1), so this leg holds the named public
+# field against the GetRaw/GetChild delegate and requires agreement, field by
+# field, by name. A scalar accessor (codecs.go:826) and a pointer slot
+# (codecs.go:814) are each sabotaged through a `go build -overlay` on the
+# emitter, and each must turn the gate red on its own message.
+.PHONY: tables-cs-accessor-descriptor-agreement tables-cs-accessor-negative-control tables-cs-slot-negative-control
+tables-cs-accessor-descriptor-agreement: bin/schema
+	sh test/cs-tables/accessor-descriptor-control "$(DOTNET)" agreement
+
+tables-cs-accessor-negative-control: bin/schema
+	sh test/cs-tables/accessor-descriptor-control "$(DOTNET)" scalar
+
+tables-cs-slot-negative-control: bin/schema
+	sh test/cs-tables/accessor-descriptor-control "$(DOTNET)" slot
+
+test-cs: tables-cs-accessor-descriptor-agreement tables-cs-accessor-negative-control tables-cs-slot-negative-control
 
 # THE C# PORT'S RELEASE GATE (docs/PORTING.md J3). certify.yml DERIVES this
 # target by name, so the expensive half lands by adding it here and nothing
