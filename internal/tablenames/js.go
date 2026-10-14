@@ -79,6 +79,8 @@ func init() {
 		Name{Name: "TableFixedLaneArg", What: "the plan lane holding the guard's VALUE: the tag an arm's entry answers to"},
 		Name{Name: "TableFixedLaneMeta", What: "the plan lane holding what an op needs beside its size — a widen's width and sign, a text entry's flavour"},
 		Name{Name: "TableFixedLaneArgW", What: "the plan lane holding the guard's WIDTH IN BYTES: a union tag is one, two, four or eight"},
+		Name{Name: "TableFixedLaneGuards", What: "the plan lane holding where an arm's GUARD CHAIN starts in the pool: the outer tags a nested arm's entry also runs under"},
+		Name{Name: "TableFixedLaneGuardCount", What: "the plan lane holding how many links that guard chain carries"},
 		Name{Name: "TableFixedNoGuard", What: "the guard a plan entry belonging to no union arm carries"},
 
 		// THE OPS ARE THE WHOLE SET, one binding each, and the flavours a text
