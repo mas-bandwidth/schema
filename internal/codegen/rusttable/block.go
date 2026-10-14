@@ -269,7 +269,75 @@ func (b *blockGen) emitBlock(bl *ir.BlockLayout) {
 	}
 	b.emitBlockTypeInfo(bl)
 	b.pf("}\n\n")
+	b.emitBlockBuild(bl)
 	b.emitRecordInfos(bl)
+}
+
+// emitBlockBuild is the block form's producer side (docs/SPEC-TABLES.md
+// §19.1): the counts struct, and a Begin that writes only the prologue and the
+// triples — never rows or padding — checking storage, every count against its
+// declared bound, and the whole extent against the capacity, all BEFORE any
+// byte of the extent changes. It is the Rust spelling of
+// gotable/blockbuild.go's <T>BlockBegin, pin for pin.
+func (b *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
+	n := bl.Table.Name
+	b.pf("// ---- the fill path (docs/SPEC-TABLES.md §19.1) ----\n")
+	b.pf("// %sCounts is gathered before Begin; clamping is the caller's policy.\n", n)
+	b.pf("#[derive(Clone, Copy)]\npub struct %sCounts {\n", n)
+	for _, a := range bl.Arrays {
+		b.pf("    pub %s: i32,\n", a.Field.Name)
+	}
+	b.pf("}\n")
+	b.pf("impl Default for %sCounts {\n    fn default() -> Self {\n", n)
+	b.pf("        unsafe { core::mem::zeroed() }\n    }\n}\n")
+	b.pf("// %s writes only the prologue and the triples (docs/SPEC-TABLES.md\n", fn(n, "block_begin"))
+	b.pf("// §19.1), the Rust spelling of gotable/blockbuild.go's %sBlockBegin:\n", n)
+	b.pf("// storage, every count and the whole extent are checked before any byte\n")
+	b.pf("// of the extent changes, and it returns the used extent, rounded to 64.\n")
+	b.pf("pub unsafe fn %s(buf: *mut u8, capacity: i64, counts: &%sCounts) -> Option<i64> {\n", fn(n, "block_begin"), n)
+	b.pf("    if buf.is_null() {\n        return None;\n    }\n")
+	b.pf("    let _ = counts;\n")
+	for _, a := range bl.Arrays {
+		f := a.Field.Name
+		b.pf("    if counts.%s < 0 || counts.%s as i64 > %d {\n        return None;\n    }\n", f, f, a.Max)
+	}
+	b.pf("    let mut off: i64 = %d;\n", bl.Projection.Size)
+	for _, a := range bl.Arrays {
+		align := int64(ir.BlockAlign)
+		if a.ElemAlign() > align {
+			align = a.ElemAlign()
+		}
+		b.pf("    off = (off + %d - 1) / %d * %d;\n", align, align, align)
+		b.pf("    off += counts.%s as i64 * %d;\n", a.Field.Name, a.Stride)
+	}
+	b.pf("    let used = (off + 63) / 64 * 64;\n")
+	b.pf("    if used > capacity {\n        return None;\n    }\n")
+	// THE MEASURE PASS ABOVE WALKED `off` TO THE END OF THE EXTENT; THE WRITE
+	// PASS LAYS THE TRIPLES FROM THE PROJECTION'S END AGAIN, exactly as
+	// gotable/blockbuild.go:50-55 walks one `offset` from Projection.Size and
+	// assigns each triple in the same step (§19.1). Without this the second
+	// array's offset_of is the first array's END, and a reader that trusts the
+	// triples walks past every array body.
+	b.pf("    off = %d;\n", bl.Projection.Size)
+	b.pf("    unsafe {\n")
+	b.pf("        core::ptr::write_unaligned(buf.cast::<u64>(), TABLE_BLOCK_MAGIC);\n")
+	b.pf("        core::ptr::write_unaligned(buf.add(8).cast::<u64>(), BUILD_VERSION);\n")
+	b.pf("        core::ptr::write_unaligned(buf.add(16).cast::<u64>(), TABLE_BLOCK_BYTE_ORDER);\n")
+	for _, a := range bl.Arrays {
+		align := int64(ir.BlockAlign)
+		if a.ElemAlign() > align {
+			align = a.ElemAlign()
+		}
+		f := a.Field.Name
+		b.pf("        off = (off + %d - 1) / %d * %d;\n", align, align, align)
+		b.pf("        core::ptr::write_unaligned(buf.add(%d).cast::<u64>(), off as u64);\n", a.TripleOffset)
+		b.pf("        core::ptr::write_unaligned(buf.add(%d).cast::<u32>(), counts.%s as u32);\n", a.TripleOffset+8, f)
+		b.pf("        core::ptr::write_unaligned(buf.add(%d).cast::<u32>(), %d);\n", a.TripleOffset+12, a.Stride)
+		b.pf("        off += counts.%s as i64 * %d;\n", f, a.Stride)
+	}
+	b.pf("    }\n")
+	b.pf("    let _ = off;\n")
+	b.pf("    Some(used)\n}\n")
 }
 
 // emitBlockTypeInfo is the block's own descriptor: the PROJECTION as data
