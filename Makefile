@@ -5957,6 +5957,18 @@ test: tables-fixedform
 
 .PHONY: tables-fixedform
 
+# THE C++ LEG'S FIELD-EVOLUTION ROWS (cpp/E8, cpp/R19). The OLD file is built
+# in Go from the same IR the emitter lays down (fixedroadmap_t18_test.go), so
+# this gate needs build/fixedform-corpus NOT AT ALL: it compiles and runs the
+# generated C++ through the leg's own probe. Under SCHEMA_REQUIRE_CORPUS the
+# compiler-absent skip is a FAILURE, and the -v transcript names cpp/E8, cpp/R19
+# and each of the five appended kinds.
+.PHONY: tables-cpp-fixed-t18
+tables-cpp-fixed-t18:
+	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapCppT18FieldEvolution'
+
+test: tables-cpp-fixed-t18
+
 # THE RUN COPY'S NEGATIVE CONTROL, BOTH LEGS AT ONCE. The defect this gate is
 # for was real and it was SILENT: the 17..31-byte branch anchored its tail move
 # at the run's end, so it began 32 - n bytes in front of the run, took a
