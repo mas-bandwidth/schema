@@ -21,6 +21,10 @@ import (
 func TestCookWriteGraphDart(t *testing.T) {
 	t.Parallel()
 	u := unitFrom(t, `package probe
+table Plan { next *Plan }
+table Nodes { next *Nodes }
+table Record { next *Record }
+table Reference { next *Reference }
 table Node { value uint32
  next *Node }
 table Layer { value uint32 = 17

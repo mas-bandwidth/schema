@@ -45,11 +45,11 @@ func (g *cookGen) emitCookWriteGraph(st *ir.Struct) {
 	g.pf("        }\n        _cookRecord(type, obj, out, at, order, state, offsets, <int>[at + size, 0]);\n      }\n      out.setUint64(64 + data + i * 16, offsets[i], order);\n      out.setUint64(64 + data + i * 16 + 8, type, order);\n    }\n  }\n\n")
 	g.pf("  static void _cookRecord(int type, Object obj, ByteData? out, int at, Endian order, TableCookWire.WireState state, List<int> offsets, List<int> tail) {\n    switch (type) {\n")
 	cookWalk(g.unit, n, func(name string, _ *ir.MemberLayout) {
-		g.pf("      case %s: _cook%s(obj as TableCookWire.%s, out, at, order, state, offsets, tail); break;\n", dartU64Literal(tableWireId(cookMember(g.unit, name))), name, name)
+		g.pf("      case %s: _cookValue%s(obj as TableCookWire.%s, out, at, order, state, offsets, tail); break;\n", dartU64Literal(tableWireId(cookMember(g.unit, name))), name, name)
 	})
 	g.pf("      default: throw StateError('invalid_value');\n    }\n  }\n\n")
 	cookWalk(g.unit, n, func(name string, ml *ir.MemberLayout) {
-		g.pf("  static void _cook%s(TableCookWire.%s value, ByteData? out, int at, Endian order, TableCookWire.WireState state, List<int> offsets, List<int> tail) {\n", name, name)
+		g.pf("  static void _cookValue%s(TableCookWire.%s value, ByteData? out, int at, Endian order, TableCookWire.WireState state, List<int> offsets, List<int> tail) {\n", name, name)
 		for _, fl := range ml.Fields {
 			g.emitCookGraphField(fl.Field, fl.Offset, "value."+fieldMember(fl.Field), "    ")
 		}
@@ -138,7 +138,7 @@ func (g *cookGen) emitCookGraphValue(f *ir.Field, expr, at string, width int64, 
 	case f.Type.Pointer:
 		g.pf("%s_cookReference(%s, %s, out, order, state, offsets);\n", ind, expr, at)
 	case tableRef(f) != nil:
-		g.pf("%s_cook%s(%s, out, %s, order, state, offsets, tail);\n", ind, f.Type.Name, expr, at)
+		g.pf("%s_cookValue%s(%s, out, %s, order, state, offsets, tail);\n", ind, f.Type.Name, expr, at)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.needConvert = true
 		// Text in the variable authoring class is UTF-8; bounded cook storage is
