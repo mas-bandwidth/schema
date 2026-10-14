@@ -1,0 +1,28 @@
+# THE RUST LEG OF THE FIXED FORM (docs/SPEC-TABLES.md §3.4).
+#
+# The crates are the generated table units the C++ reference's byte oracle
+# writes files for, and this binary holds this port to them.
+[package]
+name = "rust-fixedform"
+version = "0.0.0"
+edition = "2024"
+
+[[bin]]
+name = "rust-fixedform"
+path = "src/main.rs"
+
+[dependencies]
+tblfx1 = { path = "../../build/tables-generated-rust/tblfx1" }
+tblfx2 = { path = "../../build/tables-generated-rust/tblfx2" }
+tblfe1 = { path = "../../build/tables-generated-rust/tblfe1" }
+tblfe2 = { path = "../../build/tables-generated-rust/tblfe2" }
+# the TEXT-UNDER-AN-ARM pair: a string(8) inside a union's SECOND arm, which
+# nothing else in the corpus carries (test/tables/FU1.schema)
+tblfu1 = { path = "../../build/tables-generated-rust/tblfu1" }
+tblfu2 = { path = "../../build/tables-generated-rust/tblfu2" }
+tblp1 = { path = "../../build/tables-generated-rust/tblp1" }
+tblp3 = { path = "../../build/tables-generated-rust/tblp3" }
+tabledemo = { path = "../../build/tables-generated-rust/tabledemo" }
+# the PAIRED BENCH UNIT: Bench.schema and FixedTable.schema as one unit, which
+# is the unit that carries a UNION through this form
+benchfixed = { path = "../../build/tables-generated-rust/benchfixed" }

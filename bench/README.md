@@ -44,20 +44,7 @@ backends' GENERATED codecs over the same shape under the same contract
                                  # refuses if a build would not — §3.5, verified
                                  # per pass by bench/tools/verify-runtime-paths.sh)
     BENCH_OPT_LEVEL=O2 bench/run.sh              # the C/C++ O2 leg (§3.3)
-    bench/run.sh --pgo                           # two-pass clang PGO + -mcpu=native
-                                                 # on the C/C++ legs only (#176)
     BENCH_NOISE="NOISY: ..." bench/run.sh        # free-text supplement — load capture is automatic
-
-`--pgo` (#176) is the native-tier tie-breaker lever: an instrumented
-`-fprofile-instr-generate` build of each C/C++ leg, one `--quick --bare`
-profile run with `LLVM_PROFILE_FILE` set, an `llvm-profdata merge`, then a
-release rebuild with `-fprofile-instr-use` and `-mcpu=native`. The other
-legs are untouched, and the `# pgo:` preamble line records the divergence so
-a PGO sitting is never divided against a default one unlabelled. The recipe
-lives in the driver because `COMMON_FLAGS` resolves the `SERIALIZE` include
-path there; a hand build outside `run.sh` has to set `SERIALIZE` (or pass
-`-I`) or the generated headers cannot find `serialize.h`. `LLVM_PROFDATA`
-overrides the merge tool.
 
 `make bench` runs the Release pass.
 
@@ -548,6 +535,70 @@ It is a separate pass rather than a leg of `run.sh` for one mechanical reason:
 `corpus_id` covers the goldens a RUN loaded, so folding the table corpus in
 would change every `bench_mixed` row's id and make today's type numbers
 un-ratioable against every earlier board.
+
+## The nine-language table
+
+One table, one command, per host. Per language: the fixed form's **save** and
+**round trip** in nanoseconds per record and its **bytes** per record, against
+that language's OWN packet wire and against C++'s fixed form.
+
+    bench/paired/nine.sh                    # the Studio (macOS, unpinned by construction)
+    bench/paired/nine.sh --lane 7           # Space, on that line's own isolated core
+
+Both lines run `bench/paired -mode fast -fast-rounds 3` and render
+`NINE.md` (and `nine.json`) into the output directory, and print the table.
+`--lane N` is the Space form: it builds through `~/bin/pin-spread` so the
+compilers spread over the isolated cores, then runs the WHOLE sitting through
+`~/bin/bench-lane N`, which holds that core's lock once and `taskset`s every
+runner the driver forks onto it. Space's lanes are 1..15 and each line owns
+one; there is no coordinator in the loop.
+
+**The tree decides the rows, not the script.** `-mode table` asks the
+filesystem which `bench/tables/<lang>/` runners this checkout carries, then —
+before any clock — runs each of them over ONE rotation of the 64 records and
+hands the output to the same parser that will accept or refuse the measured
+rows. That probe is what catches a leg whose fixed-form port has not landed:
+it loads a different set of goldens, reports a different `corpus_id`, and is
+not divisible against a paired packet row. Such a leg is NAMED under the table
+with its refusal, exactly as a leg with no runner at all is named with that.
+Neither is ever estimated, and no row is ever carried in from another sitting.
+
+So the same unedited line runs on a leg branch, on the integration branch and
+on main, each printing the truth about the tree it ran on — and a leg's row
+appears on its own the day that leg lands, with nothing here to edit.
+
+The driver measures the paired languages together (the only shape that yields
+a packet ratio) and each table-only language alone; a table refuses to combine
+passes that disagree about build, host, architecture, corpus id, round count
+or iteration count per wire.
+
+### The reading rule
+
+- **Never mix hosts or modes in one row, or in one table.** A Studio number
+  and a Space number are two sittings and two tables. So are `-mode fast` and
+  `-mode run`. The header names the host, the CPU, the revision, the lane, the
+  round and pass counts, the corpus ids and the iteration counts precisely so
+  that a pasted table cannot lose which sitting it came from.
+- **A loaded Studio row says so.** The table's header carries the observed
+  load1 range, and a sitting with any process-monitor warning carries a bold
+  line saying the host was not quiet. Read those rows accordingly — do not
+  quietly drop the warning when pasting.
+- **The `Wire` column is load-bearing.** A leg whose fixed-form port has not
+  landed still measures the tolerant form, and its row says `form 2
+  (tolerant)`. Both forms carry the same 64 logical records under the same
+  corpus id, so both are divisible against one packet row — but they are not
+  the same wire and the table never implies they are.
+- **`% of own packet` is that language's own packet wire = 100%**, so below
+  100% means the table wire beats it. A language with no packet leg reads
+  `—`; no other language's packet may stand in for it.
+- **`% of C++ form 3` is C++'s fixed form = 100%.** A sitting with no C++
+  fixed-form row renders that whole column unavailable rather than promoting
+  some other language to the reference.
+- **Nothing here is certified.** `-mode fast` has reduced iteration counts, no
+  bracketing drift controls and no quiet-window seal. **The certified sitting
+  is `-mode run` on Space inside the quiet window**, seven rounds, with the
+  operator's READY/START receipt — `bench/paired/README.md`. A fast table is
+  for iteration and for a PR's "after" record; it is not a performance claim.
 
 ## The shape gate
 

@@ -34,9 +34,11 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	for path, data := range map[string][]byte{
-		"Makefile": makefile,
-		"go.mod":   []byte("module probefixture\n\ngo 1.26\n"),
-		"root.go":  []byte("package probefixture\n"),
+		"Makefile":               makefile,
+		"go.mod":                 []byte("module probefixture\n\ngo 1.26\n"),
+		"root.go":                []byte("package probefixture\n"),
+		"make/lua.mk":            []byte{},
+		"compiler/target_lua.go": []byte("//go:build schema_leg_lua\n\npackage compiler\n"),
 	} {
 		if err := os.WriteFile(filepath.Join(fixture, path), data, 0o644); err != nil {
 			t.Fatal(err)
@@ -55,6 +57,9 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	run(root, "go", "build", "-o", filepath.Join(fixture, "bin", "schema"), "./cmd/schema")
 	out := run(fixture, "make", "--no-print-directory", "tables-ports-refuse-wide-scalars")
 	t.Log(strings.TrimSpace(out))
+	if !strings.Contains(out, "lua has no --lang yet (schema new-leg skeleton)") {
+		t.Fatalf("tagged scaffold was not identified:\n%s", out)
+	}
 	counts := regexp.MustCompile(`(\d+) ports refuse the unit by name.*; (\d+) carry the kinds`).FindStringSubmatch(out)
 	if len(counts) != 3 {
 		t.Fatalf("probe did not report both outcomes:\n%s", out)
@@ -71,7 +76,7 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(legs) == 0 || refused+carried != len(legs) {
+	if len(legs) == 0 || refused+carried != len(legs)-1 {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}
 	if _, err := os.Stat(filepath.Join(fixture, "build", "tables-wide-refusal", "go", "Scalars.go")); err != nil {
@@ -88,5 +93,32 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	}
 	if got := packages(); !slices.Contains(got, "probefixture/build/tables-wide-refusal/go") {
 		t.Fatalf("removing the module boundary did not expose the probe: %v", got)
+	}
+
+	// An unregistered port is skippable only when its target file proves that it
+	// is an intentional new-leg scaffold. The same compiler error without that
+	// exact marker is a disappeared live backend and must keep the gate red.
+	target := filepath.Join(fixture, "compiler", "target_lua.go")
+	if err := os.WriteFile(target, []byte("package compiler\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(fixture, "bin", "schema")
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newer := info.ModTime().AddDate(0, 0, 1)
+	if err := os.Chtimes(bin, newer, newer); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("make", "--no-print-directory", "tables-ports-refuse-wide-scalars")
+	cmd.Dir = fixture
+	outBytes, err := cmd.CombinedOutput()
+	out = string(outBytes)
+	if err == nil {
+		t.Fatalf("unmarked unregistered backend passed the gate:\n%s", out)
+	}
+	if strings.Contains(out, "schema new-leg skeleton") || !strings.Contains(out, "backend stopped for another reason") {
+		t.Fatalf("unmarked backend did not fail as an ordinary backend:\n%s", out)
 	}
 }

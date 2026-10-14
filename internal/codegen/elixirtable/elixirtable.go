@@ -1,20 +1,17 @@
 // Package elixirtable emits the Elixir TABLE surface (docs/SPEC-TABLES.md):
 // the BLOCK form's read side in <Base>Block.ex (§19) and the COOKED form's
-// read side in <Base>Cook.ex (§7), with their shared runtime modules, the
-// id-table wire's shared framing runtime in TableRuntime.ex (§3, §5) and the
+// read side in <Base>Cook.ex (§7), with their shared runtime modules and the
 // unit's BuildVersion module, emitted only when the unit declares tables.
 //
 // THE ACCELERATOR TIER. A block is POINTED AT and a cook is OPENED; neither
-// parses a wire, so both reach every fixed table of the unit. The TABLE WIRE's
-// PER-FILE half — the codecs, the reflection descriptors and the text form of
+// parses a wire, so both reach every fixed table of the unit. The TABLE WIRE
+// itself — the codecs, the reflection descriptors and the text form of
 // docs/SPEC-TABLES.md §3, §4, §8 and §16 in their id-table form — is not
-// emitted for Elixir yet. The port that once stood here wrote the form that
+// emitted for Elixir. The port that once stood here wrote the form that
 // preceded the id-table wire, which the current specification does not
 // describe and the C++ reference does not open; it was removed rather than
-// carried (schema#515 is the row that brings the wire to Elixir). What IS
-// emitted of the wire is the SHARED framing runtime, TableRuntime.ex (wire.go),
-// so a per-file emitter lands against primitives already held by test.
-// ROADMAP.md marks the cells.
+// carried (schema#515 is the row that brings the wire to Elixir). ROADMAP.md
+// marks the cells.
 package elixirtable
 
 import (
@@ -36,17 +33,63 @@ const BuildVersionModule = "BuildVersion"
 // module per file that has one, and the block modules. Empty when the unit
 // declares no table: a table-free unit's Elixir output is byte-identical with
 // this backend in the chain or out of it.
-func Generate(u *ir.Unit) (map[string][]byte, error) {
+func Generate(u *ir.Unit) (map[string][]byte, error) { return GenerateLineage(u, nil) }
+
+// GenerateLineage is [Generate] with the LOCK'S LINEAGE handed in: per fixed
+// table, the locked layouts OLDEST FIRST, the current one last, each carrying
+// §5.2's facts (docs/FIXED-FORM-ALGORITHM.md §5.9 #1). THE BACKEND OPENS NO
+// FILE: `lockfile.Open`, `lockfile.Lineage` and `lockfile.Floor` are the
+// CALLER's three calls, so the disk is read in one place and a test can play
+// the lock in one line. A nil lineage is the NO-LOCK case — a unit that was
+// never locked promises nothing, so every table serves its own layout and
+// refuses every other hash by name.
+func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return nil, nil
 	}
-	if err := ir.RefuseWideTableKinds(u, "Elixir"); err != nil {
-		return nil, err
+	// §15's WIDE-KIND REFUSAL IS THE FORM-1 ACCELERATORS' AND NOT THE WIRE'S
+	// (ir.WideTableKinds): the block form and the cooked form are what must
+	// name a kind's storage column and its reflection descriptor, and the fixed
+	// form names no kind at all on its emitted path — a 128-bit field is a
+	// sixteen-byte store and a `fixed(I, F)` is its raw scaled integer, and the
+	// kind byte a reader compares rides in the LAYOUT the emitter already
+	// writes.
+	//
+	// THE FIXED FORM HAS LANDED HERE, so `fixedForm` is now this backend's OWN
+	// answer rather than the `false` every leg passed while none of them
+	// carried a form-3 codec. It is not ir.TableFixedAnyEmitted: that is the
+	// answer a port whose coverage is the reference's passes, and this leg
+	// narrows further, because coverage is a port's own state and every leg
+	// answers from its own roots for that reason. So the answer is THIS LEG'S
+	// OWN ROOTS (fixedRoots, which narrows on ir.TableFixedSupported — the ONE
+	// closure test, this leg holding no private copy of it).
+	// A unit whose wide kinds cost it the accelerators and
+	// that has no fixed form to put in their place still has nothing to emit
+	// and is still refused WHOLE and by name.
+	scope := ir.WideTableKinds(u, "Elixir", len(fixedRoots(u)) > 0)
+	if scope.Unit {
+		return nil, scope.Refusal
 	}
 	out := map[string][]byte{}
 	closure := ir.TableClosure(u)
 	blocks := ir.Blocks(u)
 	ns := ir.GoExportName(u.Package)
+
+	// THE VARIABLE FORM'S BOUNDARY (docs/SPEC-TABLES.md §11): the card slice
+	// this backend carries is admitted; every other variable-class construct is
+	// refused by name rather than mis-encoded. THE REFUSAL IS THE VARIABLE
+	// FORM'S OWN. A unit the BLOCK, COOK or FIXED form already serves emits
+	// those forms as it did before — none of them reads or writes a form-`1`
+	// byte, so a variable table beside them is not mis-encoded by anything this
+	// leg writes, and refusing the whole unit would take the block and cook
+	// surfaces down with it (docs/SPEC-TABLES.md §2.7, §3.4). The boundary
+	// therefore binds a unit the variable form OWNS: one whose closure holds no
+	// fixed table, which is where the wire this card teaches is the only answer.
+	if !closureHoldsFixedTable(u, closure) {
+		if err := refuseCardUnsupportedVariableConstructs(u); err != nil {
+			return nil, err
+		}
+	}
 
 	// A DECLARATION LOWERS TO A MODULE under the unit's namespace, so one named
 	// for a generated file's module would merge two unrelated modules. The
@@ -55,7 +98,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// basename, which no unit-level registry can hold, so they are refused here
 	// — beside the same refusal the packet emitter already makes for <Base>.
 	for decl := range u.DeclFile {
-		for _, suffix := range []string{"Block", "Cook"} {
+		for _, suffix := range []string{"Block", "Cook", FixedModuleSuffix} {
 			for _, f := range u.Files {
 				if decl == ir.GoExportName(f.Base)+suffix {
 					return nil, fmt.Errorf("declaration %s collides with the module the Elixir table backend writes for schema file %s.schema (%s.%s%s); rename one of them",
@@ -65,31 +108,56 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 	}
 
-	if anyCookable(u, closure) {
-		out[CookRuntimeModule+".ex"] = cookRuntimeModule(u, ns)
+	if !scope.Accelerators {
+		if anyCookable(u, closure) {
+			out[CookRuntimeModule+".ex"] = cookRuntimeModule(u, ns)
+		}
+
+		for _, f := range u.Files {
+			g := &gen{unit: u, ns: ns, file: f, closure: closure}
+			if body := g.cookModule(); body != nil {
+				out[f.Base+"Cook.ex"] = body
+			}
+		}
+
+		// the BLOCK form: nothing declares it, every fixed table has one, and
+		// it lives in its own module so a consumer that never opens a block
+		// pays only for a module it never calls (docs/SPEC-TABLES.md §19).
+		if blocks != nil {
+			blockOut, err := generateBlocks(u, ns, blocks)
+			if err != nil {
+				return nil, err
+			}
+			maps.Copy(out, blockOut)
+		}
 	}
-	// the id-table wire's shared framing (docs/SPEC-TABLES.md §3, §5): the
-	// primitives every variable table's codecs call, emitted once per unit the
-	// way the two accelerators' runtimes are.
-	out[TableRuntimeModule+".ex"] = tableRuntimeModule(u, ns)
+
+	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: this backend's
+	// FIRST table WIRE. Form 1 is still deferred to schema#515 and nothing here
+	// reads or writes one.
+	fixed, err := generateFixed(u, ns, lineage)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(out, fixed)
+
+	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1: the id-table
+	// wire the card constructs read and write byte for byte as the Go, C, C++
+	// and C# backends do. It is emitted for the unit the variable form OWNS —
+	// one whose closure holds no fixed table, which is where the card's slice
+	// is the only answer — and not for a unit the fixed form already serves.
+	if !closureHoldsFixedTable(u, closure) {
+		maps.Copy(out, generateVariableForm(u, ns))
+	}
+
 	out[BuildVersionModule+".ex"] = buildVersionModule(u, ns)
 
-	for _, f := range u.Files {
-		g := &gen{unit: u, ns: ns, file: f, closure: closure}
-		if body := g.cookModule(); body != nil {
-			out[f.Base+"Cook.ex"] = body
-		}
-	}
-
-	// the BLOCK form: nothing declares it, every fixed table has one, and it
-	// lives in its own module so a consumer that never opens a block pays only
-	// for a module it never calls (docs/SPEC-TABLES.md §19).
-	if blocks != nil {
-		blockOut, err := generateBlocks(u, ns, blocks)
-		if err != nil {
-			return nil, err
-		}
-		maps.Copy(out, blockOut)
+	// THE MESSAGE FORM'S ANNOUNCEMENT (docs/SPEC-TABLES.md §3.3): the surface a
+	// `fixed table` root owes. The form is a fixed table's and nobody else's, so
+	// the announcement surface is emitted for fixed roots, beside BuildVersion —
+	// the announcement is a compile-time constant of the unit.
+	if len(fixedRoots(u)) > 0 {
+		out[TableMessageModule+".ex"] = messageformModule(u, ns)
 	}
 	return out, nil
 }

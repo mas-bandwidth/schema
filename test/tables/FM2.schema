@@ -1,0 +1,59 @@
+// FM2.schema — FM1 one generation on: an arm INSERTED IN THE MIDDLE and a
+// field appended, so the layouts differ, the hashes differ and each side reads
+// the other through a COMPILED plan (docs/SPEC-TABLES.md §3.4). See FM1.schema
+// for what the arms are for.
+//
+//   1 wide    unmoved
+//   2 skip    AN ARM FM1 HAS NO NAME FOR: an FM1 reader meets a tag it cannot
+//             resolve and the whole union takes its prefill, never another
+//             arm's bytes
+//   3 narrow  ordinal 2 -> 3
+//   4 raw     ordinal 3 -> 4
+//   5 list    ordinal 4 -> 5
+package tblfm2
+
+type MarkWide
+{
+    w wstring(4)
+    n int32 = 0 | min = 0, max = 1000
+}
+
+type MarkNarrow
+{
+    s string(6)
+    n int32 = 0 | min = 0, max = 1000
+}
+
+type MarkRaw
+{
+    d bytes(4)
+    n int32 = 0 | min = 0, max = 1000
+}
+
+type MarkList
+{
+    items [..2]int32 | min = 0, max = 1000
+    n     int32 = 0      | min = 0, max = 1000
+}
+
+type MarkSkip
+{
+    e int32 = 0 | min = 0, max = 1000
+}
+
+union Mark
+{
+    wide   MarkWide
+    skip   MarkSkip
+    narrow MarkNarrow
+    raw    MarkRaw
+    list   MarkList
+}
+
+fixed table MarkRoot
+{
+    id    uint32 = 0
+    mark  Mark
+    after int32 = 7 | min = 0, max = 1000
+    tail  int32 = 3 | min = 0, max = 1000
+}

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- cell-cs-c13 — present flag byte != 0 (docs/FIXED-FORM-ALGORITHM.md:335).
+       Standalone: this Program.cs and the generated tables code it reads, in
+       the shape of rows/W14. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>annotations</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>cell-cs-c13</AssemblyName>
+    <TablesGeneratedDir Condition="'$(TablesGeneratedDir)' == ''">../../../../../build/tables-generated-cs</TablesGeneratedDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="$(TablesGeneratedDir)/p3/*.cs" />
+  </ItemGroup>
+
+</Project>

@@ -690,20 +690,15 @@ struct Aligned
     // battery are about, and a file alone cannot carry it. The allocation is
     // the claim, so a reader that walks past what it was given walks into a
     // sanitizer's redzone rather than into a neighbour.
-    //
-    // `lead` is the POINTER column: 0 an aligned base, 1..63 that many bytes
-    // past one. An unaligned base is a pointer fact and not a file fact, so the
-    // bytes are copied AT the base the column states and the base-alignment
-    // clause is the one that must refuse them.
-    bool create( const std::vector<uint8_t> & data, int64_t extent, int lead = 0 )
+    bool create( const std::vector<uint8_t> & data, int64_t extent )
     {
         // the allocation IS the claim, and the claim may be shorter than the
         // file: a driver copies what fits and zeroes the rest, which is the one
         // rule both forgery batteries read the extent column by.
         bytes = extent < 0 ? (int64_t) data.size() : extent;
-        raw = (uint8_t *) malloc( (size_t) ( bytes > 0 ? bytes : 1 ) + 64 + (size_t) lead );
+        raw = (uint8_t *) malloc( (size_t) ( bytes > 0 ? bytes : 1 ) + 64 );
         if ( raw == NULL ) return false;
-        base = (uint8_t *) ( ( (uintptr_t) raw + 63 ) & ~(uintptr_t) 63 ) + lead;
+        base = (uint8_t *) ( ( (uintptr_t) raw + 63 ) & ~(uintptr_t) 63 );
         memset( base, 0, (size_t) bytes );
         const size_t copy = data.size() < (size_t) bytes ? data.size() : (size_t) bytes;
         memcpy( base, data.data(), copy );
@@ -716,10 +711,10 @@ struct Aligned
 // false (docs/SPEC-TABLES.md §19.2): the caller's own initial value is what
 // a match leaves standing
 static bool open_block( const std::string & name, const std::vector<uint8_t> & data, int64_t extent,
-                        blockdemo::TableRefuseReason * reason = NULL, int lead = 0 )
+                        blockdemo::TableRefuseReason * reason = NULL )
 {
     Aligned storage = {};
-    if ( !storage.create( data, extent, lead ) ) return false;
+    if ( !storage.create( data, extent ) ) return false;
     bool opened = false;
     if ( name.rfind( "block_render", 0 ) == 0 )
     {
@@ -1398,11 +1393,7 @@ static int surface_forgery( const std::string & out )
         if ( f[2] != "block" ) continue; // the cook's battery is its own binary's
         std::vector<uint8_t> data;
         if ( !slurp( f[4].c_str(), data ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
-        // the POINTER column is the caller's buffer: 0 an aligned base, 1..63
-        // that many bytes past one. The block battery carries one such row, so
-        // the base-alignment clause is held here as it is in the cook battery.
-        const int lead = f[6] == "null" ? 0 : (int) strtol( f[6].c_str(), NULL, 0 );
-        const char * verdict = open_block( f[3], data, (int64_t) strtoll( f[5].c_str(), NULL, 0 ), NULL, lead ) ? "open\n" : "refuse\n";
+        const char * verdict = open_block( f[3], data, (int64_t) strtoll( f[5].c_str(), NULL, 0 ) ) ? "open\n" : "refuse\n";
         if ( !spill( out, f[1], verdict, strlen( verdict ) ) ) return 1;
     }
     return 0;
@@ -1450,8 +1441,7 @@ static int surface_block_reason( const std::string & out )
         std::vector<uint8_t> data;
         if ( !slurp( f[4].c_str(), data ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
         blockdemo::TableRefuseReason reason = blockdemo::ok;
-        const int lead = f[6] == "null" ? 0 : (int) strtol( f[6].c_str(), NULL, 0 );
-        const bool opened = open_block( f[3], data, (int64_t) strtoll( f[5].c_str(), NULL, 0 ), &reason, lead );
+        const bool opened = open_block( f[3], data, (int64_t) strtoll( f[5].c_str(), NULL, 0 ), &reason );
         std::string answer = std::string( opened ? "ok" : reason_name( reason ) ) + "\n";
         if ( !spill( out, r[1], answer.data(), answer.size() ) ) return 1;
     }
@@ -1465,9 +1455,8 @@ static int surface_block_reason( const std::string & out )
 // The battery in test/tables/block_main.cpp names the words it damages through
 // the projection's own field names, which no other language can read out of a
 // manifest. This mode resolves each of them to a BYTE OFFSET inside the block
-// image and prints the manifest lines, so the eleven words — and the
-// base-alignment row that damages no word — become data every backend runs, the
-// C++ one included, through the same path.
+// image and prints the manifest lines, so the eleven forgeries become data
+// every backend runs — the C++ one included, through the same path.
 
 struct Patch
 {
@@ -1538,12 +1527,11 @@ static int emit_block_forgeries()
 
     printf( "# THE BLOCK FORGERY BATTERY as data (docs/SPEC-TABLES.md §19.2), pinned from\n" );
     printf( "# test/tables/block_main.cpp's eleven by test/conformance/cpp: each row is one\n" );
-    printf( "# word of an otherwise valid block image, resolved to a byte offset, plus the\n" );
-    printf( "# base-alignment row the cook battery has always carried and the block's had not.\n" );
+    printf( "# word of an otherwise valid block image, resolved to a byte offset.\n" );
     printf( "#\n" );
     printf( "#   forgery <name> block <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label>\n" );
     printf( "#\n" );
-    printf( "# <base> names the block line the image comes from; <extent> is the length the\n# CALLER claims (-1: the image's own); <pointer> is the BUFFER the caller holds —\n# 0 an aligned base, 1..63 that many bytes past one, `null` no buffer at all —\n# because an unaligned base is a pointer fact and not a file fact.\n" );
+    printf( "# <base> names the block line the image comes from; <extent> is the length the\n# CALLER claims (-1: the image's own); <pointer> is 0 — every block row is read\n# out of an ALIGNED base, and the column is the cook battery's.\n" );
     printf( "# The harness applies the patch and hands a driver a path.\n" );
     printf( "# Repin with: make conformance-pin.\n" );
     for ( size_t i = 0; i < sizeof( patches ) / sizeof( patches[0] ); i++ )
@@ -1553,11 +1541,6 @@ static int emit_block_forgeries()
                 p.name, (unsigned long long) p.offset, p.width,
                 (unsigned long long) p.value, (long long) p.claim, p.verdict, p.label );
     }
-    // and the base-alignment row, which damages no word: the image is whole and
-    // the CALLER's buffer sits one byte past an aligned base, so only the last
-    // clause of the read can refuse it (docs/SPEC-TABLES.md §19.2).
-    printf( "forgery %-26s block block_render block_render 1 -1 0 0 -1 refuse a base one byte past an aligned one\n",
-            "block_base_unaligned" );
     storage.destroy();
     return 0;
 }

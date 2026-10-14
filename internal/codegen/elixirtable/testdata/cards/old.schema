@@ -1,0 +1,9 @@
+// cardpair — the OLDER declaration of the pair (see new.schema): the same
+// table, one field before the rename and one field the newer declaration
+// dropped.
+package cardpair
+
+table Card {
+    label string(32)
+    extra string(16)
+}

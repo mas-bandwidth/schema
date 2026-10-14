@@ -1,0 +1,10 @@
+// retain_old.schema — the OLDER declaration of the retain-unknown pair
+// (docs/SPEC-TABLES.md §6.6): the reader that cannot name the newer build's
+// `future`, `future_text` and `future_note` fields. Its retained Load and Save
+// keep the scalar and the string and report the *string as a loss.
+package cards
+
+table Entry
+{
+    id string(16)
+}

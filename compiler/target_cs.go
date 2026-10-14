@@ -15,7 +15,18 @@ type csTarget struct{}
 
 func (csTarget) Names() []string { return []string{"cs", "csharp"} }
 
-func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+// Generate is the NO-LINEAGE case: a unit whose lock the caller did not read,
+// or that has none. Every fixed table then carries the single entry it can
+// always compute — its own (docs/FIXED-FORM-ALGORITHM.md §5.9 #1).
+func (t csTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
+	return t.GenerateLineage(u, opts, nil)
+}
+
+// GenerateLineage is the second entry point of §5.9 #1: the driver read the
+// unit's lock once (compiler/lineage.go) and hands the lineage down as DATA, so
+// cstable opens no file and a build ships a reader for every layout the lock
+// records.
+func (csTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
 	// Wide text and declared value defaults are carried on both wires.
 	if err := refuseWideText(u, "cs"); err != nil {
 		return nil, err
@@ -30,7 +41,7 @@ func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	// units that declare tables ALSO get <Base>Table.cs per file — the
 	// table-wire codecs and optional native surfaces; a table-free unit's
 	// output is byte-identical to what the packet emitter alone produces
-	tables, err := cstable.Generate(u)
+	tables, err := cstable.GenerateLineage(u, csTableLineage(u, lineage))
 	if err != nil {
 		return nil, err
 	}
@@ -41,6 +52,41 @@ func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 		files[name] = data
 	}
 	return files, nil
+}
+
+// csTableLineage is the lock's lineage in the C# backend's own spelling. Nil in,
+// nil out: a unit with no lock hands nothing, and every table then carries its
+// own entry alone.
+//
+// THE RECORD SIZE IS THE COMPILER'S AND IS PASSED THROUGH. §5.2's record_bytes
+// is the whole record — the eight hash bytes and then the body — and the value
+// this leg emits for an older layout is exactly the one the shared lineage read
+// reports for it. Adding eight here would make the C# leg disagree with every
+// other leg the day the shared value changes, so the arithmetic stays in the one
+// place that owns it (internal/lockfile, §5.9 #1) and this function is a
+// translation and nothing else.
+func csTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]cstable.FixedLineageEntry {
+	if lineage == nil {
+		return nil
+	}
+	out := map[string][]cstable.FixedLineageEntry{}
+	for _, st := range ir.TableFixedRoots(u) {
+		entries := lineage.Entries(st.Name)
+		if len(entries) == 0 {
+			continue
+		}
+		for _, e := range entries {
+			out[st.Name] = append(out[st.Name], cstable.FixedLineageEntry{
+				Wire:    e.Wire,
+				Layout:  e.Layout,
+				Digest:  e.Digest,
+				Record:  e.Record,
+				Retired: e.Retired,
+				Reason:  e.Reason,
+			})
+		}
+	}
+	return out
 }
 
 func init() {

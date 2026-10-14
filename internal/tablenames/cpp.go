@@ -23,6 +23,8 @@ func init() {
 		Name{Name: "previous_form", What: "a form byte this form is AHEAD of — the variable form handed to a fixed reader (§3, §3.4)"},
 		Name{Name: "no_vocabulary", What: "no table for this connection"},
 		Name{Name: "second_announcement", What: "a second announcement on a connection: it sets nothing and the connection closes"},
+		Name{Name: "build_version_mismatch", What: "a strict announcement whose build version is not this unit's (§3.3)"},
+		Name{Name: "TableBuildVersionMismatch", What: "the typed error a strict build-version refusal carries, with the peer's version and this unit's own (§3.3)"},
 		Name{Name: "vocabulary_too_large", What: "an announcement above the receiver's declared bound"},
 		Name{Name: "message_form_as_file", What: "a form 2 wire where a FILE was expected"},
 		// THE FILE REFUSALS (docs/SPEC-TABLES.md §6.5, §7, §11, §19.2): the one
@@ -213,5 +215,12 @@ func init() {
 		// claimed here because it is a unit-level name the generated block sources
 		// define.
 		Name{Name: "BuildVersion", What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust, Java, Elixir and JavaScript put it at unit scope — Java in a file of its own name, Elixir as a module, JavaScript as a module-scope export — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},
+		// THE FIXED FORM's plan cache (docs/SPEC-TABLES.md §3.4): keyed by the
+		// layout hash so a compile is paid once per peer, not once per record.
+		// The rest of the fixed form's names are still owed (reference-fix 8).
+		Name{Name: "TableFixedPlanCache", What: "the plan cache BY HASH, so a compile is paid once per peer and never once per record"},
+		Name{Name: "TableFixedPlanCacheSlot", What: "one cached compiled plan: hash, plan pointer, count, record_bytes"},
+		Name{Name: "kTableFixedPlanCacheCapacity", What: "the plan cache's named bound: 64, overflow is a miss"},
+		Name{Name: "TableFixedPlanCacheInit", What: "bind caller-owned slot storage to a plan cache"},
 	)
 }

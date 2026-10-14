@@ -1,6 +1,6 @@
 # schema
 
-[![CI](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml/badge.svg)](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml)
+[![CI](https://github.com/mas-bandwidth/schema/actions/workflows/ci-fast.yml/badge.svg)](https://github.com/mas-bandwidth/schema/actions/workflows/ci-fast.yml)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
 **Schema. The data language for games.**
@@ -103,7 +103,6 @@ sandboxed build and an editor integration all work.
 | Document | What's in it |
 |---|---|
 | **[ROADMAP.md](ROADMAP.md)** | Where schema stands, feature by feature and language by language, what we are building next, and how to support the work. |
-| **[MATRIX.md](docs/MATRIX.md)** | The published matrix: the feature-by-language cells and one maturity state per language, generated from `docs/matrix.json` and printed with each release. |
 | **[TUTORIAL.md](docs/TUTORIAL.md)** | Fourteen parts, from an empty directory to a program that uses every feature. Start here. |
 | **[USAGE.md](docs/USAGE.md)** | Every language feature, with the code it generates. |
 | **[SPEC.md](docs/SPEC.md)** | The normative reference for the type wire: grammar, wire law, every edge case. |

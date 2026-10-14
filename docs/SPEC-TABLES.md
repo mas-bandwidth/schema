@@ -245,13 +245,35 @@ C-like dialect of `serialize.h`, with library calls behind hooks (§13.9).
 C++ and C carry both storage classes. C# carries both classes and the current
 id-table file and bitpacked message forms, JSON, runtime cook writing, block
 construction, native regions, builders, retain-unknown and UnitView. Go carries
-these surfaces too. Rust, Dart, JavaScript, Elixir and Java carry no table
-wire: each emits the block and cook read halves only (schema#518, #514, #516,
-#515 and #517 bring the id-table wire to those ports). Every generated language has
-a table backend; refusal is scoped to a construct, never the table declaration.
+these surfaces too. Rust, Elixir and Java carry no table
+wire: each emits the block and cook read halves only (schema#518, #515
+and #517 bring the id-table wire to those ports). **Dart and JavaScript carry the
+FIXED form (§3.4) and nothing else**: form 3 is each port's first table wire —
+the write template, the plan-driven read and the LAYOUT / vocabulary block — and
+neither has form 1 at all until schema#514 and #516 bring one. Their fixed forms carry the
+fixed-point and 128-bit kinds §15 refuses their ACCELERATORS, because
+§3.4's constant-size table fixes them; a unit declaring one gets the fixed form and no
+block or cook read half in Dart, and JavaScript carries the OPTIONAL wrapper —
+kind 35, the present byte in front of a payload that rides whole — whose flag
+lands in a PRESENCE MEMBER on the table's own storage class. That class is the
+table backend's own: `?T` is a table construct, so an optional never appears in
+a `type`, and the packet emitter — which emits a class for every `type` and
+none for a `table` — neither declares the member nor reads it. Every generated
+language has a table backend; refusal is scoped to a construct, never the table declaration.
 
 **WIRE FORM STATUS.** Section 3's id-table form is carried by the C++
-reference, the compiler engine (`internal/tablewire`), C, C# and Go. The C codec uses
+reference, the compiler engine (`internal/tablewire`), C, C# and Go. Section
+3.4's FIXED form is carried by the C++ reference, by Dart, and by JavaScript, whose
+layout/block, hash and record bytes are held against the reference's own over the
+paired bench's corpus, the seven reference files (`tables-dart-fixed-form`), and over an
+OPTIONAL corpus the reference writes at every place a present byte can ride —
+a nested table, a scalar, an enum, and one inside a nested body (`tables-js-fixed-form`).
+Dart's registered target carries direct scalar, text, bounded-array and
+payload-free union arms in explicitly fixed table
+closures supported by its fixed emitter. A payload-free arm carries its tag
+and no member; kind `32` has zero payload bytes (§2.6, §3.4). Variable-table
+closures continue to name unsupported forms at generation.
+The C codec uses
 full identities, canonical LEB128, first-use references, arm-kind framing,
 flat node records and verdict-bearing reports. Graph JSON, pointer arrays,
 byte/string blobs, wide scalars, fixed-point values, defaults and aliases ride
@@ -264,9 +286,10 @@ reasons and const block handles. Its UnitView registry includes table-free
 units. C also reads and writes bitpacked message batches, with caller-owned
 resolved announcement entries and native regions for graphs and collections.
 C retains unknown fields in caller-owned storage for variable file roots and
-message loads, and writes retained file roots (§6.6). Rust, Dart, JavaScript,
+message loads, and writes retained file roots (§6.6). Rust, JavaScript,
 Elixir and Java write no table wire: each carries the block and cook read
-halves only. [ROADMAP.md](../ROADMAP.md) records coverage by construct and form.
+halves only. Dart writes FORM 3 and only form 3 (§3.4).
+[ROADMAP.md](../ROADMAP.md) records coverage by construct and form.
 
 The C report has added `widened`, `retained`, `retain_lost`, `refused` and `reason` members after
 `malformed`. Recompile callers with their generated headers and initialize a
@@ -390,10 +413,31 @@ their own `<Name>Row` structs, as they are in C#, because SPEC §6.1's Rust
 storage column spells `string(N)` as `[u8; N]` where the layout model spells
 `char[N + 1]`; the layout contract is asserted over them AT COMPILE TIME, with
 const asserts over `core::mem::offset_of!`, where C++ has `static_assert` and
-C# has a check run at type initialization. A UNION in a cooked record is a
-named follow-on there for the same reason it is absent from the block form: a
-Rust union is a real enum with no committed payload layout, and the
-`#[repr(C)] union` twin is a pass of its own.
+C# has a check run at type initialization. A UNION in one of those records is
+the `#[repr(C)]` TWIN — `<Name>Row`, a tag at offset zero at its own storage
+width beside `<Name>RowArms`, a `#[repr(C)] union` of the arms — because a
+Rust union on the packet wire is a real enum with no committed payload layout
+and the Row family needs one that has: the twin IS ir.UnionLayout, the same
+model the C++ reference's storage struct meets, and the const asserts hold
+this build to it arm by arm. Rust says out loud what the C reference leaves
+unsaid: READING an arm is `unsafe` and every such read is guarded by the tag,
+while WRITING one is safe. THE TAG AND THE OVERLAY ARE THE CRATE'S AND NOT THE
+CALLER'S, for exactly that reason: a public tag beside a public overlay, with
+safe functions reading the arm the tag names, is undefined behaviour with no
+`unsafe` anywhere near the caller — nothing would stop the tag moving without
+its arm, and the next safe read would build a `bool` out of a byte that is
+neither 0 nor 1. The public surface is a CHECKED ACCESSOR PAIR per arm —
+`x() -> Option<XRow>` hands the arm back only when the tag names it, and
+`set_x()` is the only way the tag moves at all — so tag and arm cannot
+disagree, and the generated codecs inside the crate still read the overlay
+under `unsafe` guarded by the tag they just matched, exactly as the C
+reference's `switch` is. What is still a named follow-on is narrower than
+the twin was: an arm whose storage needs a COMPANION beside it — text, or an
+array with its count — is two pieces in one slot of the overlay that C++
+spells as an unnamed struct and no port lays out (§3.4 refuses those arms
+outright), and a union's reflective COOK DESCRIPTOR, whose fields would
+overlap, which is why a union-reaching record has a Row and a fixed form but
+no `<Name>Cook`.
 
 And the THIRD: **the two accelerators are cargo features**, both on by
 default. §19's rule is that the block form costs nothing unless you reach for
@@ -410,11 +454,7 @@ does.
 **GO emits four sources per unit file**: `<Base>Table.go` (the storage structs,
 the codecs, the reflection descriptors), `<Base>Block.go` and `<Base>Cook.go`
 (the two accelerators, §19 and §7), and one `<Home>TableJson.go` per unit (the
-generic text walk). The unit's shared runtime is emitted ONCE, into the
-package's home `<Package>Table.go` — the file named for the package when one
-exists, else a file emitted for the unit — named by the PACKAGE so an
-earlier-sorting file cannot relocate it (§19.2). Two spellings are Go's own and
-the reason is at each site:
+generic text walk). Two spellings are Go's own and the reason is at each site:
 an enum's identity pair (`TableEnumId` / `TableEnumValue`) is a METHOD on the
 enum type, because Go has no overloading and a free pair would have to mint a
 per-enum unit-level name §11 does not claim; and an enum-keyed array's storage
@@ -424,19 +464,14 @@ generic array extent. Its layout contract is a generated `init()` that REFUSES,
 naming the record, the field and both numbers, where C++ has `static_assert`,
 Rust has a const assert and C# a check at type initialization.
 
-**JAVA emits the two accelerators and the table wire's foundation.** A unit
-that declares tables gets `<Table>Block.java` (§19) and `<Table>Cook.java` (§7)
-per table, `<Name>Row.java` for every blittable record in the closure, and the
-runtime types those need; it gets no `<Base>Table.java`. The Java port of the
-table wire wrote the form that preceded the id-table wire, which this
-specification does not describe and the C++ reference does not open, and it was
-removed rather than carried (schema#517 brings the current wire to Java;
-ROADMAP.md marks the cells). What the port carries today is the form's
-FOUNDATION, `TableIds.java`: the form byte read first, `fnv1a64` identity at
-sixty-four bits, the canonical LEB128 reader and writer with the non-minimal
-refusal, and the first-use id table whose entry count is the file's last
-little-endian u64 (§3) — so the codecs land over a form this port already
-spells. **JAVA's divergences**, each forced by the language and each
+**JAVA emits the two accelerators and no table wire.** A unit that declares
+tables gets `<Table>Block.java` (§19) and `<Table>Cook.java` (§7) per table,
+`<Name>Row.java` for every blittable record in the closure, and the runtime
+types those need; it gets no `<Base>Table.java`. The Java port of the table
+wire wrote the form that preceded the id-table wire, which this specification
+does not describe and the C++ reference does not open, and it was removed
+rather than carried (schema#517 brings the current wire to Java; ROADMAP.md
+marks the cells). **JAVA's divergences**, each forced by the language and each
 named where it is spelled: **the unit's namespace is the PACKAGE and a public
 type lives in a file of its own name**, so the shared runtime is ONE FILE PER
 TYPE — `TableBytes.java`, `TableBlockInfo.java`, `TableCookInfo.java` and the
@@ -1072,16 +1107,13 @@ any scalar, and a bounded array of those. It is refused, by name, on:
 - **an enum-keyed array** — `?[E]T` elides slots BY NAME (§3.2), so its
   empty end wants stating before a presence bit sits beside it — the
   reason `[E]*T` and `[E]Body` wait (§15);
-- **an array of pointers and an array of unions** — a named follow-on
-  (§15): an absent field is not an edge (§3.1), and the authoring walks
-  must gate on the presence companion before an optional field may hold
-  pointer edges. The bounded arrays of pointers and of unions serve today
-  without the `?` (§2.1, §2.6), and a table wrapping the field serves with
-  it. **An optional over a VALUE whose closure is variable-length is
-  legal** — scalar `?T` and by-value array `?[N]T` alike: the numbering,
-  the pack measure and the pack are one declaration-order walk that gates
-  every edge on the presence companion, so an absent optional descends
-  nothing and is not an edge (§3.1).
+- **an array of pointers, an array of unions, and any VALUE whose closure
+  is variable-length** — scalar `?T` and array `?[N]T` alike, one rule, a
+  named follow-on (§15): an absent field is not an edge (§3.1), and the
+  authoring walks must gate on the presence companion before an optional
+  field may hold pointer edges. The bounded arrays of pointers and of
+  unions serve today without the `?` (§2.1, §2.6), and a table wrapping
+  the field serves with it.
 - **a specified default** — presence is the only default an optional has.
 
 ### 2.4 Enum-keyed arrays: `ships [ShipType]ShipConfig`
@@ -1293,8 +1325,9 @@ the whole page:
 - **THE SCOPE IS A TABLE BODY AND A UNION ARM.** A table body's own field
   takes the refusal, and so does a field of a union arm that body carries,
   in every spelling the bound has above. The same array held by a `type` a
-  table closure reaches is not refused: schema#606 ruled it on the WIRE, so
-  its kind `13` body keys the array (THE HAZARD REACHES A `type`, below).
+  table closure reaches is a case of its own with two answers that exclude
+  each other, and it is ruled on schema#606 (THE HAZARD REACHES A `type`,
+  below).
 - **The DIAGNOSTIC names the field, the enum the bound folds from, and the
   fix**, which is `[E]T`, the name-keyed form. Where the bound reaches the
   enum through a constant it names the constant. In arm position `[E]T` is
@@ -1312,21 +1345,19 @@ beside the keyed one leaves the class open for anyone who spells it that way
 and never touches the field again, which no kind number can catch, because
 nothing about the FIELD moved.
 
-**THE HAZARD REACHES A `type` A TABLE HOLDS, AND SCHEMA#606 CLOSES IT ON THE
-WIRE.** A `type` a table reaches rides this wire as a kind `13` body, and a
-variant inserted in the middle lands every later element one slot off in every
-stored file, exactly as it does in the table body's own field. What a `type`
-edit moves is the connect gate and the committed baseline (SPEC.md §3.1, §18),
-and a STORED FILE carries neither: a save written before the insert holds no
-protocol id and no baseline, so nothing in it can report the shift. **THE WIRE
-DECIDES, NOT THE BODY: an enum-extent array rides KEYED, kind `16`, on the
-table wire wherever it is declared.** `[E.Max]T` inside a reached `type` rides
-the same kind `[E]T` rides there, so the closed class §4.1 counts cannot be
-reopened one body away, and the positional spelling stays legal in that `type`
-because the wire closes the class without a non-local refusal. The table body
-and the union arm still REFUSE the positional spelling by name, because there
-the keyed spelling `[E]T` is the form to write and `flags` stays the table's
-one positional vocabulary.
+**THE HAZARD REACHES A `type` A TABLE HOLDS, AND SCHEMA#606 IS THE RULING.**
+A `type` a table reaches rides this wire as a kind `13` body, and a
+positional array inside it rides under kind `14` today (§3), so a variant
+inserted in the middle lands every later element one slot off in every stored
+file, exactly as it does in the table body's own field. What a `type` edit
+moves is the connect gate and the committed baseline (SPEC.md §3.1, §18), and
+a STORED FILE carries neither: a save written before the insert holds no
+protocol id and no baseline, so nothing in it can report the shift. Two
+answers close that and they exclude each other, refusing the shape in every
+`type` a table closure reaches or keying the table wire for an enum-extent
+array wherever it is declared, so this page states the refusal for the table
+body and the union arm and states neither answer for the `type` until the
+ruling lands.
 
 **THE RULE IS ALSO WHAT MAKES `flags` THE ONLY EXCEPTION to the reachability
 rule** (SPEC.md §3.1). Under a projection scoped to what a `type` reaches, an
@@ -1334,8 +1365,8 @@ enum only tables reach leaves the protocol id, so the connect gate stops
 refusing two peers whose variant orders disagree. That is correct for a
 vocabulary read by NAME and wrong for one read by POSITION, and the refusal
 above is what leaves `flags` as the only positional vocabulary a table body
-and a union arm have, with schema#606 keying the reached `type` on the table
-wire, and therefore the only exception the projection needs.
+and a union arm have, with schema#606 closing the `type` under either of its
+answers, and therefore the only exception the projection needs.
 
 **On the TYPE wire the spelling stays legal and positional**, in a `type` no
 table reaches: that body's `[E.Max]T` is a plain array whose extent is the
@@ -1343,8 +1374,7 @@ variant count, its bytes are the packet wire's, every fact of it projects,
 and the connect gate is what covers a variant insert (SPEC.md §3.1). The
 refusal above is the table body's and the union arm's, and it is what §2.2's
 mode derivation already made a per-body question. A `type` a table closure
-reaches keeps the spelling, and its kind `13` body keys the array on the table
-wire (above).
+reaches keeps the spelling until schema#606 rules.
 
 **HELD BY TEST: one diagnostics row a SHAPE, red first.** Each row is a unit
 the checker must refuse, and each is red if the unit compiles or if the
@@ -1375,10 +1405,9 @@ sections rest on this refusal being whole, §4.1's
 count of the silent class and SPEC.md §3.1's one exception to reachability, and
 both stand on the tree as well as on the rule.
 
-**RULING STATUS: the type-held case is closed on schema#606, on the WIRE.** A
-`type` no table reaches keeps the spelling, and a `type` a table reaches keeps
-the spelling too: its kind `13` body keys an enum-extent array rather than
-refusing it, so the closed class cannot be reopened one body away.
+**RULING STATUS: the type-held case is ruled on schema#606.** Until then a
+`type` no table reaches keeps the spelling and a `type` a table reaches is
+not refused.
 
 **A KEY ENUM IS IN THE TABLE CLOSURE'S VOCABULARY**, and the closure's
 rules reach it through the keying field. An enum that a table closure
@@ -3145,6 +3174,12 @@ enforced it. **The rule below is that discipline with the footgun taken away:
 the compiler owns a lock file, and the check is the hand nobody has to
 remember to use.** On the mechanism itself: *"OK that sounds cool, go ahead."*
 
+**§21.1 STATES THIS RULE IN FULL AND SUPERSEDES THE PARAGRAPH BELOW WHERE THE
+TWO DIFFER:** everything that inputs into a fixed table may WIDEN — a wider
+integer, a grown bound, a variant appended — because a newer reader holds every
+value an older writer could produce, and the lock judges each definition in that
+direction (§21.1). What never moves is a field's PLACE.
+
 **THE RULE. A fixed table evolves APPEND-ONLY.** A new field goes at the
 BOTTOM and nowhere else. A field that has outlived its use is DEPRECATED IN
 PLACE — it keeps its slot forever. Nothing is reordered, nothing is removed,
@@ -3579,10 +3614,14 @@ business.
   header pays it whether or not the form maps its body today: **the fixed form
   does not need the alignment and pads anyway**, so that the bytes do not move a
   second time the day the cook and the block form join the registry under this
-  same header. **THE SEVEN RESERVED BYTES ARE WRITTEN ZERO AND READ BY NOBODY.**
-  They exist to put the hash at `8` and the body at `16`; a later form that
-  wants to say more takes a NEW FORM BYTE and never one of these, which is the
-  same rule that keeps a version byte out of the layout (§3.4).
+  same header. **THE SEVEN RESERVED BYTES ARE WRITTEN ZERO, AND A READER REFUSES
+  A NONZERO ONE, `malformed`.** They are REFUSED and not ignored because that is
+  what keeps them SPENDABLE: a byte every reader ignores is a byte already spent,
+  since the day a form wants to say something there is the day the old readers
+  have been accepting the other meaning all along. They exist to put the hash at
+  `8` and the body at `16`; a later form that wants to say more takes a NEW FORM
+  BYTE and never one of these, which is the same rule that keeps a version byte
+  out of the layout (§3.4).
 
   **TODAY THE FIXED FORM IS THE ONE ARM THAT WRITES THIS HEADER.** The message
   form's framing is still its own two parts, the form byte and a body count
@@ -4760,9 +4799,9 @@ present slot, two bytes where both are small, and it closes that class. The corp
 generation step, and the negative control — encoding the slots
 positionally — turns the middle-insert test red. **The positional array is
 refused in a table body and a union arm, on the bound's provenance and not
-on its spelling** (§2.4). A `type` the table closure holds rides keyed there
-as every enum-extent array does, on schema#606's ruling (§2.4): its kind `13`
-body carries the array under kind `16`, not the positional kind `14`.
+on its spelling** (§2.4). Whether a `type` the table closure holds can still
+carry the class in on kind `14` under a kind `13` body, or rides keyed there
+as every enum-extent array would, is ruled on schema#606.
 
 **And the two spellings do not decode each other.** A `16` body read as a
 `14`, or the reverse, would take keys for values and values for keys — the
@@ -4853,6 +4892,17 @@ UDP either.
   than a hope: a peer whose announcement was refused holds no retry on that
   connection, and a peer that wants another try wants a new connection, which
   starts with an empty vocabulary like any other.
+- **STRICT MODE IS OPT-IN, and the default is unchanged.** A caller sets
+  `TableVocabulary.Strict` before `AnnounceRead`. With it set, an announcement
+  whose build version is not the unit's own is refused by the name
+  `build_version_mismatch`, sets no vocabulary, keeps the peer's build version,
+  moves no counter and is never `malformed`, and is terminal like every refused
+  first announcement. The refusal carries a typed error,
+  `TableBuildVersionMismatch`, whose `Peer` and `Own` are the peer's version and
+  the unit's own, reached with `errors.As` through `TableReport.Err`, which
+  returns it for this reason and nil on a clean read. With `Strict` unset the
+  reader stays tolerant exactly as before, and closing the connection remains
+  the application's act.
 - **A STATELESS REQUEST-RESPONSE TRANSPORT IS OUT OF SCOPE, by name.** A request
   sharing no state with the last one has nowhere to put an announcement, so the
   announcement would ride every request and cost more than the id table it
@@ -5684,7 +5734,13 @@ precedent.
   `TableRetain`, holding one direction's RESOLVED entries. It indexes the
   caller's own storage rather than the announcement's bytes (the storage
   shape, above), so the announcement is free the moment `AnnounceRead`
-  returns.
+  returns. Its **`Strict`** field is the message form's opt-in (above): set
+  before `AnnounceRead`, a peer announcement whose build version is not the
+  unit's own is refused as `build_version_mismatch`. The refusal is reported
+  as the typed error **`TableBuildVersionMismatch`** — `Peer` and `Own` are
+  the two 64-bit versions — reached with `errors.As` through
+  **`TableReport.Err`**, which returns it for this reason and nil on a clean
+  read.
 - **`Announce`, `AnnounceMeasure` and `AnnounceRead`** in the unit scope beside
   `UnitView`. The announcement is a COMPILE-TIME CONSTANT of the unit, so a
   backend emits the first two as a constant byte array and its length rather
@@ -5700,8 +5756,10 @@ precedent.
   array of roots, and there is no measure and no save beside it: retention
   writing form `2` is `SaveRetainMessages`, which refuses by name (above).
 - **The refusal reason values `no_vocabulary`, `second_announcement`,
-  `vocabulary_too_large`, `batch_too_large` and `message_form_as_file`** beside
-  the form byte's own `newer_form`. `vocabulary_too_large` covers both bounds,
+  `build_version_mismatch`, `vocabulary_too_large`, `batch_too_large` and
+  `message_form_as_file`** beside
+  the form byte's own `newer_form`. `build_version_mismatch` is the strict
+  opt-in's refusal (above). `vocabulary_too_large` covers both bounds,
   the entry count and the vocabulary's bytes, and `batch_too_large` covers both
   of its own, `M` above 256 on the write side and `M` above the caller's
   capacity on the read side, because a caller reads a reason and then reads the
@@ -6390,6 +6448,15 @@ and not §19's block form, neither of which this section touches.
 **FORM BYTE `3` IS THE FIXED FORM.** Form bytes `1` and `2` do not move, and
 nothing in this subsection touches a file of §3 or a batch of §3.3.
 
+**AND THE ALGORITHM EVERY PORT IMPLEMENTS FROM IS
+[`docs/FIXED-FORM-ALGORITHM.md`](FIXED-FORM-ALGORITHM.md).** This section states
+the wire and its reasons; that page states the same wire as STEPS, in one
+language-neutral notation, with each piece's invariants, refusal names and §4
+counters beside it — because nine ports written from prose and a C++ reference
+came out nine ways, and the ones that copied the reference inherited its
+accidents as law. **Where the two disagree THIS SECTION IS THE LAW**, except at
+that page's footnoted rulings, which name the reference fixes still landing.
+
 ---
 
 #### THE VERSIONING INVARIANT, FIRST
@@ -6539,12 +6606,23 @@ once and cost the reader the one thing it has, a straight walk. **A PRE-ORDER
 WALK WITH NO BACK REFERENCE CANNOT EXPRESS A CYCLE**, which is why the
 validation below has no cycle rule and needs none.
 
-**THE HASH IS `fnv1a64` OVER THE LAYOUT'S BYTES, EXACTLY AS WRITTEN, and it is
-the eight bytes every record carries.** Two writers whose layouts agree byte for
-byte agree on every id, kind, size and position in the closure, which is the
-whole of what a reader needs; two writers whose layouts differ anywhere get
-different hashes and neither reads the other's record against its own
-declaration. The hash is a wire identity and not a security claim (§5's note on
+**THE HASH IS `fnv1a64` OVER THE LAYOUT'S BYTES AND THEN OVER THE DEFINITIONS
+DIGEST, and it is the eight bytes every record carries.** The layout bytes are
+the wire's shape; the DIGEST is every fact of the versioning law that is NOT
+wire shape — each range, each `flags` bit count, each `bits(N)`, each `fixed`
+`I` and `F` — folded into the same `fnv1a64` state after the last layout byte
+(the bill §13, algorithm §5.2, `ir/fixedform.go`'s `TableFixedLayoutHash`).
+**The digest NEVER rides the wire**: nothing on the wire carries it and no
+runtime recomputes the hash, so the hash is what binds it. An EMPTY digest — a
+table carrying none of those facts — leaves the hash equal to a hash of the
+layout bytes alone, which is why this reads as "the layout's bytes" wherever
+the digest is empty. Two writers whose layouts agree byte for byte AND whose
+definitions agree agree on every id, kind, size, position and bound in the
+closure, which is the whole of what a reader needs; two writers who differ
+anywhere in either get different hashes and neither reads the other's record
+against its own declaration. Without the digest `int32 | 0..100` and
+`int32 | 0..200` would hash identically and an old reader could not refuse the
+widening. The hash is a wire identity and not a security claim (§5's note on
 the same function).
 
 **THE LAYOUT IS A COMPILE-TIME CONSTANT OF THE UNIT.** Every byte is settled by
@@ -6802,6 +6880,16 @@ between the two forms** — which is the surprise the keyword exists to prevent.
 
 **A PLAN IS A FLAT ARRAY OF ENTRIES, AND A READ IS ONE LOOP OVER IT.**
 
+**A READ IS ONE PREFILL, ONE LOOP OVER THE PLAN THE LAYOUT HASH SELECTED, AND
+THEN ONE BOUNDS PASS OVER THE STORAGE THE LOOP WROTE — the same pass, whichever
+plan ran.** The hash chooses the plan and nothing else: the identity plan when
+the writer's layout is this build's own, a plan compiled from the writer's
+layout when it is not. The identity plan carries `copy`, `count` and `text`; a
+compiled plan adds only the ops that a foreign layout needs — `union`, `widen`,
+`ordinal`, and a constant this reader's storage takes. **NO PLAN OP CLAMPS**,
+and neither plan is a shorter or a longer road than the other: one path, one
+set of cases to test.
+
 ```
 plan entry := src  (u32)   a byte offset into the RECORD's body
               dst  (u32)   a byte offset into the READER's own storage
@@ -6811,7 +6899,8 @@ plan entry := src  (u32)   a byte offset into the RECORD's body
 ```
 
 **THE OPS ARE THE WHOLE SET**, and a plan for a record of plain scalars carries
-only the first:
+only the first. **There is no clamp among them.** A declared range is held by
+the bounds pass that runs after the loop, over storage, for either plan:
 
   | op | what the loop does |
   |---|---|
@@ -6820,14 +6909,14 @@ only the first:
   | `text` | `count`'s work on the length, then the units, then terminate at the used length; the content rules of §3 apply and a violation is `malformed` |
   | `union` | read the tag, resolve it to the reader's own arm, run that arm's sub-plan |
   | `widen` | decode a narrower source at its own width into a wider destination, `widened` counts |
-  | `clamp` | reconstruct against the writer's declared range and apply the reader's own, `clamped` counts if it fired |
   | `ordinal` | resolve a variant ordinal through the plan's own remap table at `aux` |
 
-**A READ IS A PREFILL AND A LOOP, AND NOTHING ELSE.**
+**A READ IS A PREFILL, A LOOP, AND THE BOUNDS PASS, AND NOTHING ELSE.**
 
 ```
 Reset( value );                     // the declared defaults, one prefill
 for ( entry : plan ) { … }          // the loop above
+FixedClamp( value, report );        // the bounds pass, after either plan
 ```
 
 **A PLAN IS PARTITIONED: EVERY UNGUARDED ENTRY FIRST, THEN THE UNION ARMS',
@@ -6860,11 +6949,16 @@ arithmetic, its whole constant size being one entry's worth of `src` advance.
 
 **THE IDENTITY PLAN IS A STATIC CONSTANT BAKED INTO THE GENERATED READER.** When
 a record's hash equals the reader's own, the plan is the one the compiler
-already wrote: every entry a `copy`, with **ADJACENT RUNS COALESCED** — two
-neighbouring fields whose source and destination both advance together are one
-entry, so a record whose declared order matches its storage layout collapses to
-a handful of runs. Coalescing is the only optimization a plan compiler performs
-and it is performed identically on both sides.
+already wrote. **IT CARRIES THREE OPS AND NOT ONE**: a `copy` for every field
+whose wire image is its storage image, a `count` for a `[Min..Max]T`, and a
+`text` for a `string(N)`, a `wstring(N)` or a `bytes(N)` — because a count and a
+length are numbers the reader HOLDS TO ITS OWN BOUND before it moves the units
+behind them, and a copy holds nothing. The other four ops are a compiled plan's
+alone. **ADJACENT RUNS ARE COALESCED** — two neighbouring `copy` entries whose
+source and destination both advance together are one entry, so a record whose
+declared order matches its storage layout collapses to a handful of runs.
+Coalescing is the only optimization a plan compiler performs and it is performed
+identically on both sides.
 
 **FOR ANY OTHER HASH THE SAME LOOP RUNS OVER A PLAN COMPILED ONCE FROM THE
 WRITER'S LAYOUT, AND CACHED BY HASH.** The compiler walks the layout against the
@@ -6915,21 +7009,33 @@ HASH is the hash §3 puts at offset `8`:
 
 ```
 offset  0        form byte 3
-offsets 1 .. 7   reserved, zero
+offsets 1 .. 7   reserved, zero — and a reader REFUSES a nonzero one, `malformed`
 offsets 8 .. 15  the LAYOUT HASH (u64 LE)
 offset  16       layout length (u32 LE), then the layout
                  records, back to back, to the end of the file
 ```
+
+**AND THE ORDER THE HEADER IS READ IN** (algorithm §5.3 steps 1 and 2): a file
+with NO FIRST BYTE is `malformed`; **then the form byte earns its name, BEFORE
+the file's length is measured** — a committed form-`1` file is ten bytes and a
+form-`2` batch three, so a reader that measured first would answer `malformed`
+for every real file of the two forms this section promises to name; then the
+twenty-byte minimum, `malformed`; then the seven reserved bytes, `malformed` if
+any is nonzero; and only then the layout's length and the hash.
 
 - **THE HEADER NAMES THE LAYOUT ONCE; A RECORD NAMES IT AGAIN.** The eight bytes
   at `8` are the hash of the layout behind them, and every record still carries
   its own eight-byte hash — which is what this section has said from the start
   and what the header does not replace. A record is never self-describing, and
   the two hashes are two different questions: the header's says *which layout is
-  in this file*, a record's says *which layout stamped this record*. **A HEADER
-  WHOSE HASH IS NOT THE HASH OF THE LAYOUT BEHIND IT IS REFUSED**,
-  `layout_malformed`, and it is checked LAST of the three so that a broken
-  layout is never reported as a lying header.
+  in this file*, a record's says *which layout stamped this record*. **NO
+  RUNTIME RECOMPUTES EITHER HASH** — the definitions digest is folded into it
+  and the digest is not on the wire, so a hash derived from a file's bytes
+  would be a hash of a different thing. The header's hash is taken as GIVEN and
+  the header is held to the layout behind it by a BYTE COMPARISON instead:
+  **a known hash whose layout bytes are not the lock's own bytes for that hash
+  is refused**, `layout_malformed`; a hash in no lineage entry is `layout_newer`
+  (algorithm §5.3 steps 3 to 7).
 - **THE FIXED FORM DOES NOT NEED THE PADDING AND PAYS IT ANYWAY** (§3). Nothing
   in this form memory-maps a body today; the sixteen bytes are paid so that the
   bytes do not move again when the cook and the block form join the registry
@@ -7038,9 +7144,17 @@ added moves it without anyone remembering to.
 - **THE FORM BYTE'S OWN REFUSALS, one per direction** (§3): a fixed reader given
   `1` answers `previous_form`, given `2` answers `message_form_as_file`, given a
   byte no form defines answers `newer_form`, and each moves no counter and
-  reports no damage. Beside them the HEADER's own row: a file whose header hash
-  is not the hash of the layout behind it is refused `layout_malformed`, which is
-  what proves the header's eight bytes are READ and not merely written.
+  reports no damage. **THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH**, so a
+  ten-byte form-`1` file and a three-byte form-`2` batch — the sizes those forms
+  actually commit — are each answered by NAME and not as `malformed`; only a
+  file with no first byte at all is `malformed` before the byte is read, and the
+  twenty-byte minimum comes after it. Beside them the HEADER's own row: a file
+  whose header hash is known but whose layout bytes are not the lock's bytes for
+  that hash is refused `layout_malformed`, which is what proves the header's
+  eight bytes are READ and not merely written; a hash in no entry is
+  `layout_newer` (algorithm §5.3). **AND THE SEVEN RESERVED BYTES**: any of
+  offsets `1..7` nonzero is `malformed`, refused rather than ignored, which is
+  what keeps them spendable later.
 - **THE FIRST BYTE, AT THE TOOL** (§3): `schema check` handed a saved file
   answers `FORM <n> <name>` before it says anything else about the file, or
   refuses the byte by name, over every row of the registry and over a file with
@@ -7387,12 +7501,6 @@ semantic edit to every stored file**, and `was` does not cover it: `was`
 preserves an identity, not a value. Change a default the way you would
 change data, or add a new field and leave the old one alone.
 
-**This section is the §4.1 table's READ REPORT column.** Its rows and the
-verdicts beside them are a golden — one fixture per row, written under one
-declaration and read under another, with all three frames pinned
-(`TestEvolutionTableFrames`) — so an edit whose read report changes under an
-unchanged schema is stop-the-line.
-
 ### 4.1 The silent class, in full
 
 Almost every edit lands in the read report. **Exactly four do not**, and
@@ -7440,8 +7548,8 @@ on it.**
   from an enum is REFUSED BY NAME in a table body and a union arm** (§2.4,
   §11), so the closed class cannot be reopened by spelling the bound another
   way or folding it through a constant. The same array held by a `type` a
-  table closure reaches rides keyed on the table wire (schema#606), so the
-  class is closed there too, without a refusal. That refusal
+  table closure reaches is ruled on schema#606, by that refusal or by a keyed
+  wire, and the class is closed under either answer. That refusal
   is what leaves `flags` the ONE positional vocabulary a table has, which
   is in turn what makes `flags` the one exception to the reachability rule
   the protocol id is scoped by (SPEC.md §3.1).
@@ -7521,7 +7629,7 @@ only.
 | an array changed between `[]T` and `[..N]T` (§2.9) | silent where the count fits the new bound, `clamped` past it | **warns** on the direction that ADDS a bound, as any capacity shrunk, and passes on the one that removes it | **moves**, because the storage is a reference and a count on one side and the maximum inline on the other |
 | an unbounded array's ELEMENT retyped, or moved to or from `[]*T` (§2.9) | `kind_mismatch`, the array reading empty | **refuses**, as any element kind changed | **moves** |
 | a field moved between `T` and `?T` | silent — no byte moves | passes | **moves** — the presence companion is storage |
-| a field moved to or from `*T` | `kind_mismatch` | **refuses** — a pointer is kind 17, so the edit is an ordinary kind change | **moves** |
+| a field moved to or from `*T` | `kind_mismatch` | passes | **moves** |
 | an `if` GUARD added or removed | silent, and the read is faithful; the cost is the next WRITE | passes | no |
 | a DECLARATION renamed — a `type`, or a table held BY VALUE | silent: a name held by value is not on the wire | **warns** when a table closure reaches it, naming what carries its contents on and how many identities that candidate carries (§18.3) | **moves** |
 | a TABLE renamed where it is a POINTER TARGET | **not silent**: a table's own name is its node's type id on the wire (§5), so every node of the old name is unnameable — skipped by its length and counted `unknown`, with every pointer to it reading null (§3.1) | as the row above | **moves** |
@@ -7532,8 +7640,6 @@ only.
 | an enum VARIANT or a union ARM renamed under `was` (§5) | silent, and nothing is lost: the id is the old name's hash | passes, and the file records the alias beside the id | no |
 | an enum VARIANT or a union ARM renamed BARE | `unknown`: a stored value reads `None`, a stored body reads `None`, a keyed slot is dropped | **warns** that the old name was removed | **moves** |
 | a VARIANT or an ARM renamed a SECOND time, the new `was` naming the INTERMEDIATE spelling | `unknown` for every stored value or body | **refuses**: `was` names the first wire name, forever (§5) | **moves** |
-
-**The table is a GOLDEN.** One fixture per row, each edit written under the row's base schema and run through all three frames — the read report, the baseline check and the build version — with the three verdicts pinned, holds this table from going stale: `TestEvolutionTableFrames` in `internal/baseline`, whose fixtures are the pin and whose negative control is a flipped verdict. §4, §18.2 and §20.4 derive from this table by citation rather than restating it, and `TestEvolutionTableDocsAgreeWithTheGolden` reads the cells back out of this page.
 
 ### 4.2 The read is the verifier: the wire fuzzer
 
@@ -8299,23 +8405,15 @@ The builder is designed to go wide, lock-free by ownership:
   least: an entry's `L` and its terminator, §3) is refused, and the refusal is the
   `-1` every measure's refusal answers (§7.6). A fixed unit and a map-free
   pointered unit keep the one scan.
-- **`LoadMeasure`'s answer is also the DEFENCE, and the bound it states is
-  EXACT.** The measure reads the framing and returns the region the wire
-  commands, no more and no less. A hostile record costs its type id reference
-  and its declared length alone — TWO wire bytes, a one-byte reference and a
-  zero length, because the record scan counts a record from the framing and
-  decodes no body (§3.1) — and it commands the largest `sizeof( T )` this
-  root can place plus its directory entry. A node ten thousand pointers name
-  is ONE record, because the table holds one record per node and a pointer is
-  an index and never a copy, and a node the scan does not reach costs
-  nothing. Depth is not recursion, because the graph is flat. The
-  amplification a hostile wire can reach is therefore the schema's largest
-  record (plus one directory entry) per two wire bytes, and the number of
-  records it can multiply that by is not a wire field the reader trusts: it
-  is the record count the framing actually carries, which the scan proves
-  before a byte of body is believed. `LoadMeasure` is the caller's traversal
-  limit in that sense — the caller refuses a size it will not pay — and
-  nothing in the runtime decides that for it.
+- **`LoadMeasure`'s answer is also the DEFENCE, and a caller is expected
+  to bound it.** The smallest legal record is THREE wire bytes, a one-byte
+  type id reference, a one-byte length and a body that is its terminator
+  (§3.1), and it commands `sizeof( T )` region bytes plus its directory
+  entry, so a wire can ask for far more memory than it occupies. That ratio
+  is why the caller owns the allocation and is expected to refuse a number it
+  did not expect. The caller owns the allocation precisely so it
+  can refuse a number it did not expect; nothing in the runtime decides
+  that for it.
 - **A `-1` CARRIES A REASON, and it is the SAME ENUM the accelerators'
   refusals carry: `TableRefuseReason`** (§7, §11). `Open` and `BlockOpen` answer
   a null beside a value of it (§7, §19.2), and a call that answers `-1`
@@ -8999,9 +9097,8 @@ refusal by name is a compile error rather than an answer a driver writes.
 
 **The wire fuzzer runs with retention OFF** (§4.2), which leaves its round-trip
 requirement the requirement it is today, and it carries one leg that runs with
-it ON, its roster the VARIABLE-CLASS FILE roots and nothing else (§4.2): the
-same six counters, the two retention counters beside them, and a save the
-oracle reproduces. **THAT LEG NEEDS THE ORACLE TO RETAIN TOO**, and it
+it ON: the same six counters, the two retention counters beside them, and a
+save the oracle reproduces. **THAT LEG NEEDS THE ORACLE TO RETAIN TOO**, and it
 does. `internal/tablewire` is the compiler-side engine the fuzzer compares
 against, a third reading of §3 written from the page rather than from a
 backend, and it carries the retention this subsection specifies: the caller's
@@ -11498,9 +11595,8 @@ in build version (§20.5).
   folds from either are all refused in a table body and in a union arm**, on
   the bound's provenance, and an arm's diagnostic names the arm and the table
   that reaches the union (§2.4).
-  **RULING STATUS: the type-held case is closed on schema#606, on the WIRE**:
-  a `type` a table reaches keeps the spelling and its kind `13` body keys the
-  array (§2.4).
+  **RULING STATUS: the type-held case is ruled on schema#606**, and until
+  then a `type` a table reaches is not refused (§2.4).
 - **Maps** (§2.8): a map in a `type` body; a key that is an enum (the
   diagnostic names `[E]T`), a `bool`, a float, a `flags`, a `bits(N)`, a
   `bytes(N)`, a `wstring(N)` (the diagnostic names `string(N)`, because
@@ -11680,10 +11776,36 @@ in build version (§20.5).
   MeasureWireRetain  SaveWireRetain  NodeBodyRetain
   FixedMeasure  FixedSave  FixedLoad  FixedWriteBody  FixedLeaves
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
-  FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded
+  FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedCover
+  FixedClamp  FixedClampBody
+  FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
+  FixedKnown  FixedFloor  FixedLineagePlans
   ```
 
-  The `Fixed` row is §3.4's, and it is claimed on this list's own rule:
+  The last six of the `Fixed` rows are the READING TIER's, and they are the
+  price a language with no struct layout pays for the same form. Where the
+  reference lands a plan's bytes at `offsetof( T, member )`, a reading tier
+  lands them in a canonical body image and then PROJECTS that image into the
+  language's own objects — `FixedDecode` — because there a struct is not its
+  bytes. `FixedPrefill`, `FixedIdentity` and `FixedNewPlan` are the same story
+  told about storage: the declared defaults, the one-entry identity plan and
+  the plan constructor are module data where the reference has a type. And
+  `FixedHashLo` / `FixedHashHi` are `FixedHash` in two uint32 lanes, claimed
+  BESIDE it rather than instead of it, because a sixty-four-bit constant
+  becomes two wherever a per-record compare through a wide integer would be an
+  allocation per record. All six are claimed on this list's own rule, like
+  every row above them.
+
+  The three after them are §21's, the LINEAGE as static data
+  (docs/FIXED-FORM-ALGORITHM.md §5.2): a fixed table reads BACKWARD and never
+  forward, so every root carries the layouts its lock recorded — `FixedKnown`,
+  oldest first with the current one last — the index a retirement cuts at,
+  `FixedFloor`, and one plan per entry laid down at build, `FixedLineagePlans`.
+  They are per-declaration for the same reason the identity plan is: a lineage
+  belongs to ONE table and a unit can declare several, so a name that is free
+  today must not become a collision the day a second root is added.
+
+  The `Fixed` rows are §3.4's, and they are claimed on this list's own rule:
   nothing declares the fixed form, every table whose closure §3.4 lays out
   carries it, and a table gains and loses the form as its closure gains and
   loses a pointer — so a name that is free today must not become a collision
@@ -11691,6 +11813,11 @@ in build version (§20.5).
   has no struct to hang a plan's two numbers on and spells them as two more
   file-scope constants; the whole row is one claim across the ports, spelled
   `<name>_fixed_save` in C and Rust and `<Name>FixedSave` elsewhere.
+  `FixedClamp` and `FixedClampBody` are §3.4's READ-SIDE BOUNDS — the
+  straight-line pass a read makes after the copy — and they are claimed for
+  every closure member on the same rule and not only for the ones that declare
+  a bound today: a field gains a `min` or a `max`, or a union or an enum, as an
+  ordinary edit, and the name has to already be taken when it does.
 
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
@@ -12288,9 +12415,8 @@ are these rulings, in the owner's words:
   where the whole spelling projects and the connect gate covers a variant
   insert, and it is REFUSED in a TABLE BODY and a UNION ARM (§2.4), where
   nothing on the wire could report the same insert. `[E]T` is the table form.
-  A `type` a table closure reaches rides keyed on the table wire: schema#606
-  ruled the wire, not the body, so `[E.Max]T` there has the keyed kind `16`
-  and needs no refusal. What the user chooses is still a choice
+  A `type` a table closure reaches is ruled on schema#606. What the user
+  chooses is still a choice
   in the place the choice is safe, and the table body has one spelling
   because a table has one positional vocabulary, `flags`, and that is what
   makes `flags` the only exception the scoped projection needs.
@@ -13077,15 +13203,13 @@ inspects everything in the schema built:
   bit buys nothing a wrapper table does not already give. Wrap the field in
   a table and make that optional today; `?[..N]T` and `?[N]T` landed and
   are not part of this entry.
-- **An OPTIONAL ARRAY of POINTERS or of UNIONS** (§2.3): `?[N]*T` and
-  `?[N]Body`. A field the writer does not write is not an edge (§3.1), and
-  the numbering, the pack measure and the pack gate on the presence
-  companion now, but the element is already optional — a null slot, or an
-  arm's `None` — so what a second presence bit means beside that wants
-  stating before it is wire. **`?T` and the by-value `?[N]T` of a
-  variable-length value LANDED** with that gate: an absent optional is not
-  descended, and `test/tables/G1.schema`'s optional half is the corpus
-  schema and the wire pin.
+- **An OPTIONAL whose value holds POINTER EDGES** (§2.3): `?T` where T's
+  closure is variable, `?[N]T` and `?[..N]T` of such a T, `?[N]*T`, and
+  `?[N]Body`. §3.1's law — a field the writer does not write is not an
+  edge — obliges the authoring walks (the numbering, the pack, `Lock`'s
+  sizing) to gate on the presence companion, and none of them does yet; the
+  refusal keeps the two writers byte-identical until that gating lands as
+  its own change, walks and corpus together.
 - **An array of `?T`** — a different question one level down: an element's
   presence bit beside the array's own count.
 - **AN OPTIONAL ARRAY in every ported backend** (§2.3): C++ and the tool
@@ -14508,11 +14632,10 @@ are its WHOLE-UNIT bounds, recorded beside the `frac=` that puts them on the
 raw scale (§4).
 
 **Presence is RECORDED and judged on nothing.** An optional's presence
-companion is a fact in the file so a person reading a diff can see it, and a
-field moving between `T` and `?T` moves no byte (§3.1) and passes in silence.
-A field moved to or from `*T` is NOT this row: a pointer is kind 17, so that
-edit changes the `kind=` fact and is refused (§4.1). Recording a fact and
-judging it are two different things, and presence alone is only recorded.
+companion is a fact in the file so a person reading a diff can see it, but
+a field moving between `T`, `?T` and `*T` moves no byte (§3.1) and passes
+in silence. Recording a fact and judging it are two different things, and
+this one is only recorded.
 
 It carries no protocol id and no packet fact: the type wire, the wire-shape
 projection and the protocol id are untouched by all of it (§10).
@@ -14593,14 +14716,9 @@ committed file whenever one is there, and:
   ranges grown, **a bounded array's bound REMOVED for `[]T` included** (§2.9),
   which is the largest growth there is; a bounded array made fixed or the
   reverse; a field moved
-  between `T` and `?T` (a field moved to or from `*T` is a kind change and is
-  refused above, because a pointer is kind 17).
+  between `T`, `?T` and `*T`.
 
-**These are the §4.1 table's BASELINE column, and its fixtures are the pin**
-(`TestEvolutionTableFrames`): this subsection derives its list from that table
-rather than restating it, and a verdict that moves there and not here is the
-drift the golden exists to catch. **The BLOCK FORM takes no row here at all**
-(§18.1). A table's layout is a
+**The BLOCK FORM takes no row here at all** (§18.1). A table's layout is a
 same-build contract that a compiler holds (§19.3), so an edit that moves an
 offset, a size or a pitch is a build error on both generated sides before it
 is anything else; a baseline row would only repeat the compiler, and a
@@ -14710,21 +14828,6 @@ break — and it is what a person consults when an old save or an old tool
 file reads back wrong. The update is idempotent: a unit that has not moved
 rewrites nothing.
 
-**A REMOVAL LEAVES A LEDGER ENTRY, and the ledger is what refuses a name
-reused** (issue #441). The `## retired` section records every field, enum
-variant and union arm a `--update` removes — its vocabulary, its
-fully-qualified name, the wire id it rode under and the day it was retired —
-and `--update` APPENDS to it and NEVER DROPS an entry. The compiler keeps no
-history, so this is the one record in the file the live projection cannot
-regenerate. A declaration re-added under a retired name — or under a NEW name
-whose wire id is a retired one, which a `was` naming the old spelling produces
-— decodes old bytes as plausible new values, and the reader keys stored data on
-exactly that name hash, so the check REFUSES and names the ledger entry. The
-reuse is legal once it is deliberate: `--update --reason "..."` writes
-`revived=<date>` on the entry, which is the acknowledgment, and the entry
-itself stays. This is Protobuf's `reserved`, held in the baseline, with no wire
-cost.
-
 **The date is UTC, and the entry says so**: `### 2026-09-04 (UTC) — <reason>`.
 A baseline is a shared artifact read on other machines in other zones, so one
 clock is the only workable choice — and an unlabelled date is read in the
@@ -14736,11 +14839,10 @@ rewrite, and nothing reads a date back.
 **`--update` works on a baseline the checker cannot read.** A corrupt file,
 another unit's file, or one written under a rendering version this compiler
 does not write, all refuse on check and name `--update` as the remedy — so
-the remedy runs: it salvages the `## history` lines and the `## retired`
-ledger verbatim, regenerates the projection from the unit as it stands, and
-records in the history that the previous projection could not be diffed. The
-one artifact in the file that cannot be regenerated is never the price of
-repairing it.
+the remedy runs: it salvages the `## history` lines verbatim, regenerates
+the projection from the unit as it stands, and records in the history that
+the previous projection could not be diffed. The one artifact in the file
+that cannot be regenerated is never the price of repairing it.
 
 ### 18.5 What it does not cover
 
@@ -14843,11 +14945,9 @@ and the Block files cost nothing unless they are included. It is held in two
 halves, because they answer different questions: the build fails if one symbol
 of the block machinery — a storage type, a `Begin`, an `Open`, a row accessor,
 a layout constant — appears in a Table source, AND every Table source is
-byte-compared against the SAME build with the block form removed from its
-emitters, so the identity is measured against a build that emitted no Block
-file at all rather than against frozen text. Both arms move together, so the
-comparison survives any legitimate Table-emitter change and goes red when the
-block form leaks into a Table source. The descriptor
+byte-compared against a pin the PRE-BLOCK compiler wrote, so the identity is
+measured against a build that could not emit a Block file at all rather than
+against the emitter's own output. The descriptor
 COLUMNS (§8) the block form reads are not machinery and ride in every unit as
 every other column does, because they describe the language.
 
@@ -16116,10 +16216,6 @@ wrong fails to build instead of degrading.
 
 ### 20.4 What moves it, and what does not
 
-**This is the §4.1 table's BUILD VERSION column**, whose fixtures are the pin
-(`TestEvolutionTableFrames`); the list is a derivation from that table rather
-than a second statement of it.
-
 **It MOVES on:**
 
 - any edit that moves the unit's protocol id — every fact SPEC.md §3.1
@@ -16345,3 +16441,80 @@ a second digest.
   field's offset in the compiler's model and BOTH backends go red; that is
   §19.3's test obligation, now owed for every record in the closure and not
   only for blocks and rows.
+
+## 21. The fixed table reads backward, never forward
+
+**A fixed table's file is read by a build at least as new as the one that wrote it, and by no other.**
+A newer reader reads every older file. An older reader given a newer file refuses it by name, before any
+record, and reads nothing. There is no partial read of a fixed table: no clamp across versions, no value
+landed as `None` for want of a name, no field dropped because the reader lacked it. (Glenn, 2026-09-10:
+"Newer versions of the fixed table should be able to read OLD versions. But old versions CANNOT read new
+versions, and complain loudly and refuse. Nothing else makes sense." The bill is
+`docs/FIXED-FORM-BILL-READS-BACKWARD.md`; the algorithm is `docs/FIXED-FORM-ALGORITHM.md` §5.)
+
+### 21.1 The law: everything that inputs into a fixed table only widens
+
+A fixed table's closure is a tree of fixed things (§21.4), and every definition in it may only WIDEN over
+time. The baseline (§18) refuses any commit that narrows, naming the definition and the rule. Widening is
+defined by the default it fills: a change with no default to fill is not a widening.
+
+| definition | widens by | never |
+|---|---|---|
+| a fixed table, a `type` or `table` in its closure | a field ADDED AT THE END; a field deprecated in place | a field modified, removed, or inserted elsewhere |
+| an enum | a variant ADDED AT THE END; deprecated in place | a variant removed, reordered, inserted mid-list, or renamed without `was` |
+| a union | an arm ADDED AT THE END | an arm removed, reordered, or its payload changed |
+| `flags` | a flag ADDED | a flag removed or moved |
+| an array `[N]`, `[..N]`, a `string(N)`, `wstring(N)`, `bytes(N)`, and any constant behind them | a LARGER N | a smaller N; a shape change (`[N]` to `[..N]`, a key enum swapped); a text kind change |
+| an element type | the widening ladder, as a field | narrowed |
+| an integer or float | wider, same ladder, same signedness (`int32` to `int64`, `f32` to `f64`) | narrower, the other ladder, the other signedness |
+| a ranged scalar | a range moved OUTWARD, or REMOVED | moved inward; a range ADDED where none was |
+| a compressed float | it RIDES AS THE FLOAT here (§3.4), so min, max and resolution are DEFINITIONS and never wire: the range moved OUTWARD like any ranged scalar's, and the resolution moved FINER — a writer quantizes to its own step, so an older file's values sit on a COARSER grid this reader lands exactly | a range moved inward; a resolution COARSENED (the old values are off this reader's grid); anything else |
+| `bits(N)` | a larger N | smaller |
+| `fixed(I,F)` | a larger I | F changed |
+| an optional | `T` to `?T` (old values land present) | `?T` to `T` |
+| a field's kind | — | changed |
+| a specified default | — | changed (§18: it defines what every old file means) |
+| the `fixed` keyword | — | added or removed (a different form, not a version) |
+| a reader-side limit a table declares (RESERVED: no table spelling of one exists yet, and a compiler flag is outside the law) | larger | smaller |
+| a deprecated field | stays written, in its place, read on every plan | leaving the layout; undeprecating (one way, bill §12.3) |
+
+### 21.2 What a newer reader does with an older file
+
+A field the reader added: its declared default. A field the reader deprecated: read into its slot by every
+plan, identity included, and ignored by the application; no counter moves for it. A narrower integer or
+float: widened exactly, `widened` counts. A shorter `[N]`: the writer's slots land and the reader's new ones
+take the ELEMENT DEFAULT, which is what a fresh value holds there. A shorter `[..N]`: the writer's elements
+and count land, and the slack past the count is zeros, as is a text field's slack past its length — nobody
+wrote those bytes and nothing reads them. An older enum: its ordinals are the reader's, the list being a
+prefix. Everything else: copied.
+
+### 21.3 What an older reader does with a newer file
+
+Refuses, by name, at load, before any record: **`layout_newer`**. No counter moves. REFUSE is total. The
+refusal carries THE FILE'S LAYOUT HASH AND NOTHING ELSE: a layout the reader has not locked is never parsed,
+so there is no field, bound or variant to name, and the hash is what the writer is looked up by.
+
+### 21.4 The closure rule
+
+Every table or type a fixed table reaches by value is itself declared `fixed`, with its own layout and its
+own lineage. A pointer, a map, or an unbounded array in the closure is refused, so a fixed table never
+reaches itself.
+
+### 21.5 The lineage, the floor, and the plans
+
+`schema.lock` keeps each fixed table's LINEAGE: every layout it has had, in order, with its hash and its
+layout bytes, and its DEFINITIONS DIGEST. The layout hash is the version — `fnv1a64` over the layout bytes
+AND THEN over that digest (§3.4, the bill §13) — and nothing on the wire carries a number; the digest does not
+ride the wire either, the hash being what binds it. A FLOOR per table names
+the oldest supported entry; the reader accepts the lineage from the floor to its own layout and refuses
+older ones as `layout_unsupported`. Because the accepted set is finite and known at build time, the plan
+for each supported version is compiled at build time from the lock and shipped as static data; at load the
+file's hash selects a plan, the file's layout bytes are compared to the known bytes for that hash, and a
+mismatch is `layout_malformed`. The reader never parses a layout it has not seen before.
+
+### 21.6 The deployment rule, and the lifecycle
+
+Readers ship before writers, by a margin a reader can roll back across; the floor is the delta between the
+live clients and the backend. When a table has grown past sense: create a new table, deprecate the old,
+clean out the cruft, ship the backend reading both, then the client, and when nothing live speaks the old
+table, remove it.

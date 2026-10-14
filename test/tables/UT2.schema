@@ -1,0 +1,37 @@
+// UT2.schema — the NEW side of UT1's pair. `mid` is inserted IN THE MIDDLE of
+// the union, so `b` — the arm that carries the `string(8)` — moves from ordinal
+// 2 to ordinal 3. A record UT1 wrote is then read under a COMPILED plan, and
+// the entries for b's fields must be guarded by THEIR ordinal (2) while the tag
+// this reader stores is MY ordinal (3). The text entry's flavour is neither
+// number, which is the whole point of the pair (docs/SPEC-TABLES.md §3.4).
+package tblut2
+
+type ArmA
+{
+    n int32 = 7
+}
+
+type ArmMid
+{
+    k int32 = 5
+}
+
+type ArmB
+{
+    label string(8) = "b"
+    m     int32 = 9
+}
+
+union Pick
+{
+    a   ArmA
+    mid ArmMid
+    b   ArmB
+}
+
+fixed table UtRoot
+{
+    head int32 = 1
+    pick Pick
+    tail int32 = 3
+}

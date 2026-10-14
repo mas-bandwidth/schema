@@ -143,6 +143,16 @@ tables-rust-clippy: build/tables-generated-rust/.stamp
 # the two accelerators carry cfg!(target_endian) order words that refuse a
 # foreign file), so what the runtime leg would add is proof rather than
 # suspicion.
+#
+# AND THE 128-BIT CRATE RIDES HERE BECAUSE s390x IS WHERE IT BREAKS. ir's model
+# puts a 128-bit integer at SIXTEEN BYTES ALIGNED SIXTEEN — the `alignas( 16 )`
+# the C++ reference spells — while Rust's own u128 takes the TARGET's C
+# alignment, which is SIXTEEN on x86-64 and aarch64 and EIGHT on s390x. A bare
+# u128 in a Row therefore lands at a different offset on this target only, and
+# nothing on the developer's machine would ever say so. The paired bench unit
+# (bench/corpus/Bench.schema's wide_key and flux) is the crate that carries the
+# family, so it is the one checked: its Row's layout const asserts are what fail
+# if the aligned wrapper ever goes away.
 RUST_BE_TARGET ?= s390x-unknown-linux-gnu
 
 .PHONY: tables-rust-big-endian
@@ -152,9 +162,11 @@ tables-rust-big-endian: build/tables-generated-rust/.stamp
 		echo "  rustup target add $(RUST_BE_TARGET)"; \
 		exit 0; \
 	fi; \
-	cd test/conformance/rust && PATH="$(RUSTUP_BIN):$$PATH" \
-		cargo check --quiet --target $(RUST_BE_TARGET) && \
-		echo "big-endian: the generated Rust table surface checks for $(RUST_BE_TARGET), every layout const assert with it"
+	( cd test/conformance/rust && PATH="$(RUSTUP_BIN):$$PATH" \
+		cargo check --quiet --target $(RUST_BE_TARGET) ) || exit 1; \
+	( cd build/tables-generated-rust/benchfixed && PATH="$(RUSTUP_BIN):$$PATH" \
+		cargo check --quiet --target $(RUST_BE_TARGET) ) || exit 1; \
+	echo "big-endian: the generated Rust table surface checks for $(RUST_BE_TARGET), the 128-bit family with it, every layout const assert evaluated"
 
 
 .PHONY: tables-rust-fuzz
@@ -169,17 +181,6 @@ tables-rust-fuzz-miri: build/block-fuzz/.stamp build/cook-fuzz/.stamp build/tabl
 		MAX_SEED_BYTES=$(MIRI_MAX_SEED_BYTES) \
 		BLOCK_SEEDS="$(CURDIR)/build/block-fuzz" COOK_FIXTURES="$(CURDIR)/build/cook-fuzz" \
 		cargo +nightly miri run --quiet
-
-# THE RUST PORT'S RELEASE GATE (docs/PORTING.md J3). certify.yml DERIVES this
-# target by name, so the expensive half lands by adding it here and nothing
-# else. The native forgery fuzzer is the PR-scale instrument `make test` does
-# not run at all; this is its long form at five times the shared N under a
-# second seed, beside the name-claim control it belongs with.
-.PHONY: tables-rust-release
-tables-rust-release:
-	$(MAKE) tables-rust-fuzz N=500000
-	$(MAKE) tables-rust-fuzz SEED=2 N=500000
-	$(MAKE) tables-rust-names-negative-control
 
 # THE RUST NAME-CLAIM NEGATIVE CONTROL (docs/SPEC-TABLES.md §11). The claim
 # that a schema declaration may not lower onto one of the table runtime's Rust
@@ -215,6 +216,65 @@ tables-rust-names-negative-control:
 	@grep -m1 "was accepted beside a table" build/rust-names-control/log
 	@echo "rust name-claim negative control: removing the mapped-space claim turns the suite RED on it"
 
+# THE RUNTIME HOME IS THE PACKAGE (docs/SPEC-TABLES.md §19.2). A unit's shared
+# Rust table runtimes — the block form's runtime in block_runtime.rs, the cooked
+# form's in cook_runtime.rs, and the build version in build_version.rs — are
+# emitted ONCE, keyed by the module CONSTANTS (rusttable.go:26-30), so no file's
+# name can reach them. Every earlier rule picked WHERE off the file order:
+# adding a file that sorts earlier relocated the whole runtime (issue #347) —
+# correct output, and a diff nobody can read.
+#
+# A unit is a CRATE here (make/rust.mk:214-215), so the crate name already IS
+# the package and a module does not repeat it; a module constant off the crate
+# is this leg's spelling of "named by the PACKAGE", and cook.go:113-118 says so.
+#
+# The gate adds exactly such a file to a COPY of tables/examples — Aaa.schema,
+# ahead of Guarded.schema — and requires the homes not to move, by name and by
+# byte. The added file DECLARES NOTHING: a declared type would move the unit's
+# protocol id, which the build version folds in, so a moved runtime would then
+# be correct rather than a defect (rusttable_test.go:190-194). What it changes
+# is the FILE ORDER and nothing else.
+.PHONY: tables-rust-runtime-home
+tables-rust-runtime-home: bin/schema
+	@rm -rf build/runtime-home-rust && mkdir -p build/runtime-home-rust/src
+	@cp tables/examples/*.schema build/runtime-home-rust/src/
+	@printf 'package tabledemo\n\n// a file that declares nothing, so the only thing it changes is which basename sorts first\n' > build/runtime-home-rust/src/Aaa.schema
+	@./bin/schema generate --lang rust --out build/runtime-home-rust/base tables/examples
+	@./bin/schema generate --lang rust --out build/runtime-home-rust/added build/runtime-home-rust/src
+	@for home in "block_runtime:shared runtime (docs/SPEC-TABLES.md §19)" "cook_runtime:shared runtime (docs/SPEC-TABLES.md §7)" "build_version:BUILD VERSION (docs/SPEC-TABLES.md §20)"; do \
+		mod=$${home%%:*}; needle=$${home#*:}; \
+		base=$$(cd build/runtime-home-rust/base && grep -l "$$needle" *.rs); \
+		added=$$(cd build/runtime-home-rust/added && grep -l "$$needle" *.rs); \
+		if [ "$$base" != "$$mod.rs" ] || [ "$$added" != "$$mod.rs" ]; then \
+			echo "RUNTIME HOME GATE FAILED: the $$mod runtime is in $$base before the added file and $$added after — expected $$mod.rs both times"; exit 1; \
+		fi; \
+	done
+	@for mod in block_runtime cook_runtime build_version; do \
+		cmp -s build/runtime-home-rust/base/$$mod.rs build/runtime-home-rust/added/$$mod.rs || \
+			{ echo "RUNTIME HOME GATE FAILED: $$mod.rs's bytes moved when the unit gained a file"; exit 1; }; \
+	done
+	@echo "runtime home gate (Rust): the block, cook and build-version runtimes stay in block_runtime.rs, cook_runtime.rs and build_version.rs when an earlier-sorting file joins the unit"
+
+.PHONY: tables-rust-runtime-home-negative-control
+tables-rust-runtime-home-negative-control: bin/schema tables-rust-runtime-home
+	@rm -rf build/rust-runtime-home-control && mkdir -p build/rust-runtime-home-control
+	@sed 's|out\[BlockRuntimeModule+".rs"\]|out[strings.ToLower(ir.ProtocolIdHome(u))+"_block_runtime.rs" /* SABOTAGED: back to the file order */]|' \
+		internal/codegen/rusttable/block.go > build/rust-runtime-home-control/block.go.txt
+	@[ "$$(grep -c SABOTAGED build/rust-runtime-home-control/block.go.txt)" = "1" ] || \
+		{ echo "NEGATIVE CONTROL FAILED: the file-order sabotage did not apply exactly once"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/block.go":"%s/build/rust-runtime-home-control/block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-runtime-home-control/overlay.json
+	@go build -overlay=build/rust-runtime-home-control/overlay.json -o build/schema-rustruntime-sabotaged ./cmd/schema
+	@rm -rf build/runtime-home-rust/base-sabotage build/runtime-home-rust/added-sabotage
+	@./build/schema-rustruntime-sabotaged generate --lang rust --out build/runtime-home-rust/base-sabotage tables/examples
+	@./build/schema-rustruntime-sabotaged generate --lang rust --out build/runtime-home-rust/added-sabotage build/runtime-home-rust/src
+	@base=$$(cd build/runtime-home-rust/base-sabotage && grep -l "shared runtime (docs/SPEC-TABLES.md §19)" *.rs); \
+	 added=$$(cd build/runtime-home-rust/added-sabotage && grep -l "shared runtime (docs/SPEC-TABLES.md §19)" *.rs); \
+	 if [ "$$base" = "$$added" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the block runtime in $$base - the gate is watching nothing"; exit 1; \
+	 fi; \
+	 echo "rust runtime home negative control: the file-order rule moves the block runtime from $$base to $$added"
+
 generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang rust --out generated/bench/rust/src bench/corpus/Bench.schema
 	./bin/schema generate --lang rust --out generated/bench/rust-realworld/src bench/corpus/RealWorld.schema
@@ -227,12 +287,25 @@ generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 # table runtime. The crates carry a generated Cargo.toml each; nothing here is
 # checked in.
 RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
+	blobdemo:tables/blobs \
 	blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \
-	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema
+	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
+	tblfx1:test/tables/FX1.schema tblfx2:test/tables/FX2.schema \
+	tblfe1:test/tables/FE1.schema tblfe2:test/tables/FE2.schema \
+	tblfu1:test/tables/FU1.schema tblfu2:test/tables/FU2.schema
 
-build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+# THE PAIRED BENCH UNIT is TWO SCHEMA FILES AS ONE UNIT
+# (bench/corpus/FixedTable.schema wraps Bench.schema's own BenchMixed), so it
+# cannot ride the name:path loop above and gets its own line. It is the unit
+# that carries a UNION through the fixed form — BenchMixed's `game_event` — and
+# the C++ reference has already written its 64 records to
+# bench/paired/corpus/bench_fixed.bin, so this crate is what holds Rust to
+# those bytes (docs/SPEC-TABLES.md §3.4, §15).
+RUST_TABLE_BENCH_SCHEMAS := bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+
+build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema $(RUST_TABLE_BENCH_SCHEMAS)
 	@mkdir -p build/tables-generated-rust
 	@for unit in $(RUST_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -241,7 +314,61 @@ build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 		printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' $$name \
 			> build/tables-generated-rust/$$name/Cargo.toml; \
 	done
+	@rm -rf build/tables-generated-rust/benchfixed/src
+	./bin/schema generate --lang rust --out build/tables-generated-rust/benchfixed/src $(RUST_TABLE_BENCH_SCHEMAS)
+	@printf '[package]\nname = "benchfixed"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' \
+		> build/tables-generated-rust/benchfixed/Cargo.toml
 	@touch $@
+
+# THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4). The C++ reference
+# writes the bytes (`make tables-fixedform-corpus`) and this leg holds Rust to
+# them: every file read and saved back has to come out BYTE FOR BYTE the same,
+# and every cross-schema case reads a record written under ANOTHER block
+# through a plan compiled from it — a widened field, a rename under `was`, a
+# field this reader cannot name, a field the writer does not carry, a whole
+# nested TYPE stepped over by its block size, and an optional against a value.
+# The negative controls ride in the same binary, because a leg that never
+# watched the wrong plan fail never checked the right one worked.
+#
+# BOTH BUILD MODES, for the reason the packet corpus already runs both: the
+# generated writer's caller contracts are debug-only, so debug proves they FIRE
+# and release proves they are GONE and the bytes are still the reference's.
+.PHONY: tables-rust-fixedform
+tables-rust-fixedform: build/tables-generated-rust/.stamp build/fixedform-corpus/.stamp
+	cd test/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet -- ../../build/fixedform-corpus ../../bench/paired/corpus
+	cd test/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release -- ../../build/fixedform-corpus ../../bench/paired/corpus
+
+# THE VERSIONING HALF OF THE FIXED FORM ON THE RUST LEG (§5 of
+# docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
+# internal/codegen/rusttable/fixedversioning_test.go reads the C++ reference's
+# byte oracle out of build/fixedform-corpus — `old_<row>.bin`, `new_<row>.bin`
+# and the floor, hash and lineage-merge files — generates ONE CARGO WORKSPACE of
+# probe crates under build/rust-versioning-probes, and holds each row's two read
+# columns: NEW-READS-OLD lands every old value with §5.4's counters, and
+# OLD-REFUSES-NEW answers `layout_newer` before any record, on the file's hash
+# alone (§5.3). The Go leg's `tables-go-versioning` is the same target on the
+# same rows; this is its twin.
+#
+# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The suite's
+# harness SKIPS itself when build/fixedform-corpus is absent, which is right for
+# a bare `go test ./...` on a tree that never built the oracle — and is exactly
+# how a §5 regression would have ridden into CI green, since the go-test job
+# runs nothing but `go test ./...`. So the target BUILDS THE ORACLE FIRST
+# (`tables-fixedform-corpus`, the C++ reference's own dump, about 7 s) and then
+# sets SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a FAILURE: under this
+# name a missing corpus can never pass silently.
+#
+# AND IT IS A GO TEST THAT SHELLS OUT TO CARGO, so the PATH carries $(RUSTUP_BIN)
+# the way every other Rust row in this file does: the suite's one `cargo test
+# --workspace` resolves cargo out of the environment it is handed and nothing
+# else. One workspace and ONE cargo invocation is the two-minute rule — fifty
+# separate `cargo run`s would serialize on the target directory's build lock and
+# compile `serialize-official` behind each of them.
+.PHONY: tables-rust-versioning
+tables-rust-versioning: tables-fixedform-corpus
+	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 \
+		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestFixedVersioning'
+	@echo 'tables Rust versioning: §5 read both columns of every row against the C++ reference bytes'
 
 build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust/src/main.rs test/conformance/rust/Cargo.toml
 	@mkdir -p build
@@ -250,38 +377,67 @@ build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust
 	            # running corrupts it in place, and a long soak runs this one
 	cp test/conformance/rust/target/debug/conformance-rust $@
 
-# I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Rust side.
-# The page's cook example is pulled out of docs/USAGE.md, wrapped in a crate
-# that reads the fixture cook and calls the function verbatim, and built against
-# the generated `tables/pointers` crate — so a renamed function or a moved field
-# is a compile error here, not a release later.
-.PHONY: tables-rust-usage
-tables-rust-usage: build/tables-generated-rust/.stamp build/cook-open/.stamp docs/USAGE.md
-	@rm -rf build/rust-usage && mkdir -p build/rust-usage/src
-	printf '[package]\nname = "rustusage"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\ngraphdemo = { path = "../tables-generated-rust/graphdemo" }\n' > build/rust-usage/Cargo.toml
-	printf 'use std::fs;\n\nfn main() {\n    let path = std::env::args().nth(1).expect("usage: rust-usage <Scene.cook>");\n    let bytes = fs::read(&path).expect("read the Scene cook");\n    if !usage(&bytes) { panic!("the Scene cook did not open"); }\n    println!("usage: docs/USAGE.md Rust cook example opened the Scene cook and walked its chain");\n}\n\n' > build/rust-usage/src/main.rs
-	sed -n '/<!-- rust-table-usage -->/,/<!-- \/rust-table-usage -->/p' docs/USAGE.md \
-		| sed '1,2d' | sed '$$d' | sed '$$d' >> build/rust-usage/src/main.rs
-	grep -q 'SceneCook::open' build/rust-usage/src/main.rs || \
-		{ echo "MISSING: docs/USAGE.md carries no rust-table-usage example"; exit 1; }
-	cd build/rust-usage && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet -- $(CURDIR)/build/cook-open/Scene.cook
+# THE PAIRED BENCH UNIT, for bench/tables/rust — the FIXED FORM's leg in
+# `bench/paired` (bench/paired/main.go, bench/tables/rust/src/main.rs).
+# Bench.schema and FixedTable.schema are ONE unit, exactly as the C, C++, Go
+# and C# paired generations are: the fixed root reaches the packet type so the
+# compiler emits its table codec. The manifest beside the modules is TRACKED
+# build wiring rather than something this stamp writes — the paired unit is
+# generated to the crate ROOT (that is the --out path `bench/paired` passes for
+# every language), so its Cargo.toml names `[lib] path = "lib.rs"` and does not
+# change when the emitter adds or drops a module. The driver regenerates the
+# same .rs files itself, so the two agree byte for byte or `generated-current`
+# says so.
+#
+# IT IS THE ONE RUST UNIT WHOSE MANIFEST IS NOT WRITTEN WITH $(SERIALIZE_RS)
+# SUBSTITUTED IN, so it names build/paired/serialize.rs — a symlink — instead,
+# and the two places that build the crate point that link first
+# (`tables-rust-fixed-matched` below, and bench/paired's own build step). That
+# is what keeps a tracked file from moving on a checkout that is not beside
+# serialize.rs: the paired driver refuses a dirty checkpoint.
+generated/bench/paired/rust/.stamp: bin/schema $(RUST_TABLE_BENCH_SCHEMAS)
+	@mkdir -p generated/bench/paired/rust
+	./bin/schema generate --lang rust --out generated/bench/paired/rust $(RUST_TABLE_BENCH_SCHEMAS)
+	@touch $@
+
+# THE FIXED FORM'S PAIRED LEG, gated and not timed: the same no-clock `--gate`
+# the C++ and C legs answer in `tables-fixed-matched`, over the same corpus.
+# The clock lives in `go run ./bench/paired`, and a clock does not gate a build.
+#
+# RELEASE, because that is the build the driver measures and the build whose
+# write-side `debug_assert!`s are gone (the 2026-09-07 ruling) — the debug
+# build's contracts are already proved by `tables-rust-fixedform`, which runs
+# both modes over these same bytes.
+.PHONY: tables-rust-fixed-matched
+tables-rust-fixed-matched: generated/bench/paired/rust/.stamp
+	@mkdir -p build/paired
+	@ln -sfn "$(abspath $(SERIALIZE_RS))" build/paired/serialize.rs
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release \
+		--manifest-path bench/tables/rust/Cargo.toml --target-dir build/paired/rust
+	./build/paired/rust/release/table-rust --gate --indexed \
+		--wire-dir bench/paired/corpus --variant-dir bench/paired/corpus
 
 # THE RUST LEG of `make test`: the clippy and feature gates, the names
-# control, the FORGERY FUZZER the header above says rides every push, the
-# big-endian check, the bench crates' compile gates, and the packet tests —
-# the corpus binaries in BOTH build modes (see below).
+# control, the big-endian check, the bench crates' compile gates, and the
+# packet tests — the corpus binaries in BOTH build modes (see below).
 .PHONY: test-rust
-test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench/rust/.stamp
+test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench/rust/.stamp generated/bench/paired/rust/.stamp
 	$(MAKE) tables-rust-clippy
 	$(MAKE) tables-rust-features
-	$(MAKE) tables-rust-usage
 	$(MAKE) tables-rust-names-negative-control
-	# THE FORGERY FUZZER (docs/SPEC-TABLES.md §19.5, §7): the native leg, the
-	# one the header above records as the per-push cost — 409,746 mutants in
-	# 4.5 s at N=100000. It walks what it opened, and the both-bounds control
-	# that proves it load-bearing is tables-block-fuzz-extent-negative-control.
-	# The MIRI leg beside it stays a by-hand gate.
-	$(MAKE) tables-rust-fuzz
+	# THE FIXED FORM against the C++ reference's own bytes (§3.4)
+	$(MAKE) tables-rust-fixedform
+	# AND ITS VERSIONING HALF (§5): every row of
+	# docs/FIXED-FORM-VERSIONING-TESTS.md, both read columns, over the same
+	# reference bytes. `tables-rust-fixedform` above proves this leg reads the
+	# corpus; this proves it reads BACKWARD and refuses FORWARD.
+	$(MAKE) tables-rust-versioning
+	# THE PAIRED LEG's own no-clock gate (bench/tables/rust): the block is the
+	# corpus's, the file loads, it saves back identical, reused storage
+	# round-trips twice.
+	$(MAKE) tables-rust-fixed-matched
+	$(MAKE) tables-rust-runtime-home
+	$(MAKE) tables-rust-runtime-home-negative-control
 	# the generated Rust table surface CHECKED for a big-endian target, layout
 	# const asserts and all. It SKIPS cleanly where the target is not
 	# installed, so it costs a machine without it nothing.
@@ -371,3 +527,161 @@ packet-wide-rust-negative-control: packet-wide-rust
 	@echo 'packet wide Rust negative control: removed pairing fails bit-flip agreement'
 
 test-rust: packet-wide-rust packet-wide-rust-negative-control
+
+# THE RUST VARIABLE-CLASS GATE (docs/SPEC-TABLES.md §2.5, §2.9, §3, §3.1,
+# §16.7): the constructs the card record does not use but the variable class
+# carries — table pointers over the flat node table, tables nested by value,
+# blobs, unbounded and bounded arrays of scalar, enum, table and pointer
+# elements, the rest of the scalar kinds, bytes(N), the escape kind and the
+# text form's &node sharing — held byte for byte against the Go oracle over
+# tables/pointers, tables/blobs and tables/lists by
+# TestVariableClassBeyondCardConstructsRust, and every construct the leg still
+# refuses named by TestOtherVariableConstructsAreRefusedByName.
+# SCHEMA_REQUIRE_CORPUS=1 turns the rustc skip into a failure, so the target
+# never passes on a SKIP.
+.PHONY: tables-rust-variable-class
+tables-rust-variable-class:
+	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 \
+		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m \
+		-run 'TestVariableClassBeyondCardConstructsRust|TestOtherVariableConstructsAreRefusedByName' -v
+	@echo 'tables Rust variable class: the class beyond the card constructs round-trips and the rest is refused by name'
+
+test-rust: tables-rust-variable-class
+
+# THE CARDS UNIT'S RUST LEG (docs/SPEC-TABLES.md §2). These targets are the
+# Rust side of the cards wire-fuzz gate: they mirror the Go leg's
+# cards-generate and cards-wire-fuzz (make/go.mk) against the same oracle
+# harness and the same seed, so the Rust Card codec is held to the identical
+# byte-for-byte contract. They live in make/rust.mk (NOT a separate
+# make/cards-rust.mk) because the wide-scalar refusal gate
+# (tables-ports-refuse-wide-scalars) discovers every make/*.mk as a live port,
+# and a fragment named cards-rust.mk would be refused there as a phantom port.
+CARDS_RUST_FUZZ_TIME ?= 60s
+
+# cards-rust-generate produces ONLY build/tables-generated-rust/cards, cleaning
+# that owned output first so a deleted symbol cannot survive a regeneration.
+.PHONY: cards-rust-generate
+cards-rust-generate: bin/schema
+	@rm -rf build/tables-generated-rust/cards
+	@mkdir -p build/tables-generated-rust/cards/src
+	./bin/schema generate --lang rust --out build/tables-generated-rust/cards/src tables/cards
+
+# build/conformance-rust-card is the wire-fuzz driver: the hand-written main in
+# test/conformance/rust/src/wire_fuzz.rs compiled beside the card's generated
+# wire modules, exactly the way this port's tests run generated code.
+build/conformance-rust-card: cards-rust-generate test/conformance/rust/src/wire_fuzz.rs
+	@mkdir -p build/cards-rust-fuzz
+	@cp build/tables-generated-rust/cards/src/variable_runtime.rs build/cards-rust-fuzz/
+	@cp build/tables-generated-rust/cards/src/card_table.rs build/cards-rust-fuzz/
+	@cp build/tables-generated-rust/cards/src/card_variable.rs build/cards-rust-fuzz/
+	@cp test/conformance/rust/src/wire_fuzz.rs build/cards-rust-fuzz/main.rs
+	@rustc --edition 2024 -O -o build/conformance-rust-card build/cards-rust-fuzz/main.rs
+
+# THE CARD WIRE-FUZZ GATE: the oracle harness over the Card root only, the same
+# shape as make/go.mk's cards-wire-fuzz. --vectors '' keeps the default pinned
+# vectors out of this Card-only manifest. The greps hold the nonzero
+# seed/mutant claim and the zero-divergence claim explicitly.
+cards-rust-wire-fuzz: build/conformance-harness build/conformance-rust-card
+	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+		--driver 'build/conformance-rust-card wire-fuzz' --seed 24845619678 --n 100 \
+		> build/cards-rust-wire-fuzz.log 2>&1; \
+		status=$$?; cat build/cards-rust-wire-fuzz.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -q '0 divergences' build/cards-rust-wire-fuzz.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-rust-wire-fuzz.log
+	@grep -qE '[1-9][0-9]* mutants' build/cards-rust-wire-fuzz.log
+
+# THE CARD WIRE-FUZZ GATE, RETAINED (docs/SPEC-TABLES.md §6.6): the same Card
+# root through both engines' RETAINING paths — the driver answers --retain with
+# card_load_retain and card_save_retain over the caller-owned stores — compared
+# against the oracle's own retention. The seed, count and coverage greps are the
+# wire-fuzz arm's above. Like cards-rust-wire-fuzz this lives in make/rust.mk
+# rather than a separate fragment: the wide-scalar refusal gate
+# (tables-ports-refuse-wide-scalars) discovers every make/*.mk as a live port,
+# and a fragment named cards-rust-retain.mk would be refused there as a phantom
+# port.
+.PHONY: cards-rust-retain-fuzz
+cards-rust-retain-fuzz: build/conformance-harness build/conformance-rust-card
+	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+		--driver 'build/conformance-rust-card wire-fuzz' --retain --seed 24845619678 --n 100 \
+		> build/cards-rust-retain-fuzz.log 2>&1; \
+		status=$$?; cat build/cards-rust-retain-fuzz.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -q '0 divergences' build/cards-rust-retain-fuzz.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-rust-retain-fuzz.log
+	@grep -qE '[1-9][0-9]* mutants' build/cards-rust-retain-fuzz.log
+
+# THE CARDS FACADE'S RUST LEG (docs/SPEC-TABLES.md §2): L1 is the owning
+# facade and the customer bounds (table/cards/cards.go), L2 parse once and
+# render many (parse.go/render.go). cards-rust-test builds and tests the facade
+# beside the generated card modules copied into build/cards-rust/, with no
+# crate dependency beyond the standard library and the generated modules;
+# clippy runs over the facade with warnings denied.
+.PHONY: cards-rust-test
+cards-rust-test: cards-rust-generate
+	@mkdir -p build/cards-rust
+	@cp build/tables-generated-rust/cards/src/variable_runtime.rs build/cards-rust/
+	@cp build/tables-generated-rust/cards/src/card_table.rs build/cards-rust/
+	@cp build/tables-generated-rust/cards/src/card_variable.rs build/cards-rust/
+	@cp build/tables-generated-rust/cards/src/card_records.rs build/cards-rust/
+	@cp build/tables-generated-rust/cards/src/card.rs build/cards-rust/
+	@cp build/tables-generated-rust/cards/src/card_descriptors.rs build/cards-rust/
+	@cp tables/cards/rust/Cargo.toml build/cards-rust/
+	@cp tables/cards/rust/src/lib.rs build/cards-rust/lib.rs
+	@cp tables/cards/rust/tests/cards.rs build/cards-rust/tests.rs
+	@mkdir -p build/cards-rust/src/bin
+	@cp tables/cards/rust/src/bin/cards-driver.rs build/cards-rust/src/bin/cards-driver.rs
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --offline --manifest-path build/cards-rust/Cargo.toml
+	PATH="$(RUSTUP_BIN):$$PATH" cargo test --offline --manifest-path build/cards-rust/Cargo.toml
+	PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --manifest-path build/cards-rust/Cargo.toml -- -D warnings
+
+# THE CARD CONFORMANCE CHECK (tables/cards/conformance/FORMAT.md): the Rust
+# leg's driver over all nine surfaces (load, save, render, parse, bounds,
+# upgrade, edit, taskhash, view), compared byte for byte against the committed
+# Go answers. The driver binary rides build/cards-rust/target/debug/cards-driver,
+# built by the cards-rust-test cargo build above.
+.PHONY: cards-rust-conformance
+cards-rust-conformance: build/conformance-harness cards-rust-test
+	./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/rust/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view
+
+# THE NEGATIVE CONTROL: the same check with a test-only environment switch
+# (CARDS_RUST_SABOTAGE_RENDER) that changes one rendered byte, required to FAIL
+# on render while the other surfaces pass.
+.PHONY: cards-rust-conformance-negative-control
+cards-rust-conformance-negative-control: build/conformance-harness cards-rust-test
+	@mkdir -p build/cards-rust-conformance-neg
+	@if CARDS_RUST_SABOTAGE_RENDER=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/rust/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-rust-conformance-neg/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with one rendered byte changed'; exit 1; fi
+	@grep -qE 'cards render .*FAIL' build/cards-rust-conformance-neg/log || { echo 'NEGATIVE CONTROL FAILED: render did not go red'; cat build/cards-rust-conformance-neg/log; exit 1; }
+	@grep -qE 'cards (load|save|parse|bounds|upgrade|edit|taskhash|view) pass' build/cards-rust-conformance-neg/log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-rust-conformance-neg/log; exit 1; }
+	@echo 'cards Rust negative control: one changed rendered byte turns exactly render red'
+
+# THE UPGRADE NEGATIVE CONTROL: a test-only switch (CARDS_RUST_SABOTAGE_UPGRADE)
+# that changes one upgraded byte must FAIL upgrade alone while every other
+# surface passes.
+.PHONY: cards-rust-conformance-upgrade-negative-control
+cards-rust-conformance-upgrade-negative-control: build/conformance-harness cards-rust-test
+	@mkdir -p build/cards-rust-conformance-neg-upgrade
+	@if CARDS_RUST_SABOTAGE_UPGRADE=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/rust/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-rust-conformance-neg-upgrade/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with one upgraded byte changed'; exit 1; fi
+	@grep -qE 'cards upgrade .*FAIL' build/cards-rust-conformance-neg-upgrade/log || { echo 'NEGATIVE CONTROL FAILED: upgrade did not go red'; cat build/cards-rust-conformance-neg-upgrade/log; exit 1; }
+	@grep -qE 'cards (load|save|render|parse|bounds|edit|taskhash|view) pass' build/cards-rust-conformance-neg-upgrade/log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-rust-conformance-neg-upgrade/log; exit 1; }
+	@echo 'cards Rust upgrade negative control: one changed upgraded byte turns exactly upgrade red'
+
+# THE TASKHASH NEGATIVE CONTROL: a test-only switch (CARDS_RUST_SABOTAGE_HASH)
+# that adds a needs byte to the hash must FAIL taskhash alone while every other
+# surface passes.
+.PHONY: cards-rust-conformance-hash-negative-control
+cards-rust-conformance-hash-negative-control: build/conformance-harness cards-rust-test
+	@mkdir -p build/cards-rust-conformance-neg-hash
+	@if CARDS_RUST_SABOTAGE_HASH=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/rust/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-rust-conformance-neg-hash/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with one hash digit changed'; exit 1; fi
+	@grep -qE 'cards taskhash .*FAIL' build/cards-rust-conformance-neg-hash/log || { echo 'NEGATIVE CONTROL FAILED: taskhash did not go red'; cat build/cards-rust-conformance-neg-hash/log; exit 1; }
+	@grep -qE 'cards (load|save|render|parse|bounds|upgrade|edit|view) pass' build/cards-rust-conformance-neg-hash/log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-rust-conformance-neg-hash/log; exit 1; }
+	@echo 'cards Rust taskhash negative control: one changed hash digit turns exactly taskhash red'
+
+test-rust: cards-rust-test cards-rust-conformance cards-rust-conformance-negative-control
+test-rust: cards-rust-conformance-upgrade-negative-control cards-rust-conformance-hash-negative-control
+test-rust: cards-rust-wire-fuzz cards-rust-retain-fuzz

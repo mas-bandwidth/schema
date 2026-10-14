@@ -155,16 +155,6 @@ func (b *BlockUnit) Block(name string) *BlockLayout {
 // IsBlock reports whether a name is a marked block-form table.
 func (b *BlockUnit) IsBlock(name string) bool { return b.Block(name) != nil }
 
-// InClosure reports whether a name is a record the block form touches — a
-// marked table, or anything one of its out-of-line arrays reaches by value.
-func (b *BlockUnit) InClosure(name string) bool {
-	if b == nil {
-		return false
-	}
-	_, ok := b.Members[name]
-	return ok
-}
-
 // SkippedReason is why one table has no block form, or "" when it has one.
 func (b *BlockUnit) SkippedReason(name string) string {
 	if b == nil {

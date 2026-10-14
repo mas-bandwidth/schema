@@ -10,16 +10,13 @@
 // THE ACCELERATOR TIER. A block is POINTED AT and a cook is OPENED; neither
 // parses a wire, so both reach every table of the unit whatever its closure
 // declares — a pointered unit's cooks open in full. In Java both are read at
-// explicit offsets out of a byte[] the consumer owns. The TABLE WIRE's codecs —
+// explicit offsets out of a byte[] the consumer owns. The TABLE WIRE itself —
 // measure, save, load, the reflection descriptors and the JSON text form of
-// docs/SPEC-TABLES.md §3, §4, §8 and §16 in their id-table form — are not
-// emitted for Java yet; the port that once stood here wrote the form that
-// preceded the id-table wire, which the current specification does not describe
-// and the C++ reference does not open, and it was removed rather than carried
-// (schema#517 is the row that brings the wire to Java; ROADMAP.md marks the
-// cells). What IS emitted is the form's foundation: TableIds.java carries the
-// form byte, fnv1a64 identity at sixty-four bits, the canonical LEB128 reader
-// and writer, and the first-use id table every body is built from.
+// docs/SPEC-TABLES.md §3, §4, §8 and §16 in their id-table form — is not
+// emitted for Java. The port that once stood here wrote the form that preceded
+// the id-table wire, which the current specification does not describe and the
+// C++ reference does not open; it was removed rather than carried (schema#517
+// is the row that brings the wire to Java). ROADMAP.md marks the cells.
 //
 // The C++ backend (internal/codegen/cpptable) is the REFERENCE and the C#
 // backend (internal/codegen/cstable) is the worked managed-language port for
@@ -190,43 +187,118 @@ func javaFile(u *ir.Unit, summary, body string) []byte {
 // and nothing when the unit declares no table: a table-free unit's generated
 // Java is byte-identical with or without this package.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return GenerateLineage(u, nil)
+}
+
+// GenerateLineage is [Generate] with the LINEAGE the build holds for each fixed
+// table: the locked layouts, OLDEST FIRST, the current one last
+// (docs/FIXED-FORM-ALGORITHM.md §5.2, and §5.9 #1 for why it is a second entry
+// point rather than a changed signature). A nil map is a build with NO LOCK, and
+// every table then carries the one entry it can always compute: its own.
+//
+// THE BACKEND OPENS NO FILE. `lockfile.Open`, `lockfile.Lineage` and
+// `lockfile.Floor` are the caller's three calls, so the disk is read in one place
+// and a test can play the lock in one line.
+func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
-	if err := ir.RefuseWideTableKinds(u, "Java"); err != nil {
-		return nil, err
+	// THE WIDE KINDS (docs/SPEC-TABLES.md §15) ARE A REFUSAL OF THE
+	// ACCELERATORS, NOT OF THE FIXED FORM (ir.WideTableKinds). A block row and
+	// a cooked node are laid out in the ID-TABLE's kind vocabulary, which has
+	// no fixed-point and no 128-bit kind in this backend yet (schema#366) —
+	// but §3.4's fixed form carries both by its own constant-size table, a
+	// `fixed(I, F)` riding as the raw scaled integer at its storage width and
+	// an `int128`/`uint128` as sixteen bytes, the low half then the high.
+	//
+	// THE DAY THAT RULE NAMED IS THIS ONE. The `false` the other ports still
+	// pass is now this backend's OWN answer — `fixedRoots` is the set of roots
+	// this emitter lays out, its coverage and not the reference's — so a
+	// wide-kind unit keeps its form-3 codec and only the two accelerators stand
+	// down. A unit that loses them AND has no fixed form to put in their place
+	// is still refused whole and by name, exactly as it was before the form
+	// arrived.
+	//
+	// The scope question is asked BEFORE checkNames, which is the order the tip
+	// and darttable both use: a unit §15 refuses whole is refused for that,
+	// not for a reserved spelling inside it.
+	scope := ir.WideTableKinds(u, "Java", len(fixedRoots(u)) > 0)
+	if scope.Unit {
+		return nil, scope.Refusal
 	}
 	if err := checkNames(u); err != nil {
 		return nil, err
 	}
-	// The two ACCELERATORS need no wire codec: the BLOCK form (§19) reads
-	// bytes a producer wrote and the COOK (§7) reads a region the tooling
-	// wrote. Both are pure readers over a byte[] the consumer owns, so both
-	// reach every table of the unit — a pointered unit's cooks open in full.
-	blocks := ir.Blocks(u)
-	ck := cookUnitOf(u)
-	set := collectRecords(u, blocks, ck)
-	out := map[string][]byte{
-		"TableBytes.java":   tableBytesFile(u),
-		"BuildVersion.java": buildVersionFile(u),
-	}
-	maps.Copy(out, wireRuntimeFiles(u))
-	maps.Copy(out, emitRowFiles(u, set, blocks, ck))
-	withBlock := anyBlockForm(u, blocks)
-	if withBlock {
-		blockFiles, err := generateBlockFiles(u, blocks)
+	out := map[string][]byte{}
+	if !scope.Accelerators {
+		// The two ACCELERATORS need no wire codec: the BLOCK form (§19) reads
+		// bytes a producer wrote and the COOK (§7) reads a region the tooling
+		// wrote. Both are pure readers over a byte[] the consumer owns, so both
+		// reach every table of the unit — a pointered unit's cooks open in full.
+		blocks := ir.Blocks(u)
+		ck := cookUnitOf(u)
+		set := collectRecords(u, blocks, ck)
+		// TableBytes and BuildVersion BELONG TO THE TWO ACCELERATORS and to
+		// nothing else: block.go and cook.go are their only callers, the fixed
+		// form reads its bytes through TableFixed's own accessors and carries
+		// its own layout hash rather than the build version. So they ride in
+		// this branch, where the accelerators are, and a wide-kind unit that
+		// gets only a fixed form is not handed two classes nobody names.
+		out["TableBytes.java"] = tableBytesFile(u)
+		out["BuildVersion.java"] = buildVersionFile(u)
+		maps.Copy(out, emitRowFiles(u, set, blocks, ck))
+		withBlock := anyBlockForm(u, blocks)
+		if withBlock {
+			blockFiles, err := generateBlockFiles(u, blocks)
+			if err != nil {
+				return nil, err
+			}
+			maps.Copy(out, blockFiles)
+			out["TableBlockLayout.java"] = emitBlockLayoutFile(u, blocks, set)
+		}
+		cooks, err := generateCookFiles(u, ck)
 		if err != nil {
 			return nil, err
 		}
-		maps.Copy(out, blockFiles)
-		out["TableBlockLayout.java"] = emitBlockLayoutFile(u, blocks, set)
+		maps.Copy(out, cooks)
+		out["TableCookLayout.java"] = emitCookLayoutFile(u, ck, set, withBlock)
 	}
-	cooks, err := generateCookFiles(u, ck)
+	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: this backend's
+	// FIRST table wire. It rides unconditionally — a wire a consumer can be
+	// handed is not something they opt into — and nothing about form 1 moves.
+	fixed, err := generateFixedFiles(u, lineage)
 	if err != nil {
 		return nil, err
 	}
-	maps.Copy(out, cooks)
-	out["TableCookLayout.java"] = emitCookLayoutFile(u, ck, set, withBlock)
+	maps.Copy(out, fixed)
+	// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3), form byte 2: the announcement
+	// surface, emitted for a unit with a `fixed table` root.
+	message, err := generateMessageFiles(u)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(out, message)
+	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1: the card's wire.
+	variable, err := generateVariableFiles(u)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(out, variable)
+	// THE REFLECTION DESCRIPTORS (docs/SPEC-TABLES.md §8): a table type
+	// descriptor per card table and the unit registry, emitted beside the
+	// variable form whose fields they describe.
+	view, err := generateViewFiles(u)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(out, view)
+	// THE RETAIN-UNKNOWN SURFACE (docs/SPEC-TABLES.md §6.6): the retained load,
+	// measure and save for the card's constructs.
+	retain, err := generateRetainFiles(u)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(out, retain)
 	return out, nil
 }
 
@@ -283,9 +355,9 @@ func isClassRef(t ir.FieldType) bool {
 func runtimeFileNames() []string {
 	return []string{
 		"TableBytes",
-		"TableIds",
 		"TableBlockRows", "TableBlockInfo", "TableBlockFieldInfo", "TableBlockLayout",
 		"TableCookInfo", "TableCookFieldInfo", "TableCookStorage", "TableCookLayout",
+		"TableFieldInfo", "TableTypeInfo", "TableRegistry",
 		"BuildVersion",
 	}
 }
@@ -299,6 +371,13 @@ func checkNames(u *ir.Unit) error {
 	for _, name := range runtimeFileNames() {
 		runtime[name] = true
 	}
+	// and every class the FIXED FORM claims for this unit (docs/SPEC-TABLES.md
+	// §3.4): TableFixed, and `<Type>Fixed` per type of a fixed root's closure.
+	// Java allows one public class per file, so a schema file that spells one
+	// of them is a collision and is refused by name rather than overwritten.
+	for _, name := range fixedNames(u) {
+		runtime[name] = true
+	}
 	for _, f := range u.Files {
 		if runtime[f.Base] {
 			return fmt.Errorf("schema file %s.schema collides with the %s.java runtime type the Java table backend writes for a unit with tables (one public class per file); rename the file (docs/SPEC-TABLES.md §11)", f.Base, f.Base)
@@ -310,13 +389,133 @@ func checkNames(u *ir.Unit) error {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		for _, f := range u.Tables[name].Fields {
-			if javaReserved[javaName(f.Name)] {
+		st := u.Tables[name]
+		for _, f := range st.Fields {
+			// A reserved spelling is refused ONLY for a fixed table, whose raw
+			// member() the fixed/block/cook forms emit unchanged. A variable
+			// table's codec escapes it (varMember, the card's `_new` -> `new_`),
+			// so it is not refused here.
+			if st.FixedDeclared && javaReserved[javaName(f.Name)] {
 				return fmt.Errorf("field %s of table %s maps to the reserved Java identifier %q; rename it", f.Name, name, javaName(f.Name))
 			}
 		}
 	}
 	return nil
+}
+
+// refuseVariableForm refuses, by name, every variable-class construct the card
+// record does not use (docs/SPEC-TABLES.md §2, §11). The VARIABLE FORM (§3,
+// form byte 1) is taught for plain `table` roots and tables as list elements,
+// bool/int32/int64/enum fields, string(N), the *string byte buffer (§2.5) and
+// unbounded lists of tables ([]T, §2.9). Every other variable-class construct
+// — a map (§2.8), a union arm (§2.6), a *bytes buffer, a pointer to a table
+// outside a list element (§2.1), an optional ?T (§2.3), an enum-keyed array
+// (§2.4) — is refused here, naming the table, the field and the construct, so
+// it is never mis-encoded and never silently dropped.
+//
+// The refusal is scoped to the VARIABLE tables. A DECLARED `fixed table`
+// ([ir.Struct.FixedDeclared]) keeps the fixed form's own answers for optional
+// and the other constructs it carries (docs/SPEC-TABLES.md §3.4), so it is not
+// walked here. A map-entry table is the map's own generated `{ key, value }`
+// struct (§2.8); its owner names it, so it is skipped.
+func refuseVariableForm(u *ir.Unit) error {
+	seen := map[string]bool{}
+	for _, st := range u.Tables {
+		if st == nil || st.FixedDeclared || st.IsMapEntry() {
+			continue
+		}
+		if err := refuseVariableFormClosure(st, seen); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// refuseVariableFormClosure walks one variable table and the table elements its
+// unbounded lists reach (§2.9), returning the first construct the variable form
+// does not carry. A pointer to a table outside a list element is a variable
+// construct (§2.1) and is refused on the field that spells it.
+func refuseVariableFormClosure(st *ir.Struct, seen map[string]bool) error {
+	if seen[st.Name] {
+		return nil
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if why := variableFormRefusal(f); why != "" {
+			return fmt.Errorf("table %s field %s: %s is not carried by the Java variable form (docs/SPEC-TABLES.md §11)", st.Name, f.Name, why)
+		}
+		if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayList {
+			if elem, ok := f.Type.Ref.(*ir.Struct); ok {
+				if err := refuseVariableFormClosure(elem, seen); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// cardVariableTables returns the variable tables whose whole closure (the
+// tables their unbounded lists reach, §2.9) sits inside the card boundary: the
+// set the variable-form emitter writes codecs for. A variable table whose
+// closure holds a construct outside the card's slice is left ABSENT — the
+// generate path (generateVariableFiles) never emits its wire, so a pointered
+// variable table (tables/pointers) still emits its accelerators and fixed form
+// without being refused. The by-name refusal is [refuseVariableForm]'s own job,
+// on the card's path.
+func cardVariableTables(u *ir.Unit) []*ir.Struct {
+	var out []*ir.Struct
+	for _, st := range u.Tables {
+		if st == nil || st.FixedDeclared || st.IsMapEntry() {
+			continue
+		}
+		if refuseVariableFormClosure(st, map[string]bool{}) == nil {
+			out = append(out, st)
+		}
+	}
+	return out
+}
+
+// variableFormRefusal names the variable-class construct a field spells that
+// the Java variable form does not carry, or "" when it carries it
+// (docs/SPEC-TABLES.md §2, §11). The *string byte buffer (§2.5) is the card
+// construct and is carried; a pointer to a table by value is not.
+func variableFormRefusal(f *ir.Field) string {
+	if f.IsMap() {
+		return "a map (docs/SPEC-TABLES.md §2.8)"
+	}
+	if f.Type.Optional {
+		return "an optional ?T (docs/SPEC-TABLES.md §2.3)"
+	}
+	if f.KeyEnum != "" {
+		return "an enum-keyed array (docs/SPEC-TABLES.md §2.4)"
+	}
+	if f.Type.Pointer {
+		switch {
+		case f.Type.Kind == ir.TString && f.Type.Blob():
+			return "" // the *string byte buffer, the card's own construct (§2.5)
+		case f.Type.Kind == ir.TBytes && f.Type.Blob():
+			return "a *bytes byte buffer (docs/SPEC-TABLES.md §2.5)"
+		default:
+			return "a pointer to a table outside a list element (docs/SPEC-TABLES.md §2.1)"
+		}
+	}
+	if f.Type.Kind == ir.TNamed {
+		if _, ok := f.Type.Ref.(*ir.Union); ok {
+			return "a union (docs/SPEC-TABLES.md §2.6)"
+		}
+	}
+	switch f.Type.Kind {
+	case ir.TFixed:
+		return "a fixed(I, F) kind (docs/SPEC-TABLES.md §15)"
+	case ir.TWString:
+		return "a wstring(N) kind (docs/SPEC-TABLES.md §15)"
+	case ir.TInt:
+		if f.Type.Width > 64 {
+			return "a wide int128 kind (docs/SPEC-TABLES.md §15)"
+		}
+	}
+	return ""
 }
 
 // javaReserved is Java's keyword set plus the literals, which are equally

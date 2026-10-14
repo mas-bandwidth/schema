@@ -3,9 +3,11 @@
 package compiler
 
 import (
+	"fmt"
 	"maps"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -401,77 +403,234 @@ func TestJavaGeneratedMethodsAreLowerCamel(t *testing.T) {
 	}
 }
 
-// variableTableSrc is a unit whose table is the VARIABLE class — a plain
-// `table` rather than a `fixed table` — because the id-table wire
-// (docs/SPEC-TABLES.md §3) is the variable class's form and the fixed class
-// rides form 3. A fixed unit is served by the two accelerators alone; a
-// variable unit is the one this runtime is written for.
-const variableTableSrc = packetSrc + `
-table Config
+// javaFixedFormSrc reaches every shape §3.4's constant-size table names that
+// this port carries: scalars at four widths, floats, a bool, an enum, a flags
+// mask, a string and a bytes at their bounds, a fixed array, a counted array,
+// a nested table, an enum-keyed array of a table, a union and an optional
+// section, with declared defaults on top of the lot so the PREFILL image is
+// not all zeros.
+const javaFixedFormSrc = `package probe
+
+enum Slot { Alpha, Beta, Gamma }
+
+flags Mark { One, Two }
+
+type Boost
 {
-    scale  float32 = 1.0
-    label  string(24)
-    grade  Kind
-    points [..8]Point
+    power int32 = 2
+}
+
+type Ward
+{
+    charge float32 = 0.5
+}
+
+union Effect
+{
+    boost Boost
+    ward  Ward
+}
+
+fixed table Leaf
+{
+    a int32 = 7 | min = 0, max = 1000
+    b uint16 = 3
+}
+
+fixed table FixedProbe
+{
+    small    uint8 = 5
+    wide     uint64 = 9
+    negative int16 = -4
+    fl       float32 = 2.5
+    db       float64 = 1.25
+    yes      bool = true
+    slot     Slot = Beta
+    mark     Mark
+    label    string(12)
+    raw      bytes(6)
+    trio     [3]uint32
+    counted  [1..4]Leaf
+    nested   Leaf
+    perslot  [Slot]Leaf
+    effect   Effect
+    maybe    ?Leaf
 }
 `
 
-// TestJavaEmitsTheIdTableWireRuntime is the RED-FIRST pin for schema#517: the
-// Java port of the table wire was removed rather than carried when the wire
-// moved to its id-table form, and this runtime is the FORM's foundation —
-// before a single body can be measured, saved or loaded, the port needs the
-// pieces every one of them is built from. The issue's "What moves" is exactly
-// what this asserts, and nothing here is a spelling this backend is free to
-// choose:
+// TestJavaFixedFormLayoutIsTheCppReferenceByteForByte is what keeps this
+// port's §3.4 layout walk from becoming a SECOND WIRE.
 //
-//   - the form byte is `1`, read FIRST, so §3's form is named in the source;
-//   - identity is `fnv1a64` at SIXTY-FOUR bits with no fold and no rebound;
-//   - every number is one CANONICAL LEB128 and a non-minimal spelling is
-//     MALFORMED, so the reader refuses it rather than decoding a value;
-//   - the id table is first-use, the body names ids by 1-BASED reference and
-//     reference `0` names no id;
-//   - the entry count is the LAST EIGHT BYTES, a fixed little-endian u64, so a
-//     reader finds the table from the END;
-//   - the three kinds ride as numbers: `30` an enum, `31` the escape, `32` the
-//     payload-free arm;
-//   - the reserved node-table id is `0xFFFFFFFFFFFFFFFF`.
+// The LAYOUT is the form's whole self-description and its fnv1a64 is the eight
+// bytes every record carries, so two backends whose layouts differ anywhere
+// are two backends that never read each other's records — silently, as
+// `no_layout`, which looks like a deployment problem and is not one. The C++
+// backend is the REFERENCE for this form (internal/codegen/cpptable/
+// fixedform.go), so this generates the SAME unit for both and requires the
+// bytes and the hash to be identical, per root.
 //
-// That the runtime is emitted at all is only half of it: the other half is
-// that a TABLE-FREE unit gets not one byte of it, which is the zero-cost
-// property at the grain Java has it.
-func TestJavaEmitsTheIdTableWireRuntime(t *testing.T) {
-	with := javaFiles(t, variableTableSrc)
-	wire := string(with["TableIds.java"])
-	if wire == "" {
-		t.Fatal("--lang java emitted no TableIds.java for a unit that declares a VARIABLE table — " +
-			"the id-table wire's runtime is owed (schema#517)")
+// It is the both-directions form the registry scans already use: every root
+// Java emits a layout for is compared against the reference's, and the
+// comparison set has to be non-empty or the test, not the emitter, is what
+// broke.
+func TestJavaFixedFormLayoutIsTheCppReferenceByteForByte(t *testing.T) {
+	cppOut, err := New().Generate(unitFromSource(t, javaFixedFormSrc), "cpp", Options{})
+	if err != nil {
+		t.Fatalf("--lang cpp: %v", err)
 	}
-	for _, want := range []string{
-		"public static final int form = 1;",
-		"0xffffffffffffffffL",
-		"public static final int kindEnum = 30;",
-		"public static final int kindEscape = 31;",
-		"public static final int kindNoPayloadArm = 32;",
-		"public static long fnv1a64(",
-		"public static int putLeb(",
-		"public static int getLeb(",
-		"public static int reference(",
-		"public static long idAt(",
-		"public static long idTableCount(",
-	} {
-		if !strings.Contains(wire, want) {
-			t.Errorf("TableIds.java is missing %q — the id-table form's runtime is not whole", want)
+	javaOut := javaFiles(t, javaFixedFormSrc)
+	cppLayouts, cppHashes := cppFixedLayouts(joinFiles(cppOut))
+	javaLayouts, javaHashes := javaFixedLayouts(javaOut)
+	if len(javaLayouts) == 0 {
+		t.Fatal("the Java backend emitted no fixed-form layout at all for a unit of fixed tables — " +
+			"the scan, or the emitter, is what broke")
+	}
+	names := make([]string, 0, len(javaLayouts))
+	for name := range javaLayouts {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	compared := 0
+	for _, name := range names {
+		want, ok := cppLayouts[name]
+		if !ok {
+			t.Errorf("the Java backend emits a fixed-form layout for %s and the C++ REFERENCE does not — "+
+				"a port may carry fewer shapes than the reference, never more", name)
+			continue
+		}
+		compared++
+		if want != javaLayouts[name] {
+			t.Errorf("%s's layout differs from the C++ reference's:\n  cpp  %s\n  java %s",
+				name, want, javaLayouts[name])
+		}
+		if cppHashes[name] != javaHashes[name] {
+			t.Errorf("%s's fixed-form hash differs from the C++ reference's: cpp %s, java %s — "+
+				"a record written by one is `no_layout` to the other", name, cppHashes[name], javaHashes[name])
 		}
 	}
-	// the canonical-spelling rule is a REFUSAL, and it lives in the reader:
-	// the last byte of a multi-byte LEB128 that is zero means the value had a
-	// shorter spelling, so the decode must fail rather than return the value.
-	if !strings.Contains(wire, "b == 0") {
-		t.Error("TableIds.java's LEB128 reader carries no non-minimal refusal — a non-minimal " +
-			"spelling is MALFORMED (docs/SPEC-TABLES.md §3)")
+	if compared == 0 {
+		t.Fatal("no root was compared against the reference at all")
 	}
+}
+
+// TestJavaFixedFormIsEmittedForAFixedRootAndForNothingElse holds the two ends
+// of §3.4's own scope: a fixed table gets the form, and a unit that declares
+// no table gets not one byte of it.
+func TestJavaFixedFormIsEmittedForAFixedRootAndForNothingElse(t *testing.T) {
+	with := javaFiles(t, javaFixedFormSrc)
+	for _, want := range []string{"TableFixed.java", "FixedProbeFixed.java", "LeafFixed.java", "EffectFixed.java"} {
+		if _, ok := with[want]; !ok {
+			t.Errorf("--lang java emitted no %s for a unit with a fixed root", want)
+		}
+	}
+	root := string(with["FixedProbeFixed.java"])
+	for _, want := range []string{
+		"public static final long hash = 0x",
+		"public static final byte[] layout = {",
+		"public static final byte[] defaults = {",
+		"public static final int[] dest = {",
+		"public static int save(Value[] values, int count, byte[] buffer)",
+		"public static int load(Value[] values, int count, byte[] data,",
+		"public static void writeBody(byte[] b, int at, Value v)",
+		"public static void scatter(byte[] b, int at, Value v, TableFixed.Report r)",
+		"public static int writeHeader(byte[] buffer)",
+	} {
+		if !strings.Contains(root, want) {
+			t.Errorf("FixedProbeFixed.java carries no %q", want)
+		}
+	}
+	// A `type` carries the two halves and NOT the root surface: a FILE is a
+	// TABLE's, and a plain type that only ever rides inline never frames one.
+	// (A nested `table` is still a table, so Leaf does get the root surface —
+	// which is the C++ reference's answer too.)
+	boost := string(with["BoostFixed.java"])
+	for _, want := range []string{"public static void writeBody(", "public static void scatter("} {
+		if !strings.Contains(boost, want) {
+			t.Errorf("BoostFixed.java carries no %q", want)
+		}
+	}
+	for _, unwanted := range []string{"public static int save(", "public static final long hash"} {
+		if strings.Contains(boost, unwanted) {
+			t.Errorf("BoostFixed.java carries the ROOT surface %q for a type that is only ever nested", unwanted)
+		}
+	}
+	// and a table-free unit pays nothing for the form existing
 	without := javaFiles(t, packetSrc)
-	if _, ok := without["TableIds.java"]; ok {
-		t.Error("--lang java emitted TableIds.java for a unit with no tables — the form is zero-cost or it is not")
+	for name := range without {
+		if strings.HasSuffix(name, "Fixed.java") {
+			t.Errorf("--lang java emitted %s for a table-free unit", name)
+		}
 	}
+}
+
+func joinFiles(files map[string][]byte) string {
+	var b strings.Builder
+	for _, data := range files {
+		b.Write(data)
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+var (
+	cppFixedLayoutRe  = regexp.MustCompile(`(?s)constexpr uint8_t (\w+)FixedLayout\[\] = \{(.*?)\};`)
+	cppFixedHashRe    = regexp.MustCompile(`constexpr uint64_t (\w+)FixedHash = (0x[0-9a-f]+)ull;`)
+	javaFixedLayoutRe = regexp.MustCompile(`(?s)public static final byte\[\] layout = \{(.*?)\n    \};`)
+	javaFixedHashRe   = regexp.MustCompile(`public static final long hash = (0x[0-9a-f]+)L;`)
+	cppFixedByteRe    = regexp.MustCompile(`0x[0-9a-f]{2}`)
+	javaFixedByteRe   = regexp.MustCompile(`-?\d+`)
+)
+
+// cppFixedLayouts and javaFixedLayouts both key on the DECLARED name and both
+// render the bytes as unsigned decimals, which is the one shape neither
+// target's own spelling leaks into.
+func cppFixedLayouts(text string) (map[string]string, map[string]string) {
+	layouts, hashes := map[string]string{}, map[string]string{}
+	for _, m := range cppFixedLayoutRe.FindAllStringSubmatch(text, -1) {
+		var out []string
+		for _, b := range cppFixedByteRe.FindAllString(m[2], -1) {
+			var v int
+			if _, err := fmt.Sscanf(b, "0x%x", &v); err == nil {
+				out = append(out, strconv.Itoa(v))
+			}
+		}
+		layouts[m[1]] = strings.Join(out, " ")
+	}
+	for _, m := range cppFixedHashRe.FindAllStringSubmatch(text, -1) {
+		hashes[m[1]] = m[2]
+	}
+	return layouts, hashes
+}
+
+func javaFixedLayouts(files map[string][]byte) (map[string]string, map[string]string) {
+	layouts, hashes := map[string]string{}, map[string]string{}
+	for name, data := range files {
+		if !strings.HasSuffix(name, "Fixed.java") || name == "TableFixed.java" {
+			continue
+		}
+		decl := strings.TrimSuffix(name, "Fixed.java")
+		text := string(data)
+		// the emitted layout carries a trailing comment per entry, so the byte
+		// scan runs per line and stops at the comment
+		if m := javaFixedLayoutRe.FindStringSubmatch(text); m != nil {
+			var out []string
+			for line := range strings.SplitSeq(m[1], "\n") {
+				if i := strings.Index(line, "//"); i >= 0 {
+					line = line[:i]
+				}
+				for _, b := range javaFixedByteRe.FindAllString(line, -1) {
+					v, err := strconv.Atoi(b)
+					if err != nil {
+						continue
+					}
+					out = append(out, strconv.Itoa(int(uint8(int8(v)))))
+				}
+			}
+			layouts[decl] = strings.Join(out, " ")
+		}
+		if m := javaFixedHashRe.FindStringSubmatch(text); m != nil {
+			hashes[decl] = m[1]
+		}
+	}
+	return layouts, hashes
 }

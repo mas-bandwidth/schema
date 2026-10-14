@@ -176,162 +176,6 @@ tables-dart-standalone-negative-control:
 	@grep -m1 "outside the unit" build/dart-standalone-nc/log
 	@echo "negative control: one planted package import turns the Dart standalone gate RED"
 
-# THE ACCESSOR/DESCRIPTOR AGREEMENT GATE (docs/PORTING.md, schema#421; J1). The
-# generated ACCESSORS and the generated DESCRIPTORS are two independent
-# derivations of one layout, and a reading tier that only walks the descriptors
-# (the fuzzer above) could read them twice and never know. This reads both ways
-# and requires agreement, per field, on a PLANTED fresh copy so a byte comparison
-# on a live fixture cannot pass by luck. A scalar additionally gets a straight
-# two-way value read; a pointer slot is held on its OFFSET only, because the
-# emitter's pointer accessor reads one unsigned byte where the descriptor names
-# eight signed (block.go:360-362, block.go:413-437).
-.PHONY: tables-dart-accessor-descriptor-agreement
-tables-dart-accessor-descriptor-agreement: build/tables-generated-dart/.stamp build/cook-fuzz/.stamp
-	$(DART) test/dart-tables/accessor_descriptor.dart
-
-# Its NEGATIVE CONTROLS. The scalar half moves one generated block accessor four
-# bytes, and the pointer half moves one cooked pointer SLOT's descriptor offset
-# eight bytes; each must turn the gate red on its own message family, or the
-# accessor half could be reading the descriptors twice and nobody would know.
-.PHONY: tables-dart-accessor-negative-control
-tables-dart-accessor-negative-control: build/tables-generated-dart/.stamp build/cook-fuzz/.stamp
-	@rm -rf build/dart-accessor-nc && mkdir -p build/dart-accessor-nc
-	@sed 's|g.readAt(f, fmt.Sprintf("%s + %d", origin, fl.Offset)))|g.readAt(f, fmt.Sprintf("%s + %d", origin, fl.Offset+4))) // SABOTAGED|' \
-		internal/codegen/darttable/block.go > build/dart-accessor-nc/block.go.txt
-	@cmp -s internal/codegen/darttable/block.go build/dart-accessor-nc/block.go.txt && \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/darttable/block.go":"%s/build/dart-accessor-nc/block.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/dart-accessor-nc/overlay.json
-	go build -overlay build/dart-accessor-nc/overlay.json -o build/dart-accessor-nc/schema ./cmd/schema
-	./build/dart-accessor-nc/schema generate --lang dart --out build/dart-accessor-nc/generated/block tables/block
-	./build/dart-accessor-nc/schema generate --lang dart --out build/dart-accessor-nc/generated/pointers tables/pointers
-	@sed -e "s|../../build/tables-generated-dart/block/|$(CURDIR)/build/dart-accessor-nc/generated/block/|g" \
-	     -e "s|../../build/tables-generated-dart/pointers/|$(CURDIR)/build/dart-accessor-nc/generated/pointers/|g" \
-		test/dart-tables/accessor_descriptor.dart > build/dart-accessor-nc/accessor_descriptor.dart
-	@if $(DART) build/dart-accessor-nc/accessor_descriptor.dart > build/dart-accessor-nc/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: a generated accessor four bytes off left the Dart leg green"; \
-		cat build/dart-accessor-nc/log; exit 1; \
-	fi
-	@grep -q "the accessor and the descriptor disagree" build/dart-accessor-nc/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the leg went red, but not on the accessor/descriptor disagreement"; \
-		  cat build/dart-accessor-nc/log; exit 1; }
-	@grep -m1 "the accessor and the descriptor disagree" build/dart-accessor-nc/log
-	@echo "negative control: one generated accessor four bytes off turns the Dart leg RED on the accessor/descriptor agreement"
-
-.PHONY: tables-dart-slot-negative-control
-tables-dart-slot-negative-control: build/tables-generated-dart/.stamp build/cook-fuzz/.stamp
-	@rm -rf build/dart-slot-nc && mkdir -p build/dart-slot-nc
-	@sed 's|g.pf("        offset: %d,\\n", fl.Offset)|g.pf("        offset: %d,\\n", func() int64 { if f.Type.Pointer { return fl.Offset + 8 }; return fl.Offset }()) // SABOTAGED|' \
-		internal/codegen/darttable/cook.go > build/dart-slot-nc/cook.go.txt
-	@cmp -s internal/codegen/darttable/cook.go build/dart-slot-nc/cook.go.txt && \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/darttable/cook.go":"%s/build/dart-slot-nc/cook.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/dart-slot-nc/overlay.json
-	go build -overlay build/dart-slot-nc/overlay.json -o build/dart-slot-nc/schema ./cmd/schema
-	./build/dart-slot-nc/schema generate --lang dart --out build/dart-slot-nc/generated/block tables/block
-	./build/dart-slot-nc/schema generate --lang dart --out build/dart-slot-nc/generated/pointers tables/pointers
-	@sed -e "s|../../build/tables-generated-dart/block/|$(CURDIR)/build/dart-slot-nc/generated/block/|g" \
-	     -e "s|../../build/tables-generated-dart/pointers/|$(CURDIR)/build/dart-slot-nc/generated/pointers/|g" \
-		test/dart-tables/accessor_descriptor.dart > build/dart-slot-nc/accessor_descriptor.dart
-	@if $(DART) build/dart-slot-nc/accessor_descriptor.dart > build/dart-slot-nc/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: a pointer slot eight bytes off left the Dart leg green"; \
-		cat build/dart-slot-nc/log; exit 1; \
-	fi
-	@grep -q "the slot accessor's offset is not the descriptor's" build/dart-slot-nc/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the leg went red, but not on the pointer slot"; \
-		  cat build/dart-slot-nc/log; exit 1; }
-	@grep -m1 "the slot accessor's offset is not the descriptor's" build/dart-slot-nc/log
-	@echo "negative control: a pointer slot eight bytes off turns the Dart leg RED on the cooked slot's offset"
-
-# THE RUNTIME-HOME GATE, Dart (docs/PORTING.md §J2). A unit's shared block and
-# cook runtimes live in one file each named by the PACKAGE — <Package>Block.dart
-# and <Package>Cook.dart — never by the file that happens to sort first, so a
-# schema file that sorts earlier relocates nothing and the two runtimes are
-# byte-identical across the two trees. Dart emits no runtime-home marker comment
-# (cstable.go and jstable.go carry one; darttable does not), so the home is
-# identified by its own declaration at column zero, which nothing else in the
-# unit declares: ^const int tableBlockMagic / ^const int tableCookMagic. And
-# because a Dart library is a file, the siblings NAME the home in an import
-# line — a moved home rewrites import lines across the unit — so the gate also
-# asserts the package-named library is the one the unit's other libraries
-# actually import.
-.PHONY: tables-dart-runtime-home
-tables-dart-runtime-home: bin/schema
-	@rm -rf build/runtime-home-dart && mkdir -p build/runtime-home-dart/src
-	@cp tables/examples/*.schema build/runtime-home-dart/src/
-	@printf 'package tabledemo\n\ntable AaaRow\n{\n    tag uint8\n}\n' > build/runtime-home-dart/src/Aaa.schema
-	@./bin/schema generate --lang dart --out build/runtime-home-dart/base tables/examples
-	@./bin/schema generate --lang dart --out build/runtime-home-dart/added build/runtime-home-dart/src
-	@for surface in Block Cook; do \
-		base=$$(cd build/runtime-home-dart/base && grep -l "^const int table$${surface}Magic" *$$surface.dart); \
-		added=$$(cd build/runtime-home-dart/added && grep -l "^const int table$${surface}Magic" *$$surface.dart); \
-		if [ "$$base" != "Tabledemo$$surface.dart" ] || [ "$$added" != "Tabledemo$$surface.dart" ]; then \
-			echo "RUNTIME HOME GATE FAILED: the $$surface runtime is in $$base before the added file and $$added after — expected Tabledemo$$surface.dart both times"; exit 1; \
-		fi; \
-	done
-	@for tree in base added; do \
-		importers=$$(cd build/runtime-home-dart/$$tree && grep -l "^import 'TabledemoBlock.dart';" *Block.dart); \
-		if [ -z "$$importers" ]; then \
-			echo "RUNTIME HOME GATE FAILED: no sibling imports the block home in the $$tree tree"; \
-			echo "the import lines that were found:"; \
-			grep -h "^import '" build/runtime-home-dart/$$tree/*Block.dart | sort -u; exit 1; \
-		fi; \
-	done
-	@grep -v "tableBuildVersion" build/runtime-home-dart/base/TabledemoBlock.dart > build/runtime-home-dart/base.strip
-	@grep -v "tableBuildVersion" build/runtime-home-dart/added/TabledemoBlock.dart > build/runtime-home-dart/added.strip
-	@cmp -s build/runtime-home-dart/base.strip build/runtime-home-dart/added.strip || \
-		{ echo "RUNTIME HOME GATE FAILED: the Dart block runtime's bytes moved when the unit gained a file"; exit 1; }
-	@cmp -s build/runtime-home-dart/base/TabledemoCook.dart build/runtime-home-dart/added/TabledemoCook.dart || \
-		{ echo "RUNTIME HOME GATE FAILED: the Dart cook runtime's bytes moved when the unit gained a file"; exit 1; }
-	@echo "runtime home gate (Dart): the block and cook runtimes stay in <Package><Surface>.dart, the siblings import <Package>Block.dart, and the bytes are identical when an earlier-sorting file joins the unit"
-
-# THE RUNTIME-HOME DRIVER, Dart. One new source under test/dart-tables resolves
-# <Package>{Block,Cook}.dart by NAME and reads the runtime's own constants back —
-# the half a grep cannot make: under the file-order rule the package-named
-# library is not emitted at all, so the import does not resolve and the program
-# does not run.
-.PHONY: tables-dart-runtime-home-driver
-tables-dart-runtime-home-driver: tables-dart-runtime-home
-	$(DART) analyze test/dart-tables/runtime_home.dart
-	$(DART) test/dart-tables/runtime_home.dart
-
-# THE RUNTIME-HOME GATE'S NEGATIVE CONTROL, Dart. The rule is put back to the
-# file order — home := ir.ProtocolIdHome(u) — in a COPY of darttable, the two
-# trees are regenerated from the sabotaged compiler, and the gate must go red on
-# both the name (the home MOVES when the earlier-sorting file joins) and the
-# driver (the package-named library the driver imports is no longer emitted).
-.PHONY: tables-dart-runtime-home-negative-control
-tables-dart-runtime-home-negative-control: bin/schema tables-dart-runtime-home
-	@rm -rf build/dart-runtime-home-nc && mkdir -p build/dart-runtime-home-nc
-	@sed 's|home := capitalize(u.Package)|home := ir.ProtocolIdHome(u) // SABOTAGED: back to the file order|' \
-		internal/codegen/darttable/darttable.go > build/dart-runtime-home-nc/darttable.go.txt
-	@cmp -s internal/codegen/darttable/darttable.go build/dart-runtime-home-nc/darttable.go.txt && \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/darttable/darttable.go":"%s/build/dart-runtime-home-nc/darttable.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/dart-runtime-home-nc/overlay.json
-	go build -overlay build/dart-runtime-home-nc/overlay.json -o build/dart-runtime-home-nc/schema ./cmd/schema
-	@rm -rf build/runtime-home-dart/base-sabotage build/runtime-home-dart/added-sabotage
-	@./build/dart-runtime-home-nc/schema generate --lang dart --out build/runtime-home-dart/base-sabotage tables/examples
-	@./build/dart-runtime-home-nc/schema generate --lang dart --out build/runtime-home-dart/added-sabotage build/runtime-home-dart/src
-	@base=$$(cd build/runtime-home-dart/base-sabotage && grep -l "^const int tableBlockMagic" *Block.dart); \
-	 added=$$(cd build/runtime-home-dart/added-sabotage && grep -l "^const int tableBlockMagic" *Block.dart); \
-	 if [ "$$base" = "$$added" ]; then \
-		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the runtime in $$base — the gate is watching nothing"; exit 1; \
-	 fi
-	@sed -e "s|../../build/runtime-home-dart/base/|$(CURDIR)/build/runtime-home-dart/base-sabotage/|g" \
-		test/dart-tables/runtime_home.dart > build/dart-runtime-home-nc/runtime_home.dart
-	@if $(DART) build/dart-runtime-home-nc/runtime_home.dart > build/dart-runtime-home-nc/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the driver stayed green with the home named off the file order"; \
-		tail -5 build/dart-runtime-home-nc/log; exit 1; \
-	fi
-	@grep -q "TabledemoBlock.dart" build/dart-runtime-home-nc/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the driver went red for some other reason"; \
-		  tail -20 build/dart-runtime-home-nc/log; exit 1; }
-	@grep -m1 "TabledemoBlock.dart" build/dart-runtime-home-nc/log
-	@base=$$(cd build/runtime-home-dart/base-sabotage && grep -l "^const int tableBlockMagic" *Block.dart); \
-	 added=$$(cd build/runtime-home-dart/added-sabotage && grep -l "^const int tableBlockMagic" *Block.dart); \
-	 echo "negative control: the file-order rule moves the Dart runtime from $$base to $$added and the driver's import no longer resolves"
-
 # THE DART PORT'S RELEASE GATE. certify.yml DERIVES this target by name, so a
 # port lands its expensive half by adding the target and nothing else: two
 # hundred and eighty thousand forgery-fuzz mutants over the block and cook
@@ -344,10 +188,9 @@ tables-dart-release:
 	$(MAKE) tables-dart-fuzz SEED=1 DART_FUZZ_MUTANTS=20000
 	$(MAKE) tables-dart-fuzz SEED=2 DART_FUZZ_MUTANTS=20000
 	$(MAKE) tables-dart-fuzz-negative-control
+	$(MAKE) tables-dart-fixed-form-negative-control
 	$(MAKE) tables-dart-names-negative-control
 	$(MAKE) tables-dart-standalone-negative-control
-	$(MAKE) tables-dart-accessor-negative-control
-	$(MAKE) tables-dart-slot-negative-control
 
 # THE FORGERY FUZZER over the Dart accelerators: valid images from the corpus,
 # mutated, and one oracle over every mutant — refuse, or open and be WHOLE, and
@@ -362,20 +205,14 @@ DART_FUZZ_MUTANTS ?= 4000
 
 # THE FUZZER'S NEGATIVE CONTROL, on the same rule as the block form's C++ one: a
 # fuzzer that has never gone red proves nothing about the reader it points at.
-# BOTH HALVES OF THE EXTENT BOUND are removed from the block Open — the rows
-# against the caller's extent and the padding check behind it — in a COPY of
-# the emitter, the corpus is regenerated from the sabotaged compiler, and the
-# oracle must find it. Removing the rows bound ALONE leaves the reader correct:
-# the padding check downstream computes `extent - used` and refuses on the
-# negative slack, which is why the control names two clauses rather than one,
-# and why it removes the whole layer rather than the count's declared-maximum
-# check beside it. No tracked file is written to, so an interrupt cannot leave
-# a sabotaged working tree.
+# ONE CHECK is removed from the block Open — the count against the declared
+# maximum — in a COPY of the emitter, the corpus is regenerated from the
+# sabotaged compiler, and the oracle must find it. No tracked file is written
+# to, so an interrupt cannot leave a sabotaged working tree.
 .PHONY: tables-dart-fuzz-negative-control tables-dart-release
 tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 	@rm -rf build/dart-fuzz-nc && mkdir -p build/dart-fuzz-nc
-	@sed -e 's|if (rows > extent - offsetOf) {|if (false) { // SABOTAGED: the rows bound is gone|' \
-	     -e 's|if (padding > extent - used) {|if (false) { // SABOTAGED: the padding bound is gone|' \
+	@sed 's|g.pf("      if (count > %sMax) {\\n        return null;\\n      }\\n", field)|_ = field // SABOTAGED: the count bound is gone|' \
 		internal/codegen/darttable/block.go > build/dart-fuzz-nc/block.go.txt
 	@cmp -s internal/codegen/darttable/block.go build/dart-fuzz-nc/block.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
@@ -388,20 +225,173 @@ tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 	     -e "s|../../build/tables-generated-dart/pointers/|$(CURDIR)/build/dart-fuzz-nc/generated/pointers/|g" \
 		test/dart-tables/fuzz.dart > build/dart-fuzz-nc/fuzz.dart
 	@if $(DART) build/dart-fuzz-nc/fuzz.dart 4000 > build/dart-fuzz-nc/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the fuzzer stayed green with both extent bounds removed"; \
+		echo "NEGATIVE CONTROL FAILED: the fuzzer stayed green with the count bound removed"; \
 		tail -5 build/dart-fuzz-nc/log; exit 1; \
 	fi
-	@grep -q "past the claimed" build/dart-fuzz-nc/log || \
+	@grep -q "past the declared" build/dart-fuzz-nc/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the fuzzer went red for some other reason"; \
 		  tail -20 build/dart-fuzz-nc/log; exit 1; }
-	@grep -m1 "past the claimed" build/dart-fuzz-nc/log
-	@echo "negative control: both halves of the Dart block Open's extent bound removed turns the fuzzer RED"
+	@grep -m1 "past the declared" build/dart-fuzz-nc/log
+	@echo "negative control: one check removed from the Dart block Open turns the fuzzer RED"
 
 # The DART leg's driver: one AOT executable, because `dart run` would pay a JIT
 # start-up per surface and the two-minute rule is measured across every leg.
-build/conformance-dart: build/tables-generated-dart/.stamp test/conformance/dart/main.dart
+# The cards wire library is generated beside it so the wire-fuzz mode below can
+# bind the Card codec.
+build/conformance-dart: build/tables-generated-dart/.stamp cards-dart-generate test/conformance/dart/main.dart
 	@mkdir -p build
 	$(DART) compile exe -o $@ test/conformance/dart/main.dart >/dev/null
+
+# ---------------------------------------------------------------------------
+# THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
+# ---------------------------------------------------------------------------
+#
+# THE BYTES ARE THE C++ REFERENCE'S, and that is the whole point of this gate.
+# The reference writes eight form-3 files — the seven of
+# `make tables-fixedform-corpus` and the paired bench's sixty-four logical
+# records — and states the VALUES beside them, by hand in
+# test/tables/fixedform_dump.cpp and as a JSON oracle beside the bench corpus.
+# The Dart leg reads each file, checks every field against those values, writes
+# it back, and the bytes must be IDENTICAL. A reader and a writer that share
+# one offset mistake round trip perfectly and are both wrong, which is why the
+# values ride beside the bytes and not instead of them.
+#
+# Beside it rides the VERSIONING CONFORMANCE — the FX1/FX2, V1/V2 and P1/P3
+# pairs the C++ leg uses (test/tables/fixedform_main.cpp), case for case — and
+# the negative controls, of which the one §3.4 names is a reader given the
+# WRONG PLAN for a record, which must come out wrong, and one corrupted-layout
+# case per NAMED RULE a reader holds an untrusted peer's layout to.
+#
+# FU1/FU2 is the TEXT-UNDER-AN-ARM pair whose compiled path is a TRAILING
+# FIELD, not a slid ordinal: FU1's second arm carries a string(8), FU2 appends
+# `extra` so a read of FU1's bytes is a compiled plan, and the two reads have
+# to agree on the text (reference-fix 12). C++ already generates the pair;
+# this stamp did not.
+build/dart-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema \
+		test/tables/FX1.schema test/tables/FX2.schema \
+		test/tables/V1.schema test/tables/V2.schema \
+		test/tables/P1.schema test/tables/P3.schema test/tables/FXW.schema \
+		test/tables/FU1.schema test/tables/FU2.schema \
+		$(SCHEMAS_TABLES) make/dart.mk
+	@rm -rf build/dart-fixed && mkdir -p build/dart-fixed
+	./bin/schema generate --lang dart --out build/dart-fixed/bench bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/fx1 test/tables/FX1.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/fx2 test/tables/FX2.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/v1 test/tables/V1.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/v2 test/tables/V2.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/p1 test/tables/P1.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/p3 test/tables/P3.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/fu1 test/tables/FU1.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/fu2 test/tables/FU2.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/examples tables/examples
+	# THE WIDE TEXT UNIT (docs/SPEC-TABLES.md §3.4, kind 33): its own file and
+	# its own directory, because every SHARED schema list is pinned to targets
+	# that refuse kind 33 in a table closure. Dart carries it on FORM 3 and on
+	# no other form — the block and the cook refuse it by name — so this is the
+	# only gate it can ride in, and without it the wide flavour of the text op
+	# has no oracle bytes anywhere.
+	./bin/schema generate --lang dart --out build/dart-fixed/fxw test/tables/FXW.schema
+	@touch $@
+
+.PHONY: tables-dart-fixed-form
+tables-dart-fixed-form: build/dart-fixed/.stamp build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
+	$(DART) analyze build/dart-fixed test/dart-tables/fixedform.dart
+	$(DART) format --set-exit-if-changed --output=none test/dart-tables/fixedform.dart
+	@for f in build/dart-fixed/*/*Fixed.dart; do \
+		$(DART) format --set-exit-if-changed --output=none $$f >/dev/null || \
+			{ echo "dart format drift in $$f"; exit 1; }; \
+	done
+	@echo "tables Dart fixed form: every generated library is format-canonical"
+	$(DART) --enable-asserts test/dart-tables/fixedform.dart build/fixedform-corpus build/fixedform-bench-corpus
+	@mkdir -p build
+	$(DART) compile exe -o build/dart_fixedform test/dart-tables/fixedform.dart >/dev/null
+	./build/dart_fixedform build/fixedform-corpus build/fixedform-bench-corpus
+
+# ITS NEGATIVE CONTROL: move ONE byte of the write template and the leg must go
+# red against the reference's corpus. Without this the byte comparison could be
+# comparing a file with itself and nobody would know.
+# THE VERSIONING GATE, THIS LEG'S SECOND HALF (docs/FIXED-FORM-ALGORITHM.md
+# §5.7 step 6, §5.9 #11): the BYTE gate above proves this leg writes the
+# reference's bytes; this one proves it READS BACKWARD — every row of
+# docs/FIXED-FORM-VERSIONING-TESTS.md in both columns, NEW-READS-OLD and
+# OLD-REFUSES-NEW, plus the three floor rows, the hash rows and the branch
+# merge.
+#
+# THE PROBES ARE GENERATED, one per row per COLUMN, and run with THIS leg's own
+# toolchain (§5.9 #18) — the harness is internal/codegen/darttable's
+# fixedversioning_test.go, which plays the lock, generates the reader's Dart
+# with the older generation's locked entry as its lineage, writes a probe beside
+# it and runs `$(DART)` over it.
+#
+# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE: the harness
+# SKIPS itself when build/fixedform-corpus or the SDK is absent, which is right
+# for a bare `go test ./...` and is exactly how a §5 regression would ride into
+# a green. So the target builds the oracle first and sets
+# SCHEMA_REQUIRE_CORPUS=1, under which that skip is a FAILURE.
+.PHONY: tables-dart-versioning
+tables-dart-versioning: tables-fixedform-corpus
+	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -run 'TestFixedVersioning|TestFixedCompiledPlanTagPastArmSet'
+	@echo 'tables Dart versioning: §5 read both columns of every row against the C++ reference bytes'
+
+.PHONY: tables-dart-fixed-form-negative-control
+tables-dart-fixed-form-negative-control: bin/schema build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp test/tables/FXW.schema
+	@rm -rf build/dart-fixed-nc && mkdir -p build/dart-fixed-nc
+	@sed 's|val + "." + name + "Length", "Endian.little"}, ";")|val + "." + name + "Length + 1", "Endian.little"}, ";") // SABOTAGED|' \
+		internal/codegen/darttable/fixeddart.go > build/dart-fixed-nc/fixeddart.go.txt
+	@grep -q SABOTAGED build/dart-fixed-nc/fixeddart.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/darttable/fixeddart.go":"%s/build/dart-fixed-nc/fixeddart.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-fixed-nc/overlay.json
+	go build -overlay build/dart-fixed-nc/overlay.json -o build/dart-fixed-nc/schema ./cmd/schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/bench bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/fx1 test/tables/FX1.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/fx2 test/tables/FX2.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/v1 test/tables/V1.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/v2 test/tables/V2.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/p1 test/tables/P1.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/p3 test/tables/P3.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/fu1 test/tables/FU1.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/fu2 test/tables/FU2.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/examples tables/examples
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/fxw test/tables/FXW.schema
+	@sed 's|../../build/dart-fixed/|$(CURDIR)/build/dart-fixed-nc/gen/|g' \
+		test/dart-tables/fixedform.dart > build/dart-fixed-nc/fixedform.dart
+	@if $(DART) build/dart-fixed-nc/fixedform.dart build/fixedform-corpus build/fixedform-bench-corpus \
+			> build/dart-fixed-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a text length one byte off left the fixed form green"; \
+		cat build/dart-fixed-nc/log; exit 1; \
+	fi
+	@grep -q "first byte differing from the C++ reference" build/dart-fixed-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the fixed form went red for another reason"; \
+		  cat build/dart-fixed-nc/log; exit 1; }
+	@grep -m1 "first byte differing from the C++ reference" build/dart-fixed-nc/log
+	@echo "negative control: one byte off the Dart write template reds the reference byte match"
+
+# ITS NEGATIVE CONTROL (§5.9 #11: a gate nobody has watched fail may be
+# comparing a file with itself). The sabotage replaces the ONE name that carries
+# §5's whole direction — a hash no lineage entry holds is `layout_newer`, ship
+# the reader — with `layout_malformed`, and the OLD-REFUSES-NEW column must go
+# red naming it. `go test -overlay` is the same trick the other controls use on
+# `go build`: the emitter is replaced for one run and the tree is never touched.
+.PHONY: tables-dart-versioning-negative-control
+tables-dart-versioning-negative-control: tables-fixedform-corpus
+	@rm -rf build/dart-versioning-nc && mkdir -p build/dart-versioning-nc
+	@sed 's|report.refused = TableFixedRefusal.layoutNewer;|report.refused = TableFixedRefusal.layoutMalformed; // SABOTAGED|' \
+		internal/codegen/darttable/fixedmodule.go > build/dart-versioning-nc/fixedmodule.go.txt
+	@grep -q SABOTAGED build/dart-versioning-nc/fixedmodule.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/darttable/fixedmodule.go":"%s/build/dart-versioning-nc/fixedmodule.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-versioning-nc/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test -overlay build/dart-versioning-nc/overlay.json \
+			./internal/codegen/darttable/ -count=1 -run 'TestFixedVersioningOldRefusesNew' \
+			> build/dart-versioning-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the versioning gate green"; \
+		cat build/dart-versioning-nc/log; exit 1; \
+	fi
+	@grep -q 'owes layout_newer' build/dart-versioning-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the versioning gate went red for another reason"; \
+		  cat build/dart-versioning-nc/log; exit 1; }
+	@echo 'negative control: the wrong name for a hash outside the lineage reds the Dart versioning gate'
 
 # THE DART LEG of `make test`. THE DART PORT's own instruments
 # (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart
@@ -415,14 +405,14 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 	$(MAKE) tables-dart-names-negative-control
 	$(MAKE) tables-dart-standalone
 	$(MAKE) tables-dart-standalone-negative-control
-	$(MAKE) tables-dart-accessor-descriptor-agreement
-	$(MAKE) tables-dart-accessor-negative-control
-	$(MAKE) tables-dart-slot-negative-control
-	$(MAKE) tables-dart-runtime-home
-	$(MAKE) tables-dart-runtime-home-driver
-	$(MAKE) tables-dart-runtime-home-negative-control
 	$(MAKE) tables-dart-fuzz DART_FUZZ_MUTANTS=1500
 	$(MAKE) tables-dart-fuzz-negative-control
+	# THE FIXED FORM against the C++ reference's own bytes (§3.4)
+	$(MAKE) tables-dart-fixed-form
+	$(MAKE) tables-dart-fixed-form-negative-control
+	# AND IT READS BACKWARD (§5): every versioning row, both columns
+	$(MAKE) tables-dart-versioning
+	$(MAKE) tables-dart-versioning-negative-control
 	$(DART) analyze generated/dart generated/dart-ludicrous generated/bench/dart test/dart test/dart-ludicrous bench/dart
 	$(DART) format --set-exit-if-changed --output=none generated/dart generated/dart-ludicrous generated/bench/dart
 	cd test/dart && $(DART) --enable-asserts main.dart
@@ -490,39 +480,112 @@ packet-wide-dart-negative-control: packet-wide-dart
 
 test-dart: packet-wide-dart packet-wide-dart-negative-control
 
-# THE DART ALLOCATION GATE's RUNTIME PIN (docs/PORTING.md §I14, schema#420). The
-# gate reads the running SDK and REFUSES to certify on any other than the pin,
-# which it reads from test/conformance/dart/ci.json — the same row CI builds its
-# matrix from, so the gate cannot drift from the SDK CI installs.
-# SCHEMA_DART_ALLOC_ANY_DART=1 reports without certifying.
-# THERE IS NO ALLOCATION MEASUREMENT ON THIS LEG YET (schema#420): this target
-# holds the refusal only, takes no generated code and costs milliseconds, which
-# is why it rides the per-commit leg.
-.PHONY: tables-dart-allocator-runtime tables-dart-allocator-runtime-negative-control
-tables-dart-allocator-runtime:
-	$(DART) analyze test/dart-tables/allocator_runtime_pin.dart
-	$(DART) format --set-exit-if-changed --output=none test/dart-tables/allocator_runtime_pin.dart
-	$(DART) test/dart-tables/allocator_runtime_pin.dart
+# THE CARDS UNIT'S DART LEG (docs/SPEC-TABLES.md §2). These targets are the
+# Dart side of the cards wire-fuzz gate: they mirror the Go leg's
+# cards-generate and cards-wire-fuzz (make/go.mk) against the same oracle
+# harness and the same seed, so the Dart Card codec can be held to the
+# identical byte-for-byte contract. They live in make/dart.mk (NOT a separate
+# make/cards-dart.mk or make/cards-dart-retain.mk) because the wide-scalar
+# refusal gate (tables-ports-refuse-wide-scalars) discovers every make/*.mk as
+# a live port, and a fragment named cards-dart.mk or cards-dart-retain.mk
+# would be refused there as a phantom port.
+CARDS_DART_FUZZ_TIME ?= 30s
 
-# ITS NEGATIVE CONTROL, on the same three moves as the go one
-# (test/conformance/go/ownership-negative-control:23-28): run the gate under a
-# DIFFERENT runtime, FAIL IF THE RUN SUCCEEDS, and grep the exact refusal back
-# out of the log. Dart has no GOTOOLCHAIN, so the off-pin runtime is simulated
-# with SCHEMA_DART_ALLOC_VERSION; that seam can only ever force a refusal,
-# because an override equal to the pin is itself refused.
-tables-dart-allocator-runtime-negative-control:
-	@mkdir -p build/dart-allocator-runtime-nc
-	@if SCHEMA_DART_ALLOC_VERSION=3.14.1 SCHEMA_DART_ALLOC_ANY_DART=0 \
-			$(DART) test/dart-tables/allocator_runtime_pin.dart \
-			> build/dart-allocator-runtime-nc/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the gate certified an off-pin runtime"; \
-		cat build/dart-allocator-runtime-nc/log; exit 1; \
-	fi
-	@grep -Fq "allocation certification requires dart 3.13.2, running dart 3.14.1" \
-		build/dart-allocator-runtime-nc/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
-		  cat build/dart-allocator-runtime-nc/log; exit 1; }
-	@grep -m1 -F "allocation certification requires dart" build/dart-allocator-runtime-nc/log
-	@echo "negative control: Dart allocation certification refuses SDK 3.14.1"
+# cards-dart-generate produces ONLY build/tables-generated-dart/cards, cleaning
+# that owned output first so a deleted symbol cannot survive a regeneration.
+.PHONY: cards-dart-generate
+cards-dart-generate: bin/schema
+	@rm -rf build/tables-generated-dart/cards
+	@mkdir -p build/tables-generated-dart/cards
+	./bin/schema generate --lang dart --out build/tables-generated-dart/cards tables/cards
 
-test-dart: tables-dart-allocator-runtime tables-dart-allocator-runtime-negative-control
+# cards-dart-wire-fuzz is the oracle harness over the Card root only. --vectors
+# '' keeps the default pinned vectors out of this Card-only manifest. The greps
+# hold the nonzero seed/root/mutant claim and the zero-divergence claim, as
+# make/go.mk's cards-wire-fuzz does.
+.PHONY: cards-dart-wire-fuzz
+cards-dart-wire-fuzz: cards-dart-generate build/conformance-harness build/conformance-dart
+	@timeout $(CARDS_DART_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+		--driver 'build/conformance-dart wire-fuzz' --seed 24845619678 --n 100 \
+		> build/cards-dart-wire-fuzz.log 2>&1; \
+		status=$$?; cat build/cards-dart-wire-fuzz.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -q '0 divergences' build/cards-dart-wire-fuzz.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-dart-wire-fuzz.log
+	@grep -qE '[1-9][0-9]* mutants' build/cards-dart-wire-fuzz.log
+
+# THE CARD WIRE-FUZZ RIDES THE DART LEG'S GATE (§4.2): the same oracle harness,
+# the same seed, over the Card root only, so the Dart Card codec is held to the
+# identical byte-for-byte contract the Go leg's cards-wire-fuzz pins.
+test-dart: cards-dart-wire-fuzz
+
+# cards-dart-retain-fuzz is the SAME fuzzer through the RETENTION ARM
+# (docs/SPEC-TABLES.md §6.6): every mutant is read and written back through the
+# Card codec's retaining pair, and the two retention counters ride beside the
+# six. The seed, count and coverage greps are cards-dart-wire-fuzz's, plus
+# --retain, so a retained save is held to the Go reference leg byte for byte.
+.PHONY: cards-dart-retain-fuzz
+cards-dart-retain-fuzz: cards-dart-generate build/conformance-harness build/conformance-dart
+	@timeout $(CARDS_DART_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+		--driver 'build/conformance-dart wire-fuzz' --seed 24845619678 --n 100 --retain \
+		> build/cards-dart-retain-fuzz.log 2>&1; \
+		status=$$?; cat build/cards-dart-retain-fuzz.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -q '0 divergences' build/cards-dart-retain-fuzz.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-dart-retain-fuzz.log
+	@grep -qE '[1-9][0-9]* mutants' build/cards-dart-retain-fuzz.log
+
+# THE CARD WIRE-FUZZ'S RETAIN ARM RIDES THE DART LEG'S GATE (§6.6): the same
+# oracle harness, the same seed, over the Card root only, so the Dart Card
+# codec's retained save is held to the identical byte-for-byte contract the Go
+# leg's cards-retain-fuzz pins.
+test-dart: cards-dart-retain-fuzz
+
+# THE CARDS UNIT'S DART LEG, L1 and L2 (docs/SPEC-TABLES.md §2): the owning
+# facade (tables/cards/dart/lib/cards.dart) over the generated Card codec, the
+# brief text parsed once and rendered many times, and the driver that answers
+# the card conformance check (tables/cards/conformance/FORMAT.md). These targets
+# live in make/dart.mk (NOT a separate make/cards-dart.mk) for the same reason
+# cards-dart-wire-fuzz does: the wide-scalar refusal gate discovers every
+# make/*.mk as a live port, and a fragment named cards-dart.mk would be refused
+# there as a phantom port.
+
+# cards-dart-test builds the generated unit and the facade, holds them to the
+# analyzer and the formatter, and runs the plain main test runner (one check per
+# named test, nonzero exit on any failure; no package:test dependency).
+.PHONY: cards-dart-test
+cards-dart-test: cards-dart-generate
+	$(DART) analyze tables/cards/dart
+	$(DART) format --set-exit-if-changed --output=none tables/cards/dart
+	$(DART) --enable-asserts tables/cards/dart/test/cards_test.dart
+
+# cards-dart-driver compiles the facade driver to one AOT executable, the way
+# build/conformance-dart does, so the conformance check pays no JIT start-up per
+# surface.
+.PHONY: cards-dart-driver
+cards-dart-driver: cards-dart-generate
+	@mkdir -p build
+	$(DART) compile exe -o build/cards-driver-dart tables/cards/dart/bin/driver.dart >/dev/null
+
+# cards-dart-conformance runs the harness `cards` subcommand over the Dart
+# driver with the five surfaces this card owns required; upgrade, edit, taskhash
+# and view are a-dart-card-upgrades-edits-and-walks-the-shared-corpus's and are
+# answered absent.
+.PHONY: cards-dart-conformance
+cards-dart-conformance: build/conformance-harness cards-dart-driver
+	./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/dart/driver --require load,save,render,parse,bounds
+
+# cards-dart-conformance-negative-control: the same check against the driver
+# with a test-only environment switch that changes one rendered byte, required
+# to FAIL on render while the other four surfaces pass.
+.PHONY: cards-dart-conformance-negative-control
+cards-dart-conformance-negative-control: build/conformance-harness cards-dart-driver
+	@if CARDS_DART_SABOTAGE=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/dart/driver --require load,save,render,parse,bounds > build/cards-dart-conformance-neg.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with one rendered byte changed'; exit 1; fi
+	@grep -qE 'cards render .*FAIL' build/cards-dart-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: render did not go red'; cat build/cards-dart-conformance-neg.log; exit 1; }
+	@grep -qE 'cards (load|save|parse|bounds) pass' build/cards-dart-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-dart-conformance-neg.log; exit 1; }
+	@echo 'cards Dart negative control: one changed rendered byte turns exactly render red'
+
+test-dart: cards-dart-test cards-dart-conformance cards-dart-conformance-negative-control

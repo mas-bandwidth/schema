@@ -15,7 +15,19 @@ type cppTarget struct{}
 
 func (cppTarget) Names() []string { return []string{"cpp"} }
 
-func (cppTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+// Generate is the case where the caller read no lock: cpptable then opens the
+// unit's lock itself, as it did before #921.
+func (t cppTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
+	return t.GenerateLineage(u, opts, nil)
+}
+
+// GenerateLineage takes the lock the DRIVER opened (compiler/lineage.go) rather
+// than opening it a second time. The C++ reference is the one backend that still
+// INTERPRETS the lock itself: its lineage also comes from sibling schema files by
+// filename convention, and its floor from a test-only map, which is §5.8 row 1's
+// interim. So the OPEN is shared here and the interpretation is not, yet — the
+// entries of §5.9 #1 are what it will take the day the convention goes away.
+func (cppTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
 	files, err := cpp.Generate(u)
 	if err != nil {
 		return nil, err
@@ -23,7 +35,7 @@ func (cppTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	// units that declare tables ALSO get <Base>Table.h per file — the
 	// TABLE-wire codecs (docs/SPEC-TABLES.md); a table-free unit's output is
 	// byte-identical to what the packet emitter alone produces
-	tables, err := cpptable.Generate(u)
+	tables, err := cpptable.GenerateLineage(u, lineage.Lock())
 	if err != nil {
 		return nil, err
 	}

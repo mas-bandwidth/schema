@@ -3,12 +3,14 @@
 package compiler
 
 import (
+	"fmt"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestRustEmitsTableModules: the rust target adds the table accelerator
@@ -68,7 +70,9 @@ func TestRustEmitsTableModules(t *testing.T) {
 }
 
 // TestRustPointeredTablesEmitAccelerators: pointered tables emit their cook
-// reader and records without wire codecs.
+// reader and records, and — since the variable class rides the Rust leg's
+// variable wire (internal/codegen/rusttable/variableclass_test.go) — their
+// wire codec beside them.
 func TestRustPointeredTablesEmitAccelerators(t *testing.T) {
 	c := New()
 	u := unitFromSource(t, packetSrc+`
@@ -82,14 +86,17 @@ table Node
 	if err != nil {
 		t.Fatalf("--lang rust refused a pointered unit outright: %v", err)
 	}
-	cooks := 0
+	cooks, wires := 0, 0
 	for name := range files {
-		if strings.HasSuffix(name, "_table.rs") || name == "table_runtime.rs" {
-			t.Errorf("--lang rust emitted the WIRE surface %s for a pointered unit", name)
+		if strings.HasSuffix(name, "_table.rs") {
+			wires++
 		}
 		if strings.HasSuffix(name, "_cook.rs") {
 			cooks++
 		}
+	}
+	if wires == 0 {
+		t.Error("--lang rust emitted no variable-wire codec for a pointered unit (docs/SPEC-TABLES.md §3.1)")
 	}
 	if cooks == 0 {
 		t.Error("--lang rust emitted no cook reader for a pointered unit — a root is any table (docs/SPEC-TABLES.md §7)")
@@ -130,9 +137,20 @@ table Node
 // claim until internal/check makes it in the mapped space too. It does now,
 // and TestRustRuntimeConstantsClaimInTheMappedSpace below is what holds it.
 func TestRustTableRuntimeNamesAreClaimed(t *testing.T) {
+	// runtimeSrc reaches the fixed form's runtime; variableRuntimeSrc reaches
+	// the VARIABLE wire's (internal/codegen/rusttable/variable.go) — the node
+	// numbering, the node reader and the scalar ladder — which a unit with no
+	// carried variable table never emits, so the scan covers both.
 	files, err := New().Generate(unitFromSource(t, runtimeSrc), "rust", Options{})
 	if err != nil {
 		t.Fatal(err)
+	}
+	variableFiles, err := New().Generate(unitFromSource(t, variableRuntimeSrc), "rust", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range variableFiles {
+		files["variable/"+name] = data
 	}
 	pascal := regexp.MustCompile(`\bTable[A-Za-z0-9_]*\b`)
 	// BUILD_VERSION is the one unit-level name the generated table sources
@@ -179,4 +197,182 @@ func TestRustTableRuntimeNamesAreClaimed(t *testing.T) {
 				"Rust names it — drop the registration or fix the backend", name)
 		}
 	}
+}
+
+// variableRuntimeSrc is a unit whose variable table the Rust variable wire
+// carries — a pointer, a blob and a list — so the variable runtime is emitted
+// whole (docs/SPEC-TABLES.md §3, §3.1, §2.5, §2.9).
+const variableRuntimeSrc = `package probe
+
+fixed table Item { n int32 }
+
+table Node
+{
+    value int32
+    next  *Node
+    data  *bytes
+    items []Item
+}
+`
+
+// fixedFormSrc reaches every shape §3.4's constant-size table names that this
+// port carries: scalars at four widths, floats, a bool, an enum, a flags mask,
+// a string and a bytes at their bounds, a fixed array, a counted array, a
+// nested table, an enum-keyed array of a table, an optional section, and
+// declared defaults on top of the lot so the PREFILL image is not all zeros.
+const fixedFormSrc = `package probe
+
+enum Slot { Alpha, Beta, Gamma }
+
+flags Mark { One, Two }
+
+fixed table Leaf
+{
+    a int32 = 7 | min = 0, max = 1000
+    b uint16 = 3
+}
+
+fixed table FixedProbe
+{
+    small   uint8 = 5
+    wide    uint64 = 9
+    negative int16 = -4
+    fl      float32 = 2.5
+    db      float64 = 1.25
+    yes     bool = true
+    slot    Slot = Beta
+    mark    Mark
+    label   string(12)
+    raw     bytes(6)
+    trio    [3]uint32
+    counted [1..4]Leaf
+    nested  Leaf
+    perslot [Slot]Leaf
+    maybe   ?Leaf
+}
+`
+
+// TestRustFixedFormLayoutIsIrsByteForByte is what keeps this port's §3.4 layout
+// from becoming a SECOND WIRE.
+//
+// The LAYOUT is the form's whole self-description and its fnv1a64 is the eight
+// bytes every record carries, so two backends whose layouts differ anywhere are
+// two backends that never read each other's records — silently, as `no_layout`,
+// which looks like a deployment problem and is not one.
+//
+// THE ORACLE IS ir, AND IT IS ir BECAUSE ANOTHER BACKEND IS NOT AN ORACLE. This
+// test used to generate the same unit for C++ and for Rust and diff the two
+// emitters' TEXT. That compares two renderings and not either one against the
+// law: it passes the day both ports drift together, it fails the day the
+// reference merely RENAMES its constant, and it says nothing at all about the
+// walk. ir/fixedform.go IS the law — the constant size of every field, the
+// pre-order walk and the hash over it, in one place because it produces BYTES —
+// so the bytes this port emits are compared against the bytes ir produces, per
+// root, and the C++ backend is not in the room.
+func TestRustFixedFormLayoutIsIrsByteForByte(t *testing.T) {
+	unit := unitFromSource(t, fixedFormSrc)
+	rustFiles, err := New().Generate(unit, "rust", Options{})
+	if err != nil {
+		t.Fatalf("--lang rust: %v", err)
+	}
+	rustBlocks, rustHashes := rustFixedBlocks(join(rustFiles))
+	if len(rustBlocks) == 0 {
+		t.Fatal("the Rust backend emitted no fixed-form layout at all for a unit of fixed tables — " +
+			"the scan, or the emitter, is what broke")
+	}
+	// ir's own answer, per root, from the walk every port renders
+	want := map[string]string{}
+	wantHash := map[string]string{}
+	for _, st := range ir.TableFixedRoots(unit) {
+		if !ir.TableFixedEmitted(unit, st) {
+			continue
+		}
+		layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
+		hex := make([]string, 0, len(layout))
+		for _, b := range layout {
+			hex = append(hex, fmt.Sprintf("0x%02x", b))
+		}
+		key := screamingOf(st.Name)
+		want[key] = strings.Join(hex, " ")
+		wantHash[key] = fmt.Sprintf("0x%016x", ir.TableFixedLayoutHash(layout, st))
+	}
+	if len(want) == 0 {
+		t.Fatal("ir names no fixed root in a unit of fixed tables — the fixture, not the emitter, is what broke")
+	}
+	names := make([]string, 0, len(rustBlocks))
+	for name := range rustBlocks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	compared := 0
+	for _, name := range names {
+		golden, ok := want[name]
+		if !ok {
+			t.Errorf("the Rust backend emits a fixed-form layout for %s and ir does not name it a fixed root — "+
+				"a port may carry fewer shapes than the law, never more", name)
+			continue
+		}
+		compared++
+		if golden != rustBlocks[name] {
+			t.Errorf("%s's layout differs from ir's:\n  ir   %s\n  rust %s", name, golden, rustBlocks[name])
+		}
+		if wantHash[name] != rustHashes[name] {
+			t.Errorf("%s's fixed-form hash differs from ir's: ir %s, rust %s — "+
+				"a record written against the law is `no_layout` to this port", name, wantHash[name], rustHashes[name])
+		}
+	}
+	if compared == 0 {
+		t.Fatal("no root was compared against ir at all")
+	}
+	for name := range want {
+		if _, ok := rustBlocks[name]; !ok {
+			t.Errorf("ir names %s a fixed root and the Rust backend emits no layout for it", name)
+		}
+	}
+}
+
+func join(files map[string][]byte) string {
+	var b strings.Builder
+	for _, data := range files {
+		b.Write(data)
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+var (
+	// Rust spells the layout `<ROOT>_FIXED_BLOCK`; ir produces the bytes. The
+	// identifier is this target's own and the BYTES are the contract.
+	rsFixedBlockRe = regexp.MustCompile(`(?s)pub const ([A-Z0-9_]+)_FIXED_BLOCK: \[u8; \d+\] = \[(.*?)\];`)
+	rsFixedHashRe  = regexp.MustCompile(`pub const ([A-Z0-9_]+)_FIXED_HASH: u64 = (0x[0-9a-f]+);`)
+	fixedByteRe    = regexp.MustCompile(`0x[0-9a-f]{2}`)
+)
+
+// rustFixedBlocks keys on the SCREAMING spelling, which is what
+// ir.RustConstName gives a root and what the emitted constant carries.
+func rustFixedBlocks(text string) (map[string]string, map[string]string) {
+	blocks, hashes := map[string]string{}, map[string]string{}
+	for _, m := range rsFixedBlockRe.FindAllStringSubmatch(text, -1) {
+		blocks[m[1]] = strings.Join(fixedByteRe.FindAllString(m[2], -1), " ")
+	}
+	for _, m := range rsFixedHashRe.FindAllStringSubmatch(text, -1) {
+		hashes[m[1]] = m[2]
+	}
+	return blocks, hashes
+}
+
+// screamingOf is ir.RustConstName's rule, spelled here so the test does not
+// borrow the emitter's own helper to check the emitter.
+func screamingOf(name string) string {
+	var b strings.Builder
+	for i, r := range name {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			b.WriteByte('_')
+		}
+		if r >= 'a' && r <= 'z' {
+			r -= 32
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }

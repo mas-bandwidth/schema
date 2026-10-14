@@ -1,0 +1,16 @@
+// VNEW_fixed_I_grow.schema — NEW: fixed(12,4) — I grows, F EQUAL (the scale may not move)
+//
+// One of the fixed form's versioning rows (docs/FIXED-FORM-VERSIONING-TESTS.md).
+// The OLD and the NEW file of this pair differ by EXACTLY the row named above,
+// so a case in test/tables/versioning_numbers.cpp can say which change the read
+// answered for. `lead` and `trail` bracket the row's field: a mislaid size
+// moves a neighbour, and the equality check sees it.
+
+package vnew_fixed_i_grow
+
+fixed table FixedIGrow
+{
+    lead  uint32 = 1
+    v     fixed(12, 4) | min = -8, max = 7
+    trail uint32 = 2
+}

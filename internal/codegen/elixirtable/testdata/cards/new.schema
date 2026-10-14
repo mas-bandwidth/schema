@@ -1,0 +1,11 @@
+// cardpair — the two-declaration pair for the Elixir variable form's round
+// trip (docs/SPEC-TABLES.md §4, §5). The NEWER declaration renames a field
+// under `was` and adds one; the OLDER declaration reads the newer wire and
+// proves the rename is found, the added field is skipped and counted unknown,
+// and the field the newer declaration dropped reads its default.
+package cardpair
+
+table Card {
+    caption string(32) | was = "label"
+    priority int32
+}

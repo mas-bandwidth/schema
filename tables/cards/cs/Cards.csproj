@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- THE CARD FACADE LIBRARY (tables/cards/conformance/FORMAT.md). It compiles
+       the handwritten facade (Cards.cs) beside the generated card unit, the way
+       test/conformance/cs compiles its generated sources: the Makefile's
+       cards-cs-generate target writes the unit into
+       build/tables-generated-cs/cards, and this project includes it from there.
+       No test framework and no package dependency; TreatWarningsAsErrors is
+       the refuser for the generated source. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>Cards</AssemblyName>
+    <CardsGeneratedDir Condition="'$(CardsGeneratedDir)' == ''">../../../build/tables-generated-cs/cards</CardsGeneratedDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Cards.cs" />
+    <Compile Include="$(CardsGeneratedDir)/*.cs" />
+  </ItemGroup>
+
+</Project>

@@ -6,6 +6,7 @@ package compiler
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -66,10 +67,23 @@ func TestWideTextInATableClosureReachesTheTableEmitter(t *testing.T) {
 	}
 }
 
-// TestWideTextInATableClosureRefusesMissingCarriers is the same unit against
-// a target that carries neither wire's half: the refusal names the field, so
-// no port emits a member it never laid out (SPEC.md §4.12).
-func TestWideTextInATableClosureRefusesMissingCarriers(t *testing.T) {
+// TestTableWideTextTargetsCarryEveryLeg is the RED-FIRST unit for the four
+// legs this card lands: rust, java, js and elixir each carry a `wstring(N)`
+// table field through their fixed form (SPEC §4.12), so all four are in
+// tableWideTextTargets, named by tableWideTextNames, and a unit with a
+// wstring(N) table field is no longer refused for them.
+func TestTableWideTextTargetsCarryEveryLeg(t *testing.T) {
+	t.Parallel()
+	for _, leg := range []string{"rust", "java", "js", "elixir"} {
+		if !tableWideTextTargets[leg] {
+			t.Errorf("%s does not carry wide text in a table closure (SPEC §4.12)", leg)
+		}
+	}
+	for _, name := range []string{"Rust", "Java", "JavaScript", "Elixir"} {
+		if !slices.Contains(tableWideTextNames, name) {
+			t.Errorf("tableWideTextNames does not name %s", name)
+		}
+	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "Wide.schema")
 	if err := os.WriteFile(path, []byte(wideTextInATableClosure), 0o644); err != nil {
@@ -80,7 +94,33 @@ func TestWideTextInATableClosureRefusesMissingCarriers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load refused a wstring(N) inside a table closure: %v", err)
 	}
-	for _, target := range []string{"rust", "java", "js", "dart", "elixir"} {
+	for _, leg := range []string{"rust", "java", "js", "elixir"} {
+		if _, err := c.Generate(u, leg, Options{}); err != nil {
+			t.Errorf("%s still refuses a wstring(N) table field it carries: %v", leg, err)
+		}
+	}
+}
+
+// TestWideTextInATableClosureRefusesMissingCarriers pins the named refusal a
+// target without the construct still gives. Every current target carries it
+// (c, cpp, cs, go, dart, rust, java, js, elixir), so the list is empty and the
+// test is the guard against a future target being added without a table codec:
+// it refuses by field name (SPEC.md §4.12).
+func TestWideTextInATableClosureRefusesMissingCarriers(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Wide.schema")
+	if err := os.WriteFile(path, []byte(wideTextInATableClosure), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := New()
+	u, err := c.Load([]string{path})
+	if err != nil {
+		t.Fatalf("Load refused a wstring(N) inside a table closure: %v", err)
+	}
+	// No target lacks the table codec today; a new one added to the registry
+	// without one goes here and the refusal must name the field.
+	for _, target := range []string{} {
 		_, err := c.Generate(u, target, Options{})
 		if err == nil {
 			t.Errorf("%s took a wstring(N) it does not carry", target)
@@ -89,6 +129,43 @@ func TestWideTextInATableClosureRefusesMissingCarriers(t *testing.T) {
 		if !strings.Contains(err.Error(), "Text.name") {
 			t.Errorf("%s's refusal does not name the field: %v", target, err)
 		}
+	}
+}
+
+// TestWideTextInATableClosureRidesTheDartFixedForm is the other half of the
+// rule above: Dart takes the same unit, emits the FIXED form for it, and emits
+// NEITHER accelerator — a block row and a cooked node have no kind 33 in this
+// backend, and the refusal is scoped to them by name rather than taken out on
+// a form that lays the construct out fine (docs/SPEC-TABLES.md §3.4, §15).
+func TestWideTextInATableClosureRidesTheDartFixedForm(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Wide.schema")
+	if err := os.WriteFile(path, []byte(wideTextInATableClosure), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := New()
+	u, err := c.Load([]string{path})
+	if err != nil {
+		t.Fatalf("Load refused a wstring(N) inside a table closure: %v", err)
+	}
+	files, err := c.Generate(u, "dart", Options{})
+	if err != nil {
+		t.Fatalf("dart refused a wstring(N) its fixed form carries: %v", err)
+	}
+	var fixed, accelerator []string
+	for _, name := range keysOf(files) {
+		switch {
+		case strings.HasSuffix(name, "Fixed.dart"):
+			fixed = append(fixed, name)
+		case strings.HasSuffix(name, "Block.dart"), strings.HasSuffix(name, "Cook.dart"):
+			accelerator = append(accelerator, name)
+		}
+	}
+	if len(fixed) == 0 {
+		t.Errorf("dart emitted no fixed form for a wide-text table: %v", keysOf(files))
+	}
+	if len(accelerator) != 0 {
+		t.Errorf("dart emitted an accelerator for a wide-text table: %v", accelerator)
 	}
 }
 

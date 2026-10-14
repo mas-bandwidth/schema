@@ -33,9 +33,16 @@ var tableArmTargets []string
 var unionArrayTargets []string
 
 // blobTargets is the canonical name of every built-in target whose table
-// backend carries a BYTE BUFFER — `*bytes` and `*string` (docs/SPEC-TABLES.md
-// §2.5); refuseBlobs names them.
+// backend carries a BYTES BUFFER — `*bytes` (docs/SPEC-TABLES.md §2.5);
+// refuseBlobs and refuseBytes name them.
 var blobTargets []string
+
+// stringTargets is the canonical name of every built-in target whose table
+// backend carries a STRING BUFFER — `*string` (docs/SPEC-TABLES.md §2.5);
+// refuseStrings names them. The Rust variable wire carries *string but not
+// *bytes, so rust sits here through registerStringCarrier and not in
+// blobTargets.
+var stringTargets []string
 
 // registerBuiltin is what a target's file calls from its init. tables says
 // whether the target emits table sources; one that does not refuses a unit
@@ -44,7 +51,9 @@ var blobTargets []string
 // does not refuses a unit declaring one through refuseTableArms, the same way.
 // unionArrays says whether they carry an array of unions in a table closure;
 // one that does not refuses through refuseUnionArrays. blobs says whether
-// they carry a byte buffer; one that does not refuses through refuseBlobs.
+// they carry BOTH byte buffers — `*bytes` and `*string`; a target that carries
+// one and not the other registers the string blob alone through
+// registerStringCarrier.
 func registerBuiltin(g Generator, tables, arms, unionArrays, blobs bool) {
 	builtinTargets = append(builtinTargets, g)
 	if tables {
@@ -58,7 +67,17 @@ func registerBuiltin(g Generator, tables, arms, unionArrays, blobs bool) {
 	}
 	if blobs {
 		blobTargets = append(blobTargets, g.Names()[0])
+		stringTargets = append(stringTargets, g.Names()[0])
 	}
+}
+
+// registerStringCarrier is what a target whose variable wire carries the
+// string blob but not the bytes blob calls from its init, beside
+// registerBuiltin: `*string` is the card record's (docs/SPEC-TABLES.md §2.5),
+// `*bytes` is not, so the target is named a string carrier without joining
+// blobTargets.
+func registerStringCarrier(name string) {
+	stringTargets = append(stringTargets, name)
 }
 
 // builtins is the set [New] registers, in registration order.
@@ -144,6 +163,72 @@ func refuseBlobs(u *ir.Unit, target string) error {
 		englishList(names), englishList(carry), target, englishList(flags))
 }
 
+// blobFieldsByKind is ir.BlobFields split by the blob's kind: the `*bytes`
+// fields and the `*string` fields of the table closure, each as `Table.field`,
+// sorted (docs/SPEC-TABLES.md §2.5). A target that carries one blob and not
+// the other refuses only the one it does not carry, by name.
+func blobFieldsByKind(u *ir.Unit) (bytes, str []string) {
+	for name := range ir.TableClosure(u) {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if !f.Type.Blob() {
+				continue
+			}
+			if f.Type.Kind == ir.TString {
+				str = append(str, name+"."+f.Name)
+			} else {
+				bytes = append(bytes, name+"."+f.Name)
+			}
+		}
+	}
+	sort.Strings(bytes)
+	sort.Strings(str)
+	return bytes, str
+}
+
+// refuseBytes is the named refusal every target without the construct gives a
+// unit whose closure holds a `*bytes` field (docs/SPEC-TABLES.md §2.5, §11):
+// the targets that carry the bytes blob are named, and each remaining port's
+// is a named follow-on — refused loudly here rather than emitted as a pointer
+// naming a table the unit never declares. The string blob is refused
+// separately by refuseStrings, because a port can carry `*string` and not
+// `*bytes` (the Rust variable wire does).
+func refuseBytes(u *ir.Unit, target string) error {
+	if slices.Contains(blobTargets, target) {
+		return nil
+	}
+	bytes, _ := blobFieldsByKind(u)
+	if len(bytes) == 0 {
+		return nil
+	}
+	carry, flags := carriers(blobTargets)
+	return fmt.Errorf("unit declares a byte buffer field (%s) — *bytes are %s only today, and the %s form is a named follow-on; generate with %s, or move the table to its own unit (docs/SPEC-TABLES.md §2.5, §11)",
+		englishList(bytes), englishList(carry), target, englishList(flags))
+}
+
+// refuseStrings is the named refusal every target without the construct gives
+// a unit whose closure holds a `*string` field (docs/SPEC-TABLES.md §2.5,
+// §11): the targets that carry the string blob are named — the Rust variable
+// wire among them — and each remaining port's is a named follow-on.
+func refuseStrings(u *ir.Unit, target string) error {
+	if slices.Contains(stringTargets, target) {
+		return nil
+	}
+	_, str := blobFieldsByKind(u)
+	if len(str) == 0 {
+		return nil
+	}
+	carry, flags := carriers(stringTargets)
+	return fmt.Errorf("unit declares a string buffer field (%s) — *string are %s only today, and the %s form is a named follow-on; generate with %s, or move the table to its own unit (docs/SPEC-TABLES.md §2.5, §11)",
+		englishList(str), englishList(carry), target, englishList(flags))
+}
+
 // refuseVoidArms is the named refusal every target without the form gives a
 // unit whose TABLE CLOSURE holds a union with a PAYLOAD-FREE ARM (SPEC §4.8,
 // docs/SPEC-TABLES.md §2.6): such an arm has no storage and rides as the arm
@@ -164,7 +249,9 @@ func refuseVoidArms(u *ir.Unit, target string) error {
 
 // refuseUnported bundles the refusals a port gives a unit that declares a
 // construct it does not carry: a union with table arms, an array of unions, a
-// byte buffer, a payload-free arm, and a string, bytes or flags default.
+// byte buffer (the `*bytes` and `*string` blobs refused apart, because a port
+// can carry one and not the other), a payload-free arm, and a string, bytes or
+// flags default.
 func refuseUnported(u *ir.Unit, target string) error {
 	if err := refuseValueDefaults(u, target); err != nil {
 		return err
@@ -181,7 +268,10 @@ func refuseUnported(u *ir.Unit, target string) error {
 	if err := refuseUnionArrays(u, target); err != nil {
 		return err
 	}
-	return refuseBlobs(u, target)
+	if err := refuseBytes(u, target); err != nil {
+		return err
+	}
+	return refuseStrings(u, target)
 }
 
 // carriers is the registered targets that carry a form, sorted, beside the

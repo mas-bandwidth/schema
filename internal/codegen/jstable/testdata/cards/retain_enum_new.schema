@@ -1,0 +1,10 @@
+// retain_enum_new.schema — the enum half of the loss-is-named test
+// (docs/SPEC-TABLES.md §6.6): a variant `c` the older build's enum cannot name.
+package cards
+
+enum Tier { a, b, c }
+
+table Slot
+{
+    tier Tier
+}

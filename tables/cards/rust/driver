@@ -1,0 +1,10 @@
+#!/bin/sh
+# tables/cards/rust/driver — the Rust leg's card conformance driver
+# (tables/cards/conformance/FORMAT.md). It dispatches to the built facade
+# program and is run from the repository root as
+#
+#   <driver> <manifest> list
+#   <driver> <manifest> <surface> <outdir>
+#
+# The harness builds the binary via cards-rust-test before running this script.
+exec "$(dirname "$0")/../../../build/cards-rust/target/debug/cards-driver" "$@"

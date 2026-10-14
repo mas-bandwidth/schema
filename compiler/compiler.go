@@ -182,6 +182,27 @@ func (c *Compiler) Load(paths []string) (*ir.Unit, error) {
 	if len(ferrs) > 0 {
 		return nil, Diagnostics(ferrs)
 	}
+	// AND THE PLAN'S OWN CAP, on the same terms: a DECLARED fixed table whose
+	// identity plan does not fit is a refusal by name, a derived one is a
+	// warning and keeps form 1 (ir.TableFixedLeafCapRefusals).
+	lwarns, lerrs := ir.TableFixedLeafCapRefusals(u)
+	for _, w := range lwarns {
+		if c.OnWarn != nil {
+			c.OnWarn(w)
+		}
+	}
+	if len(lerrs) > 0 {
+		return nil, Diagnostics(lerrs)
+	}
+	// AND THE WALK'S DEPTH BOUND, on the same terms as the record ceiling: past
+	// it no conforming reader takes the walk, so the form is not emitted and the
+	// table is NAMED with its depth — never dropped in silence
+	// (ir.TableFixedDepthBounds).
+	for _, w := range ir.TableFixedDepthBounds(u) {
+		if c.OnWarn != nil {
+			c.OnWarn(w)
+		}
+	}
 	if c.TablesBaseline {
 		warns, berrs := baseline.Check(u, paths)
 		for _, w := range warns {

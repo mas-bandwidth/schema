@@ -1,0 +1,69 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- cell3-cs-compressed-floats-valid-data — Compressed-float declarations
+       stored as float32: valid-data write/read acceptance (cs leg).
+
+       The tree's cs conformance surface (test/conformance/cs/ci.json) compiles
+       no schema that DECLARES a compressed float — the corpus units carry plain
+       float32 fields only — so this row compiles the tree's own compressed-
+       float declaration, test/tables/VOLD_cfloat_res_refine.schema:
+
+           fixed table CfloatResRefine
+           {
+               lead  uint32 = 1
+               aim   float32 | min = -1, max = 1, resolution = 0.1
+               trail uint32 = 2
+           }
+
+       generated here by the compiler the leg's own gates build (bin/schema,
+       the same binary build/tables-generated-cs/.stamp runs), into build/,
+       which is the tree's scratch and never tracked. Standalone like its
+       sibling W14: one project, one command, the exit code is the verdict. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>annotations</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>cell3-cs-compressed-floats-valid-data</AssemblyName>
+    <RepoRoot Condition="'$(RepoRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\..\..\..'))</RepoRoot>
+    <CfloatSchema>$(RepoRoot)/test/tables/VOLD_cfloat_res_refine.schema</CfloatSchema>
+    <CfloatGenDir Condition="'$(CfloatGenDir)' == ''">$(RepoRoot)/build/rows-cs-cfloat</CfloatGenDir>
+  </PropertyGroup>
+
+  <!-- Generate the unit before compiling it. The gates build bin/schema first
+       (build/tables-generated-cs/.stamp depends on it), so at head the binary
+       is there; a bare tree that never built it gets the row's own words
+       rather than a Compile glob that silently finds nothing. -->
+  <Target Name="GenerateCfloatUnit"
+          BeforeTargets="PrepareForBuild"
+          Inputs="$(RepoRoot)/bin/schema;$(CfloatSchema)"
+          Outputs="$(CfloatGenDir)/VOLD_cfloat_res_refineTable.cs">
+    <Error Condition="!Exists('$(RepoRoot)/bin/schema')"
+           Text="the schema compiler is not built: this row generates the compressed-float unit it asserts — run the leg's gates (make build/conformance-harness build-conformance-cs build-cs-cook table-base64-cs) or make bin/schema first" />
+    <MakeDir Directories="$(CfloatGenDir)" />
+    <Exec Command="'$(RepoRoot)/bin/schema' generate --lang cs --out '$(CfloatGenDir)' '$(CfloatSchema)'"
+          WorkingDirectory="$(RepoRoot)" />
+  </Target>
+
+  <!-- The generated sources join the compilation INSIDE a target, after
+       generation and before CoreCompile: a glob evaluated at project-evaluation
+       time sees an empty build/rows-cs-cfloat on a clean tree (the unit is not
+       checked in and no gate generates it), and a first `dotnet run` would then
+       compile Program.cs alone. Items added by a target's ItemGroup are exactly
+       what a generated-code build needs. -->
+  <Target Name="IncludeGeneratedUnit"
+          AfterTargets="GenerateCfloatUnit"
+          BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <Compile Include="$(CfloatGenDir)/*.cs" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,13 @@
+# TRACKED FILES UNDER generated/ THAT ARE NOT GENERATOR OUTPUT, each with the
+# reason it is tracked. Read by test/generated-tree/compare (issue #898, gate
+# G3): the clean-room emission cannot contain these, and without a line here
+# the gate would call each one a stale file the emitter stopped writing.
+#
+# THE LIST IS CHECKED IN BOTH DIRECTIONS, so it cannot rot into a hole: a named
+# path that the tree no longer carries reds, and a named path the compiler DOES
+# emit reds — the exception may never be the thing that hides real staleness.
+#
+# Nothing else belongs here. A file the emitter stopped writing is not an
+# exception; it is a deletion nobody committed.
+
+generated/bench/paired/rust/Cargo.toml  # hand-written crate manifest for the paired bench unit, tracked so the driver never rewrites a tracked file: it names ONE symlink under build/ and bench/paired's pointRustManifest points that link at SERIALIZE_RS (6e2a5a36). The emitter writes only the unit's .rs files.

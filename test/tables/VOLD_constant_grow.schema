@@ -1,0 +1,18 @@
+// VOLD_constant_grow.schema — OLD: const N = 4 behind the bound
+//
+// One of the fixed form's versioning rows (docs/FIXED-FORM-VERSIONING-TESTS.md).
+// The OLD and the NEW file of this pair differ by EXACTLY the row named above,
+// so a case in test/tables/versioning_numbers.cpp can say which change the read
+// answered for. `lead` and `trail` bracket the row's field: a mislaid size
+// moves a neighbour, and the equality check sees it.
+
+package vold_constant_grow
+
+const N = 4
+
+fixed table ConstantGrow
+{
+    lead  uint32 = 1
+    vals  [..N]int32
+    trail uint32 = 2
+}

@@ -1,0 +1,22 @@
+// VOLD_hostile_bool.schema — OLD side of the hostile-bytes pair. The two wire
+// bytes a fixed reader must normalise (docs/FIXED-FORM-ALGORITHM.md §4.5): the
+// scalar `flag` and the optional's present byte. `flags` is the bool-run array
+// the normalised walk emits as ONE run and the coalescer must never fold into a
+// copy. `lead` and `trail` bracket every one of them, so a mislaid size moves a
+// neighbour and the equality check sees it.
+//
+// The reader of the NEW side has no identity hash for these bytes, so it must
+// COMPILE a plan from this layout before it can land them: that is the
+// runtime-compiler path this pair puts under the witness.
+package vold_hostile_bool
+
+type Pay { n int32 = 5 }
+
+fixed table Hbb
+{
+    flag  bool
+    link  ?Pay
+    lead  uint32 = 1
+    flags [8]bool
+    trail uint32 = 2
+}

@@ -1,0 +1,11 @@
+// cardpair — the OLDER declaration of the retain pair (see newer.schema): the
+// same table, before the three fields the newer declaration adds. Its retained
+// load and save keep the unknown scalar and string, and drop the unknown
+// *string (kind 17, the node-index class) as loss (docs/SPEC-TABLES.md §6.6).
+package cards
+
+table Card
+{
+    id    string(8)
+    n     int32
+}

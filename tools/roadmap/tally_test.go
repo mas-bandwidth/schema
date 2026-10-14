@@ -106,7 +106,7 @@ func tablesOutsideBlocks(raw string) error {
 // generatedBlockIDs lists the block ids in page order.
 func generatedBlockIDs(raw string) []string {
 	var ids []string
-	for line := range strings.SplitSeq(raw, "\n") {
+	for _, line := range strings.Split(raw, "\n") {
 		if m := startMarkerRx.FindStringSubmatch(line); m != nil {
 			ids = append(ids, m[1])
 		}

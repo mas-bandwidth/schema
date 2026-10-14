@@ -32,16 +32,6 @@ import (
 	"unsafe"
 )
 
-// BuildVersion is the unit's build version (docs/SPEC-TABLES.md §20): one
-// digest over every fact the bytes this build produces depend on. It both
-// ADDRESSES a cooked artifact — the store is keyed by (asset hash, build
-// version) — and REFUSES one, because it is what Open checks out of the header.
-//
-// There are TWO ids in the design and they are not interchangeable: the
-// PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
-// what everything cooked or blocked is keyed by.
-const BuildVersion uint64 = 0x12bc9e07fe351b2c
-
 // TableCookMagic is the cook's magic (docs/SPEC-TABLES.md §7.1), read before
 // anything else: it is what establishes the byte order every other header word
 // is written in, and it is also what separates a COOK from a BLOCK — the two

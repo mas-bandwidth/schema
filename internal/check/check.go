@@ -2437,7 +2437,6 @@ func (c *checker) checkTables() {
 	c.tableClosure = closure
 	c.checkTableArmsReached(closure)
 	c.checkPositionalEnumBoundInClosure()
-	c.keyTypeHeldEnumExtents()
 
 	names := make([]string, 0, len(closure))
 	for name := range closure {
@@ -2543,8 +2542,107 @@ func (c *checker) checkTables() {
 	c.checkFixedTableClosures(names)
 	c.checkReservedWireIds(names)
 	c.checkTableVariantIdentity(names)
+	c.checkOptionalVariableClosures(names)
 	c.checkJsonKeysInClosure()
 	c.checkWasInClosure()
+}
+
+// checkOptionalVariableClosures refuses an OPTIONAL whose value's closure is
+// VARIABLE-LENGTH — `?T` and `?[N]T`/`?[..N]T` where T declares or nests a
+// pointer — as a named follow-on (docs/SPEC-TABLES.md §2.3, §15). An absent
+// field is not an edge (§3.1), so the authoring walks (the numbering, the
+// pack, Lock's sizing) must gate on the presence companion before an optional
+// field may hold pointer edges; until that gating lands, the refusal is what
+// keeps the two writers byte-identical. The derivation mirrors
+// ir.VariableTables over the checker's own members, because the unit is not
+// assembled yet when this runs.
+// unionVariable mirrors ir.VariableTables' arm rule over the checker's own
+// members (docs/SPEC-TABLES.md §2.2, §2.6): a POINTER arm makes the holder
+// variable, as does an arm naming a variable member or an arm that is a union
+// which is itself variable.
+func unionVariable(un *ir.Union, variable map[string]bool, seen map[*ir.Union]bool) bool {
+	if seen[un] {
+		return false
+	}
+	seen[un] = true
+	for _, v := range un.Variants {
+		if v.F == nil {
+			continue
+		}
+		if v.F.Type.Pointer {
+			return true
+		}
+		if v.Type != "" && variable[v.Type] {
+			return true
+		}
+		if inner, ok := v.F.Type.Ref.(*ir.Union); ok && unionVariable(inner, variable, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *checker) checkOptionalVariableClosures(names []string) {
+	variable := map[string]bool{}
+	for changed := true; changed; {
+		changed = false
+		for _, name := range names {
+			if variable[name] {
+				continue
+			}
+			st := c.closureMember(name)
+			if st == nil {
+				continue
+			}
+			for _, f := range st.Fields {
+				if f.Type.Pointer {
+					variable[name] = true
+					break
+				}
+				if f.Type.Kind != ir.TNamed {
+					continue
+				}
+				switch ref := f.Type.Ref.(type) {
+				case *ir.Struct:
+					variable[name] = variable[name] || variable[ref.Name]
+				case *ir.Union:
+					// mode derivation runs through ARMS (§2.2, §2.6): a
+					// POINTER arm, an arm naming a variable table, or an arm
+					// that is a union which is itself variable
+					if unionVariable(ref, variable, map[*ir.Union]bool{}) {
+						variable[name] = true
+					}
+				}
+				if variable[name] {
+					break
+				}
+			}
+			if variable[name] {
+				changed = true
+			}
+		}
+	}
+	for _, name := range names {
+		st := c.closureMember(name)
+		if st == nil {
+			continue
+		}
+		pos := ast.Pos{}
+		if d, ok := c.astDecls[name]; ok {
+			pos = d.DeclPos()
+		}
+		for _, f := range st.Fields {
+			if !f.Type.Optional {
+				continue
+			}
+			ref, ok := f.Type.Ref.(*ir.Struct)
+			if !ok || !variable[ref.Name] {
+				continue
+			}
+			c.errf(pos, "%s.%s: ? on a value whose closure is variable-length is a named follow-on — %s holds a pointer, an absent field is not an edge, and the authoring walks must gate on the presence companion before an optional field may hold pointer edges; drop the ?, or point at the table instead (docs/SPEC-TABLES.md §2.3, §15)",
+				name, f.Name, ref.Name)
+		}
+	}
 }
 
 // checkJsonKeysInClosure refuses `json = "key"` on a field no table closure
@@ -2903,9 +3001,8 @@ func (c *checker) checkBlobSpelling(f *ast.Field, what string, inTable bool) boo
 // refused by name (docs/SPEC-TABLES.md §11). An optional is a table-body
 // construct: it costs one presence bool beside the value — the array and its
 // count included — and PRESENCE, not content, decides whether the field
-// rides. An optional over a VARIABLE-length closure is legal (docs/SPEC-TABLES.md
-// §2.3): the one declaration-order walk gates every edge on the presence
-// companion, so an absent optional descends nothing and is not an edge (§3.1).
+// rides. The variable-closure refusal runs later, in checkTables, because the
+// mode is a closure fact this function cannot see.
 func (c *checker) checkOptionalSpelling(f *ast.Field, out *ir.Field, inTable bool) bool {
 	spelling := "?" + scalarSpelling(f.Type)
 	if !inTable {
@@ -3627,10 +3724,6 @@ func (c *checker) checkClaimedNames() {
 			whyRustU := fmt.Sprintf("union %s's generated functions and constants (Rust/C form)", name)
 			addRust("write_"+ir.RustSnake(name), whyRustU, d.Pos, "Write"+name)
 			addRust("read_"+ir.RustSnake(name), whyRustU, d.Pos, "Read"+name)
-			// the Elixir BITS-CONSUMED entry beside it (SPEC §5, §6.1): a union
-			// named Frame claims read_frame_bits, so a second union named
-			// FrameBits cannot take the same binding through read_frame_bits.
-			addRust("read_"+ir.RustSnake(name)+"_bits", whyRustU, d.Pos, "Read"+name)
 			addRust(ir.RustConstName(name+"MaxBits"), whyRustU, d.Pos, name+"MaxBits")
 			addRust(ir.RustConstName(name+"MaxBytes"), whyRustU, d.Pos, name+"MaxBytes")
 			whyCTag := fmt.Sprintf("union %s's generated tag constants (C form)", name)
@@ -3640,6 +3733,23 @@ func (c *checker) checkClaimedNames() {
 				addRust(ir.RustConstName(name+"Type")+"_"+ir.RustConstName(v.Name), whyCTag, v.Pos, name+"Type"+ir.GoExportName(v.Name))
 			}
 			addRust("enum_name_"+ir.RustSnake(name+"Type"), fmt.Sprintf("union %s's generated tag debug-name function (C form)", name), d.Pos)
+			// THE UNION TWIN (docs/SPEC-TABLES.md §7.2, §15): the blittable
+			// `<Name>Row` a union takes in the Rust table surface, and the
+			// `#[repr(C)]` overlay of its arms beside it. C++ spells the
+			// overlay as an ANONYMOUS union inside the struct and claims
+			// nothing for it; Rust has no anonymous union, so the overlay is a
+			// real type with a real name and the name is claimed like any
+			// other. Both are claimed for EVERY union of a unit that declares
+			// a table, on this list's standing rule: a name free today must
+			// not become a collision the day a table gains a field of this
+			// type. `<Name>Row`'s pair for a `type` and a `table` is claimed
+			// through tableGeneratedVerbs; a union is not a closure member
+			// there, so its two are claimed here.
+			if len(c.tables) > 0 {
+				whyRow := fmt.Sprintf("union %s's generated blittable twin (docs/SPEC-TABLES.md §7.2, §15)", name)
+				add(name+"Row", whyRow, d.Pos)
+				add(name+"RowArms", whyRow, d.Pos)
+			}
 		case *ast.FlagsDecl:
 			add(name+"Count", fmt.Sprintf("flags %s's generated Count constant", name), d.Pos)
 			addRust(ir.RustConstName(name+"Count"), fmt.Sprintf("flags %s's generated Count constant (Rust/C form)", name), d.Pos, name+"Count")
@@ -3678,6 +3788,17 @@ func (c *checker) checkClaimedNames() {
 			// a table generates its storage struct plus the Table codec and
 			// descriptor family — no packet-wire symbols (docs/SPEC-TABLES.md)
 			c.addTableSymbols(add, name, d.DeclPos())
+			// Init IS NOT A SUFFIX, and it is the one generated spelling on
+			// this surface that goes in FRONT of the name. addStructSymbols
+			// has claimed it for a `type` since there were types —
+			// construction defaults applied to existing managed storage — and
+			// a TABLE in a managed language needs the same helper for the same
+			// reason: a fixed-form read resets a value in place rather than
+			// allocating one per record (internal/codegen/jstable). It is
+			// claimed HERE and not in addTableSymbols because a `type` inside
+			// a table's closure goes through both that function and
+			// addStructSymbols, and a name claimed twice collides with itself.
+			add("Init"+name, fmt.Sprintf("table %s's generated in-place reset (docs/SPEC-TABLES.md §11)", name), d.DeclPos())
 			// A BLOCK-FORM table claims two more per out-of-line array,
 			// because its row accessors are named after its fields: <Table>
 			// followed by the PascalCase of the field's name hands back that
@@ -3819,7 +3940,32 @@ var tableGeneratedVerbs = []string{
 	// set in snake_case (<name>_fixed_save) and the two are one claim.
 	"FixedMeasure", "FixedSave", "FixedLoad", "FixedWriteBody", "FixedLeaves",
 	"FixedBodyBytes", "FixedRecordBytes", "FixedHash", "FixedLayout", "FixedLayoutBytes",
-	"FixedDst", "FixedPlan", "FixedPlanCount", "FixedPlanGuarded",
+	"FixedDst", "FixedPlan", "FixedPlanCount", "FixedPlanGuarded", "FixedCover",
+	// and §3.4's READ-SIDE BOUNDS: the straight-line pass a read makes after
+	// the copy, and the per-type body it calls. Claimed for EVERY closure
+	// member and not only the ones that declare a bound today — a field gains
+	// a `min` or a `max`, or a union or an enum, as an ordinary edit, and the
+	// name has to already be taken when it does.
+	"FixedClamp", "FixedClampBody",
+	// THE READING TIER'S OWN SIX (internal/codegen/jstable). A language with no
+	// struct layout cannot land a plan at `offsetof( T, member )`, so it lands
+	// it in a canonical body image and then PROJECTS that image into the
+	// language's own objects — which is a per-declaration decode function C++
+	// gets for free, because there a struct IS its bytes. The prefill, the
+	// identity plan and the plan constructor are the same story: storage the
+	// reference holds in the type system, a reading tier holds in named module
+	// data. The two hash halves are one more: a sixty-four-bit constant is two
+	// uint32 lanes wherever a BigInt on a per-record compare would be an
+	// allocation per record, and the pair is claimed beside FixedHash rather
+	// than instead of it, because both spellings are emitted somewhere.
+	"FixedDecode", "FixedPrefill", "FixedIdentity", "FixedNewPlan", "FixedHashLo", "FixedHashHi",
+	// AND §5'S THREE (docs/FIXED-FORM-ALGORITHM.md §5.2): a fixed table reads
+	// BACKWARD and never forward, so every root carries its LINEAGE as static
+	// data — the known layouts oldest first, the floor as one number, and one
+	// plan per entry laid down at module load from the lock's bytes. They are
+	// per-declaration for the same reason the identity plan is: a lineage
+	// belongs to one table and a unit can declare several.
+	"FixedKnown", "FixedFloor", "FixedLineagePlans",
 	// THE C BACKEND's own name-first spellings (internal/codegen/ctable). C++
 	// and C# put these on a class — a builder's Lock, a storage's Create, a
 	// block type's Type — and a member function claims nothing. C has no
@@ -3897,10 +4043,6 @@ func (c *checker) addStructSymbols(add func(name, what string, pos ast.Pos), add
 	whyRust := fmt.Sprintf("type %s's generated functions and constants (Rust/C form)", name)
 	addRust("write_"+ir.RustSnake(name), whyRust, pos, "Write"+name)
 	addRust("read_"+ir.RustSnake(name), whyRust, pos, "Read"+name)
-	// the Elixir BITS-CONSUMED entry beside it (SPEC §5, §6.1): `type Frame`
-	// claims read_frame_bits, so a `type FrameBits` cannot take the same
-	// module binding through its own read_frame_bits.
-	addRust("read_"+ir.RustSnake(name)+"_bits", whyRust, pos, "Read"+name)
 	addRust(ir.RustConstName(name+"MaxBits"), whyRust, pos, name+"MaxBits")
 	addRust(ir.RustConstName(name+"MaxBytes"), whyRust, pos, name+"MaxBytes")
 }

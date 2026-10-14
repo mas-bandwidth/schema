@@ -60,10 +60,6 @@ func MapKeyOrder(f *ir.Field, a, b MapKey) int {
 	return 0
 }
 
-// MapEntryStruct is the generated entry table a map field's entries are
-// instances of.
-func MapEntryStruct(f *ir.Field) *ir.Struct { return f.MapEntry }
-
 // NewMapEntry is one entry at its declared defaults, key included.
 func (m *Model) NewMapEntry(f *ir.Field) *Instance { return m.New(f.MapEntry) }
 

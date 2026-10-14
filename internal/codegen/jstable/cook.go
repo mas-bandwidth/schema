@@ -619,12 +619,14 @@ func (g *cookGen) emitRecordDescriptor(record string) {
 		}
 		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
 			pieces := ir.FieldPieces(g.unit, f, fl.Offset)
-			countOffset = pieces[1].Offset
+			if len(pieces) > 1 {
+				countOffset = pieces[1].Offset
+			}
 		}
 		isArray := f.KeyEnum != "" || f.Array != ir.ArrayNone
 		bound := int64(1)
 		elemSize := fl.Size
-		if isArray {
+		if isArray && f.ArrayBound > 0 {
 			bound = f.ArrayBound
 			elemSize = ir.FieldPieces(g.unit, f, fl.Offset)[0].Size / bound
 		}

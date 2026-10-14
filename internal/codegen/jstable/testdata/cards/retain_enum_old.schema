@@ -1,0 +1,12 @@
+// retain_enum_old.schema — the older enum of the loss-is-named test
+// (docs/SPEC-TABLES.md §6.6): an unknown variant reference in a known field is
+// an excluded class — the field is the reader's and it writes its own value, so
+// the variant is reported as a loss and never retained.
+package cards
+
+enum Tier { a, b }
+
+table Slot
+{
+    tier Tier
+}

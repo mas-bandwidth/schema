@@ -30,7 +30,12 @@ func TestPacketWideTextRefusesTableClosure(t *testing.T) {
 		}
 		u := unitFromSource(t, "package wide\n"+decl+edge+"\n")
 		for _, target := range packetWidePorts {
-			if target == "go" || target == "cs" {
+			// go and cs carry table wide text on the id-table wire; dart,
+			// rust, java, js and elixir carry it on §3.4's fixed form. The
+			// refusal under test is the one a port without a table codec
+			// gives, and every registered target has one today.
+			if target == "go" || target == "cs" || target == "dart" ||
+				target == "rust" || target == "java" || target == "js" || target == "elixir" {
 				continue
 			}
 			_, err := New().Generate(u, target, nil)

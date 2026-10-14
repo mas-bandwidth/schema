@@ -81,12 +81,6 @@ func ReadReport(m *tabletext.Model, root string, wire []byte) (tabletext.Report,
 	return report, nil
 }
 
-// UnpackMessage is Unpack over the MESSAGE FORM (docs/SPEC-TABLES.md §3.3),
-// resolving every reference against the announced table: the BATCH OF ONE.
-func UnpackMessage(m *tabletext.Model, root string, announcement, message []byte, dir string, oneFile bool) (tabletext.Report, error) {
-	return UnpackMessages(m, []MessageTree{{Root: root, Dir: dir}}, announcement, message, oneFile)
-}
-
 // UnpackMessages reads a BATCH against the announcement that carried it. The
 // announcement is an ordinary form 1 file and is read first, tolerantly, with
 // its two strict checks; a refused announcement sets no table, so the batch is

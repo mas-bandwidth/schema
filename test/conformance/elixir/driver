@@ -25,5 +25,11 @@ export PATH
 # tables-elixir-block-lead-negative-control).
 EBIN="${ELIXIR_TABLES_EBIN:-build/elixir-tables-ebin}"
 export EBIN
+# THE WIRE-FUZZ DRIVER reads a mutant stream on stdin, so it runs WITHOUT
+# -noinput (which disables the standard_io device); every surface driver does
+# not read stdin and keeps -noinput, which lets them exit cleanly.
+if [ "$1" = "wire-fuzz" ]; then
+	exec elixir --erl "+B" -pa "$EBIN" -e 'Driver.main(System.argv())' -- "$@"
+fi
 exec elixir --erl "+B -noinput" -pa "$EBIN" \
 	-e 'Driver.main(System.argv())' -- "$@"

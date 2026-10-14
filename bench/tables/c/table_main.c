@@ -491,7 +491,7 @@ static int64_t fixed_load_all( FixedTable * values, const uint8_t * bytes, int64
 {
     TableReport report;
     memset( &report, 0, sizeof( report ) );
-    return fixed_table_fixed_load( values, FixedCount, bytes, size, g_fixed_plan, FixedPlanCapacity, &report );
+    return fixed_table_fixed_load( values, FixedCount, bytes, size, g_fixed_plan, FixedPlanCapacity, NULL, &report );
 }
 
 static void bench_fixed( const char * name, long base_iters )
