@@ -1,26 +1,28 @@
 // THE VARIABLE FORM for Elixir (docs/SPEC-TABLES.md §3): form byte 1, the
-// id-table wire, for exactly the constructs the card record uses — a plain
-// `table` root and tables as list elements; bool, int32, int64 and enum with
-// their defaults and ranges; string(N); *string (the string blob, §2.5); and
-// unbounded lists of tables []T (§2.9). The rest of the variable class is
-// refused by name at the backend's boundary (§11) and never reaches here.
+// id-table wire. It carries the card record's slice — a plain `table` root and
+// tables as list elements; bool, int32, int64 and enum with their defaults and
+// ranges; string(N); *string; and unbounded lists of tables []T (§2.9) — and,
+// beyond that slice, pointers to tables and the flat node table (§2.1, §3.1),
+// *bytes blobs (§2.5) and the unsigned integer widths those values declare.
+// Constructs this backend still does not carry are refused by name at the
+// boundary (§11) and never reach here.
 //
 // The wire is the same bytes the Go, C, C++ and C# backends write
 // (docs/SPEC-TABLES.md §3, §3.1): the form byte, then a body of `(reference,
 // kind, payload)` triples ended by the zero reference, then the id table — the
 // interned ids in first-use order, then their count as one little-endian u64.
-// A *string rides as a pointer index (kind 17) into the flat node table, which
-// the root body carries under the reserved node-table id at kind 12 (string);
-// a list rides as an array (kind 14) of framed table bodies (element kind 13);
+// A *string or a *bytes rides as a pointer index (kind 17) into the flat node
+// table (§2.5), which the root body carries under the reserved node-table id
+// at kind 12; a table pointer is the same index naming a table record (§2.1).
+// A list rides as an array (kind 14) of framed table bodies (element kind 13);
 // an enum rides under its own kind 30 carrying the reference to the variant
 // name's id.
 //
 // Reading is wire tolerance (§4): an unknown id is skipped and counted, an
 // absent field reads its default, a kind mismatch and an out-of-range value are
 // reported. Identity is the name hash and `was` (§5). A BEAM term has no
-// pointer identity, so a *string's node index is its position in the
-// declaration-order walk, which is the same order the C++ reference and the Go
-// builder write a fresh blob for each field.
+// pointer identity, so a node's index is its position in the declaration-order
+// walk and two slots share a record when they hold equal terms.
 package elixirtable
 
 import (
@@ -67,6 +69,7 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	fmt.Fprintf(&b, "  @build_version_id 0x%016X\n", ir.TableBuildVersionWireId)
 	fmt.Fprintf(&b, "  @message_vocab_id 0x%016X\n", ir.TableMessageVocabularyWireId)
 	fmt.Fprintf(&b, "  @string_id 0x%016X\n", ir.StringWireTypeId)
+	fmt.Fprintf(&b, "  @bytes_id 0x%016X\n", ir.BytesWireTypeId)
 	fmt.Fprintf(&b, "  @region_align %d\n", ir.TableRegionAlign(u))
 	b.WriteString("  # every id the closure can name, ascending (docs/SPEC-TABLES.md §6.6): a\n")
 	b.WriteString("  # retained id is by definition not here, and takes its entry from the\n")
@@ -83,6 +86,17 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 			continue
 		}
 		b.WriteString(tableDescriptor(u, st))
+	}
+	b.WriteString("  }\n")
+	// @table_types is the node record's type id to the table it places
+	// (docs/SPEC-TABLES.md §3.1). The two reserved blob ids are not tables.
+	b.WriteString("  @table_types %{\n")
+	for _, name := range names {
+		st := u.Tables[name]
+		if st == nil {
+			continue
+		}
+		fmt.Fprintf(&b, "    0x%016X => %q,\n", ir.TableWireId(st.WireName()), name)
 	}
 	b.WriteString("  }\n")
 	b.WriteString("  # the unit registry (docs/SPEC-TABLES.md §8.3): the descriptors a tool\n")
@@ -111,16 +125,19 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
     {_idx_map, ids, order, body} = save_fields(desc, value, idx_map, %{}, [], [])
 
-    {body, _ids, order} = save_node_table(nodes, ids, order, body)
+    {body, _ids, order} = save_node_table(nodes, idx_map, ids, order, body)
 
     ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
 
     {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>])}
   end
 
-  # collect_nodes is the declaration-order walk of every *string this value
-  # reaches: the flat node table's records, in the order §3.1 numbers them
-  # (root is index 1, the first blob is 2). A blob reached twice is one record.
+  # collect_nodes is the pre-order walk of every pointer edge this value
+  # reaches (docs/SPEC-TABLES.md §2.1, §2.5, §3.1): the flat node table's
+  # records. Root is index 1 and the first record is 2. The accumulator is
+  # prepended and reversed once by the caller, so a node is numbered before
+  # the edges inside it. A node reached twice is one record. A BEAM term has
+  # no pointer identity, so equality of the term is the share.
   defp collect_nodes(desc, value, acc) do
     Enum.reduce(desc.fields, acc, fn f, acc ->
       case f.t do
@@ -131,6 +148,32 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
             v ->
               if Enum.any?(acc, fn e -> e == v end), do: acc, else: [v | acc]
+          end
+
+        :bblob ->
+          case Map.get(value, f.name) do
+            nil ->
+              acc
+
+            v ->
+              tagged = {:bblob, v}
+              if Enum.any?(acc, fn e -> e == tagged end), do: acc, else: [tagged | acc]
+          end
+
+        :ptr ->
+          case Map.get(value, f.name) do
+            nil ->
+              acc
+
+            v ->
+              tagged = {:table, f.table, v}
+
+              if Enum.any?(acc, fn e -> e == tagged end) do
+                acc
+              else
+                child = Map.fetch!(@tables, f.table)
+                collect_nodes(child, v, [tagged | acc])
+              end
           end
 
         :list ->
@@ -160,6 +203,34 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       v ->
         {ref, ids, order} = intern(ids, order, f.id)
         idx = Map.fetch!(idx_map, v)
+        {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, leb_encode(idx)]}
+    end
+  end
+
+  # *bytes is the same kind-17 index as *string, naming a bytes record
+  # (docs/SPEC-TABLES.md §2.5, §3.1). Null is elided.
+  defp emit_field(%{t: :bblob} = f, value, idx_map, ids, order, acc) do
+    case Map.get(value, f.name) do
+      nil ->
+        {idx_map, ids, order, acc}
+
+      v ->
+        {ref, ids, order} = intern(ids, order, f.id)
+        idx = Map.fetch!(idx_map, {:bblob, v})
+        {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, leb_encode(idx)]}
+    end
+  end
+
+  # *T is a kind-17 node index (docs/SPEC-TABLES.md §2.1, §3.1). Null is elided.
+  # A non-null pointer always rides, even when the node's body is all default.
+  defp emit_field(%{t: :ptr} = f, value, idx_map, ids, order, acc) do
+    case Map.get(value, f.name) do
+      nil ->
+        {idx_map, ids, order, acc}
+
+      v ->
+        {ref, ids, order} = intern(ids, order, f.id)
+        idx = Map.fetch!(idx_map, {:table, f.table, v})
         {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, leb_encode(idx)]}
     end
   end
@@ -198,7 +269,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       v ->
         {ref, ids, order} = intern(ids, order, f.id)
-        {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, int_bytes(v, f.width)]}
+        {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, int_bytes(v, f.width, f.signed)]}
     end
   end
 
@@ -233,19 +304,42 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   # save_node_table writes the reserved node-table field once, when the value
-  # carries a blob (docs/SPEC-TABLES.md §3.1).
-  defp save_node_table([], ids, order, body), do: {body, ids, order}
+  # reaches a pointer (docs/SPEC-TABLES.md §3.1). Records follow the numbering.
+  defp save_node_table([], _idx_map, ids, order, body), do: {body, ids, order}
 
-  defp save_node_table(nodes, ids, order, body) do
+  defp save_node_table(nodes, idx_map, ids, order, body) do
     {ref, ids, order} = intern(ids, order, @node_id)
-    {sref, ids, order} = intern(ids, order, @string_id)
-    table =
-      for v <- nodes do
-        [leb_encode(sref), leb_encode(byte_size(v)), v]
-      end
 
+    {recs, ids, order} =
+      Enum.reduce(nodes, {[], ids, order}, fn node, {recs, ids, order} ->
+        {rec, ids, order} = write_node(node, idx_map, ids, order)
+        {[rec | recs], ids, order}
+      end)
+
+    table = Enum.reverse(recs)
     payload = [leb_encode(length(nodes)), table]
     {[body, leb_encode(ref), <<12>>, leb_encode(IO.iodata_length(payload)), payload], ids, order}
+  end
+
+  # write_node is one record (docs/SPEC-TABLES.md §2.5, §3.1): a *string or a
+  # *bytes is its bytes under the reserved type id, with no fields and no
+  # terminator; a table is a framed body ending in the zero reference.
+  defp write_node(v, _idx_map, ids, order) when is_binary(v) do
+    {sref, ids, order} = intern(ids, order, @string_id)
+    {[leb_encode(sref), leb_encode(byte_size(v)), v], ids, order}
+  end
+
+  defp write_node({:bblob, v}, _idx_map, ids, order) do
+    {bref, ids, order} = intern(ids, order, @bytes_id)
+    {[leb_encode(bref), leb_encode(byte_size(v)), v], ids, order}
+  end
+
+  defp write_node({:table, name, v}, idx_map, ids, order) do
+    desc = Map.fetch!(@tables, name)
+    {tref, ids, order} = intern(ids, order, desc.type_id)
+    {_idx, ids, order, fields} = save_fields(desc, v, idx_map, ids, order, [])
+    node_body = [fields, <<0>>]
+    {[leb_encode(tref), leb_encode(IO.iodata_length(node_body)), node_body], ids, order}
   end
 
   # ---- the read side (docs/SPEC-TABLES.md §3, §4) ----
@@ -258,7 +352,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         {:error, reason, empty_report()}
 
       {:ok, body, ids} ->
-        case entries(body, ids, desc.string_blob) do
+        case entries(body, ids, desc.string_blob, desc.bytes_blob) do
           {:error, _} ->
             {:error, :malformed, empty_report()}
 
@@ -268,7 +362,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             {:error, :malformed, empty_report()}
 
           {:ok, fields, nodes} ->
+            {nodes, node_report} = materialize_nodes(nodes, ids)
             {value, report} = decode(desc, fields, nodes, ids)
+            report = merge_report(report, node_report)
             report = if :malformed in nodes, do: %{report | malformed: true}, else: report
             unknown = Enum.count(nodes, &(&1 == :unknown))
             report = %{report | unknown: report.unknown + unknown}
@@ -348,13 +444,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # entries walks the body once into {id, kind, payload} triples, splitting the
   # node table out into its records (docs/SPEC-TABLES.md §3.1).
-  defp entries(bin, ids, string_blob), do: entries(bin, ids, string_blob, [], [])
+  defp entries(bin, ids, string_blob, bytes_blob), do: entries(bin, ids, string_blob, bytes_blob, [], [])
 
   # entries returns {:ok, fields, nodes} when the body ends at its terminator,
   # or {:stop, fields, nodes, remaining} when the walk stops, the fourth item
   # being the bytes the walk left un-consumed: 0 means the body ran off its own
   # end cleanly, which is the one stop that keeps the decoded prefix (§3).
-  defp entries(bin, ids, string_blob, acc, nodes) do
+  defp entries(bin, ids, string_blob, bytes_blob, acc, nodes) do
     case leb(bin) do
       :error ->
         {:stop, Enum.reverse(acc), nodes, byte_size(bin)}
@@ -385,16 +481,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                         # carries it under another kind steps over it, never
                         # counting it unknown
                         if kind == 12 do
-                          case node_table(payload, ids, string_blob) do
-                            {:ok, ns} -> entries(rest3, ids, string_blob, acc, nodes ++ ns)
+                          case node_table(payload, ids, string_blob, bytes_blob) do
+                            {:ok, ns} -> entries(rest3, ids, string_blob, bytes_blob, acc, nodes ++ ns)
                             :error -> {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
                           end
                         else
-                          entries(rest3, ids, string_blob, acc, nodes)
+                          entries(rest3, ids, string_blob, bytes_blob, acc, nodes)
                         end
 
                       else
-                        entries(rest3, ids, string_blob, [{id, kind, payload} | acc], nodes)
+                        entries(rest3, ids, string_blob, bytes_blob, [{id, kind, payload} | acc], nodes)
                       end
 
                     :error ->
@@ -417,18 +513,19 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  # node_table decodes the node table's records in order: the string framing
-  # first, then a count, then per record a reference to the string type id and
-  # the bytes. The whole table is read or it is nothing (§3.1): the scan reads
-  # records until the payload is consumed, and a count that disagrees with the
-  # scan makes the table malformed, so every pointer in the save reads null.
-  defp node_table(bin, ids, string_blob) do
+  # node_table decodes the node table's records in order (docs/SPEC-TABLES.md
+  # §3.1): a count, then per record a type-id reference and a body. A *string
+  # body is text, a *bytes body is raw bytes (§2.5), and a table body is a
+  # framed record decoded once every record's framing is known. The whole
+  # table is read or it is nothing: a count that disagrees with the scan makes
+  # the table malformed, so every pointer in the save reads null.
+  defp node_table(bin, ids, string_blob, bytes_blob) do
     case leb(bin) do
       {l, rest} when byte_size(rest) >= l ->
         content = binary_part(rest, 0, l)
 
         case leb(content) do
-          {n, cr} -> node_records(cr, n, [], ids, string_blob)
+          {n, cr} -> node_records(cr, n, [], ids, string_blob, bytes_blob)
           :error -> :error
         end
 
@@ -437,30 +534,192 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp node_records(<<>>, n, acc, _ids, _string_blob) do
+  defp node_records(<<>>, n, acc, _ids, _string_blob, _bytes_blob) do
     if n == length(acc), do: {:ok, Enum.reverse(acc)}, else: :error
   end
 
-  defp node_records(rest, n, acc, ids, string_blob) do
+  defp node_records(rest, n, acc, ids, string_blob, bytes_blob) do
     with {sref, r1} <- leb(rest),
          true <- sref != 0 and sref <= div(byte_size(ids), 8),
          {len, r2} <- leb(r1),
          true <- byte_size(r2) >= len do
       bytes = binary_part(r2, 0, len)
+      type_id = resolve(ids, sref)
 
       node =
-        if string_blob and resolve(ids, sref) == @string_id do
-          if utf8_valid?(bytes), do: bytes, else: :malformed
-        else
-          # a record whose type id this reader cannot name keeps its index
-          # and every pointer naming it reads null; the unknown is counted
-          # once at the record, not once per pointer (§3.1)
-          :unknown
+        cond do
+          string_blob and type_id == @string_id ->
+            if utf8_valid?(bytes), do: bytes, else: :malformed
+
+          bytes_blob and type_id == @bytes_id ->
+            {:bytes, bytes}
+
+          true ->
+            case Map.get(@table_types, type_id) do
+              nil ->
+                # a record whose type id this reader cannot name keeps its index
+                # and every pointer naming it reads null; the unknown is counted
+                # once at the record, not once per pointer (§3.1)
+                :unknown
+
+              name ->
+                {:raw, name, bytes}
+            end
         end
 
-      node_records(binary_part(r2, len, byte_size(r2) - len), n, [node | acc], ids, string_blob)
+      node_records(binary_part(r2, len, byte_size(r2) - len), n, [node | acc], ids, string_blob, bytes_blob)
     else
       _ -> :error
+    end
+  end
+
+  # materialize_nodes decodes table records after the scan, so a pointer
+  # inside one record can name another (docs/SPEC-TABLES.md §3.1). String and
+  # byte records are already their bytes. A card wire has no table record, and
+  # this is the identity on that list.
+  defp materialize_nodes(nodes, ids) do
+    if Enum.any?(nodes, &match?({:raw, _, _}, &1)) do
+      last = length(nodes) - 1
+
+      {rev, _memo, report} =
+        Enum.reduce(0..last, {[], %{}, empty_report()}, fn i, {acc, memo, report} ->
+          {v, memo, report} = force_node(nodes, i, ids, memo, report)
+          {[v | acc], memo, report}
+        end)
+
+      {Enum.reverse(rev), report}
+    else
+      {nodes, empty_report()}
+    end
+  end
+
+  defp force_node(nodes, i, ids, memo, report) do
+    case Map.get(memo, i, :missing) do
+      :missing ->
+        case Enum.at(nodes, i) do
+          {:raw, name, body} ->
+            memo = Map.put(memo, i, :open)
+            {map, memo, report} = decode_table_node(name, body, nodes, ids, memo, report)
+            wrapped = {:table, name, map}
+            {wrapped, Map.put(memo, i, wrapped), report}
+
+          other ->
+            {other, Map.put(memo, i, other), report}
+        end
+
+      :open ->
+        {nil, memo, %{report | malformed: true}}
+
+      v ->
+        {v, memo, report}
+    end
+  end
+
+  defp decode_table_node(name, body, nodes, ids, memo, report) do
+    desc = Map.fetch!(@tables, name)
+
+    if ends_early?(body, ids) do
+      {defaults(desc), memo, %{report | malformed: true}}
+    else
+      case entries(body, ids, false, false) do
+        {:ok, fields, _} ->
+          {value, memo, report} = decode_fields_resolving(desc, fields, nodes, ids, memo, report)
+          {Map.merge(defaults(desc), value), memo, report}
+
+        _ ->
+          {defaults(desc), memo, %{report | malformed: true}}
+      end
+    end
+  end
+
+  defp decode_fields_resolving(desc, fields, nodes, ids, memo, report) do
+    Enum.reduce(fields, {%{}, memo, report}, fn {id, kind, payload}, {value, memo, report} ->
+      case find_field(desc, id) do
+        nil ->
+          {value, memo, %{report | unknown: report.unknown + 1}}
+
+        f ->
+          cond do
+            kind == f.kind ->
+              {v, memo, report} = read_resolving(f, payload, nodes, ids, memo, report)
+              {Map.put(value, f.name, v), memo, report}
+
+            widens?(kind, f) ->
+              {v, report} = read_widened(f, kind, payload, report)
+              {Map.put(value, f.name, v), memo, report}
+
+            true ->
+              {value, memo, %{report | kind_mismatch: report.kind_mismatch + 1}}
+          end
+      end
+    end)
+  end
+
+  defp read_resolving(%{t: :blob} = f, payload, nodes, ids, memo, report) do
+    take_pointer(f, payload, nodes, ids, memo, report, :blob)
+  end
+
+  defp read_resolving(%{t: :bblob} = f, payload, nodes, ids, memo, report) do
+    take_pointer(f, payload, nodes, ids, memo, report, :bblob)
+  end
+
+  defp read_resolving(%{t: :ptr} = f, payload, nodes, ids, memo, report) do
+    take_pointer(f, payload, nodes, ids, memo, report, :ptr)
+  end
+
+  defp read_resolving(f, payload, nodes, ids, memo, report) do
+    case read_payload(f, payload, nodes, ids, report) do
+      {:cont, v, report} -> {v, memo, report}
+      {:halt, v, report} -> {v, memo, %{report | malformed: true}}
+    end
+  end
+
+  # take_pointer resolves one kind-17 index against the numbering
+  # (docs/SPEC-TABLES.md §3.1). 0 is null, 1 is the root (never a blob, and a
+  # table slot names it only when the root's own type is that slot's), and
+  # k + 1 is record k.
+  defp take_pointer(f, payload, nodes, ids, memo, report, which) do
+    case leb(payload) do
+      {0, _} ->
+        {nil, memo, report}
+
+      {1, _} ->
+        {nil, memo, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+      {idx, _} ->
+        at = idx - 2
+
+        cond do
+          at < 0 or at >= length(nodes) ->
+            {nil, memo, %{report | malformed: true}}
+
+          Enum.at(nodes, at) == :malformed or Enum.at(nodes, at) == :unknown ->
+            {nil, memo, report}
+
+          true ->
+            {node, memo, report} = force_node(nodes, at, ids, memo, report)
+
+            case {which, node} do
+              {:blob, bin} when is_binary(bin) ->
+                {bin, memo, report}
+
+              {:bblob, {:bytes, bin}} ->
+                {bin, memo, report}
+
+              {:ptr, {:table, name, map}} ->
+                if name == f.table do
+                  {map, memo, report}
+                else
+                  {nil, memo, %{report | kind_mismatch: report.kind_mismatch + 1}}
+                end
+
+              _ ->
+                {nil, memo, %{report | kind_mismatch: report.kind_mismatch + 1}}
+            end
+        end
+
+      _ ->
+        {nil, memo, %{report | malformed: true}}
     end
   end
 
@@ -589,6 +848,56 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
+  # *bytes names a bytes record (docs/SPEC-TABLES.md §2.5, §3.1).
+  defp read_payload(%{t: :bblob} = f, payload, nodes, ids, report) do
+    read_placed(f, payload, nodes, ids, report, :bblob)
+  end
+
+  # *T names a table record of the field's own table (docs/SPEC-TABLES.md §2.1, §3.1).
+  defp read_payload(%{t: :ptr} = f, payload, nodes, ids, report) do
+    read_placed(f, payload, nodes, ids, report, :ptr)
+  end
+
+  defp read_placed(f, payload, nodes, _ids, report, which) do
+    case leb(payload) do
+      {0, _} ->
+        {:cont, nil, report}
+
+      {1, _} ->
+        {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+      {idx, _} ->
+        at = idx - 2
+
+        cond do
+          at < 0 or at >= length(nodes) ->
+            {:cont, nil, %{report | malformed: true}}
+
+          Enum.at(nodes, at) == :malformed or Enum.at(nodes, at) == :unknown ->
+            {:cont, nil, report}
+
+          true ->
+            case {which, Enum.at(nodes, at)} do
+              {:bblob, {:bytes, bin}} ->
+                {:cont, bin, report}
+
+              {:ptr, {:table, name, map}} ->
+                if name == f.table do
+                  {:cont, map, report}
+                else
+                  {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+                end
+
+              _ ->
+                {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+            end
+        end
+
+      _ ->
+        {:cont, nil, %{report | malformed: true}}
+    end
+  end
+
   defp read_payload(%{t: :list} = f, payload, nodes, ids, report) do
     case leb(payload) do
       {_len, arr} ->
@@ -663,7 +972,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     if ends_early?(sub, ids) do
       {%{}, malformed_report()}
     else
-      case entries(sub, ids, false) do
+      case entries(sub, ids, false, false) do
         {:ok, fields, []} ->
           # a list element's report FOLDS into the enclosing one (§4): the
           # counters sum and malformed sticks, so an event inside an element
@@ -705,6 +1014,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           :list -> []
           :enum -> nil
           :blob -> nil
+          :bblob -> nil
+          :ptr -> nil
           :bool -> false
         end
 
@@ -816,8 +1127,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp int_bytes(v, 4), do: <<v::little-signed-32>>
-  defp int_bytes(v, 8), do: <<v::little-signed-64>>
+  defp int_bytes(v, 4, true), do: <<v::little-signed-32>>
+  defp int_bytes(v, 4, false), do: <<v::little-unsigned-32>>
+  defp int_bytes(v, 8, true), do: <<v::little-signed-64>>
+  defp int_bytes(v, 8, false), do: <<v::little-unsigned-64>>
 
   defp int_of(<<v::little-signed-8>>, 1, true), do: v
   defp int_of(<<v::little-signed-16>>, 2, true), do: v
@@ -902,6 +1215,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_field(%{t: :string}, v, _depth), do: ["\"", json_escape(v), "\""]
   defp json_field(%{t: :blob}, nil, _depth), do: "null"
   defp json_field(%{t: :blob}, v, _depth), do: ["\"", json_escape(v), "\""]
+  # *bytes is base64 (docs/SPEC-TABLES.md §16.7); null is null.
+  defp json_field(%{t: :bblob}, nil, _depth), do: "null"
+  defp json_field(%{t: :bblob}, v, _depth) when is_binary(v), do: ["\"", Base.encode64(v), "\""]
+  # a table pointer inlines the node, or null (docs/SPEC-TABLES.md §16.7).
+  defp json_field(%{t: :ptr}, nil, _depth), do: "null"
+
+  defp json_field(%{t: :ptr} = f, v, depth) when is_map(v) do
+    desc = Map.fetch!(@tables, f.table)
+    json_object(desc, Map.merge(defaults(desc), v), depth)
+  end
   defp json_field(%{t: :enum}, nil, _depth), do: "\"None\""
   defp json_field(%{t: :enum}, name, _depth), do: ["\"", json_escape(name), "\""]
   defp json_field(%{t: :int}, v, _depth), do: Integer.to_string(v)
@@ -1009,6 +1332,31 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_read_field(%{t: :blob}, nil, report), do: {nil, report}
 
   defp json_read_field(%{t: :blob}, _raw, report),
+    do: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+  # *bytes text is base64 (docs/SPEC-TABLES.md §16.7). A body that is not
+  # base64 is the wrong shape: the reference stays null and one mismatch counts.
+  defp json_read_field(%{t: :bblob}, raw, report) when is_binary(raw) do
+    case Base.decode64(raw) do
+      {:ok, bin} -> {bin, report}
+      :error -> {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
+
+  defp json_read_field(%{t: :bblob}, nil, report), do: {nil, report}
+
+  defp json_read_field(%{t: :bblob}, _raw, report),
+    do: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+  defp json_read_field(%{t: :ptr} = f, raw, report) when is_map(raw) do
+    desc = Map.fetch!(@tables, f.table)
+    {v, report} = json_fields(desc, raw)
+    {Map.merge(defaults(desc), v), report}
+  end
+
+  defp json_read_field(%{t: :ptr}, nil, report), do: {nil, report}
+
+  defp json_read_field(%{t: :ptr}, _raw, report),
     do: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
 
   defp json_read_field(%{t: :list} = f, raw, report) when is_list(raw) do
@@ -1381,7 +1729,7 @@ const variableRetainSource = `
         {:error, :malformed, report, retain}
 
       {:ok, body, ids} ->
-        case entries(body, ids, desc.string_blob) do
+        case entries(body, ids, desc.string_blob, desc.bytes_blob) do
           {:ok, fields, nodes} ->
             {value, report, retain} = decode_retain(desc, fields, nodes, ids, retain, report, [])
             report = if :malformed in nodes, do: %{report | malformed: true}, else: report
@@ -1414,7 +1762,7 @@ const variableRetainSource = `
     {_idx_map, ids, order, retain, report, body} =
       save_fields_retain(desc, value, idx_map, %{}, [], retain, report, [], [])
 
-    {body, ids, order} = save_node_table(nodes, ids, order, body)
+    {body, ids, order} = save_node_table(nodes, idx_map, ids, order, body)
     ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
     {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>]), retain, report}
   end
@@ -1614,7 +1962,7 @@ const variableRetainSource = `
     if ends_early?(sub, ids) do
       {%{}, malformed_report(), retain}
     else
-      case entries(sub, ids, false) do
+      case entries(sub, ids, false, false) do
         {:ok, fields, []} ->
           decode_retain(desc, fields, nodes, ids, retain, report, elem_path)
 
@@ -2007,8 +2355,8 @@ func enumRef(f *ir.Field) *ir.Enum {
 func tableDescriptor(u *ir.Unit, st *ir.Struct) string {
 	var b strings.Builder
 	ml := ir.RecordLayout(u, st)
-	_, str := ir.PointerReachableBlobs(st)
-	fmt.Fprintf(&b, "    %q => %%{size: %d, string_blob: %v, fields: [\n", st.Name, ml.Size, str)
+	bytes, str := ir.PointerReachableBlobs(st)
+	fmt.Fprintf(&b, "    %q => %%{size: %d, string_blob: %v, bytes_blob: %v, type_id: 0x%016X, fields: [\n", st.Name, ml.Size, str, bytes, ir.TableWireId(st.WireName()))
 	for i, f := range st.Fields {
 		b.WriteString("      " + fieldDescriptor(u, f, i))
 	}
@@ -2022,8 +2370,21 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int) string {
 	kind := ir.TableWireFieldKind(f)
 	fmt.Fprintf(&b, "%%{name: %q, json: %q, id: 0x%016X, kind: %d, ordinal: %d", f.Name, ir.TableFieldJsonKey(f), id, kind, ordinal)
 	switch {
+	case f.Type.Pointer && f.Type.Blob() && f.Type.Kind == ir.TBytes:
+		// *bytes is a blob node under the reserved bytes id (docs/SPEC-TABLES.md §2.5).
+		b.WriteString(", t: :bblob")
 	case f.Type.Pointer && f.Type.Blob():
 		b.WriteString(", t: :blob")
+	case f.Type.Pointer && f.Type.Kind == ir.TNamed:
+		// *T is a node index into the flat node table (docs/SPEC-TABLES.md §2.1, §3.1).
+		name := f.Type.Name
+		if st, ok := f.Type.Ref.(*ir.Struct); ok && st != nil && st.Name != "" {
+			name = st.Name
+		}
+		if name != "" {
+			b.WriteString(", t: :ptr")
+			fmt.Fprintf(&b, ", table: %q", name)
+		}
 	case f.IsList():
 		b.WriteString(", t: :list")
 		fmt.Fprintf(&b, ", elem: %q", f.Type.Name)

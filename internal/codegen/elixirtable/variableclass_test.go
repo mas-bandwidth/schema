@@ -81,7 +81,9 @@ func TestVariableClassBeyondCardConstructsElixir(t *testing.T) {
 			ns := ir.GoExportName(unit.Package)
 			mod := ns + ".Table"
 			dir := t.TempDir()
-			names := writeModuleDir(t, dir, files)
+			// BuildVersion is read at cook-module compile time. Alphabetical
+			// order loads AssetsCook before it (docs/SPEC-TABLES.md §20).
+			names := sortedRuntimeFirst(writeModuleDir(t, dir, files))
 			wire := filepath.Join(root, "testdata", "wire", "tables", u.wire)
 
 			var probe strings.Builder

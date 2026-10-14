@@ -5,12 +5,14 @@
 //
 // THE ACCELERATOR TIER. A block is POINTED AT and a cook is OPENED; neither
 // parses a wire, so both reach every fixed table of the unit. Beside them the
-// VARIABLE FORM is emitted for the card constructs only: the id-table wire's
-// codec, the reflection descriptors and the text form of docs/SPEC-TABLES.md
-// §3, §4, §8 and §16 in their id-table form, for a plain `table` root, tables
-// as list elements, bool/int32/int64/enum, string(N), *string and []T lists of
-// tables. The rest of the variable class is refused by name at the backend's
-// boundary (§11).
+// VARIABLE FORM emits the id-table wire's codec, the reflection descriptors
+// and the text form of docs/SPEC-TABLES.md §3, §4, §8 and §16: the card slice
+// (a plain `table` root, tables as list elements, bool/int32/int64/enum,
+// string(N), *string and []T lists of tables) and, beyond it, pointers to
+// tables (§2.1, §3.1), *bytes (§2.5) and the unsigned integer widths. It is
+// emitted for a unit the variable form owns — one whose closure holds no
+// fixed table. Constructs this backend still does not carry are refused by
+// name at the boundary (§11).
 package elixirtable
 
 import (
@@ -131,9 +133,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		}
 	}
 
-	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: this backend's
-	// FIRST table WIRE. Form 1 is still deferred to schema#515 and nothing here
-	// reads or writes one.
+	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3.
 	fixed, err := generateFixed(u, ns, lineage)
 	if err != nil {
 		return nil, err
@@ -141,10 +141,8 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	maps.Copy(out, fixed)
 
 	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1: the id-table
-	// wire the card constructs read and write byte for byte as the Go, C, C++
-	// and C# backends do. It is emitted for the unit the variable form OWNS —
-	// one whose closure holds no fixed table, which is where the card's slice
-	// is the only answer — and not for a unit the fixed form already serves.
+	// wire. Emitted for the unit the variable form owns — one whose closure
+	// holds no fixed table — and not for a unit the fixed form already serves.
 	if !closureHoldsFixedTable(u, closure) {
 		maps.Copy(out, generateVariableForm(u, ns))
 	}
