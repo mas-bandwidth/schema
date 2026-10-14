@@ -444,8 +444,9 @@ test-elixir: packet-wide-elixir packet-wide-elixir-negative-control
 # unbounded arrays of scalar, string and enum elements and arrays of pointers
 # (§2.9), the 64-bit id-table wire with the enum and escape kinds (§3), and the
 # variable-class text form (§16). TestVariableClassBeyondCardConstructsElixir
-# round-trips tables/pointers, tables/blobs, tables/lists and tblp2 through the
-# generated Elixir against the Go oracle bytes and text form; it is a FUNCTIONAL
+# round-trips tables/pointers, tables/blobs, tables/lists, tblp2 and the
+# fixed-only form-1 units tblp1 and tblp3 through the generated Elixir against
+# the Go oracle bytes and text form; it is a FUNCTIONAL
 # test (it runs the leg's own toolchain through elixirBinary), so
 # SCHEMA_REQUIRE_CORPUS=1 turns a missing toolchain or corpus into a FAILURE,
 # never a skip. The shrunken refusal gate — TestOtherVariableConstructsAreRefusedByName,
