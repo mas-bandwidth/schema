@@ -444,7 +444,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {[leb_encode(IO.iodata_length(body) + 1), body, <<0>>], ids, order}
   end
 
-  defp emit_element(%{elem_kind: 17} = f, e, idx_map, ids, order) do
+  # a null pointer element is node index 0 (docs/SPEC-TABLES.md §3.1). It
+  # names no record, so it is not a key in the node map.
+  defp emit_element(%{elem_kind: 17} = _f, nil, _idx_map, ids, order) do
+    {leb_encode(0), ids, order}
+  end
+
+  defp emit_element(%{elem_kind: 17} = _f, e, idx_map, ids, order) do
     idx = Map.fetch!(idx_map, e)
     {leb_encode(idx), ids, order}
   end
