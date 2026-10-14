@@ -41,11 +41,13 @@ func (g *gen) emitReadWString(f *ir.Field, name, ind string) {
 
 func (g *fgen) emitWriteWString(f *ir.Field, name, ind string) {
 	length := name + "Length"
-	g.pf("%sif (!Number.isInteger(%s) || %s < 0 || %s > %d) return -1;\n", ind, length, length, length, f.Type.Size)
+	g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < 0 || %s > %d", length, length, length, f.Type.Size),
+		" // the length guards the loop; out-of-contract writes are refused", ind)
 	g.emitWriteRangedNum(length, 0, f.Type.Size, ind)
 	g.chunkFlush(ind)
 	g.pf("%sfor (let wideIndex = 0; wideIndex < %s; wideIndex++) {\n", ind, length)
-	g.pf("%s  v = %s[wideIndex];\n%s  if (v === 0) return -1;\n", ind, name, ind)
+	g.pf("%s  v = %s[wideIndex];\n", ind, name)
+	g.guard("v === 0", " // a wide string's used units carry no interior null", ind)
 	g.mergeW(32, ind+"  ")
 	g.pf("%s}\n", ind)
 }
