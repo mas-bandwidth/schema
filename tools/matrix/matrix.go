@@ -1,0 +1,186 @@
+// Package main is the published matrix: docs/MATRIX.md, generated from the one
+// manifest in the tree (docs/matrix.json).
+//
+// The page carries the same table the board shows — the feature-by-language
+// cells, ✅ shipped or ❌ not built — and, beside it, one maturity state per
+// language column, in the owner's words:
+//
+//   - performant and production ready: every row ✅, the conformance corpus
+//     bit-identical on every push, the profiled sitting at the language's floor
+//     on the board, and used in anger before the words are printed.
+//   - done, but not yet mature: every row ✅ and the conformance leg green, the
+//     floor or the use in anger still owed.
+//   - coming: on the list at #381; the type-wire proof not yet standing, or
+//     rows in flight.
+//
+// The page ships red. A ❌ cell and a language marked coming are honest states
+// printed as they stand at each release, never reasons to hold a release or to
+// hide a column. The manifest is the only source; editing the page by hand
+// fails tools/matrix/matrix_test.go, which `make test` runs.
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// manifestPath and pagePath are relative to the repository root.
+const (
+	manifestPath = "docs/matrix.json"
+	pagePath     = "docs/MATRIX.md"
+)
+
+// Language is one column: its id, the two standing proofs (the type wire and
+// the table conformance leg), and the two that make the words "production
+// ready" true — the profiled floor and use in anger. A language on the #381
+// list carries Issue and no proof yet.
+type Language struct {
+	ID          string `json:"id"`
+	TypeWire    bool   `json:"typeWire"`
+	Conformance bool   `json:"conformance"`
+	Floor       bool   `json:"floor"`
+	Used        bool   `json:"used"`
+	Issue       string `json:"issue,omitempty"`
+}
+
+// Feature is one row: its title and one cell per language. A cell the manifest
+// does not name is ❌ — not built.
+type Feature struct {
+	Title string          `json:"title"`
+	Cells map[string]bool `json:"cells"`
+}
+
+// Manifest is the one manifest in the tree: the columns, the rows, and the
+// facts the state is computed from.
+type Manifest struct {
+	Note      string     `json:"note"`
+	Languages []Language `json:"languages"`
+	Features  []Feature  `json:"features"`
+}
+
+// The three states, in the owner's words. They are spelled here rather than in
+// the manifest so a typo cannot invent a fourth.
+const (
+	statePerformant = "performant and production ready"
+	stateDone       = "done, but not yet mature"
+	stateComing     = "coming"
+)
+
+// LoadManifest reads the manifest from root and refuses a shape the page could
+// not be generated from: no columns, no rows, a duplicate language, or a
+// language whose facts contradict the state grammar.
+func LoadManifest(root string) (Manifest, error) {
+	data, err := os.ReadFile(filepath.Join(root, manifestPath))
+	if err != nil {
+		return Manifest{}, err
+	}
+	var m Manifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		return Manifest{}, fmt.Errorf("%s: %w", manifestPath, err)
+	}
+	if len(m.Languages) == 0 {
+		return Manifest{}, fmt.Errorf("%s: no languages", manifestPath)
+	}
+	if len(m.Features) == 0 {
+		return Manifest{}, fmt.Errorf("%s: no features", manifestPath)
+	}
+	seen := map[string]bool{}
+	for _, l := range m.Languages {
+		if l.ID == "" {
+			return Manifest{}, fmt.Errorf("%s: a language has no id", manifestPath)
+		}
+		if seen[l.ID] {
+			return Manifest{}, fmt.Errorf("%s: two languages are named %q", manifestPath, l.ID)
+		}
+		seen[l.ID] = true
+	}
+	return m, nil
+}
+
+// StateOf returns the language's state and the basis the page prints beside it.
+// A language with no type-wire proof is coming regardless of its cells: the
+// rows cannot be earned before the wire under them stands.
+func StateOf(m Manifest, l Language) (state, basis string) {
+	if !l.TypeWire {
+		if l.Issue != "" {
+			return stateComing, fmt.Sprintf("on the list at %s; type-wire proof not yet standing", l.Issue)
+		}
+		return stateComing, "type-wire proof not yet standing"
+	}
+	incomplete := 0
+	for _, f := range m.Features {
+		if !f.Cells[l.ID] {
+			incomplete++
+		}
+	}
+	if incomplete > 0 {
+		return stateComing, fmt.Sprintf("rows in flight (%d of %d rows not yet ✅)", incomplete, len(m.Features))
+	}
+	if !l.Conformance {
+		return stateComing, "every row ✅ but the conformance leg is not green"
+	}
+	if l.Floor && l.Used {
+		return statePerformant, "every row ✅, the conformance corpus bit-identical, at floor, used in anger"
+	}
+	var owed []string
+	if !l.Floor {
+		owed = append(owed, "at floor")
+	}
+	if !l.Used {
+		owed = append(owed, "used in anger")
+	}
+	return stateDone, "every row ✅ and the conformance leg green; still owed: " + strings.Join(owed, ", ")
+}
+
+// Render builds the page from the manifest. It is deterministic: the columns
+// and rows print in manifest order and no map is iterated.
+func Render(m Manifest) string {
+	var b strings.Builder
+	b.WriteString("# The published matrix\n\n")
+	b.WriteString("<!-- generated by tools/matrix from docs/matrix.json; edit the manifest, then run `go run ./tools/matrix write`. Do not edit this page by hand. -->\n\n")
+	b.WriteString("This page is generated from one manifest in the tree (`docs/matrix.json`) and printed with each release. It is the same table the board shows, at the moment of the release: the feature-by-language cells (✅ shipped, ❌ not built) and one maturity state per language column.\n\n")
+	b.WriteString("The page ships red. A ❌ cell and a language marked **coming** are honest states printed as they stand at each release, never reasons to hold a release or to hide a column.\n\n")
+	b.WriteString("## Features\n\n")
+	b.WriteString("| feature")
+	for _, l := range m.Languages {
+		b.WriteString(" | " + l.ID)
+	}
+	b.WriteString(" |\n|")
+	for range m.Languages {
+		b.WriteString(":---:|")
+	}
+	b.WriteString("\n")
+	for _, f := range m.Features {
+		b.WriteString("| " + f.Title)
+		for _, l := range m.Languages {
+			if f.Cells[l.ID] {
+				b.WriteString(" | ✅")
+			} else {
+				b.WriteString(" | ❌")
+			}
+		}
+		b.WriteString(" |\n")
+	}
+	b.WriteString("\n## State\n\n")
+	b.WriteString("| language | state | basis |\n|---|---|---|\n")
+	for _, l := range m.Languages {
+		state, basis := StateOf(m, l)
+		b.WriteString(fmt.Sprintf("| %s | %s | %s |\n", l.ID, state, basis))
+	}
+	b.WriteString("\n<!-- generated by tools/matrix:end -->\n")
+	return b.String()
+}
+
+// StateLines is the page's state line per language, in manifest order — what
+// the release notes print.
+func StateLines(m Manifest) string {
+	var b strings.Builder
+	for _, l := range m.Languages {
+		state, _ := StateOf(m, l)
+		b.WriteString(fmt.Sprintf("%s: %s\n", l.ID, state))
+	}
+	return b.String()
+}
