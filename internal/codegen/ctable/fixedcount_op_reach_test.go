@@ -31,6 +31,11 @@ func TestFixedCountOpReachCoversItsHeader(t *testing.T) {
 	if !strings.Contains(tableFixedRuntime, "if ( d->counted && te.size < 4u ) { c->hostile = 1; break; }") {
 		t.Error("kind-14 does not refuse a counted local field against a peer array smaller than the count")
 	}
+	// The refusal must run before the head subtraction, not after: once
+	// (te.size - head) underflows the count has already been mis-derived.
+	if strings.Index(tableFixedRuntime, "d->counted && te.size < 4u") > strings.Index(tableFixedRuntime, "head = d->counted") {
+		t.Error("kind-14 refuses after the head subtraction it must precede")
+	}
 }
 
 func TestFixedCountOpReachCoversItsHeaderASan(t *testing.T) {
