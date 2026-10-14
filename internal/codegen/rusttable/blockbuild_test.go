@@ -35,7 +35,10 @@ fixed table Root { stamp uint64
 // write: the block builder and the cook writer are one card and one run.
 const blockBuildCookSchema = blockBuilderSchema + `
 fixed table Config { scale float32 = 1.0
- samples [..3]uint64 }
+ samples [..3]uint64
+ fixed_scalar fixed(12,4)
+ fixed_array [..3]fixed(16,16)
+ unsigned_fixed ufixed(8,8) }
 `
 
 // blockProbe is the Rust binary this test BUILDS AND RUNS: it calls the
@@ -125,6 +128,10 @@ fn main() {
     value.scale = 2.5;
     value.samples_count = 1;
     value.samples = [11, 22, 33];
+    value.fixed_scalar = -4660;
+    value.fixed_array_count = 1;
+    value.fixed_array = [-12345678, 12345678, -1];
+    value.unsigned_fixed = 48879;
     let (measure, reason) = config_cook_measure_reason(&value);
     println!(
         "MEASURE {measure} {}",
@@ -443,6 +450,10 @@ func TestOracle(t *testing.T) {
  value.Scale=2.5
  value.SamplesCount=1
  value.Samples=[3]uint64{11,22,33}
+ value.FixedScalar=-4660
+ value.FixedArrayCount=1
+ value.FixedArray=[3]int32{-12345678,12345678,-1}
+ value.UnsignedFixed=48879
  n:=ConfigCookMeasure(&value)
  le,be:=make([]byte,n),make([]byte,n)
  if !ConfigCookFrom(&value,le,TableByteOrderLittle)||!ConfigCookFrom(&value,be,TableByteOrderBig) { t.Fatal("cook") }
