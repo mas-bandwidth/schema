@@ -18,9 +18,8 @@
 // is no offsetof here). Destination rows carry destinations and nothing about
 // a range: the generated projection holds the bound after the loop.
 //
-// Nothing here touches form 1. The Elixir backend carries no form-1 table wire
-// at all (schema#515): this is the first table WIRE this backend has, and it
-// reads and writes ONLY form 3.
+// Nothing here touches form 1. Form 1 is the variable form in variableform.go.
+// This file reads and writes ONLY form 3.
 package elixirtable
 
 import (
