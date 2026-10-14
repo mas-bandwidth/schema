@@ -380,7 +380,7 @@ fixed table Vector {
 // per file and in decimal and takes a float's bits from it — never from a
 // literal — so the harness's expected values are the manifest's own.
 func t08R27(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("fixedversioning_test.go"))
+	data, err := os.ReadFile("fixedversioning_test.go")
 	if err != nil {
 		t.Fatalf("R27: read the cs leg's versioning harness: %v", err)
 	}

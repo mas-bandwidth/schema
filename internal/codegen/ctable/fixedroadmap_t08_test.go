@@ -158,7 +158,11 @@ func cT08PlanRows(t *testing.T, header, snake string) (rows [][]string, guarded 
 		t.Fatalf("the header publishes no %s_fixed_plan", snake)
 	}
 	body := header[at+len(marker):]
-	body = body[:strings.Index(body, "};")]
+	end := strings.Index(body, "};")
+	if end < 0 {
+		t.Fatalf("the header's %s_fixed_plan has no closing brace", snake)
+	}
+	body = body[:end]
 	for _, line := range strings.Split(body, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -177,7 +181,11 @@ func cT08PlanRows(t *testing.T, header, snake string) (rows [][]string, guarded 
 		t.Fatalf("the header publishes no %s_fixed_plan_guarded", snake)
 	}
 	rest := header[g+len(gm):]
-	n, err := strconv.Atoi(rest[:strings.Index(rest, ";")])
+	semi := strings.Index(rest, ";")
+	if semi < 0 {
+		t.Fatalf("the header's %s_fixed_plan_guarded has no terminating semicolon", snake)
+	}
+	n, err := strconv.Atoi(rest[:semi])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -555,7 +563,7 @@ func cT08GuardChain(t *testing.T) {
 		t.Fatalf("the entry's offset+count point outside the pool: index=%d count=%d pool=%d", leaf.GuardIndex, leaf.GuardCount, len(pool))
 	}
 	links := pool[leaf.GuardIndex : leaf.GuardIndex+leaf.GuardCount]
-	if !(links[0].Guard < links[1].Guard && links[1].Guard < links[2].Guard) {
+	if links[0].Guard >= links[1].Guard || links[1].Guard >= links[2].Guard {
 		t.Fatalf("the links are not OUTERMOST FIRST: guards %d, %d, %d", links[0].Guard, links[1].Guard, links[2].Guard)
 	}
 	for i, l := range links {
@@ -802,7 +810,11 @@ func cT08Bytes(t *testing.T, text, marker string) []byte {
 		t.Fatalf("no %q in the generated source", marker)
 	}
 	rest := text[at+len(marker):]
-	rest = rest[:strings.Index(rest, "}")]
+	end := strings.Index(rest, "}")
+	if end < 0 {
+		t.Fatalf("the byte array after %q has no closing brace", marker)
+	}
+	rest = rest[:end]
 	var out []byte
 	for _, f := range strings.Split(rest, ",") {
 		f = strings.TrimSpace(f)
@@ -826,7 +838,11 @@ func cT08Hex(t *testing.T, text, marker string) uint64 {
 		t.Fatalf("no %q in the generated source", marker)
 	}
 	rest := text[at+len(marker):]
-	v, err := strconv.ParseUint(rest[:strings.Index(rest, "ull")], 16, 64)
+	end := strings.Index(rest, "ull")
+	if end < 0 {
+		t.Fatalf("the constant after %q has no ull suffix", marker)
+	}
+	v, err := strconv.ParseUint(rest[:end], 16, 64)
 	if err != nil {
 		t.Fatal(err)
 	}

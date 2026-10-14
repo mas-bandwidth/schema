@@ -248,8 +248,7 @@ func (g *fixedModule) emitMessageWriteValue(f *ir.Field, entry ir.TableVocabular
 }
 
 func (g *fixedModule) emitMessageWriteElement(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string) {
-	switch {
-	case f.Type.Kind == ir.TNamed:
+	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Struct); ok {
 			g.pf("%sif (!%sSaveMessageBody(w, %s)) return false;\n", ind, lowerFirst(r.Name), expr)
 			return

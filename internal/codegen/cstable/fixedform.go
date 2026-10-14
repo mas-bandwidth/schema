@@ -328,11 +328,6 @@ type fixedGuardLink struct {
 	argw  byte
 }
 
-// fixedGuardLinkBytes is a link as the pool lays it: guard u32, arg u64 and
-// argw u8, little-endian, the same thirteen bytes the runtime's compiled pool
-// lays behind its entries (TableFixedWire.GuardLinkBytes).
-const fixedGuardLinkBytes = 13
-
 // fixedGuardPool is THE GUARD CHAIN laid down (docs/FIXED-FORM-ALGORITHM.md
 // §4.1): every entry whose chain runs past the two lanes gets offset+count into
 // one pool of links, OUTERMOST FIRST, deduped by content so two entries under
