@@ -64,7 +64,7 @@ func (g *wireGen) emitSaveFixedArray(f *ir.Field, expr, ind string, id uint64, o
 }
 
 // The caller has emitted the case label and optional-presence preflight.
-// Commit a fresh padded value only after the array header is accepted. Move
+// Commit only reached positions after the array header is accepted. Move
 // the parent to L's end before decoding so damaged children cannot escape it.
 func (g *wireGen) emitLoadFixedArray(f *ir.Field, ind string, ordinal int) {
 	n, typ, def, elem := fieldMember(f), dartListElemType(f), g.wireElementDefault(f), listElementKind(f)
@@ -80,5 +80,5 @@ func (g *wireGen) emitLoadFixedArray(f *ir.Field, ind string, ordinal int) {
 	default:
 		g.emitLoadScalarListElem(f, "values", "arr", ind)
 	}
-	g.pf("%s }\n%s while(values.length<%d){values.add(%s);}\n%s v.%s=values;\n%s}\n%sbreak;\n", ind, ind, f.ArrayBound, def, ind, n, ind, ind)
+	g.pf("%s }\n%s for(var i=0;i<values.length;i++){v.%s[i]=values[i];}\n%s}\n%sbreak;\n", ind, ind, n, ind, ind)
 }

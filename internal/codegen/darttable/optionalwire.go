@@ -18,9 +18,9 @@ func (g *wireGen) optionalWalk(f *ir.Field, ind string) func() {
 	return func() { g.pf("%s}\n", ind) }
 }
 
-// The graph cook slice predates presence companions; do not silently write a
-// value without its companion when form 1 starts carrying it (§7.6).
-func cookGraphHasOptional(st *ir.Struct) bool {
+// Keep newly carried authoring shapes outside the earlier graph cook slice
+// until their write paths have independent cook-oracle gates (§7.6).
+func cookGraphHasUncarriedFields(st *ir.Struct) bool {
 	seen := map[string]bool{}
 	var walk func(*ir.Struct) bool
 	walk = func(st *ir.Struct) bool {
@@ -29,7 +29,7 @@ func cookGraphHasOptional(st *ir.Struct) bool {
 		}
 		seen[st.Name] = true
 		for _, f := range st.Fields {
-			if f.Type.Optional {
+			if f.Type.Optional || f.KeyEnum != "" || f.Array == ir.ArrayFixed {
 				return true
 			}
 			if f.IsMap() && walk(f.MapEntry) {
@@ -52,7 +52,7 @@ func (g *wireGen) emitOptionalReadPresence(f *ir.Field, ind string) {
 	}
 	kind := ir.TableWireFieldKind(f)
 	g.pf("%s{final frame=TableWireReader.sub(r,r.pos,r.limit);\n", ind)
-	if f.CountedOnWire() {
+	if wirePositionalArray(f) {
 		elem := listElementKind(f)
 		g.pf("%s if(kind==14){final length=frame.readLeb();if(length!=null&&frame.has(length)){if(length<2){v.%sPresent=true;}else{final end=frame.pos+length;final body=TableWireReader.sub(frame,frame.pos,end);final elem=body.readByte();final count=body.readLeb();if(count==null||elem==%d||_kindWidens(elem,%d))v.%sPresent=true;}}}\n", ind, fieldMember(f), elem, elem, fieldMember(f))
 	} else if isByValueTable(f) {

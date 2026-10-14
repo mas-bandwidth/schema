@@ -80,7 +80,7 @@ func TestDartEmitsTableSources(t *testing.T) {
 // instead is stronger and checkable: it spells NO private library-scope name at
 // all, and the second half of this test is what holds it to that.
 func TestDartTableRuntimeNamesAreClaimed(t *testing.T) {
-	source := runtimeSrc + "\ntable DartCookGraph { next *DartCookGraph }\n"
+	source := runtimeSrc + "\ntable DartCookGraph { next *DartCookGraph }\nenum DartKeyFixture { first, second }\ntable DartKeyedFixture { scores [DartKeyFixture]int32\n body *string }\n"
 	files, err := New().Generate(unitFromSource(t, source), "dart", Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -153,7 +153,7 @@ func TestDartTableRuntimeNamesAreClaimed(t *testing.T) {
 // ever reappear) a <Base>Table.dart. The packet emitter's own libraries are not
 // this backend's to scan.
 func dartTableSource(name string) bool {
-	return strings.HasSuffix(name, "Table.dart") ||
+	return strings.HasSuffix(name, "WireKeyed.dart") || strings.HasSuffix(name, "Table.dart") ||
 		strings.HasSuffix(name, "Block.dart") ||
 		strings.HasSuffix(name, "Cook.dart") ||
 		strings.HasSuffix(name, "Fixed.dart")

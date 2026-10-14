@@ -34,6 +34,41 @@ func jsonUnsigned(f *ir.Field) string {
 	return "false"
 }
 
+// jsonIntBounds carries the declared storage width into exact JSON placement.
+func jsonIntBounds(f *ir.Field) (string, string) {
+	if f.HasIntRange {
+		return dartBoundLiteral(f.IntMin), dartBoundLiteral(f.IntMax)
+	}
+	width := f.Type.Width
+	if width == 0 {
+		return "null", "null"
+	}
+	if f.Type.Kind == ir.TInt && f.Type.Signed {
+		if width >= 64 {
+			return "null", "null"
+		}
+		return fmt.Sprint(-(int64(1) << (width - 1))), fmt.Sprint((int64(1) << (width - 1)) - 1)
+	}
+	if width >= 64 {
+		return "0", "-1"
+	}
+	return "0", fmt.Sprint((uint64(1) << width) - 1)
+}
+
+func jsonIntText(f *ir.Field, expr string) string {
+	if jsonUnsigned(f) == "true" && f.Type.Width == 64 {
+		return "(BigInt.from(" + expr + ").toUnsigned(64)).toString()"
+	}
+	return expr + ".toString()"
+}
+
+func jsonFloatBounds(f *ir.Field) (string, string) {
+	if f.HasFloatRange {
+		return fmtFloat(f.FMin), fmtFloat(f.FMax)
+	}
+	return "null", "null"
+}
+
 // textEnums is every enum a closure field names, in declaration-name order:
 // the text form spells an enum by variant NAME (§16.2), so each such enum owes
 // a name<->value helper emitted once beside the tables.
@@ -42,6 +77,10 @@ func (g *wireGen) textEnums() []*ir.Enum {
 	var out []*ir.Enum
 	for _, st := range g.closure {
 		for _, f := range st.Fields {
+			if e := f.KeyEnumRef; e != nil && !seen[e.Name] {
+				seen[e.Name] = true
+				out = append(out, e)
+			}
 			if e := enumRef(f); e != nil && !seen[e.Name] {
 				seen[e.Name] = true
 				out = append(out, e)
@@ -82,6 +121,7 @@ func (g *wireGen) emitTextRuntime() {
 // the card's constructs can move — an unknown property, a kind mismatch, a
 // clamp.
 final class TableTextReport {
+` + textNumberMembers + `
   bool malformed = false;
   final Expando<List<MapEntry<String,dynamic>>> _entries = Expando();
   Iterable<MapEntry<dynamic,dynamic>> entries(Map obj) => _entries[obj] ?? obj.entries;
@@ -115,7 +155,9 @@ final class TableTextReport {
         while(true){out.add(value());space();if(pos>=text.length)bad();final end=text.codeUnitAt(pos++);if(end==93)return out;if(end!=44)bad();}
       }
       final start=pos;while(pos<text.length&&!<int>[32,9,10,13,44,93,125].contains(text.codeUnitAt(pos))){pos++;}
-      if(pos==start)bad();return jsonDecode(text.substring(start,pos));
+      if(pos==start)bad();final token=text.substring(start,pos);
+      if(token=='null'||token=='true'||token=='false')return jsonDecode(token);
+      return TableTextReport.number(token);
     };
     final out=value();space();if(pos!=text.length)bad();return out;
   }
@@ -209,24 +251,8 @@ String _jsonStringField(dynamic val, int bound, TableTextReport r) {
 
 // _jsonIntField reads one int field (§16.2): an integer token, or an integral
 // float, placed and range-clamped; anything else is a kind mismatch.
-int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsigned = false]) {
-  int clamp(int v) {
-    if (unsigned) {
-      if (lo != null && _u64Below(v, lo)) { v = lo; r.clamped++; }
-      if (hi != null && _u64Above(v, hi)) { v = hi; r.clamped++; }
-    } else {
-      if (lo != null && v < lo) { v = lo; r.clamped++; }
-      if (hi != null && v > hi) { v = hi; r.clamped++; }
-    }
-    return v;
-  }
-  if (val is int) return clamp(val);
-  if (val is num && val.toDouble() == val.toDouble().truncateToDouble()) {
-    return clamp(val.toInt());
-  }
-  r.kindMismatch++;
-  return 0;
-}
+int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsigned = false,int fallback=0]) =>
+  TableTextReport.integerField(val,r,lo,hi,unsigned,fallback);
 
 // _jsonFloat spells a float at the shortest precision that reads back the same
 // value (§16.2), the same '%%g' spelling the Go leg writes. single is a float32 field.
@@ -355,14 +381,15 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
 
 // _jsonFloatField reads one float field (§16.2): a number, placed; anything
 // else is a kind mismatch.
-double _jsonFloatField(dynamic val, TableTextReport r) {
-  if (val is num) return val.toDouble();
-  if (val is String) {
-    final d = double.tryParse(val);
-    if (d != null) return d;
-  }
-  r.kindMismatch++;
-  return 0.0;
+double _jsonFloatField(dynamic val, TableTextReport r,[bool single=false,double fallback=0.0,double? lo,double? hi]) {
+  var value=TableTextReport.floatValue(val);
+  if(value==null||!value.isFinite){r.kindMismatch++;return fallback;}
+  if(single){value=_f32FromBits(_f32Bits(value));if(!value.isFinite){r.kindMismatch++;return fallback;}}
+  var moved=false;
+  if(lo!=null&&value<lo){value=lo;moved=true;}
+  if(hi!=null&&value>hi){value=hi;moved=true;}
+  if(moved)r.clamped++;
+  return value;
 }
 `)
 }
@@ -431,7 +458,12 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 
 func (g *wireGen) emitTextToJsonValue(st *ir.Struct, f *ir.Field) {
 	name := fieldMember(f)
+	if f.Array == ir.ArrayFixed && f.KeyEnum == "" {
+		g.pf("if(v.%s.length!=%d)throw StateError('invalid_value');\n", name, f.ArrayBound)
+	}
 	switch {
+	case f.KeyEnum != "":
+		g.emitTextKeyedValue(st, f)
 	case f.IsMap():
 		g.emitTextMapValue(st, f)
 	case f.Type.Blob(): // *string rides as a string or null; *bytes as base64 or null (§2.5, §16.2)
@@ -448,7 +480,7 @@ func (g *wireGen) emitTextToJsonValue(st *ir.Struct, f *ir.Field) {
 	case isByValueTable(f):
 		ref := tableRef(f)
 		g.pf("\t%sToJsonBody(out, v.%s, depth + 1, sh);\n", dartName(ref.Name), name)
-	case f.CountedOnWire(): // []T and [..N]T (§2.9, §16.2, §16.7)
+	case wirePositionalArray(f): // []T and [..N]T (§2.9, §16.2, §16.7)
 		switch listElementKind(f) {
 		case wireKindTable:
 			g.pf("\tif (v.%s.isEmpty) {\n", name)
@@ -505,7 +537,7 @@ func (g *wireGen) emitTextToJsonValue(st *ir.Struct, f *ir.Field) {
 			case wireKindEnum:
 				g.pf("\t\t\tout.raw(_jsonEnum(e, %sName, '%s.%s'));\n", dartName(enumRef(f).Name), st.Name, f.Name)
 			default:
-				g.pf("\t\t\tout.raw(e.toString());\n")
+				g.pf("\t\t\tout.raw(%s);\n", jsonIntText(f, "e"))
 			}
 			g.pf("\t\t}\n")
 			g.pf("\t\tout.line(depth + 1);\n")
@@ -515,7 +547,7 @@ func (g *wireGen) emitTextToJsonValue(st *ir.Struct, f *ir.Field) {
 	case f.Type.Kind == ir.TBool:
 		g.pf("\tout.raw(v.%s ? 'true' : 'false');\n", name)
 	case f.Type.Kind == ir.TInt, f.Type.Kind == ir.TBits:
-		g.pf("\tout.raw(v.%s.toString());\n", name)
+		g.pf("\tout.raw(%s);\n", jsonIntText(f, "v."+name))
 	case f.Type.Kind == ir.TString:
 		g.pf("\tout.raw(_jsonString(v.%s));\n", name)
 	case f.Type.Kind == ir.TBytes: // bytes(N) rides as base64 in the text (§16.7)
@@ -563,6 +595,8 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("if(val==null){v.%sPresent=false;break;}v.%sPresent=true;\n", name, name)
 	}
 	switch {
+	case f.KeyEnum != "":
+		g.emitTextReadKeyed(f)
 	case f.IsMap():
 		g.emitTextReadMap(f)
 	case f.Type.Blob():
@@ -586,11 +620,11 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\telse if (val is Map) { %sFromJsonFields(v.%s, Map<String, dynamic>.from(val), r, sh); }\n", dartName(ref.Name), name)
 		g.pf("\t\t\t\telse { r.kindMismatch++; }\n")
 		g.pf("\t\t\t\tbreak;\n")
-	case f.CountedOnWire():
+	case wirePositionalArray(f):
 		g.pf("\t\t\t\tif (val is! List) { r.kindMismatch++; break; }\n")
 		et := dartListElemType(f)
 		g.pf("\t\t\t\tv.%s = <%s>[];\n", name, et)
-		if f.Array == ir.ArrayCounted {
+		if f.Array == ir.ArrayCounted || f.Array == ir.ArrayFixed {
 			g.pf("if(val.length>%d)r.clamped++;\n", f.ArrayBound)
 			g.pf("for(final item in val.take(%d)){\n", f.ArrayBound)
 		} else {
@@ -617,49 +651,42 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 			case wireKindBool:
 				g.pf("\t\t\t\t\tif (item is bool) { v.%s.add(item); } else { r.kindMismatch++; }\n", name)
 			case wireKindF32, wireKindF64:
-				g.pf("\t\t\t\t\tv.%s.add(_jsonFloatField(item, r));\n", name)
+				lo, hi := jsonFloatBounds(f)
+				g.pf("\t\t\t\t\tv.%s.add(_jsonFloatField(item,r,%v,%s,%s,%s));\n", name, f.Type.Kind == ir.TFloat32, g.floatDefault(f), lo, hi)
 			case wireKindEnum:
 				g.pf("\t\t\t\t\tv.%s.add(%sFromName(item, r));\n", name, dartName(enumRef(f).Name))
 			case wireKindString:
 				g.pf("\t\t\t\t\tif (item is String) { v.%s.add(item); } else { r.kindMismatch++; }\n", name)
 			default:
-				lo, hi := "null", "null"
-				if f.HasIntRange {
-					lo, hi = dartBoundLiteral(f.IntMin), dartBoundLiteral(f.IntMax)
-				}
-				if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
-					hi = fmt.Sprintf("%d", uint64(1)<<f.Type.Width-1)
-				}
-				g.pf("\t\t\t\t\tv.%s.add(_jsonIntField(item, r, %s, %s, %s));\n", name, lo, hi, jsonUnsigned(f))
+				lo, hi := jsonIntBounds(f)
+				g.pf("\t\t\t\t\tv.%s.add(_jsonIntField(item,r,%s,%s,%s,%s));\n", name, lo, hi, jsonUnsigned(f), g.wireElementDefault(f))
 			}
 		}
 		g.pf("\t\t\t\t}\n")
+		if f.Array == ir.ArrayFixed {
+			g.pf("while(v.%s.length<%d){v.%s.add(%s); }\n", name, f.ArrayBound, name, g.wireElementDefault(f))
+		}
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TBool:
 		g.pf("\t\t\t\tif (val is bool) { v.%s = val; } else { r.kindMismatch++; }\n", name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TInt:
-		lo, hi := "null", "null"
-		if f.HasIntRange {
-			lo, hi = dartBoundLiteral(f.IntMin), dartBoundLiteral(f.IntMax)
-		}
-		g.pf("\t\t\t\tv.%s = _jsonIntField(val, r, %s, %s, %s);\n", name, lo, hi, jsonUnsigned(f))
+		lo, hi := jsonIntBounds(f)
+		g.pf("\t\t\t\tv.%s=_jsonIntField(val,r,%s,%s,%s,v.%s);\n", name, lo, hi, jsonUnsigned(f), name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TString:
 		g.pf("\t\t\t\tv.%s = _jsonStringField(val, %d, r);\n", name, f.Type.Size)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TBits:
-		hi := "null"
-		if f.Type.Width < 64 {
-			hi = fmt.Sprintf("%d", uint64(1)<<f.Type.Width-1)
-		}
-		g.pf("\t\t\t\tv.%s = _jsonIntField(val, r, null, %s, true);\n", name, hi)
+		lo, hi := jsonIntBounds(f)
+		g.pf("\t\t\t\tv.%s=_jsonIntField(val,r,%s,%s,true,v.%s);\n", name, lo, hi, name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TBytes:
 		g.pf("\t\t\t\tif (val is String) { v.%s = utf8.decode(base64Decode(val)); } else { r.kindMismatch++; }\n", name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		g.pf("\t\t\t\tv.%s = _jsonFloatField(val, r);\n", name)
+		lo, hi := jsonFloatBounds(f)
+		g.pf("\t\t\t\tv.%s=_jsonFloatField(val,r,%v,v.%s,%s,%s);\n", name, f.Type.Kind == ir.TFloat32, name, lo, hi)
 		g.pf("\t\t\t\tbreak;\n")
 	case enumRef(f) != nil:
 		g.pf("\t\t\t\tv.%s = %sFromName(val, r);\n", name, dartName(enumRef(f).Name))
@@ -684,6 +711,10 @@ func (g *wireGen) emitTextCountField(f *ir.Field, ind string) {
 	defer g.optionalWalk(f, ind)()
 	expr := "v." + fieldMember(f)
 	switch {
+	case f.KeyEnum != "":
+		if ref := tableRef(f); ref != nil {
+			g.pf("%sfor(final slot in %s.entries){%sCount(sh,slot.$2); }\n", ind, expr, dartName(ref.Name))
+		}
 	case f.IsMap():
 		g.pf("%sfor(final entry in %s.ordered(%s)){%sCount(sh,entry); }\n", ind, f.MapEntry.Name, expr, dartName(f.MapEntry.Name))
 	case isPointerTable(f):
@@ -697,7 +728,7 @@ func (g *wireGen) emitTextCountField(f *ir.Field, ind string) {
 	case isByValueTable(f):
 		ref := tableRef(f)
 		g.pf("%s%sCount(sh, %s);\n", ind, dartName(ref.Name), expr)
-	case f.CountedOnWire():
+	case wirePositionalArray(f):
 		ref := tableRef(f)
 		if ref == nil {
 			return

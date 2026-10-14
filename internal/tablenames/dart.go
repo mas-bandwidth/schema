@@ -14,6 +14,7 @@ const Dart Backend = 1 << 8
 
 func init() {
 	define(Dart,
+		Name{Name: "TableKeyed", What: "the guarded enum-keyed authoring slot storage (§2.4)"},
 		Name{Name: "TableBlockFieldInfo", What: "a block field's reflection descriptor"},
 		Name{Name: "TableBlockInfo", What: "a block's reflection descriptor"},
 		Name{Name: "TableBlockMagic", What: "the block prologue's magic, and the byte-order check with it", RustConst: true},

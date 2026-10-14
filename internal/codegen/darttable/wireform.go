@@ -5,8 +5,8 @@
 // element, tables as list elements, bool and the integer kinds below 128,
 // `bits(N)`, `float32`/`float64`, `string(N)`/`bytes(N)`, `*string`/`*bytes`,
 // unbounded arrays of scalars, strings and enums, carried-value maps and
-// optional scalars/tables/counted arrays. A union, a keyed array, a fixed
-// positional array, the wide kinds and
+// optional carried values, fixed positional arrays and enum-keyed arrays.
+// A union and the wide kinds and
 // wstring stay refused by name in checkUnsupportedConstructs (§11) on a unit
 // the variable form owns, and nothing here encodes one.
 //
@@ -97,8 +97,8 @@ func isByValueTable(f *ir.Field) bool {
 // 128, bits, the two floats, enum, string(N), bytes(N), *string/*bytes, a
 // pointer or by-value table whose target is itself carried, and a counted or
 // unbounded array of a carried element, carried-value maps, and optional
-// scalars/tables/counted arrays. A union, a keyed array, a fixed positional
-// array, the wide kinds and wstring are not: the
+// carried values, fixed positional arrays and enum-keyed arrays. A union,
+// the wide kinds and wstring are not: the
 // wire form is not claimed for them (§11). seen breaks a pointer cycle — a
 // table already on the stack is carried if the rest of its fields are.
 func cardWireField(f *ir.Field) bool {
@@ -110,7 +110,10 @@ func cardWireFieldSeen(f *ir.Field, seen map[string]bool) bool {
 		return cardWireTableSeen(f.MapEntry, seen)
 	}
 	if f.KeyEnum != "" {
-		return false
+		bare := *f
+		bare.KeyEnum = ""
+		bare.Array = ir.ArrayNone
+		return cardWireFieldSeen(&bare, seen)
 	}
 	if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
 		return false
@@ -121,7 +124,7 @@ func cardWireFieldSeen(f *ir.Field, seen map[string]bool) bool {
 	if f.Type.Blob() && f.Array == ir.ArrayNone {
 		return true
 	}
-	if f.CountedOnWire() {
+	if wirePositionalArray(f) {
 		return cardScalarOrTable(f, seen)
 	}
 	if f.Array != ir.ArrayNone {
@@ -189,7 +192,7 @@ func variableRoots(u *ir.Unit) []*ir.Struct {
 			continue
 		}
 		for _, f := range st.Fields {
-			if ref := tableRef(f); ref != nil && (f.CountedOnWire() || isByValueTable(f)) {
+			if ref := tableRef(f); ref != nil && (wirePositionalArray(f) || isByValueTable(f)) {
 				named[ref.Name] = true
 			}
 		}
@@ -232,7 +235,7 @@ func wireClosure(u *ir.Unit) []*ir.Struct {
 			if f.IsMap() {
 				visit(f.MapEntry)
 			}
-			if ref := tableRef(f); ref != nil && (f.CountedOnWire() || f.Array == ir.ArrayNone) {
+			if ref := tableRef(f); ref != nil && (wirePositionalArray(f) || f.KeyEnum != "" || f.Array == ir.ArrayNone) {
 				visit(ref)
 			}
 		}
@@ -265,7 +268,11 @@ func generateWireFiles(u *ir.Unit) (map[string][]byte, error) {
 	// leg's format gate (tables-dart-clean) holds the generated file to `dart
 	// format`, which indents with two spaces, so the tabs become spaces here.
 	src := strings.ReplaceAll(g.body.String(), "\t", "  ")
-	return map[string][]byte{home + "Wire.dart": []byte(src)}, nil
+	out := map[string][]byte{home + "Wire.dart": []byte(src)}
+	if len(g.keyedEnums()) > 0 {
+		out[home+"WireKeyed.dart"] = g.keyedRuntime()
+	}
+	return out, nil
 }
 
 type wireGen struct {
@@ -366,6 +373,9 @@ func (g *wireGen) emit() {
 	// sit above the imports: the analyzer only honours it before any code.
 	g.pf("// ignore_for_file: unused_element\n\n")
 	g.pf("import 'dart:convert';\nimport 'dart:typed_data';\n\n")
+	if len(g.keyedEnums()) > 0 {
+		g.pf("import '%sWireKeyed.dart';\n\n", g.home)
+	}
 	g.emitConstants()
 	g.emitRuntime()
 	g.emitRetainRuntime()
@@ -1089,6 +1099,8 @@ func (g *wireGen) emitStorage(st *ir.Struct) {
 			g.pf("  bool %sPresent = false;\n", name)
 		}
 		switch {
+		case f.KeyEnum != "":
+			g.pf("  TableKeyed<%s> %s=%s;\n", dartListElemType(f), name, g.keyedConstruct(f))
 		case f.IsMap():
 			g.pf("  List<%s> %s = <%s>[];\n", f.MapEntry.Name, name, f.MapEntry.Name)
 		case f.Type.Blob():
@@ -1097,7 +1109,9 @@ func (g *wireGen) emitStorage(st *ir.Struct) {
 			} else {
 				g.pf("  Uint8List? %s;\n", name)
 			}
-		case f.CountedOnWire():
+		case f.Array == ir.ArrayFixed:
+			g.emitFixedArrayStorage(f, "  ")
+		case wirePositionalArray(f):
 			et := dartListElemType(f)
 			g.pf("  List<%s> %s = <%s>[];\n", et, name, et)
 		case isPointerTable(f):
@@ -1186,6 +1200,8 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	expr := "v." + name
 	id := fieldId(f)
 	switch {
+	case f.KeyEnum != "":
+		g.emitSaveKeyed(f, ind, ordinal)
 	case f.IsMap():
 		g.emitSaveMap(f, expr, ind, id, ordinal)
 	case f.Type.Blob(): // *string/*bytes ride as a kind-17 node index (§2.5, §3.1)
@@ -1206,7 +1222,9 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s}\n", ind)
 	case isByValueTable(f):
 		g.emitSaveByValue(f, expr, ind, id)
-	case f.CountedOnWire(): // []T and [..N]T ride as kind 14 (§2.9, §3)
+	case f.Array == ir.ArrayFixed:
+		g.emitSaveFixedArray(f, expr, ind, id, ordinal)
+	case wirePositionalArray(f): // []T and [..N]T ride as kind 14 (§2.9, §3)
 		switch listElementKind(f) {
 		case wireKindPtr:
 			g.emitSavePointerList(f, expr, ind, id)
@@ -1490,6 +1508,8 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 	g.pf("%scase %s:\n", ind, dartU64Literal(id))
 	g.emitOptionalReadPresence(f, ind)
 	switch {
+	case f.KeyEnum != "":
+		g.emitLoadKeyed(f, ind, ordinal)
 	case f.IsMap():
 		g.emitLoadMap(f, ind, ordinal)
 	case f.Type.Blob(): // *string/*bytes ride as a kind-17 node index (§2.5, §3.1)
@@ -1528,7 +1548,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tr.pos += len;\n", ind)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
-	case f.CountedOnWire(): // []T and [..N]T ride as kind 14 (§2.9, §3)
+	case f.Array == ir.ArrayFixed:
+		g.emitLoadFixedArray(f, ind, ordinal)
+	case wirePositionalArray(f): // []T and [..N]T ride as kind 14 (§2.9, §3)
 		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindArray)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
@@ -1887,6 +1909,10 @@ func (g *wireGen) emitNumberField(f *ir.Field, ind string) {
 	defer g.optionalWalk(f, ind)()
 	expr := "v." + fieldMember(f)
 	switch {
+	case f.KeyEnum != "":
+		if ref := tableRef(f); ref != nil {
+			g.pf("%sfor(final slot in %s.entries){%sNumber(s,slot.$2,open); }\n", ind, expr, dartName(ref.Name))
+		}
 	case f.IsMap():
 		g.pf("%sfor (final entry in %s.ordered(%s)) { %sNumber(s, entry, open); }\n", ind, f.MapEntry.Name, expr, dartName(f.MapEntry.Name))
 	case f.Type.Blob() && f.Array == ir.ArrayNone:
@@ -1906,7 +1932,7 @@ func (g *wireGen) emitNumberField(f *ir.Field, ind string) {
 	case isByValueTable(f):
 		ref := tableRef(f)
 		g.pf("%s%sNumber(s, %s, open);\n", ind, dartName(ref.Name), expr)
-	case f.CountedOnWire():
+	case wirePositionalArray(f):
 		ref := tableRef(f)
 		if ref == nil {
 			return

@@ -100,7 +100,7 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 			construct: "optional ?T",
 		},
 		{
-			name: "enum-keyed array is refused by table and field name",
+			name: "carried-value enum-keyed array is carried",
 			def: `package test
 				enum Slot { alpha, beta, gamma }
 				table Keyed {
@@ -108,7 +108,7 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 					slots [Slot]int32
 				}
 			`,
-			refuse:    true,
+			refuse:    false,
 			table:     "Keyed",
 			field:     "slots",
 			construct: "enum-keyed array",
