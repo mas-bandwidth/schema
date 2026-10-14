@@ -426,6 +426,12 @@ public final class Driver {
   byte[] bad=new byte[(int)size];java.util.Arrays.fill(bad,(byte)0x55);
   if(RootCook.cookFrom(v,bad,1))throw new AssertionError("cycle write accepted");
   for(byte b:bad)if(b!=0x55)throw new AssertionError("cycle mutated buffer");
+  for(String malformed:new String[]{"{\"meta\":{\"blob\":\"AQID", "{\"meta\":{\"blob\":\"\\q\"}}"}) {
+   TableVariable.Report broken=new TableVariable.Report();
+   RootVariable.fromJson(malformed.getBytes(java.nio.charset.StandardCharsets.UTF_8),broken);
+   if(!broken.malformed)throw new AssertionError("malformed bounded-byte JSON accepted");
+  }
+  System.out.println("malformed bounded-byte JSON: unterminated quote and bad escape refused without exception");
  }
 }`
 	dp := filepath.Join(dir, "Driver.java")
@@ -440,6 +446,8 @@ public final class Driver {
 	}
 	if out, err := exec.Command(java, "-ea", "-cp", dir, "probe.Driver", dir).CombinedOutput(); err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
+	} else {
+		t.Logf("%s", out)
 	}
 	for order := 1; order <= 2; order++ {
 		want, err := tablecook.Cook(m, v, tablecook.Options{Big: order == 2})
