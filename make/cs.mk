@@ -613,14 +613,14 @@ cards-cs-driver: cards-cs-generate
 # and are answered absent.
 .PHONY: cards-cs-conformance
 cards-cs-conformance: build/conformance-harness cards-cs-driver
-	./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/cs/driver --require load,save,render,parse,bounds
+	./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/cs/cards-driver --require load,save,render,parse,bounds
 
 # cards-cs-conformance-negative-control: the same check against the driver
 # with a test-only environment switch that changes one rendered byte,
 # required to FAIL on render while the other four surfaces pass.
 .PHONY: cards-cs-conformance-negative-control
 cards-cs-conformance-negative-control: build/conformance-harness cards-cs-driver
-	@if CARDS_CS_SABOTAGE=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/cs/driver --require load,save,render,parse,bounds > build/cards-cs-conformance-neg.log 2>&1; then \
+	@if CARDS_CS_SABOTAGE=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/cs/cards-driver --require load,save,render,parse,bounds > build/cards-cs-conformance-neg.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with one rendered byte changed'; exit 1; fi
 	@grep -qE 'cards render .*FAIL' build/cards-cs-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: render did not go red'; cat build/cards-cs-conformance-neg.log; exit 1; }
 	@grep -qE 'cards (load|save|parse|bounds) pass' build/cards-cs-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-cs-conformance-neg.log; exit 1; }
