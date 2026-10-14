@@ -409,10 +409,13 @@ func (g *wireGen) emitTextToJsonBody(st *ir.Struct) {
 	g.pf("\t\tcomma = true;\n")
 	g.pf("\t}\n")
 	for _, f := range st.Fields {
+		close := g.optionalWalk(f, "\t")
 		g.pf("\tif (comma) out.raw(',');\n")
 		g.pf("\tcomma = true;\n")
 		g.emitTextToJsonField(st, f)
+		close()
 	}
+	g.pf("\tif(!comma){out.raw('}');return;}\n")
 	g.pf("\tout.line(depth);\n")
 	g.pf("\tout.raw('}');\n")
 	g.pf("}\n\n")
@@ -556,6 +559,9 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 	key := ir.TableFieldJsonKey(f)
 	name := fieldMember(f)
 	g.pf("\t\t\tcase %s:\n", strconv.Quote(key))
+	if f.Type.Optional {
+		g.pf("if(val==null){v.%sPresent=false;break;}v.%sPresent=true;\n", name, name)
+	}
 	switch {
 	case f.IsMap():
 		g.emitTextReadMap(f)
@@ -584,7 +590,12 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tif (val is! List) { r.kindMismatch++; break; }\n")
 		et := dartListElemType(f)
 		g.pf("\t\t\t\tv.%s = <%s>[];\n", name, et)
-		g.pf("\t\t\t\tfor (final item in val) {\n")
+		if f.Array == ir.ArrayCounted {
+			g.pf("if(val.length>%d)r.clamped++;\n", f.ArrayBound)
+			g.pf("for(final item in val.take(%d)){\n", f.ArrayBound)
+		} else {
+			g.pf("\t\t\t\tfor (final item in val) {\n")
+		}
 		switch listElementKind(f) {
 		case wireKindTable:
 			g.pf("\t\t\t\t\tif (item is Map<String, dynamic>) {\n")
@@ -670,6 +681,7 @@ func (g *wireGen) emitTextCount(st *ir.Struct) {
 }
 
 func (g *wireGen) emitTextCountField(f *ir.Field, ind string) {
+	defer g.optionalWalk(f, ind)()
 	expr := "v." + fieldMember(f)
 	switch {
 	case f.IsMap():

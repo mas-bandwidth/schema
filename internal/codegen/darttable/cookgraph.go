@@ -8,7 +8,7 @@ import (
 // emitCookWriteGraph uses the wire's existing numbering, so shared nodes and
 // blobs have exactly the same first-use order (§3.1, §7.6).
 func (g *cookGen) emitCookWriteGraph(st *ir.Struct) {
-	if !cardWireTable(st) {
+	if !cardWireTable(st) || cookGraphHasOptional(st) {
 		return
 	}
 	g.needWire = true

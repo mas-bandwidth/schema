@@ -87,14 +87,14 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 			refuse: false,
 		},
 		{
-			name: "optional ?T is refused by table and field name",
+			name: "optional carried scalar is carried",
 			def: `package test
 				table Optional {
 					id string(64)
 					maybe ?int32
 				}
 			`,
-			refuse:    true,
+			refuse:    false,
 			table:     "Optional",
 			field:     "maybe",
 			construct: "optional ?T",
