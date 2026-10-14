@@ -12,9 +12,12 @@ import (
 // §2.5, §2.9, §3: the variable form carries the constructs beyond the card
 // record — pointers to tables and the flat node table, blobs (*bytes),
 // unbounded arrays (scalar, string, enum), arrays of pointers, the 64-bit
-// id-table wire and the variable-class text form. Each unit round-trips
-// through the generated Elixir against the Go oracle: the committed wire loads,
-// re-saves byte for byte, and its committed JSON text round-trips identically.
+// id-table wire and the variable-class text form. tblp1 and tblp3 are fixed
+// tables whose conformance wire is still form byte 1; an optional and a
+// by-value nest are one framing (docs/SPEC-TABLES.md §2.3), so they round-trip
+// on this codec. Each unit round-trips through the generated Elixir against
+// the Go oracle: the committed wire loads, re-saves byte for byte, and its
+// committed JSON text round-trips identically.
 // Functional (elixirBinary): run with SCHEMA_REQUIRE_CORPUS=1.
 func TestVariableClassBeyondCardConstructsElixir(t *testing.T) {
 	t.Parallel()
@@ -32,7 +35,7 @@ func TestVariableClassBeyondCardConstructsElixir(t *testing.T) {
 		json   string
 	}{
 		{
-			name:   "graphdemo",
+			name: "graphdemo",
 			schema: []string{
 				filepath.Join("tables", "pointers", "Graph.schema"),
 				filepath.Join("tables", "pointers", "Marks.schema"),
@@ -62,6 +65,20 @@ func TestVariableClassBeyondCardConstructsElixir(t *testing.T) {
 			root:   "Chain",
 			wire:   "chain_pointer.bin",
 			json:   "",
+		},
+		{
+			name:   "tblp1",
+			schema: []string{filepath.Join("test", "tables", "P1.schema")},
+			root:   "Chain",
+			wire:   "chain_value.bin",
+			json:   "chain_value.json",
+		},
+		{
+			name:   "tblp3",
+			schema: []string{filepath.Join("test", "tables", "P3.schema")},
+			root:   "Chain",
+			wire:   "chain_optional.bin",
+			json:   "chain_optional.json",
 		},
 	}
 

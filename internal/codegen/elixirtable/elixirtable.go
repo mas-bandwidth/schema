@@ -144,10 +144,11 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 
 	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1: the id-table
 	// wire the card constructs read and write byte for byte as the Go, C, C++
-	// and C# backends do. It is emitted for every unit that declares a variable
-	// table — beside the fixed form, which serves only the fixed tables — so a
-	// mixed unit (graphdemo, listdemo) gets both its accelerators and its
-	// variable wire.
+	// and C# backends do. It is emitted for every unit whose closure holds a
+	// table, beside the fixed form. A mixed unit (graphdemo, listdemo) gets
+	// both. A fixed-only unit (tblp1, tblp3) gets it too: its conformance wire
+	// is form byte 1, and an optional and a by-value nest are one framing
+	// (§2.3), so those instances answer rather than write <case>.absent.
 	maps.Copy(out, generateVariableForm(u, ns))
 
 	out[BuildVersionModule+".ex"] = buildVersionModule(u, ns)

@@ -40,24 +40,25 @@ import (
 const VariableTableModule = "Table"
 
 // generateVariableForm emits <ns>.Table: the id-table wire's load and save for
-// every variable table the unit's closure holds, driven by the descriptors
-// below and the shared engine in variableRuntimeSource. Nil when the unit
-// declares no variable table.
+// every table the unit's closure holds, driven by the descriptors below and
+// the shared engine in variableRuntimeSource. Nil when that closure holds no
+// table. A fixed-only unit still emits it (docs/SPEC-TABLES.md §2.3, §3): the
+// conformance wire is form byte 1, and an optional and a by-value nest are one
+// framing, so tblp1 and tblp3 answer that byte instead of writing <case>.absent.
 func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
-	variable := ir.VariableTables(u)
-	if len(variable) == 0 {
-		return nil
-	}
 	// The descriptors cover the WHOLE table closure (docs/SPEC-TABLES.md §3.1):
-	// a variable root reaches a fixed table by value and by pointer, so a node
-	// of that type has to be named beside the variable ones. The nil gate above
-	// keeps a fixed-only unit from emitting the variable form at all.
+	// a variable root reaches a fixed table by value and by pointer, and a
+	// fixed-only unit's own form-1 body is the same codec. Optional absence is
+	// the absence of the field, not a kind (§2.3), so ?T and T share it.
 	closure := ir.TableClosure(u)
 	names := make([]string, 0, len(closure))
 	for name := range closure {
 		if closureStruct(u, name) != nil {
 			names = append(names, name)
 		}
+	}
+	if len(names) == 0 {
+		return nil
 	}
 	sort.Strings(names)
 
