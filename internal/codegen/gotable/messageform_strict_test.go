@@ -101,7 +101,7 @@ func TestStrictSame(t *testing.T) {
 // "a strict AnnounceRead of an announcement whose build version is not the
 // unit's own is refused by the name `build_version_mismatch`, sets no
 // vocabulary, keeps the peer's build version ... A refusal moves no counter and
-// is never `malformed`." (docs/SPEC-TABLES.md §3.3)
+// is never `malformed`." (docs/SPEC-TABLES.md §3.3).
 const msgStrictOtherProbe = `
 import (
 	"encoding/binary"
@@ -133,7 +133,7 @@ func TestStrictOther(t *testing.T) {
 `
 
 // "a typed error carries both versions: ... reachable with errors.As from the
-// report ... and nil on a clean read." (docs/SPEC-TABLES.md §3.3)
+// report ... and nil on a clean read." (docs/SPEC-TABLES.md §3.3).
 const msgStrictErrorProbe = `
 import (
 	"encoding/binary"
@@ -175,7 +175,7 @@ func TestTypedError(t *testing.T) {
 // "REFUSAL IS TERMINAL, and a refused FIRST announcement is the one the
 // connection gets ... every announcement after it is refused as
 // `second_announcement` ... every body after it is refused for want of one."
-// (docs/SPEC-TABLES.md §3.3)
+// (docs/SPEC-TABLES.md §3.3).
 const msgStrictTerminalProbe = `
 import (
 	"encoding/binary"

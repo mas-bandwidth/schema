@@ -13,6 +13,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -30,6 +31,7 @@ import (
 //   - "SaveMessages of them gives the batch bytes back exactly." (§3.3)
 func TestGoMessageFormGoldens(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated goldens)")
 	root, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)
@@ -64,15 +66,16 @@ func TestGoMessageFormGoldens(t *testing.T) {
 			}
 			announcement := filepath.Join(root, conn.path)
 			var source string
-			if row.file == "" {
+			switch {
+			case row.file == "":
 				source = connectionProbe(u.Package, announcement)
-			} else if ir.VariableTables(u)[row.root] {
+			case ir.VariableTables(u)[row.root]:
 				// §3.3: "a plain `table T` may not" ride the message form, so
 				// the Go leg answers this message row ABSENT and asserts
 				// nothing (the manifest row and the C++ reference stay as they
 				// are).
 				return
-			} else {
+			default:
 				source = messageProbe(u.Package, u, row.root, announcement, filepath.Join(root, row.file), filepath.Join(root, row.batch))
 			}
 			runGoGoldens(t, u, source)

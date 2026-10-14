@@ -245,7 +245,7 @@ func t04R32(t *testing.T) {
 	if at < 0 || known < 0 || bytes < 0 || records < 0 {
 		t.Fatalf("R32: the load's shape moved (%d, %d, %d, %d)", at, known, bytes, records)
 	}
-	if !(at < known && known < bytes && bytes < records) {
+	if at >= known || known >= bytes || bytes >= records {
 		t.Errorf("R32: the floor check is not before the byte comparison and the record loop (%d, %d, %d, %d)", at, known, bytes, records)
 	}
 	// ONCE AND IDEMPOTENT: the guarded body reads `pick` and returns the named
@@ -339,7 +339,7 @@ func t04R15(t *testing.T) {
 	// from a stranger's layout has nowhere to hold the writer's ends. A ranged
 	// leaf is clamped in the DECODE against the READER's own declared ends
 	// (schema#1164, statement B), not against a peer's.
-	t04Has(t, fixedRuntime, "static const int lanes = 9;", "R15 the plan carries no range lane")
+	t04Has(t, fixedRuntime, "static const int lanes = 11;", "R15 the plan carries no range lane")
 	t04Has(t, fixedRuntime, "static const int argW = 8;", "R15 the ninth lane is the guard's width")
 	ranged, _ := t04Lineage(t,
 		"package probe\n\nfixed table Lineage\n{\n    x int32 | min = 0, max = 100\n}\n",

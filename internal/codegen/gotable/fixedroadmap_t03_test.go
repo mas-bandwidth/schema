@@ -30,6 +30,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -332,7 +333,7 @@ func t03GoR32(t *testing.T) {
 	if at < 0 || known < 0 || bytes < 0 || records < 0 {
 		t.Fatalf("R32: the load's shape moved (%d, %d, %d, %d)", at, known, bytes, records)
 	}
-	if !(at < known && known < bytes && bytes < records) {
+	if at >= known || known >= bytes || bytes >= records {
 		t.Errorf("R32: the floor check is not before the byte comparison and the record loop (%d, %d, %d, %d)", at, known, bytes, records)
 	}
 	// ONCE AND IDEMPOTENT: the guarded body reads the picked index and returns
@@ -595,6 +596,7 @@ func t03GoR21(t *testing.T) {
 // lands, not by an absent substring (docs/SPEC-TABLES.md §3.4, §21.2).
 func t03GoR21Exec(t *testing.T, arm string) {
 	t.Helper()
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated widen arm)")
 	if !strings.Contains(arm, "var widened uint64") {
 		t.Fatalf("R21: the arm text is not the assembled widen: %q", arm)
 	}

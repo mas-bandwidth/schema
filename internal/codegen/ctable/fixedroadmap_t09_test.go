@@ -26,21 +26,49 @@ package ctable
 // to an execution receipt" — so every subtest here compiles and RUNS the
 // generated codec, and its assertion is the round trip, not the emitted text.
 //
-// THE TWO 128-BIT INTEGER ROWS ARE NAMED NOT RUN, and unsigned-fixed-point IS
-// RECORDED UNKNOWN for its wide-limb clause. int128/uint128 storage — and
-// ufixed(I,F) with I+F=128, the only fixed width with a high 64-bit limb — is
-// serialize.h's lo/hi pair (fixedruntime.go), and the table header includes
-// serialize.h only when the unit holds 128-bit storage (ctable.go,
-// unitHasWideStorage); serialize.h ships in the sibling serialize.c checkout,
-// which is absent here, so a compiled probe cannot include it. The two integer
-// subtests skip by name, and the unsigned-fixed-point subtest proves its
-// declared 32-bit range edges but not the task node's "nonzero high 64-bit
-// limbs" clause (docs/roadmap.sexp:5288), so that task's verdict is `unknown`
-// and not `done`.
+// THE WIDE ROWS RESOLVE THE SIBLING AT RUNTIME, NEVER ON A RECORDED STRING.
+// int128/uint128 storage — and ufixed(I,F) with I+F=128, the only fixed width
+// with a high 64-bit limb — is serialize.h's lo/hi pair (fixedruntime.go), and
+// the table header includes serialize.h only when the unit holds 128-bit
+// storage (ctable.go, unitHasWideStorage); serialize.h ships in the sibling
+// serialize.c checkout. Each wide row takes that checkout from the SERIALIZE_C
+// environment variable the Makefile's c leg uses (make/c.mk:6), else the
+// directory beside this checkout: where it is staged the row compiles, runs and
+// exercises nonzero high 64-bit limbs and declared range edges on the fixed
+// wire; where it is absent the row skips by name, and fails by name when
+// SCHEMA_REQUIRE_CORPUS says the corpus was built and means to prove it.
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
+
+// cSerializeDir resolves the sibling serialize.c checkout whose serialize.h
+// holds this leg's 128-bit storage, the lo/hi pair the wide rows' generated
+// headers name (docs/SPEC-TABLES.md §3.4: every field rides as its declared
+// storage image, and the declared storage image of a 128-bit field is
+// serialize.h's sixteen bytes). It takes the directory the Makefile's c leg
+// names by the SERIALIZE_C variable (make/c.mk:6) when the environment sets it,
+// so the bench can stage the sibling anywhere; otherwise it is the
+// `../../../../serialize.c` checkout beside this one. ok is false when
+// serialize.h is not staged at the resolved path: that, and nothing recorded at
+// authoring time, is what leaves such a row unrun.
+func cSerializeDir(t *testing.T) (string, bool) {
+	t.Helper()
+	dir := os.Getenv("SERIALIZE_C")
+	if dir == "" {
+		var err error
+		dir, err = filepath.Abs("../../../../serialize.c")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "serialize.h")); err != nil {
+		return dir, false
+	}
+	return dir, true
+}
 
 // t09Check is the probe's shared CHECK, printed once per subtest so a failing
 // line names the assertion that did not hold.
@@ -57,7 +85,12 @@ func TestFixedRoadmapCT09IntegersFloats(t *testing.T) {
 		id     string
 		schema string
 		main   string
-		skip   string
+		// needsSerialize marks a row whose generated header includes
+		// serialize.h for 128-bit storage (docs/SPEC-TABLES.md §3.4): it
+		// compiles with the sibling checkout's include path and skips by
+		// name ONLY when that sibling is not staged, never on a string
+		// recorded earlier.
+		needsSerialize bool
 	}{
 		{
 			id: "signed-integers/c/valid-data",
@@ -139,12 +172,127 @@ int main(void)
 `,
 		},
 		{
-			id:   "signed-128/c/valid-data",
-			skip: "the 128-bit storage is serialize.h's lo/hi pair and the header includes serialize.h only for a unit that holds it; serialize.h ships in the sibling serialize.c checkout, which is absent here, so a compiled signed-128 probe cannot be built",
+			id:             "signed-128/c/valid-data",
+			needsSerialize: true,
+			schema: `package probe
+fixed table SignedWide
+{
+    wide int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
+    bounded int128 | min = -1000, max = 1000
+}
+`,
+			main: `#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdint.h>
+` + t09Check + `
+int main(void)
+{
+    SignedWide value[4], loaded[4];
+    TableReport report;
+    TableFixedEntry plan[64];
+    uint8_t file[1024];
+    int64_t need, n;
+    memset(&value, 0, sizeof(value));
+    /* the wide field carries the FULL int128 domain as its declared range —
+       an int128 field must carry one (SPEC §4.3) — so every value below is
+       in range and the nonzero high limbs ride the wire unclamped */
+    value[0].wide = serialize_int128_make(0, 0);
+    value[1].wide = serialize_int128_make(UINT64_MAX, UINT64_MAX);  /* -1: both limbs all ones */
+    value[2].wide = serialize_int128_make(0x0123456789ABCDEFULL, 0xFEDCBA9876543210ULL);
+    value[3].wide = serialize_int128_make(0x8000000000000000ULL, 0);  /* -2^127: exactly the declared min */
+    value[0].bounded = serialize_int128_from_int64(0);
+    value[1].bounded = serialize_int128_from_int64(-1000);  /* the declared min */
+    value[2].bounded = serialize_int128_from_int64(1000);   /* the declared max */
+    value[3].bounded = serialize_int128_from_int64(2000);   /* past the max: clamped to 1000 */
+    need = signed_wide_fixed_measure(4);
+    CHECK(need > 0 && need <= (int64_t)sizeof(file));
+    CHECK(signed_wide_fixed_save(value, 4, file, (int64_t)sizeof(file)) == need);
+    {
+        /* the NONZERO HIGH 64-BIT LIMB ON THE FIXED WIRE: record 2's wide
+           field rides as its 16-byte storage image, low half first
+           (docs/SPEC-TABLES.md §3.4), and its bytes are checked directly so
+           the claim holds on any host endianness */
+        static const uint8_t want_lo[8] = { 0x10, 0x32, 0x54, 0x76, 0x98, 0xBA, 0xDC, 0xFE };
+        static const uint8_t want_hi[8] = { 0xEF, 0xCD, 0xAB, 0x89, 0x67, 0x45, 0x23, 0x01 };
+        const uint8_t * body = file + kTableFixedHeaderBytes + 4 + (int64_t) sizeof(signed_wide_fixed_layout)
+                             + 2 * signed_wide_fixed_record_bytes + 8;
+        CHECK(memcmp(body, want_lo, 8) == 0);
+        CHECK(memcmp(body + 8, want_hi, 8) == 0);
+    }
+    memset(&loaded, 0xAA, sizeof(loaded));
+    memset(&report, 0, sizeof(report));
+    n = signed_wide_fixed_load(loaded, 4, file, need, plan, 64, NULL, &report);
+    CHECK(n == 4);
+    CHECK(!report.malformed && !report.refused && report.clamped == 1);
+    CHECK(serialize_int128_equal(loaded[0].wide, value[0].wide));
+    CHECK(serialize_int128_equal(loaded[1].wide, value[1].wide));
+    CHECK(serialize_int128_equal(loaded[2].wide, value[2].wide));
+    CHECK(serialize_int128_equal(loaded[3].wide, value[3].wide));
+    CHECK(serialize_int128_equal(loaded[0].bounded, serialize_int128_from_int64(0)));
+    CHECK(serialize_int128_equal(loaded[1].bounded, serialize_int128_from_int64(-1000)));
+    CHECK(serialize_int128_equal(loaded[2].bounded, serialize_int128_from_int64(1000)));
+    CHECK(serialize_int128_equal(loaded[3].bounded, serialize_int128_from_int64(1000)));  /* the declared max held */
+    return 0;
+}
+`,
 		},
 		{
-			id:   "unsigned-128/c/valid-data",
-			skip: "the 128-bit storage is serialize.h's lo/hi pair and the header includes serialize.h only for a unit that holds it; serialize.h ships in the sibling serialize.c checkout, which is absent here, so a compiled unsigned-128 probe cannot be built",
+			id:             "unsigned-128/c/valid-data",
+			needsSerialize: true,
+			schema: `package probe
+fixed table UnsignedWide
+{
+    u128 uint128
+}
+`,
+			main: `#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdint.h>
+` + t09Check + `
+int main(void)
+{
+    UnsignedWide value[4], loaded[4];
+    TableReport report;
+    TableFixedEntry plan[64];
+    uint8_t file[1024];
+    int64_t need, n;
+    memset(&value, 0, sizeof(value));
+    /* uint128 is the RAW 128-bit field and takes no declared range
+       (SPEC §4.3): its edges are its own domain, 0 and 2^128 - 1, and both
+       ride below alongside the high limb alone */
+    value[0].u128 = serialize_uint128_make(0, 0);
+    value[1].u128 = serialize_uint128_make(0, 1);
+    value[2].u128 = serialize_uint128_make(1, 0);  /* 2^64: the high limb alone */
+    value[3].u128 = serialize_uint128_make(UINT64_MAX, UINT64_MAX);  /* 2^128 - 1 */
+    need = unsigned_wide_fixed_measure(4);
+    CHECK(need > 0 && need <= (int64_t)sizeof(file));
+    CHECK(unsigned_wide_fixed_save(value, 4, file, (int64_t)sizeof(file)) == need);
+    {
+        /* the NONZERO HIGH 64-BIT LIMB ON THE FIXED WIRE: record 2's field
+           is 2^64, so its low half is eight zero bytes and its high half is
+           01 00 00 00 00 00 00 00, low half first
+           (docs/SPEC-TABLES.md §3.4) */
+        static const uint8_t want_lo[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+        static const uint8_t want_hi[8] = { 0x01, 0, 0, 0, 0, 0, 0, 0 };
+        const uint8_t * body = file + kTableFixedHeaderBytes + 4 + (int64_t) sizeof(unsigned_wide_fixed_layout)
+                             + 2 * unsigned_wide_fixed_record_bytes + 8;
+        CHECK(memcmp(body, want_lo, 8) == 0);
+        CHECK(memcmp(body + 8, want_hi, 8) == 0);
+    }
+    memset(&loaded, 0xAA, sizeof(loaded));
+    memset(&report, 0, sizeof(report));
+    n = unsigned_wide_fixed_load(loaded, 4, file, need, plan, 64, NULL, &report);
+    CHECK(n == 4);
+    CHECK(!report.malformed && !report.refused && report.clamped == 0);
+    CHECK(serialize_uint128_equal(loaded[0].u128, value[0].u128));
+    CHECK(serialize_uint128_equal(loaded[1].u128, value[1].u128));
+    CHECK(serialize_uint128_equal(loaded[2].u128, value[2].u128));
+    CHECK(serialize_uint128_equal(loaded[3].u128, value[3].u128));
+    return 0;
+}
+`,
 		},
 		{
 			id: "bits-values/c/valid-data",
@@ -336,17 +484,19 @@ int main(void)
 `,
 		},
 		{
-			// unsigned-fixed-point/c/valid-data is recorded UNKNOWN, not done:
-			// the task node requires "nonzero high 64-bit limbs ... on the
-			// fixed wire" (docs/roadmap.sexp:5288), and the only ufixed width
-			// with a high 64-bit limb is I+F=128, whose storage is
-			// serialize.h's lo/hi pair (absent here). This probe proves the
-			// declared 32-bit range edges (min=0, max=1 clamp) but no high limb.
-			id: "unsigned-fixed-point/c/valid-data",
+			// unsigned-fixed-point/c/valid-data proves BOTH clauses of its
+			// task node: the declared 32-bit range edges (min=0, max=1 clamp)
+			// AND the "nonzero high 64-bit limbs ... on the fixed wire"
+			// clause — the only ufixed width with a high 64-bit limb is
+			// I+F=128, whose storage is serialize.h's lo/hi pair, so this row
+			// compiles with the sibling checkout like the two integer rows.
+			id:             "unsigned-fixed-point/c/valid-data",
+			needsSerialize: true,
 			schema: `package probe
 fixed table UFixedPoint
 {
     v ufixed(16, 16) | min = 0, max = 1
+    w ufixed(96, 32) | min = 0, max = 4294967296
 }
 `,
 			main: `#include "ProbeTable.h"
@@ -364,15 +514,35 @@ int main(void)
     value[0].v = 32768;   /* 0.5 in whole units */
     value[1].v = 65536;   /* 1.0, the declared max */
     value[2].v = 131072;  /* 2.0: clamped to the raw max 65536 */
+    /* w's declared max is 2^32 whole units, so the raw scaled max is 2^64:
+       its storage image has a NONZERO HIGH 64-BIT LIMB, and the value one
+       raw unit past the max clamps back onto that limb */
+    value[0].w = serialize_uint128_make(0, 0);
+    value[1].w = serialize_uint128_make(1, 0);  /* raw 2^64: exactly the declared max */
+    value[2].w = serialize_uint128_make(1, 1);  /* one past it: clamped to raw 2^64 */
     need = u_fixed_point_fixed_measure(3);
     CHECK(need > 0 && need <= (int64_t)sizeof(file));
     CHECK(u_fixed_point_fixed_save(value, 3, file, (int64_t)sizeof(file)) == need);
+    {
+        /* the NONZERO HIGH 64-BIT LIMB ON THE FIXED WIRE: record 1's wide
+           ufixed rides as its 16-byte raw scaled integer, low half first
+           (docs/SPEC-TABLES.md §3.4), behind the 4-byte narrow field */
+        static const uint8_t want_lo[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+        static const uint8_t want_hi[8] = { 0x01, 0, 0, 0, 0, 0, 0, 0 };
+        const uint8_t * body = file + kTableFixedHeaderBytes + 4 + (int64_t) sizeof(u_fixed_point_fixed_layout)
+                             + 1 * u_fixed_point_fixed_record_bytes + 8 + 4;
+        CHECK(memcmp(body, want_lo, 8) == 0);
+        CHECK(memcmp(body + 8, want_hi, 8) == 0);
+    }
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
     n = u_fixed_point_fixed_load(loaded, 3, file, need, plan, 64, NULL, &report);
     CHECK(n == 3);
-    CHECK(!report.malformed && !report.refused && report.clamped == 1);
+    CHECK(!report.malformed && !report.refused && report.clamped == 2);
     CHECK(loaded[0].v == 32768 && loaded[1].v == 65536 && loaded[2].v == 65536);
+    CHECK(serialize_uint128_equal(loaded[0].w, serialize_uint128_make(0, 0)));
+    CHECK(serialize_uint128_equal(loaded[1].w, serialize_uint128_make(1, 0)));
+    CHECK(serialize_uint128_equal(loaded[2].w, serialize_uint128_make(1, 0)));  /* the declared max held */
     return 0;
 }
 `,
@@ -422,8 +592,16 @@ int main(void)
 		tc := tc
 		t.Run(tc.id, func(t *testing.T) {
 			t.Parallel()
-			if tc.skip != "" {
-				t.Skip(tc.skip)
+			if tc.needsSerialize {
+				ser, ok := cSerializeDir(t)
+				if !ok {
+					if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+						t.Fatalf("the sibling runtime serialize.c is absent at %s (SPEC-TABLES.md §3.4: the generated header includes serialize.h by name for the 128-bit storage)", ser)
+					}
+					t.Skipf("named as not run: the sibling serialize.c runtime is not staged at %s, so the generated header's 128-bit storage type does not resolve; stage the checkout to run this row", ser)
+				}
+				runCGenerated(t, tc.schema, tc.main, append(identityCCFlags(), "-I", ser)...)
+				return
 			}
 			runCGenerated(t, tc.schema, tc.main, identityCCFlags()...)
 		})

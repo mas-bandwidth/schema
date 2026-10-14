@@ -331,7 +331,11 @@ func t02R23(t *testing.T) {
 	if n := strings.Count(tableFixedRuntime, "layout_hash = "); n != 1 {
 		t.Errorf("R23: layout_hash is written %d times in the runtime, want exactly one (the backward-read refusal)", n)
 	}
-	refuse := tableFixedRuntime[strings.Index(tableFixedRuntime, "table_fixed_refuse_hash"):]
+	refuseAt := strings.Index(tableFixedRuntime, "table_fixed_refuse_hash")
+	if refuseAt < 0 {
+		t.Fatal("R23: the runtime has no table_fixed_refuse_hash")
+	}
+	refuse := tableFixedRuntime[refuseAt:]
 	if !strings.Contains(refuse, "report->layout_hash = hash;") {
 		t.Errorf("R23: the one layout_hash store is not the file-hash refusal — zero on every other path (§5.9 #7)")
 	}
@@ -392,7 +396,7 @@ func t02R26(t *testing.T) {
 // t02W14: W14 "plan dst == offsetof/sizeof". §4.1's Op `dst` is "a byte offset
 // into the READER's storage"; fixedform.go's opening note: "every offset and
 // every size the plan depends on is asserted against offsetof and sizeof, so a
-// layout this generator got wrong is a build error and never a wrong read."
+// layout this generator got wrong is a build error and never a wrong read.".
 func t02W14(t *testing.T) {
 	text, _, st := t02NewerWithOlder(t)
 	snake := ir.RustSnake(st.Name)

@@ -65,7 +65,7 @@ func t07Before(t *testing.T, src, first, second, what string) {
 	if i < 0 || j < 0 {
 		t.Fatalf("%s: missing %q (%d) or %q (%d)", what, first, i, second, j)
 	}
-	if !(i < j) {
+	if i >= j {
 		t.Errorf("%s: %q is not before %q", what, first, second)
 	}
 }

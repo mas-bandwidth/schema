@@ -292,7 +292,7 @@ fixed table T
 // t03W11: W11 "bytes(N) is layout kind 14". §1: "`bytes(N)` is walked as an
 // ARRAY OF `u8` — kind `14` with one synthetic child at kind `6`, size `1` —
 // never as a text kind; only `string(N)` (`12`) and `wstring(N)` (`33`) are
-// text kinds in a layout."
+// text kinds in a layout.".
 func t03W11(t *testing.T) {
 	const src = `package probe
 
