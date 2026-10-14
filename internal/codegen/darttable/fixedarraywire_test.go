@@ -1,0 +1,252 @@
+package darttable
+
+import (
+	"bytes"
+	"encoding/base64"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
+
+// Exercise the new helper without extending production dispatch in this
+// checkpoint. The owner integrates those shared dispatch sites separately.
+func fixedArrayWireHarness(t *testing.T, u *ir.Unit) string {
+	t.Helper()
+	var fields []*ir.Field
+	for _, st := range u.Tables {
+		for _, f := range st.Fields {
+			if f.Array == ir.ArrayFixed && f.KeyEnum == "" {
+				fields = append(fields, f)
+				f.Array = ir.ArrayCounted
+			}
+		}
+	}
+	g := &wireGen{unit: u, home: runtimeHome(u), closure: wireClosure(u), roots: variableRoots(u)}
+	g.emit()
+	source := g.body.String()
+	for _, f := range fields {
+		old := &wireGen{unit: u}
+		// Find the actual ordinal (it is part of nested retain paths).
+		ordinal := 0
+		for _, st := range u.Tables {
+			for i, ff := range st.Fields {
+				if ff == f {
+					ordinal = i
+				}
+			}
+		}
+		old.body.Reset()
+		old.emitSaveField(f, "\t", ordinal)
+		oldSave := old.body.String()
+		old.body.Reset()
+		old.emitLoadField(f, "\t\t\t", ordinal)
+		oldLoad := old.body.String()
+		typ := dartListElemType(f)
+		oldStorage := fmt.Sprintf("  List<%s> %s = <%s>[];\n", typ, fieldMember(f), typ)
+		f.Array = ir.ArrayFixed
+		next := &wireGen{unit: u}
+		close := next.optionalWalk(f, "\t")
+		next.emitSaveFixedArray(f, "v."+fieldMember(f), "\t", fieldId(f), ordinal)
+		close()
+		if !strings.Contains(source, oldSave) {
+			t.Fatalf("save replacement missing for %s", f.Name)
+		}
+		source = strings.ReplaceAll(source, oldSave, next.body.String())
+		next.body.Reset()
+		next.pf("\t\t\tcase %s:\n", dartU64Literal(fieldId(f)))
+		next.emitOptionalReadPresence(f, "\t\t\t")
+		next.emitLoadFixedArray(f, "\t\t\t", ordinal)
+		if !strings.Contains(source, oldLoad) {
+			t.Fatalf("load replacement missing for %s", f.Name)
+		}
+		source = strings.ReplaceAll(source, oldLoad, next.body.String())
+		next.body.Reset()
+		next.emitFixedArrayStorage(f, "  ")
+		if !strings.Contains(source, oldStorage) {
+			t.Fatalf("storage replacement missing for %s", f.Name)
+		}
+		source = strings.ReplaceAll(source, oldStorage, next.body.String())
+	}
+	return source
+}
+
+func TestDartFixedArrayWireHelpers(t *testing.T) {
+	u := unitFrom(t, `package probe
+enum Grade { Bronze, Silver }
+table Item { value int32 = 7 }
+table Root { nums [3]int32
+ present ?[3]int32
+ rows [2]Item
+ refs [2]*Item
+ after int32
+ flags [2]bool
+ masks [2]uint8
+ floats [2]float32
+ doubles [2]float64
+ grades [2]Grade }
+`)
+	source := fixedArrayWireHarness(t, u)
+	for _, want := range []string{"List<Item>.generate(2", "List<int>.filled(3, 0)", "v.nums.any((e) => e != 0)", "final keep=count>3?3:count"} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("missing helper shape %q", want)
+		}
+	}
+	model := tabletext.NewModel(u)
+	root := model.New(u.Tables["Root"])
+	for i, x := range []uint64{0, 12, 0} {
+		root.Fields[0].Elems[i].U = x
+		root.Fields[0].Elems[i].I = int64(x)
+	}
+	root.Fields[2].Elems[0].Tab.Fields[0].Cell.U = 11
+	root.Fields[2].Elems[0].Tab.Fields[0].Cell.I = 11
+	node := model.New(u.Tables["Item"])
+	node.Fields[0].Cell.U = 23
+	node.Fields[0].Cell.I = 23
+	root.Fields[3].Elems[0].Node = node
+	root.Fields[3].Elems[1].Node = node
+	root.Fields[5].Elems[1].B = true
+	root.Fields[6].Elems[1].U = 5
+	root.Fields[7].Elems[1].F = 1.5
+	root.Fields[8].Elems[1].F = 2.25
+	root.Fields[9].Elems[1].U = 2
+	root.Fields[4].Cell.U = 77
+	root.Fields[4].Cell.I = 77
+	want, err := tablewire.Encode(model, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDefault, err := tablewire.Encode(model, model.New(u.Tables["Root"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, err := model.Write(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Run("runtime-production-oracle", func(t *testing.T) {
+		slowtest.Gate(t, "dart")
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "ProbeWire.dart"), []byte(source), 0600); err != nil {
+			t.Fatal(err)
+		}
+		probe := fmt.Sprintf(fixedArrayProbe, dartU64Literal(fieldId(u.Tables["Root"].Fields[0])), dartU64Literal(fieldId(u.Tables["Root"].Fields[4])), dartU64Literal(fieldId(u.Tables["Root"].Fields[2])))
+		if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0600); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart")
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("fixed array: %v\n%s", err, out)
+		}
+		empty, err := hex.DecodeString(fieldOf(t, string(out), "empty"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(empty, wantDefault) {
+			t.Fatalf("all-default fixed arrays/first-use ids differ from Go\ngot%x\nwant%x", empty, wantDefault)
+		}
+		got, err := hex.DecodeString(fieldOf(t, string(out), "wire"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("production Go oracle differs\ngot %x\nwant%x", got, want)
+		}
+		if raw, e := base64.StdEncoding.DecodeString(fieldOf(t, string(out), "json")); e != nil {
+			t.Fatal(e)
+		} else if got := string(raw); got != string(text) {
+			t.Fatalf("production Go text differs\ngot %s\nwant%s", got, text)
+		}
+	})
+}
+
+const fixedArrayProbe = `import 'dart:convert';
+import 'dart:typed_data';
+import 'ProbeWire.dart' as w;
+const numsId=%s;const afterId=%s;const rowsId=%s;
+void check(bool ok,String why){if(!ok)throw StateError(why);}
+String hex(Uint8List b)=>b.map((x)=>x.toRadixString(16).padLeft(2,'0')).join();
+Uint8List forged(int count,List<int> values,{int elem=4,bool truncated=false,bool duplicate=false}){
+ final state=w.WireState();final out=w.TableWireWriter(state)..putByte(1);final ref=out.refFor(numsId);
+ void array(int n,List<int> xs,int ek){final body=out.sub()..putByte(ek)..putLeb(n);for(final x in xs){body.putU32(x);}out.putLeb(ref);out.putByte(14);out.putLeb(body.buf.length);out.putBytes(body.buf);}
+ if(duplicate)array(3,[1,2,3],4);
+ array(count,values,elem);
+ out.putLeb(out.refFor(afterId));out.putByte(4);out.putU32(77);out.putByte(0);for(final id in state.ids){out.putU64(id);}out.putU64(state.ids.length);return Uint8List.fromList(out.buf);
+}
+Uint8List forgedRows(){
+ final state=w.WireState();final out=w.TableWireWriter(state)..putByte(1);final ref=out.refFor(rowsId);
+ final arr=out.sub()..putByte(13)..putLeb(1);final body=arr.sub();w.itemWireSaveBody(body,w.Item()..value=11);arr.putLeb(body.buf.length);arr.putBytes(body.buf);
+ out.putLeb(ref);out.putByte(14);out.putLeb(arr.buf.length);out.putBytes(arr.buf);out.putByte(0);for(final id in state.ids){out.putU64(id);}out.putU64(state.ids.length);return Uint8List.fromList(out.buf);
+}
+void main(){
+ final tablePrefix=w.rootWireLoad(forgedRows());check(tablePrefix.rows.length==2&&tablePrefix.rows[0].value==11&&tablePrefix.rows[1].value==7&&!identical(tablePrefix.rows[0],tablePrefix.rows[1]),'short table prefix pads independent declared-default slots');
+ final v=w.Root()..nums=[0,12,0]..after=77..flags=[false,true]..masks=[0,5]..floats=[0,1.5]..doubles=[0,2.25]..grades=[0,2];
+ check(!identical(v.rows[0],v.rows[1]),'table slots must have independent instances');
+ v.rows[0].value=11;check(v.rows[1].value==7,'mutating one table slot must preserve its sibling');
+ final node=w.Item()..value=23;v.refs=[node,node];
+ final wire=w.rootWireSave(v);print('wire '+hex(wire));print('json '+base64Encode(utf8.encode(w.rootToJson(v).trimRight())));
+ final r=w.TableWireReport();final back=w.rootWireLoad(wire,r);check(!r.malformed&&!r.refused&&back.nums.join(',')=='0,12,0','valid read');
+ check(hex(w.rootWireSave(back))==hex(wire),'canonical resave');
+ check(identical(back.refs[0],back.refs[1])&&back.refs[0]!.value==23,'pointer slots preserve node identity');
+ final d=w.Root();final base=w.rootWireSave(d);print('empty '+hex(base));d.presentPresent=true;final present=w.rootWireSave(d);check(present.length>base.length,'present whole-default rides');
+ final p=w.rootWireLoad(present);check(p.presentPresent&&p.present.join(',')=='0,0,0','present defaults retained');
+ final short=w.rootWireLoad(forged(1,[4]));check(short.nums.join(',')=='4,0,0'&&short.after==77,'short prefix padding');
+ final zero=w.rootWireLoad(forged(0,[],duplicate:true));check(zero.nums.join(',')=='0,0,0','last duplicate replaces whole array');
+ final over=w.TableWireReport();final capped=w.rootWireLoad(forged(4,[1,2,3,4]),over);check(over.clamped==1&&!over.malformed&&capped.nums.join(',')=='1,2,3'&&capped.after==77,'count clamp');
+ final bad=w.TableWireReport();final prefix=w.rootWireLoad(forged(3,[4]),bad);check(bad.malformed&&prefix.nums.join(',')=='4,0,0'&&prefix.after==77,'damaged prefix and parent continuation');
+ final mismatch=w.TableWireReport();final unchanged=w.rootWireLoad(forged(0,[],elem:1,duplicate:true),mismatch);check(mismatch.kindMismatch==1&&unchanged.nums.join(',')=='1,2,3'&&unchanged.after==77,'mismatch leaves last valid value');
+ var refused=false;try{w.rootWireSave(w.Root()..nums=[1]);}catch(_){refused=true;}check(refused,'exact length validation');
+}
+`
+
+func TestDartFixedArrayWireDefaultExpressions(t *testing.T) {
+	u := unitFrom(t, `package probe
+enum Grade { Bronze, Silver }
+table Item { value int32 }
+table Root { truth bool = true
+ number int32 = 7
+ mask bits(3) = 5
+ fraction float64 = 1.5
+ text string(8) = "hello"
+ raw bytes(8)
+ grade Grade = Silver
+ child Item
+ link *Item }
+`)
+	g := &wireGen{unit: u}
+	wants := []string{"true", "7", "5", "1.5", `"hello"`, "''", "2", "Item()", "null"}
+	for i, f := range u.Tables["Root"].Fields {
+		if got := g.wireElementDefault(f); got != wants[i] {
+			t.Fatalf("%s default %s, want %s", f.Name, got, wants[i])
+		}
+		copy := *f
+		copy.Array = ir.ArrayFixed
+		copy.ArrayBound = 2
+		if !wirePositionalArray(&copy) {
+			t.Fatalf("fixed %s must be positional", f.Name)
+		}
+		copy.KeyEnum = "Grade"
+		if wirePositionalArray(&copy) {
+			t.Fatalf("keyed %s must not be positional", f.Name)
+		}
+		copy.KeyEnum = ""
+		copy.Array = ir.ArrayCounted
+		if !wirePositionalArray(&copy) {
+			t.Fatalf("counted %s must be positional", f.Name)
+		}
+		copy.Array = ir.ArrayNone
+		if wirePositionalArray(&copy) {
+			t.Fatalf("scalar %s must not be positional", f.Name)
+		}
+	}
+}
