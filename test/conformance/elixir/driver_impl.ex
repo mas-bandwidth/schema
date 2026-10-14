@@ -937,8 +937,22 @@ defmodule WireFuzz do
        else: nil
   end
 
+  # carried?/1 is the variable form's own answer (docs/SPEC-TABLES.md §2.6,
+  # §2.8, §11): a root that reaches a map or a union is uncarried. Roster 0
+  # means the harness never sends it a mutant. An error return while the root
+  # is marked available would be scored against the oracle.
   defp avail(r) do
-    if codec(r.unit, r.root) == nil, do: 0, else: 1
+    case codec(r.unit, r.root) do
+      nil ->
+        0
+
+      mod ->
+        if function_exported?(mod, :carried?, 1) and not mod.carried?(r.root) do
+          0
+        else
+          1
+        end
+    end
   end
 
   defp read_roster do
