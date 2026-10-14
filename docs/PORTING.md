@@ -1442,7 +1442,7 @@ so and passes.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #423 | ❌ #423 | ❌ #423 | ✅ `tables-go-release` | ❌ #423 | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` |
+| ❌ #423 | ✅ `tables-c-release` | ❌ #423 | ✅ `tables-go-release` | ❌ #423 | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` |
 
 ### J4 — Emitted text is analyzer-clean and format-canonical
 
