@@ -80,6 +80,13 @@ func TestVariableClassBeyondCardConstructsElixir(t *testing.T) {
 			wire:   "chain_optional.bin",
 			json:   "chain_optional.json",
 		},
+		{
+			name:   "tblp3-empty",
+			schema: []string{filepath.Join("test", "tables", "P3.schema")},
+			root:   "Chain",
+			wire:   "chain_optional_empty.bin",
+			json:   "chain_optional_empty.json",
+		},
 	}
 
 	for _, uu := range units {

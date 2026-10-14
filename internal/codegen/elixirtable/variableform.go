@@ -350,9 +350,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         elem_desc = Map.fetch!(@tables, f.elem)
         {_idx, ids2, order2, body} = save_fields(elem_desc, v, idx_map, ids1, order1, [])
 
-        if IO.iodata_length(body) == 0 do
+        if IO.iodata_length(body) == 0 and not Map.get(f, :optional, false) do
           # an all-default nested table rides nothing (§3): the field and its
-          # speculative ids roll back, exactly as the reference's truncate does
+          # speculative ids roll back, exactly as the reference's truncate does.
+          # An optional stays (§2.3): presence is the field itself, so an empty
+          # frame is the present default and an omitted field is absence.
           {idx_map, ids, order, acc}
         else
           framed = [body, <<0>>]
@@ -2952,6 +2954,11 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int) string {
 		fmt.Fprintf(&b, ", width: %d", ir.TableKindWidth(kind))
 	case f.Type.Kind == ir.TBool:
 		b.WriteString(", t: :bool")
+	}
+	if f.Type.Optional {
+		// presence is the field, not a kind (docs/SPEC-TABLES.md §2.3): a present
+		// optional writes its frame even when the body is all defaults.
+		b.WriteString(", optional: true")
 	}
 	fmt.Fprintf(&b, ", shape: %s, bound: %s", cardShape(f), cardBound(f))
 	fmt.Fprintf(&b, ", default: %s", variableFieldDefault(f))
