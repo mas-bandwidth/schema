@@ -86,7 +86,8 @@ what proves them across releases, #463, named in its section below.
     `unknown` class alone, so a load that reported `kind_mismatch`, `clamped`
     or `malformed` still loses what those counters name. It is opt-in, it
     allocates nothing, and every gap counts `retain_lost`. Specified in
-    SPEC-TABLES.md §6.6. The C++ reference carries it; the eight ports do not.
+    SPEC-TABLES.md §6.6. The C++ reference, C# and Go carry it; C, Rust, Java,
+    JavaScript, Dart and Elixir do not yet.
 11. **This page moves with the facts.** #446's golden now reads the evolution
     table below — `TestEvolutionTableFrames` in `internal/baseline` runs one
     fixture per row through all three frames and pins the verdicts — and the
