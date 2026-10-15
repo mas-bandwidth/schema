@@ -281,13 +281,21 @@ func main() {
 		lang := fs.String("lang", "cpp", "target language ("+strings.Join(c.Targets(), ", ")+")")
 		out := fs.String("out", "generated", "output directory")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
+		surface := fs.String("surface", "", "for --lang go only: emit only these comma-separated surfaces (wire, fixed, json, cook, block, view, message, retain); default all, and dependent surfaces pull in wire (docs/SPEC-TABLES.md §8.4)")
 		limit := fs.Int64("fixed-record-limit", 0, "refuse any FIXED table whose record body exceeds this many `bytes` (0 = no refusal; §3.4 warns at 4096 and drops the form at 65536 regardless)")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		if *surface != "" && *lang != "go" {
+			fatalf("--surface belongs to --lang go; %q refuses it by name (docs/SPEC-TABLES.md §8.4)", *lang)
+		}
 		c.FixedRecordLimit = *limit
 		c.TablesBaseline = true
 		c.SchemaLock = true
 		unit := loadUnit(c, fs.Args())
-		files, err := c.Generate(unit, *lang, compiler.Options{})
+		opts := compiler.Options{}
+		if *surface != "" {
+			opts["surface"] = *surface
+		}
+		files, err := c.Generate(unit, *lang, opts)
 		if err != nil {
 			fail(err)
 		}

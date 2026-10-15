@@ -77,6 +77,7 @@ type tableGen struct {
 	indent string          // extra per-line indent while emitting inside a branch guard
 
 	lineage       map[string][]FixedLineageEntry // the locked layouts, oldest first (§5.2)
+	surfaces      SurfaceSet                     // the selected surfaces (§8.4)
 	needsMath     bool
 	unsafeUsed    bool
 	wireSerial    int
@@ -206,13 +207,25 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
 // every table then carries the one entry it can always compute: its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	return GenerateLineageSurfaces(u, lineage, allSurfaces())
+}
+
+// GenerateLineageSurfaces is GenerateLineage with a surface selection
+// (docs/SPEC-TABLES.md §8.4): only the files and functions the named surfaces
+// need are emitted. allSurfaces is the default and is byte-identical to the
+// un-selected generate.
+func GenerateLineageSurfaces(u *ir.Unit, lineage map[string][]FixedLineageEntry, surf SurfaceSet) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
 	blocks := ir.Blocks(u)
-	out, err := generateBlockFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	out := map[string][]byte{}
+	if surf.Block {
+		var err error
+		out, err = generateBlockFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
 	}
 	cooks, err := generateCookFiles(u, blocks)
 	if err != nil {
@@ -271,7 +284,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	}
 	runtimeWritten := false
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage}
+		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage, surfaces: surf}
 		members := fileMembers(f, closure)
 		if g.home {
 			emitRuntime(g)
@@ -302,8 +315,6 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			g.emitMessageRead(st)
 			if regional {
 				g.emitRegionMessage(st)
-			}
-			if regional {
 				g.emitRegionMember(st)
 				for _, f := range st.Fields {
 					if f.IsList() {
@@ -334,7 +345,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// either way — that is the whole rule, and it is what keeps an
 	// earlier-sorting file from moving it (§19.2).
 	if !runtimeWritten {
-		g := &tableGen{unit: u, home: true, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage}
+		g := &tableGen{unit: u, home: true, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage, surfaces: surf}
 		emitRuntime(g)
 		src, err := g.assemble()
 		if err != nil {
@@ -351,11 +362,13 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, err
 	}
 	maps.Copy(out, texts)
-	view, err := generateViewFile(u, closure, armSlots)
-	if err != nil {
-		return nil, err
+	if surf.View {
+		view, err := generateViewFile(u, closure, armSlots)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, view)
 	}
-	maps.Copy(out, view)
 	return out, nil
 }
 
