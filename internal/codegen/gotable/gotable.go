@@ -70,7 +70,8 @@ type tableGen struct {
 	file     *ir.File
 	home     bool // this file carries the unit's shared table runtime
 	anyKeyed bool
-	owner    *ir.Struct // the closure member whose codec is being emitted
+	owner    *ir.Struct      // the closure member whose codec is being emitted
+	surfs    map[string]bool // the enabled surfaces (§8.4)
 
 	types  strings.Builder // the table storage structs
 	body   strings.Builder // everything else
@@ -94,6 +95,16 @@ type tableGen struct {
 	// Every union declaration reached by this unit's table closure has one
 	// immutable descriptor slot, shared by fields, arrays and nested arms.
 	unionArmSlot map[string]int
+}
+
+// on reports whether a surface is enabled for this unit (§8.4). The wire
+// surface is the base every dependent surface pulls in; a nil or empty map
+// (a caller that never names a surface) means ALL surfaces, the default.
+func (g *tableGen) on(s string) bool {
+	if len(g.surfs) == 0 {
+		return true
+	}
+	return g.surfs[s]
 }
 
 func wireIdOrdinals(u *ir.Unit) map[uint64]int {
@@ -206,19 +217,34 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
 // every table then carries the one entry it can always compute: its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	return GenerateLineageSurfaces(u, lineage, nil)
+}
+
+// GenerateLineageSurfaces is GenerateLineage with the surfaces the build asked
+// for (docs/SPEC-TABLES.md §8.4). A nil or empty surface map means ALL
+// surfaces — the default, byte-identical to GenerateLineage.
+func GenerateLineageSurfaces(u *ir.Unit, lineage map[string][]FixedLineageEntry, surfs map[string]bool) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
 	blocks := ir.Blocks(u)
-	out, err := generateBlockFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	var out map[string][]byte
+	if len(surfs) == 0 || surfs["block"] {
+		var err error
+		out, err = generateBlockFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		out = map[string][]byte{}
 	}
-	cooks, err := generateCookFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	if len(surfs) == 0 || surfs["cook"] {
+		cooks, err := generateCookFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, cooks)
 	}
-	maps.Copy(out, cooks)
 
 	regional := len(variableTableNames(u)) > 0
 
@@ -237,18 +263,34 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// §19.2). Extracted so the synthesized home and a file that happens to be
 	// named for the package emit the same bytes.
 	emitRuntime := func(g *tableGen) {
-		g.needsMath = true
+		wireOn := len(surfs) == 0 || surfs["wire"]
 		g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
-		g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u)+tableFixedRuntime)
-		g.pf("%s", tableCookWriteSource(u))
+		if wireOn {
+			g.needsMath = true
+		}
+		g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource)
+		if wireOn {
+			g.pf("%s", tableWireRuntime(u))
+		}
+		if len(surfs) == 0 || surfs["message"] {
+			g.pf("%s", tableMessageRuntime(u))
+		}
+		if len(surfs) == 0 || surfs["fixed"] {
+			g.pf("%s", tableFixedRuntime)
+		}
+		if len(surfs) == 0 || surfs["cook"] {
+			g.pf("%s", tableCookWriteSource(u))
+		}
 		if regional {
 			g.emitRegionRuntime(blocks)
-			g.emitRetainRuntime()
+			if len(surfs) == 0 || surfs["retain"] {
+				g.emitRetainRuntime()
+			}
 		}
-		if anyKeyed {
+		if wireOn && anyKeyed {
 			g.pf("%s", tableKeyedAccessor)
 		}
-		if len(armSlots) > 0 {
+		if wireOn && len(armSlots) > 0 {
 			g.pf("// One descriptor per union declaration, initialized after package data.\n")
 			g.pf("var tableUnionArms = make([]TableUnionInfo, %d)\n\n", len(armSlots))
 			if !regional {
@@ -271,7 +313,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	}
 	runtimeWritten := false
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage}
+		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage, surfs: surfs}
 		members := fileMembers(f, closure)
 		if g.home {
 			emitRuntime(g)
@@ -291,15 +333,23 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		}
 		for _, st := range members {
 			g.owner = st
-			g.emitTableReset(st)
-			g.emitTableMeasure(st)
-			g.emitTableWrite(st)
-			g.emitTableSave(st)
-			g.emitTableRead(st)
-			g.emitRetainMember(st)
-			g.emitCookWriteSurface(st)
-			g.emitMessageWrite(st)
-			g.emitMessageRead(st)
+			if g.on("wire") {
+				g.emitTableReset(st)
+				g.emitTableMeasure(st)
+				g.emitTableWrite(st)
+				g.emitTableSave(st)
+				g.emitTableRead(st)
+			}
+			if g.on("retain") {
+				g.emitRetainMember(st)
+			}
+			if g.on("cook") {
+				g.emitCookWriteSurface(st)
+			}
+			if g.on("message") {
+				g.emitMessageWrite(st)
+				g.emitMessageRead(st)
+			}
 			if regional {
 				g.emitRegionMessage(st)
 			}
@@ -314,8 +364,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 				}
 			}
 		}
-		g.emitFixedForm(members)
-		if len(members) > 0 {
+		if g.on("fixed") {
+			g.emitFixedForm(members)
+		}
+		if g.on("wire") && len(members) > 0 {
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----\n\n")
 			for _, st := range members {
 				g.owner = st
@@ -346,16 +398,20 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
 	// descriptors, in its own file so a project that never reads or writes a
 	// text does not compile it
-	texts, err := generateJsonFiles(u, closure, home)
-	if err != nil {
-		return nil, err
+	if len(surfs) == 0 || surfs["json"] {
+		texts, err := generateJsonFiles(u, closure, home)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, texts)
 	}
-	maps.Copy(out, texts)
-	view, err := generateViewFile(u, closure, armSlots)
-	if err != nil {
-		return nil, err
+	if len(surfs) == 0 || surfs["view"] {
+		view, err := generateViewFile(u, closure, armSlots)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, view)
 	}
-	maps.Copy(out, view)
 	return out, nil
 }
 

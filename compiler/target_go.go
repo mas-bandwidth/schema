@@ -4,6 +4,7 @@ package compiler
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
@@ -26,7 +27,7 @@ func (t goTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) 
 // unit's lock once (compiler/lineage.go) and hands the lineage down as DATA, so
 // gotable opens no file and a build ships a reader for every layout the lock
 // records.
-func (goTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
+func (goTarget) GenerateLineage(u *ir.Unit, opts Options, lineage *FixedLineage) (map[string][]byte, error) {
 	// Wide text is carried by both packet and table surfaces.
 	if err := refuseWideText(u, "go"); err != nil {
 		return nil, err
@@ -42,7 +43,14 @@ func (goTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (m
 	// TABLE-wire codecs and the reflection descriptors (SPEC-TABLES.md); a
 	// table-free unit's output is byte-identical to what the packet emitter
 	// alone produces
-	tables, err := gotable.GenerateLineage(u, goTableLineage(u, lineage))
+	var surfaces map[string]bool
+	if s := opts["surface"]; s != "" {
+		surfaces, err = gotable.ParseSurfaces(strings.Split(s, ","))
+		if err != nil {
+			return nil, err
+		}
+	}
+	tables, err := gotable.GenerateLineageSurfaces(u, goTableLineage(u, lineage), surfaces)
 	if err != nil {
 		return nil, err
 	}

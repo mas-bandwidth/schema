@@ -279,6 +279,7 @@ func main() {
 	case "generate":
 		fs := flag.NewFlagSet("generate", flag.ExitOnError)
 		lang := fs.String("lang", "cpp", "target language ("+strings.Join(c.Targets(), ", ")+")")
+		surface := fs.String("surface", "", "comma-separated Go table surfaces (wire,fixed,json,cook,block,view,message,retain); Go only")
 		out := fs.String("out", "generated", "output directory")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		limit := fs.Int64("fixed-record-limit", 0, "refuse any FIXED table whose record body exceeds this many `bytes` (0 = no refusal; §3.4 warns at 4096 and drops the form at 65536 regardless)")
@@ -287,7 +288,14 @@ func main() {
 		c.TablesBaseline = true
 		c.SchemaLock = true
 		unit := loadUnit(c, fs.Args())
-		files, err := c.Generate(unit, *lang, compiler.Options{})
+		opts := compiler.Options{}
+		if *surface != "" {
+			if *lang != "go" {
+				fatalf("--surface is a Go-only flag and is refused for --lang %s", *lang)
+			}
+			opts["surface"] = *surface
+		}
+		files, err := c.Generate(unit, *lang, opts)
 		if err != nil {
 			fail(err)
 		}
