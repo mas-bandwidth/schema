@@ -193,6 +193,36 @@ func unitHasFile(u *ir.Unit, base string) bool {
 	return false
 }
 
+// surfaceNames are the generated deliverables a generate request can select
+// (docs/SPEC-TABLES.md §8.4): each names the files and functions it needs,
+// resolved through the shared wire core. A generate that names none emits ALL
+// of them — the byte-identical default.
+var surfaceNames = []string{"wire", "fixed", "json", "cook", "block", "view", "message", "retain"}
+
+// surfaceSet expands a requested surface list to the set of surfaces to emit,
+// resolving dependencies: every surface compiles against the wire core, and
+// the wire core's descriptors and fixed form reference the text walk's helpers,
+// so the core (<Base>Table.go with <Base>TableJson.go) is always emitted. The
+// independently selectable on-the-side files are block, cook and view. A nil
+// result means "all surfaces", the default.
+func surfaceSet(names []string) (map[string]bool, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+	valid := map[string]bool{}
+	for _, n := range surfaceNames {
+		valid[n] = true
+	}
+	s := map[string]bool{}
+	for _, n := range names {
+		if !valid[n] {
+			return nil, fmt.Errorf("unknown surface %q (choose from %s)", n, strings.Join(surfaceNames, ", "))
+		}
+		s[n] = true
+	}
+	return s, nil
+}
+
 // Generate returns <Base>Table.go (plus the accelerators) for every file of a
 // unit that declares tables, and nothing when it declares none — a table-free
 // unit's generated tree is byte-identical with or without this package.
@@ -205,19 +235,42 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
 // every table then carries the one entry it can always compute: its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	return generateSurfaces(u, lineage, nil)
+}
+
+// GenerateSurface is GenerateLineage with the SURFACE LIST the request names
+// (docs/SPEC-TABLES.md §8.4): only the files and functions the selected
+// surfaces need are emitted. An empty list — the default — emits everything,
+// byte-identical to GenerateLineage.
+func GenerateSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, names []string) (map[string][]byte, error) {
+	surf, err := surfaceSet(names)
+	if err != nil {
+		return nil, err
+	}
+	return generateSurfaces(u, lineage, surf)
+}
+
+func generateSurfaces(u *ir.Unit, lineage map[string][]FixedLineageEntry, surf map[string]bool) (map[string][]byte, error) {
+	has := func(name string) bool { return surf == nil || surf[name] }
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
+	out := map[string][]byte{}
 	blocks := ir.Blocks(u)
-	out, err := generateBlockFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	if has("block") {
+		b, err := generateBlockFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, b)
 	}
-	cooks, err := generateCookFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	if has("cook") {
+		cooks, err := generateCookFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, cooks)
 	}
-	maps.Copy(out, cooks)
 
 	regional := len(variableTableNames(u)) > 0
 
@@ -344,17 +397,21 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
 	// descriptors, in its own file so a project that never reads or writes a
-	// text does not compile it
+	// text does not compile it. The wire core's descriptors and fixed form
+	// reference the walk's helpers, so this file is part of the always-emitted
+	// core rather than an independently selectable surface.
 	texts, err := generateJsonFiles(u, closure, home)
 	if err != nil {
 		return nil, err
 	}
 	maps.Copy(out, texts)
-	view, err := generateViewFile(u, closure, armSlots)
-	if err != nil {
-		return nil, err
+	if has("view") {
+		view, err := generateViewFile(u, closure, armSlots)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, view)
 	}
-	maps.Copy(out, view)
 	return out, nil
 }
 

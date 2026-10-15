@@ -11134,6 +11134,20 @@ const UnitViewInfo * UnitView();
 
 ### 8.4 What it costs: the include rule
 
+The Go target lets a `generate --lang go --surface <list>` select which table
+surfaces are emitted: `wire`, `fixed`, `json`, `cook`, `block`, `view`,
+`message`, `retain`, comma-separated. Every surface compiles against the wire
+core — `<Base>Table.go` (the codecs, descriptors and shared runtime) and
+`<Base>TableJson.go` (the text walk, whose helpers the core's descriptors and
+fixed form reference) — so the core is always emitted, whichever surfaces are
+named. The on-the-side accelerators are independently selectable:
+`--surface cook` adds `<Base>Cook.go`, `--surface block` adds `<Base>Block.go`,
+`--surface view` adds `<Package>View.go`. The default (no `--surface`) is the
+full set, byte-identical to a generate that names none. The flag is Go-only:
+another `--lang` refuses it by name. A surface a unit cannot carry is simply
+absent — a unit with no variable table has no block form, and a variable unit
+(regional) emits no fixed form.
+
 **Nothing selects the view, so nothing has to decide what a build deserves.**
 The file is emitted for every unit and carries every declaration; what a
 build pays is what it COMPILES. A tool that walks declarations includes the

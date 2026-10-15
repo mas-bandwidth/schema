@@ -95,6 +95,16 @@ Run the same command with `--lang c`, `--lang cs`, `--lang elixir`, `--lang go`,
 language — writing the
 **same bits**.
 
+The Go target takes `--surface <list>` to emit only the table surfaces the list
+names: `wire`, `fixed`, `json`, `cook`, `block`, `view`, `message`, `retain`,
+comma-separated (docs/SPEC-TABLES.md §8.4). The wire core — `<Base>Table.go`
+and `<Base>TableJson.go` — is always emitted (every surface depends on it, and
+the core references the text walk's helpers); `--surface cook` adds
+`<Base>Cook.go`, `--surface block` adds `<Base>Block.go`, `--surface view`
+adds `<Package>View.go`. The default (no `--surface`) is the full set,
+byte-identical to what `generate` always produced. No other target takes
+`--surface`; naming it with another `--lang` is refused.
+
 ---
 
 ## Declarations

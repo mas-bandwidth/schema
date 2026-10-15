@@ -280,14 +280,22 @@ func main() {
 		fs := flag.NewFlagSet("generate", flag.ExitOnError)
 		lang := fs.String("lang", "cpp", "target language ("+strings.Join(c.Targets(), ", ")+")")
 		out := fs.String("out", "generated", "output directory")
+		surface := fs.String("surface", "", "Go only: emit only these table surfaces, comma-separated (wire, fixed, json, cook, block, view, message, retain; default all — docs/SPEC-TABLES.md §8.4)")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		limit := fs.Int64("fixed-record-limit", 0, "refuse any FIXED table whose record body exceeds this many `bytes` (0 = no refusal; §3.4 warns at 4096 and drops the form at 65536 regardless)")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		c.FixedRecordLimit = *limit
 		c.TablesBaseline = true
 		c.SchemaLock = true
+		if *surface != "" && *lang != "go" {
+			fatalf("--surface is the Go target's own (docs/SPEC-TABLES.md §8.4); %s does not take it", *lang)
+		}
+		opts := compiler.Options{}
+		if *surface != "" {
+			opts["surface"] = *surface
+		}
 		unit := loadUnit(c, fs.Args())
-		files, err := c.Generate(unit, *lang, compiler.Options{})
+		files, err := c.Generate(unit, *lang, opts)
 		if err != nil {
 			fail(err)
 		}
@@ -703,7 +711,7 @@ func reportLineStage(r compiler.TableReport, verbose, tolerate bool, stage strin
 func usage() {
 	fmt.Fprintf(os.Stderr, `usage:
   schema check      [--verbose] [--fixed-record-limit N] [saved-file] [dir|files...]
-  schema generate   [--lang <target>] [--out generated] [--verbose] [--fixed-record-limit N] [dir|files...]
+  schema generate   [--lang <target>] [--out generated] [--surface <list>] [--verbose] [--fixed-record-limit N] [dir|files...]
   schema id         [dir|files...]
   schema projection [dir|files...]
   schema build-version [--facts] [dir|files...]

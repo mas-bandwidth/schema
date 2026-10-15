@@ -4,11 +4,45 @@ package compiler
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
+
+// surfaceNames is the list of Go surfaces `generate --surface` accepts
+// (docs/SPEC-TABLES.md §8.4). It mirrors gotable.surfaceNames.
+var surfaceNames = []string{"wire", "fixed", "json", "cook", "block", "view", "message", "retain"}
+
+// parseSurfaces splits a `--surface a,b,c` list, validates each name and
+// returns the requested surfaces. A blank input is the "all surfaces" default
+// and returns nil.
+func parseSurfaces(s string) ([]string, error) {
+	if strings.TrimSpace(s) == "" {
+		return nil, nil
+	}
+	valid := map[string]bool{}
+	for _, n := range surfaceNames {
+		valid[n] = true
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		n := strings.TrimSpace(part)
+		if n == "" {
+			return nil, fmt.Errorf("--surface has an empty entry in %q", s)
+		}
+		if !valid[n] {
+			return nil, fmt.Errorf("unknown surface %q (choose from %s)", n, strings.Join(surfaceNames, ", "))
+		}
+		if !seen[n] {
+			seen[n] = true
+			out = append(out, n)
+		}
+	}
+	return out, nil
+}
 
 // goTarget emits Go.
 type goTarget struct{}
@@ -26,7 +60,7 @@ func (t goTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) 
 // unit's lock once (compiler/lineage.go) and hands the lineage down as DATA, so
 // gotable opens no file and a build ships a reader for every layout the lock
 // records.
-func (goTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
+func (goTarget) GenerateLineage(u *ir.Unit, opts Options, lineage *FixedLineage) (map[string][]byte, error) {
 	// Wide text is carried by both packet and table surfaces.
 	if err := refuseWideText(u, "go"); err != nil {
 		return nil, err
@@ -41,8 +75,20 @@ func (goTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (m
 	// units that declare tables ALSO get <Base>Table.go per file — the
 	// TABLE-wire codecs and the reflection descriptors (SPEC-TABLES.md); a
 	// table-free unit's output is byte-identical to what the packet emitter
-	// alone produces
-	tables, err := gotable.GenerateLineage(u, goTableLineage(u, lineage))
+	// alone produces. `--surface <list>` (docs/SPEC-TABLES.md §8.4) narrows
+	// that to the files and functions the named surfaces need; absent, it is
+	// the default all-surfaces emit, byte-identical to before.
+	tableLineage := goTableLineage(u, lineage)
+	var tables map[string][]byte
+	if surf, ok := opts["surface"]; ok {
+		names, perr := parseSurfaces(surf)
+		if perr != nil {
+			return nil, perr
+		}
+		tables, err = gotable.GenerateSurface(u, tableLineage, names)
+	} else {
+		tables, err = gotable.GenerateLineage(u, tableLineage)
+	}
 	if err != nil {
 		return nil, err
 	}
