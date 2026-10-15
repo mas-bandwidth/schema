@@ -287,6 +287,14 @@ func projectField(b *strings.Builder, f *Field, ind string) {
 	if f.Round != "" {
 		fmt.Fprintf(b, " round=%s", f.Round)
 	}
+	// `required` rides the projection (docs/SPEC-TABLES.md §4.3): the writer
+	// stops eliding the field, so the bytes a conforming writer emits MOVE
+	// when the marker is added — two builds must not disagree about it, and
+	// the id move is what makes adding it to a shipped unit the break §18.2
+	// says it is.
+	if f.Required {
+		b.WriteString(" required=true")
+	}
 	// the default rides as a FROZEN token (the retired table wire elided a
 	// field sitting at its default); it stays part of the bytes to keep
 	// existing ids stable

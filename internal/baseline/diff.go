@@ -91,6 +91,12 @@ const (
 	// and pass; a move into or out of `map` is the one that costs, and
 	// mapShapeFinding says what it costs.
 	RuleShape
+	// RuleGain — a fact the LIVE field carries and the baseline does not is a
+	// refusal; dropping it is free. This is `required`'s rule
+	// (docs/SPEC-TABLES.md §4.3, §18.2): adding the marker to a shipped field
+	// makes every old record that elided the field at its default a record
+	// the new reader REFUSES, while removing the marker only relaxes.
+	RuleGain
 	// RuleRefs — the token names another declaration. Dropping it refuses;
 	// changing it to the declaration a rename paired it with is left to that
 	// declaration's own walk; changing it to any other is judged on whether
@@ -104,6 +110,7 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	"kind":    RuleFixed,  // a changed kind is skipped by every old reader, and the value is silently gone
 	"elem":    RuleFixed,  // an array's element kind is that same fact, one level in
 	"default": RuleFixed,  // an elided field MEANS the reader's default (docs/SPEC-TABLES.md §4)
+	"required": RuleGain, // adding `required` orphans every old record missing the field; removing it is free (§4.3, §18.2)
 	"frac":    RuleFixed,  // a fixed field's raw value under a moved F is a different number, and no counter can fire
 	"bound":   RuleShrink, // a count past the reader's bound keeps the prefix and counts clamped
 	"size":    RuleShrink, // a string/bytes capacity is a bound like any other
@@ -505,6 +512,23 @@ func (d *differ) diffTables() []Finding {
 		for _, f := range lt.Fields {
 			liveFields[f.Id] = f
 		}
+		baseIds := map[uint64]bool{}
+		for _, bf := range bt.Fields {
+			baseIds[bf.Id] = true
+		}
+		for _, lf := range lt.Fields {
+			// A NEW FIELD IS NORMALLY FREE — the wire absorbs it (§4) — but a
+			// new REQUIRED field is not: every record written before it lacks
+			// the field, and the stricter reader refuses all of them
+			// (docs/SPEC-TABLES.md §4.3, §18.2).
+			if baseIds[lf.Id] {
+				continue
+			}
+			if v, ok := lf.Get("required"); ok && v != "" {
+				out = append(out, Finding{Refuse, lt.Name + "." + lf.Name,
+					"required marker added on a NEW field — every record written before it lacks the field and the stricter reader refuses them all; ship it plain and add `| required` in a new table generation (docs/SPEC-TABLES.md §4.3, §18.2)"})
+			}
+		}
 		var gone []string
 		for _, bf := range bt.Fields {
 			// FIELDS MATCH BY WIRE ID, not by name: the id is the identity a
@@ -700,6 +724,12 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 				continue
 			}
 			out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s -> %s (%s)", tokenNoun(bt.Key), bt.Value, lv, tightenNote(bt.Key))})
+		case RuleGain:
+			if present && lv != bt.Value {
+				out = append(out, Finding{Refuse, where, fmt.Sprintf("%s %s -> %s", tokenNoun(bt.Key), bt.Value, lv)})
+			}
+			// removal is free: a reader that no longer demands the field
+			// still reads every record the stricter build wrote (§18.2)
 		case RuleShape:
 			out = append(out, mapShapeFinding(where, bt.Value, lv, present)...)
 		case RuleRefs:
@@ -718,7 +748,7 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 			continue
 		}
 		switch d.policy[lt.Key] {
-		case RuleFixed, RuleRefs:
+		case RuleFixed, RuleRefs, RuleGain:
 			out = append(out, Finding{Refuse, where, fmt.Sprintf("%s %s added", tokenNoun(lt.Key), lt.Value)})
 		case RuleShrink, RuleRaise:
 			out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s added (%s)", tokenNoun(lt.Key), lt.Value, tightenNote(lt.Key))})
@@ -1024,6 +1054,8 @@ func tokenNoun(key string) string {
 		return "declared maximum"
 	case "optional":
 		return "presence"
+	case "required":
+		return "required marker"
 	case "type":
 		return "nested table"
 	case "payload":

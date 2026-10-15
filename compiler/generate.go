@@ -84,6 +84,9 @@ func (c *Compiler) Targets() []string {
 // exactly as before. A lock that will not parse is an error rather than a
 // silently shorter lineage.
 func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string][]byte, error) {
+	if err := refuseRequiredForOtherTargets(u, target); err != nil {
+		return nil, err
+	}
 	g, ok := c.gens[target]
 	if !ok {
 		if len(c.gens) == 0 {
@@ -99,6 +102,45 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		return lg.GenerateLineage(u, opts, lineage)
 	}
 	return g.Generate(u, opts)
+}
+
+// refuseRequiredForOtherTargets is the CENTRAL refusal of `| required`
+// (docs/SPEC-TABLES.md §4.3): the OWNER RULE is Go first — the marker rides
+// the standard and the Go variable writer and reader implement it, and every
+// other target refuses a unit that uses it, by name, HERE rather than in nine
+// emitters, so no backend can drift into silently dropping the marker and
+// eliding a field the schema says must ride. The refusal names the construct,
+// the field, the target and who carries it first.
+func refuseRequiredForOtherTargets(u *ir.Unit, target string) error {
+	if target == "go" || u == nil {
+		return nil
+	}
+	names := make([]string, 0, len(u.Structs)+len(u.Tables))
+	for name := range u.Structs {
+		names = append(names, name)
+	}
+	for name := range u.Tables {
+		names = append(names, name)
+	}
+	sort.Strings(names) // deterministic: the refusal names ONE field, not a map order
+	seen := map[string]bool{}
+	for _, name := range names {
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		st := u.Structs[name]
+		if st == nil {
+			st = u.Tables[name]
+		}
+		for _, f := range st.Fields {
+			if f.Required {
+				return fmt.Errorf("field %s.%s carries `| required` (docs/SPEC-TABLES.md §4.3) and target %q does not implement it — Go carries it first; generate for go, or drop the marker until %q's turn",
+					st.Name, f.Name, target, target)
+			}
+		}
+	}
+	return nil
 }
 
 // englishList joins names for a sentence: "c, cpp, cs, go, js and rust".

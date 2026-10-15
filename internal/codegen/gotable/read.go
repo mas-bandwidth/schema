@@ -9,11 +9,31 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	n := st.Name
 	g.pf("func %sLoadBody(r *TableReader, value *%s) bool {\n", n, g.storageName(n))
 	g.pf("\t%sReset(value)\n", n)
+	// THE REQUIRED LEDGER (docs/SPEC-TABLES.md §4.3): one bit per `| required`
+	// field, set until the body presents it. A record missing one is REFUSED
+	// at the terminator, by name — absence no longer reads as the default.
+	var rqIdx []int
+	for i, f := range st.Fields {
+		if f.Required {
+			rqIdx = append(rqIdx, i)
+		}
+	}
+	if len(rqIdx) > 0 {
+		g.pf("\trqMissing := uint64(0x%x)\n", uint64(1)<<uint(len(rqIdx))-1)
+	}
 	if g.retain {
 		g.pf("r.Retain.discard(r.Path,false,0)\n")
 	}
 	g.pf("\tfor {\n\t\tref, ok := r.lebPair(); if !ok { ref, ok = r.lebWide() }; if !ok { r.Report.Malformed = true; return false }\n")
-	g.pf("\t\tif ref == 0 { return true }\n")
+	if len(rqIdx) > 0 {
+		g.pf("\t\tif ref == 0 {\n")
+		for k, fi := range rqIdx {
+			g.pf("\t\t\tif rqMissing&%d != 0 { r.Report.Reason = \"missing_required: %s\"; return false }\n", uint64(1)<<uint(k), st.Fields[fi].Name)
+		}
+		g.pf("\t\t\treturn true\n\t\t}\n")
+	} else {
+		g.pf("\t\tif ref == 0 { return true }\n")
+	}
 	g.pf("\t\tfieldID, ok := r.Resolve(ref); if !ok || !r.Has(1) { r.Report.Malformed = true; return false }\n")
 	// THE FIELD HEADER IS READ WHOLE BEFORE A RESERVED ID IS JUDGED, as the
 	// oracle reads it (internal/tablewire bodyAt). A reserved id in a body
@@ -31,6 +51,16 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.retainOrdinal = ordinal
 		kind := ir.TableWireFieldKind(f)
 		g.pf("\t\tcase 0x%016x: // %s\n", ir.TableFieldWireId(f), f.Name)
+		if f.Required {
+			// PRESENT ON THE WIRE clears the ledger bit: the writer sent the
+			// field. A kind mismatch below is that field's own event, counted
+			// there — it is not an absence (§4.3).
+			for k, fi := range rqIdx {
+				if fi == ordinal {
+					g.pf("\t\t\trqMissing &^= %d\n", uint64(1)<<uint(k))
+				}
+			}
+		}
 		g.pf("\t\t\tif kind != %d {\n", kind)
 		if wireWidenable(kind) {
 			// Widening lives in the mismatch arm so a matching kind reads a constant width (SPEC-TABLES §4).
@@ -136,6 +166,25 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("\treturn true\n}\n\n")
 }
 
+// nestedHasRequired reports whether a table of the unit carries an
+// `| required` field (docs/SPEC-TABLES.md §4.3), so the nested read can
+// propagate the missing_required refusal instead of dropping it.
+func nestedHasRequired(u *ir.Unit, typ string) bool {
+	st := u.Structs[typ]
+	if st == nil {
+		st = u.Tables[typ]
+	}
+	if st == nil {
+		return false
+	}
+	for _, f := range st.Fields {
+		if f.Required {
+			return true
+		}
+	}
+	return false
+}
+
 func wireWidenable(kind int) bool {
 	return kind >= 3 && kind <= 5 || kind >= 7 && kind <= 9 || kind == tkF64 || kind == 18 || kind == 19
 }
@@ -178,7 +227,15 @@ func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 
 func (g *tableGen) emitReadNested(typ, expr, rdr, ind string) {
 	g.retainReadPath(rdr, "r", "0")
-	g.pf("%s%sLoadBody(&%s, &%s)\n", ind, typ, rdr, expr)
+	if nestedHasRequired(g.unit, typ) {
+		// A nested body missing one of ITS required fields refuses the whole
+		// record (docs/SPEC-TABLES.md §4.3): the ledger lives in the nested
+		// LoadBody and its false must reach the root, naming the field in the
+		// shared report.
+		g.pf("%sif !%sLoadBody(&%s, &%s) { return false }\n", ind, typ, rdr, expr)
+	} else {
+		g.pf("%s%sLoadBody(&%s, &%s)\n", ind, typ, rdr, expr)
+	}
 	g.emitCarveReturn("r", rdr, ind)
 	g.pf("%sif %s.Offset != int64(len(%s.Buffer)) { r.Report.Malformed = true; %sReset(&%s) }\n", ind, rdr, rdr, typ, expr)
 }

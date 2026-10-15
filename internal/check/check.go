@@ -696,6 +696,14 @@ var fieldKeys = map[string]bool{"min": true, "max": true, "resolution": true, "w
 // read.
 const deprecatedTag = "deprecated"
 
+// requiredTag is the second TAG the compiler reads (docs/SPEC-TABLES.md
+// §4.3): valueless like `deprecated`, it marks a variable-table field that
+// must be PRESENT on the wire — the writer never elides it and a reader
+// refuses a record missing it (`missing_required`, the field named). Go
+// carries it first; every other target refuses a unit that uses it,
+// centrally, in compiler.Generate.
+const requiredTag = "required"
+
 // qualification reads one line's | section (SPEC §4.2). The VALUELESS entries
 // are the line's TAGS, returned in declared order. The VALUED entries are
 // returned for the caller, whose own switch decides what each means. takes
@@ -1928,6 +1936,9 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 		if t == deprecatedTag {
 			out.Deprecated = true
 		}
+		if t == requiredTag {
+			out.Required = true
+		}
 	}
 	byKey := map[string]*ast.Attr{}
 	for _, a := range valued {
@@ -2545,6 +2556,40 @@ func (c *checker) checkTables() {
 	c.checkOptionalVariableClosures(names)
 	c.checkJsonKeysInClosure()
 	c.checkWasInClosure()
+	c.checkRequiredInClosure()
+}
+
+// checkRequiredInClosure holds the `| required` marker to where it has a
+// meaning (docs/SPEC-TABLES.md §4.3): a field of a VARIABLE table closure.
+// Outside a closure the field has no table wire to be present on; inside a
+// FIXED table every field always rides (§3.4), so the marker would promise
+// what the form already guarantees; on an optional `?T` the presence
+// companion already says it (§2.3); and on a shape whose ride is a body or a
+// count rather than a scalar compare, the always-write rule is a named
+// follow-on (§15). Each refusal names the construct and the section.
+func (c *checker) checkRequiredInClosure() {
+	for _, name := range sortedKeys(c.structs) {
+		st := c.structs[name]
+		pos := ast.Pos{}
+		if d, ok := c.astDecls[name]; ok {
+			pos = d.DeclPos()
+		}
+		for _, f := range st.Fields {
+			if !f.Required {
+				continue
+			}
+			switch {
+			case !c.tableClosure[name]:
+				c.errf(pos, "field %s.%s carries `| required`, but no table reaches %s — presence is a TABLE-wire fact and a packet `type` field has no table wire to be present on (docs/SPEC-TABLES.md §4.3)", name, f.Name, name)
+			case f.Type.Optional:
+				c.errf(pos, "field %s.%s is optional AND `| required` — ?T says the writer may leave the field out and required says it may not; pick one (docs/SPEC-TABLES.md §2.3, §4.3)", name, f.Name)
+			case st.FixedDeclared:
+				c.errf(pos, "field %s.%s carries `| required` in a FIXED table — meaningless there and refused by name: a fixed record is walked by offset and every fixed field always rides, required or not (docs/SPEC-TABLES.md §3.4, §4.3)", name, f.Name)
+			case f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsMap() || f.IsList() || f.Type.Pointer || namedNonVocab(f.Type):
+				c.errf(pos, "field %s.%s carries `| required` on a shape whose ride is a body or a count, not a scalar compare — an array, map, list, pointer, table or union field; `| required` rides scalar, enum, flags and text fields today and this shape is a named follow-on (docs/SPEC-TABLES.md §4.3, §15)", name, f.Name)
+			}
+		}
+	}
 }
 
 // checkOptionalVariableClosures refuses an OPTIONAL whose value's closure is
@@ -2666,6 +2711,20 @@ func (c *checker) checkJsonKeysInClosure() {
 			}
 		}
 	}
+}
+
+// namedNonVocab reports whether a named field type is something other than a
+// VOCABULARY (enum, flags): a nested table, a union — shapes whose ride is a
+// body, where `| required` is a named follow-on (docs/SPEC-TABLES.md §4.3, §15).
+func namedNonVocab(ft ir.FieldType) bool {
+	if ft.Kind != ir.TNamed {
+		return false
+	}
+	switch ft.Ref.(type) {
+	case *ir.Enum, *ir.Flags:
+		return false
+	}
+	return true
 }
 
 // sortedKeys gives a map's keys in a stable order, so diagnostics do not

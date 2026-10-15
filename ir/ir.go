@@ -381,6 +381,18 @@ type Field struct {
 	// see it turn off.
 	Deprecated bool
 
+	// Required is the `| required` marker (docs/SPEC-TABLES.md §4.3): the
+	// field must be PRESENT on the wire. The variable writer never elides it
+	// — a required field rides even at its default, so absence can no longer
+	// masquerade as zero — and a reader REFUSES a record missing it, by name
+	// (`missing_required`, the field named). It is part of the projection, so
+	// adding it to a shipped field moves the protocol id, and the tables
+	// baseline refuses the edit outright: old records lack the field
+	// (docs/SPEC-TABLES.md §18.2). Variable-table fields only — a fixed
+	// field always rides (§3.4), an optional `?T` already says presence, and
+	// a packet `type` field has no table wire to be present on.
+	Required bool
+
 	Array      ArrayKind
 	ArrayBound int64
 	ArrayExpr  Expr  // the declared bound expression, for rendering

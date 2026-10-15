@@ -19,8 +19,51 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 )
+
+// The CENTRAL refusal of `| required` (docs/SPEC-TABLES.md §4.3, the owner
+// rule of 2026-10-15: Go carries it first): a unit that uses the marker,
+// generated for ANY target but go, is an error naming the construct, the
+// field, the target and who carries it first — refused here in Generate, once,
+// rather than in nine emitters.
+func TestRequiredRefusedForEveryTargetButGo(t *testing.T) {
+	t.Parallel()
+	src := "package t\n\ntable Ship\n{\n    health int32 | required\n}\n"
+	f, perrs := parser.Parse("T.schema", []byte(src))
+	if len(perrs) > 0 {
+		t.Fatalf("parse: %v", perrs)
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{Path: "T.schema", Name: "T.schema", Base: "T", Bytes: []byte(src), AST: f}})
+	if len(cerrs) > 0 {
+		t.Fatalf("check: %v", cerrs)
+	}
+	c := New()
+	targets := c.Targets()
+	if len(targets) < 2 {
+		t.Fatalf("want the built-in target set, got %v", targets)
+	}
+	for _, target := range targets {
+		_, err := c.Generate(u, target, nil)
+		if target == "go" {
+			if err != nil && strings.Contains(err.Error(), "| required") {
+				t.Errorf("go refused the marker it carries first: %v", err)
+			}
+			continue
+		}
+		if err == nil {
+			t.Errorf("target %s generated a unit using `| required` silently; want the central refusal (docs/SPEC-TABLES.md §4.3)", target)
+			continue
+		}
+		msg := err.Error()
+		for _, want := range []string{"| required", "Ship.health", target, "Go carries it first"} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("target %s refusal %q does not name %q", target, msg, want)
+			}
+		}
+	}
+}
 
 // docExample is one fenced block, found by an anchor line and, where a page
 // prints the same anchor more than once, by which occurrence.
