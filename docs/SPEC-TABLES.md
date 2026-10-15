@@ -11143,6 +11143,21 @@ stronger answer than a flag, because it is per CONSUMER rather than per
 generate: one unit's output serves the editor and the game at once, with no
 second generate and no second tree to keep in step.
 
+**The Go target's `--surface` flag is the one place a build does name what it
+pays.** `generate --lang go --surface <list>` limits the emitted files and
+functions to the named surfaces, so a project that only ever reads and writes
+the wire does not compile (or link) the text walk, the cooks, the message
+form, the retained regions, the blocks or the view. The list names any
+subset of `wire`, `fixed`, `json`, `cook`, `block`, `view`, `message` and
+`retain`; the default is all of them, byte-identical to today's output, so a
+build that never passes the flag changes nothing. Every surface depends on
+`wire` — the wire codecs and the storage structs underpin the text form, the
+cooks, the message form, the view and the retained regions — so requesting
+any subset implicitly carries `wire`, and the dependencies are resolved and
+named here rather than left to the emitter to guess. Any other `--lang`
+refuses the flag by name: `--surface` is a Go-only knob, because no other
+backend has yet earned the same rule (see the owner's rule, this card).
+
 That is the same trade §13.5 already made for the text form's walker, and it
 is why this file exists rather than a header addition (§8.5): a translation
 unit nobody compiles costs a build nothing, while a header everybody

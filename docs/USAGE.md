@@ -95,6 +95,13 @@ Run the same command with `--lang c`, `--lang cs`, `--lang elixir`, `--lang go`,
 language — writing the
 **same bits**.
 
+The Go target alone takes `--surface <list>` (SPEC-TABLES.md §8.4): a
+comma-separated subset of `wire`, `fixed`, `json`, `cook`, `block`, `view`,
+`message` and `retain`, restricting the emitted files and functions to the
+surfaces you use. The default is all of them, byte-identical to today, and
+requesting any subset implicitly includes `wire`. Any other `--lang` refuses
+`--surface` by name.
+
 ---
 
 ## Declarations
