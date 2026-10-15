@@ -11134,6 +11134,20 @@ const UnitViewInfo * UnitView();
 
 ### 8.4 What it costs: the include rule
 
+**The Go backend lets a build select the surfaces it generates.** `schema
+generate --lang go --surface <list>` names a comma-separated subset of `wire`,
+`fixed`, `json`, `cook`, `block`, `view`, `message` and `retain`, and only the
+files and functions those surfaces need are emitted. The default is the whole
+set and is byte-identical to a build before the flag existed. Every surface
+depends on `wire`, so `wire` is always emitted; a table's wire codecs and
+storage structs live in `<Base>Table.go` and are the base every other surface
+sits on. `json` is `<Base>TableJson.go`, `cook` is `<Base>Cook.go`, `block`
+is `<Base>Block.go`, and `view` is the unit's `<Package>View.go`. `fixed`,
+`message` and `retain` thin the table file itself: the fixed-form codec, the
+message read/write surface and the retain members respectively. The shared
+runtime is emitted with `wire` and is unconditional. Any other `--lang`
+refuses `--surface` by name.
+
 **Nothing selects the view, so nothing has to decide what a build deserves.**
 The file is emitted for every unit and carries every declaration; what a
 build pays is what it COMPILES. A tool that walks declarations includes the

@@ -95,6 +95,13 @@ Run the same command with `--lang c`, `--lang cs`, `--lang elixir`, `--lang go`,
 language — writing the
 **same bits**.
 
+The Go backend accepts `--surface` to emit only the generated surfaces a
+project uses. The surfaces are `wire`, `fixed`, `json`, `cook`, `block`,
+`view`, `message` and `retain`; the default (no flag) is the whole set,
+byte-identical to a build before the flag existed. Every surface depends on
+`wire`, so `wire` is always present. A non-Go `--lang` refuses `--surface` by
+name. See docs/SPEC-TABLES.md §8.4.
+
 ---
 
 ## Declarations
