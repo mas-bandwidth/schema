@@ -5214,29 +5214,29 @@ namespace Benchtable
             static bool DistinctVocabulary(ReadOnlySpan<byte> vocabulary)
             {
                 int count = vocabulary.Length / 8;
-                if (count >= 16 && count <= 256)
+                if (count >= 16)
                 {
-                    // One KiB, independent of the input's claimed count. Slots store
-                    // ordinal+1, so the identity zero remains an ordinary identity.
-                    // At most 256 entries occupy 512 slots: even deliberately colliding
-                    // identities reach an empty slot after at most 256 occupied probes.
-                    Span<ushort> slots = stackalloc ushort[512];
+                    // Slots store ordinal+1, so the identity zero remains an ordinary
+                    // identity. At most 4096 entries occupy 8192 slots: even deliberately
+                    // colliding identities reach an empty slot after at most 4096
+                    // occupied probes, so the whole walk is bounded and allocation-free
+                    // (docs/SPEC-TABLES.md §3, the bounded-work contract).
+                    Span<ushort> slots = stackalloc ushort[8192];
                     slots.Clear();
                     for (int i = 0; i < count; i++)
                     {
                         ulong id = Read64(vocabulary, i * 8);
-                        int slot = (int)(unchecked(id * 0x9e3779b97f4a7c15ul) >> 55);
+                        int slot = (int)(unchecked(id * 0x9e3779b97f4a7c15ul) >> 51);
                         while (slots[slot] != 0)
                         {
                             if (id == Read64(vocabulary, (slots[slot] - 1) * 8)) { return false; }
-                            slot = (slot + 1) & 511;
+                            slot = (slot + 1) & 8191;
                         }
                         slots[slot] = (ushort)(i + 1);
                     }
                     return true;
                 }
-                // Tiny vocabularies avoid scratch initialization. Larger foreign
-                // vocabularies keep the existing allocation-free validation path.
+                // Tiny vocabularies avoid scratch initialization.
                 for (int i = 0; i < vocabulary.Length; i += 8)
                 {
                     ulong id = Read64(vocabulary, i);
@@ -5261,6 +5261,10 @@ namespace Benchtable
                 if (bytes.Length < 9) { Damage(report); return Finish(report, Verdict.Damaged); }
                 ulong count = Read64(bytes, bytes.Length - 8);
                 if (count > (ulong)(bytes.Length - 9) / 8) { Damage(report); return Finish(report, Verdict.Damaged); }
+                // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that
+                // claims more than 4096 entries is malformed, so the distinctness walk
+                // stays bounded no matter how large the file is.
+                if (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged); }
                 int end = bytes.Length - 8 - (int)count * 8;
                 ReadOnlySpan<byte> vocabulary = bytes.Slice(end, (int)count * 8);
                 if (!DistinctVocabulary(vocabulary)) { Damage(report); return Finish(report, Verdict.Damaged); }
