@@ -15,6 +15,8 @@ func init() {
 		Name{Name: "TableBlockFieldInfo", What: "a block field's reflection descriptor"},
 		Name{Name: "TableBlockInfo", What: "a block's reflection descriptor"},
 		Name{Name: "TableBlockLayout", What: "the layout contract's check, run once. C# spells it a nested class of Schema; Java puts it at package scope and JavaScript at module scope, so the claim is the UNION"},
+		Name{Name: "TableBlockRefusal", What: "the producer count that violates its declared bound (docs/SPEC-TABLES.md §19.1), the Java spelling of Go's TableBlockRefusal"},
+		Name{Name: "TableCookWriter", What: "cook measurement and transactional write (§7.6)"},
 		Name{Name: "TableCookLayout", What: "the cook closure's layout contract, run once (§20.3)"},
 		Name{Name: "TableCookInfo", What: "a cooked record's reflection descriptor"},
 		Name{Name: "TableCookFieldInfo", What: "a cooked field's reflection descriptor"},

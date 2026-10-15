@@ -47,6 +47,7 @@ func blockRuntimeFiles(u *ir.Unit) map[string][]byte {
 		"TableBlockRows.java":      javaFile(u, "one out-of-line array's rows, at the pitch the instance gives (docs/SPEC-TABLES.md §19.2).", tableBlockRowsSource),
 		"TableBlockInfo.java":      javaFile(u, "a block record's reflection descriptor (docs/SPEC-TABLES.md §8, §19.2).", tableBlockInfoSource()),
 		"TableBlockFieldInfo.java": javaFile(u, "a block field's reflection descriptor (docs/SPEC-TABLES.md §8.1, §19.2).", tableBlockFieldInfoSource),
+		"TableBlockRefusal.java":   javaFile(u, "the producer count refusal (docs/SPEC-TABLES.md §19.1).", tableBlockRefusalSource),
 	}
 }
 
@@ -294,7 +295,8 @@ func generateBlockFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, er
 	for _, bl := range blocks.Tables {
 		g := &blockGen{unit: u, blocks: blocks, bl: bl}
 		g.emit()
-		out[bl.Table.Name+"Block.java"] = javaFile(u, "the BLOCK FORM's read half (docs/SPEC-TABLES.md §19).", g.b.String())
+		out[bl.Table.Name+"Block.java"] = javaFile(u, "the BLOCK FORM: the read half (§19.2) and the build half (§19.1).", g.b.String())
+		out[bl.Table.Name+"Counts.java"] = emitCountsFile(u, bl)
 	}
 	return out, nil
 }
@@ -355,6 +357,7 @@ func (g *blockGen) emit() {
 	g.emitArrays()
 	g.emitOpen()
 	g.emitType()
+	g.emitBlockBuild()
 	g.f("}\n")
 }
 
