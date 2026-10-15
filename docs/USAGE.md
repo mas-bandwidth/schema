@@ -3102,7 +3102,11 @@ table, the facts under the shared field ids are unchanged**: a twin
 declaration carrying the same id under a different default is refused,
 because every stored body's elided value would quietly change meaning.
 Also refused: a second `was` aimed at the field's intermediate spelling,
-naming both names and the one that is correct.
+naming both names and the one that is correct; and a `| required` marker
+ADDED, to a shipped field or on a new field, because every record written
+before it lacks the field and a newer reader refuses it as `missing_required`
+(removing the marker passes: the writer just starts eliding again;
+SPEC-TABLES.md §2.3).
 Warned, because the read report already counts what is lost: a bound or a
 string capacity shrunk, a declared range tightened from either end (or
 declared where the field had none — every stored value outside it clamps on
@@ -3686,10 +3690,7 @@ From then on `schema check` — and so `schema generate` — refuses an edit the
 lock has not recorded: a reorder, a removal, a widening, a kind change, a
 default or a range that moved. A field appended at the bottom, a variant or
 an arm appended at the end, and a `deprecated` marker are the append-only
-class; each is refused as STALE until `schema lock` writes it down. A
-`| required` marker changed is a break the baseline refuses: adding it to a
-shipped field means old records never wrote it, so a newer reader would refuse
-them (SPEC-TABLES.md §2.3). A rename
+class; each is refused as STALE until `schema lock` writes it down. A rename
 with `was` moves nothing and is no change to catch up to, and `schema lock --retire Marker@0x<hash> --reason "…"` is the file's one non-append edit,
 read years later by whoever asks why.
 

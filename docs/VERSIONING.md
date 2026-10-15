@@ -314,8 +314,8 @@ does today.
 | a guard added or removed | nothing | passes | nothing |
 | a `json =` key changed | nothing on the wire | passes | nothing |
 | a `///` doc comment or a tag added, changed or removed (SPEC.md §4.1, §4.2) | nothing: neither is a fact a codec reads | passes; neither enters a baseline row | **nothing**, and the protocol id does not move either, so annotating a shipped schema is a free edit |
-| `\| required` added to a shipped table field | a reader refuses the record with `missing_required` (the field is named) | **refuses**, and the tables baseline refuses it too (old records lack it) | moves, and the protocol id moves with it (SPEC-TABLES.md §2.3) |
-| `\| required` removed from a table field | nothing — the writer starts eliding at the default again | passes | moves, and the protocol id with it | |
+| `\| required` added to a shipped table field | a reader refuses the record with `missing_required` (the field is named) | **refuses** (the baseline's `required` token; a NEW `\| required` field on a shipped table is refused too) | **nothing**: no cooked or blocked byte moves, and the protocol id does not move either: it hashes the `type` wire, which a table field never reaches (SPEC-TABLES.md §2.3) |
+| `\| required` removed from a table field | nothing — the writer starts eliding at the default again | passes | **nothing**, and the protocol id does not move either |
 | a table renamed bare | nothing when it is held by value (a declaration name is not on the wire); every pointer to it reads null and counts `unknown` when it is a pointer target | warns | moves |
 | a table renamed under `was` | nothing: the node type id is the old name's hash (SPEC-TABLES.md §5) | passes, and the file records the declared name beside the wire name | **nothing**, and the protocol id does not move either |
 | a retired name re-added with a new meaning | **silent** | **passes today**; the ledger is #441 | moves |

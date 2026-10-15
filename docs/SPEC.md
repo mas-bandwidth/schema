@@ -952,9 +952,10 @@ sequence    uint16
   so is a tag that repeats a valued key already on the line.
 - **`required` — a tag a TABLE field reads** (SPEC-TABLES.md §2.3): the
   writer always writes the field and a reader refuses a record missing it
-  (`missing_required`, field named). It is refused on a packet `type` field
-  and on an optional `?T`. Every other language refuses the construct at
-  generation until its turn (compiler/generate.go).
+  (`missing_required`, the missing field named). It is refused on a packet
+  `type` field, on an optional `?T` and on a `fixed table`'s field, and it
+  moves neither the protocol id nor the build version. Every other language
+  refuses the construct at generation until its turn (compiler/generate.go).
 - **`was = "old_name"`, the rename attribute, table closures only**
   (SPEC-TABLES.md §5). A table field's wire id is the hash of its name, so a
   bare rename would orphan every byte ever written under the old one; `was`
