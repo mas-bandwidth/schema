@@ -2465,6 +2465,41 @@ C++ and the tool carry the construct today; every other backend refuses a
 unit that declares one, by name, and the ports are a named follow-on
 (SPEC-TABLES.md §15).
 
+### Timestamps: `opened_at timestamp`
+
+A `timestamp` field is a count of nanoseconds since the Unix epoch, and `0`
+is the zero time — `1970-01-01T00:00:00Z`. It is the convention you were
+writing by hand as an `int64` with a hand-rolled range check, made a kind, so
+the wire, the fixed form and the text form all agree without you writing any
+of it (SPEC.md §4.13, SPEC-TABLES.md §2.11).
+
+```
+table Session
+{
+    opened_at   timestamp
+    closed_at   timestamp
+}
+```
+
+In Go the field is a `time.Time`, read back in UTC:
+
+```go
+s := Session{}
+s.OpenedAt = time.Unix(0, 1760531645123456789).UTC()
+```
+
+The write side refuses BY NAME a value whose nanosecond count is outside
+`Time.UnixNano`'s domain — the years 1678 through 2262 — rather than writing
+a wrapped number, and `FromJson` refuses by name a string that is not RFC
+3339, leaving the field at the zero time. `ToJson` writes
+`"2026-10-15T12:34:05.123456789Z"`.
+
+A timestamp is its own kind, not an `int64`: a field respelled between the
+two is a kind mismatch, skipped and counted, and neither spelling widens into
+the other. It is a TABLE field only in this major — a `timestamp` in a packet
+`type` is refused by name — and **Go carries it first**: every other target
+refuses the construct by name until its own card.
+
 ### The block form: rows another language points at
 
 Some data is not a file and not a message. It is a block you rebuild every
