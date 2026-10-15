@@ -598,7 +598,9 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 func tableRuntime() string {
 	return `// TableReport is the table-wire read report — the permissive contract's
 // ledger. Silence (all zero) means the data matched this reader's schema
-// exactly.
+// exactly. Err (docs/SPEC-TABLES.md §6.5) is the STRICT read's typed reason
+// for malformed, clamped, kind-mismatched, unknown form, wire-damaged and
+// build-version-mismatched. Unknown, Widened and Retained alone are not one.
 type TableReport struct {
  Retained, RetainLost int32
 	Verdict      TableOpenVerdict // unsupported form is distinct from damage

@@ -3928,7 +3928,13 @@ comparison. The existing integer measure and boolean open calls remain available
 Cook and block handles also provide `Open(base, bytes) error`. A damaged file
 trailer returns `TableRefuseWireDamaged` (`wire_damaged`) from
 `LoadMeasureReason`; this is distinct from a format refusal and from the
-accelerator-only `truncated` reason.
+accelerator-only `truncated` reason. `<Name>ReadStrict(wire)` is the one-call
+strict read (docs/SPEC-TABLES.md §6.5): it builds its own builder and returns
+`(*<Name>, error)`. The error is a `TableRefuseReason` (`clamped`,
+`kind_mismatch`, `malformed`, `unknown_form`, `wire_damaged`) or a
+`TableBuildVersionMismatch`, so `errors.Is` matches it. `unknown`, `widened`
+and `retained` alone do not refuse. `TableReport.Err()` answers the same
+reason.
 
 A fixed table's `<T>FixedLoad` still takes a plan slice, and a slice shorter
 than the selected plan refuses `plan_too_large`
@@ -3958,6 +3964,10 @@ func main() {
     wire := make([]byte, size)
     if graphdemo.SceneSave(source.GetRoot(), wire, &source.Arena) != size {
         panic("save failed")
+    }
+    strict, err := graphdemo.SceneReadStrict(wire)
+    if err != nil || strict.Version != 7 {
+        panic(err)
     }
 
     var loaded graphdemo.SceneBuilder

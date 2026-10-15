@@ -118,6 +118,9 @@ func (g *tableGen) emitRegionMember(st *ir.Struct) {
 	g.pf("func %sMeasureReason(value *%s,context ...TableWriteContext)(int64,error){arena,allocator:=tableWriteOptions(context);size,reason:=tableRegionSaveReason(unsafe.Pointer(value),%sTableType(),nil,true,arena,allocator);return size,tableRefuseError(reason)}\n", n, typ, n)
 	g.pf("func %sSave(value *%s,buffer []byte,context ...TableWriteContext) int64 { arena,allocator:=tableWriteOptions(context);return tableRegionSave(unsafe.Pointer(value),%sTableType(),buffer,false,arena,allocator) }\n", n, typ, n)
 	g.pf("func %sLoadBuilder(b *%sBuilder,wire []byte,report *TableReport) bool {return tableBuilderLoad(unsafe.Pointer(b.GetRoot()),b.root,&b.Main,wire,%sTableType(),%sTableType().NodeType,%d,report)}\n", n, n, n, n, blobmask)
+	// ReadStrict is §6.5's STRICT read: one call, its own builder, one typed reason.
+	g.pf("// %sReadStrict is the STRICT read (docs/SPEC-TABLES.md §6.5): one call, its own builder, one typed reason.\n", n)
+	g.pf("func %sReadStrict(wire []byte)(*%s,error){var b %sBuilder;if !b.Init(){return nil,TableRefuseAllocationFailed};var report TableReport;ok:=%sLoadBuilder(&b,wire,&report);if err:=report.Err();err!=nil||!ok{b.Shutdown();if err==nil{err=TableRefuseWireDamaged};return nil,err};if !b.Lock(){b.Shutdown();return nil,TableRefuseAllocationFailed};return b.AsConst(),nil}\n", n, typ, n, n)
 	g.pf("type %sBuilder struct { Arena TableArena; Main TableWorker; root TableRef; region,allocation []byte }\n", n)
 	g.pf("func (b *%sBuilder) Init(allocator ...TableAllocator) bool { if b.region!=nil||!b.Arena.Init(allocator...){return false};b.Main=TableWorker{Arena:&b.Arena};p,ref:=b.Main.Alloc(int64(unsafe.Sizeof(%s{})));b.root=ref;if p==nil{b.Arena.Shutdown();b.root=0;return false};%sReset((*%s)(p));return true }\n", n, typ, n, typ)
 	g.pf("func (b *%sBuilder) GetRoot() *%s { if b.Arena.Locked {return nil};return (*%s)(b.Arena.At(b.root)) }\n", n, typ, typ)
