@@ -206,19 +206,37 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
 // every table then carries the one entry it can always compute: its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	return GenerateSurfaces(u, lineage, nil)
+}
+
+// GenerateSurfaces is GenerateLineage with a SURFACE LIST (docs/SPEC-TABLES.md
+// §8.4): which of the Go table surfaces the caller wants — wire, fixed, json,
+// cook, block, view, message, retain. A nil or empty list is every surface,
+// byte-identical to GenerateLineage. Dependencies are resolved: selecting a
+// surface that needs the wire also selects it.
+func GenerateSurfaces(u *ir.Unit, lineage map[string][]FixedLineageEntry, surfaces []string) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
+	sel, err := selectSurfaces(surfaces)
+	if err != nil {
+		return nil, err
+	}
 	blocks := ir.Blocks(u)
-	out, err := generateBlockFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	out := map[string][]byte{}
+	if sel.block {
+		out, err = generateBlockFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
 	}
-	cooks, err := generateCookFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	if sel.cook {
+		cooks, err := generateCookFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, cooks)
 	}
-	maps.Copy(out, cooks)
 
 	regional := len(variableTableNames(u)) > 0
 
@@ -292,18 +310,26 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		for _, st := range members {
 			g.owner = st
 			g.emitTableReset(st)
-			g.emitTableMeasure(st)
-			g.emitTableWrite(st)
-			g.emitTableSave(st)
-			g.emitTableRead(st)
-			g.emitRetainMember(st)
-			g.emitCookWriteSurface(st)
-			g.emitMessageWrite(st)
-			g.emitMessageRead(st)
-			if regional {
+			if sel.wire {
+				g.emitTableMeasure(st)
+				g.emitTableWrite(st)
+				g.emitTableSave(st)
+				g.emitTableRead(st)
+			}
+			if sel.retain {
+				g.emitRetainMember(st)
+			}
+			if sel.cook {
+				g.emitCookWriteSurface(st)
+			}
+			if sel.message {
+				g.emitMessageWrite(st)
+				g.emitMessageRead(st)
+			}
+			if regional && sel.message {
 				g.emitRegionMessage(st)
 			}
-			if regional {
+			if regional && sel.retain {
 				g.emitRegionMember(st)
 				for _, f := range st.Fields {
 					if f.IsList() {
@@ -314,8 +340,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 				}
 			}
 		}
-		g.emitFixedForm(members)
-		if len(members) > 0 {
+		if sel.fixed {
+			g.emitFixedForm(members)
+		}
+		if len(members) > 0 && (sel.view || sel.json) {
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----\n\n")
 			for _, st := range members {
 				g.owner = st
@@ -346,17 +374,66 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
 	// descriptors, in its own file so a project that never reads or writes a
 	// text does not compile it
-	texts, err := generateJsonFiles(u, closure, home)
-	if err != nil {
-		return nil, err
+	if sel.json {
+		texts, err := generateJsonFiles(u, closure, home)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, texts)
 	}
-	maps.Copy(out, texts)
-	view, err := generateViewFile(u, closure, armSlots)
-	if err != nil {
-		return nil, err
+	if sel.view {
+		view, err := generateViewFile(u, closure, armSlots)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, view)
 	}
-	maps.Copy(out, view)
 	return out, nil
+}
+
+// surfaceSel is which Go table surfaces a generate request wants
+// (docs/SPEC-TABLES.md §8.4). All true is the default.
+type surfaceSel struct {
+	wire, fixed, json, cook, block, view, message, retain bool
+}
+
+// selectSurfaces turns a surface list into a selection, resolving
+// dependencies. A nil or empty list is every surface. A name that is not a
+// surface is an error.
+func selectSurfaces(surfaces []string) (surfaceSel, error) {
+	sel := surfaceSel{wire: true, fixed: true, json: true, cook: true, block: true, view: true, message: true, retain: true}
+	if len(surfaces) == 0 {
+		return sel, nil
+	}
+	sel = surfaceSel{}
+	// dependencies: a surface that walks or stores the wire needs the wire.
+	needWire := map[string]bool{"json": true, "cook": true, "message": true, "block": true, "view": true}
+	for _, s := range surfaces {
+		switch strings.TrimSpace(s) {
+		case "wire":
+			sel.wire = true
+		case "fixed":
+			sel.fixed = true
+		case "json":
+			sel.json = true
+		case "cook":
+			sel.cook = true
+		case "block":
+			sel.block = true
+		case "view":
+			sel.view = true
+		case "message":
+			sel.message = true
+		case "retain":
+			sel.retain = true
+		default:
+			return surfaceSel{}, fmt.Errorf("unknown surface %q (docs/SPEC-TABLES.md §8.4)", s)
+		}
+		if needWire[s] {
+			sel.wire = true
+		}
+	}
+	return sel, nil
 }
 
 // fileMembers is a file's closure members: its tables, then the plain `type`

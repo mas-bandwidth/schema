@@ -4,6 +4,7 @@ package compiler
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
@@ -26,7 +27,7 @@ func (t goTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) 
 // unit's lock once (compiler/lineage.go) and hands the lineage down as DATA, so
 // gotable opens no file and a build ships a reader for every layout the lock
 // records.
-func (goTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
+func (goTarget) GenerateLineage(u *ir.Unit, opts Options, lineage *FixedLineage) (map[string][]byte, error) {
 	// Wide text is carried by both packet and table surfaces.
 	if err := refuseWideText(u, "go"); err != nil {
 		return nil, err
@@ -42,7 +43,8 @@ func (goTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (m
 	// TABLE-wire codecs and the reflection descriptors (SPEC-TABLES.md); a
 	// table-free unit's output is byte-identical to what the packet emitter
 	// alone produces
-	tables, err := gotable.GenerateLineage(u, goTableLineage(u, lineage))
+	surfaces := goSurfaces(opts)
+	tables, err := gotable.GenerateSurfaces(u, goTableLineage(u, lineage), surfaces)
 	if err != nil {
 		return nil, err
 	}
@@ -53,6 +55,22 @@ func (goTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (m
 		files[name] = data
 	}
 	return files, nil
+}
+
+// goSurfaces reads the --surface option (docs/SPEC-TABLES.md §8.4). An absent
+// or empty value is every surface; a comma-separated list names the ones the
+// Go target emits, with dependencies resolved by gotable.
+func goSurfaces(opts Options) []string {
+	if v, ok := opts["surface"]; ok && strings.TrimSpace(v) != "" {
+		var out []string
+		for _, part := range strings.Split(v, ",") {
+			if s := strings.TrimSpace(part); s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 // goTableLineage is the lock's lineage in the Go backend's own spelling. Nil in,
