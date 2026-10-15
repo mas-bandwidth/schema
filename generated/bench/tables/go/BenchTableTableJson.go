@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — the TABLE wire's TEXT form (docs/SPEC-TABLES.md §16).
+// package benchtable — the TABLE wire's TEXT form (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
 //
 // One table, one text, ONE walk over the reflection descriptors (§8). Reading
 // fills one caller-owned instance; writing targets a caller buffer with the
@@ -1871,7 +1871,7 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 			}
 		}
 		if keyLength > 0 && key[0] == '&' {
-			// THE AMPERSAND PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
+			// THE AMPERSAND PREFIX IS RESERVED TO THE FORM (mas-bandwidth/schema docs/SPEC-TABLES.md
 			// 16.7): never a field this build lacks, always a construct it
 			// cannot honor. MALFORMED and refused, never counted as unknown.
 			in.report.Malformed = true
@@ -3057,7 +3057,7 @@ func tableJsonDecimalKey(text []byte, signed bool, width int) (uint64, bool) {
 
 // ---- json walk: end ----
 
-// TableEntityFromJson fills one TableEntity from a JSON text (docs/SPEC-TABLES.md §16).
+// TableEntityFromJson fills one TableEntity from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
 // A nil report is allowed; every tolerance event still decides the same way.
 func TableEntityFromJson(value *TableEntity, text []byte, report *TableReport) bool {
 	return tableJsonRead(unsafe.Pointer(value), TableEntityTableType(), text, report)
@@ -3074,7 +3074,7 @@ func TableEntityToJson(value *TableEntity, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), TableEntityTableType(), buffer)
 }
 
-// TableStatFromJson fills one TableStat from a JSON text (docs/SPEC-TABLES.md §16).
+// TableStatFromJson fills one TableStat from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
 // A nil report is allowed; every tolerance event still decides the same way.
 func TableStatFromJson(value *TableStat, text []byte, report *TableReport) bool {
 	return tableJsonRead(unsafe.Pointer(value), TableStatTableType(), text, report)
@@ -3091,7 +3091,7 @@ func TableStatToJson(value *TableStat, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), TableStatTableType(), buffer)
 }
 
-// TableMixedFromJson fills one TableMixed from a JSON text (docs/SPEC-TABLES.md §16).
+// TableMixedFromJson fills one TableMixed from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
 // A nil report is allowed; every tolerance event still decides the same way.
 func TableMixedFromJson(value *TableMixed, text []byte, report *TableReport) bool {
 	return tableJsonRead(unsafe.Pointer(value), TableMixedTableType(), text, report)
@@ -3108,7 +3108,7 @@ func TableMixedToJson(value *TableMixed, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), TableMixedTableType(), buffer)
 }
 
-// TableHitEventFromJson fills one TableHitEvent from a JSON text (docs/SPEC-TABLES.md §16).
+// TableHitEventFromJson fills one TableHitEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
 // A nil report is allowed; every tolerance event still decides the same way.
 func TableHitEventFromJson(value *TableHitEvent, text []byte, report *TableReport) bool {
 	return tableJsonRead(unsafe.Pointer(value), TableHitEventTableType(), text, report)
@@ -3125,7 +3125,7 @@ func TableHitEventToJson(value *TableHitEvent, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), TableHitEventTableType(), buffer)
 }
 
-// TableChatEventFromJson fills one TableChatEvent from a JSON text (docs/SPEC-TABLES.md §16).
+// TableChatEventFromJson fills one TableChatEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
 // A nil report is allowed; every tolerance event still decides the same way.
 func TableChatEventFromJson(value *TableChatEvent, text []byte, report *TableReport) bool {
 	return tableJsonRead(unsafe.Pointer(value), TableChatEventTableType(), text, report)
@@ -3142,7 +3142,7 @@ func TableChatEventToJson(value *TableChatEvent, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), TableChatEventTableType(), buffer)
 }
 
-// TablePickupEventFromJson fills one TablePickupEvent from a JSON text (docs/SPEC-TABLES.md §16).
+// TablePickupEventFromJson fills one TablePickupEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
 // A nil report is allowed; every tolerance event still decides the same way.
 func TablePickupEventFromJson(value *TablePickupEvent, text []byte, report *TableReport) bool {
 	return tableJsonRead(unsafe.Pointer(value), TablePickupEventTableType(), text, report)
