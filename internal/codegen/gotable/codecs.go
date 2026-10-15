@@ -834,3 +834,79 @@ func (g *tableGen) emitUnionArms() {
 	}
 	g.pf("}\n")
 }
+
+// scalarBound is one declared bound of a scalar: cond is the Go condition that
+// is true when the value is OUTSIDE it, and set is the value a READER clamps
+// it to. A WRITER holds the same bound by refusing instead
+// (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/USAGE.md "Writes are the caller's
+// responsibility"): the read side and the write side are generated from this
+// one list, so they cannot drift apart.
+type scalarBound struct{ cond, set string }
+
+// scalarRangeBounds is a field's declared min and max over its Go storage
+// expression expr: a float's range, an integer's range with the ends the
+// storage width could never violate dropped (tableClampEnds). It is empty
+// for a scalar with no range.
+func scalarRangeBounds(f *ir.Field, expr string) []scalarBound {
+	switch {
+	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
+		lo, hi := formatFloat32(f.FMin), formatFloat32(f.FMax)
+		return []scalarBound{{expr + " < " + lo, lo}, {expr + " > " + hi, hi}}
+	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
+		lo, hi := formatFloat64(f.FMin), formatFloat64(f.FMax)
+		return []scalarBound{{expr + " < " + lo, lo}, {expr + " > " + hi, hi}}
+	case f.Type.Kind == ir.TNamed:
+		return nil
+	}
+	rlo, rhi, ok := ir.TableRawRange(f)
+	if !ok {
+		return nil
+	}
+	width := int(ir.TableFixedStorageBytes(f.Type))
+	signed := ir.TableKindSigned(ir.TableScalarKind(f))
+	low, high := tableClampEnds(f, width)
+	var out []scalarBound
+	if width == 16 {
+		lo, hi := wideLiteral(rlo, signed), wideLiteral(rhi, signed)
+		if low {
+			out = append(out, scalarBound{expr + ".Cmp(" + lo + ") < 0", lo})
+		}
+		if high {
+			out = append(out, scalarBound{expr + ".Cmp(" + hi + ") > 0", hi})
+		}
+		return out
+	}
+	lo, hi := goIntLit(rlo, signed, width), goIntLit(rhi, signed, width)
+	if low {
+		out = append(out, scalarBound{expr + " < " + lo, lo})
+	}
+	if high {
+		out = append(out, scalarBound{expr + " > " + hi, hi})
+	}
+	return out
+}
+
+// scalarWidthBound is a bits(N) field's own width: the Go storage is the next
+// integer up, and a value with a bit set past N is a value the declaration
+// cannot hold.
+func scalarWidthBound(f *ir.Field, expr string) (scalarBound, bool) {
+	if f.Type.Kind != ir.TBits || int64(f.Type.Width) >= 8*ir.TableFixedStorageBytes(f.Type) {
+		return scalarBound{}, false
+	}
+	maxv := (uint64(1) << f.Type.Width) - 1
+	return scalarBound{fmt.Sprintf("%s > %d", expr, maxv), fmt.Sprint(maxv)}, true
+}
+
+// writeBoundViolation is the Go expression that is true when a scalar's value
+// is outside its declared min/max or its bits(N) width, and "" when nothing
+// bounds it. A writer refuses a value for which it is true; it never clamps.
+func writeBoundViolation(f *ir.Field, expr string) string {
+	var parts []string
+	for _, b := range scalarRangeBounds(f, expr) {
+		parts = append(parts, b.cond)
+	}
+	if b, ok := scalarWidthBound(f, expr); ok {
+		parts = append(parts, b.cond)
+	}
+	return strings.Join(parts, " || ")
+}

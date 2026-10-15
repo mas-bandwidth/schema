@@ -125,6 +125,16 @@ func (g *tableGen) emitArithMeasureField(f *ir.Field, cond, ind string) {
 		}
 		return
 	}
+	// A measure that rides the same contract as the save it sizes: MeasureReason
+	// must name the value Save would refuse (docs/USAGE.md "Writes are the
+	// caller's responsibility").
+	if viol := writeBoundViolation(f, expr); viol != "" {
+		if ride != "" {
+			g.pf("%sif (%s) && (%s) { return -1 }\n", ind, ride, viol)
+		} else {
+			g.pf("%sif %s { return -1 }\n", ind, viol)
+		}
+	}
 	width := ir.TableKindWidth(ir.TableWireScalarKind(f))
 	add := fmt.Sprintf("bytes += tableLebBytes(ids.refAtHit(%d, 0x%016x)) + 1 + %d", g.knownOrdinal(id), id, width)
 	if ride != "" {
@@ -305,11 +315,18 @@ func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed b
 		g.emitPutLeb(ind+"\t", writer, "index")
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TString:
+		// THE WRITE-SIDE TEXT RULE (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/USAGE.md
+		// "Writes are the caller's responsibility"): the reader refuses text that
+		// is not well-formed UTF-8 or holds a NUL, so the writer refuses it too.
+		// The scan is over the USED bytes only, and the storage check above has
+		// already put Length inside 0..N.
+		g.pf("%sif !tableUtf8Valid(%s[:%sLength]) { return false }\n", ind, expr, expr)
 		if framed {
 			g.emitPutLeb(ind, writer, "uint64("+expr+"Length)")
 		}
 		g.pf("%s%s.Raw(%s[:%sLength])\n", ind, writer, expr, expr)
 	case f.Type.Kind == ir.TWString:
+		g.pf("%sif !tableUtf16UnitsValid(%s[:%sLength]) { return false }\n", ind, expr, expr)
 		if framed {
 			g.emitPutLeb(ind, writer, "uint64("+expr+"Length)*2")
 		}
@@ -534,6 +551,14 @@ func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {
 		}
 		g.pf("%sdefault: return false\n%s}\n", ind, ind)
 		return
+	}
+	// THE WRITE-SIDE BOUND (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/USAGE.md
+	// "Writes are the caller's responsibility"): a value off its declared
+	// min/max, or past its bits(N) width, is a value the reader clamps and
+	// counts. The writer refuses it instead; scalarBounds is the list both
+	// sides are generated from.
+	if viol := writeBoundViolation(f, expr); viol != "" {
+		g.pf("%sif %s { return false }\n", ind, viol)
 	}
 	kind := ir.TableWireScalarKind(f)
 	switch kind {
