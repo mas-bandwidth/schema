@@ -452,6 +452,13 @@ serialize_assert( value.health >= 0 && value.health <= MaxHealth );
 write_bits( stream, uint32_t( value.health ), 10 );
 ```
 
+On `uint8`, `uint16`, `uint32` and `uint64`, an omitted `min` is 0 when
+`max` is declared: `health uint32 | max = MaxHealth` has the same range,
+projection and protocol id as `health uint32 | min = 0, max = MaxHealth`.
+`min` alone is still refused on an unsigned integer; its storage maximum is
+not a declared bound. Signed integers require both bounds when ranged.
+`uint128` remains raw only, and `fixed`/`ufixed` require both bounds.
+
 A read outside the range **fails** — see
 [Reading untrusted data](#reading-untrusted-data).
 
