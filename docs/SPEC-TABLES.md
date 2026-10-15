@@ -7013,19 +7013,35 @@ HASH is the hash §3 puts at offset `8`:
 
 ```
 offset  0        form byte 3
-offsets 1 .. 7   reserved, zero — and a reader REFUSES a nonzero one, `malformed`
+offsets 1 .. 7   reserved, zero — and a reader REFUSES a nonzero one, `malformed`, `reserved_not_zero`
 offsets 8 .. 15  the LAYOUT HASH (u64 LE)
 offset  16       layout length (u32 LE), then the layout
                  records, back to back, to the end of the file
 ```
 
 **AND THE ORDER THE HEADER IS READ IN** (algorithm §5.3 steps 1 and 2): a file
-with NO FIRST BYTE is `malformed`; **then the form byte earns its name, BEFORE
-the file's length is measured** — a committed form-`1` file is ten bytes and a
-form-`2` batch three, so a reader that measured first would answer `malformed`
-for every real file of the two forms this section promises to name; then the
-twenty-byte minimum, `malformed`; then the seven reserved bytes, `malformed` if
-any is nonzero; and only then the layout's length and the hash.
+with NO FIRST BYTE is `malformed`, `truncated`; **then the form byte earns its
+name, BEFORE the file's length is measured** — a committed form-`1` file is ten
+bytes and a form-`2` batch three, so a reader that measured first would answer
+`malformed` for every real file of the two forms this section promises to name;
+then the twenty-byte minimum, `malformed`, `truncated`; then the seven reserved
+bytes, `malformed`, `reserved_not_zero`, if any is nonzero; and only then the
+layout's length and the hash.
+
+**EVERY ANSWER OF THE FIXED LOAD THAT IS NOT A COUNT HAS A NAME** (algorithm
+§5.3, DAMAGED). A refusal is `refused` plus its name; framing damage is
+`malformed` plus its name — `truncated` for a file that runs out (no first byte,
+under twenty bytes, a tail that is not a whole number of records) and
+`reserved_not_zero` for a reserved byte, the cook's own spellings (§7). The two
+answers are still never both set, and **the reason is never empty on a `-1`**: a
+caller that switches on the name sees every outcome. The fixed load's names are
+a closed set — `previous_form`, `message_form_as_file`, `newer_form`,
+`truncated`, `reserved_not_zero`, `layout_malformed`, `layout_newer`,
+`layout_unsupported`, `layout_record_too_large`, `plan_too_large`,
+`batch_too_large`, `no_layout`, `text_ill_formed` — and **a port exports one
+constant per name** and uses it at every site, so a caller matches the constant
+and not a literal it typed (Go: `TableFixedReasonLayoutNewer = "layout_newer"`
+and its twelve siblings; docs/USAGE.md lists them).
 
 - **THE HEADER NAMES THE LAYOUT ONCE; A RECORD NAMES IT AGAIN.** The eight bytes
   at `8` are the hash of the layout behind them, and every record still carries
@@ -7049,8 +7065,8 @@ any is nonzero; and only then the layout's length and the hash.
   layout too — which is a byte this form does not spend until something reads it.
 - **THE RECORDS FILL THE REST OF THE FILE and there is no count.** A reader
   knows the record size from the layout, so the count is arithmetic; **BYTES
-  LEFT OVER ARE `malformed`**, which is §3's rule for the same reason, that the
-  two ends of the file have met.
+  LEFT OVER ARE `malformed`**, named `truncated`, which is §3's rule for the
+  same reason, that the two ends of the file have met.
 - **A ONE-RECORD FILE PAYS FOR THE WHOLE LAYOUT**, and that is stated rather
   than hidden: this form is for many records of one small type, which is what
   the owner said it was for — *"effectively, fixed tables should only be used
