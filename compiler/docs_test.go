@@ -42,7 +42,7 @@ var docExamples = []docExample{
 	{"../docs/USAGE.md", "table OpenDocument", 1},                     // messages: a union whose arms are tables
 	{"../docs/USAGE.md", "table Node", 1},                             // pointers
 	{"../docs/USAGE.md", "table Config", 1},                           // Tables from Go: the variable class, one unit
-	{"../docs/USAGE.md", "fixed table Marker", 1},                    // Tables from Go: the fixed class, its own unit
+	{"../docs/USAGE.md", "fixed table Marker", 1},                     // Tables from Go: the fixed class, its own unit
 }
 
 func TestDocExamplesParse(t *testing.T) {
