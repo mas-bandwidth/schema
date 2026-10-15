@@ -11182,22 +11182,26 @@ the surfaces the list names. The surfaces and the files they own:
 
 - `wire` — `<Base>Table.go`, the table-wire codecs and the reflection
   descriptors. For a unit with tables it is the floor: every other surface
-  reads or writes through it.
+  reads or writes through it. It carries the text-walk helpers' call sites, so
+  it also requires `json`.
 - `fixed` — the fixed-form reader (docs/FIXED-FORM-ALGORITHM.md), carried in
   the table file's runtime. Depends on `wire`.
-- `json` — `<Base>TableJson.go`, the text form (§16). Depends on `wire`.
-- `cook` — `<Base>Cook.go`, the cook accelerator (§7). Depends on `wire`.
+- `json` — `<Base>TableJson.go`, the text form (§16) and the walk helpers
+  `wire` calls. Depends on `wire`.
+- `cook` — `<Base>Cook.go`, the cook accelerator (§7). The row types it walks
+  live in the block file, so it also requires `block`.
 - `block` — `<Base>Block.go`, the block accelerator (§19). Depends on `wire`.
-- `view` — the view file (§8.5). Depends on `wire` and `json`.
+- `view` — the view file (§8.5). Depends on `wire`.
 - `message` — the message form (§3.3), carried in the table file. Depends on
   `wire`.
 - `retain` — the retain member (§6), carried in the table file. Depends on
   `wire`.
 
 The default is all surfaces, byte-identical to listing them. Dependencies are
-resolved and never omitted, so `--surface json` also ships `wire`. The flag is
-the Go target's own: any other `--lang` refuses `--surface` by name. A surface
-a unit cannot carry (for example `block` or `cook` on a unit with no block) is
+resolved and never omitted, so `--surface json` also ships `wire`, and
+`--surface cook` also ships `block`, `wire` and `json`. The flag is the Go
+target's own: any other `--lang` refuses `--surface` by name. A surface a unit
+cannot carry (for example `block` or `cook` on a unit with no block) is
 silently empty, exactly as the default generation is today.
 
 ### 8.5 On the side

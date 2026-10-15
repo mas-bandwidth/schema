@@ -103,8 +103,8 @@ spells surfaces in any comma-separated order: `wire`, `fixed`, `json`,
 `cook`, `block`, `view`, `message`, `retain`. The default is all of them,
 byte-identical to emitting them all explicitly. `--surface` belongs to the Go
 target: any other `--lang` refuses the flag by name. Dependencies are resolved
-for you — for example `json` pulls in `wire` — and named in
-docs/SPEC-TABLES.md §8.4.
+for you — `json` pulls in `wire`, `cook` pulls in `block`, `wire` and `json` —
+and named in docs/SPEC-TABLES.md §8.4.
 
 ```
 schema generate --lang go --surface json,wire --out generated/go .
