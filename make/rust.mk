@@ -649,8 +649,8 @@ test-rust: tables-rust-block-build
 tables-rust-variable-arms:
 	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 \
 		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m \
-		-run 'TestMapsAndUnionArmsOnTheTableWireRust|TestOtherVariableConstructsAreRefusedByName' -v
-	@echo 'tables Rust variable arms: maps and union arms round-trip and the rest is refused by name'
+		-run 'TestMapsAndUnionArmsOnTheTableWireRust|TestOtherVariableConstructsAreRefusedByName|TestWideTextOnTheTableWireRust' -v
+	@echo 'tables Rust variable arms: maps, union arms and wstring(N) round-trip and the rest is refused by name'
 
 test-rust: tables-rust-variable-arms
 
