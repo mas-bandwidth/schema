@@ -3571,6 +3571,42 @@ the tree and compares byte for byte, and compiles each of those units with the
 check on.
 
 
+### 2.11 Timestamps: `opened_at timestamp`
+
+```
+fixed table Session
+{
+    opened_at   timestamp
+    closed_at   timestamp
+}
+```
+
+**A `timestamp` field is a count of NANOSECONDS SINCE THE UNIX EPOCH in a
+64-bit signed cell, and `0` is the zero time** — `1970-01-01T00:00:00Z` —
+which is what §4's zero initialization gives every fresh value, so the
+construct takes no default and no attribute (SPEC.md §4.13). It is the
+convention every adopter was writing by hand, made a kind: one spelling, one
+range rule, one text form.
+
+It is a FIELD TYPE in a table body, bare, and it belongs to both classes: a
+`fixed table` holds one at an eight-byte slot (§3.4) and a variable table
+holds one under its own wire kind `35` (§3). It is NOT a packet construct in
+this major — a `timestamp` in a packet `type` is refused by name, the
+diagnostic saying the table wire carries it and the packet wire does not yet
+(SPEC.md §4.13) — and it is not a `const` type either.
+
+**Its kind is its own and it widens into nothing.** A field respelled between
+`int64` and `timestamp` is a kind mismatch, skipped and counted in both
+directions (§4), and the widening family is closed to the pair: refused, by
+name, until it is ruled. What the kind buys over the bare `int64` is exactly
+that refusal, plus the value a target holds — `time.Time` in Go, read back in
+UTC, with a write of a value outside `Time.UnixNano`'s domain refused by name
+rather than wrapped — and its text form, an RFC 3339 string (§16.2).
+
+**GO CARRIES IT FIRST.** Every other target refuses the construct by name,
+naming the construct, the target and that Go carries it first (§11); no other
+emitter is edited until its own card.
+
 ## 3. The wire
 
 **The wire is neutral.** It carries none of schema's packing opinions, no
@@ -3716,7 +3752,7 @@ i8, `3` i16, `4` i32, `5` i64, `6` u8, `7` u16, `8` u32, `9` u64, `10` f32,
 `11` f64, `12` string, `13` table, `14` array, `15` union, `16` enum-keyed
 array, `17` pointer index, `18` i128, `19` u128, `20`–`24`
 fixed8/16/32/64/128, `25`–`29` ufixed8/16/32/64/128, `30` enum, `31` escape,
-`32` no payload, `33` wstring.
+`32` no payload, `33` wstring, `35` timestamp.
 
 **`34` IS RESERVED BY NAME FOR `float16`, AND THE RESERVATION IS OF THE NAME
 AND NOTHING ELSE** (SPEC.md §4.10). It is not part of this major's set, no
@@ -3728,7 +3764,7 @@ later-major writer that wants this major to survive its file carries the new
 kind under the ESCAPE KIND `31`** (#434), which is what the escape is for, so
 a reader of this major skips it by its `L` and counts it `unknown`. **A
 reader of this major therefore meets `34` only as DAMAGE** — a kind it cannot
-skip, exactly as it meets `35` or `200` — and that is the correct answer,
+skip, exactly as it meets `36` or `200` — and that is the correct answer,
 because a bare `34` on the wire is a writer that ignored the escape rather
 than a value this reader was ever meant to read. Reserving a number costs no
 byte and no rule, and it keeps the kind table and the declined-construct list
@@ -3755,6 +3791,7 @@ one document rather than two.
   | `31` escape | `L`, then `L` bytes, opaque |
   | `32` no payload | `L`, then `L` bytes, and this form writes `L = 0` |
   | `33` wstring | `L`, then `L` bytes, which are `L / 2` UTF-16 code units, each two bytes little-endian, SURROGATES PAIRED and no zero unit among them. An ODD `L` is malformed, and so is ill-formed content (below). No terminator |
+  | `35` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch, counted, never reinterpreted, and NEITHER SPELLING WIDENS INTO THE OTHER (§4). Every count is a legal value — the wire has no range to check — and what a target refuses is a value its own time type cannot hold, on WRITE, by name (SPEC.md §4.13) |
 
   **A FLOAT RIDES AS ITS IEEE-754 BIT PATTERN, WITH NO CANONICALISATION**
   (SPEC.md §4.3). Kind `10` is the four bytes the field holds and kind `11`
@@ -6754,6 +6791,7 @@ VALUE.**
   |---|---|
   | `bool` | 1 |
   | `int8`/`uint8` … `int64`/`uint64` | 1, 2, 4, 8 — the declared storage width |
+  | `timestamp` | 8 — the nanosecond count at its natural alignment, the `int64` slot's own shape, so a record holding one is laid out as one holding an `i64` is and the identity plan's entry is a `copy` (SPEC.md §4.13) |
   | `bits(N)` | the declared storage width, 4 for `N <= 32` and 8 above |
   | a RANGED integer | its own storage width; the bounds do not ride and clamp on load, as they do in §3 |
   | `float32`, `float64` | 4, 8 — the IEEE-754 bit pattern, with no canonicalisation (§3) |
@@ -13765,6 +13803,7 @@ Per kind:
 | `string(N)` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted |
 | `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), so one there was built in code, and §16.3 writes it as `U+FFFD` |
 | `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted |
+| `timestamp` | string, RFC 3339 with nanoseconds | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any RFC 3339 spelling of the same instant, an offset included, which lands as its UTC nanosecond count. **A string that does not parse as RFC 3339 is REFUSED BY NAME**, naming the field, the field left at the zero time, and so is a NUMBER token: the spelling is the string and nothing else, so a file handing the raw count gets a diagnostic and not a silent value (SPEC.md §4.13) |
 | enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted |
 | flags | array of variant names | `["Shielded", "Turbo"]`; an empty mask writes as `[]`; an unknown name is skipped, counted |
 | `[N]T` fixed array | array | fewer elements pad with defaults; more are dropped, counted |
