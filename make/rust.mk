@@ -367,7 +367,7 @@ tables-rust-fixedform: build/tables-generated-rust/.stamp build/fixedform-corpus
 .PHONY: tables-rust-versioning
 tables-rust-versioning: tables-fixedform-corpus
 	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 \
-		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestFixedVersioning'
+		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestFixedVersioning|TestFixedRoadmapRustT12FramingText'
 	@echo 'tables Rust versioning: §5 read both columns of every row against the C++ reference bytes'
 
 build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust/src/main.rs test/conformance/rust/Cargo.toml
