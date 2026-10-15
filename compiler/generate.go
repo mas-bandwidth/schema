@@ -15,6 +15,38 @@ import (
 // a value it knows but cannot honor is an error, never a silent fallback.
 type Options map[string]string
 
+// SurfaceKey is the Options key the Go --surface flag sets. The value is a
+// comma-separated list of surface names; empty or absent means all.
+const SurfaceKey = "surface"
+
+// GoSurfaces parses the --surface option for the Go target into a set, and
+// resolves the inter-surface dependencies a caller may not have named (for
+// example json needs wire). A nil or empty value yields nil, meaning every
+// surface.
+func GoSurfaces(opts Options) map[string]bool {
+	if opts == nil {
+		return nil
+	}
+	raw := opts[SurfaceKey]
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	out := map[string]bool{}
+	for _, s := range strings.Split(raw, ",") {
+		s = strings.TrimSpace(s)
+		if s != "" {
+			out[s] = true
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	if out["json"] || out["message"] || out["cook"] {
+		out["wire"] = true
+	}
+	return out
+}
+
 // A Generator emits one target language's source for a checked unit. The
 // nine built-in backends reach the driver through this interface and through no
 // other path, so a generator written outside this module is a first-class one:

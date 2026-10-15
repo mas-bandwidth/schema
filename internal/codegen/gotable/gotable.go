@@ -206,19 +206,37 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
 // every table then carries the one entry it can always compute: its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	return GenerateLineageSurface(u, lineage, nil)
+}
+
+// GenerateLineageSurface is GenerateLineage limited to the surfaces in the
+// given set (docs/SPEC-TABLES.md §8.4). A nil or empty set means every surface
+// and is byte-identical to GenerateLineage. The caller resolves dependencies
+// between surfaces before this is called.
+func GenerateLineageSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, surfaces map[string]bool) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
+	// want reports whether a surface is selected; an empty set selects all.
+	want := func(s string) bool {
+		return len(surfaces) == 0 || surfaces[s]
+	}
 	blocks := ir.Blocks(u)
-	out, err := generateBlockFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	out := map[string][]byte{}
+	if want("block") {
+		blockFiles, err := generateBlockFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, blockFiles)
 	}
-	cooks, err := generateCookFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	if want("cook") {
+		cooks, err := generateCookFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, cooks)
 	}
-	maps.Copy(out, cooks)
 
 	regional := len(variableTableNames(u)) > 0
 
@@ -302,8 +320,6 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			g.emitMessageRead(st)
 			if regional {
 				g.emitRegionMessage(st)
-			}
-			if regional {
 				g.emitRegionMember(st)
 				for _, f := range st.Fields {
 					if f.IsList() {
@@ -315,6 +331,11 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			}
 		}
 		g.emitFixedForm(members)
+		// The per-table reflection descriptors are a FOUNDATION: the json,
+		// view, cook and retain surfaces all address a table through its
+		// <Name>TableType() descriptor, so they are emitted whenever the table
+		// is, regardless of which surface selected the file. What the view
+		// SURFACE adds is the separate <Package>View.go file, not these rows.
 		if len(members) > 0 {
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----\n\n")
 			for _, st := range members {
@@ -345,17 +366,21 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
 	// descriptors, in its own file so a project that never reads or writes a
-	// text does not compile it
-	texts, err := generateJsonFiles(u, closure, home)
-	if err != nil {
-		return nil, err
+	// text does not compile it.
+	if want("json") {
+		texts, err := generateJsonFiles(u, closure, home)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, texts)
 	}
-	maps.Copy(out, texts)
-	view, err := generateViewFile(u, closure, armSlots)
-	if err != nil {
-		return nil, err
+	if want("view") {
+		view, err := generateViewFile(u, closure, armSlots)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, view)
 	}
-	maps.Copy(out, view)
 	return out, nil
 }
 
