@@ -2322,9 +2322,14 @@ func TestWideText(t *testing.T) {
 
 	// THE FORGE: a length legal in BYTES (16 == the whole span) but past the
 	// code-unit cap (8). A leg counting bytes admits it and lands 16; the unit
-	// cap clamps to 8 and counts exactly once.
+	// cap clamps to 8 and counts exactly once. The forged length makes units
+	// 5..7 live, so fill them with valid nonzero text: §3.4 checks used units
+	// and must not turn this clamp probe into a text_ill_formed refusal.
 	forged := append([]byte(nil), buf...)
 	f1 := forged[len(forged)-rec+8:]
+	for i := 5; i < 8; i++ {
+		binary.LittleEndian.PutUint16(f1[wide.Src+4+uint32(i*2):], 0x78)
+	}
 	binary.LittleEndian.PutUint32(f1[wide.Src:], 16)
 	got = make([]FxWide, 2)
 	rep = TableReport{}

@@ -577,6 +577,21 @@ the build, and a lineage entry that would not fit `plan_too_large` is retired ra
 same cut in both directions — `layout_unsupported` at run time, no plan at build time — and it is why retiring
 an entry is the operator's remedy for a plan the cap will not take.
 
+**AND THE CAPACITY A CALLER WOULD GUESS IS EXPORTED INSTEAD** (§5.9 #5 and #45 keep the refusal; this rule
+removes the guess). LOAD's `plan` argument stays a capacity check — the selected plan whose entry count exceeds
+`len(plan)` refuses `plan_too_large`, on the identity lane exactly as on a lineage lane — but the size the
+lineage needs is the BUILD's number, not each adopter's: the generated code exports **`<T>FixedPlanMax`**, the
+largest entry count over the identity plan and every lineage plan COMPILE laid down. **A plan slice of that
+length never refuses `plan_too_large` for a layout the lineage holds**, and one entry fewer refuses the largest
+plan's layout by that same name — the export is the exact maximum, not a ceiling with slack in it. The number is
+the maximum over the BUILT plans: a leg whose identity plan coalesces against the target's own struct offsets
+(Go, at package initialization) computes the maximum from the built plans there, and a leg that builds its plans
+at generate time emits the literal it computed. A RETIRED entry's plan is never built, so it contributes nothing
+to the maximum — the same cut the plan-cap row above makes. The Go pin is
+`TestFixedPlanMaxCoversEveryLineagePlan` (`internal/codegen/gotable/fixedplanmax_test.go`): a lineage of two
+locked layouts whose OLDER plan is the larger, loaded whole at `<T>FixedPlanMax` and refused `plan_too_large`
+one entry under it.
+
 **The floor is one number and the lineage is one array**, so "retired" is an index cut and the operator's two
 answers stay distinct: below the floor is `layout_unsupported` (upgrade the client), outside the lineage is
 `layout_newer` (ship the reader). A retired entry stays in the lineage forever.

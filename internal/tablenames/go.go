@@ -381,6 +381,11 @@ func init() {
 		Name{Name: "tableFixedNoGuard", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedEntryBytes", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedPlan", What: "the fixed form (form 3)"},
+		// <T>FixedPlanMax (docs/FIXED-FORM-ALGORITHM.md §5.2): the generated
+		// export, claimed under the template spelling the page writes. A plan
+		// slice of this length never refuses plan_too_large for a layout the
+		// lineage holds. The Go scan's fixture declares it as fixed table T.
+		Name{Name: "TFixedPlanMax", What: "the fixed form: <T>FixedPlanMax, the largest entry count over the identity plan and every lineage plan (§5.2)"},
 		Name{Name: "tableFixedWidens", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedSignedKind", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedKindKnown", What: "the fixed form (form 3)"},

@@ -3512,6 +3512,202 @@ and names any hidden non-JSON file the walk passed over.
 calling generated code — the compiler is a Go program — so the tree carries a
 second implementation of the same wire, held to the backends by goldens.
 
+### Tables from Go
+
+The Go recipe in one place: pin the compiler, generate, wire the module, and
+save and load each class. Every Go block below is a complete test body — the
+repository compiles and runs each one against the schema block beside it
+(`TestUsageGoTablesRecipeRuns`), so a block pasted into a `_test.go` next to
+the generated files runs as printed.
+
+**Pin the compiler in a `go:generate` line**, in a Go file of the package
+that owns the schema:
+
+```
+//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@v2.5.0 generate --lang go --out .
+```
+
+`go run` with an `@version` suffix resolves the package from the module
+cache, outside your module's build list: the directive adds no line to
+`go.mod`, needs no `require` and no `replace`, and runs unchanged under
+`-mod=readonly`. The tag IS the pin — every machine that runs `go generate`
+compiles with the same compiler, and moving the pin is editing the one line.
+`v2.5.0` is the newest tag at this writing.
+
+**A unit that declares only tables needs no dependency.** The generated Go
+imports the standard library alone, so the files drop into any Go module
+with nothing added to its `go.mod`. The one exception is the 128-bit widths:
+a field of `int128`, `uint128` or a 128-bit `fixed`/`ufixed` stores in the
+generated code as `serialize.Int128`/`serialize.Uint128`, so the unit imports
+`github.com/mas-bandwidth/serialize.go` — and then the module carries the
+one dependency, resolved at a tagged version with NO `replace`:
+
+```
+require github.com/mas-bandwidth/serialize.go <tag>
+```
+
+**The two classes are two units.** A variable table — a `table`, pointers
+and all — rides the id-table wire through a builder and its arena; a fixed
+table is a positional image at declared storage widths, written and read by
+one layout hash. A unit that declares any variable table is generated
+regionally, and a regional unit emits no fixed-form surface at all: its
+`fixed table`s keep the variable wire's entry points and never grow
+`FixedSave`/`FixedLoad`. So adopt one class per unit; each recipe below
+carries its own declaration.
+
+The variable class, one unit. The builder owns the arena, the caller owns
+every byte:
+
+```
+package demo
+
+table Config
+{
+    name   string(32)
+    volume int32 = 7 | min = 0, max = 11
+}
+```
+
+```go
+package demo
+
+import "testing"
+
+func TestConfigRoundTrip(t *testing.T) {
+	var source ConfigBuilder
+	if !source.Init() { // the builder owns its arena; Init refuses a failed allocation
+		t.Fatal("builder allocation failed")
+	}
+	defer source.Shutdown()
+	source.GetRoot().Volume = 9
+
+	size, err := ConfigMeasureReason(source.GetRoot(), &source.Arena)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire := make([]byte, size)
+	if ConfigSave(source.GetRoot(), wire, &source.Arena) != size {
+		t.Fatal("save failed")
+	}
+
+	var loaded ConfigBuilder
+	if !loaded.Init() {
+		t.Fatal("builder allocation failed")
+	}
+	defer loaded.Shutdown()
+	var report TableReport
+	if !ConfigLoadBuilder(&loaded, wire, &report) || report.Malformed {
+		t.Fatalf("load failed: %+v", report)
+	}
+	if !loaded.Lock() { // packs the region; GetRoot answers nil from here
+		t.Fatal("packing failed")
+	}
+	if loaded.AsConst().Volume != 9 {
+		t.Fatal("round trip changed the value")
+	}
+	// The report is the permissive contract's ledger: silence — all zero —
+	// means the data matched this reader's schema exactly.
+	if report != (TableReport{}) {
+		t.Fatalf("a same-build read must be silent: %+v", report)
+	}
+}
+```
+
+Every tolerance event lands in that report — `Unknown` for a field this
+build does not name, `Widened` for a compatible wider kind, `KindMismatch`
+for a known id whose kind changed, `Clamped` for an out-of-range value — and
+`Malformed` for framing damage, which keeps what it decoded and reads on
+past the damaged level. Nothing on this path allocates, and `Shutdown` is
+yours to call: stop readers and workers first. A read that wants no builder
+hands `ConfigLoad` a region — sized by `ConfigLoadMeasure(wire)` — and gets
+the value back as a pointer into it.
+
+The fixed class, its own unit. The same declaration also carries the
+variable wire's entry points — `MarkerMeasure`, `MarkerSave`, `MarkerLoad`,
+the tolerant form-1 codec with the same report — but the fixed form is the
+positional one, and each entry point refuses the other's byte by name:
+
+```
+package demo
+
+fixed table Marker
+{
+    x   int32
+    y   int32
+    tag string(8)
+}
+```
+
+```go
+package demo
+
+import "testing"
+
+func TestMarkerFixedRoundTrip(t *testing.T) {
+	values := []Marker{{X: 4242, Y: -7}}
+	copy(values[0].Tag[:], "hi")
+	values[0].TagLength = 2
+
+	need := MarkerFixedMeasure(int64(len(values)))
+	buf := make([]byte, need)
+	if n := MarkerFixedSave(values, buf); n != need {
+		t.Fatalf("save wrote %d of %d", n, need)
+	}
+
+	// The plan is caller-owned scratch — this codec never allocates — and
+	// the generated plan's own entry count is its size.
+	plan := make([]TableFixedEntry, MarkerFixedPlan.Count)
+	got := make([]Marker, len(values))
+	var report TableReport
+	if n := MarkerFixedLoad(got, buf, plan, &report); n != int64(len(values)) {
+		t.Fatalf("load: n=%d report=%+v", n, report)
+	}
+	if got[0] != values[0] {
+		t.Fatalf("round trip: %+v", got[0])
+	}
+
+	// The form byte names itself: the variable form's 1 is previous_form.
+	var form1 TableReport
+	if n := MarkerFixedLoad(got, []byte{1}, plan, &form1); n >= 0 ||
+		form1.Reason != "previous_form" || form1.Verdict != TableOpenRefused {
+		t.Fatalf("a form-1 byte must refuse by name: n=%d report=%+v", n, form1)
+	}
+}
+```
+
+The fixed form's refusals land in `TableReport.Reason`, each under its own
+name: `previous_form`, a form-1 file, the variable form this build is newer
+than; `message_form_as_file`, form 2, a form this build carries through
+another surface; `newer_form`, a form byte the registry has not assigned;
+`layout_newer`, a layout hash this build has never served, reported with the
+file's hash and nothing else; `layout_unsupported`, a layout this build once
+served and has retired; `layout_malformed`, a header that is not a layout, or
+a known hash whose layout bytes differ; `no_layout`, a record whose hash
+names nothing; `plan_too_large`, a plan slice smaller than the plan the load
+selected; `batch_too_large`, more records than the destination slice holds.
+Framing damage sets `Malformed` rather than a name.
+
+**Lock the unit before the first edit.** A fixed table's layout is a promise
+to every record already written: the generated `MarkerFixedKnown` holds
+every layout the lock has recorded, oldest first, and the floor below which
+a served layout was retired. `schema.lock` is the committed record — a unit
+with no lock promises nothing — and `schema lock` is the one command that
+writes it, refusing every edit the append-only rule refuses and accepting an
+append the moment it records it:
+
+```
+$ schema lock configs/          # writes schema.lock, beside the schema that promised
+$ git add configs/schema.lock   # the append lands in the same commit as the schema change
+```
+
+From then on `schema check` — and so `schema generate` — refuses an edit the
+lock has not recorded: a reorder, a removal, a widening, a kind change, a
+default or a range that moved. A field appended at the bottom, a variant or
+an arm appended at the end, and a `deprecated` marker are the append-only
+class; each is refused as STALE until `schema lock` writes it down. A rename
+with `was` moves nothing and is no change to catch up to, and `schema lock --retire Marker@0x<hash> --reason "…"` is the file's one non-append edit,
+read years later by whoever asks why.
+
 ---
 
 ## Embedding the compiler
@@ -3751,6 +3947,14 @@ Cook and block handles also provide `Open(base, bytes) error`. A damaged file
 trailer returns `TableRefuseWireDamaged` (`wire_damaged`) from
 `LoadMeasureReason`; this is distinct from a format refusal and from the
 accelerator-only `truncated` reason.
+
+A fixed table's `<T>FixedLoad` still takes a plan slice, and a slice shorter
+than the selected plan refuses `plan_too_large`
+(docs/FIXED-FORM-ALGORITHM.md §5.2). The generated code exports
+`<T>FixedPlanMax`, the largest entry count over the identity plan and every
+lineage plan. A plan slice of that length never refuses `plan_too_large` for
+a layout the lineage holds; one entry fewer refuses the largest plan by that
+same name. Size the slice with `make([]TableFixedEntry, <T>FixedPlanMax)`.
 
 This complete example uses the `tables/pointers` generated package; `make
 tables-go-usage` runs it directly from this page.

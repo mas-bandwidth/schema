@@ -110,6 +110,10 @@ func TestTablesMoveNoGeneratedGoByte(t *testing.T) {
 // table rather than a union added to an existing one, because a union in a
 // closure keeps that table out of both accelerators (§19.3) and the scan below
 // has to see the block and cook halves too.
+//
+// fixed table T is the §5.2 template spelling: the generated export is
+// TFixedPlanMax, which internal/tablenames claims, and the reverse scan
+// requires that exact declaration (docs/FIXED-FORM-ALGORITHM.md §5.2).
 const goRuntimeSrc = runtimeSrc + `
 type Boost
 {
@@ -124,6 +128,11 @@ union Effect
 fixed table Effected
 {
     effect Effect
+}
+
+fixed table T
+{
+    n int32
 }
 `
 
