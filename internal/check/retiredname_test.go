@@ -207,12 +207,12 @@ table Config
 		// Re-adding retired table Bonus as an enum in the same unit scope.
 		mustRefuseDiskUnit(t, dir, `package p
 
-enum Bonus { None, Extra }
+enum Bonus { Small, Extra }
 
 table Config
 {
     heading int16
-    bonus   Bonus
+    bonus   Bonus = Small
 }
 `, "Bonus", "retired")
 

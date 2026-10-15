@@ -142,6 +142,10 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	if len(c.errs) > 0 {
 		return nil, c.errs
 	}
+	c.checkRetiredNames()
+	if len(c.errs) > 0 {
+		return nil, c.errs
+	}
 
 	// The id comes LAST, from the assembled unit: the projection describes the
 	// resolved wire, so it cannot be computed until every bound, every default
