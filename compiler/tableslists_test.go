@@ -53,8 +53,8 @@ func TestListsAreRefusedByNonCarriers(t *testing.T) {
 
 // TestListCarriers keeps the advertised targets in step with their codecs.
 func TestListCarriers(t *testing.T) {
-	if !slices.Equal(listTargets, []string{"c", "cpp", "cs", "elixir", "go"}) {
-		t.Fatalf("listTargets = %v, want [c cpp cs go]", listTargets)
+	if !slices.Equal(listTargets, []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "rust"}) {
+		t.Fatalf("listTargets = %v, want [c cpp cs dart elixir go java js rust]", listTargets)
 	}
 }
 
@@ -91,11 +91,11 @@ func TestListFieldsNamesWhatAnAuthorWrote(t *testing.T) {
 // TestListRefusalNamesTheCarrier: what a port's refusal says: the carrier,
 // the flag that generates, and the fields an author wrote.
 func TestListRefusalNamesTheCarrier(t *testing.T) {
-	err := refuseLists(unitFromSource(t, listSrc), "rust")
+	err := refuseLists(unitFromSource(t, listSrc), "zig")
 	if err == nil {
 		t.Fatalf("refuseLists accepted a list-bearing unit for a non-carrier")
 	}
-	for _, want := range []string{"a []T is c, cpp, cs, elixir and go only today", "Save.placements", "--lang cpp"} {
+	for _, want := range []string{"a []T is c, cpp, cs, dart, elixir, go, java, js and rust only today", "Save.placements", "--lang cpp"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the carrier-form refusal does not name %q: %v", want, err)
 		}
