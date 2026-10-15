@@ -37,6 +37,7 @@ slow-gate-coverage	./...	it MUST run plain: the accounting reads which tests ski
 # `make slow-gate-coverage` is the check that keeps that true.
 tables-go-block-fill-refuser	./internal/codegen/gotable	TestBlockFillRefuser reaches no slowtest.Gate (measured: 0 gate skips, PASS 0.03s under a plain go test); it emits and reads in-process
 tables-go-block-fill-refuser-negative-control	./internal/codegen/gotable	TestBlockFillRefuserNegativeControl reaches no slowtest.Gate (measured: 0 gate skips, PASS 0.02s under a plain go test)
+tables-go-runtime-home	./internal/codegen/gotable	TestSharedRuntimeHomeIsPackageNamed reaches no slowtest.Gate (measured: 0 gate skips, PASS 0.03s under a plain go test); it emits in-process and reads the generated source
 tables-dart-names-negative-control	./compiler	TestDartTableRuntimeNamesAreClaimed reaches no slowtest.Gate (measured: 0 gate skips, PASS 0.01s under a plain go test); it compares emitted source to internal/tablenames, no dart toolchain
 
 
