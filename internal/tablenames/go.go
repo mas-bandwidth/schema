@@ -205,6 +205,7 @@ func init() {
 		Name{Name: "tableRegionValueEdges", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableStringTypeId", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableUtf16Valid", What: "wide text conversion"},
+		Name{Name: "tableUtf16UnitsValid", What: "wide text: the writer's check of the caller's own UTF-16 units (docs/FIXED-FORM-ALGORITHM.md §3.1)"},
 		Name{Name: "tableUtf16Clamp", What: "wide text conversion"},
 		Name{Name: "tableJsonWriteWString", What: "wide text conversion"},
 		Name{Name: "tableJsonWriteStringBody", What: "wide text conversion"},
@@ -381,6 +382,11 @@ func init() {
 		Name{Name: "tableFixedNoGuard", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedEntryBytes", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedPlan", What: "the fixed form (form 3)"},
+		// The write-side text rule (docs/FIXED-FORM-ALGORITHM.md §3.1): the fixed
+		// form's refusal of ill-formed UTF-8 and NUL, the twin of the reader's.
+		Name{Name: "tableFixedUtf8Ok", What: "the fixed form (form 3): the writer's UTF-8 and no-NUL rule over a text field's used bytes"},
+		Name{Name: "tableFixedUtf8Rest", What: "the fixed form (form 3): the writer's UTF-8 and no-NUL rule over the bytes from the first non-ASCII byte on"},
+		Name{Name: "tableFixedUnitsIllFormed", What: "the fixed form (form 3): the writer's wstring rule, true when the used units are not paired UTF-16 or hold a zero unit"},
 		// <T>FixedPlanMax (docs/FIXED-FORM-ALGORITHM.md §5.2): the generated
 		// export, claimed under the template spelling the page writes. A plan
 		// slice of this length never refuses plan_too_large for a layout the
