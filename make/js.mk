@@ -78,7 +78,7 @@ generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .js + <Base>Table.js + the two accelerators' readers),
 # because a table's closure decodes into the packet emitter's own classes.
-build/tables-generated-js/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema
+build/tables-generated-js/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema
 	@mkdir -p build/tables-generated-js
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
 	# the POINTERED unit: its FIXED surface is refused by name for every
@@ -88,11 +88,7 @@ build/tables-generated-js/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	# reaches, which the conformance driver's wire surfaces answer.
 	./bin/schema generate --lang js --out build/tables-generated-js/pointers tables/pointers
 	# the BYTE-BUFFER unit (§2.5): *bytes and *string on the variable wire
-	# (BlobdemoVariable.js). tables/lists is NOT generated here: the compiler
-	# refuses the unit whole for js because Mixed holds an array of unions
-	# (compiler/target_javascript.go refuseUnionArrays, vt/union-arrays/js), so
-	# its rows answer absent and the lists corpus rides
-	# TestVariableClassBeyondCardConstructsJavaScript instead.
+	# (BlobdemoVariable.js).
 	./bin/schema generate --lang js --out build/tables-generated-js/blobs tables/blobs
 	./bin/schema generate --lang js --out build/tables-generated-js/block tables/block
 	./bin/schema generate --lang js --out build/tables-generated-js/blockhome tables/blockhome
@@ -104,6 +100,11 @@ build/tables-generated-js/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	./bin/schema generate --lang js --out build/tables-generated-js/r2 test/tables/R2.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/p1 test/tables/P1.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/p3 test/tables/P3.schema
+	./bin/schema generate --lang js --out build/tables-generated-js/messages tables/messages
+	./bin/schema generate --lang js --out build/tables-generated-js/m1 test/tables/M1.schema
+	./bin/schema generate --lang js --out build/tables-generated-js/m2 test/tables/M2.schema
+	./bin/schema generate --lang js --out build/tables-generated-js/stream tables/stream
+	./bin/schema generate --lang js --out build/tables-generated-js/scalars tables/scalars
 	# THE MESSAGE FORM's WIDE-VOCABULARY units (docs/SPEC-TABLES.md §3.3): the
 	# conformance driver's `message` surface AnnounceReads a connection's
 	# announcement, LoadMessages the form-2 batch against it and SaveMessages
@@ -542,6 +543,13 @@ tables-js-block-build:
 	@echo 'tables JS block build: the built extent is the Go builder own bytes, and this leg reader opens it'
 
 test-js: tables-js-block-build
+
+.PHONY: tables-js-cook-write-rows
+tables-js-cook-write-rows:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestCookWriteAnswersEveryCookWriteRowJavaScript$$'
+	@echo 'tables JS cook-write rows: every cook-write row in MANIFEST.txt matches the golden bytes in both byte orders'
+
+test-js: tables-js-cook-write-rows
 
 # THE VARIABLE CLASS BEYOND THE CARD CONSTRUCTS (docs/SPEC-TABLES.md §2.1, §2.5,
 # §2.9, §3, §3.1, §16.7): table pointers over the flat node table, tables nested

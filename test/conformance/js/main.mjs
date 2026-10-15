@@ -652,20 +652,31 @@ async function surfaceJsonWrite(lines, outDir) {
 // ---- the COOK WRITE surface (docs/SPEC-TABLES.md §7.6, §19.1)
 //
 // Measure, refuse a short buffer without writing, then cook both byte orders.
-// The rows this leg can answer are the variable roots whose wires it already
-// loads: graphdemo Scene and blobdemo Catalog. A fixed table's conformance
-// wire is form 1, and this leg's fixed reader is form 3 only (schema#516), so
-// those rows — and every construct the writer does not place yet — are
-// `<case>.absent` for both orders. A load that fails on a row this leg does
-// carry is a driver failure, not an absence.
+// Every cook-write row in the manifest loads through its unit's
+// <Package>Variable.js and writes through its CookMeasure / CookFrom verbs.
 const cookWriteRows = [
+  ["tabledemo", "RootConfig", "examples/TabledemoVariable.js"],
+  ["tabledemo", "ProfileConfig", "examples/TabledemoVariable.js"],
+  ["tabledemo", "LoadoutConfig", "examples/TabledemoVariable.js"],
+  ["tabledemo", "WideBlob", "examples/TabledemoVariable.js"],
+  ["tabledemo", "ArchiveConfig", "examples/TabledemoVariable.js"],
+  ["tabledemo", "KeyedConfig", "examples/TabledemoVariable.js"],
+  ["tblv1", "Cfg", "v1/Tblv1Variable.js"],
+  ["tblv2", "Cfg", "v2/Tblv2Variable.js"],
+  ["tblp1", "Chain", "p1/Tblp1Variable.js"],
+  ["tblp3", "Chain", "p3/Tblp3Variable.js"],
   ["graphdemo", "Scene", "pointers/GraphdemoVariable.js"],
+  ["messagedemo", "ToolMessage", "messages/MessagedemoVariable.js"],
+  ["tblm1", "Msg", "m1/Tblm1Variable.js"],
+  ["tblm2", "Msg", "m2/Tblm2Variable.js"],
+  ["streamdemo", "Feed", "stream/StreamdemoVariable.js"],
   ["blobdemo", "Catalog", "blobs/BlobdemoVariable.js"],
+  ["scalars", "SimState", "scalars/ScalardemoVariable.js"],
 ];
 
 function cookWriteAbsent(outDir, name) {
   writeFileSync(join(outDir, name + ".absent"),
-    "not answered on this leg: form-1 fixed wires (schema#516), optionals, keyed arrays, wide integers, messages, stream and scalars (docs/SPEC-TABLES.md §7.6)\n");
+    "not answered on this leg (docs/SPEC-TABLES.md §7.6)\n");
 }
 
 async function surfaceCookWrite(lines, outDir) {
