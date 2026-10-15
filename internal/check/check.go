@@ -2081,8 +2081,25 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 		return
 	}
 
+	// SPEC §4.6: an unsigned integer's omitted min is zero when max is
+	// declared. Normalize before the range checks and projection so both
+	// spellings carry the same bounds and symbolic expressions. uint128 is
+	// still raw-only and is refused below; fixed-point still needs both.
+	if isInt && !out.Type.Signed && hasMax && !hasMin {
+		byKey["min"] = &ast.Attr{
+			Key: "min", Pos: f.Pos,
+			Value: &ast.IntLit{Pos: f.Pos, Value: new(big.Int), Text: "0"},
+		}
+		hasMin = true
+	}
 	if hasMin != hasMax {
-		c.errf(f.Pos, "field %s: min without max (or vice versa) is a compile error (SPEC §4.6)", f.Name)
+		if hasMin && isInt && !out.Type.Signed {
+			c.errf(f.Pos, "field %s: min without max is a compile error — the unsigned storage maximum is not a declared bound; declare max (SPEC §4.6)", f.Name)
+		} else if hasMax && isInt && out.Type.Signed {
+			c.errf(f.Pos, "field %s: max without min is a compile error on a signed integer — declare both bounds (SPEC §4.6)", f.Name)
+		} else {
+			c.errf(f.Pos, "field %s: min without max (or vice versa) is a compile error (SPEC §4.6)", f.Name)
+		}
 		return
 	}
 	if hasMin && hasMax {
