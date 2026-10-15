@@ -1466,7 +1466,13 @@ const fixedRuntimeBody = `  @moduledoc """
             # WIDTH: a one-byte compare fires arm 1 on a foreign tag of 0x0101,
             # and an ordinal past 255 under a wider tag could never match at
             # all (§5.2, §7 fix 12).
-            acc = guarded(acc, guard ++ [{their_at, argw}], tag ++ [j + 1], {:const, aux_at, my_tag, k + 1})
+            acc =
+              guarded(
+                acc,
+                guard ++ [{their_at, argw}],
+                tag ++ [j + 1],
+                {:const, aux_at, my_tag, k + 1}
+              )
 
             compile_entry(
               theirs,
