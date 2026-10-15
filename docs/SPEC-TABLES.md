@@ -7013,19 +7013,23 @@ HASH is the hash §3 puts at offset `8`:
 
 ```
 offset  0        form byte 3
-offsets 1 .. 7   reserved, zero — and a reader REFUSES a nonzero one, `malformed`
+offsets 1 .. 7   reserved, zero — and a reader REFUSES a nonzero one, `malformed` and named `reserved_not_zero`
 offsets 8 .. 15  the LAYOUT HASH (u64 LE)
 offset  16       layout length (u32 LE), then the layout
                  records, back to back, to the end of the file
 ```
 
 **AND THE ORDER THE HEADER IS READ IN** (algorithm §5.3 steps 1 and 2): a file
-with NO FIRST BYTE is `malformed`; **then the form byte earns its name, BEFORE
-the file's length is measured** — a committed form-`1` file is ten bytes and a
-form-`2` batch three, so a reader that measured first would answer `malformed`
-for every real file of the two forms this section promises to name; then the
-twenty-byte minimum, `malformed`; then the seven reserved bytes, `malformed` if
-any is nonzero; and only then the layout's length and the hash.
+with NO FIRST BYTE is `malformed`, named `truncated`; **then the form byte earns
+its name, BEFORE the file's length is measured** — a committed form-`1` file is
+ten bytes and a form-`2` batch three, so a reader that measured first would
+answer `malformed` for every real file of the two forms this section promises to
+name; then the twenty-byte minimum, `malformed`, named `truncated`; then the
+seven reserved bytes, `malformed` — named `reserved_not_zero` — if any is
+nonzero; and only then the layout's length and the hash. **EVERY REFUSAL OF THE
+FIXED LOAD HAS A NAME**, and the framing-damage returns are named too, so a
+caller that switches on the reason sees them by name instead of a silent empty
+reason (§5.3's joint table).
 
 - **THE HEADER NAMES THE LAYOUT ONCE; A RECORD NAMES IT AGAIN.** The eight bytes
   at `8` are the hash of the layout behind them, and every record still carries
@@ -7048,9 +7052,9 @@ any is nonzero; and only then the layout's length and the hash.
   length and not a constant, and a form that wants MAPPED RECORDS will pad the
   layout too — which is a byte this form does not spend until something reads it.
 - **THE RECORDS FILL THE REST OF THE FILE and there is no count.** A reader
-  knows the record size from the layout, so the count is arithmetic; **BYTES
-  LEFT OVER ARE `malformed`**, which is §3's rule for the same reason, that the
-  two ends of the file have met.
+    knows the record size from the layout, so the count is arithmetic; **BYTES
+    LEFT OVER ARE `malformed`**, named `truncated`, which is §3's rule for the
+    same reason, that the two ends of the file have met.
 - **A ONE-RECORD FILE PAYS FOR THE WHOLE LAYOUT**, and that is stated rather
   than hidden: this form is for many records of one small type, which is what
   the owner said it was for — *"effectively, fixed tables should only be used
@@ -7156,9 +7160,9 @@ added moves it without anyone remembering to.
   whose header hash is known but whose layout bytes are not the lock's bytes for
   that hash is refused `layout_malformed`, which is what proves the header's
   eight bytes are READ and not merely written; a hash in no entry is
-  `layout_newer` (algorithm §5.3). **AND THE SEVEN RESERVED BYTES**: any of
-  offsets `1..7` nonzero is `malformed`, refused rather than ignored, which is
-  what keeps them spendable later.
+   `layout_newer` (algorithm §5.3). **AND THE SEVEN RESERVED BYTES**: any of
+   offsets `1..7` nonzero is `malformed`, named `reserved_not_zero`, refused
+   rather than ignored, which is what keeps them spendable later.
 - **THE FIRST BYTE, AT THE TOOL** (§3): `schema check` handed a saved file
   answers `FORM <n> <name>` before it says anything else about the file, or
   refuses the byte by name, over every row of the registry and over a file with
