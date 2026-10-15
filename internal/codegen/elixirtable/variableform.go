@@ -96,6 +96,38 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 		b.WriteString(tableDescriptor(u, st))
 	}
 	b.WriteString("  }\n")
+	b.WriteString("  # Union arms are field lines (docs/SPEC-TABLES.md §2.6, §3).\n")
+	b.WriteString("  @unions %{\n")
+	unionNames := make([]string, 0, len(u.Unions)+len(u.TableUnions))
+	for name := range u.Unions {
+		unionNames = append(unionNames, name)
+	}
+	for name := range u.TableUnions {
+		if _, exists := u.Unions[name]; !exists {
+			unionNames = append(unionNames, name)
+		}
+	}
+	sort.Strings(unionNames)
+	for _, name := range unionNames {
+		un := u.TableUnions[name]
+		if un == nil {
+			un = u.Unions[name]
+		}
+		fmt.Fprintf(&b, "    %q => %%{by_name: %%{\n", name)
+		for i, arm := range un.Variants {
+			if arm.F == nil {
+				fmt.Fprintf(&b, "      %q => %%{name: %q, id: 0x%016X, kind: 32, t: :void, default: nil},\n", arm.Name, arm.Name, ir.TableWireId(arm.WireName()))
+			} else {
+				fmt.Fprintf(&b, "      %q => %s", arm.Name, fieldDescriptor(u, arm.F, i, nil))
+			}
+		}
+		b.WriteString("    }, by_id: %{\n")
+		for _, arm := range un.Variants {
+			fmt.Fprintf(&b, "      0x%016X => %q,\n", ir.TableWireId(arm.WireName()), arm.Name)
+		}
+		b.WriteString("    }},\n")
+	}
+	b.WriteString("  }\n")
 	b.WriteString("  # the node table's type vocabulary (docs/SPEC-TABLES.md §3.1): the id a\n")
 	b.WriteString("  # record's type reference resolves to — a blob kind or a table name — so a\n")
 	b.WriteString("  # pointer names the node it points at.\n")
@@ -167,11 +199,8 @@ func uncarriedRootNames(u *ir.Unit) []string {
 // kind 14, so a root that reaches one answers an error instead of a wrong
 // body (§11).
 func reachesUncarried(st *ir.Struct, poison map[string]bool) bool {
-	if st.IsMapEntry() {
-		return true
-	}
 	for _, f := range st.Fields {
-		if f.IsMap() || f.KeyEnum != "" {
+		if f.KeyEnum != "" {
 			return true
 		}
 		if f.Type.Kind != ir.TNamed {
@@ -263,6 +292,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         :list ->
           collect_list_nodes(f, Map.get(value, f.name, []), acc)
 
+        :map ->
+          Enum.reduce(map_entries(f, Map.get(value, f.name, %{})), acc, fn entry, acc ->
+            collect_nodes(Map.fetch!(@tables, f.elem), entry, acc)
+          end)
+
         _ ->
           acc
       end
@@ -278,6 +312,21 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # identity is the type and the content (docs/SPEC-TABLES.md §3.1). An empty
   # *bytes and an empty *string are two nodes; the same bytes named twice are one.
   defp node_content({type_id, _kind, _ref, c}), do: {type_id, c}
+
+  # SPEC-TABLES §2.8: textual string keys compare bytewise, integer keys by
+  # numeric value. The entry table holds an ordinary key and value field.
+  defp map_entries(f, values) do
+    values
+    |> Enum.sort_by(fn {key, _value} -> map_sort_key(f, key) end)
+    |> Enum.map(fn {key, value} -> %{"key" => map_key_value(f, key), "value" => value} end)
+  end
+
+  defp map_sort_key(%{key_kind: 12}, key), do: key
+  defp map_sort_key(_f, key) when is_binary(key), do: String.to_integer(key)
+  defp map_sort_key(_f, key), do: key
+  defp map_key_value(%{key_kind: 12}, key), do: key
+  defp map_key_value(_f, key) when is_binary(key), do: String.to_integer(key)
+  defp map_key_value(_f, key), do: key
 
   # an unbounded array's elements are inline (kind 13) when they are tables and
   # nodes when they are pointers; scalar and string elements reach no node.
@@ -319,16 +368,28 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp emit_field(%{t: :list} = f, value, idx_map, ids, order, acc) do
-    case Map.get(value, f.name, []) do
-      [] ->
+    case Map.get(value, f.name, Map.get(f, :default)) do
+      nil ->
         {idx_map, ids, order, acc}
 
       elements ->
-        {ref, ids, order} = intern(ids, order, f.id)
-        {body, idx_map, ids, order} = save_list_elements(f, elements, idx_map, ids, order, [])
-        array = [<<f.elem_kind>>, leb_encode(length(elements)), body]
-        {idx_map, ids, order, [acc, leb_encode(ref), <<14>>, leb_encode(IO.iodata_length(array)), array]}
+        if elements == [] and not Map.get(f, :optional, false) do
+          {idx_map, ids, order, acc}
+        else
+          {ref, ids, order} = intern(ids, order, f.id)
+          {body, idx_map, ids, order} = save_list_elements(f, elements, idx_map, ids, order, [])
+          array = [<<f.elem_kind>>, leb_encode(length(elements)), body]
+          {idx_map, ids, order, [acc, leb_encode(ref), <<14>>, leb_encode(IO.iodata_length(array)), array]}
+        end
     end
+  end
+
+  defp emit_field(%{t: :map} = f, value, idx_map, ids, order, acc) do
+    # SPEC-TABLES §2.8: map storage is the same kind-14/element-13 framing
+    # as a list of entry tables, with ascending key order fixed by the writer.
+    entries = map_entries(f, Map.get(value, f.name, %{}))
+    list = %{f | t: :list}
+    emit_field(list, %{f.name => entries}, idx_map, ids, order, acc)
   end
 
   defp emit_field(%{t: :pointer} = f, value, idx_map, ids, order, acc) do
@@ -383,7 +444,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp emit_field(%{t: :enum} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if v == f.default do
+    if not emit_scalar?(f, v) do
       {idx_map, ids, order, acc}
     else
       vid = Map.fetch!(f.by_name, v)
@@ -396,7 +457,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp emit_field(%{t: :int} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if v == f.default do
+    if not emit_scalar?(f, v) do
       {idx_map, ids, order, acc}
     else
       {ref, ids, order} = intern(ids, order, f.id)
@@ -407,7 +468,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp emit_field(%{t: :float} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if v == f.default do
+    if not emit_scalar?(f, v) do
       {idx_map, ids, order, acc}
     else
       {ref, ids, order} = intern(ids, order, f.id)
@@ -418,7 +479,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp emit_field(%{t: :string} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if v == f.default do
+    if not emit_scalar?(f, v) do
       {idx_map, ids, order, acc}
     else
       {ref, ids, order} = intern(ids, order, f.id)
@@ -429,13 +490,18 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp emit_field(%{t: :bool} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if v == f.default do
+    if not emit_scalar?(f, v) do
       {idx_map, ids, order, acc}
     else
       {ref, ids, order} = intern(ids, order, f.id)
       {idx_map, ids, order, [acc, leb_encode(ref), <<1>>, <<1>>]}
     end
   end
+
+  # SPEC-TABLES §2.3: absence is the lack of a field line. A present optional
+  # must write even its zero/default value, while nil never becomes a payload.
+  defp emit_scalar?(%{optional: true}, v), do: v != nil
+  defp emit_scalar?(f, v), do: v != f.default
 
   defp save_list_elements(_f, [], idx_map, ids, order, acc), do: {acc, idx_map, ids, order}
 
@@ -483,8 +549,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {float_bytes(e, kind_width(kind)), ids, order}
   end
 
-  defp emit_element(%{elem_kind: kind} = f, e, _idx_map, ids, order) when kind in [2, 3, 4, 5, 6, 7, 8, 9] do
-    {int_bytes(e, kind_width(kind), kind < 6), ids, order}
+  defp emit_element(%{elem_kind: kind} = f, e, _idx_map, ids, order) when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] do
+    {int_bytes(e, kind_width(kind), kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24]), ids, order}
   end
 
   defp emit_element(_f, _e, _idx_map, ids, order), do: {<<>>, ids, order}
@@ -993,6 +1059,20 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {:cont, float_of(payload, f.width), report}
   end
 
+  defp read_payload(%{t: :map} = f, payload, nodes, ids, report) do
+    # SPEC-TABLES §2.8, §3: kind 14 contains framed entry tables. A map's
+    # public keys use their JSON spelling; its wire keys remain typed.
+    case read_payload(%{f | t: :list}, payload, nodes, ids, report) do
+      {:cont, entries, report} ->
+        values = Map.new(entries, fn entry ->
+          key = Map.get(entry, "key", "")
+          {if(is_binary(key), do: key, else: Integer.to_string(key)), Map.get(entry, "value")}
+        end)
+        {:cont, values, report}
+      other -> other
+    end
+  end
+
   defp read_payload(%{t: :list} = f, payload, nodes, ids, report) do
     case leb(payload) do
       {_len, arr} ->
@@ -1059,6 +1139,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp kind_width(9), do: 8
   defp kind_width(10), do: 4
   defp kind_width(11), do: 8
+  defp kind_width(kind) when kind in [20, 25], do: 1
+  defp kind_width(kind) when kind in [21, 26], do: 2
+  defp kind_width(kind) when kind in [22, 27], do: 4
+  defp kind_width(kind) when kind in [23, 28], do: 8
+  defp kind_width(kind) when kind in [18, 19, 24, 29], do: 16
   defp kind_width(_), do: 0
 
   # kind_widens? is the scalar ladder a list's element kind may climb
@@ -1178,9 +1263,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp read_list_elements(%{elem_kind: kind} = f, rest, n, nodes, ids, acc, report) when kind in [2, 3, 4, 5, 6, 7, 8, 9] do
+  defp read_list_elements(%{elem_kind: kind} = f, rest, n, nodes, ids, acc, report) when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] do
     w = kind_width(kind)
-    signed = kind < 6
+    signed = kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24]
 
     if byte_size(rest) >= w do
       <<raw::binary-size(w), after_sub::binary>> = rest
@@ -1350,10 +1435,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp int_bytes(v, 2, true), do: <<v::little-signed-16>>
   defp int_bytes(v, 4, true), do: <<v::little-signed-32>>
   defp int_bytes(v, 8, true), do: <<v::little-signed-64>>
+  defp int_bytes(v, 16, true), do: <<v::little-signed-128>>
   defp int_bytes(v, 1, false), do: <<v::little-unsigned-8>>
   defp int_bytes(v, 2, false), do: <<v::little-unsigned-16>>
   defp int_bytes(v, 4, false), do: <<v::little-unsigned-32>>
   defp int_bytes(v, 8, false), do: <<v::little-unsigned-64>>
+  defp int_bytes(v, 16, false), do: <<v::little-unsigned-128>>
 
   defp float_bytes(v, 4), do: <<v::little-float-32>>
   defp float_bytes(v, 8), do: <<v::little-float-64>>
@@ -1366,10 +1453,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp int_of(<<v::little-signed-16>>, 2, true), do: v
   defp int_of(<<v::little-signed-32>>, 4, true), do: v
   defp int_of(<<v::little-signed-64>>, 8, true), do: v
+  defp int_of(<<v::little-signed-128>>, 16, true), do: v
   defp int_of(<<v::little-unsigned-8>>, 1, false), do: v
   defp int_of(<<v::little-unsigned-16>>, 2, false), do: v
   defp int_of(<<v::little-unsigned-32>>, 4, false), do: v
   defp int_of(<<v::little-unsigned-64>>, 8, false), do: v
+  defp int_of(<<v::little-unsigned-128>>, 16, false), do: v
   defp int_of(_payload, _w, _signed), do: 0
 
   defp clamp_int(v, %{min: lo, max: _hi}, report) when v < lo,
@@ -1610,11 +1699,27 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_list_elem(%{elem_kind: 30}, nil, _depth), do: "\"None\""
   defp json_list_elem(%{elem_kind: 30}, e, _depth), do: ["\"", json_escape(e), "\""]
   defp json_list_elem(%{elem_kind: 1}, e, _depth), do: if(e, do: "true", else: "false")
-  defp json_list_elem(%{elem_kind: kind}, e, _depth) when kind in [2, 3, 4, 5, 6, 7, 8, 9], do: Integer.to_string(e)
+  defp json_list_elem(%{elem_kind: kind}, e, _depth) when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19], do: Integer.to_string(e)
+  defp json_list_elem(%{elem_kind: kind, elem_frac: frac}, e, _depth) when kind in 20..29, do: fixed_text(e, frac)
   defp json_list_elem(%{elem_kind: kind}, e, _depth) when kind in [10, 11], do: json_float(e)
   defp json_list_elem(_f, _e, _depth), do: "null"
 
+  defp json_field(%{optional: true}, nil, _depth), do: "null"
   defp json_field(%{t: :string}, v, _depth), do: ["\"", json_escape(v), "\""]
+  defp json_field(%{t: :map} = f, values, depth) do
+    value_field = Map.fetch!(@tables, f.elem).fields |> Enum.at(1)
+    pairs = map_entries(f, values)
+    if pairs == [] do
+      "{}"
+    else
+      ["{", Enum.intersperse(Enum.map(pairs, fn entry ->
+        key = entry["key"]
+        key_text = if is_binary(key), do: key, else: Integer.to_string(key)
+        ["\n", indent(depth + 1), "\"", json_escape(key_text), "\": ",
+         json_field(value_field, entry["value"], depth + 1)]
+      end), ","), "\n", indent(depth), "}"]
+    end
+  end
   defp json_field(%{t: :table} = f, v, depth), do: json_object(Map.fetch!(@tables, f.elem), v || %{}, depth)
   defp json_field(%{t: :pointer} = _f, nil, _depth), do: "null"
   defp json_field(%{t: :pointer} = f, v, depth), do: json_node(f.elem, v, depth)
@@ -1624,6 +1729,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_field(%{t: :bytes}, v, _depth), do: ["\"", Base.encode64(v), "\""]
   defp json_field(%{t: :enum}, nil, _depth), do: "\"None\""
   defp json_field(%{t: :enum}, name, _depth), do: ["\"", json_escape(name), "\""]
+  defp json_field(%{t: :int, frac: frac}, v, _depth), do: fixed_text(v, frac)
   defp json_field(%{t: :int}, v, _depth), do: Integer.to_string(v)
   defp json_field(%{t: :float}, v, _depth), do: json_float(v)
   defp json_field(%{t: :bool}, v, _depth), do: if(v, do: "true", else: "false")
@@ -1633,6 +1739,24 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_float(v) do
     s = Float.to_string(v)
     if String.contains?(s, "."), do: String.trim_trailing(String.trim_trailing(s, "0"), "."), else: s
+  end
+
+  # Exact decimal spelling of a fixed raw integer (SPEC-TABLES §3, §4.12).
+  # Elixir integers carry all 128 bits, so each base-ten digit is a remainder
+  # of the dyadic fraction and no floating-point rounding enters the text.
+  defp fixed_text(raw, frac) do
+    scale = 1 <<< frac
+    magnitude = abs(raw)
+    sign = if raw < 0, do: "-", else: ""
+    sign <> Integer.to_string(div(magnitude, scale)) <> "." <>
+      fixed_digits(rem(magnitude, scale), scale, [])
+  end
+
+  defp fixed_digits(0, _scale, []), do: "0"
+  defp fixed_digits(0, _scale, acc), do: acc |> Enum.reverse() |> IO.iodata_to_binary()
+  defp fixed_digits(remain, scale, acc) do
+    ten = remain * 10
+    fixed_digits(rem(ten, scale), scale, [<<div(ten, scale) + ?0>> | acc])
   end
 
   # json_escape spells one string's bytes the way RFC 8259 requires, so a text
@@ -1692,6 +1816,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {value, %{report | unknown: report.unknown + unknown}}
   end
 
+  defp json_read_field(%{optional: true}, nil, report), do: {nil, report}
+
   defp json_read_field(%{t: :string} = f, raw, report) when is_binary(raw) do
     if byte_size(raw) > f.size do
       {binary_part(raw, 0, f.size), %{report | clamped: report.clamped + 1}}
@@ -1719,6 +1845,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp json_read_field(%{t: :enum}, _raw, report),
     do: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+  defp json_read_field(%{t: :int, frac: frac} = f, raw, report) do
+    case fixed_raw(raw, frac) do
+      {:ok, v} -> clamp_int(v, f, report)
+      :error -> {0, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
 
   defp json_read_field(%{t: :int} = f, raw, report) when is_integer(raw) do
     {v, report} = clamp_int(raw, f, report)
@@ -1767,6 +1900,17 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {v, merge_report(report, elem_report)}
   end
 
+  defp json_read_field(%{t: :map} = f, raw, report) when is_map(raw) do
+    value_field = Map.fetch!(@tables, f.elem).fields |> Enum.at(1)
+    Enum.reduce(raw, {%{}, report}, fn {key, input}, {acc, report} ->
+      {value, report} = json_read_field(value_field, input, report)
+      {Map.put(acc, key, value), report}
+    end)
+  end
+
+  defp json_read_field(%{t: :map}, _raw, report),
+    do: {%{}, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
   defp json_read_field(%{t: :table}, _raw, report),
     do: {%{}, %{report | kind_mismatch: report.kind_mismatch + 1}}
 
@@ -1778,6 +1922,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp json_read_field(%{t: :pointer}, _raw, report),
     do: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+  defp json_read_field(%{t: :float}, {:decimal, token}, report) do
+    case Float.parse(token) do
+      {v, ""} -> {v, report}
+      _ -> {0.0, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
 
   defp json_read_field(%{t: :float}, raw, report) when is_number(raw), do: {raw * 1.0, report}
 
@@ -1832,7 +1983,19 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_read_list_elem(%{elem_kind: 1}, e, report) when is_boolean(e), do: {e, report}
-  defp json_read_list_elem(%{elem_kind: kind}, e, report) when kind in [2, 3, 4, 5, 6, 7, 8, 9] and is_integer(e), do: {e, report}
+  defp json_read_list_elem(%{elem_kind: kind}, e, report) when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19] and is_integer(e), do: {e, report}
+  defp json_read_list_elem(%{elem_kind: kind, elem_frac: frac}, e, report) when kind in 20..29 do
+    case fixed_raw(e, frac) do
+      {:ok, raw} -> {raw, report}
+      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
+  defp json_read_list_elem(%{elem_kind: kind}, {:decimal, token}, report) when kind in [10, 11] do
+    case Float.parse(token) do
+      {v, ""} -> {v, report}
+      _ -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
   defp json_read_list_elem(%{elem_kind: kind}, e, report) when kind in [10, 11] and is_number(e), do: {e * 1.0, report}
   defp json_read_list_elem(_f, _e, report), do: {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
 
@@ -1992,12 +2155,44 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp json_number(bin, acc) do
     case bin do
-      <<c, rest::binary>> when c in ?0..?9 -> json_number(rest, [c | acc])
+      <<c, rest::binary>> when c in ?0..?9 or c in [?-, ?+, ?., ?e, ?E] -> json_number(rest, [c | acc])
       rest ->
         digits = acc |> Enum.reverse() |> IO.iodata_to_binary()
-        {:ok, String.to_integer(digits), rest}
+        if String.contains?(digits, [".", "e", "E"]) do
+          {:ok, {:decimal, digits}, rest}
+        else
+          case Integer.parse(digits) do
+            {v, ""} -> {:ok, v, rest}
+            _ -> :error
+          end
+        end
     end
   end
+
+  # Convert a JSON decimal to the exact scaled integer that §3 stores. A
+  # fraction finer than 2^-F is a kind mismatch, never rounded through float.
+  defp fixed_raw(raw, frac) when is_integer(raw), do: {:ok, raw <<< frac}
+  defp fixed_raw({:decimal, token}, frac) do
+    [mantissa | exponent] = String.split(token, ~r/[eE]/, parts: 2)
+    power = if exponent == [], do: 0, else: String.to_integer(hd(exponent))
+    negative = String.starts_with?(mantissa, "-")
+    unsigned = String.trim_leading(mantissa, "-")
+    [whole | tail] = String.split(unsigned, ".", parts: 2)
+    fraction = if tail == [], do: "", else: hd(tail)
+    digits = String.to_integer(whole <> fraction)
+    shift = power - byte_size(fraction)
+    numerator = digits <<< frac
+    {numerator, denominator} = if shift >= 0,
+      do: {numerator * Integer.pow(10, shift), 1},
+      else: {numerator, Integer.pow(10, -shift)}
+    if rem(numerator, denominator) == 0 do
+      v = div(numerator, denominator)
+      {:ok, if(negative, do: -v, else: v)}
+    else
+      :error
+    end
+  end
+  defp fixed_raw(_, _), do: :error
 
   # ---- the region measure (docs/SPEC-TABLES.md §4.2, §6.5) ----
   #
@@ -2901,6 +3096,11 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, fl *ir.FieldLayout) s
 	kind := ir.TableWireFieldKind(f)
 	fmt.Fprintf(&b, "%%{name: %q, json: %q, id: 0x%016X, kind: %d, ordinal: %d", f.Name, ir.TableFieldJsonKey(f), id, kind, ordinal)
 	switch {
+	case f.IsMap():
+		// SPEC-TABLES §2.8, §3: a map is kind 14 over framed table
+		// entries. Its key kind determines the canonical ascending order.
+		key := ir.MapKeyField(f)
+		fmt.Fprintf(&b, ", t: :map, elem: %q, elem_kind: 13, key_kind: %d", f.MapEntry.Name, ir.TableWireScalarKind(key))
 	case f.Type.Pointer && f.Type.Blob():
 		blob := "bytes"
 		if f.Type.Kind == ir.TString {
@@ -2910,6 +3110,9 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, fl *ir.FieldLayout) s
 	case f.Array != ir.ArrayNone:
 		elemKind := ir.TableWireElemKind(f)
 		fmt.Fprintf(&b, ", t: :list, elem_kind: %d", elemKind)
+		if f.Type.Kind == ir.TFixed {
+			fmt.Fprintf(&b, ", elem_frac: %d", f.Type.FracBits)
+		}
 		if f.Array != ir.ArrayList {
 			fmt.Fprintf(&b, ", bound: %d", f.ArrayBound)
 		}
@@ -2921,6 +3124,8 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, fl *ir.FieldLayout) s
 			fmt.Fprintf(&b, ", elem: %q, elem_type_id: 0x%016X", ref.Name, ir.TableWireId(ref.WireName()))
 		case ir.TableKindEnum:
 			writeEnumMaps(&b, enumRef(f))
+		case ir.TableKindUnion:
+			fmt.Fprintf(&b, ", elem: %q", f.Type.Name)
 		case ir.TableKindString:
 			fmt.Fprintf(&b, ", size: %d", f.Type.Size)
 		}
@@ -2931,6 +3136,8 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, fl *ir.FieldLayout) s
 		fmt.Fprintf(&b, ", t: :pointer, elem: %q, type_id: 0x%016X", ref.Name, ir.TableWireId(ref.WireName()))
 	case isStruct(f):
 		fmt.Fprintf(&b, ", t: :table, elem: %q", f.Type.Name)
+	case unionRef(f) != nil:
+		fmt.Fprintf(&b, ", t: :union, elem: %q", f.Type.Name)
 	case f.Type.Kind == ir.TBytes:
 		fmt.Fprintf(&b, ", t: :bytes, size: %d", f.Type.Size)
 	case enumRef(f) != nil:
@@ -2939,15 +3146,20 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, fl *ir.FieldLayout) s
 	case f.Type.Kind == ir.TString:
 		b.WriteString(", t: :string")
 		fmt.Fprintf(&b, ", size: %d", f.Type.Size)
-	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
+	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || f.Type.Kind == ir.TFixed:
 		b.WriteString(", t: :int")
 		width := (f.Type.Width + 7) / 8
 		fmt.Fprintf(&b, ", width: %d, signed: %v", width, f.Type.Signed)
+		if f.Type.Kind == ir.TFixed {
+			// SPEC-TABLES §3 and §4.12: storage is the exact scaled integer;
+			// text divides it by 2^F without passing through a float.
+			fmt.Fprintf(&b, ", frac: %d", f.Type.FracBits)
+		}
 		if f.Type.Kind == ir.TBits {
 			fmt.Fprintf(&b, ", bits: %d", f.Type.Width)
 		}
-		if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
-			fmt.Fprintf(&b, ", min: %s, max: %s", f.IntMin.String(), f.IntMax.String())
+		if lo, hi, ok := ir.TableRawRange(f); ok {
+			fmt.Fprintf(&b, ", min: %s, max: %s", lo.String(), hi.String())
 		}
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		// A float's payload width is its kind (docs/SPEC-TABLES.md §3).
@@ -2974,9 +3186,16 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, fl *ir.FieldLayout) s
 // value an absent field reads and a text renders (§4, §16.1): the declared
 // default overrides the type's zero, exactly as the reference's prefill does.
 func variableFieldDefault(f *ir.Field) string {
+	if f.Type.Optional {
+		// SPEC-TABLES §2.3: a missing optional is absent, even when its
+		// underlying value has a nonzero declared default.
+		return "nil"
+	}
 	switch {
 	case f.Array != ir.ArrayNone:
 		return "[]"
+	case f.IsMap():
+		return "%{}"
 	case f.Type.Pointer && f.Type.Blob():
 		return "nil"
 	case f.Type.Pointer && isStruct(f):
@@ -2998,7 +3217,7 @@ func variableFieldDefault(f *ir.Field) string {
 			return fixedFloatLiteral(f.DefFloat)
 		}
 		return "0.0"
-	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
+	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || f.Type.Kind == ir.TFixed:
 		if f.HasDefault && f.DefInt != nil {
 			return fixedIntLiteral(f.DefInt)
 		}
