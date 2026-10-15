@@ -95,6 +95,21 @@ Run the same command with `--lang c`, `--lang cs`, `--lang elixir`, `--lang go`,
 language — writing the
 **same bits**.
 
+### `generate --surface`: pick the surfaces a Go build pays for
+
+For `--lang go`, the table surface (docs/SPEC-TABLES.md) is emitted in several
+files, and `generate --surface <list>` names which ones to emit. The list
+spells surfaces in any comma-separated order: `wire`, `fixed`, `json`,
+`cook`, `block`, `view`, `message`, `retain`. The default is all of them,
+byte-identical to emitting them all explicitly. `--surface` belongs to the Go
+target: any other `--lang` refuses the flag by name. Dependencies are resolved
+for you — for example `json` pulls in `wire` — and named in
+docs/SPEC-TABLES.md §8.4.
+
+```
+schema generate --lang go --surface json,wire --out generated/go .
+```
+
 ---
 
 ## Declarations

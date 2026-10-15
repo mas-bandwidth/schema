@@ -11173,6 +11173,33 @@ vocabulary a table carries is §8.1's and rides where it always did. The gate
 asks "did the registry leak out of its file?", never "is there a descriptor
 here?" — §2.2's own distinction between machinery and columns.
 
+#### 8.4.1 Go: `generate --surface`
+
+The Go backend makes the §8.4 trade a flag, because a Go build pays for what
+it COMPILES and a generated file that is never compiled still costs the
+generated tree and a review. `generate --lang go --surface <list>` emits only
+the surfaces the list names. The surfaces and the files they own:
+
+- `wire` — `<Base>Table.go`, the table-wire codecs and the reflection
+  descriptors. For a unit with tables it is the floor: every other surface
+  reads or writes through it.
+- `fixed` — the fixed-form reader (docs/FIXED-FORM-ALGORITHM.md), carried in
+  the table file's runtime. Depends on `wire`.
+- `json` — `<Base>TableJson.go`, the text form (§16). Depends on `wire`.
+- `cook` — `<Base>Cook.go`, the cook accelerator (§7). Depends on `wire`.
+- `block` — `<Base>Block.go`, the block accelerator (§19). Depends on `wire`.
+- `view` — the view file (§8.5). Depends on `wire` and `json`.
+- `message` — the message form (§3.3), carried in the table file. Depends on
+  `wire`.
+- `retain` — the retain member (§6), carried in the table file. Depends on
+  `wire`.
+
+The default is all surfaces, byte-identical to listing them. Dependencies are
+resolved and never omitted, so `--surface json` also ships `wire`. The flag is
+the Go target's own: any other `--lang` refuses `--surface` by name. A surface
+a unit cannot carry (for example `block` or `cook` on a unit with no block) is
+silently empty, exactly as the default generation is today.
+
 ### 8.5 On the side
 
 **The view is one generated file per UNIT, not per schema file** —
