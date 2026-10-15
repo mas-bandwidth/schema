@@ -111,8 +111,13 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 // table's name. The central refusal for every target but go reads it
 // (docs/SPEC-TABLES.md §2.3).
 func firstRequiredField(u *ir.Unit) (fname, owner string, ok bool) {
-	for name, st := range u.Tables {
-		for _, f := range st.Fields {
+	names := make([]string, 0, len(u.Tables))
+	for name := range u.Tables {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		for _, f := range u.Tables[name].Fields {
 			if f.Required {
 				return f.Name, name, true
 			}

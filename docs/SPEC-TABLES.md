@@ -1148,20 +1148,22 @@ table Player
   there is no absence for a required marker to cure — and on an optional
   `?T` — an optional is absent or present by definition, and `required`
   would forbid the absence that makes it optional.
-- **A FIXED table's fields are always written**, so `required` is meaningless
-  there (there is no elision to suppress and no absence to refuse) and it
-  changes nothing; it is accepted and documented as a no-op. The rule is:
-  every fixed field is always written, so `required` has no effect.
-- **The attribute is part of the table projection** — it changes what the
-  writer emits and what the reader refuses, so it moves the wire and the
-  protocol id.
+- **A FIXED table REFUSES `required` at compile time**, by name: every fixed
+  field is always written, so there is no elision to suppress and no absence
+  to refuse, and the marker would promise nothing. The check names the table
+  and the field.
+- **The attribute is part of the tables baseline row**, as a `required`
+  token in the field's row (§18). The protocol id (`schema id`) does NOT move:
+  it hashes the packet types, and table facts ride in the baseline.
+- **The refusal names only the fields that are missing**, in declaration
+  order, e.g. `missing_required: b`.
 
 **Evolution** (§4). Adding `required` to a shipped field is a BREAK the
 tables baseline refuses: old records were written without it and a newer
 reader would refuse them. Removing `required` is free — the writer simply
-starts eliding again. Adding a new `| required` field to an existing table is
-a break, exactly as adding any field is; the baseline refuses the record
-shape change (§18).
+starts eliding again. Adding a NEW field marked `| required` to an
+existing table is the same break, and the baseline refuses it too (every
+stored record lacks the field); a new field that is not required is free.
 
 ### 2.4 Enum-keyed arrays: `ships [ShipType]ShipConfig`
 

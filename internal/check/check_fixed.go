@@ -43,6 +43,11 @@ func (c *checker) checkFixedTableClosures(names []string) {
 		if d, ok := c.astDecls[name]; ok {
 			pos = d.DeclPos()
 		}
+		for _, f := range st.Fields {
+			if f.Required {
+				c.errf(pos, "fixed table %s: field %s is `| required`; every fixed field is always written, so there is no absence to refuse — drop `required`, or drop `fixed` from %s (docs/SPEC-TABLES.md §2.3)", name, f.Name, name)
+			}
+		}
 		for _, b := range ir.FixedClosureBreaks(c.closureMember, name) {
 			c.errf(pos, "fixed table %s: %s %s; drop `fixed` from %s, or take the construct out of its closure (%s)",
 				name, b.At(), b.Why, name, b.Refs)

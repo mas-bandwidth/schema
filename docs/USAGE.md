@@ -3687,9 +3687,9 @@ lock has not recorded: a reorder, a removal, a widening, a kind change, a
 default or a range that moved. A field appended at the bottom, a variant or
 an arm appended at the end, and a `deprecated` marker are the append-only
 class; each is refused as STALE until `schema lock` writes it down. A
-`| required` marker changed is a break the baseline refuses: adding it to a
-shipped field means old records never wrote it, so a newer reader would refuse
-them (SPEC-TABLES.md §2.3). A rename
+`| required` marker ADDED is a break the baseline refuses, on a shipped field or
+as a new field: old records never wrote it, so a newer reader would refuse
+them. Removing it is free (SPEC-TABLES.md §2.3). A rename
 with `was` moves nothing and is no change to catch up to, and `schema lock --retire Marker@0x<hash> --reason "…"` is the file's one non-append edit,
 read years later by whoever asks why.
 
