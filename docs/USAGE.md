@@ -95,6 +95,15 @@ Run the same command with `--lang c`, `--lang cs`, `--lang elixir`, `--lang go`,
 language — writing the
 **same bits**.
 
+For `--lang go`, `--surface <list>` trims the generated output to the named
+surfaces (docs/SPEC-TABLES.md §8.4). The list is comma-separated and drawn
+from `wire`, `fixed`, `json`, `cook`, `block`, `view`, `message` and `retain`;
+default is all of them, byte-identical to a generate without the flag. A
+surface's dependencies ride along with it — `json`, `view`, `message`, `cook`
+and `retain` each pull in `wire`, so a unit that asks for `json` still gets the
+wire codecs the text form walks. `--surface` belongs to `--lang go`; any other
+`--lang` refuses the flag by name.
+
 ---
 
 ## Declarations
