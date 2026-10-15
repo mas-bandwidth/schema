@@ -40,6 +40,71 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+// A SurfaceSet names the surfaces of a unit's Go output the caller asked for
+// (docs/SPEC-TABLES.md §8.4). Every surface depends on SurfaceWire — the wire
+// codecs and storage structs underpin the text form, the cooks, the message
+// form, the view, the blocks and the retained regions — so requesting any
+// subset implicitly carries SurfaceWire, and the default is all of them.
+type SurfaceSet uint32
+
+const (
+	SurfaceWire SurfaceSet = 1 << iota
+	SurfaceFixed
+	SurfaceJson
+	SurfaceCook
+	SurfaceBlock
+	SurfaceView
+	SurfaceMessage
+	SurfaceRetain
+)
+
+// AllSurfaces is the full set, the default and the value that reproduces
+// today's output byte for byte.
+func AllSurfaces() SurfaceSet {
+	return SurfaceWire | SurfaceFixed | SurfaceJson | SurfaceCook | SurfaceBlock |
+		SurfaceView | SurfaceMessage | SurfaceRetain
+}
+
+var surfaceByName = map[string]SurfaceSet{
+	"wire":    SurfaceWire,
+	"fixed":   SurfaceFixed,
+	"json":    SurfaceJson,
+	"cook":    SurfaceCook,
+	"block":   SurfaceBlock,
+	"view":    SurfaceView,
+	"message": SurfaceMessage,
+	"retain": SurfaceRetain,
+}
+
+// ParseSurfaceList parses the comma-separated list a `--surface` flag names
+// (docs/SPEC-TABLES.md §8.4). An empty list means the default, all surfaces. A
+// name that is not a surface is an error — a typo must never silently fall
+// back to a different output. Every non-wire surface pulls in wire.
+func ParseSurfaceList(s string) (SurfaceSet, error) {
+	if s == "" {
+		return AllSurfaces(), nil
+	}
+	var set SurfaceSet
+	for _, tok := range strings.Split(s, ",") {
+		tok = strings.TrimSpace(tok)
+		if tok == "" {
+			continue
+		}
+		v, ok := surfaceByName[tok]
+		if !ok {
+			return 0, fmt.Errorf("unknown surface %q (want one of wire, fixed, json, cook, block, view, message, retain)", tok)
+		}
+		set |= v
+	}
+	if set&AllSurfaces() != 0 {
+		// Every surface depends on wire, and the shared table runtime's cook
+		// write and region machinery draw on the text form's accessor helpers,
+		// so json is carried by every surface too (docs/SPEC-TABLES.md §8.4).
+		set |= SurfaceWire | SurfaceJson
+	}
+	return set, nil
+}
+
 // table-wire kinds (docs/SPEC-TABLES.md §3) — the numbers are the wire's, not a
 // backend's, and they are duplicated from cpptable deliberately: a port that
 // derived them from the reference emitter's private helpers would break the
@@ -77,6 +142,7 @@ type tableGen struct {
 	indent string          // extra per-line indent while emitting inside a branch guard
 
 	lineage       map[string][]FixedLineageEntry // the locked layouts, oldest first (§5.2)
+	surf          SurfaceSet                    // which surfaces this unit asked for (§8.4)
 	needsMath     bool
 	unsafeUsed    bool
 	wireSerial    int
@@ -206,19 +272,33 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
 // every table then carries the one entry it can always compute: its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	return GenerateLineageSurfaces(u, lineage, AllSurfaces())
+}
+
+// GenerateLineageSurfaces is GenerateLineage with the surface limit a
+// `--surface` list names (docs/SPEC-TABLES.md §8.4): only the requested
+// surfaces' files are emitted, and the default (all surfaces) is
+// byte-identical to GenerateLineage.
+func GenerateLineageSurfaces(u *ir.Unit, lineage map[string][]FixedLineageEntry, surf SurfaceSet) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
 	blocks := ir.Blocks(u)
-	out, err := generateBlockFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	out := map[string][]byte{}
+	if surf&SurfaceBlock != 0 {
+		blocksOut, err := generateBlockFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, blocksOut)
 	}
-	cooks, err := generateCookFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	if surf&SurfaceCook != 0 {
+		cooks, err := generateCookFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, cooks)
 	}
-	maps.Copy(out, cooks)
 
 	regional := len(variableTableNames(u)) > 0
 
@@ -271,7 +351,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	}
 	runtimeWritten := false
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage}
+		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage, surf: surf}
 		members := fileMembers(f, closure)
 		if g.home {
 			emitRuntime(g)
@@ -334,7 +414,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// either way — that is the whole rule, and it is what keeps an
 	// earlier-sorting file from moving it (§19.2).
 	if !runtimeWritten {
-		g := &tableGen{unit: u, home: true, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage}
+		g := &tableGen{unit: u, home: true, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage, surf: surf}
 		emitRuntime(g)
 		src, err := g.assemble()
 		if err != nil {
@@ -346,16 +426,20 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
 	// descriptors, in its own file so a project that never reads or writes a
 	// text does not compile it
-	texts, err := generateJsonFiles(u, closure, home)
-	if err != nil {
-		return nil, err
+	if surf&SurfaceJson != 0 {
+		texts, err := generateJsonFiles(u, closure, home)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, texts)
 	}
-	maps.Copy(out, texts)
-	view, err := generateViewFile(u, closure, armSlots)
-	if err != nil {
-		return nil, err
+	if surf&SurfaceView != 0 {
+		view, err := generateViewFile(u, closure, armSlots)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, view)
 	}
-	maps.Copy(out, view)
 	return out, nil
 }
 

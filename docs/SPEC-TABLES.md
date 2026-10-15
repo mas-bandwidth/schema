@@ -11152,11 +11152,15 @@ subset of `wire`, `fixed`, `json`, `cook`, `block`, `view`, `message` and
 `retain`; the default is all of them, byte-identical to today's output, so a
 build that never passes the flag changes nothing. Every surface depends on
 `wire` — the wire codecs and the storage structs underpin the text form, the
-cooks, the message form, the view and the retained regions — so requesting
-any subset implicitly carries `wire`, and the dependencies are resolved and
-named here rather than left to the emitter to guess. Any other `--lang`
-refuses the flag by name: `--surface` is a Go-only knob, because no other
-backend has yet earned the same rule (see the owner's rule, this card).
+cooks, the message form, the view and the retained regions — and the shared
+table runtime's cook-write and region machinery draw on the text form's
+accessor helpers, so requesting any subset implicitly carries both `wire`
+and `json`; the dependencies are resolved and named here rather than left to
+the emitter to guess. The surfaces that stand alone are the four separate
+files — `block`, `cook`, `view` and the text form's per-table entry points —
+each of which a restricted list drops whole. Any other `--lang` refuses the
+flag by name: `--surface` is a Go-only knob, because no other backend has yet
+earned the same rule (see the owner's rule, this card).
 
 That is the same trade §13.5 already made for the text form's walker, and it
 is why this file exists rather than a header addition (§8.5): a translation
