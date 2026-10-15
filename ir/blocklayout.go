@@ -444,11 +444,19 @@ func FieldPieces(u *Unit, f *Field, fieldOffset int64) []BlockFieldPiece {
 // size, exposed so a cook can write the SET arm at the arm offset and zero the
 // rest of the extent (§7).
 func UnionLayout(u *Unit, un *Union) (size, align, tag, armOffset int64) {
+	return unionLayoutMemo(u, un, nil)
+}
+
+func unionLayoutMemo(u *Unit, un *Union, m *layoutMemo) (size, align, tag, armOffset int64) {
+	m = layoutMemoOf(m)
+	if got, ok := m.unions[un]; ok {
+		return got[0], got[1], got[2], got[3]
+	}
 	tag = int64(StorageBitsFor(un.Max)) / 8
 	align = tag
 	var armAlign, armSize int64 = 1, 0
 	for _, v := range un.Variants {
-		s, a := ArmLayout(u, v)
+		s, a := armLayoutMemo(u, v, m)
 		if a > armAlign {
 			armAlign = a
 		}
@@ -461,6 +469,7 @@ func UnionLayout(u *Unit, un *Union) (size, align, tag, armOffset int64) {
 	}
 	armOffset = alignUp(tag, armAlign)
 	size = alignUp(addSize(armOffset, armSize), align)
+	m.unions[un] = [4]int64{size, align, tag, armOffset}
 	return size, align, tag, armOffset
 }
 
@@ -470,11 +479,16 @@ func UnionLayout(u *Unit, un *Union) (size, align, tag, armOffset int64) {
 // companion — a string's length, a counted array's count — is an unnamed
 // struct of those pieces, which is what the emitter writes.
 func ArmLayout(u *Unit, v UnionVariant) (size, align int64) {
+	return armLayoutMemo(u, v, nil)
+}
+
+func armLayoutMemo(u *Unit, v UnionVariant, m *layoutMemo) (size, align int64) {
 	if v.F == nil {
 		return 0, 1
 	}
+	m = layoutMemoOf(m)
 	offset, maxAlign := int64(0), int64(1)
-	for _, p := range fieldPieces(u, v.F, false) {
+	for _, p := range fieldPiecesMemo(u, v.F, false, m) {
 		if p.align > maxAlign {
 			maxAlign = p.align
 		}
@@ -501,13 +515,46 @@ type storagePiece struct {
 	align int64
 }
 
+// layoutMemo is one storage-layout measurement. Keyed by declaration pointer,
+// passed down the walk, never stored on the Unit and never shared across
+// calls, for the same reason as [bitMemo]: a shared child is laid out once,
+// and a later edit of the IR cannot observe a stale record. A result is
+// recorded only after its walk returns.
+type layoutMemo struct {
+	structs map[*Struct]*MemberLayout
+	unions  map[*Union][4]int64 // size, align, tag, armOffset
+}
+
+func newLayoutMemo() *layoutMemo {
+	return &layoutMemo{
+		structs: map[*Struct]*MemberLayout{},
+		unions:  map[*Union][4]int64{},
+	}
+}
+
+func layoutMemoOf(m *layoutMemo) *layoutMemo {
+	if m == nil {
+		return newLayoutMemo()
+	}
+	return m
+}
+
 // layoutRecord walks one generated record's storage the way a C compiler does.
 func layoutRecord(u *Unit, st *Struct) *MemberLayout {
+	return layoutRecordMemo(u, st, nil)
+}
+
+func layoutRecordMemo(u *Unit, st *Struct, m *layoutMemo) *MemberLayout {
+	m = layoutMemoOf(m)
+	if ml, ok := m.structs[st]; ok {
+		return ml
+	}
+	noteStructMeasured(st)
 	ml := &MemberLayout{Name: st.Name}
 	offset := int64(0)
 	maxAlign := int64(1)
 	for _, f := range st.Fields {
-		pieces := fieldPieces(u, f, false)
+		pieces := fieldPiecesMemo(u, f, false, m)
 		start := int64(-1)
 		var fieldAlign int64 = 1
 		for _, p := range pieces {
@@ -534,6 +581,7 @@ func layoutRecord(u *Unit, st *Struct) *MemberLayout {
 		// an empty record is one byte in both languages
 		ml.Size = 1
 	}
+	m.structs[st] = ml
 	return ml
 }
 
@@ -542,12 +590,13 @@ func layoutRecord(u *Unit, st *Struct) *MemberLayout {
 // out-of-line array's storage replaced IN PLACE by its sixteen-byte
 // (offset_of u64, count u32, stride u32) triple (docs/SPEC-TABLES.md §2.7).
 func layoutProjection(u *Unit, st *Struct) MemberLayout {
+	m := newLayoutMemo()
 	ml := MemberLayout{Name: st.Name}
 	// the prologue: three uint64s (magic, build_version, byte_order)
 	offset := int64(BlockPrologueBytes)
 	maxAlign := int64(8)
 	for _, f := range st.Fields {
-		pieces := fieldPieces(u, f, true)
+		pieces := fieldPiecesMemo(u, f, true, m)
 		start := int64(-1)
 		var fieldAlign int64 = 1
 		for _, p := range pieces {
@@ -608,6 +657,10 @@ type BlockFieldPiece struct {
 // generated record declares, in order. `projection` selects the block form's
 // projection spelling, in which an out-of-line array is its triple.
 func fieldPieces(u *Unit, f *Field, projection bool) []storagePiece {
+	return fieldPiecesMemo(u, f, projection, nil)
+}
+
+func fieldPiecesMemo(u *Unit, f *Field, projection bool, m *layoutMemo) []storagePiece {
 	if projection && BlockOutOfLine(f) {
 		// (offset_of u64, count u32, stride u32) — ONE sixteen-byte piece with
 		// no interior padding, at the field's own position. It is one piece and
@@ -649,13 +702,13 @@ func fieldPieces(u *Unit, f *Field, projection bool) []storagePiece {
 		pieces = append(pieces, storagePiece{size: f.Type.Size, align: 1}) // uint8[N]
 		pieces = append(pieces, storagePiece{size: 4, align: 4})           // int32 length
 	case f.KeyEnum != "":
-		e := elementPiece(u, f)
+		e := elementPieceMemo(u, f, m)
 		pieces = append(pieces, storagePiece{size: mulSize(e.size, f.ArrayBound), align: e.align})
 	case f.Array == ArrayFixed:
-		e := elementPiece(u, f)
+		e := elementPieceMemo(u, f, m)
 		pieces = append(pieces, storagePiece{size: mulSize(e.size, f.ArrayBound), align: e.align})
 	case f.Array == ArrayCounted:
-		e := elementPiece(u, f)
+		e := elementPieceMemo(u, f, m)
 		pieces = append(pieces, storagePiece{size: mulSize(e.size, f.ArrayBound), align: e.align})
 		pieces = append(pieces, storagePiece{size: 4, align: 4}) // int32 count
 	case f.Array == ArrayList:
@@ -669,7 +722,7 @@ func fieldPieces(u *Unit, f *Field, projection bool) []storagePiece {
 		// inside the holder's node extent, after the record's own storage.
 		pieces = append(pieces, storagePiece{size: 16, align: 8})
 	default:
-		pieces = append(pieces, elementPiece(u, f))
+		pieces = append(pieces, elementPieceMemo(u, f, m))
 	}
 	if f.Type.Optional {
 		pieces = append(pieces, storagePiece{size: 1, align: 1}) // bool present
@@ -680,6 +733,10 @@ func fieldPieces(u *Unit, f *Field, projection bool) []storagePiece {
 // elementPiece is one VALUE of a field's declared type — the array element, or
 // the scalar itself.
 func elementPiece(u *Unit, f *Field) storagePiece {
+	return elementPieceMemo(u, f, nil)
+}
+
+func elementPieceMemo(u *Unit, f *Field, m *layoutMemo) storagePiece {
 	t := f.Type
 	if t.Pointer {
 		// an ARRAY OF POINTERS (docs/SPEC-TABLES.md §2.1): every element is one
@@ -715,7 +772,7 @@ func elementPiece(u *Unit, f *Field) storagePiece {
 		case *Flags:
 			return storagePiece{size: 8, align: 8} // uint64 in every target
 		case *Struct:
-			ml := layoutRecord(u, ref)
+			ml := layoutRecordMemo(u, ref, m)
 			return storagePiece{size: ml.Size, align: ml.Align}
 		case *Union:
 			// the generated C++ union is a TAG beside an anonymous union of
@@ -724,7 +781,7 @@ func elementPiece(u *Unit, f *Field) storagePiece {
 			// A union has no blittable C# spelling under §19.3's Sequential
 			// rule, so it keeps a table out of the BLOCK form — but its
 			// layout is still a fact the build version folds in.
-			size, align, _, _ := UnionLayout(u, ref)
+			size, align, _, _ := unionLayoutMemo(u, ref, m)
 			return storagePiece{size: size, align: align}
 		}
 	}

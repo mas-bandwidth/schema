@@ -185,7 +185,9 @@ func fixedDefaultElement(out []byte, f *ir.Field) {
 			// earlier one, and that is the exception §5.9 #38 names.
 			tagw := ir.TableFixedUnionTagBytes(r)
 			for _, v := range r.Variants {
-				fixedDefaultElement(out[tagw:], v.F)
+				if v.F != nil {
+					fixedDefaultField(out[tagw:], v.F)
+				}
 			}
 			for i := range tagw {
 				out[i] = 0 // None, LAST
@@ -245,9 +247,10 @@ func fixedPutBig(out []byte, v *big.Int, width int64) {
 
 // fixedRoots is every table of this file the fixed form is emitted for. A
 // table that reaches a POINTER, a MAP or an unbounded array is VARIABLE and
-// keeps §3 entirely; one that reaches a union carrying text or an array is
-// §3.4's own refusal, and it is the same shape this port has no Row for
-// (cook.go's `rowable`), so the two questions have one answer.
+// keeps §3 entirely; every fixed-form union arm (payload-free, scalar, nested
+// declaration, direct text/bytes and bounded array) has a Row twin in cook.go
+// (`rowable`), so `ir.TableFixedEmitted` and `g.rowable` agree on the closure
+// (docs/SPEC-TABLES.md §2.6, §3.4).
 func (g *gen) fixedRoots() []*ir.Struct {
 	var out []*ir.Struct
 	for _, st := range orderTables(g.file.Tables) {
@@ -789,8 +792,15 @@ func (g *gen) emitFixedWriteUnion(un *ir.Union) {
 	} else {
 		g.pf("    b[0..%d].copy_from_slice(&value.tag.to_le_bytes());\n", tagw)
 	}
+	if !unionHasPayload(un) {
+		g.pf("}\n\n")
+		return
+	}
 	g.pf("    match value.tag {\n")
 	for i, v := range un.Variants {
+		if v.F == nil {
+			continue // a payload-free arm writes nothing past the tag (docs/FIXED-FORM-ALGORITHM.md §3.1)
+		}
 		g.pf("        %d => {\n", i+1)
 		g.pf("            // SAFETY: THE TAG NAMES THE LIVE ARM — the twin's whole contract,\n")
 		g.pf("            // and the same one the C reference's storage struct carries. The\n")
@@ -799,11 +809,53 @@ func (g *gen) emitFixedWriteUnion(un *ir.Union) {
 		g.pf("            // every arm — so a Row whose tag was set without its arm reads a\n")
 		g.pf("            // zero payload rather than an invalid one.\n")
 		g.pf("            let arm = unsafe { value.arms.%s };\n", v.Name)
-		g.emitFixedWriteElementAt(v.F, fmt.Sprintf("%d", tagw), "arm", 12)
+		g.emitFixedWriteArm(v.F, tagw, "arm", 12)
 		g.pf("        }\n")
 	}
-	g.pf("        _ => {} // None, and any tag no arm of this build names: the tag is all of it\n")
+	g.pf("        _ => {} // None, a payload-free arm, and any tag no arm of this build names: the tag is all of it\n")
 	g.pf("    }\n}\n\n")
+}
+
+// emitFixedWriteArm is one union arm's fixed-form store (docs/SPEC-TABLES.md
+// §2.6, §3.4; docs/FIXED-FORM-ALGORITHM.md §3.1): a text or bytes arm writes
+// its used length then its live units, a fixed array arm writes every slot, a
+// counted array arm writes its live count then its live elements, and a scalar
+// or nested declaration writes its element at the arm offset.
+func (g *gen) emitFixedWriteArm(f *ir.Field, base int64, armExpr string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	switch {
+	case f.Array == ir.ArrayFixed:
+		elem := ir.TableFixedElementBytes(f)
+		if f.ArrayBound == 0 {
+			return
+		}
+		g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
+		g.emitFixedWriteElementAt(f, fixedSlotOffset(base, elem), armExpr+"[i]", indent+4)
+		g.pf("%s}\n", ind)
+	case f.Array == ir.ArrayCounted:
+		elem := ir.TableFixedElementBytes(f)
+		g.pf("%sdebug_assert!(\n%s    %s.value_count >= 0 && %s.value_count <= %d,\n%s    \"the declared count is the bound (docs/SPEC-TABLES.md §3.4)\"\n%s);\n",
+			ind, ind, armExpr, armExpr, f.ArrayBound, ind, ind)
+		g.pf("%sb[%d..%d].copy_from_slice(&(%s.value_count as u32).to_le_bytes());\n", ind, base, base+4, armExpr)
+		g.pf("%sfor i in 0..%s.value_count.clamp(0, %d) as usize {\n", ind, armExpr, f.ArrayBound)
+		g.emitFixedWriteElementAt(f, fixedSlotOffset(base+ir.TableFixedCountBytes, elem), armExpr+".value[i]", indent+4)
+		g.pf("%s}\n", ind)
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+		g.pf("%sdebug_assert!(\n%s    %s.value_length >= 0 && %s.value_length <= %d,\n%s    \"the declared length is the bound (docs/SPEC-TABLES.md §3.4)\"\n%s);\n",
+			ind, ind, armExpr, armExpr, f.Type.Size, ind, ind)
+		g.pf("%sb[%d..%d].copy_from_slice(&(%s.value_length as u32).to_le_bytes());\n", ind, base, base+4, armExpr)
+		g.pf("%s{\n%s    let n = %s.value_length.clamp(0, %d) as usize;\n", ind, ind, armExpr, f.Type.Size)
+		g.pf("%s    b[%d..%d + n].copy_from_slice(&%s.value[..n]);\n%s}\n", ind, base+4, base+4, armExpr, ind)
+	case f.Type.Kind == ir.TWString:
+		g.pf("%sdebug_assert!(\n%s    %s.value_length >= 0 && %s.value_length <= %d,\n%s    \"the declared length is the bound (docs/SPEC-TABLES.md §3.4)\"\n%s);\n",
+			ind, ind, armExpr, armExpr, f.Type.Size, ind, ind)
+		g.pf("%sb[%d..%d].copy_from_slice(&(%s.value_length as u32).to_le_bytes());\n", ind, base, base+4, armExpr)
+		g.pf("%s{\n%s    let n = %s.value_length.clamp(0, %d) as usize;\n", ind, ind, armExpr, f.Type.Size)
+		g.pf("%s    for i in 0..n {\n%s        let at = %d + 2 * i;\n", ind, ind, base+4)
+		g.pf("%s        b[at..at + 2].copy_from_slice(&%s.value[i].to_le_bytes());\n%s    }\n%s}\n", ind, armExpr, ind, ind)
+	default:
+		g.emitFixedWriteElementAt(f, fmt.Sprintf("%d", base), armExpr, indent)
+	}
 }
 
 // emitFixedScatterUnion lands one union's image in the value: the TAG, clamped
@@ -845,18 +897,84 @@ func (g *gen) emitFixedScatterUnion(un *ir.Union) {
 		// type's own limits make useless — which rustc says out loud.
 		g.pf("    // every value the tag's width holds names an arm of this build, so there\n")
 		g.pf("    // is no out-of-range ordinal here to clamp\n")
+		g.pf("    let _ = &report;\n")
 		g.pf("    value.tag = tag_raw;\n")
+	}
+	if !unionHasPayload(un) {
+		g.pf("}\n\n")
+		return
 	}
 	g.pf("    match value.tag {\n")
 	for i, v := range un.Variants {
+		if v.F == nil {
+			continue // a payload-free arm leaves the zeroed overlay as Default::default() laid it down (docs/FIXED-FORM-ALGORITHM.md §4.5)
+		}
 		g.pf("        %d => {\n", i+1)
-		g.pf("            let mut arm = %s::default();\n", cookElemType(v.F))
-		g.emitFixedScatterElement(v.F, fmt.Sprintf("%d", tagw), "arm", 12)
+		g.emitFixedScatterArm(un, v, tagw, 12)
 		g.pf("            value.arms.%s = arm; // a WRITE of a union field, which is safe\n", v.Name)
 		g.pf("        }\n")
 	}
-	g.pf("        _ => {} // None: the overlay stays the zeros the default laid down\n")
+	g.pf("        _ => {} // None and payload-free arms: the overlay stays the zeros the default laid down\n")
 	g.pf("    }\n}\n\n")
+}
+
+// emitFixedScatterArm reconstructs one union arm from the record image at
+// `base`, clamping any companion length or count just as a field's scatter
+// does (docs/SPEC-TABLES.md §2.6, §3.4; docs/FIXED-FORM-ALGORITHM.md §4.5).
+func (g *gen) emitFixedScatterArm(un *ir.Union, v ir.UnionVariant, base int64, indent int) {
+	f := v.F
+	ind := strings.Repeat(" ", indent)
+	switch {
+	case f.Array == ir.ArrayFixed:
+		elem := ir.TableFixedElementBytes(f)
+		g.pf("%slet mut arm = [%s::default(); %d];\n", ind, cookElemType(f), f.ArrayBound)
+		if f.ArrayBound > 0 {
+			g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
+			g.emitFixedScatterElement(f, fixedSlotOffset(base, elem), "arm[i]", indent+4)
+			g.pf("%s}\n", ind)
+		}
+	case f.Array == ir.ArrayCounted:
+		elem := ir.TableFixedElementBytes(f)
+		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
+		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
+		g.pf("%s    let held = raw.clamp(0, %d);\n", ind, f.ArrayBound)
+		g.pf("%s    if held != raw {\n%s        report.clamped += 1;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    arm.value_count = held;\n%s}\n", ind, ind)
+		if f.ArrayBound > 0 {
+			g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
+			g.emitFixedScatterElement(f, fixedSlotOffset(base+ir.TableFixedCountBytes, elem), "arm.value[i]", indent+4)
+			g.pf("%s}\n", ind)
+		}
+	case f.Type.Kind == ir.TString:
+		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
+		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
+		g.pf("%s    let held = raw.clamp(0, %d);\n", ind, f.Type.Size)
+		g.pf("%s    if held != raw {\n%s        report.clamped += 1;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    arm.value_length = held;\n%s}\n", ind, ind)
+		g.pf("%sarm.value = [0u8; %d];\n", ind, f.Type.Size+1)
+		g.pf("%sarm.value[..%d].copy_from_slice(&b[%d..%d]);\n", ind, f.Type.Size, base+4, base+4+f.Type.Size)
+		g.pf("%sarm.value[arm.value_length as usize] = 0; // the used length terminates the buffer\n", ind)
+	case f.Type.Kind == ir.TWString:
+		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
+		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
+		g.pf("%s    let held = raw.clamp(0, %d);\n", ind, f.Type.Size)
+		g.pf("%s    if held != raw {\n%s        report.clamped += 1;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    arm.value_length = held;\n%s}\n", ind, ind)
+		g.pf("%sarm.value = [0u16; %d];\n", ind, f.Type.Size+1)
+		g.pf("%sfor i in 0..%d {\n%s    let at = %d + 2 * i;\n", ind, f.Type.Size, ind, base+4)
+		g.pf("%s    arm.value[i] = u16::from_le_bytes(b[at..at + 2].try_into().expect(\"two bytes\"));\n%s}\n", ind, ind)
+		g.pf("%sarm.value[arm.value_length as usize] = 0; // the used length terminates the buffer\n", ind)
+	case f.Type.Kind == ir.TBytes:
+		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
+		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
+		g.pf("%s    let held = raw.clamp(0, %d);\n", ind, f.Type.Size)
+		g.pf("%s    if held != raw {\n%s        report.clamped += 1;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    arm.value_length = held;\n%s}\n", ind, ind)
+		g.pf("%sarm.value.copy_from_slice(&b[%d..%d]);\n", ind, base+4, base+4+f.Type.Size)
+	default:
+		g.pf("%slet mut arm = %s::default();\n", ind, cookElemType(f))
+		g.emitFixedScatterElement(f, fmt.Sprintf("%d", base), "arm", indent)
+	}
 }
 
 // ---- the root's surface ----------------------------------------------------
@@ -990,9 +1108,9 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("/// shape rather than emitting every plan as source). The load path compiles\n")
 		g.pf("/// nothing, parses no layout, and cannot fail for want of a plan.\n")
 		g.pf("pub struct %sFixedPlans {\n", st.Name)
-		g.pf("    pub entries: [[TableFixedEntry; %s_FIXED_PLAN_CAP]; %d],\n", up, len(lineage))
-		g.pf("    pub guards: [[TableFixedGuard; %s_FIXED_GUARD_CAP]; %d],\n", up, len(lineage))
-		g.pf("    pub remap: [[u16; %s_FIXED_REMAP_CAP]; %d],\n", up, len(lineage))
+		g.pf("    pub entries: [Vec<TableFixedEntry>; %d],\n", len(lineage))
+		g.pf("    pub guards: [Vec<TableFixedGuard>; %d],\n", len(lineage))
+		g.pf("    pub remap: [Vec<u16>; %d],\n", len(lineage))
 		g.pf("    pub count: [usize; %d],\n", len(lineage))
 		g.pf("    /// THE COMPILE CENSUS, which is the PLAN'S OWN NUMBER: `unknown` once\n")
 		g.pf("    /// per writer field no reader field names, `kind_mismatch` once per\n")
@@ -1008,9 +1126,9 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("}\n\n")
 		g.pf("static %s_FIXED_PLANS: std::sync::LazyLock<%sFixedPlans> = std::sync::LazyLock::new(|| {\n", up, st.Name)
 		g.pf("    let mut out = %sFixedPlans {\n", st.Name)
-		g.pf("        entries: [[TableFixedEntry::default(); %s_FIXED_PLAN_CAP]; %d],\n", up, len(lineage))
-		g.pf("        guards: [[TableFixedGuard::default(); %s_FIXED_GUARD_CAP]; %d],\n", up, len(lineage))
-		g.pf("        remap: [[0u16; %s_FIXED_REMAP_CAP]; %d],\n", up, len(lineage))
+		g.pf("        entries: std::array::from_fn(|_| vec![TableFixedEntry::default(); %s_FIXED_PLAN_CAP]),\n", up)
+		g.pf("        guards: std::array::from_fn(|_| vec![TableFixedGuard::default(); %s_FIXED_GUARD_CAP]),\n", up)
+		g.pf("        remap: std::array::from_fn(|_| vec![0u16; %s_FIXED_REMAP_CAP]),\n", up)
 		g.pf("        count: [0usize; %d],\n", len(lineage))
 		g.pf("        unknown: [0u32; %d],\n", len(lineage))
 		g.pf("        kind_mismatch: [0u32; %d],\n", len(lineage))
@@ -1387,7 +1505,8 @@ func (g *gen) emitFixedClampBody(st *ir.Struct) {
 	g.pf("}\n\n")
 }
 
-// emitFixedClampUnion is a union's share: the ARM THE TAG NAMES and no other.
+// emitFixedClampUnion is a union's share: the ARM THE TAG NAMES and no other
+// (docs/SPEC-TABLES.md §2.6, §3.4; docs/FIXED-FORM-ALGORITHM.md §4.6).
 func (g *gen) emitFixedClampUnion(un *ir.Union) {
 	if !fixedRangeClampUnion(un) {
 		return
@@ -1410,7 +1529,7 @@ func (g *gen) emitFixedClampUnion(un *ir.Union) {
 		g.pf("    if value.tag == %d {\n", i+1)
 		g.pf("        // SAFETY: the tag was just matched against `%s`.\n", v.Name)
 		g.pf("        let mut arm = unsafe { value.arms.%s };\n", v.Name)
-		g.emitFixedClampElement(v.F, "arm", 8)
+		g.emitFixedClampArm(v.F, 8)
 		g.pf("        value.arms.%s = arm; // a WRITE of a union field, which is safe\n", v.Name)
 		g.pf("    }\n}\n\n")
 		return
@@ -1421,12 +1540,34 @@ func (g *gen) emitFixedClampUnion(un *ir.Union) {
 		g.pf("        %d => {\n", i+1)
 		g.pf("            // SAFETY: the tag was just matched against `%s`.\n", v.Name)
 		g.pf("            let mut arm = unsafe { value.arms.%s };\n", v.Name)
-		g.emitFixedClampElement(v.F, "arm", 12)
+		g.emitFixedClampArm(v.F, 12)
 		g.pf("            value.arms.%s = arm; // a WRITE of a union field, which is safe\n", v.Name)
 		g.pf("        }\n")
 	}
 	g.pf("        _ => {} // None, and any arm with no bound of its own\n")
 	g.pf("    }\n}\n\n")
+}
+
+// emitFixedClampArm applies read-side bounds and text content rules to one
+// union arm's `arm` binding (docs/SPEC-TABLES.md §2.6, §3.4;
+// docs/FIXED-FORM-ALGORITHM.md §4.6).
+func (g *gen) emitFixedClampArm(f *ir.Field, indent int) {
+	ind := strings.Repeat(" ", indent)
+	switch {
+	case f.Array == ir.ArrayFixed:
+		g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
+		g.emitFixedClampElement(f, "arm[i]", indent+4)
+		g.pf("%s}\n", ind)
+	case f.Array == ir.ArrayCounted:
+		g.pf("%sfor i in 0..arm.value_count.clamp(0, %d) as usize {\n", ind, f.ArrayBound)
+		g.emitFixedClampElement(f, "arm.value[i]", indent+4)
+		g.pf("%s}\n", ind)
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+		g.emitFixedTextContentAt(f, "arm.value", "arm.value_length", ind)
+	case f.Type.Kind == ir.TBytes:
+	default:
+		g.emitFixedClampElement(f, "arm", indent)
+	}
 }
 
 // fixedRangeClampUnion is NOT ir.TableFixedClampNeededUnionArm, and the
@@ -1500,21 +1641,25 @@ func (g *gen) emitFixedClampPayload(f *ir.Field, expr string, indent int) {
 // The reference zeroes the field and sets `malformed` where this page says the
 // name is owed; the packet wire refuses the whole read, and so does this form.
 func (g *gen) emitFixedTextContent(f *ir.Field, ind string) {
-	used := fmt.Sprintf("value.%s_length.clamp(0, %d) as usize", f.Name, f.Type.Size)
-	call := fmt.Sprintf("table_utf8_valid(&value.%s[..%s])", f.Name, used)
-	zero := fmt.Sprintf("value.%s = [0u8; %d];", f.Name, f.Type.Size+1)
+	g.emitFixedTextContentAt(f, "value."+f.Name, "value."+f.Name+"_length", ind)
+}
+
+func (g *gen) emitFixedTextContentAt(f *ir.Field, bufExpr, lenExpr, ind string) {
+	used := fmt.Sprintf("%s.clamp(0, %d) as usize", lenExpr, f.Type.Size)
+	call := fmt.Sprintf("table_utf8_valid(&%s[..%s])", bufExpr, used)
+	zero := fmt.Sprintf("%s = [0u8; %d];", bufExpr, f.Type.Size+1)
 	if f.Type.Kind == ir.TWString {
-		call = fmt.Sprintf("table_utf16_valid(&value.%s[..%s])", f.Name, used)
-		zero = fmt.Sprintf("value.%s = [0u16; %d];", f.Name, f.Type.Size+1)
+		call = fmt.Sprintf("table_utf16_valid(&%s[..%s])", bufExpr, used)
+		zero = fmt.Sprintf("%s = [0u16; %d];", bufExpr, f.Type.Size+1)
 	}
 	g.pf("%sif !%s {\n", ind, call)
 	g.pf("%s    %s\n", ind, zero)
 	if f.Type.Kind == ir.TString && f.HasDefault && len(f.DefBytes) > 0 {
-		g.pf("%s    value.%s[..%d].copy_from_slice(b%s); // the declared default\n",
-			ind, f.Name, len(f.DefBytes), fixedRustByteString(f.DefBytes))
-		g.pf("%s    value.%s_length = %d;\n", ind, f.Name, len(f.DefBytes))
+		g.pf("%s    %s[..%d].copy_from_slice(b%s); // the declared default\n",
+			ind, bufExpr, len(f.DefBytes), fixedRustByteString(f.DefBytes))
+		g.pf("%s    %s = %d;\n", ind, lenExpr, len(f.DefBytes))
 	} else {
-		g.pf("%s    value.%s_length = 0;\n", ind, f.Name)
+		g.pf("%s    %s = 0;\n", ind, lenExpr)
 	}
 	g.pf("%s    *damaged += 1;\n%s}\n", ind, ind)
 }

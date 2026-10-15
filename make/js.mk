@@ -78,13 +78,22 @@ generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .js + <Base>Table.js + the two accelerators' readers),
 # because a table's closure decodes into the packet emitter's own classes.
-build/tables-generated-js/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
+build/tables-generated-js/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
 	@mkdir -p build/tables-generated-js
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
-	# the POINTERED unit: its JS WIRE surface is refused by name (§11) and its
-	# two ACCELERATORS are emitted all the same, because neither needs a codec
-	# (§7, §19). This is where the cook's JS read side comes from.
+	# the POINTERED unit: its FIXED surface is refused by name for every
+	# pointered table (§3.4, §11), its two ACCELERATORS are emitted all the same
+	# (§7, §19) — this is where the cook's JS read side comes from — and its
+	# VARIABLE wire (GraphdemoVariable.js, §3.1) carries Scene and the tables it
+	# reaches, which the conformance driver's wire surfaces answer.
 	./bin/schema generate --lang js --out build/tables-generated-js/pointers tables/pointers
+	# the BYTE-BUFFER unit (§2.5): *bytes and *string on the variable wire
+	# (BlobdemoVariable.js). tables/lists is NOT generated here: the compiler
+	# refuses the unit whole for js because Mixed holds an array of unions
+	# (compiler/target_javascript.go refuseUnionArrays, vt/union-arrays/js), so
+	# its rows answer absent and the lists corpus rides
+	# TestVariableClassBeyondCardConstructsJavaScript instead.
+	./bin/schema generate --lang js --out build/tables-generated-js/blobs tables/blobs
 	./bin/schema generate --lang js --out build/tables-generated-js/block tables/block
 	./bin/schema generate --lang js --out build/tables-generated-js/blockhome tables/blockhome
 	./bin/schema generate --lang js --out build/tables-generated-js/v1 test/tables/V1.schema
@@ -485,6 +494,67 @@ tables-js-versioning: build/fixedform-corpus/.stamp
 
 test-js: tables-js-versioning
 
+# THE VARIABLE CLASS BEYOND THE CARD CONSTRUCTS (docs/SPEC-TABLES.md §2.1, §2.5,
+# §2.9, §3, §3.1, §16.7): table pointers over the flat node table, tables nested
+# by value, *string and *bytes blobs, unbounded and bounded arrays of scalar,
+# enum, table and pointer elements, the rest of the scalar kinds, bytes(N), the
+# escape kind and the text form's &node sharing — held byte for byte against the
+# Go oracle over tables/pointers, tables/blobs and tables/lists (and a probe unit
+# the oracle writes) by TestVariableClassBeyondCardConstructsJavaScript, and every
+# construct the leg still refuses named by TestOtherVariableConstructsAreRefusedByName.
+# SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE rather than a skip.
+.PHONY: tables-js-variable-class
+tables-js-variable-class:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestVariableClassBeyondCardConstructsJavaScript|TestOtherVariableConstructsAreRefusedByName)$$'
+	@echo 'tables JS variable class: the class beyond the card constructs round-trips the oracle bytes and the rest is refused by name'
+
+test-js: tables-js-variable-class
+
+# js/F12 — "a second layout under a held hash" (docs/FIXED-FORM-ALGORITHM.md §2
+# row 5: "a known hash over different bytes is `layout_malformed`"; SPEC-TABLES
+# §3.4: "A second layout for a hash already held is refused by name"). The test
+# builds a valid file for the held layout and two copies — one whose layout bytes
+# differ under the same hash, one whose held layout length differs — and proves
+# both are refused layout_malformed before any record lands. It rides the
+# versioning target's pattern and SCHEMA_REQUIRE_CORPUS=1 keeps a missing node a
+# FAILURE rather than a skip, but it needs no C++ oracle: its files are built in
+# memory, so it does not take build/fixedform-corpus/.stamp (whose C++ serialize
+# sibling is absent on this bench).
+.PHONY: tables-js-fixed-roadmap
+tables-js-fixed-roadmap:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -v ./internal/codegen/jstable/ -run '^(TestFixedRoadmapJsT13LayoutHashCollision)$$'
+	@echo 'tables JS fixed roadmap: a second layout under a held hash is layout_malformed (js/F12)'
+
+test-js: tables-js-fixed-roadmap
+
+# ITS NEGATIVE CONTROL (§5.9 #11: each gate owes one, "because a byte comparison
+# nobody has seen fail may be comparing a file with itself"). Drop the held
+# layout's byte comparison from the generated reader's step 7 (fixedmodule.go:
+# "the layout bytes are compared one by one") and the second layout under a held
+# hash — same header hash, same length, DIFFERENT bytes — is walked as if it were
+# the held layout, so TestFixedRoadmapJsT13LayoutHashCollision must go red. The
+# sabotage rides through `go test -overlay`, the same instrument the versioning
+# control below uses.
+.PHONY: tables-js-fixed-roadmap-negative-control
+tables-js-fixed-roadmap-negative-control:
+	@rm -rf build/js-roadmap-sabotage && mkdir -p build/js-roadmap-sabotage
+	@sed 's|bytes\[layoutAt + i\] !== known.layout\[i\]|false /* SABOTAGED */|' \
+		internal/codegen/jstable/fixedmodule.go > build/js-roadmap-sabotage/fixedmodule.go.txt
+	@grep -q SABOTAGED build/js-roadmap-sabotage/fixedmodule.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedmodule.go":"%s/build/js-roadmap-sabotage/fixedmodule.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/js-roadmap-sabotage/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-roadmap-sabotage/overlay.json \
+			-count=1 ./internal/codegen/jstable/ -run '^(TestFixedRoadmapJsT13LayoutHashCollision)$$' \
+			> build/js-roadmap-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the second layout read as the held one and the gate stayed green"; \
+		cat build/js-roadmap-sabotage/log; exit 1; \
+	fi
+	@grep -q "TestFixedRoadmapJsT13LayoutHashCollision" build/js-roadmap-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the roadmap gate went red for another reason"; \
+		  cat build/js-roadmap-sabotage/log; exit 1; }
+	@echo 'tables JS fixed roadmap negative control: the second layout under a held hash reds without the byte comparison'
+
 # ITS NEGATIVE CONTROL (§5.9 #11: each gate owes one, "because a byte comparison
 # nobody has seen fail may be comparing a file with itself"). Swap the ONE NAME a
 # file OUTSIDE the lineage owes for the one a file BELOW THE FLOOR owes — the two
@@ -697,8 +767,59 @@ cards-js-retain-fuzz: build/conformance-harness cards-js-generate
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-js-retain-fuzz.log
 	@grep -qE '[1-9][0-9]* mutants' build/cards-js-retain-fuzz.log
 
+# THE CARDS CONFORMANCE CHECK, this leg's half (tables/cards/conformance/FORMAT.md).
+# cards-js-test runs the facade's node:test cases against the generated unit;
+# cards-js-conformance runs the harness `cards` subcommand over the JS driver;
+# the negative control flips one rendered byte through a test-only environment
+# switch and requires render to go red while load/save/parse/bounds stay green.
+# They live in make/js.mk (NOT a separate make/cards-js.mk) for the same reason
+# the wire-fuzz targets do: the wide-scalar refusal gate discovers every
+# make/*.mk as a live port (docs/SPEC-TABLES.md §11).
+.PHONY: cards-js-test cards-js-conformance cards-js-conformance-negative-control
+
+# cards-js-test runs the facade's node:test cases (ES modules loaded by node
+# with no npm dependency), against the generated unit cards-js-generate emits.
+cards-js-test: cards-js-generate
+	$(NODE) --test tables/cards/js/cards.test.mjs
+
+# cards-js-conformance runs the harness `cards` subcommand over the JS driver,
+# requiring all nine surfaces; each surface must answer with no absence.
+cards-js-conformance: build/conformance-harness cards-js-generate
+	./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/js/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view
+
+# cards-js-conformance-negative-control runs the same check with the driver's
+# test-only render sabotage switch set, and requires render to go red while the
+# other eight surfaces stay green.
+cards-js-conformance-negative-control: build/conformance-harness cards-js-generate
+	@if CARDS_JS_SABOTAGE_RENDER=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/js/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-js-conformance-neg.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with one rendered byte changed'; exit 1; fi
+	@grep -qE 'cards render .*FAIL' build/cards-js-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: render did not go red'; cat build/cards-js-conformance-neg.log; exit 1; }
+	@grep -qE 'cards (load|save|parse|bounds|upgrade|edit|taskhash|view) pass' build/cards-js-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-js-conformance-neg.log; exit 1; }
+	@echo 'cards JS negative control: one changed rendered byte turns exactly render red'
+
+# cards-js-conformance-upgrade-negative-control: a switch that drops one retained
+# byte must FAIL upgrade alone while the other eight surfaces stay green.
+.PHONY: cards-js-conformance-upgrade-negative-control
+cards-js-conformance-upgrade-negative-control: build/conformance-harness cards-js-generate
+	@if CARDS_JS_SABOTAGE_UPGRADE=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/js/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-js-conformance-upgrade-neg.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: upgrade stayed green with one retained byte dropped'; exit 1; fi
+	@grep -qE 'cards upgrade .*FAIL' build/cards-js-conformance-upgrade-neg.log || { echo 'NEGATIVE CONTROL FAILED: upgrade did not go red'; cat build/cards-js-conformance-upgrade-neg.log; exit 1; }
+	@grep -qE 'cards (load|save|render|parse|bounds|edit|taskhash|view) pass' build/cards-js-conformance-upgrade-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-js-conformance-upgrade-neg.log; exit 1; }
+	@echo 'cards JS upgrade negative control: one dropped retained byte turns exactly upgrade red'
+
+# cards-js-conformance-hash-negative-control: a switch that adds needs to the
+# hash frame must FAIL taskhash alone while the other eight surfaces stay green.
+.PHONY: cards-js-conformance-hash-negative-control
+cards-js-conformance-hash-negative-control: build/conformance-harness cards-js-generate
+	@if CARDS_JS_SABOTAGE_HASH=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/js/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-js-conformance-hash-neg.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: taskhash stayed green with needs added to the frame'; exit 1; fi
+	@grep -qE 'cards taskhash .*FAIL' build/cards-js-conformance-hash-neg.log || { echo 'NEGATIVE CONTROL FAILED: taskhash did not go red'; cat build/cards-js-conformance-hash-neg.log; exit 1; }
+	@grep -qE 'cards (load|save|render|parse|bounds|upgrade|edit|view) pass' build/cards-js-conformance-hash-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-js-conformance-hash-neg.log; exit 1; }
+	@echo 'cards JS hash negative control: needs in the frame turns exactly taskhash red'
+
 test-js: cards-js-wire-fuzz
 test-js: cards-js-retain-fuzz
+test-js: cards-js-test cards-js-conformance cards-js-conformance-negative-control cards-js-conformance-upgrade-negative-control cards-js-conformance-hash-negative-control
 
 # THE JAVASCRIPT LEG of `make test`: the table accelerator gates and their
 # negative controls, the runtime-home gate, and the packet tests in both node modes.
@@ -722,6 +843,7 @@ test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generate
 	$(MAKE) tables-js-fixed-slack-negative-control
 	$(MAKE) tables-js-versioning
 	$(MAKE) tables-js-versioning-negative-control
+	$(MAKE) tables-js-fixed-roadmap-negative-control
 	cd test/js && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
 	cd test/js-ludicrous && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
 

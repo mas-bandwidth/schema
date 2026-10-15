@@ -1,0 +1,12 @@
+#!/bin/sh
+# The C card leg's driver (tables/cards/conformance/FORMAT.md).
+#
+# A driver is a command, not a binary, exactly so a leg can be assembled from
+# what a backend already has. This one is a single compiled executable.
+#
+# The working directory is the repository root, which is the contract: every
+# path in the manifest is repo-relative, so a driver never resolves one itself.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+exec build/cards-driver-c "$@"

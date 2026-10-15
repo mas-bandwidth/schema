@@ -13,6 +13,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -30,6 +31,7 @@ import (
 //   - "SaveMessages of them gives the batch bytes back exactly." (§3.3)
 func TestGoMessageFormGoldens(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated goldens)")
 	root, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)

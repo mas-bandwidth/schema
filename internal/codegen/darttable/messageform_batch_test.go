@@ -421,3 +421,72 @@ const batchDamageBody = `
   check(!fileOk && fileRep.refused && fileRep.reason == 'message_form_as_file' && !fileRep.malformed,
       'a form-2 batch as a file: reason=${fileRep.reason}');
 `
+
+// TestMessageFormFloatScalarsCrossTheBitLaneDart pins the message form's float
+// scalar payload (docs/SPEC-TABLES.md §3.3): "A FLOAT CROSSES THE BIT LANE AS
+// ITS IEEE-754 BITS" — float32 as its 32 bits, float64 as its 64, written from
+// and read back into a double through a little-endian ByteData view, and never
+// widened. It was the scalar-defaults/dart/valid-data red: the emitter handed a
+// `double` to the int-only `w.put(value.b, 32)` and read `r.bits.get(32)`
+// straight into a double, which does not compile. This test is pure Go over the
+// generated text, so it is red at BASE on every machine, toolchain or not.
+func TestMessageFormFloatScalarsCrossTheBitLaneDart(t *testing.T) {
+	t.Parallel()
+
+	u := unitFrom(t, `package probe
+
+enum Grade
+{
+    Bronze
+    Silver
+    Gold
+}
+
+fixed table T
+{
+    a int32 = 7
+    b float32 = 0.0
+    d float64 = 0.0
+    g Grade = Silver
+}
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	var all strings.Builder
+	for _, data := range files {
+		all.Write(data)
+	}
+	src := all.String()
+
+	// The bits, both ways, at each kind's own width (docs/SPEC-TABLES.md §3.3).
+	want := []string{
+		"setFloat32(0, value.b, Endian.little)).getUint32(0, Endian.little), 32)",
+		"setFloat64(0, value.d, Endian.little)).getUint64(0, Endian.little), 64)",
+		"setUint32(0, r.bits.get(32), Endian.little)).getFloat32(0, Endian.little)",
+		"setUint64(0, r.bits.get(64), Endian.little)).getFloat64(0, Endian.little)",
+	}
+	for _, w := range want {
+		if !strings.Contains(src, w) {
+			t.Fatalf("the message form's float scalar payload does not cross the bit lane through %q (docs/SPEC-TABLES.md §3.3)", w)
+		}
+	}
+
+	// Never a double in the int bit lane: the exact red the probe hit. The
+	// widened pair pins that a float32 is never widened to 64 bits and that a
+	// float64 is never truncated to 32 (docs/SPEC-TABLES.md §3.3, kind 10's
+	// message width is 32).
+	for _, bad := range []string{
+		"w.put(value.b, 32)",
+		"w.put(value.d, 64)",
+		"w.put(value.b, 64)",
+		"w.put(value.d, 32)",
+		"value.b = r.bits.get(32)",
+		"value.d = r.bits.get(64)",
+	} {
+		if strings.Contains(src, bad) {
+			t.Fatalf("the message form hands a float to the int bit lane: %q (docs/SPEC-TABLES.md §3.3)", bad)
+		}
+	}
+}

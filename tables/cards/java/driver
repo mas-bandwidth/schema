@@ -1,0 +1,5 @@
+#!/bin/sh
+# The Java card driver (tables/cards/conformance/FORMAT.md): run from the
+# repository root, it dispatches to the built facade program.
+ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
+exec "${JAVA:-java}" -XX:+UseSerialGC -XX:ActiveProcessorCount=1 -cp "$ROOT/build/cards-java-facade" cards.Driver "$@"

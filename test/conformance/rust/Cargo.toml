@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 graphdemo = { path = "../../../build/tables-generated-rust/graphdemo" }
 blobdemo = { path = "../../../build/tables-generated-rust/blobdemo" }
+mapdemo = { path = "../../../build/tables-generated-rust/mapdemo" }
 blockdemo = { path = "../../../build/tables-generated-rust/blockdemo" }
 
 [profile.dev]
