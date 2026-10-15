@@ -130,7 +130,11 @@ func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 		fmt.Fprintf(b, "                    retain.discardField(path,depth,%d);\n", ordinal)
 	}
 	fmt.Fprintf(b, "                    v.%s.clear(); boolean keyWidened=false; for(long i=0;i<n;i++){TableVariable.Reader er=ar.body();if(er==null)break;%s keyValue=new %s();TableVariable.Report keyReport=new TableVariable.Report();TableVariable.Reader kr=new TableVariable.Reader(er.buf,er.ids,keyReport);kr.off=er.off;kr.limit=er.limit;"+st.Name+"Variable.readMapKey_%s(kr,keyValue,keyReport);\n", m, entry, entry, m)
-	fmt.Fprintf(b, "                    if(keyReport.kindMismatch>0){report.kindMismatch++;v.%s.clear();break;}if(keyReport.malformed||kr.fail||kr.off!=kr.limit){report.malformed=true;break;}if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}\n", m)
+	discard := ""
+	if retain {
+		discard = fmt.Sprintf("retain.discardField(path,depth,%d);", ordinal)
+	}
+	fmt.Fprintf(b, "                    if(keyReport.kindMismatch>0){report.kindMismatch++;v.%s.clear();%s break;}if(keyReport.malformed||kr.fail||kr.off!=kr.limit){report.malformed=true;break;}if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}\n", m, discard)
 	key := ir.MapKeyField(f)
 	if key.Type.Kind == ir.TString {
 		fmt.Fprintf(b, "                    if(keyValue.key.getBytes(StandardCharsets.UTF_8).length>%d){report.clamped++;continue;}\n", key.Type.Size)

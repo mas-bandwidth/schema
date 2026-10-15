@@ -31,6 +31,11 @@ const tableVariableRuntime = `// The VARIABLE FORM's runtime (docs/SPEC-TABLES.m
 // end of the wire. A reference is an unsigned LEB128 naming a slot of the id
 // table, counted from 1; reference 0 names no id and is the terminator.
 public final class TableVariable {
+    static double widenF32(int raw) {
+        if ((raw & 0x7f800000) == 0x7f800000 && (raw & 0x7fffff) != 0)
+            return Double.longBitsToDouble(((long)(raw & 0x80000000) << 32) | 0x7ff0000000000000L | ((long)(raw & 0x7fffff) << 29));
+        return (double)Float.intBitsToFloat(raw);
+    }
     private TableVariable() {}
 
     // The two RESERVED ids the node table names (docs/SPEC-TABLES.md §3.1, §5):
@@ -2255,11 +2260,11 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		return
 	}
 	if variableUnion(f) != nil && !f.Type.Optional {
-		writeUnionFieldRead(b, u, st, f)
+		writeUnionFieldRead(b, u, st, f, retain, ordinal)
 		return
 	}
 	if f.KeyEnum != "" && !f.Type.Optional {
-		writeKeyedFieldRead(b, u, st, f)
+		writeKeyedFieldRead(b, u, st, f, retain, ordinal)
 		return
 	}
 	if f.Type.Optional {
@@ -2368,6 +2373,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TFloat64:
 		fmt.Fprintf(b, "                if (kind == 11) { if (r.has(8)) { v.%s = Double.longBitsToDouble(r.get64()); } else { report.malformed = true; r.fail = true; } }\n", m)
+		fmt.Fprintf(b, "                else if(kind==10){if(r.has(4)){v.%s=TableVariable.widenF32(r.get32());report.widened++;}else{report.malformed=true;r.fail=true;}}\n", m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
 		writeIntFieldRead(b, f, m)

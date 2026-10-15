@@ -63,20 +63,49 @@ func writeVariableKeyedHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "    static void readSlot_%s(TableVariable.Reader r,Slot_%s v,int kind,TableVariable.NodeTable nt,TableVariable.Report report){\n", m, m)
 		writeFieldRead(b, u, st, one, false, 0)
 		b.WriteString("    }\n")
+		fmt.Fprintf(b, "    static void readSlotRetain_%s(TableVariable.Reader r,Slot_%s v,int kind,TableVariable.NodeTable nt,TableVariable.Report report,TableRetain retain,int[] path,int depth){\n", m, m)
+		writeFieldRead(b, u, st, one, true, 0)
+		b.WriteString("    }\n")
 		fmt.Fprintf(b, "    static void jsonSlot_%s(StringBuilder b,TableVariable.NodeGraph graph,Slot_%s v,int depth){\n", m, m)
 		writeJsonFieldValue(b, u, st, one)
 		b.WriteString("    }\n")
 		fmt.Fprintf(b, "    static void readJsonSlot_%s(TableJson.In in,Slot_%s v){\n", m, m)
 		readJsonFieldValue(b, u, st, one)
 		b.WriteString("    }\n")
-		fmt.Fprintf(b, "    static int writeKeyedPayload_%s(TableVariable.Writer w,TableVariable.NodeGraph graph,List<%s> slots){TableVariable.Writer entries=w.sub(new byte[1<<20]);int count=0;\n", m, boxed)
-		for i := range f.KeyEnumRef.Variants {
-			expr := fmt.Sprintf("slots.get(%d)", i)
-			fmt.Fprintf(b, "        if(slots.size()>%d&&!(%s)){long key=entries.ref(0x%016xL);TableVariable.Writer body=entries.sub(new byte[1<<20]);\n", i, variableDefaultTest(one, expr), ir.TableWireId(f.KeyEnumRef.VariantWireName(i)))
-			writeVariablePayload(b, u, st.Name, one, expr, "body", 0)
-			fmt.Fprintf(b, "        int start=%s;entries.putLeb(key);entries.putLeb(body.off-start);entries.putBytes(body.buf,start,body.off-start);count++;}\n", variablePayloadStart(one, "body"))
+		for _, retaining := range []bool{false, true} {
+			suffix, args := "", ""
+			if retaining {
+				suffix = "Retain"
+				args = ",TableRetain retain,TableVariable.Report report,int[] path,int depth"
+			}
+			fmt.Fprintf(b, "    static int writeKeyedPayload%s_%s(TableVariable.Writer w,TableVariable.NodeGraph graph,List<%s> slots%s){TableVariable.Writer entries=w.sub(new byte[1<<20]);int count=0;\n", suffix, m, boxed, args)
+			for i := range f.KeyEnumRef.Variants {
+				expr := fmt.Sprintf("slots.get(%d)", i)
+				defaultTest := variableDefaultTest(one, expr)
+				retainedBody := retaining && isStruct(one) && !one.Type.Pointer
+				if retainedBody {
+					defaultTest = "false"
+				}
+				fmt.Fprintf(b, "        if(slots.size()>%d&&!(%s)){int idsMark=entries.ids.count;long key=entries.ref(0x%016xL);TableVariable.Writer body=entries.sub(new byte[1<<20]);\n", i, defaultTest, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)))
+				if retaining {
+					fmt.Fprintf(b, "path[2*depth]=0;path[2*depth+1]=0;\n")
+					// The caller assigns the holder field and slot at depth-1.
+					fmt.Fprintf(b, "path[2*(depth-1)+1]=%d;\n", i)
+					writeVariableRetainedPayload(b, u, st.Name, one, expr, "body", 0, "depth+1")
+				} else {
+					writeVariablePayload(b, u, st.Name, one, expr, "body", 0)
+				}
+				if retainedBody {
+					b.WriteString("if(body.off>1){")
+				}
+				fmt.Fprintf(b, "        int start=%s;entries.putLeb(key);entries.putLeb(body.off-start);entries.putBytes(body.buf,start,body.off-start);count++;", variablePayloadStart(one, "body"))
+				if retainedBody {
+					b.WriteString("}else entries.ids.count=idsMark;")
+				}
+				b.WriteString("}\n")
+			}
+			fmt.Fprintf(b, "        w.putLeb(1+TableVariable.lebLen(count)+entries.off);w.put8(%d);w.putLeb(count);w.putBytes(entries.buf,0,entries.off);return count;}\n", ir.TableWireElemKind(f))
 		}
-		fmt.Fprintf(b, "        w.putLeb(1+TableVariable.lebLen(count)+entries.off);w.put8(%d);w.putLeb(count);w.putBytes(entries.buf,0,entries.off);return count;}\n", ir.TableWireElemKind(f))
 	}
 }
 
@@ -88,15 +117,28 @@ func variablePayloadStart(f *ir.Field, w string) string {
 	return "0"
 }
 
-func writeKeyedFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
+func writeKeyedFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int) {
 	m := varMember(f)
 	one := variableElement(f)
 	kind := ir.TableWireElemKind(f)
-	fmt.Fprintf(b, "                if(kind==16){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.leb();if(!ar.fail){if(ek!=%d){report.kindMismatch++;}else{for(long i=0;i<count;i++){long keyRef=ar.leb();if(ar.fail||keyRef==0){report.malformed=true;break;}long key=ar.resolve(keyRef);TableVariable.Reader body=ar.body();if(body==null)break;int slot=-1;\n", kind)
+	fmt.Fprintf(b, "                if(kind==16){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.leb();if(!ar.fail){if(!(%s)){report.kindMismatch++;}else{if(ek!=%d)report.widened++;for(long i=0;i<count;i++){long keyRef=ar.leb();if(ar.fail||keyRef==0){report.malformed=true;break;}long key=ar.resolve(keyRef);TableVariable.Reader body=ar.body();if(body==null)break;int slot=-1;\n", variableCompatibleKinds(kind, "ek"), kind)
 	for i := range f.KeyEnumRef.Variants {
 		fmt.Fprintf(b, "                    if(key==0x%016xL)slot=%d;\n", ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i)
 	}
-	fmt.Fprintf(b, "                    if(slot<0){report.unknown++;continue;}%sVariable.Slot_%s value=new %sVariable.Slot_%s();TableVariable.Reader payload=TableVariable.fieldPayload(body,ek);%sVariable.readSlot_%s(payload,value,ek,nt,report);if(payload.off!=payload.limit){report.malformed=true;value=new %sVariable.Slot_%s();}v.%s.set(slot,value.value);\n", st.Name, m, st.Name, m, st.Name, m, st.Name, m, m)
+	lost := ""
+	method := "readSlot_"
+	args := ""
+	if retain {
+		lost = "report.retainLost++;"
+		method = "readSlotRetain_"
+		args = ",retain,path,depth+1"
+	}
+	fmt.Fprintf(b, "                    if(slot<0){report.unknown++;%s continue;}\n", lost)
+	if retain {
+		fmt.Fprintf(b, "path[2*depth]=%d;path[2*depth+1]=slot;retain.discardPath(path,depth+1);\n", ordinal)
+	}
+	fmt.Fprintf(b, "%sVariable.Slot_%s value=new %sVariable.Slot_%s();TableVariable.Reader payload=TableVariable.fieldPayload(body,ek);int beforeWidened=report.widened;%sVariable.%s%s(payload,value,ek,nt,report%s);if(ek!=%d)report.widened=beforeWidened;if(payload.off!=payload.limit){report.malformed=true;value=new %sVariable.Slot_%s();}v.%s.set(slot,value.value);\n", st.Name, m, st.Name, m, st.Name, method, m, args, kind, st.Name, m, m)
+
 	if one.Type.Pointer {
 		fmt.Fprintf(b, "                    v.%sIdx.set(slot,value.valueIdx);\n", m)
 	}

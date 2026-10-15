@@ -71,45 +71,75 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 		}
 	}
 	b.WriteString("        default:break;}}\n")
-	b.WriteString("    static void writePayload(TableVariable.Writer w,TableVariable.NodeGraph graph,Value v){switch(v.tag){case 0:w.putLeb(0);return;\n")
-	for i, arm := range un.Variants {
-		kind := 32
-		if !arm.Void() {
-			kind = ir.TableWireFieldKind(arm.F)
+	for _, retaining := range []bool{false, true} {
+		suffix, args := "", ""
+		if retaining {
+			suffix = "Retain"
+			args = ",TableRetain retain,TableVariable.Report report,int[] path,int depth"
 		}
-		fmt.Fprintf(&b, "        case %d:{w.putLeb(w.ref(0x%016xL));w.put8(%d);\n", i+1, ir.TableWireId(arm.WireName()), kind)
-		if arm.Void() {
-			b.WriteString("        w.putLeb(0);return;}\n")
-			continue
-		}
-		one := *arm.F
-		one.Name = arm.Name
-		b.WriteString("        TableVariable.Writer body=w.sub(new byte[1<<20]);\n")
-		writeVariablePayload(&b, u, un.Name, &one, "v."+varMember(&one), "body", 0)
-		fmt.Fprintf(&b, "        int start=%s;w.putLeb(body.off-start);w.putBytes(body.buf,start,body.off-start);return;}\n", variablePayloadStart(&one, "body"))
-	}
-	b.WriteString("        default:return;}}\n")
-	b.WriteString("    static Value readPayload(TableVariable.Reader input,TableVariable.NodeTable nt,TableVariable.Report report){Value v=new Value();long ref=input.leb();if(input.fail||ref==0)return v;long id=input.resolve(ref);if(input.fail||!input.has(1)){report.malformed=true;return v;}int kind=input.get8();TableVariable.Reader body=input.body();if(body==null)return v;\n")
-	for i, arm := range un.Variants {
-		fmt.Fprintf(&b, "        if(id==0x%016xL){\n", ir.TableWireId(arm.WireName()))
-		if arm.Void() {
-			fmt.Fprintf(&b, "        if(kind!=32){report.kindMismatch++;return v;}if(body.off!=body.limit){report.malformed=true;return v;}v.tag=%d;return v;}\n", i+1)
-			continue
-		}
-		one := *arm.F
-		one.Name = arm.Name
-		expected := ir.TableWireFieldKind(&one)
-		condition := fmt.Sprintf("kind==%d", expected)
-		for k := 1; k <= 33; k++ {
-			if ir.TableKindWidens(k, expected) {
-				condition += fmt.Sprintf("||kind==%d", k)
+		fmt.Fprintf(&b, "    static void writePayload%s(TableVariable.Writer w,TableVariable.NodeGraph graph,Value v%s){switch(v.tag){case 0:w.putLeb(0);return;\n", suffix, args)
+		for i, arm := range un.Variants {
+			kind := 32
+			if !arm.Void() {
+				kind = ir.TableWireFieldKind(arm.F)
 			}
+			fmt.Fprintf(&b, "        case %d:{w.putLeb(w.ref(0x%016xL));w.put8(%d);\n", i+1, ir.TableWireId(arm.WireName()), kind)
+			if arm.Void() {
+				b.WriteString("        w.putLeb(0);return;}\n")
+				continue
+			}
+			one := *arm.F
+			one.Name = arm.Name
+			b.WriteString("        TableVariable.Writer body=w.sub(new byte[1<<20]);\n")
+			if retaining {
+				fmt.Fprintf(&b, "path[2*depth]=%d;path[2*depth+1]=0;\n", i)
+				writeVariableRetainedPayload(&b, u, un.Name, &one, "v."+varMember(&one), "body", 0, "depth+1")
+			} else {
+				writeVariablePayload(&b, u, un.Name, &one, "v."+varMember(&one), "body", 0)
+			}
+			fmt.Fprintf(&b, "        int start=%s;w.putLeb(body.off-start);w.putBytes(body.buf,start,body.off-start);return;}\n", variablePayloadStart(&one, "body"))
 		}
-		fmt.Fprintf(&b, "        if(!(%s)){report.kindMismatch++;return v;}TableVariable.Reader r=TableVariable.fieldPayload(body,kind);\n", condition)
-		writeFieldRead(&b, u, st, &one, false, i)
-		fmt.Fprintf(&b, "        if(r.fail||r.off!=r.limit){report.malformed=true;return new Value();}v.tag=%d;return v;}\n", i+1)
+		b.WriteString("        default:return;}}\n")
 	}
-	b.WriteString("        report.unknown++;return v;}\n")
+	for _, retaining := range []bool{false, true} {
+		suffix, args := "", ""
+		if retaining {
+			suffix = "Retain"
+			args = ",TableRetain retain,int[] path,int depth"
+		}
+		fmt.Fprintf(&b, "    static Value readPayload%s(TableVariable.Reader input,TableVariable.NodeTable nt,TableVariable.Report report%s){Value v=new Value();long ref=input.leb();if(input.fail||ref==0)return v;long id=input.resolve(ref);if(input.fail||!input.has(1)){report.malformed=true;return v;}int kind=input.get8();TableVariable.Reader body=input.body();if(body==null)return v;\n", suffix, args)
+		for i, arm := range un.Variants {
+			fmt.Fprintf(&b, "        if(id==0x%016xL){\n", ir.TableWireId(arm.WireName()))
+			if arm.Void() {
+				fmt.Fprintf(&b, "        if(kind!=32){report.kindMismatch++;return v;}if(body.off!=body.limit){report.malformed=true;return v;}v.tag=%d;return v;}\n", i+1)
+				continue
+			}
+			one := *arm.F
+			one.Name = arm.Name
+			expected := ir.TableWireFieldKind(&one)
+			condition := fmt.Sprintf("kind==%d", expected)
+			for k := 1; k <= 33; k++ {
+				if ir.TableKindWidens(k, expected) {
+					condition += fmt.Sprintf("||kind==%d", k)
+				}
+			}
+			fmt.Fprintf(&b, "        if(!(%s)){report.kindMismatch++;return v;}TableVariable.Reader r=TableVariable.fieldPayload(body,kind);\n", condition)
+			directText := one.Array == ir.ArrayNone && (one.Type.Kind == ir.TString || one.Type.Kind == ir.TWString) && !one.Type.Pointer
+			if directText {
+				b.WriteString("TableVariable.Report parentReport=report;report=new TableVariable.Report();TableVariable.Reader textReader=new TableVariable.Reader(r.buf,r.ids,report);textReader.off=r.off;textReader.limit=r.limit;r=textReader;\n")
+			}
+			writeFieldRead(&b, u, st, &one, retaining, i)
+			if directText {
+				b.WriteString("parentReport.clamped+=report.clamped;parentReport.malformed|=report.malformed;if(report.malformed)return new Value();report=parentReport;\n")
+			}
+			fmt.Fprintf(&b, "        if(r.fail||r.off!=r.limit){report.malformed=true;return new Value();}v.tag=%d;return v;}\n", i+1)
+		}
+		b.WriteString("        report.unknown++;")
+		if retaining {
+			b.WriteString("report.retainLost++;")
+		}
+		b.WriteString("return v;}\n")
+	}
 	b.WriteString("    static void jsonFields(StringBuilder b,TableVariable.NodeGraph graph,Value v,int depth){b.append('{');switch(v.tag){case 0:b.append('}');return;\n")
 	for i, arm := range un.Variants {
 		fmt.Fprintf(&b, "        case %d:{TableJson.indent(b,depth+1);TableJson.esc(b,%q);b.append(\": \");\n", i+1, arm.Name)
@@ -160,14 +190,32 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 	return b.String()
 }
 
-func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
+func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int) {
 	un := variableUnion(f)
 	m := varMember(f)
+	method, args := "readPayload", ""
+	if retain {
+		method = "readPayloadRetain"
+		args = ",retain,path,depth+1"
+	}
 	if f.Array == ir.ArrayNone {
-		fmt.Fprintf(b, "                if(kind==15){v.%s=%sVariable.readPayload(r,nt,report);}else{r.skip(kind);report.kindMismatch++;}\n", m, un.Name)
+		fmt.Fprintf(b, "if(kind==15){")
+		if retain {
+			fmt.Fprintf(b, "retain.discardField(path,depth,%d);path[2*depth]=%d;path[2*depth+1]=0;", ordinal, ordinal)
+		}
+		fmt.Fprintf(b, "v.%s=%sVariable.%s(r,nt,report%s);}else{r.skip(kind);report.kindMismatch++;}\n", m, un.Name, method, args)
 		return
 	}
-	fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.leb();if(!ar.fail){if(ek!=15){report.kindMismatch++;}else if(count<0||count>0x7fffffffL){report.refused=true;}else{v.%s.clear();for(long i=0;i<count;i++){v.%s.add(%sVariable.readPayload(ar,nt,report));if(ar.fail)break;}}}}}else{r.skip(kind);report.kindMismatch++;}\n", m, m, un.Name)
+	fmt.Fprintf(b, "if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.leb();if(!ar.fail){if(ek!=15){report.kindMismatch++;}else if(count<0||count>0x7fffffffL){report.refused=true;}else{v.%s.clear();", m)
+	if retain {
+		fmt.Fprintf(b, "retain.discardField(path,depth,%d);", ordinal)
+	}
+	b.WriteString("for(long i=0;i<count;i++){")
+	if retain {
+		fmt.Fprintf(b, "path[2*depth]=%d;path[2*depth+1]=(int)i;", ordinal)
+	}
+	fmt.Fprintf(b, "v.%s.add(%sVariable.%s(ar,nt,report%s));if(ar.fail)break;}}}}}else{r.skip(kind);report.kindMismatch++;}\n", m, un.Name, method, args)
+
 }
 
 func writeUnionFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {

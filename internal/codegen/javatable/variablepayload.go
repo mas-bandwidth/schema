@@ -74,3 +74,36 @@ func writeVariablePayload(b *strings.Builder, u *ir.Unit, owner string, f *ir.Fi
 		}
 	}
 }
+
+// The retaining walk uses the same framing, with each child body at the path
+// selected by its holder. Scalars have no tail and share the ordinary codec.
+func writeVariableRetainedPayload(b *strings.Builder, u *ir.Unit, owner string, f *ir.Field, expr, w string, serial int, bodyDepth string) {
+	if f.KeyEnum != "" {
+		fmt.Fprintf(b, "%sVariable.writeKeyedPayloadRetain_%s(%s,graph,%s,retain,report,path,%s);\n", owner, varMember(f), w, expr, bodyDepth)
+		return
+	}
+	if f.Array != ir.ArrayNone {
+		aw := fmt.Sprintf("retainedPayload%d", serial)
+		ix := fmt.Sprintf("retainedIndex%d", serial)
+		el := fmt.Sprintf("retainedElement%d", serial)
+		count := expr + ".size()"
+		if f.Array == ir.ArrayFixed {
+			count = fmt.Sprint(f.ArrayBound)
+		}
+		one := variableElement(f)
+		fmt.Fprintf(b, "{TableVariable.Writer %s=%s.sub(new byte[1<<20]);%s.put8(%d);%s.putLeb(%s);for(int %s=0;%s<%s;%s++){%s %s=%s<%s.size()?%s.get(%s):%s;path[2*((%s)-1)+1]=%s;\n", aw, w, aw, ir.TableWireElemKind(f), aw, count, ix, ix, count, ix, variableValueType(one), el, ix, expr, expr, ix, variableDefault(one), bodyDepth, ix)
+		writeVariableRetainedPayload(b, u, owner, one, el, aw, serial+1, bodyDepth)
+		fmt.Fprintf(b, "}%s.putLeb(%s.off);%s.putBytes(%s.buf,0,%s.off); }\n", w, aw, w, aw, aw)
+		return
+	}
+	if !f.Type.Pointer && isStruct(f) {
+		sw := fmt.Sprintf("retainedBody%d", serial)
+		fmt.Fprintf(b, "{TableVariable.Writer %s=%s.sub(new byte[1<<20]);%sRetain.writeBodyRetain(%s,graph,%s,retain,report,path,%s);%s.putLeb(%s.off);%s.putBytes(%s.buf,0,%s.off); }\n", sw, w, f.Type.Name, sw, expr, bodyDepth, w, sw, w, sw, sw)
+		return
+	}
+	if un := variableUnion(f); un != nil {
+		fmt.Fprintf(b, "%sVariable.writePayloadRetain(%s,graph,%s,retain,report,path,%s);\n", un.Name, w, expr, bodyDepth)
+		return
+	}
+	writeVariablePayload(b, u, owner, f, expr, w, serial)
+}

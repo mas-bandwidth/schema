@@ -285,12 +285,23 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 		fmt.Fprintf(b, "        if(v.%sPresent){w.putLeb(w.ref(%sVariable.F_%s));w.put8(%d);\n", varMember(f), st.Name, varMember(f), variableWireKind(f))
 		one := *f
 		one.Type.Optional = false
-		writeVariablePayload(b, u, st.Name, &one, "v."+varMember(f), "w", 0)
+		fmt.Fprintf(b, "path[2*depth]=%d;path[2*depth+1]=0;\n", ordinal)
+		writeVariableRetainedPayload(b, u, st.Name, &one, "v."+varMember(f), "w", 0, "depth+1")
 		b.WriteString("        }\n")
 		return
 	}
 	if f.KeyEnum != "" {
-		fmt.Fprintf(b, "        {int mark=w.ids.count;long ref=w.ref(%sVariable.F_%s);TableVariable.Writer body=w.sub(new byte[1<<20]);int count=%sVariable.writeKeyedPayload_%s(body,nodes,v.%s);if(count>0){w.putLeb(ref);w.put8(16);w.putBytes(body.buf,0,body.off);}else w.ids.count=mark;}\n", st.Name, varMember(f), st.Name, varMember(f), varMember(f))
+		fmt.Fprintf(b, "        {int mark=w.ids.count;long ref=w.ref(%sVariable.F_%s);TableVariable.Writer body=w.sub(new byte[1<<20]);path[2*depth]=%d;path[2*depth+1]=0;int count=%sVariable.writeKeyedPayloadRetain_%s(body,nodes,v.%s,retain,report,path,depth+1);if(count>0){w.putLeb(ref);w.put8(16);w.putBytes(body.buf,0,body.off);}else w.ids.count=mark;}\n", st.Name, varMember(f), ordinal, st.Name, varMember(f), varMember(f))
+		return
+	}
+	if variableUnion(f) != nil {
+		condition := "v." + varMember(f) + ".tag!=0"
+		if f.Array != ir.ArrayNone {
+			condition = "!v." + varMember(f) + ".isEmpty()"
+		}
+		fmt.Fprintf(b, "if(%s){w.putLeb(w.ref(%sVariable.F_%s));w.put8(%d);path[2*depth]=%d;path[2*depth+1]=0;\n", condition, st.Name, varMember(f), variableWireKind(f), ordinal)
+		writeVariableRetainedPayload(b, u, st.Name, f, "v."+varMember(f), "w", 0, "depth+1")
+		b.WriteString("}\n")
 		return
 	}
 	if variableWide(f) && f.Array == ir.ArrayNone {
