@@ -72,6 +72,33 @@ printed, so a build wrapping this command stays clean. Add `--verbose` to
 list every file written (`check` and `fmt` take the same flag).
 Errors always print, whatever the verbosity.
 
+**Go surfaces.** The Go target's table output (`--lang go`) is a set of
+surfaces, each a file or a family of functions:
+
+| surface | emits |
+| --- | --- |
+| `wire` | the table-wire codecs and reflection descriptors in `<Base>Table.go` |
+| `fixed` | the fixed-form walk in `<Base>Table.go` |
+| `message` | the message-form codecs in `<Base>Table.go` |
+| `retain` | the retain machinery in `<Base>Table.go` |
+| `cook` | the `<Base>Cook.go` accelerators |
+| `block` | the `<Base>Block.go` accelerators |
+| `json` | the `<Base>TableJson.go` text form |
+| `view` | the `<Base>View.go` listing |
+
+By default all eight are emitted, byte-identical to today. `--surface` picks
+a subset:
+
+```
+schema generate --lang go --surface wire,json --out generated/go .
+```
+
+Only the listed surfaces' files and functions are emitted. Dependencies are
+resolved for you: the JSON, message, cook, view and fixed surfaces read the
+reflection descriptors, so they pull `wire` in behind the scenes. A `--lang`
+other than go refuses `--surface` by name; a `--surface` value that is not one
+of the eight is refused by name (docs/SPEC-TABLES.md §8.4).
+
 Your `.schema` files are read, never written. `schema fmt` is the only command
 that rewrites one, so `check`, `generate`, `id` and the rest run against a
 read-only checkout, and they answer the same way whether or not the source is

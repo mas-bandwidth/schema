@@ -11173,6 +11173,22 @@ vocabulary a table carries is §8.1's and rides where it always did. The gate
 asks "did the registry leak out of its file?", never "is there a descriptor
 here?" — §2.2's own distinction between machinery and columns.
 
+### 8.4.1 The Go `--surface` selection
+
+Go is a compiled language: a build pays for what it COMPILES, and a unit
+whose generated output carries a surface a project never uses still pays for
+it as source size, compile time and binary size. `schema generate --lang go
+--surface <list>` names the surfaces a build wants, and only those surfaces'
+files and functions are emitted. The surfaces are `wire`, `fixed`, `json`,
+`cook`, `block`, `view`, `message` and `retain`; the default is all eight,
+which is byte-identical to a generate that names none.
+
+Dependencies are resolved in the selection, never silently dropped: the
+`json`, `message`, `cook`, `view` and `fixed` surfaces read the reflection
+descriptors, so they pull `wire` in with them. `--surface` is a Go-only flag:
+any other `--lang` refuses it by name, and a value that names no surface is
+refused by name.
+
 ### 8.5 On the side
 
 **The view is one generated file per UNIT, not per schema file** —
