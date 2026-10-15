@@ -22,6 +22,7 @@ TableRefuseDataCycle
 TableRefuseInvalidValue
 TableRefuseAllocationFailed
 TableRefuseWireDamaged
+TableRefuseBase64Damaged
 )
 func(r TableRefuseReason) Error()string{switch r {
 case TableRefuseOk:return "ok"
@@ -41,6 +42,7 @@ case TableRefuseDataCycle:return "data_cycle"
 case TableRefuseInvalidValue:return "invalid_value"
 case TableRefuseAllocationFailed:return "allocation_failed"
 case TableRefuseWireDamaged:return "wire_damaged"
+case TableRefuseBase64Damaged:return "base64_damaged"
 };return "invalid refusal reason"}
 func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{return nil};return reason}
 // TableBuildVersionMismatch is the typed error a strict announcement refusal

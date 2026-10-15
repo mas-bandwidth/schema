@@ -351,6 +351,7 @@ func init() {
 		Name{Name: "TableRefuseInvalidValue", What: "typed file and authoring refusal reasons"},
 		Name{Name: "TableRefuseAllocationFailed", What: "typed file and authoring refusal reasons"},
 		Name{Name: "TableRefuseWireDamaged", What: "damage while measuring a table file, separate from accelerator refusal clauses"},
+		Name{Name: "TableRefuseBase64Damaged", What: "a base64 text-transport body that does not decode (docs/SPEC-TABLES.md §16.6)"},
 		Name{Name: "tableRefuseError", What: "typed file and authoring refusal reasons"},
 		Name{Name: "tableRegionSaveReason", What: "typed file and authoring refusal reasons"},
 		Name{Name: "tableNodeStorageReason", What: "typed file and authoring refusal reasons"},
