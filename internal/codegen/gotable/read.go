@@ -15,8 +15,18 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("\tfor {\n\t\tref, ok := r.lebPair(); if !ok { ref, ok = r.lebWide() }; if !ok { r.Report.Malformed = true; return false }\n")
 	g.pf("\t\tif ref == 0 { return true }\n")
 	g.pf("\t\tfieldID, ok := r.Resolve(ref); if !ok || !r.Has(1) { r.Report.Malformed = true; return false }\n")
+	// THE FIELD HEADER IS READ WHOLE BEFORE A RESERVED ID IS JUDGED, as the
+	// oracle reads it (internal/tablewire bodyAt). A reserved id in a body
+	// that is not its transport is MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3),
+	// and that is framing damage: the level stops and KEEPS WHAT IT DECODED
+	// there (§4). Where it stops is what the caller's "terminator is the last
+	// byte of L" check reads (§3), so stopping before the kind byte left the
+	// cursor one byte short and threw away the decoded prefix the oracle keeps
+	// — a union arm read None where the reference kept the arm (wire fuzz
+	// seed 24845619678, stream_chain).
+	g.pf("\t\tkind := r.Get8()\n")
 	g.pf("\t\tif fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff { r.Report.Malformed = true; return false }\n")
-	g.pf("\t\tkind := r.Get8()\n\t\tswitch fieldID {\n")
+	g.pf("\t\tswitch fieldID {\n")
 	for ordinal, f := range st.Fields {
 		g.retainOrdinal = ordinal
 		kind := ir.TableWireFieldKind(f)

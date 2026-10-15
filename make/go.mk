@@ -591,6 +591,7 @@ test-go: packet-wide-go packet-wide-go-negative-control
 
 .PHONY: tables-go-wire-fuzz tables-go-wire-fuzz-negative-control
 tables-go-wire-fuzz: build/conformance-harness build/conformance-go
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainSavesWhatTheOracleSaves$$'
 	./build/conformance-harness wire-fuzz --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)
 
 tables-go-wire-fuzz-negative-control: build/conformance-harness build/conformance-go
