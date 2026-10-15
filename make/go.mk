@@ -58,8 +58,8 @@ generated/go/.stamp: bin/schema $(SCHEMAS)
 .PHONY: tables-go-fixedform
 tables-go-fixedform:
 	sh test/slowgate/proof tables-go-fixedform \
-		'TestFixedFormRoundTrip TestFixedFormHostileBoolByte TestFixedFormHostileUnionTag TestFixedFormArgLaneOldEncodingControl TestFixedFormClampLiveCount TestFixedFormRecordBound TestFixedFormIdentityEqualsCompiled TestFixedFormZeroBehindNarrowerArm TestFixedPlanMaxCoversEveryLineagePlan' \
-		./internal/codegen/gotable -run 'TestFixedForm|TestFixedPlanMaxCoversEveryLineagePlan' -count=1
+		'TestFixedFormRoundTrip TestFixedFormHostileBoolByte TestFixedFormHostileUnionTag TestFixedFormArgLaneOldEncodingControl TestFixedFormClampLiveCount TestFixedFormRecordBound TestFixedFormIdentityEqualsCompiled TestFixedFormZeroBehindNarrowerArm TestFixedPlanMaxCoversEveryLineagePlan TestFixedLoadNamesEveryRefusal' \
+		./internal/codegen/gotable -run 'TestFixedForm|TestFixedPlanMaxCoversEveryLineagePlan|TestFixedLoadNamesEveryRefusal' -count=1
 test-go: tables-go-fixedform
 
 .PHONY: tables-go-json-walk
