@@ -51,7 +51,19 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	b.WriteString("// never coerced. The canonical text ends with exactly ONE newline, which the\n")
 	b.WriteString("// writer emits and the reader accepts with or without (§16.1).\n\n")
 	fmt.Fprintf(&b, "package %s\n\n", u.Package)
-	b.WriteString("import (\n\t\"encoding/base64\"\n\t\"math\"\n\t\"strconv\"\n\t\"unsafe\"\n\t\"unicode/utf8\"\n)\n\n")
+	needBase64 := false // only fixed members get SaveText/LoadText (§16.6)
+	for _, f := range u.Files {
+		for _, st := range fileMembers(f, closure) {
+			if !st.IsMapEntry() && !ir.VariableTables(u)[st.Name] {
+				needBase64 = true
+			}
+		}
+	}
+	b.WriteString("import (\n")
+	if needBase64 {
+		b.WriteString("\t\"encoding/base64\"\n")
+	}
+	b.WriteString("\t\"math\"\n\t\"strconv\"\n\t\"unsafe\"\n\t\"unicode/utf8\"\n)\n\n")
 	b.WriteString(strings.Replace(tableJsonWalkSource, "// ---- json walk: end ----",
 		tableJsonWideSource+tableJsonWStringSource+tableJsonGraphSource+tableJsonListSource+tableJsonMapSource+tableJsonMapDecimalSource+"// ---- json walk: end ----", 1))
 
