@@ -212,7 +212,7 @@ func t03GoR14(t *testing.T) {
 	t03GoHas(t, runtime, "c.tooLarge = true", "R14 the over-reach is recorded")
 	t03GoHas(t, runtime, "if c.tooLarge {", "R14 the plan is refused WHOLE")
 	t03GoHas(t, runtime, "return -3", "R14 the compile answers layout_record_too_large")
-	t03GoHas(t, runtime, `out[i].Why = "layout_record_too_large"`, "R14 the lane carries the name")
+ 	t03GoHas(t, runtime, `out[i].Why = TableFixedReasonLayoutRecordTooLarge`, "R14 the lane carries the name")
 	// The generated module carries the runtime, so the ban is on the emitted
 	// build and not on this package's constant alone.
 	t03GoHas(t, tableFile(generate(t, t03GoFlat())), "tableFixedSrcEnd", "R14 the emitted build carries the entry bound")
@@ -305,7 +305,7 @@ func t03GoR3(t *testing.T) {
 		t03GoHas(t, text, fmt.Sprintf("const LineageFixedFloor = %d", tc.want), "R3 1 + the highest retired index")
 		load := t03GoLoad(t, text, "Lineage")
 		t03GoHas(t, load, "if pick < LineageFixedFloor {", "R3 below the floor is a comparison of the index")
-		t03GoHas(t, load, `return tableFixedRefuseHash(report, "layout_unsupported", hash)`, "R3 below the floor is layout_unsupported")
+		t03GoHas(t, load, `return tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)`, "R3 below the floor is layout_unsupported")
 	}
 }
 
@@ -362,7 +362,7 @@ func t03GoR10(t *testing.T) {
 	text, _ := t03GoRetire(t, 0)
 	load := t03GoLoad(t, text, "Lineage")
 	t03GoHas(t, load, "layout[i] != known.Layout[i]", "R10 the layout is a byte comparison")
-	t03GoHas(t, load, `return tableFixedRefuse(report, "layout_malformed")`, "R10 a lie about a known version is layout_malformed")
+	t03GoHas(t, load, `return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)`, "R10 a lie about a known version is layout_malformed")
 	t03GoHas(t, load, "hash := tableFixedGet64(data[TableFixedHashAt:])", "R10 the header's hash is taken as given")
 	t03GoHasNot(t, load, "tableFixedParseLayout(", "R10 the load walks a stranger's layout")
 	t03GoHasNot(t, load, "tableFixedCompile(", "R10 the load compiles on the load path")
@@ -402,7 +402,7 @@ func t03GoR15(t *testing.T) {
 	}
 	text, _ := t03GoRetire(t, 0)
 	load := t03GoLoad(t, text, "Lineage")
-	miss := strings.Index(load, `return tableFixedRefuseHash(report, "layout_newer", hash)`)
+	miss := strings.Index(load, `return tableFixedRefuseHash(report, TableFixedReasonLayoutNewer, hash)`)
 	records := strings.Index(load, "for k := int64(0); k < n; k++")
 	if miss < 0 || records < 0 {
 		t.Fatalf("R15: the load's refusals moved (%d, %d)", miss, records)
