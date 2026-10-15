@@ -23,7 +23,14 @@ func messageShapeLiteral(kind uint8, s ir.TableMessageShape) string {
 		hi = 0
 	}
 	count, delta, _ := ir.TableMessageQuantization(s)
-	return fmt.Sprintf("TableMessageShape{Kind:%d,Packing:%d,Bits:%d,Base:[2]uint64{0x%x,0x%x},Min:%d,Max:%d,QMin:math.Float32frombits(0x%x),QDelta:math.Float32frombits(0x%x),QCount:%d}", kind, s.Packing, ir.TableMessageValueBits(kind, s), lo, hi, s.Min, s.Max, math.Float32bits(s.QMin), math.Float32bits(delta), count)
+	// The static entry carries the width the runtime's tableMessageKindBits
+	// gives an announced shape: kinds 0 and 32 are zero-width (SER-SCHEMA-04),
+	// so an announced vocabulary compares equal to the emitted one.
+	bits := ir.TableMessageValueBits(kind, s)
+	if kind == 0 || kind == 32 {
+		bits = 0
+	}
+	return fmt.Sprintf("TableMessageShape{Kind:%d,Packing:%d,Bits:%d,Base:[2]uint64{0x%x,0x%x},Min:%d,Max:%d,QMin:math.Float32frombits(0x%x),QDelta:math.Float32frombits(0x%x),QCount:%d}", kind, s.Packing, bits, lo, hi, s.Min, s.Max, math.Float32bits(s.QMin), math.Float32bits(delta), count)
 }
 func messageEntryLiteral(e ir.TableVocabularyEntry) string {
 	inner := "TableMessageShape{}"
