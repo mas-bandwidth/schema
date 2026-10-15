@@ -324,6 +324,13 @@ list is EMPTY**, so the identity read pays no prefill (fix 15). That answers "ab
 the field keeps what the prefill put there — and "unknown field": a field this reader cannot name is never a
 source, its bytes stepped over because the next entry's `src` is past them. **Skipping is not an act.**
 
+**The hole list and the default image are PER PLAN, computed ONCE — at init or on first use — and NEVER per
+call.** Both depend only on the plan the hash selected, so a reader lays them beside that plan as static data,
+the way the lineage plans themselves are laid (§5.2): the default image and the identity plan's hole list beside
+the baked identity plan, each lineage lane's hole list beside its own compiled plan. A load call copies from
+them — the one image, the list of whichever plan won — and computes nothing, whatever the batch size: the
+per-record prefill is a copy from data that was already there before the call.
+
 ### 4.4 The run
 
 ```
