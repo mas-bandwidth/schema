@@ -65,6 +65,62 @@ const (
 
 func tableScalarKind(f *ir.Field) int { return ir.TableScalarKind(f) }
 
+// SurfaceSet is the set of Go table surfaces a generate request names
+// (docs/SPEC-TABLES.md §8.4). A nil set means ALL of them — the default,
+// byte-identical to the pre-surface emitter. The names are wire, fixed,
+// json, cook, block, view, message and retain; every surface but wire
+// implies wire, which carries the storage structs, the codecs and the
+// reflection descriptors the others read and write.
+type SurfaceSet map[string]bool
+
+var surfaceNames = []string{"wire", "fixed", "json", "cook", "block", "view", "message", "retain"}
+
+// ParseSurfaces parses a comma-separated surface list; empty means all.
+// An unknown name is an error, never a silent fallback.
+func ParseSurfaces(s string) (SurfaceSet, error) {
+	if s == "" {
+		return nil, nil
+	}
+	out := SurfaceSet{}
+	for _, p := range strings.Split(s, ",") {
+		p = strings.TrimSpace(p)
+		known := false
+		for _, n := range surfaceNames {
+			if p == n {
+				known = true
+				break
+			}
+		}
+		if !known {
+			return nil, fmt.Errorf("unknown Go table surface %q (want one of %s)", p, strings.Join(surfaceNames, ", "))
+		}
+		out[p] = true
+	}
+	return out, nil
+}
+
+// resolved returns the effective surface set: the request plus its
+// dependencies. Every surface relies on the wire surface, so a non-nil
+// request always includes it; nil stays nil (all).
+func (s SurfaceSet) resolved() SurfaceSet {
+	if s == nil {
+		return nil
+	}
+	out := SurfaceSet{"wire": true}
+	for k := range s {
+		out[k] = true
+	}
+	return out
+}
+
+// has reports whether the surface is emitted. Nil means all.
+func (s SurfaceSet) has(name string) bool {
+	if s == nil {
+		return true
+	}
+	return s[name]
+}
+
 type tableGen struct {
 	unit     *ir.Unit
 	file     *ir.File
@@ -77,6 +133,7 @@ type tableGen struct {
 	indent string          // extra per-line indent while emitting inside a branch guard
 
 	lineage       map[string][]FixedLineageEntry // the locked layouts, oldest first (§5.2)
+	surfaces      SurfaceSet
 	needsMath     bool
 	unsafeUsed    bool
 	wireSerial    int
@@ -206,19 +263,34 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
 // every table then carries the one entry it can always compute: its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	return GenerateLineageSurfaces(u, lineage, nil)
+}
+
+// GenerateLineageSurfaces is GenerateLineage for a requested surface set
+// (docs/SPEC-TABLES.md §8.4). A nil set emits every surface, byte-identical
+// to GenerateLineage; a non-nil set emits only the requested surfaces plus
+// their dependencies.
+func GenerateLineageSurfaces(u *ir.Unit, lineage map[string][]FixedLineageEntry, surfaces SurfaceSet) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
+	surfaces = surfaces.resolved()
 	blocks := ir.Blocks(u)
-	out, err := generateBlockFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	out := map[string][]byte{}
+	if surfaces.has("block") {
+		blocksFiles, err := generateBlockFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, blocksFiles)
 	}
-	cooks, err := generateCookFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	if surfaces.has("cook") {
+		cooks, err := generateCookFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, cooks)
 	}
-	maps.Copy(out, cooks)
 
 	regional := len(variableTableNames(u)) > 0
 
@@ -271,7 +343,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	}
 	runtimeWritten := false
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage}
+		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage, surfaces: surfaces}
 		members := fileMembers(f, closure)
 		if g.home {
 			emitRuntime(g)
@@ -334,7 +406,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// either way — that is the whole rule, and it is what keeps an
 	// earlier-sorting file from moving it (§19.2).
 	if !runtimeWritten {
-		g := &tableGen{unit: u, home: true, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage}
+		g := &tableGen{unit: u, home: true, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage, surfaces: surfaces}
 		emitRuntime(g)
 		src, err := g.assemble()
 		if err != nil {
@@ -346,16 +418,20 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
 	// descriptors, in its own file so a project that never reads or writes a
 	// text does not compile it
-	texts, err := generateJsonFiles(u, closure, home)
-	if err != nil {
-		return nil, err
+	if surfaces.has("json") {
+		texts, err := generateJsonFiles(u, closure, home)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, texts)
 	}
-	maps.Copy(out, texts)
-	view, err := generateViewFile(u, closure, armSlots)
-	if err != nil {
-		return nil, err
+	if surfaces.has("view") {
+		view, err := generateViewFile(u, closure, armSlots)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, view)
 	}
-	maps.Copy(out, view)
 	return out, nil
 }
 
