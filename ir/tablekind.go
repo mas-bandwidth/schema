@@ -272,12 +272,6 @@ func TableKindWide(kind int) bool {
 	return kind >= TableKindI128 && kind <= TableKindUFixed128
 }
 
-// TableKindStoredWidth is [TableKindWidth], retained for callers that ask for
-// the stored payload width of a scalar kind.
-func TableKindStoredWidth(kind int) int {
-	return TableKindWidth(kind)
-}
-
 // TableKindSigned reports whether an integer-shaped kind's bytes are two's
 // complement: the signed integers and the signed fixed-point kinds.
 func TableKindSigned(kind int) bool {
