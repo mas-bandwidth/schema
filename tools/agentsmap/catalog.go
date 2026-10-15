@@ -76,6 +76,7 @@ var catalog = []Entry{
 	e("internal/baseline", "tables baseline pins", "go test ./internal/baseline", "go test ./internal/baseline"),
 	e("internal/check", "resolve, check, lower to IR", "go test ./internal/check", "go test ./internal/check"),
 	e("internal/ci", "workflow pin and SDK gates", "go test ./internal/ci", "go test ./internal/ci"),
+	e("internal/docgate", "markdown link-and-citation gate", "go test ./internal/docgate", "go test ./internal/docgate"),
 	page("internal/codegen", "nine language emitters", "go test ./internal/codegen/...", "go test ./internal/codegen/..."),
 	e("internal/format", "schemafmt", "go test ./internal/format", "go test ./internal/format"),
 	e("internal/fuzz", "seeded fuzz corpus", "go test ./internal/fuzz", "go test ./internal/fuzz"),
@@ -142,6 +143,7 @@ var catalog = []Entry{
 	// tools/
 	e("tools/agentsmap", "AGENTS.md generator and drift guard", "go test ./tools/agentsmap", "make map"),
 	e("tools/fixedtwin", "fixed-form twin", "go test ./tools/fixedtwin", "go test ./tools/fixedtwin"),
+	e("tools/matrix", "docs/MATRIX.md from docs/matrix.json", "go test ./tools/matrix", "go run ./tools/matrix"),
 	e("tools/negativecontrols", "negative-control enumerator", "go test ./tools/negativecontrols", "go run ./tools/negativecontrols check"),
 	e("tools/roadmap", "ROADMAP.md table honesty", "go test ./tools/roadmap", "go test ./tools/roadmap"),
 	e("tools/sabotage", "negative-control sabotages", "go test ./tools/negativecontrols", "go run ./tools/sabotage"),

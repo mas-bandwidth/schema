@@ -9,6 +9,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `check/` | resolve, check, lower to IR | `go test ./internal/check` | `go test ./internal/check` |
 | `ci/` | workflow pin and SDK gates | `go test ./internal/ci` | `go test ./internal/ci` |
 | [codegen/](codegen/AGENTS.md) | nine language emitters | `go test ./internal/codegen/...` | `go test ./internal/codegen/...` |
+| `docgate/` | markdown link-and-citation gate | `go test ./internal/docgate` | `go test ./internal/docgate` |
 | `format/` | schemafmt | `go test ./internal/format` | `go test ./internal/format` |
 | `fuzz/` | seeded fuzz corpus | `go test ./internal/fuzz` | `go test ./internal/fuzz` |
 | `goldens/` | source, id, and wire pins | `go test ./internal/goldens` | `make update-goldens` |
