@@ -23,7 +23,15 @@ func messageShapeLiteral(kind uint8, s ir.TableMessageShape) string {
 		hi = 0
 	}
 	count, delta, _ := ir.TableMessageQuantization(s)
-	return fmt.Sprintf("TableMessageShape{Kind:%d,Packing:%d,Bits:%d,Base:[2]uint64{0x%x,0x%x},Min:%d,Max:%d,QMin:math.Float32frombits(0x%x),QDelta:math.Float32frombits(0x%x),QCount:%d}", kind, s.Packing, ir.TableMessageValueBits(kind, s), lo, hi, s.Min, s.Max, math.Float32bits(s.QMin), math.Float32bits(delta), count)
+	// A name (kind 0) and a payload-free arm (kind 32) carry no bits in the
+	// message form (docs/SPEC-TABLES.md §3.3, entry shape table). The emitted
+	// reader derives width 0 for both; the compiled entry must agree with the
+	// announcement it reads back.
+	bits := ir.TableMessageValueBits(kind, s)
+	if kind == 0 || kind == 32 {
+		bits = 0
+	}
+	return fmt.Sprintf("TableMessageShape{Kind:%d,Packing:%d,Bits:%d,Base:[2]uint64{0x%x,0x%x},Min:%d,Max:%d,QMin:math.Float32frombits(0x%x),QDelta:math.Float32frombits(0x%x),QCount:%d}", kind, s.Packing, bits, lo, hi, s.Min, s.Max, math.Float32bits(s.QMin), math.Float32bits(delta), count)
 }
 func messageEntryLiteral(e ir.TableVocabularyEntry) string {
 	inner := "TableMessageShape{}"
