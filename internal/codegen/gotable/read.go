@@ -512,7 +512,7 @@ func knownKindWidth(wireKind string) int {
 		}
 		n = n*10 + int(c-'0')
 	}
-	return ir.TableKindWidth(n)
+	return ir.TableKindStoredWidth(n)
 }
 
 func scalarGetExpr(rdr, wireKind string, signed bool) string {

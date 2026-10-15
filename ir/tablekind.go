@@ -78,6 +78,11 @@ func TableScalarKind(f *Field) int {
 	case TBool:
 		return TableKindBool
 	case TInt:
+		if f.Type.Timestamp {
+			// a TIMESTAMP is an int64 count with its own wire kind (SPEC.md
+			// §4.13): the storage, the width and the sign are the int64's
+			return TableKindTimestamp
+		}
 		if f.Type.Signed {
 			switch f.Type.Width {
 			case 8:
@@ -185,6 +190,20 @@ func TableScalarKind(f *Field) int {
 	return 0
 }
 
+// TableFixedLeafKind is the kind byte a FIXED-FORM layout entry names for a
+// scalar field. It is TableScalarKind's answer except for a TIMESTAMP, whose
+// slot is the int64's own and whose layout entry therefore names kind 5: the
+// fixed layout's kind set is the closed set of docs/FIXED-FORM-ALGORITHM.md
+// §1, which gains no member for it, so the timestamp/int64 distinction is the
+// VARIABLE wire's (kind 36) and the text form's, and in the fixed form a
+// respelling between the two is the identity (docs/SPEC-TABLES.md §2.11).
+func TableFixedLeafKind(f *Field) int {
+	if f.Type.Timestamp {
+		return TableKindI64
+	}
+	return TableScalarKind(f)
+}
+
 // TableFieldKind is the kind byte written for the FIELD itself: an
 // enum-keyed array is TableKindKeyed, any other array is TableKindArray, and
 // everything else is its scalar kind. An OPTIONAL field rides under the kind
@@ -229,6 +248,13 @@ func TableElemKind(f *Field) int {
 // first row (docs/SPEC-TABLES.md §3) — and 0 for the framed kinds (string, table,
 // array, union, keyed). Every backend's skipper and every engine's reader is
 // this table, so it lives once.
+//
+// Kind 36, the timestamp, is NOT in this table on purpose: this table is the
+// SKIP RULE every reader of the wire shares — the Go runtime's, the byte
+// oracle's (internal/tablewire) — and a kind joins it in all of them at once or
+// they disagree about the bytes of a file (the wire fuzz finds the first
+// mutant that meets the kind). A timestamp's eight bytes are a fact of the
+// emitters that carry the kind, [TableKindStoredWidth].
 func TableKindWidth(kind int) int {
 	switch kind {
 	case TableKindBool, TableKindI8, TableKindU8, TableKindFixed8, TableKindUFixed8:
@@ -251,6 +277,15 @@ func TableKindWidth(kind int) int {
 // text spelling is not the integer's own (docs/SPEC-TABLES.md §3, §16.2).
 func TableKindWide(kind int) bool {
 	return kind >= TableKindI128 && kind <= TableKindUFixed128
+}
+
+// TableKindStoredWidth is the payload width of a kind an emitter that CARRIES
+// the kind writes and reads: [TableKindWidth] plus the timestamp's eight bytes.
+func TableKindStoredWidth(kind int) int {
+	if kind == TableKindTimestamp {
+		return 8
+	}
+	return TableKindWidth(kind)
 }
 
 // TableKindSigned reports whether an integer-shaped kind's bytes are two's
@@ -308,6 +343,34 @@ func appendWideFields(out []string, st *Struct) []string {
 	return out
 }
 
+// TableTimestampFields lists every `timestamp` field of a unit's table closure
+// as `Member.field` lines in closure order — what a target that does not carry
+// the kind refuses BY NAME (SPEC.md §4.13, docs/SPEC-TABLES.md §2.11). The
+// refusal is central, in the compiler's Generate, so no emitter is edited for
+// a construct it was never specified to carry.
+func TableTimestampFields(u *Unit) []string {
+	closure := TableClosure(u)
+	var out []string
+	add := func(st *Struct) {
+		for _, f := range st.Fields {
+			if f.Type.Kind == TInt && f.Type.Timestamp {
+				out = append(out, st.Name+"."+f.Name)
+			}
+		}
+	}
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			add(st)
+		}
+		for _, d := range f.Decls {
+			if st, ok := d.(*Struct); ok && closure[st.Name] {
+				add(st)
+			}
+		}
+	}
+	return out
+}
+
 // TableTypeSpelling is a field's declared scalar type as the language spells
 // it — `fixed(16, 16)`, `uint128`, `bits(9)`, `float32` — for descriptors and
 // diagnostics that name the declaration rather than the kind.
@@ -316,6 +379,9 @@ func TableTypeSpelling(f *Field) string {
 	case TBool:
 		return "bool"
 	case TInt:
+		if f.Type.Timestamp {
+			return "timestamp"
+		}
 		if f.Type.Signed {
 			return "int" + itoa(f.Type.Width)
 		}

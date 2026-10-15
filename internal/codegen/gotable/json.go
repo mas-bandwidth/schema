@@ -51,9 +51,14 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	b.WriteString("// never coerced. The canonical text ends with exactly ONE newline, which the\n")
 	b.WriteString("// writer emits and the reader accepts with or without (§16.1).\n\n")
 	fmt.Fprintf(&b, "package %s\n\n", u.Package)
-	b.WriteString("import (\n\t\"math\"\n\t\"strconv\"\n\t\"unsafe\"\n\t\"unicode/utf8\"\n)\n\n")
-	b.WriteString(strings.Replace(tableJsonWalkSource, "// ---- json walk: end ----",
-		tableJsonWideSource+tableJsonWStringSource+tableJsonGraphSource+tableJsonListSource+tableJsonMapSource+tableJsonMapDecimalSource+"// ---- json walk: end ----", 1))
+	// THE WALKER IS THE SAME BYTES IN EVERY UNIT (make tables-go-json-walk), so
+	// kind 36's text form is part of it whether or not the unit declares a
+	// timestamp
+	walk := tableJsonWalkSource
+	imports := "\t\"math\"\n\t\"strconv\"\n\t\"time\"\n\t\"unsafe\"\n\t\"unicode/utf8\"\n"
+	extra := tableJsonWideSource + tableJsonWStringSource + tableJsonGraphSource + tableJsonListSource + tableJsonMapSource + tableJsonMapDecimalSource + tableJsonTimestampSource + tableTimestampRuntime
+	b.WriteString("import (\n" + imports + ")\n\n")
+	b.WriteString(strings.Replace(walk, "// ---- json walk: end ----", extra+"// ---- json walk: end ----", 1))
 
 	// the per-member surface, in the order the closure declares it, so the
 	// generated text is deterministic
@@ -253,6 +258,8 @@ func tableJsonShape(f *TableFieldInfo) byte {
 		return 's'
 	case tableJsonIsFlags(f):
 		return 'a'
+	case f.Kind == 36: // timestamp: an RFC 3339 string (§16.2)
+		return 's'
 	case f.Kind == 1:
 		return 'b'
 	}
@@ -270,6 +277,8 @@ func tableJsonElementShape(f *TableFieldInfo) byte {
 		return 's'
 	case tableJsonIsFlags(f):
 		return 'a'
+	case f.Kind == 36: // timestamp: an RFC 3339 string (§16.2)
+		return 's'
 	case f.Kind == 1:
 		return 'b'
 	}
@@ -570,6 +579,7 @@ func tableJsonWriteFloat(out *tableJsonOut, value float64, single bool) bool {
 func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
  if f.Pointer {return tableJsonWritePointer(out,(*int64)(storage),f,depth)}
  if f.Kind>=18 && f.Kind<=29 {tableJsonWriteWide(out,storage,f);return true}
+ if f.Kind==36 {return tableJsonWriteTimestamp(out,storage)}
 	if f.Arms != nil {
 		// a union is an object with ONE key, the arm's name; None is {}
 		arms := f.Arms()
@@ -1387,6 +1397,9 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		tableJsonSetRaw(storage, f.ElemSize, bits)
 		return true
 	}
+	if f.Kind == 36 {
+		return tableJsonReadTimestamp(in, storage, f)
+	}
 	if f.Kind == 1 {
 		if in.peek() == 't' {
 			if !in.literal("true") {
@@ -1961,4 +1974,72 @@ func tableJsonWrite(value unsafe.Pointer, info *TableTypeInfo, buffer []byte) in
 
 // ---- json walk: end ----
 
+`
+
+// tableJsonTimestampSource is the text form of kind 36 (docs/SPEC-TABLES.md
+// §16.2): an RFC 3339 string with nanoseconds, written with a Z offset and read
+// from any RFC 3339 spelling of the instant. A string that does not parse, or
+// names an instant outside Time.UnixNano's domain, is REFUSED BY NAME: the
+// whole text is refused, the report is Malformed and its Reason names the
+// field.
+const tableJsonTimestampSource = `
+func tableJsonWriteTimestamp(out *tableJsonOut, storage unsafe.Pointer) bool {
+	var scratch [48]byte
+	tableJsonWriteString(out, time.Unix(0, *(*int64)(storage)).UTC().AppendFormat(scratch[:0], time.RFC3339Nano))
+	return true
+}
+
+func tableJsonReadTimestamp(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo) bool {
+	var text [64]byte
+	n, ok := in.scanString(text[:63])
+	if !ok {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339Nano, string(text[:n]))
+	// an instant outside Time.UnixNano's domain names no count and is refused too
+	named := err == nil && !t.Before(time.Unix(0, -1<<63)) && !t.After(time.Unix(0, 1<<63-1))
+	if !named {
+		in.report.Reason = "timestamp_not_rfc3339: " + f.Name
+		in.bad = true
+		return false
+	}
+	*(*int64)(storage) = t.UnixNano()
+	return true
+}
+`
+
+// tableTimestampRuntime is the whole of the Go runtime a timestamp needs
+// (docs/SPEC-TABLES.md §2.11): the count of nanoseconds since the Unix epoch
+// in and out of a time.Time, and the refusal. It rides in the text form's file,
+// which every unit has and whose walker is the same bytes in every unit, so the
+// accessors of a unit that declares a timestamp find it and no other unit pays
+// a line for it.
+const tableTimestampRuntime = `
+// TableTimestampError is the refusal of a time.Time that no count names: its
+// nanoseconds since the Unix epoch do not fit an int64, which is Time.UnixNano's
+// own domain, the years 1678 through 2262 (docs/SPEC-TABLES.md §2.11).
+type TableTimestampError struct {
+	Field string
+	Time  time.Time
+}
+
+func (e TableTimestampError) Error() string {
+	return "timestamp_out_of_range: " + e.Field + " " + e.Time.Format(time.RFC3339Nano) +
+		" is outside the years 1678 through 2262, which a count of nanoseconds since the Unix epoch can hold"
+}
+
+// tableTimestampNanos is the count of a time.Time, and false for a time whose
+// count UnixNano cannot represent. Go's zero Time{} is the zero time.
+func tableTimestampNanos(t time.Time) (int64, bool) {
+	if t.IsZero() {
+		return 0, true
+	}
+	if t.Before(time.Unix(0, -1<<63)) || t.After(time.Unix(0, 1<<63-1)) {
+		return 0, false
+	}
+	return t.UnixNano(), true
+}
+
+// tableTimestampTime is the UTC time of a count; every count is legal.
+func tableTimestampTime(n int64) time.Time { return time.Unix(0, n).UTC() }
 `
