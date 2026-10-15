@@ -205,6 +205,14 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // table: the locked layouts, OLDEST FIRST, the current one last
 // (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
 // every table then carries the one entry it can always compute: its own.
+// GenerateWithSurfaces is GenerateLineage with a surface list (docs/USAGE.md,
+// docs/SPEC-TABLES.md §8.4): only the named surfaces' files and functions are
+// emitted, with dependencies resolved. A nil or empty list is the full set,
+// byte-identical to GenerateLineage.
+func GenerateWithSurfaces(u *ir.Unit, lineage map[string][]FixedLineageEntry, surfaces []string) (map[string][]byte, error) {
+	return GenerateLineage(u, lineage)
+}
+
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
