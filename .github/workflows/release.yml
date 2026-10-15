@@ -1,0 +1,52 @@
+name: Release
+
+# A RELEASE vX.Y.Z IS MADE HERE AND NOWHERE ELSE (Glenn, 2026-10-15): dispatched
+# by hand with the version, on main, it runs `make release`, which refuses by
+# name a version that does not parse as vMAJOR.MINOR.PATCH, one not greater
+# than the newest v tag, and a commit that is not on main, and otherwise tags
+# that one commit with that one annotated tag and pushes only that tag. The
+# number is the dispatcher's choice under docs/VERSIONING.md's rules; CI,
+# including a certify.yml run on the commit, must be green first.
+#
+#   gh workflow run release.yml --ref main -f version=vX.Y.Z
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'the release version, vMAJOR.MINOR.PATCH, greater than the newest v tag'
+        required: true
+        type: string
+
+# Releases are serial: two dispatches must not both read the same newest tag.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # every tag (the newest v tag) and main's whole ancestry are inputs
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: make the release tag
+        env:
+          GOFLAGS: -mod=readonly
+          # passed through the environment, never interpolated into the script
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin main
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          make release RELEASE_COMMIT="$GITHUB_SHA" PUSH=1

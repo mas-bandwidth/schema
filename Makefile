@@ -115,10 +115,11 @@ SOAK_SECONDS ?= 3600
 all: bin/schema
 
 # The version the built binary reports. `git describe` gives the exact tag on a
-# release build and tag-commits-hash elsewhere; when this is not a git checkout
+# release build and tag-commits-hash elsewhere, matching release tags only (a
+# main-<shorthash> promotion tag is not a version; docs/VERSIONING.md); when this is not a git checkout
 # (a source tarball, say) the stamp is left empty and internal/version falls
 # back to the toolchain's own build info.
-VERSION ?= $(shell git describe --tags --dirty 2>/dev/null)
+VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --dirty 2>/dev/null)
 LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/v2/internal/version.version=$(VERSION),)
 
 bin/schema: $(GO_SOURCES)
@@ -6499,6 +6500,25 @@ include make/checks/reference-review.mk
 # make/slow-gate-exceptions.txt WITH A REASON, and an entry there that matches
 # no line any more fails too — a stale excuse is how the next bare `go test`
 # slips in behind a line nobody reads.
+# TAGS, made by tooling and never by hand (docs/VERSIONING.md, "The compiler's
+# own version"; Glenn, 2026-10-15). promotion-tag tags HEAD main-<shorthash>
+# and skips a commit already carrying one; .github/workflows/promotion-tag.yml
+# runs it on every push to main. release tags one commit on main vX.Y.Z and
+# refuses a version that does not parse, is not greater than the newest v tag,
+# or names a commit off main; .github/workflows/release.yml runs it when
+# dispatched. Without PUSH=1 both print the decision and write nothing.
+# VERSION above defaults to `git describe`, which is never a release number:
+# release reads VERSION only when it was given on the command line or in the
+# environment, so a bare `make release` refuses on the grammar.
+RELEASE_VERSION = $(if $(filter command line environment,$(origin VERSION)),$(VERSION))
+RELEASE_COMMIT ?= HEAD
+.PHONY: promotion-tag release
+promotion-tag:
+	go run ./tools/releasetag promotion-tag -commit $(RELEASE_COMMIT) $(if $(PUSH),-push)
+
+release:
+	go run ./tools/releasetag release -version '$(RELEASE_VERSION)' -commit $(RELEASE_COMMIT) $(if $(PUSH),-push)
+
 .PHONY: slow-gate-scan
 slow-gate-scan:
 	go run ./tools/slowgatescan
