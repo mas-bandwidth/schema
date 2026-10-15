@@ -123,6 +123,52 @@ func (r *wireRoot) amplificationCeiling(wireBytes int) int64 {
 	return ceiling
 }
 
+// messageAmplificationCeiling is the MESSAGE FORM's ceiling (schema#466,
+// docs/SPEC-TABLES.md §6.5, framing §3.3), and the table wire's two-byte
+// record above is not it: a message body is a bit stream whose references ride
+// at the vocabulary's width, so a body costs one reference (its zero
+// terminator) and a node record two references, and a batch carries up to 256
+// roots, each commanding the root's storage and its directory entry. Over B =
+// 8 x (wireBytes - 2) body bits (the form byte and the count are whole bytes)
+// at R = the vocabulary's reference width:
+//
+//	bodies  <= min(256, B / R)
+//	records <= B / (2R)
+//	region  <= bodies x (root + 16) + records x (largest node + 16)
+//	           [+ wireBytes + records x (16 + align) where a blob is reachable]
+//
+// which is the most sizeBatch's exact answer can reach for any wire of that
+// size. Certify seed 2 (graphdemo.Scene, mutant 0225a709001004): three bodies
+// of one zero reference each command 3 x (176 + 16) = 576 region bytes from 7
+// wire bytes, inside this ceiling of 6 x 192 + 3 x 56 = 1320 and outside the
+// table wire's 512.
+func (r *wireRoot) messageAmplificationCeiling(wireBytes int) int64 {
+	if wireBytes < 2 {
+		return 0
+	}
+	refBits := int64(r.vocabulary.RefBits())
+	if refBits < 1 {
+		refBits = 1
+	}
+	bits := 8 * (int64(wireBytes) - 2)
+	bodies := min(int64(256), bits/refBits)
+	records := bits / (2 * refBits)
+	ceiling := bodies*(r.rootStorage+nodeDirEntryBytes) + records*(r.maxStorage+nodeDirEntryBytes)
+	if r.blobBytes || r.blobString {
+		ceiling += int64(wireBytes) + records*(16+r.align)
+	}
+	return ceiling
+}
+
+// formCeiling is the amplification ceiling of the root's own form: the message
+// form's for a message root, the table wire's otherwise.
+func (r *wireRoot) formCeiling(wireBytes int) int64 {
+	if r.message {
+		return r.messageAmplificationCeiling(wireBytes)
+	}
+	return r.amplificationCeiling(wireBytes)
+}
+
 func (r *wireRoot) roundStorage(n int64) int64 { return (n + r.align - 1) & -r.align }
 
 // THE RETENTION ARM'S TWO CAPACITIES (docs/SPEC-TABLES.md §6.6), and they are
@@ -576,9 +622,11 @@ func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer, wireBytes int
 		// per-mutant answer. A hostile record is two wire bytes and commands
 		// at most the largest record the root can place, so a mutant above
 		// this ceiling is a divergence on the bound the page states.
-		if wireBytes > 0 && reply.measure > root.amplificationCeiling(wireBytes) {
+		// Each form is held to its own ceiling: the table wire to its two-byte
+		// record, a message to its bitpacked framing (§3.3).
+		if wireBytes > 0 && reply.measure > root.formCeiling(wireBytes) {
 			return fmt.Sprintf("LoadMeasure asks for %d region bytes from %d wire bytes; the amplification ceiling is %d",
-				reply.measure, wireBytes, root.amplificationCeiling(wireBytes))
+				reply.measure, wireBytes, root.formCeiling(wireBytes))
 		}
 	}
 	return ""

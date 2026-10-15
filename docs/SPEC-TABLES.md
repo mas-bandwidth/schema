@@ -8459,6 +8459,35 @@ The builder is designed to go wide, lock-free by ownership:
   before a byte of body is believed. `LoadMeasure` is the caller's traversal
   limit in that sense — the caller refuses a size it will not pay — and
   nothing in the runtime decides that for it.
+- **THE MESSAGE FORM HAS ITS OWN CEILING, because its framing is bits and not
+  bytes** (§3.3). The two-byte record above is the FILE's and does not move. A
+  message batch is the form byte and the count, whole bytes, then one bit
+  stream whose references ride at the vocabulary's width `R`
+  (`TableMessageRefBits`), so the least a BODY costs is one reference, its
+  zero terminator, and the least a node RECORD costs is two, its type
+  reference and its body's terminator. A batch carries up to 256 bodies, and
+  each body commands the root's storage and its own directory entry, so the
+  root is no longer paid once. Over `B = 8 × (wire − 2)` body bits:
+
+  ```
+  bodies  ≤ min( 256, ⌊B / R⌋ )
+  records ≤ ⌊B / 2R⌋
+  region  ≤ bodies × ( sizeof( Root ) + 16 ) + records × ( largest node + 16 )
+            + wire + records × ( 16 + alignment )      when a blob is reachable
+  ```
+
+  The last line is a blob record's eight-byte header, terminator and rounding,
+  and the blob's own bytes, which the wire carries one for one. **WORKED
+  EXAMPLE.** `graphdemo.Scene` as a message (`R` = 6, a 176-byte root, a
+  40-byte largest node) and the seven-byte wire `02 25 a7 09 00 10 04`: the
+  count claims 38 bodies, the scan reads three, each one zero reference and no
+  node table, the third where the framing gives out, so the exact region is
+  `3 × (176 + 16)` = 576 bytes. The message ceiling at seven bytes is
+  `6 × 192 + 3 × 56` = 1320, so 576 is inside it; the file's ceiling at seven
+  bytes is 512, and a FILE that commanded 576 would be outside its own. Each
+  form is held to its own ceiling (`test/conformance/harness/wirefuzz.go`,
+  `messageAmplificationCeiling`), and neither ceiling is relaxed for the
+  other.
 - **A `-1` CARRIES A REASON, and it is the SAME ENUM the accelerators'
   refusals carry: `TableRefuseReason`** (§7, §11). `Open` and `BlockOpen` answer
   a null beside a value of it (§7, §19.2), and a call that answers `-1`
