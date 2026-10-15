@@ -11173,6 +11173,33 @@ vocabulary a table carries is §8.1's and rides where it always did. The gate
 asks "did the registry leak out of its file?", never "is there a descriptor
 here?" — §2.2's own distinction between machinery and columns.
 
+**The Go `--surface` flag.** The Go table target can emit only the surfaces a
+build names: `schema generate --lang go --surface wire,json`. The surface
+names are `wire`, `fixed`, `json`, `cook`, `block`, `view`, `message` and
+`retain`; the flag defaults to all of them, and a default generate is
+byte-identical to running without the flag. A requested surface's
+dependencies are resolved for you, so the emitted set is the closure of the
+list under the rules below:
+
+- `wire` — the `<Base>Table.go` codecs: `<Name>Measure`, `<Name>Save`,
+  `<Name>Load`, the wire runtime, and the storage structs. Every other
+  surface implies it: the reflection descriptors, the fixed form, the
+  message form, retain and the side files all read and write wire storage.
+- `fixed` — the fixed-form read path (`<Name>FixedLoad` and the fixed
+  runtime) that reads the layouts a build's lock records.
+- `json` — the text form's generic walk and its wrappers in
+  `<Home>TableJson.go`; implies `wire`.
+- `cook` — the cook read/write surface in `<Base>Cook.go` and the cook-write
+  per-member functions; implies `wire`.
+- `block` — the block form's read half in `<Base>Block.go`; implies `wire`.
+- `view` — the `<Package>View.go` registry and descriptors; implies `wire`.
+- `message` — the message form's runtime and per-member write/read
+  functions; implies `wire`.
+- `retain` — the retain runtime and per-member retain surface; implies
+  `wire`.
+
+Any `--lang` other than `go` refuses `--surface` by name.
+
 ### 8.5 On the side
 
 **The view is one generated file per UNIT, not per schema file** —

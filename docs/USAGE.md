@@ -95,6 +95,20 @@ Run the same command with `--lang c`, `--lang cs`, `--lang elixir`, `--lang go`,
 language — writing the
 **same bits**.
 
+**The Go table target can emit only the surfaces a build needs:**
+
+```
+schema generate --lang go --surface wire,json --out generated/go .
+```
+
+`--surface` takes a comma-separated list of the Go table surfaces — `wire`,
+`fixed`, `json`, `cook`, `block`, `view`, `message`, `retain` — and emits
+only the files and functions that list needs. It defaults to all of them,
+which is byte-identical to running without the flag. Dependencies are
+resolved for you: `json`, `cook`, `block`, `view`, `message` and `retain`
+each imply `wire` (docs/SPEC-TABLES.md §8.4). Every other `--lang` refuses
+`--surface` by name.
+
 ---
 
 ## Declarations
