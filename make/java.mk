@@ -252,6 +252,7 @@ tables-java-clean: build/tables-generated-java/.stamp
 	$(GOOGLE_JAVA_FORMAT) --dry-run --set-exit-if-changed $$(find build/tables-generated-java -name '*.java') && \
 	echo "tables Java: google-java-format clean over the generated table units"
 test-java: tables-java-clean
+test-java: tables-java-t14
 
 # EVERY generated unit compiles, warnings as errors, under the CONSUMER's javac
 # — the same flags the type wire's Java legs use, so a warning here is a build
@@ -408,6 +409,17 @@ tables-java-versioning: tables-fixedform-corpus
 	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
 	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
+
+# THE COMPRESSED-FLOAT FP-CONTRACT GATE (java/R30, T14): the witness that the
+# compressed float's dequantize is the SPEC's order in float32 — one rounding
+# per operation, never a fused multiply-add (SPEC.md "Floating-point
+# discipline"). It runs the leg's own generated writer and reader end to end
+# with an off-grid float32 and asserts the unfused witness bits 0xbf4ccccc.
+.PHONY: tables-java-t14
+tables-java-t14:
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^TestFixedRoadmapJavaT14CompressedFloats$$'
+	@echo 'tables Java T14: the compressed float rides as the float, unfused dequantize (java/R30)'
 
 # THE VARIABLE-CLASS GATE (docs/SPEC-TABLES.md §2, §3, §16), the Java twin of
 # `tables-go-variable-class`: the variable form's codecs for the pointered,
