@@ -308,7 +308,7 @@ func (g *cookGen) assemble() ([]byte, error) {
 		h.WriteString("\n")
 	}
 	h.WriteString(g.handles.String())
-	src, err := format.Source([]byte(h.String()))
+	src, err := format.Source([]byte(repoPrefix(h.String())))
 	if err != nil {
 		return nil, fmt.Errorf("generated Go for %sCook.go does not parse — a compiler bug, not a schema error: %w", g.file.Base, err)
 	}

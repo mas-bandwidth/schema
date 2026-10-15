@@ -3983,8 +3983,20 @@ that return descriptors without allocating, avoiding Go initialization cycles.
 An outside packet type's descriptor follows its native Go storage; nested
 packet dependencies have private descriptors when a table `Row` has different
 offsets. `DeclaredTypeName` carries the complete schema spelling. The
-`<Package>View.go` file is optional and no codec depends on it; table-free
+ `<Package>View.go` file is optional and no codec depends on it; table-free
 units remain the separate packet-view follow-on.
+
+Generated Go is lint-clean. It passes `go vet` and `staticcheck`; the bench
+gate runs both where it has them, so the emitted package does not trip an
+adopter's path linters (a value-receiver method never assigns to a receiver
+field, staticcheck SA4005). Every generated file's header names the `.schema`
+file it came from, or says `for package <p>` when there is none — a synthesized
+home or view file names no source. A file names `serialize.go` only when it
+imports it, so a unit whose tables never widen does not mention a dependency it
+does not use. And a path a generated comment cites — the tables spec page, the
+Go packet emitter, the table-names package — is prefixed with the schema
+repository's name (`mas-bandwidth/schema`, then the page), so an adopter's path
+linter reads it as another repository's path rather than its own.
 
 **Elixir** — Elixir 1.20 on Erlang/OTP 29, built to issue #167's measured
 directives from the serialize.elixir port. Generated code is

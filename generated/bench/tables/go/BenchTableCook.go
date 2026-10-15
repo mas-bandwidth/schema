@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — the COOKED FORM (docs/SPEC-TABLES.md §7): the READ half.
+// package benchtable — the COOKED FORM (mas-bandwidth/schema docs/SPEC-TABLES.md §7): the READ half.
 //
 // A cook is a LOAD-TRUSTED-DATA-FROM-TOOLS format and not a wire. Tooling writes
 // a region for one BUILD VERSION and that build points at it: Open matches the
@@ -31,7 +31,7 @@ import (
 	"unsafe"
 )
 
-// TableCookMagic is the cook's magic (docs/SPEC-TABLES.md §7.1), read before
+// TableCookMagic is the cook's magic (mas-bandwidth/schema docs/SPEC-TABLES.md §7.1), read before
 // anything else: it is what establishes the byte order every other header word
 // is written in, and it is also what separates a COOK from a BLOCK — the two
 // accelerators carry the same build version and different magics, because a
@@ -68,13 +68,13 @@ const TableCookMaxAlign int64 = 64
 
 // TableCookStorage is what a cooked SLOT holds, which is not always what the
 // WIRE carries: an ENUM slot holds the ORDINAL at the enum's own derived
-// storage width (docs/SPEC-TABLES.md §7.2), where the wire rides the
+// storage width (mas-bandwidth/schema docs/SPEC-TABLES.md §7.2), where the wire rides the
 // variant-name hash. A walker reads a slot with the width ElemSize gives and
 // the signedness this names.
 //
 // Its members are FLAT package-level constants, which is what Go already does
 // with every enum a schema declares (SPEC.md §6.1's Go column) — so all eight
-// spellings are claimed in internal/tablenames, exactly as a declared enum's
+// spellings are claimed in mas-bandwidth/schema internal/tablenames, exactly as a declared enum's
 // variants are claimed by the checker. C# spells the same vocabulary as one
 // scoped enum and claims one name; the port does not get to have it both ways,
 // and the flat form is the one a Go consumer expects to write.
@@ -129,19 +129,19 @@ type TableCookInfo struct {
 
 // The BLITTABLE records a cooked region is laid out from: the C ABI layout
 // §20.3 commits the compiler to, with GENERATED PADDING FIELDS wherever it has
-// interior padding (docs/SPEC-TABLES.md §19.3). A cooked record IS the
+// interior padding (mas-bandwidth/schema docs/SPEC-TABLES.md §19.3). A cooked record IS the
 // blittable row, so these are the same <Name>Row structs the block form spells,
 // from the same model; a record the block form already emits is emitted THERE
 // and not again here.
 
-// TableChatEventRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// TableChatEventRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TableChatEventRow struct {
 	Channel int32
 	Speaker uint32
 }
 
-// TableEntityRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// TableEntityRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TableEntityRow struct {
 	EntityId uint32
@@ -162,7 +162,7 @@ type TableEntityRow struct {
 	_        [6]byte // generated padding
 }
 
-// TableHitEventRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// TableHitEventRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TableHitEventRow struct {
 	TargetId uint32
@@ -172,7 +172,7 @@ type TableHitEventRow struct {
 	_        [3]byte // generated padding
 }
 
-// TableMixedRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// TableMixedRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TableMixedRow struct {
 	ProtocolMagic    uint16
@@ -214,21 +214,21 @@ type TableMixedRow struct {
 	_                [4]byte // generated padding
 }
 
-// TablePickupEventRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// TablePickupEventRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TablePickupEventRow struct {
 	ItemId uint32
 	Amount int32
 }
 
-// TableStatRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// TableStatRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TableStatRow struct {
 	StatId uint32
 	Delta  int32
 }
 
-// THE LAYOUT CONTRACT for the cook closure (docs/SPEC-TABLES.md §20.3), run
+// THE LAYOUT CONTRACT for the cook closure (mas-bandwidth/schema docs/SPEC-TABLES.md §20.3), run
 // ONCE at package initialisation: a cooked region is laid out by the
 // compiler's C ABI model, so a runtime that lays one of these records out
 // differently would read a cook at the wrong offsets and never know.
@@ -305,7 +305,7 @@ func init() {
 func tableCookLayoutSize(what string, got, want uintptr) {
 	if got != want {
 		panic(fmt.Sprintf("schema cook layout: %s is %d bytes in this runtime and %d in the layout "+
-			"model the cook's bytes come from — the two disagree about the bytes (docs/SPEC-TABLES.md §20.3)", what, got, want))
+			"model the cook's bytes come from — the two disagree about the bytes (mas-bandwidth/schema docs/SPEC-TABLES.md §20.3)", what, got, want))
 	}
 }
 
@@ -313,7 +313,7 @@ func tableCookLayoutSize(what string, got, want uintptr) {
 func tableCookLayoutOffset(what string, got, want uintptr) {
 	if got != want {
 		panic(fmt.Sprintf("schema cook layout: %s sits at %d in this runtime and %d in the layout "+
-			"model the cook's bytes come from — the two disagree about the bytes (docs/SPEC-TABLES.md §20.3)", what, got, want))
+			"model the cook's bytes come from — the two disagree about the bytes (mas-bandwidth/schema docs/SPEC-TABLES.md §20.3)", what, got, want))
 	}
 }
 
@@ -422,7 +422,7 @@ func init() {
 
 // TableEntityCook is TableEntity's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — TableEntityOpen, TableEntityAt — and so does Go, because Go has free functions;
@@ -517,12 +517,12 @@ func TableEntityAt(slot *int64) *TableEntityRow {
 }
 
 // Type is TableEntity's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c TableEntityCook) Type() *TableCookInfo { return &tableCookRecords[1] }
 
 // TableStatCook is TableStat's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — TableStatOpen, TableStatAt — and so does Go, because Go has free functions;
@@ -617,12 +617,12 @@ func TableStatAt(slot *int64) *TableStatRow {
 }
 
 // Type is TableStat's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c TableStatCook) Type() *TableCookInfo { return &tableCookRecords[5] }
 
 // TableMixedCook is TableMixed's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — TableMixedOpen, TableMixedAt — and so does Go, because Go has free functions;
@@ -717,5 +717,5 @@ func TableMixedAt(slot *int64) *TableMixedRow {
 }
 
 // Type is TableMixed's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c TableMixedCook) Type() *TableCookInfo { return &tableCookRecords[3] }
