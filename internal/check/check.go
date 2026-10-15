@@ -2568,8 +2568,18 @@ func (c *checker) checkTables() {
 // count rather than a scalar compare, the always-write rule is a named
 // follow-on (§15). Each refusal names the construct and the section.
 func (c *checker) checkRequiredInClosure() {
-	for _, name := range sortedKeys(c.structs) {
-		st := c.structs[name]
+	// BOTH MAPS: a `table` lives in c.tables, beside the packet decls, and a
+	// `type` a table reaches lives in c.structs — the marker is legal on the
+	// second only through the first, so the walk covers both.
+	all := make(map[string]*ir.Struct, len(c.structs)+len(c.tables))
+	for name, st := range c.structs {
+		all[name] = st
+	}
+	for name, st := range c.tables {
+		all[name] = st
+	}
+	for _, name := range sortedKeys(all) {
+		st := all[name]
 		pos := ast.Pos{}
 		if d, ok := c.astDecls[name]; ok {
 			pos = d.DeclPos()
