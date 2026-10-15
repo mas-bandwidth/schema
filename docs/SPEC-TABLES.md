@@ -11160,6 +11160,16 @@ stronger answer than a flag, because it is per CONSUMER rather than per
 generate: one unit's output serves the editor and the game at once, with no
 second generate and no second tree to keep in step.
 
+The Go target adds the one flag this section's include rule is the answer to:
+`generate --lang go --surface <list>` emits only the surfaces a build names,
+so a game that only reads the table wire does not compile the text form, the
+cook, the block, the message, the retained or the view surface. The list
+names any of `wire`, `fixed`, `json`, `cook`, `block`, `view`, `message`,
+`retain`; a surface's dependencies are pulled in (`json`, `cook`, `message`
+and `retain` each depend on `wire`). The default is all of them and is
+byte-identical to generating without the flag; any other target refuses
+`--surface` by name.
+
 That is the same trade §13.5 already made for the text form's walker, and it
 is why this file exists rather than a header addition (§8.5): a translation
 unit nobody compiles costs a build nothing, while a header everybody

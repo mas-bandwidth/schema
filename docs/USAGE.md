@@ -72,6 +72,16 @@ printed, so a build wrapping this command stays clean. Add `--verbose` to
 list every file written (`check` and `fmt` take the same flag).
 Errors always print, whatever the verbosity.
 
+`--lang go` accepts a `--surface <list>` flag that names which generated
+surfaces a build wants. The list is comma-separated and may name any of
+`wire` (the table-wire codecs), `fixed` (the fixed form), `json` (the text
+form), `cook` (the cooked form), `block` (the block form), `view` (the
+registry), `message` (the message form) and `retain` (the retained form). A
+surface's dependencies are pulled in — `json`, `cook`, `message` and `retain`
+each depend on `wire`, so asking for one of them emits the wire codecs too.
+The default is all of them, and it is byte-identical to generating without the
+flag. Any other `--lang` refuses `--surface` by name
+
 Your `.schema` files are read, never written. `schema fmt` is the only command
 that rewrites one, so `check`, `generate`, `id` and the rest run against a
 read-only checkout, and they answer the same way whether or not the source is
