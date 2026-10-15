@@ -14323,6 +14323,52 @@ cannot pack back to the bytes it came from.
   in the corpus battery, beside a label that overflows a `u64`, a signed one
   and one with a leading zero.
 
+### 16.8 Carrying a table over a text channel
+
+A channel that carries text and nothing else — a bus body, a JSON
+configuration field, a database column, a log line — carries a table in ONE
+of two forms, and both are normative here. An adopter picks one per payload
+and never mixes them in one payload.
+
+1. **base64 of the binary wire**: padded standard base64 (RFC 4648 §4 —
+   the standard alphabet, `=` padding, no line breaks) of §3's wire, byte for
+   byte. Because the body IS the wire, it keeps THE FIRST BYTE (§3), the
+   framing check (§3.4) and every versioning guarantee this document gives a
+   wire: a renamed field reads by id, an unknown id is skipped and counted, a
+   widened kind keeps its value, a clamped one is clamped and counted. It is
+   OPAQUE — no human reads it and nothing in it is editable — and it is the
+   form a channel whose payload no human reads takes. The Go surface is
+   `<Name>SaveText(value) (string, error)` and
+   `<Name>LoadText(value, text, report) error`.
+2. **the JSON text form** (§16.1–§16.4): for a human to read, author, review
+   or edit, and it carries what §16 says it carries — every field, defaults
+   included, names rather than ids, pretty-printed. It is NOT the wire and it
+   carries none of the wire's guarantees: a text has no form byte to be newer
+   than and no id table, so it has no unknown-id rule and no framing check.
+   The Go surface is the existing `<Name>ToJsonMeasure` / `<Name>ToJson` /
+   `<Name>FromJson`, whose names this section does not change.
+
+**WHAT EACH REFUSES, BY NAME.** Both readers refuse damaged or newer input
+under a typed reason (§19.2's `TableRefuseReason` vocabulary; a new reason is
+added at the END and never renumbered), and both leave the caller's instance
+at its declared defaults:
+
+- `LoadText` on a body that is not padded standard base64 →
+  **`text_not_base64`**. Nothing is decoded and the report says `malformed`.
+- `LoadText` on a body that DECODES to a wire the binary reader refuses →
+  the BINARY reader's own name, never a text one: a form byte this build does
+  not read is **`unknown_form`** (§3 THE FIRST BYTE, §3.4), and framing
+  damage — a truncated body, a lying trailer, a repeated id, an early end —
+  is **`wire_damaged`** (§3.4, §4). The text carrier adds no refusal of its
+  own here and takes none away.
+- The JSON reader on a document the walk refuses → **`text_damaged`**, the
+  reader's half of §16.3: the value goes back to its defaults and the report
+  says `malformed`. Go names it with `<Name>FromJsonReason`, whose answer is
+  `ok` or `text_damaged` and which decides exactly as `<Name>FromJson` does.
+
+`SaveText` fails only where `<Name>Save` fails — a value the wire cannot
+carry (§5) — and then reports **`invalid_value`** and writes no text.
+
 ## 17. Packing: a directory tree that mirrors a root table
 
 `schema pack` assembles ONE table instance from a directory tree and writes

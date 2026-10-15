@@ -3456,6 +3456,47 @@ byte on the wire.
 or a set flags bit no variant names, an invalid union tag, or a non-finite
 float. The text it does emit is always valid JSON and valid UTF-8.
 
+### Carrying a table over a text channel
+
+A channel that carries text and nothing else — a message bus body, a JSON
+configuration field, a database column, a log line — carries a table in one of
+TWO forms (SPEC-TABLES.md §16.8). Pick one per payload; never mix them.
+
+**base64 of the binary wire** is the form for a payload no human reads. It is
+padded standard base64 (RFC 4648 §4) of the wire bytes, so the body IS the
+wire: the form byte, the framing check and every versioning guarantee come
+along — a renamed field still reads by id, an unknown id is still skipped and
+counted, a clamped value is still clamped and counted. It is opaque, and that
+is the point.
+
+```go
+text, err := RootSaveText(&v)          // padded standard base64 of the wire
+var got Root
+var r TableReport
+if err := RootLoadText(&got, text, &r); err != nil {
+    log.Fatal(err)                     // a typed TableRefuseReason
+}
+```
+
+**The JSON text form** is the form for a payload a human authors, reviews or
+edits: `<Name>ToJson` / `<Name>FromJson` above. It carries what §16 says it
+carries and nothing more — no form byte, no id table, so no unknown-id rule
+and no framing check. It is not the wire and it does not inherit the wire's
+guarantees.
+
+**Both readers refuse damaged or newer input BY NAME**, as a typed
+`TableRefuseReason`, and both leave your instance at its declared defaults:
+
+| what arrives | the name |
+| --- | --- |
+| a body that is not padded standard base64 | `text_not_base64` |
+| a decoded wire with a form byte this build does not read | `unknown_form` |
+| a decoded wire with damaged framing — truncated, lying trailer, early end | `wire_damaged` |
+| a JSON document the walk refuses | `text_damaged` (`<Name>FromJsonReason`) |
+
+`SaveText` fails only where `Save` fails — a value the wire cannot carry — and
+reports `invalid_value`.
+
 ### Packing a directory into a table
 
 `schema pack` builds ONE table instance from a directory tree that mirrors
