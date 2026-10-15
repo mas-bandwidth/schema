@@ -91,9 +91,18 @@ inline bool ReadShipCreate( serialize::ReadStream & stream, ShipCreate & value )
 ```
 
 Run the same command with `--lang c`, `--lang cs`, `--lang elixir`, `--lang go`, `--lang java`,
-`--lang js`, `--lang dart` or `--lang rust` and you get the equivalent in that
-language — writing the
+ `--lang js`, `--lang dart` or `--lang rust` and you get the equivalent in that
+ language — writing the
 **same bits**.
+
+**The Go target can emit a subset of its table surface.** `--lang go --surface
+<list>` emits only the table files and functions the named surfaces need
+(docs/SPEC-TABLES.md §8.4). The names are `wire`, `fixed`, `json`, `cook`,
+`block`, `view`, `message` and `retain`; each pulls in its dependencies (for
+example `json` needs `wire`), and omitting the flag — or passing an empty list —
+is the default: every surface, byte-identical to a generate with no `--surface`.
+`--surface` is the Go target's own flag; any other `--lang` refuses it by name.
+
 
 ---
 

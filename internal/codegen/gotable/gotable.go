@@ -105,6 +105,75 @@ func wireIdOrdinals(u *ir.Unit) map[uint64]int {
 	return out
 }
 
+// The GO table surface names (docs/SPEC-TABLES.md §8.4): a `generate --lang
+// go --surface <list>` picks which surfaces to emit. The default — no flag —
+// is the full set, byte-identical to what this package always emitted. A
+// name's DEPENDENCIES are pulled in with it, so requesting json (say) also
+// emits the wire surface it is built on. The wire surface is the common
+// base, so it is where the shared runtime, the storage structs and the table
+// codecs live.
+var surfaceOrder = []string{"wire", "fixed", "json", "cook", "block", "view", "message", "retain"}
+
+var surfaceDeps = map[string][]string{
+	"wire":    nil,
+	"fixed":   {"wire"},
+	"json":    {"wire"},
+	"cook":    {"block", "wire"},
+	"block":   {"wire"},
+	"view":    {"wire"},
+	"message": {"wire"},
+	"retain":  {"wire"},
+}
+
+// surfaceSet is the set of surfaces a generate emits, its dependencies
+// resolved. A nil set is the default: everything.
+type surfaceSet map[string]bool
+
+func (s surfaceSet) on(name string) bool { return s == nil || s[name] }
+
+// parseSurfaceList validates a --surface list and resolves its dependencies.
+// An empty list means the default (everything); an unknown name is an error.
+func parseSurfaceList(list string) (surfaceSet, error) {
+	if strings.TrimSpace(list) == "" {
+		return nil, nil
+	}
+	known := map[string]bool{}
+	for _, n := range surfaceOrder {
+		known[n] = true
+	}
+	picked := map[string]bool{}
+	fields := strings.Split(list, ",")
+	for i := range fields {
+		name := strings.TrimSpace(fields[i])
+		if name == "" {
+			continue
+		}
+		if !known[name] {
+			return nil, fmt.Errorf("--surface takes a comma-separated list of %s, not %q", strings.Join(surfaceOrder, ", "), name)
+		}
+		picked[name] = true
+	}
+	if len(picked) == 0 {
+		return nil, nil
+	}
+	// resolve the closure
+	out := map[string]bool{}
+	var add func(string)
+	add = func(n string) {
+		if out[n] {
+			return
+		}
+		out[n] = true
+		for _, d := range surfaceDeps[n] {
+			add(d)
+		}
+	}
+	for n := range picked {
+		add(n)
+	}
+	return surfaceSet(out), nil
+}
+
 func (g *tableGen) knownOrdinal(id uint64) int {
 	ord, ok := g.idOrdinal[id]
 	if !ok {
@@ -206,19 +275,44 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
 // every table then carries the one entry it can always compute: its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	return generateLineageSurfaces(u, lineage, nil)
+}
+
+// GenerateLineageSurfaces is GenerateLineage with a --surface list applied
+// (docs/SPEC-TABLES.md §8.4). An empty list is the default and emits every
+// surface, byte-identical to GenerateLineage; an unknown name is an error.
+func GenerateLineageSurfaces(u *ir.Unit, lineage map[string][]FixedLineageEntry, surfaceList string) (map[string][]byte, error) {
+	surfaces, err := parseSurfaceList(surfaceList)
+	if err != nil {
+		return nil, err
+	}
+	return generateLineageSurfaces(u, lineage, surfaces)
+}
+
+// generateLineageSurfaces is GenerateLineage with the --surface set applied:
+// it emits only the files and functions the requested surfaces (and their
+// dependencies) call for. A nil surfaces set is the default — everything —
+// and is byte-identical to a generate with no --surface..
+func generateLineageSurfaces(u *ir.Unit, lineage map[string][]FixedLineageEntry, surfaces surfaceSet) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
 	blocks := ir.Blocks(u)
-	out, err := generateBlockFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	out := map[string][]byte{}
+	if surfaces.on("block") {
+		bf, err := generateBlockFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, bf)
 	}
-	cooks, err := generateCookFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	if surfaces.on("cook") {
+		cooks, err := generateCookFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, cooks)
 	}
-	maps.Copy(out, cooks)
 
 	regional := len(variableTableNames(u)) > 0
 
@@ -239,11 +333,22 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	emitRuntime := func(g *tableGen) {
 		g.needsMath = true
 		g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
-		g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u)+tableFixedRuntime)
-		g.pf("%s", tableCookWriteSource(u))
+		runtime := tableRuntimeForUnit(regional) + tableRefusalSource + tableWireRuntime(u)
+		if surfaces.on("message") {
+			runtime += tableMessageRuntime(u)
+		}
+		if surfaces.on("fixed") {
+			runtime += tableFixedRuntime
+		}
+		g.pf("%s", runtime)
+		if surfaces.on("cook") {
+			g.pf("%s", tableCookWriteSource(u))
+		}
 		if regional {
 			g.emitRegionRuntime(blocks)
-			g.emitRetainRuntime()
+			if surfaces.on("retain") {
+				g.emitRetainRuntime()
+			}
 		}
 		if anyKeyed {
 			g.pf("%s", tableKeyedAccessor)
@@ -296,10 +401,16 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			g.emitTableWrite(st)
 			g.emitTableSave(st)
 			g.emitTableRead(st)
-			g.emitRetainMember(st)
-			g.emitCookWriteSurface(st)
-			g.emitMessageWrite(st)
-			g.emitMessageRead(st)
+			if surfaces.on("retain") {
+				g.emitRetainMember(st)
+			}
+			if surfaces.on("cook") {
+				g.emitCookWriteSurface(st)
+			}
+			if surfaces.on("message") {
+				g.emitMessageWrite(st)
+				g.emitMessageRead(st)
+			}
 			if regional {
 				g.emitRegionMessage(st)
 			}
@@ -314,7 +425,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 				}
 			}
 		}
-		g.emitFixedForm(members)
+		if surfaces.on("fixed") {
+			g.emitFixedForm(members)
+		}
 		if len(members) > 0 {
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----\n\n")
 			for _, st := range members {
@@ -346,16 +459,20 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
 	// descriptors, in its own file so a project that never reads or writes a
 	// text does not compile it
-	texts, err := generateJsonFiles(u, closure, home)
-	if err != nil {
-		return nil, err
+	if surfaces.on("json") {
+		texts, err := generateJsonFiles(u, closure, home)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, texts)
 	}
-	maps.Copy(out, texts)
-	view, err := generateViewFile(u, closure, armSlots)
-	if err != nil {
-		return nil, err
+	if surfaces.on("view") {
+		view, err := generateViewFile(u, closure, armSlots)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, view)
 	}
-	maps.Copy(out, view)
 	return out, nil
 }
 

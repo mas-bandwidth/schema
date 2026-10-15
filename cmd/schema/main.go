@@ -280,14 +280,22 @@ func main() {
 		fs := flag.NewFlagSet("generate", flag.ExitOnError)
 		lang := fs.String("lang", "cpp", "target language ("+strings.Join(c.Targets(), ", ")+")")
 		out := fs.String("out", "generated", "output directory")
+		surface := fs.String("surface", "", "comma-separated Go table surfaces to emit (wire,fixed,json,cook,block,view,message,retain; default all) — the Go target's own flag (docs/SPEC-TABLES.md §8.4)")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		limit := fs.Int64("fixed-record-limit", 0, "refuse any FIXED table whose record body exceeds this many `bytes` (0 = no refusal; §3.4 warns at 4096 and drops the form at 65536 regardless)")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		c.FixedRecordLimit = *limit
 		c.TablesBaseline = true
 		c.SchemaLock = true
+		opts := compiler.Options{}
+		if *surface != "" {
+			if *lang != "go" {
+				fatalf("--surface is the Go target's own flag and not %q's (docs/SPEC-TABLES.md §8.4)", *lang)
+			}
+			opts["surface"] = *surface
+		}
 		unit := loadUnit(c, fs.Args())
-		files, err := c.Generate(unit, *lang, compiler.Options{})
+		files, err := c.Generate(unit, *lang, opts)
 		if err != nil {
 			fail(err)
 		}

@@ -11134,6 +11134,20 @@ const UnitViewInfo * UnitView();
 
 ### 8.4 What it costs: the include rule
 
+**The Go target's `--surface` flag.** `schema generate --lang go --surface
+<list>` emits only the table files and functions the named surfaces need:
+`wire`, `fixed`, `json`, `cook`, `block`, `view`, `message` and `retain`. The
+default — no flag, or an empty list — is the full set, byte-identical to a
+generate with no `--surface`. The surfaces resolve their dependencies, so
+requesting one pulls in everything it is built on: `wire` is the common base
+(the storage structs, the table codecs and the shared runtime); `fixed`, `json`
+`view`, `message` and `retain` each pull in `wire`; `block` pulls in `wire`; and
+`cook` pulls in `block` and `wire`, because a cooked record is the blittable row
+the block form emits (§19). The flag is the Go target's own: any other `--lang`
+refuses it by name.
+
+
+
 **Nothing selects the view, so nothing has to decide what a build deserves.**
 The file is emitted for every unit and carries every declaration; what a
 build pays is what it COMPILES. A tool that walks declarations includes the
