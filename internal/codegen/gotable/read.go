@@ -2,6 +2,8 @@ package gotable
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -12,8 +14,37 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	if g.retain {
 		g.pf("r.Retain.discard(r.Path,false,0)\n")
 	}
+	// `| required` fields (docs/SPEC-TABLES.md §2.3): each gets a seen flag,
+	// set when its id rides, and a record that ends without one is refused
+	// with missing_required naming the field.
+	var req []*ir.Field
+	for _, f := range st.Fields {
+		if f.Required {
+			req = append(req, f)
+		}
+	}
+	reqIdx := map[*ir.Field]int{}
+	for i, f := range req {
+		reqIdx[f] = i
+		g.pf("\treqSeen%d := false\n", i)
+	}
 	g.pf("\tfor {\n\t\tref, ok := r.lebPair(); if !ok { ref, ok = r.lebWide() }; if !ok { r.Report.Malformed = true; return false }\n")
-	g.pf("\t\tif ref == 0 { return true }\n")
+	if len(req) > 0 {
+		g.pf("\t\tif ref == 0 {\n")
+		parts := make([]string, len(req))
+		for i := range req {
+			parts[i] = fmt.Sprintf("!reqSeen%d", i)
+		}
+		g.pf("\t\t\tif %s {\n", strings.Join(parts, " || "))
+		g.pf("\t\t\t\tr.Report.MissingRequired++\n")
+		g.pf("\t\t\t\tr.Report.Reason = \"missing_required: %s\"\n", strings.Join(requiredFieldNames(req), ", "))
+		g.pf("\t\t\t\treturn false\n")
+		g.pf("\t\t\t}\n")
+		g.pf("\t\t\treturn true\n")
+		g.pf("\t\t}\n")
+	} else {
+		g.pf("\t\tif ref == 0 { return true }\n")
+	}
 	g.pf("\t\tfieldID, ok := r.Resolve(ref); if !ok || !r.Has(1) { r.Report.Malformed = true; return false }\n")
 	// THE FIELD HEADER IS READ WHOLE BEFORE A RESERVED ID IS JUDGED, as the
 	// oracle reads it (internal/tablewire bodyAt). A reserved id in a body
@@ -42,6 +73,9 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			if f.Type.Optional {
 				g.pf("\t\t\t\t\tvalue.%sPresent = true\n", member(f))
 			}
+			if idx, ok := reqIdx[f]; ok {
+				g.pf("\t\t\t\t\treqSeen%d = true\n", idx)
+			}
 			g.pf("\t\t\t\t\tbreak\n")
 			g.pf("\t\t\t\t}\n")
 		}
@@ -50,6 +84,9 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.emitReadField(f, "\t\t\t")
 		if f.Type.Optional {
 			g.pf("\t\t\tvalue.%sPresent = true\n", member(f))
+		}
+		if idx, ok := reqIdx[f]; ok {
+			g.pf("\t\t\treqSeen%d = true\n", idx)
 		}
 	}
 	// THE NODE TABLE'S RESERVED ID, AND ONLY WHERE IT IS THIS BODY'S OWN
@@ -548,4 +585,14 @@ func (g *tableGen) emitCarveReturn(parent, child, ind string) {
 		}
 		g.pf("return false }\n")
 	}
+}
+
+// requiredFieldNames returns the wire names of the required fields, for the
+// missing_required refusal (docs/SPEC-TABLES.md §2.3).
+func requiredFieldNames(req []*ir.Field) []string {
+	out := make([]string, len(req))
+	for i, f := range req {
+		out[i] = f.Name
+	}
+	return out
 }
