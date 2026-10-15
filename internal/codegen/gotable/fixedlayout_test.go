@@ -25,7 +25,7 @@ func TestFixedFormLayoutRules(t *testing.T) {
 	// RETIRED BY §5.6: a layout arriving on the wire is no longer walked, so the
 	// seven rules do not fire at run time — a KNOWN hash whose bytes differ is
 	// one name, layout_malformed (asserted by TestFixedVersioningHash), and an
-	// unknown hash is layout_newer. The seven rules stay as the LOCK'S
+	// unknown hash is layout_unknown. The seven rules stay as the LOCK'S
 	// validation of what it records and the oracle's of the corpus, and that is
 	// where this coverage is owed next.
 	t.Skip("retired by docs/FIXED-FORM-ALGORITHM.md §5.6; the seven rules are the lock's validation now")
