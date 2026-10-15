@@ -114,11 +114,10 @@ SOAK_SECONDS ?= 3600
 
 all: bin/schema
 
-# The version the built binary reports. `git describe` gives the exact v tag on
-# a release build and v-tag-commits-hash elsewhere (main-<shorthash> promotion
-# tags are not versions, docs/VERSIONING.md); outside a git checkout (a source
-# tarball) the stamp is left empty and internal/version falls back to the
-# toolchain's own build info.
+# The version the built binary reports: `git describe` over v tags only (a
+# main-<shorthash> promotion tag is not a version; docs/VERSIONING.md), the exact
+# tag on a release build and tag-commits-hash elsewhere; outside a git checkout
+# the stamp is left empty and internal/version falls back to the build info.
 VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --dirty 2>/dev/null)
 LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/v2/internal/version.version=$(VERSION),)
 
