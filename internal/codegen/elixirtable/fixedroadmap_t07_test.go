@@ -391,7 +391,8 @@ type B { v int64 }
 func t07R28(t *testing.T) {
 	t07Has(t, fixedRuntimeBody, "defp guarded(acc, [], _tags, entry), do: push(acc, entry)", "R28 the empty guard chain pushes the bare entry")
 	t07Has(t, fixedRuntimeBody, "defp guarded(acc, guards, tags, entry) do", "R28 the guard chain folds the links")
-	t07Has(t, fixedRuntimeBody, "guard ++ [{their_at, argw}], tag ++ [j + 1]", "R28 an inner arm conjoins the OUTER tag it rode in on")
+	t07Has(t, fixedRuntimeBody, "guard ++ [{their_at, argw}],", "R28 an inner arm conjoins the OUTER tag it rode in on")
+	t07Has(t, fixedRuntimeBody, "tag ++ [j + 1],", "R28 an inner arm conjoins the OUTER tag's ordinal it rode in on")
 	t07Has(t, fixedRuntimeBody, "@max_depth 64", "R28 the chain's only bound is the layout's own 64")
 }
 
