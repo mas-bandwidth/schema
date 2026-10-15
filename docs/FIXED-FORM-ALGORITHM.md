@@ -586,7 +586,8 @@ one entry under it.
 
 **The floor is one number and the lineage is one array**, so "retired" is an index cut and the operator's two
 answers stay distinct: below the floor is `layout_unsupported` (upgrade the client), outside the lineage is
-`layout_newer` (ship the reader). A retired entry stays in the lineage forever.
+`layout_unknown` (a hash this build's lineage does not hold; §5.3 says why it is not `layout_newer`). A retired
+entry stays in the lineage forever.
 
 **THE HASH.** The eight bytes a file's header and every record carry. **The digest is computed AT THE HASH
 SITE, from the schema** — the reference's signature is `ir.TableFixedLayoutHash(layout, st)` and there is no
@@ -861,7 +862,8 @@ LOAD(R, file, out, capacity, report):                  -- R the static data COMP
                                                         -- Nothing is recomputed from the wire: the digest is
                                                         -- not on the wire, so the hash cannot be re-derived.
   5  i := the FIRST index with R.lineage[i] == h
-     if none:                                           REFUSE layout_newer, reporting h AND NOTHING ELSE
+     if none:                                           REFUSE layout_unknown, reporting h AND NOTHING ELSE
+                                                        -- never layout_newer: nothing here proves direction (below)
   6  if i < R.floor:                                    REFUSE layout_unsupported, reporting h
   7  k := R.known[i]
      if L != k.layout_length or the L bytes at `layout` differ from k.layout:
@@ -919,7 +921,7 @@ nothing could reach.
 | shorter than 20 bytes, the form byte having already answered | — | `malformed`, and `-1` |
 | any reserved byte `1..7` nonzero | — | `malformed`, and `-1` |
 | `20 + L` past the file | `layout_malformed` | the name |
-| the hash is in no lineage entry | `layout_newer` | **the file's hash, and nothing else** |
+| the hash is in no lineage entry | `layout_unknown` (Go; the other legs say `layout_newer` until their turn) | **the file's hash, and nothing else** |
 | the hash is in the lineage, below the floor | `layout_unsupported` | the file's hash |
 | a known hash, different layout length or bytes | `layout_malformed` | the name |
 | a known hash whose LINEAGE ENTRY would not build | `layout_malformed` / `plan_too_large` | the name the entry's own lane carries, never a throw (§5.9 #36) |
@@ -946,9 +948,22 @@ answer; `malformed` is the other; they are NEVER both set, and the counters are 
 
 | the outcome | `refused` | `reason` | `malformed` | returns | the counters |
 |---|---|---|---|---|---|
-| a REFUSAL BY NAME — every row above that HAS a name | `true` | that name; `layout_newer` ALSO sets `layout_hash` to THE FILE'S hash and nothing else | **`false`** | `-1` | all zero, and not one destination byte written |
+| a REFUSAL BY NAME — every row above that HAS a name | `true` | that name; `layout_unknown` (and `layout_newer`, where a leg still says it) ALSO sets `layout_hash` to THE FILE'S hash and nothing else | **`false`** | `-1` | all zero, and not one destination byte written |
 | a MALFORMED read — no first byte, under 20 bytes, a nonzero reserved byte, `record_bytes <= 8`, a ragged tail | **`false`** | untouched | `true` | `-1` | all zero |
 | a read that lands values | `false` | untouched | `false` | `n` | §5.4's |
+
+**STEP 5's ANSWER IS `layout_unknown`, AND `layout_newer` IS RESERVED (SPEC-TABLES §21.3).** A hash outside the
+lineage is a newer writer's layout, or an older layout nobody locked, or another table's file, or a header whose
+hash byte was damaged; step 5 cannot tell them apart, and "ship the reader" for all of them sends the operator
+after a newer reader that may not exist. `layout_unknown` is "a layout hash this build's lineage does not hold".
+**`layout_newer` is the answer only for a hash the lock lineage PROVES newer, and nothing proves one.** The
+lineage is oldest first with the reader's own layout LAST and `schema check` holds the last entry to the
+declaration, so every entry a build holds is the reader's own or older (a `retired` mark is older too, and is
+`layout_unsupported`); a hash outside it has no position in it; and the wire carries a hash and no ordinal. So
+a reader never emits `layout_newer` today and every step-5 miss is `layout_unknown`; the name is spent only when
+the standard gives a reader an ordered fact about a hash it does not hold, and that change is made in this file
+first. **Go is first**: it answers `layout_unknown` and exports `TableFixedLayoutUnknown`; the other legs keep
+`layout_newer` at step 5 until each takes the rule, and the gap is named, not hidden.
 
 **`layout_unsupported` fills `layout_hash` too** — both layout refusals report the file's hash, and what belongs
 to `layout_newer` alone is "and nothing else" (§5.9 #7). **The field is called `layout_hash`** and it is the
@@ -1029,7 +1044,7 @@ declared default, the counters are §5.4's. **THE VALUES ARE THE MANIFEST'S** �
 the line the dump wrote for that file — and never a number read out of `fixedform_dump.cpp` or restated in the
 test (§5.9 #32, #37). **The tail's one exception is the `present` companion, which owes `1`** and not its fresh
 value's `false` (§5.9 #40). **And a harness pairs two generations' fields by the WIRE ID, never by name**, so a
-`was =` rename compares (§5.9 #41). **OLD-REFUSES-NEW**: `layout_newer` before any record, with the
+`was =` rename compares (§5.9 #41). **OLD-REFUSES-NEW**: `layout_unknown` on Go (§5.3; `layout_newer` on a leg that has not taken the rule) before any record, with the
 FILE's hash in the report, no counter moved, nothing marked malformed, and the destination still every field
 of a fresh value. A row whose edit moves no layout byte and no digest byte (`rename_without_was`,
 `field_deprecate`, `field_undeprecate`) has no second column: the hashes are equal, both sides take the
@@ -1044,7 +1059,7 @@ already names as a fixture) and `Scalars`/`Scalars2` — **SEVEN pairs**, and `f
 (`internal/codegen/cpptable/lineage.go`, TEST-ONLY) is the list, the one place to read it. That is §5.7's two
 columns inside the gate rather than only inside the versioning cases. FORWARD: the newer reader compiles the
 older file through its lineage and returns one record. REVERSE: the older reader given the newer file refuses,
-and the refusal is `layout_newer` BY NAME. **The old contract's both-ways compiled read is retired, not
+and the refusal is `layout_unknown` BY NAME on Go (§5.3; `layout_newer` on a leg that has not taken the rule). **The old contract's both-ways compiled read is retired, not
 bent** — a reader that compiled a stranger's layout in either direction was the thing this section replaced.
 The pairs resolve through `fixtureLineage`, the TEST-ONLY map from a newer fixture's basename to its older
 files — reached only when the unit has no lock, production COMPILE reading `lockfile.Lineage` — which is what
@@ -1276,7 +1291,7 @@ table is not a lesser table, it is one THIS file is not. **The one exception is 
 past §3.4's 65536-byte ceiling there is no fixed-form root and no lineage to consult (#48,
 `ir.TableFixedFormRoots`). Nothing in a file names its root: the reader chooses
 the root and **the HASH is what resolves**, so a file written from `Vec` and read as `Lineage` is
-`layout_newer`, which is the right answer and not a near miss. For the corpus rows the writer names the root
+`layout_unknown` (`layout_newer` on a leg that has not taken §5.3's rule), which is the right answer and not a near miss. For the corpus rows the writer names the root
 explicitly — `test/tables/fixedform_dump.cpp` writes `nested_append` from `Lineage`, `optional_add` from
 `OptionalAdd`, `p1`/`p3` from `Chain` — and in every row it is the OUTER table, the fixed table no other fixed
 table of the unit names by value. The pilot's heuristic gives that same answer on every row; **the rule is the
@@ -1435,7 +1450,7 @@ on every lawful read**, and §5.7's owed row — "a row whose OLD schema carries
 an array of tables" — **is WITHDRAWN**. §5.1 refuses a field removal, refuses a rename without `was`, keeps a
 deprecated field's slot, and refuses a kind that moved off every ladder: so a newer reader NAMES every field of
 every writer its lineage can select, and there is nothing left for the census to count. A nonzero census needs
-either a lock that is not monotone — a BUILD bug — or a peer outside the lineage, which is `layout_newer` before
+either a lock that is not monotone — a BUILD bug — or a peer outside the lineage, which is `layout_unknown` (§5.3; `layout_newer` on a leg that has not taken the rule) before
 a plan exists. **The counters therefore remain the report of an UNLAWFUL or HOSTILE entry only**: machinery that
 is right, carried, landed once per returning read (#6), and correctly zero. A leg still implements it; what no
 leg owes is a schema pair that moves it. Exercising it wants a DELIBERATELY UNLAWFUL lineage entry handed in by
