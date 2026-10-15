@@ -231,6 +231,7 @@ public final class TableCookInfo {
     public static final long maxAlign = ` + fmt.Sprintf("%dL", cookMaxAlign) + `;
 
     public String name;
+    public long typeId; // attribution entry's table id (§7.6)
     public int size;
     public int align;
     public int numFields;
@@ -250,6 +251,7 @@ public final class TableCookFieldInfo {
     public interface InfoRef { TableCookInfo get(); }
 
     public String name;
+    public String sourceName; // generated Java Value member (§7.6)
     public int offset;        // the field's offset in the record this descriptor describes
     public int size;          // its whole storage there, companions included
     public int elemSize;      // one element's size, for an array; the field's own otherwise
@@ -263,11 +265,12 @@ public final class TableCookFieldInfo {
 
     public TableCookInfo record() { return recordRef == null ? null : recordRef.get(); }
 
-    public static TableCookFieldInfo of(String name, int offset, int size, int elemSize, boolean isArray,
+    public static TableCookFieldInfo of(String name, String sourceName, int offset, int size, int elemSize, boolean isArray,
                                         int arrayBound, boolean isPointer, int countOffset,
                                         int presentOffset, TableCookStorage storage, InfoRef record) {
         TableCookFieldInfo f = new TableCookFieldInfo();
         f.name = name;
+        f.sourceName = sourceName;
         f.offset = offset;
         f.size = size;
         f.elemSize = elemSize;
@@ -292,6 +295,7 @@ func generateCookFiles(u *ir.Unit, ck *cookUnit) (map[string][]byte, error) {
 		return out, nil
 	}
 	maps.Copy(out, cookRuntimeFiles(u))
+	out["TableCookWrite.java"] = javaFile(u, "the cook writer's measured region and target-order stores (docs/SPEC-TABLES.md §7.6).", tableCookWriteSource(u, ck))
 	names := make([]string, 0, len(u.Tables))
 	for name := range u.Tables {
 		names = append(names, name)
@@ -311,7 +315,7 @@ func generateCookFiles(u *ir.Unit, ck *cookUnit) (map[string][]byte, error) {
 		}
 		g := &cookGen{unit: u, cook: ck, table: u.Tables[name]}
 		g.emit()
-		out[name+"Cook.java"] = javaFile(u, "the COOKED FORM's read half (docs/SPEC-TABLES.md §7).", g.b.String())
+		out[name+"Cook.java"] = javaFile(u, "the COOKED FORM's reader and writer (docs/SPEC-TABLES.md §7).", g.b.String())
 	}
 	return out, nil
 }
@@ -362,12 +366,31 @@ func (g *cookGen) emit() {
 	g.f("     *  %sRow's accessors. */\n", name)
 	g.f("    public int root() { return region; }\n\n")
 	g.emitOpen(ml, align)
+	g.emitWrite()
 	g.emitAt()
 	g.f("    /** this root's cook descriptors: constant data, so a reflective walk costs a\n")
 	g.f("     *  lookup and not a parse. Every record the region can hold hangs off the\n")
 	g.f("     *  field column, so a walker reaches the whole graph from the root. */\n")
 	g.f("    public static TableCookInfo type() { return %sRow.cookInfo(); }\n", name)
 	g.f("}\n")
+}
+
+// emitWrite is §7.6's Java spelling of <T>CookMeasure,
+// <T>CookMeasureReason and <T>CookFrom. The shared writer plans and validates
+// the complete region before its first store.
+func (g *cookGen) emitWrite() {
+	g.f("    public static long cookMeasure(Object value) {\n")
+	g.f("        TableCookWrite.Plan p = TableCookWrite.plan(value, type());\n")
+	g.f("        return p == null ? -1 : p.total;\n    }\n\n")
+	g.f("    public record MeasureReason(long bytes, String reason) {}\n\n")
+	g.f("    public static MeasureReason cookMeasureReason(Object value) {\n")
+	g.f("        long bytes = cookMeasure(value);\n")
+	g.f("        return new MeasureReason(bytes, bytes < 0 ? \"invalid_value\" : \"ok\");\n    }\n\n")
+	g.f("    public static boolean cookFrom(Object value, byte[] buffer, int order) {\n")
+	g.f("        if (order != TableCookWrite.LITTLE && order != TableCookWrite.BIG) { return false; }\n")
+	g.f("        TableCookWrite.Plan p = TableCookWrite.plan(value, type());\n")
+	g.f("        if (p == null || buffer == null || buffer.length < p.total) { return false; }\n")
+	g.f("        return TableCookWrite.write(p, buffer, order);\n    }\n\n")
 }
 
 func (g *cookGen) emitOpen(ml *ir.MemberLayout, align int64) {
