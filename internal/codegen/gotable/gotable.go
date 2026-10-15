@@ -204,21 +204,51 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // GenerateLineage is Generate with the LINEAGE the build holds for each fixed
 // table: the locked layouts, OLDEST FIRST, the current one last
 // (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
-// every table then carries the one entry it can always compute: its own.
+// every table then carries the one entry it can always compute: its own. It is
+// GenerateSurface with the full surface set, byte-identical to a run that names
+// no --surface.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	return GenerateSurface(u, nil, lineage)
+}
+
+// GenerateSurface is GenerateLineage with the generated SURFACES a run asks
+// for (docs/SPEC-TABLES.md §8.4): the --surface list, carried by the
+// compiler.Options key [TableSurfaceKey]. Absent or empty is the full set,
+// byte-identical to GenerateLineage. Dependencies are resolved (every surface
+// pulls the wire codecs in with it), so a run that asks for json alone still
+// gets the table's wire surface, which the text walk reads through.
+func GenerateSurface(u *ir.Unit, opts map[string]string, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
+	var cfg *surfaceConfig
+	var err error
+	if opts != nil {
+		cfg, err = parseSurfaces(opts[TableSurfaceKey])
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		cfg, err = parseSurfaces("")
+		if err != nil {
+			return nil, err
+		}
+	}
 	blocks := ir.Blocks(u)
-	out, err := generateBlockFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	out := map[string][]byte{}
+	if cfg.block {
+		out, err = generateBlockFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
 	}
-	cooks, err := generateCookFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	if cfg.cook {
+		cooks, cerr := generateCookFiles(u, blocks)
+		if cerr != nil {
+			return nil, cerr
+		}
+		maps.Copy(out, cooks)
 	}
-	maps.Copy(out, cooks)
 
 	regional := len(variableTableNames(u)) > 0
 
@@ -240,7 +270,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		g.needsMath = true
 		g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
 		g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u)+tableFixedRuntime)
-		g.pf("%s", tableCookWriteSource(u))
+		if cfg.cook {
+			g.pf("%s", tableCookWriteSource(u))
+		}
 		if regional {
 			g.emitRegionRuntime(blocks)
 			g.emitRetainRuntime()
@@ -297,7 +329,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			g.emitTableSave(st)
 			g.emitTableRead(st)
 			g.emitRetainMember(st)
-			g.emitCookWriteSurface(st)
+			if cfg.cook {
+				g.emitCookWriteSurface(st)
+			}
 			g.emitMessageWrite(st)
 			g.emitMessageRead(st)
 			if regional {
@@ -346,16 +380,20 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
 	// descriptors, in its own file so a project that never reads or writes a
 	// text does not compile it
-	texts, err := generateJsonFiles(u, closure, home)
-	if err != nil {
-		return nil, err
+	if cfg.json {
+		texts, err := generateJsonFiles(u, closure, home)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, texts)
 	}
-	maps.Copy(out, texts)
-	view, err := generateViewFile(u, closure, armSlots)
-	if err != nil {
-		return nil, err
+	if cfg.view {
+		view, err := generateViewFile(u, closure, armSlots)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, view)
 	}
-	maps.Copy(out, view)
 	return out, nil
 }
 
