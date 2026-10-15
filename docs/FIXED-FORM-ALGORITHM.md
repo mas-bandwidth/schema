@@ -337,13 +337,13 @@ READ( plan, split, record, out ):
 
 ### 4.5 The scatter
 
-The reader validates on load in **every** build, release included, and a clamp counts ONCE for the field.
+The reader validates on load in **every** build, release included. A count or a length the plan's bound cannot hold REFUSES BY NAME (§4.5); a ranged scalar's clamp counts ONCE for the field (§4.6).
 
 | case | what it does, and what it validates |
 |---|---|
 | `copy` | `COPY(out+dst, record+src, size)`. Nothing to validate |
-| `count` | `v := SLE(4, record+src)`; if `v < 0` then `v := 0, COUNT clamped`, else if `v > size` then `v := size, COUNT clamped`; `PUT(4, out+dst, v)`. The bound is `size`: the bound THE PLAN CARRIES, which is the WRITER's own for that lineage entry, in ELEMENTS (bill §12.5) — never the reader's, or a forged count would land slots the old writer could not have written |
-| `text` | `unit := (meta == wide) ? 2 : 1`; `cap := size / unit`; `v := SLE(4, record+src)` clamped into `[0, cap]`, `COUNT clamped` if it fired. Copy the payload, and terminate at the used length where the language stores a terminator — never for `bytes`. **The CONTENT RULES apply to the USED UNITS and nothing else**: UTF-8 validity over `v` bytes, never over `N`; wide code units over `v`, never `2N`, an astral pair counting two (fix 7). **A content violation REFUSES BY NAME, the verdict the packet reader gives**, this form having no `L` to continue past (fix 11) |
+| `count` | `v := SLE(4, record+src)`; if `v < 0` or `v > size` then **REFUSE `count_over_bound`** — before any destination byte is written, so REFUSE stays total (§5.3); else `PUT(4, out+dst, v)`. Nothing clamps: a clamp changes the meaning of a forged record (Glenn, 2026-10-15). The bound is `size`: the bound THE PLAN CARRIES, which is the WRITER's own for that lineage entry, in ELEMENTS (bill §12.5) — never the reader's, or a forged count would land slots the old writer could not have written |
+| `text` | `unit := (meta == wide) ? 2 : 1`; `cap := size / unit`; `v := SLE(4, record+src)`; if `v < 0` or `v > cap` then **REFUSE `length_over_bound`** — checked BEFORE the content, so one forged length answers one way whichever slack rides behind it, and before any destination byte is written. Nothing clamps. Copy the payload, and terminate at the used length where the language stores a terminator — never for `bytes`. **The CONTENT RULES apply to the USED UNITS and nothing else**: UTF-8 validity over `v` bytes, never over `N`; wide code units over `v`, never `2N`, an astral pair counting two (fix 7). **A content violation REFUSES BY NAME, the verdict the packet reader gives**, this form having no `L` to continue past (fix 11) |
 | `ordinal` | `raw := LE(size, record+src)` **through a 64-bit temporary**, an ordinal width of `8` being admissible; the remap table's first entry is its length `n`; `v := (raw != 0 and raw <= n) ? table[raw] : 0`; `PUT(dstsize, out+dst, v)` |
 | `widen` / `widenf` | `raw := LE(size, record+src)`, sign-extended from `size*8` bits when `sign`, then `PUT(dstsize, out+dst, raw)`; `widenf` is the f32 at `src` as an f64 at `dst`. Both `COUNT widened`, and both are exact by construction, NaN payloads included |
 | `const` | `PUT(size, out+dst, aux)` — the guarded entry landing THIS reader's arm ordinal when the writer's tag says that arm rode |
@@ -738,8 +738,7 @@ TEXT(p):
   unit := 2 when the flavour is WIDE, else 1                  -- wstring(N) rides as UTF-16 code units
   cap  := p.span / unit                                       -- the CAP is in UNITS, the SPAN is in BYTES
   v    := LE(4, src + p.src) read as SIGNED
-  if v < 0:    v := 0   ; COUNT clamped
-  if v > cap:  v := cap ; COUNT clamped
+  if v < 0 or v > cap:  REFUSE length_over_bound              -- before any destination byte is written; never a clamp
   PUT(4, dst + p.dst, v)                                      -- the length lands at DST
   COPY(dst + p.aux, src + p.src + 4, p.span)                  -- THE WHOLE SPAN, never v * unit
   if the flavour is not BYTES:                                -- terminate AT THE USED LENGTH
@@ -914,6 +913,8 @@ nothing could reach.
 | a ragged tail: `rest mod record_bytes != 0` | — | `malformed`, and `-1` |
 | more records than the caller's capacity | `batch_too_large` | the name |
 | a record hash that is not the file's | `no_layout` | the name |
+| a count word negative or past the plan's bound | `count_over_bound` | the name; never a clamp (§4.5) |
+| a length word negative or past the plan's bound | `length_over_bound` | the name; one answer whichever slack rides behind it (§4.5) |
 | ill-formed text in the USED units | the name fix 11 owes (§4.5) | nothing decoded past it; the reference sets `malformed` instead — §5.8 |
 
 **REFUSE is total: no counter moves, nothing is decoded, and not one destination byte is written** — the
@@ -967,7 +968,7 @@ when every value lands.
 | `MATCH`, at COMPILE | `unknown` | once per writer field no reader field names, **once per peer and never per record** |
 | `EMIT`, at COMPILE | `kind_mismatch` | once per pair whose kinds moved off every ladder |
 | `widen`, `widenf` | `widened` | once per entry per record — a grown integer, `f32` into `f64`, a grown `fixed(I,F)`, **a grown enum ordinal width**. **Per ENTRY**: a folded element run is ONE and an unfolded one is `min(their_n, my_n)`, and a widened run is never folded, so a fixture asserts that EXACT count (§5.9 #33) |
-| `count`, `text` | `clamped` | once per entry per record, when the length or count was out of range |
+| `count`, `text` | none | a word out of the plan's bound REFUSES by name (§4.5); an in-bound word lands and moves nothing |
 | the bounds pass | `clamped` | once per field: a ranged scalar off its end, a `bits(N)` past `2^N - 1`, a union tag past the arm count, an enum ordinal past the top variant, **and a FORGED ordinal remapped to `None`** — one past the WRITER's own variant count, which the `ordinal` op lands as `0` and this pass counts, **on the COMPILED plan exactly as on the identity one** (§4.6, the bill's rule; the reference counts on neither compiled path — §5.8 row 12) |
 | `copy`, `const`, `present`, `ordinal` | none | the op lands its value and moves nothing; the remap to `None` is the BOUNDS PASS's to count, on BOTH plans, and a port that counts in the op as well counts twice |
 | a clean NEW-READS-OLD of an appended field, variant, arm, flag or keyed slot | none | **every counter stays at zero**: an append the reader knows is not an event |

@@ -6790,10 +6790,16 @@ so the used extent is always stated before the bytes are reached.
   exists to avoid, and it would refuse records that are perfectly readable.
 - **THE CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE.** A
   `string(N)`'s UTF-8 validity (§3) is checked over its stated length, not over
-  `N`; a `wstring(N)`'s code units over its stated length, not over `2N`. A
-  length past the field's own bound is a different thing entirely and is
-  `malformed`, because that is the length lying about the wire and not about
-  the slack.
+  `N`; a `wstring(N)`'s code units over its stated length, not over `2N`.
+- **A COUNT OR A LENGTH THE PLAN'S BOUND CANNOT HOLD REFUSES BY NAME.** A word
+  outside `0..bound` — negative or past the bound the PLAN carries, the
+  WRITER's own for that lineage entry — is the word lying about the wire and
+  not about the slack, and it is a different thing entirely: `count` refuses
+  `count_over_bound` and `text` refuses `length_over_bound`, checked before any
+  destination byte is written, so REFUSE stays total. Neither ever clamps: a
+  clamp changes the meaning of a forged record, and one forged length answered
+  two ways under a clamp — clean over zeroed slack, a content refusal over
+  dirty slack. One forged length answers one way (Glenn, 2026-10-15).
 
 This is §3's "nothing is aligned and nothing is padded" holding for ALIGNMENT
 and departing for SLACK, and the departure is the whole form: slack at a
@@ -6909,8 +6915,8 @@ the bounds pass that runs after the loop, over storage, for either plan:
   | op | what the loop does |
   |---|---|
   | `copy` | move `size` bytes from `src` to `dst` |
-  | `count` | read the count, clamp it to the reader's own `Max` (`size`), store it; `clamped` counts if it fired |
-  | `text` | `count`'s work on the length, then the units, then terminate at the used length; the content rules of §3 apply and a violation is `malformed` |
+  | `count` | read the count; a word the plan's bound (`size` — the WRITER's own for that lineage entry) cannot hold REFUSES the record `count_over_bound` before any destination byte is written; in bound, store it |
+  | `text` | a length the plan's bound cannot hold REFUSES `length_over_bound` before any destination byte is written; in bound, the units, then terminate at the used length; the content rules of §3 apply to the USED units and a violation is `malformed` |
   | `union` | read the tag, resolve it to the reader's own arm, run that arm's sub-plan |
   | `widen` | decode a narrower source at its own width into a wider destination, `widened` counts |
   | `ordinal` | resolve a variant ordinal through the plan's own remap table at `aux` |
