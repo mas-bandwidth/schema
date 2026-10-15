@@ -96,7 +96,7 @@ func (g *tableGen) emitArithMeasureField(f *ir.Field, cond, ind string) {
 	expr := "value." + member(f)
 	id := ir.TableFieldWireId(f)
 	ride := cond
-	if !f.Type.Optional {
+	if !f.Type.Optional && !f.Required {
 		elide := expr + " != " + fieldDefaultExpr(f)
 		if ride != "" {
 			ride += " && " + elide
@@ -254,6 +254,11 @@ func (g *tableGen) emitStorageCheck(f *ir.Field, expr, ind string) {
 }
 
 func (g *tableGen) emitFieldRides(f *ir.Field, expr, ind string) string {
+	if f.Required {
+		// `| required` (docs/SPEC-TABLES.md §2.3): the writer ALWAYS writes the
+		// field — no default elision — so it rides on every record.
+		return "true"
+	}
 	if f.IsList() || f.IsMap() {
 		return expr + ".Count>0"
 	}

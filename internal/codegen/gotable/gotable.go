@@ -565,6 +565,10 @@ type TableReport struct {
 	// A body carrying an id twice is legal input
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
 	Duplicate int32
+	// MissingRequired counts required fields (docs/SPEC-TABLES.md §2.3) the
+	// record did not carry: a record an older writer produced before the field
+	// became required. The refusal names the field in Reason.
+	MissingRequired int32
 	Malformed bool // framing damage; decode stopped, partial result kept
 	// BuildVersionPeer and BuildVersionOwn are the two build versions a strict
 	// announcement refusal carries (docs/SPEC-TABLES.md §3.3): the peer's

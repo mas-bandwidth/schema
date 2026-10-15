@@ -696,6 +696,13 @@ var fieldKeys = map[string]bool{"min": true, "max": true, "resolution": true, "w
 // read.
 const deprecatedTag = "deprecated"
 
+// requiredTag is the `| required` marker (docs/SPEC-TABLES.md §2.3), read
+// the same way deprecatedTag is: a valueless tag a TABLE field reads. It is
+// refused, by name, on a packet `type` field and on an optional `?T`
+// (resolveField), and every other target refuses the whole construct at
+// generation (compiler/generate.go).
+const requiredTag = "required"
+
 // qualification reads one line's | section (SPEC §4.2). The VALUELESS entries
 // are the line's TAGS, returned in declared order. The VALUED entries are
 // returned for the caller, whose own switch decides what each means. takes
@@ -1666,6 +1673,13 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 	}
 
 	c.resolveAttrs(f, out)
+	if out.Required {
+		if !inTable {
+			c.errf(f.Pos, "field %s: | required is refused on a `type` field — a type's wire is positional and every field always rides, so there is no absence for a required marker to cure; move the field to a table body (docs/SPEC-TABLES.md §2.3)", f.Name)
+		} else if f.Type.Optional {
+			c.errf(f.Pos, "field %s: | required is refused with ? — an optional is absent or present by definition, and required would forbid the absence that makes it optional; drop one of them (docs/SPEC-TABLES.md §2.3)", f.Name)
+		}
+	}
 
 	// `was` and `json` outside a table CLOSURE are refused in checkTables,
 	// where the closure is known: a `type` a table reaches has table-wire
@@ -1927,6 +1941,9 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 	for _, t := range tags {
 		if t == deprecatedTag {
 			out.Deprecated = true
+		}
+		if t == requiredTag {
+			out.Required = true
 		}
 	}
 	byKey := map[string]*ast.Attr{}
