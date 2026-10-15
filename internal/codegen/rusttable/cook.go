@@ -392,7 +392,7 @@ func (g *gen) reaches(name string, ok func(*ir.Union) bool) bool {
 func unionRowable(un *ir.Union) bool {
 	for _, v := range un.Variants {
 		if v.F == nil {
-			return false // a payload-free arm has no storage to overlay
+			continue // a payload-free arm has no storage inside the overlay (docs/SPEC-TABLES.md §2.6)
 		}
 		a := v.F
 		if a.Type.Pointer || a.IsMap() || a.IsList() || a.Array != ir.ArrayNone || a.KeyEnum != "" ||
@@ -544,6 +544,15 @@ func (g *gen) emitUnionRows(unions []*ir.Union) {
 	}
 }
 
+func unionHasPayload(un *ir.Union) bool {
+	for _, v := range un.Variants {
+		if v.F != nil {
+			return true
+		}
+	}
+	return false
+}
+
 func (g *gen) emitUnionRow(un *ir.Union) {
 	size, align, tag, armOffset := ir.UnionLayout(g.unit, un)
 	g.pf("// %s — the union twin: %d bytes, aligned %d; a %d-byte tag, the arms at %d.\n",
@@ -557,7 +566,13 @@ func (g *gen) emitUnionRow(un *ir.Union) {
 	g.pf("    pub(crate) arms: %sRowArms,\n", un.Name)
 	g.pf("}\n\n")
 	g.pf("#[repr(C)]\n#[derive(Clone, Copy)]\npub union %sRowArms {\n", un.Name)
+	if !unionHasPayload(un) {
+		g.pf("    pub(crate) _none: [u8; 0],\n")
+	}
 	for _, v := range un.Variants {
+		if v.F == nil {
+			continue // a payload-free arm has no member in the overlay (docs/SPEC-TABLES.md §2.6)
+		}
 		g.pf("    pub(crate) %s: %s, // %s\n", v.Name, cookElemType(v.F), tableFieldTypeName(v.F))
 	}
 	g.pf("}\n\n")
@@ -565,6 +580,14 @@ func (g *gen) emitUnionRow(un *ir.Union) {
 	g.pf("    /// The live arm's ordinal, from 1 in declared order; 0 is None.\n")
 	g.pf("    pub fn tag(&self) -> %s {\n        self.tag\n    }\n\n", tagType)
 	for i, v := range un.Variants {
+		if v.F == nil {
+			g.pf("    /// True when the tag names `%s` (a payload-free arm, docs/SPEC-TABLES.md §2.6).\n", v.Name)
+			g.pf("    pub fn is_%s(&self) -> bool {\n        self.tag == %d\n    }\n\n", v.Name, i+1)
+			g.pf("    /// Selects `%s` (a payload-free arm, docs/SPEC-TABLES.md §2.6): zeroes the\n", v.Name)
+			g.pf("    /// overlay and sets the tag only (docs/FIXED-FORM-ALGORITHM.md §3.1).\n")
+			g.pf("    pub fn set_%s(&mut self) {\n        *self = Self::default();\n        self.tag = %d;\n    }\n\n", v.Name, i+1)
+			continue
+		}
 		arm := cookElemType(v.F)
 		g.pf("    /// `%s` when the tag names it, and None otherwise. THE CHECK IS WHAT\n", v.Name)
 		g.pf("    /// MAKES THE READ SAFE: the overlay holds one arm and the tag says which.\n")
@@ -609,6 +632,9 @@ func (g *gen) emitUnionLayout(unions []*ir.Union) {
 		g.pf("const _: () = assert!(core::mem::offset_of!(%sRow, arms) == %d, \"%sRow: the arms are overlaid here\");\n",
 			un.Name, armOffset, un.Name)
 		for _, v := range un.Variants {
+			if v.F == nil {
+				continue
+			}
 			g.pf("const _: () = assert!(core::mem::offset_of!(%sRowArms, %s) == 0, \"%sRowArms.%s: every arm starts the overlay\");\n",
 				un.Name, v.Name, un.Name, v.Name)
 		}

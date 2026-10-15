@@ -185,7 +185,9 @@ func fixedDefaultElement(out []byte, f *ir.Field) {
 			// earlier one, and that is the exception §5.9 #38 names.
 			tagw := ir.TableFixedUnionTagBytes(r)
 			for _, v := range r.Variants {
-				fixedDefaultElement(out[tagw:], v.F)
+				if v.F != nil {
+					fixedDefaultElement(out[tagw:], v.F)
+				}
 			}
 			for i := range tagw {
 				out[i] = 0 // None, LAST
@@ -789,8 +791,15 @@ func (g *gen) emitFixedWriteUnion(un *ir.Union) {
 	} else {
 		g.pf("    b[0..%d].copy_from_slice(&value.tag.to_le_bytes());\n", tagw)
 	}
+	if !unionHasPayload(un) {
+		g.pf("}\n\n")
+		return
+	}
 	g.pf("    match value.tag {\n")
 	for i, v := range un.Variants {
+		if v.F == nil {
+			continue // a payload-free arm writes nothing past the tag (docs/FIXED-FORM-ALGORITHM.md §3.1)
+		}
 		g.pf("        %d => {\n", i+1)
 		g.pf("            // SAFETY: THE TAG NAMES THE LIVE ARM — the twin's whole contract,\n")
 		g.pf("            // and the same one the C reference's storage struct carries. The\n")
@@ -802,7 +811,7 @@ func (g *gen) emitFixedWriteUnion(un *ir.Union) {
 		g.emitFixedWriteElementAt(v.F, fmt.Sprintf("%d", tagw), "arm", 12)
 		g.pf("        }\n")
 	}
-	g.pf("        _ => {} // None, and any tag no arm of this build names: the tag is all of it\n")
+	g.pf("        _ => {} // None, a payload-free arm, and any tag no arm of this build names: the tag is all of it\n")
 	g.pf("    }\n}\n\n")
 }
 
@@ -845,17 +854,25 @@ func (g *gen) emitFixedScatterUnion(un *ir.Union) {
 		// type's own limits make useless — which rustc says out loud.
 		g.pf("    // every value the tag's width holds names an arm of this build, so there\n")
 		g.pf("    // is no out-of-range ordinal here to clamp\n")
+		g.pf("    let _ = &report;\n")
 		g.pf("    value.tag = tag_raw;\n")
+	}
+	if !unionHasPayload(un) {
+		g.pf("}\n\n")
+		return
 	}
 	g.pf("    match value.tag {\n")
 	for i, v := range un.Variants {
+		if v.F == nil {
+			continue // a payload-free arm leaves the zeroed overlay as Default::default() laid it down (docs/FIXED-FORM-ALGORITHM.md §4.5)
+		}
 		g.pf("        %d => {\n", i+1)
 		g.pf("            let mut arm = %s::default();\n", cookElemType(v.F))
 		g.emitFixedScatterElement(v.F, fmt.Sprintf("%d", tagw), "arm", 12)
 		g.pf("            value.arms.%s = arm; // a WRITE of a union field, which is safe\n", v.Name)
 		g.pf("        }\n")
 	}
-	g.pf("        _ => {} // None: the overlay stays the zeros the default laid down\n")
+	g.pf("        _ => {} // None and payload-free arms: the overlay stays the zeros the default laid down\n")
 	g.pf("    }\n}\n\n")
 }
 
