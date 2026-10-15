@@ -19,6 +19,15 @@ const TableFixedForm uint8 = 3
 const TableFixedHeaderBytes = 16
 const TableFixedHashAt = 8
 
+// TableFixedLayoutUnknown is the Reason of a file whose header hash no entry of
+// this build's lineage holds (docs/SPEC-TABLES.md §21.3, algorithm §5.3 step
+// 5). It says what the reader knows and not which way the file lies: a newer
+// writer's layout, an older one nobody locked and a damaged hash byte read the
+// same. layout_newer ("ship the reader") is RESERVED for a hash the lock lineage
+// proves newer, which nothing on the wire or in the lock does, so a Go fixed
+// load never answers it.
+const TableFixedLayoutUnknown = "layout_unknown"
+
 const (
 	tableFixedCopy uint8 = iota
 	tableFixedCount
@@ -1354,9 +1363,11 @@ func tableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []tabl
 // A fixed table reads BACKWARD and never forward. A file is matched on the
 // eight bytes of its header's hash against the lineage the BUILD laid down, and
 // the layout it carries is held to a BYTE COMPARISON against the bytes the lock
-// recorded — never walked. A hash the lineage does not hold is layout_newer
-// (ship the reader); a hash it holds below the floor is layout_unsupported
-// (upgrade the client). Those are the operator's two distinct answers.
+// recorded — never walked. A hash the lineage does not hold is layout_unknown
+// (a layout this build's lineage does not hold; layout_newer is reserved until
+// the lineage proves direction, SPEC-TABLES §21.3); a hash it holds below the
+// floor is layout_unsupported (upgrade the client). Those are the operator's
+// two distinct answers.
 
 // TableFixedKnownLayout is one locked layout: the wire hash a file is matched
 // on, the layout bytes verbatim with its byte length BESIDE the pointer, and

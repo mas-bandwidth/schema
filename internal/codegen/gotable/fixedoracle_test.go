@@ -253,10 +253,10 @@ func TestOracleAndHostile(t *testing.T) {
 		{name: "message_form_as_file", forge: func(b []byte) []byte { b[0] = 2; return b }, want: refused("message_form_as_file")},
 		{name: "newer_form", forge: func(b []byte) []byte { b[0] = 6; return b }, want: refused("newer_form")},
 		{name: "reserved byte", forge: func(b []byte) []byte { b[4] = 1; return b }, want: TableReport{Malformed: true}},
-		{name: "layout_newer", forge: func(b []byte) []byte {
+		{name: "layout_unknown", forge: func(b []byte) []byte {
 			binary.LittleEndian.PutUint64(b[TableFixedHashAt:], hash^1)
 			return b
-		}, want: TableReport{Verdict: TableOpenRefused, Reason: "layout_newer", LayoutHash: hash ^ 1}},
+		}, want: TableReport{Verdict: TableOpenRefused, Reason: "layout_unknown", LayoutHash: hash ^ 1}},
 		{name: "layout length past the file", forge: func(b []byte) []byte {
 			binary.LittleEndian.PutUint32(b[TableFixedHeaderBytes:], uint32(len(b)))
 			return b
