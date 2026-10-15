@@ -282,12 +282,20 @@ func main() {
 		out := fs.String("out", "generated", "output directory")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		limit := fs.Int64("fixed-record-limit", 0, "refuse any FIXED table whose record body exceeds this many `bytes` (0 = no refusal; §3.4 warns at 4096 and drops the form at 65536 regardless)")
+		surface := fs.String("surface", "", "Go only: emit only these table surfaces (wire,fixed,json,cook,block,view,message,retain; docs/SPEC-TABLES.md §8.4)")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		c.FixedRecordLimit = *limit
 		c.TablesBaseline = true
 		c.SchemaLock = true
 		unit := loadUnit(c, fs.Args())
-		files, err := c.Generate(unit, *lang, compiler.Options{})
+		var opts compiler.Options
+		if *surface != "" {
+			if *lang != "go" {
+				fatalf("--surface is the Go target's flag; %s refuses it by name (docs/SPEC-TABLES.md §8.4)", *lang)
+			}
+			opts = compiler.Options{"surface": *surface}
+		}
+		files, err := c.Generate(unit, *lang, opts)
 		if err != nil {
 			fail(err)
 		}

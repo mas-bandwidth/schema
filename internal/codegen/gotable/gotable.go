@@ -206,19 +206,36 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
 // every table then carries the one entry it can always compute: its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	return GenerateLineageSurfaces(u, lineage, AllSurfaces)
+}
+
+// GenerateLineageSurfaces is GenerateLineage with the surface selection
+// (docs/SPEC-TABLES.md §8.4.1): only the selected surfaces' files and
+// functions are emitted. AllSurfaces is byte-identical to GenerateLineage.
+func GenerateLineageSurfaces(u *ir.Unit, lineage map[string][]FixedLineageEntry, sel SurfaceSet) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
+	if !sel.Wire && !sel.Fixed && !sel.Json && !sel.Cook && !sel.Block && !sel.View && !sel.Message && !sel.Retain {
+		sel = AllSurfaces
+	}
+	resolveSurfaces(&sel)
 	blocks := ir.Blocks(u)
-	out, err := generateBlockFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	out := map[string][]byte{}
+	if sel.Block {
+		bs, err := generateBlockFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, bs)
 	}
-	cooks, err := generateCookFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	if sel.Cook {
+		cooks, err := generateCookFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, cooks)
 	}
-	maps.Copy(out, cooks)
 
 	regional := len(variableTableNames(u)) > 0
 
@@ -286,24 +303,32 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 				g.emitTableStruct(st)
 			}
 		}
-		for _, e := range fileEnums(f, usedEnums) {
-			g.emitEnumIdentity(e)
+		if sel.Wire {
+			for _, e := range fileEnums(f, usedEnums) {
+				g.emitEnumIdentity(e)
+			}
 		}
 		for _, st := range members {
 			g.owner = st
 			g.emitTableReset(st)
-			g.emitTableMeasure(st)
-			g.emitTableWrite(st)
-			g.emitTableSave(st)
-			g.emitTableRead(st)
-			g.emitRetainMember(st)
-			g.emitCookWriteSurface(st)
-			g.emitMessageWrite(st)
-			g.emitMessageRead(st)
-			if regional {
-				g.emitRegionMessage(st)
+			if sel.Wire {
+				g.emitTableMeasure(st)
+				g.emitTableWrite(st)
+				g.emitTableSave(st)
+				g.emitTableRead(st)
 			}
-			if regional {
+			if sel.Retain {
+				g.emitRetainMember(st)
+			}
+			if sel.Cook {
+				g.emitCookWriteSurface(st)
+			}
+			if sel.Message {
+				g.emitMessageWrite(st)
+				g.emitMessageRead(st)
+			}
+			if regional && (sel.Message || sel.Retain) {
+				g.emitRegionMessage(st)
 				g.emitRegionMember(st)
 				for _, f := range st.Fields {
 					if f.IsList() {
@@ -314,8 +339,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 				}
 			}
 		}
-		g.emitFixedForm(members)
-		if len(members) > 0 {
+		if sel.Fixed {
+			g.emitFixedForm(members)
+		}
+		if sel.Wire && len(members) > 0 {
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----\n\n")
 			for _, st := range members {
 				g.owner = st
@@ -346,16 +373,20 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
 	// descriptors, in its own file so a project that never reads or writes a
 	// text does not compile it
-	texts, err := generateJsonFiles(u, closure, home)
-	if err != nil {
-		return nil, err
+	if sel.Json {
+		texts, err := generateJsonFiles(u, closure, home)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, texts)
 	}
-	maps.Copy(out, texts)
-	view, err := generateViewFile(u, closure, armSlots)
-	if err != nil {
-		return nil, err
+	if sel.View {
+		view, err := generateViewFile(u, closure, armSlots)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, view)
 	}
-	maps.Copy(out, view)
 	return out, nil
 }
 
