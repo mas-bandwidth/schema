@@ -113,6 +113,11 @@ replaces them with checkout-relative paths. The facade itself compiles with the
 Go standard library only; a customer needs `github.com/mas-bandwidth/serialize.go`
 resolvable because the generated codecs call it.
 
+For adopting generated tables into a Go module of your own — the pinned
+`go:generate` line, when a `go.mod` needs a dependency at all, and a save and
+a load of the variable and the fixed class — see "Tables from Go" in
+[USAGE.md](USAGE.md#tables-from-go).
+
 ## The facade
 
 `Record` privately owns a defensive copy of the wire. `(*Record).Wire() []byte`
