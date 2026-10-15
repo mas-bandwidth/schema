@@ -95,6 +95,14 @@ Run the same command with `--lang c`, `--lang cs`, `--lang elixir`, `--lang go`,
 language — writing the
 **same bits**.
 
+**`--lang go` accepts `--surface <list>`** to emit only part of the Go table
+output (docs/SPEC-TABLES.md §8.4). The list is a comma-separated set of
+`wire`, `fixed`, `json`, `cook`, `block`, `view`, `message` and `retain`;
+`all` and the empty default emit everything, byte-identical to a plain
+generate. `json`, `message`, `cook` and `block` read and write the wire form,
+so selecting one also selects `wire`. Another `--lang` refuses `--surface` by
+name.
+
 ---
 
 ## Declarations
