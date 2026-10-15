@@ -11148,13 +11148,27 @@ is why this file exists rather than a header addition (§8.5): a translation
 unit nobody compiles costs a build nothing, while a header everybody
 includes costs every one of them.
 
-**The gate, in §2.2's shape**: not one REGISTRY symbol appears in any
-generated file except the view pair. The registry's symbols are the six
-§8.3 names — `UnitView`, `UnitViewInfo`, `ViewType`, `ViewVocabulary`,
-`ViewVariant`, `ViewConstant` — and nothing else, because the descriptor
-vocabulary a table carries is §8.1's and rides where it always did. The gate
-asks "did the registry leak out of its file?", never "is there a descriptor
-here?" — §2.2's own distinction between machinery and columns.
+ **The gate, in §2.2's shape**: not one REGISTRY symbol appears in any
+ generated file except the view pair. The registry's symbols are the six
+ §8.3 names — `UnitView`, `UnitViewInfo`, `ViewType`, `ViewVocabulary`,
+ `ViewVariant`, `ViewConstant` — and nothing else, because the descriptor
+ vocabulary a table carries is §8.1's and rides where it always did. The gate
+ asks "did the registry leak out of its file?", never "is there a descriptor
+ here?" — §2.2's own distinction between machinery and columns.
+
+**One flag selects the table surfaces a Go build pays for.** The Go target
+(`generate --lang go`) accepts `--surface <list>`, where `<list>` is a
+comma-separated subset of the table surfaces: `wire`, `fixed`, `json`, `cook`,
+`block`, `view`, `message` and `retain`. The default — flag absent, or
+`--surface all` — is all of them, byte-identical to a generate without the
+flag. Because the surfaces are the per-table codec families and their
+file-level companions, a selection is a claim about what a build compiles:
+`json` and `message` imply `wire` (the text and message forms walk the wire
+descriptors and reuse the wire codecs), `view` and `block` imply `fixed` (the
+view lists the fixed form's leaves and the block embeds the fixed layout), and
+`cook` implies `wire`. A selection that names `json` without `wire` therefore
+emits both. Every `--lang` other than `go` refuses the flag by name, and an
+unknown surface word is an error rather than a silent fallback.
 
 ### 8.5 On the side
 

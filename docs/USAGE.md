@@ -72,6 +72,16 @@ printed, so a build wrapping this command stays clean. Add `--verbose` to
 list every file written (`check` and `fmt` take the same flag).
 Errors always print, whatever the verbosity.
 
+The Go target (`--lang go`) accepts `--surface <list>` to emit only the table
+surfaces a project uses. `<list>` is a comma-separated subset of `wire`,
+`fixed`, `json`, `cook`, `block`, `view`, `message` and `retain`; the default
+(flag absent, or `--surface all`) is all of them, byte-identical to what a
+generate without the flag produces. The surface selection is a table-surface
+selection; the packet (type-wire) code the Go target emits is unchanged by it.
+Dependencies resolve automatically: `json` and `message` imply `wire`, `view`
+and `block` imply `fixed`, and `cook` implies `wire`. The vocabulary is spelled
+in docs/SPEC-TABLES.md §8.4. Every other `--lang` refuses the flag by name.
+
 Your `.schema` files are read, never written. `schema fmt` is the only command
 that rewrites one, so `check`, `generate`, `id` and the rest run against a
 read-only checkout, and they answer the same way whether or not the source is
