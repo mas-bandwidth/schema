@@ -1678,6 +1678,8 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 			c.errf(f.Pos, "field %s: | required is refused on a `type` field — a type's wire is positional and every field always rides, so there is no absence for a required marker to cure; move the field to a table body (docs/SPEC-TABLES.md §2.3)", f.Name)
 		} else if f.Type.Optional {
 			c.errf(f.Pos, "field %s: | required is refused with ? — an optional is absent or present by definition, and required would forbid the absence that makes it optional; drop one of them (docs/SPEC-TABLES.md §2.3)", f.Name)
+		} else if st := c.tables[owner]; st != nil && st.FixedDeclared {
+			c.errf(f.Pos, "fixed table %s: field %s is `| required`; every fixed field is always written, so there is no absence to refuse — drop `required`, or drop `fixed` from %s (docs/SPEC-TABLES.md §2.3)", owner, f.Name, owner)
 		}
 	}
 

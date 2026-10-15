@@ -304,12 +304,6 @@ func projectField(b *strings.Builder, f *Field, ind string) {
 			fmt.Fprintf(b, " default=%v", f.DefFloat)
 		}
 	}
-	// `required` (docs/SPEC-TABLES.md §2.3) is a WIRE fact: the writer always
-	// emits the field and a reader refuses a record missing it, so it rides
-	// in the projection and moves the protocol id.
-	if f.Required {
-		fmt.Fprintf(b, " required")
-	}
 	b.WriteString("\n")
 }
 

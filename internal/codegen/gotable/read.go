@@ -37,7 +37,11 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		}
 		g.pf("\t\t\tif %s {\n", strings.Join(parts, " || "))
 		g.pf("\t\t\t\tr.Report.MissingRequired++\n")
-		g.pf("\t\t\t\tr.Report.Reason = \"missing_required: %s\"\n", strings.Join(requiredFieldNames(req), ", "))
+		g.pf("\t\t\t\tmissingReq := \"\"\n")
+		for i, n := range requiredFieldNames(req) {
+			g.pf("\t\t\t\tif !reqSeen%d { if missingReq != \"\" { missingReq += \", \" }; missingReq += %q }\n", i, n)
+		}
+		g.pf("\t\t\t\tr.Report.Reason = \"missing_required: \" + missingReq\n")
 		g.pf("\t\t\t\treturn false\n")
 		g.pf("\t\t\t}\n")
 		g.pf("\t\t\treturn true\n")
