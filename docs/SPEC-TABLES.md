@@ -11156,6 +11156,35 @@ vocabulary a table carries is §8.1's and rides where it always did. The gate
 asks "did the registry leak out of its file?", never "is there a descriptor
 here?" — §2.2's own distinction between machinery and columns.
 
+#### The `--surface` flag (Go)
+
+The Go target alone takes `--surface <list>` on `generate`; any other `--lang`
+refuses the flag by name. The list names the table surfaces this section
+defines, in any order, comma-separated: `wire`, `fixed`, `json`, `cook`,
+`block`, `view`, `message` and `retain`. The generator emits only the files
+and functions the named surfaces need. The default is all eight, and a default
+generate is byte-identical to one with no `--surface` at all.
+
+Dependencies between surfaces are resolved and pulled in automatically; a
+surface whose readers and writers walk a table on the wire needs the wire
+itself. The dependency graph is:
+
+| surface | pulls in |
+| --- | --- |
+| `json` | `wire` |
+| `message` | `wire` |
+| `retain` | `wire` |
+| `view` | `wire` |
+| `cook` | `wire` |
+| `wire`, `fixed`, `block` | — |
+
+`wire` is the base: it is the struct types, the wire codecs
+(Measure/Save/Load/Reset/Read) and the reflection descriptors. `block` is
+self-contained and `fixed` is the fixed form. A surface not named is not
+emitted, so a game that only ever reads and writes the wire asks for `wire`
+alone and its binary carries none of the json, message, retain, view or cook
+machinery.
+
 ### 8.5 On the side
 
 **The view is one generated file per UNIT, not per schema file** —
