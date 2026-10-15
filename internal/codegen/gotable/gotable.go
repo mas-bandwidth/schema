@@ -204,21 +204,51 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // GenerateLineage is Generate with the LINEAGE the build holds for each fixed
 // table: the locked layouts, OLDEST FIRST, the current one last
 // (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
-// every table then carries the one entry it can always compute: its own.
+// every table then carries the one entry it can always compute: its own. It is
+// GenerateSurface with the full surface set, byte-identical to a run that names
+// no --surface.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	return GenerateSurface(u, nil, lineage)
+}
+
+// GenerateSurface is GenerateLineage with the generated SURFACES a run asks
+// for (docs/SPEC-TABLES.md §8.4): the --surface list, carried by the
+// compiler.Options key [TableSurfaceKey]. Absent or empty is the full set,
+// byte-identical to GenerateLineage. Dependencies are resolved (every surface
+// pulls the wire codecs in with it), so a run that asks for json alone still
+// gets the table's wire surface, which the text walk reads through.
+func GenerateSurface(u *ir.Unit, opts map[string]string, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
+	var cfg *surfaceConfig
+	var err error
+	if opts != nil {
+		cfg, err = parseSurfaces(opts[TableSurfaceKey])
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		cfg, err = parseSurfaces("")
+		if err != nil {
+			return nil, err
+		}
+	}
 	blocks := ir.Blocks(u)
-	out, err := generateBlockFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	out := map[string][]byte{}
+	if cfg.block {
+		out, err = generateBlockFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
 	}
-	cooks, err := generateCookFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	if cfg.cook {
+		cooks, cerr := generateCookFiles(u, blocks)
+		if cerr != nil {
+			return nil, cerr
+		}
+		maps.Copy(out, cooks)
 	}
-	maps.Copy(out, cooks)
 
 	regional := len(variableTableNames(u)) > 0
 
@@ -239,8 +269,13 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	emitRuntime := func(g *tableGen) {
 		g.needsMath = true
 		g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
-		g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u)+tableFixedRuntime)
-		g.pf("%s", tableCookWriteSource(u))
+		g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u))
+		if cfg.fixed {
+			g.pf("%s", tableFixedRuntime)
+		}
+		if cfg.cook {
+			g.pf("%s", tableCookWriteSource(u))
+		}
 		if regional {
 			g.emitRegionRuntime(blocks)
 			g.emitRetainRuntime()
@@ -297,7 +332,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			g.emitTableSave(st)
 			g.emitTableRead(st)
 			g.emitRetainMember(st)
-			g.emitCookWriteSurface(st)
+			if cfg.cook {
+				g.emitCookWriteSurface(st)
+			}
 			g.emitMessageWrite(st)
 			g.emitMessageRead(st)
 			if regional {
@@ -314,7 +351,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 				}
 			}
 		}
-		g.emitFixedForm(members)
+		if cfg.fixed {
+			g.emitFixedForm(members)
+		}
 		if len(members) > 0 {
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----\n\n")
 			for _, st := range members {
@@ -346,16 +385,20 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
 	// descriptors, in its own file so a project that never reads or writes a
 	// text does not compile it
-	texts, err := generateJsonFiles(u, closure, home)
-	if err != nil {
-		return nil, err
+	if cfg.json {
+		texts, err := generateJsonFiles(u, closure, home)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, texts)
 	}
-	maps.Copy(out, texts)
-	view, err := generateViewFile(u, closure, armSlots)
-	if err != nil {
-		return nil, err
+	if cfg.view {
+		view, err := generateViewFile(u, closure, armSlots)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, view)
 	}
-	maps.Copy(out, view)
 	return out, nil
 }
 
@@ -824,3 +867,109 @@ func TableKeyed[T any](slots []T, key int) *T {
 }
 
 `
+
+// The generated surfaces a unit's Go output can carry (docs/SPEC-TABLES.md
+// §8.4). Each names a file, or a functional block inside a file, of the
+// generated tree; a run asks for only the surfaces it uses and the emitter
+// withholds the rest, so a binary that needs just the wire codecs does not
+// carry the text walk, the block accelerator, the cook or the view.
+//
+// The names are the `--surface <list>` spellings, shared by the standard
+// (docs/SPEC-TABLES.md §8.4) and the Go backend. A surface's dependencies are
+// resolved by the emitter: every surface builds on the WIRE codecs, so
+// requesting any surface pulls WIRE in with it.
+const (
+	surfaceWire    = "wire"
+	surfaceFixed   = "fixed"
+	surfaceJSON    = "json"
+	surfaceCook    = "cook"
+	surfaceBlock   = "block"
+	surfaceView    = "view"
+	surfaceMessage  = "message"
+	surfaceRetain  = "retain"
+)
+
+// allSurfaces is the canonical order of the surface names, which is also the
+// order the docs and the CLI accept.
+var allSurfaces = []string{
+	surfaceWire,
+	surfaceFixed,
+	surfaceJSON,
+	surfaceCook,
+	surfaceBlock,
+	surfaceView,
+	surfaceMessage,
+	surfaceRetain,
+}
+
+// TableSurfaceKey is the compiler.Options key that carries a unit's surface
+// list. Its value is a comma-separated list of surface names; absent or empty
+// means the full set.
+const TableSurfaceKey = "surface"
+
+// surfaceConfig is the resolved set of surfaces a run emits.
+type surfaceConfig struct {
+	wire, fixed, json, cook, block, view, message, retain bool
+}
+
+// parseSurfaces parses a comma-separated --surface list into a config. An
+// empty list names the full set, which is the byte-identical default. An
+// unknown name is an error, never a silent fallback.
+func parseSurfaces(list string) (*surfaceConfig, error) {
+	c := &surfaceConfig{}
+	if strings.TrimSpace(list) == "" {
+		c.wire, c.fixed, c.json, c.cook, c.block, c.view, c.message, c.retain = true, true, true, true, true, true, true, true
+		return c, nil
+	}
+	seen := map[string]bool{}
+	for _, raw := range strings.Split(list, ",") {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			continue
+		}
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		switch name {
+		case surfaceWire:
+			c.wire = true
+		case surfaceFixed:
+			c.fixed = true
+		case surfaceJSON:
+			c.json = true
+		case surfaceCook:
+			c.cook = true
+		case surfaceBlock:
+			c.block = true
+		case surfaceView:
+			c.view = true
+		case surfaceMessage:
+			c.message = true
+		case surfaceRetain:
+			c.retain = true
+		default:
+			return nil, fmt.Errorf("unknown surface %q — the surfaces are %s (docs/SPEC-TABLES.md §8.4)", name, strings.Join(allSurfaces, ", "))
+		}
+	}
+	// Every surface depends on the wire codecs: a run that asks for json alone
+	// still gets the table's wire surface, because the text walk reads through
+	// the descriptors and the wire codecs are the unit's base.
+	//
+	// COOK depends on JSON: the cook write surface's shared helpers live in the
+	// text form's file, so asking for cook pulls the text form in with it.
+	//
+	// MESSAGE and RETAIN are always part of the base wire surface: the
+	// reflection descriptors and the shared region runtime reference their
+	// functions, so they cannot be withheld without withholding the wire
+	// service itself. Requesting them names an existing surface; omitting them
+	// changes nothing.
+	c.wire = c.wire || c.fixed || c.json || c.cook || c.block || c.view || c.message || c.retain
+	if c.cook {
+		c.json = true
+	}
+	if c.block || c.cook {
+		c.fixed = true
+	}
+	return c, nil
+}
