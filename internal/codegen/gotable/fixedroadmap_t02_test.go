@@ -267,8 +267,8 @@ func t02GoR23(t *testing.T) {
 	if n := strings.Count(src, "report.LayoutHash = hash"); n != 2 {
 		t.Errorf("R23: report.LayoutHash is set at %d sites, want the one refusal helper and the one restore", n)
 	}
- 	t02GoHas(t, src, "tableFixedRefuseHash(report, TableFixedReasonLayoutNewer, hash)", "R23 layout_newer reports the file's hash")
- 	t02GoHas(t, src, "tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)", "R23 layout_unsupported reports the file's hash")
+	t02GoHas(t, src, "tableFixedRefuseHash(report, TableFixedReasonLayoutNewer, hash)", "R23 layout_newer reports the file's hash")
+	t02GoHas(t, src, "tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)", "R23 layout_unsupported reports the file's hash")
 }
 
 // ---- go/R25 -----------------------------------------------------------------
@@ -283,9 +283,9 @@ func t02GoR25(t *testing.T) {
 	if load == "" {
 		t.Fatal("R25: TFixedLoad is not emitted")
 	}
- 	t02GoHas(t, t02GoNorm(load),
- 		"if int64(entryCount) > int64(len(plan)) { return tableFixedRefuse(report, TableFixedReasonPlanTooLarge) }",
- 		"R25 the caller's capacity is the bound and the refusal is by name")
+	t02GoHas(t, t02GoNorm(load),
+		"if int64(entryCount) > int64(len(plan)) { return tableFixedRefuse(report, TableFixedReasonPlanTooLarge) }",
+		"R25 the caller's capacity is the bound and the refusal is by name")
 }
 
 // ---- go/R26 -----------------------------------------------------------------
@@ -302,10 +302,10 @@ func t02GoR26(t *testing.T) {
 	if plans == "" {
 		t.Fatal("R26: tableFixedLineagePlans is not emitted")
 	}
- 	t02GoHas(t, t02GoNorm(plans), "out[i].Why = TableFixedReasonLayoutMalformed",
- 		"R26 an unparseable lineage entry carries layout_malformed on its own lane")
- 	t02GoHas(t, t02GoNorm(plans), "out[i].Why = TableFixedReasonPlanTooLarge",
- 		"R26 an entry whose plan outgrows the cap carries plan_too_large on its lane")
+	t02GoHas(t, t02GoNorm(plans), "out[i].Why = TableFixedReasonLayoutMalformed",
+		"R26 an unparseable lineage entry carries layout_malformed on its own lane")
+	t02GoHas(t, t02GoNorm(plans), "out[i].Why = TableFixedReasonPlanTooLarge",
+		"R26 an entry whose plan outgrows the cap carries plan_too_large on its lane")
 	if strings.Contains(plans, "panic(") {
 		t.Error("R26: the lineage walk throws; the entry's own lane carries the reason instead")
 	}
