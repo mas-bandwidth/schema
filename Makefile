@@ -4875,7 +4875,7 @@ tables-distinctness: build/tables-generated/.stamp test/tables/distinct_main.cpp
 		-fno-omit-frame-pointer -g -Ibuild/tables-generated/examples \
 		test/tables/distinct_main.cpp -o build/schema_test_distinct_asan
 	./build/schema_test_distinct_asan
-	@echo "distinctness gate: one verdict across both walks, debug, release and sanitized"
+	@echo "distinctness gate: one verdict under the bound and a refusal over it, debug, release and sanitized"
 
 # ITS NEGATIVE CONTROL. A gate over a check that is correct TWICE cannot be
 # read for which walk earned the green: the pairwise walk alone would answer

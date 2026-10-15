@@ -2,11 +2,14 @@
 // walks TableOpen carries (docs/SPEC-TABLES.md §3: "a table that carries one
 // id twice is malformed").
 //
-// TableOpen answers the question two ways — a hashed PROBE over a stack array
-// up to kTableProbeBound entries, the pairwise walk above it — and the whole
-// property is that a reader cannot tell which one ran. This test is the gate
-// on that: it builds tables BY HAND, drives TableOpen directly, and holds the
-// verdict against an independent O(n^2) reference over the same bytes.
+// TableOpen answers the question with ONE walk, a hashed PROBE over a stack
+// array, and THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3) caps the
+// table it will walk: a table that claims more than kTableProbeBound entries
+// is malformed for the whole wire and refused before an entry is touched, so
+// there is no pairwise walk left above the bound. This test is the gate on
+// that: it builds tables BY HAND, drives TableOpen directly, and holds the
+// verdict against an independent reference over the same bytes — damaged
+// above the bound, else damaged exactly when a sorted copy holds a repeat.
 //
 // The check is READ SIDE, so it is unconditional (§3.4) and this file is
 // compiled BOTH ways, with and without NDEBUG, by its Makefile leg. Nothing
@@ -16,7 +19,7 @@
 // The cases that matter, and why each one is here:
 //
 //   - a table at EXACTLY the bound, all distinct              (probe, accept)
-//   - a table one PAST the bound, all distinct             (fallback, accept)
+//   - a table one PAST the bound, all distinct     (over the bound, refused)
 //   - a repeat of entry 0 in the LAST slot, on both paths       (both, damaged)
 //   - a repeat in the middle and an adjacent repeat, on both paths
 //   - an ALL-COLLIDING table: n distinct ids the Fibonacci multiply lands in
@@ -26,13 +29,16 @@
 //     fnv1a64( name ) and nothing else (§3): no 64-bit value is a sentinel,
 //     which is why the probe carries an occupancy bitmap.
 //   - a sweep over every count from 0 to the bound + 4, each with no repeat
-//     and then with a repeat planted at every position, compared against the
-//     reference — the sweep is what proves the two walks agree rather than
-//     that each one is separately plausible.
+//     and then with repeats planted, compared against the reference. Every
+//     position is planted up to a count of 256; above it a fixed set of
+//     positions is (the front, a third, the middle, the end), and every 64th
+//     where the count is at the bound, because planting every position at
+//     every count up to 4096 is n^3 work even against a sorting reference.
 //
 // It names ONE generated unit, for TableOpen and the id table, and no field of
 // it: the check is a property of the wire's trailer, not of any schema.
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
@@ -47,6 +53,7 @@ using tabledemo::TableOpenOk;
 using tabledemo::TableOpenDamaged;
 using tabledemo::kTableProbeBound;
 using tabledemo::kTableProbeSlots;
+using tabledemo::kTableProbeShift;
 
 static int g_failures = 0;
 
@@ -67,16 +74,17 @@ static std::vector<uint8_t> wire_of( const std::vector<uint64_t> & ids )
     return w;
 }
 
-// THE REFERENCE VERDICT, written the slowest way there is on purpose: every
-// pair, no hash, no bound. It is what the two walks in TableOpen are held to.
+// THE REFERENCE VERDICT: a sorted copy and a neighbour compare, no hash and no
+// bound, so it shares nothing with the probe it judges. It used to be every
+// pair; at a bound of 4096 the sweep below made that n^4 work, and a sort is
+// the same verdict at n log n.
 static bool has_repeat( const std::vector<uint64_t> & ids )
 {
-    for ( size_t i = 1; i < ids.size(); i++ )
+    std::vector<uint64_t> sorted( ids );
+    std::sort( sorted.begin(), sorted.end() );
+    for ( size_t i = 1; i < sorted.size(); i++ )
     {
-        for ( size_t j = 0; j < i; j++ )
-        {
-            if ( ids[j] == ids[i] ) { return true; }
-        }
+        if ( sorted[i] == sorted[i - 1] ) { return true; }
     }
     return false;
 }
@@ -87,7 +95,10 @@ static void expect( const char * name, const std::vector<uint64_t> & ids )
     TableIdTable table;
     int64_t body_bytes = -1;
     const TableOpenVerdict got = TableOpen( w.data(), (int64_t) w.size(), table, body_bytes );
-    const TableOpenVerdict want = has_repeat( ids ) ? TableOpenDamaged : TableOpenOk;
+    // THE BOUNDED-WORK CONTRACT (§3): over the bound is malformed, distinct
+    // or not; at or under it, the reference decides.
+    const bool over = ids.size() > (size_t) kTableProbeBound;
+    const TableOpenVerdict want = ( over || has_repeat( ids ) ) ? TableOpenDamaged : TableOpenOk;
     if ( got != want )
     {
         printf( "FAIL %s: count %d, verdict %d, expected %d\n",
@@ -151,8 +162,9 @@ static std::vector<uint64_t> all_colliding( int n, uint32_t slot )
     std::vector<uint64_t> ids;
     for ( int i = 0; i < n; i++ )
     {
-        // id * k == ( slot << 56 ) | i, so the top eight bits are slot for all of them
-        const uint64_t target = ( (uint64_t) slot << 56 ) | (uint64_t) i;
+        // id * k == ( slot << kTableProbeShift ) | i, so the probe's top bits
+        // are slot for all of them
+        const uint64_t target = ( (uint64_t) slot << kTableProbeShift ) | (uint64_t) i;
         ids.push_back( inv * target );
     }
     return ids;
@@ -162,7 +174,7 @@ static void check_collision_setup( const std::vector<uint64_t> & ids, uint32_t s
 {
     for ( size_t i = 0; i < ids.size(); i++ )
     {
-        const uint32_t s = uint32_t( ( ids[i] * 0x9E3779B97F4A7C15ull ) >> 56 ) & uint32_t( kTableProbeSlots - 1 );
+        const uint32_t s = uint32_t( ( ids[i] * 0x9E3779B97F4A7C15ull ) >> kTableProbeShift ) & uint32_t( kTableProbeSlots - 1 );
         if ( s != slot )
         {
             printf( "FAIL collision setup: entry %d lands in slot %u, not %u\n", (int) i, s, slot );
@@ -191,7 +203,7 @@ int main()
     {
         std::vector<uint64_t> ids = spread( bound + 1 );
         ids[ bound ] = ids[0];
-        expect( "fallback: first id repeated last", ids );
+        expect( "over the bound: first id repeated last", ids );
     }
 
     // ---- a repeat in the middle, and an adjacent repeat, on both paths ----
@@ -206,10 +218,10 @@ int main()
     {
         std::vector<uint64_t> ids = spread( bound + 1 );
         ids[ bound / 2 ] = ids[ 3 ];
-        expect( "fallback: middle repeat", ids );
+        expect( "over the bound: middle repeat", ids );
         ids = spread( bound + 1 );
         ids[ 41 ] = ids[ 40 ];
-        expect( "fallback: adjacent repeat", ids );
+        expect( "over the bound: adjacent repeat", ids );
     }
 
     // ---- the smallest tables there are ----
@@ -239,9 +251,9 @@ int main()
         std::vector<uint64_t> ids = spread( bound + 2 );
         ids[0] = 0;
         ids[1] = 0xFFFFFFFFFFFFFFFFull;
-        expect( "fallback: 0 and the reserved id as ordinary entries", ids );
+        expect( "over the bound: 0 and the reserved id as ordinary entries", ids );
         ids[ bound + 1 ] = 0;
-        expect( "fallback: 0 repeated", ids );
+        expect( "over the bound: 0 repeated", ids );
     }
 
     // ---- THE HOSTILE CLUSTER: every entry in one slot ----
@@ -256,12 +268,12 @@ int main()
         ids = all_colliding( bound, s );
         ids[1] = ids[0];
         expect( "probe: every id in one slot, repeat at the front", ids );
-        // the same shape one past the bound, where the pairwise walk runs and
-        // the hash is not consulted at all
+        // the same shape one past the bound, refused by the count cap before
+        // the hash is consulted at all
         ids = all_colliding( bound + 1, s );
-        expect( "fallback: every id in one slot, distinct", ids );
+        expect( "over the bound: every id in one slot, distinct", ids );
         ids[ bound ] = ids[0];
-        expect( "fallback: every id in one slot, first repeated last", ids );
+        expect( "over the bound: every id in one slot, first repeated last", ids );
     }
 
     // A CLUSTER THAT WRAPS the slot array: the probe's linear step is masked,
@@ -278,8 +290,14 @@ int main()
     for ( int n = 0; n <= bound + 4; n++ )
     {
         expect( "sweep clean", spread( n ) );
+        // every position up to 256; above it a fixed set, and every 64th
+        // position where the count is at the bound
+        const bool every = n <= 256;
+        const bool edge = n >= bound - 2;
         for ( int at = 1; at < n; at++ )
         {
+            const bool fixed = at <= 3 || at == n / 3 || at == n / 2 || at >= n - 2;
+            if ( !every && !fixed && !( edge && at % 64 == 0 ) ) { continue; }
             std::vector<uint64_t> ids = spread( n );
             ids[at] = ids[ at / 2 ];
             expect( "sweep planted", ids );
@@ -289,8 +307,12 @@ int main()
 
     // the same sweep over the hostile cluster, which is the shape where the
     // probe does the most work it can be made to do
+    // every count up to 256 and at the bound, and every 61st count between,
+    // because one hostile table at the bound is already n^2 / 2 slot
+    // comparisons by design (the contract's fixed ceiling)
     for ( int n = 0; n <= bound + 2; n++ )
     {
+        if ( n > 256 && n < bound - 2 && n % 61 != 0 ) { continue; }
         expect( "hostile sweep clean", all_colliding( n, 5 ) );
         if ( n > 1 )
         {
@@ -305,7 +327,7 @@ int main()
         printf( "DISTINCTNESS GATE FAILED: %d case(s)\n", g_failures );
         return 1;
     }
-    printf( "distinctness gate: both walks agree with the pairwise reference on every table (bound %d, slots %d)\n",
+    printf( "distinctness gate: the probe agrees with the sorted reference at and under the bound, and every table over it is refused (bound %d, slots %d)\n",
             bound, (int) kTableProbeSlots );
     return 0;
 }
