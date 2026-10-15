@@ -34,13 +34,17 @@ func pointerTargetId(f *ir.Field) uint64 {
 }
 func (g *tableGen) typeCodecColumns(st *ir.Struct) string {
 	columns := fmt.Sprintf(", Id:0x%016x, Variable:%v, SaveBody:func(w *TableWriter,p unsafe.Pointer) bool { return %sSaveBody(w,(*%s)(p)) }, LoadBody:func(r TableReader,p unsafe.Pointer) bool { return %sLoadBody(&r,(*%s)(p)) }", ir.TableWireId(st.WireName()), ir.VariableTables(g.unit)[st.Name], st.Name, g.storageName(st.Name), st.Name, g.storageName(st.Name))
-	if g.regional {
+	if g.regional && g.surf.Has(SurfaceRetain) {
 		columns += fmt.Sprintf(",LoadMessageBodyRetain:func(r TableRetainMessageReader,p unsafe.Pointer)(TableRetainMessageReader,bool){ok:=%sLoadMessageBodyRetain(&r,(*%s)(p));return r,ok}", st.Name, g.storageName(st.Name))
 		columns += fmt.Sprintf(",SaveBodyRetain:func(w *TableRetainWriter,p unsafe.Pointer)bool{return %sSaveBodyRetain(w,(*%s)(p))},LoadBodyRetain:func(r TableRetainReader,p unsafe.Pointer)bool{return %sLoadBodyRetain(&r,(*%s)(p))}", st.Name, g.storageName(st.Name), st.Name, g.storageName(st.Name))
 	}
-	ml := ir.RecordLayout(g.unit, st)
-	columns += fmt.Sprintf(", CookSize:%d, CookAlign:%d", ml.Size, ml.Align)
-	columns += fmt.Sprintf(", SaveMessageBody:func(w *TableMessageWriter,p unsafe.Pointer)bool{return %sSaveMessageBody(w,(*%s)(p))},LoadMessageBody:func(r TableMessageReader,p unsafe.Pointer)(TableMessageReader,bool){ok:=%sLoadMessageBody(&r,(*%s)(p));return r,ok}", st.Name, g.storageName(st.Name), st.Name, g.storageName(st.Name))
+	if g.cookColumns() {
+		ml := ir.RecordLayout(g.unit, st)
+		columns += fmt.Sprintf(", CookSize:%d, CookAlign:%d", ml.Size, ml.Align)
+	}
+	if g.surf.Has(SurfaceMessage) {
+		columns += fmt.Sprintf(", SaveMessageBody:func(w *TableMessageWriter,p unsafe.Pointer)bool{return %sSaveMessageBody(w,(*%s)(p))},LoadMessageBody:func(r TableMessageReader,p unsafe.Pointer)(TableMessageReader,bool){ok:=%sLoadMessageBody(&r,(*%s)(p));return r,ok}", st.Name, g.storageName(st.Name), st.Name, g.storageName(st.Name))
+	}
 
 	if g.regional && ir.VariableTables(g.unit)[st.Name] {
 		var nodes strings.Builder
@@ -295,3 +299,10 @@ func tableBuilderLoad(p unsafe.Pointer,ref TableRef,worker *TableWorker,wire []b
  r.Nodes=nodes;r.Nested=false;ok:=root.LoadBody(r,p);return ok&&!worker.refused
 }
 `
+
+// cookColumns reports whether the descriptors carry the cook layout columns
+// (CookOffset, CookSize, ...): the cook and block surfaces read them, and so
+// does the region machinery a variable unit always carries (§8.4).
+func (g *tableGen) cookColumns() bool {
+	return g.surf.Has(SurfaceCook) || g.regional
+}

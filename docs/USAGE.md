@@ -104,7 +104,10 @@ schema generate --lang go --surface wire,json --out generated/go .
 `--surface` takes a comma-separated list of the table surfaces (SPEC-TABLES.md
 §8.4). Its default is the full set — the command above without `--surface` is
 byte-identical to the one with `--surface wire,fixed,json,cook,block,view,message,retain`.
-Only the Go target accepts it; any other `--lang` refuses the flag by name.
+`wire` is always emitted; `block` implies `cook`, `cook` implies `json`, and a
+unit with a variable table always carries `cook`, `block`, `json` and `retain`
+(SPEC-TABLES.md §8.4 names every dependency). Only the Go target accepts the
+flag; any other `--lang` refuses it by name.
 
 ---
 

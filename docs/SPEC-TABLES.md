@@ -11191,13 +11191,29 @@ Go's target can emit a subset of the table surfaces. `generate --lang go
 The default is the full set: a generate without `--surface` is byte-identical
 to one with `--surface wire,fixed,json,cook,block,view,message,retain`.
 
-**Dependencies resolve automatically and are named here.** `wire` is the
-base surface and cannot be dropped on its own: `json`, `cook`, `block`,
-`message` and `retain` each depend on it (the text walk and the accelerators
-drive off the wire codecs and the descriptor vocabulary), so selecting any of
-them implies `wire`. `fixed` and `view` depend on nothing and are leaves.
-The emitter never refuses a list — it emits exactly the named surfaces plus
-whatever the named ones imply.
+**Dependencies resolve automatically and are named here.** The emitter never
+refuses a list; it emits exactly the named surfaces plus whatever they imply:
+
+- `wire` is the base and is emitted for every list: the type definitions, the
+  reflection descriptors and the `<Name>Measure/Save/Load` codecs in
+  `<Base>Table.go` are what every other surface stands on. Naming it adds
+  nothing; leaving it out removes nothing.
+- `block` implies `cook` (the block files read the cook columns the
+  descriptors carry), and `cook` implies `json` (the cook writer reuses the text
+  walk's raw reader and guard evaluator).
+- `fixed`, `message`, `retain` (in a unit of fixed tables) and `view` depend on
+  nothing beyond `wire`.
+- A unit that declares a VARIABLE table always emits `cook`, `block`, `json`
+  and `retain`: the table's row type (`<Name>Row`), its container and map
+  machinery and its retention-carrying descriptor live in those outputs, so only
+  `fixed`, `message` and `view` stay optional there.
+
+What a surface not named drops: its files (`<Base>TableJson.go`, `<Base>Cook.go`,
+`<Base>Block.go`, `<Package>View.go`), its per-table functions
+(`<Name>FixedSave`, `<Name>CookMeasure`, `<Name>SaveMessageBody`,
+`<Name>*Retain*`), and the descriptor columns that point at them. The
+package-level runtime types the descriptor struct names stay, so every list
+compiles on its own.
 
 Only the Go target honors the flag; any other `--lang` refuses it by name.
 
