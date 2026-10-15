@@ -1020,7 +1020,7 @@ test-c: build/schema_test_c build/schema_test_c_ludicrous build/schema_test_benc
 	./build/schema_test_bench_c
 
 TEST_LEGS         += test-c
-CONFORMANCE_LEGS  += build/conformance-c
+CONFORMANCE_LEGS  += $(call unless_skipped,c,build/conformance-c)
 BENCH_TABLES_LEGS += generated/bench/tables/c/.stamp
 GOLDENS_LEGS      += update-goldens-c
 
