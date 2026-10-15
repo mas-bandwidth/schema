@@ -78,12 +78,20 @@ func TestCardVariablePathRefusesScoped(t *testing.T) {
 		t.Errorf("the card slice was refused from the variable path: %v", err)
 	}
 
+	// wstring(N) rides the variable wire as a field (docs/SPEC-TABLES.md §3,
+	// kind 33; TestWideTextOnTheTableWireRust), so it is no longer the
+	// excluded construct here: the fixed-point kind still is (§15)
 	withWide := cardUnit(&ir.Field{Name: "title", Type: ir.FieldType{Kind: ir.TWString, Size: 16}})
-	_, err := cardVariableModules(withWide)
-	if err == nil {
-		t.Fatal("a unit with a wstring was not refused from the variable path")
+	if _, err := cardVariableModules(withWide); err != nil {
+		t.Errorf("a unit with a wstring(N) field was refused from the variable path: %v", err)
 	}
-	for _, want := range []string{"Card", "title", "wstring"} {
+
+	withFixed := cardUnit(&ir.Field{Name: "rate", Type: ir.FieldType{Kind: ir.TFixed, Width: 32, Signed: true}})
+	_, err := cardVariableModules(withFixed)
+	if err == nil {
+		t.Fatal("a unit with a fixed-point field was not refused from the variable path")
+	}
+	for _, want := range []string{"Card", "rate", "fixed-point"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("refusal %q does not name %q", err, want)
 		}
