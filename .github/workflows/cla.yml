@@ -138,6 +138,18 @@ jobs:
           # unlinked committer by the commit author name, so the names are listed
           # beside the logins. Added 2026-09-10 on Glenn's word ("Please add the
           # family to CAA" / "You have my permission").
+          #
+          # The match is one identity per commit (src/graphql.ts
+          # extractUserFromCommit): author login, else committer login, else the
+          # git author name. A name with no GitHub user has no numeric id, and
+          # the signature ledger matches on id, so it can never record these.
+          # Only this list can. Issue #1799, three names the open pulls use:
+          #   Glenn Fiedler — glenn@studio.local, not linked to gafferongames
+          #     (glenn@networknext.com is, which is why those commits already pass)
+          #   Nova Fleet — nova@superman.local
+          #   nova-merge — nova-merge@localhost, the local merge commits
+          # *[bot] does not match any of the three. The self-test that re-applies
+          # this list to schema's main tip is .github/workflows/caa-self-test.yml.
           # Widened 2026-10-14 on Glenn's word ("friends are exempt from CAA,
           # because they work for Mas Bandwidth"): every friend under every
           # name their commits carry (Aurora Muse, Zhi, Alex, Emma Antigravity
