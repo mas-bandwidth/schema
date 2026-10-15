@@ -638,6 +638,8 @@ Scalar      = IntType
             | "wstring" "(" IntExpr ")"                          // wstring(N) — N in UTF-16 CODE
                                                                  // UNITS (§4.12)
             | "bytes" "(" IntExpr ")"
+            | "timestamp"                                        // nanoseconds since the Unix epoch
+                                                                 // (§4.13); TABLE fields only
             | "fixed" "(" IntExpr "," IntExpr ")"                // fixed(I, F) — signed Q I.F (§4.3);
                                                                  // the Q format is the type's SHAPE,
                                                                  // so it is positional like bits(N)
@@ -2141,6 +2143,61 @@ independent unit so its protocol identity and the established `examples/`
 identity stay stable. `make packet-wire-nine` runs the defaults, UTF-8 and
 wide-string checks with all eight ports' negative controls; `make test` also
 runs them within the full language legs.
+
+### 4.13 Timestamps: `timestamp`
+
+**Declaration.** `f timestamp`. A timestamp is ONE KIND and not an `int64`
+with a comment beside it: it is a count of **NANOSECONDS SINCE THE UNIX
+EPOCH**, signed, 64 bits wide, and `0` is the ZERO TIME —
+`1970-01-01T00:00:00Z` — which is what §5's zero initialization hands it for
+free. It therefore takes no `= default`, no `min`/`max` and no other
+attribute (§4.2, §4.6), and a fresh value is the zero time everywhere, on
+every wire, in every target.
+
+**The construct is TABLE FIELDS ONLY in this major.** A `timestamp` declared
+in a packet `type` — a field, an arm, an array element, a `const` — is
+REFUSED BY NAME, the diagnostic naming the construct and saying the table
+wire carries it and the packet wire does not yet. No packet wire spells it,
+no `MaxBits` term exists for it, and it takes its own card before any of the
+nine packet targets emits one. Every adopter today writes the same time
+convention by hand, an `int64` of nanoseconds with `0` as the zero time and
+a hand-written range check; the kind is that convention, written once.
+
+**The wire is the int64's, and the kind is its own.** On the table wire a
+timestamp rides under KIND `35` with an eight-byte two's-complement payload,
+little-endian, the nanosecond count (SPEC-TABLES.md §3). In the FIXED FORM it
+is an eight-byte slot at its natural alignment, exactly as an `int64` slot is
+laid out (SPEC-TABLES.md §3.4). Its kind is distinct from `5` i64 on purpose:
+a field respelled between `int64` and `timestamp` is a KIND MISMATCH, skipped
+and counted, never reinterpreted (SPEC-TABLES.md §4) — **and there is NO
+WIDENING TO OR FROM `int64` in this major.** The §4 widening family is closed
+to it: refused, by name, until it is ruled, because a widening is a promise
+that two kinds are one meaning and that promise has not been made here.
+
+**The value in each language is that language's own time type, and Go carries
+it first.** In Go the field's type is `time.Time`, read back in **UTC**, and
+the write side refuses BY NAME a value whose nanosecond count is outside
+`Time.UnixNano`'s domain — the years 1678 through 2262 — rather than writing
+a wrapped number, because an undefined conversion has no wire value at all.
+Every other target REFUSES the construct BY NAME until its own turn, the
+diagnostic naming the construct, the target and that Go carries it first
+(SPEC-TABLES.md §11). **No target converts through a float and none loses the
+count**: the nanoseconds ride the wire as an integer and are placed into the
+host type as an integer.
+
+**The text form is RFC 3339.** A timestamp's JSON is a STRING, RFC 3339 with
+nanosecond precision and a `Z` offset — `"2026-10-15T12:34:05.123456789Z"`,
+the zero time `"1970-01-01T00:00:00Z"` — and a JSON string that does not
+parse as one is REFUSED BY NAME, the field left at the zero time
+(SPEC-TABLES.md §16.2). A NUMBER token in a timestamp field is the same
+refusal: the text form's spelling is the string and nothing else, so an
+authoring file that hands the raw count gets a diagnostic naming the field
+rather than a silently accepted number.
+
+**The protocol id needs no `ProjectionVersion` bump.** A timestamp field
+projects its kind and nothing beside it — no capacity, no range, no
+signedness to render — and no unit could declare the construct before
+(§3.1).
 
 ## 5. Trust model — inherited
 
