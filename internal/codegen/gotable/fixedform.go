@@ -942,17 +942,20 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\tdefBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))\n")
 	g.pf("\t\tholes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))\n")
 	g.pf("\t}\n")
-	// STEP 11: per record, THE HASH CHECK FIRST — before the prefill, so a
-	// refusal has written not one destination byte (§5.3, §5.8 row 9).
-	g.pf("\tfor k := int64(0); k < n; k++ {\n")
-	g.pf("\t\tif tableFixedGet64(at) != hash {\n\t\t\treturn tableFixedRefuse(report, \"no_layout\")\n\t\t}\n")
-	// AND THE TEXT CONTENT, BEFORE THE PREFILL: §5.8's REFUSE "is total: no
-	// counter moves, nothing is decoded, and not one destination byte is
-	// written — the prefill included", so the record's text is checked ahead of
-	// the copy that lands it (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11).
-	g.pf("\t\tif why := tableFixedTextRefusal(entries, entryCount, at[8:recordBytes]); why != \"\" {\n")
+	// STEP 11: EVERY RECORD'S HASH AND TEXT FIRST, in a pass of its own ahead
+	// of the first prefill. REFUSE is total over the batch too: a refusal at
+	// record k leaves out[0..k-1] as untouched as out[k], so a hostile image is
+	// never partly landed, clamped or zero-filled
+	// (docs/FIXED-FORM-ALGORITHM.md §5.3, "TOTAL OVER THE BATCH, TOO"; §5.8
+	// row 9). The text content is the §4.5 fix 11 refusal, checked here for
+	// the same reason.
+	g.pf("\tfor k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {\n")
+	g.pf("\t\tif tableFixedGet64(scan) != hash {\n\t\t\treturn tableFixedRefuse(report, \"no_layout\")\n\t\t}\n")
+	g.pf("\t\tif why := tableFixedTextRefusal(entries, entryCount, scan[8:recordBytes]); why != \"\" {\n")
 	g.pf("\t\t\treturn tableFixedRefuse(report, why)\n")
 	g.pf("\t\t}\n")
+	g.pf("\t}\n")
+	g.pf("\tfor k := int64(0); k < n; k++ {\n")
 	g.pf("\t\tdst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))\n")
 	g.pf("\t\tfor i := range holes {\n")
 	g.pf("\t\t\th := holes[i]\n")
