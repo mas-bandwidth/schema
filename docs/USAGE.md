@@ -847,10 +847,14 @@ the save returns `-1` and the `...Reason` twin (`<T>MeasureReason`,
 `<T>FixedSaveReason`) returns `TableRefuseInvalidValue`. Nothing is clamped on
 the way out and nothing is written for a refused fixed batch. The cost is one
 comparison per ranged field, one per count and length, and one UTF-8 scan over
-the used bytes of each string; the write path is benchmarked before and after
-(`TestGoTableWriterSpeedTable`) and lands only inside the run's own spread. The
-packet writers and the other languages' table writers are unchanged by this
-paragraph.
+the used bytes of each string. The write path was benchmarked before and after
+(`TestGoTableWriterSpeedTable`, a functional test: `NOVA_WRITER_BENCH=1`), and
+the cost is measured, not hidden: on one bench machine a pong save went about
+300 ns to 320 ns and a fixed done record of 95 completions about 2.2 us to
+3.8 us. The coordinator amended the card's speed gate to the measured cost:
+correctness of the refusal outranks a sub-2 us per-record cost on a store
+path. The packet writers and the other languages' table writers are unchanged
+by this paragraph.
 
 Do not build on any of it. **Keep your values inside their declared bounds on
 the write side** — your simulation already knows they are, and that is the only
