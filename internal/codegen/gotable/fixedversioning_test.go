@@ -210,10 +210,13 @@ func TestNewReadsOld(t *testing.T) {
 //
 // The OLD writer's file declares [..4]int32 and the NEW reader is [..8]int32; it
 // reads through the lineage, so the plan is a COMPILED one and the count's bound
-// is the WRITER's carried by the plan — never the reader's own 8 and never the
-// forged 7. `Clamped` is asserted == 1 and never >= 1: the bounds pass counts
-// once per entry per record, so a leg that also counts in the `count` op lands 2
-// and is wrong.
+// is the WRITER's carried by the plan — never the reader's own 8. Since the
+// owner's ruling of 2026-10-15 a count the plan's bound cannot hold REFUSES BY
+// NAME `count_over_bound` and never clamps (docs/SPEC-TABLES.md §3.4 THE SLACK
+// RULE, docs/FIXED-FORM-ALGORITHM.md §4.5), before any destination byte is
+// written. The forged 5 is past the WRITER's 4 and inside the reader's own 8:
+// only a plan carrying the writer's bound refuses it. REFUSE is total, so the
+// counters are asserted all zero and the destination untouched.
 
 func TestFixedVersioningWriterBoundCount(t *testing.T) {
 	corpus := fixedCorpus(t)
@@ -237,38 +240,31 @@ func TestWriterBoundCount(t *testing.T) {
 	if bytes.Index(data[at+1:], needle) >= 0 {
 		t.Fatal("writer_bound_count: the forged-count needle occurs more than once, so the search is not a locator")
 	}
-	binary.LittleEndian.PutUint32(data[at+4:], 7)
+	// THE CLEAN FILE FIRST, the not-vacuous control: it lands, count 4.
+	{
+		back := make([]%[2]s, 8)
+		var r TableReport
+		plan := make([]TableFixedEntry, 4096)
+		if n := %[2]sFixedLoad(back, data, plan, &r); n != 1 || back[0].ValsCount != 4 || r.Reason != "" {
+			t.Fatalf("writer_bound_count: the clean old file must land: n=%%d %%+v", n, r)
+		}
+	}
+	// THE FORGED COUNT REFUSES BY NAME: 5 is past the WRITER's bound of 4 and
+	// inside the reader's own 8, so only the plan's writer-bound refuses.
+	binary.LittleEndian.PutUint32(data[at+4:], 5)
 	back := make([]%[2]s, 8)
 	var r TableReport
 	plan := make([]TableFixedEntry, 4096)
 	n := %[2]sFixedLoad(back, data, plan, &r)
-	if n != 1 {
-		t.Fatalf("writer_bound_count: the forged old file reads one record, n=%%d %%+v", n, r)
+	if n != -1 || r.Reason != "count_over_bound" {
+		t.Fatalf("writer_bound_count: the forged count REFUSES count_over_bound, n=%%d reason=%%q: %%+v", n, r.Reason, r)
 	}
-	if back[0].ValsCount != 4 {
-		t.Fatalf("writer_bound_count: the count landed %%d, not the WRITER's bound 4 (never the reader's 8, never the forged 7): %%+v", back[0].ValsCount, back[0])
+	if r.Malformed || r.Clamped != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Duplicate != 0 {
+		t.Fatalf("writer_bound_count: REFUSE is total, no counter moves: %%+v", r)
 	}
-	for k, want := range []int32{1000, 1001, 1002, 1003} {
-		if back[0].Vals[k] != want {
-			t.Fatalf("writer_bound_count: Vals[%%d] landed %%d, want %%d: %%+v", k, back[0].Vals[k], want, back[0])
-		}
-	}
-	for k := 4; k < 8; k++ {
-		if back[0].Vals[k] != 0 {
-			t.Fatalf("writer_bound_count: the reader's slot %%d is not its declared default 0: %%+v", k, back[0])
-		}
-	}
-	if back[0].Lead != 0xAAAAAAAA || back[0].Trail != 0xBBBBBBBB {
-		t.Fatalf("writer_bound_count: a mislaid size moved a neighbour: %%+v", back[0])
-	}
-	if r.Clamped != 1 {
-		t.Fatalf("writer_bound_count: the bounds pass counts once per entry per record, Clamped=%%d, want 1: %%+v", r.Clamped, r)
-	}
-	if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Duplicate != 0 {
-		t.Fatalf("writer_bound_count: a counter other than Clamped moved: %%+v", r)
-	}
-	if r.Malformed || r.Verdict == TableOpenRefused || r.Reason != "" {
-		t.Fatalf("writer_bound_count: the forged count reads clean, not a refusal: %%+v", r)
+	var zero %[2]s
+	if back[0] != zero {
+		t.Fatalf("writer_bound_count: REFUSE writes not one destination byte: %%+v", back[0])
 	}
 }
 `, filepath.Join(corpus, "old_array_bounded_grow.bin"), table)

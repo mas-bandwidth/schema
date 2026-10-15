@@ -438,6 +438,6 @@ func init() {
 		// content refusals for a narrow and a wide payload.
 		Name{Name: "tableFixedForgedBounds", What: "the fixed form's BOUNDS pass: count a forged ordinal or union arm"},
 		Name{Name: "tableFixedTextIllFormed", What: "the fixed form: whether a text payload's USED units are well-formed (docs/SPEC-TABLES.md §4.12)"},
-		Name{Name: "tableFixedTextRefusal", What: "the fixed form: the text CONTENT refusal as a pre-scan of the plan's text entries (§4.12)"},
+		Name{Name: "tableFixedBoundRefusal", What: "the fixed form: the count, length and text CONTENT refusals as a pre-scan of the plan's count and text entries (§3.4, §4.12)"},
 	)
 }

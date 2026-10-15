@@ -1957,6 +1957,31 @@ func TestLiveCount(t *testing.T) {
 		t.Fatalf("live element %d", got[0].Marks[0])
 	}
 
+	// A COUNT PAST THE BOUND REFUSES BY NAME and never clamps: the write side
+	// is a caller contract and passes 7 through, and the read side answers
+	// count_over_bound with no counter moving and no destination byte written
+	// (docs/SPEC-TABLES.md §3.4 THE SLACK RULE, the owner's ruling of
+	// 2026-10-15). The ranged-scalar clamps above are §4.6's and stay.
+	over := Root{}
+	RootReset(&over)
+	over.MarksCount = 7
+	ob := make([]byte, RootFixedMeasure(1))
+	if n := RootFixedSave([]Root{over}, ob); n != int64(len(ob)) {
+		t.Fatalf("over save %d", n)
+	}
+	got = make([]Root, 1)
+	r = TableReport{}
+	if n := RootFixedLoad(got, ob, plan, &r); n != -1 || r.Reason != "count_over_bound" {
+		t.Fatalf("a count past the bound refuses by name: n=%d %+v", n, r)
+	}
+	if r.Malformed || r.Clamped != 0 || r.Unknown != 0 {
+		t.Fatalf("REFUSE is total, no counter moves: %+v", r)
+	}
+	var zero Root
+	if got[0] != zero {
+		t.Fatalf("REFUSE writes not one destination byte: %+v", got[0])
+	}
+
 	tag := Root{}
 	RootReset(&tag)
 	tag.Pick.Type = PickType(7)

@@ -347,13 +347,15 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 				dst[p.Dst+k] = v
 			}
 		case tableFixedCount:
+			// A COUNT THE PLAN'S BOUND CANNOT HOLD REFUSES BY NAME and is
+			// never clamped (docs/SPEC-TABLES.md §3.4 THE SLACK RULE,
+			// docs/FIXED-FORM-ALGORITHM.md §4.5): a clamp changes the meaning
+			// of a forged record. The bound is the PLAN's — the WRITER's own
+			// for that lineage entry (bill §12.5) — and the refusal is total,
+			// checked ahead of every destination byte by the pre-scan.
 			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 {
-				v = 0
-				report.Clamped++
-			} else if v > int32(p.Size) {
-				v = int32(p.Size)
-				report.Clamped++
+			if v < 0 || v > int32(p.Size) {
+				return "count_over_bound"
 			}
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 		case tableFixedText:
@@ -363,18 +365,20 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 			capn := p.Size / unit
 			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 {
-				v = 0
-				report.Clamped++
-			} else if uint32(v) > capn {
-				v = int32(capn)
-				report.Clamped++
+			// A LENGTH PAST THE FIELD'S OWN BOUND REFUSES BY NAME, one answer
+			// whichever slack rides behind it (docs/SPEC-TABLES.md §3.4 THE
+			// SLACK RULE): it is the length lying about the wire, not about
+			// the slack, and a clamp of it once read clean over zeroed slack
+			// and text_ill_formed over dirty slack — the same forged length
+			// answering two ways.
+			if v < 0 || uint32(v) > capn {
+				return "length_over_bound"
 			}
 			// THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE, and a
 			// violation REFUSES BY NAME, the verdict the packet reader gives
 			// (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8): the
-			// length above CLAMPS and counts; the bytes it kept are checked now,
-			// over v units and never over the span.
+			// bytes the length stated are checked now, over v units and never
+			// over the span.
 			if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
 				return "text_ill_formed"
 			}
@@ -551,25 +555,38 @@ func tableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 	return false
 }
 
-// tableFixedTextRefusal is the text CONTENT refusal as a PRE-SCAN of the plan's
-// text entries, run before the caller's storage is touched. It walks each text
-// entry under its own guard, clamps its length exactly as the scatter will, and
-// answers the one name an ill-formed payload refuses with
-// (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8). §5.8: "REFUSE
-// is total: no counter moves, nothing is decoded, and not one destination byte
-// is written — the prefill included", so the check lives here rather than only
-// inside the scatter, where an earlier entry's write would already have landed.
-// It writes nothing and moves no counter.
-func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
+// tableFixedBoundRefusal is the count, length and text CONTENT refusal as a
+// PRE-SCAN of the plan's count and text entries, run before the caller's
+// storage is touched. It walks each entry under its own guard and answers the
+// one name a word past the PLAN's bound refuses with — count_over_bound,
+// length_over_bound (docs/SPEC-TABLES.md §3.4 THE SLACK RULE,
+// docs/FIXED-FORM-ALGORITHM.md §4.5) — or the one name an ill-formed payload
+// refuses with (§4.5, §5.4 fix 11, §5.8 row 8). §5.8: "REFUSE is total: no
+// counter moves, nothing is decoded, and not one destination byte is written —
+// the prefill included", so the check lives here rather than only inside the
+// scatter, where an earlier entry's write would already have landed. The bound
+// is checked BEFORE the content, so one forged length answers one way
+// whichever slack rides behind it. It writes nothing and moves no counter.
+func tableFixedBoundRefusal(plan []TableFixedEntry, count int32, src []byte) string {
 	for i := int32(0); i < count; i++ {
 		p := plan[i]
-		if p.Op != tableFixedText {
+		if p.Op != tableFixedText && p.Op != tableFixedCount {
 			continue
 		}
 		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2): an arm's
 		// entry runs only under its own tag, and one that does not run cannot
-		// refuse.
+		// refuse. AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1).
 		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+			continue
+		}
+		if p.ArgW2 != 0 && tableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
+			continue
+		}
+		v := int32(tableFixedGet32(src[p.Src:]))
+		if p.Op == tableFixedCount {
+			if v < 0 || v > int32(p.Size) {
+				return "count_over_bound"
+			}
 			continue
 		}
 		unit := uint32(1)
@@ -577,11 +594,8 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 			unit = 2
 		}
 		capn := p.Size / unit
-		v := int32(tableFixedGet32(src[p.Src:]))
-		if v < 0 {
-			v = 0
-		} else if uint32(v) > capn {
-			v = int32(capn)
+		if v < 0 || uint32(v) > capn {
+			return "length_over_bound"
 		}
 		if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
 			return "text_ill_formed"
