@@ -1239,6 +1239,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 		if count >= int64(len(v.Entries)) {
 			return tableMessageRefuse(report, "vocabulary_too_large")
 		}
+		began := src.Offset
 		e, ok := tableMessageEntryRead(&src)
 		if !ok || e.Id == 0xfffffffffffffffd || e.Id == 0xfffffffffffffffe || e.Id == 0xffffffffffffffff && nodeSeen {
 			report.Malformed = true
@@ -1248,13 +1249,34 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 			nodeSeen = true
 		}
 		for i := int64(0); i < count; i++ {
-			if v.Entries[i] == e {
-				report.Malformed = true
-				return false
+			o := v.Entries[i].Shape
+			if o.Max-o.Min == src.Offset-began && o.Min >= 0 && o.Max <= int64(len(words)) {
+				same := true
+				for j := o.Min; j < o.Max; j++ {
+					if words[j] != words[began+j-o.Min] {
+						same = false
+						break
+					}
+				}
+				if same {
+					report.Malformed = true
+					return false
+				}
 			}
 		}
+		e.Shape.Min = began
+		e.Shape.Max = src.Offset
 		v.Entries[count] = e
 		count++
+	}
+	src.Offset = 0
+	for i := int64(0); i < count; i++ {
+		e, ok := tableMessageEntryRead(&src)
+		if !ok {
+			report.Malformed = true
+			return false
+		}
+		v.Entries[i] = e
 	}
 	v.Count = count
 	v.RefBits = tableMessageBits(uint64(count))
@@ -1264,8 +1286,26 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	v.Announced = true
 	return true
 }
+
+// THE SHAPE IS THE DECLARED ONE, the bytes the announcement spells, and never
+// the resolved entry: a resolved quantized entry keeps §4.3's derivation and
+// not the max and res it consumed, so two declared shapes that derive one delta
+// and count would read as one entry there, and a legitimate announcement, the
+// unit's own included, would be refused as malformed (#722). Go's == on float32
+// also equates +0 and -0, whose declared bytes differ. The entry's encoding is
+// canonical, a minimal LEB128 and fixed four-byte floats, so byte equality is
+// declared-fact equality, bit pattern for bit pattern. Each accepted entry parks
+// its byte extent in Shape.Min and Shape.Max until the scan is over, and the
+// second pass in tableAnnounceRead resolves every entry in place, so no offset
+// into the announcement outlives the call. The scan is quadratic in the entry
+// count, and the entry count is bounded above at 4096, so it is at most eight
+// million compares on a path that runs ONCE a connection and never again. The
+// compare is spelled inline so the emitter claims no new runtime name.
 func tableMessageKnownKind(k uint8) bool { return k <= 33 }
 func tableMessageKindBits(k uint8) int64 {
+	if k == 0 || k == 32 {
+		return 0
+	}
 	if k == 1 {
 		return 1
 	}
@@ -1461,8 +1501,11 @@ func tableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 		if s.Kind == 14 && e.Element.Kind == 6 && !r.Align() {
 			return false
 		}
-		if e.Element.Bits >= 0 {
+		if e.Element.Bits >= 0 || e.Element.Kind == 0 || e.Element.Kind == 32 {
 			width := e.Element.Bits
+			if width < 0 {
+				width = 0
+			}
 			if s.Kind == 16 {
 				width += v.RefBits
 			}
@@ -1472,7 +1515,8 @@ func tableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 			if s.Kind == 16 && !r.Skip(v.RefBits) {
 				return false
 			}
-			if !tableMessageSkip(r, v, indexBits, TableMessageEntry{Shape: e.Element}, depth+1) {
+			before := r.Offset
+			if !tableMessageSkip(r, v, indexBits, TableMessageEntry{Shape: e.Element}, depth+1) || r.Offset == before {
 				return false
 			}
 		}
@@ -1603,6 +1647,29 @@ const TableFixedForm uint8 = 3
 const TableFixedHeaderBytes = 16
 const TableFixedHashAt = 8
 
+// THE FIXED LOAD'S NAMES, EXPORTED (docs/FIXED-FORM-ALGORITHM.md §5.3, the
+// naming rule; SPEC-TABLES.md §3.4, THE FRAMING). Every -1 of <T>FixedLoad
+// carries one of these in TableReport.Reason and never an empty one: a REFUSAL
+// sets the verdict refused beside it, framing DAMAGE (Truncated,
+// ReservedNotZero) sets Malformed beside it. The values are the spellings the
+// standard gives, so a caller's literal comparison keeps compiling and a
+// caller that compares the constant cannot misspell one.
+const (
+	TableFixedReasonPreviousForm         = "previous_form"
+	TableFixedReasonMessageFormAsFile    = "message_form_as_file"
+	TableFixedReasonNewerForm            = "newer_form"
+	TableFixedReasonTruncated            = "truncated"
+	TableFixedReasonReservedNotZero      = "reserved_not_zero"
+	TableFixedReasonLayoutMalformed      = "layout_malformed"
+	TableFixedReasonLayoutNewer          = "layout_newer"
+	TableFixedReasonLayoutUnsupported    = "layout_unsupported"
+	TableFixedReasonLayoutRecordTooLarge = "layout_record_too_large"
+	TableFixedReasonPlanTooLarge         = "plan_too_large"
+	TableFixedReasonBatchTooLarge        = "batch_too_large"
+	TableFixedReasonNoLayout             = "no_layout"
+	TableFixedReasonTextIllFormed        = "text_ill_formed"
+)
+
 const (
 	tableFixedCopy uint8 = iota
 	tableFixedCount
@@ -1647,7 +1714,12 @@ const tableFixedMaxDepth int32 = 64
 // (§5.8 row 5): a 256-arm union's ordinal does not fit a byte.
 type TableFixedEntry struct {
 	Src, Dst, Size, Aux, Guard, Arg uint32
-	Op, ArgW, DstSize, Sign, Meta   uint8
+	// Guard2 / Arg2 / ArgW2 ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO ANSWERS
+	// TO (docs/FIXED-FORM-ALGORITHM.md §4.1): the entry runs only when BOTH tags
+	// hold their ordinal. ArgW2 of zero is "no outer tag", so a plan that never
+	// nests a union leaves the lane unset and the read is unchanged.
+	Guard2, Arg2                         uint32
+	Op, ArgW, DstSize, Sign, Meta, ArgW2 uint8
 }
 
 type TableFixedDst struct {
@@ -1658,6 +1730,9 @@ type TableFixedDst struct {
 type tableFixedPlan struct {
 	Entries []TableFixedEntry
 	Count   int32
+	// Split is the number of UNGUARDED entries (docs/FIXED-FORM-ALGORITHM.md
+	// §4.1): the index the guarded half starts at, stated by the plan itself.
+	Split int32
 }
 
 func tableFixedWidens(from, to uint8) bool {
@@ -1812,6 +1887,8 @@ func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int
 		if out > 0 && raw[out-1].Op == raw[i].Op && tableFixedRuns(raw[i].Op) &&
 			raw[out-1].Guard == raw[i].Guard && raw[out-1].Arg == raw[i].Arg &&
 			raw[out-1].ArgW == raw[i].ArgW && raw[out-1].Meta == raw[i].Meta &&
+			raw[out-1].Guard2 == raw[i].Guard2 && raw[out-1].Arg2 == raw[i].Arg2 &&
+			raw[out-1].ArgW2 == raw[i].ArgW2 &&
 			raw[out-1].Src+raw[out-1].Size == raw[i].Src &&
 			raw[out-1].Dst+raw[out-1].Size == raw[i].Dst {
 			raw[out-1].Size += raw[i].Size
@@ -1821,8 +1898,10 @@ func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int
 		out++
 	}
 	n = out
-	tableFixedPartition(raw, int32(n))
-	return tableFixedPlan{Entries: raw[:n], Count: int32(n)}
+	// The split is KEPT, not discarded (docs/FIXED-FORM-ALGORITHM.md §4.1):
+	// the plan states where its guarded half starts.
+	split := tableFixedPartition(raw, int32(n))
+	return tableFixedPlan{Entries: raw[:n], Count: int32(n), Split: split}
 }
 
 func tableFixedPut8(b []byte, v uint8)         { b[0] = v }
@@ -1860,11 +1939,28 @@ func tableFixedCopyRun(d, s []byte, n uint32) {
 	copy(d[:n], s[:n])
 }
 
-func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) {
+func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) string {
+	// READ(plan, split, ...) (docs/FIXED-FORM-ALGORITHM.md §4.4): the plan is
+	// partitioned unguarded-first (§4.1), so the split is the first guarded
+	// index; entries below it run WITHOUT a guard test and only the guarded
+	// half from split on tests one.
+	split := count
+	for i := int32(0); i < count; i++ {
+		if plan[i].Guard != tableFixedNoGuard {
+			split = i
+			break
+		}
+	}
 	for i := int32(0); i < count; i++ {
 		p := plan[i]
-		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2).
-		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2). Below the
+		// split there is no guard to test (§4.4).
+		if i >= split && p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+			continue
+		}
+		// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): the entry
+		// runs only when the second lane's tag holds its ordinal as well.
+		if p.ArgW2 != 0 && tableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
 			continue
 		}
 		switch p.Op {
@@ -1925,6 +2021,14 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 				v = int32(capn)
 				report.Clamped++
 			}
+			// THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE, and a
+			// violation REFUSES BY NAME, the verdict the packet reader gives
+			// (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8): the
+			// length above CLAMPS and counts; the bytes it kept are checked now,
+			// over v units and never over the span.
+			if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
+				return TableFixedReasonTextIllFormed
+			}
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 			tableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
 			if p.Meta != tableFixedTextBytes && uint32(v) < capn {
@@ -1938,18 +2042,17 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			// SIXTY-FOUR BITS. An ordinal rides at 1, 2, 4 or 8 bytes (§1.2);
 			// read through a 32-bit temporary an eight-byte ordinal loses its
 			// top four bytes, so a forged 0x1_0000_0001 would land as 1.
+			// THE OP MOVES NOTHING (§5.4): a raw past the writer's set lands
+			// None here, and tableFixedForgedBounds counts it once in the
+			// BOUNDS pass, on the compiled plan as the storage clamp counts the
+			// identity plan's own forged tag (docs/FIXED-FORM-ALGORITHM.md §5.4,
+			// §5.8 row 12, fix 27).
 			raw := tableFixedTagAt(src, p.Src, uint8(p.Size))
 			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
 			table := unsafe.Slice(p16, int(*p16)+1)
 			var v uint32
 			if raw != 0 && raw <= uint64(table[0]) {
 				v = uint32(table[raw])
-			} else if raw != 0 {
-				// AN ORDINAL PAST THE WRITER'S SET LANDS None AND COUNTS
-				// CLAMPED (§5.4): the compiled plan counts it exactly as the
-				// identity plan's bounds pass does, which tests the READER's
-				// top value and so a remapped 0 never trips it.
-				report.Clamped++
 			}
 			switch p.DstSize {
 			case 1:
@@ -1978,25 +2081,74 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 			report.Widened++
 		case tableFixedWidenF:
-			f := math.Float32frombits(tableFixedGet32(src[p.Src:]))
-			tableFixedPutF64(dst[p.Dst:], float64(f))
+			bits := tableFixedGet32(src[p.Src:])
+			var widened uint64
+			if bits&0x7f800000 == 0x7f800000 {
+				// THE ALL-ONES EXPONENT IS ASSEMBLED BY HAND (docs/SPEC-TABLES.md
+				// §3.4, §21.2; the packet runtime's tableWidenFloat): the hardware
+				// f32->f64 conversion QUIETS a signalling NaN and can drop a
+				// payload bit, so the sign, the all-ones exponent and the 23-bit
+				// mantissa shifted left by 29 are carried exactly and the quiet
+				// bit stays as the writer wrote it.
+				widened = uint64(bits>>31)<<63 | 0x7ff0000000000000 | uint64(bits&0x7fffff)<<29
+			} else {
+				widened = math.Float64bits(float64(math.Float32frombits(bits)))
+			}
+			tableFixedPut64(dst[p.Dst:], widened)
 			report.Widened++
 		case tableFixedConst:
 			aux := p.Aux
 			for i := uint32(0); i < p.Size; i++ {
 				dst[p.Dst+i] = byte(aux >> (8 * i))
 			}
-			// AN UNGUARDED None CONST WITH DstSize = THE WRITER'S ARM COUNT:
-			// a tag past that set lands None (already written just above) and
-			// COUNTS, so the compiled plan counts it exactly as the identity
-			// plan's decode bound does and the SAME forged bytes land the SAME
-			// Clamped == 1 on either plan (schema#1254, §5.4, §5.8 row 12).
+			// THE OP MOVES NOTHING (§5.4): the unguarded None const lands None,
+			// and a raw tag past the writer's arm count (this entry's DstSize) is
+			// counted once by tableFixedForgedBounds, the BOUNDS pass, on the
+			// compiled plan as the storage clamp counts the identity plan's own
+			// forged tag (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12, fix 27).
 			// tableFixedSrcEnd gives this one entry a source reach, so the
 			// record bound has already refused a plan that would read past it.
+		}
+	}
+	return ""
+}
+
+// tableFixedForgedBounds is the BOUNDS pass's count of a forged ordinal or union
+// tag (§5.4, fix 27): a raw ordinal past the writer's variant count, or a raw
+// union tag past the writer's arm count, is landed None by the ordinal/const
+// op — which moves nothing — and counted HERE, once per field, on the compiled
+// plan exactly as the identity plan's storage clamp counts its own forged tag.
+// The identity plan carries no ordinal or unguarded const entry (its union
+// tag and leaves are copy), so this pass is silent for it, and the writer's
+// count the storage clamp cannot see — the remap table's length word, or the
+// entry's DstSize — is why the count lives in the plan-aware pass here and not
+// in the op (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12).
+func tableFixedForgedBounds(plan []TableFixedEntry, count int32, src []byte, report *TableReport) {
+	for i := int32(0); i < count; i++ {
+		p := plan[i]
+		// THE GUARD AT ITS FULL WIDTH, matching tableFixedRun (§5.2): an entry
+		// whose guard does not match never lands, so it never counts.
+		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+			continue
+		}
+		// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): an entry
+		// whose second lane does not hold never lands, so it never counts.
+		if p.ArgW2 != 0 && tableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
+			continue
+		}
+		switch p.Op {
+		case tableFixedOrdinal:
+			raw := tableFixedTagAt(src, p.Src, uint8(p.Size))
+			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
+			table := unsafe.Slice(p16, int(*p16)+1)
+			if raw != 0 && raw > uint64(table[0]) {
+				report.Clamped++
+			}
+		case tableFixedConst:
 			if p.Aux == 0 && p.DstSize != 0 && p.Guard == tableFixedNoGuard {
 				var raw uint64
-				for i := uint32(0); i < p.Size; i++ {
-					raw |= uint64(src[p.Src+i]) << (8 * i)
+				for k := uint32(0); k < p.Size; k++ {
+					raw |= uint64(src[p.Src+k]) << (8 * k)
 				}
 				if raw > uint64(p.DstSize) {
 					report.Clamped++
@@ -2004,6 +2156,89 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 		}
 	}
+}
+
+// tableFixedTextIllFormed reports whether a text payload's USED units are the
+// text its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
+// with no zero byte for string, paired non-zero UTF-16 code units for wstring.
+// bytes(N) carries no text rule at all, and slack past the used units is
+// unspecified and never a refusal (docs/SPEC-TABLES.md §3.4). The used argument
+// is the clamped length in the flavour's own units. THE STRING RULE IS THE
+// PACKET READER'S EXACTLY: unicode/utf8.Valid over the used bytes, then no
+// interior zero (internal/codegen/golang/functions.go, the TString arm), so
+// every ill-formed sequence utf8 refuses — overlong, surrogate, past U+10FFFF,
+// an invalid lead — refuses here too and not only structural truncation.
+func tableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
+	switch meta {
+	case tableFixedTextUtf8:
+		if !utf8.Valid(p[:used]) {
+			return true
+		}
+		for _, c := range p[:used] {
+			if c == 0 {
+				return true
+			}
+		}
+	case tableFixedTextWide:
+		for i := uint32(0); i < used; i++ {
+			u := uint16(p[i*2]) | uint16(p[i*2+1])<<8
+			switch {
+			case u == 0:
+				return true
+			case u >= 0xD800 && u <= 0xDBFF:
+				if i+1 >= used {
+					return true
+				}
+				lo := uint16(p[(i+1)*2]) | uint16(p[(i+1)*2+1])<<8
+				if lo < 0xDC00 || lo > 0xDFFF {
+					return true
+				}
+				i++
+			case u >= 0xDC00 && u <= 0xDFFF:
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// tableFixedTextRefusal is the text CONTENT refusal as a PRE-SCAN of the plan's
+// text entries, run before the caller's storage is touched. It walks each text
+// entry under its own guard, clamps its length exactly as the scatter will, and
+// answers the one name an ill-formed payload refuses with
+// (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8). §5.8: "REFUSE
+// is total: no counter moves, nothing is decoded, and not one destination byte
+// is written — the prefill included", so the check lives here rather than only
+// inside the scatter, where an earlier entry's write would already have landed.
+// It writes nothing and moves no counter.
+func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
+	for i := int32(0); i < count; i++ {
+		p := plan[i]
+		if p.Op != tableFixedText {
+			continue
+		}
+		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2): an arm's
+		// entry runs only under its own tag, and one that does not run cannot
+		// refuse.
+		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+			continue
+		}
+		unit := uint32(1)
+		if p.Meta == tableFixedTextWide {
+			unit = 2
+		}
+		capn := p.Size / unit
+		v := int32(tableFixedGet32(src[p.Src:]))
+		if v < 0 {
+			v = 0
+		} else if uint32(v) > capn {
+			v = int32(capn)
+		}
+		if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
+			return TableFixedReasonTextIllFormed
+		}
+	}
+	return ""
 }
 
 type tableFixedLayoutEntry struct {
@@ -2365,6 +2600,13 @@ func tableFixedSrcEnd(e TableFixedEntry) uint64 {
 			end = g
 		}
 	}
+	// THE OUTER TAG IS READ BEFORE THE ENTRY TOO (§4.1), so its bytes are part
+	// of the entry's source reach.
+	if e.ArgW2 != 0 {
+		if g := uint64(e.Guard2) + uint64(tableFixedArgWidth(e.ArgW2)); g > end {
+			end = g
+		}
+	}
 	return end
 }
 
@@ -2677,7 +2919,9 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	// guarded and unguarded entries in field order, and a field past a union
 	// would land behind a guarded one. §5.9 item 42 owes the order on this
 	// path too, and the lineage plans below are compiled here, so they are
-	// partitioned by construction.
+	// partitioned by construction. The returned count's plan states its split
+	// at the first guarded index (docs/FIXED-FORM-ALGORITHM.md §4.1), which
+	// tableFixedRun derives once (§4.4).
 	tableFixedPartition(plan, out)
 	return out
 }
@@ -2817,7 +3061,7 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 		if why != "" {
 			// A lineage entry that is not a layout is a bug in the LOCK, not a
 			// wire event; the reader still owes a name rather than a panic.
-			out[i].Why = "layout_malformed"
+			out[i].Why = TableFixedReasonLayoutMalformed
 			continue
 		}
 		for room := 256; ; room *= 4 {
@@ -2825,16 +3069,16 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 			var census TableReport
 			made := tableFixedCompile(parsed, myLayout, dst, plan, &census)
 			if made == -2 {
-				out[i].Why = "layout_malformed"
+				out[i].Why = TableFixedReasonLayoutMalformed
 				break
 			}
 			if made == -3 {
-				out[i].Why = "layout_record_too_large"
+				out[i].Why = TableFixedReasonLayoutRecordTooLarge
 				break
 			}
 			if made < 0 {
 				if room >= 1<<18 {
-					out[i].Why = "plan_too_large"
+					out[i].Why = TableFixedReasonPlanTooLarge
 					break
 				}
 				continue
@@ -2860,6 +3104,17 @@ func tableFixedRefuse(report *TableReport, reason string) int64 {
 	*report = TableReport{}
 	report.LayoutHash = hash
 	report.Verdict = TableOpenRefused
+	report.Reason = reason
+	return -1
+}
+
+// tableFixedDamaged is §5.3's DAMAGED: the bytes are not a form-3 file at
+// all, so the answer is MALFORMED and not a refusal — the verdict stays
+// unrefused — and it still carries its name (Truncated or ReservedNotZero),
+// because a -1 with an empty reason is a refusal a caller cannot see. The
+// report was zeroed on entry, so every counter is already zero.
+func tableFixedDamaged(report *TableReport, reason string) int64 {
+	report.Malformed = true
 	report.Reason = reason
 	return -1
 }
@@ -4152,49 +4407,6 @@ func MixedEntitySaveMessageBody(w *TableMessageWriter, value *MixedEntity) bool 
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func MixedEntityMeasureMessages(values []*MixedEntity, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
-	for _, value := range values {
-		if value == nil || !MixedEntitySaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
-func MixedEntitySaveMessages(values []*MixedEntity, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
-		return -1
-	}
-	buffer[0] = 2
-	buffer[1] = byte(len(values) - 1)
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
-	for _, value := range values {
-		if value == nil || !MixedEntitySaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
 func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool {
 	MixedEntityReset(value)
 	for {
@@ -4769,26 +4981,6 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 		}
 	}
 }
-func MixedEntityLoadMessages(values []MixedEntity, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
-	if count < 0 {
-		return 0, false
-	}
-	if count > int64(len(values)) {
-		return count, tableMessageRefuse(&r.Report, "batch_too_large")
-	}
-	for i := int64(0); i < count; i++ {
-		if !MixedEntityLoadMessageBody(&r, &values[i]) {
-			return i, false
-		}
-	}
-	return count, tableMessageBatchClose(&r)
-}
 
 // MixedStatReset restores MixedStat's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
@@ -5035,49 +5227,6 @@ func MixedStatSaveMessageBody(w *TableMessageWriter, value *MixedStat) bool {
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func MixedStatMeasureMessages(values []*MixedStat, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
-	for _, value := range values {
-		if value == nil || !MixedStatSaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
-func MixedStatSaveMessages(values []*MixedStat, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
-		return -1
-	}
-	buffer[0] = 2
-	buffer[1] = byte(len(values) - 1)
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
-	for _, value := range values {
-		if value == nil || !MixedStatSaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
 func MixedStatLoadMessageBody(r *TableMessageReader, value *MixedStat) bool {
 	MixedStatReset(value)
 	for {
@@ -5184,26 +5333,6 @@ func MixedStatLoadMessageBody(r *TableMessageReader, value *MixedStat) bool {
 			}
 		}
 	}
-}
-func MixedStatLoadMessages(values []MixedStat, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
-	if count < 0 {
-		return 0, false
-	}
-	if count > int64(len(values)) {
-		return count, tableMessageRefuse(&r.Report, "batch_too_large")
-	}
-	for i := int64(0); i < count; i++ {
-		if !MixedStatLoadMessageBody(&r, &values[i]) {
-			return i, false
-		}
-	}
-	return count, tableMessageBatchClose(&r)
 }
 
 // MixedHitEventReset restores MixedHitEvent's declared defaults in place, reusing the storage
@@ -5568,49 +5697,6 @@ func MixedHitEventSaveMessageBody(w *TableMessageWriter, value *MixedHitEvent) b
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func MixedHitEventMeasureMessages(values []*MixedHitEvent, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
-	for _, value := range values {
-		if value == nil || !MixedHitEventSaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
-func MixedHitEventSaveMessages(values []*MixedHitEvent, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
-		return -1
-	}
-	buffer[0] = 2
-	buffer[1] = byte(len(values) - 1)
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
-	for _, value := range values {
-		if value == nil || !MixedHitEventSaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
 func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) bool {
 	MixedHitEventReset(value)
 	for {
@@ -5791,26 +5877,6 @@ func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) b
 			}
 		}
 	}
-}
-func MixedHitEventLoadMessages(values []MixedHitEvent, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
-	if count < 0 {
-		return 0, false
-	}
-	if count > int64(len(values)) {
-		return count, tableMessageRefuse(&r.Report, "batch_too_large")
-	}
-	for i := int64(0); i < count; i++ {
-		if !MixedHitEventLoadMessageBody(&r, &values[i]) {
-			return i, false
-		}
-	}
-	return count, tableMessageBatchClose(&r)
 }
 
 // MixedChatEventReset restores MixedChatEvent's declared defaults in place, reusing the storage
@@ -6074,49 +6140,6 @@ func MixedChatEventSaveMessageBody(w *TableMessageWriter, value *MixedChatEvent)
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func MixedChatEventMeasureMessages(values []*MixedChatEvent, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
-	for _, value := range values {
-		if value == nil || !MixedChatEventSaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
-func MixedChatEventSaveMessages(values []*MixedChatEvent, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
-		return -1
-	}
-	buffer[0] = 2
-	buffer[1] = byte(len(values) - 1)
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
-	for _, value := range values {
-		if value == nil || !MixedChatEventSaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
 func MixedChatEventLoadMessageBody(r *TableMessageReader, value *MixedChatEvent) bool {
 	MixedChatEventReset(value)
 	for {
@@ -6223,26 +6246,6 @@ func MixedChatEventLoadMessageBody(r *TableMessageReader, value *MixedChatEvent)
 			}
 		}
 	}
-}
-func MixedChatEventLoadMessages(values []MixedChatEvent, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
-	if count < 0 {
-		return 0, false
-	}
-	if count > int64(len(values)) {
-		return count, tableMessageRefuse(&r.Report, "batch_too_large")
-	}
-	for i := int64(0); i < count; i++ {
-		if !MixedChatEventLoadMessageBody(&r, &values[i]) {
-			return i, false
-		}
-	}
-	return count, tableMessageBatchClose(&r)
 }
 
 // MixedPickupEventReset restores MixedPickupEvent's declared defaults in place, reusing the storage
@@ -6506,49 +6509,6 @@ func MixedPickupEventSaveMessageBody(w *TableMessageWriter, value *MixedPickupEv
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func MixedPickupEventMeasureMessages(values []*MixedPickupEvent, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
-	for _, value := range values {
-		if value == nil || !MixedPickupEventSaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
-func MixedPickupEventSaveMessages(values []*MixedPickupEvent, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
-		return -1
-	}
-	buffer[0] = 2
-	buffer[1] = byte(len(values) - 1)
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
-	for _, value := range values {
-		if value == nil || !MixedPickupEventSaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
 func MixedPickupEventLoadMessageBody(r *TableMessageReader, value *MixedPickupEvent) bool {
 	MixedPickupEventReset(value)
 	for {
@@ -6655,26 +6615,6 @@ func MixedPickupEventLoadMessageBody(r *TableMessageReader, value *MixedPickupEv
 			}
 		}
 	}
-}
-func MixedPickupEventLoadMessages(values []MixedPickupEvent, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
-	if count < 0 {
-		return 0, false
-	}
-	if count > int64(len(values)) {
-		return count, tableMessageRefuse(&r.Report, "batch_too_large")
-	}
-	for i := int64(0); i < count; i++ {
-		if !MixedPickupEventLoadMessageBody(&r, &values[i]) {
-			return i, false
-		}
-	}
-	return count, tableMessageBatchClose(&r)
 }
 
 // BenchMixedReset restores BenchMixed's declared defaults in place, reusing the storage
@@ -8568,49 +8508,6 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func BenchMixedMeasureMessages(values []*BenchMixed, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
-	for _, value := range values {
-		if value == nil || !BenchMixedSaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
-func BenchMixedSaveMessages(values []*BenchMixed, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
-		return -1
-	}
-	buffer[0] = 2
-	buffer[1] = byte(len(values) - 1)
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
-	for _, value := range values {
-		if value == nil || !BenchMixedSaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
 func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 	BenchMixedReset(value)
 	for {
@@ -9870,26 +9767,6 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 			}
 		}
 	}
-}
-func BenchMixedLoadMessages(values []BenchMixed, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
-	if count < 0 {
-		return 0, false
-	}
-	if count > int64(len(values)) {
-		return count, tableMessageRefuse(&r.Report, "batch_too_large")
-	}
-	for i := int64(0); i < count; i++ {
-		if !BenchMixedLoadMessageBody(&r, &values[i]) {
-			return i, false
-		}
-	}
-	return count, tableMessageBatchClose(&r)
 }
 
 // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----

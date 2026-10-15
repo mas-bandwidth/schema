@@ -218,6 +218,7 @@ func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
 
 const FixedTableLoadRetainBuilder = "FixedTable: retention requires a region round trip through the VARIABLE form"
 const FixedTableSaveRetainMessages = "FixedTable: retention requires a region round trip through the VARIABLE form"
+const FixedTableLoadRetainMessages = "FixedTable: retention requires a region round trip through the VARIABLE form"
 const FixedTableLoadRetain = "FixedTable: retention requires a variable root and its region directory"
 const FixedTableMeasureRetain = "FixedTable: retention requires a variable root and its region directory"
 const FixedTableSaveRetain = "FixedTable: retention requires a variable root and its region directory"
@@ -670,27 +671,45 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 			guardAt := n
 			n += MixedHitEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Hit)))
 			for q := guardAt; q < n; q++ {
-				out[q].Guard = es
-				out[q].Arg = 1
-				out[q].ArgW = 1
+				if out[q].Guard == tableFixedNoGuard {
+					out[q].Guard = es
+					out[q].Arg = 1
+					out[q].ArgW = 1
+				} else {
+					out[q].Guard2 = es
+					out[q].Arg2 = 1
+					out[q].ArgW2 = 1
+				}
 			}
 		}
 		{ // arm chat, ordinal 2
 			guardAt := n
 			n += MixedChatEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Chat)))
 			for q := guardAt; q < n; q++ {
-				out[q].Guard = es
-				out[q].Arg = 2
-				out[q].ArgW = 1
+				if out[q].Guard == tableFixedNoGuard {
+					out[q].Guard = es
+					out[q].Arg = 2
+					out[q].ArgW = 1
+				} else {
+					out[q].Guard2 = es
+					out[q].Arg2 = 2
+					out[q].ArgW2 = 1
+				}
 			}
 		}
 		{ // arm pickup, ordinal 3
 			guardAt := n
 			n += MixedPickupEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Pickup)))
 			for q := guardAt; q < n; q++ {
-				out[q].Guard = es
-				out[q].Arg = 3
-				out[q].ArgW = 1
+				if out[q].Guard == tableFixedNoGuard {
+					out[q].Guard = es
+					out[q].Arg = 3
+					out[q].ArgW = 1
+				} else {
+					out[q].Guard2 = es
+					out[q].Arg2 = 3
+					out[q].ArgW2 = 1
+				}
 			}
 		}
 	}
@@ -1410,48 +1429,45 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 	}
 	*report = TableReport{}
 	if len(data) < 1 {
-		report.Malformed = true
-		return -1
+		return tableFixedDamaged(report, TableFixedReasonTruncated)
 	}
 	if data[0] != TableFixedForm {
 		switch data[0] {
 		case 1: // the VARIABLE form, and the only form this one is newer than
-			return tableFixedRefuse(report, "previous_form")
+			return tableFixedRefuse(report, TableFixedReasonPreviousForm)
 		case 2: // the MESSAGE form: a form this build carries, through another surface
-			return tableFixedRefuse(report, "message_form_as_file")
+			return tableFixedRefuse(report, TableFixedReasonMessageFormAsFile)
 		}
-		return tableFixedRefuse(report, "newer_form")
+		return tableFixedRefuse(report, TableFixedReasonNewerForm)
 	}
 	if len(data) < TableFixedHeaderBytes+4 {
-		report.Malformed = true
-		return -1
+		return tableFixedDamaged(report, TableFixedReasonTruncated)
 	}
 	for _, reserved := range data[1:TableFixedHashAt] {
 		if reserved != 0 {
-			report.Malformed = true
-			return -1
+			return tableFixedDamaged(report, TableFixedReasonReservedNotZero)
 		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
 	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
-		return tableFixedRefuse(report, "layout_malformed")
+		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
 	hash := tableFixedGet64(data[TableFixedHashAt:])
 	pick := tableFixedSelect(FixedTableFixedKnown, hash)
 	if pick < 0 {
-		return tableFixedRefuseHash(report, "layout_newer", hash)
+		return tableFixedRefuseHash(report, TableFixedReasonLayoutNewer, hash)
 	}
 	if pick < FixedTableFixedFloor {
-		return tableFixedRefuseHash(report, "layout_unsupported", hash)
+		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)
 	}
 	known := &FixedTableFixedKnown[pick]
 	if int(layoutBytes) != len(known.Layout) {
-		return tableFixedRefuse(report, "layout_malformed")
+		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 	}
 	for i := range layout {
 		if layout[i] != known.Layout[i] {
-			return tableFixedRefuse(report, "layout_malformed")
+			return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 		}
 	}
 	entries := FixedTableFixedPlan.Entries
@@ -1469,17 +1485,16 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
 	if int64(entryCount) > int64(len(plan)) {
-		return tableFixedRefuse(report, "plan_too_large")
+		return tableFixedRefuse(report, TableFixedReasonPlanTooLarge)
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	if recordBytes <= 8 || rest%recordBytes != 0 {
-		report.Malformed = true
-		return -1
+		return tableFixedDamaged(report, TableFixedReasonTruncated)
 	}
 	n := rest / recordBytes
 	if n > int64(len(values)) {
-		return tableFixedRefuse(report, "batch_too_large")
+		return tableFixedRefuse(report, TableFixedReasonBatchTooLarge)
 	}
 	var def FixedTable
 	var defBytes []byte
@@ -1491,14 +1506,20 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 	}
 	for k := int64(0); k < n; k++ {
 		if tableFixedGet64(at) != hash {
-			return tableFixedRefuse(report, "no_layout")
+			return tableFixedRefuse(report, TableFixedReasonNoLayout)
+		}
+		if why := tableFixedTextRefusal(entries, entryCount, at[8:recordBytes]); why != "" {
+			return tableFixedRefuse(report, why)
 		}
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
 		}
-		tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report)
+		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
+			return tableFixedRefuse(report, why)
+		}
+		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4).
 		FixedTableFixedClamp(&values[k], report)
