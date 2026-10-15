@@ -220,7 +220,7 @@ meaning too (fix 13).
 
 **Write-side bound checks are DEBUG ONLY, by rule.** `count <= Max` and `length <= N` are a caller contract; a
 release build removes them exactly as it removes `assert`, pays nothing, and **clamps nothing**. The READ side
-keeps the wire safe: it checks the same number in every build and counts the clamp. **Slack is UNSPECIFIED on
+keeps the wire safe: it checks the same number in every build: a count or length past its bound refuses `count_over_bound` / `length_over_bound` (§4.5), and a ranged scalar counts its clamp (§4.6). **Slack is UNSPECIFIED on
 read and not a refusal**: a reader validates the USED UNITS only, and non-zero slack is not `malformed`, not a
 refusal, and moves no counter.
 
