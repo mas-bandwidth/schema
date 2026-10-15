@@ -95,6 +95,13 @@ Run the same command with `--lang c`, `--lang cs`, `--lang elixir`, `--lang go`,
 language — writing the
 **same bits**.
 
+The go target emits several table surfaces. `--surface` picks which ones, as a
+comma-separated list of `wire`, `fixed`, `json`, `cook`, `block`, `view`,
+`message` and `retain` (default: all, byte-identical to omitting the flag). A
+surface's dependencies are resolved for you — `json` needs `wire`, so a
+json-only generate still emits the wire codecs (docs/SPEC-TABLES.md §8.4). The
+flag is a go-target flag: any other `--lang` refuses it by name.
+
 ---
 
 ## Declarations

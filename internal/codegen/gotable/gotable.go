@@ -194,6 +194,46 @@ func unitHasFile(u *ir.Unit, base string) bool {
 	return false
 }
 
+// Surfaces is the set of Go table surfaces a generate may ask for
+// (docs/SPEC-TABLES.md §8.4): the TABLE-wire codecs, the fixed form, the JSON
+// text form, the cooked form, the block form, the view registry, the message
+// form, and retain-unknown. A surface that names what it needs pulls it in —
+// json needs wire, so a json-only generate also emits the wire codecs. The
+// default is the full set, byte-identical to a generate that names nothing.
+var Surfaces = []string{"wire", "fixed", "json", "cook", "block", "view", "message", "retain"}
+
+// surfaceDeps are the dependencies a surface resolves before emission.
+var surfaceDeps = map[string][]string{
+	"json": {"wire"},
+}
+
+// resolveSurfaces closes the requested surface list under its dependencies.
+func resolveSurfaces(requested []string) (map[string]bool, error) {
+	known := map[string]bool{}
+	for _, s := range Surfaces {
+		known[s] = true
+	}
+	out := map[string]bool{}
+	for _, s := range requested {
+		if !known[s] {
+			return nil, fmt.Errorf("surface %q is not one of %s", s, strings.Join(Surfaces, ", "))
+		}
+		out[s] = true
+	}
+	for changed := true; changed; {
+		changed = false
+		for s := range out {
+			for _, d := range surfaceDeps[s] {
+				if !out[d] {
+					out[d] = true
+					changed = true
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
 // Generate returns <Base>Table.go (plus the accelerators) for every file of a
 // unit that declares tables, and nothing when it declares none — a table-free
 // unit's generated tree is byte-identical with or without this package.
@@ -206,19 +246,45 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
 // every table then carries the one entry it can always compute: its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	surfaces, err := resolveSurfaces(Surfaces)
+	if err != nil {
+		return nil, err
+	}
+	return generateLineage(u, lineage, surfaces)
+}
+
+// GenerateLineageSurfaces is GenerateLineage for a caller that names the
+// surfaces it wants (docs/SPEC-TABLES.md §8.4): wire, fixed, json, cook, block,
+// view, message, retain, in any order, dependencies resolved. The default is
+// the full set, byte-identical to GenerateLineage.
+func GenerateLineageSurfaces(u *ir.Unit, lineage map[string][]FixedLineageEntry, requested []string) (map[string][]byte, error) {
+	surfaces, err := resolveSurfaces(requested)
+	if err != nil {
+		return nil, err
+	}
+	return generateLineage(u, lineage, surfaces)
+}
+
+func generateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry, surfaces map[string]bool) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
 	blocks := ir.Blocks(u)
-	out, err := generateBlockFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	out := map[string][]byte{}
+	if surfaces["block"] {
+		var err error
+		out, err = generateBlockFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
 	}
-	cooks, err := generateCookFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	if surfaces["cook"] {
+		cooks, err := generateCookFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, cooks)
 	}
-	maps.Copy(out, cooks)
 
 	regional := len(variableTableNames(u)) > 0
 
@@ -237,15 +303,33 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// §19.2). Extracted so the synthesized home and a file that happens to be
 	// named for the package emit the same bytes.
 	emitRuntime := func(g *tableGen) {
-		g.needsMath = true
-		g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
-		g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u)+tableFixedRuntime)
-		g.pf("%s", tableCookWriteSource(u))
-		if regional {
-			g.emitRegionRuntime(blocks)
-			g.emitRetainRuntime()
+		var main strings.Builder
+		if surfaces["wire"] {
+			g.needsMath = true
+			g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
+			main.WriteString(tableRuntimeForUnit(regional) + tableRefusalSource + tableWireRuntime(u))
 		}
-		if anyKeyed {
+		if surfaces["message"] {
+			main.WriteString(tableMessageRuntime(u))
+		}
+		if surfaces["fixed"] {
+			main.WriteString(tableFixedRuntime)
+		}
+		if main.Len() > 0 {
+			g.pf("%s", main.String())
+		}
+		if surfaces["cook"] {
+			g.pf("%s", tableCookWriteSource(u))
+		}
+		if regional {
+			if surfaces["wire"] {
+				g.emitRegionRuntime(blocks)
+			}
+			if surfaces["retain"] {
+				g.emitRetainRuntime()
+			}
+		}
+		if surfaces["wire"] && anyKeyed {
 			g.pf("%s", tableKeyedAccessor)
 		}
 		if len(armSlots) > 0 {
@@ -291,19 +375,25 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		}
 		for _, st := range members {
 			g.owner = st
-			g.emitTableReset(st)
-			g.emitTableMeasure(st)
-			g.emitTableWrite(st)
-			g.emitTableSave(st)
-			g.emitTableRead(st)
-			g.emitRetainMember(st)
-			g.emitCookWriteSurface(st)
-			g.emitMessageWrite(st)
-			g.emitMessageRead(st)
-			if regional {
-				g.emitRegionMessage(st)
+			if surfaces["wire"] {
+				g.emitTableReset(st)
+				g.emitTableMeasure(st)
+				g.emitTableWrite(st)
+				g.emitTableSave(st)
+				g.emitTableRead(st)
 			}
-			if regional {
+			if surfaces["retain"] {
+				g.emitRetainMember(st)
+			}
+			if surfaces["cook"] {
+				g.emitCookWriteSurface(st)
+			}
+			if surfaces["message"] {
+				g.emitMessageWrite(st)
+				g.emitMessageRead(st)
+			}
+			if regional && surfaces["wire"] {
+				g.emitRegionMessage(st)
 				g.emitRegionMember(st)
 				for _, f := range st.Fields {
 					if f.IsList() {
@@ -314,8 +404,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 				}
 			}
 		}
-		g.emitFixedForm(members)
-		if len(members) > 0 {
+		if surfaces["fixed"] {
+			g.emitFixedForm(members)
+		}
+		if surfaces["wire"] && len(members) > 0 {
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----\n\n")
 			for _, st := range members {
 				g.owner = st
@@ -346,16 +438,20 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
 	// descriptors, in its own file so a project that never reads or writes a
 	// text does not compile it
-	texts, err := generateJsonFiles(u, closure, home)
-	if err != nil {
-		return nil, err
+	if surfaces["json"] {
+		texts, err := generateJsonFiles(u, closure, home)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, texts)
 	}
-	maps.Copy(out, texts)
-	view, err := generateViewFile(u, closure, armSlots)
-	if err != nil {
-		return nil, err
+	if surfaces["view"] {
+		view, err := generateViewFile(u, closure, armSlots)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, view)
 	}
-	maps.Copy(out, view)
 	return out, nil
 }
 
