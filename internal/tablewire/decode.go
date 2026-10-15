@@ -249,7 +249,8 @@ func (r *wireReader) skip(kind uint8) bool {
 		ir.TableKindI64, ir.TableKindU64, ir.TableKindF64,
 		ir.TableKindI128, ir.TableKindU128,
 		ir.TableKindFixed8, ir.TableKindFixed16, ir.TableKindFixed32, ir.TableKindFixed64, ir.TableKindFixed128,
-		ir.TableKindUFixed8, ir.TableKindUFixed16, ir.TableKindUFixed32, ir.TableKindUFixed64, ir.TableKindUFixed128:
+		ir.TableKindUFixed8, ir.TableKindUFixed16, ir.TableKindUFixed32, ir.TableKindUFixed64, ir.TableKindUFixed128,
+		ir.TableKindTimestamp:
 		w := ir.TableKindWidth(int(kind))
 		if !r.has(w) {
 			return false

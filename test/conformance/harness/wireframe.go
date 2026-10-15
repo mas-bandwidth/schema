@@ -460,7 +460,7 @@ func kindWidth(kind int) int {
 		return 2
 	case ir.TableKindI32, ir.TableKindU32, ir.TableKindF32, ir.TableKindPointer, ir.TableKindFixed32, ir.TableKindUFixed32:
 		return 4
-	case ir.TableKindI64, ir.TableKindU64, ir.TableKindF64, ir.TableKindFixed64, ir.TableKindUFixed64:
+	case ir.TableKindI64, ir.TableKindU64, ir.TableKindF64, ir.TableKindFixed64, ir.TableKindUFixed64, ir.TableKindTimestamp:
 		return 8
 	case ir.TableKindI128, ir.TableKindU128, ir.TableKindFixed128, ir.TableKindUFixed128:
 		return 16
@@ -472,8 +472,9 @@ func kindWidth(kind int) int {
 // closed set, the escape kind 31 and the payload-free kind 32, kind 33, the
 // RESERVED kind 34, which no writer emits and a reader of this major cannot
 // skip, so it must land as framing damage and never as an escape (§3, §4.2),
-// and one past it, outside the set on the high side.
-const wireKindLast = ir.TableKindReservedFloat16
+// kind 35, unassigned, kind 36, timestamp, an eight-byte value, and one past
+// it, outside the set on the high side.
+const wireKindLast = ir.TableKindTimestamp
 
 // ---------------------------------------------------------------------------
 // the passes
