@@ -1452,6 +1452,14 @@ All compile errors with positions:
 - **Duplicate field names anywhere in one type — including across branch
   sides.** One name, one field, declared once. (schema owns the type, and
   unique names keep the flattened generated output unambiguous.)
+- **Retired field, table and enum-value names:** a field, table or enum value
+  name (or wire id under `was`) that the unit's committed `tables.baseline` or
+  `schema.lock` records as retired cannot be reused in the same scope with a
+  new type or meaning; the checker refuses it by name (`VERSIONING.md`).
+  Re-adding a retired name with the same meaning is allowed only where
+  `VERSIONING.md` says so (when `--update --reason` acknowledges the
+  resurrection in `tables.baseline`, or when a `| deprecated` field in
+  `schema.lock` remains at its locked slot with its locked type and meaning).
 - Back-reference violations (§4.5); `if` conditions that are not `bool`
   fields.
 - Cycles in type composition, undefined types, duplicate declarations,
