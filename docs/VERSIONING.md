@@ -858,12 +858,42 @@ each to a released tag, never to `main`, and newer runtimes keep working with
 older generated code. Dart, Java and Elixir generate self-contained output
 and need only their pinned SDKs.
 
-**Release process.** Releases are tagged `vMAJOR.MINOR.PATCH` on `main`. CI
-must be green on the tagged commit, including the full certification run
-across every language. The build stamps `git describe` into the binary, so
-`schema version` on a release build reports the exact tag and on a
-development build the tag plus commits-since plus hash; quote that line in
-bug reports, because a refusal message cites the spec that binary was built
+**Tags: a promotion tag on every main merge, a version tag only on a
+release.** Two kinds of tag name a commit of this repository, and nobody makes
+either by hand.
+
+- **Promotion tags, `main-<shorthash>`.** Every promotion to `main` (the
+  merge commit that lands the development line on `main`) is tagged
+  `main-` followed by the first 12 hex digits of that commit's own hash, so
+  `main-0123456789ab` names exactly commit `0123456789ab...`.
+  `.github/workflows/promotion-tag.yml` makes it on every push to `main` by
+  running `make promotion-tag PUSH=1`. A commit that already carries a
+  `main-` tag is skipped, never retagged. That workflow is a seconds-long job
+  that runs no build and no test, so it is not the heavy suite the owner's
+  NO PUSH TRIGGER rule in `certify.yml` keeps off push; certification of
+  `main` stays nightly and dispatched.
+- **Release tags, `vMAJOR.MINOR.PATCH`.** A release is made only by
+  `.github/workflows/release.yml`, dispatched by hand with the version, which
+  runs `make release VERSION=vX.Y.Z PUSH=1`. It refuses, by name, a version
+  that does not parse as `vMAJOR.MINOR.PATCH` (no prefix-less, pre-release or
+  build forms, no leading zeros), a version that is not greater than the
+  newest `v` tag already in the repository, and a commit that is not on
+  `main`. It tags that one commit with that one annotated tag and pushes
+  nothing else. CI must be green on the commit, including the full
+  certification run across every language, before the release is dispatched.
+
+The rules for which number a release takes are the ones above; the tooling
+checks the form and the order, and the person dispatching it chooses the
+number. Between releases an adopter pins a promotion tag
+([USAGE.md](USAGE.md#embedding-the-compiler)); a Go module pin on
+`main-<shorthash>` resolves to that commit's pseudo-version, which is the same
+commit the tag names.
+
+The build stamps `git describe --tags --match 'v[0-9]*'` into the binary, so
+`schema version` on a release build reports the exact release tag and on any
+other build the newest release tag plus commits-since plus hash (promotion
+tags are not version numbers and are not matched); quote that line in bug
+reports, because a refusal message cites the spec that binary was built
 against and a stale binary will contradict the current page.
 
 ## Patterns

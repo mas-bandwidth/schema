@@ -3515,6 +3515,16 @@ The compiler is a Go library as well as a binary. `cmd/schema` is a client of
 that library and holds nothing else — the flags, the printing, the exit codes —
 so anything the CLI does, your program can do.
 
+Pin a release tag, or between releases a promotion tag: every commit promoted
+to `main` is tagged `main-<shorthash>` (docs/VERSIONING.md), so
+
+```
+go get github.com/mas-bandwidth/schema/v2@v2.5.0             # a release
+go get github.com/mas-bandwidth/schema/v2@main-0123456789ab  # a promotion
+```
+
+names one commit either way; never pin a bare branch.
+
 ```go
 import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
