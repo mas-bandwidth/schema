@@ -52,32 +52,32 @@ func (g *gen) variableCodecModule() []byte {
 	g.emitVariableEnums(&b, names)
 	var plain, holding []string
 	for _, n := range names {
-		if structHoldsUnion(g.unit.Tables[n]) {
+		if structHoldsUnion(vStruct(g.unit, n)) {
 			holding = append(holding, n)
 		} else {
 			plain = append(plain, n)
 		}
 	}
 	for _, n := range plain {
-		g.emitVariableStruct(&b, g.unit.Tables[n])
+		g.emitVariableStruct(&b, vStruct(g.unit, n))
 	}
 	g.emitUnionTypes(&b, names)
 	for _, n := range holding {
-		g.emitVariableStruct(&b, g.unit.Tables[n])
+		g.emitVariableStruct(&b, vStruct(g.unit, n))
 	}
 	for _, n := range names {
-		g.emitVariableNumber(&b, g.unit.Tables[n])
+		g.emitVariableNumber(&b, vStruct(g.unit, n))
 	}
 	for _, n := range names {
-		g.emitVariableSaveBody(&b, g.unit.Tables[n])
+		g.emitVariableSaveBody(&b, vStruct(g.unit, n))
 	}
 	for _, n := range names {
-		g.emitVariableLoadBody(&b, g.unit.Tables[n])
+		g.emitVariableLoadBody(&b, vStruct(g.unit, n))
 	}
 	g.emitVariableDispatch(&b, names)
 	for _, n := range names {
-		if g.isVariableRoot(g.unit.Tables[n]) {
-			g.emitVariableRoot(&b, g.unit.Tables[n])
+		if g.isVariableRoot(vStruct(g.unit, n)) {
+			g.emitVariableRoot(&b, vStruct(g.unit, n))
 		}
 	}
 	g.emitVariableText(&b)
@@ -139,10 +139,24 @@ func classOf(f *ir.Field) vClass {
 			return vEnum
 		case *ir.Union:
 			return vUnion
+		case *ir.Flags:
+			// a FLAGS MASK rides as a u64 scalar (docs/SPEC-TABLES.md §3:
+			// kind 9), its default the mask the brace list spells (SPEC §4.2)
+			return vScalar
 		}
 		return vTable
 	}
 	return vScalar
+}
+
+// isFlags reports a flags-mask field, whose text form is the array of its set
+// bits' names (docs/SPEC-TABLES.md §16.2).
+func isFlags(f *ir.Field) *ir.Flags {
+	if f.Type.Kind != ir.TNamed {
+		return nil
+	}
+	fl, _ := f.Type.Ref.(*ir.Flags)
+	return fl
 }
 
 // fieldWireKind is the kind byte a FIELD rides under (the oracle's wireKind):
@@ -187,6 +201,10 @@ func scalarRust(f *ir.Field) string {
 			return rustInt(f.Type.Width)
 		}
 		return rustUint(f.Type.Width)
+	case ir.TNamed:
+		if isFlags(f) != nil {
+			return "u64" // a flags mask's storage is u64 in every target (SPEC §4.2)
+		}
 	}
 	return "()"
 }
@@ -371,7 +389,7 @@ func (g *gen) collectVariableEnums(names []string) []*ir.Enum {
 		}
 	}
 	for _, n := range names {
-		for _, f := range g.unit.Tables[n].Fields {
+		for _, f := range vStruct(g.unit, n).Fields {
 			walkField(f)
 		}
 	}
@@ -1121,7 +1139,7 @@ func (g *gen) pointerTargets(names []string) []*ir.Struct {
 		}
 	}
 	for _, n := range names {
-		considerStruct(g.unit.Tables[n])
+		considerStruct(vStruct(g.unit, n))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out

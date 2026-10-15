@@ -54,8 +54,12 @@ func cardVariableModules(u *ir.Unit) (map[string][]byte, error) {
 // emits the fixed form. The by-name refusal lives on the card's own path, in
 // [cardVariableModules], where a unit that gains an excluded construct is
 // refused naming table, field and construct (docs/SPEC-TABLES.md §11).
+//
+// A closure that holds only FIXED tables takes the modules too: a fixed table
+// rides the variable form as well as its own (docs/SPEC-TABLES.md §2.2, §3),
+// so the gate is the closure, not the variable class.
 func scopedVariableModules(u *ir.Unit) map[string][]byte {
-	if len(ir.VariableTables(u)) == 0 {
+	if len(ir.TableClosure(u)) == 0 {
 		return nil
 	}
 	return variableModules(u)
@@ -66,7 +70,7 @@ func scopedVariableModules(u *ir.Unit) map[string][]byte {
 func variableModules(u *ir.Unit) map[string][]byte {
 	vc := newVariableClass(u)
 	any := false
-	for n := range ir.VariableTables(u) {
+	for n := range ir.TableClosure(u) {
 		if vc.emitted[n] {
 			any = true
 			break
@@ -1228,16 +1232,24 @@ func fileVariableTableNames(u *ir.Unit, file *ir.File, vc *variableClass) []stri
 			names = append(names, st.Name)
 		}
 	}
+	// a `type` the carried set reaches by value is a body of this file's
+	// codec too (docs/SPEC-TABLES.md §2, §3)
+	for _, d := range file.Decls {
+		if st, ok := d.(*ir.Struct); ok && vc.emitted[st.Name] {
+			names = append(names, st.Name)
+		}
+	}
 	sort.Strings(names)
 	return names
 }
 
-// isVariableRoot reports whether an emitted table is a VARIABLE-class root,
-// which takes the whole-file save, load and text roots; a fixed table the
-// variable class reaches takes only its body codec (a fixed root's own form-1
-// file is vt/fixed-class's row, not this one's).
+// isVariableRoot reports whether an emitted body is a ROOT of the variable
+// form, which takes the whole-file save, load and text roots: every table of
+// the closure, a FIXED table included, because a fixed table's own form-1 file
+// is a variable-form file like any other (docs/SPEC-TABLES.md §2.2, §3). A map
+// entry and a `type` are bodies only, never a file's root.
 func (g *gen) isVariableRoot(st *ir.Struct) bool {
-	return ir.VariableTables(g.unit)[st.Name] && !st.IsMapEntry()
+	return st.IsTable && ir.TableClosure(g.unit)[st.Name] && !st.IsMapEntry()
 }
 
 // variableModule emits one source file's variable-table constant block. Nil
@@ -1252,7 +1264,7 @@ func (g *gen) variableModule() []byte {
 	var b strings.Builder
 	b.WriteString(header(g.file.Base, g.unit.Package, "the variable wire's field header constants (docs/SPEC-TABLES.md §3, §5)"))
 	for _, n := range names {
-		g.emitVariableConstants(&b, g.unit.Tables[n])
+		g.emitVariableConstants(&b, vStruct(g.unit, n))
 	}
 	return []byte(b.String())
 }

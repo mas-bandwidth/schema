@@ -73,14 +73,29 @@ func newVariableClass(u *ir.Unit) *variableClass {
 		for _, st := range f.Tables {
 			vc.file[st.Name] = f.Base
 		}
+		for _, d := range f.Decls {
+			if st, ok := d.(*ir.Struct); ok {
+				vc.file[st.Name] = f.Base
+			}
+		}
 	}
-	names := make([]string, 0, len(u.Tables))
+	// THE CARRIED SET IS EVERY BODY A TABLE CAN REACH BY VALUE: the unit's
+	// tables and its `type`s alike. A `type` a table holds by value, as an
+	// array element, as an optional or as a union arm rides as a nested body
+	// exactly as a table does (docs/SPEC-TABLES.md §2, §3: kind 13, L, the
+	// body), so the same storage, numbering walk and codec carry it.
+	names := make([]string, 0, len(u.Tables)+len(u.Structs))
 	for n := range u.Tables {
 		names = append(names, n)
 	}
+	for n := range u.Structs {
+		if _, dup := u.Tables[n]; !dup {
+			names = append(names, n)
+		}
+	}
 	sort.Strings(names)
 	for _, n := range names {
-		st := u.Tables[n]
+		st := vStruct(u, n)
 		vc.reason[n] = ""
 		for _, f := range st.Fields {
 			if why := variableFieldConstruct(f); why != "" {
@@ -100,7 +115,7 @@ func newVariableClass(u *ir.Unit) *variableClass {
 			if vc.reason[n] != "" {
 				continue
 			}
-			st := u.Tables[n]
+			st := vStruct(u, n)
 			for _, f := range st.Fields {
 				if why, ok := vc.reached(n, f); ok && why != "" {
 					vc.reason[n] = why
@@ -110,13 +125,16 @@ func newVariableClass(u *ir.Unit) *variableClass {
 			}
 		}
 	}
-	variable := ir.VariableTables(u)
+	// THE ROOTS ARE EVERY TABLE OF THE CLOSURE, fixed and variable alike: a
+	// `fixed table` rides the variable form too (docs/SPEC-TABLES.md §2.2,
+	// §3), so its form-1 file is this codec's as much as a variable table's.
+	roots := ir.TableClosure(u)
 	var reach func(n string)
 	reach = func(n string) {
 		if vc.emitted[n] {
 			return
 		}
-		st := u.Tables[n]
+		st := vStruct(u, n)
 		if st == nil {
 			return
 		}
@@ -126,11 +144,20 @@ func newVariableClass(u *ir.Unit) *variableClass {
 		}
 	}
 	for _, n := range names {
-		if variable[n] && vc.reason[n] == "" {
+		if roots[n] && vc.reason[n] == "" {
 			reach(n)
 		}
 	}
 	return vc
+}
+
+// vStruct is the declaration a carried body names: a table, or a `type` a
+// table reaches by value (docs/SPEC-TABLES.md §2).
+func vStruct(u *ir.Unit, name string) *ir.Struct {
+	if st := u.Tables[name]; st != nil {
+		return st
+	}
+	return u.Structs[name]
 }
 
 // carried reports whether the variable wire carries one table.
@@ -166,18 +193,10 @@ func variableFieldConstruct(f *ir.Field) string {
 		return "a guarded field (an if group) is outside the variable class this leg carries (§16.2)"
 	case f.HasFloatRange:
 		return "the compressed float is outside the variable class this leg carries (§3)"
-	case f.Array == ir.ArrayFixed:
-		return "the fixed-length array [N]T is outside the variable class this leg carries (§3)"
 	case f.Array == ir.ArrayCounted && f.ArrayMin > 0:
 		return "a counted array with a declared minimum [Min..N]T is outside the variable class this leg carries (§3)"
 	}
 	switch ref := f.Type.Ref.(type) {
-	case *ir.Flags:
-		return "the flags mask is outside the variable class this leg carries (§3)"
-	case *ir.Struct:
-		if !ref.IsTable && !f.Type.Pointer {
-			return "a nested type is outside the variable class this leg carries (§2)"
-		}
 	case *ir.Union:
 		return unionFieldConstruct(ref, map[*ir.Union]bool{})
 	}
@@ -194,9 +213,6 @@ func unionFieldConstruct(un *ir.Union, seen map[*ir.Union]bool) string {
 			continue
 		}
 		if v.Body() {
-			if v.Ref != nil && !v.Ref.IsTable {
-				return "arm " + v.Name + ": a nested type is outside the variable class this leg carries (§2)"
-			}
 			continue
 		}
 		if why := variableFieldConstruct(v.F); why != "" {

@@ -774,12 +774,13 @@ fn surface_cook(manifest: &Manifest, out: &str) {
 // ---------------------------------------------------------------------------
 //
 // The variable form, form byte 1, over the roots this leg's variable wire
-// carries: the pointer corpus's Scene (graphdemo) and the byte-buffer corpus's
-// Catalog (blobdemo). Every other case is answered `<case>.absent` — a root
-// whose unit this leg does not carry yet (a union, a map, an optional, an
-// enum-keyed array, a fixed root's own form-1 file, or a unit the compiler
-// refuses for rust whole, as tables/lists is for its union), which the matrix
-// counts as the row of work that is left, never as a pass.
+// carries: the pointer corpus's Scene (graphdemo), the byte-buffer corpus's
+// Catalog (blobdemo), the map corpus's roots (mapdemo) and the fixed roots of
+// the three evolution pairs (tblv1/tblv2, tblw1/tblw2, tblr1/tblr2). Every
+// other case is answered `<case>.absent` — a root this driver does not name
+// yet, or a unit the compiler refuses for rust whole, as tables/lists is for
+// its union — which the matrix counts as the row of work that is left, never
+// as a pass.
 
 // One root's codec, by its unit and root name: the four verbs the surfaces
 // drive, each answering through the root's own generated functions. The
@@ -851,6 +852,42 @@ macro_rules! with_root {
             ("mapdemo", "Runs") => {
                 #[allow(unused_imports)]
                 use mapdemo::{runs_from_json as $from_json, runs_load as $load, runs_save as $save, runs_to_json_checked as $to_json};
+                Some($body)
+            }
+            // THE FIXED CLASS (docs/SPEC-TABLES.md §2.2, §3, §5): the three
+            // evolution pairs, each a closure holding a fixed table, on the
+            // variable form — V's fixed root Cfg, W's Fleet over the fixed
+            // Vessel/Ship (string, bytes and flags defaults, the table renamed
+            // under `was`) and R's fixed root Cfg (variant, arm and type-field
+            // renames under `was`)
+            ("tblv1", "Cfg") => {
+                #[allow(unused_imports)]
+                use tblv1::{cfg_from_json as $from_json, cfg_load as $load, cfg_save as $save, cfg_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblv2", "Cfg") => {
+                #[allow(unused_imports)]
+                use tblv2::{cfg_from_json as $from_json, cfg_load as $load, cfg_save as $save, cfg_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblw1", "Fleet") => {
+                #[allow(unused_imports)]
+                use tblw1::{fleet_from_json as $from_json, fleet_load as $load, fleet_save as $save, fleet_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblw2", "Fleet") => {
+                #[allow(unused_imports)]
+                use tblw2::{fleet_from_json as $from_json, fleet_load as $load, fleet_save as $save, fleet_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblr1", "Cfg") => {
+                #[allow(unused_imports)]
+                use tblr1::{cfg_from_json as $from_json, cfg_load as $load, cfg_save as $save, cfg_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblr2", "Cfg") => {
+                #[allow(unused_imports)]
+                use tblr2::{cfg_from_json as $from_json, cfg_load as $load, cfg_save as $save, cfg_to_json_checked as $to_json};
                 Some($body)
             }
             _ => None,
@@ -951,21 +988,16 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
     }
 }
 
-// COOK WRITE (docs/SPEC-TABLES.md §7.6) is answered ABSENT for every row today,
-// and the reason is a gap upstream of this driver rather than in it: the emitted
-// cook runtime has <T>_cook_measure / <T>_cook_measure_reason / <T>_cook_from
-// (internal/codegen/rusttable/cook.go), but this leg emits NO id-table (form 1)
-// WIRE reader for a FIXED table — `scopedVariableModules` (variablecodec.go)
-// emits `<name>_load`/`<name>_save` only for the variable roots, and the fixed
-// tables' `_records.rs` modules hold the row structs and nothing that turns the
-// manifest's `testdata/wire/tables/<case>.bin` into a row. The reference leg's
-// driver loads that wire (`c.load`) and then measures and writes; without the
-// same read here there is no value to cook, so writing bytes to compare against
-// `cook-write/<case>.cook` is impossible for any row. The rows the leg does
-// carry cook writers for (WideBlob, KeyedConfig) stay named as not done for
-// exactly this reason. Implement the fixed-table form-1 wire reader in the
-// emitted runtime first, then drive <T>_cook_from from here for those rows and
-// keep maps, optional arrays, pointers, lists and wide text `.absent`.
+// COOK WRITE (docs/SPEC-TABLES.md §7.6) is answered ABSENT for every row today.
+// The emitted cook runtime has <T>_cook_measure / <T>_cook_measure_reason /
+// <T>_cook_from (internal/codegen/rusttable/cook.go), and since
+// vt/fixed-class/rust a FIXED table has its form-1 reader too
+// (<name>_load, internal/codegen/rusttable/variablecodec.go), so the value the
+// reference leg's driver loads before it measures and writes now exists here.
+// What is left is the bridge from that loaded value to the cook row and the
+// driving of <T>_cook_from per row, which is vt/cook-write/rust's work and not
+// this surface's; until it lands every row stays `.absent`, counted as work
+// left and never as a pass.
 fn surface_cook_write(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("cook-write") {
         spill_absent(out, &f[1]);

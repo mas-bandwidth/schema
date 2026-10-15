@@ -17,6 +17,12 @@ graphdemo = { path = "../../../build/tables-generated-rust/graphdemo" }
 blobdemo = { path = "../../../build/tables-generated-rust/blobdemo" }
 mapdemo = { path = "../../../build/tables-generated-rust/mapdemo" }
 blockdemo = { path = "../../../build/tables-generated-rust/blockdemo" }
+tblv1 = { path = "../../../build/tables-generated-rust/tblv1" }
+tblv2 = { path = "../../../build/tables-generated-rust/tblv2" }
+tblw1 = { path = "../../../build/tables-generated-rust/tblw1" }
+tblw2 = { path = "../../../build/tables-generated-rust/tblw2" }
+tblr1 = { path = "../../../build/tables-generated-rust/tblr1" }
+tblr2 = { path = "../../../build/tables-generated-rust/tblr2" }
 
 [profile.dev]
 # the conformance corpus is small and the driver runs seven times per matrix;
