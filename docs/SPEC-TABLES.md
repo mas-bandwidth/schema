@@ -1120,6 +1120,49 @@ any scalar, and a bounded array of those. It is refused, by name, on:
   the field serves with it.
 - **a specified default** — presence is the only default an optional has.
 
+#### The `| required` marker
+
+A variable table cannot say a field must be present: a zero field is not
+written, so absence and a written default are indistinguishable. `| required`
+closes that gap. It is a TAG — a valueless qualifier in the open half of the
+qualification section (SPEC §4.2) — read exactly the way `| deprecated` is.
+What it means:
+
+```
+table Player
+{
+    name     string(32) | required   // always written; a record missing it is refused
+    score    int32                     // elided when zero, as usual
+}
+```
+
+- **The writer ALWAYS writes it.** A required field never elides at its
+  default: it rides on every record, and a variable table's writer emits it
+  even when it holds zero. Absence is no longer expressible for the field.
+- **The reader REFUSES a record missing it.** An older record written before
+  the field was required lacks it; reading it is refused with the event
+  `missing_required`, naming the field. The record does not silently fall
+  back to a default — the field was declared mandatory and is not there.
+- **It is TABLE fields only.** `| required` is refused, by name, on a packet
+  `type` field — a type's wire is positional and every field always rides, so
+  there is no absence for a required marker to cure — and on an optional
+  `?T` — an optional is absent or present by definition, and `required`
+  would forbid the absence that makes it optional.
+- **A FIXED table's fields are always written**, so `required` is meaningless
+  there (there is no elision to suppress and no absence to refuse) and it
+  changes nothing; it is accepted and documented as a no-op. The rule is:
+  every fixed field is always written, so `required` has no effect.
+- **The attribute is part of the table projection** — it changes what the
+  writer emits and what the reader refuses, so it moves the wire and the
+  protocol id.
+
+**Evolution** (§4). Adding `required` to a shipped field is a BREAK the
+tables baseline refuses: old records were written without it and a newer
+reader would refuse them. Removing `required` is free — the writer simply
+starts eliding again. Adding a new `| required` field to an existing table is
+a break, exactly as adding any field is; the baseline refuses the record
+shape change (§18).
+
 ### 2.4 Enum-keyed arrays: `ships [ShipType]ShipConfig`
 
 ```
