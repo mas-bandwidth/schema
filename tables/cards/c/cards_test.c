@@ -581,13 +581,13 @@ static void test_task_hash(void) {
         static const char long_msg[] =
             "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
         cards_sha256(d, (const uint8_t *)"", 0);
-        for (j = 0; j < 32; j++) sprintf(hex + j * 2, "%02x", d[j]);
+        for (j = 0; j < 32; j++) snprintf(hex + j * 2, 3, "%02x", d[j]);
         check(memcmp(hex, empty_hex, 64) == 0, name, "SHA-256 empty vector");
         cards_sha256(d, (const uint8_t *)"abc", 3);
-        for (j = 0; j < 32; j++) sprintf(hex + j * 2, "%02x", d[j]);
+        for (j = 0; j < 32; j++) snprintf(hex + j * 2, 3, "%02x", d[j]);
         check(memcmp(hex, abc_hex, 64) == 0, name, "SHA-256 abc vector");
         cards_sha256(d, (const uint8_t *)long_msg, strlen(long_msg));
-        for (j = 0; j < 32; j++) sprintf(hex + j * 2, "%02x", d[j]);
+        for (j = 0; j < 32; j++) snprintf(hex + j * 2, 3, "%02x", d[j]);
         check(memcmp(hex, long_hex, 64) == 0, name, "SHA-256 448-bit vector");
     }
     /* expected .hex per corpus wire. */
@@ -654,7 +654,7 @@ static void test_task_hash(void) {
         tb_text(&f, ""); /* test */
         tb_text(&f, ""); /* done */
         cards_sha256(digest, f.data, (size_t)f.len);
-        for (j = 0; j < 32; j++) sprintf(want_hex + j * 2, "%02x", digest[j]);
+        for (j = 0; j < 32; j++) snprintf(want_hex + j * 2, 3, "%02x", digest[j]);
         check(memcmp(hex_a, want_hex, 64) == 0, name,
               "hash matches the independently written frame");
         free(f.data);
