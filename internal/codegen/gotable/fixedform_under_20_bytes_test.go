@@ -7,14 +7,15 @@ import (
 // TestFixedFormUnder20Bytes is the row fixed_form_under_20_bytes, item F7 of
 // schema#876: a GAP on all nine legs, one of six joint-worst rows. A file
 // shorter than the fixed-form header is a MALFORMED read, not a refusal. The
-// reader has exactly two answers — refused plus a Reason name, or malformed —
-// and they are NEVER both set; a short file is the residue, so
-// it sets Malformed and leaves Reason UNTOUCHED. Asserting "layout_malformed"
+// reader has exactly two answers — refused plus a Reason name, or malformed
+// plus a Reason name — and refused and malformed are NEVER both set; a short
+// file is the residue, so it sets Malformed beside the name `truncated`
+// (docs/FIXED-FORM-ALGORITHM.md §5.3, DAMAGED). Asserting "layout_malformed"
 // here would assert the opposite: that name belongs to a layout the reader
 // actually parsed, not to a file too short to carry one. The destination is
 // filled with a sentinel Point and proved still the sentinel, so "no byte is
 // written" is observed rather than assumed. The whole report is compared
-// against TableReport{Malformed: true} in one !=, pinning every counter,
+// against TableReport{Malformed: true, Reason: "truncated"} in one !=, pinning every counter,
 // Reason, the verdict and any field added later to its zero value at once.
 func TestFixedFormUnder20Bytes(t *testing.T) {
 	runGenerated(t, `package probe
@@ -41,7 +42,7 @@ func TestUnder20Bytes(t *testing.T) {
 	for k := 0; k < TableFixedHeaderBytes+4; k++ {
 		got := []Point{{X: -1, Y: -1}}
 		r = TableReport{}
-		if n := PointFixedLoad(got, buf[:k], plan, &r); n != -1 || r != (TableReport{Malformed: true}) || got[0] != (Point{X: -1, Y: -1}) {
+		if n := PointFixedLoad(got, buf[:k], plan, &r); n != -1 || r != (TableReport{Malformed: true, Reason: TableFixedReasonTruncated}) || got[0] != (Point{X: -1, Y: -1}) {
 			t.Fatalf("k=%d: n=%d report=%+v dest=%+v", k, n, r, got[0])
 		}
 	}

@@ -333,10 +333,10 @@ func TestR13(t *testing.T) {
 	add("plan_too_large", file, 2, plan[:0], refused("plan_too_large"))
 	add("batch_too_large", file, 1, plan, refused("batch_too_large"))
 	add("no_layout", forge(func(b []byte) []byte { b[len(b)-2*int(PointFixedRecordBytes)] ^= 1; return b }), 2, plan, refused("no_layout"))
-	add("malformed empty", nil, 2, plan, TableReport{Malformed: true})
-	add("malformed short", file[:TableFixedHeaderBytes], 2, plan, TableReport{Malformed: true})
-	add("malformed reserved byte", forge(func(b []byte) []byte { b[3] = 1; return b }), 2, plan, TableReport{Malformed: true})
-	add("malformed ragged", append(append([]byte(nil), file...), 0), 2, plan, TableReport{Malformed: true})
+	add("malformed empty", nil, 2, plan, TableReport{Malformed: true, Reason: TableFixedReasonTruncated})
+	add("malformed short", file[:TableFixedHeaderBytes], 2, plan, TableReport{Malformed: true, Reason: TableFixedReasonTruncated})
+	add("malformed reserved byte", forge(func(b []byte) []byte { b[3] = 1; return b }), 2, plan, TableReport{Malformed: true, Reason: TableFixedReasonReservedNotZero})
+	add("malformed ragged", append(append([]byte(nil), file...), 0), 2, plan, TableReport{Malformed: true, Reason: TableFixedReasonTruncated})
 	for _, c := range cases {
 		dst, bytes := poisoned(2)
 		dst = dst[:c.cap]

@@ -860,6 +860,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\tat = at[%sFixedRecordBytes:]\n", st.Name)
 	g.pf("\t}\n\treturn need\n}\n\n")
 
+	// EVERY -1 BELOW CARRIES A NAME (docs/FIXED-FORM-ALGORITHM.md §5.3, the
+	// naming rule): a refusal through tableFixedRefuse, framing damage through
+	// tableFixedDamaged with Malformed beside the name, and every name an
+	// exported TableFixedReason constant rather than a literal.
 	g.pf("func %sFixedLoad(values []%s, data []byte, plan []TableFixedEntry, report *TableReport) int64 {\n", st.Name, st.Name)
 	g.pf("\tif report == nil {\n\t\tvar local TableReport\n\t\treport = &local\n\t}\n")
 	// A LOAD'S REPORT IS ITS OWN (§5.3's joint table): a report a caller reuses
@@ -869,7 +873,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// THE FILE'S LENGTH — a committed form-1 file is TEN bytes and a form-2
 	// batch THREE, so a reader that measured first would answer `malformed` for
 	// every real file of the two forms it is supposed to name (§5.3).
-	g.pf("\tif len(data) < 1 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
+	g.pf("\tif len(data) < 1 {\n\t\treturn tableFixedDamaged(report, TableFixedReasonTruncated)\n\t}\n")
 	// THE FORM REGISTRY IS THREE (docs/SPEC-TABLES.md §3, THE FIRST BYTE): 1
 	// the variable form, 2 the message form, 3 this one. Each assigned byte
 	// gets its OWN name, and `newer_form` — "a form byte this reader does not
@@ -880,17 +884,17 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// else (SPEC-TABLES §4, `unknown_form`).
 	g.pf("\tif data[0] != TableFixedForm {\n")
 	g.pf("\t\tswitch data[0] {\n")
-	g.pf("\t\tcase 1: // the VARIABLE form, and the only form this one is newer than\n\t\t\treturn tableFixedRefuse(report, \"previous_form\")\n")
-	g.pf("\t\tcase 2: // the MESSAGE form: a form this build carries, through another surface\n\t\t\treturn tableFixedRefuse(report, \"message_form_as_file\")\n")
+	g.pf("\t\tcase 1: // the VARIABLE form, and the only form this one is newer than\n\t\t\treturn tableFixedRefuse(report, TableFixedReasonPreviousForm)\n")
+	g.pf("\t\tcase 2: // the MESSAGE form: a form this build carries, through another surface\n\t\t\treturn tableFixedRefuse(report, TableFixedReasonMessageFormAsFile)\n")
 	g.pf("\t\t}\n")
-	g.pf("\t\treturn tableFixedRefuse(report, \"newer_form\")\n\t}\n")
+	g.pf("\t\treturn tableFixedRefuse(report, TableFixedReasonNewerForm)\n\t}\n")
 	// STEP 2: the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which
 	// are REFUSED and not ignored so they stay spendable later (§3.4, §5.3).
-	g.pf("\tif len(data) < TableFixedHeaderBytes+4 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
-	g.pf("\tfor _, reserved := range data[1:TableFixedHashAt] {\n\t\tif reserved != 0 {\n\t\t\treport.Malformed = true\n\t\t\treturn -1\n\t\t}\n\t}\n")
+	g.pf("\tif len(data) < TableFixedHeaderBytes+4 {\n\t\treturn tableFixedDamaged(report, TableFixedReasonTruncated)\n\t}\n")
+	g.pf("\tfor _, reserved := range data[1:TableFixedHashAt] {\n\t\tif reserved != 0 {\n\t\t\treturn tableFixedDamaged(report, TableFixedReasonReservedNotZero)\n\t\t}\n\t}\n")
 	// STEP 3: the layout's length, and the bytes behind it.
 	g.pf("\tlayoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])\n")
-	g.pf("\tif int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t}\n")
+	g.pf("\tif int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {\n\t\treturn tableFixedRefuse(report, TableFixedReasonLayoutMalformed)\n\t}\n")
 	g.pf("\tlayout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]\n")
 	// STEP 4: THE HEADER'S HASH, TAKEN AS GIVEN. Nothing is recomputed from the
 	// wire: the definitions digest is not on the wire, so the hash cannot be
@@ -900,14 +904,14 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// layout_newer — ship the reader; below the floor is layout_unsupported —
 	// upgrade the client. Both report THE FILE'S hash and nothing else.
 	g.pf("\tpick := tableFixedSelect(%sFixedKnown, hash)\n", st.Name)
-	g.pf("\tif pick < 0 {\n\t\treturn tableFixedRefuseHash(report, \"layout_newer\", hash)\n\t}\n")
-	g.pf("\tif pick < %sFixedFloor {\n\t\treturn tableFixedRefuseHash(report, \"layout_unsupported\", hash)\n\t}\n", st.Name)
+	g.pf("\tif pick < 0 {\n\t\treturn tableFixedRefuseHash(report, TableFixedReasonLayoutNewer, hash)\n\t}\n")
+	g.pf("\tif pick < %sFixedFloor {\n\t\treturn tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)\n\t}\n", st.Name)
 	// STEP 7: a known hash is read under THE LOCK'S layout bytes. A difference
 	// is one name — a lie about a known version — and the seven §1.1 rules do
 	// not run at read time at all: no stranger's layout is ever walked.
 	g.pf("\tknown := &%sFixedKnown[pick]\n", st.Name)
-	g.pf("\tif int(layoutBytes) != len(known.Layout) {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t}\n")
-	g.pf("\tfor i := range layout {\n\t\tif layout[i] != known.Layout[i] {\n\t\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t\t}\n\t}\n")
+	g.pf("\tif int(layoutBytes) != len(known.Layout) {\n\t\treturn tableFixedRefuse(report, TableFixedReasonLayoutMalformed)\n\t}\n")
+	g.pf("\tfor i := range layout {\n\t\tif layout[i] != known.Layout[i] {\n\t\t\treturn tableFixedRefuse(report, TableFixedReasonLayoutMalformed)\n\t\t}\n\t}\n")
 	// STEP 8: the plan this peer resolves to, and the record size FROM THE LOCK.
 	g.pf("\tentries := %sFixedPlan.Entries\n", st.Name)
 	g.pf("\tentryCount := %sFixedPlan.Count\n", st.Name)
@@ -924,13 +928,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// THE SELECTED PLAN'S ENTRY COUNT IS CHECKED EITHER WAY (§5.9 #5, #45):
 	// the identity lane is a plan too, and a caller's short plan slice owes the
 	// same name there as it does for a lineage entry.
-	g.pf("\tif int64(entryCount) > int64(len(plan)) {\n\t\treturn tableFixedRefuse(report, \"plan_too_large\")\n\t}\n")
+	g.pf("\tif int64(entryCount) > int64(len(plan)) {\n\t\treturn tableFixedRefuse(report, TableFixedReasonPlanTooLarge)\n\t}\n")
 	// STEP 9 and STEP 10.
 	g.pf("\tat := data[TableFixedHeaderBytes+4+layoutBytes:]\n")
 	g.pf("\trest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)\n")
-	g.pf("\tif recordBytes <= 8 || rest%%recordBytes != 0 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
+	g.pf("\tif recordBytes <= 8 || rest%%recordBytes != 0 {\n\t\treturn tableFixedDamaged(report, TableFixedReasonTruncated)\n\t}\n")
 	g.pf("\tn := rest / recordBytes\n")
-	g.pf("\tif n > int64(len(values)) {\n\t\treturn tableFixedRefuse(report, \"batch_too_large\")\n\t}\n")
+	g.pf("\tif n > int64(len(values)) {\n\t\treturn tableFixedRefuse(report, TableFixedReasonBatchTooLarge)\n\t}\n")
 	// Prefill is the dest ranges the winning plan does not land, copied from
 	// one Reset image. Identity's list on Go is the ABI padding and unselected
 	// arms. There is no identity flag in the record loop.
@@ -945,7 +949,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// STEP 11: per record, THE HASH CHECK FIRST — before the prefill, so a
 	// refusal has written not one destination byte (§5.3, §5.8 row 9).
 	g.pf("\tfor k := int64(0); k < n; k++ {\n")
-	g.pf("\t\tif tableFixedGet64(at) != hash {\n\t\t\treturn tableFixedRefuse(report, \"no_layout\")\n\t\t}\n")
+	g.pf("\t\tif tableFixedGet64(at) != hash {\n\t\t\treturn tableFixedRefuse(report, TableFixedReasonNoLayout)\n\t\t}\n")
 	// AND THE TEXT CONTENT, BEFORE THE PREFILL: §5.8's REFUSE "is total: no
 	// counter moves, nothing is decoded, and not one destination byte is
 	// written — the prefill included", so the record's text is checked ahead of

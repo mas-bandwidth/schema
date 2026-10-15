@@ -3734,6 +3734,22 @@ trailer returns `TableRefuseWireDamaged` (`wire_damaged`) from
 `LoadMeasureReason`; this is distinct from a format refusal and from the
 accelerator-only `truncated` reason.
 
+A fixed table's `<T>FixedLoad` names every `-1` in `report.Reason`, and the
+names are exported string constants, so compare against the constant rather
+than a literal (docs/FIXED-FORM-ALGORITHM.md §5.3). A refusal sets
+`report.Verdict` to `TableOpenRefused` beside one of
+`TableFixedReasonPreviousForm`, `TableFixedReasonMessageFormAsFile`,
+`TableFixedReasonNewerForm`, `TableFixedReasonLayoutMalformed`,
+`TableFixedReasonLayoutNewer`, `TableFixedReasonLayoutUnsupported`,
+`TableFixedReasonLayoutRecordTooLarge`, `TableFixedReasonPlanTooLarge`,
+`TableFixedReasonBatchTooLarge`, `TableFixedReasonNoLayout` or
+`TableFixedReasonTextIllFormed`. Framing damage (a file with no first byte,
+shorter than its twenty-byte header, with a nonzero reserved byte, or with a
+tail that is not a whole number of records) is not a refusal: it sets
+`report.Malformed` beside `TableFixedReasonTruncated` (`truncated`) or
+`TableFixedReasonReservedNotZero` (`reserved_not_zero`). The reason is never
+empty on a `-1`.
+
 This complete example uses the `tables/pointers` generated package; `make
 tables-go-usage` runs it directly from this page.
 

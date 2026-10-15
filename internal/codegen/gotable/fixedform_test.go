@@ -73,7 +73,7 @@ fixed table Point {
 	// SELECT BY HASH, never parse a stranger (docs/FIXED-FORM-ALGORITHM.md §5.3):
 	// the lineage and the floor are static data, and the two answers an
 	// unmatched hash owes are distinct.
-	for _, want := range []string{"tableFixedSelect(PointFixedKnown", "layout_newer", "PointFixedFloor", "layout_unsupported"} {
+	for _, want := range []string{"tableFixedSelect(PointFixedKnown", "TableFixedReasonLayoutNewer", "PointFixedFloor", "TableFixedReasonLayoutUnsupported"} {
 		if !strings.Contains(fixedLoad, want) {
 			t.Errorf("FixedLoad does not select by hash: missing %q", want)
 		}
@@ -129,7 +129,7 @@ fixed table Point {
 		t.Error("PointLoad, the form-1 entry point, refuses form 1")
 	}
 	fixedLoad := funcSource(body, "func PointFixedLoad(")
-	if !strings.Contains(fixedLoad, "previous_form") || !strings.Contains(fixedLoad, "tableFixedRefuse") {
+	if !strings.Contains(fixedLoad, "TableFixedReasonPreviousForm") || !strings.Contains(fixedLoad, "tableFixedRefuse") {
 		t.Error("PointFixedLoad does not name a form-1 file previous_form")
 	}
 }
@@ -2343,7 +2343,8 @@ func TestWideText(t *testing.T) {
 // layout LONGER than the bytes it carries is refused BY NAME — layout_malformed
 // — and is not the `malformed` residue its siblings answer with: F7 is a file
 // under the twenty-byte header, F8 a record region that is not whole records,
-// both of which set report.Malformed and leave Reason UNTOUCHED. The
+// both of which set report.Malformed beside the name `truncated` (§5.3's
+// DAMAGED) and are never refused. The
 // declaration is the u32 at TableFixedHeaderBytes, and the law is
 // docs/FIXED-FORM-ALGORITHM.md §2's load table step 3: `L := LE(4, b+16)`; if
 // `20 + L > bytes`, `REFUSE layout_malformed`. The site is the step-3 guard
