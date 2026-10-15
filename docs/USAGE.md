@@ -95,6 +95,27 @@ Run the same command with `--lang c`, `--lang cs`, `--lang elixir`, `--lang go`,
 language — writing the
 **same bits**.
 
+### The table surface: `generate --lang go --surface <list>`
+
+`schema generate --lang go --surface <list>` emits only the table surfaces the
+list names, for a unit that declares tables. `<list>` is a comma-separated
+subset of `wire, fixed, json, cook, block, view, message, retain`:
+- `wire` — the table-wire codecs (`<Name>Measure`/`<Name>Save`/`<Name>Load`)
+  and the record storage, in `<Base>Table.go`;
+- `fixed` — the fixed form's reader (SPEC-TABLES.md §3.4);
+- `json` — the text form, `<Base>TableJson.go`;
+- `cook` — the cooked form, `<Base>Cook.go` and the cook write surface;
+- `block` — the block accelerator, `<Base>Block.go`;
+- `view` — the reflection descriptors and the view file, `<Base>View.go`;
+- `message` — the message form's read/write;
+- `retain` — the retain record surface.
+
+The default (all eight) is byte-identical to today's output. A surface's
+dependencies ride with it, so naming one names the functions and files it needs
+and nothing else: `json`, `cook`, `block`, `view`, `message` and `retain` each
+need `wire`; `fixed` needs `wire`; `view` and `block` need `fixed`; `retain`
+needs `message`. Any other `--lang` refuses `--surface` by name.
+
 ---
 
 ## Declarations

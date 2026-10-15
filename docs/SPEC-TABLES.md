@@ -11173,6 +11173,16 @@ vocabulary a table carries is §8.1's and rides where it always did. The gate
 asks "did the registry leak out of its file?", never "is there a descriptor
 here?" — §2.2's own distinction between machinery and columns.
 
+**The Go target lets a generate name its surfaces.** `schema generate --lang go
+--surface <list>` emits only the surfaces the list names — `wire, fixed, json,
+cook, block, view, message, retain` — and the default (all) is byte-identical
+to unconstrained output. A named surface pulls the surfaces it depends on:
+`json`, `cook`, `block`, `view`, `message` and `retain` each need `wire`;
+`fixed` needs `wire`; `view` and `block` need `fixed`; `retain` needs
+`message`. Any other `--lang` refuses `--surface` by name. What a generate
+emits is then a function of what it asked for, so a build that needs only wire
+pays for only wire (USAGE.md).
+
 ### 8.5 On the side
 
 **The view is one generated file per UNIT, not per schema file** —
