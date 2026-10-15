@@ -11165,13 +11165,24 @@ is why this file exists rather than a header addition (§8.5): a translation
 unit nobody compiles costs a build nothing, while a header everybody
 includes costs every one of them.
 
-**The gate, in §2.2's shape**: not one REGISTRY symbol appears in any
-generated file except the view pair. The registry's symbols are the six
-§8.3 names — `UnitView`, `UnitViewInfo`, `ViewType`, `ViewVocabulary`,
-`ViewVariant`, `ViewConstant` — and nothing else, because the descriptor
-vocabulary a table carries is §8.1's and rides where it always did. The gate
-asks "did the registry leak out of its file?", never "is there a descriptor
-here?" — §2.2's own distinction between machinery and columns.
+ **The gate, in §2.2's shape**: not one REGISTRY symbol appears in any
+ generated file except the view pair. The registry's symbols are the six
+ §8.3 names — `UnitView`, `UnitViewInfo`, `ViewType`, `ViewVocabulary`,
+ `ViewVariant`, `ViewConstant` — and nothing else, because the descriptor
+ vocabulary a table carries is §8.1's and rides where it always did. The gate
+ asks "did the registry leak out of its file?", never "is there a descriptor
+ here?" — §2.2's own distinction between machinery and columns.
+
+**`generate --lang go --surface <list>` narrows what the Go target emits.**
+ The list is comma-separated and names surfaces from: `wire`, `fixed`,
+ `json`, `cook`, `block`, `view`, `message` and `retain`. Only the files and
+ functions the named surfaces need are emitted, with dependencies resolved:
+ `json` implies `wire` (its round-trip walks the wire codecs), `message` and
+ `cook` imply `wire`, and `view` implies the descriptors the tables already
+ carry. The default is the full set, byte-identical to a generate that names
+ no `--surface`. Any other `--lang` refuses the flag by name; this flag is
+ Go-only for now. The emitted surface's files and functions are exactly the
+ ones the list needs, no more and no fewer.
 
 ### 8.5 On the side
 
