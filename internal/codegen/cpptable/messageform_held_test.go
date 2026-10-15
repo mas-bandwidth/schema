@@ -150,7 +150,7 @@ func cppHeldProbe(t *testing.T, unitPath, body string) ([]byte, error) {
 }
 
 // "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
-// decoded, no counter moves and `malformed` does not fire." (docs/SPEC-TABLES.md §3.3)
+// decoded, no counter moves and `malformed` does not fire." (docs/SPEC-TABLES.md §3.3).
 const cppHeldNoVocabulary = `
     LoginRequest v; LoginRequestReset( v );
     uint8_t buf[512];
@@ -173,7 +173,7 @@ const cppHeldNoVocabulary = `
 // replace or amend anything." and "REFUSAL IS TERMINAL, and a refused FIRST
 // announcement is the one the connection gets ... every announcement after it
 // is refused as `second_announcement` ... every body after it is refused for
-// want of one." (docs/SPEC-TABLES.md §3.3)
+// want of one." (docs/SPEC-TABLES.md §3.3).
 const cppHeldSecondAnnouncement = `
     uint8_t ann[1 << 16];
     if ( Announce( ann, (int64_t) sizeof( ann ) ) != AnnounceMeasure() )
@@ -210,7 +210,7 @@ const cppHeldSecondAnnouncement = `
 `
 
 // "`vocabulary_too_large` covers both bounds, the entry count and the
-// vocabulary's bytes." (docs/SPEC-TABLES.md §3.3)
+// vocabulary's bytes." (docs/SPEC-TABLES.md §3.3).
 const cppHeldVocabularyTooLarge = `
     uint8_t ann[1 << 16];
     Announce( ann, (int64_t) sizeof( ann ) );
@@ -230,7 +230,7 @@ const cppHeldVocabularyTooLarge = `
 // "THE ANNOUNCEMENT READS TOLERANTLY, WITH EXACTLY TWO STRICT CHECKS: the build
 // version present, exactly once, kind `9`, eight bytes wide, and the vocabulary
 // present, exactly once, kind `14`, element kind `6` ... A FAILED STRICT CHECK
-// IS MALFORMED, not a refusal". (docs/SPEC-TABLES.md §3.3)
+// IS MALFORMED, not a refusal". (docs/SPEC-TABLES.md §3.3).
 const cppHeldStrictChecks = `
     // Assemble a valid announcement around the given field bytes — form byte,
     // fields, the ref-0 terminator, and the two-entry id table (build version
@@ -310,7 +310,7 @@ const cppHeldStrictChecks = `
 // and `SaveMessages` both refuse and return `-1`" and "`M` ABOVE THE CALLER'S
 // CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME ... The reader sets the
 // returned count to the wire's `M` before it returns the refusal."
-// (docs/SPEC-TABLES.md §3.3)
+// (docs/SPEC-TABLES.md §3.3).
 const cppHeldBatchTooLarge = `
     LoginRequest huge[kTableMessageBatchMax + 1];
     for ( int64_t i = 0; i < kTableMessageBatchMax + 1; ++i ) LoginRequestReset( huge[i] );
@@ -342,7 +342,7 @@ const cppHeldBatchTooLarge = `
 
 // "DAMAGE INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`. The returned count
 // states `k - 1`, ONE `malformed` counts, and nothing at or after body `k` is
-// read." (docs/SPEC-TABLES.md §3.3)
+// read." (docs/SPEC-TABLES.md §3.3).
 const cppHeldDamageInsideBody = `
     TableMessageEntry entries[kTableMessageEntriesHere];
     TableVocabulary vocabulary( entries, kTableMessageEntriesHere );
@@ -364,7 +364,7 @@ const cppHeldDamageInsideBody = `
 
 // "BYTES AFTER THE PAD ARE MALFORMED ... the batch ends at the pad to the byte
 // boundary, and a buffer with bytes left over describes no batch this reader
-// can name." (docs/SPEC-TABLES.md §3.3)
+// can name." (docs/SPEC-TABLES.md §3.3).
 const cppHeldBytesAfterPad = `
     TableMessageEntry entries[kTableMessageEntriesHere];
     TableVocabulary vocabulary( entries, kTableMessageEntriesHere );
@@ -387,7 +387,7 @@ const cppHeldBytesAfterPad = `
 
 // "The FORM BYTE is a whole byte and is read FIRST ... a form a reader does not
 // know is a REFUSAL by name and never damage." and "a reader handed a form-`2`
-// wire where a file was expected refuses by name." (docs/SPEC-TABLES.md §3.3)
+// wire where a file was expected refuses by name." (docs/SPEC-TABLES.md §3.3).
 const cppHeldFormByte = `
     LoginRequest storage[1];
     for ( uint8_t form = 1; form <= 6; form += 5 )
@@ -658,7 +658,6 @@ func TestMessageFormHeldCPP(t *testing.T) {
 		{"form_byte", cppHeldFormByte},
 	}
 	for _, clause := range clauses {
-		clause := clause
 		t.Run(clause.name, func(t *testing.T) {
 			t.Parallel()
 			out, err := cppHeldProbe(t, unitPath, clause.body)
@@ -691,7 +690,6 @@ func TestMessageFormHeldCPP(t *testing.T) {
 	}
 
 	for _, row := range rows {
-		row := row
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
 			conn, ok := connections[row.connection]
@@ -703,11 +701,12 @@ func TestMessageFormHeldCPP(t *testing.T) {
 				t.Fatalf("manifest row %q names unit %q with no unit line", row.name, conn.unit)
 			}
 			var body string
-			if row.connectionRow {
+			switch {
+			case row.connectionRow:
 				body = cppConnectionBody(filepath.Join(root, conn.path))
-			} else if ir.VariableTables(u)[row.root] {
+			case ir.VariableTables(u)[row.root]:
 				body = cppVariableMessageBody(row.root, filepath.Join(root, conn.path), filepath.Join(root, row.file), filepath.Join(root, row.batch))
-			} else {
+			default:
 				body = cppMessageBody(row.root, filepath.Join(root, conn.path), filepath.Join(root, row.file), filepath.Join(root, row.batch))
 			}
 			out, err := cppHeldRun(t, u, body)

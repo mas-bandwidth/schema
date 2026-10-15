@@ -336,7 +336,7 @@ tables-dart-versioning: tables-fixedform-corpus
 .PHONY: tables-dart-fixed-form-negative-control
 tables-dart-fixed-form-negative-control: bin/schema build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp test/tables/FXW.schema
 	@rm -rf build/dart-fixed-nc && mkdir -p build/dart-fixed-nc
-	@sed 's|val + "." + name + "Length", "Endian.little"}, ";")|val + "." + name + "Length + 1", "Endian.little"}, ";") // SABOTAGED|' \
+	@sed 's|fixedOff(base, at), length, "Endian.little"}, ";")|fixedOff(base, at), length + " + 1", "Endian.little"}, ";") // SABOTAGED|' \
 		internal/codegen/darttable/fixeddart.go > build/dart-fixed-nc/fixeddart.go.txt
 	@grep -q SABOTAGED build/dart-fixed-nc/fixeddart.go.txt || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }

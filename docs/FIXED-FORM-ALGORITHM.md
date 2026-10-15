@@ -240,7 +240,9 @@ struct Op {
     guard : u32   // the offset of the TAG BYTE this entry is conditional on, or NO_GUARD
     op : u8 ; arg : u64 ; meta : u8 ; dstsize : u8 ; sign : u8 ; argw : u8
     guard2 : u32 ; arg2 : u64 ; argw2 : u8   // the OUTER tag, CONJOINED with guard/arg
+    guards : u32 ; gcount : u32               // THE GUARD CHAIN: offset+count into the plan's pool of links
 }
+struct GuardLink { guard : u32 ; arg : u64 ; argw : u8 }   // one link of a chain, OUTERMOST FIRST in the pool
 // arg is THE GUARD'S ORDINAL and nothing else; meta is THE OP'S OWN ARGUMENT (a text flavour).
 ```
 
@@ -252,8 +254,23 @@ two-byte tag, and a byte lane truncated arm 256 into arm 1's guard value — arm
 `guard`/`arg`**: the entry runs when BOTH tags hold their ordinal. The outer tag stamped OVER the inner one
 fired every inner arm the moment the outer one rode, the last arm winning; the inner tag alone landed an
 inner arm's bytes beneath an outer arm that never rode. `NO_GUARD` on `guard2` is "no second condition",
-which is every entry that is not nested. A THIRD nested union has a third condition two lanes cannot carry:
-the compiled plan REFUSES BY NAME rather than drop one, and a guard CHAIN is the follow-on.
+which is every entry that is not nested.
+
+**THE GUARD CHAIN (R28): the plan entry carries offset+count — `guards`, `gcount` — into a POOL of
+`(guard, arg, argw)` links, OUTERMOST FIRST, and the only bound on it is the layout's 64.** The pool is laid
+once per plan beside its entries; the first link of a chain is the outermost union's tag and the last is the
+innermost's. **An arm inside an arm answers to the OUTER tag**, and to every tag outside that one: the entry
+runs only when EVERY link holds its ordinal, each compared at its own width. A chain is laid ONCE PER ARM,
+on the way into it — the arm's own tag `const` included — and popped on the way out, and entries under the
+same chain share one slice of the pool, so two entries coalesce only when their chains are the same slice.
+`gcount` `0` is an unguarded entry. **The bound is the layout's nesting bound of 64 (§1.1), never a count of
+unions**: every union on the path costs at least one level, so no chain the layout admits is longer than
+64, and a deeper one is REFUSED BY NAME — `layout_too_deep` from a stranger's layout, and at build time the
+depth bound turns the table away naming it — never truncated to its inner links. **The two lanes are the
+special case**: `guard`/`arg`/`argw` and `guard2`/`arg2`/`argw2` stay the chain's INNERMOST two links, a
+chain of one or two needs nothing else, and the loop walks the pool only for a chain past two. A leg whose
+COMPILED plan still carries only the two lanes refuses a third nested union there by name rather than drop
+a link (§5.8 row 6).
 
 **`arg` and `meta` ARE TWO LANES BECAUSE THEY ARE TWO FACTS, and must never share one.** (fix 12) A `string(N)`
 under a union arm needs both, and one lane gives whichever was stamped last: a byte string under arm `2` read as
@@ -1165,7 +1182,7 @@ each row the bill's ruling is the second column, and **the reference owes this**
 | 3 | a plan for an older hash is compiled AT FIRST LOAD from the trusted bytes and kept in a caller-supplied cache keyed by hash | `COMPILE` lays every plan down at BUILD TIME (bill §12.5); nothing compiles at run time, and there is no cache to miss |
 | 4 | the VARIANT and ARM counts are the READER's, and the reader's own clamp runs over every bounded field beside the writer's ranges | the bounds are the WRITER's, per plan (bill §12.5). **The `count` op's bound LANDED** — `e.size = their_n`, the writer's, at `cpptable/fixedruntime.go` — and the writer's RANGES are carried per lineage entry (`TableFixedKnownRange`) and clamped first. What still owes, on the reference and on every port: the variant and arm counts a `None` is decided by |
 | 5 | ~~`arg`, the guard's ordinal, is still a BYTE lane~~ **LANDED** (rowan/twin-full-width-lanes): `arg` and `arg2` are `uint64_t` on both twins, the emitted static plan carries them full width, and the compare is at the tag's own width | no byte lane anywhere (bill §12.7): the ordinal is full width on both sides |
-| 6 | ~~a nested union's arm entries carry the INNER tag's guard only, and its `None` entry carries the outer guard at the inner tag's WIDTH~~ **LANDED** (rowan/twin-full-width-lanes): the two tags are CONJOINED on a second guard lane — in ir's identity walk, in both emitters and in both compiled walks — and `None` carries the outer guard at the OUTER width. A THIRD nested union refuses by name; the guard CHAIN is the follow-on | an arm inside an arm answers to the OUTER tag too (§4.1) |
+| 6 | ~~a nested union's arm entries carry the INNER tag's guard only, and its `None` entry carries the outer guard at the inner tag's WIDTH~~ **LANDED** (rowan/twin-full-width-lanes): the two tags are CONJOINED on a second guard lane — in ir's identity walk, in both emitters and in both compiled walks — and `None` carries the outer guard at the OUTER width. The follow-on has LANDED too: THE GUARD CHAIN of §4.1 (R28) — offset+count into a pool of `(guard, arg, argw)` links, outermost first, the layout's 64 the only bound — so a third nested union is carried, not refused; only a leg whose compiled plan is still two-lane refuses it there, by name | an arm inside an arm answers to the OUTER tag too, and to every tag outside it: the guard chain (§4.1) |
 | 7 | ~~the `ordinal` op reads through a 32-BIT temporary (`uint32_t raw`)~~ **LANDED** (rowan/twin-full-width-lanes): a 64-bit temporary on both twins, and the `const` op lands a tag of that width out of a temporary rather than out of the four-byte `aux` lane beside its guard | a 64-bit temporary: an ordinal width of `8` is admissible (§4.5) |
 | 8 | ill-formed text zeroes the field, restores its default and counts `malformed` | a content violation REFUSES BY NAME (§4.5, fix 11) |
 | 9 | the prefill runs BEFORE the per-record hash check, so `no_layout` has already written the caller's storage | the hash check is first; REFUSE writes nothing (§5.3) |

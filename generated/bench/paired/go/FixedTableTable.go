@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — the TABLE wire (mas-bandwidth/schema docs/SPEC-TABLES.md): evolution-tolerant, neutral
+// package bench — the TABLE wire (docs/SPEC-TABLES.md): evolution-tolerant, neutral
 // bytes. Wide values use serialize.go storage. Tables version by field id, never by the
 // unit's protocol id.
 
@@ -14,7 +14,7 @@ import (
 )
 
 // FixedTable — TABLE-wire storage: exported fields, every buffer inside the value,
-// declared defaults restored by FixedTableReset (mas-bandwidth/schema docs/SPEC-TABLES.md).
+// declared defaults restored by FixedTableReset (docs/SPEC-TABLES.md).
 type FixedTable struct {
 	Value BenchMixed
 }
@@ -119,11 +119,11 @@ func FixedTableLoadBody(r *TableReader, value *FixedTable) bool {
 			r.Report.Malformed = true
 			return false
 		}
-		kind := r.Get8()
 		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
 			r.Report.Malformed = true
 			return false
 		}
+		kind := r.Get8()
 		switch fieldID {
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 13 {
@@ -157,7 +157,7 @@ func FixedTableLoadBody(r *TableReader, value *FixedTable) bool {
 // FixedTable also carries the FIXED form (form 3): FixedTableFixedLoad reads that one and
 // names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
 // point and reads form 1, whether or not the table was DECLARED fixed
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// (docs/SPEC-TABLES.md §3.4, §15).
 func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -360,13 +360,13 @@ func FixedTableLoadMessages(values []FixedTable, vocabulary *TableVocabulary, da
 	return count, tableMessageBatchClose(&r)
 }
 
-// ---- THE FIXED FORM, form byte 3 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4) ----
+// ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
 //
 // A record is an eight-byte hash of the writer's layout and then the values
 // in declared order, every field at its declared storage width. The writer is
 // constant-offset stores; the reader is ONE loop over ONE plan.
 
-func MixedEntityFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedEntityFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -484,7 +484,7 @@ func MixedEntityFixedWriteBody(b []byte, value *MixedEntity) {
 	}
 }
 
-func MixedStatFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedStatFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -506,7 +506,7 @@ func MixedStatFixedWriteBody(b []byte, value *MixedStat) {
 	tableFixedPut32(b[4:], uint32(value.Delta))
 }
 
-func MixedHitEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedHitEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -548,7 +548,7 @@ func MixedHitEventFixedWriteBody(b []byte, value *MixedHitEvent) {
 	}
 }
 
-func MixedChatEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedChatEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -570,7 +570,7 @@ func MixedChatEventFixedWriteBody(b []byte, value *MixedChatEvent) {
 	tableFixedPut32(b[4:], uint32(value.Speaker))
 }
 
-func MixedPickupEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedPickupEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -592,7 +592,7 @@ func MixedPickupEventFixedWriteBody(b []byte, value *MixedPickupEvent) {
 	tableFixedPut32(b[4:], uint32(value.Amount))
 }
 
-func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func BenchMixedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -653,14 +653,14 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	for i := uint32(0); i < 8; i++ {
 		es := src + 56 + i*51
 		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Entities)) + i*uint32(unsafe.Sizeof(MixedEntity{}))
-		n += MixedEntityFixedLeaves(out[n:], es, ed)
+		n += MixedEntityFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	out[n] = TableFixedEntry{Src: src + 464, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.StatsCount)), Size: 80, Guard: tableFixedNoGuard, Op: tableFixedCount} // stats count
 	n++
 	for i := uint32(0); i < 80; i++ {
 		es := src + 468 + i*8
 		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Stats)) + i*uint32(unsafe.Sizeof(MixedStat{}))
-		n += MixedStatFixedLeaves(out[n:], es, ed)
+		n += MixedStatFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	{
 		es := src + 1108
@@ -669,47 +669,23 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 		n++
 		{ // arm hit, ordinal 1
 			guardAt := n
-			n += MixedHitEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Hit)))
+			n += MixedHitEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Hit)))
 			for q := guardAt; q < n; q++ {
-				if out[q].Guard == tableFixedNoGuard {
-					out[q].Guard = es
-					out[q].Arg = 1
-					out[q].ArgW = 1
-				} else {
-					out[q].Guard2 = es
-					out[q].Arg2 = 1
-					out[q].ArgW2 = 1
-				}
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 1, ArgW: 1})
 			}
 		}
 		{ // arm chat, ordinal 2
 			guardAt := n
-			n += MixedChatEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Chat)))
+			n += MixedChatEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Chat)))
 			for q := guardAt; q < n; q++ {
-				if out[q].Guard == tableFixedNoGuard {
-					out[q].Guard = es
-					out[q].Arg = 2
-					out[q].ArgW = 1
-				} else {
-					out[q].Guard2 = es
-					out[q].Arg2 = 2
-					out[q].ArgW2 = 1
-				}
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 2, ArgW: 1})
 			}
 		}
 		{ // arm pickup, ordinal 3
 			guardAt := n
-			n += MixedPickupEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Pickup)))
+			n += MixedPickupEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Pickup)))
 			for q := guardAt; q < n; q++ {
-				if out[q].Guard == tableFixedNoGuard {
-					out[q].Guard = es
-					out[q].Arg = 3
-					out[q].ArgW = 1
-				} else {
-					out[q].Guard2 = es
-					out[q].Arg2 = 3
-					out[q].ArgW2 = 1
-				}
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 3, ArgW: 1})
 			}
 		}
 	}
@@ -852,12 +828,12 @@ func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 	tableFixedPut32(b[1232:], uint32(value.IdleTicks))
 }
 
-func FixedTableFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func FixedTableFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
 		ed := dst + uint32(unsafe.Offsetof(FixedTable{}.Value))
-		n += BenchMixedFixedLeaves(out[n:], es, ed)
+		n += BenchMixedFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	return n
 }
@@ -1115,7 +1091,7 @@ func FixedTableFixedClampBody(value *FixedTable, clamped *int32) {
 	BenchMixedFixedClampBody(&value.Value, clamped)
 }
 
-// THE READ-SIDE BOUNDS (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
 // declared min and max, and an ORDINAL's set — a union tag past the arm
 // count, an enum ordinal past the enum's top value. Straight-line, after
 // the copy, over STORAGE, so the identity plan and a plan compiled from a
@@ -1396,20 +1372,6 @@ const FixedTableFixedFloor = 0
 // compiles on the load path (§5.8 row 3).
 var FixedTableFixedLineagePlans = tableFixedLineagePlans(FixedTableFixedKnown, FixedTableFixedLayout, FixedTableFixedDst, FixedTableFixedHash)
 
-// FixedTableFixedPlanMax is the plan capacity every layout this build reads needs:
-// the largest entry count over the identity plan and every lineage plan
-// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.2). A plan slice of this length never
-// refuses plan_too_large for a layout the lineage holds.
-var FixedTableFixedPlanMax = func() int32 {
-	m := FixedTableFixedPlan.Count
-	for _, lane := range FixedTableFixedLineagePlans {
-		if lane.Count > m {
-			m = lane.Count
-		}
-	}
-	return m
-}()
-
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
 func FixedTableFixedMeasure(count int64) int64 {
@@ -1522,15 +1484,13 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 		defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
 		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
 	}
-	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
-		if tableFixedGet64(scan) != hash {
+	for k := int64(0); k < n; k++ {
+		if tableFixedGet64(at) != hash {
 			return tableFixedRefuse(report, "no_layout")
 		}
-		if why := tableFixedTextRefusal(entries, entryCount, scan[8:recordBytes]); why != "" {
+		if why := tableFixedTextRefusal(entries, entryCount, at[8:recordBytes]); why != "" {
 			return tableFixedRefuse(report, why)
 		}
-	}
-	for k := int64(0); k < n; k++ {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -1550,9 +1510,9 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 	return n
 }
 
-// ---- reflection descriptors (tables only, mas-bandwidth/schema docs/SPEC-TABLES.md §8) ----
+// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
 
-// FixedTableTableFields is FixedTable's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
+// FixedTableTableFields is FixedTable's per-field reflection data (docs/SPEC-TABLES.md §8).
 var FixedTableTableFields = []TableFieldInfo{
 	{Name: "value", Json: "value", TypeName: "BenchMixed", DeclaredTypeName: "BenchMixed", Id: 0x7ce4fd9430e80cea, Kind: 13, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FixedTable{}.Value)), ElemSize: uint32(unsafe.Sizeof(FixedTable{}.Value)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
@@ -1567,7 +1527,7 @@ var FixedTableTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 }
 
-// FixedTableTableInfo is FixedTable's reflection descriptor (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
+// FixedTableTableInfo is FixedTable's reflection descriptor (docs/SPEC-TABLES.md §8).
 var FixedTableTableInfo TableTypeInfo
 
 func init() {

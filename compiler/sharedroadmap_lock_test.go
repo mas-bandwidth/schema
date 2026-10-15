@@ -44,7 +44,6 @@ func TestSharedRoadmapLock(t *testing.T) {
 		{id: "shared/S4", run: testSharedS4},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.id, func(t *testing.T) {
 			t.Parallel()
 			tc.run(t)

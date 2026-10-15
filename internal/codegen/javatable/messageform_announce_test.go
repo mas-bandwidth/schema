@@ -170,7 +170,6 @@ func TestMessageFormAnnounceJava(t *testing.T) {
 	t.Run("2.1", func(t *testing.T) {
 		t.Parallel()
 		for _, row := range announceRows(t) {
-			row := row
 			t.Run(row.unit, func(t *testing.T) {
 				t.Parallel()
 				// "Announce and AnnounceMeasure are a compile-time constant byte
@@ -192,7 +191,6 @@ func TestMessageFormAnnounceJava(t *testing.T) {
 	t.Run("2.2", func(t *testing.T) {
 		t.Parallel()
 		for _, row := range announceRows(t) {
-			row := row
 			t.Run(row.unit, func(t *testing.T) {
 				t.Parallel()
 				// "AnnounceRead accepts each of those files and fills

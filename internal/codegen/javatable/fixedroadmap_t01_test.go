@@ -169,7 +169,7 @@ func t01F4(t *testing.T, e *t01Env) {
 func t01F12(t *testing.T, e *t01Env) {
 	count := (e.layoutLen() - 4) / t01EntryBytes
 	offsets := []int{0} // the entry count word
-	for i := 0; i < count; i++ {
+	for i := range count {
 		base := 4 + i*t01EntryBytes
 		offsets = append(offsets, base, base+8, base+9, base+13) // id, kind, size, children
 	}
@@ -254,7 +254,7 @@ func t01R9(t *testing.T, e *t01Env) {
 		const depth = 70
 		layout := make([]byte, 4+t01EntryBytes*depth)
 		binary.LittleEndian.PutUint32(layout, depth)
-		for i := 0; i < depth; i++ {
+		for i := range depth {
 			at := 4 + i*t01EntryBytes
 			binary.LittleEndian.PutUint64(layout[at:], uint64(i+1))
 			layout[at+8] = 13
