@@ -862,6 +862,29 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\treturn m\n")
 	g.pf("}()\n\n")
 
+	// THE PREFILL IMAGE AND THE HOLES ARE PER PLAN AND COMPUTED ONCE
+	// (docs/FIXED-FORM-ALGORITHM.md §4.3): the image is the table's own fresh
+	// value, and each winning plan's holes are the unwritten ranges of it —
+	// both constants on the load path, never per call.
+	g.pf("// The prefill image and the holes are per plan and computed once (§4.3),\n")
+	g.pf("// never per call: the image is the table's own fresh value, and each\n")
+	g.pf("// winning plan's holes are its unwritten ranges of that image.\n")
+	g.pf("var %sFixedDefault = func() []byte {\n", st.Name)
+	g.pf("\tvar def %s\n", st.Name)
+	g.pf("\t%sReset(&def)\n", st.Name)
+	g.pf("\treturn tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))\n")
+	g.pf("}()\n\n")
+	g.pf("var %sFixedIdentityHoles []tableFixedHole\n\n", st.Name)
+	g.pf("func init() {\n")
+	g.pf("\t%sFixedIdentityHoles = tableFixedHoles(%sFixedPlan.Entries, %sFixedPlan.Count, uint32(len(%sFixedDefault)))\n", st.Name, st.Name, st.Name, st.Name)
+	g.pf("\tfor i := range %sFixedLineagePlans {\n", st.Name)
+	g.pf("\t\tp := &%sFixedLineagePlans[i]\n", st.Name)
+	g.pf("\t\tif p.Why == \"\" && p.Count > 0 {\n")
+	g.pf("\t\t\tp.Holes = tableFixedHoles(p.Entries, p.Count, uint32(len(%sFixedDefault)))\n", st.Name)
+	g.pf("\t\t}\n")
+	g.pf("\t}\n")
+	g.pf("}\n\n")
+
 	g.pf("// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,\n")
 	g.pf("// then the layout behind its u32 length, then the records to the end of it.\n")
 	g.pf("func %sFixedMeasure(count int64) int64 {\n", st.Name)
@@ -934,12 +957,14 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// STEP 8: the plan this peer resolves to, and the record size FROM THE LOCK.
 	g.pf("\tentries := %sFixedPlan.Entries\n", st.Name)
 	g.pf("\tentryCount := %sFixedPlan.Count\n", st.Name)
+	g.pf("\tholes := %sFixedIdentityHoles\n", st.Name)
 	g.pf("\trecordBytes := known.Record\n")
 	g.pf("\tcensusUnknown, censusKind := int32(0), int32(0)\n")
 	g.pf("\tif hash != %sFixedHash {\n", st.Name)
 	g.pf("\t\tlane := &%sFixedLineagePlans[pick]\n", st.Name)
 	g.pf("\t\tif lane.Why != \"\" {\n\t\t\treturn tableFixedRefuse(report, lane.Why)\n\t\t}\n")
 	g.pf("\t\tentries, entryCount = lane.Entries, lane.Count\n")
+	g.pf("\t\tholes = lane.Holes\n")
 	g.pf("\t\t// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it\n")
 	g.pf("\t\t// lands only on a read that returns: REFUSE moves no counter.\n")
 	g.pf("\t\tcensusUnknown, censusKind = lane.Unknown, lane.KindMismatch\n")
@@ -954,17 +979,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\tif recordBytes <= 8 || rest%%recordBytes != 0 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
 	g.pf("\tn := rest / recordBytes\n")
 	g.pf("\tif n > int64(len(values)) {\n\t\treturn tableFixedRefuse(report, \"batch_too_large\")\n\t}\n")
-	// Prefill is the dest ranges the winning plan does not land, copied from
-	// one Reset image. Identity's list on Go is the ABI padding and unselected
-	// arms. There is no identity flag in the record loop.
-	g.pf("\tvar def %s\n", st.Name)
-	g.pf("\tvar defBytes []byte\n")
-	g.pf("\tvar holes []tableFixedHole\n")
-	g.pf("\tif n > 0 {\n")
-	g.pf("\t\t%sReset(&def)\n", st.Name)
-	g.pf("\t\tdefBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))\n")
-	g.pf("\t\tholes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))\n")
-	g.pf("\t}\n")
+	// THE PREFILL: the holes and the image are per plan and computed once
+	// (§4.3) — `holes` was selected with the plan above, and the image is
+	// `<T>FixedDefault`. There is no per-call work and no identity flag in the
+	// record loop.
 	// STEP 11: EVERY RECORD'S HASH AND TEXT FIRST, in a pass of its own ahead
 	// of the first prefill. REFUSE is total over the batch too: a refusal at
 	// record k leaves out[0..k-1] as untouched as out[k], so a hostile image is
@@ -982,7 +1000,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\tdst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))\n")
 	g.pf("\t\tfor i := range holes {\n")
 	g.pf("\t\t\th := holes[i]\n")
-	g.pf("\t\t\tcopy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])\n")
+	g.pf("\t\t\tcopy(dst[h.Off:h.Off+h.Size], %sFixedDefault[h.Off:h.Off+h.Size])\n", st.Name)
 	g.pf("\t\t}\n")
 	// THE RUN SEES ONE RECORD (§5.2). Handed `at[8:]` it saw every byte to the
 	// END OF THE FILE, so an entry past the writer's record read the NEXT

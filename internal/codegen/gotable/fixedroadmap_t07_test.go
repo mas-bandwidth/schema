@@ -151,18 +151,28 @@ func t07RuntimeCase(t *testing.T, op, next string) string {
 // loop". The prefill is the hole list, copied one hole at a time, and never a
 // whole-record copy that would clobber what the plan lands.
 func t07GoW9(t *testing.T) {
-	load := funcSource(t07Emitted(t), "func RootFixedLoad(")
+	module := t07Emitted(t)
+	load := funcSource(module, "func RootFixedLoad(")
 	if load == "" {
 		t.Fatal("RootFixedLoad is not emitted")
 	}
-	if !strings.Contains(load, "holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))") {
-		t.Error("W9: the prefill ranges are the plan's UNWRITTEN ranges (§4.3)")
+	// THE HOLES ARE PER PLAN AND COMPUTED ONCE (§4.3): identity's at init,
+	// each lineage lane's beside its plan; the load only SELECTS the winning
+	// plan's list — never builds one per call.
+	if !strings.Contains(load, "holes := RootFixedIdentityHoles") {
+		t.Error("W9: the identity prefill ranges are the plan's UNWRITTEN ranges (§4.3)")
 	}
-	if !strings.Contains(load, "copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])") {
+	if !strings.Contains(load, "holes = lane.Holes") {
+		t.Error("W9: a lineage plan's prefill ranges are its own UNWRITTEN ranges (§4.3)")
+	}
+	if !strings.Contains(module, "RootFixedIdentityHoles = tableFixedHoles(RootFixedPlan.Entries, RootFixedPlan.Count, uint32(len(RootFixedDefault)))") {
+		t.Error("W9: the identity plan's holes are computed once, never per call (§4.3)")
+	}
+	if !strings.Contains(load, "copy(dst[h.Off:h.Off+h.Size], RootFixedDefault[h.Off:h.Off+h.Size])") {
 		t.Error("W9: only the holes take the declared defaults (§4.3)")
 	}
-	if strings.Contains(load, "copy(dst, defBytes)") {
-		t.Error("W9: a whole-record prefill would overwrite the ranges the plan lands (§4.3)")
+	if strings.Contains(load, "copy(dst, RootFixedDefault)") || strings.Contains(load, "tableFixedHoles(entries, entryCount") {
+		t.Error("W9: a whole-record or per-call prefill would overwrite the ranges the plan lands (§4.3)")
 	}
 }
 

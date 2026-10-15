@@ -67,8 +67,11 @@ fixed table Point {
 	if fixedLoad == "" {
 		t.Fatal("PointFixedLoad was not emitted")
 	}
-	if !strings.Contains(fixedLoad, "tableFixedHoles") {
-		t.Error("compiled FixedLoad does not prefill the plan's holes")
+	if !strings.Contains(fixedLoad, "holes := PointFixedIdentityHoles") {
+		t.Error("compiled FixedLoad does not select the plan's prefill holes")
+	}
+	if !strings.Contains(body, "tableFixedHoles(PointFixedPlan.Entries, PointFixedPlan.Count,") {
+		t.Error("the identity plan's holes are not computed once (§4.3)")
 	}
 	// SELECT BY HASH, never parse a stranger (docs/FIXED-FORM-ALGORITHM.md §5.3):
 	// the lineage and the floor are static data, and the two answers an
@@ -84,8 +87,8 @@ fixed table Point {
 	if strings.Contains(fixedLoad, "PointReset(&values[k])") {
 		t.Error("identity still Reset's each record; prefill is the hole list")
 	}
-	if !strings.Contains(fixedLoad, "PointReset(&def)") {
-		t.Error("holes have no default image")
+	if !strings.Contains(body, "var PointFixedDefault = func() []byte {") || !strings.Contains(body, "PointReset(&def)") {
+		t.Error("holes have no default image computed once (§4.3)")
 	}
 	if !strings.Contains(fixedLoad, "tableFixedRun(") {
 		t.Error("FixedLoad does not walk the winning plan")

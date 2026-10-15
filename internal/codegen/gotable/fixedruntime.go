@@ -1378,6 +1378,10 @@ type tableFixedLineagePlan struct {
 	Unknown      int32
 	KindMismatch int32
 	Why          string
+	// Holes is this plan's prefill hole list, the unwritten ranges of the
+	// default image (docs/FIXED-FORM-ALGORITHM.md §4.3). It is computed once,
+	// at package init, never per call.
+	Holes []tableFixedHole
 }
 
 func tableFixedSelect(known []TableFixedKnownLayout, hash uint64) int32 {
