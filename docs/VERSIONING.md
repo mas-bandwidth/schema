@@ -351,6 +351,16 @@ build-version-mismatched. It does not refuse `unknown`, `widened` or
 the strict read would accept — a clean read, or one whose only counters are
 those three.
 
+**A fixed table's file can be refused before any counter exists**, and the
+refusal says what the reader knows. `layout_unsupported` is a layout the
+reader's lineage holds and has retired: upgrade the client. `layout_unknown` is
+a layout hash the lineage does not hold, reported with the file's hash and
+nothing else: it may be a newer writer's, an older layout nobody locked, or a
+damaged header, and it does not say which. `layout_newer` ("ship the reader")
+is reserved for a hash the lock lineage proves newer, and nothing on the wire
+or in the lock proves that today, so no reader answers it yet (SPEC-TABLES.md
+§21.3; Go is first, the other legs follow). A refused load moves no counter.
+
 **Two more counters ride on the same struct and stay zero unless a caller asks
 for them**: `retained` and `retain_lost`, the retain-unknown pair
 (SPEC-TABLES.md §6.6). They report on RETENTION and not on the read. A
