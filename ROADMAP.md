@@ -133,7 +133,7 @@ A leg that is red at the branch head holds its cells ❌ even where the row's te
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | fixed class on the table wire | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | optional fields ?T | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| enum-keyed arrays [E]T | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| enum-keyed arrays [E]T | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | text form: JSON in and out of a table | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | reflection descriptors | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | block form, read side | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -147,7 +147,7 @@ A leg that is red at the branch head holds its cells ❌ even where the row's te
 | unions whose arms are tables | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | arrays of pointers | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | arrays of unions | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| optional arrays | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| optional arrays | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | blobs (*bytes, *string) | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | the wire fuzzer gate | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | maps | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -163,7 +163,7 @@ A leg that is red at the branch head holds its cells ❌ even where the row's te
 | the unit registry, UnitView | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | cards: the sprint's card record as a variable table (tables/cards) | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| complete | 96% | 0% | 0% | 87% | 9% | 9% | 56% | 9% | 12% |
+| complete | 96% | 0% | 0% | 87% | 9% | 9% | 62% | 9% | 12% |
 
 [Source data](docs/roadmap.sexp)
 
