@@ -815,6 +815,21 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 
 	g.pf("var %sFixedPlan = tableFixedBuildPlan(%sFixedLeaves, %d)\n\n", st.Name, st.Name, leaves)
 
+	// THE PREFILL IS PER PLAN (docs/FIXED-FORM-ALGORITHM.md §4.3): the default
+	// image and the identity plan's hole list depend only on the plan the
+	// hash selects, never on the call, so both are computed once here, at
+	// init — the image as a Reset over one fresh value, the holes as the
+	// complement of the baked plan's unguarded writes — and a load call
+	// copies from them and computes nothing.
+	g.pf("func %sFixedPrefill() ([]byte, []tableFixedHole) {\n", st.Name)
+	g.pf("\tvar def %s\n", st.Name)
+	g.pf("\t%sReset(&def)\n", st.Name)
+	g.pf("\tdefBytes := make([]byte, unsafe.Sizeof(def))\n")
+	g.pf("\tcopy(defBytes, tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def)))\n")
+	g.pf("\treturn defBytes, tableFixedHoles(%sFixedPlan.Entries, %sFixedPlan.Count, uint32(len(defBytes)))\n", st.Name, st.Name)
+	g.pf("}\n\n")
+	g.pf("var %sFixedDefBytes, %sFixedIdentityHoles = %sFixedPrefill()\n\n", st.Name, st.Name, st.Name)
+
 	// THE LINEAGE, OLDEST FIRST, THE CURRENT LAYOUT LAST (§5.2). It is the
 	// build's data and never the wire's: a file is matched on its hash against
 	// these entries, and the layout it carries is COMPARED with the bytes the
@@ -835,9 +850,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("// the answer is layout_unsupported rather than layout_newer (§5.2).\n")
 	g.pf("const %sFixedFloor = %d\n\n", st.Name, floor)
 	g.pf("// One plan per lineage entry, laid down from THE LOCK's bytes: nothing\n")
-	g.pf("// compiles on the load path (§5.8 row 3).\n")
-	g.pf("var %sFixedLineagePlans = tableFixedLineagePlans(%sFixedKnown, %sFixedLayout, %sFixedDst, %sFixedHash)\n\n",
-		st.Name, st.Name, st.Name, st.Name, st.Name)
+	g.pf("// compiles on the load path (§5.8 row 3). Each lane's hole list is laid\n")
+	g.pf("// with its plan (§4.3), over the same per-plan default image.\n")
+	g.pf("var %sFixedLineagePlans = tableFixedLineagePlans(%sFixedKnown, %sFixedLayout, %sFixedDst, %sFixedHash, uint32(len(%sFixedDefBytes)))\n\n",
+		st.Name, st.Name, st.Name, st.Name, st.Name, st.Name)
 
 	g.pf("// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,\n")
 	g.pf("// then the layout behind its u32 length, then the records to the end of it.\n")
@@ -913,10 +929,19 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\tentryCount := %sFixedPlan.Count\n", st.Name)
 	g.pf("\trecordBytes := known.Record\n")
 	g.pf("\tcensusUnknown, censusKind := int32(0), int32(0)\n")
+	// THE PREFILL IS PER PLAN (§4.3): the default image and the hole list
+	// depend only on the plan the hash selects, never on the call, so both
+	// were computed once, at init, beside the plan they belong to — the image
+	// and the identity holes by the FixedPrefill emission above, a lineage
+	// lane's holes with its own plan — and this call copies from them, it
+	// never computes them.
+	g.pf("\tdefBytes := %sFixedDefBytes\n", st.Name)
+	g.pf("\tholes := %sFixedIdentityHoles\n", st.Name)
 	g.pf("\tif hash != %sFixedHash {\n", st.Name)
 	g.pf("\t\tlane := &%sFixedLineagePlans[pick]\n", st.Name)
 	g.pf("\t\tif lane.Why != \"\" {\n\t\t\treturn tableFixedRefuse(report, lane.Why)\n\t\t}\n")
 	g.pf("\t\tentries, entryCount = lane.Entries, lane.Count\n")
+	g.pf("\t\tholes = lane.Holes\n")
 	g.pf("\t\t// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it\n")
 	g.pf("\t\t// lands only on a read that returns: REFUSE moves no counter.\n")
 	g.pf("\t\tcensusUnknown, censusKind = lane.Unknown, lane.KindMismatch\n")
@@ -932,16 +957,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\tn := rest / recordBytes\n")
 	g.pf("\tif n > int64(len(values)) {\n\t\treturn tableFixedRefuse(report, \"batch_too_large\")\n\t}\n")
 	// Prefill is the dest ranges the winning plan does not land, copied from
-	// one Reset image. Identity's list on Go is the ABI padding and unselected
-	// arms. There is no identity flag in the record loop.
-	g.pf("\tvar def %s\n", st.Name)
-	g.pf("\tvar defBytes []byte\n")
-	g.pf("\tvar holes []tableFixedHole\n")
-	g.pf("\tif n > 0 {\n")
-	g.pf("\t\t%sReset(&def)\n", st.Name)
-	g.pf("\t\tdefBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))\n")
-	g.pf("\t\tholes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))\n")
-	g.pf("\t}\n")
+	// the ONE per-plan Reset image. Identity's list on Go is the ABI padding
+	// and unselected arms. There is no identity flag in the record loop, and
+	// there is no per-call setup left in it either: one prefill, one loop,
+	// one bounds pass (§4.3).
 	// STEP 11: EVERY RECORD'S HASH AND TEXT FIRST, in a pass of its own ahead
 	// of the first prefill. REFUSE is total over the batch too: a refusal at
 	// record k leaves out[0..k-1] as untouched as out[k], so a hostile image is

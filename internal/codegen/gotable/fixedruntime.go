@@ -1277,7 +1277,9 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 
 // tableFixedHole is one dst range the winning plan does not land. Load copies
 // declared defaults into exactly these, from one Reset image. Identity's list
-// on Go is ABI padding and unselected union arms.
+// on Go is ABI padding and unselected union arms. The list and the image are
+// PER PLAN and are computed once beside the plan they belong to, at init and
+// never per call (docs/FIXED-FORM-ALGORITHM.md §4.3).
 type tableFixedHole struct {
 	Off, Size uint32
 }
@@ -1372,9 +1374,12 @@ type TableFixedKnownLayout struct {
 // tableFixedLineagePlan is one older entry's plan, laid down once from the
 // LOCK'S bytes. Unknown and KindMismatch are the COMPILE census: a writer field
 // no reader field names is counted ONCE PER PEER and never per record (§5.4).
+// Holes is the plan's unwritten dst ranges (§4.3), computed with the plan here
+// and never inside a load call.
 type tableFixedLineagePlan struct {
 	Entries      []TableFixedEntry
 	Count        int32
+	Holes        []tableFixedHole
 	Unknown      int32
 	KindMismatch int32
 	Why          string
@@ -1398,9 +1403,11 @@ func tableFixedRefuseHash(report *TableReport, reason string, hash uint64) int64
 
 // tableFixedLineagePlans compiles one plan per lineage entry from THE LOCK'S
 // layout bytes, at package initialization — nothing compiles on the load path,
-// and there is no cache to miss (§5.2, §5.8 row 3). The identity entry keeps a
-// nil plan: the baked one answers it.
-func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst []TableFixedDst, own uint64) []tableFixedLineagePlan {
+// and there is no cache to miss (§5.2, §5.8 row 3). Each lane's HOLE LIST is
+// laid with its plan (§4.3): the prefill is per plan, computed once here and
+// never per call. The identity entry keeps a nil plan: the baked one answers
+// it, and its holes are laid beside that one by the emitter.
+func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst []TableFixedDst, own uint64, dstSize uint32) []tableFixedLineagePlan {
 	out := make([]tableFixedLineagePlan, len(known))
 	for i := range known {
 		if known[i].Hash == own {
@@ -1435,6 +1442,7 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 			out[i] = tableFixedLineagePlan{
 				Entries:      plan[:made],
 				Count:        made,
+				Holes:        tableFixedHoles(plan[:made], made, dstSize),
 				Unknown:      census.Unknown,
 				KindMismatch: census.KindMismatch,
 			}

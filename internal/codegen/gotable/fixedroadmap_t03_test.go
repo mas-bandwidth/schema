@@ -535,9 +535,12 @@ func t03GoR20(t *testing.T) {
 	load := t03GoLoad(t, text, "Lineage")
 	// AN ADDED FIELD: the holes are covered from the defaults image, and the
 	// image is a zeroed Reset so a shorter array or string keeps template zeros.
-	t03GoHas(t, load, "LineageReset(&def)", "R20 the prefill image is the declared defaults")
-	t03GoHas(t, load, "defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))", "R20 the prefill image is emitted")
-	t03GoHas(t, load, "holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))", "R20 the holes are what the winning plan does not write")
+	// The image and the hole list are PER PLAN (§4.3): laid once at init beside
+	// the plan they belong to, never per call.
+	t03GoHas(t, text, "LineageReset(&def)", "R20 the prefill image is the declared defaults")
+	t03GoHas(t, load, "defBytes := LineageFixedDefBytes", "R20 the prefill image is per plan, not per call")
+	t03GoHas(t, load, "holes := LineageFixedIdentityHoles", "R20 the holes are what the winning plan does not write")
+	t03GoHas(t, load, "holes = lane.Holes", "R20 a lineage lane's holes are laid with its plan")
 	t03GoHas(t, load, "copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])", "R20 an added field lands the declared default")
 	// A DEPRECATED FIELD, counted ONCE per plan: the census is the lane's, and
 	// an array's element 0 is the only one that censuses.

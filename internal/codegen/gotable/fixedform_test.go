@@ -67,7 +67,10 @@ fixed table Point {
 	if fixedLoad == "" {
 		t.Fatal("PointFixedLoad was not emitted")
 	}
-	if !strings.Contains(fixedLoad, "tableFixedHoles") {
+	if !strings.Contains(fixedLoad, "tableFixedRun(") {
+		t.Error("FixedLoad does not walk the winning plan")
+	}
+	if !strings.Contains(fixedLoad, "copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])") {
 		t.Error("compiled FixedLoad does not prefill the plan's holes")
 	}
 	// SELECT BY HASH, never parse a stranger (docs/FIXED-FORM-ALGORITHM.md §5.3):
@@ -84,8 +87,19 @@ fixed table Point {
 	if strings.Contains(fixedLoad, "PointReset(&values[k])") {
 		t.Error("identity still Reset's each record; prefill is the hole list")
 	}
-	if !strings.Contains(fixedLoad, "PointReset(&def)") {
+	if !strings.Contains(body, "PointReset(&def)") {
 		t.Error("holes have no default image")
+	}
+	// THE PREFILL IS PER PLAN (§4.3): the image and the hole list are computed
+	// once beside the plan, never inside a load call.
+	if !strings.Contains(body, "func PointFixedPrefill()") {
+		t.Error("the per-plan prefill is not laid beside the baked plan")
+	}
+	if !strings.Contains(fixedLoad, "defBytes := PointFixedDefBytes") {
+		t.Error("the load builds a fresh default image per call (§4.3: the prefill is per plan)")
+	}
+	if !strings.Contains(fixedLoad, "holes := PointFixedIdentityHoles") {
+		t.Error("the load computes its hole list per call (§4.3: the prefill is per plan)")
 	}
 	if !strings.Contains(fixedLoad, "tableFixedRun(") {
 		t.Error("FixedLoad does not walk the winning plan")
@@ -1774,7 +1788,7 @@ func TestRecordBound(t *testing.T) {
 		t.Fatalf("W10: COMPILE answers %d, want -3 (hostile) for an entry past the writer's record size", made)
 	}
 	known := []TableFixedKnownLayout{{Hash: 0xDEADBEEF, Layout: hostile, Record: 4}}
-	lineage := tableFixedLineagePlans(known, HostFixedLayout, HostFixedDst, HostFixedHash)
+	lineage := tableFixedLineagePlans(known, HostFixedLayout, HostFixedDst, HostFixedHash, uint32(unsafe.Sizeof(Host{})))
 	if lineage[0].Why != "layout_record_too_large" {
 		t.Fatalf("W10: COMPILE's refusal is named %q, want layout_record_too_large", lineage[0].Why)
 	}

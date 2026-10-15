@@ -194,7 +194,7 @@ func t02GoR1(t *testing.T) {
 	}
 	src := t02GoLineage(t, u, map[string][]FixedLineageEntry{"T": older})
 
-	t02GoHas(t, t02GoNorm(src), "var TFixedLineagePlans = tableFixedLineagePlans(TFixedKnown, TFixedLayout, TFixedDst, TFixedHash)",
+	t02GoHas(t, t02GoNorm(src), "var TFixedLineagePlans = tableFixedLineagePlans(TFixedKnown, TFixedLayout, TFixedDst, TFixedHash, uint32(len(TFixedDefBytes)))",
 		"R1 one plan per lineage entry, laid down at build time from the lock's bytes")
 	if load := funcSource(src, "func TFixedLoad("); strings.Contains(load, "tableFixedLineagePlans") {
 		t.Error("R1: the load path builds the lineage's plans; COMPILE lays them down at build time")
