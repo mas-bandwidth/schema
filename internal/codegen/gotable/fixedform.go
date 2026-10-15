@@ -839,6 +839,29 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("var %sFixedLineagePlans = tableFixedLineagePlans(%sFixedKnown, %sFixedLayout, %sFixedDst, %sFixedHash)\n\n",
 		st.Name, st.Name, st.Name, st.Name, st.Name)
 
+	// THE CAPACITY A CALLER WOULD GUESS IS EXPORTED INSTEAD (§5.2, "AND THE
+	// CAPACITY A CALLER WOULD GUESS IS EXPORTED INSTEAD"): the largest entry
+	// count over the identity plan and every lineage plan, so a plan slice of
+	// this length never refuses plan_too_large for a layout the lineage holds
+	// — and one entry fewer refuses the largest plan by that same name. It is
+	// the maximum over the BUILT plans and not a generate-time literal, because
+	// the identity plan's coalesced count depends on the Go struct's own
+	// offsets (unsafe.Offsetof, padding): the exact number exists first at
+	// package initialization, and any larger guess is the guessing this name
+	// removes. A retired entry's plan is never built, so its zero Count
+	// contributes nothing to the maximum — §5.2's plan-cap cut.
+	g.pf("// %sFixedPlanMax is the plan capacity every layout this build reads needs:\n", st.Name)
+	g.pf("// the largest entry count over the identity plan and every lineage plan\n")
+	g.pf("// (docs/FIXED-FORM-ALGORITHM.md §5.2). A plan slice of this length never\n")
+	g.pf("// refuses plan_too_large for a layout the lineage holds.\n")
+	g.pf("var %sFixedPlanMax = func() int32 {\n", st.Name)
+	g.pf("\tm := %sFixedPlan.Count\n", st.Name)
+	g.pf("\tfor _, lane := range %sFixedLineagePlans {\n", st.Name)
+	g.pf("\t\tif lane.Count > m {\n\t\t\tm = lane.Count\n\t\t}\n")
+	g.pf("\t}\n")
+	g.pf("\treturn m\n")
+	g.pf("}()\n\n")
+
 	g.pf("// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,\n")
 	g.pf("// then the layout behind its u32 length, then the records to the end of it.\n")
 	g.pf("func %sFixedMeasure(count int64) int64 {\n", st.Name)

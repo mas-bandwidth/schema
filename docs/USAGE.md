@@ -3930,6 +3930,14 @@ trailer returns `TableRefuseWireDamaged` (`wire_damaged`) from
 `LoadMeasureReason`; this is distinct from a format refusal and from the
 accelerator-only `truncated` reason.
 
+A fixed table's `<T>FixedLoad` still takes a plan slice, and a slice shorter
+than the selected plan refuses `plan_too_large`
+(docs/FIXED-FORM-ALGORITHM.md §5.2). The generated code exports
+`<T>FixedPlanMax`, the largest entry count over the identity plan and every
+lineage plan. A plan slice of that length never refuses `plan_too_large` for
+a layout the lineage holds; one entry fewer refuses the largest plan by that
+same name. Size the slice with `make([]TableFixedEntry, <T>FixedPlanMax)`.
+
 This complete example uses the `tables/pointers` generated package; `make
 tables-go-usage` runs it directly from this page.
 
