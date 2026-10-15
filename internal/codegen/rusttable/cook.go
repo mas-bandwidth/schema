@@ -307,11 +307,12 @@ func (g *gen) cookable(name string) bool {
 // at the greatest arm alignment, the whole rounded up. Nothing on the wire
 // moves: it is where the bytes LAND that this decides.
 //
-// What it does not carry is an arm whose storage needs a COMPANION — text, or
-// an array with its count — because such an arm is an unnamed struct of two
-// pieces in the C++ overlay and this port would have to name it. §3.4's own
-// layout law refuses those arms outright (ir.TableFixedSupported), so the two
-// refusals are one and nothing that reaches this form is turned away by it.
+// Every fixed-form union arm rides here (docs/SPEC-TABLES.md §2.6, §3.4):
+// payload-free arms take tag-only accessors, `[N]T` arms take `[T; N]`, and
+// companioned `string(N)`, `wstring(N)`, `bytes(N)` and `[..N]T` arms take a
+// `#[repr(C)]` companion struct `<Union>RowArm<Arm>` matching cpptable's
+// unnamed arm struct. Only variable, keyed or optional arms are refused,
+// matching ir.TableFixedSupported.
 func (g *gen) rowable(name string) bool {
 	return g.reaches(name, unionRowable)
 }
@@ -383,20 +384,18 @@ func (g *gen) reaches(name string, ok func(*ir.Union) bool) bool {
 	return walk(name)
 }
 
-// unionRowable reports whether a union has a blittable twin here: every arm
-// carries a payload and every payload is ONE PIECE of storage — a scalar, or a
-// nested record. An arm of text, or of an array with its count, is two pieces
-// that must occupy one slot of the overlay, which the C++ reference spells as
-// an unnamed struct; naming those is the remaining follow-on and §3.4's layout
-// law refuses the same arms, so nothing is lost here that this form carries.
+// unionRowable reports whether a union has a blittable twin here
+// (docs/SPEC-TABLES.md §2.6, §3.4, §7.2, §15): payload-free arms, scalar or
+// declaration arms, direct `[N]T` arms, and companioned `string(N)`,
+// `wstring(N)`, `bytes(N)` and `[..N]T` arms all ride. Only variable, keyed or
+// optional arms are refused, matching ir.TableFixedSupported.
 func unionRowable(un *ir.Union) bool {
 	for _, v := range un.Variants {
 		if v.F == nil {
 			continue // a payload-free arm has no storage inside the overlay (docs/SPEC-TABLES.md §2.6)
 		}
 		a := v.F
-		if a.Type.Pointer || a.IsMap() || a.IsList() || a.Array != ir.ArrayNone || a.KeyEnum != "" ||
-			a.Type.Kind == ir.TString || a.Type.Kind == ir.TWString || a.Type.Kind == ir.TBytes ||
+		if a.Type.Pointer || a.IsMap() || a.IsList() || a.KeyEnum != "" ||
 			a.Type.Optional || a.Type.Blob() {
 			return false
 		}
@@ -495,9 +494,7 @@ func (g *gen) emitCookRows(members []*ir.Struct) {
 	for _, st := range members {
 		if !g.rowable(st.Name) {
 			g.pf("// %s has NO blittable record: its by-value closure reaches a union with\n", st.Name)
-			g.pf("// an arm whose storage needs a COMPANION beside it — text, or an array\n")
-			g.pf("// with its count — which is two pieces in one slot of the overlay and the\n")
-			g.pf("// one arm shape this port does not name yet (docs/SPEC-TABLES.md §15).\n\n")
+			g.pf("// a variable, keyed or optional arm (docs/SPEC-TABLES.md §2.6, §3.4, §15).\n\n")
 			continue
 		}
 		g.emitCookRow(st)
@@ -553,8 +550,65 @@ func unionHasPayload(un *ir.Union) bool {
 	return false
 }
 
+// unionArmCompanionType names the #[repr(C)] companion struct an arm takes
+// when its storage is two pieces inside the union's overlay — a string/wstring/
+// bytes buffer beside `value_length`, or a counted array beside `value_count`
+// (docs/SPEC-TABLES.md §2.6, matching cpptable/arms.go emitArmStorage).
+func unionArmCompanionType(un *ir.Union, v ir.UnionVariant) (string, bool) {
+	if v.F == nil {
+		return "", false
+	}
+	f := v.F
+	switch {
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes, f.Array == ir.ArrayCounted:
+		return un.Name + "RowArm" + ir.GoExportName(v.Name), true
+	}
+	return "", false
+}
+
+// unionArmRowType is one union arm's Rust type inside <Name>RowArms and in the
+// checked accessor pair on <Name>Row (docs/SPEC-TABLES.md §2.6).
+func unionArmRowType(un *ir.Union, v ir.UnionVariant) string {
+	if comp, ok := unionArmCompanionType(un, v); ok {
+		return comp
+	}
+	if v.F.Array == ir.ArrayFixed {
+		return fmt.Sprintf("[%s; %d]", cookElemType(v.F), v.F.ArrayBound)
+	}
+	return cookElemType(v.F)
+}
+
 func (g *gen) emitUnionRow(un *ir.Union) {
 	size, align, tag, armOffset := ir.UnionLayout(g.unit, un)
+	var defaultTypes []string
+	for _, v := range un.Variants {
+		comp, ok := unionArmCompanionType(un, v)
+		if !ok {
+			continue
+		}
+		defaultTypes = append(defaultTypes, comp)
+		f := v.F
+		g.pf("#[repr(C)]\n#[derive(Clone, Copy)]\npub struct %s {\n", comp)
+		switch {
+		case f.Type.Kind == ir.TString:
+			g.pf("    pub value: [u8; %d], // string(%s): buffer, used length beside it (docs/SPEC-TABLES.md §2.6)\n",
+				f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
+			g.pf("    pub value_length: i32,\n")
+		case f.Type.Kind == ir.TWString:
+			g.pf("    pub value: [u16; %d], // wstring(%s): UTF-16 code units, used length beside it (docs/SPEC-TABLES.md §2.6)\n",
+				f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
+			g.pf("    pub value_length: i32,\n")
+		case f.Type.Kind == ir.TBytes:
+			g.pf("    pub value: [u8; %d], // bytes(%s): buffer, used length beside it (docs/SPEC-TABLES.md §2.6)\n",
+				f.Type.Size, ir.RenderExpr(f.Type.SizeExpr))
+			g.pf("    pub value_length: i32,\n")
+		case f.Array == ir.ArrayCounted:
+			g.pf("    pub value: [%s; %d], // %s: elements, live count beside them (docs/SPEC-TABLES.md §2.6)\n",
+				cookElemType(f), f.ArrayBound, tableFieldTypeName(f))
+			g.pf("    pub value_count: i32,\n")
+		}
+		g.pf("}\n\n")
+	}
 	g.pf("// %s — the union twin: %d bytes, aligned %d; a %d-byte tag, the arms at %d.\n",
 		un.Name, size, align, tag, armOffset)
 	tagType := rustUint(ir.StorageBitsFor(un.Max))
@@ -573,7 +627,7 @@ func (g *gen) emitUnionRow(un *ir.Union) {
 		if v.F == nil {
 			continue // a payload-free arm has no member in the overlay (docs/SPEC-TABLES.md §2.6)
 		}
-		g.pf("    pub(crate) %s: %s, // %s\n", v.Name, cookElemType(v.F), tableFieldTypeName(v.F))
+		g.pf("    pub(crate) %s: %s, // %s\n", v.Name, unionArmRowType(un, v), tableFieldTypeName(v.F))
 	}
 	g.pf("}\n\n")
 	g.pf("impl %sRow {\n", un.Name)
@@ -588,7 +642,7 @@ func (g *gen) emitUnionRow(un *ir.Union) {
 			g.pf("    pub fn set_%s(&mut self) {\n        *self = Self::default();\n        self.tag = %d;\n    }\n\n", v.Name, i+1)
 			continue
 		}
-		arm := cookElemType(v.F)
+		arm := unionArmRowType(un, v)
 		g.pf("    /// `%s` when the tag names it, and None otherwise. THE CHECK IS WHAT\n", v.Name)
 		g.pf("    /// MAKES THE READ SAFE: the overlay holds one arm and the tag says which.\n")
 		g.pf("    pub fn %s(&self) -> Option<%s> {\n", v.Name, arm)
@@ -605,7 +659,8 @@ func (g *gen) emitUnionRow(un *ir.Union) {
 	g.pf("    /// The empty union: tag 0, no arm.\n")
 	g.pf("    pub fn set_none(&mut self) {\n        *self = Self::default();\n    }\n")
 	g.pf("}\n\n")
-	for _, name := range []string{un.Name + "Row", un.Name + "RowArms"} {
+	defaultTypes = append(defaultTypes, un.Name+"Row", un.Name+"RowArms")
+	for _, name := range defaultTypes {
 		g.pf("impl Default for %s {\n", name)
 		g.pf("    fn default() -> Self {\n")
 		g.pf("        // the empty union: tag zero and an overlay of zeros, which is a value\n")

@@ -295,11 +295,10 @@ fixed table Holder
 }
 `
 
-// unionWithTextArm is the arm shape that is STILL refused, and it is refused
-// by §3.4's own layout law rather than by this port: an arm whose storage needs
-// a COMPANION beside it — a string's used length, a counted array's count — is
-// two pieces that must occupy one slot of the overlay, which the C++ reference
-// spells as an unnamed struct and no port lays out yet.
+// unionWithTextArm is a union with a direct companioned arm (`text string(8)`):
+// its Row twin emits `NoteRowArmText` (`value: [u8; 9]` beside `value_length:
+// i32`) inside `NoteRowArms`, and the fixed form carries it (SPEC-TABLES §2.6,
+// §3.4).
 const unionWithTextArm = `package probe
 
 union Note
@@ -405,17 +404,17 @@ func TestFixedFormIsEmittedForAFixedRootAndForNothingElse(t *testing.T) {
 		t.Error("the scatter took a mutable reference into the overlay; a WRITE of a union field needs none")
 	}
 
-	// THE ARM SHAPE THAT IS STILL REFUSED, and it is §3.4's refusal: an arm
-	// whose storage needs a companion beside it.
+	// A COMPANIONED UNION ARM RIDES IN THE TWIN AND THE FIXED FORM (§2.6, §3.4):
+	// its companion pieces sit in `NoteRowArmText` inside `NoteRowArms`.
 	text := generate(t, unionWithTextArm)
-	if _, ok := text["probe_fixed.rs"]; ok {
-		t.Error("a union with a TEXT arm got a fixed form; the overlay's companion pieces are unnamed here")
+	if _, ok := text["probe_fixed.rs"]; !ok {
+		t.Error("a union with a TEXT arm got no fixed form")
 	}
-	if _, ok := text[FixedRuntimeModule+".rs"]; ok {
-		t.Error("the fixed runtime rode into a unit with no fixed root at all")
+	if _, ok := text[FixedRuntimeModule+".rs"]; !ok {
+		t.Error("the fixed runtime did not ride beside a union with a TEXT arm")
 	}
-	if strings.Contains(string(text["probe_records.rs"]), "pub union NoteRowArms") {
-		t.Error("a union with a companioned arm got a twin; its arm is two pieces in one slot")
+	if !strings.Contains(string(text["probe_records.rs"]), "pub union NoteRowArms") {
+		t.Error("a union with a companioned arm got no twin")
 	}
 
 	// A POINTER makes its holder VARIABLE (§2.2), which §3.4 refuses outright:
