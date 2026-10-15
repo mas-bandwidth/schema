@@ -364,6 +364,7 @@ func init() {
 		Name{Name: "TableFixedForm", What: "the fixed form (form 3)"},
 		Name{Name: "TableFixedHeaderBytes", What: "the fixed form's pinned header: sixteen bytes, the body at 16 (§3)"},
 		Name{Name: "TableFixedHashAt", What: "the fixed form's pinned header: the layout hash at offset 8 (§3)"},
+		Name{Name: "TableFixedLayoutUnknown", What: "the fixed form: the Reason \"layout_unknown\", a layout hash this build's lineage does not hold (SPEC-TABLES §21.3, algorithm §5.3 step 5); layout_newer is reserved until the lineage proves direction"},
 		Name{Name: "TableFixedEntry", What: "the fixed form (form 3)"},
 		Name{Name: "TableFixedDst", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedCopy", What: "the fixed form (form 3)"},
