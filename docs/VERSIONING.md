@@ -343,6 +343,14 @@ the file with the descriptors, the per-field facts every table's generated
 header carries; per-event attribution on the generated read path is additive
 and safe to add after 3.0.0.
 
+**The STRICT read** (SPEC-TABLES.md §6.5) is the one call that turns this
+report into a refusal. It refuses, with one typed reason, a read that is
+malformed, clamped, kind-mismatched, of an unknown form, wire-damaged or
+build-version-mismatched. It does not refuse `unknown`, `widened` or
+`retained` alone. `TableReport.Err()` answers that same reason, and nil when
+the strict read would accept — a clean read, or one whose only counters are
+those three.
+
 **Two more counters ride on the same struct and stay zero unless a caller asks
 for them**: `retained` and `retain_lost`, the retain-unknown pair
 (SPEC-TABLES.md §6.6). They report on RETENTION and not on the read. A

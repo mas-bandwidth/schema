@@ -8486,6 +8486,23 @@ The builder is designed to go wide, lock-free by ownership:
   refusal is a NULL** rather than a `-1`, and the report it leaves behind is
   what the decode had written before the refusal, which is stated where the
   construct that can raise one is (§2.9).
+- **The STRICT read** — one call, `<Name>ReadStrict( wire )`, that answers
+  the root or refuses. It refuses, with ONE typed reason, a read that is
+  malformed, clamped, kind-mismatched, of an unknown form, wire-damaged or
+  build-version-mismatched. It does NOT refuse `unknown`, `widened` or
+  `retained` alone: `unknown` is evolution, `widened` decoded exactly, and
+  `retained` reports on retention rather than on a loss (the cards facade's
+  `ReadStrict`, docs/CARDS.md: `Unknown`, `Retained` and `Widened` alone are
+  not loss). The reason is `TableRefuseReason`, the same enum a measure's
+  `-1` carries, or `TableBuildVersionMismatch` for the announcement's strict
+  refusal (§3.3), so the language's typed-error test matches it (`errors.Is`
+  in Go). Values this read adds (`malformed`, `clamped`, `kind_mismatch`)
+  are appended to that enum and never renumbered. `TableReport.Err()`
+  answers the same reason for every counter this read refuses, and nil on a
+  clean read and on a read whose only counters are `unknown`, `widened` or
+  `retained`. The call owns its builder: the caller does not measure, does
+  not `Init`, and does not check the counters by hand. Go emits it for each
+  root; the citation on the emitter is this section.
 
 Contract split, stated once: the AUTHORING path (builder growth, `Lock`)
 may allocate; the reading path allocates nothing of its own — the caller
@@ -11833,7 +11850,10 @@ in build version (§20.5).
   Go adds `MeasureReason`, `LoadMeasureReason` (variable roots), and
   `CookMeasureReason` alongside its integer-returning measure calls. They
   return `(int64, error)`, with literal `nil` on success and a typed
-  `TableRefuseReason` on refusal. Builder `PackMeasureReason` follows the
+  `TableRefuseReason` on refusal. `<Name>ReadStrict(wire) (*<Name>, error)`
+  is §6.5's STRICT read: one call, its own builder, the reason a
+  `TableRefuseReason` or `TableBuildVersionMismatch`. `TableReport.Err()`
+  answers that same reason. Builder `PackMeasureReason` follows the
   same rule. `invalid_value` and `allocation_failed` distinguish Go
   authoring failures from file count, form, blob-size, and cycle refusals.
   A damaged file trailer returns Go's `TableRefuseWireDamaged`
