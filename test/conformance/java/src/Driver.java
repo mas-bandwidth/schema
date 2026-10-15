@@ -781,6 +781,89 @@ public final class Driver {
         return 0;
     }
 
+    private static final class CookCodec {
+        final VariableCodec variable;
+        final Class<?> cook;
+        final java.lang.reflect.Method measure;
+        final java.lang.reflect.Method measureReason;
+        final java.lang.reflect.Method cookFrom;
+        CookCodec(String pkg, String root) throws ReflectiveOperationException {
+            variable = new VariableCodec(pkg, root);
+            cook = Class.forName(pkg + "." + root + "Cook");
+            measure = cook.getMethod("cookMeasure", Object.class);
+            measureReason = cook.getMethod("cookMeasureReason", Object.class);
+            cookFrom = cook.getMethod("cookFrom", Object.class, byte[].class, int.class);
+        }
+        long measure(Object value) throws ReflectiveOperationException {
+            return (long) measure.invoke(null, value);
+        }
+        Object measureReason(Object value) throws ReflectiveOperationException {
+            return measureReason.invoke(null, value);
+        }
+        boolean cookFrom(Object value, byte[] buffer, int order) throws ReflectiveOperationException {
+            return (boolean) cookFrom.invoke(null, value, buffer, order);
+        }
+    }
+
+    private static CookCodec cookCodec(String unit, String root) {
+        try { return new CookCodec(variableUnitPackage(unit), root); }
+        catch (ReflectiveOperationException absent) { return null; }
+    }
+
+    private static String[] instanceNamed(String name) {
+        for (String[] f : kind("instance")) {
+            if (f[1].equals(name)) { return f; }
+        }
+        return null;
+    }
+
+    private static int surfaceCookWrite(String out) throws IOException {
+        for (String[] f : kind("cook-write")) {
+            String[] inst = instanceNamed(f[1]);
+            if (inst == null) { return failInt("missing instance " + f[1]); }
+            CookCodec codec = cookCodec(inst[2], inst[3]);
+            if (codec == null) {
+                spillAbsent(out, f[1]);
+                spillAbsent(out, f[1] + "-be");
+                continue;
+            }
+            try {
+                Object report = codec.variable.report();
+                Object value = codec.variable.load(Files.readAllBytes(Paths.get(inst[4])), report);
+                if (value == null || codec.variable.flag(report, "refused") || codec.variable.flag(report, "malformed")) {
+                    return failInt(f[1] + ": cook input did not load");
+                }
+                long size = codec.measure(value);
+                if (size < 1) { return failInt(f[1] + ": cookMeasure refused"); }
+                Object reason = codec.measureReason(value);
+                long rBytes = (long) reason.getClass().getMethod("bytes").invoke(reason);
+                String rText = (String) reason.getClass().getMethod("reason").invoke(reason);
+                if (rBytes != size || !"ok".equals(rText)) {
+                    return failInt(f[1] + ": cookMeasureReason disagreed with cookMeasure");
+                }
+                for (int order : new int[] { 1, 2 }) {
+                    String name = order == 2 ? f[1] + "-be" : f[1];
+                    byte[] shortBuf = new byte[(int) size - 1];
+                    java.util.Arrays.fill(shortBuf, (byte) 0xa5);
+                    if (codec.cookFrom(value, shortBuf, order)) {
+                        return failInt(name + ": short buffer succeeded");
+                    }
+                    for (byte b : shortBuf) {
+                        if (b != (byte) 0xa5) { return failInt(name + ": short buffer wrote bytes"); }
+                    }
+                    byte[] buffer = new byte[(int) size];
+                    if (!codec.cookFrom(value, buffer, order)) {
+                        return failInt(name + ": cookFrom refused");
+                    }
+                    spill(out, name, buffer);
+                }
+            } catch (ReflectiveOperationException failure) {
+                return failInt(f[1] + ": cook-write codec failed: " + failure);
+            }
+        }
+        return 0;
+    }
+
     public static int run(String[] args) throws IOException {
         if (args.length < 2) {
             System.err.println("usage: driver <manifest> list\n       driver <manifest> <surface> <outdir>");
@@ -795,7 +878,7 @@ public final class Driver {
             // case ABSENT, one by one.
             System.out.print("wire\nreport\njson-read\njson-write\n"
                     + "block\nblock-foreign\n"
-                    + "block-dump\nforgery\ncook\ncook-foreign\ncook-forgery\n");
+                    + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n");
             return 0;
         }
         if (args.length < 3) {
@@ -813,6 +896,7 @@ public final class Driver {
             case "block-dump": return surfaceBlockDump(out);
             case "forgery": return surfaceForgery(out);
             case "cook": return surfaceCook(out);
+            case "cook-write": return surfaceCookWrite(out);
             case "cook-foreign": return surfaceCookForeign(out);
             case "cook-forgery": return surfaceCookForgery(out);
             default: return 2;
