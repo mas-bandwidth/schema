@@ -368,8 +368,8 @@ table Root { n int32 }
 	if strings.Contains(src, "if (identity)") {
 		t.Error("the load grew a second reader; hash chooses the plan and nothing else")
 	}
-	if !strings.Contains(src, "RootFixedIdentity = new Int32Array([0, 0, 0, 4, 0, -1, 0, 0, 1])") {
-		t.Error("the identity plan omitted the ArgW lane (ninth is 1)")
+	if !strings.Contains(src, "RootFixedIdentity = new Int32Array([0, 0, 0, 4, 0, -1, 0, 0, 1, 0, 0])") {
+		t.Error("the identity plan omitted the guard chain lanes (ninth is ArgW 1, tenth and eleventh are offset and count)")
 	}
 	if !strings.Contains(src, "plan.argw = (theirTag >= 1 && theirTag <= 8) ? theirTag : 1;") {
 		t.Error("the compiler does not stamp ArgW from the writer's tag width")

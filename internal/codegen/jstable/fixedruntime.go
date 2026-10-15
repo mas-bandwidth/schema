@@ -72,7 +72,7 @@ export const TableFixedRecordMaxBytes = 65536;
 // otherwise spend a reader's stack before any rule fired. The reference states 64.
 export const TableFixedMaxDepth = 64;
 
-// A PLAN ENTRY is nine int32 lanes of one flat Int32Array. A flat array of a
+// A PLAN ENTRY is eleven int32 lanes of one flat Int32Array. A flat array of a
 // fixed stride is what keeps the read loop monomorphic: every lane is a
 // Smi, the loop never touches a property name, and nothing is allocated.
 export const TableFixedLanes = 11;
