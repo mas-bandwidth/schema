@@ -875,7 +875,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\treturn tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))\n")
 	g.pf("}()\n\n")
 	g.pf("var %sFixedIdentityHoles []tableFixedHole\n\n", st.Name)
-	g.pf("func init() {\n")
+	g.pf("var _ = func() int {\n")
 	g.pf("\t%sFixedIdentityHoles = tableFixedHoles(%sFixedPlan.Entries, %sFixedPlan.Count, uint32(len(%sFixedDefault)))\n", st.Name, st.Name, st.Name, st.Name)
 	g.pf("\tfor i := range %sFixedLineagePlans {\n", st.Name)
 	g.pf("\t\tp := &%sFixedLineagePlans[i]\n", st.Name)
@@ -883,7 +883,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\t\tp.Holes = tableFixedHoles(p.Entries, p.Count, uint32(len(%sFixedDefault)))\n", st.Name)
 	g.pf("\t\t}\n")
 	g.pf("\t}\n")
-	g.pf("}\n\n")
+	g.pf("\treturn 0\n")
+	g.pf("}()\n\n")
 
 	g.pf("// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,\n")
 	g.pf("// then the layout behind its u32 length, then the records to the end of it.\n")
