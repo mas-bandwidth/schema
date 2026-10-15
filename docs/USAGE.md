@@ -95,6 +95,25 @@ Run the same command with `--lang c`, `--lang cs`, `--lang elixir`, `--lang go`,
 language — writing the
 **same bits**.
 
+### `--surface`: emit only the Go surfaces you use
+
+A Go table unit generates several surfaces: the table-wire codecs, the fixed
+form, the JSON text form, the cooked form, the block form, the view, the
+message form and the retain machinery. By default `generate` emits them all.
+When you need only some of them, name them with `--surface` (Go only — any
+other `--lang` refuses the flag):
+
+```
+schema generate --lang go --surface wire,json --out generated/go .
+```
+
+The surface names are `wire`, `fixed`, `json`, `cook`, `block`, `view`,
+`message` and `retain`. They are resolved with dependencies, so a surface
+that needs another brings it along: `json`, `cook`, `block`, `view`,
+`message` and `retain` each imply `wire`, and `cook` also implies `fixed`
+where the fixed form carries it (docs/SPEC-TABLES.md §8.4). Omitted surfaces
+emit nothing — their files and functions are simply not generated, so a
+binary that never reads or writes them does not compile them.
 ---
 
 ## Declarations

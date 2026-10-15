@@ -11156,6 +11156,26 @@ vocabulary a table carries is §8.1's and rides where it always did. The gate
 asks "did the registry leak out of its file?", never "is there a descriptor
 here?" — §2.2's own distinction between machinery and columns.
 
+**The Go `--surface` flag.** Go alone among the targets carries a flag that
+generates only the surfaces a build needs: `generate --lang go --surface <list>`
+(see USAGE.md). The surface names are `wire`, `fixed`, `json`, `cook`,
+`block`, `view`, `message` and `retain`; the default is all of them, and that
+default emits exactly the set a plain `generate --lang go` emits today — the
+flag, absent, changes nothing, byte for byte. Some `--lang` refuses the flag by
+name: every other target's output is decided by the include/compile rule above
+(§8.4, §13.5) and not by a generate-time choice, so passing `--surface` to one
+is an error, never a silent ignore.
+
+Dependencies are resolved in, so a surface that needs another brings it along:
+`json`, `cook`, `block`, `view`, `message` and `retain` each imply `wire` (the
+table-wire codecs and the reflection descriptors every other surface walks),
+and `cook` also implies `fixed` where the fixed form carries the cook's read
+half. The dependency closure is the set emitted; a surface named alone is not
+emitted in isolation of the surfaces it rests on. An omitted surface emits
+nothing — its files and functions are simply not generated, so a binary that
+never reads or writes a text, a cook, a block, a view, a message or a retained
+read does not compile that surface.
+
 ### 8.5 On the side
 
 **The view is one generated file per UNIT, not per schema file** —
