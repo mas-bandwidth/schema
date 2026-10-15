@@ -11156,6 +11156,31 @@ vocabulary a table carries is §8.1's and rides where it always did. The gate
 asks "did the registry leak out of its file?", never "is there a descriptor
 here?" — §2.2's own distinction between machinery and columns.
 
+### 8.4.1 The generated-surface flag (Go)
+
+**A Go run can emit only the surfaces it uses** via `generate --lang go
+--surface <list>`, a comma-separated subset of `wire`, `fixed`, `json`,
+`cook`, `block`, `view`, `message` and `retain`. The default is all of them,
+and it is byte-identical to a run without the flag. The surfaces map to the
+generated tree's files and members:
+
+- `wire` — the `<Base>Table.go` codecs and the shared runtime; every surface's base.
+- `fixed` — the fixed-form reads inside that file.
+- `message` — the message write/read pair, part of the base.
+- `retain` — the retain surface, part of the base.
+- `json` — `<Home>TableJson.go`, the text form.
+- `cook` — `<Base>Cook.go`, the cook surface.
+- `block` — `<Base>Block.go`, the block accelerator.
+- `view` — `<Package>View.go`, the reflection view.
+
+**Dependencies are resolved.** The `cook` surface's shared helpers live in the
+text form's file, so asking for `cook` pulls `json` in with it; every surface
+pulls `wire` in with it. `message` and `retain` are always part of the base
+wire surface because the reflection descriptors and the shared region runtime
+reference their functions — omitting them from the list changes nothing. This
+is the Go backend's spelling of §8.4's trade: what a build pays is what it
+compiles, and now what it generates.
+
 ### 8.5 On the side
 
 **The view is one generated file per UNIT, not per schema file** —
