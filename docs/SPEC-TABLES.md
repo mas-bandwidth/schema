@@ -14323,6 +14323,33 @@ cannot pack back to the bytes it came from.
   in the corpus battery, beside a label that overflows a `u64`, a signed one
   and one with a leading zero.
 
+### 16.6 Carrying a table over a text channel
+
+A text channel is a pipe a wire byte cannot cross as-is — a bus body, a log
+line, a config field, a terminal. A table has two text carriers, and the
+choice is what this section is about:
+
+- **Base64 of the binary wire** (`SaveText` / `LoadText`): the text is the
+  wire's bytes, `encoding/base64` standard alphabet, padded, whole. It keeps
+  the form byte, the framing check and every versioning guarantee of §3, and
+  it is opaque — no field is readable, nothing is editable, and a hand edit
+  is damage. Use it when the channel is machines talking to machines and the
+  wire itself would have been ideal, e.g. a bus body or a stored file's
+  value. It is the lossless, schema-exact carrier: `LoadText(SaveText(v))`
+  equals the wire `Save(v)` byte for byte.
+- **The JSON text form** (`FromJson` / `ToJson`, §16.1): the text is for a
+  human to read, diff or edit. It carries exactly what §16 says it carries —
+  the fields, by key, pretty-printed, with the mapping, clamping, counting
+  and refusal rules of §16.2 and §16.3. Use it when a person must inspect or
+  change the value in transit.
+
+Both readers refuse damaged or newer input BY NAME. A base64 body that does
+not decode is `base64_damaged`; a decoded wire the binary reader refuses is the
+wire reader's own refusal — a form byte this build does not carry, `unknown_form`
+(§3, THE FIRST BYTE), and framing damage, `wire_damaged` or `truncated`
+(§3); a JSON document the JSON reader refuses is `malformed` (§16.2). A
+reader never guesses at an unnameable byte.
+
 ## 17. Packing: a directory tree that mirrors a root table
 
 `schema pack` assembles ONE table instance from a directory tree and writes

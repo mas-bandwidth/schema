@@ -3456,6 +3456,30 @@ byte on the wire.
 or a set flags bit no variant names, an invalid union tag, or a non-finite
 float. The text it does emit is always valid JSON and valid UTF-8.
 
+### Carrying a table over a text channel
+
+A text channel is a pipe a wire byte cannot cross as-is — a bus body, a log
+line, a config field, a terminal. In Go a table has two text carriers:
+
+- **Base64 of the binary wire** (`SaveText` / `LoadText`): the text is the
+  wire's bytes, `encoding/base64` standard alphabet, padded, whole. It keeps
+  the form byte, the framing check and every versioning guarantee of the
+  wire, and it is opaque — no field is readable, nothing is editable. Use it
+  when machines talk to machines and the wire itself would have been ideal.
+- **The JSON text form** (`FromJson` / `ToJson`, above): for a human to read,
+  diff or edit.
+
+Both readers refuse damaged or newer input by name. `LoadText` returns a typed
+refusal: `base64_damaged` when the body does not decode, `unknown_form` when
+the decoded wire's form byte is one this build does not carry, and
+`wire_damaged` for framing damage. `FromJson` returns false with `report` set
+`malformed` when the JSON document is damaged.
+
+```go
+text, err := example.ShipConfigSaveText(&ship)          // the wire, base64
+loaded, err := example.ShipConfigLoadText(text, &report) // back to a ShipConfig
+```
+
 ### Packing a directory into a table
 
 `schema pack` builds ONE table instance from a directory tree that mirrors
