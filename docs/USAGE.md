@@ -3065,7 +3065,15 @@ configs/tables.baseline: ShipConfig.damage: specified default 21.0 -> 25.0 — t
 edit changes what data already written MEANS, and no reader can report it; if you
 mean it, record it: schema tables-baseline --update --reason "..." (SPEC-TABLES.md §18)
 schema: 1 error(s)
+schema <version>
 ```
+
+A refusal batch is dated once. When any diagnostic cites a spec section, a
+single `schema <version>` line follows the error count — the build that
+produced the refusals, so a message pasted from a stale binary dates itself
+instead of contradicting the page as it reads today. A batch whose diagnostics
+cite nothing prints no version line, and an individual diagnostic never
+carries one.
 
 Sometimes you mean it. The override is one command and it is never silent:
 
