@@ -146,10 +146,7 @@ func (r *wireRoot) messageAmplificationCeiling(wireBytes int) int64 {
 	if wireBytes < 2 {
 		return 0
 	}
-	refBits := int64(r.vocabulary.RefBits())
-	if refBits < 1 {
-		refBits = 1
-	}
+	refBits := max(int64(r.vocabulary.RefBits()), 1)
 	bits := 8 * (int64(wireBytes) - 2)
 	bodies := min(int64(256), bits/refBits)
 	records := bits / (2 * refBits)
