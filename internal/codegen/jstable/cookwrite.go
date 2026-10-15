@@ -131,6 +131,11 @@ func cookCollectField(f *ir.Field, seen map[string]bool, out *[]*ir.Struct) {
 	case *ir.Struct:
 		cookCollect(r, seen, out)
 	case *ir.Union:
+		ukey := "union:" + r.Name
+		if seen[ukey] {
+			return
+		}
+		seen[ukey] = true
 		for _, v := range r.Variants {
 			if v.Ref != nil {
 				cookCollect(v.Ref, seen, out)
@@ -170,6 +175,11 @@ func cookWriteWalk(st *ir.Struct, seen map[string]bool, variable bool) bool {
 				return true
 			}
 		case *ir.Union:
+			ukey := "union:" + r.Name
+			if seen[ukey] {
+				continue
+			}
+			seen[ukey] = true
 			for _, v := range r.Variants {
 				if v.F != nil && cookFieldBlocked(v.F, variable) {
 					return true
@@ -183,13 +193,40 @@ func cookWriteWalk(st *ir.Struct, seen map[string]bool, variable bool) bool {
 	return false
 }
 
-// cookFieldBlocked is the construct this cook writer does not place. Maps,
-// lists, optionals, keyed arrays, guards, wide integers, fixed-point and
-// wstring wait for a later card. A fixed root with a pointer waits too; a
-// variable root keeps its pointers and its blobs. Unions are written on the
-// fixed form and refused on the variable form.
+// cookFieldBlocked is the construct this cook writer does not place. On the
+// variable form (docs/SPEC-TABLES.md §7.6), every construct the variable wire
+// carries except maps and unbounded lists is placed; on the fixed form, only
+// the initial fixed subset is placed.
 func cookFieldBlocked(f *ir.Field, variable bool) bool {
 	if f == nil {
+		return true
+	}
+	if variable {
+		switch {
+		case f.IsMap(), f.IsList(), f.Type.Kind == ir.TMap, f.Type.Kind == ir.TWString:
+			return true
+		case f.Array != ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
+			return true
+		}
+		if f.Type.Kind == ir.TNamed {
+			switch r := f.Type.Ref.(type) {
+			case *ir.Enum, *ir.Flags, *ir.Struct:
+				return false
+			case *ir.Union:
+				for _, v := range r.Variants {
+					if v.F != nil && cookFieldBlocked(v.F, true) {
+						return true
+					}
+				}
+				return false
+			default:
+				return true
+			}
+		}
+		switch f.Type.Kind {
+		case ir.TBool, ir.TInt, ir.TFixed, ir.TFloat32, ir.TFloat64, ir.TString, ir.TBytes, ir.TBits:
+			return false
+		}
 		return true
 	}
 	switch {
@@ -201,21 +238,12 @@ func cookFieldBlocked(f *ir.Field, variable bool) bool {
 		return true
 	case f.Array != ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
 		return true
-	case variable && f.Array == ir.ArrayFixed:
-		return true
 	case !variable && f.Type.Pointer:
 		return true
 	}
 	if f.Type.Kind == ir.TNamed {
-		switch r := f.Type.Ref.(type) {
-		case *ir.Enum:
-			return false
-		case *ir.Flags, *ir.Union:
-			return variable
-		case *ir.Struct:
-			if variable && !r.IsTable && !f.Type.Pointer {
-				return true
-			}
+		switch f.Type.Ref.(type) {
+		case *ir.Enum, *ir.Flags, *ir.Union, *ir.Struct:
 			return false
 		default:
 			return true
@@ -243,7 +271,7 @@ func cookStructLiteral(u *ir.Unit, st *ir.Struct, variable bool) string {
 	fmt.Fprintf(&b, "    %s: {\n", strconv.Quote(st.Name))
 	fmt.Fprintf(&b, "      size: %d, align: %d, data: %d, measure: %d, alignCook: %d, typeId: %s",
 		ml.Size, ml.Align, data, 64+data+16, alignCook, jsId(ir.TableTypeId(st.WireName())))
-	if variable && st.IsTable {
+	if variable {
 		fmt.Fprintf(&b, ", make: () => new %s()", st.Name)
 	}
 	b.WriteString(",\n      fields: [\n")
@@ -256,18 +284,28 @@ func cookStructLiteral(u *ir.Unit, st *ir.Struct, variable bool) string {
 }
 
 func cookFieldLiteral(u *ir.Unit, f *ir.Field, offset int64, variable bool) string {
+	if variable && f.Type.Optional {
+		// An optional field places its presence companion at the last piece
+		// (docs/SPEC-TABLES.md §19.3, §20.2).
+		pieces := ir.FieldPieces(u, f, offset)
+		presentAt := pieces[len(pieces)-1].Offset
+		plain := *f
+		plain.Type.Optional = false
+		lit := cookFieldLiteral(u, &plain, offset, variable)
+		return strings.TrimSuffix(lit, "}") + fmt.Sprintf(",presentAt:%d}", presentAt)
+	}
 	name := f.Name
 	if !variable {
 		name = ir.GoExportName(f.Name)
 	}
 	qn := strconv.Quote(name)
-	if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone && !f.Type.Pointer {
+	if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone && f.KeyEnum == "" && !f.Type.Pointer {
 		if un, ok := f.Type.Ref.(*ir.Union); ok {
-			return cookUnionLiteral(u, un, qn, offset)
+			return cookUnionLiteral(u, un, qn, offset, variable)
 		}
 	}
 	pieces := ir.FieldPieces(u, f, offset)
-	if f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted {
+	if f.KeyEnum != "" || f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted {
 		stride := cookElemStride(u, f)
 		countAt := int64(-1)
 		countFrom := "bound"
@@ -319,6 +357,7 @@ func cookElemStride(u *ir.Unit, f *ir.Field) int64 {
 	single.Array = ir.ArrayNone
 	single.ArrayBound = 0
 	single.KeyEnum = ""
+	single.KeyEnumRef = nil
 	single.Type.Optional = false
 	pieces := ir.FieldPieces(u, &single, 0)
 	var end int64
@@ -335,24 +374,41 @@ func cookElemLiteral(u *ir.Unit, f *ir.Field, variable bool) string {
 	single.Array = ir.ArrayNone
 	single.ArrayBound = 0
 	single.KeyEnum = ""
+	single.KeyEnumRef = nil
 	single.Type.Optional = false
 	return cookFieldLiteral(u, &single, 0, variable)
 }
 
-func cookUnionLiteral(u *ir.Unit, un *ir.Union, qn string, offset int64) string {
+func cookUnionLiteral(u *ir.Unit, un *ir.Union, qn string, offset int64, variable bool) string {
 	_, _, tag, armAt := ir.UnionLayout(u, un)
 	arms := make([]string, len(un.Variants))
 	for i, v := range un.Variants {
 		if v.F == nil {
-			arms[i] = "{v:1}"
+			if variable {
+				arms[i] = fmt.Sprintf("{v:1,an:%s}", strconv.Quote(v.Name))
+			} else {
+				arms[i] = "{v:1}"
+			}
 			continue
 		}
 		f := *v.F
-		f.Name = v.Name
-		arms[i] = cookFieldLiteral(u, &f, 0, false)
+		if variable {
+			f.Name = "value"
+		} else {
+			f.Name = v.Name
+		}
+		armLit := cookFieldLiteral(u, &f, 0, variable)
+		if variable {
+			armLit = strings.TrimSuffix(armLit, "}") + fmt.Sprintf(",an:%s}", strconv.Quote(v.Name))
+		}
+		arms[i] = armLit
 	}
-	return fmt.Sprintf("{k:\"union\",n:%s,at:%d,tagW:%d,armAt:%d,arms:%d,arm:[%s]}",
-		qn, offset, tag, armAt, len(un.Variants), strings.Join(arms, ","))
+	vFlag := ""
+	if variable {
+		vFlag = ",var:1"
+	}
+	return fmt.Sprintf("{k:\"union\",n:%s,at:%d,tagW:%d,armAt:%d,arms:%d%s,arm:[%s]}",
+		qn, offset, tag, armAt, len(un.Variants), vFlag, strings.Join(arms, ","))
 }
 
 func cookScalarLiteral(u *ir.Unit, f *ir.Field, qn string, at int64, variable bool) string {
@@ -363,7 +419,7 @@ func cookScalarLiteral(u *ir.Unit, f *ir.Field, qn string, at int64, variable bo
 		return fmt.Sprintf("{k:\"f32\",n:%s,at:%d}", qn, at)
 	case ir.TFloat64:
 		return fmt.Sprintf("{k:\"f64\",n:%s,at:%d}", qn, at)
-	case ir.TInt, ir.TBits:
+	case ir.TInt, ir.TFixed, ir.TBits:
 		w := int64(f.Type.Width) / 8
 		sg := 0
 		if f.Type.Kind == ir.TBits {
@@ -444,7 +500,19 @@ func cookWriteTextJS(variable bool) string {
 	return b.String()
 }
 
-const cookEngineShared = `  function alignUp(n, a) {
+const cookEngineShared = `  const f32Scratch = new DataView(new ArrayBuffer(8));
+  function narrowF32(v) {
+    if (v !== v) {
+      f32Scratch.setFloat64(0, v, true);
+      const lo = f32Scratch.getUint32(0, true), hi = f32Scratch.getUint32(4, true);
+      let payload = (((hi & 0xfffff) << 3) | (lo >>> 29)) & 0x7fffff;
+      if (payload === 0) { payload = 0x400000; }
+      return ((hi & 0x80000000) | 0x7f800000 | payload) >>> 0;
+    }
+    f32Scratch.setFloat32(0, v, true);
+    return f32Scratch.getUint32(0, true);
+  }
+  function alignUp(n, a) {
     if (a <= 1) { return n; }
     return Math.floor((n + a - 1) / a) * a;
   }
@@ -453,6 +521,12 @@ const cookEngineShared = `  function alignUp(n, a) {
     if (typeof v === "bigint") { b = v; }
     else if (typeof v === "number" && Number.isInteger(v)) { b = BigInt(v); }
     else { return null; }
+    if (width === 16) {
+      if (signed) {
+        if (b < -(1n << 127n) || b > (1n << 127n) - 1n) { return null; }
+      } else if (b < 0n || b > (1n << 128n) - 1n) { return null; }
+      return b;
+    }
     if (width === 8) {
       if (signed) {
         if (b < -0x8000000000000000n || b > 0x7fffffffffffffffn) { return null; }
@@ -477,6 +551,13 @@ const cookEngineShared = `  function alignUp(n, a) {
     const bits = fit(v, width, signed);
     if (bits === null) { return false; }
     if (view === null) { return true; }
+    if (width === 16) {
+      const lo = BigInt.asUintN(64, bits);
+      const hi = BigInt.asUintN(64, bits >> 64n);
+      view.setBigUint64(at, le ? lo : hi, le);
+      view.setBigUint64(at + 8, le ? hi : lo, le);
+      return true;
+    }
     if (width === 8) {
       if (signed) { view.setBigInt64(at, bits, le); }
       else { view.setBigUint64(at, bits, le); }
@@ -497,6 +578,22 @@ const cookEngineShared = `  function alignUp(n, a) {
   }
   function writeField(view, base, fd, parent, le, ctx) {
     if (parent === null || typeof parent !== "object") { return false; }
+    if (fd.presentAt !== undefined) {
+      if (parent[fd.n] === null) {
+        if (view !== null) { view.setUint8(base + fd.presentAt, 0); }
+        if (fd.k === "rec") {
+          return writeStruct(view, base + fd.at, layouts[fd.t], layouts[fd.t].make(), le, ctx);
+        }
+        if (fd.k === "arr") {
+          if (fd.countAt >= 0 && !putWidth(view, base + fd.countAt, 4, 0, true, le)) { return false; }
+          for (let i = 0; i < fd.bound; i++) {
+            if (!writeValue(view, base + fd.at + i * fd.stride, fd.elem, holeValue(fd.elem), le, ctx)) { return false; }
+          }
+        }
+        return true;
+      }
+      if (view !== null) { view.setUint8(base + fd.presentAt, 1); }
+    }
     if (fd.k === "arr") { return writeArray(view, base, fd, parent, le, ctx); }
     if (fd.k === "str" || fd.k === "bytes" || fd.k === "vstr" || fd.k === "vbytes") { return writeText(view, base, fd, parent, le); }
     if (fd.k === "union") { return writeUnion(view, base + fd.at, fd, parent[fd.n], le, ctx); }
@@ -512,7 +609,7 @@ const cookEngineShared = `  function alignUp(n, a) {
         return true;
       case "f32":
         if (typeof value !== "number") { return false; }
-        if (view !== null) { view.setFloat32(at, value, le); }
+        if (view !== null) { view.setUint32(at, narrowF32(value), le); }
         return true;
       case "f64":
         if (typeof value !== "number") { return false; }
@@ -525,7 +622,7 @@ const cookEngineShared = `  function alignUp(n, a) {
         return putWidth(view, at, fd.w, value, false, le);
       case "venum": {
         let ord = 0;
-        if (value !== null && value !== undefined) {
+        if (value !== null && value !== undefined && value !== "None") {
           const i = fd.vs.indexOf(value);
           if (i < 0) { return false; }
           ord = i + 1;
@@ -546,9 +643,10 @@ const cookEngineShared = `  function alignUp(n, a) {
   function holeValue(fd) {
     switch (fd.k) {
       case "bool": return false;
-      case "int": return fd.w === 8 ? 0n : 0;
+      case "int": return fd.w >= 8 ? 0n : 0;
       case "f32": case "f64": case "enum": return 0;
       case "venum": case "ptr": case "sblob": case "bblob": return null;
+      case "union": return fd.var ? null : undefined;
       case "rec": return layouts[fd.t].make();
       default: return undefined;
     }
@@ -574,6 +672,21 @@ const cookEngineShared = `  function alignUp(n, a) {
     return true;
   }
   function writeUnion(view, at, fd, value, le, ctx) {
+    if (fd.var) {
+      if (value === null) {
+        return putWidth(view, at, fd.tagW, 0, false, le);
+      }
+      if (typeof value !== "object") { return false; }
+      let tag = 0;
+      for (let i = 0; i < fd.arm.length; i++) {
+        if (fd.arm[i].an === value.arm) { tag = i + 1; break; }
+      }
+      if (tag === 0) { return false; }
+      if (!putWidth(view, at, fd.tagW, tag, false, le)) { return false; }
+      const arm = fd.arm[tag - 1];
+      if (arm.v) { return true; }
+      return writeField(view, at + fd.armAt, arm, value, le, ctx);
+    }
     if (value === null || typeof value !== "object") { return false; }
     const tag = value.Type;
     if (!Number.isInteger(tag) || tag < 0 || tag > fd.arms) { return false; }
