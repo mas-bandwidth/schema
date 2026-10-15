@@ -457,6 +457,12 @@ func (g *gen) emitArmPayload(b *strings.Builder, v ir.UnionVariant, arm string, 
 		fmt.Fprintf(b, "%sleb_write(&mut payload, index);\n", ind)
 	case f.Type.Kind == ir.TString && f.Array == ir.ArrayNone:
 		fmt.Fprintf(b, "%spayload.extend_from_slice(%s.as_bytes());\n", ind, arm)
+	case f.Type.Kind == ir.TWString && f.Array == ir.ArrayNone:
+		// AN ARM'S L IS THE WSTRING'S BYTE LENGTH (docs/SPEC-TABLES.md §3's arm
+		// payload table), so the units ride under it with no length of their
+		// own; over N is the save's refusal by name (§3, SPEC.md §4.12)
+		fmt.Fprintf(b, "%slet n = table_wide_fit(ids, &%s, %d, %q);\n", ind, arm, f.Type.Size, wideOwner(g.unit, f)+"."+f.Name)
+		fmt.Fprintf(b, "%stable_wide_put(&mut payload, &%s[..n]);\n", ind, arm)
 	case classOf(f) == vUnion && f.Array == ir.ArrayNone:
 		g.emitUnionElement(b, f, arm, "payload", ordinal, ind)
 	case f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Pointer):
@@ -955,6 +961,15 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 		} else if classOf(f) == vEnum {
 			emitEnumDecode(b, f, "slot", aend, "return false;", in)
 			fmt.Fprintf(b, "%sif *off != %s { report.malformed = true; ok = false; }\n", in, aend)
+		} else if classOf(f) == vWString {
+			// an arm's wide text (docs/SPEC-TABLES.md §3, §4; the oracle's
+			// decode.go arm case): an odd L or ill-formed units read the union
+			// None and count malformed; over N keeps the longest prefix that
+			// does not split a pair and counts one clamp
+			fmt.Fprintf(b, "%smatch table_wide_units(&wire[*off..%s]) {\n", in, aend)
+			fmt.Fprintf(b, "%s    None => { report.malformed = true; ok = false; }\n", in)
+			fmt.Fprintf(b, "%s    Some(u) => { let keep = table_wide_boundary(&u, %d); if keep < u.len() { report.clamped += 1; } slot = u[..keep].to_vec(); }\n", in, f.Type.Size)
+			fmt.Fprintf(b, "%s}\n", in)
 		} else if classOf(f) == vString {
 			fmt.Fprintf(b, "%slet bytes = &wire[*off..%s];\n", in, aend)
 			fmt.Fprintf(b, "%sif !text_valid(bytes) { report.malformed = true; ok = false; }\n", in)

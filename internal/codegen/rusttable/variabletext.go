@@ -105,6 +105,25 @@ pub fn json_clamp(s: String, n: usize, clamped: &mut u64) -> String {
     s[..end].to_string()
 }
 
+/// A JSON string as wstring(N) code units (docs/SPEC-TABLES.md §16.2's wstring
+/// row): transcoded at the boundary, and clamped at N CODE UNITS with a pair
+/// never split; once a character does not fit nothing after it is kept, and
+/// the clamp counts once (the oracle's tabletext scanWString).
+#[allow(dead_code)]
+pub fn json_wide_clamp(s: &str, n: usize, clamped: &mut u64) -> Vec<u16> {
+    let mut out: Vec<u16> = Vec::new();
+    let mut buf = [0u16; 2];
+    for c in s.chars() {
+        let units = c.encode_utf16(&mut buf);
+        if out.len() + units.len() > n {
+            *clamped += 1;
+            break;
+        }
+        out.extend_from_slice(units);
+    }
+    out
+}
+
 pub const JSON_B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /// Bytes as a base64 JSON string (docs/SPEC-TABLES.md §16.2): the standard
@@ -834,6 +853,10 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 		fmt.Fprintf(b, "%s%s(&%s, w, %s);\n", ind, fn(un.Name, "json_write"), x, d)
 	case vString:
 		fmt.Fprintf(b, "%sjson_escape(&%s, &mut w.out);\n", ind, x)
+	case vWString:
+		// the same text, TRANSCODED at the boundary (docs/SPEC-TABLES.md
+		// §16.2's wstring row): a stored value is paired, so nothing is lost
+		fmt.Fprintf(b, "%sjson_escape(&String::from_utf16_lossy(&%s), &mut w.out);\n", ind, x)
 	case vBytes:
 		fmt.Fprintf(b, "%sjson_b64(&%s, &mut w.out);\n", ind, x)
 	case vEnum:
@@ -1097,6 +1120,9 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 		fmt.Fprintf(b, "%s} else { jr.kind_mismatch += 1; jr.skip_value(); }\n", in)
 	case vString:
 		fmt.Fprintf(b, "%sif jr.peek() == b'\"' { if let Some(s) = jr.read_string() { %s = json_clamp(s, %d, &mut jr.clamped); } }\n", in, dst, f.Type.Size)
+		fmt.Fprintf(b, "%selse { jr.kind_mismatch += 1; jr.skip_value(); }\n", in)
+	case vWString:
+		fmt.Fprintf(b, "%sif jr.peek() == b'\"' { if let Some(s) = jr.read_string() { %s = json_wide_clamp(&s, %d, &mut jr.clamped); } }\n", in, dst, f.Type.Size)
 		fmt.Fprintf(b, "%selse { jr.kind_mismatch += 1; jr.skip_value(); }\n", in)
 	case vBytes:
 		fmt.Fprintf(b, "%sif jr.peek() == b'\"' {\n", in)

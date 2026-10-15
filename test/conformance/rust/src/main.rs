@@ -853,6 +853,14 @@ macro_rules! with_root {
                 use mapdemo::{runs_from_json as $from_json, runs_load as $load, runs_save as $save, runs_to_json_checked as $to_json};
                 Some($body)
             }
+            // wstring(N) as a MAP VALUE (docs/SPEC-TABLES.md §2.8, §3 kind 33):
+            // the widedemo roots are fixed tables, which ride this leg's
+            // fixed form only, so map_text is the wide row this driver answers
+            ("mapdemo", "Text") => {
+                #[allow(unused_imports)]
+                use mapdemo::{text_from_json as $from_json, text_load as $load, text_save as $save, text_to_json_checked as $to_json};
+                Some($body)
+            }
             _ => None,
         }
     }};
