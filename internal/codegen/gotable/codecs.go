@@ -445,6 +445,9 @@ func tableFieldTypeName(f *ir.Field) string {
 	case ir.TBool:
 		return "bool"
 	case ir.TInt:
+		if f.Type.Timestamp {
+			return "timestamp"
+		}
 		prefix := "int"
 		if !f.Type.Signed {
 			prefix = "uint"

@@ -125,7 +125,7 @@ func (g *tableGen) emitArithMeasureField(f *ir.Field, cond, ind string) {
 		}
 		return
 	}
-	width := ir.TableKindWidth(ir.TableWireScalarKind(f))
+	width := ir.TableKindStoredWidth(ir.TableWireScalarKind(f))
 	add := fmt.Sprintf("bytes += tableLebBytes(ids.refAtHit(%d, 0x%016x)) + 1 + %d", g.knownOrdinal(id), id, width)
 	if ride != "" {
 		g.pf("%sif %s { %s } // %s\n", ind, ride, add, f.Name)
@@ -547,7 +547,7 @@ func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {
 		}
 		g.pf("%s%s.Put%d(math.Float%dbits(%s))\n", ind, writer, bits, bits, expr)
 	default:
-		width := ir.TableKindWidth(kind) * 8
+		width := ir.TableKindStoredWidth(kind) * 8
 		if width == 128 {
 			g.pf("%s%s.Put128(%s.Lo, %s.Hi)\n", ind, writer, expr, expr)
 		} else {

@@ -213,6 +213,11 @@ func init() {
 		Name{Name: "tableJsonWideSigned", What: "exact wide scalar text conversion"},
 		Name{Name: "tableJsonWideLoad", What: "exact wide scalar text conversion"},
 		Name{Name: "tableJsonWideStore", What: "exact wide scalar text conversion"},
+		Name{Name: "tableJsonReadTimestamp", What: "the timestamp kind's text form and Go value"},
+		Name{Name: "tableJsonWriteTimestamp", What: "the timestamp kind's text form and Go value"},
+		Name{Name: "TableTimestampError", What: "the timestamp kind's text form and Go value"},
+		Name{Name: "tableTimestampNanos", What: "the timestamp kind's text form and Go value"},
+		Name{Name: "tableTimestampTime", What: "the timestamp kind's text form and Go value"},
 		Name{Name: "tableJsonReadWide", What: "exact wide scalar text conversion"},
 		Name{Name: "tableJsonWriteWide", What: "exact wide scalar text conversion"},
 

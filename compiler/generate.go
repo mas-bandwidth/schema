@@ -91,6 +91,17 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		}
 		return nil, fmt.Errorf("target %q is not implemented — %s are the live targets", target, englishList(c.Targets()))
 	}
+	if carrier := g.Names()[0]; carrier != "go" {
+		// GO CARRIES THE `timestamp` KIND FIRST (SPEC.md §4.13): every other
+		// target refuses a unit that uses it, here, once, by name — the
+		// construct, the target and the rule — so no other emitter is edited
+		// and none can write a second wire for a kind it does not know
+		if fields := ir.TableTimestampFields(u); len(fields) > 0 {
+			return nil, fmt.Errorf("the %s target does not carry the timestamp kind — %s: Go carries it first, "+
+				"and every other target refuses the construct by name until its own turn (SPEC.md §4.13, docs/SPEC-TABLES.md §2.11)",
+				carrier, strings.Join(fields, ", "))
+		}
+	}
 	if lg, takes := g.(lineageGenerator); takes {
 		lineage, err := openFixedLineage(u)
 		if err != nil {

@@ -503,6 +503,13 @@ type FieldType struct {
 	// bytes or a union — the checker refuses each by name. The holder stays
 	// FIXED-SIZE: an optional costs one bool and no allocation.
 	Optional bool
+
+	// Timestamp marks a TInt that is a `timestamp` (SPEC.md §4.13): the same
+	// signed 64 bit storage, the same fixed-form slot, and its own table-wire
+	// kind and text form. It is a FLAG on TInt and not a kind of its own
+	// because every layout, row and cooked record already stores it as the
+	// int64 it is; only the consumers that name a kind or a spelling ask.
+	Timestamp bool
 }
 
 // Blob reports a BYTE BUFFER field — `*bytes` or `*string` (docs/SPEC-TABLES.md

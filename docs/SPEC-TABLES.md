@@ -3639,11 +3639,10 @@ wire, the fixed form and the text form write any count.
 naming the construct, the target and that Go carries it first (§11); no other
 emitter is edited until its own card. Go's other storage forms — the cook, the
 block and the message form — hold the field as its `int64` count and are not
-yet tested with it. **The skip of a kind-`36` field a reader does not name
-(§3's first skip row, a fixed width of eight) is specified here and not yet
-carried:** the Go runtime's width table and the byte oracle are shared by
-every unit, and the card that owns them teaches both at once, so until then
-each treats an unnamed kind `36` as damage, identically.
+yet tested with it. **A kind-`36` field a reader does not name skips by §3's
+first skip row, a fixed width of eight:** the Go runtime and the shared width
+table both recognize kind `36` as an eight-byte payload, so an unnamed or
+kind-mismatched `timestamp` field is skipped cleanly.
 
 ## 3. The wire
 
@@ -4063,7 +4062,7 @@ one document rather than two.
     elides instead (below), and a reader accepts the id wherever it appears.
 - **Skipping a field you cannot name** needs the kind byte and nothing else,
   which is what makes an unknown field survivable (§4). Four rules cover the
-  set. Kinds `1`–`11` and `18`–`29` skip their fixed width. Kinds `17` and
+  set. Kinds `1`–`11`, `18`–`29` and `36` skip their fixed width. Kinds `17` and
   `30` read one LEB128 value and stop. Kinds `12`, `13`, `14`, `16`, `31`,
   `32` and `33` read `L` and skip `L` bytes. Kind `15` reads the arm id reference
   and stops there if it is `0`, else reads the kind byte, then `L`, and skips

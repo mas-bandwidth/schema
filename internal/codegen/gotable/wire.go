@@ -405,7 +405,7 @@ func tableKindBytes(kind uint8) int64 {
 	case 1,2,6,20,25: return 1
 	case 3,7,21,26: return 2
 	case 4,8,10,22,27: return 4
-	case 5,9,11,23,28: return 8
+	case 5,9,11,23,28,36: return 8
 	case 18,19,24,29: return 16
 	}
 	return 0
