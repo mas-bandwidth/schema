@@ -11173,6 +11173,19 @@ vocabulary a table carries is §8.1's and rides where it always did. The gate
 asks "did the registry leak out of its file?", never "is there a descriptor
 here?" — §2.2's own distinction between machinery and columns.
 
+**The Go `--surface` flag (§8.4).** `generate --lang go --surface <list>`
+emits only the table surfaces the list names, so a build pays only for the
+surfaces it uses instead of compiling every table surface the emitter knows.
+The surfaces are `wire`, `fixed`, `json`, `cook`, `block`, `view`, `message`
+and `retain`. With no `--surface`, all eight are emitted and the output is
+byte-identical to a build that predates the flag. Dependencies between
+surfaces are resolved by the emitter and are never optional: `json` needs
+`wire` (text reads and writes the wire codec), `message` needs `wire` (the
+message form rides the same record), and `cook` needs `wire` (a cook is a
+record's cooked bytes). A `--lang` other than `go` refuses the flag by name.
+The rule is written here first; the Go emitter implements it, and the Go
+conformance column proves it.
+
 ### 8.5 On the side
 
 **The view is one generated file per UNIT, not per schema file** —

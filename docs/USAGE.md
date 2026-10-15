@@ -95,6 +95,15 @@ Run the same command with `--lang c`, `--lang cs`, `--lang elixir`, `--lang go`,
 language — writing the
 **same bits**.
 
+**Only the surfaces you name (Go).** `generate --lang go --surface <list>`
+emits only the table surfaces in `list`: a comma-separated subset of `wire`,
+`fixed`, `json`, `cook`, `block`, `view`, `message`, `retain`. With no
+`--surface`, every surface is emitted and the output is byte-identical to a
+build that predates the flag. Dependencies are resolved for you, so a surface
+that needs another pulls it in (for example `json` needs `wire`, and `message`
+needs `wire`). Any other `--lang` refuses `--surface` by name. See
+docs/SPEC-TABLES.md §8.4 for the surface list and its dependencies.
+
 ---
 
 ## Declarations
