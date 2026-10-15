@@ -134,6 +134,9 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("\t\treturn false\n")
 	g.pf("\t}\n")
 	g.pf("\treturn true\n}\n\n")
+	// ReadStrict is §6.5's STRICT read for a root whose file load is not the builder.
+	g.pf("// %sReadStrict is the STRICT read (docs/SPEC-TABLES.md §6.5): one call, one typed reason.\n", n)
+	g.pf("func %sReadStrict(wire []byte)(*%s,error){value:=new(%s);var report TableReport;ok:=%sLoad(value,wire,&report);if err:=report.Err();err!=nil||!ok{if err==nil{err=TableRefuseWireDamaged};return nil,err};return value,nil}\n\n", n, g.storageName(n), g.storageName(n), n)
 }
 
 func wireWidenable(kind int) bool {
