@@ -51,7 +51,7 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	b.WriteString("// never coerced. The canonical text ends with exactly ONE newline, which the\n")
 	b.WriteString("// writer emits and the reader accepts with or without (§16.1).\n\n")
 	fmt.Fprintf(&b, "package %s\n\n", u.Package)
-	b.WriteString("import (\n\t\"math\"\n\t\"strconv\"\n\t\"unsafe\"\n\t\"unicode/utf8\"\n)\n\n")
+	b.WriteString("import (\n\t\"encoding/base64\"\n\t\"math\"\n\t\"strconv\"\n\t\"unsafe\"\n\t\"unicode/utf8\"\n)\n\n")
 	b.WriteString(strings.Replace(tableJsonWalkSource, "// ---- json walk: end ----",
 		tableJsonWideSource+tableJsonWStringSource+tableJsonGraphSource+tableJsonListSource+tableJsonMapSource+tableJsonMapDecimalSource+"// ---- json walk: end ----", 1))
 
@@ -80,6 +80,38 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 			fmt.Fprintf(&b, "// bytes written — exactly %sToJsonMeasure's answer — or -1 when it is short.\n", n)
 			fmt.Fprintf(&b, "func %sToJson(value *%s, buffer []byte) int64 {\n", n, storageName(u, n))
 			fmt.Fprintf(&b, "\treturn tableJsonWrite(unsafe.Pointer(value), %sTableType(), buffer)\n}\n\n", n)
+			// THE OTHER CARRIER A TEXT CHANNEL TAKES (§16.8): padded standard
+			// base64 of the binary wire, beside the JSON text form. The two
+			// answer different channels and refuse by different names, and
+			// neither renames the other.
+			fmt.Fprintf(&b, "// %sSaveText is %s's binary wire as padded standard base64 (docs/SPEC-TABLES.md §16.8).\n", n, n)
+			b.WriteString("// The body IS the wire, byte for byte, so the form byte, the framing check and\n")
+			b.WriteString("// every versioning guarantee arrive with it. It is opaque: the form for a\n")
+			b.WriteString("// channel no human reads. It fails only where Save fails, with invalid_value.\n")
+			fmt.Fprintf(&b, "func %sSaveText(value *%s) (string, error) {\n", n, storageName(u, n))
+			fmt.Fprintf(&b, "\tsize := %sMeasure(value)\n", n)
+			b.WriteString("\tif size < 0 { return \"\", TableRefuseInvalidValue }\n")
+			b.WriteString("\tbuffer := make([]byte, size)\n")
+			fmt.Fprintf(&b, "\tif %sSave(value, buffer) != size { return \"\", TableRefuseInvalidValue }\n", n)
+			b.WriteString("\treturn tableTextEncode(buffer), nil\n}\n\n")
+			fmt.Fprintf(&b, "// %sLoadText reads %s from padded standard base64 of its wire (§16.8) and\n", n, n)
+			b.WriteString("// refuses BY NAME: text_not_base64 for a body that does not decode, and the\n")
+			b.WriteString("// BINARY reader's own name — unknown_form, wire_damaged — for a decoded wire\n")
+			b.WriteString("// the binary reader refuses. Either way the instance goes back to its\n")
+			b.WriteString("// declared defaults and the report says malformed. nil is a clean read.\n")
+			fmt.Fprintf(&b, "func %sLoadText(value *%s, text string, report *TableReport) error {\n", n, storageName(u, n))
+			b.WriteString("\twire, reason := tableTextDecode(text)\n")
+			b.WriteString("\tif reason != TableRefuseOk {\n")
+			b.WriteString("\t\tif report != nil { *report = TableReport{}; report.Malformed = true }\n")
+			fmt.Fprintf(&b, "\t\t%sReset(value)\n", n)
+			b.WriteString("\t\treturn reason\n")
+			b.WriteString("\t}\n")
+			fmt.Fprintf(&b, "\tif !%sLoad(value, wire, report) { return tableTextWireReason(report) }\n", n)
+			b.WriteString("\treturn nil\n}\n\n")
+			fmt.Fprintf(&b, "// %sFromJsonReason names %sFromJson's refusal (§16.8): ok, or text_damaged\n", n, n)
+			b.WriteString("// for a document the walk will not read. It decides exactly as FromJson does.\n")
+			fmt.Fprintf(&b, "func %sFromJsonReason(value *%s, text []byte, report *TableReport) TableRefuseReason {\n", n, storageName(u, n))
+			fmt.Fprintf(&b, "\treturn tableTextJsonReason(%sFromJson(value, text, report))\n}\n\n", n)
 		}
 	}
 	src, err := format.Source([]byte(b.String()))
@@ -1957,6 +1989,46 @@ func tableJsonWrite(value unsafe.Pointer, info *TableTypeInfo, buffer []byte) in
 		return -1
 	}
 	return out.offset
+}
+
+// ---- the two text carriers a text channel takes (docs/SPEC-TABLES.md §16.8) ----
+
+// tableTextEncode is PADDED STANDARD base64 of the binary wire (RFC 4648 §4:
+// the standard alphabet, '=' padding, no line breaks). The body IS §3's wire,
+// byte for byte, so the form byte, the framing check and every versioning
+// guarantee the wire carries arrive with it; the carrier is opaque and adds
+// nothing of its own.
+func tableTextEncode(wire []byte) string { return base64.StdEncoding.EncodeToString(wire) }
+
+// tableTextDecode refuses a body that is not padded standard base64 BY NAME
+// (§16.8) and decodes nothing when it does.
+func tableTextDecode(text string) ([]byte, TableRefuseReason) {
+	wire, err := base64.StdEncoding.DecodeString(text)
+	if err != nil {
+		return nil, TableRefuseTextNotBase64
+	}
+	return wire, TableRefuseOk
+}
+
+// tableTextWireReason names a DECODED wire the binary reader refused with the
+// BINARY reader's own name, never a text one (§16.8): a form byte this build
+// does not read is unknown_form (§3 THE FIRST BYTE), and framing damage — a
+// truncated body, a lying trailer, an early end — is wire_damaged (§3.4, §4).
+func tableTextWireReason(report *TableReport) TableRefuseReason {
+	if report != nil && report.Verdict == TableOpenRefused {
+		return TableRefuseUnknownForm
+	}
+	return TableRefuseWireDamaged
+}
+
+// tableTextJsonReason names a JSON document the walk refused under
+// text_damaged (§16.3's reader half, §16.8). It decides nothing itself: the
+// walk already decided, and the instance is already back at its defaults.
+func tableTextJsonReason(ok bool) TableRefuseReason {
+	if ok {
+		return TableRefuseOk
+	}
+	return TableRefuseTextDamaged
 }
 
 // ---- json walk: end ----

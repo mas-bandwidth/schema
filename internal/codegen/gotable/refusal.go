@@ -22,6 +22,8 @@ TableRefuseDataCycle
 TableRefuseInvalidValue
 TableRefuseAllocationFailed
 TableRefuseWireDamaged
+TableRefuseTextNotBase64
+TableRefuseTextDamaged
 )
 func(r TableRefuseReason) Error()string{switch r {
 case TableRefuseOk:return "ok"
@@ -41,7 +43,16 @@ case TableRefuseDataCycle:return "data_cycle"
 case TableRefuseInvalidValue:return "invalid_value"
 case TableRefuseAllocationFailed:return "allocation_failed"
 case TableRefuseWireDamaged:return "wire_damaged"
+case TableRefuseTextNotBase64:return "text_not_base64"
+case TableRefuseTextDamaged:return "text_damaged"
 };return "invalid refusal reason"}
+// THE TWO TEXT CARRIERS' OWN NAMES (docs/SPEC-TABLES.md §16.8), added at the
+// END of the vocabulary and never renumbered. A text channel refuses a body
+// that is not padded standard base64 under text_not_base64, and the JSON
+// reader refuses a document its walk will not read under text_damaged. A body
+// that DECODES to a wire the binary reader refuses keeps the BINARY reader's
+// name — unknown_form, wire_damaged — because the carrier adds no refusal of
+// its own there and takes none away.
 func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{return nil};return reason}
 // TableBuildVersionMismatch is the typed error a strict announcement refusal
 // reports (docs/SPEC-TABLES.md §3.3): the peer's build version and the
