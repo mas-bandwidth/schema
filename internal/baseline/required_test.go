@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/baseline"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 const requiredRowsSrc = `package rows
@@ -55,6 +56,25 @@ func TestRequiredIsJudgedByTheTablesBaseline(t *testing.T) {
 		}
 		if got := baseline.Diff(back, live, baseline.DefaultTokenPolicy); len(got) != 0 {
 			t.Fatalf("parsed file diffs against its rendering:%s", summary(got))
+		}
+	})
+	t.Run("moves neither the protocol id nor the build version", func(t *testing.T) {
+		// §2.3: the protocol id hashes the `type` wire and the build version
+		// the cook projection; the marker changes neither
+		const src = "package rows\ntype P\n{\n    x int32\n}\n" + "table Ship\n{\n    name string(32)\n    score int32 | required\n}\n"
+		with := unit(t, src)
+		without := unit(t, editOf(t, src, "score int32 | required", "score int32"))
+		if with.ProtocolId != without.ProtocolId {
+			t.Errorf("the protocol id moved: %016x -> %016x", without.ProtocolId, with.ProtocolId)
+		}
+		if ir.BuildVersion(with) != ir.BuildVersion(without) {
+			t.Errorf("the build version moved: %016x -> %016x", ir.BuildVersion(without), ir.BuildVersion(with))
+		}
+		// control: the build version does see this table, so the equality
+		// above is not vacuous
+		grown := unit(t, editOf(t, src, "score int32 | required", "score int64 | required"))
+		if ir.BuildVersion(grown) == ir.BuildVersion(with) {
+			t.Fatalf("control: a kind change in Ship did not move the build version")
 		}
 	})
 }
