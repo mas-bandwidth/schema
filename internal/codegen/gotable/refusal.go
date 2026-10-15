@@ -47,7 +47,7 @@ func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{re
 // reports (docs/SPEC-TABLES.md §3.3): the peer's build version and the
 // reader's own, each a 64-bit number.
 type TableBuildVersionMismatch struct { Peer, Own uint64 }
-func(m TableBuildVersionMismatch) Error() string {const digits="0123456789abcdef";var peer,own [16]byte;for i:=15;i>=0;i-- {peer[i]=digits[m.Peer&0xf];m.Peer>>=4};for i:=15;i>=0;i-- {own[i]=digits[m.Own&0xf];m.Own>>=4};return "build_version_mismatch: peer 0x"+string(peer[:])+" own 0x"+string(own[:])}
+func(m TableBuildVersionMismatch) Error() string {const digits="0123456789abcdef";var peer,own [16]byte;p,o:=m.Peer,m.Own;for i:=15;i>=0;i-- {peer[i]=digits[p&0xf];p>>=4};for i:=15;i>=0;i-- {own[i]=digits[o&0xf];o>>=4};return "build_version_mismatch: peer 0x"+string(peer[:])+" own 0x"+string(own[:])}
 // Err is the report's typed error: the strict build-version refusal as a
 // TableBuildVersionMismatch (docs/SPEC-TABLES.md §3.3), nil on a clean read.
 func(r *TableReport) Err() error {if r!=nil&&r.Reason=="build_version_mismatch"{return TableBuildVersionMismatch{Peer:r.BuildVersionPeer,Own:r.BuildVersionOwn}};return nil}

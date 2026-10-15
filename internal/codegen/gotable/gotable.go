@@ -33,6 +33,7 @@ import (
 	"fmt"
 	"go/format"
 	"maps"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -372,6 +373,7 @@ func fileMembers(f *ir.File, closure map[string]bool) []*ir.Struct {
 }
 
 func (g *tableGen) assemble() ([]byte, error) {
+	usesSerialize := strings.Contains(g.types.String()+g.body.String(), "serialize.")
 	var h strings.Builder
 	// a home the unit has no file for is generated FOR THE UNIT, and says so —
 	// there is no <Base>.schema to name
@@ -384,7 +386,11 @@ func (g *tableGen) assemble() ([]byte, error) {
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
 	fmt.Fprintf(&h, "// package %s — the TABLE wire (docs/SPEC-TABLES.md): evolution-tolerant, neutral\n", g.unit.Package)
-	h.WriteString("// bytes. Wide values use serialize.go storage. Tables version by field id, never by the\n")
+	h.WriteString("// bytes.")
+	if usesSerialize {
+		h.WriteString(" Wide values use serialize.go storage.")
+	}
+	h.WriteString(" Tables version by field id, never by the\n")
 	h.WriteString("// unit's protocol id.\n")
 	if g.home {
 		h.WriteString("//\n")
@@ -412,13 +418,13 @@ func (g *tableGen) assemble() ([]byte, error) {
 	if g.unsafeUsed {
 		std = append(std, `"unsafe"`)
 	}
-	if strings.Contains(g.types.String()+g.body.String(), "serialize.") {
+	if usesSerialize {
 		std = append(std, `"github.com/mas-bandwidth/serialize.go"`)
 	}
 	h.WriteString(goImports(std))
 	h.WriteString(g.types.String())
 	h.WriteString(g.body.String())
-	src, err := format.Source([]byte(h.String()))
+	src, err := format.Source([]byte(repoPrefix(h.String())))
 	if err != nil {
 		base := runtimeHome(g.unit)
 		if g.file != nil {
@@ -427,6 +433,46 @@ func (g *tableGen) assemble() ([]byte, error) {
 		return nil, fmt.Errorf("generated Go for %sTable.go does not parse — a compiler bug, not a schema error: %w", base, err)
 	}
 	return src, nil
+}
+
+// repoPrefix marks every bare reference to this repository's own paths that a
+// generated comment cites — docs/... and internal/... — with the repository's
+// name, so an adopter's path linter reads them as another repository's rather
+// than its own (docs/USAGE.md Go notes).
+var repoPrefixRe = regexp.MustCompile(`(docs|internal)/`)
+
+func isPathWordByte(c byte) bool {
+	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+}
+
+// repoPrefix marks every bare reference to this repository's own paths that a
+// generated comment cites — docs/... and internal/... — with the repository's
+// name, so an adopter's path linter reads them as another repository's rather
+// than its own. A path already inside a longer one (an import like
+// github.com/mas-bandwidth/schema/v2/internal/ast) is left alone: it is
+// preceded by a word byte or a slash, which a bare citation never is.
+func repoPrefix(src string) string {
+	idxs := repoPrefixRe.FindAllStringIndex(src, -1)
+	if len(idxs) == 0 {
+		return src
+	}
+	var b strings.Builder
+	last := 0
+	for _, loc := range idxs {
+		start := loc[0]
+		if start > 0 {
+			c := src[start-1]
+			if isPathWordByte(c) || c == '/' {
+				continue
+			}
+		}
+		b.WriteString(src[last:start])
+		b.WriteString("mas-bandwidth/schema ")
+		b.WriteString(src[start:loc[1]])
+		last = loc[1]
+	}
+	b.WriteString(src[last:])
+	return b.String()
 }
 
 // goImports renders an import block the way gofmt would have written it: a
