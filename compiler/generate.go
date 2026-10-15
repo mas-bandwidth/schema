@@ -91,6 +91,11 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		}
 		return nil, fmt.Errorf("target %q is not implemented — %s are the live targets", target, englishList(c.Targets()))
 	}
+	if target != "go" {
+		if fname, owner, ok := firstRequiredField(u); ok {
+			return nil, fmt.Errorf("target %q refuses | required — Go carries it first, and the construct is specified ahead of its implementation elsewhere (docs/SPEC-TABLES.md §2.3); the field %q in %s uses it", target, fname, owner)
+		}
+	}
 	if lg, takes := g.(lineageGenerator); takes {
 		lineage, err := openFixedLineage(u)
 		if err != nil {
@@ -102,6 +107,20 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 }
 
 // englishList joins names for a sentence: "c, cpp, cs, go, js and rust".
+// firstRequiredField returns the first table field marked `| required` and its
+// table's name. The central refusal for every target but go reads it
+// (docs/SPEC-TABLES.md §2.3).
+func firstRequiredField(u *ir.Unit) (fname, owner string, ok bool) {
+	for name, st := range u.Tables {
+		for _, f := range st.Fields {
+			if f.Required {
+				return f.Name, name, true
+			}
+		}
+	}
+	return "", "", false
+}
+
 func englishList(names []string) string {
 	switch len(names) {
 	case 0:

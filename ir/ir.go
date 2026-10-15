@@ -381,6 +381,13 @@ type Field struct {
 	// see it turn off.
 	Deprecated bool
 
+	// Required is the `| required` marker (docs/SPEC-TABLES.md §2.3): the
+	// writer ALWAYS writes this field (no default elision), and a reader
+	// refuses a record missing it by name (`missing_required`, field named).
+	// Table fields only; every other target refuses the construct at
+	// generation until its turn.
+	Required bool
+
 	Array      ArrayKind
 	ArrayBound int64
 	ArrayExpr  Expr  // the declared bound expression, for rendering
