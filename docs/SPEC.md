@@ -1686,7 +1686,13 @@ union Value
   different emitter, written beside the tables rather than among the packet
   declarations (docs/SPEC-TABLES.md §2.6), and it emits `None`, the variants,
   `Max` and the debug-name function, because it is the same construct
-  to a reader. The table layer is the C++ reference's, so the shape has one
+  to a reader. The table layer is the C++ reference's, so the shap
+Two valueless TAGS are read by the compiler rather than riding inert:
+`| deprecated` (docs/SPEC-TABLES.md §2.10) and `| required`
+(docs/SPEC-TABLES.md §4.3 — a variable-table field the writer always writes
+and a reader refuses to find missing; Go carries it first and every other
+target refuses a unit that uses it). Every other tag remains inert metadata.
+e has one
   emitter where the packet shape has nine.
 - **The wire.** This bullet is the TYPE wire's, which a union of declared
   `type` arms rides and a table-closure union does not ride at all (above).

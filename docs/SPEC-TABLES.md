@@ -1017,6 +1017,10 @@ too-large extent is refused against.
 
 ### 2.3 Optional fields: `settings ?GunnerSettings`
 
+(The opposite marker is `| required`, §4.3: an optional field MAY be absent
+and reads as absent; a required field MUST be present and a record missing it
+is refused by name. One field may not carry both.)
+
 ```
 table ShipConfig
 {
@@ -7216,6 +7220,12 @@ tolerance is the versioning model:
   inside the field's declared range: a range excluding zero requires a
   declared default in range (SPEC §4.6), so an absent field never lands
   out of bounds and never clamps.
+- **A REQUIRED field the writer did not send**: the record is REFUSED —
+  `missing_required`, the field named (§4.3). This is the one absence that
+  does not fall back to a default: a field declared `| required` is never
+  elided by a conforming writer, so its absence means the record was written
+  by a build that did not carry the field, and reading it at a default would
+  resurrect exactly the ambiguity §4.3 exists to end.
 - **Unknown enum variant, union arm or KEYED SLOT** (a name this reader
   does not have): the enum value reads as `None`, the union reads as empty,
   a keyed array's slot is dropped and the rest of its slots land normally,
@@ -7534,7 +7544,9 @@ the one the committed baseline (§18) exists to refuse:
    first member's shape at a scalar: the same bytes now mean something
    else.
 
-Everything else is either reported or safe. Fields may be added, removed,
+Everything else is either reported or safe — including a record refused for
+a missing `| required` field, which is named in the read report's `Reason`
+(§4.3) and so is the loudest event here, not a silent one. Fields may be added, removed,
 reordered and renamed under `was`; enum variants and union arms may be
 added anywhere, removed, reordered and renamed under `was`; array bounds may move; a field may
 change between `T` and `?T` — all of it either invisible to the wire or
@@ -7865,6 +7877,46 @@ its counters from the engine, and the `report` surface — which already loads a
 wire and compares the six counters in every language — is where it lives.
 The evolution seams and the pointer-spelling cases there are exactly that
 shape already.
+
+### 4.3 Required fields: `| required`
+
+A zero field is not written (§4, the absent-field rule), so on the variable
+wire ABSENCE READS THE SAME AS ZERO and a variable table cannot say a field
+must be present. `| required` says it. It is a valueless TAG in the sense of
+SPEC §4.2 — the same reading path `| deprecated` (§2.10) rides — and it is
+the standard's answer to absence-as-zero, Go first: the Go variable writer and
+reader implement it, and every other target REFUSES a unit that uses it, by
+name, centrally in `compiler.Generate` ("Go carries it first"), until its own
+turn.
+
+The rules:
+
+- **The writer always writes it.** A required field rides even sitting at its
+  specified default or zero — no default elision — so a conforming record
+  always presents it.
+- **The reader refuses a record missing it, by name.** The refusal is
+  `missing_required` with the FIELD NAMED, in the read report's `Reason`, and
+  the record does not load (§4's bullet above). A field present under a
+  mismatched kind is that kind's own counted event, not an absence.
+- **Where it has a meaning.** A field of a VARIABLE table closure: scalars,
+  enums, flags and text (`string(N)`, `bytes(N)`, `wstring(N)`) today. It is
+  refused, by name, on: a packet `type` field (no table wire to be present
+  on); an optional `?T` (§2.3's presence companion already says presence,
+  and the two markers contradict); a FIXED table — in the fixed form (§3.4)
+  the record is walked by offset and EVERY FIXED FIELD IS ALWAYS WRITTEN, so
+  the marker is meaningless there and the compiler refuses it rather than
+  pretend to honor it; and a shape whose ride is a body or a count — arrays,
+  keyed arrays, maps, lists, pointers, nested tables, unions — which is a
+  named follow-on (§15).
+- **It is part of the projection.** `required=true` rides the field's
+  projection line (SPEC §3), so adding or removing the marker moves the
+  protocol id: two builds cannot disagree about it silently.
+- **Evolution (§18.2).** Adding `| required` to a SHIPPED field is a break
+  the tables baseline REFUSES: old records elided the field at its default
+  and the stricter reader refuses every one of them. A NEW required field on
+  an existing table is the same break by the same argument — every record
+  written before it lacks it — and is refused too. REMOVING the marker is
+  free: the relaxed reader still reads every record the stricter build wrote.
 
 ## 5. Identity: the name hash, `was`, and the collision refusal
 
@@ -14729,6 +14781,12 @@ is anything else; a baseline row would only repeat the compiler, and a
 baseline cannot know which tables a project actually blocks. Every verdict
 above is the wire's.
 
+
+`required` is judged by its own rule (§4.3): the marker ADDED to a shipped
+field — or carried by a NEW field of a shipped table — refuses, because
+every record written before the edit lacks the field and the stricter reader
+refuses them all; the marker REMOVED passes, because the relaxed reader
+still reads every record the stricter build wrote.
 ### 18.3 What a name is worth, and what a referent is worth
 
 **A DECLARATION NAME IS NOT ON THE WIRE, and renaming one must not take its

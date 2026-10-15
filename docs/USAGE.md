@@ -863,6 +863,15 @@ the only runtime frame that can refuse two peers whose bit assignments differ
 
 ## Tables: data that outlives builds
 
+A variable table elides a field sitting at its default, so absence reads the
+same as zero. Where that is not good enough, declare the field `| required`
+(docs/SPEC-TABLES.md §4.3): the writer always writes it — a required zero
+rides — and a reader handed a record missing it refuses the record by name
+(`missing_required`, the field named). Go carries the marker first; every
+other target refuses a unit that uses it until its turn. Adding `| required`
+to a shipped field is a break the baseline refuses (old records lack it);
+removing it is free.
+
 Packets are for the network: exact-match, bit-packed, same protocol id or
 refuse. **Tables are for data that outlives the build that wrote it** —
 tools→game pipelines, editors that walk properties by name, save games, tool

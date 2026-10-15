@@ -388,6 +388,13 @@ with no code path of its own.
 
 ## The baseline
 
+The `| required` marker (docs/SPEC-TABLES.md §4.3) is judged by its own rule:
+ADDED to a shipped field — or carried by a new field of a shipped table — it
+refuses, because every record written before the edit lacks the field and the
+stricter reader refuses them all; REMOVED, it passes, because the relaxed
+reader still reads every record the stricter build wrote. The marker also
+rides the projection, so it moves the protocol id like any wire fact.
+
 `tables.baseline`, in the unit's directory, is a committed projection of the
 table closure, everything the unit's tables reach by value: every wire fact
 of every field, evaluated, keyed by wire id. `schema check` (and so
