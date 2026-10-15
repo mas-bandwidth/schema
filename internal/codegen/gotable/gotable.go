@@ -65,6 +65,64 @@ const (
 
 func tableScalarKind(f *ir.Field) int { return ir.TableScalarKind(f) }
 
+// surfaceGate is the set of Go table surfaces a generate request names
+// (docs/SPEC-TABLES.md §8.4). Each surface is a file, or a named section of
+// the unit's <Base>Table.go, that a project may ask for alone. The "wire"
+// surface is the base — every other surface reads the storage structs,
+// reflection descriptors and wire codecs it emits — so dependency resolution
+// forces wire on whenever any other surface is requested, and a default
+// request (all surfaces) is byte-identical to a build that predates the flag.
+
+type surfaceGate struct {
+	wire, fixed, json, cook, block, view, message, retain bool
+}
+
+var allSurfaces = surfaceGate{wire: true, fixed: true, json: true, cook: true, block: true, view: true, message: true, retain: true}
+
+// parseSurfaces turns a --surface <list> value into a gate. The empty string
+// and "all" select every surface; any other list selects exactly the named
+// surfaces, with wire implied by whichever of them needs it. An unknown name
+// is an error, never a silent fallback.
+func parseSurfaces(list string) (surfaceGate, error) {
+	if list == "" || list == "all" {
+		return allSurfaces, nil
+	}
+	s := surfaceGate{}
+	for _, part := range strings.Split(list, ",") {
+		switch strings.TrimSpace(part) {
+		case "wire":
+			s.wire = true
+		case "fixed":
+			s.fixed = true
+		case "json":
+			s.json = true
+		case "cook":
+			s.cook = true
+		case "block":
+			s.block = true
+		case "view":
+			s.view = true
+		case "message":
+			s.message = true
+		case "retain":
+			s.retain = true
+		default:
+			return s, fmt.Errorf("unknown --surface %q (docs/SPEC-TABLES.md §8.4: wire, fixed, json, cook, block, view, message, retain)", part)
+		}
+	}
+	// dependency closure (docs/SPEC-TABLES.md §8.4): the cook surface writes
+	// its records through the text walk's escaping helpers, so cook pulls in
+	// json, and every surface reads the wire surface's storage structs,
+	// descriptors and codecs.
+	if s.cook {
+		s.json = true
+	}
+	if s.fixed || s.json || s.cook || s.block || s.view || s.message || s.retain {
+		s.wire = true
+	}
+	return s, nil
+}
+
 type tableGen struct {
 	unit     *ir.Unit
 	file     *ir.File
@@ -77,6 +135,7 @@ type tableGen struct {
 	indent string          // extra per-line indent while emitting inside a branch guard
 
 	lineage       map[string][]FixedLineageEntry // the locked layouts, oldest first (§5.2)
+	surfaces      surfaceGate
 	needsMath     bool
 	unsafeUsed    bool
 	wireSerial    int
@@ -206,19 +265,43 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
 // every table then carries the one entry it can always compute: its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	return GenerateLineageSurfaces(u, lineage, allSurfaces)
+}
+
+// GenerateLineageForSurfaces is GenerateLineage restricted to the surfaces a
+// --surface <list> value names (docs/SPEC-TABLES.md §8.4). The empty string
+// and "all" select every surface. An unknown surface name is an error.
+func GenerateLineageForSurfaces(u *ir.Unit, lineage map[string][]FixedLineageEntry, list string) (map[string][]byte, error) {
+	s, err := parseSurfaces(list)
+	if err != nil {
+		return nil, err
+	}
+	return GenerateLineageSurfaces(u, lineage, s)
+}
+
+// GenerateLineageSurfaces is GenerateLineage restricted to the surfaces a
+// --surface <list> names (docs/SPEC-TABLES.md §8.4). The default gate emits
+// byte-identical output to a build that predates the flag.
+func GenerateLineageSurfaces(u *ir.Unit, lineage map[string][]FixedLineageEntry, s surfaceGate) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
 	blocks := ir.Blocks(u)
-	out, err := generateBlockFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	out := map[string][]byte{}
+	var err error
+	if s.block {
+		out, err = generateBlockFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
 	}
-	cooks, err := generateCookFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	if s.cook {
+		cooks, err := generateCookFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, cooks)
 	}
-	maps.Copy(out, cooks)
 
 	regional := len(variableTableNames(u)) > 0
 
@@ -239,11 +322,19 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	emitRuntime := func(g *tableGen) {
 		g.needsMath = true
 		g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
-		g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u)+tableFixedRuntime)
-		g.pf("%s", tableCookWriteSource(u))
+		body := tableRuntimeForUnit(regional) + tableRefusalSource + tableWireRuntime(u) + tableMessageRuntime(u)
+		if g.surfaces.fixed {
+			body += tableFixedRuntime
+		}
+		g.pf("%s", body)
+		if g.surfaces.cook {
+			g.pf("%s", tableCookWriteSource(u))
+		}
 		if regional {
 			g.emitRegionRuntime(blocks)
-			g.emitRetainRuntime()
+			if g.surfaces.retain {
+				g.emitRetainRuntime()
+			}
 		}
 		if anyKeyed {
 			g.pf("%s", tableKeyedAccessor)
@@ -271,7 +362,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	}
 	runtimeWritten := false
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage}
+		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage, surfaces: s}
 		members := fileMembers(f, closure)
 		if g.home {
 			emitRuntime(g)
@@ -296,11 +387,17 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			g.emitTableWrite(st)
 			g.emitTableSave(st)
 			g.emitTableRead(st)
-			g.emitRetainMember(st)
-			g.emitCookWriteSurface(st)
-			g.emitMessageWrite(st)
-			g.emitMessageRead(st)
-			if regional {
+			if s.retain {
+				g.emitRetainMember(st)
+			}
+			if s.cook {
+				g.emitCookWriteSurface(st)
+			}
+			if s.message {
+				g.emitMessageWrite(st)
+				g.emitMessageRead(st)
+			}
+			if regional && s.message {
 				g.emitRegionMessage(st)
 			}
 			if regional {
@@ -314,7 +411,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 				}
 			}
 		}
-		g.emitFixedForm(members)
+		if s.fixed {
+			g.emitFixedForm(members)
+		}
 		if len(members) > 0 {
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----\n\n")
 			for _, st := range members {
@@ -334,7 +433,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// either way — that is the whole rule, and it is what keeps an
 	// earlier-sorting file from moving it (§19.2).
 	if !runtimeWritten {
-		g := &tableGen{unit: u, home: true, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage}
+		g := &tableGen{unit: u, home: true, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage, surfaces: s}
 		emitRuntime(g)
 		src, err := g.assemble()
 		if err != nil {
@@ -346,16 +445,20 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
 	// descriptors, in its own file so a project that never reads or writes a
 	// text does not compile it
-	texts, err := generateJsonFiles(u, closure, home)
-	if err != nil {
-		return nil, err
+	if s.json {
+		texts, err := generateJsonFiles(u, closure, home)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, texts)
 	}
-	maps.Copy(out, texts)
-	view, err := generateViewFile(u, closure, armSlots)
-	if err != nil {
-		return nil, err
+	if s.view {
+		view, err := generateViewFile(u, closure, armSlots)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, view)
 	}
-	maps.Copy(out, view)
 	return out, nil
 }
 

@@ -40,7 +40,9 @@ func (g *tableGen) typeCodecColumns(st *ir.Struct) string {
 	}
 	ml := ir.RecordLayout(g.unit, st)
 	columns += fmt.Sprintf(", CookSize:%d, CookAlign:%d", ml.Size, ml.Align)
-	columns += fmt.Sprintf(", SaveMessageBody:func(w *TableMessageWriter,p unsafe.Pointer)bool{return %sSaveMessageBody(w,(*%s)(p))},LoadMessageBody:func(r TableMessageReader,p unsafe.Pointer)(TableMessageReader,bool){ok:=%sLoadMessageBody(&r,(*%s)(p));return r,ok}", st.Name, g.storageName(st.Name), st.Name, g.storageName(st.Name))
+	if g.surfaces.message {
+		columns += fmt.Sprintf(", SaveMessageBody:func(w *TableMessageWriter,p unsafe.Pointer)bool{return %sSaveMessageBody(w,(*%s)(p))},LoadMessageBody:func(r TableMessageReader,p unsafe.Pointer)(TableMessageReader,bool){ok:=%sLoadMessageBody(&r,(*%s)(p));return r,ok}", st.Name, g.storageName(st.Name), st.Name, g.storageName(st.Name))
+	}
 
 	if g.regional && ir.VariableTables(g.unit)[st.Name] {
 		var nodes strings.Builder

@@ -95,6 +95,23 @@ Run the same command with `--lang c`, `--lang cs`, `--lang elixir`, `--lang go`,
 language — writing the
 **same bits**.
 
+With `--lang go`, a table unit emits five files per file that declares tables
+(`<Base>Table.go`, `<Base>Block.go`, `<Base>Cook.go`, `<Base>TableJson.go`
+and the unit's `<Package>View.go`). A project that uses one surface alone can
+ask for it by name:
+
+```
+schema generate --lang go --surface wire --out generated/go .
+```
+
+`--surface` names the Go table surfaces to emit, comma-separated: `wire`,
+`fixed`, `json`, `cook`, `block`, `view`, `message`, `retain`. It defaults to
+all of them, byte-identical to a build that predates the flag. Dependencies
+are resolved for you — `json` requires `wire`, and `cook` requires `json` —
+so a list names only what you the, not what it pulls in. `--surface` is a
+Go-only flag and is refused by every other `--lang` by name
+(docs/SPEC-TABLES.md §8.4).
+
 ---
 
 ## Declarations

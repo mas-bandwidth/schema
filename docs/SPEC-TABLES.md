@@ -11156,6 +11156,21 @@ vocabulary a table carries is §8.1's and rides where it always did. The gate
 asks "did the registry leak out of its file?", never "is there a descriptor
 here?" — §2.2's own distinction between machinery and columns.
 
+The Go backend narrows this further with a per-generate choice: `schema
+generate --lang go --surface <list>` emits only the surfaces the list names,
+each a file or a named section of the unit's `<Base>Table.go`. The surface
+names are `wire` (the TABLE-wire codecs, storage structs and reflection
+descriptors), `fixed` (the fixed-form reader), `json` (the TEXT form's walk,
+`<Package>TableJson.go`), `cook` (`<Base>Cook.go`), `block`
+(`<Base>Block.go`), `view` (`<Package>View.go`), `message` (the message-form
+functions) and `retain` (the retain functions). The list defaults to all of
+them, byte-identical to a build that predates the flag. Dependencies are
+resolved for you and named: `json` requires `wire`, and `cook` requires
+`json` (the cook surface writes its records through the text walk's escaping
+helpers); every other surface reads the wire surface's storage and
+descriptors, so `wire` is implied whenever any surface is named. The flag is
+a Go-only one and is refused by every other `--lang` by name.
+
 ### 8.5 On the side
 
 **The view is one generated file per UNIT, not per schema file** —
