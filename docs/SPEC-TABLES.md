@@ -3588,24 +3588,62 @@ construct takes no default and no attribute (SPEC.md §4.13). It is the
 convention every adopter was writing by hand, made a kind: one spelling, one
 range rule, one text form.
 
-It is a FIELD TYPE in a table body, bare, and it belongs to both classes: a
+It is a FIELD TYPE in a table body, BARE, and it belongs to both classes: a
 `fixed table` holds one at an eight-byte slot (§3.4) and a variable table
-holds one under its own wire kind `35` (§3). It is NOT a packet construct in
-this major — a `timestamp` in a packet `type` is refused by name, the
-diagnostic saying the table wire carries it and the packet wire does not yet
-(SPEC.md §4.13) — and it is not a `const` type either.
+holds one under its own wire kind `36` (§3). Bare means a plain field: an
+array of timestamps, an optional one, a map value, a union arm payload and a
+specified default are each a named follow-on and each is refused BY NAME by
+the checker. It is NOT a packet construct in this major — a `timestamp` in a
+packet `type` is refused by name, the diagnostic saying the table wire
+carries it and the packet wire does not yet (SPEC.md §4.13) — and it is not a
+`const` type either. `timestamp` is a CONTEXTUAL type word and not a reserved
+one: a field may still be named `timestamp`, and a declaration of that name
+still wins.
 
-**Its kind is its own and it widens into nothing.** A field respelled between
-`int64` and `timestamp` is a kind mismatch, skipped and counted in both
-directions (§4), and the widening family is closed to the pair: refused, by
-name, until it is ruled. What the kind buys over the bare `int64` is exactly
-that refusal, plus the value a target holds — `time.Time` in Go, read back in
-UTC, with a write of a value outside `Time.UnixNano`'s domain refused by name
-rather than wrapped — and its text form, an RFC 3339 string (§16.2).
+**Its kind is its own and it widens into nothing.** On the variable wire a
+field respelled between `int64` and `timestamp` is a kind mismatch, skipped
+and counted in both directions (§4), and the widening family is closed to the
+pair: refused, by name, until it is ruled. What the kind buys over the bare
+`int64` is exactly that refusal, plus the value a target holds — `time.Time`
+in Go, UTC on read, with a time outside `Time.UnixNano`'s domain refused by
+name rather than wrapped — and its text form, an RFC 3339 string (§16.2).
+
+**THE FIXED FORM DOES NOT TELL THE TWO APART, AND SAYS SO.** Kind `36` is a
+WIRE kind of the variable form. The fixed form's layout names its kinds from
+the closed set of FIXED-FORM-ALGORITHM.md §1 (§3's kinds `1`–`30`, `32`, `33`
+and the layout's own `35`), and this card adds no member to it: a timestamp's
+layout entry names kind `5`, eight bytes, so a fixed table's record, its
+layout bytes and its layout hash for a `timestamp` field are exactly an
+`int64` field's. A respelling between the two in a FIXED table is therefore
+the identity plan — a `copy` — and not a kind mismatch on the wire. The
+declaration still tells them apart where it is recorded: `schema.lock` writes
+the field's declared kind, `36` for a timestamp, so an edit that respells a
+locked field between the two is refused as a kind change (§21.1) and the
+field is deprecated and a new one appended. The kind distinction the standard
+promises is the variable wire's, the text form's and the lock's; widening the
+fixed layout's kind set is a follow-on that takes the form byte with it.
+
+**THE GO VALUE.** The field's storage is the `int64` count — the table's
+storage is the blittable record the cook, block and fixed forms lay out at
+declared widths (§19, §20), and a `time.Time` holds a pointer — and the
+`time.Time` is two methods generated beside it: `<Field>Time()` answers the
+count as a `time.Time` in UTC, and `Set<Field>Time(t time.Time) error` stores
+one. **The setter is where a time is refused**: a `t` outside
+`Time.UnixNano`'s domain, the years 1678 through 2262, has no count, so the
+setter stores nothing and returns a `TableTimestampError` naming the field.
+Go's own zero `time.Time{}` is the zero time and stores `0`. Every `int64` the
+field can hold is a time, so nothing after the setter can refuse: the variable
+wire, the fixed form and the text form write any count.
 
 **GO CARRIES IT FIRST.** Every other target refuses the construct by name,
 naming the construct, the target and that Go carries it first (§11); no other
-emitter is edited until its own card.
+emitter is edited until its own card. Go's other storage forms — the cook, the
+block and the message form — hold the field as its `int64` count and are not
+yet tested with it. **The skip of a kind-`36` field a reader does not name
+(§3's first skip row, a fixed width of eight) is specified here and not yet
+carried:** the Go runtime's width table and the byte oracle are shared by
+every unit, and the card that owns them teaches both at once, so until then
+each treats an unnamed kind `36` as damage, identically.
 
 ## 3. The wire
 
@@ -3752,7 +3790,7 @@ i8, `3` i16, `4` i32, `5` i64, `6` u8, `7` u16, `8` u32, `9` u64, `10` f32,
 `11` f64, `12` string, `13` table, `14` array, `15` union, `16` enum-keyed
 array, `17` pointer index, `18` i128, `19` u128, `20`–`24`
 fixed8/16/32/64/128, `25`–`29` ufixed8/16/32/64/128, `30` enum, `31` escape,
-`32` no payload, `33` wstring, `35` timestamp.
+`32` no payload, `33` wstring, `36` timestamp.
 
 **`34` IS RESERVED BY NAME FOR `float16`, AND THE RESERVATION IS OF THE NAME
 AND NOTHING ELSE** (SPEC.md §4.10). It is not part of this major's set, no
@@ -3764,7 +3802,7 @@ later-major writer that wants this major to survive its file carries the new
 kind under the ESCAPE KIND `31`** (#434), which is what the escape is for, so
 a reader of this major skips it by its `L` and counts it `unknown`. **A
 reader of this major therefore meets `34` only as DAMAGE** — a kind it cannot
-skip, exactly as it meets `36` or `200` — and that is the correct answer,
+skip, exactly as it meets `37` or `200` — and that is the correct answer,
 because a bare `34` on the wire is a writer that ignored the escape rather
 than a value this reader was ever meant to read. Reserving a number costs no
 byte and no rule, and it keeps the kind table and the declined-construct list
@@ -3791,7 +3829,7 @@ one document rather than two.
   | `31` escape | `L`, then `L` bytes, opaque |
   | `32` no payload | `L`, then `L` bytes, and this form writes `L = 0` |
   | `33` wstring | `L`, then `L` bytes, which are `L / 2` UTF-16 code units, each two bytes little-endian, SURROGATES PAIRED and no zero unit among them. An ODD `L` is malformed, and so is ill-formed content (below). No terminator |
-  | `35` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch, counted, never reinterpreted, and NEITHER SPELLING WIDENS INTO THE OTHER (§4). Every count is a legal value — the wire has no range to check — and what a target refuses is a value its own time type cannot hold, on WRITE, by name (SPEC.md §4.13) |
+  | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch, counted, never reinterpreted, and NEITHER SPELLING WIDENS INTO THE OTHER (§4). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
 
   **A FLOAT RIDES AS ITS IEEE-754 BIT PATTERN, WITH NO CANONICALISATION**
   (SPEC.md §4.3). Kind `10` is the four bytes the field holds and kind `11`
@@ -6791,7 +6829,7 @@ VALUE.**
   |---|---|
   | `bool` | 1 |
   | `int8`/`uint8` … `int64`/`uint64` | 1, 2, 4, 8 — the declared storage width |
-  | `timestamp` | 8 — the nanosecond count at its natural alignment, the `int64` slot's own shape, so a record holding one is laid out as one holding an `i64` is and the identity plan's entry is a `copy` (SPEC.md §4.13) |
+  | `timestamp` | 8 — the nanosecond count at its natural alignment, the `int64` slot's own shape, so a record holding one is laid out as one holding an `i64` is, its layout entry names kind `5` (§2.11), and the identity plan's entry is a `copy` (SPEC.md §4.13) |
   | `bits(N)` | the declared storage width, 4 for `N <= 32` and 8 above |
   | a RANGED integer | its own storage width; the bounds do not ride and clamp on load, as they do in §3 |
   | `float32`, `float64` | 4, 8 — the IEEE-754 bit pattern, with no canonicalisation (§3) |
@@ -13783,7 +13821,7 @@ Per kind:
 | `string(N)` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted |
 | `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), so one there was built in code, and §16.3 writes it as `U+FFFD` |
 | `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted |
-| `timestamp` | string, RFC 3339 with nanoseconds | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any RFC 3339 spelling of the same instant, an offset included, which lands as its UTC nanosecond count. **A string that does not parse as RFC 3339 is REFUSED BY NAME**, naming the field, the field left at the zero time, and so is a NUMBER token: the spelling is the string and nothing else, so a file handing the raw count gets a diagnostic and not a silent value (SPEC.md §4.13) |
+| `timestamp` | string, RFC 3339 with nanoseconds | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any RFC 3339 spelling of the same instant, an offset included, which lands as its UTC nanosecond count. **A string that does not parse as RFC 3339 — or names an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false, the report is `Malformed` and its `Reason` is `timestamp_not_rfc3339: <field>`. A NUMBER token is not a refusal but the dialect's own wrong-JSON-type rule (§16.1): skipped, counted as a kind mismatch, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13) |
 | enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted |
 | flags | array of variant names | `["Shielded", "Turbo"]`; an empty mask writes as `[]`; an unknown name is skipped, counted |
 | `[N]T` fixed array | array | fewer elements pad with defaults; more are dropped, counted |
