@@ -206,19 +206,34 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
 // every table then carries the one entry it can always compute: its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	return GenerateLineageSurfaces(u, lineage, allSurfaces())
+}
+
+// GenerateLineageSurfaces is GenerateLineage with the surface set a --surface
+// list selects (docs/SPEC-TABLES.md §8.4). The wire surface is unconditional —
+// the storage structs, the TABLE-wire codecs and the reflection descriptors
+// come with every list, because every other surface reads them — and each
+// optional surface is emitted only when it is named.
+func GenerateLineageSurfaces(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
 	blocks := ir.Blocks(u)
-	out, err := generateBlockFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	out := map[string][]byte{}
+	var err error
+	if s.Block {
+		out, err = generateBlockFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
 	}
-	cooks, err := generateCookFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	if s.Cook {
+		cooks, cerr := generateCookFiles(u, blocks)
+		if cerr != nil {
+			return nil, cerr
+		}
+		maps.Copy(out, cooks)
 	}
-	maps.Copy(out, cooks)
 
 	regional := len(variableTableNames(u)) > 0
 
@@ -239,11 +254,22 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	emitRuntime := func(g *tableGen) {
 		g.needsMath = true
 		g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
-		g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u)+tableFixedRuntime)
-		g.pf("%s", tableCookWriteSource(u))
+		runtime := tableRuntimeForUnit(regional) + tableRefusalSource + tableWireRuntime(u)
+		if s.Message {
+			runtime += tableMessageRuntime(u)
+		}
+		if s.Fixed {
+			runtime += tableFixedRuntime
+		}
+		g.pf("%s", runtime)
+		if s.Cook {
+			g.pf("%s", tableCookWriteSource(u))
+		}
 		if regional {
 			g.emitRegionRuntime(blocks)
-			g.emitRetainRuntime()
+			if s.Retain {
+				g.emitRetainRuntime()
+			}
 		}
 		if anyKeyed {
 			g.pf("%s", tableKeyedAccessor)
@@ -296,11 +322,17 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			g.emitTableWrite(st)
 			g.emitTableSave(st)
 			g.emitTableRead(st)
-			g.emitRetainMember(st)
-			g.emitCookWriteSurface(st)
-			g.emitMessageWrite(st)
-			g.emitMessageRead(st)
-			if regional {
+			if s.Retain {
+				g.emitRetainMember(st)
+			}
+			if s.Cook {
+				g.emitCookWriteSurface(st)
+			}
+			if s.Message {
+				g.emitMessageWrite(st)
+				g.emitMessageRead(st)
+			}
+			if regional && s.Message {
 				g.emitRegionMessage(st)
 			}
 			if regional {
@@ -314,7 +346,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 				}
 			}
 		}
-		g.emitFixedForm(members)
+		if s.Fixed {
+			g.emitFixedForm(members)
+		}
 		if len(members) > 0 {
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----\n\n")
 			for _, st := range members {
@@ -346,16 +380,20 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
 	// descriptors, in its own file so a project that never reads or writes a
 	// text does not compile it
-	texts, err := generateJsonFiles(u, closure, home)
-	if err != nil {
-		return nil, err
+	if s.JSON {
+		texts, err := generateJsonFiles(u, closure, home)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, texts)
 	}
-	maps.Copy(out, texts)
-	view, err := generateViewFile(u, closure, armSlots)
-	if err != nil {
-		return nil, err
+	if s.View {
+		view, err := generateViewFile(u, closure, armSlots)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, view)
 	}
-	maps.Copy(out, view)
 	return out, nil
 }
 

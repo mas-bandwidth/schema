@@ -95,6 +95,16 @@ Run the same command with `--lang c`, `--lang cs`, `--lang elixir`, `--lang go`,
 language — writing the
 **same bits**.
 
+**The Go target can emit only the table surfaces it uses.** `schema generate
+--lang go --surface wire,cook` emits the wire and cook surfaces and nothing
+else; `--surface` takes any comma-separated list of `wire`, `fixed`, `json`,
+`cook`, `block`, `view`, `message`, `retain`, and the default (no flag) is
+all of them, byte-identical to the unflagellated command. Other targets
+refuse the flag. The dependencies are resolved: naming `json`, `cook`,
+`block`, `view`, `message` or `retain` brings the wire with it
+(docs/SPEC-TABLES.md §8.8).
+
+
 ---
 
 ## Declarations

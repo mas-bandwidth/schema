@@ -11419,6 +11419,39 @@ snapshot exists the gate has no referent for those units.
 Beside it, the containment gate of §8.4: not one of the six registry symbols
 appears in any generated file but the view pair.
 
+### 8.8 The Go `--surface` flag
+
+**The Go target selects which of its generated tables it emits.** Where the
+rest of this page's surfaces are controlled by which file a build compiles,
+Go is one namespace across its files and a package that never reads a message
+still compiles the message codecs that ride beside its wire. For a unit whose
+tables are big, that is bytes a binary pays for code it does not call. The
+`generate` command takes `--surface <list>` for `--lang go`; a unit whose
+generate asks for a subset gets only that subset, and the same command is
+byte-identical to today's when the flag is absent (the default is all).
+
+**The surfaces are `wire`, `fixed`, `json`, `cook`, `block`, `view`,
+`message` and `retain`**, comma-separated. The WIRE surface is the
+irreducible base: the storage structs, the TABLE-wire codecs and the
+reflection descriptors (§8.1) live in `<Base>Table.go` and come with every
+list, because every other surface reads them. The rest add their own file or
+functions on top:
+
+- `json` — the TEXT form (§16), `<Base>TableJson.go`
+- `cook` — the cook form (§7), `<Base>Cook.go` and the per-table cook surface
+- `block` — the block form (§19), `<Base>Block.go`
+- `view` — the type view and registry (§8.2, §8.3), `<Package>View.go`
+- `message` — the message form's codecs (§3.3), in `<Base>Table.go`
+- `retain` — the retain surface (§6.6), in `<Base>Table.go`
+- `fixed` — the fixed form (§3.4), in `<Base>Table.go`
+
+**The dependencies are resolved, not an error.** `json`, `cook`, `block`,
+`view`, `message` and `retain` all read the wire's storage, codecs or
+descriptors, so naming any of them brings the wire with it automatically;
+only `wire` alone is meaningful without it. An unknown surface name is an
+error, and a target other than `go` refuses the flag by name.
+
+
 ## 9. Relocatable, and built wide
 
 Two properties are load-bearing for real content pipelines, and both are
