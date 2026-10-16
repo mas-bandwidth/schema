@@ -32,8 +32,9 @@ func TestFixedNestedUnionAnswersTheOuterTagDart(t *testing.T) {
 		}
 		src := t02Source(t, files)
 
-		// 1. Static plan shape: 12 lanes per entry (op, src, dst, size, aux,
-		// guard, arg, meta, argW, guard2, arg2, argW2), and every guarded
+		// 1. Static plan shape: 14 lanes per entry (op, src, dst, size, aux,
+		// guard, arg, meta, argW, guard2, arg2, argW2, and dart/R28's poolAt,
+		// poolCount, which FG1 leaves 0, 0), and every guarded
 		// entry of FG1's FhRoot answers to the outer union tag at byte 5 — on
 		// lane 1 for Outer's own entries and on lane 2 (guard2/arg2/argW2) for
 		// Inner's arm entries (whose lane 1 guard is the inner tag at byte 6).
@@ -41,7 +42,7 @@ func TestFixedNestedUnionAnswersTheOuterTagDart(t *testing.T) {
 			"static const int guard2 = 9;",
 			"static const int arg2 = 10;",
 			"static const int argW2 = 11;",
-			"static const int lanes = 12;",
+			"static const int lanes = 14;",
 		} {
 			if !strings.Contains(fixedRuntime, want) {
 				t.Errorf("W16: fixedRuntime does not declare %q", want)
@@ -60,8 +61,11 @@ func TestFixedNestedUnionAnswersTheOuterTagDart(t *testing.T) {
 		sawInnerArm1 := false
 		sawInnerArm2 := false
 		for idx, r := range rows {
-			if len(r) != 12 {
-				t.Fatalf("W16: fhRootFixedIdentity row %d has %d lanes, want 12", idx, len(r))
+			if len(r) != 14 {
+				t.Fatalf("W16: fhRootFixedIdentity row %d has %d lanes, want 14", idx, len(r))
+			}
+			if r[12] != 0 || r[13] != 0 {
+				t.Errorf("W16: row %d is two deep at most and carries poolAt=%d poolCount=%d", idx, r[12], r[13])
 			}
 			guard, arg, argw := r[5], r[6], r[8]
 			guard2, arg2, argw2 := r[9], r[10], r[11]

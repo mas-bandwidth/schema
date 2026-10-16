@@ -126,6 +126,190 @@ void main(){
 }
 `
 
+// SPEC-TABLES §7.6 over the two storages the fixed-root writer used to name as
+// a separate slice: a GUARDED root and a TEXT-ARRAY root, each cooked by the
+// Dart runtime writer and compared in both byte orders with `schema cook`'s
+// own production implementation (internal/tablecook).
+//
+// A guard is a fact of the WIRE (§2.2, §16.2): it decides what rides, and the
+// region the cook writes is the storage, every slot of it, whatever the guard
+// holds — so the elided branch's stored values are written, as tablecook's
+// region writer and the Go leg's tableCookWriter both write them. Patrol is
+// cooked twice, once down each arm, with non-default values parked in the
+// branch the guard elides. A guarded field puts its table in the variable
+// class (`fixed` refuses a lookback branch, §2.2), so a guarded root is a
+// variable root and its writer is emitCookWriteVariable's.
+//
+// A text array is spelled the one way v1 admits it: an array of a record that
+// holds string(N) and bytes(N), since a direct array of string(N), bytes(N) or
+// wstring(N) is a compile error ("wrap the element in a type"). Shelf is the
+// fixed-class root, Rack the variable-class root with a reference beside it.
+func TestCookWriteGuardedAndTextArrayRootsDart(t *testing.T) {
+	t.Parallel()
+	u := unitFrom(t, cookGuardedTextArraySchema)
+	files, err := dart.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, tables)
+	for _, root := range []string{"Shelf", "Patrol", "Rack"} {
+		if !strings.Contains(string(files["ProbeCook.dart"]), "final class "+root+"Cook {") ||
+			strings.Contains(string(files["ProbeCook.dart"]), "// "+root+" has no ") {
+			t.Errorf("%s has no cook writer (SPEC-TABLES §7.6)", root)
+		}
+	}
+	slowtest.Gate(t, "dart")
+	dir := t.TempDir()
+	for name, data := range files {
+		if !strings.Contains(name, "/") {
+			if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "cook_guarded_text_probe.dart"), []byte(cookGuardedTextArrayProbe), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(dartBinary(t), "--enable-asserts", "cook_guarded_text_probe.dart")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("guarded and text-array cook probe: %v\n%s", err, out)
+	}
+	model := tabletext.NewModel(u)
+	field := func(inst *tabletext.Instance, name string) *tabletext.Field {
+		t.Helper()
+		for i := range inst.Fields {
+			if inst.Fields[i].Def.Name == name {
+				return &inst.Fields[i]
+			}
+		}
+		t.Fatalf("%s has no field %s", inst.Def.Name, name)
+		return nil
+	}
+	text := func(fv *tabletext.Field, s string) {
+		fv.Cell.Str = []byte(s)
+		fv.Count = len(s)
+	}
+	shelf := model.New(u.Tables["Shelf"])
+	field(shelf, "stamp").Cell.U = 0x55
+	items := field(shelf, "items")
+	items.Count = 2
+	text(field(items.Elems[0].Tab, "label"), "ab")
+	text(field(items.Elems[0].Tab, "code"), "\x01\x02\x03")
+	text(field(items.Elems[1].Tab, "label"), "wxyz1234")
+	patrol := func(active bool) *tabletext.Instance {
+		p := model.New(u.Tables["Patrol"])
+		field(p, "active").Cell.B = active
+		field(p, "has_target").Cell.B = true
+		field(p, "target_id").Cell.U = 77
+		field(p, "wander").Cell.F = 0.25
+		if active {
+			field(p, "speed").Cell.F = 2.5
+			text(field(p, "note"), "zz")
+		} else {
+			field(p, "speed").Cell.F = 3.5
+			text(field(p, "note"), "hi")
+		}
+		return p
+	}
+	rack := model.New(u.Tables["Rack"])
+	tags := field(rack, "items")
+	tags.Count = 2
+	text(field(tags.Elems[0].Tab, "label"), "one")
+	text(field(tags.Elems[0].Tab, "code"), "x")
+	next := model.New(u.Tables["Rack"])
+	field(next, "items").Count = 1
+	text(field(field(next, "items").Elems[0].Tab, "label"), "two")
+	field(rack, "next").Cell.Node = next
+	for _, c := range []struct {
+		name  string
+		value *tabletext.Instance
+	}{{"shelf", shelf}, {"patrol-on", patrol(true)}, {"patrol-off", patrol(false)}, {"rack", rack}} {
+		for _, big := range []bool{false, true} {
+			key := c.name + "-le"
+			if big {
+				key = c.name + "-be"
+			}
+			want, err := tablecook.Cook(model, c.value, tablecook.Options{Big: big})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := hex.DecodeString(fieldOf(t, string(out), key))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, want) {
+				t.Errorf("%s differs from schema cook\n got %x\nwant %x", key, got, want)
+			}
+		}
+	}
+}
+
+const cookGuardedTextArraySchema = `package probe
+fixed table Item { label string(8)
+ code bytes(4) }
+fixed table Shelf { items [..3]Item
+ stamp uint32 = 9 }
+table Patrol { active bool
+ if active { speed float32 = 1.0
+  has_target bool
+  if has_target { target_id int32 = 0 | min = 0, max = 1000 } else { wander float32 = 0.5 } }
+ else { note string(8) } }
+table Tag { label string(8)
+ code bytes(4) }
+table Rack { items [..3]Tag
+ next *Rack }
+`
+
+const cookGuardedTextArrayProbe = `import 'dart:io';
+import 'dart:typed_data';
+import 'ProbeFixed.dart' as f;
+import 'ProbeWire.dart' as w;
+import 'ProbeCook.dart' as c;
+void check(bool ok,String what){if(!ok)throw StateError(what);}
+String hex(Uint8List b,int length)=>b.take(length).map((v)=>v.toRadixString(16).padLeft(2,'0')).join();
+void text(Uint8List into,String s){for(var i=0;i<s.length;i++){into[i]=s.codeUnitAt(i);}}
+void emit(String name,int size,bool Function(Uint8List,Endian,c.TableCookWriteReport) cook){
+ for(final order in [Endian.little,Endian.big]){
+  final bytes=Uint8List(size+4)..fillRange(0,size+4,0xa5);
+  final report=c.TableCookWriteReport();
+  check(!cook(Uint8List.sublistView(bytes,0,size-1),order,report),'$name: short capacity accepted');
+  check(report.reason=='invalid_value','$name: short capacity named ${report.reason}, not TableRefuseInvalidValue');
+  check(bytes.every((x)=>x==0xa5),'$name: short capacity changed output');
+  check(cook(bytes,order,report),'$name: valid write refused');
+  check(report.reason=='ok','$name: successful write kept a refusal');
+  check(bytes.skip(size).every((x)=>x==0xa5),'$name: write passed its measured extent');
+  stdout.writeln('$name-${order==Endian.little?'le':'be'} ${hex(bytes,size)}');
+ }
+}
+w.Patrol patrol(bool active){
+ final p=w.Patrol()..active=active..hasTarget=true..targetId=77..wander=0.25;
+ p.speed=active?2.5:3.5;
+ p.note=active?'zz':'hi';
+ return p;
+}
+void main(){
+ final shelf=f.Shelf()..stamp=0x55..itemsCount=2;
+ text(shelf.items[0].label,'ab');shelf.items[0].labelLength=2;
+ text(shelf.items[0].code,'\x01\x02\x03');shelf.items[0].codeLength=3;
+ text(shelf.items[1].label,'wxyz1234');shelf.items[1].labelLength=8;
+ emit('shelf',c.ShelfCook.cookMeasure(shelf),(b,o,r)=>c.ShelfCook.cook(shelf,b,o,report:r));
+ for(final active in [true,false]){
+  final p=patrol(active);
+  final name=active?'patrol-on':'patrol-off';
+  emit(name,c.PatrolCook.cookMeasure(p),(b,o,r)=>c.PatrolCook.cook(p,b,o,report:r));
+ }
+ final rack=w.Rack()..items=[w.Tag()..label='one'..code='x',w.Tag()];
+ rack.next=w.Rack()..items=[w.Tag()..label='two'];
+ emit('rack',c.RackCook.cookMeasure(rack),(b,o,r)=>c.RackCook.cook(rack,b,o,report:r));
+}
+`
+
 // Legal table names cannot collide with the cook writer's float scratch.
 func TestCookWriteDartFloatHelpersDoNotClaimTableNames(t *testing.T) {
 	t.Parallel()
