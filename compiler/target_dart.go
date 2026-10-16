@@ -126,6 +126,9 @@ func dartTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]darttable.
 
 func init() {
 	registerPacketValueDefaultCarrier("dart")
+	// Form-1 tables now preserve declared string, bytes and flags defaults
+	// through storage, save elision and tolerant loads (SPEC-TABLES §5).
+	valueDefaultTargets = append(valueDefaultTargets, "dart")
 	registerWideTextCarrier("dart")
 	// The card record's closure also carries an unbounded []T of table
 	// elements (docs/SPEC-TABLES.md §2.9), so the Dart table backend registers

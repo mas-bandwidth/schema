@@ -86,9 +86,9 @@ generated/bench/paired/dart/.stamp: bin/schema bench/corpus/Bench.schema bench/c
 # corpus plus the evolution pair, generated at build time into build/ —
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .dart + <Base>Block.dart + <Base>Cook.dart, and the wire
-# forms where the unit owns them). Fixed-class units own form 3. tables/pointers,
-# tables/blobs and tables/lists own form 1 beside it (the variable class).
-build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
+# forms where the unit owns them). Fixed-class units own form 3, and every
+# carried root also owns form 1, including the V, W and R evolution pairs.
+build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
 	# the POINTERED unit: form 1 for Scene, form 3 and cook beside it.
@@ -107,6 +107,10 @@ build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/maps/*.schema) 
 	./bin/schema generate --lang dart --out build/tables-generated-dart/blockhome tables/blockhome
 	./bin/schema generate --lang dart --out build/tables-generated-dart/v1 test/tables/V1.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/v2 test/tables/V2.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/w1 test/tables/W1.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/w2 test/tables/W2.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/r1 test/tables/R1.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/r2 test/tables/R2.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/p1 test/tables/P1.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/p3 test/tables/P3.schema
 	@touch $@
@@ -663,6 +667,14 @@ tables-dart-variable-arms:
 	@echo 'tables Dart variable arms: maps, unions, keyed arrays, optionals and the wide scalars against the oracle bytes'
 
 test-dart: tables-dart-variable-arms
+
+# The fixed class also speaks form 1. The W/R pairs pin defaults and `was`
+# aliases against the Go oracle (docs/SPEC-TABLES.md §3, §5).
+.PHONY: tables-dart-variable-fixed-class
+tables-dart-variable-fixed-class:
+	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run TestFixedClassOnTableWireDart
+
+test-dart: tables-dart-variable-fixed-class
 
 # THE DART LEG of `make test`. THE DART PORT's own instruments
 # (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart

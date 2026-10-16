@@ -118,16 +118,12 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, err
 	}
 	closure := ir.TableClosure(u)
-	// THE VARIABLE FORM'S BOUNDARY (docs/SPEC-TABLES.md §11): the card slice
-	// this backend carries is admitted; every other variable-class construct is
-	// refused by name rather than mis-encoded. THE REFUSAL IS THE VARIABLE
-	// FORM'S OWN. A unit the BLOCK, COOK or FIXED form already serves emits
-	// those forms as it did before — none of them reads or writes a form-1
-	// byte, so a variable table beside them is not mis-encoded by anything this
-	// leg writes, and refusing the whole unit would take the block and cook
-	// surfaces down with it (docs/SPEC-TABLES.md §2.7, §3.4). The boundary
-	// therefore binds a unit the variable form OWNS: one whose closure holds no
-	// fixed table, which is where the wire this card teaches is the only answer.
+	// THE VARIABLE FORM'S BOUNDARY (docs/SPEC-TABLES.md §11): form 1 is
+	// emitted for supported roots whether their closure holds a fixed table or
+	// not. An unsupported construct in a variable-only unit must refuse the
+	// unit by name. In a unit also served by block, cook or fixed form, the
+	// unsupported root is omitted from form 1, leaving those independent forms
+	// intact; wireClosure admits every fixed or variable root it can encode.
 	if !closureHoldsFixedTable(u, closure) {
 		if err := checkUnsupportedConstructs(u); err != nil {
 			return nil, err
