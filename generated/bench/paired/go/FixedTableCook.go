@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — the COOKED FORM (docs/SPEC-TABLES.md §7): the READ half.
+// package bench — the COOKED FORM (mas-bandwidth/schema docs/SPEC-TABLES.md §7): the READ half, then
+// the WRITE half (<Name>CookMeasure, <Name>CookFrom). An OPTIONAL form
+// (mas-bandwidth/schema docs/SPEC-TABLES.md, GO's optional forms): the package compiles without it.
 //
 // A cook is a LOAD-TRUSTED-DATA-FROM-TOOLS format and not a wire. Tooling writes
 // a region for one BUILD VERSION and that build points at it: Open matches the
@@ -19,20 +21,19 @@
 // a pointer and a length and points — the block form's contract (§19.2), for the
 // same reason.
 //
-// THIS FILE AND <Base>Block.go ARE A PAIR: they share one set of blittable
-// <Name>Row records, because a cooked record IS the blittable row. Compile both
-// or neither — one without the other leaves those records undefined.
+// A cooked record IS the blittable <Name>Row, the block form's row too: the
+// rows are the core's, in the TABLE source, so this file and <Base>Block.go each
+// compile with or without the other.
 
 package bench
 
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/mas-bandwidth/serialize.go"
 	"unsafe"
 )
 
-// TableCookMagic is the cook's magic (docs/SPEC-TABLES.md §7.1), read before
+// TableCookMagic is the cook's magic (mas-bandwidth/schema docs/SPEC-TABLES.md §7.1), read before
 // anything else: it is what establishes the byte order every other header word
 // is written in, and it is also what separates a COOK from a BLOCK — the two
 // accelerators carry the same build version and different magics, because a
@@ -69,13 +70,13 @@ const TableCookMaxAlign int64 = 64
 
 // TableCookStorage is what a cooked SLOT holds, which is not always what the
 // WIRE carries: an ENUM slot holds the ORDINAL at the enum's own derived
-// storage width (docs/SPEC-TABLES.md §7.2), where the wire rides the
+// storage width (mas-bandwidth/schema docs/SPEC-TABLES.md §7.2), where the wire rides the
 // variant-name hash. A walker reads a slot with the width ElemSize gives and
 // the signedness this names.
 //
 // Its members are FLAT package-level constants, which is what Go already does
 // with every enum a schema declares (SPEC.md §6.1's Go column) — so all eight
-// spellings are claimed in internal/tablenames, exactly as a declared enum's
+// spellings are claimed in mas-bandwidth/schema internal/tablenames, exactly as a declared enum's
 // variants are claimed by the checker. C# spells the same vocabulary as one
 // scoped enum and claims one name; the port does not get to have it both ways,
 // and the flat form is the one a Go consumer expects to write.
@@ -128,114 +129,7 @@ type TableCookInfo struct {
 	Fields    []TableCookFieldInfo
 }
 
-// The BLITTABLE records a cooked region is laid out from: the C ABI layout
-// §20.3 commits the compiler to, with GENERATED PADDING FIELDS wherever it has
-// interior padding (docs/SPEC-TABLES.md §19.3). A cooked record IS the
-// blittable row, so these are the same <Name>Row structs the block form spells,
-// from the same model; a record the block form already emits is emitted THERE
-// and not again here.
-
-// BenchMixedRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type BenchMixedRow struct {
-	Sequence         uint32
-	AckSequence      int32
-	AckBits          uint32
-	_                [4]byte // generated padding
-	SessionId        uint64
-	ClientId         uint32
-	_                [4]byte // generated padding
-	Nonce            uint64
-	WorldTime        int64
-	FrameTick        uint64
-	ServerTime       int32
-	_                [4]byte // generated padding
-	Entities         [8]MixedEntityRow
-	EntitiesCount    int32
-	Stats            [80]MixedStatRow
-	StatsCount       int32
-	GameEvent        MixedEventRow
-	Loadout          [4]uint8
-	PlayerName       [16]byte // string(15): buffer, used length beside it
-	PlayerNameLength int32
-	Payload          [16]byte // bytes(16): buffer, used length beside it
-	PayloadLength    int32
-	AimX             float32
-	AimY             float32
-	AimZ             float32
-	Recoil           float32
-	Drift            float64
-	WideKey          serialize.Uint128
-	Flux             serialize.Int128
-	Ping             uint16
-	_                [2]byte // generated padding
-	CrcHint          uint32
-	HasExtra         bool
-	_                [3]byte // generated padding
-	Extra            int32
-	IdleTicks        int32
-	_                [12]byte // generated padding
-}
-
-// FixedTableRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type FixedTableRow struct {
-	Value BenchMixedRow
-}
-
-// MixedChatEventRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type MixedChatEventRow struct {
-	Channel int32
-	Speaker uint32
-}
-
-// MixedEntityRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type MixedEntityRow struct {
-	EntityId uint32
-	PosX     int32
-	PosY     int32
-	PosZ     int32
-	Yaw      uint32
-	Pitch    uint32
-	VelX     int32
-	VelY     int32
-	VelZ     int32
-	Health   int32
-	Weapon   MixedWeapon
-	_        [7]byte // generated padding
-	Damage   MixedDamage
-	Moving   bool
-	Firing   bool
-	_        [6]byte // generated padding
-}
-
-// MixedHitEventRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type MixedHitEventRow struct {
-	TargetId uint32
-	Damage   int32
-	HitKind  int32
-	Crit     bool
-	_        [3]byte // generated padding
-}
-
-// MixedPickupEventRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type MixedPickupEventRow struct {
-	ItemId uint32
-	Amount int32
-}
-
-// MixedStatRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type MixedStatRow struct {
-	StatId uint32
-	Delta  int32
-}
-
-// THE LAYOUT CONTRACT for the cook closure (docs/SPEC-TABLES.md §20.3), run
+// THE LAYOUT CONTRACT for the cook closure (mas-bandwidth/schema docs/SPEC-TABLES.md §20.3), run
 // ONCE at package initialisation: a cooked region is laid out by the
 // compiler's C ABI model, so a runtime that lays one of these records out
 // differently would read a cook at the wrong offsets and never know.
@@ -314,7 +208,7 @@ func init() {
 func tableCookLayoutSize(what string, got, want uintptr) {
 	if got != want {
 		panic(fmt.Sprintf("schema cook layout: %s is %d bytes in this runtime and %d in the layout "+
-			"model the cook's bytes come from — the two disagree about the bytes (docs/SPEC-TABLES.md §20.3)", what, got, want))
+			"model the cook's bytes come from — the two disagree about the bytes (mas-bandwidth/schema docs/SPEC-TABLES.md §20.3)", what, got, want))
 	}
 }
 
@@ -322,7 +216,7 @@ func tableCookLayoutSize(what string, got, want uintptr) {
 func tableCookLayoutOffset(what string, got, want uintptr) {
 	if got != want {
 		panic(fmt.Sprintf("schema cook layout: %s sits at %d in this runtime and %d in the layout "+
-			"model the cook's bytes come from — the two disagree about the bytes (docs/SPEC-TABLES.md §20.3)", what, got, want))
+			"model the cook's bytes come from — the two disagree about the bytes (mas-bandwidth/schema docs/SPEC-TABLES.md §20.3)", what, got, want))
 	}
 }
 
@@ -437,7 +331,7 @@ func init() {
 
 // FixedTableCook is FixedTable's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — FixedTableOpen, FixedTableAt — and so does Go, because Go has free functions;
@@ -532,5 +426,173 @@ func FixedTableAt(slot *int64) *FixedTableRow {
 }
 
 // Type is FixedTable's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c FixedTableCook) Type() *TableCookInfo { return &tableCookRecords[1] }
+
+const tableCookBuildVersion uint64 = 0x12bc9e07fe351b2c
+
+// TableByteOrder selects the target order, independently of the writing host.
+type TableByteOrder uint8
+
+const (
+	TableByteOrderLittle TableByteOrder = 1
+	TableByteOrderBig    TableByteOrder = 2
+)
+
+type tableCookWriter struct {
+	buffer []byte
+	order  TableByteOrder
+	at     int64
+}
+
+func (w *tableCookWriter) put(at int64, value uint64, width uint32) {
+	if w.buffer == nil {
+		return
+	}
+	for i := uint32(0); i < width; i++ {
+		shift := i
+		if w.order == TableByteOrderBig {
+			shift = width - 1 - i
+		}
+		w.buffer[at+int64(i)] = byte(value >> (shift * 8))
+	}
+}
+func (w *tableCookWriter) header(data, nodes, align int64) {
+	w.put(0, 0x4b4f4f434d484353, 8)
+	w.put(8, tableCookBuildVersion, 8)
+	w.put(16, uint64(w.order), 8)
+	w.put(24, uint64(data), 8)
+	w.put(32, uint64(nodes)*16, 8)
+	w.put(40, uint64(align), 8)
+}
+func (w *tableCookWriter) record(p unsafe.Pointer, t *TableTypeInfo, at int64, live bool) bool {
+	for i := range t.Fields {
+		f := &t.Fields[i]
+		rides := live && tableJsonGuardHolds(p, t, f.Guard)
+		if f.Optional {
+			rides = rides && *(*bool)(unsafe.Add(p, f.PresentOffset))
+		}
+		if !w.field(p, f, at, rides) {
+			return false
+		}
+	}
+	return true
+}
+func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool {
+	p := unsafe.Add(base, f.Offset)
+	dest := at + int64(f.CookOffset)
+	if f.Optional {
+		v := uint64(0)
+		if *(*bool)(unsafe.Add(base, f.PresentOffset)) {
+			v = 1
+		}
+		w.put(at+int64(f.CookPresentOffset), v, 1)
+	}
+	if f.List || f.Map {
+		return w.container(p, f, dest, live)
+	}
+	count := int32(1)
+	used := int32(1)
+	if f.Counted {
+		used = *(*int32)(unsafe.Add(base, f.CountOffset))
+		if used < 0 || used > f.ArrayBound {
+			return false
+		}
+		w.put(at+int64(f.CookCountOffset), uint64(used), 4)
+	}
+	if !f.Pointer && (f.TypeName == "string" || f.TypeName == "bytes" || f.TypeName == "wstring") {
+		width := f.CookElemSize
+		for i := int32(0); i < used; i++ {
+			v := tableJsonGetRaw(unsafe.Add(p, int64(i)*int64(width)), width)
+			w.put(dest+int64(i)*int64(width), v, width)
+		}
+		return true
+	}
+	if f.IsArray {
+		count = f.ArrayBound
+		if !f.Counted {
+			used = count
+		}
+	}
+	for i := int32(0); i < count; i++ {
+		if !w.value(unsafe.Add(p, int64(i)*int64(f.ElemSize)), f, dest+int64(i)*int64(f.CookElemSize), live && i < used) {
+			return false
+		}
+	}
+	return true
+}
+func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool {
+	if f.Pointer {
+		return w.reference((*int64)(p), at)
+	}
+	if f.Arms != nil {
+		u := f.Arms()
+		tag := tableJsonGetRaw(unsafe.Add(p, u.TagOffset), u.TagSize)
+		if tag >= uint64(len(u.Arms)) {
+			return false
+		}
+		w.put(at, tag, u.CookTagSize)
+		if tag == 0 || u.Arms[tag].Void {
+			return true
+		}
+		return w.field(p, &u.Arms[tag].Field, at, live)
+	}
+	if f.Table != nil {
+		return w.record(p, f.Table(), at, live)
+	}
+	width := f.CookElemSize
+	if width == 16 {
+		lo := *(*uint64)(p)
+		hi := *(*uint64)(unsafe.Add(p, 8))
+		if w.order == TableByteOrderBig {
+			lo, hi = hi, lo
+		}
+		w.put(at, lo, 8)
+		w.put(at+8, hi, 8)
+		return true
+	}
+	value := tableJsonGetRaw(p, f.ElemSize)
+	if f.Kind == 1 {
+		value = 0
+		if *(*bool)(p) {
+			value = 1
+		}
+	}
+	w.put(at, value, width)
+	return true
+}
+func tableCookFixed(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, order TableByteOrder) bool {
+	if p == nil || order != TableByteOrderLittle && order != TableByteOrderBig {
+		return false
+	}
+	align := max(int64(8), int64(t.CookAlign))
+	data := (int64(t.CookSize) + align - 1) & -align
+	total := 64 + data + 16
+	if int64(len(buffer)) < total {
+		return false
+	}
+	w := tableCookWriter{order: order}
+	if !w.record(p, t, 64, true) {
+		return false
+	}
+	clear(buffer[:total])
+	w.buffer = buffer
+	w.header(data, 1, align)
+	if !w.record(p, t, 64, true) {
+		return false
+	}
+	w.put(64+data, 0, 8)
+	w.put(64+data+8, t.Id, 8)
+	return true
+}
+func (w *tableCookWriter) reference(slot *int64, at int64) bool { return *slot == 0 }
+func (w *tableCookWriter) container(p unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool {
+	return false
+}
+func FixedTableCookMeasure(value *FixedTable) int64 { return 1456 }
+func FixedTableCookMeasureReason(value *FixedTable) (int64, error) {
+	return FixedTableCookMeasure(value), nil
+}
+func FixedTableCookFrom(value *FixedTable, buffer []byte, order TableByteOrder) bool {
+	return tableCookFixed(unsafe.Pointer(value), FixedTableTableType(), buffer, order)
+}

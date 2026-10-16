@@ -58,8 +58,8 @@ generated/go/.stamp: bin/schema $(SCHEMAS)
 .PHONY: tables-go-fixedform
 tables-go-fixedform:
 	sh test/slowgate/proof tables-go-fixedform \
-		'TestFixedFormRoundTrip TestFixedFormHostileBoolByte TestFixedFormHostileUnionTag TestFixedFormArgLaneOldEncodingControl TestFixedFormClampLiveCount TestFixedFormRecordBound TestFixedFormIdentityEqualsCompiled TestFixedFormZeroBehindNarrowerArm' \
-		./internal/codegen/gotable -run 'TestFixedForm' -count=1
+		'TestFixedFormRoundTrip TestFixedFormHostileBoolByte TestFixedFormHostileUnionTag TestFixedFormArgLaneOldEncodingControl TestFixedFormClampLiveCount TestFixedFormRecordBound TestFixedFormIdentityEqualsCompiled TestFixedFormZeroBehindNarrowerArm TestFixedPlanMaxCoversEveryLineagePlan TestTimestampKindInGo TestFixedLoadAllocatesNothingPerCall TestFixedLoadNamesEveryRefusal TestFixedFormWriteSideRefusesInEveryGoBuild TestGoTableWritersRefuseWhatTheirReadersRefuse TestFixedLoadUnknownHashIsLayoutUnknown' \
+		./internal/codegen/gotable -run 'TestFixedForm|TestFixedPlanMaxCoversEveryLineagePlan|TestTimestampKindInGo|TestFixedLoadAllocatesNothingPerCall|TestFixedLoadNamesEveryRefusal|TestGoTableWritersRefuseWhatTheirReadersRefuse|TestFixedLoadUnknownHashIsLayoutUnknown' -count=1
 test-go: tables-go-fixedform
 
 .PHONY: tables-go-json-walk
@@ -387,6 +387,34 @@ define go_table_module
 @printf 'module %s\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n' $(2) > build/tables-generated-go/$(1)/go.mod
 endef
 
+# THE STANDALONE GATE, Go — the M4b twin of `tables-cs-standalone`,
+# `tables-js-standalone` and `tables-dart-standalone` (docs/PORTING.md): a
+# generated <Package>Table.go carries the unit's table runtime — its cursor,
+# its readers and its writers — INSIDE the file rather than importing it from
+# a sibling runtime module, so what the unit reaches for a table codec is the
+# platform's own library. The one external spelling the form admits is the
+# 128-bit scalar TYPE the sibling runtime owns (`serialize.Int128`,
+# `serialize.Uint128`, `serialize.Int128From64`), named only by a unit whose
+# closure declares a 128-bit field; any other symbol of that module marks the
+# unit as dependent and is refused. The scan runs over the CODE, with every
+# // comment stripped first, on the same terms as the C++ zero-cost and
+# view-containment gates: the banner's "serialize.go storage" is prose, not a
+# dependency.
+.PHONY: tables-go-standalone
+tables-go-standalone: build/tables-generated-go/.stamp
+	@n=$$(ls build/tables-generated-go/*/*Table.go 2>/dev/null | wc -l | tr -d ' '); \
+		if [ "$$n" -lt 8 ]; then \
+			echo "STANDALONE GATE FAILED: found $$n generated Table sources, expected at least 8 — the glob, not the property, is what broke"; exit 1; \
+		fi
+	@for f in build/tables-generated-go/*/*Table.go; do \
+		bad=$$(sed -E 's://.*$$::' $$f | grep -oE 'serialize\.[A-Za-z0-9_]+' | sort -u | grep -vxE 'serialize\.(Int128|Uint128|Int128From64|go)'); \
+		if [ -n "$$bad" ]; then \
+			echo "STANDALONE GATE FAILED: the sibling runtime leaked into $$f beyond its 128-bit scalar type:"; \
+			echo "$$bad"; exit 1; \
+		fi; \
+	done
+	@echo "tables Go standalone gate: generated Table sources carry the runtime inline, naming the sibling only for its 128-bit scalar type"
+
 .PHONY: tables-go-soak
 tables-go-soak: build/tables-generated-go/.stamp
 	cd test/go-tables && go test -run Soak -timeout 0 -soak $(SOAK) -v .
@@ -513,13 +541,14 @@ conformance-negative-control-go-walk: build/conformance-harness build/conformanc
 # THE GO LEG of `make test`: the two conformance negative controls, THE GO
 # PORT's own instruments (docs/SPEC-TABLES.md) — the allocation gate and its
 # negative control, the forgery fuzzer plain and under -race, and two seconds
-# of the soak; the hour is `make tables-go-soak` — the bench units' compile
-# gates, and the packet tests.
+# of the soak; the hour is `make tables-go-soak` — the standalone gate, the
+# bench units' compile gates, and the packet tests.
 .PHONY: test-go
 test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
 	$(MAKE) conformance-negative-control-go
 	$(MAKE) conformance-negative-control-go-walk
 	$(MAKE) tables-go-json-walk
+	$(MAKE) tables-go-standalone
 	$(MAKE) tables-go-fuzz
 	cd test/go-tables && go test -count 1 .
 	$(MAKE) tables-go-fuzz-extent-negative-control
@@ -562,6 +591,7 @@ test-go: packet-wide-go packet-wide-go-negative-control
 
 .PHONY: tables-go-wire-fuzz tables-go-wire-fuzz-negative-control
 tables-go-wire-fuzz: build/conformance-harness build/conformance-go
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainSavesWhatTheOracleSaves$$'
 	./build/conformance-harness wire-fuzz --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)
 
 tables-go-wire-fuzz-negative-control: build/conformance-harness build/conformance-go
@@ -602,6 +632,40 @@ tables-go-slot-negative-control:
 		'TestAccessorDescriptorAgreementSlotNegativeControl' \
 		./internal/codegen/gotable -run '^TestAccessorDescriptorAgreementSlotNegativeControl$$' -count=1
 test-go: tables-go-accessor-descriptor-agreement tables-go-accessor-negative-control tables-go-slot-negative-control
+
+# THE RUNTIME HOME GATE, the Go half of the C# J2 technique (docs/PORTING.md,
+# schema#422): a unit's shared table runtime lives in <Package>Table.go, named
+# by the PACKAGE and never by the file that happens to sort first, so a schema
+# file that sorts earlier relocates nothing. The gate adds exactly such a file
+# (Aaa.schema, ahead of Guarded.schema) to a COPY of tables/examples and
+# requires the home not to move. The negative control puts the file-order rule
+# back — through `go build -overlay`, so no tracked file is written — and
+# requires the home to move.
+.PHONY: tables-go-runtime-home tables-go-runtime-home-negative-control
+tables-go-runtime-home:
+	go test ./internal/codegen/gotable -run '^TestSharedRuntimeHomeIsPackageNamed$$' -count=1
+tables-go-runtime-home-negative-control: bin/schema
+	@mkdir -p build
+	@sed 's|home := ir.GoExportName(u.Package)|home := ir.ProtocolIdHome(u) // SABOTAGED: back to the file order|' \
+		internal/codegen/gotable/gotable.go > build/goruntime-fileorder.gotext
+	@grep -q SABOTAGED build/goruntime-fileorder.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/gotable/gotable.go":"%s/build/goruntime-fileorder.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/goruntime-overlay.json
+	@go build -overlay=build/goruntime-overlay.json -o build/schema-goruntime-sabotaged ./cmd/schema
+	@rm -rf build/runtime-home-go && mkdir -p build/runtime-home-go/src
+	@cp tables/examples/*.schema build/runtime-home-go/src/
+	@printf 'package tabledemo\n\ntable AaaRow\n{\n    tag uint8\n}\n' > build/runtime-home-go/src/Aaa.schema
+	@./build/schema-goruntime-sabotaged generate --lang go --out build/runtime-home-go/base-sabotage tables/examples
+	@./build/schema-goruntime-sabotaged generate --lang go --out build/runtime-home-go/added-sabotage build/runtime-home-go/src
+	@base=$$(cd build/runtime-home-go/base-sabotage && grep -l "type TableTypeInfo struct" *Table.go); \
+	 added=$$(cd build/runtime-home-go/added-sabotage && grep -l "type TableTypeInfo struct" *Table.go); \
+	 rm -rf build/runtime-home-go; \
+	 if [ "$$base" = "$$added" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the runtime in $$base — the gate is watching nothing"; exit 1; \
+	 fi; \
+	 echo "runtime home negative control (Go): the file-order rule moves the runtime from $$base to $$added"
+test-go: tables-go-runtime-home tables-go-runtime-home-negative-control
 
 # The disjoint fill is held under Go's thread sanitizer. Its control makes
 # every worker fill the whole array; byte identity alone cannot see that race.
@@ -695,7 +759,13 @@ test-go: tables-go-measure-negative-controls tables-go-retain-wire-fuzz
 
 # Release certification reuses the PR checks at a second seed, a longer soak,
 # and a larger allocation sample. Local invocations may shorten GO_SOAK.
-GO_SOAK ?= 1h
+#
+# The default stays 30m so the soak fits the certify.yml release-gates job's
+# 60-minute timeout with its stated 15-minute pre-soak allowance (30m + 15m
+# < 60m). A longer soak would be killed at the cap, which is never raised to
+# fit a growing suite (certify.yml note, 2026-09-18) — the full hour lives on
+# in `make tables-go-soak`, for local and nightly runs.
+GO_SOAK ?= 30m
 GO_RELEASE_SEED ?= 68719476731
 .PHONY: tables-go-release tables-go-clean tables-go-bench-gate
 tables-go-release: build/conformance-harness build/conformance-go tables-go-bench-gate tables-go-clean
@@ -776,7 +846,7 @@ test-go: tables-go-versioning
 # name a missing corpus can never pass silently.
 .PHONY: tables-go-versioning
 tables-go-versioning: tables-fixedform-corpus
-	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/gotable/ -count=1 -run 'TestFixedVersioning|TestHash|TestFloor|TestLineageMerge|TestFixedRoadmapGoT02Plans'
+	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/gotable/ -count=1 -run 'TestFixedVersioning|TestHash|TestFloor|TestLineageMerge|TestFixedRoadmapGoT02Plans|TestFixedRoadmapGoT12ConformanceHostile'
 	@echo 'tables Go versioning: §5 read both columns of every row against the C++ reference bytes'
 
 # ITS NEGATIVE CONTROL: move one byte of the WRITE TEMPLATE and the leg must go
@@ -816,6 +886,16 @@ tables-go-fixed-form-negative-control: bin/schema build/schema_test_bench_paired
 tables-go-usage: build/tables-generated-go/.stamp
 	cd test/go-tables && go test -run '^TestUsage$$' -count=1
 test-go: tables-go-usage
+
+# The Go table output compiles with any subset of its optional forms {json,
+# cook, block, message} omitted (docs/SPEC-TABLES.md, "GO's optional forms"): every corpus unit,
+# all sixteen subsets, through the emitter's own omit path (GenerateOmitting),
+# built and vetted against the sibling serialize.go. Part of the default gate:
+# it needs no SCHEMA_SLOW.
+.PHONY: tables-go-subsets
+tables-go-subsets:
+	go test -count=1 -timeout 600s ./internal/codegen/gotable/ -run '^TestGoTableCompilesWithAnySubsetOfItsForms$$'
+test-go: tables-go-subsets
 
 # I13 (docs/PORTING.md:1278): the go leg's text differential against a third
 # implementation. The test generates N random float-only instances with the

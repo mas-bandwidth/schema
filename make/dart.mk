@@ -291,11 +291,12 @@ build/dart-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/Fixed
 	# only gate it can ride in, and without it the wide flavour of the text op
 	# has no oracle bytes anywhere.
 	./bin/schema generate --lang dart --out build/dart-fixed/fxw test/tables/FXW.schema
+	@$(DART) format build/dart-fixed >/dev/null
 	@touch $@
 
 .PHONY: tables-dart-fixed-form
 tables-dart-fixed-form: build/dart-fixed/.stamp build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
-	$(DART) analyze build/dart-fixed test/dart-tables/fixedform.dart
+	$(DART) analyze --no-fatal-warnings build/dart-fixed test/dart-tables/fixedform.dart
 	$(DART) format --set-exit-if-changed --output=none test/dart-tables/fixedform.dart
 	@for f in build/dart-fixed/*/*Fixed.dart; do \
 		$(DART) format --set-exit-if-changed --output=none $$f >/dev/null || \

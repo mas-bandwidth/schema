@@ -91,6 +91,20 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		}
 		return nil, fmt.Errorf("target %q is not implemented — %s are the live targets", target, englishList(c.Targets()))
 	}
+	if carrier := g.Names()[0]; carrier != "go" {
+		// GO CARRIES THE `timestamp` KIND FIRST (SPEC.md §4.13): every other
+		// target refuses a unit that uses it, here, once, by name — the
+		// construct, the target and the rule — so no other emitter is edited
+		// and none can write a second wire for a kind it does not know
+		if fields := ir.TableTimestampFields(u); len(fields) > 0 {
+			return nil, fmt.Errorf("the %s target does not carry the timestamp kind — %s: Go carries it first, "+
+				"and every other target refuses the construct by name until its own turn (SPEC.md §4.13, docs/SPEC-TABLES.md §2.11)",
+				carrier, strings.Join(fields, ", "))
+		}
+		if fname, owner, ok := firstRequiredField(u); ok {
+			return nil, fmt.Errorf("target %q refuses | required — Go carries it first, and the construct is specified ahead of its implementation elsewhere (docs/SPEC-TABLES.md §2.3); the field %q in %s uses it", carrier, fname, owner)
+		}
+	}
 	if lg, takes := g.(lineageGenerator); takes {
 		lineage, err := openFixedLineage(u)
 		if err != nil {
@@ -99,6 +113,25 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		return lg.GenerateLineage(u, opts, lineage)
 	}
 	return g.Generate(u, opts)
+}
+
+// firstRequiredField returns the first table field marked `| required` and its
+// table's name. The central refusal for every target but go reads it
+// (docs/SPEC-TABLES.md §2.3).
+func firstRequiredField(u *ir.Unit) (fname, owner string, ok bool) {
+	names := make([]string, 0, len(u.Tables))
+	for name := range u.Tables {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		for _, f := range u.Tables[name].Fields {
+			if f.Required {
+				return f.Name, name, true
+			}
+		}
+	}
+	return "", "", false
 }
 
 // englishList joins names for a sentence: "c, cpp, cs, go, js and rust".

@@ -249,7 +249,10 @@ func (r *wireReader) skip(kind uint8) bool {
 		ir.TableKindI64, ir.TableKindU64, ir.TableKindF64,
 		ir.TableKindI128, ir.TableKindU128,
 		ir.TableKindFixed8, ir.TableKindFixed16, ir.TableKindFixed32, ir.TableKindFixed64, ir.TableKindFixed128,
-		ir.TableKindUFixed8, ir.TableKindUFixed16, ir.TableKindUFixed32, ir.TableKindUFixed64, ir.TableKindUFixed128:
+		ir.TableKindUFixed8, ir.TableKindUFixed16, ir.TableKindUFixed32, ir.TableKindUFixed64, ir.TableKindUFixed128,
+		ir.TableKindTimestamp:
+		// kind 36, the timestamp, is an eight-byte value and skips its width
+		// like the i64 it is laid out as (docs/SPEC-TABLES.md §3, §2.11)
 		w := ir.TableKindWidth(int(kind))
 		if !r.has(w) {
 			return false
@@ -1368,8 +1371,16 @@ func (r *wireReader) scalarAt(cell *tabletext.Cell, f *ir.Field, kind int) bool 
 		if bits&0x7F800000 == 0x7F800000 && bits&0x007FFFFF != 0 {
 			// a NaN's PAYLOAD IS DATA the reference carries bit for bit: the
 			// hardware float32→float64 conversion would set the quiet bit, so
-			// the widening is done on the bits. A NaN compares outside every
-			// range, so the clamp below could not fire on it anyway.
+			// the widening is done on the bits. EXCEPT UNDER A DECLARED RANGE:
+			// a compressed float's NaN is a value outside [min, max], and it
+			// clamps to min and counts exactly as -Inf does (§3.3, the
+			// special values). A comparison against a NaN is false, so the
+			// clamp below cannot see it, and this is where it is held.
+			if f.HasFloatRange && declared == ir.TableKindF32 {
+				cell.F = float64(float32(f.FMin))
+				r.report.Clamped++
+				return true
+			}
 			cell.F = widenF32NaN(bits)
 			return true
 		}
@@ -1388,6 +1399,8 @@ func (r *wireReader) scalarAt(cell *tabletext.Cell, f *ir.Field, kind int) bool 
 			} else if v > f.FMax {
 				v = f.FMax
 				r.report.Clamped++
+			} else if v == 0 {
+				v = 0 // a -0 lands as +0, uncounted (§3.3, the special values)
 			}
 		}
 		cell.F = float64(float32(v))

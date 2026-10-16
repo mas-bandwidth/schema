@@ -696,6 +696,13 @@ var fieldKeys = map[string]bool{"min": true, "max": true, "resolution": true, "w
 // read.
 const deprecatedTag = "deprecated"
 
+// requiredTag is the `| required` marker (docs/SPEC-TABLES.md §2.3), read
+// the same way deprecatedTag is: a valueless tag a TABLE field reads. It is
+// refused, by name, on a packet `type` field and on an optional `?T`
+// (resolveField), and every other target refuses the whole construct at
+// generation (compiler/generate.go).
+const requiredTag = "required"
+
 // qualification reads one line's | section (SPEC §4.2). The VALUELESS entries
 // are the line's TAGS, returned in declared order. The VALUED entries are
 // returned for the caller, whose own switch decides what each means. takes
@@ -1400,6 +1407,35 @@ func (c *checker) evalWidth(e ast.Expr, what string) (int64, bool) {
 	return v.Int64(), true
 }
 
+// timestampWord is the contextual type word of SPEC §4.13.
+const timestampWord = "timestamp"
+
+// checkTimestampSpelling is the scope of the `timestamp` kind (SPEC §4.13,
+// docs/SPEC-TABLES.md §2.11): a BARE field of a table body, and nothing else.
+// Every other placement is refused BY NAME here, once, so no emitter meets a
+// timestamp it was not specified to carry: a packet `type` has no wire for it
+// yet, and an array, an optional, a union arm, a map value and a specified
+// default are each follow-ons that take their own rule.
+func (c *checker) checkTimestampSpelling(owner string, f *ast.Field, inTable bool) bool {
+	switch {
+	case f.Name == ir.MapValueFieldName && strings.HasSuffix(owner, "Entry") && c.astDecls[owner] == nil:
+		c.errf(f.Type.Pos, "a map of timestamp values is a named follow-on — timestamp is a bare table field in this major (SPEC §4.13, docs/SPEC-TABLES.md §2.11)")
+	case !inTable:
+		c.errf(f.Type.Pos, "field %s: timestamp is a TABLE field type — the table wire carries it as nanoseconds since the Unix epoch and the packet wire does not yet, so a `type` cannot declare one; hold it in a table body (SPEC §4.13, docs/SPEC-TABLES.md §2.11)", f.Name)
+	case c.arm != "":
+		c.errf(f.Type.Pos, "%s: timestamp is a bare table field and not a union arm payload yet (SPEC §4.13, docs/SPEC-TABLES.md §2.11)", c.arm)
+	case f.Array != nil:
+		c.errf(f.Type.Pos, "field %s: an array of timestamp is a named follow-on — timestamp is a bare table field in this major (SPEC §4.13, docs/SPEC-TABLES.md §2.11)", f.Name)
+	case f.Type.Optional:
+		c.errf(f.Type.Pos, "field %s: ?timestamp is a named follow-on — the zero time is the absence timestamp already has; declare the bare field (SPEC §4.13, docs/SPEC-TABLES.md §2.11)", f.Name)
+	case f.Default != nil:
+		c.errf(f.Default.ExprPos(), "field %s: a timestamp takes no specified default — its fresh value is the zero time, 1970-01-01T00:00:00Z, everywhere (SPEC §4.13)", f.Name)
+	default:
+		return true
+	}
+	return false
+}
+
 func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Field {
 	if f.Map != nil {
 		// `ships map[string(32)]ShipConfig` — a MAP (docs/SPEC-TABLES.md
@@ -1513,6 +1549,19 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		out.Type = ir.FieldType{Kind: k, Size: n.Int64(), SizeExpr: f.Type.Arg}
 	case ast.ScalarNamed:
 		d, ok := c.astDecls[f.Type.Name]
+		if !ok && f.Type.Name == timestampWord && !f.Type.Pointer {
+			// `timestamp` is a CONTEXTUAL type word, not a reserved one (SPEC
+			// §4.13): the parser hands it over as a name, and a name no
+			// declaration claims is the kind. A field may still be called
+			// timestamp, and a declaration of that name still wins.
+			if !c.checkTimestampSpelling(owner, f, inTable) {
+				return nil
+			}
+			// an int64 count of nanoseconds: the width and the sign are the
+			// storage's, and the projection renders them beside its own kind
+			out.Type = ir.FieldType{Kind: ir.TInt, Signed: true, Width: 64, Timestamp: true}
+			break
+		}
 		if !ok {
 			c.errf(f.Type.Pos, "undefined type %s", f.Type.Name)
 			return nil
@@ -1666,6 +1715,15 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 	}
 
 	c.resolveAttrs(f, out)
+	if out.Required {
+		if !inTable {
+			c.errf(f.Pos, "field %s: | required is refused on a `type` field — a type's wire is positional and every field always rides, so there is no absence for a required marker to cure; move the field to a table body (docs/SPEC-TABLES.md §2.3)", f.Name)
+		} else if f.Type.Optional {
+			c.errf(f.Pos, "field %s: | required is refused with ? — an optional is absent or present by definition, and required would forbid the absence that makes it optional; drop one of them (docs/SPEC-TABLES.md §2.3)", f.Name)
+		} else if st := c.tables[owner]; st != nil && st.FixedDeclared {
+			c.errf(f.Pos, "fixed table %s: field %s is `| required`; every fixed field is always written, so there is no absence to refuse — drop `required`, or drop `fixed` from %s (docs/SPEC-TABLES.md §2.3)", owner, f.Name, owner)
+		}
+	}
 
 	// `was` and `json` outside a table CLOSURE are refused in checkTables,
 	// where the closure is known: a `type` a table reaches has table-wire
@@ -1953,6 +2011,9 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 		if t == deprecatedTag {
 			out.Deprecated = true
 		}
+		if t == requiredTag {
+			out.Required = true
+		}
 	}
 	byKey := map[string]*ast.Attr{}
 	for _, a := range valued {
@@ -2003,7 +2064,7 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 	hasMin, hasMax := byKey["min"] != nil, byKey["max"] != nil
 	hasRes := byKey["resolution"] != nil
 
-	isInt := out.Type.Kind == ir.TInt
+	isInt := out.Type.Kind == ir.TInt && !out.Type.Timestamp
 	isFixed := out.Type.Kind == ir.TFixed
 	isFloat := out.Type.Kind == ir.TFloat32 || out.Type.Kind == ir.TFloat64
 
@@ -2100,7 +2161,9 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 	}
 	if hasMin && hasMax {
 		if !isInt && !isFixed {
-			if out.Type.Kind == ir.TNamed {
+			if out.Type.Timestamp {
+				c.errf(byKey["min"].Pos, "min/max are not valid on timestamp — every count of nanoseconds is a legal time and the zero time is its fresh value, so a range would clamp a time the wire can carry (SPEC §4.13)")
+			} else if out.Type.Kind == ir.TNamed {
 				c.errf(byKey["min"].Pos, "min/max are not valid on %s — a field that indexes a declared set derives its range from the set (SPEC §4.2)", out.Type.Name)
 			} else {
 				c.errf(byKey["min"].Pos, "min/max apply to integer fields (SPEC §4.6)")
@@ -3959,6 +4022,12 @@ var tableGeneratedVerbs = []string{
 	"LoadBodyRetain", "LoadMessageBodyRetain", "MeasureBodyRetain", "SaveBodyRetain", "SaveBodyFieldsRetain",
 	"MeasureWireRetain", "SaveWireRetain", "NodeBodyRetain",
 	"FromJson", "ToJson", "ToJsonMeasure",
+	// the TEXT TRANSPORT helpers (docs/SPEC-TABLES.md §16.8): the Go backend
+	// emits <Name>SaveText and <Name>LoadText beside the JSON functions, for
+	// base64 of the binary wire, so both suffixes are claimed on this list's own
+	// rule: a schema declaring Root and RootSaveText would otherwise pass
+	// checking and redeclare the function in the generated package.
+	"SaveText", "LoadText",
 	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen", "Counts",
 	// THE FIXED FORM's spellings (docs/SPEC-TABLES.md §3.4). Nothing declares
 	// the form and every fixed table whose closure §3.4 lays out has one, so a

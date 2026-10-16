@@ -29,7 +29,7 @@ const tableIdCapacity = %d
 const tableIdBuckets = %d
 `, n, buckets) + source
 	if len(ir.WideTextFields(u)) > 0 {
-		res += tableWStringSource
+		res += tableWStringSource + tableWStringWriteSource
 	}
 	return res
 }
@@ -405,7 +405,7 @@ func tableKindBytes(kind uint8) int64 {
 	case 1,2,6,20,25: return 1
 	case 3,7,21,26: return 2
 	case 4,8,10,22,27: return 4
-	case 5,9,11,23,28: return 8
+	case 5,9,11,23,28,36: return 8
 	case 18,19,24,29: return 16
 	}
 	return 0
@@ -515,10 +515,30 @@ func (r *TableReader) Signed(kind uint8) int64 {
  switch tableKindBytes(kind) { case 1: return int64(int8(r.Get8())); case 2: return int64(int16(r.Get16())); case 4: return int64(int32(r.Get32())); default: return int64(r.Get64()) }
 }
 
+// tableUtf8Word is the form-1 writer's little-endian word load for its in-line
+// text test (emitTextWords): a function of the runtime file, which imports
+// encoding/binary, so the generated writers in any file of the unit can call it.
+func tableUtf8Word(p []byte) uint64 { return binary.LittleEndian.Uint64(p) }
+
 func tableUtf8Valid(data []byte) bool {
-	if !utf8.Valid(data) { return false }
-	for _, b := range data { if b == 0 { return false } }
-	return true
+	// One pass, eight bytes a step: z gathers the zero-byte test of every word
+	// (exact: a word has a zero byte if and only if its lane is set), hi gathers
+	// the high bits. No zero and no high bit is ASCII with no NUL; a high bit
+	// sends the text to utf8.Valid, the zero test having already been answered.
+	var hi, z uint64
+	i := 0
+	for ; i+8 <= len(data); i += 8 {
+		x := uint64(data[i]) | uint64(data[i+1])<<8 | uint64(data[i+2])<<16 | uint64(data[i+3])<<24 | uint64(data[i+4])<<32 | uint64(data[i+5])<<40 | uint64(data[i+6])<<48 | uint64(data[i+7])<<56
+		hi |= x
+		z |= (x - 0x0101010101010101) &^ x
+	}
+	for ; i < len(data); i++ {
+		c := uint64(data[i])
+		hi |= c
+		z |= (c - 1) &^ c
+	}
+	if z&0x8080808080808080 != 0 { return false }
+	return hi&0x8080808080808080 == 0 || utf8.Valid(data)
 }
 
 func tableUtf8Clamp(data []byte, n int64) int64 {
@@ -534,4 +554,21 @@ const tableWidenFloatSource = `func tableWidenFloat(b uint32) uint64 {
  return math.Float64bits(float64(math.Float32frombits(b)))
 }
 
+`
+
+// tableWStringWriteSource is the writer's text rule for wstring(N), the twin
+// of tableUtf16Valid on the caller's own storage (docs/FIXED-FORM-ALGORITHM.md
+// §3.1): the used units are paired UTF-16 with no zero unit. It is spliced in
+// with tableWStringSource, only where the unit declares a wstring.
+const tableWStringWriteSource = `
+func tableUtf16UnitsValid(units []uint16) bool {
+ for i:=0;i<len(units);i++ {
+  u:=units[i]
+  if u==0 || u>=0xdc00 && u<=0xdfff {return false}
+  if u>=0xd800 && u<=0xdbff {
+   i++;if i>=len(units) || units[i]<0xdc00 || units[i]>0xdfff {return false}
+  }
+ }
+ return true
+}
 `

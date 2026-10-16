@@ -24,6 +24,7 @@ func (g *tableGen) cFieldType(t ir.FieldType) string {
 			}
 			return "serialize_uint128_t"
 		}
+		g.intBytes(g.ownerName(), "(an integer storage member)", int64(t.Width/8))
 		if t.Signed {
 			return fmt.Sprintf("int%d_t", t.Width)
 		}
@@ -428,7 +429,7 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 	case tkF64:
 		g.pf("%stable_writer_put64( w, table_double_to_bits( %s ) );\n", ind, expr)
 	default:
-		width := tableKindWidth(kind)
+		width := int(g.intBytes(g.ownerName(), f.Name, int64(tableKindWidth(kind))))
 		cast := fmt.Sprintf("uint%d_t", width*8)
 		g.pf("%s%s( w, (%s) ( %s ) );\n", ind, tablePut(width), cast, expr)
 	}
@@ -456,6 +457,7 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 	case tkF64:
 		g.pf("%s%s = table_bits_to_double( table_reader_get64( &%s ) );\n", ind, lvalue, rdr)
 	default:
+		width = int(g.intBytes(g.ownerName(), f.Name, int64(width)))
 		signed := ir.TableKindSigned(ir.TableScalarKind(f))
 		storage := fmt.Sprintf("uint%d_t", width*8)
 		if signed {
