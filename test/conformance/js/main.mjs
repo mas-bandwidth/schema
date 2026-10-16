@@ -614,6 +614,7 @@ async function surfaceMessage(lines, outDir) {
 // wire does not carry (a union, a map, an optional, an enum-keyed array) —
 // which the matrix counts as the row of work that is left, never as a pass.
 const wireRows = [
+  ["cards", "Card", "cards/CardsVariable.js"],
   ["backenddemo", "LoginRequest", "backend/BackenddemoVariable.js"],
   ["backenddemo", "MatchResult", "backend/BackenddemoVariable.js"],
   ["backenddemo", "StorePurchase", "backend/BackenddemoVariable.js"],
@@ -666,6 +667,7 @@ const wireRows = [
 // wire-fuzz protocol carries form 1 for both, so the driver must explicitly
 // leave fixed roots absent; they are covered by their fixed-form gates.
 const wireFuzzRoots = new Set([
+  "cards.Card",
   "backenddemo.LoginRequest", "backenddemo.MatchResult", "backenddemo.StorePurchase",
   "blobdemo.Catalog", "graphdemo.Scene", "mapdemo.Cells", "mapdemo.Pairs",
   "mapdemo.Text", "mapdemo.Chunks", "mapdemo.Crews", "mapdemo.Depth",
