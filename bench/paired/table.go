@@ -608,8 +608,9 @@ func tablePass(out string, info buildInfo, config fastConfig, lane string) error
 var planReadLanguages = []string{"rust"}
 
 // The row names a plan-read invocation may emit, with the family and the
-// wire each is judged as. bench_plan_read is optional: a leg whose lineage
-// corpus has not landed names that lane and emits no row for it.
+// wire each is judged as. bench_plan_read is optional in the parser: a leg
+// whose lineage corpus has not landed names that lane and emits no row for it.
+// A leg in planReadLineageLegs is held to it (parsePlanReadRows).
 var planReadRows = map[string]struct{ family, wire string }{
 	"bench_fixed_read": {"table", "table"},
 	"bench_plan_read":  {"table", "table"},
@@ -617,13 +618,30 @@ var planReadRows = map[string]struct{ family, wire string }{
 }
 
 // planLaneAbsent is the reason the plan lane is named rather than measured
-// while the lineage corpus is not on the tree.
-const planLaneAbsent = "no lineage corpus on this tree (bench/corpus/VOLD_bench_lineage.schema, bench/corpus/schema.lock, bench/paired/corpus/bench_lineage.{bin,layout}: BENCH-STANDARD.md §1.10 work list items 1-6)"
+// for a leg whose runner has no lineage corpus to read.
+const planLaneAbsent = "no lineage corpus for this leg on this tree (BENCH-STANDARD.md §1.10 work list items 1-6)"
+
+// planReadLineageLegs are the legs whose plan-read arm READS the lineage
+// corpus, so a sitting of theirs with no bench_plan_read row is a refusal and
+// never a NOT MEASURED line.
+var planReadLineageLegs = []string{"rust"}
+
+// THE LINEAGE CORPUS (BENCH-STANDARD.md §1.10). §1.10 homes it in
+// bench/corpus/ (the VOLD schema, the unit's lock) and bench/paired/corpus/
+// (the C++ dump's bytes); it landed with the Rust leg's plan lane, under that
+// leg's own directory, and the move to the standard's home is the C++ dump's
+// work-list items. The three files are what the plan-read invocation hashes
+// into its corpus id, the lock included, because a lock edit silently changes
+// which plan ran.
+const rustLineageDir = "bench/tables/rust/lineage"
+
+var lineageCorpusFiles = []string{"bench_lineage.bin", "bench_lineage.layout", "schema.lock"}
 
 // planReadCorpusFiles is what the plan-read invocation loads: the table
-// pass's five files and the packet pass's two (and, when it lands, the
-// lineage pair). Its corpus id is therefore its own by §1.6's definition, and
-// its rows divide only against each other.
+// pass's five files, the packet pass's two and the lineage corpus's three.
+// Its corpus id is therefore its own by §1.6's definition: the identity and
+// the plan rows SHARE it (one invocation), and neither divides against a row
+// of the ordinary table pass, whose id is different.
 func planReadCorpusFiles() map[string]string {
 	paths := map[string]string{
 		"bench_mixed.bin":          "testdata/wire/bench_mixed.bin",
@@ -632,7 +650,118 @@ func planReadCorpusFiles() map[string]string {
 	for _, name := range []string{"bench_table.bin", "bench_table.lengths", "bench_table.variants.bin", "bench_fixed.bin", "bench_fixed.layout"} {
 		paths[name] = "bench/paired/corpus/" + name
 	}
+	for _, name := range lineageCorpusFiles {
+		paths[name] = rustLineageDir + "/" + name
+	}
 	return paths
+}
+
+// THE RUST PLAN LANE'S BUILD. The plan lane needs a reader whose lineage holds
+// the VOLD layout, and the ordinary paired unit is generated with no lock, so
+// the unit is generated a SECOND time, from the same two schema files copied
+// byte for byte beside the committed lock, and src/main.rs is built against
+// that generation with its `lineage` feature on, as `table-rust-plan`. The
+// VOLD generation is built beside it: the runner's producer and its gate use
+// it to re-derive the committed OLD file, never inside a clock.
+//
+// Every manifest here is BUILD WIRING under build/, written whole on every
+// build; nothing tracked is written, so the sitting's checkpoint stays clean.
+const rustPlanBuild = "build/paired/lineage"
+
+// rustPlanModules are the generated sources the plan binary is built from,
+// recorded in build.json beside the binary so a regeneration after the build
+// is refused like any other changed artifact.
+func rustPlanModules() ([]string, error) {
+	var out []string
+	for _, dir := range []string{"new", "old"} {
+		files, err := filepath.Glob(filepath.Join(rustPlanBuild, dir, "*.rs"))
+		if err != nil {
+			return nil, err
+		}
+		if len(files) == 0 {
+			return nil, fmt.Errorf("the rust plan lane's %s generation is missing under %s", dir, rustPlanBuild)
+		}
+		out = append(out, files...)
+	}
+	return out, nil
+}
+
+func rustCrateManifest(name, comment string) string {
+	return "# " + comment + "\n# Written by bench/paired -mode build (rustPlanManifest); build wiring, not generator output.\n" +
+		"[package]\nname = \"" + name + "\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\n[lib]\npath = \"lib.rs\"\n\n" +
+		"[dependencies]\nserialize = { package = \"serialize-official\", path = \"../../serialize.rs\" }\n"
+}
+
+// rustPlanManifest is the plan binary's package: the tracked runner source,
+// named by absolute path, against the two generations above.
+func rustPlanManifest(mainRS string) string {
+	return "# table-rust-plan: bench/tables/rust/src/main.rs with the plan lane (BENCH-STANDARD.md §1.10).\n" +
+		"# Written by bench/paired -mode build (rustPlanManifest); build wiring, not a tracked file.\n" +
+		"[package]\nname = \"benchtablesrustplan\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\n" +
+		"[[bin]]\nname = \"table-rust-plan\"\npath = " + strconv.Quote(mainRS) + "\n\n" +
+		"[features]\ndefault = [\"lineage\"]\nlineage = []\n\n" +
+		"[dependencies]\nbenchpaired = { package = \"benchlineage\", path = \"../new\" }\nbenchvold = { path = \"../old\" }\n" +
+		"serialize = { package = \"serialize-official\", path = \"../../serialize.rs\" }\n"
+}
+
+func buildRustPlan(schema string, cargoEnv []string) error {
+	if err := os.RemoveAll(rustPlanBuild); err != nil {
+		return err
+	}
+	// TWO STAGED UNITS, because a lock binds the unit it sits beside: the
+	// paired unit's two files beside the lineage's lock, and the VOLD file
+	// alone, which the committed lock (package bench) does not belong to.
+	unit, oldUnit := filepath.Join(rustPlanBuild, "unit"), filepath.Join(rustPlanBuild, "old-unit")
+	for _, dir := range []string{unit, oldUnit, filepath.Join(rustPlanBuild, "runner")} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return err
+		}
+	}
+	staged := map[string]string{
+		rustLineageDir + "/schema.lock":               filepath.Join(unit, "schema.lock"),
+		rustLineageDir + "/VOLD_bench_lineage.schema": filepath.Join(oldUnit, "VOLD_bench_lineage.schema"),
+	}
+	var unitSchemas []string
+	for _, from := range pairedSchemas {
+		to := filepath.Join(unit, filepath.Base(from))
+		staged[from], unitSchemas = to, append(unitSchemas, to)
+	}
+	for from, to := range staged {
+		b, err := os.ReadFile(from)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(to, b, 0644); err != nil {
+			return err
+		}
+	}
+	newDir, oldDir := filepath.Join(rustPlanBuild, "new"), filepath.Join(rustPlanBuild, "old")
+	if err := run(append([]string{schema, "generate", "--lang", "rust", "--out", newDir}, unitSchemas...)...); err != nil {
+		return fmt.Errorf("generating the paired unit beside %s/schema.lock: %w", rustLineageDir, err)
+	}
+	if err := run(schema, "generate", "--lang", "rust", "--out", oldDir, filepath.Join(oldUnit, "VOLD_bench_lineage.schema")); err != nil {
+		return err
+	}
+	for dir, text := range map[string]string{
+		filepath.Join(newDir, "Cargo.toml"):                  rustCrateManifest("benchlineage", "The paired unit generated beside bench/tables/rust/lineage/schema.lock: its lineage holds the VOLD layout."),
+		filepath.Join(oldDir, "Cargo.toml"):                  rustCrateManifest("benchvold", "The VOLD generation (bench/tables/rust/lineage/VOLD_bench_lineage.schema): the OLD file's writer."),
+		filepath.Join(rustPlanBuild, "runner", "Cargo.toml"): rustPlanManifest(abs("bench/tables/rust/src/main.rs")),
+	} {
+		if err := os.WriteFile(dir, []byte(text), 0644); err != nil {
+			return err
+		}
+	}
+	if err := execute(command{args: []string{cargoExecutable(), "build", "--release", "--quiet", "--manifest-path", filepath.Join(rustPlanBuild, "runner", "Cargo.toml"), "--target-dir", rustTargetDir}, env: cargoEnv}); err != nil {
+		return err
+	}
+	built, err := os.ReadFile(filepath.Join(rustTargetDir, "release", "table-rust-plan"))
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(binary("plan", "rust")); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return os.WriteFile(binary("plan", "rust"), built, 0755)
 }
 
 // fnvCorpusID is §1.6's id over named files: sorted basenames, each fed as
@@ -658,7 +787,7 @@ func fnvCorpusID(paths map[string]string, read func(string) ([]byte, error)) (st
 }
 
 func planReadCommand(lang string, round int, counts map[string]int64) command {
-	return runner("table", lang, "--plan-read", "--csv", "--round", strconv.Itoa(round),
+	return runner("plan", lang, "--plan-read", "--csv", "--round", strconv.Itoa(round),
 		"--iterations", strconv.FormatInt(counts["table"], 10),
 		"--packet-iterations", strconv.FormatInt(counts["packet"], 10),
 		"--packet-wire-dir", "testdata/wire", "--packet-variant-dir", "bench/corpus/variants")
@@ -713,7 +842,11 @@ func parsePlanReadRows(data []byte, lang, id string, counts map[string]int64) (m
 		}
 		rows[cols[1]] = sample{cols: cols, rate: rate, bytes: n, iters: iters}
 	}
-	for _, need := range []string{"bench_fixed_read", "bench_mixed_read"} {
+	need := []string{"bench_fixed_read", "bench_mixed_read"}
+	if contains(planReadLineageLegs, lang) {
+		need = append(need, "bench_plan_read")
+	}
+	for _, need := range need {
 		if _, ok := rows[need]; !ok {
 			return nil, fmt.Errorf("%s plan-read emitted no %s row", lang, need)
 		}
@@ -792,6 +925,7 @@ type planReadBoard struct {
 	Load     string            `json:"load1_range"`
 	Noise    []string          `json:"observed_noise"`
 	Window   string            `json:"window_verdict"`
+	Lane     string            `json:"lane,omitempty"`
 	Note     string            `json:"noise_note"`
 	Legs     []planReadLeg     `json:"legs"`
 	Absent   []skipped         `json:"absent"`
@@ -860,9 +994,23 @@ func (b planReadBoard) markdown() string {
 	}
 	t.WriteString("# The plan-read board — fixed form vs the same leg's packet wire\n\n```\n")
 	t.WriteString("# fixed form: the identity lane, the plan lane, and the same leg's packet wire\n")
-	fmt.Fprintf(&t, "# host %s / %s/%s %s / rev %s%s / lane none / rounds %d / corpus_id(identity) %s / corpus_id(plan) %s\n",
-		b.Host, b.OS, b.Arch, b.CPU, b.Revision, dirty, b.Rounds, b.CorpusID, "— (plan lane not measured)")
+	planID := "— (plan lane not measured)"
 	for _, leg := range b.Legs {
+		if leg.Plan != nil {
+			planID = b.CorpusID + " (one invocation: shared with the identity rows, and with no row of the ordinary table pass)"
+		}
+	}
+	lane := "none"
+	if b.Lane != "" {
+		lane = b.Lane
+	}
+	fmt.Fprintf(&t, "# host %s / %s/%s %s / rev %s%s / lane %s / rounds %d / corpus_id(identity) %s / corpus_id(plan) %s\n",
+		b.Host, b.OS, b.Arch, b.CPU, b.Revision, dirty, lane, b.Rounds, b.CorpusID, planID)
+	for _, leg := range b.Legs {
+		if leg.Plan != nil {
+			fmt.Fprintf(&t, "# bytes_per_op (%s): fixed %.1f B/record (identity), %.1f B/record (plan: the OLDER layout's file), packet %.0f B/record (§5.3 rule 2 — the division is this driver's alone)\n", leg.Language, leg.Identity.Bytes, leg.Plan.Bytes, leg.Packet.Bytes)
+			continue
+		}
 		fmt.Fprintf(&t, "# bytes_per_op (%s): fixed %.1f B/record, packet %.0f B/record (§5.3 rule 2 — the division is this driver's alone)\n", leg.Language, leg.Identity.Bytes, leg.Packet.Bytes)
 	}
 	fmt.Fprintf(&t, "# iterations per sample: table %s records, packet %s records (one count per wire, §2.1)\n", grouped(b.Counts["table"]), grouped(b.Counts["packet"]))
@@ -919,7 +1067,7 @@ func legFor(legs []planReadLeg, lang string) (planReadLeg, bool) {
 // until every sample clears 200ms, then the board. It reuses the fast
 // diagnostic's collector, so every invocation is bracketed by process samples
 // and the evidence directory carries the raw CSV of every attempt.
-func planReadPass(langs []string, out string, info buildInfo, config fastConfig, rounds int) (resultErr error) {
+func planReadPass(langs []string, out string, info buildInfo, config fastConfig, rounds int, lane string) (resultErr error) {
 	if rounds < 1 || rounds > 7 {
 		return errors.New("plan-read rounds must be 1..7")
 	}
@@ -927,8 +1075,8 @@ func planReadPass(langs []string, out string, info buildInfo, config fastConfig,
 		if !contains(planReadLanguages, lang) {
 			return fmt.Errorf("%s has no plan-read arm in its runner on this tree (plan-read legs: %s)", lang, strings.Join(planReadLanguages, ","))
 		}
-		if info.Binaries[binary("table", lang)] == "" {
-			return fmt.Errorf("cached build lacks %s/table; build it first (-mode build -langs %s)", lang, lang)
+		if info.Binaries[binary("plan", lang)] == "" {
+			return fmt.Errorf("cached build lacks %s/plan; build it first (-mode build -langs %s)", lang, lang)
 		}
 	}
 	if out == "" {
@@ -966,7 +1114,7 @@ func planReadPass(langs []string, out string, info buildInfo, config fastConfig,
 		return err
 	}
 	for _, lang := range langs {
-		data, err := f.capture(ctx, runner("table", lang, "--plan-read", "--gate", "--packet-wire-dir", "testdata/wire", "--packet-variant-dir", "bench/corpus/variants"), "gate-"+lang+"-plan-read")
+		data, err := f.capture(ctx, runner("plan", lang, "--plan-read", "--gate", "--packet-wire-dir", "testdata/wire", "--packet-variant-dir", "bench/corpus/variants"), "gate-"+lang+"-plan-read")
 		if err != nil {
 			return err
 		}
@@ -1043,7 +1191,7 @@ func planReadPass(langs []string, out string, info buildInfo, config fastConfig,
 	if gitValue(".", statusArgs...) != "" {
 		return errors.New("source changed during plan-read sitting")
 	}
-	board := planReadBoard{Host: info.Host, OS: info.OS, Arch: info.Arch, CPU: info.CPU, Revision: info.Revision, Dirty: info.Dirty, Rounds: rounds, CorpusID: id, Counts: counts, Load: loadRange(out), Noise: f.evidence.Noise, Note: config.Noise, Runtimes: info.Runtimes, Tools: info.Tools}
+	board := planReadBoard{Host: info.Host, OS: info.OS, Arch: info.Arch, CPU: info.CPU, Revision: info.Revision, Dirty: info.Dirty, Rounds: rounds, CorpusID: id, Counts: counts, Load: loadRange(out), Noise: f.evidence.Noise, Note: config.Noise, Lane: lane, Runtimes: info.Runtimes, Tools: info.Tools}
 	for _, lang := range langs {
 		leg, err := buildPlanReadLeg(lang, collected[lang])
 		if err != nil {

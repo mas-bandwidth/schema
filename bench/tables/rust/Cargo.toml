@@ -22,3 +22,12 @@ benchpaired = { path = "../../../generated/bench/paired/rust" }
 # so it names the stream types of the runtime the unit already links — the same
 # build/ symlink generated/bench/paired/rust/Cargo.toml names, never a checkout.
 serialize = { package = "serialize-official", path = "../../../build/paired/serialize.rs" }
+
+# THE PLAN LANE (BENCH-STANDARD.md §1.10) is this same src/main.rs built a
+# second time as `table-rust-plan`, with the `lineage` feature on, against the
+# lineage-aware generation of the unit and the VOLD generation beside it. That
+# package's manifest is BUILD WIRING written under build/ by bench/paired's
+# `-mode build` (rustPlanManifest), so this tracked file never moves; the
+# feature is named here only so this build knows the cfg exists.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("lineage"))'] }

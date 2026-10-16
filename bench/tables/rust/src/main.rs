@@ -68,6 +68,12 @@
 // Run from the repository root (the paired driver does): the corpus paths are
 // the ones it passes.
 
+// THE ORDINARY TABLE LEG IS THIS FILE WITHOUT THE `lineage` FEATURE, and it
+// refuses `--plan-read` (see bench_plan_read). The packet read and the
+// read-alone loop exist for the plan-read arm alone, so in that build they are
+// compiled and never called; the allowance says so rather than forking them.
+#![cfg_attr(not(feature = "lineage"), allow(dead_code, unused_imports))]
+
 use std::collections::BTreeMap;
 use std::hint::black_box;
 use std::time::Instant;
@@ -83,6 +89,10 @@ use benchpaired::{
 // The plan-read arm's packet read is the unit's own packet codec over the
 // serialize.rs runtime the unit already links (generated/bench/paired/rust).
 use serialize::{ReadStream, Stream, WriteStream};
+
+// The plan lane: its corpus, its producer and its pre-clock gate.
+#[cfg(feature = "lineage")]
+mod lineage;
 
 const MAX_NUM_RUNS: usize = 7; // median of 7 (N >= 5), after 1 warmup run
 const NUM_VARIANTS: usize = 64; // the corpus is 64 records, and an OP is one record
@@ -146,6 +156,8 @@ struct Args {
     variant_dir: String,
     packet_wire_dir: String,
     packet_variant_dir: String,
+    lineage_dir: String,
+    emit_lineage: Option<String>,
 }
 
 struct Ctx {
@@ -594,13 +606,16 @@ fn bench_fixed(ctx: &mut Ctx, name: &str, base_iters: i64) {
 //   bench_plan_read    the OLDER entry, by its hash            family table
 //   bench_mixed_read   the PACKET wire, read alone             family gen
 //
-// THE PLAN LANE IS NAMED, NOT MEASURED, ON THIS TREE. Its corpus — the VOLD
-// schema, the paired unit's lock and the C++ dump's bench_lineage.bin /
-// bench_lineage.layout (§1.10's work list, items 1-6) — has not landed, so
-// there is no older-layout file for LOAD to select a lineage entry with, and a
-// plan row here would be the identity lane under another name. When those
-// files appear this runner REFUSES rather than skipping them, so the change
-// that lands the corpus has to land this leg's plan path with it.
+// THE PLAN LANE IS THIS LEG'S `table-rust-plan` BINARY. The plan lane needs a
+// reader whose lineage holds an OLDER layout, which the ordinary paired unit's
+// generation does not (it has no lock), so `bench/paired -mode build`
+// generates the SAME two schema files a second time beside
+// bench/tables/rust/lineage/schema.lock and links this file against that
+// generation with the `lineage` feature on (src/lineage.rs, which also holds
+// the OLD file's producer and the pre-clock gate). That binary answers
+// `--plan-read` with all three rows; this one, built against the lock-free
+// unit, is the ordinary table leg and refuses `--plan-read` by name, so no
+// sitting can time an identity lane and call it the plan lane.
 //
 // The packet read is the packet Rust leg's own discipline
 // (bench/rust/src/main.rs, `bench_datadriven`): the same committed variant
@@ -686,22 +701,30 @@ fn load_packet(ctx: &mut Ctx, name: &str) -> Option<PacketCorpus> {
     Some(PacketCorpus { slots, stride })
 }
 
-fn time_identity_read(ctx: &mut Ctx, fixed: &mut FixedCorpus, iters: i64) -> Option<f64> {
+// One fixed-form READ lane, timed alone: the whole LOAD of the 64-record file
+// into one reused destination, the prefill and the scatter inside it. The
+// identity lane and the plan lane are this one loop over two files, so neither
+// is cheaper for being easier to delete.
+#[allow(clippy::too_many_arguments)]
+fn time_fixed_read(
+    ctx: &mut Ctx,
+    name: &str,
+    file: &[u8],
+    out: &mut [FixedTableRow],
+    plan: &mut [TableFixedEntry],
+    remap: &mut [u16],
+    report: &mut TableFixedReport,
+    iters: i64,
+) -> Option<f64> {
     let start = Instant::now();
     let mut i = 0i64;
     while i < iters {
-        let read = fixed_table_fixed_load(
-            &mut fixed.out,
-            &fixed.file,
-            &mut fixed.out_plan,
-            &mut fixed.out_remap,
-            &mut fixed.report,
-        );
+        let read = fixed_table_fixed_load(out, file, plan, remap, report);
         if read != Some(NUM_VARIANTS) {
-            ctx.fail("bench_fixed_read", "load failed in loop");
+            ctx.fail(name, "load failed in loop");
             return None;
         }
-        black_box(&fixed.out);
+        black_box(&*out);
         ctx.sink = ctx.sink.wrapping_add(read.unwrap_or(0) as u64);
         i += NUM_VARIANTS as i64;
     }
@@ -731,6 +754,15 @@ fn time_packet_read(
     Some(iters as f64 / start.elapsed().as_secs_f64())
 }
 
+#[cfg(not(feature = "lineage"))]
+fn bench_plan_read(ctx: &mut Ctx) {
+    ctx.fail(
+        "bench_plan_read",
+        "this binary is the ordinary table leg, built without the lineage: the plan-read arm is table-rust-plan (bench/paired -mode build -langs rust)",
+    );
+}
+
+#[cfg(feature = "lineage")]
 fn bench_plan_read(ctx: &mut Ctx) {
     let table_iters = if ctx.args.iterations != 0 {
         ctx.args.iterations
@@ -745,43 +777,68 @@ fn bench_plan_read(ctx: &mut Ctx) {
     let Some(mut fixed) = load_fixed(ctx, "bench_fixed_read") else {
         return;
     };
+    if let Some(dir) = ctx.args.emit_lineage.clone() {
+        lineage::emit(ctx, &fixed, &dir);
+        return;
+    }
+    let Some(mut lin) = lineage::load(ctx, &fixed) else {
+        return;
+    };
     let Some(packet) = load_packet(ctx, "bench_mixed_read") else {
         return;
     };
-    let lineage = format!("{}/bench_lineage.bin", ctx.args.variant_dir);
-    if std::path::Path::new(&lineage).exists() {
-        ctx.fail(
-            "bench_plan_read",
-            "the lineage corpus is present but this runner has no plan-lane read yet (§1.10 item 11): land it with the corpus",
-        );
-        return;
-    }
     if ctx.args.gate {
         return;
     }
 
+    // THE THREE LOOPS ROTATE THEIR ORDER BY ROUND (identity, plan, packet;
+    // then plan, packet, identity; ...), so no lane always runs first or last
+    // on a warmed cache; the driver interleaves the rounds themselves (§2.4).
     let runs = ctx.args.num_runs;
-    let mut identity_rates = vec![0f64; runs];
-    let mut packet_rates = vec![0f64; runs];
+    let mut rates = [vec![0f64; runs], vec![0f64; runs], vec![0f64; runs]];
     let mut value = PacketValue::default();
-    let identity_first = ctx.args.round.is_multiple_of(2);
+    let first = (ctx.args.round % 3) as usize;
     for run in 0..=runs {
-        let (identity, packet_rate) = if identity_first {
-            let a = time_identity_read(ctx, &mut fixed, table_iters);
-            (a, time_packet_read(ctx, &packet, &mut value, packet_iters))
-        } else {
-            let b = time_packet_read(ctx, &packet, &mut value, packet_iters);
-            (time_identity_read(ctx, &mut fixed, table_iters), b)
-        };
-        let (Some(identity), Some(packet_rate)) = (identity, packet_rate) else {
-            return;
-        };
+        let mut got = [0f64; 3];
+        for step in 0..3 {
+            let lane = (first + step) % 3;
+            let rate = match lane {
+                0 => time_fixed_read(
+                    ctx,
+                    "bench_fixed_read",
+                    &fixed.file,
+                    &mut fixed.out,
+                    &mut fixed.out_plan,
+                    &mut fixed.out_remap,
+                    &mut fixed.report,
+                    table_iters,
+                ),
+                1 => time_fixed_read(
+                    ctx,
+                    "bench_plan_read",
+                    &lin.file,
+                    &mut lin.out,
+                    &mut lin.plan,
+                    &mut lin.remap,
+                    &mut lin.report,
+                    table_iters,
+                ),
+                _ => time_packet_read(ctx, &packet, &mut value, packet_iters),
+            };
+            let Some(rate) = rate else {
+                return;
+            };
+            got[lane] = rate;
+        }
         if run > 0 {
-            identity_rates[run - 1] = identity;
-            packet_rates[run - 1] = packet_rate;
+            for lane in 0..3 {
+                rates[lane][run - 1] = got[lane];
+            }
         }
     }
+    let [mut identity_rates, mut plan_rates, mut packet_rates] = rates;
     let identity = run_stats(&mut identity_rates);
+    let plan = run_stats(&mut plan_rates);
     let packet_stats = run_stats(&mut packet_rates);
     let fixed_bytes = fixed.bytes_per_op;
     ctx.report(
@@ -794,6 +851,15 @@ fn bench_plan_read(ctx: &mut Ctx) {
         "contract",
     );
     ctx.report(
+        "bench_plan_read",
+        "read",
+        table_iters,
+        lin.bytes_per_op,
+        &plan,
+        "table",
+        "contract",
+    );
+    ctx.report(
         "bench_mixed_read",
         "read",
         packet_iters,
@@ -802,16 +868,14 @@ fn bench_plan_read(ctx: &mut Ctx) {
         "gen",
         "removed",
     );
-    eprintln!(
-        "bench_plan_read    read        NOT MEASURED: no lineage corpus on this tree (bench/paired/corpus/bench_lineage.bin, BENCH-STANDARD.md §1.10 items 1-6)"
-    );
 }
 
 fn usage(program: &str) -> ! {
     eprintln!(
         "usage: {program} [--indexed] [--gate] [--csv] [--round K] [--iterations N] \
 [--wire-dir <dir>] [--variant-dir <dir>] [--plan-read [--packet-iterations N] \
-[--packet-wire-dir <dir>] [--packet-variant-dir <dir>]]"
+[--packet-wire-dir <dir>] [--packet-variant-dir <dir>] [--lineage-dir <dir>] \
+[--emit-lineage <dir>]]"
     );
     std::process::exit(1);
 }
@@ -835,6 +899,8 @@ fn parse_args() -> Args {
         variant_dir: "bench/corpus/variants".to_string(),
         packet_wire_dir: "testdata/wire".to_string(),
         packet_variant_dir: "bench/corpus/variants".to_string(),
+        lineage_dir: "bench/tables/rust/lineage".to_string(),
+        emit_lineage: None,
     };
     let mut i = 1;
     while i < argv.len() {
@@ -843,6 +909,14 @@ fn parse_args() -> Args {
             "--gate" => args.gate = true,
             "--csv" => args.csv = true,
             "--plan-read" => args.plan_read = true,
+            "--lineage-dir" if i + 1 < argv.len() => {
+                i += 1;
+                args.lineage_dir = argv[i].clone();
+            }
+            "--emit-lineage" if i + 1 < argv.len() => {
+                i += 1;
+                args.emit_lineage = Some(argv[i].clone());
+            }
             "--packet-wire-dir" if i + 1 < argv.len() => {
                 i += 1;
                 args.packet_wire_dir = argv[i].clone();

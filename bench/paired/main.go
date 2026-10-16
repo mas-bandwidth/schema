@@ -104,6 +104,11 @@ func allLanguages() []string {
 // wiresFor names the wires a language actually has a runner for. Every loop
 // that walks a language's legs walks this and not the literal pair, so a
 // table-only language is never asked for a packet row it cannot produce.
+// pairedSchemas are the paired unit's two schema files, generated as ONE unit
+// for every leg (and a second time, beside the lineage's lock, for the Rust
+// plan lane: table.go, buildRustPlan).
+var pairedSchemas = []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"}
+
 func wiresFor(lang string) []string {
 	if contains(tableOnlyLanguages, lang) {
 		return []string{"table"}
@@ -493,7 +498,7 @@ func runner(wire, lang string, args ...string) command {
 		a = []string{"elixir", elixirLeg(wire)}
 		env = []string{"PATH=" + beamPath() + string(os.PathListSeparator) + os.Getenv("PATH")}
 	}
-	if wire == "table" {
+	if wire == "table" || wire == "plan" {
 		a = append(a, "--indexed", "--wire-dir", "bench/paired/corpus", "--variant-dir", "bench/paired/corpus")
 	} else {
 		a = append(a, "--wire-dir", "testdata/wire", "--variant-dir", "bench/corpus/variants")
@@ -546,7 +551,7 @@ func generateAndBuild(langs []string) error {
 		return e
 	}
 	for _, lang := range langs {
-		paired := []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"}
+		paired := append([]string(nil), pairedSchemas...)
 		if lang == "elixir" {
 			// THE UNIT'S SCHEMA FILES ARE COPIED UNDER OTHER BASENAMES, and only
 			// that: a declaration whose name is its own file's basename collides
@@ -751,6 +756,12 @@ func generateAndBuild(langs []string) error {
 			if e = os.WriteFile(binary("table", lang), built, 0755); e != nil {
 				return e
 			}
+			// AND THE PLAN LANE'S BINARY (BENCH-STANDARD.md §1.10): the same
+			// runner source, against the unit generated beside the lineage's
+			// lock (table.go, buildRustPlan). -mode plan-read runs this one.
+			if e := buildRustPlan(schema, cargoEnv); e != nil {
+				return e
+			}
 		case "java":
 			// The generated unit and the runner, compiled beside each other
 			// into one classpath under the same javac flags the Java legs
@@ -803,6 +814,22 @@ func generateAndBuild(langs []string) error {
 	}
 	if b, e := capture(command{args: []string{"elixir", "--version"}, env: []string{"PATH=" + beamPath() + string(os.PathListSeparator) + os.Getenv("PATH")}}); e == nil {
 		info.Tools["elixir"] = strings.TrimSpace(string(b))
+	}
+	if contains(langs, "rust") {
+		// The plan lane's binary, its generated sources and its corpus are
+		// recorded like every other artifact, so a regeneration or a re-pin
+		// after the build refuses the sitting (verifyRecordedArtifacts).
+		modules, e := rustPlanModules()
+		if e != nil {
+			return e
+		}
+		for _, p := range append(modules, binary("plan", "rust")) {
+			h, e := hashFile(p)
+			if e != nil {
+				return e
+			}
+			info.Binaries[p] = h
+		}
 	}
 	for _, lang := range langs {
 		modules, e := generatedModules(lang)
@@ -892,7 +919,14 @@ func generateAndBuild(langs []string) error {
 		return err
 	}
 	info.Binaries["build/paired/corpus"] = hash
-	for _, p := range []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema", "testdata/wire/bench_mixed.bin", "bench/corpus/variants/bench_mixed.variants.bin", "bench/paired/corpus/bench_table.bin", "bench/paired/corpus/bench_table.variants.bin", "bench/paired/corpus/bench_table.lengths", "bench/paired/corpus/bench_fixed.bin", "bench/paired/corpus/bench_fixed.layout"} {
+	corpora := []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema", "testdata/wire/bench_mixed.bin", "bench/corpus/variants/bench_mixed.variants.bin", "bench/paired/corpus/bench_table.bin", "bench/paired/corpus/bench_table.variants.bin", "bench/paired/corpus/bench_table.lengths", "bench/paired/corpus/bench_fixed.bin", "bench/paired/corpus/bench_fixed.layout"}
+	if contains(langs, "rust") {
+		corpora = append(corpora, rustLineageDir+"/VOLD_bench_lineage.schema")
+		for _, name := range lineageCorpusFiles {
+			corpora = append(corpora, rustLineageDir+"/"+name)
+		}
+	}
+	for _, p := range corpora {
 		h, e := hashFile(p)
 		if e != nil {
 			return e
@@ -1399,7 +1433,7 @@ func main() {
 	// Recorded, never applied: the caller pins the sitting (bench/paired/nine.sh
 	// runs the whole pass under `bench-lane <core>` so every runner inherits it)
 	// and this only carries that fact into the rendered header.
-	lane := flag.String("lane", "", "core this sitting was pinned to, recorded in the table header, table mode only")
+	lane := flag.String("lane", "", "core this sitting was pinned to, recorded in the board header, table and plan-read modes only")
 	flag.Parse()
 	fail := func(e error) { fmt.Fprintln(os.Stderr, "paired:", e); os.Exit(1) }
 	if _, e := os.Stat("bench/corpus/Bench.schema"); e != nil {
@@ -1433,8 +1467,8 @@ func main() {
 	if *mode != "build" && *mode != "gate" && *mode != "run" && *mode != "fast" && *mode != "table" && *mode != "table-langs" && *mode != "plan-read" {
 		fail(errors.New("unknown mode"))
 	}
-	if *lane != "" && *mode != "table" {
-		fail(errors.New("-lane is recorded by table mode only"))
+	if *lane != "" && *mode != "table" && *mode != "plan-read" {
+		fail(errors.New("-lane is recorded by table and plan-read modes only"))
 	}
 	if *mode == "run" && strings.TrimSpace(*receipt) == "" {
 		fail(errors.New("run requires -quiet-window with the operator’s READY/START receipt or reference"))
@@ -1488,7 +1522,7 @@ func main() {
 		return
 	}
 	if *mode == "plan-read" {
-		if e := planReadPass(langs, *out, info, fast, *rounds); e != nil {
+		if e := planReadPass(langs, *out, info, fast, *rounds, *lane); e != nil {
 			fail(e)
 		}
 		return
