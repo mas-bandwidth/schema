@@ -14480,11 +14480,13 @@ cannot pack back to the bytes it came from.
   in the corpus battery, beside a label that overflows a `u64`, a signed one
   and one with a leading zero.
 
-### 16.6 Carrying a table over a text channel
+### 16.8 Carrying a table over a text channel
 
 A text channel is a pipe a wire byte cannot cross as-is — a bus body, a log
 line, a config field, a terminal. A table has two text carriers, and the
-choice is what this section is about:
+choice is what this section is about. **EVERY TABLE HAS BOTH**: a `fixed
+table` and a plain (variable) `table` alike, each over its own wire — form
+`1` for the variable class, and for a fixed table the wire its `Save` writes:
 
 - **Base64 of the binary wire** (`SaveText` / `LoadText`): the text is the
   wire's bytes, `encoding/base64` standard alphabet, padded, whole. It keeps
@@ -14506,6 +14508,19 @@ wire reader's own refusal — a form byte this build does not carry, `unknown_fo
 (§3, THE FIRST BYTE), and framing damage, `wire_damaged` or `truncated`
 (§3); a JSON document the JSON reader refuses is `malformed` (§16.2). A
 reader never guesses at an unnameable byte.
+
+**The shape follows the class's own binary pair.** For a fixed table,
+`<Name>SaveText(value)` encodes `<Name>Save`'s bytes and
+`<Name>LoadText(text, report)` returns a new value filled by `<Name>Load`. For
+a variable table, `<Name>SaveText(value, context...)` takes the write context
+`<Name>Save` takes, and `<Name>LoadText(text, report)` reads into a builder of
+its own and returns the LOCKED, packed root, exactly as `<Name>ReadStrict`
+does (§6.5) — a variable value lives in a region, and the carrier hands back
+one. `report` is the tolerant read's report, nil allowed: the tolerance
+events it counts (§6.5) do not refuse, and a refusal comes back as the typed
+reason named above. Either way the carrier is byte for byte: the value
+`LoadText` returns saves to exactly the wire bytes `SaveText` encoded, and
+the value `FromJson` reads from `ToJson`'s text saves to the same bytes too.
 
 `SaveText` and `LoadText` are generated name-first as `<Name>SaveText` and
 `<Name>LoadText`, and both suffixes are in §11's claimed list: a declaration

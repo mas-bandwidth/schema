@@ -95,7 +95,7 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { x int32 }\ntype TableReport { y int32 }\n"},
 		{name: "a declaration colliding with generated table codecs", want: "generated TABLE-wire functions",
 			src: "package t\ntable Tab { x int32 }\ntype TabLoad { y int32 }\n"},
-		// the Go text-transport helpers (docs/SPEC-TABLES.md §16.6, §11): the Go backend
+		// the Go text-transport helpers (docs/SPEC-TABLES.md §16.8, §11): the Go backend
 		// emits <Name>SaveText and <Name>LoadText, so a schema declaring Root and
 		// either name must be refused by name at the checker, not redeclared in
 		// the generated package

@@ -57,7 +57,7 @@ func TestIssue714Base64WriterIntegerWrap(t *testing.T) {
 			var foundBase64 bool
 			for name, content := range files {
 				if strings.Contains(string(content), "TableRefuseBase64Damaged") {
-					continue // the typed refusal list (SPEC-TABLES §16.6) names base64, it holds no writer
+					continue // the typed refusal list (SPEC-TABLES §16.8) names base64, it holds no writer
 				}
 				str := string(content)
 				if strings.Contains(str, "Base64") || strings.Contains(str, "base64") {
