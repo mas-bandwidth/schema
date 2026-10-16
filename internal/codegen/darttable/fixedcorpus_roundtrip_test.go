@@ -25,12 +25,14 @@ import (
 	"math"
 	"math/big"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -368,21 +370,94 @@ func TestFixedFloat32CellsStoreBitsNotDoubles(t *testing.T) {
 		}
 		bodies := 0
 		cells := 0
+		cachedArrays := 0
 		for _, fn := range fixedCorpusFunctions(home, "FixedWriteBody(", "FixedDecode(") {
 			bodies++
-			for _, bad := range []string{"setFloat32(", "getFloat32("} {
+			for _, bad := range []string{"setFloat32(", "getFloat32(", "Uint32List.sublistView("} {
 				if strings.Contains(fn, bad) {
-					t.Errorf("%s: a generated store/load converts a float32 through a double (%s):\n%s", base, bad, fn)
+					t.Errorf("%s: a generated store/load converts or allocates a float32 view (%s):\n%s", base, bad, fn)
 				}
 			}
+			cachedArrays += strings.Count(fn, "_fixedFloat32Words(")
 			cells += strings.Count(fn, "TableFixedLayout.float32Bits(") + strings.Count(fn, "TableFixedLayout.float32Value(") +
-				strings.Count(fn, "Uint32List.sublistView(")
+				strings.Count(fn, "_fixedFloat32Words(")
 		}
 		if bodies == 0 || cells == 0 {
 			t.Errorf("%s: found %d bodies and %d float32 cells; the pin is vacuous", base, bodies, cells)
 		}
+		if cachedArrays > 0 {
+			for _, fragment := range []string{
+				"final Expando<Uint32List> _fixedFloat32WordViews",
+				"final cached = _fixedFloat32WordViews[values];",
+				"_fixedFloat32WordViews[values] = words;",
+			} {
+				if !strings.Contains(home, fragment) {
+					t.Errorf("%s: float32 array view is not cached with its caller-owned list: missing %q", base, fragment)
+				}
+			}
+		}
 	}
 }
+
+// The cached view is per caller-owned float array. A second record must not
+// borrow the first record's words, and neither read nor write may quiet a
+// signalling NaN or erase signed zero while using the cache.
+func TestFixedFloat32ArrayWordViewsPreserveBits(t *testing.T) {
+	t.Parallel()
+	u := unitFrom(t, "package probe\nfixed table Root { samples [3]float32 }\n")
+	files, err := dart.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tableFiles, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, tableFiles)
+	dir := t.TempDir()
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(fixedFloat32ArrayWordViewProbe), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("float32 array raw-bit roundtrip: %v\n%s", err, out)
+	}
+}
+
+const fixedFloat32ArrayWordViewProbe = `import 'dart:typed_data';
+import 'ProbeFixed.dart' as f;
+
+void check(bool ok, String what) { if (!ok) throw StateError(what); }
+
+void main() {
+  const expected = <int>[0x7f800001, 0x80000000, 0x3f800000];
+  final input = <f.Root>[f.Root(), f.Root()];
+  for (var record = 0; record < input.length; record++) {
+    final words = Uint32List.sublistView(input[record].samples);
+    for (var i = 0; i < expected.length; i++) {
+      words[i] = expected[i] ^ (record == 0 ? 0 : 0x80000000);
+    }
+  }
+  final wire = Uint8List(f.rootFixedMeasure(input.length));
+  check(f.rootFixedSave(input, input.length, wire) == wire.length, 'save failed');
+  final output = <f.Root>[f.Root(), f.Root()];
+  final plan = f.rootFixedNewPlan();
+  final report = f.TableFixedReport();
+  check(f.rootFixedLoad(output, output.length, wire, wire.length, plan, report) == output.length, 'load failed');
+  for (var record = 0; record < output.length; record++) {
+    final words = Uint32List.sublistView(output[record].samples);
+    for (var i = 0; i < expected.length; i++) {
+      check(words[i] == (expected[i] ^ (record == 0 ? 0 : 0x80000000)), 'changed record $record cell $i');
+    }
+  }
+}
+`
 
 // fixedCorpusFunctions cuts every top-level function whose name ends in one
 // of the suffixes out of a generated library.
