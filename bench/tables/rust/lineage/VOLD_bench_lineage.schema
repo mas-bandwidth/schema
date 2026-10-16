@@ -1,0 +1,135 @@
+// VOLD_bench_lineage.schema — BenchMixed ONE GENERATION BACK (BENCH-STANDARD.md §1.10).
+//
+// The OLD side of the plan-read arm's one lineage pair. The NEW side is not a
+// file here: it is bench/corpus/Bench.schema + bench/corpus/FixedTable.schema,
+// unchanged, because the READER of the arm must be the leg's ordinary generated
+// codec and nothing built for the bench. This file declares the SAME fixed table
+// name and the SAME type names, so the two layouts are one lineage, in its own
+// package so both generations compile side by side.
+//
+// It differs from today's corpus by EXACTLY the six narrowings §1.10's table
+// names, one per kind class a lineage read can carry, and by nothing else:
+//
+//   appended field       the body ends at `extra`             (NEW appends idle_ticks)
+//   widened array bound  stats [..64]MixedStat                (NEW: [..80])
+//   widened text         player_name string(8)                (NEW: string(15))
+//   new union arm        MixedEvent { hit, chat }             (NEW adds pickup)
+//   enum append          MixedWeapon, 12 variants             (NEW: 15)
+//   integer widen        MixedStat.delta int16, same range    (NEW: int32)
+//
+// WHY THIS FILE LIVES UNDER bench/tables/rust/lineage/ AND NOT bench/corpus/:
+// the card that landed it (rust-fixed-read-beats-its-packet-read-2) is scoped to
+// the Rust leg's paths. The standard's home for the pair is bench/corpus/ +
+// bench/paired/corpus/; moving it there, with the C++ dump as the byte
+// producer (§1.10 work-list items 1-6), is named in that card's report. Until
+// then the OLD bytes are written by this file's generated RUST codec (the
+// runner's `--emit-lineage`), whose fixed writer `make tables-rust-fixedform`
+// holds to the C++ dump's bytes, and every build re-derives and compares them.
+
+package vold_bench_lineage
+
+// 12 declared variants + the implicit None (NEW appends Turret, Drone, Repair).
+// The tag width is 4 bits on both sides, so this is an append, not a widen.
+enum MixedWeapon
+{
+    Fists,  Pistol, Shotgun, Rifle, Sniper,
+    Smg,    Rocket, Grenade, Plasma, Railgun,
+    Flamer, Mine
+}
+
+flags MixedDamage
+{
+    Bleeding, Burning, Stunned, Slowed,
+    Poisoned, Shielded, Airborne, Downed
+}
+
+type MixedEntity
+{
+    entity_id bits(12)
+    pos_x     int32             | min = -16383, max = 16383
+    pos_y     int32             | min = -16383, max = 16383
+    pos_z     int32             | min = -16383, max = 16383
+    yaw       bits(9)
+    pitch     bits(9)
+    vel_x     int32             | min = -2048, max = 2047
+    vel_y     int32             | min = -2048, max = 2047
+    vel_z     int32             | min = -2048, max = 2047
+    health    int32             | min = 0, max = 1000
+    weapon    MixedWeapon
+    damage    MixedDamage
+    moving    bool
+    firing    bool
+}
+
+// THE INTEGER WIDEN: delta is int16 here, int32 in NEW, the range unmoved.
+type MixedStat
+{
+    stat_id bits(8)
+    delta   int16         | min = -512, max = 511
+}
+
+type MixedHitEvent
+{
+    target_id bits(12)
+    damage    int32          | min = 0, max = 4095
+    hit_kind  int32          | min = 0, max = 7
+    crit      bool
+}
+
+type MixedChatEvent
+{
+    channel int32          | min = 0, max = 3
+    speaker bits(12)
+}
+
+// THE NEW UNION ARM: no pickup here.
+union MixedEvent
+{
+    hit    MixedHitEvent
+    chat   MixedChatEvent
+}
+
+type BenchMixed
+{
+    const(0xC0DE, 16)
+    sequence      bits(16)
+    ack_sequence  int32                                                                       | min = 0, max = 65535
+    ack_bits      bits(32)
+    session_id    uint64
+    client_id     uint32
+    nonce         uint64                                                                      | min = 0, max = 18446744073709551615
+    world_time    int64                                                                       | min = -1000000000000, max = 1000000000000
+    frame_tick    bits(48)
+    server_time   fixed(24, 8)                                                                | min = 0, max = 65535
+
+    entities [1..8]MixedEntity
+
+    // THE WIDENED ARRAY BOUND: [..64] here, [..80] in NEW.
+    stats [..64]MixedStat
+
+    game_event  MixedEvent
+    loadout     [4]uint8
+    // THE WIDENED TEXT: string(8) here, string(15) in NEW.
+    player_name string(8)
+    payload     bytes(16)
+
+    aim_x    float32                                 | min = -1, max = 1, resolution = 0.01
+    aim_y    float32                                 | min = -1, max = 1, resolution = 0.01
+    aim_z    float32                                 | min = -1, max = 1, resolution = 0.01
+    recoil   float32
+    drift    float64
+    wide_key uint128
+    flux     int128                                  | min = -1267650600228229401496703205376, max = 1267650600228229401496703205376
+    ping     ufixed(8, 8)                            | min = 0, max = 250
+    reserved(4)
+    align
+    crc_hint  bits(24)
+    has_extra  bool = true
+    // THE APPENDED FIELD: the body ends here; NEW appends idle_ticks.
+    extra      int32 | min = 0, max = 255
+}
+
+fixed table FixedTable
+{
+    value BenchMixed
+}

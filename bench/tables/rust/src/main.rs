@@ -36,6 +36,13 @@
 // would be inventing a measurement. So rust rides the table wire alone and
 // appears in no ratio, no confirmation pass and no board.
 //
+// THE ONE PACKET READ THIS FILE DOES TIME is the plan-read arm's comparand
+// (`--plan-read`, BENCH-STANDARD.md §1.10): the unit's own packet codec reading
+// the committed packet corpus ALONE, beside the identity lane's read, in one
+// invocation. That is not bench/rust's leg and does not make rust a paired
+// language: it feeds the per-leg GATE on the plan-read board and nothing else —
+// no `bench_mixed` row, no ratio table, no confirmation pass.
+//
 // THE RUST COST THIS LEG DOCUMENTS: NONE OF THE READ IS PROJECTION. The
 // generated Rust reader lands its plan run in this build's own RECORD IMAGE
 // and then SCATTERS that image into the blittable `<Name>Row` — a `#[repr(C)]`
@@ -61,6 +68,12 @@
 // Run from the repository root (the paired driver does): the corpus paths are
 // the ones it passes.
 
+// THE ORDINARY TABLE LEG IS THIS FILE WITHOUT THE `lineage` FEATURE, and it
+// refuses `--plan-read` (see bench_plan_read). The packet read and the
+// read-alone loop exist for the plan-read arm alone, so in that build they are
+// compiled and never called; the allowance says so rather than forking them.
+#![cfg_attr(not(feature = "lineage"), allow(dead_code, unused_imports))]
+
 use std::collections::BTreeMap;
 use std::hint::black_box;
 use std::time::Instant;
@@ -69,9 +82,17 @@ use std::time::Instant;
 // read verdict and its three generated entry points, imported here and named
 // nowhere else (bench/tables/rust/SHAPE-GATE.allow).
 use benchpaired::{
-    FIXED_TABLE_FIXED_BLOCK, FixedTableRow, TableFixedEntry, TableFixedReport,
-    fixed_table_fixed_load, fixed_table_fixed_save,
+    BenchMixed as PacketValue, FIXED_TABLE_FIXED_BLOCK, FixedTableRow, TableFixedEntry,
+    TableFixedReport, fixed_table_fixed_load, fixed_table_fixed_save, read_bench_mixed,
+    write_bench_mixed,
 };
+// The plan-read arm's packet read is the unit's own packet codec over the
+// serialize.rs runtime the unit already links (generated/bench/paired/rust).
+use serialize::{ReadStream, Stream, WriteStream};
+
+// The plan lane: its corpus, its producer and its pre-clock gate.
+#[cfg(feature = "lineage")]
+mod lineage;
 
 const MAX_NUM_RUNS: usize = 7; // median of 7 (N >= 5), after 1 warmup run
 const NUM_VARIANTS: usize = 64; // the corpus is 64 records, and an OP is one record
@@ -113,24 +134,37 @@ const BENCH_OPT: &str = match option_env!("BENCH_OPT") {
     None => "unknown",
 };
 
-fn csv_suffix() -> String {
-    format!("crate,contract,{BENCH_OPT},unknown")
+// The suffix after `family`: linkage, checks, opt, inline. The checks axis is
+// the ROW's — `contract` for the table wire, `removed` for the packet wire's
+// read in the plan-read arm, the same axis the packet Rust leg reports for its
+// serialize.rs build (bench/rust/src/main.rs) — so a row says what its own
+// validation was and the driver refuses any other.
+fn csv_suffix(checks: &str) -> String {
+    format!("crate,{checks},{BENCH_OPT},unknown")
 }
 
 struct Args {
     csv: bool,
     gate: bool,
     indexed: bool,
+    plan_read: bool,
     num_runs: usize,
+    round: u32,
     iterations: i64,
+    packet_iterations: i64,
     wire_dir: String,
     variant_dir: String,
+    packet_wire_dir: String,
+    packet_variant_dir: String,
+    lineage_dir: String,
+    emit_lineage: Option<String>,
 }
 
 struct Ctx {
     args: Args,
     failed: bool,
-    csv_rows: Vec<String>,
+    // (the row up to and including spread_pct, its family, its checks axis)
+    csv_rows: Vec<(String, &'static str, &'static str)>,
     // §1.6 wants sorted basename order, and a BTreeMap iterates in it.
     goldens_loaded: BTreeMap<String, Vec<u8>>,
     sink: u64,
@@ -200,7 +234,17 @@ impl Ctx {
         }
     }
 
-    fn report(&mut self, bench: &str, path: &str, iters: i64, bytes_per_op: f64, s: &RunStats) {
+    #[allow(clippy::too_many_arguments)]
+    fn report(
+        &mut self,
+        bench: &str,
+        path: &str,
+        iters: i64,
+        bytes_per_op: f64,
+        s: &RunStats,
+        family: &'static str,
+        checks: &'static str,
+    ) {
         let mbps = s.median * bytes_per_op / (1024.0 * 1024.0);
         eprintln!(
             "{:<18} {:<11} {:>10.3} M msg/s {:>10.1} MB/s   (min {:.3}, max {:.3}, spread {:.1}%)",
@@ -213,18 +257,22 @@ impl Ctx {
             s.spread
         );
         if self.args.csv {
-            self.csv_rows.push(format!(
-                "rust,{},{},{},{},{},{:.0},{:.0},{:.0},{:.2},{:.2}",
-                bench,
-                path,
-                iters,
-                bytes_per_op,
-                self.args.num_runs,
-                s.median,
-                s.min,
-                s.max,
-                mbps,
-                s.spread
+            self.csv_rows.push((
+                format!(
+                    "rust,{},{},{},{},{},{:.0},{:.0},{:.0},{:.2},{:.2}",
+                    bench,
+                    path,
+                    iters,
+                    bytes_per_op,
+                    self.args.num_runs,
+                    s.median,
+                    s.min,
+                    s.max,
+                    mbps,
+                    s.spread
+                ),
+                family,
+                checks,
             ));
         }
     }
@@ -240,13 +288,12 @@ impl Ctx {
             return;
         }
         let id = self.corpus_id();
-        let suffix = csv_suffix();
         println!(
             "lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,\
 max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline"
         );
-        for row in self.csv_rows.iter() {
-            println!("{row},{id},table,{suffix}");
+        for (row, family, checks) in self.csv_rows.iter() {
+            println!("{row},{id},{family},{}", csv_suffix(checks));
         }
     }
 }
@@ -347,24 +394,34 @@ against a corpus whose variant 0 is not the pinned instance",
 // — the positions, the ids, the kinds, the record's size, the hash every
 // record carries — is settled by those bytes, so it is checked first and by
 // itself, and a leg that matches it is speaking the form and not a near miss.
-fn bench_fixed(ctx: &mut Ctx, name: &str, base_iters: i64) {
-    let iters = if ctx.args.iterations != 0 {
-        ctx.args.iterations
-    } else {
-        base_iters
-    };
+// The fixed corpus this build reads, loaded and proved before any clock: the
+// file and its layout, the caller-owned storage, and the decoded values the
+// write loop encodes. Both modes start here, so the plan-read arm's identity
+// lane reads exactly the bytes the ordinary pass round-trips.
+struct FixedCorpus {
+    file: Vec<u8>,
+    twin: Vec<u8>,
+    bytes_per_op: f64,
+    values: Vec<FixedTableRow>,
+    out: Vec<FixedTableRow>,
+    out_plan: Vec<TableFixedEntry>,
+    out_remap: Vec<u16>,
+    report: TableFixedReport,
+}
+
+fn load_fixed(ctx: &mut Ctx, name: &str) -> Option<FixedCorpus> {
     let variant_dir = ctx.args.variant_dir.clone();
     let Some(file) = ctx.read_corpus(&variant_dir, "bench_fixed.bin") else {
         ctx.failed = true;
-        return;
+        return None;
     };
     let Some(layout) = ctx.read_corpus(&variant_dir, "bench_fixed.layout") else {
         ctx.failed = true;
-        return;
+        return None;
     };
     if file.is_empty() {
         ctx.failed = true;
-        return;
+        return None;
     }
     let bytes_per_op = file.len() as f64 / NUM_VARIANTS as f64;
     let mut twin = vec![0u8; file.len()];
@@ -375,7 +432,7 @@ fn bench_fixed(ctx: &mut Ctx, name: &str, base_iters: i64) {
             name,
             "this build's LAYOUT is not the corpus's, byte for byte",
         );
-        return;
+        return None;
     }
 
     // The storage: the values, a reused read target, and the caller-owned plan
@@ -393,7 +450,7 @@ fn bench_fixed(ctx: &mut Ctx, name: &str, base_iters: i64) {
         != Some(NUM_VARIANTS)
     {
         ctx.fail(name, "the fixed corpus did not load");
-        return;
+        return None;
     }
 
     // gate 3: writing them back reproduces the file, byte for byte.
@@ -402,7 +459,7 @@ fn bench_fixed(ctx: &mut Ctx, name: &str, base_iters: i64) {
             name,
             "round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus",
         );
-        return;
+        return None;
     }
 
     // gate 4: reused storage round-trips too. The load owns the prefill, so
@@ -414,9 +471,40 @@ fn bench_fixed(ctx: &mut Ctx, name: &str, base_iters: i64) {
             || twin != file
         {
             ctx.fail(name, "reused target round-trip bytes differ");
-            return;
+            return None;
         }
     }
+    Some(FixedCorpus {
+        file,
+        twin,
+        bytes_per_op,
+        values,
+        out,
+        out_plan,
+        out_remap,
+        report,
+    })
+}
+
+fn bench_fixed(ctx: &mut Ctx, name: &str, base_iters: i64) {
+    let iters = if ctx.args.iterations != 0 {
+        ctx.args.iterations
+    } else {
+        base_iters
+    };
+    let Some(fixed) = load_fixed(ctx, name) else {
+        return;
+    };
+    let FixedCorpus {
+        file,
+        mut twin,
+        bytes_per_op,
+        values,
+        mut out,
+        mut out_plan,
+        mut out_remap,
+        mut report,
+    } = fixed;
 
     if ctx.args.gate {
         return;
@@ -480,8 +568,16 @@ fn bench_fixed(ctx: &mut Ctx, name: &str, base_iters: i64) {
     }
     let w = run_stats(&mut write_rates);
     let rt = run_stats(&mut roundtrip_rates);
-    ctx.report(name, "write", iters, bytes_per_op, &w);
-    ctx.report(name, "round_trip", iters, bytes_per_op, &rt);
+    ctx.report(name, "write", iters, bytes_per_op, &w, "table", "contract");
+    ctx.report(
+        name,
+        "round_trip",
+        iters,
+        bytes_per_op,
+        &rt,
+        "table",
+        "contract",
+    );
 
     // READ is DERIVED, never measured: round-trip time minus write time. It
     // prints for continuity and is NOT a CSV row — a derived number in the CSV
@@ -497,10 +593,289 @@ fn bench_fixed(ctx: &mut Ctx, name: &str, base_iters: i64) {
     }
 }
 
+// ------------------------------------------------------------------------
+// THE PLAN-READ ARM (bench/BENCH-STANDARD.md §1.10), `--plan-read`
+// ------------------------------------------------------------------------
+//
+// The arm the gate is judged on: each fixed-form lane's READ, timed ALONE,
+// against THIS leg's packet-wire read of the same sixty-four logical records,
+// timed ALONE, in ONE invocation, so the rows share one corpus id and are
+// divisible, and no derived number is ever the comparand (§2.9):
+//
+//   bench_fixed_read   the identity entry, read alone          family table
+//   bench_plan_read    the OLDER entry, by its hash            family table
+//   bench_mixed_read   the PACKET wire, read alone             family gen
+//
+// THE PLAN LANE IS THIS LEG'S `table-rust-plan` BINARY. The plan lane needs a
+// reader whose lineage holds an OLDER layout, which the ordinary paired unit's
+// generation does not (it has no lock), so `bench/paired -mode build`
+// generates the SAME two schema files a second time beside
+// bench/tables/rust/lineage/schema.lock and links this file against that
+// generation with the `lineage` feature on (src/lineage.rs, which also holds
+// the OLD file's producer and the pre-clock gate). That binary answers
+// `--plan-read` with all three rows; this one, built against the lock-free
+// unit, is the ordinary table leg and refuses `--plan-read` by name, so no
+// sitting can time an identity lane and call it the plan lane.
+//
+// The packet read is the packet Rust leg's own discipline
+// (bench/rust/src/main.rs, `bench_datadriven`): the same committed variant
+// corpus, variant 0 byte-compared to the golden, every variant decoded and
+// re-encoded byte-identical before the clock, each variant in its own padded
+// slot, the decode target hoisted and reused. What differs is the one thing
+// §1.10 asks: the read is timed alone, so its output has no write to observe
+// it, and `black_box` on the decoded value is the escape barrier — the same
+// barrier on the same kind of value the identity lane's loop below uses, so
+// neither side is cheaper for being easier to delete.
+//
+// THE TWO LOOPS ALTERNATE ORDER BY ROUND, so neither lane always runs second
+// on a warmed cache; the driver interleaves the rounds themselves (§2.4).
+
+// The packet runner's slot: the variant at the front of a 4 KiB buffer plus
+// 64 bytes of address spacing, so 64 slots never alias one cache set.
+const PACKET_SLOT: usize = 4096 + 64;
+const DEFAULT_PACKET_ITERATIONS: i64 = 4_000_000; // the packet bench_mixed count (§2.1)
+
+struct PacketCorpus {
+    slots: Vec<u8>,
+    stride: usize,
+}
+
+fn load_packet(ctx: &mut Ctx, name: &str) -> Option<PacketCorpus> {
+    let wire_dir = ctx.args.packet_wire_dir.clone();
+    let variant_dir = ctx.args.packet_variant_dir.clone();
+    let Some(golden) = ctx.read_corpus(&wire_dir, "bench_mixed.bin") else {
+        ctx.failed = true;
+        return None;
+    };
+    let Some(packed) = ctx.read_corpus(&variant_dir, "bench_mixed.variants.bin") else {
+        ctx.failed = true;
+        return None;
+    };
+    let stride = golden.len();
+    if stride == 0 || stride > 4096 || packed.len() != stride * NUM_VARIANTS {
+        ctx.fail(
+            name,
+            "the packet corpus is not 64 records of the golden's size",
+        );
+        return None;
+    }
+    // gate 1 (§1.5): variant 0 IS the pinned instance.
+    if packed[..stride] != golden[..] {
+        ctx.fail(name, "packet variant 0 is not the pinned golden");
+        return None;
+    }
+    let mut slots = vec![0u8; PACKET_SLOT * NUM_VARIANTS];
+    for k in 0..NUM_VARIANTS {
+        slots[k * PACKET_SLOT..k * PACKET_SLOT + stride]
+            .copy_from_slice(&packed[k * stride..(k + 1) * stride]);
+    }
+    // gate 2: every variant decodes, re-encodes, and comes back byte-identical
+    // at the same length — a read that decoded wrongly does not get to be fast.
+    let mut value = PacketValue::default();
+    let mut twin = vec![0u8; 4096];
+    for k in 0..NUM_VARIANTS {
+        let slot = &slots[k * PACKET_SLOT..(k + 1) * PACKET_SLOT];
+        let mut rs = ReadStream::new(slot, stride);
+        if read_bench_mixed(&mut rs, &mut value).is_err() {
+            ctx.fail(name, "decode of a packet variant failed");
+            return None;
+        }
+        let wrote;
+        {
+            let mut ws = WriteStream::new(&mut twin);
+            if write_bench_mixed(&mut ws, &value).is_err() {
+                ctx.fail(name, "re-encode of a decoded packet variant failed");
+                return None;
+            }
+            ws.flush();
+            wrote = ws.bytes_processed() as usize;
+        }
+        if wrote != stride || twin[..stride] != slot[..stride] {
+            ctx.fail(
+                name,
+                "packet variant round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus",
+            );
+            return None;
+        }
+    }
+    Some(PacketCorpus { slots, stride })
+}
+
+// One fixed-form READ lane, timed alone: the whole LOAD of the 64-record file
+// into one reused destination, the prefill and the scatter inside it. The
+// identity lane and the plan lane are this one loop over two files, so neither
+// is cheaper for being easier to delete.
+#[allow(clippy::too_many_arguments)]
+fn time_fixed_read(
+    ctx: &mut Ctx,
+    name: &str,
+    file: &[u8],
+    out: &mut [FixedTableRow],
+    plan: &mut [TableFixedEntry],
+    remap: &mut [u16],
+    report: &mut TableFixedReport,
+    iters: i64,
+) -> Option<f64> {
+    let start = Instant::now();
+    let mut i = 0i64;
+    while i < iters {
+        let read = fixed_table_fixed_load(out, file, plan, remap, report);
+        if read != Some(NUM_VARIANTS) {
+            ctx.fail(name, "load failed in loop");
+            return None;
+        }
+        black_box(&*out);
+        ctx.sink = ctx.sink.wrapping_add(read.unwrap_or(0) as u64);
+        i += NUM_VARIANTS as i64;
+    }
+    Some(iters as f64 / start.elapsed().as_secs_f64())
+}
+
+fn time_packet_read(
+    ctx: &mut Ctx,
+    packet: &PacketCorpus,
+    value: &mut PacketValue,
+    iters: i64,
+) -> Option<f64> {
+    let start = Instant::now();
+    for i in 0..iters {
+        let k = (i as usize) & (NUM_VARIANTS - 1);
+        let mut rs = ReadStream::new(
+            &packet.slots[k * PACKET_SLOT..(k + 1) * PACKET_SLOT],
+            packet.stride,
+        );
+        if read_bench_mixed(&mut rs, value).is_err() {
+            ctx.fail("bench_mixed_read", "read failed in loop");
+            return None;
+        }
+        black_box(&*value);
+        ctx.sink = ctx.sink.wrapping_add(1);
+    }
+    Some(iters as f64 / start.elapsed().as_secs_f64())
+}
+
+#[cfg(not(feature = "lineage"))]
+fn bench_plan_read(ctx: &mut Ctx) {
+    ctx.fail(
+        "bench_plan_read",
+        "this binary is the ordinary table leg, built without the lineage: the plan-read arm is table-rust-plan (bench/paired -mode build -langs rust)",
+    );
+}
+
+#[cfg(feature = "lineage")]
+fn bench_plan_read(ctx: &mut Ctx) {
+    let table_iters = if ctx.args.iterations != 0 {
+        ctx.args.iterations
+    } else {
+        DEFAULT_ITERATIONS
+    };
+    let packet_iters = if ctx.args.packet_iterations != 0 {
+        ctx.args.packet_iterations
+    } else {
+        DEFAULT_PACKET_ITERATIONS
+    };
+    let Some(mut fixed) = load_fixed(ctx, "bench_fixed_read") else {
+        return;
+    };
+    if let Some(dir) = ctx.args.emit_lineage.clone() {
+        lineage::emit(ctx, &fixed, &dir);
+        return;
+    }
+    let Some(mut lin) = lineage::load(ctx, &fixed) else {
+        return;
+    };
+    let Some(packet) = load_packet(ctx, "bench_mixed_read") else {
+        return;
+    };
+    if ctx.args.gate {
+        return;
+    }
+
+    // THE THREE LOOPS ROTATE THEIR ORDER BY ROUND (identity, plan, packet;
+    // then plan, packet, identity; ...), so no lane always runs first or last
+    // on a warmed cache; the driver interleaves the rounds themselves (§2.4).
+    let runs = ctx.args.num_runs;
+    let mut rates = [vec![0f64; runs], vec![0f64; runs], vec![0f64; runs]];
+    let mut value = PacketValue::default();
+    let first = (ctx.args.round % 3) as usize;
+    for run in 0..=runs {
+        let mut got = [0f64; 3];
+        for step in 0..3 {
+            let lane = (first + step) % 3;
+            let rate = match lane {
+                0 => time_fixed_read(
+                    ctx,
+                    "bench_fixed_read",
+                    &fixed.file,
+                    &mut fixed.out,
+                    &mut fixed.out_plan,
+                    &mut fixed.out_remap,
+                    &mut fixed.report,
+                    table_iters,
+                ),
+                1 => time_fixed_read(
+                    ctx,
+                    "bench_plan_read",
+                    &lin.file,
+                    &mut lin.out,
+                    &mut lin.plan,
+                    &mut lin.remap,
+                    &mut lin.report,
+                    table_iters,
+                ),
+                _ => time_packet_read(ctx, &packet, &mut value, packet_iters),
+            };
+            let Some(rate) = rate else {
+                return;
+            };
+            got[lane] = rate;
+        }
+        if run > 0 {
+            for lane in 0..3 {
+                rates[lane][run - 1] = got[lane];
+            }
+        }
+    }
+    let [mut identity_rates, mut plan_rates, mut packet_rates] = rates;
+    let identity = run_stats(&mut identity_rates);
+    let plan = run_stats(&mut plan_rates);
+    let packet_stats = run_stats(&mut packet_rates);
+    let fixed_bytes = fixed.bytes_per_op;
+    ctx.report(
+        "bench_fixed_read",
+        "read",
+        table_iters,
+        fixed_bytes,
+        &identity,
+        "table",
+        "contract",
+    );
+    ctx.report(
+        "bench_plan_read",
+        "read",
+        table_iters,
+        lin.bytes_per_op,
+        &plan,
+        "table",
+        "contract",
+    );
+    ctx.report(
+        "bench_mixed_read",
+        "read",
+        packet_iters,
+        packet.stride as f64,
+        &packet_stats,
+        "gen",
+        "removed",
+    );
+}
+
 fn usage(program: &str) -> ! {
     eprintln!(
         "usage: {program} [--indexed] [--gate] [--csv] [--round K] [--iterations N] \
-[--wire-dir <dir>] [--variant-dir <dir>]"
+[--wire-dir <dir>] [--variant-dir <dir>] [--plan-read [--packet-iterations N] \
+[--packet-wire-dir <dir>] [--packet-variant-dir <dir>] [--lineage-dir <dir>] \
+[--emit-lineage <dir>]]"
     );
     std::process::exit(1);
 }
@@ -515,10 +890,17 @@ fn parse_args() -> Args {
         csv: false,
         gate: false,
         indexed: false,
+        plan_read: false,
         num_runs: MAX_NUM_RUNS,
+        round: 0,
         iterations: 0,
+        packet_iterations: 0,
         wire_dir: "testdata/wire".to_string(),
         variant_dir: "bench/corpus/variants".to_string(),
+        packet_wire_dir: "testdata/wire".to_string(),
+        packet_variant_dir: "bench/corpus/variants".to_string(),
+        lineage_dir: "bench/tables/rust/lineage".to_string(),
+        emit_lineage: None,
     };
     let mut i = 1;
     while i < argv.len() {
@@ -526,6 +908,37 @@ fn parse_args() -> Args {
             "--indexed" => args.indexed = true,
             "--gate" => args.gate = true,
             "--csv" => args.csv = true,
+            "--plan-read" => args.plan_read = true,
+            "--lineage-dir" if i + 1 < argv.len() => {
+                i += 1;
+                args.lineage_dir = argv[i].clone();
+            }
+            "--emit-lineage" if i + 1 < argv.len() => {
+                i += 1;
+                args.emit_lineage = Some(argv[i].clone());
+            }
+            "--packet-wire-dir" if i + 1 < argv.len() => {
+                i += 1;
+                args.packet_wire_dir = argv[i].clone();
+            }
+            "--packet-variant-dir" if i + 1 < argv.len() => {
+                i += 1;
+                args.packet_variant_dir = argv[i].clone();
+            }
+            "--packet-iterations" if i + 1 < argv.len() => {
+                i += 1;
+                match argv[i].parse::<i64>() {
+                    Ok(n) if n > 0 && n <= 2147483584 && n % NUM_VARIANTS as i64 == 0 => {
+                        args.packet_iterations = n
+                    }
+                    _ => {
+                        eprintln!(
+                            "--packet-iterations requires a positive multiple of 64 up to 2147483584"
+                        );
+                        std::process::exit(1);
+                    }
+                }
+            }
             "--wire-dir" if i + 1 < argv.len() => {
                 i += 1;
                 args.wire_dir = argv[i].clone();
@@ -553,9 +966,12 @@ fn parse_args() -> Args {
                 // identifies the round to the interleaved driver, which
                 // aggregates across rounds itself.
                 i += 1;
-                if argv[i].parse::<u32>().is_err() {
-                    eprintln!("--round takes a non-negative integer, got '{}'", argv[i]);
-                    std::process::exit(1);
+                match argv[i].parse::<u32>() {
+                    Ok(k) => args.round = k,
+                    Err(_) => {
+                        eprintln!("--round takes a non-negative integer, got '{}'", argv[i]);
+                        std::process::exit(1);
+                    }
                 }
                 args.num_runs = 1;
             }
@@ -585,7 +1001,11 @@ fn main() {
     // The tolerant half's bytes, and every check this leg can make of them
     // without a form-1 decoder it does not have.
     if check_tolerant_corpus(&mut ctx, "bench_table", "bench_table") {
-        bench_fixed(&mut ctx, "bench_fixed", DEFAULT_ITERATIONS);
+        if ctx.args.plan_read {
+            bench_plan_read(&mut ctx);
+        } else {
+            bench_fixed(&mut ctx, "bench_fixed", DEFAULT_ITERATIONS);
+        }
     }
 
     ctx.flush_csv(); // rows carry the corpus_id of the goldens this run loaded
