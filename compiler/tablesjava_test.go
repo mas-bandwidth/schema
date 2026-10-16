@@ -54,12 +54,13 @@ func TestJavaEmitsTableSources(t *testing.T) {
 		"TableBytes.java", "BuildVersion.java", "TableCookLayout.java", "TableBlockLayout.java",
 		"TableBlockInfo.java", "TableBlockFieldInfo.java", "TableBlockRows.java",
 		"TableCookInfo.java", "TableCookFieldInfo.java", "TableCookStorage.java",
+		"TableVariable.java", "TableJson.java", "TableTypeInfo.java", "TableFieldInfo.java", "TableRegistry.java",
 	} {
 		if _, ok := with[want]; !ok {
 			t.Errorf("--lang java emitted no %s for a unit with tables", want)
 		}
 	}
-	for _, gone := range []string{"TableReport.java", "TableReader.java", "TableWriter.java", "TableJson.java", "TableTypeInfo.java"} {
+	for _, gone := range []string{"TableReport.java", "TableReader.java", "TableWriter.java"} {
 		if _, ok := with[gone]; ok {
 			t.Errorf("--lang java emitted %s: the previous-form wire runtime was removed", gone)
 		}
