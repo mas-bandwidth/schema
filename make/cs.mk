@@ -443,7 +443,61 @@ tables-cs-leg-release: build/tables-generated-cs/.stamp
 # ignored TableReport rather than constructing one per call.
 .PHONY: tables-cs-alloc
 tables-cs-alloc: build/tables-generated-cs/.stamp
-	cd test/cs-tables && $(DOTNET) run -c Release -- alloc
+	cd test/cs-tables && SCHEMA_CS_ALLOC_PIN="$(CS_ALLOC_PIN)" $(DOTNET) run -c Release -- alloc
+
+# THE RUNTIME PIN OF THE ALLOCATION GATE (docs/PORTING.md I14, issue #420): the
+# SDK pin in .github/dotnet-version, read here and passed in, so C# holds no
+# second copy. The gate refuses to measure on a runtime of another major.
+CS_ALLOC_PIN := $(shell cat .github/dotnet-version 2>/dev/null)
+
+# The control: a pin of a major this machine is not running (the running major
+# plus one) must be refused with the refusal text, a non-zero exit and no
+# passed line; the escape hatch must exit 0, print NOT CERTIFIED and never the
+# passed line.
+.PHONY: tables-cs-alloc-runtime-negative-control
+tables-cs-alloc-runtime-negative-control: build/tables-generated-cs/.stamp
+	@set -e; cd test/cs-tables; out=../../build/cs-alloc-runtime-control; mkdir -p $$out; \
+	$(DOTNET) build -c Release --nologo -v quiet; \
+	run="$(DOTNET) run -c Release --no-build --"; \
+	major=`$(DOTNET) --list-runtimes | sed -n 's/^Microsoft.NETCore.App \([0-9]*\)\..*/\1/p' | sort -n | tail -1`; \
+	wrong=`expr $$major + 1`; \
+	if SCHEMA_CS_ALLOC_PIN=$$wrong.0 $$run alloc > $$out/refused.txt 2>&1; then \
+		cat $$out/refused.txt; echo "cs alloc runtime control: a wrong pin ($$wrong.0) exited 0"; exit 1; fi; \
+	grep -q 'REFUSED to measure' $$out/refused.txt && grep -q "pin $$wrong.0" $$out/refused.txt && grep -q 'major' $$out/refused.txt || { cat $$out/refused.txt; echo "cs alloc runtime control: no refusal naming both versions"; exit 1; }; \
+	if grep -q 'alloc gate passed' $$out/refused.txt; then echo "cs alloc runtime control: the refused run printed the passed line"; exit 1; fi; \
+	SCHEMA_CS_ALLOC_PIN=$$wrong.0 SCHEMA_CS_ALLOC_ANY_RUNTIME=1 $$run alloc > $$out/hatch.txt 2>&1 || { cat $$out/hatch.txt; echo "cs alloc runtime control: the escape hatch did not exit 0"; exit 1; }; \
+	grep -q 'NOT CERTIFIED' $$out/hatch.txt || { cat $$out/hatch.txt; echo "cs alloc runtime control: the escape hatch did not print NOT CERTIFIED"; exit 1; }; \
+	if grep -q 'alloc gate passed' $$out/hatch.txt; then cat $$out/hatch.txt; echo "cs alloc runtime control: the escape hatch printed the passed line"; exit 1; fi; \
+	tail -n 2 $$out/refused.txt; tail -n 2 $$out/hatch.txt; \
+	echo "tables-cs-alloc-runtime-negative-control: a wrong pin is refused, the escape hatch observes and does not certify"
+
+# THE C# TABLES SOAK (docs/PORTING.md I9, issue #416): loops Load with a
+# supplied report, Load with no report, Measure, Save and the round trip over
+# the tabledemo root for SOAK_SECONDS of real time (3600 s at release, 20 s in
+# `make test`), reads GC.GetAllocatedBytesForCurrentThread at every sample, and
+# fails if the byte count moves after warmup, reporting managed-heap and
+# working-set drift beside it as the weaker instrument that sees retention.
+# Its negative control plants a matched short-lived allocation per iteration
+# (allocated and dropped so the GC reclaims it) and requires the count gate to
+# go red while the managed-heap drift line stays green.
+SOAK_SECONDS ?= 3600
+.PHONY: tables-cs-soak tables-cs-soak-negative-control
+tables-cs-soak: build/tables-generated-cs/.stamp
+	cd test/cs-tables && SCHEMA_CS_ALLOC_PIN="$(CS_ALLOC_PIN)" $(DOTNET) run -c Release -- soak $(SOAK_SECONDS)
+
+tables-cs-soak-negative-control: build/tables-generated-cs/.stamp
+	@mkdir -p build/cs-soak-control
+	@cd test/cs-tables && $(DOTNET) build -c Release --nologo -v quiet
+	@if ( cd test/cs-tables && SCHEMA_CS_ALLOC_PIN="$(CS_ALLOC_PIN)" SCHEMA_CS_SOAK_PLANT=1 $(DOTNET) run -c Release --no-build -- soak 2 ) > build/cs-soak-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a short-lived allocation per iteration left the C# soak green"; \
+		cat build/cs-soak-control/log; exit 1; \
+	fi
+	@grep -Fq "SOAK FAILED: allocated-bytes count moved" build/cs-soak-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the C# soak went red, but not on the allocated-bytes count"; cat build/cs-soak-control/log; exit 1; }
+	@grep -Fq "drift gate PASS" build/cs-soak-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the managed-heap drift line did not stay green"; cat build/cs-soak-control/log; exit 1; }
+	@grep -E "managed-heap drift|SOAK FAILED" build/cs-soak-control/log
+	@echo "negative control: a matched short-lived allocation per iteration is INVISIBLE to managed-heap drift and turns the C# allocated-bytes COUNT red"
 
 # THE FIXED FORM'S VERSIONING SUITE ON THIS LEG (docs/FIXED-FORM-ALGORITHM.md §5,
 # docs/FIXED-FORM-VERSIONING-TESTS.md): every row of the law, both read columns,
@@ -484,11 +538,54 @@ tables-cs-fixed-t18:
 	@echo 'tables C# fixed-t18: direct and payload-free union arms round-trip, tag-only arm storage'
 
 test-cs: tables-cs-fixed-t18
+test-cs: tables-cs-fixed-rows
+
+# I13 (docs/PORTING.md): the C# leg's text differential against a third
+# implementation, slug json-differential. A C# probe (Roslyn csc + dotnet exec,
+# the t10 harness's build, with the sibling serialize.cs for the nested plain
+# type) fills 200 random float-only instances from a splitmix64 and writes each
+# as (wire, text); internal/tabletext reads the wire and its text is
+# byte-compared against the leg's, then the leg's text is packed back and
+# byte-compared against the leg's wire. The control caps the emitted walker's
+# float32 at six significant digits in memory and must go red on the text
+# comparison. Its first run found the walker writing a float64 at fifteen
+# digits through .NET's custom format cap (json.go FormatG).
+.PHONY: tables-cs-json-differential tables-cs-json-differential-negative-control
+tables-cs-json-differential:
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 sh test/slowgate/proof tables-cs-json-differential \
+		'TestCsTextDifferential' \
+		./internal/codegen/cstable -run '^TestCsTextDifferential$$' -count=1 -timeout 600s
+	@grep -h 'cs text differential: ' build/slowgate/tables-cs-json-differential.log | sed 's/^ *//'
+tables-cs-json-differential-negative-control:
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 sh test/slowgate/proof tables-cs-json-differential-negative-control \
+		'TestCsTextDifferentialNegativeControl' \
+		./internal/codegen/cstable -run '^TestCsTextDifferentialNegativeControl$$' -count=1 -timeout 600s
+	@grep -h -A1 'cs text differential negative control: \|leg text and engine text differ' build/slowgate/tables-cs-json-differential-negative-control.log | sed 's/^ *//' | head -3
+test-cs: tables-cs-json-differential tables-cs-json-differential-negative-control
 
 .PHONY: tables-cs-fixed-roadmap
 tables-cs-fixed-roadmap:
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedRoadmapCSharpT12PlansVersions'
 	@echo 'tables C# fixed-roadmap: t12 plan selection, closure, retirement, retired runtime and widening'
+
+# THE C# FIXED-ROADMAP ROWS RUN UNDER ONE REQUIRED TARGET, and the held
+# message-form ledger steps close against it. Every C# fixed-roadmap test and
+# the held message form run once here with DOTNET and
+# SCHEMA_REQUIRE_CORPUS=1, so a bare `go test` can never report green over C#
+# that never ran. The oracle is built first (tables-fixedform-corpus) because
+# t01's framing rows read the C++ reference's bytes; under
+# SCHEMA_REQUIRE_CORPUS=1 a missing corpus is a failure, not a skip. The
+# -run pattern is pinned by TestCsFixedRowsTargetCoversEveryRoadmapTest: any
+# row added later without being named here goes red. Owed-gap skips that stay
+# skips (not toolchain absences) are cs/W16, cs/R28 (fixedroadmap_t07_test.go),
+# message_graph_tree and connection_retain_conn/connection_graph_conn (no leg
+# links the sibling ../serialize.cs runtime yet; messageform_held_test.go);
+# -v keeps every skip in this target's log, and they are named in the pull
+# request.
+.PHONY: tables-cs-fixed-rows
+tables-cs-fixed-rows: tables-fixedform-corpus
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmap(T01Framing|T02Plans|CSharpT03PlansVersions|CSharpT04Versions|CSharpT05Evolution|CSharpT06Bounds|CSharpT07Writes|CSharpT08ConformanceIntegers|CSharpT09FloatsUnions|CSharpT10Optionals|CSharpT12PlansVersions|CSharpT13SecondLayoutForAHeldHash|CSharpT15GuardChain|CSharpT18ExactCounters|CSharpT18UnionArms)|TestMessageFormHeldCSharp'
+	@echo 'tables C# fixed-rows: every fixed-roadmap row and the held message form ran once under one required target'
 
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
@@ -547,6 +644,7 @@ tables-cs-release:
 	$(MAKE) tables-cs-region-fuzz N=500000
 	$(MAKE) tables-cs-builder-fuzz N=500000
 	$(MAKE) tables-cs-retain-fuzz N=500000
+	$(MAKE) tables-cs-soak-negative-control
 	$(MAKE) tables-cs-retain-negative-control
 	$(MAKE) tables-cs-pack-negative-control
 	$(MAKE) tables-cs-message-blob-endian-negative-control
@@ -562,19 +660,158 @@ tables-cs-bench-gate: generated/bench/tables/cs/.stamp
 	bench/tables/cs/leg run --gate
 test-cs: tables-cs-bench-gate
 
-# THE C# TABLE SOURCES ARE FORMAT-CANONICAL (issue #424). `dotnet format` is the
-# language's formatting authority over the generated table units the conformance
-# project compiles, so an emitter that drifts from what it writes goes red here
-# rather than on a reviewer. It SKIPS cleanly where the pinned SDK is not on PATH.
+# THE GENERATED C# IS FORMAT-CANONICAL AND ANALYZER-CLEAN (issues #424 and #547;
+# docs/CS-TABLES.md, "The generated C# dialect"). `dotnet format` is the
+# language's formatting authority and the Roslyn analyzers the SDK ships
+# (Microsoft.CodeAnalysis.NetAnalyzers) are its linter, so an emitter that drifts
+# from what they accept goes red here rather than on a reviewer.
+#
+# "Default strictness" is exactly CS_ANALYSIS_PROPS: the SDK's analyzers on, the
+# latest analysis level, the Default mode, and no suppression file and no
+# .editorconfig beside the generated units. test/cs/schematest.csproj and
+# test/conformance/cs/schemaconformance.csproj carry the same three properties;
+# the other packet projects carry none, so the gate hands the set to every
+# project it checks, both to `dotnet format` (MSBuild reads an environment
+# variable as a property) and to the build. A finding is fixed in the emitter
+# (internal/codegen/csharp, internal/codegen/cstable), never silenced.
+#
+# cs_clean_check runs BOTH halves and reports each by name before it fails, so
+# one red never hides the other: `dotnet format --verify-no-changes`
+# (whitespace, style and analyzers at their default severity; a finding prints
+# as `error WHITESPACE` or `error <rule id>` with its file), then a full rebuild
+# with the analyzer set on and TreatWarningsAsErrors, so a compiler or analyzer
+# warning (CS0169 for an unused private field, CA<n> for an analyzer finding)
+# turns it red. $(1) the gate's label, $(2) the project, $(3) the generated
+# directories formatted, $(4) extra NAME=VALUE properties (the negative
+# control's redirect).
+#
+# --include takes each directory RELATIVE to the repository and WITH a trailing
+# slash. dotnet format matches it as a glob against the project's documents,
+# and an absolute directory path matches none of them and passes having checked
+# nothing: that is how tables-cs-clean stood green at d713c7d66 over 295 table
+# units that are not format-canonical (issue #547's census). The planted
+# control below is what keeps this form honest.
+CS_ANALYSIS_PROPS := EnableNETAnalyzers=true AnalysisLevel=latest AnalysisMode=Default
+
+define cs_clean_check
+	@mkdir -p build/cs-clean/$(1); st=0; \
+	if env $(CS_ANALYSIS_PROPS) $(4) $(DOTNET) format $(2) --verify-no-changes \
+		--include $(addsuffix /,$(3)) > build/cs-clean/$(1)/format.log 2>&1; then :; else \
+		st=1; echo "RED $(1): dotnet format --verify-no-changes over $(3)"; \
+		grep -E ' (error|warning) [A-Z]+[A-Z0-9]*:' build/cs-clean/$(1)/format.log || cat build/cs-clean/$(1)/format.log; \
+	fi; \
+	if $(DOTNET) build $(2) --no-incremental --nologo -v q -o build/cs-clean/$(1)/bin \
+		$(addprefix -p:,$(CS_ANALYSIS_PROPS) $(4)) -p:TreatWarningsAsErrors=true \
+		> build/cs-clean/$(1)/build.log 2>&1; then :; else \
+		st=1; echo "RED $(1): dotnet build with $(CS_ANALYSIS_PROPS)"; \
+		grep -E ' (error|warning) [A-Z]+[0-9]+:' build/cs-clean/$(1)/build.log | sort -u | grep . || tail -20 build/cs-clean/$(1)/build.log; \
+	fi; \
+	test $$st -eq 0 && echo "$(1): dotnet format and the analyzers clean over $(3)"
+endef
+
+# The SDK probe both gates share: a dotnet not on PATH SKIPS cleanly, and under
+# SCHEMA_REQUIRE_CORPUS=1 that skip is a FAILURE (the corpus legs' idiom).
+define cs_clean_probe
+	@if ! command -v $(DOTNET) >/dev/null 2>&1; then \
+		if [ "$(SCHEMA_REQUIRE_CORPUS)" = 1 ]; then \
+			echo "FAIL $(1): $(DOTNET) is not installed and SCHEMA_REQUIRE_CORPUS=1"; exit 1; fi; \
+		echo "SKIP $(1): $(DOTNET) is not installed"; exit 0; \
+	fi
+endef
+
+# The generated TABLE units the conformance project compiles (issue #424).
 .PHONY: tables-cs-clean
 tables-cs-clean: build/tables-generated-cs/.stamp cards-cs-generate
-	@if ! command -v $(DOTNET) >/dev/null 2>&1; then \
-		echo "SKIP tables-cs-clean: $(DOTNET) is not installed"; exit 0; \
-	fi
-	$(DOTNET) format test/conformance/cs/schemaconformance.csproj \
-		--verify-no-changes --include $(CURDIR)/build/tables-generated-cs
-	@echo "tables C#: dotnet format clean over the generated table units"
-test-cs: tables-cs-clean
+	$(call cs_clean_probe,tables-cs-clean)
+	@if command -v $(DOTNET) >/dev/null 2>&1; then $(MAKE) --no-print-directory tables-cs-clean-run; fi
+
+.PHONY: tables-cs-clean-run
+tables-cs-clean-run:
+	$(call cs_clean_check,tables-cs-clean,test/conformance/cs/schemaconformance.csproj,build/tables-generated-cs)
+
+# NOT YET REQUIRED. tables-cs-clean is fixed (it checks the table units now)
+# and RED: 152,044 WHITESPACE findings in 295 table units, written by table
+# emitters (region.go, block.go, cook.go and the rest of internal/codegen/cstable)
+# this gate's card could not touch. It is held here, run by name and reachable
+# as `make cs-not-yet-required`, but NOT from test-cs, so the red is visible
+# without making every C# run red. The sprint card
+# cs-generated-table-units-pass-dotnet-format fixes those emitters and moves
+# tables-cs-clean from this group into test-cs; nothing else may join it.
+.PHONY: cs-not-yet-required
+cs-not-yet-required: tables-cs-clean
+
+# The generated PACKET units (internal/codegen/csharp, issue #547): the
+# examples and the bench corpus (schematest), the 128-bit examples (the
+# ludicrous twin), the RealWorld bench unit (the bench project), and the
+# packet-defaults, packet-text and packet-wide units, each through the project
+# that compiles it.
+PACKET_CLEAN_CS_STAMPS := generated/cs/.stamp generated/bench/cs/.stamp generated/cs-ludicrous/.stamp \
+	build/packet-defaults/cs/.stamp build/packet-text/cs/.stamp build/packet-wide/cs/.stamp
+
+.PHONY: packet-clean-cs
+packet-clean-cs: $(PACKET_CLEAN_CS_STAMPS)
+	$(call cs_clean_probe,packet-clean-cs)
+	@if command -v $(DOTNET) >/dev/null 2>&1; then $(MAKE) --no-print-directory packet-clean-cs-run; fi
+
+.PHONY: packet-clean-cs-run
+packet-clean-cs-run:
+	@st=0; \
+	$(MAKE) --no-print-directory packet-clean-cs-unit-examples || st=1; \
+	$(MAKE) --no-print-directory packet-clean-cs-unit-ludicrous || st=1; \
+	$(MAKE) --no-print-directory packet-clean-cs-unit-realworld || st=1; \
+	$(MAKE) --no-print-directory packet-clean-cs-unit-defaults || st=1; \
+	$(MAKE) --no-print-directory packet-clean-cs-unit-text || st=1; \
+	$(MAKE) --no-print-directory packet-clean-cs-unit-wide || st=1; \
+	if [ $$st -ne 0 ]; then echo "RED packet-clean-cs: a generated C# packet unit is not format- and analyzer-clean"; exit 1; fi
+	@echo "packet C#: dotnet format and the analyzers clean over the generated packet units"
+
+.PHONY: packet-clean-cs-unit-examples packet-clean-cs-unit-ludicrous packet-clean-cs-unit-realworld \
+	packet-clean-cs-unit-defaults packet-clean-cs-unit-text packet-clean-cs-unit-wide
+packet-clean-cs-unit-examples:
+	$(call cs_clean_check,packet-clean-cs-examples,test/cs/schematest.csproj,generated/cs generated/bench/cs)
+packet-clean-cs-unit-ludicrous:
+	$(call cs_clean_check,packet-clean-cs-ludicrous,test/cs-ludicrous/ludicroustest.csproj,generated/cs-ludicrous)
+packet-clean-cs-unit-realworld:
+	$(call cs_clean_check,packet-clean-cs-realworld,bench/cs/schemabench.csproj,generated/bench/cs/realworld)
+packet-clean-cs-unit-defaults:
+	$(call cs_clean_check,packet-clean-cs-defaults,test/packet-defaults/cs/packet-defaults.csproj,build/packet-defaults/cs)
+packet-clean-cs-unit-text:
+	$(call cs_clean_check,packet-clean-cs-text,test/packet-text/cs/packet-text.csproj,build/packet-text/cs)
+packet-clean-cs-unit-wide:
+	$(call cs_clean_check,packet-clean-cs-wide,test/packet-wide/cs/packet-wide.csproj,build/packet-wide/cs)
+test-cs: packet-clean-cs
+
+# THE PACKET-CLEAN NEGATIVE CONTROL: a copy of the generated examples with ONE
+# unit (Constants.cs) carrying two planted violations, a misindented block and
+# an unused private field, compiled by the same project through its
+# PacketGeneratedDir redirect. The gate must go red on BOTH by name: dotnet
+# format's WHITESPACE finding in Constants.cs, and the build's CS0169 on the
+# planted field. A gate that stayed green, or went red for another reason,
+# fails the control.
+PACKET_CLEAN_CS_NEG := build/packet-clean-cs-negative
+.PHONY: packet-clean-cs-negative-control
+packet-clean-cs-negative-control: generated/cs/.stamp generated/bench/cs/.stamp
+	@rm -rf $(PACKET_CLEAN_CS_NEG) && mkdir -p $(PACKET_CLEAN_CS_NEG)/cs
+	@cp generated/cs/*.cs $(PACKET_CLEAN_CS_NEG)/cs/
+	@awk 'done != 1 && prev ~ /public static partial class Schema/ && $$0 ~ /^    \{$$/ { \
+		print; print "        private static int plantedUnusedField;"; \
+		print "  private static class PlantedMisindentedBlock"; print "  {"; \
+		print "  public const int Planted = 1;"; print "  }"; done = 1; next } \
+		{ prev = $$0; print }' generated/cs/Constants.cs > $(PACKET_CLEAN_CS_NEG)/cs/Constants.cs
+	@grep -q plantedUnusedField $(PACKET_CLEAN_CS_NEG)/cs/Constants.cs || \
+		{ echo 'NEGATIVE CONTROL FAILED: the plant found no Schema class in Constants.cs'; exit 1; }
+	@if $(MAKE) --no-print-directory packet-clean-cs-negative-run > $(PACKET_CLEAN_CS_NEG)/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: packet-clean-cs stayed green over a planted violation'; cat $(PACKET_CLEAN_CS_NEG)/log; exit 1; fi
+	@grep -Eq 'Constants\.cs.* error WHITESPACE:' $(PACKET_CLEAN_CS_NEG)/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the misindented block was not named'; cat $(PACKET_CLEAN_CS_NEG)/log; exit 1; }
+	@grep -Eq 'Constants\.cs.* error CS0169:.*plantedUnusedField' $(PACKET_CLEAN_CS_NEG)/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the unused private field was not named'; cat $(PACKET_CLEAN_CS_NEG)/log; exit 1; }
+	@echo 'packet C# clean negative control: a misindented block and an unused private field turn packet-clean-cs red by name'
+
+.PHONY: packet-clean-cs-negative-run
+packet-clean-cs-negative-run:
+	$(call cs_clean_check,packet-clean-cs-negative,test/cs/schematest.csproj,$(PACKET_CLEAN_CS_NEG)/cs,PacketGeneratedDir=$(CURDIR)/$(PACKET_CLEAN_CS_NEG)/cs)
+test-cs: packet-clean-cs-negative-control
 
 .PHONY: tables-cs-fixedform-arm-negative-control
 tables-cs-fixedform-arm-negative-control: bin/schema
@@ -592,6 +829,9 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(MAKE) tables-cs-view
 	$(MAKE) tables-cs-leg
 	$(MAKE) tables-cs-alloc
+	$(MAKE) tables-cs-alloc-runtime-negative-control
+	$(MAKE) tables-cs-soak SOAK_SECONDS=20
+	$(MAKE) tables-cs-soak-negative-control
 	$(MAKE) tables-cs-versioning
 	$(MAKE) tables-cs-wire-fuzz
 	$(MAKE) tables-cs-region-fuzz

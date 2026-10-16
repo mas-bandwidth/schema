@@ -41,6 +41,7 @@ static partial class Program
         TestFixedSlackCase();
         TestFixedNegativeControl();
         TestFixedFormHeaderProbes();
+        TestFixedHashOracleCase();
         // SKIPPED BY NAME, NOT DELETED (docs/FIXED-FORM-ALGORITHM.md §5.6, and
         // §5.9 #23 for a suite whose verb is a printed line): TestFixedLayoutValidation
         // asserts the RUN-TIME WALK of a stranger's layout, which §5 retires —
@@ -82,7 +83,8 @@ static partial class Program
             };
             ArgWProbe dst = new ArgWProbe();
             byte[] widenScratch = Array.Empty<byte>();
-            FX1.Schema.TableFixedWire.Run(plan, slots, src, dst, null, ReadOnlySpan<byte>.Empty, ref widenScratch);
+            int forgedOrdinal = 0;
+            FX1.Schema.TableFixedWire.Run(plan, slots, src, dst, null, ReadOnlySpan<byte>.Empty, ref widenScratch, ref forgedOrdinal);
             return dst.V;
         }
 
@@ -304,7 +306,9 @@ static partial class Program
         FX1.Schema.TableReset(wrong);
         FX1.TableReport r = new FX1.TableReport();
         byte[] wrongScratch = Array.Empty<byte>();
-        FX1.Schema.TableFixedWire.Run(FX1.Schema.FxRootFixedPlan, FX1.Schema.FxRootFixedSlots, body, wrong, r, ReadOnlySpan<byte>.Empty, ref wrongScratch);
+        int wrongForged = 0;
+        FX1.Schema.TableFixedWire.Run(FX1.Schema.FxRootFixedPlan, FX1.Schema.FxRootFixedSlots, body, wrong, r, ReadOnlySpan<byte>.Empty, ref wrongScratch, ref wrongForged);
+        r.Clamped += wrongForged;
         bool intact = wrong.Nested.A == 33 && wrong.Nested.B == 44 && wrong.Renamed == 808;
         Check(!intact, "NEGATIVE CONTROL: the wrong plan must NOT reproduce the record");
 
@@ -652,8 +656,10 @@ static partial class Program
             ReadOnlySpan<byte> planBytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(compiled);
             ReadOnlySpan<byte> body = buf.AsSpan(S2.Schema.TableFixedWire.HeaderBytes + 4 + (int)layoutBytes);
             byte[] scratch = Array.Empty<byte>();
+            int forged = 0;
             S2.Schema.TableFixedWire.Run(compiled.Slice(0, made), S2.Schema.SimStateFixedSlots,
-                                        body.Slice(8), viaPlan, r2, planBytes, ref scratch);
+                                        body.Slice(8), viaPlan, r2, planBytes, ref scratch, ref forged);
+            r2.Clamped += forged;
             S2.Schema.SimStateFixedClamp(viaPlan, r2);
             Check(viaPlan.Position == MinRaw,
                   "signed fixed low end: the COMPILED plan lands the minimum's raw too");
@@ -735,7 +741,8 @@ static partial class Program
             }
             ReadOnlySpan<byte> recordBody = buf.AsSpan(TD.Schema.TableFixedWire.HeaderBytes + 4 + (int)TD.Schema.RangedSignedFixedLayoutBytes + 8);
             byte[] copyScratch = Array.Empty<byte>();
-            TD.Schema.TableFixedWire.Run(copyPlan, TD.Schema.RangedSignedFixedSlots, recordBody, backCopy, null, ReadOnlySpan<byte>.Empty, ref copyScratch);
+            int copyForged = 0;
+            TD.Schema.TableFixedWire.Run(copyPlan, TD.Schema.RangedSignedFixedSlots, recordBody, backCopy, null, ReadOnlySpan<byte>.Empty, ref copyScratch, ref copyForged);
             Check(backCopy.EdgesCount == 4 && backCopy.Edges[0] == 11 && backCopy.Edges[1] == 22 &&
                   backCopy.Edges[2] == 33 && backCopy.Edges[3] == 44,
                   "RangedSigned: Copy opcode dispatches to SetBytes for folded array");
@@ -806,7 +813,9 @@ static partial class Program
         ReadOnlySpan<byte> planBytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(plan);
         ReadOnlySpan<byte> at = wire.AsSpan(UT.Schema.TableFixedWire.HeaderBytes + 4 + (int)layoutBytes);
         byte[] utScratch = Array.Empty<byte>();
-        UT.Schema.TableFixedWire.Run(plan.Slice(0, made), UT.Schema.UtRootFixedSlots, at.Slice(8), outVal, r, planBytes, ref utScratch);
+        int utForged = 0;
+        UT.Schema.TableFixedWire.Run(plan.Slice(0, made), UT.Schema.UtRootFixedSlots, at.Slice(8), outVal, r, planBytes, ref utScratch, ref utForged);
+        if (r != null) { r.Clamped += utForged; }
         return outVal;
     }
 
@@ -974,11 +983,61 @@ static partial class Program
         }
     }
 
+    // HashOf IS THE TEST'S OWN WRITER-SIDE HASH, and the emitted runtime's no
+    // longer: cs/R7 (fixedroadmap_t12) retired TableFixedWire.HashOf, because a
+    // runtime never computes a hash from layout bytes it holds (§5.3) — the
+    // identity lane is an index comparison. A FORGER still has to stamp a
+    // header, so the hash lives here, beside the files it forges. It is the
+    // Go oracle's walk, ir.TableFixedLayoutHash: fnv1a64 over the layout bytes
+    // and then the definitions digest (bill §13). A hostile layout has no
+    // schema and so no digest. TestFixedHashOracleCase pins it to the oracle
+    // for every fixed root this program compiles.
+    static ulong HashOf(ReadOnlySpan<byte> layout, ReadOnlySpan<byte> digest = default)
+    {
+        ulong h = 0xcbf29ce484222325ul;
+        for (int i = 0; i < layout.Length; ++i)
+        {
+            h ^= layout[i];
+            h *= 0x100000001b3ul;
+        }
+        for (int i = 0; i < digest.Length; ++i)
+        {
+            h ^= digest[i];
+            h *= 0x100000001b3ul;
+        }
+        return h;
+    }
+
+    // THE ORACLE PIN: every fixed root this program compiles, from
+    // FixedHashOracle.cs, which TestCSharpHashOfPinsTheGoOracle writes from the
+    // Go oracle and holds byte for byte. HashOf over the emitted layout and the
+    // carried digest must be the oracle's number AND the compiled constant.
+    static void TestFixedHashOracleCase()
+    {
+        Check(FixedHashOracleRoots.Length > 0, "hash oracle: the fixture carries the fixed roots");
+        int bad = 0;
+        foreach (var r in FixedHashOracleRoots)
+        {
+            ulong h = HashOf(r.Layout, r.Digest);
+            if (h != r.Oracle || r.Oracle != r.Emitted)
+            {
+                bad++;
+                Console.WriteLine("hash oracle: " + r.Root + " HashOf=0x" + h.ToString("x16") + " oracle=0x" + r.Oracle.ToString("x16") + " emitted=0x" + r.Emitted.ToString("x16"));
+            }
+        }
+        Check(bad == 0, "hash oracle: HashOf(layout ‖ digest) is the Go oracle's hash and the compiled <Root>FixedHash for every fixed root (" + FixedHashOracleRoots.Length + ")");
+        // A FLIPPED BYTE MOVES IT: the pin is not vacuous.
+        var first = FixedHashOracleRoots[0];
+        byte[] flipped = (byte[])first.Layout.Clone();
+        flipped[flipped.Length - 1] ^= 0x01;
+        Check(HashOf(flipped, first.Digest) != first.Oracle, "hash oracle: a flipped layout byte moves HashOf off the oracle");
+    }
+
     static byte[] LayoutFileOf(byte[] layout)
     {
         byte[] f = new byte[FX1.Schema.TableFixedWire.HeaderBytes + 4 + layout.Length];
         f[0] = 3;
-        BinaryPrimitives.WriteUInt64LittleEndian(f.AsSpan(FX1.Schema.TableFixedWire.HashAt), FX1.Schema.TableFixedWire.HashOf(layout));
+        BinaryPrimitives.WriteUInt64LittleEndian(f.AsSpan(FX1.Schema.TableFixedWire.HashAt), HashOf(layout));
         BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(FX1.Schema.TableFixedWire.HeaderBytes), (uint)layout.Length);
         layout.CopyTo(f, FX1.Schema.TableFixedWire.HeaderBytes + 4);
         return f;

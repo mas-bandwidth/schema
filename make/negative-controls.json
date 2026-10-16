@@ -404,18 +404,22 @@
     {
       "name": "cs",
       "when": "pull-request",
-      "why": "the C# port's conformance leg and its four packet families. Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "why": "the C# port's conformance leg, its soak allocation-count negative control, its four packet families, and the packet-clean gate's planted misindented block and unused private field (issue #547). Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
       "targets": [
         "conformance-negative-control-cs",
         "cards-cs-retain-negative-control",
+        "tables-cs-alloc-runtime-negative-control",
+        "tables-cs-soak-negative-control",
         "tables-cs-retain-negative-control",
         "tables-cs-pack-negative-control",
         "tables-cs-message-blob-endian-negative-control",
         "tables-cs-fixedform-arm-negative-control",
+        "tables-cs-json-differential-negative-control",
         "packet-arm-defaults-cs-negative-control",
         "packet-defaults-cs-negative-control",
         "packet-utf8-cs-negative-control",
-        "packet-wide-cs-negative-control"
+        "packet-wide-cs-negative-control",
+        "packet-clean-cs-negative-control"
       ],
       "dotnet": "pin"
     },

@@ -25,6 +25,13 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AssemblyName>schemaconformance</AssemblyName>
+    <!-- DEFAULT STRICTNESS for the generated table units, the same set
+         test/cs/schematest.csproj pins for the packet units (issue #547;
+         make/cs.mk tables-cs-clean): the SDK's own analyzers at the latest
+         level in the Default mode, no stricter mode and no suppression file. -->
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Default</AnalysisMode>
     <!-- Overridable so the harness's NEGATIVE CONTROL can point this leg at a
          sabotaged copy of the generated sources and require it to go red. -->
     <TablesGeneratedDir Condition="'$(TablesGeneratedDir)' == ''">../../../build/tables-generated-cs</TablesGeneratedDir>
