@@ -670,21 +670,24 @@ tables-js-message-form:
 
 test-js: tables-js-message-form
 
-# THE FIXED ROADMAP'S JAVASCRIPT TESTS, T01 TO T09, UNDER THE SAME NO-SKIP RULE.
-# tables-js-fixed-roadmap above runs only T12 and T13 (the in-memory files that
-# need no C++ oracle). T01 to T09 read build/fixedform-corpus, THE C++ REFERENCE'S
-# OWN BYTE ORACLE (T08's js/R27 reads it), so this target takes its stamp; the
-# serialize sibling it needs is the one tables-js-fixed-form already needs.
+# THE FIXED ROADMAP'S JAVASCRIPT TESTS, T01 TO T09 PLUS T15 AND T19, UNDER THE
+# SAME NO-SKIP RULE. tables-js-fixed-roadmap above runs only T12 and T13 (the
+# earlier in-memory files that need no C++ oracle). T01 to T09 read
+# build/fixedform-corpus, THE C++ REFERENCE'S OWN BYTE ORACLE (T08's js/R27
+# reads it), and T15 (js/W16, js/R28) and T19 (utf16-values/js/valid-data,
+# js/C5) close the guard-chain and wide-text cells, so this target takes the
+# oracle stamp and runs all eleven; the serialize sibling it needs is the one
+# tables-js-fixed-form already needs.
 .PHONY: tables-js-fixed-roadmap-all
 tables-js-fixed-roadmap-all: build/fixedform-corpus/.stamp
 	@mkdir -p build
-	@rc=0; SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestFixedRoadmapT01Framing|TestFixedRoadmapT02Plans|TestFixedRoadmapJsT03PlansVersions|TestFixedRoadmapJsT04Versions|TestFixedRoadmapJsT05Evolution|TestFixedRoadmapJsT06Bounds|TestFixedRoadmapJsT07Writes|TestFixedRoadmapJsT08ConformanceComposites|TestFixedRoadmapJsT09UnionsOptionals)$$' > build/js-fixed-roadmap-all.log 2>&1 || rc=$$?; \
+	@rc=0; SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestFixedRoadmapT01Framing|TestFixedRoadmapT02Plans|TestFixedRoadmapJsT03PlansVersions|TestFixedRoadmapJsT04Versions|TestFixedRoadmapJsT05Evolution|TestFixedRoadmapJsT06Bounds|TestFixedRoadmapJsT07Writes|TestFixedRoadmapJsT08ConformanceComposites|TestFixedRoadmapJsT09UnionsOptionals|TestFixedRoadmapJsT15GuardChain|TestFixedRoadmapJsT19WideText)$$' > build/js-fixed-roadmap-all.log 2>&1 || rc=$$?; \
 		cat build/js-fixed-roadmap-all.log; \
 		if [ $$rc -ne 0 ]; then echo "tables-js-fixed-roadmap-all: go test exited $$rc"; exit $$rc; fi; \
 		if grep -Eq '^ *--- SKIP' build/js-fixed-roadmap-all.log; then \
 			echo "tables-js-fixed-roadmap-all: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1:"; grep -E '^ *--- SKIP' build/js-fixed-roadmap-all.log; exit 1; \
 		fi
-	@echo 'tables JS fixed roadmap (T01 to T09): every roadmap test ran over the reference own bytes, none skipped'
+	@echo 'tables JS fixed roadmap (T01 to T09, T15, T19): every roadmap test ran over the reference own bytes, none skipped'
 
 test-js: tables-js-fixed-roadmap-all
 
