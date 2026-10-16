@@ -110,10 +110,11 @@ func checkNames(u *ir.Unit) error {
 		}
 		return nil
 	}
-	bases := map[string]string{}
-	for _, f := range u.Files {
-		bases[ir.GoExportName(f.Base)] = f.Base
-	}
+	// The declaration module names and union tag module names under <Ns>. A
+	// file whose <Base> is taken by one of them STEPS ASIDE to <Base>File; a
+	// declaration or tag module name the stepped-aside file module would take
+	// is still refused, by name.
+	taken := map[string]bool{}
 	for decl := range u.DeclFile {
 		if _, isConst := u.Consts[decl]; isConst {
 			continue // consts are file-module functions, not modules
@@ -123,23 +124,37 @@ func checkNames(u *ir.Unit) error {
 		}
 		if _, isTable := u.Tables[decl]; isTable {
 			// Tables are deliberately absent from the packet wire (ir.go:
-			// Tables) and lower to modules in the TABLE backend, under that
-			// backend's own suffix rules (docs/SPEC-TABLES.md §11); a table
-			// named after its schema file is that backend's collision to
-			// refuse, not this one's.
+			// Tables) and lower to modules in the TABLE backend; a FIXED table
+			// emits its value struct as <Ns>.<Name> (docs/SPEC-TABLES.md §3.4),
+			// so one named after its schema file takes the file module's name
+			// and the file module steps aside — the loop below that adds the
+			// fixed table names makes that step-aside the same one every other
+			// taken <Base> gets.
 			continue
 		}
-		if base, taken := bases[decl]; taken {
-			return fmt.Errorf("declaration %s collides with the module the Elixir emitter writes for schema file %s.schema; rename one", decl, base)
-		}
+		taken[decl] = true
+	}
+	for n := range fixedTableModuleNames(u) {
+		taken[n] = true
 	}
 	for _, un := range u.Unions {
-		// the union's tag module <Name>Type must be free too
-		if base, taken := bases[un.Name+"Type"]; taken {
-			return fmt.Errorf("union %s needs the tag module %sType, which collides with schema file %s.schema; rename one", un.Name, un.Name, base)
-		}
-		if _, taken := u.DeclFile[un.Name+"Type"]; taken {
+		taken[un.Name+"Type"] = true
+		// the union's tag module <Name>Type colliding with a declaration of
+		// that name is a declaration-vs-declaration collision — the file
+		// module's step-aside cannot resolve it, so the refusal stands.
+		if _, isDecl := u.DeclFile[un.Name+"Type"]; isDecl {
 			return fmt.Errorf("union %s needs the tag module %sType, which collides with the declaration of that name; rename one", un.Name, un.Name)
+		}
+	}
+	ns := ir.GoExportName(u.Package)
+	for _, f := range u.Files {
+		base := ir.GoExportName(f.Base)
+		fileMod := base
+		if taken[base] {
+			fileMod = base + "File"
+		}
+		if taken[fileMod] {
+			return fmt.Errorf("declaration %s collides with the module the Elixir emitter writes for schema file %s.schema (%s.%s); rename one", fileMod, f.Base, ns, fileMod)
 		}
 	}
 	for _, c := range u.Consts {
@@ -285,6 +300,108 @@ func (g *gen) bpf(format string, args ...any) {
 
 // mod is the namespaced module of a declaration or file base.
 func (g *gen) mod(name string) string { return g.ns + "." + name }
+
+// fileModuleName is the file-scope module's name for file f: <Ns>.<Base>,
+// or <Ns>.<Base>File when a declaration (type, enum, union or union tag
+// module) of the unit already takes <Ns>.<Base>. The colliding case was
+// refused before this card, so no existing generated name changes; only the
+// refused case gains the renamed file module.
+func fileModuleName(u *ir.Unit, f *ir.File) string {
+	base := ir.GoExportName(f.Base)
+	if fileModuleStepsAside(u, base) {
+		return ir.GoExportName(u.Package) + "." + base + "File"
+	}
+	return ir.GoExportName(u.Package) + "." + base
+}
+
+// fileModuleStepsAside reports whether a declaration or union tag module of
+// the unit takes the module name <Ns>.<base>, forcing the file module for a
+// file whose base is `base` to step aside to <Ns>.<base>File.
+func fileModuleStepsAside(u *ir.Unit, base string) bool {
+	for decl := range u.DeclFile {
+		if _, isConst := u.Consts[decl]; isConst {
+			continue // consts are file-module functions, not modules
+		}
+		if _, isFlags := u.Flags[decl]; isFlags {
+			continue // flags are file-module functions, not modules
+		}
+		if _, isTable := u.Tables[decl]; isTable {
+			// a FIXED table's value module is <Ns>.<base> (the TABLE backend),
+			// so one named after its schema file takes the file module's name
+			// and the file module steps aside (checked below, after the loop)
+			continue
+		}
+		if decl == base {
+			return true
+		}
+	}
+	for _, un := range u.Unions {
+		if un.Name+"Type" == base {
+			return true
+		}
+	}
+	if fixedTableModuleNames(u)[base] {
+		return true
+	}
+	return false
+}
+
+// fixedTableModuleNames is the set of table names whose FIXED FORM value module
+// (<Ns>.<Name>) the table backend emits (elixirtable/fixedelixir.go structModule)
+// beside the file module. A fixed table named after a schema file takes the
+// module name <Ns>.<Base>, so the packet emitter's file module must step aside
+// to <Base>File rather than merge two unrelated modules. The walk mirrors the
+// fixed backend's closure (fixedform.go fixedClosure): roots from
+// ir.TableFixedFormRoots, then every type and union arm they reach.
+func fixedTableModuleNames(u *ir.Unit) map[string]bool {
+	names := map[string]bool{}
+	seen := map[string]bool{}
+	var collect func(st *ir.Struct)
+	var collectUnion func(un *ir.Union, seenUnion map[string]bool)
+	collect = func(st *ir.Struct) {
+		if seen[st.Name] {
+			return
+		}
+		seen[st.Name] = true
+		if st.IsTable {
+			names[st.Name] = true
+		}
+		for _, f := range st.Fields {
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch r := f.Type.Ref.(type) {
+			case *ir.Struct:
+				collect(r)
+			case *ir.Union:
+				collectUnion(r, map[string]bool{})
+			}
+		}
+	}
+	collectUnion = func(un *ir.Union, seenUnion map[string]bool) {
+		if seenUnion[un.Name] {
+			return
+		}
+		seenUnion[un.Name] = true
+		for _, v := range un.Variants {
+			if v.F == nil {
+				continue
+			}
+			switch r := v.F.Type.Ref.(type) {
+			case *ir.Struct:
+				if v.F.Type.Kind == ir.TNamed {
+					collect(r)
+				}
+			case *ir.Union:
+				collectUnion(r, seenUnion)
+			}
+		}
+	}
+	for _, st := range ir.TableFixedFormRoots(u) {
+		collect(st)
+	}
+	return names
+}
 
 func (g *gen) assemble() []byte {
 	var h strings.Builder
@@ -691,7 +808,7 @@ func enumVariantValue(e *ir.Enum, variant string) int {
 func (g *gen) emitFileModule(order []ir.Decl) {
 	g.bpf("# The file-scope surface: constants, flags masks, name helpers and the\n")
 	g.bpf("# wire functions of every declaration in %s.schema.\n", g.file.Base)
-	g.bpf("defmodule %s do\n", g.mod(ir.GoExportName(g.file.Base)))
+	g.bpf("defmodule %s do\n", fileModuleName(g.unit, g.file))
 
 	var b strings.Builder
 	saved := g.body
@@ -923,7 +1040,7 @@ func (g *gen) constRef(name string) string {
 	if base == g.file.Base {
 		return elixirName(name) + "()"
 	}
-	return g.mod(ir.GoExportName(base)) + "." + elixirName(name) + "()"
+	return fileModuleName(g.unit, &ir.File{Base: base}) + "." + elixirName(name) + "()"
 }
 
 func formatFloat(v float64) string {
