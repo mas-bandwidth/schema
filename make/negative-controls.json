@@ -500,6 +500,7 @@
         "packet-wide-dart-negative-control",
         "tables-dart-alloc-negative-control",
         "tables-dart-alloc-runtime-negative-control",
+        "tables-dart-soak-negative-control",
         "tables-dart-fixed-form-negative-control",
         "tables-dart-versioning-negative-control",
         "tables-dart-fuzz-negative-control",
