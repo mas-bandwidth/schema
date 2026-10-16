@@ -395,6 +395,33 @@ tables-dart-versioning-negative-control: tables-fixedform-corpus
 		  cat build/dart-versioning-nc/log; exit 1; }
 	@echo 'negative control: the wrong name for a hash outside the lineage reds the Dart versioning gate'
 
+# THE KEYED-ARRAY EXTENT GATE'S NEGATIVE CONTROL (issue 407): Dart indexes keyed
+# arrays by SLOT — a keyed array holds exactly one slot per named variant, key k
+# rides at slot k-1, and key None and key Max+1 are refused by the typed list's
+# own RangeError (docs/PORTING.md M5). The extent is the whole contract, so
+# TestDartKeyedArraysAreHeldAtBothEnds holds it. One extra slot planted in a COPY
+# of the emitter (the array extent Max becomes Max+1) must turn that test red
+# naming the extent. No tracked file is written to.
+.PHONY: tables-dart-keyed-negative-control
+tables-dart-keyed-negative-control:
+	@rm -rf build/dart-keyed-nc && mkdir -p build/dart-keyed-nc
+	@sed 's|g.emitListStorage(f, ind, name, f.KeyEnumRef.Max)|g.emitListStorage(f, ind, name, f.KeyEnumRef.Max + 1) // SABOTAGED|' \
+		internal/codegen/darttable/fixeddart.go > build/dart-keyed-nc/fixeddart.go.txt
+	@grep -q SABOTAGED build/dart-keyed-nc/fixeddart.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/darttable/fixeddart.go":"%s/build/dart-keyed-nc/fixeddart.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-keyed-nc/overlay.json
+	@if go test -count=1 -overlay build/dart-keyed-nc/overlay.json -run TestDartKeyedArraysAreHeldAtBothEnds \
+			./internal/codegen/dart/ > build/dart-keyed-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: an extra keyed slot left the extent test green"; \
+		cat build/dart-keyed-nc/log; exit 1; \
+	fi
+	@grep -q "must hold exactly the enum extent" build/dart-keyed-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the extent test went red for some other reason"; \
+		  cat build/dart-keyed-nc/log; exit 1; }
+	@grep -m1 "enum extent" build/dart-keyed-nc/log
+	@echo "negative control: one extra keyed slot turns the Dart keyed-array extent test RED"
+
 # THE VARIABLE CLASS (docs/SPEC-TABLES.md §2.5, §2.9, §3, §3.1, §16.7): pointers,
 # by-value nesting, []*T, blobs, the remaining scalar kinds and unbounded
 # scalar/enum arrays, byte for byte against the oracle. A bare go test skips
