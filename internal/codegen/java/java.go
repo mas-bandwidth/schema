@@ -2724,7 +2724,72 @@ func wrapFor(l string) []string {
 
 // wrapChain breaks the right side of an assignment that is a chain of two or
 // more method calls before each call, sixteen columns in.
+//
+// The receiver is what the formatter keeps on the chain's first line: a
+// `new T(...)` whole; a qualified type name with the constants behind it
+// (`java.math.BigInteger.ONE`); a name with its first field (`value.reach`);
+// and a name no wider than the continuation indent with its first call
+// (`value.multiply(...)`), whose arguments, when they break, go sixteen
+// columns under it. A call too wide for its line breaks its own arguments
+// eight columns under it.
 func wrapChain(ind, lhs, rhs string) []string {
+	segs := chainSegments(rhs)
+	if len(segs) < 2 {
+		return nil
+	}
+	recv, k, prefixCall := chainReceiver(segs)
+	calls := 0
+	if prefixCall {
+		calls++
+	}
+	for _, sg := range segs[k:] {
+		if strings.Contains(sg, "(") {
+			calls++
+		}
+	}
+	if calls < 2 || k >= len(segs) {
+		return nil
+	}
+	inner := ind + "        "
+	out := []string{ind + lhs + " ="}
+	last := len(segs) - 1
+	recvEnd := ""
+	if k > last {
+		recvEnd = ";"
+	}
+	if one := inner + recv + recvEnd; javaWidth(one) <= javaColumnLimit {
+		out = append(out, one)
+	} else if prefixCall {
+		w := breakCallAt(inner, recv, inner+"                ", recvEnd)
+		if w == nil {
+			return nil
+		}
+		out = append(out, w...)
+	} else {
+		return nil
+	}
+	for i, sg := range segs[k:] {
+		e := ""
+		if k+i == last {
+			e = ";"
+			sg = strings.TrimSuffix(sg, ";")
+		}
+		line := inner + "        ." + sg + e
+		if javaWidth(line) <= javaColumnLimit {
+			out = append(out, line)
+			continue
+		}
+		w := breakCallAt(inner+"        ", "."+sg, inner+"                ", e)
+		if w == nil {
+			return nil
+		}
+		out = append(out, w...)
+	}
+	return fitAll(out)
+}
+
+// chainSegments cuts an expression at its top-level dots.
+func chainSegments(rhs string) []string {
 	var segs []string
 	depth, start := 0, 0
 	var quote byte
@@ -2752,31 +2817,72 @@ func wrapChain(ind, lhs, rhs string) []string {
 			}
 		}
 	}
-	segs = append(segs, rhs[start:])
-	// the receiver keeps its first dereference (`value.reach`); every later
-	// one, a field or a call, starts a line of its own.
-	recv, k := segs[0], 1
-	if !strings.HasPrefix(recv, "new ") && !strings.Contains(recv, "(") && len(segs) > 2 && !strings.Contains(segs[1], "(") {
-		recv, k = segs[0]+"."+segs[1], 2
+	return append(segs, rhs[start:])
+}
+
+var javaSimpleName = regexp.MustCompile(`^[a-z_]\w*$`)
+
+// chainReceiver is the receiver the formatter keeps on a chain's first line,
+// the index of the first segment behind it, and whether it ends in a call.
+func chainReceiver(segs []string) (string, int, bool) {
+	if strings.HasPrefix(segs[0], "new ") && !strings.Contains(segs[0], "(") {
+		for j := 1; j < len(segs); j++ {
+			if strings.Contains(segs[j], "(") {
+				return strings.Join(segs[:j+1], "."), j + 1, false
+			}
+		}
+		return "", len(segs), false
 	}
-	calls := 0
-	for _, sg := range segs[k:] {
-		if strings.Contains(sg, "(") {
-			calls++
+	if strings.HasPrefix(segs[0], "new ") || strings.Contains(segs[0], "(") {
+		return segs[0], 1, false
+	}
+	// a qualified type name: every dotted name ahead of the first call, when a
+	// type (an upper-case name) is among them
+	j := 0
+	for j < len(segs) && !strings.Contains(segs[j], "(") {
+		j++
+	}
+	if javaSimpleName.MatchString(segs[0]) && j > 1 {
+		for _, sg := range segs[1:j] {
+			if sg != "" && sg[0] >= 'A' && sg[0] <= 'Z' {
+				return strings.Join(segs[:j], "."), j, false
+			}
 		}
 	}
-	if calls < 2 {
+	if len(segs) > 2 && !strings.Contains(segs[1], "(") {
+		return segs[0] + "." + segs[1], 2, false
+	}
+	if javaSimpleName.MatchString(segs[0]) && javaWidth(segs[0]) <= 8 && strings.Contains(segs[1], "(") {
+		return segs[0] + "." + segs[1], 2, true
+	}
+	return segs[0], 1, false
+}
+
+// breakCallAt lays `head(args)` out with its arguments at argInd: on one line
+// when they fit, one a line (each broken as an argument) otherwise.
+func breakCallAt(ind, call, argInd, end string) []string {
+	open := strings.IndexByte(call, '(')
+	if open < 0 || !strings.HasSuffix(call, ")") || matchParen(call, open) != len(call)-1 {
 		return nil
 	}
-	out := []string{ind + lhs + " =", ind + "        " + recv}
-	for _, s := range segs[k:] {
-		out = append(out, ind+"                ."+s)
+	args, ok := splitArgs(call[open+1 : len(call)-1])
+	if !ok || len(args) == 0 {
+		return nil
 	}
-	out[len(out)-1] = strings.TrimSuffix(out[len(out)-1], ";") + ";"
-	for _, o := range out {
-		if javaWidth(o) > javaColumnLimit {
+	out := []string{ind + call[:open+1]}
+	if one := argInd + strings.Join(args, ", ") + ")" + end; javaWidth(one) <= javaColumnLimit {
+		return append(out, one)
+	}
+	for i, x := range args {
+		e := ","
+		if i == len(args)-1 {
+			e = ")" + end
+		}
+		w := breakArg(argInd, x, e)
+		if w == nil {
 			return nil
 		}
+		out = append(out, w...)
 	}
 	return out
 }
