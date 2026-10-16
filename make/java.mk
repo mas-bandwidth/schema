@@ -1387,6 +1387,21 @@ conformance-negative-control-java-walk: build/conformance-harness
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/p3 test/tables/P3.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/k1 test/tables/K1.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/k2 test/tables/K2.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/messages tables/messages
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/wide examples-wide
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/w1 test/tables/W1.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/w2 test/tables/W2.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/r1 test/tables/R1.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/r2 test/tables/R2.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/p2 test/tables/P2.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/m1 test/tables/M1.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/m2 test/tables/M2.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/a1 test/tables/A1.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/a2 test/tables/A2.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/g1 test/tables/G1.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/backend tables/backend
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/vocab tables/vocab
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/vocab9 tables/vocab9
 	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/*/*.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged fromJson"; exit 1; }
 	$(JAVAC) --release 17 -nowarn -d $(CONFORMANCE_NEGATIVE_JAVA_WALK)/classes \
