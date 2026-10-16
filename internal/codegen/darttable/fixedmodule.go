@@ -208,9 +208,10 @@ func fixedDeclaringFile(u *ir.Unit, name string) string {
 	return ""
 }
 
-// fixedLocalUnions finds unions with direct field-line or payload-free arms.
-// Their fixed form owns its storage, including a tag-only union with no arm
-// members (SPEC-TABLES §2.6, §3.4).
+// fixedLocalUnions finds unions with direct field-line, payload-free or TABLE
+// arms. Their fixed form owns its storage, including a tag-only union with no
+// arm members and a union whose arms are tables, which no other emitter
+// defines (docs/SPEC-TABLES.md §2.6, §3.4).
 func fixedLocalUnions(closure []*ir.Struct) []*ir.Union {
 	seen := map[string]bool{}
 	var out []*ir.Union
@@ -227,6 +228,13 @@ func fixedLocalUnions(closure []*ir.Struct) []*ir.Union {
 				continue
 			}
 			if v.F.Array != ir.ArrayNone || v.F.KeyEnum != "" || v.F.Type.Kind != ir.TNamed {
+				local = true
+			}
+			// §2.6: a union with a TABLE arm is a table-closure construct
+			// (ir.Unit.TableUnions, beside Decls), so the packet emitter never
+			// emits its class. The fixed form is its only home and owns its
+			// storage, one pre-allocated table per arm (§3.4).
+			if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed && s.IsTable {
 				local = true
 			}
 		}

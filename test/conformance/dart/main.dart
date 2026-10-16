@@ -22,6 +22,12 @@ import '../../../build/tables-generated-dart/pointers/GraphCook.dart' as ck;
 import '../../../build/tables-generated-dart/pointers/GraphdemoWire.dart' as graphdemo;
 import '../../../build/tables-generated-dart/blobs/BlobdemoWire.dart' as blobdemo;
 import '../../../build/tables-generated-dart/lists/ListdemoWire.dart' as listdemo;
+import '../../../build/tables-generated-dart/backend/BackenddemoFixed.dart' as backenddemo;
+import '../../../build/tables-generated-dart/backend/BackendFixed.dart' as backend;
+import '../../../build/tables-generated-dart/vocab/VocabdemoFixed.dart' as vocabdemo;
+import '../../../build/tables-generated-dart/vocab/VocabFixed.dart' as vocab;
+import '../../../build/tables-generated-dart/vocab9/Vocab9demoFixed.dart' as vocab9demo;
+import '../../../build/tables-generated-dart/vocab9/Vocab9Fixed.dart' as vocab9;
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -806,13 +812,190 @@ int surfaceReport(String outDir) {
   return 0;
 }
 
+// ---- the MESSAGE FORM (docs/SPEC-TABLES.md §3.3) ----
+//
+// One `message` row reads its connection's announcement into a fresh
+// vocabulary, loads the batch against it into 256 bodies of caller storage
+// ("LoadMessages reads one buffer into the caller's storage and allocates
+// nothing"), and saves the bodies read back into one buffer ("SaveMessages
+// takes an array of bodies of ONE root and writes ONE buffer"), sized by
+// MeasureMessages. The harness compares those bytes with the message golden,
+// as test/conformance/go/messages.go does for the Go leg.
+
+typedef MessageRun = Uint8List? Function(Uint8List announcement, Uint8List wire);
+
+// _messageRow binds one fixed root's batch verbs. The vocabulary and report
+// classes are each unit home's own, so the binding is generic over them.
+MessageRun _messageRow<T, V, R>({
+  required T Function() fresh,
+  required void Function(T) init,
+  required V Function() vocabulary,
+  required R Function() report,
+  required bool Function(V, Uint8List, R) announceRead,
+  required int Function(List<T>, Uint8List, V, R) load,
+  required int Function(List<T>, R) measure,
+  required int Function(List<T>, Uint8List, R) save,
+  required bool Function(R) damaged,
+}) {
+  return (Uint8List announcement, Uint8List wire) {
+    final vocab = vocabulary();
+    if (!announceRead(vocab, announcement, report())) {
+      return null;
+    }
+    final values = List<T>.generate(256, (_) {
+      final v = fresh();
+      init(v);
+      return v;
+    });
+    final rep = report();
+    final count = load(values, wire, vocab, rep);
+    if (count < 1 || count > 256 || damaged(rep)) {
+      return null;
+    }
+    final bodies = values.sublist(0, count);
+    final n = measure(bodies, report());
+    if (n < 0) {
+      return null;
+    }
+    final out = Uint8List(n);
+    if (save(bodies, out, report()) != n) {
+      return null;
+    }
+    return out;
+  };
+}
+
+List<E> _entries<E>(E Function() zero) => List<E>.generate(4096, (_) => zero());
+
+final Map<String, MessageRun> messageRuns = {
+  'backenddemo LoginRequest': _messageRow<backenddemo.LoginRequest, backenddemo.TableVocabulary, backenddemo.TableReport>(
+    fresh: backenddemo.LoginRequest.new,
+    init: backenddemo.initLoginRequest,
+    vocabulary: () => backenddemo.TableVocabulary(entries: _entries(() => backenddemo.TableMessageEntry(0, 0))),
+    report: backenddemo.TableReport.new,
+    announceRead: backenddemo.announceRead,
+    load: backend.loginRequestLoadMessages,
+    measure: backend.loginRequestMeasureMessages,
+    save: backend.loginRequestSaveMessages,
+    damaged: (r) => r.refused || r.malformed,
+  ),
+  'backenddemo MatchResult': _messageRow<backenddemo.MatchResult, backenddemo.TableVocabulary, backenddemo.TableReport>(
+    fresh: backenddemo.MatchResult.new,
+    init: backenddemo.initMatchResult,
+    vocabulary: () => backenddemo.TableVocabulary(entries: _entries(() => backenddemo.TableMessageEntry(0, 0))),
+    report: backenddemo.TableReport.new,
+    announceRead: backenddemo.announceRead,
+    load: backend.matchResultLoadMessages,
+    measure: backend.matchResultMeasureMessages,
+    save: backend.matchResultSaveMessages,
+    damaged: (r) => r.refused || r.malformed,
+  ),
+  'backenddemo StorePurchase': _messageRow<backenddemo.StorePurchase, backenddemo.TableVocabulary, backenddemo.TableReport>(
+    fresh: backenddemo.StorePurchase.new,
+    init: backenddemo.initStorePurchase,
+    vocabulary: () => backenddemo.TableVocabulary(entries: _entries(() => backenddemo.TableMessageEntry(0, 0))),
+    report: backenddemo.TableReport.new,
+    announceRead: backenddemo.announceRead,
+    load: backend.storePurchaseLoadMessages,
+    measure: backend.storePurchaseMeasureMessages,
+    save: backend.storePurchaseSaveMessages,
+    damaged: (r) => r.refused || r.malformed,
+  ),
+  'backenddemo Envelope': _messageRow<backenddemo.Envelope, backenddemo.TableVocabulary, backenddemo.TableReport>(
+    fresh: backenddemo.Envelope.new,
+    init: backenddemo.initEnvelope,
+    vocabulary: () => backenddemo.TableVocabulary(entries: _entries(() => backenddemo.TableMessageEntry(0, 0))),
+    report: backenddemo.TableReport.new,
+    announceRead: backenddemo.announceRead,
+    load: backend.envelopeLoadMessages,
+    measure: backend.envelopeMeasureMessages,
+    save: backend.envelopeSaveMessages,
+    damaged: (r) => r.refused || r.malformed,
+  ),
+  'vocabdemo Wide00': _messageRow<vocabdemo.Wide00, vocabdemo.TableVocabulary, vocabdemo.TableReport>(
+    fresh: vocabdemo.Wide00.new,
+    init: vocabdemo.initWide00,
+    vocabulary: () => vocabdemo.TableVocabulary(entries: _entries(() => vocabdemo.TableMessageEntry(0, 0))),
+    report: vocabdemo.TableReport.new,
+    announceRead: vocabdemo.announceRead,
+    load: vocab.wide00LoadMessages,
+    measure: vocab.wide00MeasureMessages,
+    save: vocab.wide00SaveMessages,
+    damaged: (r) => r.refused || r.malformed,
+  ),
+  'vocabdemo Wide09': _messageRow<vocabdemo.Wide09, vocabdemo.TableVocabulary, vocabdemo.TableReport>(
+    fresh: vocabdemo.Wide09.new,
+    init: vocabdemo.initWide09,
+    vocabulary: () => vocabdemo.TableVocabulary(entries: _entries(() => vocabdemo.TableMessageEntry(0, 0))),
+    report: vocabdemo.TableReport.new,
+    announceRead: vocabdemo.announceRead,
+    load: vocab.wide09LoadMessages,
+    measure: vocab.wide09MeasureMessages,
+    save: vocab.wide09SaveMessages,
+    damaged: (r) => r.refused || r.malformed,
+  ),
+  'vocab9demo Wide00': _messageRow<vocab9demo.Wide00, vocab9demo.TableVocabulary, vocab9demo.TableReport>(
+    fresh: vocab9demo.Wide00.new,
+    init: vocab9demo.initWide00,
+    vocabulary: () => vocab9demo.TableVocabulary(entries: _entries(() => vocab9demo.TableMessageEntry(0, 0))),
+    report: vocab9demo.TableReport.new,
+    announceRead: vocab9demo.announceRead,
+    load: vocab9.wide00LoadMessages,
+    measure: vocab9.wide00MeasureMessages,
+    save: vocab9.wide00SaveMessages,
+    damaged: (r) => r.refused || r.malformed,
+  ),
+  'vocab9demo Wide19': _messageRow<vocab9demo.Wide19, vocab9demo.TableVocabulary, vocab9demo.TableReport>(
+    fresh: vocab9demo.Wide19.new,
+    init: vocab9demo.initWide19,
+    vocabulary: () => vocab9demo.TableVocabulary(entries: _entries(() => vocab9demo.TableMessageEntry(0, 0))),
+    report: vocab9demo.TableReport.new,
+    announceRead: vocab9demo.announceRead,
+    load: vocab9.wide19LoadMessages,
+    measure: vocab9.wide19MeasureMessages,
+    save: vocab9.wide19SaveMessages,
+    damaged: (r) => r.refused || r.malformed,
+  ),
+};
+
+int surfaceMessage(String outDir) {
+  for (final f in kind('message')) {
+    List<String>? conn;
+    for (final c in kind('connection')) {
+      if (c[1] == f[2]) {
+        conn = c;
+        break;
+      }
+    }
+    if (conn == null) {
+      stderr.writeln('message ${f[1]}: no connection row ${f[2]}');
+      return 1;
+    }
+    final run = messageRuns['${conn[2]} ${f[3]}'];
+    if (run == null) {
+      // A message row whose root is a plain `table` carries no message verbs
+      // (docs/SPEC-TABLES.md §3.3: "a plain `table T` may not" ride the
+      // form), so the driver answers ABSENT and names the reason.
+      File('$outDir/${f[1]}.absent').writeAsStringSync('plain table: §3.3');
+      continue;
+    }
+    final answer = run(File(conn[4]).readAsBytesSync(), File(f[5]).readAsBytesSync());
+    if (answer == null) {
+      stderr.writeln('message ${f[1]}: the batch did not load and save');
+      return 1;
+    }
+    File('$outDir/${f[1]}').writeAsBytesSync(answer);
+  }
+  return 0;
+}
+
 const String surfaces =
     // wire, json-read, json-write and report answer the variable class for
     // graphdemo, blobdemo and listdemo (docs/SPEC-TABLES.md §3, §16.7). The
     // accelerators and the forgery surfaces stay. The wire fuzzer's roots are
     // another card's.
     ''
-    'wire\njson-read\njson-write\nreport\n'
+    'wire\nmessage\njson-read\njson-write\nreport\n'
     'cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
     'forgery\ncook-forgery\n';
 
@@ -983,6 +1166,8 @@ int run(List<String> args) {
   switch (surface) {
     case 'wire':
       return surfaceWire(out);
+    case 'message':
+      return surfaceMessage(out);
     case 'json-read':
       return surfaceJsonRead(out);
     case 'json-write':
