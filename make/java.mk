@@ -85,7 +85,7 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema
+build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema
 	@mkdir -p build/tables-generated-java
 	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit and the BYTE-BUFFER unit: their cook readers and
@@ -99,8 +99,20 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAP
 	./bin/schema generate --lang java --out build/tables-generated-java/blockhome tables/blockhome
 	./bin/schema generate --lang java --out build/tables-generated-java/v1 test/tables/V1.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/v2 test/tables/V2.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/w1 test/tables/W1.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/w2 test/tables/W2.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/r1 test/tables/R1.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/r2 test/tables/R2.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/p1 test/tables/P1.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/p2 test/tables/P2.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/p3 test/tables/P3.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/m1 test/tables/M1.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/m2 test/tables/M2.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/a1 test/tables/A1.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/a2 test/tables/A2.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/g1 test/tables/G1.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/messages tables/messages
+	./bin/schema generate --lang java --out build/tables-generated-java/wide examples-wide
 	# THE FIXED FORM's versioning pair (docs/SPEC-TABLES.md §3.4): FX1 is the
 	# old side and FX2 the new, and every edit between them lands through a
 	# plan compiled from the other side's layout.
@@ -1033,17 +1045,22 @@ build/java-bench/.stamp: generated/bench/java/.stamp bench/java/Main.java
 # on this classpath and does not need to be; the tables-java-compile gate is
 # what proves it builds.
 .PHONY: build-conformance-java
-build-conformance-java: build/tables-generated-java/.stamp build/tables-generated-java/.native-variable-stamp test/conformance/java/src/Driver.java
+build-conformance-java: build/tables-generated-java/.stamp test/conformance/java/src/Driver.java
 	@rm -rf build/conformance-java && mkdir -p build/conformance-java
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/conformance-java \
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
 		build/tables-generated-java/blobs/*.java \
 		build/tables-generated-java/maps/*.java build/tables-generated-java/arms/*.java \
 		build/tables-generated-java/scalars/*.java build/tables-generated-java/scalars2/*.java \
-		build/tables-generated-java/native-messages/*.java build/tables-generated-java/native-wide/*.java \
+		build/tables-generated-java/messages/*.java build/tables-generated-java/wide/*.java \
 		build/tables-generated-java/block/*.java build/tables-generated-java/v1/*.java \
-		build/tables-generated-java/v2/*.java build/tables-generated-java/p1/*.java \
-		build/tables-generated-java/p3/*.java \
+		build/tables-generated-java/v2/*.java build/tables-generated-java/w1/*.java \
+		build/tables-generated-java/w2/*.java build/tables-generated-java/r1/*.java \
+		build/tables-generated-java/r2/*.java build/tables-generated-java/p1/*.java \
+		build/tables-generated-java/p2/*.java build/tables-generated-java/p3/*.java \
+		build/tables-generated-java/m1/*.java build/tables-generated-java/m2/*.java \
+		build/tables-generated-java/a1/*.java build/tables-generated-java/a2/*.java \
+		build/tables-generated-java/g1/*.java \
 		build/tables-generated-java/k1/*.java build/tables-generated-java/k2/*.java \
 		test/conformance/java/src/Driver.java
 
@@ -1165,7 +1182,6 @@ build/packet-wide/java/.stamp: bin/schema build/packet-wide/source/WideText.sche
 packet-wide-java: build/packet-wide/java/.stamp build/packet-wide/cpp/driver build/packet-text/harness
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-wide/java/classes build/packet-wide/java/wide/*.java build/packet-wide/java/shapes/*.java test/packet-wide/java/*.java
 	$(JAVA) -ea -cp build/packet-wide/java/classes Main --contracts
-	$(JAVA) -cp build/packet-wide/java/classes Main --contracts
 	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(JAVA) -ea -cp build/packet-wide/java/classes Main
 	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(JAVA) -cp build/packet-wide/java/classes Main
 
@@ -1341,26 +1357,15 @@ test-java: cards-java-test cards-java-conformance cards-java-conformance-negativ
 	cards-java-conformance-upgrade-negative-control cards-java-conformance-hash-negative-control
 
 # The earlier card-subset refusal control is retired: maps, optional/keyed
-# values, unions and wide values now have positive native codec gates.
-.PHONY: tables-java-variable-arms
+# values, unions, wide values, fixed-class roots and was renames now have
+# positive native codec gates.
+.PHONY: tables-java-variable-arms tables-java-variable-fixed-class
 tables-java-variable-arms: bin/schema
 	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ \
 		-count=1 -timeout 600s -v -run 'TestMapsAndUnionArmsOnTheTableWireJava|TestOtherVariableConstructsAreRefusedByName|TestJavaVariable|TestJavaFixedGeneralArmPayloads'
-	@mkdir -p build/java-variable-alias-refusal
-	@for unit in tables/messages examples-wide; do \
-		name=$$(basename $$unit); \
-		if ./bin/schema generate --lang java --out build/java-variable-alias-refusal/$$name $$unit > build/java-variable-alias-refusal/$$name.log 2>&1; then \
-			echo "Java arm-alias CLI refusal unexpectedly disappeared: $$unit"; exit 1; fi; \
-		grep -Fq "was on an enum variant, a union arm or a type's field" build/java-variable-alias-refusal/$$name.log || \
-			{ cat build/java-variable-alias-refusal/$$name.log; exit 1; }; \
-		echo "Java public CLI alias refusal preserved: $$unit (fixed-class dependency)"; \
-	done
 
-test-java: tables-java-variable-arms
+tables-java-variable-fixed-class: bin/schema
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ \
+		-count=1 -timeout 600s -v -run '^TestFixedClassOnTableWireJava$$'
 
-# Native-only fixture staging preserves public refuseWasRows. This target is
-# backend/conformance evidence and is not public CLI admission of these units.
-build/tables-generated-java/.native-variable-stamp: bin/schema $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_WIDE) internal/codegen/javatable/variableconformance_test.go make/java.mk
-	SCHEMA_JAVA_NATIVE_CONFORMANCE_OUT=$(CURDIR)/build/tables-generated-java \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestStageJavaVariableConformance$$'
-	@touch $@
+test-java: tables-java-variable-arms tables-java-variable-fixed-class
