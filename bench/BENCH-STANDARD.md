@@ -998,6 +998,14 @@ names:
 20. `docs/SPEC-TABLES.md` §3.4 — **nothing to record**: the plan/identity bound is WITHDRAWN as a gate (Glenn, 2026-09-11) and lives here as a reported number only. §3.4's own `identity / hand-written straight-line ≤ 1.5x` stays exactly as written — the reference's older rule, C++'s alone — and the two coexist.
 21. `bench/tables/<lang>/` + `bench/paired/main.go` — the PACKET leg's `bench_mixed_read`: the packet wire's read timed ALONE in the plan-read invocation, measured, the gate's comparand, never folded into the published `gen` / `bench_mixed` series.
 
+**Landed so far (2026-10-16):** the Rust leg's slice of items 11, 18, 19 and 21 —
+`bench/tables/rust --plan-read` times `bench_fixed_read` and `bench_mixed_read`,
+`bench/paired -mode plan-read` prints this board with its GATE columns, and
+`nine.sh --plan-read <legs>` runs it. Items 1-7 (the lineage corpus) have not
+landed, so every leg's plan lane is NAMED, not measured, and a runner refuses
+the lineage files if they appear without its plan path. First sitting:
+`bench/results/2026-10-16-hetzner2-plan-read-rust.md`.
+
 
 ---
 
