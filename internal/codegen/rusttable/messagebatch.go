@@ -75,11 +75,10 @@ func (g *gen) messageModule() []byte {
 #![allow(unused_comparisons)]
 #![allow(clippy::all)]
 
+// THE ONE REPORT (§4, §3.3): the crate root exports one TableReport, the
+// variable runtime's when the unit carries that form and the message
+// runtime's when it does not, so the glob names it either way.
 use crate::*;
-// A unit that also carries the VARIABLE wire has a TableReport of that
-// runtime's own at the crate root; the message form's is this one, named
-// explicitly so the two globs never meet here.
-use crate::message_runtime::TableReport;
 
 `)
 	for _, st := range members {

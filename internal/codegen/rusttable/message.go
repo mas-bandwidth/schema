@@ -36,7 +36,11 @@ const MessageRuntimeModule = "message_runtime"
 // messageRuntimeModule emits message_runtime.rs: the announcement as a
 // compile-time constant byte array, its length, the TableVocabulary a receiver
 // reads it into, and AnnounceRead.
-func messageRuntimeModule(u *ir.Unit) []byte {
+//
+// ownsReport is false when the unit also carries the variable runtime, which
+// then owns TableReport, TableReason and TABLE_WIRE_FORM (see tableReportRust):
+// this module reaches them through crate::*.
+func messageRuntimeModule(u *ir.Unit, ownsReport bool) []byte {
 	announcement := ir.TableAnnouncement(u)
 	var b strings.Builder
 	b.WriteString(header(runtimeSourceName(u), u.Package,
@@ -52,9 +56,11 @@ func messageRuntimeModule(u *ir.Unit) []byte {
 	b.WriteString("// the crate root re-exports it, so this module reaches it through crate::*.\n")
 	b.WriteString("\nuse crate::*;\n\n")
 
-	b.WriteString("/// The variable form's form byte (§3): the announcement IS an ordinary form-1\n")
-	b.WriteString("/// FILE (§3.3), so it opens with this byte and not the message form's own.\n")
-	b.WriteString("pub const TABLE_WIRE_FORM: u8 = 1;\n\n")
+	if ownsReport {
+		b.WriteString("/// The variable form's form byte (§3): the announcement IS an ordinary form-1\n")
+		b.WriteString("/// FILE (§3.3), so it opens with this byte and not the message form's own.\n")
+		b.WriteString("pub const TABLE_WIRE_FORM: u8 = 1;\n\n")
+	}
 	b.WriteString("/// The message form's form byte (§3.3). A form-2 wire is a batch, never a\n")
 	b.WriteString("/// file's own form; handed to AnnounceRead it is refused by name.\n")
 	b.WriteString("pub const TABLE_WIRE_MESSAGE_FORM: u8 = 2;\n\n")
@@ -88,6 +94,10 @@ func messageRuntimeModule(u *ir.Unit) []byte {
 	fmt.Fprintf(&b, "pub const TABLE_MESSAGE_REF_BITS: u32 = %d;\n\n", ir.TableMessageRefBits(len(ir.TableVocabulary(u))))
 
 	b.WriteString(messageRuntimeBody)
+	if ownsReport {
+		b.WriteString(tableReportRust)
+	}
+	b.WriteString(messageRuntimeRead)
 	b.WriteString(messageBatchRuntime)
 	return []byte(b.String())
 }
@@ -180,65 +190,11 @@ impl<'a> TableVocabulary<'a> {
     }
 }
 
-// ---- the report -------------------------------------------------------------
+`
 
-/// THE MESSAGE FORM's refusals, each by name (§3.3).
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum TableReason {
-    #[default]
-    None,
-    NewerForm,
-    MessageFormAsFile,
-    NoVocabulary,
-    SecondAnnouncement,
-    BuildVersionMismatch,
-    VocabularyTooLarge,
-    BatchTooLarge,
-}
-
-impl TableReason {
-    pub fn name(&self) -> &'static str {
-        match self {
-            TableReason::None => "none",
-            TableReason::NewerForm => "newer_form",
-            TableReason::MessageFormAsFile => "message_form_as_file",
-            TableReason::NoVocabulary => "no_vocabulary",
-            TableReason::SecondAnnouncement => "second_announcement",
-            TableReason::BuildVersionMismatch => "build_version_mismatch",
-            TableReason::VocabularyTooLarge => "vocabulary_too_large",
-            TableReason::BatchTooLarge => "batch_too_large",
-        }
-    }
-}
-
-/// The message form's read report, the batch's too (§3.3). A refusal BY NAME: nothing is decoded, no
-/// counter moves, and malformed does not fire (§3.3).
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub struct TableReport {
-    pub unknown: u32,
-    /// §4's counters on a batch read (§3.3): a peer kind this declaration
-    /// neither is nor widens, skipped; a kind it widens, decoded exactly; and a
-    /// value clamped into a narrower declaration.
-    pub kind_mismatch: u32,
-    pub widened: u32,
-    pub clamped: u32,
-    pub malformed: bool,
-    pub refused: bool,
-    pub reason: TableReason,
-    pub build_version_peer: u64,
-    pub build_version_own: u64,
-}
-
-impl TableReport {
-    pub fn refuse(&mut self, reason: TableReason) -> bool {
-        self.malformed = false;
-        self.refused = true;
-        self.reason = reason;
-        false
-    }
-}
-
-// ---- the read ---------------------------------------------------------------
+// messageRuntimeRead is the runtime after the report: the announcement's
+// measure, copy and read (§3.3).
+const messageRuntimeRead = `// ---- the read ---------------------------------------------------------------
 
 /// The announcement's byte count and the copy that hands it out (§3.3): both
 /// are the constant, never a walk. Nothing here allocates.
@@ -796,4 +752,88 @@ fn skip_width(bytes: &[u8], at: &mut usize, width: usize) -> bool {
     *at += width;
     true
 }
+`
+
+// tableReportRust is THE ONE READ REPORT of the Rust table leg
+// (docs/SPEC-TABLES.md §4, §5, §3.3): TableReason and TableReport, emitted in
+// variable_runtime.rs whenever the unit carries the variable form, and in
+// message_runtime.rs only when it does not, so a crate root that glob-exports
+// both runtimes names one TableReport and never two (an ambiguous glob a
+// consumer cannot name).
+const tableReportRust = `// ---- the report -------------------------------------------------------------
+
+/// THE MESSAGE FORM's refusals, each by name (§3.3).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum TableReason {
+    #[default]
+    None,
+    NewerForm,
+    MessageFormAsFile,
+    NoVocabulary,
+    SecondAnnouncement,
+    BuildVersionMismatch,
+    VocabularyTooLarge,
+    BatchTooLarge,
+}
+
+impl TableReason {
+    pub fn name(&self) -> &'static str {
+        match self {
+            TableReason::None => "none",
+            TableReason::NewerForm => "newer_form",
+            TableReason::MessageFormAsFile => "message_form_as_file",
+            TableReason::NoVocabulary => "no_vocabulary",
+            TableReason::SecondAnnouncement => "second_announcement",
+            TableReason::BuildVersionMismatch => "build_version_mismatch",
+            TableReason::VocabularyTooLarge => "vocabulary_too_large",
+            TableReason::BatchTooLarge => "batch_too_large",
+        }
+    }
+}
+
+/// THE ONE READ REPORT (docs/SPEC-TABLES.md §4, §5, §3.3): the variable form's
+/// tolerant read and the message form's batch fill the same type, so a crate
+/// carrying both forms exports one TableReport and never two.
+///
+/// A field this build cannot name is skipped and counted, a field it can name
+/// but that arrives at another kind is a kind mismatch, and an absent field
+/// reads its default. widened counts a kind that GREW since the writer (§4),
+/// clamped a value clamped into a narrower declaration, duplicate a repeated
+/// id (zero on the card's wire: no maps), and refused is a verdict, not one of
+/// §4's events: the form byte this reader does not carry (§3), or one of the
+/// message form's refusals BY NAME, whose reason the message form records
+/// (nothing is decoded, no counter moves, and malformed does not fire, §3.3).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct TableReport {
+    pub unknown: u64,
+    pub kind_mismatch: u64,
+    pub widened: u64,
+    pub clamped: u64,
+    pub duplicate: u64,
+    pub malformed: bool,
+    pub refused: bool,
+    /// RETAIN-UNKNOWN'S TWO COUNTERS (docs/SPEC-TABLES.md §6.6): retained
+    /// counts the unknown fields whose bytes were kept, retain_lost counts
+    /// every unknown this load or save could not keep (capacity, an excluded
+    /// class, or a damaged resolving walk). Both are zero in every read that
+    /// did not opt in, and both ride the one report type for the reason
+    /// duplicate does (§4).
+    pub retained: u64,
+    pub retain_lost: u64,
+    /// The message form's refusal by name and the two build versions its
+    /// strict check compared (§3.3); None and zero on the variable form.
+    pub reason: TableReason,
+    pub build_version_peer: u64,
+    pub build_version_own: u64,
+}
+
+impl TableReport {
+    pub fn refuse(&mut self, reason: TableReason) -> bool {
+        self.malformed = false;
+        self.refused = true;
+        self.reason = reason;
+        false
+    }
+}
+
 `

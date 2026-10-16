@@ -357,6 +357,7 @@ func runMessageBatchProbe(t *testing.T, u *ir.Unit, body string) string {
 	var mods []string
 	for name, data := range files {
 		keep := name == BuildVersionModule+".rs" || name == FixedRuntimeModule+".rs" || name == MessageRuntimeModule+".rs" ||
+			name == VariableRuntimeModule+".rs" ||
 			strings.HasSuffix(name, "_records.rs") || strings.HasSuffix(name, "_fixed.rs") || strings.HasSuffix(name, "_message.rs")
 		if !keep {
 			continue
