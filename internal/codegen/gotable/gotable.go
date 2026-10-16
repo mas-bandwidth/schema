@@ -324,7 +324,9 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 		// the message form's TYPES are the core's: the descriptor's message
 		// columns are typed by them, and the core declares the descriptor
 		g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageCoreTypes(u)+tableFixedRuntime)
-		g.into(&g.message, func() { g.pf("%s", tableMessageRuntime(u)) })
+		if s.Message {
+			g.into(&g.message, func() { g.pf("%s", tableMessageRuntime(u)) })
+		}
 		cookRuntime = tableCookWriteSource(u)
 		g.emitUnitBlittableRows(blocks)
 		if regional {
