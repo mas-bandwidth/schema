@@ -170,6 +170,55 @@ func TestRepeatedUnionElement(t *testing.T) {
 `)
 }
 
+// TestUnionArmArrayOfUnionsCompiles pins the smallest form of the red: a union
+// arm whose payload is an array of a union. The read-side bounds pass
+// (docs/SPEC-TABLES.md §3.4) must walk the arm as the field line it is — a
+// counted array to its LIVE count, a fixed array to its bound, each element
+// clamped — rather than treat the arm's storage as one element. Red first:
+// the emitter wrote value.Value.Nested.Type for a [2]Inner arm.
+func TestUnionArmArrayOfUnionsCompiles(t *testing.T) {
+	t.Parallel()
+	runGenerated(t, `package probe
+union Inner { n int32 }
+union Value {
+	nested [..2]Inner
+	pinned [2]Inner
+}
+fixed table Root {
+	value Value
+	other Inner
+}
+`, t11Prelude+`
+func TestUnionArmArrayOfUnions(t *testing.T) {
+	var v Root
+	RootReset(&v)
+	v.Value.Type = ValueTypeNested
+	v.Value.NestedCount = 2
+	v.Value.Nested[0].Type = InnerTypeN
+	v.Value.Nested[0].N = 11
+	v.Value.Nested[1].Type = InnerTypeN
+	v.Value.Nested[1].N = -22
+	got := roundtrip(t, v)
+	if got.Value.Type != ValueTypeNested || got.Value.NestedCount != 2 ||
+		got.Value.Nested[0].N != 11 || got.Value.Nested[1].N != -22 {
+		t.Fatalf("counted arm: %+v", got.Value)
+	}
+	v = Root{}
+	RootReset(&v)
+	v.Value.Type = ValueTypePinned
+	v.Value.Pinned[0].Type = InnerTypeN
+	v.Value.Pinned[0].N = 5
+	v.Value.Pinned[1].Type = InnerTypeN
+	v.Value.Pinned[1].N = 6
+	got = roundtrip(t, v)
+	if got.Value.Type != ValueTypePinned ||
+		got.Value.Pinned[0].N != 5 || got.Value.Pinned[1].N != 6 {
+		t.Fatalf("fixed arm: %+v", got.Value)
+	}
+}
+`)
+}
+
 func TestWideValues(t *testing.T) {
 	runGenerated(t, `package probe
  fixed table Root {

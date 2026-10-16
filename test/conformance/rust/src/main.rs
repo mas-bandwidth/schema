@@ -762,6 +762,133 @@ fn surface_cook(manifest: &Manifest, out: &str) {
 }
 
 // ---------------------------------------------------------------------------
+// the WIRE-CARRYING surfaces (docs/SPEC-TABLES.md §3, §3.1, §16, §16.7)
+// ---------------------------------------------------------------------------
+//
+// The variable form, form byte 1, over the roots this leg's variable wire
+// carries: the pointer corpus's Scene (graphdemo) and the byte-buffer corpus's
+// Catalog (blobdemo). Every other case is answered `<case>.absent` — a root
+// whose unit this leg does not carry yet (a union, a map, an optional, an
+// enum-keyed array, a fixed root's own form-1 file, or a unit the compiler
+// refuses for rust whole, as tables/lists is for its union), which the matrix
+// counts as the row of work that is left, never as a pass.
+
+// One root's codec, by its unit and root name: the four verbs the surfaces
+// drive, each answering through the root's own generated functions. The
+// report type is inferred from the generated load, so the driver names no
+// runtime type that two of a unit's runtimes both export.
+macro_rules! with_root {
+    ($unit:expr, $root:expr, |$load:ident, $save:ident, $to_json:ident, $from_json:ident| $body:expr) => {{
+        match ($unit, $root) {
+            ("graphdemo", "Scene") => {
+                #[allow(unused_imports)]
+                use graphdemo::{scene_from_json as $from_json, scene_load as $load, scene_save as $save, scene_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("blobdemo", "Catalog") => {
+                #[allow(unused_imports)]
+                use blobdemo::{catalog_from_json as $from_json, catalog_load as $load, catalog_save as $save, catalog_to_json_checked as $to_json};
+                Some($body)
+            }
+            _ => None,
+        }
+    }};
+}
+
+fn spill_absent(dir: &str, name: &str) {
+    spill(dir, &format!("{name}.absent"), b"");
+}
+
+fn no_text(f: &[String]) -> bool {
+    f.len() > 5 && f[5] == "no-text"
+}
+
+fn surface_wire(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("instance") {
+        let data = slurp(&f[4]);
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, save, _to, _from| {
+            let mut report = Default::default();
+            match load(&data, &mut report) {
+                Some(v) => save(&v),
+                None => fail(&format!("{}: load refused {}", f[1], f[4])),
+            }
+        });
+        match answer {
+            Some(bytes) => spill(out, &f[1], &bytes),
+            None => spill_absent(out, &f[1]),
+        }
+    }
+}
+
+fn surface_report(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("report") {
+        let data = slurp(&f[4]);
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, _to, _from| {
+            let mut report = Default::default();
+            let ok = load(&data, &mut report).is_some();
+            let malformed = report.malformed || (!ok && !report.refused);
+            let verdict = if report.refused { "refused" } else { "read" };
+            format!(
+                "{},{},{},{},{},{},{}\n",
+                report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate, malformed, verdict
+            )
+        });
+        match answer {
+            Some(text) => spill(out, &f[1], text.as_bytes()),
+            None => spill_absent(out, &f[1]),
+        }
+    }
+}
+
+fn surface_json_read(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("instance") {
+        if no_text(f) {
+            continue;
+        }
+        let path = format!("testdata/conformance/tables/json/{}.json", f[1]);
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |_load, save, _to, from_json| {
+            let text = match fs::read_to_string(&path) {
+                Ok(t) => t,
+                Err(e) => fail(&format!("cannot read {path}: {e}")),
+            };
+            let mut report = Default::default();
+            match from_json(&text, &mut report) {
+                Some(v) => save(&v),
+                None => fail(&format!("{}: FromJson refused the text", f[1])),
+            }
+        });
+        match answer {
+            Some(bytes) => spill(out, &f[1], &bytes),
+            None => spill_absent(out, &f[1]),
+        }
+    }
+}
+
+fn surface_json_write(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("instance") {
+        if no_text(f) {
+            continue;
+        }
+        let data = slurp(&f[4]);
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from| {
+            let mut report = Default::default();
+            match load(&data, &mut report) {
+                Some(v) => match to_json(&v) {
+                    Some(text) => text,
+                    None => fail(&format!("{}: ToJson refused the value", f[1])),
+                },
+                None => fail(&format!("{}: load refused {}", f[1], f[4])),
+            }
+        });
+        let name = format!("{}.json", f[1]);
+        match answer {
+            Some(text) => spill(out, &name, text.as_bytes()),
+            None => spill_absent(out, &name),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -776,10 +903,13 @@ fn main() {
     let surface = args[2].as_str();
     if surface == "list" {
         println!(
-            // the five WIRE-CARRYING surfaces are ABSENT: this port writes the wire's
-            // PREVIOUS form and the corpus is pinned in the id-table form
-            // (docs/SPEC-TABLES.md §3). schema#518 is the port's row.
-            "cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery"
+            // the WIRE-CARRYING surfaces ride the id-table form (docs/SPEC-TABLES.md
+            // §3, §3.1, §16.7) for the roots this leg's variable wire carries —
+            // graphdemo's Scene and blobdemo's Catalog — and answer every other
+            // case ABSENT, one by one; the message and retain surfaces are still
+            // absent whole (the message form's batch and retention beyond the card
+            // constructs are their own rows)
+            "wire\nreport\njson-read\njson-write\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery"
         );
         return;
     }
@@ -789,6 +919,10 @@ fn main() {
     }
     let out = args[3].as_str();
     match surface {
+        "wire" => surface_wire(&manifest, out),
+        "report" => surface_report(&manifest, out),
+        "json-read" => surface_json_read(&manifest, out),
+        "json-write" => surface_json_write(&manifest, out),
         "cook" => surface_cook(&manifest, out),
         "cook-foreign" => surface_cook_foreign(&manifest, out),
         "block-foreign" => surface_block_foreign(&manifest, out),

@@ -606,8 +606,16 @@ namespace Wide
                 switch (value.Body.Type)
                 {
                     case BodyType.Wide:
+                        int len_Body_wide = value.Body.Wide != null ? value.Body.WideLength : 0;
+                        System.Diagnostics.Debug.Assert(len_Body_wide <= 4);
+                        BinaryPrimitives.WriteInt32LittleEndian(b.Slice(70).Slice(1), len_Body_wide);
+                        if (len_Body_wide > 0) { MemoryMarshal.AsBytes(value.Body.Wide.AsSpan(0, len_Body_wide)).CopyTo(b.Slice(70).Slice(5)); }
                         break;
                     case BodyType.Narrow:
+                        int len_Body_narrow = value.Body.Narrow != null ? value.Body.NarrowLength : 0;
+                        System.Diagnostics.Debug.Assert(len_Body_narrow <= 4);
+                        BinaryPrimitives.WriteInt32LittleEndian(b.Slice(70).Slice(1), len_Body_narrow);
+                        if (len_Body_narrow > 0) { value.Body.Narrow.AsSpan(0, len_Body_narrow).CopyTo(b.Slice(70).Slice(5)); }
                         break;
                     case BodyType.Tally:
                         BinaryPrimitives.WriteInt32LittleEndian(b.Slice(70).Slice(1), (int)value.Body.Tally);
@@ -687,7 +695,7 @@ namespace Wide
 
         public const long CaptionFixedBodyBytes = 83;
         public const long CaptionFixedRecordBytes = 8 + CaptionFixedBodyBytes;
-        public const ulong CaptionFixedHash = 0x86d86fd10b84fb1eul;
+        public const ulong CaptionFixedHash = 0x41a53b39b715a03aul;
 
         public static readonly byte[] CaptionFixedLayout = new byte[] {
             0x0b, 0x00, 0x00, 0x00, 0x05, 0x8b, 0x3a, 0x59, 0xa7, 0xf3, 0x2e, 0x83, 0x0d, 0x53, 0x00, 0x00,
@@ -699,8 +707,8 @@ namespace Wide
             0x00, 0x0d, 0x0c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x7e, 0x40, 0x95, 0x19, 0xef, 0xf4,
             0x04, 0xfa, 0x21, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x95, 0x32, 0xc9, 0xc6, 0x9b,
             0xe7, 0x4d, 0xcd, 0x0f, 0x0d, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0xca, 0x5c, 0x71, 0x55,
-            0xf6, 0xf1, 0x33, 0xa6, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9a, 0xc2, 0x23,
-            0xf2, 0x06, 0x9b, 0x56, 0x96, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x74, 0xa2,
+            0xf6, 0xf1, 0x33, 0xa6, 0x21, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9a, 0xc2, 0x23,
+            0xf2, 0x06, 0x9b, 0x56, 0x96, 0x0c, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x74, 0xa2,
             0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
         public const long CaptionFixedLayoutBytes = 191;
@@ -714,9 +722,9 @@ namespace Wide
             new TableFixedDst(0, 0, 0, 0, 0), // element
             new TableFixedDst(0, 0, 0, 0, 0), // text
             new TableFixedDst(12, 0, 11, 0, 0), // body
-            new TableFixedDst(0, 0, 0, 0, 0), // wide
-            new TableFixedDst(1, 0, 0, 0, 0), // narrow
-            new TableFixedDst(2, 0, 0, 0, 0), // tally
+            new TableFixedDst(0, 0, 1, 0, 2), // wide
+            new TableFixedDst(2, 0, 3, 0, 1), // narrow
+            new TableFixedDst(4, 0, 0, 0, 0), // tally
         };
 
         public static readonly TableFixedSlot<Caption>[] CaptionFixedSlots = new TableFixedSlot<Caption>[] {
@@ -731,9 +739,11 @@ namespace Wide
             new TableFixedSlot<Caption>(setChars: (t, b, l) => { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Lines[1].Text != null) c.Slice(0, Math.Min(c.Length, t.Lines[1].Text.Length)).CopyTo(t.Lines[1].Text); }, reset: (t) => { if (t.Lines[1].Text != null) { Array.Clear(t.Lines[1].Text, 0, t.Lines[1].Text.Length); } }),
             new TableFixedSlot<Caption>(setRaw: (t, v) => t.Lines[2].TextLength = (int)v, reset: (t) => { t.Lines[2].TextLength = 0; }),
             new TableFixedSlot<Caption>(setChars: (t, b, l) => { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Lines[2].Text != null) c.Slice(0, Math.Min(c.Length, t.Lines[2].Text.Length)).CopyTo(t.Lines[2].Text); }, reset: (t) => { if (t.Lines[2].Text != null) { Array.Clear(t.Lines[2].Text, 0, t.Lines[2].Text.Length); } }),
-            new TableFixedSlot<Caption>(setRawReport: (t, v, rep) => { if (v > 3) { t.Body.Type = (BodyType)0; if (rep != null) rep.Clamped++; } else { t.Body.Type = (BodyType)v; } }, reset: (t) => { t.Body.Type = BodyType.None; }),
-            new TableFixedSlot<Caption>(setRaw: (t, v) => t.Body.Wide = (/* ? */)v, reset: (t) => { t.Body.Wide = 0; }),
-            new TableFixedSlot<Caption>(setRaw: (t, v) => t.Body.Narrow = (/* ? */)v, reset: (t) => { t.Body.Narrow = 0; }),
+            new TableFixedSlot<Caption>(setRawReport: (t, v, rep) => { t.Body.Type = (BodyType)v; }, reset: (t) => { t.Body.Type = BodyType.None; }),
+            new TableFixedSlot<Caption>(setRaw: (t, v) => t.Body.WideLength = (int)v, reset: (t) => { t.Body.WideLength = 0; }),
+            new TableFixedSlot<Caption>(setChars: (t, b, l) => { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Body.Wide != null) c.Slice(0, Math.Min(c.Length, t.Body.Wide.Length)).CopyTo(t.Body.Wide); }, reset: (t) => { if (t.Body.Wide != null) { Array.Clear(t.Body.Wide, 0, t.Body.Wide.Length); } }),
+            new TableFixedSlot<Caption>(setRaw: (t, v) => t.Body.NarrowLength = (int)v, reset: (t) => { t.Body.NarrowLength = 0; }),
+            new TableFixedSlot<Caption>(setBytes: (t, b, l) => { if (t.Body.Narrow != null) b.Slice(0, Math.Min(b.Length, t.Body.Narrow.Length)).CopyTo(t.Body.Narrow); }, reset: (t) => { if (t.Body.Narrow != null) { Array.Clear(t.Body.Narrow, 0, t.Body.Narrow.Length); } }),
             new TableFixedSlot<Caption>(setRaw: (t, v) => t.Body.Tally = unchecked((int)v), reset: (t) => { t.Body.Tally = 0; }),
         };
 
@@ -741,10 +751,13 @@ namespace Wide
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
         // identity plan it is empty and the identity read writes no slot twice.
         public static readonly TableFixedFill[] CaptionFixedCover = new TableFixedFill[] {
-            new TableFixedFill(0u, 15u),
+            new TableFixedFill(0u, 17u),
         };
 
         public const int CaptionFixedPlanSplit = 7;
+
+        public static readonly byte[] CaptionFixedGuardPool = new byte[] {
+        };
 
         public static readonly TableFixedPlan CaptionFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 14u, 1u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 2, 1),
@@ -754,9 +767,9 @@ namespace Wide
             new TableFixedEntry(46u, 7u, 8u, 8u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 2, 1),
             new TableFixedEntry(58u, 9u, 8u, 10u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 2, 1),
             new TableFixedEntry(70u, 11u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(71u, 12u, 0u, 0u, 70u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(71u, 13u, 0u, 0u, 70u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
-            new TableFixedEntry(71u, 14u, 4u, 0u, 70u, TableFixedWire.Copy, 3, 0, 0, 0, 1),
+            new TableFixedEntry(71u, 12u, 8u, 13u, 70u, TableFixedWire.Text, 1, 0, 0, 2, 1),
+            new TableFixedEntry(71u, 14u, 4u, 15u, 70u, TableFixedWire.Text, 2, 0, 0, 1, 1),
+            new TableFixedEntry(71u, 16u, 4u, 0u, 70u, TableFixedWire.Copy, 3, 0, 0, 0, 1),
         });
 
         private static readonly byte[] CaptionFixedLayout0 = new byte[] {
@@ -773,23 +786,8 @@ namespace Wide
             0xf2, 0x06, 0x9b, 0x56, 0x96, 0x0c, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x74, 0xa2,
             0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
-        private static readonly byte[] CaptionFixedLayout1 = new byte[] {
-            0x0b, 0x00, 0x00, 0x00, 0x05, 0x8b, 0x3a, 0x59, 0xa7, 0xf3, 0x2e, 0x83, 0x0d, 0x53, 0x00, 0x00,
-            0x00, 0x04, 0x00, 0x00, 0x00, 0x29, 0x60, 0x1b, 0x0c, 0x6c, 0x29, 0x31, 0xda, 0x21, 0x12, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0x59, 0x4f, 0x69, 0xad, 0xa5, 0x4b, 0xbf, 0x0d, 0x0c,
-            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x7e, 0x40, 0x95, 0x19, 0xef, 0xf4, 0x04, 0xfa, 0x21,
-            0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x00, 0xd5, 0xf1, 0xa9, 0xf9, 0xe3, 0x5c,
-            0x0e, 0x28, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x0d, 0x0c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x7e, 0x40, 0x95, 0x19, 0xef, 0xf4,
-            0x04, 0xfa, 0x21, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x95, 0x32, 0xc9, 0xc6, 0x9b,
-            0xe7, 0x4d, 0xcd, 0x0f, 0x0d, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0xca, 0x5c, 0x71, 0x55,
-            0xf6, 0xf1, 0x33, 0xa6, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9a, 0xc2, 0x23,
-            0xf2, 0x06, 0x9b, 0x56, 0x96, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x74, 0xa2,
-            0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        };
         public static readonly TableFixedKnownLayout[] CaptionFixedKnown = new TableFixedKnownLayout[] {
             new TableFixedKnownLayout(0x41a53b39b715a03aul, CaptionFixedLayout0, 91),
-            new TableFixedKnownLayout(0x86d86fd10b84fb1eul, CaptionFixedLayout1, 91),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -913,7 +911,7 @@ namespace Wide
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = CaptionFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = CaptionFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -972,13 +970,15 @@ namespace Wide
                 }
                 if (values[k] == null) { values[k] = new Caption(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), CaptionFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, CaptionFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, CaptionFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 CaptionFixedClamp(values[k], report);
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -1009,7 +1009,9 @@ namespace Wide
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, CaptionFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, CaptionFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -1059,6 +1061,9 @@ namespace Wide
         };
 
         public const int StampFixedPlanSplit = 2;
+
+        public static readonly byte[] StampFixedGuardPool = new byte[] {
+        };
 
         public static readonly TableFixedPlan StampFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 1u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 2, 1),
@@ -1196,7 +1201,7 @@ namespace Wide
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = StampFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = StampFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -1255,13 +1260,15 @@ namespace Wide
                 }
                 if (values[k] == null) { values[k] = new Stamp(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), StampFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, StampFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, StampFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 StampFixedClamp(values[k], report);
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -1292,7 +1299,9 @@ namespace Wide
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, StampFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, StampFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
     }

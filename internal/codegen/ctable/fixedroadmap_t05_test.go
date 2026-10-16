@@ -282,7 +282,7 @@ int main(void)
 		cold := cReadSchema(t, "VOLD_unknown_census")
 		cvals := make([]byte, 40)
 		binary.LittleEndian.PutUint32(cvals[0:], 1) // lead
-		for i := 0; i < 4; i++ {
+		for i := range 4 {
 			binary.LittleEndian.PutUint32(cvals[4+i*8:], uint32(10+i))  // Item.a
 			binary.LittleEndian.PutUint32(cvals[8+i*8:], uint32(100+i)) // Item.drop
 		}

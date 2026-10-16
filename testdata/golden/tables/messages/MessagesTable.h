@@ -1358,6 +1358,7 @@ inline bool TableMessageLeb( const uint8_t * in, int64_t size, int64_t & at, uin
     {
         if ( shift >= 64 ) { return false; }
         const uint8_t by = in[ at++ ];
+        if ( shift == 63 && by > 1 ) { return false; }
         value |= uint64_t( by & 0x7F ) << shift;
         if ( ( by & 0x80 ) == 0 ) { return !( shift > 0 && by == 0 ); }
     }
@@ -3104,7 +3105,7 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
             ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record ) ) ||
             ( e.guard2 != kTableFixedNoGuard &&
             ( e.guard2 >= c.record || (uint64_t) e.guard2 + gw2 > (uint64_t) c.record ) );
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == kTableFixedText || e.op == kTableFixedCount ) ? 4ull : 0ull );
         if ( reach > (uint64_t) c.record || guard_out )
         {
             c.hostile = true;
@@ -3272,6 +3273,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         }
         case 14: // an array: the count, then min( their bound, my bound ) elements
         {
+            // A COUNTED LOCAL against a PEER whose array is too small to hold the
+            // four-byte count is a mismatch the head subtraction below would
+            // underflow: refuse it rather than land a count op that over-reads.
+            // break, as the C twin does, so both leave the switch the same way.
+            if ( d.counted && te.size < 4u ) { c.hostile = true; break; }
             const TableFixedLayoutEntry tel = TableFixedEntryAt( theirs, ti + 1 );
             const TableFixedLayoutEntry mel = TableFixedEntryAt( mine, mi + 1 );
             const uint32_t head = d.counted ? 4u : 0u;
@@ -15957,6 +15963,7 @@ constexpr int32_t UserFixedPlanGuarded = 1;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink UserFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t UserFixedGuardCount = 0;
 
@@ -16245,6 +16252,7 @@ constexpr int32_t ScriptFixedPlanGuarded = 2;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink ScriptFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t ScriptFixedGuardCount = 0;
 
@@ -16522,6 +16530,7 @@ constexpr int32_t SelectionFixedPlanGuarded = 1;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink SelectionFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t SelectionFixedGuardCount = 0;
 
@@ -17197,6 +17206,7 @@ constexpr int32_t RemoveTextFixedPlanGuarded = 1;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RemoveTextFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t RemoveTextFixedGuardCount = 0;
 
@@ -17981,6 +17991,7 @@ constexpr int32_t OpenDocumentFixedPlanGuarded = 3;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink OpenDocumentFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t OpenDocumentFixedGuardCount = 0;
 
@@ -18276,6 +18287,7 @@ constexpr int32_t SaveDocumentFixedPlanGuarded = 2;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink SaveDocumentFixedGuards[] = {
+    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool
 };
 constexpr int32_t SaveDocumentFixedGuardCount = 0;
 
