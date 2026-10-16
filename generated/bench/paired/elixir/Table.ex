@@ -2796,7 +2796,9 @@ defmodule Bench.Table do
   defp json_list_elem(%{elem_kind: kind}, e, _depth) when kind in [2, 3, 4, 5, 6, 7, 8, 9],
     do: Integer.to_string(e)
 
-  defp json_list_elem(%{elem_kind: kind}, e, _depth) when kind in [10, 11], do: json_float(e)
+  defp json_list_elem(%{elem_kind: kind}, e, _depth) when kind in [10, 11],
+    do: json_float(e, kind_width(kind))
+
   defp json_list_elem(_f, _e, _depth), do: "null"
 
   defp json_field(%{t: :string}, v, _depth), do: ["\"", json_escape(v), "\""]
@@ -2813,18 +2815,95 @@ defmodule Bench.Table do
   defp json_field(%{t: :enum}, nil, _depth), do: "\"None\""
   defp json_field(%{t: :enum}, name, _depth), do: ["\"", json_escape(name), "\""]
   defp json_field(%{t: :int}, v, _depth), do: Integer.to_string(v)
-  defp json_field(%{t: :float}, v, _depth), do: json_float(v)
+  defp json_field(%{t: :float} = f, v, _depth), do: json_float(v, f.width)
   defp json_field(%{t: :bool}, v, _depth), do: if(v, do: "true", else: "false")
 
-  # json_float spells one float the way the reference does (§16.7): shortest
-  # round-trip, a trailing ".0" dropped so 2.0 writes "2".
-  defp json_float(v) do
-    s = Float.to_string(v)
+  # json_float spells one float as C's %.*g does, byte for byte, over the
+  # float's OWN width (docs/SPEC-TABLES.md §16, "The FLOAT SPELLING", which
+  # §16.7 holds for the variable class): the first precision from low to high
+  # whose text reads back to the same value at that width (a float32 parsed
+  # and narrowed through float32, 6 to 9 digits; a float64 parsed as is, 15 to
+  # 17), and at the last precision the text as rounded, with no loop left.
+  # Float.to_string is NOT this rule: it is the shortest round trip of the
+  # widened double, so a float32 spelled up to seventeen digits, its exponent
+  # was "e19" where %g writes "e+19", and a trailing-zero trim ate an exponent's
+  # zero ("e-20" written "e-2") (I13, docs/PORTING.md).
+  defp json_float(v, width) do
+    {low, high} = json_float_digits(width)
+    json_float_at(v, width, low, high)
+  end
 
+  defp json_float_digits(4), do: {6, 9}
+  defp json_float_digits(_), do: {15, 17}
+
+  defp json_float_at(v, width, digits, high) do
+    text = json_format_g(v, digits)
+
+    if digits >= high or json_float_reads_back?(text, v, width) do
+      text
+    else
+      json_float_at(v, width, digits + 1, high)
+    end
+  end
+
+  defp json_float_reads_back?(text, v, width) do
+    case Float.parse(text) do
+      {back, ""} -> json_float_narrow(back, width) == v
+      _ -> false
+    end
+  rescue
+    _ -> false
+  end
+
+  defp json_float_narrow(back, 4) do
+    <<n::float-32>> = <<back::float-32>>
+    n
+  end
+
+  defp json_float_narrow(back, _), do: back
+
+  # json_format_g is C's %.*g for a finite double: the exponent form when the
+  # decimal exponent is below -4 or at least the precision, the plain form
+  # otherwise, trailing zeros and a trailing point removed, and an exponent of
+  # at least two digits with its sign. The digits are the %.*e conversion's
+  # (float_to_binary's :scientific, correctly rounded, ties to even), and the
+  # plain form moves that one digit string's point, which is what C's %g does
+  # with the exponent %e found.
+  defp json_format_g(v, prec) do
+    sci = :erlang.float_to_binary(v, [{:scientific, prec - 1}])
+    [mant, exp_text] = String.split(sci, "e")
+    exp = String.to_integer(exp_text)
+
+    if exp < -4 or exp >= prec do
+      json_trim_zeros(mant) <> "e" <> json_exp_digits(exp)
+    else
+      json_trim_zeros(json_plain(mant, exp))
+    end
+  end
+
+  defp json_plain("-" <> mant, exp), do: "-" <> json_plain(mant, exp)
+
+  defp json_plain(mant, exp) do
+    digits = String.replace(mant, ".", "")
+
+    if exp >= 0 do
+      {whole, frac} = String.split_at(digits, exp + 1)
+      if frac == "", do: whole, else: whole <> "." <> frac
+    else
+      "0." <> String.duplicate("0", -exp - 1) <> digits
+    end
+  end
+
+  defp json_trim_zeros(s) do
     if String.contains?(s, "."),
       do: String.trim_trailing(String.trim_trailing(s, "0"), "."),
       else: s
   end
+
+  defp json_exp_digits(exp) when exp < 0, do: "-" <> json_exp_abs(-exp)
+  defp json_exp_digits(exp), do: "+" <> json_exp_abs(exp)
+  defp json_exp_abs(e) when e < 10, do: "0" <> Integer.to_string(e)
+  defp json_exp_abs(e), do: Integer.to_string(e)
 
   # json_escape spells one string's bytes the way RFC 8259 requires, so a text
   # this writer emits is readable by any conforming parser (§16.3): the escapes
