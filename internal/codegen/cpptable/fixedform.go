@@ -954,8 +954,25 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 		return
 	}
 	g.fixedOwner = st
+	// THE CHECK, then the clamp. The check is the same walk with every
+	// clamp's COUNT expression and none of its stores, or'd into one flag; a
+	// record it passes is one the body would leave byte-for-byte as it is and
+	// count nothing on, so the root runs the body only on a record it fails.
+	g.pf("// %s's read-side bounds, CHECKED: true when every clamp below would\n", st.Name)
+	g.pf("// count nothing and store nothing.\n")
+	g.pf("TABLE_FIXED_INLINE bool %sFixedInRange( const %s & value )\n{\n", st.Name, st.Name)
+	g.pf("    (void) value;\n")
+	g.pf("    int bad = 0;\n")
+	g.fixedCheck = true
+	for _, f := range st.Fields {
+		g.emitFixedClampField(f, "value", 4)
+	}
+	g.fixedCheck = false
+	g.pf("    return bad == 0;\n}\n\n")
 	g.pf("// %s's read-side bounds.\n", st.Name)
-	g.pf("inline void %sFixedClampBody( %s & value, int32_t & clamped, int32_t & damaged )\n{\n", st.Name, st.Name)
+	// THE COUNTERS ARE TABLE_CLAMP_RESTRICT: they never alias the value, and
+	// the runtime spells that per compiler, as measured.
+	g.pf("inline void %sFixedClampBody( %s & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )\n{\n", st.Name, st.Name)
 	g.pf("    (void) value; (void) clamped; (void) damaged;\n")
 	for _, f := range st.Fields {
 		g.emitFixedClampField(f, "value", 4)
@@ -980,7 +997,12 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	g.pf("inline bool %sFixedClamp( %s & value, TableReport * report )\n{\n", st.Name, st.Name)
 	g.pf("    int32_t clamped = 0;\n")
 	g.pf("    int32_t damaged = 0;\n")
-	g.pf("    %sFixedClampBody( value, clamped, damaged );\n", st.Name)
+	// THE BODY RUNS ONLY ON A RECORD THE CHECK FAILS. The check is loads,
+	// compares and an or — no store, so nothing it reads can change under it,
+	// and its loops vectorize; the body's stores and counter adds are what
+	// made the identity read slower than the packet read (measured,
+	// bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-check).
+	g.pf("    if ( !%sFixedInRange( value ) ) { %sFixedClampBody( value, clamped, damaged ); }\n", st.Name, st.Name)
 	g.pf("    // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md\n")
 	g.pf("    // §4.5, fix 11): nothing is decoded, no counter moves, and the flag\n")
 	g.pf("    // that carries the verdict is `refused` + the name, never `malformed`.\n")
@@ -1052,6 +1074,10 @@ func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
 		// wire it came from.
 		call = fmt.Sprintf("TableUtf16Valid( (const uint8_t *) %s.%s, (int64_t) %s.%s_length )", val, f.Name, val, f.Name)
 	}
+	if g.fixedCheck {
+		g.pf("%sbad |= (int) !%s;\n", ind, call)
+		return
+	}
 	g.pf("%sif ( !%s )\n%s{\n", ind, call, ind)
 	g.pf("%s    damaged++;\n%s}\n", ind, ind)
 }
@@ -1074,7 +1100,11 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			if ir.TableFixedClampNeeded(r) {
-				g.pf("%s%sFixedClampBody( %s, clamped, damaged );\n", ind, r.Name, expr)
+				if g.fixedCheck {
+					g.pf("%sbad |= (int) !%sFixedInRange( %s );\n", ind, r.Name, expr)
+				} else {
+					g.pf("%s%sFixedClampBody( %s, clamped, damaged );\n", ind, r.Name, expr)
+				}
 			}
 			return
 		case *ir.Union:
@@ -1084,8 +1114,12 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			// it. It lands None — the same nothing an unset union holds — and
 			// counts.
 			if !ordinalFillsStorage(r.Max, ir.StorageBitsFor(r.Max)) {
-				g.pf("%sif ( (uint64_t) %s.type > %du ) { %s.type = %sType::None; clamped++; }\n",
-					ind, expr, r.Max, expr, f.Type.Name)
+				if g.fixedCheck {
+					g.pf("%sbad |= (int) ( (uint64_t) %s.type > %du );\n", ind, expr, r.Max)
+				} else {
+					g.pf("%sif ( (uint64_t) %s.type > %du ) { %s.type = %sType::None; clamped++; }\n",
+						ind, expr, r.Max, expr, f.Type.Name)
+				}
 			}
 			if !ir.TableFixedClampNeededUnionArm(r) {
 				return
@@ -1115,6 +1149,10 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			// emitter drops it rather than hand a warning-as-error build a
 			// tautology. No semantics move — the elided check never clamped.
 			if ordinalFillsStorage(r.Max, r.StorageBits) {
+				return
+			}
+			if g.fixedCheck {
+				g.pf("%sbad |= (int) ( (uint64_t) %s > %du );\n", ind, expr, r.Max)
 				return
 			}
 			g.pf("%sif ( (uint64_t) %s > %du ) { %s = %s::None; clamped++; }\n",
@@ -1161,6 +1199,10 @@ func (g *tableGen) fixedClampBoth(expr, lo, hi, ind string) {
 	// warning about code that is not this. A sum would silence it too and is
 	// measurably slower — the or folds to a mask the compiler keeps in a
 	// vector lane, and the add does not (test/bench/fixedform_measure.cpp).
+	if g.fixedCheck {
+		g.pf("%sbad |= (int) ( %s < %s ) | (int) ( %s > %s );\n", ind, expr, lo, expr, hi)
+		return
+	}
 	g.pf("%sclamped += (int) ( %s < %s ) | (int) ( %s > %s );\n", ind, expr, lo, expr, hi)
 	g.pf("%s%s = ( %s < %s ) ? %s : ( ( %s > %s ) ? %s : %s );\n", ind, expr, expr, lo, lo, expr, hi, hi, expr)
 }
@@ -1169,6 +1211,10 @@ func (g *tableGen) fixedClampBoth(expr, lo, hi, ind string) {
 // holds is an end the emitter drops (tableClampEnds), so a great many bounded
 // fields spend one compare and not two.
 func (g *tableGen) fixedClampEnd(expr, op, bound, ind string) {
+	if g.fixedCheck {
+		g.pf("%sbad |= (int) ( %s %s %s );\n", ind, expr, op, bound)
+		return
+	}
 	g.pf("%sclamped += ( %s %s %s );\n", ind, expr, op, bound)
 	g.pf("%s%s = ( %s %s %s ) ? %s : %s;\n", ind, expr, expr, op, bound, bound, expr)
 }

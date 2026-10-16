@@ -1,0 +1,5 @@
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+cpp,bench_mixed,write,4000000,438,1,7815755,7815755,7815755,3264.71,0.00,fd0748942dc6ae09,gen,hdr,removed,O3,unknown
+cpp,bench_mixed,round_trip,4000000,438,1,3467474,3467474,3467474,1448.40,0.00,fd0748942dc6ae09,gen,hdr,removed,O3,unknown
+cpp,bitpacker,write,24576,65518,1,90310,90310,90310,5642.84,0.00,fd0748942dc6ae09,bits,hdr,removed,O3,unknown
+cpp,bitpacker,read,24576,65518,1,82110,82110,82110,5130.49,0.00,fd0748942dc6ae09,bits,hdr,removed,O3,unknown

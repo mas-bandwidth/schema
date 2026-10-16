@@ -2318,6 +2318,26 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 #define TABLE_RESTRICT
 #endif
 
+// THE CLAMP PASS'S COUNTERS NEVER ALIAS THE RECORD IT CLAMPS: the two
+// counters a *FixedClampBody takes are the caller's locals, never a field of
+// the value. An int32_t & may alias every int32_t field the pass stores to, so
+// unqualified, each clamp reloads the counter and the pass does not vectorize.
+// The qualifier is per compiler, each one's MEASURED best of the plain
+// reference, __restrict, a local counter stored once at the end, and both
+// (bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-restrict):
+//   clang: __restrict, 185.8 -> 148.5 ns/record (the local counter ties it);
+//   g++:   the plain reference, 215.8; __restrict measured 247.9 and the
+//          local counter 307.7, both slower;
+//   MSVC and any other compiler: the plain reference, the portable form.
+// A build may define TABLE_CLAMP_RESTRICT itself to override the choice.
+#ifndef TABLE_CLAMP_RESTRICT
+#if defined( __clang__ )
+#define TABLE_CLAMP_RESTRICT __restrict__
+#else
+#define TABLE_CLAMP_RESTRICT
+#endif
+#endif
+
 // THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
 // halves of the loop below, and a call there is the whole cost of the form.
 #if defined( _MSC_VER )
@@ -6656,8 +6676,20 @@ inline void SimStateFixedWriteBody( uint8_t * b, const SimState & value )
     }
 }
 
+// Pose's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool PoseFixedInRange( const Pose & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.x < -1966080000ll ) | (int) ( value.x > 1966080000ll );
+    bad |= (int) ( value.y < -1966080000ll ) | (int) ( value.y > 1966080000ll );
+    bad |= (int) ( value.heading > 23592960 );
+    return bad == 0;
+}
+
 // Pose's read-side bounds.
-inline void PoseFixedClampBody( Pose & value, int32_t & clamped, int32_t & damaged )
+inline void PoseFixedClampBody( Pose & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.x < -1966080000ll ) | (int) ( value.x > 1966080000ll );
@@ -6668,8 +6700,46 @@ inline void PoseFixedClampBody( Pose & value, int32_t & clamped, int32_t & damag
     value.heading = ( value.heading > 23592960 ) ? 23592960 : value.heading;
 }
 
+// SimState's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool SimStateFixedInRange( const SimState & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.tilt > 112 );
+    bad |= (int) ( value.angle < -11796480 ) | (int) ( value.angle > 11796480 );
+    bad |= (int) ( value.position < -1966080000ll ) | (int) ( value.position > 1966080000ll );
+    bad |= (int) ( value.reach < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ) ) | (int) ( value.reach > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 65536000000ull ) ) );
+    bad |= (int) ( value.ticks < 0 ) | (int) ( value.ticks > 1000000 );
+    bad |= (int) ( value.ratio > 240 );
+    bad |= (int) ( value.speed > 65536000 );
+    bad |= (int) ( value.span > 18446744073709486080ull );
+    bad |= (int) ( value.mass > ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ) );
+    bad |= (int) ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) | (int) ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
+    bad |= (int) ( value.energy < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) ) | (int) ( value.energy > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ) );
+    bad |= (int) ( value.scale < -524288 ) | (int) ( value.scale > 524288 );
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        bad |= (int) ( value.samples[i] < -524288 ) | (int) ( value.samples[i] > 524288 );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.weights_count; ++i )
+    {
+        bad |= (int) ( value.weights[i] > 25600 );
+    }
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        bad |= (int) ( value.axes.slots[i] < -429496729600ll ) | (int) ( value.axes.slots[i] > 429496729600ll );
+    }
+    bad |= (int) !PoseFixedInRange( value.pose );
+    if ( value.spawn_present )
+    {
+        bad |= (int) !PoseFixedInRange( value.spawn );
+    }
+    return bad == 0;
+}
+
 // SimState's read-side bounds.
-inline void SimStateFixedClampBody( SimState & value, int32_t & clamped, int32_t & damaged )
+inline void SimStateFixedClampBody( SimState & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += ( value.tilt > 112 );
@@ -6728,7 +6798,7 @@ inline bool SimStateFixedClamp( SimState & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    SimStateFixedClampBody( value, clamped, damaged );
+    if ( !SimStateFixedInRange( value ) ) { SimStateFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.

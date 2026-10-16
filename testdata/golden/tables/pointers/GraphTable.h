@@ -2335,6 +2335,26 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 #define TABLE_RESTRICT
 #endif
 
+// THE CLAMP PASS'S COUNTERS NEVER ALIAS THE RECORD IT CLAMPS: the two
+// counters a *FixedClampBody takes are the caller's locals, never a field of
+// the value. An int32_t & may alias every int32_t field the pass stores to, so
+// unqualified, each clamp reloads the counter and the pass does not vectorize.
+// The qualifier is per compiler, each one's MEASURED best of the plain
+// reference, __restrict, a local counter stored once at the end, and both
+// (bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-restrict):
+//   clang: __restrict, 185.8 -> 148.5 ns/record (the local counter ties it);
+//   g++:   the plain reference, 215.8; __restrict measured 247.9 and the
+//          local counter 307.7, both slower;
+//   MSVC and any other compiler: the plain reference, the portable form.
+// A build may define TABLE_CLAMP_RESTRICT itself to override the choice.
+#ifndef TABLE_CLAMP_RESTRICT
+#if defined( __clang__ )
+#define TABLE_CLAMP_RESTRICT __restrict__
+#else
+#define TABLE_CLAMP_RESTRICT
+#endif
+#endif
+
 // THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
 // halves of the loop below, and a call there is the whole cost of the form.
 #if defined( _MSC_VER )
@@ -11212,8 +11232,19 @@ inline void SettingsFixedWriteBody( uint8_t * b, const Settings & value )
     memcpy( b + 8, value.label, (size_t) ( value.label_length ) );
 }
 
+// Meta's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool MetaFixedInRange( const Meta & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.build < 0 ) | (int) ( value.build > 1000 );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length );
+    return bad == 0;
+}
+
 // Meta's read-side bounds.
-inline void MetaFixedClampBody( Meta & value, int32_t & clamped, int32_t & damaged )
+inline void MetaFixedClampBody( Meta & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.build < 0 ) | (int) ( value.build > 1000 );
@@ -11224,8 +11255,19 @@ inline void MetaFixedClampBody( Meta & value, int32_t & clamped, int32_t & damag
     }
 }
 
+// Settings's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool SettingsFixedInRange( const Settings & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.quality < 0 ) | (int) ( value.quality > 4 );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length );
+    return bad == 0;
+}
+
 // Settings's read-side bounds.
-inline void SettingsFixedClampBody( Settings & value, int32_t & clamped, int32_t & damaged )
+inline void SettingsFixedClampBody( Settings & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.quality < 0 ) | (int) ( value.quality > 4 );
@@ -11246,7 +11288,7 @@ inline bool MetaFixedClamp( Meta & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    MetaFixedClampBody( value, clamped, damaged );
+    if ( !MetaFixedInRange( value ) ) { MetaFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -11535,7 +11577,7 @@ inline bool SettingsFixedClamp( Settings & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    SettingsFixedClampBody( value, clamped, damaged );
+    if ( !SettingsFixedInRange( value ) ) { SettingsFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.

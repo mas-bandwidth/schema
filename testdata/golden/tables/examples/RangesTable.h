@@ -2457,6 +2457,26 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 #define TABLE_RESTRICT
 #endif
 
+// THE CLAMP PASS'S COUNTERS NEVER ALIAS THE RECORD IT CLAMPS: the two
+// counters a *FixedClampBody takes are the caller's locals, never a field of
+// the value. An int32_t & may alias every int32_t field the pass stores to, so
+// unqualified, each clamp reloads the counter and the pass does not vectorize.
+// The qualifier is per compiler, each one's MEASURED best of the plain
+// reference, __restrict, a local counter stored once at the end, and both
+// (bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-restrict):
+//   clang: __restrict, 185.8 -> 148.5 ns/record (the local counter ties it);
+//   g++:   the plain reference, 215.8; __restrict measured 247.9 and the
+//          local counter 307.7, both slower;
+//   MSVC and any other compiler: the plain reference, the portable form.
+// A build may define TABLE_CLAMP_RESTRICT itself to override the choice.
+#ifndef TABLE_CLAMP_RESTRICT
+#if defined( __clang__ )
+#define TABLE_CLAMP_RESTRICT __restrict__
+#else
+#define TABLE_CLAMP_RESTRICT
+#endif
+#endif
+
 // THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
 // halves of the loop below, and a call there is the whole cost of the form.
 #if defined( _MSC_VER )
@@ -11360,8 +11380,32 @@ inline void RangedWidthsFixedWriteBody( uint8_t * b, const RangedWidths & value 
     TableFixedPut64( b + 24, (uint64_t) value.b48 );
 }
 
+// RangedSigned's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool RangedSignedFixedInRange( const RangedSigned & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.i8_low > 126 );
+    bad |= (int) ( value.i8_high < -127 );
+    bad |= (int) ( value.i8_inside < -127 ) | (int) ( value.i8_inside > 126 );
+    bad |= (int) ( value.i16_low > 32766 );
+    bad |= (int) ( value.i16_high < -32767 );
+    bad |= (int) ( value.i16_inside < -32767 ) | (int) ( value.i16_inside > 32766 );
+    bad |= (int) ( value.i32_low > 2147483646 );
+    bad |= (int) ( value.i32_high < -2147483647 );
+    bad |= (int) ( value.i32_inside < -2147483647 ) | (int) ( value.i32_inside > 2147483646 );
+    bad |= (int) ( value.i64_low > 9223372036854775806ll );
+    bad |= (int) ( value.i64_high < -9223372036854775807ll );
+    bad |= (int) ( value.i64_inside < -9223372036854775807ll ) | (int) ( value.i64_inside > 9223372036854775806ll );
+    for ( int64_t i = 0; i < (int64_t) value.edges_count; ++i )
+    {
+    }
+    return bad == 0;
+}
+
 // RangedSigned's read-side bounds.
-inline void RangedSignedFixedClampBody( RangedSigned & value, int32_t & clamped, int32_t & damaged )
+inline void RangedSignedFixedClampBody( RangedSigned & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += ( value.i8_low > 126 );
@@ -11393,8 +11437,32 @@ inline void RangedSignedFixedClampBody( RangedSigned & value, int32_t & clamped,
     }
 }
 
+// RangedUnsigned's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool RangedUnsignedFixedInRange( const RangedUnsigned & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.u8_low > 254 );
+    bad |= (int) ( value.u8_high < 1 );
+    bad |= (int) ( value.u8_inside < 1 ) | (int) ( value.u8_inside > 254 );
+    bad |= (int) ( value.u16_low > 65534 );
+    bad |= (int) ( value.u16_high < 1 );
+    bad |= (int) ( value.u16_inside < 1 ) | (int) ( value.u16_inside > 65534 );
+    bad |= (int) ( value.u32_low > 4294967294 );
+    bad |= (int) ( value.u32_high < 1 );
+    bad |= (int) ( value.u32_inside < 1 ) | (int) ( value.u32_inside > 4294967294 );
+    bad |= (int) ( value.u64_low > 18446744073709551614ull );
+    bad |= (int) ( value.u64_high < 1ull );
+    bad |= (int) ( value.u64_inside < 1ull ) | (int) ( value.u64_inside > 18446744073709551614ull );
+    for ( int64_t i = 0; i < (int64_t) value.counts_count; ++i )
+    {
+    }
+    return bad == 0;
+}
+
 // RangedUnsigned's read-side bounds.
-inline void RangedUnsignedFixedClampBody( RangedUnsigned & value, int32_t & clamped, int32_t & damaged )
+inline void RangedUnsignedFixedClampBody( RangedUnsigned & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += ( value.u8_low > 254 );
@@ -11426,8 +11494,25 @@ inline void RangedUnsignedFixedClampBody( RangedUnsigned & value, int32_t & clam
     }
 }
 
+// RangedWidths's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool RangedWidthsFixedInRange( const RangedWidths & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(8) width clamp
+    bad |= (int) ( value.b8 > 255ull );
+    // bits(16) width clamp
+    bad |= (int) ( value.b16 > 65535ull );
+    // bits(12) width clamp
+    bad |= (int) ( value.b12 > 4095ull );
+    // bits(48) width clamp
+    bad |= (int) ( value.b48 > 281474976710655ull );
+    return bad == 0;
+}
+
 // RangedWidths's read-side bounds.
-inline void RangedWidthsFixedClampBody( RangedWidths & value, int32_t & clamped, int32_t & damaged )
+inline void RangedWidthsFixedClampBody( RangedWidths & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     // bits(8) width clamp
@@ -11454,7 +11539,7 @@ inline bool RangedSignedFixedClamp( RangedSigned & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    RangedSignedFixedClampBody( value, clamped, damaged );
+    if ( !RangedSignedFixedInRange( value ) ) { RangedSignedFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -11795,7 +11880,7 @@ inline bool RangedUnsignedFixedClamp( RangedUnsigned & value, TableReport * repo
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    RangedUnsignedFixedClampBody( value, clamped, damaged );
+    if ( !RangedUnsignedFixedInRange( value ) ) { RangedUnsignedFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -12136,7 +12221,7 @@ inline bool RangedWidthsFixedClamp( RangedWidths & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    RangedWidthsFixedClampBody( value, clamped, damaged );
+    if ( !RangedWidthsFixedInRange( value ) ) { RangedWidthsFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.

@@ -2229,6 +2229,26 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 #define TABLE_RESTRICT
 #endif
 
+// THE CLAMP PASS'S COUNTERS NEVER ALIAS THE RECORD IT CLAMPS: the two
+// counters a *FixedClampBody takes are the caller's locals, never a field of
+// the value. An int32_t & may alias every int32_t field the pass stores to, so
+// unqualified, each clamp reloads the counter and the pass does not vectorize.
+// The qualifier is per compiler, each one's MEASURED best of the plain
+// reference, __restrict, a local counter stored once at the end, and both
+// (bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-restrict):
+//   clang: __restrict, 185.8 -> 148.5 ns/record (the local counter ties it);
+//   g++:   the plain reference, 215.8; __restrict measured 247.9 and the
+//          local counter 307.7, both slower;
+//   MSVC and any other compiler: the plain reference, the portable form.
+// A build may define TABLE_CLAMP_RESTRICT itself to override the choice.
+#ifndef TABLE_CLAMP_RESTRICT
+#if defined( __clang__ )
+#define TABLE_CLAMP_RESTRICT __restrict__
+#else
+#define TABLE_CLAMP_RESTRICT
+#endif
+#endif
+
 // THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
 // halves of the loop below, and a call there is the whole cost of the form.
 #if defined( _MSC_VER )
@@ -5820,8 +5840,18 @@ inline void StampFixedWriteBody( uint8_t * b, const Stamp & value )
     TableFixedPut32( b + 12, (uint32_t) value.seq );
 }
 
+// Line's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool LineFixedInRange( const Line & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf16Valid( (const uint8_t *) value.text, (int64_t) value.text_length );
+    return bad == 0;
+}
+
 // Line's read-side bounds.
-inline void LineFixedClampBody( Line & value, int32_t & clamped, int32_t & damaged )
+inline void LineFixedClampBody( Line & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf16Valid( (const uint8_t *) value.text, (int64_t) value.text_length ) )
@@ -5830,8 +5860,36 @@ inline void LineFixedClampBody( Line & value, int32_t & clamped, int32_t & damag
     }
 }
 
+// Caption's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool CaptionFixedInRange( const Caption & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf16Valid( (const uint8_t *) value.title, (int64_t) value.title_length );
+    bad |= (int) !LineFixedInRange( value.line );
+    for ( int64_t i = 0; i < (int64_t) value.lines_count; ++i )
+    {
+        bad |= (int) !LineFixedInRange( value.lines[i] );
+    }
+    bad |= (int) ( (uint64_t) value.body.type > 3u );
+    switch ( value.body.type )
+    {
+        case BodyType::Wide:
+        {
+            break;
+        }
+        case BodyType::Narrow:
+        {
+            break;
+        }
+        default: break;
+    }
+    return bad == 0;
+}
+
 // Caption's read-side bounds.
-inline void CaptionFixedClampBody( Caption & value, int32_t & clamped, int32_t & damaged )
+inline void CaptionFixedClampBody( Caption & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf16Valid( (const uint8_t *) value.title, (int64_t) value.title_length ) )
@@ -5858,8 +5916,18 @@ inline void CaptionFixedClampBody( Caption & value, int32_t & clamped, int32_t &
     }
 }
 
+// Stamp's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool StampFixedInRange( const Stamp & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf16Valid( (const uint8_t *) value.label, (int64_t) value.label_length );
+    return bad == 0;
+}
+
 // Stamp's read-side bounds.
-inline void StampFixedClampBody( Stamp & value, int32_t & clamped, int32_t & damaged )
+inline void StampFixedClampBody( Stamp & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf16Valid( (const uint8_t *) value.label, (int64_t) value.label_length ) )
@@ -5878,7 +5946,7 @@ inline bool CaptionFixedClamp( Caption & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    CaptionFixedClampBody( value, clamped, damaged );
+    if ( !CaptionFixedInRange( value ) ) { CaptionFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -6206,7 +6274,7 @@ inline bool StampFixedClamp( Stamp & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    StampFixedClampBody( value, clamped, damaged );
+    if ( !StampFixedInRange( value ) ) { StampFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.

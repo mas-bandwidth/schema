@@ -1,0 +1,41 @@
+      6 BenchTable.h:10423:13: missed: not vectorized: vectorization is not profitable.
+      6 BenchTable.h:10421:13: missed: not vectorized: vectorization is not profitable.
+      6 BenchTable.h:10419:13: missed: not vectorized: vectorization is not profitable.
+      6 BenchTable.h:10417:13: missed: not vectorized: vectorization is not profitable.
+      6 BenchTable.h:10415:13: missed: not vectorized: vectorization is not profitable.
+      6 BenchTable.h:10412:13: missed: not vectorized: vectorization is not profitable.
+      6 BenchTable.h:10409:13: missed: not vectorized: vectorization is not profitable.
+      6 BenchTable.h:10407:13: missed: not vectorized: vectorization is not profitable.
+      6 BenchTable.h:10405:13: missed: not vectorized: vectorization is not profitable.
+      6 BenchTable.h:10403:13: missed: not vectorized: vectorization is not profitable.
+      3 BenchTable.h:10537:13: missed: not vectorized: vectorization is not profitable.
+      3 BenchTable.h:10535:13: missed: not vectorized: vectorization is not profitable.
+      3 BenchTable.h:10533:13: missed: not vectorized: vectorization is not profitable.
+      3 BenchTable.h:10530:13: missed: not vectorized: vectorization is not profitable.
+      3 BenchTable.h:10488:13: missed: not vectorized: vectorization is not profitable.
+      3 BenchTable.h:10486:13: missed: not vectorized: vectorization is not profitable.
+      3 BenchTable.h:10481:13: missed: not vectorized: vectorization is not profitable.
+      3 BenchTable.h:10479:13: missed: not vectorized: vectorization is not profitable.
+      3 BenchTable.h:10470:13: missed: not vectorized: vectorization is not profitable.
+      3 BenchTable.h:10468:13: missed: not vectorized: vectorization is not profitable.
+      3 BenchTable.h:10459:13: missed: not vectorized: vectorization is not profitable.
+      3 BenchTable.h:10456:13: missed: not vectorized: vectorization is not profitable.
+      3 BenchTable.h:10448:13: missed: not vectorized: vectorization is not profitable.
+      3 BenchTable.h:10446:13: missed: not vectorized: vectorization is not profitable.
+      3 BenchTable.h:10444:13: missed: not vectorized: vectorization is not profitable.
+      3 BenchTable.h:10435:13: missed: not vectorized: vectorization is not profitable.
+      3 BenchTable.h:10433:13: missed: not vectorized: vectorization is not profitable.
+      3 BenchTable.h:10425:85: missed: not vectorized: vectorization is not profitable.
+      1 FixedTableTable.h:4886:22: missed: statement clobbers memory: bench::TableFixedRun (&FixedTableFixedPlan, 42, 38, _45, _44, report_48, &FixedTableFixedGuards);
+      1 BenchTable.h:10494:28: missed: not vectorized: number of iterations cannot be computed.
+      1 BenchTable.h:10494:28: missed: couldn't vectorize loop
+      1 BenchTable.h:10490:28: missed: not vectorized: number of iterations cannot be computed.
+      1 BenchTable.h:10490:28: missed: couldn't vectorize loop
+      1 BenchTable.h:10350:28: missed: not vectorized: number of iterations cannot be computed.
+      1 BenchTable.h:10350:28: missed: couldn't vectorize loop
+      1 BenchTable.h:10344:28: missed: not vectorized: number of iterations cannot be computed.
+      1 BenchTable.h:10344:28: missed: couldn't vectorize loop
+      1 BenchTable.h:10330:13: missed: not vectorized: relevant phi not supported: i_1809 = PHI <i_234(49), 0(23)>
+      1 BenchTable.h:10330:13: missed: not vectorized: relevant phi not supported: i_1807 = PHI <i_217(48), 0(20)>
+      1 BenchTable.h:10330:13: missed: not vectorized: relevant phi not supported: i_1804 = PHI <i_183(56), 0(2)>
+      1 BenchTable.h:10330:13: missed: not vectorized: relevant phi not supported: i_1719 = PHI <i_540(47), 0(17)>

@@ -2229,6 +2229,26 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 #define TABLE_RESTRICT
 #endif
 
+// THE CLAMP PASS'S COUNTERS NEVER ALIAS THE RECORD IT CLAMPS: the two
+// counters a *FixedClampBody takes are the caller's locals, never a field of
+// the value. An int32_t & may alias every int32_t field the pass stores to, so
+// unqualified, each clamp reloads the counter and the pass does not vectorize.
+// The qualifier is per compiler, each one's MEASURED best of the plain
+// reference, __restrict, a local counter stored once at the end, and both
+// (bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-restrict):
+//   clang: __restrict, 185.8 -> 148.5 ns/record (the local counter ties it);
+//   g++:   the plain reference, 215.8; __restrict measured 247.9 and the
+//          local counter 307.7, both slower;
+//   MSVC and any other compiler: the plain reference, the portable form.
+// A build may define TABLE_CLAMP_RESTRICT itself to override the choice.
+#ifndef TABLE_CLAMP_RESTRICT
+#if defined( __clang__ )
+#define TABLE_CLAMP_RESTRICT __restrict__
+#else
+#define TABLE_CLAMP_RESTRICT
+#endif
+#endif
+
 // THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
 // halves of the loop below, and a call there is the whole cost of the form.
 #if defined( _MSC_VER )
@@ -10488,8 +10508,31 @@ inline void TableMixedFixedWriteBody( uint8_t * b, const TableMixed & value )
     TableFixedPut32( b + 1220, (uint32_t) value.idle_ticks );
 }
 
+// TableEntity's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool TableEntityFixedInRange( const TableEntity & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(12) width clamp
+    bad |= (int) ( value.entity_id > 4095ull );
+    bad |= (int) ( value.pos_x < -16383 ) | (int) ( value.pos_x > 16383 );
+    bad |= (int) ( value.pos_y < -16383 ) | (int) ( value.pos_y > 16383 );
+    bad |= (int) ( value.pos_z < -16383 ) | (int) ( value.pos_z > 16383 );
+    // bits(9) width clamp
+    bad |= (int) ( value.yaw > 511ull );
+    // bits(9) width clamp
+    bad |= (int) ( value.pitch > 511ull );
+    bad |= (int) ( value.vel_x < -2048 ) | (int) ( value.vel_x > 2047 );
+    bad |= (int) ( value.vel_y < -2048 ) | (int) ( value.vel_y > 2047 );
+    bad |= (int) ( value.vel_z < -2048 ) | (int) ( value.vel_z > 2047 );
+    bad |= (int) ( value.health < 0 ) | (int) ( value.health > 1000 );
+    bad |= (int) ( (uint64_t) value.weapon > 15u );
+    return bad == 0;
+}
+
 // TableEntity's read-side bounds.
-inline void TableEntityFixedClampBody( TableEntity & value, int32_t & clamped, int32_t & damaged )
+inline void TableEntityFixedClampBody( TableEntity & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     // bits(12) width clamp
@@ -10518,8 +10561,20 @@ inline void TableEntityFixedClampBody( TableEntity & value, int32_t & clamped, i
     if ( (uint64_t) value.weapon > 15u ) { value.weapon = TableWeapon::None; clamped++; }
 }
 
+// TableStat's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool TableStatFixedInRange( const TableStat & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(8) width clamp
+    bad |= (int) ( value.stat_id > 255ull );
+    bad |= (int) ( value.delta < -512 ) | (int) ( value.delta > 511 );
+    return bad == 0;
+}
+
 // TableStat's read-side bounds.
-inline void TableStatFixedClampBody( TableStat & value, int32_t & clamped, int32_t & damaged )
+inline void TableStatFixedClampBody( TableStat & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     // bits(8) width clamp
@@ -10529,8 +10584,21 @@ inline void TableStatFixedClampBody( TableStat & value, int32_t & clamped, int32
     value.delta = ( value.delta < -512 ) ? -512 : ( ( value.delta > 511 ) ? 511 : value.delta );
 }
 
+// TableHitEvent's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool TableHitEventFixedInRange( const TableHitEvent & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(12) width clamp
+    bad |= (int) ( value.target_id > 4095ull );
+    bad |= (int) ( value.damage < 0 ) | (int) ( value.damage > 4095 );
+    bad |= (int) ( value.hit_kind < 0 ) | (int) ( value.hit_kind > 7 );
+    return bad == 0;
+}
+
 // TableHitEvent's read-side bounds.
-inline void TableHitEventFixedClampBody( TableHitEvent & value, int32_t & clamped, int32_t & damaged )
+inline void TableHitEventFixedClampBody( TableHitEvent & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     // bits(12) width clamp
@@ -10542,8 +10610,20 @@ inline void TableHitEventFixedClampBody( TableHitEvent & value, int32_t & clampe
     value.hit_kind = ( value.hit_kind < 0 ) ? 0 : ( ( value.hit_kind > 7 ) ? 7 : value.hit_kind );
 }
 
+// TableChatEvent's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool TableChatEventFixedInRange( const TableChatEvent & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.channel < 0 ) | (int) ( value.channel > 3 );
+    // bits(12) width clamp
+    bad |= (int) ( value.speaker > 4095ull );
+    return bad == 0;
+}
+
 // TableChatEvent's read-side bounds.
-inline void TableChatEventFixedClampBody( TableChatEvent & value, int32_t & clamped, int32_t & damaged )
+inline void TableChatEventFixedClampBody( TableChatEvent & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.channel < 0 ) | (int) ( value.channel > 3 );
@@ -10553,8 +10633,20 @@ inline void TableChatEventFixedClampBody( TableChatEvent & value, int32_t & clam
     value.speaker = ( value.speaker > 4095ull ) ? 4095ull : value.speaker;
 }
 
+// TablePickupEvent's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool TablePickupEventFixedInRange( const TablePickupEvent & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(10) width clamp
+    bad |= (int) ( value.item_id > 1023ull );
+    bad |= (int) ( value.amount < 0 ) | (int) ( value.amount > 255 );
+    return bad == 0;
+}
+
 // TablePickupEvent's read-side bounds.
-inline void TablePickupEventFixedClampBody( TablePickupEvent & value, int32_t & clamped, int32_t & damaged )
+inline void TablePickupEventFixedClampBody( TablePickupEvent & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     // bits(10) width clamp
@@ -10564,8 +10656,63 @@ inline void TablePickupEventFixedClampBody( TablePickupEvent & value, int32_t & 
     value.amount = ( value.amount < 0 ) ? 0 : ( ( value.amount > 255 ) ? 255 : value.amount );
 }
 
+// TableMixed's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool TableMixedFixedInRange( const TableMixed & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(16) width clamp
+    bad |= (int) ( value.sequence > 65535ull );
+    bad |= (int) ( value.ack_sequence < 0 ) | (int) ( value.ack_sequence > 65535 );
+    bad |= (int) ( value.nonce < 1ull ) | (int) ( value.nonce > 9223372036854775807ull );
+    bad |= (int) ( value.world_time < -1000000000000ll ) | (int) ( value.world_time > 1000000000000ll );
+    // bits(48) width clamp
+    bad |= (int) ( value.frame_tick > 281474976710655ull );
+    bad |= (int) ( value.server_time < 0.0f ) | (int) ( value.server_time > 65535.0f );
+    for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
+    {
+        bad |= (int) !TableEntityFixedInRange( value.entities[i] );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.stats_count; ++i )
+    {
+        bad |= (int) !TableStatFixedInRange( value.stats[i] );
+    }
+    bad |= (int) ( (uint64_t) value.game_event.type > 3u );
+    switch ( value.game_event.type )
+    {
+        case TableEventType::Hit:
+        {
+            bad |= (int) !TableHitEventFixedInRange( value.game_event.hit );
+            break;
+        }
+        case TableEventType::Chat:
+        {
+            bad |= (int) !TableChatEventFixedInRange( value.game_event.chat );
+            break;
+        }
+        case TableEventType::Pickup:
+        {
+            bad |= (int) !TablePickupEventFixedInRange( value.game_event.pickup );
+            break;
+        }
+        default: break;
+    }
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length );
+    bad |= (int) ( value.aim_x < -1.0f ) | (int) ( value.aim_x > 1.0f );
+    bad |= (int) ( value.aim_y < -1.0f ) | (int) ( value.aim_y > 1.0f );
+    bad |= (int) ( value.aim_z < -1.0f ) | (int) ( value.aim_z > 1.0f );
+    bad |= (int) ( value.flux < -1000000000000000000ll ) | (int) ( value.flux > 1000000000000000000ll );
+    bad |= (int) ( value.ping < 0.0f ) | (int) ( value.ping > 250.0f );
+    // bits(24) width clamp
+    bad |= (int) ( value.crc_hint > 16777215ull );
+    bad |= (int) ( value.extra < 0 ) | (int) ( value.extra > 255 );
+    bad |= (int) ( value.idle_ticks < 0 ) | (int) ( value.idle_ticks > 15 );
+    return bad == 0;
+}
+
 // TableMixed's read-side bounds.
-inline void TableMixedFixedClampBody( TableMixed & value, int32_t & clamped, int32_t & damaged )
+inline void TableMixedFixedClampBody( TableMixed & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     // bits(16) width clamp
@@ -10645,7 +10792,7 @@ inline void TableEntityFixedClamp( TableEntity & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    TableEntityFixedClampBody( value, clamped, damaged );
+    if ( !TableEntityFixedInRange( value ) ) { TableEntityFixedClampBody( value, clamped, damaged ); }
     report->clamped += clamped;
     // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
     // one flag and not on a counter: the field read its declared default
@@ -11013,7 +11160,7 @@ inline void TableStatFixedClamp( TableStat & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    TableStatFixedClampBody( value, clamped, damaged );
+    if ( !TableStatFixedInRange( value ) ) { TableStatFixedClampBody( value, clamped, damaged ); }
     report->clamped += clamped;
     // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
     // one flag and not on a counter: the field read its declared default
@@ -11287,7 +11434,7 @@ inline void TableMixedFixedClamp( TableMixed & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    TableMixedFixedClampBody( value, clamped, damaged );
+    if ( !TableMixedFixedInRange( value ) ) { TableMixedFixedClampBody( value, clamped, damaged ); }
     report->clamped += clamped;
     // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
     // one flag and not on a counter: the field read its declared default
