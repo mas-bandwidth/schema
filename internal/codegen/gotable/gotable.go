@@ -78,6 +78,7 @@ type tableGen struct {
 
 	lineage       map[string][]FixedLineageEntry // the locked layouts, oldest first (§5.2)
 	needsMath     bool
+	needsTime     bool
 	unsafeUsed    bool
 	wireSerial    int
 	retain        bool
@@ -292,6 +293,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		for _, st := range members {
 			g.owner = st
 			g.emitTableReset(st)
+			g.emitTimestampAccessors(st)
 			g.emitTableMeasure(st)
 			g.emitTableWrite(st)
 			g.emitTableSave(st)
@@ -414,6 +416,9 @@ func (g *tableGen) assemble() ([]byte, error) {
 	}
 	if g.needsMath {
 		std = append(std, `"math"`)
+	}
+	if g.needsTime {
+		std = append(std, `"time"`)
 	}
 	if g.unsafeUsed {
 		std = append(std, `"unsafe"`)
@@ -826,3 +831,46 @@ func TableKeyed[T any](slots []T, key int) *T {
 }
 
 `
+
+// timestampFields is a table's timestamp fields, in declaration order.
+func timestampFields(st *ir.Struct) []*ir.Field {
+	var out []*ir.Field
+	for _, f := range st.Fields {
+		if f.Type.Kind == ir.TInt && f.Type.Timestamp {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// emitTimestampAccessors is the Go VALUE of a timestamp (docs/SPEC-TABLES.md
+// §2.11): a time.Time, in UTC on read, through two methods beside the field.
+//
+// The field itself is the int64 count and has to be: a table's storage is the
+// blittable record the cook, the block and the fixed form lay out at declared
+// widths (§19, §20), and a time.Time carries a pointer. So the time.Time is the
+// accessor pair, and the REFUSAL a time outside Time.UnixNano's domain owes
+// ("by name, on write") is the setter's: the count it would store does not
+// exist, so nothing is stored and the error names the field. Every int64 the
+// field can hold is a time, so nothing downstream of the setter can refuse.
+func (g *tableGen) emitTimestampAccessors(st *ir.Struct) {
+	fields := timestampFields(st)
+	if len(fields) == 0 || st.IsMapEntry() {
+		return
+	}
+	g.needsTime = true
+	recv := g.storageName(st.Name)
+	for _, f := range fields {
+		name := member(f)
+		g.pf("// %sTime is %s.%s as a time.Time, in UTC: the field counts nanoseconds since\n", name, st.Name, name)
+		g.pf("// the Unix epoch, and 0 is the zero time, 1970-01-01T00:00:00Z (SPEC.md §4.13).\n")
+		g.pf("func (v *%s) %sTime() time.Time { return tableTimestampTime(v.%s) }\n\n", recv, name, name)
+		g.pf("// Set%sTime stores a time.Time in %s.%s. A time outside Time.UnixNano's\n", name, st.Name, name)
+		g.pf("// domain, the years 1678 through 2262, has no count: it is REFUSED with a\n")
+		g.pf("// TableTimestampError naming the field and the field is left as it was. Go's\n")
+		g.pf("// own zero Time{} is the zero time and stores 0.\n")
+		g.pf("func (v *%s) Set%sTime(t time.Time) error {\n", recv, name)
+		g.pf("\tn, ok := tableTimestampNanos(t)\n\tif !ok {\n\t\treturn TableTimestampError{Field: %q, Time: t}\n\t}\n", st.Name+"."+name)
+		g.pf("\tv.%s = n\n\treturn nil\n}\n\n", name)
+	}
+}

@@ -78,6 +78,11 @@ func TableScalarKind(f *Field) int {
 	case TBool:
 		return TableKindBool
 	case TInt:
+		if f.Type.Timestamp {
+			// a TIMESTAMP is an int64 count with its own wire kind (SPEC.md
+			// §4.13): the storage, the width and the sign are the int64's
+			return TableKindTimestamp
+		}
 		if f.Type.Signed {
 			switch f.Type.Width {
 			case 8:
@@ -185,6 +190,20 @@ func TableScalarKind(f *Field) int {
 	return 0
 }
 
+// TableFixedLeafKind is the kind byte a FIXED-FORM layout entry names for a
+// scalar field. It is TableScalarKind's answer except for a TIMESTAMP, whose
+// slot is the int64's own and whose layout entry therefore names kind 5: the
+// fixed layout's kind set is the closed set of docs/FIXED-FORM-ALGORITHM.md
+// §1, which gains no member for it, so the timestamp/int64 distinction is the
+// VARIABLE wire's (kind 36) and the text form's, and in the fixed form a
+// respelling between the two is the identity (docs/SPEC-TABLES.md §2.11).
+func TableFixedLeafKind(f *Field) int {
+	if f.Type.Timestamp {
+		return TableKindI64
+	}
+	return TableScalarKind(f)
+}
+
 // TableFieldKind is the kind byte written for the FIELD itself: an
 // enum-keyed array is TableKindKeyed, any other array is TableKindArray, and
 // everything else is its scalar kind. An OPTIONAL field rides under the kind
@@ -237,7 +256,7 @@ func TableKindWidth(kind int) int {
 		return 2
 	case TableKindI32, TableKindU32, TableKindF32, TableKindPointer, TableKindFixed32, TableKindUFixed32:
 		return 4
-	case TableKindI64, TableKindU64, TableKindF64, TableKindFixed64, TableKindUFixed64:
+	case TableKindI64, TableKindU64, TableKindF64, TableKindFixed64, TableKindUFixed64, TableKindTimestamp:
 		return 8
 	case TableKindI128, TableKindU128, TableKindFixed128, TableKindUFixed128:
 		return 16
@@ -308,6 +327,34 @@ func appendWideFields(out []string, st *Struct) []string {
 	return out
 }
 
+// TableTimestampFields lists every `timestamp` field of a unit's table closure
+// as `Member.field` lines in closure order — what a target that does not carry
+// the kind refuses BY NAME (SPEC.md §4.13, docs/SPEC-TABLES.md §2.11). The
+// refusal is central, in the compiler's Generate, so no emitter is edited for
+// a construct it was never specified to carry.
+func TableTimestampFields(u *Unit) []string {
+	closure := TableClosure(u)
+	var out []string
+	add := func(st *Struct) {
+		for _, f := range st.Fields {
+			if f.Type.Kind == TInt && f.Type.Timestamp {
+				out = append(out, st.Name+"."+f.Name)
+			}
+		}
+	}
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			add(st)
+		}
+		for _, d := range f.Decls {
+			if st, ok := d.(*Struct); ok && closure[st.Name] {
+				add(st)
+			}
+		}
+	}
+	return out
+}
+
 // TableTypeSpelling is a field's declared scalar type as the language spells
 // it — `fixed(16, 16)`, `uint128`, `bits(9)`, `float32` — for descriptors and
 // diagnostics that name the declaration rather than the kind.
@@ -316,6 +363,9 @@ func TableTypeSpelling(f *Field) string {
 	case TBool:
 		return "bool"
 	case TInt:
+		if f.Type.Timestamp {
+			return "timestamp"
+		}
 		if f.Type.Signed {
 			return "int" + itoa(f.Type.Width)
 		}

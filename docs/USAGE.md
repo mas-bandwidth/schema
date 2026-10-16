@@ -2465,6 +2465,45 @@ C++ and the tool carry the construct today; every other backend refuses a
 unit that declares one, by name, and the ports are a named follow-on
 (SPEC-TABLES.md §15).
 
+### Timestamps: `opened_at timestamp`
+
+A `timestamp` field is a count of nanoseconds since the Unix epoch, and `0`
+is the zero time — `1970-01-01T00:00:00Z`. It is the convention you were
+writing by hand as an `int64` with a hand-rolled range check, made a kind, so
+the wire and the text form agree without you writing any of it (SPEC.md
+§4.13, SPEC-TABLES.md §2.11).
+
+```
+fixed table Session
+{
+    n         int32
+    opened_at timestamp
+}
+```
+
+In Go the field holds the count, and the `time.Time` is a pair of methods
+generated beside it, UTC on read:
+
+```go
+var s Session
+err := s.SetOpenedAtTime(time.Unix(0, 1760531645123456789)) // stores the count
+when := s.OpenedAtTime()                                      // a time.Time in UTC
+```
+
+`SetOpenedAtTime` refuses a time outside `Time.UnixNano`'s domain — the years
+1678 through 2262 — with a `TableTimestampError` naming the field, and
+stores nothing; Go's zero `time.Time{}` stores `0`. `FromJson` refuses a
+string that is not RFC 3339 by name (`Reason` is `timestamp_not_rfc3339: opened_at`), and `ToJson` writes `"2026-10-15T12:34:05.123456789Z"`.
+
+A timestamp is its own kind on the variable wire, not an `int64`: a field
+respelled between the two there is a kind mismatch, skipped and counted, and
+neither spelling widens into the other. In a `fixed table` the slot is an
+`int64`'s and the layout names it as one, so the fixed form does not tell the
+two apart. It is a bare TABLE field only in this major — a `timestamp` in a
+packet `type`, in an array, optional, map value or union arm is refused by
+name — and **Go carries it first**: every other target refuses the construct
+by name until its own card.
+
 ### The block form: rows another language points at
 
 Some data is not a file and not a message. It is a block you rebuild every
