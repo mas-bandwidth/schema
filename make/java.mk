@@ -300,11 +300,12 @@ tables-java-compile-all: build/tables-generated-java/.stamp
 # THE JAVA TABLES LEG (test/java-tables/src/Main.java): the gates the
 # conformance harness does not hold, because none of them is a case — the
 # readers' fuzz oracle, the reference extent gate and the byte-order leg.
-build/java-tables/.stamp: build/tables-generated-java/.stamp test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java
+build/java-tables/.stamp: build/tables-generated-java/.stamp test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java test/java-tables/src/AllocPaths.java
 	@rm -rf build/java-tables && mkdir -p build/java-tables
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-tables \
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
-		build/tables-generated-java/block/*.java test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java
+		build/tables-generated-java/blobs/*.java build/tables-generated-java/arms/*.java \
+		build/tables-generated-java/block/*.java test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java test/java-tables/src/AllocPaths.java
 	@touch $@
 
 # THE READERS' ORACLE (docs/SPEC-TABLES.md §7.5, §19.2). Mutants of a block image
@@ -340,10 +341,11 @@ tables-java-fuzz-negative-control: build/cook-open/.stamp
 	$(JAVA_FUZZ_SABOTAGE)/schema generate --lang java --out $(JAVA_FUZZ_SABOTAGE)/generated/examples tables/examples
 	$(JAVA_FUZZ_SABOTAGE)/schema generate --lang java --out $(JAVA_FUZZ_SABOTAGE)/generated/pointers tables/pointers
 	$(JAVA_FUZZ_SABOTAGE)/schema generate --lang java --out $(JAVA_FUZZ_SABOTAGE)/generated/block tables/block
+	$(JAVA_FUZZ_SABOTAGE)/schema generate --lang java --out $(JAVA_FUZZ_SABOTAGE)/generated/blobs tables/blobs
 	@grep -lq SABOTAGED $(JAVA_FUZZ_SABOTAGE)/generated/block/*Block.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged Open"; exit 1; }
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_FUZZ_SABOTAGE)/classes \
-		$(JAVA_FUZZ_SABOTAGE)/generated/*/*.java test/java-tables/src/Main.java
+		$(JAVA_FUZZ_SABOTAGE)/generated/*/*.java test/java-tables/src/Main.java test/java-tables/src/AllocPaths.java
 	@if $(JAVA) -cp $(JAVA_FUZZ_SABOTAGE)/classes Main fuzz testdata/wire/tables/block_render.bin \
 			build/cook-open/Scene.cook > $(JAVA_FUZZ_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a block reader with no extent bounds left the fuzz green"; \
@@ -851,10 +853,11 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 	$(JAVA_EXTENT_SABOTAGE)/schema generate --lang java --out $(JAVA_EXTENT_SABOTAGE)/generated/examples tables/examples
 	$(JAVA_EXTENT_SABOTAGE)/schema generate --lang java --out $(JAVA_EXTENT_SABOTAGE)/generated/pointers tables/pointers
 	$(JAVA_EXTENT_SABOTAGE)/schema generate --lang java --out $(JAVA_EXTENT_SABOTAGE)/generated/block tables/block
+	$(JAVA_EXTENT_SABOTAGE)/schema generate --lang java --out $(JAVA_EXTENT_SABOTAGE)/generated/blobs tables/blobs
 	@grep -lq SABOTAGED $(JAVA_EXTENT_SABOTAGE)/generated/pointers/SceneCook.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged at"; exit 1; }
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_EXTENT_SABOTAGE)/classes \
-		$(JAVA_EXTENT_SABOTAGE)/generated/*/*.java test/java-tables/src/Main.java
+		$(JAVA_EXTENT_SABOTAGE)/generated/*/*.java test/java-tables/src/Main.java test/java-tables/src/AllocPaths.java
 	@if $(JAVA) -cp $(JAVA_EXTENT_SABOTAGE)/classes Main extent build/cook-open/Scene.cook \
 			> $(JAVA_EXTENT_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a start-only bound left the extent gate green"; \
@@ -866,28 +869,66 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 	@grep -m1 "FAILED:" $(JAVA_EXTENT_SABOTAGE)/log
 	@echo "negative control: bounding a reference's START rather than its RECORD turns the extent gate RED"
 
-# THE ALLOCATION GATE (docs/PORTING.md I14). The gate reads the JDK's feature
-# version and the JVM's per-thread allocation counter, and refuses to certify on
-# any JDK other than the pin — or with no counter at all — without measuring.
-# SCHEMA_JAVA_ALLOC_PINNED_FEATURE overrides the pin for the negative control;
-# SCHEMA_JAVA_ALLOC_ANY_JDK=1 is the escape hatch: it reports and does not
-# certify.
-.PHONY: tables-java-allocator tables-java-allocator-runtime-negative-control
+# THE ALLOCATION GATE (docs/PORTING.md I1, M1, I14). The gate reads the JDK's
+# feature version and the JVM's per-thread allocation counter, and refuses to
+# certify on any JDK other than the pin — or with no counter at all — without
+# measuring. SCHEMA_JAVA_ALLOC_PINNED_FEATURE overrides the pin for the negative
+# control; SCHEMA_JAVA_ALLOC_ANY_JDK=1 is the escape hatch: it reports and does
+# not certify. On the pin it measures the ROWS (test/java-tables/src/AllocPaths.java),
+# each a real path through the generated code over a committed file, each
+# warmed until its per-iteration count settles and gated on its ceiling:
+#   1 block-walk    open + every row of block_render.bin: one handle, 0 per row
+#   2 cook-walk     open + every node of graph_deep.cook: one handle, 0 per node
+#   3 load-measure  the variable form's loadMeasure over the wires below
+#   4 load, save    over the same wires, at the measured floor, reason printed
+JAVA_ALLOC_BLOCK := testdata/wire/tables/block_render.bin
+JAVA_ALLOC_COOK := testdata/conformance/tables/cook-write/graph_deep.cook
+JAVA_ALLOC_WIRES := testdata/wire/tables/graph_tree.bin testdata/wire/tables/graph_deep.bin \
+	testdata/wire/tables/graph_shared.bin testdata/wire/tables/blob_small.bin \
+	testdata/wire/tables/keyed_config.bin testdata/wire/tables/arms_gate.bin
+JAVA_ALLOC_ARGS := $(JAVA_ALLOC_BLOCK) $(JAVA_ALLOC_COOK) $(JAVA_ALLOC_WIRES)
+.PHONY: tables-java-allocator tables-java-allocator-runtime-negative-control tables-java-alloc-negative-control
 tables-java-allocator: build/java-tables/.stamp
 	@if [ "$${SCHEMA_JAVA_ALLOC_ANY_JDK:-}" = 1 ]; then echo "Java allocation observation mode: NOT CERTIFIED"; fi
-	$(JAVA) -cp build/java-tables Main allocator
+	$(JAVA) -cp build/java-tables Main allocator $(JAVA_ALLOC_ARGS)
 
 tables-java-allocator-runtime-negative-control: build/java-tables/.stamp
 	@mkdir -p build/java-allocator-runtime-negative-control
-	@if SCHEMA_JAVA_ALLOC_PINNED_FEATURE=17 SCHEMA_JAVA_ALLOC_ANY_JDK=0 $(JAVA) -cp build/java-tables Main allocator > build/java-allocator-runtime-negative-control/log 2>&1; then \
+	@if SCHEMA_JAVA_ALLOC_PINNED_FEATURE=17 SCHEMA_JAVA_ALLOC_ANY_JDK=0 $(JAVA) -cp build/java-tables Main allocator $(JAVA_ALLOC_ARGS) > build/java-allocator-runtime-negative-control/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the allocation gate certified on a JDK that is not the pin'; \
 		cat build/java-allocator-runtime-negative-control/log; exit 1; \
 	fi
 	@grep -Fq 'allocation certification requires JDK 17, running 21' build/java-allocator-runtime-negative-control/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the allocation gate refused for another reason'; cat build/java-allocator-runtime-negative-control/log; exit 1; }
-	@echo 'java allocation gate refuses a JDK that is not the pin (wants 21, ran 17)'
+	@! grep -q '^alloc ' build/java-allocator-runtime-negative-control/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the allocation gate measured before it refused'; cat build/java-allocator-runtime-negative-control/log; exit 1; }
+	@echo 'java allocation gate refuses a JDK that is not the pin (wants 21, ran 17), before measuring'
 
-test-java: tables-java-allocator tables-java-allocator-runtime-negative-control
+# ITS LOCALIZING CONTROL (I1: a control must say WHERE). One allocation per row
+# is planted in row 1's walk — in the harness, behind
+# SCHEMA_JAVA_ALLOC_PLANT_ROW_WALK, never in generated code — and the gate must
+# go red on row 1 BY NAME while row 2, the cook walk, stays green. A gate that
+# went red everywhere, or on the wrong row, would be an instrument that cannot
+# tell the paths apart.
+tables-java-alloc-negative-control: build/java-tables/.stamp
+	@mkdir -p build/java-alloc-negative-control
+	@if SCHEMA_JAVA_ALLOC_PLANT_ROW_WALK=1 $(JAVA) -cp build/java-tables Main allocator $(JAVA_ALLOC_ARGS) > build/java-alloc-negative-control/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: an allocation planted per row left the allocation gate green'; \
+		cat build/java-alloc-negative-control/log; exit 1; \
+	fi
+	@grep -q '^alloc PLANTED' build/java-alloc-negative-control/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the plant did not arm'; cat build/java-alloc-negative-control/log; exit 1; }
+	@grep -q '^alloc 1 block-walk .* RED$$' build/java-alloc-negative-control/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the gate went red, but not on row 1 (the block walk)'; cat build/java-alloc-negative-control/log; exit 1; }
+	@grep -q '^alloc 2 cook-walk .* OK$$' build/java-alloc-negative-control/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the plant reddened row 2 (the cook walk) too: the gate does not localize'; cat build/java-alloc-negative-control/log; exit 1; }
+	@test "$$(grep -c ' RED$$' build/java-alloc-negative-control/log)" = 1 || \
+		{ echo 'NEGATIVE CONTROL FAILED: more than the planted row went red'; cat build/java-alloc-negative-control/log; exit 1; }
+	@grep '^alloc 1 block-walk' build/java-alloc-negative-control/log
+	@grep '^alloc 2 cook-walk' build/java-alloc-negative-control/log
+	@echo 'negative control: one allocation planted per row reds row 1 (the block walk) alone; row 2 (the cook walk) stays green'
+
+test-java: tables-java-allocator tables-java-allocator-runtime-negative-control tables-java-alloc-negative-control
 
 # I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Java side.
 # The cook example is pulled from docs/USAGE.md into a class that reads the

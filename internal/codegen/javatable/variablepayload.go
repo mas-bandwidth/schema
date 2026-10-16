@@ -21,15 +21,15 @@ func writeVariablePayload(b *strings.Builder, u *ir.Unit, owner string, f *ir.Fi
 		if f.Array == ir.ArrayFixed {
 			count = fmt.Sprint(f.ArrayBound)
 		}
-		fmt.Fprintf(b, "        { TableVariable.Writer %s=%s.sub(new byte[1<<20]);%s.put8(%d);%s.putLeb(%s);\n", aw, w, aw, ir.TableWireElemKind(f), aw, count)
+		fmt.Fprintf(b, "        { int %s=%s.off;%s.put8(%d);%s.putLeb(%s);\n", aw, w, w, ir.TableWireElemKind(f), w, count)
 		one := *f
 		one.Array = ir.ArrayNone
 		one.ArrayBound = 0
 		one.KeyEnum = ""
 		one.Type.Optional = false
 		fmt.Fprintf(b, "        for(int index%d=0;index%d<%s;index%d++){%s element%d=index%d<%s.size()?%s.get(index%d):%s;\n", depth, depth, count, depth, variableValueType(&one), depth, depth, expr, expr, depth, variableDefault(&one))
-		writeVariablePayload(b, u, owner, &one, fmt.Sprintf("element%d", depth), aw, depth+1)
-		fmt.Fprintf(b, "        } %s.putLeb(%s.off);%s.putBytes(%s.buf,0,%s.off); }\n", w, aw, w, aw, aw)
+		writeVariablePayload(b, u, owner, &one, fmt.Sprintf("element%d", depth), w, depth+1)
+		fmt.Fprintf(b, "        } %s.frame(%s); }\n", w, aw)
 		return
 	}
 	if f.Type.Pointer {
@@ -40,9 +40,9 @@ func writeVariablePayload(b *strings.Builder, u *ir.Unit, owner string, f *ir.Fi
 	case ir.TBool:
 		fmt.Fprintf(b, "        %s.put8(%s?1:0);\n", w, expr)
 	case ir.TString:
-		fmt.Fprintf(b, "        {byte[] text%d=%s.getBytes(StandardCharsets.UTF_8);%s.putLeb(text%d.length);%s.putBytes(text%d,0,text%d.length);}\n", depth, expr, w, depth, w, depth, depth)
+		fmt.Fprintf(b, "        %s.putUtf8(%s);\n", w, expr)
 	case ir.TWString:
-		fmt.Fprintf(b, "        %s.putLeb(%s.length*2L);for(char unit%d:%s){%s.put8(unit%d);%s.put8(unit%d>>>8);}\n", w, expr, depth, expr, w, depth, w, depth)
+		fmt.Fprintf(b, "        %s.putLeb(%s.length*2L);for(int i%d=0;i%d<%s.length;i%d++){char unit%d=%s[i%d];%s.put8(unit%d);%s.put8(unit%d>>>8);}\n", w, expr, depth, depth, expr, depth, depth, expr, depth, w, depth, w, depth)
 	case ir.TBytes:
 		fmt.Fprintf(b, "        %s.putLeb(%s.length+1+TableVariable.lebLen(%s.length));%s.put8(6);%s.putLeb(%s.length);%s.putBytes(%s,0,%s.length);\n", w, expr, expr, w, w, expr, w, expr, expr)
 	case ir.TFloat32:
@@ -53,7 +53,7 @@ func writeVariablePayload(b *strings.Builder, u *ir.Unit, owner string, f *ir.Fi
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
 			sw := fmt.Sprintf("payload%d", depth)
-			fmt.Fprintf(b, "        {TableVariable.Writer %s=%s.sub(new byte[1<<20]);%sVariable.writeFields(%s,graph,%s);%s.put8(0);%s.putLeb(%s.off);%s.putBytes(%s.buf,0,%s.off);}\n", sw, w, ref.Name, sw, expr, sw, w, sw, w, sw, sw)
+			fmt.Fprintf(b, "        {int %s=%s.off;%sVariable.writeFields(%s,graph,%s);%s.put8(0);%s.frame(%s);}\n", sw, w, ref.Name, w, expr, w, w, sw)
 		case *ir.Union:
 			fmt.Fprintf(b, "        %sVariable.writePayload(%s,graph,%s);\n", ref.Name, w, expr)
 		case *ir.Enum:
