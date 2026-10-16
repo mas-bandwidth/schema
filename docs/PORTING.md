@@ -309,7 +309,7 @@ in post-order in the emitter and requires the lock red;
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-flat-wire` `tables-flat-wire-negative-control` | ✅ `TestCTableWireGraphIdentity` `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` | ✅ `tables-cs-leg` `tables-cs-region-fuzz` (flat native and managed graphs) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
+| ✅ `tables-flat-wire` `tables-flat-wire-negative-control` | ✅ `TestCTableWireGraphIdentity` `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` | ✅ `tables-cs-leg` `tables-cs-region-fuzz` (flat native and managed graphs) | ✅ `TestVariableClassBeyondCardConstructsJava` | ❌ #349 | ❌ #349 | ❌ #349 |
 
 ### M7 — A block row is reached by stride, with no per-row object
 
@@ -542,7 +542,7 @@ adapters; `tables-json-graph-walk`.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-json-graph-walk` | ✅ `TestCTableWireGraphIdentity` `TestCTableWireBlobIdentity` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-json-walk` | ✅ `tables-cs-leg` (shared graph labels and forward references) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
+| ✅ `tables-json-graph-walk` | ✅ `TestCTableWireGraphIdentity` `TestCTableWireBlobIdentity` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-json-walk` | ✅ `tables-cs-leg` (shared graph labels and forward references) | ✅ `TestVariableClassBeyondCardConstructsJava` | ❌ #349 | ❌ #349 | ❌ #349 |
 
 ### M15 — One walk for the numbering, the pack measure and the pack
 
@@ -583,7 +583,7 @@ post-order numbering the same way.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/pointers.go:150` `conformance` | ✅ `internal/codegen/ctable/graph.go:24` `TestCTableCookCanonical` `tables-c-wire-fuzz` | ❌ #349 | ✅ `internal/codegen/gotable/regions.go` (`tableRegionEdges`, `tableNumber`) `TestAllocatorOwnershipAndStandaloneWriters` `tables-go-builders` | ✅ `tables-cs-pack-negative-control` `tables-cs-leg` (root and node extent equality) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
+| ✅ `internal/codegen/cpptable/pointers.go:150` `conformance` | ✅ `internal/codegen/ctable/graph.go:24` `TestCTableCookCanonical` `tables-c-wire-fuzz` | ❌ #349 | ✅ `internal/codegen/gotable/regions.go` (`tableRegionEdges`, `tableNumber`) `TestAllocatorOwnershipAndStandaloneWriters` `tables-go-builders` | ✅ `tables-cs-pack-negative-control` `tables-cs-leg` (root and node extent equality) | ❌ #349 the Java pointer-graph walk is not one shared skeleton (numbering, pack-measure and pack are separate emitters; `TestVariableClassBeyondCardConstructsJava` round-trips the wire and text but does not hold the three to one declaration-order DFS) | ❌ #349 | ❌ #349 | ❌ #349 |
 
 ### M16 — The presence companion rides beside the array walks
 
@@ -1416,7 +1416,7 @@ lines of correct output into a diff nobody could read (#347).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #422 | ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ❌ #422 | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ❌ #422 | ❌ #422 |
+| ❌ #422 | ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ✅ `tables-java-runtime-home` `tables-java-runtime-home-negative-control` | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ❌ #422 | ❌ #422 |
 
 ### J3 — The release tier
 
