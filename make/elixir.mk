@@ -963,12 +963,13 @@ VIEW_ELIXIR_REGISTRY_ONLY := messages stream arms backend wide
 tables-elixir-view: bin/schema test/elixir-view/view_main.exs
 	@rm -rf build/elixir-view
 	@mkdir -p build/elixir-view
+	go build -o build/elixir-view/emit ./test/elixir-view/emit
 	@set -e; for entry in $(VIEW_CORPUS); do \
 		dir=$${entry%%:*}; pkg=$${entry##*:}; \
 		source=tables/$$dir; [ "$$dir" != wide ] || source=examples-wide; \
 		gen=build/elixir-view/generated/$$dir; mkdir -p $$gen; \
 		case " $(VIEW_ELIXIR_REGISTRY_ONLY) " in \
-			*" $$dir "*) go run ./test/elixir-view/emit "$$source" $$gen/UnitView.ex ;; \
+			*" $$dir "*) ./build/elixir-view/emit "$$source" $$gen/UnitView.ex ;; \
 			*) ./bin/schema generate --lang elixir --out $$gen "$$source" ;; \
 		esac; \
 		$(ELIXIR) -r $$gen/UnitView.ex test/elixir-view/view_main.exs $$pkg > build/elixir-view/$$pkg.listing; \
