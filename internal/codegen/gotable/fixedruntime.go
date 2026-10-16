@@ -19,6 +19,28 @@ const TableFixedForm uint8 = 3
 const TableFixedHeaderBytes = 16
 const TableFixedHashAt = 8
 
+// THE FIXED LOAD'S REFUSAL NAMES — EXPORTED (docs/FIXED-FORM-ALGORITHM.md
+// §5.3, docs/SPEC-TABLES.md §3.4). Every refusal of the fixed load has a name,
+// the framing-damage returns included, so an adopter's existing
+// report.Reason == "layout_newer" comparisons keep compiling against these
+// constants; the emitted <T>FixedLoad names every reason constant in place of
+// a string literal.
+const (
+	TableFixedReasonPreviousForm         = "previous_form"
+	TableFixedReasonMessageFormAsFile    = "message_form_as_file"
+	TableFixedReasonNewerForm            = "newer_form"
+	TableFixedReasonLayoutMalformed      = "layout_malformed"
+	TableFixedReasonLayoutNewer          = "layout_newer"
+	TableFixedReasonLayoutUnsupported    = "layout_unsupported"
+	TableFixedReasonLayoutRecordTooLarge = "layout_record_too_large"
+	TableFixedReasonPlanTooLarge         = "plan_too_large"
+	TableFixedReasonBatchTooLarge        = "batch_too_large"
+	TableFixedReasonNoLayout             = "no_layout"
+	TableFixedReasonTextIllFormed        = "text_ill_formed"
+	TableFixedReasonTruncated            = "truncated"
+	TableFixedReasonReservedNotZero      = "reserved_not_zero"
+)
+
 const (
 	tableFixedCopy uint8 = iota
 	tableFixedCount
@@ -39,13 +61,6 @@ const (
 
 const tableFixedNoGuard uint32 = 0xFFFFFFFF
 const tableFixedEntryBytes int32 = 17
-
-// THE NAMED REFUSALS A COUNT OR TEXT LENGTH PAST THE PLAN'S BOUND ANSWERS
-// (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5): a forged
-// count or length refuses by name before any destination byte is written, so
-// REFUSE stays total — it never clamps (OWNER RULE, 2026-10-15).
-const tableFixedCountOverBound = "count_over_bound"
-const tableFixedLengthOverBound = "length_over_bound"
 
 // THE LAYOUT'S OWN BOUNDS (docs/FIXED-FORM-ALGORITHM.md §1.1). The header is
 // the u32 entry count and nothing else. 65536 is the form's record body bound,
@@ -355,8 +370,12 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 		case tableFixedCount:
 			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 || v > int32(p.Size) {
-				return tableFixedCountOverBound
+			if v < 0 {
+				v = 0
+				report.Clamped++
+			} else if v > int32(p.Size) {
+				v = int32(p.Size)
+				report.Clamped++
 			}
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 		case tableFixedText:
@@ -366,8 +385,12 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 			capn := p.Size / unit
 			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 || uint32(v) > capn {
-				return tableFixedLengthOverBound
+			if v < 0 {
+				v = 0
+				report.Clamped++
+			} else if uint32(v) > capn {
+				v = int32(capn)
+				report.Clamped++
 			}
 			// THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE, and a
 			// violation REFUSES BY NAME, the verdict the packet reader gives
@@ -375,7 +398,7 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			// length above CLAMPS and counts; the bytes it kept are checked now,
 			// over v units and never over the span.
 			if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-				return "text_ill_formed"
+				return TableFixedReasonTextIllFormed
 			}
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 			tableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
@@ -550,16 +573,71 @@ func tableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 	return false
 }
 
+// tableFixedUtf8Ok is the WRITER's string rule over the used bytes: well-formed
+// UTF-8 with no zero byte, the answer unicode/utf8.Valid and a NUL scan give
+// (docs/FIXED-FORM-ALGORITHM.md §3.1, the same rule tableFixedTextIllFormed
+// holds on read). It is one pass, eight bytes a step, with no branch in the
+// loop: z gathers each word's zero-byte test, which is exact (a word has a
+// zero byte if and only if its lane is set), and hi gathers the high bits. A
+// zero refuses; text with no high bit is ASCII and passes; only text with a
+// byte at or past 0x80 goes on to utf8.Valid. The result is identical to the
+// two-pass spelling.
+func tableFixedUtf8Ok(p []byte) bool {
+	var hi, z uint64
+	i := 0
+	for ; i+8 <= len(p); i += 8 {
+		x := tableFixedGet64(p[i:])
+		hi |= x
+		z |= (x - 0x0101010101010101) &^ x
+	}
+	if i < len(p) && len(p) >= 8 {
+		// The tail as one word, overlapping bytes already tested: the test
+		// is the same answer for a byte seen twice.
+		x := tableFixedGet64(p[len(p)-8:])
+		hi |= x
+		z |= (x - 0x0101010101010101) &^ x
+	} else {
+		for ; i < len(p); i++ {
+			c := uint64(p[i])
+			hi |= c
+			z |= (c - 1) &^ c
+		}
+	}
+	if z&0x8080808080808080 != 0 {
+		return false
+	}
+	return hi&0x8080808080808080 == 0 || utf8.Valid(p)
+}
+
+// tableFixedUnitsIllFormed is the WRITER's twin of the wide arm above, over the
+// caller's own wstring storage: the used units are paired UTF-16 with no zero
+// unit (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5).
+func tableFixedUnitsIllFormed(units []uint16) bool {
+	for i := 0; i < len(units); i++ {
+		u := units[i]
+		switch {
+		case u == 0:
+			return true
+		case u >= 0xD800 && u <= 0xDBFF:
+			if i+1 >= len(units) || units[i+1] < 0xDC00 || units[i+1] > 0xDFFF {
+				return true
+			}
+			i++
+		case u >= 0xDC00 && u <= 0xDFFF:
+			return true
+		}
+	}
+	return false
+}
+
 // tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count and
 // text entries, run before the caller's storage is touched. A count or a text
 // length past the PLAN's bound refuses by name — count_over_bound /
 // length_over_bound — and an ill-formed payload refuses text_ill_formed
 // (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11,
-// §5.8 row 8). §5.8: "REFUSE is total: no counter moves, nothing is decoded,
-// and not one destination byte is written — the prefill included", so the check
-// lives here rather than only inside the scatter, where an earlier entry's write
-// would already have landed. It walks each entry under its own guard(s), writes
-// nothing and moves no counter.
+// §5.8 row 8). REFUSE is total: no counter moves, nothing is decoded, and not
+// one destination byte is written. It walks each entry under its own guards,
+// writes nothing and moves no counter.
 func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
 	for i := int32(0); i < count; i++ {
 		p := plan[i]
@@ -579,18 +657,18 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 				return tableFixedCountOverBound
 			}
 		case tableFixedText:
-			unit := uint32(1)
-			if p.Meta == tableFixedTextWide {
-				unit = 2
-			}
-			capn := p.Size / unit
-			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 || uint32(v) > capn {
-				return tableFixedLengthOverBound
-			}
-			if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-				return "text_ill_formed"
-			}
+		unit := uint32(1)
+		if p.Meta == tableFixedTextWide {
+			unit = 2
+		}
+		capn := p.Size / unit
+		v := int32(tableFixedGet32(src[p.Src:]))
+		if v < 0 || uint32(v) > capn {
+			return tableFixedLengthOverBound
+		}
+		if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
+			return "text_ill_formed"
+		}
 		}
 	}
 	return ""
@@ -1416,7 +1494,7 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 		if why != "" {
 			// A lineage entry that is not a layout is a bug in the LOCK, not a
 			// wire event; the reader still owes a name rather than a panic.
-			out[i].Why = "layout_malformed"
+			out[i].Why = TableFixedReasonLayoutMalformed
 			continue
 		}
 		for room := 256; ; room *= 4 {
@@ -1424,16 +1502,16 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 			var census TableReport
 			made := tableFixedCompile(parsed, myLayout, dst, plan, &census)
 			if made == -2 {
-				out[i].Why = "layout_malformed"
+				out[i].Why = TableFixedReasonLayoutMalformed
 				break
 			}
 			if made == -3 {
-				out[i].Why = "layout_record_too_large"
+				out[i].Why = TableFixedReasonLayoutRecordTooLarge
 				break
 			}
 			if made < 0 {
 				if room >= 1<<18 {
-					out[i].Why = "plan_too_large"
+					out[i].Why = TableFixedReasonPlanTooLarge
 					break
 				}
 				continue
