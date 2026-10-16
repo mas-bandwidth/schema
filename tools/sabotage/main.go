@@ -373,8 +373,23 @@ var sabotages = map[string][]edit{
 		old: `	g.hf("        cook = new %sCook(at + dataOffset, (long) dataLength);\n", name)`,
 		new: `	g.hf("        ulong walk = 0; // SABOTAGED: Open walks every word of the region\n")
 	g.hf("        for (ulong i = 0; i < bytes / 8; i++) { walk += ((ulong*) at)[i]; }\n")
-	g.hf("        if (walk == ulong.MaxValue) { return false; }\n")
-	g.hf("        cook = new %sCook(at + dataOffset, (long) dataLength);\n", name)`,
+ 	g.hf("        if (walk == ulong.MaxValue) { return false; }\n")
+ 	g.hf("        cook = new %sCook(at + dataOffset, (long) dataLength);\n", name)`,
+	}},
+
+	// docs/PORTING.md J1: a block or cook SCALAR accessor reads four bytes off
+	// its own offset, so the accessor and the descriptor disagree about the value.
+	"java-agree-accessor-scalar": {{
+		old: "		g.f(\"    public static %s %s(byte[] data, int at) { return %s; }\\n\\n\",\n\t\t\ttyp, name, readCall(typ, fmt.Sprintf(\"at + %d\", pieces[0].Offset)))",
+		new: "		g.f(\"    public static %s %s(byte[] data, int at) { return %s; }\\n\\n\",\n\t\t\ttyp, name, readCall(typ, fmt.Sprintf(\"at + %d + 4 /* SABOTAGED */\", pieces[0].Offset)))",
+	}},
+
+	// docs/PORTING.md J1: a POINTER SLOT's own offset moves eight bytes — the
+	// position a self-relative delta is relative to (§6.3) — so the slot accessor
+	// and the descriptor disagree about where the slot lies.
+	"java-agree-slot-offset": {{
+		old: "		g.f(\"    public static int %sSlot(int at) { return at + %d; }\\n\", name, pieces[0].Offset)",
+		new: "		g.f(\"    public static int %sSlot(int at) { return at + %d + 8 /* SABOTAGED */; }\\n\", name, pieces[0].Offset)",
 	}},
 }
 
