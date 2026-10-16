@@ -259,6 +259,26 @@ func exInt(n int64) string {
 	return sign + b.String()
 }
 
+// exTimes is expr multiplied by n, and expr alone when n is 1: credo's default
+// Credo.Check.Warning.OperationWithConstantResult reports `x * 1` (issue #547).
+func exTimes(expr string, n int64) string {
+	if n == 1 {
+		return expr
+	}
+	return expr + " * " + exInt(n)
+}
+
+// exFixedSlack is the byte count of a fixed array's unused slots, `(bound - n)
+// * elem`, written without the product when elem is 1 (credo's
+// OperationWithConstantResult) and then without the parentheses, which mix
+// format drops.
+func exFixedSlack[B, E int | int64](bound B, n string, elem E) string {
+	if elem == 1 {
+		return fmt.Sprintf("%d - %s", bound, n)
+	}
+	return fmt.Sprintf("(%d - %s) * %d", bound, n, elem)
+}
+
 // exWidth is a line's width in columns as the formatter counts them: runes.
 func exWidth(s string) int { return len([]rune(s)) }
 

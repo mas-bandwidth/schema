@@ -1685,7 +1685,12 @@ func (g *gen) emitReadCounted(f *ir.Field, lv, ind string) {
 	}
 	if elemBits, ok := g.staticBitsScalar(f); ok {
 		if elemBits > 0 {
-			g.throwIf(fmt.Sprintf("bits_read + n * %s > num_bits", intLit64(elemBits)), "", ind)
+			// `n * 1` is credo's OperationWithConstantResult (issue #547).
+			span := "n * " + intLit64(elemBits)
+			if elemBits == 1 {
+				span = "n"
+			}
+			g.throwIf("bits_read + "+span+" > num_bits", "", ind)
 		}
 		helper := g.readHelper(f, true)
 		g.rdBreak()
@@ -2523,7 +2528,13 @@ func (g *gen) emitMeasureField(f *ir.Field, path, ind string, pending *int64) {
 		*pending += countBits
 		if elemBits, ok := g.staticBitsScalar(f); ok {
 			g.flushMeasure(pending, ind)
-			g.pf("%sbits = bits + length(%s) * %s\n", ind, name, intLit64(elemBits))
+			// credo's default Credo.Check.Warning.OperationWithConstantResult
+			// reports `x * 1` (issue #547).
+			if elemBits == 1 {
+				g.pf("%sbits = bits + length(%s)\n", ind, name)
+			} else {
+				g.pf("%sbits = bits + length(%s) * %s\n", ind, name, intLit64(elemBits))
+			}
 			return
 		}
 		g.flushMeasure(pending, ind)

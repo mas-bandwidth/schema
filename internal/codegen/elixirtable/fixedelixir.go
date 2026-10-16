@@ -427,7 +427,7 @@ func (g *fixedGen) writeElements(f *ir.Field, name string, bound, min int64) []w
 	}
 	walk := g.elementWalk(f, name)
 	out = append(out, wseg{stmt: func(col int) []string { return g.assign("acc", walk, col) }})
-	out = append(out, wseg{inline: fmt.Sprintf("0::size((%d - %s) * %d)-unit(8)", bound, n, elem)})
+	out = append(out, wseg{inline: fmt.Sprintf("0::size(%s)-unit(8)", exFixedSlack(bound, n, elem))})
 	return out
 }
 

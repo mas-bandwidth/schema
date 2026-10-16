@@ -419,7 +419,7 @@ defmodule Example.Clauses do
       # the count guards the loop — reject, never clamp
       if v > 20, do: throw(:invalid)
       n = v
-      if bits_read + n * 1 > num_bits, do: throw(:invalid)
+      if bits_read + n > num_bits, do: throw(:invalid)
       {bits_read, v_items} = r_w1_items_align(n, [], data, num_bits, bits_read)
       value = %Example.W1{items: v_items}
       {:ok, value, bits_read}
@@ -442,7 +442,7 @@ defmodule Example.Clauses do
   def measure_w1(value) do
     bits = 0
     bits = bits + 5
-    bits = bits + length(value.items) * 1
+    bits = bits + length(value.items)
     bits
   end
 

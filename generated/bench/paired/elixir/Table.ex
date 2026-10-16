@@ -2531,27 +2531,25 @@ defmodule Bench.Table do
             # a narrower scalar element kind widens and counts once
             # (docs/SPEC-TABLES.md §2.9, §4). Any other disagreement skips
             # the field and counts a kind mismatch.
-            cond do
-              elem_kind == f.elem_kind or kind_widens?(elem_kind, f.elem_kind) ->
-                case leb(count_rest) do
-                  {n, elems} ->
-                    report =
-                      if elem_kind == f.elem_kind do
-                        report
-                      else
-                        %{report | widened: report.widened + 1}
-                      end
+            if elem_kind == f.elem_kind or kind_widens?(elem_kind, f.elem_kind) do
+              case leb(count_rest) do
+                {n, elems} ->
+                  report =
+                    if elem_kind == f.elem_kind do
+                      report
+                    else
+                      %{report | widened: report.widened + 1}
+                    end
 
-                    reader = %{f | elem_kind: elem_kind}
-                    {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
-                    {:cont, value, report} |> clamp_count(f)
+                  reader = %{f | elem_kind: elem_kind}
+                  {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
+                  {:cont, value, report} |> clamp_count(f)
 
-                  :error ->
-                    {:cont, [], %{report | malformed: true}}
-                end
-
-              true ->
-                {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}}
+                :error ->
+                  {:cont, [], %{report | malformed: true}}
+              end
+            else
+              {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}}
             end
 
           _ ->

@@ -564,7 +564,7 @@ func (g *gen) cookAccessors(st *ir.Struct, fl ir.FieldLayout) []string {
 		}
 		out = append(out, fmt.Sprintf("  def %s_node_%s(%s, node) do\n", lo, f.Name, regionParam(f))+
 			fmt.Sprintf("    Enum.map(0..%s//1, fn i -> %s end)\n", exInt(f.ArrayBound-1),
-				g.cookReadAt(f, fmt.Sprintf("node + %s + i * %s", exInt(fl.Offset), exInt(size)), size))+
+				g.cookReadAt(f, fmt.Sprintf("node + %s + %s", exInt(fl.Offset), exTimes("i", int64(size))), size))+
 			"  end\n")
 		return out
 	default:

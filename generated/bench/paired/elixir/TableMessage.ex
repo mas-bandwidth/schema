@@ -182,20 +182,18 @@ defmodule Bench.TableMessage do
     size = byte_size(data)
     count = :binary.decode_unsigned(binary_part(data, size - 8, 8), :little)
 
-    cond do
-      count > div(size - 9, 8) ->
+    if count > div(size - 9, 8) do
+      {:error, :malformed}
+    else
+      start = size - 8 - count * 8
+      body = binary_part(data, 1, start - 1)
+      ids = binary_part(data, start, count * 8)
+
+      if unique_ids?(ids) do
+        {:ok, body, ids}
+      else
         {:error, :malformed}
-
-      true ->
-        start = size - 8 - count * 8
-        body = binary_part(data, 1, start - 1)
-        ids = binary_part(data, start, count * 8)
-
-        if unique_ids?(ids) do
-          {:ok, body, ids}
-        else
-          {:error, :malformed}
-        end
+      end
     end
   end
 

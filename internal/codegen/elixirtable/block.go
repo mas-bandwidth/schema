@@ -582,7 +582,7 @@ func (b *blockGen) rowAccessor(record string, fl ir.FieldLayout, emit func(strin
 				fmt.Sprintf("B.i32(row, %s)", exInt(pieces[len(pieces)-1].Offset))))
 		}
 		emit("  def %s_row_%s(row) do\n    Enum.map(0..%s//1, fn i -> %s end)\n  end\n", lo, f.Name, exInt(count-1),
-			b.readAt(f, fmt.Sprintf("%s + i * %s", exInt(fl.Offset), exInt(size)), size))
+			b.readAt(f, fmt.Sprintf("%s + %s", exInt(fl.Offset), exTimes("i", int64(size))), size))
 	default:
 		size := elementSizeOf(b.unit, f)
 		if f.Type.Optional {

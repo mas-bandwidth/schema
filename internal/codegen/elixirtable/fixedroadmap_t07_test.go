@@ -203,7 +203,7 @@ func t07W1(t *testing.T) {
 	}
 	body := t07Filter(t, out)
 	t07Has(t, body, "0::size(R.text_slack(v_name, 8))-unit(8)", "W1 a short string pads its slack with zeros")
-	t07Has(t, body, "0::size((4 - n_tiers) * 1)-unit(8)", "W1 a short counted array pads its unused slots with zeros")
+	t07Has(t, body, "0::size(4 - n_tiers)-unit(8)", "W1 a short counted array pads its unused slots with zeros")
 	t07Has(t, body, "0::size(8)-unit(8)", "W1 a union's unnamed arm is zeros at the widest width")
 }
 
