@@ -236,6 +236,7 @@ func init() {
 		Name{Name: "tableOpenFramed", What: "the form-1 wire runtime"},
 		Name{Name: "tableKindWidens", What: "the form-1 wire runtime"},
 		Name{Name: "tableUtf8Valid", What: "the form-1 wire runtime"},
+		Name{Name: "tableUtf8Word", What: "the form-1 wire runtime: the writer's word load for its in-line text test (docs/FIXED-FORM-ALGORITHM.md §3.1)"},
 		Name{Name: "tableUtf8Clamp", What: "the form-1 wire runtime"},
 		Name{Name: "tableWidenFloat", What: "the form-1 wire runtime"},
 

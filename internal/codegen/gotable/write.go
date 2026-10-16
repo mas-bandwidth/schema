@@ -319,8 +319,13 @@ func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed b
 		// "Writes are the caller's responsibility"): the reader refuses text that
 		// is not well-formed UTF-8 or holds a NUL, so the writer refuses it too.
 		// The scan is over the USED bytes only, and the storage check above has
-		// already put Length inside 0..N.
-		g.pf("%sif !tableUtf8Valid(%s[:%sLength]) { return false }\n", ind, expr, expr)
+		// already put Length inside 0..N. It is the fixed writer's word test
+		// (emitTextWords), in line because the speed gate measured the call:
+		// a zero byte refuses, ASCII passes, and only text with a byte at or
+		// past 0x80 is asked of tableUtf8Valid.
+		g.pf("%s{\n%s\tn := int(%sLength)\n%s\tvar hi, z uint64\n", ind, ind, expr, ind)
+		g.emitTextWords(expr, f.Type.Size, ind+"\t", "tableUtf8Word", false)
+		g.pf("%s\tif z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(%s[:n]) {\n%s\t\treturn false\n%s\t}\n%s}\n", ind, expr, ind, ind, ind)
 		if framed {
 			g.emitPutLeb(ind, writer, "uint64("+expr+"Length)")
 		}

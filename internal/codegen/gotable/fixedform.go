@@ -675,17 +675,17 @@ func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string
 		g.emitFixedWriteLoop(f, dest, f.ArrayBound, val+"."+member(f), depth, tabs)
 	case f.Array == ir.ArrayCounted:
 		g.pf("%stableFixedPut32(%s, uint32(%s.%sCount))\n", ind, dest, val, member(f))
-		g.emitFixedWriteLoop(f, fmt.Sprintf("%s[%d:]", buf, base+fixedCountBytes), f.ArrayBound, val+"."+member(f), depth, tabs)
+		g.emitFixedWriteLive(f, fmt.Sprintf("%s[%d:]", buf, base+fixedCountBytes), fmt.Sprintf("%s.%sCount", val, member(f)), val+"."+member(f), depth, tabs)
 	case f.Type.Kind == ir.TString:
 		g.pf("%stableFixedPut32(%s, uint32(%s.%sLength))\n", ind, dest, val, member(f))
-		g.pf("%scopy(%s[4:], %s.%s[:])\n", ind, dest, val, member(f))
+		g.pf("%scopy(%s[4:], %s.%s[:min(uint32(%s.%sLength), %d)])\n", ind, dest, val, member(f), val, member(f), f.Type.Size)
 	case f.Type.Kind == ir.TWString:
 		g.pf("%stableFixedPut32(%s, uint32(%s.%sLength))\n", ind, dest, val, member(f))
-		g.pf("%sfor %s := 0; %s < %d; %s++ {\n%s\ttableFixedPut16(%s[4+%s*2:], %s.%s[%s])\n%s}\n",
-			ind, fixedLoopVar(depth), fixedLoopVar(depth), f.Type.Size, fixedLoopVar(depth), ind, dest, fixedLoopVar(depth), val, member(f), fixedLoopVar(depth), ind)
+		g.pf("%sfor %s := uint32(0); %s < min(uint32(%s.%sLength), %d); %s++ {\n%s\ttableFixedPut16(%s[4+%s*2:], %s.%s[%s])\n%s}\n",
+			ind, fixedLoopVar(depth), fixedLoopVar(depth), val, member(f), f.Type.Size, fixedLoopVar(depth), ind, dest, fixedLoopVar(depth), val, member(f), fixedLoopVar(depth), ind)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("%stableFixedPut32(%s, uint32(%s.%sLength))\n", ind, dest, val, member(f))
-		g.pf("%scopy(%s[4:], %s.%s[:])\n", ind, dest, val, member(f))
+		g.pf("%scopy(%s[4:], %s.%s[:min(uint32(%s.%sLength), %d)])\n", ind, dest, val, member(f), val, member(f), f.Type.Size)
 	default:
 		g.emitFixedWriteElement(f, dest, val+"."+member(f), depth, tabs)
 	}
@@ -698,6 +698,74 @@ func (g *tableGen) emitFixedWriteLoop(f *ir.Field, dest string, count int64, exp
 	g.pf("%sfor %s := int64(0); %s < %d; %s++ {\n", ind, loop, loop, count, loop)
 	g.emitFixedWriteElement(f, fmt.Sprintf("%s[%s*%d:]", dest, loop, elem), expr+"["+loop+"]", depth+1, tabs+1)
 	g.pf("%s}\n", ind)
+}
+
+// fixedOwnsSlots is whether a counted array's write zeroes its own slots: an
+// array of structs or unions, whose element slots carry slack of their own. Its
+// slots are zeroed one at a time just before each element's stores, so the
+// slot is hot in cache when they land (the speed gate measured the difference
+// against one template-wide zero), and the dead slots past the count in one
+// clear. An array of scalars is stored whole by its live puts and keeps its
+// dead slots in the template.
+func fixedOwnsSlots(f *ir.Field) bool {
+	if f.Array != ir.ArrayCounted || f.Type.Kind != ir.TNamed {
+		return false
+	}
+	switch f.Type.Ref.(type) {
+	case *ir.Struct, *ir.Union:
+		return true
+	}
+	return false
+}
+
+// emitFixedWriteLive stores a counted array's LIVE extent
+// (docs/FIXED-FORM-ALGORITHM.md §3.1: "Arrays write `count` elements ...
+// never all `Max`"); an array that owns its slots (fixedOwnsSlots) zeroes
+// them too. The count is clamped to 0..Max here only so a caller of the write
+// body itself can never index past the array; <T>FixedSave has already
+// refused a count outside it.
+func (g *tableGen) emitFixedWriteLive(f *ir.Field, dest, count, expr string, depth, tabs int) {
+	ind := strings.Repeat("\t", tabs)
+	elem := fixedElementBytes(f)
+	loop := fixedLoopVar(depth)
+	live := "live" + loop
+	slot := fixedOwnsSlots(f)
+	g.pf("%s{\n", ind)
+	g.pf("%s\t%s := min(max(int64(%s), 0), %d)\n", ind, live, count, f.ArrayBound)
+	g.pf("%s\tfor %s := int64(0); %s < %s; %s++ {\n", ind, loop, loop, live, loop)
+	if slot {
+		g.pf("%s\t\tclear(%s[%s*%d : %s*%d+%d])\n", ind, dest, loop, elem, loop, elem, elem)
+	}
+	g.emitFixedWriteElement(f, fmt.Sprintf("%s[%s*%d:]", dest, loop, elem), expr+"["+loop+"]", depth+1, tabs+2)
+	g.pf("%s\t}\n", ind)
+	if slot {
+		g.pf("%s\tclear(%s[%s*%d : %d])\n", ind, dest, live, elem, f.ArrayBound*elem)
+	}
+	g.pf("%s}\n", ind)
+}
+
+// fixedTemplateRanges is the record body's template-zero ranges for the root
+// save: every byte except the root's own counted arrays that own their slots
+// (fixedOwnsSlots), which emitFixedWriteLive zeroes as it stores them, so the
+// save does not zero them twice. One under an optional stays inside the
+// template, because an absent payload is never stored.
+func fixedTemplateRanges(st *ir.Struct) [][2]int64 {
+	var out [][2]int64
+	at, from := int64(0), int64(0)
+	for _, f := range st.Fields {
+		n := fixedFieldBytes(f)
+		if fixedOwnsSlots(f) && !f.Type.Optional {
+			if at > from {
+				out = append(out, [2]int64{from, at})
+			}
+			from = at + n
+		}
+		at += n
+	}
+	if at > from {
+		out = append(out, [2]int64{from, at})
+	}
+	return out
 }
 
 func (g *tableGen) emitFixedWriteElement(f *ir.Field, dest, expr string, depth, tabs int) {
@@ -759,18 +827,18 @@ func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, dest, arm string, depth,
 		g.emitFixedWriteLoop(f, dest, f.ArrayBound, arm, depth, tabs)
 	case f.Array == ir.ArrayCounted:
 		g.pf("%stableFixedPut32(%s, uint32(%sCount))\n", ind, dest, arm)
-		g.emitFixedWriteLoop(f, fmt.Sprintf("%s[%d:]", dest, fixedCountBytes), f.ArrayBound, arm, depth, tabs)
+		g.emitFixedWriteLive(f, fmt.Sprintf("%s[%d:]", dest, fixedCountBytes), arm+"Count", arm, depth, tabs)
 	case f.Type.Kind == ir.TString:
 		g.pf("%stableFixedPut32(%s, uint32(%sLength))\n", ind, dest, arm)
-		g.pf("%scopy(%s[4:], %s[:])\n", ind, dest, arm)
+		g.pf("%scopy(%s[4:], %s[:min(uint32(%sLength), %d)])\n", ind, dest, arm, arm, f.Type.Size)
 	case f.Type.Kind == ir.TWString:
 		loop := fixedLoopVar(depth)
 		g.pf("%stableFixedPut32(%s, uint32(%sLength))\n", ind, dest, arm)
-		g.pf("%sfor %s := 0; %s < %d; %s++ {\n%s\ttableFixedPut16(%s[4+%s*2:], %s[%s])\n%s}\n",
-			ind, loop, loop, f.Type.Size, loop, ind, dest, loop, arm, loop, ind)
+		g.pf("%sfor %s := uint32(0); %s < min(uint32(%sLength), %d); %s++ {\n%s\ttableFixedPut16(%s[4+%s*2:], %s[%s])\n%s}\n",
+			ind, loop, loop, arm, f.Type.Size, loop, ind, dest, loop, arm, loop, ind)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("%stableFixedPut32(%s, uint32(%sLength))\n", ind, dest, arm)
-		g.pf("%scopy(%s[4:], %s[:])\n", ind, dest, arm)
+		g.pf("%scopy(%s[4:], %s[:min(uint32(%sLength), %d)])\n", ind, dest, arm, arm, f.Type.Size)
 	default:
 		g.emitFixedWriteElement(f, dest, arm, depth, tabs)
 	}
@@ -895,7 +963,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\tat := buffer[TableFixedHeaderBytes+4+len(%sFixedLayout):]\n", st.Name)
 	g.pf("\tfor k := range values {\n")
 	g.pf("\t\ttableFixedPut64(at, %sFixedHash)\n", st.Name)
-	g.pf("\t\tclear(at[8 : 8+%sFixedBodyBytes])\n", st.Name)
+	if ranges := fixedTemplateRanges(st); len(ranges) == 1 && ranges[0] == [2]int64{0, fixedTypeBytes(st)} {
+		g.pf("\t\tclear(at[8 : 8+%sFixedBodyBytes])\n", st.Name)
+	} else {
+		for _, r := range ranges {
+			g.pf("\t\tclear(at[%d:%d])\n", 8+r[0], 8+r[1])
+		}
+	}
 	g.pf("\t\t%sFixedWriteBody(at[8:], &values[k])\n", st.Name)
 	g.pf("\t\tat = at[%sFixedRecordBytes:]\n", st.Name)
 	g.pf("\t}\n\treturn need\n}\n\n")
@@ -1053,7 +1127,7 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 	g.pf("func %sFixedClampBody(value *%s, clamped *int32) {\n", st.Name, st.Name)
 	g.pf("\t_, _ = value, clamped\n")
 	for _, f := range st.Fields {
-		g.emitFixedClampField(f, "value", 1, false)
+		g.emitFixedClampField(f, "value", 1, fixedPassClamp)
 	}
 	g.pf("}\n\n")
 }
@@ -1072,11 +1146,65 @@ func (g *tableGen) emitFixedCheckBodyFn(st *ir.Struct) {
 	}
 	g.pf("// %s's write-side contract (docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.\n", st.Name)
 	g.pf("func %sFixedCheckBody(value *%s) bool {\n", st.Name, st.Name)
+	text := fixedDirectText(st)
+	if text {
+		// z and hi are the whole body's zero-byte and high-bit tests
+		// (emitFixedTextCheck), gathered across every string and asked once.
+		g.pf("\tvar z, hi uint64\n")
+	} else {
+		g.pf("\t_ = value\n")
+	}
+	for _, f := range st.Fields {
+		g.emitFixedClampField(f, "value", 1, fixedPassCheck)
+	}
+	if !text {
+		g.pf("\treturn true\n}\n\n")
+		return
+	}
+	g.pf("\tif z&0x8080808080808080 != 0 {\n\t\treturn false\n\t}\n")
+	g.pf("\tif hi&0x8080808080808080 != 0 {\n\t\treturn %sFixedCheckBodyExact(value)\n\t}\n", st.Name)
+	g.pf("\treturn true\n}\n\n")
+	g.pf("// %sFixedCheckBodyExact is %sFixedCheckBody with each string asked by\n", st.Name, st.Name)
+	g.pf("// tableFixedUtf8Ok: the answer for text with a byte at or past 0x80 (§3.1).\n")
+	g.pf("func %sFixedCheckBodyExact(value *%s) bool {\n", st.Name, st.Name)
 	g.pf("\t_ = value\n")
 	for _, f := range st.Fields {
-		g.emitFixedClampField(f, "value", 1, true)
+		g.emitFixedClampField(f, "value", 1, fixedPassExact)
 	}
 	g.pf("\treturn true\n}\n\n")
+}
+
+// fixedDirectText is whether the check body of st asks a string's text rule
+// itself: a string field, under an optional or in a union arm (at any depth of
+// unions, whose arms are emitted in line), but not inside a nested struct,
+// which has a check body of its own.
+func fixedDirectText(st *ir.Struct) bool {
+	for _, f := range st.Fields {
+		if fixedFieldText(f, map[*ir.Union]bool{}) {
+			return true
+		}
+	}
+	return false
+}
+
+func fixedFieldText(f *ir.Field, seen map[*ir.Union]bool) bool {
+	if f.Type.Kind == ir.TString {
+		return true
+	}
+	if f.Type.Kind != ir.TNamed {
+		return false
+	}
+	u, ok := f.Type.Ref.(*ir.Union)
+	if !ok || seen[u] {
+		return false
+	}
+	seen[u] = true
+	for _, v := range u.Variants {
+		if v.F != nil && fixedFieldText(v.F, seen) {
+			return true
+		}
+	}
+	return false
 }
 
 // fixedCheckNeededStruct is TableFixedClampNeeded widened to what only a
@@ -1143,52 +1271,79 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	g.pf("\treport.Clamped += clamped\n}\n\n")
 }
 
-// The pass below is written once and emitted twice. chk=false is the READ
-// side's clamp (every violation is repaired and counted); chk=true is the
-// WRITE side's check (every violation is a `return false`). Both walk the same
-// extent and hold the same bounds, because both come from scalarBounds.
-func (g *tableGen) emitFixedClampField(f *ir.Field, val string, tabs int, chk bool) {
+// fixedPass is which of the passes below is being emitted.
+type fixedPass int
+
+const (
+	// fixedPassClamp is the READ side's bounds pass: every violation is
+	// repaired and counted.
+	fixedPassClamp fixedPass = iota
+	// fixedPassCheck is the WRITE side's check (<T>FixedCheckBody): every
+	// violation is a `return false`, and a string's text rule is the in-line
+	// word test of emitFixedTextCheck.
+	fixedPassCheck
+	// fixedPassExact is the same check with each string asked exactly, one
+	// tableFixedUtf8Ok per string (<T>FixedCheckBodyExact): the fast pass
+	// hands a body to it only when some used byte is at or past 0x80.
+	fixedPassExact
+)
+
+// The pass below is written once and emitted for each fixedPass. The clamp
+// and the checks walk the same extent and hold the same bounds, because both
+// come from scalarBounds.
+func (g *tableGen) emitFixedClampField(f *ir.Field, val string, tabs int, pass fixedPass) {
+	chk := pass != fixedPassClamp
 	if !fixedBoundNeeded(f, chk) {
 		return
 	}
 	ind := strings.Repeat("\t", tabs)
 	if f.Type.Optional {
 		g.pf("%sif %s.%sPresent {\n", ind, val, member(f))
-		g.emitFixedClampPayload(f, val, tabs+1, chk)
+		g.emitFixedClampPayload(f, val, tabs+1, pass)
 		g.pf("%s}\n", ind)
 		return
 	}
-	g.emitFixedClampPayload(f, val, tabs, chk)
+	g.emitFixedClampPayload(f, val, tabs, pass)
 }
 
-func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, tabs int, chk bool) {
+func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, tabs int, pass fixedPass) {
+	chk := pass != fixedPassClamp
 	ind := strings.Repeat("\t", tabs)
 	elem := *f
 	elem.Array, elem.KeyEnum = ir.ArrayNone, ""
-	loop := func(count string) {
+	loop := func(count string, down bool) {
 		if chk && !fixedCheckNeededField(&elem, map[string]bool{}) {
 			return
 		}
-		g.pf("%sfor i := int64(0); i < %s; i++ {\n", ind, count)
-		g.emitFixedClampElement(f, fmt.Sprintf("%s.%s[i]", val, member(f)), tabs+1, chk)
+		if down {
+			// THE CHECK WALKS A COUNTED ARRAY DOWN (docs/FIXED-FORM-ALGORITHM.md
+			// §3.1): every live element is checked either way, and ending on
+			// the FIRST elements leaves them in cache for the store, which
+			// walks up (measured by TestGoTableWriterSpeedTable).
+			g.pf("%sfor i := %s - 1; i >= 0; i-- {\n", ind, count)
+		} else {
+			g.pf("%sfor i := int64(0); i < %s; i++ {\n", ind, count)
+		}
+		g.emitFixedClampElement(f, fmt.Sprintf("%s.%s[i]", val, member(f)), tabs+1, pass)
 		g.pf("%s}\n", ind)
 	}
 	switch {
 	case f.KeyEnum != "":
-		loop(fmt.Sprint(f.KeyEnumRef.Max))
+		loop(fmt.Sprint(f.KeyEnumRef.Max), false)
 	case f.Array == ir.ArrayFixed:
-		loop(fmt.Sprint(f.ArrayBound))
+		loop(fmt.Sprint(f.ArrayBound), false)
 	case f.Array == ir.ArrayCounted:
 		if chk {
 			g.pf("%sif %s.%sCount < 0 || %s.%sCount > %d { return false }\n", ind, val, member(f), val, member(f), f.ArrayBound)
 		}
-		loop(fmt.Sprintf("int64(%s.%sCount)", val, member(f)))
+		loop(fmt.Sprintf("int64(%s.%sCount)", val, member(f)), chk)
 	default:
-		g.emitFixedClampElement(f, val+"."+member(f), tabs, chk)
+		g.emitFixedClampElement(f, val+"."+member(f), tabs, pass)
 	}
 }
 
-func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int, chk bool) {
+func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int, pass fixedPass) {
+	chk := pass != fixedPassClamp
 	ind := strings.Repeat("\t", tabs)
 	// bound repairs one violated bound in the read pass and refuses it in the
 	// write pass; both is the same condition.
@@ -1250,7 +1405,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int, chk
 				arm := *v.F
 				arm.Name = v.Name
 				g.pf("%scase %sType%s:\n", ind, f.Type.Name, ir.GoExportName(v.Name))
-				g.emitFixedClampField(&arm, expr, tabs+1, chk)
+				g.emitFixedClampField(&arm, expr, tabs+1, pass)
 			}
 			g.pf("%s}\n", ind)
 			return
@@ -1268,8 +1423,12 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int, chk
 	if chk {
 		switch f.Type.Kind {
 		case ir.TString:
-			g.pf("%sif %sLength < 0 || %sLength > %d || !tableFixedUtf8Ok(%s[:%sLength]) { return false }\n",
-				ind, expr, expr, f.Type.Size, expr, expr)
+			if pass == fixedPassCheck {
+				g.emitFixedTextCheck(expr, f.Type.Size, ind)
+			} else {
+				g.pf("%sif uint32(%sLength) > %d || !tableFixedUtf8Ok(%s[:%sLength]) { return false }\n",
+					ind, expr, f.Type.Size, expr, expr)
+			}
 			return
 		case ir.TWString:
 			g.pf("%sif %sLength < 0 || %sLength > %d || tableFixedUnitsIllFormed(%s[:%sLength]) { return false }\n",
@@ -1285,6 +1444,63 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int, chk
 	if b, ok := scalarWidthBound(f, expr); ok {
 		bound([]scalarBound{b})
 	}
+}
+
+// emitFixedTextCheck is the WRITER's string rule for one string(N) field
+// (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/USAGE.md "Writes are the caller's
+// responsibility"): a length outside 0..N refuses, and the used bytes must be
+// well-formed UTF-8 with no NUL. It is emitted in line rather than called,
+// because the speed gate measured the call. Eight bytes a step: z (the check
+// body's own, asked once at its end) gathers each word's zero-byte test
+// (exact: a word has a zero byte if and only if some lane of (x-0x01..)&^x has
+// its high bit set), and hi (the body's own too) gathers the high bits.
+// The last partial word is read whole from the field's own storage: when
+// n >= 8 it overlaps used bytes already tested, and when n < 8 it is masked to
+// the used bytes, with 0x01 (neither zero nor high) in the lanes past n. A
+// zero anywhere refuses; text with no high bit anywhere is ASCII and passes;
+// a body with a byte at or past 0x80 is asked again by its exact twin, one
+// tableFixedUtf8Ok per string. The answer is exactly utf8.Valid plus a NUL
+// scan over the used bytes of every string.
+func (g *tableGen) emitFixedTextCheck(expr string, size int64, ind string) {
+	g.pf("%sif n := int(%sLength); uint(n) > %d {\n%s\treturn false\n%s} else {\n", ind, expr, size, ind, ind)
+	g.emitTextWords(expr, size, ind+"\t", "tableFixedGet64", true)
+	g.pf("%s}\n", ind)
+}
+
+// emitTextWords is the word test both writers share (emitFixedTextCheck,
+// emitWireValue): over p := expr[:n], with n already inside 0..size, it ORs
+// each word's zero-byte test into z and its high bits into hi, both declared by
+// the caller. get is the unit's little-endian 64-bit load. masked says the
+// last partial word of a string shorter than a word may be read whole from the
+// field's own storage (a fixed string(N) of N >= 8 always may); otherwise
+// that tail is tested a byte at a time.
+func (g *tableGen) emitTextWords(expr string, size int64, in, get string, masked bool) {
+	const ones = "0x0101010101010101"
+	g.pf("%sp := %s[:n]\n", in, expr)
+	if size >= 16 {
+		g.pf("%sfor len(p) >= 16 {\n", in)
+		g.pf("%s\tx, y := %s(p), %s(p[8:])\n", in, get, get)
+		g.pf("%s\thi |= x | y\n", in)
+		g.pf("%s\tz |= (x-%s)&^x | (y-%s)&^y\n", in, ones, ones)
+		g.pf("%s\tp = p[16:]\n%s}\n", in, in)
+	}
+	if size < 8 {
+		g.pf("%sfor _, c := range p {\n%s\tx := uint64(c)\n%s\thi |= x\n%s\tz |= (x - 1) &^ x\n%s}\n", in, in, in, in, in)
+		return
+	}
+	g.pf("%sif len(p) >= 8 {\n%s\tx := %s(p)\n%s\thi |= x\n%s\tz |= (x - %s) &^ x\n%s\tp = p[8:]\n%s}\n",
+		in, in, get, in, in, ones, in, in)
+	g.pf("%sif len(p) > 0 {\n", in)
+	if masked {
+		g.pf("%s\tvar x uint64\n", in)
+		g.pf("%s\tif n >= 8 {\n%s\t\tx = %s(%s[n-8:])\n", in, in, get, expr)
+		g.pf("%s\t} else {\n%s\t\tm := uint64(1)<<(8*uint(n)) - 1\n%s\t\tx = %s(%s[:])&m | %s&^m\n%s\t}\n", in, in, in, get, expr, ones, in)
+		g.pf("%s\thi |= x\n%s\tz |= (x - %s) &^ x\n", in, in, ones)
+	} else {
+		g.pf("%s\tif n >= 8 {\n%s\t\tx := %s(%s[n-8:])\n%s\t\thi |= x\n%s\t\tz |= (x - %s) &^ x\n", in, in, get, expr, in, in, ones)
+		g.pf("%s\t} else {\n%s\t\tfor _, c := range p {\n%s\t\t\tx := uint64(c)\n%s\t\t\thi |= x\n%s\t\t\tz |= (x - 1) &^ x\n%s\t\t}\n%s\t}\n", in, in, in, in, in, in, in)
+	}
+	g.pf("%s}\n", in)
 }
 
 // fixedArmNeeded is whether ANY arm's payload needs this pass: the clamp's

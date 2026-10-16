@@ -515,6 +515,11 @@ func (r *TableReader) Signed(kind uint8) int64 {
  switch tableKindBytes(kind) { case 1: return int64(int8(r.Get8())); case 2: return int64(int16(r.Get16())); case 4: return int64(int32(r.Get32())); default: return int64(r.Get64()) }
 }
 
+// tableUtf8Word is the form-1 writer's little-endian word load for its in-line
+// text test (emitTextWords): a function of the runtime file, which imports
+// encoding/binary, so the generated writers in any file of the unit can call it.
+func tableUtf8Word(p []byte) uint64 { return binary.LittleEndian.Uint64(p) }
+
 func tableUtf8Valid(data []byte) bool {
 	// One pass, eight bytes a step: z gathers the zero-byte test of every word
 	// (exact: a word has a zero byte if and only if its lane is set), hi gathers

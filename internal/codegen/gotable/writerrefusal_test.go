@@ -319,6 +319,173 @@ func TestFixedShapes(t *testing.T) {
 }
 `)
 	})
+	// THE TEXT RULE AND THE LIVE EXTENT. Both writers' string rule is an in-line
+	// word test (emitTextWords; the fixed writer's with an exact twin behind it),
+	// so it is held here to its definition, utf8.Valid plus a NUL scan over the
+	// used bytes, on many seeded strings at every length 0..N of fields narrower
+	// than a word, one word wide and many words wide, at every live position,
+	// through the fixed save and the form-1 save of the same value. And the
+	// writer stores the LIVE extent only (docs/FIXED-FORM-ALGORITHM.md §3.1:
+	// "Arrays write `count` elements and text and bytes `length` units, never all
+	// `Max`"): the caller's storage past a length and past the count, and the
+	// output buffer, are stained, and every slack byte on the wire is zero.
+	t.Run("fixed-text-and-extent", func(t *testing.T) {
+		t.Parallel()
+		runGenerated(t, `package probe
+fixed table Entry {
+    kind string(5)
+    card string(37)
+    at   int64
+}
+fixed table Log {
+    cursor string(16)
+    done   [..6]Entry
+}
+`, `package probe
+import (
+	"bytes"
+	"math/rand"
+	"testing"
+	"unicode/utf8"
+)
+
+// alphabet leans on the bytes the rule turns on: NUL, ASCII edges, UTF-8
+// leads and continuations, surrogate and overlong starts, and 0xff.
+var alphabet = []byte{0x00, 'a', 'z', 0x01, 0x7f, 0x80, 0xbf, 0xc2, 0xc3, 0xa9, 0xe2, 0x82, 0xac, 0xed, 0xa0, 0xf0, 0x9f, 0x98, 0x80, 0xf4, 0x90, 0xc0, 0xff}
+
+func text(r *rand.Rand, n int) []byte {
+	p := make([]byte, n)
+	for i := range p {
+		if r.Intn(3) == 0 {
+			p[i] = alphabet[r.Intn(len(alphabet))]
+		} else {
+			p[i] = byte('a' + r.Intn(26))
+		}
+	}
+	// some strings are made lawful on purpose, so both verdicts are common
+	if r.Intn(2) == 0 {
+		p = bytes.ToValidUTF8(bytes.ReplaceAll(p, []byte{0}, []byte{'0'}), []byte("\u00e9"))
+		if len(p) > n {
+			p = p[:n]
+			for len(p) > 0 && !utf8.Valid(p) {
+				p = p[:len(p)-1]
+			}
+		}
+	}
+	return p
+}
+
+func lawful(p []byte) bool { return utf8.Valid(p) && bytes.IndexByte(p, 0) < 0 }
+
+func lawfulLog(count int) Log {
+	var v Log
+	LogReset(&v)
+	v.CursorLength = int32(copy(v.Cursor[:], "c-1"))
+	v.DoneCount = int32(count)
+	for i := 0; i < count; i++ {
+		e := &v.Done[i]
+		e.KindLength = int32(copy(e.Kind[:], "w"))
+		e.CardLength = int32(copy(e.Card[:], "card"))
+		e.At = int64(i)
+	}
+	return v
+}
+
+func TestFixedTextRule(t *testing.T) {
+	r := rand.New(rand.NewSource(20261016))
+	buf := make([]byte, LogFixedMeasure(1))
+	vbuf := make([]byte, 1<<16)
+	set := func(dst []byte, n *int32, p []byte) {
+		for i := range dst {
+			dst[i] = 0x5A // the stain past the used bytes: never asked
+		}
+		*n = int32(copy(dst, p))
+	}
+	seen := map[bool]int{}
+	for trial := 0; trial < 20000; trial++ {
+		v := lawfulLog(1 + r.Intn(6))
+		var p []byte
+		switch field, at := r.Intn(3), r.Intn(int(v.DoneCount)); field {
+		case 0:
+			p = text(r, r.Intn(17))
+			set(v.Cursor[:], &v.CursorLength, p)
+		case 1:
+			p = text(r, r.Intn(6))
+			set(v.Done[at].Kind[:], &v.Done[at].KindLength, p)
+		default:
+			p = text(r, r.Intn(38))
+			set(v.Done[at].Card[:], &v.Done[at].CardLength, p)
+		}
+		want := lawful(p)
+		seen[want]++
+		n := LogFixedSave([]Log{v}, buf)
+		if got := n == int64(len(buf)); got != want {
+			t.Fatalf("trial %d: text % x: the writer said %v (returned %d), utf8.Valid plus the NUL scan says %v", trial, p, got, n, want)
+		}
+		if vn := LogSave(&v, vbuf); (vn > 0) != want {
+			t.Fatalf("trial %d: text % x: the form-1 writer returned %d, utf8.Valid plus the NUL scan says %v", trial, p, vn, want)
+		}
+		if !want {
+			if _, err := LogFixedSaveReason([]Log{v}, buf); err != TableRefuseInvalidValue {
+				t.Fatalf("trial %d: text % x is refused, but not by name: %v", trial, p, err)
+			}
+		}
+	}
+	if seen[true] < 1000 || seen[false] < 1000 {
+		t.Fatalf("the trials did not exercise both verdicts: %v", seen)
+	}
+}
+
+func TestFixedWriterStoresTheLiveExtent(t *testing.T) {
+	if LogFixedBodyBytes != 20+4+6*58 {
+		t.Fatalf("the record body moved (%d bytes), so the offsets below are stale", LogFixedBodyBytes)
+	}
+	v := lawfulLog(2)
+	// the caller's storage is stained past every length and past the count
+	for i := int(v.CursorLength); i < len(v.Cursor); i++ {
+		v.Cursor[i] = 0x5A
+	}
+	for k := range v.Done {
+		e := &v.Done[k]
+		for i := int(e.KindLength); i < len(e.Kind); i++ {
+			e.Kind[i] = 0x5A
+		}
+		for i := int(e.CardLength); i < len(e.Card); i++ {
+			e.Card[i] = 0x5A
+		}
+	}
+	v.Done[4].At = 0x5A5A5A5A
+	buf := bytes.Repeat([]byte{0x5A}, int(LogFixedMeasure(1)))
+	if n := LogFixedSave([]Log{v}, buf); n != int64(len(buf)) {
+		t.Fatalf("the lawful log did not save: %d", n)
+	}
+	body := buf[len(buf)-LogFixedRecordBytes+8:]
+	zero := func(what string, b []byte) {
+		t.Helper()
+		for i, c := range b {
+			if c != 0 {
+				t.Fatalf("%s: slack byte %d is %#x; a stain reached the wire (§3.1: the live extent only, on a zeroed template)", what, i, c)
+			}
+		}
+	}
+	zero("cursor past its length", body[4+3:20])
+	for k := 0; k < 2; k++ {
+		e := body[24+58*k:]
+		zero("kind past its length", e[4+1:9])
+		zero("card past its length", e[9+4+4:9+41])
+	}
+	zero("the dead slots past the count", body[24+58*2:])
+	got := make([]Log, 1)
+	var rep TableReport
+	if n := LogFixedLoad(got, buf, make([]TableFixedEntry, 256), &rep); n != 1 || rep != (TableReport{}) {
+		t.Fatalf("the log did not reload clean: %d %+v", n, rep)
+	}
+	if got[0].DoneCount != 2 || string(got[0].Done[1].Card[:got[0].Done[1].CardLength]) != "card" || got[0].Done[1].At != 1 {
+		t.Fatalf("the live extent did not round-trip: %+v", got[0].Done[:2])
+	}
+}
+`)
+	})
 	t.Run("variable-shapes", func(t *testing.T) {
 		t.Parallel()
 		runGenerated(t, `package probe
