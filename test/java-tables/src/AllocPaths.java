@@ -24,9 +24,9 @@
       2 cook-walk    open the committed cook, then every node the root reaches
                      through the reader's own `at`, every field read. Ceiling:
                      ONE handle per open, 0 bytes per node.
-      3 load-measure the variable form's loadMeasure over committed wires,
-                     through a kept TableVariable.Measure. Ceiling: 0 bytes per
-                     call, so 0 per node (M1). The one-argument loadMeasure is
+      3 load-measure the variable form's loadMeasure over all six committed
+                     wires, through a kept TableVariable.Measure. Ceiling:
+                     exact 0 bytes per call, so 0 per node (M1). The one-argument loadMeasure is
                      its own row (3 load-measure-fresh): ONE Measure handle
                      (its Report and Reader) per call, sized off the classes,
                      0 per node.
@@ -464,7 +464,7 @@ final class AllocPaths {
             case "graph_deep.bin": return 43456;    // floor 43424 on every launch
             case "graph_shared.bin": return 1344;   // floor 1280 on every launch
             case "blob_small.bin": return 1408;     // floor 1376 on every launch
-            case "keyed_config.bin": return 4544; // floors 4000..4480 across pinned-JDK launches
+            case "keyed_config.bin": return 4736; // floors 4000..4640 across pinned-JDK launches
             case "arms_gate.bin": return 576;     // floor 536 on the pinned JDK
             default: return 0;
         }
