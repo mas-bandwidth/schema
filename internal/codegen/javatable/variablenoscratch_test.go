@@ -37,6 +37,9 @@ func TestVariableSaveAndMeasureOwnNoScratchJava(t *testing.T) {
 					"public static void measureNodes(Reader r, Measure m, long align) {",
 					"public void frame(int start) {",
 					"public void frameField(int start, long ref, int kind) {",
+					"public void frameBody(int start, int drop) {",
+					"public void frameEntry(int start, long key, int drop) {",
+					"public void frameKeyed(int start, int kind, int count) {",
 					"public void putUtf8(String s) {",
 				} {
 					body := javaMethodBody(t, name, src, sig)
@@ -71,6 +74,46 @@ func TestVariableSaveAndMeasureOwnNoScratchJava(t *testing.T) {
 		}
 		if codecs == 0 {
 			t.Fatalf("%s: no <Table>Variable.java emitted", dir)
+		}
+	}
+}
+
+// TestVariableKeyedAndUnionSaveNoScratch pins the paths covered by the
+// keyed_config.bin and arms_gate.bin allocation rows. The broader examples
+// package has other, unrelated allocation forms, so check these methods by
+// their emitted boundaries rather than applying the graph-only assertions to
+// every example codec.
+func TestVariableKeyedAndUnionSaveNoScratch(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		dir, file string
+		methods   []string
+	}{
+		{"examples", "KeyedConfigVariable.java", []string{"static void writeKeyedField_", "static int writeKeyedPayload_", "static boolean isDefault(Value v,TableVariable.Writer w,TableVariable.NodeGraph graph)"}},
+		{"arms", "ReachVariable.java", []string{"static void writePayload(TableVariable.Writer w,TableVariable.NodeGraph graph,Value v)"}},
+	} {
+		u := unitFromDir(t, filepath.Join("..", "..", "..", "tables", tc.dir))
+		files, err := Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		src := string(files[tc.file])
+		if src == "" {
+			t.Fatalf("%s: no generated %s", tc.dir, tc.file)
+		}
+		for _, method := range tc.methods {
+			at := strings.Index(src, method)
+			if at < 0 {
+				t.Errorf("%s: missing %s", tc.file, method)
+				continue
+			}
+			end := strings.Index(src[at:], "\n    static ")
+			if end < 0 {
+				end = len(src) - at
+			}
+			if strings.Contains(src[at:at+end], "new byte[1 << 20]") {
+				t.Errorf("%s: %s allocates a scratch array", tc.file, method)
+			}
 		}
 	}
 }

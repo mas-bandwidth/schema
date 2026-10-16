@@ -315,6 +315,42 @@ public int unknown;
             off += k;
         }
 
+        // frameBody replaces a payload's optional leading L with its actual
+        // length. Union arms write directly into the Saver buffer (§3).
+        public void frameBody(int start, int drop) {
+            int len = off - start - drop;
+            int k = lebLen(len);
+            if (k > drop && !room(k - drop)) { return; }
+            System.arraycopy(buf, start + drop, buf, start + k, len);
+            putLebAt(start, len);
+            off = start + k + len;
+        }
+
+        // A keyed entry is its key reference, its length, then the value's
+        // unframed payload (§3.2). It uses the Saver buffer in place.
+        public void frameEntry(int start, long key, int drop) {
+            int len = off - start - drop;
+            int k = lebLen(key) + lebLen(len);
+            if (k > drop && !room(k - drop)) { return; }
+            System.arraycopy(buf, start + drop, buf, start + k, len);
+            int at = putLebAt(start, key);
+            putLebAt(at, len);
+            off = start + k + len;
+        }
+
+        // The keyed payload's L covers its element kind, count and entries.
+        public void frameKeyed(int start, int kind, int count) {
+            int entries = off - start;
+            int length = 1 + lebLen(count) + entries;
+            int k = lebLen(length) + 1 + lebLen(count);
+            if (!room(k)) { return; }
+            System.arraycopy(buf, start, buf, start + k, entries);
+            int at = putLebAt(start, length);
+            buf[at++] = (byte) kind;
+            putLebAt(at, count);
+            off += k;
+        }
+
         // putUtf8 writes one string as L then its UTF-8 bytes, byte for byte
         // what String.getBytes(UTF_8) spells (a lone surrogate is '?'), with no
         // byte[] of its own.
@@ -1908,7 +1944,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	}
 	b.WriteString("    }\n\n")
 
-	b.WriteString("    static boolean isDefault(Value v){if(v==null)return true;TableVariable.Writer w=new TableVariable.Writer(new byte[1<<20],new TableVariable.Ids(64));writeFields(w,new TableVariable.NodeGraph(),v);return w.off==0;}\n\n")
+	b.WriteString("    static boolean isDefault(Value v,TableVariable.Writer w,TableVariable.NodeGraph graph){if(v==null)return true;int at=w.off;int mark=w.ids.count;boolean overflow=w.overflow;writeFields(w,graph,v);boolean empty=w.off==at;w.off=at;w.ids.count=mark;w.overflow=overflow;return empty;}\n\n")
 	// writeFields
 	fmt.Fprintf(&b, "    public static void writeFields(TableVariable.Writer w, TableVariable.NodeGraph graph, Value v) {\n")
 	for _, f := range st.Fields {

@@ -35,7 +35,7 @@ func variableDefaultTest(f *ir.Field, expr string) string {
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Struct:
-			return f.Type.Name + "Variable.isDefault(" + expr + ")"
+			return f.Type.Name + "Variable.isDefault(" + expr + ",w,graph)"
 		case *ir.Union:
 			return expr + ".tag==0"
 		}
@@ -71,14 +71,14 @@ func writeVariableKeyedHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "    static void readJsonSlot_%s(TableJson.In in,Slot_%s v){\n", m, m)
 		readJsonFieldValue(b, u, st, one)
 		b.WriteString("    }\n")
-		fmt.Fprintf(b, "    static void writeKeyedField_%s(TableVariable.Writer w,TableVariable.NodeGraph graph,List<%s> slots){int mark=w.ids.count;long ref=w.ref(F_%s);TableVariable.Writer body=w.sub(new byte[1<<20]);int count=writeKeyedPayload_%s(body,graph,slots);if(count>0){w.putLeb(ref);w.put8(16);w.putBytes(body.buf,0,body.off);}else w.ids.count=mark;}\n", m, boxed, m, m)
+		fmt.Fprintf(b, "    static void writeKeyedField_%s(TableVariable.Writer w,TableVariable.NodeGraph graph,List<%s> slots){int at=w.off;int mark=w.ids.count;long ref=w.ref(F_%s);w.putLeb(ref);w.put8(16);int count=writeKeyedPayload_%s(w,graph,slots);if(count==0){w.off=at;w.ids.count=mark;}}\n", m, boxed, m, m)
 		for _, retaining := range []bool{false, true} {
 			suffix, args := "", ""
 			if retaining {
 				suffix = "Retain"
 				args = ",TableRetain retain,TableVariable.Report report,int[] path,int depth"
 			}
-			fmt.Fprintf(b, "    static int writeKeyedPayload%s_%s(TableVariable.Writer w,TableVariable.NodeGraph graph,List<%s> slots%s){TableVariable.Writer entries=w.sub(new byte[1<<20]);int count=0;\n", suffix, m, boxed, args)
+			fmt.Fprintf(b, "    static int writeKeyedPayload%s_%s(TableVariable.Writer w,TableVariable.NodeGraph graph,List<%s> slots%s){int entries=w.off;int count=0;\n", suffix, m, boxed, args)
 			for i := range f.KeyEnumRef.Variants {
 				expr := fmt.Sprintf("slots.get(%d)", i)
 				defaultTest := variableDefaultTest(one, expr)
@@ -86,33 +86,33 @@ func writeVariableKeyedHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 				if retainedBody {
 					defaultTest = "false"
 				}
-				fmt.Fprintf(b, "        if(slots.size()>%d&&!(%s)){int idsMark=entries.ids.count;long key=entries.ref(0x%016xL);TableVariable.Writer body=entries.sub(new byte[1<<20]);\n", i, defaultTest, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)))
+				fmt.Fprintf(b, "        if(slots.size()>%d&&!(%s)){int idsMark=w.ids.count;long key=w.ref(0x%016xL);int body=w.off;\n", i, defaultTest, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)))
 				if retaining {
 					fmt.Fprintf(b, "path[2*depth]=0;path[2*depth+1]=0;\n")
 					// The caller assigns the holder field and slot at depth-1.
 					fmt.Fprintf(b, "path[2*(depth-1)+1]=%d;\n", i)
-					writeVariableRetainedPayload(b, u, st.Name, one, expr, "body", 0, "depth+1")
+					writeVariableRetainedPayload(b, u, st.Name, one, expr, "w", 0, "depth+1")
 				} else {
-					writeVariablePayload(b, u, st.Name, one, expr, "body", 0)
+					writeVariablePayload(b, u, st.Name, one, expr, "w", 0)
 				}
 				if retainedBody {
-					b.WriteString("if(body.off>1){")
+					b.WriteString("if(w.off>body+1){")
 				}
-				fmt.Fprintf(b, "        int start=%s;entries.putLeb(key);entries.putLeb(body.off-start);entries.putBytes(body.buf,start,body.off-start);count++;", variablePayloadStart(one, "body"))
+				fmt.Fprintf(b, "        w.frameEntry(body,key,%s);count++;", variablePayloadStart(one, "w", "body"))
 				if retainedBody {
-					b.WriteString("}else entries.ids.count=idsMark;")
+					b.WriteString("}else{w.off=body;w.ids.count=idsMark;}")
 				}
 				b.WriteString("}\n")
 			}
-			fmt.Fprintf(b, "        w.putLeb(1+TableVariable.lebLen(count)+entries.off);w.put8(%d);w.putLeb(count);w.putBytes(entries.buf,0,entries.off);return count;}\n", ir.TableWireElemKind(f))
+			fmt.Fprintf(b, "        w.frameKeyed(entries,%d,count);return count;}\n", ir.TableWireElemKind(f))
 		}
 	}
 }
 
-func variablePayloadStart(f *ir.Field, w string) string {
+func variablePayloadStart(f *ir.Field, w, start string) string {
 	switch ir.TableWireFieldKind(f) {
 	case 12, 13, 14, 16, 33:
-		return "TableVariable.lebEnd(" + w + ".buf,0," + w + ".off)"
+		return "TableVariable.lebEnd(" + w + ".buf," + start + "," + w + ".off)-" + start
 	}
 	return "0"
 }

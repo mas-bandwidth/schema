@@ -464,6 +464,8 @@ final class AllocPaths {
             case "graph_deep.bin": return 43456;    // floor 43424 on every launch
             case "graph_shared.bin": return 1344;   // floor 1280 on every launch
             case "blob_small.bin": return 1408;     // floor 1376 on every launch
+            case "keyed_config.bin": return 4544; // floors 4000..4480 across pinned-JDK launches
+            case "arms_gate.bin": return 576;     // floor 536 on the pinned JDK
             default: return 0;
         }
     }
@@ -481,6 +483,30 @@ final class AllocPaths {
                             + handleBytes(blobdemo.TableVariable.Reader.class),
                     b -> blobdemo.CatalogVariable.load(b, new blobdemo.TableVariable.Report()),
                     v -> blobdemo.CatalogVariable.save((blobdemo.CatalogVariable.Value) v, saver),
+                    () -> saver.graph.nodeCount());
+        }
+        if (name.equals("keyed_config.bin")) {
+            tabledemo.TableVariable.Measure m = new tabledemo.TableVariable.Measure();
+            tabledemo.TableVariable.Saver saver = new tabledemo.TableVariable.Saver();
+            return new Wire(name, bytes, b -> tabledemo.KeyedConfigVariable.loadMeasure(b, m),
+                    tabledemo.KeyedConfigVariable::loadMeasure, () -> m.nodeRecords,
+                    handleBytes(tabledemo.TableVariable.Measure.class)
+                            + handleBytes(tabledemo.TableVariable.Report.class)
+                            + handleBytes(tabledemo.TableVariable.Reader.class),
+                    b -> tabledemo.KeyedConfigVariable.load(b, new tabledemo.TableVariable.Report()),
+                    v -> tabledemo.KeyedConfigVariable.save((tabledemo.KeyedConfigVariable.Value) v, saver),
+                    () -> saver.graph.nodeCount());
+        }
+        if (name.equals("arms_gate.bin")) {
+            armdemo.TableVariable.Measure m = new armdemo.TableVariable.Measure();
+            armdemo.TableVariable.Saver saver = new armdemo.TableVariable.Saver();
+            return new Wire(name, bytes, b -> armdemo.GateVariable.loadMeasure(b, m),
+                    armdemo.GateVariable::loadMeasure, () -> m.nodeRecords,
+                    handleBytes(armdemo.TableVariable.Measure.class)
+                            + handleBytes(armdemo.TableVariable.Report.class)
+                            + handleBytes(armdemo.TableVariable.Reader.class),
+                    b -> armdemo.GateVariable.load(b, new armdemo.TableVariable.Report()),
+                    v -> armdemo.GateVariable.save((armdemo.GateVariable.Value) v, saver),
                     () -> saver.graph.nodeCount());
         }
         graphdemo.TableVariable.Measure m = new graphdemo.TableVariable.Measure();
