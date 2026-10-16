@@ -64,6 +64,8 @@ static int failures = 0;
 // Measure, the indexed and iterated reads and Save on the richest root must
 // leave the count where they found it. The control plants one allocation and
 // requires the count to move, so a gate that is watching nothing fails.
+// This is ONE pass; test/tables/soak_main.cpp carries the same counter over a
+// loop for SOAK_SECONDS (`make tables-cpp-soak`, docs/PORTING.md I9).
 static std::atomic<long long> table_allocations( 0 );
 
 void * operator new( size_t bytes )

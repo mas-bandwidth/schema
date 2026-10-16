@@ -221,7 +221,7 @@
     {
       "name": "base-cook",
       "when": "pull-request",
-      "why": "the cook's controls, the blob span and read hooks, and the C leg's fuzz, soak and keyed refusal: one cooked corpus, built once, that every one of them reads. Measured 34 s over 11 controls.",
+      "why": "the cook's controls, the blob span and read hooks, the C leg's fuzz, soak and keyed refusal, and the C++ soak's control beside its C twin: one cooked corpus, built once, that every one of them reads, and the same generated tables tree the C++ soak compiles. Measured 34 s over 11 controls, plus 22 s for tables-cpp-soak-negative-control on the Linux bench (hetzner2, 17 s of it the compile; it goes red on its first sample).",
       "targets": [
         "tables-blob-read-hooks-negative-control",
         "tables-blob-span-negative-control",
@@ -230,6 +230,7 @@
         "tables-c-keyed-none-refusal-negative-control",
         "tables-c-keyed-max-refusal-negative-control",
         "tables-c-soak-negative-control",
+        "tables-cpp-soak-negative-control",
         "tables-cook-fuzz-negative-control",
         "tables-cook-open-lengths-negative-control",
         "tables-cook-open-root-negative-control",

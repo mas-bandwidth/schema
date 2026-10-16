@@ -1199,7 +1199,9 @@ instrument that sees retention. Two seconds ride `make test`; the hour is the
 release act.
 
 **Reference.** `test/c-tables/soak_main.c:262-334` (allocator calls counted
-over the measured loop); `test/go-tables/soak_test.go:216-264` (`Mallocs`
+over the measured loop); `test/tables/soak_main.cpp` (the counting global
+`operator new`, and the C allocator's entry points on glibc, read at every
+sample); `test/go-tables/soak_test.go:216-264` (`Mallocs`
 with site classification); `test/js-tables/main.mjs:1457` (the rate before and after).
 
 **Proven in.** C.
@@ -1208,14 +1210,15 @@ with site classification); `test/js-tables/main.mjs:1457` (the rate before and a
 the Rust one is what made the audit's count exact.
 
 **Negative control.** A matched `malloc`/`free` pair per iteration
-(`tables-c-soak-negative-control`): the drift gate stays silent and the count
-goes red.
+(`tables-c-soak-negative-control`), and a matched `new`/`delete` pair in
+C++ (`tables-cpp-soak-negative-control`, a `-DSCHEMA_SOAK_PLANT_PAIR` build):
+the drift gate stays silent and the count goes red.
 
 **Targets:** soak
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #416 | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #416 (`tables-rust-soak` gates on the count; nothing runs it) | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ❌ #416 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
+| ✅ `tables-cpp-soak` `tables-cpp-soak-negative-control` | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #416 (`tables-rust-soak` gates on the count; nothing runs it) | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ❌ #416 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
 
 ### I10 — The zero-cost gate
 
