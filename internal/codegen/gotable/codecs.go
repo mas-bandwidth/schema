@@ -855,10 +855,10 @@ func scalarRangeBounds(f *ir.Field, expr string) []scalarBound {
 	switch {
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
 		lo, hi := formatFloat32(f.FMin), formatFloat32(f.FMax)
-		return []scalarBound{{expr + " < " + lo, lo}, {expr + " > " + hi, hi}}
+		return []scalarBound{{expr + " != " + expr, lo}, {expr + " < " + lo, lo}, {expr + " > " + hi, hi}}
 	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
 		lo, hi := formatFloat64(f.FMin), formatFloat64(f.FMax)
-		return []scalarBound{{expr + " < " + lo, lo}, {expr + " > " + hi, hi}}
+		return []scalarBound{{expr + " != " + expr, lo}, {expr + " < " + lo, lo}, {expr + " > " + hi, hi}}
 	case f.Type.Kind == ir.TNamed:
 		return nil
 	}
