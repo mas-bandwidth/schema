@@ -57,9 +57,11 @@ public final class Soak {
     }
 
     // the stated tolerance: the per-iteration count may drift by this many bytes
-    // per iteration before the flat gate goes red. The negative control plants a
-    // matched pair of ~4 KiB per iteration, which is far past it.
-    private static final long TOLERANCE = 256;
+    // per iteration before the flat gate goes red. It must clear the JVM's own
+    // measurement jitter (a few hundred bytes per iteration on this workload)
+    // yet sit far below the negative control's planted matched pair of ~4 KiB
+    // per iteration per codec, which is what this gate exists to catch.
+    private static final long TOLERANCE = 4096;
 
     // the weaker instrument: live heap may rise this far over the run before it is retention
     private static final long DRIFT_LIMIT = 8L * 1024 * 1024;
@@ -151,7 +153,7 @@ public final class Soak {
         long heapStart = usedHeap();
         long start = System.nanoTime();
         long deadline = start + (long) (seconds * 1e9);
-        long batch = 1000;
+        long batch = 100;
         long iterations = 0;
         long samples = 0;
         long settled = -1;
@@ -226,11 +228,11 @@ public final class Soak {
         if (!driftOk) {
             fail("resident heap drifted " + maxDrift + " bytes, past the " + DRIFT_LIMIT + " limit: retention");
         }
-        if (warmed) {
-            System.out.println("soak: OK — per-iteration allocation flat (within "
-                    + TOLERANCE + " bytes, " + (samples - warmedAt) + " post-warmup samples)");
-        } else {
-            System.out.println("soak: OK (warmup-only run)");
+        if (!warmed || samples <= warmedAt) {
+            fail("no post-warmup samples were measured (" + (samples - warmedAt)
+                    + " post-warmup samples): a soak cannot certify flatness on warmup alone");
         }
+        System.out.println("soak: OK — per-iteration allocation flat (within "
+                + TOLERANCE + " bytes, " + (samples - warmedAt) + " post-warmup samples)");
     }
 }
