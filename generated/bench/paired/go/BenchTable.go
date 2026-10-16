@@ -503,6 +503,7 @@ const (
 	TableRefuseMalformed
 	TableRefuseClamped
 	TableRefuseKindMismatch
+	TableRefuseBase64Damaged
 )
 
 func (r TableRefuseReason) Error() string {
@@ -547,6 +548,8 @@ func (r TableRefuseReason) Error() string {
 		return "clamped"
 	case TableRefuseKindMismatch:
 		return "kind_mismatch"
+	case TableRefuseBase64Damaged:
+		return "base64_damaged"
 	}
 	return "invalid refusal reason"
 }
@@ -1237,6 +1240,7 @@ type TableMessageReader struct {
 type TableMessageWriter struct {
 	TableBitWriter
 	IndexBits int64
+	Clamped   int32
 }
 
 const TableFixedForm uint8 = 3
@@ -6061,12 +6065,17 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			}
 			{
 				v := math.Float32frombits(r.Get32())
-				if v < -1.0 {
+				if v != v {
+					v = -1.0
+					r.Report.Clamped++
+				} else if v < -1.0 {
 					v = -1.0
 					r.Report.Clamped++
 				} else if v > 1.0 {
 					v = 1.0
 					r.Report.Clamped++
+				} else if v == 0 {
+					v = 0
 				}
 				value.AimX = v
 			}
@@ -6085,12 +6094,17 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			}
 			{
 				v := math.Float32frombits(r.Get32())
-				if v < -1.0 {
+				if v != v {
+					v = -1.0
+					r.Report.Clamped++
+				} else if v < -1.0 {
 					v = -1.0
 					r.Report.Clamped++
 				} else if v > 1.0 {
 					v = 1.0
 					r.Report.Clamped++
+				} else if v == 0 {
+					v = 0
 				}
 				value.AimY = v
 			}
@@ -6109,12 +6123,17 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			}
 			{
 				v := math.Float32frombits(r.Get32())
-				if v < -1.0 {
+				if v != v {
+					v = -1.0
+					r.Report.Clamped++
+				} else if v < -1.0 {
 					v = -1.0
 					r.Report.Clamped++
 				} else if v > 1.0 {
 					v = 1.0
 					r.Report.Clamped++
+				} else if v == 0 {
+					v = 0
 				}
 				value.AimZ = v
 			}
