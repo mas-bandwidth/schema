@@ -5,6 +5,29 @@
 > ([BENCH-STANDARD §5](../bench/BENCH-STANDARD.md#5-reporting-format)). The tables below
 > are kept exactly as published, in their recorded convention (C++ = 100%).
 
+## 2026-10-16: tables, the fixed form's read, Rust against C++ (#358)
+
+#358 said Rust tables read at 0.72x of C++. That number is the
+[2026-09-03 pairing check](../bench/tables/results/2026-09-03-rust-inline-arm64-macbook.md)
+on the TOLERANT wire, a form-1 codec that the Rust backend no longer emits for a fixed table.
+Today's Rust surface is the fixed form (form 3), through `bench/tables/rust` and
+`bench/paired`'s build. On it, two interleaved sittings on amd-2 put **Rust's derived read at
+1.364x the clang build and 1.764x the g++ build, then 1.394x and 1.767x**. Per-round ranges
+are [1.347, 1.460] / [1.719, 1.794] and [1.306, 1.437] / [1.704, 1.789]. The round trip is
+1.50–1.53x and 2.19x. amd-2 is a Ryzen 7 255, pinned to core 7, with 11 rounds per sitting
+and 4,000,000 records per sample. Both windows are certified **OK** by BENCH-STANDARD §2.6's
+start and end C++ control legs: the deltas are 0.03% and 0.14%, the four controls sit within
+0.4% of each other, load1 stayed under 1.3 including the pinned leg, and no build or bench
+process ran ([raw rows, controls and verdicts](../bench/results/2026-10-16-rust-tables-read-amd-2/)).
+Earlier sittings on a shared hetzner2 (1.43x and 1.70x) carry no window verdict and are kept
+only as a diagnostic. The line-level profile is in
+[docs/notes/rust-tables-read-profile.md](notes/rust-tables-read-profile.md). The difference
+is the read-side range clamp pass. In C++ it is a scalar loop that keeps its `int32_t &`
+counter in memory, because the counter may alias the value. In Rust it is vectorized, because
+`&mut` cannot alias. In its own certified sitting, marking the C++ counters `__restrict` makes
+the clang read 1.215x faster and leaves g++ unchanged (1.019x). No Rust emitter change was
+made: there is no Rust gap to close.
+
 ## 2026-09-07: the Studio's nine-language table, and what moved since the Air's
 
 The first table of the day on the new node pin was a sitting on the Apple M3 Ultra Studio

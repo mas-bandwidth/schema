@@ -1,0 +1,43 @@
+# pmu: b2 2026-10-16T03:17:07Z load 0.69 0.95 1.00
+start,write,6394583
+start,round_trip,3065592
+## table-rust
+schema tables bench (rust, Release, the FIXED FORM)
+bench_fixed        write           26.312 M msg/s    31725.1 MB/s   (min 26.312, max 26.312, spread 0.0%)
+bench_fixed        round_trip       5.531 M msg/s     6668.5 MB/s   (min 5.531, max 5.531, spread 0.0%)
+bench_fixed        read             7.003 M msg/s   (DERIVED: round-trip minus write, informational — not a measured row)
+OK (corpus_id 066b2822b3e5d487, sink nonzero)
+8623779461,,cycles,1464060742,83.00,,
+36407501518,,instructions,1464247755,83.00,,
+4030446462,,branches,1464133606,83.00,,
+2407971,,branch-misses,1464286197,83.00,,
+12756616443,,L1-dcache-loads,1464219666,83.00,,
+1036393097,,L1-dcache-load-misses,1464708154,83.00,,
+## table-cpp-clang
+schema tables bench (cpp, Release)
+bench_fixed        write           13.283 M msg/s    16015.7 MB/s   (min 13.283, max 13.283, spread 0.0%)
+bench_fixed        round_trip       3.536 M msg/s     4264.0 MB/s   (min 3.536, max 3.536, spread 0.0%)
+bench_fixed        read             4.820 M msg/s   (DERIVED: round-trip minus write, informational — not a measured row)
+OK (corpus_id 066b2822b3e5d487)
+14057549407,,cycles,2380941825,83.00,,
+56140386443,,instructions,2380895030,83.00,,
+6132025682,,branches,2381400332,83.00,,
+14931096,,branch-misses,2381612866,83.00,,
+25550208535,,L1-dcache-loads,2381229892,83.00,,
+1011964526,,L1-dcache-load-misses,2381073995,83.00,,
+## table-cpp-gcc
+schema tables bench (cpp, Release)
+bench_fixed        write            7.017 M msg/s     8460.6 MB/s   (min 7.017, max 7.017, spread 0.0%)
+bench_fixed        round_trip       2.524 M msg/s     3043.3 MB/s   (min 2.524, max 2.524, spread 0.0%)
+bench_fixed        read             3.942 M msg/s   (DERIVED: round-trip minus write, informational — not a measured row)
+OK (corpus_id 066b2822b3e5d487)
+21235486523,,cycles,3594762502,83.00,,
+74826421765,,instructions,3597601682,83.00,,
+5125828174,,branches,3596581406,83.00,,
+10050932,,branch-misses,3595740840,83.00,,
+34419384569,,L1-dcache-loads,3596705194,83.00,,
+1011335380,,L1-dcache-load-misses,3594656366,83.00,,
+end,write,6399526
+end,round_trip,3050716
+# end 2026-10-16T03:17:26Z load 0.85 0.97 1.00
+# top >5% at end:

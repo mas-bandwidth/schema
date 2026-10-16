@@ -1,0 +1,13 @@
+02:49:40 start load1=1.83 buildbench=0 above5%:
+02:49:55 round-1 load1=1.64 buildbench=1 above5%: 1735719:cc1plus:15.8
+02:50:05 round-2 load1=1.62 buildbench=0 above5%:
+02:50:15 round-3 load1=1.48 buildbench=0 above5%:
+02:50:25 round-4 load1=1.41 buildbench=0 above5%:
+02:50:36 round-5 load1=1.43 buildbench=0 above5%:
+02:50:46 round-6 load1=1.43 buildbench=0 above5%:
+02:50:56 round-7 load1=1.45 buildbench=1 above5%: 1738220:cc1plus:100.0
+02:51:06 round-8 load1=1.77 buildbench=0 above5%:
+02:51:16 round-9 load1=1.81 buildbench=1 above5%: 1739259:table-c:13.9
+02:51:27 round-10 load1=1.84 buildbench=1 above5%: 1739308:dotnet:64.4
+02:51:37 round-11 load1=1.94 buildbench=1 above5%: 1739559:packet-go:91.1
+02:51:43 end load1=1.95 buildbench=1 above5%: 1739593:dotnet:100.0

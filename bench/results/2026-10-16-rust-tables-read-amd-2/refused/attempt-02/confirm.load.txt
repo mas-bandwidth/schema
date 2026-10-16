@@ -1,0 +1,13 @@
+03:05:15 start load1=1.12 buildbench=0 above5%:
+03:05:30 round-1 load1=1.02 buildbench=0 above5%:
+03:05:40 round-2 load1=0.94 buildbench=0 above5%: 1776227:shapegate:101.0
+03:05:51 round-3 load1=1.11 buildbench=1 above5%: 1776728:cc1plus:100.0
+03:06:01 round-4 load1=1.17 buildbench=0 above5%:
+03:06:11 round-5 load1=1.14 buildbench=0 above5%:
+03:06:21 round-6 load1=1.28 buildbench=0 above5%:
+03:06:31 round-7 load1=1.56 buildbench=0 above5%:
+03:06:41 round-8 load1=1.47 buildbench=0 above5%:
+03:06:51 round-9 load1=1.40 buildbench=0 above5%:
+03:07:01 round-10 load1=1.34 buildbench=0 above5%:
+03:07:11 round-11 load1=1.28 buildbench=0 above5%:
+03:07:17 end load1=1.26 buildbench=0 above5%:

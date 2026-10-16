@@ -1,0 +1,77 @@
+# python3 -I tools/summarize.py <csv> REF OTHER... (read is DERIVED: 1/(1/round_trip - 1/write))
+## base.csv
+binary            path        median M/s  ns/rec   min     max    spread%
+table-rust        write         26.933     37.1  26.596  27.105    1.9
+table-rust        round_trip     5.552    180.1   5.397   5.572    3.1
+table-rust        read           7.001    142.8   6.758   7.026    3.8
+table-cpp-clang   write         13.302     75.2  13.165  13.366    1.5
+table-cpp-clang   round_trip     3.693    270.8   3.502   3.711    5.7
+table-cpp-clang   read           5.117    195.4   4.762   5.151    7.6
+table-cpp-gcc     write          7.064    141.6   6.873   7.077    2.9
+table-cpp-gcc     round_trip     2.534    394.6   2.505   2.541    1.4
+table-cpp-gcc     read           3.961    252.4   3.885   4.015    3.3
+
+table-rust/table-cpp-clang write       2.020 [1.990, 2.056]  n=11
+table-rust/table-cpp-clang round_trip  1.503 [1.479, 1.579]  n=11
+table-rust/table-cpp-clang read        1.364 [1.347, 1.460]  n=11
+table-rust/table-cpp-gcc write       3.837 [3.763, 3.896]  n=11
+table-rust/table-cpp-gcc round_trip  2.190 [2.137, 2.213]  n=11
+table-rust/table-cpp-gcc read        1.764 [1.719, 1.794]  n=11
+
+## confirm.csv
+binary            path        median M/s  ns/rec   min     max    spread%
+table-rust        write         27.093     36.9  26.957  27.175    0.8
+table-rust        round_trip     5.561    179.8   5.389   5.580    3.4
+table-rust        read           6.992    143.0   6.728   7.035    4.4
+table-cpp-clang   write         13.286     75.3  12.510  13.375    6.5
+table-cpp-clang   round_trip     3.624    275.9   3.553   3.709    4.3
+table-cpp-clang   read           5.046    198.2   4.861   5.151    5.7
+table-cpp-gcc     write          7.055    141.7   7.031   7.076    0.6
+table-cpp-gcc     round_trip     2.535    394.5   2.517   2.542    1.0
+table-cpp-gcc     read           3.956    252.8   3.920   3.971    1.3
+
+table-rust/table-cpp-clang write       2.038 [2.026, 2.169]  n=11
+table-rust/table-cpp-clang round_trip  1.534 [1.457, 1.563]  n=11
+table-rust/table-cpp-clang read        1.394 [1.306, 1.437]  n=11
+table-rust/table-cpp-gcc write       3.836 [3.811, 3.859]  n=11
+table-rust/table-cpp-gcc round_trip  2.194 [2.127, 2.210]  n=11
+table-rust/table-cpp-gcc read        1.767 [1.704, 1.789]  n=11
+
+## exp-restrict.csv, Rust against each C++ build
+binary            path        median M/s  ns/rec   min     max    spread%
+table-rust        write         26.904     37.2  26.598  27.174    2.1
+table-rust        round_trip     5.535    180.7   5.385   5.574    3.4
+table-rust        read           6.950    143.9   6.752   7.029    4.0
+table-cpp-clang   write         13.378     74.7  13.328  13.392    0.5
+table-cpp-clang   round_trip     3.664    273.0   3.599   3.716    3.2
+table-cpp-clang   read           5.045    198.2   4.922   5.143    4.4
+exp-cpp-clang-restrictwrite         13.333     75.0  13.279  13.375    0.7
+exp-cpp-clang-restrictround_trip     4.236    236.1   4.080   4.291    5.0
+exp-cpp-clang-restrictread           6.208    161.1   5.885   6.319    7.0
+table-cpp-gcc     write          7.056    141.7   7.014   7.072    0.8
+table-cpp-gcc     round_trip     2.536    394.4   2.524   2.536    0.5
+table-cpp-gcc     read           3.956    252.8   3.930   3.972    1.0
+exp-cpp-gcc-restrictwrite          7.058    141.7   6.515   7.076    7.9
+exp-cpp-gcc-restrictround_trip     2.547    392.6   2.530   2.561    1.2
+exp-cpp-gcc-restrictread           4.013    249.2   3.939   4.213    6.8
+
+table-rust/table-cpp-clang write       2.012 [1.987, 2.035]  n=7
+table-rust/table-cpp-clang round_trip  1.512 [1.457, 1.532]  n=7
+table-rust/table-cpp-clang read        1.380 [1.322, 1.410]  n=7
+table-rust/exp-cpp-clang-restrict write       2.013 [1.989, 2.033]  n=7
+table-rust/exp-cpp-clang-restrict round_trip  1.298 [1.271, 1.352]  n=7
+table-rust/exp-cpp-clang-restrict read        1.116 [1.088, 1.180]  n=7
+table-rust/table-cpp-gcc write       3.813 [3.761, 3.852]  n=7
+table-rust/table-cpp-gcc round_trip  2.191 [2.127, 2.198]  n=7
+table-rust/table-cpp-gcc read        1.768 [1.712, 1.780]  n=7
+table-rust/exp-cpp-gcc-restrict write       3.812 [3.767, 4.131]  n=7
+table-rust/exp-cpp-gcc-restrict round_trip  2.178 [2.103, 2.193]  n=7
+table-rust/exp-cpp-gcc-restrict read        1.732 [1.668, 1.772]  n=7
+
+## exp-restrict.csv, each __restrict build against its own base build
+exp-cpp-clang-restrict/table-cpp-clang write       0.996 [0.993, 1.003]  n=7
+exp-cpp-clang-restrict/table-cpp-clang round_trip  1.146 [1.114, 1.182]  n=7
+exp-cpp-clang-restrict/table-cpp-clang read        1.215 [1.166, 1.269]  n=7
+exp-cpp-gcc-restrict/table-cpp-gcc write       0.998 [0.929, 1.001]  n=7
+exp-cpp-gcc-restrict/table-cpp-gcc round_trip  1.006 [0.998, 1.012]  n=7
+exp-cpp-gcc-restrict/table-cpp-gcc read        1.019 [0.996, 1.061]  n=7
