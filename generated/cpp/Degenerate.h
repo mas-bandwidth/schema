@@ -2,11 +2,16 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xeb26c970fde3fd71
 
 #pragma once
 
 #include <cstdint>
+
+#include "Types.h"
+
+// native type mapping (cpp_native, SPEC §4.2): the hand types storage speaks
+#include "vec_math.h"
 
 namespace example {
 
@@ -94,6 +99,14 @@ struct TrioSole {
 
 inline constexpr int64_t TrioSoleMaxBits = 64; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t TrioSoleMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
+
+// type Vec3Sole
+struct Vec3Sole {
+    ::VecMath v;
+};
+
+inline constexpr int64_t Vec3SoleMaxBits = 192; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t Vec3SoleMaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 // type TrioFirst
 struct TrioFirst {

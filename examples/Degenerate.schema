@@ -107,6 +107,18 @@ type TrioSole
     inner Trio
 }
 
+// A struct from ANOTHER file as the only field: Types.schema's Vec3, and the
+// corpus's one reference to it from outside its declaring file. That is what
+// makes its cpp_native mapping ride (SPEC §4.2, Native type mapping):
+// generated C++ Degenerate.h includes vec_math.h and stores ::VecMath, while
+// inside Types.h the mapping is off because the hand type derives from that
+// header (#675). Three float64s are a whole number of bytes, and Vec3's own
+// serializer in Types writes them, so no float-bits helper reaches this file.
+type Vec3Sole
+{
+    v Vec3
+}
+
 // A nested struct as the FIRST field.
 type TrioFirst
 {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xeb26c970fde3fd71
 
 #pragma once
 
@@ -11,6 +11,7 @@
 #include "serialize.h"
 
 #include "Degenerate.h"
+#include "TypesWire.h"
 
 namespace example {
 
@@ -238,6 +239,24 @@ SCHEMA_WRITE_INLINE bool WriteTrioSole( serialize::WriteStream & stream, const T
 SCHEMA_READ_INLINE bool ReadTrioSole( serialize::ReadStream & stream, TrioSole & value )
 {
     if ( !ReadTrio( stream, value.inner ) )
+    {
+        return false;
+    }
+    return true;
+}
+
+SCHEMA_WRITE_INLINE bool WriteVec3Sole( serialize::WriteStream & stream, const Vec3Sole & value )
+{
+    if ( !WriteVec3( stream, value.v ) )
+    {
+        return false;
+    }
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadVec3Sole( serialize::ReadStream & stream, Vec3Sole & value )
+{
+    if ( !ReadVec3( stream, value.v ) )
     {
         return false;
     }

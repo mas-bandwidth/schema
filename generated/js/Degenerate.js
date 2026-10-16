@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xeb26c970fde3fd71
+
+import { InitVec3, ReadVec3, Vec3, WriteVec3, ZeroVec3 } from "./Types.js";
 
 // Scratch holders for the runtime's {value} refs — single threaded per
 // realm, always consumed in the same call that fills them.
@@ -469,6 +471,42 @@ export function WriteTrioSole(stream, value) {
 
 export function ReadTrioSole(stream, value) {
   if (!ReadTrio(stream, value.Inner)) {
+    return false;
+  }
+  return true;
+}
+
+// type Vec3Sole
+export class Vec3Sole {
+  constructor() {
+    this.V = new Vec3();
+  }
+}
+
+// Vec3SoleMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// Vec3SoleMaxBytes is rounded up to the 8-byte write-buffer granularity.
+export const Vec3SoleMaxBits = 192;
+export const Vec3SoleMaxBytes = 24;
+
+// InitVec3Sole restores fresh construction values in place, preserving storage.
+export function InitVec3Sole(value) {
+  InitVec3(value.V);
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
+export function ZeroVec3Sole(value) {
+  ZeroVec3(value.V);
+}
+
+export function WriteVec3Sole(stream, value) {
+  if (!WriteVec3(stream, value.V)) {
+    return false;
+  }
+  return true;
+}
+
+export function ReadVec3Sole(stream, value) {
+  if (!ReadVec3(stream, value.V)) {
     return false;
   }
   return true;
