@@ -48,16 +48,19 @@ const fixedNoGuard = -1
 // WIDTH; §7 fix 12). An entry under no guard carries 1, and zero reads as one at
 // run time, so a plan laid down before this lane existed still reads.
 type fixedPlanEntry struct {
-	op    int
-	src   int64
-	dst   int64
-	size  int64
-	aux   int64
-	guard int64
-	arg   int
-	argw  int
-	meta  int
-	note  string
+	op     int
+	src    int64
+	dst    int64
+	size   int64
+	aux    int64
+	guard  int64
+	arg    int
+	argw   int
+	meta   int
+	guard2 int64
+	arg2   int
+	argw2  int
+	note   string
 }
 
 type fixedPlanBuild struct {
@@ -68,9 +71,15 @@ type fixedPlanBuild struct {
 	argw int
 }
 
+// push appends one entry to the plan builder, defaulting guard2 to fixedNoGuard
+// and argw2 to 1 (docs/FIXED-FORM-ALGORITHM.md §4.1).
 func (p *fixedPlanBuild) push(e fixedPlanEntry) {
 	if e.argw = p.argw; e.argw <= 0 {
 		e.argw = 1
+	}
+	if e.guard2 == 0 && e.argw2 == 0 {
+		e.guard2 = fixedNoGuard
+		e.argw2 = 1
 	}
 	p.entries = append(p.entries, e)
 }
@@ -155,6 +164,10 @@ func fixedPlanElement(p *fixedPlanBuild, f *ir.Field, src, dst, guard int64, arg
 			// the tag, then every arm under its own tag value. An arm the tag
 			// does not name is not moved, which is what leaves the slack behind
 			// a narrower arm as the prefill put it.
+			// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO
+			// (docs/FIXED-FORM-ALGORITHM.md §4.1): each arm walks with
+			// fixedNoGuard, and entries an inner union already guarded receive
+			// this union's tag on guard2/arg2/argw2 instead of overwriting guard.
 			tag := fixedUnionTagBytes(r)
 			p.push(fixedPlanEntry{op: fixedOpCopy, src: src, dst: dst, size: tag,
 				guard: guard, arg: arg, note: "the tag"})
@@ -165,15 +178,29 @@ func fixedPlanElement(p *fixedPlanBuild, f *ir.Field, src, dst, guard int64, arg
 				if v.F == nil {
 					continue // §3.4: the tag is copied; this arm has no payload to move.
 				}
+				guardAt := len(p.entries)
 				if v.F.Array == ir.ArrayNone && v.F.KeyEnum == "" && !v.F.Type.Optional {
 					if _, ok := v.F.Type.Ref.(*ir.Struct); ok {
 						// Nested record arms keep the established storage walk,
 						// whose child offsets follow the union's wire address.
-						fixedPlanElement(p, v.F, src+tag, dst+tag, src, i+1)
-						continue
+						fixedPlanElement(p, v.F, src+tag, dst+tag, fixedNoGuard, 0)
+					} else {
+						fixedPlanSub(p, v.F, src+tag, fixedNoGuard, 0)
+					}
+				} else {
+					fixedPlanSub(p, v.F, src+tag, fixedNoGuard, 0)
+				}
+				for q := guardAt; q < len(p.entries); q++ {
+					if p.entries[q].guard == fixedNoGuard {
+						p.entries[q].guard = src
+						p.entries[q].arg = i + 1
+						p.entries[q].argw = int(tag)
+					} else {
+						p.entries[q].guard2 = src
+						p.entries[q].arg2 = i + 1
+						p.entries[q].argw2 = int(tag)
 					}
 				}
-				fixedPlanSub(p, v.F, src+tag, src, i+1)
 			}
 			p.argw = saved
 			return
@@ -299,7 +326,8 @@ func fixedCoalesce(in []fixedPlanEntry) ([]fixedPlanEntry, int) {
 			if n := len(out); n > split {
 				p := &out[n-1]
 				if p.op == fixedOpCopy && e.op == fixedOpCopy && p.guard == e.guard && p.arg == e.arg &&
-					p.argw == e.argw && p.src+p.size == e.src && p.dst+p.size == e.dst {
+					p.argw == e.argw && p.guard2 == e.guard2 && p.arg2 == e.arg2 && p.argw2 == e.argw2 &&
+					p.src+p.size == e.src && p.dst+p.size == e.dst {
 					p.size += e.size
 					continue
 				}
