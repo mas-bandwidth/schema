@@ -1223,7 +1223,7 @@ func (b readArmBoard) markdown() string {
 	w.WriteString("\nleg      identity read    plan read    packet read    GATE identity  GATE plan    plan/identity\n")
 	w.WriteString("         ns/record        ns/record    ns/record      vs packet      vs packet    x (reported)\n")
 	ratio := "—"
-	if planMeasured && len(b.Identity.Samples) > 0 {
+	if planMeasured && b.windowOK() && len(b.Identity.Samples) > 0 {
 		ratio = fmt.Sprintf("%.2f", b.Plan.BestNs/b.Identity.BestNs)
 	}
 	fmt.Fprintf(&w, "%-8s %12s %12s %14s    %-14s %-12s %s\n", leg, nsCell(b.Identity), nsCell(b.Plan), nsCell(b.Packet), b.GateIdentity, b.GatePlan, ratio)

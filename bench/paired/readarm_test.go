@@ -399,4 +399,7 @@ func TestReadArmCSharp(t *testing.T) {
 	if strings.Contains(invalid, " PASS ") || strings.Contains(invalid, " FAIL ") || !strings.Contains(invalid, "The window is INVALID") {
 		t.Errorf("an INVALID window printed a verdict:\n%s", invalid)
 	}
+	if strings.Contains(invalid, "1.10") || !strings.Contains(invalid, "(window INVALID) —\n") {
+		t.Errorf("an INVALID window printed a plan/identity ratio:\n%s", invalid)
+	}
 }
