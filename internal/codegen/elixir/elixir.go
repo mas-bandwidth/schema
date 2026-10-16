@@ -124,13 +124,18 @@ func checkNames(u *ir.Unit) error {
 		}
 		if _, isTable := u.Tables[decl]; isTable {
 			// Tables are deliberately absent from the packet wire (ir.go:
-			// Tables) and lower to modules in the TABLE backend, under that
-			// backend's own suffix rules (docs/SPEC-TABLES.md §11); a table
-			// named after its schema file is that backend's collision to
-			// refuse, not this one's.
+			// Tables) and lower to modules in the TABLE backend; a FIXED table
+			// emits its value struct as <Ns>.<Name> (docs/SPEC-TABLES.md §3.4),
+			// so one named after its schema file takes the file module's name
+			// and the file module steps aside — the loop below that adds the
+			// fixed table names makes that step-aside the same one every other
+			// taken <Base> gets.
 			continue
 		}
 		taken[decl] = true
+	}
+	for n := range fixedTableModuleNames(u) {
+		taken[n] = true
 	}
 	for _, un := range u.Unions {
 		taken[un.Name+"Type"] = true
@@ -321,7 +326,10 @@ func fileModuleStepsAside(u *ir.Unit, base string) bool {
 			continue // flags are file-module functions, not modules
 		}
 		if _, isTable := u.Tables[decl]; isTable {
-			continue // tables lower to modules in the TABLE backend, not here
+			// a FIXED table's value module is <Ns>.<base> (the TABLE backend),
+			// so one named after its schema file takes the file module's name
+			// and the file module steps aside (checked below, after the loop)
+			continue
 		}
 		if decl == base {
 			return true
@@ -332,7 +340,67 @@ func fileModuleStepsAside(u *ir.Unit, base string) bool {
 			return true
 		}
 	}
+	if fixedTableModuleNames(u)[base] {
+		return true
+	}
 	return false
+}
+
+// fixedTableModuleNames is the set of table names whose FIXED FORM value module
+// (<Ns>.<Name>) the table backend emits (elixirtable/fixedelixir.go structModule)
+// beside the file module. A fixed table named after a schema file takes the
+// module name <Ns>.<Base>, so the packet emitter's file module must step aside
+// to <Base>File rather than merge two unrelated modules. The walk mirrors the
+// fixed backend's closure (fixedform.go fixedClosure): roots from
+// ir.TableFixedFormRoots, then every type and union arm they reach.
+func fixedTableModuleNames(u *ir.Unit) map[string]bool {
+	names := map[string]bool{}
+	seen := map[string]bool{}
+	var collect func(st *ir.Struct)
+	var collectUnion func(un *ir.Union, seenUnion map[string]bool)
+	collect = func(st *ir.Struct) {
+		if seen[st.Name] {
+			return
+		}
+		seen[st.Name] = true
+		if st.IsTable {
+			names[st.Name] = true
+		}
+		for _, f := range st.Fields {
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch r := f.Type.Ref.(type) {
+			case *ir.Struct:
+				collect(r)
+			case *ir.Union:
+				collectUnion(r, map[string]bool{})
+			}
+		}
+	}
+	collectUnion = func(un *ir.Union, seenUnion map[string]bool) {
+		if seenUnion[un.Name] {
+			return
+		}
+		seenUnion[un.Name] = true
+		for _, v := range un.Variants {
+			if v.F == nil {
+				continue
+			}
+			switch r := v.F.Type.Ref.(type) {
+			case *ir.Struct:
+				if v.F.Type.Kind == ir.TNamed {
+					collect(r)
+				}
+			case *ir.Union:
+				collectUnion(r, seenUnion)
+			}
+		}
+	}
+	for _, st := range ir.TableFixedFormRoots(u) {
+		collect(st)
+	}
+	return names
 }
 
 func (g *gen) assemble() []byte {

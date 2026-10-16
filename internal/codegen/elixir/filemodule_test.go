@@ -129,6 +129,33 @@ type A { x int32 }
 	}
 }
 
+func TestFileModuleYieldsToAFixedTableValueModule(t *testing.T) {
+	t.Parallel()
+	// A `fixed table Caption` in Caption.schema emits its value struct as
+	// <Ns>.Caption from the fixed backend (fixedelixir.go structModule); the
+	// file module must step aside to <Ns>.CaptionFile rather than merge with
+	// the table's value module.
+	out, err := emitUnit(t, map[string]string{
+		"Caption.schema": `package Armdemo
+
+fixed table Caption
+{
+    x int32
+    y int32
+}
+`,
+	})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if !strings.Contains(string(out["Caption.ex"]), "defmodule Armdemo.CaptionFile do") {
+		t.Fatalf("file module must step aside to <Ns>.CaptionFile for a fixed table of the same name, got:\n%s", out["Caption.ex"])
+	}
+	if strings.Contains(string(out["Caption.ex"]), "defmodule Armdemo.Caption do") {
+		t.Fatalf("file module must not keep <Ns>.Caption (the fixed table's value module):\n%s", out["Caption.ex"])
+	}
+}
+
 func TestFileModuleRefusesATakenBaseFileName(t *testing.T) {
 	t.Parallel()
 	// The file module steps aside to CarryFile, so a declaration that takes
@@ -153,4 +180,3 @@ enum CarryFile { a, b }
 		t.Fatalf("refusal must name the colliding <Base>File module, got: %v", err)
 	}
 }
-

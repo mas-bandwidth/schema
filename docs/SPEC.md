@@ -2553,7 +2553,9 @@ or a file per declaration where the language demands one.
   `<Ns>.<Base>` for constants, flags masks and the file's codecs. When a
   declaration (type, enum, union or union tag module) of the unit already takes
   `<Ns>.<Base>`, the file-scope module steps aside to `<Ns>.<Base>File`; a
-  declaration that also takes the stepped-aside name is still refused. A unit that
+  fixed table whose value struct the table backend emits as `<Ns>.<Base>`
+  (SPEC-TABLES.md §3.4) forces the same step-aside, and a declaration that also
+  takes the stepped-aside name is still refused. A unit that
   declares TABLES grows the two ACCELERATORS' READ side per schema file —
   `<Base>Block.ex` (SPEC-TABLES.md §19) and `<Base>Cook.ex` (§7) — and two
   per-UNIT runtimes, `BlockRuntime.ex` and `CookRuntime.ex`. It emits no
