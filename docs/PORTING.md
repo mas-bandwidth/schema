@@ -1159,7 +1159,7 @@ both foreign rows red with `cook` and `block` green.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-big-endian` | ✅ `tables-c-big-endian` `conformance-negative-control-c-foreign` | ✅ `tables-rust-big-endian` (a `cargo check` for s390x; skips cleanly without the target) | ✅ `conformance-big-endian` (the Go driver under qemu-s390x) | ✅ `tables-cook-open-cs` (the refuse half; the native big-endian half is stated unproven until a big-endian .NET exists) | ✅ `tables-java-order` | ✅ `tables-js-leg` | ❌ #415 (reads `Endian.little`; the order word is untested and no sentence says why) | — the host's order is never consulted and no platform query exists for a gate to catch; the two foreign surfaces hold it (docs/SPEC-TABLES.md) |
+| ✅ `tables-big-endian` | ✅ `tables-c-big-endian` `conformance-negative-control-c-foreign` | ✅ `tables-rust-big-endian` (a `cargo check` for s390x; skips cleanly without the target) | ✅ `conformance-big-endian` (the Go driver under qemu-s390x) | ✅ `tables-cook-open-cs` (the refuse half; the native big-endian half is stated unproven until a big-endian .NET exists) | ✅ `tables-java-order` | ✅ `tables-js-leg` | ✅ `tables-dart-order` `tables-dart-order-negative-control` (Dart's typed data is read at an explicit endianness everywhere (blockruntime.go:34), so the order word is the whole of the byte-order check) | — the host's order is never consulted and no platform query exists for a gate to catch; the two foreign surfaces hold it (docs/SPEC-TABLES.md) |
 
 ### I8 — A bench row is labeled a pairing check
 
