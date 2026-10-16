@@ -2619,6 +2619,16 @@ single source of truth now, so the trick retires from generated code. The
 runtimes' own unified paths are untouched — they serve people hand-writing
 serialization beside the generated code.
 
+Two refinements sit inside this contract in the C++ reference, both
+byte-identical to the plain form and both measured. A fixed `[N]uint8` array
+at a statically byte-aligned position rides ONE `write_bytes`/`read_bytes`
+rather than a per-byte loop (the bulk path's internal align is zero bits
+there; ~2x on byte-array-heavy types). And every generated `Write*`/`Read*`
+is spelled `SCHEMA_WRITE_INLINE`/`SCHEMA_READ_INLINE`, an unconditional
+always-inline demand (plain `inline` where a compiler has no spelling for
+it), because a fallible read chain otherwise decays below the inliner's
+cold-callsite threshold.
+
 What this buys: generated source stays small and reviewable, count ranges
 need no cap, and the backends stay simple enough to verify against each
 other. What it forgoes: the last-mile instruction-level guarantees of the TMP

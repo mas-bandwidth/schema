@@ -83,3 +83,42 @@ enum Mode { Idle, Run }
 		}
 	}
 }
+
+// TestSpecBulkBytesAndInlining pins SPEC.md §6.2 to the two places the C++
+// reference departs from "honest loops": a fixed [N]uint8 at a statically
+// byte-aligned position rides ONE write_bytes/read_bytes, and every
+// generated Read/Write is spelled with the force-inline demand. Both are
+// byte-identical to the plain form; the spec has to say they exist.
+func TestSpecBulkBytesAndInlining(t *testing.T) {
+	t.Parallel()
+	u := unitFromSources(t, map[string]string{
+		"Blob.schema": `package t
+type Blob {
+    align
+    digest [16]uint8
+}
+`,
+	})
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire := string(files["BlobWire.h"])
+	for _, want := range []string{
+		"write_bytes( stream, value.digest, 16 ); // byte-aligned [N]uint8",
+		"read_bytes( stream, value.digest, 16 ); // byte-aligned [N]uint8",
+		"SCHEMA_WRITE_INLINE bool WriteBlob(",
+		"SCHEMA_READ_INLINE bool ReadBlob(",
+	} {
+		if !strings.Contains(wire, want) {
+			t.Errorf("BlobWire.h: want %q\n%s", want, wire)
+		}
+	}
+
+	section := specSection(t, "### 6.2", "### 6.3")
+	for _, want := range []string{"write_bytes", "SCHEMA_READ_INLINE", "SCHEMA_WRITE_INLINE"} {
+		if !strings.Contains(section, want) {
+			t.Errorf("SPEC.md §6.2 must name the C++ reference's %s path, which the emitter takes:\n%s", want, section)
+		}
+	}
+}
