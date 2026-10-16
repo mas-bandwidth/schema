@@ -950,9 +950,7 @@ const messageRuntimeBody = `  defstruct announced: false,
   # ---- one entry -----------------------------------------------------------------
 
   defp entry(<<id::little-unsigned-64, kind, rest::binary>>) do
-    if not known_kind?(kind) do
-      :error
-    else
+    if known_kind?(kind) do
       case shape(kind, rest) do
         {:ok, s, rest2} ->
           if kind in [14, 16] do
@@ -964,6 +962,8 @@ const messageRuntimeBody = `  defstruct announced: false,
         :error ->
           :error
       end
+    else
+      :error
     end
   end
 

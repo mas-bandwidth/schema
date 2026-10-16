@@ -969,8 +969,12 @@ func (g *gen) emitWriteItems(items []ir.Item, path, ind string) {
 			g.emitWriteAlign(ind)
 		case *ir.Branch:
 			cond := g.wref(path, item.Cond)
+			then, els := item.Then, item.Else
+			// A negated branch tests its condition and swaps the arms:
+			// credo's default Credo.Check.Refactor.NegatedConditionsWithElse
+			// reports `if not c do ... else ... end` (issue #547).
 			if item.Neg {
-				cond = "not " + cond
+				then, els = els, then
 			}
 			// a branch joins two emission paths, so the group closes
 			// before it and inside each arm: what leaves the if is one
@@ -978,12 +982,12 @@ func (g *gen) emitWriteItems(items []ir.Item, path, ind string) {
 			g.flushW(ind)
 			entry := g.sbSave()
 			thenText, thenEnd := g.captureArm(entry, func() {
-				g.emitWriteItems(item.Then, path, ind+"    ")
+				g.emitWriteItems(then, path, ind+"    ")
 				g.flushW(ind + "    ")
 			})
 			elseText, elseEnd := g.captureArm(entry, func() {
-				if item.Else != nil {
-					g.emitWriteItems(item.Else, path, ind+"    ")
+				if els != nil {
+					g.emitWriteItems(els, path, ind+"    ")
 					g.flushW(ind + "    ")
 				}
 			})
@@ -1538,8 +1542,12 @@ func (g *gen) emitReadItem(item ir.Item, pre, ind string, bounded bool) {
 // only inside it — the returned tuple is the one way out).
 func (g *gen) emitReadBranch(item *ir.Branch, pre, ind string, bounded bool) {
 	cond := pre + "_" + elixirName(item.Cond)
+	then, els := item.Then, item.Else
+	// A negated branch tests its condition and swaps the arms: credo's
+	// default Credo.Check.Refactor.NegatedConditionsWithElse reports
+	// `if not c do ... else ... end` (issue #547).
 	if item.Neg {
-		cond = "not " + cond
+		then, els = els, then
 	}
 	locals := append(g.collectLocals(item.Then, pre), g.collectLocals(item.Else, pre)...)
 	tuple := "{bits_read, " + strings.Join(locals, ", ") + "}"
@@ -1547,15 +1555,15 @@ func (g *gen) emitReadBranch(item *ir.Branch, pre, ind string, bounded bool) {
 	g.pf("%s%s =\n", ind, tuple)
 	g.pf("%s  if %s do\n", ind, cond)
 	g.rdBreak()
-	g.emitReadItems(item.Then, pre, ind+"    ", bounded)
-	g.emitZeroLocals(item.Else, pre, ind+"    ")
+	g.emitReadItems(then, pre, ind+"    ", bounded)
+	g.emitZeroLocals(els, pre, ind+"    ")
 	g.pf("%s    %s\n", ind, tuple)
 	g.pf("%s  else\n", ind)
 	g.rdBreak()
-	if item.Else != nil {
-		g.emitReadItems(item.Else, pre, ind+"    ", bounded)
+	if els != nil {
+		g.emitReadItems(els, pre, ind+"    ", bounded)
 	}
-	g.emitZeroLocals(item.Then, pre, ind+"    ")
+	g.emitZeroLocals(then, pre, ind+"    ")
 	g.pf("%s    %s\n", ind, tuple)
 	g.pf("%s  end\n", ind)
 	g.pf("\n")
@@ -2461,14 +2469,18 @@ func (g *gen) emitMeasureItems(items []ir.Item, path, ind string, pending *int64
 		case *ir.Branch:
 			g.flushMeasure(pending, ind)
 			cond := path + "." + elixirName(item.Cond)
+			then, els := item.Then, item.Else
+			// A negated branch tests its condition and swaps the arms:
+			// credo's default Credo.Check.Refactor.NegatedConditionsWithElse
+			// reports `if not c do ... else ... end` (issue #547).
 			if item.Neg {
-				cond = "not " + cond
+				then, els = els, then
 			}
 			g.pf("\n")
 			g.pf("%sbits =\n", ind)
 			g.pf("%s  if %s do\n", ind, cond)
 			thenPending := int64(0)
-			g.emitMeasureItems(item.Then, path, ind+"    ", &thenPending)
+			g.emitMeasureItems(then, path, ind+"    ", &thenPending)
 			if thenPending != 0 {
 				g.pf("%s    bits + %s\n", ind, intLit64(thenPending))
 			} else {
@@ -2476,8 +2488,8 @@ func (g *gen) emitMeasureItems(items []ir.Item, path, ind string, pending *int64
 			}
 			g.pf("%s  else\n", ind)
 			elsePending := int64(0)
-			if item.Else != nil {
-				g.emitMeasureItems(item.Else, path, ind+"    ", &elsePending)
+			if els != nil {
+				g.emitMeasureItems(els, path, ind+"    ", &elsePending)
 			}
 			if elsePending != 0 {
 				g.pf("%s    bits + %s\n", ind, intLit64(elsePending))

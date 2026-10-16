@@ -886,7 +886,9 @@ defmodule Example.Types do
     scratch = scratch >>> 32
 
     {data, scratch} =
-      if not value_at_rest do
+      if value_at_rest do
+        {data, scratch}
+      else
         %{
           linear_velocity: value_linear_velocity,
           angular_velocity: value_angular_velocity
@@ -967,8 +969,6 @@ defmodule Example.Types do
             sc23::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
 
         scratch = scratch >>> 32
-        {data, scratch}
-      else
         {data, scratch}
       end
 
@@ -1067,7 +1067,11 @@ defmodule Example.Types do
       v_at_rest = v == 1
 
       {bits_read, v_linear_velocity, v_angular_velocity} =
-        if not v_at_rest do
+        if v_at_rest do
+          v_linear_velocity = zero_vec3()
+          v_angular_velocity = zero_vec3()
+          {bits_read, v_linear_velocity, v_angular_velocity}
+        else
           if bits_read + 384 > num_bits, do: throw(:invalid)
           rv = rdw(data, bits_read, 49)
           v = rv &&& 0xFFFFFFFF
@@ -1138,10 +1142,6 @@ defmodule Example.Types do
           }
 
           {bits_read, v_linear_velocity, v_angular_velocity}
-        else
-          v_linear_velocity = zero_vec3()
-          v_angular_velocity = zero_vec3()
-          {bits_read, v_linear_velocity, v_angular_velocity}
         end
 
       value = %Example.RigidBody{
@@ -1174,10 +1174,10 @@ defmodule Example.Types do
     bits = bits + 449
 
     bits =
-      if not value.at_rest do
-        bits + 384
-      else
+      if value.at_rest do
         bits
+      else
+        bits + 384
       end
 
     bits

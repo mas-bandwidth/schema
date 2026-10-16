@@ -1731,57 +1731,57 @@ defmodule Bench.Table do
   defp emit_field(%{t: :enum} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if not emit_scalar?(f, v) do
-      {idx_map, ids, order, acc}
-    else
+    if emit_scalar?(f, v) do
       vid = Map.fetch!(f.by_name, v)
       {ref, ids, order} = intern(ids, order, f.id)
       {vref, ids, order} = intern(ids, order, vid)
       {idx_map, ids, order, [acc, leb_encode(ref), <<30>>, leb_encode(vref)]}
+    else
+      {idx_map, ids, order, acc}
     end
   end
 
   defp emit_field(%{t: :int} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if not emit_scalar?(f, v) do
-      {idx_map, ids, order, acc}
-    else
+    if emit_scalar?(f, v) do
       {ref, ids, order} = intern(ids, order, f.id)
       {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, int_bytes(v, f.width, f.signed)]}
+    else
+      {idx_map, ids, order, acc}
     end
   end
 
   defp emit_field(%{t: :float} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if not emit_scalar?(f, v) do
-      {idx_map, ids, order, acc}
-    else
+    if emit_scalar?(f, v) do
       {ref, ids, order} = intern(ids, order, f.id)
       {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, float_bytes(v, f.width)]}
+    else
+      {idx_map, ids, order, acc}
     end
   end
 
   defp emit_field(%{t: :string} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if not emit_scalar?(f, v) do
-      {idx_map, ids, order, acc}
-    else
+    if emit_scalar?(f, v) do
       {ref, ids, order} = intern(ids, order, f.id)
       {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, leb_encode(byte_size(v)), v]}
+    else
+      {idx_map, ids, order, acc}
     end
   end
 
   defp emit_field(%{t: :bool} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if not emit_scalar?(f, v) do
-      {idx_map, ids, order, acc}
-    else
+    if emit_scalar?(f, v) do
       {ref, ids, order} = intern(ids, order, f.id)
       {idx_map, ids, order, [acc, leb_encode(ref), <<1>>, if(v, do: <<1>>, else: <<0>>)]}
+    else
+      {idx_map, ids, order, acc}
     end
   end
 
