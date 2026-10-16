@@ -938,3 +938,38 @@ cards-elixir-conformance-hash-negative-control: build/conformance-harness build/
 
 test-elixir: cards-elixir-conformance cards-elixir-conformance-negative-control
 test-elixir: cards-elixir-conformance-upgrade-negative-control cards-elixir-conformance-hash-negative-control
+
+# ---------------------------------------------------------------------------
+# THE UNIT REGISTRY ON THE ELIXIR LEG (docs/SPEC-TABLES.md §8.3, §8.5, §8.7)
+# ---------------------------------------------------------------------------
+#
+# VIEW_ELIXIR_UNITS is the subset of VIEW_CORPUS that elixirtable generates cleanly
+# (excluding constructs refused by name such as maps, optionals, enum-keyed arrays,
+# union arms and wide scalars). Each unit's generated <Ns>.UnitView.unit_view/0 is
+# printed in canonical listing form by test/elixir-view/view_main.exs and checked
+# byte-for-byte against internal/viewlisting's IR listing; the --unflattened flag
+# on tabledemo is the negative control that proves damaged documentation is caught.
+VIEW_ELIXIR_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
+	blockdemo:tables/block blockhome:tables/blockhome \
+	blobdemo:tables/blobs listdemo:tables/lists \
+	vocabdemo:tables/vocab vocab9demo:tables/vocab9
+
+.PHONY: tables-elixir-view
+tables-elixir-view: bin/schema test/elixir-view/view_main.exs
+	@rm -rf build/view-elixir
+	@mkdir -p build/view-elixir
+	@set -e; for entry in $(VIEW_ELIXIR_UNITS); do \
+		pkg=$${entry%%:*}; source=$${entry#*:}; \
+		./bin/schema generate --lang elixir --out build/view-elixir/generated/$$pkg "$$source"; \
+		$(MIX) format build/view-elixir/generated/$$pkg/*.ex; \
+		$(ELIXIR) -r build/view-elixir/generated/$$pkg/UnitView.ex test/elixir-view/view_main.exs $$pkg > build/view-elixir/$$pkg.listing; \
+		if [ "$$pkg" = tabledemo ]; then $(ELIXIR) -r build/view-elixir/generated/$$pkg/UnitView.ex test/elixir-view/view_main.exs $$pkg --unflattened > build/view-elixir/unflattened.listing; fi; \
+	done
+	SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-elixir SCHEMA_VIEW_LISTING_UNITS=tabledemo,graphdemo,blockdemo,blockhome,blobdemo,listdemo,vocabdemo,vocab9demo go test ./internal/viewlisting -count=1 -timeout 600s -run TestUnitViewListingMatchesTheIR
+	@mkdir -p build/view-elixir/negative
+	@cp build/view-elixir/unflattened.listing build/view-elixir/negative/tabledemo.listing
+	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-elixir/negative SCHEMA_VIEW_LISTING_UNITS=tabledemo go test ./internal/viewlisting -count=1 -timeout 600s -run TestUnitViewListingMatchesTheIR > build/view-elixir/negative.log 2>&1; then echo "Elixir UnitView negative control escaped"; exit 1; fi
+	@grep -q "listing is not the compiler's" build/view-elixir/negative.log
+	@echo "Elixir UnitView: $(words $(VIEW_ELIXIR_UNITS)) generated registries match the IR; damaged documentation is detected"
+
+test-elixir: tables-elixir-view

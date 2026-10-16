@@ -149,9 +149,6 @@ func TestElixirRuntimeNamesAreClaimed(t *testing.T) {
 			mine[ir.GoExportName(f.Base)+suffix] = true
 		}
 	}
-	// TableMessage was added for fixed roots in b9ed794ca (schema-elixir-msg1-announce)
-	// without registering it in internal/tablenames/elixir.go (outside this card's PATHS).
-	mine["TableMessage"] = true
 
 	segment := regexp.MustCompile(`\b` + namespace + `\.([A-Z][A-Za-z0-9_]*)`)
 	emitted := map[string]bool{}
