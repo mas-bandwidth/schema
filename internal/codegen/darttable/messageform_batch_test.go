@@ -29,6 +29,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -125,46 +126,6 @@ func batchUnit(t *testing.T, path string) *ir.Unit {
 		t.Fatalf("no schema files under %s: %v", path, err)
 	}
 	return loadUnit(t, schemas...)
-}
-
-// fixedHomeUnionGap reports whether a table of the unit's fixed closure names a
-// UNION WHOSE ARMS ARE TABLES and that the fixed form does not claim as local
-// (docs/SPEC-TABLES.md §2.6, §3.4). Such a union's storage class is emitted by
-// neither this backend (it is not local) nor the packet emitter (which emits no
-// table-arm union), so the generated home references a class nothing defines and
-// does not compile. That gap is the fixed form's and is outside this card.
-func fixedHomeUnionGap(u *ir.Unit) bool {
-	seen := map[string]bool{}
-	var closure []*ir.Struct
-	for _, f := range u.Files {
-		for _, st := range fixedRoots(f.Tables) {
-			fixedCollectTypes(st, seen, &closure)
-		}
-	}
-	local := map[string]bool{}
-	for _, un := range fixedLocalUnions(closure) {
-		local[un.Name] = true
-	}
-	for _, st := range closure {
-		for _, f := range st.Fields {
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			un, ok := f.Type.Ref.(*ir.Union)
-			if !ok || local[un.Name] {
-				continue
-			}
-			for _, v := range un.Variants {
-				if v.F == nil || v.F.Type.Kind != ir.TNamed {
-					continue
-				}
-				if s, ok := v.F.Type.Ref.(*ir.Struct); ok && s.IsTable {
-					return true
-				}
-			}
-		}
-	}
-	return false
 }
 
 const batchProbeTemplate = `import 'dart:typed_data';
@@ -280,9 +241,6 @@ func TestMessageFormBatchDart(t *testing.T) {
 					// `message` row for the variable root Scene, and what the
 					// Dart leg owes a variable root is reported, not decided.
 					t.Skipf("§3.3 is a fixed table's; %s is a plain table", row.root)
-				}
-				if fixedHomeUnionGap(u) {
-					t.Skipf("not run: the unit's fixed home does not compile (a table names a table-arm union the fixed form does not claim); outside this card")
 				}
 				out, err := runBatchProbe(t, u, row.root, roundTripBody(row.root, row.announce, row.message))
 				if err != nil {
@@ -489,5 +447,110 @@ fixed table T
 		if strings.Contains(src, bad) {
 			t.Fatalf("the message form hands a float to the int bit lane: %q (docs/SPEC-TABLES.md §3.3)", bad)
 		}
+	}
+}
+
+// fixedClosureUnions answers every union a table of the unit's fixed closure
+// names, by name, and whether its arms include a TABLE (docs/SPEC-TABLES.md
+// §2.6): a union with a table arm lives in ir.Unit.TableUnions, beside Decls,
+// so the packet emitter never sees it and the fixed form is its only home.
+func fixedClosureUnions(u *ir.Unit) map[string]bool {
+	seen := map[string]bool{}
+	var closure []*ir.Struct
+	for _, f := range u.Files {
+		for _, st := range fixedRoots(f.Tables) {
+			fixedCollectTypes(st, seen, &closure)
+		}
+	}
+	out := map[string]bool{}
+	for _, st := range closure {
+		for _, f := range st.Fields {
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			un, ok := f.Type.Ref.(*ir.Union)
+			if !ok {
+				continue
+			}
+			tableArm := false
+			for _, v := range un.Variants {
+				if v.F == nil || v.F.Type.Kind != ir.TNamed {
+					continue
+				}
+				if s, ok := v.F.Type.Ref.(*ir.Struct); ok && s.IsTable {
+					tableArm = true
+				}
+			}
+			out[un.Name] = out[un.Name] || tableArm
+		}
+	}
+	return out
+}
+
+// TestFixedHomeDefinesItsTableArmUnionsDart pins that the fixed home of every
+// manifest `message` unit defines each union class it references
+// (docs/SPEC-TABLES.md §2.6, §3.4). A union whose arms are TABLES is a
+// table-closure construct the packet emitter never sees, so if the fixed form
+// does not claim it as local, nothing defines the class the home names and the
+// library does not compile — which kept TestMessageFormBatchDart from running
+// the backend_conn rows. Pure Go over the generated text: no toolchain.
+func TestFixedHomeDefinesItsTableArmUnionsDart(t *testing.T) {
+	t.Parallel()
+	units := map[string]string{}
+	for _, row := range batchManifest(t) {
+		units[row.unit] = row.path
+	}
+	tableArm := 0
+	for unit, path := range units {
+		u := batchUnit(t, path)
+		unions := fixedClosureUnions(u)
+		if len(unions) == 0 {
+			continue
+		}
+		files, err := dart.Generate(u)
+		if err != nil {
+			t.Fatalf("%s: generate packet: %v", unit, err)
+		}
+		tables, err := Generate(u)
+		if err != nil {
+			t.Fatalf("%s: generate table: %v", unit, err)
+		}
+		maps.Copy(files, tables)
+		var all strings.Builder
+		for name, data := range files {
+			if !strings.HasSuffix(name, ".dart") {
+				continue
+			}
+			all.Write(data)
+			all.WriteString("\n")
+		}
+		home := string(files[runtimeHome(u)+"Fixed.dart"])
+		if home == "" {
+			t.Fatalf("%s: no fixed home %sFixed.dart was generated", unit, runtimeHome(u))
+		}
+		for name, arm := range unions {
+			if arm {
+				tableArm++
+			}
+			if !regexp.MustCompile(`\b` + name + `\b`).MatchString(home) {
+				continue
+			}
+			def := regexp.MustCompile(`(?m)^(?:abstract |sealed |base |final )*class ` + name + `\s*\{`)
+			// Dart files are separate libraries: a definition in a sibling
+			// packet file cannot satisfy an unqualified type in this fixed home.
+			// A table-arm union must therefore be defined in the home itself.
+			if arm && !def.MatchString(home) {
+				t.Errorf("%s: the fixed home %sFixed.dart references table-arm union %s but does not define its class locally (docs/SPEC-TABLES.md §2.6, §3.4)",
+					unit, runtimeHome(u), name)
+				continue
+			}
+			if !def.MatchString(all.String()) {
+				t.Errorf("%s: the fixed home %sFixed.dart references union %s (table arm: %v) but no generated library defines class %s (docs/SPEC-TABLES.md §2.6, §3.4)",
+					unit, runtimeHome(u), name, arm, name)
+			}
+		}
+	}
+	if tableArm == 0 {
+		t.Fatal("no manifest message unit names a table-arm union, so this test pins nothing (backenddemo's Payload was the one)")
 	}
 }

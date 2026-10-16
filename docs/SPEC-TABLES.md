@@ -546,30 +546,34 @@ Four spellings are Dart's own and the reason is at each site.
   currency is the `Uint8List`: a multi-byte scalar is assembled from bytes
   rather than read through a `ByteData`, because a `ByteData` is a second
   object describing the same memory — two arguments for one fact, or an
-  allocation to derive one from the other. A caller that owns a reader, a
-  writer and a report allocates NOTHING per record under `dart compile` — the
-  language's release configuration and the one a shipping consumer runs — and
-  that is MEASURED rather than claimed: `make tables-dart-alloc` counts the
-  VM's own new-space scavenges over a steady phase of load, measure and save
-  across the conformance corpus and holds the count at zero under an AOT
-  snapshot, with a planted allocation per record as the control that turns
-  it red. Under the JIT the same instrument prints its count beside AOT's and
-  does not gate on it, because what the JIT boxes is the inliner's decision
-  and not the codec's: a `double` crossing a conversion call the inlining
-  budget left out of line is boxed, and where the budget runs out depends on
-  the loop around the codec — one boxed double per pass of the eight-record
-  corpus on the wire phase as measured, up to three per record with one codec
-  inlined into a monomorphic caller. So no generated Dart body calls a float32
-  conversion (issue 404, PORTING M3): the packet, block and message emitters
-  spell it at each assignment through the typed-data views, NaN payloads
-  narrowed and widened in software as before, and `make
+  allocation to derive one from the other. A caller that owns its record,
+  plan, buffer, cursor and report allocates NOTHING per record on the fixed-form,
+  block and cook paths under `dart compile` — the language's release
+  configuration and the one a shipping consumer runs — and that is MEASURED
+  rather than claimed: `make tables-dart-alloc` (`test/dart-tables/gcgate.dart`)
+  counts the VM's own new-space scavenges over a steady phase of form-3 load,
+  measure and save (`FX1` and `tables/examples`), block row walks and cook root
+  and pointer walks, holds the count at zero under an AOT snapshot on the
+  pinned Dart SDK 3.13.2 (`tables-dart-alloc-runtime-negative-control` refuses
+  to certify on any other version; `SCHEMA_DART_ALLOC_ANY_SDK=1` reports
+  without certifying), and requires one planted allocation per record to turn
+  its row red while the neighbour row stays green
+  (`tables-dart-alloc-negative-control`). The variable-class `Card` wire row
+  (`cardWireLoad` and `cardWireSave`, which return a freshly allocated `Card`
+  tree and `Uint8List` per call rather than taking caller-owned scratch) and the
+  JIT counts are printed beside AOT's and not gated, because what the JIT boxes
+  is the inliner's decision and not the codec's: a `double` crossing a
+  conversion call the inlining budget left out of line is boxed, and where the
+  budget runs out depends on the loop around the codec. So no generated Dart
+  body calls a float32 conversion (issue 404, PORTING M3): the packet, block
+  and message emitters spell it at each assignment through the typed-data
+  views, NaN payloads narrowed and widened in software as before, and `make
   tables-dart-float-jit` holds the packet codec at zero steady JIT scavenges
   on the pinned SDK 3.13.2 — measured at 76 per 2,000,000 passes of five
   float32 and three float64 fields with the helpers, from one caller or two,
-  and 0 hand-inlined. Two further costs are the JIT's and never
-  AOT's: a `float32` carrying a NaN with a payload costs one boxed double, and
-  a 64-bit integer field holding a value outside ±2⁶² costs one boxed integer
-  per read.
+  and 0 hand-inlined. Two further costs are the JIT's and never AOT's: a
+  `float32` carrying a NaN with a payload costs one boxed double, and a 64-bit
+  integer field holding a value outside ±2⁶² costs one boxed integer per read.
 - **THE VERBS ARE MEMBERS OF THE VALUE** — `config.measure()`,
   `config.save(out)`, `config.load(bytes, report)`, `loadBody`, `saveBody`,
   `reset`, `fromJson`, `toJson`, `toJsonMeasure` — methods on a table's own
@@ -13663,10 +13667,11 @@ FLT_MAX into an infinity the walk then counts as the wrong shape. That case has
 a name in the corpus: `num-float32-upper-band`.
 
 The price is stated rather than hidden: those are the Dart walk's allocations,
-and they are per FLOAT and per NUMBER TOKEN rather than per field. The WIRE
-path allocates nothing at all under AOT, which `make tables-dart-alloc`
-measures at zero scavenges; the same instrument prints the JIT's count and
-the text walk's count beside it, priced rather than gated.
+and they are per FLOAT and per NUMBER TOKEN rather than per field. The
+caller-owned fixed-form, block and cook paths allocate nothing at all under AOT
+on the pinned Dart SDK 3.13.2, which `make tables-dart-alloc` measures at zero
+scavenges; the same instrument prints the JIT counts and the variable-class
+`Card` wire row's count beside them, priced rather than gated.
 
 **The JavaScript walk is NOT `JSON.parse`/`JSON.stringify`, and could not be.**
 This section's clamping, counting, duplicate-key and trailing-comma rules ARE
