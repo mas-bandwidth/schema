@@ -134,19 +134,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
       # returns the refusal" (docs/SPEC-TABLES.md §3.3).
       {:error, :batch_too_large, count}
     else
-      case read_bodies(vocab, {bytes_to_int(rest), 0, bit_size(rest)}, count, []) do
-        {:ok, bodies, r} ->
-          if batch_ends_clean?(r) do
-            {:ok, bodies}
-          else
-            # "BYTES AFTER THE PAD ARE MALFORMED" (docs/SPEC-TABLES.md §3.3).
-            {:malformed, count, bodies}
-          end
-
-        # "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1" (§3.3).
-        {:malformed, k, bodies} ->
-          {:malformed, k, bodies}
-      end
+      batch_result(read_bodies(vocab, {bytes_to_int(rest), 0, bit_size(rest)}, count, []), count)
     end
   end
 
@@ -158,6 +146,20 @@ const messageBatchRuntimeBody = `  @batch_max 256
   def load_messages(%__MODULE__{announced: true}, _data, _capacity), do: {:error, :malformed}
 
   def load_messages(_vocab, _data, _capacity), do: {:error, :no_vocabulary}
+
+  # What a batch's bodies read to, a helper of its own so load_messages nests
+  # no deeper than credo's Nesting allows (issue #547).
+  defp batch_result({:ok, bodies, r}, count) do
+    if batch_ends_clean?(r) do
+      {:ok, bodies}
+    else
+      # "BYTES AFTER THE PAD ARE MALFORMED" (docs/SPEC-TABLES.md §3.3).
+      {:malformed, count, bodies}
+    end
+  end
+
+  # "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1" (§3.3).
+  defp batch_result({:malformed, k, bodies}, _count), do: {:malformed, k, bodies}
 
   # ---------------------------------------------------------------------------
   # THE BATCH: form byte 2, a count of bodies minus one, then one bit stream
@@ -324,18 +326,24 @@ const messageBatchRuntimeBody = `  @batch_max 256
         {:ok, Enum.reverse(acc), rest}
 
       {:ok, ref, rest} ->
-        case entry_at(vocab, ref) do
-          {:ok, entry} when entry.id < 0xFFFFFFFFFFFFFFFD ->
-            case read_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), rest) do
-              {:ok, value, rest2} -> read_body(vocab, rest2, [{ref, value} | acc])
-              :malformed -> :malformed
-            end
-
-          _ ->
-            :malformed
+        case message_field_value(vocab, ref, rest) do
+          {:ok, value, rest2} -> read_body(vocab, rest2, [{ref, value} | acc])
+          :malformed -> :malformed
         end
 
       :error ->
+        :malformed
+    end
+  end
+
+  # One body field's value by its vocabulary entry; a ref to an id the batch
+  # reserves is malformed. A helper of its own (credo's Nesting, issue #547).
+  defp message_field_value(vocab, ref, rest) do
+    case entry_at(vocab, ref) do
+      {:ok, entry} when entry.id < 0xFFFFFFFFFFFFFFFD ->
+        read_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), rest)
+
+      _ ->
         :malformed
     end
   end
@@ -425,18 +433,24 @@ const messageBatchRuntimeBody = `  @batch_max 256
         {:ok, :none, rest}
 
       {:ok, ref, rest} ->
-        case entry_at(vocab, ref) do
-          {:ok, entry} when entry.kind != 0 and entry.id < 0xFFFFFFFFFFFFFFFD ->
-            case read_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), rest) do
-              {:ok, value, rest2} -> {:ok, {ref, value}, rest2}
-              :malformed -> :malformed
-            end
-
-          _ ->
-            :malformed
+        case message_arm_value(vocab, ref, rest) do
+          {:ok, value, rest2} -> {:ok, {ref, value}, rest2}
+          :malformed -> :malformed
         end
 
       :error ->
+        :malformed
+    end
+  end
+
+  # A union arm's value by its vocabulary entry: the entry must carry a kind
+  # and not be an id the batch reserves (credo's Nesting, issue #547).
+  defp message_arm_value(vocab, ref, rest) do
+    case entry_at(vocab, ref) do
+      {:ok, entry} when entry.kind != 0 and entry.id < 0xFFFFFFFFFFFFFFFD ->
+        read_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), rest)
+
+      _ ->
         :malformed
     end
   end
@@ -889,24 +903,26 @@ const messageRuntimeBody = `  defstruct announced: false,
   defp parse_entries(bin, max, acc, count, node) do
     case entry(bin) do
       {:ok, e, rest} ->
-        cond do
-          e.id == 0xFFFFFFFFFFFFFFFE or e.id == 0xFFFFFFFFFFFFFFFD ->
-            :error
-
-          e.id == 0xFFFFFFFFFFFFFFFF and node ->
-            :error
-
-          duplicate?(e, acc) ->
-            :error
-
-          true ->
-            parse_entries(rest, max, [e | acc], count + 1, node or e.id == 0xFFFFFFFFFFFFFFFF)
+        if entry_refused?(e, acc, node) do
+          :error
+        else
+          parse_entries(rest, max, [e | acc], count + 1, node or e.id == 0xFFFFFFFFFFFFFFFF)
         end
 
       :error ->
         :error
     end
   end
+
+  # An entry the vocabulary refuses: one of the two ids the announcement
+  # reserves, a second node entry, or a duplicate. A predicate of its own so
+  # parse_entries stays under credo's CyclomaticComplexity bound (issue #547).
+  defp entry_refused?(e, _acc, _node)
+       when e.id == 0xFFFFFFFFFFFFFFFE or e.id == 0xFFFFFFFFFFFFFFFD,
+       do: true
+
+  defp entry_refused?(e, _acc, true) when e.id == 0xFFFFFFFFFFFFFFFF, do: true
+  defp entry_refused?(e, acc, _node), do: duplicate?(e, acc)
 
   defp duplicate?(_e, []), do: false
   defp duplicate?(e, [x | rest]), do: e == x or duplicate?(e, rest)
