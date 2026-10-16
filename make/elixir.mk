@@ -218,13 +218,14 @@ tables-elixir-emit-format-clean: bin/schema
 test-elixir: tables-elixir-emit-format-clean
 
 # ITS NEGATIVE CONTROL, on the EMITTER for the fuzz control's reason (below):
-# the cook runtime's `int(region, at, 8)` loses its call parentheses — still
+# the cook runtime's `int(region, at + 4, 4)` (the high half of a cook
+# delta) loses its call parentheses — still
 # valid Elixir, which the sabotaged build compiles, and a pair the formatter
 # would add back — and the gate, run over the sabotaged compiler's raw output,
 # must go red NAMING CookRuntime.ex. A gate that formatted before it checked,
 # the shape the older stamps had, would stay green here.
 CONFORMANCE_NEGATIVE_ELIXIR_EMIT_FORMAT := build/elixir-emit-format-negative
-ELIXIR_EMIT_FORMAT_SED := -e 's|delta = int(region, at, 8)|delta = int region, at, 8|'
+ELIXIR_EMIT_FORMAT_SED := -e 's|high = int(region, at + 4, 4)|high = int region, at + 4, 4|'
 
 .PHONY: tables-elixir-emit-format-negative-control
 tables-elixir-emit-format-negative-control: bin/schema

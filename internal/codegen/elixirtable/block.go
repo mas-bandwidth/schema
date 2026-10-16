@@ -168,7 +168,8 @@ const blockRuntimeSource = `  @moduledoc """
   # than copying them, which is what makes an iteration over 4096 rows cost the
   # references and nothing else
   def slice(data, at, size) do
-    if is_integer(at) and is_integer(size) and at >= 0 and size >= 0 and at + size <= byte_size(data) do
+    if is_integer(at) and is_integer(size) and at >= 0 and size >= 0 and
+         at + size <= byte_size(data) do
       binary_part(data, at, size)
     else
       nil
