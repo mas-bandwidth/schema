@@ -1,5 +1,7 @@
 # Dart: the fixed read against its own packet read — certified, both lanes FAIL
 
+> **Superseded for credit by `window-2026-10-16/RESULT.md` (attempt 7):** the same driver at a pushed revision inside a receipted operator window. These rows stay as history.
+
 Card `dart-fixed-read-beats-its-packet-read` (attempt 5), roadmap tasks
 `gates/packet-read/dart/identity` and `gates/packet-read/dart/plan`. These are the CERTIFIED rows:
 two quiet-window sittings of the landed driver's read arm (`-mode plan-read`, reached through
