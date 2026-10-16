@@ -68,11 +68,11 @@ abstract final class TableFixedOp {
   static const int textBytes = 3;
 }
 
-/// A PLAN ENTRY is nine int32 lanes of one flat Int32List. A flat list of a
+/// A PLAN ENTRY is twelve int32 lanes of one flat Int32List. A flat list of a
 /// fixed stride is what keeps the read loop monomorphic: the loop never
 /// touches a field name and nothing is allocated.
 abstract final class TableFixedLane {
-  static const int lanes = 9;
+  static const int lanes = 12;
   static const int op = 0;
   static const int src = 1;
   static const int dst = 2;
@@ -85,6 +85,13 @@ abstract final class TableFixedLane {
   // compared at ALL of them. It is its own lane because meta already carries a
   // widen's width and sign and a text entry's flavour (§5.2, THE GUARD'S WIDTH).
   static const int argW = 8;
+  // guard2 / arg2 / argW2 ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO ANSWERS
+  // TO, CONJOINED with guard / arg / argW (docs/FIXED-FORM-ALGORITHM.md §4.1,
+  // §5.8 row 6): the entry runs when BOTH tags hold their ordinal, and
+  // tableFixedNoGuard on guard2 means no second condition.
+  static const int guard2 = 9;
+  static const int arg2 = 10;
+  static const int argW2 = 11;
 
   // MY SIDE of the layout, five lanes per entry of my own: the storage facts a
   // layout entry cannot carry. In C++ these are offsetof rows; the reader's own
@@ -996,6 +1003,14 @@ int tableFixedRun(
             plan[b + TableFixedLane.arg]) {
       continue;
     }
+    // AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (docs/FIXED-FORM-ALGORITHM.md
+    // §4.1): the entry runs only when BOTH tags hold their ordinal.
+    final guard2 = plan[b + TableFixedLane.guard2];
+    if (guard2 != tableFixedNoGuard &&
+        tableFixedTagAt(source, at + guard2, plan[b + TableFixedLane.argW2]) !=
+            plan[b + TableFixedLane.arg2]) {
+      continue;
+    }
     final s = at + plan[b + TableFixedLane.src];
     final d = plan[b + TableFixedLane.dst];
     final size = plan[b + TableFixedLane.size];
@@ -1377,6 +1392,10 @@ abstract final class TableFixedCompiler {
     e[b + TableFixedLane.meta] = meta;
     // argw IS THE GUARD'S WIDTH IN BYTES, and zero reads as one.
     e[b + TableFixedLane.argW] = plan.argw <= 0 ? 1 : plan.argw;
+    // guard2 / arg2 / argW2 default to no second condition (docs/FIXED-FORM-ALGORITHM.md §4.1).
+    e[b + TableFixedLane.guard2] = tableFixedNoGuard;
+    e[b + TableFixedLane.arg2] = 0;
+    e[b + TableFixedLane.argW2] = 1;
     plan.count++;
   }
 
@@ -1665,6 +1684,7 @@ abstract final class TableFixedCompiler {
           (theirArms >= 1 && theirArms <= 255) ? theirArms : 0,
         );
         plan.argw = innerArgw;
+        final restampFrom = plan.count;
         var myArm = mi + 1;
         for (var k = 0; k < myArms; k++) {
           var theirArm = ti + 1;
@@ -1699,6 +1719,24 @@ abstract final class TableFixedCompiler {
             theirArm += theirs.subtree(theirArm);
           }
           myArm += mine.subtree(myArm);
+        }
+        // Nested: an arm inside an arm answers to the OUTER tag TOO — the one
+        // that decides whether any of those bytes are there at all — and its
+        // OWN arm selection must survive that (docs/FIXED-FORM-ALGORITHM.md
+        // §4.1, §5.8 row 6).
+        if (guard != tableFixedNoGuard) {
+          final outerW = savedArgw <= 0 ? 1 : (savedArgw > 8 ? 8 : savedArgw);
+          if (plan.record != 0 && (guard < 0 || guard + outerW > plan.record)) {
+            plan.tooLarge = true;
+          } else {
+            final e = plan.entries;
+            for (var q = restampFrom; q < plan.count; q++) {
+              final qb = q * TableFixedLane.lanes;
+              e[qb + TableFixedLane.guard2] = guard;
+              e[qb + TableFixedLane.arg2] = arg;
+              e[qb + TableFixedLane.argW2] = outerW;
+            }
+          }
         }
         plan.argw = savedArgw;
         break;
@@ -1816,6 +1854,9 @@ abstract final class TableFixedCompiler {
             e[p + TableFixedLane.guard] == e[b + TableFixedLane.guard] &&
             e[p + TableFixedLane.arg] == e[b + TableFixedLane.arg] &&
             e[p + TableFixedLane.argW] == e[b + TableFixedLane.argW] &&
+            e[p + TableFixedLane.guard2] == e[b + TableFixedLane.guard2] &&
+            e[p + TableFixedLane.arg2] == e[b + TableFixedLane.arg2] &&
+            e[p + TableFixedLane.argW2] == e[b + TableFixedLane.argW2] &&
             e[p + TableFixedLane.src] + e[p + TableFixedLane.size] ==
                 e[b + TableFixedLane.src] &&
             e[p + TableFixedLane.dst] + e[p + TableFixedLane.size] ==
