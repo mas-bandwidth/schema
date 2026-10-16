@@ -107,6 +107,10 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 		{Name: "b", Type: ir.FieldType{Kind: ir.TBits, Width: 10}},
 		{Name: "raw", Type: ir.FieldType{Kind: ir.TBytes, Size: 6}},
 		{Name: "nums", Type: ir.FieldType{Kind: ir.TFloat64}, Array: ir.ArrayList},
+		// a fixed-length array [N]T (§3) and a nested `type` by value (§2) are
+		// carried (TestNestedTypesAndFixedArraysOnTheTableWireJavaScript)
+		{Name: "trio", Type: ir.FieldType{Kind: ir.TInt, Signed: true, Width: 32}, Array: ir.ArrayFixed, ArrayBound: 3},
+		{Name: "grid", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "Grid"}}},
 	}}
 	if got := tableVariableRefusals(beyond); len(got) != 0 {
 		t.Errorf("the variable class beyond the card constructs must not be refused, got: %q", got)
