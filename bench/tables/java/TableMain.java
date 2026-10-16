@@ -28,6 +28,17 @@
 // publishes at exit under an env var the JIT cannot rule out. No -ea: the
 // number a user gets is the number reported.
 //
+// THE READ ARM (BENCH-STANDARD.md §1.10, bench/paired/README.md "The
+// plan-read arm"): under --read-arm the clocked rows of this invocation are
+// replaced by ONE measured row, `bench_fixed_read` / `read`, the identity
+// lane's LOAD of the reference's current file timed ALONE, after the same
+// pre-clock gate. Its comparand is the packet runner's `bench_mixed_read`
+// (bench/java/Main.java --read-only). Without the flag nothing moves:
+// `bench_fixed` write and round_trip, and the derived read on stderr, are
+// exactly what they were, so no published board moves. The PLAN lane
+// (`bench_plan_read`) is not here: it needs the lineage corpus §1.10 names,
+// and this tree carries none.
+//
 // THIS FILE IS SHAPE-BLIND. It names the generated ROOT type and nothing else:
 // no field, no pinned value, no wire size. `make shape-gate` holds that.
 
@@ -37,10 +48,15 @@ public final class TableMain {
     static final int NUM_RECORDS = 64;
     static final int PLAN_CAPACITY = 8192;
     static final long FIXED_ITERS = 400000;
+    // the read arm's per-sample record count: the packet wire's own fixed
+    // count (bench/java/Main.java MIXED_ITERS), so both measured reads of the
+    // gate run the same number of records per sample
+    static final long FIXED_READ_ITERS = 4000000;
 
     static boolean csv = false;
     static boolean quick = false;
     static boolean gateOnly = false;
+    static boolean readArm = false;
     static int numRuns = 7;
     static long iterations = 0;
     static String wireDir = "testdata/wire";
@@ -226,6 +242,24 @@ public final class TableMain {
         return now() - start;
     }
 
+    // READ, MEASURED (the read arm only): LOAD the reference's current file
+    // alone, one call landing sixty-four records into the reused destination,
+    // the hash check, the identity plan's run and the read-side bounds pass
+    // all inside the clock. The destination is a static the JIT cannot prove
+    // unread, so every store of the load is observable; the landed count
+    // drains into the sink besides.
+    static double timeFixedRead(long iters) {
+        final double start = now();
+        for (long i = 0; i < iters; i += NUM_RECORDS) {
+            final int landed = fixedLoadAll(fixedOut, fixedFile);
+            if (landed != NUM_RECORDS) {
+                System.exit(1);
+            }
+            sink += landed;
+        }
+        return now() - start;
+    }
+
     interface TimedLeg {
         double run(long iters);
     }
@@ -259,6 +293,7 @@ public final class TableMain {
                 case "--csv" -> csv = true;
                 case "--quick" -> quick = true;
                 case "--gate" -> gateOnly = true;
+                case "--read-arm" -> readArm = true;
                 case "--indexed" -> { }
                 case "--wire-dir" -> {
                     if (i + 1 >= args.length) { usage(); }
@@ -291,9 +326,10 @@ public final class TableMain {
         if (quick && numRuns == 7) {
             numRuns = 3;
         }
-        final long iters = iterations > 0 ? iterations : FIXED_ITERS;
+        final long iters = iterations > 0 ? iterations : (readArm ? FIXED_READ_ITERS : FIXED_ITERS);
 
         System.err.println("schema tables bench (java, the fixed form"
+                + (readArm ? ", --read-arm: the identity lane's read, measured" : "")
                 + (quick ? ", --quick: iteration instrument, not certification" : "") + ")");
         gateFixed("bench_fixed");
         if (gateOnly) {
@@ -301,9 +337,13 @@ public final class TableMain {
             return;
         }
         final double bytesPerOp = (double) fixedFile.length / NUM_RECORDS;
-        benchLeg("bench_fixed", "write", iters, bytesPerOp, TableMain::timeFixedWrite);
-        benchLeg("bench_fixed", "round_trip", iters, bytesPerOp, TableMain::timeFixedRoundTrip);
-        reportDerivedRead("bench_fixed");
+        if (readArm) {
+            benchLeg("bench_fixed_read", "read", iters, bytesPerOp, TableMain::timeFixedRead);
+        } else {
+            benchLeg("bench_fixed", "write", iters, bytesPerOp, TableMain::timeFixedWrite);
+            benchLeg("bench_fixed", "round_trip", iters, bytesPerOp, TableMain::timeFixedRoundTrip);
+            reportDerivedRead("bench_fixed");
+        }
         flushCsv();
         System.err.println("OK (corpus_id " + corpusId() + ")");
         if (System.getenv("SERIALIZE_BENCH_SINK") != null) {
@@ -312,7 +352,7 @@ public final class TableMain {
     }
 
     static void usage() {
-        System.err.println("usage: TableMain [--indexed] [--gate] [--csv] [--quick] [--round K] [--iterations N] [--wire-dir <dir>] [--variant-dir <dir>]");
+        System.err.println("usage: TableMain [--indexed] [--gate] [--read-arm] [--csv] [--quick] [--round K] [--iterations N] [--wire-dir <dir>] [--variant-dir <dir>]");
         System.exit(1);
     }
 }
