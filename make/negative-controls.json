@@ -573,6 +573,7 @@
         "tables-elixir-alloc-runtime-negative-control",
         "tables-elixir-block-lead-negative-control",
         "tables-elixir-cook-negative-control",
+        "tables-elixir-emit-format-negative-control",
         "tables-elixir-fixed-form-negative-control",
         "tables-elixir-fuzz-negative-control",
         "tables-elixir-json-differential-negative-control",

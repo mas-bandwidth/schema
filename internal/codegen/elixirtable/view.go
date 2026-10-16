@@ -16,6 +16,59 @@ import (
 // docs/SPEC-TABLES.md §8.3), emitted once per unit that declares a table.
 const UnitViewModule = "UnitView"
 
+// viewKV is one entry in a UnitView descriptor map (§8.1-§8.3). Writing the
+// descriptor as a multiline literal keeps source formatting independent of
+// the lengths of schema names, comments and tags.
+type viewKV struct {
+	key, value string
+	nested     []viewKV
+}
+
+func emitViewMap(b *strings.Builder, indent string, pairs []viewKV, comma bool) {
+	fmt.Fprintf(b, "%s%%{\n", indent)
+	entryIndent := indent + "  "
+	for i, pair := range pairs {
+		sep := ","
+		if i == len(pairs)-1 {
+			sep = ""
+		}
+		if pair.nested != nil {
+			fmt.Fprintf(b, "%s%s: %%{\n", entryIndent, pair.key)
+			emitViewMapEntries(b, entryIndent+"  ", pair.nested)
+			fmt.Fprintf(b, "%s}%s\n", entryIndent, sep)
+			continue
+		}
+		line := entryIndent + pair.key + ": " + pair.value + sep
+		if exWidth(line) <= exLineLimit {
+			b.WriteString(line + "\n")
+		} else {
+			// A long literal stays whole on its own line, as mix format writes
+			// a map value that cannot fit beside its key.
+			fmt.Fprintf(b, "%s%s:\n%s  %s%s\n", entryIndent, pair.key, entryIndent, pair.value, sep)
+		}
+	}
+	end := ""
+	if comma {
+		end = ","
+	}
+	fmt.Fprintf(b, "%s}%s\n", indent, end)
+}
+
+func emitViewMapEntries(b *strings.Builder, indent string, pairs []viewKV) {
+	for i, pair := range pairs {
+		sep := ","
+		if i == len(pairs)-1 {
+			sep = ""
+		}
+		line := indent + pair.key + ": " + pair.value + sep
+		if exWidth(line) <= exLineLimit {
+			b.WriteString(line + "\n")
+		} else {
+			fmt.Fprintf(b, "%s%s:\n%s  %s%s\n", indent, pair.key, indent, pair.value, sep)
+		}
+	}
+}
+
 // UnitView is the unit registry's source alone (docs/SPEC-TABLES.md §8.3),
 // for the listing gate (make tables-elixir-view) over the VIEW_CORPUS units
 // whose full Generate this leg still refuses by name: the registry is data
@@ -61,12 +114,16 @@ func unitViewModule(u *ir.Unit, ns string) []byte {
 			} else if c.Int != nil {
 				integer = int64(c.Int.Uint64())
 			}
-			sep := ","
-			if i == len(constants)-1 {
-				sep = ""
-			}
-			fmt.Fprintf(&b, "      %%{name: %s, file: %s, type_name: %s, is_float: %v, int_value: %d, float_value: %s, doc: %s, tags: %s}%s\n",
-				elixirQuote(c.Name), elixirQuote(viewFile(u, c.Name)), elixirQuote(c.Storage), c.IsFloat, integer, real, elixirQuote(c.Doc), elixirTags(c.Tags), sep)
+			emitViewMap(&b, "      ", []viewKV{
+				{key: "name", value: elixirQuote(c.Name)},
+				{key: "file", value: elixirQuote(viewFile(u, c.Name))},
+				{key: "type_name", value: elixirQuote(c.Storage)},
+				{key: "is_float", value: fmt.Sprint(c.IsFloat)},
+				{key: "int_value", value: fmt.Sprint(integer)},
+				{key: "float_value", value: real},
+				{key: "doc", value: elixirQuote(c.Doc)},
+				{key: "tags", value: elixirTags(c.Tags)},
+			}, i < len(constants)-1)
 		}
 		b.WriteString("    ],\n")
 	}
@@ -82,20 +139,29 @@ func unitViewModule(u *ir.Unit, ns string) []byte {
 			count := len(e.Variants) + 1
 			fmt.Fprintf(&b, "      %%{\n        name: %s,\n        file: %s,\n        max: %d,\n        storage_bits: %d,\n        num_variants: %d,\n        doc: %s,\n        tags: %s,\n        variants: [\n",
 				elixirQuote(e.Name), elixirQuote(viewFile(u, e.Name)), e.Max, e.StorageBits, count, elixirQuote(e.Doc), elixirTags(e.Tags))
-			fmt.Fprintf(&b, "          %%{value: 0, name: \"None\", id: 0x0000000000000000, doc: \"\", tags: []}")
+			emitViewMap(&b, "          ", []viewKV{
+				{key: "value", value: "0"}, {key: "name", value: `"None"`},
+				{key: "id", value: "0x0000000000000000"}, {key: "doc", value: `""`},
+				{key: "tags", value: "[]"},
+			}, len(e.Variants) > 0)
 			for i, variant := range e.Variants {
 				id := uint64(0)
 				if reached[e.Name] {
 					id = ir.TableWireId(e.VariantWireName(i))
 				}
-				fmt.Fprintf(&b, ",\n          %%{value: %d, name: %s, id: 0x%016X, doc: %s, tags: %s}",
-					i+1, elixirQuote(variant), id, elixirQuote(e.VariantDocs[i]), elixirTags(e.VariantTags[i]))
+				emitViewMap(&b, "          ", []viewKV{
+					{key: "value", value: fmt.Sprint(i + 1)},
+					{key: "name", value: elixirQuote(variant)},
+					{key: "id", value: fmt.Sprintf("0x%016X", id)},
+					{key: "doc", value: elixirQuote(e.VariantDocs[i])},
+					{key: "tags", value: elixirTags(e.VariantTags[i])},
+				}, i < len(e.Variants)-1)
 			}
 			sep := ","
 			if idx == len(enums)-1 {
 				sep = ""
 			}
-			fmt.Fprintf(&b, "\n        ]\n      }%s\n", sep)
+			fmt.Fprintf(&b, "        ]\n      }%s\n", sep)
 		}
 		b.WriteString("    ],\n")
 	}
@@ -113,12 +179,13 @@ func unitViewModule(u *ir.Unit, ns string) []byte {
 			fmt.Fprintf(&b, "      %%{\n        name: %s,\n        file: %s,\n        max: %d,\n        storage_bits: %d,\n        num_variants: %d,\n        doc: %s,\n        tags: %s,\n        variants: [\n",
 				elixirQuote(f.Name), elixirQuote(viewFile(u, f.Name)), count-1, bits, count, elixirQuote(f.Doc), elixirTags(f.Tags))
 			for i, variant := range f.Variants {
-				vsep := ","
-				if i == count-1 {
-					vsep = ""
-				}
-				fmt.Fprintf(&b, "          %%{value: %d, name: %s, id: 0x0000000000000000, doc: %s, tags: %s}%s\n",
-					i, elixirQuote(variant), elixirQuote(f.VariantDocs[i]), elixirTags(f.VariantTags[i]), vsep)
+				emitViewMap(&b, "          ", []viewKV{
+					{key: "value", value: fmt.Sprint(i)},
+					{key: "name", value: elixirQuote(variant)},
+					{key: "id", value: "0x0000000000000000"},
+					{key: "doc", value: elixirQuote(f.VariantDocs[i])},
+					{key: "tags", value: elixirTags(f.VariantTags[i])},
+				}, i < count-1)
 			}
 			sep := ","
 			if idx == len(flags)-1 {
@@ -144,7 +211,13 @@ func unitViewModule(u *ir.Unit, ns string) []byte {
 			count := len(un.Variants) + 1
 			fmt.Fprintf(&b, "      %%{\n        name: %s,\n        file: %s,\n        max: %d,\n        storage_bits: %d,\n        num_variants: %d,\n        doc: %s,\n        tags: %s,\n        variants: [\n",
 				elixirQuote(un.Name), elixirQuote(viewFile(u, un.Name)), un.Max, un.StorageBits, count, elixirQuote(un.Doc), elixirTags(un.Tags))
-			fmt.Fprintf(&b, "          %%{value: 0, name: \"None\", id: 0x0000000000000000, payload_name: nil, payload: nil, field: nil, doc: \"\", tags: []}")
+			emitViewMap(&b, "          ", []viewKV{
+				{key: "value", value: "0"}, {key: "name", value: `"None"`},
+				{key: "id", value: "0x0000000000000000"},
+				{key: "payload_name", value: "nil"}, {key: "payload", value: "nil"},
+				{key: "field", value: "nil"}, {key: "doc", value: `""`},
+				{key: "tags", value: "[]"},
+			}, len(un.Variants) > 0)
 			for i, arm := range un.Variants {
 				id := uint64(0)
 				if reached[un.Name] {
@@ -152,7 +225,7 @@ func unitViewModule(u *ir.Unit, ns string) []byte {
 				}
 				payloadName := "nil"
 				payload := "nil"
-				field := "nil"
+				field := viewKV{key: "field", value: "nil"}
 				switch {
 				case arm.Void():
 				case arm.Body():
@@ -160,17 +233,32 @@ func unitViewModule(u *ir.Unit, ns string) []byte {
 					payload = elixirQuote(arm.Type)
 				default:
 					payloadName = elixirQuote(ir.FieldTypeSpelling(arm.F))
-					field = fmt.Sprintf("%%{name: %s, type_name: %s, kind: %d, array_bound: %d, offset: 0, optional: %v, doc: %s, tags: %s}",
-						elixirQuote(arm.Name), elixirQuote(viewTableTypeSpelling(arm.F)), viewArmKind(arm.F), viewArmBound(arm.F), arm.F.Type.Optional, elixirQuote(arm.Doc), elixirTags(arm.Tags))
+					field.nested = []viewKV{
+						{key: "name", value: elixirQuote(arm.Name)},
+						{key: "type_name", value: elixirQuote(viewTableTypeSpelling(arm.F))},
+						{key: "kind", value: fmt.Sprint(viewArmKind(arm.F))},
+						{key: "array_bound", value: fmt.Sprint(viewArmBound(arm.F))},
+						{key: "offset", value: "0"},
+						{key: "optional", value: fmt.Sprint(arm.F.Type.Optional)},
+						{key: "doc", value: elixirQuote(arm.Doc)},
+						{key: "tags", value: elixirTags(arm.Tags)},
+					}
 				}
-				fmt.Fprintf(&b, ",\n          %%{value: %d, name: %s, id: 0x%016X, payload_name: %s, payload: %s, field: %s, doc: %s, tags: %s}",
-					i+1, elixirQuote(arm.Name), id, payloadName, payload, field, elixirQuote(arm.Doc), elixirTags(arm.Tags))
+				emitViewMap(&b, "          ", []viewKV{
+					{key: "value", value: fmt.Sprint(i + 1)},
+					{key: "name", value: elixirQuote(arm.Name)},
+					{key: "id", value: fmt.Sprintf("0x%016X", id)},
+					{key: "payload_name", value: payloadName},
+					{key: "payload", value: payload}, field,
+					{key: "doc", value: elixirQuote(arm.Doc)},
+					{key: "tags", value: elixirTags(arm.Tags)},
+				}, i < len(un.Variants)-1)
 			}
 			sep := ","
 			if idx == len(unions)-1 {
 				sep = ""
 			}
-			fmt.Fprintf(&b, "\n        ]\n      }%s\n", sep)
+			fmt.Fprintf(&b, "        ]\n      }%s\n", sep)
 		}
 		b.WriteString("    ],\n")
 	}
@@ -221,12 +309,18 @@ func emitViewStructList(b *strings.Builder, u *ir.Unit, closure map[string]bool,
 				if f.Type.Kind == ir.TNamed && (u.Unions[f.Type.Name] != nil || u.TableUnions[f.Type.Name] != nil) {
 					arms = fmt.Sprintf("%%{union_name: %s, payload_offset: 0}", elixirQuote(f.Type.Name))
 				}
-				fsep := ","
-				if i == len(st.Fields)-1 {
-					fsep = ""
-				}
-				fmt.Fprintf(b, "            %%{name: %s, json: %s, type_name: %s, id: 0x%016X, kind: %d, array_bound: %d, optional: %v, arms: %s, doc: %s, tags: %s}%s\n",
-					elixirQuote(f.Name), json, elixirQuote(viewTableTypeSpelling(f)), id, viewArmKind(f), viewArmBound(f), f.Type.Optional, arms, elixirQuote(f.Doc), elixirTags(f.Tags), fsep)
+				emitViewMap(b, "            ", []viewKV{
+					{key: "name", value: elixirQuote(f.Name)},
+					{key: "json", value: json},
+					{key: "type_name", value: elixirQuote(viewTableTypeSpelling(f))},
+					{key: "id", value: fmt.Sprintf("0x%016X", id)},
+					{key: "kind", value: fmt.Sprint(viewArmKind(f))},
+					{key: "array_bound", value: fmt.Sprint(viewArmBound(f))},
+					{key: "optional", value: fmt.Sprint(f.Type.Optional)},
+					{key: "arms", value: arms},
+					{key: "doc", value: elixirQuote(f.Doc)},
+					{key: "tags", value: elixirTags(f.Tags)},
+				}, i < len(st.Fields)-1)
 			}
 			b.WriteString("          ]\n")
 		}

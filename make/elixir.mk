@@ -173,6 +173,82 @@ tables-elixir-clean: build/tables-generated-elixir/.stamp
 	@echo "tables Elixir: mix format clean over the generated table units"
 test-elixir: tables-elixir-clean
 
+# THE EMITTERS' RAW OUTPUT IS FORMAT-CANONICAL (issue #547, the formatter half).
+# tables-elixir-clean above checks what a stamp FORMATTED before the check, so
+# it can never see an emitter that drifts from Elixir 1.20.4's shape. This gate
+# generates the whole table corpus — the table units, the fixed-form units, the
+# paired and bench units and the cards unit — with the compiler into
+# $(ELIXIR_EMIT_FORMAT_DIR) and hands the RAW files to `mix format
+# --check-formatted`, with nothing in between that formats.
+#
+# ELIXIR_EMIT_FORMAT_PENDING names the files the gate does NOT yet hold, by
+# basename, and the recipe prints the list so the exclusion is never silent:
+# the variable form's Table.ex and TableRuntime.ex, which the next card
+# (elixir-variable-form-emits-mix-format-canonical-source) makes canonical and
+# then empties this list. Nothing else may be added to it.
+#
+# ELIXIR_EMIT_FORMAT_SCHEMA is the compiler the gate generates with, so the
+# negative control below runs this same recipe over a sabotaged compiler.
+ELIXIR_EMIT_FORMAT_PENDING := Table.ex TableRuntime.ex
+
+# THE FILES A STAMP STILL CANONICALIZES, by basename, and nothing else: the
+# fixed-form, fixed-bench and paired stamps below consume the emitters' RAW
+# output for every other file, including FixedRuntime.ex and UnitView.ex.
+ELIXIR_STAMP_CANONICALIZES := $(ELIXIR_EMIT_FORMAT_PENDING)
+ELIXIR_EMIT_FORMAT_DIR     ?= build/elixir-emit-format
+ELIXIR_EMIT_FORMAT_SCHEMA  ?= ./bin/schema
+
+.PHONY: tables-elixir-emit-format-clean
+tables-elixir-emit-format-clean: bin/schema
+	@rm -rf $(ELIXIR_EMIT_FORMAT_DIR) && mkdir -p $(ELIXIR_EMIT_FORMAT_DIR)/gen $(ELIXIR_EMIT_FORMAT_DIR)/src
+	@for unit in $(addprefix table-,$(ELIXIR_TABLE_UNITS)) $(addprefix fixed-,$(ELIXIR_FIXED_UNITS)) \
+			cards:tables/cards bench:bench/corpus/Bench.schema realworld:bench/corpus/RealWorld.schema; do \
+		name=$${unit%%:*}; path=$${unit#*:}; \
+		$(ELIXIR_EMIT_FORMAT_SCHEMA) generate --lang elixir --out $(ELIXIR_EMIT_FORMAT_DIR)/gen/$$name $$path > /dev/null || exit 1; \
+	done
+	@cp bench/corpus/Bench.schema $(ELIXIR_EMIT_FORMAT_DIR)/src/Bench.schema
+	@cp bench/corpus/FixedTable.schema $(ELIXIR_EMIT_FORMAT_DIR)/src/Wrap.schema
+	@$(ELIXIR_EMIT_FORMAT_SCHEMA) generate --lang elixir --out $(ELIXIR_EMIT_FORMAT_DIR)/gen/paired \
+		$(ELIXIR_EMIT_FORMAT_DIR)/src/Bench.schema $(ELIXIR_EMIT_FORMAT_DIR)/src/Wrap.schema > /dev/null
+	@echo "tables-elixir-emit-format-clean: PENDING (not held, owned by elixir-variable-form-emits-mix-format-canonical-source): $(ELIXIR_EMIT_FORMAT_PENDING)"
+	@set -e; files=""; \
+	for f in $(ELIXIR_EMIT_FORMAT_DIR)/gen/*/*.ex; do \
+		case " $(ELIXIR_EMIT_FORMAT_PENDING) " in *" $$(basename $$f) "*) continue ;; esac; \
+		files="$$files $$f"; \
+	done; \
+	n=$$(echo $$files | wc -w | tr -d ' '); \
+	if [ "$$n" -lt 100 ]; then echo "tables-elixir-emit-format-clean: found $$n raw files, expected at least 100 — the glob, not the property, broke"; exit 1; fi; \
+	echo "tables-elixir-emit-format-clean: checking $$n raw emitter files"; \
+	$(MIX) format --check-formatted $$files
+	@echo "tables Elixir emitters: the raw output of every table emitter but the pending ones is mix format clean"
+test-elixir: tables-elixir-emit-format-clean
+
+# ITS NEGATIVE CONTROL, on the EMITTER for the fuzz control's reason (below):
+# the cook runtime's `int(region, at + 4, 4)` (the high half of a cook
+# delta) loses its call parentheses — still
+# valid Elixir, which the sabotaged build compiles, and a pair the formatter
+# would add back — and the gate, run over the sabotaged compiler's raw output,
+# must go red NAMING CookRuntime.ex. A gate that formatted before it checked,
+# the shape the older stamps had, would stay green here.
+CONFORMANCE_NEGATIVE_ELIXIR_EMIT_FORMAT := build/elixir-emit-format-negative
+ELIXIR_EMIT_FORMAT_SED := -e 's|high = int(region, at + 4, 4)|high = int region, at + 4, 4|'
+
+.PHONY: tables-elixir-emit-format-negative-control
+tables-elixir-emit-format-negative-control: bin/schema
+	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_EMIT_FORMAT),internal/codegen/elixirtable/cook.go,ELIXIR_EMIT_FORMAT_SED)
+	@if $(MAKE) --no-print-directory tables-elixir-emit-format-clean \
+			ELIXIR_EMIT_FORMAT_SCHEMA=$(CONFORMANCE_NEGATIVE_ELIXIR_EMIT_FORMAT)/schema \
+			ELIXIR_EMIT_FORMAT_DIR=$(CONFORMANCE_NEGATIVE_ELIXIR_EMIT_FORMAT)/emit-format \
+			> $(CONFORMANCE_NEGATIVE_ELIXIR_EMIT_FORMAT)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a cook runtime call without its parentheses left the raw-format gate green"; \
+		cat $(CONFORMANCE_NEGATIVE_ELIXIR_EMIT_FORMAT)/log; exit 1; \
+	fi
+	@grep -q 'emit-format/gen/[^/]*/CookRuntime\.ex' $(CONFORMANCE_NEGATIVE_ELIXIR_EMIT_FORMAT)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the raw-format gate went red, but did not name CookRuntime.ex"; \
+		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_EMIT_FORMAT)/log; exit 1; }
+	@echo 'elixir emit-format negative control: dropping a call'"'"'s parentheses in the cook emitter reds the raw-format gate on CookRuntime.ex'
+test-elixir: tables-elixir-emit-format-negative-control
+
 .PHONY: build-conformance-elixir
 build-conformance-elixir: build/elixir-tables-ebin/.stamp
 
@@ -394,7 +470,7 @@ tables-elixir-accessor-negative-control:
 	@echo "elixir accessor negative control: a generated accessor four bytes off reds the agreement gate"
 
 CONFORMANCE_NEGATIVE_ELIXIR_SLOT := build/elixir-slot-negative
-ELIXIR_SLOT_SED := -e 's|do: C.deref(region, node + %d)|do: C.deref(region, node + 8 + %d)|'
+ELIXIR_SLOT_SED := -e 's|"C.deref(region, node + %s)"|"C.deref(region, node + 8 + %s)"|'
 
 .PHONY: tables-elixir-slot-negative-control
 tables-elixir-slot-negative-control:
@@ -769,16 +845,18 @@ build/elixir-fixedform/.stamp: bin/schema $(ELIXIR_FIXED_SCHEMAS) make/elixir.mk
 		name=$${unit%%:*}; path=$${unit#*:}; \
 		./bin/schema generate --lang elixir --out build/elixir-fixedform/gen/$$name $$path || exit 1; \
 	done
-	# Same authority as tables-elixir-clean: the fixed-form emitters predate
-	# Elixir 1.20.4's wraps, so the stamp canonicalizes before the check.
-	$(MIX) format build/elixir-fixedform/gen/*/*.ex
+	# The emitters write mix format's shape (tables-elixir-emit-format-clean),
+	# so only the files they do not yet are canonicalized here.
+	@set -e; files=$$(ls $(foreach f,$(ELIXIR_STAMP_CANONICALIZES),build/elixir-fixedform/gen/*/$(f)) 2>/dev/null || true); \
+		if [ -n "$$files" ]; then echo "canonicalizing (ELIXIR_STAMP_CANONICALIZES):" $$files; $(MIX) format $$files; fi
 	$(ELIXIRC_STRICT) -o build/elixir-fixedform/ebin build/elixir-fixedform/gen/*/*.ex
 	@touch $@
 
 .PHONY: tables-elixir-fixed-form
 tables-elixir-fixed-form: build/elixir-fixedform/.stamp build/fixedform-corpus/.stamp
-	# The stamp canonicalizes with mix format. This check holds that result,
-	# and the hand-written driver, to Elixir 1.20.4.
+	# The fixed modules and FixedRuntime.ex are the emitters' raw output;
+	# this holds both, and the hand-written driver,
+	# to Elixir 1.20.4.
 	$(MIX) format --check-formatted build/elixir-fixedform/gen/*/*Fixed.ex \
 		build/elixir-fixedform/gen/*/FixedRuntime.ex test/elixir-fixedform/main.exs
 	$(ELIXIR) -pa build/elixir-fixedform/ebin test/elixir-fixedform/main.exs build/fixedform-corpus
@@ -808,8 +886,9 @@ build/elixir-fixed-bench/.stamp: bin/schema bench/corpus/Bench.schema bench/corp
 	cp bench/corpus/FixedTable.schema build/elixir-fixed-bench/source/Wrap.schema
 	./bin/schema generate --lang elixir --out build/elixir-fixed-bench/gen \
 		build/elixir-fixed-bench/source/Bench.schema build/elixir-fixed-bench/source/Wrap.schema
-	# Same authority as tables-elixir-clean.
-	$(MIX) format build/elixir-fixed-bench/gen/*.ex
+	# Raw emitter output but for ELIXIR_STAMP_CANONICALIZES.
+	@set -e; files=$$(ls $(foreach f,$(ELIXIR_STAMP_CANONICALIZES),build/elixir-fixed-bench/gen/$(f)) 2>/dev/null || true); \
+		if [ -n "$$files" ]; then echo "canonicalizing (ELIXIR_STAMP_CANONICALIZES):" $$files; $(MIX) format $$files; fi
 	$(ELIXIRC_STRICT) -o build/elixir-fixed-bench/ebin build/elixir-fixed-bench/gen/*.ex
 	@touch $@
 
@@ -827,17 +906,17 @@ build/elixir-fixed-bench/bench_fixed.bin: generated/bench/paired/cpp/.stamp test
 # the module this backend writes for that file (§11).
 #
 # bench/paired/main.go's `-mode build -langs elixir` writes the same emitter
-# bytes from the same copies. This stamp then canonicalizes with mix format,
-# which is the shape tables-elixir-paired-gate checks.
+# bytes from the same copies. This stamp then canonicalizes only the files in
+# ELIXIR_STAMP_CANONICALIZES — every other committed file is the emitter's raw
+# output, which is the shape tables-elixir-paired-gate checks.
 generated/bench/paired/elixir/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema make/elixir.mk
 	@mkdir -p generated/bench/paired/elixir build/paired/elixir-src
 	cp bench/corpus/Bench.schema build/paired/elixir-src/Bench.schema
 	cp bench/corpus/FixedTable.schema build/paired/elixir-src/Wrap.schema
 	./bin/schema generate --lang elixir --out generated/bench/paired/elixir \
 		build/paired/elixir-src/Bench.schema build/paired/elixir-src/Wrap.schema
-	# The committed paired units are mix format's shape. Canonicalize on
-	# regenerate so a wrap the emitter misses cannot fail tables-elixir-paired-gate.
-	$(MIX) format generated/bench/paired/elixir/*.ex
+	@set -e; files=$$(ls $(foreach f,$(ELIXIR_STAMP_CANONICALIZES),generated/bench/paired/elixir/$(f)) 2>/dev/null || true); \
+		if [ -n "$$files" ]; then echo "canonicalizing (ELIXIR_STAMP_CANONICALIZES):" $$files; $(MIX) format $$files; fi
 	@touch $@
 
 # THE PAIRED LEG's own gate, with no clock: the fixed corpus's layout compared
