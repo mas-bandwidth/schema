@@ -1,0 +1,40 @@
+#!/bin/sh
+# THE ALL-ROOTS WIRE-FUZZ DRIVER'S BUILD (make/rust.mk, tables-rust-wire-fuzz-all).
+#
+# Generates every unit test/conformance/rust/src/wire_fuzz_all.rs dispatches,
+# lays each unit's variable-wire modules out as one module directory with a
+# mod.rs, and compiles the driver with rustc beside them — the way
+# build/conformance-rust-card is built from the card's three modules. The
+# working directory is the repository root.
+#
+# usage: wire-fuzz-all-build <out binary> [generator command]
+#
+# The generator command defaults to ./bin/schema; the retention negative
+# control passes a `go run -overlay=...` command so the driver is built from a
+# sabotaged generator without editing a tracked file.
+set -e
+out=$1
+shift
+gen=${*:-./bin/schema}
+dir=$out.d
+rm -rf "$dir"
+mkdir -p "$dir/src"
+for unit in blobdemo:tables/blobs graphdemo:tables/pointers listdemo:tables/lists \
+	mapdemo:tables/maps tblp2:test/tables/P2.schema; do
+	name=${unit%%:*}
+	path=${unit#*:}
+	$gen generate --lang rust --out "$dir/gen/$name" "$path" 2>"$dir/gen-$name.log" || {
+		cat "$dir/gen-$name.log"
+		exit 1
+	}
+	mkdir -p "$dir/src/$name"
+	: >"$dir/src/$name/mod.rs"
+	for f in "$dir/gen/$name/variable_runtime.rs" "$dir/gen/$name"/*_table.rs "$dir/gen/$name"/*_variable.rs; do
+		[ -f "$f" ] || continue
+		m=$(basename "$f" .rs)
+		cp "$f" "$dir/src/$name/"
+		printf '#[allow(dead_code, unused_imports)]\npub mod %s;\n#[allow(unused_imports)]\npub use %s::*;\n' "$m" "$m" >>"$dir/src/$name/mod.rs"
+	done
+done
+cp test/conformance/rust/src/wire_fuzz_all.rs "$dir/src/main.rs"
+rustc --edition 2024 -O -A warnings -o "$out" "$dir/src/main.rs"

@@ -1398,6 +1398,24 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "                    if bl > 0xffffffff { return -1; }\n")
 	fmt.Fprintf(b, "                    cur_blob += round(8 + bl as i64 + 1);\n")
 	fmt.Fprintf(b, "                }\n")
+	// THE STORAGE A NODE RECORD COMMANDS is its type's, and only for a type
+	// THIS ROOT can place (docs/SPEC-TABLES.md §3.1, §6.5): a table no pointer
+	// below the root targets is a node the reader cannot name and commands none,
+	// exactly as tablewire.FileRegionMeasure sizes it.
+	if reached := ir.PointerReachable(st); len(reached) > 0 {
+		fmt.Fprintf(b, "                match ids[tref as usize - 1] {\n")
+		seen := map[uint64]bool{}
+		for _, n := range reached {
+			id := ir.TableWireId(n.WireName())
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			fmt.Fprintf(b, "                    0x%016x => { cur_blob += round(%d); }\n", id, ir.RecordLayout(g.unit, n).Size)
+		}
+		fmt.Fprintf(b, "                    _ => {}\n")
+		fmt.Fprintf(b, "                }\n")
+	}
 	fmt.Fprintf(b, "                off += bl as usize;\n")
 	fmt.Fprintf(b, "                recs += 1;\n")
 	fmt.Fprintf(b, "            }\n")

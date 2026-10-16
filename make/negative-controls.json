@@ -487,6 +487,7 @@
         "packet-utf8-rust-negative-control",
         "packet-wide-rust-negative-control",
         "tables-rust-names-negative-control",
+        "tables-rust-retain-negative-control",
         "tables-rust-runtime-home-negative-control"
       ],
       "rust": "stable"

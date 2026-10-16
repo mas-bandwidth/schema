@@ -575,6 +575,64 @@ tables-rust-variable-arms:
 
 test-rust: tables-rust-variable-arms
 
+# THE RUST LEG OVER EVERY ROOT (docs/SPEC-TABLES.md §3, §4, §4.2, §6.6): the
+# wire fuzzer and retain-unknown over every variable-class FILE root of the
+# harness's default roster whose unit the Rust generator gives a codec, not the
+# Card root alone. build/conformance-rust-all is the hand-written driver in
+# test/conformance/rust/src/wire_fuzz_all.rs, compiled with rustc beside each
+# unit's generated variable-wire modules by test/conformance/rust/wire-fuzz-all-build.
+#
+# The Go test runs first: TestRetainsAndWidensOnEveryRootRust holds the
+# driver's ROOTS equal, both ways, to the roster roots the generator carries,
+# fails on any of them the driver cannot open, drives every pinned seed of every
+# carried root through the plain and the retaining pair against the Go oracle,
+# and pins widening on read. SCHEMA_REQUIRE_CORPUS=1 turns its rustc skip into a
+# failure, so the target never passes on a SKIP. Then the harness's own fuzzer,
+# the arm tables-go-wire-fuzz runs (make/go.mk) and its retain arm, both with
+# the all-roots driver; each must report 0 divergences. The roster roots the
+# harness counts absent are the ones no Rust codec exists for: fixed-class
+# roots' form-1 files, form-2 message entries, and units the generator refuses.
+.PHONY: tables-rust-wire-fuzz-all tables-rust-retain-negative-control
+build/conformance-rust-all: bin/schema test/conformance/rust/src/wire_fuzz_all.rs test/conformance/rust/wire-fuzz-all-build
+	PATH="$(RUSTUP_BIN):$$PATH" sh test/conformance/rust/wire-fuzz-all-build $@
+
+tables-rust-wire-fuzz-all: build/conformance-harness build/conformance-rust-all
+	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run TestRetainsAndWidensOnEveryRootRust -v
+	@set -e; for arm in '' '--retain'; do \
+		./build/conformance-harness wire-fuzz --driver 'build/conformance-rust-all' $$arm --seed $(SEED) --n $(N) \
+			> build/rust-wire-fuzz-all.log 2>&1 || { cat build/rust-wire-fuzz-all.log; exit 1; }; \
+		cat build/rust-wire-fuzz-all.log; \
+		grep -q ' 0 divergences' build/rust-wire-fuzz-all.log; \
+	done
+
+# THE RETENTION NEGATIVE CONTROL (docs/SPEC-TABLES.md §6.6): the generated
+# retaining load's capacity check is sabotaged to keep nothing, through a
+# `go test -overlay` of internal/codegen/rusttable/variablecodec.go so no
+# tracked file is edited, and TestRetainsAndWidensOnEveryRootRust must go red
+# on a retaining seed's counters. A retention that has never been turned off
+# proves nothing about the gate above.
+tables-rust-retain-negative-control:
+	@rm -rf build/rust-retain-control && mkdir -p build/rust-retain-control
+	@sed 's|if ret.bytes.len() + need <= ret.bytes.capacity() {|if false {|' \
+		internal/codegen/rusttable/variablecodec.go > build/rust-retain-control/variablecodec.go.txt
+	@cmp -s internal/codegen/rusttable/variablecodec.go build/rust-retain-control/variablecodec.go.txt && \
+		{ echo "NEGATIVE CONTROL: the retention sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/variablecodec.go":"%s/build/rust-retain-control/variablecodec.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-retain-control/overlay.json
+	@if PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 20m \
+			-overlay=build/rust-retain-control/overlay.json \
+			-run TestRetainsAndWidensOnEveryRootRust ./internal/codegen/rusttable/ > build/rust-retain-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the suite stayed green with Rust retention turned off"; \
+		exit 1; \
+	fi
+	@grep -q 'retain=true): the leg reports' build/rust-retain-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on retention"; \
+		  cat build/rust-retain-control/log; exit 1; }
+	@grep -m1 'retain=true): the leg reports' build/rust-retain-control/log
+	@echo "rust retention negative control: turning retention off turns the every-root gate RED on it"
+
+test-rust: tables-rust-wire-fuzz-all tables-rust-retain-negative-control
+
 # THE CARDS UNIT'S RUST LEG (docs/SPEC-TABLES.md §2). These targets are the
 # Rust side of the cards wire-fuzz gate: they mirror the Go leg's
 # cards-generate and cards-wire-fuzz (make/go.mk) against the same oracle
