@@ -112,6 +112,7 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAP
 	./bin/schema generate --lang java --out build/tables-generated-java/a2 test/tables/A2.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/g1 test/tables/G1.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/messages tables/messages
+	./bin/schema generate --lang java --out build/tables-generated-java/stream tables/stream
 	./bin/schema generate --lang java --out build/tables-generated-java/wide examples-wide
 	# THE FIXED FORM's versioning pair (docs/SPEC-TABLES.md §3.4): FX1 is the
 	# old side and FX2 the new, and every edit between them lands through a
@@ -1437,6 +1438,35 @@ packet-wide-java-negative-control: packet-wide-java
 	@echo 'packet wide Java negative control: removed pairing fails bit-flip agreement'
 
 test-java: packet-wide-java packet-wide-java-negative-control
+
+# ---------------------------------------------------------------------------
+# THE ALL-ROOT WIRE-FUZZ GATE (docs/SPEC-TABLES.md §4.2)
+# ---------------------------------------------------------------------------
+# Compile every generated table unit beside the roster-driven Java driver. The
+# harness owns the default manifest when --manifest is omitted; this target
+# deliberately runs that complete roster rather than the cards-only fixture.
+.PHONY: tables-java-wire-fuzz-all
+TABLES_JAVA_FUZZ_TIME ?= 30s
+build/tables-java-wire-fuzz-all/.stamp: build/tables-generated-java/.stamp cards-java-generate test/conformance/java/src/WireFuzz.java make/java.mk
+	@rm -rf build/tables-java-wire-fuzz-all && mkdir -p build/tables-java-wire-fuzz-all
+	$(JAVAC) --release 17 -nowarn -d build/tables-java-wire-fuzz-all \
+		build/tables-generated-java/*/*.java test/conformance/java/src/WireFuzz.java
+	@printf '#!/bin/sh\nexec %s -cp %s/build/tables-java-wire-fuzz-all WireFuzz "$$@"\n' \
+		"$(JAVA)" "$(CURDIR)" > build/tables-java-wire-fuzz-all/driver
+	@chmod +x build/tables-java-wire-fuzz-all/driver
+	@touch $@
+
+tables-java-wire-fuzz-all: build/conformance-harness build/tables-java-wire-fuzz-all/.stamp
+	@rm -f build/tables-java-wire-fuzz-all.log
+	timeout $(TABLES_JAVA_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+		--driver "$(CURDIR)/build/tables-java-wire-fuzz-all/driver" --seed $(SEED) --n $(N) \
+		> build/tables-java-wire-fuzz-all.log 2>&1
+	@cat build/tables-java-wire-fuzz-all.log
+	@grep -q '0 divergences' build/tables-java-wire-fuzz-all.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-java-wire-fuzz-all.log
+	@grep -qE '[1-9][0-9]* mutants' build/tables-java-wire-fuzz-all.log
+
+test-java: tables-java-wire-fuzz-all
 
 # ---------------------------------------------------------------------------
 # THE CARD WIRE-FUZZ GATE (docs/SPEC-TABLES.md §2, §3)
