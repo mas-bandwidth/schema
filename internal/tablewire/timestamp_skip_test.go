@@ -1,6 +1,7 @@
 package tablewire_test
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -39,6 +40,32 @@ func TestTimestampKindIsSkippedAtEightBytes(t *testing.T) {
 	fv, _ := back.FieldByKey("tick_rate")
 	if fv.Cell.U != 90 {
 		t.Fatal("the field after the kind-36 one did not decode")
+	}
+
+	// THE RETAIN PATH (§6.6) agrees: the unnamed kind-36 field is one retained
+	// record, never a loss, and the retaining save writes its eight bytes back
+	// so a plain read of the save meets it again as one unknown
+	kept := m.New(m.Lookup("GlobalSettings"))
+	retain := tablewire.Retain{Capacity: 8192, IdCapacity: 1024}
+	r = tabletext.Report{}
+	if ok, err := tablewire.DecodeRetain(m, kept, hostile, &retain, &r); !ok || err != nil || r.Malformed {
+		t.Fatalf("a retaining read of a kind-36 field should not be damage: %v %+v", err, r)
+	}
+	if r.Retained != 1 || r.RetainLost != 0 {
+		t.Fatalf("retained=%d retain_lost=%d, want 1 / 0", r.Retained, r.RetainLost)
+	}
+	var saved tabletext.Report
+	out, err := tablewire.EncodeRetain(m, kept, &retain, &saved)
+	if err != nil || saved.RetainLost != 0 {
+		t.Fatalf("the retaining save lost the kind-36 field: %v %+v", err, saved)
+	}
+	if !bytes.Contains(out, append([]byte{ir.TableKindTimestamp}, payload...)) {
+		t.Fatal("the retaining save does not carry the kind-36 field's eight bytes")
+	}
+	again := m.New(m.Lookup("GlobalSettings"))
+	r = tabletext.Report{}
+	if ok, err := tablewire.Decode(m, again, out, &r); !ok || err != nil || r.Unknown != 1 || r.Malformed {
+		t.Fatalf("the save read back should meet one unknown and no damage: %v %+v", err, r)
 	}
 
 	damaged := withField(t, wire, 0xEEEEEEEEEEEEEEEE, 35, payload)
