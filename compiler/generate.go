@@ -104,6 +104,13 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		if fname, owner, ok := firstRequiredField(u); ok {
 			return nil, fmt.Errorf("target %q refuses | required — Go carries it first, and the construct is specified ahead of its implementation elsewhere (docs/SPEC-TABLES.md §2.3); the field %q in %s uses it", carrier, fname, owner)
 		}
+		// GO CARRIES THE `forms` DECLARATION FIRST (docs/SPEC-TABLES.md §2.12):
+		// every other target refuses a unit that declares forms, here, once, by
+		// name — the construct, the target and the rule — so no other emitter is
+		// edited and none can drop a form it does not know.
+		if tname, ok := firstFormsTable(u); ok {
+			return nil, fmt.Errorf("target %q refuses the construct forms on table %s — Go carries it first; no other target honours it until its turn (docs/SPEC-TABLES.md §2.12)", carrier, tname)
+		}
 	}
 	if lg, takes := g.(lineageGenerator); takes {
 		lineage, err := openFixedLineage(u)
@@ -132,6 +139,23 @@ func firstRequiredField(u *ir.Unit) (fname, owner string, ok bool) {
 		}
 	}
 	return "", "", false
+}
+
+// firstFormsTable returns the first table in sorted order that carries an
+// explicit `forms` declaration (docs/SPEC-TABLES.md §2.12).
+func firstFormsTable(u *ir.Unit) (string, bool) {
+	names := make([]string, 0, len(u.Tables))
+	for name := range u.Tables {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		t := u.Tables[name]
+		if !t.IsMapEntry() && t.DeclaredForms() {
+			return name, true
+		}
+	}
+	return "", false
 }
 
 // englishList joins names for a sentence: "c, cpp, cs, go, js and rust".

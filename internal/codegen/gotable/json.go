@@ -72,7 +72,7 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	for _, f := range u.Files {
 		for _, st := range fileMembers(f, closure) {
 			n := st.Name
-			if st.IsMapEntry() {
+			if st.IsMapEntry() || (st.IsTable && !st.CarriesForm("json")) {
 				continue
 			}
 			if ir.VariableTables(u)[n] {

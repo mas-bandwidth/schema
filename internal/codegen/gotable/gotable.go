@@ -269,6 +269,92 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	return out, err
 }
 
+// formAllowed reports whether the unit's tables let the named form be emitted
+// (docs/SPEC-TABLES.md §2.12). With no `forms` declaration every form is
+// allowed — today's behaviour. With any declaration, only a form some table
+// carries is emitted: a form no table declares is skipped, so a unit whose
+// tables declare `forms = "wire"` gets the wire's Table.go and neither the
+// block, the cook nor the text form.
+func formAllowed(u *ir.Unit, form string) bool {
+	declared := false
+	for _, t := range u.Tables {
+		if !t.IsMapEntry() && t.DeclaredForms() {
+			declared = true
+		}
+	}
+	if !declared {
+		return true
+	}
+	for _, t := range u.Tables {
+		if !t.IsMapEntry() && t.CarriesForm(form) {
+			return true
+		}
+	}
+	return false
+}
+
+// filterBlocks restricts a unit's block layout surface to the fixed tables
+// that carry the `block` form (docs/SPEC-TABLES.md §2.12).
+func filterBlocks(b *ir.BlockUnit) *ir.BlockUnit {
+	if b == nil {
+		return nil
+	}
+	restricted := false
+	for _, bl := range b.Tables {
+		if !bl.Table.CarriesForm("block") {
+			restricted = true
+			break
+		}
+	}
+	if !restricted {
+		return b
+	}
+	out := &ir.BlockUnit{
+		Members: map[string]*ir.MemberLayout{},
+		Skipped: maps.Clone(b.Skipped),
+	}
+	var add func(name string)
+	add = func(name string) {
+		if _, done := out.Members[name]; done {
+			return
+		}
+		ml := b.Members[name]
+		if ml == nil {
+			return
+		}
+		out.Members[name] = ml
+		for _, fl := range ml.Fields {
+			if fl.Field.Type.Kind == ir.TNamed {
+				if ref, ok := fl.Field.Type.Ref.(*ir.Struct); ok {
+					add(ref.Name)
+				}
+			}
+		}
+	}
+	for _, bl := range b.Tables {
+		if !bl.Table.CarriesForm("block") {
+			out.Skipped[bl.Table.Name] = "it omits the block form in its forms declaration"
+			continue
+		}
+		out.Tables = append(out.Tables, bl)
+		for _, arr := range bl.Arrays {
+			add(arr.ElemName)
+		}
+		for _, fl := range bl.Projection.Fields {
+			if fl.Field.Type.Kind == ir.TNamed {
+				if ref, ok := fl.Field.Type.Ref.(*ir.Struct); ok && !ir.BlockOutOfLine(fl.Field) {
+					add(ref.Name)
+				}
+			}
+		}
+	}
+	for name := range out.Members {
+		out.Order = append(out.Order, name)
+	}
+	sort.Strings(out.Order)
+	return out
+}
+
 // generateForms is the whole output, and the optional form each file belongs
 // to (0 for the core).
 func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, map[string]Form, error) {
@@ -276,13 +362,32 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[stri
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, forms, nil
 	}
-	blocks := ir.Blocks(u)
-	out, err := generateBlockFiles(u, blocks)
-	if err != nil {
-		return nil, nil, err
-	}
-	for name := range out {
-		forms[name] = FormBlock
+	blocks := filterBlocks(ir.Blocks(u))
+	out := map[string][]byte{}
+	var err error
+	if formAllowed(u, "block") {
+		out, err = generateBlockFiles(u, blocks)
+		if err != nil {
+			return nil, nil, err
+		}
+		bhome := blockHome(u, blocks)
+		for _, f := range u.Files {
+			if f.Base == bhome {
+				continue
+			}
+			carries := false
+			for _, st := range f.Tables {
+				if st.CarriesForm("block") {
+					carries = true
+				}
+			}
+			if !carries {
+				delete(out, f.Base+"Block.go")
+			}
+		}
+		for name := range out {
+			forms[name] = FormBlock
+		}
 	}
 
 	regional := len(variableTableNames(u)) > 0
@@ -372,7 +477,9 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[stri
 			g.emitTableSave(st)
 			g.emitTableRead(st)
 			g.emitRetainMember(st)
-			g.into(&g.cook, func() { g.emitCookWriteSurface(st) })
+			if !st.IsTable || st.CarriesForm("cook") {
+				g.into(&g.cook, func() { g.emitCookWriteSurface(st) })
+			}
 			g.into(&g.message, func() {
 				g.emitMessageWrite(st)
 				g.emitMessageRead(st)
@@ -426,26 +533,30 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[stri
 			return nil, nil, err
 		}
 	}
-	cooks, err := generateCookFiles(u, blocks, cookRuntime, cookWriters)
-	if err != nil {
-		return nil, nil, err
+	if formAllowed(u, "cook") {
+		cooks, err := generateCookFiles(u, blocks, cookRuntime, cookWriters)
+		if err != nil {
+			return nil, nil, err
+		}
+		for name := range cooks {
+			forms[name] = FormCook
+		}
+		maps.Copy(out, cooks)
 	}
-	for name := range cooks {
-		forms[name] = FormCook
-	}
-	maps.Copy(out, cooks)
 
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
 	// descriptors, in its own file so a project that never reads or writes a
 	// text does not compile it
-	texts, err := generateJsonFiles(u, closure, home)
-	if err != nil {
-		return nil, nil, err
+	if formAllowed(u, "json") {
+		texts, err := generateJsonFiles(u, closure, home)
+		if err != nil {
+			return nil, nil, err
+		}
+		for name := range texts {
+			forms[name] = FormJson
+		}
+		maps.Copy(out, texts)
 	}
-	for name := range texts {
-		forms[name] = FormJson
-	}
-	maps.Copy(out, texts)
 	view, err := generateViewFile(u, closure, armSlots)
 	if err != nil {
 		return nil, nil, err

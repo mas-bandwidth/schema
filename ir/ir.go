@@ -256,8 +256,16 @@ type Struct struct {
 	// so every stored record of the old name still reads as this table.
 	// Tables only; "" when unset. See [Struct.WireName].
 	WasName string
-	Doc     string   // the declaration's `///` block (SPEC §4.1), "" when none
-	Tags    []string // the declaration's tags, in declared order, inert (SPEC §4.2)
+	// Forms is a TABLE's `forms = "wire,json"` declaration (docs/SPEC-TABLES.md
+	// §2.12): the forms the table carries. Empty/nil is the default — the
+	// table carries every form its backend emits, today's behaviour. When set,
+	// the table carries exactly the named forms, and a backend either honours
+	// them (Go) or refuses the whole construct by name (every other target).
+	// Forms only; nil when undeclared. [Struct.DeclaredForms] reports whether
+	// the declaration was written at all.
+	Forms []string
+	Doc   string   // the declaration's `///` block (SPEC §4.1), "" when none
+	Tags  []string // the declaration's tags, in declared order, inert (SPEC §4.2)
 	// C++ native type mapping (SPEC §4.2, Native type mapping): when set,
 	// generated C++ declares fields of this type as ::CppNative (a hand type
 	// deriving from the generated basis struct — same layout, plus behavior)
