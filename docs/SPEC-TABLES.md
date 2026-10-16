@@ -16534,8 +16534,9 @@ held to the declaration by `schema check`. So (1) every entry a build holds is t
 OLDER than it, and a `retired` mark says older too (`layout_unsupported`); (2) a hash that is not in the
 lineage has no position in it, so the lineage can say nothing about it; (3) the wire carries a hash and no
 ordinal, and the hash is a digest that cannot be ordered or re-derived (§3.4). **Nothing on the wire and
-nothing in the lock proves a layout newer today**, which makes `layout_newer` RESERVED: no reader emits it,
-and every hash outside the lineage is `layout_unknown`. It becomes emittable only when the standard gives a
+nothing in the lock proves a layout newer today**, which makes `layout_newer` RESERVED by the standard: no reader that
+has taken this rule emits it (Go today), and for such a reader every hash outside the lineage is
+`layout_unknown`; the legs that have not taken it still emit it, the gap the next paragraph names. It becomes emittable only when the standard gives a
 reader an ordered fact about a hash it does not hold (for example a lineage position spent from the header's
 reserved bytes, or a lock tail recording layouts ahead of the build), and that change is made here first.
 
