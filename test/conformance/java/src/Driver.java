@@ -766,6 +766,20 @@ public final class Driver {
         return 0;
     }
 
+    // The generated Java block/cook Open methods currently expose only their
+    // nullable handle, while the conformance contract names the reason beside
+    // that null. Keep the surfaces explicit and mark those rows absent until
+    // the in-scope generators add an OpenReason result (block.go:emitOpen and
+    // cook.go:emitOpen); never infer a reason from the forgery name.
+    private static int surfaceReason(String out, String form) throws IOException {
+        for (String[] f : kind("refusal")) {
+            if (f[1].startsWith(form + "_")) {
+                spillAbsent(out, f[1]);
+            }
+        }
+        return 0;
+    }
+
     private static int surfaceJsonRead(String out) throws IOException {
         for (String[] f : kind("instance")) {
             if (noText(f)) continue;
@@ -921,7 +935,7 @@ public final class Driver {
             // §3, §3.1, §16.7) for the roots this leg's variable wire carries —
             // graphdemo's Scene and blobdemo's Catalog — and answer every other
             // case ABSENT, one by one.
-            System.out.print("wire\nreport\njson-read\njson-write\n"
+            System.out.print("wire\nreport\nblock-reason\ncook-reason\njson-read\njson-write\n"
                     + "block\nblock-foreign\n"
                     + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n");
             return 0;
@@ -934,6 +948,8 @@ public final class Driver {
         switch (surface) {
             case "wire": return surfaceWire(out);
             case "report": return surfaceReport(out);
+            case "block-reason": return surfaceReason(out, "block");
+            case "cook-reason": return surfaceReason(out, "cook");
             case "json-read": return surfaceJsonRead(out);
             case "json-write": return surfaceJsonWrite(out);
             case "block": return surfaceBlock(out);
