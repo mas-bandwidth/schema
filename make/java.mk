@@ -365,61 +365,62 @@ tables-java-accessor-agreement: build/java-tables/.stamp build/cook-open/.stamp
 # sabotaged compiler regenerates the block and cook units, and the agreement
 # gate must go red — the first on a moved scalar accessor, the second on a moved
 # pointer slot — each naming the row and the field.
-JAVA_AGREE_SABOTAGE := build/java-agree-sabotage
+JAVA_AGREE_ACCESSOR_SABOTAGE := build/java-agree-accessor-sabotage
+JAVA_AGREE_SLOT_SABOTAGE := build/java-agree-slot-sabotage
 .PHONY: tables-java-accessor-negative-control tables-java-slot-negative-control
 tables-java-accessor-negative-control: build/cook-open/.stamp
-	@rm -rf $(JAVA_AGREE_SABOTAGE) && mkdir -p $(JAVA_AGREE_SABOTAGE)
+	@rm -rf $(JAVA_AGREE_ACCESSOR_SABOTAGE) && mkdir -p $(JAVA_AGREE_ACCESSOR_SABOTAGE)
 	go run ./tools/sabotage -name java-agree-accessor-scalar \
-		-out $(JAVA_AGREE_SABOTAGE)/rows.gotext internal/codegen/javatable/rows.go
-	@grep -q SABOTAGED $(JAVA_AGREE_SABOTAGE)/rows.gotext || \
+		-out $(JAVA_AGREE_ACCESSOR_SABOTAGE)/rows.gotext internal/codegen/javatable/rows.go
+	@grep -q SABOTAGED $(JAVA_AGREE_ACCESSOR_SABOTAGE)/rows.gotext || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
-	@printf '{"Replace":{"%s/internal/codegen/javatable/rows.go":"%s/$(JAVA_AGREE_SABOTAGE)/rows.gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(JAVA_AGREE_SABOTAGE)/overlay.json
-	go build -overlay $(JAVA_AGREE_SABOTAGE)/overlay.json -o $(JAVA_AGREE_SABOTAGE)/schema ./cmd/schema
-	$(JAVA_AGREE_SABOTAGE)/schema generate --lang java --out $(JAVA_AGREE_SABOTAGE)/generated/block tables/block
-	$(JAVA_AGREE_SABOTAGE)/schema generate --lang java --out $(JAVA_AGREE_SABOTAGE)/generated/pointers tables/pointers
-	@grep -lq SABOTAGED $(JAVA_AGREE_SABOTAGE)/generated/block/*.java || \
+	@printf '{"Replace":{"%s/internal/codegen/javatable/rows.go":"%s/$(JAVA_AGREE_ACCESSOR_SABOTAGE)/rows.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(JAVA_AGREE_ACCESSOR_SABOTAGE)/overlay.json
+	go build -overlay $(JAVA_AGREE_ACCESSOR_SABOTAGE)/overlay.json -o $(JAVA_AGREE_ACCESSOR_SABOTAGE)/schema ./cmd/schema
+	$(JAVA_AGREE_ACCESSOR_SABOTAGE)/schema generate --lang java --out $(JAVA_AGREE_ACCESSOR_SABOTAGE)/generated/block tables/block
+	$(JAVA_AGREE_ACCESSOR_SABOTAGE)/schema generate --lang java --out $(JAVA_AGREE_ACCESSOR_SABOTAGE)/generated/pointers tables/pointers
+	@grep -lq SABOTAGED $(JAVA_AGREE_ACCESSOR_SABOTAGE)/generated/block/*.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged accessor"; exit 1; }
-	$(JAVAC) --release 17 -nowarn -d $(JAVA_AGREE_SABOTAGE)/classes \
-		$(JAVA_AGREE_SABOTAGE)/generated/block/*.java $(JAVA_AGREE_SABOTAGE)/generated/pointers/*.java \
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_AGREE_ACCESSOR_SABOTAGE)/classes \
+		$(JAVA_AGREE_ACCESSOR_SABOTAGE)/generated/block/*.java $(JAVA_AGREE_ACCESSOR_SABOTAGE)/generated/pointers/*.java \
 		test/java-tables/src/AgreeAccessors.java
-	@if $(JAVA) -cp $(JAVA_AGREE_SABOTAGE)/classes AgreeAccessors \
+	@if $(JAVA) -cp $(JAVA_AGREE_ACCESSOR_SABOTAGE)/classes AgreeAccessors \
 			testdata/wire/tables/block_render.bin testdata/wire/tables/block_padded.bin build/cook-open/Scene.cook \
-			> $(JAVA_AGREE_SABOTAGE)/log 2>&1; then \
+			> $(JAVA_AGREE_ACCESSOR_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a moved scalar accessor left the agreement gate green"; \
-		cat $(JAVA_AGREE_SABOTAGE)/log; exit 1; \
+		cat $(JAVA_AGREE_ACCESSOR_SABOTAGE)/log; exit 1; \
 	fi
-	@grep -qE "disagree|is not the descriptor's|has a descriptor and no accessor" $(JAVA_AGREE_SABOTAGE)/log || \
+	@grep -qE "disagree|is not the descriptor's|has a descriptor and no accessor|has an accessor and no descriptor" $(JAVA_AGREE_ACCESSOR_SABOTAGE)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the disagreement"; \
-		  cat $(JAVA_AGREE_SABOTAGE)/log; exit 1; }
-	@grep -m1 "FAILED:" $(JAVA_AGREE_SABOTAGE)/log
+		  cat $(JAVA_AGREE_ACCESSOR_SABOTAGE)/log; exit 1; }
+	@grep -m1 "FAILED:" $(JAVA_AGREE_ACCESSOR_SABOTAGE)/log
 	@echo "negative control: a scalar accessor moved four bytes turns the agreement gate RED"
 tables-java-slot-negative-control: build/cook-open/.stamp
-	@rm -rf $(JAVA_AGREE_SABOTAGE) && mkdir -p $(JAVA_AGREE_SABOTAGE)
+	@rm -rf $(JAVA_AGREE_SLOT_SABOTAGE) && mkdir -p $(JAVA_AGREE_SLOT_SABOTAGE)
 	go run ./tools/sabotage -name java-agree-slot-offset \
-		-out $(JAVA_AGREE_SABOTAGE)/rows.gotext internal/codegen/javatable/rows.go
-	@grep -q SABOTAGED $(JAVA_AGREE_SABOTAGE)/rows.gotext || \
+		-out $(JAVA_AGREE_SLOT_SABOTAGE)/rows.gotext internal/codegen/javatable/rows.go
+	@grep -q SABOTAGED $(JAVA_AGREE_SLOT_SABOTAGE)/rows.gotext || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
-	@printf '{"Replace":{"%s/internal/codegen/javatable/rows.go":"%s/$(JAVA_AGREE_SABOTAGE)/rows.gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(JAVA_AGREE_SABOTAGE)/overlay.json
-	go build -overlay $(JAVA_AGREE_SABOTAGE)/overlay.json -o $(JAVA_AGREE_SABOTAGE)/schema ./cmd/schema
-	$(JAVA_AGREE_SABOTAGE)/schema generate --lang java --out $(JAVA_AGREE_SABOTAGE)/generated/block tables/block
-	$(JAVA_AGREE_SABOTAGE)/schema generate --lang java --out $(JAVA_AGREE_SABOTAGE)/generated/pointers tables/pointers
-	@grep -lq SABOTAGED $(JAVA_AGREE_SABOTAGE)/generated/pointers/*Row.java || \
+	@printf '{"Replace":{"%s/internal/codegen/javatable/rows.go":"%s/$(JAVA_AGREE_SLOT_SABOTAGE)/rows.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(JAVA_AGREE_SLOT_SABOTAGE)/overlay.json
+	go build -overlay $(JAVA_AGREE_SLOT_SABOTAGE)/overlay.json -o $(JAVA_AGREE_SLOT_SABOTAGE)/schema ./cmd/schema
+	$(JAVA_AGREE_SLOT_SABOTAGE)/schema generate --lang java --out $(JAVA_AGREE_SLOT_SABOTAGE)/generated/block tables/block
+	$(JAVA_AGREE_SLOT_SABOTAGE)/schema generate --lang java --out $(JAVA_AGREE_SLOT_SABOTAGE)/generated/pointers tables/pointers
+	@grep -lq SABOTAGED $(JAVA_AGREE_SLOT_SABOTAGE)/generated/pointers/*Row.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged slot"; exit 1; }
-	$(JAVAC) --release 17 -nowarn -d $(JAVA_AGREE_SABOTAGE)/classes \
-		$(JAVA_AGREE_SABOTAGE)/generated/block/*.java $(JAVA_AGREE_SABOTAGE)/generated/pointers/*.java \
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_AGREE_SLOT_SABOTAGE)/classes \
+		$(JAVA_AGREE_SLOT_SABOTAGE)/generated/block/*.java $(JAVA_AGREE_SLOT_SABOTAGE)/generated/pointers/*.java \
 		test/java-tables/src/AgreeAccessors.java
-	@if $(JAVA) -cp $(JAVA_AGREE_SABOTAGE)/classes AgreeAccessors \
+	@if $(JAVA) -cp $(JAVA_AGREE_SLOT_SABOTAGE)/classes AgreeAccessors \
 			testdata/wire/tables/block_render.bin testdata/wire/tables/block_padded.bin build/cook-open/Scene.cook \
-			> $(JAVA_AGREE_SABOTAGE)/log 2>&1; then \
+			> $(JAVA_AGREE_SLOT_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a moved pointer slot left the agreement gate green"; \
-		cat $(JAVA_AGREE_SABOTAGE)/log; exit 1; \
+		cat $(JAVA_AGREE_SLOT_SABOTAGE)/log; exit 1; \
 	fi
-	@grep -qE "disagree|is not the descriptor's|has a descriptor and no accessor" $(JAVA_AGREE_SABOTAGE)/log || \
+	@grep -qE "disagree|is not the descriptor's|has a descriptor and no accessor|has an accessor and no descriptor" $(JAVA_AGREE_SLOT_SABOTAGE)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the disagreement"; \
-		  cat $(JAVA_AGREE_SABOTAGE)/log; exit 1; }
-	@grep -m1 "FAILED:" $(JAVA_AGREE_SABOTAGE)/log
+		  cat $(JAVA_AGREE_SLOT_SABOTAGE)/log; exit 1; }
+	@grep -m1 "FAILED:" $(JAVA_AGREE_SLOT_SABOTAGE)/log
 	@echo "negative control: a pointer slot moved eight bytes turns the agreement gate RED"
 test-java: tables-java-accessor-agreement tables-java-accessor-negative-control tables-java-slot-negative-control
 

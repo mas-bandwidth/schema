@@ -74,16 +74,94 @@ public final class AgreeAccessors {
         }
     }
 
-    private static Object byDescriptor(byte[] data, int value, Object accVal) {
-        Class<?> c = accVal.getClass();
-        if (c == Boolean.class) { return blockdemo.TableBytes.bool(data, value); }
-        if (c == Byte.class) { return blockdemo.TableBytes.i8(data, value); }
-        if (c == Short.class) { return blockdemo.TableBytes.i16(data, value); }
-        if (c == Integer.class) { return blockdemo.TableBytes.i32(data, value); }
-        if (c == Long.class) { return blockdemo.TableBytes.i64(data, value); }
-        if (c == Float.class) { return blockdemo.TableBytes.f32(data, value); }
-        if (c == Double.class) { return blockdemo.TableBytes.f64(data, value); }
-        return null;
+    // The descriptor-side read is chosen from the DESCRIPTOR's kind/storage, not
+    // from the type the accessor happened to return: the whole point of holding
+    // two derivations against each other is that a moved or mistyped accessor is
+    // seen, and reading the descriptor with the accessor's own type would let a
+    // mistyped accessor agree with itself.
+    // The width is the DESCRIPTOR's elemSize, and the kind only decides the
+    // spelling (bool / float / integer): a block enum's kind is always u16
+    // while its stored width is whatever the declaration says, and following the
+    // kind for width would read two bytes where the layout has one.
+    private static Object byBlockDescriptor(byte[] data, int value, int kind, int elemSize) {
+        if (kind == 1) { return blockdemo.TableBytes.bool(data, value); }              // tkBool
+        if (kind == 10) { return blockdemo.TableBytes.f32(data, value); }              // tkF32
+        if (kind == 11) { return blockdemo.TableBytes.f64(data, value); }              // tkF64
+        switch (elemSize) {
+            case 1: return blockdemo.TableBytes.i8(data, value);
+            case 2: return blockdemo.TableBytes.i16(data, value);
+            case 4: return blockdemo.TableBytes.i32(data, value);
+            default: return blockdemo.TableBytes.i64(data, value);
+        }
+    }
+
+    private static Object byCookDescriptor(byte[] data, int value,
+                                          graphdemo.TableCookStorage storage, int elemSize) {
+        switch (storage) {
+            case BOOL: return graphdemo.TableBytes.bool(data, value);
+            case FLOAT: return elemSize == 4
+                    ? graphdemo.TableBytes.f32(data, value)
+                    : graphdemo.TableBytes.f64(data, value);
+            case SIGNED: case UNSIGNED:
+                switch (elemSize) {
+                    case 1: return graphdemo.TableBytes.i8(data, value);
+                    case 2: return graphdemo.TableBytes.i16(data, value);
+                    case 4: return graphdemo.TableBytes.i32(data, value);
+                    default: return graphdemo.TableBytes.i64(data, value);
+                }
+            default:
+                fail("a cook storage " + storage + " is not a scalar the accessors spell");
+                return null;
+        }
+    }
+
+    // THE REVERSE CHECK: a row class's accessors must all be accounted for by the
+    // descriptor, so an accessor that names a field the descriptor does not carry
+    // fails by name — the mirror of the forward "the descriptor reaches a field no
+    // accessor names" check in callStatic/callInstance.
+    private static void checkNoAccessorOnly(String where, Class<?> rowClass, String[] allowedMethods) {
+        java.util.Set<String> allowed = new java.util.HashSet<>();
+        for (String m : allowedMethods) { allowed.add(m); }
+        for (java.lang.reflect.Method m : rowClass.getMethods()) {
+            if (!java.lang.reflect.Modifier.isStatic(m.getModifiers())) { continue; }
+            String mn = m.getName();
+            if (allowed.contains(mn)) { continue; }
+            fail(where + ": a field has an accessor and no descriptor: " + mn);
+        }
+    }
+
+    private static String[] blockFieldAccessorNames(blockdemo.TableBlockFieldInfo[] fields) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        out.add("blockInfo");
+        out.add("cookInfo");
+        for (blockdemo.TableBlockFieldInfo f : fields) {
+            String stem = camel(f.name);
+            out.add(stem);
+            out.add(stem + "At");
+            out.add(stem + "Length");
+            out.add(stem + "Present");
+            out.add(stem + "Count");
+            out.add(stem + "Slot");
+            out.add(stem + "Delta");
+        }
+        return out.toArray(new String[0]);
+    }
+
+    private static String[] cookFieldAccessorNames(graphdemo.TableCookFieldInfo[] fields) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        out.add("blockInfo");
+        out.add("cookInfo");
+        for (graphdemo.TableCookFieldInfo f : fields) {
+            String stem = camel(f.name);
+            out.add(stem);
+            out.add(stem + "At");
+            out.add(stem + "Length");
+            out.add(stem + "Present");
+            out.add(stem + "Count");
+            out.add(stem + "Slot");
+            out.add(stem + "Delta");
+        }
+        return out.toArray(new String[0]);
     }
 
     private static void expectEq(Object accessor, Object descriptor, String where) {
@@ -143,6 +221,12 @@ public final class AgreeAccessors {
     private static void agreeBlockRecord(byte[] data, int at, blockdemo.TableBlockInfo info, Class<?> rowClass)
             throws Exception {
         rows++;
+        // the reverse check runs on ROW classes, not on the block handle class,
+        // which carries the prologue accessors (magic, buildVersion, byteOrder)
+        // that are not descriptor fields.
+        if (rowClass.getSimpleName().endsWith("Row")) {
+            checkNoAccessorOnly(rowClass.getSimpleName(), rowClass, blockFieldAccessorNames(info.fields));
+        }
         for (blockdemo.TableBlockFieldInfo f : info.fields) {
             if (f.outOfLine) { continue; }
             fields++;
@@ -197,7 +281,7 @@ public final class AgreeAccessors {
                                 new Class<?>[] { byte[].class, int.class, int.class }, data, at, s)
                         : callStatic(rowClass, camel(f.name),
                                 new Class<?>[] { byte[].class, int.class }, data, at);
-                Object descVal = byDescriptor(data, value, accVal);
+                Object descVal = byBlockDescriptor(data, value, f.kind, f.elemSize);
                 expectEq(accVal, descVal, where + "[" + s + "]");
             }
 
@@ -238,6 +322,7 @@ public final class AgreeAccessors {
     private static void agreeCookRecord(byte[] data, int at, graphdemo.TableCookInfo info, Class<?> rowClass)
             throws Exception {
         rows++;
+        checkNoAccessorOnly(rowClass.getSimpleName(), rowClass, cookFieldAccessorNames(info.fields));
         for (graphdemo.TableCookFieldInfo f : info.fields) {
             fields++;
             String where = rowClass.getSimpleName().replace("Row", "") + "." + f.name;
@@ -304,7 +389,7 @@ public final class AgreeAccessors {
                                 new Class<?>[] { byte[].class, int.class, int.class }, data, at, s)
                         : callStatic(rowClass, camel(f.name),
                                 new Class<?>[] { byte[].class, int.class }, data, at);
-                Object descVal = byDescriptor(data, value, accVal);
+                Object descVal = byCookDescriptor(data, value, f.storage, f.elemSize);
                 expectEq(accVal, descVal, where + "[" + s + "]");
             }
 
