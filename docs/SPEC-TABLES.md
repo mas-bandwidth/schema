@@ -5746,11 +5746,13 @@ carries it. A value that is on the grid and inside W reproduces its file byte
 for byte, which is what every vector below is.
 
 **A COMPRESSED FLOAT IS DEFINED FOR THE VALUES IN `[min, max]`, AND THE LAW IS
-SILENT ON THE REST — SO THIS PARAGRAPH STATES IT.** The quantizer is specified
-for values inside the declared range, and every value outside it is pinned to
-the same rule as any finite out-of-range value, on every leg: the writer
-quantizes it onto the grid and the reader decodes exactly what the grid says.
-Per the Go oracle (SPEC.md §4.3), a compressed float:
+SILENT ON THE REST — SO THIS PARAGRAPH STATES IT.** The rule is the packet
+wire's quantizer (SPEC.md §4.3), which is the law wherever a compressed float is
+QUANTIZED — the packet wire and the MESSAGE form, which share one rule bit for
+bit. For a value inside the declared range the writer quantizes it onto the grid
+and the reader decodes exactly what the grid says, and every value outside it is
+pinned to the same rule as any finite out-of-range value. Per the Go oracle, a
+compressed float:
 
 | input | quantized index | decoded value |
 | --- | --- | --- |
@@ -5764,13 +5766,15 @@ Per the Go oracle (SPEC.md §4.3), a compressed float:
 
 The index never leaves `[0, count]` and the decoded value never leaves
 `[min, max]`, so no special value addresses a byte the reader cannot decode and
-none overflows into a neighbour. `-0` and `+0` share the zero point's index,
-and the infinities and a `NaN` clamp exactly as a finite value beyond the range
-does. It holds for every leg, and the conformance corpus is where a leg is held
-to it. The FIXED form's record (§3.4) is the one deliberate difference: its
-field rides as the float itself, not as a quantized index, and its read-side
-bounds pass carries a `NaN` through uncounted and keeps a `-0`'s sign bit, which
-is the subject of a separate card (§3.4).
+none overflows into a neighbour: `-0` and `+0` share the zero point's index, and
+the infinities and a `NaN` clamp exactly as a finite value beyond the range does.
+It holds wherever a compressed float is QUANTIZED, on every leg, and the
+conformance corpus is where a leg is held to it. The three non-quantized Go
+surfaces are each a deliberate difference and each its own card: the FIXED
+form's record (§3.4) and the VARIABLE table's cell both ride the raw float, so a
+`NaN` survives and a `-0` keeps its sign bit there; and the TEXT/JSON writer
+refuses a non-finite value by name at write (§16.2) rather than quantizing it
+onto the grid.
 
 **FORM `2` IS A STREAM FORM AND NEVER A FILE'S OWN FORM.** `schema pack` writes form
 `1`, `schema unpack` reads form `1`, and a reader handed a form-`2` wire where a

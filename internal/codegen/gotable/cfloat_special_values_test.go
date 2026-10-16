@@ -3,23 +3,22 @@ package gotable
 // THE COMPRESSED FLOAT'S SPECIAL VALUES, PINNED THROUGH THE GO ORACLE
 // (docs/SPEC-TABLES.md §3.3, the compressed-float section of the R30 law).
 //
-// A compressed float has one quantizer on the message and table wires
+// A compressed float has one quantizer on the packet wire and the message wire
 // (SPEC.md §4.3): `min + index * step`, with `step = delta / count` and
 // `count = ceil(delta / res)`. The law is silent on the values outside
 // [min, max] — a -0, a NaN, the infinities, and the below-min / above-max
 // neighbours — so each leg does what its arithmetic does. This test pins what
-// the Go oracle does TODAY, row by row, through the two pure-Go surfaces that
-// hold the rule:
-//
-//   * the MESSAGE-FORM quantizer, ir.TableMessageQuantize / Dequantize,
-//     which the gotable message writer and the tablewire engine both call;
-//   * the FIXED-FORM read-side bounds pass the leg emits (R30, §3.4: the
-//     compressed field rides as the float), read off the emitted Go.
+// the Go oracle does TODAY through the pure-Go surface that holds the rule: the
+// MESSAGE-FORM quantizer, ir.TableMessageQuantize / Dequantize, which the
+// gotable message writer and the tablewire engine both call.
 //
 // It is a PIN, not a repro: green at BASE, it says the law cannot change
 // silently. The one-line sabotage that turns it red is the `normalized = 0`
 // half of the NaN clamp in ir.TableMessageQuantize — change it to
 // `normalized = 1` and the NaN rows fail — left in the report, undone.
+// The non-quantized surfaces (the FIXED form and the VARIABLE table, which ride
+// the raw float, and the TEXT/JSON writer, which refuses a non-finite value) are
+// deliberate differences, each its own card; they are not asserted here.
 
 import (
 	"math"
