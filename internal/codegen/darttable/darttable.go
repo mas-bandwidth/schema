@@ -178,6 +178,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, err
 	}
 	maps.Copy(out, wire)
+	// The §8 unit registry is a separate, optional Dart library: a card
+	// reader may inspect every declaration, not only the wire closure.
+	maps.Copy(out, generateUnitViewFiles(u))
 	// A unit whose wide kinds cost it the accelerators AND that has no fixed
 	// form to put in their place has nothing to emit, so it is refused whole
 	// and by name, exactly as it was before the form arrived.
