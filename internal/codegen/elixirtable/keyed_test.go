@@ -404,4 +404,3 @@ func writeKeyedModules(t *testing.T, dir string, files map[string][]byte) []stri
 	}
 	return sortedRuntimeFirst(names)
 }
-
