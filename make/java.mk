@@ -674,7 +674,7 @@ tables-java-soak-negative-control: build/java-tables/.stamp
 		{ echo 'NEGATIVE CONTROL FAILED: the soak went red, but not on the COUNT'; cat build/java-soak-negative.log; exit 1; }
 	@echo 'java tables soak negative control: a planted per-iteration allocation turns the COUNT red'
 
-test-java: tables-java-allocator tables-java-allocator-runtime-negative-control tables-java-soak tables-java-soak-negative-control
+test-java: tables-java-allocator tables-java-allocator-runtime-negative-control tables-java-soak-negative-control
 
 # I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Java side.
 # The cook example is pulled from docs/USAGE.md into a class that reads the
@@ -857,6 +857,7 @@ test-java: toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp 
 	$(MAKE) tables-java-fixedform-bench
 	# THE VARIABLE CLASS against the committed reference bytes (docs/SPEC-TABLES.md §2, §3, §16)
 	$(MAKE) tables-java-variable-class
+	$(MAKE) tables-java-soak SOAK_SECONDS=20
 	cd test/java && $(JAVA) -ea -cp ../../build/java-test Main
 	cd test/java && $(JAVA) -cp ../../build/java-test Main
 	cd test/java-ludicrous && $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
