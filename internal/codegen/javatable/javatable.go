@@ -263,7 +263,7 @@ func generateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry, canon f
 	}
 	maps.Copy(out, fixed)
 	// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3), form byte 2: the announcement
-	// surface, emitted for a unit with a `fixed table` root.
+	// and batch surface, emitted for a unit with a `fixed table` root.
 	message, err := generateMessageFiles(u)
 	if err != nil {
 		return nil, err
@@ -353,6 +353,7 @@ func runtimeFileNames() []string {
 		"TableBlockRows", "TableBlockInfo", "TableBlockFieldInfo", "TableBlockLayout",
 		"TableCookInfo", "TableCookFieldInfo", "TableCookStorage", "TableCookLayout", "TableCookWrite",
 		"TableFieldInfo", "TableTypeInfo", "TableRegistry",
+		"TableVocabulary", "TableMessage",
 		"BuildVersion",
 	}
 }
@@ -366,11 +367,15 @@ func checkNames(u *ir.Unit) error {
 	for _, name := range runtimeFileNames() {
 		runtime[name] = true
 	}
-	// and every class the FIXED FORM claims for this unit (docs/SPEC-TABLES.md
-	// §3.4): TableFixed, and `<Type>Fixed` per type of a fixed root's closure.
+	// and every class the FIXED FORM and MESSAGE FORM claim for this unit
+	// (docs/SPEC-TABLES.md §3.3, §3.4): TableFixed, `<Type>Fixed`, TableMessage,
+	// and `<Type>Message` per type of a fixed root's closure.
 	// Java allows one public class per file, so a schema file that spells one
 	// of them is a collision and is refused by name rather than overwritten.
 	for _, name := range fixedNames(u) {
+		runtime[name] = true
+	}
+	for _, name := range messageNames(u) {
 		runtime[name] = true
 	}
 	for _, f := range u.Files {

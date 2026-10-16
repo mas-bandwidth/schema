@@ -909,6 +909,118 @@ public final class Driver {
         return 0;
     }
 
+    private static final class MessageCodec {
+        final Class<?> vocabType;
+        final Class<?> reportType;
+        final Class<?> valueType;
+        final Class<?> valueArrayType;
+        final java.lang.reflect.Method reset;
+        final java.lang.reflect.Method announceRead;
+        final java.lang.reflect.Method loadMessages;
+        final java.lang.reflect.Method measureMessages;
+        final java.lang.reflect.Method saveMessages;
+
+        MessageCodec(String pkg, String root) throws ReflectiveOperationException {
+            vocabType = Class.forName(pkg + ".TableVocabulary");
+            reportType = Class.forName(pkg + ".TableVocabulary$Report");
+            valueType = Class.forName(pkg + "." + root + "Fixed$Value");
+            valueArrayType = java.lang.reflect.Array.newInstance(valueType, 0).getClass();
+            Class<?> msgType = Class.forName(pkg + "." + root + "Message");
+            reset = vocabType.getMethod("reset", int.class);
+            announceRead = vocabType.getMethod("announceRead", vocabType, byte[].class, reportType);
+            loadMessages = msgType.getMethod("loadMessages", valueArrayType, int.class, vocabType, byte[].class, reportType);
+            measureMessages = msgType.getMethod("measureMessages", valueArrayType, int.class, reportType);
+            saveMessages = msgType.getMethod("saveMessages", valueArrayType, int.class, byte[].class, reportType);
+        }
+
+        Object vocab() throws ReflectiveOperationException {
+            Object v = vocabType.getConstructor().newInstance();
+            reset.invoke(v, 4096);
+            return v;
+        }
+
+        Object report() throws ReflectiveOperationException {
+            return reportType.getConstructor().newInstance();
+        }
+
+        boolean announce(Object vocab, byte[] wire, Object report) throws ReflectiveOperationException {
+            return (boolean) announceRead.invoke(null, vocab, wire, report);
+        }
+
+        Object newValues(int cap) {
+            return java.lang.reflect.Array.newInstance(valueType, cap);
+        }
+
+        int load(Object values, int cap, Object vocab, byte[] wire, Object report) throws ReflectiveOperationException {
+            return (int) loadMessages.invoke(null, values, cap, vocab, wire, report);
+        }
+
+        int measure(Object values, int count, Object report) throws ReflectiveOperationException {
+            return (int) measureMessages.invoke(null, values, count, report);
+        }
+
+        int save(Object values, int count, byte[] out, Object report) throws ReflectiveOperationException {
+            return (int) saveMessages.invoke(null, values, count, out, report);
+        }
+
+        boolean flag(Object report, String field) throws ReflectiveOperationException {
+            return reportType.getField(field).getBoolean(report);
+        }
+    }
+
+    private static MessageCodec messageCodec(String unit, String root) throws ReflectiveOperationException {
+        String pkg = variableUnitPackage(unit);
+        try {
+            return new MessageCodec(pkg, root);
+        } catch (ClassNotFoundException | NoSuchMethodException absent) {
+            return null;
+        }
+    }
+
+    private static String[] connectionNamed(String key) {
+        for (String[] f : kind("connection")) {
+            if (f[1].equals(key)) { return f; }
+        }
+        return null;
+    }
+
+    private static int surfaceMessage(String out) throws IOException {
+        for (String[] f : kind("message")) {
+            String[] conn = connectionNamed(f[2]);
+            if (conn == null) { return failInt("missing connection " + f[2]); }
+            try {
+                MessageCodec codec = messageCodec(conn[2], f[3]);
+                if (codec == null) {
+                    spillAbsent(out, f[1]);
+                    continue;
+                }
+                Object vocab = codec.vocab();
+                Object report = codec.report();
+                if (!codec.announce(vocab, Files.readAllBytes(Paths.get(conn[4])), report)
+                        || codec.flag(report, "malformed") || codec.flag(report, "refused")) {
+                    return failInt(f[1] + ": announceRead refused " + conn[4]);
+                }
+                Object values = codec.newValues(256);
+                int count = codec.load(values, 256, vocab, Files.readAllBytes(Paths.get(f[5])), report);
+                if (count < 1 || codec.flag(report, "malformed") || codec.flag(report, "refused")) {
+                    return failInt(f[1] + ": loadMessages refused " + f[5]);
+                }
+                int size = codec.measure(values, count, report);
+                if (size < 1 || codec.flag(report, "refused")) {
+                    return failInt(f[1] + ": measureMessages refused");
+                }
+                byte[] buf = new byte[size];
+                if (codec.save(values, count, buf, report) != size || codec.flag(report, "refused")) {
+                    return failInt(f[1] + ": saveMessages refused");
+                }
+                spill(out, f[1], buf);
+            } catch (ReflectiveOperationException failure) {
+                return failInt(f[1] + ": message codec failed: " + failure);
+            }
+        }
+        return 0;
+    }
+
     public static int run(String[] args) throws IOException {
         if (args.length < 2) {
             System.err.println("usage: driver <manifest> list\n       driver <manifest> <surface> <outdir>");
@@ -921,7 +1033,7 @@ public final class Driver {
             // §3, §3.1, §16.7) for the roots this leg's variable wire carries —
             // graphdemo's Scene and blobdemo's Catalog — and answer every other
             // case ABSENT, one by one.
-            System.out.print("wire\nreport\njson-read\njson-write\n"
+            System.out.print("wire\nreport\njson-read\njson-write\nmessage\n"
                     + "block\nblock-foreign\n"
                     + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n");
             return 0;
@@ -936,6 +1048,7 @@ public final class Driver {
             case "report": return surfaceReport(out);
             case "json-read": return surfaceJsonRead(out);
             case "json-write": return surfaceJsonWrite(out);
+            case "message": return surfaceMessage(out);
             case "block": return surfaceBlock(out);
             case "block-foreign": return surfaceBlockForeign(out);
             case "block-dump": return surfaceBlockDump(out);
