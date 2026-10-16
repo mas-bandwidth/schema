@@ -569,6 +569,8 @@
         "packet-utf8-elixir-negative-control",
         "packet-wide-elixir-negative-control",
         "tables-elixir-accessor-negative-control",
+        "tables-elixir-alloc-negative-control",
+        "tables-elixir-alloc-runtime-negative-control",
         "tables-elixir-block-lead-negative-control",
         "tables-elixir-fixed-form-negative-control",
         "tables-elixir-fuzz-negative-control",

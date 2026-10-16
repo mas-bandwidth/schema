@@ -347,6 +347,65 @@ tables-elixir-runtime-pin-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the refusal did not name the Elixir it is actually running"; cat build/elixir-runtime-pin/log; exit 1; }
 	@echo 'elixir runtime pin negative control: a pin nothing is running is refused, naming both versions'
 
+# I1, I14 (docs/PORTING.md; issue #420) — THE ELIXIR ALLOCATION AUDIT.
+# One iteration per carried variable-form instance row in the derived manifest
+# is one wire load, one wire save, one text read and one text write. The runtime
+# pin runs first: off the pinned OTP/Elixir it exits non-zero before measuring,
+# and under SCHEMA_ELIXIR_ANY_OTP=1 it reports under NOT CERTIFIED without
+# gating.
+.PHONY: tables-elixir-alloc-audit tables-elixir-alloc-pin
+tables-elixir-alloc-audit: build/conformance/manifest.txt
+	$(ELIXIR) test/elixir/runtime_pin.exs $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR)
+	$(MIX) format --check-formatted test/elixir-alloc/main.exs
+	ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin \
+		$(ELIXIR) test/elixir-alloc/main.exs $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) \
+		build/conformance/manifest.txt test/conformance/elixir/alloc-budget.txt
+
+tables-elixir-alloc-pin: build/conformance/manifest.txt
+	$(ELIXIR) test/elixir/runtime_pin.exs $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR)
+	ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin \
+		$(ELIXIR) test/elixir-alloc/main.exs $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) \
+		build/conformance/manifest.txt test/conformance/elixir/alloc-budget.txt pin
+
+CONFORMANCE_NEGATIVE_ELIXIR_ALLOC := build/elixir-alloc-negative
+ELIXIR_ALLOC_SED := -e 's|def load(table, data) when is_binary(data) do|def load(table, data) when is_binary(data) do _ = :erlang.phash2({:lists.seq(1, 1000), for(i <- 1..16, do: :binary.copy(<<i>>, 128))});|'
+
+.PHONY: tables-elixir-alloc-negative-control
+tables-elixir-alloc-negative-control: build/conformance/manifest.txt
+	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC),internal/codegen/elixirtable/variableform.go,ELIXIR_ALLOC_SED)
+	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/ebin \
+			$(ELIXIR) test/elixir-alloc/main.exs $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) \
+			build/conformance/manifest.txt test/conformance/elixir/alloc-budget.txt \
+			> $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a generated load that builds a 1000-cell list and 16 refc binaries left the allocation audit green"; \
+		cat $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log; exit 1; \
+	fi
+	@grep -Fq 'heap words ' $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the audit went red, but not on the heap-word column"; \
+		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log; exit 1; }
+	@grep -Fq 'binary calls ' $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the audit went red, but not on the binary-call column"; \
+		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log; exit 1; }
+	@echo "elixir allocation audit negative control: a 1000-cell list and 16 refc binaries in load red both columns"
+
+.PHONY: tables-elixir-alloc-runtime-negative-control
+tables-elixir-alloc-runtime-negative-control:
+	@mkdir -p build/elixir-alloc-runtime-pin
+	@$(ELIXIR) -e 'IO.puts(System.version())' > build/elixir-alloc-runtime-pin/running.txt
+	@if $(ELIXIR) test/elixir-alloc/main.exs 0.0.0 0.0.0 build/conformance/manifest.txt test/conformance/elixir/alloc-budget.txt > build/elixir-alloc-runtime-pin/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the allocation audit certified on a pin nothing can be running"; \
+		cat build/elixir-alloc-runtime-pin/log; exit 1; fi
+	@grep -Fq '0.0.0' build/elixir-alloc-runtime-pin/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the refusal did not name the pin it wanted"; cat build/elixir-alloc-runtime-pin/log; exit 1; }
+	@grep -Fq "$$(cat build/elixir-alloc-runtime-pin/running.txt)" build/elixir-alloc-runtime-pin/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the refusal did not name the Elixir it is actually running"; cat build/elixir-alloc-runtime-pin/log; exit 1; }
+	@if grep -Fq 'words=' build/elixir-alloc-runtime-pin/log; then \
+		echo "NEGATIVE CONTROL FAILED: the audit measured a case on an unpinned runtime"; \
+		cat build/elixir-alloc-runtime-pin/log; exit 1; fi
+	@echo 'elixir allocation audit runtime pin negative control: a pin nothing is running is refused before measuring'
+
+test-elixir: tables-elixir-alloc-audit tables-elixir-alloc-negative-control tables-elixir-alloc-runtime-negative-control
+
 # I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Elixir
 # side. The page's cook example is pulled from docs/USAGE.md into a script that
 # reads the fixture cook and evaluates the fragment verbatim against the
@@ -370,16 +429,18 @@ tables-elixir-usage: build/elixir-tables-ebin/.stamp build/cook-open/.stamp docs
 # ITERATION gate answers "is this diff right" and rides the pull request; this
 # answers "do the readers still hold under load", which is measured in minutes
 # and fires on a toolchain change as readily as on a code one. It is the long
-# fuzz over both readers and the base-alignment gate, each with its control;
-# the soak, the audit and the bench gate that once sat beside them went with
-# the table wire they measured. The variable form is emitted again
-# (tables-elixir-variable-class); those three gates have not returned.
+# fuzz over both readers, the base-alignment gate and the allocation audit,
+# each with its control; the soak and the bench gate that once sat beside them
+# went with the table wire they measured and have not returned.
 ELIXIR_RELEASE_FUZZ_N ?= 200000
 
 .PHONY: tables-elixir-release
 tables-elixir-release:
 	$(MAKE) tables-elixir-runtime-pin
 	$(MAKE) tables-elixir-runtime-pin-negative-control
+	$(MAKE) tables-elixir-alloc-audit
+	$(MAKE) tables-elixir-alloc-negative-control
+	$(MAKE) tables-elixir-alloc-runtime-negative-control
 	$(MAKE) tables-elixir-fuzz ELIXIR_FUZZ_N=$(ELIXIR_RELEASE_FUZZ_N)
 	$(MAKE) tables-elixir-fuzz-negative-control
 	$(MAKE) tables-elixir-block-lead

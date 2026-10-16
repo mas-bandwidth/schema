@@ -992,7 +992,7 @@ wire-save green until it went with the previous-form wire; Go's
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #412 (the cook WRITE is counted under `tables-cook-write`; the read path is a static scan) | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #518 | ✅ `TestLoadAllocatesNothing` `TestRoundTripAllocatesNothing` `TestAllocationGateCanGoRed` | ❌ #412 | ❌ #517 | ✅ `tables-js-alloc` `tables-js-alloc-negative-control` | ❌ #514 | ❌ #515 |
+| ❌ #412 (the cook WRITE is counted under `tables-cook-write`; the read path is a static scan) | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #518 | ✅ `TestLoadAllocatesNothing` `TestRoundTripAllocatesNothing` `TestAllocationGateCanGoRed` | ❌ #412 | ❌ #517 | ✅ `tables-js-alloc` `tables-js-alloc-negative-control` | ❌ #514 | ✅ `tables-elixir-alloc-audit` `tables-elixir-alloc-negative-control` `TestAllocAuditBudgetFileIsWellFormed` (23 variable-form instances against `test/conformance/elixir/alloc-budget.txt`, ceiling +64/+0.01% heap words and +8 `binary_alloc` calls per iteration) |
 
 ### I2 — Emitter sabotage through `go build -overlay`
 
@@ -1342,7 +1342,7 @@ prints observations without certification. The default requires Go 1.26.0.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` (Go 1.26.0) | ❌ #420 | ❌ #420 (pinned JDK; there is no java allocation gate at all to skip — nothing in `make/java.mk` names one) | ✅ `test/js-tables/main.mjs:903` | ❌ #420 (pinned SDK 3.13.2; there is no dart allocation measurement at all — nothing in `make/dart.mk` names one) | ❌ #420 (pinned OTP; there is no elixir allocation audit at all — `make/elixir.mk:231-233` says so in the leg's own words) |
+| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` (Go 1.26.0) | ❌ #420 | ❌ #420 (pinned JDK; there is no java allocation gate at all to skip — nothing in `make/java.mk` names one) | ✅ `test/js-tables/main.mjs:903` | ❌ #420 (pinned SDK 3.13.2; there is no dart allocation measurement at all — nothing in `make/dart.mk` names one) | ✅ `tables-elixir-alloc-audit` `tables-elixir-alloc-runtime-negative-control` (OTP 29.0.5, Elixir 1.20.4; 23 variable-form instances against `test/conformance/elixir/alloc-budget.txt`, ceiling +64/+0.01% heap words and +8 `binary_alloc` calls per iteration) |
 
 ### I15 — The tolerant wire's differential fuzzer with an independent oracle
 

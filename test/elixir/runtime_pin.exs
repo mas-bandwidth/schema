@@ -1,4 +1,4 @@
-[otp_want, elixir_want] = System.argv()
+[otp_want, elixir_want | _] = System.argv()
 
 elixir_found = System.version()
 

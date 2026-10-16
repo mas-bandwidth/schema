@@ -1,0 +1,35 @@
+# Pinned per-iteration allocation budgets for the Elixir variable-form table
+# corpus (docs/PORTING.md I1, I14; issue #420).
+#
+# One iteration per carried instance row is:
+#   1. <Unit>.Table.load/2      (wire load)
+#   2. <Unit>.Table.save/2      (wire save)
+#   3. <Unit>.Table.from_json/2 (text read, when the instance carries text)
+#   4. <Unit>.Table.to_json/2   (text write, when the instance carries text)
+#
+# Columns: <case> <heap_words> <binary_calls> <reductions>
+# Written by `make tables-elixir-alloc-pin` under the pinned OTP/Elixir only;
+# checked by `make tables-elixir-alloc-audit`.
+wide_blob                 11575934   16   5640991
+chain_value                   2838    4      1086
+chain_value_empty             1982    0       787
+chain_optional                2839    4      1085
+chain_optional_empty          2191    0       884
+graph_tree                   13039    9      6190
+graph_shared                 12401    9      5860
+graph_empty                   4370    1      2014
+graph_deep                  199379    2    262654
+blob_small                    8205   12      3623
+blob_empty                    3427    5      1338
+blob_large                  619090    7    349279
+blob_shared                   1903    2       552
+blob_str8                     3682    6      1411
+blob_str16                    3852    6      1442
+list_tables                   8659    9      3919
+list_scalars                  2535    1       936
+list_empty                    4236    5      1904
+list_erased                   7430   12      3668
+list_shared                   3920    2      1612
+list_before_pointer           4558    2      1986
+list_nested                  10672    2      5454
+list_migrates                 3558    2      1585
