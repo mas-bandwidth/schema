@@ -32,8 +32,12 @@ func singleOf(f *ir.Field) *ir.Field {
 // fixedElemCarried reports whether the element of a `[N]T` or `[E]T` is one
 // this form carries: a scalar, a string, an enum, a table or a pointer to one.
 func fixedElemCarried(f *ir.Field, seen map[string]bool) bool {
-	if f.Type.Blob() || unionRef(f) != nil {
+	if f.Type.Blob() {
 		return false
+	}
+	// a fixed array of unions (§2.6, §3): element kind 15, every slot
+	if un := unionRef(f); un != nil {
+		return f.KeyEnum == "" && cardWireUnionSeen(un, seen)
 	}
 	return cardScalarOrTable(f, seen)
 }
@@ -54,11 +58,13 @@ func (g *wireGen) elemDefault(f *ir.Field) string {
 	switch {
 	case isPointerTable(s):
 		return "null"
-	case isByValueTable(s):
+	case isByValueTable(s), unionRef(s) != nil:
 		return s.Type.Name + "()"
+	case isWide(s):
+		return g.wideDefault(s)
 	case s.Type.Kind == ir.TBool:
 		return fmt.Sprintf("%v", s.HasDefault && s.DefBool)
-	case s.Type.Kind == ir.TInt || s.Type.Kind == ir.TBits:
+	case s.Type.Kind == ir.TInt || s.Type.Kind == ir.TBits || isFlags(s):
 		return g.intDefault(s)
 	case s.Type.Kind == ir.TFloat32 || s.Type.Kind == ir.TFloat64:
 		return g.floatDefault(s)
@@ -87,7 +93,11 @@ func arrayHelper(st *ir.Struct, f *ir.Field, what string) string {
 func (g *wireGen) emitSaveFixed(f *ir.Field, expr, ind string, id uint64) {
 	ek := arrayElemKind(f)
 	open := "{"
-	if ek != wireKindTable {
+	switch {
+	case ek == wireKindUnion:
+		// a fixed array of unions elides when every slot is None (§3)
+		open = fmt.Sprintf("if (%s.any((e) => e.armTag != 0)) {", expr)
+	case ek != wireKindTable:
 		open = fmt.Sprintf("if (%s.any((e) => e != %s)) {", expr, g.elemDefault(f))
 	}
 	g.pf("%s%s\n", ind, open)
@@ -178,10 +188,14 @@ func (g *wireGen) emitFixedHelper(st *ir.Struct, f *ir.Field) {
 	g.pf("\tif (count == null) { p.report.malformed = true; return false; }\n")
 	g.pf("\tif (elemKind != %d) { p.report.kindMismatch++; return true; }\n", ek)
 	g.pf("\tfinal out = <%s>[];\n", et)
-	g.pf("\tfor (var i = 0; i < count; i++) {\n")
+	// a count past the declared slots keeps them and counts one clamp; the
+	// excess skips via the length (§4, internal/tablewire arrayBody)
+	g.pf("\tvar keep = count;\n")
+	g.pf("\tif (keep > %d) { keep = %d; p.report.clamped++; }\n", f.ArrayBound, f.ArrayBound)
+	g.pf("\tfor (var i = 0; i < keep; i++) {\n")
 	g.emitGetElem(f, ek, "out", "p", "\t\t")
 	g.pf("\t}\n")
-	g.pf("\tif (p.pos != p.limit) { p.report.malformed = true; return false; }\n")
+	g.pf("\tif (keep == count && p.pos != p.limit) { p.report.malformed = true; return false; }\n")
 	g.pf("\tfinal fresh = List<%s>.generate(%d, (_) => %s);\n", et, f.ArrayBound, g.elemDefault(f))
 	g.pf("\tfor (var i = 0; i < out.length && i < %d; i++) {\n", f.ArrayBound)
 	g.pf("\t\tfresh[i] = out[i];\n")
@@ -252,6 +266,10 @@ func (g *wireGen) emitLoadArray(st *ir.Struct, f *ir.Field, ind string) {
 // visitEdges): every slot of an array of pointers is an edge in index order,
 // a null slot is not, and an array of tables is descended slot by slot.
 func (g *wireGen) emitNumberArray(f *ir.Field, expr, ind string) {
+	if un := unionRef(f); un != nil {
+		g.pf("%sfor (final e in %s) { %s(s, e, open); }\n", ind, expr, unionFn(un, "Number"))
+		return
+	}
 	ref := tableRef(f)
 	if ref == nil {
 		return

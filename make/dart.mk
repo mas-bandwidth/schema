@@ -76,7 +76,7 @@ generated/bench/dart/.stamp: bin/schema $(SCHEMAS_BENCH)
 # generated (packet .dart + <Base>Block.dart + <Base>Cook.dart, and the wire
 # forms where the unit owns them). Fixed-class units own form 3. tables/pointers,
 # tables/blobs and tables/lists own form 1 beside it (the variable class).
-build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
+build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
 	# the POINTERED unit: form 1 for Scene, form 3 and cook beside it.
@@ -84,6 +84,13 @@ build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/maps/*.schema) 
 	./bin/schema generate --lang dart --out build/tables-generated-dart/blobs tables/blobs
 	./bin/schema generate --lang dart --out build/tables-generated-dart/lists tables/lists
 	./bin/schema generate --lang dart --out build/tables-generated-dart/maps tables/maps
+	./bin/schema generate --lang dart --out build/tables-generated-dart/messages tables/messages
+	# tables/scalars beside the tree, not in it: its FIXED library imports an
+	# Int128.dart the packet emitter does not write for a table-only 128-bit
+	# unit (a form-3 gap of its own), and the standalone and clean gates walk
+	# this tree. The conformance driver reads its form-1 library from there.
+	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/scalars tables/scalars
+	./bin/schema generate --lang dart --out build/tables-generated-dart/wide examples-wide
 	./bin/schema generate --lang dart --out build/tables-generated-dart/block tables/block
 	./bin/schema generate --lang dart --out build/tables-generated-dart/blockhome tables/blockhome
 	./bin/schema generate --lang dart --out build/tables-generated-dart/v1 test/tables/V1.schema
@@ -410,13 +417,14 @@ test-dart: tables-dart-variable-class
 # MAPS AND UNION ARMS (docs/SPEC-TABLES.md §2.4, §2.6, §2.8, §3, §3.2): maps,
 # unions whose arms are tables, arrays of unions, arms of any carried field
 # type, enum-keyed and fixed positional arrays and wstring(N) on form 1, byte
-# for byte against the oracle rows of tables/maps and tables/arms, and the
-# fixed-root units (tables/messages, tables/scalars, examples-wide) the card
-# still owes. SCHEMA_REQUIRE_CORPUS=1 makes a missing SDK a failure.
+# for byte against the oracle rows of tables/maps and tables/arms, and of the
+# fixed-root units tables/messages, tables/scalars and examples-wide (optional
+# fields and arrays, flags, `type` bodies, fixed(I,F) and the 128-bit scalars).
+# SCHEMA_REQUIRE_CORPUS=1 makes a missing SDK a failure.
 .PHONY: tables-dart-variable-arms
 tables-dart-variable-arms:
 	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run 'TestMapsAndUnionArmsOnTheTableWireDart|TestOtherVariableConstructsAreRefusedByName'
-	@echo 'tables Dart variable arms: maps, unions, arrays of unions and keyed arrays against the oracle bytes'
+	@echo 'tables Dart variable arms: maps, unions, keyed arrays, optionals and the wide scalars against the oracle bytes'
 
 test-dart: tables-dart-variable-arms
 

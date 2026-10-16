@@ -42,8 +42,10 @@ func cardWireUnionSeen(un *ir.Union, seen map[string]bool) bool {
 		if arm.Void() {
 			continue
 		}
-		if arm.Body() && (arm.Ref == nil || !arm.Ref.IsTable) {
-			return false // a by-value `type` arm has no form-1 codec here (§2.6)
+		// a `type` arm and a table arm are one framing: kind 13 over an
+		// id-framed body (§2.6, §3)
+		if arm.Body() && arm.Ref == nil {
+			return false
 		}
 		if !cardWireFieldSeen(arm.F, seen) {
 			return false
@@ -164,6 +166,10 @@ func (g *wireGen) closureUnions() []*ir.Union {
 // type, the member name and its declared default (§5). It is the member list
 // emitStorage writes for a table and emitUnionStorage writes for an arm.
 func (g *wireGen) storageDecl(f *ir.Field, name string) string {
+	if f.Type.Optional {
+		// the value in the ordinary member, PRESENCE beside it (§2.3)
+		return g.storageDecl(nonOptional(f), name) + "\n  bool " + hasMember(f) + " = false;"
+	}
 	switch {
 	case f.IsMap():
 		et := f.MapEntry.Name
@@ -184,9 +190,11 @@ func (g *wireGen) storageDecl(f *ir.Field, name string) string {
 		return fmt.Sprintf("%s? %s;", f.Type.Name, name)
 	case isByValueTable(f):
 		return fmt.Sprintf("%s %s = %s();", f.Type.Name, name, f.Type.Name)
+	case isWide(f):
+		return fmt.Sprintf("BigInt %s = %s;", name, g.wideDefault(f))
 	case f.Type.Kind == ir.TBool:
 		return fmt.Sprintf("bool %s = %v;", name, f.HasDefault && f.DefBool)
-	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
+	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || isFlags(f):
 		return fmt.Sprintf("int %s = %s;", name, g.intDefault(f))
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		return fmt.Sprintf("double %s = %s;", name, g.floatDefault(f))
@@ -289,7 +297,7 @@ func (g *wireGen) emitPutPayload(f *ir.Field, expr, p, ind string) {
 		g.pf("%s} else {\n", ind)
 		g.pf("%s\t%s(%s, %s);\n", ind, unionFn(unionRef(f), "SaveArm"), p, expr)
 		g.pf("%s}\n", ind)
-	case f.CountedOnWire():
+	case f.CountedOnWire() || f.Array == ir.ArrayFixed:
 		ek := listElementKind(f)
 		if f.Type.Pointer {
 			ek = wireKindPtr
@@ -299,6 +307,8 @@ func (g *wireGen) emitPutPayload(f *ir.Field, expr, p, ind string) {
 		g.pf("%sfor (final e in %s) {\n", ind, expr)
 		g.emitPutElem(f, ek, "e", p, ind+"\t")
 		g.pf("%s}\n", ind)
+	case f.Type.Kind == ir.TWString: // kind 33: the code units, L is the byte length (§3)
+		g.emitWStringPayload(expr, p, ind)
 	case f.Type.Kind == ir.TString:
 		g.pf("%s%s.putString(%s);\n", ind, p, expr)
 	case f.Type.Kind == ir.TBytes:
@@ -352,6 +362,10 @@ func (g *wireGen) emitPutElem(f *ir.Field, ek int, e, p, ind string) {
 	case wireKindF64:
 		g.pf("%s%s.putU64(_f64Bits(%s));\n", ind, p, e)
 	default:
+		if ir.TableKindWide(ek) { // kinds 18-29, raw at the width (§3, §15)
+			g.pf("%s_putWide(%s, %s, %d);\n", ind, p, e, ir.TableKindWidth(ek))
+			return
+		}
 		put := "putU64"
 		switch ir.TableKindWidth(ek) {
 		case 1:
@@ -522,6 +536,34 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%sif (%s.pos != %s.limit) %s\n", ind, p, p, bad)
 		g.pf("%s%s = out;\n", ind, dest)
 		g.pf("%sreturn true;\n", ind)
+	case f.Array == ir.ArrayFixed:
+		// a fixed array arm (§2.6, §3): every declared slot, a slot the payload
+		// does not carry at its default
+		ek := arrayElemKind(f)
+		et := dartListElemType(f)
+		g.pf("%sif (!%s.has(1)) %s\n", ind, p, bad)
+		g.pf("%sfinal elemKind = %s.readByte();\n", ind, p)
+		g.pf("%sfinal count = %s.readLeb();\n", ind, p)
+		g.pf("%sif (count == null) %s\n", ind, bad)
+		g.pf("%sif (elemKind != %d) { %s.report.kindMismatch++; return false; }\n", ind, ek, p)
+		g.pf("%sfinal out = <%s>[];\n", ind, et)
+		g.pf("%sfor (var i = 0; i < count; i++) {\n", ind)
+		g.emitGetElem(f, ek, "out", p, ind+"\t")
+		g.pf("%s}\n", ind)
+		g.pf("%sif (%s.pos != %s.limit) %s\n", ind, p, p, bad)
+		g.pf("%sfinal fresh = List<%s>.generate(%d, (_) => %s);\n", ind, et, f.ArrayBound, g.elemDefault(f))
+		g.pf("%sfor (var i = 0; i < out.length && i < %d; i++) { fresh[i] = out[i]; }\n", ind, f.ArrayBound)
+		g.pf("%s%s = fresh;\n", ind, dest)
+		g.pf("%sreturn true;\n", ind)
+	case f.Type.Kind == ir.TWString: // kind 33 (§3)
+		g.emitWStringGetPayload(f, dest, p, ind)
+	case isWide(f): // kinds 18-29: exactly the width, clamped raw (§3, §4, §15)
+		w := ir.TableKindWidth(wideKind(f))
+		g.pf("%sif (%s.limit - %s.pos != %d) %s\n", ind, p, p, w, bad)
+		g.pf("%svar x = _getWide(%s, %d, %v);\n", ind, p, w, ir.TableKindSigned(wideKind(f)))
+		g.emitWideClamp(f, "x", p, ind)
+		g.pf("%s%s = x;\n", ind, dest)
+		g.pf("%sreturn true;\n", ind)
 	case f.Type.Kind == ir.TString:
 		g.pf("%sfinal len = %s.limit - %s.pos;\n", ind, p, p)
 		g.pf("%sif (!_lebValid(%s.data, %s.pos, len)) %s\n", ind, p, p, bad)
@@ -647,12 +689,15 @@ func (g *wireGen) emitGetElem(f *ir.Field, ek int, out, p, ind string) {
 		g.pf("%sif (vref == null) %s\n", ind, bad)
 		g.pf("%sfinal vid = vref == 0 ? 0 : %s.refToId[vref];\n", ind, p)
 		g.pf("%sif (vid == null) %s\n", ind, bad)
-		g.pf("%s%s.add(switch (vid) {", ind, out)
-		g.pf(" 0 => 0,")
+		// an element naming no variant this reader knows reads None and
+		// counts unknown, exactly as an enum field does (§4)
+		g.pf("%sswitch (vid) {\n", ind)
+		g.pf("%s\tcase 0: %s.add(0);\n", ind, out)
 		for i := range e.Variants {
-			g.pf(" %s => %d,", dartU64Literal(ir.TableWireId(e.VariantWireName(i))), i+1)
+			g.pf("%s\tcase %s: %s.add(%d);\n", ind, dartU64Literal(ir.TableWireId(e.VariantWireName(i))), out, i+1)
 		}
-		g.pf(" _ => 0 });\n")
+		g.pf("%s\tdefault: %s.add(0); %s.report.unknown++; if (%s.retain != null) %s.report.retainLost++;\n", ind, out, p, p, p)
+		g.pf("%s}\n", ind)
 	case wireKindBool:
 		g.pf("%sif (!%s.has(1)) %s\n", ind, p, bad)
 		g.pf("%s%s.add(%s.readByte() != 0);\n", ind, out, p)
@@ -664,6 +709,15 @@ func (g *wireGen) emitGetElem(f *ir.Field, ek int, out, p, ind string) {
 		g.pf("%s%s.add(_f64FromBits(readU64(%s.data, %s.pos))); %s.pos += 8;\n", ind, out, p, p, p)
 	default:
 		w := ir.TableKindWidth(ek)
+		if ir.TableKindWide(ek) { // kinds 18-29 (§3, §15)
+			g.pf("%sif (!%s.has(%d)) %s\n", ind, p, w, bad)
+			g.pf("%s{\n", ind)
+			g.pf("%s\tvar x = _getWide(%s, %d, %v);\n", ind, p, w, ir.TableKindSigned(ek))
+			g.emitWideClamp(f, "x", p, ind+"\t")
+			g.pf("%s\t%s.add(x);\n", ind, out)
+			g.pf("%s}\n", ind)
+			return
+		}
 		signed := ek >= wireKindI8 && ek <= wireKindI64
 		g.pf("%sif (!%s.has(%d)) %s\n", ind, p, w, bad)
 		g.pf("%svar raw = 0;\n", ind)

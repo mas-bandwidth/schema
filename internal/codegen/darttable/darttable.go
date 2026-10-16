@@ -171,11 +171,12 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, err
 	}
 	maps.Copy(out, fixed)
-	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1. A fixed-only unit
-	// has no variable root and gets nothing from generateWireFiles (its form 3
-	// is above). A unit that mixes fixed tables with a variable root this card
-	// carries emits BOTH: form 3 for the fixed tables, form 1 for the variable
-	// roots. Fixed tables are not encoded as form 1.
+	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1, for EVERY root
+	// this backend carries, fixed or variable: form 1 is the table wire every
+	// table speaks, and form 3 (above) is a second encoding of a fixed table,
+	// not a replacement for it (§2.2, §3.4). A unit with fixed tables therefore
+	// emits both libraries, and the tables/messages, tables/scalars and
+	// examples-wide oracle rows (fixed roots, form-1 wires) pin the bytes.
 	wire, err := generateWireFiles(u)
 	if err != nil {
 		return nil, err
@@ -199,10 +200,11 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 
 // closureHoldsFixedTable reports whether the unit's table closure holds a
 // `fixed table` (docs/SPEC-TABLES.md §2.2). Such a unit is served by the
-// block, cook and fixed forms, so the variable form's boundary — the refusal
-// in checkUnsupportedConstructs and the form-1 emission — does not bind it
-// (docs/SPEC-TABLES.md §11): a variable table beside a fixed one is not
-// mis-encoded by anything the accelerators or the fixed form write.
+// block, cook and fixed forms, so the variable form's REFUSAL in
+// checkUnsupportedConstructs does not bind it (docs/SPEC-TABLES.md §11): a
+// construct form 1 cannot carry is left out of the form-1 library (no codec
+// is claimed for a table holding one) rather than refusing the unit's other
+// forms.
 func closureHoldsFixedTable(u *ir.Unit, closure map[string]bool) bool {
 	variable := ir.VariableTables(u)
 	for name := range closure {
@@ -317,7 +319,7 @@ func checkUnsupportedConstructs(u *ir.Unit) error {
 			// carries a generated presence bool beside its value; the card's
 			// form-1 wire has no cell for it, so it must be refused, never
 			// mis-encoded as its bare value.
-			if f.Type.Optional {
+			if f.Type.Optional && !carried {
 				return fmt.Errorf("table %s field %s: optional ?T is refused in the Dart table backend (docs/SPEC-TABLES.md §2.3, §11)",
 					name, f.Name)
 			}
