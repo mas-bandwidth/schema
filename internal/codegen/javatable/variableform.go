@@ -75,6 +75,7 @@ public int unknown;
             retained = 0;
             retainLost = 0;
         }
+
     }
 
     // A reader over a byte[] the caller owns. The id table is resolved once,
@@ -457,7 +458,7 @@ public int unknown;
         int form = data[0] & 0xff;
         if (form != 1) {
             report.refused = true;
-            report.reason = "unsupported wire form";
+            report.reason = "unknown_form";
             return -1;
         }
         if (data.length < 9) { report.malformed = true; return -1; }
@@ -2138,7 +2139,7 @@ func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 			fmt.Fprintf(b, "                        int lim = r.limit;\n")
 			fmt.Fprintf(b, "                        r.limit = end;\n")
 			fmt.Fprintf(b, "                        boolean empty = false;\n")
-			fmt.Fprintf(b, "                        if (!r.has(1)) { report.malformed = true; empty = true; } else { int ek = r.get8(); if (ek == 13) { long n = r.leb(); if (n < 0 || n > 0x7FFFFFFFL || n > (long) (r.limit - r.off) / 2) { report.refused = true; } else { extent = alignUp(extent, %d) + n * %d; for (long i = 0; i < n; i++) { int ee = r.bodyEnd(); if (ee < 0) { break; } int el = r.limit; r.limit = ee; extent += %sVariable.measureFields(r, null, report); r.off = ee; r.limit = el; r.fail = false; } } } }\n", elemAlign, size, elem.Name)
+			fmt.Fprintf(b, "                        if (!r.has(1)) { report.malformed = true; empty = true; } else { int ek = r.get8(); if (ek == 13) { long n = r.leb(); if (n < 0 || n > 0x7FFFFFFFL) { report.refused = true; report.reason=\"count_over_extent_cap\"; } else if (n > (long) (r.limit - r.off) / 2) { report.refused = true; report.reason=\"count_over_length\"; } else { extent = alignUp(extent, %d) + n * %d; for (long i = 0; i < n; i++) { int ee = r.bodyEnd(); if (ee < 0) { break; } int el = r.limit; r.limit = ee; extent += %sVariable.measureFields(r, null, report); r.off = ee; r.limit = el; r.fail = false; } } } }\n", elemAlign, size, elem.Name)
 			fmt.Fprintf(b, "                        r.off = end;\n")
 			fmt.Fprintf(b, "                        r.limit = lim;\n")
 			fmt.Fprintf(b, "                        r.fail = empty;\n")
@@ -2802,7 +2803,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
 			fmt.Fprintf(b, "                                    v.%sIdx.add(ar.leb());\n", m)
 			fmt.Fprintf(b, "                                }\n")
-			fmt.Fprintf(b, "                            } else { report.refused = true; }\n")
+			fmt.Fprintf(b, "                            } else { report.refused = true; report.reason=\"count_over_extent_cap\"; }\n")
 		}
 		fmt.Fprintf(b, "                        } else { report.kindMismatch++; }\n")
 		fmt.Fprintf(b, "                    }\n")
@@ -2843,7 +2844,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "                            }\n")
 		} else {
-			fmt.Fprintf(b, "                            } else { report.refused = true; }\n")
+			fmt.Fprintf(b, "                            } else { report.refused = true; report.reason=\"count_over_extent_cap\"; }\n")
 		}
 		fmt.Fprintf(b, "                        } else { report.kindMismatch++; }\n")
 		fmt.Fprintf(b, "                    }\n")
@@ -2882,7 +2883,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TFloat64:
 		fmt.Fprintf(b, "                if (kind == 11) { if (r.has(8)) { v.%s = Double.longBitsToDouble(r.get64()); } else { report.malformed = true; r.fail = true; } }\n", m)
-		fmt.Fprintf(b, "                else if(kind==10){if(r.has(4)){v.%s=TableVariable.widenF32(r.get32());report.widened++;}else{report.malformed=true;r.fail=true;}}\n", m)
+		fmt.Fprintf(b, "                else if(kind==10){if(r.has(4)){v.%s=TableVariable.widenF32(r.get32());report.widened++;if(report.reason==null)report.reason=\"widened\";}else{report.malformed=true;r.fail=true;}}\n", m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
 		writeIntFieldRead(b, f, m)
@@ -2901,11 +2902,11 @@ func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	m := varMember(f)
 	ek := variableElemWireKind(f)
 	cond := variableCompatibleKinds(ek, "ek")
-	countCheck := "else if (n < 0 || n > 0x7FFFFFFFL) { report.refused = true; } else {"
+	countCheck := "else if (n < 0 || n > 0x7FFFFFFFL) { report.refused = true; report.reason=\"count_over_extent_cap\"; } else {"
 	if f.ArrayBound > 0 {
 		countCheck = fmt.Sprintf("else { if (n < 0 || n > %d) { n = %d; report.clamped++; }", f.ArrayBound, f.ArrayBound)
 	}
-	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (%s) { long n = ar.leb(); if (ar.fail) { } %s if (ek != %d) { report.widened++; } v.%s.clear(); ", cond, countCheck, ek, m)
+	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (%s) { long n = ar.leb(); if (ar.fail) { } %s if (ek != %d) { report.widened++; if(report.reason==null)report.reason=\"widened\"; } v.%s.clear(); ", cond, countCheck, ek, m)
 	writeArrayElemRead(b, f, m)
 	fmt.Fprintf(b, " } } else { report.kindMismatch++; } } } }\n")
 	fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
@@ -2919,7 +2920,7 @@ func writeArrayElemRead(b *strings.Builder, f *ir.Field, m string) {
 	}
 	refusePrefix := func(widthExpr string) string {
 		if f.Array == ir.ArrayList {
-			return fmt.Sprintf("if (n > (long) (ar.limit - ar.off) / (%s)) { report.refused = true; } else ", widthExpr)
+			return fmt.Sprintf("if (n > (long) (ar.limit - ar.off) / (%s)) { report.refused = true; report.reason=\"count_over_length\"; } else ", widthExpr)
 		}
 		return ""
 	}
@@ -3013,7 +3014,7 @@ func writeIntFieldRead(b *strings.Builder, f *ir.Field, m string) {
 		case 8:
 			wread, whas = "((long) r.get32()) & 0xffffffffL", "4"
 		}
-		fmt.Fprintf(b, "                    else if (kind == %d) { if (r.has(%s)) { v.%s = %s; report.widened++; } else { report.malformed = true; r.fail = true; } }\n", w, whas, m, wread)
+		fmt.Fprintf(b, "                    else if (kind == %d) { if (r.has(%s)) { v.%s = %s; report.widened++; if(report.reason==null)report.reason=\"widened\"; } else { report.malformed = true; r.fail = true; } }\n", w, whas, m, wread)
 	}
 	if f.HasIntRange {
 		if f.Type.Signed && f.Type.Kind == ir.TInt {
