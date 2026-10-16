@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xeb26c970fde3fd71
 
 package example;
 
@@ -1401,6 +1401,214 @@ public final class Degenerate {
     // trusted like the writer; static runs fold to literals at generation time.
     public static int measureTrioSole(TrioSole value) {
         return 64;
+    }
+
+    // type Vec3Sole
+    public static final class Vec3Sole {
+        public final Types.Vec3 v = new Types.Vec3();
+    }
+
+    // vec3SoleMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+    // vec3SoleMaxBytes is rounded up to the 8-byte write-buffer granularity.
+    public static final int vec3SoleMaxBits = 192;
+    public static final int vec3SoleMaxBytes = 24;
+
+    // The §5 zero form: all-zero storage; specified defaults live only in
+    // construction.
+    public static void zeroVec3Sole(Vec3Sole value) {
+        Types.zeroVec3(value.v);
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initVec3Sole(Vec3Sole value) {
+        Types.initVec3(value.v);
+    }
+
+    // checkWriteVec3Sole is writeVec3Sole's contract walk, called once through assert —
+    // the predicate-extraction form: dormant assert bodies count against the
+    // JIT's inline thresholds, so the hot body carries one small call and the
+    // contracts live here (issue #156).
+    private static boolean checkWriteVec3Sole(Vec3Sole value, byte[] data) {
+        assert data.length % 8 == 0;
+        assert data.length >= vec3SoleMaxBytes;
+        return true;
+    }
+
+    // writeVec3Sole packs value into data — the trusted writer (contracts in the
+    // checkWriteVec3Sole predicate, one dormant assert call without -ea). The buffer
+    // must hold vec3SoleMaxBytes. Returns the bytes written.
+    public static int writeVec3Sole(Vec3Sole value, byte[] data) {
+        assert checkWriteVec3Sole(value, data);
+        long scratch = 0;
+        int scratchBits = 0;
+        int wordIndex = 0;
+        long v = 0;
+        {
+            final long b = Double.doubleToRawLongBits(value.v.x);
+            v = b & 0xffffffffL;
+            scratch |= v << scratchBits;
+            scratchBits += 32;
+            if (scratchBits >= 64) {
+                LONG_LE.set(data, wordIndex * 8, scratch);
+                wordIndex++;
+                scratchBits -= 64;
+                scratch = v >>> (32 - scratchBits);
+            }
+            v = (b >>> 32) & 0xffffffffL;
+            scratch |= v << scratchBits;
+            scratchBits += 32;
+            if (scratchBits >= 64) {
+                LONG_LE.set(data, wordIndex * 8, scratch);
+                wordIndex++;
+                scratchBits -= 64;
+                scratch = v >>> (32 - scratchBits);
+            }
+        }
+        {
+            final long b = Double.doubleToRawLongBits(value.v.y);
+            v = b & 0xffffffffL;
+            scratch |= v << scratchBits;
+            scratchBits += 32;
+            if (scratchBits >= 64) {
+                LONG_LE.set(data, wordIndex * 8, scratch);
+                wordIndex++;
+                scratchBits -= 64;
+                scratch = v >>> (32 - scratchBits);
+            }
+            v = (b >>> 32) & 0xffffffffL;
+            scratch |= v << scratchBits;
+            scratchBits += 32;
+            if (scratchBits >= 64) {
+                LONG_LE.set(data, wordIndex * 8, scratch);
+                wordIndex++;
+                scratchBits -= 64;
+                scratch = v >>> (32 - scratchBits);
+            }
+        }
+        {
+            final long b = Double.doubleToRawLongBits(value.v.z);
+            v = b & 0xffffffffL;
+            scratch |= v << scratchBits;
+            scratchBits += 32;
+            if (scratchBits >= 64) {
+                LONG_LE.set(data, wordIndex * 8, scratch);
+                wordIndex++;
+                scratchBits -= 64;
+                scratch = v >>> (32 - scratchBits);
+            }
+            v = (b >>> 32) & 0xffffffffL;
+            scratch |= v << scratchBits;
+            scratchBits += 32;
+            if (scratchBits >= 64) {
+                LONG_LE.set(data, wordIndex * 8, scratch);
+                wordIndex++;
+                scratchBits -= 64;
+                scratch = v >>> (32 - scratchBits);
+            }
+        }
+        if (scratchBits != 0) {
+            LONG_LE.set(data, wordIndex * 8, scratch);
+        }
+        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+    }
+
+    // readVec3Sole decodes value from the first numBits of data — the family read
+    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+    // hostile bytes never throw. No slack past the payload is required.
+    public static boolean readVec3Sole(Vec3Sole value, byte[] data, int numBits) {
+        if (numBits > (long) data.length * 8) {
+            return false; // the payload cannot exceed the buffer behind data
+        }
+        // the final 64-bit window, assembled once so every load stays inside
+        // the buffer (the family's no-slack reader stance)
+        int tailBase = data.length - 8;
+        long tailWord = 0;
+        if (tailBase >= 0) {
+            tailWord = (long) LONG_LE.get(data, tailBase);
+        } else {
+            tailBase = 0;
+            for (int i = data.length - 1; i >= 0; i--) {
+                tailWord = (tailWord << 8) | (data[i] & 0xffL);
+            }
+        }
+        int bitsRead = 0;
+        long window = 0;
+        int shift = 0;
+        long v = 0;
+        long lo = 0;
+        if (bitsRead + 192 > numBits) {
+            return false;
+        }
+        if (bitsRead >>> 3 < tailBase) {
+            window = (long) LONG_LE.get(data, bitsRead >>> 3);
+            shift = bitsRead & 7;
+        } else {
+            window = tailWord;
+            shift = bitsRead - tailBase * 8;
+        }
+        v = (window >>> shift) & 0xffffffffL;
+        bitsRead += 32;
+        lo = v;
+        if (bitsRead >>> 3 < tailBase) {
+            window = (long) LONG_LE.get(data, bitsRead >>> 3);
+            shift = bitsRead & 7;
+        } else {
+            window = tailWord;
+            shift = bitsRead - tailBase * 8;
+        }
+        v = (window >>> shift) & 0xffffffffL;
+        bitsRead += 32;
+        lo |= v << 32;
+        value.v.x = Double.longBitsToDouble(lo);
+        if (bitsRead >>> 3 < tailBase) {
+            window = (long) LONG_LE.get(data, bitsRead >>> 3);
+            shift = bitsRead & 7;
+        } else {
+            window = tailWord;
+            shift = bitsRead - tailBase * 8;
+        }
+        v = (window >>> shift) & 0xffffffffL;
+        bitsRead += 32;
+        lo = v;
+        if (bitsRead >>> 3 < tailBase) {
+            window = (long) LONG_LE.get(data, bitsRead >>> 3);
+            shift = bitsRead & 7;
+        } else {
+            window = tailWord;
+            shift = bitsRead - tailBase * 8;
+        }
+        v = (window >>> shift) & 0xffffffffL;
+        bitsRead += 32;
+        lo |= v << 32;
+        value.v.y = Double.longBitsToDouble(lo);
+        if (bitsRead >>> 3 < tailBase) {
+            window = (long) LONG_LE.get(data, bitsRead >>> 3);
+            shift = bitsRead & 7;
+        } else {
+            window = tailWord;
+            shift = bitsRead - tailBase * 8;
+        }
+        v = (window >>> shift) & 0xffffffffL;
+        bitsRead += 32;
+        lo = v;
+        if (bitsRead >>> 3 < tailBase) {
+            window = (long) LONG_LE.get(data, bitsRead >>> 3);
+            shift = bitsRead & 7;
+        } else {
+            window = tailWord;
+            shift = bitsRead - tailBase * 8;
+        }
+        v = (window >>> shift) & 0xffffffffL;
+        bitsRead += 32;
+        lo |= v << 32;
+        value.v.z = Double.longBitsToDouble(lo);
+        return true;
+    }
+
+    // measureVec3Sole is the exact wire bits writeVec3Sole would produce for value —
+    // trusted like the writer; static runs fold to literals at generation time.
+    public static int measureVec3Sole(Vec3Sole value) {
+        return 192;
     }
 
     // type TrioFirst

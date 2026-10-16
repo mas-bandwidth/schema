@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package example — protocol id 0x8656ae68c06b97a7
+# package example — protocol id 0xeb26c970fde3fd71
 
 # type Vec2
 defmodule Example.Vec2 do
@@ -52,6 +52,11 @@ end
 # type TrioSole
 defmodule Example.TrioSole do
   defstruct inner: %Example.Trio{}
+end
+
+# type Vec3Sole
+defmodule Example.Vec3Sole do
+  defstruct v: %Example.Vec3{}
 end
 
 # type TrioFirst
@@ -655,6 +660,103 @@ defmodule Example.Degenerate do
   # measure_trio_sole is the exact wire bits write_trio_sole would produce for value —
   # trusted like the writer; static runs fold to literals at generation time.
   def measure_trio_sole(_value), do: 64
+
+  # vec3_sole_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
+  # vec3_sole_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  def vec3_sole_max_bits, do: 192
+  def vec3_sole_max_bytes, do: 24
+
+  # The §5 zero form: all-zero storage; specified defaults live only in
+  # construction (%Example.Vec3Sole{}).
+  def zero_vec3_sole, do: %Example.Vec3Sole{v: Example.Types.zero_vec3()}
+
+  # write_vec3_sole packs value into a fresh binary — the trusted writer; the O(1)
+  # contract checks raise ArgumentError, always on (the BEAM has no
+  # compile-out assert). Returns the wire bytes.
+  def write_vec3_sole(value) do
+    data = <<>>
+    %{x: value_v_x, y: value_v_y, z: value_v_z} = value.v
+    w = f64_bits(value_v_x)
+    v = w &&& 0xFFFFFFFF
+    scratch = v
+    v = w >>> 32
+    sc0 = scratch
+    scratch = v
+    w = f64_bits(value_v_y)
+    v = w &&& 0xFFFFFFFF
+    sc1 = scratch
+    scratch = v
+    v = w >>> 32
+    sc2 = scratch
+    scratch = v
+    w = f64_bits(value_v_z)
+    v = w &&& 0xFFFFFFFF
+    sc3 = scratch
+    scratch = v
+    v = w >>> 32
+    sc4 = scratch
+    scratch = v
+
+    data =
+      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
+        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
+        scratch::little-size(4)-unit(8)>>
+
+    data
+  end
+
+  # read_vec3_sole decodes the first num_bits of data — the family read verdict:
+  # :error rejects the wire (bounds, ranges, wire constants, padding);
+  # hostile bytes never raise. No slack past the payload is required.
+  def read_vec3_sole(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    try do
+      if num_bits > byte_size(data) * 8 do
+        # the payload cannot exceed the buffer behind it
+        throw(:invalid)
+      end
+
+      bits_read = 0
+      if bits_read + 192 > num_bits, do: throw(:invalid)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
+      bits_read = bits_read + 32
+      w = v
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
+      bits_read = bits_read + 32
+      w = w ||| v <<< 32
+      v_v_x = f64_value(w)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
+      bits_read = bits_read + 32
+      w = v
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
+      bits_read = bits_read + 32
+      w = w ||| v <<< 32
+      v_v_y = f64_value(w)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
+      bits_read = bits_read + 32
+      w = v
+      rv = rd(data, bits_read, 32)
+      v = rv
+      bits_read = bits_read + 32
+      w = w ||| v <<< 32
+      v_v_z = f64_value(w)
+      v_v = %Example.Vec3{x: v_v_x, y: v_v_y, z: v_v_z}
+      # the final position is unobserved — the verdict and value are the surface
+      _ = bits_read
+      value = %Example.Vec3Sole{v: v_v}
+      {:ok, value}
+    catch
+      :invalid -> :error
+    end
+  end
+
+  # measure_vec3_sole is the exact wire bits write_vec3_sole would produce for value —
+  # trusted like the writer; static runs fold to literals at generation time.
+  def measure_vec3_sole(_value), do: 192
 
   # trio_first_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
   # trio_first_max_bytes is rounded up to the family 8-byte write-buffer granularity.

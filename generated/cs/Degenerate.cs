@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xeb26c970fde3fd71
 
 using System;
 using System.Runtime.CompilerServices;
@@ -74,6 +74,12 @@ namespace Example
     public sealed class TrioSole
     {
         public Trio Inner = new Trio();
+    }
+
+    // type Vec3Sole
+    public sealed class Vec3Sole
+    {
+        public Vec3 V = new Vec3();
     }
 
     // type TrioFirst
@@ -757,6 +763,63 @@ namespace Example
         private static bool ReadTrioSoleBatch(ref ReadBatch batch, TrioSole value)
         {
             if (!ReadTrioBatch(ref batch, value.Inner))
+            {
+                return false;
+            }
+            return true;
+        }
+
+        // Vec3SoleMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+        // Vec3SoleMaxBytes is rounded up to the 8-byte write-buffer granularity.
+        public const long Vec3SoleMaxBits = 192;
+        public const long Vec3SoleMaxBytes = 24;
+
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
+        public static void ZeroVec3Sole(Vec3Sole value)
+        {
+            ZeroVec3(value.V);
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitVec3Sole(Vec3Sole value)
+        {
+            InitVec3(value.V);
+        }
+
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
+        public static bool WriteVec3Sole(WriteStream stream, Vec3Sole value)
+        {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteVec3SoleBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteVec3SoleBatch(ref WriteBatch batch, Vec3Sole value)
+        {
+            if (!WriteVec3Batch(ref batch, value.V))
+            {
+                return false;
+            }
+            return true;
+        }
+
+        public static bool ReadVec3Sole(ReadStream stream, Vec3Sole value)
+        {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadVec3SoleBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadVec3SoleBatch(ref ReadBatch batch, Vec3Sole value)
+        {
+            if (!ReadVec3Batch(ref batch, value.V))
             {
                 return false;
             }
