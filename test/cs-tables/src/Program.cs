@@ -1804,6 +1804,11 @@ static partial class Program
             return 0;
         }
 
+        if (args.Length > 0 && (args[0] == "soak" || args[0] == "soak-negative-control"))
+        {
+            return RunSoak(args);
+        }
+
         TestWireContracts();
         TestVocabularyDistinctness();
         TestLebWireContracts();
