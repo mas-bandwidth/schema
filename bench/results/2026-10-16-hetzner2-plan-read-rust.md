@@ -1,5 +1,9 @@
 # 2026-10-16, hetzner2 — the plan-read board, Rust leg
 
+> **Superseded for the plan lane** by `2026-10-16-hetzner2-plan-read-rust-plan.md`:
+> the lineage corpus landed and all three lanes were measured in one invocation
+> (identity PASS, plan FAIL). This file stays as the first sitting's record.
+
 Card `rust-fixed-read-beats-its-packet-read-2` (roadmap tasks
 `gates/packet-read/rust/identity` and `gates/packet-read/rust/plan`), measured by
 `bench/paired/nine.sh --plan-read rust`, twice, per BENCH-STANDARD.md §1.10.
