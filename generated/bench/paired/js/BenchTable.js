@@ -73,7 +73,7 @@ export const TableFixedMaxDepth = 64;
 // A PLAN ENTRY is nine int32 lanes of one flat Int32Array. A flat array of a
 // fixed stride is what keeps the read loop monomorphic: every lane is a
 // Smi, the loop never touches a property name, and nothing is allocated.
-export const TableFixedLanes = 9;
+export const TableFixedLanes = 11;
 // ONE BINDING PER LINE, and that is not a style choice: §11's claim is made
 // name by name, and a scan that reads a module's bindings sees the FIRST name
 // of a comma list. A lane folded into a list beside another is a lane nobody
@@ -87,6 +87,12 @@ const TableFixedLaneGuard = 5;
 const TableFixedLaneArg = 6;
 const TableFixedLaneMeta = 7; // a widen's width and sign, a text entry's flavour
 const TableFixedLaneArgW = 8; // THE GUARD'S WIDTH IN BYTES: a union tag is 1, 2, 4 or 8
+// THE GUARD CHAIN (docs/FIXED-FORM-ALGORITHM.md §4.1): offset+count into a pool
+// of (guard, arg, argw) links, OUTERMOST FIRST, the only bound the layout's 64.
+// The pool is the plan's own remap pool, three ints a link; the count is 0 for
+// an entry under one tag or none, whose guard lane is the whole of it.
+const TableFixedLaneGuards = 9;
+const TableFixedLaneGuardCount = 10;
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first; the
 // others are what a plan compiled from another writer's layout adds.
@@ -132,6 +138,11 @@ export const TableFixedRefusal = Object.freeze({
   // layout this build served and has retired — upgrade the client.
   LayoutNewer: 15,
   LayoutUnsupported: 16,
+  // THE ONE CONTENT REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11): a text
+  // field whose USED units are ill-formed REFUSES BY NAME rather than landing a
+  // default, the verdict the packet reader gives — this form has no length to
+  // continue past. It is not one of §4's six events: nothing was decoded.
+  TextIllFormed: 17,
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
@@ -154,6 +165,7 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.BatchTooLarge: return "batch_too_large";
     case TableFixedRefusal.LayoutNewer: return "layout_newer";
     case TableFixedRefusal.LayoutUnsupported: return "layout_unsupported";
+    case TableFixedRefusal.TextIllFormed: return "text_ill_formed";
     default: return "???";
   }
 }
@@ -216,12 +228,23 @@ export class TableFixedPlan {
     this.remap = new Int32Array((remapCapacity | 0) || 1024);
     this.remapUsed = 0;
     this.recordBytes = 0;
+    // the WRITER's declared body size, every compiled entry bounded by it
+    // (docs/FIXED-FORM-ALGORITHM.md §5.2, fix 3)
+    this.record = 0;
     this.hashLo = 0;
     this.hashHi = 0;
     this.ready = false;
     this.overflow = false;
+    this.hostile = false;
     // the CURRENT union's tag width, stamped onto every push — C++'s c.argw
     this.argw = 1;
+    // THE GUARD CHAIN of the arm being compiled, OUTERMOST FIRST (§4.1): one
+    // (guard, arg, argw) link per enclosing union, pushed on the way into an
+    // arm and popped on the way out; chainAt is where it was laid in the pool,
+    // once per arm, or -1. Sized once for the layout's 64.
+    this.chain = new Int32Array(65 * 3);
+    this.chainLen = 0;
+    this.chainAt = -1;
     // THE PLAN IS PARTITIONED (§4.1): every UNGUARDED entry first, then every
     // guarded one, and split is the index the second half starts at. pass is
     // which half the compile is keeping (§5.2's two passes).
@@ -308,6 +331,53 @@ function TableFixedTagAt(src, at, argw) {
   return v;
 }
 
+// THE ONE CONTENT RULE THE WIRE HAS (docs/SPEC-TABLES.md §3, §3.4; docs/
+// FIXED-FORM-ALGORITHM.md §4.5 fix 11): the USED units alone are held — never
+// the slack — and ill-formed text REFUSES BY NAME rather than landing a
+// default. flavour TableFixedTextUtf8 checks well-formed UTF-8 over a byte
+// length; TableFixedTextWide checks paired UTF-16 code units with no zero unit,
+// an ODD length being damage. The view is the caller's, made once per read.
+export function TableFixedTextOk(flavour, view, at, len) {
+  if (flavour === TableFixedTextWide) {
+    if ((len & 1) !== 0) { return false; }
+    for (let i = 0; i < len; i += 2) {
+      const u = view.getUint16(at + i, true);
+      if (u === 0) { return false; }             // a zero unit is damage
+      if (u >= 0xD800 && u <= 0xDBFF) {
+        if (i + 2 >= len) { return false; }       // an unpaired high surrogate
+        const lo = view.getUint16(at + i + 2, true);
+        if (lo < 0xDC00 || lo > 0xDFFF) { return false; }
+        i += 2;
+      } else if (u >= 0xDC00 && u <= 0xDFFF) {
+        return false;                             // a lone low surrogate
+      }
+    }
+    return true;
+  }
+  for (let i = 0; i < len;) {
+    const b0 = view.getUint8(at + i);
+    if (b0 === 0) { return false; }               // a zero byte is damage
+    if (b0 < 0x80) { i += 1; continue; }
+    let need, cp;
+    if ((b0 & 0xE0) === 0xC0) { need = 1; cp = b0 & 0x1F; }
+    else if ((b0 & 0xF0) === 0xE0) { need = 2; cp = b0 & 0x0F; }
+    else if ((b0 & 0xF8) === 0xF0) { need = 3; cp = b0 & 0x07; }
+    else { return false; }                        // a lone or overlong lead
+    if (i + 1 + need > len) { return false; }     // truncated
+    for (let k = 1; k <= need; k++) {
+      const b = view.getUint8(at + i + k);
+      if ((b & 0xC0) !== 0x80) { return false; }
+      cp = (cp << 6) | (b & 0x3F);
+    }
+    // No overlong spelling, no UTF-8-encoded surrogate and nothing past the
+    // Unicode ceiling U+10FFFF: the packet reader refuses these too.
+    const min = (need === 1) ? 0x80 : (need === 2) ? 0x800 : 0x10000;
+    if (cp < min || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) { return false; }
+    i += 1 + need;
+  }
+  return true;
+}
+
 // ---- THE ONE READ LOOP -----------------------------------------------------
 //
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -325,6 +395,16 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
     if (guard !== TableFixedNoGuard &&
         TableFixedTagAt(src, srcAt + guard, e[b + TableFixedLaneArgW]) !== (e[b + TableFixedLaneArg] >>> 0)) {
       continue;
+    }
+    // AN ARM INSIDE AN ARM ANSWERS TO EVERY OUTER TAG TOO (§4.1, the guard
+    // chain): the links outside the innermost, outermost first, all must hold.
+    const links = e[b + TableFixedLaneGuardCount];
+    if (links > 1) {
+      let holds = true;
+      for (let j = 0, at = e[b + TableFixedLaneGuards]; j < links - 1; j++, at += 3) {
+        if (TableFixedTagAt(src, srcAt + remap[at], remap[at + 2]) !== (remap[at + 1] >>> 0)) { holds = false; break; }
+      }
+      if (!holds) { continue; }
     }
     const s = srcAt + e[b + TableFixedLaneSrc];
     const d = e[b + TableFixedLaneDst];
@@ -376,6 +456,13 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         let v = TableFixedGetU32(src, s) | 0;
         if (v < 0) { v = 0; report.clamped++; }
         else if (v > cap) { v = cap; report.clamped++; }
+        // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE (§4.5 fix
+        // 11): UTF-8 validity over v bytes, never over N; wide code units over
+        // v, never 2N. A violation REFUSES BY NAME with nothing decoded past it.
+        if (!TableFixedTextOk(unit === 2 ? TableFixedTextWide : TableFixedTextUtf8, srcView, s + 4, v * unit)) {
+          report.refused = TableFixedRefusal.TextIllFormed;
+          return;
+        }
         dst[d] = v & 0xff; dst[d + 1] = (v >>> 8) & 0xff;
         dst[d + 2] = (v >>> 16) & 0xff; dst[d + 3] = (v >>> 24) & 0xff;
         const aux = e[b + TableFixedLaneAux];
@@ -845,6 +932,21 @@ function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
   // THE HALF IS TESTED AT THE PUSH: pass 0 keeps the unguarded entries, pass 1
   // the guarded ones, and the plan states where the second half starts (§4.1).
   if (!TableFixedKeeping(plan, guard)) { return; }
+  // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD (docs/SPEC-TABLES.md
+  // §3.4, docs/FIXED-FORM-ALGORITHM.md §5.2 fix 3): the plan's source offsets
+  // are arithmetic over sizes a STRANGER wrote, so a layout whose child sizes
+  // do not sum to its parent's could otherwise name a byte past the record. A
+  // layout that does is refused WHOLE and never partly compiled, under
+  // layout_record_too_large — not only for the 65536 bound and a zero root.
+  {
+    if (guard !== TableFixedNoGuard) {
+      let w = plan.argw | 0;
+      if (w === 0) { w = 1; }
+      if (guard >= plan.record || guard + w > plan.record) { plan.hostile = true; return; }
+    }
+    const reach = src + size + (op === TableFixedOpText ? 4 : 0);
+    if (reach > plan.record) { plan.hostile = true; return; }
+  }
   if (plan.count >= plan.capacity) { plan.overflow = true; return; }
   const b = plan.count * TableFixedLanes;
   const e = plan.entries;
@@ -860,6 +962,29 @@ function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
   let w = plan.argw | 0;
   if (w === 0) { w = 1; }
   e[b + TableFixedLaneArgW] = w;
+  e[b + TableFixedLaneGuards] = 0;
+  e[b + TableFixedLaneGuardCount] = 0;
+  // THE GUARD CHAIN (§4.1): an entry beneath a union answers to EVERY enclosing
+  // tag. Its guard lane is the chain's innermost link, and a chain past one is
+  // laid into the pool, once per arm, as offset+count.
+  if (guard !== TableFixedNoGuard && plan.chainLen > 0) {
+    const c = plan.chain;
+    const inner = (plan.chainLen - 1) * 3;
+    e[b + TableFixedLaneGuard] = c[inner];
+    e[b + TableFixedLaneArg] = c[inner + 1];
+    e[b + TableFixedLaneArgW] = c[inner + 2];
+    if (plan.chainLen > 1) {
+      if (plan.chainAt < 0) {
+        const need = plan.chainLen * 3;
+        if (plan.remapUsed + need > plan.remap.length) { plan.overflow = true; return; }
+        plan.chainAt = plan.remapUsed;
+        for (let k = 0; k < need; k++) { plan.remap[plan.chainAt + k] = c[k]; }
+        plan.remapUsed += need;
+      }
+      e[b + TableFixedLaneGuards] = plan.chainAt;
+      e[b + TableFixedLaneGuardCount] = plan.chainLen;
+    }
+  }
   plan.count++;
 }
 
@@ -997,7 +1122,13 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       const theirElem = TableFixedSize(theirs, ti + 1);
       const myElem = TableFixedSize(mine, mi + 1);
       const head = dst[row + TableFixedDstCounted] ? 4 : 0;
-      const theirN = theirElem ? ((theirSize - head) / theirElem) | 0 : 0;
+      // THE WRITER'S ELEMENT COUNT IS u32 ARITHMETIC (docs/FIXED-FORM-ALGORITHM.md
+      // §5.2 EMIT kind 14): their_n := (te.size - head) / their element size, and
+      // te.size is a u32, so a bare array SMALLER than the reader's four-byte count
+      // wraps to a huge bound — which the record bound below refuses WHOLE, the
+      // same answer the reference's record_bound_case gives. A signed subtraction
+      // here would underflow to a negative bound and let the over-reach through.
+      const theirN = theirElem ? Math.floor(((theirSize - head) >>> 0) / theirElem) : 0;
       const myN = myElem ? ((mySize - head) / myElem) | 0 : 0;
       if (dst[row + TableFixedDstCounted]) {
         // THE BOUND IS THE WRITER'S their_n AND NOT THE READER'S (§5.2 EMIT,
@@ -1070,10 +1201,23 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
         let theirArm = ti + 1;
         for (let j = 0; j < theirArms; j++) {
           if (TableFixedSameId(theirs, theirArm, mine, myArm)) {
+            // THE ARM ANSWERS TO THIS TAG AND TO EVERY TAG OUTSIDE IT (§4.1, the
+            // guard chain): one link pushed on the way in, the arm's own tag
+            // const included, popped on the way out. The layout's 64 bounds it.
+            if (plan.chainLen >= 65) { plan.overflow = true; return; }
+            const savedAt = plan.chainAt;
+            const l = plan.chainLen * 3;
+            plan.chain[l] = theirAt;
+            plan.chain[l + 1] = j + 1;
+            plan.chain[l + 2] = plan.argw;
+            plan.chainLen++;
+            plan.chainAt = -1;
             // MY tag value, written under THEIR tag's guard
             TableFixedPush(plan, TableFixedOpConst, theirAt, auxAt, myTag, k + 1, theirAt, j + 1, 0);
             TableFixedCompileEntry(plan, theirs, theirArm, theirAt + theirTag,
               mine, myArm, dst, at, theirAt, j + 1, report);
+            plan.chainLen--;
+            plan.chainAt = savedAt;
             break;
           }
           theirArm += TableFixedSubtree(theirs, theirArm);
@@ -1145,6 +1289,8 @@ function TableFixedCoalesce(plan, from) {
       if (e[p + TableFixedLaneOp] === TableFixedOpCopy && e[b + TableFixedLaneOp] === TableFixedOpCopy &&
           e[p + TableFixedLaneGuard] === e[b + TableFixedLaneGuard] && e[p + TableFixedLaneArg] === e[b + TableFixedLaneArg] &&
           e[p + TableFixedLaneArgW] === e[b + TableFixedLaneArgW] &&
+          e[p + TableFixedLaneGuards] === e[b + TableFixedLaneGuards] &&
+          e[p + TableFixedLaneGuardCount] === e[b + TableFixedLaneGuardCount] &&
           e[p + TableFixedLaneSrc] + e[p + TableFixedLaneSize] === e[b + TableFixedLaneSrc] &&
           e[p + TableFixedLaneDst] + e[p + TableFixedLaneSize] === e[b + TableFixedLaneDst]) {
         e[p + TableFixedLaneSize] += e[b + TableFixedLaneSize];
@@ -1255,6 +1401,14 @@ export function TableFixedLineagePlans(known, ownLo, ownHi, myLayout, myDst, ima
       const plan = new TableFixedPlan(room, imageBytes, room * 8);
       const census = new TableFixedReport();
       const made = TableFixedCompile(theirs, myLayout, myDst, plan, census);
+      // AN ENTRY REACHING PAST THE WRITER'S DECLARED RECORD IS layout_record_too_large,
+      // never a retry: more room cannot mend arithmetic over a stranger's sizes
+      // (docs/FIXED-FORM-ALGORITHM.md §5.2 PLAN, fix 3).
+      if (made === -2) {
+        lane = new TableFixedPlan(1, imageBytes, 1);
+        lane.why = TableFixedRefusal.LayoutRecordTooLarge;
+        break;
+      }
       if (made < 0) { continue; }
       plan.recordBytes = k.recordBytes;
       // THE CENSUS IS THE PLAN'S OWN NUMBER, fixed when the plan was built, and
@@ -1279,9 +1433,15 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   const mine = new TableFixedLayoutView();
   if (!TableFixedParseLayout(myLayout, 0, myLayout.length, mine)) { return -1; }
   plan.count = 0;
+  plan.chainLen = 0;
+  plan.chainAt = -1;
   plan.remapUsed = 0;
   plan.overflow = false;
+  plan.hostile = false;
   plan.argw = 1;
+  // THE WRITER'S OWN DECLARED RECORD (the root's body size) bounds every entry
+  // (docs/FIXED-FORM-ALGORITHM.md §5.2 PLAN, fix 3).
+  plan.record = TableFixedSize(theirs, 0);
   // PASS 1, UNGUARDED, COUNTING THE CENSUS. PASS 2, GUARDED, COUNTING NOTHING
   // (§5.2 PLAN): the census is once per peer, so a second walk of the same pairs
   // must not count them twice.
@@ -1294,10 +1454,580 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   TableFixedMatchChildren(plan, theirs, 0, 0, mine, 0, myDst, 0, TableFixedNoGuard, 0, quiet);
   TableFixedCoalesce(plan, plan.split);
   plan.pass = 0;
+  if (plan.hostile) { return -2; }
   if (plan.overflow) { return -1; }
   return plan.count;
 }
 
+
+export const TableMessageBatchMax = 256;
+export const TableMessageRefBitsHere = 7;
+export const TableMessageEntriesHere = 75;
+export const TableMessageAnnouncement = new Uint8Array([0x01,0x01,0x09,0x2c,0x1b,0x35,0xfe,0x07,0x9e,0xbc,0x12,0x02,0x0e,0xfc,0x06,0x06,0xf9,0x06,0xa8,0x28,0xf5,0x81,0xa4,0xac,0x38,0xaa,0x07,0x01,0x10,0x00,0x3e,0x7c,0x69,0x56,0x5c,0x00,0xbe,0x0d,0x04,0x01,0x10,0x00,0x03,0xee,0x29,0xb8,0xa8,0x0d,0xae,0x9b,0x08,0x01,0x20,0x00,0x05,0x0b,0x59,0x0a,0x65,0xb5,0xd7,0xb7,0x09,0x00,0x7e,0x96,0x95,0xd0,0xe2,0x98,0x7b,0x6d,0x08,0x00,0xd8,0xc0,0x0d,0xd6,0x71,0x4c,0xa9,0x73,0x09,0x01,0x40,0x00,0x85,0xfc,0x54,0xbe,0x51,0x6b,0xee,0x3e,0x05,0x01,0x29,0xff,0xbf,0xa8,0xca,0x9a,0x3a,0x12,0x01,0x6d,0x7b,0x5f,0x03,0xbc,0x7b,0x09,0x01,0x30,0x00,0xc6,0x69,0xbe,0xf9,0x75,0x04,0x46,0x3c,0x16,0x01,0x18,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x2a,0x82,0xb3,0x7b,0xb0,0x0f,0x5d,0x93,0x0e,0x01,0x08,0x0d,0x4c,0x99,0xb1,0x45,0xad,0x9c,0x63,0xee,0x0e,0x00,0x50,0x0d,0x90,0x57,0xaa,0x21,0x53,0xdc,0x35,0x2e,0x0f,0xa3,0xb5,0xbb,0x86,0x75,0xce,0x59,0x57,0x0e,0x04,0x04,0x06,0x00,0x6e,0xe8,0xf8,0x2c,0x54,0x2f,0xa6,0x13,0x0c,0x0f,0xe5,0xe9,0xb5,0x63,0xd0,0xa9,0xb8,0xcf,0x0e,0x00,0x10,0x06,0x00,0xc9,0x96,0x42,0xe2,0xe5,0x7b,0xaf,0xdb,0x0a,0x02,0x00,0x00,0x80,0xbf,0x00,0x00,0x80,0x3f,0x0a,0xd7,0x23,0x3c,0x16,0x95,0x42,0xe2,0xe5,0x7a,0xaf,0xdb,0x0a,0x02,0x00,0x00,0x80,0xbf,0x00,0x00,0x80,0x3f,0x0a,0xd7,0x23,0x3c,0x63,0x93,0x42,0xe2,0xe5,0x79,0xaf,0xdb,0x0a,0x02,0x00,0x00,0x80,0xbf,0x00,0x00,0x80,0x3f,0x0a,0xd7,0x23,0x3c,0x57,0xe4,0xe2,0xf7,0xff,0x31,0xef,0x9c,0x0a,0x00,0x04,0x6c,0x1f,0x34,0xc9,0xf9,0xb3,0x5a,0x0b,0x16,0xaf,0x1f,0x46,0x80,0x85,0x34,0xa3,0x13,0x00,0x42,0x26,0xaf,0x08,0x79,0xdd,0x1b,0xd6,0x12,0x01,0x66,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xf0,0xff,0xff,0xff,0xa9,0x07,0x33,0xc5,0x0d,0xe0,0x30,0xbf,0x1a,0x01,0x10,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x5f,0x51,0xd8,0xcc,0x27,0x65,0x0d,0x56,0x08,0x01,0x18,0x00,0x72,0x86,0xfd,0x6c,0x17,0x92,0x82,0xc0,0x01,0x69,0xcb,0x79,0xa9,0x12,0xee,0x29,0xfd,0x04,0x01,0x08,0x00,0xfe,0xbc,0x8c,0xaa,0xc0,0x1a,0x10,0x78,0x04,0x01,0x04,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x0d,0xa4,0xed,0xca,0xd5,0x9a,0x3e,0x01,0xa5,0x04,0x01,0x02,0x00,0x22,0xd0,0xeb,0x96,0x4d,0xac,0xf1,0xfb,0x07,0x01,0x0c,0x00,0x12,0x67,0xe3,0x78,0x66,0xfd,0xfc,0x23,0x07,0x01,0x0c,0x00,0x0e,0x31,0x67,0x76,0x35,0x37,0x4b,0xcb,0x04,0x01,0x0f,0xfd,0xff,0x01,0xc1,0x32,0x67,0x76,0x35,0x38,0x4b,0xcb,0x04,0x01,0x0f,0xfd,0xff,0x01,0xa8,0x2d,0x67,0x76,0x35,0x35,0x4b,0xcb,0x04,0x01,0x0f,0xfd,0xff,0x01,0xe8,0x16,0x8e,0x79,0x19,0x8e,0x4d,0xb5,0x07,0x01,0x09,0x00,0xb1,0xc1,0x0c,0xa9,0x65,0xf6,0xa9,0x53,0x07,0x01,0x09,0x00,0x67,0xee,0x60,0xeb,0xb6,0xe6,0xed,0x6c,0x04,0x01,0x0c,0xff,0x1f,0xb4,0xec,0x60,0xeb,0xb6,0xe5,0xed,0x6c,0x04,0x01,0x0c,0xff,0x1f,0xcd,0xf1,0x60,0xeb,0xb6,0xe8,0xed,0x6c,0x04,0x01,0x0c,0xff,0x1f,0xcf,0xa9,0x8b,0x28,0xb5,0xd4,0x69,0x7f,0x04,0x01,0x0a,0x00,0x01,0x6e,0x2c,0x5f,0x20,0x10,0xb6,0xa0,0x1e,0xc0,0x7f,0xb3,0x8a,0xbe,0x08,0x63,0x7f,0x09,0x01,0x08,0x00,0xa7,0x3d,0x24,0xd1,0xc1,0x4f,0xa4,0x11,0x01,0xca,0x31,0x90,0x9b,0xd1,0xcf,0x74,0x76,0x01,0x50,0x50,0xa2,0x15,0xc0,0x9a,0xbc,0xb7,0x07,0x01,0x0c,0x00,0xc0,0x7f,0xb3,0x8a,0xbe,0x08,0x63,0x7f,0x04,0x01,0x0c,0x00,0x25,0xb9,0x59,0xb0,0x65,0xc3,0xfb,0x01,0x04,0x01,0x03,0x00,0x2d,0xa5,0x9a,0x8c,0x90,0x67,0x61,0x12,0x01,0x56,0xbd,0x4f,0x86,0x6d,0xd0,0x7f,0x9e,0x07,0x01,0x0a,0x00,0x69,0x69,0xb1,0xa2,0x7e,0xfe,0x13,0x81,0x04,0x01,0x08,0x00,0x65,0xbf,0x6d,0x86,0xf0,0x75,0xab,0x80,0x06,0x01,0x08,0x00,0xc1,0xa0,0x13,0xec,0x75,0x66,0x07,0x52,0x04,0x01,0x0a,0xff,0x07,0x0c,0xcf,0x66,0x27,0xe1,0xee,0x90,0xa7,0x00,0x76,0x84,0xda,0x35,0xa8,0xef,0xbf,0x9f,0x00,0x95,0x8a,0x92,0x83,0x17,0xbb,0x8b,0x18,0x00,0xf1,0x72,0xf2,0xc2,0xb9,0x67,0x36,0x2c,0x00,0xf6,0x55,0xd7,0x00,0x1b,0xb4,0xa8,0x0c,0x00,0x4e,0x1a,0xb2,0xfa,0x19,0xc8,0x5f,0x98,0x00,0x55,0x6a,0x08,0xc3,0x47,0x04,0x9d,0x22,0x00,0x9d,0x8f,0x22,0xa7,0x49,0x7b,0x1c,0x01,0x00,0x5f,0xe1,0x23,0x11,0x6e,0x56,0xf7,0x89,0x00,0x69,0x44,0x3b,0x8b,0x31,0x25,0x7f,0x8d,0x00,0x16,0x78,0x5b,0x28,0xcc,0x0d,0xcd,0xd9,0x00,0x76,0x52,0xff,0xa8,0xae,0x16,0xdc,0x04,0x00,0x17,0x92,0x12,0x41,0xc3,0x3b,0xe5,0x35,0x00,0x31,0x88,0xde,0xb0,0x2f,0x28,0xc8,0x2c,0x00,0x34,0xb3,0x8c,0xbc,0x21,0xda,0xba,0x20,0x00,0xaa,0x80,0x06,0x30,0x19,0x28,0x73,0x33,0x0d,0x8b,0x34,0x5b,0x0b,0x91,0x8d,0xa3,0xf2,0x0d,0x65,0xb7,0xec,0x86,0x1c,0xa4,0xa3,0x9f,0x0d,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0xe4,0x4f,0x1c,0x4f,0x47,0xc0,0x2e,0x2f,0x00,0x58,0xfc,0xaf,0xfa,0xd8,0xe0,0x4b,0x70,0x00,0xc7,0xd4,0x7b,0x26,0xb0,0x9d,0x29,0x5f,0x00,0xb3,0x46,0xa7,0xdc,0x9c,0x36,0xdf,0x85,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,]);
+
+export const TableMessageOpenOk = 0;
+export const TableMessageOpenRefused = 1;
+export const TableMessageOpenDamaged = 2;
+export class TableVocabulary {
+  constructor() { this.Reset(); }
+  Reset() {
+    this.Entries = [];
+    this.Count = 0;
+    this.RefBits = 1;
+    this.BuildVersion = 0n;
+    this.Announced = false;
+    this.Refused = false;
+    this.MaxBytes = 64 * 1024;
+    this.Strict = false;
+  }
+  Init(storage) {
+    this.Entries = storage;
+    this.Count = 0;
+    this.RefBits = 1;
+    this.BuildVersion = 0n;
+    this.Announced = false;
+    this.Refused = false;
+    this.MaxBytes = 64 * 1024;
+    this.Strict = false;
+  }
+}
+export function AnnounceMeasure() { return TableMessageAnnouncement.length; }
+export function Announce(buffer) {
+  if (buffer.length < TableMessageAnnouncement.length) { return -1; }
+  buffer.set(TableMessageAnnouncement);
+  return TableMessageAnnouncement.length;
+}
+// The announcement is an ordinary form-1 file, so its reader is the form-1
+// reader (docs/SPEC-TABLES.md §3): a bounded view of the body, the id trailer,
+// and the framing pre-walk that refuses a body ending after its terminator.
+const TableMessageVersionId = BigInt("0xfffffffffffffffe");
+const TableMessageVocabularyId = BigInt("0xfffffffffffffffd");
+const TableMessageNodeId = BigInt("0xffffffffffffffff");
+function TableMessageRead64(bytes, at) {
+  let v = 0n;
+  for (let i = 7; i >= 0; i--) { v = (v << 8n) | BigInt(bytes[at + i]); }
+  return v;
+}
+class TableMessageReader {
+  constructor(buffer, ids) { this.Buffer = buffer; this.Ids = ids; this.Offset = 0; }
+  Clone() { const r = new TableMessageReader(this.Buffer, this.Ids); r.Offset = this.Offset; return r; }
+  Has(n) { return n >= 0 && this.Offset >= 0 && this.Offset <= this.Buffer.length && n <= this.Buffer.length - this.Offset; }
+  Room(n) { return n <= BigInt(this.Buffer.length - this.Offset); }
+  Get8() { return this.Buffer[this.Offset++]; }
+  Get32() {
+    const v = this.Buffer[this.Offset] | (this.Buffer[this.Offset + 1] << 8) |
+      (this.Buffer[this.Offset + 2] << 16) | (this.Buffer[this.Offset + 3] << 24);
+    this.Offset += 4;
+    return v >>> 0;
+  }
+  Get64() { const v = TableMessageRead64(this.Buffer, this.Offset); this.Offset += 8; return v; }
+  LebPair() {
+    const at = this.Offset;
+    if (at < this.Buffer.length) {
+      const b = this.Buffer[at];
+      if (b < 128) { this.Offset = at + 1; return [BigInt(b), true]; }
+    }
+    return [0n, false];
+  }
+  LebWide() {
+    const at = this.Offset;
+    let v = 0n;
+    for (let i = 0; i < 10; i++) {
+      if (!this.Has(1)) { break; }
+      const b = this.Get8();
+      if (i === 9 && b > 1) { break; }
+      v |= BigInt(b & 127) << BigInt(7 * i);
+      if (b < 128) {
+        if (i > 0 && b === 0) { break; }
+        return [v, true];
+      }
+    }
+    this.Offset = at;
+    return [0n, false];
+  }
+  Leb() { const [v, ok] = this.LebPair(); if (ok) { return [v, true]; } return this.LebWide(); }
+  Resolve(ref) {
+    if (ref === 0n || ref > BigInt(Math.floor(this.Ids.length / 8))) { return [0n, false]; }
+    return [TableMessageRead64(this.Ids, Number((ref - 1n) * 8n)), true];
+  }
+  Body() {
+    const [n, ok] = this.Leb();
+    if (!ok || !this.Room(n)) { return [null, false]; }
+    const end = this.Offset + Number(n);
+    const sub = new TableMessageReader(this.Buffer.subarray(this.Offset, end), this.Ids);
+    this.Offset = end;
+    return [sub, true];
+  }
+  Skip(kind) {
+    const fixed = TableMessageKindBytes(kind);
+    if (fixed !== 0) { if (!this.Has(fixed)) { return false; } this.Offset += fixed; return true; }
+    switch (kind) {
+      case 17: case 30: { const [, ok] = this.Leb(); return ok; }
+      case 12: case 13: case 14: case 16: case 31: case 32: case 33: { const [, ok] = this.Body(); return ok; }
+      case 15: {
+        const [ref, ok] = this.Leb();
+        if (!ok) { return false; }
+        if (ref === 0n) { return true; }
+        if (!this.Has(1)) { return false; }
+        this.Offset++;
+        const [, bok] = this.Body();
+        return bok;
+      }
+    }
+    return false;
+  }
+  EndsEarly() {
+    const r = this.Clone();
+    for (;;) {
+      const [ref, ok] = r.Leb();
+      if (!ok) { return false; }
+      if (ref === 0n) { return r.Offset !== r.Buffer.length; }
+      const [, rok] = r.Resolve(ref);
+      if (!rok || !r.Has(1)) { return false; }
+      if (!r.Skip(r.Get8())) { return false; }
+    }
+  }
+}
+function TableMessageKindBytes(kind) {
+  switch (kind) {
+    case 1: case 2: case 6: case 20: case 25: return 1;
+    case 3: case 7: case 21: case 26: return 2;
+    case 4: case 8: case 10: case 22: case 27: return 4;
+    case 5: case 9: case 11: case 23: case 28: return 8;
+    case 18: case 19: case 24: case 29: return 16;
+  }
+  return 0;
+}
+function TableMessageOpen(data) {
+  if (data.length === 0) { return [null, TableMessageOpenDamaged]; }
+  if (data[0] !== 1) { return [null, TableMessageOpenRefused]; }
+  if (data.length < 9) { return [null, TableMessageOpenDamaged]; }
+  const n = TableMessageRead64(data, data.length - 8);
+  if (n > BigInt(Math.floor((data.length - 9) / 8))) { return [null, TableMessageOpenDamaged]; }
+  const start = data.length - 8 - Number(n) * 8;
+  return [new TableMessageReader(data.subarray(1, start), data.subarray(start, data.length - 8)), TableMessageOpenOk];
+}
+function TableMessageOpenFramed(data) {
+  const [r, verdict] = TableMessageOpen(data);
+  if (verdict === TableMessageOpenOk && r.EndsEarly()) { return [r, TableMessageOpenDamaged]; }
+  return [r, verdict];
+}
+function TableMessageBits(n) { let count = 0; while (n !== 0n) { count++; n >>= 1n; } return count; }
+function TableMessageKnownKind(k) { return k <= 33; }
+function TableMessageKindBits(k) {
+  if (k === 1) { return 1; }
+  switch (k) {
+    case 2: case 6: case 20: case 25: return 8;
+    case 3: case 7: case 21: case 26: return 16;
+    case 4: case 8: case 10: case 22: case 27: return 32;
+    case 5: case 9: case 11: case 23: case 28: return 64;
+    case 18: case 19: case 24: case 29: return 128;
+  }
+  return -1;
+}
+const TableMessageFloat = new Float32Array(1);
+const TableMessageWords = new Uint32Array(TableMessageFloat.buffer);
+export function TableMessageFloat32FromBits(bits) { TableMessageWords[0] = bits >>> 0; return TableMessageFloat[0]; }
+function TableMessageShape() {
+  return { Kind: 0, Packing: 0, Bits: 0, Base: [0n, 0n], Min: 0, Max: 0, QMin: 0, QDelta: 0, QCount: 0 };
+}
+function TableMessageShapeRead(r, k) {
+  const s = TableMessageShape();
+  s.Kind = k;
+  s.Bits = TableMessageKindBits(k);
+  if ((k >= 2 && k <= 10) || (k >= 18 && k <= 29)) {
+    if (!r.Has(1)) { return [s, false]; }
+    s.Packing = r.Get8();
+    if (s.Packing === 0) { return [s, true]; }
+    if (s.Packing === 1 && k !== 10) {
+      const [n, ok] = r.Leb();
+      if (!ok || n > BigInt(s.Bits)) { return [s, false]; }
+      s.Bits = Number(n);
+      if (k >= 18) {
+        if (!r.Has(16)) { return [s, false]; }
+        s.Base = [r.Get64(), r.Get64()];
+        return [s, true];
+      }
+      const [raw, bok] = r.Leb();
+      if (!bok) { return [s, false]; }
+      let base = raw;
+      if (k >= 2 && k <= 5) { base = BigInt.asUintN(64, (raw >> 1n) ^ (-(raw & 1n))); }
+      s.Base = [base, 0n];
+      return [s, true];
+    }
+    if (s.Packing === 2 && k === 10) {
+      if (!r.Has(12)) { return [s, false]; }
+      const lo = TableMessageFloat32FromBits(r.Get32());
+      const hi = TableMessageFloat32FromBits(r.Get32());
+      const res = TableMessageFloat32FromBits(r.Get32());
+      if (!(lo < hi) || !(res > 0)) { return [s, false]; }
+      const delta = Math.fround(hi - lo);
+      let values = Math.fround(delta / res);
+      if (delta - delta !== 0 || values - values !== 0) { return [s, false]; }
+      if (!(values >= 1)) { values = 1; } else if (values > 4294967040.0) { values = 4294967040.0; }
+      s.QMin = lo;
+      s.QDelta = delta;
+      s.QCount = Math.ceil(values) >>> 0;
+      s.Bits = TableMessageBits(BigInt(s.QCount));
+      return [s, true];
+    }
+    return [s, false];
+  }
+  if (k === 12 || k === 33) {
+    const [n, ok] = r.Leb();
+    if (!ok || n > 2147483647n) { return [s, false]; }
+    s.Max = Number(n);
+  } else if (k === 14 || k === 16) {
+    if (k === 14) {
+      const [n, ok] = r.Leb();
+      if (!ok || n > 4294967295n) { return [s, false]; }
+      s.Min = Number(n);
+    }
+    const [n, ok] = r.Leb();
+    if (!ok || n > 4294967295n || Number(n) < s.Min) { return [s, false]; }
+    s.Max = Number(n);
+  }
+  return [s, true];
+}
+function TableMessageEntryRead(r) {
+  const e = { Id: 0n, Shape: TableMessageShape(), Element: TableMessageShape() };
+  if (!r.Has(9)) { return [e, false]; }
+  e.Id = r.Get64();
+  const kind = r.Get8();
+  if (!TableMessageKnownKind(kind)) { return [e, false]; }
+  const [shape, ok] = TableMessageShapeRead(r, kind);
+  e.Shape = shape;
+  if (!ok) { return [e, false]; }
+  if (kind === 14 || kind === 16) {
+    if (!r.Has(1)) { return [e, false]; }
+    const elem = r.Get8();
+    if (!TableMessageKnownKind(elem) || elem === 12 || elem === 33) { return [e, false]; }
+    const [es, eok] = TableMessageShapeRead(r, elem);
+    e.Element = es;
+    if (!eok) { return [e, false]; }
+    if (elem === 14 || elem === 16) {
+      if (!r.Has(1)) { return [e, false]; }
+      const inner = r.Get8();
+      if (!TableMessageKnownKind(inner) || inner === 12 || inner === 33) { return [e, false]; }
+    }
+  }
+  return [e, true];
+}
+function TableMessageShapeEqual(a, b) {
+  return a.Kind === b.Kind && a.Packing === b.Packing && a.Bits === b.Bits &&
+    a.Base[0] === b.Base[0] && a.Base[1] === b.Base[1] &&
+    a.Min === b.Min && a.Max === b.Max && a.QMin === b.QMin && a.QDelta === b.QDelta && a.QCount === b.QCount;
+}
+function TableMessageEntryEqual(a, b) {
+  return a !== null && b !== null && a.Id === b.Id &&
+    TableMessageShapeEqual(a.Shape, b.Shape) && TableMessageShapeEqual(a.Element, b.Element);
+}
+export function TableMessageRefuse(report, reason) {
+  report.Verdict = TableMessageOpenRefused;
+  report.Reason = reason;
+  return false;
+}
+// TableAnnounceRead is §3.3's reader: "the receiver resolves once. It reads the
+// announcement, resolves every entry against its own descriptors ... THE
+// ANNOUNCEMENT READS TOLERANTLY ... The vocabulary is a pure function of the
+// build version." A refused announcement is TERMINAL.
+function TableAnnounceRead(v, data, report) {
+  const [r, verdict] = TableMessageOpenFramed(data);
+  if (verdict !== TableMessageOpenOk) {
+    if (verdict === TableMessageOpenRefused) {
+      let reason = "newer_form";
+      if (data.length > 0 && data[0] === 2) { reason = "message_form_as_file"; }
+      return TableMessageRefuse(report, reason);
+    }
+    report.Malformed = true;
+    return false;
+  }
+  let versionCount = 0, wordsCount = 0, words = null;
+  for (;;) {
+    const [ref, ok] = r.Leb();
+    if (!ok) { report.Malformed = true; return false; }
+    if (ref === 0n) { break; }
+    const [id, rok] = r.Resolve(ref);
+    if (!rok || !r.Has(1)) { report.Malformed = true; return false; }
+    const kind = r.Get8();
+    if (id === TableMessageVersionId) {
+      if (kind !== 9 || !r.Has(8)) { report.Malformed = true; return false; }
+      v.BuildVersion = r.Get64();
+      versionCount++;
+    } else if (id === TableMessageVocabularyId) {
+      if (kind !== 14) { report.Malformed = true; return false; }
+      const [sub, bok] = r.Body();
+      if (!bok || !sub.Has(1) || sub.Get8() !== 6) { report.Malformed = true; return false; }
+      const [n, nok] = sub.Leb();
+      if (!nok || n > BigInt(sub.Buffer.length) || n !== BigInt(sub.Buffer.length - sub.Offset)) { report.Malformed = true; return false; }
+      let limit = v.MaxBytes;
+      if (!limit) { limit = 64 * 1024; }
+      if (n > BigInt(limit)) { return TableMessageRefuse(report, "vocabulary_too_large"); }
+      words = sub.Buffer.subarray(sub.Offset);
+      wordsCount++;
+    } else {
+      report.Unknown++;
+      if (!r.Skip(kind)) { report.Malformed = true; return false; }
+    }
+  }
+  if (versionCount !== 1 || wordsCount !== 1) { report.Malformed = true; return false; }
+  if (v.Strict && v.BuildVersion !== v.BuildVersionOwn) {
+    report.BuildVersionPeer = v.BuildVersion;
+    report.BuildVersionOwn = v.BuildVersionOwn;
+    return TableMessageRefuse(report, "build_version_mismatch");
+  }
+  const src = new TableMessageReader(words, null);
+  let count = 0, nodeSeen = false;
+  while (src.Offset < words.length) {
+    if (count >= v.Entries.length) { return TableMessageRefuse(report, "vocabulary_too_large"); }
+    const [e, eok] = TableMessageEntryRead(src);
+    if (!eok || e.Id === TableMessageVocabularyId || e.Id === TableMessageVersionId || (e.Id === TableMessageNodeId && nodeSeen)) {
+      report.Malformed = true;
+      return false;
+    }
+    if (e.Id === TableMessageNodeId) { nodeSeen = true; }
+    for (let i = 0; i < count; i++) {
+      if (TableMessageEntryEqual(v.Entries[i], e)) { report.Malformed = true; return false; }
+    }
+    v.Entries[count] = e;
+    count++;
+  }
+  v.Count = count;
+  v.RefBits = TableMessageBits(BigInt(count));
+  if (v.RefBits === 0) { v.RefBits = 1; }
+  v.Announced = true;
+  return true;
+}
+export function AnnounceRead(v, data, report) {
+  if (report === undefined || report === null) { report = {}; }
+  if (v.Announced || v.Refused) {
+    report.Verdict = TableMessageOpenRefused;
+    report.Reason = "second_announcement";
+    return false;
+  }
+  const ok = TableAnnounceRead(v, data, report);
+  if (!ok) { v.Refused = true; }
+  return ok;
+}
+
+// ---- the batch body codec (docs/SPEC-TABLES.md §3.3) ----
+//
+// The bit stream is the packet wire's: bit i is bit i%8 of byte i/8, low bit
+// first, so a value written here and one written by the packet writer are the
+// same bits in the same places (SPEC.md §4.3). Every multi-byte fact rides a
+// BigInt, and every width is bounded before it is used.
+export class TableBitWriter {
+  constructor(buffer, measuring) {
+    this.Buffer = buffer;
+    this.Bits = 0;
+    this.Measuring = measuring === true;
+    this.Overflow = false;
+  }
+  Put(value, n) {
+    if (n < 0 || n > 64) { this.Overflow = true; return; }
+    if (n === 0) { return; }
+    const at = this.Bits;
+    this.Bits += n;
+    if (this.Measuring) { return; }
+    if (((this.Bits + 7) >> 3) > this.Buffer.length) { this.Overflow = true; return; }
+    const v = BigInt.asUintN(n, value);
+    let shift = at & 7;
+    let byteIdx = at >> 3;
+    for (let i = 0; i < n; i++) {
+      if ((v & (1n << BigInt(i))) !== 0n) { this.Buffer[byteIdx] |= (1 << shift); }
+      else { this.Buffer[byteIdx] &= ~(1 << shift); }
+      shift++;
+      if (shift === 8) { shift = 0; byteIdx++; }
+    }
+  }
+  Align() { this.Put(0n, (-this.Bits) & 7); }
+  Raw(data) {
+    this.Align();
+    if (this.Measuring) { this.Bits += data.length * 8; return; }
+    const at = this.Bits >> 3;
+    this.Bits += data.length * 8;
+    if (at > this.Buffer.length - data.length) { this.Overflow = true; return; }
+    this.Buffer.set(data, at);
+  }
+}
+export class TableBitReader {
+  constructor(buffer) { this.Buffer = buffer; this.Offset = 0; }
+  Get(n) {
+    if (n < 0 || n > 64 || this.Offset < 0 || n > this.Buffer.length * 8 - this.Offset) { return [0n, false]; }
+    if (n === 0) { return [0n, true]; }
+    let v = 0n;
+    let at = this.Offset >> 3;
+    let shift = this.Offset & 7;
+    for (let i = 0; i < n; i++) {
+      const bit = (this.Buffer[at] >> shift) & 1;
+      if (bit !== 0) { v |= (1n << BigInt(i)); }
+      shift++;
+      if (shift === 8) { shift = 0; at++; }
+    }
+    this.Offset += n;
+    return [v, true];
+  }
+  Skip(n) {
+    if (n < 0 || n > this.Buffer.length * 8 - this.Offset) { return false; }
+    this.Offset += n;
+    return true;
+  }
+  Align() {
+    const [v, ok] = this.Get((-this.Offset) & 7);
+    return ok && v === 0n;
+  }
+}
+export class TableMessageBatchReader {
+  constructor(buffer, vocabulary, report) {
+    this.Bits = new TableBitReader(buffer);
+    this.Vocabulary = vocabulary;
+    this.RefBits = vocabulary.RefBits;
+    this.IndexBits = 0;
+    this.Report = report;
+  }
+}
+export function TableMessageResetReport(report) {
+  report.Malformed = false;
+  report.Verdict = 0;
+  report.Reason = "";
+  report.Unknown = 0;
+  report.Clamped = 0;
+  report.KindMismatch = 0;
+  report.Widened = 0;
+}
+function tableMessageCountBits(s) {
+  let n = s.Max - s.Min;
+  let bits = 0;
+  while (n !== 0) { bits++; n = Math.floor(n / 2); }
+  return bits;
+}
+export function tableMessageCount(r, s) {
+  const bits = tableMessageCountBits(s);
+  const [raw, ok] = r.Get(bits);
+  return [raw + BigInt(s.Min), ok];
+}
+export function tableMessageEntry(v, ref) {
+  if (ref === 0n || ref > BigInt(v.Count)) { return null; }
+  return v.Entries[Number(ref) - 1];
+}
+// THE SKIP WALK: a reader that cannot name a field still steps over it exactly,
+// by the announced shape, so the position after it is known (§3.3).
+export function tableMessageSkip(r, v, indexBits, e, depth) {
+  if (depth > 128) { return false; }
+  const s = e.Shape;
+  switch (s.Kind) {
+    case 0: case 32: return true;
+    case 30: {
+      const [ref, ok] = r.Get(v.RefBits);
+      if (!ok || ref === 0n) { return ok; }
+      const en = tableMessageEntry(v, ref);
+      return en !== null && en.Shape.Kind === 0 && en.Id < 0xfffffffffffffffdn;
+    }
+    case 13: return tableMessageSkipBody(r, v, indexBits, depth + 1);
+    case 17: return indexBits > 0 && r.Skip(indexBits);
+    case 15: {
+      const [ref, ok] = r.Get(v.RefBits);
+      if (!ok || ref === 0n) { return ok; }
+      const arm = tableMessageEntry(v, ref);
+      return arm !== null && arm.Id < 0xfffffffffffffffdn && arm.Shape.Kind !== 0 &&
+        tableMessageSkip(r, v, indexBits, arm, depth + 1);
+    }
+    case 12: case 33: {
+      const [n, ok] = tableMessageCount(r, s);
+      if (!ok) { return false; }
+      const width = s.Kind === 12 ? 8 : 16;
+      if (s.Kind === 12 && !r.Align()) { return false; }
+      return r.Skip(Number(n) * width);
+    }
+    case 31: {
+      if (!r.Align()) { return false; }
+      const [n, ok] = r.Get(32);
+      return ok && r.Skip(Number(n) * 8);
+    }
+    case 14: case 16: {
+      const [n, ok] = tableMessageCount(r, s);
+      if (!ok) { return false; }
+      if (s.Kind === 14 && e.Element.Kind === 6 && !r.Align()) { return false; }
+      if (e.Element.Bits >= 0) {
+        let width = e.Element.Bits;
+        if (s.Kind === 16) { width += v.RefBits; }
+        return r.Skip(Number(n) * width);
+      }
+      for (let i = 0n; i < n; i++) {
+        if (s.Kind === 16 && !r.Skip(v.RefBits)) { return false; }
+        if (!tableMessageSkip(r, v, indexBits, { Shape: e.Element }, depth + 1)) { return false; }
+      }
+      return true;
+    }
+  }
+  return s.Bits >= 0 && r.Skip(s.Bits);
+}
+export function tableMessageSkipBody(r, v, indexBits, depth) {
+  if (depth > 128) { return false; }
+  for (;;) {
+    const [ref, ok] = r.Get(v.RefBits);
+    if (!ok || ref === 0n) { return ok; }
+    const e = tableMessageEntry(v, ref);
+    if (e === null || !tableMessageSkip(r, v, indexBits, e, depth)) { return false; }
+  }
+}
+// A scalar reconstructs at the announced storage width. A ranged value is the
+// offset plus the base, in unsigned 64-bit arithmetic so a negative base wraps
+// as it does in the reference; the caller then narrows to its own declared
+// width and clamps.
+export function tableMessageReadScalar(r, s) {
+  const bits = Math.min(s.Bits, 64);
+  let [lo, ok] = r.Get(bits);
+  if (!ok) { return [null, false]; }
+  let hi = 0n;
+  if (s.Bits > 64) { [hi, ok] = r.Get(s.Bits - 64); if (!ok) { return [null, false]; } }
+  if (s.Packing === 1) {
+    const sum = lo + s.Base[0];
+    const carry = (sum < lo) ? 1n : 0n;
+    lo = sum & 0xffffffffffffffffn;
+    hi = (hi + s.Base[1] + carry) & 0xffffffffffffffffn;
+  } else if (s.Packing === 2) {
+    let index = Number(lo & 0xffffffffn);
+    if (index > s.QCount) { index = s.QCount; }
+    const ratio = Math.fround(index / s.QCount);
+    const scaled = Math.fround(ratio * s.QDelta);
+    lo = BigInt(Math.fround(scaled + s.QMin) === 0 ? 0 : TableMessageFloat32Bits(Math.fround(scaled + s.QMin)));
+  }
+  return [[lo, hi], true];
+}
+export function tableMessageWriteScalar(w, s, lo, hi) {
+  if (s.Packing === 1) {
+    const borrow = (lo < s.Base[0]) ? 1n : 0n;
+    lo = (lo - s.Base[0]) & 0xffffffffffffffffn;
+    hi = (hi - s.Base[1] - borrow) & 0xffffffffffffffffn;
+  } else if (s.Packing === 2) {
+    const value = TableMessageFloat32FromBits(Number(lo & 0xffffffffn));
+    let norm = (value - s.QMin) / s.QDelta;
+    if (!(norm >= 0)) { norm = 0; } else if (!(norm <= 1)) { norm = 1; }
+    const scaled = Math.fround(norm * s.QCount);
+    let index = Math.floor(Math.fround(scaled + 0.5));
+    if (index > s.QCount) { index = s.QCount; }
+    lo = BigInt(index);
+  }
+  w.Put(lo, Math.min(s.Bits, 64));
+  if (s.Bits > 64) { w.Put(hi, s.Bits - 64); }
+}
+export function tableMessageBatchOpen(v, data, report) {
+  if (data.length === 0) { report.Malformed = true; return [null, -1]; }
+  if (data[0] !== 2) { TableMessageRefuse(report, "newer_form"); return [null, -1]; }
+  if (v === null || v === undefined || !v.Announced) { TableMessageRefuse(report, "no_vocabulary"); return [null, -1]; }
+  if (data.length < 2) { report.Malformed = true; return [null, -1]; }
+  return [new TableMessageBatchReader(data.subarray(2), v, report), data[1] + 1];
+}
+export function tableMessageBatchClose(r) {
+  if (!r.Bits.Align() || r.Bits.Offset !== r.Bits.Buffer.length * 8) { r.Report.Malformed = true; return false; }
+  return true;
+}
+export function TableMessageFloat32Bits(v) { TableMessageFloat[0] = v; return BigInt(TableMessageWords[0] >>> 0); }
+const TableMessageFloat64 = new Float64Array(1);
+const TableMessageDoubleWords = new BigUint64Array(TableMessageFloat64.buffer);
+export function TableMessageFloat64Bits(v) { TableMessageFloat64[0] = v; return TableMessageDoubleWords[0]; }
+export function TableMessageFloat64FromBits(bits) { TableMessageDoubleWords[0] = bits; return TableMessageFloat64[0]; }
 // FixedTable's storage. Preallocated in the constructor and never replaced: a
 // read FILLS one of these, exactly as Read<Name>Flat fills a packet class.
 export class FixedTable {
@@ -1546,6 +2276,7 @@ export function BenchMixedFixedDecode(value, view, at, report) {
     if (n < 0) { n = 0; report.clamped++; } else if (n > 15) { n = 15; report.clamped++; }
     value.PlayerNameLength = n;
   }
+  if (!TableFixedTextOk(TableFixedTextUtf8, view, at + 1130, value.PlayerNameLength)) { report.refused = TableFixedRefusal.TextIllFormed; return; }
   for (let i = 0; i < 15; i++) { value.PlayerName[i] = view.getUint8(at + 1130 + i); }
   {
     let n = view.getInt32(at + 1145, true);
@@ -1586,5 +2317,948 @@ export function FixedTableFixedWriteBody(view, at, value) {
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function FixedTableFixedDecode(value, view, at, report) {
   BenchMixedFixedDecode(value.Value, view, at, report);
+}
+
+// ---- MixedEntity, THE MESSAGE FORM'S BODY (docs/SPEC-TABLES.md §3.3) ----
+//
+// A body is a sequence of references and payloads ending at its own zero
+// reference. The write measures then saves over one bit writer; the read
+// fills the caller's storage.
+
+export function MixedEntitySaveMessageBody(w, value) {
+  if (value.EntityId !== 0) {
+    w.Put(31n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.EntityId) - 0n, 12);
+  }
+  if (value.PosX !== 0) {
+    w.Put(32n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.PosX) - -16383n, 15);
+  }
+  if (value.PosY !== 0) {
+    w.Put(33n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.PosY) - -16383n, 15);
+  }
+  if (value.PosZ !== 0) {
+    w.Put(34n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.PosZ) - -16383n, 15);
+  }
+  if (value.Yaw !== 0) {
+    w.Put(35n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.Yaw) - 0n, 9);
+  }
+  if (value.Pitch !== 0) {
+    w.Put(36n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.Pitch) - 0n, 9);
+  }
+  if (value.VelX !== 0) {
+    w.Put(37n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.VelX) - -2048n, 12);
+  }
+  if (value.VelY !== 0) {
+    w.Put(38n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.VelY) - -2048n, 12);
+  }
+  if (value.VelZ !== 0) {
+    w.Put(39n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.VelZ) - -2048n, 12);
+  }
+  if (value.Health !== 0) {
+    w.Put(40n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.Health) - 0n, 10);
+  }
+  if (value.Weapon !== 0) {
+    w.Put(41n, TableMessageRefBitsHere);
+    if (value.Weapon === 0) { w.Put(0n, TableMessageRefBitsHere); } else {
+      switch (value.Weapon) {
+        case 1: w.Put(53n, TableMessageRefBitsHere); break;
+        case 2: w.Put(54n, TableMessageRefBitsHere); break;
+        case 3: w.Put(55n, TableMessageRefBitsHere); break;
+        case 4: w.Put(56n, TableMessageRefBitsHere); break;
+        case 5: w.Put(57n, TableMessageRefBitsHere); break;
+        case 6: w.Put(58n, TableMessageRefBitsHere); break;
+        case 7: w.Put(59n, TableMessageRefBitsHere); break;
+        case 8: w.Put(60n, TableMessageRefBitsHere); break;
+        case 9: w.Put(61n, TableMessageRefBitsHere); break;
+        case 10: w.Put(62n, TableMessageRefBitsHere); break;
+        case 11: w.Put(63n, TableMessageRefBitsHere); break;
+        case 12: w.Put(64n, TableMessageRefBitsHere); break;
+        case 13: w.Put(65n, TableMessageRefBitsHere); break;
+        case 14: w.Put(66n, TableMessageRefBitsHere); break;
+        case 15: w.Put(67n, TableMessageRefBitsHere); break;
+        default: return false;
+      }
+    }
+  }
+  if (value.Damage !== 0n) {
+    w.Put(42n, TableMessageRefBitsHere);
+    w.Put(value.Damage - 0n, 8);
+  }
+  if (value.Moving !== false) {
+    w.Put(43n, TableMessageRefBitsHere);
+    w.Put(value.Moving ? 1n : 0n, 1);
+  }
+  if (value.Firing !== false) {
+    w.Put(44n, TableMessageRefBitsHere);
+    w.Put(value.Firing ? 1n : 0n, 1);
+  }
+  w.Put(0n, TableMessageRefBitsHere);
+  return !w.Overflow;
+}
+
+export function MixedEntityLoadMessageBody(r, value) {
+  for (;;) {
+    const [ref, ok] = r.Bits.Get(r.RefBits);
+    if (!ok) { r.Report.Malformed = true; return false; }
+    if (ref === 0n) { return true; }
+    const entry = tableMessageEntry(r.Vocabulary, ref);
+    if (entry === null || entry.Id >= 0xfffffffffffffffdn) { r.Report.Malformed = true; return false; }
+    switch (entry.Id) {
+      case 0x23fcfd6678e36712n: {
+        if (entry.Shape.Kind !== 7) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asUintN(12, x);
+          if (x > 4095n) { x = 4095n; r.Report.Clamped++; }
+          value.EntityId = Number(x);
+        }
+        break;
+      }
+      case 0xcb4b37357667310en: {
+        if (entry.Shape.Kind !== 4) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asIntN(32, x);
+          if (x < -16383) { x = -16383; r.Report.Clamped++; } else if (x > 16383) { x = 16383; r.Report.Clamped++; }
+          value.PosX = Number(x);
+        }
+        break;
+      }
+      case 0xcb4b3835766732c1n: {
+        if (entry.Shape.Kind !== 4) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asIntN(32, x);
+          if (x < -16383) { x = -16383; r.Report.Clamped++; } else if (x > 16383) { x = 16383; r.Report.Clamped++; }
+          value.PosY = Number(x);
+        }
+        break;
+      }
+      case 0xcb4b353576672da8n: {
+        if (entry.Shape.Kind !== 4) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asIntN(32, x);
+          if (x < -16383) { x = -16383; r.Report.Clamped++; } else if (x > 16383) { x = 16383; r.Report.Clamped++; }
+          value.PosZ = Number(x);
+        }
+        break;
+      }
+      case 0xb54d8e19798e16e8n: {
+        if (entry.Shape.Kind !== 7) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asUintN(9, x);
+          if (x > 511n) { x = 511n; r.Report.Clamped++; }
+          value.Yaw = Number(x);
+        }
+        break;
+      }
+      case 0x53a9f665a90cc1b1n: {
+        if (entry.Shape.Kind !== 7) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asUintN(9, x);
+          if (x > 511n) { x = 511n; r.Report.Clamped++; }
+          value.Pitch = Number(x);
+        }
+        break;
+      }
+      case 0x6cede6b6eb60ee67n: {
+        if (entry.Shape.Kind !== 4) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asIntN(32, x);
+          if (x < -2048) { x = -2048; r.Report.Clamped++; } else if (x > 2047) { x = 2047; r.Report.Clamped++; }
+          value.VelX = Number(x);
+        }
+        break;
+      }
+      case 0x6cede5b6eb60ecb4n: {
+        if (entry.Shape.Kind !== 4) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asIntN(32, x);
+          if (x < -2048) { x = -2048; r.Report.Clamped++; } else if (x > 2047) { x = 2047; r.Report.Clamped++; }
+          value.VelY = Number(x);
+        }
+        break;
+      }
+      case 0x6cede8b6eb60f1cdn: {
+        if (entry.Shape.Kind !== 4) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asIntN(32, x);
+          if (x < -2048) { x = -2048; r.Report.Clamped++; } else if (x > 2047) { x = 2047; r.Report.Clamped++; }
+          value.VelZ = Number(x);
+        }
+        break;
+      }
+      case 0x7f69d4b5288ba9cfn: {
+        if (entry.Shape.Kind !== 4) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asIntN(32, x);
+          if (x < 0) { x = 0; r.Report.Clamped++; } else if (x > 1000) { x = 1000; r.Report.Clamped++; }
+          value.Health = Number(x);
+        }
+        break;
+      }
+      case 0xa0b610205f2c6e01n: {
+        if (entry.Shape.Kind !== 30) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [ref, ok] = r.Bits.Get(r.RefBits); if (!ok) { r.Report.Malformed = true; return false; }
+          if (ref === 0n) { value.Weapon = 0; }
+          else {
+            const en = tableMessageEntry(r.Vocabulary, ref);
+            if (en === null || en.Shape.Kind !== 0 || en.Id >= 0xfffffffffffffffdn) { r.Report.Malformed = true; return false; }
+            switch (en.Id) {
+              case 0xa790eee12766cf0cn: value.Weapon = 1; break;
+              case 0x9fbfefa835da8476n: value.Weapon = 2; break;
+              case 0x188bbb1783928a95n: value.Weapon = 3; break;
+              case 0x2c3667b9c2f272f1n: value.Weapon = 4; break;
+              case 0x0ca8b41b00d755f6n: value.Weapon = 5; break;
+              case 0x985fc819fab21a4en: value.Weapon = 6; break;
+              case 0x229d0447c3086a55n: value.Weapon = 7; break;
+              case 0x011c7b49a7228f9dn: value.Weapon = 8; break;
+              case 0x89f7566e1123e15fn: value.Weapon = 9; break;
+              case 0x8d7f25318b3b4469n: value.Weapon = 10; break;
+              case 0xd9cd0dcc285b7816n: value.Weapon = 11; break;
+              case 0x04dc16aea8ff5276n: value.Weapon = 12; break;
+              case 0x35e53bc341129217n: value.Weapon = 13; break;
+              case 0x2cc8282fb0de8831n: value.Weapon = 14; break;
+              case 0x20bada21bc8cb334n: value.Weapon = 15; break;
+              default: value.Weapon = 0; r.Report.Unknown++;
+            }
+          }
+        }
+        break;
+      }
+      case 0x7f6308be8ab37fc0n: {
+        if (entry.Shape.Kind !== 9) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asUintN(0, x);
+          value.Damage = x;
+        }
+        break;
+      }
+      case 0x11a44fc1d1243da7n: {
+        if (entry.Shape.Kind !== 1) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = r.Bits.Get(1); if (!ok) { r.Report.Malformed = true; return false; } value.Moving = v !== 0n; }
+        break;
+      }
+      case 0x7674cfd19b9031can: {
+        if (entry.Shape.Kind !== 1) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = r.Bits.Get(1); if (!ok) { r.Report.Malformed = true; return false; } value.Firing = v !== 0n; }
+        break;
+      }
+      default: { r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } }
+    }
+  }
+}
+
+// ---- MixedStat, THE MESSAGE FORM'S BODY (docs/SPEC-TABLES.md §3.3) ----
+//
+// A body is a sequence of references and payloads ending at its own zero
+// reference. The write measures then saves over one bit writer; the read
+// fills the caller's storage.
+
+export function MixedStatSaveMessageBody(w, value) {
+  if (value.StatId !== 0) {
+    w.Put(51n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.StatId) - 0n, 8);
+  }
+  if (value.Delta !== 0) {
+    w.Put(52n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.Delta) - -512n, 10);
+  }
+  w.Put(0n, TableMessageRefBitsHere);
+  return !w.Overflow;
+}
+
+export function MixedStatLoadMessageBody(r, value) {
+  for (;;) {
+    const [ref, ok] = r.Bits.Get(r.RefBits);
+    if (!ok) { r.Report.Malformed = true; return false; }
+    if (ref === 0n) { return true; }
+    const entry = tableMessageEntry(r.Vocabulary, ref);
+    if (entry === null || entry.Id >= 0xfffffffffffffffdn) { r.Report.Malformed = true; return false; }
+    switch (entry.Id) {
+      case 0x80ab75f0866dbf65n: {
+        if (entry.Shape.Kind !== 6) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asUintN(8, x);
+          if (x > 255n) { x = 255n; r.Report.Clamped++; }
+          value.StatId = Number(x);
+        }
+        break;
+      }
+      case 0x52076675ec13a0c1n: {
+        if (entry.Shape.Kind !== 4) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asIntN(32, x);
+          if (x < -512) { x = -512; r.Report.Clamped++; } else if (x > 511) { x = 511; r.Report.Clamped++; }
+          value.Delta = Number(x);
+        }
+        break;
+      }
+      default: { r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } }
+    }
+  }
+}
+
+// ---- MixedHitEvent, THE MESSAGE FORM'S BODY (docs/SPEC-TABLES.md §3.3) ----
+//
+// A body is a sequence of references and payloads ending at its own zero
+// reference. The write measures then saves over one bit writer; the read
+// fills the caller's storage.
+
+export function MixedHitEventSaveMessageBody(w, value) {
+  if (value.TargetId !== 0) {
+    w.Put(45n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.TargetId) - 0n, 12);
+  }
+  if (value.Damage !== 0) {
+    w.Put(46n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.Damage) - 0n, 12);
+  }
+  if (value.HitKind !== 0) {
+    w.Put(47n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.HitKind) - 0n, 3);
+  }
+  if (value.Crit !== false) {
+    w.Put(48n, TableMessageRefBitsHere);
+    w.Put(value.Crit ? 1n : 0n, 1);
+  }
+  w.Put(0n, TableMessageRefBitsHere);
+  return !w.Overflow;
+}
+
+export function MixedHitEventLoadMessageBody(r, value) {
+  for (;;) {
+    const [ref, ok] = r.Bits.Get(r.RefBits);
+    if (!ok) { r.Report.Malformed = true; return false; }
+    if (ref === 0n) { return true; }
+    const entry = tableMessageEntry(r.Vocabulary, ref);
+    if (entry === null || entry.Id >= 0xfffffffffffffffdn) { r.Report.Malformed = true; return false; }
+    switch (entry.Id) {
+      case 0xb7bc9ac015a25050n: {
+        if (entry.Shape.Kind !== 7) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asUintN(12, x);
+          if (x > 4095n) { x = 4095n; r.Report.Clamped++; }
+          value.TargetId = Number(x);
+        }
+        break;
+      }
+      case 0x7f6308be8ab37fc0n: {
+        if (entry.Shape.Kind !== 4) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asIntN(32, x);
+          if (x < 0) { x = 0; r.Report.Clamped++; } else if (x > 4095) { x = 4095; r.Report.Clamped++; }
+          value.Damage = Number(x);
+        }
+        break;
+      }
+      case 0x01fbc365b059b925n: {
+        if (entry.Shape.Kind !== 4) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asIntN(32, x);
+          if (x < 0) { x = 0; r.Report.Clamped++; } else if (x > 7) { x = 7; r.Report.Clamped++; }
+          value.HitKind = Number(x);
+        }
+        break;
+      }
+      case 0x126167908c9aa52dn: {
+        if (entry.Shape.Kind !== 1) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = r.Bits.Get(1); if (!ok) { r.Report.Malformed = true; return false; } value.Crit = v !== 0n; }
+        break;
+      }
+      default: { r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } }
+    }
+  }
+}
+
+// ---- MixedChatEvent, THE MESSAGE FORM'S BODY (docs/SPEC-TABLES.md §3.3) ----
+//
+// A body is a sequence of references and payloads ending at its own zero
+// reference. The write measures then saves over one bit writer; the read
+// fills the caller's storage.
+
+export function MixedChatEventSaveMessageBody(w, value) {
+  if (value.Channel !== 0) {
+    w.Put(29n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.Channel) - 0n, 2);
+  }
+  if (value.Speaker !== 0) {
+    w.Put(30n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.Speaker) - 0n, 12);
+  }
+  w.Put(0n, TableMessageRefBitsHere);
+  return !w.Overflow;
+}
+
+export function MixedChatEventLoadMessageBody(r, value) {
+  for (;;) {
+    const [ref, ok] = r.Bits.Get(r.RefBits);
+    if (!ok) { r.Report.Malformed = true; return false; }
+    if (ref === 0n) { return true; }
+    const entry = tableMessageEntry(r.Vocabulary, ref);
+    if (entry === null || entry.Id >= 0xfffffffffffffffdn) { r.Report.Malformed = true; return false; }
+    switch (entry.Id) {
+      case 0xa5013e9ad5caeda4n: {
+        if (entry.Shape.Kind !== 4) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asIntN(32, x);
+          if (x < 0) { x = 0; r.Report.Clamped++; } else if (x > 3) { x = 3; r.Report.Clamped++; }
+          value.Channel = Number(x);
+        }
+        break;
+      }
+      case 0xfbf1ac4d96ebd022n: {
+        if (entry.Shape.Kind !== 7) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asUintN(12, x);
+          if (x > 4095n) { x = 4095n; r.Report.Clamped++; }
+          value.Speaker = Number(x);
+        }
+        break;
+      }
+      default: { r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } }
+    }
+  }
+}
+
+// ---- MixedPickupEvent, THE MESSAGE FORM'S BODY (docs/SPEC-TABLES.md §3.3) ----
+//
+// A body is a sequence of references and payloads ending at its own zero
+// reference. The write measures then saves over one bit writer; the read
+// fills the caller's storage.
+
+export function MixedPickupEventSaveMessageBody(w, value) {
+  if (value.ItemId !== 0) {
+    w.Put(49n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.ItemId) - 0n, 10);
+  }
+  if (value.Amount !== 0) {
+    w.Put(50n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.Amount) - 0n, 8);
+  }
+  w.Put(0n, TableMessageRefBitsHere);
+  return !w.Overflow;
+}
+
+export function MixedPickupEventLoadMessageBody(r, value) {
+  for (;;) {
+    const [ref, ok] = r.Bits.Get(r.RefBits);
+    if (!ok) { r.Report.Malformed = true; return false; }
+    if (ref === 0n) { return true; }
+    const entry = tableMessageEntry(r.Vocabulary, ref);
+    if (entry === null || entry.Id >= 0xfffffffffffffffdn) { r.Report.Malformed = true; return false; }
+    switch (entry.Id) {
+      case 0x9e7fd06d864fbd56n: {
+        if (entry.Shape.Kind !== 7) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asUintN(10, x);
+          if (x > 1023n) { x = 1023n; r.Report.Clamped++; }
+          value.ItemId = Number(x);
+        }
+        break;
+      }
+      case 0x8113fe7ea2b16969n: {
+        if (entry.Shape.Kind !== 4) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asIntN(32, x);
+          if (x < 0) { x = 0; r.Report.Clamped++; } else if (x > 255) { x = 255; r.Report.Clamped++; }
+          value.Amount = Number(x);
+        }
+        break;
+      }
+      default: { r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } }
+    }
+  }
+}
+
+// ---- BenchMixed, THE MESSAGE FORM'S BODY (docs/SPEC-TABLES.md §3.3) ----
+//
+// A body is a sequence of references and payloads ending at its own zero
+// reference. The write measures then saves over one bit writer; the read
+// fills the caller's storage.
+
+export function BenchMixedSaveMessageBody(w, value) {
+  if (value.Sequence !== 0) {
+    w.Put(1n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.Sequence) - 0n, 16);
+  }
+  if (value.AckSequence !== 0) {
+    w.Put(2n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.AckSequence) - 0n, 16);
+  }
+  if (value.AckBits !== 0) {
+    w.Put(3n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.AckBits) - 0n, 32);
+  }
+  if (value.SessionId !== 0n) {
+    w.Put(4n, TableMessageRefBitsHere);
+    w.Put(value.SessionId, 64);
+  }
+  if (value.ClientId !== 0) {
+    w.Put(5n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.ClientId), 32);
+  }
+  if (value.Nonce !== 0n) {
+    w.Put(6n, TableMessageRefBitsHere);
+    w.Put(value.Nonce - 0n, 64);
+  }
+  if (value.WorldTime !== 0n) {
+    w.Put(7n, TableMessageRefBitsHere);
+    w.Put(value.WorldTime - -1000000000000n, 41);
+  }
+  if (value.FrameTick !== 0n) {
+    w.Put(8n, TableMessageRefBitsHere);
+    w.Put(value.FrameTick - 0n, 48);
+  }
+  if (value.ServerTime !== 0) {
+    w.Put(9n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.ServerTime) - 0n, 24);
+  }
+  if (value.EntitiesCount > 0) {
+    w.Put(10n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.EntitiesCount) - 1n, 3);
+    for (let i = 0; i < value.EntitiesCount; i++) {
+      if (!MixedEntitySaveMessageBody(w, value.Entities[i])) { return false; }
+    }
+  }
+  if (value.StatsCount > 0) {
+    w.Put(11n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.StatsCount) - 0n, 7);
+    for (let i = 0; i < value.StatsCount; i++) {
+      if (!MixedStatSaveMessageBody(w, value.Stats[i])) { return false; }
+    }
+  }
+  if (value.GameEvent.Type !== 0) {
+    w.Put(12n, TableMessageRefBitsHere);
+    switch (value.GameEvent.Type) {
+      case 0: w.Put(0n, TableMessageRefBitsHere); break;
+      case 1: {
+        w.Put(68n, TableMessageRefBitsHere);
+        if (!MixedHitEventSaveMessageBody(w, value.GameEvent.Hit)) { return false; }
+        break;
+      }
+      case 2: {
+        w.Put(69n, TableMessageRefBitsHere);
+        if (!MixedChatEventSaveMessageBody(w, value.GameEvent.Chat)) { return false; }
+        break;
+      }
+      case 3: {
+        w.Put(70n, TableMessageRefBitsHere);
+        if (!MixedPickupEventSaveMessageBody(w, value.GameEvent.Pickup)) { return false; }
+        break;
+      }
+      default: return false;
+    }
+  }
+  let LoadoutAllDefault = true;
+  for (let i = 0; i < 4; i++) { if (value.Loadout[i] !== 0) { LoadoutAllDefault = false; break; } }
+  if (!LoadoutAllDefault) {
+    w.Put(13n, TableMessageRefBitsHere);
+    w.Put(BigInt(4) - 4n, 0);
+    w.Align();
+    for (let i = 0; i < 4; i++) {
+      w.Put(BigInt(value.Loadout[i]), 8);
+    }
+  }
+  if (value.PlayerNameLength > 0) {
+    w.Put(14n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.PlayerNameLength), 4);
+    w.Raw(value.PlayerName.subarray(0, value.PlayerNameLength));
+  }
+  if (value.PayloadLength > 0) {
+    w.Put(15n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.PayloadLength) - 0n, 5);
+    w.Align();
+    for (let i = 0; i < value.PayloadLength; i++) {
+      w.Put(BigInt(value.Payload[i]), 8);
+    }
+  }
+  if (value.AimX !== 0) {
+    w.Put(16n, TableMessageRefBitsHere);
+    { const b = TableMessageFloat32Bits(value.AimX); tableMessageWriteScalar(w, {Packing:2, Bits:8, Base:[0n,0n], QMin:-1, QDelta:2, QCount:200}, b, 0n); }
+  }
+  if (value.AimY !== 0) {
+    w.Put(17n, TableMessageRefBitsHere);
+    { const b = TableMessageFloat32Bits(value.AimY); tableMessageWriteScalar(w, {Packing:2, Bits:8, Base:[0n,0n], QMin:-1, QDelta:2, QCount:200}, b, 0n); }
+  }
+  if (value.AimZ !== 0) {
+    w.Put(18n, TableMessageRefBitsHere);
+    { const b = TableMessageFloat32Bits(value.AimZ); tableMessageWriteScalar(w, {Packing:2, Bits:8, Base:[0n,0n], QMin:-1, QDelta:2, QCount:200}, b, 0n); }
+  }
+  if (value.Recoil !== 0) {
+    w.Put(19n, TableMessageRefBitsHere);
+    w.Put(TableMessageFloat32Bits(value.Recoil), 32);
+  }
+  if (value.Drift !== 0) {
+    w.Put(20n, TableMessageRefBitsHere);
+    w.Put(TableMessageFloat64Bits(value.Drift), 64);
+  }
+  if (value.WideKey !== 0n) {
+    w.Put(21n, TableMessageRefBitsHere);
+    { const v = value.WideKey; w.Put(BigInt.asUintN(64, v), 64); w.Put(BigInt.asUintN(64, v >> 64n), 64); }
+  }
+  if (value.Flux !== 0n) {
+    w.Put(22n, TableMessageRefBitsHere);
+    w.Put(value.Flux - -1267650600228229401496703205376n, 102);
+  }
+  if (value.Ping !== 0) {
+    w.Put(23n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.Ping) - 0n, 16);
+  }
+  if (value.CrcHint !== 0) {
+    w.Put(24n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.CrcHint) - 0n, 24);
+  }
+  if (value.HasExtra !== true) {
+    w.Put(25n, TableMessageRefBitsHere);
+    w.Put(value.HasExtra ? 1n : 0n, 1);
+  }
+  if (value.Extra !== 0) {
+    w.Put(26n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.Extra) - 0n, 8);
+  }
+  if (value.IdleTicks !== 0) {
+    w.Put(27n, TableMessageRefBitsHere);
+    w.Put(BigInt(value.IdleTicks) - 0n, 4);
+  }
+  w.Put(0n, TableMessageRefBitsHere);
+  return !w.Overflow;
+}
+
+export function BenchMixedLoadMessageBody(r, value) {
+  for (;;) {
+    const [ref, ok] = r.Bits.Get(r.RefBits);
+    if (!ok) { r.Report.Malformed = true; return false; }
+    if (ref === 0n) { return true; }
+    const entry = tableMessageEntry(r.Vocabulary, ref);
+    if (entry === null || entry.Id >= 0xfffffffffffffffdn) { r.Report.Malformed = true; return false; }
+    switch (entry.Id) {
+      case 0xaa38aca481f528a8n: {
+        if (entry.Shape.Kind !== 7) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asUintN(16, x);
+          if (x > 65535n) { x = 65535n; r.Report.Clamped++; }
+          value.Sequence = Number(x);
+        }
+        break;
+      }
+      case 0x0dbe005c56697c3en: {
+        if (entry.Shape.Kind !== 4) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asIntN(32, x);
+          if (x < 0) { x = 0; r.Report.Clamped++; } else if (x > 65535) { x = 65535; r.Report.Clamped++; }
+          value.AckSequence = Number(x);
+        }
+        break;
+      }
+      case 0x9bae0da8b829ee03n: {
+        if (entry.Shape.Kind !== 8) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asUintN(32, x);
+          if (x > 4294967295n) { x = 4294967295n; r.Report.Clamped++; }
+          value.AckBits = Number(x);
+        }
+        break;
+      }
+      case 0xb7d7b5650a590b05n: {
+        if (entry.Shape.Kind !== 9) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asUintN(64, x);
+          value.SessionId = x;
+        }
+        break;
+      }
+      case 0x6d7b98e2d095967en: {
+        if (entry.Shape.Kind !== 8) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asUintN(32, x);
+          value.ClientId = Number(x);
+        }
+        break;
+      }
+      case 0x73a94c71d60dc0d8n: {
+        if (entry.Shape.Kind !== 9) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asUintN(64, x);
+          if (x < 0n) { x = 0n; r.Report.Clamped++; } else if (x > 18446744073709551615n) { x = 18446744073709551615n; r.Report.Clamped++; }
+          value.Nonce = x;
+        }
+        break;
+      }
+      case 0x3eee6b51be54fc85n: {
+        if (entry.Shape.Kind !== 5) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asIntN(64, x);
+          if (x < -1000000000000n) { x = -1000000000000n; r.Report.Clamped++; } else if (x > 1000000000000n) { x = 1000000000000n; r.Report.Clamped++; }
+          value.WorldTime = x;
+        }
+        break;
+      }
+      case 0x7bbc035f7b6d0112n: {
+        if (entry.Shape.Kind !== 9) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asUintN(48, x);
+          if (x > 281474976710655n) { x = 281474976710655n; r.Report.Clamped++; }
+          value.FrameTick = x;
+        }
+        break;
+      }
+      case 0x3c460475f9be69c6n: {
+        if (entry.Shape.Kind !== 22) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asIntN(32, x);
+          if (x < 0) { x = 0; r.Report.Clamped++; } else if (x > 16776960) { x = 16776960; r.Report.Clamped++; }
+          value.ServerTime = Number(x);
+        }
+        break;
+      }
+      case 0x935d0fb07bb3822an: {
+        if (entry.Shape.Kind !== 14) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; }
+          if (entry.Element.Kind === 6 && !r.Bits.Align()) { r.Report.Malformed = true; return false; }
+          let keep = Number(n);
+          if (keep > 8) { keep = 8; r.Report.Clamped++; }
+          for (let i = 0n; i < n; i++) {
+            const p = i < BigInt(keep) ? value.Entities[Number(i)] : null;
+            if (p === null) { if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: entry.Element }, 0)) { r.Report.Malformed = true; return false; } }
+            else {
+              if (!MixedEntityLoadMessageBody(r, value.Entities[Number(i)])) { return false; }
+            }
+          }
+          value.EntitiesCount = keep;
+        }
+        break;
+      }
+      case 0xee639cad45b1994cn: {
+        if (entry.Shape.Kind !== 14) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; }
+          if (entry.Element.Kind === 6 && !r.Bits.Align()) { r.Report.Malformed = true; return false; }
+          let keep = Number(n);
+          if (keep > 80) { keep = 80; r.Report.Clamped++; }
+          for (let i = 0n; i < n; i++) {
+            const p = i < BigInt(keep) ? value.Stats[Number(i)] : null;
+            if (p === null) { if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: entry.Element }, 0)) { r.Report.Malformed = true; return false; } }
+            else {
+              if (!MixedStatLoadMessageBody(r, value.Stats[Number(i)])) { return false; }
+            }
+          }
+          value.StatsCount = keep;
+        }
+        break;
+      }
+      case 0x2e35dc5321aa5790n: {
+        if (entry.Shape.Kind !== 15) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [ref, ok] = r.Bits.Get(r.RefBits); if (!ok) { r.Report.Malformed = true; return false; }
+          if (ref === 0n) { value.GameEvent.Type = 0; }
+          else {
+            const arm = tableMessageEntry(r.Vocabulary, ref);
+            if (arm === null || arm.Id >= 0xfffffffffffffffdn || arm.Shape.Kind === 0) { r.Report.Malformed = true; return false; }
+            switch (arm.Id) {
+              case 0x33732819300680aan: {
+                value.GameEvent.Type = 1;
+                if (!MixedHitEventLoadMessageBody(r, value.GameEvent.Hit)) { return false; }
+                break;
+              }
+              case 0xf2a38d910b5b348bn: {
+                value.GameEvent.Type = 2;
+                if (!MixedChatEventLoadMessageBody(r, value.GameEvent.Chat)) { return false; }
+                break;
+              }
+              case 0x9fa3a41c86ecb765n: {
+                value.GameEvent.Type = 3;
+                if (!MixedPickupEventLoadMessageBody(r, value.GameEvent.Pickup)) { return false; }
+                break;
+              }
+              default: { value.GameEvent.Type = 0; r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, arm, 0)) { r.Report.Malformed = true; return false; } }
+            }
+          }
+        }
+        break;
+      }
+      case 0x5759ce7586bbb5a3n: {
+        if (entry.Shape.Kind !== 14) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; }
+          if (entry.Element.Kind === 6 && !r.Bits.Align()) { r.Report.Malformed = true; return false; }
+          let keep = Number(n);
+          if (keep > 4) { keep = 4; r.Report.Clamped++; }
+          for (let i = 0n; i < n; i++) {
+            const p = i < BigInt(keep) ? value.Loadout[Number(i)] : null;
+            if (p === null) { if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: entry.Element }, 0)) { r.Report.Malformed = true; return false; } }
+            else {
+              { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Element); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+                x = BigInt.asUintN(8, x);
+                value.Loadout[Number(i)] = Number(x);
+              }
+            }
+          }
+        }
+        break;
+      }
+      case 0x13a62f542cf8e86en: {
+        if (entry.Shape.Kind !== 12) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok || !r.Bits.Align()) { r.Report.Malformed = true; return false; }
+          const start = r.Bits.Offset >> 3;
+          if (!r.Bits.Skip(Number(n) * 8)) { r.Report.Malformed = true; return false; }
+          let kept = Number(n);
+          if (kept > 15) { kept = 15; r.Report.Clamped++; }
+          value.PlayerName.fill(0);
+          for (let i = 0; i < kept; i++) { value.PlayerName[i] = r.Bits.Buffer[start + i]; }
+          value.PlayerNameLength = kept;
+        }
+        break;
+      }
+      case 0xcfb8a9d063b5e9e5n: {
+        if (entry.Shape.Kind !== 14) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok || !r.Bits.Align()) { r.Report.Malformed = true; return false; }
+          const start = r.Bits.Offset >> 3;
+          if (!r.Bits.Skip(Number(n) * 8)) { r.Report.Malformed = true; return false; }
+          let kept = Number(n);
+          if (kept > 16) { kept = 16; r.Report.Clamped++; }
+          value.Payload.fill(0);
+          for (let i = 0; i < kept; i++) { value.Payload[i] = r.Bits.Buffer[start + i]; }
+          value.PayloadLength = kept;
+        }
+        break;
+      }
+      case 0xdbaf7be5e24296c9n: {
+        if (entry.Shape.Kind !== 10) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = TableMessageFloat32FromBits(Number(v[0] & 0xffffffffn));
+          if (x < -1) { x = -1; r.Report.Clamped++; } else if (x > 1) { x = 1; r.Report.Clamped++; }
+          value.AimX = x;
+        }
+        break;
+      }
+      case 0xdbaf7ae5e2429516n: {
+        if (entry.Shape.Kind !== 10) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = TableMessageFloat32FromBits(Number(v[0] & 0xffffffffn));
+          if (x < -1) { x = -1; r.Report.Clamped++; } else if (x > 1) { x = 1; r.Report.Clamped++; }
+          value.AimY = x;
+        }
+        break;
+      }
+      case 0xdbaf79e5e2429363n: {
+        if (entry.Shape.Kind !== 10) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = TableMessageFloat32FromBits(Number(v[0] & 0xffffffffn));
+          if (x < -1) { x = -1; r.Report.Clamped++; } else if (x > 1) { x = 1; r.Report.Clamped++; }
+          value.AimZ = x;
+        }
+        break;
+      }
+      case 0x9cef31fff7e2e457n: {
+        if (entry.Shape.Kind !== 10) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = TableMessageFloat32FromBits(Number(v[0] & 0xffffffffn));
+          value.Recoil = x;
+        }
+        break;
+      }
+      case 0x5ab3f9c9341f6c04n: {
+        if (entry.Shape.Kind !== 11) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = TableMessageFloat64FromBits(v[0]);
+          value.Drift = x;
+        }
+        break;
+      }
+      case 0xa3348580461faf16n: {
+        if (entry.Shape.Kind !== 19) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = x | (v[1] << 64n);
+          x = BigInt.asUintN(128, x);
+          value.WideKey = x;
+        }
+        break;
+      }
+      case 0xd61bdd7908af2642n: {
+        if (entry.Shape.Kind !== 18) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = x | (v[1] << 64n);
+          x = BigInt.asIntN(128, x);
+          if (x < -1267650600228229401496703205376n) { x = -1267650600228229401496703205376n; r.Report.Clamped++; } else if (x > 1267650600228229401496703205376n) { x = 1267650600228229401496703205376n; r.Report.Clamped++; }
+          value.Flux = x;
+        }
+        break;
+      }
+      case 0xbf30e00dc53307a9n: {
+        if (entry.Shape.Kind !== 26) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asUintN(16, x);
+          if (x < 0) { x = 0; r.Report.Clamped++; } else if (x > 64000) { x = 64000; r.Report.Clamped++; }
+          value.Ping = Number(x);
+        }
+        break;
+      }
+      case 0x560d6527ccd8515fn: {
+        if (entry.Shape.Kind !== 8) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asUintN(24, x);
+          if (x > 16777215n) { x = 16777215n; r.Report.Clamped++; }
+          value.CrcHint = Number(x);
+        }
+        break;
+      }
+      case 0xc08292176cfd8672n: {
+        if (entry.Shape.Kind !== 1) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = r.Bits.Get(1); if (!ok) { r.Report.Malformed = true; return false; } value.HasExtra = v !== 0n; }
+        break;
+      }
+      case 0xfd29ee12a979cb69n: {
+        if (entry.Shape.Kind !== 4) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asIntN(32, x);
+          if (x < 0) { x = 0; r.Report.Clamped++; } else if (x > 255) { x = 255; r.Report.Clamped++; }
+          value.Extra = Number(x);
+        }
+        break;
+      }
+      case 0x78101ac0aa8cbcfen: {
+        if (entry.Shape.Kind !== 4) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];
+          x = BigInt.asIntN(32, x);
+          if (x < 0) { x = 0; r.Report.Clamped++; } else if (x > 15) { x = 15; r.Report.Clamped++; }
+          value.IdleTicks = Number(x);
+        }
+        break;
+      }
+      default: { r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } }
+    }
+  }
+}
+
+// ---- FixedTable, THE MESSAGE FORM'S BODY (docs/SPEC-TABLES.md §3.3) ----
+//
+// A body is a sequence of references and payloads ending at its own zero
+// reference. The write measures then saves over one bit writer; the read
+// fills the caller's storage.
+
+export function FixedTableSaveMessageBody(w, value) {
+  if (value.Value !== 0) {
+    w.Put(28n, TableMessageRefBitsHere);
+    if (!BenchMixedSaveMessageBody(w, value.Value)) { return false; }
+  }
+  w.Put(0n, TableMessageRefBitsHere);
+  return !w.Overflow;
+}
+
+export function FixedTableLoadMessageBody(r, value) {
+  for (;;) {
+    const [ref, ok] = r.Bits.Get(r.RefBits);
+    if (!ok) { r.Report.Malformed = true; return false; }
+    if (ref === 0n) { return true; }
+    const entry = tableMessageEntry(r.Vocabulary, ref);
+    if (entry === null || entry.Id >= 0xfffffffffffffffdn) { r.Report.Malformed = true; return false; }
+    switch (entry.Id) {
+      case 0x7ce4fd9430e80cean: {
+        if (entry.Shape.Kind !== 13) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }
+        if (!BenchMixedLoadMessageBody(r, value.Value)) { return false; }
+        break;
+      }
+      default: { r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } }
+    }
+  }
 }
 

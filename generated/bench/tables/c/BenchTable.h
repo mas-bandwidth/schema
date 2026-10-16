@@ -8,6 +8,7 @@
 #define SCHEMA_BENCHTABLE_BENCH_TABLE_H
 
 #include <stdint.h>
+#include <string.h>   /* memset — the zero form (SPEC §4.2) */
 
 #ifndef SCHEMA_UNUSED
 #if defined(__GNUC__) || defined(__clang__)
@@ -261,6 +262,30 @@ typedef struct TableEvent {
 
 #define TABLE_EVENT_MAX_BITS 30   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
 #define TABLE_EVENT_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+
+/* Selectors for TableEvent: each sets the tag and initializes the arm together,
+   the arm with its declared defaults as a read does (SPEC §4.8), and returns
+   the fresh arm to populate; a payload-free arm's selector sets the tag alone. */
+static SCHEMA_UNUSED TableHitEvent * table_event_select_hit( TableEvent * value )
+{
+    value->type = TABLE_EVENT_TYPE_HIT;
+    memset( &value->as.hit, 0, sizeof( value->as.hit ) );
+    return &value->as.hit;
+}
+
+static SCHEMA_UNUSED TableChatEvent * table_event_select_chat( TableEvent * value )
+{
+    value->type = TABLE_EVENT_TYPE_CHAT;
+    memset( &value->as.chat, 0, sizeof( value->as.chat ) );
+    return &value->as.chat;
+}
+
+static SCHEMA_UNUSED TablePickupEvent * table_event_select_pickup( TableEvent * value )
+{
+    value->type = TABLE_EVENT_TYPE_PICKUP;
+    memset( &value->as.pickup, 0, sizeof( value->as.pickup ) );
+    return &value->as.pickup;
+}
 
 #ifdef __cplusplus
 }

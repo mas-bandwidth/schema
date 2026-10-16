@@ -365,18 +365,22 @@ func t05R31(t *testing.T) {
 		}
 	}
 	// THE CONJOINED LANE IS STAMPED ON THE COMPILED WALK: a nested union's arm
-	// entries answer to the OUTER tag on the second lane, and a third nested
-	// union refuses by name rather than drop a condition (§4.1, §5.8 row 6).
+	// entries answer to the OUTER tag on the second lane, laid from the guard
+	// chain's innermost two, and a third nested union rides the chain's pool
+	// rather than drop a condition (§4.1, the guard chain; §5.8 row 6).
 	for _, want := range []string{
-		"final int restampFrom = c.count;",
-		"if (c.plan[q].guard2 != noGuard) { c.recordTooLarge = true; break; }",
-		"c.plan[q].guard2 = guard;",
-		"c.plan[q].arg2 = arg;",
-		"c.plan[q].argw2 = outerW;",
+		"e.guard2 = chainGuard[chainLen - 2];",
+		"e.arg2 = chainArg[chainLen - 2];",
+		"e.argw2 = chainArgw[chainLen - 2];",
+		"if (chainAt < 0) { chainAt = layGuards(); }",
+		"if (p.gcount > 2 && !chainHolds(p, src, srcAt, srcLength, report)) {",
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("R31: the outer tag is not conjoined on a second guard lane — %q is not emitted", want)
 		}
+	}
+	if strings.Contains(src, "c.recordTooLarge = true; break; }") {
+		t.Error("R31: a third nested union is still refused instead of riding the guard chain")
 	}
 	// A 64-BIT ORDINAL TEMPORARY (ALGORITHM §4.5: "through a 64-bit temporary").
 	if !strings.Contains(src, "final long raw = getUint(src, srcAt + p.src, p.size);") {
