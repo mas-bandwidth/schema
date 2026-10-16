@@ -725,6 +725,26 @@ func buildCPlan(schema, cc string, cFlags []string, serC string) error {
 	return run(a...)
 }
 
+// planGateClaim is the sentence the board prints for what the leg's plan gate
+// checked before the clock. It names only checks the leg's runner makes, and it
+// is the same name and signature as the Elixir leg's (commit 286194156, PR
+// #1987 on sprint/schema-elixir), so the two merge as one function.
+//
+// The C runner (bench/tables/c/table_main.c, gates P2 to P4) derives the plan's
+// answer from the 64 identity records it already held byte for byte to the C++
+// reference (plan_expected_build, after bfb8be239's plan_expected), requires the
+// plan read to save to those bytes with the counters exactly docs/
+// FIXED-FORM-ALGORITHM.md section 5.4's (widened = 64 records x min(their_n,
+// my_n) = 64 x 64 = 4096, every other counter zero), reads again into a
+// poisoned destination (gate P3), and refuses an answer equal to the identity
+// corpus's (gate P4).
+func planGateClaim(leg string) string {
+	if leg == "c" {
+		return "its gate before the clock requires all 64 records to equal the plan's answer derived from the byte-gated identity corpus (every OLD field value, and the appended field at its declared default), the counters exactly widened 4096 (64 per record, min(their_n, my_n) of the stats bound) with every other counter zero, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's"
+	}
+	return "its gate before the clock requires 64 records read with no counter raised but widened, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's"
+}
+
 func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
@@ -1419,7 +1439,7 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 	}
 	if plan {
 		board.Plan = statsOf(planNs)
-		board.Widened = "its gate before the clock requires 64 records read with no counter raised but widened, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's"
+		board.Widened = planGateClaim(leg)
 		if len(planNs) == rounds {
 			board.GatePlan = faster(board.Plan, board.Packet, board.windowOK())
 		} else {

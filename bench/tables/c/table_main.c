@@ -708,8 +708,110 @@ static size_t g_lineage_bytes = 0;
     ( memset( ( report ), 0, sizeof( *( report ) ) ), \
       fixed_table_fixed_load( ( values ), FixedCount, g_lineage, (int64_t) g_lineage_bytes, g_fixed_plan, FixedPlanCapacity, NULL, ( report ) ) )
 
-/* the plan lane's gates, shape-blind: no field is named, only the lineage the
-   build laid down and the bytes the shipped calls return. */
+/* THE PLAN READ'S ANSWER, pinned before any clock. Gates P1, P3 and P4 below
+   are shape-blind: no field is named, only the lineage the build laid down and
+   the bytes the shipped calls return. P2 IS NOT SHAPE-BLIND, AND ITS LEDGER SAYS
+   SO (bench/tables/c/SHAPE-GATE.allow). What the NEW reader must answer for an
+   OLD record is the logical record with exactly the six narrowings of
+   bench/tables/c/lineage/VOLD_bench_lineage.schema applied, and saying which
+   slots they touch names those slots. The pattern is the Elixir leg's
+   plan_expected / plan_read_verdict (commit bfb8be239, bench/tables/elixir/
+   runner.exs, PR #1984) and the Rust leg's `expected` (bench/tables/rust/src/
+   lineage.rs on sprint/schema-rust):
+
+     appended field   idle_ticks takes this build's declared DEFAULT
+     widened bound    stats keeps the first PlanOldStatsBound elements; the
+                      elements past it hold the declared defaults
+     widened text     player_name keeps the bytes the OLD capacity holds, the
+                      bytes past the cut zeroed, its length set to the cut
+     enum append      an ordinal past the OLD variant count was folded back by
+                      the lineage's producer, ((v - 1) mod COUNT) + 1, and the
+                      answer carries the same fold
+     new union arm    no record selects it (the narrowing refuses one)
+     integer widen    delta's range is unmoved, so every value lands as it was
+
+   THE COUNTER. docs/FIXED-FORM-ALGORITHM.md section 5.4: `widened` moves once
+   per widen entry per record, and a widened run is never folded, so the integer
+   widen inside the bound is min(their_n, my_n) = min(64, 80) = 64 entries per
+   record, 64 x 64 = 4096 for the file. BENCH-STANDARD.md's "80" is the NEW
+   bound, not section 5.4's multiple of it. */
+#define PlanOldStatsBound 64
+#define PlanOldTextCap 8
+#define PlanOldWeaponVariants 12
+#define PlanWidenedPerRecord 64
+static FixedTable g_plan_expected[FixedCount];
+
+/* the answer for the 64 identity records the earlier gates held byte for byte
+   to the C++ reference (g_fixed_values, before gate P3 poisons it). The
+   declared defaults come from this build's own generated reset of one record,
+   never written down here. */
+static void plan_expected_build( void )
+{
+    FixedTable defaults;
+    int k, e, j;
+    fixed_table_reset( &defaults );
+    memcpy( (void *) g_plan_expected, (const void *) g_fixed_values, sizeof( g_plan_expected ) );
+    for ( k = 0; k < FixedCount; k++ )
+    {
+        BenchMixed * v = &g_plan_expected[k].value;
+        for ( e = 0; e < v->entities_count; e++ )
+        {
+            const int w = (int) v->entities[e].weapon;
+            if ( w > PlanOldWeaponVariants ) { v->entities[e].weapon = (MixedWeapon) ( ( ( w - 1 ) % PlanOldWeaponVariants ) + 1 ); }
+        }
+        if ( v->stats_count > PlanOldStatsBound ) { v->stats_count = PlanOldStatsBound; }
+        for ( j = PlanOldStatsBound; j < (int) ( sizeof( v->stats ) / sizeof( v->stats[0] ) ); j++ ) { v->stats[j] = defaults.value.stats[j]; }
+        if ( v->player_name_length > PlanOldTextCap )
+        {
+            memset( v->player_name + PlanOldTextCap, 0, sizeof( v->player_name ) - PlanOldTextCap );
+            v->player_name_length = PlanOldTextCap;
+        }
+        v->idle_ticks = defaults.value.idle_ticks;
+    }
+}
+
+/* gate P2's verdict: NULL when the plan read is exactly the plan's answer, else
+   `why`, the first thing that is not (counters first, then the first record
+   whose saved bytes differ). `got` and `want` are the plan read and the
+   answer saved whole, `plan_read` and `plan_answer` the records themselves. */
+static const char * plan_read_verdict( const TableReport * report, int64_t loaded, const FixedTable * plan_read, const FixedTable * plan_answer, const uint8_t * got, const uint8_t * want, size_t saved_bytes, char * why, size_t why_bytes )
+{
+    if ( loaded != FixedCount )
+    {
+        snprintf( why, why_bytes, "the plan read returned %d records, not %d", (int) loaded, FixedCount );
+        return why;
+    }
+    if ( report->malformed || report->refused || report->unknown || report->kind_mismatch || report->clamped || report->duplicate ||
+         report->widened != FixedCount * PlanWidenedPerRecord )
+    {
+        snprintf( why, why_bytes,
+                  "the counters are not section 5.4's for these six classes: widened %d (want %d = %d x %d), malformed %d refused %d unknown %d kind_mismatch %d clamped %d duplicate %d (want every other counter zero)",
+                  (int) report->widened, FixedCount * PlanWidenedPerRecord, FixedCount, PlanWidenedPerRecord, report->malformed, report->refused,
+                  (int) report->unknown, (int) report->kind_mismatch, (int) report->clamped, (int) report->duplicate );
+        return why;
+    }
+    if ( memcmp( got, want, saved_bytes ) == 0 ) { return NULL; }
+    /* the saved image is not one fixed width per record, so the first differing
+       record is found by saving each record alone */
+    {
+        const size_t one = (size_t) fixed_table_fixed_measure( 1 );
+        uint8_t * x = (uint8_t *) malloc( one );
+        uint8_t * y = (uint8_t *) malloc( one );
+        int k, first = -1;
+        for ( k = 0; x != NULL && y != NULL && k < FixedCount && first < 0; k++ )
+        {
+            const int64_t nx = fixed_table_fixed_save( &plan_read[k], 1, x, (int64_t) one );
+            const int64_t ny = fixed_table_fixed_save( &plan_answer[k], 1, y, (int64_t) one );
+            if ( nx != ny || nx < 0 || memcmp( x, y, (size_t) nx ) != 0 ) { first = k; }
+        }
+        free( x );
+        free( y );
+        snprintf( why, why_bytes, "record %d: the plan read does not save to the plan's answer", first );
+    }
+    return why;
+}
+
+/* the plan lane's gates (the comment above says which are shape-blind) */
 static int gate_plan_read( const char * name, const uint8_t * identity_file, size_t identity_bytes )
 {
     char path[512];
@@ -717,6 +819,7 @@ static int gate_plan_read( const char * name, const uint8_t * identity_file, siz
     uint8_t * layout = NULL;
     uint8_t * a = NULL;
     uint8_t * b = NULL;
+    uint8_t * c = NULL;
     TableReport report;
     uint32_t embedded;
     int ok = 0;
@@ -749,24 +852,52 @@ static int gate_plan_read( const char * name, const uint8_t * identity_file, siz
         goto done;
     }
 
-    /* gate P2: the whole file reads, and nothing but a widening is reported. */
-    if ( plan_load_all( g_plan_out, &report ) != FixedCount || report.malformed || report.refused || report.unknown ||
-         report.kind_mismatch || report.clamped || report.duplicate )
+    /* gate P2: NEW READS OLD, and the answer is the one the versioning law says
+       it must be (BENCH-STANDARD.md, the gate before the clock): every OLD value
+       landed exactly, the appended field holds its DECLARED default, the widened
+       bound carries the OLD elements and nothing past them, and the counters are
+       section 5.4's EXACT numbers. The answer is derived from the 64 records the
+       identity gates held to the C++ reference, never from a second read of the
+       lineage file: two identically wrong reads would agree with each other, and
+       they do not agree with this. Pattern: bfb8be239 (Elixir, PR #1984) and
+       lineage.rs `expected` (Rust); counter: docs/FIXED-FORM-ALGORITHM.md 5.4. */
+    plan_expected_build();
+    saved_bytes = (size_t) fixed_table_fixed_measure( FixedCount );
+    a = (uint8_t *) malloc( saved_bytes );
+    b = (uint8_t *) malloc( saved_bytes );
+    c = (uint8_t *) malloc( saved_bytes );
+    if ( a == NULL || b == NULL || c == NULL )
     {
-        fail( name, "the lineage corpus did not read clean through its plan" );
+        fail( name, "out of memory" );
         goto done;
     }
-    fprintf( stderr, "%-18s plan read of %d records: widened %d, clamped %d (lineage 0x%016llx -> 0x%016llx)\n", name, FixedCount,
-             (int) report.widened, (int) report.clamped, (unsigned long long) fixed_table_fixed_known[0].hash, (unsigned long long) fixed_table_fixed_hash );
+    {
+        char why[512];
+        memset( &report, 0, sizeof( report ) );
+        const int64_t loaded = plan_load_all( g_plan_out, &report );
+        if ( fixed_table_fixed_save( g_plan_out, FixedCount, a, (int64_t) saved_bytes ) != (int64_t) saved_bytes ||
+             fixed_table_fixed_save( g_plan_expected, FixedCount, c, (int64_t) saved_bytes ) != (int64_t) saved_bytes )
+        {
+            fail( name, "the plan read or the plan's answer did not save" );
+            goto done;
+        }
+        fprintf( stderr, "%-18s plan read of %d records: widened %d (expected %d x %d = %d), clamped %d (lineage 0x%016llx -> 0x%016llx)\n", name, FixedCount,
+                 (int) report.widened, FixedCount, PlanWidenedPerRecord, FixedCount * PlanWidenedPerRecord, (int) report.clamped,
+                 (unsigned long long) fixed_table_fixed_known[0].hash, (unsigned long long) fixed_table_fixed_hash );
+        if ( plan_read_verdict( &report, loaded, g_plan_out, g_plan_expected, a, c, saved_bytes, why, sizeof( why ) ) != NULL )
+        {
+            char message[640];
+            snprintf( message, sizeof( message ), "the lineage corpus did not read to the plan's answer: %s", why );
+            fail( name, message );
+            goto done;
+        }
+    }
 
     /* gate P3: the prefill owns every byte the plan does not land — a poisoned
        destination reads to the same answer, compared as this build's own saved
        bytes, so padding never decides it. */
     memset( (void *) g_plan_poisoned, 0xA5, sizeof( g_plan_poisoned ) );
-    saved_bytes = (size_t) fixed_table_fixed_measure( FixedCount );
-    a = (uint8_t *) malloc( saved_bytes );
-    b = (uint8_t *) malloc( saved_bytes );
-    if ( a == NULL || b == NULL || plan_load_all( g_plan_poisoned, &report ) != FixedCount ||
+    if ( plan_load_all( g_plan_poisoned, &report ) != FixedCount ||
          fixed_table_fixed_save( g_plan_out, FixedCount, a, (int64_t) saved_bytes ) != (int64_t) saved_bytes ||
          fixed_table_fixed_save( g_plan_poisoned, FixedCount, b, (int64_t) saved_bytes ) != (int64_t) saved_bytes ||
          memcmp( a, b, saved_bytes ) != 0 )
@@ -787,6 +918,7 @@ done:
     free( layout );
     free( a );
     free( b );
+    free( c );
     return ok;
 }
 

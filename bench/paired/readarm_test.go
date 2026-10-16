@@ -309,3 +309,25 @@ func TestTheCBoardJudgesEachLaneAgainstItsOwnPacketRead(t *testing.T) {
 		t.Errorf("an INVALID window printed a verdict:\n%s", invalid)
 	}
 }
+
+// The C board's plan sentence names exactly the C runner's gate P2 to P4
+// (bench/tables/c/table_main.c plan_read_verdict): the pinned answer, the
+// counters, a poisoned destination, and the not-identity check.
+func TestTheCPlanBoardClaimsOnlyTheChecksItsRunnerMakes(t *testing.T) {
+	t.Parallel()
+	claim := planGateClaim("c")
+	for _, want := range []string{"widened 4096", "every OLD field value", "declared default", "poisoned destination", "not the identity corpus"} {
+		if !strings.Contains(claim, want) {
+			t.Errorf("the C plan claim lacks %q: %q", want, claim)
+		}
+	}
+	b := readArmBoard{
+		Host: "bench", OS: "linux", Arch: "amd64", CPU: "cpu", Revision: "abc", Serialize: "def", Rounds: 7, Iterations: 4000000,
+		CorpusID: "0930f96c8320a75d", Window: "OK", FixedBytes: 1264.3, PacketBytes: 400, PlanBytes: 995.4, Leg: "c", Lane: "5",
+		Identity: statsOf([]float64{150, 151}), Plan: statsOf([]float64{700, 701}), Packet: statsOf([]float64{165, 166}),
+		Anchor: anchorOf(nil, "none for this leg", true), Absent: otherLegsBut("c"), Widened: claim,
+	}
+	if text := b.markdown(); !strings.Contains(text, claim) {
+		t.Errorf("the C board does not print its own plan claim:\n%s", text)
+	}
+}
