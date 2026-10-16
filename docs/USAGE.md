@@ -3523,6 +3523,57 @@ byte on the wire.
 or a set flags bit no variant names, an invalid union tag, or a non-finite
 float. The text it does emit is always valid JSON and valid UTF-8.
 
+### Carrying a table over a text channel
+
+A text channel is a pipe a wire byte cannot cross as-is — a bus body, a log
+line, a config field, a terminal. In Go every table — `fixed table` and
+plain `table` alike — has two text carriers:
+
+- **Base64 of the binary wire** (`SaveText` / `LoadText`): the text is the
+  wire's bytes, `encoding/base64` standard alphabet, padded, whole. It keeps
+  the form byte, the framing check and every versioning guarantee of the
+  wire, and it is opaque — no field is readable, nothing is editable. Use it
+  when machines talk to machines and the wire itself would have been ideal.
+- **The JSON text form** (`FromJson` / `ToJson`, above): for a human to read,
+  diff or edit.
+
+Both readers refuse damaged or newer input by name. `LoadText` returns a typed
+refusal: `base64_damaged` when the body does not decode, `unknown_form` when
+the decoded wire's form byte is one this build does not carry, and
+`wire_damaged` for framing damage. `LoadText` is the strict read: it refuses
+whenever the read's report holds an error (`TableReport.Err()` — `malformed`,
+`clamped`, `kind_mismatch`, ...), even when the tolerant load recovered a
+value, so a damaged-but-recovered wire never comes back as a value with a nil
+error. `unknown`, `widened` and `retained` alone do not refuse. A supplied
+`report` receives that one read's report. `FromJson` returns false with
+`report` set `malformed` when the JSON document is damaged.
+
+For a plain (variable) table the pair has that class's shape:
+`<Name>SaveText(value, context...)` takes `Save`'s write context, and
+`<Name>LoadText(text, &report)` reads into a builder of its own and returns
+the locked root, as `<Name>ReadStrict` does. Either carrier is byte for byte:
+what it reads back saves to the same wire bytes the original saved to
+(docs/SPEC-TABLES.md §16.8).
+
+```go
+// Machines: base64 of the wire — lossless, opaque, keeps the form byte and
+// every versioning guarantee; pick it when the wire itself would be ideal.
+text, err := example.ShipConfigSaveText(&ship)
+if err != nil { /* refuse */ }
+loaded, err := example.ShipConfigLoadText(text, &report)
+if err != nil { /* base64_damaged | unknown_form | wire_damaged | malformed | clamped | ... */ }
+
+// A person: the JSON form, for reading, diffing or editing.
+buf := make([]byte, example.ShipConfigToJsonMeasure(&ship))
+n := example.ShipConfigToJson(&ship, buf)
+var edited example.ShipConfigBuilder // ShipConfig is a plain table: a builder
+if !edited.Init() { /* allocation_failed */ }
+defer edited.Shutdown()
+if !example.ShipConfigFromJson(&edited, buf[:n], &report) {
+	// report.Malformed: the JSON document is damaged.
+}
+```
+
 ### Packing a directory into a table
 
 `schema pack` builds ONE table instance from a directory tree that mirrors

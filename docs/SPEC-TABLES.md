@@ -11978,6 +11978,7 @@ in build version (§20.5).
   Cook  CookMeasure  CookMeasureReason  CookBody  CookLayout  CookMeasureFrom  CookFrom
   Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure  Table
+  SaveText  LoadText
   MeasureMessages  SaveMessages  LoadMessages
   LoadMessagesMeasure  SaveMessageBody  LoadMessageBody
   LoadRetain LoadRetainBuilder  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages
@@ -14531,6 +14532,58 @@ cannot pack back to the bytes it came from.
 - A label named from inside its own definition is refused, in both engines and
   in the corpus battery, beside a label that overflows a `u64`, a signed one
   and one with a leading zero.
+
+### 16.8 Carrying a table over a text channel
+
+A text channel is a pipe a wire byte cannot cross as-is — a bus body, a log
+line, a config field, a terminal. A table has two text carriers, and the
+choice is what this section is about. **EVERY TABLE HAS BOTH**: a `fixed table` and a plain (variable) `table` alike, each over its own wire — form
+`1` for the variable class, and for a fixed table the wire its `Save` writes:
+
+- **Base64 of the binary wire** (`SaveText` / `LoadText`): the text is the
+  wire's bytes, `encoding/base64` standard alphabet, padded, whole. It keeps
+  the form byte, the framing check and every versioning guarantee of §3, and
+  it is opaque — no field is readable, nothing is editable, and a hand edit
+  is damage. Use it when the channel is machines talking to machines and the
+  wire itself would have been ideal, e.g. a bus body or a stored file's
+  value. It is the lossless, schema-exact carrier: `LoadText(SaveText(v))`
+  equals the wire `Save(v)` byte for byte.
+- **The JSON text form** (`FromJson` / `ToJson`, §16.1): the text is for a
+  human to read, diff or edit. It carries exactly what §16 says it carries —
+  the fields, by key, pretty-printed, with the mapping, clamping, counting
+  and refusal rules of §16.2 and §16.3. Use it when a person must inspect or
+  change the value in transit.
+
+Both readers refuse damaged or newer input BY NAME. A base64 body that does
+not decode is `base64_damaged`; a decoded wire the binary reader refuses is the
+wire reader's own refusal — a form byte this build does not carry, `unknown_form`
+(§3, THE FIRST BYTE), and framing damage, `wire_damaged` or `truncated`
+(§3); a JSON document the JSON reader refuses is `malformed` (§16.2). A
+reader never guesses at an unnameable byte.
+
+**The shape follows the class's own binary pair.** For a fixed table,
+`<Name>SaveText(value)` encodes `<Name>Save`'s bytes and
+`<Name>LoadText(text, report)` returns a new value filled by `<Name>Load`. For
+a variable table, `<Name>SaveText(value, context...)` takes the write context
+`<Name>Save` takes, and `<Name>LoadText(text, report)` reads into a builder of
+its own and returns the LOCKED, packed root, exactly as `<Name>ReadStrict`
+does (§6.5) — a variable value lives in a region, and the carrier hands back
+one. **`LoadText` IS THE STRICT READ (§6.5) for both classes**: it refuses
+whenever the read's report holds an error — `TableReport.Err()`'s reason,
+`malformed`, `clamped`, `kind_mismatch`, `missing_required` and the rest —
+WHATEVER the tolerant load answered. A tolerant load can recover a value and
+still report damage (a declared list count past its payload is read as the
+prefix it carries and reported `malformed`); the carrier never hands that
+value back with a nil error. `unknown`, `widened` and `retained` alone do not
+refuse, exactly as for `ReadStrict`. `report` is optional, nil allowed; a
+supplied one receives THIS read's report, so counts already in it neither
+decide the verdict nor survive the call. Either way the carrier is byte for byte: the value
+`LoadText` returns saves to exactly the wire bytes `SaveText` encoded, and
+the value `FromJson` reads from `ToJson`'s text saves to the same bytes too.
+
+`SaveText` and `LoadText` are generated name-first as `<Name>SaveText` and
+`<Name>LoadText`, and both suffixes are in §11's claimed list: a declaration
+spelling one beside a table `<Name>` is refused naming the collision.
 
 ## 17. Packing: a directory tree that mirrors a root table
 
