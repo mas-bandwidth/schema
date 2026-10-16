@@ -275,11 +275,14 @@ tables-elixir-block-lead-negative-control: build/conformance/manifest.txt
 # THE OFFSETS/COOK-DELTA COMPOSITION GATE (docs/PORTING.md M2): the block's
 # offset_of and the cook's self-relative delta are composed from two 32-bit
 # halves, so no bignum is formed before the bound that refuses it runs.
-# TestOffsetsComposeFromHalvesElixir measures that a plain open and every row
-# deref are accepted, and that a FORGED offset_of or delta word
-# (high half 0x7FFFFFFF, and the delta's negative twin) is refused with no more
-# minor collections than an immediate-high-half twin (a bignum would add some). It is a FUNCTIONAL test: SCHEMA_REQUIRE_CORPUS=1
-# turns a missing toolchain into a failure, never a skip.
+# TestOffsetsComposeFromHalvesElixir measures (a) that every corpus block
+# open, every row of its arrays and every reference slot of three corpus cooks
+# allocates no more heap words per call than a same-shaped immediate-value
+# control, against a forced-boxing positive control that must allocate more,
+# and (b) that a FORGED offset_of or delta word (high half 0x7FFFFFFF, and the
+# delta's negative twin) is refused with no more minor collections than an
+# immediate-high-half twin (a bignum would add some). It is a FUNCTIONAL test:
+# SCHEMA_REQUIRE_CORPUS=1 turns a missing toolchain into a failure, never a skip.
 .PHONY: tables-elixir-offsets
 tables-elixir-offsets:
 	@mkdir -p build
@@ -292,7 +295,7 @@ tables-elixir-offsets:
 		echo "tables-elixir-offsets: the gate SKIPPED a subtest; under SCHEMA_REQUIRE_CORPUS=1 a missing toolchain or corpus is a failure"; \
 		exit 1; \
 	fi
-	@echo 'tables Elixir offsets: composition holds, forged offset_of and cook delta refused with no extra collections'
+	@echo 'tables Elixir offsets: ordinary opens, rows and cook slots allocate no more than the immediate-value control; forged offset_of and cook delta refused with no extra collections'
 
 # ITS NEGATIVE CONTROL: sabotage the block's composed read back to the
 # whole-word read, and the forged-offset assertion must go red (a bignum gets
