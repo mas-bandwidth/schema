@@ -257,6 +257,8 @@ const FIXED_ROOTS: &[(&str, &str)] = &[
     ("vocab9demo", "Wide19"),
     ("vocabdemo", "Wide00"),
     ("vocabdemo", "Wide09"),
+    ("widedemo", "Caption"),
+    ("widedemo", "Stamp"),
 ];
 
 fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
