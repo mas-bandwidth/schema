@@ -3503,6 +3503,10 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-cpp-runtime-home
 	$(MAKE) tables-cpp-runtime-home-negative-control
 	$(MAKE) tables-cpp-alloc
+	# the C++ soak (make/cpp.mk): 20 seconds of the count-gated loop, and the
+	# control that plants a matched new/delete pair and must turn the count red
+	$(MAKE) tables-cpp-soak SOAK_SECONDS=20
+	$(MAKE) tables-cpp-soak-negative-control
 	$(MAKE) tables-block-inline-array-negative-control
 	$(MAKE) tables-pack
 	$(MAKE) tables-pack-negative-control
