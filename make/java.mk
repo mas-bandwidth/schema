@@ -85,16 +85,16 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema
+build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema
 	@mkdir -p build/tables-generated-java
 	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit and the BYTE-BUFFER unit: their cook readers and
-	# variable-class codecs ride this stamp. tables/lists is NOT generated here:
-	# the compiler refuses the unit whole for java because Mixed holds an array
-	# of unions and Holders declares a map, so its rows answer absent and the
-	# lists corpus rides TestVariableClassBeyondCardConstructsJava instead.
+	# variable-class codecs ride this stamp, and the LIST unit (tables/lists)
+	# rides it too: its SaveVariable codec is the list half of the
+	# tables-java-variable-class corpus and the soak's three case set.
 	./bin/schema generate --lang java --out build/tables-generated-java/pointers tables/pointers
 	./bin/schema generate --lang java --out build/tables-generated-java/blobs tables/blobs
+	./bin/schema generate --lang java --out build/tables-generated-java/lists tables/lists
 	./bin/schema generate --lang java --out build/tables-generated-java/block tables/block
 	./bin/schema generate --lang java --out build/tables-generated-java/blockhome tables/blockhome
 	./bin/schema generate --lang java --out build/tables-generated-java/v1 test/tables/V1.schema
@@ -496,12 +496,12 @@ tables-java-compile-all: build/tables-generated-java/.stamp build/java-clean-pac
 # THE JAVA TABLES LEG (test/java-tables/src/Main.java): the gates the
 # conformance harness does not hold, because none of them is a case — the
 # readers' fuzz oracle, the reference extent gate and the byte-order leg.
-build/java-tables/.stamp: build/tables-generated-java/.stamp test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java test/java-tables/src/AllocPaths.java
+build/java-tables/.stamp: build/tables-generated-java/.stamp test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java test/java-tables/src/AllocPaths.java test/java-tables/src/Soak.java
 	@rm -rf build/java-tables && mkdir -p build/java-tables
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-tables \
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
 		build/tables-generated-java/blobs/*.java build/tables-generated-java/arms/*.java \
-		build/tables-generated-java/block/*.java test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java test/java-tables/src/AllocPaths.java
+		build/tables-generated-java/lists/*.java build/tables-generated-java/block/*.java test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java test/java-tables/src/AllocPaths.java test/java-tables/src/Soak.java
 	@touch $@
 
 # THE READERS' ORACLE (docs/SPEC-TABLES.md §7.5, §19.2). Mutants of a block image
@@ -1100,6 +1100,37 @@ tables-java-allocator-runtime-negative-control: build/java-tables/.stamp
 		{ echo 'NEGATIVE CONTROL FAILED: the allocation gate measured before it refused'; cat build/java-allocator-runtime-negative-control/log; exit 1; }
 	@echo 'java allocation gate refuses a JDK that is not the pin (wants 21, ran 17), before measuring'
 
+# THE JAVA TABLES SOAK (docs/PORTING.md I9, #517). A functional soak, never a
+# unit test: it loops the variable form's load, loadMeasure and save over the
+# committed wires the tables-java-variable-class target round-trips (the blob,
+# list and pointer units on this classpath) for SOAK_SECONDS of real time, and
+# gates on the per-iteration ALLOCATION COUNT being flat after warmup — a Java
+# load builds a Value tree, so the floor is not zero and the gate is on
+# STABILITY, not on zero — with resident-heap drift reported beside it as the
+# weaker instrument that sees retention. It refuses to certify off the pinned
+# JDK exactly as modeAllocator does, and honours SCHEMA_JAVA_ALLOC_ANY_JDK=1
+# as observation only (reports, does not certify).
+.PHONY: tables-java-soak tables-java-soak-negative-control
+tables-java-soak: build/java-tables/.stamp
+	@if [ "$${SCHEMA_JAVA_ALLOC_ANY_JDK:-}" = 1 ]; then echo "Java soak observation mode: NOT CERTIFIED"; fi
+	$(JAVA) -cp build/java-tables Soak --selftest
+	$(JAVA) -cp build/java-tables Soak $(SOAK_SECONDS) testdata/wire/tables/blob_small.bin testdata/wire/tables/list_scalars.bin testdata/wire/tables/graph_tree.bin
+
+# ITS NEGATIVE CONTROL: a matched allocation pair planted per iteration by an
+# environment variable read in Soak.java (never a change to generated code) for
+# the measured loop alone, so the settled clean floor stays put and the count
+# must go red while the drift line stays green.
+tables-java-soak-negative-control: build/java-tables/.stamp
+	@if SCHEMA_JAVA_SOAK_PLANT=1 $(JAVA) -cp build/java-tables Soak 12 testdata/wire/tables/blob_small.bin testdata/wire/tables/list_scalars.bin testdata/wire/tables/graph_tree.bin > build/java-soak-negative.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a planted per-iteration allocation left the soak count green'; \
+		cat build/java-soak-negative.log; exit 1; \
+	fi
+	@grep -Fq 'per-iteration allocation moved from' build/java-soak-negative.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the soak went red, but not on the COUNT'; cat build/java-soak-negative.log; exit 1; }
+	@grep -Fq 'soak: drift OK' build/java-soak-negative.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the drift line was not green beside the red COUNT'; cat build/java-soak-negative.log; exit 1; }
+	@echo 'java tables soak negative control: a planted per-iteration allocation turns the COUNT red'
+
 # ITS LOCALIZING CONTROL (I1: a control must say WHERE). One allocation per row
 # is planted in row 1's walk — in the harness, behind
 # SCHEMA_JAVA_ALLOC_PLANT_ROW_WALK, never in generated code — and the gate must
@@ -1124,7 +1155,12 @@ tables-java-alloc-negative-control: build/java-tables/.stamp
 	@grep '^alloc 2 cook-walk' build/java-alloc-negative-control/log
 	@echo 'negative control: one allocation planted per row reds row 1 (the block walk) alone; row 2 (the cook walk) stays green'
 
-test-java: tables-java-allocator tables-java-allocator-runtime-negative-control tables-java-alloc-negative-control
+test-java: tables-java-allocator tables-java-allocator-runtime-negative-control tables-java-alloc-negative-control tables-java-soak-short tables-java-soak-negative-control
+
+# the twenty-second form `make test` reaches; the hour is `make tables-java-soak`
+.PHONY: tables-java-soak-short
+tables-java-soak-short:
+	$(MAKE) tables-java-soak SOAK_SECONDS=20
 
 # I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Java side.
 # The cook example is pulled from docs/USAGE.md into a class that reads the

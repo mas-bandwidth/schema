@@ -119,9 +119,11 @@ previous-form wire; schema#517 brings it back with the id-table form).
 **Measured effect.** Exact zero on Load, Measure and Save in Go
 (`testing.AllocsPerRun`); Java (`getCurrentThreadAllocatedBytes`,
 `tables-java-allocator`): the block row walk and the cook read are exactly one
-32-byte handle per open and 0 per row and per node, and the id-table variable
-wire is NOT zero (load answers a fresh Value tree, loadMeasure allocates per
-call, save allocates MiB scratch per node), each held at its measured floor;
+32-byte handle per open and 0 per row and per node, loadMeasure through a
+kept Measure is exact 0 per call and per node (128 bytes for the one-argument
+handle, 0 per node), save through a kept Saver allocates the output byte[]
+alone (0 per node), and load is held at its measured floor because it answers
+a fresh Value tree;
 JavaScript
 (0.0 bytes per iteration on KeyedConfig Load/Measure/Save at 300k iterations)
 and Dart (0 scavenges over 20,000 × 8 records under AOT). The instrument is
@@ -134,7 +136,7 @@ red on the one row it was planted in.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/codecs.go:1113` | ✅ `internal/codegen/ctable/codecs.go:1074` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go:178-187` | ✅ `internal/codegen/cstable/cstable.go:958` (a `ref struct`) | ❌ #517 — the block row walk and the cook read are 0 beyond one handle per open (`tables-java-allocator` rows 1 and 2, localized by `tables-java-alloc-negative-control`); the variable wire is not: its load answers a fresh Value tree (there is no caller-owned-storage form), so M1's zero there needs that form, and what remains beside it is a loadMeasure that allocates nothing (row 3 holds its Report, Reader, NodeTable and node-body copies at their floor) and a save without 1 MiB scratch per node (row 4) | ❌ #516 | ❌ #514 | — a decoded BEAM term is an allocation and no buffer is caller-owned (docs/SPEC-TABLES.md); the leg that pinned a per-case count went with the table wire (#515) |
+| ✅ `internal/codegen/cpptable/codecs.go:1113` | ✅ `internal/codegen/ctable/codecs.go:1074` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go:178-187` | ✅ `internal/codegen/cstable/cstable.go:958` (a `ref struct`) | ❌ #517 — the block row walk and the cook read are 0 beyond one handle per open (`tables-java-allocator` rows 1 and 2, localized by `tables-java-alloc-negative-control`), loadMeasure through a kept Measure is exact 0 per call and per node (row 3, and 128 bytes for the one-argument Measure/Report/Reader handle, 0 per node), and save through a kept Saver allocates only the returned byte[] (row 4, 0 per node); what remains for M1 on the variable wire is load, which answers a fresh Value tree until a caller-owned-storage form exists | ❌ #516 | ❌ #514 | — a decoded BEAM term is an allocation and no buffer is caller-owned (docs/SPEC-TABLES.md); the leg that pinned a per-case count went with the table wire (#515) |
 
 ### M2 — 64-bit values without boxing
 
@@ -975,10 +977,11 @@ and `DART_GC_FLAGS` in the Makefile.
 **Proven in.** Go; the managed forms in Java, JavaScript and Dart.
 
 **Measured effect.** Go: exact 0 on six paths. Java (Temurin 21.0.12.1): block row walk
-and cook read exactly 0 per row and per node, one 32-byte handle per open; the
-variable form over four committed wires at stated floors (load 1280 to 43424
-bytes a call, the Value tree; loadMeasure 600 to 24496 bytes and save 4 to 277
-MB a call, both defects named in the output). JavaScript:
+and cook read 0 per row and per node beyond one 32-byte handle per open; over
+six committed variable wires, loadMeasure through a kept Measure is exact 0
+bytes a call (128 bytes a call for the one-argument handle, 0 per node), save
+through a kept Saver is the output byte[] alone (104 to 3336 bytes a call, 0
+per node), and load is 536 to 46400 bytes a call (the fresh Value tree). JavaScript:
 0.0 bytes per iteration on the KeyedConfig rows, 67 on RootConfig Load (a
 stated ceiling of 512). Dart: 0/0/0/0/0 scavenges under AOT over 20,000 × 8
 records.
@@ -993,7 +996,7 @@ the block walk and requires that row red and the cook walk green; Go's
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #412 (the cook WRITE is counted under `tables-cook-write`; the read path is a static scan) | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #518 | ✅ `TestLoadAllocatesNothing` `TestRoundTripAllocatesNothing` `TestAllocationGateCanGoRed` | ❌ #412 | ✅ `tables-java-allocator` `tables-java-alloc-negative-control` (`test/java-tables/src/AllocPaths.java`: block walk and cook read 0 per row and per node beyond one handle; the variable form's loadMeasure, load and save at measured floors with reasons, loadMeasure's and save's allocations named defects of #517) | ✅ `tables-js-alloc` `tables-js-alloc-negative-control` | ❌ #514 | ❌ #515 |
+| ❌ #412 (the cook WRITE is counted under `tables-cook-write`; the read path is a static scan) | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #518 | ✅ `TestLoadAllocatesNothing` `TestRoundTripAllocatesNothing` `TestAllocationGateCanGoRed` | ❌ #412 | ✅ `tables-java-allocator` `tables-java-alloc-negative-control` (`test/java-tables/src/AllocPaths.java`: block walk and cook read 0 per row and per node beyond one handle; variable loadMeasure exact 0 per call and per node through a kept Measure, save the output byte[] alone with 0 per node through a kept Saver, and load at its measured Value-tree floor under #517) | ✅ `tables-js-alloc` `tables-js-alloc-negative-control` | ❌ #514 | ❌ #515 |
 
 ### I2 — Emitter sabotage through `go build -overlay`
 
@@ -1203,7 +1206,9 @@ release act.
 
 **Reference.** `test/c-tables/soak_main.c:262-334` (allocator calls counted
 over the measured loop); `test/go-tables/soak_test.go:216-264` (`Mallocs`
-with site classification); `test/js-tables/main.mjs:1457` (the rate before and after).
+with site classification); `test/js-tables/main.mjs:1457` (the rate before and
+after); `test/java-tables/src/Soak.java` (the per-iteration allocation count,
+re-measured every sample, with heap drift beside it).
 
 **Proven in.** C.
 
@@ -1218,7 +1223,7 @@ goes red.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #416 | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #416 (`tables-rust-soak` gates on the count; nothing runs it) | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ❌ #416 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
+| ❌ #416 | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #416 (`tables-rust-soak` gates on the count; nothing runs it) | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ❌ #416 | ✅ `tables-java-soak` (20 s from `test-java`, 3600 the release act, over the blob, list and pointer corpora) `tables-java-soak-negative-control` | ❌ #516 | ❌ #514 | ❌ #515 |
 
 ### I10 — The zero-cost gate
 
