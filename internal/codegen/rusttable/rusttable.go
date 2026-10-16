@@ -98,6 +98,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		out[MessageRuntimeModule+".rs"] = messageRuntimeModule(u)
 	}
 	out[BuildVersionModule+".rs"] = buildVersionModule(u)
+	// THE VIEW (docs/SPEC-TABLES.md §8): every table's and every type's
+	// descriptors, the vocabulary and the unit registry, constant data beside
+	// the wire and read by none of it (view.go).
+	out[UnitViewModule+".rs"] = unitViewModule(u)
 
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, closure: closure, lineage: lineage}
