@@ -305,7 +305,7 @@ tables-dart-alloc-runtime-negative-control: build/dart_gcgate build/fixedform-co
 DART_SOAK_GC_FLAGS = --verbose_gc --new_gen_semi_initial_size=1 --new_gen_semi_max_size=1
 SOAK_SECONDS ?= 3600
 
-build/dart_tables_soak: build/dart-fixed/.stamp build/tables-generated-dart/.stamp build/fixedform-corpus/.stamp build/cook-fuzz/.stamp test/dart-tables/soak.dart
+build/dart_tables_soak: build/dart-fixed/.stamp build/tables-generated-dart/.stamp cards-dart-generate build/fixedform-corpus/.stamp build/cook-fuzz/.stamp test/dart-tables/soak.dart
 	@mkdir -p build
 	$(DART) analyze test/dart-tables/soak.dart
 	$(DART) format --set-exit-if-changed --output=none test/dart-tables/soak.dart
@@ -328,6 +328,15 @@ tables-dart-soak-negative-control: build/dart_tables_soak
 		  cat build/dart-soak-nc/log; exit 1; }
 	@grep -E 'scavenges=' build/dart-soak-nc/log
 	@echo "negative control: one planted allocation per iteration turns the Dart soak RED on the count"
+
+# THE SHORT SOAK, REACHED FROM test-dart: the release act is an hour
+# (SOAK_SECONDS=3600); the leg's own gate runs twenty seconds so CI stays quick.
+.PHONY: tables-dart-soak-short
+tables-dart-soak-short:
+	$(MAKE) tables-dart-soak SOAK_SECONDS=20
+	$(MAKE) tables-dart-soak-negative-control
+
+test-dart: tables-dart-soak-short
 # THE RUNTIME HOME GATE (docs/PORTING.md J2). A unit's shared Dart table
 # runtime lives in one file named by the PACKAGE — <Package>Block.dart and
 # <Package>Cook.dart — never by the file that happens to sort first, so a
