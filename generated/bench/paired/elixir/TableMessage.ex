@@ -477,73 +477,8 @@ defmodule Bench.TableMessage do
 
   defp shape(kind, bin) when (kind >= 2 and kind <= 10) or (kind >= 18 and kind <= 29) do
     case bin do
-      <<packing, rest::binary>> ->
-        cond do
-          packing == 0 ->
-            {:ok, %{kind: kind, packing: 0}, rest}
-
-          packing == 1 and kind != 10 ->
-            case leb(rest) do
-              {:ok, n, rest2} ->
-                if n <= kind_bits(kind) do
-                  if kind >= 18 do
-                    case rest2 do
-                      <<lo::little-unsigned-64, hi::little-unsigned-64, rest3::binary>> ->
-                        {:ok, %{kind: kind, packing: 1, bits: n, base: hi <<< 64 ||| lo}, rest3}
-
-                      _ ->
-                        :error
-                    end
-                  else
-                    case leb(rest2) do
-                      {:ok, raw, rest3} ->
-                        base = if kind >= 2 and kind <= 5, do: zigzag(raw), else: raw
-                        {:ok, %{kind: kind, packing: 1, bits: n, base: base}, rest3}
-
-                      :error ->
-                        :error
-                    end
-                  end
-                else
-                  :error
-                end
-
-              :error ->
-                :error
-            end
-
-          packing == 2 and kind == 10 ->
-            case rest do
-              <<lo::little-unsigned-32, hi::little-unsigned-32, res::little-unsigned-32,
-                rest2::binary>> ->
-                lof = f32(lo)
-                hif = f32(hi)
-                resf = f32(res)
-
-                # A quantized triple whose delta or delta/res is not finite in
-                # float32 is a hostile width (docs/SPEC-TABLES.md §3.3).
-                if is_float(lof) and is_float(hif) and is_float(resf) and lof < hif and resf > 0.0 do
-                  delta = round_f32(hif - lof)
-
-                  if delta != :nonfinite and round_f32(delta / resf) != :nonfinite do
-                    {:ok, %{kind: kind, packing: 2, qmin: lof, qmax: hif, qres: resf}, rest2}
-                  else
-                    :error
-                  end
-                else
-                  :error
-                end
-
-              _ ->
-                :error
-            end
-
-          true ->
-            :error
-        end
-
-      _ ->
-        :error
+      <<packing, rest::binary>> -> scalar_shape(kind, packing, rest)
+      _ -> :error
     end
   end
 
@@ -557,22 +492,13 @@ defmodule Bench.TableMessage do
   # An array's shape is min, max, then the element kind (u8) after them, two
   # numbers (§3.3's shape table).
   defp shape(kind, bin) when kind == 14 do
-    case leb(bin) do
-      {:ok, min, rest} ->
-        case leb(rest) do
-          {:ok, max, rest2} ->
-            if min > 0xFFFFFFFF or max > 0xFFFFFFFF or max < min do
-              :error
-            else
-              {:ok, %{kind: kind, min: min, max: max}, rest2}
-            end
-
-          :error ->
-            :error
-        end
-
-      :error ->
+    with {:ok, min, rest} <- leb(bin),
+         {:ok, max, rest2} <- leb(rest) do
+      if min > 0xFFFFFFFF or max > 0xFFFFFFFF or max < min do
         :error
+      else
+        {:ok, %{kind: kind, min: min, max: max}, rest2}
+      end
     end
   end
 
@@ -594,6 +520,68 @@ defmodule Bench.TableMessage do
   end
 
   defp shape(kind, bin), do: {:ok, %{kind: kind}, bin}
+
+  # A scalar kind's shape, by its packing byte, one clause per packing: 0 is
+  # none; 1 is a bit width and a base (two u64 halves for the 128-bit kinds,
+  # LEB128 otherwise, zigzagged for the signed kinds) on any kind but 10; 2 is
+  # the quantized triple and kind 10's alone. Helpers of their own, so shape
+  # stays under credo's Nesting and CyclomaticComplexity bounds (issue #547).
+  defp scalar_shape(kind, 0, rest), do: {:ok, %{kind: kind, packing: 0}, rest}
+
+  defp scalar_shape(kind, 1, rest) when kind != 10 do
+    case leb(rest) do
+      {:ok, n, rest2} -> if n <= kind_bits(kind), do: packed_base(kind, n, rest2), else: :error
+      :error -> :error
+    end
+  end
+
+  defp scalar_shape(10, 2, rest), do: quantized_shape(rest)
+  defp scalar_shape(_kind, _packing, _rest), do: :error
+
+  defp packed_base(kind, n, <<lo::little-unsigned-64, hi::little-unsigned-64, rest::binary>>)
+       when kind >= 18,
+       do: {:ok, %{kind: kind, packing: 1, bits: n, base: hi <<< 64 ||| lo}, rest}
+
+  defp packed_base(kind, _n, _rest) when kind >= 18, do: :error
+
+  defp packed_base(kind, n, rest) do
+    case leb(rest) do
+      {:ok, raw, rest2} ->
+        base = if kind >= 2 and kind <= 5, do: zigzag(raw), else: raw
+        {:ok, %{kind: kind, packing: 1, bits: n, base: base}, rest2}
+
+      :error ->
+        :error
+    end
+  end
+
+  defp quantized_shape(
+         <<lo::little-unsigned-32, hi::little-unsigned-32, res::little-unsigned-32, rest::binary>>
+       ) do
+    lof = f32(lo)
+    hif = f32(hi)
+    resf = f32(res)
+
+    # A quantized triple whose delta or delta/res is not finite in
+    # float32 is a hostile width (docs/SPEC-TABLES.md §3.3).
+    if is_float(lof) and is_float(hif) and is_float(resf) and lof < hif and resf > 0.0 do
+      quantized_delta(lof, hif, resf, rest)
+    else
+      :error
+    end
+  end
+
+  defp quantized_shape(_), do: :error
+
+  defp quantized_delta(lof, hif, resf, rest) do
+    delta = round_f32(hif - lof)
+
+    if delta != :nonfinite and round_f32(delta / resf) != :nonfinite do
+      {:ok, %{kind: 10, packing: 2, qmin: lof, qmax: hif, qres: resf}, rest}
+    else
+      :error
+    end
+  end
 
   # ---- LEB128 and friends -------------------------------------------------------
 
