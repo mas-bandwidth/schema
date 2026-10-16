@@ -2,7 +2,14 @@
 # The format, the rules and the shared tooling's entries: bench/SHAPE-GATE.allow.
 # Paths are repository-relative.
 
-# NO ENTRIES, AND THE ZERO IS NOT A CLAIM OF VIRTUE. `go run ./bench/tools/shapegate`
+# ONE ENTRY, the plan-read arm's packet comparand (BENCH-STANDARD.md §1.10):
+# the unit's generated PACKET type, named once at the `use` (aliased there to
+# PacketValue, so no other line names it) because the arm times the leg's own
+# packet read of the same 64 records. No field, no value, no size.
+
+names bench/tables/rust/src/main.rs 1 shape-blind plan-read arm: the generated packet type named once at the `use` (aliased PacketValue) as the packet read's decode target
+
+# THE TABLE TYPE'S ZERO, AND IT IS NOT A CLAIM OF VIRTUE. `go run ./bench/tools/shapegate`
 # prints no `names` line for bench/tables/rust/src/main.rs, so the exact count
 # this ledger would record is 0 and a zero-count entry is not a thing the gate
 # can hold (`add` drops a zero, and the ledger check fails an entry whose count

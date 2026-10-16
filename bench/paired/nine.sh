@@ -2,6 +2,7 @@
 # THE NINE-LANGUAGE TABLE, from one command. Run from the repository root.
 #
 #   bench/paired/nine.sh [--lane N] [--rounds 1|2|3] [--out DIR] [--note TEXT]
+#   bench/paired/nine.sh --plan-read LANGS [--lane N] [--rounds 1..7] [--out DIR] [--note TEXT]
 #
 # It builds the driver and every leg, then runs `-mode table`, which asks the
 # TREE which table runners it carries (bench/tables/<lang>/), measures exactly
@@ -25,6 +26,13 @@
 # named checkpoint, so a stray log file in the tree refuses the sitting; the
 # script checks that before it builds and says so.
 #
+# --plan-read LANGS is the PLAN-READ BOARD (BENCH-STANDARD.md §1.10) for the
+# named legs instead of the table: per leg the fixed form's identity read, its
+# plan read and the same leg's packet read, each timed alone in one invocation
+# per round, and the two GATE verdicts against that packet read. Its rounds
+# default to the standard's seven. Legs without a plan-read arm are refused by
+# the driver, which names the ones that have one.
+#
 # THE RESULT IS NOT CERTIFIED. It is the fast diagnostic's numbers in the
 # published table's shape: reduced iteration counts, no bracketing drift
 # controls, no quiet-window seal. The certified sitting stays `-mode run` on
@@ -32,7 +40,8 @@
 set -e
 
 LANE=
-ROUNDS=3
+ROUNDS=
+PLANREAD=
 OUT=
 NOTE=
 
@@ -42,8 +51,9 @@ while [ $# -gt 0 ]; do
     --rounds) ROUNDS="$2"; shift 2 ;;
     --out)    OUT="$2"; shift 2 ;;
     --note)   NOTE="$2"; shift 2 ;;
+    --plan-read) PLANREAD="$2"; shift 2 ;;
     -h|--help)
-        sed -n '2,31p' "$0" | cut -c 3-
+        sed -n '2,39p' "$0" | cut -c 3-
         exit 0 ;;
     *)
         echo "nine.sh: unknown argument $1" >&2
@@ -84,6 +94,15 @@ fi
 # names the languages so this wrapper and the mode that measures them cannot
 # disagree about what this tree carries.
 $PIN go build -o bin/schema-paired ./bench/paired
+if [ -n "$PLANREAD" ]; then
+    : "${ROUNDS:=7}"
+    $PIN bin/schema-paired -mode build -langs "$PLANREAD"
+    if [ -n "$LANE" ]; then
+        exec $RUN bin/schema-paired -mode plan-read -langs "$PLANREAD" -rounds "$ROUNDS" -out "$OUT" -noise-note "$NOTE"
+    fi
+    exec bin/schema-paired -mode plan-read -langs "$PLANREAD" -rounds "$ROUNDS" -out "$OUT" -noise-note "$NOTE"
+fi
+: "${ROUNDS:=3}"
 LANGS=$(bin/schema-paired -mode table-langs)
 
 # ONE BUILD, THEN ONE GATE PER LANGUAGE.

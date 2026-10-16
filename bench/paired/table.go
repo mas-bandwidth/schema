@@ -15,9 +15,13 @@ package main
 // them.
 
 import (
+	"bytes"
+	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"math"
 	"os"
@@ -26,6 +30,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // nineRowOrder is the published ROW ORDER and NOTHING ELSE — the same nine
@@ -585,5 +590,488 @@ func tablePass(out string, info buildInfo, config fastConfig, lane string) error
 	}
 	fmt.Print(t.markdown())
 	fmt.Fprintln(os.Stderr, "nine-language table:", filepath.Join(out, "NINE.md"))
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// THE PLAN-READ BOARD (BENCH-STANDARD.md §1.10, "The gate is the packet wire,
+// not a ratio"). `-mode plan-read -langs <leg>` measures, per leg, the fixed
+// form's identity-lane read, its plan-lane read and the SAME leg's packet-wire
+// read, each timed alone, all three out of ONE runner invocation per round, and
+// prints the per-leg line with its two GATE verdicts. The GATE is the only
+// automatic verdict: a lane not faster than the leg's own packet read is FAIL,
+// both numbers standing beside it. plan/identity is REPORTED, never judged.
+// ---------------------------------------------------------------------------
+
+// planReadLanguages are the legs whose table runner answers `--plan-read`.
+// Every other leg is NAMED on the board with its reason, never estimated.
+var planReadLanguages = []string{"rust"}
+
+// The row names a plan-read invocation may emit, with the family and the
+// wire each is judged as. bench_plan_read is optional: a leg whose lineage
+// corpus has not landed names that lane and emits no row for it.
+var planReadRows = map[string]struct{ family, wire string }{
+	"bench_fixed_read": {"table", "table"},
+	"bench_plan_read":  {"table", "table"},
+	"bench_mixed_read": {"gen", "packet"},
+}
+
+// planLaneAbsent is the reason the plan lane is named rather than measured
+// while the lineage corpus is not on the tree.
+const planLaneAbsent = "no lineage corpus on this tree (bench/corpus/VOLD_bench_lineage.schema, bench/corpus/schema.lock, bench/paired/corpus/bench_lineage.{bin,layout}: BENCH-STANDARD.md §1.10 work list items 1-6)"
+
+// planReadCorpusFiles is what the plan-read invocation loads: the table
+// pass's five files and the packet pass's two (and, when it lands, the
+// lineage pair). Its corpus id is therefore its own by §1.6's definition, and
+// its rows divide only against each other.
+func planReadCorpusFiles() map[string]string {
+	paths := map[string]string{
+		"bench_mixed.bin":          "testdata/wire/bench_mixed.bin",
+		"bench_mixed.variants.bin": "bench/corpus/variants/bench_mixed.variants.bin",
+	}
+	for _, name := range []string{"bench_table.bin", "bench_table.lengths", "bench_table.variants.bin", "bench_fixed.bin", "bench_fixed.layout"} {
+		paths[name] = "bench/paired/corpus/" + name
+	}
+	return paths
+}
+
+// fnvCorpusID is §1.6's id over named files: sorted basenames, each fed as
+// the name, a zero byte, then the contents.
+func fnvCorpusID(paths map[string]string, read func(string) ([]byte, error)) (string, error) {
+	h := uint64(0xcbf29ce484222325)
+	feed := func(b []byte) {
+		for _, v := range b {
+			h ^= uint64(v)
+			h *= 0x100000001b3
+		}
+	}
+	for _, k := range slices.Sorted(maps.Keys(paths)) {
+		b, err := read(paths[k])
+		if err != nil {
+			return "", err
+		}
+		feed([]byte(k))
+		feed([]byte{0})
+		feed(b)
+	}
+	return fmt.Sprintf("%016x", h), nil
+}
+
+func planReadCommand(lang string, round int, counts map[string]int64) command {
+	return runner("table", lang, "--plan-read", "--csv", "--round", strconv.Itoa(round),
+		"--iterations", strconv.FormatInt(counts["table"], 10),
+		"--packet-iterations", strconv.FormatInt(counts["packet"], 10),
+		"--packet-wire-dir", "testdata/wire", "--packet-variant-dir", "bench/corpus/variants")
+}
+
+// parsePlanReadRows accepts one round's CSV from one leg: one measured run per
+// row, the iteration count this sitting asked of the row's wire, one corpus id
+// for every row, the row's own family and checks axis, and the identity and
+// packet rows both present. A missing comparand is a refusal, not a blank.
+func parsePlanReadRows(data []byte, lang, id string, counts map[string]int64) (map[string]sample, error) {
+	r := csv.NewReader(bytes.NewReader(data))
+	r.FieldsPerRecord = -1
+	rows := map[string]sample{}
+	for {
+		cols, err := r.Read()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if len(cols) == 0 || strings.HasPrefix(cols[0], "#") || cols[0] == "lang" {
+			continue
+		}
+		if len(cols) != 17 || cols[0] != lang {
+			return nil, fmt.Errorf("invalid %s plan-read CSV row", lang)
+		}
+		kind, known := planReadRows[cols[1]]
+		if !known || cols[2] != "read" || cols[12] != kind.family || cols[11] != id || cols[5] != "1" {
+			return nil, fmt.Errorf("wrong %s plan-read row identity: %v", lang, cols)
+		}
+		if _, dup := rows[cols[1]]; dup {
+			return nil, fmt.Errorf("duplicate %s plan-read row %s", lang, cols[1])
+		}
+		if want := expectedChecks(lang, kind.wire); cols[14] != want {
+			return nil, fmt.Errorf("unexpected %s/%s checks axis %q; expected %q", lang, cols[1], cols[14], want)
+		}
+		rate, err := strconv.ParseFloat(cols[8], 64)
+		if err != nil || math.IsNaN(rate) || math.IsInf(rate, 0) || rate <= 0 {
+			return nil, errors.New("invalid rate")
+		}
+		n, err := strconv.ParseFloat(cols[4], 64)
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) || n <= 0 {
+			return nil, errors.New("invalid bytes/op")
+		}
+		iters, err := strconv.ParseInt(cols[3], 10, 64)
+		if err != nil || iters != counts[kind.wire] {
+			return nil, fmt.Errorf("%s/%s iterations must match the requested %s count %d", lang, cols[1], kind.wire, counts[kind.wire])
+		}
+		if cols[6] != cols[8] || cols[7] != cols[8] {
+			return nil, errors.New("per-round rates must agree")
+		}
+		rows[cols[1]] = sample{cols: cols, rate: rate, bytes: n, iters: iters}
+	}
+	for _, need := range []string{"bench_fixed_read", "bench_mixed_read"} {
+		if _, ok := rows[need]; !ok {
+			return nil, fmt.Errorf("%s plan-read emitted no %s row", lang, need)
+		}
+	}
+	return rows, nil
+}
+
+// planReadStat is one row's statistic over the rounds: best (the headline,
+// §2.2), median beside it, and the rate spread §2.3 disposes on.
+type planReadStat struct {
+	BestNs   float64   `json:"best_ns_per_record"`
+	MedianNs float64   `json:"median_ns_per_record"`
+	WorstNs  float64   `json:"worst_ns_per_record"`
+	Spread   float64   `json:"spread_pct"`
+	Bytes    float64   `json:"bytes_per_record"`
+	Rounds   []float64 `json:"ns_per_record_by_round"`
+}
+
+func newPlanReadStat(rates []float64, bytesPerRecord float64) planReadStat {
+	s := planReadStat{Bytes: bytesPerRecord}
+	for _, r := range rates {
+		s.Rounds = append(s.Rounds, 1e9/r)
+	}
+	sorted := slices.Clone(rates)
+	median := medianOf(sorted) // sorts in place
+	s.BestNs, s.WorstNs, s.MedianNs = 1e9/sorted[len(sorted)-1], 1e9/sorted[0], 1e9/median
+	s.Spread = (sorted[len(sorted)-1] - sorted[0]) / median * 100
+	return s
+}
+
+// disposition is §2.3's: a row over 40% spread is invalid and enters no
+// verdict; over 15% it is noisy and says so.
+func (s planReadStat) disposition() string {
+	switch {
+	case s.Spread > 40:
+		return "invalid"
+	case s.Spread > 15:
+		return "noisy"
+	}
+	return "normal"
+}
+
+// gateVerdict is the per-lane GATE: the lane's best read against the packet
+// read's best, both measured in this sitting. A row §2.3 invalidates yields no
+// verdict at all rather than a PASS or a FAIL it could not support.
+func gateVerdict(lane, packet planReadStat) string {
+	if lane.disposition() == "invalid" || packet.disposition() == "invalid" {
+		return "INVALID"
+	}
+	if lane.BestNs < packet.BestNs {
+		return "PASS"
+	}
+	return "FAIL"
+}
+
+type planReadLeg struct {
+	Language     string        `json:"language"`
+	Identity     planReadStat  `json:"identity_read"`
+	Plan         *planReadStat `json:"plan_read,omitempty"`
+	PlanAbsent   string        `json:"plan_absent,omitempty"`
+	Packet       planReadStat  `json:"packet_read"`
+	GateIdentity string        `json:"gate_identity"`
+	GatePlan     string        `json:"gate_plan"`
+}
+
+type planReadBoard struct {
+	Host     string            `json:"host"`
+	OS       string            `json:"os"`
+	Arch     string            `json:"arch"`
+	CPU      string            `json:"cpu"`
+	Revision string            `json:"revision"`
+	Dirty    bool              `json:"dirty"`
+	Rounds   int               `json:"rounds"`
+	CorpusID string            `json:"corpus_id"`
+	Counts   map[string]int64  `json:"iterations_per_wire"`
+	Load     string            `json:"load1_range"`
+	Noise    []string          `json:"observed_noise"`
+	Window   string            `json:"window_verdict"`
+	Note     string            `json:"noise_note"`
+	Legs     []planReadLeg     `json:"legs"`
+	Absent   []skipped         `json:"absent"`
+	Runtimes map[string]string `json:"runtimes"`
+	Tools    map[string]string `json:"tools"`
+}
+
+// windowVerdict is OK only when the sitting's own process journal saw no
+// foreign work and every measured row published at normal spread. Anything
+// else is NOISY with the reason, and a NOISY window flips no roadmap task.
+func windowVerdict(noise []string, legs []planReadLeg) string {
+	var why []string
+	if len(noise) > 0 {
+		why = append(why, fmt.Sprintf("%d foreign-process warnings", len(noise)))
+	}
+	for _, leg := range legs {
+		stats := map[string]planReadStat{"identity": leg.Identity, "packet": leg.Packet}
+		if leg.Plan != nil {
+			stats["plan"] = *leg.Plan
+		}
+		for _, name := range slices.Sorted(maps.Keys(stats)) {
+			if d := stats[name].disposition(); d != "normal" {
+				why = append(why, fmt.Sprintf("%s %s read %s (%.1f%% spread)", leg.Language, name, d, stats[name].Spread))
+			}
+		}
+	}
+	if len(why) == 0 {
+		return "OK"
+	}
+	return "NOISY: " + strings.Join(why, "; ")
+}
+
+func buildPlanReadLeg(lang string, rounds []map[string]sample) (planReadLeg, error) {
+	rates := map[string][]float64{}
+	sizes := map[string]float64{}
+	for _, round := range rounds {
+		for name, row := range round {
+			if seen, ok := sizes[name]; ok && seen != row.bytes {
+				return planReadLeg{}, fmt.Errorf("%s %s bytes per record changed between rounds", lang, name)
+			}
+			sizes[name] = row.bytes
+			rates[name] = append(rates[name], row.rate)
+		}
+	}
+	for name, values := range rates {
+		if len(values) != len(rounds) {
+			return planReadLeg{}, fmt.Errorf("%s %s is missing from some rounds", lang, name)
+		}
+	}
+	leg := planReadLeg{Language: lang, Identity: newPlanReadStat(rates["bench_fixed_read"], sizes["bench_fixed_read"]), Packet: newPlanReadStat(rates["bench_mixed_read"], sizes["bench_mixed_read"])}
+	leg.GateIdentity = gateVerdict(leg.Identity, leg.Packet)
+	if values, ok := rates["bench_plan_read"]; ok {
+		plan := newPlanReadStat(values, sizes["bench_plan_read"])
+		leg.Plan, leg.GatePlan = &plan, gateVerdict(plan, leg.Packet)
+	} else {
+		leg.PlanAbsent, leg.GatePlan = planLaneAbsent, "NOT MEASURED"
+	}
+	return leg, nil
+}
+
+func (b planReadBoard) markdown() string {
+	var t strings.Builder
+	dirty := ""
+	if b.Dirty {
+		dirty = " (dirty)"
+	}
+	t.WriteString("# The plan-read board — fixed form vs the same leg's packet wire\n\n```\n")
+	t.WriteString("# fixed form: the identity lane, the plan lane, and the same leg's packet wire\n")
+	fmt.Fprintf(&t, "# host %s / %s/%s %s / rev %s%s / lane none / rounds %d / corpus_id(identity) %s / corpus_id(plan) %s\n",
+		b.Host, b.OS, b.Arch, b.CPU, b.Revision, dirty, b.Rounds, b.CorpusID, "— (plan lane not measured)")
+	for _, leg := range b.Legs {
+		fmt.Fprintf(&t, "# bytes_per_op (%s): fixed %.1f B/record, packet %.0f B/record (§5.3 rule 2 — the division is this driver's alone)\n", leg.Language, leg.Identity.Bytes, leg.Packet.Bytes)
+	}
+	fmt.Fprintf(&t, "# iterations per sample: table %s records, packet %s records (one count per wire, §2.1)\n", grouped(b.Counts["table"]), grouped(b.Counts["packet"]))
+	t.WriteString("# checks: table=contract, packet C/C++/C#/Rust=removed, packet Go=always (§1.9)\n")
+	t.WriteString("# C++ anchor: not in this sitting (the C++ leg has no plan-read arm on this tree)\n")
+	fmt.Fprintf(&t, "# window: %s · load1 %s\n", b.Window, b.Load)
+	t.WriteString("\nleg      identity read    plan read    packet read    GATE identity  GATE plan     plan/identity\n")
+	t.WriteString("         ns/record        ns/record    ns/record      vs packet      vs packet     x (reported)\n")
+	for _, lang := range nineRowOrder {
+		if leg, ok := legFor(b.Legs, lang); ok {
+			plan, ratio := "—", "—"
+			if leg.Plan != nil {
+				plan, ratio = fmt.Sprintf("%.1f", leg.Plan.BestNs), fmt.Sprintf("%.2f", leg.Plan.BestNs/leg.Identity.BestNs)
+			}
+			fmt.Fprintf(&t, "%-8s %13.1f %12s %14.1f %16s %-13s %s\n", lang, leg.Identity.BestNs, plan, leg.Packet.BestNs, leg.GateIdentity, leg.GatePlan, ratio)
+			continue
+		}
+		for _, s := range b.Absent {
+			if s.Language == lang {
+				fmt.Fprintf(&t, "%-8s %13s %12s %14s %16s %-13s %s     %s\n", lang, "—", "—", "—", "—", "—", "—", s.Reason)
+			}
+		}
+	}
+	t.WriteString("```\n\nBest of the rounds is the headline (§2.2); median, worst and spread stand beside it:\n\n")
+	t.WriteString("| leg | row | best ns/record | median | worst | spread | disposition (§2.3) |\n|---|---|---:|---:|---:|---:|---|\n")
+	for _, leg := range b.Legs {
+		rows := []struct {
+			name string
+			s    *planReadStat
+		}{{"bench_fixed_read (identity)", &leg.Identity}, {"bench_plan_read (plan)", leg.Plan}, {"bench_mixed_read (packet)", &leg.Packet}}
+		for _, row := range rows {
+			if row.s == nil {
+				fmt.Fprintf(&t, "| %s | %s | — | — | — | — | not measured: %s |\n", leg.Language, row.name, leg.PlanAbsent)
+				continue
+			}
+			fmt.Fprintf(&t, "| %s | %s | %.2f | %.2f | %.2f | %.1f%% | %s |\n", leg.Language, row.name, row.s.BestNs, row.s.MedianNs, row.s.WorstNs, row.s.Spread, row.s.disposition())
+		}
+	}
+	fmt.Fprintf(&t, "\nOperator context: %s\n\nThe GATE columns are the verdict, per leg: a lane not faster (best against best) than the same leg's packet read is FAIL. plan/identity is reported, never judged. A row over 40%% spread enters no verdict (INVALID). Not certified: this is the fast machinery's sitting, not `-mode run`'s seal.\n", b.Note)
+	return t.String()
+}
+
+func legFor(legs []planReadLeg, lang string) (planReadLeg, bool) {
+	for _, leg := range legs {
+		if leg.Language == lang {
+			return leg, true
+		}
+	}
+	return planReadLeg{}, false
+}
+
+// planReadPass is `-mode plan-read`: the no-clock gates, then the requested
+// rounds of every leg interleaved, at one count per wire raised uniformly
+// until every sample clears 200ms, then the board. It reuses the fast
+// diagnostic's collector, so every invocation is bracketed by process samples
+// and the evidence directory carries the raw CSV of every attempt.
+func planReadPass(langs []string, out string, info buildInfo, config fastConfig, rounds int) (resultErr error) {
+	if rounds < 1 || rounds > 7 {
+		return errors.New("plan-read rounds must be 1..7")
+	}
+	for _, lang := range langs {
+		if !contains(planReadLanguages, lang) {
+			return fmt.Errorf("%s has no plan-read arm in its runner on this tree (plan-read legs: %s)", lang, strings.Join(planReadLanguages, ","))
+		}
+		if info.Binaries[binary("table", lang)] == "" {
+			return fmt.Errorf("cached build lacks %s/table; build it first (-mode build -langs %s)", lang, lang)
+		}
+	}
+	if out == "" {
+		return errors.New("plan-read requires -out (a new report directory)")
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		return errors.New("refusing to overwrite plan-read directory")
+	}
+	if info.Dirty || gitValue(".", "status", "--porcelain") != "" {
+		return errors.New("plan-read requires a clean source/build checkpoint")
+	}
+	id, err := fnvCorpusID(planReadCorpusFiles(), os.ReadFile)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(out, 0755); err != nil {
+		return err
+	}
+	f := fastCollector{dir: out, evidence: fastEvidence{Status: "INCOMPLETE_PLAN_READ", Started: time.Now().UTC().Format(time.RFC3339Nano), Config: config, Build: info, Languages: langs, Qualification: "Plan-read sitting (BENCH-STANDARD.md §1.10): three measured read rows per leg out of one invocation per round; not a -mode run confirmation."}}
+	f.journal, err = os.Create(filepath.Join(out, "process-samples.jsonl"))
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), config.Timeout)
+	defer cancel()
+	defer func() {
+		resultErr = errors.Join(resultErr, f.journal.Close())
+		f.evidence.Ended = time.Now().UTC().Format(time.RFC3339Nano)
+		if resultErr != nil {
+			f.evidence.Reason = resultErr.Error()
+		}
+		resultErr = errors.Join(resultErr, f.save())
+	}()
+	if _, err := f.capture(ctx, command{args: []string{"build/paired/corpus", "verify"}}, "corpus-gate"); err != nil {
+		return err
+	}
+	for _, lang := range langs {
+		data, err := f.capture(ctx, runner("table", lang, "--plan-read", "--gate", "--packet-wire-dir", "testdata/wire", "--packet-variant-dir", "bench/corpus/variants"), "gate-"+lang+"-plan-read")
+		if err != nil {
+			return err
+		}
+		if len(bytes.TrimSpace(data)) != 0 {
+			return errors.New("plan-read correctness gate emitted timing rows")
+		}
+	}
+	counts := map[string]int64{"table": config.TableIterations, "packet": config.PacketIterations}
+	var collected map[string][]map[string]sample
+	for pass := range fastPasses {
+		collected = map[string][]map[string]sample{}
+		raised := map[string]int64{}
+		for round := range rounds {
+			for i := range langs {
+				lang := langs[(i+round)%len(langs)]
+				phase := fmt.Sprintf("round-%d-%s-plan-read-attempt-%d", round, lang, pass)
+				fmt.Fprintln(os.Stderr, phase, "iterations table", counts["table"], "packet", counts["packet"])
+				data, runErr := f.capture(ctx, planReadCommand(lang, round, counts), phase)
+				if err := os.WriteFile(filepath.Join(out, phase+".csv"), data, 0644); err != nil {
+					return errors.Join(runErr, err)
+				}
+				if runErr != nil {
+					return runErr
+				}
+				rows, err := parsePlanReadRows(data, lang, id, counts)
+				if err != nil {
+					return err
+				}
+				adequate := true
+				a := fastAttempt{Round: round, Language: lang, Wire: "plan-read", Attempt: pass, Iterations: counts["table"], Raw: phase + ".csv"}
+				for _, name := range slices.Sorted(maps.Keys(rows)) {
+					row := rows[name]
+					wire := planReadRows[name].wire
+					next, ok, err := fastNextIterations([]sample{row}, counts[wire])
+					if err != nil {
+						return err
+					}
+					if !ok {
+						adequate, raised[wire] = false, max(raised[wire], next)
+					}
+					a.Metrics = append(a.Metrics, fastMetric{Path: name, Iterations: row.iters, Rate: row.rate, Seconds: float64(row.iters) / row.rate, Bytes: row.bytes})
+				}
+				a.Adequate = adequate
+				f.evidence.Attempts = append(f.evidence.Attempts, a)
+				if err := f.save(); err != nil {
+					return err
+				}
+				collected[lang] = append(collected[lang], rows)
+			}
+		}
+		if len(raised) == 0 {
+			break
+		}
+		if pass == fastPasses-1 {
+			return fmt.Errorf("plan-read still has a sample below 200ms after %d uniform attempts", fastPasses)
+		}
+		for wire, n := range raised {
+			counts[wire] = n
+		}
+	}
+	f.evidence.FinalCounts = counts
+	if err := checkBuildRevision(info.Revision, gitValue(".", "rev-parse", "HEAD")); err != nil {
+		return err
+	}
+	if err := verifyRecordedArtifacts(info); err != nil {
+		return err
+	}
+	// The evidence directory may sit inside the checkout; every OTHER path is
+	// source, and a source change mid-sitting voids it, as in fast mode.
+	statusArgs := []string{"status", "--porcelain", "--", "."}
+	if rel, err := filepath.Rel(abs("."), abs(out)); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		statusArgs = append(statusArgs, ":(exclude,top,literal)"+filepath.ToSlash(rel))
+	}
+	if gitValue(".", statusArgs...) != "" {
+		return errors.New("source changed during plan-read sitting")
+	}
+	board := planReadBoard{Host: info.Host, OS: info.OS, Arch: info.Arch, CPU: info.CPU, Revision: info.Revision, Dirty: info.Dirty, Rounds: rounds, CorpusID: id, Counts: counts, Load: loadRange(out), Noise: f.evidence.Noise, Note: config.Noise, Runtimes: info.Runtimes, Tools: info.Tools}
+	for _, lang := range langs {
+		leg, err := buildPlanReadLeg(lang, collected[lang])
+		if err != nil {
+			return err
+		}
+		board.Legs = append(board.Legs, leg)
+	}
+	for _, lang := range nineLanguages {
+		if !contains(langs, lang) {
+			reason := "not requested in this sitting"
+			if !contains(planReadLanguages, lang) {
+				reason = "no plan-read arm in this leg's runner on this tree"
+			}
+			board.Absent = append(board.Absent, skipped{Language: lang, Reason: reason})
+		}
+	}
+	board.Window = windowVerdict(board.Noise, board.Legs)
+	if err := os.WriteFile(filepath.Join(out, "PLAN-READ.md"), []byte(board.markdown()), 0644); err != nil {
+		return err
+	}
+	js, err := json.MarshalIndent(board, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(out, "plan-read.json"), append(js, '\n'), 0644); err != nil {
+		return err
+	}
+	f.evidence.Status = "COMPLETED_PLAN_READ"
+	fmt.Print(board.markdown())
 	return nil
 }

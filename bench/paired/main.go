@@ -530,28 +530,9 @@ func corpusID(wire string) (string, error) {
 			paths[name] = "bench/paired/corpus/" + name
 		}
 	}
-	keys := []string{}
-	for k := range paths {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	h := uint64(0xcbf29ce484222325)
-	feed := func(b []byte) {
-		for _, v := range b {
-			h ^= uint64(v)
-			h *= 0x100000001b3
-		}
-	}
-	for _, k := range keys {
-		b, e := os.ReadFile(paths[k])
-		if e != nil {
-			return "", e
-		}
-		feed([]byte(k))
-		feed([]byte{0})
-		feed(b)
-	}
-	return fmt.Sprintf("%016x", h), nil
+	// One hash, defined once (fnvCorpusID), so the plan-read arm's id and
+	// this one cannot drift apart in how they are computed.
+	return fnvCorpusID(paths, os.ReadFile)
 }
 func generateAndBuild(langs []string) error {
 	if e := os.MkdirAll("build/paired", 0755); e != nil {
@@ -1403,7 +1384,7 @@ func renderReport(dir string, writeOutputs bool) error {
 	return nil
 }
 func main() {
-	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, table report, run confirmation, or render")
+	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, table report, plan-read board, run confirmation, or render")
 	out := flag.String("out", "", "new results directory (or existing directory for render)")
 	langsFlag := flag.String("langs", "cpp,c,go,cs", "comma-separated required build/gate languages")
 	rounds := flag.Int("rounds", 7, "interleaved measured rounds")
@@ -1449,7 +1430,7 @@ func main() {
 		}
 		return
 	}
-	if *mode != "build" && *mode != "gate" && *mode != "run" && *mode != "fast" && *mode != "table" && *mode != "table-langs" {
+	if *mode != "build" && *mode != "gate" && *mode != "run" && *mode != "fast" && *mode != "table" && *mode != "table-langs" && *mode != "plan-read" {
 		fail(errors.New("unknown mode"))
 	}
 	if *lane != "" && *mode != "table" {
@@ -1478,12 +1459,14 @@ func main() {
 			fail(errors.New("table mode discovers its languages from bench/tables; -langs does not apply"))
 		}
 	}
-	if *mode == "fast" || *mode == "table" {
+	if *mode == "fast" || *mode == "table" || *mode == "plan-read" {
 		if e := fast.validate(); e != nil {
 			fail(e)
 		}
 	}
-	if !*reuse && *mode != "fast" && *mode != "table" {
+	// PLAN-READ never builds, like fast and table: it measures the build the
+	// manifest names, and -rounds (1..7) is its round count (§2.1's seven).
+	if !*reuse && *mode != "fast" && *mode != "table" && *mode != "plan-read" {
 		if e := generateAndBuild(langs); e != nil {
 			fail(e)
 		}
@@ -1500,6 +1483,12 @@ func main() {
 	}
 	if *mode == "table" {
 		if e := tablePass(*out, info, fast, *lane); e != nil {
+			fail(e)
+		}
+		return
+	}
+	if *mode == "plan-read" {
+		if e := planReadPass(langs, *out, info, fast, *rounds); e != nil {
 			fail(e)
 		}
 		return

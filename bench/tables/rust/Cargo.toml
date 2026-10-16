@@ -18,3 +18,7 @@ path = "src/main.rs"
 
 [dependencies]
 benchpaired = { path = "../../../generated/bench/paired/rust" }
+# The plan-read arm (BENCH-STANDARD.md §1.10) times the unit's PACKET read too,
+# so it names the stream types of the runtime the unit already links — the same
+# build/ symlink generated/bench/paired/rust/Cargo.toml names, never a checkout.
+serialize = { package = "serialize-official", path = "../../../build/paired/serialize.rs" }
