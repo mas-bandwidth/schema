@@ -36,7 +36,7 @@ func (g *blockGen) emitBlockStorage(bl *ir.BlockLayout) {
 	for _, a := range bl.Arrays {
 		g.hf("    public int %s;\n", member(a.Field))
 	}
-	g.hf("}\n\npublic sealed class %sBlockStorage : TableBlockStorage\n{\n    public %sBlockStorage(TableBlockAllocator allocator = null) : base(%sBlock.BlockMaxBytes, allocator) {}\n}\n\n", n, n, n)
+	g.hf("}\n\npublic sealed class %sBlockStorage : TableBlockStorage\n{\n    public %sBlockStorage(TableBlockAllocator allocator = null) : base(%sBlock.BlockMaxBytes, allocator) { }\n}\n\n", n, n, n)
 }
 
 const tableBlockBuildRuntime = `

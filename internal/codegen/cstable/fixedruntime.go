@@ -237,526 +237,526 @@ public readonly struct TableFixedSlot<T>
 // tableFixedWireSource defines TableFixedWire inside Schema: layout parsing,
 // plan compilation, and the ONE execution loop.
 const tableFixedWireSource = `
-    public static class TableFixedWire
+public static class TableFixedWire
+{
+    public const byte Form = 3;
+    public const int HeaderBytes = 16;
+    public const int HashAt = 8;
+    public const uint NoGuard = 0xFFFFFFFFu;
+    public const int MaxDepth = 32;
+    public const uint RecordMaxBytes = 65536;
+
+    // The opcodes for plan entries
+    public const byte Copy = 0;    // move Size bytes
+    public const byte Count = 1;   // a count: clamp to reader's bound
+    public const byte Text = 2;    // a length, then units, then copy
+    public const byte Ordinal = 3; // a variant ordinal, remapped through plan table
+    public const byte Widen = 4;   // narrower source into wider destination
+    public const byte Const = 5;   // constant value: e.g. remapped union tag
+    public const byte WidenF = 6;  // float32 into float64
+    public const byte Flat = 7;    // folded flat array copy
+    // A FOLDED RUN WHOSE TWO IMAGES DIFFER IN WIDTH (§5.2 EMIT kind 14, and
+    // §6's flat-element fold). The fold's premise is that the element's
+    // STORAGE image IS its WIRE image, and a widening breaks that premise: the
+    // writer's run is narrower than the reader's storage, element for element.
+    // §5.2's EMIT has no fold at all — it emits the element min(their_n, my_n)
+    // times — and a FOLDED destination has no element-wise slot to aim those
+    // entries at, so the widening happens inside ONE entry here. Sign is 0 for
+    // a zero-extend, 1 for a sign-extend and 2 for f32 into f64; Meta is the
+    // WRITER's element width and DstSize the READER's.
+    public const byte FlatWiden = 8;
+
+    // Arg on a Text entry
+    public const byte TextUtf8 = 1;
+    public const byte TextWide = 2;
+    public const byte TextBytes = 3;
+
+    public const int EntryBytes = 17;
+
+    public static bool Widens(byte from, byte to)
     {
-        public const byte Form = 3;
-        public const int HeaderBytes = 16;
-        public const int HashAt = 8;
-        public const uint NoGuard = 0xFFFFFFFFu;
-        public const int MaxDepth = 32;
-        public const uint RecordMaxBytes = 65536;
+        if (from >= 6 && from <= 9 && to >= 6 && to <= 9) { return to > from; }
+        if (from >= 2 && from <= 5 && to >= 2 && to <= 5) { return to > from; }
+        // THE FIXED-POINT RUNGS, signed 20..24 and unsigned 25..29: a
+        // fixed(I,F) into a wider I at equal F is a LADDER widen and not a
+        // kind that moved (docs/FIXED-FORM-ALGORITHM.md §1, §5.1).
+        if (from >= 20 && from <= 24 && to >= 20 && to <= 24) { return to > from; }
+        if (from >= 25 && from <= 29 && to >= 25 && to <= 29) { return to > from; }
+        return from == 10 && to == 11;
+    }
 
-        // The opcodes for plan entries
-        public const byte Copy = 0;    // move Size bytes
-        public const byte Count = 1;   // a count: clamp to reader's bound
-        public const byte Text = 2;    // a length, then units, then copy
-        public const byte Ordinal = 3; // a variant ordinal, remapped through plan table
-        public const byte Widen = 4;   // narrower source into wider destination
-        public const byte Const = 5;   // constant value: e.g. remapped union tag
-        public const byte WidenF = 6;  // float32 into float64
-        public const byte Flat = 7;    // folded flat array copy
-        // A FOLDED RUN WHOSE TWO IMAGES DIFFER IN WIDTH (§5.2 EMIT kind 14, and
-        // §6's flat-element fold). The fold's premise is that the element's
-        // STORAGE image IS its WIRE image, and a widening breaks that premise: the
-        // writer's run is narrower than the reader's storage, element for element.
-        // §5.2's EMIT has no fold at all — it emits the element min(their_n, my_n)
-        // times — and a FOLDED destination has no element-wise slot to aim those
-        // entries at, so the widening happens inside ONE entry here. Sign is 0 for
-        // a zero-extend, 1 for a sign-extend and 2 for f32 into f64; Meta is the
-        // WRITER's element width and DstSize the READER's.
-        public const byte FlatWiden = 8;
+    // A WIDEN'S SIGN IS THE LADDER'S: the source sign-extends when the
+    // WRITER's kind is signed — i8..i64 and a SIGNED fixed(I,F), 20..24 —
+    // and zero-extends otherwise (§5.2). The SAME-KIND widen has no sign at
+    // all and the grown enum ordinal none either: taken as stated, not
+    // inferred from the kind's signedness.
+    public static bool SignedKind(byte kind)
+    {
+        return (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24);
+    }
 
-        // Arg on a Text entry
-        public const byte TextUtf8 = 1;
-        public const byte TextWide = 2;
-        public const byte TextBytes = 3;
-
-        public const int EntryBytes = 17;
-
-        public static bool Widens(byte from, byte to)
+    // THE FLOAT RUNG'S ONE WIDENING (ALG §4.2): the f32's bits as the f64's
+    // bits, exact by construction, NaN payloads included. The hardware's own
+    // conversion between the widths SETS THE QUIET BIT on a signalling NaN,
+    // so the all-ones-exponent pattern is spelled by the sign, exponent and
+    // payload shifts; only the finite case rides the conversion. EVERY call
+    // site — the scalar widenf and the folded flat-array widen alike — comes
+    // through here, as the C++ reference's one TableWidenF32 does.
+    public static double WidenF32(float f)
+    {
+        uint fbits = unchecked((uint)BitConverter.SingleToInt32Bits(f));
+        if ((fbits & 0x7F800000u) == 0x7F800000u)
         {
-            if (from >= 6 && from <= 9 && to >= 6 && to <= 9) { return to > from; }
-            if (from >= 2 && from <= 5 && to >= 2 && to <= 5) { return to > from; }
-            // THE FIXED-POINT RUNGS, signed 20..24 and unsigned 25..29: a
-            // fixed(I,F) into a wider I at equal F is a LADDER widen and not a
-            // kind that moved (docs/FIXED-FORM-ALGORITHM.md §1, §5.1).
-            if (from >= 20 && from <= 24 && to >= 20 && to <= 24) { return to > from; }
-            if (from >= 25 && from <= 29 && to >= 25 && to <= 29) { return to > from; }
-            return from == 10 && to == 11;
+            ulong w = ((ulong)(fbits & 0x80000000u) << 32)
+                | 0x7FF0000000000000UL
+                | ((ulong)(fbits & 0x7FFFFFu) << 29);
+            return BitConverter.Int64BitsToDouble(unchecked((long)w));
         }
+        return (double)f;
+    }
 
-        // A WIDEN'S SIGN IS THE LADDER'S: the source sign-extends when the
-        // WRITER's kind is signed — i8..i64 and a SIGNED fixed(I,F), 20..24 —
-        // and zero-extends otherwise (§5.2). The SAME-KIND widen has no sign at
-        // all and the grown enum ordinal none either: taken as stated, not
-        // inferred from the kind's signedness.
-        public static bool SignedKind(byte kind)
+    public static TableFixedLayoutEntry EntryAt(TableFixedLayoutView b, int i)
+    {
+        ReadOnlySpan<byte> e = b.Bytes.Slice(4 + i * EntryBytes, EntryBytes);
+        TableFixedLayoutEntry outEntry = default;
+        outEntry.Id = BinaryPrimitives.ReadUInt64LittleEndian(e);
+        outEntry.Kind = e[8];
+        outEntry.Size = BinaryPrimitives.ReadUInt32LittleEndian(e.Slice(9));
+        outEntry.Children = BinaryPrimitives.ReadUInt32LittleEndian(e.Slice(13));
+        return outEntry;
+    }
+
+    public static int Subtree(TableFixedLayoutView b, int i)
+    {
+        if (i < 0 || i >= b.Count) { return 1; }
+        TableFixedLayoutEntry e = EntryAt(b, i);
+        int n = 1;
+        int at = i + 1;
+        for (uint c = 0; c < e.Children; ++c)
         {
-            return (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24);
+            if (at >= b.Count) { break; }
+            int sub = Subtree(b, at);
+            at += sub;
+            n += sub;
         }
+        return n;
+    }
 
-        // THE FLOAT RUNG'S ONE WIDENING (ALG §4.2): the f32's bits as the f64's
-        // bits, exact by construction, NaN payloads included. The hardware's own
-        // conversion between the widths SETS THE QUIET BIT on a signalling NaN,
-        // so the all-ones-exponent pattern is spelled by the sign, exponent and
-        // payload shifts; only the finite case rides the conversion. EVERY call
-        // site — the scalar widenf and the folded flat-array widen alike — comes
-        // through here, as the C++ reference's one TableWidenF32 does.
-        public static double WidenF32(float f)
+    public static uint UnionArmBytes(TableFixedLayoutView b, int i)
+    {
+        TableFixedLayoutEntry e = EntryAt(b, i);
+        uint widest = 0;
+        int at = i + 1;
+        for (uint k = 0; k < e.Children; ++k)
         {
-            uint fbits = unchecked((uint)BitConverter.SingleToInt32Bits(f));
-            if ((fbits & 0x7F800000u) == 0x7F800000u)
+            TableFixedLayoutEntry a = EntryAt(b, at);
+            if (a.Size > widest) { widest = a.Size; }
+            at += Subtree(b, at);
+        }
+        return widest;
+    }
+
+    public static uint TagBytes(TableFixedLayoutView b, int i)
+    {
+        return EntryAt(b, i).Size - UnionArmBytes(b, i);
+    }
+
+    private static bool LeafSize(byte kind, uint size, out bool isLeaf)
+    {
+        isLeaf = true;
+        switch (kind)
+        {
+            case 1: return size == 1;                 // bool
+            case 2: return size == 1;                 // i8
+            case 3: return size == 2;                 // i16
+            case 4: return size == 4;                 // i32
+            case 5: return size == 8;                 // i64
+            case 6: return size == 1 || size == 4;    // u8, and bits(1..8)
+            case 7: return size == 2 || size == 4;    // u16, and bits(9..16)
+            case 8: return size == 4;                 // u32, and bits(17..32)
+            case 9: return size == 8;                 // u64, flags, and bits(33..64)
+            case 10: return size == 4;                 // f32
+            case 11: return size == 8;                 // f64
+            case 17: return size == 4;                 // pointer index
+            case 18: case 19: return size == 16;       // i128, u128
+            case 20: case 25: return size == 1;        // fixed8, ufixed8
+            case 21: case 26: return size == 2;
+            case 22: case 27: return size == 4;
+            case 23: case 28: return size == 8;
+            case 24: case 29: return size == 16;
+            case 32: return size == 0;                 // variant arm that holds nothing
+        }
+        isLeaf = false;
+        return true;
+    }
+
+    private static bool OrdinalWidth(uint n) => n == 1 || n == 2 || n == 4 || n == 8;
+
+    private static bool KnownKind(byte kind)
+    {
+        if (kind >= 1 && kind <= 30) return true;
+        return kind == 32 || kind == 33 || kind == 35;
+    }
+
+    private ref struct Checker
+    {
+        public TableFixedLayoutView Layout;
+        public string Why;
+        public bool Bad;
+
+        public void Fail(string why)
+        {
+            if (!Bad)
             {
-                ulong w = ((ulong)(fbits & 0x80000000u) << 32)
-                    | 0x7FF0000000000000UL
-                    | ((ulong)(fbits & 0x7FFFFFu) << 29);
-                return BitConverter.Int64BitsToDouble(unchecked((long)w));
-            }
-            return (double)f;
-        }
-
-        public static TableFixedLayoutEntry EntryAt(TableFixedLayoutView b, int i)
-        {
-            ReadOnlySpan<byte> e = b.Bytes.Slice(4 + i * EntryBytes, EntryBytes);
-            TableFixedLayoutEntry outEntry = default;
-            outEntry.Id = BinaryPrimitives.ReadUInt64LittleEndian(e);
-            outEntry.Kind = e[8];
-            outEntry.Size = BinaryPrimitives.ReadUInt32LittleEndian(e.Slice(9));
-            outEntry.Children = BinaryPrimitives.ReadUInt32LittleEndian(e.Slice(13));
-            return outEntry;
-        }
-
-        public static int Subtree(TableFixedLayoutView b, int i)
-        {
-            if (i < 0 || i >= b.Count) { return 1; }
-            TableFixedLayoutEntry e = EntryAt(b, i);
-            int n = 1;
-            int at = i + 1;
-            for (uint c = 0; c < e.Children; ++c)
-            {
-                if (at >= b.Count) { break; }
-                int sub = Subtree(b, at);
-                at += sub;
-                n += sub;
-            }
-            return n;
-        }
-
-        public static uint UnionArmBytes(TableFixedLayoutView b, int i)
-        {
-            TableFixedLayoutEntry e = EntryAt(b, i);
-            uint widest = 0;
-            int at = i + 1;
-            for (uint k = 0; k < e.Children; ++k)
-            {
-                TableFixedLayoutEntry a = EntryAt(b, at);
-                if (a.Size > widest) { widest = a.Size; }
-                at += Subtree(b, at);
-            }
-            return widest;
-        }
-
-        public static uint TagBytes(TableFixedLayoutView b, int i)
-        {
-            return EntryAt(b, i).Size - UnionArmBytes(b, i);
-        }
-
-        private static bool LeafSize(byte kind, uint size, out bool isLeaf)
-        {
-            isLeaf = true;
-            switch (kind)
-            {
-                case 1:  return size == 1;                 // bool
-                case 2:  return size == 1;                 // i8
-                case 3:  return size == 2;                 // i16
-                case 4:  return size == 4;                 // i32
-                case 5:  return size == 8;                 // i64
-                case 6:  return size == 1 || size == 4;    // u8, and bits(1..8)
-                case 7:  return size == 2 || size == 4;    // u16, and bits(9..16)
-                case 8:  return size == 4;                 // u32, and bits(17..32)
-                case 9:  return size == 8;                 // u64, flags, and bits(33..64)
-                case 10: return size == 4;                 // f32
-                case 11: return size == 8;                 // f64
-                case 17: return size == 4;                 // pointer index
-                case 18: case 19: return size == 16;       // i128, u128
-                case 20: case 25: return size == 1;        // fixed8, ufixed8
-                case 21: case 26: return size == 2;
-                case 22: case 27: return size == 4;
-                case 23: case 28: return size == 8;
-                case 24: case 29: return size == 16;
-                case 32: return size == 0;                 // variant arm that holds nothing
-            }
-            isLeaf = false;
-            return true;
-        }
-
-        private static bool OrdinalWidth(uint n) => n == 1 || n == 2 || n == 4 || n == 8;
-
-        private static bool KnownKind(byte kind)
-        {
-            if (kind >= 1 && kind <= 30) return true;
-            return kind == 32 || kind == 33 || kind == 35;
-        }
-
-        private ref struct Checker
-        {
-            public TableFixedLayoutView Layout;
-            public string Why;
-            public bool Bad;
-
-            public void Fail(string why)
-            {
-                if (!Bad)
-                {
-                    Bad = true;
-                    Why = why;
-                }
+                Bad = true;
+                Why = why;
             }
         }
+    }
 
-        private static int CheckEntry(ref Checker c, int i, int depth)
+    private static int CheckEntry(ref Checker c, int i, int depth)
+    {
+        if (c.Bad) return 0;
+        if (i < 0 || i >= c.Layout.Count) { c.Fail("layout_tree_unclosed"); return 0; }
+        if (depth > MaxDepth) { c.Fail("layout_too_deep"); return 0; }
+        TableFixedLayoutEntry e = EntryAt(c.Layout, i);
+        if (!KnownKind(e.Kind)) { c.Fail("layout_kind_unknown"); return 0; }
+        if (e.Size > RecordMaxBytes) { c.Fail("layout_record_too_large"); return 0; }
+
+        int at = i + 1;
+        ulong sum = 0;
+        uint widest = 0;
+        uint firstSize = 0, secondSize = 0;
+        byte firstKind = 0;
+        uint firstChildren = 0;
+        bool kidsAreVariants = true;
+        for (uint k = 0; k < e.Children; ++k)
         {
+            int child = at;
+            int used = CheckEntry(ref c, child, depth + 1);
             if (c.Bad) return 0;
-            if (i < 0 || i >= c.Layout.Count) { c.Fail("layout_tree_unclosed"); return 0; }
-            if (depth > MaxDepth) { c.Fail("layout_too_deep"); return 0; }
-            TableFixedLayoutEntry e = EntryAt(c.Layout, i);
-            if (!KnownKind(e.Kind)) { c.Fail("layout_kind_unknown"); return 0; }
-            if (e.Size > RecordMaxBytes) { c.Fail("layout_record_too_large"); return 0; }
+            TableFixedLayoutEntry ce = EntryAt(c.Layout, child);
+            if (k == 0) { firstSize = ce.Size; firstKind = ce.Kind; firstChildren = ce.Children; }
+            if (k == 1) { secondSize = ce.Size; }
+            if (ce.Kind != 32) { kidsAreVariants = false; }
+            sum += ce.Size;
+            if (ce.Size > widest) { widest = ce.Size; }
+            if (sum > RecordMaxBytes) { c.Fail("layout_record_too_large"); return 0; }
+            at += used;
+        }
 
-            int at = i + 1;
-            ulong sum = 0;
-            uint widest = 0;
-            uint firstSize = 0, secondSize = 0;
-            byte firstKind = 0;
-            uint firstChildren = 0;
-            bool kidsAreVariants = true;
-            for (uint k = 0; k < e.Children; ++k)
-            {
-                int child = at;
-                int used = CheckEntry(ref c, child, depth + 1);
-                if (c.Bad) return 0;
-                TableFixedLayoutEntry ce = EntryAt(c.Layout, child);
-                if (k == 0) { firstSize = ce.Size; firstKind = ce.Kind; firstChildren = ce.Children; }
-                if (k == 1) { secondSize = ce.Size; }
-                if (ce.Kind != 32) { kidsAreVariants = false; }
-                sum += ce.Size;
-                if (ce.Size > widest) { widest = ce.Size; }
-                if (sum > RecordMaxBytes) { c.Fail("layout_record_too_large"); return 0; }
-                at += used;
-            }
-
-            if (!LeafSize(e.Kind, e.Size, out bool isLeaf)) { c.Fail("layout_size_mismatch"); return 0; }
-            if (isLeaf)
-            {
-                if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
-                return at - i;
-            }
-            switch (e.Kind)
-            {
-                case 13: // table
-                    if ((ulong)e.Size != sum) { c.Fail("layout_size_mismatch"); return 0; }
-                    break;
-                case 35: // optional
-                    if (e.Children != 1) { c.Fail("layout_kind_invalid"); return 0; }
-                    if ((ulong)e.Size != sum + 1) { c.Fail("layout_size_mismatch"); return 0; }
-                    break;
-                case 14: // array
-                    if (e.Children != 1) { c.Fail("layout_kind_invalid"); return 0; }
-                    if (firstSize == 0) { c.Fail("layout_size_mismatch"); return 0; }
-                    bool bare = (e.Size % firstSize) == 0;
-                    bool counted = e.Size >= 4 && ((e.Size - 4) % firstSize) == 0;
-                    if (!bare && !counted) { c.Fail("layout_size_mismatch"); return 0; }
-                    break;
-                case 16: // enum-keyed array
-                    if (e.Children != 2) { c.Fail("layout_kind_invalid"); return 0; }
-                    if (firstKind != 30) { c.Fail("layout_kind_invalid"); return 0; }
-                    if (secondSize == 0 || (e.Size % secondSize) != 0) { c.Fail("layout_size_mismatch"); return 0; }
-                    if (e.Size / secondSize < firstChildren) { c.Fail("layout_size_mismatch"); return 0; }
-                    break;
-                case 15: // union
-                    if (e.Children == 0) { c.Fail("layout_kind_invalid"); return 0; }
-                    if (e.Size <= widest) { c.Fail("layout_size_mismatch"); return 0; }
-                    if (!OrdinalWidth(e.Size - widest)) { c.Fail("layout_size_mismatch"); return 0; }
-                    break;
-                case 30: // enum
-                    if (!OrdinalWidth(e.Size)) { c.Fail("layout_size_mismatch"); return 0; }
-                    if (e.Children != 0 && !kidsAreVariants) { c.Fail("layout_kind_invalid"); return 0; }
-                    break;
-                case 12: // string
-                    if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
-                    if (e.Size < 4) { c.Fail("layout_size_mismatch"); return 0; }
-                    break;
-                case 33: // wstring
-                    if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
-                    if (e.Size < 4 || ((e.Size - 4) % 2) != 0) { c.Fail("layout_size_mismatch"); return 0; }
-                    break;
-                default:
-                    c.Fail("layout_kind_unknown");
-                    return 0;
-            }
+        if (!LeafSize(e.Kind, e.Size, out bool isLeaf)) { c.Fail("layout_size_mismatch"); return 0; }
+        if (isLeaf)
+        {
+            if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
             return at - i;
         }
-
-        public static bool ParseLayout(ReadOnlySpan<byte> bytes, out TableFixedLayoutView view, out string why)
+        switch (e.Kind)
         {
+            case 13: // table
+                if ((ulong)e.Size != sum) { c.Fail("layout_size_mismatch"); return 0; }
+                break;
+            case 35: // optional
+                if (e.Children != 1) { c.Fail("layout_kind_invalid"); return 0; }
+                if ((ulong)e.Size != sum + 1) { c.Fail("layout_size_mismatch"); return 0; }
+                break;
+            case 14: // array
+                if (e.Children != 1) { c.Fail("layout_kind_invalid"); return 0; }
+                if (firstSize == 0) { c.Fail("layout_size_mismatch"); return 0; }
+                bool bare = (e.Size % firstSize) == 0;
+                bool counted = e.Size >= 4 && ((e.Size - 4) % firstSize) == 0;
+                if (!bare && !counted) { c.Fail("layout_size_mismatch"); return 0; }
+                break;
+            case 16: // enum-keyed array
+                if (e.Children != 2) { c.Fail("layout_kind_invalid"); return 0; }
+                if (firstKind != 30) { c.Fail("layout_kind_invalid"); return 0; }
+                if (secondSize == 0 || (e.Size % secondSize) != 0) { c.Fail("layout_size_mismatch"); return 0; }
+                if (e.Size / secondSize < firstChildren) { c.Fail("layout_size_mismatch"); return 0; }
+                break;
+            case 15: // union
+                if (e.Children == 0) { c.Fail("layout_kind_invalid"); return 0; }
+                if (e.Size <= widest) { c.Fail("layout_size_mismatch"); return 0; }
+                if (!OrdinalWidth(e.Size - widest)) { c.Fail("layout_size_mismatch"); return 0; }
+                break;
+            case 30: // enum
+                if (!OrdinalWidth(e.Size)) { c.Fail("layout_size_mismatch"); return 0; }
+                if (e.Children != 0 && !kidsAreVariants) { c.Fail("layout_kind_invalid"); return 0; }
+                break;
+            case 12: // string
+                if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
+                if (e.Size < 4) { c.Fail("layout_size_mismatch"); return 0; }
+                break;
+            case 33: // wstring
+                if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
+                if (e.Size < 4 || ((e.Size - 4) % 2) != 0) { c.Fail("layout_size_mismatch"); return 0; }
+                break;
+            default:
+                c.Fail("layout_kind_unknown");
+                return 0;
+        }
+        return at - i;
+    }
+
+    public static bool ParseLayout(ReadOnlySpan<byte> bytes, out TableFixedLayoutView view, out string why)
+    {
+        view = default;
+        why = null;
+        if (bytes.Length < 4) { why = "layout_malformed"; return false; }
+        uint count = BinaryPrimitives.ReadUInt32LittleEndian(bytes);
+        if (count == 0 || (long)count * EntryBytes + 4 != bytes.Length)
+        {
+            why = "layout_count_mismatch";
+            return false;
+        }
+        view.Bytes = bytes;
+        view.Count = (int)count;
+        TableFixedLayoutEntry root = EntryAt(view, 0);
+        if (root.Kind != 13)
+        {
+            why = "layout_kind_invalid";
             view = default;
-            why = null;
-            if (bytes.Length < 4) { why = "layout_malformed"; return false; }
-            uint count = BinaryPrimitives.ReadUInt32LittleEndian(bytes);
-            if (count == 0 || (long)count * EntryBytes + 4 != bytes.Length)
+            return false;
+        }
+        if (root.Size == 0 || root.Size > RecordMaxBytes)
+        {
+            why = "layout_record_too_large";
+            view = default;
+            return false;
+        }
+        Checker c = new Checker { Layout = view, Why = "layout_malformed", Bad = false };
+        int used = CheckEntry(ref c, 0, 0);
+        if (c.Bad)
+        {
+            why = c.Why;
+            view = default;
+            return false;
+        }
+        if (used != view.Count)
+        {
+            why = "layout_tree_unclosed";
+            view = default;
+            return false;
+        }
+        return true;
+    }
+
+    public static bool ParseLayout(ReadOnlySpan<byte> bytes, out TableFixedLayoutView view) => ParseLayout(bytes, out view, out _);
+
+    private ref struct Compiler
+    {
+        public Span<TableFixedEntry> Plan;
+        public int Capacity;
+        public int Count;
+        public int Pool;
+        public bool Overflow;
+        public TableReport Report;
+        public byte ArgW; // the CURRENT union's tag width, stamped onto every guarded push
+        public bool WantGuarded; // THE WALK RUNS TWICE, unguarded first (§5.9 #42)
+        public bool TooLarge; // ONE ENTRY PAST THE WRITER'S RECORD, which refuses the plan WHOLE (§5.2)
+        public uint Record;  // the WRITER's declared root size, the bound every entry's source extent is held to
+        // THE GUARD CHAIN of the arm being compiled, OUTERMOST FIRST
+        // (docs/FIXED-FORM-ALGORITHM.md §4.1): one link per enclosing union,
+        // pushed on the way into an arm and popped on the way out. A chain
+        // past the two lanes is laid into the pool once per arm, lazily.
+        public TableFixedGuardLink[] Chain;
+        public int ChainLen;
+        public uint ChainAt;
+        public bool ChainLaid;
+
+        public void Push(in TableFixedEntry e)
+        {
+            // THE WALK RUNS TWICE and each pass keeps its own half, which is
+            // how the plan comes out partitioned without a second array to
+            // partition it in (§5.9 #42).
+            if ((e.Guard != NoGuard) != WantGuarded) { return; }
+            TableFixedEntry stamped = e;
+            if (stamped.Guard != NoGuard)
             {
-                why = "layout_count_mismatch";
-                return false;
+                stamped.ArgW = ArgW == 0 ? (byte)1 : ArgW;
             }
-            view.Bytes = bytes;
-            view.Count = (int)count;
-            TableFixedLayoutEntry root = EntryAt(view, 0);
-            if (root.Kind != 13)
+            // ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE
+            // (docs/FIXED-FORM-ALGORITHM.md §5.2). The bound is the writer's
+            // declared root size and not this reader's: an entry that reached
+            // past it would read the NEXT record's bytes.
+            if (Record != 0 && SrcEnd(stamped) > Record) { TooLarge = true; return; }
+            // THE GUARD CHAIN (§4.1): an entry beneath a union answers to
+            // EVERY enclosing tag. Its two lanes are the chain's innermost
+            // two, and a chain past two rides the pool as offset+count.
+            if (stamped.Guard != NoGuard && ChainLen > 0)
             {
-                why = "layout_kind_invalid";
-                view = default;
-                return false;
+                TableFixedGuardLink inner = Chain[ChainLen - 1];
+                stamped.Guard = inner.Guard; stamped.Arg = inner.Arg; stamped.ArgW = inner.ArgW;
+                if (ChainLen >= 2)
+                {
+                    TableFixedGuardLink outer = Chain[ChainLen - 2];
+                    stamped.Guard2 = outer.Guard; stamped.Arg2 = outer.Arg; stamped.ArgW2 = outer.ArgW;
+                }
+                if (ChainLen > 2)
+                {
+                    if (!ChainLaid)
+                    {
+                        ChainAt = LayGuards();
+                        ChainLaid = true;
+                        if (Overflow) { return; }
+                    }
+                    stamped.GuardIndex = ChainAt;
+                    stamped.GuardCount = (uint)ChainLen;
+                }
             }
-            if (root.Size == 0 || root.Size > RecordMaxBytes)
-            {
-                why = "layout_record_too_large";
-                view = default;
-                return false;
-            }
-            Checker c = new Checker { Layout = view, Why = "layout_malformed", Bad = false };
-            int used = CheckEntry(ref c, 0, 0);
-            if (c.Bad)
-            {
-                why = c.Why;
-                view = default;
-                return false;
-            }
-            if (used != view.Count)
-            {
-                why = "layout_tree_unclosed";
-                view = default;
-                return false;
-            }
-            return true;
+            int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
+            int room = Capacity - (Pool + entrySize - 1) / entrySize;
+            if (Count >= room) { Overflow = true; return; }
+            Plan[Count++] = stamped;
         }
 
-        public static bool ParseLayout(ReadOnlySpan<byte> bytes, out TableFixedLayoutView view) => ParseLayout(bytes, out view, out _);
-
-        private ref struct Compiler
+        // LayGuards lays the current chain into the pool behind the entries,
+        // OUTERMOST FIRST, GuardLinkBytes a link, and answers its byte offset
+        // (§4.1). Pool storage that meets the entries is plan_too_large.
+        public uint LayGuards()
         {
-            public Span<TableFixedEntry> Plan;
-            public int Capacity;
-            public int Count;
-            public int Pool;
-            public bool Overflow;
-            public TableReport Report;
-            public byte ArgW; // the CURRENT union's tag width, stamped onto every guarded push
-            public bool WantGuarded; // THE WALK RUNS TWICE, unguarded first (§5.9 #42)
-            public bool TooLarge; // ONE ENTRY PAST THE WRITER'S RECORD, which refuses the plan WHOLE (§5.2)
-            public uint Record;  // the WRITER's declared root size, the bound every entry's source extent is held to
-            // THE GUARD CHAIN of the arm being compiled, OUTERMOST FIRST
-            // (docs/FIXED-FORM-ALGORITHM.md §4.1): one link per enclosing union,
-            // pushed on the way into an arm and popped on the way out. A chain
-            // past the two lanes is laid into the pool once per arm, lazily.
-            public TableFixedGuardLink[] Chain;
-            public int ChainLen;
-            public uint ChainAt;
-            public bool ChainLaid;
-
-            public void Push(in TableFixedEntry e)
+            int bytes = ChainLen * GuardLinkBytes;
+            int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
+            int total = entrySize * Capacity;
+            Pool += bytes;
+            if (total - Pool < Count * entrySize) { Overflow = true; return 0; }
+            uint at = (uint)(total - Pool);
+            Span<byte> planBytes = MemoryMarshal.AsBytes(Plan);
+            for (int j = 0; j < ChainLen; ++j)
             {
-                // THE WALK RUNS TWICE and each pass keeps its own half, which is
-                // how the plan comes out partitioned without a second array to
-                // partition it in (§5.9 #42).
-                if ((e.Guard != NoGuard) != WantGuarded) { return; }
-                TableFixedEntry stamped = e;
-                if (stamped.Guard != NoGuard)
-                {
-                    stamped.ArgW = ArgW == 0 ? (byte)1 : ArgW;
-                }
-                // ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE
-                // (docs/FIXED-FORM-ALGORITHM.md §5.2). The bound is the writer's
-                // declared root size and not this reader's: an entry that reached
-                // past it would read the NEXT record's bytes.
-                if (Record != 0 && SrcEnd(stamped) > Record) { TooLarge = true; return; }
-                // THE GUARD CHAIN (§4.1): an entry beneath a union answers to
-                // EVERY enclosing tag. Its two lanes are the chain's innermost
-                // two, and a chain past two rides the pool as offset+count.
-                if (stamped.Guard != NoGuard && ChainLen > 0)
-                {
-                    TableFixedGuardLink inner = Chain[ChainLen - 1];
-                    stamped.Guard = inner.Guard; stamped.Arg = inner.Arg; stamped.ArgW = inner.ArgW;
-                    if (ChainLen >= 2)
-                    {
-                        TableFixedGuardLink outer = Chain[ChainLen - 2];
-                        stamped.Guard2 = outer.Guard; stamped.Arg2 = outer.Arg; stamped.ArgW2 = outer.ArgW;
-                    }
-                    if (ChainLen > 2)
-                    {
-                        if (!ChainLaid)
-                        {
-                            ChainAt = LayGuards();
-                            ChainLaid = true;
-                            if (Overflow) { return; }
-                        }
-                        stamped.GuardIndex = ChainAt;
-                        stamped.GuardCount = (uint)ChainLen;
-                    }
-                }
-                int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
-                int room = Capacity - (Pool + entrySize - 1) / entrySize;
-                if (Count >= room) { Overflow = true; return; }
-                Plan[Count++] = stamped;
+                Span<byte> l = planBytes.Slice((int)at + j * GuardLinkBytes, GuardLinkBytes);
+                BinaryPrimitives.WriteUInt32LittleEndian(l, Chain[j].Guard);
+                BinaryPrimitives.WriteUInt64LittleEndian(l.Slice(4), Chain[j].Arg);
+                l[12] = Chain[j].ArgW;
             }
-
-            // LayGuards lays the current chain into the pool behind the entries,
-            // OUTERMOST FIRST, GuardLinkBytes a link, and answers its byte offset
-            // (§4.1). Pool storage that meets the entries is plan_too_large.
-            public uint LayGuards()
-            {
-                int bytes = ChainLen * GuardLinkBytes;
-                int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
-                int total = entrySize * Capacity;
-                Pool += bytes;
-                if (total - Pool < Count * entrySize) { Overflow = true; return 0; }
-                uint at = (uint)(total - Pool);
-                Span<byte> planBytes = MemoryMarshal.AsBytes(Plan);
-                for (int j = 0; j < ChainLen; ++j)
-                {
-                    Span<byte> l = planBytes.Slice((int)at + j * GuardLinkBytes, GuardLinkBytes);
-                    BinaryPrimitives.WriteUInt32LittleEndian(l, Chain[j].Guard);
-                    BinaryPrimitives.WriteUInt64LittleEndian(l.Slice(4), Chain[j].Arg);
-                    l[12] = Chain[j].ArgW;
-                }
-                return at;
-            }
-
-            public uint LayTable(ReadOnlySpan<ushort> values, int n)
-            {
-                // THE LENGTH WORD IS uint16, so a table that does not fit one
-                // refuses the plan BY NAME rather than truncating its own length
-                // (§5.8 row 14): the remap is one slot per writer variant, and a
-                // count past 65535 is a plan that does not fit.
-                if (n < 0 || n > 65535) { Overflow = true; return 0; }
-                int bytes = (n + 1) * 2;
-                int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
-                int total = entrySize * Capacity;
-                Pool += bytes;
-                if (total - Pool < Count * entrySize) { Overflow = true; return 0; }
-                uint at = (uint)(total - Pool);
-                Span<byte> planBytes = MemoryMarshal.AsBytes(Plan);
-                BinaryPrimitives.WriteUInt16LittleEndian(planBytes.Slice((int)at), (ushort)n);
-                for (int i = 0; i < n; ++i)
-                {
-                    BinaryPrimitives.WriteUInt16LittleEndian(planBytes.Slice((int)at + 2 + 2 * i), values[i]);
-                }
-                return at;
-            }
+            return at;
         }
 
-        // 'census' is whether THIS entry is the FIRST time the peer's field is
-        // seen. An array compiles its element ONCE PER SLOT, and the unknown count
-        // is ONCE PER FIELD PER PEER (ALG §5.4), so only element 0 censuses.
-        // Without it a peer field dropped from a [4]Item is counted FOUR times and
-        // the report says 4 where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md
-        // §5.8 row 11). rust #1162 and cpp #1163 carry the same flag for the same
-        // reason; this leg had no row 11 at all, so nothing here ever said so.
-        private static void MatchChildren(
-            ref Compiler c,
-            TableFixedLayoutView theirs, int ti, uint their_at,
-            TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
-            uint guard, ulong arg, bool census)
+        public uint LayTable(ReadOnlySpan<ushort> values, int n)
         {
-            TableFixedLayoutEntry te = EntryAt(theirs, ti);
-            TableFixedLayoutEntry me = EntryAt(mine, mi);
-            int my_child = mi + 1;
-            for (uint k = 0; k < me.Children; ++k)
+            // THE LENGTH WORD IS uint16, so a table that does not fit one
+            // refuses the plan BY NAME rather than truncating its own length
+            // (§5.8 row 14): the remap is one slot per writer variant, and a
+            // count past 65535 is a plan that does not fit.
+            if (n < 0 || n > 65535) { Overflow = true; return 0; }
+            int bytes = (n + 1) * 2;
+            int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
+            int total = entrySize * Capacity;
+            Pool += bytes;
+            if (total - Pool < Count * entrySize) { Overflow = true; return 0; }
+            uint at = (uint)(total - Pool);
+            Span<byte> planBytes = MemoryMarshal.AsBytes(Plan);
+            BinaryPrimitives.WriteUInt16LittleEndian(planBytes.Slice((int)at), (ushort)n);
+            for (int i = 0; i < n; ++i)
             {
-                TableFixedLayoutEntry mc = EntryAt(mine, my_child);
-                int their_child = ti + 1;
-                uint their_off = their_at;
-                for (uint j = 0; j < te.Children; ++j)
-                {
-                    TableFixedLayoutEntry tc = EntryAt(theirs, their_child);
-                    if (tc.Id == mc.Id)
-                    {
-                        CompileEntry(ref c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg, census);
-                        break;
-                    }
-                    their_off += tc.Size;
-                    their_child += Subtree(theirs, their_child);
-                }
-                my_child += Subtree(mine, my_child);
+                BinaryPrimitives.WriteUInt16LittleEndian(planBytes.Slice((int)at + 2 + 2 * i), values[i]);
             }
-            int tc_at = ti + 1;
+            return at;
+        }
+    }
+
+    // 'census' is whether THIS entry is the FIRST time the peer's field is
+    // seen. An array compiles its element ONCE PER SLOT, and the unknown count
+    // is ONCE PER FIELD PER PEER (ALG §5.4), so only element 0 censuses.
+    // Without it a peer field dropped from a [4]Item is counted FOUR times and
+    // the report says 4 where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md
+    // §5.8 row 11). rust #1162 and cpp #1163 carry the same flag for the same
+    // reason; this leg had no row 11 at all, so nothing here ever said so.
+    private static void MatchChildren(
+        ref Compiler c,
+        TableFixedLayoutView theirs, int ti, uint their_at,
+        TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
+        uint guard, ulong arg, bool census)
+    {
+        TableFixedLayoutEntry te = EntryAt(theirs, ti);
+        TableFixedLayoutEntry me = EntryAt(mine, mi);
+        int my_child = mi + 1;
+        for (uint k = 0; k < me.Children; ++k)
+        {
+            TableFixedLayoutEntry mc = EntryAt(mine, my_child);
+            int their_child = ti + 1;
+            uint their_off = their_at;
             for (uint j = 0; j < te.Children; ++j)
             {
-                TableFixedLayoutEntry tc = EntryAt(theirs, tc_at);
-                bool named = false;
-                int mc_at = mi + 1;
-                for (uint k = 0; k < me.Children; ++k)
+                TableFixedLayoutEntry tc = EntryAt(theirs, their_child);
+                if (tc.Id == mc.Id)
                 {
-                    if (EntryAt(mine, mc_at).Id == tc.Id) { named = true; break; }
-                    mc_at += Subtree(mine, mc_at);
+                    CompileEntry(ref c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg, census);
+                    break;
                 }
-                if (!named && census && c.Report != null) { c.Report.Unknown++; }
-                tc_at += Subtree(theirs, tc_at);
+                their_off += tc.Size;
+                their_child += Subtree(theirs, their_child);
             }
+            my_child += Subtree(mine, my_child);
         }
-
-        private static void CompileEntry(
-            ref Compiler c,
-            TableFixedLayoutView theirs, int ti, uint their_at,
-            TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
-            uint guard, ulong arg, bool census)
+        int tc_at = ti + 1;
+        for (uint j = 0; j < te.Children; ++j)
         {
-            TableFixedLayoutEntry te = EntryAt(theirs, ti);
-            TableFixedLayoutEntry me = EntryAt(mine, mi);
-            TableFixedDst d = dst[mi];
-            uint at = my_at + d.Dst;
-            uint aux_at = my_at + d.Aux;
-            if (te.Kind != me.Kind && me.Kind != 35)
+            TableFixedLayoutEntry tc = EntryAt(theirs, tc_at);
+            bool named = false;
+            int mc_at = mi + 1;
+            for (uint k = 0; k < me.Children; ++k)
             {
-                if (Widens(te.Kind, me.Kind))
-                {
-                    TableFixedEntry e = new TableFixedEntry(
-                        their_at, at, te.Size, 0, guard,
-                        (byte)(te.Kind == 10 ? WidenF : Widen),
-                        arg, (byte)me.Size, (byte)(SignedKind(te.Kind) ? 1 : 0));
-                    c.Push(e);
-                    return;
-                }
-                if (c.Report != null) { c.Report.KindMismatch++; }
+                if (EntryAt(mine, mc_at).Id == tc.Id) { named = true; break; }
+                mc_at += Subtree(mine, mc_at);
+            }
+            if (!named && census && c.Report != null) { c.Report.Unknown++; }
+            tc_at += Subtree(theirs, tc_at);
+        }
+    }
+
+    private static void CompileEntry(
+        ref Compiler c,
+        TableFixedLayoutView theirs, int ti, uint their_at,
+        TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
+        uint guard, ulong arg, bool census)
+    {
+        TableFixedLayoutEntry te = EntryAt(theirs, ti);
+        TableFixedLayoutEntry me = EntryAt(mine, mi);
+        TableFixedDst d = dst[mi];
+        uint at = my_at + d.Dst;
+        uint aux_at = my_at + d.Aux;
+        if (te.Kind != me.Kind && me.Kind != 35)
+        {
+            if (Widens(te.Kind, me.Kind))
+            {
+                TableFixedEntry e = new TableFixedEntry(
+                    their_at, at, te.Size, 0, guard,
+                    (byte)(te.Kind == 10 ? WidenF : Widen),
+                    arg, (byte)me.Size, (byte)(SignedKind(te.Kind) ? 1 : 0));
+                c.Push(e);
                 return;
             }
-            // T INTO ?T (§5.2 EMIT, bill §12.8): the reader wrapped a value the
-            // writer carried bare. The PRESENT byte is a CONSTANT 1 at the
-            // wrapper's AUX lane, constant in its VALUE and still carrying the
-            // row's own guard and ordinal (§5.9 #13) — guarded under a union
-            // arm, unguarded at top level, which is one rule and not two — and
-            // the payload is compiled against the writer's own entry under that
-            // same guard. It is not a kind that moved.
-            if (me.Kind == 35 && te.Kind != 35)
-            {
-                c.Push(new TableFixedEntry(0, aux_at, 1, 1, guard, Const, arg, 0));
-                CompileEntry(ref c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg, census);
-                return;
-            }
-            switch (me.Kind)
-            {
-                case 35: // Optional wrapper
+            if (c.Report != null) { c.Report.KindMismatch++; }
+            return;
+        }
+        // T INTO ?T (§5.2 EMIT, bill §12.8): the reader wrapped a value the
+        // writer carried bare. The PRESENT byte is a CONSTANT 1 at the
+        // wrapper's AUX lane, constant in its VALUE and still carrying the
+        // row's own guard and ordinal (§5.9 #13) — guarded under a union
+        // arm, unguarded at top level, which is one rule and not two — and
+        // the payload is compiled against the writer's own entry under that
+        // same guard. It is not a kind that moved.
+        if (me.Kind == 35 && te.Kind != 35)
+        {
+            c.Push(new TableFixedEntry(0, aux_at, 1, 1, guard, Const, arg, 0));
+            CompileEntry(ref c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg, census);
+            return;
+        }
+        switch (me.Kind)
+        {
+            case 35: // Optional wrapper
                 {
                     TableFixedEntry e = new TableFixedEntry(their_at, aux_at, 1, 0, guard, Copy, arg, 0);
                     c.Push(e);
                     CompileEntry(ref c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census);
                     break;
                 }
-                case 13: // Nested table
+            case 13: // Nested table
                 {
                     MatchChildren(ref c, theirs, ti, their_at, mine, mi, dst, at, guard, arg, census);
                     break;
                 }
-                case 14: // Array
+            case 14: // Array
                 {
                     if (d.Arg == TextBytes)
                     {
@@ -817,7 +817,7 @@ const tableFixedWireSource = `
                     }
                     break;
                 }
-                case 16: // Enum-keyed array
+            case 16: // Enum-keyed array
                 {
                     TableFixedLayoutEntry tkey = EntryAt(theirs, ti + 1);
                     TableFixedLayoutEntry mkey = EntryAt(mine, mi + 1);
@@ -837,7 +837,7 @@ const tableFixedWireSource = `
                     }
                     break;
                 }
-                case 15: // Union
+            case 15: // Union
                 {
                     uint their_tag = TagBytes(theirs, ti);
                     uint my_tag = TagBytes(mine, mi);
@@ -891,7 +891,7 @@ const tableFixedWireSource = `
                     c.ArgW = saved_argw;
                     break;
                 }
-                case 30: // Enum
+            case 30: // Enum
                 {
                     // THE HALF TEST PRECEDES THE ALLOCATION (docs/FIXED-FORM-ALGORITHM.md
                     // §5.9 #42): a kind that allocates before it pushes must
@@ -933,7 +933,8 @@ const tableFixedWireSource = `
                     c.Push(e);
                     break;
                 }
-                case 12: case 33: // Text / WString
+            case 12:
+            case 33: // Text / WString
                 {
                     uint units = Math.Min(me.Size - 4u, te.Size - 4u);
                     TableFixedEntry e = new TableFixedEntry(
@@ -941,7 +942,7 @@ const tableFixedWireSource = `
                     c.Push(e);
                     break;
                 }
-                default:
+            default:
                 {
                     if (te.Size == me.Size)
                     {
@@ -959,278 +960,278 @@ const tableFixedWireSource = `
                     }
                     break;
                 }
+        }
+    }
+
+    // The split is metadata beside the plan, never consulted by the run
+    // loop (FIXED-FORM-ALGORITHM §5.9 #42), so a caller that only runs the
+    // plan compiles without it.
+    public static int Compile(
+        TableFixedLayoutView theirs,
+        ReadOnlySpan<byte> my_layout,
+        ReadOnlySpan<TableFixedDst> dst,
+        Span<TableFixedEntry> plan,
+        TableReport report)
+    {
+        return Compile(theirs, my_layout, dst, plan, report, out _);
+    }
+
+    public static int Compile(
+        TableFixedLayoutView theirs,
+        ReadOnlySpan<byte> my_layout,
+        ReadOnlySpan<TableFixedDst> dst,
+        Span<TableFixedEntry> plan,
+        TableReport report,
+        out int split)
+    {
+        split = 0;
+        if (plan.IsEmpty) { return -1; }
+        if (!ParseLayout(my_layout, out TableFixedLayoutView mine)) { return -1; }
+        Compiler c = new Compiler
+        {
+            Plan = plan,
+            Capacity = plan.Length,
+            Report = report,
+            ArgW = 1,
+            WantGuarded = false,
+            // THE WRITER'S RECORD IS THE BOUND ON EVERY ENTRY (§5.2): the
+            // root's declared size, taken from the layout this plan is
+            // compiled against.
+            Record = EntryAt(theirs, 0).Size
+        };
+        // PASS 1: UNGUARDED entries only, counting the census. PASS 2:
+        // guarded entries only, COUNTING NOTHING (§5.9 #42) — the unknown
+        // census is the first pass's, and counting it twice would lie.
+        MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0, true);
+        int plain = c.Count;
+        c.WantGuarded = true;
+        c.Report = null;
+        MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0, true);
+        // ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE, by its
+        // own name: -3 is layout_record_too_large, -1 the plan storage.
+        if (c.TooLarge) { return -3; }
+        if (c.Overflow) { return -1; }
+        // COALESCE inside each half, never across the split (§5.9 #42). The
+        // destination is a slot index, so a merge demands the SAME slot and
+        // a contiguous source — the span-setter run that is already one
+        // Flat or Text entry — and adjacent scalar copies never merge.
+        int out_ = 0;
+        int splitOut = 0;
+        for (int i = 0; i < c.Count; ++i)
+        {
+            if (i == plain) { splitOut = out_; }
+            if (out_ > splitOut && c.Plan[out_ - 1].Op == c.Plan[i].Op &&
+                c.Plan[i].Op == Copy &&
+                c.Plan[out_ - 1].Guard == c.Plan[i].Guard && c.Plan[out_ - 1].Arg == c.Plan[i].Arg &&
+                c.Plan[out_ - 1].ArgW == c.Plan[i].ArgW && c.Plan[out_ - 1].Meta == c.Plan[i].Meta &&
+                c.Plan[out_ - 1].Guard2 == c.Plan[i].Guard2 && c.Plan[out_ - 1].Arg2 == c.Plan[i].Arg2 &&
+                c.Plan[out_ - 1].ArgW2 == c.Plan[i].ArgW2 &&
+                c.Plan[out_ - 1].GuardIndex == c.Plan[i].GuardIndex && c.Plan[out_ - 1].GuardCount == c.Plan[i].GuardCount &&
+                c.Plan[out_ - 1].Src + c.Plan[out_ - 1].Size == c.Plan[i].Src &&
+                c.Plan[out_ - 1].Dst == c.Plan[i].Dst)
+            {
+                c.Plan[out_ - 1].Size += c.Plan[i].Size;
+                continue;
             }
+            c.Plan[out_++] = c.Plan[i];
         }
+        if (plain == c.Count) { splitOut = out_; }
+        split = splitOut;
+        return out_;
+    }
 
-        // The split is metadata beside the plan, never consulted by the run
-        // loop (FIXED-FORM-ALGORITHM §5.9 #42), so a caller that only runs the
-        // plan compiles without it.
-        public static int Compile(
-            TableFixedLayoutView theirs,
-            ReadOnlySpan<byte> my_layout,
-            ReadOnlySpan<TableFixedDst> dst,
-            Span<TableFixedEntry> plan,
-            TableReport report)
+    // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND. Cover is the
+    // identity plan's destinations; Fills is that set minus everything
+    // this plan writes. A GUARDED ENTRY COUNTS AS LANDING: it is a union
+    // arm, and an arm's storage is the arm's. Identity's list is empty —
+    // its destinations ARE the cover — and that is the rule's limit case,
+    // not an exception: the record loop runs the list it was handed.
+    // THE HEADER'S HASH SELECTS A KNOWN LAYOUT, and nothing else does
+    // (§5.3 step 5). The FIRST index whose hash matches; -1 for a hash the
+    // lineage does not hold, which is layout_newer.
+    public static int Select(ReadOnlySpan<TableFixedKnownLayout> known, ulong hash)
+    {
+        for (int i = 0; i < known.Length; ++i)
         {
-            return Compile(theirs, my_layout, dst, plan, report, out _);
+            if (known[i].Hash == hash) { return i; }
         }
+        return -1;
+    }
 
-        public static int Compile(
-            TableFixedLayoutView theirs,
-            ReadOnlySpan<byte> my_layout,
-            ReadOnlySpan<TableFixedDst> dst,
-            Span<TableFixedEntry> plan,
-            TableReport report,
-            out int split)
+    // ONE PLAN PER LINEAGE ENTRY, compiled from THE LOCK'S layout bytes in
+    // the static initializer of the generated type — C#'s own build-time
+    // lane, and §5.9 #3's first conforming shape: the bytes came from the
+    // lock, the walk happens once per type load, OFF EVERY LOAD PATH, and a
+    // plan that will not build is recorded as a refusal NAME on that entry
+    // rather than discovered at the first file that needs it. Nothing on
+    // the load path compiles, nothing on the load path parses a layout, and
+    // the load path cannot fail for want of a plan.
+    //
+    // The pool grows by construction (§5.9 #4): the buffer is retried at
+    // four times the size until the plan fits or the declared cap is
+    // reached, and the entry that exceeds it carries plan_too_large BY NAME.
+    //
+    // AND THIS FUNCTION MUST NOT THROW, WHICH IS THE COST OF RUNNING IN A
+    // STATIC INITIALIZER AND IS PARTICULAR TO THIS LEG. A static readonly
+    // field initializer runs in the type's static constructor, and an
+    // exception out of a static constructor is not the caller's to catch: the
+    // CLR wraps it in a TypeInitializationException and POISONS THE TYPE —
+    // every later touch of ANY member of the generated table class rethrows
+    // the same wrapped exception for the life of the process, including the
+    // refusal paths, including Select, including a load of a file whose
+    // layout is the reader's own. One bad entry in a lock would take the
+    // whole table down, and it would take it down with a name no operator
+    // can act on.
+    //
+    // So EVERY ENTRY IS A LANE WITH ITS OWN REFUSAL and there is no throw on
+    // this walk to reach. A lane is constructed and stored BEFORE anything
+    // can fail on it; a layout that does not parse sets Why to
+    // layout_malformed and the loop continues; a plan that outgrows the cap
+    // sets plan_too_large and the loop continues; no array is indexed out of
+    // its own length and no input is trusted for a size. The refusal a bad
+    // entry earns is read at LOAD time, by the one peer that selects it
+    // (§5.9 #8) — which is also why a lock bug here costs exactly the
+    // version it broke rather than the type.
+    public static TableFixedLineagePlan[] LineagePlans(
+        TableFixedKnownLayout[] known,
+        byte[] my_layout,
+        TableFixedDst[] dst,
+        ulong own)
+    {
+        TableFixedLineagePlan[] out_ = new TableFixedLineagePlan[known.Length];
+        for (int i = 0; i < known.Length; ++i)
         {
-            split = 0;
-            if (plan.IsEmpty) { return -1; }
-            if (!ParseLayout(my_layout, out TableFixedLayoutView mine)) { return -1; }
-            Compiler c = new Compiler
+            TableFixedLineagePlan lane = new TableFixedLineagePlan();
+            out_[i] = lane;
+            if (known[i].Hash == own) { continue; }
+            if (!ParseLayout(known[i].Layout, out TableFixedLayoutView parsed, out string why))
             {
-                Plan = plan,
-                Capacity = plan.Length,
-                Report = report,
-                ArgW = 1,
-                WantGuarded = false,
-                // THE WRITER'S RECORD IS THE BOUND ON EVERY ENTRY (§5.2): the
-                // root's declared size, taken from the layout this plan is
-                // compiled against.
-                Record = EntryAt(theirs, 0).Size
-            };
-            // PASS 1: UNGUARDED entries only, counting the census. PASS 2:
-            // guarded entries only, COUNTING NOTHING (§5.9 #42) — the unknown
-            // census is the first pass's, and counting it twice would lie.
-            MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0, true);
-            int plain = c.Count;
-            c.WantGuarded = true;
-            c.Report = null;
-            MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0, true);
-            // ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE, by its
-            // own name: -3 is layout_record_too_large, -1 the plan storage.
-            if (c.TooLarge) { return -3; }
-            if (c.Overflow) { return -1; }
-            // COALESCE inside each half, never across the split (§5.9 #42). The
-            // destination is a slot index, so a merge demands the SAME slot and
-            // a contiguous source — the span-setter run that is already one
-            // Flat or Text entry — and adjacent scalar copies never merge.
-            int out_ = 0;
-            int splitOut = 0;
-            for (int i = 0; i < c.Count; ++i)
-            {
-                if (i == plain) { splitOut = out_; }
-                if (out_ > splitOut && c.Plan[out_ - 1].Op == c.Plan[i].Op &&
-                    c.Plan[i].Op == Copy &&
-                    c.Plan[out_ - 1].Guard == c.Plan[i].Guard && c.Plan[out_ - 1].Arg == c.Plan[i].Arg &&
-                    c.Plan[out_ - 1].ArgW == c.Plan[i].ArgW && c.Plan[out_ - 1].Meta == c.Plan[i].Meta &&
-                    c.Plan[out_ - 1].Guard2 == c.Plan[i].Guard2 && c.Plan[out_ - 1].Arg2 == c.Plan[i].Arg2 &&
-                    c.Plan[out_ - 1].ArgW2 == c.Plan[i].ArgW2 &&
-                    c.Plan[out_ - 1].GuardIndex == c.Plan[i].GuardIndex && c.Plan[out_ - 1].GuardCount == c.Plan[i].GuardCount &&
-                    c.Plan[out_ - 1].Src + c.Plan[out_ - 1].Size == c.Plan[i].Src &&
-                    c.Plan[out_ - 1].Dst == c.Plan[i].Dst)
-                {
-                    c.Plan[out_ - 1].Size += c.Plan[i].Size;
-                    continue;
-                }
-                c.Plan[out_++] = c.Plan[i];
+                // A LINEAGE ENTRY THAT IS NOT A LAYOUT is a bug in the lock
+                // and not a wire event (§5.9 #8): the reader still owes a
+                // name rather than a crash.
+                lane.Why = "layout_malformed";
+                continue;
             }
-            if (plain == c.Count) { splitOut = out_; }
-            split = splitOut;
-            return out_;
-        }
-
-        // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND. Cover is the
-        // identity plan's destinations; Fills is that set minus everything
-        // this plan writes. A GUARDED ENTRY COUNTS AS LANDING: it is a union
-        // arm, and an arm's storage is the arm's. Identity's list is empty —
-        // its destinations ARE the cover — and that is the rule's limit case,
-        // not an exception: the record loop runs the list it was handed.
-        // THE HEADER'S HASH SELECTS A KNOWN LAYOUT, and nothing else does
-        // (§5.3 step 5). The FIRST index whose hash matches; -1 for a hash the
-        // lineage does not hold, which is layout_newer.
-        public static int Select(ReadOnlySpan<TableFixedKnownLayout> known, ulong hash)
-        {
-            for (int i = 0; i < known.Length; ++i)
+            for (int room = 256; ; room *= 4)
             {
-                if (known[i].Hash == hash) { return i; }
-            }
-            return -1;
-        }
-
-        // ONE PLAN PER LINEAGE ENTRY, compiled from THE LOCK'S layout bytes in
-        // the static initializer of the generated type — C#'s own build-time
-        // lane, and §5.9 #3's first conforming shape: the bytes came from the
-        // lock, the walk happens once per type load, OFF EVERY LOAD PATH, and a
-        // plan that will not build is recorded as a refusal NAME on that entry
-        // rather than discovered at the first file that needs it. Nothing on
-        // the load path compiles, nothing on the load path parses a layout, and
-        // the load path cannot fail for want of a plan.
-        //
-        // The pool grows by construction (§5.9 #4): the buffer is retried at
-        // four times the size until the plan fits or the declared cap is
-        // reached, and the entry that exceeds it carries plan_too_large BY NAME.
-        //
-        // AND THIS FUNCTION MUST NOT THROW, WHICH IS THE COST OF RUNNING IN A
-        // STATIC INITIALIZER AND IS PARTICULAR TO THIS LEG. A static readonly
-        // field initializer runs in the type's static constructor, and an
-        // exception out of a static constructor is not the caller's to catch: the
-        // CLR wraps it in a TypeInitializationException and POISONS THE TYPE —
-        // every later touch of ANY member of the generated table class rethrows
-        // the same wrapped exception for the life of the process, including the
-        // refusal paths, including Select, including a load of a file whose
-        // layout is the reader's own. One bad entry in a lock would take the
-        // whole table down, and it would take it down with a name no operator
-        // can act on.
-        //
-        // So EVERY ENTRY IS A LANE WITH ITS OWN REFUSAL and there is no throw on
-        // this walk to reach. A lane is constructed and stored BEFORE anything
-        // can fail on it; a layout that does not parse sets Why to
-        // layout_malformed and the loop continues; a plan that outgrows the cap
-        // sets plan_too_large and the loop continues; no array is indexed out of
-        // its own length and no input is trusted for a size. The refusal a bad
-        // entry earns is read at LOAD time, by the one peer that selects it
-        // (§5.9 #8) — which is also why a lock bug here costs exactly the
-        // version it broke rather than the type.
-        public static TableFixedLineagePlan[] LineagePlans(
-            TableFixedKnownLayout[] known,
-            byte[] my_layout,
-            TableFixedDst[] dst,
-            ulong own)
-        {
-            TableFixedLineagePlan[] out_ = new TableFixedLineagePlan[known.Length];
-            for (int i = 0; i < known.Length; ++i)
-            {
-                TableFixedLineagePlan lane = new TableFixedLineagePlan();
-                out_[i] = lane;
-                if (known[i].Hash == own) { continue; }
-                if (!ParseLayout(known[i].Layout, out TableFixedLayoutView parsed, out string why))
+                TableFixedEntry[] buffer = new TableFixedEntry[room];
+                TableReport census = new TableReport();
+                int made = Compile(parsed, my_layout, dst, buffer, census, out int split);
+                if (made == -3)
                 {
-                    // A LINEAGE ENTRY THAT IS NOT A LAYOUT is a bug in the lock
-                    // and not a wire event (§5.9 #8): the reader still owes a
-                    // name rather than a crash.
-                    lane.Why = "layout_malformed";
-                    continue;
-                }
-                for (int room = 256; ; room *= 4)
-                {
-                    TableFixedEntry[] buffer = new TableFixedEntry[room];
-                    TableReport census = new TableReport();
-                    int made = Compile(parsed, my_layout, dst, buffer, census, out int split);
-                    if (made == -3)
-                    {
-                        // AN ENTRY PAST THE WRITER'S DECLARED RECORD is a bug in
-                        // the lock and not a wire event (§5.8 row 6): the reader
-                        // owes the name and not a crash.
-                        lane.Why = "layout_record_too_large";
-                        break;
-                    }
-                    if (made < 0)
-                    {
-                        if (room >= (1 << 18)) { lane.Why = "plan_too_large"; break; }
-                        continue;
-                    }
-                    lane.Entries = buffer;
-                    lane.Count = made;
-                    lane.Split = split;
-                    lane.Unknown = census.Unknown;
-                    lane.KindMismatch = census.KindMismatch;
+                    // AN ENTRY PAST THE WRITER'S DECLARED RECORD is a bug in
+                    // the lock and not a wire event (§5.8 row 6): the reader
+                    // owes the name and not a crash.
+                    lane.Why = "layout_record_too_large";
                     break;
                 }
-            }
-            return out_;
-        }
-
-        public static int Fills(
-            ReadOnlySpan<TableFixedEntry> plan,
-            ReadOnlySpan<TableFixedFill> cover,
-            Span<byte> landed,
-            Span<TableFixedFill> dest)
-        {
-            landed.Clear();
-            for (int i = 0; i < plan.Length; ++i)
-            {
-                ref readonly TableFixedEntry p = ref plan[i];
-                if ((uint)p.Dst < (uint)landed.Length) { landed[(int)p.Dst] = 1; }
-                if (p.Op == Text && (uint)p.Aux < (uint)landed.Length) { landed[(int)p.Aux] = 1; }
-            }
-            int n = 0;
-            for (int r = 0; r < cover.Length; ++r)
-            {
-                uint pos = cover[r].Dst;
-                uint hi = pos + cover[r].Size;
-                while (pos < hi)
+                if (made < 0)
                 {
-                    while (pos < hi && (uint)pos < (uint)landed.Length && landed[(int)pos] != 0) { pos++; }
-                    if (pos >= hi) { break; }
-                    uint start = pos;
-                    while (pos < hi && ((uint)pos >= (uint)landed.Length || landed[(int)pos] == 0)) { pos++; }
-                    if (n < dest.Length)
-                    {
-                        dest[n] = new TableFixedFill(start, pos - start);
-                    }
-                    n++;
+                    if (room >= (1 << 18)) { lane.Why = "plan_too_large"; break; }
+                    continue;
+                }
+                lane.Entries = buffer;
+                lane.Count = made;
+                lane.Split = split;
+                lane.Unknown = census.Unknown;
+                lane.KindMismatch = census.KindMismatch;
+                break;
+            }
+        }
+        return out_;
+    }
+
+    public static int Fills(
+        ReadOnlySpan<TableFixedEntry> plan,
+        ReadOnlySpan<TableFixedFill> cover,
+        Span<byte> landed,
+        Span<TableFixedFill> dest)
+    {
+        landed.Clear();
+        for (int i = 0; i < plan.Length; ++i)
+        {
+            ref readonly TableFixedEntry p = ref plan[i];
+            if ((uint)p.Dst < (uint)landed.Length) { landed[(int)p.Dst] = 1; }
+            if (p.Op == Text && (uint)p.Aux < (uint)landed.Length) { landed[(int)p.Aux] = 1; }
+        }
+        int n = 0;
+        for (int r = 0; r < cover.Length; ++r)
+        {
+            uint pos = cover[r].Dst;
+            uint hi = pos + cover[r].Size;
+            while (pos < hi)
+            {
+                while (pos < hi && (uint)pos < (uint)landed.Length && landed[(int)pos] != 0) { pos++; }
+                if (pos >= hi) { break; }
+                uint start = pos;
+                while (pos < hi && ((uint)pos >= (uint)landed.Length || landed[(int)pos] == 0)) { pos++; }
+                if (n < dest.Length)
+                {
+                    dest[n] = new TableFixedFill(start, pos - start);
+                }
+                n++;
+            }
+        }
+        return n;
+    }
+
+    public static void FillRun<T>(
+        ReadOnlySpan<TableFixedFill> fill,
+        ReadOnlySpan<TableFixedSlot<T>> slots,
+        T dst)
+    {
+        for (int i = 0; i < fill.Length; ++i)
+        {
+            uint off = fill[i].Dst;
+            uint n = fill[i].Size;
+            for (uint s = 0; s < n; ++s)
+            {
+                uint idx = off + s;
+                if (idx < (uint)slots.Length)
+                {
+                    slots[(int)idx].Reset?.Invoke(dst);
                 }
             }
-            return n;
         }
+    }
 
-        public static void FillRun<T>(
-            ReadOnlySpan<TableFixedFill> fill,
-            ReadOnlySpan<TableFixedSlot<T>> slots,
-            T dst)
+    // THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose
+    // low byte happens to be 1 is not arm 1: it is an ordinal this build
+    // has no arm for, and reading only the first byte let 0x0101 run arm
+    // 1's entries over a stranger's record. ArgW 0 means 1, >8 clamps to
+    // 8. Little-endian, the same widths C#'s packet codec reads a tag at.
+    // ONE LINK OF A GUARD CHAIN as a pool lays it (docs/FIXED-FORM-ALGORITHM.md
+    // §4.1): guard u32, arg u64, argw u8, little-endian.
+    public const int GuardLinkBytes = 13;
+
+    // ChainHolds is whether EVERY link of an entry's guard chain holds: an arm
+    // inside an arm inside an arm answers to every enclosing tag, outermost
+    // first (§4.1). A chain the plan's bytes do not hold whole does not run.
+    public static bool ChainHolds(ReadOnlySpan<byte> src, in TableFixedEntry p, ReadOnlySpan<byte> planBytes)
+    {
+        long end = (long)p.GuardIndex + (long)p.GuardCount * GuardLinkBytes;
+        if (end > planBytes.Length) { return false; }
+        for (int j = 0; j < (int)p.GuardCount; ++j)
         {
-            for (int i = 0; i < fill.Length; ++i)
-            {
-                uint off = fill[i].Dst;
-                uint n = fill[i].Size;
-                for (uint s = 0; s < n; ++s)
-                {
-                    uint idx = off + s;
-                    if (idx < (uint)slots.Length)
-                    {
-                        slots[(int)idx].Reset?.Invoke(dst);
-                    }
-                }
-            }
+            ReadOnlySpan<byte> l = planBytes.Slice((int)p.GuardIndex + j * GuardLinkBytes, GuardLinkBytes);
+            uint guard = BinaryPrimitives.ReadUInt32LittleEndian(l);
+            ulong arg = BinaryPrimitives.ReadUInt64LittleEndian(l.Slice(4));
+            if (TagAt(src, guard, l[12]) != arg) { return false; }
         }
+        return true;
+    }
 
-        // THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose
-        // low byte happens to be 1 is not arm 1: it is an ordinal this build
-        // has no arm for, and reading only the first byte let 0x0101 run arm
-        // 1's entries over a stranger's record. ArgW 0 means 1, >8 clamps to
-        // 8. Little-endian, the same widths C#'s packet codec reads a tag at.
-        // ONE LINK OF A GUARD CHAIN as a pool lays it (docs/FIXED-FORM-ALGORITHM.md
-        // §4.1): guard u32, arg u64, argw u8, little-endian.
-        public const int GuardLinkBytes = 13;
-
-        // ChainHolds is whether EVERY link of an entry's guard chain holds: an arm
-        // inside an arm inside an arm answers to every enclosing tag, outermost
-        // first (§4.1). A chain the plan's bytes do not hold whole does not run.
-        public static bool ChainHolds(ReadOnlySpan<byte> src, in TableFixedEntry p, ReadOnlySpan<byte> planBytes)
+    public static ulong TagAt(ReadOnlySpan<byte> src, uint guard, byte argw)
+    {
+        int w = argw == 0 ? 1 : (argw > 8 ? 8 : argw);
+        int at = (int)guard;
+        switch (w)
         {
-            long end = (long)p.GuardIndex + (long)p.GuardCount * GuardLinkBytes;
-            if (end > planBytes.Length) { return false; }
-            for (int j = 0; j < (int)p.GuardCount; ++j)
-            {
-                ReadOnlySpan<byte> l = planBytes.Slice((int)p.GuardIndex + j * GuardLinkBytes, GuardLinkBytes);
-                uint guard = BinaryPrimitives.ReadUInt32LittleEndian(l);
-                ulong arg = BinaryPrimitives.ReadUInt64LittleEndian(l.Slice(4));
-                if (TagAt(src, guard, l[12]) != arg) { return false; }
-            }
-            return true;
-        }
-
-        public static ulong TagAt(ReadOnlySpan<byte> src, uint guard, byte argw)
-        {
-            int w = argw == 0 ? 1 : (argw > 8 ? 8 : argw);
-            int at = (int)guard;
-            switch (w)
-            {
-                case 1: return src[at];
-                case 2: return BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
-                case 4: return BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
-                case 8: return BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
-                default:
+            case 1: return src[at];
+            case 2: return BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+            case 4: return BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+            case 8: return BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+            default:
                 {
                     ulong v = 0;
                     for (int i = 0; i < w; ++i)
@@ -1239,91 +1240,91 @@ const tableFixedWireSource = `
                     }
                     return v;
                 }
-            }
         }
+    }
 
-        // THE GUARD'S WIDTH, clamped (§5.2): 0 reads as 1, and nothing above 8
-        // is a width an ordinal is stored at.
-        private static uint ArgWidth(byte w)
+    // THE GUARD'S WIDTH, clamped (§5.2): 0 reads as 1, and nothing above 8
+    // is a width an ordinal is stored at.
+    private static uint ArgWidth(byte w)
+    {
+        return w == 0 ? 1u : (w > 8 ? 8u : (uint)w);
+    }
+
+    // SrcEnd is the last source byte, EXCLUSIVE, an entry reads — the guard
+    // included, because a guarded entry loads the tag before anything else.
+    // It is the bound the plan is held to against the writer's declared
+    // record size (docs/FIXED-FORM-ALGORITHM.md §5.2, the reference's
+    // TableFixedSrcEnd).
+    public static uint SrcEnd(in TableFixedEntry e)
+    {
+        uint end;
+        if (e.Op == Const)
         {
-            return w == 0 ? 1u : (w > 8 ? 8u : (uint)w);
+            // a constant reads no source at all, EXCEPT the union's None
+            // const, which reads the writer's raw tag to count a clamp
+            // past DstSize arms — it has a source reach.
+            end = (e.Aux == 0 && e.DstSize != 0) ? e.Src + e.Size : 0u;
         }
-
-        // SrcEnd is the last source byte, EXCLUSIVE, an entry reads — the guard
-        // included, because a guarded entry loads the tag before anything else.
-        // It is the bound the plan is held to against the writer's declared
-        // record size (docs/FIXED-FORM-ALGORITHM.md §5.2, the reference's
-        // TableFixedSrcEnd).
-        public static uint SrcEnd(in TableFixedEntry e)
+        else if (e.Op == Count)
         {
-            uint end;
-            if (e.Op == Const)
-            {
-                // a constant reads no source at all, EXCEPT the union's None
-                // const, which reads the writer's raw tag to count a clamp
-                // past DstSize arms — it has a source reach.
-                end = (e.Aux == 0 && e.DstSize != 0) ? e.Src + e.Size : 0u;
-            }
-            else if (e.Op == Count)
-            {
-                end = e.Src + 4; // Size is the BOUND, not a byte count
-            }
-            else if (e.Op == Text)
-            {
-                end = e.Src + 4 + e.Size;
-            }
-            else
-            {
-                end = e.Src + e.Size;
-            }
-            if (e.Guard != NoGuard)
-            {
-                uint g = e.Guard + ArgWidth(e.ArgW);
-                if (g > end) { end = g; }
-            }
-            // THE OUTER TAG IS READ BEFORE THE ENTRY TOO (§4.1), so its bytes are
-            // part of the entry's source reach.
-            if (e.ArgW2 != 0)
-            {
-                uint g = e.Guard2 + ArgWidth(e.ArgW2);
-                if (g > end) { end = g; }
-            }
-            return end;
+            end = e.Src + 4; // Size is the BOUND, not a byte count
         }
-
-        // THE WIDEN SCRATCH IS THE CALLER'S, AND IT IS HOISTED OUT OF THE RECORD
-        // LOOP. Run is called ONCE PER RECORD, so a new byte[runs * dw] taken
-        // inside the FlatWiden case allocated once per widened run per record —
-        // a batch of ten thousand records paid ten thousand arrays for the same
-        // run. The buffer is handed in ref and grown only when a run needs
-        // more than it holds, so a whole batch pays one allocation per run
-        // width. It is written in full before it is read: every byte of
-        // runs * dw is stored by this case, so nothing from the previous
-        // record survives into this one.
-        public static string Run<T>(
-            ReadOnlySpan<TableFixedEntry> plan,
-            ReadOnlySpan<TableFixedSlot<T>> slots,
-            ReadOnlySpan<byte> src,
-            T dst,
-            TableReport report,
-            ReadOnlySpan<byte> planBytes,
-            ref byte[] widenScratch,
-            ref int forgedOrdinal)
+        else if (e.Op == Text)
         {
-            for (int i = 0; i < plan.Length; ++i)
+            end = e.Src + 4 + e.Size;
+        }
+        else
+        {
+            end = e.Src + e.Size;
+        }
+        if (e.Guard != NoGuard)
+        {
+            uint g = e.Guard + ArgWidth(e.ArgW);
+            if (g > end) { end = g; }
+        }
+        // THE OUTER TAG IS READ BEFORE THE ENTRY TOO (§4.1), so its bytes are
+        // part of the entry's source reach.
+        if (e.ArgW2 != 0)
+        {
+            uint g = e.Guard2 + ArgWidth(e.ArgW2);
+            if (g > end) { end = g; }
+        }
+        return end;
+    }
+
+    // THE WIDEN SCRATCH IS THE CALLER'S, AND IT IS HOISTED OUT OF THE RECORD
+    // LOOP. Run is called ONCE PER RECORD, so a new byte[runs * dw] taken
+    // inside the FlatWiden case allocated once per widened run per record —
+    // a batch of ten thousand records paid ten thousand arrays for the same
+    // run. The buffer is handed in ref and grown only when a run needs
+    // more than it holds, so a whole batch pays one allocation per run
+    // width. It is written in full before it is read: every byte of
+    // runs * dw is stored by this case, so nothing from the previous
+    // record survives into this one.
+    public static string Run<T>(
+        ReadOnlySpan<TableFixedEntry> plan,
+        ReadOnlySpan<TableFixedSlot<T>> slots,
+        ReadOnlySpan<byte> src,
+        T dst,
+        TableReport report,
+        ReadOnlySpan<byte> planBytes,
+        ref byte[] widenScratch,
+        ref int forgedOrdinal)
+    {
+        for (int i = 0; i < plan.Length; ++i)
+        {
+            ref readonly TableFixedEntry p = ref plan[i];
+            // an entry belonging to an ARM runs only under its own tag,
+            // compared at ArgW bytes, never as a prefix
+            if (p.Guard != NoGuard && TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+            // AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): the
+            // entry runs only when the second lane's tag holds its ordinal.
+            if (p.Guard2 != NoGuard && TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+            // AND EVERY TAG FURTHER OUT: the guard chain past the two lanes (§4.1).
+            if (p.GuardCount > 2 && !ChainHolds(src, p, planBytes)) { continue; }
+            switch (p.Op)
             {
-                ref readonly TableFixedEntry p = ref plan[i];
-                // an entry belonging to an ARM runs only under its own tag,
-                // compared at ArgW bytes, never as a prefix
-                if (p.Guard != NoGuard && TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
-                // AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): the
-                // entry runs only when the second lane's tag holds its ordinal.
-                if (p.Guard2 != NoGuard && TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
-                // AND EVERY TAG FURTHER OUT: the guard chain past the two lanes (§4.1).
-                if (p.GuardCount > 2 && !ChainHolds(src, p, planBytes)) { continue; }
-                switch (p.Op)
-                {
-                    case Copy:
+                case Copy:
                     {
                         if (slots[(int)p.Dst].SetBytes != null)
                         {
@@ -1369,12 +1370,12 @@ const tableFixedWireSource = `
                         }
                         break;
                     }
-                    case Flat:
+                case Flat:
                     {
                         slots[(int)p.Dst].SetBytes?.Invoke(dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
                         break;
                     }
-                    case FlatWiden:
+                case FlatWiden:
                     {
                         int sw = p.Meta == 0 ? 1 : p.Meta;
                         int dw = p.DstSize == 0 ? 1 : p.DstSize;
@@ -1425,7 +1426,7 @@ const tableFixedWireSource = `
                         if (report != null) { report.Widened += runs; }
                         break;
                     }
-                    case Count:
+                case Count:
                     {
                         int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                         if (v < 0) { v = 0; if (report != null) report.Clamped++; }
@@ -1433,7 +1434,7 @@ const tableFixedWireSource = `
                         slots[(int)p.Dst].SetRaw?.Invoke(dst, (ulong)(uint)v);
                         break;
                     }
-                    case Text:
+                case Text:
                     {
                         uint unit = (p.Meta == TextWide) ? 2u : 1u;
                         uint cap = p.Size / unit;
@@ -1462,7 +1463,7 @@ const tableFixedWireSource = `
                         }
                         break;
                     }
-                    case Ordinal:
+                case Ordinal:
                     {
                         // A 64-BIT TEMPORARY AND AN EIGHT-BYTE CASE (§5.8 row 7,
                         // §4.5): an ordinal width of 8 is admissible, and read
@@ -1502,7 +1503,7 @@ const tableFixedWireSource = `
                         }
                         break;
                     }
-                    case Widen:
+                case Widen:
                     {
                         ulong raw = 0;
                         if (p.Size == 1) raw = src[(int)p.Src];
@@ -1530,7 +1531,7 @@ const tableFixedWireSource = `
                         if (report != null) { report.Widened++; }
                         break;
                     }
-                    case WidenF:
+                case WidenF:
                     {
                         // A FLOAT RIDES AS ITS BITS (SPEC-TABLES §3, the FU ruling),
                         // so the widening is BY THE PATTERN and never through the
@@ -1546,7 +1547,7 @@ const tableFixedWireSource = `
                         if (report != null) { report.Widened++; }
                         break;
                     }
-                    case Const:
+                case Const:
                     {
                         if (slots[(int)p.Dst].SetRaw != null)
                         {
@@ -1558,23 +1559,23 @@ const tableFixedWireSource = `
                         }
                         break;
                     }
-                    default: break;
-                }
+                default: break;
             }
-            return null;
         }
+        return null;
+    }
 
-        // TextIllFormed reports whether a text payload's USED units are the text
-        // its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
-        // with no zero byte for string, paired non-zero UTF-16 code units for
-        // wstring. bytes(N) carries no text rule at all, and slack past the used
-        // units is unspecified and never a refusal (docs/SPEC-TABLES.md §3.4).
-        // The used argument is the clamped length in the flavour's own units.
-        public static bool TextIllFormed(byte meta, uint used, ReadOnlySpan<byte> p)
+    // TextIllFormed reports whether a text payload's USED units are the text
+    // its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
+    // with no zero byte for string, paired non-zero UTF-16 code units for
+    // wstring. bytes(N) carries no text rule at all, and slack past the used
+    // units is unspecified and never a refusal (docs/SPEC-TABLES.md §3.4).
+    // The used argument is the clamped length in the flavour's own units.
+    public static bool TextIllFormed(byte meta, uint used, ReadOnlySpan<byte> p)
+    {
+        switch (meta)
         {
-            switch (meta)
-            {
-                case TextUtf8:
+            case TextUtf8:
                 {
                     uint i = 0;
                     while (i < used)
@@ -1601,7 +1602,7 @@ const tableFixedWireSource = `
                     }
                     break;
                 }
-                case TextWide:
+            case TextWide:
                 {
                     for (uint i = 0; i < used; i++)
                     {
@@ -1618,8 +1619,8 @@ const tableFixedWireSource = `
                     }
                     break;
                 }
-            }
-            return false;
         }
+        return false;
     }
+}
 `

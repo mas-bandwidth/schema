@@ -866,7 +866,7 @@ public sealed class TableTypeInfo
     public bool Variable;
     internal int RootElemSlots;
     public Func<TableTypeInfo[]> PointerTypes;
-    public Func<ulong,TableTypeInfo> PointerType;
+    public Func<ulong, TableTypeInfo> PointerType;
     public bool BytesEdge, StringEdge;
     public string Name;         // schema type name
     public ulong Id;            // full wire identity of the table name

@@ -86,12 +86,13 @@ public static class TableJson
     const string Base64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
     // Indexed by the input byte; -1 preserves invalid-character handling.
-    static readonly sbyte[] Base64Decode = {
+    static readonly sbyte[] Base64Decode =
+    {
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, -1, 63,
         52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, -1,
-        -1,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14,
+        -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
         15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, -1, -1, -1, -1,
         -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
         41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1,
@@ -232,7 +233,7 @@ public static class TableJson
     static bool GuardHolds(object value, TableTypeInfo info, string guard)
     {
         int p = 0;
-        for (;;)
+        for (; ; )
         {
             while (p < guard.Length && (guard[p] == ' ' || guard[p] == '&')) { p++; }
             if (p >= guard.Length) { return true; }
@@ -705,7 +706,10 @@ public static class TableJson
                 return WriteFloat(ref o, TableBitsToFloat(unchecked((uint)f.GetRaw(owner, index))), true);
             case 11:
                 return WriteFloat(ref o, TableBitsToDouble(f.GetRaw(owner, index)), false);
-            case 2: case 3: case 4: case 5:
+            case 2:
+            case 3:
+            case 4:
+            case 5:
                 WriteSigned(ref o, (long)f.GetRaw(owner, index));
                 return true;
             default:
@@ -958,7 +962,7 @@ public static class TableJson
         int placed = 0;
         bool clamped = false;
         Span<byte> unit = stackalloc byte[4];
-        for (;;)
+        for (; ; )
         {
             if (input.Pos >= text.Length) { input.Bad = true; return false; }
             byte c = text[input.Pos];
@@ -980,33 +984,33 @@ public static class TableJson
                     case (byte)'r': unit[0] = (byte)'\r'; unitLength = 1; break;
                     case (byte)'t': unit[0] = (byte)'\t'; unitLength = 1; break;
                     case (byte)'u':
-                    {
-                        int high = Hex4(text, ref input);
-                        if (high < 0) { input.Bad = true; return false; }
-                        uint code = (uint)high;
-                        if (high >= 0xd800 && high <= 0xdbff && input.Pos + 2 <= text.Length &&
-                            text[input.Pos] == '\\' && text[input.Pos + 1] == 'u')
                         {
-                            int mark = input.Pos;
-                            input.Pos += 2;
-                            int low = Hex4(text, ref input);
-                            if (low >= 0xdc00 && low <= 0xdfff)
+                            int high = Hex4(text, ref input);
+                            if (high < 0) { input.Bad = true; return false; }
+                            uint code = (uint)high;
+                            if (high >= 0xd800 && high <= 0xdbff && input.Pos + 2 <= text.Length &&
+                                text[input.Pos] == '\\' && text[input.Pos + 1] == 'u')
                             {
-                                code = (uint)(0x10000 + (((uint)high - 0xd800) << 10) + ((uint)low - 0xdc00));
+                                int mark = input.Pos;
+                                input.Pos += 2;
+                                int low = Hex4(text, ref input);
+                                if (low >= 0xdc00 && low <= 0xdfff)
+                                {
+                                    code = (uint)(0x10000 + (((uint)high - 0xd800) << 10) + ((uint)low - 0xdc00));
+                                }
+                                else
+                                {
+                                    input.Pos = mark; // a lone lead surrogate rides as itself
+                                }
                             }
-                            else
-                            {
-                                input.Pos = mark; // a lone lead surrogate rides as itself
-                            }
+                            // a surrogate half that never found its partner has no
+                            // UTF-8 encoding: encoding it anyway would manufacture
+                            // CESU-8 — invalid UTF-8 — out of input that was valid
+                            // JSON, so it reads as the replacement character
+                            if (code >= 0xd800 && code <= 0xdfff) { code = 0xfffd; }
+                            unitLength = EncodeUtf8(code, unit);
+                            break;
                         }
-                        // a surrogate half that never found its partner has no
-                        // UTF-8 encoding: encoding it anyway would manufacture
-                        // CESU-8 — invalid UTF-8 — out of input that was valid
-                        // JSON, so it reads as the replacement character
-                        if (code >= 0xd800 && code <= 0xdfff) { code = 0xfffd; }
-                        unitLength = EncodeUtf8(code, unit);
-                        break;
-                    }
                     default: input.Bad = true; return false;
                 }
             }
@@ -1031,10 +1035,10 @@ public static class TableJson
                     unitLength = EncodeUtf8(0xfffd, unit);
                 }
             }
-            if(measure)
+            if (measure)
             {
-                if(placed>int.MaxValue-unitLength) { input.Bad=true; return false; }
-                placed+=unitLength;
+                if (placed > int.MaxValue - unitLength) { input.Bad = true; return false; }
+                placed += unitLength;
             }
             else if (keep && wide)
             {
@@ -1204,7 +1208,7 @@ public static class TableJson
         if (depth > MaxDepth) { input.Bad = true; return false; }
         input.Pos++; // the opening bracket
         bool first = true;
-        for (;;)
+        for (; ; )
         {
             byte c = Peek(text, ref input);
             if (c == close) { input.Pos++; return true; }
@@ -1243,24 +1247,24 @@ public static class TableJson
             case (byte)'{': return SkipContainer(text, ref input, (byte)'}', depth);
             case (byte)'[': return SkipContainer(text, ref input, (byte)']', depth);
             case (byte)'"':
-            {
-                int ignored;
-                return ScanString(text, ref input, Span<byte>.Empty, false, out ignored);
-            }
+                {
+                    int ignored;
+                    return ScanString(text, ref input, Span<byte>.Empty, false, out ignored);
+                }
             case (byte)'t': return Literal(text, ref input, "true");
             case (byte)'f': return Literal(text, ref input, "false");
             case (byte)'n': return Literal(text, ref input, "null");
             case 0: input.Bad = true; return false;
             default:
-            {
-                // consumed, never converted: skipping needs no buffer, and this
-                // is the one walk a hostile text drives to the depth cap. It is
-                // the SAME production the value path scans, so an unknown key
-                // cannot smuggle past a number a named key would refuse.
-                bool integral;
-                if (!WalkNumber(text, ref input, out integral)) { input.Bad = true; return false; }
-                return true;
-            }
+                {
+                    // consumed, never converted: skipping needs no buffer, and this
+                    // is the one walk a hostile text drives to the depth cap. It is
+                    // the SAME production the value path scans, so an unknown key
+                    // cannot smuggle past a number a named key would refuse.
+                    bool integral;
+                    if (!WalkNumber(text, ref input, out integral)) { input.Bad = true; return false; }
+                    return true;
+                }
         }
     }
 
@@ -1383,7 +1387,7 @@ public static class TableJson
             if (Peek(text, ref input) != '[') { input.Bad = true; return false; }
             input.Pos++;
             ulong bits = 0;
-            for (;;)
+            for (; ; )
             {
                 byte c = Peek(text, ref input);
                 if (c == ']') { input.Pos++; break; }
@@ -1609,7 +1613,7 @@ public static class TableJson
             int symbols = 0;
             int pad = 0;
             bool malformed = false;
-            for (;;)
+            for (; ; )
             {
                 if (input.Pos >= text.Length) { input.Bad = true; return false; }
                 byte c = text[input.Pos++];
@@ -1686,7 +1690,7 @@ public static class TableJson
             // reads, its repeats simply stop being counted.
             Span<ulong> seen = stackalloc ulong[8];
             seen.Clear();
-            for (;;)
+            for (; ; )
             {
                 byte c = Peek(text, ref input);
                 if (c == '}') { input.Pos++; break; }
@@ -1747,7 +1751,7 @@ public static class TableJson
             PutCount(value, f, 0);
             int placed = 0;
             char shape = ElementShape(f);
-            for (;;)
+            for (; ; )
             {
                 byte c = Peek(text, ref input);
                 if (c == ']') { input.Pos++; break; }
@@ -1798,7 +1802,7 @@ public static class TableJson
         // fields than this still reads, its repeats simply stop being counted
         Span<ulong> seen = stackalloc ulong[8];
         seen.Clear();
-        for (;;)
+        for (; ; )
         {
             byte c = Peek(text, ref input);
             if (c == '}') { input.Pos++; return true; }

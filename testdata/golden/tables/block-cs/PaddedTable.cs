@@ -341,21 +341,21 @@ namespace Blockdemo
                 info.StorageSize = 64; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "tag", Json = "tag", TypeName = "uint8", Id = 0x56d7ab194448a4f3, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.PaddedRow)o).Tag; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Tag = unchecked((byte)r); }, MessageSlot = 5, Ordinal = 0, NativeOffset = 0, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.PaddedRow)o; value.Tag = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "value", Json = "value", TypeName = "float64", Id = 0x7ce4fd9430e80cea, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.PaddedRow)o).Value)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Value = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 6, Ordinal = 1, NativeOffset = 8, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.PaddedRow)o; value.Value = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate(ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
-                    new TableFieldInfo { Name = "flag", Json = "flag", TypeName = "bool", Id = 0xd5f2d079088c0b17, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((global::Blockdemo.PaddedRow)o).Flag ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Flag = r != 0; }, MessageSlot = 7, Ordinal = 2, NativeOffset = 16, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.PaddedRow)o; value.Flag = false; }, DefaultRaw = false ? 1ul : 0ul },
-                    new TableFieldInfo { Name = "id", Json = "id", TypeName = "uint32", Id = 0x08b72e07b55c3ac0, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.PaddedRow)o).Id; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Id = unchecked((uint)r); }, MessageSlot = 8, Ordinal = 3, NativeOffset = 20, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.PaddedRow)o; value.Id = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "label", Json = "label", TypeName = "string", Id = 0x39f7fcec8fcb623d, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 15, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((global::Blockdemo.PaddedRow)o).Label; }, GetCount = delegate(object o) { return ((global::Blockdemo.PaddedRow)o).LabelLength; }, SetCount = delegate(object o, int n) { ((global::Blockdemo.PaddedRow)o).LabelLength = n; }, MessageSlot = 9, Ordinal = 4, NativeOffset = 24, NativeElementSize = 16, NativeCountOffset = 40, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.PaddedRow)o; Array.Clear(value.Label, 0, value.Label.Length); value.LabelLength = 0; } },
-                    new TableFieldInfo { Name = "slots", Json = "slots", TypeName = "uint16", Id = 0xe68c2e6bb1ee5646, Kind = 7, IsArray = true, Counted = false, Optional = false, ArrayBound = 4, ElemWidth = 2, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.PaddedRow)o).Slots[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Slots[i] = unchecked((ushort)r); }, MessageSlot = 10, Ordinal = 5, NativeOffset = 44, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.PaddedRow)o; Array.Clear(value.Slots, 0, value.Slots.Length); }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ushort v = unchecked((ushort)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "teams", Json = "teams", TypeName = "uint8", Id = 0xbaaeb048a5a8fa6d, Kind = 6, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)global::Blockdemo.Team.Max, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate(ulong v) { return EnumNameTeam(v); }, KeyId = delegate(ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.PaddedRow)o).Teams.Slots[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Teams.Slots[i] = unchecked((byte)r); }, MessageSlot = 11, Ordinal = 6, NativeOffset = 52, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.PaddedRow)o; Array.Clear(value.Teams.Slots, 0, value.Teams.Slots.Length); }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "counter", Json = "counter", TypeName = "int32", Id = 0x77976c7416517c63, Kind = 4, IsArray = false, Counted = false, Optional = true, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Blockdemo.PaddedRow)o).Counter; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Counter = unchecked((int)(long)r); }, GetPresent = delegate(object o) { return ((global::Blockdemo.PaddedRow)o).CounterPresent; }, SetPresent = delegate(object o, bool p) { ((global::Blockdemo.PaddedRow)o).CounterPresent = p; }, MessageSlot = 12, Ordinal = 7, NativeOffset = 56, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = 60, ResetField = delegate(object o) { var value = (global::Blockdemo.PaddedRow)o; value.Counter = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "tag", Json = "tag", TypeName = "uint8", Id = 0x56d7ab194448a4f3, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.PaddedRow)o).Tag; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Tag = unchecked((byte)r); }, MessageSlot = 5, Ordinal = 0, NativeOffset = 0, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; value.Tag = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "value", Json = "value", TypeName = "float64", Id = 0x7ce4fd9430e80cea, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.PaddedRow)o).Value)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Value = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 6, Ordinal = 1, NativeOffset = 8, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; value.Value = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate (ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
+                    new TableFieldInfo { Name = "flag", Json = "flag", TypeName = "bool", Id = 0xd5f2d079088c0b17, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return ((global::Blockdemo.PaddedRow)o).Flag ? 1ul : 0ul; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Flag = r != 0; }, MessageSlot = 7, Ordinal = 2, NativeOffset = 16, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; value.Flag = false; }, DefaultRaw = false ? 1ul : 0ul },
+                    new TableFieldInfo { Name = "id", Json = "id", TypeName = "uint32", Id = 0x08b72e07b55c3ac0, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.PaddedRow)o).Id; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Id = unchecked((uint)r); }, MessageSlot = 8, Ordinal = 3, NativeOffset = 20, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; value.Id = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "label", Json = "label", TypeName = "string", Id = 0x39f7fcec8fcb623d, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 15, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate (object o) { return ((global::Blockdemo.PaddedRow)o).Label; }, GetCount = delegate (object o) { return ((global::Blockdemo.PaddedRow)o).LabelLength; }, SetCount = delegate (object o, int n) { ((global::Blockdemo.PaddedRow)o).LabelLength = n; }, MessageSlot = 9, Ordinal = 4, NativeOffset = 24, NativeElementSize = 16, NativeCountOffset = 40, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; Array.Clear(value.Label, 0, value.Label.Length); value.LabelLength = 0; } },
+                    new TableFieldInfo { Name = "slots", Json = "slots", TypeName = "uint16", Id = 0xe68c2e6bb1ee5646, Kind = 7, IsArray = true, Counted = false, Optional = false, ArrayBound = 4, ElemWidth = 2, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.PaddedRow)o).Slots[i]; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Slots[i] = unchecked((ushort)r); }, MessageSlot = 10, Ordinal = 5, NativeOffset = 44, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; Array.Clear(value.Slots, 0, value.Slots.Length); }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { ushort v = unchecked((ushort)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "teams", Json = "teams", TypeName = "uint8", Id = 0xbaaeb048a5a8fa6d, Kind = 6, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)global::Blockdemo.Team.Max, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate (ulong v) { return EnumNameTeam(v); }, KeyId = delegate (ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.PaddedRow)o).Teams.Slots[i]; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Teams.Slots[i] = unchecked((byte)r); }, MessageSlot = 11, Ordinal = 6, NativeOffset = 52, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; Array.Clear(value.Teams.Slots, 0, value.Teams.Slots.Length); }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "counter", Json = "counter", TypeName = "int32", Id = 0x77976c7416517c63, Kind = 4, IsArray = false, Counted = false, Optional = true, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Blockdemo.PaddedRow)o).Counter; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Counter = unchecked((int)(long)r); }, GetPresent = delegate (object o) { return ((global::Blockdemo.PaddedRow)o).CounterPresent; }, SetPresent = delegate (object o, bool p) { ((global::Blockdemo.PaddedRow)o).CounterPresent = p; }, MessageSlot = 12, Ordinal = 7, NativeOffset = 56, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = 60, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; value.Counter = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); return (ulong)(long)v; } },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Blockdemo.PaddedRow)o); };
+                info.Reset = delegate (object o) { TableReset((global::Blockdemo.PaddedRow)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -383,17 +383,17 @@ namespace Blockdemo
                 info.StorageSize = 4136; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 64;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "marker", Json = "marker", TypeName = "uint8", Id = 0xeddcb72b15486e77, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.PaddedFrame)o).Marker; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.PaddedFrame)o).Marker = unchecked((byte)r); }, MessageSlot = 1, Ordinal = 0, NativeOffset = 0, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.PaddedFrame)o; value.Marker = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "stamp", Json = "stamp", TypeName = "uint64", Id = 0xee7ba9ad45c64144, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.PaddedFrame)o).Stamp; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.PaddedFrame)o).Stamp = unchecked((ulong)r); }, MessageSlot = 2, Ordinal = 1, NativeOffset = 8, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.PaddedFrame)o; value.Stamp = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "rows", Json = "rows", TypeName = "PaddedRow", Id = 0xa3a7061ff10a8138, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 64, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return PaddedRowTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.PaddedFrame)o).Rows[i]; }, GetCount = delegate(object o) { return ((global::Blockdemo.PaddedFrame)o).RowsCount; }, SetCount = delegate(object o, int n) { ((global::Blockdemo.PaddedFrame)o).RowsCount = n; }, MessageSlot = 3, Ordinal = 2, NativeOffset = 16, NativeElementSize = 64, NativeCountOffset = 4112, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.PaddedFrame)o; for (int i = 0; i < value.Rows.Length; i++) { TableReset(value.Rows[i]); } value.RowsCount = 0; } },
-                    new TableFieldInfo { Name = "blob", Json = "blob", TypeName = "bytes", Id = 0xc573b39bc29148ca, Kind = 6, IsArray = true, Counted = true, Optional = false, ArrayBound = 12, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((global::Blockdemo.PaddedFrame)o).Blob; }, GetCount = delegate(object o) { return ((global::Blockdemo.PaddedFrame)o).BlobLength; }, SetCount = delegate(object o, int n) { ((global::Blockdemo.PaddedFrame)o).BlobLength = n; }, MessageSlot = 4, Ordinal = 3, NativeOffset = 4116, NativeElementSize = 12, NativeCountOffset = 4128, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.PaddedFrame)o; Array.Clear(value.Blob, 0, value.Blob.Length); value.BlobLength = 0; } },
+                    new TableFieldInfo { Name = "marker", Json = "marker", TypeName = "uint8", Id = 0xeddcb72b15486e77, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.PaddedFrame)o).Marker; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedFrame)o).Marker = unchecked((byte)r); }, MessageSlot = 1, Ordinal = 0, NativeOffset = 0, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedFrame)o; value.Marker = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "stamp", Json = "stamp", TypeName = "uint64", Id = 0xee7ba9ad45c64144, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.PaddedFrame)o).Stamp; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedFrame)o).Stamp = unchecked((ulong)r); }, MessageSlot = 2, Ordinal = 1, NativeOffset = 8, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedFrame)o; value.Stamp = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "rows", Json = "rows", TypeName = "PaddedRow", Id = 0xa3a7061ff10a8138, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 64, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return PaddedRowTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.PaddedFrame)o).Rows[i]; }, GetCount = delegate (object o) { return ((global::Blockdemo.PaddedFrame)o).RowsCount; }, SetCount = delegate (object o, int n) { ((global::Blockdemo.PaddedFrame)o).RowsCount = n; }, MessageSlot = 3, Ordinal = 2, NativeOffset = 16, NativeElementSize = 64, NativeCountOffset = 4112, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedFrame)o; for (int i = 0; i < value.Rows.Length; i++) { TableReset(value.Rows[i]); } value.RowsCount = 0; } },
+                    new TableFieldInfo { Name = "blob", Json = "blob", TypeName = "bytes", Id = 0xc573b39bc29148ca, Kind = 6, IsArray = true, Counted = true, Optional = false, ArrayBound = 12, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate (object o) { return ((global::Blockdemo.PaddedFrame)o).Blob; }, GetCount = delegate (object o) { return ((global::Blockdemo.PaddedFrame)o).BlobLength; }, SetCount = delegate (object o, int n) { ((global::Blockdemo.PaddedFrame)o).BlobLength = n; }, MessageSlot = 4, Ordinal = 3, NativeOffset = 4116, NativeElementSize = 12, NativeCountOffset = 4128, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedFrame)o; Array.Clear(value.Blob, 0, value.Blob.Length); value.BlobLength = 0; } },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Blockdemo.PaddedFrame)o); };
+                info.Reset = delegate (object o) { TableReset((global::Blockdemo.PaddedFrame)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -599,6 +599,11 @@ namespace Blockdemo
             new TableFixedFill(0u, 13u),
         };
 
+        public const int PaddedRowFixedPlanSplit = 12;
+
+        public static readonly byte[] PaddedRowFixedGuardPool = new byte[] {
+        };
+
         public static readonly TableFixedPlan PaddedRowFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1u, 1u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -759,13 +764,13 @@ namespace Blockdemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = PaddedRowFixedPlan;
-            long record_bytes = known.Record;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            long record_bytes = known.RecordBytes;
+            ReadOnlySpan<byte> planBytes = PaddedRowFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (hash != PaddedRowFixedHash)
+            if (pick != 0)
             {
                 TableFixedLineagePlan lane = PaddedRowFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -819,8 +824,15 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new PaddedRow(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PaddedRowFixedSlots, values[k]);
-                TableFixedWire.Run(entries, PaddedRowFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, PaddedRowFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 PaddedRowFixedClamp(values[k], report);
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -851,7 +863,10 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, PaddedRowFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, PaddedRowFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -1772,6 +1787,11 @@ namespace Blockdemo
         // identity plan it is empty and the identity read writes no slot twice.
         public static readonly TableFixedFill[] PaddedFrameFixedCover = new TableFixedFill[] {
             new TableFixedFill(0u, 837u),
+        };
+
+        public const int PaddedFrameFixedPlanSplit = 772;
+
+        public static readonly byte[] PaddedFrameFixedGuardPool = new byte[] {
         };
 
         public static readonly TableFixedPlan PaddedFrameFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
@@ -2700,13 +2720,13 @@ namespace Blockdemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = PaddedFrameFixedPlan;
-            long record_bytes = known.Record;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            long record_bytes = known.RecordBytes;
+            ReadOnlySpan<byte> planBytes = PaddedFrameFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (hash != PaddedFrameFixedHash)
+            if (pick != 0)
             {
                 TableFixedLineagePlan lane = PaddedFrameFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -2760,8 +2780,15 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new PaddedFrame(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PaddedFrameFixedSlots, values[k]);
-                TableFixedWire.Run(entries, PaddedFrameFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, PaddedFrameFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 PaddedFrameFixedClamp(values[k], report);
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -2792,7 +2819,10 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, PaddedFrameFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, PaddedFrameFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
     }
 

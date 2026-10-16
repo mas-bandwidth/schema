@@ -75,8 +75,8 @@ namespace Bench
         // which is what a `ref` cannot carry across a field access.
         public byte* Region { get { return region; } }
         public long RegionLength { get { return regionLength; } }
-        public FixedTableRow* RootPointer { get { return (FixedTableRow*) region; } }
-        public ref readonly FixedTableRow Root { get { return ref *(FixedTableRow*) region; } }
+        public FixedTableRow* RootPointer { get { return (FixedTableRow*)region; } }
+        public ref readonly FixedTableRow Root { get { return ref *(FixedTableRow*)region; } }
 
         // Open checks the header and POINTS, and this is the WHOLE check
         // (docs/SPEC-TABLES.md §7): the magic read bytewise, the byte order it
@@ -103,8 +103,8 @@ namespace Bench
             TableCookLayout.Verify();
             if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }
             if (length < 64) { reason = TableRefuseReason.truncated; return false; }
-            byte* at = (byte*) pointer;
-            ulong bytes = (ulong) length;
+            byte* at = (byte*)pointer;
+            ulong bytes = (ulong)length;
 
             // THE MAGIC, read BYTEWISE before anything else: it is what establishes
             // the byte order every other header word is written in. A cook of the
@@ -138,7 +138,7 @@ namespace Bench
             // THE DATA OFFSET IS DERIVED, never a header field: a fact a reader
             // computes is a fact two writers cannot disagree about, and it is 64 for
             // every unit this language can declare.
-            ulong dataOffset = ((ulong) 64 + alignment - 1) & ~(alignment - 1);
+            ulong dataOffset = ((ulong)64 + alignment - 1) & ~(alignment - 1);
 
             // THE TWO PART LENGTHS against the length the caller passed. The whole
             // file is dataOffset + data + attribution, and a size that is not exactly
@@ -163,9 +163,9 @@ namespace Bench
             // aligned; one that is not is a caller's buffer this form cannot be read
             // out of. The alignment divides 64, so the derived data offset carries
             // the property from the file's base to the region's.
-            if ((((ulong) at) % alignment) != 0) { reason = TableRefuseReason.unaligned_base; return false; }
+            if ((((ulong)at) % alignment) != 0) { reason = TableRefuseReason.unaligned_base; return false; }
 
-            cook = new FixedTableCook(at + dataOffset, (long) dataLength);
+            cook = new FixedTableCook(at + dataOffset, (long)dataLength);
             return true;
         }
 
@@ -183,7 +183,7 @@ namespace Bench
         {
             fixed (byte* p = bytes)
             {
-                return Open(out cook, (IntPtr) p, bytes.Length);
+                return Open(out cook, (IntPtr)p, bytes.Length);
             }
         }
 
@@ -200,7 +200,7 @@ namespace Bench
         {
             long delta = *slot;
             if (delta == 0) { return null; }
-            return (FixedTableRow*) ((byte*) slot + delta);
+            return (FixedTableRow*)((byte*)slot + delta);
         }
 
         // The pieces a consumer reads THROUGH rather than at: each is a SPAN over
@@ -211,7 +211,10 @@ namespace Bench
         // field column, so a walker reaches the whole graph from the root.
         private static readonly TableCookInfo cookRecordBenchMixed = new TableCookInfo
         {
-            Name = "BenchMixed", Size = 1376, Align = 16, NumFields = 27,
+            Name = "BenchMixed",
+            Size = 1376,
+            Align = 16,
+            NumFields = 27,
             Fields = new TableCookFieldInfo[]
             {
                 new TableCookFieldInfo { Name = "sequence", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
@@ -246,7 +249,10 @@ namespace Bench
 
         private static readonly TableCookInfo cookRecordFixedTable = new TableCookInfo
         {
-            Name = "FixedTable", Size = 1376, Align = 16, NumFields = 1,
+            Name = "FixedTable",
+            Size = 1376,
+            Align = 16,
+            NumFields = 1,
             Fields = new TableCookFieldInfo[]
             {
                 new TableCookFieldInfo { Name = "value", Offset = 0, Size = 1376, ElemSize = 1376, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = delegate { return cookRecordBenchMixed; } },
@@ -255,7 +261,10 @@ namespace Bench
 
         private static readonly TableCookInfo cookRecordMixedChatEvent = new TableCookInfo
         {
-            Name = "MixedChatEvent", Size = 8, Align = 4, NumFields = 2,
+            Name = "MixedChatEvent",
+            Size = 8,
+            Align = 4,
+            NumFields = 2,
             Fields = new TableCookFieldInfo[]
             {
                 new TableCookFieldInfo { Name = "channel", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
@@ -265,7 +274,10 @@ namespace Bench
 
         private static readonly TableCookInfo cookRecordMixedEntity = new TableCookInfo
         {
-            Name = "MixedEntity", Size = 64, Align = 8, NumFields = 14,
+            Name = "MixedEntity",
+            Size = 64,
+            Align = 8,
+            NumFields = 14,
             Fields = new TableCookFieldInfo[]
             {
                 new TableCookFieldInfo { Name = "entity_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
@@ -287,7 +299,10 @@ namespace Bench
 
         private static readonly TableCookInfo cookRecordMixedHitEvent = new TableCookInfo
         {
-            Name = "MixedHitEvent", Size = 16, Align = 4, NumFields = 4,
+            Name = "MixedHitEvent",
+            Size = 16,
+            Align = 4,
+            NumFields = 4,
             Fields = new TableCookFieldInfo[]
             {
                 new TableCookFieldInfo { Name = "target_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
@@ -299,7 +314,10 @@ namespace Bench
 
         private static readonly TableCookInfo cookRecordMixedPickupEvent = new TableCookInfo
         {
-            Name = "MixedPickupEvent", Size = 8, Align = 4, NumFields = 2,
+            Name = "MixedPickupEvent",
+            Size = 8,
+            Align = 4,
+            NumFields = 2,
             Fields = new TableCookFieldInfo[]
             {
                 new TableCookFieldInfo { Name = "item_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
@@ -309,7 +327,10 @@ namespace Bench
 
         private static readonly TableCookInfo cookRecordMixedStat = new TableCookInfo
         {
-            Name = "MixedStat", Size = 8, Align = 4, NumFields = 2,
+            Name = "MixedStat",
+            Size = 8,
+            Align = 4,
+            NumFields = 2,
             Fields = new TableCookFieldInfo[]
             {
                 new TableCookFieldInfo { Name = "stat_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },

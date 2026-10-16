@@ -729,16 +729,47 @@ tables-cs-clean: build/tables-generated-cs/.stamp cards-cs-generate
 tables-cs-clean-run:
 	$(call cs_clean_check,tables-cs-clean,test/conformance/cs/schemaconformance.csproj,build/tables-generated-cs)
 
-# NOT YET REQUIRED. tables-cs-clean is fixed (it checks the table units now)
-# and RED: 152,044 WHITESPACE findings in 295 table units, written by table
-# emitters (region.go, block.go, cook.go and the rest of internal/codegen/cstable)
-# this gate's card could not touch. It is held here, run by name and reachable
-# as `make cs-not-yet-required`, but NOT from test-cs, so the red is visible
-# without making every C# run red. The sprint card
-# cs-generated-table-units-pass-dotnet-format fixes those emitters and moves
-# tables-cs-clean from this group into test-cs; nothing else may join it.
-.PHONY: cs-not-yet-required
-cs-not-yet-required: tables-cs-clean
+# REQUIRED (issue #547, C# tables half). The table emitters in
+# internal/codegen/cstable write what dotnet format writes: 152,044 WHITESPACE
+# findings in 295 table units at the gate's fix are zero, fixed in the emitters
+# and never by reformatting the output, so tables-cs-clean is a prerequisite of
+# test-cs like every other C# gate.
+test-cs: tables-cs-clean
+
+# THE TABLES-CLEAN NEGATIVE CONTROL: a copy of the generated table units with ONE
+# unit (a1/A1Table.cs) carrying one planted whitespace violation, a statement
+# indented two columns past its block, compiled by the same project through its
+# TablesGeneratedDir redirect. The gate must go red on it BY NAME: dotnet
+# format's WHITESPACE finding in A1Table.cs. A gate that stayed green, or went
+# red for another reason, fails the control.
+TABLES_CS_CLEAN_NEG := build/tables-cs-clean-negative
+.PHONY: tables-cs-clean-negative-control
+tables-cs-clean-negative-control: build/tables-generated-cs/.stamp
+	$(call cs_clean_probe,tables-cs-clean-negative-control)
+	@if command -v $(DOTNET) >/dev/null 2>&1; then $(MAKE) --no-print-directory tables-cs-clean-negative-control-run; fi
+
+.PHONY: tables-cs-clean-negative-control-run
+tables-cs-clean-negative-control-run:
+	@rm -rf $(TABLES_CS_CLEAN_NEG) && mkdir -p $(TABLES_CS_CLEAN_NEG)
+	@cp -R build/tables-generated-cs $(TABLES_CS_CLEAN_NEG)/cs
+	@awk 'done != 1 && $$0 ~ /^            if \(value == null\) return;$$/ { print "              if (value == null) return;"; done = 1; next } { print }' \
+		build/tables-generated-cs/a1/A1Table.cs > $(TABLES_CS_CLEAN_NEG)/cs/a1/A1Table.cs
+	@grep -q '^              if (value == null) return;$$' $(TABLES_CS_CLEAN_NEG)/cs/a1/A1Table.cs || \
+		{ echo 'NEGATIVE CONTROL FAILED: the plant found no statement to misindent in a1/A1Table.cs'; exit 1; }
+	@if $(MAKE) --no-print-directory tables-cs-clean-negative-run > $(TABLES_CS_CLEAN_NEG)/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: tables-cs-clean stayed green over a planted violation'; cat $(TABLES_CS_CLEAN_NEG)/log; exit 1; fi
+	@grep -Eq 'A1Table\.cs.* error WHITESPACE:' $(TABLES_CS_CLEAN_NEG)/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the misindented statement was not named'; cat $(TABLES_CS_CLEAN_NEG)/log; exit 1; }
+	@if grep -E ' error WHITESPACE:' $(TABLES_CS_CLEAN_NEG)/log | grep -qv 'A1Table\.cs'; then \
+		echo 'NEGATIVE CONTROL FAILED: a finding outside the planted unit'; cat $(TABLES_CS_CLEAN_NEG)/log; exit 1; fi
+	@if grep -q 'RED tables-cs-clean-negative: dotnet build' $(TABLES_CS_CLEAN_NEG)/log; then \
+		echo 'NEGATIVE CONTROL FAILED: the build half went red, not the format half'; cat $(TABLES_CS_CLEAN_NEG)/log; exit 1; fi
+	@echo 'tables C# clean negative control: a misindented statement in A1Table.cs turns tables-cs-clean red by name'
+
+.PHONY: tables-cs-clean-negative-run
+tables-cs-clean-negative-run:
+	$(call cs_clean_check,tables-cs-clean-negative,test/conformance/cs/schemaconformance.csproj,$(TABLES_CS_CLEAN_NEG)/cs,TablesGeneratedDir=$(CURDIR)/$(TABLES_CS_CLEAN_NEG)/cs)
+test-cs: tables-cs-clean-negative-control
 
 # The generated PACKET units (internal/codegen/csharp, issue #547): the
 # examples and the bench corpus (schematest), the 128-bit examples (the

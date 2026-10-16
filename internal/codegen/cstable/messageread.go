@@ -20,7 +20,7 @@ const tableMessageReadSource = `
     { return MessageReference(ref r, d, out reference, out entry) && reference != 0 && !Reserved(entry.Id) && entry.Kind == 0; }
     static bool MessageSkipBody(ref BitReader r, MessageRead d)
     {
-        for (;;)
+        for (; ; )
         {
             if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry e)) { return false; }
             if (reference == 0) { return true; }
@@ -40,12 +40,14 @@ const tableMessageReadSource = `
                 return arm == 0 || !Reserved(ae.Id) && ae.Kind != 0 && MessageSkip(ref r, d, ae.Kind, ae.Shape);
             case 13: return MessageSkipBody(ref r, d);
             case 17: return d.IndexBits > 0 && r.Skip(d.IndexBits);
-            case 12: case 33:
+            case 12:
+            case 33:
                 if (!r.Get(BitCount(shape.Max), out UInt128 length) || kind == 12 && !r.Align()) { return false; }
                 return r.Skip((long)length * (kind == 12 ? 8 : 16));
             case 31:
                 return r.Align() && r.Get(32, out UInt128 opaque) && r.Skip((long)opaque * 8);
-            case 14: case 16:
+            case 14:
+            case 16:
                 if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128 raw) || kind == 14 && shape.Elem == 6 && !r.Align()) { return false; }
                 ulong n = (ulong)raw + shape.Min;
                 if (kind == 14 && (Width(shape.Elem) != 0 || shape.Elem == 0 || shape.Elem == 32))
@@ -55,7 +57,7 @@ const tableMessageReadSource = `
                     if (kind == 16 && !r.Get(d.Vocabulary.RefBits, out _)) { return false; }
                     if (shape.Elem == 13 || shape.Elem == 15 || shape.Elem == 17 || shape.Elem == 30)
                     { if (!MessageSkip(ref r, d, shape.Elem, shape.Inner)) { return false; } }
-                    else { int bits=ValueBits(shape.Elem,shape.Inner); if(bits<0 || !r.Skip(bits)) { return false; } }
+                    else { int bits = ValueBits(shape.Elem, shape.Inner); if (bits < 0 || !r.Skip(bits)) { return false; } }
                 }
                 return true;
             default: return MessageKind(kind) && r.Skip(ValueBits(kind, shape));
@@ -125,8 +127,8 @@ const tableMessageReadSource = `
     }
     static bool MessageReadBody(ref BitReader r, MessageRead d, object value, TableTypeInfo type)
     {
-        if(value!=null) { type.Reset(value); }
-        for (;;)
+        if (value != null) { type.Reset(value); }
+        for (; ; )
         {
             if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
             if (reference == 0) { return true; }
@@ -138,7 +140,7 @@ const tableMessageReadSource = `
             { d.Report.KindMismatch++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape)) { return false; } continue; }
             if (!MessageReadField(ref r, d, value, field, entry.Kind, entry.Shape)) { return false; }
             if (widened && !field.MapKey) { d.Report.Widened++; }
-            if (field.Optional && value!=null) { field.SetPresent(value, true); }
+            if (field.Optional && value != null) { field.SetPresent(value, true); }
         }
     }
     static bool MessageReadField(ref BitReader r, MessageRead d, object value, TableFieldInfo f, byte kind, TableMessageShape shape)
@@ -151,7 +153,8 @@ const tableMessageReadSource = `
             if (n > (ulong)((r.End - r.At) / 8)) { return false; }
             int kept = (int)Math.Min(n, (ulong)f.ArrayBound);
             if (n > (ulong)f.ArrayBound) { d.Report.Clamped++; }
-            if(value!=null) { r.Bytes.Slice((int)(r.At / 8), kept).CopyTo(f.GetBuffer(value)); f.SetCount(value,kept); } r.At += (long)n * 8; return true;
+            if (value != null) { r.Bytes.Slice((int)(r.At / 8), kept).CopyTo(f.GetBuffer(value)); f.SetCount(value, kept); }
+            r.At += (long)n * 8; return true;
         }
         if (kind == 12 || kind == 33)
         {
@@ -173,10 +176,11 @@ const tableMessageReadSource = `
             }
             int keep = Math.Min((int)length, f.ArrayBound);
             if (length > (uint)f.ArrayBound) { d.Report.Clamped++; }
-            char last=default;
-            for (int i = 0; i < keep; i++) { r.Get(16, out UInt128 raw); last=(char)(uint)raw; if(value!=null) { f.GetChars(value)[i]=last; } }
+            char last = default;
+            for (int i = 0; i < keep; i++) { r.Get(16, out UInt128 raw); last = (char)(uint)raw; if (value != null) { f.GetChars(value)[i] = last; } }
             if (keep > 0 && keep < (int)length && char.IsHighSurrogate(last)) { keep--; }
-            if(value!=null) { f.SetCount(value,keep); } r = check; return true;
+            if (value != null) { f.SetCount(value, keep); }
+            r = check; return true;
         }
         if (f.IsArray)
         {
@@ -194,26 +198,26 @@ const tableMessageReadSource = `
                 return true;
             }
             int run = Width(shape.Elem) != 0 ? ValueBits(shape.Elem, shape.Inner) : -1;
-            if (f.Dynamic && (n > int.MaxValue || run!=0 && n > (ulong)((r.End - r.At) / Math.Max(1, run)))) { return false; }
+            if (f.Dynamic && (n > int.MaxValue || run != 0 && n > (ulong)((r.End - r.At) / Math.Max(1, run)))) { return false; }
             int kept = (int)Math.Min(n, (ulong)f.ArrayBound);
             if (n > (ulong)f.ArrayBound) { d.Report.Clamped++; }
             int previous = f.Counted && value != null && f.GetCount != null ? f.GetCount(value) : 0;
             ulong walk = run >= 0 ? (ulong)kept : n;
             for (ulong i = 0; i < walk; i++)
             {
-                if (f.Dynamic && value!=null) { f.EnsureCount(value, (int)i + 1); }
+                if (f.Dynamic && value != null) { f.EnsureCount(value, (int)i + 1); }
                 if (!MessageReadElement(ref r, d, value, f, (int)i, shape.Elem, shape.Inner, i < (ulong)kept)) { return false; }
             }
             if (walk < n && !r.Skip((long)(n - walk) * run)) { return false; }
-            if (f.Counted && value!=null) { ResetCountedTail(value, f, previous, kept); }
-            if (f.Optional && value!=null) { f.SetPresent(value, true); }
+            if (f.Counted && value != null) { ResetCountedTail(value, f, previous, kept); }
+            if (f.Optional && value != null) { f.SetPresent(value, true); }
             return true;
         }
         return MessageReadElement(ref r, d, value, f, 0, kind, shape, true);
     }
     static bool MessageReadElement(ref BitReader r, MessageRead d, object value, TableFieldInfo f, int index, byte kind, TableMessageShape shape, bool keep)
     {
-        keep = keep && value!=null;
+        keep = keep && value != null;
         if (kind == 13)
         { return MessageReadBody(ref r, d, keep ? f.GetChild(value, index) : null, f.Table); }
         if (kind == 17)
@@ -228,25 +232,26 @@ const tableMessageReadSource = `
             if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry) || reference != 0 && (entry.Kind != 0 || Reserved(entry.Id))) { return false; }
             int variant = reference == 0 ? 0 : FindVariant(f, entry.Id, false);
             if (reference != 0 && variant == 0) { d.Report.Unknown++; }
-            if (keep) { f.SetRaw(value, index, (ulong)variant); } return true;
+            if (keep) { f.SetRaw(value, index, (ulong)variant); }
+            return true;
         }
         if (kind == 15)
         {
             object union = keep ? f.GetChild(value, index) : null;
             if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
-            if (reference == 0) { if(union!=null) { f.Arms.SetTag(union,0); } return true; }
+            if (reference == 0) { if (union != null) { f.Arms.SetTag(union, 0); } return true; }
             if (entry.Kind == 0 || Reserved(entry.Id)) { return false; }
             int tag = FindVariant(f, entry.Id, false);
             if (tag == 0)
-            { if(union!=null) { f.Arms.SetTag(union,0); } d.Report.Unknown++; return MessageSkip(ref r, d, entry.Kind, entry.Shape); }
+            { if (union != null) { f.Arms.SetTag(union, 0); } d.Report.Unknown++; return MessageSkip(ref r, d, entry.Kind, entry.Shape); }
             TableFieldInfo arm = f.Arms.Arms[tag].Field;
             bool widened = false;
             if (arm == null ? entry.Kind != 32 : !MessageCompatible(entry, arm, out widened))
-            { if(union!=null) { f.Arms.SetTag(union,0); } d.Report.KindMismatch++; return MessageSkip(ref r, d, entry.Kind, entry.Shape); }
+            { if (union != null) { f.Arms.SetTag(union, 0); } d.Report.KindMismatch++; return MessageSkip(ref r, d, entry.Kind, entry.Shape); }
             if (widened) { d.Report.Widened++; }
-            if(union!=null) { f.Arms.SetTag(union,(ulong)tag); }
+            if (union != null) { f.Arms.SetTag(union, (ulong)tag); }
             if (arm == null) { return true; }
-            if(union!=null) { ResetArm(union,arm); }
+            if (union != null) { ResetArm(union, arm); }
             return MessageReadField(ref r, d, union, arm, entry.Kind, entry.Shape);
         }
         int width = ValueBits(kind, shape);
@@ -262,7 +267,8 @@ const tableMessageReadSource = `
             }
             ulong raw = f.Kind == 11 ? WidenFloat((uint)bits) : (uint)bits;
             if (f.Kind != 11 && f.ClampRaw != null) { raw = f.ClampRaw(raw, d.Report); }
-            if (keep) { f.SetRaw(value, index, raw); } return true;
+            if (keep) { f.SetRaw(value, index, raw); }
+            return true;
         }
         if (kind == 1 || kind == 11)
         { if (keep) { f.SetRaw(value, index, (ulong)bits); } return true; }
@@ -306,56 +312,57 @@ const tableMessageReadSource = `
     static bool MessageMapKey(ref BitReader r, MessageRead d, TableFieldInfo keyField, out MapKey key, out bool mismatch, out bool widened)
     {
         key = new MapKey { Text = Array.Empty<byte>() }; mismatch = false; widened = false;
-        for (;;)
+        for (; ; )
         {
-            if (!MessageReference(ref r,d,out ulong reference,out TableMessageEntry entry)) { return false; }
+            if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
             if (reference == 0) { return true; }
             if (Reserved(entry.Id)) { return false; }
-            if (entry.Id != keyField.Id) { if (!MessageSkip(ref r,d,entry.Kind,entry.Shape)) { return false; } continue; }
-            mismatch = entry.Kind != keyField.Kind && !Widen(entry.Kind,keyField.Kind);
+            if (entry.Id != keyField.Id) { if (!MessageSkip(ref r, d, entry.Kind, entry.Shape)) { return false; } continue; }
+            mismatch = entry.Kind != keyField.Kind && !Widen(entry.Kind, keyField.Kind);
             widened = keyField.Kind != 12 && entry.Kind != keyField.Kind;
-            if (mismatch) { if (!MessageSkip(ref r,d,entry.Kind,entry.Shape)) { return false; } continue; }
+            if (mismatch) { if (!MessageSkip(ref r, d, entry.Kind, entry.Shape)) { return false; } continue; }
             if (keyField.Kind == 12)
             {
-                if (!r.Get(BitCount(entry.Shape.Max),out UInt128 n) || !r.Align() || n > (UInt128)((r.End-r.At)/8)) { return false; }
-                key.Text = r.Bytes.Slice((int)(r.At/8),(int)n).ToArray(); r.At += (long)n*8;
+                if (!r.Get(BitCount(entry.Shape.Max), out UInt128 n) || !r.Align() || n > (UInt128)((r.End - r.At) / 8)) { return false; }
+                key.Text = r.Bytes.Slice((int)(r.At / 8), (int)n).ToArray(); r.At += (long)n * 8;
             }
             else
             {
-                int width = ValueBits(entry.Kind,entry.Shape);
-                if (!r.Get(width,out UInt128 raw)) { return false; }
+                int width = ValueBits(entry.Kind, entry.Shape);
+                if (!r.Get(width, out UInt128 raw)) { return false; }
                 if (entry.Shape.Packing == 1) { raw = unchecked(raw + entry.Shape.Base); }
                 else if (keyField.Kind >= 2 && keyField.Kind <= 5 && width > 0 && width < 128)
-                { raw = unchecked((UInt128)((Int128)(raw << (128-width)) >> (128-width))); }
-                int destination = Width(keyField.Kind)*8;
-                key.Raw = keyField.Kind >= 2 && keyField.Kind <= 5 ? unchecked((ulong)(long)((Int128)(raw << (128-destination)) >> (128-destination))) : (ulong)raw & (destination == 64 ? ulong.MaxValue : (1ul << destination)-1);
+                { raw = unchecked((UInt128)((Int128)(raw << (128 - width)) >> (128 - width))); }
+                int destination = Width(keyField.Kind) * 8;
+                key.Raw = keyField.Kind >= 2 && keyField.Kind <= 5 ? unchecked((ulong)(long)((Int128)(raw << (128 - destination)) >> (128 - destination))) : (ulong)raw & (destination == 64 ? ulong.MaxValue : (1ul << destination) - 1);
             }
         }
     }
     static bool MessageReadMap(ref BitReader r, MessageRead d, object value, TableFieldInfo f, TableMessageShape shape)
     {
         if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128 raw) || raw + shape.Min > int.MaxValue) { return false; }
-        ulong count = (ulong)raw + shape.Min; if(value!=null) { f.ResetField(value); }
+        ulong count = (ulong)raw + shape.Min; if (value != null) { f.ResetField(value); }
         int landed = 0; bool widened = false; MapKey last = default; TableFieldInfo keyField = f.Table.Fields[0];
         for (ulong i = 0; i < count; i++)
         {
             BitReader scan = r;
-            if (!MessageMapKey(ref scan,d,keyField,out MapKey key,out bool mismatch,out bool entryWidened)) { return false; }
+            if (!MessageMapKey(ref scan, d, keyField, out MapKey key, out bool mismatch, out bool entryWidened)) { return false; }
             if (entryWidened && !widened) { widened = true; d.Report.Widened++; }
             if (mismatch)
             {
-                d.Report.KindMismatch++; if(value!=null) { f.ResetField(value); } r = scan;
-                for (ulong j=i+1;j<count;j++) { if (!MessageSkipBody(ref r,d)) { return false; } }
+                d.Report.KindMismatch++; if (value != null) { f.ResetField(value); }
+                r = scan;
+                for (ulong j = i + 1; j < count; j++) { if (!MessageSkipBody(ref r, d)) { return false; } }
                 return true;
             }
             if (keyField.Kind == 12 && key.Text.Length > keyField.ArrayBound) { d.Report.Clamped++; r = scan; continue; }
-            int order = landed == 0 ? -1 : KeyOrder(last,key,keyField);
+            int order = landed == 0 ? -1 : KeyOrder(last, key, keyField);
             if (order > 0) { return false; }
-            int slot = order == 0 ? landed-1 : landed;
+            int slot = order == 0 ? landed - 1 : landed;
             if (order == 0) { d.Report.Duplicate++; } else { landed++; }
-            object entry=null;
-            if(value!=null) { f.EnsureCount(value,landed); f.SetCount(value,landed); entry=f.Table.Create(); f.SetChild(value,slot,entry); }
-            if (!MessageReadBody(ref r,d,entry,f.Table) || r.At != scan.At) { return false; }
+            object entry = null;
+            if (value != null) { f.EnsureCount(value, landed); f.SetCount(value, landed); entry = f.Table.Create(); f.SetChild(value, slot, entry); }
+            if (!MessageReadBody(ref r, d, entry, f.Table) || r.At != scan.At) { return false; }
             last = key;
         }
         return true;
