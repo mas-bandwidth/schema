@@ -124,17 +124,9 @@ build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES
 		rm -rf build/tables-generated-elixir/$$name; \
 		./bin/schema generate --lang elixir --out build/tables-generated-elixir/$$name $$path || exit 1; \
 	done
-	# Elixir 1.20.4 is the formatting authority (issue #424). The table emitters
-	# do not yet wrap every construct it wraps — the fixed, cook, block and
-	# message emitters are unchanged from sprint/schema-elixir and already fail
-	# this check — so the stamp canonicalizes the units it owns.
-	# cards-elixir-generate writes a sibling directory and formats it itself.
-	@set -e; files=""; \
-	for unit in $(ELIXIR_TABLE_UNITS); do \
-		name=$${unit%%:*}; \
-		files="$$files build/tables-generated-elixir/$$name/"*.ex; \
-	done; \
-	$(MIX) format $$files
+	# Elixir 1.20.4 is the formatting authority (issue #424), and every table
+	# emitter writes its shape (issue #547, tables-elixir-emit-format-clean), so
+	# the stamp formats nothing: tables-elixir-clean checks the raw output.
 	@touch $@
 
 build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex
@@ -185,19 +177,15 @@ test-elixir: tables-elixir-clean
 # --check-formatted`, with nothing in between that formats.
 #
 # ELIXIR_EMIT_FORMAT_PENDING names the files the gate does NOT yet hold, by
-# basename, and the recipe prints the list so the exclusion is never silent:
-# the variable form's Table.ex and TableRuntime.ex, which the next card
-# (elixir-variable-form-emits-mix-format-canonical-source) makes canonical and
-# then empties this list. Nothing else may be added to it.
+# basename, and the recipe prints the list so the exclusion is never silent.
+# It is EMPTY: the variable form's Table.ex and TableRuntime.ex, the last two
+# it held, are canonical since elixir-variable-form-emits-mix-format-canonical-source,
+# and TestVariableFormEmitsFormatCanonicalSource holds it empty.
 #
 # ELIXIR_EMIT_FORMAT_SCHEMA is the compiler the gate generates with, so the
 # negative control below runs this same recipe over a sabotaged compiler.
-ELIXIR_EMIT_FORMAT_PENDING := Table.ex TableRuntime.ex
+ELIXIR_EMIT_FORMAT_PENDING :=
 
-# THE FILES A STAMP STILL CANONICALIZES, by basename, and nothing else: the
-# fixed-form, fixed-bench and paired stamps below consume the emitters' RAW
-# output for every other file, including FixedRuntime.ex and UnitView.ex.
-ELIXIR_STAMP_CANONICALIZES := $(ELIXIR_EMIT_FORMAT_PENDING)
 ELIXIR_EMIT_FORMAT_DIR     ?= build/elixir-emit-format
 ELIXIR_EMIT_FORMAT_SCHEMA  ?= ./bin/schema
 
@@ -213,7 +201,7 @@ tables-elixir-emit-format-clean: bin/schema
 	@cp bench/corpus/FixedTable.schema $(ELIXIR_EMIT_FORMAT_DIR)/src/Wrap.schema
 	@$(ELIXIR_EMIT_FORMAT_SCHEMA) generate --lang elixir --out $(ELIXIR_EMIT_FORMAT_DIR)/gen/paired \
 		$(ELIXIR_EMIT_FORMAT_DIR)/src/Bench.schema $(ELIXIR_EMIT_FORMAT_DIR)/src/Wrap.schema > /dev/null
-	@echo "tables-elixir-emit-format-clean: PENDING (not held, owned by elixir-variable-form-emits-mix-format-canonical-source): $(ELIXIR_EMIT_FORMAT_PENDING)"
+	@echo "tables-elixir-emit-format-clean: PENDING (not held): $(ELIXIR_EMIT_FORMAT_PENDING)"
 	@set -e; files=""; \
 	for f in $(ELIXIR_EMIT_FORMAT_DIR)/gen/*/*.ex; do \
 		case " $(ELIXIR_EMIT_FORMAT_PENDING) " in *" $$(basename $$f) "*) continue ;; esac; \
@@ -849,9 +837,7 @@ build/elixir-fixedform/.stamp: bin/schema $(ELIXIR_FIXED_SCHEMAS) make/elixir.mk
 		./bin/schema generate --lang elixir --out build/elixir-fixedform/gen/$$name $$path || exit 1; \
 	done
 	# The emitters write mix format's shape (tables-elixir-emit-format-clean),
-	# so only the files they do not yet are canonicalized here.
-	@set -e; files=$$(ls $(foreach f,$(ELIXIR_STAMP_CANONICALIZES),build/elixir-fixedform/gen/*/$(f)) 2>/dev/null || true); \
-		if [ -n "$$files" ]; then echo "canonicalizing (ELIXIR_STAMP_CANONICALIZES):" $$files; $(MIX) format $$files; fi
+	# so the stamp compiles their raw output.
 	$(ELIXIRC_STRICT) -o build/elixir-fixedform/ebin build/elixir-fixedform/gen/*/*.ex
 	@touch $@
 
@@ -889,9 +875,7 @@ build/elixir-fixed-bench/.stamp: bin/schema bench/corpus/Bench.schema bench/corp
 	cp bench/corpus/FixedTable.schema build/elixir-fixed-bench/source/Wrap.schema
 	./bin/schema generate --lang elixir --out build/elixir-fixed-bench/gen \
 		build/elixir-fixed-bench/source/Bench.schema build/elixir-fixed-bench/source/Wrap.schema
-	# Raw emitter output but for ELIXIR_STAMP_CANONICALIZES.
-	@set -e; files=$$(ls $(foreach f,$(ELIXIR_STAMP_CANONICALIZES),build/elixir-fixed-bench/gen/$(f)) 2>/dev/null || true); \
-		if [ -n "$$files" ]; then echo "canonicalizing (ELIXIR_STAMP_CANONICALIZES):" $$files; $(MIX) format $$files; fi
+	# Raw emitter output (tables-elixir-emit-format-clean).
 	$(ELIXIRC_STRICT) -o build/elixir-fixed-bench/ebin build/elixir-fixed-bench/gen/*.ex
 	@touch $@
 
@@ -909,8 +893,7 @@ build/elixir-fixed-bench/bench_fixed.bin: generated/bench/paired/cpp/.stamp test
 # the module this backend writes for that file (§11).
 #
 # bench/paired/main.go's `-mode build -langs elixir` writes the same emitter
-# bytes from the same copies. This stamp then canonicalizes only the files in
-# ELIXIR_STAMP_CANONICALIZES — every other committed file is the emitter's raw
+# bytes from the same copies. Every committed file is the emitter's raw
 # output, which is the shape tables-elixir-paired-gate checks.
 generated/bench/paired/elixir/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema make/elixir.mk
 	@mkdir -p generated/bench/paired/elixir build/paired/elixir-src
@@ -918,8 +901,6 @@ generated/bench/paired/elixir/.stamp: bin/schema bench/corpus/Bench.schema bench
 	cp bench/corpus/FixedTable.schema build/paired/elixir-src/Wrap.schema
 	./bin/schema generate --lang elixir --out generated/bench/paired/elixir \
 		build/paired/elixir-src/Bench.schema build/paired/elixir-src/Wrap.schema
-	@set -e; files=$$(ls $(foreach f,$(ELIXIR_STAMP_CANONICALIZES),generated/bench/paired/elixir/$(f)) 2>/dev/null || true); \
-		if [ -n "$$files" ]; then echo "canonicalizing (ELIXIR_STAMP_CANONICALIZES):" $$files; $(MIX) format $$files; fi
 	@touch $@
 
 # THE PAIRED LEG's own gate, with no clock: the fixed corpus's layout compared
@@ -1204,7 +1185,6 @@ cards-elixir-generate:
 	@rm -rf build/tables-generated-elixir/cards
 	@mkdir -p build/tables-generated-elixir/cards
 	./bin/schema generate --lang elixir --out build/tables-generated-elixir/cards tables/cards
-	$(MIX) format build/tables-generated-elixir/cards/*.ex
 
 # the cards corpus and the driver compiled into one ebin, so the wire-fuzz
 # driver's one BEAM can name the Cards.Table codec it drives.

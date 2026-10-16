@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -97,11 +96,8 @@ func TestUnitViewDescriptorsElixir(t *testing.T) {
 		}
 
 		if tc.pkg == "tabledemo" {
-			have := strings.Split(string(out["Table.ex"]), "\n")
-			for _, line := range wantExamplesDescriptorLines {
-				if !slices.Contains(have, line) {
-					t.Fatalf("%s: Table.ex has no descriptor line\n%s", tc.dir, line)
-				}
+			if want := strings.Join(wantExamplesDescriptorLines, "\n") + "\n"; !strings.Contains(string(out["Table.ex"]), want) {
+				t.Fatalf("%s: Table.ex has no descriptor run\n%s", tc.dir, want)
 			}
 		}
 
@@ -126,13 +122,43 @@ func TestUnitViewDescriptorsElixir(t *testing.T) {
 	}
 }
 
-// wantExamplesDescriptorLines are whole lines of tables/examples' Table.ex: the
+// wantExamplesDescriptorLines are one consecutive run of whole lines of
+// tables/examples' Table.ex, in mix format's shape (issue #547): the
 // WeaponConfig descriptor with its doc comment and tag, and its damage field
 // with a multi-line doc comment (backslash and quotes kept) and three tags
 // (docs/SPEC-TABLES.md §8.1).
 var wantExamplesDescriptorLines = []string{
-	"    \"WeaponConfig\" => %{name: \"WeaponConfig\", size: 28, align: 4, type_id: 0x0577780D86C4B0C3, record: 28, has_extent: false, string_blob: false, variable: false, doc: \"One weapon's tuning. A designer edits this table and nothing else.\", tags: [\"designer_facing\"], fields: [",
-	"      %{name: \"damage\", json: \"damage\", type_name: \"float32\", id: 0x7F6308BE8AB37FC0, kind: 10, ordinal: 0, t: :float, width: 4, cook_off: 0, count_off: -1, present_off: -1, shape: :value, bound: nil, doc: \" Damage per hit, before armor.\\n\\nThe armor curve is written \\\"hardness \\\\ hit\\\" in the design notes,\\nand the backslash is part of the name.\", tags: [\"ui_slider\", \"hot\", \"tuning\"], default: 21.0},",
+	`    "WeaponConfig" => %{`,
+	`      name: "WeaponConfig",`,
+	`      size: 28,`,
+	`      align: 4,`,
+	`      type_id: 0x0577780D86C4B0C3,`,
+	`      record: 28,`,
+	`      has_extent: false,`,
+	`      string_blob: false,`,
+	`      variable: false,`,
+	`      doc: "One weapon's tuning. A designer edits this table and nothing else.",`,
+	`      tags: ["designer_facing"],`,
+	`      fields: [`,
+	`        %{`,
+	`          name: "damage",`,
+	`          json: "damage",`,
+	`          type_name: "float32",`,
+	`          id: 0x7F6308BE8AB37FC0,`,
+	`          kind: 10,`,
+	`          ordinal: 0,`,
+	`          t: :float,`,
+	`          width: 4,`,
+	`          cook_off: 0,`,
+	`          count_off: -1,`,
+	`          present_off: -1,`,
+	`          shape: :value,`,
+	`          bound: nil,`,
+	`          doc:`,
+	`            " Damage per hit, before armor.\n\nThe armor curve is written \"hardness \\ hit\" in the design notes,\nand the backslash is part of the name.",`,
+	`          tags: ["ui_slider", "hot", "tuning"],`,
+	`          default: 21.0`,
+	`        },`,
 }
 
 // wantListingTabledemo is the listing tables/examples' UnitView prints
