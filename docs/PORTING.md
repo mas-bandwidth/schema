@@ -1454,6 +1454,8 @@ generated table tree: `clang-format` for C++ and C, `gofmt` and `go vet` for
 Go, `dotnet format` for C#, `google-java-format` for Java, `eslint` for
 JavaScript, `dart format` and the analyzer for Dart, `cargo clippy` for Rust,
 and `mix format` for Elixir.
+The Java leg's formatter pin, style, lint flags and gates are on
+[docs/JAVA-DIALECT.md](JAVA-DIALECT.md).
 
 **Reference.** `tables-dart-clean` (analyzer and `dart format
 --set-exit-if-changed`); `tables-rust-clippy`.
@@ -1468,7 +1470,7 @@ and `mix format` for Elixir.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #424 | ❌ #424 | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ❌ #424 | ✅ `tables-java-clean` (`google-java-format`) | ❌ #424 | ✅ `tables-dart-clean` | ❌ #424 (the packet units are format-checked; the table units are not) |
+| ❌ #424 | ❌ #424 | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ❌ #424 | ❌ #547 `tables-java-clean` (google-java-format 1.28.0 --aosp over the table and packet units) is wired and has never run the real formatter: no bench or workflow carries it yet, so it SKIPs by name; `tables-java-compile-all` (-Xlint:all -Werror, every unit) runs from the release pass | ❌ #424 | ✅ `tables-dart-clean` | ❌ #424 (the packet units are format-checked; the table units are not) |
 
 ### J5 — The bench leg's golden gate runs before the clock
 
