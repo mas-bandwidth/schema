@@ -1088,7 +1088,7 @@ the block's is not (#387), so a port holds it itself.
 (`BlockLead.run/1`: every image × every lead); the enumerated pass in the
 reference fuzzer at `test/tables/block_fuzz_main.cpp:940`.
 
-**Proven in.** Elixir (#369).
+**Proven in.** Elixir (#369), JavaScript (`test/conformance/js/main.mjs` `block-lead`).
 
 **Measured effect.** 2 block images × 65 leads — 0 and 64 open, 1..63 refuse.
 
@@ -1100,7 +1100,7 @@ lead 1 answered open, wanted refuse".
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-block-fuzz` (the enumerated 1..63 pass, `test/tables/block_fuzz_main.cpp:939`) | ✅ `tables-c-fuzz` (the enumerated 1..63 pass, `test/c-tables/fuzz_main.c:165`) | ❌ #387 (enumerated in the unreached `tables-rust-fuzz`) | ✅ `tables-go-fuzz` (the enumerated 1..63 pass, `test/go-tables/fuzz_test.go:205`) | ✅ `tables-block-fuzz` (`test/cs-block/src/Fuzz.cs:749-753`) | ❌ #387 (every `open` in the leg passes offset 0) | ❌ #387 (the block battery's pointer column is 0) | ❌ #387 (same) | ✅ `tables-elixir-block-lead` `tables-elixir-block-lead-negative-control` |
+| ✅ `tables-block-fuzz` (the enumerated 1..63 pass, `test/tables/block_fuzz_main.cpp:939`) | ✅ `tables-c-fuzz` (the enumerated 1..63 pass, `test/c-tables/fuzz_main.c:165`) | ❌ #387 (enumerated in the unreached `tables-rust-fuzz`) | ✅ `tables-go-fuzz` (the enumerated 1..63 pass, `test/go-tables/fuzz_test.go:205`) | ✅ `tables-block-fuzz` (`test/cs-block/src/Fuzz.cs:749-753`) | ❌ #387 (every `open` in the leg passes offset 0) | ✅ `tables-js-block-lead` `tables-js-block-lead-negative-control` | ❌ #387 (same) | ✅ `tables-elixir-block-lead` `tables-elixir-block-lead-negative-control` |
 
 ### I6 — Claimed names, both ways, with a control
 
