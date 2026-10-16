@@ -6537,7 +6537,12 @@ moved when a peer shipped, which is a performance cliff at exactly the moment a
 deployment cannot afford one. **The same loop runs over the same plan whether
 the writer is this build or another**, and the only thing that differs is which
 plan it was handed. There is no strict flag, no fast path, no second reader to
-keep honest against the first, and one row on the board.
+keep honest against the first, and one row on the board. **The one exception is
+per language, listed, and narrow**: a language may read its IDENTITY plan in
+place when that is necessary for performance in an extreme case — see THE
+IN-PLACE IDENTITY READ under THE ONE READER PATH below. Every compiled plan
+keeps the shared path, so this rule's guarantee holds for every peer that is not
+this build.
 
 ---
 
@@ -6974,6 +6979,61 @@ and a layout whose plan does not fit is a refusal by name. **THE PLAN IS
 COMPILED ONLY AFTER THE LAYOUT HAS PASSED EVERY RULE ABOVE**, so no arithmetic
 in this compiler is ever performed on a size or a child count a stranger chose
 and nobody checked.
+
+#### THE IN-PLACE IDENTITY READ: A PER-LANGUAGE EXCEPTION, LISTED
+
+*"update the spec accordingly please. per-language you may choose to do this as
+necessary for performance in extreme cases (js)"* — the project owner,
+2026-10-16, on the ruling above.
+
+**A LANGUAGE MAY GIVE ITS IDENTITY PLAN AN IN-PLACE READ** — the projection
+reads the record's body straight from the file, with no intermediate copy into
+the image — **WHEN THAT IS NECESSARY FOR PERFORMANCE IN AN EXTREME CASE.** The
+identity plan is one `copy` of the whole body, so its image IS the file's
+bytes; the copy is pure cost, and in a language whose word moves are slow it is
+most of the read. The rule has four conditions, and a language that does not
+meet all four does not have the exception:
+
+- **IT IS LISTED HERE**, with why and the measured numbers. A language not on
+  the list has no second reader, and its guard tests refuse one.
+- **ONLY THE IDENTITY PLAN.** Every COMPILED plan — a peer on another layout —
+  keeps the shared path: prefill, the loop over the plan into the image, and
+  the projection from the image. A peer's read costs what it cost before; what
+  moved is the cost of reading this build's own records.
+- **THE RESULTS ARE IDENTICAL.** Over the same bytes, clean and damaged, the
+  in-place read and the shared path answer the same count, the same report
+  (every counter and every refusal), the same values, and values that save back
+  to the same bytes. A test holds the two equal in each listed language.
+- **THE GUARD ALLOWS EXACTLY THE LIST.** The listed language's guard tests allow
+  its one door, of its one shape, only while this line names it, and refuse
+  any other second reader.
+
+The list, one line, read by the guard tests:
+
+```
+in-place identity readers: javascript
+```
+
+**JAVASCRIPT IS THE FIRST.** Why: the image copy in this language is a
+byte-at-a-time or a DataView word walk over the whole body (1236 bytes for the
+paired bench's `FixedTable`), and the projection reads every field again
+through a DataView; there is no `memcpy`-speed move to make the copy free, as
+there is in the compiled legs. Measured on the paired bench's 64 records
+(`bench/results/packet-read-js/RESULT.md`, node v26.7.0, pinned, two interleaved
+sittings), `bench_fixed_read` best ns/record against the same leg's packet read
+`bench_mixed_read`:
+
+  | host | shared path (copy) | in-place identity | packet read |
+  |---|---|---|---|
+  | hetzner2, 2026-10-16 (w2) | 833.2 / 844.4 | 338.4 / 348.9 | 346.7 / 353.4 |
+  | HULK_ROW |
+
+Without the in-place read the fixed read loses to its own packet read by more
+than 2x; with it, it wins. The JavaScript door is `if (identity)` in
+`<T>FixedLoad`, chosen by `entries === <T>FixedIdentity && holeN === 0`, and it
+projects with `<T>FixedDecode(values[k], srcView, at + 8, stage)`; the guards
+are `internal/codegen/jstable/fixedform_test.go` and the equality test is
+`internal/codegen/jstable/fixedform_inplace_test.go`.
 
 ---
 

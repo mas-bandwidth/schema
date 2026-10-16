@@ -1280,6 +1280,9 @@ export class TableFixedKnownLayout {
     this.layout = layout;
     this.layoutBytes = layoutBytes | 0;
     this.recordBytes = recordBytes | 0;
+    // the lock's bytes as a view, made ONCE at module load, so the per-read
+    // layout compare moves in 32-bit lanes and allocates nothing
+    this.layoutView = new DataView(layout.buffer, layout.byteOffset, layout.length);
   }
 }
 
