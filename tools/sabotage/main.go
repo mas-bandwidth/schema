@@ -373,10 +373,9 @@ var sabotages = map[string][]edit{
 		old: `	g.hf("        cook = new %sCook(at + dataOffset, (long) dataLength);\n", name)`,
 		new: `	g.hf("        ulong walk = 0; // SABOTAGED: Open walks every word of the region\n")
 	g.hf("        for (ulong i = 0; i < bytes / 8; i++) { walk += ((ulong*) at)[i]; }\n")
- 	g.hf("        if (walk == ulong.MaxValue) { return false; }\n")
- 	g.hf("        cook = new %sCook(at + dataOffset, (long) dataLength);\n", name)`,
+	g.hf("        if (walk == ulong.MaxValue) { return false; }\n")
+	g.hf("        cook = new %sCook(at + dataOffset, (long) dataLength);\n", name)`,
 	}},
-
 }
 
 func main() {
