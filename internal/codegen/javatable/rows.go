@@ -333,6 +333,9 @@ func (g *rowGen) emitCookRecordInfo(name string, ml *ir.MemberLayout) {
 	g.f("        TableCookInfo info = new TableCookInfo();\n")
 	g.f("        info.name = %q; info.size = %d; info.align = %d; info.numFields = %d;\n",
 		name, ml.Size, ml.Align, len(ml.Fields))
+	if st := g.unit.Tables[name]; st != nil {
+		g.f("        info.typeId = 0x%016xL;\n", ir.TableWireId(st.WireName()))
+	}
 	g.f("        TableCookFieldInfo[] fields = new TableCookFieldInfo[%d];\n", len(ml.Fields))
 	for i, fl := range ml.Fields {
 		g.f("        fields[%d] = %s;\n", i, g.cookFieldInfo(fl))
@@ -383,8 +386,8 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 	if f.Type.Optional {
 		presentOffset = pieces[len(pieces)-1].Offset
 	}
-	return fmt.Sprintf("TableCookFieldInfo.of(%q, %d, %d, %d, %v, %d, %v, %d, %d, TableCookStorage.%s, %s)",
-		f.Name, fl.Offset, fl.Size, elemSize, isArray, bound, f.Type.Pointer, countOffset, presentOffset,
+	return fmt.Sprintf("TableCookFieldInfo.of(%q, %q, %d, %d, %d, %v, %d, %v, %d, %d, TableCookStorage.%s, %s)",
+		f.Name, member(f), fl.Offset, fl.Size, elemSize, isArray, bound, f.Type.Pointer, countOffset, presentOffset,
 		cookStorageKind(f), names)
 }
 
