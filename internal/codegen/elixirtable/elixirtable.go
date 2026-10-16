@@ -360,3 +360,241 @@ func orderTables(tables []*ir.Struct) []*ir.Struct {
 	}
 	return order
 }
+
+// THE DATA LITERALS THE VARIABLE FORM WRITES (@tables, @unions, @node_types,
+// @known_ids, @uncarried) are laid out in `mix format`'s shape as they are
+// emitted (issue #547). The descriptor builders spell each literal as one
+// flat term (maps, lists, tuples, binaries and leaves; whitespace between
+// tokens is free) and exTerm lays that term out by the formatter's rules for
+// those shapes and nothing else: a term that fits the line stays on it; a map
+// or a list breaks one entry per line two columns in, its closer back at the
+// opening line's indent, with no trailing comma; a binary fills greedily two
+// columns in and a tuple one column inside its brace; an entry that does not
+// fit opens a map or list value beside its key and moves any other value to
+// the next line two columns in. Numbers are spelled as the formatter spells
+// them (exNumber). It is not a formatter: it knows no code, only the literal
+// shapes these emitters write, and the raw-format gate
+// (tables-elixir-emit-format-clean) is what holds it to Elixir 1.20.4.
+type exTerm struct {
+	leaf        string // set for a leaf
+	open, close string // "%{" "}", "[" "]", "{" "}", "<<" ">>"
+	items       []exItem
+}
+
+// exItem is one entry of a container: key is "name: " or `"k" => `, or empty.
+type exItem struct {
+	key string
+	val *exTerm
+}
+
+// exParseLiteral reads the flat term a descriptor builder spells. It panics on
+// a term outside those shapes: that is an emitter bug, and the generator's own
+// tests reach every builder.
+func exParseLiteral(s string) *exTerm {
+	p := &exParser{s: s}
+	t := p.term()
+	p.space()
+	if p.i != len(p.s) {
+		panic(fmt.Sprintf("elixirtable: literal has trailing text at %d: %q", p.i, p.s[p.i:]))
+	}
+	return t
+}
+
+type exParser struct {
+	s string
+	i int
+}
+
+func (p *exParser) space() {
+	for p.i < len(p.s) && (p.s[p.i] == ' ' || p.s[p.i] == '\n') {
+		p.i++
+	}
+}
+
+func (p *exParser) term() *exTerm {
+	p.space()
+	for _, c := range [][2]string{{"%{", "}"}, {"<<", ">>"}, {"[", "]"}, {"{", "}"}} {
+		if strings.HasPrefix(p.s[p.i:], c[0]) {
+			p.i += len(c[0])
+			return p.container(c[0], c[1])
+		}
+	}
+	return &exTerm{leaf: exNumber(p.leaf())}
+}
+
+// leaf reads a string literal or a bare token up to the next separator.
+func (p *exParser) leaf() string {
+	start := p.i
+	if p.i < len(p.s) && p.s[p.i] == '"' {
+		p.i++
+		for p.i < len(p.s) && p.s[p.i] != '"' {
+			if p.s[p.i] == '\\' {
+				p.i++
+			}
+			p.i++
+		}
+		p.i++
+		return p.s[start:p.i]
+	}
+	for p.i < len(p.s) && !strings.ContainsRune(", \n}]>", rune(p.s[p.i])) {
+		p.i++
+	}
+	if p.i == start {
+		panic(fmt.Sprintf("elixirtable: literal has no term at %d: %q", p.i, p.s[p.i:]))
+	}
+	return p.s[start:p.i]
+}
+
+func exIdentByte(c byte) bool {
+	return c == '_' || c == '?' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+}
+
+func (p *exParser) container(open, close string) *exTerm {
+	t := &exTerm{open: open, close: close}
+	for {
+		p.space()
+		if strings.HasPrefix(p.s[p.i:], close) {
+			p.i += len(close)
+			return t
+		}
+		key := ""
+		// a keyword key: an identifier, then ": "
+		j := p.i
+		for j < len(p.s) && exIdentByte(p.s[j]) {
+			j++
+		}
+		if j > p.i && j+1 < len(p.s) && p.s[j] == ':' && p.s[j+1] == ' ' {
+			key = p.s[p.i:j] + ": "
+			p.i = j + 2
+		}
+		v := p.term()
+		p.space()
+		if key == "" && strings.HasPrefix(p.s[p.i:], "=>") {
+			p.i += 2
+			key = v.flat() + " => "
+			v = p.term()
+			p.space()
+		}
+		t.items = append(t.items, exItem{key: key, val: v})
+		if p.i < len(p.s) && p.s[p.i] == ',' {
+			p.i++
+		}
+	}
+}
+
+// exNumber spells a numeric leaf as the formatter does: a decimal integer of
+// six digits or more grouped by underscores (exInt), a float's integer part
+// the same way, hex digits upper case. Anything else is returned unchanged.
+func exNumber(s string) string {
+	body := strings.TrimPrefix(s, "-")
+	sign := s[:len(s)-len(body)]
+	if body == "" || body[0] < '0' || body[0] > '9' || strings.Contains(body, "_") {
+		return s
+	}
+	if strings.HasPrefix(body, "0x") {
+		return sign + "0x" + strings.ToUpper(body[2:])
+	}
+	if strings.ContainsAny(body, "eE") {
+		return s
+	}
+	intPart, frac := body, ""
+	if k := strings.IndexByte(body, '.'); k >= 0 {
+		intPart, frac = body[:k], body[k:]
+	}
+	if intPart == "" || strings.Trim(intPart, "0123456789") != "" {
+		return s
+	}
+	if len(intPart) < 6 {
+		return s
+	}
+	// grouped in threes from the right, the way exInt groups: an unsigned
+	// 64-bit bound is past int64, so the digits are grouped as text
+	var b strings.Builder
+	for i := range len(intPart) {
+		if i > 0 && (len(intPart)-i)%3 == 0 {
+			b.WriteByte('_')
+		}
+		b.WriteByte(intPart[i])
+	}
+	return sign + b.String() + frac
+}
+
+func (t *exTerm) flat() string {
+	if t.open == "" {
+		return t.leaf
+	}
+	parts := make([]string, len(t.items))
+	for i, it := range t.items {
+		parts[i] = it.key + it.val.flat()
+	}
+	return t.open + strings.Join(parts, ", ") + t.close
+}
+
+func exFits(col, tail int, s string) bool { return col+exWidth(s)+tail <= exLineLimit }
+
+// render lays the term out starting at column at, its broken lines indented
+// from column ind, with tail columns following its closer on that line.
+func (t *exTerm) render(at, ind, tail int) string {
+	one := t.flat()
+	if t.open == "" || len(t.items) == 0 || exFits(at, tail, one) {
+		return one
+	}
+	if t.open == "<<" || t.open == "{" {
+		cont := ind + 2
+		if t.open == "{" {
+			cont = at + 1
+		}
+		var b strings.Builder
+		first := t.items[0].key + t.items[0].val.flat()
+		b.WriteString(t.open + first)
+		line := at + len(t.open) + exWidth(first)
+		for i := 1; i < len(t.items); i++ {
+			s := t.items[i].key + t.items[i].val.flat()
+			after := 1
+			if i == len(t.items)-1 {
+				after = len(t.close) + tail
+			}
+			if line+2+exWidth(s)+after > exLineLimit {
+				b.WriteString(",\n" + strings.Repeat(" ", cont) + s)
+				line = cont + exWidth(s)
+				continue
+			}
+			b.WriteString(", " + s)
+			line += 2 + exWidth(s)
+		}
+		b.WriteString(t.close)
+		return b.String()
+	}
+	pad := strings.Repeat(" ", ind+2)
+	var b strings.Builder
+	b.WriteString(t.open + "\n")
+	for i, it := range t.items {
+		sep := exComma(i, len(t.items))
+		b.WriteString(pad + it.render(ind+2, len(sep)) + sep + "\n")
+	}
+	b.WriteString(strings.Repeat(" ", ind) + t.close)
+	return b.String()
+}
+
+// render lays one entry out at column ind: on one line where it fits; a map or
+// list value opened beside its key; any other value on the next line, two
+// columns in.
+func (it exItem) render(ind, tail int) string {
+	if one := it.key + it.val.flat(); exFits(ind, tail, one) || it.key == "" && it.val.open == "" {
+		return one
+	}
+	if it.key == "" {
+		return it.val.render(ind, ind, tail)
+	}
+	if it.val.open == "%{" || it.val.open == "[" {
+		return it.key + it.val.render(ind+exWidth(it.key), ind, tail)
+	}
+	return strings.TrimSuffix(it.key, " ") + "\n" + strings.Repeat(" ", ind+2) + it.val.render(ind+2, ind+2, tail)
+}
+
+// exAttribute writes `@name literal` at module indent, the literal laid out by
+// exTerm's rules.
+func exAttribute(name, literal string) string {
+	head := "  @" + name + " "
+	return head + exParseLiteral(literal).render(exWidth(head), 2, 0) + "\n"
+}
