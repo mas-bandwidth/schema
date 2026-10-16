@@ -37,6 +37,12 @@
 // only: the paired generation is the one that carries FixedTable.schema, and
 // the standalone table corpus has no fixed root to measure.
 #include "FixedTableTable.h"
+// THE PACKET CODEC, for the read arm's comparand only (BENCH-STANDARD.md
+// §1.10, `bench_mixed_read`): the same generated reader the packet leg
+// (bench/cpp/bench_main.cpp) times, compiled in this translation unit under
+// the same NDEBUG build, so serialize.h selects SERIALIZE_RELEASE exactly as
+// the packet leg's -DSERIALIZE_RELEASE does — checks `removed`.
+#include "BenchWire.h"
 namespace benchtable = bench;
 #define TableMixed BenchMixed
 #define TableMixedReset BenchMixedReset
@@ -70,6 +76,7 @@ inline double time_now()
 const int MaxNumRuns = 7;           // median of 7 (N >= 5), after 1 warmup run
 static long g_iterations = 0; /* explicit diagnostic count; defaults stay standard */
 static int g_num_runs = MaxNumRuns; // --round K drops this to 1 (§2.4)
+static long g_round = 0;            // K itself: the read arm alternates its two wires' order by it
 const int NumVariants = 64;         // read-path variant buffers
 
 #if defined(NDEBUG)
@@ -97,7 +104,7 @@ static const char * g_variant_dir = "bench/corpus/variants";
 #ifndef BENCH_OPT
 #define BENCH_OPT "O3"
 #endif
-static const char * g_csv_suffix = "hdr,contract," BENCH_OPT ",unknown";
+static const char * g_csv_suffix = BENCH_OPT ",unknown";
 static std::vector<std::pair<std::string, std::string>> g_csv_rows;
 static std::map<std::string, std::vector<uint8_t>> g_goldens_loaded;
 
@@ -219,7 +226,11 @@ static RunStats run_stats( double * rates, int n )
     return s;
 }
 
-static void report( const char * bench, const char * path, long iters, double bytes_per_op, const RunStats & s )
+// family, linkage and checks are per ROW: the read arm emits one packet row
+// (family gen, checks removed) beside its table rows (family table, checks
+// contract). Every other row keeps the defaults it always had.
+static void report( const char * bench, const char * path, long iters, double bytes_per_op, const RunStats & s,
+                    const char * family_axes = "table,hdr,contract" )
 {
     const double mbps = s.median_rate * double( bytes_per_op ) / ( 1024.0 * 1024.0 );
     fprintf( stderr, "%-18s %-11s %10.3f M msg/s %10.1f MB/s   (min %.3f, max %.3f, spread %.1f%%)\n",
@@ -230,7 +241,7 @@ static void report( const char * bench, const char * path, long iters, double by
         snprintf( row, sizeof( row ), "cpp,%s,%s,%ld,%.17g,%d,%.0f,%.0f,%.0f,%.2f,%.2f",
                   bench, path, iters, bytes_per_op, g_num_runs,
                   s.median_rate, s.min_rate, s.max_rate, mbps, s.spread_pct );
-        g_csv_rows.push_back( { row, "table" } );
+        g_csv_rows.push_back( { row, family_axes } );
     }
 }
 
@@ -442,6 +453,146 @@ static int64_t fixed_load_all( benchtable::FixedTable * values, const uint8_t * 
     return benchtable::FixedTableFixedLoad( values, FixedCount, bytes, size, g_fixed_plan, FixedPlanCapacity, NULL, &report );
 }
 
+// ------------------------------------------------------------------------
+// THE READ ARM (BENCH-STANDARD.md §1.10): each wire's READ, measured alone
+// ------------------------------------------------------------------------
+//
+// `--read-arm` replaces the clocked rows of this invocation with the arm's
+// measured reads, after every correctness gate this runner already runs:
+//
+//   bench_fixed_read  family table  the fixed form's IDENTITY lane: the shipped
+//                                   LOAD of the whole corpus file, one call per
+//                                   64 records, the hash check and the plan run
+//                                   inside the clock; an op is one record
+//   bench_mixed_read  family gen    the PACKET wire's read of the same 64
+//                                   logical records: one ReadStream and one
+//                                   generated read per record, exactly the read
+//                                   half of the packet leg's round trip
+//
+// Neither is derived. §2.9 makes the ordinary `read` a difference of two
+// timings precisely so it is never divided; the gate is a division, so both of
+// its sides are put on the clock here, in ONE invocation, over the SAME
+// records. The PLAN lane (`bench_plan_read`) is not here: it needs the lineage
+// corpus §1.10 names (an older-layout file, its layout and the lock), and this
+// tree carries none, so the driver names that row's absence rather than this
+// runner inventing an older layout.
+//
+// The destination is reused across iterations, as the shipped call reuses it;
+// an escape barrier after every call makes every store of the read observable,
+// so no part of either read can be dropped as dead.
+static bool g_read_arm = false;
+static long g_packet_iterations = 0;
+static const char * g_packet_wire_dir = "testdata/wire";
+static const char * g_packet_variant_dir = "bench/corpus/variants";
+
+static void bench_fixed_read( const char * name, const std::vector<uint8_t> & file, long iters )
+{
+    double rates[MaxNumRuns];
+    for ( int run = -1; run < g_num_runs; run++ )
+    {
+        double start = time_now();
+        for ( long i = 0; i < iters; i += FixedCount )
+        {
+            if ( fixed_load_all( g_fixed_out, file.data(), (int64_t) file.size() ) != FixedCount )
+            {
+                fail( name, "load failed in loop" );
+                return;
+            }
+            bench_escape( g_fixed_out );
+        }
+        double time = time_now() - start;
+        if ( run >= 0 ) rates[run] = double( iters ) / time;
+    }
+    report( name, "read", iters, double( file.size() ) / FixedCount, run_stats( rates, g_num_runs ) );
+}
+
+static std::vector<uint8_t> g_packet_variants;   // NumVariants slots of VariantStride (§2.7)
+// the generated PACKET type, named once, at the read arm's storage declaration
+typedef benchtable::BenchMixed PacketRecord;
+static PacketRecord g_packet_in[NumVariants];
+static PacketRecord g_packet_out;
+
+static void bench_mixed_read( const char * name, long iters )
+{
+    char path[512];
+    snprintf( path, sizeof( path ), "%s/%s.variants.bin", g_packet_variant_dir, name );
+    std::vector<uint8_t> packed;
+    if ( !read_file( path, packed ) || packed.empty() || packed.size() % NumVariants != 0 ||
+         packed.size() / NumVariants > (size_t) BufferSize - 64 )
+    {
+        fprintf( stderr, "missing or malformed packet corpus %s — pass --packet-variant-dir\n", path );
+        failed = true;
+        return;
+    }
+    const size_t record = packed.size() / NumVariants;
+    g_goldens_loaded[std::string( name ) + ".variants.bin"] = packed;
+    g_packet_variants.assign( (size_t) NumVariants * VariantStride, 0 );
+    for ( int k = 0; k < NumVariants; k++ )
+        memcpy( g_packet_variants.data() + (size_t) k * VariantStride, packed.data() + k * record, record );
+
+    // gate 1 (§1.5): variant 0 IS the packet wire's pinned golden.
+    snprintf( path, sizeof( path ), "%s/%s.bin", g_packet_wire_dir, name );
+    std::vector<uint8_t> golden;
+    if ( !read_file( path, golden ) )
+    {
+        fprintf( stderr, "missing packet wire golden %s — pass --packet-wire-dir\n", path );
+        failed = true;
+        return;
+    }
+    g_goldens_loaded[std::string( name ) + ".bin"] = golden;
+    if ( golden.size() != record || memcmp( golden.data(), packed.data(), record ) != 0 )
+    {
+        fail( name, "packet variant 0 is not the packet wire golden" );
+        return;
+    }
+
+    // gate 2: every variant decodes, re-encodes, and comes back byte-identical.
+    for ( int k = 0; k < NumVariants; k++ )
+    {
+        serialize::ReadStream rs( g_packet_variants.data() + (size_t) k * VariantStride, (int) record );
+        if ( !benchtable::ReadBenchMixed( rs, g_packet_in[k] ) )
+        {
+            fail( name, "decode of a packet variant failed" );
+            return;
+        }
+        serialize::WriteStream ws( g_twin, BufferSize );
+        if ( !benchtable::WriteBenchMixed( ws, g_packet_in[k] ) )
+        {
+            fail( name, "re-encode of a decoded packet variant failed" );
+            return;
+        }
+        ws.Flush();
+        if ( ws.GetBytesProcessed() != (int) record || memcmp( g_twin, packed.data() + k * record, record ) != 0 )
+        {
+            fail( name, "packet variant round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus" );
+            return;
+        }
+    }
+
+    if ( g_gate ) return;
+
+    double rates[MaxNumRuns];
+    for ( int run = -1; run < g_num_runs; run++ )
+    {
+        double start = time_now();
+        for ( long i = 0; i < iters; i++ )
+        {
+            serialize::ReadStream rs( g_packet_variants.data() + (size_t) ( i & ( NumVariants - 1 ) ) * VariantStride, (int) record );
+            if ( !benchtable::ReadBenchMixed( rs, g_packet_out ) )
+            {
+                fail( name, "read failed in loop" );
+                return;
+            }
+            bench_escape( &g_packet_out );
+        }
+        double time = time_now() - start;
+        if ( run >= 0 ) rates[run] = double( iters ) / time;
+    }
+    char bench[64];
+    snprintf( bench, sizeof( bench ), "%s_read", name );
+    report( bench, "read", iters, double( record ), run_stats( rates, g_num_runs ), "gen,hdr,removed" );
+}
+
 static void bench_fixed( const char * name, long base_iters )
 {
     const long iters = g_iterations ? g_iterations : base_iters / IterScale;
@@ -506,6 +657,12 @@ static void bench_fixed( const char * name, long base_iters )
     }
 
     if ( g_gate ) return;
+
+    if ( g_read_arm )
+    {
+        bench_fixed_read( "bench_fixed_read", file, iters );
+        return;
+    }
 
     double write_rates[MaxNumRuns];
     double roundtrip_rates[MaxNumRuns];
@@ -592,10 +749,33 @@ int main( int argc, char ** argv )
                 return 1;
             }
             g_num_runs = 1;
+            g_round = k;
         }
+#if defined(BENCH_MATCHED)
+        else if ( strcmp( argv[i], "--read-arm" ) == 0 ) { g_read_arm = true; }
+        else if ( strcmp( argv[i], "--packet-wire-dir" ) == 0 && i + 1 < argc )
+            g_packet_wire_dir = argv[++i];
+        else if ( strcmp( argv[i], "--packet-variant-dir" ) == 0 && i + 1 < argc )
+            g_packet_variant_dir = argv[++i];
+        else if ( strcmp( argv[i], "--packet-iterations" ) == 0 && i + 1 < argc )
+        {
+            char * end = NULL;
+            long n = strtol( argv[++i], &end, 10 );
+            if ( end == argv[i] || *end != '\0' || n <= 0 || n > 2147483584L || n % NumVariants != 0 )
+            {
+                fprintf( stderr, "--packet-iterations requires a positive multiple of 64 up to 2147483584\n" );
+                return 1;
+            }
+            g_packet_iterations = n;
+        }
+#endif
         else
         {
-            fprintf( stderr, "usage: %s [--indexed] [--gate] [--csv] [--round K] [--iterations N] [--wire-dir <dir>] [--variant-dir <dir>]\n", argv[0] );
+            fprintf( stderr, "usage: %s [--indexed] [--gate] [--csv] [--round K] [--iterations N] [--wire-dir <dir>] [--variant-dir <dir>]"
+#if defined(BENCH_MATCHED)
+                             " [--read-arm [--packet-iterations N] [--packet-wire-dir <dir>] [--packet-variant-dir <dir>]]"
+#endif
+                             "\n", argv[0] );
             return 1;
         }
     }
@@ -631,7 +811,12 @@ int main( int argc, char ** argv )
         } );
 #if defined(BENCH_MATCHED)
     g_gate = measured;
+    // THE READ ARM's two wires swap order every round (§2.4): neither one is
+    // always the first to run warm.
+    const long packet_iters = g_packet_iterations ? g_packet_iterations : 4000000L / IterScale;
+    if ( g_read_arm && ( g_round & 1 ) ) bench_mixed_read( "bench_mixed", packet_iters );
     bench_fixed( "bench_fixed", 400000L );
+    if ( g_read_arm && !( g_round & 1 ) ) bench_mixed_read( "bench_mixed", packet_iters );
 #endif
 
     flush_csv();
