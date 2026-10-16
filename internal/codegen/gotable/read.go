@@ -28,6 +28,11 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		reqIdx[f] = i
 		g.pf("\treqSeen%d := false\n", i)
 	}
+	if unitHasRequired(g.unit) {
+		// Counted from this body's start, so a report the caller reuses does
+		// not refuse a clean record for an earlier read's missing field.
+		g.pf("\tmissingBefore := r.Report.MissingRequired\n")
+	}
 	g.pf("\tfor {\n\t\tref, ok := r.lebPair(); if !ok { ref, ok = r.lebWide() }; if !ok { r.Report.Malformed = true; return false }\n")
 	if len(req) > 0 {
 		g.pf("\t\tif ref == 0 {\n")
@@ -44,8 +49,16 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("\t\t\t\tr.Report.Reason = \"missing_required: \" + missingReq\n")
 		g.pf("\t\t\t\treturn false\n")
 		g.pf("\t\t\t}\n")
-		g.pf("\t\t\treturn true\n")
+		g.pf("\t\t\treturn r.Report.MissingRequired == missingBefore\n")
 		g.pf("\t\t}\n")
+	} else if unitHasRequired(g.unit) {
+		// A BODY BELOW THIS ONE that was refused for a missing required field
+		// refuses this one too (docs/SPEC-TABLES.md §2.3): the report is shared
+		// down the walk, so a nested table, an element, a map entry or a node
+		// body that set MissingRequired stops every body above it, and the
+		// whole record is refused naming the field — never read as a parent
+		// with a defaulted child. A unit with no required field pays nothing.
+		g.pf("\t\tif ref == 0 { return r.Report.MissingRequired == missingBefore }\n")
 	} else {
 		g.pf("\t\tif ref == 0 { return true }\n")
 	}
@@ -602,4 +615,18 @@ func requiredFieldNames(req []*ir.Field) []string {
 		out[i] = f.Name
 	}
 	return out
+}
+
+// unitHasRequired reports whether any table of the unit marks a field
+// `| required` (docs/SPEC-TABLES.md §2.3): only then does a body end ask the
+// shared report whether a body below it was refused for a missing one.
+func unitHasRequired(u *ir.Unit) bool {
+	for _, st := range u.Tables {
+		for _, f := range st.Fields {
+			if f.Required {
+				return true
+			}
+		}
+	}
+	return false
 }
