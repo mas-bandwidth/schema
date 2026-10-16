@@ -214,6 +214,9 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 			g.f("    public static %s %s(byte[] data, int at, int i) { return %s; }\n",
 				elem, name, readCall(elem, fmt.Sprintf("at + %d + i * %d", pieces[0].Offset, elemSize)))
 		}
+		if f.KeyEnum != "" {
+			g.emitRowKeyForm(f, name, elem, pieces[0].Offset, elemSize)
+		}
 		if f.Array == ir.ArrayCounted {
 			at := pieces[1].Offset
 			g.f("    public static int %sCount(byte[] data, int at) {\n", name)
@@ -236,6 +239,34 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 	}
 }
 
+// emitRowKeyForm is a row's KEY FORM (docs/SPEC-TABLES.md §2.4, docs/PORTING.md
+// M5), beside the slot form and additive to it: the slot accessor above still
+// takes a storage index, and this one takes the KEY, refuses None and a key past
+// Max by name in every build (javaKeyRefusal's one unsigned compare), and
+// writes the shift — key k at slot k-1 — so no caller does. A row is read over
+// a caller's byte[] that is usually wider than the row, which is where the
+// JVM's own bound gives no help: slot -1 or slot Max is a silent read of a
+// neighbour, so the refusal is the accessor's or it is nobody's. `ByKey` and
+// `AtKey` are the key form's spellings of the slot form's `<name>` and
+// `<name>At`.
+func (g *rowGen) emitRowKeyForm(f *ir.Field, name, elem string, base, elemSize int64) {
+	if isClassRef(f.Type) {
+		g.f("    /** [%s]%s %s: the element's own offset, refusing None and past Max. */\n",
+			f.KeyEnum, f.Type.Name, keyedFormMarker)
+		g.f("    public static int %sAtKey(int at, int key) {\n", name)
+		g.f("%s", javaKeyRefusal("        ", "key", f))
+		g.f("        return at + %d + (key - 1) * %d;\n", base, elemSize)
+		g.f("    }\n")
+		return
+	}
+	g.f("    /** %s %s: key k reads slot k-1, refusing None and past Max. */\n",
+		ir.FieldTypeSpelling(f), keyedFormMarker)
+	g.f("    public static %s %sByKey(byte[] data, int at, int key) {\n", elem, name)
+	g.f("%s", javaKeyRefusal("        ", "key", f))
+	g.f("        return %s;\n", readCall(elem, fmt.Sprintf("at + %d + (key - 1) * %d", base, elemSize)))
+	g.f("    }\n")
+}
+
 // emitBlockRecordInfo is §19.2's descriptor for one ROW record: the offsets a
 // reflective walk reads at, derived from the layout model independently of the
 // accessors above — which is what TableBlockLayout's check compares.
@@ -248,15 +279,15 @@ func (g *rowGen) emitBlockRecordInfo(name string, ml *ir.MemberLayout) {
 	g.f("    private static final class BlockInfoHolder {\n")
 	g.f("        static final TableBlockInfo INFO = build();\n\n")
 	g.f("        private static TableBlockInfo build() {\n")
-	g.f("        TableBlockInfo info = new TableBlockInfo();\n")
-	g.f("        info.name = %q; info.buildVersion = BuildVersion.value; info.size = %d; info.align = %d; info.numFields = %d;\n",
+	g.f("            TableBlockInfo info = new TableBlockInfo();\n")
+	g.f("            info.name = %q; info.buildVersion = BuildVersion.value; info.size = %d; info.align = %d; info.numFields = %d;\n",
 		name, ml.Size, ml.Align, len(ml.Fields))
-	g.f("        TableBlockFieldInfo[] fields = new TableBlockFieldInfo[%d];\n", len(ml.Fields))
+	g.f("            TableBlockFieldInfo[] fields = new TableBlockFieldInfo[%d];\n", len(ml.Fields))
 	for i, fl := range ml.Fields {
-		g.f("        fields[%d] = %s;\n", i, g.blockFieldInfo(fl, false, nil))
+		g.f("            fields[%d] = %s;\n", i, g.blockFieldInfo(fl, false, nil))
 	}
-	g.f("        info.fields = fields;\n")
-	g.f("        return info;\n        }\n    }\n\n")
+	g.f("            info.fields = fields;\n")
+	g.f("            return info;\n        }\n    }\n\n")
 	g.f("    public static TableBlockInfo blockInfo() { return BlockInfoHolder.INFO; }\n\n")
 }
 
@@ -299,18 +330,18 @@ func (g *rowGen) emitCookRecordInfo(name string, ml *ir.MemberLayout) {
 	g.f("    private static final class CookInfoHolder {\n")
 	g.f("        static final TableCookInfo INFO = build();\n\n")
 	g.f("        private static TableCookInfo build() {\n")
-	g.f("        TableCookInfo info = new TableCookInfo();\n")
-	g.f("        info.name = %q; info.size = %d; info.align = %d; info.numFields = %d;\n",
+	g.f("            TableCookInfo info = new TableCookInfo();\n")
+	g.f("            info.name = %q; info.size = %d; info.align = %d; info.numFields = %d;\n",
 		name, ml.Size, ml.Align, len(ml.Fields))
 	if st := g.unit.Tables[name]; st != nil {
-		g.f("        info.typeId = 0x%016xL;\n", ir.TableWireId(st.WireName()))
+		g.f("            info.typeId = 0x%016xL;\n", ir.TableWireId(st.WireName()))
 	}
-	g.f("        TableCookFieldInfo[] fields = new TableCookFieldInfo[%d];\n", len(ml.Fields))
+	g.f("            TableCookFieldInfo[] fields = new TableCookFieldInfo[%d];\n", len(ml.Fields))
 	for i, fl := range ml.Fields {
-		g.f("        fields[%d] = %s;\n", i, g.cookFieldInfo(fl))
+		g.f("            fields[%d] = %s;\n", i, g.cookFieldInfo(fl))
 	}
-	g.f("        info.fields = fields;\n")
-	g.f("        return info;\n        }\n    }\n\n")
+	g.f("            info.fields = fields;\n")
+	g.f("            return info;\n        }\n    }\n\n")
 	g.f("    public static TableCookInfo cookInfo() { return CookInfoHolder.INFO; }\n\n")
 }
 

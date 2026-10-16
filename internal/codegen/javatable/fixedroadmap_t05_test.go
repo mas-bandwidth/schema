@@ -51,7 +51,7 @@ func t05Has(t *testing.T, files map[string]string, file, want, what string) {
 	if !ok {
 		t.Fatalf("%s: the emitter wrote no %s", what, file)
 	}
-	if !strings.Contains(src, want) {
+	if !javaCarries(src, want) {
 		t.Errorf("%s: %s does not carry %q", what, file, want)
 	}
 }
@@ -347,7 +347,7 @@ func t05R31(t *testing.T) {
 		"public long arg2;",
 		"public byte argw2;",
 	} {
-		if !strings.Contains(src, want) {
+		if !javaCarries(src, want) {
 			t.Errorf("R31: the plan's lanes are not full width — %q is not emitted", want)
 		}
 	}
@@ -360,7 +360,7 @@ func t05R31(t *testing.T) {
 		"final int gw2 = guardWidth(p.argw2);",
 		"if (tagAt(src, srcAt + p.guard2, gw2) != p.arg2) { continue; }",
 	} {
-		if !strings.Contains(src, want) {
+		if !javaCarries(src, want) {
 			t.Errorf("R31: the guard compare is not at the tag's own width — %q is not emitted", want)
 		}
 	}
@@ -374,7 +374,7 @@ func t05R31(t *testing.T) {
 		"c.plan[q].arg2 = arg;",
 		"c.plan[q].argw2 = outerW;",
 	} {
-		if !strings.Contains(src, want) {
+		if !javaCarries(src, want) {
 			t.Errorf("R31: the outer tag is not conjoined on a second guard lane — %q is not emitted", want)
 		}
 	}
@@ -392,7 +392,7 @@ func t05R31(t *testing.T) {
 		"remap[at] = (short) n;",
 		"if (n < 0 || n > 65535) { overflow = true; return 0; }",
 	} {
-		if !strings.Contains(src, want) {
+		if !javaCarries(src, want) {
 			t.Errorf("R31: the remap table's length word is not emitted — %q is not present", want)
 		}
 	}

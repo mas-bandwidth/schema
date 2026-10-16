@@ -95,32 +95,48 @@ public final class TableBytes {
         }
     }
 
-    public static boolean bool(byte[] data, int at) { return data[at] != 0; }
+    public static boolean bool(byte[] data, int at) {
+        return data[at] != 0;
+    }
 
-    public static byte i8(byte[] data, int at) { return data[at]; }
+    public static byte i8(byte[] data, int at) {
+        return data[at];
+    }
 
-    public static int u8(byte[] data, int at) { return data[at] & 0xff; }
+    public static int u8(byte[] data, int at) {
+        return data[at] & 0xff;
+    }
 
     public static short i16(byte[] data, int at) {
         return (short) ((data[at] & 0xff) | ((data[at + 1] & 0xff) << 8));
     }
 
-    public static int u16(byte[] data, int at) { return i16(data, at) & 0xffff; }
-
-    public static int i32(byte[] data, int at) {
-        return (data[at] & 0xff) | ((data[at + 1] & 0xff) << 8) |
-               ((data[at + 2] & 0xff) << 16) | ((data[at + 3] & 0xff) << 24);
+    public static int u16(byte[] data, int at) {
+        return i16(data, at) & 0xffff;
     }
 
-    public static long u32(byte[] data, int at) { return i32(data, at) & 0xffffffffL; }
+    public static int i32(byte[] data, int at) {
+        return (data[at] & 0xff)
+                | ((data[at + 1] & 0xff) << 8)
+                | ((data[at + 2] & 0xff) << 16)
+                | ((data[at + 3] & 0xff) << 24);
+    }
+
+    public static long u32(byte[] data, int at) {
+        return i32(data, at) & 0xffffffffL;
+    }
 
     public static long i64(byte[] data, int at) {
         return (i32(data, at) & 0xffffffffL) | ((long) i32(data, at + 4) << 32);
     }
 
-    public static float f32(byte[] data, int at) { return Float.intBitsToFloat(i32(data, at)); }
+    public static float f32(byte[] data, int at) {
+        return Float.intBitsToFloat(i32(data, at));
+    }
 
-    public static double f64(byte[] data, int at) { return Double.longBitsToDouble(i64(data, at)); }
+    public static double f64(byte[] data, int at) {
+        return Double.longBitsToDouble(i64(data, at));
+    }
 }
 `
 
@@ -145,8 +161,10 @@ public record TableBlockRows(byte[] data, int base, int count, int stride) {
         return base + index * stride;
     }
 
-    /** every row's offset, in order — the ITERATED form §19.2 asks for, with the
-     *  pitch inside rather than at the call site. */
+    /**
+     * every row's offset, in order — the ITERATED form §19.2 asks for, with the pitch inside rather
+     * than at the call site.
+     */
     public void forEach(java.util.function.IntConsumer row) {
         for (int i = 0; i < count; i++) {
             row.accept(base + i * stride);
@@ -194,41 +212,57 @@ const tableBlockFieldInfoSource = `// One block field's reflection descriptor. T
 // the triples out of an instance and reaches rows, with no hand-written
 // accessor per table and no knowledge of the spelling that produced any of it.
 public final class TableBlockFieldInfo {
-    /** the ELEMENT's or the nested record's own layout, behind a supplier so the
-     *  table stays constructible in any order. null when the field is a scalar.
-     *  Following it is how a walker DESCENDS: an out-of-line array's rows, and a
-     *  nested record's fields, are both reached through this one column. */
-    public interface InfoRef { TableBlockInfo get(); }
+    /**
+     * the ELEMENT's or the nested record's own layout, behind a supplier so the table stays
+     * constructible in any order. null when the field is a scalar. Following it is how a walker
+     * DESCENDS: an out-of-line array's rows, and a nested record's fields, are both reached through
+     * this one column.
+     */
+    public interface InfoRef {
+        TableBlockInfo get();
+    }
 
     public String name;
-    public int offset;         // the field's offset in the record this descriptor describes
-    public int size;           // its size there
-    public int kind;           // the table-wire kind, as TableFieldInfo carries it
-    public boolean outOfLine;  // an out-of-line array: the triple's three members are live
+    public int offset; // the field's offset in the record this descriptor describes
+    public int size; // its size there
+    public int kind; // the table-wire kind, as TableFieldInfo carries it
+    public boolean outOfLine; // an out-of-line array: the triple's three members are live
     public int offsetOfOffset; // the triple's offset_of member, or -1
     // The COUNT COMPANION, and it is one column doing one job in both spellings:
     // the triple's count member for an out-of-line array, the int32 used length
     // of a string or a bytes inline, -1 when the field has none.
     public int countOffset;
-    public int strideOffset;   // the triple's stride member, or -1
-    public int stride;         // THIS BUILD's pitch, to assert against — never to index with (§19.2)
+    public int strideOffset; // the triple's stride member, or -1
+    public int stride; // THIS BUILD's pitch, to assert against — never to index with (§19.2)
     // ---- what a GENERIC ROW WALK needs, in the vocabulary TableFieldInfo
     // already uses (docs/SPEC-TABLES.md §8.1), so ONE walker reads a cooked node and
     // a block row without learning a second one.
-    public boolean isArray;    // inline storage of arrayBound slots at elemSize (bytes included)
-    public boolean counted;    // countOffset names a used-length companion
-    public boolean optional;   // presentOffset names a bool presence companion
-    public int arrayBound;     // inline slots, or a string's declared maximum; 0 for a plain scalar
-    public int elemSize;       // ONE slot's size; the field's own when it holds one value
-    public int presentOffset;  // the presence companion, or -1
+    public boolean isArray; // inline storage of arrayBound slots at elemSize (bytes included)
+    public boolean counted; // countOffset names a used-length companion
+    public boolean optional; // presentOffset names a bool presence companion
+    public int arrayBound; // inline slots, or a string's declared maximum; 0 for a plain scalar
+    public int elemSize; // ONE slot's size; the field's own when it holds one value
+    public int presentOffset; // the presence companion, or -1
     public InfoRef elementRef;
 
-    public TableBlockInfo element() { return elementRef == null ? null : elementRef.get(); }
+    public TableBlockInfo element() {
+        return elementRef == null ? null : elementRef.get();
+    }
 
     /** one INLINE field. */
-    public static TableBlockFieldInfo of(String name, int offset, int size, int kind, int countOffset,
-                                         boolean isArray, boolean counted, boolean optional,
-                                         int arrayBound, int elemSize, int presentOffset, InfoRef element) {
+    public static TableBlockFieldInfo of(
+            String name,
+            int offset,
+            int size,
+            int kind,
+            int countOffset,
+            boolean isArray,
+            boolean counted,
+            boolean optional,
+            int arrayBound,
+            int elemSize,
+            int presentOffset,
+            InfoRef element) {
         TableBlockFieldInfo f = new TableBlockFieldInfo();
         f.name = name;
         f.offset = offset;
@@ -250,9 +284,17 @@ public final class TableBlockFieldInfo {
     }
 
     /** one OUT-OF-LINE array: its triple, and the row it names. */
-    public static TableBlockFieldInfo array(String name, int offset, int size, int kind,
-                                            int offsetOfOffset, int countOffset, int strideOffset,
-                                            int stride, int max, InfoRef element) {
+    public static TableBlockFieldInfo array(
+            String name,
+            int offset,
+            int size,
+            int kind,
+            int offsetOfOffset,
+            int countOffset,
+            int strideOffset,
+            int stride,
+            int max,
+            InfoRef element) {
         TableBlockFieldInfo f = new TableBlockFieldInfo();
         f.name = name;
         f.offset = offset;
@@ -592,19 +634,19 @@ func (g *blockGen) emitType() {
 	g.f("    private static final class ProjectionHolder {\n")
 	g.f("        static final TableBlockInfo INFO = build();\n\n")
 	g.f("        private static TableBlockInfo build() {\n")
-	g.f("        TableBlockInfo info = new TableBlockInfo();\n")
-	g.f("        info.name = %q; info.buildVersion = BuildVersion.value; info.size = %d; info.align = %d; info.numFields = %d;\n",
+	g.f("            TableBlockInfo info = new TableBlockInfo();\n")
+	g.f("            info.name = %q; info.buildVersion = BuildVersion.value; info.size = %d; info.align = %d; info.numFields = %d;\n",
 		name, bl.Projection.Size, bl.Projection.Align, len(bl.Projection.Fields))
-	g.f("        TableBlockFieldInfo[] fields = new TableBlockFieldInfo[%d];\n", len(bl.Projection.Fields))
+	g.f("            TableBlockFieldInfo[] fields = new TableBlockFieldInfo[%d];\n", len(bl.Projection.Fields))
 	for i, fl := range bl.Projection.Fields {
 		if a := bl.ArrayByName(fl.Field.Name); a != nil {
-			g.f("        fields[%d] = %s;\n", i, rg.blockFieldInfo(fl, true, a))
+			g.f("            fields[%d] = %s;\n", i, rg.blockFieldInfo(fl, true, a))
 			continue
 		}
-		g.f("        fields[%d] = %s;\n", i, rg.blockFieldInfo(fl, true, nil))
+		g.f("            fields[%d] = %s;\n", i, rg.blockFieldInfo(fl, true, nil))
 	}
-	g.f("        info.fields = fields;\n")
-	g.f("        return info;\n        }\n    }\n\n")
+	g.f("            info.fields = fields;\n")
+	g.f("            return info;\n        }\n    }\n\n")
 	g.f("    public static TableBlockInfo type() { return ProjectionHolder.INFO; }\n")
 }
 
@@ -673,9 +715,14 @@ func emitBlockLayoutFile(u *ir.Unit, blocks *ir.BlockUnit, set *records) []byte 
     private static void number(String what, int accessors, int descriptors) {
         if (accessors != descriptors) {
             throw new IllegalStateException(
-                    "schema block layout: " + what + " is " + accessors + " through the accessors and " +
-                    descriptors + " through the descriptors — the two halves of one generated layout " +
-                    "disagree about the bytes (docs/SPEC-TABLES.md §19.3)");
+                    "schema block layout: "
+                            + what
+                            + " is "
+                            + accessors
+                            + " through the accessors and "
+                            + descriptors
+                            + " through the descriptors — the two halves of one generated layout "
+                            + "disagree about the bytes (docs/SPEC-TABLES.md §19.3)");
         }
     }
 }

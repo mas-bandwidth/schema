@@ -47,6 +47,7 @@ import (
 	"math/big"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -715,6 +716,9 @@ func (g *fixedGen) emitStorageField(f *ir.Field) []string {
 		typ := fixedScalarType(f.Type)
 		g.pf("        /** %s */\n", ir.FieldTypeSpelling(f))
 		g.pf("        public final %s[] %s = new %s[%d];\n", typ, name, typ, slots)
+		if f.KeyEnum != "" {
+			g.emitKeyedAccessors(f, name, typ)
+		}
 		if fixedIsObject(f.Type) {
 			if typ == "Int128" || typ == "UInt128" {
 				ctor = append(ctor, fmt.Sprintf("            java.util.Arrays.fill(%s, %s.zero);\n", name, typ))
@@ -755,6 +759,101 @@ func (g *fixedGen) emitStorageField(f *ir.Field) []string {
 		g.pf("        public %s %s;\n", typ, name)
 	}
 	return nil
+}
+
+// emitKeyedAccessors is the fixed record's KEY FORM (docs/SPEC-TABLES.md §2.4,
+// docs/PORTING.md M5), beside the slot array and additive to it: the array is
+// still the storage every Write, Read and scatter body walks by SLOT, and these
+// are the one place a caller indexes by KEY. Java has no operator overloading,
+// so the accessor is the field's own name as an overload pair — `perTeam(key)`
+// reads, `perTeam(key, value)` stores — and the key is an `int` holding the
+// enum's value (the table leg's enums are their integer values). A CLASS
+// element (a nested record) answers the live instance and has no store, as a
+// slot of it is filled in place; an Int128/UInt128 slot is an immutable object,
+// so it keeps the store.
+func (g *fixedGen) emitKeyedAccessors(f *ir.Field, name, typ string) {
+	spell := ir.FieldTypeSpelling(f)
+	g.pf("        /** %s %s: key k is slot k-1, and None and a key past\n", spell, keyedFormMarker)
+	g.pf("         *  %s.Max are refused by name in every build. */\n", f.KeyEnum)
+	g.pf("        public %s %s(int key) {\n", typ, name)
+	g.pf("%s", javaKeyRefusal("            ", "key", f))
+	g.pf("            return %s[key - 1];\n", name)
+	g.pf("        }\n")
+	if fixedIsObject(f.Type) && typ != "Int128" && typ != "UInt128" {
+		return
+	}
+	g.pf("        /** %s %s: store key's slot, k at k-1, refusing as the read does. */\n", spell, keyedFormMarker)
+	g.pf("        public void %s(int key, %s value) {\n", name, typ)
+	g.pf("%s", javaKeyRefusal("            ", "key", f))
+	g.pf("            %s[key - 1] = value;\n", name)
+	g.pf("        }\n")
+}
+
+// keyedFormMarker opens every member the key form adds, in the fixed record and
+// in a row alike, so a test can take the key form out and hold everything else
+// byte-identical to the slot form it was added beside.
+const keyedFormMarker = "BY KEY (docs/SPEC-TABLES.md §2.4)"
+
+// javaKeyRefused is §2.4's refusal condition (docs/SPEC-TABLES.md §2.4): ONE
+// UNSIGNED COMPARE COVERS BOTH ENDS. The storage index is key - 1; None's is
+// -1, which wraps above Max unsigned, and a key past Max is >= Max. It is a
+// written compare and not `assert`, so -da (the release shape) keeps it, and it
+// is the accessor's own check rather than the JVM's ArrayIndexOutOfBounds, which
+// names an index and, over a row's wider byte[], does not fire at all.
+func javaKeyRefused(key string, max int64) string {
+	return fmt.Sprintf("Integer.compareUnsigned(%s - 1, %d) >= 0", key, max)
+}
+
+// javaKeyRefusal is the whole refusal statement (docs/SPEC-TABLES.md §2.4): it
+// throws IllegalArgumentException naming the field, the KEY, the enum and its
+// Max — never an index — so a caller reading the message knows which variant it
+// asked for and what the enum holds.
+func javaKeyRefusal(indent, key string, f *ir.Field) string {
+	e, max := f.KeyEnum, f.KeyEnumRef.Max
+	// The statement is written in the formatter's shape (#547): the argument
+	// one operand a line, the choice of message broken when it does not fit,
+	// and the closing sentence cut at words into literals that each fit, so
+	// the formatter has no literal of its own to reflow.
+	const limit = 100
+	t := indent + "    "
+	arg, op, arm := t+"        ", t+"                ", t+"                        "
+	var b strings.Builder
+	fmt.Fprintf(&b, "%sif (%s) {\n", indent, javaKeyRefused(key, max))
+	fmt.Fprintf(&b, "%sthrow new IllegalArgumentException(\n", t)
+	fmt.Fprintf(&b, "%s\"%s [%s]: key \"\n", arg, f.Name, e)
+	fmt.Fprintf(&b, "%s+ %s\n", op, key)
+	choice := fmt.Sprintf("+ (%s == 0 ? \" is None, which keys no slot\" : \" names no variant of %s\")", key, e)
+	if utf8.RuneCountInString(op+choice) <= limit {
+		fmt.Fprintf(&b, "%s%s\n", op, choice)
+	} else {
+		fmt.Fprintf(&b, "%s+ (%s == 0\n", op, key)
+		fmt.Fprintf(&b, "%s? \" is None, which keys no slot\"\n", arm)
+		fmt.Fprintf(&b, "%s: \" names no variant of %s\")\n", arm, e)
+	}
+	words := strings.SplitAfter(fmt.Sprintf("; an enum-keyed array holds one slot per named variant, keys 1 .. %s.Max (%d)", e, max), " ")
+	var parts []string
+	cur := ""
+	for i, w := range words {
+		tail := ""
+		if i == len(words)-1 {
+			tail = ");"
+		}
+		if cur != "" && utf8.RuneCountInString(op+"+ \""+cur+w+"\""+tail) > limit {
+			parts = append(parts, cur)
+			cur = ""
+		}
+		cur += w
+	}
+	parts = append(parts, cur)
+	for i, part := range parts {
+		tail := ""
+		if i == len(parts)-1 {
+			tail = ");"
+		}
+		fmt.Fprintf(&b, "%s+ \"%s\"%s\n", op, part, tail)
+	}
+	fmt.Fprintf(&b, "%s}\n", indent)
+	return b.String()
 }
 
 // fixedSlots answers how many elements a field's storage holds, and whether
@@ -1449,16 +1548,16 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 		if v.F == nil {
 			continue
 		}
-		g.pf("            case %d: {\n", i+1)
-		g.emitWriteField(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v", 16)
+		g.pf("            case %d:\n                {\n", i+1)
+		g.emitWriteField(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v", 20)
 		if arm := fixedFieldBytes(v.F); arm < widest {
-			g.pf("                java.util.Arrays.fill(b, at + %d, at + %d, (byte) 0);\n", tag+arm, tag+widest)
+			g.pf("                    java.util.Arrays.fill(b, at + %d, at + %d, (byte) 0);\n", tag+arm, tag+widest)
 		}
-		g.pf("                break;\n            }\n")
+		g.pf("                    break;\n                }\n")
 	}
-	g.pf("            default: {\n")
-	g.pf("                java.util.Arrays.fill(b, at + %d, at + %d, (byte) 0);\n", tag, tag+widest)
-	g.pf("                break;\n            }\n")
+	g.pf("            default:\n                {\n")
+	g.pf("                    java.util.Arrays.fill(b, at + %d, at + %d, (byte) 0);\n", tag, tag+widest)
+	g.pf("                    break;\n                }\n")
 	g.pf("        }\n    }\n\n")
 
 	g.pf("    /** the tag, then the selected arm; an unselected arm keeps what it held. */\n")
@@ -1481,9 +1580,9 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 		if v.F == nil {
 			continue
 		}
-		g.pf("            case %d: {\n", i+1)
-		g.emitScatterField(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v", "r", 16)
-		g.pf("                break;\n            }\n")
+		g.pf("            case %d:\n                {\n", i+1)
+		g.emitScatterField(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v", "r", 20)
+		g.pf("                    break;\n                }\n")
 	}
 	g.pf("            default: break;\n")
 	g.pf("        }\n    }\n")
@@ -1542,7 +1641,8 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("    //     offset  16       the layout length (u32 LE), then the layout\n")
 	g.pf("    /** write the header at the front of buffer; answers where the records start. */\n")
 	g.pf("    public static int writeHeader(byte[] buffer) {\n")
-	g.pf("        java.util.Arrays.fill(buffer, 0, TableFixed.fileHeaderBytes, (byte) 0); // the seven reserved bytes, and the rest\n")
+	g.pf("        // the seven reserved bytes, and the rest\n")
+	g.pf("        java.util.Arrays.fill(buffer, 0, TableFixed.fileHeaderBytes, (byte) 0);\n")
 	g.pf("        buffer[0] = TableFixed.form;\n")
 	g.pf("        TableFixed.put64(buffer, TableFixed.hashAt, hash);\n")
 	g.pf("        TableFixed.put32(buffer, TableFixed.fileHeaderBytes, layout.length);\n")
@@ -1925,15 +2025,42 @@ func (g *fixedGen) emitByteChunks(b []byte) {
 	}
 }
 
+// fixedFillRow lays one commented row of a layout literal out the way the
+// formatter does: the elements filled to the column limit, eight columns in,
+// and the comment after the last of them, which moves down a line whenever the
+// comment would not fit behind it.
+func fixedFillRow(elems, comment string) string {
+	parts := strings.Split(elems, ", ")
+	var lines []string
+	cur := ""
+	for i, p := range parts {
+		tok := p + ","
+		if i == len(parts)-1 {
+			tok += " // " + comment
+		}
+		if cur != "" && utf8.RuneCountInString(cur)+1+utf8.RuneCountInString(tok) > 100 {
+			lines = append(lines, cur)
+			cur = ""
+		}
+		if cur == "" {
+			cur = "        " + tok
+		} else {
+			cur += " " + tok
+		}
+	}
+	lines = append(lines, cur)
+	return strings.Join(lines, "\n") + "\n"
+}
+
 func (g *fixedGen) emitByteArray(b []byte, entries []fixedLayoutEntry) {
 	if len(entries) > 0 {
 		// the layout, entry by entry, so a reader of the generated source can
 		// see the walk rather than a wall of hex
-		g.pf("        %s, // %d entries\n", fixedBytesLine(b[:4]), len(entries))
+		g.pf("%s", fixedFillRow(fixedBytesLine(b[:4]), fmt.Sprintf("%d entries", len(entries))))
 		at := 4
 		for _, e := range entries {
-			g.pf("        %s, // %s: kind %d, size %d, %d %s\n",
-				fixedBytesLine(b[at:at+17]), e.note, e.kind, e.size, e.children, fixedChildWord(e.children))
+			g.pf("%s", fixedFillRow(fixedBytesLine(b[at:at+17]),
+				fmt.Sprintf("%s: kind %d, size %d, %d %s", e.note, e.kind, e.size, e.children, fixedChildWord(e.children))))
 			at += 17
 		}
 		return

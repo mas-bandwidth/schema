@@ -83,24 +83,31 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        if (r == null) { return null; }\n")
 	b.WriteString("        retain.used = 0; retain.idUsed = 0;\n")
 	fmt.Fprintf(&b, "        %sVariable.Value v = new %sVariable.Value();\n", st.Name, st.Name)
-	fmt.Fprintf(&b, "        TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);\n")
-	b.WriteString("        if (nt.recs != null && !nt.bad) {\n")
-	b.WriteString("            for (TableVariable.NodeRecord rec : nt.recs) {\n")
-	b.WriteString("                if (!rec.textMalformed && rec.typeId != TableVariable.STRING_ID && rec.typeId != TableVariable.BYTES_ID) {\n")
-	fmt.Fprintf(&b, "                    rec.table = %sVariable.createNode(rec.typeId);\n", st.Name)
-	b.WriteString("                    if (rec.table == null) { report.unknown++; report.retainLost++; rec.typeId = 0; }\n")
-	b.WriteString("                }\n            }\n")
-	b.WriteString("            for (TableVariable.NodeRecord rec : nt.recs) {\n")
-	fmt.Fprintf(&b, "                if (rec.table != null) { %sVariable.decodeNodeBody(new TableVariable.Reader(rec.body, r.ids, report), rec.table, rec.typeId, report); }\n", st.Name)
-	b.WriteString("            }\n        }\n")
-	fmt.Fprintf(&b, "        readFieldsRetain(r, v, nt, retain, report, path, 0);\n")
-	b.WriteString("        if (report.refused) { return null; }\n")
-	fmt.Fprintf(&b, "        %sVariable.resolveNodes(v, nt, report);\n", st.Name)
-	b.WriteString("        if (nt.recs != null && !nt.bad) {\n")
-	fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) { if (rec.table != null) %sVariable.resolveNodePointers(rec.table, rec.typeId, nt, v, %sVariable.TYPE_ID, report); }\n", st.Name, st.Name)
-	b.WriteString("        }\n")
-	b.WriteString("        return v;\n")
-	b.WriteString("    }\n\n")
+	if st.FixedDeclared {
+		fmt.Fprintf(&b, "        readFieldsRetain(r, v, null, retain, report, path, 0);\n")
+		b.WriteString("        if (report.refused) { return null; }\n")
+		b.WriteString("        return v;\n")
+		b.WriteString("    }\n\n")
+	} else {
+		fmt.Fprintf(&b, "        TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);\n")
+		b.WriteString("        if (nt.recs != null && !nt.bad) {\n")
+		b.WriteString("            for (TableVariable.NodeRecord rec : nt.recs) {\n")
+		b.WriteString("                if (!rec.textMalformed && rec.typeId != TableVariable.STRING_ID && rec.typeId != TableVariable.BYTES_ID) {\n")
+		fmt.Fprintf(&b, "                    rec.table = %sVariable.createNode(rec.typeId);\n", st.Name)
+		b.WriteString("                    if (rec.table == null) { report.unknown++; report.retainLost++; rec.typeId = 0; }\n")
+		b.WriteString("                }\n            }\n")
+		b.WriteString("            for (TableVariable.NodeRecord rec : nt.recs) {\n")
+		fmt.Fprintf(&b, "                if (rec.table != null) { %sVariable.decodeNodeBody(new TableVariable.Reader(rec.body, r.ids, report), rec.table, rec.typeId, report); }\n", st.Name)
+		b.WriteString("            }\n        }\n")
+		fmt.Fprintf(&b, "        readFieldsRetain(r, v, nt, retain, report, path, 0);\n")
+		b.WriteString("        if (report.refused) { return null; }\n")
+		fmt.Fprintf(&b, "        %sVariable.resolveNodes(v, nt, report);\n", st.Name)
+		b.WriteString("        if (nt.recs != null && !nt.bad) {\n")
+		fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) { if (rec.table != null) %sVariable.resolveNodePointers(rec.table, rec.typeId, nt, v, %sVariable.TYPE_ID, report); }\n", st.Name, st.Name)
+		b.WriteString("        }\n")
+		b.WriteString("        return v;\n")
+		b.WriteString("    }\n\n")
+	}
 
 	// readFieldsRetain: the variable readFields, with capture in the unknown arm
 	// and the body's path threaded into list elements (§6.6).
@@ -125,7 +132,11 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		writeFieldRead(&b, u, st, f, true, i)
 	}
 	b.WriteString("            } else if (id == TableVariable.NODE_ID) {\n")
-	b.WriteString("                if (nt != null && r.rootBody) { r.skip(kind); }\n")
+	if st.FixedDeclared {
+		b.WriteString("                if (r.rootBody) { captureUnknown(r, id, kind, retain, report, path, depth); }\n")
+	} else {
+		b.WriteString("                if (nt != null && r.rootBody) { r.skip(kind); }\n")
+	}
 	b.WriteString("                else { report.malformed = true; return; }\n")
 	b.WriteString("            } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {\n")
 	b.WriteString("                report.malformed = true; return;\n")
@@ -184,18 +195,37 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        TableVariable.Ids ids = new TableVariable.Ids(64);\n")
 	b.WriteString("        TableVariable.Writer w = new TableVariable.Writer(buf, ids);\n")
 	b.WriteString("        TableVariable.NodeGraph nodes = new TableVariable.NodeGraph();\n")
-	fmt.Fprintf(&b, "        nodes.indices.put(v,1L);nodes.open.add(v);if(!%sVariable.buildGraph(nodes,v))return -1;nodes.open.remove(v);\n", st.Name)
+	b.WriteString("        nodes.setOpen(v, true);\n")
+	fmt.Fprintf(&b, "        if (!%sVariable.buildGraph(nodes, v)) return -1;\n", st.Name)
+	b.WriteString("        nodes.setOpen(v, false);\n")
 	b.WriteString("        w.put8(1);\n")
 	b.WriteString("        writeFieldsRetain(w, nodes, v, retain, report, path, 0);\n")
 	b.WriteString("        emitTail(w, retain, report, path, 0);\n")
-	b.WriteString("        if (nodes.nodes.size() > 0) {\n")
-	b.WriteString("            long nodeRef=w.ref(TableVariable.NODE_ID);TableVariable.Writer nw=w.sub(new byte[1<<20]);nw.putLeb(nodes.nodes.size());\n")
-	b.WriteString("            for(TableVariable.NodeEntry node:nodes.nodes){nw.putLeb(nw.ref(node.typeId));if(node.isBlob){nw.putLeb(node.blobBytes.length);nw.putBytes(node.blobBytes,0,node.blobBytes.length);}else{TableVariable.Writer body=nw.sub(new byte[1<<20]);\n")
-	fmt.Fprintf(&b, "                %sVariable.writeNodeBody(body,nodes,node.value,node.typeId);body.put8(0);nw.putLeb(body.off);nw.putBytes(body.buf,0,body.off);}}\n", st.Name)
-	b.WriteString("            w.putLeb(nodeRef);\n")
-	b.WriteString("            w.put8(12);\n")
-	b.WriteString("            w.putLeb(nw.off);\n")
-	b.WriteString("            w.putBytes(nw.buf, 0, nw.off);\n")
+	b.WriteString("        int nodeCount = nodes.nodeCount();\n")
+	b.WriteString("        if (nodeCount > 0) {\n")
+	b.WriteString("            long nodeRef = w.ref(TableVariable.NODE_ID);\n")
+	b.WriteString("            int table = w.off;\n")
+	b.WriteString("            w.putLeb(nodeCount);\n")
+	b.WriteString("            for (int i = 0; i < nodeCount; i++) {\n")
+	b.WriteString("                Object value = nodes.nodeValue(i);\n")
+	b.WriteString("                long typeId = nodes.nodeType(i);\n")
+	b.WriteString("                w.putLeb(w.ref(typeId));\n")
+	b.WriteString("                if (nodes.nodeBlob(i)) {\n")
+	b.WriteString("                    if (value instanceof String) {\n")
+	b.WriteString("                        w.putUtf8((String) value);\n")
+	b.WriteString("                    } else {\n")
+	b.WriteString("                        byte[] bytes = (byte[]) value;\n")
+	b.WriteString("                        w.putLeb(bytes.length);\n")
+	b.WriteString("                        w.putBytes(bytes, 0, bytes.length);\n")
+	b.WriteString("                    }\n")
+	b.WriteString("                } else {\n")
+	b.WriteString("                    int body = w.off;\n")
+	fmt.Fprintf(&b, "                    %sVariable.writeNodeBody(w, nodes, value, typeId);\n", st.Name)
+	b.WriteString("                    w.put8(0);\n")
+	b.WriteString("                    w.frame(body);\n")
+	b.WriteString("                }\n")
+	b.WriteString("            }\n")
+	b.WriteString("            w.frameField(table, nodeRef, 12);\n")
 	b.WriteString("        }\n")
 	b.WriteString("        w.put8(0);\n")
 	b.WriteString("        w.trailer();\n")
@@ -205,7 +235,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	// writeFieldsRetain: the canonical write, threading the path into list
 	// elements so each element's body carries its own retained tail (§6.6).
 	fmt.Fprintf(&b, "    static void writeFieldsRetain(TableVariable.Writer w, TableVariable.NodeGraph nodes, %sVariable.Value v, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
-	b.WriteString("        TableVariable.NodeGraph graph=nodes;\n")
+	b.WriteString("        TableVariable.NodeGraph graph = nodes;\n")
 	for i, f := range st.Fields {
 		writeFieldSaveRetain(&b, u, st, f, i)
 	}
@@ -339,12 +369,12 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 		fmt.Fprintf(b, "        if (v.%s != 0L) { w.putLeb(w.ref(%s)); w.put8(%d); w.put64(v.%s); }\n", m, fieldRef, k, m)
 	case f.Type.Kind == ir.TNamed:
 		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
-			fmt.Fprintf(b, "        if (v.%s != 0) { w.putLeb(w.ref(%s)); w.put8(30); switch (v.%s) {\n", m, fieldRef, m)
+			fmt.Fprintf(b, "        if (v.%s != 0) {\n            w.putLeb(w.ref(%s));\n            w.put8(30);\n            switch (v.%s) {\n", m, fieldRef, m)
 			for i := range enum.Variants {
-				fmt.Fprintf(b, "            case %d: w.putLeb(w.ref(0x%016xL)); break;\n", i+1, ir.TableWireId(enum.VariantWireName(i)))
+				fmt.Fprintf(b, "                case %d: w.putLeb(w.ref(0x%016xL)); break;\n", i+1, ir.TableWireId(enum.VariantWireName(i)))
 			}
-			b.WriteString("            default: w.putLeb(0); break;\n")
-			b.WriteString("        } }\n")
+			b.WriteString("                default: w.putLeb(0); break;\n")
+			b.WriteString("            }\n        }\n")
 		} else if elem, ok := f.Type.Ref.(*ir.Struct); ok && f.Array == ir.ArrayList {
 			fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
 			fmt.Fprintf(b, "            w.putLeb(w.ref(%s)); w.put8(14);\n", fieldRef)
@@ -397,44 +427,78 @@ public final class TableRetain {
     // including descendants, without moving either cumulative report counter.
     void discardField(int[] path, int depth, int field) {
         int write = 0;
-        for (int at = 0; at < used;) {
-            int len = (bytes[at]&255)|((bytes[at+1]&255)<<8)|((bytes[at+2]&255)<<16)|((bytes[at+3]&255)<<24);
-            int d = bytes[at+4]&255;
+        for (int at = 0; at < used; ) {
+            int len =
+                    (bytes[at] & 255)
+                            | ((bytes[at + 1] & 255) << 8)
+                            | ((bytes[at + 2] & 255) << 16)
+                            | ((bytes[at + 3] & 255) << 24);
+            int d = bytes[at + 4] & 255;
             boolean match = d > depth;
             for (int k = 0; match && k < depth; k++) {
-                int p = at+5+8*k;
-                int f=(bytes[p]&255)|((bytes[p+1]&255)<<8)|((bytes[p+2]&255)<<16)|((bytes[p+3]&255)<<24);
-                int i=(bytes[p+4]&255)|((bytes[p+5]&255)<<8)|((bytes[p+6]&255)<<16)|((bytes[p+7]&255)<<24);
-                match = f==path[2*k] && i==path[2*k+1];
+                int p = at + 5 + 8 * k;
+                int f =
+                        (bytes[p] & 255)
+                                | ((bytes[p + 1] & 255) << 8)
+                                | ((bytes[p + 2] & 255) << 16)
+                                | ((bytes[p + 3] & 255) << 24);
+                int i =
+                        (bytes[p + 4] & 255)
+                                | ((bytes[p + 5] & 255) << 8)
+                                | ((bytes[p + 6] & 255) << 16)
+                                | ((bytes[p + 7] & 255) << 24);
+                match = f == path[2 * k] && i == path[2 * k + 1];
             }
             if (match) {
-                int p=at+5+8*depth;
-                int f=(bytes[p]&255)|((bytes[p+1]&255)<<8)|((bytes[p+2]&255)<<16)|((bytes[p+3]&255)<<24);
-                match=f==field;
+                int p = at + 5 + 8 * depth;
+                int f =
+                        (bytes[p] & 255)
+                                | ((bytes[p + 1] & 255) << 8)
+                                | ((bytes[p + 2] & 255) << 16)
+                                | ((bytes[p + 3] & 255) << 24);
+                match = f == field;
             }
-            if (!match) { System.arraycopy(bytes,at,bytes,write,len); write+=len; }
-            at+=len;
+            if (!match) {
+                System.arraycopy(bytes, at, bytes, write, len);
+                write += len;
+            }
+            at += len;
         }
-        used=write;
+        used = write;
     }
 
     // A winning duplicate map key replaces the entry itself and every child.
     void discardPath(int[] path, int depth) {
         int write = 0;
-        for (int at = 0; at < used;) {
-            int len = (bytes[at]&255)|((bytes[at+1]&255)<<8)|((bytes[at+2]&255)<<16)|((bytes[at+3]&255)<<24);
-            int d = bytes[at+4]&255;
+        for (int at = 0; at < used; ) {
+            int len =
+                    (bytes[at] & 255)
+                            | ((bytes[at + 1] & 255) << 8)
+                            | ((bytes[at + 2] & 255) << 16)
+                            | ((bytes[at + 3] & 255) << 24);
+            int d = bytes[at + 4] & 255;
             boolean match = d >= depth;
             for (int k = 0; match && k < depth; k++) {
-                int p = at+5+8*k;
-                int f=(bytes[p]&255)|((bytes[p+1]&255)<<8)|((bytes[p+2]&255)<<16)|((bytes[p+3]&255)<<24);
-                int i=(bytes[p+4]&255)|((bytes[p+5]&255)<<8)|((bytes[p+6]&255)<<16)|((bytes[p+7]&255)<<24);
-                match = f==path[2*k] && i==path[2*k+1];
+                int p = at + 5 + 8 * k;
+                int f =
+                        (bytes[p] & 255)
+                                | ((bytes[p + 1] & 255) << 8)
+                                | ((bytes[p + 2] & 255) << 16)
+                                | ((bytes[p + 3] & 255) << 24);
+                int i =
+                        (bytes[p + 4] & 255)
+                                | ((bytes[p + 5] & 255) << 8)
+                                | ((bytes[p + 6] & 255) << 16)
+                                | ((bytes[p + 7] & 255) << 24);
+                match = f == path[2 * k] && i == path[2 * k + 1];
             }
-            if (!match) { System.arraycopy(bytes,at,bytes,write,len); write+=len; }
-            at+=len;
+            if (!match) {
+                System.arraycopy(bytes, at, bytes, write, len);
+                write += len;
+            }
+            at += len;
         }
-        used=write;
+        used = write;
     }
 
     public TableRetain(int byteCapacity, int idCapacity) {
@@ -449,15 +513,23 @@ public final class TableRetain {
     // closure can spell. A resolved id inside a retained record takes its
     // trailer entry from the generated table when it is here, and from the
     // caller's list otherwise.
-    static final long[] KNOWN = { /*KNOWN*/ };
+    static final long[] KNOWN = {
+        /*KNOWN*/
+    };
 
     static boolean nameable(long id) {
         int lo = 0, hi = KNOWN.length - 1;
         while (lo <= hi) {
             int m = (lo + hi) >>> 1;
             long k = KNOWN[m];
-            if (k == id) { return true; }
-            if (k < id) { lo = m + 1; } else { hi = m - 1; }
+            if (k == id) {
+                return true;
+            }
+            if (k < id) {
+                lo = m + 1;
+            } else {
+                hi = m - 1;
+            }
         }
         return false;
     }
@@ -466,17 +538,33 @@ public final class TableRetain {
     // nameable id takes the generated table, any other takes the caller's list
     // first, one retainLost past its capacity. Answers the reference, 0 when a
     // store is full.
-    static long ref(TableVariable.Writer w, TableRetain retain, long id, TableVariable.Report report) {
+    static long ref(
+            TableVariable.Writer w, TableRetain retain, long id, TableVariable.Report report) {
         if (!nameable(id)) {
             boolean seen = false;
-            for (int i = 0; i < retain.idUsed; i++) { if (retain.ids[i] == id) { seen = true; break; } }
+            for (int i = 0; i < retain.idUsed; i++) {
+                if (retain.ids[i] == id) {
+                    seen = true;
+                    break;
+                }
+            }
             if (!seen) {
-                if (retain.idUsed >= retain.idCapacity) { if (report != null) { report.retainLost++; } return 0; }
+                if (retain.idUsed >= retain.idCapacity) {
+                    if (report != null) {
+                        report.retainLost++;
+                    }
+                    return 0;
+                }
                 retain.ids[retain.idUsed++] = id;
             }
         }
         long r = w.ref(id);
-        if (w.ids.overflow) { if (report != null) { report.retainLost++; } return 0; }
+        if (w.ids.overflow) {
+            if (report != null) {
+                report.retainLost++;
+            }
+            return 0;
+        }
         return r;
     }
 
@@ -492,19 +580,31 @@ public final class TableRetain {
         boolean bad;
 
         Resolver(byte[] buf, long[] ids, int off, int limit) {
-            this.buf = buf; this.ids = ids; this.off = off; this.limit = limit;
+            this.buf = buf;
+            this.ids = ids;
+            this.off = off;
+            this.limit = limit;
         }
 
         long leb() {
             long v = 0;
             int shift = 0;
             for (int i = 0; i < 10; i++) {
-                if (off + i >= limit) { bad = true; return 0; }
+                if (off + i >= limit) {
+                    bad = true;
+                    return 0;
+                }
                 int b = buf[off + i] & 0xff;
-                if (i == 9 && b > 1) { bad = true; return 0; }
+                if (i == 9 && b > 1) {
+                    bad = true;
+                    return 0;
+                }
                 v |= (long) (b & 0x7f) << shift;
                 if ((b & 0x80) == 0) {
-                    if (i > 0 && b == 0) { bad = true; return 0; }
+                    if (i > 0 && b == 0) {
+                        bad = true;
+                        return 0;
+                    }
                     off += i + 1;
                     return v;
                 }
@@ -514,12 +614,27 @@ public final class TableRetain {
             return 0;
         }
 
-        int u8() { if (off >= limit) { bad = true; return 0; } return buf[off++] & 0xff; }
+        int u8() {
+            if (off >= limit) {
+                bad = true;
+                return 0;
+            }
+            return buf[off++] & 0xff;
+        }
 
         long id(long ref) {
-            if (ref <= 0 || ref > ids.length) { bad = true; return 0; }
+            if (ref <= 0 || ref > ids.length) {
+                bad = true;
+                return 0;
+            }
             long v = ids[(int) ref - 1];
-            if (v == 0 || v == TableVariable.NODE_ID || v == TableVariable.BUILD_ID || v == TableVariable.VOCAB_ID) { bad = true; return 0; }
+            if (v == 0
+                    || v == TableVariable.NODE_ID
+                    || v == TableVariable.BUILD_ID
+                    || v == TableVariable.VOCAB_ID) {
+                bad = true;
+                return 0;
+            }
             return v;
         }
     }
@@ -531,120 +646,207 @@ public final class TableRetain {
     static byte[] resolve(byte[] buf, long[] ids, int off, int limit, int kind) {
         Resolver r = new Resolver(buf, ids, off, limit);
         byte[] out = new byte[1 << 20];
-        int[] o = new int[]{0};
-        if (!resolvePayload(r, kind, out, o, 0)) { return null; }
-        if (r.off != r.limit || r.bad) { return null; }
+        int[] o = new int[] {0};
+        if (!resolvePayload(r, kind, out, o, 0)) {
+            return null;
+        }
+        if (r.off != r.limit || r.bad) {
+            return null;
+        }
         return java.util.Arrays.copyOf(out, o[0]);
     }
 
     static boolean resolvePayload(Resolver r, int kind, byte[] out, int[] o, int depth) {
-        if (depth > 64 || r.bad) { r.bad = true; return false; }
+        if (depth > 64 || r.bad) {
+            r.bad = true;
+            return false;
+        }
         switch (kind) {
-            case 17: return false;
-            case 30: {
-                long ref = r.leb();
-                if (r.bad) { return false; }
-                if (ref == 0) { out64(out, o, 0L); return true; }
-                long id = r.id(ref);
-                if (r.bad) { return false; }
-                out64(out, o, id);
-                return true;
-            }
-            case 15: {
-                long arm = r.leb();
-                if (r.bad) { return false; }
-                if (arm == 0) { out64(out, o, 0L); return true; }
-                long id = r.id(arm);
-                if (r.bad) { return false; }
-                out64(out, o, id);
-                int armKind = r.u8();
-                if (r.bad) { return false; }
-                out8(out, o, armKind);
-                return resolveFramed(r, armKind, out, o, depth);
-            }
-            case 13: case 14: case 16:
+            case 17:
+                return false;
+            case 30:
+                {
+                    long ref = r.leb();
+                    if (r.bad) {
+                        return false;
+                    }
+                    if (ref == 0) {
+                        out64(out, o, 0L);
+                        return true;
+                    }
+                    long id = r.id(ref);
+                    if (r.bad) {
+                        return false;
+                    }
+                    out64(out, o, id);
+                    return true;
+                }
+            case 15:
+                {
+                    long arm = r.leb();
+                    if (r.bad) {
+                        return false;
+                    }
+                    if (arm == 0) {
+                        out64(out, o, 0L);
+                        return true;
+                    }
+                    long id = r.id(arm);
+                    if (r.bad) {
+                        return false;
+                    }
+                    out64(out, o, id);
+                    int armKind = r.u8();
+                    if (r.bad) {
+                        return false;
+                    }
+                    out8(out, o, armKind);
+                    return resolveFramed(r, armKind, out, o, depth);
+                }
+            case 13:
+            case 14:
+            case 16:
                 return resolveFramed(r, kind, out, o, depth);
-            default: {
-                int from = r.off;
-                if (!skipPayload(r, kind)) { return false; }
-                int n = r.off - from;
-                if (o[0] + n > out.length) { r.bad = true; return false; }
-                System.arraycopy(r.buf, from, out, o[0], n);
-                o[0] += n;
-                return true;
-            }
+            default:
+                {
+                    int from = r.off;
+                    if (!skipPayload(r, kind)) {
+                        return false;
+                    }
+                    int n = r.off - from;
+                    if (o[0] + n > out.length) {
+                        r.bad = true;
+                        return false;
+                    }
+                    System.arraycopy(r.buf, from, out, o[0], n);
+                    o[0] += n;
+                    return true;
+                }
         }
     }
 
     static boolean resolveFramed(Resolver r, int kind, byte[] out, int[] o, int depth) {
         long n = r.leb();
-        if (r.bad || n < 0 || n > r.limit - r.off) { r.bad = true; return false; }
+        if (r.bad || n < 0 || n > r.limit - r.off) {
+            r.bad = true;
+            return false;
+        }
         int at = o[0];
         out64(out, o, 0L);
         Resolver sub = new Resolver(r.buf, r.ids, r.off, r.off + (int) n);
         r.off += (int) n;
-        if (!resolveContent(sub, kind, out, o, depth + 1)) { return false; }
-        if (sub.off != sub.limit || sub.bad) { r.bad = true; return false; }
+        if (!resolveContent(sub, kind, out, o, depth + 1)) {
+            return false;
+        }
+        if (sub.off != sub.limit || sub.bad) {
+            r.bad = true;
+            return false;
+        }
         put64At(out, at, o[0] - at - 8);
         return true;
     }
 
     static boolean resolveContent(Resolver c, int kind, byte[] out, int[] o, int depth) {
-        if (depth > 64 || c.bad) { c.bad = true; return false; }
+        if (depth > 64 || c.bad) {
+            c.bad = true;
+            return false;
+        }
         switch (kind) {
-            case 17: return false;
-            case 13: return resolveBody(c, out, o, depth);
-            case 14: case 16: {
-                int ek = c.u8();
-                if (c.bad) { return false; }
-                if (ek == 17) { return false; }
-                out8(out, o, ek);
-                long count = c.leb();
-                if (c.bad) { return false; }
-                out64(out, o, count);
-                for (long i = 0; i < count; i++) {
-                    if (c.bad) { return false; }
-                    if (kind == 16) {
-                        long keyRef = c.leb();
-                        if (c.bad) { return false; }
-                        long keyId = c.id(keyRef);
-                        if (c.bad) { return false; }
-                        out64(out, o, keyId);
-                        if (!resolveFramed(c, ek, out, o, depth)) { return false; }
-                    } else if (!resolvePayload(c, ek, out, o, depth)) {
+            case 17:
+                return false;
+            case 13:
+                return resolveBody(c, out, o, depth);
+            case 14:
+            case 16:
+                {
+                    int ek = c.u8();
+                    if (c.bad) {
                         return false;
                     }
-                    if (c.off > c.limit) { c.bad = true; return false; }
+                    if (ek == 17) {
+                        return false;
+                    }
+                    out8(out, o, ek);
+                    long count = c.leb();
+                    if (c.bad) {
+                        return false;
+                    }
+                    out64(out, o, count);
+                    for (long i = 0; i < count; i++) {
+                        if (c.bad) {
+                            return false;
+                        }
+                        if (kind == 16) {
+                            long keyRef = c.leb();
+                            if (c.bad) {
+                                return false;
+                            }
+                            long keyId = c.id(keyRef);
+                            if (c.bad) {
+                                return false;
+                            }
+                            out64(out, o, keyId);
+                            if (!resolveFramed(c, ek, out, o, depth)) {
+                                return false;
+                            }
+                        } else if (!resolvePayload(c, ek, out, o, depth)) {
+                            return false;
+                        }
+                        if (c.off > c.limit) {
+                            c.bad = true;
+                            return false;
+                        }
+                    }
+                    return true;
                 }
-                return true;
-            }
-            case 15: case 30:
+            case 15:
+            case 30:
                 return resolvePayload(c, kind, out, o, depth);
-            default: {
-                int n = c.limit - c.off;
-                if (o[0] + n > out.length) { c.bad = true; return false; }
-                System.arraycopy(c.buf, c.off, out, o[0], n);
-                o[0] += n;
-                c.off = c.limit;
-                return true;
-            }
+            default:
+                {
+                    int n = c.limit - c.off;
+                    if (o[0] + n > out.length) {
+                        c.bad = true;
+                        return false;
+                    }
+                    System.arraycopy(c.buf, c.off, out, o[0], n);
+                    o[0] += n;
+                    c.off = c.limit;
+                    return true;
+                }
         }
     }
 
     static boolean resolveBody(Resolver c, byte[] out, int[] o, int depth) {
         while (true) {
-            if (c.bad) { return false; }
+            if (c.bad) {
+                return false;
+            }
             long ref = c.leb();
-            if (c.bad) { return false; }
-            if (ref == 0) { out64(out, o, 0L); return true; }
+            if (c.bad) {
+                return false;
+            }
+            if (ref == 0) {
+                out64(out, o, 0L);
+                return true;
+            }
             long id = c.id(ref);
-            if (c.bad) { return false; }
+            if (c.bad) {
+                return false;
+            }
             out64(out, o, id);
             int kind = c.u8();
-            if (c.bad) { return false; }
+            if (c.bad) {
+                return false;
+            }
             out8(out, o, kind);
-            if (!resolvePayload(c, kind, out, o, depth)) { return false; }
-            if (c.off > c.limit) { c.bad = true; return false; }
+            if (!resolvePayload(c, kind, out, o, depth)) {
+                return false;
+            }
+            if (c.off > c.limit) {
+                c.bad = true;
+                return false;
+            }
         }
     }
 
@@ -652,167 +854,337 @@ public final class TableRetain {
     // plain read's skip takes; false for a kind the walk does not copy.
     static boolean skipPayload(Resolver r, int kind) {
         switch (kind) {
-            case 1: case 2: case 6: case 20: case 25:
-                if (r.limit - r.off >= 1) { r.off += 1; return true; } break;
-            case 3: case 7: case 21: case 26:
-                if (r.limit - r.off >= 2) { r.off += 2; return true; } break;
-            case 4: case 8: case 10: case 22: case 27:
-                if (r.limit - r.off >= 4) { r.off += 4; return true; } break;
-            case 5: case 9: case 11: case 23: case 28:
-                if (r.limit - r.off >= 8) { r.off += 8; return true; } break;
-            case 18: case 19: case 24: case 29:
-                if (r.limit - r.off >= 16) { r.off += 16; return true; } break;
-            case 12: case 31: case 32: case 33: {
-                long n = r.leb();
-                if (!r.bad && n >= 0 && n <= r.limit - r.off) { r.off += (int) n; return true; }
+            case 1:
+            case 2:
+            case 6:
+            case 20:
+            case 25:
+                if (r.limit - r.off >= 1) {
+                    r.off += 1;
+                    return true;
+                }
                 break;
-            }
+            case 3:
+            case 7:
+            case 21:
+            case 26:
+                if (r.limit - r.off >= 2) {
+                    r.off += 2;
+                    return true;
+                }
+                break;
+            case 4:
+            case 8:
+            case 10:
+            case 22:
+            case 27:
+                if (r.limit - r.off >= 4) {
+                    r.off += 4;
+                    return true;
+                }
+                break;
+            case 5:
+            case 9:
+            case 11:
+            case 23:
+            case 28:
+                if (r.limit - r.off >= 8) {
+                    r.off += 8;
+                    return true;
+                }
+                break;
+            case 18:
+            case 19:
+            case 24:
+            case 29:
+                if (r.limit - r.off >= 16) {
+                    r.off += 16;
+                    return true;
+                }
+                break;
+            case 12:
+            case 31:
+            case 32:
+            case 33:
+                {
+                    long n = r.leb();
+                    if (!r.bad && n >= 0 && n <= r.limit - r.off) {
+                        r.off += (int) n;
+                        return true;
+                    }
+                    break;
+                }
         }
         r.bad = true;
         return false;
     }
 
     static void out64(byte[] out, int[] o, long v) {
-        for (int i = 0; i < 8; i++) { out[o[0] + i] = (byte) (v >>> (8 * i)); }
+        for (int i = 0; i < 8; i++) {
+            out[o[0] + i] = (byte) (v >>> (8 * i));
+        }
         o[0] += 8;
     }
-    static void out8(byte[] out, int[] o, int v) { out[o[0]++] = (byte) v; }
+
+    static void out8(byte[] out, int[] o, int v) {
+        out[o[0]++] = (byte) v;
+    }
+
     static void put64At(byte[] out, int at, long v) {
-        for (int i = 0; i < 8; i++) { out[at + i] = (byte) (v >>> (8 * i)); }
+        for (int i = 0; i < 8; i++) {
+            out[at + i] = (byte) (v >>> (8 * i));
+        }
     }
 
     // THE RESOLVING WALK, emit half (§6.6): read one resolved payload and write
     // its wire form, re-interning every id into this file's one table.
-    static boolean emit(TableVariable.Writer w, TableRetain retain, TableVariable.Report report, byte[] b, int[] at, int kind) {
+    static boolean emit(
+            TableVariable.Writer w,
+            TableRetain retain,
+            TableVariable.Report report,
+            byte[] b,
+            int[] at,
+            int kind) {
         return emitPayload(w, retain, report, b, at, kind);
     }
 
-    static boolean emitPayload(TableVariable.Writer w, TableRetain retain, TableVariable.Report report, byte[] b, int[] at, int kind) {
+    static boolean emitPayload(
+            TableVariable.Writer w,
+            TableRetain retain,
+            TableVariable.Report report,
+            byte[] b,
+            int[] at,
+            int kind) {
         switch (kind) {
-            case 30: {
-                long id = get64(b, at);
-                if (id == 0) { w.putLeb(0); return true; }
-                long ref = ref(w, retain, id, report);
-                if (ref == 0) { return false; }
-                w.putLeb(ref);
-                return true;
-            }
-            case 15: {
-                long arm = get64(b, at);
-                if (arm == 0) { w.putLeb(0); return true; }
-                long ref = ref(w, retain, arm, report);
-                if (ref == 0) { return false; }
-                w.putLeb(ref);
-                int armKind = get8(b, at);
-                w.put8(armKind);
-                return emitFramed(w, retain, report, b, at, armKind);
-            }
-            case 13: case 14: case 16:
+            case 30:
+                {
+                    long id = get64(b, at);
+                    if (id == 0) {
+                        w.putLeb(0);
+                        return true;
+                    }
+                    long ref = ref(w, retain, id, report);
+                    if (ref == 0) {
+                        return false;
+                    }
+                    w.putLeb(ref);
+                    return true;
+                }
+            case 15:
+                {
+                    long arm = get64(b, at);
+                    if (arm == 0) {
+                        w.putLeb(0);
+                        return true;
+                    }
+                    long ref = ref(w, retain, arm, report);
+                    if (ref == 0) {
+                        return false;
+                    }
+                    w.putLeb(ref);
+                    int armKind = get8(b, at);
+                    w.put8(armKind);
+                    return emitFramed(w, retain, report, b, at, armKind);
+                }
+            case 13:
+            case 14:
+            case 16:
                 return emitFramed(w, retain, report, b, at, kind);
             default:
                 return emitVerbatim(w, b, at, kind);
         }
     }
 
-    static boolean emitFramed(TableVariable.Writer w, TableRetain retain, TableVariable.Report report, byte[] b, int[] at, int kind) {
+    static boolean emitFramed(
+            TableVariable.Writer w,
+            TableRetain retain,
+            TableVariable.Report report,
+            byte[] b,
+            int[] at,
+            int kind) {
         long contentLen = get64(b, at);
-        if (contentLen < 0 || contentLen > b.length - at[0]) { return false; }
+        if (contentLen < 0 || contentLen > b.length - at[0]) {
+            return false;
+        }
         int end = at[0] + (int) contentLen;
         TableVariable.Writer sub = w.sub(new byte[1 << 20]);
-        if (!emitContent(sub, retain, report, b, at, end, kind)) { return false; }
-        if (at[0] != end) { return false; }
+        if (!emitContent(sub, retain, report, b, at, end, kind)) {
+            return false;
+        }
+        if (at[0] != end) {
+            return false;
+        }
         w.putLeb(sub.off);
         w.putBytes(sub.buf, 0, sub.off);
         return true;
     }
 
-    static boolean emitContent(TableVariable.Writer w, TableRetain retain, TableVariable.Report report, byte[] b, int[] at, int end, int kind) {
+    static boolean emitContent(
+            TableVariable.Writer w,
+            TableRetain retain,
+            TableVariable.Report report,
+            byte[] b,
+            int[] at,
+            int end,
+            int kind) {
         switch (kind) {
-            case 13: return emitBody(w, retain, report, b, at, end);
-            case 14: case 16: {
-                int ek = get8(b, at);
-                w.put8(ek);
-                long count = get64(b, at);
-                w.putLeb(count);
-                for (long i = 0; i < count; i++) {
-                    if (kind == 16) {
-                        long keyId = get64(b, at);
-                        long keyRef = ref(w, retain, keyId, report);
-                        if (keyRef == 0) { return false; }
-                        w.putLeb(keyRef);
-                        if (!emitFramed(w, retain, report, b, at, ek)) { return false; }
-                    } else if (!emitPayload(w, retain, report, b, at, ek)) {
-                        return false;
+            case 13:
+                return emitBody(w, retain, report, b, at, end);
+            case 14:
+            case 16:
+                {
+                    int ek = get8(b, at);
+                    w.put8(ek);
+                    long count = get64(b, at);
+                    w.putLeb(count);
+                    for (long i = 0; i < count; i++) {
+                        if (kind == 16) {
+                            long keyId = get64(b, at);
+                            long keyRef = ref(w, retain, keyId, report);
+                            if (keyRef == 0) {
+                                return false;
+                            }
+                            w.putLeb(keyRef);
+                            if (!emitFramed(w, retain, report, b, at, ek)) {
+                                return false;
+                            }
+                        } else if (!emitPayload(w, retain, report, b, at, ek)) {
+                            return false;
+                        }
+                        if (at[0] > end) {
+                            return false;
+                        }
                     }
-                    if (at[0] > end) { return false; }
+                    return at[0] == end;
                 }
-                return at[0] == end;
-            }
-            case 15: case 30:
+            case 15:
+            case 30:
                 return emitPayload(w, retain, report, b, at, kind);
-            default: {
-                w.putBytes(b, at[0], end - at[0]);
-                at[0] = end;
-                return true;
-            }
+            default:
+                {
+                    w.putBytes(b, at[0], end - at[0]);
+                    at[0] = end;
+                    return true;
+                }
         }
     }
 
-    static boolean emitBody(TableVariable.Writer w, TableRetain retain, TableVariable.Report report, byte[] b, int[] at, int end) {
+    static boolean emitBody(
+            TableVariable.Writer w,
+            TableRetain retain,
+            TableVariable.Report report,
+            byte[] b,
+            int[] at,
+            int end) {
         while (true) {
             long id = get64(b, at);
-            if (id == 0) { w.put8(0); return true; }
+            if (id == 0) {
+                w.put8(0);
+                return true;
+            }
             long ref = ref(w, retain, id, report);
-            if (ref == 0) { return false; }
+            if (ref == 0) {
+                return false;
+            }
             w.putLeb(ref);
             int kind = get8(b, at);
             w.put8(kind);
-            if (!emitPayload(w, retain, report, b, at, kind)) { return false; }
-            if (at[0] > end) { return false; }
+            if (!emitPayload(w, retain, report, b, at, kind)) {
+                return false;
+            }
+            if (at[0] > end) {
+                return false;
+            }
         }
     }
 
     static boolean emitVerbatim(TableVariable.Writer w, byte[] b, int[] at, int kind) {
         switch (kind) {
-            case 1: case 2: case 6: case 20: case 25:
-                w.putBytes(b, at[0], 1); at[0] += 1; return true;
-            case 3: case 7: case 21: case 26:
-                w.putBytes(b, at[0], 2); at[0] += 2; return true;
-            case 4: case 8: case 10: case 22: case 27:
-                w.putBytes(b, at[0], 4); at[0] += 4; return true;
-            case 5: case 9: case 11: case 23: case 28:
-                w.putBytes(b, at[0], 8); at[0] += 8; return true;
-            case 18: case 19: case 24: case 29:
-                w.putBytes(b, at[0], 16); at[0] += 16; return true;
-            case 12: case 31: case 32: case 33: {
-                long n = getLeb(b, at);
-                if (n < 0) { return false; }
-                w.putLeb(n);
-                w.putBytes(b, at[0], (int) n);
-                at[0] += (int) n;
+            case 1:
+            case 2:
+            case 6:
+            case 20:
+            case 25:
+                w.putBytes(b, at[0], 1);
+                at[0] += 1;
                 return true;
-            }
+            case 3:
+            case 7:
+            case 21:
+            case 26:
+                w.putBytes(b, at[0], 2);
+                at[0] += 2;
+                return true;
+            case 4:
+            case 8:
+            case 10:
+            case 22:
+            case 27:
+                w.putBytes(b, at[0], 4);
+                at[0] += 4;
+                return true;
+            case 5:
+            case 9:
+            case 11:
+            case 23:
+            case 28:
+                w.putBytes(b, at[0], 8);
+                at[0] += 8;
+                return true;
+            case 18:
+            case 19:
+            case 24:
+            case 29:
+                w.putBytes(b, at[0], 16);
+                at[0] += 16;
+                return true;
+            case 12:
+            case 31:
+            case 32:
+            case 33:
+                {
+                    long n = getLeb(b, at);
+                    if (n < 0) {
+                        return false;
+                    }
+                    w.putLeb(n);
+                    w.putBytes(b, at[0], (int) n);
+                    at[0] += (int) n;
+                    return true;
+                }
         }
         return false;
     }
 
     static long get64(byte[] b, int[] at) {
         long v = 0;
-        for (int i = 0; i < 8; i++) { v |= (long) (b[at[0] + i] & 0xff) << (8 * i); }
+        for (int i = 0; i < 8; i++) {
+            v |= (long) (b[at[0] + i] & 0xff) << (8 * i);
+        }
         at[0] += 8;
         return v;
     }
-    static int get8(byte[] b, int[] at) { return b[at[0]++] & 0xff; }
+
+    static int get8(byte[] b, int[] at) {
+        return b[at[0]++] & 0xff;
+    }
+
     static long getLeb(byte[] b, int[] at) {
         long v = 0;
         int shift = 0;
         for (int i = 0; i < 10; i++) {
-            if (at[0] + i >= b.length) { return -1; }
+            if (at[0] + i >= b.length) {
+                return -1;
+            }
             int x = b[at[0] + i] & 0xff;
-            if (i == 9 && x > 1) { return -1; }
+            if (i == 9 && x > 1) {
+                return -1;
+            }
             v |= (long) (x & 0x7f) << shift;
             if ((x & 0x80) == 0) {
-                if (i > 0 && x == 0) { return -1; }
+                if (i > 0 && x == 0) {
+                    return -1;
+                }
                 at[0] += i + 1;
                 return v;
             }

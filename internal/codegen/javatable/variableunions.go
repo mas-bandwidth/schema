@@ -90,14 +90,14 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			}
 			one := *arm.F
 			one.Name = arm.Name
-			b.WriteString("        TableVariable.Writer body=w.sub(new byte[1<<20]);\n")
+			b.WriteString("        int body=w.off;\n")
 			if retaining {
 				fmt.Fprintf(&b, "path[2*depth]=%d;path[2*depth+1]=0;\n", i)
-				writeVariableRetainedPayload(&b, u, un.Name, &one, "v."+varMember(&one), "body", 0, "depth+1")
+				writeVariableRetainedPayload(&b, u, un.Name, &one, "v."+varMember(&one), "w", 0, "depth+1")
 			} else {
-				writeVariablePayload(&b, u, un.Name, &one, "v."+varMember(&one), "body", 0)
+				writeVariablePayload(&b, u, un.Name, &one, "v."+varMember(&one), "w", 0)
 			}
-			fmt.Fprintf(&b, "        int start=%s;w.putLeb(body.off-start);w.putBytes(body.buf,start,body.off-start);return;}\n", variablePayloadStart(&one, "body"))
+			fmt.Fprintf(&b, "        w.frameBody(body,%s);return;}\n", variablePayloadStart(&one, "w", "body"))
 		}
 		b.WriteString("        default:return;}}\n")
 	}
