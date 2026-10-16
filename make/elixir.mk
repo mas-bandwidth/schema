@@ -352,7 +352,7 @@ tables-elixir-accessor-negative-control:
 	@echo "elixir accessor negative control: a generated accessor four bytes off reds the agreement gate"
 
 CONFORMANCE_NEGATIVE_ELIXIR_SLOT := build/elixir-slot-negative
-ELIXIR_SLOT_SED := -e 's|do: C.deref(region, node + %d)|do: C.deref(region, node + 8 + %d)|'
+ELIXIR_SLOT_SED := -e 's|"C.deref(region, node + %s)"|"C.deref(region, node + 8 + %s)"|'
 
 .PHONY: tables-elixir-slot-negative-control
 tables-elixir-slot-negative-control:

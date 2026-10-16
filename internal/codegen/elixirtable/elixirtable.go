@@ -276,6 +276,15 @@ func exDefDo(indent, head, body string) string {
 	return indent + head + ",\n" + indent + "  do: " + body + "\n"
 }
 
+// exComma is the separator after element i of n in a multi-line list or map:
+// a comma, and none after the last, which the formatter drops.
+func exComma(i, n int) string {
+	if i == n-1 {
+		return ""
+	}
+	return ","
+}
+
 // exBlock joins the expressions of one block the way the formatter separates
 // them: an expression that spans more than one line gets a blank line on each
 // side, and single-line neighbours stay together. Each item is one expression
