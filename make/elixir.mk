@@ -102,7 +102,9 @@ generated/bench/elixir/.stamp: bin/schema $(SCHEMAS_BENCH)
 # (tables/messages) union arms of every field type, arrays of unions and
 # optional arrays (§2.3, §2.6); scalars (tables/scalars) the fixed-point and
 # 128-bit kinds and an enum-keyed array (§2.4, §3); widedemo (examples-wide)
-# wstring(N) on the variable wire (§3). The variable-class surfaces (wire,
+# wstring(N) on the variable wire (§3); vocabdemo, vocab9demo and backenddemo
+# (tables/vocab, tables/vocab9, tables/backend) the message surface's three
+# connections (§3.3). The variable-class surfaces (wire,
 # json-read, json-write, report) answer every carried instance; a construct
 # outside the class writes <case>.absent rather than a wrong answer.
 ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
@@ -112,9 +114,10 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
 	blobdemo:tables/blobs listdemo:tables/lists tblp2:test/tables/P2.schema \
 	mapdemo:tables/maps messagedemo:tables/messages scalars:tables/scalars \
-	widedemo:examples-wide
+	widedemo:examples-wide \
+	vocabdemo:tables/vocab vocab9demo:tables/vocab9 backenddemo:tables/backend
 
-build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) $(wildcard examples-wide/*.schema) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) $(wildcard examples-wide/*.schema) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND)
 	@mkdir -p build/tables-generated-elixir
 	@for unit in $(ELIXIR_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -1079,6 +1082,28 @@ tables-elixir-message-batch:
 		exit 1; \
 	fi
 	@echo 'tables Elixir message batch: TestMessageFormBatchElixir ran under test-elixir with no subtest skipped'
+
+# THE MESSAGE SURFACE ON THE HARNESS (test/conformance/README.md, "The
+# surfaces"; docs/SPEC-TABLES.md §3.3): the driver answers every manifest
+# `message` row whose root is a fixed table, byte-equal to the C++ reference's
+# golden, and writes graph_tree.absent (its root Scene is a plain `table`, which
+# the form refuses by name). TestMessageFormConformanceElixir's harness clause
+# runs `./build/conformance-harness run --only elixir` over the built leg; the
+# target arms SCHEMA_REQUIRE_CORPUS=1 and reds on any `--- SKIP`.
+.PHONY: tables-elixir-message-conformance
+tables-elixir-message-conformance: build/conformance-harness build-conformance-elixir
+	@mkdir -p build
+	@SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) \
+		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestMessageFormConformanceElixir$$' \
+		> build/tables-elixir-message-conformance.log 2>&1; \
+		status=$$?; cat build/tables-elixir-message-conformance.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@if grep -q -- '--- SKIP' build/tables-elixir-message-conformance.log; then \
+		echo "tables-elixir-message-conformance: a clause SKIPPED; under SCHEMA_REQUIRE_CORPUS=1 a missing toolchain or build is a failure"; \
+		exit 1; \
+	fi
+	@echo 'tables Elixir message conformance: the driver answers the message surface, graph_tree the one named absence'
+test-elixir: tables-elixir-message-conformance
 
 .PHONY: tables-elixir-fixed-roadmap-t12
 tables-elixir-fixed-roadmap-t12: tables-fixedform-corpus

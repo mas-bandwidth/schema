@@ -319,7 +319,7 @@ defmodule Driver do
   # the accelerators' surfaces beside the variable form's: wire, json-read,
   # json-write, json-hostile and report ride the <Unit>.Table codec, the rest
   # the block and cook readers
-  @surfaces ~w(wire json-read json-write json-hostile report cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery)
+  @surfaces ~w(wire message json-read json-write json-hostile report cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -735,9 +735,68 @@ defmodule Driver do
     File.write!(Path.join(outdir, name <> ".absent"), "")
   end
 
+  # ---- the MESSAGE FORM's surface (docs/SPEC-TABLES.md §3.3) ----
+
+  # THE ONE SURFACE THAT READS TWO FILES (test/conformance/README.md): each
+  # `message` row is joined BY KEY to the `connection` line naming its unit and
+  # announcement; the announcement read gives the vocabulary, the batch loads
+  # against it, and the saved bytes are the answer. A row the leg cannot answer
+  # writes <case>.absent and says why on stderr.
+  defp run("message", rows, outdir) do
+    connections =
+      Map.new(rows(rows, "connection"), fn [key, unit, _hash, announcement | _] ->
+        {key, {unit, announcement}}
+      end)
+
+    for [name, connection, root, _file, batch | _] <- rows(rows, "message") do
+      case message_answer(Map.get(connections, connection), root, batch) do
+        {:ok, bytes} ->
+          write(outdir, name, bytes)
+
+        {:absent, why} ->
+          IO.puts(:stderr, "message #{name}: absent: #{why}")
+          write_absent(outdir, name)
+      end
+    end
+  end
+
   defp run(surface, _rows, _outdir) do
     IO.puts(:stderr, "the Elixir leg does not implement #{surface}")
     System.halt(2)
+  end
+
+  # the unit's message module, <Package>.TableMessage, resolved the way
+  # table_module resolves <Package>.Table. nil when the leg has none.
+  defp message_module(unit) do
+    mod =
+      Module.concat([Macro.camelize(Map.get(@unit_packages, unit, unit)), "TableMessage"])
+
+    if Code.ensure_loaded?(mod) and function_exported?(mod, :announce_read, 1) and
+         function_exported?(mod, :load_messages, 2) and function_exported?(mod, :save_messages, 2),
+       do: mod,
+       else: nil
+  end
+
+  defp message_answer(nil, _root, _batch),
+    do: {:absent, "the row names no connection the manifest defines"}
+
+  defp message_answer({unit, announcement}, root, batch) do
+    case message_module(unit) do
+      nil ->
+        {:absent, "unit #{unit} has no TableMessage module"}
+
+      mod ->
+        with {:announce_read, {:ok, vocab}} <-
+               {:announce_read, mod.announce_read(File.read!(announcement))},
+             {:load_messages, {:ok, values}} <-
+               {:load_messages, mod.load_messages(vocab, File.read!(batch))},
+             {:save_messages, {:ok, bytes}} <-
+               {:save_messages, mod.save_messages(vocab, values)} do
+          {:ok, bytes}
+        else
+          {verb, answer} -> {:absent, "#{root}: #{verb} answered #{inspect(answer)}"}
+        end
+    end
   end
 
   defp foreign(<<magic::binary-size(8), rest::binary>>) do
