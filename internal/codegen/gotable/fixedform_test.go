@@ -3107,8 +3107,8 @@ func TestReadSlackUnspecified(t *testing.T) {
 // test's predecessor, TestFixedFormWriteSideBoundsAreDebugOnly, that pinned the
 // opposite: a Go save that checked nothing and put the caller's bug on the
 // wire. The rule moved, so the test moved with it and was renamed because the
-// old name now lied; the read side is still what clamps a FOREIGN writer's
-// bytes, and the last half of this test keeps that pinned by forging them.
+// old name now lied; the read side names over-bound values from a FOREIGN
+// writer too, and the last half of this test keeps that pinned by forging them.
 func TestFixedFormWriteSideRefusesInEveryGoBuild(t *testing.T) {
 	t.Parallel()
 	runGenerated(t, `package probe
@@ -3118,7 +3118,7 @@ fixed table Host {
     tail  int32 = 7
 }
 `, `package probe
-import ("testing")
+import ("testing"; "unsafe")
 
 func TestWriteSideRefusesByName(t *testing.T) {
 	if HostFixedBodyBytes != 36 {
@@ -3176,7 +3176,8 @@ func TestWriteSideRefusesByName(t *testing.T) {
 
 	// THE READ SIDE STAYS THE WIRE'S DEFENCE. A FOREIGN writer is not held by
 	// this writer's contract, so forge the image the refused save would have
-	// made: the reader still clamps the count and the length, and counts them.
+	// made: the reader refuses each over-bound value by name before any
+	// destination byte is written.
 	full := lawful
 	full.NameLength = 8
 	copy(full.Name[:], "abcdefgh")
@@ -3185,16 +3186,30 @@ func TestWriteSideRefusesByName(t *testing.T) {
 		t.Fatalf("full-width save %d", n)
 	}
 	body := forged[len(forged)-HostFixedRecordBytes+8:]
-	tableFixedPut32(body[0:], 7)
-	tableFixedPut32(body[20:], 9)
-	var fr TableReport
-	fgot := make([]Host, 1)
-	if n := HostFixedLoad(fgot, forged, plan, &fr); n != 1 {
-		t.Fatalf("forged load %d %+v", n, fr)
+	assertRefuse := func(name string, data []byte, want string) {
+		fgot := make([]Host, 1)
+		pdst := tableFixedOverlay(unsafe.Pointer(&fgot[0]), unsafe.Sizeof(fgot[0]))
+		for i := range pdst {
+			pdst[i] = 0x5A
+		}
+		var fr TableReport
+		if n := HostFixedLoad(fgot, data, plan, &fr); n >= 0 || fr.Reason != want {
+			t.Fatalf("%s: n=%d reason=%q, want %q", name, n, fr.Reason, want)
+		}
+		for i, b := range pdst {
+			if b != 0x5A {
+				t.Fatalf("%s: refusal wrote destination byte %d: 0x%02X", name, i, b)
+			}
+		}
 	}
-	if fgot[0].MarksCount != 4 || fgot[0].NameLength != 8 || fr.Clamped == 0 || fgot[0].Tail != 7 {
-		t.Fatalf("the read side must clamp a foreign writer's count and length and count it: %+v %+v", fgot[0], fr)
-	}
+	countForged := append([]byte(nil), forged...)
+	tableFixedPut32(countForged[len(countForged)-HostFixedRecordBytes+8:], 7)
+	assertRefuse("foreign count over bound", countForged, "count_over_bound")
+	lengthForged := append([]byte(nil), forged...)
+	lengthBody := lengthForged[len(lengthForged)-HostFixedRecordBytes+8:]
+	tableFixedPut32(lengthBody[0:], 4) // keep the count lawful for the length case
+	tableFixedPut32(lengthBody[20:], 9)
+	assertRefuse("foreign length over bound", lengthForged, "length_over_bound")
 }
 `)
 }
