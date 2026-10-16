@@ -228,6 +228,7 @@ Existing targets:
 - `make cards-example` — stage and run the separate `cardsexample` customer module.
 - `make cards-corpus-check` — pin the current declaration and require every SHIPPED case.
 - `make cards-corpus-create` / `make cards-fuzz-fixture` — author fixtures under an explicit flag.
+- `make cards-java-test cards-java-conformance` — the Java facade (`tables/cards/java`): the same shared corpus load/save/render/parse round-trips, and the upgrade, edit, task-hash and view walks, pinned by conformance and the negative controls.
 
 ## Later sprint integration
 
