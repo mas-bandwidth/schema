@@ -1202,7 +1202,7 @@ func (g *gen) pointerTargets(names []string) []*ir.Struct {
 func (g *gen) emitVariableDispatch(b *strings.Builder, names []string) {
 	targets := g.pointerTargets(names)
 	fmt.Fprintf(b, "/// The body of one table record of the numbering, by its type id (docs/SPEC-TABLES.md §3.1).\n")
-	fmt.Fprintf(b, "#[allow(dead_code, unused_variables)]\n")
+	fmt.Fprintf(b, "#[allow(dead_code, unused_variables, unused_mut)]\n")
 	fmt.Fprintf(b, "fn variable_record_save(type_id: u64, node: &Rc<dyn Any>, out: &mut Vec<u8>, ids: &mut IdTable, g: &TableNodeGraph, mut retain: Option<&mut TableRetain>, mut report: Option<&mut TableReport>, path: TableRetainPath) {\n")
 	fmt.Fprintf(b, "    match type_id {\n")
 	for _, st := range targets {
@@ -1487,7 +1487,10 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "            // The last reserved field supplies the node table (§3.1); an\n")
 	fmt.Fprintf(b, "            // earlier occurrence is superseded like the oracle's scan.\n")
 	fmt.Fprintf(b, "            let mut later = sub; let mut superseded = false;\n")
-	fmt.Fprintf(b, "            while later < end { let Some(r2) = leb_read(&wire[..end], &mut later) else { break; }; if r2 == 0 || later >= end { break; } let Some(id2) = ref_id(&ids, r2) else { break; }; let k2 = wire[later]; later += 1; if id2 == NODE_TABLE_ID { superseded = true; break; } if !leb_skip(wire, &mut later, end, k2) { break; } }\n")
+	fmt.Fprintf(b, "            while later < end { let Some(r2) = leb_read(&wire[..end], &mut later) else { break; }; if r2 == 0 || later >= end { break; } let Some(id2) = ref_id(&ids, r2) else { break; }; let k2 = wire[later]; later += 1;\n")
+	fmt.Fprintf(b, "                if id2 == NODE_TABLE_ID { superseded = true; break; }\n")
+	fmt.Fprintf(b, "                if !leb_skip(wire, &mut later, end, k2) { break; }\n")
+	fmt.Fprintf(b, "            }\n")
 	fmt.Fprintf(b, "            if superseded { off = sub; continue; }\n")
 	fmt.Fprintf(b, "            let Some(declared) = leb_read(wire, &mut off) else { return -1; };\n")
 	fmt.Fprintf(b, "            let mut recs = 0i64;\n")
