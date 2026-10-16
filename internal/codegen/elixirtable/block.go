@@ -123,6 +123,16 @@ const blockRuntimeSource = `  @moduledoc """
   def u64(data, at), do: read(data, at, 8)
   def u32(data, at), do: read(data, at, 4)
 
+  # a 64-bit word composed from two 32-bit halves, so no bignum is formed on
+  # the hot path before the bound that refuses it runs: a high half of
+  # 0x08000000 or more would compose to 2^59 or above, which is not a BEAM
+  # immediate.
+  def u64halves(data, at) do
+    lo = u32(data, at)
+    hi = u32(data, at + 4)
+    if hi >= 0x08000000, do: nil, else: hi * 0x100000000 + lo
+  end
+
   def i32(data, at) do
     case data do
       <<_::binary-size(^at), v::little-signed-32, _::binary>> -> v
@@ -155,7 +165,7 @@ const blockRuntimeSource = `  @moduledoc """
   # than copying them, which is what makes an iteration over 4096 rows cost the
   # references and nothing else
   def slice(data, at, size) do
-    if at >= 0 and size >= 0 and at + size <= byte_size(data) do
+    if is_integer(at) and is_integer(size) and at >= 0 and size >= 0 and at + size <= byte_size(data) do
       binary_part(data, at, size)
     else
       nil
@@ -335,10 +345,14 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	b.pf("  # is a leg that cannot refuse an unaligned base at all, which is a check\n")
 	b.pf("  # four other backends make.\n")
 	b.pf("  #\n")
-	b.pf("  # EVERY OTHER NUMBER COMES FROM THE INSTANCE. BEAM integers are\n")
-	b.pf("  # arbitrary-precision, so no term of this arithmetic can carry past the\n")
-	b.pf("  # top of a type — a forged offset_of near 2^63 is simply a large number\n")
-	b.pf("  # that fails its bound.\n")
+	b.pf("  # EVERY OTHER NUMBER COMES FROM THE INSTANCE, and every 64-bit word the\n")
+	b.pf("  # read side INDEXES WITH is composed from two 32-bit halves (B.u64halves),\n")
+	b.pf("  # so no bignum is formed before the bound that refuses it runs: a forged\n")
+	b.pf("  # offset_of or delta whose high half is 0x08000000 or more (2^59, past a\n")
+	b.pf("  # BEAM immediate) is refused from the high half alone. A legitimate 64-bit\n")
+	b.pf("  # FIELD value of 2^59 or more is a bignum on the BEAM whatever a reader\n")
+	b.pf("  # does; the header's magic, build and byte-order words are compared against\n")
+	b.pf("  # constants and are out of the composed path.\n")
 	b.pf("  def block_open_%s(data), do: block_open_%s(data, 0)\n\n", lo, lo)
 	b.pf("  def block_open_%s(data, lead) when is_binary(data) and is_integer(lead) do\n", lo)
 	b.pf("    bytes = byte_size(data)\n\n")
@@ -370,11 +384,15 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	} else {
 		b.pf("    used =\n")
 		b.pf("      Enum.reduce_while(%s_block_arrays(), %d, fn a, used ->\n", lo, proj.Size)
-		b.pf("        offset_of = B.u64(data, a.offset_of_offset)\n")
+		b.pf("        offset_of = B.u64halves(data, a.offset_of_offset)\n")
 		b.pf("        count = B.u32(data, a.count_offset)\n")
 		b.pf("        stride = B.u32(data, a.stride_offset)\n")
 		b.pf("        rows = count * stride\n\n")
 		b.pf("        cond do\n")
+		b.pf("          # a high half of 0x08000000 or more would compose to a non-immediate\n")
+		b.pf("          # bignum, so the refusal is decided here, before any 64-bit integer is\n")
+		b.pf("          # formed, and no real image is that large\n")
+		b.pf("          offset_of == nil -> {:halt, :error}\n")
 		b.pf("          stride != a.stride -> {:halt, :error}\n")
 		b.pf("          # past the DECLARED MAXIMUM: a consumer that sized anything by\n")
 		b.pf("          # the maximum would overflow on a count the maximum does not bound\n")
@@ -435,12 +453,12 @@ func (b *blockGen) emitBlockRows(bl *ir.BlockLayout) {
 		b.pf("  end\n\n")
 		b.pf("  def %s_%s_at(block, index) do\n", lo, a.Field.Name)
 		b.pf("    data = block.base\n")
-		b.pf("    B.row(data, B.u64(data, %d), B.u32(data, %d), B.u32(data, %d), index)\n",
+		b.pf("    B.row(data, B.u64halves(data, %d), B.u32(data, %d), B.u32(data, %d), index)\n",
 			a.OffsetOfOffset, a.CountOffset, a.StrideOffset)
 		b.pf("  end\n\n")
 		b.pf("  def %s_%s(block) do\n", lo, a.Field.Name)
 		b.pf("    data = block.base\n")
-		b.pf("    B.rows(data, B.u64(data, %d), B.u32(data, %d), B.u32(data, %d))\n",
+		b.pf("    B.rows(data, B.u64halves(data, %d), B.u32(data, %d), B.u32(data, %d))\n",
 			a.OffsetOfOffset, a.CountOffset, a.StrideOffset)
 		b.pf("  end\n\n")
 	}

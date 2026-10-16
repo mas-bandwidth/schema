@@ -228,14 +228,21 @@ const cookRuntimeSource = `  @moduledoc """
   A REFERENCE, resolved: the slot holds the eight-byte SIGNED SELF-RELATIVE
   delta of §6.3, and NULL IS ZERO. A delta that resolves outside the region is
   refused — an index out of bounds is a refusal here, never an exception that
-  escapes.
+  escapes. The delta is COMPOSED from a u32 low half and an i32 high half, the
+  way the JavaScript leg composes it, so no bignum is formed before the bound
+  that refuses it runs: a high half whose magnitude is 0x08000000 or more
+  (2^59, past a BEAM immediate) is refused from the high half alone, and that
+  is the same answer exact arithmetic gives for a delta that far outside a
+  region.
   """
   def deref(region, at) do
-    delta = int(region, at, 8)
+    low = uint(region, at, 4)
+    high = int(region, at + 4, 4)
 
     cond do
-      delta == 0 -> :null
-      true -> inside(region, at + delta)
+      low == 0 and high == 0 -> :null
+      high >= 0x08000000 or high <= -0x08000000 -> :error
+      true -> inside(region, at + high * 0x100000000 + low)
     end
   end
 
