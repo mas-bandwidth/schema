@@ -1297,6 +1297,18 @@ var readArmLegs = []string{"cpp", "c", "elixir"}
 // readArmIterationsFor is the per-sample record count for a read-arm sitting:
 // 4,000,000 for native legs, 400,000 for the BEAM leg so each sample stays comfortably
 // above §2.1's 200ms floor without dragging a 7-round sitting across minutes.
+// planGateClaim is the sentence the board prints for what the leg's plan gate
+// checked before the clock. It names only checks the leg's runner makes: the
+// Elixir runner (bench/tables/elixir/runner.exs gates P2 to P4) pins the plan's
+// answer and repeats an ordinary load; it supplies no poisoned destination, so
+// its sentence claims none.
+func planGateClaim(leg string) string {
+	if leg == "elixir" {
+		return "its gate before the clock requires all 64 records to equal the plan's answer derived from the byte-gated identity corpus (every OLD field value, and the appended field at its declared default), the counters exactly widened 4096 (64 per record, min(their_n, my_n) of the stats bound) with every other counter zero, a second ordinary load saving to the same bytes, and an answer that is not the identity corpus's"
+	}
+	return "its gate before the clock requires 64 records read with no counter raised but widened, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's"
+}
+
 func readArmIterationsFor(leg string) int64 {
 	if leg == "elixir" {
 		return 400000
@@ -1528,7 +1540,7 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 	}
 	if plan {
 		board.Plan = statsOf(planNs)
-		board.Widened = "its gate before the clock requires 64 records read with no counter raised but widened, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's"
+		board.Widened = planGateClaim(leg)
 		if len(planNs) == rounds {
 			board.GatePlan = faster(board.Plan, board.Packet, board.windowOK())
 		} else {

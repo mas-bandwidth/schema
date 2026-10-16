@@ -380,3 +380,25 @@ func TestReadArmElixir(t *testing.T) {
 		}
 	}
 }
+
+func TestTheElixirPlanBoardClaimsOnlyTheChecksItsRunnerMakes(t *testing.T) {
+	t.Parallel()
+	claim := planGateClaim("elixir")
+	if strings.Contains(claim, "poison") {
+		t.Errorf("the Elixir plan claim names a poisoned destination its runner never supplies: %q", claim)
+	}
+	for _, want := range []string{"widened 4096", "every OLD field value", "declared default", "second ordinary load saving to the same bytes", "not the identity corpus"} {
+		if !strings.Contains(claim, want) {
+			t.Errorf("the Elixir plan claim lacks %q: %q", want, claim)
+		}
+	}
+	b := readArmBoard{
+		Host: "bench", OS: "linux", Arch: "amd64", CPU: "cpu", Revision: "abc", Serialize: "def", Rounds: 7, Iterations: 400000,
+		CorpusID: "0930f96c8320a75d", Window: "OK", FixedBytes: 1264.3, PacketBytes: 400, PlanBytes: 995.4, Leg: "elixir", Lane: "5",
+		Identity: statsOf([]float64{1500, 1510}), Plan: statsOf([]float64{7000, 7010}), Packet: statsOf([]float64{1650, 1660}),
+		Anchor: anchorOf(nil, "none for this leg", true), Absent: otherLegsBut("elixir"), Widened: claim,
+	}
+	if text := b.markdown(); !strings.Contains(text, claim) || strings.Contains(text, "poison") {
+		t.Errorf("the Elixir board does not print its own plan claim, or prints a poison claim:\n%s", text)
+	}
+}
