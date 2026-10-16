@@ -51,7 +51,7 @@
 (:id "cs/E8" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t05_test.go: TestFixedRoadmapCSharpT05Evolution/cs/E8") :tested-revision "8fa9833b2e49415f204daba0f7788d799f245529")
 (:id "cs/R19" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t05_test.go: TestFixedRoadmapCSharpT05Evolution/cs/R19") :tested-revision "8fa9833b2e49415f204daba0f7788d799f245529")
 (:id "cs/E9" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t05_test.go: TestFixedRoadmapCSharpT05Evolution/cs/E9") :tested-revision "8fa9833b2e49415f204daba0f7788d799f245529")
-(:id "cs/R16" :state :unknown :note "the forged-ordinal clause is not met: a forged ordinal past the writer's variant count is counted in the ordinal OP on the compiled plan and inline in the identity slot's SetRawReport, never in the bounds pass on BOTH plans, so the \"ordinal move nothing\" clause fails too; the runtime defers the number, so it is reported and not decided here")
+(:id "cs/R16" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t18_counters_test.go: TestFixedRoadmapCSharpT18ExactCounters/cs/R16") :tested-revision "473585fa01c5cca850b3e6ff0dc240021ee0f07f")
 (:id "cs/R18" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t05_test.go: TestFixedRoadmapCSharpT05Evolution/cs/R18") :tested-revision "8fa9833b2e49415f204daba0f7788d799f245529")
 (:id "cs/C3" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t05_test.go: TestFixedRoadmapCSharpT05Evolution/cs/C3") :tested-revision "8fa9833b2e49415f204daba0f7788d799f245529")
 (:id "cs/C4" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t05_test.go: TestFixedRoadmapCSharpT05Evolution/cs/C4") :tested-revision "8fa9833b2e49415f204daba0f7788d799f245529")

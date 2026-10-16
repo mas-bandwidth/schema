@@ -1196,7 +1196,8 @@ const tableFixedWireSource = `
             T dst,
             TableReport report,
             ReadOnlySpan<byte> planBytes,
-            ref byte[] widenScratch)
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
         {
             for (int i = 0; i < plan.Length; ++i)
             {
@@ -1370,16 +1371,13 @@ const tableFixedWireSource = `
                                 v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
                             }
                             // A FORGED ORDINAL — one past the WRITER's own variant
-                            // count — lands 0 and COUNTS HERE, which is NOT where
-                            // §5.4 and §5.9 #27 put it. The move is OWED and it is
-                            // not a one-line move: a bounds pass over STORAGE cannot
-                            // tell this None from an enum or a union the writer left
-                            // unset, so the count would simply VANISH on the compiled
-                            // path. Either the op lands the RAW ordinal and the pass
-                            // clamps it, or §5.4 names this one exception. Glenn's
-                            // call; until then the number stays where this leg's own
-                            // green fixture asserts it.
-                            if (raw > count && report != null) { report.Clamped++; }
+                            // count — lands 0 (None) and moves NOTHING (§5.4: the
+                            // ordinal op lands its value and moves nothing). The
+                            // remap to None is the BOUNDS PASS's to count, on BOTH
+                            // plans, so the op records the forge in the caller's
+                            // forgedOrdinal lane and the bounds step, not this op,
+                            // turns it into Clamped (§5.4, §5.8 row 12).
+                            if (raw > count) { forgedOrdinal++; }
                         }
                         if (slots[(int)p.Dst].SetRaw != null)
                         {
