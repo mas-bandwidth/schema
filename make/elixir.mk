@@ -160,6 +160,51 @@ tables-elixir-clean: build/tables-generated-elixir/.stamp
 	@echo "tables Elixir: mix format clean over the generated table units"
 test-elixir: tables-elixir-clean
 
+# THE EMITTERS' RAW OUTPUT IS FORMAT-CANONICAL (issue #547, the formatter half).
+# tables-elixir-clean above checks what a stamp FORMATTED before the check, so
+# it can never see an emitter that drifts from Elixir 1.20.4's shape. This gate
+# generates the whole table corpus — the table units, the fixed-form units, the
+# paired and bench units and the cards unit — with the compiler into
+# $(ELIXIR_EMIT_FORMAT_DIR) and hands the RAW files to `mix format
+# --check-formatted`, with nothing in between that formats.
+#
+# ELIXIR_EMIT_FORMAT_PENDING names the files the gate does NOT yet hold, by
+# basename, and the recipe prints the list so the exclusion is never silent:
+# the variable form's Table.ex and TableRuntime.ex, which the next card
+# (elixir-variable-form-emits-mix-format-canonical-source) makes canonical and
+# then empties this list. Nothing else may be added to it.
+#
+# ELIXIR_EMIT_FORMAT_SCHEMA is the compiler the gate generates with, so the
+# negative control below runs this same recipe over a sabotaged compiler.
+ELIXIR_EMIT_FORMAT_PENDING := Table.ex TableRuntime.ex
+ELIXIR_EMIT_FORMAT_DIR     ?= build/elixir-emit-format
+ELIXIR_EMIT_FORMAT_SCHEMA  ?= ./bin/schema
+
+.PHONY: tables-elixir-emit-format-clean
+tables-elixir-emit-format-clean: bin/schema
+	@rm -rf $(ELIXIR_EMIT_FORMAT_DIR) && mkdir -p $(ELIXIR_EMIT_FORMAT_DIR)/gen $(ELIXIR_EMIT_FORMAT_DIR)/src
+	@for unit in $(addprefix table-,$(ELIXIR_TABLE_UNITS)) $(addprefix fixed-,$(ELIXIR_FIXED_UNITS)) \
+			cards:tables/cards bench:bench/corpus/Bench.schema realworld:bench/corpus/RealWorld.schema; do \
+		name=$${unit%%:*}; path=$${unit#*:}; \
+		$(ELIXIR_EMIT_FORMAT_SCHEMA) generate --lang elixir --out $(ELIXIR_EMIT_FORMAT_DIR)/gen/$$name $$path > /dev/null || exit 1; \
+	done
+	@cp bench/corpus/Bench.schema $(ELIXIR_EMIT_FORMAT_DIR)/src/Bench.schema
+	@cp bench/corpus/FixedTable.schema $(ELIXIR_EMIT_FORMAT_DIR)/src/Wrap.schema
+	@$(ELIXIR_EMIT_FORMAT_SCHEMA) generate --lang elixir --out $(ELIXIR_EMIT_FORMAT_DIR)/gen/paired \
+		$(ELIXIR_EMIT_FORMAT_DIR)/src/Bench.schema $(ELIXIR_EMIT_FORMAT_DIR)/src/Wrap.schema > /dev/null
+	@echo "tables-elixir-emit-format-clean: PENDING (not held, owned by elixir-variable-form-emits-mix-format-canonical-source): $(ELIXIR_EMIT_FORMAT_PENDING)"
+	@set -e; files=""; \
+	for f in $(ELIXIR_EMIT_FORMAT_DIR)/gen/*/*.ex; do \
+		case " $(ELIXIR_EMIT_FORMAT_PENDING) " in *" $$(basename $$f) "*) continue ;; esac; \
+		files="$$files $$f"; \
+	done; \
+	n=$$(echo $$files | wc -w | tr -d ' '); \
+	if [ "$$n" -lt 100 ]; then echo "tables-elixir-emit-format-clean: found $$n raw files, expected at least 100 — the glob, not the property, broke"; exit 1; fi; \
+	echo "tables-elixir-emit-format-clean: checking $$n raw emitter files"; \
+	$(MIX) format --check-formatted $$files
+	@echo "tables Elixir emitters: the raw output of every table emitter but the pending ones is mix format clean"
+test-elixir: tables-elixir-emit-format-clean
+
 .PHONY: build-conformance-elixir
 build-conformance-elixir: build/elixir-tables-ebin/.stamp
 
