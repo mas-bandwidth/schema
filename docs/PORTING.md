@@ -1220,7 +1220,7 @@ goes red.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #416 | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #416 (`tables-rust-soak` gates on the count; nothing runs it) | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ❌ #416 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
+| ❌ #416 | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ✅ `tables-rust-soak` `tables-rust-soak-negative-control` | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ❌ #416 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
 
 ### I10 — The zero-cost gate
 

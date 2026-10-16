@@ -417,6 +417,75 @@ tables-rust-fixed-matched: generated/bench/paired/rust/.stamp
 	./build/paired/rust/release/table-rust --gate --indexed \
 		--wire-dir bench/paired/corpus --variant-dir bench/paired/corpus
 
+# THE RUST TABLES SOAK (docs/PORTING.md I9, issue #416), the twin of
+# tables-c-soak over the same units: Load, the reads, Measure and Save on the
+# root of every case for SOAK_SECONDS of real time, under a counting
+# #[global_allocator] (test/rust-soak/src/main.rs). The GATE IS THE CALL COUNT,
+# taken at every sample: it must not move after the warmup pass. The live-heap
+# byte count is gated beside it (it sees retention), and the resident set is
+# reported as the weaker instrument. It is a FUNCTIONAL soak — real seconds —
+# so it is this target and never a unit test; `make test` runs 20 s through
+# test-rust, and the hour is the release act (`make tables-rust-soak
+# SOAK_SECONDS=3600`, the Makefile's default).
+#
+# THE FILES ARE THE FIXED FORM'S. This port's table surface for these units is
+# form byte 3, and a fixed reader refuses the tolerant wire the C soak reads by
+# name, so the soak reads the C++ reference's own dump where it writes the root
+# (build/fixedform-corpus) and writes the rest itself, before the clock.
+#
+# THE CRATE IS COPIED INTO build/ AND BUILT THERE, so its Cargo.lock and target/
+# land in the ignored tree and the checkout stays clean. Its path dependencies
+# resolve the same from build/rust-soak as from test/rust-soak: both sit two
+# levels below the root. RELEASE, because that is the build a caller ships and
+# the one whose write-side debug_asserts are gone.
+RUST_SOAK_SRCS := test/rust-soak/Cargo.toml test/rust-soak/src/main.rs
+
+.PHONY: tables-rust-soak
+tables-rust-soak: build/tables-generated-rust/.stamp build/fixedform-corpus/.stamp $(RUST_SOAK_SRCS)
+	@mkdir -p build/rust-soak/src
+	@cp test/rust-soak/Cargo.toml build/rust-soak/Cargo.toml
+	@cp test/rust-soak/src/main.rs build/rust-soak/src/main.rs
+	cd build/rust-soak && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release
+	./build/rust-soak/target/release/rust-soak $(SOAK_SECONDS) build/fixedform-corpus
+
+# THE SOAK'S NEGATIVE CONTROL, the twin of tables-c-soak-negative-control. The
+# live-byte sample is a LEAK instrument: a matched alloc/free pair inside the
+# loop returns it to where it was before it is ever read, so it reads flat
+# forever. The CALL COUNT is what makes the claim, and a counter nobody has
+# watched go red is a counter nobody can size.
+#
+# The pair is planted through the crate's `negative-control` feature (a cfg
+# flag in the soak binary, never a change to generated code): one Box per case
+# per iteration, freed at once, held past the optimiser by black_box. The run
+# must exit non-zero ON THE COUNT, and the drift line must run and stay flat —
+# that silence is the half being demonstrated.
+.PHONY: tables-rust-soak-negative-control
+tables-rust-soak-negative-control: build/tables-generated-rust/.stamp build/fixedform-corpus/.stamp $(RUST_SOAK_SRCS)
+	@mkdir -p build/rust-soak-sabotage/src
+	@cp test/rust-soak/Cargo.toml build/rust-soak-sabotage/Cargo.toml
+	@cp test/rust-soak/src/main.rs build/rust-soak-sabotage/src/main.rs
+	@grep -q '#\[cfg(feature = "negative-control")\]' build/rust-soak-sabotage/src/main.rs || \
+		{ echo "NEGATIVE CONTROL: the soak carries no planted pair to turn on"; exit 1; }
+	cd build/rust-soak-sabotage && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release --features negative-control
+	@if ./build/rust-soak-sabotage/target/release/rust-soak 2 build/fixedform-corpus > build/rust-soak-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a matched alloc/free pair per iteration left the soak green"; \
+		cat build/rust-soak-sabotage/log; exit 1; \
+	fi
+	@grep -q "SABOTAGED build" build/rust-soak-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the negative-control feature did not reach the binary"; \
+		  cat build/rust-soak-sabotage/log; exit 1; }
+	@grep -q "SOAK FAILED: the allocator call count moved" build/rust-soak-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the soak went red, but not on the call count"; \
+		  cat build/rust-soak-sabotage/log; exit 1; }
+	@grep -q "live allocation" build/rust-soak-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the drift half did not run"; cat build/rust-soak-sabotage/log; exit 1; }
+	@! grep -q "SOAK FAILED: live allocation moved" build/rust-soak-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the drift gate went red, so the planted pair is not matched"; \
+		  cat build/rust-soak-sabotage/log; exit 1; }
+	@grep "live allocation" build/rust-soak-sabotage/log
+	@grep -m1 "SOAK FAILED" build/rust-soak-sabotage/log
+	@echo "negative control: a matched alloc/free pair per iteration is INVISIBLE to the drift gate and turns the Rust soak's CALL COUNT red"
+
 # THE RUST LEG of `make test`: the clippy and feature gates, the names
 # control, the big-endian check, the bench crates' compile gates, and the
 # packet tests — the corpus binaries in BOTH build modes (see below).
@@ -436,6 +505,10 @@ test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench
 	# corpus's, the file loads, it saves back identical, reused storage
 	# round-trips twice.
 	$(MAKE) tables-rust-fixed-matched
+	# THE SOAK (docs/PORTING.md I9): 20 s gated on the allocator call count,
+	# and the control that watches the count go red on a planted pair
+	$(MAKE) tables-rust-soak SOAK_SECONDS=20
+	$(MAKE) tables-rust-soak-negative-control
 	$(MAKE) tables-rust-runtime-home
 	$(MAKE) tables-rust-runtime-home-negative-control
 	# the generated Rust table surface CHECKED for a big-endian target, layout
