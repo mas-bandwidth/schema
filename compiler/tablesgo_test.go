@@ -43,8 +43,9 @@ func TestGoEmitsTableSources(t *testing.T) {
 		t.Fatalf("--lang go: %v", err)
 	}
 	for name := range without {
-		if strings.HasSuffix(name, "Table.go") || strings.HasSuffix(name, "Block.go") ||
-			strings.HasSuffix(name, "Cook.go") || strings.HasSuffix(name, "TableJson.go") {
+		if strings.HasSuffix(name, "Table.go") || strings.HasSuffix(name, "TableMessage.go") ||
+			strings.HasSuffix(name, "Block.go") || strings.HasSuffix(name, "Cook.go") ||
+			strings.HasSuffix(name, "TableJson.go") || strings.HasSuffix(name, "View.go") {
 			t.Errorf("--lang go emitted %s for a table-free unit", name)
 		}
 	}
@@ -58,8 +59,8 @@ func TestGoEmitsPointeredTables(t *testing.T) {
 		t.Fatal(err)
 	}
 	for file, need := range map[string][]string{
-		"ProbeTable.go":     {"type Node = NodeRow", "NodeLoadMeasure", "NodeLoad(", "NodeBuilder", "type TableArena struct"},
-		"ProbeCook.go":      {"NodeOpen", "type NodeRow struct"},
+		"ProbeTable.go":     {"type Node = NodeRow", "type NodeRow struct", "NodeLoadMeasure", "NodeLoad(", "NodeBuilder", "type TableArena struct"},
+		"ProbeCook.go":      {"NodeOpen"},
 		"ProbeTableJson.go": {"NodeFromJson", "&node"},
 	} {
 		for _, name := range need {
@@ -72,8 +73,8 @@ func TestGoEmitsPointeredTables(t *testing.T) {
 
 // TestTablesMoveNoGeneratedGoByte is the Go half of the same proof: adding a
 // table changes not one byte of the non-table generated Go, and grows only the
-// four Go table sources — the codecs, the two accelerators, and the unit's one
-// text walk.
+// Go table sources — the core, the message form, the two accelerators, the
+// unit's one text walk, and the unit view.
 func TestTablesMoveNoGeneratedGoByte(t *testing.T) {
 	c := New()
 	with, err := c.Generate(unitFromSource(t, tableSrc), "go", Options{})
@@ -98,8 +99,9 @@ func TestTablesMoveNoGeneratedGoByte(t *testing.T) {
 		if _, ok := without[name]; ok {
 			continue
 		}
-		if !strings.HasSuffix(name, "Table.go") && !strings.HasSuffix(name, "Block.go") &&
-			!strings.HasSuffix(name, "Cook.go") && !strings.HasSuffix(name, "TableJson.go") && !strings.HasSuffix(name, "View.go") {
+		if !strings.HasSuffix(name, "Table.go") && !strings.HasSuffix(name, "TableMessage.go") &&
+			!strings.HasSuffix(name, "Block.go") && !strings.HasSuffix(name, "Cook.go") &&
+			!strings.HasSuffix(name, "TableJson.go") && !strings.HasSuffix(name, "View.go") {
 			t.Errorf("adding a table grew unexpected non-table file %s", name)
 		}
 	}
