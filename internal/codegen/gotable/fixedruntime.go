@@ -313,6 +313,12 @@ func tableFixedCopyRun(d, s []byte, n uint32) {
 }
 
 func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) string {
+	// REFUSE is total even for direct callers of the runner: the generated load
+	// performs this pre-scan too, but the compiled-plan tests and any future
+	// internal caller must not observe the old clamp-and-write path.
+	if why := tableFixedTextRefusal(plan, count, src); why != "" {
+		return why
+	}
 	// READ(plan, split, ...) (docs/FIXED-FORM-ALGORITHM.md §4.4): the plan is
 	// partitioned unguarded-first (§4.1), so the split is the first guarded
 	// index; entries below it run WITHOUT a guard test and only the guarded
@@ -372,36 +378,16 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 		case tableFixedCount:
 			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 {
-				v = 0
-				report.Clamped++
-			} else if v > int32(p.Size) {
-				v = int32(p.Size)
-				report.Clamped++
-			}
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 		case tableFixedText:
+			v := int32(tableFixedGet32(src[p.Src:]))
 			unit := uint32(1)
 			if p.Meta == tableFixedTextWide {
 				unit = 2
 			}
 			capn := p.Size / unit
-			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 {
-				v = 0
-				report.Clamped++
-			} else if uint32(v) > capn {
-				v = int32(capn)
-				report.Clamped++
-			}
-			// THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE, and a
-			// violation REFUSES BY NAME, the verdict the packet reader gives
-			// (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8): the
-			// length above CLAMPS and counts; the bytes it kept are checked now,
-			// over v units and never over the span.
-			if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-				return TableFixedReasonTextIllFormed
-			}
+			// tableFixedTextRefusal above already proved the used extent and
+			// content; this path only lands the validated value and live bytes.
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 			tableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
 			if p.Meta != tableFixedTextBytes && uint32(v) < capn {
