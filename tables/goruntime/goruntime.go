@@ -37,7 +37,11 @@ type TableReport struct {
 	// A body carrying an id twice is legal input
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
 	Duplicate int32
-	Malformed bool // framing damage; decode stopped, partial result kept
+	// MissingRequired counts required fields (mas-bandwidth/schema docs/SPEC-TABLES.md §2.3) the
+	// record did not carry: a record an older writer produced before the field
+	// became required. The refusal names the field in Reason.
+	MissingRequired int32
+	Malformed       bool // framing damage; decode stopped, partial result kept
 	// BuildVersionPeer and BuildVersionOwn are the two build versions a strict
 	// announcement refusal carries (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): the peer's
 	// announcement and this unit's own. They are zero on every other read.
@@ -159,10 +163,18 @@ func (m TableBuildVersionMismatch) Error() string {
 	return "build_version_mismatch: peer 0x" + string(peer[:]) + " own 0x" + string(own[:])
 }
 
+// TableMissingRequired is the typed error a strict read reports for a record
+// that lacks a | required field (mas-bandwidth/schema docs/SPEC-TABLES.md §2.3): Fields names the
+// missing fields, comma-separated in declaration order, at whatever depth of
+// the record they were missing, and Error() is the report's own reason.
+type TableMissingRequired struct{ Fields string }
+
+func (m TableMissingRequired) Error() string { return "missing_required: " + m.Fields }
+
 // Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
-// unknown form, wire-damaged and build-version-mismatched, each as one typed
-// reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
+// unknown form, wire-damaged, build-version-mismatched and missing-required
+// (§2.3, naming the field), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
 func (r *TableReport) Err() error {
 	if r == nil {
 		return nil
@@ -175,6 +187,14 @@ func (r *TableReport) Err() error {
 	}
 	if r.Verdict == TableOpenDamaged {
 		return TableRefuseWireDamaged
+	}
+	if r.MissingRequired > 0 {
+		const p = "missing_required: "
+		f := r.Reason
+		if len(f) >= len(p) && f[:len(p)] == p {
+			f = f[len(p):]
+		}
+		return TableMissingRequired{Fields: f}
 	}
 	if r.Malformed {
 		return TableRefuseMalformed
@@ -1699,4 +1719,4 @@ const (
 )
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x47c4b0743d0ddd80
+const Version uint64 = 0x8e8ab90141932086
