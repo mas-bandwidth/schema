@@ -33,6 +33,7 @@ export NODE
 .PHONY: toolchain-js
 toolchain-js:
 	@$(call toolchain_probe,js,NODE,$(NODE))
+	@$(call toolchain_probe,js,ESLINT,$(ESLINT))
 build/packet-defaults/js/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/js.mk
 	./bin/schema generate --lang js --out build/packet-defaults/js/defaults test/packet-defaults/Defaults.schema
 	./bin/schema generate --lang js --out build/packet-defaults/js/plain test/packet-defaults/Plain.schema
@@ -940,22 +941,32 @@ test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generate
 
 TEST_LEGS         += test-js
 TOOLCHAIN_LEGS    += js
-TOOLCHAIN_PINS_js  := NODE
+TOOLCHAIN_PINS_js  := NODE ESLINT
 CONFORMANCE_LEGS  += $(call unless_skipped,js,build/tables-generated-js/.stamp)
 
-# THE JAVASCRIPT TABLE SOURCES ARE LINT-CLEAN AND FORMAT-CANONICAL (issue #424).
-# `eslint` is the language's authority over the generated table units, so an
-# emitter that drifts from the conventions it enforces goes red on the diff
-# rather than on a reviewer. It SKIPS cleanly where eslint is not on PATH.
+# THE JAVASCRIPT TABLE SOURCES ARE LINT-CLEAN AND FORMAT-CANONICAL (issue #424,
+# issue #547). `eslint` is the language's authority over the generated table
+# units and packet units, so an emitter that drifts from the conventions it
+# enforces goes red on the diff rather than on a reviewer. eslint is a pinned
+# toolchain item (TOOLCHAIN_PINS_js), so toolchain-js refuses by name where it
+# is missing and this gate never silently skips.
 ESLINT ?= eslint
 .PHONY: tables-js-clean
-tables-js-clean: build/tables-generated-js/.stamp
-	@if ! command -v $(ESLINT) >/dev/null 2>&1; then \
-		echo "SKIP tables-js-clean: $(ESLINT) is not installed"; \
-	else \
-		$(ESLINT) build/tables-generated-js; \
-		echo "tables JavaScript: eslint clean over the generated table units"; \
-	fi
+tables-js-clean: build/tables-generated-js/.stamp generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/paired/js/.stamp
+	$(ESLINT) build/tables-generated-js generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js
+	@echo "tables JavaScript: eslint clean over the generated table and packet units"
+
+.PHONY: tables-js-clean-negative-control
+tables-js-clean-negative-control: generated/js/.stamp
+	@mkdir -p build/tables-js-clean-negative
+	@cp generated/js/Degenerate.js build/tables-js-clean-negative/Degenerate.js
+	@echo 'const unused = 1;' >> build/tables-js-clean-negative/Degenerate.js
+	@if $(ESLINT) build/tables-js-clean-negative > build/tables-js-clean-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: eslint did not flag the planted unused constant'; exit 1; fi
+	@grep -Fq 'no-unused-vars' build/tables-js-clean-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: eslint failed for another reason'; cat build/tables-js-clean-negative/log; exit 1; }
+	@echo 'tables JavaScript negative control: a planted unused constant fails eslint on no-unused-vars'
+
 test-js: tables-js-clean
 
 # Both JavaScript packet tiers share the UTF-8 rule and mutation corpus.
