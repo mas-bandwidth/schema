@@ -16,7 +16,10 @@
 package darttable
 
 import (
+	"fmt"
+	"slices"
 	"sort"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -37,8 +40,9 @@ const (
 // fixedNoGuard is the guard an entry that belongs to no union arm carries.
 const fixedNoGuard = -1
 
-// fixedPlanEntry is one plan entry, in the nine lanes the Dart runtime reads
-// it through.
+// fixedPlanEntry is one plan entry, in the fourteen lanes the Dart runtime
+// reads it through (the last two, poolAt and the chain's length, name its run
+// in the plan's pool).
 //
 // argw IS THE GUARD'S WIDTH IN BYTES and it is the ninth lane. A union tag is
 // one, two, four or eight bytes wide and the guard is compared at ALL of them:
@@ -60,7 +64,27 @@ type fixedPlanEntry struct {
 	guard2 int64
 	arg2   int
 	argw2  int
+	// chain IS EVERY TAG PAST THE TWO INLINE LANES, OUTERMOST FIRST
+	// (docs/FIXED-FORM-ALGORITHM.md §4.1, §5.8 row 6): a union nested three
+	// deep has a third condition two lanes cannot carry. The emitter lays each
+	// distinct chain down ONCE as a run in the plan's pool of (guard, arg,
+	// argW) links and the entry carries the run's offset (poolAt) and its
+	// length; an entry with no chain carries 0, 0 and reads exactly as the
+	// two-lane plan did.
+	chain  []fixedGuardLink
+	poolAt int
 	note   string
+}
+
+// fixedGuardLink is ONE LINK OF A GUARD CHAIN (docs/FIXED-FORM-ALGORITHM.md
+// §4.1, §5.8 row 6): the byte offset of a union tag, the ordinal it must hold
+// for the entry to run, and the width it is compared at. The reference's
+// TableFixedGuard (internal/codegen/rusttable/fixedruntime.go) is the same
+// three facts.
+type fixedGuardLink struct {
+	guard int64
+	arg   int
+	argw  int
 }
 
 type fixedPlanBuild struct {
@@ -165,9 +189,13 @@ func fixedPlanElement(p *fixedPlanBuild, f *ir.Field, src, dst, guard int64, arg
 			// does not name is not moved, which is what leaves the slack behind
 			// a narrower arm as the prefill put it.
 			// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO
-			// (docs/FIXED-FORM-ALGORITHM.md §4.1): each arm walks with
-			// fixedNoGuard, and entries an inner union already guarded receive
-			// this union's tag on guard2/arg2/argw2 instead of overwriting guard.
+			// (docs/FIXED-FORM-ALGORITHM.md §4.1, §5.8 row 6): each arm walks
+			// with fixedNoGuard, and entries an inner union already guarded
+			// receive this union's tag on guard2/arg2/argw2 instead of
+			// overwriting guard. An entry whose two inline lanes are both
+			// spent — the third nested union and every one past it — takes
+			// this tag at the FRONT of its chain: the walk runs inner to
+			// outer, so prepending is what keeps the chain OUTERMOST FIRST.
 			tag := fixedUnionTagBytes(r)
 			p.push(fixedPlanEntry{op: fixedOpCopy, src: src, dst: dst, size: tag,
 				guard: guard, arg: arg, note: "the tag"})
@@ -195,10 +223,13 @@ func fixedPlanElement(p *fixedPlanBuild, f *ir.Field, src, dst, guard int64, arg
 						p.entries[q].guard = src
 						p.entries[q].arg = i + 1
 						p.entries[q].argw = int(tag)
-					} else {
+					} else if p.entries[q].guard2 == fixedNoGuard {
 						p.entries[q].guard2 = src
 						p.entries[q].arg2 = i + 1
 						p.entries[q].argw2 = int(tag)
+					} else {
+						link := fixedGuardLink{guard: src, arg: i + 1, argw: int(tag)}
+						p.entries[q].chain = append([]fixedGuardLink{link}, p.entries[q].chain...)
 					}
 				}
 			}
@@ -325,8 +356,12 @@ func fixedCoalesce(in []fixedPlanEntry) ([]fixedPlanEntry, int) {
 			}
 			if n := len(out); n > split {
 				p := &out[n-1]
+				// ONLY EQUAL CHAINS MERGE (§4.1, §5.8 row 6): a run that took
+				// in an entry under a longer chain would land its bytes under
+				// fewer conditions than that entry answers to.
 				if p.op == fixedOpCopy && e.op == fixedOpCopy && p.guard == e.guard && p.arg == e.arg &&
 					p.argw == e.argw && p.guard2 == e.guard2 && p.arg2 == e.arg2 && p.argw2 == e.argw2 &&
+					slices.Equal(p.chain, e.chain) &&
 					p.src+p.size == e.src && p.dst+p.size == e.dst {
 					p.size += e.size
 					continue
@@ -339,6 +374,70 @@ func fixedCoalesce(in []fixedPlanEntry) ([]fixedPlanEntry, int) {
 		}
 	}
 	return out, split
+}
+
+// fixedChainLength is how many tags an entry answers to: the two inline lanes
+// and every pooled link (docs/FIXED-FORM-ALGORITHM.md §4.1, §5.8 row 6).
+func fixedChainLength(e fixedPlanEntry) int {
+	n := len(e.chain)
+	if e.guard != fixedNoGuard {
+		n++
+	}
+	if e.guard2 != fixedNoGuard {
+		n++
+	}
+	return n
+}
+
+// fixedPlanChainRefusal answers why a plan cannot be laid down for its guard
+// chains, or "" when it can. THE CHAIN'S ONLY BOUND IS THE LAYOUT'S 64
+// (docs/FIXED-FORM-ALGORITHM.md §4.1, §5.8 row 6; ir.TableFixedMaxDepth): a
+// chain past it is refused BY NAME at generate time rather than laid down with
+// a condition dropped. The layout's own depth bound refuses such a table
+// first, because every nested union is at least one level of the layout; this
+// is the second fence, asked of the plan itself, so the two bounds can never
+// disagree in the direction that drops a guard.
+func fixedPlanChainRefusal(plan []fixedPlanEntry) string {
+	longest := 0
+	for _, e := range plan {
+		longest = max(longest, fixedChainLength(e))
+	}
+	if longest > ir.TableFixedMaxDepth {
+		return fmt.Sprintf("its plan's guard chain is %d links long, past the layout's %d-link bound, so no plan carries it without dropping a condition (`plan_too_large`) — it keeps form 1 (docs/FIXED-FORM-ALGORITHM.md §4.1, §5.8 row 6)",
+			longest, ir.TableFixedMaxDepth)
+	}
+	return ""
+}
+
+// fixedLayPool lays every entry's chain down in the plan's POOL and stamps the
+// entry with where its run starts (docs/FIXED-FORM-ALGORITHM.md §4.1, §5.8
+// row 6). The pool is append-only and each DISTINCT chain is one contiguous
+// run, outermost first, so every entry under one arm shares one run — the
+// reference's shape (internal/codegen/rusttable/fixedruntime.go, conjoin),
+// where an arm lays its whole chain down once as it is entered. An entry with
+// no chain keeps offset 0 and count 0.
+func fixedLayPool(plan []fixedPlanEntry) []fixedGuardLink {
+	var pool []fixedGuardLink
+	runs := map[string]int{}
+	for i := range plan {
+		e := &plan[i]
+		e.poolAt = 0
+		if len(e.chain) == 0 {
+			continue
+		}
+		var key strings.Builder
+		for _, l := range e.chain {
+			fmt.Fprintf(&key, "%d:%d:%d;", l.guard, l.arg, l.argw)
+		}
+		at, ok := runs[key.String()]
+		if !ok {
+			at = len(pool)
+			pool = append(pool, e.chain...)
+			runs[key.String()] = at
+		}
+		e.poolAt = at
+	}
+	return pool
 }
 
 // fixedFill is one prefill range: the bytes a plan does not land. Packed as

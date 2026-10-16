@@ -68,11 +68,11 @@ abstract final class TableFixedOp {
   static const int textBytes = 3;
 }
 
-/// A PLAN ENTRY is twelve int32 lanes of one flat Int32List. A flat list of a
-/// fixed stride is what keeps the read loop monomorphic: the loop never
+/// A PLAN ENTRY is fourteen int32 lanes of one flat Int32List. A flat list of
+/// a fixed stride is what keeps the read loop monomorphic: the loop never
 /// touches a field name and nothing is allocated.
 abstract final class TableFixedLane {
-  static const int lanes = 12;
+  static const int lanes = 14;
   static const int op = 0;
   static const int src = 1;
   static const int dst = 2;
@@ -92,6 +92,23 @@ abstract final class TableFixedLane {
   static const int guard2 = 9;
   static const int arg2 = 10;
   static const int argW2 = 11;
+  // poolAt / poolCount ARE THE REST OF THE GUARD CHAIN (docs/FIXED-FORM-ALGORITHM.md
+  // §4.1, §5.8 row 6): a run of poolCount links in the plan's POOL, starting
+  // at link poolAt, OUTERMOST FIRST. The two inline guards are the chain's
+  // innermost links and a union nested three deep has a third tag they cannot
+  // carry: every tag past them rides the pool, and the entry runs only when
+  // EVERY link holds too. poolCount 0 is no further condition, which is every
+  // entry nested two deep or less, and it reads exactly as the two-lane plan.
+  static const int poolAt = 12;
+  static const int poolCount = 13;
+
+  // ONE LINK OF THE POOL, three int32 lanes: the tag's offset, the ordinal it
+  // must hold, and the width it is compared at (the reference's
+  // TableFixedGuard: guard, arg, argw).
+  static const int linkLanes = 3;
+  static const int linkGuard = 0;
+  static const int linkArg = 1;
+  static const int linkArgW = 2;
 
   // MY SIDE of the layout, five lanes per entry of my own: the storage facts a
   // layout entry cannot carry. In C++ these are offsetof rows; the reader's own
@@ -330,6 +347,56 @@ final class TableFixedLayout {
   }
 
   int tagBytes(int i) => size(i) - unionArmBytes(i);
+
+  /// A FLOAT32 CELL RIDES AS ITS BITS (docs/FIXED-FORM-ALGORITHM.md §3.1: the
+  /// cell stores what the record held; SPEC-TABLES §3: no canonicalisation of
+  /// a float). A Dart double is a float64, and the hardware float32<->float64
+  /// conversion QUIETS a signalling NaN on the way in, so a reference file
+  /// holding 0x7F800001 would rewrite as 0x7FC00001. Every exponent but the
+  /// all-ones one converts exactly; a NaN is assembled by hand, the f32
+  /// mantissa's 23 bits shifted up by 29 into the f64 one and back, the quiet
+  /// bit carried as the writer wrote it: the same surgery the plan's
+  /// widenFloat rung and the packet emitter's float32 helpers do. A generated
+  /// float32 store or load converts through these two and nowhere else
+  /// (TestFixedFloat32CellsStoreBitsNotDoubles).
+  static final Float32List _f32 = Float32List(2);
+  static final Uint32List _f32Words = _f32.buffer.asUint32List();
+  static final Float64List _f64 = _f32.buffer.asFloat64List();
+  static final Uint64List _f64Words = _f32.buffer.asUint64List();
+
+  /// the float32 bits a double holding a float32 value carries, a NaN's
+  /// payload and signalling bit included
+  @pragma('vm:prefer-inline')
+  static int float32Bits(double value) {
+    if (!value.isNaN) {
+      _f32[0] = value;
+      return _f32Words[0];
+    }
+    _f64[0] = value;
+    final bits = _f64Words[0];
+    var mantissa = (bits >>> 29) & 0x7fffff;
+    if (mantissa == 0) {
+      // a float64 NaN whose payload lies only below float32's 23 bits has no
+      // float32 spelling; it stays a NaN, quiet
+      mantissa = 0x400000;
+    }
+    return ((bits >>> 63) << 31) | 0x7f800000 | mantissa;
+  }
+
+  /// the double a float32 cell's bits widen to, exactly: a NaN keeps its
+  /// payload and its signalling bit
+  @pragma('vm:prefer-inline')
+  static double float32Value(int bits) {
+    if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {
+      _f64Words[0] =
+          ((bits >>> 31) << 63) |
+          0x7ff0000000000000 |
+          ((bits & 0x7fffff) << 29);
+      return _f64[0];
+    }
+    _f32Words[0] = bits;
+    return _f32[0];
+  }
 
   /// THE HASH is fnv1a64 over the layout's bytes exactly as written, and it is
   /// the eight bytes every record carries. A Dart int is a full 64-bit two's
@@ -672,12 +739,17 @@ final class TableFixedLayout {
 /// NEVER ALLOCATES. A caller makes one of these per peer and hands it in; a
 /// layout whose plan does not fit is a refusal by name, never a growth.
 final class TableFixedPlan {
-  TableFixedPlan(int entryCapacity, int imageBytes, int remapCapacity)
-    : entries = Int32List(entryCapacity * TableFixedLane.lanes),
-      capacity = entryCapacity,
-      image = Uint8List(imageBytes),
-      fill = Int32List((imageBytes + 1) * 2),
-      remap = Int32List(remapCapacity) {
+  TableFixedPlan(
+    int entryCapacity,
+    int imageBytes,
+    int remapCapacity, [
+    int poolCapacity = 1024,
+  ]) : entries = Int32List(entryCapacity * TableFixedLane.lanes),
+       capacity = entryCapacity,
+       image = Uint8List(imageBytes),
+       fill = Int32List((imageBytes + 1) * 2),
+       remap = Int32List(remapCapacity),
+       pool = Int32List(poolCapacity * TableFixedLane.linkLanes) {
     imageView = ByteData.sublistView(image);
   }
 
@@ -699,6 +771,25 @@ final class TableFixedPlan {
   /// so the pool is its own list and aux is an index into it
   final Int32List remap;
   int remapUsed = 0;
+
+  /// THE GUARD CHAIN'S POOL (docs/FIXED-FORM-ALGORITHM.md §4.1, §5.8 row 6):
+  /// an append-only run of (guard, arg, argW) links an entry names by its
+  /// poolAt and poolCount lanes, OUTERMOST FIRST. Every union whose arms are
+  /// three deep or more lays its arms' chain down ONCE as one contiguous run
+  /// when it is entered, so the only bound on a chain is the layout's 64.
+  /// poolUsed counts LINKS, not lanes.
+  final Int32List pool;
+  int poolUsed = 0;
+
+  /// THE CHAIN THE WALK IS UNDER, past the guard an entry is pushed with: the
+  /// second inline lane, and the pooled run past it. push stamps them on every
+  /// entry; a union saves them, sets its arms' own, and restores them, the way
+  /// it does argw.
+  int chainGuard2 = tableFixedNoGuard;
+  int chainArg2 = 0;
+  int chainArgW2 = 1;
+  int chainAt = 0;
+  int chainCount = 0;
 
   /// THE CURRENT UNION'S TAG WIDTH, stamped onto every entry the walk pushes
   /// beneath it (§5.2, THE GUARD'S WIDTH). One outside a union, and the union
@@ -808,6 +899,7 @@ final class TableFixedLineagePlan {
     this.fill,
     this.fillCount,
     this.remap,
+    this.pool,
     this.unknown,
     this.kindMismatch,
     this.why,
@@ -818,6 +910,9 @@ final class TableFixedLineagePlan {
   final Int32List fill;
   final int fillCount;
   final Int32List remap;
+
+  /// the guard chain's links (§4.1, §5.8 row 6), laid down beside the entries
+  final Int32List pool;
   final int unknown;
   final int kindMismatch;
   final int why;
@@ -842,6 +937,10 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
 ) {
   final empty = Int32List(0);
   final out = <TableFixedLineagePlan>[];
+  final myEntries =
+      (myLayout.length - TableFixedLimits.layoutHeaderBytes) ~/
+      TableFixedLimits.entryBytes;
+  final poolLinks = 64 * myEntries > 1024 ? 64 * myEntries : 1024;
   for (final k in known) {
     if (k.hash == ownHash) {
       out.add(
@@ -850,6 +949,7 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
           0,
           empty,
           0,
+          empty,
           empty,
           0,
           0,
@@ -867,12 +967,22 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
       empty,
       0,
       empty,
+      empty,
       0,
       0,
       TableFixedRefusal.planTooLarge,
     );
     for (var room = 256; room <= 1 << 18; room *= 4) {
-      final plan = TableFixedPlan(room, imageBytes, 1024 + 32 * room);
+      // THE POOL'S CAPACITY IS THE REFERENCE'S RULE
+      // (rusttable/fixedform.go): a chain is at most the layout's 64 links
+      // and a union lays its arms' chain down once, so 64 an entry is the
+      // most the pool needs, and never less than 1024.
+      final plan = TableFixedPlan(
+        room,
+        imageBytes,
+        1024 + 32 * room,
+        poolLinks,
+      );
       if (!plan.theirs.parse(
         ByteData.sublistView(k.layout),
         0,
@@ -886,6 +996,7 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
           0,
           empty,
           0,
+          empty,
           empty,
           0,
           0,
@@ -914,6 +1025,7 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
           empty,
           0,
           empty,
+          empty,
           0,
           0,
           TableFixedRefusal.layoutRecordTooLarge,
@@ -931,6 +1043,9 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
         Int32List.fromList(plan.fill.sublist(0, plan.fillCount * 2)),
         plan.fillCount,
         Int32List.fromList(plan.remap.sublist(0, plan.remapUsed)),
+        Int32List.fromList(
+          plan.pool.sublist(0, plan.poolUsed * TableFixedLane.linkLanes),
+        ),
         census.unknown,
         census.kindMismatch,
         TableFixedRefusal.none,
@@ -991,8 +1106,9 @@ int tableFixedRun(
   ByteData imageView,
   Int32List remap,
   ByteData conv,
-  TableFixedReport report,
-) {
+  TableFixedReport report, [
+  Int32List? pool,
+]) {
   for (var i = 0; i < entryCount; i++) {
     final b = i * TableFixedLane.lanes;
     final guard = plan[b + TableFixedLane.guard];
@@ -1010,6 +1126,35 @@ int tableFixedRun(
         tableFixedTagAt(source, at + guard2, plan[b + TableFixedLane.argW2]) !=
             plan[b + TableFixedLane.arg2]) {
       continue;
+    }
+    // AND EVERY TAG PAST THE TWO INLINE LANES (§4.1, §5.8 row 6): the pooled
+    // run is CONJOINED after them, outermost first, each link compared at its
+    // own width, so an arm three unions deep runs only when all three hold.
+    // The pool is the last argument and optional, so a caller holding a plan
+    // laid down before it existed still reads; an entry that names a chain
+    // with no pool to read it from FAILS CLOSED and does not run, because no
+    // condition it answers to is ever assumed to hold.
+    final chainCount = plan[b + TableFixedLane.poolCount];
+    if (chainCount != 0) {
+      if (pool == null) {
+        continue;
+      }
+      var l = plan[b + TableFixedLane.poolAt] * TableFixedLane.linkLanes;
+      var hit = true;
+      for (var k = 0; k < chainCount; k++, l += TableFixedLane.linkLanes) {
+        if (tableFixedTagAt(
+              source,
+              at + pool[l + TableFixedLane.linkGuard],
+              pool[l + TableFixedLane.linkArgW],
+            ) !=
+            pool[l + TableFixedLane.linkArg]) {
+          hit = false;
+          break;
+        }
+      }
+      if (!hit) {
+        continue;
+      }
     }
     final s = at + plan[b + TableFixedLane.src];
     final d = plan[b + TableFixedLane.dst];
@@ -1392,11 +1537,86 @@ abstract final class TableFixedCompiler {
     e[b + TableFixedLane.meta] = meta;
     // argw IS THE GUARD'S WIDTH IN BYTES, and zero reads as one.
     e[b + TableFixedLane.argW] = plan.argw <= 0 ? 1 : plan.argw;
-    // guard2 / arg2 / argW2 default to no second condition (docs/FIXED-FORM-ALGORITHM.md §4.1).
-    e[b + TableFixedLane.guard2] = tableFixedNoGuard;
-    e[b + TableFixedLane.arg2] = 0;
-    e[b + TableFixedLane.argW2] = 1;
+    // guard2 / arg2 / argW2 and the pooled run are THE CHAIN THE WALK IS
+    // UNDER (docs/FIXED-FORM-ALGORITHM.md §4.1, §5.8 row 6): no second
+    // condition and no pool outside a nested arm.
+    e[b + TableFixedLane.guard2] = plan.chainGuard2;
+    e[b + TableFixedLane.arg2] = plan.chainArg2;
+    e[b + TableFixedLane.argW2] = plan.chainArgW2;
+    e[b + TableFixedLane.poolAt] = plan.chainAt;
+    e[b + TableFixedLane.poolCount] = plan.chainCount;
     plan.count++;
+  }
+
+  /// CONJOINS one link onto the inherited pooled chain and lays the result
+  /// down as ONE CONTIGUOUS RUN in the pool, OUTERMOST FIRST
+  /// (docs/FIXED-FORM-ALGORITHM.md §4.1, §5.8 row 6): the inherited run is
+  /// copied ahead of the new link, so the run reads [outermost .. the tag the
+  /// second inline lane gives up] and every entry under the arms shares it.
+  /// THE CHAIN'S ONLY BOUND IS THE LAYOUT'S 64: the two inline lanes, the
+  /// inherited links and this one; a chain past it is plan_too_large by name,
+  /// never a dropped guard. The reference's Compiler::conjoin
+  /// (rusttable/fixedruntime.go) is the same rule.
+  static bool conjoin(
+    TableFixedPlan plan,
+    int at,
+    int count,
+    int guard,
+    int arg,
+    int argw,
+  ) {
+    if (count + 3 > TableFixedLimits.maxDepth) {
+      plan.overflow = true;
+      return false;
+    }
+    // THE UNGUARDED PASS LAYS NOTHING DOWN: every entry under an arm is
+    // guarded, so the pass that keeps none of them must not spend the pool.
+    if (plan.pass == 0) {
+      plan.chainAt = 0;
+      plan.chainCount = 0;
+      return true;
+    }
+    final need = count + 1;
+    if ((plan.poolUsed + need) * TableFixedLane.linkLanes > plan.pool.length) {
+      plan.overflow = true;
+      return false;
+    }
+    final pool = plan.pool;
+    final from = at * TableFixedLane.linkLanes;
+    final to = plan.poolUsed * TableFixedLane.linkLanes;
+    for (var k = 0; k < count * TableFixedLane.linkLanes; k++) {
+      pool[to + k] = pool[from + k];
+    }
+    final l = to + count * TableFixedLane.linkLanes;
+    pool[l + TableFixedLane.linkGuard] = guard;
+    pool[l + TableFixedLane.linkArg] = arg;
+    pool[l + TableFixedLane.linkArgW] = argw;
+    plan.chainAt = plan.poolUsed;
+    plan.chainCount = need;
+    plan.poolUsed += need;
+    return true;
+  }
+
+  /// TWO ENTRIES ANSWER TO THE SAME POOLED CHAIN when their runs hold the
+  /// same links in the same order (§4.1, §5.8 row 6): the coalescer merges
+  /// ONLY such entries, because a run that took in an entry under a longer
+  /// chain would land its bytes under fewer conditions than it answers to.
+  static bool sameChain(Int32List e, int p, int b, Int32List pool) {
+    final count = e[p + TableFixedLane.poolCount];
+    if (count != e[b + TableFixedLane.poolCount]) {
+      return false;
+    }
+    final x = e[p + TableFixedLane.poolAt] * TableFixedLane.linkLanes;
+    final y = e[b + TableFixedLane.poolAt] * TableFixedLane.linkLanes;
+    if (x == y) {
+      return true;
+    }
+    for (var k = 0; k < count * TableFixedLane.linkLanes; k++) {
+      if (pool[x + k] != pool[y + k]) {
+        return false;
+      }
+    }
+    return true;
   }
 
   static int layRemap(TableFixedPlan plan, Int32List values, int n) {
@@ -1684,7 +1904,32 @@ abstract final class TableFixedCompiler {
           (theirArms >= 1 && theirArms <= 255) ? theirArms : 0,
         );
         plan.argw = innerArgw;
-        final restampFrom = plan.count;
+        // AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO — the one that
+        // decides whether any of those bytes are there at all — and its OWN
+        // arm selection must survive that (docs/FIXED-FORM-ALGORITHM.md §4.1,
+        // §5.8 row 6). The arms are guarded by THIS tag; the guard this union
+        // was reached under becomes their second inline lane, and the second
+        // lane it was under moves to the END of the pooled run, which keeps
+        // the run outermost first. A third nested union is therefore one
+        // pooled link, and every union past it one more.
+        final savedG2 = plan.chainGuard2;
+        final savedA2 = plan.chainArg2;
+        final savedW2 = plan.chainArgW2;
+        final savedAt = plan.chainAt;
+        final savedCount = plan.chainCount;
+        if (guard != tableFixedNoGuard) {
+          final outerW = savedArgw <= 0 ? 1 : (savedArgw > 8 ? 8 : savedArgw);
+          if (plan.record != 0 && (guard < 0 || guard + outerW > plan.record)) {
+            plan.tooLarge = true;
+          } else {
+            if (savedG2 != tableFixedNoGuard) {
+              conjoin(plan, savedAt, savedCount, savedG2, savedA2, savedW2);
+            }
+            plan.chainGuard2 = guard;
+            plan.chainArg2 = arg;
+            plan.chainArgW2 = outerW;
+          }
+        }
         var myArm = mi + 1;
         for (var k = 0; k < myArms; k++) {
           var theirArm = ti + 1;
@@ -1720,24 +1965,11 @@ abstract final class TableFixedCompiler {
           }
           myArm += mine.subtree(myArm);
         }
-        // Nested: an arm inside an arm answers to the OUTER tag TOO — the one
-        // that decides whether any of those bytes are there at all — and its
-        // OWN arm selection must survive that (docs/FIXED-FORM-ALGORITHM.md
-        // §4.1, §5.8 row 6).
-        if (guard != tableFixedNoGuard) {
-          final outerW = savedArgw <= 0 ? 1 : (savedArgw > 8 ? 8 : savedArgw);
-          if (plan.record != 0 && (guard < 0 || guard + outerW > plan.record)) {
-            plan.tooLarge = true;
-          } else {
-            final e = plan.entries;
-            for (var q = restampFrom; q < plan.count; q++) {
-              final qb = q * TableFixedLane.lanes;
-              e[qb + TableFixedLane.guard2] = guard;
-              e[qb + TableFixedLane.arg2] = arg;
-              e[qb + TableFixedLane.argW2] = outerW;
-            }
-          }
-        }
+        plan.chainGuard2 = savedG2;
+        plan.chainArg2 = savedA2;
+        plan.chainArgW2 = savedW2;
+        plan.chainAt = savedAt;
+        plan.chainCount = savedCount;
         plan.argw = savedArgw;
         break;
       case 30: // an enum: the ordinal is the layout's position, so it remaps
@@ -1857,6 +2089,7 @@ abstract final class TableFixedCompiler {
             e[p + TableFixedLane.guard2] == e[b + TableFixedLane.guard2] &&
             e[p + TableFixedLane.arg2] == e[b + TableFixedLane.arg2] &&
             e[p + TableFixedLane.argW2] == e[b + TableFixedLane.argW2] &&
+            sameChain(e, p, b, plan.pool) &&
             e[p + TableFixedLane.src] + e[p + TableFixedLane.size] ==
                 e[b + TableFixedLane.src] &&
             e[p + TableFixedLane.dst] + e[p + TableFixedLane.size] ==
@@ -1985,6 +2218,12 @@ abstract final class TableFixedCompiler {
     }
     plan.count = 0;
     plan.remapUsed = 0;
+    plan.poolUsed = 0;
+    plan.chainGuard2 = tableFixedNoGuard;
+    plan.chainArg2 = 0;
+    plan.chainArgW2 = 1;
+    plan.chainAt = 0;
+    plan.chainCount = 0;
     plan.overflow = false;
     plan.tooLarge = false;
     // THE WRITER'S DECLARED RECORD (§5.2's record := x.root.size): every
