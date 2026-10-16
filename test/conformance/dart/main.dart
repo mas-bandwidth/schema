@@ -23,6 +23,10 @@ import '../../../build/tables-generated-dart/pointers/GraphdemoWire.dart' as gra
 import '../../../build/tables-generated-dart/blobs/BlobdemoWire.dart' as blobdemo;
 import '../../../build/tables-generated-dart/blobs/AssetsCook.dart' as assets;
 import '../../../build/tables-generated-dart/lists/ListdemoWire.dart' as listdemo;
+import '../../../build/tables-generated-dart/maps/MapdemoWire.dart' as mapdemo;
+import '../../../build/tables-generated-dart/messages/MessagedemoWire.dart' as messagedemo;
+import '../../../build/tables-generated-dart-scalars/scalars/ScalardemoWire.dart' as scalardemo;
+import '../../../build/tables-generated-dart/wide/WideWire.dart' as widedemo;
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -654,8 +658,12 @@ int surfaceCook(String outDir) {
 
 // A row this leg cannot carry writes <case>.absent (test/conformance/README.md).
 // graphdemo, blobdemo and listdemo answer wire, json-read, json-write and
-// report for the roots the variable class carries. Maps, union arrays and
-// every other unit stay absent. no-text rows are not asked for a text.
+// report for the roots the variable class carries. mapdemo, messagedemo,
+// scalars and widedemo answer the same four for every root: maps, unions and
+// their arrays, keyed and fixed arrays, optionals, flags, wstring and the wide
+// scalars on form 1 and in the text (docs/SPEC-TABLES.md §2.3, §2.6, §2.8, §3,
+// §15, §16). Every other unit stays absent. no-text rows are not asked for a
+// text.
 bool noTextRow(List<String> f) => f.length > 5 && f[5] == 'no-text';
 
 void spillAbsent(String outDir, String name) {
@@ -682,6 +690,38 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return listdemo.sheetWireSave(listdemo.sheetWireLoad(wire));
     case 'listdemo Unbounded':
       return listdemo.unboundedWireSave(listdemo.unboundedWireLoad(wire));
+    case 'mapdemo Cells':
+      return mapdemo.cellsWireSave(mapdemo.cellsWireLoad(wire));
+    case 'mapdemo Chunks':
+      return mapdemo.chunksWireSave(mapdemo.chunksWireLoad(wire));
+    case 'mapdemo Crews':
+      return mapdemo.crewsWireSave(mapdemo.crewsWireLoad(wire));
+    case 'mapdemo Depth':
+      return mapdemo.depthWireSave(mapdemo.depthWireLoad(wire));
+    case 'mapdemo Docs':
+      return mapdemo.docsWireSave(mapdemo.docsWireLoad(wire));
+    case 'mapdemo Fleet':
+      return mapdemo.fleetWireSave(mapdemo.fleetWireLoad(wire));
+    case 'mapdemo Pairs':
+      return mapdemo.pairsWireSave(mapdemo.pairsWireLoad(wire));
+    case 'mapdemo Runs':
+      return mapdemo.runsWireSave(mapdemo.runsWireLoad(wire));
+    case 'mapdemo Slots':
+      return mapdemo.slotsWireSave(mapdemo.slotsWireLoad(wire));
+    case 'mapdemo Spans':
+      return mapdemo.spansWireSave(mapdemo.spansWireLoad(wire));
+    case 'mapdemo Text':
+      return mapdemo.textWireSave(mapdemo.textWireLoad(wire));
+    case 'mapdemo Trails':
+      return mapdemo.trailsWireSave(mapdemo.trailsWireLoad(wire));
+    case 'messagedemo ToolMessage':
+      return messagedemo.toolMessageWireSave(messagedemo.toolMessageWireLoad(wire));
+    case 'scalars SimState':
+      return scalardemo.simStateWireSave(scalardemo.simStateWireLoad(wire));
+    case 'widedemo Caption':
+      return widedemo.captionWireSave(widedemo.captionWireLoad(wire));
+    case 'widedemo Stamp':
+      return widedemo.stampWireSave(widedemo.stampWireLoad(wire));
   }
   return null;
 }
@@ -700,6 +740,38 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       return listdemo.sheetWireSave(listdemo.sheetFromJson(text));
     case 'listdemo Unbounded':
       return listdemo.unboundedWireSave(listdemo.unboundedFromJson(text));
+    case 'mapdemo Cells':
+      return mapdemo.cellsWireSave(mapdemo.cellsFromJson(text));
+    case 'mapdemo Chunks':
+      return mapdemo.chunksWireSave(mapdemo.chunksFromJson(text));
+    case 'mapdemo Crews':
+      return mapdemo.crewsWireSave(mapdemo.crewsFromJson(text));
+    case 'mapdemo Depth':
+      return mapdemo.depthWireSave(mapdemo.depthFromJson(text));
+    case 'mapdemo Docs':
+      return mapdemo.docsWireSave(mapdemo.docsFromJson(text));
+    case 'mapdemo Fleet':
+      return mapdemo.fleetWireSave(mapdemo.fleetFromJson(text));
+    case 'mapdemo Pairs':
+      return mapdemo.pairsWireSave(mapdemo.pairsFromJson(text));
+    case 'mapdemo Runs':
+      return mapdemo.runsWireSave(mapdemo.runsFromJson(text));
+    case 'mapdemo Slots':
+      return mapdemo.slotsWireSave(mapdemo.slotsFromJson(text));
+    case 'mapdemo Spans':
+      return mapdemo.spansWireSave(mapdemo.spansFromJson(text));
+    case 'mapdemo Text':
+      return mapdemo.textWireSave(mapdemo.textFromJson(text));
+    case 'mapdemo Trails':
+      return mapdemo.trailsWireSave(mapdemo.trailsFromJson(text));
+    case 'messagedemo ToolMessage':
+      return messagedemo.toolMessageWireSave(messagedemo.toolMessageFromJson(text));
+    case 'scalars SimState':
+      return scalardemo.simStateWireSave(scalardemo.simStateFromJson(text));
+    case 'widedemo Caption':
+      return widedemo.captionWireSave(widedemo.captionFromJson(text));
+    case 'widedemo Stamp':
+      return widedemo.stampWireSave(widedemo.stampFromJson(text));
   }
   return null;
 }
@@ -718,6 +790,38 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       return listdemo.sheetToJson(listdemo.sheetWireLoad(wire));
     case 'listdemo Unbounded':
       return listdemo.unboundedToJson(listdemo.unboundedWireLoad(wire));
+    case 'mapdemo Cells':
+      return mapdemo.cellsToJson(mapdemo.cellsWireLoad(wire));
+    case 'mapdemo Chunks':
+      return mapdemo.chunksToJson(mapdemo.chunksWireLoad(wire));
+    case 'mapdemo Crews':
+      return mapdemo.crewsToJson(mapdemo.crewsWireLoad(wire));
+    case 'mapdemo Depth':
+      return mapdemo.depthToJson(mapdemo.depthWireLoad(wire));
+    case 'mapdemo Docs':
+      return mapdemo.docsToJson(mapdemo.docsWireLoad(wire));
+    case 'mapdemo Fleet':
+      return mapdemo.fleetToJson(mapdemo.fleetWireLoad(wire));
+    case 'mapdemo Pairs':
+      return mapdemo.pairsToJson(mapdemo.pairsWireLoad(wire));
+    case 'mapdemo Runs':
+      return mapdemo.runsToJson(mapdemo.runsWireLoad(wire));
+    case 'mapdemo Slots':
+      return mapdemo.slotsToJson(mapdemo.slotsWireLoad(wire));
+    case 'mapdemo Spans':
+      return mapdemo.spansToJson(mapdemo.spansWireLoad(wire));
+    case 'mapdemo Text':
+      return mapdemo.textToJson(mapdemo.textWireLoad(wire));
+    case 'mapdemo Trails':
+      return mapdemo.trailsToJson(mapdemo.trailsWireLoad(wire));
+    case 'messagedemo ToolMessage':
+      return messagedemo.toolMessageToJson(messagedemo.toolMessageWireLoad(wire));
+    case 'scalars SimState':
+      return scalardemo.simStateToJson(scalardemo.simStateWireLoad(wire));
+    case 'widedemo Caption':
+      return widedemo.captionToJson(widedemo.captionWireLoad(wire));
+    case 'widedemo Stamp':
+      return widedemo.stampToJson(widedemo.stampWireLoad(wire));
   }
   return null;
 }
@@ -747,6 +851,70 @@ String? loadReport(String unit, String root, Uint8List wire) {
     case 'listdemo Unbounded':
       final r = listdemo.TableWireReport();
       listdemo.unboundedWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'mapdemo Cells':
+      final r = mapdemo.TableWireReport();
+      mapdemo.cellsWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'mapdemo Chunks':
+      final r = mapdemo.TableWireReport();
+      mapdemo.chunksWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'mapdemo Crews':
+      final r = mapdemo.TableWireReport();
+      mapdemo.crewsWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'mapdemo Depth':
+      final r = mapdemo.TableWireReport();
+      mapdemo.depthWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'mapdemo Docs':
+      final r = mapdemo.TableWireReport();
+      mapdemo.docsWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'mapdemo Fleet':
+      final r = mapdemo.TableWireReport();
+      mapdemo.fleetWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'mapdemo Pairs':
+      final r = mapdemo.TableWireReport();
+      mapdemo.pairsWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'mapdemo Runs':
+      final r = mapdemo.TableWireReport();
+      mapdemo.runsWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'mapdemo Slots':
+      final r = mapdemo.TableWireReport();
+      mapdemo.slotsWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'mapdemo Spans':
+      final r = mapdemo.TableWireReport();
+      mapdemo.spansWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'mapdemo Text':
+      final r = mapdemo.TableWireReport();
+      mapdemo.textWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'mapdemo Trails':
+      final r = mapdemo.TableWireReport();
+      mapdemo.trailsWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'messagedemo ToolMessage':
+      final r = messagedemo.TableWireReport();
+      messagedemo.toolMessageWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'scalars SimState':
+      final r = scalardemo.TableWireReport();
+      scalardemo.simStateWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'widedemo Caption':
+      final r = widedemo.TableWireReport();
+      widedemo.captionWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'widedemo Stamp':
+      final r = widedemo.TableWireReport();
+      widedemo.stampWireLoad(wire, r);
       return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
   }
   return null;

@@ -12,8 +12,9 @@
 // bound is clamped at a code-point boundary and counted — never cut through a
 // multi-byte character. Every function below cites the section it reads.
 //
-// Maps, optional ?T, enum-keyed arrays and union arms stay refused by name
-// in checkUnsupportedConstructs (§11). A shared node is "&node" (§16.7).
+// Maps, unions, fixed and enum-keyed arrays, optionals, flags, wstring and the
+// wide scalars go through the generic walk in textmore.go. A shared node is
+// "&node" (§16.7).
 package darttable
 
 import (
@@ -48,6 +49,18 @@ func (g *wireGen) textEnums() []*ir.Enum {
 			}
 		}
 	}
+	// an arm is a field line, so an enum arm owes the same helper (§2.6)
+	for _, un := range g.closureUnions() {
+		for _, arm := range un.Variants {
+			if arm.Void() {
+				continue
+			}
+			if e := enumRef(arm.F); e != nil && !seen[e.Name] {
+				seen[e.Name] = true
+				out = append(out, e)
+			}
+		}
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
@@ -57,9 +70,11 @@ func (g *wireGen) textEnums() []*ir.Enum {
 // and per-table toJson/fromJson bodies (roots get the top-level entry points).
 func (g *wireGen) emitTextForm() {
 	g.emitTextRuntime()
+	g.emitTextMoreRuntime()
 	for _, e := range g.textEnums() {
 		g.emitTextEnum(e)
 	}
+	g.emitTextMoreDecls()
 	for _, st := range g.closure {
 		g.emitTextCount(st)
 		g.emitTextToJsonBody(st)
@@ -185,6 +200,9 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
   if (val is int) return clamp(val);
   if (val is num && val.toDouble() == val.toDouble().truncateToDouble()) {
     return clamp(val.toInt());
+  }
+  if (val is _JNum && val.d == val.d.truncateToDouble()) {
+    return clamp(val.d.toInt());
   }
   r.kindMismatch++;
   return 0;
@@ -319,6 +337,7 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
 // else is a kind mismatch.
 double _jsonFloatField(dynamic val, TableTextReport r) {
   if (val is num) return val.toDouble();
+  if (val is _JNum) return val.d;
   if (val is String) {
     final d = double.tryParse(val);
     if (d != null) return d;
@@ -359,9 +378,8 @@ func (g *wireGen) emitTextEnum(e *ir.Enum) {
 func (g *wireGen) emitTextToJsonBody(st *ir.Struct) {
 	fn := dartName(st.Name) + "ToJsonBody"
 	g.pf("void %s(_JOut out, %s v, int depth, _Share sh, [int? label]) {\n", fn, st.Name)
-	if len(st.Fields) == 0 {
-		g.pf("\tif (label == null) { out.raw('{}'); return; }\n")
-	}
+	// an object with nothing written is `{}` (§16.1): a table with no fields,
+	// or one whose every field is an absent optional (§2.3)
 	g.pf("\tout.raw('{');\n")
 	g.pf("\tvar comma = false;\n")
 	g.pf("\tif (label != null) {\n")
@@ -371,11 +389,18 @@ func (g *wireGen) emitTextToJsonBody(st *ir.Struct) {
 	g.pf("\t\tcomma = true;\n")
 	g.pf("\t}\n")
 	for _, f := range st.Fields {
+		if f.Type.Optional {
+			// an ABSENT optional is omitted from the text (§2.3, §16.2)
+			g.pf("\tif (v.%s) {\n", hasMember(f))
+		}
 		g.pf("\tif (comma) out.raw(',');\n")
 		g.pf("\tcomma = true;\n")
 		g.emitTextToJsonField(st, f)
+		if f.Type.Optional {
+			g.pf("\t}\n")
+		}
 	}
-	g.pf("\tout.line(depth);\n")
+	g.pf("\tif (comma) out.line(depth);\n")
 	g.pf("\tout.raw('}');\n")
 	g.pf("}\n\n")
 }
@@ -387,6 +412,10 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 	g.pf("\tout.raw(_jsonString(%s));\n", strconv.Quote(key))
 	g.pf("\tout.raw(': ');\n")
 	switch {
+	case needsGenericText(f):
+		// maps, unions, fixed and keyed arrays, optionals, flags, wstring and
+		// the wide scalars (§16.2: textmore.go)
+		g.emitJsonValue(f, "v."+name, 1, "\t", st.Name+"."+f.Name)
 	case f.Type.Blob(): // *string rides as a string or null; *bytes as base64 or null (§2.5, §16.2)
 		if f.Type.Kind == ir.TString {
 			g.pf("\tif (v.%s == null) { out.raw('null'); } else { out.raw(_jsonString(v.%s!)); }\n", name, name)
@@ -472,7 +501,7 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 	case f.Type.Kind == ir.TString:
 		g.pf("\tout.raw(_jsonString(v.%s));\n", name)
 	case f.Type.Kind == ir.TBytes: // bytes(N) rides as base64 in the text (§16.7)
-		g.pf("\tout.raw(_jsonString(base64Encode(utf8.encode(v.%s))));\n", name)
+		g.pf("\tout.raw(_jsonString(base64Encode(latin1.encode(v.%s))));\n", name)
 	case f.Type.Kind == ir.TFloat32, f.Type.Kind == ir.TFloat64:
 		single := "false"
 		if f.Type.Kind == ir.TFloat32 {
@@ -513,6 +542,15 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 	name := fieldMember(f)
 	g.pf("\t\t\tcase %s:\n", strconv.Quote(key))
 	switch {
+	case needsGenericText(f):
+		// the constructs textmore.go reads (§16.2, §16.3); an optional's null
+		// or missing key is ABSENT (§2.3)
+		if f.Type.Optional {
+			g.pf("\t\t\t\tif (val == null) { v.%s = false; break; }\n", hasMember(f))
+			g.pf("\t\t\t\tv.%s = true;\n", hasMember(f))
+		}
+		g.pf("\t\t\t\tv.%s = %s;\n", name, g.jsonReadExpr(f, "val", 1))
+		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Blob():
 		if f.Type.Kind == ir.TString {
 			g.pf("\t\t\t\tif (val == null) { v.%s = null; }\n", name)
@@ -599,7 +637,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tv.%s = _jsonIntField(val, r, null, %s, true);\n", name, hi)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TBytes:
-		g.pf("\t\t\t\tif (val is String) { v.%s = utf8.decode(base64Decode(val)); } else { r.kindMismatch++; }\n", name)
+		g.pf("\t\t\t\tif (val is String) { v.%s = latin1.decode(base64Decode(val)); } else { r.kindMismatch++; }\n", name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		g.pf("\t\t\t\tv.%s = _jsonFloatField(val, r);\n", name)
@@ -626,6 +664,8 @@ func (g *wireGen) emitTextCount(st *ir.Struct) {
 func (g *wireGen) emitTextCountField(f *ir.Field, ind string) {
 	expr := "v." + fieldMember(f)
 	switch {
+	case needsGenericText(f):
+		g.emitCountValue(f, expr, ind, 1)
 	case isPointerTable(f):
 		ref := tableRef(f)
 		g.pf("%sif (%s != null) {\n", ind, expr)
@@ -677,7 +717,12 @@ func (g *wireGen) emitTextFromJson(st *ir.Struct) {
 	g.pf("%s %s(String text, [TableTextReport? report]) {\n", st.Name, fn)
 	g.pf("\tfinal r = report ?? TableTextReport();\n")
 	g.pf("\tfinal v = %s();\n", st.Name)
-	g.pf("\tfinal root = jsonDecode(text);\n")
+	if g.unitHasWide() {
+		// a wide number is read from its token (§16.2: textmore.go)
+		g.pf("\tfinal root = _jsonDecodeExact(text);\n")
+	} else {
+		g.pf("\tfinal root = jsonDecode(text);\n")
+	}
 	g.pf("\tif (root is Map<String, dynamic>) {\n")
 	g.pf("\t\t%sFromJsonFields(v, root, r, _Share());\n", dartName(st.Name))
 	g.pf("\t} else if (root is Map) {\n")
