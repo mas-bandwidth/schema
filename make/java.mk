@@ -85,7 +85,7 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema
+build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema
 	@mkdir -p build/tables-generated-java
 	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit and the BYTE-BUFFER unit: their cook readers and
@@ -130,6 +130,12 @@ build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 	# Both fields produce kind_mismatch == 2 in both directions.
 	./bin/schema generate --lang java --out build/tables-generated-java/k1 test/tables/K1.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/k2 test/tables/K2.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/maps tables/maps
+	./bin/schema generate --lang java --out build/tables-generated-java/arms tables/arms
+	# scalars2 (package scalardemo2) is the later build's view of the wide-kind
+	# unit: the conformance report rows read scalars_*.bin through it, counting
+	# the kind mismatches and raw-scale clamps of docs/SPEC-TABLES.md §15.
+	./bin/schema generate --lang java --out build/tables-generated-java/scalars2 test/tables/Scalars2.schema
 	@touch $@
 
 # The Java twin of the C++ "no serialize include path" build: a generated
@@ -527,6 +533,18 @@ tables-java-versioning: tables-fixedform-corpus
 		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
 	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
 
+# THE FIXED-FORM ROADMAP T12 GATE (union-field-arms/java/valid-data,
+# payload-free-arms/java/valid-data, union-arrays/java/valid-data,
+# optional-arrays/java/valid-data; docs/roadmap.sexp fixed-tables). Each
+# subtest generates through the registered Java target (`schema generate --lang
+# java`), compiles and runs the capability probe, and compares against the C++
+# reference bytes in build/fixedform-corpus (fu1.bin, fu2.bin).
+.PHONY: tables-java-fixed-roadmap
+tables-java-fixed-roadmap: tables-fixedform-corpus
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapJavaT12BatchesUnions'
+	@echo 'tables Java fixed roadmap (T12): union arms, payload-free arms, union arrays and optional arrays pass through the registered target'
+
 # THE FIXED TABLES' SHARED BYTE ORACLE AND HOSTILE INPUT (java/W13, java/R27,
 # java/P3, java/P4; docs/roadmap.sexp fixed-tables). The driven functional tier
 # reads the C++ reference's own byte oracle out of build/fixedform-corpus and
@@ -579,6 +597,18 @@ tables-java-json-differential-negative-control:
 	@echo 'tables Java text differential negative control: a six-digit float32 writer is red on the text comparison'
 
 test-java: tables-java-json-differential
+
+# THE BLOCK BUILDER AND COOK WRITER GATE (docs/SPEC-TABLES.md §7.6, §19.1):
+# the Java block builder produces the committed block_render and block_padded
+# images byte-for-byte, and the Java cook writer produces the committed
+# little-endian and big-endian cooked images byte-for-byte.
+.PHONY: tables-java-block-build
+tables-java-block-build:
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestBlockBuildAndCookWriteJava$$'
+	@echo 'tables Java block builder and cook writer: block_render, block_padded and cook-write match the committed reference bytes'
+
+test-java: tables-java-block-build
 
 # THE VARIABLE-CLASS GATE (docs/SPEC-TABLES.md §2, §3, §16), the Java twin of
 # `tables-go-variable-class`: the variable form's codecs for the pointered,
@@ -944,11 +974,14 @@ build/java-bench/.stamp: generated/bench/java/.stamp bench/java/Main.java
 # on this classpath and does not need to be; the tables-java-compile gate is
 # what proves it builds.
 .PHONY: build-conformance-java
-build-conformance-java: build/tables-generated-java/.stamp test/conformance/java/src/Driver.java
+build-conformance-java: build/tables-generated-java/.stamp build/tables-generated-java/.native-variable-stamp test/conformance/java/src/Driver.java
 	@rm -rf build/conformance-java && mkdir -p build/conformance-java
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/conformance-java \
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
 		build/tables-generated-java/blobs/*.java \
+		build/tables-generated-java/maps/*.java build/tables-generated-java/arms/*.java \
+		build/tables-generated-java/scalars/*.java build/tables-generated-java/scalars2/*.java \
+		build/tables-generated-java/native-messages/*.java build/tables-generated-java/native-wide/*.java \
 		build/tables-generated-java/block/*.java build/tables-generated-java/v1/*.java \
 		build/tables-generated-java/v2/*.java build/tables-generated-java/p1/*.java \
 		build/tables-generated-java/p3/*.java \
@@ -1248,55 +1281,27 @@ cards-java-conformance-hash-negative-control: build/conformance-harness build/ca
 test-java: cards-java-test cards-java-conformance cards-java-conformance-negative-control \
 	cards-java-conformance-upgrade-negative-control cards-java-conformance-hash-negative-control
 
-# ---------------------------------------------------------------------------
-# THE CARD CONSTRUCTS' BOUNDARY CONTROL (docs/SPEC-TABLES.md §2, §11)
-# ---------------------------------------------------------------------------
-#
-# internal/codegen/javatable/cardsform_test.go's
-# TestOtherVariableConstructsAreRefusedByName holds that every variable-class
-# construct outside the card's slice — a map (§2.8), a union arm (§2.6), a
-# *bytes buffer, a pointer to a table outside a list element (§2.1), an optional
-# ?T (§2.3), an enum-keyed array (§2.4) and the wide kinds (§15) — is refused by
-# name, naming the table, the field and the construct (§11), so a construct the
-# card does not carry is never mis-encoded and never silently dropped.
-#
-# A test for a REFUSAL passes trivially when the refusal never runs, so this
-# control proves the rule BITES: it neutralises the closure's guard on
-# variableFormRefusal (javatable.go:420) through a go build overlay and requires
-# the boundary test to go RED. Nothing in the tree changes; the overlay lives
-# under build/. Without the refusal the emitter walks a map/union field and
-# panics, so the red names the test and the panic: the boundary is load-bearing.
-#
-# THIS AND THE CARD FUZZ TARGETS BELOW SIT IN make/java.mk AND NOT IN A SEPARATE
-# make/cards-java.mk because the wide-scalar registry gate (Makefile,
-# tables-ports-refuse-wide-scalars) enumerates EVERY make/*.mk as a language
-# port and probes it with --lang <stem>; a fragment named cards-java.mk would be
-# probed as --lang cards-java and would red that gate as a phantom port (the
-# same reason the Elixir leg's card targets live in make/elixir.mk). The target
-# name carries no `negative-control` marker for the same reason: the marker
-# would put it in the CI matrix plan (make/negative-controls.json), outside this
-# card's paths.
-JAVA_CARDS_REFUSAL_SABOTAGE := build/java-cards-refusal-sabotage
-.PHONY: tables-java-cards-refusal-bites
-tables-java-cards-refusal-bites:
-	@rm -rf $(JAVA_CARDS_REFUSAL_SABOTAGE) && mkdir -p $(JAVA_CARDS_REFUSAL_SABOTAGE)
-	@sed 's|why != ""|why != why|' internal/codegen/javatable/javatable.go > $(JAVA_CARDS_REFUSAL_SABOTAGE)/javatable.go.txt
-	@if cmp -s internal/codegen/javatable/javatable.go $(JAVA_CARDS_REFUSAL_SABOTAGE)/javatable.go.txt; then \
-		echo "NEGATIVE CONTROL FAILED: the refusal sabotage did not apply"; exit 1; fi
-	@printf '{"Replace":{"%s/internal/codegen/javatable/javatable.go":"%s/$(JAVA_CARDS_REFUSAL_SABOTAGE)/javatable.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(JAVA_CARDS_REFUSAL_SABOTAGE)/overlay.json
-	@if nice -n 19 go test -overlay=$(JAVA_CARDS_REFUSAL_SABOTAGE)/overlay.json \
-			-count=1 -timeout 600s -run TestOtherVariableConstructsAreRefusedByName \
-			./internal/codegen/javatable/ > $(JAVA_CARDS_REFUSAL_SABOTAGE)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: removing the refusal left the boundary test green"; \
-		cat $(JAVA_CARDS_REFUSAL_SABOTAGE)/log; exit 1; fi
-	@grep -q "TestOtherVariableConstructsAreRefusedByName" $(JAVA_CARDS_REFUSAL_SABOTAGE)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the run went red, but not in the boundary test"; \
-		  cat $(JAVA_CARDS_REFUSAL_SABOTAGE)/log; exit 1; }
-	@grep -Eq "construct should be refused but was not|panic: " $(JAVA_CARDS_REFUSAL_SABOTAGE)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the boundary test went red, but not because the refusal was gone"; \
-		  cat $(JAVA_CARDS_REFUSAL_SABOTAGE)/log; exit 1; }
-	@grep -Ehm1 "construct should be refused but was not|panic: " $(JAVA_CARDS_REFUSAL_SABOTAGE)/log
-	@echo "negative control: removing the variable-form refusal reds the card boundary test"
+# The earlier card-subset refusal control is retired: maps, optional/keyed
+# values, unions and wide values now have positive native codec gates.
+.PHONY: tables-java-variable-arms
+tables-java-variable-arms: bin/schema
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ \
+		-count=1 -timeout 600s -v -run 'TestMapsAndUnionArmsOnTheTableWireJava|TestOtherVariableConstructsAreRefusedByName|TestJavaVariable|TestJavaFixedGeneralArmPayloads'
+	@mkdir -p build/java-variable-alias-refusal
+	@for unit in tables/messages examples-wide; do \
+		name=$$(basename $$unit); \
+		if ./bin/schema generate --lang java --out build/java-variable-alias-refusal/$$name $$unit > build/java-variable-alias-refusal/$$name.log 2>&1; then \
+			echo "Java arm-alias CLI refusal unexpectedly disappeared: $$unit"; exit 1; fi; \
+		grep -Fq "was on an enum variant, a union arm or a type's field" build/java-variable-alias-refusal/$$name.log || \
+			{ cat build/java-variable-alias-refusal/$$name.log; exit 1; }; \
+		echo "Java public CLI alias refusal preserved: $$unit (fixed-class dependency)"; \
+	done
 
-test-java: tables-java-cards-refusal-bites
+test-java: tables-java-variable-arms
+
+# Native-only fixture staging preserves public refuseWasRows. This target is
+# backend/conformance evidence and is not public CLI admission of these units.
+build/tables-generated-java/.native-variable-stamp: bin/schema $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_WIDE) internal/codegen/javatable/variableconformance_test.go make/java.mk
+	SCHEMA_JAVA_NATIVE_CONFORMANCE_OUT=$(CURDIR)/build/tables-generated-java \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestStageJavaVariableConformance$$'
+	@touch $@
