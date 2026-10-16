@@ -33,18 +33,18 @@ func (g *gen) emitVariableText(b *strings.Builder) {
 	g.emitUnionText(b, names)
 
 	for _, n := range names {
-		g.emitTextCount(b, g.unit.Tables[n])
+		g.emitTextCount(b, vStruct(g.unit, n))
 	}
 	for _, n := range names {
-		g.emitTextWrite(b, g.unit.Tables[n])
+		g.emitTextWrite(b, vStruct(g.unit, n))
 	}
 	for _, n := range names {
-		g.emitTextRead(b, g.unit.Tables[n])
-		g.emitTextReadPointer(b, g.unit.Tables[n])
+		g.emitTextRead(b, vStruct(g.unit, n))
+		g.emitTextReadPointer(b, vStruct(g.unit, n))
 	}
 	for _, n := range names {
-		if g.isVariableRoot(g.unit.Tables[n]) {
-			g.emitTextRoots(b, g.unit.Tables[n])
+		if g.isVariableRoot(vStruct(g.unit, n)) {
+			g.emitTextRoots(b, vStruct(g.unit, n))
 		}
 	}
 }
@@ -839,6 +839,37 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 	case vEnum:
 		fmt.Fprintf(b, "%sjson_escape(%s(%s), &mut w.out);\n", ind, fn(f.Type.Name, "json_name"), x)
 	default:
+		if fl := isFlags(f); fl != nil {
+			// a FLAGS MASK is the array of its set bits' names, in bit order
+			// (docs/SPEC-TABLES.md §16.2); a bit no variant names has no text
+			// spelling, so the writer refuses it as the oracle does
+			fmt.Fprintf(b, "%s{\n", ind)
+			fmt.Fprintf(b, "%s    const NAMES: [&str; %d] = [", ind, len(fl.Variants))
+			for i, v := range fl.Variants {
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				fmt.Fprintf(b, "%q", v)
+			}
+			b.WriteString("];\n")
+			fmt.Fprintf(b, "%s    let bits: u64 = %s;\n", ind, x)
+			fmt.Fprintf(b, "%s    if bits == 0 { w.out.push_str(\"[]\"); } else {\n", ind)
+			fmt.Fprintf(b, "%s        w.out.push('[');\n", ind)
+			fmt.Fprintf(b, "%s        let mut first = true;\n", ind)
+			fmt.Fprintf(b, "%s        for bit in 0..64usize {\n", ind)
+			fmt.Fprintf(b, "%s            if bits & (1u64 << bit) == 0 { continue; }\n", ind)
+			fmt.Fprintf(b, "%s            if bit >= NAMES.len() { w.refused = true; break; }\n", ind)
+			fmt.Fprintf(b, "%s            if !first { w.out.push(','); }\n", ind)
+			fmt.Fprintf(b, "%s            first = false;\n", ind)
+			fmt.Fprintf(b, "%s            json_newline(&mut w.out, %s + 1);\n", ind, d)
+			fmt.Fprintf(b, "%s            json_escape(NAMES[bit], &mut w.out);\n", ind)
+			fmt.Fprintf(b, "%s        }\n", ind)
+			fmt.Fprintf(b, "%s        json_newline(&mut w.out, %s);\n", ind, d)
+			fmt.Fprintf(b, "%s        w.out.push(']');\n", ind)
+			fmt.Fprintf(b, "%s    }\n", ind)
+			fmt.Fprintf(b, "%s}\n", ind)
+			return
+		}
 		switch f.Type.Kind {
 		case ir.TBool:
 			fmt.Fprintf(b, "%sw.out.push_str(if %s { \"true\" } else { \"false\" });\n", ind, x)
@@ -1118,6 +1149,34 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 		fmt.Fprintf(b, "%s    }\n", in)
 		fmt.Fprintf(b, "%s} else { jr.kind_mismatch += 1; jr.skip_value(); }\n", in)
 	default:
+		if fl := isFlags(f); fl != nil {
+			// a FLAGS MASK reads from the array of its bits' names
+			// (docs/SPEC-TABLES.md §16.2): a name no variant spells counts
+			// unknown, an element that is not a string counts kind_mismatch
+			fmt.Fprintf(b, "%sif jr.peek() == b'[' {\n", in)
+			fmt.Fprintf(b, "%s    jr.p += 1;\n", in)
+			fmt.Fprintf(b, "%s    let mut bits: u64 = 0;\n", in)
+			fmt.Fprintf(b, "%s    loop {\n", in)
+			fmt.Fprintf(b, "%s        if jr.peek() == b']' { jr.p += 1; break; }\n", in)
+			fmt.Fprintf(b, "%s        if jr.peek() == b'\"' {\n", in)
+			fmt.Fprintf(b, "%s            match jr.read_string() {\n", in)
+			fmt.Fprintf(b, "%s                Some(s) => match s.as_str() {\n", in)
+			for i, v := range fl.Variants {
+				fmt.Fprintf(b, "%s                    %q => bits |= 1u64 << %d,\n", in, v, i)
+			}
+			fmt.Fprintf(b, "%s                    _ => jr.unknown += 1,\n", in)
+			fmt.Fprintf(b, "%s                },\n", in)
+			fmt.Fprintf(b, "%s                None => break,\n", in)
+			fmt.Fprintf(b, "%s            }\n", in)
+			fmt.Fprintf(b, "%s        } else { jr.kind_mismatch += 1; jr.skip_value(); }\n", in)
+			fmt.Fprintf(b, "%s        if jr.peek() == b',' { jr.p += 1; continue; }\n", in)
+			fmt.Fprintf(b, "%s        if jr.peek() == b']' { jr.p += 1; break; }\n", in)
+			fmt.Fprintf(b, "%s        jr.malformed = true; break;\n", in)
+			fmt.Fprintf(b, "%s    }\n", in)
+			fmt.Fprintf(b, "%s    %s = bits;\n", in, dst)
+			fmt.Fprintf(b, "%s} else { jr.kind_mismatch += 1; jr.skip_value(); }\n", in)
+			return
+		}
 		switch f.Type.Kind {
 		case ir.TBool:
 			fmt.Fprintf(b, "%sif jr.peek() == b't' && jr.b[jr.p..].starts_with(b\"true\") { jr.p += 4; %s = true; }\n", in, dst)
