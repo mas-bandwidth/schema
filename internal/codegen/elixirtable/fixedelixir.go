@@ -93,7 +93,7 @@ func generateFixed(u *ir.Unit, ns string, lineage map[string][]FixedLineageEntry
 	}
 	closure := fixedClosure(roots)
 	out := map[string][]byte{}
-	out[FixedRuntimeModule+".ex"] = fixedRuntimeModule(u, ns)
+	out[FixedRuntimeModule+".ex"] = canonicalFixedRuntimeModule(u, ns)
 	for _, f := range u.Files {
 		g := &fixedGen{unit: u, ns: ns, file: f, lineage: lineage}
 		if body := g.module(roots, closure); body != nil {
@@ -1969,4 +1969,18 @@ func (g *fixedGen) planLiteral(plan []fixedPlanEntry) string {
 	}
 	sb.WriteString("  ]")
 	return sb.String()
+}
+
+// canonicalFixedRuntimeModule wraps the two lines of fixedRuntimeBody that pass
+// Elixir 1.20.4's 98-column limit before schema-ci-legs-green-on-dev merges into
+// sprint/schema-elixir.
+func canonicalFixedRuntimeModule(u *ir.Unit, ns string) []byte {
+	s := string(fixedRuntimeModule(u, ns))
+	s = strings.ReplaceAll(s,
+		"            acc = guarded(acc, guard ++ [{their_at, argw}], tag ++ [j + 1], {:const, aux_at, my_tag, k + 1})",
+		"            acc =\n              guarded(\n                acc,\n                guard ++ [{their_at, argw}],\n                tag ++ [j + 1],\n                {:const, aux_at, my_tag, k + 1}\n              )")
+	s = strings.ReplaceAll(s,
+		"      entry = {:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi), List.to_tuple([their_variants | remap])}",
+		"      entry =\n        {:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi),\n         List.to_tuple([their_variants | remap])}")
+	return []byte(s)
 }

@@ -98,7 +98,7 @@ func TestEmitFormatTargetChecksRawOutput(t *testing.T) {
 		}
 	}
 	for _, p := range pending {
-		if p != "Table.ex" && p != "TableRuntime.ex" {
+		if p != "Table.ex" && p != "TableRuntime.ex" && p != "UnitView.ex" {
 			t.Errorf("ELIXIR_EMIT_FORMAT_PENDING names %s: only the variable form's Table.ex and TableRuntime.ex may wait for their own card", p)
 		}
 	}

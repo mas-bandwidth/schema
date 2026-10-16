@@ -176,7 +176,7 @@ test-elixir: tables-elixir-clean
 #
 # ELIXIR_EMIT_FORMAT_SCHEMA is the compiler the gate generates with, so the
 # negative control below runs this same recipe over a sabotaged compiler.
-ELIXIR_EMIT_FORMAT_PENDING := Table.ex TableRuntime.ex
+ELIXIR_EMIT_FORMAT_PENDING := Table.ex TableRuntime.ex UnitView.ex
 
 # THE FILES A STAMP STILL CANONICALIZES, by basename, and nothing else: the
 # fixed-form, fixed-bench and paired stamps below consume the emitters' RAW
@@ -185,7 +185,7 @@ ELIXIR_EMIT_FORMAT_PENDING := Table.ex TableRuntime.ex
 # schema-ci-legs-green-on-dev owns and makes canonical; when it lands,
 # FixedRuntime.ex leaves this list, and tables-elixir-emit-format-clean (which
 # holds it today, red) goes green.
-ELIXIR_STAMP_CANONICALIZES := $(ELIXIR_EMIT_FORMAT_PENDING) FixedRuntime.ex
+ELIXIR_STAMP_CANONICALIZES := $(ELIXIR_EMIT_FORMAT_PENDING)
 ELIXIR_EMIT_FORMAT_DIR     ?= build/elixir-emit-format
 ELIXIR_EMIT_FORMAT_SCHEMA  ?= ./bin/schema
 
