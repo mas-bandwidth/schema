@@ -114,6 +114,7 @@ const (
 	vScalar  vClass = iota // bool, an integer, bits(N), a float
 	vEnum                  // kind 30: the variant name's id reference
 	vString                // string(N): kind 12, L, the bytes
+	vWString               // wstring(N): kind 33, L in BYTES, the UTF-16 units little-endian (§3)
 	vBytes                 // bytes(N): kind 14 over element kind 6
 	vBlob                  // *string / *bytes: kind 17, an index to a blob node (§2.5)
 	vPointer               // *T: kind 17, an index to a table node (§3.1)
@@ -132,6 +133,8 @@ func classOf(f *ir.Field) vClass {
 		return vPointer
 	case f.Type.Kind == ir.TString:
 		return vString
+	case f.Type.Kind == ir.TWString:
+		return vWString
 	case f.Type.Kind == ir.TBytes:
 		return vBytes
 	case f.Type.Kind == ir.TNamed:
@@ -225,6 +228,10 @@ func elemRust(f *ir.Field) string {
 		return "Option<Rc<" + f.Type.Name + ">>"
 	case vString:
 		return "String"
+	case vWString:
+		// the CODE UNITS, as the oracle's Cell.Units and the cook's [u16; N]
+		// hold them (docs/SPEC-TABLES.md §7.2): a paired, zero-free value
+		return "Vec<u16>"
 	case vBytes:
 		return "Vec<u8>"
 	case vEnum, vTable:
@@ -343,6 +350,9 @@ func fieldDefault(f *ir.Field) string {
 			return "String::new()"
 		}
 		return "String::from(" + rustStr(f.DefBytes) + ")"
+	case vWString:
+		// WIDE TEXT TAKES NO SPECIFIED DEFAULT (SPEC.md §4.12): empty
+		return "Vec::new()"
 	case vBytes:
 		if len(f.DefBytes) == 0 {
 			return "Vec::new()"
@@ -676,6 +686,8 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%sleb_write(out, %s.len() as u64);\n", inner, x)
 		fmt.Fprintf(b, "%sout.extend_from_slice(%s.as_bytes());\n", inner, x)
 		fmt.Fprintf(b, "%s}\n", ind)
+	case vWString:
+		g.emitWideSaveField(b, f, x, ind)
 	case vBytes:
 		// bytes(N) rides as an array of u8 (§2.5): kind 14, L = 2 + n, element
 		// kind 6, the count, the bytes; at its default it elides
@@ -1000,6 +1012,8 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "%s    else { %s = std::str::from_utf8(b).unwrap().to_string(); }\n", in, field)
 		fmt.Fprintf(b, "%s    *off = s;\n", in)
 		fmt.Fprintf(b, "%s}\n", in)
+	case vWString:
+		emitWideLoadField(b, f, field, in)
 	case vBytes:
 		g.emitArrayLoad(b, f, ordinal, field, in)
 	case vEnum:
@@ -1296,6 +1310,8 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fnName := ir.RustSnake(st.Name)
 	// SAVE
 	fmt.Fprintf(b, "/// %s_save — a whole form-1 FILE (docs/SPEC-TABLES.md §3, §3.1).\n", fnName)
+	fmt.Fprintf(b, "/// An over-bound value panics with its field name; use %s_save_checked\n", fnName)
+	fmt.Fprintf(b, "/// for a named Err instead of a panic (docs/SPEC-TABLES.md §3).\n")
 	fmt.Fprintf(b, "pub fn %s_save(v: &%s) -> Vec<u8> {\n", fnName, st.Name)
 	fmt.Fprintf(b, "    let mut out = Vec::new();\n")
 	fmt.Fprintf(b, "    out.push(TABLE_WIRE_FORM);\n")
@@ -1304,10 +1320,34 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    %s(v, &mut g);\n", fn(st.Name, "number"))
 	fmt.Fprintf(b, "    %s(v, &mut out, &mut ids, &g, None, None, TableRetainPath::default());\n", fn(st.Name, "save_body"))
 	emitNodeTableWrite(b, false)
+	fmt.Fprintf(b, "    // A Vec cannot carry the writer's named refusal (§3): never return a truncated file.\n")
+	fmt.Fprintf(b, "    if let Some(why) = ids.refused.take() { panic!(\"{}\", why); }\n")
 	fmt.Fprintf(b, "    out.push(0); // the root body's zero reference\n")
 	fmt.Fprintf(b, "    for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }\n")
 	fmt.Fprintf(b, "    out.extend_from_slice(&(ids.entries.len() as u64).to_le_bytes());\n")
 	fmt.Fprintf(b, "    out\n")
+	fmt.Fprintf(b, "}\n\n")
+
+	// SAVE-CHECKED: the same file, or the writer's refusal BY NAME when a
+	// value is over its declared bound (docs/SPEC-TABLES.md §3, SPEC.md
+	// §4.12: a wstring(N) over N code units), as the Go leg's save refuses
+	// (internal/codegen/gotable/write.go).
+	fmt.Fprintf(b, "/// %s_save_checked — %s_save, or the refusal by name of a value over its bound\n", fnName, fnName)
+	fmt.Fprintf(b, "/// (docs/SPEC-TABLES.md §3): nothing is returned for a refused value.\n")
+	fmt.Fprintf(b, "pub fn %s_save_checked(v: &%s) -> Result<Vec<u8>, String> {\n", fnName, st.Name)
+	fmt.Fprintf(b, "    let mut out = Vec::new();\n")
+	fmt.Fprintf(b, "    out.push(TABLE_WIRE_FORM);\n")
+	fmt.Fprintf(b, "    let mut ids = IdTable::new();\n")
+	fmt.Fprintf(b, "    let mut g = TableNodeGraph::new();\n")
+	fmt.Fprintf(b, "    %s(v, &mut g);\n", fn(st.Name, "number"))
+	fmt.Fprintf(b, "    %s(v, &mut out, &mut ids, &g, None, None, TableRetainPath::default());\n", fn(st.Name, "save_body"))
+	fmt.Fprintf(b, "    // every node record's body rides too, and is checked by the same walk\n")
+	emitNodeTableWrite(b, false)
+	fmt.Fprintf(b, "    if let Some(why) = ids.refused.take() { return Err(why); }\n")
+	fmt.Fprintf(b, "    out.push(0); // the root body's zero reference\n")
+	fmt.Fprintf(b, "    for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }\n")
+	fmt.Fprintf(b, "    out.extend_from_slice(&(ids.entries.len() as u64).to_le_bytes());\n")
+	fmt.Fprintf(b, "    Ok(out)\n")
 	fmt.Fprintf(b, "}\n\n")
 
 	// SAVE-RETAIN (docs/SPEC-TABLES.md §6.6): the same file, with the retained
@@ -1316,6 +1356,8 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "/// %s_save_retain — the retaining save (docs/SPEC-TABLES.md §6.6): the\n", fnName)
 	fmt.Fprintf(b, "/// retained tail rides before the node-table field, and every retained id\n")
 	fmt.Fprintf(b, "/// enters the one id table in first-use order.\n")
+	fmt.Fprintf(b, "/// An over-bound value panics with its field name; it cannot return a\n")
+	fmt.Fprintf(b, "/// truncated Vec (docs/SPEC-TABLES.md §3).\n")
 	fmt.Fprintf(b, "pub fn %s_save_retain(v: &%s, retain: &mut TableRetain, report: &mut TableReport) -> Vec<u8> {\n", fnName, st.Name)
 	fmt.Fprintf(b, "    retain.ids.clear();\n")
 	fmt.Fprintf(b, "    retain_clear_placed(retain);\n")
@@ -1328,6 +1370,8 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    retain_emit_tail(&mut out, &mut ids, retain, KNOWN_IDS, TableRetainPath::default(), report);\n")
 	emitNodeTableWrite(b, true)
 	fmt.Fprintf(b, "    retain_count_unplaced(retain, report);\n")
+	fmt.Fprintf(b, "    // A Vec cannot carry the writer's named refusal (§3): never return a truncated file.\n")
+	fmt.Fprintf(b, "    if let Some(why) = ids.refused.take() { panic!(\"{}\", why); }\n")
 	fmt.Fprintf(b, "    out.push(0); // the root body's zero reference\n")
 	fmt.Fprintf(b, "    for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }\n")
 	fmt.Fprintf(b, "    out.extend_from_slice(&(ids.entries.len() as u64).to_le_bytes());\n")
@@ -1598,4 +1642,69 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    if root_at < 0 { return -1; }\n")
 	fmt.Fprintf(b, "    round(round(%d) + root_at) + blob_total + (records + 1) * 16\n", rootSize)
 	fmt.Fprintf(b, "}\n\n")
+}
+
+// emitWideSaveField writes one `wstring(N)` field (docs/SPEC-TABLES.md §3, kind
+// 33; SPEC.md §4.12): wide text takes no specified default, so the EMPTY value
+// is what elides; otherwise the header, L = twice the unit count (a BYTE
+// length, like every L on this wire) and the units little-endian. A value
+// over N is the save's refusal by name ([table_wide_fit]), the oracle's
+// writer bound (internal/codegen/gotable/write.go's Length > N check).
+func (g *gen) emitWideSaveField(b *strings.Builder, f *ir.Field, x, ind string) {
+	inner := ind + "    "
+	fmt.Fprintf(b, "%sif !%s.is_empty() {\n", ind, x)
+	fmt.Fprintf(b, "%slet n = table_wide_fit(ids, &%s, %d, %q);\n", inner, x, f.Type.Size, wideOwner(g.unit, f)+"."+f.Name)
+	fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, ir.TableFieldWireId(f))
+	fmt.Fprintf(b, "%sout.push(%d);\n", inner, ir.TableKindWstring)
+	fmt.Fprintf(b, "%sleb_write(out, (n * 2) as u64);\n", inner)
+	fmt.Fprintf(b, "%stable_wide_put(out, &%s[..n]);\n", inner, x)
+	fmt.Fprintf(b, "%s}\n", ind)
+}
+
+// emitWideLoadField reads one `wstring(N)` field (docs/SPEC-TABLES.md §3, §4;
+// the oracle is internal/tablewire decode.go): another kind is a mismatch,
+// skipped by its own rule; an L past the body is framing damage; an odd L, an
+// unpaired surrogate or a zero unit is damage that reads the declared default
+// (empty) and counts malformed, the parent reading on past L; more than N
+// units keeps the longest prefix that does not split a pair and counts one
+// clamp.
+func emitWideLoadField(b *strings.Builder, f *ir.Field, field, in string) {
+	fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindWstring, kindSkip)
+	fmt.Fprintf(b, "%selse {\n", in)
+	fmt.Fprintf(b, "%s    let Some(l) = leb_read(wire, off) else { report.malformed = true; return false; };\n", in)
+	fmt.Fprintf(b, "%s    if *off > end || l > (end - *off) as u64 { report.malformed = true; return false; }\n", in)
+	fmt.Fprintf(b, "%s    let s = *off + l as usize;\n", in)
+	fmt.Fprintf(b, "%s    match table_wide_units(&wire[*off..s]) {\n", in)
+	fmt.Fprintf(b, "%s        None => { report.malformed = true; %s = Vec::new(); }\n", in, field)
+	fmt.Fprintf(b, "%s        Some(u) => {\n", in)
+	fmt.Fprintf(b, "%s            let keep = table_wide_boundary(&u, %d);\n", in, f.Type.Size)
+	fmt.Fprintf(b, "%s            if keep < u.len() { report.clamped += 1; }\n", in)
+	fmt.Fprintf(b, "%s            %s = u[..keep].to_vec();\n", in, field)
+	fmt.Fprintf(b, "%s        }\n", in)
+	fmt.Fprintf(b, "%s    }\n", in)
+	fmt.Fprintf(b, "%s    *off = s;\n", in)
+	fmt.Fprintf(b, "%s}\n", in)
+}
+
+// wideOwner names the declaration a field line belongs to — a table (a map's
+// generated entry included) or a union, whose arm is a field line (§2.6) — so
+// a writer's refusal names `<owner>.<field>` (docs/SPEC-TABLES.md §11).
+func wideOwner(u *ir.Unit, f *ir.Field) string {
+	for _, st := range u.Tables {
+		for _, g := range st.Fields {
+			if g == f {
+				return st.Name
+			}
+		}
+	}
+	for _, set := range []map[string]*ir.Union{u.TableUnions, u.Unions} {
+		for _, un := range set {
+			for _, v := range un.Variants {
+				if v.F == f {
+					return un.Name
+				}
+			}
+		}
+	}
+	return "?"
 }

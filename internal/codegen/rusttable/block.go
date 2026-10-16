@@ -464,6 +464,8 @@ func (b *blockGen) blockFieldRow(bl *ir.BlockLayout, fl ir.FieldLayout, projecti
 			countOffset = fmt.Sprint(pieces[1].Offset)
 		}
 	case f.Type.Kind == ir.TWString:
+		// wide text's block slot (docs/SPEC-TABLES.md §7.2, §19.3): N + 1 code
+		// units of two bytes each, the used length in code units beside them
 		counted, arrayBound, elemSize = true, f.Type.Size, 2
 		if len(pieces) > 1 {
 			countOffset = fmt.Sprint(pieces[1].Offset)
@@ -560,6 +562,9 @@ func (b *blockGen) emitProjectionField(bl *ir.BlockLayout, fl ir.FieldLayout) {
 			f.Name, f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
 		b.pf("    pub %s_length: i32,\n", f.Name)
 	case f.Type.Kind == ir.TWString:
+		// WIDE TEXT in a projection is its cooked storage (docs/SPEC-TABLES.md
+		// §7.2, §19.3): char16_t[N + 1] at two, then the int32 used length in
+		// CODE UNITS, as the cook row lays it out (cook.go emitCookRowField)
 		b.pf("    pub %s: [u16; %d], // wstring(%s): UTF-16 code units, used length beside it\n",
 			f.Name, f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
 		b.pf("    pub %s_length: i32,\n", f.Name)
