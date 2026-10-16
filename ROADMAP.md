@@ -142,7 +142,7 @@ A leg that is red at the branch head holds its cells ❌ even where the row's te
 | variable class (pointers, the flat node table) | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | text form, variable class | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | block form, build side | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| cook write in the runtime | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| cook write in the runtime | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | fixed-point and 128-bit scalars on the table wire | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | unions whose arms are tables | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | arrays of pointers | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
@@ -163,7 +163,7 @@ A leg that is red at the branch head holds its cells ❌ even where the row's te
 | the unit registry, UnitView | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | cards: the sprint's card record as a variable table (tables/cards) | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| complete | 96% | 0% | 0% | 87% | 9% | 65% | 12% | 9% | 12% |
+| complete | 96% | 0% | 0% | 87% | 9% | 62% | 12% | 9% | 12% |
 
 [Source data](docs/roadmap.sexp)
 
