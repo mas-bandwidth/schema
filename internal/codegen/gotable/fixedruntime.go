@@ -554,42 +554,37 @@ func tableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 // tableFixedUtf8Ok is the WRITER's string rule over the used bytes: well-formed
 // UTF-8 with no zero byte, the answer unicode/utf8.Valid and a NUL scan give
 // (docs/FIXED-FORM-ALGORITHM.md §3.1, the same rule tableFixedTextIllFormed
-// holds on read). Text is overwhelmingly ASCII, so it takes eight bytes a step
-// while they are: a byte at or past 0x80 sends the rest to utf8.Valid, which
-// starts at a character boundary because everything before it was ASCII, and a
-// zero byte refuses at once. The result is identical to the two-pass spelling.
+// holds on read). It is one pass, eight bytes a step, with no branch in the
+// loop: z gathers each word's zero-byte test, which is exact (a word has a
+// zero byte if and only if its lane is set), and hi gathers the high bits. A
+// zero refuses; text with no high bit is ASCII and passes; only text with a
+// byte at or past 0x80 goes on to utf8.Valid. The result is identical to the
+// two-pass spelling.
 func tableFixedUtf8Ok(p []byte) bool {
+	var hi, z uint64
 	i := 0
 	for ; i+8 <= len(p); i += 8 {
 		x := tableFixedGet64(p[i:])
-		if (x-0x0101010101010101)&^x&0x8080808080808080 != 0 {
-			return false
-		}
-		if x&0x8080808080808080 != 0 {
-			return tableFixedUtf8Rest(p[i:])
+		hi |= x
+		z |= (x - 0x0101010101010101) &^ x
+	}
+	if i < len(p) && len(p) >= 8 {
+		// The tail as one word, overlapping bytes already tested: the test
+		// is the same answer for a byte seen twice.
+		x := tableFixedGet64(p[len(p)-8:])
+		hi |= x
+		z |= (x - 0x0101010101010101) &^ x
+	} else {
+		for ; i < len(p); i++ {
+			c := uint64(p[i])
+			hi |= c
+			z |= (c - 1) &^ c
 		}
 	}
-	for ; i < len(p); i++ {
-		if p[i] == 0 {
-			return false
-		}
-		if p[i] >= 0x80 {
-			return tableFixedUtf8Rest(p[i:])
-		}
-	}
-	return true
-}
-
-func tableFixedUtf8Rest(p []byte) bool {
-	if !utf8.Valid(p) {
+	if z&0x8080808080808080 != 0 {
 		return false
 	}
-	for _, c := range p {
-		if c == 0 {
-			return false
-		}
-	}
-	return true
+	return hi&0x8080808080808080 == 0 || utf8.Valid(p)
 }
 
 // tableFixedUnitsIllFormed is the WRITER's twin of the wide arm above, over the

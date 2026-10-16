@@ -393,7 +393,6 @@ func init() {
 		// The write-side text rule (docs/FIXED-FORM-ALGORITHM.md §3.1): the fixed
 		// form's refusal of ill-formed UTF-8 and NUL, the twin of the reader's.
 		Name{Name: "tableFixedUtf8Ok", What: "the fixed form (form 3): the writer's UTF-8 and no-NUL rule over a text field's used bytes"},
-		Name{Name: "tableFixedUtf8Rest", What: "the fixed form (form 3): the writer's UTF-8 and no-NUL rule over the bytes from the first non-ASCII byte on"},
 		Name{Name: "tableFixedUnitsIllFormed", What: "the fixed form (form 3): the writer's wstring rule, true when the used units are not paired UTF-16 or hold a zero unit"},
 		// <T>FixedPlanMax (docs/FIXED-FORM-ALGORITHM.md §5.2): the generated
 		// export, claimed under the template spelling the page writes. A plan

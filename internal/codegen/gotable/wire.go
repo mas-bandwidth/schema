@@ -516,9 +516,24 @@ func (r *TableReader) Signed(kind uint8) int64 {
 }
 
 func tableUtf8Valid(data []byte) bool {
-	if !utf8.Valid(data) { return false }
-	for _, b := range data { if b == 0 { return false } }
-	return true
+	// One pass, eight bytes a step: z gathers the zero-byte test of every word
+	// (exact: a word has a zero byte if and only if its lane is set), hi gathers
+	// the high bits. No zero and no high bit is ASCII with no NUL; a high bit
+	// sends the text to utf8.Valid, the zero test having already been answered.
+	var hi, z uint64
+	i := 0
+	for ; i+8 <= len(data); i += 8 {
+		x := uint64(data[i]) | uint64(data[i+1])<<8 | uint64(data[i+2])<<16 | uint64(data[i+3])<<24 | uint64(data[i+4])<<32 | uint64(data[i+5])<<40 | uint64(data[i+6])<<48 | uint64(data[i+7])<<56
+		hi |= x
+		z |= (x - 0x0101010101010101) &^ x
+	}
+	for ; i < len(data); i++ {
+		c := uint64(data[i])
+		hi |= c
+		z |= (c - 1) &^ c
+	}
+	if z&0x8080808080808080 != 0 { return false }
+	return hi&0x8080808080808080 == 0 || utf8.Valid(data)
 }
 
 func tableUtf8Clamp(data []byte, n int64) int64 {
