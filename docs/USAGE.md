@@ -1299,6 +1299,19 @@ place the Rust codecs read differently from the C++ ones: a reader holding
 `&mut TableReport` could not hand a sub-reader out of its own buffer while that
 borrow stood. One report, one caller, the same six counters.
 
+**Every refusal of the fixed form's load has a name, and the names are EXPORTED
+string constants** (docs/FIXED-FORM-ALGORITHM.md §5.3): `TableFixedReasonPreviousForm`,
+`TableFixedReasonMessageFormAsFile`, `TableFixedReasonNewerForm`,
+`TableFixedReasonLayoutMalformed`, `TableFixedReasonLayoutNewer`,
+`TableFixedReasonLayoutUnsupported`, `TableFixedReasonLayoutRecordTooLarge`,
+`TableFixedReasonPlanTooLarge`, `TableFixedReasonBatchTooLarge`,
+`TableFixedReasonNoLayout`, `TableFixedReasonTextIllFormed`, and the two
+framing-damage names `TableFixedReasonTruncated` and
+`TableFixedReasonReservedNotZero`. Compare `report.Reason == example.TableFixedReasonNewerForm` rather than spelling the literal. A short
+input, a sub-twenty-byte header or a ragged tail set `report.Malformed` beside
+`TableFixedReasonTruncated`; a nonzero reserved byte sets it beside
+`TableFixedReasonReservedNotZero`.
+
 `string(N)` and `bytes(N)` are a `[u8; N]` beside an `i32` used length, arrays
 a `[T; N]` beside an `i32` used count, `?T` a value beside a `<name>_present`
 bool, and a union is a real Rust `enum` — the same spelling the packet backend
@@ -3141,7 +3154,11 @@ table, the facts under the shared field ids are unchanged**: a twin
 declaration carrying the same id under a different default is refused,
 because every stored body's elided value would quietly change meaning.
 Also refused: a second `was` aimed at the field's intermediate spelling,
-naming both names and the one that is correct.
+naming both names and the one that is correct; and a `| required` marker
+ADDED, to a shipped field or on a new field, because every record written
+before it lacks the field and a newer reader refuses it as `missing_required`
+(removing the marker passes: the writer just starts eliding again;
+SPEC-TABLES.md §2.3).
 Warned, because the read report already counts what is lost: a bound or a
 string capacity shrunk, a declared range tightened from either end (or
 declared where the field had none — every stored value outside it clamps on
@@ -3970,8 +3987,9 @@ trailer returns `TableRefuseWireDamaged` (`wire_damaged`) from
 accelerator-only `truncated` reason. `<Name>ReadStrict(wire)` is the one-call
 strict read (docs/SPEC-TABLES.md §6.5): it builds its own builder and returns
 `(*<Name>, error)`. The error is a `TableRefuseReason` (`clamped`,
-`kind_mismatch`, `malformed`, `unknown_form`, `wire_damaged`) or a
-`TableBuildVersionMismatch`, so `errors.Is` matches it. `unknown`, `widened`
+`kind_mismatch`, `malformed`, `unknown_form`, `wire_damaged`), a
+`TableBuildVersionMismatch`, or a `TableMissingRequired` whose `Fields` names
+the `| required` field the record lacks, at whatever depth (`missing_required: x`), so `errors.Is` or `errors.As` matches it. `unknown`, `widened`
 and `retained` alone do not refuse. `TableReport.Err()` answers the same
 reason.
 

@@ -78,6 +78,7 @@ func (g *tableGen) wireWidenedScalar(f *ir.Field, source int, dst, rdr, ind, onB
 			g.pf("%selse if ( decoded_wide > %s ) { decoded_wide = %s; r->report->clamped++; }\n", ind, formatFloat(f.FMax, false), formatFloat(f.FMax, false))
 		}
 	} else {
+		width = int(g.intBytes(g.ownerName(), f.Name, int64(width)))
 		signed := ir.TableKindSigned(source)
 		storage, cast := "uint64_t", fmt.Sprintf("uint%d_t", width*8)
 		if signed {
