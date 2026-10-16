@@ -138,7 +138,11 @@ func readManifest(corpus string) (map[string]manifestRow, error) {
 		var r manifestRow
 		r.Values = map[string]string{}
 		r.Forged = map[string]string{}
-		for field := range strings.FieldsSeq(line) {
+		// `values=` is the LAST entry of a line and its text may hold spaces
+		// (`r0.note="first build"`), so the line is cut there and never split
+		// on white space past it; the identity entries before it carry none.
+		head, vals, hasVals := strings.Cut(line, " values=")
+		for field := range strings.FieldsSeq(head) {
 			k, v, ok := strings.Cut(field, "=")
 			if !ok {
 				continue
@@ -156,9 +160,10 @@ func readManifest(corpus string) (map[string]manifestRow, error) {
 				r.Records, _ = strconv.ParseInt(v, 10, 64)
 			case "forged":
 				collectManifestPairs(v, r.Forged)
-			case "values":
-				collectManifestPairs(v, r.Values)
 			}
+		}
+		if hasVals {
+			collectManifestPairs(vals, r.Values)
 		}
 		if r.File != "" {
 			out[r.File] = r
@@ -168,14 +173,26 @@ func readManifest(corpus string) (map[string]manifestRow, error) {
 }
 
 // collectManifestPairs splits a section's comma-joined `key=value` list into a
-// map.
+// map. A comma INSIDE a quoted text value is written `\,` by the dump
+// (man_quote), so a backslash keeps the next byte with its pair; the value is
+// stored as the dump wrote it, escapes and all.
 func collectManifestPairs(list string, dst map[string]string) {
-	for pair := range strings.SplitSeq(list, ",") {
-		k, v, ok := strings.Cut(pair, "=")
-		if ok {
+	start := 0
+	flush := func(end int) {
+		if k, v, ok := strings.Cut(list[start:end], "="); ok {
 			dst[k] = v
 		}
 	}
+	for i := 0; i < len(list); i++ {
+		switch list[i] {
+		case '\\':
+			i++
+		case ',':
+			flush(i)
+			start = i + 1
+		}
+	}
+	flush(len(list))
 }
 
 // manifestRows is readManifest for tests: the rows, or a fatal naming the
