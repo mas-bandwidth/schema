@@ -1332,7 +1332,7 @@ prints observations without certification. The default requires Go 1.26.0.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` (Go 1.26.0) | ❌ #420 | ❌ #420 (pinned JDK; the gate SKIPS rather than refuses without the counter) | ✅ `test/js-tables/main.mjs:1412` | ❌ #420 (pinned SDK; nothing refuses off it) | ❌ #420 (pinned OTP; the audit does not read it) |
+| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` (Go 1.26.0) | ✅ `tables-cs-alloc` `tables-cs-alloc-runtime-negative-control` (.NET 10, `.github/dotnet-version`; `SCHEMA_CS_ALLOC_ANY_RUNTIME=1` observes, never certifies) | ❌ #420 (pinned JDK; the gate SKIPS rather than refuses without the counter) | ✅ `test/js-tables/main.mjs:1412` | ❌ #420 (pinned SDK; nothing refuses off it) | ❌ #420 (pinned OTP; the audit does not read it) |
 
 ### I15 — The tolerant wire's differential fuzzer with an independent oracle
 

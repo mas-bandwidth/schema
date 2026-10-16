@@ -443,7 +443,33 @@ tables-cs-leg-release: build/tables-generated-cs/.stamp
 # ignored TableReport rather than constructing one per call.
 .PHONY: tables-cs-alloc
 tables-cs-alloc: build/tables-generated-cs/.stamp
-	cd test/cs-tables && $(DOTNET) run -c Release -- alloc
+	cd test/cs-tables && SCHEMA_CS_ALLOC_PIN="$(CS_ALLOC_PIN)" $(DOTNET) run -c Release -- alloc
+
+# THE RUNTIME PIN OF THE ALLOCATION GATE (docs/PORTING.md I14, issue #420): the
+# SDK pin in .github/dotnet-version, read here and passed in, so C# holds no
+# second copy. The gate refuses to measure on a runtime of another major.
+CS_ALLOC_PIN := $(shell cat .github/dotnet-version 2>/dev/null)
+
+# The control: a pin of a major this machine is not running (the running major
+# plus one) must be refused with the refusal text, a non-zero exit and no
+# passed line; the escape hatch must exit 0, print NOT CERTIFIED and never the
+# passed line.
+.PHONY: tables-cs-alloc-runtime-negative-control
+tables-cs-alloc-runtime-negative-control: build/tables-generated-cs/.stamp
+	@set -e; cd test/cs-tables; out=../../build/cs-alloc-runtime-control; mkdir -p $$out; \
+	$(DOTNET) build -c Release --nologo -v quiet; \
+	run="$(DOTNET) run -c Release --no-build --"; \
+	major=`$(DOTNET) --list-runtimes | sed -n 's/^Microsoft.NETCore.App \([0-9]*\)\..*/\1/p' | sort -n | tail -1`; \
+	wrong=`expr $$major + 1`; \
+	if SCHEMA_CS_ALLOC_PIN=$$wrong.0 $$run alloc > $$out/refused.txt 2>&1; then \
+		cat $$out/refused.txt; echo "cs alloc runtime control: a wrong pin ($$wrong.0) exited 0"; exit 1; fi; \
+	grep -q 'REFUSED to measure' $$out/refused.txt && grep -q "pin $$wrong.0" $$out/refused.txt && grep -q 'major' $$out/refused.txt || { cat $$out/refused.txt; echo "cs alloc runtime control: no refusal naming both versions"; exit 1; }; \
+	if grep -q 'alloc gate passed' $$out/refused.txt; then echo "cs alloc runtime control: the refused run printed the passed line"; exit 1; fi; \
+	SCHEMA_CS_ALLOC_PIN=$$wrong.0 SCHEMA_CS_ALLOC_ANY_RUNTIME=1 $$run alloc > $$out/hatch.txt 2>&1 || { cat $$out/hatch.txt; echo "cs alloc runtime control: the escape hatch did not exit 0"; exit 1; }; \
+	grep -q 'NOT CERTIFIED' $$out/hatch.txt || { cat $$out/hatch.txt; echo "cs alloc runtime control: the escape hatch did not print NOT CERTIFIED"; exit 1; }; \
+	if grep -q 'alloc gate passed' $$out/hatch.txt; then cat $$out/hatch.txt; echo "cs alloc runtime control: the escape hatch printed the passed line"; exit 1; fi; \
+	tail -n 2 $$out/refused.txt; tail -n 2 $$out/hatch.txt; \
+	echo "tables-cs-alloc-runtime-negative-control: a wrong pin is refused, the escape hatch observes and does not certify"
 
 # THE FIXED FORM'S VERSIONING SUITE ON THIS LEG (docs/FIXED-FORM-ALGORITHM.md §5,
 # docs/FIXED-FORM-VERSIONING-TESTS.md): every row of the law, both read columns,
@@ -592,6 +618,7 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(MAKE) tables-cs-view
 	$(MAKE) tables-cs-leg
 	$(MAKE) tables-cs-alloc
+	$(MAKE) tables-cs-alloc-runtime-negative-control
 	$(MAKE) tables-cs-versioning
 	$(MAKE) tables-cs-wire-fuzz
 	$(MAKE) tables-cs-region-fuzz
