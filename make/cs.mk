@@ -484,11 +484,26 @@ tables-cs-fixed-t18:
 	@echo 'tables C# fixed-t18: direct and payload-free union arms round-trip, tag-only arm storage'
 
 test-cs: tables-cs-fixed-t18
+test-cs: tables-cs-fixed-rows
 
 .PHONY: tables-cs-fixed-roadmap
 tables-cs-fixed-roadmap:
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedRoadmapCSharpT12PlansVersions'
 	@echo 'tables C# fixed-roadmap: t12 plan selection, closure, retirement, retired runtime and widening'
+
+# THE C# FIXED-ROADMAP ROWS RUN UNDER ONE REQUIRED TARGET, and the held
+# message-form ledger steps close against it. Every C# fixed-roadmap test and
+# the held message form run once here with DOTNET and
+# SCHEMA_REQUIRE_CORPUS=1, so a bare `go test` can never report green over C#
+# that never ran. The oracle is built first (tables-fixedform-corpus) because
+# t01's framing rows read the C++ reference's bytes; under
+# SCHEMA_REQUIRE_CORPUS=1 a missing corpus is a failure, not a skip. The
+# -run pattern is pinned by TestCsFixedRowsTargetCoversEveryRoadmapTest: any
+# row added later without being named here goes red.
+.PHONY: tables-cs-fixed-rows
+tables-cs-fixed-rows: tables-fixedform-corpus
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 600s -run 'TestFixedRoadmap(T01Framing|T02Plans|CSharpT03PlansVersions|CSharpT04Versions|CSharpT05Evolution|CSharpT06Bounds|CSharpT07Writes|CSharpT08ConformanceIntegers|CSharpT09FloatsUnions|CSharpT10Optionals|CSharpT12PlansVersions|CSharpT13SecondLayoutForAHeldHash|CSharpT18UnionArms)|TestMessageFormHeldCSharp'
+	@echo 'tables C# fixed-rows: every fixed-roadmap row and the held message form ran once under one required target'
 
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
