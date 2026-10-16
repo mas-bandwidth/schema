@@ -1015,3 +1015,22 @@ packet-wide-js-negative-control: packet-wide-js
 	@echo 'packet wide JS negative control: removed pairing fails both tiers in bit-flip agreement'
 
 test-js: packet-wide-js packet-wide-js-negative-control
+
+# THE BASE-ALIGNMENT GATE, JavaScript half (docs/SPEC-TABLES.md §19.1,
+# docs/PORTING.md I5, issue 387): every committed block image at every lead in
+# 0..64 through the generated Open, 0 and 64 open and 1..63 refused by the
+# RangeError that names the multiple-of-64 rule. The conformance driver's
+# `block-lead` mode, over the committed manifest; not a listed surface.
+JS_BLOCK_LEAD_MANIFEST := testdata/conformance/tables/MANIFEST.txt
+
+.PHONY: tables-js-block-lead
+tables-js-block-lead: build/tables-generated-js/.stamp
+	NODE=$(NODE) ./test/conformance/js/driver $(JS_BLOCK_LEAD_MANIFEST) block-lead
+
+# and its control: a copy of the generated block modules with the residue check
+# rewritten to `false` must turn the gate red, naming lead 1
+.PHONY: tables-js-block-lead-negative-control
+tables-js-block-lead-negative-control: build/tables-generated-js/.stamp
+	NODE=$(NODE) ./test/conformance/js/negative-control-block-lead $(JS_BLOCK_LEAD_MANIFEST)
+
+test-js: tables-js-block-lead tables-js-block-lead-negative-control
