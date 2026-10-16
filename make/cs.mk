@@ -501,11 +501,13 @@ tables-cs-fixed-roadmap:
 # -run pattern is pinned by TestCsFixedRowsTargetCoversEveryRoadmapTest: any
 # row added later without being named here goes red. Owed-gap skips that stay
 # skips (not toolchain absences) are cs/W16, cs/R28 (fixedroadmap_t07_test.go),
-# message_graph_tree (messageform_held_test.go), and T12's three "run under make
-# tables-cs-fixed-roadmap" subtests; they are named in the pull request.
+# message_graph_tree and connection_retain_conn/connection_graph_conn (no leg
+# links the sibling ../serialize.cs runtime yet; messageform_held_test.go);
+# -v keeps every skip in this target's log, and they are named in the pull
+# request.
 .PHONY: tables-cs-fixed-rows
 tables-cs-fixed-rows: tables-fixedform-corpus
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 600s -run 'TestFixedRoadmap(T01Framing|T02Plans|CSharpT03PlansVersions|CSharpT04Versions|CSharpT05Evolution|CSharpT06Bounds|CSharpT07Writes|CSharpT08ConformanceIntegers|CSharpT09FloatsUnions|CSharpT10Optionals|CSharpT12PlansVersions|CSharpT13SecondLayoutForAHeldHash|CSharpT18UnionArms)|TestMessageFormHeldCSharp'
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmap(T01Framing|T02Plans|CSharpT03PlansVersions|CSharpT04Versions|CSharpT05Evolution|CSharpT06Bounds|CSharpT07Writes|CSharpT08ConformanceIntegers|CSharpT09FloatsUnions|CSharpT10Optionals|CSharpT12PlansVersions|CSharpT13SecondLayoutForAHeldHash|CSharpT18UnionArms)|TestMessageFormHeldCSharp'
 	@echo 'tables C# fixed-rows: every fixed-roadmap row and the held message form ran once under one required target'
 
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
