@@ -79,7 +79,7 @@ generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .js + <Base>Table.js + the two accelerators' readers),
 # because a table's closure decodes into the packet emitter's own classes.
-build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(wildcard examples-wide/*.schema) test/tables/Scalars2.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema
+build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(wildcard examples-wide/*.schema) test/tables/Scalars2.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema
 	@mkdir -p build/tables-generated-js
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
 	# the POINTERED unit: its FIXED surface is refused by name for every
@@ -102,6 +102,10 @@ build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(
 	# as a union arm; WideVariable.js answers the widedemo rows on the variable
 	# wire (docs/SPEC-TABLES.md §3).
 	./bin/schema generate --lang js --out build/tables-generated-js/wide examples-wide
+	# the LIST unit (tables/lists, docs/SPEC-TABLES.md §2.7): ListdemoVariable.js
+	# carries the listdemo roots, so their instances answer the text form
+	# (json-read, json-write, json-hostile, §16) like every other generated unit.
+	./bin/schema generate --lang js --out build/tables-generated-js/lists tables/lists
 	./bin/schema generate --lang js --out build/tables-generated-js/block tables/block
 	./bin/schema generate --lang js --out build/tables-generated-js/blockhome tables/blockhome
 	./bin/schema generate --lang js --out build/tables-generated-js/v1 test/tables/V1.schema
@@ -1143,6 +1147,42 @@ packet-wide-js-negative-control: packet-wide-js
 	@echo 'packet wide JS negative control: removed pairing fails both tiers in bit-flip agreement'
 
 test-js: packet-wide-js packet-wide-js-negative-control
+
+# ---------------------------------------------------------------------------
+# THE UNIT REGISTRY'S JAVASCRIPT LEG (docs/SPEC-TABLES.md §8.7): the same
+# registry listing oracle as the reference, through the JavaScript view. For
+# each $(VIEW_CORPUS) unit the leg generates the unit, runs
+# test/js-view/view_main.mjs over its <Home>View.js — a program that holds the
+# view and nothing else — into build/js-view/<pkg>.listing, then holds every
+# listing byte for byte against the compiler's own (internal/viewlisting).
+# ---------------------------------------------------------------------------
+.PHONY: tables-js-view
+tables-js-view: bin/schema test/js-view/view_main.mjs
+	@rm -rf build/js-view
+	@mkdir -p build/js-view
+	@set -e; for entry in $(VIEW_CORPUS); do \
+		dir=$${entry%%:*}; pkg=$${entry##*:}; \
+		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
+		./bin/schema generate --lang js --out build/js-view/$$dir $$source; \
+		$(NODE) test/js-view/view_main.mjs build/js-view/$$dir/*View.js > build/js-view/$$pkg.listing; \
+	done; \
+	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/js-view" SCHEMA_VIEW_LISTING_UNITS= go test -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR -v; \
+	echo "JavaScript unit registry: $(words $(VIEW_CORPUS)) of $(words $(VIEW_CORPUS)) units match the independent listing"
+
+# THE VIEW'S DESCRIPTORS (docs/SPEC-TABLES.md §8.1, §8.2): offsets, element
+# sizes, the vocabulary, docs and tags of the generated view, run under node
+# and held to the IR by TestUnitViewDescriptorsJavaScript.
+# SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE rather than a skip.
+.PHONY: tables-js-view-descriptors
+tables-js-view-descriptors:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestUnitViewDescriptorsJavaScript$$'
+	@echo 'tables JS view: every table and type described at the record layout, with its vocabulary, docs and tags'
+
+# THE TEXT FORM FOR EVERY TABLE (docs/SPEC-TABLES.md §16) rides the conformance
+# driver (test/conformance/js/main.mjs): json-read, json-write and json-hostile
+# answer every instance whose unit this leg generates, through `make conformance`.
+
+test-js: tables-js-view tables-js-view-descriptors
 
 # THE BASE-ALIGNMENT GATE, JavaScript half (docs/SPEC-TABLES.md §19.1,
 # docs/PORTING.md I5, issue 387): every committed block image at every lead in
