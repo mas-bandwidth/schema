@@ -85,7 +85,7 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9)
+build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(wildcard tables/stream/*.schema) test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema
 	@mkdir -p build/tables-generated-java
 	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit and the BYTE-BUFFER unit: their cook readers and
@@ -151,6 +151,15 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAP
 	./bin/schema generate --lang java --out build/tables-generated-java/backend tables/backend
 	./bin/schema generate --lang java --out build/tables-generated-java/vocab tables/vocab
 	./bin/schema generate --lang java --out build/tables-generated-java/vocab9 tables/vocab9
+	# THE DEFAULT ROSTER's last units (java-wire-fuzz-every-root): the stream
+	# unit (a union whose arm is a variable-length table, and whose arm named
+	# `tag` the emitter spells tagArm) and the three retention units RT1-RT3.
+	# The all-root wire-fuzz gate binds every root of
+	# testdata/conformance/tables/MANIFEST.txt, so each unit it names is built.
+	./bin/schema generate --lang java --out build/tables-generated-java/stream tables/stream
+	./bin/schema generate --lang java --out build/tables-generated-java/rt1 test/tables/RT1.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/rt2 test/tables/RT2.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/rt3 test/tables/RT3.schema
 	@touch $@
 
 # The Java twin of the C++ "no serialize include path" build: a generated
@@ -1523,14 +1532,27 @@ cards-java-retain-fuzz: build/conformance-harness build/cards-java-wire-fuzz/.st
 
 test-java: cards-java-retain-fuzz
 
-# THE ALL-ROOT WIRE-FUZZ GATE (java-wire-fuzz-every-root): the same fuzzer as
-# cards-java-wire-fuzz, over the harness's DEFAULT roster (testdata/conformance/
-# tables/MANIFEST.txt — no --manifest), so every root of the roster rides the
-# wire once. The zero-coverage greps make a roster that opens nothing fail.
+# THE ALL-ROOT WIRE-FUZZ GATE (java-wire-fuzz-every-root; docs/SPEC-TABLES.md
+# §3, §3.3, §4.2): the same fuzzer as cards-java-wire-fuzz, over the harness's
+# DEFAULT roster (testdata/conformance/tables/MANIFEST.txt, no --manifest), the
+# roster tables-go-wire-fuzz runs, so every root of it rides the wire. The
+# driver (test/conformance/java/src/WireFuzz.java) binds each roster entry to
+# its generated codec by name and REFUSES TO START, naming the root, when a file
+# root has none; the greps make a roster that opens nothing fail.
+WIRE_FUZZ_JAVA_UNITS := examples pointers blobs lists block messages wide v1 v2 \
+	w1 w2 r1 r2 p1 p2 p3 m1 m2 a1 a2 g1 scalars scalars2 k1 k2 maps backend \
+	vocab vocab9 stream rt1 rt2 rt3
+build/wire-fuzz-java/.stamp: build/tables-generated-java/.stamp test/conformance/java/src/WireFuzz.java make/java.mk
+	@rm -rf build/wire-fuzz-java && mkdir -p build/wire-fuzz-java/classes
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/wire-fuzz-java/classes \
+		$(foreach unit,$(WIRE_FUZZ_JAVA_UNITS),build/tables-generated-java/$(unit)/*.java) \
+		test/conformance/java/src/WireFuzz.java
+	@touch $@
+
 .PHONY: tables-java-wire-fuzz-all
-tables-java-wire-fuzz-all: build/conformance-harness build/tables-generated-java/.stamp build-conformance-java
+tables-java-wire-fuzz-all: build/conformance-harness build/wire-fuzz-java/.stamp
 	@rm -f build/tables-java-wire-fuzz-all.log
-	./build/conformance-harness wire-fuzz \
+	JAVA="$(JAVA)" ./build/conformance-harness wire-fuzz \
 		--driver 'test/conformance/java/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-java-wire-fuzz-all.log 2>&1; \
 	status=$$?; cat build/tables-java-wire-fuzz-all.log; \

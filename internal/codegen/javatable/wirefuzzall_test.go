@@ -11,6 +11,7 @@ package javatable
 
 import (
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -68,4 +69,46 @@ func TestWireFuzzAllTargetJava(t *testing.T) {
 		}
 	}
 	t.Fatalf("test-java does not require %s", allRootFuzzTarget)
+}
+
+// TestVariableUnionArmNamedTagCompiles pins the collision the all-root gate
+// found at tables/stream/Stream.schema: a union arm named tag was emitted as a
+// second tag member of the union Value beside the discriminator, which javac
+// refuses ("variable tag is already defined in class Value"), so the default
+// roster could not be compiled. The discriminator keeps its name (the retain,
+// keyed and field writers read it as .tag), the arm takes another member name,
+// and the wire id still hashes the arm's own name (docs/SPEC-TABLES.md §2.6, §3).
+func TestVariableUnionArmNamedTagCompiles(t *testing.T) {
+	t.Parallel()
+	files := generate(t, `package probe
+
+table Chunk
+{
+    data bytes(8)
+    next *Chunk
+}
+
+union Frame
+{
+    chunk Chunk
+    tag   uint32
+}
+
+table Feed
+{
+    id    uint32
+    frame Frame
+}
+`)
+	src := string(files["FrameVariable.java"])
+	if src == "" {
+		t.Fatalf("no FrameVariable.java among %d generated files", len(files))
+	}
+	decl := regexp.MustCompile(`(?m)^\s*public [A-Za-z0-9_<>\[\]]+ tag\b`)
+	if n := len(decl.FindAllString(src, -1)); n != 1 {
+		t.Fatalf("union Value declares %d members named tag, want only the discriminator", n)
+	}
+	if !strings.Contains(src, "tagArm") {
+		t.Fatalf("the arm named tag has no member of its own in FrameVariable.java")
+	}
 }

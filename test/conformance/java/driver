@@ -17,4 +17,11 @@ set -e
 # and overrides with JAVA=java
 JAVA=${JAVA:-dist/jdk-21.0.12.1/Contents/Home/bin/java}
 
+# `driver wire-fuzz` is the wire-fuzz arm (test/conformance/README.md, "The
+# wire-fuzz driver"): one process on a pipe, bound to every root of the harness's
+# roster by test/conformance/java/src/WireFuzz.java (make tables-java-wire-fuzz-all).
+if [ "$1" = "wire-fuzz" ]; then
+    exec "$JAVA" -cp build/wire-fuzz-java/classes WireFuzz
+fi
+
 exec "$JAVA" -cp build/conformance-java Driver "$@"
