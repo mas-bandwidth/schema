@@ -818,8 +818,9 @@ prefill ranges grow DOWNWARD from the top while entries grow up, and the two mee
 **Every entry is bounded by the WRITER'S OWN declared record size**, `x.root.size`: `src + size`, plus `4`
 for a text entry's length word, and `guard + the guard's width` too. One entry past it refuses the plan
 WHOLE — never partly compiled. **The plan also carries the WRITER'S bounds for the hostile pass** (bill
-§12.5): that peer's count bound, variant count, arm count and range, so a value forged past what the WRITER
-could have written clamps and counts, and a value the reader merely widened does not.
+§12.5): that peer's count bound, variant count, arm count and range, so a count or length forged past what the
+WRITER could have written refuses `count_over_bound` / `length_over_bound` before any destination byte is
+written, while a forged range or ordinal still clamps, and a value the reader merely widened does not.
 
 **The prefill's image is the reader's OWN FRESH VALUE** — a zeroed destination with the type's `Reset` over
 it — so every default §5.1 let through reaches the bytes the plan does not write: an appended field, an
@@ -1145,8 +1146,9 @@ failure a port has to route around is named and CARDED, never quietly carried (�
 PROBES of their own** (steps 7 and 10), so a leg that finds either GREEN says so rather than leaving a red
 nobody owes: the count lane's bound is the WRITER's on the branch today (`e.size = their_n`,
 `fixedruntime.go:1045`, and `TableFixedKnownRange`'s `lo`/`hi` are the writer's too) while §5.8 row 4 still
-reads `e.size = my_n`, so row 4 owes a RE-READ and the probe is what settles it — **at `clamped == 1` and
-never `>= 1`**, which is the half no reference case asserts today.
+reads `e.size = my_n`, so row 4 owes a RE-READ and the probe is what settles it — `count_over_bound`, its
+counters `0` — while the range/ordinal clamp keeps `clamped == 1` and never `>= 1`, the half no reference
+case asserts today.
 
 **What to mark UNPORTED rather than RED**: a row whose KIND the leg's language surface cannot hold at all — kind
 `33` in a JavaScript table, refused before §5 is reached — is ⚪ in both columns with the refusal that blocks it
