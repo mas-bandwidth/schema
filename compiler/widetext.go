@@ -24,9 +24,14 @@ var wideTextTargets []string
 // it, so the message and the check can never disagree.
 var tableWideTextTargets = map[string]bool{
 	"cpp": true, "c": true, "cs": true, "go": true, "dart": true,
+	// js carries it on §3.4's fixed form (docs/SPEC-TABLES.md §3.4,
+	// SPEC.md §4.12): a used length in code units, then 2N bytes, and a used
+	// run that is not paired UTF-16 refused as text_ill_formed
+	// (internal/codegen/jstable/fixedroadmap_t19_test.go).
+	"js": true,
 }
 
-var tableWideTextNames = []string{"C", "C++", "C#", "Dart", "Go"}
+var tableWideTextNames = []string{"C", "C++", "C#", "Dart", "Go", "JavaScript"}
 
 // registerWideTextCarrier is what a carrying target's file calls from its
 // init, beside its registerBuiltin call.

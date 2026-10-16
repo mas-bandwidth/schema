@@ -6,6 +6,7 @@ package compiler
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -66,6 +67,35 @@ func TestWideTextInATableClosureReachesTheTableEmitter(t *testing.T) {
 	}
 }
 
+// TestTableWideTextTargetsCarryTheJSLeg is the RED-FIRST unit for the js leg
+// (the js half of sprint/schema-shared's wide-text-in-table-closures card): js
+// carries a `wstring(N)` table field through its fixed form (SPEC §4.12,
+// docs/SPEC-TABLES.md §3.4), so it is in tableWideTextTargets, named by
+// tableWideTextNames, and a unit with a wstring(N) table field is no longer
+// refused for it. rust, java and elixir are other legs and stay as they are.
+func TestTableWideTextTargetsCarryTheJSLeg(t *testing.T) {
+	t.Parallel()
+	if !tableWideTextTargets["js"] {
+		t.Errorf("js does not carry wide text in a table closure (SPEC §4.12)")
+	}
+	if !slices.Contains(tableWideTextNames, "JavaScript") {
+		t.Errorf("tableWideTextNames does not name JavaScript")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Wide.schema")
+	if err := os.WriteFile(path, []byte(wideTextInATableClosure), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := New()
+	u, err := c.Load([]string{path})
+	if err != nil {
+		t.Fatalf("Load refused a wstring(N) inside a table closure: %v", err)
+	}
+	if _, err := c.Generate(u, "js", Options{}); err != nil {
+		t.Errorf("js still refuses a wstring(N) table field it carries: %v", err)
+	}
+}
+
 // TestWideTextInATableClosureRefusesMissingCarriers is the same unit against
 // a target that carries neither wire's half: the refusal names the field, so
 // no port emits a member it never laid out (SPEC.md §4.12).
@@ -83,7 +113,9 @@ func TestWideTextInATableClosureRefusesMissingCarriers(t *testing.T) {
 	// DART IS NOT IN THIS LIST: its table surface is §3.4's fixed form, which
 	// lays wide text out, so it CARRIES the construct — see
 	// TestWideTextInATableClosureRidesTheDartFixedForm below.
-	for _, target := range []string{"rust", "java", "js", "elixir"} {
+	// JS IS NOT IN THIS LIST either: it carries the construct on the same fixed
+	// form — see TestTableWideTextTargetsCarryTheJSLeg above.
+	for _, target := range []string{"rust", "java", "elixir"} {
 		_, err := c.Generate(u, target, Options{})
 		if err == nil {
 			t.Errorf("%s took a wstring(N) it does not carry", target)
