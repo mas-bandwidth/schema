@@ -304,7 +304,7 @@ build/java-tables/.stamp: build/tables-generated-java/.stamp test/java-tables/sr
 	@rm -rf build/java-tables && mkdir -p build/java-tables
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-tables \
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
-		build/tables-generated-java/blobs/*.java \
+		build/tables-generated-java/blobs/*.java build/tables-generated-java/arms/*.java \
 		build/tables-generated-java/block/*.java test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java test/java-tables/src/AllocPaths.java
 	@touch $@
 
@@ -884,7 +884,8 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 JAVA_ALLOC_BLOCK := testdata/wire/tables/block_render.bin
 JAVA_ALLOC_COOK := testdata/conformance/tables/cook-write/graph_deep.cook
 JAVA_ALLOC_WIRES := testdata/wire/tables/graph_tree.bin testdata/wire/tables/graph_deep.bin \
-	testdata/wire/tables/graph_shared.bin testdata/wire/tables/blob_small.bin
+	testdata/wire/tables/graph_shared.bin testdata/wire/tables/blob_small.bin \
+	testdata/wire/tables/keyed_config.bin testdata/wire/tables/arms_gate.bin
 JAVA_ALLOC_ARGS := $(JAVA_ALLOC_BLOCK) $(JAVA_ALLOC_COOK) $(JAVA_ALLOC_WIRES)
 .PHONY: tables-java-allocator tables-java-allocator-runtime-negative-control tables-java-alloc-negative-control
 tables-java-allocator: build/java-tables/.stamp
