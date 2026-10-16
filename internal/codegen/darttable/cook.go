@@ -1,5 +1,5 @@
-// The COOKED FORM (docs/SPEC-TABLES.md §7): the Dart read half and the
-// fixed-root writer (§7.6). Variable graph writes are carried separately.
+// The COOKED FORM (docs/SPEC-TABLES.md §7): the Dart read half and the write
+// half (§7.6, cookwrite.go): a fixed root's writer and a variable graph's.
 //
 // A cook is a region another build wrote, opened by a header match and then
 // POINTED AT — nothing per node, ever, which is what makes Open O(1) in the
@@ -66,6 +66,14 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	c := &cookUnit{members: map[string]*ir.MemberLayout{}, skipped: map[string]string{}}
 	for _, name := range sortedKeys(u.Tables) {
 		st := u.Tables[name]
+		// A map's generated ENTRY (docs/SPEC-TABLES.md §2.8) is never a root or
+		// a row: it is an extent inside its holder's node, reached through the
+		// holder's map slot, exactly as the block form treats it (§19). A cook
+		// for it would name a value class that lives only in the variable form's
+		// <Base>Wire.dart, which a cook library does not import.
+		if st.MapEntryOf != "" {
+			continue
+		}
 		if why := cookableClosure(u, st); why != "" {
 			c.skipped[name] = why
 			continue
@@ -76,6 +84,29 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 		cookWalk(u, st.Name, func(name string, ml *ir.MemberLayout) {
 			c.members[name] = ml
 		})
+	}
+	// THE ENTRY CURSOR of every map a member holds (§2.8, §7.2): an entry is no
+	// root, but the holder's <field>At and <field>Find move an <Entry>Row over
+	// the entry array, so the entry record, and every record it reaches, is a
+	// member whose cursor this unit emits. Repeated until no map adds one, since
+	// an entry's value may hold a map of its own.
+	for grew := true; grew; {
+		grew = false
+		for _, name := range sortedKeys(c.members) {
+			st := cookMember(u, name)
+			if st == nil {
+				continue
+			}
+			for _, f := range st.Fields {
+				if !f.IsMap() || c.members[f.MapEntry.Name] != nil {
+					continue
+				}
+				cookWalk(u, f.MapEntry.Name, func(n string, ml *ir.MemberLayout) {
+					c.members[n] = ml
+				})
+				grew = true
+			}
+		}
 	}
 	aligns := make([]int64, 0, len(c.members))
 	for name := range c.members {
@@ -167,6 +198,13 @@ type cookGen struct {
 	needData  bool
 	needHome  bool
 	needBlock bool
+	// needConvert asks for dart:convert: the variable cook writer encodes a
+	// Dart String as the UTF-8 bytes §7.2's storage holds
+	needConvert bool
+	// prefixed names a library imported under a prefix: the variable cook
+	// writer's value classes live in <Home>Wire.dart and share their names
+	// with the fixed class's storage in <Home>Fixed.dart (§7.6)
+	prefixed map[string]string
 	// the records some field column names, so only those need the edge method
 	cookNamed map[string]bool
 }
@@ -201,7 +239,7 @@ func generateCookFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, err
 		// already written: one record, one cursor, whichever accelerator
 		// reaches it first
 		for _, record := range cook.order {
-			if u.DeclFile[record] != f.Base || blocks.Layout(record) != nil {
+			if cookDeclFile(u, record) != f.Base || blocks.Layout(record) != nil {
 				continue
 			}
 			g.emitRecordCursor(record, cook.members[record])
@@ -250,7 +288,10 @@ func (g *cookGen) assemble() []byte {
 	h.WriteString("// in Dart the read after an escaping delta would be a RangeError, and a\n")
 	h.WriteString("// reader that throws on hostile bytes is not one that refuses them.\n")
 	h.WriteString("\n")
-	if g.needData || g.home {
+	if g.needConvert {
+		h.WriteString("import 'dart:convert';\n")
+	}
+	if g.needData || g.home || g.needConvert {
 		h.WriteString("import 'dart:typed_data';\n\n")
 	}
 	if !g.home && g.needHome {
@@ -259,8 +300,19 @@ func (g *cookGen) assemble() []byte {
 	if g.needBlock {
 		g.imports[g.homeBase+"Block.dart"] = nil
 	}
+	for base := range g.prefixed {
+		if _, ok := g.imports[base]; !ok {
+			g.imports[base] = nil
+		}
+	}
 	for _, base := range sortedKeys(g.imports) {
 		syms := g.imports[base]
+		if prefix := g.prefixed[base]; prefix != "" {
+			fmt.Fprintf(&h, "import '%s' as %s;\n", base, prefix)
+			if syms == nil {
+				continue
+			}
+		}
 		if syms == nil {
 			fmt.Fprintf(&h, "import '%s';\n", base)
 			continue
@@ -269,6 +321,11 @@ func (g *cookGen) assemble() []byte {
 		one := fmt.Sprintf("import '%s' show %s;", base, strings.Join(names, ", "))
 		if len(one) <= 80 {
 			h.WriteString(one + "\n")
+			continue
+		}
+		two := fmt.Sprintf("    show %s;", strings.Join(names, ", "))
+		if len(two) <= 80 {
+			fmt.Fprintf(&h, "import '%s'\n%s\n", base, two)
 			continue
 		}
 		fmt.Fprintf(&h, "import '%s'\n    show\n", base)
@@ -361,7 +418,7 @@ func (g *cookGen) emitCook(st *ir.Struct, ml *ir.MemberLayout) {
 }
 
 func (g *cookGen) needRow(record string) {
-	base := g.unit.DeclFile[record]
+	base := cookDeclFile(g.unit, record)
 	if base == "" {
 		return
 	}
@@ -662,4 +719,149 @@ func (g *cookGen) trimBlank() {
 	g.body.Reset()
 	g.body.WriteString(text)
 	g.body.WriteString("\n")
+}
+
+// emitCookMapAccessors writes a cooked record's MAP field as its ENTRIES, the
+// way the Go cook exposes them (docs/SPEC-TABLES.md §2.8, §7.2): the slot is an
+// int64 SELF-RELATIVE delta to the entry array and an int32 count, and the
+// entries are by-value records in ASCENDING KEY ORDER inside the holder's node
+// extent. So the field is three accessors and no scalar:
+//
+//   - `<f>Count`, the live count — 0 for an ABSENT map (a null delta) and for
+//     an EMPTY one, and 0 for a forged slot whose array would leave the view,
+//     because a reader that throws on hostile bytes is not one that refuses
+//     them (the cook's own rule, above);
+//   - `<f>At(index, into)`, entry `index` of [0, count) moved onto the lent
+//     `<Entry>Row` cursor, in the order Go's `<F>.At(i)` answers;
+//   - `<f>Find(key, into)`, §2.8's `Find`: a binary search over the entries
+//     where they lie, `floor(log2 n) + 1` key compares, no allocation, null
+//     for a key the map does not hold. Dart has no pointer to hand back to a
+//     scalar value, so the handle is the ENTRY cursor in every case and the
+//     value is read through it — §7's per-backend spelling (the Dart column).
+//
+// A KEY is an integer or a bounded string (§2.8; an enum key is refused by
+// name). An integer key is the Dart `int`, compared at its signedness — a
+// uint64 by flipping the sign bit, since Dart's int is signed; a string key is
+// its UTF-8 bytes (`List<int>`), ordered bytewise over the used length with the
+// shorter first, which is the order the cook was written in.
+func (g *blockGen) emitCookMapAccessors(f *ir.Field, offset int64, ind, origin string) {
+	name := dartName(f.Name)
+	entry := f.MapEntry.Name + "Row"
+	el := ir.RecordLayout(g.unit, f.MapEntry)
+	key := ir.MapKeyField(f)
+	keyOffset := el.Fields[0].Offset
+	g.needRow(f.MapEntry.Name)
+	g.pf("%s// a MAP: the slot is a self-relative delta to the ENTRY ARRAY and its\n", ind)
+	g.pf("%s// count, the entries in ascending key order (docs/SPEC-TABLES.md §2.8,\n", ind)
+	g.pf("%s// §7.2). The count is 0 for an absent or an empty map, and for an array\n", ind)
+	g.pf("%s// that would leave the view.\n", ind)
+	g.pf("%sint get %sCount {\n", ind, name)
+	g.pf("%s  final slot = %s + %d;\n", ind, origin, offset)
+	g.pf("%s  final delta = view.getInt64(slot, Endian.little);\n", ind)
+	g.pf("%s  final count = view.getInt32(slot + 8, Endian.little);\n", ind)
+	g.pf("%s  if (count <= 0 || delta == 0 || slot + delta < 0) {\n", ind)
+	g.pf("%s    return 0;\n%s  }\n", ind, ind)
+	g.arrowBlock(ind+"  ", fmt.Sprintf("return count > (view.lengthInBytes - slot - delta) ~/ %d", el.Size), "? 0", ": count;")
+	g.pf("%s}\n\n", ind)
+
+	g.pf("%sint get _%sEntries {\n", ind, name)
+	g.pf("%s  final slot = %s + %d;\n", ind, origin, offset)
+	g.pf("%s  return slot + view.getInt64(slot, Endian.little);\n%s}\n\n", ind, ind)
+
+	g.pf("%s/// One entry, moved onto the cursor the caller lends; `index` runs over\n", ind)
+	g.pf("%s/// [0, count) in ascending key order.\n", ind)
+	g.signature(ind, entry, name+"At", "int index", entry+" into")
+	g.pf("%s  into.at = _%sEntries + index * %d;\n", ind, name, el.Size)
+	g.pf("%s  return into;\n%s}\n\n", ind, ind)
+
+	keyType := "int"
+	if key.Type.Kind == ir.TString {
+		keyType = "List<int>"
+	}
+	g.pf("%s/// `Find` (§2.8): a binary search over the entries where they lie, no\n", ind)
+	g.pf("%s/// allocation; the entry moved onto `into`, or null for a key it lacks.\n", ind)
+	g.signature(ind, entry+"?", name+"Find", keyType+" key", entry+" into")
+	g.pf("%s  final count = %sCount;\n", ind, name)
+	g.pf("%s  final first = _%sEntries;\n", ind, name)
+	g.pf("%s  var lo = 0;\n%s  var hi = count;\n", ind, ind)
+	g.pf("%s  while (lo < hi) {\n", ind)
+	g.pf("%s    final mid = lo + ((hi - lo) >> 1);\n", ind)
+	g.pf("%s    if (_%sOrder(first + mid * %d, key) < 0) {\n", ind, name, el.Size)
+	g.pf("%s      lo = mid + 1;\n%s    } else {\n%s      hi = mid;\n%s    }\n%s  }\n", ind, ind, ind, ind, ind)
+	g.pf("%s  if (lo == count || _%sOrder(first + lo * %d, key) != 0) {\n", ind, name, el.Size)
+	g.pf("%s    return null;\n%s  }\n", ind, ind)
+	g.pf("%s  into.at = first + lo * %d;\n", ind, el.Size)
+	g.pf("%s  return into;\n%s}\n\n", ind, ind)
+
+	// the KEY ORDER the cook was written in (§2.8): an entry's key against the
+	// probe, negative when the entry's sorts first
+	g.pf("%sint _%sOrder(int entry, %s key) {\n", ind, name, keyType)
+	if key.Type.Kind == ir.TString {
+		pieces := ir.FieldPieces(g.unit, key, keyOffset)
+		g.pf("%s  var used = view.getInt32(entry + %d, Endian.little);\n", ind, pieces[1].Offset)
+		g.pf("%s  if (used < 0 || used > %d) {\n%s    used = 0;\n%s  }\n", ind, key.Type.Size, ind, ind)
+		g.pf("%s  for (var i = 0; i < used && i < key.length; i++) {\n", ind)
+		g.pf("%s    final order = view.getUint8(entry + %d + i) - key[i];\n", ind, keyOffset)
+		g.pf("%s    if (order != 0) {\n%s      return order;\n%s    }\n%s  }\n", ind, ind, ind, ind)
+		g.pf("%s  return used - key.length;\n", ind)
+	} else {
+		g.pf("%s  final stored = %s;\n", ind, g.readAt(key, fmt.Sprintf("entry + %d", keyOffset)))
+		if !key.Type.Signed && key.Type.Width == 64 {
+			// Dart's int is signed: a uint64 orders by its bits with the sign flipped
+			g.pf("%s  return (stored ^ (1 << 63)).compareTo(key ^ (1 << 63));\n", ind)
+		} else {
+			g.pf("%s  return stored.compareTo(key);\n", ind)
+		}
+	}
+	g.pf("%s}\n\n", ind)
+}
+
+// signature writes one method head the way `dart format` does: on one line when
+// it fits in 80 columns, otherwise one parameter per line with a trailing comma,
+// and the result type on a line of its own when even the head does not fit.
+func (g *blockGen) signature(ind, result, name string, params ...string) {
+	one := fmt.Sprintf("%s%s %s(%s) {", ind, result, name, strings.Join(params, ", "))
+	if len(one) <= 80 {
+		g.pf("%s\n", one)
+		return
+	}
+	if len(ind)+len(result)+len(name)+2 > 80 {
+		// the head alone does not fit: the result type takes its own line
+		g.pf("%s%s\n%s%s(\n", ind, result, ind, name)
+	} else {
+		g.pf("%s%s %s(\n", ind, result, name)
+	}
+	for _, p := range params {
+		g.pf("%s  %s,\n", ind, p)
+	}
+	g.pf("%s) {\n", ind)
+}
+
+// arrowBlock writes `head then : else` as one statement, broken where `dart
+// format` breaks a conditional that does not fit in 80 columns.
+func (g *blockGen) arrowBlock(ind, head, then, otherwise string) {
+	one := fmt.Sprintf("%s%s %s %s", ind, head, then, otherwise)
+	if len(one) <= 80 {
+		g.pf("%s\n", one)
+		return
+	}
+	g.pf("%s%s\n%s    %s\n%s    %s\n", ind, head, ind, then, ind, otherwise)
+}
+
+// cookDeclFile is the file a cooked record's cursor is emitted in. A map's
+// generated ENTRY is declared where its holder is (§2.8): the checker records
+// no file for the entry of a map that is itself a map's value, so it is read
+// off the holder, up the MapEntryOf chain ("Holder.field").
+func cookDeclFile(u *ir.Unit, record string) string {
+	for seen := 0; seen < 64; seen++ {
+		if base := u.DeclFile[record]; base != "" {
+			return base
+		}
+		st := cookMember(u, record)
+		if st == nil || st.MapEntryOf == "" {
+			return ""
+		}
+		record, _, _ = strings.Cut(st.MapEntryOf, ".")
+	}
+	return ""
 }

@@ -276,7 +276,7 @@ enum answered `undefined` before the guard was made symmetric.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-keyed-none-refusal-ndebug` `tables-keyed-max-refusal-ndebug` | ✅ `TestCTableKeyedBounds` `tables-c-keyed-none-refusal-ndebug` `tables-c-keyed-max-refusal-ndebug` | ❌ #518 | ✅ `TestKeyedRefusesNone` `TestKeyedRefusesPastMax` `TestKeyedPlacesByKey` | ✅ `TestCsKeyedAccessorCoversBothEnds` (`RefuseKey`, both ends) | ❌ #407 (refuses both ends; no test holds it) | ❌ #516 | ❌ #407 (refuses both ends; no test holds it) | ❌ #407 (guards refuse both ends; no test holds it) |
+| ✅ `tables-keyed-none-refusal-ndebug` `tables-keyed-max-refusal-ndebug` | ✅ `TestCTableKeyedBounds` `tables-c-keyed-none-refusal-ndebug` `tables-c-keyed-max-refusal-ndebug` | ❌ #518 | ✅ `TestKeyedRefusesNone` `TestKeyedRefusesPastMax` `TestKeyedPlacesByKey` | ✅ `TestCsKeyedAccessorCoversBothEnds` (`RefuseKey`, both ends) | ❌ #407 (refuses both ends; no test holds it) | ❌ #516 | ✅ `TestDartKeyedArraysAreHeldAtBothEnds` `tables-dart-keyed-negative-control` (Dart indexes by slot: key k rides at slot k-1, and the language's own RangeError — the typed list's bound — is the refusal) | ❌ #407 (guards refuse both ends; no test holds it) |
 
 ### M6 — The variable class on the wire: a flat node table and an identity map
 
@@ -1043,7 +1043,7 @@ walk finding (or under ASan as a `heap-buffer-overflow` in C).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-c-fuzz` `tables-c-fuzz-negative-control` | ❌ #413 (the oracle and both-bounds sabotage exist in `tables-rust-fuzz`; nothing runs it) | ✅ `tables-go-fuzz` `tables-go-fuzz-extent-negative-control` | ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-java-fuzz` `tables-java-fuzz-negative-control` | ✅ `tables-js-fuzz` `tables-js-fuzz-negative-control` | ❌ #413 (the oracle runs; the control removes one bound) | ✅ `tables-elixir-fuzz` `tables-elixir-fuzz-negative-control` |
+| ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-c-fuzz` `tables-c-fuzz-negative-control` | ❌ #413 (the oracle and both-bounds sabotage exist in `tables-rust-fuzz`; nothing runs it) | ✅ `tables-go-fuzz` `tables-go-fuzz-extent-negative-control` | ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-java-fuzz` `tables-java-fuzz-negative-control` | ✅ `tables-js-fuzz` `tables-js-fuzz-negative-control` | ✅ `tables-dart-fuzz` `tables-dart-fuzz-negative-control` | ✅ `tables-elixir-fuzz` `tables-elixir-fuzz-negative-control` |
 
 ### I4 — Per-case absent
 
@@ -1098,7 +1098,7 @@ lead 1 answered open, wanted refuse".
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-block-fuzz` (the enumerated 1..63 pass, `test/tables/block_fuzz_main.cpp:939`) | ✅ `tables-c-fuzz` (the enumerated 1..63 pass, `test/c-tables/fuzz_main.c:165`) | ❌ #387 (enumerated in the unreached `tables-rust-fuzz`) | ✅ `tables-go-fuzz` (the enumerated 1..63 pass, `test/go-tables/fuzz_test.go:205`) | ✅ `tables-block-fuzz` (`test/cs-block/src/Fuzz.cs:749-753`) | ❌ #387 (every `open` in the leg passes offset 0) | ❌ #387 (the block battery's pointer column is 0) | ❌ #387 (same) | ✅ `tables-elixir-block-lead` `tables-elixir-block-lead-negative-control` |
+| ✅ `tables-block-fuzz` (the enumerated 1..63 pass, `test/tables/block_fuzz_main.cpp:939`) | ✅ `tables-c-fuzz` (the enumerated 1..63 pass, `test/c-tables/fuzz_main.c:165`) | ❌ #387 (enumerated in the unreached `tables-rust-fuzz`) | ✅ `tables-go-fuzz` (the enumerated 1..63 pass, `test/go-tables/fuzz_test.go:205`) | ✅ `tables-block-fuzz` (`test/cs-block/src/Fuzz.cs:749-753`) | ❌ #387 (every `open` in the leg passes offset 0) | ❌ #387 (the block battery's pointer column is 0) | ✅ `tables-dart-fuzz` (the enumerated 1..63 pass, `test/dart-tables/fuzz.dart`) `tables-dart-fuzz-lead-negative-control` | ✅ `tables-elixir-block-lead` `tables-elixir-block-lead-negative-control` |
 
 ### I6 — Claimed names, both ways, with a control
 
@@ -1159,7 +1159,7 @@ both foreign rows red with `cook` and `block` green.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-big-endian` | ✅ `tables-c-big-endian` `conformance-negative-control-c-foreign` | ✅ `tables-rust-big-endian` (a `cargo check` for s390x; skips cleanly without the target) | ✅ `conformance-big-endian` (the Go driver under qemu-s390x) | ✅ `tables-cook-open-cs` (the refuse half; the native big-endian half is stated unproven until a big-endian .NET exists) | ✅ `tables-java-order` | ✅ `tables-js-leg` | ❌ #415 (reads `Endian.little`; the order word is untested and no sentence says why) | — the host's order is never consulted and no platform query exists for a gate to catch; the two foreign surfaces hold it (docs/SPEC-TABLES.md) |
+| ✅ `tables-big-endian` | ✅ `tables-c-big-endian` `conformance-negative-control-c-foreign` | ✅ `tables-rust-big-endian` (a `cargo check` for s390x; skips cleanly without the target) | ✅ `conformance-big-endian` (the Go driver under qemu-s390x) | ✅ `tables-cook-open-cs` (the refuse half; the native big-endian half is stated unproven until a big-endian .NET exists) | ✅ `tables-java-order` | ✅ `tables-js-leg` | ✅ `tables-dart-order` `tables-dart-order-negative-control` (Dart's typed data is read at an explicit endianness everywhere (blockruntime.go:34), so the order word is the whole of the byte-order check) | — the host's order is never consulted and no platform query exists for a gate to catch; the two foreign surfaces hold it (docs/SPEC-TABLES.md) |
 
 ### I8 — A bench row is labeled a pairing check
 
@@ -1379,7 +1379,7 @@ offset is seen without a pinned dump that happens to cover the field.
 **Reference.** `test/js-tables/main.mjs` (the leg's two-way read);
 `tables-js-accessor-negative-control` and `tables-js-slot-negative-control`.
 
-**Proven in.** JavaScript.
+**Proven in.** JavaScript and Dart.
 
 **Measured effect.** Structural.
 
@@ -1387,11 +1387,28 @@ offset is seen without a pinned dump that happens to cover the field.
 `internal/codegen/jstable/record.go`, and a pointer slot's offset moved eight,
 each through `go build -overlay`; each must turn the leg red.
 
+**Dart.** `test/dart-tables/agree.dart` (`tables-dart-agree`, reached from
+`test-dart`) reads every row of `block_render.bin` and `block_padded.bin`, every
+node of the five `build/cook-fuzz` images (each reference also resolved from the
+descriptor's own slot offset), and every record type either descriptor graph
+reaches over seeded noise, through the generated accessor and through the
+descriptor's offset, kind, width and signedness, and prints the counts it read.
+`tables-dart-accessor-negative-control` moves `RenderCamera.camera_id` four bytes
+in `darttable/block.go` and `tables-dart-slot-negative-control` moves
+`TreeNode.left`'s descriptor offset eight in `darttable/cook.go`, each through
+`go build -overlay`; each must turn the gate red on that field and on nothing
+else. Its first run found two real disagreements, both in `block.go`'s one
+scalar emitter: a `flags` field is a `uint64` slot in every target
+(`ir/blocklayout.go`) and the accessor read one byte of it (`RenderShip.flags`),
+and a pointer slot is an eight-byte delta that the row getter also reads one
+byte of, which the gate pins as the low byte of the delta until the getter is
+settled.
+
 **Targets:** accessor-negative-control
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #421 | ❌ #421 | ❌ #421 | ✅ `tables-go-accessor-descriptor-agreement` `tables-go-accessor-negative-control` `tables-go-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ❌ #421 | ❌ #421 |
+| ❌ #421 | ❌ #421 | ❌ #421 | ✅ `tables-go-accessor-descriptor-agreement` `tables-go-accessor-negative-control` `tables-go-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ✅ `tables-dart-agree` `tables-dart-accessor-negative-control` `tables-dart-slot-negative-control` | ❌ #421 |
 
 ### J2 — The runtime home, with a file-order control
 
@@ -1405,7 +1422,7 @@ puts the file-order rule back and requires them to move (#347).
 **Reference.** `tables-runtime-home` and `tables-runtime-home-negative-control`
 in the Makefile; `tables-js-runtime-home` and its control.
 
-**Proven in.** C#.
+**Proven in.** C#; the Dart leg.
 
 **Measured effect.** Adding a file that sorted earlier relocated ~2,000
 lines of correct output into a diff nobody could read (#347).
@@ -1416,7 +1433,7 @@ lines of correct output into a diff nobody could read (#347).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #422 | ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ❌ #422 | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ❌ #422 | ❌ #422 |
+| ❌ #422 | ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ❌ #422 | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ✅ `tables-dart-runtime-home` `tables-dart-runtime-home-negative-control` | ❌ #422 |
 
 ### J3 — The release tier
 

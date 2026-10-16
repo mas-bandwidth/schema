@@ -152,6 +152,11 @@ func (g *blockGen) assemble() []byte {
 			h.WriteString(one + "\n")
 			continue
 		}
+		two := fmt.Sprintf("    show %s;", strings.Join(names, ", "))
+		if len(two) <= 80 {
+			fmt.Fprintf(&h, "import '%s'\n%s\n", base, two)
+			continue
+		}
 		fmt.Fprintf(&h, "import '%s'\n    show\n", base)
 		for i, n := range names {
 			sep := ","
@@ -308,13 +313,9 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	if len(one) <= 80 {
 		g.pf("%s\n", one)
 	} else {
-		g.pf("%s\n", head)
-		for i, p := range params {
-			sep := ","
-			if i == len(params)-1 {
-				sep = ","
-			}
-			g.pf("    %s%s\n", p, sep)
+		g.pf("  static %sBlock? begin(\n    Uint8List bytes,\n    int base, {\n", name)
+		for _, p := range params {
+			g.pf("    %s,\n", p)
 		}
 		g.pf("  }) {\n")
 	}
@@ -362,7 +363,7 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 // and the COOK library otherwise — so the import follows the form, not the
 // file that declared the schema type.
 func (g *blockGen) needRow(record string) {
-	base := g.unit.DeclFile[record]
+	base := cookDeclFile(g.unit, record)
 	if base == "" {
 		return
 	}
@@ -420,11 +421,16 @@ func (g *blockGen) emitInlineAccessors(ml *ir.MemberLayout, bl *ir.BlockLayout, 
 		facts := ir.BlockFieldOf(g.unit, f, fl.Offset, bl != nil)
 		name := dartName(f.Name)
 		switch {
+		case f.IsMap():
+			// a MAP slot is a delta and a count, never a scalar (§2.8, §7.2):
+			// only a cooked record reaches one, since a map refuses the block form
+			g.emitCookMapAccessors(f, fl.Offset, ind, origin)
+			continue
 		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 			g.pf("%s// %s: the USED length, and a view of the bytes it names\n", ind, tableFieldTypeName(f))
 			g.pf("%sint get %sLength {\n", ind, name)
 			g.pf("%s  final used = view.getInt32(%s + %d, Endian.little);\n", ind, origin, facts.CountOffset)
-			g.pf("%s  return used < 0 || used > %d ? 0 : used;\n%s}\n", ind, f.Type.Size, ind)
+			g.pf("%s  return used < 0 || used > %d ? 0 : used;\n%s}\n\n", ind, f.Type.Size, ind)
 			// a Block owns its buffer; a ROW cursor holds only a view, so the
 			// caller hands the buffer the view was taken over
 			head, buffer := fmt.Sprintf("Uint8List get %sBytes", name), "bytes"
@@ -453,11 +459,11 @@ func (g *blockGen) emitInlineAccessors(ml *ir.MemberLayout, bl *ir.BlockLayout, 
 			g.arrow(ind, fmt.Sprintf("%s %sAt(int index)", dartScalarType(f.Type), name),
 				g.readAt(f, fmt.Sprintf("%s + %d + index * %d", origin, fl.Offset, facts.ElemSize)))
 		case f.Type.Kind == ir.TNamed && isStructRef(f.Type):
-			g.pf("%s%sRow %s(%sRow into) {\n", ind, f.Type.Name, name, f.Type.Name)
+			g.pf("%s%sRow %s(%sRow into) {\n", ind, f.Type.Name, fieldMember(f), f.Type.Name)
 			g.pf("%s  into.at = %s + %d;\n%s  return into;\n%s}\n\n", ind, origin, fl.Offset, ind, ind)
 			g.needRow(f.Type.Name)
 		default:
-			g.arrow(ind, fmt.Sprintf("%s get %s", dartScalarType(f.Type), name),
+			g.arrow(ind, fmt.Sprintf("%s get %s", dartScalarType(f.Type), fieldMember(f)),
 				g.readAt(f, fmt.Sprintf("%s + %d", origin, fl.Offset)))
 		}
 		if facts.Optional {
@@ -529,7 +535,7 @@ func blockScalarWidth(t ir.FieldType) int {
 		case *ir.Enum:
 			return (ref.StorageBits + 7) / 8
 		case *ir.Flags:
-			return (ref.WireBits + 7) / 8
+			return 8 // a flags slot is uint64 in every target (ir/blocklayout.go)
 		}
 	}
 	return 1
@@ -768,6 +774,15 @@ func (g *blockGen) arrow(ind, head, expr string) {
 		g.pf("%s\n", one)
 		return
 	}
+	two := fmt.Sprintf("%s    %s;", ind, expr)
+	if len(two) <= 80 {
+		g.pf("%s%s =>\n%s\n", ind, head, two)
+		return
+	}
+	if fn, arg, ok := strings.Cut(strings.TrimSuffix(expr, ")"), "("); ok {
+		g.pf("%s%s => %s(\n%s  %s,\n%s);\n", ind, head, fn, ind, arg, ind)
+		return
+	}
 	g.pf("%s%s =>\n%s    %s;\n", ind, head, ind, expr)
 }
 
@@ -783,16 +798,17 @@ func (g *blockGen) trimBlank() {
 
 // IEEE-754 payloads are data (SPEC-TABLES §3): hardware widening quiets a
 // signalling NaN, so preserve sign and mantissa in the double representation.
-const dartBlockFloat32Runtime = `
-  static final Float32List _float32Cell = Float32List(2);
+const dartBlockFloat32Runtime = `  static final Float32List _float32Cell = Float32List(2);
   static final Uint32List _float32Words = _float32Cell.buffer.asUint32List();
   static final Float64List _float64Cell = _float32Cell.buffer.asFloat64List();
   static final Uint64List _float64Words = _float32Cell.buffer.asUint64List();
 
   static double _doubleFromFloat32Bits(int bits) {
     if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {
-      _float64Words[0] = ((bits >>> 31) << 63) |
-          0x7ff0000000000000 | ((bits & 0x7fffff) << 29);
+      _float64Words[0] =
+          ((bits >>> 31) << 63) |
+          0x7ff0000000000000 |
+          ((bits & 0x7fffff) << 29);
       return _float64Cell[0];
     }
     _float32Words[0] = bits;
