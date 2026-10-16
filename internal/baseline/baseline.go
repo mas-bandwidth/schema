@@ -305,6 +305,9 @@ func renderField(f *ir.Field) Field {
 	add := func(k, v string) { out.Tokens = append(out.Tokens, Token{Key: k, Value: v}) }
 
 	add("kind", strconv.Itoa(ir.TableFieldKind(f)))
+	if f.Required {
+		add("required", "true") // docs/SPEC-TABLES.md §2.3: adding it is refused, removing it is free
+	}
 	if elem := ir.TableElemKind(f); elem != 0 {
 		add("elem", strconv.Itoa(elem))
 	}

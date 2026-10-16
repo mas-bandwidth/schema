@@ -359,6 +359,7 @@ func init() {
 		Name{Name: "TableRefuseMalformed", What: "strict read refusal of a malformed table file (docs/SPEC-TABLES.md §6.5)"},
 		Name{Name: "TableRefuseClamped", What: "strict read refusal of a clamped table value (docs/SPEC-TABLES.md §6.5)"},
 		Name{Name: "TableRefuseKindMismatch", What: "strict read refusal of a kind-mismatched table field (docs/SPEC-TABLES.md §6.5)"},
+		Name{Name: "TableMissingRequired", What: "strict read refusal of a record lacking a | required field, naming it (docs/SPEC-TABLES.md §2.3)"},
 		Name{Name: "tableRefuseError", What: "typed file and authoring refusal reasons"},
 		Name{Name: "tableRegionSaveReason", What: "typed file and authoring refusal reasons"},
 		Name{Name: "tableNodeStorageReason", What: "typed file and authoring refusal reasons"},

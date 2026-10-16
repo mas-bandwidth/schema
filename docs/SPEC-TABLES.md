@@ -1120,6 +1120,62 @@ any scalar, and a bounded array of those. It is refused, by name, on:
   the field serves with it.
 - **a specified default** — presence is the only default an optional has.
 
+#### The `| required` marker
+
+A variable table cannot say a field must be present: a zero field is not
+written, so absence and a written default are indistinguishable. `| required`
+closes that gap. It is a TAG — a valueless qualifier in the open half of the
+qualification section (SPEC §4.2) — read exactly the way `| deprecated` is.
+What it means:
+
+```
+table Player
+{
+    name     string(32) | required   // always written; a record missing it is refused
+    score    int32                     // elided when zero, as usual
+}
+```
+
+- **The writer ALWAYS writes it.** A required field never elides at its
+  default: it rides on every record, and a variable table's writer emits it
+  even when it holds zero. Absence is no longer expressible for the field.
+- **The reader REFUSES a record missing it.** An older record written before
+  the field was required lacks it; reading it is refused with the event
+  `missing_required`, naming the field. The record does not silently fall
+  back to a default — the field was declared mandatory and is not there.
+- **It is TABLE fields only.** `| required` is refused, by name, on a packet
+  `type` field — a type's wire is positional and every field always rides, so
+  there is no absence for a required marker to cure — and on an optional
+  `?T` — an optional is absent or present by definition, and `required`
+  would forbid the absence that makes it optional.
+- **A FIXED table REFUSES `required` at compile time**, by name: every fixed
+  field is always written, so there is no elision to suppress and no absence
+  to refuse, and the marker would promise nothing. The check names the table
+  and the field.
+- **The attribute is part of the tables baseline row**, as a `required`
+  token in the field's row (§18), and that row is the table projection the
+  evolution rule below is judged on. It moves NEITHER unit-wide id: the
+  protocol id (`schema id`) hashes the `type` wire projection (SPEC §3.1),
+  which no table field reaches, and the build version (§20) hashes the cook
+  projection, where a required field is laid out, cooked and blocked exactly
+  as it is without the marker.
+- **The refusal names only the fields that are missing**, in declaration
+  order, e.g. `missing_required: b`.
+- **The refusal is the RECORD's, at any depth.** A nested table, an array
+  element, a map entry or a pointer node whose body lacks a required field
+  refuses every body above it: the record is refused, never read as a parent
+  holding a defaulted child, and the reason names the missing field of the
+  body that lacked it. A strict caller gets it by name — `ReadStrict` and
+  `TableReport.Err()` answer the typed `TableMissingRequired`, whose text is
+  the report's reason (§6.5), never a bare `wire_damaged`.
+
+**Evolution** (§4). Adding `required` to a shipped field is a BREAK the
+tables baseline refuses: old records were written without it and a newer
+reader would refuse them. Removing `required` is free — the writer simply
+starts eliding again. Adding a NEW field marked `| required` to an
+existing table is the same break, and the baseline refuses it too (every
+stored record lacks the field); a new field that is not required is free.
+
 ### 2.4 Enum-keyed arrays: `ships [ShipType]ShipConfig`
 
 ```
@@ -8563,14 +8619,14 @@ The builder is designed to go wide, lock-free by ownership:
   construct that can raise one is (§2.9).
 - **The STRICT read** — one call, `<Name>ReadStrict( wire )`, that answers
   the root or refuses. It refuses, with ONE typed reason, a read that is
-  malformed, clamped, kind-mismatched, of an unknown form, wire-damaged or
-  build-version-mismatched. It does NOT refuse `unknown`, `widened` or
+  malformed, clamped, kind-mismatched, of an unknown form, wire-damaged,
+  build-version-mismatched or missing a required field (§2.3). It does NOT refuse `unknown`, `widened` or
   `retained` alone: `unknown` is evolution, `widened` decoded exactly, and
   `retained` reports on retention rather than on a loss (the cards facade's
   `ReadStrict`, docs/CARDS.md: `Unknown`, `Retained` and `Widened` alone are
   not loss). The reason is `TableRefuseReason`, the same enum a measure's
   `-1` carries, or `TableBuildVersionMismatch` for the announcement's strict
-  refusal (§3.3), so the language's typed-error test matches it (`errors.Is`
+  refusal (§3.3), or `TableMissingRequired` naming the missing field (§2.3), so the language's typed-error test matches it (`errors.Is`
   in Go). Values this read adds (`malformed`, `clamped`, `kind_mismatch`)
   are appended to that enum and never renumbered. `TableReport.Err()`
   answers the same reason for every counter this read refuses, and nil on a
@@ -11927,7 +11983,7 @@ in build version (§20.5).
   return `(int64, error)`, with literal `nil` on success and a typed
   `TableRefuseReason` on refusal. `<Name>ReadStrict(wire) (*<Name>, error)`
   is §6.5's STRICT read: one call, its own builder, the reason a
-  `TableRefuseReason` or `TableBuildVersionMismatch`. `TableReport.Err()`
+  `TableRefuseReason`, `TableBuildVersionMismatch` or `TableMissingRequired`. `TableReport.Err()`
   answers that same reason. Builder `PackMeasureReason` follows the
   same rule. `invalid_value` and `allocation_failed` distinguish Go
   authoring failures from file count, form, blob-size, and cycle refusals.
