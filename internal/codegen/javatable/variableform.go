@@ -814,6 +814,76 @@ public final class TableJson {
         b.append('"');
     }
 
+    // REFUSED is how the walk refuses a value it cannot name (§16.3): a
+    // non-finite float has no JSON spelling, and toJson answers null rather
+    // than write text that does not say what the instance holds.
+    public static final class Refused extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+        public Refused(String why) { super(why, null, false, false); }
+    }
+
+    // writeFloat spells one float the way every port does (§16.2): C's %.*g
+    // at the FEWEST significant digits, from the kind's floor (six for a
+    // float32, fifteen for a float64) up, that read back to the same value,
+    // and at the kind's ceiling (nine, seventeen) when none below it does. The
+    // read-back test is the engine's own (internal/tabletext writeFloat): the
+    // text parsed to a double, narrowed to a float for a float32. It is NOT
+    // Float.toString or Double.toString, whose shortest spelling is Java's own
+    // ("1.0E10", "0.0") and whose digits can differ from C's on a tie.
+    public static void writeFloat(StringBuilder b, double value, boolean single) {
+        if (!Double.isFinite(value)) { throw new Refused("a non-finite float has no JSON spelling"); }
+        int low = 15; int high = 17;
+        if (single) { low = 6; high = 9; }
+        for (int digits = low; ; digits++) {
+            String text = formatG(value, digits);
+            if (digits >= high) { b.append(text); return; }
+            double back = Double.parseDouble(text);
+            if (single ? (double) (float) back == value : back == value) { b.append(text); return; }
+        }
+    }
+
+    // formatG is C's %.*g for a finite double, spelled out: the double's EXACT
+    // decimal expansion (BigDecimal) rounded to prec significant digits at
+    // HALF_EVEN, as C and Go round, because java.util.Formatter rounds HALF_UP
+    // and the two answers differ on a tie; then the exponent form when the
+    // decimal exponent is below -4 or at least prec, the plain form otherwise,
+    // trailing zeros and a trailing point removed, an exponent of at least two
+    // digits, and a negative zero's sign kept.
+    static String formatG(double value, int prec) {
+        if (prec < 1) { prec = 1; }
+        String digits = "0";
+        int exp = 0;
+        if (value != 0.0) {
+            java.math.BigDecimal r = new java.math.BigDecimal(Math.abs(value))
+                    .round(new java.math.MathContext(prec, java.math.RoundingMode.HALF_EVEN));
+            String u = r.unscaledValue().toString();
+            exp = u.length() - 1 - r.scale();
+            int end = u.length();
+            while (end > 1 && u.charAt(end - 1) == '0') { end--; }
+            digits = u.substring(0, end);
+        }
+        StringBuilder s = new StringBuilder();
+        if (Double.doubleToRawLongBits(value) < 0) { s.append('-'); }
+        if (exp < -4 || exp >= prec) {
+            s.append(digits.charAt(0));
+            if (digits.length() > 1) { s.append('.').append(digits, 1, digits.length()); }
+            s.append('e').append(exp < 0 ? '-' : '+');
+            int a = Math.abs(exp);
+            if (a < 10) { s.append('0'); }
+            s.append(a);
+        } else if (exp < 0) {
+            s.append("0.");
+            for (int i = -1; i > exp; i--) { s.append('0'); }
+            s.append(digits);
+        } else if (digits.length() <= exp + 1) {
+            s.append(digits);
+            for (int i = digits.length(); i <= exp; i++) { s.append('0'); }
+        } else {
+            s.append(digits, 0, exp + 1).append('.').append(digits, exp + 1, digits.length());
+        }
+        return s.toString();
+    }
+
     // THE READER: a cursor over the byte[] the caller owns, one report shared
     // with the wire (§4). Nothing allocates beyond the strings it reads.
         public static final class LabelEntry {
@@ -883,6 +953,23 @@ public final class TableJson {
             } catch (NumberFormatException e) {
                 bad = true;
                 return 0.0;
+            }
+        }
+
+        // number32 reads one number as a float32 in ONE correctly-rounded
+        // conversion at the field's own width, as the engine reads it
+        // (strconv.ParseFloat(token, 32)). Parsing to a double and narrowing
+        // rounds twice, and the nearest double to a decimal just off a float32
+        // midpoint can BE that midpoint (§16.2).
+        public float number32() {
+            boolean[] integral = new boolean[1];
+            String tok = scanNumber(integral);
+            if (bad || tok == null) { return 0.0f; }
+            try {
+                return Float.parseFloat(tok);
+            } catch (NumberFormatException e) {
+                bad = true;
+                return 0.0f;
             }
         }
 
@@ -1684,7 +1771,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "        TableVariable.NodeGraph graph = new TableVariable.NodeGraph();\n")
 	fmt.Fprintf(b, "        if (!buildGraph(graph, v)) { return null; }\n")
 	fmt.Fprintf(b, "        StringBuilder b = new StringBuilder();\n")
-	fmt.Fprintf(b, "        jsonFields(b, graph, v, 0);\n")
+	fmt.Fprintf(b, "        try { jsonFields(b, graph, v, 0); } catch (TableJson.Refused e) { return null; }\n")
 	fmt.Fprintf(b, "        b.append('\\n');\n")
 	fmt.Fprintf(b, "        return b.toString().getBytes(StandardCharsets.UTF_8);\n")
 	fmt.Fprintf(b, "    }\n\n")
@@ -1894,9 +1981,9 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 				fmt.Fprintf(b, "                b.append(Long.toUnsignedString(v.%s.get(i)));\n", m)
 			}
 		case ir.TFloat32:
-			fmt.Fprintf(b, "                b.append(Float.toString(v.%s.get(i)));\n", m)
+			fmt.Fprintf(b, "                TableJson.writeFloat(b, v.%s.get(i), true);\n", m)
 		case ir.TFloat64:
-			fmt.Fprintf(b, "                b.append(Double.toString(v.%s.get(i)));\n", m)
+			fmt.Fprintf(b, "                TableJson.writeFloat(b, v.%s.get(i), false);\n", m)
 		case ir.TString:
 			fmt.Fprintf(b, "                TableJson.esc(b, v.%s.get(i));\n", m)
 		case ir.TNamed:
@@ -1954,7 +2041,7 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			}
 			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
 		case ir.TFloat32:
-			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add((float) in.number()); }\n", m)
+			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.number32()); }\n", m)
 			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
 		case ir.TFloat64:
 			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.number()); }\n", m)
@@ -2092,9 +2179,9 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	case f.Type.Kind == ir.TBool:
 		fmt.Fprintf(b, "        b.append(v.%s ? \"true\" : \"false\");\n", m)
 	case f.Type.Kind == ir.TFloat32:
-		fmt.Fprintf(b, "        b.append(Float.toString(v.%s));\n", m)
+		fmt.Fprintf(b, "        TableJson.writeFloat(b, v.%s, true);\n", m)
 	case f.Type.Kind == ir.TFloat64:
-		fmt.Fprintf(b, "        b.append(Double.toString(v.%s));\n", m)
+		fmt.Fprintf(b, "        TableJson.writeFloat(b, v.%s, false);\n", m)
 	case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits) && f.Type.Width <= 32:
 		if f.Type.Signed && f.Type.Kind == ir.TInt {
 			fmt.Fprintf(b, "        b.append(Integer.toString(v.%s));\n", m)
@@ -2218,7 +2305,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                else if (in.peek() == 'f') { in.lit(\"false\"); v." + m + " = false; }\n")
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TFloat32:
-		fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.%s = (float) in.number(); }\n", m)
+		fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.%s = in.number32(); }\n", m)
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TFloat64:
 		fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.%s = in.number(); }\n", m)
