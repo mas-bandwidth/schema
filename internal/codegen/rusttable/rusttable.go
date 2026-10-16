@@ -95,7 +95,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		out[FixedRuntimeModule+".rs"] = fixedRuntimeModule(u)
 		// THE MESSAGE FORM (§3.3) is a fixed table's, so its announcement rides
 		// with the fixed form: a unit with a fixed root carries the constant.
-		out[MessageRuntimeModule+".rs"] = messageRuntimeModule(u)
+		// THE ONE REPORT (§4, §3.3): the variable runtime, when this unit carries
+		// it, owns TableReport, and the message runtime then emits none.
+		_, variable := out[VariableRuntimeModule+".rs"]
+		out[MessageRuntimeModule+".rs"] = messageRuntimeModule(u, !variable)
 	}
 	out[BuildVersionModule+".rs"] = buildVersionModule(u)
 
@@ -112,6 +115,13 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 
 		if body := g.fixedModule(); body != nil {
 			out[strings.ToLower(f.Base)+"_fixed.rs"] = body
+		}
+		// THE MESSAGE FORM's bodies (§3.3) ride beside the fixed form they
+		// reset from: a fixed root's batch and the walkers of what it reaches.
+		if fixed {
+			if body := g.messageModule(); body != nil {
+				out[strings.ToLower(f.Base)+"_message.rs"] = body
+			}
 		}
 	}
 

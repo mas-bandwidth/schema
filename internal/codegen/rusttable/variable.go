@@ -111,31 +111,9 @@ use std::rc::Rc;
 /// header is the form byte alone. Nothing is aligned and nothing is padded.
 pub const TABLE_WIRE_FORM: u8 = 1;
 
-/// The tolerant read report (docs/SPEC-TABLES.md §4, §5): a field this build
-/// cannot name is skipped and counted, a field it can name but that arrives at
-/// another kind is a kind mismatch, and an absent field reads its default.
-/// widened counts a kind that GREW since the writer (§4), duplicate a repeated
-/// id (zero on the card's wire: no maps), and refused is the form byte this
-/// reader does not carry (§3) — the verdict, not one of §4's events.
-#[derive(Default, Clone, Copy)]
-pub struct TableReport {
-    pub unknown: u64,
-    pub kind_mismatch: u64,
-    pub widened: u64,
-    pub clamped: u64,
-    pub duplicate: u64,
-    pub malformed: bool,
-    pub refused: bool,
-    /// RETAIN-UNKNOWN'S TWO COUNTERS (docs/SPEC-TABLES.md §6.6): retained
-    /// counts the unknown fields whose bytes were kept, retain_lost counts
-    /// every unknown this load or save could not keep (capacity, an excluded
-    /// class, or a damaged resolving walk). Both are zero in every read that
-    /// did not opt in, and both ride the one report type for the reason
-    /// duplicate does (§4).
-    pub retained: u64,
-    pub retain_lost: u64,
-}
-
+`)
+	b.WriteString(tableReportRust)
+	b.WriteString(`
 /// Read one canonical LEB128 u64 from the cursor; None when it overruns, runs
 /// past ten bytes, or is NON-MINIMAL — a redundant continuation byte, or a tenth
 /// byte above the 64th value bit, is malformed (docs/SPEC-TABLES.md §3).
