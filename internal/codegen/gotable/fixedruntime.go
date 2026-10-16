@@ -39,6 +39,8 @@ const (
 	TableFixedReasonTextIllFormed        = "text_ill_formed"
 	TableFixedReasonTruncated            = "truncated"
 	TableFixedReasonReservedNotZero      = "reserved_not_zero"
+	tableFixedCountOverBound             = "count_over_bound"
+	tableFixedLengthOverBound            = "length_over_bound"
 )
 
 const (
