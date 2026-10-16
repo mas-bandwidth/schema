@@ -85,16 +85,16 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9)
+build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9)
 	@mkdir -p build/tables-generated-java
 	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit and the BYTE-BUFFER unit: their cook readers and
-	# variable-class codecs ride this stamp. tables/lists is NOT generated here:
-	# the compiler refuses the unit whole for java because Mixed holds an array
-	# of unions and Holders declares a map, so its rows answer absent and the
-	# lists corpus rides TestVariableClassBeyondCardConstructsJava instead.
+	# variable-class codecs ride this stamp, and the LIST unit (tables/lists)
+	# rides it too: its SaveVariable codec is the list half of the
+	# tables-java-variable-class corpus and the soak's three case set.
 	./bin/schema generate --lang java --out build/tables-generated-java/pointers tables/pointers
 	./bin/schema generate --lang java --out build/tables-generated-java/blobs tables/blobs
+	./bin/schema generate --lang java --out build/tables-generated-java/lists tables/lists
 	./bin/schema generate --lang java --out build/tables-generated-java/block tables/block
 	./bin/schema generate --lang java --out build/tables-generated-java/blockhome tables/blockhome
 	./bin/schema generate --lang java --out build/tables-generated-java/v1 test/tables/V1.schema
@@ -259,22 +259,197 @@ tables-java-runtime-home-negative-control: bin/schema tables-java-runtime-home
 	 fi; \
 	 echo "runtime home negative control (Java): the file-order rule moves the byte-access runtime from $$base to $$added"
 
-# THE JAVA TABLE SOURCES ARE FORMAT-CANONICAL (issue #424). `google-java-format`
-# is the language's one formatting authority, so an emitter that has to be
-# hand-reflowed is an emitter that drifts. The gate holds every generated Java
-# table unit to what the formatter would write, and SKIPS cleanly where the
-# formatter is not on PATH rather than passing unchecked text off as clean.
+# THE GENERATED JAVA IS FORMAT-CANONICAL (issues #424, #547; docs/JAVA-DIALECT.md).
+# `google-java-format` is the language's one formatting authority, so an emitter
+# that has to be hand-reflowed is an emitter that drifts. The gate holds EVERY
+# generated Java unit -- the table corpus above AND the packet-wire units below
+# -- to what the pinned formatter writes, in the style the emitters write.
+#
+# THE FORMATTER IS PINNED beside the JDK, and the recipe never fetches it:
+#   google-java-format 1.37.0 (google/google-java-format, the all-deps jar)
+#   url:    https://github.com/google/google-java-format/releases/download/v1.37.0/google-java-format-1.37.0-all-deps.jar
+#   sha256: 834b2a0c38cb774953322a84b5ca3f2f40dd3156650b3cd44d3b744345962f7a
+#           (the jar the fleet toolchains role installed on hetzner1 and hetzner2,
+#           ~/sdk/google-java-format-1.37.0/, measured with sha256sum 2026-10-15)
+#   Put the jar at dist/google-java-format-1.37.0-all-deps.jar (gitignored) and
+#   it runs on the pinned JDK above, with the six --add-exports its README names
+#   for JDK 16 and later. Without that jar the gate runs the `google-java-format`
+#   launcher on PATH (the benches carry it in ~/sdk/bin), and the probe below
+#   holds the launcher to the same release. GOOGLE_JAVA_FORMAT=<launcher>
+#   overrides both.
+#
+# THE STYLE IS --aosp: four-space indent, which is what every emitter writes.
+# It is a style option of the same formatter, not a looser tool; the choice and
+# the counts behind it are in docs/JAVA-DIALECT.md, and
+# `make tables-java-format-census` measures both styles over the same trees.
+#
+# THE GATE CANNOT SKIP SILENTLY. A formatter that does not resolve at the pinned
+# release is a FAILURE, naming the tool, under SCHEMA_REQUIRE_CORPUS=1 or
+# JAVA_REQUIRE_FORMATTER=1, and `make test-java` sets the second: the leg's own
+# pass never skips its format gate. Run alone without either, it prints SKIP
+# naming both. And a glob that matches nothing is not a clean tree: the gate
+# counts the files it hands the formatter and refuses below JAVA_CLEAN_MIN.
+GOOGLE_JAVA_FORMAT_VERSION := 1.37.0
+GOOGLE_JAVA_FORMAT_SHA256 := 834b2a0c38cb774953322a84b5ca3f2f40dd3156650b3cd44d3b744345962f7a
+GOOGLE_JAVA_FORMAT_JAR ?= $(CURDIR)/dist/google-java-format-$(GOOGLE_JAVA_FORMAT_VERSION)-all-deps.jar
+GOOGLE_JAVA_FORMAT_EXPORTS := $(foreach p,api code file parser tree util,--add-exports=jdk.compiler/com.sun.tools.javac.$(p)=ALL-UNNAMED)
+ifneq ($(wildcard $(GOOGLE_JAVA_FORMAT_JAR)),)
+GOOGLE_JAVA_FORMAT ?= $(JAVA) $(GOOGLE_JAVA_FORMAT_EXPORTS) -jar $(GOOGLE_JAVA_FORMAT_JAR)
+else
 GOOGLE_JAVA_FORMAT ?= google-java-format
+endif
+JAVA_FORMAT_STYLE ?= --aosp
+# THE PROBE asks the formatter its version and wants the pinned release's own
+# line back, whole. A substring match is not enough: `java -jar` over a MISSING
+# jar answers "Unable to access jarfile .../google-java-format-1.37.0-all-deps.jar",
+# which carries the version in its path. The first draft of this probe passed
+# on exactly that, so the missing-formatter control plants that case.
+java_format_probe = $(GOOGLE_JAVA_FORMAT) --version 2>&1 | grep -qx 'google-java-format: Version $(GOOGLE_JAVA_FORMAT_VERSION)'
+# deferred, so test-java's own JAVA_REQUIRE_FORMATTER (below) reaches the gate
+JAVA_FORMAT_REQUIRED = $(if $(filter 1,$(SCHEMA_REQUIRE_CORPUS) $(JAVA_REQUIRE_FORMATTER)),1,)
+
+# THE PACKET-WIRE UNITS, generated fresh from the emitter rather than read off
+# the committed generated/ tree, so the gate watches internal/codegen/java and
+# not a checkout that may be stale against it: the examples corpus, the 128-bit
+# corpus, the bench corpus, the real-world corpus, the paired bench unit, and
+# the packet-defaults and packet-wide fixtures.
+build/java-clean-packet/.stamp: bin/schema $(SCHEMAS) $(SCHEMAS128) $(SCHEMAS_BENCH) test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema test/packet-wide/Shapes.schema make/java.mk
+	@rm -rf build/java-clean-packet && mkdir -p build/java-clean-packet
+	./bin/schema generate --lang java --out build/java-clean-packet/examples examples
+	./bin/schema generate --lang java --out build/java-clean-packet/examples128 examples128
+	./bin/schema generate --lang java --out build/java-clean-packet/bench bench/corpus/Bench.schema
+	./bin/schema generate --lang java --out build/java-clean-packet/realworld bench/corpus/RealWorld.schema
+	./bin/schema generate --lang java --out build/java-clean-packet/paired bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	./bin/schema generate --lang java --out build/java-clean-packet/defaults test/packet-defaults/Defaults.schema
+	./bin/schema generate --lang java --out build/java-clean-packet/plain test/packet-defaults/Plain.schema
+	./bin/schema generate --lang java --out build/java-clean-packet/shapes test/packet-wide/Shapes.schema
+	@touch $@
+
+# What the gate formats, and the floor under the count: 1872 files on 2026-10-16,
+# 1802 in the 33 table units and 70 in the 8 packet units (585 on 2026-10-15,
+# before the stream added units). A control points JAVA_CLEAN_PATHS at its
+# own tree and lowers the floor; nothing else should.
+JAVA_CLEAN_PATHS ?= build/tables-generated-java build/java-clean-packet
+JAVA_CLEAN_MIN   ?= 1872
+JAVA_CLEAN_LOG   ?= build/java-clean/format.log
+
 .PHONY: tables-java-clean
-tables-java-clean: build/tables-generated-java/.stamp
-	@if ! command -v $(GOOGLE_JAVA_FORMAT) >/dev/null 2>&1; then \
-		echo "SKIP tables-java-clean: $(GOOGLE_JAVA_FORMAT) is not installed"; exit 0; \
+tables-java-clean: build/tables-generated-java/.stamp build/java-clean-packet/.stamp
+	@if ! $(java_format_probe); then \
+		if [ -n "$(JAVA_FORMAT_REQUIRED)" ]; then \
+			echo "tables-java-clean REFUSES: google-java-format $(GOOGLE_JAVA_FORMAT_VERSION) does not resolve"; \
+			echo '  GOOGLE_JAVA_FORMAT = $(GOOGLE_JAVA_FORMAT)'; \
+			echo "  make/java.mk names the pinned release and where it comes from; install it under dist/,"; \
+			echo "  or override the pin (GOOGLE_JAVA_FORMAT=<launcher>). A gate that skips is a gate with no blade."; \
+			exit 1; \
+		fi; \
+		echo "SKIP tables-java-clean: google-java-format $(GOOGLE_JAVA_FORMAT_VERSION) does not resolve (GOOGLE_JAVA_FORMAT = $(GOOGLE_JAVA_FORMAT)); SCHEMA_REQUIRE_CORPUS=1 or JAVA_REQUIRE_FORMATTER=1 turns this SKIP into a FAILURE"; \
+		exit 0; \
 	fi; \
-	$(GOOGLE_JAVA_FORMAT) --dry-run --set-exit-if-changed $$(find build/tables-generated-java -name '*.java') && \
-	echo "tables Java: google-java-format clean over the generated table units"
+	files=$$(find $(JAVA_CLEAN_PATHS) -name '*.java' | sort); \
+	n=$$(printf '%s\n' $$files | grep -c '\.java$$'); \
+	if [ "$$n" -lt "$(JAVA_CLEAN_MIN)" ]; then \
+		echo "FORMAT GATE FAILED: found $$n generated Java files under $(JAVA_CLEAN_PATHS), expected at least $(JAVA_CLEAN_MIN) -- the glob, not the property, is what broke"; exit 1; \
+	fi; \
+	mkdir -p $$(dirname $(JAVA_CLEAN_LOG)); \
+	if ! $(GOOGLE_JAVA_FORMAT) $(JAVA_FORMAT_STYLE) --dry-run --set-exit-if-changed $$files > $(JAVA_CLEAN_LOG) 2>&1; then \
+		red=$$(grep -c '\.java$$' $(JAVA_CLEAN_LOG)); \
+		echo "tables-java-clean FAILED: $$red of $$n generated Java files drift from google-java-format $(GOOGLE_JAVA_FORMAT_VERSION) $(JAVA_FORMAT_STYLE) (the full list is $(JAVA_CLEAN_LOG)):"; \
+		head -40 $(JAVA_CLEAN_LOG); exit 1; \
+	fi; \
+	echo "tables Java: google-java-format $(GOOGLE_JAVA_FORMAT_VERSION) $(JAVA_FORMAT_STYLE) clean over $$n generated Java files ($(JAVA_CLEAN_PATHS))"
 test-java: tables-java-clean
+# the leg's own pass REQUIRES the formatter: a test-java that skipped its
+# format gate would report a clean leg it never checked.
+test-java: JAVA_REQUIRE_FORMATTER = 1
 test-java: tables-java-t14
 test-java: tables-java-fixed-t18
+
+# THE MEASUREMENT behind the style choice (docs/JAVA-DIALECT.md): the same
+# trees under the default Google style and under --aosp, as files red and diff
+# lines. It REQUIRES the formatter -- a census of nothing is not a number.
+.PHONY: tables-java-format-census
+tables-java-format-census: build/tables-generated-java/.stamp build/java-clean-packet/.stamp
+	@$(java_format_probe) || \
+		{ echo "tables-java-format-census REFUSES: google-java-format $(GOOGLE_JAVA_FORMAT_VERSION) does not resolve (GOOGLE_JAVA_FORMAT = $(GOOGLE_JAVA_FORMAT))"; exit 1; }
+	@rm -rf build/java-format-census && mkdir -p build/java-format-census
+	@for style in google aosp; do \
+		flag=; [ $$style = aosp ] && flag=--aosp; \
+		for root in tables-generated-java java-clean-packet; do \
+			mkdir -p build/java-format-census/$$style; cp -R build/$$root build/java-format-census/$$style/$$root; \
+			files=$$(find build/java-format-census/$$style/$$root -name '*.java' | sort); \
+			n=$$(printf '%s\n' $$files | grep -c '\.java$$'); \
+			$(GOOGLE_JAVA_FORMAT) $$flag --dry-run $$files > build/java-format-census/$$style-$$root.red 2>&1 || \
+				{ echo "tables-java-format-census FAILED: the formatter did not run over $$root ($$style)"; head -20 build/java-format-census/$$style-$$root.red; exit 1; }; \
+			red=$$(grep -c '\.java$$' build/java-format-census/$$style-$$root.red); \
+			$(GOOGLE_JAVA_FORMAT) $$flag --replace $$files || \
+				{ echo "tables-java-format-census FAILED: --replace did not run over $$root ($$style)"; exit 1; }; \
+			lines=$$(diff -r build/$$root build/java-format-census/$$style/$$root | grep -c '^[<>]'); \
+			echo "census $$style $$root: $$red of $$n files red, $$lines diff lines"; \
+		done; \
+	done
+
+# THE CONTROLS (make/negative-controls.json). The missing-formatter control is in
+# group java; the drift control is in the exclusion list, with its reason, until
+# a workflow installs the pinned formatter (it needs the real tool to mean anything).
+#
+# DRIFT: the emitter writes ONE line of TableBytes.java one space deeper
+# (tools/sabotage/table_java_format_drift.go), through `go build -overlay`, and
+# tables-java-clean -- the same target, pointed at the sabotaged unit -- must go
+# RED naming that file. The guard comes first: the unsabotaged TableBytes.java
+# must be clean, or the control would be watching a file that was red anyway.
+JAVA_FORMAT_DRIFT := build/java-format-drift
+.PHONY: tables-java-clean-drift-negative-control
+tables-java-clean-drift-negative-control: build/tables-generated-java/.stamp build/java-clean-packet/.stamp
+	@$(java_format_probe) || \
+		{ echo "NEGATIVE CONTROL CANNOT RUN: google-java-format $(GOOGLE_JAVA_FORMAT_VERSION) does not resolve (GOOGLE_JAVA_FORMAT = $(GOOGLE_JAVA_FORMAT)), and a drift control without the formatter proves nothing"; exit 1; }
+	@rm -rf $(JAVA_FORMAT_DRIFT) && mkdir -p $(JAVA_FORMAT_DRIFT)
+	@$(MAKE) --no-print-directory tables-java-clean JAVA_REQUIRE_FORMATTER=1 \
+		JAVA_CLEAN_PATHS=build/tables-generated-java/blockhome/TableBytes.java JAVA_CLEAN_MIN=1 \
+		JAVA_CLEAN_LOG=$(JAVA_FORMAT_DRIFT)/base.log > $(JAVA_FORMAT_DRIFT)/base.out 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the unsabotaged TableBytes.java is not format-clean, so this control would watch a file that is red anyway"; \
+		  cat $(JAVA_FORMAT_DRIFT)/base.out; exit 1; }
+	go run ./tools/sabotage -name table-java-format-drift \
+		-out $(JAVA_FORMAT_DRIFT)/block.gotext internal/codegen/javatable/block.go
+	@printf '{"Replace":{"%s/internal/codegen/javatable/block.go":"%s/$(JAVA_FORMAT_DRIFT)/block.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(JAVA_FORMAT_DRIFT)/overlay.json
+	go build -overlay $(JAVA_FORMAT_DRIFT)/overlay.json -o $(JAVA_FORMAT_DRIFT)/schema ./cmd/schema
+	$(JAVA_FORMAT_DRIFT)/schema generate --lang java --out $(JAVA_FORMAT_DRIFT)/generated/blockhome tables/blockhome
+	@grep -q '^     private TableBytes() {}' $(JAVA_FORMAT_DRIFT)/generated/blockhome/TableBytes.java || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter wrote no mis-indented line"; exit 1; }
+	@if $(MAKE) --no-print-directory tables-java-clean JAVA_REQUIRE_FORMATTER=1 \
+			JAVA_CLEAN_PATHS=$(JAVA_FORMAT_DRIFT)/generated/blockhome/TableBytes.java JAVA_CLEAN_MIN=1 \
+			JAVA_CLEAN_LOG=$(JAVA_FORMAT_DRIFT)/drift.log > $(JAVA_FORMAT_DRIFT)/drift.out 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a mis-indented line left tables-java-clean green"; cat $(JAVA_FORMAT_DRIFT)/drift.out; exit 1; \
+	fi
+	@grep -q 'tables-java-clean FAILED: 1 of 1 ' $(JAVA_FORMAT_DRIFT)/drift.out && \
+	 grep -q 'TableBytes\.java$$' $(JAVA_FORMAT_DRIFT)/drift.log || \
+		{ echo "NEGATIVE CONTROL FAILED: tables-java-clean went red, but not on the drifted file"; cat $(JAVA_FORMAT_DRIFT)/drift.out; exit 1; }
+	@grep -m1 'tables-java-clean FAILED' $(JAVA_FORMAT_DRIFT)/drift.out
+	@echo "negative control: one mis-indented line in the emitted TableBytes.java turns tables-java-clean RED"
+
+# MISSING FORMATTER: the default launcher over a jar that is not there (a path
+# carrying the pinned version, the case a substring probe passed on) must be a
+# FAILURE naming the tool under SCHEMA_REQUIRE_CORPUS=1; and, the other half of
+# the same claim, a launcher that is not there must SKIP naming the variable
+# without it. Never a silent pass.
+JAVA_FORMAT_MISSING := build/java-format-missing
+.PHONY: tables-java-clean-formatter-missing-negative-control
+tables-java-clean-formatter-missing-negative-control: build/tables-generated-java/.stamp build/java-clean-packet/.stamp
+	@rm -rf $(JAVA_FORMAT_MISSING) && mkdir -p $(JAVA_FORMAT_MISSING)
+	@if $(MAKE) --no-print-directory tables-java-clean SCHEMA_REQUIRE_CORPUS=1 JAVA_REQUIRE_FORMATTER= \
+			GOOGLE_JAVA_FORMAT="$(JAVA) $(GOOGLE_JAVA_FORMAT_EXPORTS) -jar $(CURDIR)/$(JAVA_FORMAT_MISSING)/google-java-format-$(GOOGLE_JAVA_FORMAT_VERSION)-all-deps.jar" > $(JAVA_FORMAT_MISSING)/required.out 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: tables-java-clean passed under SCHEMA_REQUIRE_CORPUS=1 with no formatter"; cat $(JAVA_FORMAT_MISSING)/required.out; exit 1; \
+	fi
+	@grep -q "REFUSES: google-java-format $(GOOGLE_JAVA_FORMAT_VERSION) does not resolve" $(JAVA_FORMAT_MISSING)/required.out || \
+		{ echo "NEGATIVE CONTROL FAILED: tables-java-clean went red, but did not name the missing formatter"; cat $(JAVA_FORMAT_MISSING)/required.out; exit 1; }
+	@$(MAKE) --no-print-directory tables-java-clean SCHEMA_REQUIRE_CORPUS= JAVA_REQUIRE_FORMATTER= \
+		GOOGLE_JAVA_FORMAT=$(CURDIR)/$(JAVA_FORMAT_MISSING)/no-google-java-format > $(JAVA_FORMAT_MISSING)/optional.out 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: without SCHEMA_REQUIRE_CORPUS a missing formatter should SKIP, and the gate failed"; cat $(JAVA_FORMAT_MISSING)/optional.out; exit 1; }
+	@grep -q '^SKIP tables-java-clean: .*SCHEMA_REQUIRE_CORPUS=1 or JAVA_REQUIRE_FORMATTER=1' $(JAVA_FORMAT_MISSING)/optional.out || \
+		{ echo "NEGATIVE CONTROL FAILED: the skip did not name the variable that makes it a failure"; cat $(JAVA_FORMAT_MISSING)/optional.out; exit 1; }
+	@grep -m1 'REFUSES' $(JAVA_FORMAT_MISSING)/required.out
+	@echo "negative control: with no google-java-format, tables-java-clean FAILS by name under SCHEMA_REQUIRE_CORPUS=1 and SKIPS by name without it"
 
 # EVERY generated unit compiles, warnings as errors, under the CONSUMER's javac
 # — the same flags the type wire's Java legs use, so a warning here is a build
@@ -299,28 +474,38 @@ tables-java-compile: build/tables-generated-java/.stamp
 	done
 	@echo "tables Java compile gate: $(TABLES_JAVA_UNITS) compiles under -Xlint:all -Werror (the conformance leg builds the rest)"
 
-# and the WHOLE corpus, every unit, for a release pass or a hand check — the
-# gate above's superset, run by name.
+# and the WHOLE corpus, every unit, under the same flags: every table unit
+# above AND every packet-wire unit tables-java-clean formats
+# (build/java-clean-packet), each compiled as its own unit so a unit that only
+# builds beside another is found. `make tables-java-release` runs it, and
+# certify.yml's release-gates job runs that, so it is a gate the tree runs and
+# not a name. It counts the units it compiled and refuses below the floor, so a
+# glob that matched nothing is a failure and not a pass.
+TABLES_JAVA_COMPILE_ALL_MIN ?= 25
 .PHONY: tables-java-compile-all
-tables-java-compile-all: build/tables-generated-java/.stamp
+tables-java-compile-all: build/tables-generated-java/.stamp build/java-clean-packet/.stamp
 	@rm -rf build/tables-java-classes-all
-	@for d in build/tables-generated-java/*/; do \
-		unit=$$(basename $$d); \
+	@n=0; for d in build/tables-generated-java/*/ build/java-clean-packet/*/; do \
+		unit=$$(basename $$(dirname $$d))-$$(basename $$d); \
 		mkdir -p build/tables-java-classes-all/$$unit; \
 		$(JAVAC) --release 17 -Xlint:all -Werror -d build/tables-java-classes-all/$$unit $$d*.java || \
 			{ echo "JAVA COMPILE GATE FAILED: unit $$unit"; exit 1; }; \
-	done
-	@echo "tables Java compile gate: every generated unit compiles under -Xlint:all -Werror"
+		n=$$((n+1)); \
+	done; \
+	if [ "$$n" -lt "$(TABLES_JAVA_COMPILE_ALL_MIN)" ]; then \
+		echo "JAVA COMPILE GATE FAILED: compiled $$n units, expected at least $(TABLES_JAVA_COMPILE_ALL_MIN) -- the glob, not the property, is what broke"; exit 1; \
+	fi; \
+	echo "tables Java compile gate: all $$n generated units (table and packet) compile under --release 17 -Xlint:all -Werror"
 
 # THE JAVA TABLES LEG (test/java-tables/src/Main.java): the gates the
 # conformance harness does not hold, because none of them is a case — the
 # readers' fuzz oracle, the reference extent gate and the byte-order leg.
-build/java-tables/.stamp: build/tables-generated-java/.stamp test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java test/java-tables/src/AllocPaths.java
+build/java-tables/.stamp: build/tables-generated-java/.stamp test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java test/java-tables/src/AllocPaths.java test/java-tables/src/Soak.java
 	@rm -rf build/java-tables && mkdir -p build/java-tables
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-tables \
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
 		build/tables-generated-java/blobs/*.java build/tables-generated-java/arms/*.java \
-		build/tables-generated-java/block/*.java test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java test/java-tables/src/AllocPaths.java
+		build/tables-generated-java/lists/*.java build/tables-generated-java/block/*.java test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java test/java-tables/src/AllocPaths.java test/java-tables/src/Soak.java
 	@touch $@
 
 # THE READERS' ORACLE (docs/SPEC-TABLES.md §7.5, §19.2). Mutants of a block image
@@ -932,6 +1117,37 @@ tables-java-allocator-runtime-negative-control: build/java-tables/.stamp
 		{ echo 'NEGATIVE CONTROL FAILED: the allocation gate measured before it refused'; cat build/java-allocator-runtime-negative-control/log; exit 1; }
 	@echo 'java allocation gate refuses a JDK that is not the pin (wants 21, ran 17), before measuring'
 
+# THE JAVA TABLES SOAK (docs/PORTING.md I9, #517). A functional soak, never a
+# unit test: it loops the variable form's load, loadMeasure and save over the
+# committed wires the tables-java-variable-class target round-trips (the blob,
+# list and pointer units on this classpath) for SOAK_SECONDS of real time, and
+# gates on the per-iteration ALLOCATION COUNT being flat after warmup — a Java
+# load builds a Value tree, so the floor is not zero and the gate is on
+# STABILITY, not on zero — with resident-heap drift reported beside it as the
+# weaker instrument that sees retention. It refuses to certify off the pinned
+# JDK exactly as modeAllocator does, and honours SCHEMA_JAVA_ALLOC_ANY_JDK=1
+# as observation only (reports, does not certify).
+.PHONY: tables-java-soak tables-java-soak-negative-control
+tables-java-soak: build/java-tables/.stamp
+	@if [ "$${SCHEMA_JAVA_ALLOC_ANY_JDK:-}" = 1 ]; then echo "Java soak observation mode: NOT CERTIFIED"; fi
+	$(JAVA) -cp build/java-tables Soak --selftest
+	$(JAVA) -cp build/java-tables Soak $(SOAK_SECONDS) testdata/wire/tables/blob_small.bin testdata/wire/tables/list_scalars.bin testdata/wire/tables/graph_tree.bin
+
+# ITS NEGATIVE CONTROL: a matched allocation pair planted per iteration by an
+# environment variable read in Soak.java (never a change to generated code) for
+# the measured loop alone, so the settled clean floor stays put and the count
+# must go red while the drift line stays green.
+tables-java-soak-negative-control: build/java-tables/.stamp
+	@if SCHEMA_JAVA_SOAK_PLANT=1 $(JAVA) -cp build/java-tables Soak 12 testdata/wire/tables/blob_small.bin testdata/wire/tables/list_scalars.bin testdata/wire/tables/graph_tree.bin > build/java-soak-negative.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a planted per-iteration allocation left the soak count green'; \
+		cat build/java-soak-negative.log; exit 1; \
+	fi
+	@grep -Fq 'per-iteration allocation moved from' build/java-soak-negative.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the soak went red, but not on the COUNT'; cat build/java-soak-negative.log; exit 1; }
+	@grep -Fq 'soak: drift OK' build/java-soak-negative.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the drift line was not green beside the red COUNT'; cat build/java-soak-negative.log; exit 1; }
+	@echo 'java tables soak negative control: a planted per-iteration allocation turns the COUNT red'
+
 # ITS LOCALIZING CONTROL (I1: a control must say WHERE). One allocation per row
 # is planted in row 1's walk — in the harness, behind
 # SCHEMA_JAVA_ALLOC_PLANT_ROW_WALK, never in generated code — and the gate must
@@ -956,7 +1172,12 @@ tables-java-alloc-negative-control: build/java-tables/.stamp
 	@grep '^alloc 2 cook-walk' build/java-alloc-negative-control/log
 	@echo 'negative control: one allocation planted per row reds row 1 (the block walk) alone; row 2 (the cook walk) stays green'
 
-test-java: tables-java-allocator tables-java-allocator-runtime-negative-control tables-java-alloc-negative-control
+test-java: tables-java-allocator tables-java-allocator-runtime-negative-control tables-java-alloc-negative-control tables-java-soak-short tables-java-soak-negative-control
+
+# the twenty-second form `make test` reaches; the hour is `make tables-java-soak`
+.PHONY: tables-java-soak-short
+tables-java-soak-short:
+	$(MAKE) tables-java-soak SOAK_SECONDS=20
 
 # I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Java side.
 # The cook example is pulled from docs/USAGE.md into a class that reads the
