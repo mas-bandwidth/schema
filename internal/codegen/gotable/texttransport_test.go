@@ -21,7 +21,105 @@ func TestTableWireOverATextTransport(t *testing.T) {
 		t.Parallel()
 		runGenerated(t, textTransportVariableSchema, textTransportVariableProbe)
 	})
+	// A RECOVERABLE DAMAGE IS STILL DAMAGE. The tolerant load can return true
+	// and still report malformed (TestBuilderCountRecovery's shape: a declared
+	// list count past its payload); LoadText is the strict read (§16.8, §6.5)
+	// and refuses whenever the report holds an error, whatever the load said.
+	t.Run("variable_recovered_malformed", func(t *testing.T) {
+		t.Parallel()
+		runGenerated(t, textTransportRecoverSchema, textTransportRecoverProbe)
+	})
+	t.Run("fixed_recovered_clamped", func(t *testing.T) {
+		t.Parallel()
+		runGenerated(t, textTransportClampSchema, textTransportClampProbe)
+	})
 }
+
+// The fixture TestBuilderCountRecovery uses (lists_test.go), carried as text.
+const textTransportRecoverSchema = `package probe
+table Child { n int32 = 7
+ values []int32 }
+table Root { values []int32
+ next int32
+ children []Child
+ child *Child }
+`
+
+const textTransportRecoverProbe = `package probe
+import("errors";"testing";"encoding/base64")
+func file(count uint64) []byte {var ids TableIds;b:=make([]byte,256);w:=TableWriter{Buffer:b,Ids:&ids};w.Put8(1);w.Id(RootTableFields[0].Id);w.Put8(14);w.PutLeb(uint64(1+tableLebBytes(count)+4));w.Put8(4);w.PutLeb(count);w.Put32(19);w.Id(RootTableFields[1].Id);w.Put8(4);w.Put32(42);w.Put8(0);w.Trailer();return b[:w.Offset]}
+func TestTableWireOverATextTransport(t *testing.T) {
+	wire := file(1 << 30)
+	// The fixture is still the recoverable shape: the tolerant builder load
+	// answers true AND reports malformed.
+	var b RootBuilder
+	if !b.Init() { t.Fatal("init") }
+	defer b.Shutdown()
+	var tolerant TableReport
+	if !RootLoadBuilder(&b, wire, &tolerant) || !tolerant.Malformed {
+		t.Fatalf("fixture is not the recoverable shape: %+v", tolerant)
+	}
+	text := base64.StdEncoding.EncodeToString(wire)
+	got, err := RootLoadText(text, nil)
+	if got != nil || err == nil || err.Error() != "malformed" || !errors.Is(err, TableRefuseMalformed) {
+		t.Fatalf("nil report: value %v, error %v; want nil and malformed", got != nil, err)
+	}
+	var r TableReport
+	got, err = RootLoadText(text, &r)
+	if got != nil || err == nil || err.Error() != "malformed" || !r.Malformed {
+		t.Fatalf("supplied report: value %v, error %v, report %+v; want nil, malformed, Malformed", got != nil, err, r)
+	}
+	// A supplied report receives THIS read's report: earlier counts in it
+	// neither leak into the verdict nor survive the call.
+	stale := TableReport{Malformed: true, Unknown: 3}
+	if v, err := RootLoadText(base64.StdEncoding.EncodeToString(file(1)), &stale); v == nil || err != nil || stale != (TableReport{}) {
+		t.Fatalf("clean read with a stale report: value %v, error %v, report %+v", v != nil, err, stale)
+	}
+}
+`
+
+// A fixed table read from a wider writer's wire: the tolerant Load clamps the
+// string and answers true; LoadText refuses it as clamped, by name.
+const textTransportClampSchema = `package probe
+fixed table Wide {
+	id uint32
+	name string(16)
+}
+fixed table Root {
+	id uint32
+	name string(8)
+}
+`
+
+const textTransportClampProbe = `package probe
+import("errors";"testing")
+func TestTableWireOverATextTransport(t *testing.T) {
+	var w Wide
+	w.Id = 7
+	copy(w.Name[:], "0123456789ab")
+	w.NameLength = 12
+	text, err := WideSaveText(&w)
+	if err != nil { t.Fatalf("wide save text: %v", err) }
+	wire, _ := WideLoadText(text, nil)
+	if wire == nil { t.Fatal("wide round trip") }
+	buf := make([]byte, WideMeasure(&w))
+	WideSave(&w, buf)
+	var v Root
+	var tolerant TableReport
+	if !RootLoad(&v, buf, &tolerant) || tolerant.Clamped == 0 {
+		t.Fatalf("fixture is not the recoverable shape: %+v", tolerant)
+	}
+	got, err := RootLoadText(text, nil)
+	if got != nil || err == nil || err.Error() != "clamped" || !errors.Is(err, TableRefuseClamped) {
+		t.Fatalf("nil report: value %v, error %v; want nil and clamped", got != nil, err)
+	}
+	var r TableReport
+	got, err = RootLoadText(text, &r)
+	if got != nil || err == nil || err.Error() != "clamped" || r.Clamped == 0 {
+		t.Fatalf("supplied report: value %v, error %v, report %+v; want nil, clamped, Clamped", got != nil, err, r)
+	}
+}
+`
 
 const textTransportFixedSchema = `package probe
 fixed table Root {
