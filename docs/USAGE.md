@@ -815,7 +815,8 @@ the whole point... checks are *DEBUG ONLY*"). C# has `Debug.Assert` and
 build, so the C# backend asserts too — the same idiom the serialize.cs runtime
 it calls has always used for its own write path.
 Go has no assert idiom, so it returns
-`ErrValueOutOfRange`; JavaScript likewise returns failure
+`ErrValueOutOfRange` (and its table writers refuse with
+`TableRefuseInvalidValue`, below); JavaScript likewise returns failure
 rather than invent an assert. Dart has `assert` — active under
 `--enable-asserts`, compiled out of release and AOT builds — so the Dart
 writer asserts, exactly like C++; Java's `assert` is active under `-ea` and
@@ -833,6 +834,27 @@ raises in Elixir, silently writes the truncated low bits in a C++ or C release
 or count past its array's end panics there on the slice instead, the
 language's own bounds check, which no profile removes), Dart AOT or
 default-JVM build, and returns failure in the others.
+
+**Go tables are held to the stricter rule, in every build** (2026-10-15: "Go
+table writers, variable and fixed, refuse out-of-contract values by name").
+A Go table has no debug build to compile a check out of, and a record its own
+reader would clamp or refuse is a record the writer should never have made. So
+a Go table save — `<T>Save` for a variable or a fixed-size table and
+`<T>FixedSave` for the fixed form — **refuses** a value off its declared
+`min`/`max`, a count past its array's `Max`, a length past its text or bytes
+bound `N`, ill-formed UTF-8 in a `string`, and a NUL in a `string`, by name:
+the save returns `-1` and the `...Reason` twin (`<T>MeasureReason`,
+`<T>FixedSaveReason`) returns `TableRefuseInvalidValue`. Nothing is clamped on
+the way out and nothing is written for a refused fixed batch. The cost is one
+comparison per ranged field, one per count and length, and one UTF-8 scan over
+the used bytes of each string. The write path was benchmarked before and after
+(`TestGoTableWriterSpeedTable`, a functional test: `NOVA_WRITER_BENCH=1`), and
+the cost is measured, not hidden: on one bench machine a pong save went about
+300 ns to 320 ns and a fixed done record of 95 completions about 2.2 us to
+3.8 us. The coordinator amended the card's speed gate to the measured cost:
+correctness of the refusal outranks a sub-2 us per-record cost on a store
+path. The packet writers and the other languages' table writers are unchanged
+by this paragraph.
 
 Do not build on any of it. **Keep your values inside their declared bounds on
 the write side** — your simulation already knows they are, and that is the only

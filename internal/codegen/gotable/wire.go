@@ -29,7 +29,7 @@ const tableIdCapacity = %d
 const tableIdBuckets = %d
 `, n, buckets) + source
 	if len(ir.WideTextFields(u)) > 0 {
-		res += tableWStringSource
+		res += tableWStringSource + tableWStringWriteSource
 	}
 	return res
 }
@@ -534,4 +534,21 @@ const tableWidenFloatSource = `func tableWidenFloat(b uint32) uint64 {
  return math.Float64bits(float64(math.Float32frombits(b)))
 }
 
+`
+
+// tableWStringWriteSource is the writer's text rule for wstring(N), the twin
+// of tableUtf16Valid on the caller's own storage (docs/FIXED-FORM-ALGORITHM.md
+// §3.1): the used units are paired UTF-16 with no zero unit. It is spliced in
+// with tableWStringSource, only where the unit declares a wstring.
+const tableWStringWriteSource = `
+func tableUtf16UnitsValid(units []uint16) bool {
+ for i:=0;i<len(units);i++ {
+  u:=units[i]
+  if u==0 || u>=0xdc00 && u<=0xdfff {return false}
+  if u>=0xd800 && u<=0xdbff {
+   i++;if i>=len(units) || units[i]<0xdc00 || units[i]>0xdfff {return false}
+  }
+ }
+ return true
+}
 `

@@ -551,6 +551,68 @@ func tableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 	return false
 }
 
+// tableFixedUtf8Ok is the WRITER's string rule over the used bytes: well-formed
+// UTF-8 with no zero byte, the answer unicode/utf8.Valid and a NUL scan give
+// (docs/FIXED-FORM-ALGORITHM.md §3.1, the same rule tableFixedTextIllFormed
+// holds on read). Text is overwhelmingly ASCII, so it takes eight bytes a step
+// while they are: a byte at or past 0x80 sends the rest to utf8.Valid, which
+// starts at a character boundary because everything before it was ASCII, and a
+// zero byte refuses at once. The result is identical to the two-pass spelling.
+func tableFixedUtf8Ok(p []byte) bool {
+	i := 0
+	for ; i+8 <= len(p); i += 8 {
+		x := tableFixedGet64(p[i:])
+		if (x-0x0101010101010101)&^x&0x8080808080808080 != 0 {
+			return false
+		}
+		if x&0x8080808080808080 != 0 {
+			return tableFixedUtf8Rest(p[i:])
+		}
+	}
+	for ; i < len(p); i++ {
+		if p[i] == 0 {
+			return false
+		}
+		if p[i] >= 0x80 {
+			return tableFixedUtf8Rest(p[i:])
+		}
+	}
+	return true
+}
+
+func tableFixedUtf8Rest(p []byte) bool {
+	if !utf8.Valid(p) {
+		return false
+	}
+	for _, c := range p {
+		if c == 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// tableFixedUnitsIllFormed is the WRITER's twin of the wide arm above, over the
+// caller's own wstring storage: the used units are paired UTF-16 with no zero
+// unit (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5).
+func tableFixedUnitsIllFormed(units []uint16) bool {
+	for i := 0; i < len(units); i++ {
+		u := units[i]
+		switch {
+		case u == 0:
+			return true
+		case u >= 0xD800 && u <= 0xDBFF:
+			if i+1 >= len(units) || units[i+1] < 0xDC00 || units[i+1] > 0xDFFF {
+				return true
+			}
+			i++
+		case u >= 0xDC00 && u <= 0xDFFF:
+			return true
+		}
+	}
+	return false
+}
+
 // tableFixedTextRefusal is the text CONTENT refusal as a PRE-SCAN of the plan's
 // text entries, run before the caller's storage is touched. It walks each text
 // entry under its own guard, clamps its length exactly as the scatter will, and

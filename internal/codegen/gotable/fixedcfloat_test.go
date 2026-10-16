@@ -139,16 +139,20 @@ fixed table Reading
 
 // writeOne writes one record holding the float32 whose BITS are `bits`, so a
 // NaN payload and a negative zero are spelled exactly and not through a
-// literal a compiler may fold.
+// literal a compiler may fold. The bits are FORGED into the saved image rather
+// than set on the value: the Go fixed writer refuses a value off its declared
+// min/max (docs/FIXED-FORM-ALGORITHM.md §3.1), and the cases below that hold a
+// value past the old range are about what a FOREIGN writer's bytes do to the
+// reader, which the writer's own contract no longer lets this unit produce.
 func writeOne(bits uint32) string {
 	return fmt.Sprintf(`
 	var r Reading
 	ReadingReset(&r)
-	r.V = math.Float32frombits(%#x)
 	buf := make([]byte, ReadingFixedMeasure(1))
 	if ReadingFixedSave([]Reading{r}, buf) < 0 {
 		t.Fatal("save")
 	}
+	tableFixedPut32(buf[len(buf)-ReadingFixedRecordBytes+8:], %#x)
 	if err := os.WriteFile(out, buf, 0o600); err != nil {
 		t.Fatal(err)
 	}`, bits)
