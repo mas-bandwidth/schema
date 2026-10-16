@@ -112,7 +112,11 @@ finding by rule id and file before it fails:
   compiles. It is red: the table emitters write compact expressions
   (`if(a<=b)`, `f(x,y)`) where the formatter writes spaced ones, which is
   152,044 WHITESPACE findings in 295 units, most of them in the `*Region.cs`
-  and `*Table.cs` units (issue #547). The analyzer half is clean.
+  and `*Table.cs` units (issue #547). The analyzer half is clean. Because it
+  is red it is not yet required: it is reached from `make cs-not-yet-required`,
+  not from `make test-cs`, until the card
+  `cs-generated-table-units-pass-dotnet-format` fixes the table emitters and
+  moves it into `test-cs`.
 
 Both gates skip when the pinned `dotnet` is not on PATH, and fail instead under
 `SCHEMA_REQUIRE_CORPUS=1`.
