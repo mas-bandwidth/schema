@@ -3,7 +3,8 @@ package tablenames
 // Dart is the Dart table backend (internal/codegen/darttable).
 //
 // The Dart backend emits the BLOCK read half and its fill path's begin, the
-// COOK read half and carried fixed-root writer, the VARIABLE wire
+// COOK read half and its WRITE half (§7.6: Cook and CookMeasure for a fixed
+// root and for a variable graph of pointers and blobs), the VARIABLE wire
 // (form byte 1) for the unit it owns, the FIXED wire (form byte 3) and the
 // MESSAGE form's announcement (form byte 2), so this registry holds the
 // accelerators' and the wire runtimes' library-scope names. Where a runtime
@@ -21,6 +22,7 @@ func init() {
 		Name{Name: "TableBlockRefusal", What: "the block fill path's refusal, by name: the array, the count and the declared maximum it violates (§19.1)"},
 		Name{Name: "TableBlockByteOrder", What: "this build's byte order, as the prologue carries it", RustConst: true},
 		Name{Name: "TableCookWriteReport", What: "the cook writer refusal using the reference leg's named reasons (§7.6)"},
+		Name{Name: "TableCookGraph", What: "the variable cook writer's walk state: where each numbered node landed, and the output (§7.6)"},
 		Name{Name: "TableCookMagic", What: "the cooked header's magic, and the byte-order check with it", RustConst: true},
 		Name{Name: "TableCookByteOrder", What: "this build's byte order, as a cooked header records it", RustConst: true},
 		Name{Name: "TableCookMaxAlign", What: "the greatest region alignment a cooked header may name", RustConst: true},

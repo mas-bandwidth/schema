@@ -2,13 +2,19 @@ package darttable
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// emitCookWriteFixed writes §7.6's fixed-root half. Variable graphs remain the
-// next part of the same stage; this helper makes no claim for their surface.
+// emitCookWriteFixed writes §7.6's fixed-root half, and hands a variable root
+// to emitCookWriteVariable (the graph half, the same stage).
 func (g *cookGen) emitCookWriteFixed(st *ir.Struct) {
+	if ir.VariableTables(g.unit)[st.Name] {
+		g.emitCookWriteVariable(st)
+		return
+	}
 	if why := fixedRefusal(st); why != "" {
 		g.pf("  // %s has no fixed-root cook writer here: %s.\n", st.Name, why)
 		return
@@ -156,11 +162,302 @@ func (g *cookGen) emitCookFixedScalar(f *ir.Field, expr, at string, width int64,
 	g.pf("%s}\n", ind)
 }
 
+// emitCookWriteVariable writes §7.6's VARIABLE-CLASS cook: the region of a
+// graph, byte for byte what `schema cook` writes, in either byte order.
+//
+// THE NODE ORDER IS §3.1's NUMBERING, taken from the wire library's own
+// <name>Number over the value, so the cook and the wire can never number one
+// graph two ways: the root is node 1, each node is numbered on first visit
+// before its next sibling field, and a node two references reach is ONE node
+// written once (graph_shared's five nodes for eight references). A blob
+// (`*string`, `*bytes`) is a node of its own reserved type id.
+//
+// THE REGION (§7.1, §7.6): each node at its own alignment in numbering order —
+// a record at its ABI size, a blob as a u32 length, four zero bytes and its
+// bytes (a string one more, the terminator) — the data part rounded to the
+// region's alignment, and then one attribution pair (offset, type id) per
+// node. A reference slot holds the signed self-relative delta from the slot to
+// its target, zero for null (§6.3).
+//
+// MEASURE BEFORE WRITE: the same walk runs with no output first, and every
+// value check runs in it, so a refused write changes no byte of the caller's
+// buffer. A buffer shorter than the measured extent is refused as
+// `invalid_value`, the reference leg's TableRefuseInvalidValue
+// (internal/codegen/gotable/cookwrite.go), and a cyclic graph as
+// `data_cycle`, its TableRefuseDataCycle — never a new word.
+func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
+	if why := g.variableCookRefusal(st); why != "" {
+		g.pf("  // %s has no variable cook writer here: %s.\n", st.Name, why)
+		return
+	}
+	if g.prefixed == nil {
+		g.prefixed = map[string]string{}
+	}
+	g.prefixed[runtimeHome(g.unit)+"Wire.dart"] = "wire"
+	n := st.Name
+	var records []string
+	cookWalk(g.unit, n, func(name string, _ *ir.MemberLayout) { records = append(records, name) })
+	g.pf("  // THE VARIABLE COOK (docs/SPEC-TABLES.md §7.6): the extent, measured by the\n")
+	g.pf("  // walk the write repeats; negative when the value is refused.\n")
+	g.pf("  static int cookMeasure(wire.%s value, {TableCookWriteReport? report}) =>\n", n)
+	g.pf("      _writeRegion(value, null, Endian.little, report);\n\n")
+	g.pf("  // Measure before write: a refusal changes no byte of output (§7.6).\n")
+	g.pf("  static bool cook(\n    wire.%s value,\n    Uint8List output,\n    Endian order, {\n    TableCookWriteReport? report,\n  }) => _writeRegion(value, output, order, report) >= 0;\n\n", n)
+	g.pf("  static int _writeRegion(\n    wire.%s value,\n    Uint8List? output,\n    Endian order,\n    TableCookWriteReport? report,\n  ) {\n", n)
+	g.pf("    if (report != null) report.reason = 'ok';\n")
+	g.pf("    if (order != Endian.little && order != Endian.big) {\n")
+	g.pf("      if (report != null) report.reason = 'invalid_value';\n      return -1;\n    }\n")
+	g.pf("    // §3.1's numbering, the wire's own: node 1 is the root.\n")
+	g.pf("    final s = wire.WireState();\n    s.indexRoot(value);\n")
+	g.pf("    try {\n      wire.%sNumber(s, value, <Object>{value});\n    } on StateError {\n", dartName(n))
+	g.pf("      if (report != null) report.reason = 'data_cycle';\n      return -1;\n    }\n")
+	g.pf("    final count = s.nodes.length + 1;\n")
+	g.pf("    final ids = List<int>.filled(count, 0);\n")
+	g.pf("    final c = TableCookGraph(order, count, s.indexOf, s.blobIndex);\n")
+	g.pf("    var data = 0;\n    var align = %d;\n", ir.RegionAlignFloor)
+	g.pf("    for (var i = 0; i < count; i++) {\n")
+	g.pf("      final Object? node = i == 0 ? value : s.nodeObjs[i - 1];\n")
+	g.pf("      final id = i == 0 ? %s : s.nodeTypes[i - 1];\n", dartU64Literal(tableWireId(st)))
+	g.pf("      ids[i] = id;\n")
+	g.pf("      var size = 0;\n      var alignment = 8;\n")
+	g.pf("      if (node == null) {\n")
+	g.pf("        size = 8 + s.nodes[i - 1].length;\n")
+	g.pf("        if (id == %s) size++;\n", dartU64Literal(ir.StringWireTypeId))
+	g.pf("      } else {\n")
+	g.pf("        switch (id) {\n")
+	for _, r := range records {
+		rs := cookMember(g.unit, r)
+		ml := ir.RecordLayout(g.unit, rs)
+		g.pf("          case %s:\n", dartU64Literal(tableWireId(rs)))
+		g.pf("            size = %d;\n            alignment = %d;\n", ml.Size, ml.Align)
+	}
+	g.pf("        }\n")
+	g.pf("        if (!_writeNode(id, node, c, 0)) {\n")
+	g.pf("          if (report != null) report.reason = 'invalid_value';\n          return -1;\n        }\n")
+	g.pf("      }\n")
+	g.pf("      if (alignment > align) align = alignment;\n")
+	g.pf("      data = (data + alignment - 1) & -alignment;\n")
+	g.pf("      c.offsets[i] = data;\n      data += size;\n    }\n")
+	g.pf("    data = (data + align - 1) & -align;\n")
+	g.pf("    final total = %d + data + count * 16;\n", cookHeaderBytes)
+	g.pf("    if (output == null) return total;\n")
+	g.pf("    if (output.length < total) {\n")
+	g.pf("      if (report != null) report.reason = 'invalid_value';\n      return -1;\n    }\n")
+	g.pf("    output.fillRange(0, total, 0);\n")
+	g.pf("    final view = ByteData.sublistView(output);\n")
+	g.pf("    c.out = view;\n")
+	g.pf("    view.setUint64(0, tableCookMagic, order);\n")
+	g.pf("    view.setUint64(8, tableBuildVersion, order);\n")
+	g.pf("    view.setUint64(16, order == Endian.little ? 1 : 2, order);\n")
+	g.pf("    view.setUint64(24, data, order);\n")
+	g.pf("    view.setUint64(32, count * 16, order);\n")
+	g.pf("    view.setUint64(40, align, order);\n")
+	g.pf("    for (var i = 0; i < count; i++) {\n")
+	g.pf("      final at = %d + c.offsets[i];\n", cookHeaderBytes)
+	g.pf("      final Object? node = i == 0 ? value : s.nodeObjs[i - 1];\n")
+	g.pf("      if (node == null) {\n")
+	g.pf("        final blob = s.nodes[i - 1];\n")
+	g.pf("        view.setUint32(at, blob.length, order);\n")
+	g.pf("        output.setRange(at + 8, at + 8 + blob.length, blob);\n")
+	g.pf("      } else {\n")
+	g.pf("        _writeNode(ids[i], node, c, at);\n")
+	g.pf("      }\n")
+	g.pf("      view.setUint64(%d + data + i * 16, c.offsets[i], order);\n", cookHeaderBytes)
+	g.pf("      view.setUint64(%d + data + i * 16 + 8, ids[i], order);\n", cookHeaderBytes)
+	g.pf("    }\n    return total;\n  }\n\n")
+	// _writeRegion and _writeNode are spelled outside the `_cook<Table>` space
+	// the record writers take, so no table name can collide with them (§11).
+	g.pf("  // One node of the graph by its type id; out null measures (§7.6).\n")
+	g.pf("  static bool _writeNode(int id, Object node, TableCookGraph c, int at) {\n")
+	g.pf("    switch (id) {\n")
+	for _, r := range records {
+		g.pf("      case %s:\n", dartU64Literal(tableWireId(cookMember(g.unit, r))))
+		g.pf("        return _cook%s(node as wire.%s, c, at);\n", r, r)
+	}
+	g.pf("    }\n    return false;\n  }\n\n")
+	for _, r := range records {
+		g.emitCookVariableRecord(r)
+	}
+	g.trimBlank()
+}
+
+// variableCookRefusal names the first storage the variable cook writer does
+// not carry, or "" when it carries the root's whole closure (§7.2's storage
+// kinds: scalar, record, inline string, reference, blob).
+func (g *cookGen) variableCookRefusal(st *ir.Struct) string {
+	why := ""
+	cookWalk(g.unit, st.Name, func(name string, _ *ir.MemberLayout) {
+		rs := cookMember(g.unit, name)
+		if why != "" || rs == nil {
+			return
+		}
+		if !rs.IsTable {
+			why = name + " is a `type`, whose Dart class the variable wire library does not carry"
+			return
+		}
+		for _, f := range rs.Fields {
+			if !variableCookField(f) {
+				why = fmt.Sprintf("%s.%s's storage (%s) is not carried by the variable cook writer yet (docs/SPEC-TABLES.md §7.2)", name, f.Name, tableFieldTypeName(f))
+				return
+			}
+		}
+	})
+	return why
+}
+
+func variableCookField(f *ir.Field) bool {
+	if f.Guard != "" || f.Type.Optional || f.KeyEnum != "" || f.IsMap() || f.IsList() {
+		return false
+	}
+	if f.Type.Blob() {
+		return f.Array == ir.ArrayNone
+	}
+	if f.Array != ir.ArrayNone && f.Array != ir.ArrayCounted {
+		return false
+	}
+	switch f.Type.Kind {
+	case ir.TBool, ir.TBits, ir.TFloat32, ir.TFloat64:
+		return true
+	case ir.TString, ir.TBytes:
+		return f.Array == ir.ArrayNone
+	case ir.TInt:
+		return f.Type.Width != 128
+	case ir.TNamed:
+		return tableRef(f) != nil
+	}
+	return false
+}
+
+// emitCookVariableRecord writes one record of the graph where it lies, with
+// c.out null for the measuring pass, which runs every check (§7.6).
+func (g *cookGen) emitCookVariableRecord(name string) {
+	rs := cookMember(g.unit, name)
+	ml := ir.RecordLayout(g.unit, rs)
+	outer := g.body
+	g.body = strings.Builder{}
+	for _, fl := range ml.Fields {
+		g.emitCookVariableField(fl.Field, fl.Offset, "value."+fieldMember(fl.Field), "    ")
+	}
+	fields := g.body.String()
+	g.body = outer
+	g.pf("  // The shared ABI's field pieces at the cook's offsets (§7.2).\n")
+	g.pf("  static bool _cook%s(wire.%s value, TableCookGraph c, int at) {\n", name, name)
+	if cookUsesOut.MatchString(fields) {
+		g.pf("    final out = c.out;\n")
+	}
+	if cookUsesOrder.MatchString(fields) {
+		g.pf("    final order = c.order;\n")
+	}
+	g.pf("%s", fields)
+	g.pf("    return true;\n  }\n\n")
+}
+
+// the two walk-state locals a record body may read
+var (
+	cookUsesOut   = regexp.MustCompile(`\bout\b`)
+	cookUsesOrder = regexp.MustCompile(`\border\b`)
+)
+
+func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind string) {
+	pieces := ir.FieldPieces(g.unit, f, offset)
+	switch {
+	case f.Type.Blob():
+		if f.Type.Kind == ir.TString {
+			g.needConvert = true
+			g.pf("%sfinal %s = %s;\n", ind, dartName(f.Name)+"Text", expr)
+			g.pf("%sc.blob(\n%s  at + %d,\n%s  %s,\n%s  %s == null ? null : utf8.encode(%s),\n%s);\n",
+				ind, ind, offset, ind, dartU64Literal(ir.StringWireTypeId), ind, dartName(f.Name)+"Text", dartName(f.Name)+"Text", ind)
+		} else {
+			g.pf("%sc.blob(at + %d, %s, %s);\n", ind, offset, dartU64Literal(ir.BytesWireTypeId), expr)
+		}
+	case f.Array == ir.ArrayCounted:
+		bound := f.ArrayBound
+		stride := pieces[0].Size / bound
+		ref := tableRef(f)
+		g.pf("%sif (%s.length > %d) return false;\n", ind, expr, bound)
+		g.pf("%sout?.setInt32(at + %d, %s.length, order);\n", ind, pieces[1].Offset, expr)
+		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
+		switch {
+		case ref != nil && f.Type.Pointer:
+			g.pf("%s  c.ref(at + %d + i * %d, i < %s.length ? %s[i] : null);\n", ind, offset, stride, expr, expr)
+		case ref != nil:
+			// a DEAD slot holds the element's declared defaults, as the
+			// reference's storage does (§7.6)
+			g.pf("%s  final e = i < %s.length ? %s[i] : wire.%s();\n", ind, expr, expr, ref.Name)
+			g.pf("%s  if (!_cook%s(e, c, at + %d + i * %d)) return false;\n", ind, ref.Name, offset, stride)
+		default:
+			zero := "0"
+			switch f.Type.Kind {
+			case ir.TBool:
+				zero = "false"
+			case ir.TFloat32, ir.TFloat64:
+				zero = "0.0"
+			}
+			g.pf("%s  final e = i < %s.length ? %s[i] : %s;\n", ind, expr, expr, zero)
+			g.emitCookFixedScalar(f, "e", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
+		}
+		g.pf("%s}\n", ind)
+	case isPointerTable(f):
+		g.pf("%sc.ref(at + %d, %s);\n", ind, offset, expr)
+	case isByValueTable(f):
+		g.pf("%sif (!_cook%s(%s, c, at + %d)) return false;\n", ind, tableRef(f).Name, expr, offset)
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		g.needConvert = true
+		text := dartName(f.Name) + "Text"
+		g.pf("%sfinal %s = utf8.encode(%s);\n", ind, text, expr)
+		g.pf("%sif (%s.length > %d) return false;\n", ind, text, f.Type.Size)
+		g.pf("%sif (out != null) {\n", ind)
+		g.pf("%s  out.setInt32(at + %d, %s.length, order);\n", ind, pieces[1].Offset, text)
+		g.pf("%s  for (var i = 0; i < %s.length; i++) {\n", ind, text)
+		g.pf("%s    out.setUint8(at + %d + i, %s[i]);\n", ind, offset, text)
+		g.pf("%s  }\n%s}\n", ind, ind)
+	default:
+		g.emitCookFixedScalar(f, expr, fmt.Sprintf("at + %d", offset), pieces[0].Size, ind)
+	}
+}
+
 const dartCookWriteReport = `
 // §7.6's write refusals use the reference leg's words, never a new vocabulary.
 final class TableCookWriteReport {
   String reason = 'ok';
-` + dartCookFloat32Writer + "}\n"
+` + dartCookFloat32Writer + "}\n" + dartCookGraph
+
+// dartCookGraph is the variable cook's walk state (§7.6): the target order,
+// where each numbered node landed, the numbering's two lookups, and the
+// output, which stays null while the walk only measures.
+const dartCookGraph = `
+// §7.6's variable cook in progress: where each node of §3.1's numbering
+// landed, and the output (null while the walk measures).
+final class TableCookGraph {
+  final Endian order;
+  final List<int> offsets;
+  final int Function(Object node) indexOf;
+  final int Function(int id, List<int> bytes) blobIndex;
+  ByteData? out;
+
+  TableCookGraph(this.order, int count, this.indexOf, this.blobIndex)
+    : offsets = List<int>.filled(count, 0);
+
+  // A reference slot holds the signed delta from the slot to its target node,
+  // and a null is a delta of zero (§6.3).
+  void ref(int slot, Object? node) {
+    final out = this.out;
+    if (out == null) return;
+    var delta = 0;
+    if (node != null) delta = 64 + offsets[indexOf(node) - 1] - slot;
+    out.setInt64(slot, delta, order);
+  }
+
+  // A blob is a node of its own reserved type id, numbered by its bytes (§3.1).
+  void blob(int slot, int id, List<int>? bytes) {
+    final out = this.out;
+    if (out == null) return;
+    var delta = 0;
+    if (bytes != null) delta = 64 + offsets[blobIndex(id, bytes) - 1] - slot;
+    out.setInt64(slot, delta, order);
+  }
+}
+`
 
 const dartCookFloat32Writer = `
   static final Float32List _cookFloat32 = Float32List(2);
@@ -179,5 +476,4 @@ const dartCookFloat32Writer = `
     if (mantissa == 0) mantissa = 0x400000;
     return ((bits >>> 63) << 31) | 0x7f800000 | mantissa;
   }
-
 `
