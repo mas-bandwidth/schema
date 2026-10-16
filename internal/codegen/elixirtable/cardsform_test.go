@@ -1,7 +1,6 @@
 package elixirtable
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -34,9 +33,6 @@ func TestCardConstructsAreNotRefused(t *testing.T) {
 		&ir.Field{Name: "body", Type: ir.FieldType{Kind: ir.TString, Pointer: true}},
 	)
 
-	if err := refuseCardUnsupportedVariableConstructs(unit); err != nil {
-		t.Errorf("card constructs were refused by the boundary: %v", err)
-	}
 	if _, err := Generate(unit); err != nil {
 		t.Errorf("card constructs were refused: %v", err)
 	}
@@ -66,52 +62,5 @@ func TestFixedUnitWithRefusedVariableConstructStillGenerates(t *testing.T) {
 
 	if _, err := Generate(unit); err != nil {
 		t.Fatalf("a fixed unit with a refused variable table was refused whole: %v", err)
-	}
-}
-
-// TestOtherVariableConstructsAreRefusedByName pins docs/SPEC-TABLES.md §11:
-// every variable-class construct outside the card slice is refused at
-// generation, and the refusal names the table, the field and the construct.
-// It is the boundary the card draws: never mis-encoded, never silently
-// dropped.
-func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
-	t.Parallel()
-
-	enum := &ir.Enum{Name: "Tier"}
-	union := &ir.Union{Name: "Body"}
-
-	cases := []struct {
-		name     string
-		field    *ir.Field
-		keywords []string
-	}{
-		{"map", &ir.Field{Name: "by_key", MapEntry: &ir.Struct{Name: "Entry"}, Type: ir.FieldType{Kind: ir.TMap}}, []string{"map"}},
-		{"optional", &ir.Field{Name: "maybe", Type: ir.FieldType{Kind: ir.TInt, Width: 32, Optional: true}}, []string{"optional"}},
-		{"enum_keyed_array", &ir.Field{Name: "per_tier", KeyEnum: "Tier", KeyEnumRef: enum, Array: ir.ArrayFixed, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TNamed, Ref: enum}}, []string{"enum-keyed"}},
-		{"wide_int", &ir.Field{Name: "wide", Type: ir.FieldType{Kind: ir.TInt, Width: 128}}, []string{"128-bit"}},
-		{"fixed", &ir.Field{Name: "ratio", Type: ir.FieldType{Kind: ir.TFixed, Width: 16}}, []string{"fixed-point"}},
-		{"union_arm", &ir.Field{Name: "body", Type: ir.FieldType{Kind: ir.TNamed, Ref: union}}, []string{"union arms"}},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			err := refuseCardUnsupportedVariableConstructs(cardUnit(tc.field))
-			if err == nil {
-				t.Fatalf("%s: expected a refusal, got none", tc.name)
-			}
-			msg := err.Error()
-			for _, want := range append([]string{"Card", tc.field.Name}, tc.keywords...) {
-				if !strings.Contains(msg, want) {
-					t.Errorf("%s: refusal %q does not name %q", tc.name, msg, want)
-				}
-			}
-			// THE BOUNDARY IS THE BACKEND'S, not only the helper's: Generate
-			// must refuse the same unit, so a hook that was never wired is a
-			// green helper with a backend that still mis-encodes.
-			if _, err := Generate(cardUnit(tc.field)); err == nil {
-				t.Errorf("%s: Generate accepted a construct outside the card slice", tc.name)
-			}
-		})
 	}
 }

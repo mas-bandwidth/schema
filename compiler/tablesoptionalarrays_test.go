@@ -102,6 +102,18 @@ func TestOptionalArraysCarriers(t *testing.T) {
 			}
 			continue
 		}
+		if target == "elixir" {
+			// the variable form carries the construct (docs/SPEC-TABLES.md
+			// §2.3, §2.6): one Table.ex codec per unit
+			files, err := c.Generate(u, target, Options{})
+			if err != nil {
+				t.Fatalf("--lang elixir refused the supported shape: %v", err)
+			}
+			if _, ok := files["Table.ex"]; !ok {
+				t.Fatal("--lang elixir emitted no Table.ex")
+			}
+			continue
+		}
 		t.Run(target, func(t *testing.T) {
 			_, err := c.Generate(u, target, Options{})
 			if err == nil {
