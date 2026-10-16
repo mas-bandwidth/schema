@@ -570,6 +570,7 @@
         "packet-wide-elixir-negative-control",
         "tables-elixir-accessor-negative-control",
         "tables-elixir-block-lead-negative-control",
+        "tables-elixir-emit-format-negative-control",
         "tables-elixir-fixed-form-negative-control",
         "tables-elixir-fuzz-negative-control",
         "tables-elixir-runtime-pin-negative-control",
