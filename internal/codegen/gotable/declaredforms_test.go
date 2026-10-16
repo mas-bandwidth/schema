@@ -50,3 +50,29 @@ func hasFormFile(files map[string][]byte, suffix string) bool {
 	}
 	return false
 }
+
+// TestDeclaredFormUnitsCompile proves a unit whose tables declare forms still
+// compiles: only the declared forms' files are emitted, and the wire table file
+// and view neither reference an omitted form's symbols nor drop a core type.
+func TestDeclaredFormUnitsCompile(t *testing.T) {
+	t.Parallel()
+	const probe = `package probe
+import "testing"
+func TestNoop(t *testing.T) {}
+`
+	for _, dec := range []string{
+		"wire", "json", "cook", "block",
+		"wire,cook", "wire,json", "json,cook",
+	} {
+		dec := dec
+		t.Run(dec, func(t *testing.T) {
+			t.Parallel()
+			runGenerated(t, `package probe
+table Pong | forms = "`+dec+`"
+{
+    x int32
+}
+`, probe)
+		})
+	}
+}

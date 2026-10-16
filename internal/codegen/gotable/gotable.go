@@ -384,6 +384,26 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			return nil, err
 		}
 		maps.Copy(out, texts)
+	} else {
+		// the wire runtime's region<->JSON bridges call the walk even when the
+		// text form's own file is not emitted (§2.12), so emit the walk alone in
+		// its own file to keep a declaring unit compiling
+		eng, err := jsonEngineFile(u, home)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, eng)
+	}
+	// the variable table file aliases each variable table to its row, and the
+	// cook and block forms are the ordinary providers; when neither supplies the
+	// rows for this unit, emit them alone so a declaring unit still compiles
+	// (§2.12). The default (every form) is untouched.
+	if !formAllowed(u, "cook") {
+		rows, err := generateRowsOnly(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, rows)
 	}
 	view, err := generateViewFile(u, closure, armSlots)
 	if err != nil {
