@@ -1369,3 +1369,35 @@ tables-java-variable-fixed-class: bin/schema
 		-count=1 -timeout 600s -v -run '^TestFixedClassOnTableWireJava$$'
 
 test-java: tables-java-variable-arms tables-java-variable-fixed-class
+
+# THE JAVA UNIT REGISTRY GATE (docs/SPEC-TABLES.md §8.3, §8.7), the C leg's
+# tables-c-view through the Java surface: for every VIEW_CORPUS unit, the
+# listing test/java-view/View.java prints from TableRegistry.unitView() must be
+# byte-identical to the compiler's own (internal/viewlisting). The printer names
+# no declaration; its one import line is rewritten to the unit's package. The
+# doc and tag annotations of every row are what hold the doc-tags cell, and the
+# NEGATIVE CONTROL damages one doc in a copy of tabledemo's listing and requires
+# the comparison to go red.
+.PHONY: tables-java-view
+tables-java-view: bin/schema test/java-view/View.java
+	@rm -rf build/java-view && mkdir -p build/java-view
+	@set -e; for entry in $(VIEW_CORPUS); do \
+		dir=$${entry%%:*}; pkg=$${entry##*:}; \
+		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
+		./bin/schema generate --lang java --out build/java-view/generated/$$dir $$source > build/java-view/$$pkg.generate.log 2>&1 || { cat build/java-view/$$pkg.generate.log; exit 1; }; \
+		mkdir -p build/java-view/src-$$pkg build/java-view/classes-$$pkg; \
+		sed "s/^import tabledemo\.\*; \/\/ UNIT$$/import $$pkg.*; \/\/ UNIT/" test/java-view/View.java > build/java-view/src-$$pkg/View.java; \
+		grep -q "^import $$pkg\.\*; // UNIT$$" build/java-view/src-$$pkg/View.java || { echo "tables-java-view: the unit import was not rewritten for $$pkg"; exit 1; }; \
+		$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-view/classes-$$pkg \
+			build/java-view/generated/$$dir/*.java build/java-view/src-$$pkg/View.java; \
+		$(JAVA) -cp build/java-view/classes-$$pkg View > build/java-view/$$pkg.listing; \
+	done
+	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/java-view" go test -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
+	@mkdir -p build/java-view/negative
+	@sed '0,/ doc=[^ ]/s/ doc=\([^ ]\)/ doc=X\1/' build/java-view/tabledemo.listing > build/java-view/negative/tabledemo.listing
+	@if cmp -s build/java-view/tabledemo.listing build/java-view/negative/tabledemo.listing; then echo "tables-java-view negative control damaged nothing"; exit 1; fi
+	@if SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/java-view/negative" SCHEMA_VIEW_LISTING_UNITS=tabledemo go test -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > build/java-view/negative.log 2>&1; then echo "Java UnitView negative control escaped"; exit 1; fi
+	@grep -q "listing is not the compiler's" build/java-view/negative.log
+	@echo "Java UnitView: $(words $(VIEW_CORPUS)) units match the compiler's listing; a damaged doc is detected"
+
+test-java: tables-java-view
