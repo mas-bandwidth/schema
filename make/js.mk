@@ -1024,3 +1024,59 @@ packet-wide-js-negative-control: packet-wide-js
 	@echo 'packet wide JS negative control: removed pairing fails both tiers in bit-flip agreement'
 
 test-js: packet-wide-js packet-wide-js-negative-control
+
+# ---------------------------------------------------------------------------
+# THE UNIT REGISTRY'S JAVASCRIPT LEG (docs/SPEC-TABLES.md §8.7): the same
+# registry listing oracle as the reference, through the JavaScript view. For
+# each $(VIEW_CORPUS) unit the leg generates the unit, runs
+# test/js-view/view_main.mjs over its <Home>View.js — a program that holds the
+# view and nothing else — into build/js-view/<pkg>.listing, then holds every
+# listing byte for byte against the compiler's own (internal/viewlisting).
+#
+# JS_VIEW_REFUSED names the corpus units this leg's generation still REFUSES BY
+# NAME: maps and wide put a wstring(N) in a table closure, and the compiler
+# refuses wide table text for js (compiler/widetext.go) until
+# js-carries-fixed-point-and-wide-text-on-the-table-wire lands. The gate is not
+# silent about them: each listed unit must still refuse with exactly that
+# refusal (a unit that now generates fails the target until it leaves the
+# list), any other generation failure is a red, and the comparison is narrowed
+# to the generated units by SCHEMA_VIEW_LISTING_UNITS, the test's own knob.
+# ---------------------------------------------------------------------------
+JS_VIEW_REFUSED := maps wide
+
+.PHONY: tables-js-view
+tables-js-view: bin/schema test/js-view/view_main.mjs
+	@rm -rf build/js-view
+	@mkdir -p build/js-view
+	@set -e; units=""; for entry in $(VIEW_CORPUS); do \
+		dir=$${entry%%:*}; pkg=$${entry##*:}; \
+		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
+		refused=no; for r in $(JS_VIEW_REFUSED); do if [ "$$r" = "$$dir" ]; then refused=yes; fi; done; \
+		if [ $$refused = yes ]; then \
+			if ./bin/schema generate --lang js --out build/js-view/$$dir $$source > build/js-view/$$dir.refusal 2>&1; then \
+				echo "tables-js-view: $$dir now generates for js; take it out of JS_VIEW_REFUSED (make/js.mk)"; exit 1; fi; \
+			grep -Fq 'table wide text is' build/js-view/$$dir.refusal || { echo "tables-js-view: $$dir refused for another reason:"; cat build/js-view/$$dir.refusal; exit 1; }; \
+			echo "tables-js-view: $$dir REFUSED BY NAME at generation (wide table text, compiler/widetext.go): not listed"; \
+			continue; \
+		fi; \
+		./bin/schema generate --lang js --out build/js-view/$$dir $$source; \
+		$(NODE) test/js-view/view_main.mjs build/js-view/$$dir/*View.js > build/js-view/$$pkg.listing; \
+		units="$$units$${units:+,}$$pkg"; \
+	done; \
+	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/js-view" SCHEMA_VIEW_LISTING_UNITS="$$units" go test -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR -v; \
+	echo "JavaScript unit registry: $$(printf '%s\n' "$$units" | tr ',' '\n' | wc -l) of $(words $(VIEW_CORPUS)) units match the independent listing; refused by name: $(JS_VIEW_REFUSED)"
+
+# THE VIEW'S DESCRIPTORS (docs/SPEC-TABLES.md §8.1, §8.2): offsets, element
+# sizes, the vocabulary, docs and tags of the generated view, run under node
+# and held to the IR by TestUnitViewDescriptorsJavaScript.
+# SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE rather than a skip.
+.PHONY: tables-js-view-descriptors
+tables-js-view-descriptors:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestUnitViewDescriptorsJavaScript$$'
+	@echo 'tables JS view: every table and type described at the record layout, with its vocabulary, docs and tags'
+
+# THE TEXT FORM FOR EVERY TABLE (docs/SPEC-TABLES.md §16) rides the conformance
+# driver (test/conformance/js/main.mjs): json-read, json-write and json-hostile
+# answer every instance whose unit this leg generates, through `make conformance`.
+
+test-js: tables-js-view tables-js-view-descriptors

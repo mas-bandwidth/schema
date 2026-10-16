@@ -168,6 +168,12 @@ func refuseFileCollisions(u *ir.Unit) error {
 		bases[f.Base] = true
 	}
 	bases[runtimeHome(u)] = true
+	// the VIEW module (docs/SPEC-TABLES.md §8.5) is the runtime home's, so a
+	// schema file of that basename would be a second writer of it
+	if bases[viewBase(u)] {
+		return fmt.Errorf("schema file %s collides — the JS table emitter writes %s.js as the unit's view (docs/SPEC-TABLES.md §8.5); rename the file (docs/SPEC-TABLES.md §11)",
+			viewBase(u), viewBase(u))
+	}
 	for base := range bases {
 		for _, suffix := range []string{"Table", "Block", "Cook"} {
 			if bases[base+suffix] {
@@ -269,5 +275,8 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	if len(wide) > 0 && len(fixed) == 0 {
 		return nil, scope.Refusal
 	}
+	// THE VIEW (docs/SPEC-TABLES.md §8.2, §8.3, §8.5): every table and every
+	// type described, and the unit registry, in one module on the side.
+	maps.Copy(out, generateViewFile(u))
 	return out, nil
 }

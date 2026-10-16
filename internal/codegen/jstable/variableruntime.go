@@ -1624,17 +1624,61 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
       holder[key] = false;
       return true;
     case "float": {
+      // the float32 a decimal token names, correctly rounded from the token
+      // itself; x is the token's correctly-rounded double
+      const f32OfToken = (tok, x) => {
+        const f = Math.fround(x);
+        if (f === x || Number.isNaN(x)) { return f; }
+        const b = new DataView(new ArrayBuffer(8));
+        const step = (v, up) => {
+          if (v === Infinity) { return up ? Infinity : 3.4028234663852886e38; }
+          if (v === -Infinity) { return up ? -3.4028234663852886e38 : -Infinity; }
+          if (v === 0) { return up ? 1.401298464324817e-45 : -1.401298464324817e-45; }
+          b.setFloat32(0, v, true);
+          const u = b.getUint32(0, true);
+          b.setUint32(0, (v > 0) === up ? u + 1 : u - 1, true);
+          return b.getFloat32(0, true);
+        };
+        const lo = f < x ? f : step(f, false), hi = f < x ? step(f, true) : f;
+        const at = (v) => (v === Infinity ? 2 ** 128 : v === -Infinity ? -(2 ** 128) : v);
+        if (at(lo) + at(hi) !== 2 * x) { return f; } // not a tie: one rounding is the right one
+        // the tie: the sign of (token - x), both exact rationals
+        const m = /^(-?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(tok);
+        if (m === null) { return f; }
+        const e10 = Number(m[4] ?? "0") - (m[3] ?? "").length;
+        if (!Number.isFinite(e10) || Math.abs(e10) > 100000) { return f; }
+        let left = BigInt((m[2] || "0") + (m[3] ?? "")) * (m[1] === "-" ? -1n : 1n);
+        b.setFloat64(0, x, true);
+        const hiw = b.getUint32(4, true), low = b.getUint32(0, true);
+        const ex = (hiw >>> 20) & 0x7ff;
+        let mant = (BigInt(hiw & 0xfffff) << 32n) | BigInt(low);
+        let e2 = ex === 0 ? -1074 : ex - 1075;
+        if (ex !== 0) { mant |= 1n << 52n; }
+        let right = x < 0 ? -mant : mant;
+        if (e10 >= 0) { left *= 10n ** BigInt(e10); } else { right *= 10n ** BigInt(-e10); }
+        if (e2 >= 0) { right <<= BigInt(e2); } else { left <<= BigInt(-e2); }
+        if (left === right) { return f; } // exactly on the midpoint: ties-to-even, which fround is
+        return left > right ? hi : lo;
+      };
       const n = inp.number();
       if (n === null) { inp.bad = true; return false; }
       let x = Number(n.tok);
       // a magnitude the format cannot hold is the wrong shape for the kind
       if (!Number.isFinite(x)) { report.kindMismatch++; return true; }
+      let ranged = false;
       if (d.lo !== null) {
-        if (x < d.lo) { x = d.lo; report.clamped++; }
-        else if (x > d.hi) { x = d.hi; report.clamped++; }
+        if (x < d.lo) { x = d.lo; ranged = true; report.clamped++; }
+        else if (x > d.hi) { x = d.hi; ranged = true; report.clamped++; }
       }
       if (d.f32) {
-        x = Math.fround(x);
+        // ONE correctly-rounded conversion at the field's own width
+        // (internal/tabletext read.go placeFloat, strconv.ParseFloat(tok, 32);
+        // docs/SPEC-TABLES.md §16.2). Number() then Math.fround() rounds twice,
+        // and the two roundings part company exactly where the double lands ON
+        // a float32 rounding midpoint — the band between FLT_MAX and the
+        // midpoint above it among them — so a tie is broken by the exact
+        // decimal, compared with the double in integer arithmetic.
+        x = ranged ? Math.fround(x) : f32OfToken(n.tok, x);
         if (!Number.isFinite(x)) { report.kindMismatch++; return true; }
       }
       holder[key] = x;
@@ -1646,92 +1690,70 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
   return false;
 }
 
-// ParseWide + WideClamp (internal/tabletext/wide.go): exact decimal arithmetic
-// for 128-bit integers (kinds 18, 19) and fixed(W, F) (kinds 20..29).
+// ParseWide + placeWide + WideClamp (internal/tabletext/wide.go, read.go):
+// exact decimal arithmetic for 128-bit integers (kinds 18, 19) and fixed(W, F)
+// (kinds 20..29), docs/SPEC-TABLES.md §16.2. The token converts to the RAW
+// integer, value × 2^F, with no rounding: a value Q I.F cannot spell is the
+// wrong shape for the field, a kind mismatch, and nothing is placed (SPEC.md
+// §4.6's rule for a fixed default). A magnitude past the 128-bit domain of the
+// kind's signedness saturates and counts a clamp; the declared range clamps
+// after it, as for every bounded scalar (§4).
 function TableVariableTextWide(d, tok, holder, key, report) {
-  let s = tok;
-  let neg = false;
-  if (s[0] === "-") { neg = true; s = s.slice(1); }
+  let i = 0, neg = false;
+  if (tok[i] === "-" || tok[i] === "+") { neg = tok[i] === "-"; i++; }
+  const digit = () => i < tok.length && tok[i] >= "0" && tok[i] <= "9";
+  let intDigits = "", fracDigits = "";
+  while (digit()) { intDigits += tok[i++]; }
+  if (tok[i] === ".") { i++; while (digit()) { fracDigits += tok[i++]; } }
   let exp = 0;
-  const eAt = s.search(/[eE]/);
-  if (eAt >= 0) {
-    const expStr = s.slice(eAt + 1);
-    s = s.slice(0, eAt);
-    const eVal = Number(expStr);
-    if (!Number.isFinite(eVal) || Math.abs(eVal) > 1000) {
-      let x = neg ? d.dlo : d.dhi;
-      if (d.tlo !== null) {
-        if (x < d.tlo) { x = d.tlo; }
-        else if (x > d.thi) { x = d.thi; }
-      }
-      report.clamped++;
-      holder[key] = d.big ? x : Number(x);
+  if (tok[i] === "e" || tok[i] === "E") {
+    i++;
+    let expNeg = false;
+    if (tok[i] === "-" || tok[i] === "+") { expNeg = tok[i] === "-"; i++; }
+    while (digit()) { if (exp < 100000) { exp = exp * 10 + (tok.charCodeAt(i) - 48); } i++; }
+    if (expNeg) { exp = -exp; }
+  }
+  // the digits with the decimal point after POINT of them, leading and trailing zeros stripped
+  let digits = intDigits + fracDigits;
+  let point = intDigits.length + exp;
+  while (digits.length > 0 && digits[0] === "0") { digits = digits.slice(1); point--; }
+  digits = digits.replace(/0+$/, "");
+  const signed = d.dlo < 0n;
+  const lo = signed ? -(1n << 127n) : 0n, hi = signed ? (1n << 127n) - 1n : (1n << 128n) - 1n;
+  let raw = 0n, saturated = false;
+  if (digits.length > 0) {
+    // the decimal band (wideDecimalBand, 40): above it the value is past 2^128
+    // whatever the digits say, below it finer than any F can spell
+    if (point > 40) {
+      raw = neg ? lo : hi;
+      saturated = true;
+    } else if (point < -40) {
+      report.kindMismatch++;
       return true;
-    }
-    exp = eVal;
-  }
-  let digits = s;
-  let decPlaces = 0;
-  const dot = s.indexOf(".");
-  if (dot >= 0) {
-    digits = s.slice(0, dot) + s.slice(dot + 1);
-    decPlaces = s.length - dot - 1;
-  }
-  digits = digits.replace(/^0+/, "");
-  if (digits.length === 0) {
-    let x = 0n;
-    if (d.tlo !== null) {
-      if (x < d.tlo) { x = d.tlo; report.clamped++; }
-      else if (x > d.thi) { x = d.thi; report.clamped++; }
-    }
-    if (x < d.dlo) { x = d.dlo; report.clamped++; }
-    else if (x > d.dhi) { x = d.dhi; report.clamped++; }
-    holder[key] = d.big ? x : Number(x);
-    return true;
-  }
-  let num = BigInt(digits) * (1n << BigInt(d.frac));
-  let den = 1n;
-  const shift = exp - decPlaces;
-  if (shift >= 0) {
-    if (shift > 60) {
-      let x = neg ? d.dlo : d.dhi;
-      if (d.tlo !== null) {
-        if (x < d.tlo) { x = d.tlo; }
-        else if (x > d.thi) { x = d.thi; }
+    } else {
+      const scale = point - digits.length;
+      raw = BigInt(digits) << BigInt(d.frac);
+      if (scale >= 0) {
+        raw *= 10n ** BigInt(scale);
+      } else {
+        const den = 10n ** BigInt(-scale);
+        if (raw % den !== 0n) { report.kindMismatch++; return true; }
+        raw /= den;
       }
-      report.clamped++;
-      holder[key] = d.big ? x : Number(x);
-      return true;
+      if (neg) { raw = -raw; }
+      if (raw < lo) { raw = lo; saturated = true; } else if (raw > hi) { raw = hi; saturated = true; }
     }
-    num *= 10n ** BigInt(shift);
-  } else {
-    if (-shift > 60) {
-      let x = 0n;
-      if (d.tlo !== null) {
-        if (x < d.tlo) { x = d.tlo; report.clamped++; }
-        else if (x > d.thi) { x = d.thi; report.clamped++; }
-      }
-      holder[key] = d.big ? x : Number(x);
-      return true;
-    }
-    den = 10n ** BigInt(-shift);
   }
-  const q = num / den;
-  const r = num % den;
-  if (d.frac === 0 && r !== 0n) { report.kindMismatch++; return true; }
-  let mag = q;
-  if (r !== 0n) {
-    const twice = r * 2n;
-    if (twice > den || (twice === den && (q & 1n) === 1n)) { mag = q + 1n; }
-  }
-  let x = neg ? -mag : mag;
+  if (saturated) { report.clamped++; }
   if (d.tlo !== null) {
-    if (x < d.tlo) { x = d.tlo; report.clamped++; }
-    else if (x > d.thi) { x = d.thi; report.clamped++; }
+    if (raw < d.tlo) { raw = d.tlo; report.clamped++; }
+    else if (raw > d.thi) { raw = d.thi; report.clamped++; }
   }
-  if (x < d.dlo) { x = d.dlo; report.clamped++; }
-  else if (x > d.dhi) { x = d.dhi; report.clamped++; }
-  holder[key] = d.big ? x : Number(x);
+  // the storage landing: every fixed field declares a range inside its width,
+  // so this binds only a wide kind declaring none, whose domain is the 128 above
+  if (raw < d.dlo) { raw = d.dlo; report.clamped++; }
+  else if (raw > d.dhi) { raw = d.dhi; report.clamped++; }
+  holder[key] = d.big ? raw : Number(raw);
   return true;
 }
 
