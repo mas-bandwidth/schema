@@ -684,6 +684,7 @@ public final class Driver {
             case "messagedemo":
             case "scalars":
             case "widedemo":
+            case "tblscalars2":
             case "kind1":
             case "kind2":
                 return true;
@@ -692,9 +693,23 @@ public final class Driver {
         }
     }
 
-    private static VariableCodec variableCodec(String pkg, String root) throws ReflectiveOperationException {
-        if (!variablePkgCarried(pkg)) return null;
-        try { return new VariableCodec(pkg, root); }
+    // The manifest names a unit by its key; the emitted classes live in the
+    // unit's schema package. The two differ for tables/scalars (package
+    // scalardemo), test/tables/Scalars2.schema (package scalardemo2) and
+    // examples-wide (package wide), so the codec is looked up
+    // under the package, never under the unit key.
+    private static String variableUnitPackage(String unit) {
+        switch (unit) {
+            case "scalars": return "scalardemo";
+            case "widedemo": return "wide";
+            case "tblscalars2": return "scalardemo2";
+            default: return unit;
+        }
+    }
+
+    private static VariableCodec variableCodec(String unit, String root) throws ReflectiveOperationException {
+        if (!variablePkgCarried(unit)) return null;
+        try { return new VariableCodec(variableUnitPackage(unit), root); }
         catch (ClassNotFoundException | NoSuchMethodException absent) { return null; }
     }
 

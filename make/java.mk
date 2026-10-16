@@ -85,7 +85,7 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema
+build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema
 	@mkdir -p build/tables-generated-java
 	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit and the BYTE-BUFFER unit: their cook readers and
@@ -132,6 +132,10 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAP
 	./bin/schema generate --lang java --out build/tables-generated-java/k2 test/tables/K2.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/maps tables/maps
 	./bin/schema generate --lang java --out build/tables-generated-java/arms tables/arms
+	# scalars2 (package scalardemo2) is the later build's view of the wide-kind
+	# unit: the conformance report rows read scalars_*.bin through it, counting
+	# the kind mismatches and raw-scale clamps of docs/SPEC-TABLES.md §15.
+	./bin/schema generate --lang java --out build/tables-generated-java/scalars2 test/tables/Scalars2.schema
 	@touch $@
 
 # The Java twin of the C++ "no serialize include path" build: a generated
@@ -754,7 +758,7 @@ build-conformance-java: build/tables-generated-java/.stamp build/tables-generate
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
 		build/tables-generated-java/blobs/*.java \
 		build/tables-generated-java/maps/*.java build/tables-generated-java/arms/*.java \
-		build/tables-generated-java/scalars/*.java \
+		build/tables-generated-java/scalars/*.java build/tables-generated-java/scalars2/*.java \
 		build/tables-generated-java/native-messages/*.java build/tables-generated-java/native-wide/*.java \
 		build/tables-generated-java/block/*.java build/tables-generated-java/v1/*.java \
 		build/tables-generated-java/v2/*.java build/tables-generated-java/p1/*.java \
