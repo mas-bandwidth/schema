@@ -242,6 +242,30 @@ func TestText(t *testing.T) {
 			if n != -1 {
 				t.Errorf("text %s: the writer measured %d, want the refusal -1", c.name, n)
 			}
+			var sink [256]byte
+			if got := ReadingToJson(&v, sink[:]); got != -1 {
+				t.Errorf("text %s: ReadingToJson wrote %d, want the refusal -1", c.name, got)
+			}
+			// Pin each range independently so a nonfinite value in B [-1, 1] is
+			// refused by both ReadingToJsonMeasure and ReadingToJson even when
+			// A [0, 1] is finite, and vice versa.
+			var onlyA, onlyB Reading
+			ReadingReset(&onlyA)
+			onlyA.A = math.Float32frombits(c.in)
+			if got := ReadingToJsonMeasure(&onlyA); got != -1 {
+				t.Errorf("text %s A [0, 1]: ReadingToJsonMeasure = %d, want -1", c.name, got)
+			}
+			if got := ReadingToJson(&onlyA, sink[:]); got != -1 {
+				t.Errorf("text %s A [0, 1]: ReadingToJson = %d, want -1", c.name, got)
+			}
+			ReadingReset(&onlyB)
+			onlyB.B = math.Float32frombits(c.in)
+			if got := ReadingToJsonMeasure(&onlyB); got != -1 {
+				t.Errorf("text %s B [-1, 1]: ReadingToJsonMeasure = %d, want -1", c.name, got)
+			}
+			if got := ReadingToJson(&onlyB, sink[:]); got != -1 {
+				t.Errorf("text %s B [-1, 1]: ReadingToJson = %d, want -1", c.name, got)
+			}
 			continue
 		}
 		if n < 0 {
