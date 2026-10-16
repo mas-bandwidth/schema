@@ -954,13 +954,51 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 		return
 	}
 	g.fixedOwner = st
+	g.emitFixedClampCounterForm()
 	g.pf("// %s's read-side bounds.\n", st.Name)
-	g.pf("inline void %sFixedClampBody( %s & value, int32_t & clamped, int32_t & damaged )\n{\n", st.Name, st.Name)
+	g.pf("inline void %sFixedClampBody( %s & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )\n{\n", st.Name, st.Name)
 	g.pf("    (void) value; (void) clamped; (void) damaged;\n")
 	for _, f := range st.Fields {
 		g.emitFixedClampField(f, "value", 4)
 	}
 	g.pf("}\n\n")
+}
+
+// emitFixedClampCounterForm emits, once per header and guarded so a unit that
+// includes several headers defines it once, HOW THE CLAMP COUNTERS ARE HELD.
+//
+// THE COUNTER IS AN int32_t AND SO IS HALF THE RECORD. A body that takes
+// `int32_t & clamped` and stores through it may, as far as the compiler can
+// prove, be storing into the very field it tests next — so every field after a
+// count is reloaded, a counted array's own int32 count is reloaded on every
+// trip, and a loop over bounded elements does not vectorize. `__restrict` on
+// the two counter references says outright that a counter is never a field of
+// the value (Glenn, 2026-10-16).
+//
+// WHERE IT IS SPELLED IS MEASURED, NOT ASSUMED (docs/PERFORMANCE.md, "The clamp
+// counters"). Clang takes it, on x86-64 and on arm64 alike. GCC does not: on
+// g++ 13 the restrict form, a local accumulator stored once at the end, and
+// both were all SLOWER than the plain reference, so GCC keeps the plain form,
+// as do MSVC and every compiler not named — the plain form is correct
+// everywhere. A build may define TABLE_FIXED_COUNTER_RESTRICT itself to pin
+// either spelling. NEVER volatile: a counter is an ordinary value.
+func (g *tableGen) emitFixedClampCounterForm() {
+	if g.fixedClampFormEmitted {
+		return
+	}
+	g.fixedClampFormEmitted = true
+	g.pf("// HOW THE CLAMP COUNTERS ARE HELD (docs/PERFORMANCE.md, \"The clamp counters\").\n")
+	g.pf("// An int32_t counter may alias an int32_t field as far as the compiler can\n")
+	g.pf("// prove; __restrict says it never does. Spelled where it measured faster\n")
+	g.pf("// (clang, x86-64 and arm64); GCC measured slower with it, and GCC, MSVC and\n")
+	g.pf("// every compiler not named keep the plain reference, correct everywhere.\n")
+	g.pf("#if !defined( TABLE_FIXED_COUNTER_RESTRICT )\n")
+	g.pf("#if defined( __clang__ )\n")
+	g.pf("#define TABLE_FIXED_COUNTER_RESTRICT __restrict__\n")
+	g.pf("#else\n")
+	g.pf("#define TABLE_FIXED_COUNTER_RESTRICT\n")
+	g.pf("#endif\n")
+	g.pf("#endif\n\n")
 }
 
 // emitFixedClamp is the ROOT's entry point: the one call a read makes, and the

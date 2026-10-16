@@ -87,11 +87,14 @@ func tableGet(width int) string { return fmt.Sprintf("get%d", width*8) }
 type tableGen struct {
 	// fixedOwner is the type whose fixed-form writer is being emitted, which is
 	// what says whether a keyed array's slots are spelled `.slots` (§2.4)
-	fixedOwner  *ir.Struct
-	unit        *ir.Unit
-	file        *ir.File
-	anyVariable bool // the unit declares at least one variable-length table
-	anyKeyed    bool // the unit declares at least one enum-keyed array
+	fixedOwner *ir.Struct
+	// fixedClampFormEmitted is the clamp counter form block having been
+	// emitted into this header already (emitFixedClampCounterForm).
+	fixedClampFormEmitted bool
+	unit                  *ir.Unit
+	file                  *ir.File
+	anyVariable           bool // the unit declares at least one variable-length table
+	anyKeyed              bool // the unit declares at least one enum-keyed array
 	// anyMap is the unit declaring at least one `map[K]V` (docs/SPEC-TABLES.md
 	// §2.8). It gates the map runtime and every map-shaped walk, so not one
 	// symbol of the machinery reaches a map-free unit's header (§2.2).
