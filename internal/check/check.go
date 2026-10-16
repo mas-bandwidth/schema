@@ -683,6 +683,7 @@ var valuedKeys = map[string]bool{
 	"json":        true,
 	"cpp_native":  true,
 	"cpp_include": true,
+	"forms":       true,
 }
 
 // fieldKeys is the valued vocabulary a FIELD line takes (SPEC §4.2). Which of
@@ -1054,8 +1055,23 @@ func (c *checker) resolveBodies() {
 				// refuses a fixed table whose closure cannot hold the class.
 				st := &ir.Struct{Name: d.Name, IsTable: true, FixedDeclared: d.Fixed, Doc: d.Doc}
 				var tvalued []*ast.Attr
-				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true})
+				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true, "forms": true})
 				for _, a := range tvalued {
+					if a.Key == "forms" {
+						// the forms the table carries (docs/SPEC-TABLES.md §2.11)
+						lit, ok := a.Value.(*ast.StringLit)
+						if !ok {
+							c.errf(a.Pos, `table %s: forms takes a quoted string of form names, e.g. forms = "wire,json" — a bare list would put the next name in the qualification as a tag (docs/SPEC-TABLES.md §2.11)`, d.Name)
+							continue
+						}
+						forms, err := ir.ParseTableForms(lit.Value)
+						if err != nil {
+							c.errf(a.Pos, "table %s: %v", d.Name, err)
+							continue
+						}
+						st.Forms = forms
+						continue
+					}
 					// the table's RENAME (docs/SPEC-TABLES.md §5): its node
 					// type id stays the hash of the OLD name, so every
 					// stored record of that name still reads as this table

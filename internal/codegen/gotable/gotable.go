@@ -345,7 +345,23 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
 	// descriptors, in its own file so a project that never reads or writes a
 	// text does not compile it
-	texts, err := generateJsonFiles(u, closure, home)
+	// a table that does not declare the json form (docs/SPEC-TABLES.md §2.11)
+	// leaves the text file's walk: it is generated from a view of the unit whose
+	// files list only the tables that carry json, so its FromJson/ToJson never
+	// exist. The declarations themselves are shared, not copied.
+	jsonUnit := *u
+	jsonUnit.Files = make([]*ir.File, len(u.Files))
+	for i, f := range u.Files {
+		fc := *f
+		fc.Tables = nil
+		for _, st := range f.Tables {
+			if st.Carries(ir.FormJson) {
+				fc.Tables = append(fc.Tables, st)
+			}
+		}
+		jsonUnit.Files[i] = &fc
+	}
+	texts, err := generateJsonFiles(&jsonUnit, closure, home)
 	if err != nil {
 		return nil, err
 	}

@@ -955,7 +955,7 @@ sequence    uint16
   only** (SPEC-TABLES.md §2.11). The value is a QUOTED STRING of form names
   separated by single commas, because `,` already separates the attributes of
   a qualification, so a bare list would read as a tag. The vocabulary is
-  closed (`wire`, `json`, `cook`; `wire` is required), the default is every
+  closed (`wire`, `json`; `wire` is required), the default is every
   form, it composes with a generate-time surface by intersection, it moves no
   hash, and a target other than Go refuses a unit that uses it by name.
 - **`was = "old_name"`, the rename attribute, table closures only**

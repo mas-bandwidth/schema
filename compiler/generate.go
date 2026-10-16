@@ -91,6 +91,9 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		}
 		return nil, fmt.Errorf("target %q is not implemented — %s are the live targets", target, englishList(c.Targets()))
 	}
+	if err := refuseDeclaredForms(u, target); err != nil {
+		return nil, err
+	}
 	if lg, takes := g.(lineageGenerator); takes {
 		lineage, err := openFixedLineage(u)
 		if err != nil {
@@ -110,4 +113,24 @@ func englishList(names []string) string {
 		return names[0]
 	}
 	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+}
+
+// refuseDeclaredForms is the central refusal of `forms` (docs/SPEC-TABLES.md
+// §2.11): Go carries a table's declared forms first, and a unit in which any
+// table declares them, generated for any other target, is an error naming the
+// construct, the target and the table. It lives here and in no emitter so that
+// no target can honour the declaration in part, and a target that learns it
+// later removes one condition.
+func refuseDeclaredForms(u *ir.Unit, target string) error {
+	if !ir.DeclaresForms(u) || target == "go" {
+		return nil
+	}
+	var names []string
+	for name, st := range u.Tables {
+		if st.Forms != nil {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return fmt.Errorf("table %s declares forms (forms = %q), a construct the %s target does not carry: Go carries it first (docs/SPEC-TABLES.md §2.11); drop the declaration to generate %s, or generate go", names[0], strings.Join(u.Tables[names[0]].Forms, ","), target, target)
 }

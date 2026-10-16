@@ -4,6 +4,7 @@
 package ir
 
 import (
+	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -709,4 +710,92 @@ func ClosureHoldsArenaEdge(member func(string) *Struct, name string) bool {
 		return slices.ContainsFunc(st.Fields, line)
 	}
 	return walk(name)
+}
+
+// The forms a table can declare (docs/SPEC-TABLES.md §2.11). The block form
+// (§2.7) and the view (§8) are not declarable: nothing selects the first and
+// the second is a unit's, not a table's.
+const (
+	FormWire = "wire"
+	FormJson = "json"
+)
+
+// TableForms is the closed vocabulary of `forms`, in the order a declaration
+// is stored and a refusal lists it.
+var TableForms = []string{FormWire, FormJson}
+
+// ParseTableForms reads the value of `forms = "..."` (docs/SPEC-TABLES.md
+// §2.11): form names separated by single commas, no spaces, each at most once,
+// `wire` always among them. It returns them in [TableForms] order. The error
+// names what is wrong and carries no position; the caller adds the line.
+func ParseTableForms(value string) ([]string, error) {
+	if value == "" {
+		return nil, fmt.Errorf("forms = \"\" names no form — omit forms to carry every form, or list the forms the table carries, e.g. forms = \"wire,json\" (docs/SPEC-TABLES.md §2.11)")
+	}
+	seen := map[string]bool{}
+	for _, name := range strings.Split(value, ",") {
+		switch {
+		case name == "cook" || name == "block" || name == "view":
+			return nil, fmt.Errorf("form %q is not a form a table can declare: the cook and the block form are unit-wide today, nothing selects the block form and the view is a unit's, not a table's; the forms are %s (docs/SPEC-TABLES.md §2.11)", name, strings.Join(TableForms, ", "))
+		case !slices.Contains(TableForms, name):
+			return nil, fmt.Errorf("unknown form %q in forms = %q — the forms are %s, separated by single commas with no spaces (docs/SPEC-TABLES.md §2.11)", name, value, strings.Join(TableForms, ", "))
+		case seen[name]:
+			return nil, fmt.Errorf("form %q repeated in forms = %q (docs/SPEC-TABLES.md §2.11)", name, value)
+		}
+		seen[name] = true
+	}
+	if !seen[FormWire] {
+		return nil, fmt.Errorf("forms = %q does not list wire — wire is the table and every other form is a view of it (docs/SPEC-TABLES.md §2.11)", value)
+	}
+	var out []string
+	for _, name := range TableForms {
+		if seen[name] {
+			out = append(out, name)
+		}
+	}
+	return out, nil
+}
+
+// Carries reports whether the table carries form in a generated language: true
+// for every form of a table that declares no `forms` (the default), and for a
+// table that is not a declared one (a generated map entry, a plain type).
+func (st *Struct) Carries(form string) bool {
+	if st == nil || !st.IsTable || st.Forms == nil {
+		return true
+	}
+	return slices.Contains(st.Forms, form)
+}
+
+// DeclaresForms reports whether any table of the unit declares `forms`, the
+// construct only the Go target carries today.
+func DeclaresForms(u *Unit) bool {
+	for _, st := range u.Tables {
+		if st.Forms != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// SurfaceForms is the intersection rule of docs/SPEC-TABLES.md §2.11: the forms
+// a generate call gets for one table when it names a surface. An empty surface
+// names nothing and yields every form the table declares. A named form the
+// table does not declare is an error naming the table and the form, never a
+// silent narrowing. The result is in [TableForms] order.
+func SurfaceForms(st *Struct, surface []string) ([]string, error) {
+	for _, form := range surface {
+		if !slices.Contains(TableForms, form) {
+			return nil, fmt.Errorf("surface names %q, which is not a form — the forms are %s (docs/SPEC-TABLES.md §2.11)", form, strings.Join(TableForms, ", "))
+		}
+		if !st.Carries(form) {
+			return nil, fmt.Errorf("surface names form %s, but table %s does not declare it (forms = %q); a generate call cannot widen a declaration (docs/SPEC-TABLES.md §2.11)", form, st.Name, strings.Join(st.Forms, ","))
+		}
+	}
+	var out []string
+	for _, form := range TableForms {
+		if (len(surface) == 0 || slices.Contains(surface, form)) && st.Carries(form) {
+			out = append(out, form)
+		}
+	}
+	return out, nil
 }

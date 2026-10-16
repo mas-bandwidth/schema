@@ -3599,18 +3599,20 @@ entry points:
 |--------|----------------------------------------|
 | `wire` | the table-wire codecs (`<T>Measure`, `<T>Save`, `<T>Load`, the builders), the message form, the retain surface and the reflection descriptors |
 | `json` | the text form of §16: `<T>FromJson`, `<T>ToJson`, `<T>ToJsonMeasure` |
-| `cook` | the cook of §7: the read handle `<T>Cook` and its `Open` in `<Base>Cook.go` and the writer `<T>CookMeasure`, `<T>CookFrom` |
 
 `wire` is the table: every other form is a view of it, so a declaration that
-does not list `wire` is refused by name. The block form (§2.7) and the view
-(§8) are not declarable: nothing selects the block form, and the view is a
-unit's, not a table's. Naming either is refused as "not a form a table can
-declare", as is any other unknown name; a repeated name and an empty value are
+does not list `wire` is refused by name. The cook (§7), the block form (§2.7) and the view
+(§8) are not declarable yet: the cook shares its record layouts and its home
+file with the block form across the whole unit, nothing selects the block
+form, and the view is a unit's, not a table's. Declaring the cook per table is
+owed (it needs the cook emitter to stop reading the unit's whole table set).
+Naming `cook`, `block` or `view` is refused as "not a form a table can
+declare"; any other unknown name is refused as unknown; a repeated name and an empty value are
 refused too.
 
 **The default is every form.** A table with no `forms` carries all of them, so
 a unit that declares none generates byte-identically to a compiler that did not
-know the key, and `forms = "wire,json,cook"` is the same table written out.
+know the key, and `forms = "wire,json"` is the same table written out.
 
 **It composes with a generate-time surface by INTERSECTION.** A generate call
 that names the surface it wants (`--surface`) gets, for each table, the forms
@@ -3633,11 +3635,10 @@ the target and the sentence "Go carries it first"; no other emitter reads the
 declaration, so none can honour it in part.
 
 **What the Go target omits is exactly what is not declared, and no more.** The
-descriptors stay in `wire`, so the text and cook walks of a table that DOES
-declare them still reach a nested table that does not; a plain `type` in a
+descriptors stay in `wire`, so the text walk of a table that DOES
+declare it still reach a nested table that does not; a plain `type` in a
 closure carries whatever its holders carry. The runtimes a form shares across
-a unit (the text walker, the cook writer) are emitted once per unit and are
-not per table.
+a unit (the text walker) are emitted once per unit and are not per table.
 
 
 ## 3. The wire
