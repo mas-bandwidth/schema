@@ -292,7 +292,7 @@ tables-dart-alloc-runtime-negative-control: build/dart_gcgate build/fixedform-co
 	@grep -Fq 'NOT CERTIFIED' build/dart-alloc-runtime-nc/any.log || \
 		{ echo "NEGATIVE CONTROL FAILED: SCHEMA_DART_ALLOC_ANY_SDK=1 did not report NOT CERTIFIED"; \
 		  cat build/dart-alloc-runtime-nc/any.log; exit 1; }
-	 	@echo "negative control: Dart allocation gate refuses stand-in SDK 0.0.0 and SCHEMA_DART_ALLOC_ANY_SDK=1 reports without certifying"
+	@echo "negative control: Dart allocation gate refuses stand-in SDK 0.0.0 and SCHEMA_DART_ALLOC_ANY_SDK=1 reports without certifying"
 
 # THE DART TABLES SOAK (docs/PORTING.md I9). The C soak
 # (test/c-tables/soak_main.c) is the model: a functional soak run from a make
@@ -325,6 +325,9 @@ tables-dart-soak-negative-control: build/dart_tables_soak
 	fi
 	@grep -q 'SOAK FAILED' build/dart-soak-nc/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the soak went red for some other reason"; \
+		  cat build/dart-soak-nc/log; exit 1; }
+	@grep -qE 'soak: rss drift .*\[PASS\]' build/dart-soak-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the RSS drift verdict was not green"; \
 		  cat build/dart-soak-nc/log; exit 1; }
 	@grep -E 'scavenges=' build/dart-soak-nc/log
 	@echo "negative control: one planted allocation per iteration turns the Dart soak RED on the count"

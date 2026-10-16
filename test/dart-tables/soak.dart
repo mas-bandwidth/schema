@@ -37,18 +37,27 @@ import 'gcgate.dart' show vmFlagsCsv, pinnedDartSdk;
 int checksum = 0;
 final List<Object?> plantRing = List<Object?>.filled(64, null);
 
-String _childRss(int pid) {
+bool _sameBytes(Uint8List a, Uint8List b, int length) {
+  for (var i = 0; i < length; i++) {
+    if (a[i] != b[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+int _childRss(int pid) {
   try {
     final status = File('/proc/$pid/status').readAsStringSync();
     for (final line in const LineSplitter().convert(status)) {
       if (line.startsWith('VmRSS:')) {
         final parts = line.trim().split(RegExp(r'\s+'));
-        return parts.length >= 2 ? parts[1] : '?';
+        return parts.length >= 2 ? int.tryParse(parts[1]) ?? -1 : -1;
       }
     }
-    return '?';
+    return -1;
   } catch (_) {
-    return '?';
+    return -1;
   }
 }
 
@@ -206,6 +215,8 @@ void _runPhase(int seconds) {
 
   final plant = Platform.environment['SCHEMA_DART_ALLOC_PLANT'] == '1';
   var iter = 0;
+  var fixedValueChecksum = 0;
+  var fixedValuesSeen = false;
 
   void step() {
     if (plant) {
@@ -242,6 +253,22 @@ void _runPhase(int seconds) {
     if (n1 != poolSize || n2 != poolSize || n3 != poolSize) {
       exit(3);
     }
+    var loadedChecksum = 0;
+    for (var k = 0; k < poolSize; k++) {
+      loadedChecksum =
+          (loadedChecksum +
+              fx1Values[k].keep +
+              keyedValues[k].teams[0].spawnCount +
+              packValues[k].version) &
+          0x3fffffff;
+    }
+    if (!fixedValuesSeen) {
+      fixedValueChecksum = loadedChecksum;
+      fixedValuesSeen = true;
+    } else if (loadedChecksum != fixedValueChecksum) {
+      stderr.writeln('soak: fixed-form loaded values changed');
+      exit(3);
+    }
     final m1 = fx1.fxRootFixedMeasure(poolSize);
     final m2 = keyed.keyedConfigFixedMeasure(poolSize);
     final m3 = pack.packConfigFixedMeasure(poolSize);
@@ -251,8 +278,28 @@ void _runPhase(int seconds) {
     if (w1 <= 0 || w2 <= 0 || w3 <= 0) {
       exit(3);
     }
+    if (w1 != fx1BatchBytes.length ||
+        w2 != keyedBatchBytes.length ||
+        w3 != packBatchBytes.length ||
+        !_sameBytes(fx1SaveBuf, fx1BatchBytes, w1) ||
+        !_sameBytes(keyedSaveBuf, keyedBatchBytes, w2) ||
+        !_sameBytes(packSaveBuf, packBatchBytes, w3)) {
+      stderr.writeln('soak: fixed-form batch bytes changed');
+      exit(3);
+    }
     checksum =
-        (checksum + n1 + n2 + n3 + m1 + m2 + m3 + w1 + w2 + w3) & 0x3fffffff;
+        (checksum +
+            loadedChecksum +
+            n1 +
+            n2 +
+            n3 +
+            m1 +
+            m2 +
+            m3 +
+            w1 +
+            w2 +
+            w3) &
+        0x3fffffff;
     for (var r = 0; r < shipsCount; r++) {
       rb.shipsAt(r, shipCursor);
       checksum =
@@ -316,6 +363,7 @@ Future<int> _drive(List<String> args) async {
   var baseline = -1;
   var failed = false;
   final samples = <String>[];
+  final rssSamples = <int>[];
 
   final sampler = Timer.periodic(const Duration(seconds: 1), (_) {
     if (!started) {
@@ -327,7 +375,10 @@ Future<int> _drive(List<String> args) async {
     } else if (scavenges != baseline) {
       failed = true;
     }
-    samples.add('t=${samples.length + 1}s scavenges=$scavenges rss_kb=$rss');
+    rssSamples.add(rss);
+    samples.add(
+      't=${samples.length + 1}s scavenges=$scavenges rss_kb=${rss < 0 ? "?" : rss}',
+    );
   });
 
   await for (final line
@@ -345,16 +396,42 @@ Future<int> _drive(List<String> args) async {
     }
   }
   sampler.cancel();
-  await proc.exitCode;
+  final workerCode = await proc.exitCode;
+
+  if (workerCode != 0) {
+    stdout.writeln('SOAK FAILED: worker exited $workerCode');
+    return 1;
+  }
+  if (rssSamples.isEmpty) {
+    stdout.writeln('SOAK FAILED: no post-warmup RSS samples were taken');
+    return 1;
+  }
 
   for (final s in samples) {
     stdout.writeln('  $s');
   }
+  const rssDriftBoundKb = 8 * 1024;
+  final firstRss = rssSamples.first;
+  final lastRss = rssSamples.last;
+  final rssDrift = lastRss - firstRss;
+  final rssDriftOk =
+      firstRss >= 0 && lastRss >= 0 && rssDrift <= rssDriftBoundKb;
+  stdout.writeln(
+    'soak: rss drift ${firstRss < 0 ? "?" : firstRss} KB -> '
+    '${lastRss < 0 ? "?" : lastRss} KB '
+    '(${rssDrift >= 0 ? "+" : ""}$rssDrift KB, '
+    'bound +$rssDriftBoundKb KB) '
+    '[${rssDriftOk ? "PASS" : "FAIL"}] (weaker instrument)',
+  );
   if (failed) {
     stdout.writeln('SOAK FAILED: the scavenge count moved after warmup');
     stdout.writeln(
       'soak: count moved — the generated read/write path allocates',
     );
+    return 1;
+  }
+  if (!rssDriftOk) {
+    stdout.writeln('SOAK FAILED: RSS drift exceeded the post-warmup bound');
     return 1;
   }
   stdout.writeln(
