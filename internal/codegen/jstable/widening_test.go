@@ -37,12 +37,20 @@ func TestWideningReasonsJavaScript(t *testing.T) {
 	if err := os.WriteFile(module, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	wire := filepath.Join(work, "list_scalar_widen.bin")
+	narrowWire := filepath.Join(work, "list_scalar_widen.bin")
 	bytes, err := os.ReadFile(filepath.Join(repo, "testdata", "wire", "tables", "fuzz-vectors", "list_scalar_widen.bin"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(wire, bytes, 0o600); err != nil {
+	if err := os.WriteFile(narrowWire, bytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pristineWire := filepath.Join(work, "list_tables.bin")
+	bytes, err = os.ReadFile(filepath.Join(repo, "testdata", "wire", "tables", "list_tables.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pristineWire, bytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	script := filepath.Join(work, "probe.mjs")
@@ -57,12 +65,20 @@ if (report.reason !== "" || report.widened !== 1 || value.scores.length !== 3 ||
     value.scores[0] !== 10 || value.scores[1] !== 0 || value.scores[2] !== 0) {
   throw new Error("widening report/value mismatch: " + JSON.stringify({report, value}));
 }
+const baseline = new m.TableVariableReport();
+const clean = m.SaveLoad(new Uint8Array(readFileSync(process.argv[4])), baseline);
+if (clean === null) { throw new Error("pristine wire refused: " + JSON.stringify(baseline)); }
+if (baseline.reason !== "" || baseline.widened !== 0 || baseline.unknown !== 0 ||
+    baseline.kindMismatch !== 0 || clean.scores.length !== 3 ||
+    clean.scores[0] !== 10 || clean.scores[1] !== 20 || clean.scores[2] !== 30) {
+  throw new Error("pristine baseline mismatch: " + JSON.stringify({baseline, clean}));
+}
 console.log("widening reason ok");
 `
 	if err := os.WriteFile(script, []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, script, module, wire)
+	cmd := exec.Command(node, script, module, narrowWire, pristineWire)
 	cmd.Dir = work
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("JavaScript widening probe failed: %v\n%s", err, out)
