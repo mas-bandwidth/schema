@@ -1799,8 +1799,12 @@ func parenDepth(s string) int {
 // deepBodies moves a method body a template wrote whole levels too deep (a
 // field reader written for a switch arm, reused as a method's body) back to
 // its level. It moves a body only when EVERY line of it is deeper than the
-// level by the same whole number of indents, so a single mis-indented line
-// -- the drift the format gate exists to see -- is never absorbed.
+// level by the same whole number of indents, so one mis-indented line among
+// lines at the right depth, or any line off the four-column unit -- the drift
+// the format gate exists to see, and what its control plants -- is never
+// absorbed. A body of ONE line drifted by whole indents is moved (the map
+// readers' pointer field is one); a sabotage meant to be seen must therefore
+// drift off the unit or beside a line at the right depth.
 func deepBodies(lines []string) []string {
 	out := append([]string(nil), lines...)
 	for i := 0; i < len(out); i++ {
@@ -2588,6 +2592,11 @@ func wrapLong(l string) []string {
 				if !ok || len(targs) < 2 {
 					return nil
 				}
+				for _, a := range targs {
+					if strings.Count(a, "<") != strings.Count(a, ">") {
+						return nil // a nested generic: splitArgs does not see its brackets
+					}
+				}
 				out := []string{ind + typ[:lt+1]}
 				for i, a := range targs {
 					e := ","
@@ -2840,8 +2849,8 @@ func wrapChain(ind, lhs, rhs string) []string {
 // last line. nil when e is not such a chain or a line will not fit.
 func layoutChain(inner, e, end string) []string {
 	segs := chainSegments(e)
-	if len(segs) < 2 {
-		return nil
+	if len(segs) < 2 || segs[0] == "" || (segs[0][0] >= '0' && segs[0][0] <= '9') {
+		return nil // a number's point is not a dereference
 	}
 	recv, k, prefixCall := chainReceiver(segs)
 	calls := 0

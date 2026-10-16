@@ -71,9 +71,28 @@ func TestDeepBodiesNeverAbsorbsOneMisIndentedLine(t *testing.T) {
 		{"    static void f(In in) {", "        int a = 0;", "            int b = 0;", "    }"},
 		{"    static void f(In in) {", "            int b = 0;", "        int a = 0;", "    }"},
 		{"    static void f(In in) {", "         int b = 0;", "    }"},
+		{"    static int f(In in) {", "             return 1;", "    }"},
 	} {
 		if got := deepBodies(one); strings.Join(got, "\n") != strings.Join(one, "\n") {
 			t.Fatalf("deepBodies moved a mis-indented line it must leave for the gate:\n%s", strings.Join(got, "\n"))
 		}
+	}
+}
+
+// A NESTED GENERIC IS NEVER SPLIT INSIDE ITS BRACKETS (#547, cold-read
+// finding): the declaration rule splits a too-wide generic type at its
+// top-level arguments only, and leaves a type whose arguments are themselves
+// generic as written rather than cutting one in half.
+func TestCanonicalLeavesNestedGenericsWhole(t *testing.T) {
+	t.Parallel()
+	in := "class T {\n    void f() {\n        java.util.Map<java.lang.String, java.util.List<java.lang.String, java.lang.Integer>, VeryLongTypeName> someVariableName = make();\n    }\n}\n"
+	got := string(Canonical([]byte(in)))
+	for _, l := range strings.Split(got, "\n") {
+		if strings.HasSuffix(strings.TrimSpace(l), "List<java.lang.String,") {
+			t.Fatalf("a nested generic was split inside its brackets:\n%s", got)
+		}
+	}
+	if CodeTokens(got) != CodeTokens(in) {
+		t.Fatalf("the canonical pass changed a token")
 	}
 }
