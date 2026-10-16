@@ -23,6 +23,7 @@ package benchtable
 import (
 	"math"
 	"strconv"
+	"time"
 	"unicode/utf8"
 	"unsafe"
 )
@@ -49,48 +50,6 @@ const (
 func tableJsonNamed(name string) bool { return name != "" && name != "???" }
 
 func tableJsonFinite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
-
-// ---- storage access: the descriptors give an offset and a width, and the
-// ---- storage is the HOST's, so every load and store goes through a width
-// ---- switch rather than a copy into the low bytes of a wider word
-
-func tableJsonGetRaw(storage unsafe.Pointer, width uint32) uint64 {
-	switch width {
-	case 1:
-		return uint64(*(*uint8)(storage))
-	case 2:
-		return uint64(*(*uint16)(storage))
-	case 4:
-		return uint64(*(*uint32)(storage))
-	case 8:
-		return *(*uint64)(storage)
-	}
-	return 0
-}
-
-func tableJsonSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
-	switch width {
-	case 1:
-		*(*uint8)(storage) = uint8(value)
-	case 2:
-		*(*uint16)(storage) = uint16(value)
-	case 4:
-		*(*uint32)(storage) = uint32(value)
-	case 8:
-		*(*uint64)(storage) = value
-	}
-}
-
-func tableJsonGetSigned(storage unsafe.Pointer, width uint32) int64 {
-	raw := tableJsonGetRaw(storage, width)
-	if width < 8 {
-		sign := uint64(1) << (width*8 - 1)
-		if raw&sign != 0 {
-			raw |= ^((sign << 1) - 1)
-		}
-	}
-	return int64(raw)
-}
 
 // tableJsonCount is a counted field's companion: a string's length, a bytes'
 // length, a counted array's count. Bounded by the declared extent on the way
@@ -190,6 +149,8 @@ func tableJsonShape(f *TableFieldInfo) byte {
 		return 's'
 	case tableJsonIsFlags(f):
 		return 'a'
+	case f.Kind == 36: // timestamp: an RFC 3339 string (§16.2)
+		return 's'
 	case f.Kind == 1:
 		return 'b'
 	}
@@ -213,50 +174,12 @@ func tableJsonElementShape(f *TableFieldInfo) byte {
 		return 's'
 	case tableJsonIsFlags(f):
 		return 'a'
+	case f.Kind == 36: // timestamp: an RFC 3339 string (§16.2)
+		return 's'
 	case f.Kind == 1:
 		return 'b'
 	}
 	return 'n'
-}
-
-// A guarded group rides only when its guard reads true — the wire's own elision
-// (§4), carried into the text so a text and a wire written from one instance
-// say the same thing. The guard is spelled as its branch condition over bool
-// fields of the SAME type ("at_rest", "!at_rest", "active && has_target"), so
-// evaluating it is a walk of the same descriptor. Nothing is inferred in the
-// other direction: reading places every key it can name, and the guard is a
-// plain bool key (§16.2).
-func tableJsonGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string) bool {
-	p := 0
-	for {
-		for p < len(guard) && (guard[p] == ' ' || guard[p] == '&') {
-			p++
-		}
-		if p >= len(guard) {
-			return true
-		}
-		want := true
-		if guard[p] == '!' {
-			want = false
-			p++
-		}
-		start := p
-		for p < len(guard) && guard[p] != ' ' && guard[p] != '&' {
-			p++
-		}
-		name := guard[start:p]
-		value := false
-		for i := range info.Fields {
-			f := &info.Fields[i]
-			if f.Name == name {
-				value = tableJsonGetRaw(unsafe.Add(base, uintptr(f.Offset)), f.ElemSize) != 0
-				break
-			}
-		}
-		if value != want {
-			return false
-		}
-	}
 }
 
 // ---- writing ----
@@ -521,6 +444,9 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 	if f.Kind >= 18 && f.Kind <= 29 {
 		tableJsonWriteWide(out, storage, f)
 		return true
+	}
+	if f.Kind == 36 {
+		return tableJsonWriteTimestamp(out, storage)
 	}
 	if f.Arms != nil {
 		// a union is an object with ONE key, the arm's name; None is {}
@@ -1391,6 +1317,9 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		}
 		tableJsonSetRaw(storage, f.ElemSize, bits)
 		return true
+	}
+	if f.Kind == 36 {
+		return tableJsonReadTimestamp(in, storage, f)
 	}
 	if f.Kind == 1 {
 		if in.peek() == 't' {
@@ -2310,11 +2239,6 @@ func tableJsonWriteWString(out *tableJsonOut, units []uint16) {
 	out.put('"')
 }
 
-type tableJsonGraphNode struct {
-	refs    int
-	label   uint64
-	written bool
-}
 type tableJsonLabel struct {
 	key    uint64
 	ref    int64
@@ -2738,74 +2662,6 @@ func tableJsonReadList(in *tableJsonIn, holder unsafe.Pointer, f *TableFieldInfo
 	}
 }
 
-type tableMapKey struct {
-	text []byte
-	raw  uint64
-}
-
-func tableMapKeyValid(k tableMapKey, f *TableFieldInfo) bool {
-	return f.Kind != 12 || k.raw == 0 && len(k.text) <= int(f.ArrayBound)
-}
-func tableMapStoredKey(p unsafe.Pointer, f *TableFieldInfo) tableMapKey {
-	key := tableMapKey{}
-	if f.Kind == 12 {
-		n := *(*int32)(unsafe.Add(p, f.CountOffset))
-		if n < 0 || n > f.ArrayBound {
-			return tableMapKey{text: nil, raw: 1}
-		}
-		key.text = unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), int(n))
-	} else {
-		key.raw = tableJsonGetRaw(unsafe.Add(p, f.Offset), f.ElemSize)
-		if f.Kind >= 2 && f.Kind <= 5 {
-			key.raw = uint64(tableJsonGetSigned(unsafe.Add(p, f.Offset), f.ElemSize))
-		}
-	}
-	return key
-}
-func tableMapStoreKey(p unsafe.Pointer, f *TableFieldInfo, k tableMapKey) {
-	if f.Kind == 12 {
-		clear(unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), int(f.ArrayBound)+1))
-		copy(unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), len(k.text)), k.text)
-		*(*int32)(unsafe.Add(p, f.CountOffset)) = int32(len(k.text))
-	} else {
-		tableJsonSetRaw(unsafe.Add(p, f.Offset), f.ElemSize, k.raw)
-	}
-}
-func tableMapKeyOrder(a, b tableMapKey, f *TableFieldInfo) int {
-	if f.Kind == 12 {
-		for i := 0; i < len(a.text) && i < len(b.text); i++ {
-			if a.text[i] < b.text[i] {
-				return -1
-			}
-			if a.text[i] > b.text[i] {
-				return 1
-			}
-		}
-		if len(a.text) < len(b.text) {
-			return -1
-		}
-		if len(a.text) > len(b.text) {
-			return 1
-		}
-		return 0
-	}
-	if f.Kind >= 2 && f.Kind <= 5 {
-		if int64(a.raw) < int64(b.raw) {
-			return -1
-		}
-		if int64(a.raw) > int64(b.raw) {
-			return 1
-		}
-		return 0
-	}
-	if a.raw < b.raw {
-		return -1
-	}
-	if a.raw > b.raw {
-		return 1
-	}
-	return 0
-}
 func tableJsonWriteMap(out *tableJsonOut, p unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	if depth > tableJsonMaxDepth {
 		return false
@@ -3054,6 +2910,58 @@ func tableJsonDecimalKey(text []byte, signed bool, width int) (uint64, bool) {
 	}
 	return value, true
 }
+
+func tableJsonWriteTimestamp(out *tableJsonOut, storage unsafe.Pointer) bool {
+	var scratch [48]byte
+	tableJsonWriteString(out, time.Unix(0, *(*int64)(storage)).UTC().AppendFormat(scratch[:0], time.RFC3339Nano))
+	return true
+}
+
+func tableJsonReadTimestamp(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo) bool {
+	var text [64]byte
+	n, ok := in.scanString(text[:63])
+	if !ok {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339Nano, string(text[:n]))
+	// an instant outside Time.UnixNano's domain names no count and is refused too
+	named := err == nil && !t.Before(time.Unix(0, -1<<63)) && !t.After(time.Unix(0, 1<<63-1))
+	if !named {
+		in.report.Reason = "timestamp_not_rfc3339: " + f.Name
+		in.bad = true
+		return false
+	}
+	*(*int64)(storage) = t.UnixNano()
+	return true
+}
+
+// TableTimestampError is the refusal of a time.Time that no count names: its
+// nanoseconds since the Unix epoch do not fit an int64, which is Time.UnixNano's
+// own domain, the years 1678 through 2262 (mas-bandwidth/schema docs/SPEC-TABLES.md §2.11).
+type TableTimestampError struct {
+	Field string
+	Time  time.Time
+}
+
+func (e TableTimestampError) Error() string {
+	return "timestamp_out_of_range: " + e.Field + " " + e.Time.Format(time.RFC3339Nano) +
+		" is outside the years 1678 through 2262, which a count of nanoseconds since the Unix epoch can hold"
+}
+
+// tableTimestampNanos is the count of a time.Time, and false for a time whose
+// count UnixNano cannot represent. Go's zero Time{} is the zero time.
+func tableTimestampNanos(t time.Time) (int64, bool) {
+	if t.IsZero() {
+		return 0, true
+	}
+	if t.Before(time.Unix(0, -1<<63)) || t.After(time.Unix(0, 1<<63-1)) {
+		return 0, false
+	}
+	return t.UnixNano(), true
+}
+
+// tableTimestampTime is the UTC time of a count; every count is legal.
+func tableTimestampTime(n int64) time.Time { return time.Unix(0, n).UTC() }
 
 // ---- json walk: end ----
 

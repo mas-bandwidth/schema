@@ -19,6 +19,28 @@ const TableFixedForm uint8 = 3
 const TableFixedHeaderBytes = 16
 const TableFixedHashAt = 8
 
+// THE FIXED LOAD'S REFUSAL NAMES — EXPORTED (docs/FIXED-FORM-ALGORITHM.md
+// §5.3, docs/SPEC-TABLES.md §3.4). Every refusal of the fixed load has a name,
+// the framing-damage returns included, so an adopter's existing
+// report.Reason == "layout_newer" comparisons keep compiling against these
+// constants; the emitted <T>FixedLoad names every reason constant in place of
+// a string literal.
+const (
+	TableFixedReasonPreviousForm         = "previous_form"
+	TableFixedReasonMessageFormAsFile    = "message_form_as_file"
+	TableFixedReasonNewerForm            = "newer_form"
+	TableFixedReasonLayoutMalformed      = "layout_malformed"
+	TableFixedReasonLayoutNewer          = "layout_newer"
+	TableFixedReasonLayoutUnsupported    = "layout_unsupported"
+	TableFixedReasonLayoutRecordTooLarge = "layout_record_too_large"
+	TableFixedReasonPlanTooLarge         = "plan_too_large"
+	TableFixedReasonBatchTooLarge        = "batch_too_large"
+	TableFixedReasonNoLayout             = "no_layout"
+	TableFixedReasonTextIllFormed        = "text_ill_formed"
+	TableFixedReasonTruncated            = "truncated"
+	TableFixedReasonReservedNotZero      = "reserved_not_zero"
+)
+
 const (
 	tableFixedCopy uint8 = iota
 	tableFixedCount
@@ -376,7 +398,7 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			// length above CLAMPS and counts; the bytes it kept are checked now,
 			// over v units and never over the span.
 			if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-				return "text_ill_formed"
+				return TableFixedReasonTextIllFormed
 			}
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 			tableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
@@ -641,7 +663,7 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 			v = int32(capn)
 		}
 		if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-			return "text_ill_formed"
+			return TableFixedReasonTextIllFormed
 		}
 	}
 	return ""
@@ -1467,7 +1489,7 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 		if why != "" {
 			// A lineage entry that is not a layout is a bug in the LOCK, not a
 			// wire event; the reader still owes a name rather than a panic.
-			out[i].Why = "layout_malformed"
+			out[i].Why = TableFixedReasonLayoutMalformed
 			continue
 		}
 		for room := 256; ; room *= 4 {
@@ -1475,16 +1497,16 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 			var census TableReport
 			made := tableFixedCompile(parsed, myLayout, dst, plan, &census)
 			if made == -2 {
-				out[i].Why = "layout_malformed"
+				out[i].Why = TableFixedReasonLayoutMalformed
 				break
 			}
 			if made == -3 {
-				out[i].Why = "layout_record_too_large"
+				out[i].Why = TableFixedReasonLayoutRecordTooLarge
 				break
 			}
 			if made < 0 {
 				if room >= 1<<18 {
-					out[i].Why = "plan_too_large"
+					out[i].Why = TableFixedReasonPlanTooLarge
 					break
 				}
 				continue

@@ -40,22 +40,41 @@ func messageEntryLiteral(e ir.TableVocabularyEntry) string {
 	}
 	return fmt.Sprintf("TableMessageEntry{Id:0x%016x,Shape:%s,Element:%s}", e.Id, messageShapeLiteral(e.Kind, e.Shape), inner)
 }
+
+// tableMessageCoreTypes is the message form's TYPES, which the core declares:
+// the reflection descriptor's SaveMessageBody and LoadMessageBody columns are
+// typed by the writer and the reader, so the core cannot leave them out, and a
+// type is a declaration with no behaviour to gate (docs/SPEC-TABLES.md, "GO's optional forms").
+// Everything they DO — the methods, the announcement, the batch codec — is the
+// optional form's, in tableMessageRuntime.
+func tableMessageCoreTypes(u *ir.Unit) string {
+	types := goMessageCoreTypes
+	if len(variableTableNames(u)) > 0 {
+		types = strings.Replace(types, "type TableMessageReader struct {", "type TableMessageReader struct { Nodes TableNodeMap;", 1)
+		types += "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64; Numbering *TableNumbering; numbering TableNumbering }\n"
+	} else {
+		types += "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64 }\n"
+	}
+	return types
+}
+
+const goMessageCoreTypes = `
+// TableBitWriter uses the packet wire's low-bit-first order. Measuring walks
+// the identical stream, including alignment, without touching a buffer.
+type TableBitWriter struct { Buffer []byte; Bits int64; Measuring, Overflow bool }
+type TableBitReader struct { Buffer []byte; Offset int64 }
+type TableMessageShape struct { Kind, Packing uint8; Bits int64; Base [2]uint64; Min,Max int64; QMin,QDelta float32; QCount uint32 }
+type TableMessageEntry struct { Id uint64; Shape,Element TableMessageShape }
+// Storage belongs to the caller and is resolved once for one connection direction.
+type TableVocabulary struct { Entries []TableMessageEntry; Count,RefBits int64; BuildVersion uint64; Announced,Refused bool; MaxBytes int64; Strict bool }
+type TableMessageReader struct { Bits TableBitReader; Vocabulary *TableVocabulary; Report TableReport; IndexBits int64 }
+`
+
+// tableMessageRuntime is the message form's runtime, emitted into the home's
+// <Package>TableMessage.go: one optional file, so a unit that never speaks the
+// message form compiles without any of it.
 func tableMessageRuntime(u *ir.Unit) string {
 	var b strings.Builder
-	// THE UNIT'S OWN BUILD VERSION lives in the TABLE source (docs/SPEC-TABLES.md
-	// §20.7): §3.3's announcement carries it before any body, so an application
-	// must be able to compare a peer's announced version against this build's
-	// without a BLOCK runtime or a COOK runtime. It is emitted for EVERY unit
-	// that carries Announce, with or without a block form — a fixed table whose
-	// closure holds a union has no block form (§19.3) yet still announces — and
-	// the accelerators no longer spell it, so one package holds exactly one
-	// definition.
-	fmt.Fprintf(&b, `// BuildVersion is the unit's build version (docs/SPEC-TABLES.md §20): the
-// one digest a block carries and BlockOpen compares, and the fact §3.3's
-// announcement carries before the first body so a peer's build is knowable.
-const BuildVersion uint64 = 0x%016x
-
-`, ir.BuildVersion(u))
 	fmt.Fprintf(&b, "const TableMessageBatchMax = 256\nconst TableMessageRefBitsHere = %d\nconst TableMessageEntriesHere = %d\n", ir.TableMessageRefBits(len(ir.TableVocabulary(u))), len(ir.TableVocabulary(u)))
 	fmt.Fprintf(&b, "var tableAnnouncement = [...]byte{%s}\n", byteLiterals(ir.TableAnnouncement(u)))
 	b.WriteString("var tableMessageEntries = [...]TableMessageEntry{\n")
@@ -65,11 +84,7 @@ const BuildVersion uint64 = 0x%016x
 	b.WriteString("}\n")
 	runtime := goMessageRuntime
 	if len(variableTableNames(u)) > 0 {
-		runtime = strings.Replace(runtime, "type TableMessageReader struct {", "type TableMessageReader struct { Nodes TableNodeMap;", 1)
-		runtime += "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64; Numbering *TableNumbering; numbering TableNumbering }\n"
 		runtime += tableMessageRegionRuntime(u)
-	} else {
-		runtime += "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64 }\n"
 	}
 	b.WriteString(runtime)
 	return b.String()
@@ -91,9 +106,6 @@ func (g *tableGen) messageSlot(e ir.TableVocabularyEntry) int {
 }
 
 const goMessageRuntime = `
-// TableBitWriter uses the packet wire's low-bit-first order. Measuring walks
-// the identical stream, including alignment, without touching a buffer.
-type TableBitWriter struct { Buffer []byte; Bits int64; Measuring, Overflow bool }
 func (w *TableBitWriter) Put(value uint64,n int64) {
  if n<0||n>64 {w.Overflow=true;return};if n==0{return};at:=w.Bits;w.Bits+=n;if w.Bits<at {w.Overflow=true;return};if w.Measuring{return};if (w.Bits+7)/8>int64(len(w.Buffer)){w.Overflow=true;return}
  if n<64 {value&=(uint64(1)<<n)-1};index:=at>>3;shift:=at&7;head:=uint64(0);if shift!=0 {head=uint64(w.Buffer[index])&((uint64(1)<<shift)-1)};word:=head|value<<shift;need:=(shift+n+7)/8
@@ -101,16 +113,11 @@ func (w *TableBitWriter) Put(value uint64,n int64) {
 }
 func (w *TableBitWriter) Align(){w.Put(0,(-w.Bits)&7)}
 func (w *TableBitWriter) Raw(data []byte){w.Align();if w.Measuring {w.Bits+=int64(len(data))*8;return};at:=w.Bits/8;w.Bits+=int64(len(data))*8;if at>int64(len(w.Buffer))-int64(len(data)){w.Overflow=true;return};copy(w.Buffer[at:],data)}
-type TableBitReader struct { Buffer []byte; Offset int64 }
 func (r *TableBitReader) Get(n int64)(uint64,bool) {if n<0||n>64||r.Offset<0||n>int64(len(r.Buffer))*8-r.Offset{return 0,false};if n==0{return 0,true};at:=r.Offset>>3;shift:=r.Offset&7;need:=(shift+n+7)/8;var value uint64;if need>=8 {value=binary.LittleEndian.Uint64(r.Buffer[at:])>>shift;if need>8 {value|=uint64(r.Buffer[at+8])<<(64-shift)}}else{for j:=int64(0);j<need;j++ {value|=uint64(r.Buffer[at+j])<<(8*j)};value>>=shift};if n<64 {value&=(uint64(1)<<n)-1};r.Offset+=n;return value,true}
 func (r *TableBitReader) Skip(n int64)bool {if n<0||n>int64(len(r.Buffer))*8-r.Offset{return false};r.Offset+=n;return true}
 func (r *TableBitReader) Align()bool {v,ok:=r.Get((-r.Offset)&7);return ok&&v==0}
 func tableMessageBits(n uint64)int64 {var count int64;for n!=0 {count++;n>>=1};return count}
 
-type TableMessageShape struct { Kind, Packing uint8; Bits int64; Base [2]uint64; Min,Max int64; QMin,QDelta float32; QCount uint32 }
-type TableMessageEntry struct { Id uint64; Shape,Element TableMessageShape }
-// Storage belongs to the caller and is resolved once for one connection direction.
-type TableVocabulary struct { Entries []TableMessageEntry; Count,RefBits int64; BuildVersion uint64; Announced,Refused bool; MaxBytes int64; Strict bool }
 func (v *TableVocabulary) Init(storage []TableMessageEntry){*v=TableVocabulary{Entries:storage,MaxBytes:64*1024}}
 func (v *TableVocabulary) Entry(ref uint64)(TableMessageEntry,bool){if ref==0||ref>uint64(v.Count){return TableMessageEntry{},false};return v.Entries[ref-1],true}
 func (v *TableVocabulary) Name(ref uint64)(uint64,bool){e,ok:=v.Entry(ref);return e.Id,ok&&e.Shape.Kind==0&&e.Id<0xfffffffffffffffd}
@@ -181,7 +188,6 @@ func tableMessageReadScalar(r *TableBitReader,s TableMessageShape,out *[16]byte)
 func tableMessageWriteScalar(w *TableBitWriter,s TableMessageShape,lo,hi uint64) {
  if s.Packing==1 {borrow:=uint64(0);if lo<s.Base[0]{borrow=1};lo-=s.Base[0];hi-=s.Base[1]+borrow};if s.Packing==2 {value:=math.Float32frombits(uint32(lo));ratio:=float32((value-s.QMin)/s.QDelta);if !(ratio>=0){ratio=0}else if !(ratio<=1){ratio=1};scaled:=float32(ratio*float32(s.QCount));lo=uint64(min(uint32(math.Floor(float64(float32(scaled+0.5)))),s.QCount))};w.Put(lo,min(s.Bits,64));if s.Bits>64{w.Put(hi,s.Bits-64)}
 }
-type TableMessageReader struct { Bits TableBitReader; Vocabulary *TableVocabulary; Report TableReport; IndexBits int64 }
 func tableMessageBatchOpen(v *TableVocabulary,data []byte,report *TableReport)(TableMessageReader,int64) {r:=TableMessageReader{Vocabulary:v,Report:*report};defer func(){*report=r.Report}();if len(data)==0{r.Report.Malformed=true;return r,-1};if data[0]!=2{tableMessageRefuse(&r.Report,"newer_form");return r,-1};if v==nil||!v.Announced {tableMessageRefuse(&r.Report,"no_vocabulary");return r,-1};if len(data)<2{r.Report.Malformed=true;return r,-1};r.Bits.Buffer=data[2:];return r,int64(data[1])+1}
 func tableMessageBatchClose(r *TableMessageReader)bool {if !r.Bits.Align()||r.Bits.Offset!=int64(len(r.Bits.Buffer))*8 {r.Report.Malformed=true;return false};return true}
 `

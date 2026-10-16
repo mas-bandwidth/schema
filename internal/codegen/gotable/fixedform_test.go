@@ -35,11 +35,11 @@ fixed table Point {
 		"func PointFixedSave(",
 		"func PointFixedLoad(",
 		"func PointFixedMeasure(",
-		"layout_malformed",
-		"no_layout",
-		"plan_too_large",
-		"newer_form",
-		"previous_form",
+		"TableFixedReasonLayoutMalformed",
+		"TableFixedReasonNoLayout",
+		"TableFixedReasonPlanTooLarge",
+		"TableFixedReasonNewerForm",
+		"TableFixedReasonPreviousForm",
 		"tableFixedParseLayout",
 		"tableFixedHoles",
 		"PointFixedLayout",
@@ -67,13 +67,13 @@ fixed table Point {
 	if fixedLoad == "" {
 		t.Fatal("PointFixedLoad was not emitted")
 	}
-	if !strings.Contains(fixedLoad, "tableFixedHoles") {
-		t.Error("compiled FixedLoad does not prefill the plan's holes")
+	if strings.Contains(fixedLoad, "tableFixedHoles") {
+		t.Error("the load path still computes the hole list per call; §4.3 lays it once per plan")
 	}
 	// SELECT BY HASH, never parse a stranger (docs/FIXED-FORM-ALGORITHM.md §5.3):
 	// the lineage and the floor are static data, and the two answers an
 	// unmatched hash owes are distinct.
-	for _, want := range []string{"tableFixedSelect(PointFixedKnown", "layout_newer", "PointFixedFloor", "layout_unsupported"} {
+	for _, want := range []string{"tableFixedSelect(PointFixedKnown", "TableFixedReasonLayoutNewer", "PointFixedFloor", "TableFixedReasonLayoutUnsupported"} {
 		if !strings.Contains(fixedLoad, want) {
 			t.Errorf("FixedLoad does not select by hash: missing %q", want)
 		}
@@ -84,8 +84,8 @@ fixed table Point {
 	if strings.Contains(fixedLoad, "PointReset(&values[k])") {
 		t.Error("identity still Reset's each record; prefill is the hole list")
 	}
-	if !strings.Contains(fixedLoad, "PointReset(&def)") {
-		t.Error("holes have no default image")
+	if !strings.Contains(fixedLoad, "PointFixedResetImage") {
+		t.Error("the load does not prefill from the laid-once default image (§4.3)")
 	}
 	if !strings.Contains(fixedLoad, "tableFixedRun(") {
 		t.Error("FixedLoad does not walk the winning plan")
@@ -129,7 +129,7 @@ fixed table Point {
 		t.Error("PointLoad, the form-1 entry point, refuses form 1")
 	}
 	fixedLoad := funcSource(body, "func PointFixedLoad(")
-	if !strings.Contains(fixedLoad, "previous_form") || !strings.Contains(fixedLoad, "tableFixedRefuse") {
+	if !strings.Contains(fixedLoad, "TableFixedReasonPreviousForm") || !strings.Contains(fixedLoad, "tableFixedRefuse") {
 		t.Error("PointFixedLoad does not name a form-1 file previous_form")
 	}
 }

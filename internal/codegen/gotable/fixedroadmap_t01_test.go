@@ -293,11 +293,11 @@ func TestR9(t *testing.T) {
 }
 `
 
-// go/R13, "REFUSE is total: refused+reason and malformed are never both set,
-// every counter stays zero, and not one destination byte is written". §5.3: a
-// refusal by name moves no counter and writes nothing; the answers that are
-// damage set Malformed and no reason. Every refusal this reader has before a
-// record lands (previous_form, message_form_as_file, newer_form, layout_malformed,
+// go/R13, "REFUSE is total: every counter stays zero, and not one destination
+// byte is written". §5.3: a refusal by name moves no counter and writes nothing;
+// the framing-damage answers set Malformed beside their name (truncated,
+// reserved_not_zero). Every refusal this reader has before a record lands
+// (previous_form, message_form_as_file, newer_form, layout_malformed,
 // layout_newer, plan_too_large, batch_too_large) and every malformed arm (empty,
 // short, reserved byte, ragged) is forged from a clean file, read into a
 // poisoned destination with a dirty report, and the whole report compared.
@@ -333,10 +333,10 @@ func TestR13(t *testing.T) {
 	add("plan_too_large", file, 2, plan[:0], refused("plan_too_large"))
 	add("batch_too_large", file, 1, plan, refused("batch_too_large"))
 	add("no_layout", forge(func(b []byte) []byte { b[len(b)-2*int(PointFixedRecordBytes)] ^= 1; return b }), 2, plan, refused("no_layout"))
-	add("malformed empty", nil, 2, plan, TableReport{Malformed: true})
-	add("malformed short", file[:TableFixedHeaderBytes], 2, plan, TableReport{Malformed: true})
-	add("malformed reserved byte", forge(func(b []byte) []byte { b[3] = 1; return b }), 2, plan, TableReport{Malformed: true})
-	add("malformed ragged", append(append([]byte(nil), file...), 0), 2, plan, TableReport{Malformed: true})
+ 	add("malformed empty", nil, 2, plan, TableReport{Malformed: true, Reason: "truncated"})
+ 	add("malformed short", file[:TableFixedHeaderBytes], 2, plan, TableReport{Malformed: true, Reason: "truncated"})
+ 	add("malformed reserved byte", forge(func(b []byte) []byte { b[3] = 1; return b }), 2, plan, TableReport{Malformed: true, Reason: "reserved_not_zero"})
+ 	add("malformed ragged", append(append([]byte(nil), file...), 0), 2, plan, TableReport{Malformed: true, Reason: "truncated"})
 	for _, c := range cases {
 		dst, bytes := poisoned(2)
 		dst = dst[:c.cap]

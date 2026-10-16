@@ -107,12 +107,12 @@ func t05GoC4(t *testing.T) {
 	op := t05TextOp(t)
 	t05Has(t, tableFixedRuntime, "func tableFixedTextIllFormed(", "the runtime validates text content over the used units (§5.4 fix 11)")
 	t05Has(t, op, "tableFixedTextIllFormed(", "the text op asks whether the used units are the text its kind says (§4.5)")
-	t05Has(t, op, `"text_ill_formed"`, "a content violation refuses BY NAME `text_ill_formed` (§4.5, §5.8 row 8)")
+	t05Has(t, op, "TableFixedReasonTextIllFormed", "a content violation refuses BY NAME `text_ill_formed` (§4.5, §5.8 row 8)")
 	// The refusal propagates: the run returns the reason and the load refuses
 	// with it. §5.8 row 8: the ruling is "a refusal by name" and not the
 	// reference's `malformed`.
 	run := t05Run(t)
-	t05Has(t, run, "return \"text_ill_formed\"", "the read loop hands the name back (§5.8 row 8)")
+	t05Has(t, run, "return TableFixedReasonTextIllFormed", "the read loop hands the name back (§5.8 row 8)")
 	load := t05GeneratedLoad(t)
 	t05Has(t, load, "tableFixedRun(", "the generated load runs the read loop")
 	t05Has(t, load, "tableFixedRefuse(report, why)", "the load refuses by the name the run reported (§5.8 row 8)")
