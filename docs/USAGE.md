@@ -3476,8 +3476,20 @@ the decoded wire's form byte is one this build does not carry, and
 `malformed` when the JSON document is damaged.
 
 ```go
-text, err := example.ShipConfigSaveText(&ship)          // the wire, base64
-loaded, err := example.ShipConfigLoadText(text, &report) // back to a ShipConfig
+// Machines: base64 of the wire — lossless, opaque, keeps the form byte and
+// every versioning guarantee; pick it when the wire itself would be ideal.
+text, err := example.ShipConfigSaveText(&ship)
+if err != nil { /* refuse */ }
+loaded, err := example.ShipConfigLoadText(text, &report)
+if err != nil { /* base64_damaged | unknown_form | wire_damaged */ }
+
+// A person: the JSON form, for reading, diffing or editing.
+buf := make([]byte, example.ShipConfigToJsonMeasure(&ship))
+n := example.ShipConfigToJson(&ship, buf)
+var edited example.ShipConfig
+if !example.ShipConfigFromJson(&edited, buf[:n], &report) {
+	// report.Malformed: the JSON document is damaged.
+}
 ```
 
 ### Packing a directory into a table
