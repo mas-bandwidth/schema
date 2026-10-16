@@ -68,7 +68,9 @@ coordinator's hold and quiet records are the operator READY/START receipt, passe
 
 ## Where the time goes, and how to see it
 
-Both lanes are an order of magnitude off the packet read, so the cause is per-field, not per-record.
+Both fixed-read lanes are 7.2–7.9x slower than C# packet read in these sittings. These
+measurements do not isolate the cause; profile the read bodies, allocations and hash work
+before attributing the gap.
 The profile that would find it: run the identity lane under `DOTNET_JitDisasmSummary=1` and
 `DOTNET_JitStdOutFile` to list the read bodies the JIT did not inline (the attribute card made the
 class bodies `AggressiveInlining`; check the accessor chain the LOAD walks), then `dotnet-trace`
