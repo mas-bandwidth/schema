@@ -1693,7 +1693,11 @@ stated before it is wire, as `[E]*T` does.
 construct.** Payload-free arms are outside that class and ride the packet
 wire in all nine backends (SPEC §4.8). A table-closure union is emitted beside
 the tables, in C++ in the Table header after the tables its arms name and
-never in the packet header, and a `type`
+never in the packet header, and in JavaScript in `<Base>.js` importing each
+`table` arm class its constructor instantiates (`new <Arm>()`) from the unit
+home that defines it (`./<Home>Table.js` when the union is in the unit's
+fixed-form closure, `./<Home>Variable.js` otherwise, and nothing it does not
+construct); a `type`
 body that holds one is refused by name, as is such a union that no table
 reaches (§11). A table holding one has no BLOCK form, by §19's standing rule
 for every union in a block closure. The packet wire's encoding of a general
