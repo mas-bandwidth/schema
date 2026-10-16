@@ -1124,11 +1124,29 @@ public final class TableJson {
             if (bad) { return 0; }
             long v;
             if (integral[0]) {
-                try {
-                    v = Long.parseLong(tok);
-                } catch (NumberFormatException e) {
-                    rep.clamped++;
-                    return tok.charAt(0) == '-' ? min : max;
+                if (signed) {
+                    try {
+                        v = Long.parseLong(tok);
+                    } catch (NumberFormatException e) {
+                        rep.clamped++;
+                        return tok.charAt(0) == '-' ? min : max;
+                    }
+                } else {
+                    if (tok.charAt(0) == '-') {
+                        if ("-0".equals(tok)) {
+                            v = 0L;
+                        } else {
+                            rep.clamped++;
+                            return min;
+                        }
+                    } else {
+                        try {
+                            v = Long.parseUnsignedLong(tok);
+                        } catch (NumberFormatException e) {
+                            rep.clamped++;
+                            return max;
+                        }
+                    }
                 }
             } else {
                 double d;
@@ -1138,12 +1156,25 @@ public final class TableJson {
                     bad = true;
                     return 0;
                 }
-                if (!Double.isFinite(d) || d != (double) (long) d) { rep.kindMismatch++; return 0; }
-                v = (long) d;
+                double whole = Math.abs(d);
+                if (!Double.isFinite(d) || whole != Math.floor(whole)) { rep.kindMismatch++; return 0; }
+                if (signed) {
+                    if (d < -9223372036854775808.0) { rep.clamped++; return min; }
+                    if (d >= 9223372036854775808.0) { rep.clamped++; return max; }
+                    v = (long) d;
+                } else {
+                    if (d < 0.0) { rep.clamped++; return min; }
+                    if (whole >= 18446744073709551616.0) { rep.clamped++; return max; }
+                    v = whole >= 9223372036854775808.0 ? (long) (whole - 9223372036854775808.0) + Long.MIN_VALUE : (long) whole;
+                }
             }
-            if (!signed && v < 0) { rep.clamped++; return 0; }
-            if (v < min) { rep.clamped++; return min; }
-            if (v > max) { rep.clamped++; return max; }
+            if (signed) {
+                if (v < min) { rep.clamped++; return min; }
+                if (v > max) { rep.clamped++; return max; }
+            } else {
+                if (Long.compareUnsigned(v, min) < 0) { rep.clamped++; return min; }
+                if (Long.compareUnsigned(v, max) > 0) { rep.clamped++; return max; }
+            }
             return v;
         }
 
@@ -1563,7 +1594,11 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		writeFieldRead(&b, u, st, f, false, i)
 	}
 	b.WriteString("            } else if (id == TableVariable.NODE_ID) {\n")
-	b.WriteString("                if (nt != null && r.rootBody) { r.skip(kind); }\n")
+	if st.FixedDeclared {
+		b.WriteString("                if (r.rootBody) { r.skip(kind); report.unknown++; }\n")
+	} else {
+		b.WriteString("                if (nt != null && r.rootBody) { r.skip(kind); }\n")
+	}
 	b.WriteString("                else { report.malformed = true; return false; }\n")
 	b.WriteString("            } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {\n")
 	b.WriteString("                report.malformed = true; return false;\n")
@@ -1648,45 +1683,52 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "        TableVariable.Reader r = TableVariable.open(data, report);\n")
 	fmt.Fprintf(&b, "        if (r == null) { return null; }\n")
 	fmt.Fprintf(&b, "        Value v = new Value();\n")
-	fmt.Fprintf(&b, "        TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, false);\n")
-	fmt.Fprintf(&b, "        if (nt.recs != null && !nt.bad) {\n")
-	fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) {\n")
-	fmt.Fprintf(&b, "                if (rec.typeId == TableVariable.STRING_ID) {\n")
-	fmt.Fprintf(&b, "                    if (!TableVariable.textValid(rec.body, 0, rec.body.length)) {\n")
-	fmt.Fprintf(&b, "                        report.malformed = true;\n")
-	fmt.Fprintf(&b, "                        rec.typeId = 0;\n")
-	fmt.Fprintf(&b, "                    } else {\n")
-	fmt.Fprintf(&b, "                        rec.value = new String(rec.body, StandardCharsets.UTF_8);\n")
-	fmt.Fprintf(&b, "                    }\n")
-	fmt.Fprintf(&b, "                } else if (rec.typeId == TableVariable.BYTES_ID) {\n")
-	fmt.Fprintf(&b, "                    rec.bytes = rec.body;\n")
-	fmt.Fprintf(&b, "                } else if (!rec.textMalformed) { // §3.1: a cleared text node is damage; an actual id of zero is unknown.\n")
-	fmt.Fprintf(&b, "                    rec.table = createNode(rec.typeId);\n")
-	fmt.Fprintf(&b, "                    if (rec.table == null) {\n")
-	fmt.Fprintf(&b, "                        report.unknown++;\n")
-	fmt.Fprintf(&b, "                        rec.typeId = 0;\n")
-	fmt.Fprintf(&b, "                    }\n")
-	fmt.Fprintf(&b, "                }\n")
-	fmt.Fprintf(&b, "            }\n")
-	fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) {\n")
-	fmt.Fprintf(&b, "                if (rec.table != null) {\n")
-	fmt.Fprintf(&b, "                    TableVariable.Reader br = new TableVariable.Reader(rec.body, r.ids, report);\n")
-	fmt.Fprintf(&b, "                    decodeNodeBody(br, rec.table, rec.typeId, report);\n")
-	fmt.Fprintf(&b, "                }\n")
-	fmt.Fprintf(&b, "            }\n")
-	fmt.Fprintf(&b, "        }\n")
-	fmt.Fprintf(&b, "        readFields(r, v, nt, report);\n")
-	fmt.Fprintf(&b, "        if (report.refused) { return null; }\n")
-	fmt.Fprintf(&b, "        resolveNodes(v, nt, v, TYPE_ID, report);\n")
-	fmt.Fprintf(&b, "        if (nt.recs != null && !nt.bad) {\n")
-	fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) {\n")
-	fmt.Fprintf(&b, "                if (rec.table != null) {\n")
-	fmt.Fprintf(&b, "                    resolveNodePointers(rec.table, rec.typeId, nt, v, TYPE_ID, report);\n")
-	fmt.Fprintf(&b, "                }\n")
-	fmt.Fprintf(&b, "            }\n")
-	fmt.Fprintf(&b, "        }\n")
-	fmt.Fprintf(&b, "        return v;\n")
-	fmt.Fprintf(&b, "    }\n\n")
+	if st.FixedDeclared {
+		fmt.Fprintf(&b, "        readFields(r, v, null, report);\n")
+		fmt.Fprintf(&b, "        if (report.refused) { return null; }\n")
+		fmt.Fprintf(&b, "        return v;\n")
+		fmt.Fprintf(&b, "    }\n\n")
+	} else {
+		fmt.Fprintf(&b, "        TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, false);\n")
+		fmt.Fprintf(&b, "        if (nt.recs != null && !nt.bad) {\n")
+		fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) {\n")
+		fmt.Fprintf(&b, "                if (rec.typeId == TableVariable.STRING_ID) {\n")
+		fmt.Fprintf(&b, "                    if (!TableVariable.textValid(rec.body, 0, rec.body.length)) {\n")
+		fmt.Fprintf(&b, "                        report.malformed = true;\n")
+		fmt.Fprintf(&b, "                        rec.typeId = 0;\n")
+		fmt.Fprintf(&b, "                    } else {\n")
+		fmt.Fprintf(&b, "                        rec.value = new String(rec.body, StandardCharsets.UTF_8);\n")
+		fmt.Fprintf(&b, "                    }\n")
+		fmt.Fprintf(&b, "                } else if (rec.typeId == TableVariable.BYTES_ID) {\n")
+		fmt.Fprintf(&b, "                    rec.bytes = rec.body;\n")
+		fmt.Fprintf(&b, "                } else if (!rec.textMalformed) { // §3.1: a cleared text node is damage; an actual id of zero is unknown.\n")
+		fmt.Fprintf(&b, "                    rec.table = createNode(rec.typeId);\n")
+		fmt.Fprintf(&b, "                    if (rec.table == null) {\n")
+		fmt.Fprintf(&b, "                        report.unknown++;\n")
+		fmt.Fprintf(&b, "                        rec.typeId = 0;\n")
+		fmt.Fprintf(&b, "                    }\n")
+		fmt.Fprintf(&b, "                }\n")
+		fmt.Fprintf(&b, "            }\n")
+		fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) {\n")
+		fmt.Fprintf(&b, "                if (rec.table != null) {\n")
+		fmt.Fprintf(&b, "                    TableVariable.Reader br = new TableVariable.Reader(rec.body, r.ids, report);\n")
+		fmt.Fprintf(&b, "                    decodeNodeBody(br, rec.table, rec.typeId, report);\n")
+		fmt.Fprintf(&b, "                }\n")
+		fmt.Fprintf(&b, "            }\n")
+		fmt.Fprintf(&b, "        }\n")
+		fmt.Fprintf(&b, "        readFields(r, v, nt, report);\n")
+		fmt.Fprintf(&b, "        if (report.refused) { return null; }\n")
+		fmt.Fprintf(&b, "        resolveNodes(v, nt, v, TYPE_ID, report);\n")
+		fmt.Fprintf(&b, "        if (nt.recs != null && !nt.bad) {\n")
+		fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) {\n")
+		fmt.Fprintf(&b, "                if (rec.table != null) {\n")
+		fmt.Fprintf(&b, "                    resolveNodePointers(rec.table, rec.typeId, nt, v, TYPE_ID, report);\n")
+		fmt.Fprintf(&b, "                }\n")
+		fmt.Fprintf(&b, "            }\n")
+		fmt.Fprintf(&b, "        }\n")
+		fmt.Fprintf(&b, "        return v;\n")
+		fmt.Fprintf(&b, "    }\n\n")
+	}
 
 	writeLoadMeasure(&b, u, st)
 	writeJsonCodec(&b, u, st)
@@ -1907,10 +1949,15 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 func jsonKey(f *ir.Field) string { return ir.TableFieldJsonKey(f) }
 
 func jsonIntRange(f *ir.Field) (min, max string) {
-	if f.Type.Signed {
-		if f.Type.Width <= 32 {
+	if f.Type.Signed && f.Type.Kind == ir.TInt {
+		switch f.Type.Width {
+		case 8:
+			min, max = "-128L", "127L"
+		case 16:
+			min, max = "-32768L", "32767L"
+		case 32:
 			min, max = "Integer.MIN_VALUE", "Integer.MAX_VALUE"
-		} else {
+		default:
 			min, max = "Long.MIN_VALUE", "Long.MAX_VALUE"
 		}
 		if f.HasIntRange {
@@ -1922,8 +1969,8 @@ func jsonIntRange(f *ir.Field) (min, max string) {
 			}
 		}
 	} else {
-		if f.Type.Width <= 32 {
-			min, max = "0L", "0xffffffffL"
+		if f.Type.Width < 64 {
+			min, max = "0L", fmt.Sprintf("0x%xL", (uint64(1)<<uint(f.Type.Width))-1)
 			if f.HasIntRange {
 				min = f.IntMin.String() + "L"
 				max = f.IntMax.String() + "L"
@@ -2387,12 +2434,24 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                        int ek = ar.get8();\n")
 		fmt.Fprintf(b, "                        if (ek == 17) {\n")
 		fmt.Fprintf(b, "                            long n = ar.leb();\n")
-		fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)) {\n")
-		fmt.Fprintf(b, "                                v.%sIdx.clear();\n", m)
-		fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
-		fmt.Fprintf(b, "                                    v.%sIdx.add(ar.leb());\n", m)
-		fmt.Fprintf(b, "                                }\n")
-		fmt.Fprintf(b, "                            } else { report.refused = true; }\n")
+		if f.ArrayBound > 0 {
+			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else {\n")
+			fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.clamped++; }\n", f.ArrayBound, f.ArrayBound)
+			fmt.Fprintf(b, "                                v.%sIdx.clear();\n", m)
+			fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
+			fmt.Fprintf(b, "                                    long idx = ar.leb();\n")
+			fmt.Fprintf(b, "                                    if (ar.fail) break;\n")
+			fmt.Fprintf(b, "                                    v.%sIdx.add(idx);\n", m)
+			fmt.Fprintf(b, "                                }\n")
+			fmt.Fprintf(b, "                            }\n")
+		} else {
+			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)) {\n")
+			fmt.Fprintf(b, "                                v.%sIdx.clear();\n", m)
+			fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
+			fmt.Fprintf(b, "                                    v.%sIdx.add(ar.leb());\n", m)
+			fmt.Fprintf(b, "                                }\n")
+			fmt.Fprintf(b, "                            } else { report.refused = true; }\n")
+		}
 		fmt.Fprintf(b, "                        } else { report.kindMismatch++; }\n")
 		fmt.Fprintf(b, "                    }\n")
 		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
@@ -2404,20 +2463,21 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                        int ek = ar.get8();\n")
 		fmt.Fprintf(b, "                        if (ek == 13) {\n")
 		fmt.Fprintf(b, "                            long n = ar.leb();\n")
-		fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)) {\n")
+		if f.ArrayBound > 0 {
+			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else {\n")
+		} else {
+			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)) {\n")
+		}
 		if retain {
 			fmt.Fprintf(b, "                                retain.discardField(path, depth, %d);\n", ordinal)
 		}
 		if f.ArrayBound > 0 {
-			fmt.Fprintf(b, "                                if (n > %d) { report.clamped++; }\n", f.ArrayBound)
+			fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.clamped++; }\n", f.ArrayBound, f.ArrayBound)
 		}
 		fmt.Fprintf(b, "                                v.%s.clear();\n", m)
 		fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
 		fmt.Fprintf(b, "                                    TableVariable.Reader er = ar.body();\n")
 		fmt.Fprintf(b, "                                    if (er == null) break;\n")
-		if f.ArrayBound > 0 {
-			fmt.Fprintf(b, "                                    if (i >= %d) { continue; }\n", f.ArrayBound)
-		}
 		fmt.Fprintf(b, "                                    %sVariable.Value elem = new %sVariable.Value();\n", target.Name, target.Name)
 		if retain {
 			fmt.Fprintf(b, "                                    path[2 * depth] = %d; path[2 * depth + 1] = (int) i;\n", ordinal)
@@ -2428,7 +2488,11 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                                    if (er.off != er.limit) { report.malformed = true; elem = new %sVariable.Value(); } // §4: a body's unclaimed bytes reset this element.\n", target.Name)
 		fmt.Fprintf(b, "                                    v.%s.add(elem);\n", m)
 		fmt.Fprintf(b, "                                }\n")
-		fmt.Fprintf(b, "                            } else { report.refused = true; }\n")
+		if f.ArrayBound > 0 {
+			fmt.Fprintf(b, "                            }\n")
+		} else {
+			fmt.Fprintf(b, "                            } else { report.refused = true; }\n")
+		}
 		fmt.Fprintf(b, "                        } else { report.kindMismatch++; }\n")
 		fmt.Fprintf(b, "                    }\n")
 		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
@@ -2456,7 +2520,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 	case f.Type.Kind == ir.TBytes:
 		fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null){if(!ar.has(1)){report.malformed=true;}else if(ar.get8()!=6){report.kindMismatch++;}else {long n=ar.leb();if(ar.fail||n<0||n>ar.limit-ar.off){report.malformed=true;}else {int keep=(int)Math.min(n,%d);v.%s=java.util.Arrays.copyOfRange(ar.buf,ar.off,ar.off+keep);if(n>%d)report.clamped++;ar.off+=(int)n;if(ar.off!=ar.limit)report.malformed=true;}}}}else {r.skip(kind);report.kindMismatch++;}\n", f.Type.Size, m, f.Type.Size)
 	case f.Type.Kind == ir.TString:
-		fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.malformed = true; v.%s = \"\"; } else { int keep = n; if (keep > %d) { keep = %d; while (keep > 0 && (r.buf[r.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } v.%s = new String(r.buf, r.off, keep, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.malformed = true; r.fail = true; } }\n", m, f.Type.Size, f.Type.Size, m)
+		fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.malformed = true; v.%s = %s; } else { int keep = n; if (keep > %d) { keep = %d; while (keep > 0 && (r.buf[r.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } v.%s = new String(r.buf, r.off, keep, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.malformed = true; r.fail = true; } }\n", m, variableDefault(f), f.Type.Size, f.Type.Size, m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TBool:
 		fmt.Fprintf(b, "                if (kind == 1) { if (r.has(1)) { v.%s = r.get8() != 0; } else { report.malformed = true; r.fail = true; } }\n", m)
@@ -2484,7 +2548,12 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
 	m := varMember(f)
 	ek := variableElemWireKind(f)
-	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (ek == %d) { long n = ar.leb(); if (ar.fail) { } else if (n < 0 || n > 0x7FFFFFFFL) { report.refused = true; } else { v.%s.clear(); ", ek, m)
+	cond := variableCompatibleKinds(ek, "ek")
+	countCheck := "else if (n < 0 || n > 0x7FFFFFFFL) { report.refused = true; } else {"
+	if f.ArrayBound > 0 {
+		countCheck = fmt.Sprintf("else { if (n < 0 || n > %d) { n = %d; report.clamped++; }", f.ArrayBound, f.ArrayBound)
+	}
+	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (%s) { long n = ar.leb(); if (ar.fail) { } %s if (ek != %d) { report.widened++; } v.%s.clear(); ", cond, countCheck, ek, m)
 	writeArrayElemRead(b, f, m)
 	fmt.Fprintf(b, " } } else { report.kindMismatch++; } } } }\n")
 	fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
@@ -2496,47 +2565,26 @@ func writeArrayElemRead(b *strings.Builder, f *ir.Field, m string) {
 	if w <= 0 {
 		w = 1
 	}
+	refusePrefix := func(widthExpr string) string {
+		if f.Array == ir.ArrayList {
+			return fmt.Sprintf("if (n > (long) (ar.limit - ar.off) / (%s)) { report.refused = true; } else ", widthExpr)
+		}
+		return ""
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
-		fmt.Fprintf(b, "if (n > (long) (ar.limit - ar.off) / %d) { report.refused = true; } else { for (long i = 0; i < n; i++) { if (ar.has(1)) { v.%s.add(ar.get8() != 0); } else { report.malformed = true; ar.fail = true; break; } } }", w, m)
-	case ir.TInt:
-		read := ""
-		switch f.Type.Width {
-		case 8:
-			if f.Type.Signed {
-				read = "(int) (byte) ar.get8()"
-			} else {
-				read = "ar.get8()"
-			}
-		case 16:
-			if f.Type.Signed {
-				read = "(int) (short) ar.get16()"
-			} else {
-				read = "ar.get16()"
-			}
-		case 32:
-			read = "ar.get32()"
-		default:
-			read = "ar.get64()"
+		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(1)) { v.%s.add(ar.get8() != 0); } else { report.malformed = true; ar.fail = true; break; } } }", refusePrefix("1"), m)
+	case ir.TInt, ir.TBits:
+		lo, hi := variableRawBounds(f)
+		clamp := ""
+		if f.HasIntRange {
+			clamp = fmt.Sprintf("raw = TableVariable.clampInteger(raw, %s, %s, report); ", lo, hi)
 		}
-		fmt.Fprintf(b, "if (n > (long) (ar.limit - ar.off) / %d) { report.refused = true; } else { for (long i = 0; i < n; i++) { if (ar.has(%d)) { v.%s.add(%s); } else { report.malformed = true; ar.fail = true; break; } } }", w, w, m, read)
-	case ir.TBits:
-		read := ""
-		switch {
-		case f.Type.Width <= 8:
-			read = "ar.get8()"
-		case f.Type.Width <= 16:
-			read = "ar.get16()"
-		case f.Type.Width <= 32:
-			read = "ar.get32()"
-		default:
-			read = "ar.get64()"
-		}
-		fmt.Fprintf(b, "if (n > (long) (ar.limit - ar.off) / %d) { report.refused = true; } else { for (long i = 0; i < n; i++) { if (ar.has(%d)) { v.%s.add(%s); } else { report.malformed = true; ar.fail = true; break; } } }", w, w, m, read)
+		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { java.math.BigInteger raw = TableVariable.readInteger(ar, ek); if (raw == null) break; %sv.%s.add(%s); } }", refusePrefix("TableVariable.integerWidth(ek)"), clamp, m, variableRawStorage(f, "raw"))
 	case ir.TFloat32:
-		fmt.Fprintf(b, "if (n > (long) (ar.limit - ar.off) / 4) { report.refused = true; } else { for (long i = 0; i < n; i++) { if (ar.has(4)) { v.%s.add(Float.intBitsToFloat(ar.get32())); } else { report.malformed = true; ar.fail = true; break; } } }", m)
+		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(4)) { v.%s.add(Float.intBitsToFloat(ar.get32())); } else { report.malformed = true; ar.fail = true; break; } } }", refusePrefix("4"), m)
 	case ir.TFloat64:
-		fmt.Fprintf(b, "if (n > (long) (ar.limit - ar.off) / 8) { report.refused = true; } else { for (long i = 0; i < n; i++) { if (ar.has(8)) { v.%s.add(Double.longBitsToDouble(ar.get64())); } else { report.malformed = true; ar.fail = true; break; } } }", m)
+		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ek == 10) { if (ar.has(4)) { v.%s.add(TableVariable.widenF32(ar.get32())); } else { report.malformed = true; ar.fail = true; break; } } else { if (ar.has(8)) { v.%s.add(Double.longBitsToDouble(ar.get64())); } else { report.malformed = true; ar.fail = true; break; } } } }", refusePrefix("ek == 10 ? 4 : 8"), m, m)
 	case ir.TString:
 		fmt.Fprintf(b, "for (long i = 0; i < n; i++) { long L = ar.leb(); int len = (int) L; if (ar.fail) { break; } if (!ar.has(len)) { report.malformed = true; ar.fail = true; break; } if (!TableVariable.textValid(ar.buf, ar.off, len)) { report.malformed = true; v.%s.add(\"\"); } else { int keep = len; if (keep > %d) { keep = %d; while (keep > 0 && (ar.buf[ar.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } v.%s.add(new String(ar.buf, ar.off, keep, StandardCharsets.UTF_8)); } ar.off += len; }", m, f.Type.Size, f.Type.Size, m)
 	case ir.TNamed:
@@ -2544,7 +2592,7 @@ func writeArrayElemRead(b *strings.Builder, f *ir.Field, m string) {
 		case *ir.Enum:
 			fmt.Fprintf(b, "for (long i = 0; i < n; i++) { long vref = ar.leb(); if (ar.fail) { break; } if (vref == 0) { v.%s.add(0); } else { long vid = ar.resolve(vref); if (!ar.fail) { v.%s.add(%sEnum(vid, report)); } } }", m, m, m)
 		case *ir.Flags:
-			fmt.Fprintf(b, "if (n > (long) (ar.limit - ar.off) / 8) { report.refused = true; } else { for (long i = 0; i < n; i++) { if (ar.has(8)) { v.%s.add(ar.get64()); } else { report.malformed = true; ar.fail = true; break; } } }", m)
+			fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(8)) { v.%s.add(ar.get64()); } else { report.malformed = true; ar.fail = true; break; } } }", refusePrefix("8"), m)
 		}
 	}
 }
@@ -2720,6 +2768,12 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 		return
 	}
 	if f.Array == ir.ArrayFixed && f.KeyEnum == "" && !f.Type.Optional {
+		if isStruct(f) && !f.Type.Pointer {
+			fmt.Fprintf(b, "        {w.putLeb(w.ref(F_%s));w.put8(14);\n", varMember(f))
+			writeVariablePayload(b, u, st.Name, f, "v."+varMember(f), "w", 0)
+			b.WriteString("        }\n")
+			return
+		}
 		one := variableElement(f)
 		expr := "v." + varMember(f) + ".get(i)"
 		fmt.Fprintf(b, "        {boolean present=false;for(int i=0;i<v.%s.size();i++)if(!(%s)){present=true;break;}if(present){w.putLeb(w.ref(F_%s));w.put8(14);\n", varMember(f), variableDefaultTest(one, expr), varMember(f))

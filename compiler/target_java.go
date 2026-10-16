@@ -122,6 +122,7 @@ func init() {
 	// the way go and rust register (target_go.go, target_rust.go): the append
 	// IS the registration.
 	valueDefaultTargets = append(valueDefaultTargets, "java")
+	wasRowTargets = append(wasRowTargets, "java")
 	registerWideTextCarrier("java")
 	registerListCarrier("java")
 	registerMapCarrier("java")
