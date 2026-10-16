@@ -20,8 +20,13 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `dart-ludicrous/` | Dart int128 tests | `make test-dart` | `make test-dart` |
 | `dart-tables/` | Dart table tests | `make test-dart` | `make test-dart` |
 | `elixir/` | Elixir packet tests | `make test-elixir` | `make test-elixir` |
+| `elixir-alloc/` | Elixir allocation tests | `make test-elixir` | `make test-elixir` |
+| `elixir-filemodule/` | Elixir file-module tests | `make test-elixir` | `make test-elixir` |
 | `elixir-fixedform/` | Elixir fixed-form tests | `make test-elixir` | `make test-elixir` |
 | `elixir-ludicrous/` | Elixir int128 tests | `make test-elixir` | `make test-elixir` |
+| `elixir-tables/` | Elixir table tests | `make test-elixir` | `make test-elixir` |
+| `elixir-view/` | Elixir view tests | `make test-elixir` | `make test-elixir` |
+| `elixir-warning-control/` | Elixir warning-control tests | `make test-elixir` | `make test-elixir` |
 | `generated-tree/` | committed generated/ verify | `test/generated-tree/verify` | `make generated-current` |
 | `go/` | Go packet tests | `make test-go` | `make test-go` |
 | `go-ludicrous/` | Go int128 tests | `make test-go` | `make test-go` |
