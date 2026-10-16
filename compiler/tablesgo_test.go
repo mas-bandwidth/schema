@@ -72,8 +72,8 @@ func TestGoEmitsPointeredTables(t *testing.T) {
 }
 
 // TestTablesMoveNoGeneratedGoByte is the Go half of the same proof: adding a
-// table changes not one byte of the non-table generated Go, and grows only the
-// Go table sources — the core, the message form, the two accelerators, the
+// table changes not one byte of the non-table generated Go and adds only these
+// Go table sources: the core, the message form, the two accelerators, the
 // unit's one text walk, and the unit view.
 func TestTablesMoveNoGeneratedGoByte(t *testing.T) {
 	c := New()
