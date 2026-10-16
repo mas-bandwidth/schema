@@ -11,6 +11,9 @@
 #   sha256: 1e79f51341937f84cc1563a3fcad4a91706e35dee72bda69f4e955065c0e373a
 #   unzip into dist/ and rename dart-sdk -> dart-sdk-3.13.2
 DART ?= $(CURDIR)/dist/dart-sdk-3.13.2/bin/dart
+# The SDK version the JIT float measurement (tables-dart-float-jit) certifies
+# on; the gate refuses any other before it measures.
+DART_SDK_PIN := 3.13.2
 
 # THE OPTIONAL UNIT REGISTRY (SPEC-TABLES §8.7): a generated Dart program
 # walks UnitView() for every VIEW_CORPUS unit, byte-compared with the IR pin.
@@ -779,6 +782,172 @@ tables-dart-variable-class:
 
 test-dart: tables-dart-variable-class
 
+# THE JIT FLOAT INSTRUMENT (issue 404, PORTING M3): a double crossing an
+# out-of-line conversion call boxes under the JIT, and whether the call is
+# inlined is the inliner's budget, not the codec's. test/dart/floatjit.dart
+# drives float32 (Input) and float64 (Vec3) fields through the generated
+# packet codec in three shapes — as generated, hand-inlined, and from two
+# callers — and the VM prints one line per scavenge under --verbose_gc. The
+# program brackets its steady loop with two marker lines on stderr, after a
+# warm-up of many short calls, and only the main isolate's scavenges between
+# the markers are counted; each shape runs at N and at 2N steady passes, and a
+# steady state that allocates shows in both, in proportion. Measured on the
+# pinned SDK (3.13.2, linux x64) against the codec as it was before the
+# emitters inlined the float32 conversion: generated 76 (152 at 2N), inlined
+# 0, twocallers 76 (153 at 2N) per 2,000,000 passes; after: 0, 0, 0. Any
+# scavenge in either window is red. A functional test (the VM).
+#
+# A count is only read off a run that is proven whole. Each measured run's
+# stdout and stderr go to their own files under build/floatjit/, and the run is
+# REFUSED, by name, when the Dart process exits nonzero, when its stdout lacks
+# the completion line floatjit.dart prints last, when its stderr lacks the
+# main isolate's --verbose_gc header (`main: ... reason=initial`), which is how
+# an absent or unsupported GC trace is told from a valid trace holding zero
+# scavenges, or when either window marker is missing. No failure is
+# swallowed. THE BLADE (tables-dart-float-jit-negative-control) runs first,
+# every time: a planted run (floatjit.dart's `planted-exit` shape, which warms
+# up and exits 3 with no completion line) and a run with the GC trace switched
+# off must both be refused by the same check, each for its own reason, or the
+# target is red with BLADE LOST.
+#
+# A count is only certified on the pinned SDK. The JIT inlining budget is the
+# SDK's, so a zero measured on another SDK proves nothing about 3.13.2. Before
+# any measured run the recipe reads `$(DART) --version` and REFUSES, by name,
+# unless it exits zero and begins `Dart SDK version: $(DART_SDK_PIN) ` (the
+# trailing space keeps 3.13.20 out). THE OFF-PIN CONTROL
+# (tables-dart-float-jit-sdk-negative-control) runs this very recipe against
+# three stand-in SDKs (3.12.0, 3.13.20, and one whose --version fails) and is
+# red unless each is refused before anything is measured.
+#
+# A zero is only read off a window in which the JIT did not tier. MEASURED
+# CAUSE of the stray inlined-window scavenge (2026-10-16, hetzner2, 3.13.2):
+# with the VM's background compiler, the optimizing compile of the pass is
+# queued during warm-up and can be installed after the steady call has
+# already entered the unoptimized pass, which boxes every double until
+# on-stack replacement swaps it in. Under --trace_compiler --trace_osr
+# --trace_deoptimization every traced stray (4 of 4, of 300 runs) showed
+# `--> 'passInlined' entry:` (compiles of 26 to 48 ms on the loaded bench)
+# and then `Attempting OSR for passInlined` INSIDE the window, each
+# scavenge collecting a full 1.5-2.0 MB new space; the pass run unoptimized
+# throughout reads 43 scavenges per 200,000 passes (86 per 400,000). The
+# inlined control is hit most because its callees deopt during warm-up
+# (`Deoptimizing (reason 0 'BinarySmiOp')`, a 64-bit word leaving Smi
+# range, as the generated writeInput and readVec3 also do), which pushes the
+# pass's final optimized compile late into warm-up. Neither is the steady
+# code under test: its optimized code allocates nothing. Excluded by
+# construction: every measured run passes --no-background-compilation, so an
+# optimizing compile completes on the mutator before warm-up goes on, and the
+# window starts only on installed optimized code. A/B at the same load, 4
+# runs at once: the background-compiler program 8 stray windows of 400, this
+# one 0 of 400; serial, 300 runs, 0 strays and no trace line in any window.
+# The same runs also pass --trace_compiler --trace_deoptimization
+# --trace_osr, and any optimizing compile, OSR or deopt line between the
+# markers is red (`tiered inside the window`), so the exclusion is checked
+# on every run, never assumed; a run whose stderr holds no compiler trace is
+# REFUSED. (A first non-empty stderr write before warm-up also moves dart:io's
+# first-write bookkeeping, seen compiled inside the window, out of it.) THE
+# BOXING BLADE (tables-dart-float-jit-boxing-negative-control) runs first:
+# floatjit.dart's `planted-box` shape converts through vm:never-inline
+# helpers, so a double crosses a call every pass, and the same run and
+# count must read it nonzero in both windows (measured 91 per 2,000,000, 183
+# per 4,000,000) or the target is red with BLADE LOST.
+FLOATJIT_N ?= 2000000
+FLOATJIT_FLAGS := --verbose_gc --no-background-compilation --trace_compiler --trace_deoptimization --trace_osr
+FLOATJIT_DIR := build/floatjit
+define FLOATJIT_RUN
+pin() { \
+	v=$$($$1 --version 2>&1); prc=$$?; \
+	if [ $$prc -ne 0 ]; then echo "tables-dart-float-jit: REFUSED: the measurement requires Dart SDK $(DART_SDK_PIN) (pinned in make/dart.mk), and $$1 --version exited $$prc"; return 1; fi; \
+	case "$$v" in "Dart SDK version: $(DART_SDK_PIN) "*) ;; \
+	*) echo "tables-dart-float-jit: REFUSED: the measurement requires Dart SDK $(DART_SDK_PIN) (pinned in make/dart.mk), running: $$v"; return 1;; esac; \
+}; \
+run() { \
+	log=$(FLOATJIT_DIR)/$$1-$$2$$4; rm -f $$log.count; \
+	$(DART) $$3 test/dart/floatjit.dart $$1 $$2 >$$log.out 2>$$log.err; rc=$$?; \
+	if [ $$rc -ne 0 ]; then echo "tables-dart-float-jit: REFUSED shape=$$1 passes=$$2: dart exited $$rc ($$log.err)"; return 1; fi; \
+	if ! grep -Eqx "floatjit shape=$$1 steady=$$2 check=-?[0-9]+" $$log.out; then echo "tables-dart-float-jit: REFUSED shape=$$1 passes=$$2: no completion line ($$log.out)"; return 1; fi; \
+	if ! grep -Eq '^main: .*reason=initial' $$log.err; then echo "tables-dart-float-jit: REFUSED shape=$$1 passes=$$2: no GC trace from the main isolate, --verbose_gc absent or unsupported ($$log.err)"; return 1; fi; \
+	if [ "$$(grep -Ec '^floatjit: steady window (begins|ends)$$' $$log.err)" != 2 ]; then echo "tables-dart-float-jit: REFUSED shape=$$1 passes=$$2: the steady window markers are not both present ($$log.err)"; return 1; fi; \
+	if ! grep -Eq '^Compiling (osr )?optimized function' $$log.err; then echo "tables-dart-float-jit: REFUSED shape=$$1 passes=$$2: no compiler trace, --trace_compiler absent or unsupported ($$log.err)"; return 1; fi; \
+	awk '/^floatjit: steady window begins$$/ { w = 1; next } /^floatjit: steady window ends$$/ { w = 0 } w && /^\[ main *, *Scavenge/ { n++ } END { print n + 0 }' $$log.err > $$log.count; \
+	awk '/^floatjit: steady window begins$$/ { w = 1; next } /^floatjit: steady window ends$$/ { w = 0 } w && /^(Compiling (osr )?optimized function|Attempting OSR|Deoptimizing|== Deoptimizing)/ { n++ } END { print n + 0 }' $$log.err > $$log.tier; \
+}
+endef
+
+.PHONY: tables-dart-float-jit-negative-control
+tables-dart-float-jit-negative-control: toolchain-dart generated/dart/.stamp
+	@mkdir -p $(FLOATJIT_DIR)
+	@$(FLOATJIT_RUN); \
+	if run planted-exit 1 --verbose_gc -blade >$(FLOATJIT_DIR)/blade-exit.log; then \
+		echo "tables-dart-float-jit: BLADE LOST: a planted run that exits 3 was accepted"; exit 1; fi; \
+	grep -q 'REFUSED shape=planted-exit passes=1: dart exited 3 ' $(FLOATJIT_DIR)/blade-exit.log || \
+		{ echo "tables-dart-float-jit: BLADE LOST: the planted run was refused for another reason"; cat $(FLOATJIT_DIR)/blade-exit.log; exit 1; }; \
+	if run generated 1 '' -blade >$(FLOATJIT_DIR)/blade-trace.log; then \
+		echo "tables-dart-float-jit: BLADE LOST: a run with no GC trace was accepted"; exit 1; fi; \
+	grep -q 'REFUSED shape=generated passes=1: no GC trace' $(FLOATJIT_DIR)/blade-trace.log || \
+		{ echo "tables-dart-float-jit: BLADE LOST: the untraced run was refused for another reason"; cat $(FLOATJIT_DIR)/blade-trace.log; exit 1; }; \
+	echo "tables-dart-float-jit blade: a planted exit-3 run and an untraced run are both refused"
+
+.PHONY: tables-dart-float-jit-boxing-negative-control
+tables-dart-float-jit-boxing-negative-control: toolchain-dart generated/dart/.stamp
+	@mkdir -p $(FLOATJIT_DIR)
+	@$(FLOATJIT_RUN); \
+	pin $(DART) || exit 1; \
+	run planted-box $(FLOATJIT_N) '$(FLOATJIT_FLAGS)' '' || { echo "tables-dart-float-jit: BLADE LOST: the planted boxing run was refused"; exit 1; }; \
+	run planted-box $$((2 * $(FLOATJIT_N))) '$(FLOATJIT_FLAGS)' '' || { echo "tables-dart-float-jit: BLADE LOST: the planted boxing run was refused"; exit 1; }; \
+	a=$$(cat $(FLOATJIT_DIR)/planted-box-$(FLOATJIT_N).count); \
+	b=$$(cat $(FLOATJIT_DIR)/planted-box-$$((2 * $(FLOATJIT_N))).count); \
+	if [ $$a -eq 0 ] || [ $$b -eq 0 ]; then \
+		echo "tables-dart-float-jit: BLADE LOST: a double crossing a vm:never-inline call read steady_scavenges=$$a per $(FLOATJIT_N) passes ($$b per $$((2 * $(FLOATJIT_N)))), not nonzero in both windows"; exit 1; fi; \
+	echo "tables-dart-float-jit boxing control: planted shape=planted-box steady_scavenges=$$a per $(FLOATJIT_N) passes ($$b per $$((2 * $(FLOATJIT_N)))) is red: a double crossing a vm:never-inline call is read as boxing in both windows"
+
+.PHONY: tables-dart-float-jit-sdk-negative-control
+tables-dart-float-jit-sdk-negative-control:
+	@mkdir -p $(FLOATJIT_DIR)/offpin
+	@d=$(CURDIR)/$(FLOATJIT_DIR)/offpin; \
+	for v in 3.12.0 3.13.20 broken; do \
+		f=$$d/dart-$$v; rm -f $$f.measured $$f.log; \
+		{ echo '#!/bin/sh'; \
+		  if [ $$v = broken ]; then echo 'if [ "$$1" = --version ]; then exit 7; fi'; \
+		  else echo "if [ \"\$$1\" = --version ]; then echo 'Dart SDK version: $$v (stable) (Thu Jan 1 00:00:00 2026 +0000) on \"linux_x64\"'; exit 0; fi"; fi; \
+		  echo ": > $$f.measured"; echo 'exit 0'; } > $$f; chmod +x $$f; \
+		if $(MAKE) --no-print-directory -o toolchain-dart -o generated/dart/.stamp \
+				-o tables-dart-float-jit-negative-control -o tables-dart-float-jit-sdk-negative-control \
+				-o tables-dart-float-jit-boxing-negative-control \
+				tables-dart-float-jit DART=$$f FLOATJIT_N=1 > $$f.log 2>&1; then \
+			echo "tables-dart-float-jit: OFF-PIN CONTROL LOST: stand-in SDK $$v was accepted"; cat $$f.log; exit 1; fi; \
+		if [ $$v = broken ]; then want="pinned in make/dart.mk), and $$f --version exited 7"; \
+		else want="pinned in make/dart.mk), running: Dart SDK version: $$v (stable)"; fi; \
+		grep -Fq "tables-dart-float-jit: REFUSED: the measurement requires Dart SDK $(DART_SDK_PIN) ($$want" $$f.log || \
+			{ echo "tables-dart-float-jit: OFF-PIN CONTROL LOST: stand-in SDK $$v was refused for another reason"; cat $$f.log; exit 1; }; \
+		if [ -e $$f.measured ]; then echo "tables-dart-float-jit: OFF-PIN CONTROL LOST: stand-in SDK $$v was refused only after it was run"; exit 1; fi; \
+		if grep -q steady_scavenges $$f.log; then echo "tables-dart-float-jit: OFF-PIN CONTROL LOST: stand-in SDK $$v printed a count"; exit 1; fi; \
+	done; \
+	echo "tables-dart-float-jit off-pin control: stand-in SDKs 3.12.0, 3.13.20 and a failing --version are each refused before anything is measured"
+
+.PHONY: tables-dart-float-jit
+tables-dart-float-jit: toolchain-dart generated/dart/.stamp tables-dart-float-jit-negative-control tables-dart-float-jit-sdk-negative-control tables-dart-float-jit-boxing-negative-control
+	@mkdir -p $(FLOATJIT_DIR)
+	@$(FLOATJIT_RUN); \
+	pin $(DART) || exit 1; \
+	fail=0; tier=0; for s in generated inlined twocallers; do \
+		run $$s $(FLOATJIT_N) '$(FLOATJIT_FLAGS)' '' || exit 1; \
+		run $$s $$((2 * $(FLOATJIT_N))) '$(FLOATJIT_FLAGS)' '' || exit 1; \
+		a=$$(cat $(FLOATJIT_DIR)/$$s-$(FLOATJIT_N).count); \
+		b=$$(cat $(FLOATJIT_DIR)/$$s-$$((2 * $(FLOATJIT_N))).count); \
+		ta=$$(cat $(FLOATJIT_DIR)/$$s-$(FLOATJIT_N).tier); \
+		tb=$$(cat $(FLOATJIT_DIR)/$$s-$$((2 * $(FLOATJIT_N))).tier); \
+		echo "tables-dart-float-jit shape=$$s steady_scavenges=$$a per $(FLOATJIT_N) passes ($$b per $$((2 * $(FLOATJIT_N)))) tiering_in_window=$$ta ($$tb)"; \
+		[ $$a -eq 0 ] && [ $$b -eq 0 ] || fail=1; \
+		[ $$ta -eq 0 ] && [ $$tb -eq 0 ] || tier=1; \
+	done; \
+	echo "tables-dart-float-jit sdk: $$($(DART) --version 2>&1)"; \
+	if [ $$tier -ne 0 ]; then echo "tables-dart-float-jit: FAIL (the JIT tiered inside the window: an optimizing compile, OSR or deopt between the markers)"; exit 1; fi; \
+	if [ $$fail -ne 0 ]; then echo "tables-dart-float-jit: FAIL (a float boxes under the JIT)"; exit 1; fi; \
+	echo "tables-dart-float-jit: OK"
+
+test-dart: tables-dart-float-jit tables-dart-float-jit-negative-control tables-dart-float-jit-sdk-negative-control tables-dart-float-jit-boxing-negative-control
+
 # THE COOK OF A MAP FIELD (docs/SPEC-TABLES.md §2.8, §7.2): the Go cook writes a
 # Squad (tables/lists) with a known roster, an absent map and an emptied one,
 # and a unit holding every key kind §2.8 admits; the Dart programs in
@@ -1097,11 +1266,13 @@ tables-dart-agree: build/tables-generated-dart/.stamp build/cook-fuzz/.stamp
 #
 # THE ACCESSOR control moves one scalar accessor four bytes in the row emitter
 # (block.go, which writes the cook's rows too): RenderCamera.camera_id reads
-# the next field's bytes, the descriptor still says where it is.
+# the next field's bytes, the descriptor still says where it is. The anchor is
+# the offset argument of the plain scalar getter's scalarGetter call (the
+# getter body is a statement since issue 404, so the offset is on its own line).
 .PHONY: tables-dart-accessor-negative-control
 tables-dart-accessor-negative-control: build/cook-fuzz/.stamp
 	@rm -rf build/dart-agree-acc-nc && mkdir -p build/dart-agree-acc-nc
-	@sed -e 's|g.readAt(f, fmt.Sprintf("%s + %d", origin, fl.Offset)))|g.readAt(f, fmt.Sprintf("%s + %d", origin, fl.Offset+accessorMoved(f.Name))))|' \
+	@sed -e 's|fmt.Sprintf("%s + %d", origin, fl.Offset))$$|fmt.Sprintf("%s + %d", origin, fl.Offset+accessorMoved(f.Name)))|' \
 		internal/codegen/darttable/block.go > build/dart-agree-acc-nc/block.go.txt
 	@grep -q 'accessorMoved(f.Name)' build/dart-agree-acc-nc/block.go.txt || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing - the emitter moved"; exit 1; }

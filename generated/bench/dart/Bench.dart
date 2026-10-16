@@ -78,40 +78,6 @@ double _fround(double value) {
   return _f32[0];
 }
 
-// The 32 bits of the IEEE-754 single representation of value. Non-NaN goes
-// through the hardware conversion; a NaN narrows in software — sign kept,
-// top 23 mantissa bits kept, the quiet bit forced only for the all-low-
-// payload case — so every pattern the read half produces round trips.
-@pragma('vm:prefer-inline')
-int _float32BitsFromDouble(double value) {
-  if (!value.isNaN) {
-    _f32[0] = value;
-    return _u32[0];
-  }
-  _f64[0] = value;
-  final bits64 = _u64[0];
-  final sign = (bits64 >>> 63) << 31;
-  var mantissa = (bits64 >>> 29) & 0x7fffff;
-  if (mantissa == 0) {
-    mantissa = 0x400000;
-  }
-  return sign | 0x7f800000 | mantissa;
-}
-
-// The double whose IEEE-754 single representation is bits. NaN patterns
-// widen in software (the hardware conversion quiets a signaling NaN); the
-// reader reproduces the transmitted pattern exactly.
-@pragma('vm:prefer-inline')
-double _doubleFromFloat32Bits(int bits) {
-  if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {
-    _u64[0] =
-        ((bits >>> 31) << 63) | 0x7ff0000000000000 | ((bits & 0x7fffff) << 29);
-    return _f64[0];
-  }
-  _u32[0] = bits;
-  return _f32[0];
-}
-
 // The 64 bits of the IEEE-754 double representation of value — exactly the
 // bits of the Dart double — and the inverse.
 @pragma('vm:prefer-inline')
@@ -235,16 +201,55 @@ int writeBenchPacket(BenchPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (37 - scratchBits);
   }
-  v = _float32BitsFromDouble(value.x) | (_float32BitsFromDouble(value.y) << 32);
+  if (!value.x.isNaN) {
+    _f32[0] = value.x;
+    v = _u32[0];
+  } else {
+    _f64[0] = value.x;
+    v = (_u64[0] >>> 29) & 0x7fffff;
+    if (v == 0) {
+      v = 0x400000;
+    }
+    v |= ((_u64[0] >>> 63) << 31) | 0x7f800000;
+  }
   scratch |= v << scratchBits;
-  scratchBits += 64;
+  scratchBits += 32;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (64 - scratchBits);
+    scratch = v >>> (32 - scratchBits);
   }
-  v = _float32BitsFromDouble(value.z);
+  if (!value.y.isNaN) {
+    _f32[0] = value.y;
+    v = _u32[0];
+  } else {
+    _f64[0] = value.y;
+    v = (_u64[0] >>> 29) & 0x7fffff;
+    if (v == 0) {
+      v = 0x400000;
+    }
+    v |= ((_u64[0] >>> 63) << 31) | 0x7f800000;
+  }
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
+  if (!value.z.isNaN) {
+    _f32[0] = value.z;
+    v = _u32[0];
+  } else {
+    _f64[0] = value.z;
+    v = (_u64[0] >>> 29) & 0x7fffff;
+    if (v == 0) {
+      v = 0x400000;
+    }
+    v |= ((_u64[0] >>> 63) << 31) | 0x7f800000;
+  }
   scratch |= v << scratchBits;
   scratchBits += 32;
   if (scratchBits >= 64) {
@@ -377,7 +382,14 @@ bool readBenchPacket(BenchPacket value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  value.x = _doubleFromFloat32Bits(v);
+  if ((v & 0x7fffffff) <= 0x7f800000) {
+    _u32[0] = v;
+    value.x = _f32[0];
+  } else {
+    _u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
+    _u64[0] |= 0x7ff0000000000000;
+    value.x = _f64[0];
+  }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -385,7 +397,14 @@ bool readBenchPacket(BenchPacket value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  value.y = _doubleFromFloat32Bits(v);
+  if ((v & 0x7fffffff) <= 0x7f800000) {
+    _u32[0] = v;
+    value.y = _f32[0];
+  } else {
+    _u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
+    _u64[0] |= 0x7ff0000000000000;
+    value.y = _f64[0];
+  }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -393,7 +412,14 @@ bool readBenchPacket(BenchPacket value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  value.z = _doubleFromFloat32Bits(v);
+  if ((v & 0x7fffffff) <= 0x7f800000) {
+    _u32[0] = v;
+    value.z = _f32[0];
+  } else {
+    _u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
+    _u64[0] |= 0x7ff0000000000000;
+    value.z = _f64[0];
+  }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -2376,6 +2402,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 200.0) + 0.5).floor();
+    if (v > 200) v = 200;
   }
   scratch |= v << scratchBits;
   scratchBits += 8;
@@ -2395,6 +2422,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 200.0) + 0.5).floor();
+    if (v > 200) v = 200;
   }
   scratch |= v << scratchBits;
   scratchBits += 8;
@@ -2414,6 +2442,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 200.0) + 0.5).floor();
+    if (v > 200) v = 200;
   }
   scratch |= v << scratchBits;
   scratchBits += 8;
@@ -2423,7 +2452,17 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (8 - scratchBits);
   }
-  v = _float32BitsFromDouble(value.recoil);
+  if (!value.recoil.isNaN) {
+    _f32[0] = value.recoil;
+    v = _u32[0];
+  } else {
+    _f64[0] = value.recoil;
+    v = (_u64[0] >>> 29) & 0x7fffff;
+    if (v == 0) {
+      v = 0x400000;
+    }
+    v |= ((_u64[0] >>> 63) << 31) | 0x7f800000;
+  }
   scratch |= v << scratchBits;
   scratchBits += 32;
   if (scratchBits >= 64) {
@@ -2999,7 +3038,14 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   );
   v = (window >>> 24) & 0xffffffff;
   bitsRead += 32;
-  value.recoil = _doubleFromFloat32Bits(v);
+  if ((v & 0x7fffffff) <= 0x7f800000) {
+    _u32[0] = v;
+    value.recoil = _f32[0];
+  } else {
+    _u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
+    _u64[0] |= 0x7ff0000000000000;
+    value.recoil = _f64[0];
+  }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {

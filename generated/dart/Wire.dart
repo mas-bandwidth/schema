@@ -60,40 +60,6 @@ double _fround(double value) {
   return _f32[0];
 }
 
-// The 32 bits of the IEEE-754 single representation of value. Non-NaN goes
-// through the hardware conversion; a NaN narrows in software — sign kept,
-// top 23 mantissa bits kept, the quiet bit forced only for the all-low-
-// payload case — so every pattern the read half produces round trips.
-@pragma('vm:prefer-inline')
-int _float32BitsFromDouble(double value) {
-  if (!value.isNaN) {
-    _f32[0] = value;
-    return _u32[0];
-  }
-  _f64[0] = value;
-  final bits64 = _u64[0];
-  final sign = (bits64 >>> 63) << 31;
-  var mantissa = (bits64 >>> 29) & 0x7fffff;
-  if (mantissa == 0) {
-    mantissa = 0x400000;
-  }
-  return sign | 0x7f800000 | mantissa;
-}
-
-// The double whose IEEE-754 single representation is bits. NaN patterns
-// widen in software (the hardware conversion quiets a signaling NaN); the
-// reader reproduces the transmitted pattern exactly.
-@pragma('vm:prefer-inline')
-double _doubleFromFloat32Bits(int bits) {
-  if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {
-    _u64[0] =
-        ((bits >>> 31) << 63) | 0x7ff0000000000000 | ((bits & 0x7fffff) << 29);
-    return _f64[0];
-  }
-  _u32[0] = bits;
-  return _f32[0];
-}
-
 // The 64 bits of the IEEE-754 double representation of value — exactly the
 // bits of the Dart double — and the inverse.
 @pragma('vm:prefer-inline')
@@ -619,6 +585,7 @@ int writeProbeSample(ProbeSample value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 36000.0) + 0.5).floor();
+    if (v > 36000) v = 36000;
   }
   scratch |= v << scratchBits;
   scratchBits += 16;
@@ -1838,6 +1805,7 @@ int writeProbeArray(ProbeArray value, ByteData view) {
         n = 1.0;
       }
       v = _fround(_fround(n * 36000.0) + 0.5).floor();
+      if (v > 36000) v = 36000;
     }
     scratch |= v << scratchBits;
     scratchBits += 16;
@@ -3064,7 +3032,17 @@ int writeTestData(TestData value, ByteData view) {
       }
     }
   }
-  v = _float32BitsFromDouble(value.floatValue);
+  if (!value.floatValue.isNaN) {
+    _f32[0] = value.floatValue;
+    v = _u32[0];
+  } else {
+    _f64[0] = value.floatValue;
+    v = (_u64[0] >>> 29) & 0x7fffff;
+    if (v == 0) {
+      v = 0x400000;
+    }
+    v |= ((_u64[0] >>> 63) << 31) | 0x7f800000;
+  }
   scratch |= v << scratchBits;
   scratchBits += 32;
   if (scratchBits >= 64) {
@@ -3083,6 +3061,7 @@ int writeTestData(TestData value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 1000.0) + 0.5).floor();
+    if (v > 1000) v = 1000;
   }
   scratch |= v << scratchBits;
   scratchBits += 10;
@@ -3366,7 +3345,14 @@ bool readTestData(TestData value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  value.floatValue = _doubleFromFloat32Bits(v);
+  if ((v & 0x7fffffff) <= 0x7f800000) {
+    _u32[0] = v;
+    value.floatValue = _f32[0];
+  } else {
+    _u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
+    _u64[0] |= 0x7ff0000000000000;
+    value.floatValue = _f64[0];
+  }
   v = (window >>> 32) & 0x3ff;
   bitsRead += 10;
   if (v > 1000) {
@@ -3586,6 +3572,7 @@ int writeCompressedProbe(CompressedProbe value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 1000.0) + 0.5).floor();
+    if (v > 1000) v = 1000;
   }
   scratch |= v << scratchBits;
   scratchBits += 10;
@@ -3605,6 +3592,7 @@ int writeCompressedProbe(CompressedProbe value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 10000.0) + 0.5).floor();
+    if (v > 10000) v = 10000;
   }
   scratch |= v << scratchBits;
   scratchBits += 14;

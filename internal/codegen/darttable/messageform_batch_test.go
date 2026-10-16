@@ -420,9 +420,10 @@ fixed table T
 
 	// The bits, both ways, at each kind's own width (docs/SPEC-TABLES.md §3.3).
 	want := []string{
-		"TableBitWriter._float32BitsFromDouble(value.b), 32)",
+		"final f = value.b;",
+		"w.put(TableBitWriter._float32Words[0], 32);",
 		"setFloat64(0, value.d, Endian.little)).getUint64(0, Endian.little), 64)",
-		"TableBitWriter._doubleFromFloat32Bits(r.bits.get(32))",
+		"value.b = TableBitWriter._float32Cell[0];",
 		"setUint64(0, r.bits.get(64), Endian.little)).getFloat64(0, Endian.little)",
 	}
 	for _, w := range want {

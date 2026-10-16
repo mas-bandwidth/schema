@@ -564,10 +564,15 @@ Four spellings are Dart's own and the reason is at each site.
   JIT counts are printed beside AOT's and not gated, because what the JIT boxes
   is the inliner's decision and not the codec's: a `double` crossing a
   conversion call the inlining budget left out of line is boxed, and where the
-  budget runs out depends on the loop around the codec. Two further costs are
-  the JIT's and never AOT's: a `float32` carrying a NaN with a payload costs
-  one boxed double, and a 64-bit integer field holding a value outside ±2⁶²
-  costs one boxed integer per read.
+  budget runs out depends on the loop around the codec. So no generated Dart
+  body calls a float32 conversion (issue 404, PORTING M3): the packet, block
+  and message emitters spell it at each assignment through the typed-data
+  views, NaN payloads narrowed and widened in software as before, and `make tables-dart-float-jit` holds the packet codec at zero steady JIT scavenges
+  on the pinned SDK 3.13.2 — measured at 76 per 2,000,000 passes of five
+  float32 and three float64 fields with the helpers, from one caller or two,
+  and 0 hand-inlined. Two further costs are the JIT's and never AOT's: a
+  `float32` carrying a NaN with a payload costs one boxed double, and a 64-bit
+  integer field holding a value outside ±2⁶² costs one boxed integer per read.
 - **THE VERBS ARE MEMBERS OF THE VALUE** — `config.measure()`,
   `config.save(out)`, `config.load(bytes, report)`, `loadBody`, `saveBody`,
   `reset`, `fromJson`, `toJson`, `toJsonMeasure` — methods on a table's own

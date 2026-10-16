@@ -31,9 +31,10 @@ func TestDartFloat32CellsAreBitTransparent(t *testing.T) {
 	block := string(files["ProbeBlock.dart"])
 	message := string(files["ProbeFixed.dart"])
 	for _, check := range []struct{ source, fragment, what string }{
-		{block, "_doubleFromFloat32Bits(view.getUint32(", "block read must widen raw float32 bits in software"},
-		{message, "w.put(TableBitWriter._float32BitsFromDouble(value.value), 32)", "message write must narrow NaN bits in software"},
-		{message, "TableBitWriter._doubleFromFloat32Bits(r.bits.get(32))", "message read must widen raw float32 bits in software"},
+		{block, "_float64Words[0] = ((bits >>> 31) << 63) | ((bits & 0x7fffff) << 29);", "block read must widen raw float32 bits in software"},
+		{message, "final f = value.value;", "message write must narrow the field's own double"},
+		{message, "w.put(((b >>> 63) << 31) | 0x7f800000 | m, 32)", "message write must narrow NaN bits in software"},
+		{message, "TableBitWriter._float64Words[0] = w64 | 0x7ff0000000000000;", "message read must widen raw float32 bits in software"},
 	} {
 		if !strings.Contains(check.source, check.fragment) {
 			t.Errorf("%s", check.what)

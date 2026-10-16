@@ -250,7 +250,7 @@ type gen struct {
 
 	// per-file helper needs
 	needFround   bool // _fround
-	needF32Conv  bool // _float32BitsFromDouble / _doubleFromFloat32Bits
+	needF32Conv  bool // the _u32/_f64/_u64 views an inline float32 conversion uses (issue 404)
 	needF64Conv  bool // _float64BitsFromDouble / _doubleFromFloat64Bits
 	needULess    bool // _unsignedLessThan
 	needHex      bool // _hex64 (flagNames high-bit rendering)
@@ -400,40 +400,6 @@ func (g *gen) emitHelpers(h *strings.Builder) {
 		h.WriteString("@pragma('vm:prefer-inline')\n")
 		h.WriteString("double _fround(double value) {\n")
 		h.WriteString("  _f32[0] = value;\n")
-		h.WriteString("  return _f32[0];\n")
-		h.WriteString("}\n\n")
-	}
-	if g.needF32Conv {
-		h.WriteString("// The 32 bits of the IEEE-754 single representation of value. Non-NaN goes\n")
-		h.WriteString("// through the hardware conversion; a NaN narrows in software — sign kept,\n")
-		h.WriteString("// top 23 mantissa bits kept, the quiet bit forced only for the all-low-\n")
-		h.WriteString("// payload case — so every pattern the read half produces round trips.\n")
-		h.WriteString("@pragma('vm:prefer-inline')\n")
-		h.WriteString("int _float32BitsFromDouble(double value) {\n")
-		h.WriteString("  if (!value.isNaN) {\n")
-		h.WriteString("    _f32[0] = value;\n")
-		h.WriteString("    return _u32[0];\n")
-		h.WriteString("  }\n")
-		h.WriteString("  _f64[0] = value;\n")
-		h.WriteString("  final bits64 = _u64[0];\n")
-		h.WriteString("  final sign = (bits64 >>> 63) << 31;\n")
-		h.WriteString("  var mantissa = (bits64 >>> 29) & 0x7fffff;\n")
-		h.WriteString("  if (mantissa == 0) {\n")
-		h.WriteString("    mantissa = 0x400000;\n")
-		h.WriteString("  }\n")
-		h.WriteString("  return sign | 0x7f800000 | mantissa;\n")
-		h.WriteString("}\n\n")
-		h.WriteString("// The double whose IEEE-754 single representation is bits. NaN patterns\n")
-		h.WriteString("// widen in software (the hardware conversion quiets a signaling NaN); the\n")
-		h.WriteString("// reader reproduces the transmitted pattern exactly.\n")
-		h.WriteString("@pragma('vm:prefer-inline')\n")
-		h.WriteString("double _doubleFromFloat32Bits(int bits) {\n")
-		h.WriteString("  if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {\n")
-		h.WriteString("    _u64[0] =\n")
-		h.WriteString("        ((bits >>> 31) << 63) | 0x7ff0000000000000 | ((bits & 0x7fffff) << 29);\n")
-		h.WriteString("    return _f64[0];\n")
-		h.WriteString("  }\n")
-		h.WriteString("  _u32[0] = bits;\n")
 		h.WriteString("  return _f32[0];\n")
 		h.WriteString("}\n\n")
 	}
