@@ -1,5 +1,10 @@
 # Dart: the fixed read against its own packet read — both lanes FAIL (fast diagnostic, uncertified)
 
+> **Superseded for credit by `certified/RESULT.md` (attempt 5).** The rows on this page stay as
+> historical, UNCREDITED diagnostic evidence, unchanged below. The certified sittings were measured
+> on pushed revision `86bcee711` with the runner support landed in `85d9825fd`, and agree with these
+> numbers: both lanes FAIL.
+
 > **Status of these rows: FAST DIAGNOSTIC, UNCERTIFIED.** Per the card's TOOLCHAIN line, a sitting is
 > certified only if the landed driver admits Dart to `-mode run` inside the window. It does not on
 > this branch: `bench/tables/dart/table_main.dart` here has no `--read-arm`, so
