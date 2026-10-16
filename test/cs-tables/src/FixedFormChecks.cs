@@ -982,11 +982,26 @@ static partial class Program
         }
     }
 
+    // THE LAYOUT HASH a fixed file's header carries (FNV-1a 64 over the LAYOUT
+    // bytes). The runtime template no longer publishes TableFixedWire.HashOf
+    // (bd2fb1167: the identity lane is an index comparison, cs/R7), so the
+    // check that forges a layout file computes the header's hash itself.
+    static ulong LayoutHashOf(ReadOnlySpan<byte> layout)
+    {
+        ulong h = 0xcbf29ce484222325ul;
+        for (int i = 0; i < layout.Length; ++i)
+        {
+            h ^= (ulong)layout[i];
+            h *= 0x100000001b3ul;
+        }
+        return h;
+    }
+
     static byte[] LayoutFileOf(byte[] layout)
     {
         byte[] f = new byte[FX1.Schema.TableFixedWire.HeaderBytes + 4 + layout.Length];
         f[0] = 3;
-        BinaryPrimitives.WriteUInt64LittleEndian(f.AsSpan(FX1.Schema.TableFixedWire.HashAt), FX1.Schema.TableFixedWire.HashOf(layout));
+        BinaryPrimitives.WriteUInt64LittleEndian(f.AsSpan(FX1.Schema.TableFixedWire.HashAt), LayoutHashOf(layout));
         BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(FX1.Schema.TableFixedWire.HeaderBytes), (uint)layout.Length);
         layout.CopyTo(f, FX1.Schema.TableFixedWire.HeaderBytes + 4);
         return f;
