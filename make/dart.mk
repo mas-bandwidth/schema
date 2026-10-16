@@ -190,6 +190,8 @@ tables-dart-release:
 	$(MAKE) tables-dart-fuzz SEED=1 DART_FUZZ_MUTANTS=20000
 	$(MAKE) tables-dart-fuzz SEED=2 DART_FUZZ_MUTANTS=20000
 	$(MAKE) tables-dart-fuzz-negative-control
+	$(MAKE) tables-dart-order
+	$(MAKE) tables-dart-order-negative-control
 	$(MAKE) tables-dart-fixed-form-negative-control
 	$(MAKE) tables-dart-names-negative-control
 	$(MAKE) tables-dart-standalone-negative-control
@@ -235,6 +237,77 @@ tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 		  tail -20 build/dart-fuzz-nc/log; exit 1; }
 	@grep -m1 "past the declared" build/dart-fuzz-nc/log
 	@echo "negative control: one check removed from the Dart block Open turns the fuzzer RED"
+
+# THE CROSS-ENDIAN ORDER-WORD GATE (docs/SPEC-TABLES.md §19.1, §7.1; issue
+# #415; docs/PORTING.md I7). The harness's two foreign surfaces (cook-foreign,
+# block-foreign) reverse the MAGIC word, which every leg answers on any host;
+# nothing forges the half a reader leaning on one check would open — a file
+# whose magic is intact and whose order word says the other order. This gate
+# holds that half: each corpus image opens unmodified, a copy with ONLY the
+# order word (offset 16, 8 bytes) set to the other order's value (2) refuses,
+# and no exception escapes either call. Dart's typed data is read at an
+# explicit endianness everywhere, so the order word is the whole of the
+# byte-order check.
+.PHONY: tables-dart-order
+tables-dart-order: build/tables-generated-dart/.stamp build/cook-fuzz/.stamp
+	$(DART) test/dart-tables/order.dart
+
+# ITS NEGATIVE CONTROL: remove the order check from a COPY of the emitter — one
+# for block.go and one for cook.go in the same target — regenerate the reader
+# from the sabotaged compiler, and require the gate to go red on the named row
+# while the other stays green. No tracked file is written to.
+.PHONY: tables-dart-order-negative-control
+tables-dart-order-negative-control: build/tables-generated-dart/.stamp build/cook-fuzz/.stamp
+	# the BLOCK row: the order check gone from block.go must turn only it red
+	@rm -rf build/dart-order-nc && mkdir -p build/dart-order-nc
+	@sed '/tableBlockRead64(view, base + 16)/d' \
+		internal/codegen/darttable/block.go > build/dart-order-nc/block.go.txt
+	@grep -q 'tableBlockRead64(view, base + 16)' internal/codegen/darttable/block.go || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }
+	@if grep -q 'tableBlockRead64(view, base + 16)' build/dart-order-nc/block.go.txt; then \
+		echo "NEGATIVE CONTROL FAILED: the order check survived the sabotage"; exit 1; fi
+	@printf '{"Replace":{"%s/internal/codegen/darttable/block.go":"%s/build/dart-order-nc/block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-order-nc/overlay-block.json
+	go build -overlay build/dart-order-nc/overlay-block.json -o build/dart-order-nc/schema-block ./cmd/schema
+	./build/dart-order-nc/schema-block generate --lang dart --out build/dart-order-nc/generated/block tables/block
+	@sed -e "s|../../build/tables-generated-dart/block/|$(CURDIR)/build/dart-order-nc/generated/block/|g" \
+		test/dart-tables/order.dart > build/dart-order-nc/order-block.dart
+	@if $(DART) build/dart-order-nc/order-block.dart > build/dart-order-nc/log-block 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the block row stayed green with the order check removed"; \
+		tail -20 build/dart-order-nc/log-block; exit 1; \
+	fi
+	@grep -q "ORDER FAIL block" build/dart-order-nc/log-block || \
+		{ echo "NEGATIVE CONTROL FAILED: the block row went red for another reason"; \
+		  tail -20 build/dart-order-nc/log-block; exit 1; }
+	@if grep -q "ORDER FAIL cook" build/dart-order-nc/log-block; then \
+		echo "NEGATIVE CONTROL FAILED: the cook row went red too"; \
+		tail -20 build/dart-order-nc/log-block; exit 1; fi
+	@grep -m1 "ORDER FAIL block" build/dart-order-nc/log-block
+	# the COOK row: the order check gone from cook.go must turn only it red
+	@sed '/tableCookRead64(view, at + 16)/d' \
+		internal/codegen/darttable/cook.go > build/dart-order-nc/cook.go.txt
+	@grep -q 'tableCookRead64(view, at + 16)' internal/codegen/darttable/cook.go || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }
+	@if grep -q 'tableCookRead64(view, at + 16)' build/dart-order-nc/cook.go.txt; then \
+		echo "NEGATIVE CONTROL FAILED: the order check survived the sabotage"; exit 1; fi
+	@printf '{"Replace":{"%s/internal/codegen/darttable/cook.go":"%s/build/dart-order-nc/cook.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-order-nc/overlay-cook.json
+	go build -overlay build/dart-order-nc/overlay-cook.json -o build/dart-order-nc/schema-cook ./cmd/schema
+	./build/dart-order-nc/schema-cook generate --lang dart --out build/dart-order-nc/generated/pointers tables/pointers
+	@sed -e "s|../../build/tables-generated-dart/pointers/|$(CURDIR)/build/dart-order-nc/generated/pointers/|g" \
+		test/dart-tables/order.dart > build/dart-order-nc/order-cook.dart
+	@if $(DART) build/dart-order-nc/order-cook.dart > build/dart-order-nc/log-cook 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the cook row stayed green with the order check removed"; \
+		tail -20 build/dart-order-nc/log-cook; exit 1; \
+	fi
+	@grep -q "ORDER FAIL cook" build/dart-order-nc/log-cook || \
+		{ echo "NEGATIVE CONTROL FAILED: the cook row went red for another reason"; \
+		  tail -20 build/dart-order-nc/log-cook; exit 1; }
+	@if grep -q "ORDER FAIL block" build/dart-order-nc/log-cook; then \
+		echo "NEGATIVE CONTROL FAILED: the block row went red too"; \
+		tail -20 build/dart-order-nc/log-cook; exit 1; fi
+	@grep -m1 "ORDER FAIL cook" build/dart-order-nc/log-cook
+	@echo "negative control: the order check removed turns its own row red and leaves the other green"
 
 # The DART leg's driver: one AOT executable, because `dart run` would pay a JIT
 # start-up per surface and the two-minute rule is measured across every leg.
@@ -420,6 +493,8 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 	$(MAKE) tables-dart-standalone-negative-control
 	$(MAKE) tables-dart-fuzz DART_FUZZ_MUTANTS=1500
 	$(MAKE) tables-dart-fuzz-negative-control
+	$(MAKE) tables-dart-order
+	$(MAKE) tables-dart-order-negative-control
 	# THE FIXED FORM against the C++ reference's own bytes (§3.4)
 	$(MAKE) tables-dart-fixed-form
 	$(MAKE) tables-dart-fixed-form-negative-control
