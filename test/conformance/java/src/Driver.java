@@ -11,7 +11,7 @@
 // surfaces, the cook surfaces (cook-forgery included) and the WIRE-CARRYING
 // surfaces (wire, report, json-read, json-write) the variable form (form byte
 // 1, docs/SPEC-TABLES.md §3) carries for the roots this leg's variable wire
-// answers: graphdemo's Scene and blobdemo's Catalog. Every other case a
+// answers: the public root codecs compiled from the manifest units. Every case a
 // surface meets is answered `<case>.absent` (test/conformance/README.md).
 // The C# leg splits the cook surfaces off into a second project because its
 // cook side lives in another assembly; Java's generated units are packages of
@@ -638,14 +638,8 @@ public final class Driver {
 
     // ---- the WIRE-CARRYING surfaces (docs/SPEC-TABLES.md §3, §3.1, §4, §16, §16.7)
     //
-    // The variable form, form byte 1, over the roots this leg's variable wire
-    // carries: the pointer corpus's Scene (graphdemo) and the byte-buffer corpus's
-    // Catalog (blobdemo). Every other case is answered `<case>.absent` — a root
-    // whose unit this leg does not generate (tables/lists, which the compiler
-    // refuses for java whole because of its array of unions and map), or one its
-    // variable wire does not carry (a union, a map, an optional, an enum-keyed
-    // array) — which the matrix counts as the row of work that is left, never as
-    // a pass.
+    // The variable form resolves codecs from manifest data. A missing codec
+    // remains an explicit absence; an exception from an emitted codec fails.
 
     private static int failInt(String msg) {
         System.err.println(msg);
@@ -660,60 +654,95 @@ public final class Driver {
         Files.write(Path.of(out, name + ".absent"), new byte[0]);
     }
 
+    // Resolve only public root codecs actually emitted for this unit. Entry
+    // body helpers are package-private and cannot appear as conformance roots.
+    private static final class VariableCodec {
+        final Class<?> codec;
+        final Class<?> reportType;
+        final Class<?> valueType;
+        VariableCodec(String pkg, String root) throws ReflectiveOperationException {
+            codec = Class.forName(pkg + "." + root + "Variable");
+            reportType = Class.forName(pkg + ".TableVariable$Report");
+            valueType = Class.forName(pkg + "." + root + "Variable$Value");
+            codec.getMethod("load", byte[].class, reportType);
+        }
+        Object report() throws ReflectiveOperationException { return reportType.getConstructor().newInstance(); }
+        Object load(byte[] data, Object report) throws ReflectiveOperationException { return codec.getMethod("load", byte[].class, reportType).invoke(null, data, report); }
+        Object fromJson(byte[] data, Object report) throws ReflectiveOperationException { return codec.getMethod("fromJson", byte[].class, reportType).invoke(null, data, report); }
+        byte[] save(Object value) throws ReflectiveOperationException { return (byte[]) codec.getMethod("save", valueType).invoke(null, value); }
+        byte[] toJson(Object value) throws ReflectiveOperationException { return (byte[]) codec.getMethod("toJson", valueType).invoke(null, value); }
+        int count(Object report, String field) throws ReflectiveOperationException { return reportType.getField(field).getInt(report); }
+        boolean flag(Object report, String field) throws ReflectiveOperationException { return reportType.getField(field).getBoolean(report); }
+    }
+
+    private static boolean variablePkgCarried(String pkg) {
+        switch (pkg) {
+            case "graphdemo":
+            case "blobdemo":
+            case "mapdemo":
+            case "armdemo":
+            case "messagedemo":
+            case "scalars":
+            case "widedemo":
+            case "tblscalars2":
+            case "kind1":
+            case "kind2":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    // The manifest names a unit by its key; the emitted classes live in the
+    // unit's schema package. The two differ for tables/scalars (package
+    // scalardemo), test/tables/Scalars2.schema (package scalardemo2) and
+    // examples-wide (package wide), so the codec is looked up
+    // under the package, never under the unit key.
+    private static String variableUnitPackage(String unit) {
+        switch (unit) {
+            case "scalars": return "scalardemo";
+            case "widedemo": return "wide";
+            case "tblscalars2": return "scalardemo2";
+            default: return unit;
+        }
+    }
+
+    private static VariableCodec variableCodec(String unit, String root) throws ReflectiveOperationException {
+        if (!variablePkgCarried(unit)) return null;
+        try { return new VariableCodec(variableUnitPackage(unit), root); }
+        catch (ClassNotFoundException | NoSuchMethodException absent) { return null; }
+    }
+
     private static int surfaceWire(String out) throws IOException {
         for (String[] f : kind("instance")) {
-            String name = f[1];
-            String pkg = f[2];
-            String root = f[3];
-            Path wirePath = Paths.get(f[4]);
-            if ("graphdemo".equals(pkg) && "Scene".equals(root)) {
-                byte[] wire = Files.readAllBytes(wirePath);
-                graphdemo.TableVariable.Report rep = new graphdemo.TableVariable.Report();
-                graphdemo.SceneVariable.Value v = graphdemo.SceneVariable.load(wire, rep);
-                if (v == null || rep.refused) return failInt(name + ": load refused " + f[4]);
-                byte[] saved = graphdemo.SceneVariable.save(v);
-                if (saved == null) return failInt(name + ": save refused the value");
-                spill(out, name, saved);
-            } else if ("blobdemo".equals(pkg) && "Catalog".equals(root)) {
-                byte[] wire = Files.readAllBytes(wirePath);
-                blobdemo.TableVariable.Report rep = new blobdemo.TableVariable.Report();
-                blobdemo.CatalogVariable.Value v = blobdemo.CatalogVariable.load(wire, rep);
-                if (v == null || rep.refused) return failInt(name + ": load refused " + f[4]);
-                byte[] saved = blobdemo.CatalogVariable.save(v);
-                if (saved == null) return failInt(name + ": save refused the value");
-                spill(out, name, saved);
-            } else {
-                spillAbsent(out, name);
-            }
+            try {
+                VariableCodec codec = variableCodec(f[2], f[3]);
+                if (codec == null) { spillAbsent(out, f[1]); continue; }
+                Object report = codec.report();
+                Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
+                if (value == null || codec.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4]);
+                byte[] saved = codec.save(value);
+                if (saved == null) return failInt(f[1] + ": save refused the value");
+                spill(out, f[1], saved);
+            } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": wire codec failed: " + failure); }
         }
         return 0;
     }
 
     private static int surfaceReport(String out) throws IOException {
         for (String[] f : kind("report")) {
-            String name = f[1];
-            String pkg = f[2];
-            String root = f[3];
-            Path wirePath = Paths.get(f[4]);
-            if ("graphdemo".equals(pkg) && "Scene".equals(root)) {
-                byte[] wire = Files.readAllBytes(wirePath);
-                graphdemo.TableVariable.Report rep = new graphdemo.TableVariable.Report();
-                boolean ok = graphdemo.SceneVariable.load(wire, rep) != null;
-                String malformed = (rep.malformed || (!ok && !rep.refused)) ? "true" : "false";
-                String verdict = rep.refused ? "refused" : "read";
-                spill(out, name, String.format("%d,%d,%d,%d,%d,%s,%s\n",
-                        rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, 0, malformed, verdict));
-            } else if ("blobdemo".equals(pkg) && "Catalog".equals(root)) {
-                byte[] wire = Files.readAllBytes(wirePath);
-                blobdemo.TableVariable.Report rep = new blobdemo.TableVariable.Report();
-                boolean ok = blobdemo.CatalogVariable.load(wire, rep) != null;
-                String malformed = (rep.malformed || (!ok && !rep.refused)) ? "true" : "false";
-                String verdict = rep.refused ? "refused" : "read";
-                spill(out, name, String.format("%d,%d,%d,%d,%d,%s,%s\n",
-                        rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, 0, malformed, verdict));
-            } else {
-                spillAbsent(out, name);
-            }
+            try {
+                VariableCodec codec = variableCodec(f[2], f[3]);
+                if (codec == null) { spillAbsent(out, f[1]); continue; }
+                Object report = codec.report();
+                boolean ok = codec.load(Files.readAllBytes(Paths.get(f[4])), report) != null;
+                boolean refused = codec.flag(report, "refused");
+                boolean malformed = codec.flag(report, "malformed") || (!ok && !refused);
+                spill(out, f[1], String.format("%d,%d,%d,%d,%d,%s,%s\n",
+                        codec.count(report, "unknown"), codec.count(report, "kindMismatch"),
+                        codec.count(report, "widened"), codec.count(report, "clamped"),
+                        codec.count(report, "duplicate"), malformed, refused ? "refused" : "read"));
+            } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": report codec failed: " + failure); }
         }
         return 0;
     }
@@ -721,29 +750,16 @@ public final class Driver {
     private static int surfaceJsonRead(String out) throws IOException {
         for (String[] f : kind("instance")) {
             if (noText(f)) continue;
-            String name = f[1];
-            String pkg = f[2];
-            String root = f[3];
-            Path jsonPath = Paths.get("testdata/conformance/tables/json", name + ".json");
-            if ("graphdemo".equals(pkg) && "Scene".equals(root)) {
-                byte[] json = Files.readAllBytes(jsonPath);
-                graphdemo.TableVariable.Report rep = new graphdemo.TableVariable.Report();
-                graphdemo.SceneVariable.Value v = graphdemo.SceneVariable.fromJson(json, rep);
-                if (v == null || rep.malformed || rep.refused) return failInt(name + ": fromJson refused the text");
-                byte[] saved = graphdemo.SceneVariable.save(v);
-                if (saved == null) return failInt(name + ": save refused the value");
-                spill(out, name, saved);
-            } else if ("blobdemo".equals(pkg) && "Catalog".equals(root)) {
-                byte[] json = Files.readAllBytes(jsonPath);
-                blobdemo.TableVariable.Report rep = new blobdemo.TableVariable.Report();
-                blobdemo.CatalogVariable.Value v = blobdemo.CatalogVariable.fromJson(json, rep);
-                if (v == null || rep.malformed || rep.refused) return failInt(name + ": fromJson refused the text");
-                byte[] saved = blobdemo.CatalogVariable.save(v);
-                if (saved == null) return failInt(name + ": save refused the value");
-                spill(out, name, saved);
-            } else {
-                spillAbsent(out, name);
-            }
+            try {
+                VariableCodec codec = variableCodec(f[2], f[3]);
+                if (codec == null) { spillAbsent(out, f[1]); continue; }
+                Object report = codec.report();
+                Object value = codec.fromJson(Files.readAllBytes(Paths.get("testdata/conformance/tables/json", f[1] + ".json")), report);
+                if (value == null || codec.flag(report, "malformed") || codec.flag(report, "refused")) return failInt(f[1] + ": fromJson refused the text");
+                byte[] saved = codec.save(value);
+                if (saved == null) return failInt(f[1] + ": save refused the value");
+                spill(out, f[1], saved);
+            } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": JSON reader failed: " + failure); }
         }
         return 0;
     }
@@ -751,29 +767,16 @@ public final class Driver {
     private static int surfaceJsonWrite(String out) throws IOException {
         for (String[] f : kind("instance")) {
             if (noText(f)) continue;
-            String name = f[1];
-            String pkg = f[2];
-            String root = f[3];
-            Path wirePath = Paths.get(f[4]);
-            if ("graphdemo".equals(pkg) && "Scene".equals(root)) {
-                byte[] wire = Files.readAllBytes(wirePath);
-                graphdemo.TableVariable.Report rep = new graphdemo.TableVariable.Report();
-                graphdemo.SceneVariable.Value v = graphdemo.SceneVariable.load(wire, rep);
-                if (v == null || rep.refused) return failInt(name + ": load refused " + f[4]);
-                byte[] json = graphdemo.SceneVariable.toJson(v);
-                if (json == null) return failInt(name + ": toJson refused the value");
-                spill(out, name + ".json", json);
-            } else if ("blobdemo".equals(pkg) && "Catalog".equals(root)) {
-                byte[] wire = Files.readAllBytes(wirePath);
-                blobdemo.TableVariable.Report rep = new blobdemo.TableVariable.Report();
-                blobdemo.CatalogVariable.Value v = blobdemo.CatalogVariable.load(wire, rep);
-                if (v == null || rep.refused) return failInt(name + ": load refused " + f[4]);
-                byte[] json = blobdemo.CatalogVariable.toJson(v);
-                if (json == null) return failInt(name + ": toJson refused the value");
-                spill(out, name + ".json", json);
-            } else {
-                spillAbsent(out, name + ".json");
-            }
+            try {
+                VariableCodec codec = variableCodec(f[2], f[3]);
+                if (codec == null) { spillAbsent(out, f[1] + ".json"); continue; }
+                Object report = codec.report();
+                Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
+                if (value == null || codec.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4]);
+                byte[] text = codec.toJson(value);
+                if (text == null) return failInt(f[1] + ": toJson refused the value");
+                spill(out, f[1] + ".json", text);
+            } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": JSON writer failed: " + failure); }
         }
         return 0;
     }
