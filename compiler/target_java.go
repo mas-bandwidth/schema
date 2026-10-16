@@ -124,8 +124,10 @@ func init() {
 	valueDefaultTargets = append(valueDefaultTargets, "java")
 	registerWideTextCarrier("java")
 	registerListCarrier("java")
+	registerMapCarrier("java")
+	registerOptionalArrayCarrier("java")
 	// The variable wire carries BOTH byte buffers (§2.5): java is a carrier of
 	// *bytes and *string together, so it registers through registerBuiltin's
 	// blobs flag and not as a string carrier alone.
-	registerBuiltin(javaTarget{}, true, false, false, true)
+	registerBuiltin(javaTarget{}, true, true, true, true)
 }

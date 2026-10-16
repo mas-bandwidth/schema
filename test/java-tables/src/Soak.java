@@ -61,6 +61,9 @@ public final class Soak {
     // matched pair of ~4 KiB per iteration, which is far past it.
     private static final long TOLERANCE = 256;
 
+    // the weaker instrument: live heap may rise this far over the run before it is retention
+    private static final long DRIFT_LIMIT = 8L * 1024 * 1024;
+
     private static long usedHeap() {
         System.gc();
         return Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
@@ -121,6 +124,10 @@ public final class Soak {
             fail("the JVM exposes no per-thread allocation counter, so the soak cannot certify a floor it cannot measure");
         }
 
+        if (bean == null) {
+            fail("the JVM exposes no per-thread allocation counter, so the soak has nothing to measure");
+        }
+
         double seconds = args.length > 0 ? Double.parseDouble(args[0]) : 20.0;
         Codec[] codecs = new Codec[] { new CatalogCodec(), new SceneCodec() };
         byte[][] wires = new byte[][] {
@@ -152,6 +159,8 @@ public final class Soak {
         int warmupSamples = 5;
         long warmedAt = 0;
         long maxDrift = 0;
+        long badSamples = 0;
+        String countFailure = null;
 
         // The warmup runs CLEAN even under the negative control: the settled
         // count is the unplanted floor, so the planted pair — which the control
@@ -182,10 +191,13 @@ public final class Soak {
             }
 
             if (Math.abs(perIter - settled) > TOLERANCE) {
-                fail("per-iteration allocation moved from " + settled + " to " + perIter
-                        + " bytes (tolerance " + TOLERANCE + ") — the count is not flat: "
-                        + "a path that allocates and frees the same bytes every iteration "
-                        + "is invisible to drift, which is why the COUNT is the gate");
+                badSamples++;
+                if (countFailure == null) {
+                    countFailure = "per-iteration allocation moved from " + settled + " to " + perIter
+                            + " bytes (tolerance " + TOLERANCE + ") — the count is not flat: "
+                            + "a path that allocates and frees the same bytes every iteration "
+                            + "is invisible to drift, which is why the COUNT is the gate";
+                }
             }
 
             long drift = usedHeap() - heapStart;
@@ -206,6 +218,14 @@ public final class Soak {
         System.out.println("soak: live heap " + heapStart + " bytes before, " + heapEnd
                 + " after, max drift " + maxDrift + " bytes (resident retention / drift, "
                 + "the weaker instrument)");
+        boolean driftOk = maxDrift <= DRIFT_LIMIT;
+        System.out.println("soak: drift " + (driftOk ? "OK" : "RED") + " (limit " + DRIFT_LIMIT + " bytes)");
+        if (countFailure != null) {
+            fail(countFailure + " (" + badSamples + " of " + (samples - warmedAt) + " post-warmup samples)");
+        }
+        if (!driftOk) {
+            fail("resident heap drifted " + maxDrift + " bytes, past the " + DRIFT_LIMIT + " limit: retention");
+        }
         if (warmed) {
             System.out.println("soak: OK — per-iteration allocation flat (within "
                     + TOLERANCE + " bytes, " + (samples - warmedAt) + " post-warmup samples)");
