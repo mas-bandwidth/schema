@@ -15,7 +15,11 @@ func (g *tableGen) emitRetainRuntime() {
 		g.pf("0x%016x,", id)
 	}
 	g.pf("}\n%s", goRetainRuntime)
-	g.emitRetainMessageRuntime()
+	if g.surfaces.Message {
+		g.emitRetainMessageRuntime()
+	} else {
+		g.pf("%s", goRetainMessageCoreTypes)
+	}
 	source := tableSourceSpan(tableWireSource, "type TableWriter struct", "// TableOpenVerdict")
 	source = tableSourceReplace(source, "TableWriter", "TableRetainWriter", -1)
 	source = tableSourceReplace(source, "TableIds", "TableRetainIds", -1)
@@ -169,7 +173,7 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	}
 	g.pf("%s", core)
 	// the retaining MESSAGE read is the message form's, beside the plain one
-	if message != "" {
+	if message != "" && g.surfaces.Message {
 		g.into(&g.message, func() { g.pf("%s", message) })
 	}
 	g.needsMath = g.needsMath || side.needsMath
