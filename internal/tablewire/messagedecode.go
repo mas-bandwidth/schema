@@ -1360,13 +1360,18 @@ func (d *bitDecoder) clampFloat(v float64, f *ir.Field) float64 {
 	if !f.HasFloatRange {
 		return v
 	}
-	if v < f.FMin {
+	// THE ONE RULE (§3.3, the special values): a NaN clamps to min and counts,
+	// as -Inf does; a -0 lands as +0, uncounted.
+	if math.IsNaN(v) || v < f.FMin {
 		d.report.Clamped++
 		return f.FMin
 	}
 	if v > f.FMax {
 		d.report.Clamped++
 		return f.FMax
+	}
+	if v == 0 {
+		return 0
 	}
 	return v
 }
