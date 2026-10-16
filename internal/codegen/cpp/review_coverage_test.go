@@ -218,3 +218,35 @@ type Ranges {
 		}
 	}
 }
+
+// TestCStringLitEscapes reaches cStringLit's backslash arm (cpp.go:912) and
+// pins its octal escapes: a default's bytes are the literal's bytes with no
+// escapes in the schema, so a backslash in a default is a real byte the C++
+// literal must escape.
+func TestCStringLitEscapes(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]string{
+		`a\b`:          `"a\\b"`,
+		`say "x`:       `"say \"x"`,
+		"tab\t7":       `"tab\0117"`,
+		"\xe2\x82\xac": `"\342\202\254"`,
+	} {
+		if got := cStringLit([]byte(in)); got != want {
+			t.Errorf("cStringLit(%q) = %s, want %s", in, got, want)
+		}
+	}
+	u := unitFromSources(t, map[string]string{
+		"Text.schema": `package t
+type Text {
+    path string(8) = "a\b"
+}
+`,
+	})
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `char path[8 + 1] = "a\\b";`; !strings.Contains(string(files["Text.h"]), want) {
+		t.Errorf("Text.h: want %s\n%s", want, files["Text.h"])
+	}
+}
