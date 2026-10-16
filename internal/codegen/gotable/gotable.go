@@ -202,6 +202,30 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	return GenerateLineage(u, nil)
 }
 
+// formAllowed reports whether the unit's tables let the named form be emitted
+// (docs/SPEC-TABLES.md §2.12). With no `forms` declaration every form is
+// allowed — today's behaviour. With any declaration, only a form some table
+// carries is emitted: a form no table declares is skipped, so a unit whose
+// tables declare `forms = "wire"` gets the wire's Table.go and neither the
+// block, the cook nor the text form.
+func formAllowed(u *ir.Unit, form string) bool {
+	declared := false
+	for _, t := range u.Tables {
+		if t.DeclaredForms() {
+			declared = true
+		}
+	}
+	if !declared {
+		return true
+	}
+	for _, t := range u.Tables {
+		if t.CarriesForm(form) {
+			return true
+		}
+	}
+	return false
+}
+
 // GenerateLineage is Generate with the LINEAGE the build holds for each fixed
 // table: the locked layouts, OLDEST FIRST, the current one last
 // (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
@@ -211,15 +235,21 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return map[string][]byte{}, nil
 	}
 	blocks := ir.Blocks(u)
-	out, err := generateBlockFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	out := map[string][]byte{}
+	var err error
+	if formAllowed(u, "block") {
+		out, err = generateBlockFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
 	}
-	cooks, err := generateCookFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	if formAllowed(u, "cook") {
+		cooks, err := generateCookFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, cooks)
 	}
-	maps.Copy(out, cooks)
 
 	regional := len(variableTableNames(u)) > 0
 
@@ -348,11 +378,13 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
 	// descriptors, in its own file so a project that never reads or writes a
 	// text does not compile it
-	texts, err := generateJsonFiles(u, closure, home)
-	if err != nil {
-		return nil, err
+	if formAllowed(u, "json") {
+		texts, err := generateJsonFiles(u, closure, home)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, texts)
 	}
-	maps.Copy(out, texts)
 	view, err := generateViewFile(u, closure, armSlots)
 	if err != nil {
 		return nil, err

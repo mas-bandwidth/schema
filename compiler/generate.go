@@ -101,6 +101,15 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 				"and every other target refuses the construct by name until its own turn (SPEC.md §4.13, docs/SPEC-TABLES.md §2.11)",
 				carrier, strings.Join(fields, ", "))
 		}
+		// GO CARRIES THE `forms` DECLARATION FIRST (docs/SPEC-TABLES.md §2.12):
+		// every other target refuses a unit that declares forms, here, once, by
+		// name — the construct, the target and the rule — so no other emitter is
+		// edited and none can drop a form it does not know.
+		for _, t := range u.Tables {
+			if t.DeclaredForms() {
+				return nil, fmt.Errorf("target %q refuses the construct forms on table %s — Go carries it first; no other target honours it until its turn (docs/SPEC-TABLES.md §2.12)", carrier, t.Name)
+			}
+		}
 	}
 	if lg, takes := g.(lineageGenerator); takes {
 		lineage, err := openFixedLineage(u)

@@ -30,6 +30,31 @@ func FieldId(name string) uint16 {
 // rebound keeps free of every declared name.
 func VariantId(name string) uint16 { return FieldId(name) }
 
+// TableForms is the closed vocabulary of a table's `forms` declaration
+// (docs/SPEC-TABLES.md §2.12). Each is the name of a form a table can carry:
+// `wire` (the id-table wire and its storage/codecs), `json` (the text form),
+// `block` (the block accelerator) and `cook` (the cooked-form accelerator).
+// The checker validates a declaration against this set.
+var TableForms = map[string]bool{
+	"wire":  true,
+	"json":  true,
+	"block": true,
+	"cook":  true,
+}
+
+// DeclaredForms reports whether the table carried an explicit `forms`
+// declaration, as opposed to the default of carrying every form.
+func (s *Struct) DeclaredForms() bool { return len(s.Forms) > 0 }
+
+// CarriesForm reports whether the table carries the named form: every form
+// when no declaration was written, and exactly the declared ones otherwise.
+func (s *Struct) CarriesForm(form string) bool {
+	if !s.DeclaredForms() {
+		return true
+	}
+	return TableForms[form] && slices.Contains(s.Forms, form)
+}
+
 // TableTypeId is a node record's TYPE ID (docs/SPEC-TABLES.md §3.1): the target
 // table's NAME under fnv1a64, with a result of 0 rebounding to 1.
 //

@@ -681,6 +681,7 @@ var valuedKeys = map[string]bool{
 	"resolution":  true,
 	"was":         true,
 	"json":        true,
+	"forms":       true,
 	"cpp_native":  true,
 	"cpp_include": true,
 }
@@ -753,6 +754,31 @@ func (c *checker) qualification(where, kind string, attrs []ast.Attr, takes map[
 		}
 	}
 	return tags, valued
+}
+
+// tableForms reads a `forms = "wire,json"` declaration (docs/SPEC-TABLES.md
+// §2.12): a comma-separated quoted string of form names from the closed
+// vocabulary. A form outside it is refused by name; a spelling that is not a
+// quoted string is refused too. The table carries exactly the named forms —
+// the Go backend honours them, every other backend refuses the whole construct
+// by name (compiler/generate.go).
+func (c *checker) tableForms(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
+	lit, ok := a.Value.(*ast.StringLit)
+	if !ok || lit.Value == "" {
+		c.errf(a.Pos, `forms takes a comma-separated quoted list of form names, e.g. forms = "wire,json" (docs/SPEC-TABLES.md §2.12)`)
+		return
+	}
+	for _, name := range strings.Split(lit.Value, ",") {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if !ir.TableForms[name] {
+			c.errf(a.Pos, "table %s: forms = %q names no form — the forms are wire, json, block and cook (docs/SPEC-TABLES.md §2.12)", d.Name, name)
+			continue
+		}
+		st.Forms = append(st.Forms, name)
+	}
 }
 
 // vocabulary spells a line kind's valued keys for a diagnostic.
@@ -1054,7 +1080,7 @@ func (c *checker) resolveBodies() {
 				// refuses a fixed table whose closure cannot hold the class.
 				st := &ir.Struct{Name: d.Name, IsTable: true, FixedDeclared: d.Fixed, Doc: d.Doc}
 				var tvalued []*ast.Attr
-				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true})
+				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true, "forms": true})
 				for _, a := range tvalued {
 					// the table's RENAME (docs/SPEC-TABLES.md §5): its node
 					// type id stays the hash of the OLD name, so every
@@ -1069,6 +1095,9 @@ func (c *checker) resolveBodies() {
 						c.errf(a.Pos, "table %s: was = %q names the table's own current name — was records the OLD name after a rename; drop the attribute until one happens (docs/SPEC-TABLES.md §5)", d.Name, lit.Value)
 					default:
 						st.WasName = lit.Value
+					}
+					if a.Key == "forms" {
+						c.tableForms(d, st, a)
 					}
 				}
 				c.tables[d.Name] = st
