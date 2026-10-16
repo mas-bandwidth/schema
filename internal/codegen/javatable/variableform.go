@@ -975,11 +975,38 @@ public final class TableJson {
 
         // integer reads one number into a long, clamping to the field's declared
         // range and counting a genuinely fractional value as a kind mismatch
-        // (never coerced), a value past the range as a clamp (§16.2).
+        // (never coerced), a value past the range as a clamp (§16.2). An unsigned
+        // field reads its digits as an unsigned 64-bit value so the whole
+        // 0..2^64-1 range is kept and only values past it clamp (§16.2).
         public long integer(boolean signed, long min, long max) {
             boolean[] integral = new boolean[1];
             String tok = scanNumber(integral);
             if (bad) { return 0; }
+            if (!signed) {
+                long v;
+                if (integral[0]) {
+                    if (tok.charAt(0) == '-') { rep.clamped++; return min; }
+                    try {
+                        v = Long.parseUnsignedLong(tok);
+                    } catch (NumberFormatException e) {
+                        rep.clamped++;
+                        return max;
+                    }
+                } else {
+                    double d;
+                    try {
+                        d = Double.parseDouble(tok);
+                    } catch (NumberFormatException e) {
+                        bad = true;
+                        return 0;
+                    }
+                    if (!Double.isFinite(d) || d != (double) (long) d) { rep.kindMismatch++; return 0; }
+                    v = (long) d;
+                }
+                if (Long.compareUnsigned(v, min) < 0) { rep.clamped++; return min; }
+                if (Long.compareUnsigned(v, max) > 0) { rep.clamped++; return max; }
+                return v;
+            }
             long v;
             if (integral[0]) {
                 try {
@@ -999,7 +1026,6 @@ public final class TableJson {
                 if (!Double.isFinite(d) || d != (double) (long) d) { rep.kindMismatch++; return 0; }
                 v = (long) d;
             }
-            if (!signed && v < 0) { rep.clamped++; return 0; }
             if (v < min) { rep.clamped++; return min; }
             if (v > max) { rep.clamped++; return max; }
             return v;
