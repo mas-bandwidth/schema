@@ -292,7 +292,7 @@ func TestTextDifferentialJava(t *testing.T) {
 // a float32; the control narrows it to six significant digits, so a float32
 // that needs seven, eight or nine renders short and only the
 // cross-implementation comparison sees it.
-const textDifferentialJavaAnchor = "low = 6; high = 9;"
+const textDifferentialJavaAnchor = "low = 6;\n            high = 9;"
 
 // TestTextDifferentialJavaNegativeControl caps the emitted float32 writer at six
 // significant digits in memory. The gate must go red on the TEXT comparison,
@@ -309,7 +309,7 @@ func TestTextDifferentialJavaNegativeControl(t *testing.T) {
 		}
 		for name, data := range files {
 			if strings.Contains(string(data), textDifferentialJavaAnchor) {
-				files[name] = []byte(strings.Replace(string(data), textDifferentialJavaAnchor, "low = 6; high = 6; /* SABOTAGED */", 1))
+				files[name] = []byte(strings.Replace(string(data), textDifferentialJavaAnchor, "low = 6;\n            high = 6; /* SABOTAGED */", 1))
 			}
 		}
 	})
