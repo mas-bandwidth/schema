@@ -62,7 +62,7 @@ tables-go-fixedform:
 		./internal/codegen/gotable -run 'TestFixedForm|TestFixedPlanMaxCoversEveryLineagePlan|TestTimestampKindInGo|TestFixedLoadAllocatesNothingPerCall|TestFixedLoadNamesEveryRefusal|TestGoTableWritersRefuseWhatTheirReadersRefuse|TestFixedLoadUnknownHashIsLayoutUnknown' -count=1
 test-go: tables-go-fixedform
 
-# THE OPTIONAL SHARED GO RUNTIME (docs/SPEC-TABLES.md §8.4). tables/goruntime is
+# THE OPTIONAL SHARED GO RUNTIME (docs/SPEC-TABLES.md §8.4). compiler/runtime is
 # GENERATED from the emitter, never edited: `make go-runtime` rewrites it, and
 # the gate fails when the checked-in package is not what the emitter derives, or
 # when a unit generated with runtime=shared stops producing the standalone

@@ -17,10 +17,10 @@ import (
 )
 
 // sharedRuntimeDir is the checked-in shared package, relative to this package.
-const sharedRuntimeDir = "../../../tables/goruntime"
+const sharedRuntimeDir = "../../../../compiler/runtime"
 
 // TestGoSharedRuntimePackageIsCurrent pins "one source" (docs/SPEC-TABLES.md
-// §8.4): tables/goruntime is exactly what the emitter derives, so the package
+// §8.4): compiler/runtime is exactly what the emitter derives, so the package
 // and the inline copy cannot drift. SCHEMA_WRITE_GORUNTIME=1 rewrites it (make
 // go-runtime).
 func TestGoSharedRuntimePackageIsCurrent(t *testing.T) {
@@ -138,7 +138,7 @@ func TestShared(t *testing.T) {
 `
 
 // sharedRun generates the unit in one mode, compiles it with its tests and
-// returns the OUT lines. The shared mode imports tables/goruntime from this
+// returns the OUT lines. The shared mode imports compiler/runtime from this
 // repository through a replace.
 func sharedRun(t *testing.T, u *ir.Unit, testSource string, rt Runtime, edit func(map[string][]byte)) (string, error) {
 	t.Helper()

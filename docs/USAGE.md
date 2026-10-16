@@ -104,7 +104,7 @@ the smaller generated files, can instead set the generator option
 `runtime` to `shared` (`compiler.Options{"runtime": "shared"}`; absent, empty
 or `standalone` is the default and is byte-identical to a build that never
 heard of the option). The unit then imports one package of this module,
-`github.com/mas-bandwidth/schema/v2/tables/goruntime`, and its exported names
+`github.com/mas-bandwidth/schema/v2/compiler/runtime`, and its exported names
 (`TableReport`, `TableRefuseReason`, ...) are type aliases of that package's:
 the same names, the same types, the same wires and reports. Adopting it adds
 one `require` of this module and no `replace`. The package versions WITH the

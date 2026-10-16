@@ -11395,8 +11395,8 @@ here?" — §2.2's own distinction between machinery and columns.
 table-independent runtime into each unit's home file by default
 (`runtime` unset, empty or `standalone`), and that output is byte-identical
 to every build before the option existed. With the generator option
-`runtime: shared` the home file instead imports `tables/goruntime` in this
-module (`github.com/mas-bandwidth/schema/v2/tables/goruntime`) and aliases
+`runtime: shared` the home file instead imports `compiler/runtime` in this
+module (`github.com/mas-bandwidth/schema/v2/compiler/runtime`) and aliases
 the shared declarations in; any other value is refused by name.
 
 **One source.** A declaration is SHARED when the emitter writes it

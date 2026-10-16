@@ -122,7 +122,6 @@ var catalog = []Entry{
 	e("tables/blockhome", "block-home corpus", "make check", "bin/schema check tables/blockhome"),
 	e("tables/cards", "work-card corpus", "make cards-test", "make cards-test"),
 	e("tables/examples", "table examples corpus", "make check", "bin/schema check tables/examples"),
-	e("tables/goruntime", "optional shared Go table runtime (generated)", "make tables-go-shared-runtime", "make go-runtime"),
 	e("tables/lists", "unbounded-array corpus", "make check", "bin/schema check tables/lists"),
 	e("tables/maps", "map corpus", "make check", "bin/schema check tables/maps"),
 	e("tables/messages", "message-union corpus", "make check", "bin/schema check tables/messages"),

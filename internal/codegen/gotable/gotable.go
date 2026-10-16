@@ -1158,7 +1158,7 @@ func (g *tableGen) emitTimestampAccessors(st *ir.Struct) {
 // ---- the optional shared Go runtime (docs/SPEC-TABLES.md §8.4) ----
 //
 // Standalone is the default and stays byte-identical to every build before this
-// option existed. Shared makes a unit's home file import tables/goruntime for
+// option existed. Shared makes a unit's home file import compiler/runtime for
 // the declarations the emitter writes identically for EVERY unit shape, instead
 // of carrying a copy of them. There is one source: the package's text is the
 // emitter's own text for those declarations (sharedRuntime derives it from the
@@ -1167,10 +1167,10 @@ func (g *tableGen) emitTimestampAccessors(st *ir.Struct) {
 // disagree.
 
 // SharedRuntimeImport is the import path of the shared Go runtime package.
-const SharedRuntimeImport = "github.com/mas-bandwidth/schema/v2/tables/goruntime"
+const SharedRuntimeImport = "github.com/mas-bandwidth/schema/v2/compiler/runtime"
 
 // SharedRuntimeFile is the one file of the shared package, relative to
-// tables/goruntime.
+// compiler/runtime.
 const SharedRuntimeFile = "goruntime.go"
 
 // Runtime says where a Go unit's table-independent machinery lives.

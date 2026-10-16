@@ -36,7 +36,7 @@ func TestGoRuntimeOption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(shared["ProbeTable.go"], []byte("schema/v2/tables/goruntime")) {
+	if !bytes.Contains(shared["ProbeTable.go"], []byte("schema/v2/compiler/runtime")) {
 		t.Fatalf("runtime=shared does not import the shared runtime")
 	}
 	if _, err := c.Generate(u, "go", Options{"runtime": "bogus"}); err == nil || !strings.Contains(err.Error(), `"bogus"`) {

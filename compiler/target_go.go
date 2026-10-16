@@ -29,7 +29,7 @@ func (t goTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) 
 func (goTarget) GenerateLineage(u *ir.Unit, opts Options, lineage *FixedLineage) (map[string][]byte, error) {
 	// the optional shared runtime (docs/SPEC-TABLES.md §8.4): absent, empty or
 	// "standalone" is the default and changes no byte; "shared" imports
-	// tables/goruntime instead of emitting the table-independent machinery
+	// compiler/runtime instead of emitting the table-independent machinery
 	rt, err := gotable.ParseRuntime(opts["runtime"])
 	if err != nil {
 		return nil, err
