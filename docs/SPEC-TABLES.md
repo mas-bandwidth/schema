@@ -7253,8 +7253,9 @@ reason (§5.3's joint table).
   would be a hash of a different thing. The header's hash is taken as GIVEN and
   the header is held to the layout behind it by a BYTE COMPARISON instead:
   **a known hash whose layout bytes are not the lock's own bytes for that hash
-  is refused**, `layout_malformed`; a hash in no lineage entry is `layout_newer`
-  (algorithm §5.3 steps 3 to 7).
+  is refused**, `layout_malformed`; a hash in no lineage entry is `layout_unknown`
+  (§21.3; `layout_newer` is reserved for a hash the lineage PROVES newer, and
+  nothing does yet; algorithm §5.3 steps 3 to 7).
 - **THE FIXED FORM DOES NOT NEED THE PADDING AND PAYS IT ANYWAY** (§3). Nothing
   in this form memory-maps a body today; the sixteen bytes are paid so that the
   bytes do not move again when the cook and the block form join the registry
@@ -7371,9 +7372,9 @@ added moves it without anyone remembering to.
   whose header hash is known but whose layout bytes are not the lock's bytes for
   that hash is refused `layout_malformed`, which is what proves the header's
   eight bytes are READ and not merely written; a hash in no entry is
-   `layout_newer` (algorithm §5.3). **AND THE SEVEN RESERVED BYTES**: any of
-   offsets `1..7` nonzero is `malformed`, named `reserved_not_zero`, refused
-   rather than ignored, which is what keeps them spendable later.
+  `layout_unknown` (§21.3, algorithm §5.3). **AND THE SEVEN RESERVED BYTES**: any of
+  offsets `1..7` nonzero is `malformed`, named `reserved_not_zero`, refused
+  rather than ignored, which is what keeps them spendable later.
 - **THE FIRST BYTE, AT THE TOOL** (§3): `schema check` handed a saved file
   answers `FORM <n> <name>` before it says anything else about the file, or
   refuses the byte by name, over every row of the registry and over a file with
@@ -16783,9 +16784,36 @@ prefix. Everything else: copied.
 
 ### 21.3 What an older reader does with a newer file
 
-Refuses, by name, at load, before any record: **`layout_newer`**. No counter moves. REFUSE is total. The
-refusal carries THE FILE'S LAYOUT HASH AND NOTHING ELSE: a layout the reader has not locked is never parsed,
-so there is no field, bound or variant to name, and the hash is what the writer is looked up by.
+Refuses, by name, at load, before any record: **`layout_unknown`**, "a layout hash this build's lineage does
+not hold". No counter moves. REFUSE is total. The refusal carries THE FILE'S LAYOUT HASH AND NOTHING ELSE: a
+layout the reader has not locked is never parsed, so there is no field, bound or variant to name, and the hash
+is what the writer is looked up by.
+
+**The name says what the reader knows and not which way the file lies.** A hash outside the lineage is a newer
+writer's layout, or an older layout nobody ever locked, or another table's file, or a header whose hash byte was
+damaged on disk or in flight; the reader cannot tell these apart, and answering "ship a newer reader" to all of
+them sends the operator after a reader that may not exist. So the refusal that points the operator at a newer
+reader, **`layout_newer`**, is for ONE case only: **a hash the lock lineage PROVES newer than this reader's own
+layout.** `layout_unsupported` is the opposite proof (the hash is in the lineage, below the floor: older,
+retired, upgrade the client); `layout_unknown` is the absence of either proof.
+
+**What can prove direction, and what cannot.** Direction is an ORDER, and the only ordered thing a build holds
+is its lineage: the lock's entries, oldest first, the reader's own layout last (algorithm §5.2), the last entry
+held to the declaration by `schema check`. So (1) every entry a build holds is the reader's own layout or one
+OLDER than it, and a `retired` mark says older too (`layout_unsupported`); (2) a hash that is not in the
+lineage has no position in it, so the lineage can say nothing about it; (3) the wire carries a hash and no
+ordinal, and the hash is a digest that cannot be ordered or re-derived (§3.4). **Nothing on the wire and
+nothing in the lock proves a layout newer today**, which makes `layout_newer` RESERVED by the standard: no reader that
+has taken this rule emits it (Go today), and for such a reader every hash outside the lineage is
+`layout_unknown`; the legs that have not taken it still emit it, the gap the next paragraph names. It becomes emittable only when the standard gives a
+reader an ordered fact about a hash it does not hold (for example a lineage position spent from the header's
+reserved bytes, or a lock tail recording layouts ahead of the build), and that change is made here first.
+
+**Go is first, and the other legs have a gap.** Go answers `layout_unknown` (the exported constant
+`TableFixedReasonLayoutUnknown`). The C, C++, C#, Java, Rust, JS, Dart and Elixir legs keep answering `layout_newer`
+for a hash outside the lineage until each takes this rule in its turn; until then those legs overstate, and the
+two names are the same refusal in everything but what they claim about direction. The C and C++ integers
+(algorithm §5.3) are assigned when those legs take the rule.
 
 ### 21.4 The closure rule
 

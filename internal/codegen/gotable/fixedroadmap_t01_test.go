@@ -177,8 +177,8 @@ func TestF10(t *testing.T) {
 }
 `
 
-// go/R8, "a hash in no lineage entry → layout_newer, reporting the file's hash
-// AND NOTHING ELSE". §5.3 steps 5 and 6: outside the lineage is layout_newer,
+// go/R8, "a hash in no lineage entry → layout_unknown, reporting the file's hash
+// AND NOTHING ELSE". §5.3 steps 5 and 6: outside the lineage is layout_unknown,
 // and it reports THE FILE'S hash and nothing else. The whole report is compared
 // in one != over a dirty report, so a stale counter, Malformed or any field
 // added later fails; the destination stays poisoned. Each of the sixty-four
@@ -197,11 +197,11 @@ func TestR8(t *testing.T) {
 		binary.LittleEndian.PutUint64(forged[TableFixedHashAt:], want)
 		dst, bytes := poisoned(1)
 		r := dirty()
-		if n := PointFixedLoad(dst, forged, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_newer", LayoutHash: want}) {
+		if n := PointFixedLoad(dst, forged, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_unknown", LayoutHash: want}) {
 			t.Fatalf("bit %d: n=%d %+v", bit, n, r)
 		}
 		if !untouched(bytes) {
-			t.Fatalf("bit %d: layout_newer wrote destination bytes", bit)
+			t.Fatalf("bit %d: layout_unknown wrote destination bytes", bit)
 		}
 	}
 }
@@ -298,7 +298,7 @@ func TestR9(t *testing.T) {
 // the framing-damage answers set Malformed beside their name (truncated,
 // reserved_not_zero). Every refusal this reader has before a record lands
 // (previous_form, message_form_as_file, newer_form, layout_malformed,
-// layout_newer, plan_too_large, batch_too_large) and every malformed arm (empty,
+// layout_unknown, plan_too_large, batch_too_large) and every malformed arm (empty,
 // short, reserved byte, ragged) is forged from a clean file, read into a
 // poisoned destination with a dirty report, and the whole report compared.
 const r13RefuseIsTotal = t01Prelude + `
@@ -351,12 +351,12 @@ func TestR13(t *testing.T) {
 			t.Fatalf("%s: wrote destination bytes", c.what)
 		}
 	}
-	// layout_newer carries the file's hash and nothing else
+	// layout_unknown carries the file's hash and nothing else
 	forged := forge(func(b []byte) []byte { b[TableFixedHashAt] ^= 1; return b })
 	dst, bytes := poisoned(2)
 	r := dirty()
-	if n := PointFixedLoad(dst, forged, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_newer", LayoutHash: binary.LittleEndian.Uint64(forged[TableFixedHashAt:])}) || !untouched(bytes) {
-		t.Fatalf("layout_newer: n=%d %+v", n, r)
+	if n := PointFixedLoad(dst, forged, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_unknown", LayoutHash: binary.LittleEndian.Uint64(forged[TableFixedHashAt:])}) || !untouched(bytes) {
+		t.Fatalf("layout_unknown: n=%d %+v", n, r)
 	}
 }
 `

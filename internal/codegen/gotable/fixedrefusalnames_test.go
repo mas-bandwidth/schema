@@ -73,14 +73,15 @@ func TestNames(t *testing.T) {
 			t.Fatalf("%s: n=%d report=%+v want=%+v", c.what, n, r, c.want)
 		}
 	}
-	// layout_newer carries the file's hash and nothing else
+	// layout_unknown carries the file's hash and nothing else (layout_newer is
+	// reserved: SPEC-TABLES §21.3)
 	forged := forge(func(b []byte) []byte { b[TableFixedHashAt] ^= 1; return b })
-	want := TableReport{Verdict: TableOpenRefused, Reason: TableFixedReasonLayoutNewer,
+	want := TableReport{Verdict: TableOpenRefused, Reason: TableFixedReasonLayoutUnknown,
 		LayoutHash: binary.LittleEndian.Uint64(forged[TableFixedHashAt:])}
 	var r TableReport
 	dst := make([]Point, 2)
 	if n := PointFixedLoad(dst, forged, plan, &r); n != -1 || r != want {
-		t.Fatalf("layout_newer: n=%d report=%+v want=%+v", n, r, want)
+		t.Fatalf("layout_unknown: n=%d report=%+v want=%+v", n, r, want)
 	}
 }
 `)

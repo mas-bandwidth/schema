@@ -905,7 +905,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("}\n\n")
 	g.pf("// The floor: below it a layout this build once served is retired, and\n")
-	g.pf("// the answer is layout_unsupported rather than layout_newer (§5.2).\n")
+	g.pf("// the answer is layout_unsupported rather than layout_unknown (§5.2).\n")
 	g.pf("const %sFixedFloor = %d\n\n", st.Name, floor)
 	g.pf("// One plan per lineage entry, laid down from THE LOCK's bytes: nothing\n")
 	g.pf("// compiles on the load path (§5.8 row 3).\n")
@@ -1045,10 +1045,14 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// re-derived from a file at all (§5.3).
 	g.pf("\thash := tableFixedGet64(data[TableFixedHashAt:])\n")
 	// STEP 5 and STEP 6: SELECT BY HASH, then the floor. Outside the lineage is
-	// layout_newer — ship the reader; below the floor is layout_unsupported —
-	// upgrade the client. Both report THE FILE'S hash and nothing else.
+	// layout_unknown (§5.3 step 5, SPEC-TABLES §21.3): the lineage is oldest
+	// first with this build's own layout last, a retired mark means older and the
+	// wire carries a digest with no ordinal, so nothing here PROVES a hash
+	// newer and layout_newer is reserved, never emitted. Below the floor is
+	// layout_unsupported — upgrade the client. Both report THE FILE'S hash and
+	// nothing else.
 	g.pf("\tpick := tableFixedSelect(%sFixedKnown, hash)\n", st.Name)
-	g.pf("\tif pick < 0 {\n\t\treturn tableFixedRefuseHash(report, TableFixedReasonLayoutNewer, hash)\n\t}\n")
+	g.pf("\tif pick < 0 {\n\t\treturn tableFixedRefuseHash(report, TableFixedReasonLayoutUnknown, hash)\n\t}\n")
 	g.pf("\tif pick < %sFixedFloor {\n\t\treturn tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)\n\t}\n", st.Name)
 	// STEP 7: a known hash is read under THE LOCK'S layout bytes. A difference
 	// is one name — a lie about a known version — and the seven §1.1 rules do

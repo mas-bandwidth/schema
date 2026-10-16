@@ -73,7 +73,7 @@ fixed table Point {
 	// SELECT BY HASH, never parse a stranger (docs/FIXED-FORM-ALGORITHM.md §5.3):
 	// the lineage and the floor are static data, and the two answers an
 	// unmatched hash owes are distinct.
-	for _, want := range []string{"tableFixedSelect(PointFixedKnown", "TableFixedReasonLayoutNewer", "PointFixedFloor", "TableFixedReasonLayoutUnsupported"} {
+	for _, want := range []string{"tableFixedSelect(PointFixedKnown", "TableFixedReasonLayoutUnknown", "PointFixedFloor", "TableFixedReasonLayoutUnsupported"} {
 		if !strings.Contains(fixedLoad, want) {
 			t.Errorf("FixedLoad does not select by hash: missing %q", want)
 		}
@@ -454,11 +454,11 @@ func fixedBodySpan(off int) string {
 // judged BEFORE the hash is looked up, so a file whose u32 layout length
 // overruns it answers `layout_malformed` even when its header hash is one this
 // reader has never locked. A reader that consulted the hash first would answer
-// `layout_newer` and bury the framing damage — the order is the property, not
+// `layout_unknown` and bury the framing damage — the order is the property, not
 // the two individual names (§5.3: "The order is load-bearing").
 //
 // The reference states the same pair by hand: test/tables/fixedform_main.cpp's
-// negative_control() flips the header hash and demands `layout_newer`
+// negative_control() flips the header hash and demands `layout_unknown`
 // (312-325), and layout_validation()'s residue builds a file whose length runs
 // past its bytes under an unlocked hash and demands `layout_malformed`
 // (519-527). This is that reasoning in the Go leg's generated-probe idiom; the
@@ -491,15 +491,15 @@ func TestHashCheckedLast(t *testing.T) {
 	}
 
 	// THE HASH IS TAKEN AS GIVEN, NEVER RECOMPUTED. A hash no lineage entry
-	// holds is layout_newer, and the report carries THE FILE'S hash — the
+	// holds is layout_unknown, and the report carries THE FILE'S hash — the
 	// flipped value, not this build's. A reader that recomputed hash_of(layout)
 	// would find its own entry and read the file.
 	unknown := append([]byte(nil), buf...)
 	flipped := binary.LittleEndian.Uint64(unknown[TableFixedHashAt:]) ^ 0xFFFFFFFFFFFFFFFF
 	binary.LittleEndian.PutUint64(unknown[TableFixedHashAt:], flipped)
 	r = TableReport{}
-	if n := PointFixedLoad(got, unknown, plan, &r); n != -1 || r.Reason != "layout_newer" || r.LayoutHash != flipped || r.Malformed {
-		t.Fatalf("an unknown header hash is layout_newer carrying the file's hash: n=%d report=%+v", n, r)
+	if n := PointFixedLoad(got, unknown, plan, &r); n != -1 || r.Reason != "layout_unknown" || r.LayoutHash != flipped || r.Malformed {
+		t.Fatalf("an unknown header hash is layout_unknown carrying the file's hash: n=%d report=%+v", n, r)
 	}
 
 	// AND THE LAYOUT FRAMING IS JUDGED FIRST (§5.3 step 3 before steps 4-5): the
@@ -521,7 +521,7 @@ func TestHashCheckedLast(t *testing.T) {
 // stranger's layout — the seven §1.1 names, and a forward read. §5.6 retires
 // exactly that: "Reading a layout the lock has never seen. The run-time walk of
 // a stranger's layout ... the recompute of the header's hash". Under §5 every
-// one of these files comes back layout_newer, which is the new law and not a
+// one of these files comes back layout_unknown, which is the new law and not a
 // regression. What is OWED is the same coverage on the lineage harness
 // (fixedversioning_test.go's runVersionProbe): the plan path with the peer's
 // entry handed to the reader as its lock, and §1.1's seven rules moved to the
@@ -1779,7 +1779,7 @@ func TestRecordBound(t *testing.T) {
 		t.Fatalf("W10: COMPILE's refusal is named %q, want layout_record_too_large", lineage[0].Why)
 	}
 
-	// LOAD of the same bytes: hash selects, and a stranger is layout_newer.
+	// LOAD of the same bytes: hash selects, and a stranger is layout_unknown.
 	file := make([]byte, TableFixedHeaderBytes+4)
 	file[0] = TableFixedForm
 	tableFixedPut64(file[TableFixedHashAt:], hashOf(hostile))
@@ -1789,7 +1789,7 @@ func TestRecordBound(t *testing.T) {
 	HostReset(&got[0])
 	var r TableReport
 	n := HostFixedLoad(got, file, make([]TableFixedEntry, 256), &r)
-	if n >= 0 || r.Reason != "layout_newer" || r.Verdict != TableOpenRefused {
+	if n >= 0 || r.Reason != "layout_unknown" || r.Verdict != TableOpenRefused {
 		t.Fatalf("W10: LOAD of the same bytes is not refused: n=%d %+v", n, r)
 	}
 	if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Clamped != 0 || r.Malformed {
@@ -2610,7 +2610,7 @@ func TestRead(t *testing.T) {
 // Two answers are asserted by name: (1) FxOld's identity plan run straight
 // over FxNew's record body — the path select-by-hash exists to prevent — must
 // NOT reproduce the record; (2) the loader refuses the file whose hash it does
-// not lock with `layout_newer` and moves no counter. The legitimate value the
+// not lock with `layout_unknown` and moves no counter. The legitimate value the
 // rule admits (FxOld reading FxOld) is asserted too, so neither half can pass
 // vacuously.
 //
@@ -2678,15 +2678,15 @@ func TestWrongPlanGoesRed(t *testing.T) {
 
     // (2) THE LOADER REFUSES. FxNew's record carries FxNew's hash in the
     // header at offset 8; FxOld's lock holds only FxOld's hash, so FxOld's
-    // plan is never entered and the file is layout_newer.
+    // plan is never entered and the file is layout_unknown.
     plan := make([]TableFixedEntry, 1024)
     var r TableReport
     old := make([]FxOld, 1)
-    if n := FxOldFixedLoad(old, w2, plan, &r); n >= 0 || r.Reason != "layout_newer" {
+    if n := FxOldFixedLoad(old, w2, plan, &r); n >= 0 || r.Reason != "layout_unknown" {
         t.Fatalf("the loader did not refuse a file under another layout: n=%d %+v", n, r)
     }
     if r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Malformed {
-        t.Fatalf("layout_newer is a refusal and moves no counter: %+v", r)
+        t.Fatalf("layout_unknown is a refusal and moves no counter: %+v", r)
     }
 
     // (1) THE WRONG PLAN IS WRONG. FxOld's identity plan over FxNew's record

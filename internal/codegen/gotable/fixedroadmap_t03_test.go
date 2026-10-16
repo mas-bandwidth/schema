@@ -378,7 +378,7 @@ func t03GoR10(t *testing.T) {
 // ---- go/R15 -----------------------------------------------------------------
 
 // t03GoR15 holds R15 to §5.6's retirement list and §5.3 step 5: the four
-// forward-read clamps are gone, and each is `layout_newer` now. A hash the
+// forward-read clamps are gone, and each is `layout_unknown` now. A hash the
 // lineage does not hold is refused BEFORE any record and before any plan
 // selection, on the file's hash; the count and text clamps that REMAIN are the
 // writer's bounds carried by the plan (bill §12.5), which only a backward read
@@ -397,12 +397,12 @@ func t03GoR15(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Errorf("R15: %s is not in TestFixedVersioningNewReadsOld's rows: its OLD-REFUSES-NEW column is where the retired clamp is layout_newer by name", row)
+			t.Errorf("R15: %s is not in TestFixedVersioningNewReadsOld's rows: its OLD-REFUSES-NEW column is where the retired clamp is layout_unknown by name", row)
 		}
 	}
 	text, _ := t03GoRetire(t, 0)
 	load := t03GoLoad(t, text, "Lineage")
-	miss := strings.Index(load, `return tableFixedRefuseHash(report, TableFixedReasonLayoutNewer, hash)`)
+	miss := strings.Index(load, `return tableFixedRefuseHash(report, TableFixedReasonLayoutUnknown, hash)`)
 	records := strings.Index(load, "for k := int64(0); k < n; k++")
 	if miss < 0 || records < 0 {
 		t.Fatalf("R15: the load's refusals moved (%d, %d)", miss, records)
