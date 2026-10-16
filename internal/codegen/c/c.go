@@ -468,6 +468,51 @@ func (g *gen) emitUnion(d *ir.Union) {
 	maxBits := ir.MaxBitsUnion(d)
 	g.pf("#define %s_MAX_BITS %d   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */\n", screaming(d.Name), maxBits)
 	g.pf("#define %s_MAX_BYTES %d  %s\n\n", screaming(d.Name), ir.MaxBytes(maxBits), g.maxBytesTail())
+	g.emitUnionSelectors(d)
+}
+
+// emitUnionSelectors emits one selector per arm (#449): <union>_select_<arm>
+// sets the tag AND initializes the arm together, so a caller cannot select an
+// arm and forget the tag — a forgotten tag leaves None, and the payload is
+// then silently absent from the wire. A payload arm is initialized by exactly
+// the rule a read uses (armInit: declared defaults through new_<type>, else
+// the zero form) and the selector returns the fresh arm to populate; a
+// payload-free arm's selector sets the tag alone. Data header only: the
+// write/read pair is untouched.
+func (g *gen) emitUnionSelectors(d *ir.Union) {
+	if len(d.Variants) == 0 {
+		return // only None exists; a zeroed value is already selected
+	}
+	tag := d.Name + "Type"
+	g.pf("/* Selectors for %s: each sets the tag and initializes the arm together,\n", d.Name)
+	g.pf("   the arm with its declared defaults as a read does (SPEC §4.8), and returns\n")
+	g.pf("   the fresh arm to populate; a payload-free arm's selector sets the tag alone. */\n")
+	for _, v := range d.Variants {
+		fn := snake(d.Name) + "_select_" + v.Name
+		if v.Void() {
+			g.pf("static SCHEMA_UNUSED void %s( %s * value )\n{\n", fn, d.Name)
+			g.pf("    value->type = %s_%s;\n}\n\n", screaming(tag), screaming(v.Name))
+			continue
+		}
+		g.pf("static SCHEMA_UNUSED %s * %s( %s * value )\n{\n", v.Type, fn, d.Name)
+		g.pf("    value->type = %s_%s;\n", screaming(tag), screaming(v.Name))
+		g.pf("    %s\n", armInit(v))
+		g.pf("    return &value->as.%s;\n}\n\n", v.Name)
+	}
+}
+
+// armInit is the statement that initializes a selected payload arm with its
+// declared initial values (SPEC §4.8): the generated constructor when the
+// payload type carries a specified default, else the zero form — the same
+// rule, spelled the same way, as emitUnionWire's read (whose lines stay
+// literal there because tools/sabotage's packet-arm-zero-c control edits
+// them). TestUnionArmSetterSetsTagAndArmC pins both spellings and round-trips
+// every example arm through its selector.
+func armInit(v ir.UnionVariant) string {
+	if v.Ref != nil && structHasDefaults(v.Ref) {
+		return fmt.Sprintf("value->as.%s = new_%s();", v.Name, snake(v.Type))
+	}
+	return fmt.Sprintf("memset( &value->as.%s, 0, sizeof( value->as.%s ) );", v.Name, v.Name)
 }
 
 // maxBytesTail is the comment after a MAX_BYTES define: the whole buffer

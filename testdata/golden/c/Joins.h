@@ -8,6 +8,7 @@
 #define SCHEMA_EXAMPLE_JOINS_H
 
 #include <stdint.h>
+#include <string.h>   /* memset — the zero form (SPEC §4.2) */
 
 #ifndef SCHEMA_UNUSED
 #if defined(__GNUC__) || defined(__clang__)
@@ -152,6 +153,23 @@ typedef struct Uneven {
 
 #define UNEVEN_MAX_BITS 39   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
 #define UNEVEN_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+
+/* Selectors for Uneven: each sets the tag and initializes the arm together,
+   the arm with its declared defaults as a read does (SPEC §4.8), and returns
+   the fresh arm to populate; a payload-free arm's selector sets the tag alone. */
+static SCHEMA_UNUSED Narrow * uneven_select_narrow( Uneven * value )
+{
+    value->type = UNEVEN_TYPE_NARROW;
+    memset( &value->as.narrow, 0, sizeof( value->as.narrow ) );
+    return &value->as.narrow;
+}
+
+static SCHEMA_UNUSED Wide * uneven_select_wide( Uneven * value )
+{
+    value->type = UNEVEN_TYPE_WIDE;
+    memset( &value->as.wide, 0, sizeof( value->as.wide ) );
+    return &value->as.wide;
+}
 
 
 /* type HoldsUneven */
