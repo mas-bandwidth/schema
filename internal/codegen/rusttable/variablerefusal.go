@@ -191,7 +191,7 @@ func (vc *variableClass) carried(name string) bool { return vc.reason[name] == "
 // carried is the table-level fixpoint's question ([newVariableClass]).
 func variableFieldConstruct(f *ir.Field) string {
 	switch {
-	case f.Type.Optional && (f.Type.Pointer || f.Array == ir.ArrayFixed || f.KeyEnum != "" || f.IsMap()):
+	case f.Type.Optional && (f.Type.Pointer || f.KeyEnum != "" || f.IsMap()):
 		return "optional ?T of this shape is outside the variable class this leg carries (§2.3)"
 	case f.KeyEnum != "":
 		if f.KeyEnumRef == nil || f.Type.Pointer || f.Type.Optional || (classOf(f) != vScalar && classOf(f) != vEnum && classOf(f) != vTable) {

@@ -287,11 +287,15 @@ generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 # table runtime. The crates carry a generated Cargo.toml each; nothing here is
 # checked in.
 RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
-	blobdemo:tables/blobs mapdemo:tables/maps scalars:tables/scalars \
-	blockdemo:tables/block blockhome:tables/blockhome \
+	blobdemo:tables/blobs mapdemo:tables/maps listdemo:tables/lists \
+	messagedemo:tables/messages streamdemo:tables/stream \
+	backenddemo:tables/backend vocabdemo:tables/vocab vocab9demo:tables/vocab9 \
+	scalars:tables/scalars blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \
 	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
+	tblm1:test/tables/M1.schema tblm2:test/tables/M2.schema \
+	tbla2:test/tables/A2.schema tblk1:test/tables/K1.schema tblk2:test/tables/K2.schema \
 	tblfx1:test/tables/FX1.schema tblfx2:test/tables/FX2.schema \
 	tblfe1:test/tables/FE1.schema tblfe2:test/tables/FE2.schema \
 	tblfu1:test/tables/FU1.schema tblfu2:test/tables/FU2.schema \
@@ -308,7 +312,7 @@ RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 # those bytes (docs/SPEC-TABLES.md §3.4, §15).
 RUST_TABLE_BENCH_SCHEMAS := bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 
-build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema $(RUST_TABLE_BENCH_SCHEMAS)
+build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema $(RUST_TABLE_BENCH_SCHEMAS)
 	@mkdir -p build/tables-generated-rust
 	@for unit in $(RUST_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -679,6 +683,49 @@ tables-rust-message-batch:
 	@echo 'tables Rust message batch: the message form reads and writes the reference bytes'
 
 test-rust: tables-rust-message-batch
+
+# THE RUST UNIT REGISTRY GATE (docs/SPEC-TABLES.md §8.7): the same registry
+# listing oracle as the reference, through the Rust surface, mirroring
+# tables-c-view. For each VIEW_CORPUS unit the target generates the unit with
+# bin/schema into build/rust-view/unit, builds test/rust-view (copied beside
+# it, so its Cargo.lock and target stay in build/) against that unit and
+# nothing else, writes build/rust-view/<pkg>.listing, and the listing gate
+# compares every listing with the one the compiler produces from its own IR.
+#
+# A UNIT THE RUST LEG REFUSES WHOLE is named, never skipped silently: its
+# refusal must be the leg's own named follow-on (today `was` on an enum
+# variant, a union arm or a type's field, docs/SPEC-TABLES.md §5, which is
+# messages and wide), the gate compares every unit it carries, and any other
+# generate failure fails the target.
+.PHONY: tables-rust-view
+tables-rust-view: bin/schema test/rust-view/src/main.rs test/rust-view/Cargo.toml
+	@rm -rf build/rust-view
+	@mkdir -p build/rust-view/prog/src
+	@cp test/rust-view/Cargo.toml build/rust-view/prog/Cargo.toml
+	@cp test/rust-view/src/main.rs build/rust-view/prog/src/main.rs
+	@set -e; carried=; refused=; for entry in $(VIEW_CORPUS); do \
+		dir=$${entry%%:*}; pkg=$${entry##*:}; \
+		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
+		rm -rf build/rust-view/unit; mkdir -p build/rust-view/unit; \
+		if ! ./bin/schema generate --lang rust --out build/rust-view/unit/src $$source > build/rust-view/$$pkg.generate.log 2>&1; then \
+			if grep -q 'the rust form is a named follow-on' build/rust-view/$$pkg.generate.log; then \
+				echo "tables-rust-view: $$pkg is refused whole by the Rust leg, by name: $$(grep -o 'unit declares was on [^;]*' build/rust-view/$$pkg.generate.log)"; \
+				refused="$$refused $$pkg"; continue; \
+			fi; \
+			cat build/rust-view/$$pkg.generate.log; exit 1; \
+		fi; \
+		printf '[package]\nname = "viewunit"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" \
+			> build/rust-view/unit/Cargo.toml; \
+		PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --manifest-path build/rust-view/prog/Cargo.toml; \
+		./build/rust-view/prog/target/debug/rust-view > build/rust-view/$$pkg.listing; \
+		carried="$$carried,$$pkg"; \
+	done; \
+	echo "$$carried" | cut -c2- > build/rust-view/carried; echo "$$refused" > build/rust-view/refused
+	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/rust-view" SCHEMA_VIEW_LISTING_UNITS="$$(cat build/rust-view/carried)" \
+		go test ./internal/viewlisting -count=1 -timeout 600s -run TestUnitViewListingMatchesTheIR -v
+	@echo "Rust unit registry: $$(tr ',' ' ' < build/rust-view/carried | wc -w) of $(words $(VIEW_CORPUS)) VIEW_CORPUS units match the independent listing; refused whole by name:$$(cat build/rust-view/refused)"
+
+test-rust: tables-rust-view
 
 # THE CARDS UNIT'S RUST LEG (docs/SPEC-TABLES.md §2). These targets are the
 # Rust side of the cards wire-fuzz gate: they mirror the Go leg's

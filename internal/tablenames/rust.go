@@ -96,5 +96,18 @@ func init() {
 		Name{Name: "TableRetainDepthCap", What: "the retain walk's nesting cap (§6.6)", RustConst: true},
 		Name{Name: "TableDesc", What: "one table's descriptor in the card descriptors (§8.1)"},
 		Name{Name: "TableFieldDesc", What: "one field's descriptor in the card descriptors (§8.1)"},
+		// THE VIEW (docs/SPEC-TABLES.md §8): every table's and every type's
+		// descriptors and the unit registry, in unit_view.rs, emitted for a
+		// unit with tables and glob re-exported like every table module.
+		Name{Name: "TableFieldInfo", What: "a field's reflection descriptor (§8.1)"},
+		Name{Name: "TableTypeInfo", What: "a table's or a type's reflection descriptor (§8.1, §8.2)"},
+		Name{Name: "TableUnionInfo", What: "a union field's tag and its arms (§8.1)"},
+		Name{Name: "TableUnionArmInfo", What: "one union arm's payload and descriptor (§8.1)"},
+		Name{Name: "TableDocNone", What: "the one shared empty doc every unannotated descriptor row names (§8.1)", RustConst: true},
+		Name{Name: "TableViewConstant", What: "one constant in the unit registry (§8.3); the Rust spelling of the reference's ViewConstant, Table-prefixed because the crate root is glob-exported"},
+		Name{Name: "TableViewVariant", What: "one enum variant, flags bit or union arm in the unit registry (§8.3)"},
+		Name{Name: "TableViewVocabulary", What: "one enum, flags or union declaration in the unit registry (§8.3)"},
+		Name{Name: "TableViewType", What: "one type or table in the unit registry (§8.3)"},
+		Name{Name: "TableUnitView", What: "the unit registry unit_view() returns (§8.3); the Rust spelling of the reference's UnitViewInfo"},
 	)
 }

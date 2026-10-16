@@ -231,11 +231,15 @@ pub struct Jw {
 pub const JSON_DEPTH_CAP: usize = 128;
 
 /// A label the reader has met (docs/SPEC-TABLES.md §16.7): Open while its
-/// definition's object is still being read, then the node it defined.
+/// definition's object is still being read, then the node it defined — or
+/// Dropped, a definition inside a value the walk skipped (past a bound, under
+/// an unknown key). A dropped definition KEEPS its label and its reference
+/// reads null, the wire's rule for an unnameable node (§3.1).
 #[allow(dead_code)]
 pub enum JsonLabel {
     Open,
     Node(Rc<dyn Any>),
+    Dropped,
 }
 
 /// The tolerant JSON cursor (docs/SPEC-TABLES.md §16.2): it skips whitespace,
@@ -245,6 +249,7 @@ pub enum JsonLabel {
 pub struct Jr<'a> {
     pub b: &'a [u8],
     pub p: usize,
+    pub depth: usize,
     pub unknown: u64,
     pub kind_mismatch: u64,
     pub clamped: u64,
@@ -256,12 +261,39 @@ pub struct Jr<'a> {
 #[allow(dead_code)]
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
-        Jr { b, p: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, labels: HashMap::new() }
+        Jr { b, p: 0, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, labels: HashMap::new() }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {
             match self.b[self.p] {
                 b' ' | b'\t' | b'\n' | b'\r' => self.p += 1,
+                b'/' if self.p + 1 < self.b.len() && self.b[self.p + 1] == b'/' => {
+                    self.p += 2;
+                    while self.p < self.b.len() && self.b[self.p] != b'\n' {
+                        self.p += 1;
+                    }
+                }
+                b'/' if self.p + 1 < self.b.len() && self.b[self.p + 1] == b'*' => {
+                    self.p += 2;
+                    let mut closed = false;
+                    while self.p + 1 < self.b.len() {
+                        if self.b[self.p] == b'*' && self.b[self.p + 1] == b'/' {
+                            self.p += 2;
+                            closed = true;
+                            break;
+                        }
+                        self.p += 1;
+                    }
+                    if !closed {
+                        self.malformed = true;
+                        self.p = self.b.len();
+                        return;
+                    }
+                }
+                b'/' => {
+                    self.malformed = true;
+                    return;
+                }
                 _ => break,
             }
         }
@@ -309,6 +341,10 @@ impl<'a> Jr<'a> {
             if c == b'"' {
                 self.p += 1;
                 break;
+            }
+            if c < 0x20 {
+                self.malformed = true;
+                return None;
             }
             if c == b'\\' {
                 self.p += 1;
@@ -424,30 +460,56 @@ impl<'a> Jr<'a> {
         Some(String::from_utf8_lossy(&b[s..p]).into_owned())
     }
     /// An integer field's value (docs/SPEC-TABLES.md §16.2): any token whose
-    /// VALUE is integral, saturating past what 128 bits hold; a fractional one
+    /// VALUE is integral, saturating past what 64 bits hold; a fractional one
     /// is kind_mismatch, and a value of another JSON type is kind_mismatch,
     /// skipped.
     pub fn read_int(&mut self) -> Option<i128> {
         let c = self.peek();
-        if c != b'-' && !c.is_ascii_digit() {
+        if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
             self.kind_mismatch += 1;
             self.skip_value();
             return None;
         }
         let t = self.number_token()?;
         if !t.contains(['.', 'e', 'E']) {
-            return Some(t.parse::<i128>().unwrap_or(if t.starts_with('-') { i128::MIN } else { i128::MAX }));
+            let neg = t.starts_with('-');
+            let digits = t.strip_prefix('-').unwrap_or(&t);
+            let mut mag: u64 = 0;
+            for b in digits.bytes() {
+                let d = (b - b'0') as u64;
+                if mag > (u64::MAX - d) / 10 {
+                    mag = u64::MAX;
+                    self.clamped += 1;
+                    break;
+                }
+                mag = mag * 10 + d;
+            }
+            if mag == 0 {
+                return Some(0);
+            }
+            return Some(if neg { -(mag as i128) } else { mag as i128 });
         }
         let f: f64 = t.parse().ok()?;
-        if f.fract() != 0.0 {
+        if !f.is_finite() || f.fract() != 0.0 {
             self.kind_mismatch += 1;
             return None;
         }
-        Some(f as i128)
+        let neg = f.is_sign_negative();
+        let whole = f.abs();
+        let mag = if whole >= 18446744073709551616.0 {
+            self.clamped += 1;
+            u64::MAX
+        } else {
+            whole as u64
+        };
+        if mag == 0 {
+            return Some(0);
+        }
+        Some(if neg { -(mag as i128) } else { mag as i128 })
     }
     pub fn read_i128(&mut self) -> Option<i128> {
         let c = self.peek();
-        if c != b'-' && !c.is_ascii_digit() {
+        if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
             self.kind_mismatch += 1;
             self.skip_value();
             return None;
@@ -471,7 +533,7 @@ impl<'a> Jr<'a> {
     }
     pub fn read_u128(&mut self) -> Option<u128> {
         let c = self.peek();
-        if c != b'-' && !c.is_ascii_digit() {
+        if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
             self.kind_mismatch += 1;
             self.skip_value();
             return None;
@@ -507,13 +569,24 @@ impl<'a> Jr<'a> {
     /// A float field's value (docs/SPEC-TABLES.md §16.2).
     pub fn read_float(&mut self) -> Option<f64> {
         let c = self.peek();
-        if c != b'-' && !c.is_ascii_digit() {
+        if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
             self.kind_mismatch += 1;
             self.skip_value();
             return None;
         }
         let t = self.number_token()?;
         t.parse::<f64>().ok()
+    }
+    /// A float32 field's value, converted once at single width (§16.2).
+    pub fn read_f32(&mut self) -> Option<f32> {
+        let c = self.peek();
+        if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
+            self.kind_mismatch += 1;
+            self.skip_value();
+            return None;
+        }
+        let t = self.number_token()?;
+        t.parse::<f32>().ok()
     }
     /// A label (docs/SPEC-TABLES.md §16.7): a positive integer spelled as one —
     /// digits, no sign, no fraction, no exponent, no leading zero.
@@ -528,7 +601,7 @@ impl<'a> Jr<'a> {
         while p < b.len() && b[p].is_ascii_digit() {
             p += 1;
         }
-        if p < b.len() && !matches!(b[p], b' ' | b'\t' | b'\n' | b'\r' | b',' | b'}') {
+        if p < b.len() && !matches!(b[p], b' ' | b'\t' | b'\n' | b'\r' | b',' | b'}' | b'/') {
             return None;
         }
         let v = std::str::from_utf8(&b[s..p]).ok()?.parse::<u64>().ok()?;
@@ -548,6 +621,9 @@ impl<'a> Jr<'a> {
                     None
                 }
             },
+            // a definition the walk dropped reads null, and counts nothing
+            // past what dropping it already counted (§16.7)
+            Some(JsonLabel::Dropped) => None,
             _ => {
                 self.malformed = true;
                 None
@@ -565,27 +641,52 @@ impl<'a> Jr<'a> {
                 let _ = self.read_string();
             }
             b'{' => {
+                if self.depth > JSON_DEPTH_CAP {
+                    self.malformed = true;
+                    return;
+                }
                 self.p += 1;
+                self.depth += 1;
                 loop {
                     self.space();
                     if self.p >= self.b.len() {
                         self.malformed = true;
+                        self.depth -= 1;
                         return;
                     }
                     if self.b[self.p] == b'}' {
                         self.p += 1;
+                        self.depth -= 1;
                         return;
                     }
-                    let _ = self.read_string();
+                    let key = self.read_string();
                     if self.malformed {
+                        self.depth -= 1;
                         return;
                     }
                     self.space();
                     if self.p < self.b.len() && self.b[self.p] == b':' {
                         self.p += 1;
                     }
-                    self.skip_value();
+                    // A DEFINITION INSIDE A SKIPPED VALUE (§16.7): an &node
+                    // label followed by a field keeps its label as Dropped, so a
+                    // reference to it reads null; an &node alone is a reference
+                    // and defines nothing.
+                    let mut labelled = false;
+                    if key.as_deref() == Some("&node") {
+                        if let Some(label) = self.read_label() {
+                            labelled = true;
+                            self.space();
+                            if self.p < self.b.len() && self.b[self.p] == b',' {
+                                self.labels.entry(label).or_insert(JsonLabel::Dropped);
+                            }
+                        }
+                    }
+                    if !labelled {
+                        self.skip_value();
+                    }
                     if self.malformed {
+                        self.depth -= 1;
                         return;
                     }
                     self.space();
@@ -595,19 +696,27 @@ impl<'a> Jr<'a> {
                 }
             }
             b'[' => {
+                if self.depth > JSON_DEPTH_CAP {
+                    self.malformed = true;
+                    return;
+                }
                 self.p += 1;
+                self.depth += 1;
                 loop {
                     self.space();
                     if self.p >= self.b.len() {
                         self.malformed = true;
+                        self.depth -= 1;
                         return;
                     }
                     if self.b[self.p] == b']' {
                         self.p += 1;
+                        self.depth -= 1;
                         return;
                     }
                     self.skip_value();
                     if self.malformed {
+                        self.depth -= 1;
                         return;
                     }
                     self.space();
@@ -616,12 +725,25 @@ impl<'a> Jr<'a> {
                     }
                 }
             }
-            _ => {
-                while self.p < self.b.len()
-                    && !matches!(self.b[self.p], b' ' | b'\t' | b'\n' | b'\r' | b',' | b'}' | b']')
-                {
-                    self.p += 1;
+            b't' => {
+                if self.b[self.p..].starts_with(b"true") {
+                    self.p += 4;
+                } else {
+                    self.malformed = true;
                 }
+            }
+            b'f' => {
+                if self.b[self.p..].starts_with(b"false") {
+                    self.p += 5;
+                } else {
+                    self.malformed = true;
+                }
+            }
+            b'n' => {
+                let _ = self.read_null();
+            }
+            _ => {
+                let _ = self.number_token();
             }
         }
     }
@@ -914,8 +1036,11 @@ func (g *gen) emitTextRead(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "pub fn %s(jr: &mut Jr, v: &mut %s) {\n", read, st.Name)
 	fmt.Fprintf(b, "    jr.space();\n")
 	fmt.Fprintf(b, "    if jr.peek() != b'{' { jr.malformed = true; return; }\n")
+	fmt.Fprintf(b, "    if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }\n")
 	fmt.Fprintf(b, "    jr.p += 1;\n")
+	fmt.Fprintf(b, "    jr.depth += 1;\n")
 	fmt.Fprintf(b, "    let _ = %s(jr, v, None);\n", fields)
+	fmt.Fprintf(b, "    jr.depth -= 1;\n")
 	fmt.Fprintf(b, "}\n\n")
 
 	fmt.Fprintf(b, "/// The keys of one %s object, the opening brace already read; `first` is a\n", st.Name)
@@ -924,6 +1049,7 @@ func (g *gen) emitTextRead(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "pub fn %s(jr: &mut Jr, v: &mut %s, first: Option<String>) -> usize {\n", fields, st.Name)
 	fmt.Fprintf(b, "    let mut pending = first;\n")
 	fmt.Fprintf(b, "    let mut n = 0usize;\n")
+	fmt.Fprintf(b, "    let mut seen = [false; %d];\n", len(st.Fields))
 	fmt.Fprintf(b, "    loop {\n")
 	fmt.Fprintf(b, "        let key = match pending.take() {\n")
 	fmt.Fprintf(b, "            Some(k) => k,\n")
@@ -939,8 +1065,8 @@ func (g *gen) emitTextRead(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "        };\n")
 	fmt.Fprintf(b, "        n += 1;\n")
 	fmt.Fprintf(b, "        match key.as_str() {\n")
-	for _, f := range st.Fields {
-		g.emitTextReadField(b, f, "v."+ir.RustSnake(f.Name), "            ")
+	for i, f := range st.Fields {
+		g.emitTextReadField(b, i, f, "v."+ir.RustSnake(f.Name), "            ")
 	}
 	fmt.Fprintf(b, "            _ => {\n")
 	fmt.Fprintf(b, "                // a `&`-prefixed key among the keys a reader PLACES is malformed,\n")
@@ -970,6 +1096,7 @@ func (g *gen) emitTextReadPointer(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    match jr.peek() {\n")
 	fmt.Fprintf(b, "        b'n' => { jr.read_null(); None }\n")
 	fmt.Fprintf(b, "        b'{' => {\n")
+	fmt.Fprintf(b, "            if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }\n")
 	fmt.Fprintf(b, "            jr.p += 1;\n")
 	fmt.Fprintf(b, "            if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(%s::default())); }\n", st.Name)
 	fmt.Fprintf(b, "            let Some(key) = jr.read_string() else { jr.malformed = true; return None; };\n")
@@ -977,7 +1104,9 @@ func (g *gen) emitTextReadPointer(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "            jr.p += 1;\n")
 	fmt.Fprintf(b, "            if key != \"&node\" {\n")
 	fmt.Fprintf(b, "                let mut v = %s::default();\n", st.Name)
+	fmt.Fprintf(b, "                jr.depth += 1;\n")
 	fmt.Fprintf(b, "                let _ = %s(jr, &mut v, Some(key));\n", fn(st.Name, "json_fields"))
+	fmt.Fprintf(b, "                jr.depth -= 1;\n")
 	fmt.Fprintf(b, "                return Some(Rc::new(v));\n")
 	fmt.Fprintf(b, "            }\n")
 	fmt.Fprintf(b, "            let Some(label) = jr.read_label() else { jr.malformed = true; return None; };\n")
@@ -990,7 +1119,10 @@ func (g *gen) emitTextReadPointer(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "                    jr.labels.insert(label, JsonLabel::Open);\n")
 	fmt.Fprintf(b, "                    let mut v = %s::default();\n", st.Name)
 	fmt.Fprintf(b, "                    // a definition carries at least one field\n")
-	fmt.Fprintf(b, "                    if %s(jr, &mut v, None) == 0 { jr.malformed = true; return None; }\n", fn(st.Name, "json_fields"))
+	fmt.Fprintf(b, "                    jr.depth += 1;\n")
+	fmt.Fprintf(b, "                    let count = %s(jr, &mut v, None);\n", fn(st.Name, "json_fields"))
+	fmt.Fprintf(b, "                    jr.depth -= 1;\n")
+	fmt.Fprintf(b, "                    if count == 0 { jr.malformed = true; return None; }\n")
 	fmt.Fprintf(b, "                    let n = Rc::new(v);\n")
 	fmt.Fprintf(b, "                    jr.labels.insert(label, JsonLabel::Node(n.clone()));\n")
 	fmt.Fprintf(b, "                    Some(n)\n")
@@ -1004,8 +1136,10 @@ func (g *gen) emitTextReadPointer(b *strings.Builder, st *ir.Struct) {
 }
 
 // emitTextReadField emits one field's decode arm inside the read match.
-func (g *gen) emitTextReadField(b *strings.Builder, f *ir.Field, field, ind string) {
+func (g *gen) emitTextReadField(b *strings.Builder, i int, f *ir.Field, field, ind string) {
 	fmt.Fprintf(b, "%s%q => {\n", ind, g.fieldKey(f))
+	fmt.Fprintf(b, "%s    if seen[%d] { jr.duplicate += 1; }\n", ind, i)
+	fmt.Fprintf(b, "%s    seen[%d] = true;\n", ind, i)
 	g.emitTextReadValue(b, f, field, ind+"    ")
 	fmt.Fprintf(b, "%s}\n", ind)
 }
@@ -1033,19 +1167,17 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		fmt.Fprintf(b, "%sif jr.peek() == b'[' {\n", in)
 		fmt.Fprintf(b, "%s    jr.p += 1;\n", in)
 		fmt.Fprintf(b, "%s    %s.clear();\n", in, field)
-		fmt.Fprintf(b, "%s    let mut dropped = false;\n", in)
 		fmt.Fprintf(b, "%s    loop {\n", in)
 		fmt.Fprintf(b, "%s        if jr.peek() == b']' { jr.p += 1; break; }\n", in)
 		elem := in + "        "
 		if f.Array == ir.ArrayCounted || f.Array == ir.ArrayFixed {
 			fmt.Fprintf(b, "%sif %s.len() >= %d {\n", elem, field, f.ArrayBound)
+			fmt.Fprintf(b, "%s    jr.clamped += 1;\n", elem)
 			fmt.Fprintf(b, "%s    jr.skip_value();\n", elem)
-			fmt.Fprintf(b, "%s    if !dropped { dropped = true; jr.clamped += 1; }\n", elem)
 			fmt.Fprintf(b, "%s} else {\n", elem)
 			g.emitTextReadElem(b, f, field, elem+"    ")
 			fmt.Fprintf(b, "%s}\n", elem)
 		} else {
-			fmt.Fprintf(b, "%slet _ = dropped;\n", elem)
 			g.emitTextReadElem(b, f, field, elem)
 		}
 		fmt.Fprintf(b, "%s        if jr.malformed { break; }\n", in)
@@ -1185,8 +1317,8 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 		case ir.TFloat32:
 			// a value a float32 field cannot hold is kind_mismatch, never
 			// stored as infinity (§16.2)
-			fmt.Fprintf(b, "%sif let Some(x) = jr.read_float() {\n", in)
-			fmt.Fprintf(b, "%s    if x.is_finite() && x.abs() <= f32::MAX as f64 { %s = x as f32; } else { jr.kind_mismatch += 1; }\n", in, dst)
+			fmt.Fprintf(b, "%sif let Some(x) = jr.read_f32() {\n", in)
+			fmt.Fprintf(b, "%s    if x.is_finite() { %s = x; } else { jr.kind_mismatch += 1; }\n", in, dst)
 			fmt.Fprintf(b, "%s}\n", in)
 		case ir.TFloat64:
 			fmt.Fprintf(b, "%sif let Some(x) = jr.read_float() {\n", in)
@@ -1257,6 +1389,7 @@ func (g *gen) emitTextRoots(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let mut v = %s::default();\n", st.Name)
 	fmt.Fprintf(b, "    %s(&mut jr, &mut v);\n", fn(st.Name, "json_read"))
 	fmt.Fprintf(b, "    jr.space();\n")
+	fmt.Fprintf(b, "    if jr.p != jr.b.len() { jr.malformed = true; }\n")
 	fmt.Fprintf(b, "    report.unknown += jr.unknown;\n")
 	fmt.Fprintf(b, "    report.kind_mismatch += jr.kind_mismatch;\n")
 	fmt.Fprintf(b, "    report.clamped += jr.clamped;\n")
