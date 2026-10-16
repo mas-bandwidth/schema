@@ -88,7 +88,7 @@ generated/bench/paired/dart/.stamp: bin/schema bench/corpus/Bench.schema bench/c
 # generated (packet .dart + <Base>Block.dart + <Base>Cook.dart, and the wire
 # forms where the unit owns them). Fixed-class units own form 3, and every
 # carried root also owns form 1, including the V, W and R evolution pairs.
-build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema
+build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/maps/*.schema tables/messages/*.schema tables/scalars/*.schema tables/backend/*.schema tables/vocab/*.schema tables/vocab9/*.schema examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
 	# the POINTERED unit: form 1 for Scene, form 3 and cook beside it.
@@ -113,6 +113,11 @@ build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/maps/*.schema) 
 	./bin/schema generate --lang dart --out build/tables-generated-dart/r2 test/tables/R2.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/p1 test/tables/P1.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/p3 test/tables/P3.schema
+	# the MESSAGE FORM's units (docs/SPEC-TABLES.md §3.3): the conformance
+	# driver's `message` surface reads their connections' batches.
+	./bin/schema generate --lang dart --out build/tables-generated-dart/backend tables/backend
+	./bin/schema generate --lang dart --out build/tables-generated-dart/vocab tables/vocab
+	./bin/schema generate --lang dart --out build/tables-generated-dart/vocab9 tables/vocab9
 	@touch $@
 
 # THE DART TABLE SOURCES ARE FORMAT-CANONICAL. `dart format` is the language's
@@ -667,6 +672,18 @@ tables-dart-variable-arms:
 	@echo 'tables Dart variable arms: maps, unions, keyed arrays, optionals and the wide scalars against the oracle bytes'
 
 test-dart: tables-dart-variable-arms
+# THE MESSAGE FORM'S BATCH (docs/SPEC-TABLES.md §3.3): every manifest `message`
+# row of a fixed root loads, measures and saves the reference's bytes exactly,
+# and every unit's fixed home defines the table-arm unions it names (§2.6,
+# §3.4), so no row is skipped but the §3.3 plain-table one. A bare go test
+# skips when the SDK is absent; SCHEMA_REQUIRE_CORPUS=1 makes that a failure.
+.PHONY: tables-dart-message-batch
+tables-dart-message-batch:
+	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run 'TestMessageFormBatchDart|TestFixedHomeDefinesItsTableArmUnionsDart'
+	@echo 'tables Dart message batch: every fixed-root message row against the reference bytes'
+
+test-dart: tables-dart-message-batch
+
 
 # The fixed class also speaks form 1. The W/R pairs pin defaults and `was`
 # aliases against the Go oracle (docs/SPEC-TABLES.md §3, §5).
