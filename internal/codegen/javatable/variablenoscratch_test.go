@@ -57,7 +57,7 @@ func TestVariableSaveAndMeasureOwnNoScratchJava(t *testing.T) {
 					"public static void writeFields(TableVariable.Writer w, TableVariable.NodeGraph graph, Value v) {",
 					"public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {",
 					"public static long loadMeasure(byte[] data, TableVariable.Measure m) {",
-					"static long measureFields(TableVariable.Reader r, TableVariable.Measure nt, TableVariable.Report report) {",
+					"static long measureFields(\n            TableVariable.Reader r, TableVariable.Measure nt, TableVariable.Report report) {",
 				} {
 					body := javaMethodBody(t, name, src, sig)
 					for _, bad := range []string{"new ", ".sub(", ".body()", "getBytes(", " : v."} {
@@ -90,7 +90,7 @@ func TestVariableKeyedAndUnionSaveNoScratch(t *testing.T) {
 		methods   []string
 	}{
 		{"examples", "KeyedConfigVariable.java", []string{"static void writeKeyedField_", "static int writeKeyedPayload_", "static boolean isDefault(Value v, TableVariable.Writer w, TableVariable.NodeGraph graph)"}},
-		{"arms", "ReachVariable.java", []string{"static void writePayload(TableVariable.Writer w,TableVariable.NodeGraph graph,Value v)"}},
+		{"arms", "ReachVariable.java", []string{"static void writePayload(TableVariable.Writer w, TableVariable.NodeGraph graph, Value v)"}},
 	} {
 		u := unitFromDir(t, filepath.Join("..", "..", "..", "tables", tc.dir))
 		files, err := Generate(u)
