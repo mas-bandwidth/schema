@@ -281,9 +281,69 @@ func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string
 func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base int64, count string, buf, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	elem := ir.TableFixedElementBytes(f)
-	g.pf("%s{\n%s    int64_t i;\n%s    for ( i = 0; i < (int64_t) %s; ++i )\n%s    {\n", ind, ind, ind, count, ind)
-	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s + %d + i * %d", buf, base, elem), expr+"[i]", indent+8)
+	// THE COUNTER IS NAMED BY ITS NESTING LEVEL: an array arm inside an array
+	// of unions is a loop inside a loop in one body, and a second `i` would
+	// shadow the first — which -Wshadow refuses (the C++ twin's fixedLoopVar).
+	loop := fixedLoopVar(g.fixedLoopDepth)
+	g.fixedLoopDepth++
+	g.pf("%s{\n%s    int64_t %s;\n%s    for ( %s = 0; %s < (int64_t) %s; ++%s )\n%s    {\n", ind, ind, loop, ind, loop, loop, count, loop, ind)
+	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s + %d + %s * %d", buf, base, loop, elem), expr+"["+loop+"]", indent+8)
 	g.pf("%s    }\n%s}\n", ind, ind)
+	g.fixedLoopDepth--
+}
+
+// fixedLoopVar names the write body's element-loop counter for a nesting
+// level: `i`, then `i1`, `i2`, ...
+func fixedLoopVar(depth int) string {
+	if depth == 0 {
+		return "i"
+	}
+	return fmt.Sprintf("i%d", depth)
+}
+
+/*
+emitFixedWriteArm is one union arm's fixed-form store, the C twin of the C++
+reference's (internal/codegen/cpptable/fixedform.go emitFixedWriteArm). An
+
+	arm's value and companion live inside the arm's own unnamed struct —
+	`value` beside `value_length` or `value_count` (§2.6) — so a text, bytes
+	or array arm is written through those, never as one scalar store of the
+	whole arm (which is what spelled `table_fixed_put0` for a string arm). A
+	payload-free arm has no storage: the tag alone is its whole record.
+*/
+func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, off int64, buf, expr string, indent int) {
+	if v.Void() {
+		return
+	}
+	f := v.F
+	ind := strings.Repeat(" ", indent)
+	value := armValue(expr, v)
+	count := expr + ".as." + v.Name + ".value_length"
+	if f.Array == ir.ArrayCounted {
+		count = expr + ".as." + v.Name + ".value_count"
+	}
+	switch {
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+		unit := int64(1)
+		if f.Type.Kind == ir.TWString {
+			unit = 2
+		}
+		g.fixedWriteBound(count, f.Type.Size, "length", ind)
+		g.pf("%stable_fixed_put32( %s + %d, (uint32_t) %s );\n", ind, buf, off, count)
+		scale := ""
+		if unit != 1 {
+			scale = fmt.Sprintf("%d * ", unit)
+		}
+		g.pf("%smemcpy( %s + %d, %s, (size_t) ( %s%s ) );\n", ind, buf, off+4, value, scale, count)
+	case f.Array == ir.ArrayFixed:
+		g.emitFixedWriteLoop(f, off, strconv.FormatInt(f.ArrayBound, 10), buf, value, indent)
+	case f.Array == ir.ArrayCounted:
+		g.fixedWriteBound(count, f.ArrayBound, "count", ind)
+		g.pf("%stable_fixed_put32( %s + %d, (uint32_t) %s );\n", ind, buf, off, count)
+		g.emitFixedWriteLoop(f, off+ir.TableFixedCountBytes, count, buf, value, indent)
+	default:
+		g.emitFixedWriteElement(f, off, buf, value, indent)
+	}
 }
 
 /*
@@ -327,9 +387,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 				// A payload-free arm's whole storage is the tag (§2.6): its case
 				// writes nothing under the tag. "A union writes the tag and the
 				// taken arm only" (docs/FIXED-FORM-ALGORITHM.md §3.1).
-				if v.F != nil {
-					g.emitFixedWriteElement(v.F, off+tag, buf, fmt.Sprintf("%s.as.%s", expr, v.Name), indent+8)
-				}
+				g.emitFixedWriteArm(v, off+tag, buf, expr, indent+8)
 				g.pf("%s        break;\n%s    }\n", ind, ind)
 			}
 			g.pf("%s    default: break;\n%s}\n", ind, ind)
@@ -447,6 +505,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED const TableFixedGuardLink %s_fixed_guards[] = {\n", n)
 	for _, l := range pool {
 		g.pf("    { %du, %du, %d },\n", l.Guard, l.Arg, l.ArgW)
+	}
+	if len(pool) == 0 {
+		// AN EMPTY POOL STILL DECLARES ONE LINK: `T x[] = {}` is a size-0
+		// array, which ISO C forbids and MSVC refuses (C2466). No chain points
+		// here and the count below stays 0, so the placeholder is never read.
+		g.pf("    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */\n")
 	}
 	g.pf("};\n")
 	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_guard_count = %d;\n\n", n, len(pool))
