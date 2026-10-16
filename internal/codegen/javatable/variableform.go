@@ -1124,11 +1124,28 @@ public final class TableJson {
             if (bad) { return 0; }
             long v;
             if (integral[0]) {
-                try {
-                    v = Long.parseLong(tok);
-                } catch (NumberFormatException e) {
-                    rep.clamped++;
-                    return tok.charAt(0) == '-' ? min : max;
+                if (signed) {
+                    try {
+                        v = Long.parseLong(tok);
+                    } catch (NumberFormatException e) {
+                        rep.clamped++;
+                        return tok.charAt(0) == '-' ? min : max;
+                    }
+                } else {
+                    if (tok.charAt(0) == '-') {
+                        if (!"-0".equals(tok)) {
+                            rep.clamped++;
+                            return min;
+                        }
+                        v = 0;
+                    } else {
+                        try {
+                            v = Long.parseUnsignedLong(tok);
+                        } catch (NumberFormatException e) {
+                            rep.clamped++;
+                            return max;
+                        }
+                    }
                 }
             } else {
                 double d;
@@ -1138,12 +1155,23 @@ public final class TableJson {
                     bad = true;
                     return 0;
                 }
-                if (!Double.isFinite(d) || d != (double) (long) d) { rep.kindMismatch++; return 0; }
-                v = (long) d;
+                if (signed) {
+                    if (!Double.isFinite(d) || d != (double) (long) d) { rep.kindMismatch++; return 0; }
+                    v = (long) d;
+                } else {
+                    if (!Double.isFinite(d) || Math.rint(d) != d) { rep.kindMismatch++; return 0; }
+                    if (d < 0.0) { rep.clamped++; return min; }
+                    if (d >= 18446744073709551616.0) { rep.clamped++; return max; }
+                    v = d < 9223372036854775808.0 ? (long) d : (long) (d - 9223372036854775808.0) + Long.MIN_VALUE;
+                }
             }
-            if (!signed && v < 0) { rep.clamped++; return 0; }
-            if (v < min) { rep.clamped++; return min; }
-            if (v > max) { rep.clamped++; return max; }
+            if (signed) {
+                if (v < min) { rep.clamped++; return min; }
+                if (v > max) { rep.clamped++; return max; }
+            } else {
+                if (Long.compareUnsigned(v, min) < 0) { rep.clamped++; return min; }
+                if (Long.compareUnsigned(v, max) > 0) { rep.clamped++; return max; }
+            }
             return v;
         }
 
