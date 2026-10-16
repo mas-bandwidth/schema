@@ -12,6 +12,25 @@
 #   unzip into dist/ and rename dart-sdk -> dart-sdk-3.13.2
 DART ?= $(CURDIR)/dist/dart-sdk-3.13.2/bin/dart
 
+# THE OPTIONAL UNIT REGISTRY (SPEC-TABLES §8.7): a generated Dart program
+# walks UnitView() for every VIEW_CORPUS unit, byte-compared with the IR pin.
+.PHONY: tables-dart-view
+tables-dart-view: bin/schema test/dart-tables/view_main.dart
+	@rm -rf build/dart-view && mkdir -p build/dart-view
+	@set -e; for entry in $(VIEW_CORPUS); do \
+		dir=$${entry%%:*}; pkg=$${entry##*:}; \
+		cap=$$(printf '%s' "$$pkg" | cut -c1 | tr 'a-z' 'A-Z')$$(printf '%s' "$$pkg" | cut -c2-); \
+		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
+		./bin/schema generate --lang dart --out build/dart-view/$$dir $$source; \
+		sed "s|VIEW_LIBRARY|$$dir/$${cap}View.dart|" test/dart-tables/view_main.dart > build/dart-view/$$pkg-main.dart; \
+		$(DART) compile exe -o build/dart-view/prog-$$pkg build/dart-view/$$pkg-main.dart; \
+		./build/dart-view/prog-$$pkg > build/dart-view/$$pkg.listing; \
+	done
+	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/dart-view" go test -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
+	@echo "Dart unit registry: $(words $(VIEW_CORPUS)) units match the independent listing"
+
+test-dart: tables-dart-view
+
 # THE TOOLCHAIN GATE, this leg's half (issue #599; the Makefile's header and
 # docs/CONTRIBUTING.md, "Adding a language"). This leg is the one the issue was
 # opened over: a merge deleted the clone's dist link, the leg was passed over
@@ -88,7 +107,7 @@ generated/bench/paired/dart/.stamp: bin/schema bench/corpus/Bench.schema bench/c
 # generated (packet .dart + <Base>Block.dart + <Base>Cook.dart, and the wire
 # forms where the unit owns them). Fixed-class units own form 3, and every
 # carried root also owns form 1, including the V, W and R evolution pairs.
-build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema
+build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
 	# the POINTERED unit: form 1 for Scene, form 3 and cook beside it.
@@ -97,6 +116,10 @@ build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/maps/*.schema) 
 	./bin/schema generate --lang dart --out build/tables-generated-dart/lists tables/lists
 	./bin/schema generate --lang dart --out build/tables-generated-dart/maps tables/maps
 	./bin/schema generate --lang dart --out build/tables-generated-dart/messages tables/messages
+	./bin/schema generate --lang dart --out build/tables-generated-dart/backend tables/backend
+	./bin/schema generate --lang dart --out build/tables-generated-dart/stream tables/stream
+	./bin/schema generate --lang dart --out build/tables-generated-dart/vocab tables/vocab
+	./bin/schema generate --lang dart --out build/tables-generated-dart/vocab9 tables/vocab9
 	# tables/scalars beside the tree, not in it: its FIXED library imports an
 	# Int128.dart the packet emitter does not write for a table-only 128-bit
 	# unit (a form-3 gap of its own), and the standalone and clean gates walk
@@ -113,6 +136,9 @@ build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/maps/*.schema) 
 	./bin/schema generate --lang dart --out build/tables-generated-dart/r2 test/tables/R2.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/p1 test/tables/P1.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/p3 test/tables/P3.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/g1 test/tables/G1.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/m1 test/tables/M1.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/m2 test/tables/M2.schema
 	@touch $@
 
 # THE DART TABLE SOURCES ARE FORMAT-CANONICAL. `dart format` is the language's
