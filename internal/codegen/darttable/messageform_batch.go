@@ -92,7 +92,7 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	lower := lowerFirst(st.Name)
 	g.needHome("TableBitWriter", "TableMessageReader", "TableVocabulary", "TableReport",
 		"tableMessageBatchOpen", "tableMessageBatchClose", "tableMessageBatchMax",
-		lower+"SaveMessageBody", lower+"LoadMessageBody", st.Name, "init"+capitalize(st.Name))
+		lower+"SaveMessageBody", lower+"LoadMessageBody", st.Name)
 	g.pf("// ---- %s, THE MESSAGE FORM's BATCH (docs/SPEC-TABLES.md §3.3) ----\n", st.Name)
 	g.pf("/// MeasureMessages sizes the buffer for a batch of %s bodies, or -1 with\n", st.Name)
 	g.pf("/// the reason on the report (docs/SPEC-TABLES.md §3.3).\n")
@@ -402,7 +402,7 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 				g.pf("%sif (r.bits.failed) { %s; }\n", ind, bad)
 			}
 		} else if ir.TableMessageCountBits(shape) > 0 {
-			g.pf("%sfinal n = r.bits.get(%d);\n", ind, ir.TableMessageCountBits(shape))
+			g.pf("%sr.bits.get(%d);\n", ind, ir.TableMessageCountBits(shape))
 			g.pf("%sif (r.bits.failed) { %s; }\n", ind, bad)
 		}
 		if ir.TableMessageAligns(kind, shape) {
