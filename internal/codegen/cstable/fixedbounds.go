@@ -163,12 +163,12 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 					if v.F == nil || !ir.TableFixedClampNeededField(v.F) {
 						continue
 					}
-					g.pf("%s        case %s.%s:\n%s        {\n", ind, tagType, ir.GoExportName(v.Name), ind)
+					g.pf("%s        case %s.%s:\n%s            {\n", ind, tagType, ir.GoExportName(v.Name), ind)
 					// AN ARM IS A FIELD LINE (§2.6): an array arm holds each
 					// element to its bound over the arm's live count, the way
 					// the same line in a struct is held.
-					g.emitFixedClampPayload(unionOwner(r), v.F, expr, indent+12)
-					g.pf("%s            break;\n%s        }\n", ind, ind)
+					g.emitFixedClampPayload(unionOwner(r), v.F, expr, indent+16)
+					g.pf("%s                break;\n%s            }\n", ind, ind)
 				}
 				g.pf("%s        default: break;\n%s    }\n", ind, ind)
 			}

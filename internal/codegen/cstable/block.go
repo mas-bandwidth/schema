@@ -470,7 +470,7 @@ func (g *blockGen) emitLayoutCheck() {
 		// it on one side only — which is §19.5's named negative control —
 		// could not turn anything red here.
 		for _, a := range bl.Arrays {
-			g.rf("        Size(\"%sBlock.%sStride\", (int) %sBlock.%sStride, Unsafe.SizeOf<%sRow>());\n",
+			g.rf("        Size(\"%sBlock.%sStride\", (int)%sBlock.%sStride, Unsafe.SizeOf<%sRow>());\n",
 				bl.Table.Name, ir.GoExportName(a.Field.Name), bl.Table.Name, ir.GoExportName(a.Field.Name),
 				a.ElemName)
 		}
@@ -501,15 +501,15 @@ func (g *blockGen) emitRecordCheck(name string, ml *ir.MemberLayout, projection 
 	}
 	g.rf("        {\n")
 	g.rf("            %s probe = default;\n", spelled)
-	g.rf("            byte* at = (byte*) &probe;\n")
+	g.rf("            byte* at = (byte*)&probe;\n")
 	g.rf("            Size(\"%s\", Unsafe.SizeOf<%s>(), %d);\n", spelled, spelled, ml.Size)
 	if projection {
-		g.rf("            Offset(\"%s.Magic\", (byte*) &probe.Magic - at, 0);\n", spelled)
-		g.rf("            Offset(\"%s.BuildVersion\", (byte*) &probe.BuildVersion - at, 8);\n", spelled)
-		g.rf("            Offset(\"%s.ByteOrder\", (byte*) &probe.ByteOrder - at, 16);\n", spelled)
+		g.rf("            Offset(\"%s.Magic\", (byte*)&probe.Magic - at, 0);\n", spelled)
+		g.rf("            Offset(\"%s.BuildVersion\", (byte*)&probe.BuildVersion - at, 8);\n", spelled)
+		g.rf("            Offset(\"%s.ByteOrder\", (byte*)&probe.ByteOrder - at, 16);\n", spelled)
 	}
 	for _, fl := range ml.Fields {
-		g.rf("            Offset(\"%s.%s\", (byte*) %s - at, %d);\n", spelled, ir.GoExportName(fl.Field.Name),
+		g.rf("            Offset(\"%s.%s\", (byte*)%s - at, %d);\n", spelled, ir.GoExportName(fl.Field.Name),
 			g.blockFieldAddress(fl.Field, projection), fl.Offset)
 	}
 	g.rf("        }\n")
@@ -566,7 +566,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 	g.hf("    public byte* Base { get { return basePointer; } }\n")
 	g.hf("    public long Bytes { get { return bytes; } }\n\n")
 	g.hf("    // the table's own declared fields, read where they lie\n")
-	g.hf("    public ref readonly %sBlockProjection Projection { get { return ref *(%sBlockProjection*) basePointer; } }\n\n", name, name)
+	g.hf("    public ref readonly %sBlockProjection Projection { get { return ref *(%sBlockProjection*)basePointer; } }\n\n", name, name)
 	for _, a := range bl.Arrays {
 		field := ir.GoExportName(a.Field.Name)
 		g.hf("    // %s: the constants this build asserts against. A consumer INDEXES with\n", a.Field.Name)
@@ -578,16 +578,16 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 		g.hf("    // row where it lies, at the pitch the INSTANCE gives, for count rows.\n")
 		g.hf("    public TableBlockRows<%sRow> %s\n    {\n", a.ElemName, field)
 		g.hf("        get\n        {\n")
-		g.hf("            %sBlockProjection* p = (%sBlockProjection*) basePointer;\n", name, name)
-		g.hf("            return new TableBlockRows<%sRow>(basePointer + p->%s.OffsetOf, (int) p->%s.Count, (int) p->%s.Stride);\n",
+		g.hf("            %sBlockProjection* p = (%sBlockProjection*)basePointer;\n", name, name)
+		g.hf("            return new TableBlockRows<%sRow>(basePointer + p->%s.OffsetOf, (int)p->%s.Count, (int)p->%s.Stride);\n",
 			a.ElemName, field, field, field)
 		g.hf("        }\n    }\n\n")
 		g.hf("    // and the CONTIGUOUS view, available because the pitch IS sizeof (§2.7),\n")
 		g.hf("    // which is how the per-frame fast path is actually written.\n")
 		g.hf("    public ReadOnlySpan<%sRow> %sSpan\n    {\n", a.ElemName, field)
 		g.hf("        get\n        {\n")
-		g.hf("            %sBlockProjection* p = (%sBlockProjection*) basePointer;\n", name, name)
-		g.hf("            return new ReadOnlySpan<%sRow>(basePointer + p->%s.OffsetOf, (int) p->%s.Count);\n",
+		g.hf("            %sBlockProjection* p = (%sBlockProjection*)basePointer;\n", name, name)
+		g.hf("            return new ReadOnlySpan<%sRow>(basePointer + p->%s.OffsetOf, (int)p->%s.Count);\n",
 			a.ElemName, field, field)
 		g.hf("        }\n    }\n\n")
 	}
@@ -619,7 +619,7 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.hf("        block = default; reason = TableRefuseReason.ok;\n")
 	g.hf("        TableBlockLayout.Verify();\n")
 	g.hf("        if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }\n        if (bytes < %d) { reason = TableRefuseReason.truncated; return false; }\n", bl.Projection.Size)
-	g.hf("        byte* at = (byte*) pointer;\n")
+	g.hf("        byte* at = (byte*)pointer;\n")
 	g.hf("        if (Schema.TableBlockRead64(at) != Schema.TableBlockMagic) { reason = Schema.TableBlockRead64(at) == System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(Schema.TableBlockMagic) ? TableRefuseReason.foreign_order : TableRefuseReason.not_a_cook; return false; }\n")
 	g.hf("        if (Schema.TableBlockRead64(at + 16) != Schema.TableBlockByteOrder) { reason = TableRefuseReason.not_a_cook; return false; }\n")
 	g.hf("        if (Schema.TableBlockRead64(at + 8) != Schema.BuildVersion) { reason = TableRefuseReason.wrong_build_version; return false; }\n")
@@ -639,17 +639,17 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 		g.hf("            ulong offsetOf = Schema.TableBlockRead64(at + %d);\n", a.OffsetOfOffset)
 		g.hf("            ulong count = Schema.TableBlockRead64(at + %d) & uint.MaxValue;\n", a.CountOffset)
 		g.hf("            ulong stride = Schema.TableBlockRead64(at + %d) >> 32;\n", a.CountOffset)
-		g.hf("            if (stride != (ulong) Unsafe.SizeOf<%sRow>()) { reason = TableRefuseReason.bad_layout; return false; }\n", a.ElemName)
+		g.hf("            if (stride != (ulong)Unsafe.SizeOf<%sRow>()) { reason = TableRefuseReason.bad_layout; return false; }\n", a.ElemName)
 		g.hf("            // past the DECLARED MAXIMUM: Begin refuses this on the producer\n")
 		g.hf("            // side and Open refuses it here, because a consumer that sizes\n")
 		g.hf("            // anything by the maximum would overflow on a count the maximum\n")
 		g.hf("            // does not bound\n")
-		g.hf("            if (count > (ulong) %sMax) { reason = TableRefuseReason.bad_layout; return false; }\n", ir.GoExportName(a.Field.Name))
+		g.hf("            if (count > (ulong)%sMax) { reason = TableRefuseReason.bad_layout; return false; }\n", ir.GoExportName(a.Field.Name))
 		g.hf("            if (offsetOf < %d || (offsetOf %% %d) != 0) { reason = TableRefuseReason.bad_layout; return false; }\n", bl.Projection.Size, alignment)
-		g.hf("            if (offsetOf > (ulong) bytes) { reason = TableRefuseReason.bad_layout; return false; }\n")
+		g.hf("            if (offsetOf > (ulong)bytes) { reason = TableRefuseReason.bad_layout; return false; }\n")
 		g.hf("            ulong rows = count * stride; // both bounded above: this cannot carry\n")
-		g.hf("            if (rows > (ulong) bytes - offsetOf) { reason = TableRefuseReason.bad_layout; return false; }\n")
-		g.hf("            long end = (long) (offsetOf + rows);\n")
+		g.hf("            if (rows > (ulong)bytes - offsetOf) { reason = TableRefuseReason.bad_layout; return false; }\n")
+		g.hf("            long end = (long)(offsetOf + rows);\n")
 		g.hf("            if (end > used) { used = end; }\n")
 		g.hf("        }\n")
 	}
@@ -694,7 +694,7 @@ func (g *blockGen) emitBlockRecordDescriptor(owner, record string, ml *ir.Member
 		name = bl.Table.Name
 	}
 	g.hf("    private static readonly TableBlockInfo %s = new TableBlockInfo\n    {\n", symbol)
-	g.hf("        Name = %q, BuildVersion = Schema.BuildVersion, Size = %d, Align = %d, NumFields = %d,\n",
+	g.hf("        Name = %q,\n        BuildVersion = Schema.BuildVersion,\n        Size = %d,\n        Align = %d,\n        NumFields = %d,\n",
 		name, ml.Size, ml.Align, len(ml.Fields))
 	g.hf("        Fields = new TableBlockFieldInfo[]\n        {\n")
 	for _, fl := range ml.Fields {
@@ -821,7 +821,7 @@ public unsafe readonly struct TableBlockRows<T> where T : unmanaged
 
     public ref readonly T this[int index]
     {
-        get { return ref *(T*) (rows + (long) index * stride); }
+        get { return ref *(T*)(rows + (long)index * stride); }
     }
 
     public Enumerator GetEnumerator() { return new Enumerator(rows, count, stride); }
@@ -847,7 +847,7 @@ public unsafe readonly struct TableBlockRows<T> where T : unmanaged
             return true;
         }
 
-        public ref readonly T Current { get { return ref *(T*) at; } }
+        public ref readonly T Current { get { return ref *(T*)at; } }
     }
 }
 

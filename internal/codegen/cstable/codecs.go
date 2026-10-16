@@ -335,7 +335,7 @@ func (g *tableGen) emitElementConstructor(st *ir.Struct) {
 		g.tf("            %s[i] = new %s();\n        }\n", base, f.Type.Name)
 	}
 	for _, f := range defaults {
-		g.emitBufferDefault(f, "", g.tf)
+		g.emitBufferDefault(f, "", "        ", g.tf)
 	}
 	g.tf("    }\n")
 }
@@ -474,7 +474,7 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TWString:
 		g.pf("    Array.Clear(value.%s, 0, value.%s.Length);\n", name, name)
 		g.pf("    value.%sLength = 0;\n", name)
-		g.emitBufferDefault(f, "value.", g.pf)
+		g.emitBufferDefault(f, "value.", "    ", g.pf)
 	case f.Array != ir.ArrayNone && isClassRef(f.Type) && !f.Type.Pointer:
 		g.pf("    for (int i = 0; i < %s.Length; i++)\n    {\n", g.keyedSlots("value.", f))
 		g.pf("        TableReset(%s[i]);\n", g.keyedSlots("value.", f))
@@ -561,7 +561,7 @@ func tableFieldTypeName(f *ir.Field) string {
 // the empty arm, [1, N] the declared arms in tag order.
 func unionArmLambda(un *ir.Union, arm func(ir.UnionVariant) string, unknown, none string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "delegate(ulong v) { switch (v) { case 0: return %s;", none)
+	fmt.Fprintf(&b, "delegate (ulong v) { switch (v) { case 0: return %s;", none)
 	for i, v := range un.Variants {
 		fmt.Fprintf(&b, " case %d: return %s;", i+1, arm(v))
 	}
@@ -626,7 +626,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	g.pf("    info.Variable = %t;\n", ir.VariableTables(g.unit)[st.Name])
 	g.pf("    info.RootElemSlots = %d;\n", rootElemSlots(st))
 	var pt strings.Builder
-	pt.WriteString("info.PointerType = delegate(ulong id) { switch(id) { ")
+	pt.WriteString("info.PointerType = delegate (ulong id) { switch (id) { ")
 	for _, target := range ir.PointerReachable(st) {
 		fmt.Fprintf(&pt, "case 0x%016xul: return %sTableType(); ", ir.TableWireId(target.WireName()), target.Name)
 	}
@@ -655,7 +655,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	// cannot express without a function — a generic walker that FILLS a value
 	// establishes an absent field's defaults through it, holding no type to
 	// spell. It is TableReset, the prefill the wire's read path already calls.
-	g.pf("    info.Reset = delegate(object o) { TableReset((global::%s.%s)o); };\n", capitalize(g.unit.Package), st.Name)
+	g.pf("    info.Reset = delegate (object o) { TableReset((global::%s.%s)o); };\n", capitalize(g.unit.Package), st.Name)
 	// the declaration's own doc and tags (docs/SPEC-TABLES.md §8.1), on the same
 	// terms as a field's: the shared empty doc and a null list where the
 	// declaration carries none.
@@ -821,24 +821,24 @@ func (g *tableGen) tableStorageColumns(f *ir.Field) string {
 		if f.IsMap() {
 			typ = f.MapEntry.Name
 		}
-		fmt.Fprintf(&b, ", GetChild = delegate(object o, int i) { return %s; }, SetChild = delegate(object o, int i, object v) { %s = (%s)v; }", g.elementExpr(f), g.elementExpr(f), typ)
+		fmt.Fprintf(&b, ", GetChild = delegate (object o, int i) { return %s; }, SetChild = delegate (object o, int i, object v) { %s = (%s)v; }", g.elementExpr(f), g.elementExpr(f), typ)
 	case f.Type.Kind == ir.TWString:
-		fmt.Fprintf(&b, ", GetChars = delegate(object o) { return %s; }, GetCount = delegate(object o) { return %s%sLength; }, SetCount = delegate(object o, int n) { %s%sLength = n; }", g.storageExpr(f), cast, name, cast, name)
+		fmt.Fprintf(&b, ", GetChars = delegate (object o) { return %s; }, GetCount = delegate (object o) { return %s%sLength; }, SetCount = delegate (object o, int n) { %s%sLength = n; }", g.storageExpr(f), cast, name, cast, name)
 	case ir.TableKindWide(tableScalarKind(f)):
-		fmt.Fprintf(&b, ", GetWide = delegate(object o, int i) { return unchecked((UInt128)(%s)%s); }, SetWide = delegate(object o, int i, UInt128 r) { %s = unchecked((%s)r); }", csFieldType(f.Type), g.elementExpr(f), g.elementExpr(f), csFieldType(f.Type))
+		fmt.Fprintf(&b, ", GetWide = delegate (object o, int i) { return unchecked((UInt128)(%s)%s); }, SetWide = delegate (object o, int i, UInt128 r) { %s = unchecked((%s)r); }", csFieldType(f.Type), g.elementExpr(f), g.elementExpr(f), csFieldType(f.Type))
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
-		fmt.Fprintf(&b, ", GetBuffer = delegate(object o) { return %s; }", g.storageExpr(f))
-		fmt.Fprintf(&b, ", GetCount = delegate(object o) { return %s%sLength; }", cast, name)
-		fmt.Fprintf(&b, ", SetCount = delegate(object o, int n) { %s%sLength = n; }", cast, name)
+		fmt.Fprintf(&b, ", GetBuffer = delegate (object o) { return %s; }", g.storageExpr(f))
+		fmt.Fprintf(&b, ", GetCount = delegate (object o) { return %s%sLength; }", cast, name)
+		fmt.Fprintf(&b, ", SetCount = delegate (object o, int n) { %s%sLength = n; }", cast, name)
 	case isClassRef(f.Type):
-		fmt.Fprintf(&b, ", GetChild = delegate(object o, int i) { return %s; }", g.elementExpr(f))
+		fmt.Fprintf(&b, ", GetChild = delegate (object o, int i) { return %s; }", g.elementExpr(f))
 	default:
-		fmt.Fprintf(&b, ", GetRaw = delegate(object o, int i) { return %s; }", csRawGet(g.elementExpr(f), f.Type))
-		fmt.Fprintf(&b, ", SetRaw = delegate(object o, int i, ulong r) { %s }", csRawSet(g.elementExpr(f), "r", f.Type))
+		fmt.Fprintf(&b, ", GetRaw = delegate (object o, int i) { return %s; }", csRawGet(g.elementExpr(f), f.Type))
+		fmt.Fprintf(&b, ", SetRaw = delegate (object o, int i, ulong r) { %s }", csRawSet(g.elementExpr(f), "r", f.Type))
 	}
 	if f.CountedOnWire() || f.IsMap() {
-		fmt.Fprintf(&b, ", GetCount = delegate(object o) { return %s%sCount; }", cast, name)
-		fmt.Fprintf(&b, ", SetCount = delegate(object o, int n) { %s%sCount = n; }", cast, name)
+		fmt.Fprintf(&b, ", GetCount = delegate (object o) { return %s%sCount; }", cast, name)
+		fmt.Fprintf(&b, ", SetCount = delegate (object o, int n) { %s%sCount = n; }", cast, name)
 	}
 	if f.IsMap() || f.IsList() {
 		typ := csFieldType(f.Type)
@@ -847,15 +847,15 @@ func (g *tableGen) tableStorageColumns(f *ir.Field) string {
 			typ = f.MapEntry.Name
 			class = true
 		}
-		fmt.Fprintf(&b, ", EnsureCount = delegate(object o, int n) { var value = (%s)o; if (value.%s.Length < n) { Array.Resize(ref value.%s, Math.Max(n, Math.Max(4, value.%s.Length * 2))); }", ownerType, name, name, name)
+		fmt.Fprintf(&b, ", EnsureCount = delegate (object o, int n) { var value = (%s)o; if (value.%s.Length < n) { Array.Resize(ref value.%s, Math.Max(n, Math.Max(4, value.%s.Length * 2))); }", ownerType, name, name, name)
 		if class {
 			fmt.Fprintf(&b, " for (int i = 0; i < n; i++) { if (value.%s[i] == null) { value.%s[i] = new global::%s.%s(); } }", name, name, capitalize(g.unit.Package), typ)
 		}
 		b.WriteString(" }")
 	}
 	if f.Type.Optional {
-		fmt.Fprintf(&b, ", GetPresent = delegate(object o) { return %s%sPresent; }", cast, name)
-		fmt.Fprintf(&b, ", SetPresent = delegate(object o, bool p) { %s%sPresent = p; }", cast, name)
+		fmt.Fprintf(&b, ", GetPresent = delegate (object o) { return %s%sPresent; }", cast, name)
+		fmt.Fprintf(&b, ", SetPresent = delegate (object o, bool p) { %s%sPresent = p; }", cast, name)
 	}
 	return b.String()
 }
@@ -904,8 +904,8 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	keyTypeName, keyName, keyId := "null", "null", "null"
 	if f.KeyEnum != "" {
 		keyTypeName = fmt.Sprintf("%q", f.KeyEnum)
-		keyName = fmt.Sprintf("delegate(ulong v) { return EnumName%s(v); }", f.KeyEnum)
-		keyId = fmt.Sprintf("delegate(ulong v) { ulong id; TableEnumId((global::%s.%s)v, out id); return id; }", capitalize(g.unit.Package), f.KeyEnum)
+		keyName = fmt.Sprintf("delegate (ulong v) { return EnumName%s(v); }", f.KeyEnum)
+		keyId = fmt.Sprintf("delegate (ulong v) { ulong id; TableEnumId((global::%s.%s)v, out id); return id; }", capitalize(g.unit.Package), f.KeyEnum)
 	}
 
 	hasRange := "false"
@@ -940,8 +940,8 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	case *ir.Enum:
 		if f.Type.Kind == ir.TNamed {
 			enumMax = fmt.Sprintf("%d", ref.Max)
-			enumName = fmt.Sprintf("delegate(ulong v) { return EnumName%s(v); }", f.Type.Name)
-			variantId = fmt.Sprintf("delegate(ulong v) { ulong id; TableEnumId((global::%s.%s)v, out id); return id; }", capitalize(g.unit.Package), f.Type.Name)
+			enumName = fmt.Sprintf("delegate (ulong v) { return EnumName%s(v); }", f.Type.Name)
+			variantId = fmt.Sprintf("delegate (ulong v) { ulong id; TableEnumId((global::%s.%s)v, out id); return id; }", capitalize(g.unit.Package), f.Type.Name)
 		}
 	case *ir.Flags:
 		if f.Type.Kind == ir.TNamed {
@@ -949,7 +949,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 			// (docs/SPEC-TABLES.md §4): its variants are BIT POSITIONS, so the
 			// descriptor names bits, and there is no variant id.
 			enumMax = fmt.Sprintf("%d", len(ref.Variants)-1)
-			enumName = fmt.Sprintf("delegate(ulong v) { return FlagName%s((int)v); }", f.Type.Name)
+			enumName = fmt.Sprintf("delegate (ulong v) { return FlagName%s((int)v); }", f.Type.Name)
 		}
 	case *ir.Union:
 		if f.Type.Kind == ir.TNamed {
@@ -966,10 +966,10 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 
 	if g.outside {
 		if variantId != "null" {
-			variantId = "delegate(ulong v) { return 0; }"
+			variantId = "delegate (ulong v) { return 0; }"
 		}
 		if keyId != "null" {
-			keyId = "delegate(ulong v) { return 0; }"
+			keyId = "delegate (ulong v) { return 0; }"
 		}
 	}
 

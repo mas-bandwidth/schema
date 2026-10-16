@@ -109,14 +109,15 @@ finding by rule id and file before it fails:
   private field in one copied unit and requires `error WHITESPACE` and
   `error CS0169` on that file.
 - `make tables-cs-clean` holds the table units the conformance project
-  compiles. It is red: the table emitters write compact expressions
-  (`if(a<=b)`, `f(x,y)`) where the formatter writes spaced ones, which is
-  152,044 WHITESPACE findings in 295 units, most of them in the `*Region.cs`
-  and `*Table.cs` units (issue #547). The analyzer half is clean. Because it
-  is red it is not yet required: it is reached from `make cs-not-yet-required`,
-  not from `make test-cs`, until the card
-  `cs-generated-table-units-pass-dotnet-format` fixes the table emitters and
-  moves it into `test-cs`.
+  compiles. It is green and required by `make test-cs`. At the gate's fix it
+  found 152,044 WHITESPACE findings in 295 units (issue #547): the table
+  emitters wrote compact expressions (`if(a<=b)`, `f(x,y)`, `(ulong) x`), a
+  brace at the end of a line, case blocks at the label's indentation and
+  object initializers several members to a line. Each is fixed in the emitter
+  under `internal/codegen/cstable`, never by reformatting the output.
+  `tables-cs-clean-negative-control` plants one misindented statement in a
+  copy of `a1/A1Table.cs` and requires `error WHITESPACE` on that file and on
+  no other.
 
 Both gates skip when the pinned `dotnet` is not on PATH, and fail instead under
 `SCHEMA_REQUIRE_CORPUS=1`.
@@ -126,8 +127,12 @@ What the generator holds:
 - **Formatter-owned text.** Whitespace, indentation (four spaces), brace
   placement (each brace on its own line) and spacing around operators and
   after commas and keywords belong to `dotnet format`; the emitter writes what
-  the formatter would write. `packet-clean-cs` holds this for the packet units;
-  `tables-cs-clean` does not yet hold it for the table units.
+  the formatter would write. `packet-clean-cs` holds this for the packet units
+  and `tables-cs-clean` for the table units. The runtime text the table
+  emitters carry as Go string constants is written in the formatter's form,
+  with each brace on its own line, one member per line in a multi-line object
+  initializer, a case block indented one level past its label, and `{ }` for
+  an empty initializer.
 - **Naming.** Types, members and enumerators are PascalCase from the schema's
   names. The namespace is the schema package, capitalised (`Example`,
   `Tblrt1`). An enum declares its wire-width underlying type (`enum Team :

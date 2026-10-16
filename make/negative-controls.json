@@ -404,7 +404,7 @@
     {
       "name": "cs",
       "when": "pull-request",
-      "why": "the C# port's conformance leg, its four packet families, and the packet-clean gate's planted misindented block and unused private field (issue #547). Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "why": "the C# port's conformance leg, its four packet families, the packet-clean gate's planted misindented block and unused private field, and the tables-clean gate's planted misindented statement (issue #547). Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
       "targets": [
         "conformance-negative-control-cs",
         "tables-cs-retain-negative-control",
@@ -415,7 +415,8 @@
         "packet-defaults-cs-negative-control",
         "packet-utf8-cs-negative-control",
         "packet-wide-cs-negative-control",
-        "packet-clean-cs-negative-control"
+        "packet-clean-cs-negative-control",
+        "tables-cs-clean-negative-control"
       ],
       "dotnet": "pin"
     },

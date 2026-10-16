@@ -130,14 +130,14 @@ namespace Bench
                 info.StorageSize = 1376; info.StorageAlign = 16; info.RegionAlign = 16;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "value", Json = "value", TypeName = "BenchMixed", Id = 0x7ce4fd9430e80cea, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return BenchMixedTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Bench.FixedTable)o).Value; }, MessageSlot = 28, Ordinal = 0, NativeOffset = 0, NativeElementSize = 1376, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Bench.FixedTable)o; TableReset(value.Value); } },
+                    new TableFieldInfo { Name = "value", Json = "value", TypeName = "BenchMixed", Id = 0x7ce4fd9430e80cea, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return BenchMixedTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Bench.FixedTable)o).Value; }, MessageSlot = 28, Ordinal = 0, NativeOffset = 0, NativeElementSize = 1376, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.FixedTable)o; TableReset(value.Value); } },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Bench.FixedTable)o); };
+                info.Reset = delegate (object o) { TableReset((global::Bench.FixedTable)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;

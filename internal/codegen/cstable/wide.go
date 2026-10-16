@@ -36,7 +36,7 @@ func wideColumns(f *ir.Field) string {
 		if f.Type.Signed {
 			typ = "Int128"
 		}
-		fmt.Fprintf(&b, ", ClampWide = delegate(UInt128 raw, TableReport r) { %s v = unchecked((%s)raw); if (v < %s) { r.Clamped++; return %s; } if (v > %s) { r.Clamped++; return %s; } return raw; }", typ, typ, wideLiteral(lo, f.Type.Signed), wideLiteral(lo, false), wideLiteral(hi, f.Type.Signed), wideLiteral(hi, false))
+		fmt.Fprintf(&b, ", ClampWide = delegate (UInt128 raw, TableReport r) { %s v = unchecked((%s)raw); if (v < %s) { r.Clamped++; return %s; } if (v > %s) { r.Clamped++; return %s; } return raw; }", typ, typ, wideLiteral(lo, f.Type.Signed), wideLiteral(lo, false), wideLiteral(hi, f.Type.Signed), wideLiteral(hi, false))
 	}
 	return b.String()
 }
@@ -49,12 +49,12 @@ func byteLiterals(bytes []byte) string {
 	return strings.Join(parts, ", ")
 }
 
-func (g *tableGen) emitBufferDefault(f *ir.Field, prefix string, emit func(string, ...any)) {
+func (g *tableGen) emitBufferDefault(f *ir.Field, prefix, ind string, emit func(string, ...any)) {
 	if len(f.DefBytes) == 0 {
 		return
 	}
 	for i, b := range f.DefBytes {
-		emit("        %s%s[%d] = 0x%02x;\n", prefix, member(f), i, b)
+		emit("%s%s%s[%d] = 0x%02x;\n", ind, prefix, member(f), i, b)
 	}
-	emit("        %s%sLength = %d;\n", prefix, member(f), len(f.DefBytes))
+	emit("%s%s%sLength = %d;\n", ind, prefix, member(f), len(f.DefBytes))
 }
