@@ -196,17 +196,16 @@ final class _JParse {
       i += 4;
       return null;
     }
-    final start = i;
-    while (i < s.length) {
-      final d = s.codeUnitAt(i);
-      if ((d >= 0x30 && d <= 0x39) || d == 0x2D || d == 0x2B || d == 0x2E || d == 0x65 || d == 0x45) {
-        i++;
-      } else {
-        break;
+    final number = RegExp(r'-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?').matchAsPrefix(s, i);
+    if (number == null) throw FormatException('unexpected character', s, i);
+    i = number.end;
+    if (i < s.length) {
+      final next = s.codeUnitAt(i);
+      if (next != 0x2C && next != 0x5D && next != 0x7D && next != 0x20 && next != 0x09 && next != 0x0A && next != 0x0D) {
+        throw FormatException('invalid JSON number', s, i);
       }
     }
-    final token = s.substring(start, i);
-    if (token.isEmpty) throw FormatException('unexpected character', s, i);
+    final token = number.group(0)!;
     if (!token.contains('.') && !token.contains('e') && !token.contains('E')) {
       final n = int.tryParse(token);
       if (n != null) return n;
@@ -390,7 +389,7 @@ bool _jsonBoolField(dynamic val, TableTextReport r) {
 String _jsonBytesField(dynamic val, TableTextReport r, int bound) {
   if (val is String) {
     try {
-      final b = base64Decode(val);
+      final b = base64Decode(base64.normalize(val));
       if (b.length > bound) {
         r.clamped++;
         return latin1.decode(b.sublist(0, bound));
@@ -415,7 +414,7 @@ Uint8List? _jsonBytesBlob(dynamic val, TableTextReport r) {
   if (val == null) return null;
   if (val is String) {
     try {
-      return base64Decode(val);
+      return base64Decode(base64.normalize(val));
     } on FormatException {
       // falls through to the mismatch below
     }
@@ -449,7 +448,7 @@ List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynam
   }
   for (final item in val) {
     if (bound >= 0 && out.length >= bound) {
-      r.clamped++;
+      r.clamped += val.length - out.length;
       break;
     }
     out.add(f(item));
@@ -465,7 +464,7 @@ List<T> _jsonFixed<T>(dynamic val, TableTextReport r, int n, T Function() def, T
   }
   for (var i = 0; i < val.length; i++) {
     if (i >= n) {
-      r.clamped++;
+      r.clamped += val.length - i;
       break;
     }
     out[i] = f(val[i]);
@@ -482,7 +481,9 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
   for (final entry in val.entries) {
     final slot = slots[entry.key];
     if (slot == null) {
-      r.unknown++;
+      final extra = r.duplicateKeys.remove(entry.key) ?? 0;
+      r.unknown += 1 + extra;
+      r.duplicate -= extra;
       continue;
     }
     out[slot] = f(entry.value);
@@ -574,13 +575,15 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\tfinal v = %s();\n", un.Name)
 		g.pf("\tif (val is! Map) { r.kindMismatch++; return v; }\n")
 		g.pf("\tif (val.isEmpty) return v;\n")
-		g.pf("\tif (val.length != 1) { r.kindMismatch++; return v; }\n")
+		g.pf("\tif (val.length != 1) throw const FormatException('union has two keys');\n")
 		g.pf("\tfinal item = val.values.first;\n")
 		g.pf("\tswitch (val.keys.first) {\n")
 		for i, arm := range un.Variants {
 			g.pf("\t\tcase %s:\n", strconv.Quote(arm.Name))
 			g.pf("\t\t\tv.armTag = %d;\n", i+1)
-			if !arm.Void() {
+			if arm.Void() {
+				g.pf("\t\t\tif (item != null) r.kindMismatch++;\n")
+			} else {
 				g.pf("\t\t\tv.%s = %s;\n", armMember(arm), g.jsonReadExpr(arm.F, "item", 1))
 			}
 		}
@@ -775,7 +778,7 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int) string {
 		return fmt.Sprintf("_jsonBytesBlob(%s, r)", val)
 	case isPointerTable(f):
 		ref := tableRef(f)
-		return fmt.Sprintf("_readPtr(%s, sh, r, () => %s(), (obj, m) { %sFromJsonFields(obj as %s, m, r, sh); }) as %s?",
+		return fmt.Sprintf("_readPtr(%s, sh, r, () => %s(), (obj, m) { %sFromJsonFields(obj as %s, m, r, sh, true); }) as %s?",
 			val, ref.Name, dartName(ref.Name), ref.Name, ref.Name)
 	case isByValueTable(f):
 		return fmt.Sprintf("_%sFromJsonValue(%s, r, sh)", dartName(tableRef(f).Name), val)
@@ -798,7 +801,7 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int) string {
 	case f.Type.Kind == ir.TBool:
 		return fmt.Sprintf("_jsonBoolField(%s, r)", val)
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		return fmt.Sprintf("_jsonFloatField(%s, r)", val)
+		return fmt.Sprintf("_jsonFloatField(%s, r, %t)", val, f.Type.Kind == ir.TFloat32)
 	case enumRef(f) != nil:
 		return fmt.Sprintf("%sFromName(%s, r)", dartName(enumRef(f).Name), val)
 	case f.Type.Kind == ir.TBits:

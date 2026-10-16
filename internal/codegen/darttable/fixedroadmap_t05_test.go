@@ -271,14 +271,21 @@ func t05E9(t *testing.T) {
 	if n := strings.Count(runtime, "duplicate"); n != 2 {
 		t.Errorf("E9: `duplicate` occurs %d times in the runtime, want the declaration and the reset only", n)
 	}
-	if n := strings.Count(t05Emitted(t, `package probe
+	// This is a FIXED report invariant. The variable form's JSON reader has
+	// its own duplicate-key ledger (§16.3), so count only the fixed library.
+	u := unitFrom(t, `package probe
 
 fixed table T
 {
     x int32
 }
-`), "duplicate"); n != 2 {
-		t.Errorf("E9: `duplicate` occurs %d times in the emitted unit, want the report lane only", n)
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if n := strings.Count(string(files[runtimeHome(u)+"Fixed.dart"]), "duplicate"); n != 2 {
+		t.Errorf("E9: `duplicate` occurs %d times in the fixed library, want the report lane only", n)
 	}
 }
 
