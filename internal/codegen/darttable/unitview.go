@@ -82,8 +82,14 @@ func viewDartUnionHeld(u *ir.Unit, name string) bool {
 // Dart has no addressable record offsets (§8.1). A scalar's fixed-form
 // element width is still useful to a walker; managed values have no such size.
 func viewDartElementSize(f *ir.Field) string {
-	if f.Type.Pointer || f.Type.Blob() || f.IsMap() || f.IsList() {
+	if f.Type.Pointer || f.Type.Blob() || f.IsMap() {
 		return "null"
+	}
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes:
+		return "1"
+	case ir.TWString:
+		return "2"
 	}
 	if f.Type.Kind == ir.TNamed {
 		switch f.Type.Ref.(type) {
@@ -97,6 +103,18 @@ func viewDartElementSize(f *ir.Field) string {
 		return "null"
 	}
 	return fmt.Sprintf("%d", size)
+}
+
+// The §8.1 descriptor names an array's element kind, not the wire's array
+// wrapper kind. A map's element is its generated entry table.
+func viewDartFieldKind(f *ir.Field) int {
+	if f.IsMap() {
+		return ir.TableKindTable
+	}
+	if f.Type.Kind == ir.TBytes && !f.Type.Blob() {
+		return ir.TableKindU8
+	}
+	return ir.TableWireScalarKind(f)
 }
 
 // generateUnitViewFiles emits the §8 registry even when a declaration is
@@ -183,7 +201,7 @@ final class UnitViewInfo {
 					json, id = "-", 0
 				}
 				member := fieldMember(f)
-				pf("      ViewField(%s,%s,%s,%s,%t,%d,%d,%s,(dynamic v) => v.%s,(dynamic v, dynamic x) { v.%s = x; },%s,%s),\n", viewDartString(f.Name), viewDartString(json), viewDartString(ir.TableTypeSpelling(f)), dartU64Literal(id), f.Type.Optional, ir.TableWireFieldKind(f), viewDartArmBound(f), viewDartElementSize(f), member, member, viewDartString(f.Doc), viewDartTags(f.Tags))
+				pf("      ViewField(%s,%s,%s,%s,%t,%d,%d,%s,(dynamic v) => v.%s,(dynamic v, dynamic x) { v.%s = x; },%s,%s),\n", viewDartString(f.Name), viewDartString(json), viewDartString(ir.TableTypeSpelling(f)), dartU64Literal(id), f.Type.Optional, viewDartFieldKind(f), viewDartArmBound(f), viewDartElementSize(f), member, member, viewDartString(f.Doc), viewDartTags(f.Tags))
 			}
 			pf("    ]),\n")
 		}

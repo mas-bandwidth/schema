@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestUnitViewDescriptorsDart pins the declared vocabulary, including
@@ -49,6 +51,27 @@ func TestUnitViewDescriptorsDart(t *testing.T) {
 	for _, row := range []string{"WeaponConfig", "Grade", "Effect", "MaxLoadoutSlots", "designer_facing", "ui_slider"} {
 		if !strings.Contains(view, row) {
 			t.Errorf("declared name or tag %q missing from %s", row, name)
+		}
+	}
+	// §8.1 exposes the element kind of arrays (a map's generated entry is a
+	// table), so a generic walker does not mistake the wire wrapper for a value.
+	for _, st := range u.Tables {
+		if st.IsMapEntry() {
+			continue
+		}
+		for _, f := range st.Fields {
+			kind := ir.TableWireScalarKind(f)
+			if f.IsMap() {
+				kind = ir.TableKindTable
+			} else if f.Type.Kind == ir.TBytes && !f.Type.Blob() {
+				kind = ir.TableKindU8
+			}
+			want := fmt.Sprintf("ViewField(%s,%s,%s,%s,%t,%d,", viewDartString(f.Name),
+				viewDartString(ir.TableFieldJsonKey(f)), viewDartString(ir.TableTypeSpelling(f)),
+				dartU64Literal(ir.TableFieldWireId(f)), f.Type.Optional, kind)
+			if !strings.Contains(view, want) {
+				t.Errorf("%s.%s lacks element kind %d in the unit view", st.Name, f.Name, kind)
+			}
 		}
 	}
 	// §16's top-level text and wire entry points are needed even for a table
