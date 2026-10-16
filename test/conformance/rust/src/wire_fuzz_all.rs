@@ -46,6 +46,7 @@ mod tblw1;
 mod tblw2;
 mod vocab9demo;
 mod vocabdemo;
+mod widedemo;
 
 use std::io::{self, Read, Write};
 
@@ -196,6 +197,7 @@ const ROOTS: &[(&str, &str)] = &[
     ("mapdemo", "Runs"),
     ("mapdemo", "Slots"),
     ("mapdemo", "Spans"),
+    ("mapdemo", "Text"),
     ("mapdemo", "Trails"),
     ("messagedemo", "ToolMessage"),
     ("streamdemo", "Feed"),
@@ -223,6 +225,8 @@ const ROOTS: &[(&str, &str)] = &[
     ("vocab9demo", "Wide19"),
     ("vocabdemo", "Wide00"),
     ("vocabdemo", "Wide09"),
+    ("widedemo", "Caption"),
+    ("widedemo", "Stamp"),
 ];
 
 // A fixed-class root still has a form-1 file codec, but the harness holds
@@ -278,6 +282,7 @@ fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
         ("mapdemo", "Runs") => arm!(mapdemo, runs_load, runs_load_retain, runs_save, runs_save_retain, runs_load_measure, wire, retain),
         ("mapdemo", "Slots") => arm!(mapdemo, slots_load, slots_load_retain, slots_save, slots_save_retain, slots_load_measure, wire, retain),
         ("mapdemo", "Spans") => arm!(mapdemo, spans_load, spans_load_retain, spans_save, spans_save_retain, spans_load_measure, wire, retain),
+        ("mapdemo", "Text") => arm!(mapdemo, text_load, text_load_retain, text_save, text_save_retain, text_load_measure, wire, retain),
         ("mapdemo", "Trails") => arm!(mapdemo, trails_load, trails_load_retain, trails_save, trails_save_retain, trails_load_measure, wire, retain),
         ("messagedemo", "ToolMessage") => arm!(messagedemo, tool_message_load, tool_message_load_retain, tool_message_save, tool_message_save_retain, tool_message_load_measure, wire, retain),
         ("streamdemo", "Feed") => arm!(streamdemo, feed_load, feed_load_retain, feed_save, feed_save_retain, feed_load_measure, wire, retain),
@@ -305,6 +310,8 @@ fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
         ("vocab9demo", "Wide19") => arm!(vocab9demo, wide19_load, wide19_load_retain, wide19_save, wide19_save_retain, wide19_load_measure, wire, retain),
         ("vocabdemo", "Wide00") => arm!(vocabdemo, wide00_load, wide00_load_retain, wide00_save, wide00_save_retain, wide00_load_measure, wire, retain),
         ("vocabdemo", "Wide09") => arm!(vocabdemo, wide09_load, wide09_load_retain, wide09_save, wide09_save_retain, wide09_load_measure, wire, retain),
+        ("widedemo", "Caption") => arm!(widedemo, caption_load, caption_load_retain, caption_save, caption_save_retain, caption_load_measure, wire, retain),
+        ("widedemo", "Stamp") => arm!(widedemo, stamp_load, stamp_load_retain, stamp_save, stamp_save_retain, stamp_load_measure, wire, retain),
         _ => None,
     }
 }
