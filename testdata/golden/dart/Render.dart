@@ -2,11 +2,32 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xb47fc8a403939d48
 
 import 'dart:typed_data';
 
 import 'Enums.dart' show Team;
+import 'Types.dart' show Vec3, initVec3, zeroVec3;
+
+// One 8-byte conversion scratch under overlaid typed-data views — single
+// threaded per isolate, always consumed in the same operation that fills it.
+final Float32List _f32 = Float32List(2);
+final Float64List _f64 = _f32.buffer.asFloat64List();
+final Uint64List _u64 = _f32.buffer.asUint64List();
+
+// The 64 bits of the IEEE-754 double representation of value — exactly the
+// bits of the Dart double — and the inverse.
+@pragma('vm:prefer-inline')
+int _float64BitsFromDouble(double value) {
+  _f64[0] = value;
+  return _u64[0];
+}
+
+@pragma('vm:prefer-inline')
+double _doubleFromFloat64Bits(int bits) {
+  _u64[0] = bits;
+  return _f64[0];
+}
 
 const int renderBlockMaxSprites = 64;
 
@@ -380,3 +401,151 @@ int measureRenderBlock(RenderBlock value) {
   bits += value.spritesCount * 138;
   return bits;
 }
+
+// type RenderView
+final class RenderView {
+  final Vec3 eye = Vec3();
+}
+
+// renderViewMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// renderViewMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const int renderViewMaxBits = 192;
+const int renderViewMaxBytes = 24;
+
+// The §5 zero form: all-zero storage; specified defaults live only in
+// construction.
+void zeroRenderView(RenderView value) {
+  zeroVec3(value.eye);
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initRenderView(RenderView value) {
+  initVec3(value.eye);
+}
+
+// writeRenderView packs value into view — the trusted writer (contracts asserted,
+// compiled out without --enable-asserts). The buffer behind view must hold
+// renderViewMaxBytes. Returns the bytes written.
+int writeRenderView(RenderView value, ByteData view) {
+  assert(view.lengthInBytes % 8 == 0);
+  assert(view.lengthInBytes >= renderViewMaxBytes);
+  var scratch = 0;
+  var scratchBits = 0;
+  var wordIndex = 0;
+  var v = 0;
+  v = _float64BitsFromDouble(value.eye.x);
+  scratch |= v << scratchBits;
+  scratchBits += 64;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (64 - scratchBits);
+  }
+  v = _float64BitsFromDouble(value.eye.y);
+  scratch |= v << scratchBits;
+  scratchBits += 64;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (64 - scratchBits);
+  }
+  v = _float64BitsFromDouble(value.eye.z);
+  scratch |= v << scratchBits;
+  scratchBits += 64;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (64 - scratchBits);
+  }
+  if (scratchBits != 0) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+  }
+  return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+}
+
+// readRenderView decodes value from the first numBits of view — the family read
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// hostile bytes never throw. No slack past the payload is required.
+bool readRenderView(RenderView value, ByteData view, int numBits) {
+  if (numBits > view.lengthInBytes * 8) {
+    return false; // the payload cannot exceed the buffer behind view
+  }
+  // the final 64-bit window, assembled once so every load stays inside
+  // the buffer (serialize.dart's own no-slack reader stance)
+  var tailBase = view.lengthInBytes - 8;
+  var tailWord = 0;
+  if (tailBase >= 0) {
+    tailWord = view.getUint64(tailBase, Endian.little);
+  } else {
+    tailBase = 0;
+    for (var i = view.lengthInBytes - 1; i >= 0; i--) {
+      tailWord = (tailWord << 8) | view.getUint8(i);
+    }
+  }
+  var bitsRead = 0;
+  var window = 0;
+  var v = 0;
+  var lo = 0;
+  if (bitsRead + 192 > numBits) {
+    return false;
+  }
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+  } else {
+    window = tailWord >>> (bitsRead - tailBase * 8);
+  }
+  v = window & 0xffffffff;
+  bitsRead += 32;
+  lo = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+  } else {
+    window = tailWord >>> (bitsRead - tailBase * 8);
+  }
+  v = window & 0xffffffff;
+  bitsRead += 32;
+  lo |= v << 32;
+  value.eye.x = _doubleFromFloat64Bits(lo);
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+  } else {
+    window = tailWord >>> (bitsRead - tailBase * 8);
+  }
+  v = window & 0xffffffff;
+  bitsRead += 32;
+  lo = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+  } else {
+    window = tailWord >>> (bitsRead - tailBase * 8);
+  }
+  v = window & 0xffffffff;
+  bitsRead += 32;
+  lo |= v << 32;
+  value.eye.y = _doubleFromFloat64Bits(lo);
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+  } else {
+    window = tailWord >>> (bitsRead - tailBase * 8);
+  }
+  v = window & 0xffffffff;
+  bitsRead += 32;
+  lo = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+  } else {
+    window = tailWord >>> (bitsRead - tailBase * 8);
+  }
+  v = window & 0xffffffff;
+  bitsRead += 32;
+  lo |= v << 32;
+  value.eye.z = _doubleFromFloat64Bits(lo);
+  return true;
+}
+
+// measureRenderView is the exact wire bits writeRenderView would produce for value —
+// trusted like the writer; static runs fold to literals at generation time.
+int measureRenderView(RenderView value) => 192;

@@ -2,13 +2,14 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x8656ae68c06b97a7 */
+   package example — protocol id 0xb47fc8a403939d48 */
 
 #ifndef SCHEMA_EXAMPLE_RENDER_H
 #define SCHEMA_EXAMPLE_RENDER_H
 
 #include <stdint.h>
 #include "Enums.h"
+#include "Types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -39,6 +40,15 @@ typedef struct RenderBlock {
 
 #define RENDER_BLOCK_MAX_BITS 8903   /* longest wire path; align pads at worst case (SPEC §6.1) */
 #define RENDER_BLOCK_MAX_BYTES 1120  /* 8-byte write granularity; read slack per the contract above */
+
+
+/* type RenderView */
+typedef struct RenderView {
+    Vec3 eye;
+} RenderView;
+
+#define RENDER_VIEW_MAX_BITS 192   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define RENDER_VIEW_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
 
 #ifdef __cplusplus
 }

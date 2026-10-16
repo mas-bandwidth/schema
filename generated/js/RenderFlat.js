@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xb47fc8a403939d48
 
 // The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
 // scope is safe: single threaded per realm, consumed in the same op that
@@ -470,6 +470,206 @@ export function ReadRenderBlockFlat(value, view, numBits) {
     e0.Team = v;
     br += 10;
   }
+  return true;
+}
+
+// ---- type RenderView: the flat codec ----
+
+function writeRenderViewFlatProduction(value, view) {
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  SC.setFloat64(0, value.Eye.X, true);
+  v = SC.getUint32(0, true);
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  v = SC.getUint32(4, true);
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  SC.setFloat64(0, value.Eye.Y, true);
+  v = SC.getUint32(0, true);
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  v = SC.getUint32(4, true);
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  SC.setFloat64(0, value.Eye.Z, true);
+  v = SC.getUint32(0, true);
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  v = SC.getUint32(4, true);
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  if (sb !== 0) {
+    view.setUint32(wi, lo, true);
+  }
+  return ((wi * 8 + sb) + 7) >> 3;
+}
+
+function writeRenderViewFlatChecked(value, view) {
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  SC.setFloat64(0, value.Eye.X, true);
+  v = SC.getUint32(0, true);
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  v = SC.getUint32(4, true);
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  SC.setFloat64(0, value.Eye.Y, true);
+  v = SC.getUint32(0, true);
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  v = SC.getUint32(4, true);
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  SC.setFloat64(0, value.Eye.Z, true);
+  v = SC.getUint32(0, true);
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  v = SC.getUint32(4, true);
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  if (sb !== 0) {
+    view.setUint32(wi, lo, true);
+  }
+  return ((wi * 8 + sb) + 7) >> 3;
+}
+
+// WriteRenderViewFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// writer contract in the checked build — the production writer holds none
+// of them (SPEC §5). The buffer behind view must hold RenderViewMaxBytes.
+export const WriteRenderViewFlat = PRODUCTION ? writeRenderViewFlatProduction : writeRenderViewFlatChecked;
+
+// ReadRenderViewFlat(value, view, numBits) -> bool. The buffer behind view must
+// extend FLAT_READ_SLACK bytes past the payload.
+export function ReadRenderViewFlat(value, view, numBits) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+  let br = 0;
+  if (br + 192 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  value.Eye.X = SC.getFloat64(0, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  value.Eye.Y = SC.getFloat64(0, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  value.Eye.Z = SC.getFloat64(0, true);
   return true;
 }
 

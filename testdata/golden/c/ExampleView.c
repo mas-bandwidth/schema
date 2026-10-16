@@ -492,6 +492,12 @@ static const TableFieldInfo schema_example_render_sprite_fields_[] = {
 
 const TableTypeInfo schema_example_render_sprite_info_ = { "RenderSprite", (uint32_t) sizeof( RenderSprite ), 5, schema_example_render_sprite_fields_, schema_example_render_sprite_reset_raw_, TableDocNone, 0, NULL };
 
+static const TableFieldInfo schema_example_render_view_fields_[] = {
+    { "eye", NULL, "Vec3", 0x0000000000000000ull, 13, 0, 0, 0, 0, (uint32_t) offsetof( RenderView, eye ), (uint32_t) sizeof( ( (RenderView *) 0 )->eye ), 0xffffffffu, 0xffffffffu, &schema_example_vec3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+};
+
+const TableTypeInfo schema_example_render_view_info_ = { "RenderView", (uint32_t) sizeof( RenderView ), 1, schema_example_render_view_fields_, schema_example_render_view_reset_raw_, TableDocNone, 0, NULL };
+
 static const TableFieldInfo schema_example_rigid_body_fields_[] = {
     { "position", NULL, "Vec3", 0x0000000000000000ull, 13, 0, 0, 0, 0, (uint32_t) offsetof( RigidBody, position ), (uint32_t) sizeof( ( (RigidBody *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_example_vec3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
     { "orientation", NULL, "Quat", 0x0000000000000000ull, 13, 0, 0, 0, 0, (uint32_t) offsetof( RigidBody, orientation ), (uint32_t) sizeof( ( (RigidBody *) 0 )->orientation ), 0xffffffffu, 0xffffffffu, &schema_example_quat_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
@@ -871,6 +877,7 @@ const UnitViewInfo * schema_example_unit_view_(void)
         { "RegainAfterAlign", "Joins.schema", 0, &schema_example_regain_after_align_info_, TableDocNone, 0, NULL },
         { "RenderBlock", "Render.schema", 0, &schema_example_render_block_info_, TableDocNone, 0, NULL },
         { "RenderSprite", "Render.schema", 0, &schema_example_render_sprite_info_, TableDocNone, 0, NULL },
+        { "RenderView", "Render.schema", 0, &schema_example_render_view_info_, TableDocNone, 0, NULL },
         { "RigidBody", "Types.schema", 0, &schema_example_rigid_body_info_, TableDocNone, 0, NULL },
         { "ShipCreate", "Types.schema", 0, &schema_example_ship_create_info_, TableDocNone, 0, NULL },
         { "Sole", "Clauses.schema", 0, &schema_example_sole_info_, TableDocNone, 0, NULL },
@@ -923,8 +930,8 @@ const UnitViewInfo * schema_example_unit_view_(void)
         { "TickRate", "Wire.schema", "float32", 1, 0, 60.0, TableDocNone, 0, NULL },
         { "VelocityUnits", "Constants.schema", "int64", 0, INT64_C(1024), 0.0, TableDocNone, 0, NULL },
     };
-    static const UnitViewInfo info = { "example", 0x8656ae68c06b97a7ull,
-        73, types,
+    static const UnitViewInfo info = { "example", 0xb47fc8a403939d48ull,
+        74, types,
         0, NULL,
         6, enums,
         2, flags_decls,

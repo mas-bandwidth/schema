@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xb47fc8a403939d48
 
 package example;
 
@@ -535,5 +535,213 @@ public final class Render {
         bits += 71;
         bits += value.spritesCount * 138;
         return bits;
+    }
+
+    // type RenderView
+    public static final class RenderView {
+        public final Types.Vec3 eye = new Types.Vec3();
+    }
+
+    // renderViewMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+    // renderViewMaxBytes is rounded up to the 8-byte write-buffer granularity.
+    public static final int renderViewMaxBits = 192;
+    public static final int renderViewMaxBytes = 24;
+
+    // The §5 zero form: all-zero storage; specified defaults live only in
+    // construction.
+    public static void zeroRenderView(RenderView value) {
+        Types.zeroVec3(value.eye);
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initRenderView(RenderView value) {
+        Types.initVec3(value.eye);
+    }
+
+    // checkWriteRenderView is writeRenderView's contract walk, called once through assert —
+    // the predicate-extraction form: dormant assert bodies count against the
+    // JIT's inline thresholds, so the hot body carries one small call and the
+    // contracts live here (issue #156).
+    private static boolean checkWriteRenderView(RenderView value, byte[] data) {
+        assert data.length % 8 == 0;
+        assert data.length >= renderViewMaxBytes;
+        return true;
+    }
+
+    // writeRenderView packs value into data — the trusted writer (contracts in the
+    // checkWriteRenderView predicate, one dormant assert call without -ea). The buffer
+    // must hold renderViewMaxBytes. Returns the bytes written.
+    public static int writeRenderView(RenderView value, byte[] data) {
+        assert checkWriteRenderView(value, data);
+        long scratch = 0;
+        int scratchBits = 0;
+        int wordIndex = 0;
+        long v = 0;
+        {
+            final long b = Double.doubleToRawLongBits(value.eye.x);
+            v = b & 0xffffffffL;
+            scratch |= v << scratchBits;
+            scratchBits += 32;
+            if (scratchBits >= 64) {
+                LONG_LE.set(data, wordIndex * 8, scratch);
+                wordIndex++;
+                scratchBits -= 64;
+                scratch = v >>> (32 - scratchBits);
+            }
+            v = (b >>> 32) & 0xffffffffL;
+            scratch |= v << scratchBits;
+            scratchBits += 32;
+            if (scratchBits >= 64) {
+                LONG_LE.set(data, wordIndex * 8, scratch);
+                wordIndex++;
+                scratchBits -= 64;
+                scratch = v >>> (32 - scratchBits);
+            }
+        }
+        {
+            final long b = Double.doubleToRawLongBits(value.eye.y);
+            v = b & 0xffffffffL;
+            scratch |= v << scratchBits;
+            scratchBits += 32;
+            if (scratchBits >= 64) {
+                LONG_LE.set(data, wordIndex * 8, scratch);
+                wordIndex++;
+                scratchBits -= 64;
+                scratch = v >>> (32 - scratchBits);
+            }
+            v = (b >>> 32) & 0xffffffffL;
+            scratch |= v << scratchBits;
+            scratchBits += 32;
+            if (scratchBits >= 64) {
+                LONG_LE.set(data, wordIndex * 8, scratch);
+                wordIndex++;
+                scratchBits -= 64;
+                scratch = v >>> (32 - scratchBits);
+            }
+        }
+        {
+            final long b = Double.doubleToRawLongBits(value.eye.z);
+            v = b & 0xffffffffL;
+            scratch |= v << scratchBits;
+            scratchBits += 32;
+            if (scratchBits >= 64) {
+                LONG_LE.set(data, wordIndex * 8, scratch);
+                wordIndex++;
+                scratchBits -= 64;
+                scratch = v >>> (32 - scratchBits);
+            }
+            v = (b >>> 32) & 0xffffffffL;
+            scratch |= v << scratchBits;
+            scratchBits += 32;
+            if (scratchBits >= 64) {
+                LONG_LE.set(data, wordIndex * 8, scratch);
+                wordIndex++;
+                scratchBits -= 64;
+                scratch = v >>> (32 - scratchBits);
+            }
+        }
+        if (scratchBits != 0) {
+            LONG_LE.set(data, wordIndex * 8, scratch);
+        }
+        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+    }
+
+    // readRenderView decodes value from the first numBits of data — the family read
+    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+    // hostile bytes never throw. No slack past the payload is required.
+    public static boolean readRenderView(RenderView value, byte[] data, int numBits) {
+        if (numBits > (long) data.length * 8) {
+            return false; // the payload cannot exceed the buffer behind data
+        }
+        // the final 64-bit window, assembled once so every load stays inside
+        // the buffer (the family's no-slack reader stance)
+        int tailBase = data.length - 8;
+        long tailWord = 0;
+        if (tailBase >= 0) {
+            tailWord = (long) LONG_LE.get(data, tailBase);
+        } else {
+            tailBase = 0;
+            for (int i = data.length - 1; i >= 0; i--) {
+                tailWord = (tailWord << 8) | (data[i] & 0xffL);
+            }
+        }
+        int bitsRead = 0;
+        long window = 0;
+        int shift = 0;
+        long v = 0;
+        long lo = 0;
+        if (bitsRead + 192 > numBits) {
+            return false;
+        }
+        if (bitsRead >>> 3 < tailBase) {
+            window = (long) LONG_LE.get(data, bitsRead >>> 3);
+            shift = bitsRead & 7;
+        } else {
+            window = tailWord;
+            shift = bitsRead - tailBase * 8;
+        }
+        v = (window >>> shift) & 0xffffffffL;
+        bitsRead += 32;
+        lo = v;
+        if (bitsRead >>> 3 < tailBase) {
+            window = (long) LONG_LE.get(data, bitsRead >>> 3);
+            shift = bitsRead & 7;
+        } else {
+            window = tailWord;
+            shift = bitsRead - tailBase * 8;
+        }
+        v = (window >>> shift) & 0xffffffffL;
+        bitsRead += 32;
+        lo |= v << 32;
+        value.eye.x = Double.longBitsToDouble(lo);
+        if (bitsRead >>> 3 < tailBase) {
+            window = (long) LONG_LE.get(data, bitsRead >>> 3);
+            shift = bitsRead & 7;
+        } else {
+            window = tailWord;
+            shift = bitsRead - tailBase * 8;
+        }
+        v = (window >>> shift) & 0xffffffffL;
+        bitsRead += 32;
+        lo = v;
+        if (bitsRead >>> 3 < tailBase) {
+            window = (long) LONG_LE.get(data, bitsRead >>> 3);
+            shift = bitsRead & 7;
+        } else {
+            window = tailWord;
+            shift = bitsRead - tailBase * 8;
+        }
+        v = (window >>> shift) & 0xffffffffL;
+        bitsRead += 32;
+        lo |= v << 32;
+        value.eye.y = Double.longBitsToDouble(lo);
+        if (bitsRead >>> 3 < tailBase) {
+            window = (long) LONG_LE.get(data, bitsRead >>> 3);
+            shift = bitsRead & 7;
+        } else {
+            window = tailWord;
+            shift = bitsRead - tailBase * 8;
+        }
+        v = (window >>> shift) & 0xffffffffL;
+        bitsRead += 32;
+        lo = v;
+        if (bitsRead >>> 3 < tailBase) {
+            window = (long) LONG_LE.get(data, bitsRead >>> 3);
+            shift = bitsRead & 7;
+        } else {
+            window = tailWord;
+            shift = bitsRead - tailBase * 8;
+        }
+        v = (window >>> shift) & 0xffffffffL;
+        bitsRead += 32;
+        lo |= v << 32;
+        value.eye.z = Double.longBitsToDouble(lo);
+        return true;
+    }
+
+    // measureRenderView is the exact wire bits writeRenderView would produce for value —
+    // trusted like the writer; static runs fold to literals at generation time.
+    public static int measureRenderView(RenderView value) {
+        return 192;
     }
 }

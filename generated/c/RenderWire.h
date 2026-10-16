@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x8656ae68c06b97a7 */
+   package example — protocol id 0xb47fc8a403939d48 */
 
 #ifndef SCHEMA_EXAMPLE_RENDERWIRE_H
 #define SCHEMA_EXAMPLE_RENDERWIRE_H
@@ -18,6 +18,7 @@
 #endif
 #endif
 #include "EnumsWire.h"
+#include "TypesWire.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -196,6 +197,32 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_render_block( serialize_read_
                 return 0;
             }
         }
+    }
+    return 1;
+}
+
+/* Writes RenderView. */
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_render_view( serialize_write_stream_t * stream, const RenderView * value )
+{
+    if ( !write_vec3( stream, &value->eye ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads RenderView. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_render_view( serialize_read_stream_t * stream, RenderView * value )
+{
+    /* fixed 192-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 192 )
+    {
+        return serialize_read_fail( stream );
+    }
+
+    if ( !read_vec3( stream, &value->eye ) )
+    {
+        return 0;
     }
     return 1;
 }

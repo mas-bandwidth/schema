@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xb47fc8a403939d48
 
 use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
@@ -149,6 +149,39 @@ pub fn read_render_block(stream: &mut ReadStream<'_>, value: &mut RenderBlock) -
     for i in 0..value.sprites_count as usize {
         read_render_sprite(stream, &mut value.sprites[i])?;
     }
+    Ok(())
+}
+
+// type RenderView
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct RenderView {
+    pub eye: Vec3,
+}
+
+// The zero form (SPEC §5): specified defaults live only in new(), never here.
+impl Default for RenderView {
+    fn default() -> Self {
+        RenderView {
+            eye: Vec3::default(),
+        }
+    }
+}
+
+// RENDER_VIEW_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+// RENDER_VIEW_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+pub const RENDER_VIEW_MAX_BITS: u64 = 192;
+pub const RENDER_VIEW_MAX_BYTES: usize = 24;
+
+#[inline(always)]
+pub fn write_render_view(stream: &mut WriteStream<'_>, value: &RenderView) -> Result {
+    write_vec3(stream, &value.eye)?;
+    Ok(())
+}
+
+#[inline]
+pub fn read_render_view(stream: &mut ReadStream<'_>, value: &mut RenderView) -> Result {
+    read_vec3(stream, &mut value.eye)?;
     Ok(())
 }
 

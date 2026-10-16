@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xb47fc8a403939d48
 
 #pragma once
 
@@ -12,6 +12,7 @@
 
 #include "Render.h"
 #include "EnumsWire.h"
+#include "TypesWire.h"
 
 namespace example {
 
@@ -109,6 +110,24 @@ SCHEMA_READ_INLINE bool ReadRenderBlock( serialize::ReadStream & stream, RenderB
         {
             return false;
         }
+    }
+    return true;
+}
+
+SCHEMA_WRITE_INLINE bool WriteRenderView( serialize::WriteStream & stream, const RenderView & value )
+{
+    if ( !WriteVec3( stream, value.eye ) )
+    {
+        return false;
+    }
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadRenderView( serialize::ReadStream & stream, RenderView & value )
+{
+    if ( !ReadVec3( stream, value.eye ) )
+    {
+        return false;
     }
     return true;
 }

@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xb47fc8a403939d48
 
 import { Team } from "./Enums.js";
+import { InitVec3, ReadVec3, Vec3, WriteVec3, ZeroVec3 } from "./Types.js";
 
 // Scratch holders for the runtime's {value} refs — single threaded per
 // realm, always consumed in the same call that fills them.
@@ -175,6 +176,42 @@ export function ReadRenderBlock(stream, value) {
     if (!ReadRenderSprite(stream, value.Sprites[i])) {
       return false;
     }
+  }
+  return true;
+}
+
+// type RenderView
+export class RenderView {
+  constructor() {
+    this.Eye = new Vec3();
+  }
+}
+
+// RenderViewMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// RenderViewMaxBytes is rounded up to the 8-byte write-buffer granularity.
+export const RenderViewMaxBits = 192;
+export const RenderViewMaxBytes = 24;
+
+// InitRenderView restores fresh construction values in place, preserving storage.
+export function InitRenderView(value) {
+  InitVec3(value.Eye);
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
+export function ZeroRenderView(value) {
+  ZeroVec3(value.Eye);
+}
+
+export function WriteRenderView(stream, value) {
+  if (!WriteVec3(stream, value.Eye)) {
+    return false;
+  }
+  return true;
+}
+
+export function ReadRenderView(stream, value) {
+  if (!ReadVec3(stream, value.Eye)) {
+    return false;
   }
   return true;
 }

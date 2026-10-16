@@ -30,3 +30,13 @@ type RenderBlock
     sprite_count_hint uint32
     sprites           [..RenderBlockMaxSprites]RenderSprite
 }
+
+// Where the frame is drawn from. The eye is Types.schema's Vec3, and this is
+// the corpus's one reference to it from another file of the unit: generated
+// C++ stores it as ::VecMath and Render.h includes vec_math.h (SPEC §4.2,
+// Native type mapping). Inside Types.h the mapping is off, because the hand
+// type derives from that header, so RigidBody keeps the basis type (#675).
+type RenderView
+{
+    eye Vec3
+}

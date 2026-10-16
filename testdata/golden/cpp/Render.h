@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xb47fc8a403939d48
 
 #pragma once
 
 #include <cstdint>
 
 #include "Enums.h"
+#include "Types.h"
+
+// native type mapping (cpp_native, SPEC §4.2): the hand types storage speaks
+#include "vec_math.h"
 
 namespace example {
 
@@ -35,5 +39,13 @@ struct RenderBlock {
 
 inline constexpr int64_t RenderBlockMaxBits = 8903; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t RenderBlockMaxBytes = 1120; // 8-byte write granularity; read slack per the contract above
+
+// type RenderView
+struct RenderView {
+    ::VecMath eye;
+};
+
+inline constexpr int64_t RenderViewMaxBits = 192; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t RenderViewMaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 } // namespace example

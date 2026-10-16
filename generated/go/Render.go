@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xb47fc8a403939d48
 
 package example
 
@@ -251,6 +251,30 @@ func ReadRenderBlock(stream *serialize.ReadStream, value *RenderBlock) error {
 			}
 			value.Sprites[i].Team = Team(int32(v4))
 		}
+	}
+	return stream.Err()
+}
+
+// type RenderView
+type RenderView struct {
+	Eye Vec3
+}
+
+// RenderViewMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// RenderViewMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const RenderViewMaxBits = 192
+const RenderViewMaxBytes = 24
+
+func WriteRenderView(stream *serialize.WriteStream, value *RenderView) error {
+	if err := WriteVec3(stream, &value.Eye); err != nil {
+		return err
+	}
+	return stream.Err()
+}
+
+func ReadRenderView(stream *serialize.ReadStream, value *RenderView) error {
+	if err := ReadVec3(stream, &value.Eye); err != nil {
+		return err
 	}
 	return stream.Err()
 }

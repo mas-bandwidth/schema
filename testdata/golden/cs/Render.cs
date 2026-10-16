@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xb47fc8a403939d48
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -36,6 +36,12 @@ namespace Example
                 Sprites[i] = new RenderSprite();
             }
         }
+    }
+
+    // type RenderView
+    public sealed class RenderView
+    {
+        public Vec3 Eye = new Vec3();
     }
 
     // Schema carries every generated function and constant of the unit — C# has
@@ -263,6 +269,63 @@ namespace Example
                 {
                     return false;
                 }
+            }
+            return true;
+        }
+
+        // RenderViewMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+        // RenderViewMaxBytes is rounded up to the 8-byte write-buffer granularity.
+        public const long RenderViewMaxBits = 192;
+        public const long RenderViewMaxBytes = 24;
+
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
+        public static void ZeroRenderView(RenderView value)
+        {
+            ZeroVec3(value.Eye);
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitRenderView(RenderView value)
+        {
+            InitVec3(value.Eye);
+        }
+
+        // batch form: stream state stays in registers across the body and End
+        // publishes it — same wire bytes, same validation, same error model.
+        public static bool WriteRenderView(WriteStream stream, RenderView value)
+        {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteRenderViewBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteRenderViewBatch(ref WriteBatch batch, RenderView value)
+        {
+            if (!WriteVec3Batch(ref batch, value.Eye))
+            {
+                return false;
+            }
+            return true;
+        }
+
+        public static bool ReadRenderView(ReadStream stream, RenderView value)
+        {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadRenderViewBatch(ref batch, value);
+            batch.End();
+            return result;
+        }
+
+        // inline-only batch core — a real call would address-expose the batch
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadRenderViewBatch(ref ReadBatch batch, RenderView value)
+        {
+            if (!ReadVec3Batch(ref batch, value.Eye))
+            {
+                return false;
             }
             return true;
         }

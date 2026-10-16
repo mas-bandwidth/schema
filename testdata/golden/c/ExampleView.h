@@ -423,6 +423,8 @@ static SCHEMA_UNUSED void render_block_reset( RenderBlock * value );
 static SCHEMA_UNUSED void schema_example_render_block_reset_raw_( void * storage );
 static SCHEMA_UNUSED void render_sprite_reset( RenderSprite * value );
 static SCHEMA_UNUSED void schema_example_render_sprite_reset_raw_( void * storage );
+static SCHEMA_UNUSED void render_view_reset( RenderView * value );
+static SCHEMA_UNUSED void schema_example_render_view_reset_raw_( void * storage );
 static SCHEMA_UNUSED void rigid_body_reset( RigidBody * value );
 static SCHEMA_UNUSED void schema_example_rigid_body_reset_raw_( void * storage );
 static SCHEMA_UNUSED void ship_create_reset( ShipCreate * value );
@@ -1020,6 +1022,15 @@ static SCHEMA_UNUSED void schema_example_render_sprite_reset_raw_( void * storag
 
 extern const TableTypeInfo schema_example_render_sprite_info_;
 static SCHEMA_UNUSED const TableTypeInfo * render_sprite_table_type(void) { return &schema_example_render_sprite_info_; }
+static SCHEMA_UNUSED void render_view_reset( RenderView * value )
+{
+    vec3_reset( &value->eye );
+}
+
+static SCHEMA_UNUSED void schema_example_render_view_reset_raw_( void * storage ) { render_view_reset( (RenderView *) storage ); }
+
+extern const TableTypeInfo schema_example_render_view_info_;
+static SCHEMA_UNUSED const TableTypeInfo * render_view_table_type(void) { return &schema_example_render_view_info_; }
 static SCHEMA_UNUSED void rigid_body_reset( RigidBody * value )
 {
     vec3_reset( &value->position );

@@ -9,7 +9,9 @@ package example
 // cpp_native/cpp_include (SPEC §4.2, Native type mapping): generated C++
 // declares Vec3 storage as ::VecMath — a hand math type deriving from the
 // generated basis struct (same layout, plus operators) — and every header
-// referencing it includes the mapped header. Other targets ignore the pair.
+// referencing it includes the mapped header. The mapping is off inside this
+// file's own headers (the hand type derives from them), so it rides at
+// Render.schema's RenderView. Other targets ignore the pair.
 type Vec3 | cpp_native = VecMath, cpp_include = "vec_math.h"
 {
     x float64

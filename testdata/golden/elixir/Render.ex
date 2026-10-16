@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package example — protocol id 0x8656ae68c06b97a7
+# package example — protocol id 0xb47fc8a403939d48
 
 # type RenderSprite
 defmodule Example.RenderSprite do
@@ -13,6 +13,11 @@ end
 defmodule Example.RenderBlock do
   # sprites: counted array — a list of up to RenderBlockMaxSprites elements
   defstruct worker_index: 0, sprite_count_hint: 0, sprites: []
+end
+
+# type RenderView
+defmodule Example.RenderView do
+  defstruct eye: %Example.Vec3{}
 end
 
 # The file-scope surface: constants, flags masks, name helpers and the
@@ -242,6 +247,103 @@ defmodule Example.Render do
     bits
   end
 
+  # render_view_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
+  # render_view_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  def render_view_max_bits, do: 192
+  def render_view_max_bytes, do: 24
+
+  # The §5 zero form: all-zero storage; specified defaults live only in
+  # construction (%Example.RenderView{}).
+  def zero_render_view, do: %Example.RenderView{eye: Example.Types.zero_vec3()}
+
+  # write_render_view packs value into a fresh binary — the trusted writer; the O(1)
+  # contract checks raise ArgumentError, always on (the BEAM has no
+  # compile-out assert). Returns the wire bytes.
+  def write_render_view(value) do
+    data = <<>>
+    %{x: value_eye_x, y: value_eye_y, z: value_eye_z} = value.eye
+    w = f64_bits(value_eye_x)
+    v = w &&& 0xFFFFFFFF
+    scratch = v
+    v = w >>> 32
+    sc0 = scratch
+    scratch = v
+    w = f64_bits(value_eye_y)
+    v = w &&& 0xFFFFFFFF
+    sc1 = scratch
+    scratch = v
+    v = w >>> 32
+    sc2 = scratch
+    scratch = v
+    w = f64_bits(value_eye_z)
+    v = w &&& 0xFFFFFFFF
+    sc3 = scratch
+    scratch = v
+    v = w >>> 32
+    sc4 = scratch
+    scratch = v
+
+    data =
+      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
+        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
+        scratch::little-size(4)-unit(8)>>
+
+    data
+  end
+
+  # read_render_view decodes the first num_bits of data — the family read verdict:
+  # :error rejects the wire (bounds, ranges, wire constants, padding);
+  # hostile bytes never raise. No slack past the payload is required.
+  def read_render_view(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    try do
+      if num_bits > byte_size(data) * 8 do
+        # the payload cannot exceed the buffer behind it
+        throw(:invalid)
+      end
+
+      bits_read = 0
+      if bits_read + 192 > num_bits, do: throw(:invalid)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
+      bits_read = bits_read + 32
+      w = v
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
+      bits_read = bits_read + 32
+      w = w ||| v <<< 32
+      v_eye_x = f64_value(w)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
+      bits_read = bits_read + 32
+      w = v
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
+      bits_read = bits_read + 32
+      w = w ||| v <<< 32
+      v_eye_y = f64_value(w)
+      rv = rdw(data, bits_read, 49)
+      v = rv &&& 0xFFFFFFFF
+      bits_read = bits_read + 32
+      w = v
+      rv = rd(data, bits_read, 32)
+      v = rv
+      bits_read = bits_read + 32
+      w = w ||| v <<< 32
+      v_eye_z = f64_value(w)
+      v_eye = %Example.Vec3{x: v_eye_x, y: v_eye_y, z: v_eye_z}
+      # the final position is unobserved — the verdict and value are the surface
+      _ = bits_read
+      value = %Example.RenderView{eye: v_eye}
+      {:ok, value}
+    catch
+      :invalid -> :error
+    end
+  end
+
+  # measure_render_view is the exact wire bits write_render_view would produce for value —
+  # trusted like the writer; static runs fold to literals at generation time.
+  def measure_render_view(_value), do: 192
+
   defp w_render_block_sprites([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp w_render_block_sprites([e | rest], data, scratch, scratch_bits) do
@@ -374,5 +476,29 @@ defmodule Example.Render do
       end
 
     window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
+  end
+
+  # The 64-bit IEEE-754 pattern of a double value and its inverse — the
+  # same bit-transparent contract as f32, at width 64.
+  defp f64_bits(value) when is_float(value) do
+    <<bits::little-64>> = <<value::float-64-little>>
+    bits
+  end
+
+  defp f64_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFFFFFFFFFF do
+    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
+      raise ArgumentError, "{:nonfinite, bits} carries a finite float64 pattern; write the float"
+    end
+
+    bits
+  end
+
+  defp f64_value(bits) do
+    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
+      <<value::float-64-little>> = <<bits::little-64>>
+      value
+    else
+      {:nonfinite, bits}
+    end
   end
 end
