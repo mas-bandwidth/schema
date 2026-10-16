@@ -618,6 +618,78 @@ tables-js-fixed-roadmap:
 
 test-js: tables-js-fixed-roadmap
 
+# THE MESSAGE FORM'S JAVASCRIPT TESTS, UNDER A TARGET THAT CANNOT SKIP.
+# TestMessageFormAnnounceJavaScript, TestMessageFormBatchJavaScript and
+# TestMessageFormConformanceJavaScript (docs/SPEC-TABLES.md §3.2, §3.3 and the
+# conformance driver's message rows) and the two small regressions beside them
+# take node through jsNode, which SKIPS a test when no node is on PATH — the
+# exact failure tables-js-versioning's comment above describes: `go test ./...`
+# asserts nothing there, so a regression rides into CI green. Under this target
+# SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE, and the target ALSO
+# fails if the -v output holds a SKIP line (a subtest skipped for any other
+# reason is a test that did not run). internal/codegen/jstable/gatecoverage_test.go
+# refuses a roadmap or message-form test no -run pattern in this file names.
+.PHONY: tables-js-message-form
+tables-js-message-form:
+	@mkdir -p build
+	@rc=0; SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestMessageFormAnnounceJavaScript|TestMessageFormBatchJavaScript|TestMessageFormConformanceJavaScript|TestJsMessageSkipOfZeroWidthElementsIsBounded|TestJsAnnounceKeepsTwoDeclaredShapesThatDeriveOneQuantization)$$' > build/js-message-form.log 2>&1 || rc=$$?; \
+		cat build/js-message-form.log; \
+		if [ $$rc -ne 0 ]; then echo "tables-js-message-form: go test exited $$rc"; exit $$rc; fi; \
+		if grep -Eq '^ *--- SKIP' build/js-message-form.log; then \
+			echo "tables-js-message-form: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1:"; grep -E '^ *--- SKIP' build/js-message-form.log; exit 1; \
+		fi
+	@echo 'tables JS message form: announce, batch and conformance rows plus two regressions ran under node, none skipped'
+
+test-js: tables-js-message-form
+
+# THE FIXED ROADMAP'S JAVASCRIPT TESTS, T01 TO T09, UNDER THE SAME NO-SKIP RULE.
+# tables-js-fixed-roadmap above runs only T12 and T13 (the in-memory files that
+# need no C++ oracle). T01 to T09 read build/fixedform-corpus, THE C++ REFERENCE'S
+# OWN BYTE ORACLE (T08's js/R27 reads it), so this target takes its stamp; the
+# serialize sibling it needs is the one tables-js-fixed-form already needs.
+.PHONY: tables-js-fixed-roadmap-all
+tables-js-fixed-roadmap-all: build/fixedform-corpus/.stamp
+	@mkdir -p build
+	@rc=0; SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestFixedRoadmapT01Framing|TestFixedRoadmapT02Plans|TestFixedRoadmapJsT03PlansVersions|TestFixedRoadmapJsT04Versions|TestFixedRoadmapJsT05Evolution|TestFixedRoadmapJsT06Bounds|TestFixedRoadmapJsT07Writes|TestFixedRoadmapJsT08ConformanceComposites|TestFixedRoadmapJsT09UnionsOptionals)$$' > build/js-fixed-roadmap-all.log 2>&1 || rc=$$?; \
+		cat build/js-fixed-roadmap-all.log; \
+		if [ $$rc -ne 0 ]; then echo "tables-js-fixed-roadmap-all: go test exited $$rc"; exit $$rc; fi; \
+		if grep -Eq '^ *--- SKIP' build/js-fixed-roadmap-all.log; then \
+			echo "tables-js-fixed-roadmap-all: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1:"; grep -E '^ *--- SKIP' build/js-fixed-roadmap-all.log; exit 1; \
+		fi
+	@echo 'tables JS fixed roadmap (T01 to T09): every roadmap test ran over the reference own bytes, none skipped'
+
+test-js: tables-js-fixed-roadmap-all
+
+# ITS NEGATIVE CONTROL. Move ONE BYTE of the batch writer's alignment padding
+# (messagebatch.go: the bit writer pads to a byte with (-Bits) & 7) and the bytes
+# TestMessageFormBatchJavaScript's round trip writes no longer equal the
+# reference batch file, so the test must go red — and for that reason, not a
+# compile error: the sabotage is inside the emitted JavaScript's source text, so
+# the Go package still builds. It rides `go test -overlay`, like the controls above.
+.PHONY: tables-js-message-form-negative-control
+tables-js-message-form-negative-control:
+	@rm -rf build/js-message-form-sabotage && mkdir -p build/js-message-form-sabotage
+	@sed 's|Align() { this.Put(0n, (-this.Bits) \& 7); }|Align() { this.Put(0n, (-this.Bits) \& 6); }|' \
+		internal/codegen/jstable/messagebatch.go > build/js-message-form-sabotage/messagebatch.go.txt
+	@grep -q '(-this.Bits) & 6' build/js-message-form-sabotage/messagebatch.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/jstable/messagebatch.go":"%s/build/js-message-form-sabotage/messagebatch.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/js-message-form-sabotage/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-message-form-sabotage/overlay.json \
+			-count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestMessageFormBatchJavaScript$$' \
+			> build/js-message-form-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the batch writer padded wrongly and the gate stayed green"; \
+		cat build/js-message-form-sabotage/log; exit 1; \
+	fi
+	@grep -q -- "--- FAIL: TestMessageFormBatchJavaScript" build/js-message-form-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the message-form gate went red for another reason"; \
+		  cat build/js-message-form-sabotage/log; exit 1; }
+	@if grep -Eq '\[build failed\]|cannot find|undefined:|syntax error' build/js-message-form-sabotage/log; then \
+		echo "NEGATIVE CONTROL FAILED: the sabotage broke the build, not the behaviour"; \
+		cat build/js-message-form-sabotage/log; exit 1; \
+	fi
+	@echo 'tables JS message form negative control: one byte of batch padding reds TestMessageFormBatchJavaScript'
+
 # ITS NEGATIVE CONTROL (§5.9 #11: each gate owes one, "because a byte comparison
 # nobody has seen fail may be comparing a file with itself"). Drop the held
 # layout's byte comparison from the generated reader's step 7 (fixedmodule.go:
@@ -935,6 +1007,7 @@ test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generate
 	$(MAKE) tables-js-versioning
 	$(MAKE) tables-js-versioning-negative-control
 	$(MAKE) tables-js-fixed-roadmap-negative-control
+	$(MAKE) tables-js-message-form-negative-control
 	cd test/js && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
 	cd test/js-ludicrous && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
 

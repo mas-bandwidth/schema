@@ -478,6 +478,7 @@
         "tables-js-fixed-form-negative-control",
         "tables-js-fixed-optional-negative-control",
         "tables-js-fuzz-negative-control",
+        "tables-js-message-form-negative-control",
         "tables-js-runtime-home-negative-control",
         "tables-js-slot-negative-control",
         "tables-js-fixed-slack-negative-control",
