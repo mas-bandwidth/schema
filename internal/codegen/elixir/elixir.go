@@ -110,10 +110,11 @@ func checkNames(u *ir.Unit) error {
 		}
 		return nil
 	}
-	bases := map[string]string{}
-	for _, f := range u.Files {
-		bases[ir.GoExportName(f.Base)] = f.Base
-	}
+	// The declaration module names and union tag module names under <Ns>. A
+	// file whose <Base> is taken by one of them STEPS ASIDE to <Base>File; a
+	// declaration or tag module name the stepped-aside file module would take
+	// is still refused, by name.
+	taken := map[string]bool{}
 	for decl := range u.DeclFile {
 		if _, isConst := u.Consts[decl]; isConst {
 			continue // consts are file-module functions, not modules
@@ -129,17 +130,26 @@ func checkNames(u *ir.Unit) error {
 			// refuse, not this one's.
 			continue
 		}
-		if base, taken := bases[decl]; taken {
-			return fmt.Errorf("declaration %s collides with the module the Elixir emitter writes for schema file %s.schema; rename one", decl, base)
-		}
+		taken[decl] = true
 	}
 	for _, un := range u.Unions {
-		// the union's tag module <Name>Type must be free too
-		if base, taken := bases[un.Name+"Type"]; taken {
-			return fmt.Errorf("union %s needs the tag module %sType, which collides with schema file %s.schema; rename one", un.Name, un.Name, base)
-		}
-		if _, taken := u.DeclFile[un.Name+"Type"]; taken {
+		taken[un.Name+"Type"] = true
+		// the union's tag module <Name>Type colliding with a declaration of
+		// that name is a declaration-vs-declaration collision — the file
+		// module's step-aside cannot resolve it, so the refusal stands.
+		if _, isDecl := u.DeclFile[un.Name+"Type"]; isDecl {
 			return fmt.Errorf("union %s needs the tag module %sType, which collides with the declaration of that name; rename one", un.Name, un.Name)
+		}
+	}
+	ns := ir.GoExportName(u.Package)
+	for _, f := range u.Files {
+		base := ir.GoExportName(f.Base)
+		fileMod := base
+		if taken[base] {
+			fileMod = base + "File"
+		}
+		if taken[fileMod] {
+			return fmt.Errorf("declaration %s collides with the module the Elixir emitter writes for schema file %s.schema (%s.%s); rename one", fileMod, f.Base, ns, fileMod)
 		}
 	}
 	for _, c := range u.Consts {
@@ -285,6 +295,45 @@ func (g *gen) bpf(format string, args ...any) {
 
 // mod is the namespaced module of a declaration or file base.
 func (g *gen) mod(name string) string { return g.ns + "." + name }
+
+// fileModuleName is the file-scope module's name for file f: <Ns>.<Base>,
+// or <Ns>.<Base>File when a declaration (type, enum, union or union tag
+// module) of the unit already takes <Ns>.<Base>. The colliding case was
+// refused before this card, so no existing generated name changes; only the
+// refused case gains the renamed file module.
+func fileModuleName(u *ir.Unit, f *ir.File) string {
+	base := ir.GoExportName(f.Base)
+	if fileModuleStepsAside(u, base) {
+		return ir.GoExportName(u.Package) + "." + base + "File"
+	}
+	return ir.GoExportName(u.Package) + "." + base
+}
+
+// fileModuleStepsAside reports whether a declaration or union tag module of
+// the unit takes the module name <Ns>.<base>, forcing the file module for a
+// file whose base is `base` to step aside to <Ns>.<base>File.
+func fileModuleStepsAside(u *ir.Unit, base string) bool {
+	for decl := range u.DeclFile {
+		if _, isConst := u.Consts[decl]; isConst {
+			continue // consts are file-module functions, not modules
+		}
+		if _, isFlags := u.Flags[decl]; isFlags {
+			continue // flags are file-module functions, not modules
+		}
+		if _, isTable := u.Tables[decl]; isTable {
+			continue // tables lower to modules in the TABLE backend, not here
+		}
+		if decl == base {
+			return true
+		}
+	}
+	for _, un := range u.Unions {
+		if un.Name+"Type" == base {
+			return true
+		}
+	}
+	return false
+}
 
 func (g *gen) assemble() []byte {
 	var h strings.Builder
@@ -691,7 +740,7 @@ func enumVariantValue(e *ir.Enum, variant string) int {
 func (g *gen) emitFileModule(order []ir.Decl) {
 	g.bpf("# The file-scope surface: constants, flags masks, name helpers and the\n")
 	g.bpf("# wire functions of every declaration in %s.schema.\n", g.file.Base)
-	g.bpf("defmodule %s do\n", g.mod(ir.GoExportName(g.file.Base)))
+	g.bpf("defmodule %s do\n", fileModuleName(g.unit, g.file))
 
 	var b strings.Builder
 	saved := g.body
@@ -923,7 +972,7 @@ func (g *gen) constRef(name string) string {
 	if base == g.file.Base {
 		return elixirName(name) + "()"
 	}
-	return g.mod(ir.GoExportName(base)) + "." + elixirName(name) + "()"
+	return fileModuleName(g.unit, &ir.File{Base: base}) + "." + elixirName(name) + "()"
 }
 
 func formatFloat(v float64) string {
