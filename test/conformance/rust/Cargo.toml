@@ -13,12 +13,24 @@ name = "conformance-rust"
 path = "src/main.rs"
 
 [dependencies]
+tabledemo = { path = "../../../build/tables-generated-rust/tabledemo" }
 graphdemo = { path = "../../../build/tables-generated-rust/graphdemo" }
 blobdemo = { path = "../../../build/tables-generated-rust/blobdemo" }
 mapdemo = { path = "../../../build/tables-generated-rust/mapdemo" }
+listdemo = { path = "../../../build/tables-generated-rust/listdemo" }
+messagedemo = { path = "../../../build/tables-generated-rust/messagedemo" }
+streamdemo = { path = "../../../build/tables-generated-rust/streamdemo" }
 blockdemo = { path = "../../../build/tables-generated-rust/blockdemo" }
 tblv1 = { path = "../../../build/tables-generated-rust/tblv1" }
 tblv2 = { path = "../../../build/tables-generated-rust/tblv2" }
+tblp1 = { path = "../../../build/tables-generated-rust/tblp1" }
+tblp2 = { path = "../../../build/tables-generated-rust/tblp2" }
+tblp3 = { path = "../../../build/tables-generated-rust/tblp3" }
+tblm1 = { path = "../../../build/tables-generated-rust/tblm1" }
+tblm2 = { path = "../../../build/tables-generated-rust/tblm2" }
+tbla2 = { path = "../../../build/tables-generated-rust/tbla2" }
+tblk1 = { path = "../../../build/tables-generated-rust/tblk1" }
+tblk2 = { path = "../../../build/tables-generated-rust/tblk2" }
 tblw1 = { path = "../../../build/tables-generated-rust/tblw1" }
 tblw2 = { path = "../../../build/tables-generated-rust/tblw2" }
 tblr1 = { path = "../../../build/tables-generated-rust/tblr1" }

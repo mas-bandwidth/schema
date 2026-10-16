@@ -327,10 +327,10 @@ func fieldDefault(f *ir.Field) string {
 		return "None"
 	}
 	if f.KeyEnum != "" && f.KeyEnumRef != nil {
-		return fmt.Sprintf("(0..%d).map(|_| %s).collect()", len(f.KeyEnumRef.Variants), fieldDefault(scalarOnly(f)))
+		return fmt.Sprintf("(0..%d).map(|_| %s).collect::<Vec<_>>()", len(f.KeyEnumRef.Variants), fieldDefault(scalarOnly(f)))
 	}
 	if f.Array == ir.ArrayFixed {
-		return fmt.Sprintf("(0..%d).map(|_| %s).collect()", f.ArrayBound, fieldDefault(scalarOnly(f)))
+		return fmt.Sprintf("(0..%d).map(|_| %s).collect::<Vec<_>>()", f.ArrayBound, fieldDefault(scalarOnly(f)))
 	}
 	if f.Array != ir.ArrayNone {
 		return "Vec::new()"
