@@ -1698,6 +1698,10 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ matrix.java }}
 
+      # The pinned formatter `make test-java` and the java negative controls require (make/java.mk).
+      - uses: ./.github/actions/google-java-format
+        if: matrix.java != ''
+
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         if: matrix.otp != ''
         with:
