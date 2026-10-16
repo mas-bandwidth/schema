@@ -20,6 +20,7 @@ package darttable
 
 import (
 	"fmt"
+	"math/big"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -91,7 +92,7 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	lower := lowerFirst(st.Name)
 	g.needHome("TableBitWriter", "TableMessageReader", "TableVocabulary", "TableReport",
 		"tableMessageBatchOpen", "tableMessageBatchClose", "tableMessageBatchMax",
-		lower+"SaveMessageBody", lower+"LoadMessageBody", st.Name, "init"+capitalize(st.Name))
+		lower+"SaveMessageBody", lower+"LoadMessageBody", st.Name)
 	g.pf("// ---- %s, THE MESSAGE FORM's BATCH (docs/SPEC-TABLES.md §3.3) ----\n", st.Name)
 	g.pf("/// MeasureMessages sizes the buffer for a batch of %s bodies, or -1 with\n", st.Name)
 	g.pf("/// the reason on the report (docs/SPEC-TABLES.md §3.3).\n")
@@ -294,6 +295,24 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 		return
 	}
 	bits := ir.TableMessageValueBits(kind, shape)
+	if ir.TableKindWidth(int(kind)) == 16 {
+		// A 128-BIT VALUE CROSSES THE BIT LANE AS ITS LOW SIXTY-FOUR BITS AND
+		// THEN THE REST (the Go reference's tableMessageWriteScalar lo/hi
+		// pair): the ranged offset is taken at 128-bit width first, so a base
+		// past int64 subtracts exactly.
+		cls := g.message128Class(kind)
+		value := expr
+		if shape.Packing == ir.TableMessageRanged && shape.Base != nil && shape.Base.Sign() != 0 {
+			value = "(" + expr + " - " + message128Lit(cls, shape.Base) + ")"
+		}
+		g.pf("%s{\n%s  final v = %s;\n", ind, ind, value)
+		g.pf("%s  w.put(v.lo, %d);\n", ind, min(bits, 64))
+		if bits > 64 {
+			g.pf("%s  w.put(v.hi, %d);\n", ind, bits-64)
+		}
+		g.pf("%s}\n", ind)
+		return
+	}
 	if shape.Packing == ir.TableMessageRanged {
 		base := shape.Base
 		baseLit := "0"
@@ -304,6 +323,21 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 		return
 	}
 	g.pf("%sw.put(%s, %d);\n", ind, expr, bits)
+}
+
+// message128Class names the Dart class a 128-bit kind's value is stored in.
+func (g *fixedModule) message128Class(kind uint8) string {
+	cls := "UInt128"
+	if ir.TableKindSigned(int(kind)) {
+		cls = "Int128"
+	}
+	return cls
+}
+
+// message128Lit spells a 128-bit constant as its class's (hi, lo) pair.
+func message128Lit(cls string, v *big.Int) string {
+	lo, hi := fixed128Halves(v)
+	return fmt.Sprintf("%s(%s, %s)", cls, fixedHexLit(hi), fixedHexLit(lo))
 }
 
 func (g *fixedModule) emitMessageWriteEnum(e *ir.Enum, expr, ind string) {
@@ -368,7 +402,7 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 				g.pf("%sif (r.bits.failed) { %s; }\n", ind, bad)
 			}
 		} else if ir.TableMessageCountBits(shape) > 0 {
-			g.pf("%sfinal n = r.bits.get(%d);\n", ind, ir.TableMessageCountBits(shape))
+			g.pf("%sr.bits.get(%d);\n", ind, ir.TableMessageCountBits(shape))
 			g.pf("%sif (r.bits.failed) { %s; }\n", ind, bad)
 		}
 		if ir.TableMessageAligns(kind, shape) {
@@ -428,6 +462,24 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 		return
 	}
 	bits := ir.TableMessageValueBits(kind, shape)
+	if ir.TableKindWidth(int(kind)) == 16 {
+		// THE WRITER'S MIRROR: the low sixty-four bits, then the rest, and the
+		// ranged base added back at 128-bit width.
+		cls := g.message128Class(kind)
+		g.pf("%s{\n%s  final lo = r.bits.get(%d);\n", ind, ind, min(bits, 64))
+		hi := "0"
+		if bits > 64 {
+			g.pf("%s  final hi = r.bits.get(%d);\n", ind, bits-64)
+			hi = "hi"
+		}
+		g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
+		value := cls + "(" + hi + ", lo)"
+		if shape.Packing == ir.TableMessageRanged && shape.Base != nil && shape.Base.Sign() != 0 {
+			value += " + " + message128Lit(cls, shape.Base)
+		}
+		g.pf("%s  %s = %s;\n%s}\n", ind, expr, value, ind)
+		return
+	}
 	g.pf("%s%s = r.bits.get(%d);\n", ind, expr, bits)
 	g.pf("%sif (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
 	if shape.Packing == ir.TableMessageRanged {
@@ -437,6 +489,15 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 			baseLit = fixedIntLit(base, 8)
 		}
 		g.pf("%s%s += %s;\n", ind, expr, baseLit)
+	}
+	// THE VALUE IS RECONSTRUCTED AT ITS STORAGE WIDTH (the reference's
+	// tableMessageReadScalar writes the lane into the field's own bytes): a
+	// signed int8/int16/int32 read back from its bits is that width's two's
+	// complement, so -7 crosses as 0xfffffff9 and comes back as -7, never as
+	// 4294967289 in a 64-bit Dart int.
+	switch kind {
+	case ir.TableKindI8, ir.TableKindI16, ir.TableKindI32:
+		g.pf("%s%s = %s.toSigned(%d);\n", ind, expr, expr, 8*ir.TableKindWidth(int(kind)))
 	}
 }
 
