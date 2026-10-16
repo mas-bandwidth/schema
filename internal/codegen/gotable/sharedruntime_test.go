@@ -279,3 +279,60 @@ func TestGoSharedRuntimeIsOptionalAndEquivalent(t *testing.T) {
 		})
 	}
 }
+
+// TestGoSharedRuntimeCoversTheCorpora: every single-file table schema of the
+// repository's corpora generates with runtime=shared (a declaration the unit
+// spells differently from the package is an error, never a silent second
+// copy), its standalone output is the default output byte for byte, and the
+// shared home file is smaller than the standalone one. The count guard keeps
+// an emptied glob from passing.
+func TestGoSharedRuntimeCoversTheCorpora(t *testing.T) {
+	t.Parallel()
+	paths, err := filepath.Glob("../../../tables/*/*.schema")
+	if err != nil {
+		t.Fatal(err)
+	}
+	more, err := filepath.Glob("../../../tables/pack/*/*.schema")
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := 0
+	for _, path := range append(paths, more...) {
+		src, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		u, err := rtProbeUnit(string(src))
+		if err != nil {
+			continue // it needs a sibling file
+		}
+		base, err := Generate(u)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		if len(base) == 0 {
+			continue
+		}
+		alone, err := GenerateRuntime(u, nil, RuntimeStandalone)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		for name, want := range base {
+			if !bytes.Equal(alone[name], want) {
+				t.Fatalf("%s: standalone %s differs from the default output", path, name)
+			}
+		}
+		shared, err := GenerateRuntime(u, nil, RuntimeShared)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		home := runtimeHome(u) + "Table.go"
+		if len(shared[home]) >= len(alone[home]) {
+			t.Fatalf("%s: shared %s is %d bytes, standalone %d", path, home, len(shared[home]), len(alone[home]))
+		}
+		checked++
+	}
+	if checked < 20 {
+		t.Fatalf("only %d corpus units were checked", checked)
+	}
+}

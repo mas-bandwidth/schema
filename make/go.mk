@@ -73,7 +73,7 @@ go-runtime:
 
 tables-go-shared-runtime:
 	sh test/slowgate/proof tables-go-shared-runtime \
-		'TestGoSharedRuntimePackageIsCurrent TestGoSharedRuntimeIsOptionalAndEquivalent' \
+		'TestGoSharedRuntimePackageIsCurrent TestGoSharedRuntimeIsOptionalAndEquivalent TestGoSharedRuntimeCoversTheCorpora' \
 		./internal/codegen/gotable -run 'TestGoSharedRuntime' -count=1
 test-go: tables-go-shared-runtime
 
