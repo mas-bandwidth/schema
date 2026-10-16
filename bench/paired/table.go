@@ -1099,6 +1099,10 @@ func (b readArmBoard) markdown() string {
 	}
 	fmt.Fprintf(&w, "# host %s / arch %s/%s / %s / rev %s (%s) / serialize %s / lane %s / rounds %d\n", b.Host, b.OS, b.Arch, b.CPU, b.Revision, dirty, b.Serialize, lane, b.Rounds)
 	planMeasured := b.PlanRefusal == "" && len(b.Plan.Samples) > 0
+	if b.PlanRefusal == "" && !planMeasured {
+		// the plan build ran but the sitting stopped before a plan row
+		b.PlanRefusal = "not measured: the sitting stopped before its first plan row"
+	}
 	if planMeasured {
 		fmt.Fprintf(&w, "# corpus_id(identity) %s / corpus_id(plan) %s (one invocation, one corpus: identity, lineage and packet files)\n", b.CorpusID, b.CorpusID)
 	} else {
