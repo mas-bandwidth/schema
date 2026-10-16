@@ -1,10 +1,14 @@
 package jstable
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"testing"
 
@@ -16,44 +20,53 @@ import (
 // (internal/codegen/js emitTagUnion) to importing every table arm class its
 // storage constructor instantiates, from the unit home that defines that class
 // (<Home>Table.js when the union is in the unit's fixed-form closure, and
-// <Home>Variable.js otherwise), and round-trips every union across the table
-// corpus through its wire codec in node.
+// <Home>Variable.js otherwise), and round-trips EVERY UNION OF THE REGISTERED
+// JAVASCRIPT CORPUS through every wire it rides in node.
+//
+// THE CORPUS IS READ, NOT LISTED: every `generate --lang js` line of make/*.mk
+// and make/checks/*.mk is one unit (jsUnionCorpus), plus the units the
+// jstable leg's own tests build (jsUnionTestUnits). A schema added to a JS
+// generate line is in this gate the day it is added.
+//
+// THE CASES ARE DERIVED, NOT WRITTEN: for each union the IR says which wires
+// carry it, and the probe builds a value for each of them —
+//   - packet: a Decl union has Write<Name>/Read<Name>; every arm (None and each
+//     payload-free arm included) is constructed with `new <Name>()`, written to
+//     a faked stream (a tape: no runtime, no socket), read back into a fresh
+//     `new <Name>()` and compared;
+//   - fixed: a union in the closure of a fixed-form root is found inside a
+//     fresh `new <Root>()` by walking its pre-allocated storage, each arm is
+//     selected in turn (every enclosing union arm, count and present flag on
+//     the way set to reach it), and the root is saved and loaded through
+//     <Root>FixedSave/<Root>FixedLoad and compared;
+//   - variable: a union a carried variable-form root reaches is set, arm by
+//     payload arm, on a value built along the field path the IR names (a table
+//     arm's value is the `new <Name>()` storage class's own arm instance when
+//     the union is outside the fixed closure), saved and loaded through
+//     <Root>Save/<Root>Load and compared.
+//
+// THE GATE CANNOT BE ESCAPED: every discovered union must report a passing
+// round trip on every wire the IR says carries it, and a union no wire carries
+// fails by name — so an addition is either covered or red.
 func TestUnionClassesImportTheTablesTheyBuild(t *testing.T) {
 	t.Parallel()
 	node := jsNode(t)
 
-	corpusUnits := []struct {
-		name  string
-		paths []string
-	}{
-		{"backend", []string{repoPath("tables/backend")}},
-		{"messages", []string{repoPath("tables/messages")}},
-		{"m1", []string{repoPath("test/tables/M1.schema")}},
-		{"m2", []string{repoPath("test/tables/M2.schema")}},
-		{"stream", []string{repoPath("tables/stream")}},
-		{"examples", []string{repoPath("tables/examples")}},
-		{"v1", []string{repoPath("test/tables/V1.schema")}},
-		{"v2", []string{repoPath("test/tables/V2.schema")}},
-		{"r1", []string{repoPath("test/tables/R1.schema")}},
-		{"r2", []string{repoPath("test/tables/R2.schema")}},
-		{"a1", []string{repoPath("test/tables/A1.schema")}},
-		{"a2", []string{repoPath("test/tables/A2.schema")}},
-		{"rt1", []string{repoPath("test/tables/RT1.schema")}},
-		{"rt2", []string{repoPath("test/tables/RT2.schema")}},
-		{"lists", []string{repoPath("tables/lists")}},
-		{"maps", []string{repoPath("tables/maps")}},
-		{"arms", []string{repoPath("tables/arms")}},
-	}
-
+	units := append(jsUnionCorpus(t), jsUnionTestUnits()...)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte("{\"type\":\"module\"}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "harness.mjs"), []byte(unionProbeHarness), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
-	var checks strings.Builder
-	unionCount := 0
-
-	for _, cu := range corpusUnits {
+	// expected[key] is the set of wires the IR says carry the union
+	expected := map[string]map[string]bool{}
+	var main strings.Builder
+	main.WriteString("import { report } from \"./harness.mjs\";\n")
+	for i, cu := range units {
+		sub := fmt.Sprintf("u%02d", i)
 		u := loadUnitPaths(t, cu.paths)
 		files, err := js.Generate(u)
 		if err != nil {
@@ -66,51 +79,598 @@ func TestUnionClassesImportTheTablesTheyBuild(t *testing.T) {
 		for k, v := range tables {
 			files[k] = v
 		}
-		sub := filepath.Join(dir, cu.name)
-		if err := os.MkdirAll(sub, 0o700); err != nil {
-			t.Fatal(err)
-		}
 		for name, data := range files {
-			if strings.Contains(name, "/") {
-				continue
+			p := filepath.Join(dir, sub, filepath.FromSlash(name))
+			if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(sub, name), data, 0o600); err != nil {
+			if err := os.WriteFile(p, data, 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}
-		for _, f := range u.Files {
-			var allUnions []*ir.Union
-			for _, d := range f.Decls {
-				if un, ok := d.(*ir.Union); ok {
-					allUnions = append(allUnions, un)
-				}
+		probe, exp := unionUnitProbe(cu.name, u, files)
+		if len(exp) == 0 {
+			continue
+		}
+		for k, v := range exp {
+			expected[k] = v
+		}
+		if err := os.WriteFile(filepath.Join(dir, sub, "probe.mjs"), []byte(probe), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(&main, "await import(\"./%s/probe.mjs\").catch((e) => report.fail(%q, \"import\", e));\n", sub, cu.name)
+	}
+	main.WriteString("console.log(JSON.stringify(report.result()));\n")
+	if len(expected) == 0 {
+		t.Fatal("no unions discovered in the registered JavaScript corpus")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(main.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(node, filepath.Join(dir, "probe.mjs"))
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("union probe did not run: %v\n%s", err, out)
+	}
+	var res struct {
+		Covered  map[string][]string `json:"covered"`
+		Failures []string            `json:"failures"`
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &res); err != nil {
+		t.Fatalf("union probe output is not its report: %v\n%s", err, out)
+	}
+	for _, f := range res.Failures {
+		t.Errorf("union round trip failed: %s", f)
+	}
+	keys := make([]string, 0, len(expected))
+	for k := range expected {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	wires := 0
+	for _, k := range keys {
+		got := map[string]bool{}
+		for _, w := range res.Covered[k] {
+			got[w] = true
+		}
+		if len(expected[k]) == 0 {
+			t.Errorf("union %s: no JavaScript wire carries it, so nothing round-trips it — give it a case or say why not", k)
+		}
+		t.Logf("%s: %s", k, strings.Join(res.Covered[k], " "))
+		for w := range expected[k] {
+			if !got[w] {
+				t.Errorf("union %s: no passing %s round trip", k, w)
 			}
-			allUnions = append(allUnions, f.TableUnions...)
-			if len(allUnions) == 0 {
+			wires++
+		}
+	}
+	t.Logf("unions round-tripped: %d across %d units, %d union-wire cases", len(keys), len(units), wires)
+}
+
+type unionCorpusUnit struct {
+	name  string
+	paths []string
+}
+
+// jsGenerateLine is one registered JavaScript generation: the inputs after
+// `--out <dir>`.
+var jsGenerateLine = regexp.MustCompile(`generate --lang js --out \S+ (.+)$`)
+
+// jsUnionDerived maps an input the make wiring derives under build/ to the
+// checked-in source it is made from. A build/ input missing here fails the
+// test rather than leaving its unions out.
+var jsUnionDerived = map[string]string{
+	// make/checks/packet-text.mk: cp examples-wide/WideText.schema
+	"build/packet-wide/source/WideText.schema": "examples-wide/WideText.schema",
+	// make/js.mk tables-js-runtime-home: tables/examples plus a one-field AaaRow table
+	"build/runtime-home-js/src": "tables/examples",
+}
+
+// jsUnionCorpus reads every `generate --lang js` line of the make wiring
+// (make/*.mk, make/checks/*.mk) and returns each distinct input set once.
+func jsUnionCorpus(t *testing.T) []unionCorpusUnit {
+	t.Helper()
+	var mks []string
+	for _, g := range []string{"make/*.mk", "make/checks/*.mk"} {
+		m, err := filepath.Glob(repoPath(g))
+		if err != nil {
+			t.Fatal(err)
+		}
+		mks = append(mks, m...)
+	}
+	sort.Strings(mks)
+	seen := map[string]bool{}
+	var out []unionCorpusUnit
+	for _, mk := range mks {
+		f, err := os.Open(mk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sc := bufio.NewScanner(f)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		var line strings.Builder
+		for sc.Scan() {
+			s := sc.Text()
+			if strings.HasSuffix(s, "\\") {
+				line.WriteString(strings.TrimSuffix(s, "\\"))
+				line.WriteString(" ")
 				continue
 			}
-			modVar := fmt.Sprintf("mod_%s_%s", cu.name, f.Base)
-			checks.WriteString(fmt.Sprintf("const %s = await import(\"./%s/%s.js\");\n", modVar, cu.name, f.Base))
-			for _, un := range allUnions {
-				checks.WriteString(fmt.Sprintf("{\n  const u = new %s.%s();\n  assert.strictEqual(u.Type, %s.%sType.None);\n", modVar, un.Name, modVar, un.Name))
-				for _, v := range un.Variants {
-					if v.Void() {
-						continue
-					}
-					checks.WriteString(fmt.Sprintf("  assert.notStrictEqual(u.%s, undefined);\n", ir.GoExportName(v.Name)))
+			line.WriteString(s)
+			full := line.String()
+			line.Reset()
+			m := jsGenerateLine.FindStringSubmatch(full)
+			if m == nil {
+				continue
+			}
+			var inputs []string
+			for _, tok := range strings.Fields(m[1]) {
+				if strings.HasPrefix(tok, ">") || strings.HasPrefix(tok, "2>") || tok == "&&" || tok == ";" || tok == "||" || tok == "|" {
+					break
 				}
-				checks.WriteString("}\n")
-				unionCount++
+				tok = strings.TrimSuffix(tok, ";")
+				if strings.Contains(tok, "$") {
+					t.Fatalf("%s: a js generate input the test cannot resolve: %q in %q", mk, tok, full)
+				}
+				if strings.HasPrefix(tok, "build/") {
+					src, ok := jsUnionDerived[tok]
+					if !ok {
+						t.Fatalf("%s: js generate input %s is derived under build/ and has no source in jsUnionDerived: name the checked-in schema it is made from", mk, tok)
+					}
+					tok = src
+				}
+				inputs = append(inputs, tok)
+			}
+			if len(inputs) == 0 {
+				t.Fatalf("%s: a js generate line with no input: %q", mk, full)
+			}
+			key := strings.Join(inputs, " ")
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			paths := make([]string, len(inputs))
+			for i, in := range inputs {
+				paths[i] = repoPath(in)
+			}
+			out = append(out, unionCorpusUnit{name: key, paths: paths})
+		}
+		if err := sc.Err(); err != nil {
+			t.Fatal(err)
+		}
+		f.Close()
+	}
+	if len(out) == 0 {
+		t.Fatal("no `generate --lang js` line found in make/*.mk")
+	}
+	return out
+}
+
+// jsUnionTestUnits are the union-bearing units this leg's own go tests build
+// rather than a make rule (mapsarms_test.go, the A/RT pairs).
+func jsUnionTestUnits() []unionCorpusUnit {
+	var out []unionCorpusUnit
+	for _, p := range []string{"tables/lists", "tables/maps", "tables/arms", "test/tables/A1.schema", "test/tables/A2.schema", "test/tables/RT1.schema", "test/tables/RT2.schema"} {
+		out = append(out, unionCorpusUnit{name: p, paths: []string{repoPath(p)}})
+	}
+	return out
+}
+
+// unionUnitProbe writes one unit's probe module and returns, per union key,
+// the wires the IR says carry it.
+func unionUnitProbe(name string, u *ir.Unit, files map[string][]byte) (string, map[string]map[string]bool) {
+	type unionAt struct {
+		un     *ir.Union
+		base   string
+		packet bool
+	}
+	var unions []unionAt
+	for _, f := range u.Files {
+		for _, d := range f.Decls {
+			if un, ok := d.(*ir.Union); ok {
+				unions = append(unions, unionAt{un, f.Base, true})
+			}
+		}
+		for _, un := range f.TableUnions {
+			unions = append(unions, unionAt{un, f.Base, false})
+		}
+	}
+	exp := map[string]map[string]bool{}
+	if len(unions) == 0 {
+		return "", exp
+	}
+
+	home := runtimeHome(u)
+	fixedRootsAll := jsFixedUnitRoots(u)
+	fixedUnions := unionFixedClosure(fixedRootsAll)
+	varHome := home + "Variable.js"
+	var varRoots []*ir.Struct
+	if _, ok := files[varHome]; ok {
+		vc := newVariableClass(u)
+		for _, f := range u.Files {
+			for _, st := range variableRoots(u, f.Tables) {
+				if vc.carried(st.Name) {
+					varRoots = append(varRoots, st)
+				}
 			}
 		}
 	}
-	if unionCount == 0 {
-		t.Fatal("no unions discovered in corpus")
+	vb := &unionVarBuilder{g: &variableGen{unit: u, variable: ir.VariableTables(u)}, fixed: fixedUnions}
+
+	var p strings.Builder
+	p.WriteString("import { report, roundTripPacket, roundTripFixed, roundTripVariable, locateUnion, applySteps } from \"../harness.mjs\";\n")
+	bases := map[string]bool{}
+	for _, ua := range unions {
+		bases[ua.base] = true
 	}
+	baseList := make([]string, 0, len(bases))
+	for b := range bases {
+		baseList = append(baseList, b)
+	}
+	sort.Strings(baseList)
+	for _, b := range baseList {
+		fmt.Fprintf(&p, "const __m_%s = await import(\"./%s.js\");\n", b, b)
+	}
+	if len(varRoots) > 0 {
+		fmt.Fprintf(&p, "const __V = await import(\"./%s\");\n", varHome)
+		var names []string
+		for n := range u.Tables {
+			names = append(names, n)
+		}
+		for n := range u.Structs {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		fmt.Fprintf(&p, "const { %s } = __V;\n", strings.Join(names, ", "))
+	}
+	// the union registry the fixed walk recognises an enclosing union by
+	p.WriteString("const __unions = new Map([\n")
+	for _, ua := range unions {
+		fmt.Fprintf(&p, "  [__m_%s.%s, __m_%s.%sType],\n", ua.base, ua.un.Name, ua.base, ua.un.Name)
+	}
+	p.WriteString("]);\n")
 
-	probe := fmt.Sprintf(`import assert from "node:assert/strict";
+	for _, ua := range unions {
+		key := name + ":" + ua.un.Name
+		want := map[string]bool{}
+		exp[key] = want
+		mod := "__m_" + ua.base
+		cls := mod + "." + ua.un.Name
+		tag := mod + "." + ua.un.Name + "Type"
+		var arms []string
+		var payloadArms []ir.UnionVariant
+		arms = append(arms, "\"None\"")
+		for _, v := range ua.un.Variants {
+			arms = append(arms, fmt.Sprintf("%q", ir.GoExportName(v.Name)))
+			if !v.Void() {
+				payloadArms = append(payloadArms, v)
+			}
+		}
+		armList := "[" + strings.Join(arms, ", ") + "]"
 
-function roundTripFixed(make, mut, measure, save, load, newPlan, makeReport) {
+		// construction: the storage class's constructor builds every arm
+		fmt.Fprintf(&p, "report.run(%q, \"construct\", () => {\n  const u = new %s();\n  if (u.Type !== %s.None) { throw new Error(\"fresh union is not None\"); }\n", key, cls, tag)
+		for _, v := range payloadArms {
+			fmt.Fprintf(&p, "  if (u.%s === undefined) { throw new Error(\"arm %s has no storage\"); }\n", ir.GoExportName(v.Name), v.Name)
+		}
+		p.WriteString("});\n")
+
+		if ua.packet {
+			want["packet"] = true
+			fmt.Fprintf(&p, "report.run(%q, \"packet\", () => roundTripPacket(%s, %s, %s.Write%s, %s.Read%s, %s));\n",
+				key, cls, tag, mod, ua.un.Name, mod, ua.un.Name, armList)
+		}
+		if fixedUnions[ua.un.Name] {
+			want["fixed"] = true
+			var roots []string
+			for _, st := range fixedRootsAll {
+				api := ""
+				for _, f := range u.Files {
+					for _, tb := range f.Tables {
+						if tb == st {
+							api = f.Base + "Table.js"
+						}
+					}
+				}
+				roots = append(roots, fmt.Sprintf("[%q, %q]", st.Name, api))
+			}
+			fmt.Fprintf(&p, "await report.runAsync(%q, \"fixed\", async () => {\n", key)
+			fmt.Fprintf(&p, "  const home = await import(\"./%sTable.js\");\n", home)
+			fmt.Fprintf(&p, "  for (const [root, api] of [%s]) {\n", strings.Join(roots, ", "))
+			p.WriteString("    const r = await import(\"./\" + api);\n")
+			fmt.Fprintf(&p, "    const steps = locateUnion(new home[root](), %s, __unions);\n", cls)
+			p.WriteString("    if (steps === null) { continue; }\n")
+			fmt.Fprintf(&p, "    for (const arm of %s) {\n", armList)
+			fmt.Fprintf(&p, "      roundTripFixed(() => new home[root](), (v) => { applySteps(v, steps).Type = %s[arm]; }, r[root + \"FixedMeasure\"], r[root + \"FixedSave\"], r[root + \"FixedLoad\"], r[root + \"FixedNewPlan\"], () => new home.TableFixedReport());\n", tag)
+			p.WriteString("    }\n    return;\n  }\n  throw new Error(\"no fixed root's storage holds it\");\n});\n")
+		}
+		var root *ir.Struct
+		for _, st := range varRoots {
+			if vb.reachesStruct(st, ua.un, map[string]bool{}) {
+				root = st
+				break
+			}
+		}
+		if root != nil && len(payloadArms) > 0 {
+			want["variable"] = true
+			fmt.Fprintf(&p, "report.run(%q, \"variable\", () => {\n", key)
+			for _, v := range payloadArms {
+				val := vb.armValue(ua.un, v, cls, 0)
+				build := vb.structValue(root, ua.un, val, map[string]bool{})
+				fmt.Fprintf(&p, "  roundTripVariable(() => %s, __V.%sSave, __V.%sLoad, () => new __V.TableVariableReport());\n", build, root.Name, root.Name)
+			}
+			p.WriteString("});\n")
+		}
+	}
+	return p.String(), exp
+}
+
+// unionFixedClosure is every union a fixed-form root's closure reaches: by a
+// field, through an arm, through a nested union's arm.
+func unionFixedClosure(roots []*ir.Struct) map[string]bool {
+	out := map[string]bool{}
+	seen := map[string]bool{}
+	var visitStruct func(st *ir.Struct)
+	var visitUnion func(un *ir.Union)
+	visitField := func(f *ir.Field) {
+		if f == nil || f.Type.Kind != ir.TNamed {
+			return
+		}
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			visitStruct(r)
+		case *ir.Union:
+			visitUnion(r)
+		}
+	}
+	visitStruct = func(st *ir.Struct) {
+		if seen[st.Name] {
+			return
+		}
+		seen[st.Name] = true
+		for _, f := range st.Fields {
+			visitField(f)
+		}
+	}
+	visitUnion = func(un *ir.Union) {
+		if out[un.Name] {
+			return
+		}
+		out[un.Name] = true
+		for _, v := range un.Variants {
+			visitField(v.F)
+		}
+	}
+	for _, st := range roots {
+		visitStruct(st)
+	}
+	return out
+}
+
+// unionVarBuilder renders, from the IR, a variable-form root value whose one
+// path reaches a target union set to a chosen arm. Every other field is the
+// table class's own declared default (variableGen.defaultExpr).
+type unionVarBuilder struct {
+	g     *variableGen
+	fixed map[string]bool
+}
+
+func (b *unionVarBuilder) reachesField(f *ir.Field, target *ir.Union, seen map[string]bool) bool {
+	if f == nil {
+		return false
+	}
+	if f.IsMap() {
+		return b.reachesField(f.MapEntry.Fields[len(f.MapEntry.Fields)-1], target, seen)
+	}
+	if un := unionOf(f); un != nil {
+		return b.reachesUnion(un, target, seen)
+	}
+	if st := tableOf(f); st != nil {
+		return b.reachesStruct(st, target, seen)
+	}
+	return false
+}
+
+func (b *unionVarBuilder) reachesStruct(st *ir.Struct, target *ir.Union, seen map[string]bool) bool {
+	if seen["s:"+st.Name] {
+		return false
+	}
+	seen["s:"+st.Name] = true
+	for _, f := range st.Fields {
+		if b.reachesField(f, target, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *unionVarBuilder) reachesUnion(un, target *ir.Union, seen map[string]bool) bool {
+	if un == target {
+		return true
+	}
+	if seen["u:"+un.Name] {
+		return false
+	}
+	seen["u:"+un.Name] = true
+	for _, v := range un.Variants {
+		if v.Body() {
+			if b.reachesStruct(v.Ref, target, seen) {
+				return true
+			}
+			continue
+		}
+		if b.reachesField(v.F, target, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+// structValue is a `new <St>()` whose first field reaching target holds val.
+func (b *unionVarBuilder) structValue(st *ir.Struct, target *ir.Union, val string, seen map[string]bool) string {
+	for _, f := range st.Fields {
+		if b.reachesField(f, target, map[string]bool{"s:" + st.Name: true}) {
+			return fmt.Sprintf("((t) => { t.%s = %s; return t; })(new __V.%s())", f.Name, b.fieldValue(f, target, val), st.Name)
+		}
+	}
+	return "new __V." + st.Name + "()"
+}
+
+// fieldValue is a value of field f's whole shape (map, array, optional or
+// plain) holding val at the one element on the path.
+func (b *unionVarBuilder) fieldValue(f *ir.Field, target *ir.Union, val string) string {
+	if f.IsMap() {
+		key, value := f.MapEntry.Fields[0], f.MapEntry.Fields[len(f.MapEntry.Fields)-1]
+		return fmt.Sprintf("new Map([[%s, %s]])", b.g.defaultExpr(key), b.fieldValue(value, target, val))
+	}
+	elem := b.elemValue(f, target, val)
+	switch {
+	case f.KeyEnum != "" || f.Array == ir.ArrayFixed:
+		return fmt.Sprintf("Array.from({ length: %d }, () => (%s))", f.ArrayBound, elem)
+	case f.Array != ir.ArrayNone:
+		n := f.ArrayMin
+		if n < 1 {
+			n = 1
+		}
+		return fmt.Sprintf("Array.from({ length: %d }, () => (%s))", n, elem)
+	}
+	return elem
+}
+
+func (b *unionVarBuilder) elemValue(f *ir.Field, target *ir.Union, val string) string {
+	if un := unionOf(f); un != nil {
+		if un == target {
+			return val
+		}
+		for _, v := range un.Variants {
+			if v.Body() && b.reachesStruct(v.Ref, target, map[string]bool{"u:" + un.Name: true}) {
+				return fmt.Sprintf("{ arm: %s, value: %s }", jsStr(v.Name), b.structValue(v.Ref, target, val, nil))
+			}
+			if !v.Void() && !v.Body() && b.reachesField(v.F, target, map[string]bool{"u:" + un.Name: true}) {
+				return fmt.Sprintf("{ arm: %s, value: %s }", jsStr(v.Name), b.fieldValue(v.F, target, val))
+			}
+		}
+	}
+	if st := tableOf(f); st != nil {
+		return b.structValue(st, target, val, nil)
+	}
+	return b.g.defaultExpr(f)
+}
+
+// armValue is `{ arm, value }` for one payload arm of un: a by-value table
+// arm takes the storage class's own instance (`new <Union>().<Arm>`) when the
+// union is outside the fixed closure, so the value round-tripped is the one
+// the class constructor built.
+func (b *unionVarBuilder) armValue(un *ir.Union, v ir.UnionVariant, cls string, depth int) string {
+	return fmt.Sprintf("{ arm: %s, value: %s }", jsStr(v.Name), b.armPayload(un, v, cls, depth))
+}
+
+func (b *unionVarBuilder) armPayload(un *ir.Union, v ir.UnionVariant, cls string, depth int) string {
+	switch {
+	case v.Body():
+		if !b.fixed[un.Name] && cls != "" {
+			return fmt.Sprintf("new %s().%s", cls, ir.GoExportName(v.Name))
+		}
+		return "new __V." + v.Ref.Name + "()"
+	case v.F.Array == ir.ArrayNone && v.F.Type.Pointer && tableOf(v.F) != nil:
+		return "new __V." + tableOf(v.F).Name + "()"
+	case v.F.Array == ir.ArrayNone && v.F.Type.Pointer && v.F.Type.Kind == ir.TString:
+		return "\"x\""
+	case v.F.Array == ir.ArrayNone && v.F.Type.Pointer && v.F.Type.Kind == ir.TBytes:
+		return "new Uint8Array([1])"
+	case v.F.Array == ir.ArrayNone && unionOf(v.F) != nil && depth < 4:
+		inner := unionOf(v.F)
+		for _, iv := range inner.Variants {
+			if !iv.Void() {
+				return b.armValue(inner, iv, "", depth+1)
+			}
+		}
+	}
+	return b.g.defaultExpr(v.F)
+}
+
+// unionProbeHarness is the node side: the faked packet stream, the three
+// round trips, the fixed storage walk and the report.
+const unionProbeHarness = `import assert from "node:assert/strict";
+
+const covered = new Map();
+const failures = [];
+export const report = {
+  pass(key, wire) {
+    if (!covered.has(key)) { covered.set(key, []); }
+    covered.get(key).push(wire);
+  },
+  fail(key, wire, e) {
+    failures.push(key + " [" + wire + "]: " + (e && e.stack ? e.stack.split("\n").slice(0, 3).join(" | ") : String(e)));
+  },
+  run(key, wire, fn) {
+    try { fn(); this.pass(key, wire); } catch (e) { this.fail(key, wire, e); }
+  },
+  async runAsync(key, wire, fn) {
+    try { await fn(); this.pass(key, wire); } catch (e) { this.fail(key, wire, e); }
+  },
+  result() { return { covered: Object.fromEntries(covered), failures }; },
+};
+
+// THE TAPE: a faked serialize.js stream. Writing records each value the codec
+// hands it, reading hands them back in order; no runtime, no socket. What it
+// pins is that Write and Read walk the union the same way and that Read lands
+// what Write saw.
+class Tape {
+  constructor(tape) { this.reading = tape !== undefined; this.tape = tape || []; this.at = 0; this.error = null; }
+  take(ref) {
+    if (this.reading) {
+      if (this.at >= this.tape.length) { return false; }
+      ref.value = this.tape[this.at++];
+    } else {
+      this.tape.push(ref.value);
+    }
+    return true;
+  }
+  serializeAlign() { return true; }
+  serializeBytes(buf) {
+    if (this.reading) {
+      if (this.at >= this.tape.length) { return false; }
+      buf.set(this.tape[this.at++]);
+    } else {
+      this.tape.push(Uint8Array.from(buf));
+    }
+    return true;
+  }
+}
+
+// every other serialize<Kind>(ref, ...) the codec calls rides the tape as the
+// value it holds, so a width or a range the runtime grows is carried unseen
+function tape(t) {
+  return new Proxy(t, {
+    get(target, prop, recv) {
+      if (prop in target) { return Reflect.get(target, prop, recv); }
+      if (typeof prop === "string" && prop.startsWith("serialize")) { return (ref) => target.take(ref); }
+      return undefined;
+    },
+  });
+}
+
+export function roundTripPacket(Cls, Tag, write, read, arms) {
+  assert.equal(typeof write, "function", "no Write function");
+  assert.equal(typeof read, "function", "no Read function");
+  for (const arm of arms) {
+    const src = new Cls();
+    src.Type = Tag[arm];
+    const w = new Tape();
+    assert.ok(write(tape(w), src), "write " + arm);
+    const dst = new Cls();
+    const r = new Tape(w.tape);
+    assert.ok(read(tape(r), dst), "read " + arm);
+    assert.equal(r.at, w.tape.length, "read consumed what write wrote: " + arm);
+    assert.deepStrictEqual(dst, src, "arm " + arm);
+  }
+}
+
+export function roundTripFixed(make, mut, measure, save, load, newPlan, makeReport) {
   const src = make();
   mut(src);
   const buf = new Uint8Array(measure(1));
@@ -126,11 +686,10 @@ function roundTripFixed(make, mut, measure, save, load, newPlan, makeReport) {
   assert.deepStrictEqual(dst[0], src);
 }
 
-function roundTripVariable(make, mut, save, load, makeReport) {
+export function roundTripVariable(make, save, load, makeReport) {
   const src = make();
-  mut(src);
   const bytes = save(src);
-  assert.ok(bytes instanceof Uint8Array && bytes.length > 0);
+  assert.ok(bytes instanceof Uint8Array && bytes.length > 0, "save wrote nothing");
   const rrep = makeReport();
   const dst = load(bytes, rrep);
   assert.strictEqual(rrep.malformed, false);
@@ -138,227 +697,44 @@ function roundTripVariable(make, mut, save, load, makeReport) {
   assert.deepStrictEqual(dst, src);
 }
 
-%s
-
-// 1. backend: Payload in Envelope
-{
-  const home = await import("./backend/BackenddemoTable.js");
-  const root = await import("./backend/BackendTable.js");
-  roundTripFixed(() => new home.Envelope(), (e) => {
-    e.Payload.Type = mod_backend_Backend.PayloadType.Login;
-    e.Payload.Login.PlayerId = 9001n;
-    e.Payload.Login.ClientBuild = 42;
-  }, root.EnvelopeFixedMeasure, root.EnvelopeFixedSave, root.EnvelopeFixedLoad, root.EnvelopeFixedNewPlan, () => new home.TableFixedReport());
+// locateUnion walks a fresh fixed root's pre-allocated storage to the first
+// instance of Target and returns the steps that make it reachable on the wire
+// (an enclosing union's tag, an array count, an optional's present flag), each
+// as [path from the root to the holder, setter]; the last step's holder is the
+// union itself. null when the root does not hold it.
+export function locateUnion(obj, Target, unions, path = []) {
+  if (obj instanceof Target) { return [[path, () => {}]]; }
+  const ownerTag = unions.get(obj.constructor);
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    if (val === null || typeof val !== "object" || ArrayBuffer.isView(val) || val instanceof Map) { continue; }
+    const pre = [];
+    if (ownerTag !== undefined) {
+      if (ownerTag[key] === undefined) { continue; }
+      pre.push([path, (h) => { h.Type = ownerTag[key]; }]);
+    }
+    if ((key + "Present") in obj) { pre.push([path, (h) => { h[key + "Present"] = true; }]); }
+    if (Array.isArray(val)) {
+      if (val.length === 0 || val[0] === null || typeof val[0] !== "object") { continue; }
+      if ((key + "Count") in obj) { pre.push([path, (h) => { h[key + "Count"] = Math.max(h[key + "Count"], 1); }]); }
+      const sub = locateUnion(val[0], Target, unions, [...path, key, 0]);
+      if (sub !== null) { return [...pre, ...sub]; }
+      continue;
+    }
+    const sub = locateUnion(val, Target, unions, [...path, key]);
+    if (sub !== null) { return [...pre, ...sub]; }
+  }
+  return null;
 }
 
-// 2. messages: Origin, EditBody in Edit; ToolBody in ToolMessage
-{
-  const home = await import("./messages/MessagedemoTable.js");
-  const root = await import("./messages/MessagesTable.js");
-  roundTripFixed(() => new home.Edit(), (m) => {
-    m.Revision = 3;
-    m.Body.Type = mod_messages_Messages.EditBodyType.Insert;
-    m.Body.Insert.At.Line = 12;
-    m.Body.Insert.Origin.Type = mod_messages_Messages.OriginType.User;
-    m.Body.Insert.Origin.User.Name[0] = 65;
-    m.Body.Insert.Origin.User.NameLength = 1;
-  }, root.EditFixedMeasure, root.EditFixedSave, root.EditFixedLoad, root.EditFixedNewPlan, () => new home.TableFixedReport());
-
-  roundTripFixed(() => new home.ToolMessage(), (m) => {
-    m.Sequence = 5;
-    m.Body.Type = mod_messages_Messages.ToolBodyType.Open;
-    m.Body.Open.Path[0] = 97;
-    m.Body.Open.PathLength = 1;
-  }, root.ToolMessageFixedMeasure, root.ToolMessageFixedSave, root.ToolMessageFixedLoad, root.ToolMessageFixedNewPlan, () => new home.TableFixedReport());
+// applySteps runs locateUnion's steps on a fresh root and returns the union.
+export function applySteps(root, steps) {
+  let holder = root;
+  for (const [path, set] of steps) {
+    holder = root;
+    for (const k of path) { holder = holder[k]; }
+    set(holder);
+  }
+  return holder;
 }
-
-// 3. m1 & m2: Body in Msg
-{
-  const home1 = await import("./m1/Tblm1Table.js");
-  const root1 = await import("./m1/M1Table.js");
-  roundTripFixed(() => new home1.Msg(), (m) => {
-    m.Seq = 11;
-    m.Body.Type = mod_m1_M1.BodyType.Open;
-    m.Body.Open.Path[0] = 120;
-    m.Body.Open.PathLength = 1;
-  }, root1.MsgFixedMeasure, root1.MsgFixedSave, root1.MsgFixedLoad, root1.MsgFixedNewPlan, () => new home1.TableFixedReport());
-
-  const home2 = await import("./m2/Tblm2Table.js");
-  const root2 = await import("./m2/M2Table.js");
-  roundTripFixed(() => new home2.Msg(), (m) => {
-    m.Seq = 22;
-    m.Body.Type = mod_m2_M2.BodyType.Close;
-    m.Body.Close.Path[0] = 121;
-    m.Body.Close.PathLength = 1;
-  }, root2.MsgFixedMeasure, root2.MsgFixedSave, root2.MsgFixedLoad, root2.MsgFixedNewPlan, () => new home2.TableFixedReport());
-}
-
-// 4. stream: Frame in Feed (variable form)
-{
-  const v = await import("./stream/StreamdemoVariable.js");
-  roundTripVariable(() => new v.Feed(), (f) => {
-    const h = new v.Header();
-    h.name = "hello";
-    f.frame = { arm: "header", value: h };
-    const c = new v.Chunk();
-    c.data = new Uint8Array([1, 2, 3]);
-    f.parts = [c];
-  }, v.FeedSave, v.FeedLoad, () => new v.TableVariableReport());
-}
-
-// 5. examples, v1, v2, r1, r2: Effect
-{
-  const homeEx = await import("./examples/TabledemoTable.js");
-  const rootEx = await import("./examples/TablesTable.js");
-  roundTripFixed(() => new homeEx.WeaponConfig(), (w) => {
-    w.Effect.Type = mod_examples_Tables.EffectType.Debuff;
-    w.Effect.Debuff.Amount = 15;
-  }, rootEx.WeaponConfigFixedMeasure, rootEx.WeaponConfigFixedSave, rootEx.WeaponConfigFixedLoad, rootEx.WeaponConfigFixedNewPlan, () => new homeEx.TableFixedReport());
-
-  const homeV1 = await import("./v1/Tblv1Table.js");
-  const rootV1 = await import("./v1/V1Table.js");
-  roundTripFixed(() => new homeV1.Cfg(), (c) => {
-    c.Effect.Type = mod_v1_V1.EffectType.Boost;
-    c.Effect.Boost.Power = 19;
-  }, rootV1.CfgFixedMeasure, rootV1.CfgFixedSave, rootV1.CfgFixedLoad, rootV1.CfgFixedNewPlan, () => new homeV1.TableFixedReport());
-
-  const homeV2 = await import("./v2/Tblv2Table.js");
-  const rootV2 = await import("./v2/V2Table.js");
-  roundTripFixed(() => new homeV2.Cfg(), (c) => {
-    c.Effect.Type = mod_v2_V2.EffectType.Boost;
-    c.Effect.Boost.Power = 23;
-  }, rootV2.CfgFixedMeasure, rootV2.CfgFixedSave, rootV2.CfgFixedLoad, rootV2.CfgFixedNewPlan, () => new homeV2.TableFixedReport());
-
-  const homeR1 = await import("./r1/Tblr1Table.js");
-  const rootR1 = await import("./r1/R1Table.js");
-  roundTripFixed(() => new homeR1.Cfg(), (c) => {
-    c.Effect.Type = mod_r1_R1.EffectType.Boost;
-    c.Effect.Boost.Power = 31;
-  }, rootR1.CfgFixedMeasure, rootR1.CfgFixedSave, rootR1.CfgFixedLoad, rootR1.CfgFixedNewPlan, () => new homeR1.TableFixedReport());
-
-  const homeR2 = await import("./r2/Tblr2Table.js");
-  const rootR2 = await import("./r2/R2Table.js");
-  roundTripFixed(() => new homeR2.Cfg(), (c) => {
-    c.Effect.Type = mod_r2_R2.EffectType.Boost;
-    c.Effect.Boost.Power = 37;
-  }, rootR2.CfgFixedMeasure, rootR2.CfgFixedSave, rootR2.CfgFixedLoad, rootR2.CfgFixedNewPlan, () => new homeR2.TableFixedReport());
-}
-
-// 6. a1, a2: Value in Root
-{
-  const homeA1 = await import("./a1/Tbla1Table.js");
-  const rootA1 = await import("./a1/A1Table.js");
-  roundTripFixed(() => new homeA1.Root(), (r) => {
-    r.Value.Type = mod_a1_A1.ValueType.E;
-    r.Value.E.N = 7;
-  }, rootA1.RootFixedMeasure, rootA1.RootFixedSave, rootA1.RootFixedLoad, rootA1.RootFixedNewPlan, () => new homeA1.TableFixedReport());
-
-  const homeA2 = await import("./a2/Tbla2Table.js");
-  const rootA2 = await import("./a2/A2Table.js");
-  roundTripFixed(() => new homeA2.Root(), (r) => {
-    r.Value.Type = mod_a2_A2.ValueType.E;
-    r.Value.E.N = 9;
-  }, rootA2.RootFixedMeasure, rootA2.RootFixedSave, rootA2.RootFixedLoad, rootA2.RootFixedNewPlan, () => new homeA2.TableFixedReport());
-}
-
-// 7. rt1, rt2: Pick in Node (variable) and Fitting in Parcel (fixed)
-{
-  const vRT1 = await import("./rt1/Tblrt1Variable.js");
-  roundTripVariable(() => new vRT1.Node(), (n) => {
-    const inner = new vRT1.Inner();
-    inner.hits = 4;
-    n.pick = { arm: "alpha", value: inner };
-  }, vRT1.NodeSave, vRT1.NodeLoad, () => new vRT1.TableVariableReport());
-
-  const vRT2 = await import("./rt2/Tblrt2Variable.js");
-  roundTripVariable(() => new vRT2.Node(), (n) => {
-    const inner = new vRT2.Inner();
-    inner.hits = 6;
-    n.pick = { arm: "alpha", value: inner };
-  }, vRT2.NodeSave, vRT2.NodeLoad, () => new vRT2.TableVariableReport());
-
-  const homeRT2 = await import("./rt2/Tblrt2Table.js");
-  const rootRT2 = await import("./rt2/RT2Table.js");
-  roundTripFixed(() => new homeRT2.Parcel(), (p) => {
-    p.Fit.Type = mod_rt2_RT2.FittingType.Bolt;
-    p.Fit.Bolt.Weight = 8;
-  }, rootRT2.ParcelFixedMeasure, rootRT2.ParcelFixedSave, rootRT2.ParcelFixedLoad, rootRT2.ParcelFixedNewPlan, () => new homeRT2.TableFixedReport());
-}
-
-// 8. lists: Hit in Mixed
-{
-  const v = await import("./lists/ListdemoVariable.js");
-  roundTripVariable(() => new v.Mixed(), (m) => {
-    const p = new v.Point();
-    p.x = 3;
-    p.y = 4;
-    m.hits = [{ arm: "point", value: p }];
-  }, v.MixedSave, v.MixedLoad, () => new v.TableVariableReport());
-}
-
-// 9. maps: Force in Depth
-{
-  const v = await import("./maps/MapdemoVariable.js");
-  roundTripVariable(() => new v.Depth(), (d) => {
-    const s = new v.Squad();
-    const it = new v.Item();
-    it.count = 5;
-    s.roster.set(1, it);
-    d.arm = { arm: "squad", value: s };
-  }, v.DepthSave, v.DepthLoad, () => new v.TableVariableReport());
-}
-
-// 10. arms: Carry, Reach, Inner, Outer, Slot, Slots
-{
-  const v = await import("./arms/ArmdemoVariable.js");
-  roundTripVariable(() => new v.Holder(), (h) => {
-    const lf = new v.Leaf();
-    lf.items = [10, 20];
-    h.carry = { arm: "leaf", value: lf };
-  }, v.HolderSave, v.HolderLoad, () => new v.TableVariableReport());
-
-  roundTripVariable(() => new v.Gate(), (g) => {
-    const o = new v.Only();
-    o.w = 77;
-    g.reach = { arm: "only", value: o };
-  }, v.GateSave, v.GateLoad, () => new v.TableVariableReport());
-
-  roundTripVariable(() => new v.Twig(), (tw) => {
-    const lf = new v.Leaf();
-    lf.items = [30];
-    tw.inner = { arm: "leaf", value: lf };
-  }, v.TwigSave, v.TwigLoad, () => new v.TableVariableReport());
-
-  roundTripVariable(() => new v.Nest(), (n) => {
-    const lf = new v.Leaf();
-    lf.items = [40];
-    n.outer = { arm: "inner", value: { arm: "leaf", value: lf } };
-  }, v.NestSave, v.NestLoad, () => new v.TableVariableReport());
-
-  roundTripVariable(() => new v.Ring(), (r) => {
-    const nd = new v.Node();
-    nd.v = 55;
-    r.items = [{ arm: "node", value: nd }];
-  }, v.RingSave, v.RingLoad, () => new v.TableVariableReport());
-
-  roundTripVariable(() => new v.Rack(), (r) => {
-    const nd = new v.Node();
-    nd.v = 66;
-    r.items = [{ arm: "many", value: [nd] }];
-  }, v.RackSave, v.RackLoad, () => new v.TableVariableReport());
-}
-
-console.log("unions verified: %d");
-`, checks.String(), unionCount)
-
-	probePath := filepath.Join(dir, "probe.mjs")
-	if err := os.WriteFile(probePath, []byte(probe), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.Command(node, probePath)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("union probe failed: %v\n%s", err, out)
-	}
-}
+`
