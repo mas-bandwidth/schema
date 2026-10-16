@@ -14516,9 +14516,16 @@ a variable table, `<Name>SaveText(value, context...)` takes the write context
 `<Name>Save` takes, and `<Name>LoadText(text, report)` reads into a builder of
 its own and returns the LOCKED, packed root, exactly as `<Name>ReadStrict`
 does (§6.5) — a variable value lives in a region, and the carrier hands back
-one. `report` is the tolerant read's report, nil allowed: the tolerance
-events it counts (§6.5) do not refuse, and a refusal comes back as the typed
-reason named above. Either way the carrier is byte for byte: the value
+one. **`LoadText` IS THE STRICT READ (§6.5) for both classes**: it refuses
+whenever the read's report holds an error — `TableReport.Err()`'s reason,
+`malformed`, `clamped`, `kind_mismatch`, `missing_required` and the rest —
+WHATEVER the tolerant load answered. A tolerant load can recover a value and
+still report damage (a declared list count past its payload is read as the
+prefix it carries and reported `malformed`); the carrier never hands that
+value back with a nil error. `unknown`, `widened` and `retained` alone do not
+refuse, exactly as for `ReadStrict`. `report` is optional, nil allowed; a
+supplied one receives THIS read's report, so counts already in it neither
+decide the verdict nor survive the call. Either way the carrier is byte for byte: the value
 `LoadText` returns saves to exactly the wire bytes `SaveText` encoded, and
 the value `FromJson` reads from `ToJson`'s text saves to the same bytes too.
 

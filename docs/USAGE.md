@@ -3529,8 +3529,13 @@ plain `table` alike — has two text carriers:
 Both readers refuse damaged or newer input by name. `LoadText` returns a typed
 refusal: `base64_damaged` when the body does not decode, `unknown_form` when
 the decoded wire's form byte is one this build does not carry, and
-`wire_damaged` for framing damage. `FromJson` returns false with `report` set
-`malformed` when the JSON document is damaged.
+`wire_damaged` for framing damage. `LoadText` is the strict read: it refuses
+whenever the read's report holds an error (`TableReport.Err()` — `malformed`,
+`clamped`, `kind_mismatch`, ...), even when the tolerant load recovered a
+value, so a damaged-but-recovered wire never comes back as a value with a nil
+error. `unknown`, `widened` and `retained` alone do not refuse. A supplied
+`report` receives that one read's report. `FromJson` returns false with
+`report` set `malformed` when the JSON document is damaged.
 
 For a plain (variable) table the pair has that class's shape:
 `<Name>SaveText(value, context...)` takes `Save`'s write context, and
@@ -3545,7 +3550,7 @@ what it reads back saves to the same wire bytes the original saved to
 text, err := example.ShipConfigSaveText(&ship)
 if err != nil { /* refuse */ }
 loaded, err := example.ShipConfigLoadText(text, &report)
-if err != nil { /* base64_damaged | unknown_form | wire_damaged */ }
+if err != nil { /* base64_damaged | unknown_form | wire_damaged | malformed | clamped | ... */ }
 
 // A person: the JSON form, for reading, diffing or editing.
 buf := make([]byte, example.ShipConfigToJsonMeasure(&ship))
