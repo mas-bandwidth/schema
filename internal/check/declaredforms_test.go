@@ -6,10 +6,13 @@
 package check
 
 import (
+	"bytes"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestTableFormsDeclarationIsRead(t *testing.T) {
@@ -84,6 +87,50 @@ func TestTableFormsRefusals(t *testing.T) {
 				}
 			}
 			t.Fatalf("no diagnostic contains %q; got: %v", tc.want, errs)
+		})
+	}
+}
+
+func TestDeclaredFormsLeaveTheWireAlone(t *testing.T) {
+	t.Parallel()
+	// The declaration is a property of what a table CARRIES, not of the wire:
+	// adding it must not move the wire name, the table id, the vocabulary or the
+	// build version (docs/SPEC-TABLES.md §3.1, §5). A real `was` rename
+	// composes with forms: the wire name stays the OLD name and forms still
+	// leaves it alone.
+	cases := []struct {
+		name      string
+		baseTail  string // the table line without a forms declaration
+		formsTail string // the same table line with forms added
+		wantWas   string
+	}{
+		{name: "undeclared", baseTail: "", formsTail: ` | forms = "wire,json"`, wantWas: ""},
+		{name: "after a was rename", baseTail: ` | was = "OldPong"`, formsTail: ` | was = "OldPong", forms = "wire,json"`, wantWas: "OldPong"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			base := buildUnit(t, "package t\ntable Pong"+tc.baseTail+"\n{\n    x int32\n}\n")
+			with := buildUnit(t, "package t\ntable Pong"+tc.formsTail+"\n{\n    x int32\n}\n")
+			bt := base.Tables["Pong"]
+			wt := with.Tables["Pong"]
+			if wt.WasName != tc.wantWas {
+				t.Errorf("WasName = %q, want %q", wt.WasName, tc.wantWas)
+			}
+			if !wt.DeclaredForms() || len(wt.Forms) != 2 {
+				t.Errorf("forms = %v, want [wire json]", wt.Forms)
+			}
+			if wt.WireName() != bt.WireName() {
+				t.Errorf("declaring forms moved the wire name %q -> %q", bt.WireName(), wt.WireName())
+			}
+			if !reflect.DeepEqual(ir.TableWireIds(with), ir.TableWireIds(base)) {
+				t.Error("declaring forms moved the table id set")
+			}
+			if !bytes.Equal(ir.TableVocabularyBytes(ir.TableVocabulary(with)), ir.TableVocabularyBytes(ir.TableVocabulary(base))) {
+				t.Error("declaring forms moved the vocabulary")
+			}
+			if ir.BuildVersion(with) != ir.BuildVersion(base) {
+				t.Error("declaring forms moved the build version")
+			}
 		})
 	}
 }

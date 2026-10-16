@@ -1082,6 +1082,16 @@ func (c *checker) resolveBodies() {
 				var tvalued []*ast.Attr
 				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true, "forms": true})
 				for _, a := range tvalued {
+					if a.Key == "forms" {
+						// the table's FORM declaration (docs/SPEC-TABLES.md
+						// §2.12). A `forms` is not a `was`: dispatching by key
+						// here keeps it out of the rename switch below, so a
+						// declared form never touches WasName and can never
+						// move the wire identity (docs/SPEC-TABLES.md §3.1,
+						// §5).
+						c.tableForms(d, st, a)
+						continue
+					}
 					// the table's RENAME (docs/SPEC-TABLES.md §5): its node
 					// type id stays the hash of the OLD name, so every
 					// stored record of that name still reads as this table
@@ -1095,9 +1105,6 @@ func (c *checker) resolveBodies() {
 						c.errf(a.Pos, "table %s: was = %q names the table's own current name — was records the OLD name after a rename; drop the attribute until one happens (docs/SPEC-TABLES.md §5)", d.Name, lit.Value)
 					default:
 						st.WasName = lit.Value
-					}
-					if a.Key == "forms" {
-						c.tableForms(d, st, a)
 					}
 				}
 				c.tables[d.Name] = st
