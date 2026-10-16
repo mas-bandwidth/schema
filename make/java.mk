@@ -876,6 +876,7 @@ tables-java-release:
 	# behind it — the expensive half, which is what this target is for (above).
 	$(MAKE) tables-java-versioning-negative-control
 	$(MAKE) conformance-negative-control-java-block
+	$(MAKE) conformance-negative-control-java-walk
 	$(MAKE) tables-java-fuzz-negative-control
 	$(MAKE) tables-java-block-lead-negative-control
 	$(MAKE) tables-java-cook-extent-negative-control
@@ -999,6 +1000,61 @@ conformance-negative-control-java-block: build/conformance-harness
 		  cat $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/log; exit 1; }
 	@grep -m1 "java / forgery" $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/log
 	@echo "negative control: one missing pitch check in the Java block Open turns the harness RED on forgery alone"
+
+# THE JAVA TEXT-WALK NEGATIVE CONTROL (docs/PORTING.md I11): it breaks the
+# generated fromJson's FIELD-KEY match, so every key falls through to the
+# unknown branch and the reader populates nothing. The harness must go RED on
+# `java / json-read` while `json-write` and `wire` stay green — a control that
+# turned json-write red too would be proving the reader was broken, not that
+# it CHECKS.
+CONFORMANCE_NEGATIVE_JAVA_WALK := build/conformance-negative-java-walk
+.PHONY: conformance-negative-control-java-walk
+conformance-negative-control-java-walk: build/conformance-harness
+	@rm -rf $(CONFORMANCE_NEGATIVE_JAVA_WALK) && mkdir -p $(CONFORMANCE_NEGATIVE_JAVA_WALK)
+	@go run ./tools/sabotage -name java-text-walk-field-match \
+		-out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/variableform.go.txt internal/codegen/javatable/variableform.go
+	@cmp -s internal/codegen/javatable/variableform.go $(CONFORMANCE_NEGATIVE_JAVA_WALK)/variableform.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Java text-walk sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/javatable/variableform.go":"%s/$(CONFORMANCE_NEGATIVE_JAVA_WALK)/variableform.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_JAVA_WALK)/overlay.json
+	go build -overlay $(CONFORMANCE_NEGATIVE_JAVA_WALK)/overlay.json -o $(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema ./cmd/schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/examples tables/examples
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/pointers tables/pointers
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/blobs tables/blobs
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/maps tables/maps
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/arms tables/arms
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/scalars tables/scalars
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/scalars2 test/tables/Scalars2.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/block tables/block
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/v1 test/tables/V1.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/v2 test/tables/V2.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/p1 test/tables/P1.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/p3 test/tables/P3.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/k1 test/tables/K1.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/k2 test/tables/K2.schema
+	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/*/*.java || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged fromJson"; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(CONFORMANCE_NEGATIVE_JAVA_WALK)/classes \
+		$(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/*/*.java test/conformance/java/src/Driver.java
+	@printf '#!/bin/sh\nexec %s -cp %s/classes Driver "$$@"\n' "$(JAVA)" "$(CURDIR)/$(CONFORMANCE_NEGATIVE_JAVA_WALK)" > $(CONFORMANCE_NEGATIVE_JAVA_WALK)/driver
+	@chmod +x $(CONFORMANCE_NEGATIVE_JAVA_WALK)/driver
+	@printf 'java %s/driver\n' "$(CONFORMANCE_NEGATIVE_JAVA_WALK)" > $(CONFORMANCE_NEGATIVE_JAVA_WALK)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_JAVA_WALK)/drivers.txt \
+			--work $(CONFORMANCE_NEGATIVE_JAVA_WALK)/work > $(CONFORMANCE_NEGATIVE_JAVA_WALK)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a Java reader with no field-key match left the harness green"; \
+		cat $(CONFORMANCE_NEGATIVE_JAVA_WALK)/log; exit 1; \
+	fi
+	@grep -q "java / json-read" $(CONFORMANCE_NEGATIVE_JAVA_WALK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the json-read battery"; \
+		  cat $(CONFORMANCE_NEGATIVE_JAVA_WALK)/log; exit 1; }
+	@grep -q "^json-write    pass" $(CONFORMANCE_NEGATIVE_JAVA_WALK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localise the READER"; \
+		  cat $(CONFORMANCE_NEGATIVE_JAVA_WALK)/log; exit 1; }
+	@grep -q "^wire          pass" $(CONFORMANCE_NEGATIVE_JAVA_WALK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		  cat $(CONFORMANCE_NEGATIVE_JAVA_WALK)/log; exit 1; }
+	@grep -m1 "java / json-read" $(CONFORMANCE_NEGATIVE_JAVA_WALK)/log
+	@echo "negative control: one field-key match off in the Java text walk turns the harness RED on json-read alone"
 
 # THE JAVA LEG of `make test`: the compile, standalone and zero-cost gates, the
 # readers' fuzz oracle, the byte-order leg and the reference extent gate. The
