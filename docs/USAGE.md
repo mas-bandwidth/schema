@@ -286,6 +286,17 @@ initialization on every selection, even when the tag repeats, before reading
 the payload. Mutable managed targets keep their existing arm objects and
 leave unselected arms unchanged.
 
+In C, select an arm through its generated selector, `<union>_select_<arm>`: it
+sets the tag and initializes the arm together, by the rule a read uses, and
+returns the fresh arm to populate. A payload-free arm's selector sets the tag
+alone. Assigning `type` and the arm separately still works, but a forgotten
+tag leaves `None`, and the payload is then absent from the wire with no assert:
+
+```c
+SphereCollider * sphere = collider_shape_select_sphere( &collider.shape );
+/* populate *sphere; collider.shape.type is already COLLIDER_SHAPE_TYPE_SPHERE */
+```
+
 An arm is a field line: its type is any type a field's is, and an arm may
 name no type at all, which is an arm that selects and carries nothing. A
 union inside a `type` body takes arms that name declared types, plus arms
