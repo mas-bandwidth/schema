@@ -93,7 +93,20 @@ func generateFixed(u *ir.Unit, ns string, lineage map[string][]FixedLineageEntry
 	}
 	closure := fixedClosure(roots)
 	out := map[string][]byte{}
-	out[FixedRuntimeModule+".ex"] = fixedRuntimeModule(u, ns)
+	rt := string(fixedRuntimeModule(u, ns))
+	rt = strings.ReplaceAll(rt,
+		"            acc = guarded(acc, guard ++ [{their_at, argw}], tag ++ [j + 1], {:const, aux_at, my_tag, k + 1})\n",
+		"            acc =\n              guarded(\n                acc,\n                guard ++ [{their_at, argw}],\n                tag ++ [j + 1],\n                {:const, aux_at, my_tag, k + 1}\n              )\n")
+	rt = strings.ReplaceAll(rt,
+		"  def text(used, _default, m), do: text(used, _default, m, true)\n\n  def text(used, _default, m, present) do\n    if present and not text_ok?(1, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}\n  end",
+		"  def text(used, default, m), do: text(used, default, m, true)\n\n  def text(used, default, m, present) do\n    if present and not text_ok?(1, used), do: {default, true}, else: {used, m}\n  end")
+	rt = strings.ReplaceAll(rt,
+		"  def wtext(used, _default, m), do: wtext(used, _default, m, true)\n\n  def wtext(used, _default, m, present) do\n    if present and not text_ok?(2, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}\n  end",
+		"  def wtext(used, default, m), do: wtext(used, default, m, true)\n\n  def wtext(used, default, m, present) do\n    if present and not text_ok?(2, used), do: {default, true}, else: {used, m}\n  end")
+	rt = strings.ReplaceAll(rt,
+		"          throw({:refuse, :text_ill_formed})",
+		"          step(rest, body, writes, %{report | malformed: true})")
+	out[FixedRuntimeModule+".ex"] = []byte(rt)
 	for _, f := range u.Files {
 		g := &fixedGen{unit: u, ns: ns, file: f, lineage: lineage}
 		if body := g.module(roots, closure); body != nil {
@@ -1734,22 +1747,22 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("    # refusal is caught, with no destination byte landed and every counter\n")
 	g.pf("    # left at zero.\n")
 	g.pf("    try do\n")
-	g.pf("    with :ok <- R.batch_within(byte_size(records), size + 8, bcap),\n")
-	g.pf("         {:ok, bodies} <- %s_fixed_split(records, hash, size, []) do\n", snake)
-	g.pf("      {values, report} =\n")
-	g.pf("        Enum.map_reduce(bodies, report, fn body, report ->\n")
-	g.pf("          {image, report} = R.run(plan, R.detach(body, copy), @%s_prefill, report)\n", snake)
-	g.pf("          {value, c, m} = %s_fixed_decode(image, 0, false)\n", snake)
-	g.pf("          {value, R.damaged(R.clamped(report, c), m)}\n")
-	g.pf("        end)\n\n")
-	g.pf("      # THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, and only on a read that\n")
-	g.pf("      # RETURNS (§5.9 #6): §5.4 says once per peer and never per record, and a\n")
-	g.pf("      # refusal that came after would have moved a counter.\n")
-	g.pf("      {:ok, values, R.census(report, census_u, census_k)}\n")
-	g.pf("    else\n")
-	g.pf("      {:error, :malformed} -> {:error, :malformed, %%{report | malformed: true}}\n")
-	g.pf("      {:error, why} -> {:error, why, report}\n")
-	g.pf("    end\n")
+	g.pf("      with :ok <- R.batch_within(byte_size(records), size + 8, bcap),\n")
+	g.pf("           {:ok, bodies} <- %s_fixed_split(records, hash, size, []) do\n", snake)
+	g.pf("        {values, report} =\n")
+	g.pf("          Enum.map_reduce(bodies, report, fn body, report ->\n")
+	g.pf("            {image, report} = R.run(plan, R.detach(body, copy), @%s_prefill, report)\n", snake)
+	g.pf("            {value, c, m} = %s_fixed_decode(image, 0, false)\n", snake)
+	g.pf("            {value, R.damaged(R.clamped(report, c), m)}\n")
+	g.pf("          end)\n\n")
+	g.pf("        # THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, and only on a read that\n")
+	g.pf("        # RETURNS (§5.9 #6): §5.4 says once per peer and never per record, and a\n")
+	g.pf("        # refusal that came after would have moved a counter.\n")
+	g.pf("        {:ok, values, R.census(report, census_u, census_k)}\n")
+	g.pf("      else\n")
+	g.pf("        {:error, :malformed} -> {:error, :malformed, %%{report | malformed: true}}\n")
+	g.pf("        {:error, why} -> {:error, why, report}\n")
+	g.pf("      end\n")
 	g.pf("    catch\n")
 	g.pf("      :throw, {:refuse, why} -> {:error, why, report}\n")
 	g.pf("    end\n")

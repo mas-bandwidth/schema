@@ -3,6 +3,7 @@ package gotable
 import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 	"regexp"
+	"strings"
 )
 
 // Retention has its own readers, writers and id interner. The ordinary family
@@ -145,14 +146,32 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	side.emitTableMeasure(st)
 	side.emitTableWrite(st)
 	side.emitTableRead(st)
-	side.emitMessageRead(st)
-	source := side.body.String()
-	if !retainBodyName.MatchString(source) {
+	side.into(&side.message, func() { side.emitMessageRead(st) })
+	rewrites := []string{"TableMessageReader", "TableRetainMessageReader", "TableWriter", "TableRetainWriter", "TableReader", "TableRetainReader", "TableIds", "TableRetainIds"}
+	retained := func(source string) string {
+		source = retainBodyName.ReplaceAllString(source, "${1}${2}Retain")
+		for i := 0; i < len(rewrites); i += 2 {
+			source = strings.ReplaceAll(source, rewrites[i], rewrites[i+1])
+		}
+		return source
+	}
+	// the seams fail closed on the WHOLE family, exactly as before the message
+	// half had a file of its own; each half is then rewritten alone, and the
+	// two halves must be the whole, byte for byte
+	whole := side.body.String() + side.message.String()
+	if !retainBodyName.MatchString(whole) {
 		panic("retaining body family has no source codecs")
 	}
-	source = retainBodyName.ReplaceAllString(source, "${1}${2}Retain")
-	source = tableSourceRewriter(source, "TableMessageReader", "TableRetainMessageReader", "TableWriter", "TableRetainWriter", "TableReader", "TableRetainReader", "TableIds", "TableRetainIds")
-	g.pf("%s", source)
+	whole = tableSourceRewriter(retainBodyName.ReplaceAllString(whole, "${1}${2}Retain"), rewrites...)
+	core, message := retained(side.body.String()), retained(side.message.String())
+	if core+message != whole {
+		panic("retaining body family does not split at the message form's seam")
+	}
+	g.pf("%s", core)
+	// the retaining MESSAGE read is the message form's, beside the plain one
+	if message != "" {
+		g.into(&g.message, func() { g.pf("%s", message) })
+	}
 	g.needsMath = g.needsMath || side.needsMath
 	g.unsafeUsed = true
 }

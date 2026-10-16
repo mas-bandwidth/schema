@@ -369,6 +369,15 @@ func (m *Model) writeMap(w *writer, fv *Field, depth int) error {
 		entry := fv.Entries[at].Tab
 		writeString(w, mapKeyText(f, entry))
 		w.raw(": ")
+		// AN ABSENT `map[K]?T` VALUE IS `null` (docs/SPEC-TABLES.md §2.3,
+		// §2.8, §16.2): the entry is there and its optional is not. A table
+		// field's rule, the absent key is the absence, has no key to drop
+		// here, because the object's key is the entry's. Writing the value's
+		// defaults would read back as PRESENT, which is a different value.
+		if value := &entry.Fields[1]; value.Def.Type.Optional && !value.Present {
+			w.raw("null")
+			continue
+		}
 		if err := m.writeField(w, &entry.Fields[1], depth+1); err != nil {
 			return err
 		}

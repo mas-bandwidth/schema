@@ -167,6 +167,12 @@ func tableRegionContainerEdges(h *tableContainer,f *TableFieldInfo,a *TableArena
 	return s
 }
 
+func containerRegionJsonSource(s string) string {
+	s = strings.Replace(s, "graph:=tableJsonGraph{alloc:worker.Alloc,", "graph:=tableJsonGraph{mapPlace:func(p unsafe.Pointer,f *TableFieldInfo,key tableMapKey)(unsafe.Pointer,bool){return tableMapPlace(worker,(*tableContainer)(p),f,key)},listAdd:func(p unsafe.Pointer,size int64)unsafe.Pointer{return tableContainerAppend(worker,(*tableContainer)(p),size)},alloc:worker.Alloc,", 1)
+	s = strings.ReplaceAll(s, "tableRegionEdges(e.node,e.info,func", "tableRegionEdges(e.node,e.info,nil,func")
+	return s
+}
+
 const tableContainerPackSource = `
 func tableRegionPack(root unsafe.Pointer,info *TableTypeInfo,a *TableArena) ([]byte,[]byte,bool) {
  total:=tableRegionPackMeasure(root,info,a);if total<0{return nil,nil,false};n,ok:=tableNumber(root,info,a);if !ok{return nil,nil,false};defer n.Release();size:=tablePackOffsets(&n);if size<0||size!=total{return nil,nil,false}
