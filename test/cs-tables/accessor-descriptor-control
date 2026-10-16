@@ -179,7 +179,7 @@ scalar)
     # the ONE edit is codecs.go:826; the descriptor's raw read parts company
     # with the named accessor by four, this leg's twin of "a scalar accessor
     # moved four bytes".
-    sabotage 's|GetRaw = delegate(object o, int i) { return %s; }|GetRaw = delegate(object o, int i) { return unchecked(4ul + (%s)); } /* SABOTAGED */|' \
+    sabotage 's|GetRaw = delegate (object o, int i) { return %s; }|GetRaw = delegate (object o, int i) { return unchecked(4ul + (%s)); } /* SABOTAGED */|' \
         "the accessor and the descriptor disagree about the value" \
         "one scalar accessor four bytes off"
     ;;
@@ -188,7 +188,7 @@ slot)
     # null and parts company with the named member. The first elementExpr
     # argument must be dropped too, or Fprintf's leftover verb prints
     # %!(EXTRA ...) and the generated C# does not compile.
-    sabotage 's|GetChild = delegate(object o, int i) { return %s; }, SetChild = delegate(object o, int i, object v) { %s = (%s)v; }", g.elementExpr(f), g.elementExpr(f), typ)|GetChild = delegate(object o, int i) { return null; } /* SABOTAGED */, SetChild = delegate(object o, int i, object v) { %s = (%s)v; }", g.elementExpr(f), typ)|' \
+    sabotage 's|GetChild = delegate (object o, int i) { return %s; }, SetChild = delegate (object o, int i, object v) { %s = (%s)v; }", g.elementExpr(f), g.elementExpr(f), typ)|GetChild = delegate (object o, int i) { return null; } /* SABOTAGED */, SetChild = delegate (object o, int i, object v) { %s = (%s)v; }", g.elementExpr(f), typ)|' \
         "the slot accessor and the descriptor disagree about the child" \
         "one pointer slot's child accessor broken"
     ;;

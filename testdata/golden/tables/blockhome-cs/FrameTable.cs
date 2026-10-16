@@ -587,6 +587,9 @@ namespace Blockhome
 
         public const int PartRowFixedPlanSplit = 86;
 
+        public static readonly byte[] PartRowFixedGuardPool = new byte[] {
+        };
+
         public static readonly TableFixedPlan PartRowFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(8u, 1u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -830,7 +833,7 @@ namespace Blockhome
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = PartRowFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = PartRowFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -889,12 +892,14 @@ namespace Blockhome
                 }
                 if (values[k] == null) { values[k] = new PartRow(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PartRowFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, PartRowFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, PartRowFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -925,7 +930,9 @@ namespace Blockhome
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, PartRowFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, PartRowFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -3765,6 +3772,9 @@ namespace Blockhome
         };
 
         public const int PartFrameFixedPlanSplit = 2754;
+
+        public static readonly byte[] PartFrameFixedGuardPool = new byte[] {
+        };
 
         public static readonly TableFixedPlan PartFrameFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -6680,7 +6690,7 @@ namespace Blockhome
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = PartFrameFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = PartFrameFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -6739,12 +6749,14 @@ namespace Blockhome
                 }
                 if (values[k] == null) { values[k] = new PartFrame(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PartFrameFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, PartFrameFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, PartFrameFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -6775,7 +6787,9 @@ namespace Blockhome
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, PartFrameFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, PartFrameFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
     }

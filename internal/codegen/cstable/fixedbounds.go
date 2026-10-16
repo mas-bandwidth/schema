@@ -212,20 +212,21 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 				}
 				return csIntLit(v, signed, width)
 			}
+			cmp := csWideCompare(f, width, expr)
 			switch {
 			case low && high:
-				g.csClampBoth(expr, lit(rlo), lit(rhi), ind)
+				g.csClampBothAs(cmp, expr, lit(rlo), lit(rhi), ind)
 			case low:
-				g.csClampEnd(expr, "<", lit(rlo), ind)
+				g.csClampEndAs(cmp, expr, "<", lit(rlo), ind)
 			case high:
-				g.csClampEnd(expr, ">", lit(rhi), ind)
+				g.csClampEndAs(cmp, expr, ">", lit(rhi), ind)
 			}
 		}
 		if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*int64(width) {
 			maxv := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
 			g.pf("%s// bits(%d) width clamp\n", ind, f.Type.Width)
 			if width == 16 {
-				g.csClampEnd(expr, ">", wideLiteral(maxv, false), ind)
+				g.csClampEndAs(csWideCompare(f, width, expr), expr, ">", wideLiteral(maxv, false), ind)
 			} else {
 				g.csClampEnd(expr, ">", csIntLit(maxv, false, width), ind)
 			}
@@ -342,13 +343,14 @@ func (g *tableGen) emitFixedWriterClampScalar(f *ir.Field, expr string, lo, hi *
 		return csIntLit(v, signed, width)
 	}
 	lowEnd, highEnd := fixedWriterClampEnds(f, width, lo, hi)
+	cmp := csWideCompare(f, width, expr)
 	switch {
 	case lowEnd && highEnd:
-		g.csClampBoth(expr, lit(lo), lit(hi), ind)
+		g.csClampBothAs(cmp, expr, lit(lo), lit(hi), ind)
 	case lowEnd:
-		g.csClampEnd(expr, "<", lit(lo), ind)
+		g.csClampEndAs(cmp, expr, "<", lit(lo), ind)
 	case highEnd:
-		g.csClampEnd(expr, ">", lit(hi), ind)
+		g.csClampEndAs(cmp, expr, ">", lit(hi), ind)
 	}
 }
 
@@ -364,13 +366,39 @@ func fixedWriterClampEnds(f *ir.Field, widthBytes int, lo, hi *big.Int) (low, hi
 // csClampBoth is a two-ended clamp: the count first, then the clamp, so the
 // count reads the value the wire carried and not the one the clamp just wrote.
 func (g *tableGen) csClampBoth(expr, lo, hi, ind string) {
-	g.pf("%sif (%s < %s) { %s = %s; clamped++; }\n", ind, expr, lo, expr, lo)
-	g.pf("%selse if (%s > %s) { %s = %s; clamped++; }\n", ind, expr, hi, expr, hi)
+	g.csClampBothAs(expr, expr, lo, hi, ind)
+}
+
+// csClampBothAs is csClampBoth with the COMPARED operand spelled apart from the
+// ASSIGNED one: a 128-bit leaf compares through its BCL type (csWideCompare).
+func (g *tableGen) csClampBothAs(cmp, expr, lo, hi, ind string) {
+	g.pf("%sif (%s < %s) { %s = %s; clamped++; }\n", ind, cmp, lo, expr, lo)
+	g.pf("%selse if (%s > %s) { %s = %s; clamped++; }\n", ind, cmp, hi, expr, hi)
 }
 
 // csClampEnd is the one-ended twin: an end the storage's own width already holds
 // is an end the emitter drops (tableClampEnds), so a great many bounded fields
 // spend one compare and not two.
 func (g *tableGen) csClampEnd(expr, op, bound, ind string) {
-	g.pf("%sif (%s %s %s) { %s = %s; clamped++; }\n", ind, expr, op, bound, expr, bound)
+	g.csClampEndAs(expr, expr, op, bound, ind)
+}
+
+// csClampEndAs is csClampEnd with the compared operand spelled apart.
+func (g *tableGen) csClampEndAs(cmp, expr, op, bound, ind string) {
+	g.pf("%sif (%s %s %s) { %s = %s; clamped++; }\n", ind, cmp, op, bound, expr, bound)
+}
+
+// csWideCompare spells a 128-bit leaf's COMPARED operand through its BCL type.
+// A table class stores System.Int128/UInt128 (csFieldType), but a PACKET
+// closure class from <Base>.cs stores the serialize runtime's Int128Value /
+// UInt128Value, which converts implicitly both ways: comparing that against a
+// BCL literal finds two user-defined operator< candidates and is CS9342
+// (ambiguous). The cast picks the BCL operator, is the identity on a table
+// class, and the assignment beside it still lands through the implicit
+// conversion. Narrower widths have built-in operators and are left bare.
+func csWideCompare(f *ir.Field, width int, expr string) string {
+	if width != 16 {
+		return expr
+	}
+	return "((" + csFieldType(f.Type) + ")" + expr + ")"
 }

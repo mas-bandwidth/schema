@@ -1079,6 +1079,9 @@ namespace Tabledemo
 
         public const int RangedSignedFixedPlanSplit = 18;
 
+        public static readonly byte[] RangedSignedFixedGuardPool = new byte[] {
+        };
+
         public static readonly TableFixedPlan RangedSignedFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1u, 1u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -1248,7 +1251,7 @@ namespace Tabledemo
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RangedSignedFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = RangedSignedFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -1307,13 +1310,15 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new RangedSigned(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RangedSignedFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, RangedSignedFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, RangedSignedFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 RangedSignedFixedClamp(values[k], report);
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -1344,7 +1349,9 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, RangedSignedFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, RangedSignedFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -1442,6 +1449,9 @@ namespace Tabledemo
         };
 
         public const int RangedUnsignedFixedPlanSplit = 18;
+
+        public static readonly byte[] RangedUnsignedFixedGuardPool = new byte[] {
+        };
 
         public static readonly TableFixedPlan RangedUnsignedFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -1612,7 +1622,7 @@ namespace Tabledemo
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RangedUnsignedFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = RangedUnsignedFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -1671,13 +1681,15 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new RangedUnsigned(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RangedUnsignedFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, RangedUnsignedFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, RangedUnsignedFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 RangedUnsignedFixedClamp(values[k], report);
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -1708,7 +1720,9 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, RangedUnsignedFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, RangedUnsignedFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -1769,6 +1783,9 @@ namespace Tabledemo
         };
 
         public const int RangedWidthsFixedPlanSplit = 6;
+
+        public static readonly byte[] RangedWidthsFixedGuardPool = new byte[] {
+        };
 
         public static readonly TableFixedPlan RangedWidthsFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -1914,7 +1931,7 @@ namespace Tabledemo
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RangedWidthsFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = RangedWidthsFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -1973,13 +1990,15 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new RangedWidths(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RangedWidthsFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, RangedWidthsFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, RangedWidthsFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 RangedWidthsFixedClamp(values[k], report);
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -2010,7 +2029,9 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, RangedWidthsFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, RangedWidthsFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
     }

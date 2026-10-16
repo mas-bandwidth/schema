@@ -443,7 +443,61 @@ tables-cs-leg-release: build/tables-generated-cs/.stamp
 # ignored TableReport rather than constructing one per call.
 .PHONY: tables-cs-alloc
 tables-cs-alloc: build/tables-generated-cs/.stamp
-	cd test/cs-tables && $(DOTNET) run -c Release -- alloc
+	cd test/cs-tables && SCHEMA_CS_ALLOC_PIN="$(CS_ALLOC_PIN)" $(DOTNET) run -c Release -- alloc
+
+# THE RUNTIME PIN OF THE ALLOCATION GATE (docs/PORTING.md I14, issue #420): the
+# SDK pin in .github/dotnet-version, read here and passed in, so C# holds no
+# second copy. The gate refuses to measure on a runtime of another major.
+CS_ALLOC_PIN := $(shell cat .github/dotnet-version 2>/dev/null)
+
+# The control: a pin of a major this machine is not running (the running major
+# plus one) must be refused with the refusal text, a non-zero exit and no
+# passed line; the escape hatch must exit 0, print NOT CERTIFIED and never the
+# passed line.
+.PHONY: tables-cs-alloc-runtime-negative-control
+tables-cs-alloc-runtime-negative-control: build/tables-generated-cs/.stamp
+	@set -e; cd test/cs-tables; out=../../build/cs-alloc-runtime-control; mkdir -p $$out; \
+	$(DOTNET) build -c Release --nologo -v quiet; \
+	run="$(DOTNET) run -c Release --no-build --"; \
+	major=`$(DOTNET) --list-runtimes | sed -n 's/^Microsoft.NETCore.App \([0-9]*\)\..*/\1/p' | sort -n | tail -1`; \
+	wrong=`expr $$major + 1`; \
+	if SCHEMA_CS_ALLOC_PIN=$$wrong.0 $$run alloc > $$out/refused.txt 2>&1; then \
+		cat $$out/refused.txt; echo "cs alloc runtime control: a wrong pin ($$wrong.0) exited 0"; exit 1; fi; \
+	grep -q 'REFUSED to measure' $$out/refused.txt && grep -q "pin $$wrong.0" $$out/refused.txt && grep -q 'major' $$out/refused.txt || { cat $$out/refused.txt; echo "cs alloc runtime control: no refusal naming both versions"; exit 1; }; \
+	if grep -q 'alloc gate passed' $$out/refused.txt; then echo "cs alloc runtime control: the refused run printed the passed line"; exit 1; fi; \
+	SCHEMA_CS_ALLOC_PIN=$$wrong.0 SCHEMA_CS_ALLOC_ANY_RUNTIME=1 $$run alloc > $$out/hatch.txt 2>&1 || { cat $$out/hatch.txt; echo "cs alloc runtime control: the escape hatch did not exit 0"; exit 1; }; \
+	grep -q 'NOT CERTIFIED' $$out/hatch.txt || { cat $$out/hatch.txt; echo "cs alloc runtime control: the escape hatch did not print NOT CERTIFIED"; exit 1; }; \
+	if grep -q 'alloc gate passed' $$out/hatch.txt; then cat $$out/hatch.txt; echo "cs alloc runtime control: the escape hatch printed the passed line"; exit 1; fi; \
+	tail -n 2 $$out/refused.txt; tail -n 2 $$out/hatch.txt; \
+	echo "tables-cs-alloc-runtime-negative-control: a wrong pin is refused, the escape hatch observes and does not certify"
+
+# THE C# TABLES SOAK (docs/PORTING.md I9, issue #416): loops Load with a
+# supplied report, Load with no report, Measure, Save and the round trip over
+# the tabledemo root for SOAK_SECONDS of real time (3600 s at release, 20 s in
+# `make test`), reads GC.GetAllocatedBytesForCurrentThread at every sample, and
+# fails if the byte count moves after warmup, reporting managed-heap and
+# working-set drift beside it as the weaker instrument that sees retention.
+# Its negative control plants a matched short-lived allocation per iteration
+# (allocated and dropped so the GC reclaims it) and requires the count gate to
+# go red while the managed-heap drift line stays green.
+SOAK_SECONDS ?= 3600
+.PHONY: tables-cs-soak tables-cs-soak-negative-control
+tables-cs-soak: build/tables-generated-cs/.stamp
+	cd test/cs-tables && SCHEMA_CS_ALLOC_PIN="$(CS_ALLOC_PIN)" $(DOTNET) run -c Release -- soak $(SOAK_SECONDS)
+
+tables-cs-soak-negative-control: build/tables-generated-cs/.stamp
+	@mkdir -p build/cs-soak-control
+	@cd test/cs-tables && $(DOTNET) build -c Release --nologo -v quiet
+	@if ( cd test/cs-tables && SCHEMA_CS_ALLOC_PIN="$(CS_ALLOC_PIN)" SCHEMA_CS_SOAK_PLANT=1 $(DOTNET) run -c Release --no-build -- soak 2 ) > build/cs-soak-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a short-lived allocation per iteration left the C# soak green"; \
+		cat build/cs-soak-control/log; exit 1; \
+	fi
+	@grep -Fq "SOAK FAILED: allocated-bytes count moved" build/cs-soak-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the C# soak went red, but not on the allocated-bytes count"; cat build/cs-soak-control/log; exit 1; }
+	@grep -Fq "drift gate PASS" build/cs-soak-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the managed-heap drift line did not stay green"; cat build/cs-soak-control/log; exit 1; }
+	@grep -E "managed-heap drift|SOAK FAILED" build/cs-soak-control/log
+	@echo "negative control: a matched short-lived allocation per iteration is INVISIBLE to managed-heap drift and turns the C# allocated-bytes COUNT red"
 
 # THE FIXED FORM'S VERSIONING SUITE ON THIS LEG (docs/FIXED-FORM-ALGORITHM.md §5,
 # docs/FIXED-FORM-VERSIONING-TESTS.md): every row of the law, both read columns,
@@ -484,11 +538,54 @@ tables-cs-fixed-t18:
 	@echo 'tables C# fixed-t18: direct and payload-free union arms round-trip, tag-only arm storage'
 
 test-cs: tables-cs-fixed-t18
+test-cs: tables-cs-fixed-rows
+
+# I13 (docs/PORTING.md): the C# leg's text differential against a third
+# implementation, slug json-differential. A C# probe (Roslyn csc + dotnet exec,
+# the t10 harness's build, with the sibling serialize.cs for the nested plain
+# type) fills 200 random float-only instances from a splitmix64 and writes each
+# as (wire, text); internal/tabletext reads the wire and its text is
+# byte-compared against the leg's, then the leg's text is packed back and
+# byte-compared against the leg's wire. The control caps the emitted walker's
+# float32 at six significant digits in memory and must go red on the text
+# comparison. Its first run found the walker writing a float64 at fifteen
+# digits through .NET's custom format cap (json.go FormatG).
+.PHONY: tables-cs-json-differential tables-cs-json-differential-negative-control
+tables-cs-json-differential:
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 sh test/slowgate/proof tables-cs-json-differential \
+		'TestCsTextDifferential' \
+		./internal/codegen/cstable -run '^TestCsTextDifferential$$' -count=1 -timeout 600s
+	@grep -h 'cs text differential: ' build/slowgate/tables-cs-json-differential.log | sed 's/^ *//'
+tables-cs-json-differential-negative-control:
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 sh test/slowgate/proof tables-cs-json-differential-negative-control \
+		'TestCsTextDifferentialNegativeControl' \
+		./internal/codegen/cstable -run '^TestCsTextDifferentialNegativeControl$$' -count=1 -timeout 600s
+	@grep -h -A1 'cs text differential negative control: \|leg text and engine text differ' build/slowgate/tables-cs-json-differential-negative-control.log | sed 's/^ *//' | head -3
+test-cs: tables-cs-json-differential tables-cs-json-differential-negative-control
 
 .PHONY: tables-cs-fixed-roadmap
 tables-cs-fixed-roadmap:
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedRoadmapCSharpT12PlansVersions'
 	@echo 'tables C# fixed-roadmap: t12 plan selection, closure, retirement, retired runtime and widening'
+
+# THE C# FIXED-ROADMAP ROWS RUN UNDER ONE REQUIRED TARGET, and the held
+# message-form ledger steps close against it. Every C# fixed-roadmap test and
+# the held message form run once here with DOTNET and
+# SCHEMA_REQUIRE_CORPUS=1, so a bare `go test` can never report green over C#
+# that never ran. The oracle is built first (tables-fixedform-corpus) because
+# t01's framing rows read the C++ reference's bytes; under
+# SCHEMA_REQUIRE_CORPUS=1 a missing corpus is a failure, not a skip. The
+# -run pattern is pinned by TestCsFixedRowsTargetCoversEveryRoadmapTest: any
+# row added later without being named here goes red. Owed-gap skips that stay
+# skips (not toolchain absences) are cs/W16, cs/R28 (fixedroadmap_t07_test.go),
+# message_graph_tree and connection_retain_conn/connection_graph_conn (no leg
+# links the sibling ../serialize.cs runtime yet; messageform_held_test.go);
+# -v keeps every skip in this target's log, and they are named in the pull
+# request.
+.PHONY: tables-cs-fixed-rows
+tables-cs-fixed-rows: tables-fixedform-corpus
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmap(T01Framing|T02Plans|CSharpT03PlansVersions|CSharpT04Versions|CSharpT05Evolution|CSharpT06Bounds|CSharpT07Writes|CSharpT08ConformanceIntegers|CSharpT09FloatsUnions|CSharpT10Optionals|CSharpT12PlansVersions|CSharpT13SecondLayoutForAHeldHash|CSharpT15GuardChain|CSharpT18ExactCounters|CSharpT18UnionArms)|TestMessageFormHeldCSharp'
+	@echo 'tables C# fixed-rows: every fixed-roadmap row and the held message form ran once under one required target'
 
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
@@ -547,6 +644,7 @@ tables-cs-release:
 	$(MAKE) tables-cs-region-fuzz N=500000
 	$(MAKE) tables-cs-builder-fuzz N=500000
 	$(MAKE) tables-cs-retain-fuzz N=500000
+	$(MAKE) tables-cs-soak-negative-control
 	$(MAKE) tables-cs-retain-negative-control
 	$(MAKE) tables-cs-pack-negative-control
 	$(MAKE) tables-cs-message-blob-endian-negative-control
@@ -762,6 +860,9 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(MAKE) tables-cs-view
 	$(MAKE) tables-cs-leg
 	$(MAKE) tables-cs-alloc
+	$(MAKE) tables-cs-alloc-runtime-negative-control
+	$(MAKE) tables-cs-soak SOAK_SECONDS=20
+	$(MAKE) tables-cs-soak-negative-control
 	$(MAKE) tables-cs-versioning
 	$(MAKE) tables-cs-wire-fuzz
 	$(MAKE) tables-cs-region-fuzz

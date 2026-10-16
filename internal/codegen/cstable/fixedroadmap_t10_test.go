@@ -147,11 +147,13 @@ func t10Probes() []t10Probe {
 	}
 }
 
-// t10Discover locates dotnet, the SDK's Roslyn compiler and the .NET ref pack,
-// or skips the whole test when the toolchain is not here. It is the host-free
-// twin of `dotnet run`: the CLI's build/run commands run a first-time-use
-// configurer that a sandboxed host refuses, so the harness calls the compiler
-// and the host directly.
+// t10Discover locates dotnet, the SDK's Roslyn compiler and the .NET ref pack.
+// It is the host-free twin of `dotnet run`: the CLI's build/run commands run a
+// first-time-use configurer that a sandboxed host refuses, so the harness calls
+// the compiler and the host directly. A missing toolchain follows t06's idiom:
+// skip by name when SCHEMA_REQUIRE_CORPUS is unset, fail by name when it is set
+// (the fixed-rows target sets it, so a missing dotnet/csc/ref pack can never
+// pass silently under that target).
 var (
 	t10dotnet, t10csc, t10refDir, t10refVersion string
 )
@@ -162,26 +164,37 @@ func t10Discover(t *testing.T) {
 	if t10dotnet == "" {
 		t10dotnet = "dotnet"
 	}
-	resolved, err := exec.LookPath(t10dotnet)
-	if err != nil {
-		t.Skipf("no dotnet on PATH (set DOTNET): %v", err)
-	}
-	real, err := filepath.EvalSymlinks(resolved)
-	if err != nil {
+	real := t10dotnet
+	if resolved, err := exec.LookPath(t10dotnet); err != nil {
+		t10MissingToolchain(t, "no dotnet on PATH (set DOTNET): "+err.Error())
+		return
+	} else if r, err := filepath.EvalSymlinks(resolved); err != nil {
 		real = resolved
+	} else {
+		real = r
 	}
 	root := filepath.Dir(real)
 	cscs, _ := filepath.Glob(filepath.Join(root, "sdk", "*", "Roslyn", "bincore", "csc.dll"))
 	if len(cscs) == 0 {
-		t.Skipf("no Roslyn csc.dll under %s", root)
+		t10MissingToolchain(t, "no Roslyn csc.dll under "+root)
+		return
 	}
 	t10csc = cscs[0]
 	refs, _ := filepath.Glob(filepath.Join(root, "packs", "Microsoft.NETCore.App.Ref", "*", "ref", "net10.0"))
 	if len(refs) == 0 {
-		t.Skipf("no .NET ref pack under %s", root)
+		t10MissingToolchain(t, "no .NET ref pack under "+root)
+		return
 	}
 	t10refDir = refs[0]
 	t10refVersion = filepath.Base(filepath.Dir(filepath.Dir(refs[0])))
+}
+
+func t10MissingToolchain(t *testing.T, missing string) {
+	t.Helper()
+	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+		t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s", missing)
+	}
+	t.Skip(missing)
 }
 
 var (
@@ -558,8 +571,8 @@ func t10OptionalScalarsRow(t *testing.T) {
 		"optional-scalars: the scalar's payload is read into the value")
 	t02Has(t, slots, "new TableFixedSlot<T>(setRaw: (t, v) => t.MarkPresent = v != 0, reset: (t) => { t.MarkPresent = false; }),",
 		"optional-scalars: the enum's present byte is read into the present bool")
-	t02Has(t, slots, "if (v > 2) { t.Mark = 0; if (rep != null) rep.Clamped++; } else { t.Mark = (Grade)v; }",
-		"optional-scalars: the enum ordinal is read, bounded at its declared top")
+	t02Has(t, slots, "(t, v, rep) => { t.Mark = (Grade)v; }",
+		"optional-scalars: the enum ordinal lands raw and the bounds pass clamps it (§5.4)")
 }
 
 // t10OptionalArraysRow: optional-arrays [capability] "Optional arrays: valid-data

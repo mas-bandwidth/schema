@@ -1024,6 +1024,9 @@ namespace Tabledemo
 
         public const int GunnerSettingsFixedPlanSplit = 3;
 
+        public static readonly byte[] GunnerSettingsFixedGuardPool = new byte[] {
+        };
+
         public static readonly TableFixedPlan GunnerSettingsFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(4u, 1u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -1162,7 +1165,7 @@ namespace Tabledemo
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = GunnerSettingsFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = GunnerSettingsFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -1221,13 +1224,15 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new GunnerSettings(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), GunnerSettingsFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, GunnerSettingsFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, GunnerSettingsFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 GunnerSettingsFixedClamp(values[k], report);
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -1258,7 +1263,9 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, GunnerSettingsFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, GunnerSettingsFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -1332,6 +1339,9 @@ namespace Tabledemo
         };
 
         public const int ShipEntryFixedPlanSplit = 9;
+
+        public static readonly byte[] ShipEntryFixedGuardPool = new byte[] {
+        };
 
         public static readonly TableFixedPlan ShipEntryFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 32u, 1u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
@@ -1484,7 +1494,7 @@ namespace Tabledemo
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = ShipEntryFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = ShipEntryFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -1543,13 +1553,15 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new ShipEntry(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), ShipEntryFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, ShipEntryFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, ShipEntryFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 ShipEntryFixedClamp(values[k], report);
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -1580,7 +1592,9 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, ShipEntryFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, ShipEntryFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -1630,7 +1644,7 @@ namespace Tabledemo
 
         public static readonly TableFixedSlot<GlobalSettings>[] GlobalSettingsFixedSlots = new TableFixedSlot<GlobalSettings>[] {
             new TableFixedSlot<GlobalSettings>(setRaw: (t, v) => t.TickRate = unchecked((uint)v), reset: (t) => { t.TickRate = 60; }),
-            new TableFixedSlot<GlobalSettings>(setRawReport: (t, v, rep) => { if (v > 3) { t.Difficulty = 0; if (rep != null) rep.Clamped++; } else { t.Difficulty = (Difficulty)v; } }, reset: (t) => { t.Difficulty = global::Tabledemo.Difficulty.Normal; }),
+            new TableFixedSlot<GlobalSettings>(setRawReport: (t, v, rep) => { t.Difficulty = (Difficulty)v; }, reset: (t) => { t.Difficulty = global::Tabledemo.Difficulty.Normal; }),
             new TableFixedSlot<GlobalSettings>(setRaw: (t, v) => t.BuildNoteLength = (int)v, reset: (t) => { t.BuildNoteLength = 0; }),
             new TableFixedSlot<GlobalSettings>(setBytes: (t, b, l) => { if (t.BuildNote != null) b.Slice(0, Math.Min(b.Length, t.BuildNote.Length)).CopyTo(t.BuildNote); }, reset: (t) => { if (t.BuildNote != null) { Array.Clear(t.BuildNote, 0, t.BuildNote.Length); } }),
             new TableFixedSlot<GlobalSettings>(setBytes: (t, b, l) => { if (t.SpawnDelays != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.SpawnDelays.Length * 4))).CopyTo(t.SpawnDelays); }, reset: (t) => { if (t.SpawnDelays != null) Array.Clear(t.SpawnDelays, 0, t.SpawnDelays.Length); }),
@@ -1644,6 +1658,9 @@ namespace Tabledemo
         };
 
         public const int GlobalSettingsFixedPlanSplit = 4;
+
+        public static readonly byte[] GlobalSettingsFixedGuardPool = new byte[] {
+        };
 
         public static readonly TableFixedPlan GlobalSettingsFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -1789,7 +1806,7 @@ namespace Tabledemo
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = GlobalSettingsFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = GlobalSettingsFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -1848,13 +1865,15 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new GlobalSettings(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), GlobalSettingsFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, GlobalSettingsFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, GlobalSettingsFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 GlobalSettingsFixedClamp(values[k], report);
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -1885,7 +1904,9 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, GlobalSettingsFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, GlobalSettingsFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -2011,7 +2032,7 @@ namespace Tabledemo
         public static readonly TableFixedSlot<PackConfig>[] PackConfigFixedSlots = new TableFixedSlot<PackConfig>[] {
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Version = unchecked((uint)v), reset: (t) => { t.Version = 1; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Global.TickRate = unchecked((uint)v), reset: (t) => { t.Global.TickRate = 60; }),
-            new TableFixedSlot<PackConfig>(setRawReport: (t, v, rep) => { if (v > 3) { t.Global.Difficulty = 0; if (rep != null) rep.Clamped++; } else { t.Global.Difficulty = (Difficulty)v; } }, reset: (t) => { t.Global.Difficulty = global::Tabledemo.Difficulty.Normal; }),
+            new TableFixedSlot<PackConfig>(setRawReport: (t, v, rep) => { t.Global.Difficulty = (Difficulty)v; }, reset: (t) => { t.Global.Difficulty = global::Tabledemo.Difficulty.Normal; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Global.BuildNoteLength = (int)v, reset: (t) => { t.Global.BuildNoteLength = 0; }),
             new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Global.BuildNote != null) b.Slice(0, Math.Min(b.Length, t.Global.BuildNote.Length)).CopyTo(t.Global.BuildNote); }, reset: (t) => { if (t.Global.BuildNote != null) { Array.Clear(t.Global.BuildNote, 0, t.Global.BuildNote.Length); } }),
             new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Global.SpawnDelays != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Global.SpawnDelays.Length * 4))).CopyTo(t.Global.SpawnDelays); }, reset: (t) => { if (t.Global.SpawnDelays != null) Array.Clear(t.Global.SpawnDelays, 0, t.Global.SpawnDelays.Length); }),
@@ -2095,6 +2116,9 @@ namespace Tabledemo
         };
 
         public const int PackConfigFixedPlanSplit = 63;
+
+        public static readonly byte[] PackConfigFixedGuardPool = new byte[] {
+        };
 
         public static readonly TableFixedPlan PackConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -2338,7 +2362,7 @@ namespace Tabledemo
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = PackConfigFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = PackConfigFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -2397,13 +2421,15 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new PackConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PackConfigFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, PackConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, PackConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 PackConfigFixedClamp(values[k], report);
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -2434,7 +2460,9 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, PackConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, PackConfigFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
     }
