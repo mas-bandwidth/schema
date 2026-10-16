@@ -75,3 +75,21 @@ func TestWasRowsCarriers(t *testing.T) {
 		}
 	}
 }
+
+func TestJavaWasRowsCarrier(t *testing.T) {
+	u := unitFromSource(t, wasRowsUnit)
+	out, err := New().Generate(u, "java", Options{})
+	if err != nil {
+		t.Fatalf("java carries the was rows and refused: %v", err)
+	}
+	var all strings.Builder
+	for _, b := range out {
+		all.Write(b)
+	}
+	for _, old := range []string{"Silver", "ward", "ping", "multiplier"} {
+		want := fmt.Sprintf("0x%016x", ir.TableWireId(old))
+		if !strings.Contains(all.String(), want) {
+			t.Errorf("java output lacks the id of %q, %s", old, want)
+		}
+	}
+}

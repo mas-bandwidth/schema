@@ -1,16 +1,17 @@
 // Package javatable emits a unit's Java table surface (docs/SPEC-TABLES.md):
-// the BLOCK form's read half in <Table>Block.java (§19) and the COOKED form's
-// read half in <Table>Cook.java (§7), the record accessors the two share
+// the BLOCK form's builder and reader in <Table>Block.java (§19) and the COOKED
+// form's reader and writer in <Table>Cook.java (§7), the record accessors the two share
 // (<Name>Row.java), their reflection descriptors and the unit's build version
 // — plus the shared runtime those need, one PUBLIC TYPE PER FILE, which is
 // what Java's package scope is. It is emitted only when the unit declares
 // tables, and nothing when it declares none: a table-free unit's generated
 // Java is byte-identical with or without this package.
 //
-// THE ACCELERATOR TIER. A block is POINTED AT and a cook is OPENED; neither
-// parses a wire, so both reach every table of the unit whatever its closure
-// declares — a pointered unit's cooks open in full. In Java both are read at
-// explicit offsets out of a byte[] the consumer owns. The TABLE WIRE — measure,
+// THE ACCELERATOR TIER. A block is BUILT or POINTED AT and a cook is WRITTEN or
+// OPENED; neither parses a wire on the read path, so both reach every table of
+// the unit whatever its closure declares — a pointered unit's cooks open and
+// write in full. In Java both operate at explicit offsets in a byte[] the
+// caller owns. The TABLE WIRE — measure,
 // save, load, the reflection descriptors and the JSON text form of
 // docs/SPEC-TABLES.md §3, §4, §8 and §16 in their id-table form — rides the
 // FIXED form (§3.4) for every table, and the VARIABLE form (§3, form byte 1)
@@ -213,10 +214,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	}
 	out := map[string][]byte{}
 	if !scope.Accelerators {
-		// The two ACCELERATORS need no wire codec: the BLOCK form (§19) reads
-		// bytes a producer wrote and the COOK (§7) reads a region the tooling
-		// wrote. Both read a byte[] the consumer owns, so both
-		// reach every table of the unit — a pointered unit's cooks open in full.
+		// The two ACCELERATORS operate directly on a byte[] the caller owns:
+		// the BLOCK form (§19) builds and opens in-place block images and the
+		// COOK (§7) measures, writes, and opens cooked regions, reaching every
+		// cookable table of the unit — a pointered unit's cooks open and write in full.
 		blocks := ir.Blocks(u)
 		ck := cookUnitOf(u)
 		set := collectRecords(u, blocks, ck)
@@ -338,7 +339,7 @@ func runtimeFileNames() []string {
 	return []string{
 		"TableBytes",
 		"TableBlockRows", "TableBlockInfo", "TableBlockFieldInfo", "TableBlockLayout",
-		"TableCookInfo", "TableCookFieldInfo", "TableCookStorage", "TableCookLayout",
+		"TableCookInfo", "TableCookFieldInfo", "TableCookStorage", "TableCookLayout", "TableCookWrite",
 		"TableFieldInfo", "TableTypeInfo", "TableRegistry",
 		"BuildVersion",
 	}

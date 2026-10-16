@@ -393,12 +393,11 @@ public final class TableJson {
                     }
                 } else {
                     if (tok.charAt(0) == '-') {
-                        if ("-0".equals(tok)) {
-                            v = 0L;
-                        } else {
+                        if (!"-0".equals(tok)) {
                             rep.clamped++;
                             return min;
                         }
+                        v = 0;
                     } else {
                         try {
                             v = Long.parseUnsignedLong(tok);
@@ -416,16 +415,14 @@ public final class TableJson {
                     bad = true;
                     return 0;
                 }
-                double whole = Math.abs(d);
-                if (!Double.isFinite(d) || whole != Math.floor(whole)) { rep.kindMismatch++; return 0; }
                 if (signed) {
-                    if (d < -9223372036854775808.0) { rep.clamped++; return min; }
-                    if (d >= 9223372036854775808.0) { rep.clamped++; return max; }
+                    if (!Double.isFinite(d) || d != (double) (long) d) { rep.kindMismatch++; return 0; }
                     v = (long) d;
                 } else {
+                    if (!Double.isFinite(d) || Math.rint(d) != d) { rep.kindMismatch++; return 0; }
                     if (d < 0.0) { rep.clamped++; return min; }
-                    if (whole >= 18446744073709551616.0) { rep.clamped++; return max; }
-                    v = whole >= 9223372036854775808.0 ? (long) (whole - 9223372036854775808.0) + Long.MIN_VALUE : (long) whole;
+                    if (d >= 18446744073709551616.0) { rep.clamped++; return max; }
+                    v = d < 9223372036854775808.0 ? (long) d : (long) (d - 9223372036854775808.0) + Long.MIN_VALUE;
                 }
             }
             if (signed) {
