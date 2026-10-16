@@ -584,7 +584,7 @@ tables-cs-fixed-roadmap:
 # request.
 .PHONY: tables-cs-fixed-rows
 tables-cs-fixed-rows: tables-fixedform-corpus
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmap(T01Framing|T02Plans|CSharpT03PlansVersions|CSharpT04Versions|CSharpT05Evolution|CSharpT06Bounds|CSharpT07Writes|CSharpT08ConformanceIntegers|CSharpT09FloatsUnions|CSharpT10Optionals|CSharpT12PlansVersions|CSharpT13SecondLayoutForAHeldHash|CSharpT18UnionArms)|TestMessageFormHeldCSharp'
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmap(T01Framing|T02Plans|CSharpT03PlansVersions|CSharpT04Versions|CSharpT05Evolution|CSharpT06Bounds|CSharpT07Writes|CSharpT08ConformanceIntegers|CSharpT09FloatsUnions|CSharpT10Optionals|CSharpT12PlansVersions|CSharpT13SecondLayoutForAHeldHash|CSharpT15GuardChain|CSharpT18ExactCounters|CSharpT18UnionArms)|TestMessageFormHeldCSharp'
 	@echo 'tables C# fixed-rows: every fixed-roadmap row and the held message form ran once under one required target'
 
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
