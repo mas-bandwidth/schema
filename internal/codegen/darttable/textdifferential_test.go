@@ -11,10 +11,10 @@ package darttable
 // the same seed and count, finite floats only (both writers refuse a
 // non-finite one), instance 0 the reset proof.
 //
-// The root is a VARIABLE table (form 1): the Go cell's shape without `fixed`,
-// because form 1 refuses a closure holding a fixed table until the fixed class
-// rides the table wire. Only the instance generator is Dart; the comparison
-// runs here, inside Go.
+// The row runs two spellings of the root: a VARIABLE table, and the Go cell's
+// own shape, a `fixed table` over a plain `type` (the fixed class on the table
+// wire, form 1). Only the instance generator is Dart; the comparison runs
+// here, inside Go.
 //
 // Running the Dart SDK makes this a functional test: it skips by name when the
 // SDK is absent, fails by name under SCHEMA_REQUIRE_CORPUS=1, and is reached
@@ -51,6 +51,32 @@ table Root {
  deep [..8]float64
 }
 `
+
+// dartTextDifferentialFixedSchema is the Go cell's spelling
+// (internal/codegen/gotable/textdifferential_test.go textDifferentialSchema):
+// the same fields, the root a fixed table over a plain type.
+const dartTextDifferentialFixedSchema = `package probe
+type Sample {
+ s float32
+ d float64
+}
+fixed table Root {
+ a float32
+ b float64
+ pair Sample
+ many [..8]float32
+ deep [..8]float64
+}
+`
+
+// dartTextDifferentialSpellings is every root spelling the row runs.
+var dartTextDifferentialSpellings = []struct {
+	name   string
+	schema string
+}{
+	{"variable", dartTextDifferentialSchema},
+	{"fixed", dartTextDifferentialFixedSchema},
+}
 
 // dartTextDifferentialProbe builds N random float-only instances with the
 // generated setters and the Go cell's splitmix64, then writes each instance's
@@ -146,11 +172,11 @@ var dartTextDifferentialSeeds = []uint64{
 // applies an optional in-memory edit to the emitted files, runs the probe at
 // seed with n instances, and then the engine comparison. It returns the
 // divergence messages and a non-nil error when any instance differs.
-func runDartTextDifferential(t *testing.T, seed uint64, n int, edit func(map[string][]byte)) ([]byte, error) {
+func runDartTextDifferential(t *testing.T, schema string, seed uint64, n int, edit func(map[string][]byte)) ([]byte, error) {
 	t.Helper()
 	slowtest.Gate(t, "dart")
 	dart := dartBinary(t)
-	u := buildUnit(t, dartTextDifferentialSchema)
+	u := buildUnit(t, schema)
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
@@ -200,18 +226,21 @@ func runDartTextDifferential(t *testing.T, seed uint64, n int, edit func(map[str
 // text writer and the engine's float writer (internal/tabletext/write.go,
 // writeFloat/formatG, C's %.*g spelled out; docs/SPEC-TABLES.md §16.2) agree
 // byte for byte over random float-only instances, in both directions, at
-// every seed of dartTextDifferentialSeeds.
+// every seed of dartTextDifferentialSeeds and every root spelling of
+// dartTextDifferentialSpellings.
 func TestDartTextDifferentialAgainstTheGoEngine(t *testing.T) {
 	t.Parallel()
-	for _, seed := range dartTextDifferentialSeeds {
-		seed := seed
-		t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) {
-			t.Parallel()
-			out, err := runDartTextDifferential(t, seed, textDifferentialN, nil)
-			if err != nil {
-				t.Fatalf("Dart text differential: %v\n%s", err, out)
-			}
-		})
+	for _, sp := range dartTextDifferentialSpellings {
+		for _, seed := range dartTextDifferentialSeeds {
+			sp, seed := sp, seed
+			t.Run(fmt.Sprintf("%s/seed=%d", sp.name, seed), func(t *testing.T) {
+				t.Parallel()
+				out, err := runDartTextDifferential(t, sp.schema, seed, textDifferentialN, nil)
+				if err != nil {
+					t.Fatalf("Dart text differential (%s root): %v\n%s", sp.name, err, out)
+				}
+			})
+		}
 	}
 }
 
@@ -226,7 +255,7 @@ const dartTextDifferentialAnchor = "final high = single ? 9 : 17;"
 // compile error or a probe failure.
 func TestDartTextDifferentialNegativeControl(t *testing.T) {
 	t.Parallel()
-	out, err := runDartTextDifferential(t, textDifferentialSeed, textDifferentialN, func(files map[string][]byte) {
+	out, err := runDartTextDifferential(t, dartTextDifferentialSchema, textDifferentialSeed, textDifferentialN, func(files map[string][]byte) {
 		total := 0
 		for _, data := range files {
 			total += bytes.Count(data, []byte(dartTextDifferentialAnchor))

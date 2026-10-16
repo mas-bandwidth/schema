@@ -1304,7 +1304,7 @@ a float32 at `-266744.625` rendering as an eight-digit tie.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #516 | ✅ `tables-dart-text-differential`, control `tables-dart-text-differential-negative-control` (variable root; first run: 6 of 200 on the Go seed, ties `toStringAsFixed` broke away from even) | ❌ #419 |
+| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #516 | ✅ `tables-dart-text-differential`, control `tables-dart-text-differential-negative-control` (variable and fixed roots; first run: 6 of 200 on the Go seed, ties `toStringAsFixed` broke away from even) | ❌ #419 |
 
 ### I14 — The allocation gate refuses to certify off the pinned runtime
 
