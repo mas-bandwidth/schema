@@ -21,6 +21,7 @@ import '../../../build/tables-generated-dart/pointers/GraphdemoCook.dart';
 import '../../../build/tables-generated-dart/pointers/GraphCook.dart' as ck;
 import '../../../build/tables-generated-dart/pointers/GraphdemoWire.dart' as graphdemo;
 import '../../../build/tables-generated-dart/blobs/BlobdemoWire.dart' as blobdemo;
+import '../../../build/tables-generated-dart/blobs/AssetsCook.dart' as assets;
 import '../../../build/tables-generated-dart/lists/ListdemoWire.dart' as listdemo;
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
@@ -751,6 +752,113 @@ String? loadReport(String unit, String root, Uint8List wire) {
   return null;
 }
 
+// ---- cook-write (docs/SPEC-TABLES.md §7.6): the runtime WRITES the cooked
+// file, and the harness compares it with the two `schema cook` wrote. Each
+// row names an instance: its wire is loaded, measured, refused at one byte
+// short (which must write nothing) and cooked in each byte order.
+//
+// A row whose instance this leg cannot load writes <case>.absent with the
+// reason, by unit (test/conformance/README.md).
+const Map<String, String> cookWriteAbsent = <String, String>{
+  'tabledemo': _fixedFormOnly,
+  'tblv1': _fixedFormOnly,
+  'tblv2': _fixedFormOnly,
+  'tblp1': _fixedFormOnly,
+  'tblp3': _fixedFormOnly,
+  'tblm1': _fixedFormOnly,
+  'tblm2': _fixedFormOnly,
+  'messagedemo':
+      'the Dart table backend refuses the unit (a union arm '
+      'carrying `was`, docs/SPEC-TABLES.md §5): no Dart value to cook',
+  'streamdemo':
+      'the Dart table backend refuses the unit (a union a table '
+      'closure holds, docs/SPEC-TABLES.md §2.6, §11): no Dart value to cook',
+  'scalars':
+      'the unit carries the wide kinds, for which the Dart table '
+      'backend emits no cook form (docs/SPEC-TABLES.md §3)',
+};
+
+const String _fixedFormOnly =
+    'the Dart fixed class reads form 3 only and '
+    "this instance's wire is form 1, which Dart reads for the variable class "
+    'alone (docs/SPEC-TABLES.md §3, §3.4): no Dart value to cook';
+
+// cookWriter loads one instance and answers its measured extent and the
+// writer for one byte order, or null when this leg has no codec for it.
+(int, bool Function(Uint8List, Endian))? cookWriter(
+  String unit,
+  String root,
+  Uint8List wire,
+) {
+  switch ('$unit $root') {
+    case 'graphdemo Scene':
+      final r = graphdemo.TableWireReport();
+      final value = graphdemo.sceneWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        ck.SceneCook.cookMeasure(value),
+        (out, order) => ck.SceneCook.cook(value, out, order),
+      );
+    case 'blobdemo Catalog':
+      final r = blobdemo.TableWireReport();
+      final value = blobdemo.catalogWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        assets.CatalogCook.cookMeasure(value),
+        (out, order) => assets.CatalogCook.cook(value, out, order),
+      );
+  }
+  return null;
+}
+
+int surfaceCookWrite(String outDir) {
+  for (final f in kind('cook-write')) {
+    final instance = lines.firstWhere(
+      (c) => c[0] == 'instance' && c[1] == f[1],
+      orElse: () => const <String>[],
+    );
+    if (instance.isEmpty) {
+      stderr.writeln('driver: cook-write ${f[1]} names no instance');
+      return 1;
+    }
+    final writer = cookWriter(
+      instance[2],
+      instance[3],
+      File(instance[4]).readAsBytesSync(),
+    );
+    if (writer == null) {
+      final why =
+          cookWriteAbsent[instance[2]] ??
+          'no Dart codec for ${instance[2]} ${instance[3]}';
+      for (final name in [f[1], '${f[1]}-be']) {
+        File('$outDir/$name.absent').writeAsStringSync(why);
+      }
+      continue;
+    }
+    final (size, cook) = writer;
+    if (size < 1) {
+      stderr.writeln('driver: ${f[1]}: cook measure refused');
+      return 1;
+    }
+    for (final order in [Endian.little, Endian.big]) {
+      final name = order == Endian.little ? f[1] : '${f[1]}-be';
+      final buffer = Uint8List(size)..fillRange(0, size, 0xa5);
+      // one byte short is refused, and the refusal writes NOTHING (§7.6)
+      if (cook(Uint8List.sublistView(buffer, 0, size - 1), order) ||
+          buffer.any((b) => b != 0xa5)) {
+        stderr.writeln('driver: $name: a short capacity wrote bytes');
+        return 1;
+      }
+      if (!cook(buffer, order)) {
+        stderr.writeln('driver: $name: cook write refused');
+        return 1;
+      }
+      File('$outDir/$name').writeAsBytesSync(buffer);
+    }
+  }
+  return 0;
+}
+
 int surfaceWire(String outDir) {
   for (final f in kind('instance')) {
     final saved = wireResave(f[2], f[3], File(f[4]).readAsBytesSync());
@@ -808,12 +916,13 @@ int surfaceReport(String outDir) {
 
 const String surfaces =
     // wire, json-read, json-write and report answer the variable class for
-    // graphdemo, blobdemo and listdemo (docs/SPEC-TABLES.md §3, §16.7). The
+    // graphdemo, blobdemo and listdemo (docs/SPEC-TABLES.md §3, §16.7), and
+    // cook-write the graphdemo and blobdemo rows (§7.6). The
     // accelerators and the forgery surfaces stay. The wire fuzzer's roots are
     // another card's.
     ''
     'wire\njson-read\njson-write\nreport\n'
-    'cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
+    'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
     'forgery\ncook-forgery\n';
 
 void main(List<String> args) {
@@ -991,6 +1100,8 @@ int run(List<String> args) {
       return surfaceReport(out);
     case 'cook':
       return surfaceCook(out);
+    case 'cook-write':
+      return surfaceCookWrite(out);
     case 'cook-foreign':
       return surfaceCookForeign(out);
     case 'cook-forgery':

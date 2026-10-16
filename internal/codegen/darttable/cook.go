@@ -1,5 +1,5 @@
-// The COOKED FORM (docs/SPEC-TABLES.md §7): the Dart read half and the
-// fixed-root writer (§7.6). Variable graph writes are carried separately.
+// The COOKED FORM (docs/SPEC-TABLES.md §7): the Dart read half and the write
+// half (§7.6, cookwrite.go): a fixed root's writer and a variable graph's.
 //
 // A cook is a region another build wrote, opened by a header match and then
 // POINTED AT — nothing per node, ever, which is what makes Open O(1) in the
@@ -198,6 +198,13 @@ type cookGen struct {
 	needData  bool
 	needHome  bool
 	needBlock bool
+	// needConvert asks for dart:convert: the variable cook writer encodes a
+	// Dart String as the UTF-8 bytes §7.2's storage holds
+	needConvert bool
+	// prefixed names a library imported under a prefix: the variable cook
+	// writer's value classes live in <Home>Wire.dart and share their names
+	// with the fixed class's storage in <Home>Fixed.dart (§7.6)
+	prefixed map[string]string
 	// the records some field column names, so only those need the edge method
 	cookNamed map[string]bool
 }
@@ -281,7 +288,10 @@ func (g *cookGen) assemble() []byte {
 	h.WriteString("// in Dart the read after an escaping delta would be a RangeError, and a\n")
 	h.WriteString("// reader that throws on hostile bytes is not one that refuses them.\n")
 	h.WriteString("\n")
-	if g.needData || g.home {
+	if g.needConvert {
+		h.WriteString("import 'dart:convert';\n")
+	}
+	if g.needData || g.home || g.needConvert {
 		h.WriteString("import 'dart:typed_data';\n\n")
 	}
 	if !g.home && g.needHome {
@@ -290,8 +300,19 @@ func (g *cookGen) assemble() []byte {
 	if g.needBlock {
 		g.imports[g.homeBase+"Block.dart"] = nil
 	}
+	for base := range g.prefixed {
+		if _, ok := g.imports[base]; !ok {
+			g.imports[base] = nil
+		}
+	}
 	for _, base := range sortedKeys(g.imports) {
 		syms := g.imports[base]
+		if prefix := g.prefixed[base]; prefix != "" {
+			fmt.Fprintf(&h, "import '%s' as %s;\n", base, prefix)
+			if syms == nil {
+				continue
+			}
+		}
 		if syms == nil {
 			fmt.Fprintf(&h, "import '%s';\n", base)
 			continue
@@ -300,6 +321,11 @@ func (g *cookGen) assemble() []byte {
 		one := fmt.Sprintf("import '%s' show %s;", base, strings.Join(names, ", "))
 		if len(one) <= 80 {
 			h.WriteString(one + "\n")
+			continue
+		}
+		two := fmt.Sprintf("    show %s;", strings.Join(names, ", "))
+		if len(two) <= 80 {
+			fmt.Fprintf(&h, "import '%s'\n%s\n", base, two)
 			continue
 		}
 		fmt.Fprintf(&h, "import '%s'\n    show\n", base)
