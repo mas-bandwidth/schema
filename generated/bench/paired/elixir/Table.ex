@@ -107,6 +107,7 @@ defmodule Bench.Table do
 
   @tables %{
     "BenchMixed" => %{
+      name: "BenchMixed",
       size: 1376,
       align: 16,
       type_id: 0xEB80CFD516EB3D5C,
@@ -114,10 +115,13 @@ defmodule Bench.Table do
       has_extent: false,
       string_blob: false,
       variable: false,
+      doc: "",
+      tags: [],
       fields: [
         %{
           name: "sequence",
           json: "sequence",
+          type_name: "bits(16)",
           id: 0xAA38ACA481F528A8,
           kind: 7,
           ordinal: 0,
@@ -130,11 +134,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "ack_sequence",
           json: "ack_sequence",
+          type_name: "int32",
           id: 0x0DBE005C56697C3E,
           kind: 4,
           ordinal: 1,
@@ -148,11 +155,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: {0, 65535},
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "ack_bits",
           json: "ack_bits",
+          type_name: "bits(32)",
           id: 0x9BAE0DA8B829EE03,
           kind: 8,
           ordinal: 2,
@@ -165,11 +175,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "session_id",
           json: "session_id",
+          type_name: "uint64",
           id: 0xB7D7B5650A590B05,
           kind: 9,
           ordinal: 3,
@@ -181,11 +194,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "client_id",
           json: "client_id",
+          type_name: "uint32",
           id: 0x6D7B98E2D095967E,
           kind: 8,
           ordinal: 4,
@@ -197,11 +213,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "nonce",
           json: "nonce",
+          type_name: "uint64",
           id: 0x73A94C71D60DC0D8,
           kind: 9,
           ordinal: 5,
@@ -215,11 +234,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: {0, 18_446_744_073_709_551_615},
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "world_time",
           json: "world_time",
+          type_name: "int64",
           id: 0x3EEE6B51BE54FC85,
           kind: 5,
           ordinal: 6,
@@ -233,11 +255,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: {-1_000_000_000_000, 1_000_000_000_000},
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "frame_tick",
           json: "frame_tick",
+          type_name: "bits(48)",
           id: 0x7BBC035F7B6D0112,
           kind: 9,
           ordinal: 7,
@@ -250,11 +275,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "server_time",
           json: "server_time",
+          type_name: "fixed(24, 8)",
           id: 0x3C460475F9BE69C6,
           kind: 22,
           ordinal: 8,
@@ -263,17 +291,20 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: nil
         },
         %{
           name: "entities",
           json: "entities",
+          type_name: "MixedEntity",
           id: 0x935D0FB07BB3822A,
           kind: 14,
           ordinal: 9,
           t: :list,
           elem_kind: 13,
-          bound: 8,
+          array_bound: 8,
           elem: "MixedEntity",
           elem_size: 64,
           elem_align: 8,
@@ -285,17 +316,20 @@ defmodule Bench.Table do
           elem_t: :record,
           shape: :table,
           bound: nil,
+          doc: "",
+          tags: [],
           default: []
         },
         %{
           name: "stats",
           json: "stats",
+          type_name: "MixedStat",
           id: 0xEE639CAD45B1994C,
           kind: 14,
           ordinal: 10,
           t: :list,
           elem_kind: 13,
-          bound: 80,
+          array_bound: 80,
           elem: "MixedStat",
           elem_size: 8,
           elem_align: 4,
@@ -307,11 +341,14 @@ defmodule Bench.Table do
           elem_t: :record,
           shape: :table,
           bound: nil,
+          doc: "",
+          tags: [],
           default: []
         },
         %{
           name: "game_event",
           json: "game_event",
+          type_name: "MixedEvent",
           id: 0x2E35DC5321AA5790,
           kind: 15,
           ordinal: 11,
@@ -320,17 +357,20 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: nil
         },
         %{
           name: "loadout",
           json: "loadout",
+          type_name: "uint8",
           id: 0x5759CE7586BBB5A3,
           kind: 14,
           ordinal: 12,
           t: :list,
           elem_kind: 6,
-          bound: 4,
+          array_bound: 4,
           elem_size: 1,
           elem_align: 1,
           cook_off: 1244,
@@ -342,11 +382,14 @@ defmodule Bench.Table do
           elem_signed: false,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: []
         },
         %{
           name: "player_name",
           json: "player_name",
+          type_name: "string",
           id: 0x13A62F542CF8E86E,
           kind: 12,
           ordinal: 13,
@@ -357,11 +400,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: 15,
+          doc: "",
+          tags: [],
           default: <<>>
         },
         %{
           name: "payload",
           json: "payload",
+          type_name: "bytes",
           id: 0xCFB8A9D063B5E9E5,
           kind: 14,
           ordinal: 14,
@@ -372,56 +418,74 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: <<>>
         },
         %{
           name: "aim_x",
           json: "aim_x",
+          type_name: "float32",
           id: 0xDBAF7BE5E24296C9,
           kind: 10,
           ordinal: 15,
           t: :float,
           width: 4,
+          min: -1.0,
+          max: 1.0,
           cook_off: 1288,
           count_off: -1,
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: 0.0
         },
         %{
           name: "aim_y",
           json: "aim_y",
+          type_name: "float32",
           id: 0xDBAF7AE5E2429516,
           kind: 10,
           ordinal: 16,
           t: :float,
           width: 4,
+          min: -1.0,
+          max: 1.0,
           cook_off: 1292,
           count_off: -1,
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: 0.0
         },
         %{
           name: "aim_z",
           json: "aim_z",
+          type_name: "float32",
           id: 0xDBAF79E5E2429363,
           kind: 10,
           ordinal: 17,
           t: :float,
           width: 4,
+          min: -1.0,
+          max: 1.0,
           cook_off: 1296,
           count_off: -1,
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: 0.0
         },
         %{
           name: "recoil",
           json: "recoil",
+          type_name: "float32",
           id: 0x9CEF31FFF7E2E457,
           kind: 10,
           ordinal: 18,
@@ -432,11 +496,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: 0.0
         },
         %{
           name: "drift",
           json: "drift",
+          type_name: "float64",
           id: 0x5AB3F9C9341F6C04,
           kind: 11,
           ordinal: 19,
@@ -447,11 +514,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: 0.0
         },
         %{
           name: "wide_key",
           json: "wide_key",
+          type_name: "uint128",
           id: 0xA3348580461FAF16,
           kind: 19,
           ordinal: 20,
@@ -463,11 +533,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "flux",
           json: "flux",
+          type_name: "int128",
           id: 0xD61BDD7908AF2642,
           kind: 18,
           ordinal: 21,
@@ -483,11 +556,14 @@ defmodule Bench.Table do
           bound:
             {-1_267_650_600_228_229_401_496_703_205_376,
              1_267_650_600_228_229_401_496_703_205_376},
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "ping",
           json: "ping",
+          type_name: "ufixed(8, 8)",
           id: 0xBF30E00DC53307A9,
           kind: 26,
           ordinal: 22,
@@ -496,11 +572,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: nil
         },
         %{
           name: "crc_hint",
           json: "crc_hint",
+          type_name: "bits(24)",
           id: 0x560D6527CCD8515F,
           kind: 8,
           ordinal: 23,
@@ -513,11 +592,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "has_extra",
           json: "has_extra",
+          type_name: "bool",
           id: 0xC08292176CFD8672,
           kind: 1,
           ordinal: 24,
@@ -527,11 +609,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: true
         },
         %{
           name: "extra",
           json: "extra",
+          type_name: "int32",
           id: 0xFD29EE12A979CB69,
           kind: 4,
           ordinal: 25,
@@ -545,11 +630,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: {0, 255},
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "idle_ticks",
           json: "idle_ticks",
+          type_name: "int32",
           id: 0x78101AC0AA8CBCFE,
           kind: 4,
           ordinal: 26,
@@ -563,11 +651,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: {0, 15},
+          doc: "",
+          tags: [],
           default: 0
         }
       ]
     },
     "FixedTable" => %{
+      name: "FixedTable",
       size: 1376,
       align: 16,
       type_id: 0x85DF369CDCA746B3,
@@ -575,10 +666,13 @@ defmodule Bench.Table do
       has_extent: false,
       string_blob: false,
       variable: false,
+      doc: "",
+      tags: [],
       fields: [
         %{
           name: "value",
           json: "value",
+          type_name: "BenchMixed",
           id: 0x7CE4FD9430E80CEA,
           kind: 13,
           ordinal: 0,
@@ -589,11 +683,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :table,
           bound: nil,
+          doc: "",
+          tags: [],
           default: %{}
         }
       ]
     },
     "MixedChatEvent" => %{
+      name: "MixedChatEvent",
       size: 8,
       align: 4,
       type_id: 0x9F2C9DA926A7408A,
@@ -601,10 +698,13 @@ defmodule Bench.Table do
       has_extent: false,
       string_blob: false,
       variable: false,
+      doc: "",
+      tags: [],
       fields: [
         %{
           name: "channel",
           json: "channel",
+          type_name: "int32",
           id: 0xA5013E9AD5CAEDA4,
           kind: 4,
           ordinal: 0,
@@ -618,11 +718,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: {0, 3},
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "speaker",
           json: "speaker",
+          type_name: "bits(12)",
           id: 0xFBF1AC4D96EBD022,
           kind: 7,
           ordinal: 1,
@@ -635,11 +738,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: 0
         }
       ]
     },
     "MixedEntity" => %{
+      name: "MixedEntity",
       size: 64,
       align: 8,
       type_id: 0x9367B84CAB99CDC3,
@@ -647,10 +753,13 @@ defmodule Bench.Table do
       has_extent: false,
       string_blob: false,
       variable: false,
+      doc: "",
+      tags: [],
       fields: [
         %{
           name: "entity_id",
           json: "entity_id",
+          type_name: "bits(12)",
           id: 0x23FCFD6678E36712,
           kind: 7,
           ordinal: 0,
@@ -663,11 +772,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "pos_x",
           json: "pos_x",
+          type_name: "int32",
           id: 0xCB4B37357667310E,
           kind: 4,
           ordinal: 1,
@@ -681,11 +793,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: {-16383, 16383},
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "pos_y",
           json: "pos_y",
+          type_name: "int32",
           id: 0xCB4B3835766732C1,
           kind: 4,
           ordinal: 2,
@@ -699,11 +814,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: {-16383, 16383},
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "pos_z",
           json: "pos_z",
+          type_name: "int32",
           id: 0xCB4B353576672DA8,
           kind: 4,
           ordinal: 3,
@@ -717,11 +835,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: {-16383, 16383},
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "yaw",
           json: "yaw",
+          type_name: "bits(9)",
           id: 0xB54D8E19798E16E8,
           kind: 7,
           ordinal: 4,
@@ -734,11 +855,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "pitch",
           json: "pitch",
+          type_name: "bits(9)",
           id: 0x53A9F665A90CC1B1,
           kind: 7,
           ordinal: 5,
@@ -751,11 +875,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "vel_x",
           json: "vel_x",
+          type_name: "int32",
           id: 0x6CEDE6B6EB60EE67,
           kind: 4,
           ordinal: 6,
@@ -769,11 +896,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: {-2048, 2047},
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "vel_y",
           json: "vel_y",
+          type_name: "int32",
           id: 0x6CEDE5B6EB60ECB4,
           kind: 4,
           ordinal: 7,
@@ -787,11 +917,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: {-2048, 2047},
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "vel_z",
           json: "vel_z",
+          type_name: "int32",
           id: 0x6CEDE8B6EB60F1CD,
           kind: 4,
           ordinal: 8,
@@ -805,11 +938,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: {-2048, 2047},
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "health",
           json: "health",
+          type_name: "int32",
           id: 0x7F69D4B5288BA9CF,
           kind: 4,
           ordinal: 9,
@@ -823,11 +959,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: {0, 1000},
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "weapon",
           json: "weapon",
+          type_name: "MixedWeapon",
           id: 0xA0B610205F2C6E01,
           kind: 30,
           ordinal: 10,
@@ -889,11 +1028,14 @@ defmodule Bench.Table do
           enum_width: 1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: nil
         },
         %{
           name: "damage",
           json: "damage",
+          type_name: "MixedDamage",
           id: 0x7F6308BE8AB37FC0,
           kind: 9,
           ordinal: 11,
@@ -902,11 +1044,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: nil
         },
         %{
           name: "moving",
           json: "moving",
+          type_name: "bool",
           id: 0x11A44FC1D1243DA7,
           kind: 1,
           ordinal: 12,
@@ -916,11 +1061,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: false
         },
         %{
           name: "firing",
           json: "firing",
+          type_name: "bool",
           id: 0x7674CFD19B9031CA,
           kind: 1,
           ordinal: 13,
@@ -930,11 +1078,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: false
         }
       ]
     },
     "MixedHitEvent" => %{
+      name: "MixedHitEvent",
       size: 16,
       align: 4,
       type_id: 0xAC9FE3B25A77F1D7,
@@ -942,10 +1093,13 @@ defmodule Bench.Table do
       has_extent: false,
       string_blob: false,
       variable: false,
+      doc: "",
+      tags: [],
       fields: [
         %{
           name: "target_id",
           json: "target_id",
+          type_name: "bits(12)",
           id: 0xB7BC9AC015A25050,
           kind: 7,
           ordinal: 0,
@@ -958,11 +1112,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "damage",
           json: "damage",
+          type_name: "int32",
           id: 0x7F6308BE8AB37FC0,
           kind: 4,
           ordinal: 1,
@@ -976,11 +1133,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: {0, 4095},
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "hit_kind",
           json: "hit_kind",
+          type_name: "int32",
           id: 0x01FBC365B059B925,
           kind: 4,
           ordinal: 2,
@@ -994,11 +1154,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: {0, 7},
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "crit",
           json: "crit",
+          type_name: "bool",
           id: 0x126167908C9AA52D,
           kind: 1,
           ordinal: 3,
@@ -1008,11 +1171,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: false
         }
       ]
     },
     "MixedPickupEvent" => %{
+      name: "MixedPickupEvent",
       size: 8,
       align: 4,
       type_id: 0x3D827CB76B809D8C,
@@ -1020,10 +1186,13 @@ defmodule Bench.Table do
       has_extent: false,
       string_blob: false,
       variable: false,
+      doc: "",
+      tags: [],
       fields: [
         %{
           name: "item_id",
           json: "item_id",
+          type_name: "bits(10)",
           id: 0x9E7FD06D864FBD56,
           kind: 7,
           ordinal: 0,
@@ -1036,11 +1205,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "amount",
           json: "amount",
+          type_name: "int32",
           id: 0x8113FE7EA2B16969,
           kind: 4,
           ordinal: 1,
@@ -1054,11 +1226,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: {0, 255},
+          doc: "",
+          tags: [],
           default: 0
         }
       ]
     },
     "MixedStat" => %{
+      name: "MixedStat",
       size: 8,
       align: 4,
       type_id: 0xC42975BFE5E07BAA,
@@ -1066,10 +1241,13 @@ defmodule Bench.Table do
       has_extent: false,
       string_blob: false,
       variable: false,
+      doc: "",
+      tags: [],
       fields: [
         %{
           name: "stat_id",
           json: "stat_id",
+          type_name: "bits(8)",
           id: 0x80AB75F0866DBF65,
           kind: 6,
           ordinal: 0,
@@ -1082,11 +1260,14 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: nil,
+          doc: "",
+          tags: [],
           default: 0
         },
         %{
           name: "delta",
           json: "delta",
+          type_name: "int32",
           id: 0x52076675EC13A0C1,
           kind: 4,
           ordinal: 1,
@@ -1100,6 +1281,8 @@ defmodule Bench.Table do
           present_off: -1,
           shape: :value,
           bound: {-512, 511},
+          doc: "",
+          tags: [],
           default: 0
         }
       ]
@@ -2424,33 +2607,31 @@ defmodule Bench.Table do
     Process.put(:elixir_json_defs, %{})
     Process.put(:elixir_json_open, %{})
     Process.put(:elixir_json_bad, false)
+    Process.put(:elixir_json_variable, desc.variable)
 
     try do
-      case json_value(text) do
-        {:ok, doc, _rest} when is_map(doc) ->
-          # the root takes no label (§16.7): a reference to it is a cycle
-          if Map.has_key?(doc, "&node") or Process.get(:elixir_json_bad) do
+      case json_value(text, 0) do
+        {:ok, {:obj, pairs}, rest} ->
+          if json_skip(rest) != <<>> or Process.get(:elixir_json_bad) do
             {:error, :malformed, empty_report()}
           else
-            {value, report} = json_fields(desc, doc)
+            {value, report} = json_fields(desc, pairs)
 
-            if Process.get(:elixir_json_bad) do
-              {:error, :malformed, report}
+            if Process.get(:elixir_json_bad) or report.malformed do
+              {:error, :malformed, %{report | malformed: true}}
             else
               {:ok, Map.merge(defaults(desc), value), report}
             end
           end
 
-        {:ok, _other, _rest} ->
-          {:error, :malformed, empty_report()}
-
-        :error ->
+        _ ->
           {:error, :malformed, empty_report()}
       end
     after
       Process.delete(:elixir_json_defs)
       Process.delete(:elixir_json_open)
       Process.delete(:elixir_json_bad)
+      Process.delete(:elixir_json_variable)
     end
   end
 
@@ -2684,23 +2865,64 @@ defmodule Bench.Table do
   # unknown key is skipped and counted in report.unknown, a key of the wrong
   # JSON type is skipped and counted as kind_mismatch, and the field keeps its
   # default. A value outside a bound clamps and counts, never truncates (§16.2).
-  defp json_fields(desc, doc) when is_map(doc) do
-    {value, report} =
-      Enum.reduce(desc.fields, {%{}, empty_report()}, fn f, {value, report} ->
-        case Map.fetch(doc, f.json) do
-          {:ok, raw} ->
-            {v, report} = json_read_field(f, raw, report)
-            {Map.put(value, f.name, v), report}
+  defp json_fields(desc, pairs) when is_list(pairs) do
+    {value, _seen, report} =
+      Enum.reduce(pairs, {%{}, MapSet.new(), empty_report()}, fn {k, raw},
+                                                                 {value, seen, report} ->
+        if String.starts_with?(k, "&") do
+          Process.put(:elixir_json_bad, true)
+          {value, seen, %{report | malformed: true}}
+        else
+          case Enum.find(desc.fields, fn f -> f.json == k end) do
+            nil ->
+              json_skip_value(raw)
+              {value, seen, %{report | unknown: report.unknown + 1}}
 
-          :error ->
-            {value, report}
+            f ->
+              report =
+                if MapSet.member?(seen, f.name) do
+                  Map.update(report, :duplicate, 1, &(&1 + 1))
+                else
+                  report
+                end
+
+              seen = MapSet.put(seen, f.name)
+
+              if Map.get(f, :optional, false) and raw == nil do
+                {Map.delete(value, f.name), seen, report}
+              else
+                {v, report} = json_read_field(f, raw, report)
+                {Map.put(value, f.name, v), seen, report}
+              end
+          end
         end
       end)
 
-    known = MapSet.new(desc.fields, & &1.json)
-    unknown = Enum.count(Map.keys(doc), fn k -> not MapSet.member?(known, k) end)
-    {value, %{report | unknown: report.unknown + unknown}}
+    {value, report}
   end
+
+  # json_skip_value walks a value the reader drops (an unknown key, a kind
+  # mismatch, an element past its bound), so a label defined inside it is
+  # still defined and a later reference to it reads null, never malformed
+  # (docs/SPEC-TABLES.md §16.2, §16.7).
+  defp json_skip_value({:obj, [{"&node", label} | rest]}) when is_integer(label) and label > 0 do
+    if Process.get(:elixir_json_variable, false) do
+      defs = Process.get(:elixir_json_defs, %{})
+      Process.put(:elixir_json_defs, Map.put_new(defs, label, :dropped))
+    end
+
+    Enum.each(rest, fn {_k, v} -> json_skip_value(v) end)
+  end
+
+  defp json_skip_value({:obj, pairs}) do
+    Enum.each(pairs, fn {_k, v} -> json_skip_value(v) end)
+  end
+
+  defp json_skip_value(items) when is_list(items) do
+    Enum.each(items, &json_skip_value/1)
+  end
+
+  defp json_skip_value(_other), do: :ok
 
   defp json_read_field(%{t: :string} = f, raw, report) when is_binary(raw) do
     if byte_size(raw) > f.size do
@@ -2710,8 +2932,10 @@ defmodule Bench.Table do
     end
   end
 
-  defp json_read_field(%{t: :string}, _raw, report),
-    do: {"", %{report | kind_mismatch: report.kind_mismatch + 1}}
+  defp json_read_field(%{t: :string}, raw, report) do
+    json_skip_value(raw)
+    {"", %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
 
   defp json_read_field(%{t: :enum} = f, raw, report) when is_binary(raw) do
     # "None" is the reserved nil spelling (docs/SPEC-TABLES.md §16; the Go
@@ -2729,24 +2953,65 @@ defmodule Bench.Table do
     end
   end
 
-  defp json_read_field(%{t: :enum}, _raw, report),
-    do: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
-
-  defp json_read_field(%{t: :int} = f, raw, report) when is_integer(raw) do
-    {v, report} = clamp_int(raw, f, report)
-    {v, report}
+  defp json_read_field(%{t: :enum}, raw, report) do
+    json_skip_value(raw)
+    {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
-  defp json_read_field(%{t: :int}, _raw, report),
-    do: {0, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  defp json_read_field(%{t: :int} = f, raw, report) when is_integer(raw) do
+    clamp_json_int(raw, f, report)
+  end
+
+  defp json_read_field(%{t: :int} = f, raw, report) when is_float(raw) do
+    if Float.floor(raw) == raw do
+      clamp_json_int(trunc(raw), f, report)
+    else
+      {Map.get(f, :default, 0), %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
+
+  defp json_read_field(%{t: :int} = f, raw, report) do
+    json_skip_value(raw)
+    {Map.get(f, :default, 0), %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
+
+  # clamp_json_int clamps a JSON integer to the field's declared range and
+  # then to its storage domain, counting each clamp (docs/SPEC-TABLES.md §16.2).
+  defp clamp_json_int(v, f, report) do
+    {v, report} = clamp_int(v, f, report)
+    {lo, hi} = int_domain_bounds(f)
+
+    cond do
+      v < lo -> {lo, %{report | clamped: report.clamped + 1}}
+      v > hi -> {hi, %{report | clamped: report.clamped + 1}}
+      true -> {v, report}
+    end
+  end
+
+  # int_domain_bounds is an integer field's storage domain (§16.2).
+  defp int_domain_bounds(%{bits: bits}) when is_integer(bits) and bits > 0 do
+    {0, (1 <<< bits) - 1}
+  end
+
+  defp int_domain_bounds(%{width: w, signed: true}) do
+    bits = w * 8
+    {-(1 <<< (bits - 1)), (1 <<< (bits - 1)) - 1}
+  end
+
+  defp int_domain_bounds(%{width: w, signed: false}) do
+    bits = w * 8
+    {0, (1 <<< bits) - 1}
+  end
 
   defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {raw, report}
 
-  defp json_read_field(%{t: :bool}, _raw, report),
-    do: {false, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  defp json_read_field(%{t: :bool} = f, raw, report) do
+    json_skip_value(raw)
+    {Map.get(f, :default, false), %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
 
   defp json_read_field(%{t: :blob, blob: :bytes}, raw, report) when is_binary(raw) do
-    case Base.decode64(raw) do
+    case json_decode_base64(raw) do
       {:ok, bytes} -> {bytes, report}
       :error -> {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
     end
@@ -2755,11 +3020,13 @@ defmodule Bench.Table do
   defp json_read_field(%{t: :blob}, raw, report) when is_binary(raw), do: {raw, report}
   defp json_read_field(%{t: :blob}, nil, report), do: {nil, report}
 
-  defp json_read_field(%{t: :blob}, _raw, report),
-    do: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  defp json_read_field(%{t: :blob}, raw, report) do
+    json_skip_value(raw)
+    {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
 
   defp json_read_field(%{t: :bytes} = f, raw, report) when is_binary(raw) do
-    case Base.decode64(raw) do
+    case json_decode_base64(raw) do
       {:ok, bytes} when byte_size(bytes) <= f.size ->
         {bytes, report}
 
@@ -2767,61 +3034,105 @@ defmodule Bench.Table do
         {binary_part(bytes, 0, f.size), %{report | clamped: report.clamped + 1}}
 
       :error ->
-        {<<>>, %{report | kind_mismatch: report.kind_mismatch + 1}}
+        {Map.get(f, :default, <<>>), %{report | kind_mismatch: report.kind_mismatch + 1}}
     end
   end
 
-  defp json_read_field(%{t: :bytes}, _raw, report),
-    do: {<<>>, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  defp json_read_field(%{t: :bytes} = f, raw, report) do
+    json_skip_value(raw)
+    {Map.get(f, :default, <<>>), %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
 
-  defp json_read_field(%{t: :table} = f, raw, report) when is_map(raw) do
-    {v, elem_report} = json_fields(Map.fetch!(@tables, f.elem), raw)
+  # json_decode_base64 reads §16.2's bytes spelling: standard base64, padded
+  # or unpadded (docs/SPEC-TABLES.md §16.2).
+  defp json_decode_base64(""), do: {:ok, <<>>}
+
+  defp json_decode_base64(raw) do
+    if String.contains?(raw, "=") do
+      Base.decode64(raw)
+    else
+      Base.decode64(raw, padding: false)
+    end
+  end
+
+  defp json_read_field(%{t: :table} = f, {:obj, pairs}, report) do
+    {v, elem_report} = json_fields(Map.fetch!(@tables, f.elem), pairs)
     {v, merge_report(report, elem_report)}
   end
 
-  defp json_read_field(%{t: :table}, _raw, report),
-    do: {%{}, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  defp json_read_field(%{t: :table}, raw, report) do
+    json_skip_value(raw)
+    {%{}, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
 
   defp json_read_field(%{t: :pointer} = _f, nil, report), do: {nil, report}
 
-  defp json_read_field(%{t: :pointer} = f, raw, report) when is_map(raw) do
-    json_read_node(f.elem, raw, report)
+  defp json_read_field(%{t: :pointer} = f, {:obj, pairs}, report) do
+    json_read_node(f.elem, pairs, report)
   end
 
-  defp json_read_field(%{t: :pointer}, _raw, report),
-    do: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  defp json_read_field(%{t: :pointer}, raw, report) do
+    json_skip_value(raw)
+    {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
 
-  defp json_read_field(%{t: :float}, raw, report) when is_number(raw), do: {raw * 1.0, report}
+  defp json_read_field(%{t: :float} = f, raw, report) when is_number(raw) do
+    v = raw * 1.0
 
-  defp json_read_field(%{t: :float}, _raw, report),
-    do: {0.0, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {v, report} =
+      case f do
+        %{min: lo, max: _hi} when v < lo -> {lo * 1.0, %{report | clamped: report.clamped + 1}}
+        %{min: _lo, max: hi} when v > hi -> {hi * 1.0, %{report | clamped: report.clamped + 1}}
+        _ -> {v, report}
+      end
+
+    {v, report}
+  end
+
+  defp json_read_field(%{t: :float} = f, raw, report) do
+    json_skip_value(raw)
+    {Map.get(f, :default, 0.0), %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
 
   defp json_read_field(%{t: :list} = f, raw, report) when is_list(raw) do
-    {elems, report} =
-      Enum.reduce(raw, {[], report}, fn e, {acc, report} ->
-        case json_read_list_elem(f, e, report) do
-          {:skip, report} -> {acc, report}
-          {v, report} -> {[v | acc], report}
+    bound = Map.get(f, :array_bound, 0)
+
+    {elems, _placed, report} =
+      Enum.reduce(raw, {[], 0, report}, fn e, {acc, placed, report} ->
+        if bound > 0 and placed >= bound do
+          json_skip_value(e)
+          {acc, placed, %{report | clamped: report.clamped + 1}}
+        else
+          case json_read_list_elem(f, e, report) do
+            {:skip, report} ->
+              json_skip_value(e)
+              {acc, placed + 1, report}
+
+            {v, report} ->
+              {[v | acc], placed + 1, report}
+          end
         end
       end)
 
     {Enum.reverse(elems), report}
   end
 
-  defp json_read_field(%{t: :list}, _raw, report),
-    do: {[], %{report | kind_mismatch: report.kind_mismatch + 1}}
+  defp json_read_field(%{t: :list}, raw, report) do
+    json_skip_value(raw)
+    {[], %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
 
   # json_read_list_elem reads one unbounded array's element by its element kind
   # (docs/SPEC-TABLES.md §2.9, §16.7), folding the element's report into the list's.
-  defp json_read_list_elem(%{elem_kind: 13} = f, e, report) when is_map(e) do
-    {v, elem_report} = json_fields(Map.fetch!(@tables, f.elem), e)
+  defp json_read_list_elem(%{elem_kind: 13} = f, {:obj, pairs}, report) do
+    {v, elem_report} = json_fields(Map.fetch!(@tables, f.elem), pairs)
     {v, merge_report(report, elem_report)}
   end
 
   defp json_read_list_elem(%{elem_kind: 17} = _f, nil, report), do: {nil, report}
 
-  defp json_read_list_elem(%{elem_kind: 17} = f, e, report) when is_map(e) do
-    json_read_node(f.elem, e, report)
+  defp json_read_list_elem(%{elem_kind: 17} = f, {:obj, pairs}, report) do
+    json_read_node(f.elem, pairs, report)
   end
 
   defp json_read_list_elem(%{elem_kind: 12} = f, e, report) when is_binary(e) do
@@ -2861,63 +3172,60 @@ defmodule Bench.Table do
   # with no definition, a second definition, or a reference while the
   # definition is still open is malformed. A label of another table is a kind
   # mismatch and the pointer reads null.
-  defp json_read_node(table, raw, report) do
-    case Map.fetch(raw, "&node") do
-      :error ->
-        {v, elem_report} = json_fields(Map.fetch!(@tables, table), raw)
-        {v, merge_report(report, elem_report)}
+  defp json_read_node(table, [{"&node", label}], report) when is_integer(label) and label > 0 do
+    if Map.has_key?(Process.get(:elixir_json_open, %{}), label) do
+      Process.put(:elixir_json_bad, true)
+      {nil, %{report | malformed: true}}
+    else
+      case Process.get(:elixir_json_defs, %{}) do
+        %{^label => :dropped} ->
+          {nil, report}
 
-      {:ok, label} when is_integer(label) and label > 0 and map_size(raw) == 1 ->
-        cond do
-          Map.has_key?(Process.get(:elixir_json_open, %{}), label) ->
-            Process.put(:elixir_json_bad, true)
-            {nil, %{report | malformed: true}}
+        %{^label => {^table, value}} ->
+          {value, report}
 
-          true ->
-            case Process.get(:elixir_json_defs, %{}) do
-              %{^label => {^table, value}} ->
-                {value, report}
+        %{^label => _} ->
+          {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
 
-              %{^label => _} ->
-                {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
-
-              _ ->
-                Process.put(:elixir_json_bad, true)
-                {nil, %{report | malformed: true}}
-            end
-        end
-
-      {:ok, label} when is_integer(label) and label > 0 ->
-        defs = Process.get(:elixir_json_defs, %{})
-        open = Process.get(:elixir_json_open, %{})
-
-        if Map.has_key?(defs, label) or Map.has_key?(open, label) do
+        _ ->
           Process.put(:elixir_json_bad, true)
           {nil, %{report | malformed: true}}
-        else
-          Process.put(:elixir_json_open, Map.put(open, label, true))
-          {v, elem_report} = json_fields(Map.fetch!(@tables, table), Map.delete(raw, "&node"))
-          Process.put(:elixir_json_open, Map.delete(Process.get(:elixir_json_open, %{}), label))
-
-          Process.put(
-            :elixir_json_defs,
-            Map.put(Process.get(:elixir_json_defs, %{}), label, {table, v})
-          )
-
-          {v, merge_report(report, elem_report)}
-        end
-
-      _ ->
-        Process.put(:elixir_json_bad, true)
-        {nil, %{report | malformed: true}}
+      end
     end
+  end
+
+  defp json_read_node(table, [{"&node", label} | rest_pairs], report)
+       when is_integer(label) and label > 0 do
+    defs = Process.get(:elixir_json_defs, %{})
+    open = Process.get(:elixir_json_open, %{})
+
+    if Map.has_key?(defs, label) or Map.has_key?(open, label) do
+      Process.put(:elixir_json_bad, true)
+      {nil, %{report | malformed: true}}
+    else
+      Process.put(:elixir_json_open, Map.put(open, label, true))
+      {v, elem_report} = json_fields(Map.fetch!(@tables, table), rest_pairs)
+      Process.put(:elixir_json_open, Map.delete(Process.get(:elixir_json_open, %{}), label))
+
+      Process.put(
+        :elixir_json_defs,
+        Map.put(Process.get(:elixir_json_defs, %{}), label, {table, v})
+      )
+
+      {v, merge_report(report, elem_report)}
+    end
+  end
+
+  defp json_read_node(table, pairs, report) when is_list(pairs) do
+    {v, elem_report} = json_fields(Map.fetch!(@tables, table), pairs)
+    {v, merge_report(report, elem_report)}
   end
 
   # merge_report folds one nested value's report into the enclosing one
   # (§16.2): the counters sum and malformed sticks, so an event inside a list
   # element is never lost when the element's own walk returns.
   defp merge_report(a, b) do
-    %{
+    base = %{
       unknown: a.unknown + b.unknown,
       kind_mismatch: a.kind_mismatch + b.kind_mismatch,
       widened: a.widened + b.widened,
@@ -2926,41 +3234,68 @@ defmodule Bench.Table do
       retained: a.retained + b.retained,
       retain_lost: a.retain_lost + b.retain_lost
     }
+
+    case Map.get(a, :duplicate, 0) + Map.get(b, :duplicate, 0) do
+      0 -> base
+      d -> Map.put(base, :duplicate, d)
+    end
   end
 
   # ---- a JSON parser over the standard library (docs/SPEC-TABLES.md §16.3):
   # ---- objects, arrays, strings with escapes, numbers, booleans and null
 
-  defp json_value(bin) do
+  defp json_value(_bin, depth) when depth > 128, do: :error
+
+  defp json_value(bin, depth) do
     case json_skip(bin) do
-      <<"{", rest::binary>> -> json_object_p(rest, %{})
-      <<"[", rest::binary>> -> json_array_p(rest, [])
+      <<"{", rest::binary>> -> json_object_p(rest, depth)
+      <<"[", rest::binary>> -> json_array_p(rest, depth)
       <<"\"", rest::binary>> -> json_string(rest, [])
       <<"true", rest::binary>> -> {:ok, true, rest}
       <<"false", rest::binary>> -> {:ok, false, rest}
       <<"null", rest::binary>> -> {:ok, nil, rest}
-      <<?-, _::binary>> = num -> json_number(num, [])
-      <<c, _::binary>> = num when c in ?0..?9 -> json_number(num, [])
+      <<?-, _::binary>> = num -> json_number(num)
+      <<c, _::binary>> = num when c in ?0..?9 -> json_number(num)
       _ -> :error
     end
   end
 
   defp json_skip(<<c, rest::binary>>) when c in [?\s, ?\t, ?\n, ?\r], do: json_skip(rest)
+  # comments are accepted on read (docs/SPEC-TABLES.md §16.2); an
+  # unclosed block comment leaves a byte behind, so the document is malformed.
+  defp json_skip(<<"//", rest::binary>>), do: json_skip_line(rest)
+  defp json_skip(<<"/*", rest::binary>>), do: json_skip_block(rest)
   defp json_skip(bin), do: bin
 
-  defp json_object_p(bin, acc) do
-    case json_skip(bin) do
-      <<",", rest::binary>> ->
-        json_object_p(rest, acc)
+  defp json_skip_line(<<"\n", rest::binary>>), do: json_skip(rest)
+  defp json_skip_line(<<_, rest::binary>>), do: json_skip_line(rest)
+  defp json_skip_line(<<>>), do: <<>>
 
+  defp json_skip_block(<<"*/", rest::binary>>), do: json_skip(rest)
+  defp json_skip_block(<<_, rest::binary>>), do: json_skip_block(rest)
+  defp json_skip_block(<<>>), do: <<0>>
+
+  defp json_object_p(bin, depth) do
+    case json_skip(bin) do
+      <<"}", rest::binary>> -> {:ok, {:obj, []}, rest}
+      _ -> json_object_pairs(bin, [], depth)
+    end
+  end
+
+  defp json_object_pairs(bin, acc, depth) do
+    case json_skip(bin) do
       <<"}", rest::binary>> ->
-        {:ok, acc, rest}
+        {:ok, {:obj, Enum.reverse(acc)}, rest}
 
       <<"\"", rest::binary>> ->
         with {:ok, key, r1} <- json_string(rest, []),
              <<":", r2::binary>> <- json_skip(r1),
-             {:ok, val, r3} <- json_value(r2) do
-          json_object_p(r3, Map.put(acc, key, val))
+             {:ok, val, r3} <- json_object_val(key, acc, r2, depth + 1) do
+          case json_skip(r3) do
+            <<",", r4::binary>> -> json_object_pairs(r4, [{key, val} | acc], depth)
+            <<"}", r4::binary>> -> {:ok, {:obj, Enum.reverse([{key, val} | acc])}, r4}
+            _ -> :error
+          end
         else
           _ -> :error
         end
@@ -2970,18 +3305,72 @@ defmodule Bench.Table do
     end
   end
 
-  defp json_array_p(bin, acc) do
-    case json_skip(bin) do
-      <<",", rest::binary>> ->
-        json_array_p(rest, acc)
+  # json_object_val reads one member's value; in a variable-class document
+  # a key opening with & is the §16.7 label and only "&node", first, is one.
+  defp json_object_val(key, acc, bin, depth) do
+    if String.starts_with?(key, "&") and Process.get(:elixir_json_variable, false) do
+      if key != "&node" or acc != [] do
+        :error
+      else
+        json_label(bin)
+      end
+    else
+      json_value(bin, depth)
+    end
+  end
 
+  # json_label reads a §16.7 label: a positive decimal integer of at most
+  # 64 bits, no sign, fraction or exponent (docs/SPEC-TABLES.md §16.7).
+  defp json_label(bin) do
+    case json_skip(bin) do
+      <<first, rest::binary>> when first in ?1..?9 ->
+        json_label_digits(rest, first - ?0)
+
+      _ ->
+        :error
+    end
+  end
+
+  defp json_label_digits(<<c, rest::binary>>, acc) when c in ?0..?9 do
+    next = acc * 10 + (c - ?0)
+
+    if next > 0xFFFFFFFFFFFFFFFF do
+      :error
+    else
+      json_label_digits(rest, next)
+    end
+  end
+
+  defp json_label_digits(rest, acc) do
+    case rest do
+      <<c, _::binary>> when c in [?., ?e, ?E, ?+, ?-] -> :error
+      _ -> {:ok, acc, rest}
+    end
+  end
+
+  defp json_array_p(bin, depth) do
+    case json_skip(bin) do
+      <<"]", rest::binary>> -> {:ok, [], rest}
+      _ -> json_array_elems(bin, [], depth)
+    end
+  end
+
+  defp json_array_elems(bin, acc, depth) do
+    case json_skip(bin) do
       <<"]", rest::binary>> ->
         {:ok, Enum.reverse(acc), rest}
 
       _ ->
-        case json_value(bin) do
-          {:ok, val, rest} -> json_array_p(rest, [val | acc])
-          :error -> :error
+        case json_value(bin, depth + 1) do
+          {:ok, val, r1} ->
+            case json_skip(r1) do
+              <<",", r2::binary>> -> json_array_elems(r2, [val | acc], depth)
+              <<"]", r2::binary>> -> {:ok, Enum.reverse([val | acc]), r2}
+              _ -> :error
+            end
+
+          :error ->
+            :error
         end
     end
   end
@@ -3016,9 +3405,16 @@ defmodule Bench.Table do
         json_string(r, ["\t" | acc])
 
       <<"u", a, b, c, d, r::binary>> ->
-        code = hexval(a) * 4096 + hexval(b) * 256 + hexval(c) * 16 + hexval(d)
-        point = if code in 0xD800..0xDFFF, do: 0xFFFD, else: code
-        json_string(r, [<<point::utf8>> | acc])
+        with {:ok, ha} <- hex_digit(a),
+             {:ok, hb} <- hex_digit(b),
+             {:ok, hc} <- hex_digit(c),
+             {:ok, hd} <- hex_digit(d) do
+          code = ha * 4096 + hb * 256 + hc * 16 + hd
+          point = if code in 0xD800..0xDFFF, do: 0xFFFD, else: code
+          json_string(r, [<<point::utf8>> | acc])
+        else
+          _ -> :error
+        end
 
       _ ->
         :error
@@ -3028,21 +3424,69 @@ defmodule Bench.Table do
   defp json_string(<<c, rest::binary>>, acc) when c >= 0x20, do: json_string(rest, [<<c>> | acc])
   defp json_string(_, _acc), do: :error
 
-  defp hexval(c) when c in ?0..?9, do: c - ?0
-  defp hexval(c) when c in ?a..?f, do: c - ?a + 10
-  defp hexval(c) when c in ?A..?F, do: c - ?A + 10
-  defp hexval(_), do: 0
+  defp hex_digit(c) when c in ?0..?9, do: {:ok, c - ?0}
+  defp hex_digit(c) when c in ?a..?f, do: {:ok, c - ?a + 10}
+  defp hex_digit(c) when c in ?A..?F, do: {:ok, c - ?A + 10}
+  defp hex_digit(_), do: :error
 
-  defp json_number(bin, acc) do
-    case bin do
-      <<c, rest::binary>> when c in ?0..?9 ->
-        json_number(rest, [c | acc])
+  # json_number reads the RFC 8259 number grammar strictly (no leading zero,
+  # no plus sign, digits after a point and an exponent); an integer stays an
+  # integer and anything else is a float (docs/SPEC-TABLES.md §16.2).
+  defp json_number(bin) do
+    with {:ok, neg, r1} <- json_num_sign(bin),
+         {:ok, int_digits, r2} <- json_num_int(r1),
+         {:ok, frac_digits, r3} <- json_num_frac(r2),
+         {:ok, exp_str, r4} <- json_num_exp(r3),
+         :ok <- json_num_tail(r4) do
+      sign_str = if neg, do: "-", else: ""
 
-      rest ->
-        digits = acc |> Enum.reverse() |> IO.iodata_to_binary()
-        {:ok, String.to_integer(digits), rest}
+      if frac_digits == "" and exp_str == "" do
+        {:ok, String.to_integer(sign_str <> int_digits), r4}
+      else
+        token =
+          sign_str <>
+            int_digits <> if(frac_digits == "", do: ".0", else: "." <> frac_digits) <> exp_str
+
+        case Float.parse(token) do
+          {f, ""} -> {:ok, f, r4}
+          _ -> {:ok, :overflow_float, r4}
+        end
+      end
     end
   end
+
+  defp json_num_sign(<<"-", rest::binary>>), do: {:ok, true, rest}
+  defp json_num_sign(<<"+", _::binary>>), do: :error
+  defp json_num_sign(rest), do: {:ok, false, rest}
+
+  defp json_num_int(<<"0", c, _::binary>>) when c in ?0..?9, do: :error
+  defp json_num_int(<<"0", rest::binary>>), do: {:ok, "0", rest}
+  defp json_num_int(<<c, rest::binary>>) when c in ?1..?9, do: json_digits(rest, [c])
+  defp json_num_int(_), do: :error
+
+  defp json_num_frac(<<".", c, rest::binary>>) when c in ?0..?9, do: json_digits(rest, [c])
+  defp json_num_frac(<<".", _::binary>>), do: :error
+  defp json_num_frac(rest), do: {:ok, "", rest}
+
+  defp json_num_exp(<<e, s, c, rest::binary>>)
+       when e in [?e, ?E] and s in [?+, ?-] and c in ?0..?9 do
+    {:ok, d, r} = json_digits(rest, [c])
+    {:ok, <<e, s>> <> d, r}
+  end
+
+  defp json_num_exp(<<e, c, rest::binary>>) when e in [?e, ?E] and c in ?0..?9 do
+    {:ok, d, r} = json_digits(rest, [c])
+    {:ok, <<e>> <> d, r}
+  end
+
+  defp json_num_exp(<<e, _::binary>>) when e in [?e, ?E], do: :error
+  defp json_num_exp(rest), do: {:ok, "", rest}
+
+  defp json_num_tail(<<c, _::binary>>) when c in [?., ?e, ?E, ?+, ?-] or c in ?0..?9, do: :error
+  defp json_num_tail(_), do: :ok
+
+  defp json_digits(<<c, rest::binary>>, acc) when c in ?0..?9, do: json_digits(rest, [c | acc])
+  defp json_digits(rest, acc), do: {:ok, acc |> Enum.reverse() |> IO.iodata_to_binary(), rest}
 
   # ---- the region measure (docs/SPEC-TABLES.md §4.2, §6.5) ----
   #
