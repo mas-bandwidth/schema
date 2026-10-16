@@ -9508,13 +9508,13 @@ the wire, and keeps the flexibility that comes with it.
 
   | | C++ | C# | Go | JavaScript | Dart |
   |---|---|---|---|---|---|
-  | open | `bool XOpen( const XCook *& cook, const void * base, int64_t bytes )` | `bool XCook.Open(out XCook cook, IntPtr p, long n)` | `bool XOpen(cook *XCook, base unsafe.Pointer, length int64) bool` | `XCook.Open(bytes: Uint8Array)` — the handle, or `null` for bytes that are not this build's; a caller's error (no `Uint8Array`, a view at an unaligned `byteOffset`) throws with the fix named | `XCook? XCook.open(Uint8List? bytes, int at, int length)` — null is the refusal |
+  | open | `const X * XOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )` — the root, or NULL with the refusal named | `bool XCook.Open(out XCook cook, IntPtr p, long n)` | `bool XOpen(cook *XCook, base unsafe.Pointer, length int64) bool` | `XCook.Open(bytes: Uint8Array)` — the handle, or `null` for bytes that are not this build's; a caller's error (no `Uint8Array`, a view at an unaligned `byteOffset`) throws with the fix named | `XCook? XCook.open(Uint8List? bytes, int at, int length)` — null is the refusal |
   | the handle | the root pointer itself | `readonly struct XCook` | `type XCook struct { Region unsafe.Pointer; RegionLength int64 }` | `{ Bytes, View, Region, Length }` — the region's offset inside the caller's view, and its length | `final class XCook` over `bytes`, its `region` offset and `length` |
   | the root | the return | `cook.Root` / `cook.RootPointer` | `cook.Root() *XRow` | `cook.Region`, the byte offset the root's accessors take | `cook.root(into)` — the cursor `cook.cursor()` made, lent and moved onto the root; no allocating twin |
   | deref | `const T * t = XAt( slot )` | `XRow* r = Schema.XAt(slot)` | `r := XAt(slot)`, `slot *int64` | `XCook.At(cook, slot)` — the target's offset, or `null` for a null reference; a delta that leaves the region throws a `RangeError` naming the cook as corrupt | `row.<field>(into)` moves a lent `TRow` cursor; an escaping delta answers `TableCookRef.outside` |
   | the record | the generated struct | `XRow` (§11's claimed suffix) | `XRow`, the same claim | `XRow`, a frozen object of accessors over `(view, at)`: no struct to declare, so the offsets ARE the record | `XRow`, the same claim — a cursor of `(view, at)`, since Dart has no struct |
-  | the descriptors | `XCook::Type()` | `XCook.Type` | `cook.Type() *TableCookInfo` | `XCook.Type` | `XCook.type`, a `const TableCookInfo` |
-  | §7.1's facts | `XCook::RegionAlignment` etc. | the same constants | `cook.RegionAlignment()`, `RootSize()`, `RootAlign()` — methods, which §11 leaves a language free to make them | `XCook.RegionAlignment`, `RootSize`, `RootAlign` | `XRow.rowSize` and `XRow.rowAlign`, `static const` on every record; the region alignment is the header's, read at `open` |
+  | the descriptors | `XTableType()` | `XCook.Type` | `cook.Type() *TableCookInfo` | `XCook.Type` | `XCook.type`, a `const TableCookInfo` |
+  | §7.1's facts | `sizeof( X )` and `alignof( X )`, which `XOpen` holds the header to; the region alignment is the header's own word | the same constants | `cook.RegionAlignment()`, `RootSize()`, `RootAlign()` — methods, which §11 leaves a language free to make them | `XCook.RegionAlignment`, `RootSize`, `RootAlign` | `XRow.rowSize` and `XRow.rowAlign`, `static const` on every record; the region alignment is the header's, read at `open` |
 
   **THE GENERATED STRUCT IS THE COOKED RECORD**, and the backend asserts it
   rather than assuming it: every record a unit's files declare carries
@@ -10704,7 +10704,7 @@ before this section, so the rule is here, one shape for both:
   `is_array` says, exactly as it says it for a `[..N]T`, and the `type_name`
   says which of the two constructs it is, `map[...]` or the element's own,
   the way `bytes` separates a byte buffer from an array of `u8` (below).
-- **`element_size` is the pitch**: `sizeof( Entry )` for a map, `sizeof( T )`
+- **`elem_size` is the pitch**: `sizeof( Entry )` for a map, `sizeof( T )`
   for a list. It is the stride a walker steps, as on every array line.
 - **`counted` is set and `count_offset` names the `int32` count**, which sits
   beside the reference in the sixteen-byte slot (§7.2), so a walker reads the
@@ -10730,7 +10730,7 @@ cannot spell for itself it still cannot spell: placing an entry by key in a
 the walk has no name for, so a resolver stays where a resolver is needed, and
 it is one column, `place( worker, slot, key, key_length, key_value )`, which a
 map reads as an insert by key and a list reads as an append. The SHAPE is read
-from `kind`, `is_array`, `counted`, `element_size` and `array_bound = 0` like
+from `kind`, `is_array`, `counted`, `elem_size` and `array_bound = 0` like
 every other array's, the count from `count_offset`, and the array from the
 reference at `offset`, so nothing about the two constructs is inferred from a
 column of their own. A unit that has neither construct carries no `place`
@@ -15352,7 +15352,9 @@ schema name, as everywhere else in that backend.
   §7's own order so that one enum and one order serve both accelerators: the
   magic read bytewise, the byte order it establishes, the build version
   against this build's own, then each array's PITCH against this build's own,
-  its COUNT against the declared maximum, its `offset_of` and its extent
+  its COUNT against the declared maximum, its `offset_of` (at or past the end
+  of the projection, and a multiple of the array's start alignment,
+  `max( 64, alignof( element ) )`, §19.1) and its extent
   inside the block, THEN the used extent against the `bytes` the caller
   passed, and LAST the base's alignment, which is the only clause that reads
   nothing out of the block. **The used extent sits after the arrays because it
@@ -15388,7 +15390,9 @@ schema name, as everywhere else in that backend.
   block, void * base, int64_t bytes, TableRefuseReason * reason = NULL )`,
   written on the refusal path only, and every prologue word is read bytewise
   so that the base's alignment can be the last clause. A block whose bytes
-  are fewer than its prologue answers `truncated`, and a null base
+  are fewer than its projection answers `truncated` (the projection, not the
+  24-byte prologue, because the per-array triples the next clauses read sit
+  in it), and a null base
   `unaligned_base`, on the readings §7 gives those two.
 
   **THE READ SIDE TAKES A CONST OVERLOAD, and the surface SPLITS the way C#'s

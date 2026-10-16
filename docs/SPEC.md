@@ -2383,10 +2383,14 @@ or a file per declaration where the language demands one.
 
 - **C++: the header splits into a data/wire pair.** `<Base>.h` is the DATA
   header (constants, enums, flags, structs and MaxBits/MaxBytes bounds)
-  and includes `serialize.h` only when a storage type demands it
-  (int128/fixed); `<Base>Wire.h` is the WIRE header (`Write*`/`Read*` and
+  and includes `serialize.h` only when a storage type demands it — 128-bit
+  storage, `serialize::int128_t`/`serialize::uint128_t` (an `int128`, a
+  `uint128`, or a `fixed` whose I+F is 128; a narrower `fixed` is a plain
+  `intN_t`); `<Base>Wire.h` is the WIRE header (`Write*`/`Read*` and
   the union tag pairs)
-  and includes `<Base>.h` plus `serialize.h`, with cross-file wire deps
+  and includes `<Base>.h`, plus `serialize.h` when the file emits a wire
+  function (a file of only constants, enums and flags has a wire header with
+  no serialize dependency), with cross-file wire deps
   riding the deps' wire headers. The split exists so a consumer can base its
   math types on generated structs without inheriting the serialize runtime at
   all (a codebase may vendor an older serialize generation whose macro names
@@ -2614,6 +2618,16 @@ trick for keeping read and write from drifting apart; the schema is that
 single source of truth now, so the trick retires from generated code. The
 runtimes' own unified paths are untouched — they serve people hand-writing
 serialization beside the generated code.
+
+Two refinements sit inside this contract in the C++ reference, both
+byte-identical to the plain form and both measured. A fixed `[N]uint8` array
+at a statically byte-aligned position rides ONE `write_bytes`/`read_bytes`
+rather than a per-byte loop (the bulk path's internal align is zero bits
+there; ~2x on byte-array-heavy types). And every generated `Write*`/`Read*`
+is spelled `SCHEMA_WRITE_INLINE`/`SCHEMA_READ_INLINE`, an unconditional
+always-inline demand (plain `inline` where a compiler has no spelling for
+it), because a fallible read chain otherwise decays below the inliner's
+cold-callsite threshold.
 
 What this buys: generated source stays small and reviewable, count ranges
 need no cap, and the backends stay simple enough to verify against each
