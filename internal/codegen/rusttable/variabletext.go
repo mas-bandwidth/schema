@@ -231,11 +231,15 @@ pub struct Jw {
 pub const JSON_DEPTH_CAP: usize = 128;
 
 /// A label the reader has met (docs/SPEC-TABLES.md §16.7): Open while its
-/// definition's object is still being read, then the node it defined.
+/// definition's object is still being read, then the node it defined — or
+/// Dropped, a definition inside a value the walk skipped (past a bound, under
+/// an unknown key). A dropped definition KEEPS its label and its reference
+/// reads null, the wire's rule for an unnameable node (§3.1).
 #[allow(dead_code)]
 pub enum JsonLabel {
     Open,
     Node(Rc<dyn Any>),
+    Dropped,
 }
 
 /// The tolerant JSON cursor (docs/SPEC-TABLES.md §16.2): it skips whitespace,
@@ -548,6 +552,9 @@ impl<'a> Jr<'a> {
                     None
                 }
             },
+            // a definition the walk dropped reads null, and counts nothing
+            // past what dropping it already counted (§16.7)
+            Some(JsonLabel::Dropped) => None,
             _ => {
                 self.malformed = true;
                 None
@@ -576,7 +583,7 @@ impl<'a> Jr<'a> {
                         self.p += 1;
                         return;
                     }
-                    let _ = self.read_string();
+                    let key = self.read_string();
                     if self.malformed {
                         return;
                     }
@@ -584,7 +591,23 @@ impl<'a> Jr<'a> {
                     if self.p < self.b.len() && self.b[self.p] == b':' {
                         self.p += 1;
                     }
-                    self.skip_value();
+                    // A DEFINITION INSIDE A SKIPPED VALUE (§16.7): an &node
+                    // label followed by a field keeps its label as Dropped, so a
+                    // reference to it reads null; an &node alone is a reference
+                    // and defines nothing.
+                    let mut labelled = false;
+                    if key.as_deref() == Some("&node") {
+                        if let Some(label) = self.read_label() {
+                            labelled = true;
+                            self.space();
+                            if self.p < self.b.len() && self.b[self.p] == b',' {
+                                self.labels.entry(label).or_insert(JsonLabel::Dropped);
+                            }
+                        }
+                    }
+                    if !labelled {
+                        self.skip_value();
+                    }
                     if self.malformed {
                         return;
                     }

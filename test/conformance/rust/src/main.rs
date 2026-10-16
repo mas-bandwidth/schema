@@ -988,6 +988,45 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
     }
 }
 
+// JSON-HOSTILE (docs/SPEC-TABLES.md §16.2, §16.3; FORMAT.md): one tree per
+// rule the text form states, and the verdict is `refused` or the §4 report the
+// read produces, `u,k,w,c,d,false,read`. The tree is what `schema pack` reads,
+// so the text is <tree>/<root>.json (§17). A root this leg's text form does not
+// carry answers ABSENT, one row at a time, exactly as json-read does.
+fn surface_json_hostile(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("json-hostile") {
+        let path = format!("{}/{}.json", f[4], f[3]);
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |_load, _save, _to, from_json| {
+            let text = match fs::read(&path) {
+                Ok(t) => t,
+                Err(e) => fail(&format!("cannot read {path}: {e}")),
+            };
+            // a tree that is not UTF-8 is malformed text, and the text form
+            // refuses it rather than reading a lossy copy
+            match std::str::from_utf8(&text) {
+                Err(_) => "refused\n".to_string(),
+                Ok(text) => {
+                    let mut report = Default::default();
+                    let value = from_json(text, &mut report);
+                    let r = &report;
+                    if value.is_none() || r.malformed || r.refused {
+                        "refused\n".to_string()
+                    } else {
+                        format!(
+                            "{},{},{},{},{},false,read\n",
+                            r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate
+                        )
+                    }
+                }
+            }
+        });
+        match answer {
+            Some(verdict) => spill(out, &f[1], verdict.as_bytes()),
+            None => spill_absent(out, &f[1]),
+        }
+    }
+}
+
 // COOK WRITE (docs/SPEC-TABLES.md §7.6) is answered ABSENT for every row today.
 // The emitted cook runtime has <T>_cook_measure / <T>_cook_measure_reason /
 // <T>_cook_from (internal/codegen/rusttable/cook.go), and since
@@ -1026,7 +1065,7 @@ fn main() {
             // case ABSENT, one by one; the message and retain surfaces are still
             // absent whole (the message form's batch and retention beyond the card
             // constructs are their own rows)
-            "wire\nreport\njson-read\njson-write\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write"
+            "wire\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write"
         );
         return;
     }
@@ -1040,6 +1079,7 @@ fn main() {
         "report" => surface_report(&manifest, out),
         "json-read" => surface_json_read(&manifest, out),
         "json-write" => surface_json_write(&manifest, out),
+        "json-hostile" => surface_json_hostile(&manifest, out),
         "cook" => surface_cook(&manifest, out),
         "cook-write" => surface_cook_write(&manifest, out),
         "cook-foreign" => surface_cook_foreign(&manifest, out),
