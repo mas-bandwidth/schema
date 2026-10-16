@@ -1,0 +1,4 @@
+# base-appleclang rev aab858b62 load { 1.21 1.56 1.92 } 2026-10-16T01:12:12Z
+bench_mixed_read best 88.6 worst 90.9 spread 2.7% rounds: 88.6 88.6 89.2 89.6 88.6 90.0 90.9
+bench_fixed_read best 133.7 worst 140.3 spread 5.0% rounds: 133.7 138.5 133.8 140.3 140.3 137.2 136.4
+# load after { 1.46 1.59 1.93 }

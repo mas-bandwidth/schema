@@ -1,0 +1,111 @@
+{
+  "host": "hetzner1",
+  "os": "linux",
+  "arch": "amd64",
+  "cpu": "AMD Ryzen 7 PRO 8700GE w/ Radeon 780M Graphics",
+  "cpp_compiler": "Ubuntu clang version 18.1.3 (1ubuntu1)",
+  "cpp_table_flags": "-std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -O3 -DNDEBUG -DBENCH_OPT=\"O3\" -DBENCH_MATCHED",
+  "revision": "e889242c662c9d439258c11782887ad993ff2ec9",
+  "serialize_revision": "93b8ea2a958ea3deeef9d4aff16101171ac49e15",
+  "dirty_paths": [
+    "generated/bench/paired/cpp/BenchTable.h"
+  ],
+  "rounds": 7,
+  "iterations_per_sample": 4000000,
+  "anchor_repetitions": 100000,
+  "corpus_id_identity": "12224b99745dc057",
+  "plan_lane_refusal": "no lineage corpus on this tree: bench/corpus/VOLD_bench_lineage.schema, bench/corpus/schema.lock, bench/paired/corpus/bench_lineage.bin, bench/paired/corpus/bench_lineage.layout absent (BENCH-STANDARD §1.10 work list items 1–7)",
+  "window": "OK",
+  "control_delta_pct": 0.7182062580219251,
+  "load1_range": "1.06–1.09",
+  "receipt": "rowan clamp-w1 final-clang++-s2 try1 rev e889242c6; pinned taskset -c 6; load before build 1.10 4.77 11.28, before measure 1.09 4.71 11.23; 0 sessions",
+  "fixed_bytes_per_record": 1264.296875,
+  "packet_bytes_per_record": 438,
+  "identity_read": {
+    "best_ns_per_record": 148.43428547000528,
+    "median_ns_per_record": 157.0777506591768,
+    "worst_ns_per_record": 160.37844180155028,
+    "spread_pct": 7.881156230473272,
+    "samples_ns_per_record": [
+      160.37844180155028,
+      157.60118390009345,
+      148.6710517688956,
+      155.36751252883622,
+      148.43428547000528,
+      159.3211389995684,
+      157.0777506591768
+    ]
+  },
+  "packet_read": {
+    "best_ns_per_record": 130.27077170711638,
+    "median_ns_per_record": 132.5862539875316,
+    "worst_ns_per_record": 133.65867637278154,
+    "spread_pct": 2.579797036962416,
+    "samples_ns_per_record": [
+      132.5862539875316,
+      130.27077170711638,
+      133.65867637278154,
+      130.61154545980554,
+      132.79209047815644,
+      130.41533371327668,
+      133.0481490607599
+    ]
+  },
+  "gate_identity": "FAIL",
+  "gate_plan": "— (absent)",
+  "anchor": {
+    "refusal": "does not compile: test/bench/fixedform_measure.cpp:517:33: error: no member named 'atoi' in namespace 'std'; did you mean simply 'atoi'?",
+    "identity": {
+      "best_ns_per_record": 0,
+      "median_ns_per_record": 0,
+      "worst_ns_per_record": 0,
+      "spread_pct": 0,
+      "samples_ns_per_record": null
+    },
+    "straight_line": {
+      "best_ns_per_record": 0,
+      "median_ns_per_record": 0,
+      "worst_ns_per_record": 0,
+      "spread_pct": 0,
+      "samples_ns_per_record": null
+    },
+    "ratio_best_over_best": 0,
+    "round_ratios": null,
+    "verdict": "— (refused)",
+    "samples": null
+  },
+  "other_legs": [
+    {
+      "language": "c",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "go",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "rust",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "cs",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "js",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "java",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "dart",
+      "reason": "no leg in this driver yet (bench/tables/dart is not built, generated or measured here)"
+    },
+    {
+      "language": "elixir",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    }
+  ]
+}

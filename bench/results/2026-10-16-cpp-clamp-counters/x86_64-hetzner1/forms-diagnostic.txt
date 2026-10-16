@@ -1,0 +1,33 @@
+# d-g++-f0 rev b6a44e602 pinned core 6 load 1.46 9.00 13.34 2026-10-16T01:49:11Z
+bench_mixed_read best 148.8 worst 155.0 spread 4.2% rounds: 148.8 155.0 150.2 149.2 149.2 149.9 151.9
+bench_fixed_read best 216.4 worst 221.7 spread 2.4% rounds: 216.4 221.7 216.9 217.9 217.2 217.1 218.1
+# load after 1.75 8.58 13.11
+# d-g++-f1 rev b6a44e602 pinned core 6 load 1.13 7.00 12.23 2026-10-16T01:50:42Z
+bench_mixed_read best 148.4 worst 148.7 spread 0.2% rounds: 148.5 148.4 148.5 148.5 148.7 148.4 148.7
+bench_fixed_read best 242.2 worst 250.6 spread 3.5% rounds: 250.6 249.8 248.9 249.7 250.0 242.2 248.9
+# load after 1.21 6.64 12.00
+# d-g++-f2 rev b6a44e602 pinned core 6 load 1.31 5.83 11.44 2026-10-16T01:51:54Z
+bench_mixed_read best 148.5 worst 149.2 spread 0.4% rounds: 148.5 149.1 149.0 149.1 148.8 148.9 149.2
+bench_fixed_read best 310.0 worst 312.6 spread 0.8% rounds: 311.3 311.6 310.2 310.7 310.0 312.6 311.2
+# load after 1.35 5.47 11.17
+# d-g++-f3 rev b6a44e602 pinned core 6 load 1.29 5.32 11.06 2026-10-16T01:52:30Z
+bench_mixed_read best 148.7 worst 149.2 spread 0.4% rounds: 148.7 149.2 149.1 148.7 149.0 149.1 148.7
+bench_fixed_read best 310.3 worst 311.8 spread 0.5% rounds: 310.9 310.3 311.8 310.6 310.9 310.6 310.7
+# load after 1.18 4.91 10.74
+# d-clang++-f0 rev b6a44e602 pinned core 6 load 1.16 4.84 10.69 2026-10-16T01:53:01Z
+bench_mixed_read best 130.2 worst 132.5 spread 1.7% rounds: 130.2 132.5 130.5 131.2 130.8 130.7 130.5
+bench_fixed_read best 185.9 worst 198.3 spread 6.7% rounds: 187.8 198.3 187.4 186.6 194.5 185.9 186.7
+# load after 4.73 5.51 10.81
+# d-clang++-f1 rev b6a44e602 pinned core 6 load 1.48 8.68 12.31 2026-10-16T02:07:05Z
+bench_mixed_read best 130.3 worst 141.6 spread 8.6% rounds: 130.4 130.3 130.7 130.6 135.8 141.6 131.5
+bench_fixed_read best 149.3 worst 163.0 spread 9.2% rounds: 163.0 157.4 149.3 159.4 154.0 152.5 156.0
+# load after 1.57 8.23 12.09
+# d-clang++-f2 rev b6a44e602 pinned core 6 load 1.09 7.58 11.77 2026-10-16T02:07:46Z
+bench_mixed_read best 130.2 worst 131.7 spread 1.2% rounds: 131.2 131.7 130.8 131.5 130.4 130.2 130.2
+bench_fixed_read best 148.2 worst 174.6 spread 17.8% rounds: 174.6 155.2 149.1 149.7 148.2 158.4 153.9
+# load after 1.46 7.34 11.62
+# d-clang++-f3 rev b6a44e602 pinned core 6 load 1.42 7.24 11.56 2026-10-16T02:08:07Z
+bench_mixed_read best 130.1 worst 131.1 spread 0.8% rounds: 130.1 130.5 131.1 130.2 130.1 131.1 130.5
+bench_fixed_read best 149.0 worst 163.4 spread 9.7% rounds: 157.2 163.4 149.0 152.4 153.7 149.1 151.8
+# load after 1.33 6.93 11.39
+DONE

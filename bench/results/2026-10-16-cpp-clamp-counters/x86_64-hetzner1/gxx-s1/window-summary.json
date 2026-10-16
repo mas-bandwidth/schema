@@ -1,0 +1,204 @@
+{
+  "receipt": "rowan clamp-w1 final-g++-s1 try1 rev e889242c6; pinned taskset -c 6; load before build 1.15 11.06 15.20, before measure 1.13 10.73 15.05; 0 sessions",
+  "coordinator_pid": 907181,
+  "platform": "linux",
+  "started": "2026-10-16T03:19:07.797511687Z",
+  "ended": "2026-10-16T03:19:37.59364675Z",
+  "verdict": "OK",
+  "interval_ms": 2000,
+  "samples": [
+    {
+      "date": "2026-10-16T03:19:07.806842864Z",
+      "phase": "preflight",
+      "load": "1.13 10.73 15.05 3/469 907614",
+      "processes": 318
+    },
+    {
+      "date": "2026-10-16T03:19:07.817645706Z",
+      "phase": "start",
+      "load": "1.13 10.73 15.05 1/469 907615",
+      "processes": 318
+    },
+    {
+      "date": "2026-10-16T03:19:07.827014914Z",
+      "phase": "before/control-start-packet",
+      "load": "1.13 10.73 15.05 2/469 907616",
+      "processes": 318
+    },
+    {
+      "date": "2026-10-16T03:19:09.837869999Z",
+      "phase": "during/control-start-packet",
+      "load": "1.13 10.73 15.05 2/471 907699",
+      "processes": 319
+    },
+    {
+      "date": "2026-10-16T03:19:11.836871208Z",
+      "phase": "during/control-start-packet",
+      "load": "1.13 10.73 15.05 3/471 907707",
+      "processes": 319
+    },
+    {
+      "date": "2026-10-16T03:19:12.315126946Z",
+      "phase": "after/control-start-packet",
+      "load": "1.12 10.56 14.97 3/470 907708",
+      "processes": 318
+    },
+    {
+      "date": "2026-10-16T03:19:12.325089802Z",
+      "phase": "before/round-0-cpp-read",
+      "load": "1.12 10.56 14.97 3/470 907709",
+      "processes": 318
+    },
+    {
+      "date": "2026-10-16T03:19:14.336880168Z",
+      "phase": "during/round-0-cpp-read",
+      "load": "1.12 10.56 14.97 4/472 907723",
+      "processes": 319
+    },
+    {
+      "date": "2026-10-16T03:19:15.281426524Z",
+      "phase": "after/round-0-cpp-read",
+      "load": "1.12 10.56 14.97 3/473 907731",
+      "processes": 318
+    },
+    {
+      "date": "2026-10-16T03:19:15.291929746Z",
+      "phase": "before/round-1-cpp-read",
+      "load": "1.12 10.56 14.97 3/473 907732",
+      "processes": 318
+    },
+    {
+      "date": "2026-10-16T03:19:17.306870198Z",
+      "phase": "during/round-1-cpp-read",
+      "load": "1.11 10.41 14.90 4/474 907743",
+      "processes": 319
+    },
+    {
+      "date": "2026-10-16T03:19:18.232684195Z",
+      "phase": "after/round-1-cpp-read",
+      "load": "1.11 10.41 14.90 3/473 907754",
+      "processes": 318
+    },
+    {
+      "date": "2026-10-16T03:19:18.24230468Z",
+      "phase": "before/round-2-cpp-read",
+      "load": "1.11 10.41 14.90 3/473 907755",
+      "processes": 318
+    },
+    {
+      "date": "2026-10-16T03:19:20.255876569Z",
+      "phase": "during/round-2-cpp-read",
+      "load": "1.11 10.41 14.90 2/474 907776",
+      "processes": 319
+    },
+    {
+      "date": "2026-10-16T03:19:21.188736677Z",
+      "phase": "after/round-2-cpp-read",
+      "load": "1.11 10.41 14.90 1/473 907777",
+      "processes": 318
+    },
+    {
+      "date": "2026-10-16T03:19:21.198690023Z",
+      "phase": "before/round-3-cpp-read",
+      "load": "1.11 10.41 14.90 3/473 907778",
+      "processes": 318
+    },
+    {
+      "date": "2026-10-16T03:19:23.209936461Z",
+      "phase": "during/round-3-cpp-read",
+      "load": "1.10 10.25 14.82 2/474 907791",
+      "processes": 319
+    },
+    {
+      "date": "2026-10-16T03:19:24.140645489Z",
+      "phase": "after/round-3-cpp-read",
+      "load": "1.10 10.25 14.82 2/474 907795",
+      "processes": 318
+    },
+    {
+      "date": "2026-10-16T03:19:24.150941945Z",
+      "phase": "before/round-4-cpp-read",
+      "load": "1.10 10.25 14.82 3/474 907796",
+      "processes": 318
+    },
+    {
+      "date": "2026-10-16T03:19:26.164868485Z",
+      "phase": "during/round-4-cpp-read",
+      "load": "1.10 10.25 14.82 3/475 907808",
+      "processes": 319
+    },
+    {
+      "date": "2026-10-16T03:19:27.100832721Z",
+      "phase": "after/round-4-cpp-read",
+      "load": "1.17 10.11 14.75 1/474 907809",
+      "processes": 318
+    },
+    {
+      "date": "2026-10-16T03:19:27.111186518Z",
+      "phase": "before/round-5-cpp-read",
+      "load": "1.17 10.11 14.75 3/474 907810",
+      "processes": 318
+    },
+    {
+      "date": "2026-10-16T03:19:29.122879901Z",
+      "phase": "during/round-5-cpp-read",
+      "load": "1.17 10.11 14.75 3/477 907831",
+      "processes": 321
+    },
+    {
+      "date": "2026-10-16T03:19:30.058610026Z",
+      "phase": "after/round-5-cpp-read",
+      "load": "1.17 10.11 14.75 3/476 907898",
+      "processes": 320
+    },
+    {
+      "date": "2026-10-16T03:19:30.069062796Z",
+      "phase": "before/round-6-cpp-read",
+      "load": "1.17 10.11 14.75 3/476 907899",
+      "processes": 320
+    },
+    {
+      "date": "2026-10-16T03:19:32.080869021Z",
+      "phase": "during/round-6-cpp-read",
+      "load": "1.16 9.96 14.68 3/476 907910",
+      "processes": 320
+    },
+    {
+      "date": "2026-10-16T03:19:33.055158833Z",
+      "phase": "after/round-6-cpp-read",
+      "load": "1.16 9.96 14.68 3/475 907915",
+      "processes": 319
+    },
+    {
+      "date": "2026-10-16T03:19:33.06551595Z",
+      "phase": "before/control-end-packet",
+      "load": "1.16 9.96 14.68 2/475 907916",
+      "processes": 319
+    },
+    {
+      "date": "2026-10-16T03:19:35.078878862Z",
+      "phase": "during/control-end-packet",
+      "load": "1.16 9.96 14.68 4/478 907939",
+      "processes": 322
+    },
+    {
+      "date": "2026-10-16T03:19:37.078878536Z",
+      "phase": "during/control-end-packet",
+      "load": "1.14 9.81 14.61 3/474 907998",
+      "processes": 320
+    },
+    {
+      "date": "2026-10-16T03:19:37.558780353Z",
+      "phase": "after/control-end-packet",
+      "load": "1.14 9.81 14.61 1/473 908005",
+      "processes": 318
+    },
+    {
+      "date": "2026-10-16T03:19:37.583719046Z",
+      "phase": "end",
+      "load": "1.14 9.81 14.61 1/473 908014",
+      "processes": 319
+    }
+  ],
+  "note": "summary of window.json: the per-sample process lists are dropped for size; the verdict is the driver's own"
+}

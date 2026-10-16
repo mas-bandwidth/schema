@@ -1,0 +1,192 @@
+{
+  "receipt": "rowan clamp-w1 final-clang++-s2 try1 rev e889242c6; pinned taskset -c 6; load before build 1.10 4.77 11.28, before measure 1.09 4.71 11.23; 0 sessions",
+  "coordinator_pid": 920190,
+  "platform": "linux",
+  "started": "2026-10-16T03:24:11.798603116Z",
+  "ended": "2026-10-16T03:24:35.67200534Z",
+  "verdict": "OK",
+  "interval_ms": 2000,
+  "samples": [
+    {
+      "date": "2026-10-16T03:24:11.807363085Z",
+      "phase": "preflight",
+      "load": "1.09 4.71 11.23 3/471 920509",
+      "processes": 320
+    },
+    {
+      "date": "2026-10-16T03:24:11.818106372Z",
+      "phase": "start",
+      "load": "1.09 4.71 11.23 4/471 920510",
+      "processes": 320
+    },
+    {
+      "date": "2026-10-16T03:24:11.827394267Z",
+      "phase": "before/control-start-packet",
+      "load": "1.09 4.71 11.23 3/471 920511",
+      "processes": 320
+    },
+    {
+      "date": "2026-10-16T03:24:13.840868972Z",
+      "phase": "during/control-start-packet",
+      "load": "1.08 4.64 11.17 2/473 920528",
+      "processes": 321
+    },
+    {
+      "date": "2026-10-16T03:24:15.656030717Z",
+      "phase": "after/control-start-packet",
+      "load": "1.08 4.64 11.17 1/477 920589",
+      "processes": 322
+    },
+    {
+      "date": "2026-10-16T03:24:15.666335941Z",
+      "phase": "before/round-0-cpp-read",
+      "load": "1.08 4.64 11.17 3/477 920590",
+      "processes": 322
+    },
+    {
+      "date": "2026-10-16T03:24:17.680875096Z",
+      "phase": "during/round-0-cpp-read",
+      "load": "1.08 4.58 11.12 4/476 920599",
+      "processes": 321
+    },
+    {
+      "date": "2026-10-16T03:24:17.994890092Z",
+      "phase": "after/round-0-cpp-read",
+      "load": "1.08 4.58 11.12 3/475 920600",
+      "processes": 320
+    },
+    {
+      "date": "2026-10-16T03:24:18.004854026Z",
+      "phase": "before/round-1-cpp-read",
+      "load": "1.08 4.58 11.12 2/475 920601",
+      "processes": 320
+    },
+    {
+      "date": "2026-10-16T03:24:20.014870423Z",
+      "phase": "during/round-1-cpp-read",
+      "load": "1.08 4.58 11.12 3/476 920628",
+      "processes": 321
+    },
+    {
+      "date": "2026-10-16T03:24:20.320245011Z",
+      "phase": "after/round-1-cpp-read",
+      "load": "1.08 4.58 11.12 3/475 920629",
+      "processes": 320
+    },
+    {
+      "date": "2026-10-16T03:24:20.329800394Z",
+      "phase": "before/round-2-cpp-read",
+      "load": "1.08 4.58 11.12 1/475 920630",
+      "processes": 320
+    },
+    {
+      "date": "2026-10-16T03:24:22.33988Z",
+      "phase": "during/round-2-cpp-read",
+      "load": "1.07 4.52 11.06 2/480 920659",
+      "processes": 325
+    },
+    {
+      "date": "2026-10-16T03:24:22.591176759Z",
+      "phase": "after/round-2-cpp-read",
+      "load": "1.07 4.52 11.06 3/477 920697",
+      "processes": 322
+    },
+    {
+      "date": "2026-10-16T03:24:22.601662039Z",
+      "phase": "before/round-3-cpp-read",
+      "load": "1.07 4.52 11.06 1/477 920698",
+      "processes": 322
+    },
+    {
+      "date": "2026-10-16T03:24:24.611876306Z",
+      "phase": "during/round-3-cpp-read",
+      "load": "1.07 4.52 11.06 3/479 920723",
+      "processes": 323
+    },
+    {
+      "date": "2026-10-16T03:24:24.901234448Z",
+      "phase": "after/round-3-cpp-read",
+      "load": "1.07 4.52 11.06 1/478 920724",
+      "processes": 322
+    },
+    {
+      "date": "2026-10-16T03:24:24.910987196Z",
+      "phase": "before/round-4-cpp-read",
+      "load": "1.07 4.52 11.06 3/478 920725",
+      "processes": 322
+    },
+    {
+      "date": "2026-10-16T03:24:26.922870279Z",
+      "phase": "during/round-4-cpp-read",
+      "load": "1.07 4.52 11.06 3/478 920730",
+      "processes": 321
+    },
+    {
+      "date": "2026-10-16T03:24:27.165664665Z",
+      "phase": "after/round-4-cpp-read",
+      "load": "1.06 4.47 11.01 4/477 920733",
+      "processes": 319
+    },
+    {
+      "date": "2026-10-16T03:24:27.175633999Z",
+      "phase": "before/round-5-cpp-read",
+      "load": "1.06 4.47 11.01 3/477 920735",
+      "processes": 319
+    },
+    {
+      "date": "2026-10-16T03:24:29.185921643Z",
+      "phase": "during/round-5-cpp-read",
+      "load": "1.06 4.47 11.01 4/478 920749",
+      "processes": 321
+    },
+    {
+      "date": "2026-10-16T03:24:29.500726051Z",
+      "phase": "after/round-5-cpp-read",
+      "load": "1.06 4.47 11.01 3/477 920752",
+      "processes": 320
+    },
+    {
+      "date": "2026-10-16T03:24:29.510376546Z",
+      "phase": "before/round-6-cpp-read",
+      "load": "1.06 4.47 11.01 3/477 920753",
+      "processes": 320
+    },
+    {
+      "date": "2026-10-16T03:24:31.521927914Z",
+      "phase": "during/round-6-cpp-read",
+      "load": "1.06 4.47 11.01 2/478 920767",
+      "processes": 321
+    },
+    {
+      "date": "2026-10-16T03:24:31.812481475Z",
+      "phase": "after/round-6-cpp-read",
+      "load": "1.06 4.47 11.01 3/477 920770",
+      "processes": 320
+    },
+    {
+      "date": "2026-10-16T03:24:31.822105689Z",
+      "phase": "before/control-end-packet",
+      "load": "1.06 4.47 11.01 3/477 920771",
+      "processes": 320
+    },
+    {
+      "date": "2026-10-16T03:24:33.835870579Z",
+      "phase": "during/control-end-packet",
+      "load": "1.06 4.41 10.95 3/478 920797",
+      "processes": 321
+    },
+    {
+      "date": "2026-10-16T03:24:35.635943756Z",
+      "phase": "after/control-end-packet",
+      "load": "1.06 4.41 10.95 1/475 920799",
+      "processes": 320
+    },
+    {
+      "date": "2026-10-16T03:24:35.66182765Z",
+      "phase": "end",
+      "load": "1.06 4.41 10.95 3/475 920808",
+      "processes": 320
+    }
+  ],
+  "note": "summary of window.json: the per-sample process lists are dropped for size; the verdict is the driver's own"
+}

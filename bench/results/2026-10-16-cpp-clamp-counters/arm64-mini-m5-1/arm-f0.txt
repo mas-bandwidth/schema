@@ -1,0 +1,4 @@
+# arm-f0 rev b6a44e602 load { 1.67 1.63 1.88 } 2026-10-16T01:15:21Z
+bench_mixed_read best 90.3 worst 90.8 spread 0.6% rounds: 90.3 90.4 90.5 90.3 90.6 90.8 90.5
+bench_fixed_read best 137.6 worst 140.6 spread 2.2% rounds: 138.3 137.6 138.8 139.3 138.4 138.1 140.6
+# load after { 1.96 1.69 1.90 }

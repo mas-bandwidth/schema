@@ -5,6 +5,35 @@
 > ([BENCH-STANDARD §5](../bench/BENCH-STANDARD.md#5-reporting-format)). The tables below
 > are kept exactly as published, in their recorded convention (C++ = 100%).
 
+## 2026-10-16: The clamp counters — `__restrict` under clang, plain under GCC
+
+The fixed-form read's bounds pass (`*FixedClampBody`) counts into `int32_t &` counters that
+may alias the record's own `int32_t` fields as far as the compiler can prove. Each compiler
+now takes the counter form measured fastest on it (`TABLE_FIXED_COUNTER_RESTRICT`,
+`internal/codegen/cpptable/fixedform.go`): **clang `__restrict__`, on x86-64 and arm64;
+GCC, MSVC and every compiler not named, the plain reference.** On g++ 13 every alternative
+was slower: restrict 242.2, a local accumulator stored once 310.0, both 310.3, against plain
+216.4 ns/record (a pinned diagnostic, not a receipt). Wire bytes do not move.
+
+The identity read against the same leg's packet read, best of 7, 4,000,000 records per
+sample, corpus id `12224b99745dc057`
+([result](../bench/results/2026-10-16-cpp-clamp-counters/README.md)):
+
+| compiler, host | form | before | after, sitting 1 / 2 | packet read | beats the packet read? |
+|---|---|---:|---:|---:|---|
+| g++ 13.3, hetzner1 x86-64 | plain (unchanged) | 215.3 | 216.2 / 216.4 | 148.1 / 148.1 | **no** (1.46x slower) |
+| clang 18.1.3, hetzner1 x86-64 | `__restrict__` | 188.6 | 149.0 / 148.4 | 130.0 / 130.3 | **no** (1.14x slower) |
+| Apple clang 21, mini-m5-1 arm64 | `__restrict__` | 137.4 | 88.2 / 88.0 | 88.4 / 89.0 | level (ahead 0.2 / 1.0 ns, inside the spread) |
+
+hetzner1 rows are `-mode plan-read` receipts, pinned to core 6, every window OK (control
+delta 0.35–0.72%, load1 0.98–1.63) at e889242c6, against base sittings at aab858b62 (windows
+OK, load1 1.51–2.38). The arm64 rows are diagnostics: Darwin cannot pin, and the driver's
+window refuses that host for a stale `go` process this work did not start, so the same runner
+was run directly at load1 about 1.1–1.9. The identity lane still fails its gate on both x86
+compilers. Finding the rest needs a cycle profile of the load with the clamp split out, per
+compiler (`perf annotate` on the g++ build; perf is blocked on hetzner1), with g++'s
+`-fopt-info-vec-all` for the clamp bodies under each form.
+
 ## 2026-09-07: the Studio's nine-language table, and what moved since the Air's
 
 The first table of the day on the new node pin was a sitting on the Apple M3 Ultra Studio

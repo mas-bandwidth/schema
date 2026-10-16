@@ -1,0 +1,204 @@
+{
+  "receipt": "rowan clamp-w1 final-g++-s2 try3 rev e889242c6; pinned taskset -c 6; load before build 0.95 5.36 11.82, before measure 1.60 5.42 11.81; 0 sessions",
+  "coordinator_pid": 918378,
+  "platform": "linux",
+  "started": "2026-10-16T03:23:21.999276159Z",
+  "ended": "2026-10-16T03:23:51.804618226Z",
+  "verdict": "OK",
+  "interval_ms": 2000,
+  "samples": [
+    {
+      "date": "2026-10-16T03:23:22.0077155Z",
+      "phase": "preflight",
+      "load": "1.63 5.37 11.75 2/474 918939",
+      "processes": 321
+    },
+    {
+      "date": "2026-10-16T03:23:22.018481469Z",
+      "phase": "start",
+      "load": "1.63 5.37 11.75 3/474 918940",
+      "processes": 321
+    },
+    {
+      "date": "2026-10-16T03:23:22.027811666Z",
+      "phase": "before/control-start-packet",
+      "load": "1.63 5.37 11.75 3/474 918941",
+      "processes": 321
+    },
+    {
+      "date": "2026-10-16T03:23:24.039878774Z",
+      "phase": "during/control-start-packet",
+      "load": "1.63 5.37 11.75 3/476 918955",
+      "processes": 322
+    },
+    {
+      "date": "2026-10-16T03:23:26.039923301Z",
+      "phase": "during/control-start-packet",
+      "load": "1.63 5.37 11.75 2/476 918961",
+      "processes": 321
+    },
+    {
+      "date": "2026-10-16T03:23:26.518228333Z",
+      "phase": "after/control-start-packet",
+      "load": "1.63 5.37 11.75 2/475 918962",
+      "processes": 320
+    },
+    {
+      "date": "2026-10-16T03:23:26.528340674Z",
+      "phase": "before/round-0-cpp-read",
+      "load": "1.63 5.37 11.75 2/475 918963",
+      "processes": 320
+    },
+    {
+      "date": "2026-10-16T03:23:28.538610838Z",
+      "phase": "during/round-0-cpp-read",
+      "load": "1.58 5.29 11.70 3/478 918982",
+      "processes": 322
+    },
+    {
+      "date": "2026-10-16T03:23:29.471589014Z",
+      "phase": "after/round-0-cpp-read",
+      "load": "1.58 5.29 11.70 2/477 919033",
+      "processes": 322
+    },
+    {
+      "date": "2026-10-16T03:23:29.481999434Z",
+      "phase": "before/round-1-cpp-read",
+      "load": "1.58 5.29 11.70 3/477 919034",
+      "processes": 322
+    },
+    {
+      "date": "2026-10-16T03:23:31.495885707Z",
+      "phase": "during/round-1-cpp-read",
+      "load": "1.58 5.29 11.70 3/477 919056",
+      "processes": 322
+    },
+    {
+      "date": "2026-10-16T03:23:32.430578245Z",
+      "phase": "after/round-1-cpp-read",
+      "load": "1.53 5.22 11.64 3/480 919066",
+      "processes": 325
+    },
+    {
+      "date": "2026-10-16T03:23:32.441167619Z",
+      "phase": "before/round-2-cpp-read",
+      "load": "1.53 5.22 11.64 3/480 919067",
+      "processes": 325
+    },
+    {
+      "date": "2026-10-16T03:23:34.45187098Z",
+      "phase": "during/round-2-cpp-read",
+      "load": "1.53 5.22 11.64 3/480 919144",
+      "processes": 325
+    },
+    {
+      "date": "2026-10-16T03:23:35.428442382Z",
+      "phase": "after/round-2-cpp-read",
+      "load": "1.53 5.22 11.64 3/478 919150",
+      "processes": 324
+    },
+    {
+      "date": "2026-10-16T03:23:35.438408638Z",
+      "phase": "before/round-3-cpp-read",
+      "load": "1.53 5.22 11.64 3/478 919151",
+      "processes": 324
+    },
+    {
+      "date": "2026-10-16T03:23:37.451869401Z",
+      "phase": "during/round-3-cpp-read",
+      "load": "1.49 5.15 11.58 2/479 919240",
+      "processes": 325
+    },
+    {
+      "date": "2026-10-16T03:23:38.383878102Z",
+      "phase": "after/round-3-cpp-read",
+      "load": "1.49 5.15 11.58 3/479 919263",
+      "processes": 325
+    },
+    {
+      "date": "2026-10-16T03:23:38.394422905Z",
+      "phase": "before/round-4-cpp-read",
+      "load": "1.49 5.15 11.58 3/479 919264",
+      "processes": 325
+    },
+    {
+      "date": "2026-10-16T03:23:40.407957873Z",
+      "phase": "during/round-4-cpp-read",
+      "load": "1.49 5.15 11.58 2/480 919368",
+      "processes": 321
+    },
+    {
+      "date": "2026-10-16T03:23:41.339969716Z",
+      "phase": "after/round-4-cpp-read",
+      "load": "1.49 5.15 11.58 5/492 919428",
+      "processes": 331
+    },
+    {
+      "date": "2026-10-16T03:23:41.350755245Z",
+      "phase": "before/round-5-cpp-read",
+      "load": "1.49 5.15 11.58 3/492 919441",
+      "processes": 331
+    },
+    {
+      "date": "2026-10-16T03:23:43.362870353Z",
+      "phase": "during/round-5-cpp-read",
+      "load": "1.45 5.08 11.52 2/480 919578",
+      "processes": 325
+    },
+    {
+      "date": "2026-10-16T03:23:44.297160984Z",
+      "phase": "after/round-5-cpp-read",
+      "load": "1.45 5.08 11.52 3/479 919628",
+      "processes": 325
+    },
+    {
+      "date": "2026-10-16T03:23:44.30781724Z",
+      "phase": "before/round-6-cpp-read",
+      "load": "1.45 5.08 11.52 3/479 919629",
+      "processes": 325
+    },
+    {
+      "date": "2026-10-16T03:23:46.321871057Z",
+      "phase": "during/round-6-cpp-read",
+      "load": "1.45 5.08 11.52 3/487 919762",
+      "processes": 328
+    },
+    {
+      "date": "2026-10-16T03:23:47.256584393Z",
+      "phase": "after/round-6-cpp-read",
+      "load": "1.41 5.02 11.47 2/480 919900",
+      "processes": 325
+    },
+    {
+      "date": "2026-10-16T03:23:47.267066554Z",
+      "phase": "before/control-end-packet",
+      "load": "1.41 5.02 11.47 3/480 919901",
+      "processes": 325
+    },
+    {
+      "date": "2026-10-16T03:23:49.280868975Z",
+      "phase": "during/control-end-packet",
+      "load": "1.41 5.02 11.47 3/477 920024",
+      "processes": 322
+    },
+    {
+      "date": "2026-10-16T03:23:51.280882855Z",
+      "phase": "during/control-end-packet",
+      "load": "1.41 5.02 11.47 2/476 920032",
+      "processes": 322
+    },
+    {
+      "date": "2026-10-16T03:23:51.769678291Z",
+      "phase": "after/control-end-packet",
+      "load": "1.41 5.02 11.47 3/475 920035",
+      "processes": 321
+    },
+    {
+      "date": "2026-10-16T03:23:51.79463235Z",
+      "phase": "end",
+      "load": "1.41 5.02 11.47 3/475 920044",
+      "processes": 321
+    }
+  ],
+  "note": "summary of window.json: the per-sample process lists are dropped for size; the verdict is the driver's own"
+}
