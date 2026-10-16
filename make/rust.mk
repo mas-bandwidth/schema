@@ -109,6 +109,7 @@ MIRI_MAX_SEED_BYTES ?= 4224
 .PHONY: tables-rust-features
 tables-rust-features: build/tables-generated-rust/.stamp
 	@for unit in build/tables-generated-rust/*/; do \
+		[ -f $$unit/Cargo.toml ] || continue; \
 		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet ) || exit 1; \
 		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --no-default-features ) || exit 1; \
 		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --no-default-features --features cook ) || exit 1; \
@@ -119,6 +120,7 @@ tables-rust-features: build/tables-generated-rust/.stamp
 .PHONY: tables-rust-clippy
 tables-rust-clippy: build/tables-generated-rust/.stamp
 	@for unit in build/tables-generated-rust/*/; do \
+		[ -f $$unit/Cargo.toml ] || continue; \
 		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --quiet ) || exit 1; \
 	done
 	@echo "rust clippy gate: every generated unit builds under a consumer's clippy"
