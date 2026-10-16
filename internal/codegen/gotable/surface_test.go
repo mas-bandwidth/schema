@@ -2,6 +2,7 @@ package gotable
 
 import (
 	"bytes"
+	"fmt"
 	"maps"
 	"os"
 	"os/exec"
@@ -79,7 +80,11 @@ func assertCompiles(t *testing.T, u *ir.Unit, s Surfaces) {
 	}
 	maps.Copy(files, packet)
 	dir := t.TempDir()
-	files["go.mod"] = []byte("module probe\n\ngo 1.26\n")
+	runtime, err := filepath.Abs("../../../../serialize.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	files["probe_test.go"] = []byte("package probe\nimport(\"testing\")\nfunc TestCompiles(t *testing.T){var v Root;RootReset(&v);if v.ValuesPresent{t.Fatal(\"bad reset\")}}\n")
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
