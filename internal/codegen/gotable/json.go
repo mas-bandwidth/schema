@@ -56,6 +56,19 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	// timestamp
 	walk := tableJsonWalkSource
 	imports := "\t\"math\"\n\t\"strconv\"\n\t\"time\"\n\t\"unsafe\"\n\t\"unicode/utf8\"\n"
+	// every member but a map entry gets SaveText/LoadText, fixed and variable
+	// alike (docs/SPEC-TABLES.md §16.8), and they are what imports base64
+	needBase64 := false
+	for _, f := range u.Files {
+		for _, st := range fileMembers(f, closure) {
+			if !st.IsMapEntry() {
+				needBase64 = true
+			}
+		}
+	}
+	if needBase64 {
+		imports = "\t\"encoding/base64\"\n" + imports
+	}
 	extra := tableJsonWideSource + tableJsonWStringSource + tableJsonGraphSource + tableJsonListSource + tableJsonMapSource + tableJsonMapDecimalSource + tableJsonTimestampSource + tableTimestampRuntime
 	b.WriteString("import (\n" + imports + ")\n\n")
 	b.WriteString(strings.Replace(walk, "// ---- json walk: end ----", extra+"// ---- json walk: end ----", 1))
@@ -78,7 +91,8 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 			if ir.VariableTables(u)[n] {
 				fmt.Fprintf(&b, "func %sFromJson(builder *%sBuilder,text []byte,report *TableReport) bool { if builder.Arena.Locked {return false};return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()),%sTableType(),&builder.Main,text,report) }\n", n, n, n)
 				fmt.Fprintf(&b, "func %sToJsonMeasure(value *%s,allocator ...TableAllocator) int64 {return tableRegionToJson(unsafe.Pointer(value),%sTableType(),nil,allocator...)}\n", n, storageName(u, n), n)
-				fmt.Fprintf(&b, "func %sToJson(value *%s,buffer []byte,allocator ...TableAllocator) int64 {return tableRegionToJson(unsafe.Pointer(value),%sTableType(),buffer,allocator...)}\n", n, storageName(u, n), n)
+				fmt.Fprintf(&b, "func %sToJson(value *%s,buffer []byte,allocator ...TableAllocator) int64 {return tableRegionToJson(unsafe.Pointer(value),%sTableType(),buffer,allocator...)}\n\n", n, storageName(u, n), n)
+				writeVariableTextCarrier(&b, n, storageName(u, n))
 				continue
 			}
 			fmt.Fprintf(&b, "// %sFromJson fills one %s from a JSON text (docs/SPEC-TABLES.md §16).\n", n, n)
@@ -92,6 +106,38 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 			fmt.Fprintf(&b, "// bytes written — exactly %sToJsonMeasure's answer — or -1 when it is short.\n", n)
 			fmt.Fprintf(&b, "func %sToJson(value *%s, buffer []byte) int64 {\n", n, storageName(u, n))
 			fmt.Fprintf(&b, "\treturn tableJsonWrite(unsafe.Pointer(value), %sTableType(), buffer)\n}\n\n", n)
+			fmt.Fprintf(&b, "// %sSaveText returns the base64 of %s's binary wire (docs/SPEC-TABLES.md\n", n, n)
+			fmt.Fprintf(&b, "// §16.8): the whole file, form byte first, so the text keeps the form byte,\n")
+			fmt.Fprintf(&b, "// the framing check and every versioning guarantee and is opaque.\n")
+			fmt.Fprintf(&b, "func %sSaveText(value *%s) (string, error) {\n", n, storageName(u, n))
+			fmt.Fprintf(&b, "\tn := %sMeasure(value)\n", n)
+			fmt.Fprintf(&b, "\tif n < 0 { return \"\", tableRefuseError(TableRefuseInvalidValue) }\n")
+			fmt.Fprintf(&b, "\tbuf := make([]byte, n)\n")
+			fmt.Fprintf(&b, "\tif %sSave(value, buf) < 0 { return \"\", tableRefuseError(TableRefuseInvalidValue) }\n", n)
+			fmt.Fprintf(&b, "\treturn base64.StdEncoding.EncodeToString(buf), nil\n")
+			fmt.Fprintf(&b, "}\n\n")
+			fmt.Fprintf(&b, "// %sLoadText fills one %s from a base64 wire text (docs/SPEC-TABLES.md\n", n, n)
+			fmt.Fprintf(&b, "// §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses\n")
+			fmt.Fprintf(&b, "// whenever the read's report holds an error (TableReport.Err), whatever the\n")
+			fmt.Fprintf(&b, "// tolerant Load answered, so a recovered value never comes back. It refuses\n")
+			fmt.Fprintf(&b, "// by name: base64_damaged when the body does not decode, unknown_form when\n")
+			fmt.Fprintf(&b, "// the decoded wire's form byte is not one this build carries, wire_damaged\n")
+			fmt.Fprintf(&b, "// for framing damage, and the report's own reason (malformed, clamped,\n")
+			fmt.Fprintf(&b, "// kind_mismatch, ...) otherwise. A nil report is allowed; a supplied one\n")
+			fmt.Fprintf(&b, "// receives THIS read's report, so earlier counts in it never decide.\n")
+			fmt.Fprintf(&b, "func %sLoadText(text string, report *TableReport) (*%s, error) {\n", n, storageName(u, n))
+			fmt.Fprintf(&b, "\tif report != nil { *report = TableReport{} }\n")
+			fmt.Fprintf(&b, "\twire, err := base64.StdEncoding.DecodeString(text)\n")
+			fmt.Fprintf(&b, "\tif err != nil { return nil, tableRefuseError(TableRefuseBase64Damaged) }\n")
+			fmt.Fprintf(&b, "\tif len(wire) == 0 || wire[0] != 1 { return nil, tableRefuseError(TableRefuseUnknownForm) }\n")
+			fmt.Fprintf(&b, "\tvar v %s\n", storageName(u, n))
+			fmt.Fprintf(&b, "\tvar read TableReport\n")
+			fmt.Fprintf(&b, "\tok := %sLoad(&v, wire, &read)\n", n)
+			fmt.Fprintf(&b, "\tif report != nil { *report = read }\n")
+			fmt.Fprintf(&b, "\tif !ok { return nil, tableRefuseError(TableRefuseWireDamaged) }\n")
+			fmt.Fprintf(&b, "\tif err := read.Err(); err != nil { return nil, err }\n")
+			fmt.Fprintf(&b, "\treturn &v, nil\n")
+			fmt.Fprintf(&b, "}\n\n")
 		}
 	}
 	src, err := format.Source([]byte(repoPrefix(b.String())))
@@ -100,6 +146,56 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	}
 	out[home+"TableJson.go"] = src
 	return out, nil
+}
+
+// writeVariableTextCarrier emits a VARIABLE table's base64 carrier
+// (docs/SPEC-TABLES.md §16.8): every table has both text carriers, and a
+// variable one gets the pair in its own class's shape. SaveText takes the
+// write context Save takes; LoadText reads into a builder of its own and
+// returns the locked, packed root, as ReadStrict does (§6.5), since a variable
+// value lives in a region. Refusals are the report's own typed reasons
+// (TableReport.Err), so a form byte this build does not carry is unknown_form
+// and framing damage is wire_damaged, exactly as the binary reader says.
+func writeVariableTextCarrier(b *strings.Builder, n, storage string) {
+	fmt.Fprintf(b, "// %sSaveText returns the base64 of %s's binary wire (docs/SPEC-TABLES.md\n", n, n)
+	b.WriteString("// §16.8): the whole file, form byte first, so the text keeps the form byte,\n")
+	b.WriteString("// the framing check and every versioning guarantee and is opaque. It takes\n")
+	fmt.Fprintf(b, "// the write context %sSave takes.\n", n)
+	fmt.Fprintf(b, "func %sSaveText(value *%s, context ...TableWriteContext) (string, error) {\n", n, storage)
+	fmt.Fprintf(b, "\tn, err := %sMeasureReason(value, context...)\n", n)
+	b.WriteString("\tif err != nil { return \"\", err }\n")
+	b.WriteString("\tif n < 0 { return \"\", tableRefuseError(TableRefuseInvalidValue) }\n")
+	b.WriteString("\tbuf := make([]byte, n)\n")
+	fmt.Fprintf(b, "\tif %sSave(value, buf, context...) != n { return \"\", tableRefuseError(TableRefuseInvalidValue) }\n", n)
+	b.WriteString("\treturn base64.StdEncoding.EncodeToString(buf), nil\n")
+	b.WriteString("}\n\n")
+	fmt.Fprintf(b, "// %sLoadText reads one %s from a base64 wire text (docs/SPEC-TABLES.md\n", n, n)
+	fmt.Fprintf(b, "// §16.8) into a builder of its own and returns the locked root, as %sReadStrict\n", n)
+	b.WriteString("// does: it is the STRICT read (§6.5) and refuses whenever the read's report\n")
+	b.WriteString("// holds an error (TableReport.Err), whatever the tolerant LoadBuilder answered,\n")
+	b.WriteString("// so a recovered value never comes back. It refuses by name: base64_damaged\n")
+	b.WriteString("// when the body does not decode, unknown_form when the decoded wire's form byte\n")
+	b.WriteString("// is not one this build carries, wire_damaged for framing damage, and the\n")
+	b.WriteString("// report's own reason (malformed, clamped, kind_mismatch, ...) otherwise. A nil\n")
+	b.WriteString("// report is allowed; a supplied one receives THIS read's report, so earlier\n")
+	b.WriteString("// counts in it never decide.\n")
+	fmt.Fprintf(b, "func %sLoadText(text string, report *TableReport) (*%s, error) {\n", n, storage)
+	b.WriteString("\tif report != nil { *report = TableReport{} }\n")
+	b.WriteString("\twire, err := base64.StdEncoding.DecodeString(text)\n")
+	b.WriteString("\tif err != nil { return nil, tableRefuseError(TableRefuseBase64Damaged) }\n")
+	fmt.Fprintf(b, "\tvar builder %sBuilder\n", n)
+	b.WriteString("\tif !builder.Init() { return nil, tableRefuseError(TableRefuseAllocationFailed) }\n")
+	b.WriteString("\tvar read TableReport\n")
+	fmt.Fprintf(b, "\tok := %sLoadBuilder(&builder, wire, &read)\n", n)
+	b.WriteString("\tif report != nil { *report = read }\n")
+	b.WriteString("\tif err := read.Err(); err != nil || !ok {\n")
+	b.WriteString("\t\tbuilder.Shutdown()\n")
+	b.WriteString("\t\tif err != nil { return nil, err }\n")
+	b.WriteString("\t\treturn nil, tableRefuseError(TableRefuseWireDamaged)\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\tif !builder.Lock() { builder.Shutdown(); return nil, tableRefuseError(TableRefuseAllocationFailed) }\n")
+	b.WriteString("\treturn builder.AsConst(), nil\n")
+	b.WriteString("}\n\n")
 }
 
 // tableJsonWalkSource is the walker. It reads and writes ONLY the columns
