@@ -117,7 +117,12 @@ previous-form wire; schema#517 brings it back with the id-table form).
 **Proven in.** C++; the limit form in Java, then JavaScript and Dart.
 
 **Measured effect.** Exact zero on Load, Measure and Save in Go
-(`testing.AllocsPerRun`), Java (`getCurrentThreadAllocatedBytes`), JavaScript
+(`testing.AllocsPerRun`); Java (`getCurrentThreadAllocatedBytes`,
+`tables-java-allocator`): the block row walk and the cook read are exactly one
+32-byte handle per open and 0 per row and per node, and the id-table variable
+wire is NOT zero (load answers a fresh Value tree, loadMeasure allocates per
+call, save allocates MiB scratch per node), each held at its measured floor;
+JavaScript
 (0.0 bytes per iteration on KeyedConfig Load/Measure/Save at 300k iterations)
 and Dart (0 scavenges over 20,000 × 8 records under AOT). The instrument is
 M1's second half, section I1.
@@ -129,7 +134,7 @@ red on the one row it was planted in.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/codecs.go:1113` | ✅ `internal/codegen/ctable/codecs.go:1074` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go:178-187` | ✅ `internal/codegen/cstable/cstable.go:958` (a `ref struct`) | ❌ #517 | ❌ #516 | ❌ #514 | — a decoded BEAM term is an allocation and no buffer is caller-owned (docs/SPEC-TABLES.md); the leg that pinned a per-case count went with the table wire (#515) |
+| ✅ `internal/codegen/cpptable/codecs.go:1113` | ✅ `internal/codegen/ctable/codecs.go:1074` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go:178-187` | ✅ `internal/codegen/cstable/cstable.go:958` (a `ref struct`) | ❌ #517 — the block row walk and the cook read are 0 beyond one handle per open (`tables-java-allocator` rows 1 and 2, localized by `tables-java-alloc-negative-control`); the variable wire is not: its load answers a fresh Value tree (there is no caller-owned-storage form), so M1's zero there needs that form, and what remains beside it is a loadMeasure that allocates nothing (row 3 holds its Report, Reader, NodeTable and node-body copies at their floor) and a save without 1 MiB scratch per node (row 4) | ❌ #516 | ❌ #514 | — a decoded BEAM term is an allocation and no buffer is caller-owned (docs/SPEC-TABLES.md); the leg that pinned a per-case count went with the table wire (#515) |
 
 ### M2 — 64-bit values without boxing
 
@@ -963,29 +968,32 @@ gated under AOT, printed under the JIT. A row reported without a ceiling
 cites why.
 
 **Reference.** `test/go-tables/alloc_test.go:1-13` (why a grep proves
-nothing); `test/java-tables/src/Main.java:209-223`;
+nothing); `test/java-tables/src/AllocPaths.java` (settle, floor, rows);
 `test/js-tables/main.mjs:1124-1153` (settle); `test/dart-tables/gcgate.dart`
 and `DART_GC_FLAGS` in the Makefile.
 
 **Proven in.** Go; the managed forms in Java, JavaScript and Dart.
 
-**Measured effect.** Go: exact 0 on six paths. Java: wire read/save exactly
-0, block row walk and cook read exactly 0, open one handle per file. JavaScript:
+**Measured effect.** Go: exact 0 on six paths. Java (Temurin 21.0.12.1): block row walk
+and cook read exactly 0 per row and per node, one 32-byte handle per open; the
+variable form over four committed wires at stated floors (load 1280 to 43424
+bytes a call, the Value tree; loadMeasure 600 to 24496 bytes and save 4 to 277
+MB a call, both defects named in the output). JavaScript:
 0.0 bytes per iteration on the KeyedConfig rows, 67 on RootConfig Load (a
 stated ceiling of 512). Dart: 0/0/0/0/0 scavenges under AOT over 20,000 × 8
 records.
 
 **Negative control.** One planted allocation per record, and LOCALIZATION:
 the row it was planted in goes red and the row beside it stays green
-(Java's `tables-java-alloc-negative-control` required wire-read red and
-wire-save green until it went with the previous-form wire; Go's
+(Java's `tables-java-alloc-negative-control` plants one allocation per row in
+the block walk and requires that row red and the cook walk green; Go's
 `TestAllocationGateCanGoRed` plants two escapes and must see both).
 
 **Targets:** alloc, alloc-negative-control
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #412 (the cook WRITE is counted under `tables-cook-write`; the read path is a static scan) | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #518 | ✅ `TestLoadAllocatesNothing` `TestRoundTripAllocatesNothing` `TestAllocationGateCanGoRed` | ❌ #412 | ❌ #517 | ✅ `tables-js-alloc` `tables-js-alloc-negative-control` | ❌ #514 | ❌ #515 |
+| ❌ #412 (the cook WRITE is counted under `tables-cook-write`; the read path is a static scan) | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #518 | ✅ `TestLoadAllocatesNothing` `TestRoundTripAllocatesNothing` `TestAllocationGateCanGoRed` | ❌ #412 | ✅ `tables-java-allocator` `tables-java-alloc-negative-control` (`test/java-tables/src/AllocPaths.java`: block walk and cook read 0 per row and per node beyond one handle; the variable form's loadMeasure, load and save at measured floors with reasons, loadMeasure's and save's allocations named defects of #517) | ✅ `tables-js-alloc` `tables-js-alloc-negative-control` | ❌ #514 | ❌ #515 |
 
 ### I2 — Emitter sabotage through `go build -overlay`
 
@@ -1327,12 +1335,15 @@ one V8 major and steady at sixteen bytes a call on another.
 **Negative control.** Running the gate on another major must refuse. Go uses
 `tables-go-allocator-runtime-negative-control`; `SCHEMA_GO_ALLOC_ANY_GO=1`
 prints observations without certification. The default requires Go 1.26.0.
+Java uses `tables-java-allocator-runtime-negative-control` (the pin overridden
+to 17: it must refuse naming both majors and print no row);
+`SCHEMA_JAVA_ALLOC_ANY_JDK=1` prints NOT CERTIFIED. The default requires JDK 21.
 
 **Targets:** none
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` (Go 1.26.0) | ❌ #420 | ❌ #420 (pinned JDK; the gate SKIPS rather than refuses without the counter) | ✅ `test/js-tables/main.mjs:1412` | ❌ #420 (pinned SDK; nothing refuses off it) | ❌ #420 (pinned OTP; the audit does not read it) |
+| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` (Go 1.26.0) | ❌ #420 | ✅ `tables-java-allocator` `tables-java-allocator-runtime-negative-control` (JDK 21; refuses before measuring off the pin and with no counter; `SCHEMA_JAVA_ALLOC_ANY_JDK=1` prints NOT CERTIFIED) | ✅ `test/js-tables/main.mjs:1412` | ❌ #420 (pinned SDK; nothing refuses off it) | ❌ #420 (pinned OTP; the audit does not read it) |
 
 ### I15 — The tolerant wire's differential fuzzer with an independent oracle
 
