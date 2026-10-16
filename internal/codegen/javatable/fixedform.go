@@ -716,6 +716,9 @@ func (g *fixedGen) emitStorageField(f *ir.Field) []string {
 		typ := fixedScalarType(f.Type)
 		g.pf("        /** %s */\n", ir.FieldTypeSpelling(f))
 		g.pf("        public final %s[] %s = new %s[%d];\n", typ, name, typ, slots)
+		if f.KeyEnum != "" {
+			g.emitKeyedAccessors(f, name, typ)
+		}
 		if fixedIsObject(f.Type) {
 			if typ == "Int128" || typ == "UInt128" {
 				ctor = append(ctor, fmt.Sprintf("            java.util.Arrays.fill(%s, %s.zero);\n", name, typ))
@@ -756,6 +759,62 @@ func (g *fixedGen) emitStorageField(f *ir.Field) []string {
 		g.pf("        public %s %s;\n", typ, name)
 	}
 	return nil
+}
+
+// emitKeyedAccessors is the fixed record's KEY FORM (docs/SPEC-TABLES.md §2.4,
+// docs/PORTING.md M5), beside the slot array and additive to it: the array is
+// still the storage every Write, Read and scatter body walks by SLOT, and these
+// are the one place a caller indexes by KEY. Java has no operator overloading,
+// so the accessor is the field's own name as an overload pair — `perTeam(key)`
+// reads, `perTeam(key, value)` stores — and the key is an `int` holding the
+// enum's value (the table leg's enums are their integer values). A CLASS
+// element (a nested record) answers the live instance and has no store, as a
+// slot of it is filled in place; an Int128/UInt128 slot is an immutable object,
+// so it keeps the store.
+func (g *fixedGen) emitKeyedAccessors(f *ir.Field, name, typ string) {
+	spell := ir.FieldTypeSpelling(f)
+	g.pf("        /** %s %s: key k is slot k-1, and None and a key past\n", spell, keyedFormMarker)
+	g.pf("         *  %s.Max are refused by name in every build. */\n", f.KeyEnum)
+	g.pf("        public %s %s(int key) {\n", typ, name)
+	g.pf("%s", javaKeyRefusal("            ", "key", f))
+	g.pf("            return %s[key - 1];\n", name)
+	g.pf("        }\n")
+	if fixedIsObject(f.Type) && typ != "Int128" && typ != "UInt128" {
+		return
+	}
+	g.pf("        /** %s %s: store key's slot, k at k-1, refusing as the read does. */\n", spell, keyedFormMarker)
+	g.pf("        public void %s(int key, %s value) {\n", name, typ)
+	g.pf("%s", javaKeyRefusal("            ", "key", f))
+	g.pf("            %s[key - 1] = value;\n", name)
+	g.pf("        }\n")
+}
+
+// keyedFormMarker opens every member the key form adds, in the fixed record and
+// in a row alike, so a test can take the key form out and hold everything else
+// byte-identical to the slot form it was added beside.
+const keyedFormMarker = "BY KEY (docs/SPEC-TABLES.md §2.4)"
+
+// javaKeyRefused is §2.4's refusal condition (docs/SPEC-TABLES.md §2.4): ONE
+// UNSIGNED COMPARE COVERS BOTH ENDS. The storage index is key - 1; None's is
+// -1, which wraps above Max unsigned, and a key past Max is >= Max. It is a
+// written compare and not `assert`, so -da (the release shape) keeps it, and it
+// is the accessor's own check rather than the JVM's ArrayIndexOutOfBounds, which
+// names an index and, over a row's wider byte[], does not fire at all.
+func javaKeyRefused(key string, max int64) string {
+	return fmt.Sprintf("Integer.compareUnsigned(%s - 1, %d) >= 0", key, max)
+}
+
+// javaKeyRefusal is the whole refusal statement (docs/SPEC-TABLES.md §2.4): it
+// throws IllegalArgumentException naming the field, the KEY, the enum and its
+// Max — never an index — so a caller reading the message knows which variant it
+// asked for and what the enum holds.
+func javaKeyRefusal(indent, key string, f *ir.Field) string {
+	e, max := f.KeyEnum, f.KeyEnumRef.Max
+	return fmt.Sprintf("%[1]sif (%[2]s) {\n"+
+		"%[1]s    throw new IllegalArgumentException(\"%[3]s [%[4]s]: key \" + %[5]s\n"+
+		"%[1]s        + (%[5]s == 0 ? \" is None, which keys no slot\" : \" names no variant of %[4]s\")\n"+
+		"%[1]s        + \"; an enum-keyed array holds one slot per named variant, keys 1 .. %[4]s.Max (%[6]d)\");\n"+
+		"%[1]s}\n", indent, javaKeyRefused(key, max), f.Name, e, key, max)
 }
 
 // fixedSlots answers how many elements a field's storage holds, and whether
@@ -1451,7 +1510,7 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 			continue
 		}
 		g.pf("            case %d:\n                {\n", i+1)
-		g.emitWriteElement(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v."+javaName(v.F.Name), 20)
+		g.emitWriteField(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v", 20)
 		if arm := fixedFieldBytes(v.F); arm < widest {
 			g.pf("                    java.util.Arrays.fill(b, at + %d, at + %d, (byte) 0);\n", tag+arm, tag+widest)
 		}
@@ -1483,7 +1542,7 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 			continue
 		}
 		g.pf("            case %d:\n                {\n", i+1)
-		g.emitScatterElement(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v."+javaName(v.F.Name), "r", 20, v.F)
+		g.emitScatterField(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v", "r", 20)
 		g.pf("                    break;\n                }\n")
 	}
 	g.pf("            default: break;\n")

@@ -1,10 +1,9 @@
-// The BLOCK FORM in Java (docs/SPEC-TABLES.md §19): the READ half, emitted ON THE
+// The BLOCK FORM in Java (docs/SPEC-TABLES.md §19): build and read, emitted ON THE
 // SIDE into <Table>Block.java.
 //
 // NOTHING DECLARES IT. Every fixed table has a block form; a consumer compiles
-// this file only if it uses one. The C++ side is the producer (§19.1's builder)
-// and this side is the consumer: it reads bytes another language wrote, in
-// place, out of the array the caller owns.
+// this file only if it uses one. Java's builder (§19.1) lays out the caller's
+// byte[] from counts; its reader opens the same image in place.
 //
 // Two ways to read one block, and both come from one declaration (§19.2): the
 // DESCRIPTORS, which carry the projection's own layout and retire a hand-kept
@@ -29,8 +28,8 @@
 // refused twice — its magic reads back byte-swapped, and its order word is not
 // this reader's.
 //
-// ALLOCATION: none of it. The bytes belong to the consumer — a byte[] it read,
-// mapped or received — and this side takes the array and an offset and reads.
+// ALLOCATION: the caller owns the storage. Begin writes its prologue and array
+// triples; workers fill disjoint rows directly in that storage.
 package javatable
 
 import (
@@ -87,6 +86,14 @@ const tableBytesSource = `// Explicit little-endian reads out of a byte[]. Every
 // afterwards.
 public final class TableBytes {
     private TableBytes() {}
+
+    /** Store a scalar in the selected target order (§7.6); block calls use little. */
+    public static void put(byte[] data, int at, long value, int width, boolean big) {
+        for (int i = 0; i < width; i++) {
+            int shift = big ? width - 1 - i : i;
+            data[at + i] = (byte) (value >>> (shift * 8));
+        }
+    }
 
     public static boolean bool(byte[] data, int at) {
         return data[at] != 0;
@@ -336,7 +343,7 @@ func generateBlockFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, er
 	for _, bl := range blocks.Tables {
 		g := &blockGen{unit: u, blocks: blocks, bl: bl}
 		g.emit()
-		out[bl.Table.Name+"Block.java"] = javaFile(u, "the BLOCK FORM's read half (docs/SPEC-TABLES.md §19).", g.b.String())
+		out[bl.Table.Name+"Block.java"] = javaFile(u, "the BLOCK FORM's builder and reader (docs/SPEC-TABLES.md §19).", g.b.String())
 	}
 	return out, nil
 }
@@ -369,9 +376,8 @@ func (g *blockGen) emit() {
 	g.f("    private final long bytes;\n\n")
 	g.f("    private %sBlock(byte[] data, int base, long bytes) {\n", name)
 	g.f("        this.data = data;\n        this.base = base;\n        this.bytes = bytes;\n    }\n\n")
-	g.f("    // The storage a PRODUCER of this block allocates, sized from the declared\n")
-	g.f("    // maxima (docs/SPEC-TABLES.md §19.1). A Java consumer does not allocate a block —\n")
-	g.f("    // the bytes are handed to it — but it caps by this: a playback buffer, a\n")
+	g.f("    // The caller's storage is sized from the declared maxima (§19.1). A\n")
+	g.f("    // Java builder fills the array it is handed; a playback buffer, a\n")
 	g.f("    // recording, a scratch copy all size from the generated constant rather\n")
 	g.f("    // than from a number a person wrote down beside it.\n")
 	g.f("    public static final long blockMaxBytes = %dL;\n\n", bl.MaxBytes)
@@ -389,6 +395,7 @@ func (g *blockGen) emit() {
 	g.f("    public byte[] data() { return data; }\n")
 	g.f("    public int base() { return base; }\n")
 	g.f("    public long bytes() { return bytes; }\n\n")
+	g.emitBuild()
 	g.f("    // the generated PROLOGUE (§19.1), read where it lies\n")
 	g.f("    public static long magic(byte[] data, int at) { return TableBytes.i64(data, at); }\n")
 	g.f("    public static long buildVersion(byte[] data, int at) { return TableBytes.i64(data, at + 8); }\n")
@@ -398,6 +405,57 @@ func (g *blockGen) emit() {
 	g.emitOpen()
 	g.emitType()
 	g.f("}\n")
+}
+
+// emitBuild writes §19.1's count-first layout. Validation precedes the first
+// store, so a bad count or short caller extent cannot leave a partial block.
+func (g *blockGen) emitBuild() {
+	name := g.bl.Table.Name
+	g.f("    /** Counts gathered before begin; clamping belongs at the call site (§19.1). */\n")
+	g.f("    public static final class Counts {\n")
+	for _, a := range g.bl.Arrays {
+		g.f("        public int %s;\n", member(a.Field))
+	}
+	g.f("    }\n\n")
+	g.f("    public static final class Refusal {\n")
+	g.f("        public String array;\n        public long count;\n        public long maximum;\n")
+	g.f("    }\n\n")
+	g.f("    /** §19.1: write only the prologue and triples; rows belong to the caller. */\n")
+	g.f("    public static %sBlock begin(byte[] storage, int base, Counts counts, Refusal refusal) {\n", name)
+	g.f("        if (refusal != null) { refusal.array = null; refusal.count = 0; refusal.maximum = 0; }\n")
+	g.f("        if (counts == null) { return null; }\n")
+	for _, a := range g.bl.Arrays {
+		f := member(a.Field)
+		g.f("        if (counts.%s < 0 || counts.%s > %d) {\n", f, f, a.Max)
+		g.f("            if (refusal != null) { refusal.array = %q; refusal.count = counts.%s; refusal.maximum = %d; }\n", a.Field.Name, f, a.Max)
+		g.f("            return null;\n        }\n")
+	}
+	g.f("        if (storage == null || base < 0 || (base & 63) != 0 || base > storage.length) { return null; }\n")
+	g.f("        long cursor = %dL;\n", g.bl.Projection.Size)
+	for _, a := range g.bl.Arrays {
+		align := a.ElemAlign()
+		if align < int64(ir.BlockAlign) {
+			align = int64(ir.BlockAlign)
+		}
+		g.f("        cursor = (cursor + %dL) & ~%dL;\n", align-1, align-1)
+		g.f("        long %sStart = cursor;\n", member(a.Field))
+		g.f("        cursor += (long) counts.%s * %dL;\n", member(a.Field), a.Stride)
+	}
+	g.f("        long used = (cursor + 63L) & ~63L;\n")
+	g.f("        if (used > storage.length - base || used > blockMaxBytes) { return null; }\n")
+	g.f("        TableBytes.put(storage, base, TableBlockInfo.magic, 8, false);\n")
+	g.f("        TableBytes.put(storage, base + 8, BuildVersion.value, 8, false);\n")
+	g.f("        TableBytes.put(storage, base + 16, TableBlockInfo.byteOrder, 8, false);\n")
+	for _, a := range g.bl.Arrays {
+		f := member(a.Field)
+		g.f("        TableBytes.put(storage, base + %d, %sStart, 8, false);\n", a.OffsetOfOffset, f)
+		g.f("        TableBytes.put(storage, base + %d, counts.%s, 4, false);\n", a.CountOffset, f)
+		g.f("        TableBytes.put(storage, base + %d, %dL, 4, false);\n", a.StrideOffset, a.Stride)
+	}
+	g.f("        return new %sBlock(storage, base, used);\n    }\n\n", name)
+	g.f("    public static %sBlock begin(byte[] storage, Counts counts, Refusal refusal) {\n", name)
+	g.f("        return begin(storage, 0, counts, refusal);\n    }\n\n")
+	g.f("    public long blockBytes() { return bytes; }\n\n")
 }
 
 // emitProjectionAccessors spells the table's own inline fields where they lie

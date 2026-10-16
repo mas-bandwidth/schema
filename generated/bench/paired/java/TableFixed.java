@@ -293,11 +293,21 @@ public final class TableFixed {
         /** an op's OWN byte, which the guard never reads: a text entry's
          *  flavour. */
         public byte meta;
+        /** THE OUTER TAG AN ARM INSIDE AN ARM ALSO ANSWERS TO, CONJOINED with
+         *  guard/arg (docs/FIXED-FORM-ALGORITHM.md §4.1, §5.8 row 6): the entry
+         *  runs when BOTH tags hold their ordinal. noGuard is "no second
+         *  condition", which is every entry that is not nested. */
+        public int guard2 = noGuard;
+        /** the OUTER arm's ordinal, full width like arg (§4.1). */
+        public long arg2;
+        /** the OUTER tag's width in bytes, zero read as one (§4.1). */
+        public byte argw2;
 
         /** an entry, reset to a plain copy that belongs to no arm. */
         public void reset() {
             src = 0; dst = 0; size = 0; aux = 0; guard = noGuard;
             op = opCopy; arg = 0; argw = 0; dstsize = 0; sign = 0; meta = 0;
+            guard2 = noGuard; arg2 = 0; argw2 = 0;
         }
     }
 
@@ -353,7 +363,15 @@ public final class TableFixed {
         /** A HASH THIS BUILD ONCE SERVED AND HAS RETIRED -- below the floor. The
          *  operator's answer is the other one: UPGRADE THE CLIENT. It reports the
          *  file's hash too (ALG 5.9 #7). */
-        layoutUnsupported
+        layoutUnsupported,
+        /** ILL-FORMED TEXT IN THE USED UNITS (docs/FIXED-FORM-ALGORITHM.md
+         *  §4.5 fix 11): a kind 12 payload that is not well-formed UTF-8 or
+         *  carries a zero byte, or a kind 33 payload with an unpaired surrogate
+         *  or a zero unit, refuses the read BY NAME rather than landing the
+         *  field's default -- the verdict the packet reader gives, this form
+         *  having no length to continue past. The content check reads the USED
+         *  units only, never the slack. */
+        textIllFormed
     }
 
     /** §4's ledger and this form's refusals, in the caller's own object. */
@@ -422,6 +440,57 @@ public final class TableFixed {
         return v;
     }
 
+    /** THE ONE CONTENT RULE THE WIRE HAS (docs/SPEC-TABLES.md §3, §3.4; docs/
+     *  FIXED-FORM-ALGORITHM.md §4.5 fix 11): the used units alone are held --
+     *  never the slack -- and ill-formed text REFUSES BY NAME rather than
+     *  landing a default. flavour textUtf8 checks well-formed UTF-8 with no
+     *  zero byte among the used bytes; textWide checks paired surrogates with
+     *  no zero unit, an ODD length being damage; any other flavour (a
+     *  bytes(N), which this form never runs through the text op) is not text
+     *  and is always well. */
+    public static boolean textOk(int flavour, byte[] src, int at, int len) {
+        if (flavour == textWide) {
+            if ((len & 1) != 0) { return false; }
+            for (int i = 0; i < len; i += 2) {
+                final int u = get16(src, at + i);
+                if (u == 0) { return false; }
+                if (u >= 0xD800 && u <= 0xDBFF) {
+                    if (i + 2 >= len) { return false; }
+                    final int lo = get16(src, at + i + 2);
+                    if (lo < 0xDC00 || lo > 0xDFFF) { return false; }
+                    i += 2;
+                } else if (u >= 0xDC00 && u <= 0xDFFF) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        for (int i = 0; i < len; ) {
+            final int b0 = src[at + i] & 0xFF;
+            if (b0 == 0) { return false; }            // a zero byte is damage
+            if (b0 < 0x80) { i += 1; continue; }
+            int need, cp;
+            if ((b0 & 0xE0) == 0xC0) { need = 1; cp = b0 & 0x1F; }
+            else if ((b0 & 0xF0) == 0xE0) { need = 2; cp = b0 & 0x0F; }
+            else if ((b0 & 0xF8) == 0xF0) { need = 3; cp = b0 & 0x07; }
+            else { return false; }                    // a lone or overlong lead
+            if (i + 1 + need > len) { return false; } // truncated
+            for (int k = 1; k <= need; k++) {
+                final int b = src[at + i + k] & 0xFF;
+                if ((b & 0xC0) != 0x80) { return false; }
+                cp = (cp << 6) | (b & 0x3F);
+            }
+            // no overlong spelling, no UTF-8-encoded surrogate and nothing
+            // past the Unicode ceiling U+10FFFF: a four-byte lead that decodes
+            // above it is ill-formed and the packet reader refuses it too
+            // (internal/codegen/java/utf8.go, the utf8Point > 0x10FFFF guard).
+            final int min = (need == 1) ? 0x80 : (need == 2) ? 0x800 : 0x10000;
+            if (cp < min || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) { return false; }
+            i += 1 + need;
+        }
+        return true;
+    }
+
     /** run one plan over one record body, landing it in this reader's image. */
     public static void run(Entry[] plan, int count, short[] remap,
                            byte[] src, int srcAt, int srcLength,
@@ -434,6 +503,14 @@ public final class TableFixed {
                 final int gw = guardWidth(p.argw);
                 if (p.guard < 0 || p.guard + gw > srcLength) { report.malformed = true; return; }
                 if (tagAt(src, srcAt + p.guard, gw) != p.arg) { continue; }
+            }
+            if (p.guard2 != noGuard) {
+                // THE OUTER TAG IS COMPARED AT ITS OWN WIDTH TOO, CONJOINED
+                // with the inner one (§4.1): an arm inside an arm runs only
+                // when BOTH tags hold their ordinal.
+                final int gw2 = guardWidth(p.argw2);
+                if (p.guard2 < 0 || p.guard2 + gw2 > srcLength) { report.malformed = true; return; }
+                if (tagAt(src, srcAt + p.guard2, gw2) != p.arg2) { continue; }
             }
             switch (p.op) {
                 case opCopy: {
@@ -456,6 +533,11 @@ public final class TableFixed {
                     int v = get32(src, srcAt + p.src);
                     if (v < 0) { v = 0; report.clamped++; }
                     else if (v > cap) { v = cap; report.clamped++; }
+                    // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE
+                    // (§4.5 fix 11): UTF-8 validity over v bytes, wide code
+                    // units over v units -- never the slack -- and a violation
+                    // REFUSES BY NAME with nothing decoded past it.
+                    if (!textOk(p.meta, src, srcAt + p.src + 4, v * unit)) { report.refuse(Reason.textIllFormed); return; }
                     put32(image, p.dst, v);
                     System.arraycopy(src, srcAt + p.src + 4, image, p.aux, p.size);
                     break;
@@ -503,8 +585,25 @@ public final class TableFixed {
                 }
                 case opWidenF: {
                     if (p.src + 4 > srcLength) { report.malformed = true; return; }
-                    final float f = Float.intBitsToFloat(get32(src, srcAt + p.src));
-                    put64(image, p.dst, Double.doubleToRawLongBits(f));
+                    // A FLOAT RIDES AS ITS BITS (SPEC-TABLES §3, the FU ruling), so
+                    // the widening is BY THE PATTERN and never through the
+                    // hardware's own conversion: the conversion between the two
+                    // widths SETS THE QUIET BIT on a signalling NaN and drops a
+                    // payload the narrower cell would have kept, and widenf owes
+                    // the bit-exact widening (ALG 4.2: "NaN payloads included").
+                    // Sign, exponent and payload carried; every finite value is
+                    // exact through the conversion, so only the pattern needs
+                    // spelling out — NaN and infinity share the all-ones
+                    // exponent the shift lands.
+                    final int bits = get32(src, srcAt + p.src);
+                    final long out;
+                    if ((bits & 0x7F800000) == 0x7F800000) {
+                        out = ((bits & 0x80000000L) << 32) | 0x7FF0000000000000L
+                            | ((bits & 0x7FFFFFL) << 29);
+                    } else {
+                        out = Double.doubleToRawLongBits(Float.intBitsToFloat(bits));
+                    }
+                    put64(image, p.dst, out);
                     report.widened++;
                     break;
                 }
@@ -533,6 +632,30 @@ public final class TableFixed {
                 }
                 default: break;
             }
+        }
+    }
+
+    /** §4.6's bounds pass for a COMPILED lane: the WRITER's own bounded leaves,
+     *  straight-line over the record image after the plan run and before the
+     *  scatter. spec is a flat array of {dst, width, signed, lo, hi} rows,
+     *  one per leaf the writer declared, or null when the entry bounds nothing
+     *  — the reader's range is the wider one, so clamping to it would land a
+     *  value the old writer could not have written (bill §12.5). Every clamp
+     *  COUNTS, once per leaf per record, exactly as the scatter's own pass
+     *  counts the reader's. */
+    public static void clampWriterBounds(long[] spec, byte[] image, Report report) {
+        if (spec == null || spec.length == 0 || image == null) { return; }
+        for (int i = 0; i + 4 < spec.length; i += 5) {
+            final int at = (int) spec[i];
+            final int width = (int) spec[i + 1];
+            if (width <= 0 || width > 8 || at < 0 || at + width > image.length) { continue; }
+            final long lo = spec[i + 3];
+            final long hi = spec[i + 4];
+            final long v = spec[i + 2] != 0 ? getInt(image, at, width) : getUint(image, at, width);
+            long landed = v;
+            if (landed < lo) { landed = lo; report.clamped++; }
+            else if (landed > hi) { landed = hi; report.clamped++; }
+            if (landed != v) { putUint(image, at, landed, width); }
         }
     }
 
@@ -884,6 +1007,12 @@ public final class TableFixed {
         // the count and the rest are the landed ordinals, so the read loop
         // needs nothing but the index.
         int lay(short[] values, int n) {
+            // THE LENGTH WORD IS A uint16: a writer's enum past 65535 variants
+            // does not fit it, and the plan REFUSES BY NAME rather than answer
+            // a wrong value (docs/FIXED-FORM-ALGORITHM.md §5.8 row 14).
+            // Truncated into (short) n the 65536th variant on would silently
+            // remap to None as though this reader did not name it.
+            if (n < 0 || n > 65535) { overflow = true; return 0; }
             if (remapUsed + n + 1 > remap.length) { overflow = true; return 0; }
             final int at = remapUsed;
             remap[at] = (short) n;
@@ -1077,6 +1206,11 @@ public final class TableFixed {
                 // way out so a nested union does not leak its width upward.
                 final byte savedArgw = c.argw;
                 c.argw = (byte) ((theirTag >= 1 && theirTag <= 8) ? theirTag : 1);
+                // NESTED: everything pushed from here down is an arm of THIS
+                // union and, when this union is itself inside an outer arm,
+                // must answer to the OUTER tag too (§4.1). The None entry just
+                // above carries the outer guard DIRECTLY, so it is not restamped.
+                final int restampFrom = c.count;
                 int myArm = mi + 1;
                 for (long k = 0; k < myArms; k++) {
                     final long myId = mine.id(myArm);
@@ -1093,6 +1227,24 @@ public final class TableFixed {
                         theirArm += theirs.subtree(theirArm);
                     }
                     myArm += mine.subtree(myArm);
+                }
+                // NESTED: an arm inside an arm answers to the OUTER tag TOO —
+                // the one that decides whether any of those bytes are there at
+                // all — and its OWN arm selection must survive that (§4.1). So
+                // the two tags are CONJOINED on the second guard lane rather
+                // than the outer one replacing the inner (§5.8 row 6).
+                if (guard != noGuard) {
+                    final byte outerW = (byte) guardWidth(savedArgw);
+                    for (int q = restampFrom; q < c.count; q++) {
+                        // A THIRD NESTED UNION HAS A THIRD CONDITION and two
+                        // lanes cannot carry it: the plan REFUSES BY NAME
+                        // rather than drop one (the guard chain is the
+                        // follow-on, §5.8 row 6).
+                        if (c.plan[q].guard2 != noGuard) { c.recordTooLarge = true; break; }
+                        c.plan[q].guard2 = guard;
+                        c.plan[q].arg2 = arg;
+                        c.plan[q].argw2 = outerW;
+                    }
                 }
                 c.argw = savedArgw;
                 break;
@@ -1197,6 +1349,7 @@ public final class TableFixed {
                 final Entry prev = plan[out - 1];
                 if (prev.op == opCopy && e.op == opCopy && prev.guard == e.guard && prev.arg == e.arg
                         && prev.argw == e.argw
+                        && prev.guard2 == e.guard2 && prev.arg2 == e.arg2 && prev.argw2 == e.argw2
                         && prev.src + prev.size == e.src && prev.dst + prev.size == e.dst) {
                     prev.size += e.size;
                     continue;
@@ -1206,6 +1359,7 @@ public final class TableFixed {
                 final Entry dst = plan[out];
                 dst.src = e.src; dst.dst = e.dst; dst.size = e.size; dst.aux = e.aux;
                 dst.guard = e.guard; dst.op = e.op; dst.arg = e.arg; dst.argw = e.argw;
+                dst.guard2 = e.guard2; dst.arg2 = e.arg2; dst.argw2 = e.argw2;
                 dst.dstsize = e.dstsize; dst.sign = e.sign;
                 dst.meta = e.meta;
             }

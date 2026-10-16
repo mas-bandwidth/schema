@@ -85,7 +85,7 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema
+build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema
 	@mkdir -p build/tables-generated-java
 	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit and the BYTE-BUFFER unit: their cook readers and
@@ -99,8 +99,20 @@ build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 	./bin/schema generate --lang java --out build/tables-generated-java/blockhome tables/blockhome
 	./bin/schema generate --lang java --out build/tables-generated-java/v1 test/tables/V1.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/v2 test/tables/V2.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/w1 test/tables/W1.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/w2 test/tables/W2.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/r1 test/tables/R1.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/r2 test/tables/R2.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/p1 test/tables/P1.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/p2 test/tables/P2.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/p3 test/tables/P3.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/m1 test/tables/M1.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/m2 test/tables/M2.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/a1 test/tables/A1.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/a2 test/tables/A2.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/g1 test/tables/G1.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/messages tables/messages
+	./bin/schema generate --lang java --out build/tables-generated-java/wide examples-wide
 	# THE FIXED FORM's versioning pair (docs/SPEC-TABLES.md §3.4): FX1 is the
 	# old side and FX2 the new, and every edit between them lands through a
 	# plan compiled from the other side's layout.
@@ -130,6 +142,12 @@ build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 	# Both fields produce kind_mismatch == 2 in both directions.
 	./bin/schema generate --lang java --out build/tables-generated-java/k1 test/tables/K1.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/k2 test/tables/K2.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/maps tables/maps
+	./bin/schema generate --lang java --out build/tables-generated-java/arms tables/arms
+	# scalars2 (package scalardemo2) is the later build's view of the wide-kind
+	# unit: the conformance report rows read scalars_*.bin through it, counting
+	# the kind mismatches and raw-scale clamps of docs/SPEC-TABLES.md §15.
+	./bin/schema generate --lang java --out build/tables-generated-java/scalars2 test/tables/Scalars2.schema
 	@touch $@
 
 # The Java twin of the C++ "no serialize include path" build: a generated
@@ -341,6 +359,7 @@ test-java: tables-java-clean
 # format gate would report a clean leg it never checked.
 test-java: JAVA_REQUIRE_FORMATTER = 1
 test-java: tables-java-t14
+test-java: tables-java-fixed-t18
 
 # THE MEASUREMENT behind the style choice (docs/JAVA-DIALECT.md): the same
 # trees under the default Google style and under --aosp, as files red and diff
@@ -477,11 +496,12 @@ tables-java-compile-all: build/tables-generated-java/.stamp build/java-clean-pac
 # THE JAVA TABLES LEG (test/java-tables/src/Main.java): the gates the
 # conformance harness does not hold, because none of them is a case — the
 # readers' fuzz oracle, the reference extent gate and the byte-order leg.
-build/java-tables/.stamp: build/tables-generated-java/.stamp test/java-tables/src/Main.java
+build/java-tables/.stamp: build/tables-generated-java/.stamp test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java test/java-tables/src/AllocPaths.java
 	@rm -rf build/java-tables && mkdir -p build/java-tables
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-tables \
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
-		build/tables-generated-java/block/*.java test/java-tables/src/Main.java
+		build/tables-generated-java/blobs/*.java build/tables-generated-java/arms/*.java \
+		build/tables-generated-java/block/*.java test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java test/java-tables/src/AllocPaths.java
 	@touch $@
 
 # THE READERS' ORACLE (docs/SPEC-TABLES.md §7.5, §19.2). Mutants of a block image
@@ -517,10 +537,11 @@ tables-java-fuzz-negative-control: build/cook-open/.stamp
 	$(JAVA_FUZZ_SABOTAGE)/schema generate --lang java --out $(JAVA_FUZZ_SABOTAGE)/generated/examples tables/examples
 	$(JAVA_FUZZ_SABOTAGE)/schema generate --lang java --out $(JAVA_FUZZ_SABOTAGE)/generated/pointers tables/pointers
 	$(JAVA_FUZZ_SABOTAGE)/schema generate --lang java --out $(JAVA_FUZZ_SABOTAGE)/generated/block tables/block
+	$(JAVA_FUZZ_SABOTAGE)/schema generate --lang java --out $(JAVA_FUZZ_SABOTAGE)/generated/blobs tables/blobs
 	@grep -lq SABOTAGED $(JAVA_FUZZ_SABOTAGE)/generated/block/*Block.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged Open"; exit 1; }
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_FUZZ_SABOTAGE)/classes \
-		$(JAVA_FUZZ_SABOTAGE)/generated/*/*.java test/java-tables/src/Main.java
+		$(JAVA_FUZZ_SABOTAGE)/generated/*/*.java test/java-tables/src/Main.java test/java-tables/src/AllocPaths.java
 	@if $(JAVA) -cp $(JAVA_FUZZ_SABOTAGE)/classes Main fuzz testdata/wire/tables/block_render.bin \
 			build/cook-open/Scene.cook > $(JAVA_FUZZ_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a block reader with no extent bounds left the fuzz green"; \
@@ -531,6 +552,120 @@ tables-java-fuzz-negative-control: build/cook-open/.stamp
 		  cat $(JAVA_FUZZ_SABOTAGE)/log; exit 1; }
 	@grep -m1 "FAILED:" $(JAVA_FUZZ_SABOTAGE)/log
 	@echo "negative control: the Java block Open with its two extent bounds removed turns the fuzz oracle RED"
+
+# THE BASE-ALIGNMENT GATE (docs/PORTING.md I5, #387): every committed block
+# image at every lead in 0..64, and the alignment rule exactly — 0 and 64 open
+# (and a row reads), 1..63 refuse. §19.2 checks the base's alignment and this
+# leg carries it as the OFFSET a caller passes beside its array, so a stated
+# fact nothing checks would be a comment rather than a check.
+.PHONY: tables-java-block-lead
+tables-java-block-lead: build/java-tables/.stamp
+	$(JAVA) -cp build/java-tables BlockLead testdata/wire/tables/block_render.bin testdata/wire/tables/block_padded.bin
+
+# ITS NEGATIVE CONTROL, on the EMITTER for the fuzz control's reason: drop the
+# residue check and the gate must go red at lead 1 naming the image.
+JAVA_BLOCK_LEAD_SABOTAGE := build/java-block-lead-sabotage
+JAVA_BLOCK_LEAD_SABOTAGE_SED := s|if ((offset %% TableBlockInfo.alignment) != 0) { return null; }|if ((offset %% TableBlockInfo.alignment) != 0) { } // SABOTAGED|
+.PHONY: tables-java-block-lead-negative-control
+tables-java-block-lead-negative-control: build/java-tables/.stamp
+	@rm -rf $(JAVA_BLOCK_LEAD_SABOTAGE) && mkdir -p $(JAVA_BLOCK_LEAD_SABOTAGE)
+	@sed '$(JAVA_BLOCK_LEAD_SABOTAGE_SED)' internal/codegen/javatable/block.go > $(JAVA_BLOCK_LEAD_SABOTAGE)/javatable-block.go.txt
+	@cmp -s internal/codegen/javatable/block.go $(JAVA_BLOCK_LEAD_SABOTAGE)/javatable-block.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Java block-lead sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/javatable/block.go":"%s/$(JAVA_BLOCK_LEAD_SABOTAGE)/javatable-block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(JAVA_BLOCK_LEAD_SABOTAGE)/overlay.json
+	go build -overlay $(JAVA_BLOCK_LEAD_SABOTAGE)/overlay.json -o $(JAVA_BLOCK_LEAD_SABOTAGE)/schema ./cmd/schema
+	$(JAVA_BLOCK_LEAD_SABOTAGE)/schema generate --lang java --out $(JAVA_BLOCK_LEAD_SABOTAGE)/generated/block tables/block
+	@grep -lq SABOTAGED $(JAVA_BLOCK_LEAD_SABOTAGE)/generated/block/*Block.java || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged Open"; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_BLOCK_LEAD_SABOTAGE)/classes \
+		$(JAVA_BLOCK_LEAD_SABOTAGE)/generated/block/*.java test/java-tables/src/BlockLead.java
+	@if $(JAVA) -cp $(JAVA_BLOCK_LEAD_SABOTAGE)/classes BlockLead testdata/wire/tables/block_render.bin testdata/wire/tables/block_padded.bin \
+			> $(JAVA_BLOCK_LEAD_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a block reader with no alignment check left the base-alignment gate green"; \
+		cat $(JAVA_BLOCK_LEAD_SABOTAGE)/log; exit 1; \
+	fi
+	@grep -q "block_render at lead 1 answered open" $(JAVA_BLOCK_LEAD_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the alignment at lead 1"; \
+		  cat $(JAVA_BLOCK_LEAD_SABOTAGE)/log; exit 1; }
+	@grep -m1 "FAILED:" $(JAVA_BLOCK_LEAD_SABOTAGE)/log
+	@echo "negative control: one missing alignment check in the Java block Open turns the base-alignment gate RED at lead 1"
+
+# THE ACCESSOR/DESCRIPTOR AGREEMENT GATE (docs/PORTING.md J1). Every row of
+# every committed block image and every node of the cook is read twice — once
+# through the generated accessor named for the field, once through the
+# descriptor's own offset, storage kind and element size — and the two must
+# agree. Two independent derivations of one layout, held against each other, so
+# a moved accessor or a moved descriptor offset is seen without a pinned dump
+# that happens to cover the field.
+.PHONY: tables-java-accessor-agreement
+tables-java-accessor-agreement: build/java-tables/.stamp build/cook-open/.stamp
+	$(JAVA) -cp build/java-tables AgreeAccessors \
+		testdata/wire/tables/block_render.bin testdata/wire/tables/block_padded.bin build/cook-open/Scene.cook
+
+# ITS TWO NEGATIVE CONTROLS, built the way the fuzz control builds its overlay:
+# the sabotage edits a COPY of rows.go through `go build -overlay`, the
+# sabotaged compiler regenerates the block and cook units, and the agreement
+# gate must go red — the first on a moved scalar accessor, the second on a moved
+# pointer slot — each naming the row and the field.
+JAVA_AGREE_ACCESSOR_SABOTAGE := build/java-agree-accessor-sabotage
+JAVA_AGREE_SLOT_SABOTAGE := build/java-agree-slot-sabotage
+.PHONY: tables-java-accessor-negative-control tables-java-slot-negative-control
+tables-java-accessor-negative-control: build/cook-open/.stamp
+	@rm -rf $(JAVA_AGREE_ACCESSOR_SABOTAGE) && mkdir -p $(JAVA_AGREE_ACCESSOR_SABOTAGE)
+	go run ./tools/sabotage -name java-agree-accessor-scalar \
+		-out $(JAVA_AGREE_ACCESSOR_SABOTAGE)/rows.gotext internal/codegen/javatable/rows.go
+	@grep -q SABOTAGED $(JAVA_AGREE_ACCESSOR_SABOTAGE)/rows.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/javatable/rows.go":"%s/$(JAVA_AGREE_ACCESSOR_SABOTAGE)/rows.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(JAVA_AGREE_ACCESSOR_SABOTAGE)/overlay.json
+	go build -overlay $(JAVA_AGREE_ACCESSOR_SABOTAGE)/overlay.json -o $(JAVA_AGREE_ACCESSOR_SABOTAGE)/schema ./cmd/schema
+	$(JAVA_AGREE_ACCESSOR_SABOTAGE)/schema generate --lang java --out $(JAVA_AGREE_ACCESSOR_SABOTAGE)/generated/block tables/block
+	$(JAVA_AGREE_ACCESSOR_SABOTAGE)/schema generate --lang java --out $(JAVA_AGREE_ACCESSOR_SABOTAGE)/generated/pointers tables/pointers
+	@grep -lq SABOTAGED $(JAVA_AGREE_ACCESSOR_SABOTAGE)/generated/block/*.java || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged accessor"; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_AGREE_ACCESSOR_SABOTAGE)/classes \
+		$(JAVA_AGREE_ACCESSOR_SABOTAGE)/generated/block/*.java $(JAVA_AGREE_ACCESSOR_SABOTAGE)/generated/pointers/*.java \
+		test/java-tables/src/AgreeAccessors.java
+	@if $(JAVA) -cp $(JAVA_AGREE_ACCESSOR_SABOTAGE)/classes AgreeAccessors \
+			testdata/wire/tables/block_render.bin testdata/wire/tables/block_padded.bin build/cook-open/Scene.cook \
+			> $(JAVA_AGREE_ACCESSOR_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a moved scalar accessor left the agreement gate green"; \
+		cat $(JAVA_AGREE_ACCESSOR_SABOTAGE)/log; exit 1; \
+	fi
+	@grep -qE "disagree|is not the descriptor's|has a descriptor and no accessor|has an accessor and no descriptor" $(JAVA_AGREE_ACCESSOR_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the disagreement"; \
+		  cat $(JAVA_AGREE_ACCESSOR_SABOTAGE)/log; exit 1; }
+	@grep -m1 "FAILED:" $(JAVA_AGREE_ACCESSOR_SABOTAGE)/log
+	@echo "negative control: a scalar accessor moved four bytes turns the agreement gate RED"
+tables-java-slot-negative-control: build/cook-open/.stamp
+	@rm -rf $(JAVA_AGREE_SLOT_SABOTAGE) && mkdir -p $(JAVA_AGREE_SLOT_SABOTAGE)
+	go run ./tools/sabotage -name java-agree-slot-offset \
+		-out $(JAVA_AGREE_SLOT_SABOTAGE)/rows.gotext internal/codegen/javatable/rows.go
+	@grep -q SABOTAGED $(JAVA_AGREE_SLOT_SABOTAGE)/rows.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/javatable/rows.go":"%s/$(JAVA_AGREE_SLOT_SABOTAGE)/rows.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(JAVA_AGREE_SLOT_SABOTAGE)/overlay.json
+	go build -overlay $(JAVA_AGREE_SLOT_SABOTAGE)/overlay.json -o $(JAVA_AGREE_SLOT_SABOTAGE)/schema ./cmd/schema
+	$(JAVA_AGREE_SLOT_SABOTAGE)/schema generate --lang java --out $(JAVA_AGREE_SLOT_SABOTAGE)/generated/block tables/block
+	$(JAVA_AGREE_SLOT_SABOTAGE)/schema generate --lang java --out $(JAVA_AGREE_SLOT_SABOTAGE)/generated/pointers tables/pointers
+	@grep -lq SABOTAGED $(JAVA_AGREE_SLOT_SABOTAGE)/generated/pointers/*Row.java || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged slot"; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_AGREE_SLOT_SABOTAGE)/classes \
+		$(JAVA_AGREE_SLOT_SABOTAGE)/generated/block/*.java $(JAVA_AGREE_SLOT_SABOTAGE)/generated/pointers/*.java \
+		test/java-tables/src/AgreeAccessors.java
+	@if $(JAVA) -cp $(JAVA_AGREE_SLOT_SABOTAGE)/classes AgreeAccessors \
+			testdata/wire/tables/block_render.bin testdata/wire/tables/block_padded.bin build/cook-open/Scene.cook \
+			> $(JAVA_AGREE_SLOT_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a moved pointer slot left the agreement gate green"; \
+		cat $(JAVA_AGREE_SLOT_SABOTAGE)/log; exit 1; \
+	fi
+	@grep -qE "disagree|is not the descriptor's|has a descriptor and no accessor|has an accessor and no descriptor" $(JAVA_AGREE_SLOT_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the disagreement"; \
+		  cat $(JAVA_AGREE_SLOT_SABOTAGE)/log; exit 1; }
+	@grep -m1 "FAILED:" $(JAVA_AGREE_SLOT_SABOTAGE)/log
+	@echo "negative control: a pointer slot moved eight bytes turns the agreement gate RED"
+test-java: tables-java-accessor-agreement tables-java-accessor-negative-control tables-java-slot-negative-control
 
 # ---------------------------------------------------------------------------
 # THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
@@ -594,6 +729,36 @@ tables-java-versioning: tables-fixedform-corpus
 		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
 	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
 
+# THE FIXED-FORM ROADMAP T12 GATE (union-field-arms/java/valid-data,
+# payload-free-arms/java/valid-data, union-arrays/java/valid-data,
+# optional-arrays/java/valid-data; docs/roadmap.sexp fixed-tables). Each
+# subtest generates through the registered Java target (`schema generate --lang
+# java`), compiles and runs the capability probe, and compares against the C++
+# reference bytes in build/fixedform-corpus (fu1.bin, fu2.bin).
+.PHONY: tables-java-fixed-roadmap
+tables-java-fixed-roadmap: tables-fixedform-corpus
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapJavaT12BatchesUnions'
+	@echo 'tables Java fixed roadmap (T12): union arms, payload-free arms, union arrays and optional arrays pass through the registered target'
+
+# THE FIXED TABLES' SHARED BYTE ORACLE AND HOSTILE INPUT (java/W13, java/R27,
+# java/P3, java/P4; docs/roadmap.sexp fixed-tables). The driven functional tier
+# reads the C++ reference's own byte oracle out of build/fixedform-corpus and
+# runs the generated Java reader under the JVM as the sanitizer: W13 compares
+# the header hash and layout bytes in every reference file the Java leg emits
+# against the leg's own; R27 loads each manifest row the target emits through
+# the generated load and compares value for value; P3 sweeps every byte of a
+# record, one bit at a time, demanding each load refuse, read malformed, or
+# land values — never a fourth answer; P4 feeds a record body the wrong compiled
+# plan and demands the read go red. This target sets SCHEMA_REQUIRE_CORPUS=1
+# so a missing oracle turns the skip into a FAILURE.
+.PHONY: tables-java-fixed-t18
+tables-java-fixed-t18: tables-fixedform-corpus
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapJavaT18OracleHostile'
+	@echo 'tables Java fixed t18: the shared byte oracle and hostile input rows pass (java/W13, java/R27, java/P3, java/P4)'
+
+
 # THE COMPRESSED-FLOAT FP-CONTRACT GATE (java/R30, T14): the witness that the
 # compressed float's dequantize is the SPEC's order in float32 — one rounding
 # per operation, never a fused multiply-add (SPEC.md "Floating-point
@@ -604,6 +769,42 @@ tables-java-t14:
 	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^TestFixedRoadmapJavaT14CompressedFloats$$'
 	@echo 'tables Java T14: the compressed float rides as the float, unfused dequantize (java/R30)'
+
+# I13 (docs/PORTING.md, issue #419): the Java leg's text differential against a
+# third implementation. A Java probe draws 200 random float instances of a
+# VARIABLE-form root (seed 24845619678, splitmix64; scalar float32/float64, a
+# nested table, []float32, []float64 and a list of tables) and writes each as
+# (wire, text) with the generated save and toJson; the Go engine
+# (internal/tabletext, internal/tablepack) writes its own text from the leg's
+# wire, byte-compared, packs the leg's text back to wire, byte-compared, and the
+# leg's fromJson reads the engine's text back to the same wire
+# (TestTextDifferentialJava). The control, run inside this target, caps the
+# emitted float32 window at six significant digits in memory and must go red on
+# the TEXT comparison (TestTextDifferentialJavaNegativeControl).
+# SCHEMA_REQUIRE_CORPUS=1 makes a missing JDK a FAILURE rather than a skip.
+.PHONY: tables-java-json-differential tables-java-json-differential-negative-control
+tables-java-json-differential:
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^(TestTextDifferentialJava|TestTextDifferentialJavaNegativeControl)$$'
+	@echo 'tables Java text differential: 200 random float instances agree with the Go engine byte for byte, both directions, and a six-digit float32 writer is red'
+tables-java-json-differential-negative-control:
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^TestTextDifferentialJavaNegativeControl$$'
+	@echo 'tables Java text differential negative control: a six-digit float32 writer is red on the text comparison'
+
+test-java: tables-java-json-differential
+
+# THE BLOCK BUILDER AND COOK WRITER GATE (docs/SPEC-TABLES.md §7.6, §19.1):
+# the Java block builder produces the committed block_render and block_padded
+# images byte-for-byte, and the Java cook writer produces the committed
+# little-endian and big-endian cooked images byte-for-byte.
+.PHONY: tables-java-block-build
+tables-java-block-build:
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestBlockBuildAndCookWriteJava$$'
+	@echo 'tables Java block builder and cook writer: block_render, block_padded and cook-write match the committed reference bytes'
+
+test-java: tables-java-block-build
 
 # THE VARIABLE-CLASS GATE (docs/SPEC-TABLES.md §2, §3, §16), the Java twin of
 # `tables-go-variable-class`: the variable form's codecs for the pointered,
@@ -657,6 +858,61 @@ tables-java-versioning-negative-control: tables-fixedform-corpus
 		  tail -20 $(JAVA_VERSIONING_SABOTAGE)/log; exit 1; }
 	@grep -m1 "want a refusal named layoutNewer" $(JAVA_VERSIONING_SABOTAGE)/log
 	@echo 'negative control: the wrong refusal name for a file outside the lineage reds the Java versioning gate'
+
+# THE KEYED ACCESSOR, Java side (docs/SPEC-TABLES.md §2.4, docs/PORTING.md M5).
+# An enum-keyed array indexes by KEY: key k at slot k-1, None (0) and a key past
+# E.Max refused BY NAME in every build, with one unsigned compare and never
+# `assert`. TestKeyedArrayIndexingJava compiles a three-variant probe under the
+# consumer's flags and holds both ends, the reach of Max and the placement on
+# the saved wire, under -da and -ea; TestKeyedFormLeavesWireCodeByteIdentical
+# holds that the key form is ADDITIVE — every table unit's generated Java, with
+# the key form taken out, byte-identical to the BASE it was added on. Under
+# SCHEMA_REQUIRE_CORPUS=1 a missing JDK is a failure, not a skip.
+JAVA_KEYED_TESTS := TestKeyedArrayIndexingJava|TestKeyedFormLeavesWireCodeByteIdentical|TestStripKeyedFormTakesOnlyTheKeyForm
+.PHONY: tables-java-keyed tables-java-keyed-negative-control
+tables-java-keyed:
+	@mkdir -p build/java-keyed
+	@SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '$(JAVA_KEYED_TESTS)' \
+		> build/java-keyed/log 2>&1 || { tail -40 build/java-keyed/log; exit 1; }
+	@if grep -q -- '--- SKIP' build/java-keyed/log; then \
+		echo "tables-java-keyed: a keyed test SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; grep -- '--- SKIP' build/java-keyed/log; exit 1; \
+	fi
+	@grep -q -- '--- PASS: TestKeyedArrayIndexingJava ' build/java-keyed/log || \
+		{ echo "tables-java-keyed: TestKeyedArrayIndexingJava did not run to a PASS"; tail -20 build/java-keyed/log; exit 1; }
+	@echo 'tables Java: the keyed accessor refuses None and Max+1 by name and places key k at slot k-1 (§2.4)'
+test-java: tables-java-keyed
+
+# ITS NEGATIVE CONTROL, one end at a time. The overlay rewrites the ONE compare
+# in the emitter (javaKeyRefused, fixedform.go) — first to `key < 1`, which
+# drops the upper bound, then to `key > Max`, which drops the lower — and each
+# must red TestKeyedArrayIndexingJava ON ITS OWN END AND ONLY THERE: a control
+# that reds both ends at once could not tell a symmetric guard from a broken one.
+JAVA_KEYED_SABOTAGE := build/java-keyed-sabotage
+JAVA_KEYED_COMPARE := "Integer.compareUnsigned(%s - 1, %d) >= 0", key, max)
+tables-java-keyed-negative-control:
+	@rm -rf $(JAVA_KEYED_SABOTAGE) && mkdir -p $(JAVA_KEYED_SABOTAGE)
+	@set -e; for end in upper lower; do \
+		case $$end in \
+		upper) to='"%s < 1", key) // SABOTAGED: the upper bound is gone'; red='keyed Max+1 end:'; green='keyed None end:' ;; \
+		lower) to='"%s > %d", key, max) // SABOTAGED: the lower bound is gone'; red='keyed None end:'; green='keyed Max+1 end:' ;; \
+		esac; \
+		d=$(JAVA_KEYED_SABOTAGE)/$$end; mkdir -p $$d; \
+		sed "s|$(subst ",\",$(JAVA_KEYED_COMPARE))|$$to|" internal/codegen/javatable/fixedform.go > $$d/fixedform.gotext; \
+		grep -q SABOTAGED $$d/fixedform.gotext || { echo "NEGATIVE CONTROL FAILED: the $$end sabotage patched nothing"; exit 1; }; \
+		printf '{"Replace":{"%s/internal/codegen/javatable/fixedform.go":"%s/%s/fixedform.gotext"}}\n' \
+			"$(CURDIR)" "$(CURDIR)" "$$d" > $$d/overlay.json; \
+		if SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+				go test -overlay=$$d/overlay.json ./internal/codegen/javatable/ -count=1 -timeout 600s \
+				-run 'TestKeyedArrayIndexingJava' > $$d/log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: dropping the $$end bound left the keyed accessor green"; tail -20 $$d/log; exit 1; \
+		fi; \
+		grep -q -- "$$red" $$d/log || { echo "NEGATIVE CONTROL FAILED: the $$end sabotage went red, but not on its own end"; tail -20 $$d/log; exit 1; }; \
+		if grep -q -- "$$green" $$d/log; then echo "NEGATIVE CONTROL FAILED: the $$end sabotage also redded the other end"; grep -m3 -- "$$green" $$d/log; exit 1; fi; \
+		if grep -q -- "keyed in-range" $$d/log; then echo "NEGATIVE CONTROL FAILED: the $$end sabotage moved an in-range key"; grep -m3 -- "keyed in-range" $$d/log; exit 1; fi; \
+		grep -m1 -- "$$red" $$d/log; \
+		echo "negative control: dropping the $$end bound reds the keyed accessor on that end only"; \
+	done
 
 # THE PAIRED BENCH CORPUS on this form: the same sixty-four logical records the
 # matched bench uses, written by the C++ reference with its form-3 writer and
@@ -793,10 +1049,11 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 	$(JAVA_EXTENT_SABOTAGE)/schema generate --lang java --out $(JAVA_EXTENT_SABOTAGE)/generated/examples tables/examples
 	$(JAVA_EXTENT_SABOTAGE)/schema generate --lang java --out $(JAVA_EXTENT_SABOTAGE)/generated/pointers tables/pointers
 	$(JAVA_EXTENT_SABOTAGE)/schema generate --lang java --out $(JAVA_EXTENT_SABOTAGE)/generated/block tables/block
+	$(JAVA_EXTENT_SABOTAGE)/schema generate --lang java --out $(JAVA_EXTENT_SABOTAGE)/generated/blobs tables/blobs
 	@grep -lq SABOTAGED $(JAVA_EXTENT_SABOTAGE)/generated/pointers/SceneCook.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged at"; exit 1; }
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_EXTENT_SABOTAGE)/classes \
-		$(JAVA_EXTENT_SABOTAGE)/generated/*/*.java test/java-tables/src/Main.java
+		$(JAVA_EXTENT_SABOTAGE)/generated/*/*.java test/java-tables/src/Main.java test/java-tables/src/AllocPaths.java
 	@if $(JAVA) -cp $(JAVA_EXTENT_SABOTAGE)/classes Main extent build/cook-open/Scene.cook \
 			> $(JAVA_EXTENT_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a start-only bound left the extent gate green"; \
@@ -808,28 +1065,66 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 	@grep -m1 "FAILED:" $(JAVA_EXTENT_SABOTAGE)/log
 	@echo "negative control: bounding a reference's START rather than its RECORD turns the extent gate RED"
 
-# THE ALLOCATION GATE (docs/PORTING.md I14). The gate reads the JDK's feature
-# version and the JVM's per-thread allocation counter, and refuses to certify on
-# any JDK other than the pin — or with no counter at all — without measuring.
-# SCHEMA_JAVA_ALLOC_PINNED_FEATURE overrides the pin for the negative control;
-# SCHEMA_JAVA_ALLOC_ANY_JDK=1 is the escape hatch: it reports and does not
-# certify.
-.PHONY: tables-java-allocator tables-java-allocator-runtime-negative-control
+# THE ALLOCATION GATE (docs/PORTING.md I1, M1, I14). The gate reads the JDK's
+# feature version and the JVM's per-thread allocation counter, and refuses to
+# certify on any JDK other than the pin — or with no counter at all — without
+# measuring. SCHEMA_JAVA_ALLOC_PINNED_FEATURE overrides the pin for the negative
+# control; SCHEMA_JAVA_ALLOC_ANY_JDK=1 is the escape hatch: it reports and does
+# not certify. On the pin it measures the ROWS (test/java-tables/src/AllocPaths.java),
+# each a real path through the generated code over a committed file, each
+# warmed until its per-iteration count settles and gated on its ceiling:
+#   1 block-walk    open + every row of block_render.bin: one handle, 0 per row
+#   2 cook-walk     open + every node of graph_deep.cook: one handle, 0 per node
+#   3 load-measure  the variable form's loadMeasure over the wires below
+#   4 load, save    over the same wires, at the measured floor, reason printed
+JAVA_ALLOC_BLOCK := testdata/wire/tables/block_render.bin
+JAVA_ALLOC_COOK := testdata/conformance/tables/cook-write/graph_deep.cook
+JAVA_ALLOC_WIRES := testdata/wire/tables/graph_tree.bin testdata/wire/tables/graph_deep.bin \
+	testdata/wire/tables/graph_shared.bin testdata/wire/tables/blob_small.bin \
+	testdata/wire/tables/keyed_config.bin testdata/wire/tables/arms_gate.bin
+JAVA_ALLOC_ARGS := $(JAVA_ALLOC_BLOCK) $(JAVA_ALLOC_COOK) $(JAVA_ALLOC_WIRES)
+.PHONY: tables-java-allocator tables-java-allocator-runtime-negative-control tables-java-alloc-negative-control
 tables-java-allocator: build/java-tables/.stamp
 	@if [ "$${SCHEMA_JAVA_ALLOC_ANY_JDK:-}" = 1 ]; then echo "Java allocation observation mode: NOT CERTIFIED"; fi
-	$(JAVA) -cp build/java-tables Main allocator
+	$(JAVA) -cp build/java-tables Main allocator $(JAVA_ALLOC_ARGS)
 
 tables-java-allocator-runtime-negative-control: build/java-tables/.stamp
 	@mkdir -p build/java-allocator-runtime-negative-control
-	@if SCHEMA_JAVA_ALLOC_PINNED_FEATURE=17 SCHEMA_JAVA_ALLOC_ANY_JDK=0 $(JAVA) -cp build/java-tables Main allocator > build/java-allocator-runtime-negative-control/log 2>&1; then \
+	@if SCHEMA_JAVA_ALLOC_PINNED_FEATURE=17 SCHEMA_JAVA_ALLOC_ANY_JDK=0 $(JAVA) -cp build/java-tables Main allocator $(JAVA_ALLOC_ARGS) > build/java-allocator-runtime-negative-control/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the allocation gate certified on a JDK that is not the pin'; \
 		cat build/java-allocator-runtime-negative-control/log; exit 1; \
 	fi
 	@grep -Fq 'allocation certification requires JDK 17, running 21' build/java-allocator-runtime-negative-control/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the allocation gate refused for another reason'; cat build/java-allocator-runtime-negative-control/log; exit 1; }
-	@echo 'java allocation gate refuses a JDK that is not the pin (wants 21, ran 17)'
+	@! grep -q '^alloc ' build/java-allocator-runtime-negative-control/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the allocation gate measured before it refused'; cat build/java-allocator-runtime-negative-control/log; exit 1; }
+	@echo 'java allocation gate refuses a JDK that is not the pin (wants 21, ran 17), before measuring'
 
-test-java: tables-java-allocator tables-java-allocator-runtime-negative-control
+# ITS LOCALIZING CONTROL (I1: a control must say WHERE). One allocation per row
+# is planted in row 1's walk — in the harness, behind
+# SCHEMA_JAVA_ALLOC_PLANT_ROW_WALK, never in generated code — and the gate must
+# go red on row 1 BY NAME while row 2, the cook walk, stays green. A gate that
+# went red everywhere, or on the wrong row, would be an instrument that cannot
+# tell the paths apart.
+tables-java-alloc-negative-control: build/java-tables/.stamp
+	@mkdir -p build/java-alloc-negative-control
+	@if SCHEMA_JAVA_ALLOC_PLANT_ROW_WALK=1 $(JAVA) -cp build/java-tables Main allocator $(JAVA_ALLOC_ARGS) > build/java-alloc-negative-control/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: an allocation planted per row left the allocation gate green'; \
+		cat build/java-alloc-negative-control/log; exit 1; \
+	fi
+	@grep -q '^alloc PLANTED' build/java-alloc-negative-control/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the plant did not arm'; cat build/java-alloc-negative-control/log; exit 1; }
+	@grep -q '^alloc 1 block-walk .* RED$$' build/java-alloc-negative-control/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the gate went red, but not on row 1 (the block walk)'; cat build/java-alloc-negative-control/log; exit 1; }
+	@grep -q '^alloc 2 cook-walk .* OK$$' build/java-alloc-negative-control/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the plant reddened row 2 (the cook walk) too: the gate does not localize'; cat build/java-alloc-negative-control/log; exit 1; }
+	@test "$$(grep -c ' RED$$' build/java-alloc-negative-control/log)" = 1 || \
+		{ echo 'NEGATIVE CONTROL FAILED: more than the planted row went red'; cat build/java-alloc-negative-control/log; exit 1; }
+	@grep '^alloc 1 block-walk' build/java-alloc-negative-control/log
+	@grep '^alloc 2 cook-walk' build/java-alloc-negative-control/log
+	@echo 'negative control: one allocation planted per row reds row 1 (the block walk) alone; row 2 (the cook walk) stays green'
+
+test-java: tables-java-allocator tables-java-allocator-runtime-negative-control tables-java-alloc-negative-control
 
 # I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Java side.
 # The cook example is pulled from docs/USAGE.md into a class that reads the
@@ -872,8 +1167,12 @@ tables-java-release:
 	# compiler over a sabotaged emitter and runs both columns of every §5.7 row
 	# behind it — the expensive half, which is what this target is for (above).
 	$(MAKE) tables-java-versioning-negative-control
+	# THE KEYED ACCESSOR'S CONTROL (docs/SPEC-TABLES.md §2.4): two overlay test runs,
+	# one per dropped bound, beside the versioning control for the same reason.
+	$(MAKE) tables-java-keyed-negative-control
 	$(MAKE) conformance-negative-control-java-block
 	$(MAKE) tables-java-fuzz-negative-control
+	$(MAKE) tables-java-block-lead-negative-control
 	$(MAKE) tables-java-cook-extent-negative-control
 	$(MAKE) tables-java-runtime-home-negative-control
 
@@ -935,9 +1234,17 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/conformance-java \
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
 		build/tables-generated-java/blobs/*.java \
+		build/tables-generated-java/maps/*.java build/tables-generated-java/arms/*.java \
+		build/tables-generated-java/scalars/*.java build/tables-generated-java/scalars2/*.java \
+		build/tables-generated-java/messages/*.java build/tables-generated-java/wide/*.java \
 		build/tables-generated-java/block/*.java build/tables-generated-java/v1/*.java \
-		build/tables-generated-java/v2/*.java build/tables-generated-java/p1/*.java \
-		build/tables-generated-java/p3/*.java \
+		build/tables-generated-java/v2/*.java build/tables-generated-java/w1/*.java \
+		build/tables-generated-java/w2/*.java build/tables-generated-java/r1/*.java \
+		build/tables-generated-java/r2/*.java build/tables-generated-java/p1/*.java \
+		build/tables-generated-java/p2/*.java build/tables-generated-java/p3/*.java \
+		build/tables-generated-java/m1/*.java build/tables-generated-java/m2/*.java \
+		build/tables-generated-java/a1/*.java build/tables-generated-java/a2/*.java \
+		build/tables-generated-java/g1/*.java \
 		build/tables-generated-java/k1/*.java build/tables-generated-java/k2/*.java \
 		test/conformance/java/src/Driver.java
 
@@ -1005,6 +1312,8 @@ test-java: toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp 
 	$(MAKE) tables-java-zero-cost
 	$(MAKE) tables-java-runtime-home
 	$(MAKE) tables-java-fuzz
+	$(MAKE) tables-java-block-lead
+	$(MAKE) tables-java-block-lead-negative-control
 	$(MAKE) tables-java-order
 	$(MAKE) tables-java-cook-extent
 	# THE FIXED FORM against the C++ reference's own bytes (docs/SPEC-TABLES.md §3.4)
@@ -1057,7 +1366,6 @@ build/packet-wide/java/.stamp: bin/schema build/packet-wide/source/WideText.sche
 packet-wide-java: build/packet-wide/java/.stamp build/packet-wide/cpp/driver build/packet-text/harness
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-wide/java/classes build/packet-wide/java/wide/*.java build/packet-wide/java/shapes/*.java test/packet-wide/java/*.java
 	$(JAVA) -ea -cp build/packet-wide/java/classes Main --contracts
-	$(JAVA) -cp build/packet-wide/java/classes Main --contracts
 	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(JAVA) -ea -cp build/packet-wide/java/classes Main
 	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(JAVA) -cp build/packet-wide/java/classes Main
 
@@ -1232,55 +1540,16 @@ cards-java-conformance-hash-negative-control: build/conformance-harness build/ca
 test-java: cards-java-test cards-java-conformance cards-java-conformance-negative-control \
 	cards-java-conformance-upgrade-negative-control cards-java-conformance-hash-negative-control
 
-# ---------------------------------------------------------------------------
-# THE CARD CONSTRUCTS' BOUNDARY CONTROL (docs/SPEC-TABLES.md §2, §11)
-# ---------------------------------------------------------------------------
-#
-# internal/codegen/javatable/cardsform_test.go's
-# TestOtherVariableConstructsAreRefusedByName holds that every variable-class
-# construct outside the card's slice — a map (§2.8), a union arm (§2.6), a
-# *bytes buffer, a pointer to a table outside a list element (§2.1), an optional
-# ?T (§2.3), an enum-keyed array (§2.4) and the wide kinds (§15) — is refused by
-# name, naming the table, the field and the construct (§11), so a construct the
-# card does not carry is never mis-encoded and never silently dropped.
-#
-# A test for a REFUSAL passes trivially when the refusal never runs, so this
-# control proves the rule BITES: it neutralises the closure's guard on
-# variableFormRefusal (javatable.go:420) through a go build overlay and requires
-# the boundary test to go RED. Nothing in the tree changes; the overlay lives
-# under build/. Without the refusal the emitter walks a map/union field and
-# panics, so the red names the test and the panic: the boundary is load-bearing.
-#
-# THIS AND THE CARD FUZZ TARGETS BELOW SIT IN make/java.mk AND NOT IN A SEPARATE
-# make/cards-java.mk because the wide-scalar registry gate (Makefile,
-# tables-ports-refuse-wide-scalars) enumerates EVERY make/*.mk as a language
-# port and probes it with --lang <stem>; a fragment named cards-java.mk would be
-# probed as --lang cards-java and would red that gate as a phantom port (the
-# same reason the Elixir leg's card targets live in make/elixir.mk). The target
-# name carries no `negative-control` marker for the same reason: the marker
-# would put it in the CI matrix plan (make/negative-controls.json), outside this
-# card's paths.
-JAVA_CARDS_REFUSAL_SABOTAGE := build/java-cards-refusal-sabotage
-.PHONY: tables-java-cards-refusal-bites
-tables-java-cards-refusal-bites:
-	@rm -rf $(JAVA_CARDS_REFUSAL_SABOTAGE) && mkdir -p $(JAVA_CARDS_REFUSAL_SABOTAGE)
-	@sed 's|why != ""|why != why|' internal/codegen/javatable/javatable.go > $(JAVA_CARDS_REFUSAL_SABOTAGE)/javatable.go.txt
-	@if cmp -s internal/codegen/javatable/javatable.go $(JAVA_CARDS_REFUSAL_SABOTAGE)/javatable.go.txt; then \
-		echo "NEGATIVE CONTROL FAILED: the refusal sabotage did not apply"; exit 1; fi
-	@printf '{"Replace":{"%s/internal/codegen/javatable/javatable.go":"%s/$(JAVA_CARDS_REFUSAL_SABOTAGE)/javatable.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(JAVA_CARDS_REFUSAL_SABOTAGE)/overlay.json
-	@if nice -n 19 go test -overlay=$(JAVA_CARDS_REFUSAL_SABOTAGE)/overlay.json \
-			-count=1 -timeout 600s -run TestOtherVariableConstructsAreRefusedByName \
-			./internal/codegen/javatable/ > $(JAVA_CARDS_REFUSAL_SABOTAGE)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: removing the refusal left the boundary test green"; \
-		cat $(JAVA_CARDS_REFUSAL_SABOTAGE)/log; exit 1; fi
-	@grep -q "TestOtherVariableConstructsAreRefusedByName" $(JAVA_CARDS_REFUSAL_SABOTAGE)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the run went red, but not in the boundary test"; \
-		  cat $(JAVA_CARDS_REFUSAL_SABOTAGE)/log; exit 1; }
-	@grep -Eq "construct should be refused but was not|panic: " $(JAVA_CARDS_REFUSAL_SABOTAGE)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the boundary test went red, but not because the refusal was gone"; \
-		  cat $(JAVA_CARDS_REFUSAL_SABOTAGE)/log; exit 1; }
-	@grep -Ehm1 "construct should be refused but was not|panic: " $(JAVA_CARDS_REFUSAL_SABOTAGE)/log
-	@echo "negative control: removing the variable-form refusal reds the card boundary test"
+# The earlier card-subset refusal control is retired: maps, optional/keyed
+# values, unions, wide values, fixed-class roots and was renames now have
+# positive native codec gates.
+.PHONY: tables-java-variable-arms tables-java-variable-fixed-class
+tables-java-variable-arms: bin/schema
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ \
+		-count=1 -timeout 600s -v -run 'TestMapsAndUnionArmsOnTheTableWireJava|TestOtherVariableConstructsAreRefusedByName|TestJavaVariable|TestJavaFixedGeneralArmPayloads'
 
-test-java: tables-java-cards-refusal-bites
+tables-java-variable-fixed-class: bin/schema
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ \
+		-count=1 -timeout 600s -v -run '^TestFixedClassOnTableWireJava$$'
+
+test-java: tables-java-variable-arms tables-java-variable-fixed-class

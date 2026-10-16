@@ -1,16 +1,17 @@
 // Package javatable emits a unit's Java table surface (docs/SPEC-TABLES.md):
-// the BLOCK form's read half in <Table>Block.java (§19) and the COOKED form's
-// read half in <Table>Cook.java (§7), the record accessors the two share
+// the BLOCK form's builder and reader in <Table>Block.java (§19) and the COOKED
+// form's reader and writer in <Table>Cook.java (§7), the record accessors the two share
 // (<Name>Row.java), their reflection descriptors and the unit's build version
 // — plus the shared runtime those need, one PUBLIC TYPE PER FILE, which is
 // what Java's package scope is. It is emitted only when the unit declares
 // tables, and nothing when it declares none: a table-free unit's generated
 // Java is byte-identical with or without this package.
 //
-// THE ACCELERATOR TIER. A block is POINTED AT and a cook is OPENED; neither
-// parses a wire, so both reach every table of the unit whatever its closure
-// declares — a pointered unit's cooks open in full. In Java both are read at
-// explicit offsets out of a byte[] the consumer owns. The TABLE WIRE — measure,
+// THE ACCELERATOR TIER. A block is BUILT or POINTED AT and a cook is WRITTEN or
+// OPENED; neither parses a wire on the read path, so both reach every table of
+// the unit whatever its closure declares — a pointered unit's cooks open and
+// write in full. In Java both operate at explicit offsets in a byte[] the
+// caller owns. The TABLE WIRE — measure,
 // save, load, the reflection descriptors and the JSON text form of
 // docs/SPEC-TABLES.md §3, §4, §8 and §16 in their id-table form — rides the
 // FIXED form (§3.4) for every table, and the VARIABLE form (§3, form byte 1)
@@ -209,26 +210,10 @@ func generateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry, canon f
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
-	// THE WIDE KINDS (docs/SPEC-TABLES.md §15) ARE A REFUSAL OF THE
-	// ACCELERATORS, NOT OF THE FIXED FORM (ir.WideTableKinds). A block row and
-	// a cooked node are laid out in the ID-TABLE's kind vocabulary, which has
-	// no fixed-point and no 128-bit kind in this backend yet (schema#366) —
-	// but §3.4's fixed form carries both by its own constant-size table, a
-	// `fixed(I, F)` riding as the raw scaled integer at its storage width and
-	// an `int128`/`uint128` as sixteen bytes, the low half then the high.
-	//
-	// THE DAY THAT RULE NAMED IS THIS ONE. The `false` the other ports still
-	// pass is now this backend's OWN answer — `fixedRoots` is the set of roots
-	// this emitter lays out, its coverage and not the reference's — so a
-	// wide-kind unit keeps its form-3 codec and only the two accelerators stand
-	// down. A unit that loses them AND has no fixed form to put in their place
-	// is still refused whole and by name, exactly as it was before the form
-	// arrived.
-	//
-	// The scope question is asked BEFORE checkNames, which is the order the tip
-	// and darttable both use: a unit §15 refuses whole is refused for that,
-	// not for a reserved spelling inside it.
-	scope := ir.WideTableKinds(u, "Java", len(fixedRoots(u)) > 0)
+	// The variable wire carries fixed-point and 128-bit values (§15).
+	// Accelerators retain their separately named limitation; having a real
+	// wire codec prevents that limitation from refusing the whole unit.
+	scope := ir.WideTableKinds(u, "Java", len(fixedRoots(u)) > 0 || len(cardVariableTables(u)) > 0)
 	if scope.Unit {
 		return nil, scope.Refusal
 	}
@@ -237,10 +222,10 @@ func generateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry, canon f
 	}
 	out := map[string][]byte{}
 	if !scope.Accelerators {
-		// The two ACCELERATORS need no wire codec: the BLOCK form (§19) reads
-		// bytes a producer wrote and the COOK (§7) reads a region the tooling
-		// wrote. Both are pure readers over a byte[] the consumer owns, so both
-		// reach every table of the unit — a pointered unit's cooks open in full.
+		// The two ACCELERATORS operate directly on a byte[] the caller owns:
+		// the BLOCK form (§19) builds and opens in-place block images and the
+		// COOK (§7) measures, writes, and opens cooked regions, reaching every
+		// cookable table of the unit — a pointered unit's cooks open and write in full.
 		blocks := ir.Blocks(u)
 		ck := cookUnitOf(u)
 		set := collectRecords(u, blocks, ck)
@@ -366,7 +351,7 @@ func runtimeFileNames() []string {
 	return []string{
 		"TableBytes",
 		"TableBlockRows", "TableBlockInfo", "TableBlockFieldInfo", "TableBlockLayout",
-		"TableCookInfo", "TableCookFieldInfo", "TableCookStorage", "TableCookLayout",
+		"TableCookInfo", "TableCookFieldInfo", "TableCookStorage", "TableCookLayout", "TableCookWrite",
 		"TableFieldInfo", "TableTypeInfo", "TableRegistry",
 		"BuildVersion",
 	}
@@ -431,7 +416,7 @@ func checkNames(u *ir.Unit) error {
 func refuseVariableForm(u *ir.Unit) error {
 	seen := map[string]bool{}
 	for _, st := range u.Tables {
-		if st == nil || st.FixedDeclared || st.IsMapEntry() {
+		if st == nil || st.IsMapEntry() {
 			continue
 		}
 		if err := refuseVariableFormClosure(st, seen); err != nil {
@@ -441,10 +426,8 @@ func refuseVariableForm(u *ir.Unit) error {
 	return nil
 }
 
-// refuseVariableFormClosure walks one variable table and the table elements its
-// unbounded lists reach (§2.9), returning the first construct the variable form
-// does not carry. A pointer to a table outside a list element is a variable
-// construct (§2.1) and is refused on the field that spells it.
+// refuseVariableFormClosure walks one table and the declarations its closure
+// reaches, returning the first construct the variable form does not carry.
 func refuseVariableFormClosure(st *ir.Struct, seen map[string]bool) error {
 	if seen[st.Name] {
 		return nil
@@ -453,6 +436,16 @@ func refuseVariableFormClosure(st *ir.Struct, seen map[string]bool) error {
 	for _, f := range st.Fields {
 		if why := variableFormRefusal(f); why != "" {
 			return fmt.Errorf("table %s field %s: %s is not carried by the Java variable form (docs/SPEC-TABLES.md §11)", st.Name, f.Name, why)
+		}
+		if f.IsMap() {
+			if err := refuseVariableFormClosure(f.MapEntry, seen); err != nil {
+				return err
+			}
+		}
+		if un := variableUnion(f); un != nil {
+			if err := refuseVariableFormClosure(variableUnionStruct(un), seen); err != nil {
+				return err
+			}
 		}
 		if f.Type.Kind == ir.TNamed {
 			if target, ok := f.Type.Ref.(*ir.Struct); ok {
@@ -465,22 +458,14 @@ func refuseVariableFormClosure(st *ir.Struct, seen map[string]bool) error {
 	return nil
 }
 
-// cardVariableTables returns the variable tables whose whole closure (the
-// tables their unbounded lists reach, §2.9) sits inside the card boundary: the
-// set the variable-form emitter writes codecs for. A variable table whose
-// closure holds a construct outside the card's slice is left ABSENT — the
-// generate path (generateVariableFiles) never emits its wire, so a pointered
-// variable table (tables/pointers) still emits its accelerators and fixed form
-// without being refused. The by-name refusal is [refuseVariableForm]'s own job,
-// on the card's path.
 func cardVariableTables(u *ir.Unit) []*ir.Struct {
-	if len(ir.VariableTables(u)) == 0 {
+	if len(u.Tables) == 0 {
 		return nil
 	}
 	var out []*ir.Struct
 	seen := map[string]bool{}
 	for _, st := range u.Tables {
-		if st == nil || st.IsMapEntry() || seen[st.Name] {
+		if st == nil || seen[st.Name] {
 			continue
 		}
 		if refuseVariableFormClosure(st, map[string]bool{}) == nil {
@@ -489,7 +474,7 @@ func cardVariableTables(u *ir.Unit) []*ir.Struct {
 		}
 	}
 	for _, st := range u.Structs {
-		if st == nil || st.IsMapEntry() || seen[st.Name] {
+		if st == nil || seen[st.Name] {
 			continue
 		}
 		if refuseVariableFormClosure(st, map[string]bool{}) == nil {
@@ -508,15 +493,6 @@ func cardVariableTables(u *ir.Unit) []*ir.Struct {
 // (docs/SPEC-TABLES.md §2, §11). The *string and *bytes byte buffers (§2.5) are
 // carried; a pointer to a table by value is not.
 func variableFormRefusal(f *ir.Field) string {
-	if f.IsMap() {
-		return "a map (docs/SPEC-TABLES.md §2.8)"
-	}
-	if f.Type.Optional {
-		return "an optional ?T (docs/SPEC-TABLES.md §2.3)"
-	}
-	if f.KeyEnum != "" {
-		return "an enum-keyed array (docs/SPEC-TABLES.md §2.4)"
-	}
 	if f.Type.Pointer {
 		switch {
 		case f.Type.Kind == ir.TString && f.Type.Blob():
@@ -532,40 +508,7 @@ func variableFormRefusal(f *ir.Field) string {
 			return "a pointer to a non-table type (docs/SPEC-TABLES.md §2.1)"
 		}
 	}
-	if f.Type.Kind == ir.TNamed {
-		if _, ok := f.Type.Ref.(*ir.Union); ok {
-			return "a union (docs/SPEC-TABLES.md §2.6)"
-		}
-	}
-	// An UNBOUNDED ARRAY (§2.9) is carried for scalar, string, enum and flags
-	// elements, and for lists of tables ([]T). The element classes the
-	// variable form does not yet carry — bytes(N), fixed(I, F), wstring(N) and
-	// a 128-bit kind — are refused by name rather than mis-encoded as a single
-	// value. A union element is refused by the union rule above, array or not.
-	if f.Array == ir.ArrayList {
-		switch f.Type.Kind {
-		case ir.TBytes:
-			return "an unbounded array of bytes (docs/SPEC-TABLES.md §2.9)"
-		case ir.TFixed:
-			return "an unbounded array of a fixed(I, F) kind (docs/SPEC-TABLES.md §15)"
-		case ir.TWString:
-			return "an unbounded array of a wstring(N) kind (docs/SPEC-TABLES.md §15)"
-		case ir.TInt:
-			if f.Type.Width > 64 {
-				return "an unbounded array of a wide int128 kind (docs/SPEC-TABLES.md §15)"
-			}
-		}
-	}
-	switch f.Type.Kind {
-	case ir.TFixed:
-		return "a fixed(I, F) kind (docs/SPEC-TABLES.md §15)"
-	case ir.TWString:
-		return "a wstring(N) kind (docs/SPEC-TABLES.md §15)"
-	case ir.TInt:
-		if f.Type.Width > 64 {
-			return "a wide int128 kind (docs/SPEC-TABLES.md §15)"
-		}
-	}
+
 	return ""
 }
 

@@ -2,9 +2,10 @@
     THE JAVA TABLES LEG, under test (docs/SPEC-TABLES.md).
 
     Three gates the conformance harness does not hold, because none of them is a
-    case — each is a SEARCH or a FORGERY. (The tolerant wire's allocation gate and
-    soak once stood beside them; they went with the wire's previous form, which
-    this port no longer emits — schema#517 brings the id-table form.)
+    case — each is a SEARCH or a FORGERY — and the allocation gate, which is a
+    MEASUREMENT: `allocator` refuses off the pinned JDK here and runs the rows
+    in AllocPaths.java (the block and cook walks, and the id-table variable
+    form's loadMeasure, load and save; schema#517).
 
       fuzz  <block> <cook>     the READERS' oracle. Mutants of a block image and
                                a cooked file are handed to the generated Open,
@@ -325,13 +326,14 @@ public final class Main {
         for (int i = 0; i < 8; i++) { data[slot + i] = (byte) (delta >>> (8 * i)); }
     }
 
-    // ---- the allocation gate (docs/PORTING.md I14)
+    // ---- the allocation gate (docs/PORTING.md I1, M1, I14)
     //
     // Reads the JDK's feature version and the JVM's per-thread allocation
     // counter, and refuses to certify on any JDK other than the pin — or with
     // no counter at all — without measuring. The escape hatch reports and does
-    // not certify.
-    private static int modeAllocator() {
+    // not certify. What it measures is AllocPaths: the block and cook walks,
+    // the variable form's loadMeasure, load and save, over committed files.
+    private static int modeAllocator(String blockFile, String cookFile, String[] wires) throws IOException {
         int found = Runtime.version().feature();
         int pin = 21;
         String pinEnv = System.getenv("SCHEMA_JAVA_ALLOC_PINNED_FEATURE");
@@ -365,23 +367,18 @@ public final class Main {
                     + "cannot certify a floor it cannot measure");
         }
 
+        // THE ROWS (AllocPaths.java): the real read and write paths over the
+        // committed corpus, each against its ceiling. The refusals above run
+        // first and measure nothing.
         describe("allocation measurement on JDK " + Runtime.version());
-        long before = bean != null ? bean.getCurrentThreadAllocatedBytes() : 0L;
-        int iterations = 1_000_000;
-        long sink = 0L;
-        for (int i = 0; i < iterations; i++) {
-            byte[] scratch = new byte[256];
-            sink += scratch[0];
+        int code = AllocPaths.run(bean, !anyJdk, blockFile, cookFile, wires);
+        if (code != 0) {
+            fail("the allocation gate is red on JDK " + Runtime.version() + " (the rows above say which)");
         }
-        long after = bean != null ? bean.getCurrentThreadAllocatedBytes() : 0L;
-        if (sink == Long.MIN_VALUE) {
-            System.out.println(sink);
-        }
-        long bytes = after - before;
-        System.out.println("allocator: " + bytes + " bytes over " + iterations + " iterations = "
-                + ((double) bytes / iterations) + " bytes per iteration");
         if (!anyJdk) {
             System.out.println("the java allocation gate certified on JDK " + pin);
+        } else {
+            System.out.println("NOT CERTIFIED: observations on JDK " + Runtime.version() + ", pin is " + pin);
         }
         return 0;
     }
@@ -409,7 +406,7 @@ public final class Main {
 
     public static void main(String[] args) throws IOException {
         if (args.length < 1) {
-            System.err.println("usage: Main fuzz <block> <cook> | order <le> <be> | extent <cook> | allocator");
+            System.err.println("usage: Main fuzz <block> <cook> | order <le> <be> | extent <cook> | allocator <block> <cook> <wire>...");
             System.exit(1);
         }
         String mode = args[0];
@@ -435,7 +432,12 @@ public final class Main {
                 System.exit(modeExtent(args[1]));
                 break;
             case "allocator":
-                System.exit(modeAllocator());
+                if (args.length < 4) {
+                    System.err.println("usage: Main allocator <block> <cook> <wire>...");
+                    System.exit(1);
+                }
+                System.exit(modeAllocator(args[1], args[2],
+                        java.util.Arrays.copyOfRange(args, 3, args.length)));
                 break;
             default:
                 System.err.println("FAILED: unknown mode " + mode);

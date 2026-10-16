@@ -122,10 +122,13 @@ func init() {
 	// the way go and rust register (target_go.go, target_rust.go): the append
 	// IS the registration.
 	valueDefaultTargets = append(valueDefaultTargets, "java")
+	wasRowTargets = append(wasRowTargets, "java")
 	registerWideTextCarrier("java")
 	registerListCarrier("java")
+	registerMapCarrier("java")
+	registerOptionalArrayCarrier("java")
 	// The variable wire carries BOTH byte buffers (§2.5): java is a carrier of
 	// *bytes and *string together, so it registers through registerBuiltin's
 	// blobs flag and not as a string carrier alone.
-	registerBuiltin(javaTarget{}, true, false, false, true)
+	registerBuiltin(javaTarget{}, true, true, true, true)
 }
