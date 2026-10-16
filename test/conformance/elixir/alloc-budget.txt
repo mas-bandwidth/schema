@@ -1,0 +1,37 @@
+# THE ALLOCATION BUDGET of the Elixir table leg (docs/PORTING.md I1, I14),
+# pinned by `make tables-elixir-alloc-pin` on OTP 29.0.5 with Elixir 1.20.4
+# and read by `make tables-elixir-alloc-audit`. Re-pinning is deliberate, as a
+# wire golden is. Written by test/elixir-alloc/main.exs; do not hand-edit.
+#
+# <case> <heap words> <binary calls> <reductions>, all per iteration
+#
+# One iteration is one wire load, one wire save, one text read and one text
+# write of the instance through its <Unit>.Table codec (the wire half alone
+# for a no-text instance), averaged over 200; each figure is the largest of
+# five measurements. Heap words: per process, from :erlang.trace/3 on
+# :garbage_collection, gated at 64 + 1/10000 of the figure. Binary calls:
+# binary_alloc's VM-wide call counter, gated at + 8. Reductions: printed and
+# pinned, not gated. The floor is not zero and is not claimed to be.
+wide_blob 12345000 17 5677107
+chain_value 2329 5 1231
+chain_value_empty 1312 0 881
+chain_optional 2329 5 1231
+chain_optional_empty 1551 0 988
+graph_tree 13884 11 7203
+graph_shared 12958 11 6834
+graph_empty 3779 1 2260
+graph_deep 198644 2 262540
+blob_small 8578 14 4321
+blob_empty 3088 6 1576
+blob_large 618643 8 322308
+blob_shared 1159 2 554
+blob_str8 3353 7 1654
+blob_str16 3520 7 1680
+list_tables 8833 11 4546
+list_scalars 1934 1 1059
+list_empty 3767 5 2141
+list_erased 7193 13 4124
+list_shared 3582 3 1861
+list_before_pointer 4329 3 2304
+list_nested 11055 3 6274
+list_migrates 3140 3 1809
