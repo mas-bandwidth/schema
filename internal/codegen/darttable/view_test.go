@@ -71,8 +71,17 @@ func TestUnitViewDescriptorsDart(t *testing.T) {
 				t.Errorf("VIEW_CORPUS %s lacks table %s", entry, name)
 			}
 			for _, field := range st.Fields {
-				if !strings.Contains(view, "ViewField("+viewDartString(field.Name)+",") {
-					t.Errorf("VIEW_CORPUS %s lacks %s.%s", entry, name, field.Name)
+				kind := ir.TableWireScalarKind(field)
+				if field.IsMap() {
+					kind = ir.TableKindTable
+				} else if field.Type.Kind == ir.TBytes && !field.Type.Blob() {
+					kind = ir.TableKindU8
+				}
+				want := fmt.Sprintf("ViewField(%s,%s,%s,%s,%t,%d,", viewDartString(field.Name),
+					viewDartString(ir.TableFieldJsonKey(field)), viewDartString(ir.TableTypeSpelling(field)),
+					dartU64Literal(ir.TableFieldWireId(field)), field.Type.Optional, kind)
+				if !strings.Contains(view, want) {
+					t.Errorf("VIEW_CORPUS %s lacks %s.%s kind %d", entry, name, field.Name, kind)
 				}
 			}
 		}
@@ -85,6 +94,40 @@ func TestUnitViewDescriptorsDart(t *testing.T) {
 				if !strings.Contains(view, "// "+group.label+" "+name) {
 					t.Errorf("VIEW_CORPUS %s lacks %s %s", entry, group.label, name)
 				}
+			}
+		}
+		for _, name := range sortedKeys(unit.Enums) {
+			for i, variant := range unit.Enums[name].Variants {
+				want := fmt.Sprintf("ViewVariant(%d,%s,", i+1, viewDartString(variant))
+				if !strings.Contains(view, want) {
+					t.Errorf("VIEW_CORPUS %s lacks enum %s variant %s", entry, name, variant)
+				}
+			}
+		}
+		for _, name := range sortedKeys(unit.Flags) {
+			for i, bit := range unit.Flags[name].Variants {
+				want := fmt.Sprintf("ViewVariant(%d,%s,", i, viewDartString(bit))
+				if !strings.Contains(view, want) {
+					t.Errorf("VIEW_CORPUS %s lacks flags %s bit %s", entry, name, bit)
+				}
+			}
+		}
+		for _, unions := range []map[string]*ir.Union{unit.Unions, unit.TableUnions} {
+			for _, name := range sortedKeys(unions) {
+				for i, arm := range unions[name].Variants {
+					want := fmt.Sprintf("ViewVariant(%d,%s,", i+1, viewDartString(arm.Name))
+					if !strings.Contains(view, want) {
+						t.Errorf("VIEW_CORPUS %s lacks union %s arm %s", entry, name, arm.Name)
+					}
+				}
+			}
+		}
+		for _, name := range sortedKeys(unit.Consts) {
+			c := unit.Consts[name]
+			want := fmt.Sprintf("ViewConstant(%s,%s,%s,%t,", viewDartString(name),
+				viewDartString(viewDartFile(unit, name)), viewDartString(c.Storage), c.IsFloat)
+			if !strings.Contains(view, want) {
+				t.Errorf("VIEW_CORPUS %s lacks constant %s and its type", entry, name)
 			}
 		}
 	}
