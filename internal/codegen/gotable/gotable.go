@@ -30,6 +30,9 @@
 package gotable
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"go/ast"
 	"go/format"
@@ -37,9 +40,15 @@ import (
 	"go/token"
 	"maps"
 	"regexp"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
+	"unicode"
 
+	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
+	schemaparser "github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -1144,4 +1153,771 @@ func (g *tableGen) emitTimestampAccessors(st *ir.Struct) {
 		g.pf("\tn, ok := tableTimestampNanos(t)\n\tif !ok {\n\t\treturn TableTimestampError{Field: %q, Time: t}\n\t}\n", st.Name+"."+name)
 		g.pf("\tv.%s = n\n\treturn nil\n}\n\n", name)
 	}
+}
+
+// ---- the optional shared Go runtime (docs/SPEC-TABLES.md §8.4) ----
+//
+// Standalone is the default and stays byte-identical to every build before this
+// option existed. Shared makes a unit's home file import tables/goruntime for
+// the declarations the emitter writes identically for EVERY unit shape, instead
+// of carrying a copy of them. There is one source: the package's text is the
+// emitter's own text for those declarations (sharedRuntime derives it from the
+// emitter's output for the probe units below), so the package and the inline copy
+// cannot drift, and a test fails when the checked-in package and the emitter
+// disagree.
+
+// SharedRuntimeImport is the import path of the shared Go runtime package.
+const SharedRuntimeImport = "github.com/mas-bandwidth/schema/v2/tables/goruntime"
+
+// SharedRuntimeFile is the one file of the shared package, relative to
+// tables/goruntime.
+const SharedRuntimeFile = "goruntime.go"
+
+// Runtime says where a Go unit's table-independent machinery lives.
+type Runtime uint8
+
+const (
+	// RuntimeStandalone emits the machinery into the unit (the default).
+	RuntimeStandalone Runtime = iota
+	// RuntimeShared imports it from SharedRuntimeImport.
+	RuntimeShared
+)
+
+// ParseRuntime reads the generator option `runtime`: absent, empty or
+// "standalone" is standalone; "shared" is shared; anything else is refused by
+// name (docs/SPEC-TABLES.md §8.4).
+func ParseRuntime(v string) (Runtime, error) {
+	switch v {
+	case "", "standalone":
+		return RuntimeStandalone, nil
+	case "shared":
+		return RuntimeShared, nil
+	}
+	return RuntimeStandalone, fmt.Errorf("go option runtime=%q is not a runtime: use standalone (the default) or shared (docs/SPEC-TABLES.md §8.4)", v)
+}
+
+// GenerateRuntime is GenerateLineage with the runtime choice. RuntimeStandalone
+// returns exactly GenerateLineage's bytes.
+func GenerateRuntime(u *ir.Unit, lineage map[string][]FixedLineageEntry, rt Runtime) (map[string][]byte, error) {
+	out, err := GenerateLineage(u, lineage)
+	if err != nil || rt == RuntimeStandalone || len(out) == 0 {
+		return out, err
+	}
+	sr, err := loadSharedRuntime()
+	if err != nil {
+		return nil, err
+	}
+	name := runtimeHome(u) + "Table.go"
+	src, err := sr.apply(out[name])
+	if err != nil {
+		return nil, fmt.Errorf("shared runtime for %s: %w", name, err)
+	}
+	out[name] = src
+	return out, nil
+}
+
+// SharedRuntimeFiles is the shared package's source, keyed by file name.
+func SharedRuntimeFiles() (map[string][]byte, error) {
+	sr, err := loadSharedRuntime()
+	if err != nil {
+		return nil, err
+	}
+	return map[string][]byte{SharedRuntimeFile: sr.pkg}, nil
+}
+
+// sharedProbes are the unit shapes whose home files decide what is shared: a
+// declaration is shared only when every probe's home file carries it
+// byte-for-byte. Together they switch on every conditional the runtime emitter
+// has: fixed-only and variable units, containers, wide text, float64, keyed
+// arrays and unions.
+var sharedProbes = []string{
+	"package probe\nfixed table A { n int32 }\n",
+	`package probe
+enum Team { Red, Blue }
+flags Caps { Jump, Fly }
+type Point { x int32 }
+union Value { tally int32
+ label string(8)
+ point Point
+ ping }
+fixed table Gunner { reaction float64 = 0.5 }
+fixed table B {
+ name string(16)
+ tag bytes(4)
+ caps Caps
+ value Value
+ slots [Team]Gunner
+ maybe ?Gunner
+ samples [..3]float32
+}
+`,
+	"package probe\ntable A { n int32\n name string(8) }\n",
+	`package probe
+fixed table Child { n int32 = 7 }
+enum Key { first }
+union Choice { one Child
+ ping }
+table Root { numbers []int32
+ children []Child
+ pointers []*Child
+ head *Child
+ pick Choice
+ pairs map[uint8]Child
+ slots [Key]Child }
+`,
+	"package probe\nfixed table W { words wstring(8) }\n",
+	"package probe\ntable W { words wstring(8)\n n float64 }\n",
+}
+
+// rtDecl is one top-level declaration of a probe's home file.
+type rtDecl struct {
+	key     string // the declared names joined; a method is "(T).m"
+	names   []string
+	recv    string // the receiver's base type, or ""
+	text    string // the source slice, doc comment included
+	start   int    // byte offsets of text in the file
+	end     int
+	idents  map[string]bool // identifiers the body uses, selectors' fields excluded
+	members map[string]bool // selector fields and composite-literal keys it uses
+	fields  []string        // unexported struct fields and method name this declares
+	typ     bool
+	skip    bool // generic, var or init: never shared
+	order   int
+}
+
+type sharedRuntime struct {
+	pkg     []byte
+	ordered []string // keys of the shared declarations, package order
+	text    map[string]string
+	shim    string
+	version uint64
+}
+
+var (
+	sharedRuntimeOnce sync.Once
+	sharedRuntimeVal  *sharedRuntime
+	sharedRuntimeErr  error
+)
+
+func loadSharedRuntime() (*sharedRuntime, error) {
+	sharedRuntimeOnce.Do(func() { sharedRuntimeVal, sharedRuntimeErr = buildSharedRuntime() })
+	return sharedRuntimeVal, sharedRuntimeErr
+}
+
+func rtParseDecls(path string, src []byte) ([]rtDecl, *ast.File, error) {
+	fs := token.NewFileSet()
+	f, err := parser.ParseFile(fs, path, src, parser.ParseComments)
+	if err != nil {
+		return nil, nil, err
+	}
+	off := func(p token.Pos) int { return fs.Position(p).Offset }
+	var out []rtDecl
+	for i, decl := range f.Decls {
+		d := rtDecl{idents: map[string]bool{}, members: map[string]bool{}, order: i}
+		var doc *ast.CommentGroup
+		switch x := decl.(type) {
+		case *ast.FuncDecl:
+			doc = x.Doc
+			d.names = []string{x.Name.Name}
+			d.key = x.Name.Name
+			if x.Recv != nil && len(x.Recv.List) == 1 {
+				t := x.Recv.List[0].Type
+				if st, ok := t.(*ast.StarExpr); ok {
+					t = st.X
+				}
+				if ix, ok := t.(*ast.IndexExpr); ok {
+					t = ix.X
+					d.skip = true
+				}
+				if id, ok := t.(*ast.Ident); ok {
+					d.recv = id.Name
+					d.key = "(" + id.Name + ")." + x.Name.Name
+					if !ast.IsExported(x.Name.Name) {
+						d.fields = append(d.fields, x.Name.Name)
+					}
+				}
+			}
+			if x.Type.TypeParams != nil || x.Name.Name == "init" {
+				d.skip = true
+			}
+		case *ast.GenDecl:
+			if x.Tok == token.IMPORT {
+				continue
+			}
+			doc = x.Doc
+			if x.Tok == token.VAR {
+				d.skip = true
+			}
+			for _, sp := range x.Specs {
+				switch s := sp.(type) {
+				case *ast.TypeSpec:
+					d.names = append(d.names, s.Name.Name)
+					d.typ = true
+					if s.TypeParams != nil {
+						d.skip = true
+					}
+					if st, ok := s.Type.(*ast.StructType); ok {
+						for _, fl := range st.Fields.List {
+							for _, n := range fl.Names {
+								if !ast.IsExported(n.Name) {
+									d.fields = append(d.fields, n.Name)
+								}
+							}
+							if len(fl.Names) == 0 {
+								d.skip = true // embedded: members promote across types
+							}
+						}
+					}
+				case *ast.ValueSpec:
+					for _, n := range s.Names {
+						d.names = append(d.names, n.Name)
+					}
+				}
+			}
+			d.key = strings.Join(d.names, ",")
+		}
+		d.start, d.end = off(decl.Pos()), off(decl.End())
+		if doc != nil {
+			d.start = off(doc.Pos())
+		}
+		d.text = string(src[d.start:d.end])
+		ast.Inspect(decl, func(n ast.Node) bool {
+			switch x := n.(type) {
+			case *ast.SelectorExpr:
+				d.members[x.Sel.Name] = true
+				ast.Inspect(x.X, func(m ast.Node) bool {
+					if id, ok := m.(*ast.Ident); ok {
+						d.idents[id.Name] = true
+					}
+					return true
+				})
+				return false
+			case *ast.KeyValueExpr:
+				if id, ok := x.Key.(*ast.Ident); ok {
+					d.members[id.Name] = true
+					d.idents[id.Name] = true
+				}
+			case *ast.Field:
+				// a declared field or parameter name is not a use
+				ast.Inspect(x.Type, func(m ast.Node) bool {
+					if id, ok := m.(*ast.Ident); ok {
+						d.idents[id.Name] = true
+					}
+					return true
+				})
+				return false
+			case *ast.Ident:
+				d.idents[x.Name] = true
+			}
+			return true
+		})
+		out = append(out, d)
+	}
+	return out, f, nil
+}
+
+func rtProbeUnit(src string) (*ir.Unit, error) {
+	f, perrs := schemaparser.Parse("Probe.schema", []byte(src))
+	if len(perrs) > 0 {
+		return nil, perrs[0]
+	}
+	u, cerrs := schemacheck.Unit([]schemacheck.SourceFile{{
+		Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(src), AST: f,
+	}})
+	if len(cerrs) > 0 {
+		return nil, cerrs[0]
+	}
+	return u, nil
+}
+
+func lowerFirst(name string) bool {
+	r := []rune(name)
+	return len(r) > 0 && unicode.IsLower(r[0])
+}
+
+func buildSharedRuntime() (*sharedRuntime, error) {
+	type probe struct {
+		home   []rtDecl
+		others []rtDecl
+		file   *ast.File
+		src    []byte
+	}
+	var probes []probe
+	for _, src := range sharedProbes {
+		u, err := rtProbeUnit(src)
+		if err != nil {
+			return nil, fmt.Errorf("shared runtime probe: %w", err)
+		}
+		files, err := GenerateLineage(u, nil)
+		if err != nil {
+			return nil, fmt.Errorf("shared runtime probe: %w", err)
+		}
+		var p probe
+		names := make([]string, 0, len(files))
+		for n := range files {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		for _, n := range names {
+			ds, f, err := rtParseDecls(n, files[n])
+			if err != nil {
+				return nil, fmt.Errorf("shared runtime probe %s: %w", n, err)
+			}
+			if n == runtimeHome(u)+"Table.go" {
+				p.home, p.file, p.src = ds, f, files[n]
+			} else {
+				p.others = append(p.others, ds...)
+			}
+		}
+		if p.home == nil {
+			return nil, fmt.Errorf("shared runtime probe has no home file")
+		}
+		probes = append(probes, p)
+	}
+	// identical in every probe
+	seen := map[string]map[string]int{}
+	byKey := map[string]rtDecl{}
+	for _, p := range probes {
+		for _, d := range p.home {
+			if seen[d.key] == nil {
+				seen[d.key] = map[string]int{}
+				byKey[d.key] = d
+			}
+			seen[d.key][d.text]++
+		}
+	}
+	cand := map[string]bool{}
+	for k, m := range seen {
+		if len(m) == 1 && m[byKey[k].text] == len(probes) && !byKey[k].skip {
+			cand[k] = true
+		}
+	}
+	// the universe: every package-level name any probe declares, and every
+	// unexported member each type declares
+	universe := map[string]bool{}
+	methodsOf := map[string]map[string]bool{} // type -> method keys, all files
+	memberNames := map[string]map[string]bool{}
+	nameKey := map[string]string{}
+	for _, p := range probes {
+		for _, d := range append(slices.Clone(p.home), p.others...) {
+			if d.recv == "" {
+				for _, n := range d.names {
+					universe[n] = true
+				}
+			} else {
+				if methodsOf[d.recv] == nil {
+					methodsOf[d.recv] = map[string]bool{}
+				}
+				methodsOf[d.recv][d.key] = true
+			}
+			if d.typ {
+				if memberNames[d.names[0]] == nil {
+					memberNames[d.names[0]] = map[string]bool{}
+				}
+				for _, f := range d.fields {
+					memberNames[d.names[0]][f] = true
+				}
+			} else if d.recv != "" {
+				if memberNames[d.recv] == nil {
+					memberNames[d.recv] = map[string]bool{}
+				}
+				for _, f := range d.fields {
+					memberNames[d.recv][f] = true
+				}
+			}
+		}
+	}
+	for k := range cand {
+		for _, n := range byKey[k].names {
+			nameKey[n] = k
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		drop := func(k string) {
+			if cand[k] {
+				delete(cand, k)
+				changed = true
+			}
+		}
+		inCand := map[string]bool{}
+		for k := range cand {
+			for _, n := range byKey[k].names {
+				if byKey[k].recv == "" {
+					inCand[n] = true
+				}
+			}
+		}
+		// (a) a shared declaration names only shared declarations
+		for k := range cand {
+			d := byKey[k]
+			own := map[string]bool{}
+			for _, n := range d.names {
+				own[n] = true
+			}
+			for id := range d.idents {
+				if universe[id] && !inCand[id] && !own[id] {
+					drop(k)
+					break
+				}
+			}
+		}
+		// (b) a method rides with its type, and a type with every method
+		for k := range cand {
+			d := byKey[k]
+			if d.recv != "" && !inCand[d.recv] {
+				drop(k)
+			}
+			if d.typ {
+				for mk := range methodsOf[d.names[0]] {
+					if !cand[mk] {
+						drop(k)
+					}
+				}
+			}
+		}
+		// (c) code outside the shared set must not reach an unexported member
+		nonShared := map[string]bool{} // members used by code outside the shared set
+		for _, p := range probes {
+			for _, d := range append(slices.Clone(p.home), p.others...) {
+				if !cand[d.key] {
+					for m := range d.members {
+						nonShared[m] = true
+					}
+				}
+			}
+		}
+		for k := range cand {
+			d := byKey[k]
+			if !d.typ {
+				continue
+			}
+			for f := range memberNames[d.names[0]] {
+				if nonShared[f] {
+					drop(k)
+					break
+				}
+			}
+		}
+	}
+	// the home file's own order, from the first probe that carries each
+	var ordered []string
+	have := map[string]bool{}
+	for _, d := range probes[0].home {
+		if cand[d.key] && !have[d.key] {
+			ordered = append(ordered, d.key)
+			have[d.key] = true
+		}
+	}
+	for k := range cand {
+		if !have[k] {
+			return nil, fmt.Errorf("shared runtime: %s is shared but absent from the first probe", k)
+		}
+	}
+	// exported spellings
+	rename := map[string]string{}
+	for _, k := range ordered {
+		d := byKey[k]
+		if d.recv != "" {
+			continue
+		}
+		for _, n := range d.names {
+			if lowerFirst(n) {
+				up := strings.ToUpper(n[:1]) + n[1:]
+				if universe[up] {
+					return nil, fmt.Errorf("shared runtime: cannot export %s as %s: the name is taken", n, up)
+				}
+				rename[n] = up
+			}
+		}
+	}
+	for n := range rename {
+		for _, m := range memberNames {
+			if m[n] {
+				return nil, fmt.Errorf("shared runtime: %s is both a package name and a member name", n)
+			}
+		}
+	}
+	// imports the shared text uses
+	imp := map[string]string{} // local name -> quoted path
+	for _, is := range probes[0].file.Imports {
+		path, _ := strconv.Unquote(is.Path.Value)
+		name := path[strings.LastIndex(path, "/")+1:]
+		if is.Name != nil {
+			name = is.Name.Name
+		}
+		imp[name] = is.Path.Value
+	}
+	var body strings.Builder
+	for _, k := range ordered {
+		body.WriteString(byKey[k].text)
+		body.WriteString("\n\n")
+	}
+	used := map[string]bool{}
+	if pf, err := parser.ParseFile(token.NewFileSet(), "", "package x\n"+body.String(), 0); err == nil {
+		ast.Inspect(pf, func(n ast.Node) bool {
+			if sx, ok := n.(*ast.SelectorExpr); ok {
+				if id, ok := sx.X.(*ast.Ident); ok && imp[id.Name] != "" {
+					used[id.Name] = true
+				}
+			}
+			return true
+		})
+	} else {
+		return nil, fmt.Errorf("shared runtime text does not parse: %w", err)
+	}
+	var paths []string
+	for n := range used {
+		paths = append(paths, imp[n])
+	}
+	sort.Strings(paths)
+	text := rtRename("package goruntime\n\n"+goImports(paths)+body.String(), rename)
+	sum := sha256.Sum256([]byte(text))
+	version := binary.BigEndian.Uint64(sum[:8])
+	var pkg strings.Builder
+	pkg.WriteString("// Code generated by the schema compiler (internal/codegen/gotable) from the table runtime it\n")
+	pkg.WriteString("// emits into every standalone Go unit. DO NOT EDIT.\n")
+	pkg.WriteString("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
+	pkg.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
+	pkg.WriteString("// AGPL-3.0, its output is not.\n")
+	pkg.WriteString("\n")
+	pkg.WriteString("// Package goruntime is the optional shared Go runtime of the schema table wire\n")
+	pkg.WriteString("// (docs/SPEC-TABLES.md §8.4): the declarations the compiler writes identically\n")
+	pkg.WriteString("// into every standalone unit, once. A unit generated with the Go option\n")
+	pkg.WriteString("// runtime=shared aliases these names instead of carrying a copy. The package\n")
+	pkg.WriteString("// versions with the compiler: Version is a digest of this source, and a unit\n")
+	pkg.WriteString("// asserts it at compile time, so a unit and a runtime from different compilers\n")
+	pkg.WriteString("// is a build error, never a run-time surprise.\n")
+	pkg.WriteString(text)
+	fmt.Fprintf(&pkg, "// Version identifies this runtime. A generated unit asserts it.\nconst Version uint64 = 0x%016x\n", version)
+	pkgSrc, err := format.Source([]byte(pkg.String()))
+	if err != nil {
+		return nil, fmt.Errorf("shared runtime package does not format: %w", err)
+	}
+	// the shim: what a unit declares in place of the copy
+	var shim strings.Builder
+	shim.WriteString("// ---- the shared runtime (docs/SPEC-TABLES.md §8.4): this unit was generated with\n")
+	shim.WriteString("// the Go option runtime=shared, so the table-independent machinery is imported ----\n\n")
+	fmt.Fprintf(&shim, "// A unit and its runtime come from one compiler: either difference overflows.\nconst _ = uint64(%s.Version - 0x%016x)\nconst _ = uint64(0x%016x - %s.Version)\n\n", sharedRuntimePackage, version, version, sharedRuntimePackage)
+	for _, k := range ordered {
+		d := byKey[k]
+		if d.recv != "" {
+			continue
+		}
+		s, err := rtShim(d.text, rename)
+		if err != nil {
+			return nil, err
+		}
+		shim.WriteString(s)
+	}
+	sr := &sharedRuntime{pkg: pkgSrc, ordered: ordered, text: map[string]string{}, shim: shim.String(), version: version}
+	for _, k := range ordered {
+		sr.text[k] = byKey[k].text
+	}
+	return sr, nil
+}
+
+const sharedRuntimePackage = "goruntime"
+
+// rtRename spells every package-level name in rename by its exported name. A
+// bijection on identifiers preserves every binding, a field or method name
+// never changes (buildSharedRuntime checks the two sets are disjoint), and the
+// result is formatted.
+func rtRename(src string, rename map[string]string) string {
+	fs := token.NewFileSet()
+	f, err := parser.ParseFile(fs, "", src, parser.ParseComments)
+	if err != nil {
+		panic(err)
+	}
+	type edit struct {
+		at       int
+		from, to string
+	}
+	var edits []edit
+	skip := map[*ast.Ident]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.SelectorExpr:
+			skip[x.Sel] = true
+		case *ast.FuncDecl:
+			if x.Recv != nil {
+				skip[x.Name] = true
+			}
+		case *ast.Field:
+			for _, nm := range x.Names {
+				skip[nm] = true
+			}
+		}
+		return true
+	})
+	ast.Inspect(f, func(n ast.Node) bool {
+		if id, ok := n.(*ast.Ident); ok && !skip[id] {
+			if to, ok := rename[id.Name]; ok {
+				edits = append(edits, edit{fs.Position(id.Pos()).Offset, id.Name, to})
+			}
+		}
+		return true
+	})
+	sort.Slice(edits, func(i, j int) bool { return edits[i].at > edits[j].at })
+	b := []byte(src)
+	for _, e := range edits {
+		b = append(b[:e.at], append([]byte(e.to), b[e.at+len(e.from):]...)...)
+	}
+	return string(b)
+}
+
+// rtShim is the declaration a unit writes in place of one shared package-level
+// declaration: a type alias, an untyped-preserving const, or a forwarding
+// function (small enough to inline).
+func rtShim(text string, rename map[string]string) (string, error) {
+	fs := token.NewFileSet()
+	f, err := parser.ParseFile(fs, "", "package x\n"+text, parser.ParseComments)
+	if err != nil {
+		return "", err
+	}
+	target := func(n string) string {
+		if to, ok := rename[n]; ok {
+			n = to
+		}
+		return sharedRuntimePackage + "." + n
+	}
+	var b strings.Builder
+	for _, decl := range f.Decls {
+		switch x := decl.(type) {
+		case *ast.GenDecl:
+			for _, sp := range x.Specs {
+				switch s := sp.(type) {
+				case *ast.TypeSpec:
+					fmt.Fprintf(&b, "type %s = %s\n", s.Name.Name, target(s.Name.Name))
+				case *ast.ValueSpec:
+					if x.Tok != token.CONST {
+						return "", fmt.Errorf("shared runtime: %s is not a const", s.Names[0].Name)
+					}
+					for _, nm := range s.Names {
+						fmt.Fprintf(&b, "const %s = %s\n", nm.Name, target(nm.Name))
+					}
+				}
+			}
+		case *ast.FuncDecl:
+			var sig bytes.Buffer
+			ft := *x.Type
+			var args []string
+			params := &ast.FieldList{}
+			n := 0
+			for _, fl := range x.Type.Params.List {
+				nf := *fl
+				nf.Names = nil
+				cnt := len(fl.Names)
+				if cnt == 0 {
+					cnt = 1
+				}
+				for i := 0; i < cnt; i++ {
+					name := fmt.Sprintf("a%d", n)
+					n++
+					nf.Names = append(nf.Names, ast.NewIdent(name))
+					if _, ok := fl.Type.(*ast.Ellipsis); ok {
+						args = append(args, name+"...")
+					} else {
+						args = append(args, name)
+					}
+				}
+				params.List = append(params.List, &nf)
+			}
+			ft.Params = params
+			if err := format.Node(&sig, token.NewFileSet(), &ast.FuncDecl{Name: x.Name, Type: &ft}); err != nil {
+				return "", err
+			}
+			call := fmt.Sprintf("%s(%s)", target(x.Name.Name), strings.Join(args, ", "))
+			if x.Type.Results != nil && len(x.Type.Results.List) > 0 {
+				call = "return " + call
+			}
+			fmt.Fprintf(&b, "%s { %s }\n", sig.String(), call)
+		}
+	}
+	return b.String() + "\n", nil
+}
+
+// apply replaces a standalone home file's shared declarations with the import
+// and the shim. A declaration the unit spells differently from the package is
+// an error, never a silent second copy.
+func (sr *sharedRuntime) apply(src []byte) ([]byte, error) {
+	decls, f, err := rtParseDecls("home", src)
+	if err != nil {
+		return nil, err
+	}
+	fs := token.NewFileSet()
+	if f, err = parser.ParseFile(fs, "home", src, parser.ParseComments); err != nil {
+		return nil, err
+	}
+	type cut struct{ a, b int }
+	var cuts []cut
+	for _, d := range decls {
+		want, ok := sr.text[d.key]
+		if !ok {
+			continue
+		}
+		if want != d.text {
+			return nil, fmt.Errorf("declaration %s differs from the shared runtime's (add a probe for this unit shape to sharedProbes)", d.key)
+		}
+		cuts = append(cuts, cut{d.start, d.end})
+	}
+	var impStart, impEnd int
+	for _, decl := range f.Decls {
+		if gd, ok := decl.(*ast.GenDecl); ok && gd.Tok == token.IMPORT {
+			impStart, impEnd = fs.Position(gd.Pos()).Offset, fs.Position(gd.End()).Offset
+		}
+	}
+	var out bytes.Buffer
+	// the unit's body without the shared declarations; the import block is
+	// rebuilt after, from what the remaining text uses
+	at := impEnd
+	var rest bytes.Buffer
+	for _, c := range cuts {
+		if c.a < at {
+			continue
+		}
+		rest.Write(src[at:c.a])
+		at = c.b
+	}
+	rest.Write(src[at:])
+	imports := map[string]string{}
+	for _, is := range f.Imports {
+		path, _ := strconv.Unquote(is.Path.Value)
+		name := path[strings.LastIndex(path, "/")+1:]
+		if is.Name != nil {
+			name = is.Name.Name
+		}
+		imports[name] = is.Path.Value
+	}
+	usedNames := map[string]bool{}
+	if pf, err := parser.ParseFile(token.NewFileSet(), "", "package x\n"+rest.String(), 0); err == nil {
+		ast.Inspect(pf, func(n ast.Node) bool {
+			if sx, ok := n.(*ast.SelectorExpr); ok {
+				if id, ok := sx.X.(*ast.Ident); ok && imports[id.Name] != "" {
+					usedNames[id.Name] = true
+				}
+			}
+			return true
+		})
+	} else {
+		return nil, fmt.Errorf("remaining text does not parse: %w", err)
+	}
+	var paths []string
+	for n := range usedNames {
+		paths = append(paths, imports[n])
+	}
+	paths = append(paths, strconv.Quote(SharedRuntimeImport))
+	sort.Slice(paths, func(i, j int) bool {
+		// standard library first, then the rest, each sorted
+		si, sj := !strings.Contains(paths[i], "."), !strings.Contains(paths[j], ".")
+		if si != sj {
+			return si
+		}
+		return paths[i] < paths[j]
+	})
+	out.Write(src[:impStart])
+	out.WriteString(goImports(paths))
+	out.WriteString(sr.shim)
+	out.Write(rest.Bytes())
+	return format.Source(out.Bytes())
 }
