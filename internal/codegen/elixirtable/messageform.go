@@ -750,63 +750,53 @@ const messageRuntimeBody = `  defstruct announced: false,
         end
 
       {:ok, ref, rest} ->
-        case resolve(ids, ref) do
-          :error ->
-            {:malformed, build_version}
-
-          {:ok, id} ->
-            case rest do
-              <<kind, rest2::binary>> ->
-                cond do
-                  id == 0xFFFFFFFFFFFFFFFE ->
-                    case rest2 do
-                      <<bv::little-unsigned-64, rest3::binary>> when kind == 9 ->
-                        walk(rest3, ids, versions + 1, words_count, bv, words, max_bytes)
-
-                      _ ->
-                        {:malformed, build_version}
-                    end
-
-                  id == 0xFFFFFFFFFFFFFFFD ->
-                    if kind != 14 do
-                      {:malformed, build_version}
-                    else
-                      case read_vocab(rest2, max_bytes) do
-                        {:ok, words, rest3} ->
-                          walk(
-                            rest3,
-                            ids,
-                            versions,
-                            words_count + 1,
-                            build_version,
-                            words,
-                            max_bytes
-                          )
-
-                        {:refuse, reason} ->
-                          {:refuse, reason}
-
-                        :error ->
-                          {:malformed, build_version}
-                      end
-                    end
-
-                  true ->
-                    case skip(kind, rest2) do
-                      {:ok, rest3} ->
-                        walk(rest3, ids, versions, words_count, build_version, words, max_bytes)
-
-                      :error ->
-                        {:malformed, build_version}
-                    end
-                end
-
-              _ ->
-                {:malformed, build_version}
-            end
-        end
+        walk_field(
+          resolve(ids, ref),
+          rest,
+          {ids, versions, words_count, build_version, words, max_bytes}
+        )
     end
   end
+
+  # One field of the announcement body, by its resolved id: the build version
+  # (kind 9, eight bytes), the vocabulary (kind 14), or any other field, which
+  # is skipped by its kind. One clause per case, so walk itself stays under
+  # credo's Nesting and CyclomaticComplexity bounds (issue #547); the walk's
+  # state rides as one tuple.
+  defp walk_field(
+         {:ok, 0xFFFFFFFFFFFFFFFE},
+         <<9, bv::little-unsigned-64, rest::binary>>,
+         {ids, versions, words_count, _build_version, words, max_bytes}
+       ),
+       do: walk(rest, ids, versions + 1, words_count, bv, words, max_bytes)
+
+  defp walk_field({:ok, 0xFFFFFFFFFFFFFFFD}, <<14, rest::binary>>, state) do
+    {ids, versions, words_count, build_version, _words, max_bytes} = state
+
+    case read_vocab(rest, max_bytes) do
+      {:ok, words, rest2} ->
+        walk(rest2, ids, versions, words_count + 1, build_version, words, max_bytes)
+
+      {:refuse, reason} ->
+        {:refuse, reason}
+
+      :error ->
+        {:malformed, build_version}
+    end
+  end
+
+  defp walk_field({:ok, id}, <<kind, rest::binary>>, state)
+       when id != 0xFFFFFFFFFFFFFFFE and id != 0xFFFFFFFFFFFFFFFD do
+    {ids, versions, words_count, build_version, words, max_bytes} = state
+
+    case skip(kind, rest) do
+      {:ok, rest2} -> walk(rest2, ids, versions, words_count, build_version, words, max_bytes)
+      :error -> {:malformed, build_version}
+    end
+  end
+
+  defp walk_field(_resolved, _rest, {_, _, _, build_version, _, _}),
+    do: {:malformed, build_version}
 
   # The vocabulary field: kind 14, element kind 6, a length and the bytes. The
   # BYTE BOUND is checked from the field's own length before an entry is touched

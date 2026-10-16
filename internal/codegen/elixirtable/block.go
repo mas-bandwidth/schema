@@ -204,22 +204,26 @@ const blockRuntimeSource = `  @moduledoc """
   # written; rows and padding stay the zeros the extent was allocated with.
   # A count past the declared maximum, or a negative count, names the array
   # and writes nothing.
+  #
+  # The first array whose count is refused names the refusal; the check is a
+  # predicate of its own so begin nests no deeper than credo's Nesting allows
+  # (issue #547).
   def begin(counts, arrays, projection, build) when is_map(counts) and is_integer(projection) do
-    case Enum.reduce_while(arrays, :ok, fn a, _ ->
-           c = count_of(counts, a.name)
+    case Enum.find(arrays, &count_refused?(counts, &1)) do
+      nil ->
+        lay(counts, arrays, projection, build)
 
-           if c < 0 or c > a.max do
-             {:halt, {:error, %{array: a.name, count: c, maximum: a.max}}}
-           else
-             {:cont, :ok}
-           end
-         end) do
-      {:error, _} = err -> err
-      :ok -> lay(counts, arrays, projection, build)
+      a ->
+        {:error, %{array: a.name, count: count_of(counts, a.name), maximum: a.max}}
     end
   end
 
   def begin(_, _, _, _), do: false
+
+  defp count_refused?(counts, a) do
+    c = count_of(counts, a.name)
+    c < 0 or c > a.max
+  end
 
   defp count_of(counts, name) do
     cond do
