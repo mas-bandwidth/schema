@@ -79,3 +79,4 @@
 (:id "dart/W8" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t12_test.go: TestFixedRoadmapDartT12ExtentsWritesGuards/dart/W8") :tested-revision "57955f200d8190f2a8837980bdd14a7e8d49c5f9")
 (:id "dart/W7" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t12_test.go: TestFixedRoadmapDartT12ExtentsWritesGuards/dart/W7") :tested-revision "57955f200d8190f2a8837980bdd14a7e8d49c5f9")
 (:id "dart/W16" :state :done :evidence ("internal/codegen/darttable/fixedguard2_test.go: TestFixedNestedUnionAnswersTheOuterTagDart/dart/W16") :tested-revision "33bdf9090ba496e71120e496ca588de51e62ae44")
+(:id "dart/R28" :state :done :evidence ("internal/codegen/darttable/fixedguardchain_test.go: TestFixedGuardChainDart/dart/R28") :tested-revision "25d3ddd4f2b75bb8cb0510b1d67c4067f2cf72f0")
