@@ -16,14 +16,17 @@ public final class FixedTableDescriptor {
         static final TableTypeInfo TABLE = build();
 
         private static TableTypeInfo build() {
-        TableTypeInfo t = new TableTypeInfo();
-        t.name = "FixedTable";
-        t.fields = new TableFieldInfo[] {
-            TableFieldInfo.of("value", 13, "value", 0L),
-        };
-        return t;
+            TableTypeInfo t = new TableTypeInfo();
+            t.name = "FixedTable";
+            t.fields =
+                    new TableFieldInfo[] {
+                        TableFieldInfo.of("value", 13, "value", 0L),
+                    };
+            return t;
         }
     }
 
-    public static TableTypeInfo tableType() { return Holder.TABLE; }
+    public static TableTypeInfo tableType() {
+        return Holder.TABLE;
+    }
 }

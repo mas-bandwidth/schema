@@ -16,19 +16,59 @@ package bench;
 public final class TableJson {
     private TableJson() {}
 
-    static void writeFlags(StringBuilder b,long bits,String[] names,int depth) {
-        b.append('[');boolean first=true;
-        for(int i=0;i<names.length;i++)if((bits&(1L<<i))!=0){if(!first)b.append(',');first=false;indent(b,depth+1);esc(b,names[i]);}
-        if(!first)indent(b,depth);b.append(']');
+    static void writeFlags(StringBuilder b, long bits, String[] names, int depth) {
+        b.append('[');
+        boolean first = true;
+        for (int i = 0; i < names.length; i++)
+            if ((bits & (1L << i)) != 0) {
+                if (!first) b.append(',');
+                first = false;
+                indent(b, depth + 1);
+                esc(b, names[i]);
+            }
+        if (!first) indent(b, depth);
+        b.append(']');
     }
-    static Long readFlags(In in,String[] names) {
-        if(in.peek()!='['){in.skipValue();in.rep.kindMismatch++;return null;}in.p++;long bits=0;
-        while(in.peek()!=']'){
-            if(in.peek()==0){in.bad=true;return null;}
-            if(in.peek()!='"'){in.rep.kindMismatch++;in.skipValue();}else{String name=in.scanString();if(in.bad)return null;boolean found=false;for(int i=0;i<names.length;i++)if(names[i].equals(name)){bits|=1L<<i;found=true;break;}if(!found)in.rep.unknown++;}
-            int separator=in.peek();if(separator==','){in.p++;continue;}if(separator==']')break;in.bad=true;return null;
+
+    static Long readFlags(In in, String[] names) {
+        if (in.peek() != '[') {
+            in.skipValue();
+            in.rep.kindMismatch++;
+            return null;
         }
-        in.p++;return bits;
+        in.p++;
+        long bits = 0;
+        while (in.peek() != ']') {
+            if (in.peek() == 0) {
+                in.bad = true;
+                return null;
+            }
+            if (in.peek() != '"') {
+                in.rep.kindMismatch++;
+                in.skipValue();
+            } else {
+                String name = in.scanString();
+                if (in.bad) return null;
+                boolean found = false;
+                for (int i = 0; i < names.length; i++)
+                    if (names[i].equals(name)) {
+                        bits |= 1L << i;
+                        found = true;
+                        break;
+                    }
+                if (!found) in.rep.unknown++;
+            }
+            int separator = in.peek();
+            if (separator == ',') {
+                in.p++;
+                continue;
+            }
+            if (separator == ']') break;
+            in.bad = true;
+            return null;
+        }
+        in.p++;
+        return bits;
     }
 
     private static final char[] HEX = "0123456789abcdef".toCharArray();
@@ -36,7 +76,9 @@ public final class TableJson {
     // indent starts a new line at the given depth: two spaces per level.
     public static void indent(StringBuilder b, int depth) {
         b.append('\n');
-        for (int i = 0; i < depth; i++) { b.append("  "); }
+        for (int i = 0; i < depth; i++) {
+            b.append("  ");
+        }
     }
 
     // esc writes one string as a JSON string, escaping the code points JSON
@@ -48,19 +90,35 @@ public final class TableJson {
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
             switch (c) {
-                case '"':  b.append("\\\""); break;
-                case '\\': b.append("\\\\"); break;
-                case '\b': b.append("\\b"); break;
-                case '\f': b.append("\\f"); break;
-                case '\n': b.append("\\n"); break;
-                case '\r': b.append("\\r"); break;
-                case '\t': b.append("\\t"); break;
+                case '"':
+                    b.append("\\\"");
+                    break;
+                case '\\':
+                    b.append("\\\\");
+                    break;
+                case '\b':
+                    b.append("\\b");
+                    break;
+                case '\f':
+                    b.append("\\f");
+                    break;
+                case '\n':
+                    b.append("\\n");
+                    break;
+                case '\r':
+                    b.append("\\r");
+                    break;
+                case '\t':
+                    b.append("\\t");
+                    break;
                 default:
                     if (c < 0x20) {
                         b.append("\\u00").append(HEX[(c >> 4) & 0xf]).append(HEX[c & 0xf]);
                     } else if (c >= 0xd800 && c <= 0xdfff) {
-                        if (c >= 0xdc00 || i + 1 >= s.length()
-                                || s.charAt(i + 1) < 0xdc00 || s.charAt(i + 1) > 0xdfff) {
+                        if (c >= 0xdc00
+                                || i + 1 >= s.length()
+                                || s.charAt(i + 1) < 0xdc00
+                                || s.charAt(i + 1) > 0xdfff) {
                             b.append('\ufffd');
                         } else {
                             b.append(c).append(s.charAt(i + 1));
@@ -79,7 +137,10 @@ public final class TableJson {
     // than write text that does not say what the instance holds.
     public static final class Refused extends RuntimeException {
         private static final long serialVersionUID = 1L;
-        public Refused(String why) { super(why, null, false, false); }
+
+        public Refused(String why) {
+            super(why, null, false, false);
+        }
     }
 
     // writeFloat spells one float the way every port does (§16.2): C's %.*g
@@ -91,14 +152,26 @@ public final class TableJson {
     // Float.toString or Double.toString, whose shortest spelling is Java's own
     // ("1.0E10", "0.0") and whose digits can differ from C's on a tie.
     public static void writeFloat(StringBuilder b, double value, boolean single) {
-        if (!Double.isFinite(value)) { throw new Refused("a non-finite float has no JSON spelling"); }
-        int low = 15; int high = 17;
-        if (single) { low = 6; high = 9; }
+        if (!Double.isFinite(value)) {
+            throw new Refused("a non-finite float has no JSON spelling");
+        }
+        int low = 15;
+        int high = 17;
+        if (single) {
+            low = 6;
+            high = 9;
+        }
         for (int digits = low; ; digits++) {
             String text = formatG(value, digits);
-            if (digits >= high) { b.append(text); return; }
+            if (digits >= high) {
+                b.append(text);
+                return;
+            }
             double back = Double.parseDouble(text);
-            if (single ? (double) (float) back == value : back == value) { b.append(text); return; }
+            if (single ? (double) (float) back == value : back == value) {
+                b.append(text);
+                return;
+            }
         }
     }
 
@@ -110,34 +183,51 @@ public final class TableJson {
     // trailing zeros and a trailing point removed, an exponent of at least two
     // digits, and a negative zero's sign kept.
     static String formatG(double value, int prec) {
-        if (prec < 1) { prec = 1; }
+        if (prec < 1) {
+            prec = 1;
+        }
         String digits = "0";
         int exp = 0;
         if (value != 0.0) {
-            java.math.BigDecimal r = new java.math.BigDecimal(Math.abs(value))
-                    .round(new java.math.MathContext(prec, java.math.RoundingMode.HALF_EVEN));
+            java.math.BigDecimal r =
+                    new java.math.BigDecimal(Math.abs(value))
+                            .round(
+                                    new java.math.MathContext(
+                                            prec, java.math.RoundingMode.HALF_EVEN));
             String u = r.unscaledValue().toString();
             exp = u.length() - 1 - r.scale();
             int end = u.length();
-            while (end > 1 && u.charAt(end - 1) == '0') { end--; }
+            while (end > 1 && u.charAt(end - 1) == '0') {
+                end--;
+            }
             digits = u.substring(0, end);
         }
         StringBuilder s = new StringBuilder();
-        if (Double.doubleToRawLongBits(value) < 0) { s.append('-'); }
+        if (Double.doubleToRawLongBits(value) < 0) {
+            s.append('-');
+        }
         if (exp < -4 || exp >= prec) {
             s.append(digits.charAt(0));
-            if (digits.length() > 1) { s.append('.').append(digits, 1, digits.length()); }
+            if (digits.length() > 1) {
+                s.append('.').append(digits, 1, digits.length());
+            }
             s.append('e').append(exp < 0 ? '-' : '+');
             int a = Math.abs(exp);
-            if (a < 10) { s.append('0'); }
+            if (a < 10) {
+                s.append('0');
+            }
             s.append(a);
         } else if (exp < 0) {
             s.append("0.");
-            for (int i = -1; i > exp; i--) { s.append('0'); }
+            for (int i = -1; i > exp; i--) {
+                s.append('0');
+            }
             s.append(digits);
         } else if (digits.length() <= exp + 1) {
             s.append(digits);
-            for (int i = digits.length(); i <= exp; i++) { s.append('0'); }
+            for (int i = digits.length(); i <= exp; i++) {
+                s.append('0');
+            }
         } else {
             s.append(digits, 0, exp + 1).append('.').append(digits, exp + 1, digits.length());
         }
@@ -146,16 +236,18 @@ public final class TableJson {
 
     // THE READER: a cursor over the byte[] the caller owns, one report shared
     // with the wire (§4). Nothing allocates beyond the strings it reads.
-        public static final class LabelEntry {
+    public static final class LabelEntry {
         public final Object value;
         public final long typeId;
         public boolean open;
+
         public LabelEntry(Object value, long typeId, boolean open) {
             this.value = value;
             this.typeId = typeId;
             this.open = open;
         }
     }
+
     public static final class In {
         public final java.util.Map<Long, LabelEntry> labels = new java.util.HashMap<>();
 
@@ -164,25 +256,40 @@ public final class TableJson {
         final TableVariable.Report rep;
         boolean bad;
 
-        In(byte[] t, TableVariable.Report rep) { this.t = t; this.rep = rep; }
+        In(byte[] t, TableVariable.Report rep) {
+            this.t = t;
+            this.rep = rep;
+        }
 
         // space skips whitespace and both comment forms (§16.2). An unclosed
         // block comment is malformed, as an unclosed string is.
         void space() {
             while (true) {
-                if (p >= t.length) { return; }
+                if (p >= t.length) {
+                    return;
+                }
                 byte c = t[p];
-                if (c == ' ' || c == '\t' || c == '\n' || c == '\r') { p++; continue; }
+                if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                    p++;
+                    continue;
+                }
                 if (c == '/' && p + 1 < t.length) {
                     if (t[p + 1] == '/') {
                         p += 2;
-                        while (p < t.length && t[p] != '\n') { p++; }
+                        while (p < t.length && t[p] != '\n') {
+                            p++;
+                        }
                         continue;
                     }
                     if (t[p + 1] == '*') {
                         p += 2;
-                        while (p + 1 < t.length && !(t[p] == '*' && t[p + 1] == '/')) { p++; }
-                        if (p + 1 >= t.length) { bad = true; return; }
+                        while (p + 1 < t.length && !(t[p] == '*' && t[p + 1] == '/')) {
+                            p++;
+                        }
+                        if (p + 1 >= t.length) {
+                            bad = true;
+                            return;
+                        }
                         p += 2;
                         continue;
                     }
@@ -191,14 +298,20 @@ public final class TableJson {
             }
         }
 
-                public long scanLabel() {
+        public long scanLabel() {
             space();
-            if (p >= t.length || t[p] < '1' || t[p] > '9') { bad = true; return -1; }
+            if (p >= t.length || t[p] < '1' || t[p] > '9') {
+                bad = true;
+                return -1;
+            }
             long label = 0;
             while (p < t.length && t[p] >= '0' && t[p] <= '9') {
                 int digit = t[p] - '0';
                 p++;
-                if (label > (Long.MAX_VALUE - digit) / 10) { bad = true; return -1; }
+                if (label > (Long.MAX_VALUE - digit) / 10) {
+                    bad = true;
+                    return -1;
+                }
                 label = label * 10 + digit;
             }
             return label;
@@ -207,7 +320,9 @@ public final class TableJson {
         public double number() {
             boolean[] integral = new boolean[1];
             String tok = scanNumber(integral);
-            if (bad || tok == null) { return 0.0; }
+            if (bad || tok == null) {
+                return 0.0;
+            }
             try {
                 return Double.parseDouble(tok);
             } catch (NumberFormatException e) {
@@ -224,7 +339,9 @@ public final class TableJson {
         public float number32() {
             boolean[] integral = new boolean[1];
             String tok = scanNumber(integral);
-            if (bad || tok == null) { return 0.0f; }
+            if (bad || tok == null) {
+                return 0.0f;
+            }
             try {
                 return Float.parseFloat(tok);
             } catch (NumberFormatException e) {
@@ -233,31 +350,49 @@ public final class TableJson {
             }
         }
 
-        int peek() { space(); return p < t.length ? (t[p] & 0xff) : 0; }
+        int peek() {
+            space();
+            return p < t.length ? (t[p] & 0xff) : 0;
+        }
 
         boolean lit(String w) {
             space();
-            if (p + w.length() > t.length) { bad = true; return false; }
+            if (p + w.length() > t.length) {
+                bad = true;
+                return false;
+            }
             for (int i = 0; i < w.length(); i++) {
-                if ((char) (t[p + i] & 0xff) != w.charAt(i)) { bad = true; return false; }
+                if ((char) (t[p + i] & 0xff) != w.charAt(i)) {
+                    bad = true;
+                    return false;
+                }
             }
             p += w.length();
             return true;
         }
 
         // isNull reports a null literal without consuming it.
-        boolean isNull() { return peek() == 'n'; }
+        boolean isNull() {
+            return peek() == 'n';
+        }
 
         int hex4() {
-            if (p + 4 > t.length) { return -1; }
+            if (p + 4 > t.length) {
+                return -1;
+            }
             int v = 0;
             for (int i = 0; i < 4; i++) {
                 int c = t[p + i] & 0xff;
                 int d;
-                if (c >= '0' && c <= '9') { d = c - '0'; }
-                else if (c >= 'a' && c <= 'f') { d = c - 'a' + 10; }
-                else if (c >= 'A' && c <= 'F') { d = c - 'A' + 10; }
-                else { return -1; }
+                if (c >= '0' && c <= '9') {
+                    d = c - '0';
+                } else if (c >= 'a' && c <= 'f') {
+                    d = c - 'a' + 10;
+                } else if (c >= 'A' && c <= 'F') {
+                    d = c - 'A' + 10;
+                } else {
+                    return -1;
+                }
                 v = (v << 4) | d;
             }
             p += 4;
@@ -270,57 +405,99 @@ public final class TableJson {
         // its partner reads as the replacement character (§16.3).
         public String scanString() {
             space();
-            if (p >= t.length || t[p] != '"') { bad = true; return null; }
+            if (p >= t.length || t[p] != '"') {
+                bad = true;
+                return null;
+            }
             p++;
             StringBuilder b = new StringBuilder();
             while (true) {
-                if (p >= t.length) { bad = true; return null; }
+                if (p >= t.length) {
+                    bad = true;
+                    return null;
+                }
                 int c = t[p] & 0xff;
                 p++;
-                if (c == '"') { return b.toString(); }
+                if (c == '"') {
+                    return b.toString();
+                }
                 if (c == '\\') {
-                    if (p >= t.length) { bad = true; return null; }
+                    if (p >= t.length) {
+                        bad = true;
+                        return null;
+                    }
                     int e = t[p] & 0xff;
                     p++;
                     switch (e) {
-                        case '"': b.append('"'); break;
-                        case '\\': b.append('\\'); break;
-                        case '/': b.append('/'); break;
-                        case 'b': b.append('\b'); break;
-                        case 'f': b.append('\f'); break;
-                        case 'n': b.append('\n'); break;
-                        case 'r': b.append('\r'); break;
-                        case 't': b.append('\t'); break;
-                        case 'u': {
-                            int hi = hex4();
-                            if (hi < 0) { bad = true; return null; }
-                            if (hi >= 0xd800 && hi <= 0xdbff && p + 2 <= t.length
-                                    && t[p] == '\\' && t[p + 1] == 'u') {
-                                int mark = p;
-                                p += 2;
-                                int lo = hex4();
-                                if (lo >= 0xdc00 && lo <= 0xdfff) {
-                                    b.appendCodePoint(0x10000 + ((hi - 0xd800) << 10) + (lo - 0xdc00));
-                                } else {
-                                    p = mark;
-                                    b.append('\ufffd');
-                                }
-                            } else if (hi >= 0xd800 && hi <= 0xdfff) {
-                                b.append('\ufffd');
-                            } else {
-                                b.append((char) hi);
-                            }
+                        case '"':
+                            b.append('"');
                             break;
-                        }
-                        default: bad = true; return null;
+                        case '\\':
+                            b.append('\\');
+                            break;
+                        case '/':
+                            b.append('/');
+                            break;
+                        case 'b':
+                            b.append('\b');
+                            break;
+                        case 'f':
+                            b.append('\f');
+                            break;
+                        case 'n':
+                            b.append('\n');
+                            break;
+                        case 'r':
+                            b.append('\r');
+                            break;
+                        case 't':
+                            b.append('\t');
+                            break;
+                        case 'u':
+                            {
+                                int hi = hex4();
+                                if (hi < 0) {
+                                    bad = true;
+                                    return null;
+                                }
+                                if (hi >= 0xd800
+                                        && hi <= 0xdbff
+                                        && p + 2 <= t.length
+                                        && t[p] == '\\'
+                                        && t[p + 1] == 'u') {
+                                    int mark = p;
+                                    p += 2;
+                                    int lo = hex4();
+                                    if (lo >= 0xdc00 && lo <= 0xdfff) {
+                                        b.appendCodePoint(
+                                                0x10000 + ((hi - 0xd800) << 10) + (lo - 0xdc00));
+                                    } else {
+                                        p = mark;
+                                        b.append('\ufffd');
+                                    }
+                                } else if (hi >= 0xd800 && hi <= 0xdfff) {
+                                    b.append('\ufffd');
+                                } else {
+                                    b.append((char) hi);
+                                }
+                                break;
+                            }
+                        default:
+                            bad = true;
+                            return null;
                     }
                 } else if (c < 0x20) {
-                    bad = true; return null;
+                    bad = true;
+                    return null;
                 } else if (c < 0x80) {
                     b.append((char) c);
                 } else {
                     int cp = utf8(c);
-                    if (cp < 0) { b.append('\ufffd'); } else { b.appendCodePoint(cp); }
+                    if (cp < 0) {
+                        b.append('\ufffd');
+                    } else {
+                        b.appendCodePoint(cp);
+                    }
                 }
             }
         }
@@ -329,20 +506,38 @@ public final class TableJson {
         // stray or ill-formed sequence, read as one replacement (§16.3).
         int utf8(int lead) {
             int want, cp;
-            if (lead >= 0xc2 && lead <= 0xdf) { want = 2; cp = lead & 0x1f; }
-            else if (lead >= 0xe0 && lead <= 0xef) { want = 3; cp = lead & 0x0f; }
-            else if (lead >= 0xf0 && lead <= 0xf4) { want = 4; cp = lead & 0x07; }
-            else { return -1; }
-            if (p + want - 1 > t.length) { return -1; }
+            if (lead >= 0xc2 && lead <= 0xdf) {
+                want = 2;
+                cp = lead & 0x1f;
+            } else if (lead >= 0xe0 && lead <= 0xef) {
+                want = 3;
+                cp = lead & 0x0f;
+            } else if (lead >= 0xf0 && lead <= 0xf4) {
+                want = 4;
+                cp = lead & 0x07;
+            } else {
+                return -1;
+            }
+            if (p + want - 1 > t.length) {
+                return -1;
+            }
             for (int i = 1; i < want; i++) {
                 int n = t[p + i - 1] & 0xff;
-                if ((n & 0xc0) != 0x80) { return -1; }
+                if ((n & 0xc0) != 0x80) {
+                    return -1;
+                }
                 cp = (cp << 6) | (n & 0x3f);
             }
             p += want - 1;
-            if (want == 3 && cp < 0x800) { return -1; }
-            if (want == 4 && cp < 0x10000) { return -1; }
-            if (cp > 0x10ffff) { return -1; }
+            if (want == 3 && cp < 0x800) {
+                return -1;
+            }
+            if (want == 4 && cp < 0x10000) {
+                return -1;
+            }
+            if (cp > 0x10ffff) {
+                return -1;
+            }
             return cp;
         }
 
@@ -352,24 +547,47 @@ public final class TableJson {
         public String scanNumber(boolean[] integral) {
             space();
             int start = p;
-            if (p < t.length && t[p] == '-') { p++; }
-            if (p >= t.length) { bad = true; return null; }
-            if (t[p] == '0') { p++; }
-            else if (t[p] >= '1' && t[p] <= '9') {
-                while (p < t.length && t[p] >= '0' && t[p] <= '9') { p++; }
-            } else { bad = true; return null; }
+            if (p < t.length && t[p] == '-') {
+                p++;
+            }
+            if (p >= t.length) {
+                bad = true;
+                return null;
+            }
+            if (t[p] == '0') {
+                p++;
+            } else if (t[p] >= '1' && t[p] <= '9') {
+                while (p < t.length && t[p] >= '0' && t[p] <= '9') {
+                    p++;
+                }
+            } else {
+                bad = true;
+                return null;
+            }
             integral[0] = true;
             if (p < t.length && t[p] == '.') {
                 p++;
-                if (p >= t.length || t[p] < '0' || t[p] > '9') { bad = true; return null; }
-                while (p < t.length && t[p] >= '0' && t[p] <= '9') { p++; }
+                if (p >= t.length || t[p] < '0' || t[p] > '9') {
+                    bad = true;
+                    return null;
+                }
+                while (p < t.length && t[p] >= '0' && t[p] <= '9') {
+                    p++;
+                }
                 integral[0] = false;
             }
             if (p < t.length && (t[p] == 'e' || t[p] == 'E')) {
                 p++;
-                if (p < t.length && (t[p] == '-' || t[p] == '+')) { p++; }
-                if (p >= t.length || t[p] < '0' || t[p] > '9') { bad = true; return null; }
-                while (p < t.length && t[p] >= '0' && t[p] <= '9') { p++; }
+                if (p < t.length && (t[p] == '-' || t[p] == '+')) {
+                    p++;
+                }
+                if (p >= t.length || t[p] < '0' || t[p] > '9') {
+                    bad = true;
+                    return null;
+                }
+                while (p < t.length && t[p] >= '0' && t[p] <= '9') {
+                    p++;
+                }
                 integral[0] = false;
             }
             return new String(t, start, p - start, java.nio.charset.StandardCharsets.US_ASCII);
@@ -381,7 +599,9 @@ public final class TableJson {
         public long integer(boolean signed, long min, long max) {
             boolean[] integral = new boolean[1];
             String tok = scanNumber(integral);
-            if (bad) { return 0; }
+            if (bad) {
+                return 0;
+            }
             long v;
             if (integral[0]) {
                 if (signed) {
@@ -416,21 +636,48 @@ public final class TableJson {
                     return 0;
                 }
                 if (signed) {
-                    if (!Double.isFinite(d) || d != (double) (long) d) { rep.kindMismatch++; return 0; }
+                    if (!Double.isFinite(d) || d != (double) (long) d) {
+                        rep.kindMismatch++;
+                        return 0;
+                    }
                     v = (long) d;
                 } else {
-                    if (!Double.isFinite(d) || Math.rint(d) != d) { rep.kindMismatch++; return 0; }
-                    if (d < 0.0) { rep.clamped++; return min; }
-                    if (d >= 18446744073709551616.0) { rep.clamped++; return max; }
-                    v = d < 9223372036854775808.0 ? (long) d : (long) (d - 9223372036854775808.0) + Long.MIN_VALUE;
+                    if (!Double.isFinite(d) || Math.rint(d) != d) {
+                        rep.kindMismatch++;
+                        return 0;
+                    }
+                    if (d < 0.0) {
+                        rep.clamped++;
+                        return min;
+                    }
+                    if (d >= 18446744073709551616.0) {
+                        rep.clamped++;
+                        return max;
+                    }
+                    v =
+                            d < 9223372036854775808.0
+                                    ? (long) d
+                                    : (long) (d - 9223372036854775808.0) + Long.MIN_VALUE;
                 }
             }
             if (signed) {
-                if (v < min) { rep.clamped++; return min; }
-                if (v > max) { rep.clamped++; return max; }
+                if (v < min) {
+                    rep.clamped++;
+                    return min;
+                }
+                if (v > max) {
+                    rep.clamped++;
+                    return max;
+                }
             } else {
-                if (Long.compareUnsigned(v, min) < 0) { rep.clamped++; return min; }
-                if (Long.compareUnsigned(v, max) > 0) { rep.clamped++; return max; }
+                if (Long.compareUnsigned(v, min) < 0) {
+                    rep.clamped++;
+                    return min;
+                }
+                if (Long.compareUnsigned(v, max) > 0) {
+                    rep.clamped++;
+                    return max;
+                }
             }
             return v;
         }
@@ -440,17 +687,23 @@ public final class TableJson {
         // a multi-byte character.
         public String readString(int bound) {
             String s = scanString();
-            if (s == null) { return ""; }
+            if (s == null) {
+                return "";
+            }
             return clamp(s, bound);
         }
 
         String clamp(String s, int bound) {
             byte[] b = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-            if (b.length <= bound) { return s; }
+            if (b.length <= bound) {
+                return s;
+            }
             rep.clamped++;
             int keep = bound;
             // back off to a code point boundary
-            while (keep > 0 && (b[keep] & 0xc0) == 0x80) { keep--; }
+            while (keep > 0 && (b[keep] & 0xc0) == 0x80) {
+                keep--;
+            }
             return new String(b, 0, keep, java.nio.charset.StandardCharsets.UTF_8);
         }
 
@@ -459,17 +712,32 @@ public final class TableJson {
         public void skipValue() {
             int c = peek();
             switch (c) {
-                case '{': skipContainer('}'); return;
-                case '[': skipContainer(']'); return;
-                case '"': scanString(); return;
-                case 't': lit("true"); return;
-                case 'f': lit("false"); return;
-                case 'n': lit("null"); return;
-                case 0: bad = true; return;
-                default: {
-                    boolean[] integral = new boolean[1];
-                    scanNumber(integral);
-                }
+                case '{':
+                    skipContainer('}');
+                    return;
+                case '[':
+                    skipContainer(']');
+                    return;
+                case '"':
+                    scanString();
+                    return;
+                case 't':
+                    lit("true");
+                    return;
+                case 'f':
+                    lit("false");
+                    return;
+                case 'n':
+                    lit("null");
+                    return;
+                case 0:
+                    bad = true;
+                    return;
+                default:
+                    {
+                        boolean[] integral = new boolean[1];
+                        scanNumber(integral);
+                    }
             }
         }
 
@@ -477,46 +745,114 @@ public final class TableJson {
             p++; // the opening bracket
             while (true) {
                 int c = peek();
-                if (c == closing) { p++; return; }
-                if (c == 0) { bad = true; return; }
+                if (c == closing) {
+                    p++;
+                    return;
+                }
+                if (c == 0) {
+                    bad = true;
+                    return;
+                }
                 if (closing == '}') {
                     scanString();
-                    if (bad) { return; }
-                    if (peek() != ':') { bad = true; return; }
+                    if (bad) {
+                        return;
+                    }
+                    if (peek() != ':') {
+                        bad = true;
+                        return;
+                    }
                     p++;
                 }
                 skipValue();
-                if (bad) { return; }
+                if (bad) {
+                    return;
+                }
                 c = peek();
-                if (c == ',') { p++; continue; }
-                if (c == closing) { p++; return; }
+                if (c == ',') {
+                    p++;
+                    continue;
+                }
+                if (c == closing) {
+                    p++;
+                    return;
+                }
                 bad = true;
                 return;
             }
         }
     }
 
-    static String wideText(java.math.BigInteger raw,int fraction,boolean fixed){
-        if(!fixed)return raw.toString();String text=new java.math.BigDecimal(raw).divide(new java.math.BigDecimal(java.math.BigInteger.ONE.shiftLeft(fraction))).stripTrailingZeros().toPlainString();
-        return text.indexOf('.')<0?text+".0":text;
+    static String wideText(java.math.BigInteger raw, int fraction, boolean fixed) {
+        if (!fixed) return raw.toString();
+        String text =
+                new java.math.BigDecimal(raw)
+                        .divide(
+                                new java.math.BigDecimal(
+                                        java.math.BigInteger.ONE.shiftLeft(fraction)))
+                        .stripTrailingZeros()
+                        .toPlainString();
+        return text.indexOf('.') < 0 ? text + ".0" : text;
     }
+
     // Exact raw-scale conversion, with the oracle's bounded decimal band.
     // A huge exponent is classified before integer allocation (§15, §16.2).
-    static java.math.BigInteger readWide(In in,boolean signed,int fraction,java.math.BigInteger lo,java.math.BigInteger hi){
-        int c=in.peek();if(c!='-'&&(c<'0'||c>'9')){in.skipValue();in.rep.kindMismatch++;return null;}
-        String token=in.scanNumber(new boolean[1]);if(in.bad||token==null)return null;
-        java.math.BigInteger domainHi=java.math.BigInteger.ONE.shiftLeft(signed?127:128).subtract(java.math.BigInteger.ONE);
-        java.math.BigInteger domainLo=signed?java.math.BigInteger.ONE.shiftLeft(127).negate():java.math.BigInteger.ZERO;
-        boolean nonzero=false;for(int i=0;i<token.length()&&token.charAt(i)!='e'&&token.charAt(i)!='E';i++)if(token.charAt(i)>='1'&&token.charAt(i)<='9')nonzero=true;
-        java.math.BigInteger raw=java.math.BigInteger.ZERO;
-        if(nonzero){
-            try{
-                java.math.BigDecimal value=new java.math.BigDecimal(token);long point=(long)value.precision()-value.scale();
-                if(point>40){in.rep.clamped++;raw=token.charAt(0)=='-'?domainLo:domainHi;}
-                else if(point< -40){in.rep.kindMismatch++;return null;}
-                else{try{raw=value.multiply(new java.math.BigDecimal(java.math.BigInteger.ONE.shiftLeft(fraction))).toBigIntegerExact();}catch(ArithmeticException finer){in.rep.kindMismatch++;return null;}raw=TableVariable.clampInteger(raw,domainLo,domainHi,in.rep);}
-            }catch(NumberFormatException exponent){int e=Math.max(token.indexOf('e'),token.indexOf('E'));if(e>=0&&e+1<token.length()&&token.charAt(e+1)=='-'){in.rep.kindMismatch++;return null;}in.rep.clamped++;raw=token.charAt(0)=='-'?domainLo:domainHi;}
+    static java.math.BigInteger readWide(
+            In in, boolean signed, int fraction, java.math.BigInteger lo, java.math.BigInteger hi) {
+        int c = in.peek();
+        if (c != '-' && (c < '0' || c > '9')) {
+            in.skipValue();
+            in.rep.kindMismatch++;
+            return null;
         }
-        return TableVariable.clampInteger(raw,lo,hi,in.rep);
+        String token = in.scanNumber(new boolean[1]);
+        if (in.bad || token == null) return null;
+        java.math.BigInteger domainHi =
+                java.math.BigInteger.ONE
+                        .shiftLeft(signed ? 127 : 128)
+                        .subtract(java.math.BigInteger.ONE);
+        java.math.BigInteger domainLo =
+                signed
+                        ? java.math.BigInteger.ONE.shiftLeft(127).negate()
+                        : java.math.BigInteger.ZERO;
+        boolean nonzero = false;
+        for (int i = 0; i < token.length() && token.charAt(i) != 'e' && token.charAt(i) != 'E'; i++)
+            if (token.charAt(i) >= '1' && token.charAt(i) <= '9') nonzero = true;
+        java.math.BigInteger raw = java.math.BigInteger.ZERO;
+        if (nonzero) {
+            try {
+                java.math.BigDecimal value = new java.math.BigDecimal(token);
+                long point = (long) value.precision() - value.scale();
+                if (point > 40) {
+                    in.rep.clamped++;
+                    raw = token.charAt(0) == '-' ? domainLo : domainHi;
+                } else if (point < -40) {
+                    in.rep.kindMismatch++;
+                    return null;
+                } else {
+                    try {
+                        raw =
+                                value.multiply(
+                                                new java.math.BigDecimal(
+                                                        java.math.BigInteger.ONE.shiftLeft(
+                                                                fraction)))
+                                        .toBigIntegerExact();
+                    } catch (ArithmeticException finer) {
+                        in.rep.kindMismatch++;
+                        return null;
+                    }
+                    raw = TableVariable.clampInteger(raw, domainLo, domainHi, in.rep);
+                }
+            } catch (NumberFormatException exponent) {
+                int e = Math.max(token.indexOf('e'), token.indexOf('E'));
+                if (e >= 0 && e + 1 < token.length() && token.charAt(e + 1) == '-') {
+                    in.rep.kindMismatch++;
+                    return null;
+                }
+                in.rep.clamped++;
+                raw = token.charAt(0) == '-' ? domainLo : domainHi;
+            }
+        }
+        return TableVariable.clampInteger(raw, lo, hi, in.rep);
     }
 }

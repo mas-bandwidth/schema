@@ -16,15 +16,18 @@ public final class MixedChatEventDescriptor {
         static final TableTypeInfo TABLE = build();
 
         private static TableTypeInfo build() {
-        TableTypeInfo t = new TableTypeInfo();
-        t.name = "MixedChatEvent";
-        t.fields = new TableFieldInfo[] {
-            TableFieldInfo.of("channel", 4, "value", 0L),
-            TableFieldInfo.of("speaker", 7, "value", 0L),
-        };
-        return t;
+            TableTypeInfo t = new TableTypeInfo();
+            t.name = "MixedChatEvent";
+            t.fields =
+                    new TableFieldInfo[] {
+                        TableFieldInfo.of("channel", 4, "value", 0L),
+                        TableFieldInfo.of("speaker", 7, "value", 0L),
+                    };
+            return t;
         }
     }
 
-    public static TableTypeInfo tableType() { return Holder.TABLE; }
+    public static TableTypeInfo tableType() {
+        return Holder.TABLE;
+    }
 }

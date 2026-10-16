@@ -16,27 +16,30 @@ public final class MixedEntityDescriptor {
         static final TableTypeInfo TABLE = build();
 
         private static TableTypeInfo build() {
-        TableTypeInfo t = new TableTypeInfo();
-        t.name = "MixedEntity";
-        t.fields = new TableFieldInfo[] {
-            TableFieldInfo.of("entity_id", 7, "value", 0L),
-            TableFieldInfo.of("pos_x", 4, "value", 0L),
-            TableFieldInfo.of("pos_y", 4, "value", 0L),
-            TableFieldInfo.of("pos_z", 4, "value", 0L),
-            TableFieldInfo.of("yaw", 7, "value", 0L),
-            TableFieldInfo.of("pitch", 7, "value", 0L),
-            TableFieldInfo.of("vel_x", 4, "value", 0L),
-            TableFieldInfo.of("vel_y", 4, "value", 0L),
-            TableFieldInfo.of("vel_z", 4, "value", 0L),
-            TableFieldInfo.of("health", 4, "value", 0L),
-            TableFieldInfo.of("weapon", 30, "value", 0L),
-            TableFieldInfo.of("damage", 9, "value", 0L),
-            TableFieldInfo.of("moving", 1, "value", 0L),
-            TableFieldInfo.of("firing", 1, "value", 0L),
-        };
-        return t;
+            TableTypeInfo t = new TableTypeInfo();
+            t.name = "MixedEntity";
+            t.fields =
+                    new TableFieldInfo[] {
+                        TableFieldInfo.of("entity_id", 7, "value", 0L),
+                        TableFieldInfo.of("pos_x", 4, "value", 0L),
+                        TableFieldInfo.of("pos_y", 4, "value", 0L),
+                        TableFieldInfo.of("pos_z", 4, "value", 0L),
+                        TableFieldInfo.of("yaw", 7, "value", 0L),
+                        TableFieldInfo.of("pitch", 7, "value", 0L),
+                        TableFieldInfo.of("vel_x", 4, "value", 0L),
+                        TableFieldInfo.of("vel_y", 4, "value", 0L),
+                        TableFieldInfo.of("vel_z", 4, "value", 0L),
+                        TableFieldInfo.of("health", 4, "value", 0L),
+                        TableFieldInfo.of("weapon", 30, "value", 0L),
+                        TableFieldInfo.of("damage", 9, "value", 0L),
+                        TableFieldInfo.of("moving", 1, "value", 0L),
+                        TableFieldInfo.of("firing", 1, "value", 0L),
+                    };
+            return t;
         }
     }
 
-    public static TableTypeInfo tableType() { return Holder.TABLE; }
+    public static TableTypeInfo tableType() {
+        return Holder.TABLE;
+    }
 }

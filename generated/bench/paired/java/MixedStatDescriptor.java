@@ -16,15 +16,18 @@ public final class MixedStatDescriptor {
         static final TableTypeInfo TABLE = build();
 
         private static TableTypeInfo build() {
-        TableTypeInfo t = new TableTypeInfo();
-        t.name = "MixedStat";
-        t.fields = new TableFieldInfo[] {
-            TableFieldInfo.of("stat_id", 6, "value", 0L),
-            TableFieldInfo.of("delta", 4, "value", 0L),
-        };
-        return t;
+            TableTypeInfo t = new TableTypeInfo();
+            t.name = "MixedStat";
+            t.fields =
+                    new TableFieldInfo[] {
+                        TableFieldInfo.of("stat_id", 6, "value", 0L),
+                        TableFieldInfo.of("delta", 4, "value", 0L),
+                    };
+            return t;
         }
     }
 
-    public static TableTypeInfo tableType() { return Holder.TABLE; }
+    public static TableTypeInfo tableType() {
+        return Holder.TABLE;
+    }
 }

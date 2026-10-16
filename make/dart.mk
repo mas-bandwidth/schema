@@ -336,7 +336,7 @@ tables-dart-versioning: tables-fixedform-corpus
 .PHONY: tables-dart-fixed-form-negative-control
 tables-dart-fixed-form-negative-control: bin/schema build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp test/tables/FXW.schema
 	@rm -rf build/dart-fixed-nc && mkdir -p build/dart-fixed-nc
-	@sed 's|val + "." + name + "Length", "Endian.little"}, ";")|val + "." + name + "Length + 1", "Endian.little"}, ";") // SABOTAGED|' \
+	@sed 's|fixedOff(base, at), length, "Endian.little"}, ";")|fixedOff(base, at), length + " + 1", "Endian.little"}, ";") // SABOTAGED|' \
 		internal/codegen/darttable/fixeddart.go > build/dart-fixed-nc/fixeddart.go.txt
 	@grep -q SABOTAGED build/dart-fixed-nc/fixeddart.go.txt || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }
@@ -542,3 +542,50 @@ cards-dart-retain-fuzz: cards-dart-generate build/conformance-harness build/conf
 # codec's retained save is held to the identical byte-for-byte contract the Go
 # leg's cards-retain-fuzz pins.
 test-dart: cards-dart-retain-fuzz
+
+# THE CARDS UNIT'S DART LEG, L1 and L2 (docs/SPEC-TABLES.md §2): the owning
+# facade (tables/cards/dart/lib/cards.dart) over the generated Card codec, the
+# brief text parsed once and rendered many times, and the driver that answers
+# the card conformance check (tables/cards/conformance/FORMAT.md). These targets
+# live in make/dart.mk (NOT a separate make/cards-dart.mk) for the same reason
+# cards-dart-wire-fuzz does: the wide-scalar refusal gate discovers every
+# make/*.mk as a live port, and a fragment named cards-dart.mk would be refused
+# there as a phantom port.
+
+# cards-dart-test builds the generated unit and the facade, holds them to the
+# analyzer and the formatter, and runs the plain main test runner (one check per
+# named test, nonzero exit on any failure; no package:test dependency).
+.PHONY: cards-dart-test
+cards-dart-test: cards-dart-generate
+	$(DART) analyze tables/cards/dart
+	$(DART) format --set-exit-if-changed --output=none tables/cards/dart
+	$(DART) --enable-asserts tables/cards/dart/test/cards_test.dart
+
+# cards-dart-driver compiles the facade driver to one AOT executable, the way
+# build/conformance-dart does, so the conformance check pays no JIT start-up per
+# surface.
+.PHONY: cards-dart-driver
+cards-dart-driver: cards-dart-generate
+	@mkdir -p build
+	$(DART) compile exe -o build/cards-driver-dart tables/cards/dart/bin/driver.dart >/dev/null
+
+# cards-dart-conformance runs the harness `cards` subcommand over the Dart
+# driver with the five surfaces this card owns required; upgrade, edit, taskhash
+# and view are a-dart-card-upgrades-edits-and-walks-the-shared-corpus's and are
+# answered absent.
+.PHONY: cards-dart-conformance
+cards-dart-conformance: build/conformance-harness cards-dart-driver
+	./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/dart/driver --require load,save,render,parse,bounds
+
+# cards-dart-conformance-negative-control: the same check against the driver
+# with a test-only environment switch that changes one rendered byte, required
+# to FAIL on render while the other four surfaces pass.
+.PHONY: cards-dart-conformance-negative-control
+cards-dart-conformance-negative-control: build/conformance-harness cards-dart-driver
+	@if CARDS_DART_SABOTAGE=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/dart/driver --require load,save,render,parse,bounds > build/cards-dart-conformance-neg.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with one rendered byte changed'; exit 1; fi
+	@grep -qE 'cards render .*FAIL' build/cards-dart-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: render did not go red'; cat build/cards-dart-conformance-neg.log; exit 1; }
+	@grep -qE 'cards (load|save|parse|bounds) pass' build/cards-dart-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-dart-conformance-neg.log; exit 1; }
+	@echo 'cards Dart negative control: one changed rendered byte turns exactly render red'
+
+test-dart: cards-dart-test cards-dart-conformance cards-dart-conformance-negative-control

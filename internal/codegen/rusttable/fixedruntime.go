@@ -441,8 +441,13 @@ pub fn table_fixed_run(
     image: &mut [u8],
     report: &mut TableFixedReport,
 ) {
-    for p in plan {
-        if p.guard_count != 0 {
+    // THE PLAN IS PARTITIONED (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4): the
+    // first split entries are UNGUARDED and run without a guard test; only
+    // the guarded half from split on tests one. table_fixed_compile lays
+    // unguarded entries first, so the split is the first guarded index.
+    let split = plan.iter().take_while(|p| p.guard_count == 0).count();
+    for (i, p) in plan.iter().enumerate() {
+        if i >= split && p.guard_count != 0 {
             // THE CHAIN IS CONJOINED, OUTERMOST FIRST (§4.1): the entry runs
             // only when EVERY link's tag holds its ordinal, so an arm inside an
             // arm answers to the OUTER tag too and never to the inner tag
@@ -1201,6 +1206,19 @@ pub fn table_fixed_compile(
         }
         c.plan[out] = c.plan[i];
         out += 1;
+    }
+    // PARTITION UNGUARDED-FIRST (docs/FIXED-FORM-ALGORITHM.md §4.1): every
+    // unguarded entry before every guarded one, stable within each half, so
+    // the plan states where the second half starts and no coalesced run
+    // crosses the split (coalescing finished above, before the partition).
+    let mut split = 0usize;
+    for i in 0..out {
+        if c.plan[i].guard_count == 0 {
+            let e = c.plan[i];
+            c.plan.copy_within(split..i, split + 1);
+            c.plan[split] = e;
+            split += 1;
+        }
     }
     Some(out)
 }

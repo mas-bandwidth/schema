@@ -16,15 +16,18 @@ public final class MixedPickupEventDescriptor {
         static final TableTypeInfo TABLE = build();
 
         private static TableTypeInfo build() {
-        TableTypeInfo t = new TableTypeInfo();
-        t.name = "MixedPickupEvent";
-        t.fields = new TableFieldInfo[] {
-            TableFieldInfo.of("item_id", 7, "value", 0L),
-            TableFieldInfo.of("amount", 4, "value", 0L),
-        };
-        return t;
+            TableTypeInfo t = new TableTypeInfo();
+            t.name = "MixedPickupEvent";
+            t.fields =
+                    new TableFieldInfo[] {
+                        TableFieldInfo.of("item_id", 7, "value", 0L),
+                        TableFieldInfo.of("amount", 4, "value", 0L),
+                    };
+            return t;
         }
     }
 
-    public static TableTypeInfo tableType() { return Holder.TABLE; }
+    public static TableTypeInfo tableType() {
+        return Holder.TABLE;
+    }
 }

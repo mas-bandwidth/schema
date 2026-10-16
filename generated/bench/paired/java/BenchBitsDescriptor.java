@@ -16,21 +16,24 @@ public final class BenchBitsDescriptor {
         static final TableTypeInfo TABLE = build();
 
         private static TableTypeInfo build() {
-        TableTypeInfo t = new TableTypeInfo();
-        t.name = "BenchBits";
-        t.fields = new TableFieldInfo[] {
-            TableFieldInfo.of("b7", 6, "value", 0L),
-            TableFieldInfo.of("b13", 7, "value", 0L),
-            TableFieldInfo.of("b23", 8, "value", 0L),
-            TableFieldInfo.of("b3", 6, "value", 0L),
-            TableFieldInfo.of("b32", 8, "value", 0L),
-            TableFieldInfo.of("b11", 7, "value", 0L),
-            TableFieldInfo.of("b19", 8, "value", 0L),
-            TableFieldInfo.of("b48", 9, "value", 0L),
-        };
-        return t;
+            TableTypeInfo t = new TableTypeInfo();
+            t.name = "BenchBits";
+            t.fields =
+                    new TableFieldInfo[] {
+                        TableFieldInfo.of("b7", 6, "value", 0L),
+                        TableFieldInfo.of("b13", 7, "value", 0L),
+                        TableFieldInfo.of("b23", 8, "value", 0L),
+                        TableFieldInfo.of("b3", 6, "value", 0L),
+                        TableFieldInfo.of("b32", 8, "value", 0L),
+                        TableFieldInfo.of("b11", 7, "value", 0L),
+                        TableFieldInfo.of("b19", 8, "value", 0L),
+                        TableFieldInfo.of("b48", 9, "value", 0L),
+                    };
+            return t;
         }
     }
 
-    public static TableTypeInfo tableType() { return Holder.TABLE; }
+    public static TableTypeInfo tableType() {
+        return Holder.TABLE;
+    }
 }

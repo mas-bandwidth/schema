@@ -222,7 +222,8 @@ public final class ArmDefaults {
         return bits;
     }
 
-    // DefaultChoiceType: union DefaultChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
+    // DefaultChoiceType: union DefaultChoice's tag — None = 0, then each variant in declared order
+    // (SPEC §4.8)
     public static final class DefaultChoiceType {
         private DefaultChoiceType() {}
 
@@ -629,7 +630,8 @@ public final class ArmDefaults {
         value.choice.type = 0;
     }
 
-    // checkWriteDefaultChoicePacket is writeDefaultChoicePacket's contract walk, called once through assert —
+    // checkWriteDefaultChoicePacket is writeDefaultChoicePacket's contract walk, called once
+    // through assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
@@ -776,7 +778,8 @@ public final class ArmDefaults {
     // readDefaultChoicePacket decodes value from the first numBits of data — the family read
     // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
     // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readDefaultChoicePacket(DefaultChoicePacket value, byte[] data, int numBits) {
+    public static boolean readDefaultChoicePacket(
+            DefaultChoicePacket value, byte[] data, int numBits) {
         if (numBits > (long) data.length * 8) {
             return false; // the payload cannot exceed the buffer behind data
         }
@@ -945,7 +948,8 @@ public final class ArmDefaults {
         return true;
     }
 
-    // measureDefaultChoicePacket is the exact wire bits writeDefaultChoicePacket would produce for value —
+    // measureDefaultChoicePacket is the exact wire bits writeDefaultChoicePacket would produce for
+    // value —
     // trusted like the writer; static runs fold to literals at generation time.
     public static int measureDefaultChoicePacket(DefaultChoicePacket value) {
         int bits = 0;
@@ -1088,7 +1092,8 @@ public final class ArmDefaults {
         if (scratchBits != 0) {
             LONG_LE.set(data, wordIndex * 8, scratch);
         }
-        System.arraycopy(value.data, 0, data, wordIndex * 8 + (scratchBits >>> 3), value.dataLength);
+        System.arraycopy(
+                value.data, 0, data, wordIndex * 8 + (scratchBits >>> 3), value.dataLength);
         scratchBits += value.dataLength * 8;
         wordIndex += scratchBits >>> 6;
         scratchBits &= 63;
@@ -1229,7 +1234,8 @@ public final class ArmDefaults {
         return bits;
     }
 
-    // DefaultBulkChoiceType: union DefaultBulkChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
+    // DefaultBulkChoiceType: union DefaultBulkChoice's tag — None = 0, then each variant in
+    // declared order (SPEC §4.8)
     public static final class DefaultBulkChoiceType {
         private DefaultBulkChoiceType() {}
 
@@ -1242,7 +1248,8 @@ public final class ArmDefaults {
         public static final byte max = 2;
     }
 
-    // enumNameDefaultBulkChoiceType: debug/log/tooling name for any DefaultBulkChoiceType storage value —
+    // enumNameDefaultBulkChoiceType: debug/log/tooling name for any DefaultBulkChoiceType storage
+    // value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
     public static String enumNameDefaultBulkChoiceType(long value) {
         if (value == DefaultBulkChoiceType.none) {
@@ -1267,7 +1274,8 @@ public final class ArmDefaults {
         public final DefaultBulkArm second = new DefaultBulkArm();
     }
 
-    // defaultBulkChoiceMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
+    // defaultBulkChoiceMaxBits is the tag plus the largest arm; None costs the tag only (SPEC
+    // §4.8).
     // defaultBulkChoiceMaxBytes is rounded up to the 8-byte write-buffer granularity.
     public static final int defaultBulkChoiceMaxBits = 104;
     public static final int defaultBulkChoiceMaxBytes = 16;
@@ -1279,7 +1287,8 @@ public final class ArmDefaults {
         value.type = DefaultBulkChoiceType.none;
     }
 
-    // checkWriteDefaultBulkChoice is writeDefaultBulkChoice's contract walk, called once through assert —
+    // checkWriteDefaultBulkChoice is writeDefaultBulkChoice's contract walk, called once through
+    // assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
@@ -1404,7 +1413,12 @@ public final class ArmDefaults {
                 if (scratchBits != 0) {
                     LONG_LE.set(data, wordIndex * 8, scratch);
                 }
-                System.arraycopy(value.first.data, 0, data, wordIndex * 8 + (scratchBits >>> 3), value.first.dataLength);
+                System.arraycopy(
+                        value.first.data,
+                        0,
+                        data,
+                        wordIndex * 8 + (scratchBits >>> 3),
+                        value.first.dataLength);
                 scratchBits += value.first.dataLength * 8;
                 wordIndex += scratchBits >>> 6;
                 scratchBits &= 63;
@@ -1480,7 +1494,12 @@ public final class ArmDefaults {
                 if (scratchBits != 0) {
                     LONG_LE.set(data, wordIndex * 8, scratch);
                 }
-                System.arraycopy(value.second.data, 0, data, wordIndex * 8 + (scratchBits >>> 3), value.second.dataLength);
+                System.arraycopy(
+                        value.second.data,
+                        0,
+                        data,
+                        wordIndex * 8 + (scratchBits >>> 3),
+                        value.second.dataLength);
                 scratchBits += value.second.dataLength * 8;
                 wordIndex += scratchBits >>> 6;
                 scratchBits &= 63;
@@ -1732,14 +1751,16 @@ public final class ArmDefaults {
                 if (bitsRead + value.second.dataLength * 8L > numBits) {
                     return false;
                 }
-                System.arraycopy(data, bitsRead >>> 3, value.second.data, 0, value.second.dataLength);
+                System.arraycopy(
+                        data, bitsRead >>> 3, value.second.data, 0, value.second.dataLength);
                 bitsRead += value.second.dataLength * 8;
                 break;
         }
         return true;
     }
 
-    // measureDefaultBulkChoice is the exact wire bits writeDefaultBulkChoice would produce for value —
+    // measureDefaultBulkChoice is the exact wire bits writeDefaultBulkChoice would produce for
+    // value —
     // trusted like the writer; static runs fold to literals at generation time.
     public static int measureDefaultBulkChoice(DefaultBulkChoice value) {
         int bits = 0;

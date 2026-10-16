@@ -647,13 +647,13 @@ static class ProbeMain
 func t06UnitOf(src string) (*ir.Unit, error) {
 	f, perrs := parser.Parse("Probe.schema", []byte(src))
 	if len(perrs) > 0 {
-		return nil, fmt.Errorf("parse: %v", perrs[0])
+		return nil, fmt.Errorf("parse: %w", perrs[0])
 	}
 	u, cerrs := check.Unit([]check.SourceFile{{
 		Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(src), AST: f,
 	}})
 	if len(cerrs) > 0 {
-		return nil, fmt.Errorf("check: %v", cerrs[0])
+		return nil, fmt.Errorf("check: %w", cerrs[0])
 	}
 	return u, nil
 }

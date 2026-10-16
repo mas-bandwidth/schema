@@ -649,7 +649,8 @@ public final class Types {
         value.z = 0;
     }
 
-    // checkWriteQuantizedPosition is writeQuantizedPosition's contract walk, called once through assert —
+    // checkWriteQuantizedPosition is writeQuantizedPosition's contract walk, called once through
+    // assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
@@ -775,7 +776,8 @@ public final class Types {
         return true;
     }
 
-    // measureQuantizedPosition is the exact wire bits writeQuantizedPosition would produce for value —
+    // measureQuantizedPosition is the exact wire bits writeQuantizedPosition would produce for
+    // value —
     // trusted like the writer; static runs fold to literals at generation time.
     public static int measureQuantizedPosition(QuantizedPosition value) {
         return 75;
@@ -811,7 +813,8 @@ public final class Types {
         value.z = 0;
     }
 
-    // checkWriteQuantizedVelocity is writeQuantizedVelocity's contract walk, called once through assert —
+    // checkWriteQuantizedVelocity is writeQuantizedVelocity's contract walk, called once through
+    // assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
@@ -937,7 +940,8 @@ public final class Types {
         return true;
     }
 
-    // measureQuantizedVelocity is the exact wire bits writeQuantizedVelocity would produce for value —
+    // measureQuantizedVelocity is the exact wire bits writeQuantizedVelocity would produce for
+    // value —
     // trusted like the writer; static runs fold to literals at generation time.
     public static int measureQuantizedVelocity(QuantizedVelocity value) {
         return 69;
@@ -977,7 +981,8 @@ public final class Types {
         value.w = 0;
     }
 
-    // checkWriteQuantizedRotation is writeQuantizedRotation's contract walk, called once through assert —
+    // checkWriteQuantizedRotation is writeQuantizedRotation's contract walk, called once through
+    // assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
@@ -1127,7 +1132,8 @@ public final class Types {
         return true;
     }
 
-    // measureQuantizedRotation is the exact wire bits writeQuantizedRotation would produce for value —
+    // measureQuantizedRotation is the exact wire bits writeQuantizedRotation would produce for
+    // value —
     // trusted like the writer; static runs fold to literals at generation time.
     public static int measureQuantizedRotation(QuantizedRotation value) {
         return 48;
@@ -3206,7 +3212,8 @@ public final class Types {
         value.spinRate = Constants.rotationUnits;
     }
 
-    // checkWriteExpressionProbe is writeExpressionProbe's contract walk, called once through assert —
+    // checkWriteExpressionProbe is writeExpressionProbe's contract walk, called once through assert
+    // —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
@@ -3321,7 +3328,8 @@ public final class Types {
         public long floorBound;
         // wire [-9223372036854775808, 100]
         public long doubledFloor;
-        // specified default at construction; zero* gives the §5 zero form; wire [1, 18446744073709551615]
+        // specified default at construction; zero* gives the §5 zero form; wire [1,
+        // 18446744073709551615]
         public long ceilingRange = 1;
         // specified default at construction; zero* gives the §5 zero form
         public long floorDefault = 0x8000000000000000L;
@@ -3634,7 +3642,8 @@ public final class Types {
     public static final class ExtremeRow {
         // wire [-9223372036854775808, 100]
         public long clampedFloor;
-        // specified default at construction; zero* gives the §5 zero form; wire [1, 18446744073709551614]
+        // specified default at construction; zero* gives the §5 zero form; wire [1,
+        // 18446744073709551614]
         public long clampedCeiling = 1;
         // specified default at construction; zero* gives the §5 zero form
         public long floorDef = 0x8000000000000000L;

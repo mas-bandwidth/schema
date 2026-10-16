@@ -37,7 +37,7 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 		"Makefile":               makefile,
 		"go.mod":                 []byte("module probefixture\n\ngo 1.26\n"),
 		"root.go":                []byte("package probefixture\n"),
-		"make/lua.mk":            []byte{},
+		"make/lua.mk":            {},
 		"compiler/target_lua.go": []byte("//go:build schema_leg_lua\n\npackage compiler\n"),
 	} {
 		if err := os.WriteFile(filepath.Join(fixture, path), data, 0o644); err != nil {

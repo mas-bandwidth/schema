@@ -81,7 +81,6 @@ func TestMessageFormAnnounceRust(t *testing.T) {
 	t.Run("2.1_announcement_is_a_compile_time_constant", func(t *testing.T) {
 		t.Parallel()
 		for _, name := range []string{"backenddemo", "vocabdemo", "vocab9demo"} {
-			name := name
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
 				module, ok := loaded[name].files[MessageRuntimeModule+".rs"]
@@ -103,7 +102,6 @@ func TestMessageFormAnnounceRust(t *testing.T) {
 	// malformed" are proved by the running reader over the pinned bytes and
 	// their forgeries.
 	for _, name := range []string{"backenddemo", "vocabdemo", "vocab9demo"} {
-		name := name
 		out := runAnnounceProbe(t, loaded[name])
 		for _, id := range []string{
 			"measure",
@@ -120,7 +118,6 @@ func TestMessageFormAnnounceRust(t *testing.T) {
 			"unknown_array",
 			"unknown_table",
 		} {
-			id := id
 			t.Run(name+"/"+id, func(t *testing.T) {
 				t.Parallel()
 				if line := probeLine(out, id); line != "ANNOUNCE "+id+" ok" {
@@ -237,7 +234,7 @@ func announcementBytes(t *testing.T, module string) []byte {
 		t.Fatal(err)
 	}
 	var out []byte
-	for _, tok := range strings.Split(m[2], ",") {
+	for tok := range strings.SplitSeq(m[2], ",") {
 		tok = strings.TrimSpace(tok)
 		if tok == "" {
 			continue
@@ -416,7 +413,7 @@ func announceProbe(u *announceUnit) string {
 
 func probeLine(out, id string) string {
 	prefix := "ANNOUNCE " + id + " "
-	for _, l := range strings.Split(out, "\n") {
+	for l := range strings.SplitSeq(out, "\n") {
 		if strings.HasPrefix(l, prefix) {
 			return l
 		}
