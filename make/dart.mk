@@ -629,7 +629,8 @@ test-dart: tables-dart-cook-map-field
 
 # THE BLOCK BUILD AND COOK WRITE GATE (docs/SPEC-TABLES.md §19.1, §7.6): the
 # block fill path's begin against §19.1's layout facts, the fixed-root cook
-# writer against `schema cook` in both byte orders, and every `cook-write` row
+# writer and a guarded and a text-array root against `schema cook` in both byte
+# orders, and every `cook-write` row
 # of testdata/conformance/tables/MANIFEST.txt through the conformance driver's
 # own surface — a byte-identical cook in both orders, or the named absence the
 # test's ratchet holds. The row test runs the driver over the generated corpus,
@@ -637,8 +638,8 @@ test-dart: tables-dart-cook-map-field
 # corpus a failure rather than a skip.
 .PHONY: tables-dart-block-build
 tables-dart-block-build: build/tables-generated-dart/.stamp cards-dart-generate
-	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^(TestBlockBuildAndCookWriteDart|TestCookWriteFixedDart|TestCookWriteAnswersEveryCookWriteRowDart)$$'
-	@echo 'tables Dart block build and cook write: begin, the fixed root and every cook-write row'
+	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^(TestBlockBuildAndCookWriteDart|TestCookWriteFixedDart|TestCookWriteGuardedAndTextArrayRootsDart|TestCookWriteAnswersEveryCookWriteRowDart)$$'
+	@echo 'tables Dart block build and cook write: begin, the fixed root, the guarded and text-array roots and every cook-write row'
 
 test-dart: tables-dart-block-build
 
