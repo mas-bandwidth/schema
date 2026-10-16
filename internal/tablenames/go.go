@@ -213,6 +213,11 @@ func init() {
 		Name{Name: "tableJsonWideSigned", What: "exact wide scalar text conversion"},
 		Name{Name: "tableJsonWideLoad", What: "exact wide scalar text conversion"},
 		Name{Name: "tableJsonWideStore", What: "exact wide scalar text conversion"},
+		Name{Name: "tableJsonReadTimestamp", What: "the timestamp kind's text form and Go value"},
+		Name{Name: "tableJsonWriteTimestamp", What: "the timestamp kind's text form and Go value"},
+		Name{Name: "TableTimestampError", What: "the timestamp kind's text form and Go value"},
+		Name{Name: "tableTimestampNanos", What: "the timestamp kind's text form and Go value"},
+		Name{Name: "tableTimestampTime", What: "the timestamp kind's text form and Go value"},
 		Name{Name: "tableJsonReadWide", What: "exact wide scalar text conversion"},
 		Name{Name: "tableJsonWriteWide", What: "exact wide scalar text conversion"},
 
@@ -354,6 +359,7 @@ func init() {
 		Name{Name: "TableRefuseMalformed", What: "strict read refusal of a malformed table file (docs/SPEC-TABLES.md §6.5)"},
 		Name{Name: "TableRefuseClamped", What: "strict read refusal of a clamped table value (docs/SPEC-TABLES.md §6.5)"},
 		Name{Name: "TableRefuseKindMismatch", What: "strict read refusal of a kind-mismatched table field (docs/SPEC-TABLES.md §6.5)"},
+		Name{Name: "TableMissingRequired", What: "strict read refusal of a record lacking a | required field, naming it (docs/SPEC-TABLES.md §2.3)"},
 		Name{Name: "TableRefuseBase64Damaged", What: "a base64 text-transport body that does not decode (docs/SPEC-TABLES.md §16.6)"},
 		Name{Name: "tableRefuseError", What: "typed file and authoring refusal reasons"},
 		Name{Name: "tableRegionSaveReason", What: "typed file and authoring refusal reasons"},
@@ -448,5 +454,22 @@ func init() {
 		Name{Name: "tableFixedForgedBounds", What: "the fixed form's BOUNDS pass: count a forged ordinal or union arm"},
 		Name{Name: "tableFixedTextIllFormed", What: "the fixed form: whether a text payload's USED units are well-formed (docs/SPEC-TABLES.md §4.12)"},
 		Name{Name: "tableFixedTextRefusal", What: "the fixed form: the text CONTENT refusal as a pre-scan of the plan's text entries (§4.12)"},
+		// THE FIXED LOAD'S REFUSAL NAMES — EXPORTED (docs/FIXED-FORM-ALGORITHM.md
+		// §5.3): one string constant per fixed-load refusal name, used by the
+		// emitted <T>FixedLoad in place of a literal so an adopter's
+		// report.Reason == "layout_newer" comparisons keep compiling.
+		Name{Name: "TableFixedReasonPreviousForm", What: "the fixed load's refusal name: a form-1 file (docs/FIXED-FORM-ALGORITHM.md §5.3)"},
+		Name{Name: "TableFixedReasonMessageFormAsFile", What: "the fixed load's refusal name: a form-2 file (§5.3)"},
+		Name{Name: "TableFixedReasonNewerForm", What: "the fixed load's refusal name: a form byte the registry has not assigned (§5.3)"},
+		Name{Name: "TableFixedReasonLayoutMalformed", What: "the fixed load's refusal name: a stranger's layout, or a known hash over different bytes (§5.3)"},
+		Name{Name: "TableFixedReasonLayoutNewer", What: "the fixed load's refusal name: a hash in no lineage entry (§5.3)"},
+		Name{Name: "TableFixedReasonLayoutUnsupported", What: "the fixed load's refusal name: a hash below the floor (§5.3)"},
+		Name{Name: "TableFixedReasonLayoutRecordTooLarge", What: "the fixed load's refusal name: an entry past the writer's record size (§5.3)"},
+		Name{Name: "TableFixedReasonPlanTooLarge", What: "the fixed load's refusal name: the plan does not fit the caller's capacity (§5.3)"},
+		Name{Name: "TableFixedReasonBatchTooLarge", What: "the fixed load's refusal name: more records than the caller's capacity (§5.3)"},
+		Name{Name: "TableFixedReasonNoLayout", What: "the fixed load's refusal name: a record hash that is not the file's (§5.3)"},
+		Name{Name: "TableFixedReasonTextIllFormed", What: "the fixed load's refusal name: ill-formed text in the used units (§5.3, §4.5)"},
+		Name{Name: "TableFixedReasonTruncated", What: "the fixed load's refusal name: a short input or ragged tail, framing damage (§5.3)"},
+		Name{Name: "TableFixedReasonReservedNotZero", What: "the fixed load's refusal name: a nonzero reserved header byte, framing damage (§5.3)"},
 	)
 }

@@ -1120,6 +1120,62 @@ any scalar, and a bounded array of those. It is refused, by name, on:
   the field serves with it.
 - **a specified default** — presence is the only default an optional has.
 
+#### The `| required` marker
+
+A variable table cannot say a field must be present: a zero field is not
+written, so absence and a written default are indistinguishable. `| required`
+closes that gap. It is a TAG — a valueless qualifier in the open half of the
+qualification section (SPEC §4.2) — read exactly the way `| deprecated` is.
+What it means:
+
+```
+table Player
+{
+    name     string(32) | required   // always written; a record missing it is refused
+    score    int32                     // elided when zero, as usual
+}
+```
+
+- **The writer ALWAYS writes it.** A required field never elides at its
+  default: it rides on every record, and a variable table's writer emits it
+  even when it holds zero. Absence is no longer expressible for the field.
+- **The reader REFUSES a record missing it.** An older record written before
+  the field was required lacks it; reading it is refused with the event
+  `missing_required`, naming the field. The record does not silently fall
+  back to a default — the field was declared mandatory and is not there.
+- **It is TABLE fields only.** `| required` is refused, by name, on a packet
+  `type` field — a type's wire is positional and every field always rides, so
+  there is no absence for a required marker to cure — and on an optional
+  `?T` — an optional is absent or present by definition, and `required`
+  would forbid the absence that makes it optional.
+- **A FIXED table REFUSES `required` at compile time**, by name: every fixed
+  field is always written, so there is no elision to suppress and no absence
+  to refuse, and the marker would promise nothing. The check names the table
+  and the field.
+- **The attribute is part of the tables baseline row**, as a `required`
+  token in the field's row (§18), and that row is the table projection the
+  evolution rule below is judged on. It moves NEITHER unit-wide id: the
+  protocol id (`schema id`) hashes the `type` wire projection (SPEC §3.1),
+  which no table field reaches, and the build version (§20) hashes the cook
+  projection, where a required field is laid out, cooked and blocked exactly
+  as it is without the marker.
+- **The refusal names only the fields that are missing**, in declaration
+  order, e.g. `missing_required: b`.
+- **The refusal is the RECORD's, at any depth.** A nested table, an array
+  element, a map entry or a pointer node whose body lacks a required field
+  refuses every body above it: the record is refused, never read as a parent
+  holding a defaulted child, and the reason names the missing field of the
+  body that lacked it. A strict caller gets it by name — `ReadStrict` and
+  `TableReport.Err()` answer the typed `TableMissingRequired`, whose text is
+  the report's reason (§6.5), never a bare `wire_damaged`.
+
+**Evolution** (§4). Adding `required` to a shipped field is a BREAK the
+tables baseline refuses: old records were written without it and a newer
+reader would refuse them. Removing `required` is free — the writer simply
+starts eliding again. Adding a NEW field marked `| required` to an
+existing table is the same break, and the baseline refuses it too (every
+stored record lacks the field); a new field that is not required is free.
+
 ### 2.4 Enum-keyed arrays: `ships [ShipType]ShipConfig`
 
 ```
@@ -3571,6 +3627,79 @@ the tree and compares byte for byte, and compiles each of those units with the
 check on.
 
 
+### 2.11 Timestamps: `opened_at timestamp`
+
+```
+fixed table Session
+{
+    opened_at   timestamp
+    closed_at   timestamp
+}
+```
+
+**A `timestamp` field is a count of NANOSECONDS SINCE THE UNIX EPOCH in a
+64-bit signed cell, and `0` is the zero time** — `1970-01-01T00:00:00Z` —
+which is what §4's zero initialization gives every fresh value, so the
+construct takes no default and no attribute (SPEC.md §4.13). It is the
+convention every adopter was writing by hand, made a kind: one spelling, one
+range rule, one text form.
+
+It is a FIELD TYPE in a table body, BARE, and it belongs to both classes: a
+`fixed table` holds one at an eight-byte slot (§3.4) and a variable table
+holds one under its own wire kind `36` (§3). Bare means a plain field: an
+array of timestamps, an optional one, a map value, a union arm payload and a
+specified default are each a named follow-on and each is refused BY NAME by
+the checker. It is NOT a packet construct in this major — a `timestamp` in a
+packet `type` is refused by name, the diagnostic saying the table wire
+carries it and the packet wire does not yet (SPEC.md §4.13) — and it is not a
+`const` type either. `timestamp` is a CONTEXTUAL type word and not a reserved
+one: a field may still be named `timestamp`, and a declaration of that name
+still wins.
+
+**Its kind is its own and it widens into nothing.** On the variable wire a
+field respelled between `int64` and `timestamp` is a kind mismatch, skipped
+and counted in both directions (§4), and the widening family is closed to the
+pair: refused, by name, until it is ruled. What the kind buys over the bare
+`int64` is exactly that refusal, plus the value a target holds — `time.Time`
+in Go, UTC on read, with a time outside `Time.UnixNano`'s domain refused by
+name rather than wrapped — and its text form, an RFC 3339 string (§16.2).
+
+**THE FIXED FORM DOES NOT TELL THE TWO APART, AND SAYS SO.** Kind `36` is a
+WIRE kind of the variable form. The fixed form's layout names its kinds from
+the closed set of FIXED-FORM-ALGORITHM.md §1 (§3's kinds `1`–`30`, `32`, `33`
+and the layout's own `35`), and this card adds no member to it: a timestamp's
+layout entry names kind `5`, eight bytes, so a fixed table's record, its
+layout bytes and its layout hash for a `timestamp` field are exactly an
+`int64` field's. A respelling between the two in a FIXED table is therefore
+the identity plan — a `copy` — and not a kind mismatch on the wire. The
+declaration still tells them apart where it is recorded: `schema.lock` writes
+the field's declared kind, `36` for a timestamp, so an edit that respells a
+locked field between the two is refused as a kind change (§21.1) and the
+field is deprecated and a new one appended. The kind distinction the standard
+promises is the variable wire's, the text form's and the lock's; widening the
+fixed layout's kind set is a follow-on that takes the form byte with it.
+
+**THE GO VALUE.** The field's storage is the `int64` count — the table's
+storage is the blittable record the cook, block and fixed forms lay out at
+declared widths (§19, §20), and a `time.Time` holds a pointer — and the
+`time.Time` is two methods generated beside it: `<Field>Time()` answers the
+count as a `time.Time` in UTC, and `Set<Field>Time(t time.Time) error` stores
+one. **The setter is where a time is refused**: a `t` outside
+`Time.UnixNano`'s domain, the years 1678 through 2262, has no count, so the
+setter stores nothing and returns a `TableTimestampError` naming the field.
+Go's own zero `time.Time{}` is the zero time and stores `0`. Every `int64` the
+field can hold is a time, so nothing after the setter can refuse: the variable
+wire, the fixed form and the text form write any count.
+
+**GO CARRIES IT FIRST.** Every other target refuses the construct by name,
+naming the construct, the target and that Go carries it first (§11); no other
+emitter is edited until its own card. Go's other storage forms — the cook, the
+block and the message form — hold the field as its `int64` count and are not
+yet tested with it. **A kind-`36` field a reader does not name skips by §3's
+first skip row, a fixed width of eight:** the Go runtime and the shared width
+table both recognize kind `36` as an eight-byte payload, so an unnamed or
+kind-mismatched `timestamp` field is skipped cleanly.
+
 ## 3. The wire
 
 **The wire is neutral.** It carries none of schema's packing opinions, no
@@ -3716,7 +3845,7 @@ i8, `3` i16, `4` i32, `5` i64, `6` u8, `7` u16, `8` u32, `9` u64, `10` f32,
 `11` f64, `12` string, `13` table, `14` array, `15` union, `16` enum-keyed
 array, `17` pointer index, `18` i128, `19` u128, `20`–`24`
 fixed8/16/32/64/128, `25`–`29` ufixed8/16/32/64/128, `30` enum, `31` escape,
-`32` no payload, `33` wstring.
+`32` no payload, `33` wstring, `36` timestamp.
 
 **`34` IS RESERVED BY NAME FOR `float16`, AND THE RESERVATION IS OF THE NAME
 AND NOTHING ELSE** (SPEC.md §4.10). It is not part of this major's set, no
@@ -3728,7 +3857,7 @@ later-major writer that wants this major to survive its file carries the new
 kind under the ESCAPE KIND `31`** (#434), which is what the escape is for, so
 a reader of this major skips it by its `L` and counts it `unknown`. **A
 reader of this major therefore meets `34` only as DAMAGE** — a kind it cannot
-skip, exactly as it meets `35` or `200` — and that is the correct answer,
+skip, exactly as it meets `37` or `200` — and that is the correct answer,
 because a bare `34` on the wire is a writer that ignored the escape rather
 than a value this reader was ever meant to read. Reserving a number costs no
 byte and no rule, and it keeps the kind table and the declined-construct list
@@ -3755,6 +3884,7 @@ one document rather than two.
   | `31` escape | `L`, then `L` bytes, opaque |
   | `32` no payload | `L`, then `L` bytes, and this form writes `L = 0` |
   | `33` wstring | `L`, then `L` bytes, which are `L / 2` UTF-16 code units, each two bytes little-endian, SURROGATES PAIRED and no zero unit among them. An ODD `L` is malformed, and so is ill-formed content (below). No terminator |
+  | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch, counted, never reinterpreted, and NEITHER SPELLING WIDENS INTO THE OTHER (§4). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
 
   **A FLOAT RIDES AS ITS IEEE-754 BIT PATTERN, WITH NO CANONICALISATION**
   (SPEC.md §4.3). Kind `10` is the four bytes the field holds and kind `11`
@@ -3988,7 +4118,7 @@ one document rather than two.
     elides instead (below), and a reader accepts the id wherever it appears.
 - **Skipping a field you cannot name** needs the kind byte and nothing else,
   which is what makes an unknown field survivable (§4). Four rules cover the
-  set. Kinds `1`–`11` and `18`–`29` skip their fixed width. Kinds `17` and
+  set. Kinds `1`–`11`, `18`–`29` and `36` skip their fixed width. Kinds `17` and
   `30` read one LEB128 value and stop. Kinds `12`, `13`, `14`, `16`, `31`,
   `32` and `33` read `L` and skip `L` bytes. Kind `15` reads the arm id reference
   and stops there if it is `0`, else reads the kind byte, then `L`, and skips
@@ -6754,6 +6884,7 @@ VALUE.**
   |---|---|
   | `bool` | 1 |
   | `int8`/`uint8` … `int64`/`uint64` | 1, 2, 4, 8 — the declared storage width |
+  | `timestamp` | 8 — the nanosecond count at its natural alignment, the `int64` slot's own shape, so a record holding one is laid out as one holding an `i64` is, its layout entry names kind `5` (§2.11), and the identity plan's entry is a `copy` (SPEC.md §4.13) |
   | `bits(N)` | the declared storage width, 4 for `N <= 32` and 8 above |
   | a RANGED integer | its own storage width; the bounds do not ride and clamp on load, as they do in §3 |
   | `float32`, `float64` | 4, 8 — the IEEE-754 bit pattern, with no canonicalisation (§3) |
@@ -7013,19 +7144,23 @@ HASH is the hash §3 puts at offset `8`:
 
 ```
 offset  0        form byte 3
-offsets 1 .. 7   reserved, zero — and a reader REFUSES a nonzero one, `malformed`
+offsets 1 .. 7   reserved, zero — and a reader REFUSES a nonzero one, `malformed` and named `reserved_not_zero`
 offsets 8 .. 15  the LAYOUT HASH (u64 LE)
 offset  16       layout length (u32 LE), then the layout
                  records, back to back, to the end of the file
 ```
 
 **AND THE ORDER THE HEADER IS READ IN** (algorithm §5.3 steps 1 and 2): a file
-with NO FIRST BYTE is `malformed`; **then the form byte earns its name, BEFORE
-the file's length is measured** — a committed form-`1` file is ten bytes and a
-form-`2` batch three, so a reader that measured first would answer `malformed`
-for every real file of the two forms this section promises to name; then the
-twenty-byte minimum, `malformed`; then the seven reserved bytes, `malformed` if
-any is nonzero; and only then the layout's length and the hash.
+with NO FIRST BYTE is `malformed`, named `truncated`; **then the form byte earns
+its name, BEFORE the file's length is measured** — a committed form-`1` file is
+ten bytes and a form-`2` batch three, so a reader that measured first would
+answer `malformed` for every real file of the two forms this section promises to
+name; then the twenty-byte minimum, `malformed`, named `truncated`; then the
+seven reserved bytes, `malformed` — named `reserved_not_zero` — if any is
+nonzero; and only then the layout's length and the hash. **EVERY REFUSAL OF THE
+FIXED LOAD HAS A NAME**, and the framing-damage returns are named too, so a
+caller that switches on the reason sees them by name instead of a silent empty
+reason (§5.3's joint table).
 
 - **THE HEADER NAMES THE LAYOUT ONCE; A RECORD NAMES IT AGAIN.** The eight bytes
   at `8` are the hash of the layout behind them, and every record still carries
@@ -7048,9 +7183,9 @@ any is nonzero; and only then the layout's length and the hash.
   length and not a constant, and a form that wants MAPPED RECORDS will pad the
   layout too — which is a byte this form does not spend until something reads it.
 - **THE RECORDS FILL THE REST OF THE FILE and there is no count.** A reader
-  knows the record size from the layout, so the count is arithmetic; **BYTES
-  LEFT OVER ARE `malformed`**, which is §3's rule for the same reason, that the
-  two ends of the file have met.
+    knows the record size from the layout, so the count is arithmetic; **BYTES
+    LEFT OVER ARE `malformed`**, named `truncated`, which is §3's rule for the
+    same reason, that the two ends of the file have met.
 - **A ONE-RECORD FILE PAYS FOR THE WHOLE LAYOUT**, and that is stated rather
   than hidden: this form is for many records of one small type, which is what
   the owner said it was for — *"effectively, fixed tables should only be used
@@ -7156,9 +7291,9 @@ added moves it without anyone remembering to.
   whose header hash is known but whose layout bytes are not the lock's bytes for
   that hash is refused `layout_malformed`, which is what proves the header's
   eight bytes are READ and not merely written; a hash in no entry is
-  `layout_newer` (algorithm §5.3). **AND THE SEVEN RESERVED BYTES**: any of
-  offsets `1..7` nonzero is `malformed`, refused rather than ignored, which is
-  what keeps them spendable later.
+   `layout_newer` (algorithm §5.3). **AND THE SEVEN RESERVED BYTES**: any of
+   offsets `1..7` nonzero is `malformed`, named `reserved_not_zero`, refused
+   rather than ignored, which is what keeps them spendable later.
 - **THE FIRST BYTE, AT THE TOOL** (§3): `schema check` handed a saved file
   answers `FORM <n> <name>` before it says anything else about the file, or
   refuses the byte by name, over every row of the registry and over a file with
@@ -8488,14 +8623,14 @@ The builder is designed to go wide, lock-free by ownership:
   construct that can raise one is (§2.9).
 - **The STRICT read** — one call, `<Name>ReadStrict( wire )`, that answers
   the root or refuses. It refuses, with ONE typed reason, a read that is
-  malformed, clamped, kind-mismatched, of an unknown form, wire-damaged or
-  build-version-mismatched. It does NOT refuse `unknown`, `widened` or
+  malformed, clamped, kind-mismatched, of an unknown form, wire-damaged,
+  build-version-mismatched or missing a required field (§2.3). It does NOT refuse `unknown`, `widened` or
   `retained` alone: `unknown` is evolution, `widened` decoded exactly, and
   `retained` reports on retention rather than on a loss (the cards facade's
   `ReadStrict`, docs/CARDS.md: `Unknown`, `Retained` and `Widened` alone are
   not loss). The reason is `TableRefuseReason`, the same enum a measure's
   `-1` carries, or `TableBuildVersionMismatch` for the announcement's strict
-  refusal (§3.3), so the language's typed-error test matches it (`errors.Is`
+  refusal (§3.3), or `TableMissingRequired` naming the missing field (§2.3), so the language's typed-error test matches it (`errors.Is`
   in Go). Values this read adds (`malformed`, `clamped`, `kind_mismatch`)
   are appended to that enum and never renumbered. `TableReport.Err()`
   answers the same reason for every counter this read refuses, and nil on a
@@ -11853,7 +11988,7 @@ in build version (§20.5).
   return `(int64, error)`, with literal `nil` on success and a typed
   `TableRefuseReason` on refusal. `<Name>ReadStrict(wire) (*<Name>, error)`
   is §6.5's STRICT read: one call, its own builder, the reason a
-  `TableRefuseReason` or `TableBuildVersionMismatch`. `TableReport.Err()`
+  `TableRefuseReason`, `TableBuildVersionMismatch` or `TableMissingRequired`. `TableReport.Err()`
   answers that same reason. Builder `PackMeasureReason` follows the
   same rule. `invalid_value` and `allocation_failed` distinguish Go
   authoring failures from file count, form, blob-size, and cycle refusals.
@@ -13766,6 +13901,7 @@ Per kind:
 | `string(N)` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted |
 | `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), so one there was built in code, and §16.3 writes it as `U+FFFD` |
 | `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted |
+| `timestamp` | string, RFC 3339 with nanoseconds | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any RFC 3339 spelling of the same instant, an offset included, which lands as its UTC nanosecond count. **A string that does not parse as RFC 3339 — or names an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false, the report is `Malformed` and its `Reason` is `timestamp_not_rfc3339: <field>`. A NUMBER token is not a refusal but the dialect's own wrong-JSON-type rule (§16.1): skipped, counted as a kind mismatch, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13) |
 | enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted |
 | flags | array of variant names | `["Shielded", "Turbo"]`; an empty mask writes as `[]`; an unknown name is skipped, counted |
 | `[N]T` fixed array | array | fewer elements pad with defaults; more are dropped, counted |

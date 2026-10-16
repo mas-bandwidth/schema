@@ -1299,6 +1299,19 @@ place the Rust codecs read differently from the C++ ones: a reader holding
 `&mut TableReport` could not hand a sub-reader out of its own buffer while that
 borrow stood. One report, one caller, the same six counters.
 
+**Every refusal of the fixed form's load has a name, and the names are EXPORTED
+string constants** (docs/FIXED-FORM-ALGORITHM.md §5.3): `TableFixedReasonPreviousForm`,
+`TableFixedReasonMessageFormAsFile`, `TableFixedReasonNewerForm`,
+`TableFixedReasonLayoutMalformed`, `TableFixedReasonLayoutNewer`,
+`TableFixedReasonLayoutUnsupported`, `TableFixedReasonLayoutRecordTooLarge`,
+`TableFixedReasonPlanTooLarge`, `TableFixedReasonBatchTooLarge`,
+`TableFixedReasonNoLayout`, `TableFixedReasonTextIllFormed`, and the two
+framing-damage names `TableFixedReasonTruncated` and
+`TableFixedReasonReservedNotZero`. Compare `report.Reason == example.TableFixedReasonNewerForm` rather than spelling the literal. A short
+input, a sub-twenty-byte header or a ragged tail set `report.Malformed` beside
+`TableFixedReasonTruncated`; a nonzero reserved byte sets it beside
+`TableFixedReasonReservedNotZero`.
+
 `string(N)` and `bytes(N)` are a `[u8; N]` beside an `i32` used length, arrays
 a `[T; N]` beside an `i32` used count, `?T` a value beside a `<name>_present`
 bool, and a union is a real Rust `enum` — the same spelling the packet backend
@@ -2465,6 +2478,45 @@ C++ and the tool carry the construct today; every other backend refuses a
 unit that declares one, by name, and the ports are a named follow-on
 (SPEC-TABLES.md §15).
 
+### Timestamps: `opened_at timestamp`
+
+A `timestamp` field is a count of nanoseconds since the Unix epoch, and `0`
+is the zero time — `1970-01-01T00:00:00Z`. It is the convention you were
+writing by hand as an `int64` with a hand-rolled range check, made a kind, so
+the wire and the text form agree without you writing any of it (SPEC.md
+§4.13, SPEC-TABLES.md §2.11).
+
+```
+fixed table Session
+{
+    n         int32
+    opened_at timestamp
+}
+```
+
+In Go the field holds the count, and the `time.Time` is a pair of methods
+generated beside it, UTC on read:
+
+```go
+var s Session
+err := s.SetOpenedAtTime(time.Unix(0, 1760531645123456789)) // stores the count
+when := s.OpenedAtTime()                                      // a time.Time in UTC
+```
+
+`SetOpenedAtTime` refuses a time outside `Time.UnixNano`'s domain — the years
+1678 through 2262 — with a `TableTimestampError` naming the field, and
+stores nothing; Go's zero `time.Time{}` stores `0`. `FromJson` refuses a
+string that is not RFC 3339 by name (`Reason` is `timestamp_not_rfc3339: opened_at`), and `ToJson` writes `"2026-10-15T12:34:05.123456789Z"`.
+
+A timestamp is its own kind on the variable wire, not an `int64`: a field
+respelled between the two there is a kind mismatch, skipped and counted, and
+neither spelling widens into the other. In a `fixed table` the slot is an
+`int64`'s and the layout names it as one, so the fixed form does not tell the
+two apart. It is a bare TABLE field only in this major — a `timestamp` in a
+packet `type`, in an array, optional, map value or union arm is refused by
+name — and **Go carries it first**: every other target refuses the construct
+by name until its own card.
+
 ### The block form: rows another language points at
 
 Some data is not a file and not a message. It is a block you rebuild every
@@ -3102,7 +3154,11 @@ table, the facts under the shared field ids are unchanged**: a twin
 declaration carrying the same id under a different default is refused,
 because every stored body's elided value would quietly change meaning.
 Also refused: a second `was` aimed at the field's intermediate spelling,
-naming both names and the one that is correct.
+naming both names and the one that is correct; and a `| required` marker
+ADDED, to a shipped field or on a new field, because every record written
+before it lacks the field and a newer reader refuses it as `missing_required`
+(removing the marker passes: the writer just starts eliding again;
+SPEC-TABLES.md §2.3).
 Warned, because the read report already counts what is lost: a bound or a
 string capacity shrunk, a declared range tightened from either end (or
 declared where the field had none — every stored value outside it clamps on
@@ -3967,8 +4023,9 @@ trailer returns `TableRefuseWireDamaged` (`wire_damaged`) from
 accelerator-only `truncated` reason. `<Name>ReadStrict(wire)` is the one-call
 strict read (docs/SPEC-TABLES.md §6.5): it builds its own builder and returns
 `(*<Name>, error)`. The error is a `TableRefuseReason` (`clamped`,
-`kind_mismatch`, `malformed`, `unknown_form`, `wire_damaged`) or a
-`TableBuildVersionMismatch`, so `errors.Is` matches it. `unknown`, `widened`
+`kind_mismatch`, `malformed`, `unknown_form`, `wire_damaged`), a
+`TableBuildVersionMismatch`, or a `TableMissingRequired` whose `Fields` names
+the `| required` field the record lacks, at whatever depth (`missing_required: x`), so `errors.Is` or `errors.As` matches it. `unknown`, `widened`
 and `retained` alone do not refuse. `TableReport.Err()` answers the same
 reason.
 

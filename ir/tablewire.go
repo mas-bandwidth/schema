@@ -125,6 +125,13 @@ const (
 	// NAME AND NOTHING ELSE (docs/SPEC-TABLES.md §3): not part of this major,
 	// emitted by no writer, and met by a reader of this major only as damage.
 	TableKindReservedFloat16 = 34
+	// KIND 35 IS THE FIXED LAYOUT'S OPTIONAL WRAPPER (TableKindOptional) and
+	// never a wire kind, so the next free wire number is 36: a TIMESTAMP, an
+	// int64 count of nanoseconds since the Unix epoch, 0 the zero time
+	// (docs/SPEC-TABLES.md §2.11, §3; SPEC.md §4.13). The payload is the i64's
+	// and the KIND is its own, so a field respelled between int64 and
+	// timestamp is a kind mismatch and neither widens into the other.
+	TableKindTimestamp = 36
 )
 
 // TableWireScalarKind is [TableScalarKind] on this form: an ENUM answers its
