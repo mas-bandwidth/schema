@@ -272,6 +272,80 @@ tables-elixir-block-lead-negative-control: build/conformance/manifest.txt
 		echo "elixir base-alignment negative control: dropping the check reds the gate"; \
 	fi
 
+# THE OFFSETS/COOK-DELTA COMPOSITION GATE (docs/PORTING.md M2): the block's
+# offset_of and the cook's self-relative delta are composed from two 32-bit
+# halves, so no bignum is formed before the bound that refuses it runs.
+# TestOffsetsComposeFromHalvesElixir measures (a) that every corpus block
+# open, every row of its arrays and every reference slot of three corpus cooks
+# allocates no more heap words per call than a same-shaped immediate-value
+# control, against a forced-boxing positive control that must allocate more,
+# and (b) that a FORGED offset_of or delta word (high half 0x7FFFFFFF, and the
+# delta's negative twin) is refused with no more minor collections than an
+# immediate-high-half twin (a bignum would add some). It is a FUNCTIONAL test:
+# SCHEMA_REQUIRE_CORPUS=1 turns a missing toolchain into a failure, never a skip.
+.PHONY: tables-elixir-offsets
+tables-elixir-offsets:
+	@mkdir -p build
+	@SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestOffsetsComposeFromHalvesElixir$$' \
+		> build/tables-elixir-offsets.log 2>&1; \
+		status=$$?; cat build/tables-elixir-offsets.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@if grep -q -- '--- SKIP' build/tables-elixir-offsets.log; then \
+		echo "tables-elixir-offsets: the gate SKIPPED a subtest; under SCHEMA_REQUIRE_CORPUS=1 a missing toolchain or corpus is a failure"; \
+		exit 1; \
+	fi
+	@echo 'tables Elixir offsets: ordinary opens, rows and cook slots allocate no more than the immediate-value control; forged offset_of and cook delta refused with no extra collections'
+
+# ITS NEGATIVE CONTROL: sabotage the block's composed read back to the
+# whole-word read, and the forged-offset assertion must go red (a bignum gets
+# allocated before the bound refuses).
+CONFORMANCE_NEGATIVE_ELIXIR_OFFSETS := build/elixir-offsets-negative
+ELIXIR_OFFSETS_SED := -e 's|B.u64halves(data, a.offset_of_offset)|B.u64(data, a.offset_of_offset)|'
+
+.PHONY: tables-elixir-offsets-negative-control
+tables-elixir-offsets-negative-control:
+	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_OFFSETS),internal/codegen/elixirtable/block.go,ELIXIR_OFFSETS_SED)
+	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+			go test -overlay $(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_OFFSETS)/overlay.json \
+			./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestOffsetsComposeFromHalvesElixir$$' \
+			> $(CONFORMANCE_NEGATIVE_ELIXIR_OFFSETS)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a whole-word offset_of read left the forged-offset assertion green"; \
+		exit 1; \
+	fi
+	@grep -q "forged" $(CONFORMANCE_NEGATIVE_ELIXIR_OFFSETS)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the offsets gate red for another reason"; \
+		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_OFFSETS)/log; exit 1; }
+	@echo "elixir offsets negative control: a whole-word offset_of read reds the forged-offset check"
+
+# AND THE COOK'S: sabotage the cook runtime's deref back to a whole-word read
+# of the signed 64-bit delta (the delta is formed as one 64-bit integer, then bounded), and the
+# forged-cook-delta assertion must go red (a bignum gets allocated before the
+# bound refuses it, which shows as extra minor collections against the
+# immediate twin).
+CONFORMANCE_NEGATIVE_ELIXIR_COOK := build/elixir-cook-negative
+ELIXIR_COOK_SED := \
+	-e 's|    high = int(region, at + 4, 4)|    high = int(region, at, 8)|' \
+	-e 's|high >= 0x08000000 or high <= -0x08000000 -> :error|high >= 0x0800000000000000 or high <= -0x0800000000000000 -> :error|' \
+	-e 's|true -> inside(region, at + high \* 0x100000000 + low)|true -> inside(region, at + high)|'
+
+.PHONY: tables-elixir-cook-negative-control
+tables-elixir-cook-negative-control:
+	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_COOK),internal/codegen/elixirtable/cook.go,ELIXIR_COOK_SED)
+	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+			go test -overlay $(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_COOK)/overlay.json \
+			./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestOffsetsComposeFromHalvesElixir$$' \
+			> $(CONFORMANCE_NEGATIVE_ELIXIR_COOK)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a whole-word cook delta read left the forged-delta assertion green"; \
+		exit 1; \
+	fi
+	@grep -q "forged cook delta" $(CONFORMANCE_NEGATIVE_ELIXIR_COOK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the cook gate red for another reason"; \
+		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_COOK)/log; exit 1; }
+	@echo "elixir cook negative control: a whole-word cook delta read reds the forged-delta check"
+
+test-elixir: tables-elixir-offsets tables-elixir-offsets-negative-control tables-elixir-cook-negative-control
+
 # THE ACCESSOR/DESCRIPTOR AGREEMENT GATE (docs/PORTING.md §J1, issue #421).
 # The leg emits two derivations of one layout — the TYPED row/slot accessors
 # beside the block-record and cook descriptors — and this gate reads the same
