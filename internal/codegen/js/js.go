@@ -494,7 +494,7 @@ func isClassRef(ref ir.Decl) bool {
 // object, then the class — the tag beside one pre-allocated arm per variant;
 // nothing allocates per value after construction.
 func (g *gen) emitUnion(d *ir.Union) {
-	g.emitTagUnion(d.Name, d.Doc, d.Variants)
+	g.emitTagUnion(d)
 }
 
 // emitTableUnion emits a TABLE-CLOSURE union (docs/SPEC-TABLES.md §2.6): the
@@ -504,12 +504,23 @@ func (g *gen) emitUnion(d *ir.Union) {
 // tag and nothing else. The class is what a fixed table's by-value union field
 // lands in (`new <Name>()`), and its arms are the arm's own field-line storage.
 func (g *gen) emitTableUnion(d *ir.Union) {
-	g.emitTagUnion(d.Name, d.Doc, d.Variants)
+	g.emitTagUnion(d)
 }
 
 // emitTagUnion emits the <Name>Type tag object and the <Name> storage class —
 // the part the packet union and the table-closure union share.
-func (g *gen) emitTagUnion(name, doc string, variants []ir.UnionVariant) {
+//
+// THE CLASS IMPORTS EVERY CLASS IT CONSTRUCTS, from the module that DEFINES it
+// (docs/SPEC-TABLES.md §2.6). A `type` arm's class is this emitter's own, in
+// the file that declares it. A `table` arm's class is internal/codegen/jstable's,
+// and which of its modules holds it is the closure's answer, not a guess:
+// <Home>Table.js when the union is in the fixed form's closure, and
+// <Home>Variable.js otherwise (ir.JSTableArmModule) — Stream's Chunk arm
+// exists only in StreamdemoVariable.js. A union that wrote `new LoginRequest()`
+// without the import was a module that loaded and then threw ReferenceError the
+// first time anything built one.
+func (g *gen) emitTagUnion(d *ir.Union) {
+	name, doc, variants := d.Name, d.Doc, d.Variants
 	members := make([]string, len(variants))
 	docs := make([]string, len(variants))
 	for i, v := range variants {
@@ -538,7 +549,11 @@ func (g *gen) emitTagUnion(name, doc string, variants []ir.UnionVariant) {
 			g.emitStorageField(v.F)
 			continue
 		}
-		g.addRef(v.Type, v.Type)
+		if v.Ref.IsTable {
+			g.addRefBase(ir.JSTableArmModule(g.unit, d), v.Type)
+		} else {
+			g.addRef(v.Type, v.Type)
+		}
 		g.pf("    this.%s = new %s();\n", ir.GoExportName(v.Name), v.Type)
 	}
 	g.pf("  }\n}\n\n")

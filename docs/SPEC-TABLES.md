@@ -392,6 +392,17 @@ semantics**, and where the two part the reason is stated at the site:
   beside one preallocated arm. A JavaScript string or a live-prefix array
   would be a second spelling of the same field one declaration over, and it
   would allocate on a path this document prices at zero.
+- **A union's storage class imports every class it constructs, from the
+  module that defines it, and nothing else.** The class holds one
+  preallocated arm per payload arm (`new <Arm>()`), so each arm's class is an
+  import: a `type` arm's from the packet emitter's file that declares it, and a
+  `table` arm's from the table emitter's home — `<Package>Table.js` when the
+  union is in the FIXED form's closure (a fixed table holds it, §3.4), and
+  `<Package>Variable.js` otherwise, because a union no fixed root reaches is
+  the variable form's and its arm may exist only there (`tables/stream`'s
+  `Chunk`). The home is the closure's answer (`ir.JSTableArmModule`), never the
+  module a name happens to sit in; a class that named an arm it did not import
+  loaded and then threw `ReferenceError` the first time anything built one.
 - **Casing is the packet emitter's too**, for the same reason: types,
   functions, constants and DATA MEMBERS are UpperCamelCase (`ship.Health`,
   `report.Unknown`, `cook.Region`, a descriptor's `GetRaw`), METHODS are
