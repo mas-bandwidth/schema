@@ -21,6 +21,13 @@ BEAM_PATH ?= $(CURDIR)/dist/otp-29.0.5/bin:$(CURDIR)/dist/elixir-1.20.4/bin
 ELIXIR    ?= PATH="$(BEAM_PATH):$$PATH" elixir
 MIX       ?= PATH="$(BEAM_PATH):$$PATH" mix
 ELIXIRC   ?= PATH="$(BEAM_PATH):$$PATH" elixirc
+# The strict compile every clean gate uses. Elixir 1.20.4 on OTP 29 accepts
+# `--warnings-as-errors` but exits 0 even when warnings are printed (the
+# diagnostics go out through the logger, not the compiler's warning counter), so
+# a gate that passes that flag never fails on a warning. ELIXIRC_STRICT runs
+# elixirc through make/elixir-strict.sh, which fails when the output carries a
+# warning or the compile fails. It is used by every gate line that must be clean.
+ELIXIRC_STRICT ?= PATH="$(BEAM_PATH):$$PATH" sh $(CURDIR)/make/elixir-strict.sh elixirc
 
 # THE PINNED RUNTIME THIS LEG CERTIFIES ON (docs/PORTING.md I14). The two
 # versions above live in a comment and in dist/ path names; these are the two
@@ -57,7 +64,7 @@ packet-defaults-elixir-negative-control: packet-defaults-elixir
 		"$(CURDIR)" "$(CURDIR)" > build/packet-defaults/elixir-negative/overlay.json
 	go build -overlay=build/packet-defaults/elixir-negative/overlay.json -o build/packet-defaults/elixir-negative/schema ./cmd/schema
 	./build/packet-defaults/elixir-negative/schema generate --lang elixir --out build/packet-defaults/elixir-negative/generated test/packet-defaults/Defaults.schema
-	$(ELIXIRC) --warnings-as-errors -o build/packet-defaults/elixir-negative/beam build/packet-defaults/elixir-negative/generated/*.ex
+	$(ELIXIRC_STRICT) -o build/packet-defaults/elixir-negative/beam build/packet-defaults/elixir-negative/generated/*.ex
 	@if $(ELIXIR) test/packet-defaults/elixir/main.exs testdata/wire/packet-defaults "$(CURDIR)/build/packet-defaults/elixir-negative/generated" > build/packet-defaults/elixir-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: missing constructor bytes passed in Elixir'; exit 1; fi
 	@grep -Fq 'FAILED: packet-default constructor bytes' build/packet-defaults/elixir-negative/log || \
@@ -418,6 +425,86 @@ tables-elixir-runtime-pin-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the refusal did not name the Elixir it is actually running"; cat build/elixir-runtime-pin/log; exit 1; }
 	@echo 'elixir runtime pin negative control: a pin nothing is running is refused, naming both versions'
 
+# ---------------------------------------------------------------------------
+# THE ALLOCATION AUDIT, behind the pin (docs/PORTING.md I1 and I14, issue #420)
+# ---------------------------------------------------------------------------
+#
+# test/elixir-alloc/main.exs over the derived manifest and the generated ebin:
+# for every `instance` whose unit has a <Unit>.Table module, one iteration is
+# one wire load, one wire save, one text read and one text write — the calls
+# the conformance driver's wire, json-read and json-write surfaces make — and
+# each case prints heap words per iteration (per process, :erlang.trace/3 on
+# :garbage_collection), refc binary allocations per iteration (binary_alloc's
+# VM-wide call counter, slack 8) and reductions (printed, not gated). The gate
+# is a PINNED BUDGET per case in test/conformance/elixir/alloc-budget.txt; the
+# floor is not zero and is not claimed to be. A case with no pinned line is
+# listed `unpinned` and does not fail.
+#
+# THE PIN COMES FIRST: the script's first act is test/elixir/runtime_pin.exs
+# with ELIXIR_PIN_OTP and ELIXIR_PIN_ELIXIR, so on any other runtime it prints
+# FAILED and exits non-zero before a case is measured; SCHEMA_ELIXIR_ANY_OTP=1
+# prints the numbers under NOT CERTIFIED and exits 0, and the pin target refuses
+# to write a budget under it. Re-pinning is deliberate, as a wire golden is.
+ELIXIR_ALLOC_BUDGET := test/conformance/elixir/alloc-budget.txt
+
+.PHONY: tables-elixir-alloc-audit
+tables-elixir-alloc-audit: build/conformance/manifest.txt
+	$(MIX) format --check-formatted test/elixir-alloc/main.exs
+	ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin $(ELIXIR) test/elixir-alloc/main.exs \
+		build/conformance/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) audit $(ELIXIR_ALLOC_BUDGET)
+
+.PHONY: tables-elixir-alloc-pin
+tables-elixir-alloc-pin: build/conformance/manifest.txt
+	ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin $(ELIXIR) test/elixir-alloc/main.exs \
+		build/conformance/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) pin $(ELIXIR_ALLOC_BUDGET)
+
+# THE AUDIT'S NEGATIVE CONTROL, and it is what makes the audit an instrument
+# rather than a number: the EMITTER is sabotaged (variableform.go, through
+# ELIXIR_SABOTAGED_BUILD) so every generated load also builds sixteen refc
+# binaries and a thousand-cell list and frees them at once, and every pinned
+# case must go over its budget on the heap-word column AND on the binary-call
+# column — each counted on its own from the audit's output, so a column that
+# lost its teeth is found on its own. A gate that cannot go red is not a gate.
+CONFORMANCE_NEGATIVE_ELIXIR_ALLOC := build/elixir-alloc-negative
+ELIXIR_ALLOC_SED := -e 's|^  def load(table, data) when is_binary(data) do$$|&\n    _ = Enum.map(1..16, fn _ -> :binary.copy(<<0>>, 65) end) ++ List.duplicate(0, 1000)|'
+
+.PHONY: tables-elixir-alloc-negative-control
+tables-elixir-alloc-negative-control: build/conformance/manifest.txt
+	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC),internal/codegen/elixirtable/variableform.go,ELIXIR_ALLOC_SED)
+	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/ebin $(ELIXIR) test/elixir-alloc/main.exs \
+			build/conformance/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) audit $(ELIXIR_ALLOC_BUDGET) \
+			> $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the audit passed with sixteen refc binaries and a thousand-cell list added to every generated load"; \
+		cat $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log; exit 1; fi
+	@cases=$$(grep -c '^[a-z]' $(ELIXIR_ALLOC_BUDGET)); \
+	over=$$(grep 'over its pinned budget' $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log); \
+	[ "$$cases" -gt 0 ] || { echo "NEGATIVE CONTROL FAILED: $(ELIXIR_ALLOC_BUDGET) pins no case"; exit 1; }; \
+	[ "$$(echo "$$over" | grep -c 'heap words')" -eq "$$cases" ] || \
+		{ echo "NEGATIVE CONTROL FAILED: the heap words column did not red every one of the $$cases pinned cases"; cat $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log; exit 1; }; \
+	[ "$$(echo "$$over" | grep -c 'binary calls')" -eq "$$cases" ] || \
+		{ echo "NEGATIVE CONTROL FAILED: the binary calls column did not red every one of the $$cases pinned cases"; cat $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log; exit 1; }; \
+	echo "elixir alloc negative control: sixteen refc binaries and a thousand-cell list per generated load red the heap words and binary calls columns of all $$cases pinned cases"
+
+# THE AUDIT'S RUNTIME CONTROL, as tables-elixir-runtime-pin-negative-control is
+# the pin's: the audit run with a pin nothing is running must refuse, name the
+# pin it wanted, and measure nothing. It needs no corpus: the refusal comes
+# before the manifest is read, and a corpus it did read would be a measurement.
+.PHONY: tables-elixir-alloc-runtime-negative-control
+tables-elixir-alloc-runtime-negative-control:
+	@mkdir -p build/elixir-alloc-runtime
+	@if ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin $(ELIXIR) test/elixir-alloc/main.exs \
+			build/conformance/manifest.txt 0.0.0 0.0.0 audit $(ELIXIR_ALLOC_BUDGET) \
+			> build/elixir-alloc-runtime/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the audit certified on a pin nothing can be running"; \
+		cat build/elixir-alloc-runtime/log; exit 1; fi
+	@grep -Fq 'FAILED' build/elixir-alloc-runtime/log && grep -Fq '0.0.0' build/elixir-alloc-runtime/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the refusal did not name the pin it wanted"; cat build/elixir-alloc-runtime/log; exit 1; }
+	@if grep -Eq 'measuring|heap words' build/elixir-alloc-runtime/log; then \
+		echo "NEGATIVE CONTROL FAILED: the audit measured before it refused"; cat build/elixir-alloc-runtime/log; exit 1; fi
+	@echo 'elixir alloc runtime negative control: the audit on a pin nothing is running refuses, names 0.0.0 and measures nothing'
+
+test-elixir: tables-elixir-alloc-audit tables-elixir-alloc-negative-control tables-elixir-alloc-runtime-negative-control
+
 # I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Elixir
 # side. The page's cook example is pulled from docs/USAGE.md into a script that
 # reads the fixture cook and evaluates the fragment verbatim against the
@@ -444,7 +531,9 @@ tables-elixir-usage: build/elixir-tables-ebin/.stamp build/cook-open/.stamp docs
 # fuzz over both readers and the base-alignment gate, each with its control;
 # the soak, the audit and the bench gate that once sat beside them went with
 # the table wire they measured. The variable form is emitted again
-# (tables-elixir-variable-class); those three gates have not returned.
+# (tables-elixir-variable-class); the AUDIT has returned on that wire, behind
+# the runtime pin (tables-elixir-alloc-audit, riding test-elixir), and the soak
+# and the bench gate have not.
 ELIXIR_RELEASE_FUZZ_N ?= 200000
 
 .PHONY: tables-elixir-release
@@ -491,7 +580,7 @@ packet-utf8-elixir-negative-control: packet-utf8-elixir
 	go run ./tools/sabotage -name packet-utf8-elixir-read -out build/packet-text/elixir-negative/functions.gotext internal/codegen/elixir/functions.go
 	@printf '{"Replace":{"%s/internal/codegen/elixir/functions.go":"%s/build/packet-text/elixir-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/elixir-negative/overlay.json
 	go run -overlay=build/packet-text/elixir-negative/overlay.json ./cmd/schema generate --lang elixir --out build/packet-text/elixir-negative build/packet-text/elixir/source/Text.schema
-	$(ELIXIRC) --warnings-as-errors -o build/packet-text/elixir-negative/beam build/packet-text/elixir-negative/*.ex
+	$(ELIXIRC_STRICT) -o build/packet-text/elixir-negative/beam build/packet-text/elixir-negative/*.ex
 	@if ./build/packet-text/harness -mutations-only env $(ELIXIR) test/packet-text/elixir/main.exs "$(CURDIR)/build/packet-text/elixir-negative" > build/packet-text/elixir-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Elixir UTF-8 removal passed'; exit 1; fi
 	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/elixir-negative/log || { cat build/packet-text/elixir-negative/log; exit 1; }
 	@echo 'packet UTF-8 Elixir negative control: removed read validation fails bit-flip agreement'
@@ -515,7 +604,7 @@ packet-wide-elixir-negative-control: packet-wide-elixir
 	go run ./tools/sabotage -name packet-wide-elixir-pairing -out build/packet-wide/elixir-negative/wstring.gotext internal/codegen/elixir/wstring.go
 	@printf '{"Replace":{"%s/internal/codegen/elixir/wstring.go":"%s/build/packet-wide/elixir-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/elixir-negative/overlay.json
 	go run -overlay=build/packet-wide/elixir-negative/overlay.json ./cmd/schema generate --lang elixir --out build/packet-wide/elixir-negative build/packet-wide/source/WideText.schema
-	$(ELIXIRC) --warnings-as-errors -o build/packet-wide/elixir-negative/beam build/packet-wide/elixir-negative/*.ex
+	$(ELIXIRC_STRICT) -o build/packet-wide/elixir-negative/beam build/packet-wide/elixir-negative/*.ex
 	@if ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only env $(ELIXIR) test/packet-wide/elixir/main.exs "$(CURDIR)/build/packet-wide/elixir-negative" > build/packet-wide/elixir-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Elixir wide pairing removal passed'; exit 1; fi
 	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/elixir-negative/log || { cat build/packet-wide/elixir-negative/log; exit 1; }
 	@echo 'packet wide Elixir negative control: removed pairing fails bit-flip agreement'
@@ -605,7 +694,7 @@ build/elixir-fixedform/.stamp: bin/schema $(ELIXIR_FIXED_SCHEMAS) make/elixir.mk
 	# Same authority as tables-elixir-clean: the fixed-form emitters predate
 	# Elixir 1.20.4's wraps, so the stamp canonicalizes before the check.
 	$(MIX) format build/elixir-fixedform/gen/*/*.ex
-	$(ELIXIRC) --warnings-as-errors -o build/elixir-fixedform/ebin build/elixir-fixedform/gen/*/*.ex
+	$(ELIXIRC_STRICT) -o build/elixir-fixedform/ebin build/elixir-fixedform/gen/*/*.ex
 	@touch $@
 
 .PHONY: tables-elixir-fixed-form
@@ -643,7 +732,7 @@ build/elixir-fixed-bench/.stamp: bin/schema bench/corpus/Bench.schema bench/corp
 		build/elixir-fixed-bench/source/Bench.schema build/elixir-fixed-bench/source/Wrap.schema
 	# Same authority as tables-elixir-clean.
 	$(MIX) format build/elixir-fixed-bench/gen/*.ex
-	$(ELIXIRC) --warnings-as-errors -o build/elixir-fixed-bench/ebin build/elixir-fixed-bench/gen/*.ex
+	$(ELIXIRC_STRICT) -o build/elixir-fixed-bench/ebin build/elixir-fixed-bench/gen/*.ex
 	@touch $@
 
 build/elixir-fixed-bench/bench_fixed.bin: generated/bench/paired/cpp/.stamp test/bench/fixedform_corpus.cpp bench/corpus/variants/bench_mixed.variants.bin
@@ -681,7 +770,7 @@ generated/bench/paired/elixir/.stamp: bin/schema bench/corpus/Bench.schema bench
 .PHONY: tables-elixir-paired-gate
 tables-elixir-paired-gate: generated/bench/paired/elixir/.stamp bench-paired-check
 	$(MIX) format --check-formatted generated/bench/paired/elixir/*.ex bench/tables/elixir/*.exs
-	$(ELIXIRC) --warnings-as-errors -o build/paired/table-elixir/ebin generated/bench/paired/elixir/*.ex
+	$(ELIXIRC_STRICT) -o build/paired/table-elixir/ebin generated/bench/paired/elixir/*.ex
 	$(ELIXIR) bench/tables/elixir/main.exs --gate --indexed \
 		--wire-dir bench/paired/corpus --variant-dir bench/paired/corpus
 
@@ -1008,6 +1097,32 @@ cards-elixir-conformance-hash-negative-control: build/conformance-harness build/
 	@echo 'cards Elixir hash negative control: folding needs into the hash reds taskhash alone'
 
 test-elixir: cards-elixir-conformance cards-elixir-conformance-negative-control
+
+# THE CLEAN-GATE PLANTED-WARNING NEGATIVE CONTROL. A gate that is supposed to
+# fail on a warning has to prove it can: this compiles a planted warning (an
+# unused variable and an unused alias) through the same strict invocation the
+# gates use and requires the compile to exit NON-ZERO with the warning text. It
+# passes only when the strict compile fails, and fails by name when the compile
+# exits 0. Without a toolchain it skips by name; under SCHEMA_REQUIRE_CORPUS=1
+# a missing toolchain is a failure, not a skip.
+.PHONY: tables-elixir-warning-control
+tables-elixir-warning-control:
+	@if ! command -v $(lastword $(ELIXIRC)) >/dev/null 2>&1; then \
+		if [ "$$SCHEMA_REQUIRE_CORPUS" = "1" ]; then \
+			echo "tables-elixir-warning-control: elixirc missing and SCHEMA_REQUIRE_CORPUS=1"; exit 1; \
+		fi; \
+		echo "SKIP tables-elixir-warning-control (no elixirc on PATH)"; exit 0; \
+	fi
+	@mkdir -p build/elixir-warning-control
+	@if $(ELIXIRC_STRICT) -o build/elixir-warning-control test/elixir-warning-control/planted.ex > build/elixir-warning-control/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the planted warning compiled clean (exit 0)'; \
+		cat build/elixir-warning-control/log; exit 1; \
+	fi
+	@grep -q 'warning:' build/elixir-warning-control/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the strict compile failed without the warning text'; \
+		  cat build/elixir-warning-control/log; exit 1; }
+	@echo 'planted warning makes the strict Elixir compile exit non-zero'
+test-elixir: tables-elixir-warning-control
 test-elixir: cards-elixir-conformance-upgrade-negative-control cards-elixir-conformance-hash-negative-control
 
 # ---------------------------------------------------------------------------
