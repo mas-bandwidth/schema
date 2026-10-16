@@ -20,6 +20,7 @@ package elixirtable
 import (
 	"fmt"
 	"maps"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -236,6 +237,78 @@ func header(base, pkg, what string) string {
 }
 
 func moduleBase(base string) string { return ir.GoExportName(base) }
+
+// exLineLimit is the line length Elixir 1.20.4's `mix format` wraps past, and
+// the emitters wrap at the same column so the source they write is the source
+// the formatter would write (issue #547).
+const exLineLimit = 98
+
+// exInt spells a decimal integer the way `mix format` spells it: six digits or
+// more are grouped in threes by underscores.
+func exInt(n int64) string {
+	s := strconv.FormatInt(n, 10)
+	sign := ""
+	if strings.HasPrefix(s, "-") {
+		sign, s = "-", s[1:]
+	}
+	if len(s) < 6 {
+		return sign + s
+	}
+	var b strings.Builder
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b.WriteByte('_')
+		}
+		b.WriteRune(c)
+	}
+	return sign + b.String()
+}
+
+// exWidth is a line's width in columns as the formatter counts them: runes.
+func exWidth(s string) int { return len([]rune(s)) }
+
+// exDefDo writes `def head, do: body` on one line at indent, and when that
+// passes the line limit, the formatter's wrap: the head, then `do:` on the
+// next line two columns in.
+func exDefDo(indent, head, body string) string {
+	if one := indent + head + ", do: " + body; exWidth(one) <= exLineLimit {
+		return one + "\n"
+	}
+	return indent + head + ",\n" + indent + "  do: " + body + "\n"
+}
+
+// exComma is the separator after element i of n in a multi-line list or map:
+// a comma, and none after the last, which the formatter drops.
+func exComma(i, n int) string {
+	if i == n-1 {
+		return ""
+	}
+	return ","
+}
+
+// exBlock joins the expressions of one block the way the formatter separates
+// them: an expression that spans more than one line gets a blank line on each
+// side, and single-line neighbours stay together. Each item is one expression
+// with any comment lines that lead it, and ends in a newline.
+func exBlock(items []string) string {
+	multi := func(s string) bool {
+		code := 0
+		for _, line := range strings.Split(strings.TrimSuffix(s, "\n"), "\n") {
+			if t := strings.TrimSpace(line); t != "" && !strings.HasPrefix(t, "#") {
+				code++
+			}
+		}
+		return code > 1
+	}
+	var b strings.Builder
+	for i, it := range items {
+		if i > 0 && (multi(it) || multi(items[i-1])) {
+			b.WriteString("\n")
+		}
+		b.WriteString(it)
+	}
+	return b.String()
+}
 
 func isStruct(f *ir.Field) bool {
 	if f.Type.Kind != ir.TNamed {

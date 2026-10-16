@@ -23,6 +23,7 @@ package elixirtable
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -64,12 +65,14 @@ func generateBlocks(u *ir.Unit, ns string, blocks *ir.BlockUnit) (map[string][]b
 			b.emitBlock(bl)
 		}
 		b.emitRecordInfos(tables)
-		b.pf("end\n")
 
 		var text strings.Builder
 		text.WriteString(header(base, u.Package, "the BLOCK FORM (docs/SPEC-TABLES.md §19)"))
 		text.WriteString("\n")
-		text.WriteString(b.body.String())
+		// a block's last section ends in a blank line, and none stands
+		// before the module's end
+		text.WriteString(strings.TrimRight(b.body.String(), "\n") + "\n")
+		text.WriteString("end\n")
 		out[base+"Block.ex"] = []byte(text.String())
 	}
 	return out, nil
@@ -281,15 +284,15 @@ func (b *blockGen) emitBlock(bl *ir.BlockLayout) {
 
 	b.pf("  # The block's STORAGE is sized from the declared maxima: one extent,\n")
 	b.pf("  # allocated once, never grown, never pooled (§19.1).\n")
-	b.pf("  def %s_block_max_bytes, do: %d\n", lo, bl.MaxBytes)
-	b.pf("  def %s_block_projection_bytes, do: %d\n\n", lo, proj.Size)
+	b.pf("  def %s_block_max_bytes, do: %s\n", lo, exInt(bl.MaxBytes))
+	b.pf("  def %s_block_projection_bytes, do: %s\n\n", lo, exInt(proj.Size))
 
 	for _, a := range bl.Arrays {
 		b.pf("  # %s: the constants this build asserts against. A consumer INDEXES with\n", a.Field.Name)
 		b.pf("  # what it read from the instance, never with these (§19.2).\n")
-		b.pf("  def %s_%s_stride, do: %d\n", lo, a.Field.Name, a.Stride)
-		b.pf("  def %s_%s_max, do: %d\n", lo, a.Field.Name, a.Max)
-		b.pf("  def %s_%s_projection_offset, do: %d\n\n", lo, a.Field.Name, a.TripleOffset)
+		b.pf("  def %s_%s_stride, do: %s\n", lo, a.Field.Name, exInt(a.Stride))
+		b.pf("  def %s_%s_max, do: %s\n", lo, a.Field.Name, exInt(a.Max))
+		b.pf("  def %s_%s_projection_offset, do: %s\n\n", lo, a.Field.Name, exInt(a.TripleOffset))
 	}
 
 	b.emitBlockArrays(bl)
@@ -313,7 +316,7 @@ func (b *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	b.pf("  # returned binary is the used extent, 64-aligned, prologue and triples\n")
 	b.pf("  # written, rows left zero for the caller to fill.\n")
 	b.pf("  def block_begin_%s(counts) do\n", lo)
-	b.pf("    B.begin(counts, %s, %d, @build_version)\n", arrays, bl.Projection.Size)
+	b.pf("    B.begin(counts, %s, %s, @build_version)\n", arrays, exInt(bl.Projection.Size))
 	b.pf("  end\n\n")
 }
 
@@ -356,12 +359,12 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	b.pf("  def block_open_%s(data), do: block_open_%s(data, 0)\n\n", lo, lo)
 	b.pf("  def block_open_%s(data, lead) when is_binary(data) and is_integer(lead) do\n", lo)
 	b.pf("    bytes = byte_size(data)\n\n")
-	b.pf("    if bytes < %d or rem(lead, B.align()) != 0 do\n", proj.Size)
+	b.pf("    if bytes < %s or rem(lead, B.align()) != 0 do\n", exInt(proj.Size))
 	b.pf("      :error\n")
 	b.pf("    else\n")
 	b.pf("      case data do\n")
-	b.pf("        <<magic::little-unsigned-64, build::little-unsigned-64,\n")
-	b.pf("          order::little-unsigned-64, _::binary>> ->\n")
+	b.pf("        <<magic::little-unsigned-64, build::little-unsigned-64, order::little-unsigned-64,\n")
+	b.pf("          _::binary>> ->\n")
 	b.pf("          # a byte-swapped magic is a FOREIGN BYTE ORDER, and anything else\n")
 	b.pf("          # is not a block at all. Both refuse.\n")
 	b.pf("          if magic != B.magic() or build != @build_version or order != B.byte_order() do\n")
@@ -380,10 +383,10 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	if len(bl.Arrays) == 0 {
 		b.pf("    # this table declares no out-of-line array, so the prologue and the\n")
 		b.pf("    # projection's own extent are the whole check\n")
-		b.pf("    block_used_%s(data, bytes, %d)\n", lo, proj.Size)
+		b.pf("    block_used_%s(data, bytes, %s)\n", lo, exInt(proj.Size))
 	} else {
 		b.pf("    used =\n")
-		b.pf("      Enum.reduce_while(%s_block_arrays(), %d, fn a, used ->\n", lo, proj.Size)
+		b.pf("      Enum.reduce_while(%s_block_arrays(), %s, fn a, used ->\n", lo, exInt(proj.Size))
 		b.pf("        offset_of = B.u64halves(data, a.offset_of_offset)\n")
 		b.pf("        count = B.u32(data, a.count_offset)\n")
 		b.pf("        stride = B.u32(data, a.stride_offset)\n")
@@ -397,7 +400,7 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 		b.pf("          # past the DECLARED MAXIMUM: a consumer that sized anything by\n")
 		b.pf("          # the maximum would overflow on a count the maximum does not bound\n")
 		b.pf("          count > a.max -> {:halt, :error}\n")
-		b.pf("          offset_of < %d -> {:halt, :error}\n", proj.Size)
+		b.pf("          offset_of < %s -> {:halt, :error}\n", exInt(proj.Size))
 		b.pf("          rem(offset_of, B.align()) != 0 -> {:halt, :error}\n")
 		b.pf("          offset_of > bytes -> {:halt, :error}\n")
 		b.pf("          rows > bytes - offset_of -> {:halt, :error}\n")
@@ -427,9 +430,23 @@ func (b *blockGen) emitBlockArrays(bl *ir.BlockLayout) {
 		b.pf("  # positions in the projection, this build's pitch and the declared\n")
 		b.pf("  # maximum beside them.\n")
 		b.pf("  @%s_block_arrays [\n", lo)
-		for _, a := range bl.Arrays {
-			b.pf("    %%{name: %q, offset_of_offset: %d, count_offset: %d, stride_offset: %d, stride: %d, max: %d, start_align: %d},\n",
-				a.Field.Name, a.OffsetOfOffset, a.CountOffset, a.StrideOffset, a.Stride, a.Max, blockStartAlign(a))
+		for i, a := range bl.Arrays {
+			comma := exComma(i, len(bl.Arrays))
+			pairs := []string{
+				fmt.Sprintf("name: %q", a.Field.Name),
+				"offset_of_offset: " + exInt(a.OffsetOfOffset),
+				"count_offset: " + exInt(a.CountOffset),
+				"stride_offset: " + exInt(a.StrideOffset),
+				"stride: " + exInt(a.Stride),
+				"max: " + exInt(a.Max),
+				"start_align: " + exInt(blockStartAlign(a)),
+			}
+			// one line when it fits the formatter's limit, one pair a line when not
+			if one := "    %{" + strings.Join(pairs, ", ") + "}" + comma; exWidth(one) <= exLineLimit {
+				b.pf("%s\n", one)
+			} else {
+				b.pf("    %%{\n      %s\n    }%s\n", strings.Join(pairs, ",\n      "), comma)
+			}
 		}
 		b.pf("  ]\n")
 		b.pf("  def %s_block_arrays, do: @%s_block_arrays\n\n", lo, lo)
@@ -449,17 +466,17 @@ func (b *blockGen) emitBlockRows(bl *ir.BlockLayout) {
 		b.pf("  # Stream, so a walk builds no list.\n")
 		b.pf("  def %s_%s_count(block) do\n", lo, a.Field.Name)
 		b.pf("    data = block.base\n")
-		b.pf("    B.u32(data, %d)\n", a.CountOffset)
+		b.pf("    B.u32(data, %s)\n", exInt(a.CountOffset))
 		b.pf("  end\n\n")
 		b.pf("  def %s_%s_at(block, index) do\n", lo, a.Field.Name)
 		b.pf("    data = block.base\n")
-		b.pf("    B.row(data, B.u64halves(data, %d), B.u32(data, %d), B.u32(data, %d), index)\n",
-			a.OffsetOfOffset, a.CountOffset, a.StrideOffset)
+		b.pf("    B.row(data, B.u64halves(data, %s), B.u32(data, %s), B.u32(data, %s), index)\n",
+			exInt(a.OffsetOfOffset), exInt(a.CountOffset), exInt(a.StrideOffset))
 		b.pf("  end\n\n")
 		b.pf("  def %s_%s(block) do\n", lo, a.Field.Name)
 		b.pf("    data = block.base\n")
-		b.pf("    B.rows(data, B.u64halves(data, %d), B.u32(data, %d), B.u32(data, %d))\n",
-			a.OffsetOfOffset, a.CountOffset, a.StrideOffset)
+		b.pf("    B.rows(data, B.u64halves(data, %s), B.u32(data, %s), B.u32(data, %s))\n",
+			exInt(a.OffsetOfOffset), exInt(a.CountOffset), exInt(a.StrideOffset))
 		b.pf("  end\n\n")
 	}
 }
@@ -476,11 +493,11 @@ func (b *blockGen) emitBlockInfo(bl *ir.BlockLayout) {
 	b.pf("  @block_info_%s %%{\n", lo)
 	b.pf("    name: %q,\n", name)
 	b.pf("    build_version: %s.BuildVersion.build_version(),\n", b.ns)
-	b.pf("    size: %d,\n", bl.Projection.Size)
+	b.pf("    size: %s,\n", exInt(bl.Projection.Size))
 	b.pf("    align: %d,\n", bl.Projection.Align)
 	b.pf("    fields: [\n")
-	for _, fl := range bl.Projection.Fields {
-		b.pf("      %s,\n", b.blockFieldRow(bl, fl, true))
+	for i, fl := range bl.Projection.Fields {
+		b.pf("      %s%s\n", b.blockFieldRow(bl, fl, true), exComma(i, len(bl.Projection.Fields)))
 	}
 	b.pf("    ]\n")
 	b.pf("  }\n")
@@ -491,7 +508,8 @@ func (b *blockGen) emitBlockInfo(bl *ir.BlockLayout) {
 // types, and anything they nest by value — plus the typed row accessors beside
 // them, which is the fast path a per-frame job uses (§19.2).
 func (b *blockGen) emitRecordInfos(tables []*ir.BlockLayout) {
-	for _, name := range b.recordsOf(tables) {
+	records := b.recordsOf(tables)
+	for ri, name := range records {
 		st := b.unit.Tables[name]
 		if st == nil {
 			st = b.unit.Structs[name]
@@ -506,11 +524,11 @@ func (b *blockGen) emitRecordInfos(tables []*ir.BlockLayout) {
 		b.pf("  @block_record_%s %%{\n", lo)
 		b.pf("    name: %q,\n", name)
 		b.pf("    build_version: %s.BuildVersion.build_version(),\n", b.ns)
-		b.pf("    size: %d,\n", layout.Size)
+		b.pf("    size: %s,\n", exInt(layout.Size))
 		b.pf("    align: %d,\n", layout.Align)
 		b.pf("    fields: [\n")
-		for _, fl := range layout.Fields {
-			b.pf("      %s,\n", b.blockFieldRow(nil, fl, false))
+		for i, fl := range layout.Fields {
+			b.pf("      %s%s\n", b.blockFieldRow(nil, fl, false), exComma(i, len(layout.Fields)))
 		}
 		b.pf("    ]\n")
 		b.pf("  }\n")
@@ -520,14 +538,28 @@ func (b *blockGen) emitRecordInfos(tables []*ir.BlockLayout) {
 		b.pf("  # reading it at its own offset out of the row's sub-binary. Both come\n")
 		b.pf("  # from one declaration and a consumer picks by what it is doing —\n")
 		b.pf("  # reflection to walk anything, these to read one thing fast (§19.2).\n")
+		var items []string
 		for _, fl := range layout.Fields {
-			b.emitRowAccessor(name, fl)
+			items = append(items, b.rowAccessors(name, fl)...)
 		}
-		b.pf("\n")
+		b.pf("%s", exBlock(items))
+		if ri < len(records)-1 {
+			b.pf("\n")
+		}
 	}
 }
 
-func (b *blockGen) emitRowAccessor(record string, fl ir.FieldLayout) {
+// rowAccessors renders one field's typed row accessors, one expression each
+// for exBlock to separate the formatter's way.
+func (b *blockGen) rowAccessors(record string, fl ir.FieldLayout) []string {
+	var out []string
+	b.rowAccessor(record, fl, func(format string, args ...any) {
+		out = append(out, fmt.Sprintf(format, args...))
+	})
+	return out
+}
+
+func (b *blockGen) rowAccessor(record string, fl ir.FieldLayout, emit func(string, ...any)) {
 	f := fl.Field
 	lo := ir.RustSnake(record)
 	pieces := ir.BlockFieldPieceOffsets(b.unit, f, fl.Offset, false)
@@ -537,32 +569,38 @@ func (b *blockGen) emitRowAccessor(record string, fl ir.FieldLayout) {
 		if len(pieces) > 1 {
 			used = pieces[1].Offset
 		}
-		b.pf("  def %s_row_%s(row), do: B.slice(row, %d, max(B.i32(row, %d), 0))\n", lo, f.Name, fl.Offset, used)
+		emit("%s", exDefDo("  ", fmt.Sprintf("def %s_row_%s(row)", lo, f.Name),
+			fmt.Sprintf("B.slice(row, %s, max(B.i32(row, %s), 0))", exInt(fl.Offset), exInt(used))))
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone:
 		size := elementSizeOf(b.unit, f)
 		count := f.ArrayBound
 		if f.Array == ir.ArrayCounted {
 			// a counted array in a RECORD keeps every slot, with the used
 			// count beside it (§7.2)
-			b.pf("  def %s_row_%s_count(row), do: B.i32(row, %d)\n", lo, f.Name, pieces[len(pieces)-1].Offset)
+			emit("%s", exDefDo("  ", fmt.Sprintf("def %s_row_%s_count(row)", lo, f.Name),
+				fmt.Sprintf("B.i32(row, %s)", exInt(pieces[len(pieces)-1].Offset))))
 		}
-		b.pf("  def %s_row_%s(row) do\n", lo, f.Name)
-		b.pf("    Enum.map(0..%d//1, fn i -> %s end)\n", count-1, b.readAt(f, fmt.Sprintf("%d + i * %d", fl.Offset, size), size))
-		b.pf("  end\n")
+		emit("  def %s_row_%s(row) do\n    Enum.map(0..%s//1, fn i -> %s end)\n  end\n", lo, f.Name, exInt(count-1),
+			b.readAt(f, fmt.Sprintf("%s + i * %s", exInt(fl.Offset), exInt(size)), size))
 	default:
 		size := elementSizeOf(b.unit, f)
 		if f.Type.Optional {
-			b.pf("  def %s_row_%s_present?(row), do: B.uint(row, %d, 1) != 0\n", lo, f.Name, pieces[len(pieces)-1].Offset)
+			emit("%s", exDefDo("  ", fmt.Sprintf("def %s_row_%s_present?(row)", lo, f.Name),
+				fmt.Sprintf("B.uint(row, %s, 1) != 0", exInt(pieces[len(pieces)-1].Offset))))
 		}
-		b.pf("  def %s_row_%s(row), do: %s\n", lo, f.Name, b.readAt(f, fmt.Sprint(fl.Offset), size))
+		emit("%s", exDefDo("  ", fmt.Sprintf("def %s_row_%s(row)", lo, f.Name), b.readAt(f, fmt.Sprint(fl.Offset), size)))
 	}
 }
 
 // readAt renders the expression that reads ONE slot of a field at `at`.
 func (b *blockGen) readAt(f *ir.Field, at string, size int64) string {
+	// a bare offset is spelled the formatter's way
+	if n, err := strconv.ParseInt(at, 10, 64); err == nil {
+		at = exInt(n)
+	}
 	if isStruct(f) {
 		// a nested record is a SUB-BINARY, which the record's own accessors read
-		return fmt.Sprintf("B.slice(row, %s, %d)", at, size)
+		return fmt.Sprintf("B.slice(row, %s, %s)", at, exInt(size))
 	}
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -592,21 +630,21 @@ func (b *blockGen) blockFieldRow(bl *ir.BlockLayout, fl ir.FieldLayout, projecti
 	switch {
 	case outOfLine:
 		a := bl.ArrayByName(f.Name)
-		offsetOfOffset = fmt.Sprint(a.OffsetOfOffset)
-		countOffset = fmt.Sprint(a.CountOffset)
-		strideOffset = fmt.Sprint(a.StrideOffset)
+		offsetOfOffset = exInt(a.OffsetOfOffset)
+		countOffset = exInt(a.CountOffset)
+		strideOffset = exInt(a.StrideOffset)
 		stride = a.Stride
 		element = b.recordRef(a.ElemName)
 		isArray, counted, arrayBound, elemSize = true, true, f.ArrayBound, 0
 	case f.Type.Kind == ir.TString:
 		counted, arrayBound, elemSize = true, f.Type.Size, 1
 		if len(pieces) > 1 {
-			countOffset = fmt.Sprint(pieces[1].Offset)
+			countOffset = exInt(pieces[1].Offset)
 		}
 	case f.Type.Kind == ir.TBytes:
 		isArray, counted, arrayBound, elemSize = true, true, f.Type.Size, 1
 		if len(pieces) > 1 {
-			countOffset = fmt.Sprint(pieces[1].Offset)
+			countOffset = exInt(pieces[1].Offset)
 		}
 	default:
 		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
@@ -620,7 +658,7 @@ func (b *blockGen) blockFieldRow(bl *ir.BlockLayout, fl ir.FieldLayout, projecti
 		}
 	}
 	if f.Type.Optional {
-		presentOffset = fmt.Sprint(pieces[len(pieces)-1].Offset)
+		presentOffset = exInt(pieces[len(pieces)-1].Offset)
 		elemSize = elementSizeOf(b.unit, f)
 	}
 	if !isArray && !counted && !f.Type.Optional {
@@ -635,19 +673,19 @@ func (b *blockGen) blockFieldRow(bl *ir.BlockLayout, fl ir.FieldLayout, projecti
 	var out strings.Builder
 	fmt.Fprintf(&out, "%%{\n")
 	fmt.Fprintf(&out, "        name: %q,\n", f.Name)
-	fmt.Fprintf(&out, "        offset: %d,\n", fl.Offset)
-	fmt.Fprintf(&out, "        size: %d,\n", fl.Size)
+	fmt.Fprintf(&out, "        offset: %s,\n", exInt(fl.Offset))
+	fmt.Fprintf(&out, "        size: %s,\n", exInt(fl.Size))
 	fmt.Fprintf(&out, "        kind: %d,\n", kind)
 	fmt.Fprintf(&out, "        out_of_line: %v,\n", outOfLine)
 	fmt.Fprintf(&out, "        offset_of_offset: %s,\n", offsetOfOffset)
 	fmt.Fprintf(&out, "        count_offset: %s,\n", countOffset)
 	fmt.Fprintf(&out, "        stride_offset: %s,\n", strideOffset)
-	fmt.Fprintf(&out, "        stride: %d,\n", stride)
+	fmt.Fprintf(&out, "        stride: %s,\n", exInt(stride))
 	fmt.Fprintf(&out, "        is_array: %v,\n", isArray)
 	fmt.Fprintf(&out, "        counted: %v,\n", counted)
 	fmt.Fprintf(&out, "        optional: %v,\n", f.Type.Optional)
-	fmt.Fprintf(&out, "        array_bound: %d,\n", arrayBound)
-	fmt.Fprintf(&out, "        elem_size: %d,\n", elemSize)
+	fmt.Fprintf(&out, "        array_bound: %s,\n", exInt(arrayBound))
+	fmt.Fprintf(&out, "        elem_size: %s,\n", exInt(elemSize))
 	fmt.Fprintf(&out, "        present_offset: %s,\n", presentOffset)
 	fmt.Fprintf(&out, "        element: %s\n", element)
 	out.WriteString("      }")
