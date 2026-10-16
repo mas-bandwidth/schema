@@ -1768,6 +1768,7 @@ function writeBenchMixedFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - -1.0) / 2.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 200.0) + 0.5));
+  if (v > 200) { v = 200; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
@@ -1780,6 +1781,7 @@ function writeBenchMixedFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - -1.0) / 2.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 200.0) + 0.5));
+  if (v > 200) { v = 200; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
@@ -1792,6 +1794,7 @@ function writeBenchMixedFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - -1.0) / 2.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 200.0) + 0.5));
+  if (v > 200) { v = 200; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
@@ -2383,6 +2386,7 @@ function writeBenchMixedFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - -1.0) / 2.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 200.0) + 0.5));
+  if (v > 200) { v = 200; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
@@ -2398,6 +2402,7 @@ function writeBenchMixedFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - -1.0) / 2.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 200.0) + 0.5));
+  if (v > 200) { v = 200; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
@@ -2413,6 +2418,7 @@ function writeBenchMixedFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - -1.0) / 2.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 200.0) + 0.5));
+  if (v > 200) { v = 200; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
