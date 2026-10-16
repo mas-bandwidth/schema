@@ -1,0 +1,72 @@
+diff --git a/internal/codegen/cpptable/fixedform.go b/internal/codegen/cpptable/fixedform.go
+index a17387895..38f3a05ae 100644
+--- a/internal/codegen/cpptable/fixedform.go
++++ b/internal/codegen/cpptable/fixedform.go
+@@ -955,11 +955,25 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
+ 	}
+ 	g.fixedOwner = st
+ 	g.pf("// %s's read-side bounds.\n", st.Name)
+-	g.pf("inline void %sFixedClampBody( %s & value, int32_t & clamped, int32_t & damaged )\n{\n", st.Name, st.Name)
++	// THE COUNTERS ARE RESTRICT, AND PER COMPILER COUNTED LOCALLY: the
++	// runtime's TABLE_CLAMP_RESTRICT and TABLE_CLAMP_LOCAL pick each
++	// compiler's measured form; the fallback is the portable reference form.
++	g.pf("inline void %sFixedClampBody( %s & value, int32_t & TABLE_CLAMP_RESTRICT clamped_out, int32_t & TABLE_CLAMP_RESTRICT damaged_out )\n{\n", st.Name, st.Name)
++	g.pf("#if TABLE_CLAMP_LOCAL\n")
++	g.pf("    int32_t clamped = 0;\n")
++	g.pf("    int32_t damaged = 0;\n")
++	g.pf("#else\n")
++	g.pf("    int32_t & clamped = clamped_out;\n")
++	g.pf("    int32_t & damaged = damaged_out;\n")
++	g.pf("#endif\n")
+ 	g.pf("    (void) value; (void) clamped; (void) damaged;\n")
+ 	for _, f := range st.Fields {
+ 		g.emitFixedClampField(f, "value", 4)
+ 	}
++	g.pf("#if TABLE_CLAMP_LOCAL\n")
++	g.pf("    clamped_out += clamped;\n")
++	g.pf("    damaged_out += damaged;\n")
++	g.pf("#endif\n")
+ 	g.pf("}\n\n")
+ }
+ 
+diff --git a/internal/codegen/cpptable/fixedruntime.go b/internal/codegen/cpptable/fixedruntime.go
+index c745e1bc6..b69f3c4c8 100644
+--- a/internal/codegen/cpptable/fixedruntime.go
++++ b/internal/codegen/cpptable/fixedruntime.go
+@@ -72,6 +72,36 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
+ #define TABLE_RESTRICT
+ #endif
+ 
++// THE CLAMP PASS'S COUNTERS NEVER ALIAS THE RECORD IT CLAMPS. The two
++// counters a *FixedClampBody takes are the caller's locals, never a field of
++// the value, but an int32_t & may alias every int32_t field the pass stores
++// to, so without saying so each clamp reloads the counter and the pass does
++// not vectorize (bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-restrict).
++// Each compiler gets its MEASURED form:
++//   TABLE_CLAMP_RESTRICT  the qualifier on the two counter references;
++//   TABLE_CLAMP_LOCAL     1: count into a local inside the body and add it to
++//                         the caller's counter once, at the end.
++// MSVC and any other compiler keep the portable form: plain references,
++// counted in place. Either may be defined by the build to override.
++#ifndef TABLE_CLAMP_RESTRICT
++#if defined( __clang__ )
++#define TABLE_CLAMP_RESTRICT __restrict__
++#elif defined( __GNUC__ )
++#define TABLE_CLAMP_RESTRICT __restrict__
++#else
++#define TABLE_CLAMP_RESTRICT
++#endif
++#endif
++#ifndef TABLE_CLAMP_LOCAL
++#if defined( __clang__ )
++#define TABLE_CLAMP_LOCAL 0
++#elif defined( __GNUC__ )
++#define TABLE_CLAMP_LOCAL 0
++#else
++#define TABLE_CLAMP_LOCAL 0
++#endif
++#endif
++
+ // THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
+ // halves of the loop below, and a call there is the whole cost of the form.
+ #if defined( _MSC_VER )

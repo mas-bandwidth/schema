@@ -5,6 +5,33 @@
 > ([BENCH-STANDARD §5](../bench/BENCH-STANDARD.md#5-reporting-format)). The tables below
 > are kept exactly as published, in their recorded convention (C++ = 100%).
 
+## 2026-10-16: the C++ read clamp's counters, `__restrict` per compiler: neither identity read beats its packet read
+
+The read-side clamp pass (`*FixedClampBody`) takes its two counters as
+`int32_t & TABLE_CLAMP_RESTRICT`. Each compiler gets its measured best of four forms:
+the plain reference, `__restrict`, a local counter stored once at the end, and both.
+The numbers come from `bench/paired/nine.sh --read-arm`, two sittings per compiler on
+hetzner1 (AMD Ryzen 7 PRO 8700GE, `-O3`, pinned `taskset -c 6`), all four windows OK,
+7 rounds each, 4,000,000 records per sample, corpus `12224b99745dc057`, at
+`8649a725d` ([result](../bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-restrict/README.md)):
+
+| C++, best of 7 | form | identity read | packet read | beats the packet read? |
+|---|---|---:|---:|---|
+| g++ 13.3, sitting 1 | plain reference | 215.3 ns/record | 148.1 ns/record | **no** (FAIL, 1.45x slower) |
+| g++ 13.3, sitting 2 | plain reference | 215.5 ns/record | 147.7 ns/record | **no** (FAIL, 1.46x slower) |
+| clang 18.1, sitting 1 | `__restrict` | 152.3 ns/record | 130.0 ns/record | **no** (FAIL, 1.17x slower) |
+| clang 18.1, sitting 2 | `__restrict` | 149.5 ns/record | 129.9 ns/record | **no** (FAIL, 1.15x slower) |
+
+`__restrict` makes clang's identity read 1.24x faster (185.8 → 148.5 ns/record in the
+pinned four-form exploration). On g++ every alternative is slower than the plain
+reference: `__restrict` 247.9, the local counter 307.7, both 309.1, against 215.8. So g++
+and MSVC keep the portable form. On ARM (mini-m5-1, Apple clang 21, exploration only, no
+board), `__restrict` goes from 134.8 to 89.1 ns/record and ties the packet read's
+88.7–91.8, but does not beat it. Checks differ and are labelled: the table read keeps
+its contract validation, while the packet read is the packet leg's `checks=removed` build.
+The next step is a cycle profile of the clamp bodies per compiler, which needs a bench
+where `perf` is permitted. The result page names the command.
+
 ## 2026-09-07: the Studio's nine-language table, and what moved since the Air's
 
 The first table of the day on the new node pin was a sitting on the Apple M3 Ultra Studio
