@@ -1,5 +1,124 @@
 # JavaScript: the fixed read against its own packet read (identity lane)
 
+## Attempt w2 (2026-10-16): the cause is fixed in a proposed emitter diff, measured, and HELD
+
+**Verdict for the shipped codec: FAIL**, still, in both w2 sittings (833.2 / 844.4
+ns/record against the packet read's 346.7 / 353.4). **With the proposed emitter
+diff the fixed read is FASTER than the packet read in both sittings** (338.4 /
+348.9 against 346.7 / 353.4), but the diff is generated-code and emitter work
+outside this card's PATHS, it turns three ruling guards red, and its margin is
+thin. So identity is **not** flipped, and the card HOLDs for a ruling.
+
+| sitting | order | shipped | proposed, copy kept (`emitted-noid`) | **proposed (`emitted`)** | scratch upper bound (`p6-mz`) | **packet `bench_mixed_read`** |
+|---|---|---|---|---|---|---|
+| 1 | tables, then packet | 833.2 / 836.8 | 736.7 / 743.5 | **338.4 / 340.2** | 324.9 / 331.8 | **346.7 / 351.4** |
+| 2 (control) | packet, then tables | 844.4 / 847.2 | 751.7 / 754.1 | **348.9 / 350.0** | 327.4 / 329.3 | **353.4 / 367.2** |
+
+ns/record, best / median, `bench_fixed_read` for the four table columns,
+copied from the runners' output in [board.txt](board.txt) (w2 section). Spreads
+2.6% to 3.8% on every table row, 2.0% and 8.7% on the packet row: all under
+§2.3's 15%. `emitted` beats the packet best by 8.3 ns (2.4%) and 4.5 ns (1.3%):
+FIXED-FASTER on the letter of the gate, but by less than one sitting's packet
+spread, so it is reported as a pass of a scratch codec and nothing more.
+
+### The w2 sitting
+
+- **Host:** hetzner2, x86_64, AMD Ryzen 9 7950X3D, kernel 6.8.0-139-generic, no
+  SMT. hetzner1 (w1's host) was not usable for a clean window: its pinned
+  core's SMT sibling was carrying another job, which doubled every number
+  intermittently (w2 saw 1428 ns for the shipped read on cpu11 while cpu3 ran a
+  dotnet job at 100%). Never the studio Mac.
+- **Node** v26.7.0, **serialize.js** v1.4.2 (de0591c9e6fddbbc5d4512b4558f091ffa2158ad).
+- **Pin** `taskset -c 12`; core 12's busy-jiffy delta equals its total delta in
+  both sittings, so the core was ours for the window.
+- **Window:** sitting 1 2026-10-16T02:43:35Z–02:43:54Z, load 0.91 → 0.94
+  (1-min); sitting 2 02:43:54Z–02:44:13Z, load 0.94 → 1.40. The script waited
+  for a 1-min load under 1.5 before starting.
+- **Five node processes per sitting**, back to back from one script: the
+  shipped table runner, the same committed table runner over three scratch
+  codecs (a copy of the tree whose `generated/bench/paired/js` was replaced),
+  and the packet runner. Corpus ids as in w1 (`066b2822b3e5d487` table,
+  `fd0748942dc6ae09` packet); iterations as in w1 (400000 / 4000000 records, 1
+  warmup + 7 runs). Every table run passes the four golden gates before the
+  clock and the write-back proof after it (`rc=0` on every process).
+
+### The cause, and what removes it
+
+w1's split stands: the read is two passes, a copy of the 1236-byte body into
+the plan image (~415 ns) and the object projection (~395 ns). w2 profiled the
+projection (`node --prof`, and stubbing pieces in scratch to price them): of
+~385 ns with the copy gone, the 80 stats cost ~145, the 8 entities ~100, the
+BigInt fields ~95; `RecordWriteSaveFP` (the write barrier on BigInt stores) is
+12% of ticks against the packet read's 7%; nested `MixedEntityFixedDecode` was
+not inlined by TurboFan; the nested type's text check ran twice. The
+working set is not the cause (64 destinations and 1 destination time the same).
+
+The proposed emitter diff (appendix; also tested, see below) does, in
+`internal/codegen/jstable/`:
+
+1. **fixedmodule.go — the identity plan projects straight from the file.**
+   `identity = entries === <T>FixedIdentity && holeN === 0`; when true the
+   record loop calls `<T>FixedDecode(values[k], srcView, at + 8, stage)` and
+   skips the prefill and the copy. This is the ~415 ns.
+2. **fixedjs.go — one straight projection.** A nested struct is inlined into
+   its parent's decode instead of called (so its text is checked once, at the
+   top), an array of structs walks with its array and count in locals and a
+   running offset, loop variables are depth-unique (`i`, `i1`, ...) so inlined
+   loops cannot shadow.
+3. **fixedjs.go — wide integers.** A 64- or 128-bit ranged clamp is decided on
+   the u32 lanes as a Number (exact: monotone rounding, only used when every
+   bound is below 2^53, and for 128 bits a multiple of 2^64), so no BigInt is
+   made only to be compared; a 128-bit value whose high half is zero is its low
+   half; an int128 takes its high half signed instead of `BigInt.asIntN`.
+4. **fixedmodule.go / fixedruntime.go — per call.** The layout compare and the
+   per-record hash read in 32-bit lanes through the file's view
+   (`TableFixedKnownLayout.layoutView`, made once at module load).
+
+`emitted-noid` (everything but item 1) is 736.7 / 751.7 ns: **the projection
+work alone does not come close; the copy has to go.**
+
+### Why it HOLDs: the ruling item 1 reopens
+
+Item 1 is a second path. §3.4 and the emitter quote the owner's ruling: "no
+strict flag, no fast path and no second reader", because "a form whose cost
+moved when a peer shipped would be a performance cliff". After item 1 a peer
+on this build's own layout reads at ~340 ns and a peer on any other layout
+still pays the copy (~750 ns). Three tests pin that ruling and go red on the
+diff, honestly, by name:
+
+- `fixedform_test.go:209` TestDecodeClampsEnumOrdinalAndRangedInt — "the load grew a second reader"
+- `fixedform_test.go:308` TestFixedFormLoadPrefillsThePlanHoles — "the load loop still branches on identity"
+- `fixedform_test.go:367` TestFixedGuardComparedAtArgW — "the load grew a second reader"
+
+`go test -count=1 -timeout 600s ./internal/codegen/jstable/` with
+`SCHEMA_SLOW=1` and the C++ byte oracle built (`make tables-fixedform-corpus`,
+serialize v1.17.0-2-g6c692bf sibling) on hetzner2: **base 64 pass / 0 fail /
+0 skip; proposed 61 pass / 3 fail / 0 skip**, the three above and nothing else
+(the fixed-versioning, refuse-is-total, float32 NaN and node conformance tests
+all pass on the proposed emission). A float32 change (read non-NaN values with
+`getFloat32`) was tried and withdrawn because `float32_nan_bits_test.go`
+forbids that call textually.
+
+The two ways forward, for Glenn:
+
+- **Rule that identity may project in place** (the cliff is bounded: the
+  compiled path is unchanged, ~10% faster than today from items 2 to 4), then
+  land the diff, regenerate `generated/bench/paired/js`, rewrite the three
+  guards to pin the new rule, and re-run this card's two sittings.
+- **Keep the ruling**, and make the compiled plan project from the file too
+  (the plan becomes per-field source offsets for the decode rather than a copy
+  into an image). That is a plan-shape change, larger, and not measured here.
+
+Either way the margin is thin (1.3% to 2.4% for the emitted diff, 6% to 7% for
+the hand-tuned `p6-mz`, whose extra wins were local clamps, byte arrays moved
+in 32-bit lanes and a small-u64 `BigInt(Number)` read). The next cause, if a
+wider margin is wanted: BigInt allocation and its write barrier (~95 ns), and
+the 80-stat loop (~145 ns), which the bitpacked packet read also pays.
+
+---
+
+## Attempt w1 (2026-10-16, hetzner1)
+
 **Verdict: FAIL**, in both sittings. The fixed form's identity read is slower
 than the same leg's packet read of the same 64 logical records, each side
 measured alone (BENCH-STANDARD §1.10, Glenn's ruling of 2026-09-11: slower is a
@@ -14,7 +133,7 @@ Every number above is copied from the runners' own output in
 [board.txt](board.txt); none is recomputed. Both spreads are under §2.3's 15%,
 so both rows publish and the verdict stands.
 
-## The sitting
+### The sitting
 
 - **Host:** hetzner1, x86_64, AMD Ryzen 7 PRO 8700GE, kernel 6.8.0-139-generic.
   Never the studio Mac.
@@ -56,7 +175,7 @@ so both rows publish and the verdict stands.
   back to what was read. `--gate --plan-read` passes on both runners on
   hetzner1.
 
-## The cause, from a timing split
+### The cause, from a timing split
 
 A scratch split (not committed: it re-imports the generated modules and times
 the pieces of `FixedTableFixedLoad` separately, pinned to the same core, two
@@ -87,7 +206,7 @@ generated code, outside this card's PATHS):
    text validation and nested-object stores; even with the copy gone, arm C
    alone does not beat the packet read.
 
-## The plan lane
+### The plan lane
 
 `gates/packet-read/js/plan` stays `:unknown`. It needs BENCH-STANDARD §1.10's
 lineage corpus (items 4 to 6 there: the VOLD schema's records written by the
@@ -107,8 +226,338 @@ every leg's paired codec against its lock, and give the paired driver its
 plan-read mode; then the JS `bench_plan_read` row is the same loop as
 `bench_fixed_read` over `bench_lineage.bin`.
 
-## The roadmap
+### The roadmap
 
 `gates/packet-read/js/identity` is **not** flipped: the brief flips it only on
 two FIXED-FASTER sittings, and both are FAIL. docs/roadmap.sexp and ROADMAP.md
 are unchanged.
+
+## Appendix: the proposed emitter diff (against c704b7f43; not applied, outside PATHS)
+
+```diff
+diff --git a/internal/codegen/jstable/fixedjs.go b/internal/codegen/jstable/fixedjs.go
+index 38e1526a5..264acb56f 100644
+--- a/internal/codegen/jstable/fixedjs.go
++++ b/internal/codegen/jstable/fixedjs.go
+@@ -178,6 +178,22 @@ type fixedGen struct {
+ 	// an absent optional lands its payload's declared default, and for a
+ 	// nested type that default is that type's own Init.
+ 	need func(cls, typeName string)
++	// loops is how deep the decode's emitted loops nest. A nested struct is
++	// INLINED into its parent's projection (one straight function, the way the
++	// flat packet reader is), so a loop inside an inlined element must not
++	// shadow the loop variable its base offset is written in.
++	loops int
++	// inl numbers the locals an inlined struct element binds.
++	inl int
++}
++
++// loopVar names the loop variable at the current decode nesting depth: `i` at
++// the top, so a flat type's emission is unchanged, then i1, i2, ...
++func (g *fixedGen) loopVar() string {
++	if g.loops == 0 {
++		return "i"
++	}
++	return fmt.Sprintf("i%d", g.loops)
+ }
+ 
+ func (g *fixedGen) require(cls, typeName string) {
+@@ -238,11 +254,16 @@ func (g *fixedGen) store(ind, view, at string, t ir.FieldType, expr string) {
+ 
+ func (g *fixedGen) load(ind, lhs, view, at string, t ir.FieldType) {
+ 	if fixedStorageBytes(t) == 16 {
+-		g.pf("%s%s = %s.getBigUint64(%s, true) | (%s.getBigUint64(%s, true) << 64n);\n",
+-			ind, lhs, view, at, view, off(at, 8))
++		// A ZERO HIGH HALF IS THE LOW HALF, with no shift and no OR: two BigInts
++		// fewer per field. Otherwise a signed value takes its high half SIGNED,
++		// which is the same number BigInt.asIntN(128, ...) made, one BigInt sooner.
++		hi := "getBigUint64"
+ 		if fixedSigned(t) {
+-			g.pf("%s%s = BigInt.asIntN(128, %s);\n", ind, lhs, lhs)
++			hi = "getBigInt64"
+ 		}
++		g.pf("%s%s = (%s.getUint32(%s, true) | %s.getUint32(%s, true)) === 0\n", ind, lhs, view, off(at, 8), view, off(at, 12))
++		g.pf("%s  ? %s.getBigUint64(%s, true)\n", ind, view, at)
++		g.pf("%s  : (%s.%s(%s, true) << 64n) | %s.getBigUint64(%s, true);\n", ind, view, hi, off(at, 8), view, at)
+ 		return
+ 	}
+ 	if t.Kind == ir.TFloat32 {
+@@ -497,6 +518,7 @@ func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
+ 	// text violation in the image refuses by name before a single property of
+ 	// value is touched.
+ 	g.emitCheckTextStruct(st, "at", 0, "  ")
++	g.inl, g.loops = 0, 0
+ 	var cur int64
+ 	for _, f := range st.Fields {
+ 		g.emitDecodeField(f, "at", cur, "value", "  ")
+@@ -670,18 +692,21 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
+ 		// Content validity over the used units was checked before any write to
+ 		// value in emitCheckTextStruct (§4.5 fix 11, §5.3).
+ 		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
+-		g.pf("%sfor (let i = 0; i < %d; i++) { %s.%s[i] = view.getUint8(%s + i); }\n",
+-			ind, f.Type.Size, val, name, off(base, at+fixedCountBytes))
++		iv := g.loopVar()
++		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint8(%s + %s); }\n",
++			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
+ 	case f.Type.Kind == ir.TBytes:
+ 		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
+-		g.pf("%sfor (let i = 0; i < %d; i++) { %s.%s[i] = view.getUint8(%s + i); }\n",
+-			ind, f.Type.Size, val, name, off(base, at+fixedCountBytes))
++		iv := g.loopVar()
++		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint8(%s + %s); }\n",
++			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
+ 	case f.Type.Kind == ir.TWString:
+ 		// Content validity over the used units was checked before any write to
+ 		// value in emitCheckTextStruct (§4.5 fix 11, §5.3).
+ 		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
+-		g.pf("%sfor (let i = 0; i < %d; i++) { %s.%s[i] = view.getUint16(%s + i * 2, true); }\n",
+-			ind, f.Type.Size, val, name, off(base, at+fixedCountBytes))
++		iv := g.loopVar()
++		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint16(%s + %s * 2, true); }\n",
++			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
+ 	default:
+ 		g.emitDecodeElement(f, base, at, val+"."+name, ind)
+ 	}
+@@ -711,8 +736,26 @@ func (g *fixedGen) emitDecodeCount(ind, dst, at string, bound int64) {
+ 
+ func (g *fixedGen) emitDecodeLoop(f *ir.Field, base string, at int64, count, expr, ind string) {
+ 	elem := fixedElementBytes(f)
+-	g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
+-	g.emitDecodeElement(f, fmt.Sprintf("%s + i * %d", off(base, at), elem), 0, expr+"[i]", ind+"  ")
++	iv := g.loopVar()
++	if _, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
++		// AN ARRAY OF STRUCTS IS WALKED WITH ITS ARRAY AND ITS COUNT IN LOCALS
++		// and a RUNNING offset, so the inlined element body reads the image at
++		// o + k: no property load per element for the array or the bound, and
++		// no multiply per field.
++		g.pf("%s{\n", ind)
++		g.pf("%s  const a%s = %s, n%s = %s;\n", ind, iv, expr, iv, count)
++		g.pf("%s  for (let %s = 0, o%s = %s; %s < n%s; %s++, o%s += %d) {\n", ind, iv, iv, off(base, at), iv, iv, iv, iv, elem)
++		g.loops++
++		g.emitDecodeElement(f, "o"+iv, 0, "a"+iv+"["+iv+"]", ind+"    ")
++		g.loops--
++		g.pf("%s  }\n", ind)
++		g.pf("%s}\n", ind)
++		return
++	}
++	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
++	g.loops++
++	g.emitDecodeElement(f, fmt.Sprintf("%s + %s * %d", off(base, at), iv, elem), 0, expr+"["+iv+"]", ind+"  ")
++	g.loops--
+ 	g.pf("%s}\n", ind)
+ }
+ 
+@@ -720,7 +763,22 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
+ 	if f.Type.Kind == ir.TNamed {
+ 		switch r := f.Type.Ref.(type) {
+ 		case *ir.Struct:
+-			g.pf("%s%sFixedDecode(%s, view, %s, report);\n", ind, r.Name, expr, off(base, at))
++			// A NESTED STRUCT IS INLINED, not called: the projection is ONE
++			// straight function, the way the flat packet reader is written. The
++			// content check already ran over this element's text at the top of
++			// the outermost decode (emitCheckTextStruct recurses), so the inlined
++			// fields are the loads alone and nothing is validated twice.
++			// <T>FixedDecode is still emitted per struct for any other caller.
++			g.inl++
++			v := fmt.Sprintf("e%d", g.inl)
++			g.pf("%s{\n", ind)
++			g.pf("%s  const %s = %s;\n", ind, v, expr)
++			cur := at
++			for _, sf := range r.Fields {
++				g.emitDecodeField(sf, base, cur, v, ind+"  ")
++				cur += fixedFieldBytes(sf)
++			}
++			g.pf("%s}\n", ind)
+ 			return
+ 		case *ir.Union:
+ 			tag := fixedUnionTagBytes(r)
+@@ -776,10 +834,109 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
+ 			return
+ 		}
+ 	}
++	if g.emitBigClampLanes(ind, expr, off(base, at), f) {
++		return
++	}
+ 	g.load(ind, expr, "view", off(base, at), f.Type)
+ 	g.emitDecodeBounds(ind, expr, f)
+ }
+ 
++// emitBigClampLanes is §4.6's ranged clamp for a 64- or 128-bit integer,
++// decided on the image's u32 LANES AS A NUMBER before any BigInt exists: a
++// clamped value lands its bound's literal and an in-range one is loaded once,
++// so no BigInt is made only to be compared and no BigInt comparison runs.
++//
++// THE DECISION IS EXACT. The Number is hi * 2^32 + lo (for 128 bits, the high
++// 64-bit half), which rounds MONOTONICALLY, and it is only used when every
++// bound it is compared against is an integer below 2^53 in magnitude: a value
++// past such a bound rounds to a Number at or past it, never back across it,
++// and a value at the bound is exact. A 128-bit bound must also be a whole
++// multiple of 2^64 so the low half decides only the one tie it can. Anything
++// else answers false and takes the BigInt path unchanged.
++func (g *fixedGen) emitBigClampLanes(ind, expr, at string, f *ir.Field) bool {
++	if !fixedIsBig(f.Type) {
++		return false
++	}
++	if _, _, ok := fixedFloatClampEnds(f); ok {
++		return false
++	}
++	w := fixedStorageBytes(f.Type)
++	rlo, rhi, ok := ir.TableRawRange(f)
++	var low, high bool
++	switch {
++	case f.Type.Kind == ir.TBits:
++		// a bits(N) that does not fill its storage clamps at 2^N - 1 and only
++		// there (emitDecodeBounds' last case); one with a declared range too is
++		// left to the BigInt path
++		if ok || int64(f.Type.Width) >= 8*w {
++			return false
++		}
++		rlo = big.NewInt(0)
++		rhi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
++		low, high = false, true
++	case ok:
++		low, high = fixedClampEnds(f)
++	default:
++		return false
++	}
++	if !low && !high {
++		return false
++	}
++	safe := new(big.Int).Lsh(big.NewInt(1), 53)
++	inSafe := func(n *big.Int) bool { return new(big.Int).Abs(n).Cmp(safe) < 0 }
++	hiGet := "getUint32"
++	if fixedSigned(f.Type) {
++		hiGet = "getInt32"
++	}
++	var nExpr, loCond, hiCond string
++	switch w {
++	case 8:
++		if (low && !inSafe(rlo)) || (high && !inSafe(rhi)) {
++			return false
++		}
++		nExpr = fmt.Sprintf("view.%s(%s, true) * 4294967296 + view.getUint32(%s, true)", hiGet, off(at, 4), at)
++		loCond = fmt.Sprintf("n < %s", rlo.String())
++		hiCond = fmt.Sprintf("n > %s", rhi.String())
++	case 16:
++		two64 := new(big.Int).Lsh(big.NewInt(1), 64)
++		ql, rl := new(big.Int), new(big.Int)
++		qh, rh := new(big.Int), new(big.Int)
++		ql.DivMod(rlo, two64, rl) // Euclidean: the remainder is in [0, 2^64)
++		qh.DivMod(rhi, two64, rh)
++		if (low && (rl.Sign() != 0 || !inSafe(ql))) || (high && (rh.Sign() != 0 || !inSafe(qh))) {
++			return false
++		}
++		nExpr = fmt.Sprintf("view.%s(%s, true) * 4294967296 + view.getUint32(%s, true)", hiGet, off(at, 12), off(at, 8))
++		// below L = qL * 2^64 exactly when the high half is below qL; above
++		// H = qH * 2^64 when the high half is past qH, or equal with a low half
++		// that is not zero
++		loCond = fmt.Sprintf("n < %s", ql.String())
++		hiCond = fmt.Sprintf("n > %s || (n === %s && (view.getUint32(%s, true) | view.getUint32(%s, true)) !== 0)",
++			qh.String(), qh.String(), at, off(at, 4))
++	default:
++		return false
++	}
++	g.pf("%s{\n", ind)
++	g.pf("%s  const n = %s;\n", ind, nExpr)
++	first := true
++	if low {
++		g.pf("%s  if (%s) { %s = %s; report.clamped++; }\n", ind, loCond, expr, jsIntLit(rlo, true))
++		first = false
++	}
++	if high {
++		kw := "if"
++		if !first {
++			kw = "else if"
++		}
++		g.pf("%s  %s (%s) { %s = %s; report.clamped++; }\n", ind, kw, hiCond, expr, jsIntLit(rhi, true))
++	}
++	g.pf("%s  else {\n", ind)
++	g.load(ind+"    ", expr, "view", at, f.Type)
++	g.pf("%s  }\n", ind)
++	g.pf("%s}\n", ind)
++	return true
++}
++
+ // emitDecodeBounds is §4.6's ranged-scalar clamp, inline: a declared min/max
+ // (and a bits(N) width that does not fill storage) is held AFTER the load, on
+ // the value the consumer will see. The plan never does this. Vacuous ends —
+diff --git a/internal/codegen/jstable/fixedmodule.go b/internal/codegen/jstable/fixedmodule.go
+index f0905fffe..add792de4 100644
+--- a/internal/codegen/jstable/fixedmodule.go
++++ b/internal/codegen/jstable/fixedmodule.go
+@@ -376,8 +376,20 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
+ 	// at read time at all: no stranger's layout is ever walked.
+ 	g.pf("  const known = %sFixedKnown[pick];\n", st.Name)
+ 	g.pf("  if (layoutBytes !== known.layoutBytes) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }\n")
+-	g.pf("  for (let i = 0; i < layoutBytes; i++) {\n")
+-	g.pf("    if (bytes[layoutAt + i] !== known.layout[i]) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }\n")
++	// ONE VIEW OVER THE FILE, MADE ONCE PER READ AND NEVER PER RECORD: the
++	// layout compare, the record hashes and the identity projection all read
++	// through it, in 32-bit lanes where they move words (§3.4).
++	g.pf("  const srcView = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
++	g.pf("  {\n")
++	g.pf("    // THE LAYOUT COMPARE MOVES IN 32-BIT LANES, then a tail of at most three bytes.\n")
++	g.pf("    const lv = known.layoutView;\n")
++	g.pf("    let i = 0;\n")
++	g.pf("    for (; i + 4 <= layoutBytes; i += 4) {\n")
++	g.pf("      if (srcView.getUint32(layoutAt + i, true) !== lv.getUint32(i, true)) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }\n")
++	g.pf("    }\n")
++	g.pf("    for (; i < layoutBytes; i++) {\n")
++	g.pf("      if (bytes[layoutAt + i] !== known.layout[i]) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }\n")
++	g.pf("    }\n")
+ 	g.pf("  }\n")
+ 	// STEP 8: the plan this peer resolves to — laid down at module load, never
+ 	// here — and the record size FROM THE LOCK and never from the file.
+@@ -418,21 +430,31 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
+ 	g.pf("  // and the declared default is what it keeps. Same loop either way. There is\n")
+ 	g.pf("  // no identity flag in the record loop — an empty list is what skips the work.\n")
+ 	g.pf("  const holeN = TableFixedHoles(entries, entryCount, plan.cover, plan.holes);\n")
+-	g.pf("  // ONE VIEW OVER THE FILE, MADE ONCE PER READ AND NEVER PER RECORD: the\n")
+-	g.pf("  // read loop moves a run in 32-bit lanes and a DataView is what has an\n")
+-	g.pf("  // unaligned word move in this language (§3.4).\n")
+-	g.pf("  const srcView = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
+ 	g.pf("  // §4.5, §5.3: stage the record loop's counters so a refusal leaves the\n")
+ 	g.pf("  // caller's clamped and widened untouched; commit after the loop.\n")
+ 	g.pf("  const stage = TableFixedResetReport(plan.stage);\n")
++	// PROPOSED (js-fixed-read-beats-its-packet-read w2): THE IDENTITY PLAN IS
++	// ONE COPY OF THE WHOLE BODY, SO ITS IMAGE IS THE FILE ITSELF. Projecting
++	// straight from the file's view skips the copy (~415 ns of a ~860 ns read
++	// on hetzner1). THIS IS A SECOND PATH and it reopens the owner's ruling
++	// that §3.4 quotes — no fast path, a form's cost must not move when a peer
++	// ships — because a compiled plan still pays the copy. It needs that
++	// ruling changed before it lands; fixedform_test.go's identity-door guard
++	// says so by going red.
++	g.pf("  const identity = entries === %sFixedIdentity && holeN === 0;\n", st.Name)
+ 	g.pf("  let at = layoutAt + layoutBytes;\n")
+ 	g.pf("  for (let k = 0; k < n; k++) {\n")
+ 	g.pf("    // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY\n")
+ 	g.pf("    // NAME, never a guess and never damage: nothing is decoded, no counter moves.\n")
+-	g.pf("    if (((bytes[at] | (bytes[at + 1] << 8) | (bytes[at + 2] << 16) | (bytes[at + 3] << 24)) >>> 0) !== hashLo ||\n")
+-	g.pf("        ((bytes[at + 4] | (bytes[at + 5] << 8) | (bytes[at + 6] << 16) | (bytes[at + 7] << 24)) >>> 0) !== hashHi) {\n")
++	g.pf("    if (srcView.getUint32(at, true) !== hashLo || srcView.getUint32(at + 4, true) !== hashHi) {\n")
+ 	g.pf("      report.refused = TableFixedRefusal.NoLayout; return -1;\n")
+ 	g.pf("    }\n")
++	g.pf("    if (identity) {\n")
++	g.pf("      %sFixedDecode(values[k], srcView, at + 8, stage);\n", st.Name)
++	g.pf("      if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }\n")
++	g.pf("      at += recordBytes;\n")
++	g.pf("      continue;\n")
++	g.pf("    }\n")
+ 	g.pf("    for (let h = 0; h < holeN; h++) {\n")
+ 	g.pf("      const o = plan.holes[h * 2], z = plan.holes[h * 2 + 1];\n")
+ 	g.pf("      for (let i = 0; i < z; i++) { image[o + i] = %sFixedPrefill[o + i]; }\n", st.Name)
+diff --git a/internal/codegen/jstable/fixedruntime.go b/internal/codegen/jstable/fixedruntime.go
+index 4b84e41e1..cf11ed0ed 100644
+--- a/internal/codegen/jstable/fixedruntime.go
++++ b/internal/codegen/jstable/fixedruntime.go
+@@ -1280,6 +1280,9 @@ export class TableFixedKnownLayout {
+     this.layout = layout;
+     this.layoutBytes = layoutBytes | 0;
+     this.recordBytes = recordBytes | 0;
++    // the lock's bytes as a view, made ONCE at module load, so the per-read
++    // layout compare moves in 32-bit lanes and allocates nothing
++    this.layoutView = new DataView(layout.buffer, layout.byteOffset, layout.length);
+   }
+ }
+ 
+```
