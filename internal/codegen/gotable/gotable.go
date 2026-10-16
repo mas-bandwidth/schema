@@ -428,8 +428,10 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 			return nil, nil, err
 		}
 		out[f.Base+"Table.go"] = src
-		if err := g.emitForm(out, forms, f.Base+"TableMessage.go", FormMessage, &g.message); err != nil {
-			return nil, nil, err
+		if s.Message {
+			if err := g.emitForm(out, forms, f.Base+"TableMessage.go", FormMessage, &g.message); err != nil {
+				return nil, nil, err
+			}
 		}
 		cookWriters[f.Base] = g.cook.String()
 	}
@@ -445,8 +447,10 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 			return nil, nil, err
 		}
 		out[home+"Table.go"] = src
-		if err := g.emitForm(out, forms, home+"TableMessage.go", FormMessage, &g.message); err != nil {
-			return nil, nil, err
+		if s.Message {
+			if err := g.emitForm(out, forms, home+"TableMessage.go", FormMessage, &g.message); err != nil {
+				return nil, nil, err
+			}
 		}
 	}
 	if s.Cook {
