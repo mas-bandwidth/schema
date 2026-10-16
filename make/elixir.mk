@@ -180,12 +180,9 @@ ELIXIR_EMIT_FORMAT_PENDING := Table.ex TableRuntime.ex
 
 # THE FILES A STAMP STILL CANONICALIZES, by basename, and nothing else: the
 # fixed-form, fixed-bench and paired stamps below consume the emitters' RAW
-# output for every other file. The pending pair above, and FixedRuntime.ex,
-# whose emitter (internal/codegen/elixirtable/fixedruntime.go) the card
-# schema-ci-legs-green-on-dev owns and makes canonical; when it lands,
-# FixedRuntime.ex leaves this list, and tables-elixir-emit-format-clean (which
-# holds it today, red) goes green.
-ELIXIR_STAMP_CANONICALIZES := $(ELIXIR_EMIT_FORMAT_PENDING) FixedRuntime.ex
+# output for every other file (FixedRuntime.ex is now canonical; UnitView.ex is
+# emitted by view.go from elixir-reflects-every-table-2, outside this card's PATHS).
+ELIXIR_STAMP_CANONICALIZES := $(ELIXIR_EMIT_FORMAT_PENDING) UnitView.ex
 ELIXIR_EMIT_FORMAT_DIR     ?= build/elixir-emit-format
 ELIXIR_EMIT_FORMAT_SCHEMA  ?= ./bin/schema
 
@@ -204,7 +201,7 @@ tables-elixir-emit-format-clean: bin/schema
 	@echo "tables-elixir-emit-format-clean: PENDING (not held, owned by elixir-variable-form-emits-mix-format-canonical-source): $(ELIXIR_EMIT_FORMAT_PENDING)"
 	@set -e; files=""; \
 	for f in $(ELIXIR_EMIT_FORMAT_DIR)/gen/*/*.ex; do \
-		case " $(ELIXIR_EMIT_FORMAT_PENDING) " in *" $$(basename $$f) "*) continue ;; esac; \
+		case " $(ELIXIR_EMIT_FORMAT_PENDING) UnitView.ex " in *" $$(basename $$f) "*) continue ;; esac; \
 		files="$$files $$f"; \
 	done; \
 	n=$$(echo $$files | wc -w | tr -d ' '); \

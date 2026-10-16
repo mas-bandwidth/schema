@@ -93,7 +93,14 @@ func generateFixed(u *ir.Unit, ns string, lineage map[string][]FixedLineageEntry
 	}
 	closure := fixedClosure(roots)
 	out := map[string][]byte{}
-	out[FixedRuntimeModule+".ex"] = fixedRuntimeModule(u, ns)
+	rt := string(fixedRuntimeModule(u, ns))
+	rt = strings.ReplaceAll(rt,
+		"            acc = guarded(acc, guard ++ [{their_at, argw}], tag ++ [j + 1], {:const, aux_at, my_tag, k + 1})\n",
+		"            acc =\n              guarded(\n                acc,\n                guard ++ [{their_at, argw}],\n                tag ++ [j + 1],\n                {:const, aux_at, my_tag, k + 1}\n              )\n")
+	rt = strings.ReplaceAll(rt,
+		"      entry = {:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi), List.to_tuple([their_variants | remap])}\n",
+		"      entry =\n        {:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi),\n         List.to_tuple([their_variants | remap])}\n")
+	out[FixedRuntimeModule+".ex"] = []byte(rt)
 	for _, f := range u.Files {
 		g := &fixedGen{unit: u, ns: ns, file: f, lineage: lineage}
 		if body := g.module(roots, closure); body != nil {
