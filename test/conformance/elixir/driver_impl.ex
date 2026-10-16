@@ -516,7 +516,11 @@ defmodule Driver do
   # load/2, save/2, to_json/2 and from_json/2. nil when the leg has no codec.
   # a manifest unit key names its module by the unit's package, which is the
   # key itself except where the schema's package line says otherwise
-  @unit_packages %{"scalars" => "scalardemo", "widedemo" => "wide"}
+  @unit_packages %{
+    "scalars" => "scalardemo",
+    "tblscalars2" => "scalardemo2",
+    "widedemo" => "wide"
+  }
 
   defp table_module(unit) do
     mod = Module.concat([Macro.camelize(Map.get(@unit_packages, unit, unit)), "Table"])

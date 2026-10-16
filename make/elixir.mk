@@ -112,9 +112,14 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
 	blobdemo:tables/blobs listdemo:tables/lists tblp2:test/tables/P2.schema \
 	mapdemo:tables/maps messagedemo:tables/messages scalars:tables/scalars \
-	widedemo:examples-wide
+	widedemo:examples-wide \
+	tblg1:test/tables/G1.schema tblk1:test/tables/K1.schema \
+	tblk2:test/tables/K2.schema tblscalars2:test/tables/Scalars2.schema \
+	vocabdemo:tables/vocab vocab9demo:tables/vocab9
 
-build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) $(wildcard examples-wide/*.schema) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) $(wildcard examples-wide/*.schema) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema \
+		test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema \
+		tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema
 	@mkdir -p build/tables-generated-elixir
 	@for unit in $(ELIXIR_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -803,6 +808,30 @@ tables-elixir-block-build: build/conformance/manifest.txt
 	./build/conformance-harness run --only elixir
 
 test-elixir: tables-elixir-block-build
+
+# THE GUARD, ENUM-KIND AND SECOND-SCALARS UNITS (docs/SPEC-TABLES.md §3.1, §4):
+# tblg1 (a pointer under a false guard or inside an absent optional is not an
+# edge, schema#440, #526), tblk1/tblk2 (an enum rides kind 30, so an enum
+# respelled as its raw uint16 or the reverse is a counted kind mismatch both
+# ways), tblscalars2 (named absent while SimState is uncarried) and the
+# vocabulary units' plain instances. TestGuardKindAndScalarVersionUnitsElixir
+# generates each through the compiler path and, being FUNCTIONAL, answers every
+# instance and report row against the Go engine's bytes and reports.txt under
+# SCHEMA_REQUIRE_CORPUS=1; a SKIP in its output fails this gate by name.
+.PHONY: tables-elixir-version-units
+tables-elixir-version-units: build/conformance/manifest.txt
+	@mkdir -p build/elixir-version-units
+	@SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v \
+		-run TestGuardKindAndScalarVersionUnitsElixir > build/elixir-version-units/test.log 2>&1; \
+		rc=$$?; cat build/elixir-version-units/test.log; \
+		if [ $$rc -ne 0 ]; then echo "tables-elixir-version-units: TestGuardKindAndScalarVersionUnitsElixir FAILED"; exit 1; fi; \
+		if grep -q -- '--- SKIP' build/elixir-version-units/test.log; then \
+			echo "tables-elixir-version-units: TestGuardKindAndScalarVersionUnitsElixir SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; exit 1; fi; \
+		if ! grep -q -- '--- PASS: TestGuardKindAndScalarVersionUnitsElixir ' build/elixir-version-units/test.log; then \
+			echo "tables-elixir-version-units: TestGuardKindAndScalarVersionUnitsElixir did not RUN"; exit 1; fi
+	./build/conformance-harness run --only elixir
+
+test-elixir: tables-elixir-version-units
 
 # ---------------------------------------------------------------------------
 # THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
