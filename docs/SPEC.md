@@ -2383,10 +2383,14 @@ or a file per declaration where the language demands one.
 
 - **C++: the header splits into a data/wire pair.** `<Base>.h` is the DATA
   header (constants, enums, flags, structs and MaxBits/MaxBytes bounds)
-  and includes `serialize.h` only when a storage type demands it
-  (int128/fixed); `<Base>Wire.h` is the WIRE header (`Write*`/`Read*` and
+  and includes `serialize.h` only when a storage type demands it — 128-bit
+  storage, `serialize::int128_t`/`serialize::uint128_t` (an `int128`, a
+  `uint128`, or a `fixed` whose I+F is 128; a narrower `fixed` is a plain
+  `intN_t`); `<Base>Wire.h` is the WIRE header (`Write*`/`Read*` and
   the union tag pairs)
-  and includes `<Base>.h` plus `serialize.h`, with cross-file wire deps
+  and includes `<Base>.h`, plus `serialize.h` when the file emits a wire
+  function (a file of only constants, enums and flags has a wire header with
+  no serialize dependency), with cross-file wire deps
   riding the deps' wire headers. The split exists so a consumer can base its
   math types on generated structs without inheriting the serialize runtime at
   all (a codebase may vendor an older serialize generation whose macro names
