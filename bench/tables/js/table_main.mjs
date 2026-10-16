@@ -75,6 +75,7 @@ let gIterations = 0; // explicit diagnostic count; the default stays standard
 let gCsv = false;
 let gGate = false;
 let gIndexed = false;
+let gPlanRead = false; // --plan-read: the §1.10 read arm's table half, measured alone
 let gWireDir = "testdata/wire";
 let gVariantDir = "bench/corpus/variants";
 let failed = false;
@@ -202,6 +203,16 @@ function report(bench, path_, iters, bytesPerOp, s) {
         `${mbps.toFixed(2)},${s.spread.toFixed(2)}`
     );
   }
+}
+
+// A MEASURED read row also prints its per-record cost, best and median, so a
+// receipt copies ns/record from the output and never recomputes it: best is
+// the maximum rate (§2.2), median beside it.
+function reportNsPerRecord(bench, s) {
+  process.stderr.write(
+    `${bench.padEnd(18)} ${"read".padEnd(11)} ns/record best ${(1e9 / s.max).toFixed(1)} ` +
+      `median ${(1e9 / s.median).toFixed(1)} (MEASURED, read alone)\n`
+  );
 }
 
 // THE TOLERANT CORPUS, read for what this leg can honestly say about it.
@@ -339,6 +350,11 @@ function benchFixed(name, baseIters) {
     return;
   }
 
+  if (gPlanRead) {
+    benchFixedRead(name, iters, file, out, outPlan, report_, twin, bytesPerOp);
+    return;
+  }
+
   const need = FixedTableFixedMeasure(NumVariants);
   const writeRates = new Array(gNumRuns);
   const roundTripRates = new Array(gNumRuns);
@@ -412,9 +428,66 @@ function benchFixed(name, baseIters) {
   }
 }
 
+// ------------------------------------------------------------------------
+// THE READ ARM'S TABLE HALF (BENCH-STANDARD.md §1.10), the IDENTITY lane
+// ------------------------------------------------------------------------
+//
+// `--plan-read` replaces this invocation's clocked rows with ONE measured
+// row, after the four gates above have passed with no clock before them:
+//
+//   bench_fixed_read  family table  path read  the shipped LOAD of the whole
+//                     corpus file into a REUSED destination, one call per 64
+//                     records — the form byte, the layout compare, the
+//                     per-record hash check, the plan run and the object
+//                     projection all inside the clock; an op is one record
+//
+// It is MEASURED, never round-trip minus write: §2.9 makes the ordinary read
+// a difference precisely so it is never divided, and the §1.10 gate is a
+// division. The `bench_fixed` write and round_trip rows are not emitted by
+// this mode and are untouched in the ordinary one, so no board moves. The
+// comparand, `bench_mixed_read`, is the packet runner's (bench/js/main.mjs
+// --plan-read): that runner imports the serialize.js sibling and this one
+// imports no runtime, so the two halves are two node processes run back to
+// back on one host, and the receipt says so.
+//
+// The PLAN lane (`bench_plan_read`) is not here: it needs §1.10's lineage
+// corpus (an older-layout file, its layout and the lock), which this tree
+// does not carry, and this runner does not invent one.
+//
+// THE ESCAPE BARRIER is the destination itself: it is module-reachable for
+// the life of the process, so the projection's stores cannot be dropped, and
+// the sink takes the record count of every call. After the clock, untimed,
+// the destination is written back and must still be the corpus byte for
+// byte — the last read is proved to have landed.
+function benchFixedRead(name, iters, file, out, outPlan, report_, twin, bytesPerOp) {
+  const rates = new Array(gNumRuns);
+  for (let run = -1; run < gNumRuns; run++) {
+    const start = performance.now();
+    for (let i = 0; i < iters; i += NumVariants) {
+      const n = FixedTableFixedLoad(out, NumVariants, file, file.length, outPlan, report_);
+      if (n !== NumVariants) {
+        fail(name, "load failed in loop");
+        return;
+      }
+      gSink = gSink + n;
+    }
+    const elapsed = (performance.now() - start) / 1000.0;
+    if (run >= 0) {
+      rates[run] = iters / elapsed;
+    }
+  }
+  if (FixedTableFixedSave(out, NumVariants, twin) !== file.length || !bytesEqual(twin, file)) {
+    fail(name, "the timed reads' destination does not write back to the corpus");
+    return;
+  }
+  const s = stats(rates);
+  report(`${name}_read`, "read", iters, bytesPerOp, s);
+  reportNsPerRecord(`${name}_read`, s);
+}
+
 function usage() {
   process.stderr.write(
-    "usage: node bench/tables/js/table_main.mjs [--indexed] [--gate] [--csv] [--round K] " +
+    "usage: node bench/tables/js/table_main.mjs [--indexed] [--gate] [--plan-read] [--csv] [--round K] " +
       "[--iterations N] [--wire-dir <dir>] [--variant-dir <dir>]\n"
   );
   process.exit(1);
@@ -429,6 +502,8 @@ function main() {
       gGate = true;
     } else if (args[i] === "--csv") {
       gCsv = true;
+    } else if (args[i] === "--plan-read") {
+      gPlanRead = true;
     } else if (args[i] === "--wire-dir" && i + 1 < args.length) {
       gWireDir = args[++i];
     } else if (args[i] === "--variant-dir" && i + 1 < args.length) {
@@ -454,7 +529,7 @@ function main() {
     }
   }
 
-  process.stderr.write(`schema tables bench (js, node ${process.versions.node}, the FIXED FORM)\n`);
+  process.stderr.write(`schema tables bench (js, node ${process.versions.node}, the FIXED FORM${gPlanRead ? ", --plan-read: the identity read measured alone" : ""})\n`);
 
   // The tolerant half's bytes, and every check this leg can make of them
   // without a form-1 decoder it does not have (schema#516).

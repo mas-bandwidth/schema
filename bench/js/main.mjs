@@ -178,6 +178,8 @@ for (let k = 0; k < NumVariants; k++) {
 let gSink = 0; // defeats dead code elimination of computed values
 
 let gCsv = false;
+let gGate = false; // --gate: the correctness gates only, no clock
+let gPlanRead = false; // --plan-read: the §1.10 read arm's packet half, measured alone
 let gWireDir = "../../testdata/wire";
 let gVariantDir = "../../bench/corpus/variants";
 let failed = false;
@@ -432,6 +434,15 @@ function benchDataDrivenFlat(name, golden, iters, Ctor, writeFn, readFn, flatWri
     instances.push(flOut);
   }
 
+  if (gGate) {
+    return;
+  }
+
+  if (gPlanRead) {
+    benchFlatReadAlone(name, iters, bytesPerOp, numBits, variantViews, new Ctor(), flatReadFn, flatWriteFn, gView);
+    return;
+  }
+
   const writeRates = new Array(gNumRuns);
   const roundtripRates = new Array(gNumRuns);
 
@@ -496,6 +507,61 @@ function benchDataDrivenFlat(name, golden, iters, Ctor, writeFn, readFn, flatWri
       `${name.padEnd(18)} ${"read".padEnd(5)} ${(1e-6 / readTime).toFixed(2).padStart(10)} M msg/s   (DERIVED: round-trip minus write, informational — not a measured row)\n`
     );
   }
+}
+
+// --------------------------------------------------------------------------
+// THE READ ARM'S PACKET HALF (BENCH-STANDARD.md §1.10): `bench_mixed_read`
+// --------------------------------------------------------------------------
+//
+// `--plan-read` replaces this invocation's clocked rows with ONE measured
+// row, after both gates above have passed with no clock before them: the
+// packet wire's READ of the same 64 logical records, ALONE — the flat tier's
+// generated read of one variant view into a REUSED destination per op,
+// rotating the 64 views exactly as the round trip does, with no re-encode on
+// the clock. Row `bench_mixed_read`, family gen, path read, codec flat.
+//
+// It is MEASURED, never round-trip minus write (§2.9), and it is keyed by its
+// own name so it is never folded into the published `bench_mixed` series: the
+// ordinary mode's rows are unchanged, and this mode emits neither them nor the
+// bitpacker's. It is the comparand of the fixed form's identity read
+// (bench/tables/js/table_main.mjs --plan-read), which is a separate node
+// process because that runner imports no runtime and this one imports the
+// serialize.js sibling; the receipt names the sitting as two processes.
+//
+// THE ESCAPE BARRIER is the destination: it outlives the loop, so the read's
+// stores cannot be dropped, and the sink takes every call's verdict. After
+// the clock, untimed, the destination is re-encoded and must be the last
+// variant read, byte for byte.
+function benchFlatReadAlone(name, iters, bytesPerOp, numBits, variantViews, outValue, flatReadFn, flatWriteFn, gView) {
+  const rates = new Array(gNumRuns);
+  for (let run = -1; run < gNumRuns; run++) {
+    const start = performance.now();
+    for (let i = 0; i < iters; i++) {
+      if (!flatReadFn(outValue, variantViews[i & (NumVariants - 1)], numBits)) {
+        fail(name, "flat read failed in loop");
+        return;
+      }
+      gSink = (gSink + 1) >>> 0;
+    }
+    const elapsed = (performance.now() - start) / 1000.0;
+    if (run >= 0) {
+      rates[run] = iters / elapsed;
+    }
+  }
+  const last = (iters - 1) & (NumVariants - 1);
+  if (flatWriteFn(outValue, gView) !== bytesPerOp ||
+    !bytesEqual(gBuffer.subarray(0, bytesPerOp), gVariants[last].subarray(0, bytesPerOp))) {
+    fail(name, "the timed reads' destination does not re-encode to the last variant read");
+    return;
+  }
+  const s = stats(rates);
+  report(`${name}_read`, "read", iters, bytesPerOp, s, "gen", "flat");
+  // per-record cost printed by the runner, so a receipt copies it and never
+  // recomputes it: best is the maximum rate (§2.2), median beside it
+  process.stderr.write(
+    `${`${name}_read`.padEnd(18)} ${"read".padEnd(5)} ns/record best ${(1e9 / s.max).toFixed(1)} ` +
+      `median ${(1e9 / s.median).toFixed(1)} (MEASURED, read alone)\n`
+  );
 }
 
 // --------------------------------------------------------------------------
@@ -614,6 +680,10 @@ function benchBitpacker(passes) {
     }
   }
 
+  if (gGate) {
+    return;
+  }
+
   const writeRates = new Array(gNumRuns);
   const readRates = new Array(gNumRuns);
 
@@ -668,8 +738,12 @@ function main() {
       gNumRuns = 1;
     } else if (args[i] === "--quick") {
       gQuick = true;
+    } else if (args[i] === "--gate") {
+      gGate = true;
+    } else if (args[i] === "--plan-read") {
+      gPlanRead = true;
     } else {
-      process.stderr.write("usage: node main.mjs [--csv] [--round K] [--quick] [--wire-dir <dir>] [--variant-dir <dir>] [--print-runtime]\n");
+      process.stderr.write("usage: node main.mjs [--csv] [--round K] [--quick] [--gate] [--plan-read] [--wire-dir <dir>] [--variant-dir <dir>] [--print-runtime]\n");
       process.exit(1);
     }
   }
@@ -677,7 +751,7 @@ function main() {
     gNumRuns = 3;
   }
 
-  process.stderr.write(`schema bench (js, node ${process.versions.node}, ${PRODUCTION ? "production" : "checked"} mode${gQuick ? ", --quick: iteration instrument, not certification" : ""})\n`);
+  process.stderr.write(`schema bench (js, node ${process.versions.node}, ${PRODUCTION ? "production" : "checked"} mode${gQuick ? ", --quick: iteration instrument, not certification" : ""}${gPlanRead ? ", --plan-read: the packet read measured alone" : ""}${gGate ? ", --gate: gates only" : ""})\n`);
 
   // BenchMixed as GENERATED code — the flat tier is THE js entry for this
   // shape in any cross-language comparison (family gen, codec=flat),
@@ -687,7 +761,7 @@ function main() {
   benchDataDrivenFlat("bench_mixed", "bench_mixed", 4000000, bench.BenchMixed, bench.WriteBenchMixed, bench.ReadBenchMixed, benchFlat.WriteBenchMixedFlat, benchFlat.ReadBenchMixedFlat);
 
   // family bits (§1.4): the one bitpacker workload in the estate
-  if (!gQuick) {
+  if (!gQuick && !gPlanRead) {
     benchBitpacker(24576);
   }
 

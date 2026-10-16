@@ -41,48 +41,7 @@ import (
 // table, which field and why, so a consumer reaching for Save gets a missing
 // name from its own tooling beside a file that says why.
 func fixedRefusal(st *ir.Struct) string {
-	// THE WALK'S DEPTH BOUND GOES FIRST, AND IT IS ITS OWN SENTENCE. This leg
-	// held a private closure test with `16` written into it, so a table nested 17
-	// deep lost the form here while C++ emitted it — and the line this function
-	// wrote blamed the CLOSURE, naming a pointer or a map in a schema that has
-	// neither. The bound is read through ir now, and the reason it gives is the
-	// bound's own: past ir.TableFixedMaxDepth no conforming reader takes the walk
-	// (docs/FIXED-FORM-ALGORITHM.md §5.2's `layout_malformed`).
-	if !ir.TableFixedWithinDepth(st) {
-		return fmt.Sprintf("its layout nests %d deep, past the form's %d-entry depth bound, so no conforming reader takes the walk (`layout_malformed`) — it keeps form 1 (docs/FIXED-FORM-ALGORITHM.md §5.2, docs/SPEC-TABLES.md §3.4)",
-			ir.TableFixedTypeDepth(st), ir.TableFixedMaxDepth)
-	}
-	if !ir.TableFixedSupported(st, 0) {
-		return "its closure carries a construct the fixed class refuses — a pointer, a map, an unbounded array or a guarded branch (docs/SPEC-TABLES.md §3.4)"
-	}
-	// AN OPTIONAL IS NOT A REFUSAL. §3.4's kind table CARRIES `?T` — kind 35,
-	// a present byte in front of a payload that rides WHOLE — so the leg that
-	// refused it was refusing a wire the form already spells.
-	//
-	// WHAT THE OLD REFUSAL SAID was that the JavaScript packet classes had
-	// nowhere to land the present byte, and that inventing a member in one
-	// would be this backend inventing storage for a class another emitter
-	// owns. THE PREMISE WAS WRONG, in the port's own favour: `?T` is a TABLE
-	// construct — a `type`'s wire is positional and every field of one always
-	// rides, so the compiler refuses the `?` there outright (§2.3) — and
-	// internal/codegen/js emits a class for every `type` and NONE for a
-	// `table`. So the only class that can ever hold a present flag is the one
-	// THIS FILE emits (emitTableClass), and there was never another emitter's
-	// storage to invent.
-	//
-	// §3.4's 65536-BYTE CEILING IS A REFUSAL OF THE FORM, and it belongs here
-	// rather than in the roots loop, because the refusal IS the filter
-	// (fixedRoots): a ceiling the filter knew and this function did not would be
-	// a module that carries a 280020-byte record and says nothing about it. The
-	// compiler already warns, naming the table and the size — *"THE FIXED FORM
-	// IS NOT EMITTED FOR IT, because no conforming reader decodes a record that
-	// size"* (ir.TableFixedRecordBounds) — and the class is untouched: the table
-	// keeps form 1, its by-value storage, its cook and its block form. So this
-	// is not a refusal of the TABLE and never of the unit.
-	if fixedTypeBytes(st) > ir.TableFixedRecordMaxBytes {
-		return "its record body is past §3.4's 65536-byte ceiling, so no conforming reader would decode a record that size — it keeps form 1 (docs/SPEC-TABLES.md §3.4)"
-	}
-	return ""
+	return ir.TableFixedJSRefusal(st)
 }
 
 // ---------------------------------------------------------------------------
@@ -178,6 +137,22 @@ type fixedGen struct {
 	// an absent optional lands its payload's declared default, and for a
 	// nested type that default is that type's own Init.
 	need func(cls, typeName string)
+	// loops is how deep the decode's emitted loops nest. A nested struct is
+	// INLINED into its parent's projection (one straight function, the way the
+	// flat packet reader is), so a loop inside an inlined element must not
+	// shadow the loop variable its base offset is written in.
+	loops int
+	// inl numbers the locals an inlined struct element binds.
+	inl int
+}
+
+// loopVar names the loop variable at the current decode nesting depth: `i` at
+// the top, so a flat type's emission is unchanged, then i1, i2, ...
+func (g *fixedGen) loopVar() string {
+	if g.loops == 0 {
+		return "i"
+	}
+	return fmt.Sprintf("i%d", g.loops)
 }
 
 func (g *fixedGen) require(cls, typeName string) {
@@ -238,11 +213,16 @@ func (g *fixedGen) store(ind, view, at string, t ir.FieldType, expr string) {
 
 func (g *fixedGen) load(ind, lhs, view, at string, t ir.FieldType) {
 	if fixedStorageBytes(t) == 16 {
-		g.pf("%s%s = %s.getBigUint64(%s, true) | (%s.getBigUint64(%s, true) << 64n);\n",
-			ind, lhs, view, at, view, off(at, 8))
+		// A ZERO HIGH HALF IS THE LOW HALF, with no shift and no OR: two BigInts
+		// fewer per field. Otherwise a signed value takes its high half SIGNED,
+		// which is the same number BigInt.asIntN(128, ...) made, one BigInt sooner.
+		hi := "getBigUint64"
 		if fixedSigned(t) {
-			g.pf("%s%s = BigInt.asIntN(128, %s);\n", ind, lhs, lhs)
+			hi = "getBigInt64"
 		}
+		g.pf("%s%s = (%s.getUint32(%s, true) | %s.getUint32(%s, true)) === 0\n", ind, lhs, view, off(at, 8), view, off(at, 12))
+		g.pf("%s  ? %s.getBigUint64(%s, true)\n", ind, view, at)
+		g.pf("%s  : (%s.%s(%s, true) << 64n) | %s.getBigUint64(%s, true);\n", ind, view, hi, off(at, 8), view, at)
 		return
 	}
 	if t.Kind == ir.TFloat32 {
@@ -497,6 +477,7 @@ func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	// text violation in the image refuses by name before a single property of
 	// value is touched.
 	g.emitCheckTextStruct(st, "at", 0, "  ")
+	g.inl, g.loops = 0, 0
 	var cur int64
 	for _, f := range st.Fields {
 		g.emitDecodeField(f, "at", cur, "value", "  ")
@@ -670,18 +651,21 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 		// Content validity over the used units was checked before any write to
 		// value in emitCheckTextStruct (§4.5 fix 11, §5.3).
 		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
-		g.pf("%sfor (let i = 0; i < %d; i++) { %s.%s[i] = view.getUint8(%s + i); }\n",
-			ind, f.Type.Size, val, name, off(base, at+fixedCountBytes))
+		iv := g.loopVar()
+		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint8(%s + %s); }\n",
+			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
 	case f.Type.Kind == ir.TBytes:
 		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
-		g.pf("%sfor (let i = 0; i < %d; i++) { %s.%s[i] = view.getUint8(%s + i); }\n",
-			ind, f.Type.Size, val, name, off(base, at+fixedCountBytes))
+		iv := g.loopVar()
+		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint8(%s + %s); }\n",
+			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
 	case f.Type.Kind == ir.TWString:
 		// Content validity over the used units was checked before any write to
 		// value in emitCheckTextStruct (§4.5 fix 11, §5.3).
 		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
-		g.pf("%sfor (let i = 0; i < %d; i++) { %s.%s[i] = view.getUint16(%s + i * 2, true); }\n",
-			ind, f.Type.Size, val, name, off(base, at+fixedCountBytes))
+		iv := g.loopVar()
+		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint16(%s + %s * 2, true); }\n",
+			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
 	default:
 		g.emitDecodeElement(f, base, at, val+"."+name, ind)
 	}
@@ -711,8 +695,26 @@ func (g *fixedGen) emitDecodeCount(ind, dst, at string, bound int64) {
 
 func (g *fixedGen) emitDecodeLoop(f *ir.Field, base string, at int64, count, expr, ind string) {
 	elem := fixedElementBytes(f)
-	g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
-	g.emitDecodeElement(f, fmt.Sprintf("%s + i * %d", off(base, at), elem), 0, expr+"[i]", ind+"  ")
+	iv := g.loopVar()
+	if _, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
+		// AN ARRAY OF STRUCTS IS WALKED WITH ITS ARRAY AND ITS COUNT IN LOCALS
+		// and a RUNNING offset, so the inlined element body reads the image at
+		// o + k: no property load per element for the array or the bound, and
+		// no multiply per field.
+		g.pf("%s{\n", ind)
+		g.pf("%s  const a%s = %s, n%s = %s;\n", ind, iv, expr, iv, count)
+		g.pf("%s  for (let %s = 0, o%s = %s; %s < n%s; %s++, o%s += %d) {\n", ind, iv, iv, off(base, at), iv, iv, iv, iv, elem)
+		g.loops++
+		g.emitDecodeElement(f, "o"+iv, 0, "a"+iv+"["+iv+"]", ind+"    ")
+		g.loops--
+		g.pf("%s  }\n", ind)
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
+	g.loops++
+	g.emitDecodeElement(f, fmt.Sprintf("%s + %s * %d", off(base, at), iv, elem), 0, expr+"["+iv+"]", ind+"  ")
+	g.loops--
 	g.pf("%s}\n", ind)
 }
 
@@ -720,7 +722,22 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			g.pf("%s%sFixedDecode(%s, view, %s, report);\n", ind, r.Name, expr, off(base, at))
+			// A NESTED STRUCT IS INLINED, not called: the projection is ONE
+			// straight function, the way the flat packet reader is written. The
+			// content check already ran over this element's text at the top of
+			// the outermost decode (emitCheckTextStruct recurses), so the inlined
+			// fields are the loads alone and nothing is validated twice.
+			// <T>FixedDecode is still emitted per struct for any other caller.
+			g.inl++
+			v := fmt.Sprintf("e%d", g.inl)
+			g.pf("%s{\n", ind)
+			g.pf("%s  const %s = %s;\n", ind, v, expr)
+			cur := at
+			for _, sf := range r.Fields {
+				g.emitDecodeField(sf, base, cur, v, ind+"  ")
+				cur += fixedFieldBytes(sf)
+			}
+			g.pf("%s}\n", ind)
 			return
 		case *ir.Union:
 			tag := fixedUnionTagBytes(r)
@@ -776,8 +793,107 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			return
 		}
 	}
+	if g.emitBigClampLanes(ind, expr, off(base, at), f) {
+		return
+	}
 	g.load(ind, expr, "view", off(base, at), f.Type)
 	g.emitDecodeBounds(ind, expr, f)
+}
+
+// emitBigClampLanes is §4.6's ranged clamp for a 64- or 128-bit integer,
+// decided on the image's u32 LANES AS A NUMBER before any BigInt exists: a
+// clamped value lands its bound's literal and an in-range one is loaded once,
+// so no BigInt is made only to be compared and no BigInt comparison runs.
+//
+// THE DECISION IS EXACT. The Number is hi * 2^32 + lo (for 128 bits, the high
+// 64-bit half), which rounds MONOTONICALLY, and it is only used when every
+// bound it is compared against is an integer below 2^53 in magnitude: a value
+// past such a bound rounds to a Number at or past it, never back across it,
+// and a value at the bound is exact. A 128-bit bound must also be a whole
+// multiple of 2^64 so the low half decides only the one tie it can. Anything
+// else answers false and takes the BigInt path unchanged.
+func (g *fixedGen) emitBigClampLanes(ind, expr, at string, f *ir.Field) bool {
+	if !fixedIsBig(f.Type) {
+		return false
+	}
+	if _, _, ok := fixedFloatClampEnds(f); ok {
+		return false
+	}
+	w := fixedStorageBytes(f.Type)
+	rlo, rhi, ok := ir.TableRawRange(f)
+	var low, high bool
+	switch {
+	case f.Type.Kind == ir.TBits:
+		// a bits(N) that does not fill its storage clamps at 2^N - 1 and only
+		// there (emitDecodeBounds' last case); one with a declared range too is
+		// left to the BigInt path
+		if ok || int64(f.Type.Width) >= 8*w {
+			return false
+		}
+		rlo = big.NewInt(0)
+		rhi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+		low, high = false, true
+	case ok:
+		low, high = fixedClampEnds(f)
+	default:
+		return false
+	}
+	if !low && !high {
+		return false
+	}
+	safe := new(big.Int).Lsh(big.NewInt(1), 53)
+	inSafe := func(n *big.Int) bool { return new(big.Int).Abs(n).Cmp(safe) < 0 }
+	hiGet := "getUint32"
+	if fixedSigned(f.Type) {
+		hiGet = "getInt32"
+	}
+	var nExpr, loCond, hiCond string
+	switch w {
+	case 8:
+		if (low && !inSafe(rlo)) || (high && !inSafe(rhi)) {
+			return false
+		}
+		nExpr = fmt.Sprintf("view.%s(%s, true) * 4294967296 + view.getUint32(%s, true)", hiGet, off(at, 4), at)
+		loCond = fmt.Sprintf("n < %s", rlo.String())
+		hiCond = fmt.Sprintf("n > %s", rhi.String())
+	case 16:
+		two64 := new(big.Int).Lsh(big.NewInt(1), 64)
+		ql, rl := new(big.Int), new(big.Int)
+		qh, rh := new(big.Int), new(big.Int)
+		ql.DivMod(rlo, two64, rl) // Euclidean: the remainder is in [0, 2^64)
+		qh.DivMod(rhi, two64, rh)
+		if (low && (rl.Sign() != 0 || !inSafe(ql))) || (high && (rh.Sign() != 0 || !inSafe(qh))) {
+			return false
+		}
+		nExpr = fmt.Sprintf("view.%s(%s, true) * 4294967296 + view.getUint32(%s, true)", hiGet, off(at, 12), off(at, 8))
+		// below L = qL * 2^64 exactly when the high half is below qL; above
+		// H = qH * 2^64 when the high half is past qH, or equal with a low half
+		// that is not zero
+		loCond = fmt.Sprintf("n < %s", ql.String())
+		hiCond = fmt.Sprintf("n > %s || (n === %s && (view.getUint32(%s, true) | view.getUint32(%s, true)) !== 0)",
+			qh.String(), qh.String(), at, off(at, 4))
+	default:
+		return false
+	}
+	g.pf("%s{\n", ind)
+	g.pf("%s  const n = %s;\n", ind, nExpr)
+	first := true
+	if low {
+		g.pf("%s  if (%s) { %s = %s; report.clamped++; }\n", ind, loCond, expr, jsIntLit(rlo, true))
+		first = false
+	}
+	if high {
+		kw := "if"
+		if !first {
+			kw = "else if"
+		}
+		g.pf("%s  %s (%s) { %s = %s; report.clamped++; }\n", ind, kw, hiCond, expr, jsIntLit(rhi, true))
+	}
+	g.pf("%s  else {\n", ind)
+	g.load(ind+"    ", expr, "view", at, f.Type)
+	g.pf("%s  }\n", ind)
+	g.pf("%s}\n", ind)
+	return true
 }
 
 // emitDecodeBounds is §4.6's ranged-scalar clamp, inline: a declared min/max

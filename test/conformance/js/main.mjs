@@ -127,6 +127,57 @@ function surfaceBlock(lines, outDir) {
   }
 }
 
+// ---- THE BASE-ALIGNMENT GATE (docs/SPEC-TABLES.md §19.1, docs/PORTING.md I5)
+//
+// Every committed block image at every lead 0..64, through the generated Open:
+// 0 and 64 open, 1..63 refuse. NOT a listed surface (the harness would run a
+// listed name as one); `<driver> <manifest> block-lead`, the way Elixir's is.
+// A REFUSAL HERE IS ONE THING: the RangeError whose message names the
+// multiple-of-64 rule. A null (bytes that are not this build's), an open
+// handle at a nonzero residue, or any other throw is a failure of the gate,
+// because a base-alignment check that is never required to fire is dead code
+// to every gate and an unaligned read succeeds on the hosts this builds on.
+function blockLead(lines) {
+  const align = 64;
+  let missed = 0;
+  let images = 0;
+  let totalOpened = 0;
+  let totalRefused = 0;
+  for (const f of kind(lines, "block")) {
+    const source = new Uint8Array(readFileSync(f[3]));
+    const block = blockNamed(f[1]);
+    images++;
+    let opened = 0;
+    let refused = 0;
+    for (let lead = 0; lead <= align; lead++) {
+      const bytes = place(source, source.length, lead);
+      let verdict;
+      try {
+        const handle = block.Open(bytes);
+        verdict = handle === null ? "null" : "open";
+      } catch (e) {
+        verdict = (e instanceof RangeError && /multiple of 64/.test(e.message)) ? "refuse" : "other throw: " + e;
+      }
+      const want = lead % align === 0 ? "open" : "refuse";
+      if (verdict === want) {
+        if (want === "open") { opened++; } else { refused++; }
+      } else {
+        missed++;
+        process.stderr.write(f[1] + " lead " + lead + " " + (verdict === "open" ? "opened" : verdict) +
+          ", wanted " + want + "\n");
+      }
+    }
+    process.stdout.write(f[1] + ": " + (align + 1) + " leads, " + opened + " opened (0 and 64), " +
+      refused + " refused (1..63)\n");
+    totalOpened += opened;
+    totalRefused += refused;
+  }
+  if (images === 0) { fail("block-lead: the manifest names no block image"); }
+  if (missed > 0) { fail("block-lead: " + missed + " lead(s) missed the rule"); }
+  process.stdout.write(images + " images x " + (align + 1) + " leads: " + totalOpened + " opened (0 and 64), " +
+    totalRefused + " refused (1..63)\n");
+}
+
 function surfaceForgery(lines, outDir) {
   for (const f of kind(lines, "forgery")) {
     if (f[2] !== "block") { continue; } // the cook's battery is its own
@@ -554,8 +605,10 @@ async function surfaceMessage(lines, outDir) {
 // ---- the WIRE-CARRYING surfaces (docs/SPEC-TABLES.md §3, §3.1, §4, §16, §16.7)
 //
 // The variable form, form byte 1, over the roots this leg's variable wire
-// carries: the pointer corpus's Scene (graphdemo) and the byte-buffer corpus's
-// Catalog (blobdemo), each through its unit's <Package>Variable.js. Every other
+// carries: the pointer corpus's Scene (graphdemo), the byte-buffer corpus's
+// Catalog (blobdemo) and the map corpus's Cells and Pairs (mapdemo, whose map
+// values are fixed-length arrays [N]T), each through its unit's
+// <Package>Variable.js. Every other
 // case is answered `<case>.absent` beside where the answer would go — a root
 // whose unit this leg does not generate (tables/lists, which the compiler
 // refuses for js whole because of its array of unions), or one its variable
@@ -578,6 +631,9 @@ const wireRows = [
   ["tblp3", "Chain", "p3/Tblp3Variable.js"],
   ["graphdemo", "Scene", "pointers/GraphdemoVariable.js"],
   ["blobdemo", "Catalog", "blobs/BlobdemoVariable.js"],
+  // a map whose value is a fixed-length array [N]T (§2.8, §3)
+  ["mapdemo", "Cells", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Pairs", "maps/MapdemoVariable.js"],
 ];
 
 async function wireCodec(unit, root) {
@@ -855,6 +911,10 @@ if (surface === "list") {
   // counts rather than reading as a feature the leg lacks. The retain surfaces
   // are absent whole: retention beyond the card constructs is its own row.
   process.stdout.write("wire\nreport\njson-read\njson-write\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nmessage\n");
+  process.exit(0);
+}
+if (surface === "block-lead") {
+  blockLead(lines);
   process.exit(0);
 }
 if (args.length < 3) {

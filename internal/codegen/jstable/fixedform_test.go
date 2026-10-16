@@ -188,15 +188,15 @@ fixed table Root
 	if strings.Contains(src, "TableFixedOpClamp") {
 		t.Error("the plan grew a clamp op; the bounds pass is the decode")
 	}
-	sawLoad, sawDecodeCall, sawIdentityDoor := false, false, false
+	sawLoad, sawDecodeCall := false, false
 	for _, b := range files {
 		s := string(b)
 		if strings.Contains(s, "function RootFixedLoad(") {
 			sawLoad = true
 			load := jsFn(s, "RootFixedLoad")
-			if strings.Contains(load, "if (identity)") {
-				sawIdentityDoor = true
-			}
+			// ONE SECOND READER IS ALLOWED, AND ONLY WHILE THE SPEC LISTS IT:
+			// §3.4's in-place identity read, of exactly its shape.
+			jsIdentityDoor(t, load, "Root")
 			if strings.Contains(load, "RootFixedDecode(values[k], imageView, 0, stage)") {
 				sawDecodeCall = true
 			}
@@ -205,11 +205,8 @@ fixed table Root
 	if !sawLoad {
 		t.Error("no RootFixedLoad in the generated unit")
 	}
-	if sawIdentityDoor {
-		t.Error("the load grew a second reader; hash chooses the plan and nothing else")
-	}
 	if !sawDecodeCall {
-		t.Error("FixedLoad must project through RootFixedDecode after the run, both paths")
+		t.Error("FixedLoad must project through RootFixedDecode after the run, for every compiled plan")
 	}
 }
 
@@ -303,10 +300,9 @@ fixed table Config {
 	if i < 0 {
 		t.Fatal("the load has no record loop")
 	}
-	loop := load[i:]
-	if strings.Contains(loop, "identity") {
-		t.Error("the load loop still branches on identity; an empty hole list is what skips work")
-	}
+	// an empty hole list is what skips the prefill; the only identity branch in
+	// the loop is §3.4's listed in-place door, held to its shape
+	jsIdentityDoor(t, load, "Config")
 	if !strings.Contains(src, "function TableFixedHoles(") && !strings.Contains(src, "TableFixedHoles") {
 		t.Error("the generated unit never names TableFixedHoles")
 	}
@@ -354,8 +350,10 @@ table Root { n int32 }
 	if !strings.Contains(src, "const TableFixedLaneArgW = 8;") {
 		t.Error("the plan omits the ArgW lane")
 	}
-	if !strings.Contains(src, "export const TableFixedLanes = 9;") {
-		t.Error("a plan entry is nine int32 lanes, not eight")
+	// NINE LANES AND THE GUARD CHAIN'S TWO (docs/FIXED-FORM-ALGORITHM.md §4.1):
+	// offset+count into the plan's pool for an entry under more than one union.
+	if !strings.Contains(src, "export const TableFixedLanes = 11;") {
+		t.Error("a plan entry is eleven int32 lanes: the nine and the guard chain's offset+count")
 	}
 	if strings.Contains(src, "src[srcAt + guard] !== e[b + TableFixedLaneArg]") {
 		t.Error("the run loop still compares the union guard as one byte")
@@ -363,8 +361,17 @@ table Root { n int32 }
 	if !strings.Contains(src, "TableFixedTagAt(src, srcAt + guard, e[b + TableFixedLaneArgW])") {
 		t.Error("the run loop does not compare the guard at ArgW")
 	}
-	if strings.Contains(src, "if (identity)") {
-		t.Error("the load grew a second reader; hash chooses the plan and nothing else")
+	{
+		load := ""
+		for _, b := range files {
+			if f := jsFn(string(b), "RootFixedLoad"); f != "" {
+				load = f
+			}
+		}
+		if load == "" {
+			t.Error("no RootFixedLoad in the generated unit")
+		}
+		jsIdentityDoor(t, load, "Root")
 	}
 	if !strings.Contains(src, "RootFixedIdentity = new Int32Array([0, 0, 0, 4, 0, -1, 0, 0, 1])") {
 		t.Error("the identity plan omitted the ArgW lane (ninth is 1)")
