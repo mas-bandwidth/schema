@@ -976,6 +976,15 @@ names:
 
 #### The work list — one file, one line, one child each
 
+**State, 2026-10-16** (`bench/results/2026-10-16-x86_64-hetzner1-cpp-read-arm/`,
+`bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-check/`): items 18, 19 and 21 have
+landed for C++ alone — `-mode plan-read -langs cpp`, `nine.sh --read-arm`, and the C++
+runner's `--read-arm` timing `bench_fixed_read` and `bench_mixed_read` in one invocation —
+with the anchor line built from `test/bench/fixedform_measure.cpp` by the driver. Item 8
+has its identity half only (which passes `GATE identity` on both g++ 13.3 and clang 18.1
+after `bdb901be5`); the plan lane waits on items 1–7, and the board names their absent
+files. Every other leg's line is a named refusal until its item lands.
+
 1. `bench/corpus/VOLD_bench_lineage.schema` — NEW: `BenchMixed` one generation back, the six narrowings of the table above, same table name, own package.
 2. `bench/corpus/schema.lock` — NEW: the paired unit's lock, VOLD layout at lineage index 0, identity at 1, `floor = 0`.
 3. `Makefile`, `tables_generate` — generate the VOLD leg beside the `VOLD_*`/`VNEW_*` rows so both generations compile into one binary.

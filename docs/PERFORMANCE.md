@@ -34,7 +34,11 @@ portable form and gets the same check. It is not measured, because there is no M
 bench. On ARM (mini-m5-1, Apple clang 21, exploration only, no board) the identity read
 goes from 88.6 to 72.7 ns/record, against a packet read of 89.1. Checks differ and are
 labelled: the table read keeps its contract validation, while the packet read is the
-packet leg's `checks=removed` build.
+packet leg's `checks=removed` build. The plan lane has no lineage corpus on this tree and
+is not measured; the §3.4 anchor (`test/bench/fixedform_measure.cpp`, outside `PATHS`) does
+not compile at this revision and measures 1.86x (86.4 vs 46.5 ns/record) against the 1.5x
+bound in the scratch diagnostic with the proposed two-line fix
+([initial read-arm & anchor diagnostic](../bench/results/2026-10-16-x86_64-hetzner1-cpp-read-arm/README.md)).
 
 ## 2026-10-16: the C++ read clamp's counters, `__restrict` per compiler: neither identity read beats its packet read
 
