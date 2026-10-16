@@ -1450,7 +1450,7 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 			continue
 		}
 		g.pf("            case %d: {\n", i+1)
-		g.emitWriteElement(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v."+javaName(v.F.Name), 16)
+		g.emitWriteField(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v", 16)
 		if arm := fixedFieldBytes(v.F); arm < widest {
 			g.pf("                java.util.Arrays.fill(b, at + %d, at + %d, (byte) 0);\n", tag+arm, tag+widest)
 		}
@@ -1482,7 +1482,7 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 			continue
 		}
 		g.pf("            case %d: {\n", i+1)
-		g.emitScatterElement(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v."+javaName(v.F.Name), "r", 16, v.F)
+		g.emitScatterField(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v", "r", 16)
 		g.pf("                break;\n            }\n")
 	}
 	g.pf("            default: break;\n")

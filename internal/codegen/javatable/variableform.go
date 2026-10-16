@@ -31,6 +31,11 @@ const tableVariableRuntime = `// The VARIABLE FORM's runtime (docs/SPEC-TABLES.m
 // end of the wire. A reference is an unsigned LEB128 naming a slot of the id
 // table, counted from 1; reference 0 names no id and is the terminator.
 public final class TableVariable {
+    static double widenF32(int raw) {
+        if ((raw & 0x7f800000) == 0x7f800000 && (raw & 0x7fffff) != 0)
+            return Double.longBitsToDouble(((long)(raw & 0x80000000) << 32) | 0x7ff0000000000000L | ((long)(raw & 0x7fffff) << 29));
+        return (double)Float.intBitsToFloat(raw);
+    }
     private TableVariable() {}
 
     // The two RESERVED ids the node table names (docs/SPEC-TABLES.md §3.1, §5):
@@ -51,6 +56,7 @@ public int unknown;
         public int clamped;
         public boolean malformed;
         public int widened;
+        public int duplicate;
         public boolean refused;
         public String reason;
         public int retained;
@@ -69,6 +75,7 @@ public int unknown;
         public final long[] ids;
         public final Report report;
         public boolean fail;
+        public boolean rootBody;
 
         public Reader(byte[] buf, long[] ids, Report report) {
             this.buf = buf;
@@ -292,6 +299,7 @@ public int unknown;
         Reader r = new Reader(data, ids, report);
         r.off = 1;
         r.limit = base;
+        r.rootBody = true;
         return r;
     }
 
@@ -424,6 +432,7 @@ public int unknown;
         public String value;
         public byte[] bytes;
         public Object table;
+        public boolean textMalformed;
         public NodeRecord(long typeId, byte[] body) { this.typeId = typeId; this.body = body; }
     }
 
@@ -471,6 +480,7 @@ public int unknown;
                 if (!textValid(rec.body, 0, rec.body.length)) {
                     r.report.malformed = true;
                     rec.typeId = 0;
+                    rec.textMalformed = true;
                 } else {
                     rec.value = new String(rec.body, java.nio.charset.StandardCharsets.UTF_8);
                 }
@@ -590,6 +600,36 @@ public int unknown;
         if (index == 1) { report.kindMismatch++; return null; }
         if (index < 2 || recs == null || index - 2 >= recs.length) { report.malformed = true; return null; }
         return recs[(int) (index - 2)].bytes;
+    }
+
+    // Wide values use UTF-16 code units in the public value API. Wire bytes
+    // are always little endian, independent of the cooked region's order.
+    static Reader fieldPayload(Reader raw,int kind) {
+        if(kind!=12&&kind!=13&&kind!=14&&kind!=16&&kind!=33)return raw;
+        int size=raw.limit-raw.off;Writer framed=new Writer(new byte[size+10],new Ids(1));framed.putLeb(size);framed.putBytes(raw.buf,raw.off,size);
+        Reader r=new Reader(framed.buf,raw.ids,raw.report);r.limit=framed.off;return r;
+    }
+
+    static int lebLen(long value) { int n=1;while((value >>>= 7)!=0)n++;return n; }
+
+    static boolean wideValid(char[] text) {
+        if (text == null) return false;
+        for (int i = 0; i < text.length; i++) {
+            char c = text[i];
+            if (c == 0 || Character.isLowSurrogate(c)) return false;
+            if (Character.isHighSurrogate(c)) {
+                if (++i == text.length || !Character.isLowSurrogate(text[i])) return false;
+            }
+        }
+        return true;
+    }
+
+    static char[] wideClamp(char[] text, int bound, Report report) {
+        if (text.length <= bound) return text;
+        int keep = bound;
+        if (keep > 0 && Character.isHighSurrogate(text[keep - 1])) keep--;
+        report.clamped++;
+        return java.util.Arrays.copyOf(text, keep);
     }
 
     // NodeTable is a load-side holder: the root body's node records, filled
@@ -715,6 +755,21 @@ const tableJsonRuntime = `// The TEXT FORM's runtime (docs/SPEC-TABLES.md §16):
 // outside its range (clamped and counted) (§16.2).
 public final class TableJson {
     private TableJson() {}
+
+    static void writeFlags(StringBuilder b,long bits,String[] names,int depth) {
+        b.append('[');boolean first=true;
+        for(int i=0;i<names.length;i++)if((bits&(1L<<i))!=0){if(!first)b.append(',');first=false;indent(b,depth+1);esc(b,names[i]);}
+        if(!first)indent(b,depth);b.append(']');
+    }
+    static Long readFlags(In in,String[] names) {
+        if(in.peek()!='['){in.skipValue();in.rep.kindMismatch++;return null;}in.p++;long bits=0;
+        while(in.peek()!=']'){
+            if(in.peek()==0){in.bad=true;return null;}
+            if(in.peek()!='"'){in.rep.kindMismatch++;in.skipValue();}else{String name=in.scanString();if(in.bad)return null;boolean found=false;for(int i=0;i<names.length;i++)if(names[i].equals(name)){bits|=1L<<i;found=true;break;}if(!found)in.rep.unknown++;}
+            int separator=in.peek();if(separator==','){in.p++;continue;}if(separator==']')break;in.bad=true;return null;
+        }
+        in.p++;return bits;
+    }
 
     private static final char[] HEX = "0123456789abcdef".toCharArray();
 
@@ -1169,8 +1224,8 @@ func generateVariableFiles(u *ir.Unit) (map[string][]byte, error) {
 		return map[string][]byte{}, nil
 	}
 	out := map[string][]byte{
-		"TableVariable.java": javaFile(u, "the VARIABLE FORM's runtime (docs/SPEC-TABLES.md §3), form byte 1", tableVariableRuntime),
-		"TableJson.java":     javaFile(u, "the TEXT form's runtime (docs/SPEC-TABLES.md §16), JSON in and out", tableJsonRuntime),
+		"TableVariable.java": javaFile(u, "the VARIABLE FORM's runtime (docs/SPEC-TABLES.md §3), form byte 1", strings.TrimSuffix(tableVariableRuntime, "}\n")+variableWideRuntime+"}\n"),
+		"TableJson.java":     javaFile(u, "the TEXT form's runtime (docs/SPEC-TABLES.md §16), JSON in and out", strings.TrimSuffix(tableJsonRuntime, "}\n")+variableWideJsonRuntime+"}\n"),
 	}
 	for _, st := range tables {
 		src, err := generateTableVariable(u, st)
@@ -1181,6 +1236,14 @@ func generateVariableFiles(u *ir.Unit) (map[string][]byte, error) {
 			fmt.Sprintf("the variable form's tolerant load and canonical save for table %s (docs/SPEC-TABLES.md §3, §4)", st.Name),
 			src)
 	}
+	for _, unions := range []map[string]*ir.Union{u.Unions, u.TableUnions} {
+		for _, un := range unions {
+			if refuseVariableFormClosure(variableUnionStruct(un), map[string]bool{}) == nil {
+				out[un.Name+"Variable.java"] = javaFile(u, "the active union arm on the variable wire (§2.6, §3)", generateVariableUnion(u, un))
+			}
+		}
+	}
+
 	return out, nil
 }
 
@@ -1214,138 +1277,9 @@ func isScalarArray(f *ir.Field) bool {
 	return true
 }
 
-func variableWireKind(f *ir.Field) int {
-	if f.Type.Pointer {
-		return 17
-	}
-	if f.Array != ir.ArrayNone {
-		return 14
-	}
-	switch f.Type.Kind {
-	case ir.TBool:
-		return 1
-	case ir.TInt:
-		if f.Type.Signed {
-			switch f.Type.Width {
-			case 8:
-				return 2
-			case 16:
-				return 3
-			case 32:
-				return 4
-			default:
-				return 5
-			}
-		}
-		switch f.Type.Width {
-		case 8:
-			return 6
-		case 16:
-			return 7
-		case 32:
-			return 8
-		default:
-			return 9
-		}
-	case ir.TBits:
-		switch {
-		case f.Type.Width <= 8:
-			return 6
-		case f.Type.Width <= 16:
-			return 7
-		case f.Type.Width <= 32:
-			return 8
-		default:
-			return 9
-		}
-	case ir.TFloat32:
-		return 10
-	case ir.TFloat64:
-		return 11
-	case ir.TString:
-		if f.Type.Blob() {
-			return 17
-		}
-		return 12
-	case ir.TBytes:
-		if f.Type.Blob() {
-			return 17
-		}
-		return 14
-	case ir.TNamed:
-		switch f.Type.Ref.(type) {
-		case *ir.Enum:
-			return 30
-		case *ir.Flags:
-			return 9
-		case *ir.Struct:
-			return 13
-		}
-	}
-	return 0
-}
-
-func variableElemWireKind(f *ir.Field) int {
-	if f.Type.Pointer {
-		return 17
-	}
-	switch f.Type.Kind {
-	case ir.TBool:
-		return 1
-	case ir.TInt:
-		if f.Type.Signed {
-			switch f.Type.Width {
-			case 8:
-				return 2
-			case 16:
-				return 3
-			case 32:
-				return 4
-			default:
-				return 5
-			}
-		}
-		switch f.Type.Width {
-		case 8:
-			return 6
-		case 16:
-			return 7
-		case 32:
-			return 8
-		default:
-			return 9
-		}
-	case ir.TBits:
-		switch {
-		case f.Type.Width <= 8:
-			return 6
-		case f.Type.Width <= 16:
-			return 7
-		case f.Type.Width <= 32:
-			return 8
-		default:
-			return 9
-		}
-	case ir.TFloat32:
-		return 10
-	case ir.TFloat64:
-		return 11
-	case ir.TString:
-		return 12
-	case ir.TBytes:
-		return 6
-	case ir.TNamed:
-		switch f.Type.Ref.(type) {
-		case *ir.Enum:
-			return 30
-		case *ir.Flags:
-			return 9
-		case *ir.Struct:
-			return 13
-		}
-	}
-	return 0
-}
+// Keep kind selection shared with the oracle's IR rules (§3).
+func variableWireKind(f *ir.Field) int     { return ir.TableWireFieldKind(f) }
+func variableElemWireKind(f *ir.Field) int { return ir.TableWireElemKind(f) }
 
 func varMember(f *ir.Field) string {
 	m := member(f)
@@ -1356,6 +1290,16 @@ func varMember(f *ir.Field) string {
 }
 
 func variableListElemType(f *ir.Field) string {
+	if variableWide(f) {
+		typ := variableWideType(f)
+		switch typ {
+		case "int":
+			return "Integer"
+		case "long":
+			return "Long"
+		}
+		return typ
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		return "Boolean"
@@ -1374,6 +1318,8 @@ func variableListElemType(f *ir.Field) string {
 		switch f.Type.Ref.(type) {
 		case *ir.Enum:
 			return "Integer"
+		case *ir.Union:
+			return f.Type.Name + "Variable.Value"
 		case *ir.Flags:
 			return "Long"
 		}
@@ -1382,6 +1328,10 @@ func variableListElemType(f *ir.Field) string {
 }
 
 func variableValueType(f *ir.Field) string {
+	if variableWide(f) && f.Array == ir.ArrayNone {
+		typ := variableWideType(f)
+		return typ
+	}
 	if isPointerArray(f) || isStructArray(f) {
 		return "List<" + f.Type.Name + "Variable.Value>"
 	}
@@ -1411,6 +1361,8 @@ func variableValueType(f *ir.Field) string {
 		return "double"
 	case ir.TString:
 		return "String"
+	case ir.TWString:
+		return "char[]"
 	case ir.TBytes:
 		return "byte[]"
 	case ir.TNamed:
@@ -1419,7 +1371,7 @@ func variableValueType(f *ir.Field) string {
 			return "int"
 		case *ir.Flags:
 			return "long"
-		case *ir.Struct:
+		case *ir.Struct, *ir.Union:
 			return f.Type.Name + "Variable.Value"
 		}
 	}
@@ -1430,8 +1382,18 @@ func variableDefault(f *ir.Field) string {
 	if f.Array != ir.ArrayNone {
 		return "new ArrayList<>()"
 	}
+	if variableWide(f) {
+		return variableWideDefault(f)
+	}
 	if f.Type.Pointer {
 		return "null"
+	}
+	if f.Type.Kind == ir.TBytes {
+		vals := make([]string, len(f.DefBytes))
+		for i, value := range f.DefBytes {
+			vals[i] = fmt.Sprintf("(byte)%d", value)
+		}
+		return "new byte[]{" + strings.Join(vals, ",") + "}"
 	}
 	if f.HasDefault {
 		switch f.Type.Kind {
@@ -1483,6 +1445,8 @@ func variableDefault(f *ir.Field) string {
 		return "0.0d"
 	case ir.TString:
 		return "\"\""
+	case ir.TWString:
+		return "new char[0]"
 	case ir.TBytes:
 		return "null"
 	case ir.TNamed:
@@ -1491,7 +1455,7 @@ func variableDefault(f *ir.Field) string {
 			return "0"
 		case *ir.Flags:
 			return "0L"
-		case *ir.Struct:
+		case *ir.Struct, *ir.Union:
 			return "new " + f.Type.Name + "Variable.Value()"
 		}
 	}
@@ -1499,6 +1463,7 @@ func variableDefault(f *ir.Field) string {
 }
 
 func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
+	st = variableStruct(st)
 	tables := cardVariableTables(u)
 	var b strings.Builder
 	b.WriteString("import java.nio.charset.StandardCharsets;\n")
@@ -1507,16 +1472,33 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "public final class %sVariable {\n", st.Name)
 	b.WriteString("    private " + st.Name + "Variable() {}\n\n")
 
+	writeVariableMapHelpers(&b, u, st)
+	writeVariableKeyedHelpers(&b, u, st)
+
 	// The value class
 	fmt.Fprintf(&b, "    public static final class Value {\n")
 	for _, f := range st.Fields {
 		fmt.Fprintf(&b, "        public %s %s = %s;\n", variableValueType(f), varMember(f), variableDefault(f))
+		if f.Type.Optional {
+			fmt.Fprintf(&b, "        public boolean %sPresent;\n", varMember(f))
+		}
 		if f.Type.Blob() || (f.Type.Pointer && isStruct(f) && f.Array == ir.ArrayNone) {
 			fmt.Fprintf(&b, "        public long %sIdx;\n", varMember(f))
 		} else if isPointerArray(f) {
 			fmt.Fprintf(&b, "        public List<Long> %sIdx = new ArrayList<>();\n", varMember(f))
 		}
 	}
+	b.WriteString("        public Value(){\n")
+	for _, f := range st.Fields {
+		if f.KeyEnum != "" {
+			fmt.Fprintf(&b, "            for(int i=0;i<%d;i++){%s.add(%s);", f.ArrayBound, varMember(f), variableDefault(variableElement(f)))
+			if f.Type.Pointer {
+				fmt.Fprintf(&b, "%sIdx.add(0L);", varMember(f))
+			}
+			b.WriteString("}\n")
+		}
+	}
+	b.WriteString("        }\n")
 	b.WriteString("    }\n\n")
 
 	// Constants
@@ -1555,45 +1537,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("    public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {\n")
 	b.WriteString("        if (v == null) { return true; }\n")
 	for _, f := range st.Fields {
-		m := varMember(f)
-		switch {
-		case f.Type.Kind == ir.TString && f.Type.Blob():
-			fmt.Fprintf(&b, "        if (v.%s != null) { if (!g.recordPointer(v.%s, TableVariable.STRING_ID, v.%s.getBytes(StandardCharsets.UTF_8), true)) return false; }\n", m, m, m)
-		case f.Type.Kind == ir.TBytes && f.Type.Blob():
-			fmt.Fprintf(&b, "        if (v.%s != null) { if (!g.recordPointer(v.%s, TableVariable.BYTES_ID, v.%s, true)) return false; }\n", m, m, m)
-		case isPointerArray(f):
-			target := f.Type.Ref.(*ir.Struct)
-			fmt.Fprintf(&b, "        for (%sVariable.Value elem : v.%s) {\n", target.Name, m)
-			fmt.Fprintf(&b, "            if (elem != null) {\n")
-			fmt.Fprintf(&b, "                boolean isNew = !g.indices.containsKey(elem);\n")
-			fmt.Fprintf(&b, "                if (!g.recordPointer(elem, %sVariable.TYPE_ID, null, false)) return false;\n", target.Name)
-			fmt.Fprintf(&b, "                if (isNew) {\n")
-			fmt.Fprintf(&b, "                    g.open.add(elem);\n")
-			fmt.Fprintf(&b, "                    if (!%sVariable.buildGraph(g, elem)) return false;\n", target.Name)
-			fmt.Fprintf(&b, "                    g.open.remove(elem);\n")
-			fmt.Fprintf(&b, "                }\n")
-			fmt.Fprintf(&b, "            }\n")
-			fmt.Fprintf(&b, "        }\n")
-		case f.Type.Pointer && isStruct(f):
-			target := f.Type.Ref.(*ir.Struct)
-			fmt.Fprintf(&b, "        if (v.%s != null) {\n", m)
-			fmt.Fprintf(&b, "            boolean isNew = !g.indices.containsKey(v.%s);\n", m)
-			fmt.Fprintf(&b, "            if (!g.recordPointer(v.%s, %sVariable.TYPE_ID, null, false)) return false;\n", m, target.Name)
-			fmt.Fprintf(&b, "            if (isNew) {\n")
-			fmt.Fprintf(&b, "                g.open.add(v.%s);\n", m)
-			fmt.Fprintf(&b, "                if (!%sVariable.buildGraph(g, v.%s)) return false;\n", target.Name, m)
-			fmt.Fprintf(&b, "                g.open.remove(v.%s);\n", m)
-			fmt.Fprintf(&b, "            }\n")
-			fmt.Fprintf(&b, "        }\n")
-		case isStructArray(f):
-			target := f.Type.Ref.(*ir.Struct)
-			fmt.Fprintf(&b, "        for (%sVariable.Value elem : v.%s) {\n", target.Name, m)
-			fmt.Fprintf(&b, "            if (elem != null) { if (!%sVariable.buildGraph(g, elem)) return false; }\n", target.Name)
-			fmt.Fprintf(&b, "        }\n")
-		case isStruct(f):
-			target := f.Type.Ref.(*ir.Struct)
-			fmt.Fprintf(&b, "        if (v.%s != null) { if (!%sVariable.buildGraph(g, v.%s)) return false; }\n", m, target.Name, m)
-		}
+		writeVariableGraphField(&b, f)
 	}
 	b.WriteString("        return true;\n    }\n\n")
 
@@ -1619,7 +1563,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		writeFieldRead(&b, u, st, f, false, i)
 	}
 	b.WriteString("            } else if (id == TableVariable.NODE_ID) {\n")
-	b.WriteString("                if (nt != null) { r.skip(kind); }\n")
+	b.WriteString("                if (nt != null && r.rootBody) { r.skip(kind); }\n")
 	b.WriteString("                else { report.malformed = true; return false; }\n")
 	b.WriteString("            } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {\n")
 	b.WriteString("                report.malformed = true; return false;\n")
@@ -1637,33 +1581,11 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "    public static void resolveNodes(Value v, TableVariable.NodeTable nt, Object root, long rootTypeId, TableVariable.Report report) {\n")
 	b.WriteString("        if (nt.bad) { return; }\n")
 	for _, f := range st.Fields {
-		m := varMember(f)
-		switch {
-		case f.Type.Kind == ir.TString && f.Type.Blob():
-			fmt.Fprintf(&b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveString(nt.recs, v.%sIdx, report); }\n", m, m, m)
-		case f.Type.Kind == ir.TBytes && f.Type.Blob():
-			fmt.Fprintf(&b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveBytes(nt.recs, v.%sIdx, report); }\n", m, m, m)
-		case isPointerArray(f):
-			target := f.Type.Ref.(*ir.Struct)
-			fmt.Fprintf(&b, "        if (!v.%sIdx.isEmpty()) {\n", m)
-			fmt.Fprintf(&b, "            v.%s.clear();\n", m)
-			fmt.Fprintf(&b, "            for (Long idx : v.%sIdx) {\n", m)
-			fmt.Fprintf(&b, "                v.%s.add((%sVariable.Value) TableVariable.resolveTable(nt.recs, idx.longValue(), %sVariable.TYPE_ID, root, rootTypeId, report));\n", m, target.Name, target.Name)
-			fmt.Fprintf(&b, "            }\n")
-			fmt.Fprintf(&b, "        }\n")
-		case f.Type.Pointer && isStruct(f):
-			target := f.Type.Ref.(*ir.Struct)
-			fmt.Fprintf(&b, "        if (v.%sIdx != 0) { v.%s = (%sVariable.Value) TableVariable.resolveTable(nt.recs, v.%sIdx, %sVariable.TYPE_ID, root, rootTypeId, report); }\n", m, m, target.Name, m, target.Name)
-		case isStructArray(f):
-			target := f.Type.Ref.(*ir.Struct)
-			fmt.Fprintf(&b, "        for (%sVariable.Value elem : v.%s) { if (elem != null) %sVariable.resolveNodes(elem, nt, root, rootTypeId, report); }\n", target.Name, m, target.Name)
-		case isStruct(f):
-			target := f.Type.Ref.(*ir.Struct)
-			fmt.Fprintf(&b, "        if (v.%s != null) { %sVariable.resolveNodes(v.%s, nt, root, rootTypeId, report); }\n", m, target.Name, m)
-		}
+		writeVariableResolveField(&b, f)
 	}
 	b.WriteString("    }\n\n")
 
+	b.WriteString("    static boolean isDefault(Value v){if(v==null)return true;TableVariable.Writer w=new TableVariable.Writer(new byte[1<<20],new TableVariable.Ids(64));writeFields(w,new TableVariable.NodeGraph(),v);return w.off==0;}\n\n")
 	// writeFields
 	fmt.Fprintf(&b, "    public static void writeFields(TableVariable.Writer w, TableVariable.NodeGraph graph, Value v) {\n")
 	for _, f := range st.Fields {
@@ -1738,7 +1660,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "                    }\n")
 	fmt.Fprintf(&b, "                } else if (rec.typeId == TableVariable.BYTES_ID) {\n")
 	fmt.Fprintf(&b, "                    rec.bytes = rec.body;\n")
-	fmt.Fprintf(&b, "                } else {\n")
+	fmt.Fprintf(&b, "                } else if (!rec.textMalformed) { // §3.1: a cleared text node is damage; an actual id of zero is unknown.\n")
 	fmt.Fprintf(&b, "                    rec.table = createNode(rec.typeId);\n")
 	fmt.Fprintf(&b, "                    if (rec.table == null) {\n")
 	fmt.Fprintf(&b, "                        report.unknown++;\n")
@@ -1770,7 +1692,15 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	writeJsonCodec(&b, u, st)
 
 	b.WriteString("}\n")
-	return b.String(), nil
+	source := b.String()
+	if st.IsMapEntry() {
+		// Entries are codec bodies reached through their holder, never roots
+		// (SPEC-TABLES §2.8). Keep root conveniences out of the public API.
+		for _, signature := range []string{"byte[] save(", "Value load(", "long loadMeasure(", "byte[] toJson(", "Value fromJson("} {
+			source = strings.ReplaceAll(source, "public static "+signature, "static "+signature)
+		}
+	}
+	return source, nil
 }
 
 func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
@@ -1856,20 +1786,27 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 
 	fmt.Fprintf(b, "    static void jsonFields(StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {\n")
 	b.WriteString("        b.append('{' );\n")
-	b.WriteString("        jsonFieldsBody(b, graph, v, depth + 1, true);\n")
-	b.WriteString("        TableJson.indent(b, depth);\n")
+	b.WriteString("        boolean empty = jsonFieldsBody(b, graph, v, depth + 1, true);\n")
+	b.WriteString("        if (!empty) TableJson.indent(b, depth);\n")
 	b.WriteString("        b.append('}');\n")
 	b.WriteString("    }\n\n")
 
-	fmt.Fprintf(b, "    static void jsonFieldsBody(StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth, boolean first) {\n")
+	fmt.Fprintf(b, "    static boolean jsonFieldsBody(StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth, boolean first) {\n")
 	for _, f := range st.Fields {
+		if f.Type.Optional {
+			fmt.Fprintf(b, "        if(v.%sPresent){\n", varMember(f))
+		}
 		b.WriteString("        if (!first) { b.append(','); }\n")
 		b.WriteString("        first = false;\n")
 		b.WriteString("        TableJson.indent(b, depth);\n")
 		fmt.Fprintf(b, "        TableJson.esc(b, %q);\n", jsonKey(f))
 		b.WriteString("        b.append(\": \");\n")
 		writeJsonFieldValue(b, u, st, f)
+		if f.Type.Optional {
+			b.WriteString("        }\n")
+		}
 	}
+	b.WriteString("        return first;\n")
 	b.WriteString("    }\n\n")
 
 	fmt.Fprintf(b, "    public static void writeJsonPointer(StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {\n")
@@ -2017,45 +1954,52 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	fmt.Fprintf(b, "            for (int i = 0; i < v.%s.size(); i++) {\n", m)
 	b.WriteString("                if (i > 0) { b.append(','); }\n")
 	b.WriteString("                TableJson.indent(b, depth + 1);\n")
-	switch f.Type.Kind {
-	case ir.TBool:
-		fmt.Fprintf(b, "                b.append(v.%s.get(i) ? \"true\" : \"false\");\n", m)
-	case ir.TInt:
-		if f.Type.Signed {
-			if f.Type.Width <= 32 {
-				fmt.Fprintf(b, "                b.append(Integer.toString(v.%s.get(i)));\n", m)
+	if variableWide(f) {
+		fmt.Fprintf(b, "                b.append(%s);\n", variableWideJson(f, "v."+m+".get(i)"))
+	} else {
+		switch f.Type.Kind {
+		case ir.TBool:
+			fmt.Fprintf(b, "                b.append(v.%s.get(i) ? \"true\" : \"false\");\n", m)
+		case ir.TInt:
+			if f.Type.Signed {
+				if f.Type.Width <= 32 {
+					fmt.Fprintf(b, "                b.append(Integer.toString(v.%s.get(i)));\n", m)
+				} else {
+					fmt.Fprintf(b, "                b.append(Long.toString(v.%s.get(i)));\n", m)
+				}
 			} else {
-				fmt.Fprintf(b, "                b.append(Long.toString(v.%s.get(i)));\n", m)
+				if f.Type.Width <= 32 {
+					fmt.Fprintf(b, "                b.append(Integer.toUnsignedString(v.%s.get(i)));\n", m)
+				} else {
+					fmt.Fprintf(b, "                b.append(Long.toUnsignedString(v.%s.get(i)));\n", m)
+				}
 			}
-		} else {
+		case ir.TBits:
 			if f.Type.Width <= 32 {
 				fmt.Fprintf(b, "                b.append(Integer.toUnsignedString(v.%s.get(i)));\n", m)
 			} else {
 				fmt.Fprintf(b, "                b.append(Long.toUnsignedString(v.%s.get(i)));\n", m)
 			}
-		}
-	case ir.TBits:
-		if f.Type.Width <= 32 {
-			fmt.Fprintf(b, "                b.append(Integer.toUnsignedString(v.%s.get(i)));\n", m)
-		} else {
-			fmt.Fprintf(b, "                b.append(Long.toUnsignedString(v.%s.get(i)));\n", m)
-		}
-	case ir.TFloat32:
-		fmt.Fprintf(b, "                TableJson.writeFloat(b, v.%s.get(i), true);\n", m)
-	case ir.TFloat64:
-		fmt.Fprintf(b, "                TableJson.writeFloat(b, v.%s.get(i), false);\n", m)
-	case ir.TString:
-		fmt.Fprintf(b, "                TableJson.esc(b, v.%s.get(i));\n", m)
-	case ir.TNamed:
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Enum:
-			fmt.Fprintf(b, "                switch (v.%s.get(i)) {\n", m)
-			for j := range ref.Variants {
-				fmt.Fprintf(b, "                    case %d: TableJson.esc(b, %q); break;\n", j+1, ref.Variants[j])
+		case ir.TFloat32:
+			fmt.Fprintf(b, "                TableJson.writeFloat(b, v.%s.get(i), true);\n", m)
+		case ir.TFloat64:
+			fmt.Fprintf(b, "                TableJson.writeFloat(b, v.%s.get(i), false);\n", m)
+		case ir.TString:
+			fmt.Fprintf(b, "                TableJson.esc(b, v.%s.get(i));\n", m)
+		case ir.TNamed:
+			if un := variableUnion(f); un != nil {
+				fmt.Fprintf(b, "                %sVariable.jsonFields(b,graph,v.%s.get(i),depth+1);\n", un.Name, m)
 			}
-			b.WriteString("                    default: TableJson.esc(b, \"None\"); break;\n                }\n")
-		case *ir.Flags:
-			fmt.Fprintf(b, "                b.append(Long.toString(v.%s.get(i)));\n", m)
+			switch ref := f.Type.Ref.(type) {
+			case *ir.Enum:
+				fmt.Fprintf(b, "                switch (v.%s.get(i)) {\n", m)
+				for j := range ref.Variants {
+					fmt.Fprintf(b, "                    case %d: TableJson.esc(b, %q); break;\n", j+1, ref.Variants[j])
+				}
+				b.WriteString("                    default: TableJson.esc(b, \"None\"); break;\n                }\n")
+			case *ir.Flags:
+				fmt.Fprintf(b, "                TableJson.writeFlags(b,v.%s.get(i),%s,depth+1);\n", m, variableFlagNames(ref))
+			}
 		}
 	}
 	b.WriteString("            }\n")
@@ -2072,50 +2016,57 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	b.WriteString("                        int ec = in.peek();\n")
 	b.WriteString("                        if (ec == ']') { in.p++; break; }\n")
 	b.WriteString("                        if (ec == 0) { in.bad = true; break; }\n")
-	switch f.Type.Kind {
-	case ir.TBool:
-		fmt.Fprintf(b, "                        if (ec == 't') { in.lit(\"true\"); v.%s.add(true); }\n", m)
-		fmt.Fprintf(b, "                        else if (ec == 'f') { in.lit(\"false\"); v.%s.add(false); }\n", m)
-		b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
-	case ir.TInt:
-		min, max := jsonIntRange(f)
-		if f.Type.Width <= 32 {
-			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add((int) in.integer(%t, %s, %s)); }\n", m, f.Type.Signed, min, max)
-		} else {
-			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.integer(%t, %s, %s)); }\n", m, f.Type.Signed, min, max)
-		}
-		b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
-	case ir.TBits:
-		min, max := jsonIntRange(f)
-		if f.Type.Width <= 32 {
-			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add((int) in.integer(false, %s, %s)); }\n", m, min, max)
-		} else {
-			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.integer(false, %s, %s)); }\n", m, min, max)
-		}
-		b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
-	case ir.TFloat32:
-		fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.number32()); }\n", m)
-		b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
-	case ir.TFloat64:
-		fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.number()); }\n", m)
-		b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
-	case ir.TString:
-		fmt.Fprintf(b, "                        if (ec == '\"') { v.%s.add(in.readString(%d)); }\n", m, f.Type.Size)
-		b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
-	case ir.TNamed:
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Enum:
-			b.WriteString("                        if (ec == '\"') {\n")
-			b.WriteString("                            String s = in.scanString();\n")
-			for j := range ref.Variants {
-				fmt.Fprintf(b, "                            if (%q.equals(s)) { v.%s.add(%d); }\n", ref.Variants[j], m, j+1)
-				b.WriteString("                            else ")
-			}
-			fmt.Fprintf(b, "{ v.%s.add(0); in.rep.unknown++; }\n", m)
-			b.WriteString("                        } else { in.skipValue(); in.rep.kindMismatch++; }\n")
-		case *ir.Flags:
-			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.integer(true, Long.MIN_VALUE, Long.MAX_VALUE)); }\n", m)
+	if variableWide(f) {
+		writeVariableWideJsonRead(b, f, "v."+m, true)
+	} else {
+		switch f.Type.Kind {
+		case ir.TBool:
+			fmt.Fprintf(b, "                        if (ec == 't') { in.lit(\"true\"); v.%s.add(true); }\n", m)
+			fmt.Fprintf(b, "                        else if (ec == 'f') { in.lit(\"false\"); v.%s.add(false); }\n", m)
 			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+		case ir.TInt:
+			min, max := jsonIntRange(f)
+			if f.Type.Width <= 32 {
+				fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add((int) in.integer(%t, %s, %s)); }\n", m, f.Type.Signed, min, max)
+			} else {
+				fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.integer(%t, %s, %s)); }\n", m, f.Type.Signed, min, max)
+			}
+			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+		case ir.TBits:
+			min, max := jsonIntRange(f)
+			if f.Type.Width <= 32 {
+				fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add((int) in.integer(false, %s, %s)); }\n", m, min, max)
+			} else {
+				fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.integer(false, %s, %s)); }\n", m, min, max)
+			}
+			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+		case ir.TFloat32:
+			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.number32()); }\n", m)
+			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+		case ir.TFloat64:
+			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.number()); }\n", m)
+			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+		case ir.TString:
+			fmt.Fprintf(b, "                        if (ec == '\"') { v.%s.add(in.readString(%d)); }\n", m, f.Type.Size)
+			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+		case ir.TNamed:
+			if un := variableUnion(f); un != nil {
+				fmt.Fprintf(b, "                        v.%s.add(%sVariable.readJson(in));\n", m, un.Name)
+			}
+			switch ref := f.Type.Ref.(type) {
+			case *ir.Enum:
+				b.WriteString("                        if (ec == '\"') {\n")
+				b.WriteString("                            String s = in.scanString();\n")
+				b.WriteString("                            if(\"None\".equals(s)){v." + m + ".add(0);}else ")
+				for j := range ref.Variants {
+					fmt.Fprintf(b, "                            if (%q.equals(s)) { v.%s.add(%d); }\n", ref.Variants[j], m, j+1)
+					b.WriteString("                            else ")
+				}
+				fmt.Fprintf(b, "{ v.%s.add(0); in.rep.unknown++; }\n", m)
+				b.WriteString("                        } else { in.skipValue(); in.rep.kindMismatch++; }\n")
+			case *ir.Flags:
+				fmt.Fprintf(b, "                        {Long bits=TableJson.readFlags(in,%s);v.%s.add(bits==null?0L:bits);}\n", variableFlagNames(ref), m)
+			}
 		}
 	}
 	b.WriteString("                        ec = in.peek();\n")
@@ -2127,8 +2078,64 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 }
 
 func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
+	if variableWide(f) && f.Array == ir.ArrayNone && !f.Type.Optional {
+		fmt.Fprintf(b, "        b.append(%s);\n", variableWideJson(f, "v."+varMember(f)))
+		return
+	}
+	if flags, ok := f.Type.Ref.(*ir.Flags); ok && f.Array == ir.ArrayNone && !f.Type.Optional {
+		fmt.Fprintf(b, "        TableJson.writeFlags(b,v.%s,%s,depth);\n", varMember(f), variableFlagNames(flags))
+		return
+	}
+	if un := variableUnion(f); un != nil && f.Array == ir.ArrayNone && !f.Type.Optional {
+		fmt.Fprintf(b, "        %sVariable.jsonFields(b,graph,v.%s,depth);\n", un.Name, varMember(f))
+		return
+	}
+	if f.KeyEnum != "" && !f.Type.Optional {
+		writeJsonKeyedValue(b, u, st, f)
+		return
+	}
+	if f.Array == ir.ArrayFixed && f.KeyEnum == "" && !f.Type.Optional {
+		one := *f
+		one.Array = ir.ArrayNone
+		one.ArrayBound = 0
+		elem := variableValueType(&one)
+		switch elem {
+		case "int":
+			elem = "Integer"
+		case "long":
+			elem = "Long"
+		case "float":
+			elem = "Float"
+		case "double":
+			elem = "Double"
+		case "boolean":
+			elem = "Boolean"
+		}
+		fmt.Fprintf(b, "        { List<%s> padded=new ArrayList<>();for(int j=0;j<%d;j++)padded.add(j<v.%s.size()?v.%s.get(j):%s);\n", elem, f.ArrayBound, varMember(f), varMember(f), variableDefault(&one))
+		one = *f
+		one.Array = ir.ArrayList
+		var body strings.Builder
+		writeJsonFieldValue(&body, u, st, &one)
+		b.WriteString(strings.ReplaceAll(body.String(), "v."+varMember(f), "padded"))
+		b.WriteString("        }\n")
+		return
+	}
+	if f.Type.Optional {
+		fmt.Fprintf(b, "        if(!v.%sPresent){b.append(\"null\");}else{\n", varMember(f))
+		one := *f
+		one.Type.Optional = false
+		writeJsonFieldValue(b, u, st, &one)
+		b.WriteString("        }\n")
+		return
+	}
+	if f.IsMap() {
+		writeJsonMapValue(b, u, st, f)
+		return
+	}
 	m := varMember(f)
 	switch {
+	case f.Type.Kind == ir.TWString:
+		fmt.Fprintf(b, "        TableJson.esc(b, new String(v.%s));\n", m)
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "        if (v.%s.isEmpty()) { b.append(\"[]\"); } else {\n", m)
@@ -2165,6 +2172,8 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	case isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "        %sVariable.jsonFields(b, graph, v.%s, depth);\n", target.Name, m)
+	case f.Type.Kind == ir.TBytes:
+		fmt.Fprintf(b, "        TableJson.esc(b,java.util.Base64.getEncoder().encodeToString(v.%s));\n", m)
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "        TableJson.esc(b, v.%s);\n", m)
 	case f.Type.Kind == ir.TBool:
@@ -2199,8 +2208,43 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 }
 
 func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
+	if variableWide(f) && f.Array == ir.ArrayNone && !f.Type.Optional {
+		writeVariableWideJsonRead(b, f, "v."+varMember(f), false)
+		return
+	}
+	if flags, ok := f.Type.Ref.(*ir.Flags); ok && f.Array == ir.ArrayNone && !f.Type.Optional {
+		fmt.Fprintf(b, "                {Long bits=TableJson.readFlags(in,%s);if(bits!=null)v.%s=bits;}\n", variableFlagNames(flags), varMember(f))
+		return
+	}
+	if un := variableUnion(f); un != nil && f.Array == ir.ArrayNone && !f.Type.Optional {
+		fmt.Fprintf(b, "                v.%s=%sVariable.readJson(in);\n", varMember(f), un.Name)
+		return
+	}
+	if f.KeyEnum != "" && !f.Type.Optional {
+		readJsonKeyedValue(b, u, st, f)
+		return
+	}
+	if f.Type.Optional {
+		m := varMember(f)
+		fmt.Fprintf(b, "                if(in.peek()=='n'){in.lit(\"null\");v.%sPresent=false;v.%s=%s;}else{\n", m, m, variableDefault(f))
+		fmt.Fprintf(b, "                boolean selected=%s;\n", variableJsonShape(f, "in.peek()"))
+		one := *f
+		one.Type.Optional = false
+		if f.Array != ir.ArrayNone {
+			fmt.Fprintf(b, "                if(selected)v.%s.clear();\n", m)
+		}
+		readJsonFieldValue(b, u, st, &one)
+		fmt.Fprintf(b, "                if(selected&&!in.bad)v.%sPresent=true;}\n", m)
+		return
+	}
+	if f.IsMap() {
+		readJsonMapValue(b, u, st, f)
+		return
+	}
 	m := varMember(f)
 	switch {
+	case f.Type.Kind == ir.TWString:
+		fmt.Fprintf(b, "                if (in.peek() == '\"') { String text = in.scanString(); if (text != null) { char[] units = text.toCharArray(); if (!TableVariable.wideValid(units)) { in.rep.malformed = true; v.%s = new char[0]; } else { v.%s = TableVariable.wideClamp(units, %d, in.rep); } } } else { in.skipValue(); in.rep.kindMismatch++; }\n", m, m, f.Type.Size)
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		b.WriteString("                if (in.peek() == '[') {\n")
@@ -2251,6 +2295,8 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                if (in.peek() == '{' ) {\n")
 		fmt.Fprintf(b, "                    %sVariable.jsonReadFields(in, v.%s);\n", target.Name, m)
 		b.WriteString("                } else { in.skipValue(); in.rep.kindMismatch++; }\n")
+	case f.Type.Kind == ir.TBytes:
+		fmt.Fprintf(b, "                if(in.peek()=='\"'){String text=in.scanString();if(text!=null){try {byte[] bytes=java.util.Base64.getDecoder().decode(text);int keep=Math.min(bytes.length,%d);v.%s=java.util.Arrays.copyOf(bytes,keep);if(bytes.length>keep)in.rep.clamped++;}catch(IllegalArgumentException invalid){in.rep.kindMismatch++;}}}else {in.skipValue();in.rep.kindMismatch++;}\n", f.Type.Size, m)
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "                if (in.peek() == '\"') { v.%s = in.readString(%d); }\n", m, f.Type.Size)
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
@@ -2277,6 +2323,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
 			b.WriteString("                if (in.peek() == '\"') {\n")
 			b.WriteString("                    String s = in.scanString();\n")
+			fmt.Fprintf(b, "                    if(\"None\".equals(s)){v.%s=0;}else ", m)
 			for i := range enum.Variants {
 				fmt.Fprintf(b, "                    if (%q.equals(s)) { v.%s = %d; }\n", enum.Variants[i], m, i+1)
 				b.WriteString("                    else ")
@@ -2291,8 +2338,48 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 }
 
 func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int) {
+	if variableWide(f) && f.Array == ir.ArrayNone && !f.Type.Optional {
+		writeVariableWideRead(b, f)
+		return
+	}
+	if variableWide(f) && f.Array != ir.ArrayNone && f.KeyEnum == "" && !f.Type.Optional {
+		writeVariableWideArrayRead(b, f)
+		return
+	}
+	if variableUnion(f) != nil && !f.Type.Optional {
+		writeUnionFieldRead(b, u, st, f, retain, ordinal)
+		return
+	}
+	if f.KeyEnum != "" && !f.Type.Optional {
+		writeKeyedFieldRead(b, u, st, f, retain, ordinal)
+		return
+	}
+	if f.Type.Optional {
+		m := varMember(f)
+		one := *f
+		one.Type.Optional = false
+		condition := fmt.Sprintf("kind==%d", variableWireKind(f))
+		for kind := 1; kind <= 33; kind++ {
+			if ir.TableKindWidens(kind, variableWireKind(f)) {
+				condition += fmt.Sprintf("||kind==%d", kind)
+			}
+		}
+		fmt.Fprintf(b, "                boolean selected=(%s);\n", condition)
+		if f.Array != ir.ArrayNone {
+			fmt.Fprintf(b, "                if(selected){TableVariable.Reader probe=new TableVariable.Reader(r.buf,r.ids,new TableVariable.Report());probe.off=r.off;probe.limit=r.limit;TableVariable.Reader ar=probe.body();selected=ar!=null&&ar.has(2)&&ar.get8()==%d;}\n", variableElemWireKind(f))
+		}
+		writeFieldRead(b, u, st, &one, retain, ordinal)
+		fmt.Fprintf(b, "                if(selected&&!r.fail)v.%sPresent=true;\n", m)
+		return
+	}
+	if f.IsMap() {
+		writeMapFieldRead(b, u, st, f, retain, ordinal)
+		return
+	}
 	m := varMember(f)
 	switch {
+	case f.Type.Kind == ir.TWString:
+		fmt.Fprintf(b, "                if (kind == 33) { TableVariable.Reader text = r.body(); if (text != null) { if (((text.limit - text.off) & 1) != 0) { report.malformed = true; v.%s = new char[0]; } else { char[] units = new char[(text.limit - text.off) / 2]; for (int i = 0; i < units.length; i++) units[i] = (char) (text.get8() | text.get8() << 8); if (!TableVariable.wideValid(units)) { report.malformed = true; v.%s = new char[0]; } else { v.%s = TableVariable.wideClamp(units, %d, report); } } } } else { r.skip(kind); report.kindMismatch++; }\n", m, m, m, f.Type.Size)
 	case isPointerArray(f):
 		fmt.Fprintf(b, "                if (kind == 14) {\n")
 		fmt.Fprintf(b, "                    TableVariable.Reader ar = r.body();\n")
@@ -2300,7 +2387,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                        int ek = ar.get8();\n")
 		fmt.Fprintf(b, "                        if (ek == 17) {\n")
 		fmt.Fprintf(b, "                            long n = ar.leb();\n")
-		fmt.Fprintf(b, "                            if (!ar.fail && n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)) {\n")
+		fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)) {\n")
 		fmt.Fprintf(b, "                                v.%sIdx.clear();\n", m)
 		fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
 		fmt.Fprintf(b, "                                    v.%sIdx.add(ar.leb());\n", m)
@@ -2317,13 +2404,28 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                        int ek = ar.get8();\n")
 		fmt.Fprintf(b, "                        if (ek == 13) {\n")
 		fmt.Fprintf(b, "                            long n = ar.leb();\n")
-		fmt.Fprintf(b, "                            if (!ar.fail && n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)) {\n")
+		fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)) {\n")
+		if retain {
+			fmt.Fprintf(b, "                                retain.discardField(path, depth, %d);\n", ordinal)
+		}
+		if f.ArrayBound > 0 {
+			fmt.Fprintf(b, "                                if (n > %d) { report.clamped++; }\n", f.ArrayBound)
+		}
 		fmt.Fprintf(b, "                                v.%s.clear();\n", m)
 		fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
 		fmt.Fprintf(b, "                                    TableVariable.Reader er = ar.body();\n")
 		fmt.Fprintf(b, "                                    if (er == null) break;\n")
+		if f.ArrayBound > 0 {
+			fmt.Fprintf(b, "                                    if (i >= %d) { continue; }\n", f.ArrayBound)
+		}
 		fmt.Fprintf(b, "                                    %sVariable.Value elem = new %sVariable.Value();\n", target.Name, target.Name)
-		fmt.Fprintf(b, "                                    %sVariable.readFields(er, elem, nt, report);\n", target.Name)
+		if retain {
+			fmt.Fprintf(b, "                                    path[2 * depth] = %d; path[2 * depth + 1] = (int) i;\n", ordinal)
+			fmt.Fprintf(b, "                                    %sRetain.readFieldsRetain(er, elem, nt, retain, report, path, depth + 1);\n", target.Name)
+		} else {
+			fmt.Fprintf(b, "                                    %sVariable.readFields(er, elem, nt, report);\n", target.Name)
+		}
+		fmt.Fprintf(b, "                                    if (er.off != er.limit) { report.malformed = true; elem = new %sVariable.Value(); } // §4: a body's unclaimed bytes reset this element.\n", target.Name)
 		fmt.Fprintf(b, "                                    v.%s.add(elem);\n", m)
 		fmt.Fprintf(b, "                                }\n")
 		fmt.Fprintf(b, "                            } else { report.refused = true; }\n")
@@ -2340,9 +2442,19 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                if (kind == 13) {\n")
 		fmt.Fprintf(b, "                    TableVariable.Reader br = r.body();\n")
 		fmt.Fprintf(b, "                    if (br != null) {\n")
-		fmt.Fprintf(b, "                        %sVariable.readFields(br, v.%s, nt, report);\n", target.Name, m)
+		fmt.Fprintf(b, "                        v.%s = new %sVariable.Value();\n", m, target.Name)
+		if retain {
+			fmt.Fprintf(b, "                        retain.discardField(path, depth, %d); path[2 * depth] = %d; path[2 * depth + 1] = 0;\n", ordinal, ordinal)
+			fmt.Fprintf(b, "                        %sRetain.readFieldsRetain(br, v.%s, nt, retain, report, path, depth + 1);\n", target.Name, m)
+		} else {
+			fmt.Fprintf(b, "                        %sVariable.readFields(br, v.%s, nt, report);\n", target.Name, m)
+		}
+		fmt.Fprintf(b, "                        if (br.off != br.limit) { report.malformed = true; v.%s = new %sVariable.Value(); } // §4: reset a nested body that did not fill its length.\n", m, target.Name)
 		fmt.Fprintf(b, "                    }\n")
 		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
+	// bytes(N) rides the scalar-u8 array shape (§3.2), with a bounded copy.
+	case f.Type.Kind == ir.TBytes:
+		fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null){if(!ar.has(1)){report.malformed=true;}else if(ar.get8()!=6){report.kindMismatch++;}else {long n=ar.leb();if(ar.fail||n<0||n>ar.limit-ar.off){report.malformed=true;}else {int keep=(int)Math.min(n,%d);v.%s=java.util.Arrays.copyOfRange(ar.buf,ar.off,ar.off+keep);if(n>%d)report.clamped++;ar.off+=(int)n;if(ar.off!=ar.limit)report.malformed=true;}}}}else {r.skip(kind);report.kindMismatch++;}\n", f.Type.Size, m, f.Type.Size)
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.malformed = true; v.%s = \"\"; } else { int keep = n; if (keep > %d) { keep = %d; while (keep > 0 && (r.buf[r.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } v.%s = new String(r.buf, r.off, keep, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.malformed = true; r.fail = true; } }\n", m, f.Type.Size, f.Type.Size, m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
@@ -2354,6 +2466,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TFloat64:
 		fmt.Fprintf(b, "                if (kind == 11) { if (r.has(8)) { v.%s = Double.longBitsToDouble(r.get64()); } else { report.malformed = true; r.fail = true; } }\n", m)
+		fmt.Fprintf(b, "                else if(kind==10){if(r.has(4)){v.%s=TableVariable.widenF32(r.get32());report.widened++;}else{report.malformed=true;r.fail=true;}}\n", m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
 		writeIntFieldRead(b, f, m)
@@ -2440,7 +2553,18 @@ func writeIntFieldRead(b *strings.Builder, f *ir.Field, m string) {
 	k := variableWireKind(f)
 	width := f.Type.Width
 	read, has := "r.get32()", "4"
-	if width > 32 {
+	switch ir.TableKindWidth(k) {
+	case 1:
+		read, has = "r.get8()", "1"
+		if f.Type.Signed {
+			read = "(byte) r.get8()"
+		}
+	case 2:
+		read, has = "r.get16()", "2"
+		if f.Type.Signed {
+			read = "(short) r.get16()"
+		}
+	case 8:
 		read, has = "r.get64()", "8"
 	}
 	var widen []int
@@ -2455,6 +2579,13 @@ func writeIntFieldRead(b *strings.Builder, f *ir.Field, m string) {
 			widen = append(widen, 8)
 		}
 	}
+	allowed := widen[:0]
+	for _, candidate := range widen {
+		if ir.TableKindWidth(candidate) < ir.TableKindWidth(k) {
+			allowed = append(allowed, candidate)
+		}
+	}
+	widen = allowed
 	cond := fmt.Sprintf("kind == %d", k)
 	for _, w := range widen {
 		if w != k {
@@ -2529,6 +2660,13 @@ func writeArrayFieldSaveRef(b *strings.Builder, f *ir.Field, fieldRef string) {
 }
 
 func writeArrayElemSave(b *strings.Builder, f *ir.Field, m string) {
+	if variableWide(f) {
+		one := variableElement(f)
+		fmt.Fprintf(b, "            for(%s element:v.%s){\n", variableValueType(one), m)
+		writeVariablePayload(b, nil, "", one, "element", "aw", 0)
+		b.WriteString("            }\n")
+		return
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		fmt.Fprintf(b, "            for (Boolean e : v.%s) { aw.put8(e ? 1 : 0); }\n", m)
@@ -2575,8 +2713,40 @@ func writeArrayElemSave(b *strings.Builder, f *ir.Field, m string) {
 }
 
 func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
+	if variableWide(f) && f.Array == ir.ArrayNone && !f.Type.Optional {
+		fmt.Fprintf(b, "        if(!(%s)){w.putLeb(w.ref(F_%s));w.put8(%d);\n", variableDefaultTest(f, "v."+varMember(f)), varMember(f), variableWireKind(f))
+		writeVariablePayload(b, u, st.Name, f, "v."+varMember(f), "w", 0)
+		b.WriteString("        }\n")
+		return
+	}
+	if f.Array == ir.ArrayFixed && f.KeyEnum == "" && !f.Type.Optional {
+		one := variableElement(f)
+		expr := "v." + varMember(f) + ".get(i)"
+		fmt.Fprintf(b, "        {boolean present=false;for(int i=0;i<v.%s.size();i++)if(!(%s)){present=true;break;}if(present){w.putLeb(w.ref(F_%s));w.put8(14);\n", varMember(f), variableDefaultTest(one, expr), varMember(f))
+		writeVariablePayload(b, u, st.Name, f, "v."+varMember(f), "w", 0)
+		b.WriteString("        }}\n")
+		return
+	}
+	if variableUnion(f) != nil && !f.Type.Optional {
+		writeUnionFieldSave(b, u, st, f)
+		return
+	}
+	if f.KeyEnum != "" && !f.Type.Optional {
+		fmt.Fprintf(b, "        {int mark=w.ids.count;long ref=w.ref(F_%s);TableVariable.Writer body=w.sub(new byte[1<<20]);int count=writeKeyedPayload_%s(body,graph,v.%s);if(count>0){w.putLeb(ref);w.put8(16);w.putBytes(body.buf,0,body.off);}else w.ids.count=mark;}\n", varMember(f), varMember(f), varMember(f))
+		return
+	}
+	if f.Type.Optional {
+		fmt.Fprintf(b, "        if(v.%sPresent){w.putLeb(w.ref(F_%s));w.put8(%d);\n", varMember(f), varMember(f), variableWireKind(f))
+		one := *f
+		one.Type.Optional = false
+		writeVariablePayload(b, u, st.Name, &one, "v."+varMember(f), "w", 0)
+		b.WriteString("        }\n")
+		return
+	}
 	m := varMember(f)
 	switch {
+	case f.Type.Kind == ir.TWString:
+		fmt.Fprintf(b, "        if (v.%s.length != 0) { w.putLeb(w.ref(F_%s)); w.put8(33); w.putLeb(v.%s.length * 2L); for (char c : v.%s) { w.put8(c); w.put8(c >>> 8); } }\n", m, m, m, m)
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
@@ -2627,6 +2797,8 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 		fmt.Fprintf(b, "                w.putBytes(sw.buf, 0, sw.off);\n")
 		fmt.Fprintf(b, "            } else { w.ids.count = mark; }\n")
 		fmt.Fprintf(b, "        }\n")
+	case f.Type.Kind == ir.TBytes:
+		fmt.Fprintf(b, "        if(v.%s!=null&&!java.util.Arrays.equals(v.%s,%s)){w.putLeb(w.ref(F_%s));w.put8(14);TableVariable.Writer aw=w.sub(new byte[v.%s.length+16]);aw.put8(6);aw.putLeb(v.%s.length);aw.putBytes(v.%s,0,v.%s.length);w.putLeb(aw.off);w.putBytes(aw.buf,0,aw.off);}\n", m, m, variableDefault(f), m, m, m, m, m)
 	case f.Type.Kind == ir.TString:
 		def := variableDefault(f)
 		if def == "\"\"" {
@@ -2646,7 +2818,7 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 	case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits) && f.Type.Width <= 32:
 		k := variableWireKind(f)
 		def := variableDefault(f)
-		fmt.Fprintf(b, "        if (v.%s != %s) { w.putLeb(w.ref(F_%s)); w.put8(%d); w.put32(v.%s); }\n", m, def, m, k, m)
+		fmt.Fprintf(b, "        if (v.%s != %s) { w.putLeb(w.ref(F_%s)); w.put8(%d); w.put%d(v.%s); }\n", m, def, m, k, ir.TableKindWidth(k)*8, m)
 	case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits):
 		k := variableWireKind(f)
 		def := variableDefault(f)
@@ -2664,4 +2836,138 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 			fmt.Fprintf(b, "        if (v.%s != %s) { w.putLeb(w.ref(F_%s)); w.put8(9); w.put64(v.%s); }\n", m, def, m, m)
 		}
 	}
+}
+
+// Graph numbering descends only present payloads (§2.3, §3.1).
+func writeVariableGraphField(b *strings.Builder, f *ir.Field) {
+	if f.Type.Optional {
+		fmt.Fprintf(b, "        if(v.%sPresent){\n", varMember(f))
+	}
+	m := varMember(f)
+	if f.IsMap() {
+		fmt.Fprintf(b, "        v.%s = order_%s(v.%s);\n", m, m, m)
+	}
+	if f.Type.Kind == ir.TWString {
+		fmt.Fprintf(b, "        if (!TableVariable.wideValid(v.%s) || v.%s.length > %d) return false;\n", m, m, f.Type.Size)
+	}
+	if un := variableUnion(f); un != nil {
+		if f.Array != ir.ArrayNone {
+			fmt.Fprintf(b, "        for(%sVariable.Value arm:v.%s){if(!%sVariable.buildGraph(g,arm))return false;}\n", un.Name, m, un.Name)
+		} else {
+			fmt.Fprintf(b, "        if(!%sVariable.buildGraph(g,v.%s))return false;\n", un.Name, m)
+		}
+		if f.Type.Optional {
+			b.WriteString("        }\n")
+		}
+		return
+	}
+	switch {
+	case f.Type.Kind == ir.TString && f.Type.Blob():
+		fmt.Fprintf(b, "        if (v.%s != null) { if (!g.recordPointer(v.%s, TableVariable.STRING_ID, v.%s.getBytes(StandardCharsets.UTF_8), true)) return false; }\n", m, m, m)
+	case f.Type.Kind == ir.TBytes && f.Type.Blob():
+		fmt.Fprintf(b, "        if (v.%s != null) { if (!g.recordPointer(v.%s, TableVariable.BYTES_ID, v.%s, true)) return false; }\n", m, m, m)
+	case isPointerArray(f):
+		target := f.Type.Ref.(*ir.Struct)
+		fmt.Fprintf(b, "        for (%sVariable.Value elem : v.%s) {\n", target.Name, m)
+		fmt.Fprintf(b, "            if (elem != null) {\n")
+		fmt.Fprintf(b, "                boolean isNew = !g.indices.containsKey(elem);\n")
+		fmt.Fprintf(b, "                if (!g.recordPointer(elem, %sVariable.TYPE_ID, null, false)) return false;\n", target.Name)
+		fmt.Fprintf(b, "                if (isNew) {\n")
+		fmt.Fprintf(b, "                    g.open.add(elem);\n")
+		fmt.Fprintf(b, "                    if (!%sVariable.buildGraph(g, elem)) return false;\n", target.Name)
+		fmt.Fprintf(b, "                    g.open.remove(elem);\n")
+		fmt.Fprintf(b, "                }\n")
+		fmt.Fprintf(b, "            }\n")
+		fmt.Fprintf(b, "        }\n")
+	case f.Type.Pointer && isStruct(f):
+		target := f.Type.Ref.(*ir.Struct)
+		fmt.Fprintf(b, "        if (v.%s != null) {\n", m)
+		fmt.Fprintf(b, "            boolean isNew = !g.indices.containsKey(v.%s);\n", m)
+		fmt.Fprintf(b, "            if (!g.recordPointer(v.%s, %sVariable.TYPE_ID, null, false)) return false;\n", m, target.Name)
+		fmt.Fprintf(b, "            if (isNew) {\n")
+		fmt.Fprintf(b, "                g.open.add(v.%s);\n", m)
+		fmt.Fprintf(b, "                if (!%sVariable.buildGraph(g, v.%s)) return false;\n", target.Name, m)
+		fmt.Fprintf(b, "                g.open.remove(v.%s);\n", m)
+		fmt.Fprintf(b, "            }\n")
+		fmt.Fprintf(b, "        }\n")
+	case isStructArray(f):
+		target := f.Type.Ref.(*ir.Struct)
+		fmt.Fprintf(b, "        for (%sVariable.Value elem : v.%s) {\n", target.Name, m)
+		fmt.Fprintf(b, "            if (elem != null) { if (!%sVariable.buildGraph(g, elem)) return false; }\n", target.Name)
+		fmt.Fprintf(b, "        }\n")
+	case isStruct(f):
+		target := f.Type.Ref.(*ir.Struct)
+		fmt.Fprintf(b, "        if (v.%s != null) { if (!%sVariable.buildGraph(g, v.%s)) return false; }\n", m, target.Name, m)
+	}
+	if f.Type.Optional {
+		b.WriteString("        }\n")
+	}
+}
+
+func variableJsonShape(f *ir.Field, peek string) string {
+	if f.IsMap() || f.KeyEnum != "" {
+		return peek + "=='{'"
+	}
+	if f.Array != ir.ArrayNone {
+		return peek + "=='['"
+	}
+	switch f.Type.Kind {
+	case ir.TString, ir.TWString, ir.TBytes:
+		return peek + "=='\"'"
+	case ir.TBool:
+		return "(" + peek + "=='t'||" + peek + "=='f')"
+	case ir.TNamed:
+		switch f.Type.Ref.(type) {
+		case *ir.Struct, *ir.Union:
+			return peek + "=='{'"
+		case *ir.Enum:
+			return peek + "=='\"'"
+		case *ir.Flags:
+			return peek + "=='['"
+		}
+	}
+	return "(" + peek + "=='-'||(" + peek + ">='0'&&" + peek + "<='9'))"
+}
+
+func writeVariableResolveField(b *strings.Builder, f *ir.Field) {
+	m := varMember(f)
+	if un := variableUnion(f); un != nil {
+		if f.Array != ir.ArrayNone {
+			fmt.Fprintf(b, "        for(%sVariable.Value arm:v.%s){%sVariable.resolveNodes(arm,nt,root,rootTypeId,report);}\n", un.Name, m, un.Name)
+		} else {
+			fmt.Fprintf(b, "        %sVariable.resolveNodes(v.%s,nt,root,rootTypeId,report);\n", un.Name, m)
+		}
+		return
+	}
+	switch {
+	case f.Type.Kind == ir.TString && f.Type.Blob():
+		fmt.Fprintf(b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveString(nt.recs, v.%sIdx, report); }\n", m, m, m)
+	case f.Type.Kind == ir.TBytes && f.Type.Blob():
+		fmt.Fprintf(b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveBytes(nt.recs, v.%sIdx, report); }\n", m, m, m)
+	case isPointerArray(f):
+		target := f.Type.Ref.(*ir.Struct)
+		fmt.Fprintf(b, "        if (!v.%sIdx.isEmpty()) {\n", m)
+		fmt.Fprintf(b, "            v.%s.clear();\n", m)
+		fmt.Fprintf(b, "            for (Long idx : v.%sIdx) {\n", m)
+		fmt.Fprintf(b, "                v.%s.add((%sVariable.Value) TableVariable.resolveTable(nt.recs, idx.longValue(), %sVariable.TYPE_ID, root, rootTypeId, report));\n", m, target.Name, target.Name)
+		fmt.Fprintf(b, "            }\n")
+		fmt.Fprintf(b, "        }\n")
+	case f.Type.Pointer && isStruct(f):
+		target := f.Type.Ref.(*ir.Struct)
+		fmt.Fprintf(b, "        if (v.%sIdx != 0) { v.%s = (%sVariable.Value) TableVariable.resolveTable(nt.recs, v.%sIdx, %sVariable.TYPE_ID, root, rootTypeId, report); }\n", m, m, target.Name, m, target.Name)
+	case isStructArray(f):
+		target := f.Type.Ref.(*ir.Struct)
+		fmt.Fprintf(b, "        for (%sVariable.Value elem : v.%s) { if (elem != null) %sVariable.resolveNodes(elem, nt, root, rootTypeId, report); }\n", target.Name, m, target.Name)
+	case isStruct(f):
+		target := f.Type.Ref.(*ir.Struct)
+		fmt.Fprintf(b, "        if (v.%s != null) { %sVariable.resolveNodes(v.%s, nt, root, rootTypeId, report); }\n", m, target.Name, m)
+	}
+}
+
+func variableFlagNames(flags *ir.Flags) string {
+	var names []string
+	for _, name := range flags.Variants {
+		names = append(names, fmt.Sprintf("%q", name))
+	}
+	return "new String[]{" + strings.Join(names, ",") + "}"
 }
