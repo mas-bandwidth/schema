@@ -488,6 +488,7 @@
         "packet-wide-rust-negative-control",
         "tables-rust-names-negative-control",
         "tables-rust-runtime-home-negative-control",
+        "tables-rust-retain-negative-control",
         "tables-rust-soak-negative-control"
       ],
       "rust": "stable"

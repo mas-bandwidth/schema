@@ -180,8 +180,31 @@ type gen struct {
 	// vc is the unit's carried variable class (variablerefusal.go), shared by
 	// every file of one emission so the set is decided once.
 	vc *variableClass
+	// armIndex is the Rust expression for the element index of the union
+	// value being emitted, "" for a union FIELD (index 0). A body arm's
+	// retain path is step(ordinal, armIndex): each element of an array of
+	// unions is its own body occurrence (docs/SPEC-TABLES.md §6.6), as the
+	// oracle keys records by the body instance and never by the field.
+	armIndex string
 
 	body strings.Builder
+}
+
+// withArmIndex emits with armIndex set to idx, restoring it after.
+func (g *gen) withArmIndex(idx string, emit func()) {
+	prev := g.armIndex
+	g.armIndex = idx
+	emit()
+	g.armIndex = prev
+}
+
+// armPath is the retain path of a union's body arm (docs/SPEC-TABLES.md §6.6).
+func (g *gen) armPath(ordinal int) string {
+	idx := g.armIndex
+	if idx == "" {
+		idx = "0"
+	}
+	return fmt.Sprintf("path.step(%d, %s)", ordinal, idx)
 }
 
 func (g *gen) pf(format string, args ...any) {

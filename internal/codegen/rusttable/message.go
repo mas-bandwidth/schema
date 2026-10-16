@@ -762,7 +762,7 @@ fn skip_width(bytes: &[u8], at: &mut usize, width: usize) -> bool {
 // consumer cannot name).
 const tableReportRust = `// ---- the report -------------------------------------------------------------
 
-/// THE MESSAGE FORM's refusals, each by name (§3.3).
+/// Refusals of the variable and message forms, each by name (§3.3, §5).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum TableReason {
     #[default]
@@ -774,7 +774,27 @@ pub enum TableReason {
     BuildVersionMismatch,
     VocabularyTooLarge,
     BatchTooLarge,
+    Ok,
+    NotACook,
+    ForeignOrder,
+    WrongBuildVersion,
+    ReservedNotZero,
+    BadAlignment,
+    Truncated,
+    UnalignedBase,
+    BadLayout,
+    UnknownForm,
+    CountOverLength,
+    CountOverExtentCap,
+    BlobOverSizeCap,
+    DataCycle,
+    InvalidValue,
+    AllocationFailed,
+    WireDamaged,
 }
+
+/// The variable reader uses the Go reference's refusal vocabulary (§5).
+pub type TableRefuseReason = TableReason;
 
 impl TableReason {
     pub fn name(&self) -> &'static str {
@@ -787,6 +807,23 @@ impl TableReason {
             TableReason::BuildVersionMismatch => "build_version_mismatch",
             TableReason::VocabularyTooLarge => "vocabulary_too_large",
             TableReason::BatchTooLarge => "batch_too_large",
+            TableReason::Ok => "ok",
+            TableReason::NotACook => "not_a_cook",
+            TableReason::ForeignOrder => "foreign_order",
+            TableReason::WrongBuildVersion => "wrong_build_version",
+            TableReason::ReservedNotZero => "reserved_not_zero",
+            TableReason::BadAlignment => "bad_alignment",
+            TableReason::Truncated => "truncated",
+            TableReason::UnalignedBase => "unaligned_base",
+            TableReason::BadLayout => "bad_layout",
+            TableReason::UnknownForm => "unknown_form",
+            TableReason::CountOverLength => "count_over_length",
+            TableReason::CountOverExtentCap => "count_over_extent_cap",
+            TableReason::BlobOverSizeCap => "blob_over_size_cap",
+            TableReason::DataCycle => "data_cycle",
+            TableReason::InvalidValue => "invalid_value",
+            TableReason::AllocationFailed => "allocation_failed",
+            TableReason::WireDamaged => "wire_damaged",
         }
     }
 }
@@ -812,6 +849,8 @@ pub struct TableReport {
     pub duplicate: u64,
     pub malformed: bool,
     pub refused: bool,
+    /// Pointer cycles remain readable but cannot be serialized by the builder (§3.1).
+    pub cycle_on_save: bool,
     /// RETAIN-UNKNOWN'S TWO COUNTERS (docs/SPEC-TABLES.md §6.6): retained
     /// counts the unknown fields whose bytes were kept, retain_lost counts
     /// every unknown this load or save could not keep (capacity, an excluded

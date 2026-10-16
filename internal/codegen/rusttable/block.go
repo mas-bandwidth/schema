@@ -659,6 +659,41 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	b.pf("            let used = used + padding;\n")
 	b.pf("            Some(%sBlock {\n                base,\n                bytes: used,\n            })\n", name)
 	b.pf("        }\n    }\n")
+	// The conformance refusal surface names the first failed open clause using
+	// gotable/refusal.go's spellings (SPEC-TABLES §19.2). The ordinary open is
+	// kept as the fast path; classification only runs after it refuses.
+	b.pf("    /// Name the first failed open clause (§19.2).\n")
+	b.pf("    ///\n    /// # Safety\n    /// `base` must point at `bytes` readable bytes.\n")
+	b.pf("    pub unsafe fn open_reason(base: *const u8, bytes: i64) -> &'static str {\n")
+	b.pf("        unsafe {\n")
+	b.pf("            if Self::open(base, bytes).is_some() { return \"ok\"; }\n")
+	b.pf("            if base.is_null() { return \"unaligned_base\"; }\n")
+	b.pf("            if bytes < %d { return \"truncated\"; }\n", bl.Projection.Size)
+	b.pf("            if !(base as usize).is_multiple_of(%d) { return \"unaligned_base\"; }\n", ir.BlockAlign)
+	b.pf("            let magic = table_block_read64(base);\n")
+	b.pf("            if magic != TABLE_BLOCK_MAGIC { return if table_block_byteswap64(magic) == TABLE_BLOCK_MAGIC { \"foreign_order\" } else { \"not_a_cook\" }; }\n")
+	b.pf("            if table_block_read64(base.add(8)) != BUILD_VERSION { return \"wrong_build_version\"; }\n")
+	b.pf("            if table_block_read64(base.add(16)) != TABLE_BLOCK_BYTE_ORDER { return \"not_a_cook\"; }\n")
+	if len(bl.Arrays) > 0 {
+		b.pf("            let projection = &*(base as *const %sBlockProjection);\n", name)
+	}
+	b.pf("            let mut used: i64 = %d;\n", bl.Projection.Size)
+	for _, a := range bl.Arrays {
+		b.pf("            {\n")
+		b.pf("                let offset_of = projection.%s.offset_of;\n", a.Field.Name)
+		b.pf("                let count = projection.%s.count as u64;\n", a.Field.Name)
+		b.pf("                let stride = projection.%s.stride as u64;\n", a.Field.Name)
+		b.pf("                if stride != core::mem::size_of::<%sRow>() as u64 || count > Self::%s_MAX as u64 { return \"bad_layout\"; }\n", a.ElemName, ir.RustConstName(a.Field.Name))
+		b.pf("                if offset_of < %d || !offset_of.is_multiple_of(%d) || offset_of > bytes as u64 { return \"bad_layout\"; }\n", bl.Projection.Size, ir.BlockAlign)
+		b.pf("                let rows = count * stride;\n")
+		b.pf("                if rows > bytes as u64 - offset_of { return \"bad_layout\"; }\n")
+		b.pf("                used = used.max((offset_of + rows) as i64);\n")
+		b.pf("            }\n")
+	}
+	b.pf("            let padding = (%d - (used %% %d)) %% %d;\n", ir.BlockAlign, ir.BlockAlign, ir.BlockAlign)
+	b.pf("            if padding > bytes - used { return \"truncated\"; }\n")
+	b.pf("            \"bad_layout\"\n")
+	b.pf("        }\n    }\n")
 }
 
 func (b *blockGen) emitBlockRows(bl *ir.BlockLayout, a ir.BlockArray) {
