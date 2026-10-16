@@ -28,3 +28,28 @@ table Floor {
 		t.Error("the table emitter spelled INT64_MIN as a bare literal, which does not compile")
 	}
 }
+
+// TestTableCStringLitEscapes reaches the table emitter's own cStringLit's
+// backslash arm (codecs.go:2809), directly and through a table string
+// default; the packet emitter's twin is pinned in internal/codegen/cpp.
+func TestTableCStringLitEscapes(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]string{
+		`a\b`:          `"a\\b"`,
+		`say "x`:       `"say \"x"`,
+		"tab\t7":       `"tab\0117"`,
+		"\xe2\x82\xac": `"\342\202\254"`,
+	} {
+		if got := cStringLit([]byte(in)); got != want {
+			t.Errorf("cStringLit(%q) = %s, want %s", in, got, want)
+		}
+	}
+	out := specEmitAll(t, `package p
+table Text {
+    path string(8) = "a\b"
+}
+`)
+	if want := `"a\\b"`; !strings.Contains(out, want) {
+		t.Errorf("the table string default must escape its backslash: want %s", want)
+	}
+}
