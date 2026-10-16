@@ -1,0 +1,43 @@
+#!/bin/sh
+# THE BLOCK LEAD GATE's negative control (docs/PORTING.md I5): a copy of the
+# generated tree whose Open no longer checks the base's alignment must turn
+# `block-lead` red, naming the lead. The sabotage is the generated check
+# itself, `if ((bytes.byteOffset % 64) !== 0) {`, rewritten to `if (false) {`,
+# and it is asserted to have APPLIED in every block module, because a sed
+# that matched nothing is a green light.
+# usage: negative-control-block-lead <manifest>   (working directory: repo root)
+set -eu
+
+manifest=$1
+generated=${SCHEMA_JS_GENERATED_SOURCE:-build/tables-generated-js}
+out=build/js-block-lead-negative
+anchor='if ((bytes.byteOffset % 64) !== 0) {'
+rm -rf "$out"
+mkdir -p "$out"
+cp -R "$generated" "$out/generated"
+
+for m in block/RenderBlock.js block/PaddedBlock.js; do
+    f=$out/generated/$m
+    if ! grep -Fq "$anchor" "$f"; then
+        echo "negative control patched nothing: the residue check is not in $f" >&2
+        exit 1
+    fi
+    sed 's|if ((bytes.byteOffset % 64) !== 0) {|if (false) {|' "$f" > "$f.new"
+    mv "$f.new" "$f"
+    if grep -Fq "$anchor" "$f"; then
+        echo "negative control patched nothing: $f still has the check" >&2
+        exit 1
+    fi
+done
+
+if SCHEMA_JS_GENERATED="$out/generated" "${NODE:-node}" test/conformance/js/main.mjs "$manifest" block-lead > "$out/log" 2>&1; then
+    echo "NEGATIVE CONTROL FAILED: a reader that does not check the base left the gate green" >&2
+    cat "$out/log" >&2
+    exit 1
+fi
+if ! grep -Fq 'block_render lead 1 opened' "$out/log"; then
+    echo "NEGATIVE CONTROL FAILED: the gate went red but did not name block_render lead 1 opened" >&2
+    cat "$out/log" >&2
+    exit 1
+fi
+echo "js base-alignment negative control: dropping the check reds the gate ($(grep -c ' opened, wanted refuse' "$out/log") unaligned leads opened)"

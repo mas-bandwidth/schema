@@ -1100,6 +1100,25 @@ tables-js-view-descriptors:
 
 test-js: tables-js-view tables-js-view-descriptors
 
+# THE BASE-ALIGNMENT GATE, JavaScript half (docs/SPEC-TABLES.md §19.1,
+# docs/PORTING.md I5, issue 387): every committed block image at every lead in
+# 0..64 through the generated Open, 0 and 64 open and 1..63 refused by the
+# RangeError that names the multiple-of-64 rule. The conformance driver's
+# `block-lead` mode, over the committed manifest; not a listed surface.
+JS_BLOCK_LEAD_MANIFEST := testdata/conformance/tables/MANIFEST.txt
+
+.PHONY: tables-js-block-lead
+tables-js-block-lead: build/tables-generated-js/.stamp
+	NODE=$(NODE) ./test/conformance/js/driver $(JS_BLOCK_LEAD_MANIFEST) block-lead
+
+# and its control: a copy of the generated block modules with the residue check
+# rewritten to `false` must turn the gate red, naming lead 1
+.PHONY: tables-js-block-lead-negative-control
+tables-js-block-lead-negative-control: build/tables-generated-js/.stamp
+	NODE=$(NODE) ./test/conformance/js/negative-control-block-lead $(JS_BLOCK_LEAD_MANIFEST)
+
+test-js: tables-js-block-lead tables-js-block-lead-negative-control
+
 # THE JAVASCRIPT LEG's WALK NEGATIVE CONTROL (docs/PORTING.md I11): one statement
 # of the GENERATED text reader (the bool arm of the from-text walk) is changed in
 # a COPY of build/tables-generated-js, and the driver, which imports from
