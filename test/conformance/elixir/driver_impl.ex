@@ -317,9 +317,9 @@ end
 
 defmodule Driver do
   # the accelerators' surfaces beside the variable form's: wire, json-read,
-  # json-write and report ride the <Unit>.Table codec, the rest the block and
-  # cook readers
-  @surfaces ~w(wire json-read json-write report cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery)
+  # json-write, json-hostile and report ride the <Unit>.Table codec, the rest
+  # the block and cook readers
+  @surfaces ~w(wire json-read json-write json-hostile report cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -680,6 +680,31 @@ defmodule Driver do
     end
   end
 
+  defp run("json-hostile", rows, outdir) do
+    for [name, unit, root, tree | _] <- rows(rows, "json-hostile") do
+      json = Path.join(tree, root <> ".json")
+      mod = table_module(unit)
+
+      if mod == nil or not mod.carried?(root) do
+        write_absent(outdir, name)
+      else
+        case mod.from_json(root, File.read!(json)) do
+          {:ok, value, report} ->
+            if Map.get(report, :malformed, false) do
+              write(outdir, name, "refused\n")
+            else
+              {:ok, wire} = mod.save(root, value)
+              {:ok, _back, _r2} = mod.load(root, wire)
+              write(outdir, name, report_counters(report) <> ",read\n")
+            end
+
+          _ ->
+            write(outdir, name, "refused\n")
+        end
+      end
+    end
+  end
+
   defp answer_load_save(mod, root, wire, outdir, name) do
     case mod do
       nil ->
@@ -727,7 +752,7 @@ defmodule Driver do
       Map.get(report, :kind_mismatch, 0),
       Map.get(report, :widened, 0),
       Map.get(report, :clamped, 0),
-      0,
+      Map.get(report, :duplicate, 0),
       if(Map.get(report, :malformed, false), do: "true", else: "false")
     ]
     |> Enum.join(",")
