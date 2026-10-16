@@ -167,6 +167,16 @@ inline; only integers cross into the reader and writer. There is no `getF32`
 primitive, because a double crossing a call boundary on a JIT threshold boxes,
 and a generated codec must not depend on the compiler's inlining budget.
 
+A port may take a per-language allowance from this where performance needs it
+in an extreme case (Glenn, 2026-10-15), and JavaScript takes one: the block
+form's and the record objects' float32 accessors read the 32 bits in place as
+an integer and hand them to the unit's ONE module-level conversion
+(`TableBlockReadF32`, `internal/codegen/jstable/record.go` jsF32ReaderSource),
+whose double comes back out of the call. The allowance is held by its
+instruments, not by trust: `make tables-js-alloc` reads the block walk at zero
+bytes per iteration, and `test/js-tables/main.mjs`'s float32 oracle check
+proves the conversion moved no bit (M21).
+
 **Reference.** `internal/codegen/cpptable/cpptable.go:572-573`
 (`table_bits_to_float` and its three siblings, `inline` free functions over
 `get32`/`get64`); elevated to a cross-port rule at docs/SPEC-TABLES.md's
