@@ -457,7 +457,10 @@ the codecs, the reflection descriptors), `<Base>Block.go` and `<Base>Cook.go`
 generic text walk). The unit's shared runtime is emitted ONCE, into the
 package's home `<Package>Table.go` — the file named for the package when one
 exists, else a file emitted for the unit — named by the PACKAGE so an
-earlier-sorting file cannot relocate it (§19.2). Two spellings are Go's own and
+earlier-sorting file cannot relocate it (§19.2). As in Rust, `BuildVersion`
+(§20), the blittable `<Name>Row` records, and the shared descriptor helpers live
+in `<Package>Table.go`, so the unit compiles with any subset of
+`{json, cook, block, message}` omitted. Two spellings are Go's own and
 the reason is at each site:
 an enum's identity pair (`TableEnumId` / `TableEnumValue`) is a METHOD on the
 enum type, because Go has no overloading and a free pair would have to mint a

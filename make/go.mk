@@ -887,6 +887,11 @@ tables-go-usage: build/tables-generated-go/.stamp
 	cd test/go-tables && go test -run '^TestUsage$$' -count=1
 test-go: tables-go-usage
 
+.PHONY: tables-go-subsets
+tables-go-subsets:
+	go test ./internal/codegen/gotable -run '^TestGoTableCompilesWithAnySubsetOfItsForms$$' -count=1
+test-go: tables-go-subsets
+
 # I13 (docs/PORTING.md:1278): the go leg's text differential against a third
 # implementation. The test generates N random float-only instances with the
 # generated setters, writes each as (wire, text), then byte-compares the leg's

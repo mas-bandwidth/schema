@@ -35,12 +35,10 @@ func pointerTargetId(f *ir.Field) uint64 {
 func (g *tableGen) typeCodecColumns(st *ir.Struct) string {
 	columns := fmt.Sprintf(", Id:0x%016x, Variable:%v, SaveBody:func(w *TableWriter,p unsafe.Pointer) bool { return %sSaveBody(w,(*%s)(p)) }, LoadBody:func(r TableReader,p unsafe.Pointer) bool { return %sLoadBody(&r,(*%s)(p)) }", ir.TableWireId(st.WireName()), ir.VariableTables(g.unit)[st.Name], st.Name, g.storageName(st.Name), st.Name, g.storageName(st.Name))
 	if g.regional {
-		columns += fmt.Sprintf(",LoadMessageBodyRetain:func(r TableRetainMessageReader,p unsafe.Pointer)(TableRetainMessageReader,bool){ok:=%sLoadMessageBodyRetain(&r,(*%s)(p));return r,ok}", st.Name, g.storageName(st.Name))
 		columns += fmt.Sprintf(",SaveBodyRetain:func(w *TableRetainWriter,p unsafe.Pointer)bool{return %sSaveBodyRetain(w,(*%s)(p))},LoadBodyRetain:func(r TableRetainReader,p unsafe.Pointer)bool{return %sLoadBodyRetain(&r,(*%s)(p))}", st.Name, g.storageName(st.Name), st.Name, g.storageName(st.Name))
 	}
 	ml := ir.RecordLayout(g.unit, st)
 	columns += fmt.Sprintf(", CookSize:%d, CookAlign:%d", ml.Size, ml.Align)
-	columns += fmt.Sprintf(", SaveMessageBody:func(w *TableMessageWriter,p unsafe.Pointer)bool{return %sSaveMessageBody(w,(*%s)(p))},LoadMessageBody:func(r TableMessageReader,p unsafe.Pointer)(TableMessageReader,bool){ok:=%sLoadMessageBody(&r,(*%s)(p));return r,ok}", st.Name, g.storageName(st.Name), st.Name, g.storageName(st.Name))
 
 	if g.regional && ir.VariableTables(g.unit)[st.Name] {
 		var nodes strings.Builder
@@ -53,28 +51,55 @@ func (g *tableGen) typeCodecColumns(st *ir.Struct) string {
 	}
 	return columns
 }
-func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
-	// Cook and block own most rows. Emit only closure members they do not reach.
-	ck := cookUnitOf(g.unit)
-	missing := map[string]*ir.MemberLayout{}
-	for n := range ir.TableClosure(g.unit) {
-		if ck.members[n] == nil && (blocks == nil || blocks.Layout(n) == nil) {
-			if st := cookMember(g.unit, n); st != nil {
-				missing[n] = ir.RecordLayout(g.unit, st)
-			}
+func (g *tableGen) emitMessageDescriptorInit(st *ir.Struct) {
+	n := st.Name
+	typ := g.storageName(st.Name)
+	if g.regional {
+		g.pf("func init() { %sTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool { return %sSaveMessageBody(w, (*%s)(p)) }; %sTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) { ok := %sLoadMessageBody(&r, (*%s)(p)); return r, ok }; %sTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) { ok := %sLoadMessageBodyRetain(&r, (*%s)(p)); return r, ok } }\n", n, n, typ, n, n, typ, n, n, typ)
+		return
+	}
+	g.pf("func init() { %sTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool { return %sSaveMessageBody(w, (*%s)(p)) }; %sTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) { ok := %sLoadMessageBody(&r, (*%s)(p)); return r, ok } }\n", n, n, typ, n, n, typ)
+}
+func (g *tableGen) emitUnitBlittableRows(blocks *ir.BlockUnit) {
+	if blocks != nil && blockHome(g.unit, blocks) != "" {
+		bg := &blockGen{unit: g.unit, blocks: blocks}
+		for _, name := range blocks.Order {
+			bg.emitBlittable(name)
 		}
+		g.types.WriteString(bg.structs.String())
 	}
-	cg := &cookGen{unit: g.unit, cook: &cookUnit{members: missing}}
-	names := make([]string, 0, len(missing))
-	for n := range missing {
-		names = append(names, n)
-	}
-	slices.Sort(names)
-	for _, n := range names {
-		cg.emitBlittable(n)
+	ck := cookUnitOf(g.unit)
+	cg := &cookGen{unit: g.unit, cook: ck, blocks: blocks}
+	for _, name := range ck.order {
+		if cg.blockHasRecord(name) {
+			continue
+		}
+		cg.emitBlittable(name)
 	}
 	g.types.WriteString(cg.structs.String())
-	names = names[:0]
+	if g.regional {
+		missing := map[string]*ir.MemberLayout{}
+		for n := range ir.TableClosure(g.unit) {
+			if ck.members[n] == nil && (blocks == nil || blocks.Layout(n) == nil) {
+				if st := cookMember(g.unit, n); st != nil {
+					missing[n] = ir.RecordLayout(g.unit, st)
+				}
+			}
+		}
+		mg := &cookGen{unit: g.unit, cook: &cookUnit{members: missing}}
+		names := make([]string, 0, len(missing))
+		for n := range missing {
+			names = append(names, n)
+		}
+		slices.Sort(names)
+		for _, n := range names {
+			mg.emitBlittable(n)
+		}
+		g.types.WriteString(mg.structs.String())
+	}
+}
+func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
+	names := make([]string, 0, len(g.unionArmSlot))
 	for n := range g.unionArmSlot {
 		names = append(names, n)
 	}
@@ -88,7 +113,7 @@ func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
 	}
 	g.pf("const tableRegionAlign int64 = %d\n", ir.TableRegionAlign(g.unit))
 	g.pf("const tableBytesTypeId uint64=0x%016x\nconst tableStringTypeId uint64=0x%016x\n", ir.TableWireId("bytes"), ir.TableWireId("string"))
-	source := tableRegionSource + tableRegionJsonSource + tableRegionBlobSource + tableBuilderLoadSource
+	source := tableRegionSource + tableRegionBlobSource + tableBuilderLoadSource
 	if unitHasContainers(g.unit) {
 		source = containerRegionSource(source)
 		source += tableContainerSource + tableMapSource

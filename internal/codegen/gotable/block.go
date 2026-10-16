@@ -110,14 +110,6 @@ func (g *blockGen) emit() {
 		g.needsUnsafe = true
 		g.rf("%s", blockRuntime())
 		g.rf("%s", blockBuildRuntime)
-		// EVERY blittable record of the unit, here and nowhere else. Not the
-		// file that DECLARES the type: a record a block form reaches is often
-		// declared in a file of `type`s alone, which gets no Block.go of its
-		// own, and a consumer would then reference a struct nothing emitted.
-		// One definition per unit, in a file that exists.
-		for _, name := range g.blocks.Order {
-			g.emitBlittable(name)
-		}
 	}
 	// every marked table's PROJECTION is a record too, and it belongs to the
 	// file that declares the table
