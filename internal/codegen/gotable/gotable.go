@@ -91,6 +91,7 @@ type tableGen struct {
 	viewUnions    map[string]int
 	viewNoIds     bool
 	idOrdinal     map[uint64]int // compile-time slot of each id TableWireIds names
+	surfaces      Surfaces
 
 	// Every union declaration reached by this unit's table closure has one
 	// immutable descriptor slot, shared by fields, arrays and nested arms.
@@ -207,19 +208,32 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
 // every table then carries the one entry it can always compute: its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	return GenerateLineageSurface(u, lineage, DefaultSurfaces())
+}
+
+// GenerateLineageSurface is GenerateLineage with a surface list (docs/SPEC-TABLES.md
+// §8.8): only the named surfaces' files and functions are emitted, with wire kept
+// as the base. The default full set is byte-identical to GenerateLineage.
+func GenerateLineageSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
 	blocks := ir.Blocks(u)
-	out, err := generateBlockFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	out := map[string][]byte{}
+	if s.Block {
+		var err error
+		out, err = generateBlockFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
 	}
-	cooks, err := generateCookFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	if s.Cook {
+		cooks, err := generateCookFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, cooks)
 	}
-	maps.Copy(out, cooks)
 
 	regional := len(variableTableNames(u)) > 0
 
@@ -272,7 +286,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	}
 	runtimeWritten := false
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage}
+		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage, surfaces: s}
 		members := fileMembers(f, closure)
 		if g.home {
 			emitRuntime(g)
@@ -298,12 +312,18 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			g.emitTableWrite(st)
 			g.emitTableSave(st)
 			g.emitTableRead(st)
-			g.emitRetainMember(st)
-			g.emitCookWriteSurface(st)
-			g.emitMessageWrite(st)
-			g.emitMessageRead(st)
-			if regional {
-				g.emitRegionMessage(st)
+			if s.Retain {
+				g.emitRetainMember(st)
+			}
+			if s.Cook {
+				g.emitCookWriteSurface(st)
+			}
+			if s.Message {
+				g.emitMessageWrite(st)
+				g.emitMessageRead(st)
+				if regional {
+					g.emitRegionMessage(st)
+				}
 			}
 			if regional {
 				g.emitRegionMember(st)
@@ -316,7 +336,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 				}
 			}
 		}
-		g.emitFixedForm(members)
+		if s.Fixed {
+			g.emitFixedForm(members)
+		}
 		if len(members) > 0 {
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----\n\n")
 			for _, st := range members {
@@ -336,7 +358,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// either way — that is the whole rule, and it is what keeps an
 	// earlier-sorting file from moving it (§19.2).
 	if !runtimeWritten {
-		g := &tableGen{unit: u, home: true, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage}
+		g := &tableGen{unit: u, home: true, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage, surfaces: s}
 		emitRuntime(g)
 		src, err := g.assemble()
 		if err != nil {
@@ -345,19 +367,23 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		out[home+"Table.go"] = src
 	}
 
-	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
-	// descriptors, in its own file so a project that never reads or writes a
-	// text does not compile it
-	texts, err := generateJsonFiles(u, closure, home)
-	if err != nil {
-		return nil, err
+	if s.JSON {
+		// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
+		// descriptors, in its own file so a project that never reads or writes a
+		// text does not compile it
+		texts, err := generateJsonFiles(u, closure, home)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, texts)
 	}
-	maps.Copy(out, texts)
-	view, err := generateViewFile(u, closure, armSlots)
-	if err != nil {
-		return nil, err
+	if s.View {
+		view, err := generateViewFile(u, closure, armSlots)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, view)
 	}
-	maps.Copy(out, view)
 	return out, nil
 }
 
