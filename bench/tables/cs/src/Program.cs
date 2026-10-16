@@ -30,6 +30,7 @@ using BenchSchema = Benchtable.Schema;
 using BenchReport = Benchtable.TableReport;
 #endif
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -42,7 +43,19 @@ static class Program
     static readonly int[] gLengths = new int[NumVariants];
     static long gIterations = 0; // explicit diagnostic count; defaults stay standard
     static int gNumRuns = MaxNumRuns;   // --round K drops this to 1 (§2.4)
+    static int gRound = 0;
     const int NumVariants = 64;         // read-path variant buffers
+
+    // THE READ ARM (BENCH-STANDARD.md §1.10): one process times the fixed
+    // form's read, the plan lane's read (on the BENCH_PLAN build), and the
+    // packet wire's read, rotating which runs first by --round K.
+    static bool gReadArm;
+    static long gPacketIterations = 0;
+    static string gPacketWireDir = Path.Combine("testdata", "wire");
+    static string gPacketVariantDir = Path.Combine("bench", "corpus", "variants");
+#if BENCH_PLAN
+    static string gLineageDir = Path.Combine("bench", "tables", "cs", "lineage");
+#endif
 
     // ---- CSV v2 (BENCH-STANDARD.md §5.1) ----
     // family `table` (§1.9) per row. linkage asm — the generated codec is
@@ -52,9 +65,8 @@ static class Program
     // caller-error asserts are dormant (§3.4). opt default (the JIT has no
     // operator-visible optimization levels). inline unknown: a JIT leg has no
     // AOT artifact the §4 verdict pass could walk.
-    const string CsvSuffix = "asm,contract,default,unknown";
-
-    static readonly List<(string Row, string Family)> gCsvRows = new List<(string, string)>();
+    static readonly List<(string Row, string Family, string Checks)> gCsvRows =
+        new List<(string, string, string)>();
     static readonly SortedDictionary<string, byte[]> gGoldensLoaded =
         new SortedDictionary<string, byte[]>(StringComparer.Ordinal);
 
@@ -98,9 +110,9 @@ static class Program
             return;
         }
         string id = CorpusId();
-        foreach ((string row, string family) in gCsvRows)
+        foreach ((string row, string family, string checks) in gCsvRows)
         {
-            Console.WriteLine(row + "," + id + "," + family + "," + CsvSuffix);
+            Console.WriteLine(row + "," + id + "," + family + ",asm," + checks + ",default,unknown");
         }
     }
 
@@ -146,7 +158,7 @@ static class Program
         };
     }
 
-    static void Report(string bench, string path, long iters, double bytesPerOp, RunStats s)
+    static void ReportWith(string bench, string path, string family, string checks, long iters, double bytesPerOp, RunStats s)
     {
         double mbps = s.Median * bytesPerOp / (1024.0 * 1024.0);
         Console.Error.WriteLine(string.Format(CultureInfo.InvariantCulture,
@@ -156,13 +168,18 @@ static class Program
         {
             gCsvRows.Add((string.Format(CultureInfo.InvariantCulture,
                 "cs,{0},{1},{2},{3},{4},{5:F0},{6:F0},{7:F0},{8:F2},{9:F2}",
-                bench, path, iters, bytesPerOp, gNumRuns, s.Median, s.Min, s.Max, mbps, s.SpreadPct), "table"));
+                bench, path, iters, bytesPerOp, gNumRuns, s.Median, s.Min, s.Max, mbps, s.SpreadPct), family, checks));
         }
     }
 
-    static bool CheckGolden(string name, byte[] data, long bytes)
+    static void Report(string bench, string path, long iters, double bytesPerOp, RunStats s)
     {
-        string path = Path.Combine(gWireDir, name + ".bin");
+        ReportWith(bench, path, "table", "contract", iters, bytesPerOp, s);
+    }
+
+    static bool CheckGoldenFrom(string dir, string name, byte[] data, long bytes)
+    {
+        string path = Path.Combine(dir, name + ".bin");
         if (!File.Exists(path))
         {
             Console.Error.WriteLine("missing wire golden " + path + " — run from the schema repo root (or pass --wire-dir)");
@@ -186,6 +203,11 @@ static class Program
         return true;
     }
 
+    static bool CheckGolden(string name, byte[] data, long bytes)
+    {
+        return CheckGoldenFrom(gWireDir, name, data, bytes);
+    }
+
     // Load 64 concatenated records. --indexed requires a 64-entry uint32
     // length index; otherwise retain the historical fixed-stride format.
     // Return the exact mean encoded bytes; padding is never counted.
@@ -203,7 +225,7 @@ static class Program
             gGoldensLoaded[name + ".lengths"] = lengths;
             for (int k = 0; k < NumVariants; k++)
             {
-                uint n = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(lengths.AsSpan(k * 4, 4));
+                uint n = BinaryPrimitives.ReadUInt32LittleEndian(lengths.AsSpan(k * 4, 4));
                 if (n == 0 || n > BufferSize) return -1;
                 gLengths[k] = (int)n;
             }
@@ -402,30 +424,31 @@ static class Program
     static readonly Bench.FixedTable[] gFixedOut = new Bench.FixedTable[FixedCount];
     static readonly Bench.TableFixedEntry[] gFixedPlan = new Bench.TableFixedEntry[FixedPlanCapacity];
     static readonly BenchReport gFixedReport = new BenchReport();
+    static readonly byte[][] gPacketVariants = new byte[NumVariants][];
 
     static long FixedLoadAll(Bench.FixedTable[] values, ReadOnlySpan<byte> bytes)
     {
         return BenchSchema.FixedTableFixedLoad(values, bytes, gFixedPlan, gFixedReport);
     }
 
-    static void BenchFixed(string name, long baseIters)
+    static bool LoadAndGateFixed(string name, out byte[] file)
     {
-        long iters = gIterations > 0 ? gIterations : baseIters;
+        file = null;
         string filePath = Path.Combine(gVariantDir, "bench_fixed.bin");
         if (!File.Exists(filePath))
         {
             Console.Error.WriteLine("missing fixed corpus " + filePath + " — run from the schema repo root (or pass --variant-dir)");
             failed = true;
-            return;
+            return false;
         }
-        byte[] file = File.ReadAllBytes(filePath);
+        file = File.ReadAllBytes(filePath);
 
         string layoutPath = Path.Combine(gVariantDir, "bench_fixed.layout");
         if (!File.Exists(layoutPath))
         {
             Console.Error.WriteLine("missing fixed corpus " + layoutPath + " — run from the schema repo root (or pass --variant-dir)");
             failed = true;
-            return;
+            return false;
         }
         byte[] layout = File.ReadAllBytes(layoutPath);
 
@@ -433,12 +456,11 @@ static class Program
         {
             Console.Error.WriteLine("empty fixed corpus in " + gVariantDir);
             failed = true;
-            return;
+            return false;
         }
 
         gGoldensLoaded["bench_fixed.bin"] = file;
         gGoldensLoaded["bench_fixed.layout"] = layout;
-        double bytesPerOp = (double)file.Length / FixedCount;
         byte[] twin = new byte[file.Length];
 
         // gate 1: THE LAYOUT IS THE CORPUS'S LAYOUT.
@@ -446,7 +468,7 @@ static class Program
             !layout.AsSpan().SequenceEqual(BenchSchema.FixedTableFixedLayout))
         {
             Fail(name, "this build's layout block is not the corpus's, byte for byte");
-            return;
+            return false;
         }
 
         // gate 2: the whole file loads clean.
@@ -454,7 +476,7 @@ static class Program
         if (loaded != FixedCount)
         {
             Fail(name, "the fixed corpus did not load");
-            return;
+            return false;
         }
 
         // gate 3: writing them back reproduces the file, byte for byte.
@@ -462,7 +484,7 @@ static class Program
             !twin.AsSpan().SequenceEqual(file))
         {
             Fail(name, "round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus");
-            return;
+            return false;
         }
 
         // gate 4: reused storage round-trips too. The load owns the prefill, so
@@ -474,12 +496,23 @@ static class Program
                 !twin.AsSpan().SequenceEqual(file))
             {
                 Fail(name, "reused target round-trip bytes differ");
-                return;
+                return false;
             }
         }
+        return true;
+    }
 
+    static void BenchFixed(string name, long baseIters)
+    {
+        long iters = gIterations > 0 ? gIterations : baseIters;
+        if (!LoadAndGateFixed(name, out byte[] file))
+        {
+            return;
+        }
         if (gGate) return;
 
+        double bytesPerOp = (double)file.Length / FixedCount;
+        byte[] twin = new byte[file.Length];
         double[] writeRates = new double[gNumRuns];
         double[] roundtripRates = new double[gNumRuns];
 
@@ -548,6 +581,346 @@ static class Program
                 name, "read", 1e-6 / readTime));
         }
     }
+
+    static bool GateMixedRead(out int packetSize)
+    {
+        packetSize = 0;
+        string path = Path.Combine(gPacketVariantDir, "bench_mixed.variants.bin");
+        if (!File.Exists(path))
+        {
+            Console.Error.WriteLine("missing packet variant data " + path + " — pass --packet-variant-dir");
+            failed = true;
+            return false;
+        }
+        byte[] packed = File.ReadAllBytes(path);
+        if (packed.Length == 0 || packed.Length % NumVariants != 0)
+        {
+            Fail("bench_mixed_read", "packet variant data is not a multiple of 64 records");
+            return false;
+        }
+        int record = packed.Length / NumVariants;
+        if (record <= 0 || record > BufferSize)
+        {
+            Fail("bench_mixed_read", "packet variant record size out of range");
+            return false;
+        }
+        for (int k = 0; k < NumVariants; k++)
+        {
+            gPacketVariants[k] = new byte[VariantStride];
+            Array.Copy(packed, k * record, gPacketVariants[k], 0, record);
+        }
+        gGoldensLoaded["bench_mixed.variants.bin"] = packed;
+
+        if (!CheckGoldenFrom(gPacketWireDir, "bench_mixed", gPacketVariants[0], record))
+        {
+            failed = true;
+            return false;
+        }
+
+        BenchValue instance = new BenchValue();
+        for (int k = 0; k < NumVariants; k++)
+        {
+            Serialize.ReadStream rs = new Serialize.ReadStream(gPacketVariants[k], record);
+            if (!BenchSchema.ReadBenchMixed(rs, instance) || rs.BytesProcessed != record)
+            {
+                Fail("bench_mixed_read", "decode of a packet variant failed");
+                return false;
+            }
+            Serialize.WriteStream ws = new Serialize.WriteStream(gTwin);
+            if (!BenchSchema.WriteBenchMixed(ws, instance))
+            {
+                Fail("bench_mixed_read", "re-encode of a decoded packet variant failed");
+                return false;
+            }
+            ws.Flush();
+            if (ws.BytesProcessed != record ||
+                !gTwin.AsSpan(0, record).SequenceEqual(gPacketVariants[k].AsSpan(0, record)))
+            {
+                Fail("bench_mixed_read", "packet variant round-trip bytes differ");
+                return false;
+            }
+        }
+
+        BenchValue reused = new BenchValue();
+        for (int k = 0; k < 2 * NumVariants; k++)
+        {
+            int index = k & (NumVariants - 1);
+            Serialize.ReadStream rs = new Serialize.ReadStream(gPacketVariants[index], record);
+            if (!BenchSchema.ReadBenchMixed(rs, reused) || rs.BytesProcessed != record)
+            {
+                Fail("bench_mixed_read", "decode into reused packet target failed");
+                return false;
+            }
+            Serialize.WriteStream ws = new Serialize.WriteStream(gTwin);
+            if (!BenchSchema.WriteBenchMixed(ws, reused))
+            {
+                Fail("bench_mixed_read", "re-encode of reused packet target failed");
+                return false;
+            }
+            ws.Flush();
+            if (ws.BytesProcessed != record ||
+                !gTwin.AsSpan(0, record).SequenceEqual(gPacketVariants[index].AsSpan(0, record)))
+            {
+                Fail("bench_mixed_read", "reused packet target round-trip bytes differ");
+                return false;
+            }
+        }
+
+        packetSize = record;
+        return true;
+    }
+
+#if BENCH_PLAN
+    static bool GatePlanRead(byte[] fixedGolden, out byte[] lineageFile)
+    {
+        lineageFile = null;
+        string filePath = Path.Combine(gLineageDir, "bench_lineage.bin");
+        if (!File.Exists(filePath))
+        {
+            Console.Error.WriteLine("missing lineage corpus " + filePath + " — pass --lineage-dir");
+            failed = true;
+            return false;
+        }
+        lineageFile = File.ReadAllBytes(filePath);
+
+        string layoutPath = Path.Combine(gLineageDir, "bench_lineage.layout");
+        if (!File.Exists(layoutPath))
+        {
+            Console.Error.WriteLine("missing lineage layout " + layoutPath + " — pass --lineage-dir");
+            failed = true;
+            return false;
+        }
+        byte[] lineageLayout = File.ReadAllBytes(layoutPath);
+
+        if (lineageFile.Length == 0 || lineageLayout.Length == 0)
+        {
+            Console.Error.WriteLine("empty lineage corpus in " + gLineageDir);
+            failed = true;
+            return false;
+        }
+        gGoldensLoaded["bench_lineage.bin"] = lineageFile;
+        gGoldensLoaded["bench_lineage.layout"] = lineageLayout;
+
+        // gate 1: THE LINEAGE IS THE LOCK'S. This build knows exactly two layouts,
+        // the older one first, and the lineage file carries that older layout's
+        // hash and bytes — so the read below runs a plan, never the identity.
+        if (lineageFile.Length < 20)
+        {
+            Fail("bench_plan_read", "bench_lineage.bin is shorter than 20 bytes");
+            return false;
+        }
+        uint embedded = BinaryPrimitives.ReadUInt32LittleEndian(lineageFile.AsSpan(16, 4));
+        ulong lineageHash = BinaryPrimitives.ReadUInt64LittleEndian(lineageFile.AsSpan(8, 8));
+        if (BenchSchema.FixedTableFixedKnown.Length != 2 ||
+            lineageHash != BenchSchema.FixedTableFixedKnown[0].Hash ||
+            BenchSchema.FixedTableFixedKnown[0].Hash == BenchSchema.FixedTableFixedHash ||
+            lineageLayout.Length != BenchSchema.FixedTableFixedKnown[0].Layout.Length ||
+            !lineageLayout.AsSpan().SequenceEqual(BenchSchema.FixedTableFixedKnown[0].Layout) ||
+            embedded != (uint)lineageLayout.Length ||
+            20 + lineageLayout.Length > lineageFile.Length ||
+            !lineageFile.AsSpan(20, lineageLayout.Length).SequenceEqual(lineageLayout))
+        {
+            Fail("bench_plan_read", "the lineage corpus is not the lock's older layout, or this build's lineage is not that lock's");
+            return false;
+        }
+
+        // gate 2: the whole file reads, and nothing but a widening is reported.
+        for (int k = 0; k < FixedCount; k++)
+        {
+            gFixedOut[k] = null;
+        }
+        BenchReport rep = new BenchReport();
+        if (BenchSchema.FixedTableFixedLoad(gFixedOut, lineageFile, gFixedPlan, rep) != FixedCount ||
+            rep.Malformed || rep.Refused ||
+            rep.Unknown != 0 || rep.KindMismatch != 0 ||
+            rep.Duplicate != 0 || rep.Clamped != 0)
+        {
+            Fail("bench_plan_read", "the lineage corpus did not read clean through its plan");
+            return false;
+        }
+        Console.Error.WriteLine(string.Format(CultureInfo.InvariantCulture,
+            "{0,-18} plan read of {1} records: widened {2}, clamped {3} (lineage 0x{4:x16} -> 0x{5:x16})",
+            "bench_plan_read", FixedCount, rep.Widened, rep.Clamped,
+            BenchSchema.FixedTableFixedKnown[0].Hash, BenchSchema.FixedTableFixedHash));
+
+        // gate 3: a poisoned destination loads to the exact same bytes as a
+        // clean one, and the answer is not the identity corpus's.
+        if (FixedLoadAll(gFixedValues, lineageFile) != FixedCount)
+        {
+            Fail("bench_plan_read", "initial load into poison buffer failed");
+            return false;
+        }
+        Span<byte> poisonBytes = stackalloc byte[512];
+        poisonBytes.Fill(0xA5);
+        BenchReport poisonRep = new BenchReport();
+        for (int k = 0; k < FixedCount; k++)
+        {
+            foreach (var slot in BenchSchema.FixedTableFixedSlots)
+            {
+                slot.SetRaw?.Invoke(gFixedValues[k], 0xA5A5A5A5A5A5A5A5ul);
+                slot.SetRawReport?.Invoke(gFixedValues[k], 0xA5A5A5A5A5A5A5A5ul, poisonRep);
+                slot.SetDouble?.Invoke(gFixedValues[k], -12345.6789);
+                slot.SetWide?.Invoke(gFixedValues[k], new UInt128(0xA5A5A5A5A5A5A5A5ul, 0xA5A5A5A5A5A5A5A5ul));
+                slot.SetBytes?.Invoke(gFixedValues[k], poisonBytes, poisonBytes.Length);
+                slot.SetChars?.Invoke(gFixedValues[k], poisonBytes, poisonBytes.Length);
+            }
+        }
+        long wantBytes = BenchSchema.FixedTableFixedMeasure(FixedCount);
+        byte[] a = new byte[wantBytes];
+        byte[] b = new byte[wantBytes];
+        if (FixedLoadAll(gFixedValues, lineageFile) != FixedCount ||
+            BenchSchema.FixedTableFixedSave(gFixedOut, a) != wantBytes ||
+            BenchSchema.FixedTableFixedSave(gFixedValues, b) != wantBytes ||
+            !a.AsSpan().SequenceEqual(b))
+        {
+            Fail("bench_plan_read", "a poisoned destination did not load to the same bytes as a clean one");
+            return false;
+        }
+        if (a.AsSpan().SequenceEqual(fixedGolden))
+        {
+            Fail("bench_plan_read", "the lineage corpus decoded to the identity corpus's bytes");
+            return false;
+        }
+        return true;
+    }
+
+    static void BenchPlanRead(byte[] lineageFile, long iters)
+    {
+        double bytesPerOp = (double)lineageFile.Length / FixedCount;
+        double[] readRates = new double[gNumRuns];
+        for (int run = -1; run < gNumRuns; run++)
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+            for (long i = 0; i < iters; i += FixedCount)
+            {
+                long loaded = FixedLoadAll(gFixedOut, lineageFile);
+                if (loaded != FixedCount)
+                {
+                    Fail("bench_plan_read", "load failed in loop");
+                    return;
+                }
+                gSink = gSink + (ulong)loaded;
+            }
+            sw.Stop();
+            if (run >= 0)
+            {
+                readRates[run] = iters / sw.Elapsed.TotalSeconds;
+            }
+        }
+        GC.KeepAlive(gFixedOut);
+        ReportWith("bench_plan_read", "read", "table", "contract", iters, bytesPerOp, Stats(readRates));
+    }
+#endif
+
+    static void BenchFixedRead(byte[] file, long iters)
+    {
+        double bytesPerOp = (double)file.Length / FixedCount;
+        double[] readRates = new double[gNumRuns];
+        for (int run = -1; run < gNumRuns; run++)
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+            for (long i = 0; i < iters; i += FixedCount)
+            {
+                long loaded = FixedLoadAll(gFixedOut, file);
+                if (loaded != FixedCount)
+                {
+                    Fail("bench_fixed_read", "load failed in loop");
+                    return;
+                }
+                gSink = gSink + (ulong)loaded;
+            }
+            sw.Stop();
+            if (run >= 0)
+            {
+                readRates[run] = iters / sw.Elapsed.TotalSeconds;
+            }
+        }
+        GC.KeepAlive(gFixedOut);
+        ReportWith("bench_fixed_read", "read", "table", "contract", iters, bytesPerOp, Stats(readRates));
+    }
+
+    static void BenchMixedRead(int packetSize, long iters)
+    {
+        BenchValue outValue = new BenchValue();
+        Serialize.ReadStream rs = new Serialize.ReadStream(gPacketVariants[0], packetSize);
+        double[] readRates = new double[gNumRuns];
+        for (int run = -1; run < gNumRuns; run++)
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+            for (long i = 0; i < iters; i++)
+            {
+                rs.Reset(gPacketVariants[(int)(i & (NumVariants - 1))], packetSize);
+                if (!BenchSchema.ReadBenchMixed(rs, outValue))
+                {
+                    Fail("bench_mixed_read", "read failed in loop");
+                    return;
+                }
+                gSink = gSink + (ulong)rs.BytesProcessed;
+            }
+            sw.Stop();
+            if (run >= 0)
+            {
+                readRates[run] = iters / sw.Elapsed.TotalSeconds;
+            }
+        }
+        GC.KeepAlive(outValue);
+        ReportWith("bench_mixed_read", "read", "gen", "removed", iters, packetSize, Stats(readRates));
+    }
+
+    static void ReadArm()
+    {
+        bool savedGate = gGate;
+        gGate = true;
+        BenchReport report = new BenchReport();
+        BenchTable<BenchValue>(
+            "bench_table", "bench_table", 400000L,
+            () => new BenchValue(),
+            v => BenchSchema.TableReset(v),
+            (v, b) => BenchSchema.BenchMixedSave(v, b),
+            (v, b) => BenchSchema.BenchMixedLoad(v, b, report) && !report.Malformed);
+        gGate = savedGate;
+        if (failed) return;
+
+        if (!LoadAndGateFixed("bench_fixed_read", out byte[] fixedFile))
+        {
+            return;
+        }
+        if (!GateMixedRead(out int packetSize))
+        {
+            return;
+        }
+#if BENCH_PLAN
+        if (!GatePlanRead(fixedFile, out byte[] lineageFile))
+        {
+            return;
+        }
+#endif
+        if (failed || gGate) return;
+
+        long fixedIters = gIterations > 0 ? gIterations : 4000000L;
+        long packetIters = gPacketIterations > 0 ? gPacketIterations : fixedIters;
+#if BENCH_PLAN
+        for (int step = 0; step < 3; step++)
+        {
+            int slot = (gRound + step) % 3;
+            if (slot == 0) BenchFixedRead(fixedFile, fixedIters);
+            else if (slot == 1) BenchPlanRead(lineageFile, fixedIters);
+            else BenchMixedRead(packetSize, packetIters);
+            if (failed) return;
+        }
+#else
+        if ((gRound & 1) != 0)
+        {
+            BenchMixedRead(packetSize, packetIters);
+            if (!failed) BenchFixedRead(fixedFile, fixedIters);
+        }
+        else
+        {
+            BenchFixedRead(fixedFile, fixedIters);
+            if (!failed) BenchMixedRead(packetSize, packetIters);
+        }
+#endif
+    }
 #endif
 
     static int Main(string[] args)
@@ -563,6 +936,10 @@ static class Program
             {
                 gCsv = true;
             }
+            else if (args[i] == "--read-arm")
+            {
+                gReadArm = true;
+            }
             else if (args[i] == "--wire-dir" && i + 1 < args.Length)
             {
                 gWireDir = args[++i];
@@ -571,6 +948,20 @@ static class Program
             {
                 gVariantDir = args[++i];
             }
+            else if (args[i] == "--packet-wire-dir" && i + 1 < args.Length)
+            {
+                gPacketWireDir = args[++i];
+            }
+            else if (args[i] == "--packet-variant-dir" && i + 1 < args.Length)
+            {
+                gPacketVariantDir = args[++i];
+            }
+#if BENCH_PLAN
+            else if (args[i] == "--lineage-dir" && i + 1 < args.Length)
+            {
+                gLineageDir = args[++i];
+            }
+#endif
             else if (args[i] == "--iterations" && i + 1 < args.Length)
             {
                 if (!long.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out long n) || n <= 0 || n > 2147483584L || n % NumVariants != 0)
@@ -580,6 +971,15 @@ static class Program
                 }
                 gIterations = n;
             }
+            else if (args[i] == "--packet-iterations" && i + 1 < args.Length)
+            {
+                if (!long.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out long n) || n <= 0 || n > 2147483584L || n % NumVariants != 0)
+                {
+                    Console.Error.WriteLine("--packet-iterations requires a positive multiple of 64 up to 2147483584");
+                    return 1;
+                }
+                gPacketIterations = n;
+            }
             else if (args[i] == "--round" && i + 1 < args.Length)
             {
                 if (!int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out int k) || k < 0)
@@ -587,11 +987,12 @@ static class Program
                     Console.Error.WriteLine("--round takes a non-negative integer, got '" + args[i] + "'");
                     return 1;
                 }
+                gRound = k;
                 gNumRuns = 1;
             }
             else
             {
-                Console.Error.WriteLine("usage: schematablesbench [--indexed] [--gate] [--csv] [--round K] [--iterations N] [--wire-dir <dir>] [--variant-dir <dir>]");
+                Console.Error.WriteLine("usage: schematablesbench [--indexed] [--gate] [--csv] [--read-arm] [--round K] [--iterations N] [--packet-iterations N] [--wire-dir <dir>] [--variant-dir <dir>] [--packet-wire-dir <dir>] [--packet-variant-dir <dir>]");
                 return 1;
             }
         }
@@ -601,6 +1002,25 @@ static class Program
         if (gCsv)
         {
             Console.WriteLine("lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline");
+        }
+
+        if (gReadArm)
+        {
+#if BENCH_MATCHED
+            ReadArm();
+            FlushCsv();
+            if (failed)
+            {
+                Console.Error.WriteLine("TABLES BENCH FAILED (corpus_id " + CorpusId() + ")");
+                return 1;
+            }
+            Console.Error.WriteLine("OK (corpus_id " + CorpusId() + ")");
+            GC.KeepAlive(gSink);
+            return 0;
+#else
+            Console.Error.WriteLine("--read-arm requires the paired BENCH_MATCHED build");
+            return 1;
+#endif
         }
 
         // The measured shape, named once — the generated type at the call site and

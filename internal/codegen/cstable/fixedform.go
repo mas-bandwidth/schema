@@ -821,7 +821,6 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 		})
 		b.dstRows = append(b.dstRows, fmt.Sprintf("new TableFixedDst(%d, %d, 0, 0, 0)", elemBaseSlot-baseSlot, elemSlots))
 		b.pushEnumBlockOnly(f.KeyEnumRef, ir.TableWireId(f.KeyEnum), f.KeyEnum)
-		b.pushElementBlockOnly(f, 0, "element")
 		elemWireSize := fixedElementBytes(f)
 		for k := 0; k < int(f.KeyEnumRef.Max); k++ {
 			slotExpr := fmt.Sprintf("%s[%d]", fieldExpr, k)
@@ -830,7 +829,11 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 			}
 			elemWire := fieldWireBase + int64(k)*elemWireSize
 			*wireOff = elemWire
-			b.buildElementSlotsAndPlan(f, slotExpr, elemBaseSlot+k*elemSlots, guard, arg, wireOff)
+			if k == 0 {
+				b.buildElement(f, slotExpr, elemBaseSlot, 0, "element", guard, arg, wireOff)
+			} else {
+				b.buildElementSlotsAndPlan(f, slotExpr, elemBaseSlot+k*elemSlots, guard, arg, wireOff)
+			}
 		}
 		*wireOff = fieldWireBase + size
 
@@ -877,12 +880,15 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 		} else {
 			elemSlots := b.countElementSlots(f)
 			b.dstRows = append(b.dstRows, fmt.Sprintf("new TableFixedDst(%d, %d, %d, 1, 0)", elemBaseSlot-baseSlot, elemSlots, countSlot-baseSlot))
-			b.pushElementBlockOnly(f, 0, "element")
 			for i := 0; i < int(f.ArrayBound); i++ {
 				elemExpr := fmt.Sprintf("%s[%d]", fieldExpr, i)
 				elemWire := fieldWireBase + fixedCountBytes + int64(i)*elemWireSize
 				*wireOff = elemWire
-				b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, guard, arg, wireOff)
+				if i == 0 {
+					b.buildElement(f, elemExpr, elemBaseSlot, 0, "element", guard, arg, wireOff)
+				} else {
+					b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, guard, arg, wireOff)
+				}
 			}
 		}
 		*wireOff = fieldWireBase + size
@@ -917,12 +923,15 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 		} else {
 			elemSlots := b.countElementSlots(f)
 			b.dstRows = append(b.dstRows, fmt.Sprintf("new TableFixedDst(%d, %d, 0, 0, 0)", elemBaseSlot-baseSlot, elemSlots))
-			b.pushElementBlockOnly(f, 0, "element")
 			for i := 0; i < int(f.ArrayBound); i++ {
 				elemExpr := fmt.Sprintf("%s[%d]", fieldExpr, i)
 				elemWire := fieldWireBase + int64(i)*elemWireSize
 				*wireOff = elemWire
-				b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, guard, arg, wireOff)
+				if i == 0 {
+					b.buildElement(f, elemExpr, elemBaseSlot, 0, "element", guard, arg, wireOff)
+				} else {
+					b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, guard, arg, wireOff)
+				}
 			}
 		}
 		*wireOff = fieldWireBase + size
@@ -1843,6 +1852,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("    new TableFixedSlot<%s>(%s),\n", name, strings.Join(parts, ", "))
 	}
 	g.pf("};\n\n")
+	g.emitFixedRunHelpers(name, b.slots)
 
 	cover := identitySlotCover(b.plan, len(b.slots))
 	g.pf("// THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and\n")
@@ -2139,12 +2149,14 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            if (report != null) { report.Refused = true; report.Reason = \"no_layout\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
 	g.pf("        if (values[k] == null) { values[k] = new %s(); }\n", name)
-	g.pf("        TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), %sFixedSlots, values[k]);\n", name)
+	g.pf("        if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), %sFixedSlots, values[k]); }\n", name)
+	g.pf("        %sFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);\n", name)
 	// THE RUN REPORTS ITS OWN REFUSAL (§4.5, §5.8 row 8): a content violation
 	// in the used units comes back as the name text_ill_formed, and the load
 	// refuses BY NAME — not malformed, and nothing decoded past it.
 	g.pf("        int forgedOrdinal = 0;\n")
-	g.pf("        string run_why = TableFixedWire.Run(entries, %sFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);\n", name)
+	g.pf("        // Specialized per-table twin of TableFixedWire.Run(entries, %sFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.\n", name)
+	g.pf("        string run_why = %sFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);\n", name)
 	g.pf("        if (run_why != null)\n        {\n")
 	g.pf("            if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
@@ -2186,9 +2198,215 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    ReadOnlySpan<byte> planBytes = default)\n{\n")
 	g.pf("    byte[] widenScratch = Array.Empty<byte>();\n")
 	g.pf("    int forgedOrdinal = 0;\n")
-	g.pf("    string run_why = TableFixedWire.Run(plan, %sFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);\n", name)
+	g.pf("    string run_why = %sFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);\n", name)
 	g.pf("    if (report != null) { report.Clamped += forgedOrdinal; }\n")
 	g.pf("    if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }\n}\n\n")
+}
+
+func fixedLambdaStmt(lambda string) string {
+	_, body, ok := strings.Cut(lambda, "=>")
+	if !ok {
+		return ""
+	}
+	body = strings.TrimSpace(body)
+	if strings.HasPrefix(body, "{") && strings.HasSuffix(body, "}") {
+		return body
+	}
+	return body + ";"
+}
+
+func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
+	g.pf("private static void %sFixedSetRaw(%s t, uint slot, ulong v, TableReport rep)\n{\n", name, name)
+	g.pf("    switch (slot)\n    {\n")
+	for i, s := range slots {
+		if s.setRaw != "" {
+			g.pf("        case %d: %s break;\n", i, fixedLambdaStmt(s.setRaw))
+		} else if s.setRawReport != "" {
+			g.pf("        case %d: %s break;\n", i, fixedLambdaStmt(s.setRawReport))
+		}
+	}
+	g.pf("        default: break;\n    }\n}\n\n")
+
+	g.pf("private static void %sFixedSetDouble(%s t, uint slot, double d)\n{\n", name, name)
+	g.pf("    switch (slot)\n    {\n")
+	for i, s := range slots {
+		if s.setDouble != "" {
+			g.pf("        case %d: %s break;\n", i, fixedLambdaStmt(s.setDouble))
+		}
+	}
+	g.pf("        default: break;\n    }\n}\n\n")
+
+	g.pf("private static void %sFixedSetWide(%s t, uint slot, UInt128 w)\n{\n", name, name)
+	g.pf("    switch (slot)\n    {\n")
+	for i, s := range slots {
+		if s.setWide != "" {
+			g.pf("        case %d: %s break;\n", i, fixedLambdaStmt(s.setWide))
+		}
+	}
+	g.pf("        default: break;\n    }\n}\n\n")
+
+	g.pf("private static void %sFixedSetBytes(%s t, uint slot, ReadOnlySpan<byte> b, int l)\n{\n", name, name)
+	g.pf("    switch (slot)\n    {\n")
+	for i, s := range slots {
+		if s.setBytes != "" {
+			g.pf("        case %d: %s break;\n", i, fixedLambdaStmt(s.setBytes))
+		}
+	}
+	g.pf("        default: break;\n    }\n}\n\n")
+
+	g.pf("private static void %sFixedSetChars(%s t, uint slot, ReadOnlySpan<byte> b, int l)\n{\n", name, name)
+	g.pf("    switch (slot)\n    {\n")
+	for i, s := range slots {
+		if s.setChars != "" {
+			g.pf("        case %d: %s break;\n", i, fixedLambdaStmt(s.setChars))
+		}
+	}
+	g.pf("        default: break;\n    }\n}\n\n")
+
+	g.pf("private static void %sFixedResetSlot(%s t, uint slot)\n{\n", name, name)
+	g.pf("    switch (slot)\n    {\n")
+	for i, s := range slots {
+		if s.reset != "" {
+			g.pf("        case %d: %s break;\n", i, fixedLambdaStmt(s.reset))
+		}
+	}
+	g.pf("        default: break;\n    }\n}\n\n")
+
+	g.pf("public static void %sFixedFillRun(ReadOnlySpan<TableFixedFill> fill, %s dst)\n{\n", name, name)
+	g.pf("    for (int i = 0; i < fill.Length; ++i)\n    {\n")
+	g.pf("        uint off = fill[i].Dst;\n")
+	g.pf("        uint n = fill[i].Size;\n")
+	g.pf("        for (uint s = 0; s < n; ++s)\n        {\n")
+	g.pf("            %sFixedResetSlot(dst, off + s);\n", name)
+	g.pf("        }\n    }\n}\n\n")
+
+	g.pf("public static string %sFixedRun(\n", name)
+	g.pf("    ReadOnlySpan<TableFixedEntry> plan,\n")
+	g.pf("    ReadOnlySpan<byte> src,\n")
+	g.pf("    %s dst,\n", name)
+	g.pf("    TableReport report,\n")
+	g.pf("    ReadOnlySpan<byte> planBytes,\n")
+	g.pf("    ref byte[] widenScratch,\n")
+	g.pf("    ref int forgedOrdinal)\n{\n")
+	g.pf("    for (int i = 0; i < plan.Length; ++i)\n    {\n")
+	g.pf("        ref readonly TableFixedEntry p = ref plan[i];\n")
+	g.pf("        if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }\n")
+	g.pf("        if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }\n")
+	g.pf("        if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }\n")
+	g.pf("        switch (p.Op)\n        {\n")
+	g.pf("            case TableFixedWire.Copy:\n            {\n")
+	g.pf("                if (p.Size == 1) { %sFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }\n", name)
+	g.pf("                else if (p.Size == 2) { %sFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }\n", name)
+	g.pf("                else if (p.Size == 4) { %sFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }\n", name)
+	g.pf("                else if (p.Size == 8) { %sFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }\n", name)
+	g.pf("                else if (p.Size == 16)\n                {\n")
+	g.pf("                    ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                    ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));\n")
+	g.pf("                    %sFixedSetWide(dst, p.Dst, new UInt128(hi, lo));\n", name)
+	g.pf("                }\n")
+	g.pf("                else { %sFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }\n", name)
+	g.pf("                break;\n            }\n")
+	g.pf("            case TableFixedWire.Flat:\n            {\n")
+	g.pf("                %sFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);\n", name)
+	g.pf("                break;\n            }\n")
+	g.pf("            case TableFixedWire.FlatWiden:\n            {\n")
+	g.pf("                int sw = p.Meta == 0 ? 1 : p.Meta;\n")
+	g.pf("                int dw = p.DstSize == 0 ? 1 : p.DstSize;\n")
+	g.pf("                int runs = (int)p.Size / sw;\n")
+	g.pf("                int need = runs * dw;\n")
+	g.pf("                if (widenScratch == null || widenScratch.Length < need)\n                {\n")
+	g.pf("                    widenScratch = new byte[need];\n                }\n")
+	g.pf("                Span<byte> wide = widenScratch.AsSpan(0, need);\n")
+	g.pf("                for (int e = 0; e < runs; ++e)\n                {\n")
+	g.pf("                    int at = (int)p.Src + e * sw;\n")
+	g.pf("                    if (p.Sign == 2)\n                    {\n")
+	g.pf("                        double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));\n")
+	g.pf("                        BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);\n")
+	g.pf("                        continue;\n                    }\n")
+	g.pf("                    ulong raw = 0;\n")
+	g.pf("                    if (sw == 1) raw = src[at];\n")
+	g.pf("                    else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));\n")
+	g.pf("                    else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));\n")
+	g.pf("                    else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));\n")
+	g.pf("                    if (p.Sign == 1)\n                    {\n")
+	g.pf("                        int bits = sw * 8;\n")
+	g.pf("                        ulong top = 1UL << (bits - 1);\n")
+	g.pf("                        if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }\n                    }\n")
+	g.pf("                    Span<byte> cell = wide.Slice(e * dw, dw);\n")
+	g.pf("                    if (dw == 1) cell[0] = (byte)raw;\n")
+	g.pf("                    else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);\n")
+	g.pf("                    else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);\n")
+	g.pf("                    else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);\n                }\n")
+	g.pf("                %sFixedSetBytes(dst, p.Dst, wide, need);\n", name)
+	g.pf("                if (report != null) { report.Widened += runs; }\n")
+	g.pf("                break;\n            }\n")
+	g.pf("            case TableFixedWire.Count:\n            {\n")
+	g.pf("                int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                if (v < 0) { v = 0; if (report != null) report.Clamped++; }\n")
+	g.pf("                else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }\n")
+	g.pf("                %sFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);\n", name)
+	g.pf("                break;\n            }\n")
+	g.pf("            case TableFixedWire.Text:\n            {\n")
+	g.pf("                uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;\n")
+	g.pf("                uint cap = p.Size / unit;\n")
+	g.pf("                int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                if (v < 0) { v = 0; if (report != null) report.Clamped++; }\n")
+	g.pf("                else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }\n")
+	g.pf("                ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);\n")
+	g.pf("                if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))\n                {\n")
+	g.pf("                    return \"text_ill_formed\";\n                }\n")
+	g.pf("                %sFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);\n", name)
+	g.pf("                if (p.Meta == TableFixedWire.TextWide)\n                {\n")
+	g.pf("                    %sFixedSetChars(dst, p.Aux, textBytes, v);\n", name)
+	g.pf("                }\n")
+	g.pf("                else\n                {\n")
+	g.pf("                    %sFixedSetBytes(dst, p.Aux, textBytes, v);\n", name)
+	g.pf("                }\n")
+	g.pf("                break;\n            }\n")
+	g.pf("            case TableFixedWire.Ordinal:\n            {\n")
+	g.pf("                ulong raw = 0;\n")
+	g.pf("                if (p.Size == 1) raw = src[(int)p.Src];\n")
+	g.pf("                else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                uint v = 0;\n")
+	g.pf("                if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)\n                {\n")
+	g.pf("                    ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);\n")
+	g.pf("                    ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);\n")
+	g.pf("                    if (raw != 0 && raw <= count)\n                    {\n")
+	g.pf("                        v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));\n                    }\n")
+	g.pf("                    if (raw > count) { forgedOrdinal++; }\n                }\n")
+	g.pf("                %sFixedSetRaw(dst, p.Dst, v, report);\n", name)
+	g.pf("                break;\n            }\n")
+	g.pf("            case TableFixedWire.Widen:\n            {\n")
+	g.pf("                ulong raw = 0;\n")
+	g.pf("                if (p.Size == 1) raw = src[(int)p.Src];\n")
+	g.pf("                else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                if (p.Sign != 0)\n                {\n")
+	g.pf("                    int bits = (int)p.Size * 8;\n")
+	g.pf("                    ulong top = 1UL << (bits - 1);\n")
+	g.pf("                    if ((raw & top) != 0)\n                    {\n")
+	g.pf("                        raw |= ~((top << 1) - 1UL);\n                    }\n                }\n")
+	g.pf("                if (p.DstSize == 16)\n                {\n")
+	g.pf("                    UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;\n")
+	g.pf("                    %sFixedSetWide(dst, p.Dst, w);\n", name)
+	g.pf("                }\n")
+	g.pf("                else\n                {\n")
+	g.pf("                    %sFixedSetRaw(dst, p.Dst, raw, report);\n", name)
+	g.pf("                }\n")
+	g.pf("                if (report != null) { report.Widened++; }\n")
+	g.pf("                break;\n            }\n")
+	g.pf("            case TableFixedWire.WidenF:\n            {\n")
+	g.pf("                float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                %sFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));\n", name)
+	g.pf("                if (report != null) { report.Widened++; }\n")
+	g.pf("                break;\n            }\n")
+	g.pf("            case TableFixedWire.Const:\n            {\n")
+	g.pf("                %sFixedSetRaw(dst, p.Dst, p.Aux, report);\n", name)
+	g.pf("                break;\n            }\n")
+	g.pf("            default: break;\n        }\n    }\n    return null;\n}\n\n")
 }
 
 func (g *tableGen) emitCsByteArray(b []byte) {
