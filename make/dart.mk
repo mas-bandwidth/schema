@@ -178,6 +178,60 @@ tables-dart-standalone-negative-control:
 	@grep -m1 "outside the unit" build/dart-standalone-nc/log
 	@echo "negative control: one planted package import turns the Dart standalone gate RED"
 
+# THE RUNTIME HOME GATE (docs/PORTING.md J2). A unit's shared Dart table
+# runtime lives in one file named by the PACKAGE — <Package>Block.dart and
+# <Package>Cook.dart — never by the file that happens to sort first, so a
+# schema file that sorts earlier relocates nothing and the runtime is
+# byte-identical across the two trees. The gate adds an earlier-sorting file
+# to a copy of the unit and requires the homes not to move; the control puts
+# the file-order rule back and requires them to move (#347).
+.PHONY: tables-dart-runtime-home
+tables-dart-runtime-home: bin/schema
+	@rm -rf build/runtime-home-dart && mkdir -p build/runtime-home-dart/src
+	@cp tables/examples/*.schema build/runtime-home-dart/src/
+	@printf 'package tabledemo\n\ntable AaaRow\n{\n    tag uint8\n}\n' > build/runtime-home-dart/src/Aaa.schema
+	@./bin/schema generate --lang dart --out build/runtime-home-dart/base tables/examples
+	@./bin/schema generate --lang dart --out build/runtime-home-dart/added build/runtime-home-dart/src
+	@for surface in Block Cook; do \
+		if [ "$$surface" = "Block" ]; then marker='final class TableBlockInfo'; \
+		else marker='final class TableCookInfo'; fi; \
+		base=$$(cd build/runtime-home-dart/base && grep -lF "$$marker" *$$surface.dart); \
+		added=$$(cd build/runtime-home-dart/added && grep -lF "$$marker" *$$surface.dart); \
+		if [ "$$base" != "Tabledemo$$surface.dart" ] || [ "$$added" != "Tabledemo$$surface.dart" ]; then \
+			echo "RUNTIME HOME GATE FAILED: the $$surface runtime is in $$base before the added file and $$added after — expected Tabledemo$$surface.dart both times"; exit 1; \
+		fi; \
+	done
+	@grep -v "tableBuildVersion" build/runtime-home-dart/base/TabledemoBlock.dart > build/runtime-home-dart/base.block.strip
+	@grep -v "tableBuildVersion" build/runtime-home-dart/added/TabledemoBlock.dart > build/runtime-home-dart/added.block.strip
+	@cmp -s build/runtime-home-dart/base.block.strip build/runtime-home-dart/added.block.strip || \
+		{ echo "RUNTIME HOME GATE FAILED: the Dart block runtime's bytes moved when the unit gained a file"; exit 1; }
+	@grep -v "tableBuildVersion" build/runtime-home-dart/base/TabledemoCook.dart > build/runtime-home-dart/base.cook.strip
+	@grep -v "tableBuildVersion" build/runtime-home-dart/added/TabledemoCook.dart > build/runtime-home-dart/added.cook.strip
+	@cmp -s build/runtime-home-dart/base.cook.strip build/runtime-home-dart/added.cook.strip || \
+		{ echo "RUNTIME HOME GATE FAILED: the Dart cook runtime's bytes moved when the unit gained a file"; exit 1; }
+	@echo "runtime home gate (Dart): the block and cook runtimes stay in <Package><Surface>.dart when an earlier-sorting file joins the unit"
+
+.PHONY: tables-dart-runtime-home-negative-control
+tables-dart-runtime-home-negative-control: bin/schema tables-dart-runtime-home
+	@sed 's|home := capitalize(u.Package)|home := ir.ProtocolIdHome(u) // SABOTAGED: back to the file order|' \
+		internal/codegen/darttable/darttable.go > build/dartruntime-fileorder.gotext
+	@grep -q SABOTAGED build/dartruntime-fileorder.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/darttable/darttable.go":"%s/build/dartruntime-fileorder.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dartruntime-overlay.json
+	@go build -overlay=build/dartruntime-overlay.json -o build/schema-dartruntime-sabotaged ./cmd/schema
+	@rm -rf build/runtime-home-dart/base-sabotage build/runtime-home-dart/added-sabotage
+	@./build/schema-dartruntime-sabotaged generate --lang dart --out build/runtime-home-dart/base-sabotage tables/examples
+	@./build/schema-dartruntime-sabotaged generate --lang dart --out build/runtime-home-dart/added-sabotage build/runtime-home-dart/src
+	@base=$$(cd build/runtime-home-dart/base-sabotage && grep -lF "final class TableBlockInfo" *.dart); \
+	 added=$$(cd build/runtime-home-dart/added-sabotage && grep -lF "final class TableBlockInfo" *.dart); \
+	 if [ "$$base" = "$$added" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the runtime in $$base — the gate is watching nothing"; exit 1; \
+	 fi; \
+	 echo "runtime home negative control (Dart): the file-order rule moves the runtime from $$base to $$added"
+
+test-dart: tables-dart-runtime-home tables-dart-runtime-home-negative-control
+
 # THE DART PORT'S RELEASE GATE. certify.yml DERIVES this target by name, so a
 # port lands its expensive half by adding the target and nothing else: two
 # hundred and eighty thousand forgery-fuzz mutants over the block and cook
