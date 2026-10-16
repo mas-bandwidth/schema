@@ -3,8 +3,8 @@
 
     A functional soak, never a unit test: it loops the variable form's load,
     loadMeasure and save over the committed wires the tables-java-variable-class
-    target round-trips, for SOAK_SECONDS of real time, and reads the thread's
-    allocated-bytes counter every sample.
+    target round-trips (the blob, list and pointer corpora), for SOAK_SECONDS of
+    real time, and reads the thread's allocated-bytes counter every sample.
 
     THE GATE IS ON THE ALLOCATION COUNT PER ITERATION. A Java load builds a
     Value tree, so the floor is not zero — the gate is on STABILITY, not on
@@ -54,6 +54,12 @@ public final class Soak {
         public long loadMeasure(byte[] w) { return graphdemo.SceneVariable.loadMeasure(w); }
         public Object load(byte[] w) { return graphdemo.SceneVariable.load(w, new graphdemo.TableVariable.Report()); }
         public byte[] save(Object v) { return graphdemo.SceneVariable.save((graphdemo.SceneVariable.Value) v); }
+    }
+
+    private static final class SaveCodec implements Codec {
+        public long loadMeasure(byte[] w) { return listdemo.SaveVariable.loadMeasure(w); }
+        public Object load(byte[] w) { return listdemo.SaveVariable.load(w, new listdemo.TableVariable.Report()); }
+        public byte[] save(Object v) { return listdemo.SaveVariable.save((listdemo.SaveVariable.Value) v); }
     }
 
     // the stated tolerance: the per-iteration count may drift by this many bytes
@@ -166,11 +172,11 @@ public final class Soak {
         }
 
         double seconds = args.length > 0 ? Double.parseDouble(args[0]) : 20.0;
-        Codec[] codecs = new Codec[] { new CatalogCodec(), new SceneCodec() };
-        byte[][] wires = new byte[][] {
-            Files.readAllBytes(Paths.get(args[1])),
-            Files.readAllBytes(Paths.get(args[2]))
-        };
+        Codec[] codecs = new Codec[] { new CatalogCodec(), new SaveCodec(), new SceneCodec() };
+        byte[][] wires = new byte[codecs.length][];
+        for (int i = 0; i < codecs.length; i++) {
+            wires[i] = Files.readAllBytes(Paths.get(args[1 + i]));
+        }
 
         // ONE WARMUP PASS per codec, so lazy init and class loading are charged to
         // the setup rather than to the measured loop.
