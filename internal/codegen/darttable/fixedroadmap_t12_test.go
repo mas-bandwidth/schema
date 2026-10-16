@@ -425,22 +425,17 @@ fixed table Root
 	// dart/R27 "the corpus round trip" — the C++ reference's byte oracle is
 	// build/fixedform-corpus/manifest.txt; every record of every file the
 	// manifest names must survive a load and a byte-identical rewrite through
-	// this leg's own reader and writer.
+	// this leg's own reader and writer. The four files whose bytes the
+	// standard says a rewrite does not restore (a clamp, an older writer's
+	// layout) assert the cited bytes instead: fixedcorpus_roundtrip_test.go,
+	// fixedCorpusContracts, holds each with its section.
 	t.Run("dart/R27", func(t *testing.T) {
 		t.Parallel()
 		corpus := fixedCorpus(t)
 		for file, records := range t12ManifestRows(t, corpus) {
-			base := t12SchemaBase(file)
-			if base == "" {
-				t.Fatalf("R27: no schema known for corpus file %s", file)
-			}
 			t.Run(file, func(t *testing.T) {
 				t.Parallel()
-				u := t12Schema(t, base)
-				out := t12RoundTrip(t, u, records, filepath.Join(corpus, file))
-				if !strings.Contains(out, "ok") {
-					t.Fatalf("R27 round trip of %s printed no ok: %s", file, out)
-				}
+				fixedCorpusRoundTrip(t, corpus, file, records)
 			})
 		}
 	})

@@ -348,6 +348,56 @@ final class TableFixedLayout {
 
   int tagBytes(int i) => size(i) - unionArmBytes(i);
 
+  /// A FLOAT32 CELL RIDES AS ITS BITS (docs/FIXED-FORM-ALGORITHM.md §3.1: the
+  /// cell stores what the record held; SPEC-TABLES §3: no canonicalisation of
+  /// a float). A Dart double is a float64, and the hardware float32<->float64
+  /// conversion QUIETS a signalling NaN on the way in, so a reference file
+  /// holding 0x7F800001 would rewrite as 0x7FC00001. Every exponent but the
+  /// all-ones one converts exactly; a NaN is assembled by hand, the f32
+  /// mantissa's 23 bits shifted up by 29 into the f64 one and back, the quiet
+  /// bit carried as the writer wrote it: the same surgery the plan's
+  /// widenFloat rung and the packet emitter's float32 helpers do. A generated
+  /// float32 store or load converts through these two and nowhere else
+  /// (TestFixedFloat32CellsStoreBitsNotDoubles).
+  static final Float32List _f32 = Float32List(2);
+  static final Uint32List _f32Words = _f32.buffer.asUint32List();
+  static final Float64List _f64 = _f32.buffer.asFloat64List();
+  static final Uint64List _f64Words = _f32.buffer.asUint64List();
+
+  /// the float32 bits a double holding a float32 value carries, a NaN's
+  /// payload and signalling bit included
+  @pragma('vm:prefer-inline')
+  static int float32Bits(double value) {
+    if (!value.isNaN) {
+      _f32[0] = value;
+      return _f32Words[0];
+    }
+    _f64[0] = value;
+    final bits = _f64Words[0];
+    var mantissa = (bits >>> 29) & 0x7fffff;
+    if (mantissa == 0) {
+      // a float64 NaN whose payload lies only below float32's 23 bits has no
+      // float32 spelling; it stays a NaN, quiet
+      mantissa = 0x400000;
+    }
+    return ((bits >>> 63) << 31) | 0x7f800000 | mantissa;
+  }
+
+  /// the double a float32 cell's bits widen to, exactly: a NaN keeps its
+  /// payload and its signalling bit
+  @pragma('vm:prefer-inline')
+  static double float32Value(int bits) {
+    if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {
+      _f64Words[0] =
+          ((bits >>> 31) << 63) |
+          0x7ff0000000000000 |
+          ((bits & 0x7fffff) << 29);
+      return _f64[0];
+    }
+    _f32Words[0] = bits;
+    return _f32[0];
+  }
+
   /// THE HASH is fnv1a64 over the layout's bytes exactly as written, and it is
   /// the eight bytes every record carries. A Dart int is a full 64-bit two's
   /// complement value and its multiply wraps, so the hash is the arithmetic
