@@ -498,6 +498,7 @@
         "tables-dart-fixed-form-negative-control",
         "tables-dart-versioning-negative-control",
         "tables-dart-fuzz-negative-control",
+        "tables-dart-keyed-negative-control",
         "tables-dart-names-negative-control",
         "tables-dart-standalone-negative-control"
       ],
