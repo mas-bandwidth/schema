@@ -2,7 +2,12 @@
 
 ```
 # fixed form: the identity lane, the plan lane, and the same leg's packet wire
-# host b1 / arch linux/amd64 / AMD Ryzen 7 255 w/ Radeon 780M Graphics / rev e1d63663ed5b6d93b7bb9dd13820d856e1d59b04 (clean) / serialize none (generated AOT) / lane 6 / rounds 7
+# provenance: FAST DIAGNOSTIC, UNCERTIFIED (card TOOLCHAIN line). The landed driver does not admit Dart to a certified
+#   -mode run here: on sprint/schema-dart bench/tables/dart/table_main.dart has no --read-arm, so nine.sh --read-arm --leg dart
+#   refuses at the pre-clock gate. These rows were measured on an unpushed overlay (table_main.dart --read-arm,
+#   SHAPE-GATE.allow, lineage/*; see RESULT.md "Revision & provenance") and are not reproducible from this branch as committed.
+#   The raw read.json/build.json "revision" field names that unreachable overlay and is kept verbatim as evidence.
+# host b1 / arch linux/amd64 / AMD Ryzen 7 255 w/ Radeon 780M Graphics / rev e1d63663ed5b6d93b7bb9dd13820d856e1d59b04-dirty (UNREACHABLE: scratch overlay on sprint/schema-dart@36c113a09, never pushed; not on origin) / serialize none (generated AOT) / lane 6 / rounds 7
 # corpus_id(identity) 0930f96c8320a75d / corpus_id(plan) 0930f96c8320a75d (one invocation, one corpus: identity, lineage and packet files)
 # window: OK / control_delta_pct 1.01 (bound 5) / load1 0.71–1.10
 # iterations: 4,000,000 records per sample per wire, 1 discarded warmup + 1 measured run per round (§2.1, §2.4)

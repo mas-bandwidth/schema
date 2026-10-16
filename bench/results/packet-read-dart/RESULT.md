@@ -1,7 +1,22 @@
-# Dart: the fixed read against its own packet read — both lanes FAIL
+# Dart: the fixed read against its own packet read — both lanes FAIL (fast diagnostic, uncertified)
+
+> **Status of these rows: FAST DIAGNOSTIC, UNCERTIFIED.** Per the card's TOOLCHAIN line, a sitting is
+> certified only if the landed driver admits Dart to `-mode run` inside the window. It does not on
+> this branch: `bench/tables/dart/table_main.dart` here has no `--read-arm`, so
+> `bench/paired/nine.sh --read-arm --leg dart --pin CORE` builds `table-dart`, passes `--gate`, and then
+> refuses at the pre-clock read-arm gate. Both sittings were measured on an **unpushed scratch
+> overlay** (`e1d63663ed5b…`, on driver commit `ea6b5a51541…`; neither is on origin, `git fetch`
+> answers "not our ref") that carried out-of-PATHS changes to `bench/tables/dart/` (below). Under
+> BENCH-STANDARD.md ("Every commit line records a `-dirty` suffix…"; "its commit stamp must name a
+> SHA that exists on origin"), that revision is recorded here as **`-dirty` and UNREACHABLE**, not
+> `(clean)`. The numbers are therefore not reproducible from this branch as committed; they become
+> reproducible, and a certified re-sitting becomes possible, only once the `PATHS-PROPOSED` runner
+> change below lands on `sprint/schema-dart` (its own card). The raw `sitting-*/read.json` and
+> `build.json` files are kept verbatim as evidence; their `"revision"` field names the unreachable
+> overlay. No roadmap task is credited from these rows.
 
 Card `dart-fixed-read-beats-its-packet-read` (roadmap tasks `gates/packet-read/dart/identity` and
-`gates/packet-read/dart/plan`). Both GATE verdicts are **FAIL**, in two back-to-back sittings with
+`gates/packet-read/dart/plan`). Both GATE verdicts are **FAIL** (fast diagnostic, uncertified; see the status note above), in two back-to-back sittings with
 an `OK` window on `b1` (`amd-1`), so the roadmap tasks stay `:unknown` and are not flipped.
 
 ## The Dart line of the board
@@ -69,9 +84,13 @@ Cross-sitting agreement on best `ns/record`: `0.02%` on `bench_fixed_read` (`544
     `bench/paired/nine.sh --read-arm --leg dart --pin 6` against the clean branch builds
     `build/paired/table-dart`, passes `table-dart --gate`, and refuses cleanly at the pre-clock
     read-arm gate (`paired: dart read-arm gate failed or emitted timing rows`).
-  - To run the two driver-certified sittings end-to-end with a clean `git_sha` (`rev e1d63663ed5b6d93b7bb9dd13820d856e1d59b04 (clean)`),
-    both sittings were executed against scratch commit `e1d63663ed5b6d93b7bb9dd13820d856e1d59b04` on
-    top of driver commit `ea6b5a51541053c5ecbb71a4e6b0ed4c09728da5` (based on
+  - **The recorded revision is `-dirty` and UNREACHABLE, and the sittings are a fast diagnostic, uncertified.**
+    The driver stamped `rev e1d63663ed5b6d93b7bb9dd13820d856e1d59b04 (clean)` because the overlay was
+    committed locally; that stamp was wrong to publish (BENCH-STANDARD.md, the `-dirty` and
+    "SHA that exists on origin" rules), and every board/READ.md preamble now reads
+    `rev e1d63663…-dirty (UNREACHABLE …)`. The two sittings ran the driver end to end, but
+    against scratch commit `e1d63663ed5b6d93b7bb9dd13820d856e1d59b04` on
+    top of driver commit `ea6b5a51541053c5ecbb71a4e6b0ed4c09728da5` (both never pushed; based on
     `origin/sprint/schema-dart` at `36c113a09`), adding `--read-arm` to
     `bench/tables/dart/table_main.dart`, updating `bench/tables/dart/SHAPE-GATE.allow`, and
     carrying `bench/tables/dart/lineage/{VOLD_bench_lineage.schema,schema.lock,bench_lineage.bin,bench_lineage.layout}`
@@ -119,7 +138,7 @@ each at `4,000,000` records/round, in an out-of-tree scratch directory with noth
 
 | diagnostic arm (`b1`, core 6, best of 3 rounds) | `bench_fixed_read` (ns/rec) | `bench_plan_read` (ns/rec) | `bench_mixed_read` (ns/rec) | notes |
 |---|---:|---:|---:|---|
-| **0. Shipped code (certified sitting 2)** | **544.4** (`1.837 M/s`) | **1666.5** (`0.600 M/s`) | **247.5** (`4.041 M/s`) | Two-stage `tableFixedRun` + `fixedTableFixedDecode` |
+| **0. Shipped code (sitting 2, fast diagnostic, uncertified)** | **544.4** (`1.837 M/s`) | **1666.5** (`0.600 M/s`) | **247.5** (`4.041 M/s`) | Two-stage `tableFixedRun` + `fixedTableFixedDecode` |
 | **1. `tableFixedRun` only (`fixedTableFixedDecode` skipped after pre-clock gates)** | **141.9** (`7.046 M/s`) | **1355.0** (`0.738 M/s`) | **247.3** (`4.043 M/s`) | Isolates Stage 1 (`plan.image` copy/widen) from Stage 2 (`fixedTableFixedDecode`) |
 | **2. `@pragma('vm:prefer-inline')` on `*FixedDecode` + `const Int128` clamp bounds** | **443.1** (`2.257 M/s`) | **1589.8** (`0.629 M/s`) | **247.5** (`4.040 M/s`) | Saves `101.3 ns/rec` (`-18.6%`) on identity and `76.7 ns/rec` on plan |
 | **3. Direct `(bytes, view, at + 8)` passed into shared `fixedTableFixedDecode` on identity** | **980.4** (`1.020 M/s`) | **2197.8** (`0.455 M/s`) | **247.3** (`4.043 M/s`) | Negative result: defeats Dart AOT `at == 0` constant propagation and monomorphic `ByteData` |
