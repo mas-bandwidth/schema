@@ -286,7 +286,23 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 	// Float32 NaNs narrow in software so the signalling bit survives; the
 	// bit width remains kind 10's own. Float64 keeps its original bit view.
 	if kind == ir.TableKindF32 {
-		g.pf("%sw.put(TableBitWriter._float32BitsFromDouble(%s), 32);\n", ind, expr)
+		// The narrowing is AT THE ASSIGNMENT (issue 404, PORTING M3): under
+		// the JIT a double crossing an out-of-line conversion call is boxed.
+		g.pf("%s{\n", ind)
+		g.pf("%s  final f = %s;\n", ind, expr)
+		g.pf("%s  if (!f.isNaN) {\n", ind)
+		g.pf("%s    TableBitWriter._float32Cell[0] = f;\n", ind)
+		g.pf("%s    w.put(TableBitWriter._float32Words[0], 32);\n", ind)
+		g.pf("%s  } else {\n", ind)
+		g.pf("%s    TableBitWriter._float64Cell[0] = f;\n", ind)
+		g.pf("%s    final b = TableBitWriter._float64Words[0];\n", ind)
+		g.pf("%s    var m = (b >>> 29) & 0x7fffff;\n", ind)
+		g.pf("%s    if (m == 0) {\n", ind)
+		g.pf("%s      m = 0x400000;\n", ind)
+		g.pf("%s    }\n", ind)
+		g.pf("%s    w.put(((b >>> 63) << 31) | 0x7f800000 | m, 32);\n", ind)
+		g.pf("%s  }\n", ind)
+		g.pf("%s}\n", ind)
 		return
 	}
 	if kind == ir.TableKindF64 {
@@ -418,7 +434,19 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 	// from its 64. Float32 NaNs widen in software; a hardware conversion would
 	// quiet a signalling NaN before a consumer could send it again.
 	if kind == ir.TableKindF32 {
-		g.pf("%s%s = TableBitWriter._doubleFromFloat32Bits(r.bits.get(32));\n", ind, expr)
+		// The widening is AT THE ASSIGNMENT (issue 404, PORTING M3); the bits
+		// are a NaN exactly when their magnitude exceeds infinity's.
+		g.pf("%s{\n", ind)
+		g.pf("%s  final b = r.bits.get(32);\n", ind)
+		g.pf("%s  if ((b & 0x7fffffff) <= 0x7f800000) {\n", ind)
+		g.pf("%s    TableBitWriter._float32Words[0] = b;\n", ind)
+		g.pf("%s    %s = TableBitWriter._float32Cell[0];\n", ind, expr)
+		g.pf("%s  } else {\n", ind)
+		g.pf("%s    final w64 = ((b >>> 31) << 63) | ((b & 0x7fffff) << 29);\n", ind)
+		g.pf("%s    TableBitWriter._float64Words[0] = w64 | 0x7ff0000000000000;\n", ind)
+		g.pf("%s    %s = TableBitWriter._float64Cell[0];\n", ind, expr)
+		g.pf("%s  }\n", ind)
+		g.pf("%s}\n", ind)
 		g.pf("%sif (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
 		return
 	}
@@ -602,34 +630,13 @@ bool tableMessageBatchClose(TableMessageReader r) {
 }
 `
 
-// The packet emitter's software conversion rule, repeated here because these
-// libraries cannot access another Dart library's private helpers (SPEC-TABLES §3).
+// The views the inline float32 conversion uses (the packet emitter's software
+// rule, spelled at each assignment — issue 404; a Dart library cannot reach
+// another library's private views, SPEC-TABLES §3).
 const dartMessageFloat32Runtime = `
   static final Float32List _float32Cell = Float32List(2);
   static final Uint32List _float32Words = _float32Cell.buffer.asUint32List();
   static final Float64List _float64Cell = _float32Cell.buffer.asFloat64List();
   static final Uint64List _float64Words = _float32Cell.buffer.asUint64List();
-
-  static int _float32BitsFromDouble(double value) {
-    if (!value.isNaN) {
-      _float32Cell[0] = value;
-      return _float32Words[0];
-    }
-    _float64Cell[0] = value;
-    final bits = _float64Words[0];
-    var mantissa = (bits >>> 29) & 0x7fffff;
-    if (mantissa == 0) mantissa = 0x400000;
-    return ((bits >>> 63) << 31) | 0x7f800000 | mantissa;
-  }
-
-  static double _doubleFromFloat32Bits(int bits) {
-    if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {
-      _float64Words[0] = ((bits >>> 31) << 63) |
-          0x7ff0000000000000 | ((bits & 0x7fffff) << 29);
-      return _float64Cell[0];
-    }
-    _float32Words[0] = bits;
-    return _float32Cell[0];
-  }
 
 `

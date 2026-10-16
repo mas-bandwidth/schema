@@ -172,11 +172,19 @@ and a generated codec must not depend on the compiler's inlining budget.
 `get32`/`get64`); elevated to a cross-port rule at docs/SPEC-TABLES.md's
 JavaScript allocation paragraph.
 
-**Proven in.** C++; measured in JavaScript.
+**Proven in.** C++; measured in JavaScript and Dart.
 
 **Measured effect.** On one node major a float crossing a helper was steady at
 sixteen bytes a call, and invisible on another — which is why the gate is
-pinned to one (I14).
+pinned to one (I14). Dart (issue 404), under the JIT on the pinned SDK 3.13.2
+(linux x64), `make tables-dart-float-jit`: a steady loop writing and reading
+five float32 fields (`Input`) and three float64 fields (`Vec3`) through the
+generated packet codec scavenged 76 times per 2,000,000 passes with the
+float32 conversion in `@pragma('vm:prefer-inline')` helpers, 76 with the
+codec called from two different callers, and 0 with the conversion
+hand-inlined; the float64 helpers alone scavenged 0 (the pragma held for
+them, not for the float32 helpers with their NaN branch). With the conversion
+emitted at each assignment all three shapes read 0.
 
 **Negative control.** The allocation gate's wire rows: a helper put back
 reads as bytes per iteration on the pinned runtime.
@@ -185,7 +193,7 @@ reads as bytes per iteration on the pinned runtime.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:572-573` | ✅ `internal/codegen/ctable/ctable.go:565-568` | ❌ #518 | ✅ `internal/codegen/gotable/read.go` (`emitReadScalar`) | ✅ `TestCsFloatBitCastIsAtTheAssignment` (`BitConverter` at the store; helpers `[MethodImpl(AggressiveInlining)]`) | ❌ #517 | ❌ #516 | ❌ #404 | — a BEAM float is a boxed term whatever the call shape; `R.f32_bits` costs what the term costs |
+| ✅ `internal/codegen/cpptable/cpptable.go:572-573` | ✅ `internal/codegen/ctable/ctable.go:565-568` | ❌ #518 | ✅ `internal/codegen/gotable/read.go` (`emitReadScalar`) | ✅ `TestCsFloatBitCastIsAtTheAssignment` (`BitConverter` at the store; helpers `[MethodImpl(AggressiveInlining)]`) | ❌ #517 | ❌ #516 | ✅ `TestDartFloatBitsAreAtTheAssignment` (the float32 conversion inline at each assignment in the packet, block and message emitters; no helper in the output) and `make tables-dart-float-jit` (0 steady JIT scavenges, 3.13.2) | — a BEAM float is a boxed term whatever the call shape; `R.f32_bits` costs what the term costs |
 
 ### M4 — The codec is shaped for the optimizer
 

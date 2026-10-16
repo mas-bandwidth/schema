@@ -559,7 +559,14 @@ Four spellings are Dart's own and the reason is at each site.
   budget left out of line is boxed, and where the budget runs out depends on
   the loop around the codec — one boxed double per pass of the eight-record
   corpus on the wire phase as measured, up to three per record with one codec
-  inlined into a monomorphic caller. Two further costs are the JIT's and never
+  inlined into a monomorphic caller. So no generated Dart body calls a float32
+  conversion (issue 404, PORTING M3): the packet, block and message emitters
+  spell it at each assignment through the typed-data views, NaN payloads
+  narrowed and widened in software as before, and `make
+  tables-dart-float-jit` holds the packet codec at zero steady JIT scavenges
+  on the pinned SDK 3.13.2 — measured at 76 per 2,000,000 passes of five
+  float32 and three float64 fields with the helpers, from one caller or two,
+  and 0 hand-inlined. Two further costs are the JIT's and never
   AOT's: a `float32` carrying a NaN with a payload costs one boxed double, and
   a 64-bit integer field holding a value outside ±2⁶² costs one boxed integer
   per read.

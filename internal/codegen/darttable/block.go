@@ -450,15 +450,15 @@ func (g *blockGen) emitInlineAccessors(ml *ir.MemberLayout, bl *ir.BlockLayout, 
 			g.needRow(f.Type.Name)
 		case facts.IsArray:
 			g.pf("%sstatic const int %sBound = %d;\n", ind, name, facts.ArrayBound)
-			g.arrow(ind, fmt.Sprintf("%s %sAt(int index)", dartScalarType(f.Type), name),
-				g.readAt(f, fmt.Sprintf("%s + %d + index * %d", origin, fl.Offset, facts.ElemSize)))
+			g.scalarGetter(ind, f, fmt.Sprintf("%s %sAt(int index)", dartScalarType(f.Type), name),
+				fmt.Sprintf("%s + %d + index * %d", origin, fl.Offset, facts.ElemSize))
 		case f.Type.Kind == ir.TNamed && isStructRef(f.Type):
 			g.pf("%s%sRow %s(%sRow into) {\n", ind, f.Type.Name, name, f.Type.Name)
 			g.pf("%s  into.at = %s + %d;\n%s  return into;\n%s}\n\n", ind, origin, fl.Offset, ind, ind)
 			g.needRow(f.Type.Name)
 		default:
-			g.arrow(ind, fmt.Sprintf("%s get %s", dartScalarType(f.Type), name),
-				g.readAt(f, fmt.Sprintf("%s + %d", origin, fl.Offset)))
+			g.scalarGetter(ind, f, fmt.Sprintf("%s get %s", dartScalarType(f.Type), name),
+				fmt.Sprintf("%s + %d", origin, fl.Offset))
 		}
 		if facts.Optional {
 			g.pf("%sbool get %sPresent => view.getUint8(%s + %d) != 0;\n",
@@ -493,7 +493,7 @@ func (g *blockGen) readAt(f *ir.Field, at string) string {
 	case ir.TBool:
 		return fmt.Sprintf("view.getUint8(%s) != 0", at)
 	case ir.TFloat32:
-		return fmt.Sprintf("_doubleFromFloat32Bits(view.getUint32(%s, Endian.little))", at)
+		panic("darttable: a float32 read is a statement body (scalarGetter), never an expression")
 	case ir.TFloat64:
 		return fmt.Sprintf("view.getFloat64(%s, Endian.little)", at)
 	}
@@ -762,6 +762,35 @@ func (g *blockGen) sublist(ind, head, args string) {
 
 // arrow writes an expression-bodied member, breaking after the arrow the way
 // `dart format` does when the one-line form runs past 80 columns.
+// scalarGetter writes one scalar field's getter. A float32 widens AT THE
+// READ, in the getter's own body (issue 404, PORTING M3): under the JIT a
+// double crossing an out-of-line conversion call is boxed, and whether the
+// call is inlined is the inliner's budget, not the codec's. A NaN pattern
+// widens in software — the hardware conversion quiets a signalling NaN —
+// so the payload survives (SPEC-TABLES §3; float32_cells_test.go is the
+// law); the bits are a NaN exactly when their magnitude exceeds infinity's.
+func (g *blockGen) scalarGetter(ind string, f *ir.Field, head, at string) {
+	if f.Type.Kind != ir.TFloat32 {
+		g.arrow(ind, head, g.readAt(f, at))
+		return
+	}
+	g.pf("%s%s {\n", ind, head)
+	one := fmt.Sprintf("%s  final bits = view.getUint32(%s, Endian.little);", ind, at)
+	if len(one) <= 80 {
+		g.pf("%s\n", one)
+	} else {
+		g.pf("%s  final bits = view.getUint32(\n%s    %s,\n%s    Endian.little,\n%s  );\n", ind, ind, at, ind, ind)
+	}
+	g.pf("%s  if ((bits & 0x7fffffff) <= 0x7f800000) {\n", ind)
+	g.pf("%s    _float32Words[0] = bits;\n", ind)
+	g.pf("%s    return _float32Cell[0];\n", ind)
+	g.pf("%s  }\n", ind)
+	g.pf("%s  _float64Words[0] = ((bits >>> 31) << 63) | ((bits & 0x7fffff) << 29);\n", ind)
+	g.pf("%s  _float64Words[0] |= 0x7ff0000000000000;\n", ind)
+	g.pf("%s  return _float64Cell[0];\n", ind)
+	g.pf("%s}\n\n", ind)
+}
+
 func (g *blockGen) arrow(ind, head, expr string) {
 	one := fmt.Sprintf("%s%s => %s;", ind, head, expr)
 	if len(one) <= 80 {
@@ -783,20 +812,12 @@ func (g *blockGen) trimBlank() {
 
 // IEEE-754 payloads are data (SPEC-TABLES §3): hardware widening quiets a
 // signalling NaN, so preserve sign and mantissa in the double representation.
+// The class owns only the views; each float32 getter converts in its own
+// body (scalarGetter, issue 404).
 const dartBlockFloat32Runtime = `
   static final Float32List _float32Cell = Float32List(2);
   static final Uint32List _float32Words = _float32Cell.buffer.asUint32List();
   static final Float64List _float64Cell = _float32Cell.buffer.asFloat64List();
   static final Uint64List _float64Words = _float32Cell.buffer.asUint64List();
-
-  static double _doubleFromFloat32Bits(int bits) {
-    if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {
-      _float64Words[0] = ((bits >>> 31) << 63) |
-          0x7ff0000000000000 | ((bits & 0x7fffff) << 29);
-      return _float64Cell[0];
-    }
-    _float32Words[0] = bits;
-    return _float32Cell[0];
-  }
 
 `

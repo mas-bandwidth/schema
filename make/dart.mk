@@ -487,6 +487,33 @@ tables-dart-variable-class:
 
 test-dart: tables-dart-variable-class
 
+# THE JIT FLOAT INSTRUMENT (issue 404, PORTING M3): a double crossing an
+# out-of-line conversion call boxes under the JIT, and whether the call is
+# inlined is the inliner's budget, not the codec's. test/dart/floatjit.dart
+# drives float32 (Input) and float64 (Vec3) fields through the generated
+# packet codec in three shapes — as generated, hand-inlined, and from two
+# callers — and the VM prints one line per scavenge under --verbose_gc. Each
+# shape runs at N and 2N steady passes after the same warm-up; the difference
+# is the steady state's count (start-up and warm-up cancel). Measured on the
+# pinned SDK (3.13.2, linux x64) before the emitters inlined the float32
+# conversion: generated 76, inlined 0, twocallers 76 per 2,000,000 passes;
+# after: 0, 0, 0. Any steady scavenge is red. A functional test (the VM).
+FLOATJIT_N ?= 2000000
+.PHONY: tables-dart-float-jit
+tables-dart-float-jit: toolchain-dart generated/dart/.stamp
+	@fail=0; for s in generated inlined twocallers; do \
+		a=$$($(DART) --verbose_gc test/dart/floatjit.dart $$s $(FLOATJIT_N) 2>&1 >/dev/null | grep -c '^\[ main *, *Scavenge') || true; \
+		b=$$($(DART) --verbose_gc test/dart/floatjit.dart $$s $$((2 * $(FLOATJIT_N))) 2>&1 >/dev/null | grep -c '^\[ main *, *Scavenge') || true; \
+		$(DART) test/dart/floatjit.dart $$s 1 >/dev/null || { echo "tables-dart-float-jit: floatjit.dart $$s did not run"; exit 1; }; \
+		echo "tables-dart-float-jit shape=$$s steady_scavenges=$$((b - a)) per $(FLOATJIT_N) passes"; \
+		[ $$((b - a)) -eq 0 ] || fail=1; \
+	done; \
+	echo "tables-dart-float-jit sdk: $$($(DART) --version 2>&1)"; \
+	if [ $$fail -ne 0 ]; then echo "tables-dart-float-jit: FAIL (a float boxes under the JIT)"; exit 1; fi; \
+	echo "tables-dart-float-jit: OK"
+
+test-dart: tables-dart-float-jit
+
 # THE DART LEG of `make test`. THE DART PORT's own instruments
 # (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart
 # format` writes and what the analyzer accepts, the name-claim control, the

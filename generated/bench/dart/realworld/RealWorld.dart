@@ -39,40 +39,6 @@ double _fround(double value) {
   return _f32[0];
 }
 
-// The 32 bits of the IEEE-754 single representation of value. Non-NaN goes
-// through the hardware conversion; a NaN narrows in software — sign kept,
-// top 23 mantissa bits kept, the quiet bit forced only for the all-low-
-// payload case — so every pattern the read half produces round trips.
-@pragma('vm:prefer-inline')
-int _float32BitsFromDouble(double value) {
-  if (!value.isNaN) {
-    _f32[0] = value;
-    return _u32[0];
-  }
-  _f64[0] = value;
-  final bits64 = _u64[0];
-  final sign = (bits64 >>> 63) << 31;
-  var mantissa = (bits64 >>> 29) & 0x7fffff;
-  if (mantissa == 0) {
-    mantissa = 0x400000;
-  }
-  return sign | 0x7f800000 | mantissa;
-}
-
-// The double whose IEEE-754 single representation is bits. NaN patterns
-// widen in software (the hardware conversion quiets a signaling NaN); the
-// reader reproduces the transmitted pattern exactly.
-@pragma('vm:prefer-inline')
-double _doubleFromFloat32Bits(int bits) {
-  if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {
-    _u64[0] =
-        ((bits >>> 31) << 63) | 0x7ff0000000000000 | ((bits & 0x7fffff) << 29);
-    return _f64[0];
-  }
-  _u32[0] = bits;
-  return _f32[0];
-}
-
 // The 64 bits of the IEEE-754 double representation of value — exactly the
 // bits of the Dart double — and the inverse.
 @pragma('vm:prefer-inline')
@@ -615,6 +581,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 20000.0) + 0.5).floor();
+    if (v > 20000) v = 20000;
   }
   scratch |= v << scratchBits;
   scratchBits += 15;
@@ -628,17 +595,33 @@ int writeRealPacket(RealPacket value, ByteData view) {
   assert(value.f005Uint <= 7316);
   assert(value.f006Int >= -1513);
   assert(value.f006Int <= 1513);
-  v =
-      ((value.f005Uint) & 0x1fff) |
-      (((value.f006Int + 1513) & 0xfff) << 13) |
-      (_float32BitsFromDouble(value.f007F32) << 25);
+  v = ((value.f005Uint) & 0x1fff) | (((value.f006Int + 1513) & 0xfff) << 13);
   scratch |= v << scratchBits;
-  scratchBits += 57;
+  scratchBits += 25;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (57 - scratchBits);
+    scratch = v >>> (25 - scratchBits);
+  }
+  if (!value.f007F32.isNaN) {
+    _f32[0] = value.f007F32;
+    v = _u32[0];
+  } else {
+    _f64[0] = value.f007F32;
+    v = (_u64[0] >>> 29) & 0x7fffff;
+    if (v == 0) {
+      v = 0x400000;
+    }
+    v |= ((_u64[0] >>> 63) << 31) | 0x7f800000;
+  }
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
   }
   assert(value.f009Int >= -22);
   assert(value.f009Int <= 22);
@@ -651,50 +634,83 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v =
-      ((value.f009Int + 22) & 0x3f) |
-      (_float32BitsFromDouble(value.f010F32) << 6) |
-      (((value.f011Bits) & 0x3ff) << 38) |
-      ((value.f012Bool ? 1 : 0) << 48);
+  v = ((value.f009Int + 22) & 0x3f);
   scratch |= v << scratchBits;
-  scratchBits += 49;
+  scratchBits += 6;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (49 - scratchBits);
+    scratch = v >>> (6 - scratchBits);
+  }
+  if (!value.f010F32.isNaN) {
+    _f32[0] = value.f010F32;
+    v = _u32[0];
+  } else {
+    _f64[0] = value.f010F32;
+    v = (_u64[0] >>> 29) & 0x7fffff;
+    if (v == 0) {
+      v = 0x400000;
+    }
+    v |= ((_u64[0] >>> 63) << 31) | 0x7f800000;
+  }
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
+  v = ((value.f011Bits) & 0x3ff) | ((value.f012Bool ? 1 : 0) << 10);
+  scratch |= v << scratchBits;
+  scratchBits += 11;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (11 - scratchBits);
   }
   if (value.f012Bool) {
+    if (!value.f013F32.isNaN) {
+      _f32[0] = value.f013F32;
+      v = _u32[0];
+    } else {
+      _f64[0] = value.f013F32;
+      v = (_u64[0] >>> 29) & 0x7fffff;
+      if (v == 0) {
+        v = 0x400000;
+      }
+      v |= ((_u64[0] >>> 63) << 31) | 0x7f800000;
+    }
+    scratch |= v << scratchBits;
+    scratchBits += 32;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (32 - scratchBits);
+    }
     assert(value.f014Uint >= 0);
     assert(value.f014Uint <= 775);
     assert(value.f015Int >= -21);
     assert(value.f015Int <= 21);
     assert(value.f016Fixed >= -37748736);
     assert(value.f016Fixed <= 37748736);
-    v =
-        _float32BitsFromDouble(value.f013F32) |
-        (((value.f014Uint) & 0x3ff) << 32) |
-        (((value.f015Int + 21) & 0x3f) << 42);
-    scratch |= v << scratchBits;
-    scratchBits += 48;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (48 - scratchBits);
-    }
     assert(value.f017Uint >= 0);
     assert(value.f017Uint <= 4606);
     v =
-        ((value.f016Fixed + 37748736) & 0x7ffffff) |
-        (((value.f017Uint) & 0x1fff) << 27);
+        ((value.f014Uint) & 0x3ff) |
+        (((value.f015Int + 21) & 0x3f) << 10) |
+        (((value.f016Fixed + 37748736) & 0x7ffffff) << 16) |
+        (((value.f017Uint) & 0x1fff) << 43);
     scratch |= v << scratchBits;
-    scratchBits += 40;
+    scratchBits += 56;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (40 - scratchBits);
+      scratch = v >>> (56 - scratchBits);
     }
   }
   assert(value.f018Int >= -834);
@@ -717,43 +733,93 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
+  if (!value.f020F32.isNaN) {
+    _f32[0] = value.f020F32;
+    v = _u32[0];
+  } else {
+    _f64[0] = value.f020F32;
+    v = (_u64[0] >>> 29) & 0x7fffff;
+    if (v == 0) {
+      v = 0x400000;
+    }
+    v |= ((_u64[0] >>> 63) << 31) | 0x7f800000;
+  }
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
   assert(value.f021Ufixed >= 0);
   assert(value.f021Ufixed <= 102977536);
-  v =
-      _float32BitsFromDouble(value.f020F32) |
-      (((value.f021Ufixed) & 0x7ffffff) << 32);
+  v = ((value.f021Ufixed) & 0x7ffffff);
   scratch |= v << scratchBits;
-  scratchBits += 59;
+  scratchBits += 27;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (59 - scratchBits);
+    scratch = v >>> (27 - scratchBits);
   }
-  v =
-      _float32BitsFromDouble(value.f022F32) |
-      (((value.f023Bits) & 0x1ffffff) << 32);
+  if (!value.f022F32.isNaN) {
+    _f32[0] = value.f022F32;
+    v = _u32[0];
+  } else {
+    _f64[0] = value.f022F32;
+    v = (_u64[0] >>> 29) & 0x7fffff;
+    if (v == 0) {
+      v = 0x400000;
+    }
+    v |= ((_u64[0] >>> 63) << 31) | 0x7f800000;
+  }
   scratch |= v << scratchBits;
-  scratchBits += 57;
+  scratchBits += 32;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (57 - scratchBits);
+    scratch = v >>> (32 - scratchBits);
+  }
+  v = ((value.f023Bits) & 0x1ffffff);
+  scratch |= v << scratchBits;
+  scratchBits += 25;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (25 - scratchBits);
+  }
+  if (!value.f024F32.isNaN) {
+    _f32[0] = value.f024F32;
+    v = _u32[0];
+  } else {
+    _f64[0] = value.f024F32;
+    v = (_u64[0] >>> 29) & 0x7fffff;
+    if (v == 0) {
+      v = 0x400000;
+    }
+    v |= ((_u64[0] >>> 63) << 31) | 0x7f800000;
+  }
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
   }
   assert(value.f025Fixed >= -30464);
   assert(value.f025Fixed <= 30464);
-  v =
-      _float32BitsFromDouble(value.f024F32) |
-      (((value.f025Fixed + 30464) & 0xffff) << 32) |
-      (((value.f026Bits) & 0x1ff) << 48);
+  v = ((value.f025Fixed + 30464) & 0xffff) | (((value.f026Bits) & 0x1ff) << 16);
   scratch |= v << scratchBits;
-  scratchBits += 57;
+  scratchBits += 25;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (57 - scratchBits);
+    scratch = v >>> (25 - scratchBits);
   }
   {
     final x = _fround(value.f027Cf32);
@@ -765,6 +831,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 16.0) + 0.5).floor();
+    if (v > 16) v = 16;
   }
   scratch |= v << scratchBits;
   scratchBits += 5;
@@ -792,84 +859,110 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
+  if (!value.f030F32.isNaN) {
+    _f32[0] = value.f030F32;
+    v = _u32[0];
+  } else {
+    _f64[0] = value.f030F32;
+    v = (_u64[0] >>> 29) & 0x7fffff;
+    if (v == 0) {
+      v = 0x400000;
+    }
+    v |= ((_u64[0] >>> 63) << 31) | 0x7f800000;
+  }
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
+  }
   assert(value.f032Int >= -3);
   assert(value.f032Int <= 3);
   assert(value.f033Uint >= 0);
   assert(value.f033Uint <= 142780);
   assert(value.f034Uint >= 0);
   assert(value.f034Uint <= 14149);
+  assert(value.f036Enum >= 0);
+  assert(value.f036Enum <= 5);
   v =
-      _float32BitsFromDouble(value.f030F32) |
-      (((value.f031Bits) & 0x1) << 32) |
-      (((value.f032Int + 3) & 0x7) << 33) |
-      (((value.f033Uint) & 0x3ffff) << 36);
+      ((value.f031Bits) & 0x1) |
+      (((value.f032Int + 3) & 0x7) << 1) |
+      (((value.f033Uint) & 0x3ffff) << 4) |
+      (((value.f034Uint) & 0x3fff) << 22) |
+      (((value.f035Bits) & 0x1ff) << 36) |
+      (((value.f036Enum) & 0x7) << 45) |
+      ((value.f037Bool ? 1 : 0) << 48) |
+      ((value.f038Bool ? 1 : 0) << 49);
   scratch |= v << scratchBits;
-  scratchBits += 54;
+  scratchBits += 50;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (54 - scratchBits);
+    scratch = v >>> (50 - scratchBits);
   }
-  assert(value.f036Enum >= 0);
-  assert(value.f036Enum <= 5);
   assert(value.f040Fixed >= -20480);
   assert(value.f040Fixed <= 20480);
   assert(value.f041Int >= -55);
   assert(value.f041Int <= 55);
   v =
-      ((value.f034Uint) & 0x3fff) |
-      (((value.f035Bits) & 0x1ff) << 14) |
-      (((value.f036Enum) & 0x7) << 23) |
-      ((value.f037Bool ? 1 : 0) << 26) |
-      ((value.f038Bool ? 1 : 0) << 27) |
-      (((value.f039Bits) & 0x7ffff) << 28) |
-      (((value.f040Fixed + 20480) & 0xffff) << 47);
+      ((value.f039Bits) & 0x7ffff) |
+      (((value.f040Fixed + 20480) & 0xffff) << 19) |
+      (((value.f041Int + 55) & 0x7f) << 35);
   scratch |= v << scratchBits;
-  scratchBits += 63;
+  scratchBits += 42;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (63 - scratchBits);
+    scratch = v >>> (42 - scratchBits);
   }
-  v =
-      ((value.f041Int + 55) & 0x7f) |
-      (((value.f042Bits) & 0x3fffffff) << 7) |
-      ((value.f043Bool ? 1 : 0) << 37);
+  v = ((value.f042Bits) & 0x3fffffff) | ((value.f043Bool ? 1 : 0) << 30);
   scratch |= v << scratchBits;
-  scratchBits += 38;
+  scratchBits += 31;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (38 - scratchBits);
+    scratch = v >>> (31 - scratchBits);
   }
   if (value.f043Bool) {
+    if (!value.f044F32.isNaN) {
+      _f32[0] = value.f044F32;
+      v = _u32[0];
+    } else {
+      _f64[0] = value.f044F32;
+      v = (_u64[0] >>> 29) & 0x7fffff;
+      if (v == 0) {
+        v = 0x400000;
+      }
+      v |= ((_u64[0] >>> 63) << 31) | 0x7f800000;
+    }
+    scratch |= v << scratchBits;
+    scratchBits += 32;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (32 - scratchBits);
+    }
     assert(value.f046Uint >= 0);
     assert(value.f046Uint <= 76063);
     assert(value.f047Int >= -430976);
     assert(value.f047Int <= 430976);
     v =
-        _float32BitsFromDouble(value.f044F32) |
-        (((value.f045Bits) & 0xfff) << 32) |
-        (((value.f046Uint) & 0x1ffff) << 44);
+        ((value.f045Bits) & 0xfff) |
+        (((value.f046Uint) & 0x1ffff) << 12) |
+        (((value.f047Int + 430976) & 0xfffff) << 29);
     scratch |= v << scratchBits;
-    scratchBits += 61;
+    scratchBits += 49;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (61 - scratchBits);
-    }
-    v = ((value.f047Int + 430976) & 0xfffff);
-    scratch |= v << scratchBits;
-    scratchBits += 20;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (20 - scratchBits);
+      scratch = v >>> (49 - scratchBits);
     }
   }
   assert(value.f049Ufixed >= 0);
@@ -895,20 +988,44 @@ int writeRealPacket(RealPacket value, ByteData view) {
   if (value.f050Bool) {
     assert(value.f052Int >= -57);
     assert(value.f052Int <= 57);
-    assert(value.f054Int >= -35);
-    assert(value.f054Int <= 35);
-    v =
-        (value.f051Bool ? 1 : 0) |
-        (((value.f052Int + 57) & 0x7f) << 1) |
-        (_float32BitsFromDouble(value.f053F32) << 8) |
-        (((value.f054Int + 35) & 0x7f) << 40);
+    v = (value.f051Bool ? 1 : 0) | (((value.f052Int + 57) & 0x7f) << 1);
     scratch |= v << scratchBits;
-    scratchBits += 47;
+    scratchBits += 8;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (47 - scratchBits);
+      scratch = v >>> (8 - scratchBits);
+    }
+    if (!value.f053F32.isNaN) {
+      _f32[0] = value.f053F32;
+      v = _u32[0];
+    } else {
+      _f64[0] = value.f053F32;
+      v = (_u64[0] >>> 29) & 0x7fffff;
+      if (v == 0) {
+        v = 0x400000;
+      }
+      v |= ((_u64[0] >>> 63) << 31) | 0x7f800000;
+    }
+    scratch |= v << scratchBits;
+    scratchBits += 32;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (32 - scratchBits);
+    }
+    assert(value.f054Int >= -35);
+    assert(value.f054Int <= 35);
+    v = ((value.f054Int + 35) & 0x7f);
+    scratch |= v << scratchBits;
+    scratchBits += 7;
+    if (scratchBits >= 64) {
+      view.setUint64(wordIndex * 8, scratch, Endian.little);
+      wordIndex++;
+      scratchBits -= 64;
+      scratch = v >>> (7 - scratchBits);
     }
   }
   assert(value.f056Int >= -13);
@@ -918,15 +1035,33 @@ int writeRealPacket(RealPacket value, ByteData view) {
   v =
       (value.f055Bool ? 1 : 0) |
       (((value.f056Int + 13) & 0x1f) << 1) |
-      (((value.f057Int + 15) & 0x1f) << 6) |
-      (_float32BitsFromDouble(value.f058F32) << 11);
+      (((value.f057Int + 15) & 0x1f) << 6);
   scratch |= v << scratchBits;
-  scratchBits += 43;
+  scratchBits += 11;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (43 - scratchBits);
+    scratch = v >>> (11 - scratchBits);
+  }
+  if (!value.f058F32.isNaN) {
+    _f32[0] = value.f058F32;
+    v = _u32[0];
+  } else {
+    _f64[0] = value.f058F32;
+    v = (_u64[0] >>> 29) & 0x7fffff;
+    if (v == 0) {
+      v = 0x400000;
+    }
+    v |= ((_u64[0] >>> 63) << 31) | 0x7f800000;
+  }
+  scratch |= v << scratchBits;
+  scratchBits += 32;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (32 - scratchBits);
   }
   v = _float64BitsFromDouble(value.f059F64);
   scratch |= v << scratchBits;
@@ -956,6 +1091,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 360.0) + 0.5).floor();
+    if (v > 360) v = 360;
   }
   scratch |= v << scratchBits;
   scratchBits += 9;
@@ -1006,6 +1142,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 60.0) + 0.5).floor();
+    if (v > 60) v = 60;
   }
   scratch |= v << scratchBits;
   scratchBits += 6;
@@ -1036,6 +1173,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 800.0) + 0.5).floor();
+    if (v > 800) v = 800;
   }
   scratch |= v << scratchBits;
   scratchBits += 10;
@@ -1055,6 +1193,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 2000.0) + 0.5).floor();
+    if (v > 2000) v = 2000;
   }
   scratch |= v << scratchBits;
   scratchBits += 11;
@@ -1085,6 +1224,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 500.0) + 0.5).floor();
+    if (v > 500) v = 500;
   }
   scratch |= v << scratchBits;
   scratchBits += 9;
@@ -1104,6 +1244,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 10000.0) + 0.5).floor();
+    if (v > 10000) v = 10000;
   }
   scratch |= v << scratchBits;
   scratchBits += 14;
@@ -1339,7 +1480,14 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  value.f007F32 = _doubleFromFloat32Bits(v);
+  if ((v & 0x7fffffff) <= 0x7f800000) {
+    _u32[0] = v;
+    value.f007F32 = _f32[0];
+  } else {
+    _u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
+    _u64[0] |= 0x7ff0000000000000;
+    value.f007F32 = _f64[0];
+  }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -1370,7 +1518,14 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  value.f010F32 = _doubleFromFloat32Bits(v);
+  if ((v & 0x7fffffff) <= 0x7f800000) {
+    _u32[0] = v;
+    value.f010F32 = _f32[0];
+  } else {
+    _u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
+    _u64[0] |= 0x7ff0000000000000;
+    value.f010F32 = _f64[0];
+  }
   v = (window >>> 32) & 0x3ff;
   bitsRead += 10;
   value.f011Bits = v;
@@ -1388,7 +1543,14 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     }
     v = window & 0xffffffff;
     bitsRead += 32;
-    value.f013F32 = _doubleFromFloat32Bits(v);
+    if ((v & 0x7fffffff) <= 0x7f800000) {
+      _u32[0] = v;
+      value.f013F32 = _f32[0];
+    } else {
+      _u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
+      _u64[0] |= 0x7ff0000000000000;
+      value.f013F32 = _f64[0];
+    }
     v = (window >>> 32) & 0x3ff;
     bitsRead += 10;
     if (v > 775) {
@@ -1458,7 +1620,14 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  value.f020F32 = _doubleFromFloat32Bits(v);
+  if ((v & 0x7fffffff) <= 0x7f800000) {
+    _u32[0] = v;
+    value.f020F32 = _f32[0];
+  } else {
+    _u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
+    _u64[0] |= 0x7ff0000000000000;
+    value.f020F32 = _f64[0];
+  }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -1477,7 +1646,14 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  value.f022F32 = _doubleFromFloat32Bits(v);
+  if ((v & 0x7fffffff) <= 0x7f800000) {
+    _u32[0] = v;
+    value.f022F32 = _f32[0];
+  } else {
+    _u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
+    _u64[0] |= 0x7ff0000000000000;
+    value.f022F32 = _f64[0];
+  }
   v = (window >>> 32) & 0x1ffffff;
   bitsRead += 25;
   value.f023Bits = v;
@@ -1488,7 +1664,14 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  value.f024F32 = _doubleFromFloat32Bits(v);
+  if ((v & 0x7fffffff) <= 0x7f800000) {
+    _u32[0] = v;
+    value.f024F32 = _f32[0];
+  } else {
+    _u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
+    _u64[0] |= 0x7ff0000000000000;
+    value.f024F32 = _f64[0];
+  }
   v = (window >>> 32) & 0xffff;
   bitsRead += 16;
   if (v > 60928) {
@@ -1533,7 +1716,14 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  value.f030F32 = _doubleFromFloat32Bits(v);
+  if ((v & 0x7fffffff) <= 0x7f800000) {
+    _u32[0] = v;
+    value.f030F32 = _f32[0];
+  } else {
+    _u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
+    _u64[0] |= 0x7ff0000000000000;
+    value.f030F32 = _f64[0];
+  }
   v = (window >>> 32) & 0x1;
   bitsRead += 1;
   value.f031Bits = v;
@@ -1612,7 +1802,14 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     }
     v = window & 0xffffffff;
     bitsRead += 32;
-    value.f044F32 = _doubleFromFloat32Bits(v);
+    if ((v & 0x7fffffff) <= 0x7f800000) {
+      _u32[0] = v;
+      value.f044F32 = _f32[0];
+    } else {
+      _u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
+      _u64[0] |= 0x7ff0000000000000;
+      value.f044F32 = _f64[0];
+    }
     v = (window >>> 32) & 0xfff;
     bitsRead += 12;
     value.f045Bits = v;
@@ -1688,7 +1885,14 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     value.f052Int = -57 + v;
     v = (window >>> 8) & 0xffffffff;
     bitsRead += 32;
-    value.f053F32 = _doubleFromFloat32Bits(v);
+    if ((v & 0x7fffffff) <= 0x7f800000) {
+      _u32[0] = v;
+      value.f053F32 = _f32[0];
+    } else {
+      _u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
+      _u64[0] |= 0x7ff0000000000000;
+      value.f053F32 = _f64[0];
+    }
     v = (window >>> 40) & 0x7f;
     bitsRead += 7;
     if (v > 70) {
@@ -1726,7 +1930,14 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   value.f057Int = -15 + v;
   v = (window >>> 11) & 0xffffffff;
   bitsRead += 32;
-  value.f058F32 = _doubleFromFloat32Bits(v);
+  if ((v & 0x7fffffff) <= 0x7f800000) {
+    _u32[0] = v;
+    value.f058F32 = _f32[0];
+  } else {
+    _u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
+    _u64[0] |= 0x7ff0000000000000;
+    value.f058F32 = _f64[0];
+  }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
