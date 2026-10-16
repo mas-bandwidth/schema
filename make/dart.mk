@@ -293,6 +293,67 @@ tables-dart-alloc-runtime-negative-control: build/dart_gcgate build/fixedform-co
 		{ echo "NEGATIVE CONTROL FAILED: SCHEMA_DART_ALLOC_ANY_SDK=1 did not report NOT CERTIFIED"; \
 		  cat build/dart-alloc-runtime-nc/any.log; exit 1; }
 	@echo "negative control: Dart allocation gate refuses stand-in SDK 0.0.0 and SCHEMA_DART_ALLOC_ANY_SDK=1 reports without certifying"
+
+# THE DART TABLES SOAK (docs/PORTING.md I9). The C soak
+# (test/c-tables/soak_main.c) is the model: a functional soak run from a make
+# target with SOAK_SECONDS of real time, never a unit test. The soak loops
+# Load, the reads, Measure and Save over the rows the allocation gate gates
+# (fixed load, measure, save, block, cook), compiled to an AOT executable like
+# the gate's certified row, running under the gate's VM flags. The driver
+# samples the scavenge count every second after the warmup and fails if it
+# moves, reporting the worker's RSS drift beside it as the weaker instrument.
+DART_SOAK_GC_FLAGS = --verbose_gc --new_gen_semi_initial_size=1 --new_gen_semi_max_size=1
+SOAK_SECONDS ?= 3600
+
+build/dart_tables_soak: build/dart-fixed/.stamp build/tables-generated-dart/.stamp cards-dart-generate build/fixedform-corpus/.stamp build/cook-fuzz/.stamp test/dart-tables/soak.dart
+	@mkdir -p build
+	$(DART) analyze test/dart-tables/soak.dart
+	$(DART) format --set-exit-if-changed --output=none test/dart-tables/soak.dart
+	$(DART) compile exe -o $@ test/dart-tables/soak.dart >/dev/null
+
+.PHONY: tables-dart-soak tables-dart-soak-negative-control
+tables-dart-soak: build/dart_tables_soak
+	$(DART) test/dart-tables/soak.dart drive $(DART) $(CURDIR)/build/dart_tables_soak $(SOAK_SECONDS)
+
+tables-dart-soak-negative-control: build/dart_tables_soak
+	@mkdir -p build/dart-soak-nc
+	@if SCHEMA_DART_ALLOC_PLANT=1 \
+			$(DART) test/dart-tables/soak.dart drive $(DART) $(CURDIR)/build/dart_tables_soak 20 \
+			> build/dart-soak-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a planted allocation per iteration left the soak green"; \
+		cat build/dart-soak-nc/log; exit 1; \
+	fi
+	@grep -q 'SOAK FAILED' build/dart-soak-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the soak went red for some other reason"; \
+		  cat build/dart-soak-nc/log; exit 1; }
+	@grep -qE 'soak: rss drift .*\[PASS\]' build/dart-soak-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the RSS drift verdict was not green"; \
+		  cat build/dart-soak-nc/log; exit 1; }
+	@grep -E 'scavenges=' build/dart-soak-nc/log
+	@echo "negative control: one planted allocation per iteration turns the Dart soak RED on the count"
+
+# THE SHORT SOAK, REACHED FROM test-dart: the release act is an hour
+# (SOAK_SECONDS=3600); the leg's own gate runs twenty seconds so CI stays quick.
+.PHONY: tables-dart-soak-short tables-dart-soak-length
+tables-dart-soak-short:
+	$(MAKE) tables-dart-soak SOAK_SECONDS=20
+	$(MAKE) tables-dart-soak-length
+	$(MAKE) tables-dart-soak-negative-control
+
+# THE LENGTH CHECK: a 5-second soak must run 5 seconds and take 4..6 samples,
+# so a worker that ignores SOAK_SECONDS (and would run 20 s while claiming
+# an hour on the release act) is red here, not silently green.
+tables-dart-soak-length: build/dart_tables_soak
+	@mkdir -p build/dart-soak-len
+	@$(DART) test/dart-tables/soak.dart drive $(DART) $(CURDIR)/build/dart_tables_soak 5 \
+		> build/dart-soak-len/log 2>&1 || { cat build/dart-soak-len/log; exit 1; }
+	@grep -q 'soak: worker ran 5 s' build/dart-soak-len/log || \
+		{ echo "SOAK LENGTH FAILED: the worker did not run SOAK_SECONDS=5"; \
+		  cat build/dart-soak-len/log; exit 1; }
+	@grep 'soak: worker ran' build/dart-soak-len/log
+	@echo "soak length: SOAK_SECONDS=5 ran 5 s"
+
+test-dart: tables-dart-soak-short
 # THE RUNTIME HOME GATE (docs/PORTING.md J2). A unit's shared Dart table
 # runtime lives in one file named by the PACKAGE — <Package>Block.dart and
 # <Package>Cook.dart — never by the file that happens to sort first, so a
