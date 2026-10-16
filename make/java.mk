@@ -410,6 +410,19 @@ tables-java-versioning: tables-fixedform-corpus
 		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
 	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
 
+# THE SHARED BYTE ORACLE AND THE HOSTILE-INPUT CHECKS (java/W13, java/R27,
+# java/P3, java/P4; internal/codegen/javatable/fixedroadmap_t18_test.go). W13 and
+# R27 read the C++ reference's own corpus (header hash + layout bytes, then every
+# manifest row loaded through the generated Java and compared value for value);
+# P3 and P4 are the byte-flip sweep and the wrong-plan check on inline units.
+# Like tables-java-versioning it builds the oracle FIRST and sets
+# SCHEMA_REQUIRE_CORPUS=1, so a missing corpus or a missing JDK is a FAILURE here
+# and never a skip.
+.PHONY: tables-java-fixed-t18
+tables-java-fixed-t18: tables-fixedform-corpus
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapJavaT18OracleHostile'
+test-java: tables-java-fixed-t18
+
 # THE COMPRESSED-FLOAT FP-CONTRACT GATE (java/R30, T14): the witness that the
 # compressed float's dequantize is the SPEC's order in float32 — one rounding
 # per operation, never a fused multiply-add (SPEC.md "Floating-point
