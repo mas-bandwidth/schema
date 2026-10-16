@@ -152,7 +152,6 @@ func t05GoC5(t *testing.T) {
 // and RUNS the package-scoped tableFixedTextIllFormed through the generated
 // TFixedLoad, feeding it the bytes utf8.Valid refuses.
 func t05GoR24(t *testing.T) {
-	op := t05TextOp(t)
 	refusal := t05Refusal(t)
 	ill := funcSource(tableFixedRuntime, "func tableFixedTextIllFormed(")
 	if ill == "" {
