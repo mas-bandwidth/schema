@@ -421,6 +421,30 @@ tables-java-t14:
 		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^TestFixedRoadmapJavaT14CompressedFloats$$'
 	@echo 'tables Java T14: the compressed float rides as the float, unfused dequantize (java/R30)'
 
+# I13 (docs/PORTING.md, issue #419): the Java leg's text differential against a
+# third implementation. A Java probe draws 200 random float instances of a
+# VARIABLE-form root (seed 24845619678, splitmix64; scalar float32/float64, a
+# nested table, []float32, []float64 and a list of tables) and writes each as
+# (wire, text) with the generated save and toJson; the Go engine
+# (internal/tabletext, internal/tablepack) writes its own text from the leg's
+# wire, byte-compared, packs the leg's text back to wire, byte-compared, and the
+# leg's fromJson reads the engine's text back to the same wire
+# (TestTextDifferentialJava). The control, run inside this target, caps the
+# emitted float32 window at six significant digits in memory and must go red on
+# the TEXT comparison (TestTextDifferentialJavaNegativeControl).
+# SCHEMA_REQUIRE_CORPUS=1 makes a missing JDK a FAILURE rather than a skip.
+.PHONY: tables-java-json-differential tables-java-json-differential-negative-control
+tables-java-json-differential:
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^(TestTextDifferentialJava|TestTextDifferentialJavaNegativeControl)$$'
+	@echo 'tables Java text differential: 200 random float instances agree with the Go engine byte for byte, both directions, and a six-digit float32 writer is red'
+tables-java-json-differential-negative-control:
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^TestTextDifferentialJavaNegativeControl$$'
+	@echo 'tables Java text differential negative control: a six-digit float32 writer is red on the text comparison'
+
+test-java: tables-java-json-differential
+
 # THE VARIABLE-CLASS GATE (docs/SPEC-TABLES.md §2, §3, §16), the Java twin of
 # `tables-go-variable-class`: the variable form's codecs for the pointered,
 # blob and list corpora round-trip against the committed reference bytes. It is

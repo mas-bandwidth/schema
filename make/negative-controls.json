@@ -518,6 +518,7 @@
         "tables-java-fixedform-arm-negative-control",
         "tables-java-fixedform-negative-control",
         "tables-java-fuzz-negative-control",
+        "tables-java-json-differential-negative-control",
         "tables-java-runtime-home-negative-control",
         "tables-java-versioning-negative-control"
       ],
