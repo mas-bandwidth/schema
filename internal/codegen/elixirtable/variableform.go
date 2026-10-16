@@ -775,27 +775,39 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
     case open(data) do
       {:error, reason} ->
-        {:error, reason, empty_report()}
+        {:error, reason, reasoned(empty_report(), reason)}
 
       {:ok, body, ids} ->
         case entries(body, ids, desc.string_blob, desc.variable) do
           {:error, _} ->
-            {:error, :malformed, empty_report()}
+            {:error, :malformed, reasoned(empty_report(), :malformed)}
 
           {:stop, _fields, _nodes, _remaining} ->
             # a ROOT body the walk could not finish is malformed; nothing below
             # the damage is read, so there is no value to save (§3)
-            {:error, :malformed, empty_report()}
+            {:error, :malformed, reasoned(empty_report(), :malformed)}
 
           {:ok, fields, nodes} ->
             {value, report} = decode(desc, fields, nodes, ids)
             report = if :malformed in nodes, do: %{report | malformed: true}, else: report
             unknown = Enum.count(nodes, &(&1 == :unknown))
             report = %{report | unknown: report.unknown + unknown}
-            {:ok, Map.merge(defaults(desc), value), report}
+            {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
         end
     end
   end
+
+  # THE REASON IN THE REPORT (docs/SPEC-TABLES.md §4, §4.2): the load's one
+  # verdict word beside the counters, spelled with the reference leg's
+  # TableRefuseReason names (internal/codegen/gotable/refusal.go). A read that
+  # finished, however tolerant (a widened, clamped, unknown or mismatched field
+  # is an event and never a refusal, §4), says an empty reason; a form byte
+  # this reader does not carry says unknown_form (§3); framing damage says
+  # wire_damaged, and the
+  # report's malformed flag is set beside it.
+  defp reasoned(report, :ok), do: Map.put(report, :reason, if(report.malformed, do: :wire_damaged, else: ""))
+  defp reasoned(report, :newer_form), do: Map.put(report, :reason, :unknown_form)
+  defp reasoned(report, _malformed), do: Map.put(%{report | malformed: true}, :reason, :wire_damaged)
 
   # open reads the form byte and the id trailer (docs/SPEC-TABLES.md §3).
   defp open(<<>>), do: {:error, :malformed}
@@ -1655,7 +1667,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # ---- the shared primitives ----
 
-  defp empty_report, do: %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
+  defp empty_report, do: %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0, reason: ""}
 
   # defaults is a field's declared default: what an absent field reads (§4). The
   # descriptor's own default column carries it, declared default first, so an
