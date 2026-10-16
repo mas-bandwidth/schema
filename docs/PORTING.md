@@ -1195,7 +1195,8 @@ release act.
 
 **Reference.** `test/c-tables/soak_main.c:262-334` (allocator calls counted
 over the measured loop); `test/go-tables/soak_test.go:216-264` (`Mallocs`
-with site classification); `test/js-tables/main.mjs:1457` (the rate before and after).
+with site classification); `test/cs-tables/src/SoakChecks.cs` (`GC.GetAllocatedBytesForCurrentThread`
+re-sampled over the measured loop); `test/js-tables/main.mjs:1457` (the rate before and after).
 
 **Proven in.** C.
 
@@ -1203,14 +1204,15 @@ with site classification); `test/js-tables/main.mjs:1457` (the rate before and a
 the Rust one is what made the audit's count exact.
 
 **Negative control.** A matched `malloc`/`free` pair per iteration
-(`tables-c-soak-negative-control`): the drift gate stays silent and the count
+(`tables-c-soak-negative-control`) or short-lived managed allocation per sample
+(`tables-cs-soak-negative-control`): the drift gate stays silent and the count
 goes red.
 
 **Targets:** soak
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #416 | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #416 (`tables-rust-soak` gates on the count; nothing runs it) | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ❌ #416 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
+| ❌ #416 | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #416 (`tables-rust-soak` gates on the count; nothing runs it) | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ✅ `tables-cs-soak` `tables-cs-soak-negative-control` | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
 
 ### I10 — The zero-cost gate
 
