@@ -494,18 +494,27 @@ public static class TableJson
     // snprintf; a port spells it out, because the two must agree byte for byte.
     // Every conversion here is INVARIANT-CULTURE, so nothing in the walk
     // consults a locale — the one corner where C++ has to.
+    //
+    // The digits come from the STANDARD "E<n>" and "F<n>" specifiers, which
+    // are exact at any precision and round an exact tie to even, as C's %g
+    // does. A CUSTOM pattern ("0.000e+00") is not: .NET caps a double's custom
+    // format at FIFTEEN significant digits and pads the rest with zeros, so a
+    // float64 that needs sixteen or seventeen wrote fifteen and did not read
+    // back (-4.3138853394422124e+203 wrote -4.31388533944221e+203). The I13
+    // text differential against internal/tabletext found it
+    // (internal/codegen/cstable/textdifferential_test.go).
     static int FormatG(double value, int prec, Span<char> text)
     {
         if (prec < 1) { prec = 1; }
-        Span<char> pattern = stackalloc char[MaxNumber];
+        Span<char> spec = stackalloc char[8];
         Span<char> sci = stackalloc char[MaxNumber];
-        int patternLength = Pattern(pattern, prec - 1, true);
+        int specLength = Spec(spec, 'E', prec - 1);
         int sciLength;
-        if (!value.TryFormat(sci, out sciLength, pattern.Slice(0, patternLength), System.Globalization.CultureInfo.InvariantCulture))
+        if (!value.TryFormat(sci, out sciLength, spec.Slice(0, specLength), System.Globalization.CultureInfo.InvariantCulture))
         {
             return -1;
         }
-        int at = sci.Slice(0, sciLength).IndexOf('e');
+        int at = sci.Slice(0, sciLength).IndexOf('E');
         if (at < 0) { return -1; }
         int exp = 0;
         bool negativeExp = sci[at + 1] == '-';
@@ -536,36 +545,26 @@ public static class TableJson
             }
             return n;
         }
-        patternLength = Pattern(pattern, prec - 1 - exp, false);
+        specLength = Spec(spec, 'F', prec - 1 - exp);
         int plainLength;
-        if (!value.TryFormat(text, out plainLength, pattern.Slice(0, patternLength), System.Globalization.CultureInfo.InvariantCulture))
+        if (!value.TryFormat(text, out plainLength, spec.Slice(0, specLength), System.Globalization.CultureInfo.InvariantCulture))
         {
             return -1;
         }
         return TrimZeros(text.Slice(0, plainLength));
     }
 
-    // the custom pattern "%.*g" needs: "0." and decimals zeros, with "e+00"
-    // appended for the exponent form — which is what fixes the exponent at two
-    // digits minimum and always signed, the one shape C's %g writes
-    static int Pattern(Span<char> pattern, int decimals, bool exponent)
+    // the standard specifier "%.*g" needs: the letter, then the precision in
+    // decimal ("E16", "F3"); C's %g never asks for more than a few hundred
+    static int Spec(Span<char> spec, char letter, int precision)
     {
-        if (decimals < 0) { decimals = 0; }
+        if (precision < 0) { precision = 0; }
         int n = 0;
-        pattern[n++] = '0';
-        if (decimals > 0)
-        {
-            if (n + 1 + decimals + 4 > pattern.Length) { decimals = pattern.Length - n - 5; }
-            pattern[n++] = '.';
-            for (int i = 0; i < decimals; i++) { pattern[n++] = '0'; }
-        }
-        if (exponent)
-        {
-            pattern[n++] = 'e';
-            pattern[n++] = '+';
-            pattern[n++] = '0';
-            pattern[n++] = '0';
-        }
+        spec[n++] = letter;
+        Span<char> scratch = stackalloc char[8];
+        int digits = 0;
+        do { scratch[digits++] = (char)('0' + precision % 10); precision /= 10; } while (precision != 0);
+        for (int i = digits - 1; i >= 0; i--) { spec[n++] = scratch[i]; }
         return n;
     }
 
