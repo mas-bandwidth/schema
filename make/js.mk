@@ -1043,3 +1043,15 @@ packet-wide-js-negative-control: packet-wide-js
 	@echo 'packet wide JS negative control: removed pairing fails both tiers in bit-flip agreement'
 
 test-js: packet-wide-js packet-wide-js-negative-control
+
+# THE JAVASCRIPT LEG's WALK NEGATIVE CONTROL (docs/PORTING.md I11): one statement
+# of the GENERATED text reader (the bool arm of the from-text walk) is changed in
+# a COPY of build/tables-generated-js, and the driver, which imports from
+# SCHEMA_JS_GENERATED, is aimed at the copy. The matrix must go red on
+# `js / json-read` while `json-write` and `wire` stay green. Nothing tracked is
+# written to.
+.PHONY: conformance-negative-control-js-walk
+conformance-negative-control-js-walk: build/conformance-harness build/tables-generated-js/.stamp
+	sh test/conformance/js/negative-control walk
+
+test-js: conformance-negative-control-js-walk
