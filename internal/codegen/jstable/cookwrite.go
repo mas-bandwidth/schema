@@ -33,10 +33,12 @@ func (g *fixedModule) emitFixedCookExports(st *ir.Struct) {
 	if !g.home {
 		g.needHome("TableCookWrite")
 	}
-	g.pf("export function %sCookMeasure(value) {\n", st.Name)
+	// A fixed record's cooked size is the same for every value, so the two
+	// measures read none and take none: a caller's value argument is ignored.
+	g.pf("export function %sCookMeasure() {\n", st.Name)
 	g.pf("  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.\n")
 	g.pf("  return TableCookWrite.fixedMeasure(%q);\n}\n", st.Name)
-	g.pf("export function %sCookMeasureReason(value) {\n", st.Name)
+	g.pf("export function %sCookMeasureReason() {\n", st.Name)
 	g.pf("  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.\n")
 	g.pf("  return [TableCookWrite.fixedMeasure(%q), null];\n}\n", st.Name)
 	g.pf("export function %sCookFrom(value, buffer, order) {\n", st.Name)
@@ -512,10 +514,6 @@ const cookEngineShared = `  const f32Scratch = new DataView(new ArrayBuffer(8));
     f32Scratch.setFloat32(0, v, true);
     return f32Scratch.getUint32(0, true);
   }
-  function alignUp(n, a) {
-    if (a <= 1) { return n; }
-    return Math.floor((n + a - 1) / a) * a;
-  }
   function fit(v, width, signed) {
     let b;
     if (typeof v === "bigint") { b = v; }
@@ -756,7 +754,13 @@ const cookEngineFixed = `  function fixedMeasure(name) {
   }
 `
 
-const cookEngineVariable = `  function blobSize(entry) {
+// alignUp is the variable engine's alone: a fixed cook lays one record at
+// a constant offset and aligns nothing.
+const cookEngineVariable = `  function alignUp(n, a) {
+    if (a <= 1) { return n; }
+    return Math.floor((n + a - 1) / a) * a;
+  }
+  function blobSize(entry) {
     return 8 + entry.len + (entry.string ? 1 : 0);
   }
   function region(name, value) {

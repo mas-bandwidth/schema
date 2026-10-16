@@ -1477,7 +1477,7 @@ diff rather than on a reviewer.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #424 | ❌ #424 | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ❌ #424 | ❌ #424 | ✅ `tables-js-clean` (`eslint`) | ✅ `tables-dart-clean` | ❌ #424 (the packet units are format-checked; the table units are not) |
+| ❌ #424 | ❌ #424 | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ❌ #424 | ❌ #424 | ✅ `tables-js-clean` (`eslint`, over the table and packet units) | ✅ `tables-dart-clean` | ❌ #424 (the packet units are format-checked; the table units are not) |
 
 ### J5 — The bench leg's golden gate runs before the clock
 

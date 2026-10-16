@@ -491,6 +491,7 @@
         "tables-js-fixed-slack-negative-control",
         "tables-js-union-arm-text-negative-control",
         "tables-js-versioning-negative-control",
+        "tables-js-clean-negative-control",
         "tables-js-text-differential-negative-control"
       ],
       "node": "26"

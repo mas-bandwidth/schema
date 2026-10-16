@@ -146,8 +146,11 @@ func variableEmit(u *ir.Unit) map[string][]byte {
 	// Cook write runs after the codecs: variableMeasure calls
 	// TableVariableNumber and TableVariableCodecs (docs/SPEC-TABLES.md §7.6).
 	g.emitVariableCookWrite(roots)
+	walked := extentWalked(roots)
 	for _, st := range closure {
-		g.emitExtentWalk(st)
+		if walked[st] {
+			g.emitExtentWalk(st)
+		}
 	}
 	for _, r := range roots {
 		g.emitRootCodec(r)
@@ -190,6 +193,29 @@ func tableOf(f *ir.Field) *ir.Struct {
 // listElement returns the table an unbounded []T field's elements are, held
 // BY VALUE, or nil: the elements whose storage the region measure lays out
 // (§6.5).
+// extentWalked is every struct a LoadMeasure's region walk reaches: the roots,
+// and through their unbounded lists of tables the element types, transitively.
+// Only these get an <T>Extent; one nothing calls would be dead code (eslint
+// no-unused-vars).
+func extentWalked(roots []*ir.Struct) map[*ir.Struct]bool {
+	walked := map[*ir.Struct]bool{}
+	work := append([]*ir.Struct(nil), roots...)
+	for len(work) > 0 {
+		st := work[len(work)-1]
+		work = work[:len(work)-1]
+		if walked[st] {
+			continue
+		}
+		walked[st] = true
+		for _, f := range st.Fields {
+			if el := listElement(f); el != nil {
+				work = append(work, el)
+			}
+		}
+	}
+	return walked
+}
+
 func listElement(f *ir.Field) *ir.Struct {
 	if !f.IsList() || f.Type.Pointer {
 		return nil
@@ -391,7 +417,7 @@ function TableVariableUtf8Decode(bytes) {
 
 // ---- skipping a field the reader cannot name (docs/SPEC-TABLES.md §3) ------
 
-function TableVariableSkip(r, kind, report) {
+function TableVariableSkip(r, kind) {
   switch (kind) {
     case 1: case 2: case 6: case 20: case 25: { if (r.at + 1 > r.end) return false; r.at += 1; return true; }
     case 3: case 7: case 21: case 26: { if (r.at + 2 > r.end) return false; r.at += 2; return true; }
@@ -822,14 +848,33 @@ func (g *variableGen) fieldDesc(f *ir.Field, ordinal int, guards []guardStep) st
 // holder is the arm object { arm, value } (§2.6).
 func (g *variableGen) fieldDescNamed(f *ir.Field, prop string, ordinal int, guards []guardStep) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "{ n: %s, key: %s, id: %s, o: %d, k: %d, ",
-		jsStr(prop), jsStr(ir.TableFieldJsonKey(f)), jsId(ir.TableFieldWireId(f)), ordinal, ir.TableWireFieldKind(f))
+	tail := g.fieldDescTail(f)
+	fmt.Fprintf(&b, "{ n: %s, key: %s, id: %s, o: %d, ",
+		jsStr(prop), jsStr(ir.TableFieldJsonKey(f)), jsId(ir.TableFieldWireId(f)), ordinal)
+	// An integer's descriptor carries its scalar kind among intProps; a second
+	// `k` here would be a duplicate key whose value the later one overwrites
+	// (eslint no-dupe-keys), so only the other shapes name the field kind here.
+	if !strings.HasPrefix(tail, intShapePrefix) {
+		fmt.Fprintf(&b, "k: %d, ", ir.TableWireFieldKind(f))
+	}
 	if f.Type.Optional {
 		b.WriteString("opt: true, ")
 	}
 	if len(guards) > 0 {
 		fmt.Fprintf(&b, "g: %s, ", jsGuards(guards))
 	}
+	b.WriteString(tail)
+	return b.String()
+}
+
+// intShapePrefix opens an integer field's descriptor tail (fieldDescTail's
+// default arm), whose intProps carry the scalar kind `k` themselves.
+const intShapePrefix = "s: \"int\", "
+
+// fieldDescTail renders a field descriptor's shape-specific properties, from
+// `s:` to the closing brace.
+func (g *variableGen) fieldDescTail(f *ir.Field) string {
+	var b strings.Builder
 	switch {
 	case f.IsMap():
 		// kind 14 over element kind 13, an array of the generated entry (§2.8)
@@ -971,11 +1016,11 @@ func intProps(f *ir.Field) string {
 func (g *variableGen) emitRootCodec(st *ir.Struct) {
 	c := "TableVariableCodecs." + st.Name
 	g.pf("export function %sMeasure(v) {\n", st.Name)
-	g.pf("  const b = TableVariableSave(%s, v, null, null);\n", c)
+	g.pf("  const b = TableVariableSave(%s, v, null);\n", c)
 	g.pf("  return b === null ? -1 : b.length;\n")
 	g.pf("}\n\n")
 	g.pf("export function %sSave(v) {\n", st.Name)
-	g.pf("  return TableVariableSave(%s, v, null, null);\n", c)
+	g.pf("  return TableVariableSave(%s, v, null);\n", c)
 	g.pf("}\n\n")
 	g.pf("export function %sLoad(bytes, report) {\n", st.Name)
 	g.pf("  return TableVariableLoad(%s, bytes, report, null);\n", c)
@@ -1001,13 +1046,27 @@ func (g *variableGen) emitExtentWalk(st *ir.Struct) {
 	g.pf("    const ref = r.leb();\n")
 	g.pf("    if (r.bad || ref === 0 || ref > ids.length) { break; }\n")
 	g.pf("    if (r.at >= r.end) { break; }\n")
+	var lists []*ir.Field
+	for _, f := range st.Fields {
+		if listElement(f) != nil {
+			lists = append(lists, f)
+		}
+	}
+	if len(lists) == 0 {
+		// No list adds storage here: every field is framing to skip, so the
+		// walk names no id (an unread binding would be eslint no-unused-vars).
+		g.pf("    const kind = r.u8();\n")
+		g.pf("    if (!TableVariableSkip(r, kind)) { break; }\n")
+		g.pf("  }\n")
+		g.pf("  return at;\n")
+		g.pf("}\n\n")
+		return
+	}
 	g.pf("    const id = ids[ref - 1];\n")
 	g.pf("    const kind = r.u8();\n")
 	g.pf("    let named = false;\n")
-	for _, f := range st.Fields {
-		if el := listElement(f); el != nil {
-			g.emitExtentListField(st, f, el)
-		}
+	for _, f := range lists {
+		g.emitExtentListField(st, f, listElement(f))
 	}
 	g.pf("    if (!named) {\n")
 	g.pf("      if (!TableVariableSkip(r, kind)) { break; }\n")
@@ -1118,13 +1177,16 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	g.pf("    if (tref === 0 || tref > ids.length) { break; }\n")
 	g.pf("    const tlen = payload.leb();\n")
 	g.pf("    if (payload.at + tlen > payload.end) { break; }\n")
-	g.pf("    const tid = ids[tref - 1];\n")
-	g.pf("    payload.at += tlen;\n")
 	if strBlob {
+		g.pf("    const tid = ids[tref - 1];\n")
+		g.pf("    payload.at += tlen;\n")
 		g.pf("    if (tid === TableStringBlobId) {\n")
 		g.pf("      if (tlen > 0xffffffff) { return -1; }\n")
 		g.pf("      data += TableVariableRound(8 + tlen + 1, %d);\n", align)
 		g.pf("    }\n")
+	} else {
+		// no string blob to size: the record's id is not read
+		g.pf("    payload.at += tlen;\n")
 	}
 	g.pf("    records++;\n")
 	g.pf("  }\n")

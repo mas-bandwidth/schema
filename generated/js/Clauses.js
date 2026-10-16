@@ -623,20 +623,20 @@ export const EmptyAMaxBits = 0;
 export const EmptyAMaxBytes = 0;
 
 // InitEmptyA restores fresh construction values in place, preserving storage.
-export function InitEmptyA(value) {
+export function InitEmptyA() {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
-export function ZeroEmptyA(value) {
+export function ZeroEmptyA() {
   // empty body — nothing to reset (SPEC §4.6)
 }
 
-export function WriteEmptyA(stream, value) {
+export function WriteEmptyA() {
   // empty body — presence is the payload (SPEC §4.6)
   return true;
 }
 
-export function ReadEmptyA(stream, value) {
+export function ReadEmptyA() {
   return true;
 }
 
@@ -653,20 +653,20 @@ export const EmptyBMaxBits = 0;
 export const EmptyBMaxBytes = 0;
 
 // InitEmptyB restores fresh construction values in place, preserving storage.
-export function InitEmptyB(value) {
+export function InitEmptyB() {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
-export function ZeroEmptyB(value) {
+export function ZeroEmptyB() {
   // empty body — nothing to reset (SPEC §4.6)
 }
 
-export function WriteEmptyB(stream, value) {
+export function WriteEmptyB() {
   // empty body — presence is the payload (SPEC §4.6)
   return true;
 }
 
-export function ReadEmptyB(stream, value) {
+export function ReadEmptyB() {
   return true;
 }
 
