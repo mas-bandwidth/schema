@@ -70,6 +70,11 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 			if !csHeldMissingRuntime(rowOut) {
 				t.Fatalf("connection_%s failed to build for a reason other than the sibling ../serialize.cs runtime:\n%s", conn.key, rowOut)
 			}
+			// An OWED GAP, not a toolchain absence: this attempt compiles the
+			// unit without the sibling runtime on purpose and no leg here yet
+			// links ../serialize.cs to run the announcement check, so the row
+			// stays a named skip even under SCHEMA_REQUIRE_CORPUS (staging the
+			// sibling does not change it). make tables-cs-fixed-rows lists it.
 			t.Skipf("not run: the packet emitter names the sibling ../serialize.cs runtime this checkout does not carry:\n%s", csHeldFirstErrors(rowOut))
 		})
 	}
