@@ -157,6 +157,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// way the two accelerators' runtimes are.
 	out[TableRuntimeModule+".ex"] = tableRuntimeModule(u, ns)
 	out[BuildVersionModule+".ex"] = buildVersionModule(u, ns)
+	out[UnitViewModule+".ex"] = unitViewModule(u, ns)
 
 	// THE MESSAGE FORM'S ANNOUNCEMENT (docs/SPEC-TABLES.md §3.3): the surface a
 	// `fixed table` root owes. The form is a fixed table's and nobody else's, so
