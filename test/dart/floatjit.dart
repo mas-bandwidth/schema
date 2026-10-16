@@ -16,8 +16,18 @@
 //               exit 3 with no completion line, standing in for a measured
 //               run that dies part way; make tables-dart-float-jit must
 //               refuse it by name before it reads any count
+//   planted-box   THE BOXING BLADE, not a measurement: the float32 and
+//               float64 conversions through a helper the inliner may not
+//               inline (vm:never-inline), so a double crosses a call every
+//               pass; make tables-dart-float-jit-boxing-negative-control must
+//               read nonzero scavenges in both windows through the same
+//               counting path, or the zero of the real shapes proves nothing
 //
-// Usage: dart --verbose_gc floatjit.dart <shape> <steady-iterations>
+// Usage: dart --verbose_gc --no-background-compilation floatjit.dart <shape>
+//        <steady-iterations>
+// (make tables-dart-float-jit also passes --trace_compiler,
+// --trace_deoptimization and --trace_osr and refuses a window holding any
+// tiering event; see the comment above FLOATJIT_N in make/dart.mk.)
 //
 // The program runs a fixed warm-up, then <steady-iterations> passes. It
 // counts nothing itself: the VM prints one line per scavenge under
@@ -37,7 +47,15 @@ import '../../generated/dart/Types.dart';
 // only through the back edge, so the steady call would re-enter the pass in
 // unoptimized code (which boxes every double) until the pass is compiled
 // again. warmupCalls calls get the pass compiled for a normal entry first,
-// and the steady window sees only the optimized code.
+// and the steady window sees only the optimized code. That holds only when
+// the optimizing compile has also FINISHED before the window: with the JIT's
+// background compiler, a compile queued during warm-up can be installed
+// after the steady call has already entered the unoptimized pass, which then
+// boxes until on-stack replacement swaps it (measured, issue 404: every
+// traced stray inlined-window scavenge had passInlined's optimized code
+// installed inside the window). The gate therefore runs with
+// --no-background-compilation, so each optimizing compile completes on this
+// thread before the call that triggered it continues.
 const int warmupCalls = 2000;
 const int warmupChunk = 100;
 
@@ -58,7 +76,8 @@ final Vec3 vB = Vec3();
 Future<void> main(List<String> args) async {
   if (args.length != 2) {
     stderr.writeln(
-      'usage: floatjit.dart generated|inlined|twocallers|planted-exit '
+      'usage: floatjit.dart generated|inlined|twocallers|planted-exit|'
+      'planted-box '
       '<steady>',
     );
     exit(2);
@@ -82,6 +101,7 @@ Future<void> main(List<String> args) async {
     'inlined' => passInlined,
     'twocallers' => passTwoCallers,
     'planted-exit' => passPlantedExit,
+    'planted-box' => passPlantedBox,
     _ => null,
   };
   if (pass == null) {
@@ -97,7 +117,12 @@ Future<void> main(List<String> args) async {
   final windowEnds = Uint8List.fromList(
     'floatjit: steady window ends\n'.codeUnits,
   );
-  stderr.add(Uint8List(0));
+  // One real write before warm-up, not an empty one: the first non-empty
+  // write runs dart:io's per-file write bookkeeping for the first time
+  // (_ReadWriteResourceInfo.addWrite, its Stopwatch and DateTime.now, each
+  // compiled on first use), and measured under --trace_compiler that ran
+  // after the begin marker reached the fd, inside the window.
+  stderr.add(Uint8List.fromList('floatjit: warm-up begins\n'.codeUnits));
   for (var i = 0; i < warmupCalls; i++) {
     check += pass(warmupChunk, 0);
   }
@@ -129,6 +154,33 @@ int passGenerated(int n, int salt) {
 int passPlantedExit(int n, int salt) {
   if (salt == 0) return passGenerated(n, salt);
   exit(3);
+}
+
+// The boxing blade: the same Input and Vec3 values, but every float32 and
+// float64 conversion goes through a helper the inliner is forbidden to
+// inline, so a double is passed to and returned from a call each pass.
+int passPlantedBox(int n, int salt) {
+  var check = salt;
+  for (var i = 0; i < n; i++) {
+    inB.stickX = boxedFloat32(inA.stickX);
+    inB.yaw = boxedFloat32(inA.yaw);
+    vB.z = boxedFloat64(vA.z);
+    if (inB.yaw != inA.yaw || vB.z != vA.z) check++;
+    check += 1;
+  }
+  return check;
+}
+
+@pragma('vm:never-inline')
+double boxedFloat32(double value) {
+  _f32[0] = value;
+  return _f32[0];
+}
+
+@pragma('vm:never-inline')
+double boxedFloat64(double value) {
+  _f64[0] = value;
+  return _f64[0];
 }
 
 int passTwoCallers(int n, int salt) {
