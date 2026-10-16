@@ -69,10 +69,10 @@ public struct TableFixedEntry
     }
 }
 
-// TableFixedGuardLinkValue is ONE LINK of a guard chain in the compiler's hand
+// TableFixedGuardLink is ONE LINK of a guard chain in the compiler's hand
 // (docs/FIXED-FORM-ALGORITHM.md §4.1): the tag's offset, the ordinal it must
 // hold and its width. The pool lays it as TableFixedWire.GuardLinkBytes bytes.
-public struct TableFixedGuardLinkValue
+public struct TableFixedGuardLink
 {
     public uint Guard;
     public ulong Arg;
@@ -558,7 +558,7 @@ const tableFixedWireSource = `
             // (docs/FIXED-FORM-ALGORITHM.md §4.1): one link per enclosing union,
             // pushed on the way into an arm and popped on the way out. A chain
             // past the two lanes is laid into the pool once per arm, lazily.
-            public TableFixedGuardLinkValue[] Chain;
+            public TableFixedGuardLink[] Chain;
             public int ChainLen;
             public uint ChainAt;
             public bool ChainLaid;
@@ -584,11 +584,11 @@ const tableFixedWireSource = `
                 // two, and a chain past two rides the pool as offset+count.
                 if (stamped.Guard != NoGuard && ChainLen > 0)
                 {
-                    TableFixedGuardLinkValue inner = Chain[ChainLen - 1];
+                    TableFixedGuardLink inner = Chain[ChainLen - 1];
                     stamped.Guard = inner.Guard; stamped.Arg = inner.Arg; stamped.ArgW = inner.ArgW;
                     if (ChainLen >= 2)
                     {
-                        TableFixedGuardLinkValue outer = Chain[ChainLen - 2];
+                        TableFixedGuardLink outer = Chain[ChainLen - 2];
                         stamped.Guard2 = outer.Guard; stamped.Arg2 = outer.Arg; stamped.ArgW2 = outer.ArgW;
                     }
                     if (ChainLen > 2)
@@ -870,9 +870,9 @@ const tableFixedWireSource = `
                                 // out. The layout's 64 bounds the depth.
                                 uint savedAt = c.ChainAt;
                                 bool savedLaid = c.ChainLaid;
-                                if (c.Chain == null) { c.Chain = new TableFixedGuardLinkValue[MaxDepth + 1]; }
+                                if (c.Chain == null) { c.Chain = new TableFixedGuardLink[MaxDepth + 1]; }
                                 if (c.ChainLen >= c.Chain.Length) { c.Overflow = true; return; }
-                                c.Chain[c.ChainLen++] = new TableFixedGuardLinkValue { Guard = their_at, Arg = (ulong)(j + 1), ArgW = c.ArgW == 0 ? (byte)1 : c.ArgW };
+                                c.Chain[c.ChainLen++] = new TableFixedGuardLink { Guard = their_at, Arg = (ulong)(j + 1), ArgW = c.ArgW == 0 ? (byte)1 : c.ArgW };
                                 c.ChainLaid = false;
                                 TableFixedEntry tag = new TableFixedEntry(
                                     their_at, aux_at, my_tag, k + 1, their_at, Const, (ulong)(j + 1), 0);
