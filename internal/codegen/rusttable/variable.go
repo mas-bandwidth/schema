@@ -180,7 +180,7 @@ pub fn text_valid(b: &[u8]) -> bool {
 /// zero unit among the used units. The bound is the reader's, applied after.
 pub fn table_wide_units(b: &[u8]) -> Option<Vec<u16>> {
     if b.len() & 1 != 0 { return None; }
-    let units: Vec<u16> = b.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+    let units: Vec<u16> = b.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect();
     let mut i = 0;
     while i < units.len() {
         let u = units[i];
