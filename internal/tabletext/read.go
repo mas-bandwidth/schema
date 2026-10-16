@@ -1913,7 +1913,7 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 			if !in.skipValue(depth) {
 				return false
 			}
-		case !in.readField(&entry.Fields[1], depth):
+		case !in.readMapValue(&entry.Fields[1], depth):
 			return false
 		default:
 			at := -1
@@ -1947,6 +1947,33 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 	sort.SliceStable(fv.Entries, func(a, b int) bool {
 		return MapKeyOrder(f, MapKeyOf(f, fv.Entries[a].Tab), MapKeyOf(f, fv.Entries[b].Tab)) < 0
 	})
+	return true
+}
+
+// readMapValue reads one entry's VALUE. A `map[K]?T` value is a `?T` field of
+// the generated entry (docs/SPEC-TABLES.md §2.8: a value is anything a table
+// field can hold, `?T` included), so the presence rule of §2.3 and §16.2 reads
+// through it unchanged: the entry's key being in the object is the entry, the
+// value `null` is the ABSENT optional, and any other value makes the optional
+// PRESENT. Before this the value read here was placed but never marked
+// present, so the wire encoder elided it (§2.3: an absent optional is not
+// written) and `{"2":{"n":1}}` came back as `{"2":{"n":0}}`, while `null` was
+// refused as malformed.
+func (in *reader) readMapValue(fv *Field, depth int) bool {
+	if !fv.Def.Type.Optional {
+		return in.readField(fv, depth)
+	}
+	if in.valueShape() == 'z' {
+		if !in.literal("null") {
+			return false
+		}
+		in.m.reset(fv)
+		return true
+	}
+	if !in.readField(fv, depth) {
+		return false
+	}
+	fv.Present = true
 	return true
 }
 

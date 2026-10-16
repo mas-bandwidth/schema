@@ -72,6 +72,13 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	extra := tableJsonWideSource + tableJsonWStringSource + tableJsonGraphSource + tableJsonListSource + tableJsonMapSource + tableJsonMapDecimalSource + tableJsonTimestampSource + tableTimestampRuntime
 	b.WriteString("import (\n" + imports + ")\n\n")
 	b.WriteString(strings.Replace(walk, "// ---- json walk: end ----", extra+"// ---- json walk: end ----", 1))
+	if len(variableTableNames(u)) > 0 {
+		regionJson := tableRegionJsonSource
+		if unitHasContainers(u) {
+			regionJson = containerRegionJsonSource(regionJson)
+		}
+		b.WriteString(regionJson)
+	}
 
 	// the per-member surface, in the order the closure declares it, so the
 	// generated text is deterministic
@@ -216,48 +223,6 @@ func tableJsonNamed(name string) bool { return name != "" && name != "???" }
 
 func tableJsonFinite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 
-// ---- storage access: the descriptors give an offset and a width, and the
-// ---- storage is the HOST's, so every load and store goes through a width
-// ---- switch rather than a copy into the low bytes of a wider word
-
-func tableJsonGetRaw(storage unsafe.Pointer, width uint32) uint64 {
-	switch width {
-	case 1:
-		return uint64(*(*uint8)(storage))
-	case 2:
-		return uint64(*(*uint16)(storage))
-	case 4:
-		return uint64(*(*uint32)(storage))
-	case 8:
-		return *(*uint64)(storage)
-	}
-	return 0
-}
-
-func tableJsonSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
-	switch width {
-	case 1:
-		*(*uint8)(storage) = uint8(value)
-	case 2:
-		*(*uint16)(storage) = uint16(value)
-	case 4:
-		*(*uint32)(storage) = uint32(value)
-	case 8:
-		*(*uint64)(storage) = value
-	}
-}
-
-func tableJsonGetSigned(storage unsafe.Pointer, width uint32) int64 {
-	raw := tableJsonGetRaw(storage, width)
-	if width < 8 {
-		sign := uint64(1) << (width*8 - 1)
-		if raw&sign != 0 {
-			raw |= ^((sign << 1) - 1)
-		}
-	}
-	return int64(raw)
-}
-
 // tableJsonCount is a counted field's companion: a string's length, a bytes'
 // length, a counted array's count. Bounded by the declared extent on the way
 // out, so a storage invariant a caller broke cannot walk off the end.
@@ -379,46 +344,6 @@ func tableJsonElementShape(f *TableFieldInfo) byte {
 		return 'b'
 	}
 	return 'n'
-}
-
-// A guarded group rides only when its guard reads true — the wire's own elision
-// (§4), carried into the text so a text and a wire written from one instance
-// say the same thing. The guard is spelled as its branch condition over bool
-// fields of the SAME type ("at_rest", "!at_rest", "active && has_target"), so
-// evaluating it is a walk of the same descriptor. Nothing is inferred in the
-// other direction: reading places every key it can name, and the guard is a
-// plain bool key (§16.2).
-func tableJsonGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string) bool {
-	p := 0
-	for {
-		for p < len(guard) && (guard[p] == ' ' || guard[p] == '&') {
-			p++
-		}
-		if p >= len(guard) {
-			return true
-		}
-		want := true
-		if guard[p] == '!' {
-			want = false
-			p++
-		}
-		start := p
-		for p < len(guard) && guard[p] != ' ' && guard[p] != '&' {
-			p++
-		}
-		name := guard[start:p]
-		value := false
-		for i := range info.Fields {
-			f := &info.Fields[i]
-			if f.Name == name {
-				value = tableJsonGetRaw(unsafe.Add(base, uintptr(f.Offset)), f.ElemSize) != 0
-				break
-			}
-		}
-		if value != want {
-			return false
-		}
-	}
 }
 
 // ---- writing ----
