@@ -127,107 +127,6 @@ type TableCookInfo struct {
 	Fields    []TableCookFieldInfo
 }
 
-// The BLITTABLE records a cooked region is laid out from: the C ABI layout
-// §20.3 commits the compiler to, with GENERATED PADDING FIELDS wherever it has
-// interior padding (mas-bandwidth/schema docs/SPEC-TABLES.md §19.3). A cooked record IS the
-// blittable row, so these are the same <Name>Row structs the block form spells,
-// from the same model; a record the block form already emits is emitted THERE
-// and not again here.
-
-// TableChatEventRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type TableChatEventRow struct {
-	Channel int32
-	Speaker uint32
-}
-
-// TableEntityRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type TableEntityRow struct {
-	EntityId uint32
-	PosX     int32
-	PosY     int32
-	PosZ     int32
-	Yaw      uint32
-	Pitch    uint32
-	VelX     int32
-	VelY     int32
-	VelZ     int32
-	Health   int32
-	Weapon   TableWeapon
-	_        [7]byte // generated padding
-	Damage   TableDamage
-	Moving   bool
-	Firing   bool
-	_        [6]byte // generated padding
-}
-
-// TableHitEventRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type TableHitEventRow struct {
-	TargetId uint32
-	Damage   int32
-	HitKind  int32
-	Crit     bool
-	_        [3]byte // generated padding
-}
-
-// TableMixedRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type TableMixedRow struct {
-	ProtocolMagic    uint16
-	_                [2]byte // generated padding
-	Sequence         uint32
-	AckSequence      int32
-	AckBits          uint32
-	SessionId        uint64
-	ClientId         uint32
-	_                [4]byte // generated padding
-	Nonce            uint64
-	WorldTime        int64
-	FrameTick        uint64
-	ServerTime       float32
-	_                [4]byte // generated padding
-	Entities         [8]TableEntityRow
-	EntitiesCount    int32
-	Stats            [80]TableStatRow
-	StatsCount       int32
-	GameEvent        TableEventRow
-	Loadout          [4]uint8
-	PlayerName       [16]byte // string(15): buffer, used length beside it
-	PlayerNameLength int32
-	Payload          [16]byte // bytes(16): buffer, used length beside it
-	PayloadLength    int32
-	AimX             float32
-	AimY             float32
-	AimZ             float32
-	Recoil           float32
-	Drift            float64
-	WideKey          uint64
-	Flux             int64
-	Ping             float32
-	CrcHint          uint32
-	HasExtra         bool
-	_                [3]byte // generated padding
-	Extra            int32
-	IdleTicks        int32
-	_                [4]byte // generated padding
-}
-
-// TablePickupEventRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type TablePickupEventRow struct {
-	ItemId uint32
-	Amount int32
-}
-
-// TableStatRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type TableStatRow struct {
-	StatId uint32
-	Delta  int32
-}
-
 // THE LAYOUT CONTRACT for the cook closure (mas-bandwidth/schema docs/SPEC-TABLES.md §20.3), run
 // ONCE at package initialisation: a cooked region is laid out by the
 // compiler's C ABI model, so a runtime that lays one of these records out
@@ -444,7 +343,7 @@ func (c TableEntityCook) RegionAlignment() int64 { return 8 } // the greatest al
 func (c TableEntityCook) RootSize() int64        { return 64 }
 func (c TableEntityCook) RootAlign() int64       { return 8 }
 
-// Root is the root record at the region's base. It is a POINTER and not a
+// Root is the root record (type TableEntityRow struct) at the region's base. It is a POINTER and not a
 // copy: a cooked graph is walked by adding deltas to slot addresses.
 func (c TableEntityCook) Root() *TableEntityRow { return (*TableEntityRow)(c.Region) }
 
@@ -544,7 +443,7 @@ func (c TableStatCook) RegionAlignment() int64 { return 8 } // the greatest alig
 func (c TableStatCook) RootSize() int64        { return 8 }
 func (c TableStatCook) RootAlign() int64       { return 4 }
 
-// Root is the root record at the region's base. It is a POINTER and not a
+// Root is the root record (type TableStatRow struct) at the region's base. It is a POINTER and not a
 // copy: a cooked graph is walked by adding deltas to slot addresses.
 func (c TableStatCook) Root() *TableStatRow { return (*TableStatRow)(c.Region) }
 
@@ -644,7 +543,7 @@ func (c TableMixedCook) RegionAlignment() int64 { return 8 } // the greatest ali
 func (c TableMixedCook) RootSize() int64        { return 1352 }
 func (c TableMixedCook) RootAlign() int64       { return 8 }
 
-// Root is the root record at the region's base. It is a POINTER and not a
+// Root is the root record (type TableMixedRow struct) at the region's base. It is a POINTER and not a
 // copy: a cooked graph is walked by adding deltas to slot addresses.
 func (c TableMixedCook) Root() *TableMixedRow { return (*TableMixedRow)(c.Region) }
 

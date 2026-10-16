@@ -216,6 +216,20 @@ func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
 	return true
 }
 
+// FixedTableReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func FixedTableReadStrict(wire []byte) (*FixedTable, error) {
+	value := new(FixedTable)
+	var report TableReport
+	ok := FixedTableLoad(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
+}
+
 const FixedTableLoadRetainBuilder = "FixedTable: retention requires a region round trip through the VARIABLE form"
 const FixedTableSaveRetainMessages = "FixedTable: retention requires a region round trip through the VARIABLE form"
 const FixedTableLoadRetainMessages = "FixedTable: retention requires a region round trip through the VARIABLE form"
@@ -1571,12 +1585,16 @@ var FixedTableTableFields = []TableFieldInfo{
 var FixedTableTableInfo TableTypeInfo
 
 func init() {
-	FixedTableTableInfo = TableTypeInfo{Name: "FixedTable", Size: uint32(unsafe.Sizeof(FixedTable{})), NumFields: 1, Fields: FixedTableTableFields, Reset: func(storage unsafe.Pointer) { FixedTableReset((*FixedTable)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x85df369cdca746b3, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return FixedTableSaveBody(w, (*FixedTable)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return FixedTableLoadBody(&r, (*FixedTable)(p)) }, CookSize: 1376, CookAlign: 16, SaveMessageBody: func(w *TableMessageWriter, p unsafe.Pointer) bool {
+	FixedTableTableInfo = TableTypeInfo{Name: "FixedTable", Size: uint32(unsafe.Sizeof(FixedTable{})), NumFields: 1, Fields: FixedTableTableFields, Reset: func(storage unsafe.Pointer) { FixedTableReset((*FixedTable)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x85df369cdca746b3, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return FixedTableSaveBody(w, (*FixedTable)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return FixedTableLoadBody(&r, (*FixedTable)(p)) }, CookSize: 1376, CookAlign: 16}
+}
+func init() {
+	FixedTableTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
 		return FixedTableSaveMessageBody(w, (*FixedTable)(p))
-	}, LoadMessageBody: func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
+	}
+	FixedTableTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
 		ok := FixedTableLoadMessageBody(&r, (*FixedTable)(p))
 		return r, ok
-	}}
+	}
 }
 
 // FixedTableTableType returns FixedTable's reflection descriptor.

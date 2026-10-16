@@ -240,8 +240,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	emitRuntime := func(g *tableGen) {
 		g.needsMath = true
 		g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
+		g.pf("// BuildVersion is the unit's build version (docs/SPEC-TABLES.md §20): the\n// one digest a block carries and BlockOpen compares, and the fact §3.3's\n// announcement carries before the first body so a peer's build is knowable.\nconst BuildVersion uint64 = 0x%016x\n\n", ir.BuildVersion(u))
 		g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u)+tableFixedRuntime)
 		g.pf("%s", tableCookWriteSource(u))
+		g.emitUnitBlittableRows(blocks)
 		if regional {
 			g.emitRegionRuntime(blocks)
 			g.emitRetainRuntime()
@@ -780,7 +782,84 @@ type TableTypeInfo struct {
 	Tags    []string
 }
 
+type tableJsonGraphNode struct { refs int; label uint64; written bool }
 
+func tableJsonGetRaw(storage unsafe.Pointer, width uint32) uint64 {
+	switch width {
+	case 1:
+		return uint64(*(*uint8)(storage))
+	case 2:
+		return uint64(*(*uint16)(storage))
+	case 4:
+		return uint64(*(*uint32)(storage))
+	case 8:
+		return *(*uint64)(storage)
+	}
+	return 0
+}
+
+func tableJsonSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
+	switch width {
+	case 1:
+		*(*uint8)(storage) = uint8(value)
+	case 2:
+		*(*uint16)(storage) = uint16(value)
+	case 4:
+		*(*uint32)(storage) = uint32(value)
+	case 8:
+		*(*uint64)(storage) = value
+	}
+}
+
+func tableJsonGetSigned(storage unsafe.Pointer, width uint32) int64 {
+	raw := tableJsonGetRaw(storage, width)
+	if width < 8 {
+		sign := uint64(1) << (width*8 - 1)
+		if raw&sign != 0 {
+			raw |= ^((sign << 1) - 1)
+		}
+	}
+	return int64(raw)
+}
+
+type tableMapKey struct { text []byte; raw uint64 }
+func tableMapKeyValid(k tableMapKey,f *TableFieldInfo)bool {return f.Kind!=12||k.raw==0&&len(k.text)<=int(f.ArrayBound)}
+func tableMapStoredKey(p unsafe.Pointer,f *TableFieldInfo)tableMapKey {key:=tableMapKey{};if f.Kind==12 {n:=*(*int32)(unsafe.Add(p,f.CountOffset));if n<0||n>f.ArrayBound{return tableMapKey{text:nil,raw:1}};key.text=unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),int(n))}else{key.raw=tableJsonGetRaw(unsafe.Add(p,f.Offset),f.ElemSize);if f.Kind>=2&&f.Kind<=5 {key.raw=uint64(tableJsonGetSigned(unsafe.Add(p,f.Offset),f.ElemSize))}};return key}
+func tableMapStoreKey(p unsafe.Pointer,f *TableFieldInfo,k tableMapKey) {if f.Kind==12 {clear(unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),int(f.ArrayBound)+1));copy(unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),len(k.text)),k.text);*(*int32)(unsafe.Add(p,f.CountOffset))=int32(len(k.text))}else{tableJsonSetRaw(unsafe.Add(p,f.Offset),f.ElemSize,k.raw)}}
+func tableMapKeyOrder(a,b tableMapKey,f *TableFieldInfo)int {if f.Kind==12 {for i:=0;i<len(a.text)&&i<len(b.text);i++ {if a.text[i]<b.text[i]{return -1};if a.text[i]>b.text[i]{return 1}};if len(a.text)<len(b.text){return -1};if len(a.text)>len(b.text){return 1};return 0};if f.Kind>=2&&f.Kind<=5 {if int64(a.raw)<int64(b.raw){return -1};if int64(a.raw)>int64(b.raw){return 1};return 0};if a.raw<b.raw{return -1};if a.raw>b.raw{return 1};return 0}
+
+func tableJsonGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string) bool {
+	p := 0
+	for {
+		for p < len(guard) && (guard[p] == ' ' || guard[p] == '&') {
+			p++
+		}
+		if p >= len(guard) {
+			return true
+		}
+		want := true
+		if guard[p] == '!' {
+			want = false
+			p++
+		}
+		start := p
+		for p < len(guard) && guard[p] != ' ' && guard[p] != '&' {
+			p++
+		}
+		name := guard[start:p]
+		value := false
+		for i := range info.Fields {
+			f := &info.Fields[i]
+			if f.Name == name {
+				value = tableJsonGetRaw(unsafe.Add(base, uintptr(f.Offset)), f.ElemSize) != 0
+				break
+			}
+		}
+		if value != want {
+			return false
+		}
+	}
+}
 `
 }
 

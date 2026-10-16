@@ -28,7 +28,6 @@ package bench
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/mas-bandwidth/serialize.go"
 	"unsafe"
 )
 
@@ -126,113 +125,6 @@ type TableCookInfo struct {
 	Align     int32
 	NumFields int32
 	Fields    []TableCookFieldInfo
-}
-
-// The BLITTABLE records a cooked region is laid out from: the C ABI layout
-// §20.3 commits the compiler to, with GENERATED PADDING FIELDS wherever it has
-// interior padding (mas-bandwidth/schema docs/SPEC-TABLES.md §19.3). A cooked record IS the
-// blittable row, so these are the same <Name>Row structs the block form spells,
-// from the same model; a record the block form already emits is emitted THERE
-// and not again here.
-
-// BenchMixedRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type BenchMixedRow struct {
-	Sequence         uint32
-	AckSequence      int32
-	AckBits          uint32
-	_                [4]byte // generated padding
-	SessionId        uint64
-	ClientId         uint32
-	_                [4]byte // generated padding
-	Nonce            uint64
-	WorldTime        int64
-	FrameTick        uint64
-	ServerTime       int32
-	_                [4]byte // generated padding
-	Entities         [8]MixedEntityRow
-	EntitiesCount    int32
-	Stats            [80]MixedStatRow
-	StatsCount       int32
-	GameEvent        MixedEventRow
-	Loadout          [4]uint8
-	PlayerName       [16]byte // string(15): buffer, used length beside it
-	PlayerNameLength int32
-	Payload          [16]byte // bytes(16): buffer, used length beside it
-	PayloadLength    int32
-	AimX             float32
-	AimY             float32
-	AimZ             float32
-	Recoil           float32
-	Drift            float64
-	WideKey          serialize.Uint128
-	Flux             serialize.Int128
-	Ping             uint16
-	_                [2]byte // generated padding
-	CrcHint          uint32
-	HasExtra         bool
-	_                [3]byte // generated padding
-	Extra            int32
-	IdleTicks        int32
-	_                [12]byte // generated padding
-}
-
-// FixedTableRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type FixedTableRow struct {
-	Value BenchMixedRow
-}
-
-// MixedChatEventRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type MixedChatEventRow struct {
-	Channel int32
-	Speaker uint32
-}
-
-// MixedEntityRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type MixedEntityRow struct {
-	EntityId uint32
-	PosX     int32
-	PosY     int32
-	PosZ     int32
-	Yaw      uint32
-	Pitch    uint32
-	VelX     int32
-	VelY     int32
-	VelZ     int32
-	Health   int32
-	Weapon   MixedWeapon
-	_        [7]byte // generated padding
-	Damage   MixedDamage
-	Moving   bool
-	Firing   bool
-	_        [6]byte // generated padding
-}
-
-// MixedHitEventRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type MixedHitEventRow struct {
-	TargetId uint32
-	Damage   int32
-	HitKind  int32
-	Crit     bool
-	_        [3]byte // generated padding
-}
-
-// MixedPickupEventRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type MixedPickupEventRow struct {
-	ItemId uint32
-	Amount int32
-}
-
-// MixedStatRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type MixedStatRow struct {
-	StatId uint32
-	Delta  int32
 }
 
 // THE LAYOUT CONTRACT for the cook closure (mas-bandwidth/schema docs/SPEC-TABLES.md §20.3), run
@@ -459,7 +351,7 @@ func (c FixedTableCook) RegionAlignment() int64 { return 16 } // the greatest al
 func (c FixedTableCook) RootSize() int64        { return 1376 }
 func (c FixedTableCook) RootAlign() int64       { return 16 }
 
-// Root is the root record at the region's base. It is a POINTER and not a
+// Root is the root record (type FixedTableRow struct) at the region's base. It is a POINTER and not a
 // copy: a cooked graph is walked by adding deltas to slot addresses.
 func (c FixedTableCook) Root() *FixedTableRow { return (*FixedTableRow)(c.Region) }
 

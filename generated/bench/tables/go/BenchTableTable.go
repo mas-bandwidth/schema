@@ -21,6 +21,99 @@ import (
 	"unsafe"
 )
 
+// TableChatEventRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type TableChatEventRow struct {
+	Channel int32
+	Speaker uint32
+}
+
+// TableEntityRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type TableEntityRow struct {
+	EntityId uint32
+	PosX     int32
+	PosY     int32
+	PosZ     int32
+	Yaw      uint32
+	Pitch    uint32
+	VelX     int32
+	VelY     int32
+	VelZ     int32
+	Health   int32
+	Weapon   TableWeapon
+	_        [7]byte // generated padding
+	Damage   TableDamage
+	Moving   bool
+	Firing   bool
+	_        [6]byte // generated padding
+}
+
+// TableHitEventRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type TableHitEventRow struct {
+	TargetId uint32
+	Damage   int32
+	HitKind  int32
+	Crit     bool
+	_        [3]byte // generated padding
+}
+
+// TableMixedRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type TableMixedRow struct {
+	ProtocolMagic    uint16
+	_                [2]byte // generated padding
+	Sequence         uint32
+	AckSequence      int32
+	AckBits          uint32
+	SessionId        uint64
+	ClientId         uint32
+	_                [4]byte // generated padding
+	Nonce            uint64
+	WorldTime        int64
+	FrameTick        uint64
+	ServerTime       float32
+	_                [4]byte // generated padding
+	Entities         [8]TableEntityRow
+	EntitiesCount    int32
+	Stats            [80]TableStatRow
+	StatsCount       int32
+	GameEvent        TableEventRow
+	Loadout          [4]uint8
+	PlayerName       [16]byte // string(15): buffer, used length beside it
+	PlayerNameLength int32
+	Payload          [16]byte // bytes(16): buffer, used length beside it
+	PayloadLength    int32
+	AimX             float32
+	AimY             float32
+	AimZ             float32
+	Recoil           float32
+	Drift            float64
+	WideKey          uint64
+	Flux             int64
+	Ping             float32
+	CrcHint          uint32
+	HasExtra         bool
+	_                [3]byte // generated padding
+	Extra            int32
+	IdleTicks        int32
+	_                [4]byte // generated padding
+}
+
+// TablePickupEventRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type TablePickupEventRow struct {
+	ItemId uint32
+	Amount int32
+}
+
+// TableStatRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type TableStatRow struct {
+	StatId uint32
+	Delta  int32
+}
 type TableEventRow struct {
 	_       [0]uint32
 	Type    uint8
@@ -91,9 +184,16 @@ type TableMixed struct {
 	IdleTicks        int32
 }
 
+// BuildVersion is the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20): the
+// one digest a block carries and BlockOpen compares, and the fact §3.3's
+// announcement carries before the first body so a peer's build is knowable.
+const BuildVersion uint64 = 0xa9aa850e9c82a97f
+
 // TableReport is the table-wire read report — the permissive contract's
 // ledger. Silence (all zero) means the data matched this reader's schema
-// exactly.
+// exactly. Err (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5) is the STRICT read's typed reason
+// for malformed, clamped, kind-mismatched, unknown form, wire-damaged and
+// build-version-mismatched. Unknown, Widened and Retained alone are not one.
 type TableReport struct {
 	Retained, RetainLost int32
 	Verdict              TableOpenVerdict // unsupported form is distinct from damage
@@ -268,6 +368,152 @@ type TableTypeInfo struct {
 	Tags    []string
 }
 
+type tableJsonGraphNode struct {
+	refs    int
+	label   uint64
+	written bool
+}
+
+func tableJsonGetRaw(storage unsafe.Pointer, width uint32) uint64 {
+	switch width {
+	case 1:
+		return uint64(*(*uint8)(storage))
+	case 2:
+		return uint64(*(*uint16)(storage))
+	case 4:
+		return uint64(*(*uint32)(storage))
+	case 8:
+		return *(*uint64)(storage)
+	}
+	return 0
+}
+
+func tableJsonSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
+	switch width {
+	case 1:
+		*(*uint8)(storage) = uint8(value)
+	case 2:
+		*(*uint16)(storage) = uint16(value)
+	case 4:
+		*(*uint32)(storage) = uint32(value)
+	case 8:
+		*(*uint64)(storage) = value
+	}
+}
+
+func tableJsonGetSigned(storage unsafe.Pointer, width uint32) int64 {
+	raw := tableJsonGetRaw(storage, width)
+	if width < 8 {
+		sign := uint64(1) << (width*8 - 1)
+		if raw&sign != 0 {
+			raw |= ^((sign << 1) - 1)
+		}
+	}
+	return int64(raw)
+}
+
+type tableMapKey struct {
+	text []byte
+	raw  uint64
+}
+
+func tableMapKeyValid(k tableMapKey, f *TableFieldInfo) bool {
+	return f.Kind != 12 || k.raw == 0 && len(k.text) <= int(f.ArrayBound)
+}
+func tableMapStoredKey(p unsafe.Pointer, f *TableFieldInfo) tableMapKey {
+	key := tableMapKey{}
+	if f.Kind == 12 {
+		n := *(*int32)(unsafe.Add(p, f.CountOffset))
+		if n < 0 || n > f.ArrayBound {
+			return tableMapKey{text: nil, raw: 1}
+		}
+		key.text = unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), int(n))
+	} else {
+		key.raw = tableJsonGetRaw(unsafe.Add(p, f.Offset), f.ElemSize)
+		if f.Kind >= 2 && f.Kind <= 5 {
+			key.raw = uint64(tableJsonGetSigned(unsafe.Add(p, f.Offset), f.ElemSize))
+		}
+	}
+	return key
+}
+func tableMapStoreKey(p unsafe.Pointer, f *TableFieldInfo, k tableMapKey) {
+	if f.Kind == 12 {
+		clear(unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), int(f.ArrayBound)+1))
+		copy(unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), len(k.text)), k.text)
+		*(*int32)(unsafe.Add(p, f.CountOffset)) = int32(len(k.text))
+	} else {
+		tableJsonSetRaw(unsafe.Add(p, f.Offset), f.ElemSize, k.raw)
+	}
+}
+func tableMapKeyOrder(a, b tableMapKey, f *TableFieldInfo) int {
+	if f.Kind == 12 {
+		for i := 0; i < len(a.text) && i < len(b.text); i++ {
+			if a.text[i] < b.text[i] {
+				return -1
+			}
+			if a.text[i] > b.text[i] {
+				return 1
+			}
+		}
+		if len(a.text) < len(b.text) {
+			return -1
+		}
+		if len(a.text) > len(b.text) {
+			return 1
+		}
+		return 0
+	}
+	if f.Kind >= 2 && f.Kind <= 5 {
+		if int64(a.raw) < int64(b.raw) {
+			return -1
+		}
+		if int64(a.raw) > int64(b.raw) {
+			return 1
+		}
+		return 0
+	}
+	if a.raw < b.raw {
+		return -1
+	}
+	if a.raw > b.raw {
+		return 1
+	}
+	return 0
+}
+
+func tableJsonGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string) bool {
+	p := 0
+	for {
+		for p < len(guard) && (guard[p] == ' ' || guard[p] == '&') {
+			p++
+		}
+		if p >= len(guard) {
+			return true
+		}
+		want := true
+		if guard[p] == '!' {
+			want = false
+			p++
+		}
+		start := p
+		for p < len(guard) && guard[p] != ' ' && guard[p] != '&' {
+			p++
+		}
+		name := guard[start:p]
+		value := false
+		for i := range info.Fields {
+			f := &info.Fields[i]
+			if f.Name == name {
+				value = tableJsonGetRaw(unsafe.Add(base, uintptr(f.Offset)), f.ElemSize) != 0
+				break
+			}
+		}
+		if value != want {
+			return false
+		}
+	}
+}
+
 // TableRefuseReason is the typed error shared by file and accelerator failures.
 // A successful call returns nil; a failure returns its first failing clause.
 type TableRefuseReason uint8
@@ -290,6 +536,9 @@ const (
 	TableRefuseInvalidValue
 	TableRefuseAllocationFailed
 	TableRefuseWireDamaged
+	TableRefuseMalformed
+	TableRefuseClamped
+	TableRefuseKindMismatch
 )
 
 func (r TableRefuseReason) Error() string {
@@ -328,6 +577,12 @@ func (r TableRefuseReason) Error() string {
 		return "allocation_failed"
 	case TableRefuseWireDamaged:
 		return "wire_damaged"
+	case TableRefuseMalformed:
+		return "malformed"
+	case TableRefuseClamped:
+		return "clamped"
+	case TableRefuseKindMismatch:
+		return "kind_mismatch"
 	}
 	return "invalid refusal reason"
 }
@@ -358,11 +613,31 @@ func (m TableBuildVersionMismatch) Error() string {
 	return "build_version_mismatch: peer 0x" + string(peer[:]) + " own 0x" + string(own[:])
 }
 
-// Err is the report's typed error: the strict build-version refusal as a
-// TableBuildVersionMismatch (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3), nil on a clean read.
+// Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
+// The read report). A strict read refuses malformed, clamped, kind-mismatched,
+// unknown form, wire-damaged and build-version-mismatched, each as one typed
+// reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
 func (r *TableReport) Err() error {
-	if r != nil && r.Reason == "build_version_mismatch" {
+	if r == nil {
+		return nil
+	}
+	if r.Reason == "build_version_mismatch" {
 		return TableBuildVersionMismatch{Peer: r.BuildVersionPeer, Own: r.BuildVersionOwn}
+	}
+	if r.Verdict == TableOpenRefused || r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
+		return TableRefuseUnknownForm
+	}
+	if r.Verdict == TableOpenDamaged {
+		return TableRefuseWireDamaged
+	}
+	if r.Malformed {
+		return TableRefuseMalformed
+	}
+	if r.Clamped > 0 {
+		return TableRefuseClamped
+	}
+	if r.KindMismatch > 0 {
+		return TableRefuseKindMismatch
 	}
 	return nil
 }
@@ -741,7 +1016,7 @@ func tableKindBytes(kind uint8) int64 {
 		return 2
 	case 4, 8, 10, 22, 27:
 		return 4
-	case 5, 9, 11, 23, 28:
+	case 5, 9, 11, 23, 28, 36:
 		return 8
 	case 18, 19, 24, 29:
 		return 16
@@ -938,11 +1213,6 @@ func tableUtf8Clamp(data []byte, n int64) int64 {
 	}
 	return n
 }
-
-// BuildVersion is the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20): the
-// one digest a block carries and BlockOpen compares, and the fact §3.3's
-// announcement carries before the first body so a peer's build is knowable.
-const BuildVersion uint64 = 0xa9aa850e9c82a97f
 
 const TableMessageBatchMax = 256
 const TableMessageRefBitsHere = 7
@@ -4334,6 +4604,20 @@ func TableEntityLoad(value *TableEntity, data []byte, report *TableReport) bool 
 	return true
 }
 
+// TableEntityReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func TableEntityReadStrict(wire []byte) (*TableEntity, error) {
+	value := new(TableEntity)
+	var report TableReport
+	ok := TableEntityLoad(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
+}
+
 const TableEntityLoadRetainBuilder = "TableEntity: retention requires a region round trip through the VARIABLE form"
 const TableEntitySaveRetainMessages = "TableEntity: retention requires a region round trip through the VARIABLE form"
 const TableEntityLoadRetainMessages = "TableEntity: retention requires a region round trip through the VARIABLE form"
@@ -5325,6 +5609,20 @@ func TableStatLoad(value *TableStat, data []byte, report *TableReport) bool {
 		return false
 	}
 	return true
+}
+
+// TableStatReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func TableStatReadStrict(wire []byte) (*TableStat, error) {
+	value := new(TableStat)
+	var report TableReport
+	ok := TableStatLoad(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
 }
 
 const TableStatLoadRetainBuilder = "TableStat: retention requires a region round trip through the VARIABLE form"
@@ -7197,6 +7495,20 @@ func TableMixedLoad(value *TableMixed, data []byte, report *TableReport) bool {
 		return false
 	}
 	return true
+}
+
+// TableMixedReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func TableMixedReadStrict(wire []byte) (*TableMixed, error) {
+	value := new(TableMixed)
+	var report TableReport
+	ok := TableMixedLoad(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
 }
 
 const TableMixedLoadRetainBuilder = "TableMixed: retention requires a region round trip through the VARIABLE form"
@@ -9142,6 +9454,20 @@ func TableHitEventLoad(value *TableHitEvent, data []byte, report *TableReport) b
 	return true
 }
 
+// TableHitEventReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func TableHitEventReadStrict(wire []byte) (*TableHitEvent, error) {
+	value := new(TableHitEvent)
+	var report TableReport
+	ok := TableHitEventLoad(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
+}
+
 func TableHitEventSaveMessageBody(w *TableMessageWriter, value *TableHitEvent) bool {
 	{
 		if value.TargetId != 0 {
@@ -9601,6 +9927,20 @@ func TableChatEventLoad(value *TableChatEvent, data []byte, report *TableReport)
 	return true
 }
 
+// TableChatEventReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func TableChatEventReadStrict(wire []byte) (*TableChatEvent, error) {
+	value := new(TableChatEvent)
+	var report TableReport
+	ok := TableChatEventLoad(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
+}
+
 func TableChatEventSaveMessageBody(w *TableMessageWriter, value *TableChatEvent) bool {
 	{
 		if value.Channel != 0 {
@@ -9968,6 +10308,20 @@ func TablePickupEventLoad(value *TablePickupEvent, data []byte, report *TableRep
 		return false
 	}
 	return true
+}
+
+// TablePickupEventReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func TablePickupEventReadStrict(wire []byte) (*TablePickupEvent, error) {
+	value := new(TablePickupEvent)
+	var report TableReport
+	ok := TablePickupEventLoad(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
 }
 
 func TablePickupEventSaveMessageBody(w *TableMessageWriter, value *TablePickupEvent) bool {
@@ -11952,12 +12306,16 @@ var TableEntityTableFields = []TableFieldInfo{
 var TableEntityTableInfo TableTypeInfo
 
 func init() {
-	TableEntityTableInfo = TableTypeInfo{Name: "TableEntity", Size: uint32(unsafe.Sizeof(TableEntity{})), NumFields: 14, Fields: TableEntityTableFields, Reset: func(storage unsafe.Pointer) { TableEntityReset((*TableEntity)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x3161723596c6cba8, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TableEntitySaveBody(w, (*TableEntity)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TableEntityLoadBody(&r, (*TableEntity)(p)) }, CookSize: 64, CookAlign: 8, SaveMessageBody: func(w *TableMessageWriter, p unsafe.Pointer) bool {
+	TableEntityTableInfo = TableTypeInfo{Name: "TableEntity", Size: uint32(unsafe.Sizeof(TableEntity{})), NumFields: 14, Fields: TableEntityTableFields, Reset: func(storage unsafe.Pointer) { TableEntityReset((*TableEntity)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x3161723596c6cba8, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TableEntitySaveBody(w, (*TableEntity)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TableEntityLoadBody(&r, (*TableEntity)(p)) }, CookSize: 64, CookAlign: 8}
+}
+func init() {
+	TableEntityTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
 		return TableEntitySaveMessageBody(w, (*TableEntity)(p))
-	}, LoadMessageBody: func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
+	}
+	TableEntityTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
 		ok := TableEntityLoadMessageBody(&r, (*TableEntity)(p))
 		return r, ok
-	}}
+	}
 }
 
 // TableEntityTableType returns TableEntity's reflection descriptor.
@@ -11993,12 +12351,16 @@ var TableStatTableFields = []TableFieldInfo{
 var TableStatTableInfo TableTypeInfo
 
 func init() {
-	TableStatTableInfo = TableTypeInfo{Name: "TableStat", Size: uint32(unsafe.Sizeof(TableStat{})), NumFields: 2, Fields: TableStatTableFields, Reset: func(storage unsafe.Pointer) { TableStatReset((*TableStat)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x296aa8e669b99c95, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TableStatSaveBody(w, (*TableStat)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TableStatLoadBody(&r, (*TableStat)(p)) }, CookSize: 8, CookAlign: 4, SaveMessageBody: func(w *TableMessageWriter, p unsafe.Pointer) bool {
+	TableStatTableInfo = TableTypeInfo{Name: "TableStat", Size: uint32(unsafe.Sizeof(TableStat{})), NumFields: 2, Fields: TableStatTableFields, Reset: func(storage unsafe.Pointer) { TableStatReset((*TableStat)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x296aa8e669b99c95, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TableStatSaveBody(w, (*TableStat)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TableStatLoadBody(&r, (*TableStat)(p)) }, CookSize: 8, CookAlign: 4}
+}
+func init() {
+	TableStatTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
 		return TableStatSaveMessageBody(w, (*TableStat)(p))
-	}, LoadMessageBody: func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
+	}
+	TableStatTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
 		ok := TableStatLoadMessageBody(&r, (*TableStat)(p))
 		return r, ok
-	}}
+	}
 }
 
 // TableStatTableType returns TableStat's reflection descriptor.
@@ -12344,12 +12706,16 @@ var TableMixedTableFields = []TableFieldInfo{
 var TableMixedTableInfo TableTypeInfo
 
 func init() {
-	TableMixedTableInfo = TableTypeInfo{Name: "TableMixed", Size: uint32(unsafe.Sizeof(TableMixed{})), NumFields: 28, Fields: TableMixedTableFields, Reset: func(storage unsafe.Pointer) { TableMixedReset((*TableMixed)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x439ae459d6f88a8e, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TableMixedSaveBody(w, (*TableMixed)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TableMixedLoadBody(&r, (*TableMixed)(p)) }, CookSize: 1352, CookAlign: 8, SaveMessageBody: func(w *TableMessageWriter, p unsafe.Pointer) bool {
+	TableMixedTableInfo = TableTypeInfo{Name: "TableMixed", Size: uint32(unsafe.Sizeof(TableMixed{})), NumFields: 28, Fields: TableMixedTableFields, Reset: func(storage unsafe.Pointer) { TableMixedReset((*TableMixed)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x439ae459d6f88a8e, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TableMixedSaveBody(w, (*TableMixed)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TableMixedLoadBody(&r, (*TableMixed)(p)) }, CookSize: 1352, CookAlign: 8}
+}
+func init() {
+	TableMixedTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
 		return TableMixedSaveMessageBody(w, (*TableMixed)(p))
-	}, LoadMessageBody: func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
+	}
+	TableMixedTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
 		ok := TableMixedLoadMessageBody(&r, (*TableMixed)(p))
 		return r, ok
-	}}
+	}
 }
 
 // TableMixedTableType returns TableMixed's reflection descriptor.
@@ -12407,12 +12773,16 @@ var TableHitEventTableFields = []TableFieldInfo{
 var TableHitEventTableInfo TableTypeInfo
 
 func init() {
-	TableHitEventTableInfo = TableTypeInfo{Name: "TableHitEvent", Size: uint32(unsafe.Sizeof(TableHitEvent{})), NumFields: 4, Fields: TableHitEventTableFields, Reset: func(storage unsafe.Pointer) { TableHitEventReset((*TableHitEvent)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x746c6429cbf8aba8, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TableHitEventSaveBody(w, (*TableHitEvent)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TableHitEventLoadBody(&r, (*TableHitEvent)(p)) }, CookSize: 16, CookAlign: 4, SaveMessageBody: func(w *TableMessageWriter, p unsafe.Pointer) bool {
+	TableHitEventTableInfo = TableTypeInfo{Name: "TableHitEvent", Size: uint32(unsafe.Sizeof(TableHitEvent{})), NumFields: 4, Fields: TableHitEventTableFields, Reset: func(storage unsafe.Pointer) { TableHitEventReset((*TableHitEvent)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x746c6429cbf8aba8, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TableHitEventSaveBody(w, (*TableHitEvent)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TableHitEventLoadBody(&r, (*TableHitEvent)(p)) }, CookSize: 16, CookAlign: 4}
+}
+func init() {
+	TableHitEventTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
 		return TableHitEventSaveMessageBody(w, (*TableHitEvent)(p))
-	}, LoadMessageBody: func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
+	}
+	TableHitEventTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
 		ok := TableHitEventLoadMessageBody(&r, (*TableHitEvent)(p))
 		return r, ok
-	}}
+	}
 }
 
 // TableHitEventTableType returns TableHitEvent's reflection descriptor.
@@ -12448,12 +12818,16 @@ var TableChatEventTableFields = []TableFieldInfo{
 var TableChatEventTableInfo TableTypeInfo
 
 func init() {
-	TableChatEventTableInfo = TableTypeInfo{Name: "TableChatEvent", Size: uint32(unsafe.Sizeof(TableChatEvent{})), NumFields: 2, Fields: TableChatEventTableFields, Reset: func(storage unsafe.Pointer) { TableChatEventReset((*TableChatEvent)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x969901d577faad3b, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TableChatEventSaveBody(w, (*TableChatEvent)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TableChatEventLoadBody(&r, (*TableChatEvent)(p)) }, CookSize: 8, CookAlign: 4, SaveMessageBody: func(w *TableMessageWriter, p unsafe.Pointer) bool {
+	TableChatEventTableInfo = TableTypeInfo{Name: "TableChatEvent", Size: uint32(unsafe.Sizeof(TableChatEvent{})), NumFields: 2, Fields: TableChatEventTableFields, Reset: func(storage unsafe.Pointer) { TableChatEventReset((*TableChatEvent)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x969901d577faad3b, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TableChatEventSaveBody(w, (*TableChatEvent)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TableChatEventLoadBody(&r, (*TableChatEvent)(p)) }, CookSize: 8, CookAlign: 4}
+}
+func init() {
+	TableChatEventTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
 		return TableChatEventSaveMessageBody(w, (*TableChatEvent)(p))
-	}, LoadMessageBody: func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
+	}
+	TableChatEventTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
 		ok := TableChatEventLoadMessageBody(&r, (*TableChatEvent)(p))
 		return r, ok
-	}}
+	}
 }
 
 // TableChatEventTableType returns TableChatEvent's reflection descriptor.
@@ -12493,12 +12867,16 @@ func init() {
 		return TablePickupEventSaveBody(w, (*TablePickupEvent)(p))
 	}, LoadBody: func(r TableReader, p unsafe.Pointer) bool {
 		return TablePickupEventLoadBody(&r, (*TablePickupEvent)(p))
-	}, CookSize: 8, CookAlign: 4, SaveMessageBody: func(w *TableMessageWriter, p unsafe.Pointer) bool {
+	}, CookSize: 8, CookAlign: 4}
+}
+func init() {
+	TablePickupEventTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
 		return TablePickupEventSaveMessageBody(w, (*TablePickupEvent)(p))
-	}, LoadMessageBody: func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
+	}
+	TablePickupEventTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
 		ok := TablePickupEventLoadMessageBody(&r, (*TablePickupEvent)(p))
 		return r, ok
-	}}
+	}
 }
 
 // TablePickupEventTableType returns TablePickupEvent's reflection descriptor.

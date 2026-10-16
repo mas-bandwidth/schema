@@ -233,16 +233,10 @@ func (g *cookGen) blockHasRecord(name string) bool {
 func (g *cookGen) emit() {
 	if g.home {
 		g.needsUnsafe = true
-		// BuildVersion lives in the TABLE source for every table-bearing unit,
-		// so the cook never spells it: one package, exactly one definition
-		// (docs/SPEC-TABLES.md §20.7).
+		// BuildVersion and the blittable <Name>Row records live in the TABLE
+		// source for every table-bearing unit, so the cook never spells them:
+		// one package, exactly one definition (docs/SPEC-TABLES.md §2.9, §20.7).
 		g.rf("%s", cookRuntime(ir.BuildVersion(g.unit), false))
-		for _, name := range g.cook.order {
-			if g.blockHasRecord(name) {
-				continue
-			}
-			g.emitBlittable(name)
-		}
 		g.emitLayoutCheck()
 		// EVERY cooked record's descriptor, here and nowhere else: a unit's
 		// roots share records, and one package cannot declare a var twice.
@@ -514,7 +508,7 @@ func (g *cookGen) emitCookHandle(st *ir.Struct) {
 	g.hf("func (c %sCook) RootSize() int64        { return %d }\n", name, ml.Size)
 	g.hf("func (c %sCook) RootAlign() int64       { return %d }\n\n", name, ml.Align)
 
-	g.hf("// Root is the root record at the region's base. It is a POINTER and not a\n")
+	g.hf("// Root is the root record (type %sRow struct) at the region's base. It is a POINTER and not a\n", name)
 	g.hf("// copy: a cooked graph is walked by adding deltas to slot addresses.\n")
 	g.hf("func (c %sCook) Root() *%sRow { return (*%sRow)(c.Region) }\n\n", name, name, name)
 
