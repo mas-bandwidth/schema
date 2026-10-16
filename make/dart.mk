@@ -11,6 +11,9 @@
 #   sha256: 1e79f51341937f84cc1563a3fcad4a91706e35dee72bda69f4e955065c0e373a
 #   unzip into dist/ and rename dart-sdk -> dart-sdk-3.13.2
 DART ?= $(CURDIR)/dist/dart-sdk-3.13.2/bin/dart
+# The SDK version the JIT float measurement (tables-dart-float-jit) certifies
+# on; the gate refuses any other before it measures.
+DART_SDK_PIN := 3.13.2
 
 # THE OPTIONAL UNIT REGISTRY (SPEC-TABLES §8.7): a generated Dart program
 # walks UnitView() for every VIEW_CORPUS unit, byte-compared with the IR pin.
@@ -745,9 +748,24 @@ test-dart: tables-dart-variable-class
 # up and exits 3 with no completion line) and a run with the GC trace switched
 # off must both be refused by the same check, each for its own reason, or the
 # target is red with BLADE LOST.
+#
+# A count is only certified on the pinned SDK. The JIT inlining budget is the
+# SDK's, so a zero measured on another SDK proves nothing about 3.13.2. Before
+# any measured run the recipe reads `$(DART) --version` and REFUSES, by name,
+# unless it exits zero and begins `Dart SDK version: $(DART_SDK_PIN) ` (the
+# trailing space keeps 3.13.20 out). THE OFF-PIN CONTROL
+# (tables-dart-float-jit-sdk-negative-control) runs this very recipe against
+# three stand-in SDKs (3.12.0, 3.13.20, and one whose --version fails) and is
+# red unless each is refused before anything is measured.
 FLOATJIT_N ?= 2000000
 FLOATJIT_DIR := build/floatjit
 define FLOATJIT_RUN
+pin() { \
+	v=$$($$1 --version 2>&1); prc=$$?; \
+	if [ $$prc -ne 0 ]; then echo "tables-dart-float-jit: REFUSED: the measurement requires Dart SDK $(DART_SDK_PIN) (pinned in make/dart.mk), and $$1 --version exited $$prc"; return 1; fi; \
+	case "$$v" in "Dart SDK version: $(DART_SDK_PIN) "*) ;; \
+	*) echo "tables-dart-float-jit: REFUSED: the measurement requires Dart SDK $(DART_SDK_PIN) (pinned in make/dart.mk), running: $$v"; return 1;; esac; \
+}; \
 run() { \
 	log=$(FLOATJIT_DIR)/$$1-$$2$$4; rm -f $$log.count; \
 	$(DART) $$3 test/dart/floatjit.dart $$1 $$2 >$$log.out 2>$$log.err; rc=$$?; \
@@ -773,10 +791,34 @@ tables-dart-float-jit-negative-control: toolchain-dart generated/dart/.stamp
 		{ echo "tables-dart-float-jit: BLADE LOST: the untraced run was refused for another reason"; cat $(FLOATJIT_DIR)/blade-trace.log; exit 1; }; \
 	echo "tables-dart-float-jit blade: a planted exit-3 run and an untraced run are both refused"
 
+.PHONY: tables-dart-float-jit-sdk-negative-control
+tables-dart-float-jit-sdk-negative-control:
+	@mkdir -p $(FLOATJIT_DIR)/offpin
+	@d=$(CURDIR)/$(FLOATJIT_DIR)/offpin; \
+	for v in 3.12.0 3.13.20 broken; do \
+		f=$$d/dart-$$v; rm -f $$f.measured $$f.log; \
+		{ echo '#!/bin/sh'; \
+		  if [ $$v = broken ]; then echo 'if [ "$$1" = --version ]; then exit 7; fi'; \
+		  else echo "if [ \"\$$1\" = --version ]; then echo 'Dart SDK version: $$v (stable) (Thu Jan 1 00:00:00 2026 +0000) on \"linux_x64\"'; exit 0; fi"; fi; \
+		  echo ": > $$f.measured"; echo 'exit 0'; } > $$f; chmod +x $$f; \
+		if $(MAKE) --no-print-directory -o toolchain-dart -o generated/dart/.stamp \
+				-o tables-dart-float-jit-negative-control -o tables-dart-float-jit-sdk-negative-control \
+				tables-dart-float-jit DART=$$f FLOATJIT_N=1 > $$f.log 2>&1; then \
+			echo "tables-dart-float-jit: OFF-PIN CONTROL LOST: stand-in SDK $$v was accepted"; cat $$f.log; exit 1; fi; \
+		if [ $$v = broken ]; then want="pinned in make/dart.mk), and $$f --version exited 7"; \
+		else want="pinned in make/dart.mk), running: Dart SDK version: $$v (stable)"; fi; \
+		grep -Fq "tables-dart-float-jit: REFUSED: the measurement requires Dart SDK $(DART_SDK_PIN) ($$want" $$f.log || \
+			{ echo "tables-dart-float-jit: OFF-PIN CONTROL LOST: stand-in SDK $$v was refused for another reason"; cat $$f.log; exit 1; }; \
+		if [ -e $$f.measured ]; then echo "tables-dart-float-jit: OFF-PIN CONTROL LOST: stand-in SDK $$v was refused only after it was run"; exit 1; fi; \
+		if grep -q steady_scavenges $$f.log; then echo "tables-dart-float-jit: OFF-PIN CONTROL LOST: stand-in SDK $$v printed a count"; exit 1; fi; \
+	done; \
+	echo "tables-dart-float-jit off-pin control: stand-in SDKs 3.12.0, 3.13.20 and a failing --version are each refused before anything is measured"
+
 .PHONY: tables-dart-float-jit
-tables-dart-float-jit: toolchain-dart generated/dart/.stamp tables-dart-float-jit-negative-control
+tables-dart-float-jit: toolchain-dart generated/dart/.stamp tables-dart-float-jit-negative-control tables-dart-float-jit-sdk-negative-control
 	@mkdir -p $(FLOATJIT_DIR)
 	@$(FLOATJIT_RUN); \
+	pin $(DART) || exit 1; \
 	fail=0; for s in generated inlined twocallers; do \
 		run $$s $(FLOATJIT_N) --verbose_gc '' || exit 1; \
 		run $$s $$((2 * $(FLOATJIT_N))) --verbose_gc '' || exit 1; \
@@ -789,7 +831,7 @@ tables-dart-float-jit: toolchain-dart generated/dart/.stamp tables-dart-float-ji
 	if [ $$fail -ne 0 ]; then echo "tables-dart-float-jit: FAIL (a float boxes under the JIT)"; exit 1; fi; \
 	echo "tables-dart-float-jit: OK"
 
-test-dart: tables-dart-float-jit tables-dart-float-jit-negative-control
+test-dart: tables-dart-float-jit tables-dart-float-jit-negative-control tables-dart-float-jit-sdk-negative-control
 
 # THE COOK OF A MAP FIELD (docs/SPEC-TABLES.md §2.8, §7.2): the Go cook writes a
 # Squad (tables/lists) with a known roster, an absent map and an emptied one,
@@ -805,6 +847,25 @@ tables-dart-cook-map-field:
 	@echo 'tables Dart cook: every map entry read as the Go cook reads it'
 
 test-dart: tables-dart-cook-map-field
+
+# I13 (docs/PORTING.md): the Dart leg's text differential against a third
+# implementation. A Dart probe builds N random float-only instances of a
+# variable root with the generated setters and the Go cell's splitmix64, writes
+# each as (wire, text); inside Go the engine (internal/tabletext) writes its own
+# text from the same wire, the two are byte-compared, and the engine packs the
+# leg's text back to wire the other way. The control caps a float32 at six
+# significant digits in the emitted Dart, in memory, and requires red on the
+# text comparison. The probe builds its own unit into a temp directory, so no
+# corpus stamp is a prerequisite.
+.PHONY: tables-dart-text-differential tables-dart-text-differential-negative-control
+tables-dart-text-differential:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestDartTextDifferentialAgainstTheGoEngine$$'
+	@echo 'tables Dart text differential: the generated text writer agrees with the engine byte for byte, both directions'
+tables-dart-text-differential-negative-control:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestDartTextDifferentialNegativeControl$$'
+	@echo 'tables Dart text differential negative control: a float32 capped at six digits reds the text comparison'
+
+test-dart: tables-dart-text-differential tables-dart-text-differential-negative-control
 
 # THE BLOCK BUILD AND COOK WRITE GATE (docs/SPEC-TABLES.md §19.1, §7.6): the
 # block fill path's begin against §19.1's layout facts, the fixed-root cook

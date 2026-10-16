@@ -511,7 +511,9 @@
         "tables-dart-standalone-negative-control",
         "tables-dart-accessor-negative-control",
         "tables-dart-slot-negative-control",
-        "tables-dart-float-jit-negative-control"
+        "tables-dart-float-jit-negative-control",
+        "tables-dart-float-jit-sdk-negative-control",
+        "tables-dart-text-differential-negative-control"
       ],
       "dart": "3.13.2"
     },
