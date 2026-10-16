@@ -187,9 +187,8 @@ ELIXIR_EMIT_FORMAT_PENDING := Table.ex TableRuntime.ex
 
 # THE FILES A STAMP STILL CANONICALIZES, by basename, and nothing else: the
 # fixed-form, fixed-bench and paired stamps below consume the emitters' RAW
-# output for every other file (FixedRuntime.ex is now canonical; UnitView.ex is
-# emitted by view.go from elixir-reflects-every-table-2, outside this card's PATHS).
-ELIXIR_STAMP_CANONICALIZES := $(ELIXIR_EMIT_FORMAT_PENDING) UnitView.ex
+# output for every other file, including FixedRuntime.ex and UnitView.ex.
+ELIXIR_STAMP_CANONICALIZES := $(ELIXIR_EMIT_FORMAT_PENDING)
 ELIXIR_EMIT_FORMAT_DIR     ?= build/elixir-emit-format
 ELIXIR_EMIT_FORMAT_SCHEMA  ?= ./bin/schema
 
@@ -208,7 +207,7 @@ tables-elixir-emit-format-clean: bin/schema
 	@echo "tables-elixir-emit-format-clean: PENDING (not held, owned by elixir-variable-form-emits-mix-format-canonical-source): $(ELIXIR_EMIT_FORMAT_PENDING)"
 	@set -e; files=""; \
 	for f in $(ELIXIR_EMIT_FORMAT_DIR)/gen/*/*.ex; do \
-		case " $(ELIXIR_EMIT_FORMAT_PENDING) UnitView.ex " in *" $$(basename $$f) "*) continue ;; esac; \
+		case " $(ELIXIR_EMIT_FORMAT_PENDING) " in *" $$(basename $$f) "*) continue ;; esac; \
 		files="$$files $$f"; \
 	done; \
 	n=$$(echo $$files | wc -w | tr -d ' '); \
@@ -737,8 +736,8 @@ build/elixir-fixedform/.stamp: bin/schema $(ELIXIR_FIXED_SCHEMAS) make/elixir.mk
 
 .PHONY: tables-elixir-fixed-form
 tables-elixir-fixed-form: build/elixir-fixedform/.stamp build/fixedform-corpus/.stamp
-	# The fixed modules are the emitter's raw output and FixedRuntime.ex the
-	# stamp's canonicalized one; this holds both, and the hand-written driver,
+	# The fixed modules and FixedRuntime.ex are the emitters' raw output;
+	# this holds both, and the hand-written driver,
 	# to Elixir 1.20.4.
 	$(MIX) format --check-formatted build/elixir-fixedform/gen/*/*Fixed.ex \
 		build/elixir-fixedform/gen/*/FixedRuntime.ex test/elixir-fixedform/main.exs

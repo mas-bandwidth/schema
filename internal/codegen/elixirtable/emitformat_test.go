@@ -69,6 +69,14 @@ func TestEmitFormatTargetChecksRawOutput(t *testing.T) {
 			t.Errorf("%s's recipe line %d formats the raw output before the check: %q", emitFormatTarget, i, strings.TrimSpace(r))
 		}
 	}
+	// The gate must skip exactly the published pending list. A literal basename
+	// in its filter would silently exempt another emitted file while this test's
+	// check of ELIXIR_EMIT_FORMAT_PENDING below still passed.
+	for _, r := range recipe {
+		if strings.Contains(r, "continue ;; esac") && !strings.Contains(r, `case " $(ELIXIR_EMIT_FORMAT_PENDING) " in`) {
+			t.Errorf("%s has an exclusion outside ELIXIR_EMIT_FORMAT_PENDING: %q", emitFormatTarget, strings.TrimSpace(r))
+		}
+	}
 
 	var pending []string
 	found := false

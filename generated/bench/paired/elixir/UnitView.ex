@@ -26,22 +26,118 @@ defmodule Bench.UnitView do
         doc: "",
         tags: [],
         variants: [
-          %{value: 0, name: "None", id: 0x0000000000000000, doc: "", tags: []},
-          %{value: 1, name: "Fists", id: 0xA790EEE12766CF0C, doc: "", tags: []},
-          %{value: 2, name: "Pistol", id: 0x9FBFEFA835DA8476, doc: "", tags: []},
-          %{value: 3, name: "Shotgun", id: 0x188BBB1783928A95, doc: "", tags: []},
-          %{value: 4, name: "Rifle", id: 0x2C3667B9C2F272F1, doc: "", tags: []},
-          %{value: 5, name: "Sniper", id: 0x0CA8B41B00D755F6, doc: "", tags: []},
-          %{value: 6, name: "Smg", id: 0x985FC819FAB21A4E, doc: "", tags: []},
-          %{value: 7, name: "Rocket", id: 0x229D0447C3086A55, doc: "", tags: []},
-          %{value: 8, name: "Grenade", id: 0x011C7B49A7228F9D, doc: "", tags: []},
-          %{value: 9, name: "Plasma", id: 0x89F7566E1123E15F, doc: "", tags: []},
-          %{value: 10, name: "Railgun", id: 0x8D7F25318B3B4469, doc: "", tags: []},
-          %{value: 11, name: "Flamer", id: 0xD9CD0DCC285B7816, doc: "", tags: []},
-          %{value: 12, name: "Mine", id: 0x04DC16AEA8FF5276, doc: "", tags: []},
-          %{value: 13, name: "Turret", id: 0x35E53BC341129217, doc: "", tags: []},
-          %{value: 14, name: "Drone", id: 0x2CC8282FB0DE8831, doc: "", tags: []},
-          %{value: 15, name: "Repair", id: 0x20BADA21BC8CB334, doc: "", tags: []}
+          %{
+            value: 0,
+            name: "None",
+            id: 0x0000000000000000,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 1,
+            name: "Fists",
+            id: 0xA790EEE12766CF0C,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 2,
+            name: "Pistol",
+            id: 0x9FBFEFA835DA8476,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 3,
+            name: "Shotgun",
+            id: 0x188BBB1783928A95,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 4,
+            name: "Rifle",
+            id: 0x2C3667B9C2F272F1,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 5,
+            name: "Sniper",
+            id: 0x0CA8B41B00D755F6,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 6,
+            name: "Smg",
+            id: 0x985FC819FAB21A4E,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 7,
+            name: "Rocket",
+            id: 0x229D0447C3086A55,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 8,
+            name: "Grenade",
+            id: 0x011C7B49A7228F9D,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 9,
+            name: "Plasma",
+            id: 0x89F7566E1123E15F,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 10,
+            name: "Railgun",
+            id: 0x8D7F25318B3B4469,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 11,
+            name: "Flamer",
+            id: 0xD9CD0DCC285B7816,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 12,
+            name: "Mine",
+            id: 0x04DC16AEA8FF5276,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 13,
+            name: "Turret",
+            id: 0x35E53BC341129217,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 14,
+            name: "Drone",
+            id: 0x2CC8282FB0DE8831,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 15,
+            name: "Repair",
+            id: 0x20BADA21BC8CB334,
+            doc: "",
+            tags: []
+          }
         ]
       }
     ],
@@ -56,14 +152,62 @@ defmodule Bench.UnitView do
         doc: "",
         tags: [],
         variants: [
-          %{value: 0, name: "Bleeding", id: 0x0000000000000000, doc: "", tags: []},
-          %{value: 1, name: "Burning", id: 0x0000000000000000, doc: "", tags: []},
-          %{value: 2, name: "Stunned", id: 0x0000000000000000, doc: "", tags: []},
-          %{value: 3, name: "Slowed", id: 0x0000000000000000, doc: "", tags: []},
-          %{value: 4, name: "Poisoned", id: 0x0000000000000000, doc: "", tags: []},
-          %{value: 5, name: "Shielded", id: 0x0000000000000000, doc: "", tags: []},
-          %{value: 6, name: "Airborne", id: 0x0000000000000000, doc: "", tags: []},
-          %{value: 7, name: "Downed", id: 0x0000000000000000, doc: "", tags: []}
+          %{
+            value: 0,
+            name: "Bleeding",
+            id: 0x0000000000000000,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 1,
+            name: "Burning",
+            id: 0x0000000000000000,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 2,
+            name: "Stunned",
+            id: 0x0000000000000000,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 3,
+            name: "Slowed",
+            id: 0x0000000000000000,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 4,
+            name: "Poisoned",
+            id: 0x0000000000000000,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 5,
+            name: "Shielded",
+            id: 0x0000000000000000,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 6,
+            name: "Airborne",
+            id: 0x0000000000000000,
+            doc: "",
+            tags: []
+          },
+          %{
+            value: 7,
+            name: "Downed",
+            id: 0x0000000000000000,
+            doc: "",
+            tags: []
+          }
         ]
       }
     ],
