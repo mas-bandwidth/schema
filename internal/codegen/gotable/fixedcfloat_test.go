@@ -250,24 +250,31 @@ func TestFixedCFloatAtTheBoundsExactly(t *testing.T) {
 
 // ---- case 5: NaN, THE INFINITIES AND THE NEGATIVE ZERO -------------------
 //
-// Hypothesis (5)'s hostile end. The fixed form's bounds pass is
-// `if v < min { .. } else if v > max { .. }` in both legs, and EVERY
-// comparison against a NaN is false, so a NaN rides a compressed float
-// THROUGH the pass: a value outside the declared range, uncounted, handed to a
-// caller the row promises a number inside [min, max] to. The infinities do
-// clamp, because a comparison against an infinity is not false.
-//
-// KNOWN RED: TestFixedCFloatNaNSurvivesTheBoundsPass. It is the finding, and
-// it asserts what the wire DOES today so the day the rule changes this test is
-// what says so.
+// Hypothesis (5)'s hostile end. EVERY comparison against a NaN is false, so a
+// bounds pass of `if v < min { .. } else if v > max { .. }` alone let a NaN
+// ride a compressed float THROUGH it: a value outside the declared range,
+// uncounted, handed to a caller the row promises a number inside [min, max]
+// to. That was the finding, and the rule now closes it (docs/SPEC-TABLES.md
+// §3.3, A COMPRESSED FLOAT'S SPECIAL VALUES): the pass tests for the NaN
+// FIRST, clamps it to `min` and counts it, exactly as -Inf and a finite value
+// below `min` clamp and count. The infinities clamp as they always did.
 
-func TestFixedCFloatNaNSurvivesTheBoundsPass(t *testing.T) {
+func TestFixedCFloatNaNClampsToMinAndCounts(t *testing.T) {
 	dir := t.TempDir()
-	const quietNaN = 0x7FC00000
-	file := cfWrite(t, dir, "nan", cfOld, writeOne(quietNaN))
-	// THE FINDING, asserted as it stands: the NaN comes back whole and the
-	// clamp counter never moved, over a field declared [0, 1].
-	cfRead(t, cfOld, nil, readOne(file, quietNaN, 0))
+	for _, c := range []struct {
+		name string
+		bits uint32
+	}{
+		{"quiet", 0x7FC00000},
+		{"payload", 0x7F800001},
+		{"negative_quiet", 0xFFC00000},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			file := cfWrite(t, dir, c.name, cfOld, writeOne(c.bits))
+			// min of [0, 1], and ONE clamp counted.
+			cfRead(t, cfOld, nil, readOne(file, 0x00000000, 1))
+		})
+	}
 }
 
 func TestFixedCFloatInfinitiesClampAndCount(t *testing.T) {
@@ -280,11 +287,11 @@ func TestFixedCFloatInfinitiesClampAndCount(t *testing.T) {
 	}{
 		{"plus_inf", 0x7F800000, 0x3F800000, 1},  // +inf > max: clamps to max
 		{"minus_inf", 0xFF800000, 0x00000000, 1}, // -inf < min: clamps to min
-		// NEGATIVE ZERO is not below a min of +0: `-0.0 < 0.0` is false in
-		// IEEE-754, so it survives the pass with its SIGN BIT — a bit pattern
-		// the declaration cannot name, equal to min under `==` and distinct
-		// under `math.Float32bits`.
-		{"negative_zero", 0x80000000, 0x80000000, 0},
+		// NEGATIVE ZERO is not below a min of +0 (`-0.0 < 0.0` is false in
+		// IEEE-754), and it once survived the pass with its SIGN BIT — a bit
+		// pattern the declaration cannot name. It now lands as +0, the value
+		// 0 itself, and counts nothing, because it is inside the range.
+		{"negative_zero", 0x80000000, 0x00000000, 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			file := cfWrite(t, dir, c.name, cfOld, writeOne(c.bits))

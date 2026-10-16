@@ -1299,6 +1299,20 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	g.pf("\treport.Clamped += clamped\n}\n\n")
 }
 
+// compressedFloatClamp is the ONE bounds rule a compressed float takes wherever
+// a read holds it to its declared range (docs/SPEC-TABLES.md §3.3, A COMPRESSED
+// FLOAT'S SPECIAL VALUES): a NaN clamps to `min` and COUNTS, exactly as -Inf
+// and a finite value below `min` do, because every comparison against a NaN is
+// false and a pass of `< min` / `> max` alone hands the NaN to the caller
+// whole; +Inf and a value above `max` clamp to `max` and count; and a -0 lands
+// as +0, the value 0 itself, with no sign bit and no count, because it is
+// inside the range and only its spelling differs. `v != v` is the NaN test,
+// and it needs no import in the generated file.
+func compressedFloatClamp(expr, lo, hi, count string) string {
+	return fmt.Sprintf("if %[1]s != %[1]s { %[1]s = %[2]s; %[4]s } else if %[1]s < %[2]s { %[1]s = %[2]s; %[4]s } else if %[1]s > %[3]s { %[1]s = %[3]s; %[4]s } else if %[1]s == 0 { %[1]s = 0 }",
+		expr, lo, hi, count)
+}
+
 // fixedPass is which of the passes below is being emitted.
 type fixedPass int
 
@@ -1464,6 +1478,18 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int, pas
 			return
 		case ir.TBytes:
 			g.pf("%sif %sLength < 0 || %sLength > %d { return false }\n", ind, expr, expr, f.Type.Size)
+			return
+		}
+	}
+	// Keep the read-side compressed-float special-values rule from §3.3.
+	// The writer instead uses the refusal bounds below.
+	if !chk && f.HasFloatRange {
+		switch f.Type.Kind {
+		case ir.TFloat32:
+			g.pf("%s%s\n", ind, compressedFloatClamp(expr, formatFloat32(f.FMin), formatFloat32(f.FMax), "(*clamped)++"))
+			return
+		case ir.TFloat64:
+			g.pf("%s%s\n", ind, compressedFloatClamp(expr, formatFloat64(f.FMin), formatFloat64(f.FMax), "(*clamped)++"))
 			return
 		}
 	}
