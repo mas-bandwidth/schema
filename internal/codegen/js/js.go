@@ -81,8 +81,17 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			return nil, fmt.Errorf("schema file serialize.schema collides with the serialize.js runtime shim the build wiring writes beside the generated modules; rename the file")
 		}
 	}
+	runtimeHome := ir.TableJSRuntimeHome(u)
+	fixedUnions := ir.TableFixedJSUnions(u)
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, home: f.Base == home, imports: map[string]map[string]bool{}}
+		g := &gen{
+			unit:        u,
+			file:        f,
+			home:        f.Base == home,
+			runtimeHome: runtimeHome,
+			fixedUnions: fixedUnions,
+			imports:     map[string]map[string]bool{},
+		}
 		g.emitFile(g.home)
 		out[f.Base+".js"] = g.assemble()
 	}
@@ -95,9 +104,12 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 }
 
 type gen struct {
-	unit *ir.Unit
-	file *ir.File
-	home bool // this file carries ProtocolId and the unit-level target notes
+	unit        *ir.Unit
+	file        *ir.File
+	home        bool // this file carries ProtocolId and the unit-level target notes
+	runtimeHome string
+	fixedUnions map[string]bool
+	tableHome   string
 
 	body strings.Builder
 
@@ -130,6 +142,12 @@ func (g *gen) pf(format string, args ...any) {
 // addRef records that the current file references the declaration decl (by
 // the exported symbols listed), importing it when it lives in another file.
 func (g *gen) addRef(decl string, symbols ...string) {
+	if g.unit.Tables[decl] != nil {
+		if g.tableHome != "" {
+			g.addRefBase(g.tableHome, symbols...)
+		}
+		return
+	}
 	base, ok := g.unit.DeclFile[decl]
 	if !ok {
 		return
@@ -510,6 +528,14 @@ func (g *gen) emitTableUnion(d *ir.Union) {
 // emitTagUnion emits the <Name>Type tag object and the <Name> storage class —
 // the part the packet union and the table-closure union share.
 func (g *gen) emitTagUnion(name, doc string, variants []ir.UnionVariant) {
+	prevTableHome := g.tableHome
+	if g.fixedUnions[name] {
+		g.tableHome = g.runtimeHome + "Table"
+	} else {
+		g.tableHome = g.runtimeHome + "Variable"
+	}
+	defer func() { g.tableHome = prevTableHome }()
+
 	members := make([]string, len(variants))
 	docs := make([]string, len(variants))
 	for i, v := range variants {

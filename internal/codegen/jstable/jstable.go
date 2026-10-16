@@ -116,13 +116,7 @@ func tableScalarKind(f *ir.Field) int {
 // runtime is DEFINED once and imported everywhere else — and the module that
 // defines it wants a name that does not move.
 func runtimeHome(u *ir.Unit) string {
-	home := capitalize(u.Package)
-	for _, f := range u.Files {
-		if strings.EqualFold(f.Base, home) {
-			return f.Base
-		}
-	}
-	return home
+	return ir.TableJSRuntimeHome(u)
 }
 
 func capitalize(s string) string {

@@ -363,49 +363,13 @@ func appendFixedU64(b []byte, v uint64) []byte {
 // compiled at load time, which is the follow-on §3.4 names for the reference's
 // own bound.
 func fixedRoots(u *ir.Unit, tables []*ir.Struct) []*ir.Struct {
-	var out []*ir.Struct
-	for _, st := range tables {
-		// THE FILTER IS THE REFUSAL ITSELF, and it has to be: a form emitted
-		// for a table the refusal names is a module that says in a comment it
-		// carries nothing and then carries it anyway. That is how the optional
-		// hole shipped — fixedRefusal named `?T` while this loop asked only
-		// fixedSupported, so the writer emitted a body with no present byte in
-		// it and the comment above said the form was not there.
-		if !st.IsTable || st.IsMapEntry() || fixedRefusal(st) != "" {
-			continue
-		}
-		_ = u
-		out = append(out, st)
-	}
-	return out
+	return ir.TableFixedJSRoots(u, tables)
 }
 
 // fixedCollectTypes orders a root's closure so that a nested type's helpers are
 // emitted before the type that uses them.
 func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct) {
-	if seen[st.Name] {
-		return
-	}
-	seen[st.Name] = true
-	for _, f := range st.Fields {
-		if f.Type.Kind != ir.TNamed {
-			continue
-		}
-		switch r := f.Type.Ref.(type) {
-		case *ir.Struct:
-			fixedCollectTypes(r, seen, order)
-		case *ir.Union:
-			for _, v := range r.Variants {
-				if v.F == nil {
-					continue // a payload-free arm reaches no nested type
-				}
-				if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed {
-					fixedCollectTypes(s, seen, order)
-				}
-			}
-		}
-	}
-	*order = append(*order, st)
+	ir.TableFixedJSCollectTypes(st, seen, order)
 }
 
 // ---------------------------------------------------------------------------
