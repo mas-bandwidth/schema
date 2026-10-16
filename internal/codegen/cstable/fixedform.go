@@ -988,7 +988,11 @@ func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id
 			tagSlot := len(b.slots)
 			tagType := f.Type.Name + "Type"
 			b.slots = append(b.slots, fixedSlot{
-				setRawReport: fmt.Sprintf("(t, v, rep) => { if (v > %d) { %s.Type = (%s)0; if (rep != null) rep.Clamped++; } else { %s.Type = (%s)v; } }", len(r.Variants), expr, tagType, expr, tagType),
+				// THE TAG LANDS RAW AND MOVES NOTHING (§5.4: `copy`/`const`
+				// land their value and move nothing). The clamp past the arm
+				// count — and its count — are the BOUNDS PASS's, which runs over
+				// storage after the run (§5.4, §4.6).
+				setRawReport: fmt.Sprintf("(t, v, rep) => { %s.Type = (%s)v; }", expr, tagType),
 				reset:        unionTagReset(expr, tagType),
 			})
 			armBase := len(b.slots)
@@ -1033,7 +1037,11 @@ func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id
 			slot := len(b.slots)
 			w := int64(r.StorageBits / 8)
 			b.slots = append(b.slots, fixedSlot{
-				setRawReport: fmt.Sprintf("(t, v, rep) => { if (v > %d) { %s = 0; if (rep != null) rep.Clamped++; } else { %s = (%s)v; } }", len(r.Variants), expr, expr, f.Type.Name),
+				// THE ORDINAL LANDS RAW AND MOVES NOTHING (§5.4: `copy`/
+				// `ordinal` land their value and move nothing). A forged ordinal
+				// past the top variant is the BOUNDS PASS's to clamp and count,
+				// on BOTH plans (§5.4, §4.6).
+				setRawReport: fmt.Sprintf("(t, v, rep) => { %s = (%s)v; }", expr, f.Type.Name),
 				reset:        b.scalarReset(f, expr),
 			})
 			b.entries = append(b.entries, fixedBlockEntry{
@@ -1130,7 +1138,11 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 			tagSlot := len(b.slots)
 			tagType := f.Type.Name + "Type"
 			b.slots = append(b.slots, fixedSlot{
-				setRawReport: fmt.Sprintf("(t, v, rep) => { if (v > %d) { %s.Type = (%s)0; if (rep != null) rep.Clamped++; } else { %s.Type = (%s)v; } }", len(r.Variants), expr, tagType, expr, tagType),
+				// THE TAG LANDS RAW AND MOVES NOTHING (§5.4: `copy`/`const`
+				// land their value and move nothing). The clamp past the arm
+				// count — and its count — are the BOUNDS PASS's, which runs over
+				// storage after the run (§5.4, §4.6).
+				setRawReport: fmt.Sprintf("(t, v, rep) => { %s.Type = (%s)v; }", expr, tagType),
 				reset:        unionTagReset(expr, tagType),
 			})
 			b.addPlan(fixedPlanEntry{
@@ -1161,7 +1173,11 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 			slot := len(b.slots)
 			w := int64(r.StorageBits / 8)
 			b.slots = append(b.slots, fixedSlot{
-				setRawReport: fmt.Sprintf("(t, v, rep) => { if (v > %d) { %s = 0; if (rep != null) rep.Clamped++; } else { %s = (%s)v; } }", len(r.Variants), expr, expr, f.Type.Name),
+				// THE ORDINAL LANDS RAW AND MOVES NOTHING (§5.4: `copy`/
+				// `ordinal` land their value and move nothing). A forged ordinal
+				// past the top variant is the BOUNDS PASS's to clamp and count,
+				// on BOTH plans (§5.4, §4.6).
+				setRawReport: fmt.Sprintf("(t, v, rep) => { %s = (%s)v; }", expr, f.Type.Name),
 				reset:        b.scalarReset(f, expr),
 			})
 			b.addPlan(fixedPlanEntry{
@@ -2041,7 +2057,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// THE RUN REPORTS ITS OWN REFUSAL (§4.5, §5.8 row 8): a content violation
 	// in the used units comes back as the name text_ill_formed, and the load
 	// refuses BY NAME — not malformed, and nothing decoded past it.
-	g.pf("        string run_why = TableFixedWire.Run(entries, %sFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);\n", name)
+	g.pf("        int forgedOrdinal = 0;\n")
+	g.pf("        string run_why = TableFixedWire.Run(entries, %sFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);\n", name)
 	g.pf("        if (run_why != null)\n        {\n")
 	g.pf("            if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
@@ -2054,6 +2071,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        %sFixedClamp(values[k], report);\n", name)
 	}
+	// THE FORGED ORDINAL'S CLAMP IS THE BOUNDS STEP'S TOO (§5.4): the ordinal
+	// op lands `None` and moves nothing, recording the forge in the per-record
+	// lane; the count reaches the report here, beside the storage pass's own.
+	g.pf("        if (report != null) { report.Clamped += forgedOrdinal; }\n")
 	g.pf("        at = at.Slice((int)record_bytes);\n    }\n")
 	// THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, on a read that
 	// returns n (§5.9 #6). Not inside the loop — §5.4 says once per peer — and
@@ -2078,7 +2099,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    TableReport report = null,\n")
 	g.pf("    ReadOnlySpan<byte> planBytes = default)\n{\n")
 	g.pf("    byte[] widenScratch = Array.Empty<byte>();\n")
-	g.pf("    string run_why = TableFixedWire.Run(plan, %sFixedSlots, src, dst, report, planBytes, ref widenScratch);\n", name)
+	g.pf("    int forgedOrdinal = 0;\n")
+	g.pf("    string run_why = TableFixedWire.Run(plan, %sFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);\n", name)
+	g.pf("    if (report != null) { report.Clamped += forgedOrdinal; }\n")
 	g.pf("    if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }\n}\n\n")
 }
 
