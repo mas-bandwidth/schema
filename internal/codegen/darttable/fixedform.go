@@ -173,6 +173,13 @@ func fixedRefusal(st *ir.Struct) string {
 	if !fixedDartSupported(st, 0) {
 		return "its closure carries a construct the fixed class refuses — a pointer, a map, an unbounded array, a guarded branch, or an optional union arm (docs/SPEC-TABLES.md §3.4)"
 	}
+	// THE GUARD CHAIN'S BOUND IS THE LAYOUT'S 64 (docs/FIXED-FORM-ALGORITHM.md
+	// §4.1, §5.8 row 6): a chain past it is refused by name here, at generate
+	// time, and never laid down with a condition dropped.
+	plan, _ := fixedIdentityPlan(st)
+	if why := fixedPlanChainRefusal(plan); why != "" {
+		return why
+	}
 	if n := fixedOptionalInPacketType(st, 0); n != "" {
 		// §3.4's ONE departure from §2.3: on this form `?T` and a plain `T`
 		// nesting are ONE BYTE APART, because the present flag rides. A TABLE's
