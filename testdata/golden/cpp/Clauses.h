@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstdint>
+#include <new>
 
 namespace example {
 
@@ -144,9 +145,9 @@ inline const char * EnumName( EmptyUnionType value )
 
 // union EmptyUnion — at most one of the arms; the tag says which. Construction is
 // None: the tag alone is initialized; an arm is freshly constructed with its defaults
-// when selected, by ReadEmptyUnion before decoding (SPEC §4.8), or by application code.
-// Application code must include <new> before constructing an arm in place:
-// ::new ( (void*) &value.a ) EmptyA{}; value.type = EmptyUnionType::A;
+// when selected, by ReadEmptyUnion before decoding (SPEC §4.8), or by its setter.
+// Select an arm through its setter, which sets the tag and constructs the arm
+// together (SPEC §4.8, the arm setter): EmptyA & arm = value.SelectA();
 // Bytes of unselected arms are indeterminate.
 struct EmptyUnion
 {
@@ -159,6 +160,20 @@ struct EmptyUnion
     };
 
     EmptyUnion() : type( EmptyUnionType::None ) {} // the tag only — arms are freshly constructed at selection
+
+    EmptyA & SelectA() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
+    {
+        ::new ( (void*) &a ) EmptyA{};
+        type = EmptyUnionType::A;
+        return a;
+    }
+
+    EmptyB & SelectB() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
+    {
+        ::new ( (void*) &b ) EmptyB{};
+        type = EmptyUnionType::B;
+        return b;
+    }
 };
 
 inline constexpr int64_t EmptyUnionMaxBits = 2; // tag + the largest arm; None costs the tag only (SPEC §4.8)

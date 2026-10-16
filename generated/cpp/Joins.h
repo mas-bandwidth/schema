@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstdint>
+#include <new>
 
 namespace example {
 
@@ -169,9 +170,9 @@ inline const char * EnumName( UnevenType value )
 
 // union Uneven — at most one of the arms; the tag says which. Construction is
 // None: the tag alone is initialized; an arm is freshly constructed with its defaults
-// when selected, by ReadUneven before decoding (SPEC §4.8), or by application code.
-// Application code must include <new> before constructing an arm in place:
-// ::new ( (void*) &value.narrow ) Narrow{}; value.type = UnevenType::Narrow;
+// when selected, by ReadUneven before decoding (SPEC §4.8), or by its setter.
+// Select an arm through its setter, which sets the tag and constructs the arm
+// together (SPEC §4.8, the arm setter): Narrow & arm = value.SelectNarrow();
 // Bytes of unselected arms are indeterminate.
 struct Uneven
 {
@@ -184,6 +185,20 @@ struct Uneven
     };
 
     Uneven() : type( UnevenType::None ) {} // the tag only — arms are freshly constructed at selection
+
+    Narrow & SelectNarrow() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
+    {
+        ::new ( (void*) &narrow ) Narrow{};
+        type = UnevenType::Narrow;
+        return narrow;
+    }
+
+    Wide & SelectWide() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
+    {
+        ::new ( (void*) &wide ) Wide{};
+        type = UnevenType::Wide;
+        return wide;
+    }
 };
 
 inline constexpr int64_t UnevenMaxBits = 39; // tag + the largest arm; None costs the tag only (SPEC §4.8)

@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstdint>
+#include <new>
 
 #include "Wire.h"
 
@@ -45,9 +46,9 @@ inline const char * EnumName( DefaultChoiceType value )
 
 // union DefaultChoice — at most one of the arms; the tag says which. Construction is
 // None: the tag alone is initialized; an arm is freshly constructed with its defaults
-// when selected, by ReadDefaultChoice before decoding (SPEC §4.8), or by application code.
-// Application code must include <new> before constructing an arm in place:
-// ::new ( (void*) &value.first ) DefaultArm{}; value.type = DefaultChoiceType::First;
+// when selected, by ReadDefaultChoice before decoding (SPEC §4.8), or by its setter.
+// Select an arm through its setter, which sets the tag and constructs the arm
+// together (SPEC §4.8, the arm setter): DefaultArm & arm = value.SelectFirst();
 // Bytes of unselected arms are indeterminate.
 struct DefaultChoice
 {
@@ -60,6 +61,20 @@ struct DefaultChoice
     };
 
     DefaultChoice() : type( DefaultChoiceType::None ) {} // the tag only — arms are freshly constructed at selection
+
+    DefaultArm & SelectFirst() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
+    {
+        ::new ( (void*) &first ) DefaultArm{};
+        type = DefaultChoiceType::First;
+        return first;
+    }
+
+    DefaultArm & SelectSecond() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
+    {
+        ::new ( (void*) &second ) DefaultArm{};
+        type = DefaultChoiceType::Second;
+        return second;
+    }
 };
 
 inline constexpr int64_t DefaultChoiceMaxBits = 79; // tag + the largest arm; None costs the tag only (SPEC §4.8)
@@ -106,9 +121,9 @@ inline const char * EnumName( DefaultBulkChoiceType value )
 
 // union DefaultBulkChoice — at most one of the arms; the tag says which. Construction is
 // None: the tag alone is initialized; an arm is freshly constructed with its defaults
-// when selected, by ReadDefaultBulkChoice before decoding (SPEC §4.8), or by application code.
-// Application code must include <new> before constructing an arm in place:
-// ::new ( (void*) &value.first ) DefaultBulkArm{}; value.type = DefaultBulkChoiceType::First;
+// when selected, by ReadDefaultBulkChoice before decoding (SPEC §4.8), or by its setter.
+// Select an arm through its setter, which sets the tag and constructs the arm
+// together (SPEC §4.8, the arm setter): DefaultBulkArm & arm = value.SelectFirst();
 // Bytes of unselected arms are indeterminate.
 struct DefaultBulkChoice
 {
@@ -121,6 +136,20 @@ struct DefaultBulkChoice
     };
 
     DefaultBulkChoice() : type( DefaultBulkChoiceType::None ) {} // the tag only — arms are freshly constructed at selection
+
+    DefaultBulkArm & SelectFirst() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
+    {
+        ::new ( (void*) &first ) DefaultBulkArm{};
+        type = DefaultBulkChoiceType::First;
+        return first;
+    }
+
+    DefaultBulkArm & SelectSecond() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
+    {
+        ::new ( (void*) &second ) DefaultBulkArm{};
+        type = DefaultBulkChoiceType::Second;
+        return second;
+    }
 };
 
 inline constexpr int64_t DefaultBulkChoiceMaxBits = 104; // tag + the largest arm; None costs the tag only (SPEC §4.8)
