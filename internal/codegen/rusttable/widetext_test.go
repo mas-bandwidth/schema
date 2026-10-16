@@ -23,12 +23,11 @@ import (
 //
 //   - every widedemo instance testdata/conformance/tables/MANIFEST.txt names
 //     (wide_empty, wide_title, wide_sites, wide_narrow_arm, wide_stamp), read
-//     through a VARIABLE MIRROR of examples-wide/Caption.schema: the same
-//     names, so the same ids, with Line a table rather than a `type`. The
-//     widedemo roots are `fixed table`s and this leg has no form-1 codec for a
-//     fixed root yet (rust-carries-the-fixed-class-on-the-table-wire), so the
-//     mirror is what puts the committed goldens through this leg's codec; the
-//     oracle first proves the mirror reads and writes them byte for byte;
+//     TWICE: through examples-wide/Caption.schema itself, whose `fixed table`
+//     roots ride the variable form (§2.2, §3), and through a VARIABLE MIRROR
+//     of it (the same names, so the same ids, with Line a table rather than a
+//     `type`) that the probe and damage rows below are authored against; the
+//     oracle first proves both read and write the goldens byte for byte;
 //   - map_text (tables/maps Text): wstring(6) as a MAP VALUE;
 //   - wstring(N) as a direct field, as a union arm (and its narrow sibling),
 //     inside a table reached by value and by element, and as a map value;
@@ -52,6 +51,18 @@ func TestWideTextOnTheTableWireRust(t *testing.T) {
 	for _, root := range []string{"Caption", "Stamp", "Notes"} {
 		if !vc.carried(root) {
 			t.Fatalf("wstring(N) on the table wire: %s is refused: %s", root, vc.reason[root])
+		}
+	}
+	// the committed unit itself: its fixed roots are on the variable form
+	captionSrc, err := os.ReadFile(filepath.Join(repo, "examples-wide", "Caption.schema"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	widedemo := unitFrom(t, string(captionSrc))
+	wvc := newVariableClass(widedemo)
+	for _, root := range []string{"Caption", "Stamp"} {
+		if !wvc.carried(root) || !wvc.emitted[root] {
+			t.Fatalf("wstring(N) on the table wire: examples-wide %s is not on the variable form: %q", root, wvc.reason[root])
 		}
 	}
 	mapsUnit := vcLoadUnit(t, repo, "tables/maps")
@@ -136,7 +147,15 @@ func TestWideTextOnTheTableWireRust(t *testing.T) {
 		probes = append(probes, wCase{name: pc.name, root: pc.root, wire: wire, text: append(text, '\n')})
 	}
 
+	// the same goldens through the committed unit, named apart so each row
+	// is its own line in the probe's output
+	var fixed []wCase
+	for _, c := range wide {
+		c.name += "_widedemo"
+		fixed = append(fixed, c)
+	}
 	units := []wUnit{
+		{"widedemo", widedemo, fixed},
 		{"widemirror", mirror, append(wide, probes...)},
 		{"mapdemo", mapsUnit, []wCase{mapText}},
 	}
