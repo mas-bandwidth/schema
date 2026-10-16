@@ -1,0 +1,95 @@
+# Driver output, verbatim: the read-arm board (READ.md) of each sitting, as bench/paired/nine.sh --read-arm --leg cs printed it.
+
+## sitting 1
+
+# The read arm: C#
+
+```
+# fixed form: the identity lane, the plan lane, and the same leg's packet wire
+# host b2 / arch linux/amd64 / AMD Ryzen 7 255 w/ Radeon 780M Graphics / rev 2bf6bcf46fe1f5087c1b69b333cf4d58779ce204 (dirty, build-regenerated only: generated/bench/paired/cpp/BenchTable.h, generated/bench/paired/cs/FixedTableTable.cs) / serialize bbf55d401ded5e4e38a1a43ab142aa0284ea8331 / lane 7 / rounds 7
+# corpus_id(identity) 0930f96c8320a75d / corpus_id(plan) 0930f96c8320a75d (one invocation, one corpus: identity, lineage and packet files)
+# window: OK / control_delta_pct 3.47 (bound 5) / load1 0.53–1.04
+# iterations: 4,000,000 records per sample per wire, 1 discarded warmup + 1 measured run per round (§2.1, §2.4)
+# bytes_per_op: fixed 1264.3 B/record, plan (lineage file) 995.4 B/record, packet 438 B/record (§5.3 rule 2 — the division is this driver's alone)
+# checks: table=contract, packet C/C++/C#=removed, packet Go=always (§1.9)
+# anchor: none for C# (SPEC-TABLES §3.4's straight-line reference, test/bench/fixedform_measure.cpp, is the C++ leg's alone)
+
+leg      identity read    plan read    packet read    GATE identity  GATE plan    plan/identity
+         ns/record        ns/record    ns/record      vs packet      vs packet    x (reported)
+cs             2353.3       2145.1          298.0    FAIL           FAIL         0.91
+cpp                 —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+c                   —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+go                  —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+rust                —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+js                  —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+java                —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+dart                —            —              —    —              —            —     no leg in this driver yet (bench/tables/dart is not built, generated or measured here)
+elixir              —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+```
+
+Lower is better. The ns columns are each row's BEST round (§2.2); the GATE compares best against best, per lane, never an average; plan/identity is REPORTED, never a verdict.
+
+| row | best ns/record | median | worst | spread (rates) | mark |
+|---|---:|---:|---:|---:|---|
+| cs `bench_fixed_read` (identity lane, family table) | 2353.3 | 2387.0 | 2461.1 | 4.4% |  |
+| cs `bench_plan_read` (plan lane, family table) | 2145.1 | 2269.0 | 2374.9 | 10.2% |  |
+| cs `bench_mixed_read` (packet read, family gen) | 298.0 | 302.1 | 303.3 | 1.8% |  |
+
+Every row comes out of ONE `--read-arm` invocation per round, the wires rotating which runs first; none is derived from a round trip (§2.9). The identity lane's op is one record of the shipped `LOAD` of the whole 64-record file (hash check and plan run inside the clock); the packet read's op is one read stream plus the generated read of one 438-byte record. The plan lane's op is one record of the same `LOAD` over the lineage file (64 records one generation back, read through the static plan the lock's lineage entry compiled into the unit generated beside it; its gate before the clock requires 64 records read with no counter raised but widened, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's).
+
+Compiler: dotnet 10.0.401. Flags: `dotnet build -c Release -property:UseSharedCompilation=false; DefineConstants=BENCH_MATCHED;BENCH_PLAN AllowUnsafeBlocks=true`. Window receipt: READY/START operator receipt: Glenn Fiedler, live ruling to Rowan 2026-10-16: 'you can simply hold a fleet machine and work there. go.' Window: fleet member amd-2 (host b2) held (op hold-dm6jnle9y8i8-24125-9fe96d4c771df790~21-1) and quieted until 2026-10-16T23:27:25Z (op fleet-quiet-dm6jnlg2we48-24125-c946efc0a0e107bc~21-1) by rowan (coordinator) at 2026-10-16T20:27:25Z; pinned core 7; cs read-arm sitting 1 of 2 at 2bf6bcf46fe1f5087c1b69b333cf4d58779ce204 (pushed); START 2026-10-16T20:38:34Z
+
+### window receipt (out/cs-1.receipt.txt)
+READY/START operator receipt: Glenn Fiedler, live ruling to Rowan 2026-10-16: 'you can simply hold a fleet machine and work there. go.' Window: fleet member amd-2 (host b2) held (op hold-dm6jnle9y8i8-24125-9fe96d4c771df790~21-1) and quieted until 2026-10-16T23:27:25Z (op fleet-quiet-dm6jnlg2we48-24125-c946efc0a0e107bc~21-1) by rowan (coordinator) at 2026-10-16T20:27:25Z; pinned core 7; cs read-arm sitting 1 of 2 at 2bf6bcf46fe1f5087c1b69b333cf4d58779ce204 (pushed); START 2026-10-16T20:38:34Z
+### load before / after (/proc/loadavg)
+start 2026-10-16T20:38:34Z
+0.44 0.81 0.54 1/471 4062354
+end 2026-10-16T20:44:18Z rc=0
+1.00 0.96 0.70 1/474 4067151
+
+## sitting 2
+
+# The read arm: C#
+
+```
+# fixed form: the identity lane, the plan lane, and the same leg's packet wire
+# host b2 / arch linux/amd64 / AMD Ryzen 7 255 w/ Radeon 780M Graphics / rev 2bf6bcf46fe1f5087c1b69b333cf4d58779ce204 (dirty, build-regenerated only: generated/bench/paired/cpp/BenchTable.h, generated/bench/paired/cs/FixedTableTable.cs) / serialize bbf55d401ded5e4e38a1a43ab142aa0284ea8331 / lane 7 / rounds 7
+# corpus_id(identity) 0930f96c8320a75d / corpus_id(plan) 0930f96c8320a75d (one invocation, one corpus: identity, lineage and packet files)
+# window: OK / control_delta_pct 2.80 (bound 5) / load1 0.65–1.26
+# iterations: 4,000,000 records per sample per wire, 1 discarded warmup + 1 measured run per round (§2.1, §2.4)
+# bytes_per_op: fixed 1264.3 B/record, plan (lineage file) 995.4 B/record, packet 438 B/record (§5.3 rule 2 — the division is this driver's alone)
+# checks: table=contract, packet C/C++/C#=removed, packet Go=always (§1.9)
+# anchor: none for C# (SPEC-TABLES §3.4's straight-line reference, test/bench/fixedform_measure.cpp, is the C++ leg's alone)
+
+leg      identity read    plan read    packet read    GATE identity  GATE plan    plan/identity
+         ns/record        ns/record    ns/record      vs packet      vs packet    x (reported)
+cs             2293.1       2164.9          300.1    FAIL           FAIL         0.94
+cpp                 —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+c                   —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+go                  —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+rust                —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+js                  —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+java                —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+dart                —            —              —    —              —            —     no leg in this driver yet (bench/tables/dart is not built, generated or measured here)
+elixir              —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+```
+
+Lower is better. The ns columns are each row's BEST round (§2.2); the GATE compares best against best, per lane, never an average; plan/identity is REPORTED, never a verdict.
+
+| row | best ns/record | median | worst | spread (rates) | mark |
+|---|---:|---:|---:|---:|---|
+| cs `bench_fixed_read` (identity lane, family table) | 2293.1 | 2423.3 | 2517.7 | 9.4% |  |
+| cs `bench_plan_read` (plan lane, family table) | 2164.9 | 2254.5 | 2322.0 | 7.0% |  |
+| cs `bench_mixed_read` (packet read, family gen) | 300.1 | 301.8 | 304.9 | 1.6% |  |
+
+Every row comes out of ONE `--read-arm` invocation per round, the wires rotating which runs first; none is derived from a round trip (§2.9). The identity lane's op is one record of the shipped `LOAD` of the whole 64-record file (hash check and plan run inside the clock); the packet read's op is one read stream plus the generated read of one 438-byte record. The plan lane's op is one record of the same `LOAD` over the lineage file (64 records one generation back, read through the static plan the lock's lineage entry compiled into the unit generated beside it; its gate before the clock requires 64 records read with no counter raised but widened, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's).
+
+Compiler: dotnet 10.0.401. Flags: `dotnet build -c Release -property:UseSharedCompilation=false; DefineConstants=BENCH_MATCHED;BENCH_PLAN AllowUnsafeBlocks=true`. Window receipt: READY/START operator receipt: Glenn Fiedler, live ruling to Rowan 2026-10-16: 'you can simply hold a fleet machine and work there. go.' Window: fleet member amd-2 (host b2) held (op hold-dm6lc6q26oio-24125-80d9f0f5aee3bfa9~21-1) and quieted until 2026-10-16T23:46:33Z (op fleet-quiet-dm6lc6r3zqz4-24125-48e507d968a6c611~21-1) by rowan (coordinator) at 2026-10-16T21:46:33Z; CI runners stopped after drain at 2026-10-16T21:49:17Z (systemctl --user stop nova-runner-1 nova-runner-nova-sprint-1 nova-runner-rocketnet-1 nova-runner-schema-1; no Runner.Listener left); pinned core 7; cs read-arm sitting 2 of 2 at 2bf6bcf46fe1f5087c1b69b333cf4d58779ce204 (pushed); START 2026-10-16T22:01:12Z
+
+### window receipt (out/cs-2.receipt.txt)
+READY/START operator receipt: Glenn Fiedler, live ruling to Rowan 2026-10-16: 'you can simply hold a fleet machine and work there. go.' Window: fleet member amd-2 (host b2) held (op hold-dm6lc6q26oio-24125-80d9f0f5aee3bfa9~21-1) and quieted until 2026-10-16T23:46:33Z (op fleet-quiet-dm6lc6r3zqz4-24125-48e507d968a6c611~21-1) by rowan (coordinator) at 2026-10-16T21:46:33Z; CI runners stopped after drain at 2026-10-16T21:49:17Z (systemctl --user stop nova-runner-1 nova-runner-nova-sprint-1 nova-runner-rocketnet-1 nova-runner-schema-1; no Runner.Listener left); pinned core 7; cs read-arm sitting 2 of 2 at 2bf6bcf46fe1f5087c1b69b333cf4d58779ce204 (pushed); START 2026-10-16T22:01:12Z
+### load before / after (/proc/loadavg)
+start 2026-10-16T22:01:12Z
+0.45 0.90 0.91 3/421 49897
+end 2026-10-16T22:06:57Z rc=0
+1.14 1.07 1.00 1/415 54426
