@@ -46,6 +46,13 @@ func init() {
 		Name{Name: "TableFieldInfo", What: "a table field's reflection descriptor (docs/SPEC-TABLES.md §8)"},
 		Name{Name: "TableTypeInfo", What: "a table type's reflection descriptor (docs/SPEC-TABLES.md §8)"},
 		Name{Name: "TableRegistry", What: "the unit's registry of table descriptors (docs/SPEC-TABLES.md §8.3)"},
+		// THE UNIT VIEW (§8.3): every declaration, its doc comment and tags,
+		// one public type per file as Java requires.
+		Name{Name: "TableUnitView", What: "the unit's view: every table, type, enum, flags, union and constant (docs/SPEC-TABLES.md §8.3)"},
+		Name{Name: "TableViewEntry", What: "one registry entry, a table or a type (docs/SPEC-TABLES.md §8.3)"},
+		Name{Name: "TableVocabularyInfo", What: "an enum, flags or union declaration's descriptor (docs/SPEC-TABLES.md §8.3)"},
+		Name{Name: "TableVariantInfo", What: "one variant, bit or union arm of a vocabulary (docs/SPEC-TABLES.md §8.3)"},
+		Name{Name: "TableConstantInfo", What: "a constant's descriptor (docs/SPEC-TABLES.md §8.3)"},
 		// THE MESSAGE FORM's announcement surface (docs/SPEC-TABLES.md §3.3),
 		// form byte 2: one public type holding the announcement, its reader and
 		// the resolved vocabulary.
