@@ -487,6 +487,21 @@ tables-dart-variable-class:
 
 test-dart: tables-dart-variable-class
 
+# THE COOK OF A MAP FIELD (docs/SPEC-TABLES.md §2.8, §7.2): the Go cook writes a
+# Squad (tables/lists) with a known roster, an absent map and an emptied one,
+# and a unit holding every key kind §2.8 admits; the Dart programs in
+# test/dart-tables read EVERY entry, by index and by Find, and must print the
+# oracle's lines entry for entry. A bare go test skips by name without the SDK;
+# SCHEMA_REQUIRE_CORPUS=1 makes that skip a failure.
+.PHONY: tables-dart-cook-map-field
+tables-dart-cook-map-field:
+	@mkdir -p build/dart-cook-map-field
+	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -v -run 'TestCookMapFieldExposesItsEntriesLikeGo' > build/dart-cook-map-field/log 2>&1 || { cat build/dart-cook-map-field/log; exit 1; }
+	@grep 'lines agree' build/dart-cook-map-field/log | sed 's/^ *//'
+	@echo 'tables Dart cook: every map entry read as the Go cook reads it'
+
+test-dart: tables-dart-cook-map-field
+
 # THE DART LEG of `make test`. THE DART PORT's own instruments
 # (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart
 # format` writes and what the analyzer accepts, the name-claim control, the
