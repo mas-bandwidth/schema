@@ -3176,7 +3176,7 @@ func TestWriteSideRefusesByName(t *testing.T) {
 
 	// THE READ SIDE STAYS THE WIRE'S DEFENCE. A FOREIGN writer is not held by
 	// this writer's contract, so forge the image the refused save would have
-	// made: the reader still clamps the count and the length, and counts them.
+	// made: the reader refuses the count and length by name before any landing.
 	full := lawful
 	full.NameLength = 8
 	copy(full.Name[:], "abcdefgh")
@@ -3188,12 +3188,22 @@ func TestWriteSideRefusesByName(t *testing.T) {
 	tableFixedPut32(body[0:], 7)
 	tableFixedPut32(body[20:], 9)
 	var fr TableReport
-	fgot := make([]Host, 1)
-	if n := HostFixedLoad(fgot, forged, plan, &fr); n != 1 {
-		t.Fatalf("forged load %d %+v", n, fr)
+	fgot := []Host{{Tail: 0x5A, MarksCount: 4, NameLength: 8}}
+	for i := range fgot[0].Marks {
+		fgot[0].Marks[i] = 0x5A
 	}
-	if fgot[0].MarksCount != 4 || fgot[0].NameLength != 8 || fr.Clamped == 0 || fgot[0].Tail != 7 {
-		t.Fatalf("the read side must clamp a foreign writer's count and length and count it: %+v %+v", fgot[0], fr)
+	for i := range fgot[0].Name {
+		fgot[0].Name[i] = 0x5A
+	}
+	before := fgot[0]
+	if n := HostFixedLoad(fgot, forged, plan, &fr); n >= 0 || fr.Reason != TableFixedReasonCountOverBound {
+		t.Fatalf("forged load %d reason=%q, want count_over_bound", n, fr.Reason)
+	}
+	if fr.Unknown != 0 || fr.KindMismatch != 0 || fr.Widened != 0 || fr.Clamped != 0 || fr.Duplicate != 0 || fr.Retained != 0 || fr.RetainLost != 0 || fr.Malformed {
+		t.Fatalf("forged refusal moved a counter or marked malformed: %+v", fr)
+	}
+	if fgot[0] != before {
+		t.Fatalf("forged refusal touched destination: before=%+v after=%+v", before, fgot[0])
 	}
 }
 `)

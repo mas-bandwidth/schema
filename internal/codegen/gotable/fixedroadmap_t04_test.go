@@ -521,13 +521,17 @@ func t04GoR16(t *testing.T) {
 	if n := strings.Count(run, "report.KindMismatch++"); n != 0 {
 		t.Errorf("R16: the record loop counts KindMismatch %d times; that census is COMPILE's, once per peer", n)
 	}
-	for _, tc := range []struct{ op, want string }{
-		{"case tableFixedCount:", "return TableFixedReasonCountOverBound"},
-		{"case tableFixedText:", "return TableFixedReasonLengthOverBound"},
-	} {
-		if !strings.Contains(t02GoBlock(t, run, tc.op, "case tableFixed"), tc.want) {
-			t.Errorf("R16: %s does not refuse by name", tc.op)
+	refusal := funcSource(tableFixedRuntime, "func tableFixedTextRefusal(")
+	if refusal == "" {
+		t.Fatal("R16: the total bounds/text pre-scan is not emitted")
+	}
+	for _, want := range []string{"case tableFixedCount:", "return TableFixedReasonCountOverBound", "case tableFixedText:", "return TableFixedReasonLengthOverBound"} {
+		if !strings.Contains(refusal, want) {
+			t.Errorf("R16: pre-scan does not carry %q", want)
 		}
+	}
+	if !strings.Contains(run, "if why := tableFixedTextRefusal(plan, count, src); why != \"\" {") {
+		t.Error("R16: direct runner does not pre-scan before writes")
 	}
 	// THE OPS MOVE NOTHING (§5.4): the ordinal and const ops land their value and
 	// count no clamp; the forged ordinal's count is the bounds pass's. The const

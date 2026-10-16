@@ -2,10 +2,9 @@ package gotable
 
 // THE ROADMAP'S TEXT ROW ON THE GO LEG (docs/roadmap.sexp node `fixed-tables`,
 // ROADMAP.md "NEW Fixed Tables"). Law: docs/FIXED-FORM-ALGORITHM.md §4.5 THE
-// TEXT OP ("THE TEXT OP, in full"), §5.4's counter row ("`count`, `text` |
-// `clamped` | once per entry per record, when the length or count was out of
-// range"), §5.8's divergence row 8 ("ill-formed text in the USED units") and
-// its fix 11 ("the length CLAMPS and counts, the CONTENT refuses by name"),
+// TEXT OP ("THE TEXT OP, in full"), §5.4's refusal row (count and text bounds
+// refuse before a destination write), §5.8's divergence row 8 ("ill-formed
+// text in the USED units") and its fix 11 (the CONTENT refuses by name),
 // docs/SPEC-TABLES.md §3.4's text rows, and docs/FIXED-FORM-VERSIONING-TESTS.md.
 //
 // GO/C3, GO/C4 AND GO/C5 ARE READ OFF THE EMITTED SOURCE (tableFixedRuntime,
@@ -59,6 +58,17 @@ func t05Run(t *testing.T) string {
 
 // t05TextOp is the `case tableFixedText:` arm of the read loop, from that case
 // to the next, so an assertion reads the text op and only the text op.
+// t05Refusal is the total pre-scan that validates count and text before the
+// runner writes any destination bytes.
+func t05Refusal(t *testing.T) string {
+	t.Helper()
+	src := funcSource(tableFixedRuntime, "func tableFixedTextRefusal(")
+	if src == "" {
+		t.Fatal("t05: the emitted runtime carries no tableFixedTextRefusal")
+	}
+	return src
+}
+
 func t05TextOp(t *testing.T) string {
 	t.Helper()
 	src := t05Run(t)
@@ -80,33 +90,34 @@ func t05Has(t *testing.T, got, want, sentence string) {
 	}
 }
 
-// t05GoC3 holds C3 ("text length", rewritten to the refusal) to the emitted text
-// op: the length is read as a SIGNED i32 and a value past the plan's bound —
+// t05GoC3 holds C3 ("text length", rewritten to the refusal) to the total
+// pre-scan: the length is read as a SIGNED i32 and a value past the plan's bound —
 // negative or over — REFUSES `length_over_bound`. The OWNER RULE (2026-10-15)
 // replaced the text length clamp with a named refusal (docs/SPEC-TABLES.md
 // §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5).
 func t05GoC3(t *testing.T) {
-	op := t05TextOp(t)
-	t05Has(t, op, "v := int32(tableFixedGet32(src[p.Src:]))", "the length is read as a signed i32 (§4.5 THE TEXT OP)")
-	t05Has(t, op, "if v < 0 || uint32(v) > capn", "a length below zero or past the cap refuses (§4.5 THE TEXT OP)")
-	t05Has(t, op, "return TableFixedReasonLengthOverBound", "the refusal is named length_over_bound (§4.5 THE TEXT OP)")
+	refusal := t05Refusal(t)
+	t05Has(t, refusal, "v := int32(tableFixedGet32(src[p.Src:]))", "the length is read as a signed i32 (§4.5 THE TEXT OP)")
+	t05Has(t, refusal, "if v < 0 || uint32(v) > capn", "a length below zero or past the cap refuses (§4.5 THE TEXT OP)")
+	t05Has(t, refusal, "return TableFixedReasonLengthOverBound", "the refusal is named length_over_bound (§4.5 THE TEXT OP)")
+	t05Has(t, t05Run(t), "if why := tableFixedTextRefusal(plan, count, src); why != \"\"", "the direct runner pre-scans before writes")
 }
 
 // t05GoC4 holds C4 ("text content refuses BY NAME") to the emitted runtime: the
-// USED units are validated and a violation REFUSES BY NAME. §5.4 fix 11: "the
-// length CLAMPS and counts, the CONTENT refuses by name as the packet reader
-// does", and §4.5 THE TEXT OP: "A content violation REFUSES BY NAME, the
+// USED units are validated and a violation REFUSES BY NAME. §5.4 fix 11 says
+// the CONTENT refuses by name as the packet reader does, and §4.5 THE TEXT OP: "A content violation REFUSES BY NAME, the
 // verdict the packet reader gives, this form having no `L` to continue past".
 func t05GoC4(t *testing.T) {
-	op := t05TextOp(t)
+	refusal := t05Refusal(t)
 	t05Has(t, tableFixedRuntime, "func tableFixedTextIllFormed(", "the runtime validates text content over the used units (§5.4 fix 11)")
-	t05Has(t, op, "tableFixedTextIllFormed(", "the text op asks whether the used units are the text its kind says (§4.5)")
-	t05Has(t, op, "TableFixedReasonTextIllFormed", "a content violation refuses BY NAME `text_ill_formed` (§4.5, §5.8 row 8)")
+	t05Has(t, refusal, "tableFixedTextIllFormed(", "the pre-scan asks whether the used units are the text its kind says (§4.5)")
+	t05Has(t, refusal, "TableFixedReasonTextIllFormed", "a content violation refuses BY NAME `text_ill_formed` (§4.5, §5.8 row 8)")
 	// The refusal propagates: the run returns the reason and the load refuses
 	// with it. §5.8 row 8: the ruling is "a refusal by name" and not the
 	// reference's `malformed`.
 	run := t05Run(t)
-	t05Has(t, run, "return TableFixedReasonTextIllFormed", "the read loop hands the name back (§5.8 row 8)")
+	t05Has(t, refusal, "return TableFixedReasonTextIllFormed", "the pre-scan hands the name back (§5.8 row 8)")
+	t05Has(t, run, "if why := tableFixedTextRefusal(plan, count, src); why != \"\"", "the runner propagates the pre-scan refusal (§5.8 row 8)")
 	load := t05GeneratedLoad(t)
 	t05Has(t, load, "tableFixedRun(", "the generated load runs the read loop")
 	t05Has(t, load, "tableFixedRefuse(report, why)", "the load refuses by the name the run reported (§5.8 row 8)")
@@ -119,16 +130,17 @@ func t05GoC4(t *testing.T) {
 // wstring(64) whose span is 128 bytes clamps at 64".
 func t05GoC5(t *testing.T) {
 	op := t05TextOp(t)
-	t05Has(t, op, "unit := uint32(1)", "the narrow unit is one byte (§4.5 THE TEXT OP)")
-	t05Has(t, op, "if p.Meta == tableFixedTextWide {", "the wide flavour selects the unit (§4.5 THE TEXT OP)")
-	t05Has(t, op, "unit = 2", "a wstring(N) rides two bytes a code unit (§4.5 THE TEXT OP)")
-	t05Has(t, op, "capn := p.Size / unit", "the cap is span/unit, so wstring(64)'s 128-byte span clamps at 64 (§4.5 THE TEXT OP)")
+	refusal := t05Refusal(t)
+	t05Has(t, refusal, "unit := uint32(1)", "the narrow unit is one byte (§4.5 THE TEXT OP)")
+	t05Has(t, refusal, "if p.Meta == tableFixedTextWide {", "the wide flavour selects the unit (§4.5 THE TEXT OP)")
+	t05Has(t, refusal, "unit = 2", "a wstring(N) rides two bytes a code unit (§4.5 THE TEXT OP)")
+	t05Has(t, refusal, "capn := p.Size / unit", "the cap is span/unit, so wstring(64)'s 128-byte span is bounded at 64 (§4.5 THE TEXT OP)")
 	t05Has(t, op, "dst[off] = 0", "the terminator is a STORE of ONE UNIT at the used length (§4.5 THE TEXT OP)")
 }
 
 // t05GoR24 holds R24 to the emitted runtime and load: ill-formed text in the
 // USED units refuses by name (`text_ill_formed`); text is counted in bytes with
-// the clamp in units; slack is unspecified on read and not a refusal.
+// the unit-specific bound; slack is unspecified on read and not a refusal.
 // docs/FIXED-FORM-ALGORITHM.md §4.5: "the CONTENT RULES apply to the USED UNITS
 // and nothing else: UTF-8 validity over v bytes, never over N; wide code units
 // over v, never 2N ... A content violation REFUSES BY NAME, the verdict the
@@ -141,6 +153,7 @@ func t05GoC5(t *testing.T) {
 // TFixedLoad, feeding it the bytes utf8.Valid refuses.
 func t05GoR24(t *testing.T) {
 	op := t05TextOp(t)
+	refusal := t05Refusal(t)
 	ill := funcSource(tableFixedRuntime, "func tableFixedTextIllFormed(")
 	if ill == "" {
 		t.Fatal("t05: the emitted runtime carries no tableFixedTextIllFormed")
@@ -148,7 +161,7 @@ func t05GoR24(t *testing.T) {
 	t05Has(t, ill, "case tableFixedTextUtf8:", "the narrow content rule is UTF-8 over the used bytes (§4.5)")
 	t05Has(t, ill, "!utf8.Valid(p[:used])", "UTF-8 validity over the USED bytes, the packet reader's own rule (§4.5, §5.4 fix 11)")
 	t05Has(t, ill, "case tableFixedTextWide:", "the wide content rule is over the used code units (§4.5)")
-	t05Has(t, op, "tableFixedTextIllFormed(", "the text op consults the content gate (§5.8)")
+	t05Has(t, refusal, "tableFixedTextIllFormed(", "the pre-scan consults the content gate (§5.8)")
 	// (2) TEXT IS COUNTED IN BYTES WITH THE CLAMP IN UNITS: the wire length word
 	// is the payload's own count and the capacity it clamps against is the byte
 	// span over the unit — a byte capacity for string(N), N code units for
@@ -156,9 +169,9 @@ func t05GoR24(t *testing.T) {
 	// BYTES and N is a byte capacity" / "the length is in UTF-16 CODE UNITS and
 	// the payload is two bytes each"; §4.5: "unit := (meta == wide) ? 2 : 1;
 	// cap := size / unit").
-	t05Has(t, op, "unit := uint32(1)", "R24 a string's unit is one byte, so its cap is its byte span (§3.4)")
-	t05Has(t, op, "capn := p.Size / unit", "R24 the cap is the byte span over the unit — bytes narrow, code units wide (§4.5, §3.4)")
-	t05Has(t, op, "if v < 0 || uint32(v) > capn", "R24 the wire length word past that unit cap refuses by name (§4.5)")
+	t05Has(t, refusal, "unit := uint32(1)", "R24 a string's unit is one byte, so its cap is its byte span (§3.4)")
+	t05Has(t, refusal, "capn := p.Size / unit", "R24 the cap is the byte span over the unit — bytes narrow, code units wide (§4.5, §3.4)")
+	t05Has(t, refusal, "if v < 0 || uint32(v) > capn", "R24 the wire length word past that unit cap refuses by name (§4.5)")
 	// BYTES is never a content refusal.
 	if strings.Contains(ill, "tableFixedTextBytes") {
 		t.Error("t05: bytes(N) is content-validated; bytes carries no text rule (§4.5)")

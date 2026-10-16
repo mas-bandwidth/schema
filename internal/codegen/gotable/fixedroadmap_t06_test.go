@@ -283,7 +283,10 @@ func t06GoR17(t *testing.T) {
 // bound before any destination byte is written.
 func t06GoC1(t *testing.T) {
 	rt := t02GoNorm(tableFixedRuntime)
-	countCase := t02GoBlock(t, rt, "case tableFixedCount:", "case tableFixedText:")
+	countCase := funcSource(rt, "func tableFixedTextRefusal(")
+	if countCase == "" {
+		t.Fatal("C1: total pre-scan is not emitted")
+	}
 	t02GoHas(t, countCase, "if v < 0 || v > int32(p.Size)", "C1 a count below zero or past the bound refuses")
 	t02GoHas(t, countCase, "return TableFixedReasonCountOverBound", "C1 the refusal is named count_over_bound")
 }
@@ -295,7 +298,10 @@ func t06GoC1(t *testing.T) {
 // is the declared maximum and a count past it is refused by name.
 func t06GoC2(t *testing.T) {
 	rt := t02GoNorm(tableFixedRuntime)
-	countCase := t02GoBlock(t, rt, "case tableFixedCount:", "case tableFixedText:")
+	countCase := funcSource(rt, "func tableFixedTextRefusal(")
+	if countCase == "" {
+		t.Fatal("C: total pre-scan is not emitted")
+	}
 	t02GoHas(t, countCase, "if v < 0 || v > int32(p.Size)", "C2 a count past the max refuses")
 	t02GoHas(t, countCase, "return TableFixedReasonCountOverBound", "C2 the refusal is named count_over_bound")
 }
