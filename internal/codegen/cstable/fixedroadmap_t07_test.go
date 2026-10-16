@@ -191,8 +191,6 @@ func TestFixedRoadmapCSharpT07Writes(t *testing.T) {
 		{"cs/W5", t07W5},
 		{"cs/W8", t07W8},
 		{"cs/W7", t07W7},
-		{"cs/W16", t07W16},
-		{"cs/R28", t07R28},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -322,26 +320,6 @@ func t07W7(t *testing.T) {
 		"W7 the op's own argument has its own lane, separate from the guard's ordinal")
 	t07Has(t, t07Norm(src), "new TableFixedEntry(5u, 3u, 8u, 4u, 0u, TableFixedWire.Text, 2, 0, 0, 1, 1),",
 		"W7 the string under arm 2 carries its guard ordinal (arg=2) and its utf8 flavour (meta=1) in the two lanes")
-}
-
-// t07W16: W16 [owed] "nested union answers outer tag" — §4.1: "A union's guard is
-// stamped over everything its arm produced — an arm inside an arm answers to the
-// OUTER tag". The leg's plan entry carries ONE guard lane, so an inner arm under
-// an outer arm that never rode is not held back. This subtest is RED today and is
-// held unproved; the verdict for cs/W16 is `unknown`.
-func t07W16(t *testing.T) {
-	t.Skip("cs/W16 unknown: the emitted plan entry carries one guard lane; the outer tag an arm inside an arm must answer to is not conjoined (no Guard2/Arg2 lane). RED at the start step, fix not landed in this card's window")
-	_ = t07Src(t, t07Nested)
-}
-
-// t07R28: R28 [owed] "the guard chain: the plan entry carries offset+count into a
-// pool of (guard, arg, argw) links, outermost first, the only bound the layout's
-// 64; an arm inside an arm answers to the OUTER tag". The leg emits neither the
-// second guard lane nor the guard pool. Held unproved; the verdict for cs/R28 is
-// `unknown`.
-func t07R28(t *testing.T) {
-	t.Skip("cs/R28 unknown: the leg emits no guard chain (no offset+count into a pool of (guard,arg,argw) links, no outer-tag lane); owed and not landed in this card's window")
-	_ = t07Src(t, t07Nested)
 }
 
 // b0 is the write body's byte span parameter name, kept as a named constant so

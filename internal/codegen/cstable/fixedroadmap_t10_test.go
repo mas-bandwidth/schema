@@ -571,8 +571,8 @@ func t10OptionalScalarsRow(t *testing.T) {
 		"optional-scalars: the scalar's payload is read into the value")
 	t02Has(t, slots, "new TableFixedSlot<T>(setRaw: (t, v) => t.MarkPresent = v != 0, reset: (t) => { t.MarkPresent = false; }),",
 		"optional-scalars: the enum's present byte is read into the present bool")
-	t02Has(t, slots, "if (v > 2) { t.Mark = 0; if (rep != null) rep.Clamped++; } else { t.Mark = (Grade)v; }",
-		"optional-scalars: the enum ordinal is read, bounded at its declared top")
+	t02Has(t, slots, "(t, v, rep) => { t.Mark = (Grade)v; }",
+		"optional-scalars: the enum ordinal lands raw and the bounds pass clamps it (§5.4)")
 }
 
 // t10OptionalArraysRow: optional-arrays [capability] "Optional arrays: valid-data
