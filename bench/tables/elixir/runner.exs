@@ -241,8 +241,135 @@ defmodule SchemaTablesBenchElixir do
      [{"bench_mixed.bin", golden_bytes}, {"bench_mixed.variants.bin", packed}]}
   end
 
-  # the plan lane's gates, shape-blind: no field is named, only the lineage the
-  # build laid down and the bytes the shipped calls return.
+  # ------------------------------------------------------------------
+  # THE PLAN READ'S ANSWER, pinned before any clock
+  # ------------------------------------------------------------------
+  #
+  # THIS PART OF THE LEG IS NOT SHAPE-BLIND, AND ITS LEDGER SAYS SO
+  # (bench/tables/elixir/SHAPE-GATE.allow). What the NEW reader must answer for
+  # an OLD record is the logical record with exactly the six narrowings of
+  # bench/tables/elixir/lineage/VOLD_bench_lineage.schema applied, and saying
+  # which slots they touch names those slots. It is the Rust leg's `expected`
+  # (bench/tables/rust/src/lineage.rs on sprint/schema-rust), the same rules:
+  #
+  #   appended field   idle_ticks takes this build's declared DEFAULT
+  #   widened bound    stats keeps the first @old_stats_bound elements, no more
+  #   widened text     player_name keeps the bytes the OLD capacity holds
+  #   enum append      an ordinal past the OLD variant count was folded back by
+  #                    the lineage's producer, ((v - 1) mod COUNT) + 1, and the
+  #                    answer carries the same fold
+  #   new union arm    no record selects it (the narrowing refuses one)
+  #   integer widen    delta's range is unmoved, so every value lands as it was
+  #
+  # THE COUNTER. §5.4 (docs/FIXED-FORM-ALGORITHM.md): `widened` moves once per
+  # widen entry per record, and a widened run is never folded, so the integer
+  # widen inside the bound is min(their_n, my_n) = min(64, 80) = 64 entries per
+  # record. BENCH-STANDARD.md's "80 `widened` per record" is the NEW bound, not
+  # §5.4's multiple of it; the Rust leg's gate asserts the same 64 x 64.
+  @old_stats_bound 64
+  @old_text_cap 8
+  @old_weapon_variants 12
+  @plan_widened_per_record 64
+
+  @doc false
+  # This build's declared defaults: the prefill image, decoded through this
+  # build's own projection — never written down here.
+  def plan_defaults do
+    {row, _clamped, _damaged} =
+      Bench.WrapFixed.fixed_table_fixed_decode(
+        Bench.WrapFixed.fixed_table_fixed_prefill(),
+        0,
+        false
+      )
+
+    row
+  end
+
+  defp old_ordinal(v) when v > @old_weapon_variants, do: rem(v - 1, @old_weapon_variants) + 1
+  defp old_ordinal(v), do: v
+
+  @doc false
+  # The plan read's answer for the 64 identity records.
+  def plan_expected(identity_values, defaults) do
+    Enum.map(identity_values, fn row ->
+      v = row.value
+      name = v.player_name
+
+      %{
+        row
+        | value: %{
+            v
+            | entities: Enum.map(v.entities, fn e -> %{e | weapon: old_ordinal(e.weapon)} end),
+              stats: Enum.take(v.stats, @old_stats_bound),
+              player_name: binary_part(name, 0, min(byte_size(name), @old_text_cap)),
+              idle_ticks: defaults.value.idle_ticks
+          }
+      }
+    end)
+  end
+
+  @doc false
+  # :ok when the plan read of the lineage file is exactly the plan's answer,
+  # else {:error, why} naming the first thing that is not.
+  def plan_read_verdict(identity_values, plan_values, report, defaults) do
+    want_widened = @num_records * @plan_widened_per_record
+    expected = plan_expected(identity_values, defaults)
+
+    counters =
+      {report.malformed, report.unknown, report.kind_mismatch, report.clamped, report.duplicate,
+       report.widened}
+
+    cond do
+      length(identity_values) != @num_records ->
+        {:error,
+         "the identity corpus holds #{length(identity_values)} records, not #{@num_records}"}
+
+      length(plan_values) != @num_records ->
+        {:error, "the plan read returned #{length(plan_values)} records, not #{@num_records}"}
+
+      counters != {false, 0, 0, 0, 0, want_widened} ->
+        {:error,
+         "the counters are not §5.4's for these six classes: #{inspect(report)} " <>
+           "(want widened #{want_widened} = #{@num_records} x #{@plan_widened_per_record}, every other counter zero)"}
+
+      true ->
+        case Enum.find_index(Enum.zip(plan_values, expected), fn {got, want} -> got != want end) do
+          nil ->
+            if Bench.WrapFixed.fixed_table_fixed_save(plan_values) ==
+                 Bench.WrapFixed.fixed_table_fixed_save(expected) do
+              :ok
+            else
+              {:error, "the plan read saves to bytes that are not the plan's answer"}
+            end
+
+          k ->
+            got = Enum.at(plan_values, k).value
+            want = Enum.at(expected, k).value
+
+            fields =
+              for {f, w} <- Map.from_struct(want), Map.get(got, f) != w, do: f
+
+            cond do
+              got.idle_ticks != defaults.value.idle_ticks ->
+                {:error,
+                 "record #{k}: the appended field does not hold its declared default " <>
+                   "(#{inspect(got.idle_ticks)}, declared #{inspect(defaults.value.idle_ticks)})"}
+
+              length(got.stats) != length(want.stats) ->
+                {:error,
+                 "record #{k}: the widened bound carries #{length(got.stats)} elements, " <>
+                   "not the OLD #{length(want.stats)}"}
+
+              true ->
+                {:error, "record #{k}: an OLD value did not land exactly (#{inspect(fields)})"}
+            end
+        end
+    end
+  end
+
+  # the plan lane's gates. P1, P3 and P4 are shape-blind: no field is named, only
+  # the lineage the build laid down and the bytes the shipped calls return. P2
+  # holds the read to its pinned answer (plan_read_verdict above).
   defp gate_plan_read(lineage_dir, identity_file) do
     bin_path = Path.join(lineage_dir, "bench_lineage.bin")
     layout_path = Path.join(lineage_dir, "bench_lineage.layout")
@@ -284,24 +411,35 @@ defmodule SchemaTablesBenchElixir do
         )
     end
 
-    # gate P2: the whole file reads, and nothing but a widening is reported.
+    # gate P2: NEW READS OLD, and the answer is the one the versioning law
+    # says it must be (BENCH-STANDARD.md, "The gate before the clock"): every
+    # OLD value landed exactly, the reader's appended field holds its DECLARED
+    # default, the widened bound carries the OLD elements and nothing past
+    # them, and the counters are §5.4's EXACT numbers. The answer is derived
+    # from the 64 records the identity corpus decoded to (gates 1-4 above have
+    # held those to the C++ reference byte for byte), never from a second read
+    # of the lineage file — two identically wrong reads would agree with each
+    # other, and they do not agree with this.
+    identity_values = gate_load(identity_file)
+
     plan_values =
       case Bench.WrapFixed.fixed_table_fixed_load(lineage_file) do
-        {:ok, loaded, report}
-        when length(loaded) == @num_records and
-               report.malformed == false and
-               report.unknown == 0 and
-               report.kind_mismatch == 0 and
-               report.clamped == 0 and
-               report.duplicate == 0 and
-               report.widened > 0 ->
-          IO.write(
-            :stderr,
-            "#{String.pad_trailing("bench_plan_read", 18)} plan read of #{@num_records} records: " <>
-              "widened #{report.widened}, clamped #{report.clamped}\n"
-          )
+        {:ok, loaded, report} ->
+          case plan_read_verdict(identity_values, loaded, report, plan_defaults()) do
+            :ok ->
+              IO.write(
+                :stderr,
+                "#{String.pad_trailing("bench_plan_read", 18)} plan read of #{@num_records} records: " <>
+                  "widened #{report.widened} (expected #{@num_records} x #{@plan_widened_per_record}), " <>
+                  "clamped #{report.clamped}; every OLD value, the appended default and the " <>
+                  "bound's #{@old_stats_bound} elements landed exactly\n"
+              )
 
-          loaded
+              loaded
+
+            {:error, why} ->
+              gate_fail("the lineage corpus did not read to the plan's answer: #{why}")
+          end
 
         other ->
           gate_fail("the lineage corpus did not read clean through its plan: #{inspect(other)}")
@@ -697,4 +835,7 @@ defmodule SchemaTablesBenchElixir do
   end
 end
 
-SchemaTablesBenchElixir.main(System.argv())
+# bench/tables/elixir/plan_gate_test.exs loads this file for its functions alone.
+if System.get_env("SCHEMA_TABLES_BENCH_NO_MAIN") != "1" do
+  SchemaTablesBenchElixir.main(System.argv())
+end
