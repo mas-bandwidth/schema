@@ -331,8 +331,8 @@ fixed table T
 
 	// AN OLDER ENUM'S ORDINALS ARE THE READER'S, THE LIST BEING A PREFIX: the
 	// writer's ordinal tables carry the reader's numbers, remapped positionally.
-	t04Has(t, fixedRuntimeBody, "{:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi), List.to_tuple(remap)}", "R20 an older enum's ordinals are remapped to the reader's")
-	t04Has(t, fixedRuntimeBody, "{elem(remap, raw - 1), report}", "R20 the writer's ordinal lands the reader's ordinal")
+	t04Has(t, fixedRuntimeBody, "{:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi), List.to_tuple([their_variants | remap])}", "R20 an older enum's ordinals are remapped to the reader's")
+	t04Has(t, fixedRuntimeBody, "{elem(remap, raw), report}", "R20 the writer's ordinal lands the reader's ordinal")
 
 	// a narrower value past its range still counts as clamped, the same bound
 	// answer §3 gives every value outside its reader's range.

@@ -1,7 +1,8 @@
 package compiler
 
 // The UNBOUNDED ARRAY's cross-target refusals (docs/SPEC-TABLES.md §2.9, §11,
-// §15): C and C++ carry the codec. Other targets refuse a unit that declares
+// §15): every built-in target carries the codec today. A target that does not
+// (a new leg, generated from compiler/newleg.go) refuses a unit that declares
 // one by name, and none refuses a list-free unit for it.
 
 import (
@@ -53,8 +54,9 @@ func TestListsAreRefusedByNonCarriers(t *testing.T) {
 
 // TestListCarriers keeps the advertised targets in step with their codecs.
 func TestListCarriers(t *testing.T) {
-	if !slices.Equal(listTargets, []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "rust"}) {
-		t.Fatalf("listTargets = %v, want [c cpp cs dart elixir go java js rust]", listTargets)
+	want := []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "rust"}
+	if !slices.Equal(listTargets, want) {
+		t.Fatalf("listTargets = %v, want %v", listTargets, want)
 	}
 }
 
@@ -89,9 +91,15 @@ func TestListFieldsNamesWhatAnAuthorWrote(t *testing.T) {
 }
 
 // TestListRefusalNamesTheCarrier: what a port's refusal says: the carrier,
-// the flag that generates, and the fields an author wrote.
+// the flag that generates, and the fields an author wrote. Every built-in
+// target carries the construct, so the non-carrier here is a new leg's name,
+// which is the one place refuseLists still answers (compiler/newleg.go).
 func TestListRefusalNamesTheCarrier(t *testing.T) {
-	err := refuseLists(unitFromSource(t, listSrc), "zig")
+	const newLeg = "newleg"
+	if slices.Contains(listTargets, newLeg) {
+		t.Fatalf("%s is a registered carrier, so the control proves nothing", newLeg)
+	}
+	err := refuseLists(unitFromSource(t, listSrc), newLeg)
 	if err == nil {
 		t.Fatalf("refuseLists accepted a list-bearing unit for a non-carrier")
 	}

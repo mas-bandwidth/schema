@@ -243,7 +243,7 @@ const FixedTableSaveRetain = "FixedTable: retention requires a variable root and
 // in declared order, every field at its declared storage width. The writer is
 // constant-offset stores; the reader is ONE loop over ONE plan.
 
-func MixedEntityFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedEntityFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -361,7 +361,7 @@ func MixedEntityFixedWriteBody(b []byte, value *MixedEntity) {
 	}
 }
 
-func MixedStatFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedStatFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -383,7 +383,7 @@ func MixedStatFixedWriteBody(b []byte, value *MixedStat) {
 	tableFixedPut32(b[4:], uint32(value.Delta))
 }
 
-func MixedHitEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedHitEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -425,7 +425,7 @@ func MixedHitEventFixedWriteBody(b []byte, value *MixedHitEvent) {
 	}
 }
 
-func MixedChatEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedChatEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -447,7 +447,7 @@ func MixedChatEventFixedWriteBody(b []byte, value *MixedChatEvent) {
 	tableFixedPut32(b[4:], uint32(value.Speaker))
 }
 
-func MixedPickupEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedPickupEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -469,7 +469,7 @@ func MixedPickupEventFixedWriteBody(b []byte, value *MixedPickupEvent) {
 	tableFixedPut32(b[4:], uint32(value.Amount))
 }
 
-func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func BenchMixedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -530,14 +530,14 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	for i := uint32(0); i < 8; i++ {
 		es := src + 56 + i*51
 		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Entities)) + i*uint32(unsafe.Sizeof(MixedEntity{}))
-		n += MixedEntityFixedLeaves(out[n:], es, ed)
+		n += MixedEntityFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	out[n] = TableFixedEntry{Src: src + 464, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.StatsCount)), Size: 80, Guard: tableFixedNoGuard, Op: tableFixedCount} // stats count
 	n++
 	for i := uint32(0); i < 80; i++ {
 		es := src + 468 + i*8
 		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Stats)) + i*uint32(unsafe.Sizeof(MixedStat{}))
-		n += MixedStatFixedLeaves(out[n:], es, ed)
+		n += MixedStatFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	{
 		es := src + 1108
@@ -546,47 +546,23 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 		n++
 		{ // arm hit, ordinal 1
 			guardAt := n
-			n += MixedHitEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Hit)))
+			n += MixedHitEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Hit)))
 			for q := guardAt; q < n; q++ {
-				if out[q].Guard == tableFixedNoGuard {
-					out[q].Guard = es
-					out[q].Arg = 1
-					out[q].ArgW = 1
-				} else {
-					out[q].Guard2 = es
-					out[q].Arg2 = 1
-					out[q].ArgW2 = 1
-				}
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 1, ArgW: 1})
 			}
 		}
 		{ // arm chat, ordinal 2
 			guardAt := n
-			n += MixedChatEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Chat)))
+			n += MixedChatEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Chat)))
 			for q := guardAt; q < n; q++ {
-				if out[q].Guard == tableFixedNoGuard {
-					out[q].Guard = es
-					out[q].Arg = 2
-					out[q].ArgW = 1
-				} else {
-					out[q].Guard2 = es
-					out[q].Arg2 = 2
-					out[q].ArgW2 = 1
-				}
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 2, ArgW: 1})
 			}
 		}
 		{ // arm pickup, ordinal 3
 			guardAt := n
-			n += MixedPickupEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Pickup)))
+			n += MixedPickupEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Pickup)))
 			for q := guardAt; q < n; q++ {
-				if out[q].Guard == tableFixedNoGuard {
-					out[q].Guard = es
-					out[q].Arg = 3
-					out[q].ArgW = 1
-				} else {
-					out[q].Guard2 = es
-					out[q].Arg2 = 3
-					out[q].ArgW2 = 1
-				}
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 3, ArgW: 1})
 			}
 		}
 	}
@@ -686,12 +662,22 @@ func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 	tableFixedPut64(b[40:], uint64(value.FrameTick))
 	tableFixedPut32(b[48:], uint32(value.ServerTime))
 	tableFixedPut32(b[52:], uint32(value.EntitiesCount))
-	for i := int64(0); i < 8; i++ {
-		MixedEntityFixedWriteBody(b[56:][i*51:], &value.Entities[i])
+	{
+		livei := min(max(int64(value.EntitiesCount), 0), 8)
+		for i := int64(0); i < livei; i++ {
+			clear(b[56:][i*51 : i*51+51])
+			MixedEntityFixedWriteBody(b[56:][i*51:], &value.Entities[i])
+		}
+		clear(b[56:][livei*51 : 408])
 	}
 	tableFixedPut32(b[464:], uint32(value.StatsCount))
-	for i := int64(0); i < 80; i++ {
-		MixedStatFixedWriteBody(b[468:][i*8:], &value.Stats[i])
+	{
+		livei := min(max(int64(value.StatsCount), 0), 80)
+		for i := int64(0); i < livei; i++ {
+			clear(b[468:][i*8 : i*8+8])
+			MixedStatFixedWriteBody(b[468:][i*8:], &value.Stats[i])
+		}
+		clear(b[468:][livei*8 : 640])
 	}
 	tableFixedPut8(b[1108:], uint8(value.GameEvent.Type))
 	switch value.GameEvent.Type {
@@ -706,9 +692,9 @@ func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 		tableFixedPut8(b[1122:][i*1:], uint8(value.Loadout[i]))
 	}
 	tableFixedPut32(b[1126:], uint32(value.PlayerNameLength))
-	copy(b[1126:][4:], value.PlayerName[:])
+	copy(b[1126:][4:], value.PlayerName[:min(uint32(value.PlayerNameLength), 15)])
 	tableFixedPut32(b[1145:], uint32(value.PayloadLength))
-	copy(b[1145:][4:], value.Payload[:])
+	copy(b[1145:][4:], value.Payload[:min(uint32(value.PayloadLength), 16)])
 	tableFixedPutF32(b[1165:], value.AimX)
 	tableFixedPutF32(b[1169:], value.AimY)
 	tableFixedPutF32(b[1173:], value.AimZ)
@@ -729,12 +715,12 @@ func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 	tableFixedPut32(b[1232:], uint32(value.IdleTicks))
 }
 
-func FixedTableFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func FixedTableFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
 		ed := dst + uint32(unsafe.Offsetof(FixedTable{}.Value))
-		n += BenchMixedFixedLeaves(out[n:], es, ed)
+		n += BenchMixedFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	return n
 }
@@ -1005,6 +991,299 @@ func BenchMixedFixedClampBody(value *BenchMixed, clamped *int32) {
 func FixedTableFixedClampBody(value *FixedTable, clamped *int32) {
 	_, _ = value, clamped
 	BenchMixedFixedClampBody(&value.Value, clamped)
+}
+
+// MixedEntity's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedEntityFixedCheckBody(value *MixedEntity) bool {
+	_ = value
+	if value.EntityId > 4095 {
+		return false
+	}
+	if value.PosX < -16383 || value.PosX > 16383 {
+		return false
+	}
+	if value.PosY < -16383 || value.PosY > 16383 {
+		return false
+	}
+	if value.PosZ < -16383 || value.PosZ > 16383 {
+		return false
+	}
+	if value.Yaw > 511 {
+		return false
+	}
+	if value.Pitch > 511 {
+		return false
+	}
+	if value.VelX < -2048 || value.VelX > 2047 {
+		return false
+	}
+	if value.VelY < -2048 || value.VelY > 2047 {
+		return false
+	}
+	if value.VelZ < -2048 || value.VelZ > 2047 {
+		return false
+	}
+	if value.Health < 0 || value.Health > 1000 {
+		return false
+	}
+	if uint64(value.Weapon) > 15 {
+		return false
+	}
+	return true
+}
+
+// MixedStat's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedStatFixedCheckBody(value *MixedStat) bool {
+	_ = value
+	if value.StatId > 255 {
+		return false
+	}
+	if value.Delta < -512 || value.Delta > 511 {
+		return false
+	}
+	return true
+}
+
+// MixedHitEvent's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedHitEventFixedCheckBody(value *MixedHitEvent) bool {
+	_ = value
+	if value.TargetId > 4095 {
+		return false
+	}
+	if value.Damage < 0 || value.Damage > 4095 {
+		return false
+	}
+	if value.HitKind < 0 || value.HitKind > 7 {
+		return false
+	}
+	return true
+}
+
+// MixedChatEvent's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedChatEventFixedCheckBody(value *MixedChatEvent) bool {
+	_ = value
+	if value.Channel < 0 || value.Channel > 3 {
+		return false
+	}
+	if value.Speaker > 4095 {
+		return false
+	}
+	return true
+}
+
+// MixedPickupEvent's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedPickupEventFixedCheckBody(value *MixedPickupEvent) bool {
+	_ = value
+	if value.ItemId > 1023 {
+		return false
+	}
+	if value.Amount < 0 || value.Amount > 255 {
+		return false
+	}
+	return true
+}
+
+// BenchMixed's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func BenchMixedFixedCheckBody(value *BenchMixed) bool {
+	var z, hi uint64
+	if value.Sequence > 65535 {
+		return false
+	}
+	if value.AckSequence < 0 || value.AckSequence > 65535 {
+		return false
+	}
+	if value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000 {
+		return false
+	}
+	if value.FrameTick > 281474976710655 {
+		return false
+	}
+	if value.ServerTime < 0 || value.ServerTime > 16776960 {
+		return false
+	}
+	if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+		return false
+	}
+	for i := int64(value.EntitiesCount) - 1; i >= 0; i-- {
+		if !MixedEntityFixedCheckBody(&value.Entities[i]) {
+			return false
+		}
+	}
+	if value.StatsCount < 0 || value.StatsCount > 80 {
+		return false
+	}
+	for i := int64(value.StatsCount) - 1; i >= 0; i-- {
+		if !MixedStatFixedCheckBody(&value.Stats[i]) {
+			return false
+		}
+	}
+	if uint32(value.GameEvent.Type) > 3 {
+		return false
+	}
+	switch value.GameEvent.Type {
+	case MixedEventTypeHit:
+		if !MixedHitEventFixedCheckBody(&value.GameEvent.Hit) {
+			return false
+		}
+	case MixedEventTypeChat:
+		if !MixedChatEventFixedCheckBody(&value.GameEvent.Chat) {
+			return false
+		}
+	case MixedEventTypePickup:
+		if !MixedPickupEventFixedCheckBody(&value.GameEvent.Pickup) {
+			return false
+		}
+	}
+	if n := int(value.PlayerNameLength); uint(n) > 15 {
+		return false
+	} else {
+		p := value.PlayerName[:n]
+		if len(p) >= 8 {
+			x := tableFixedGet64(p)
+			hi |= x
+			z |= (x - 0x0101010101010101) &^ x
+			p = p[8:]
+		}
+		if len(p) > 0 {
+			var x uint64
+			if n >= 8 {
+				x = tableFixedGet64(value.PlayerName[n-8:])
+			} else {
+				m := uint64(1)<<(8*uint(n)) - 1
+				x = tableFixedGet64(value.PlayerName[:])&m | 0x0101010101010101&^m
+			}
+			hi |= x
+			z |= (x - 0x0101010101010101) &^ x
+		}
+	}
+	if value.PayloadLength < 0 || value.PayloadLength > 16 {
+		return false
+	}
+	if value.AimX != value.AimX || value.AimX < -1.0 || value.AimX > 1.0 {
+		return false
+	}
+	if value.AimY != value.AimY || value.AimY < -1.0 || value.AimY > 1.0 {
+		return false
+	}
+	if value.AimZ != value.AimZ || value.AimZ < -1.0 || value.AimZ > 1.0 {
+		return false
+	}
+	if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
+		return false
+	}
+	if value.Ping > 64000 {
+		return false
+	}
+	if value.CrcHint > 16777215 {
+		return false
+	}
+	if value.Extra < 0 || value.Extra > 255 {
+		return false
+	}
+	if value.IdleTicks < 0 || value.IdleTicks > 15 {
+		return false
+	}
+	if z&0x8080808080808080 != 0 {
+		return false
+	}
+	if hi&0x8080808080808080 != 0 {
+		return BenchMixedFixedCheckBodyExact(value)
+	}
+	return true
+}
+
+// BenchMixedFixedCheckBodyExact is BenchMixedFixedCheckBody with each string asked by
+// tableFixedUtf8Ok: the answer for text with a byte at or past 0x80 (§3.1).
+func BenchMixedFixedCheckBodyExact(value *BenchMixed) bool {
+	_ = value
+	if value.Sequence > 65535 {
+		return false
+	}
+	if value.AckSequence < 0 || value.AckSequence > 65535 {
+		return false
+	}
+	if value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000 {
+		return false
+	}
+	if value.FrameTick > 281474976710655 {
+		return false
+	}
+	if value.ServerTime < 0 || value.ServerTime > 16776960 {
+		return false
+	}
+	if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+		return false
+	}
+	for i := int64(value.EntitiesCount) - 1; i >= 0; i-- {
+		if !MixedEntityFixedCheckBody(&value.Entities[i]) {
+			return false
+		}
+	}
+	if value.StatsCount < 0 || value.StatsCount > 80 {
+		return false
+	}
+	for i := int64(value.StatsCount) - 1; i >= 0; i-- {
+		if !MixedStatFixedCheckBody(&value.Stats[i]) {
+			return false
+		}
+	}
+	if uint32(value.GameEvent.Type) > 3 {
+		return false
+	}
+	switch value.GameEvent.Type {
+	case MixedEventTypeHit:
+		if !MixedHitEventFixedCheckBody(&value.GameEvent.Hit) {
+			return false
+		}
+	case MixedEventTypeChat:
+		if !MixedChatEventFixedCheckBody(&value.GameEvent.Chat) {
+			return false
+		}
+	case MixedEventTypePickup:
+		if !MixedPickupEventFixedCheckBody(&value.GameEvent.Pickup) {
+			return false
+		}
+	}
+	if uint32(value.PlayerNameLength) > 15 || !tableFixedUtf8Ok(value.PlayerName[:value.PlayerNameLength]) {
+		return false
+	}
+	if value.PayloadLength < 0 || value.PayloadLength > 16 {
+		return false
+	}
+	if value.AimX != value.AimX || value.AimX < -1.0 || value.AimX > 1.0 {
+		return false
+	}
+	if value.AimY != value.AimY || value.AimY < -1.0 || value.AimY > 1.0 {
+		return false
+	}
+	if value.AimZ != value.AimZ || value.AimZ < -1.0 || value.AimZ > 1.0 {
+		return false
+	}
+	if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
+		return false
+	}
+	if value.Ping > 64000 {
+		return false
+	}
+	if value.CrcHint > 16777215 {
+		return false
+	}
+	if value.Extra < 0 || value.Extra > 255 {
+		return false
+	}
+	if value.IdleTicks < 0 || value.IdleTicks > 15 {
+		return false
+	}
+	return true
+}
+
+// FixedTable's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func FixedTableFixedCheckBody(value *FixedTable) bool {
+	_ = value
+	if !BenchMixedFixedCheckBody(&value.Value) {
+		return false
+	}
+	return true
 }
 
 // THE READ-SIDE BOUNDS (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -1281,7 +1560,7 @@ var FixedTableFixedKnown = []TableFixedKnownLayout{
 }
 
 // The floor: below it a layout this build once served is retired, and
-// the answer is layout_unsupported rather than layout_newer (§5.2).
+// the answer is layout_unsupported rather than layout_unknown (§5.2).
 const FixedTableFixedFloor = 0
 
 // One plan per lineage entry, laid down from THE LOCK's bytes: nothing
@@ -1327,10 +1606,17 @@ func FixedTableFixedMeasure(count int64) int64 {
 	return TableFixedHeaderBytes + 4 + int64(len(FixedTableFixedLayout)) + count*FixedTableFixedRecordBytes
 }
 
+// FixedTableFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
+// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
 func FixedTableFixedSave(values []FixedTable, buffer []byte) int64 {
 	need := FixedTableFixedMeasure(int64(len(values)))
 	if int64(len(buffer)) < need {
 		return -1
+	}
+	for k := range values {
+		if !FixedTableFixedCheckBody(&values[k]) {
+			return -1
+		}
 	}
 	clear(buffer[:TableFixedHeaderBytes])
 	buffer[0] = TableFixedForm
@@ -1345,6 +1631,16 @@ func FixedTableFixedSave(values []FixedTable, buffer []byte) int64 {
 		at = at[FixedTableFixedRecordBytes:]
 	}
 	return need
+}
+
+func FixedTableFixedSaveReason(values []FixedTable, buffer []byte) (int64, error) {
+	if n := FixedTableFixedSave(values, buffer); n >= 0 {
+		return n, nil
+	}
+	if int64(len(buffer)) < FixedTableFixedMeasure(int64(len(values))) {
+		return -1, TableRefuseTruncated
+	}
+	return -1, TableRefuseInvalidValue
 }
 
 func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
@@ -1387,7 +1683,7 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 	hash := tableFixedGet64(data[TableFixedHashAt:])
 	pick := tableFixedSelect(FixedTableFixedKnown, hash)
 	if pick < 0 {
-		return tableFixedRefuseHash(report, TableFixedReasonLayoutNewer, hash)
+		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnknown, hash)
 	}
 	if pick < FixedTableFixedFloor {
 		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)

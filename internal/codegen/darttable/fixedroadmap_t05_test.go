@@ -383,7 +383,7 @@ fixed table T
 	// which §5.4 permits, and the load's own width is what makes it one.
 	var b strings.Builder
 	b.WriteString("package probe\n\nenum Big\n{\n")
-	for i := 0; i < 255; i++ {
+	for i := range 255 {
 		fmt.Fprintf(&b, "    V%d\n", i)
 	}
 	b.WriteString("}\n\nfixed table T\n{\n    e Big\n}\n")

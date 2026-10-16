@@ -105,11 +105,11 @@ func fixedWriteBody(t *testing.T, header, name string) string {
 
 // caseArm returns the text between label and the next case or default label.
 func caseArm(body, label string) (string, bool) {
-	i := strings.Index(body, label)
-	if i < 0 {
+	_, after, ok := strings.Cut(body, label)
+	if !ok {
 		return "", false
 	}
-	rest := body[i+len(label):]
+	rest := after
 	end := len(rest)
 	for _, marker := range []string{"case ", "default:"} {
 		if j := strings.Index(rest, marker); j >= 0 && j < end {

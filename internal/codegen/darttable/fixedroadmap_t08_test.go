@@ -22,6 +22,7 @@ package darttable
 // direct Dart round trips below; payload-free arms own only their tag (§2.6).
 
 import (
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -70,9 +71,7 @@ func t08RoundTrip(t *testing.T, dartBin, src, body string) {
 	if err != nil {
 		t.Fatalf("generate packet: %v", err)
 	}
-	for name, data := range pkt {
-		files[name] = data
-	}
+	maps.Copy(files, pkt)
 	dir := t.TempDir()
 	for name, data := range files {
 		if strings.Contains(name, "/") {

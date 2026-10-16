@@ -143,7 +143,7 @@ func t02GoHashes(block string) []uint64 {
 // multi-name line contributes its first name, and comments are skipped.
 func t02GoMembers(block string) []string {
 	var out []string
-	for _, line := range strings.Split(block, "\n") {
+	for line := range strings.SplitSeq(block, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
 			continue
@@ -160,7 +160,7 @@ func t02GoLayoutBytes(t *testing.T, src string) []byte {
 	t.Helper()
 	block := t02GoBlock(t, src, "var TFixedLayout = []byte{", "\n}")
 	var out []byte
-	for _, tok := range strings.Split(block, ",") {
+	for tok := range strings.SplitSeq(block, ",") {
 		tok = strings.TrimSpace(tok)
 		if tok == "" {
 			continue
