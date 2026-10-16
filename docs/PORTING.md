@@ -309,7 +309,7 @@ in post-order in the emitter and requires the lock red;
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-flat-wire` `tables-flat-wire-negative-control` | ✅ `TestCTableWireGraphIdentity` `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` | ✅ `tables-cs-leg` `tables-cs-region-fuzz` (flat native and managed graphs) | ✅ `TestVariableClassBeyondCardConstructsJava` | ❌ #349 | ❌ #349 | ❌ #349 |
+| ✅ `tables-flat-wire` `tables-flat-wire-negative-control` | ✅ `TestCTableWireGraphIdentity` `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` | ✅ `tables-cs-leg` `tables-cs-region-fuzz` (flat native and managed graphs) | ❌ #349 the flat pointer wire round-trips (`TestVariableClassBeyondCardConstructsJava`) but no named Java test pins the identity map (a shared node written once, a cycle refused at an OPEN entry) | ❌ #349 | ❌ #349 | ❌ #349 |
 
 ### M7 — A block row is reached by stride, with no per-row object
 
@@ -542,7 +542,7 @@ adapters; `tables-json-graph-walk`.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-json-graph-walk` | ✅ `TestCTableWireGraphIdentity` `TestCTableWireBlobIdentity` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-json-walk` | ✅ `tables-cs-leg` (shared graph labels and forward references) | ✅ `TestVariableClassBeyondCardConstructsJava` | ❌ #349 | ❌ #349 | ❌ #349 |
+| ✅ `tables-json-graph-walk` | ✅ `TestCTableWireGraphIdentity` `TestCTableWireBlobIdentity` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-json-walk` | ✅ `tables-cs-leg` (shared graph labels and forward references) | ❌ #349 no named Java test pins the &node label (`TestVariableClassBeyondCardConstructsJava` round-trips the text against golden but does not assert the shared-node label) | ❌ #349 | ❌ #349 | ❌ #349 |
 
 ### M15 — One walk for the numbering, the pack measure and the pack
 
