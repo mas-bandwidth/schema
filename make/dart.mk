@@ -12,6 +12,25 @@
 #   unzip into dist/ and rename dart-sdk -> dart-sdk-3.13.2
 DART ?= $(CURDIR)/dist/dart-sdk-3.13.2/bin/dart
 
+# THE OPTIONAL UNIT REGISTRY (SPEC-TABLES §8.7): a generated Dart program
+# walks UnitView() for every VIEW_CORPUS unit, byte-compared with the IR pin.
+.PHONY: tables-dart-view
+tables-dart-view: bin/schema test/dart-tables/view_main.dart
+	@rm -rf build/dart-view && mkdir -p build/dart-view
+	@set -e; for entry in $(VIEW_CORPUS); do \
+		dir=$${entry%%:*}; pkg=$${entry##*:}; \
+		cap=$$(printf '%s' "$$pkg" | cut -c1 | tr 'a-z' 'A-Z')$$(printf '%s' "$$pkg" | cut -c2-); \
+		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
+		./bin/schema generate --lang dart --out build/dart-view/$$dir $$source; \
+		sed "s|VIEW_LIBRARY|$$dir/$${cap}View.dart|" test/dart-tables/view_main.dart > build/dart-view/$$pkg-main.dart; \
+		$(DART) compile exe -o build/dart-view/prog-$$pkg build/dart-view/$$pkg-main.dart; \
+		./build/dart-view/prog-$$pkg > build/dart-view/$$pkg.listing; \
+	done
+	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/dart-view" go test -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
+	@echo "Dart unit registry: $(words $(VIEW_CORPUS)) units match the independent listing"
+
+test-dart: tables-dart-view
+
 # THE TOOLCHAIN GATE, this leg's half (issue #599; the Makefile's header and
 # docs/CONTRIBUTING.md, "Adding a language"). This leg is the one the issue was
 # opened over: a merge deleted the clone's dist link, the leg was passed over
@@ -86,21 +105,42 @@ generated/bench/paired/dart/.stamp: bin/schema bench/corpus/Bench.schema bench/c
 # corpus plus the evolution pair, generated at build time into build/ —
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .dart + <Base>Block.dart + <Base>Cook.dart, and the wire
-# forms where the unit owns them). Fixed-class units own form 3. tables/pointers,
-# tables/blobs and tables/lists own form 1 beside it (the variable class).
-build/tables-generated-dart/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
+# forms where the unit owns them). Fixed-class units own form 3, and every
+# carried root also owns form 1, including the V, W and R evolution pairs.
+build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
 	# the POINTERED unit: form 1 for Scene, form 3 and cook beside it.
 	./bin/schema generate --lang dart --out build/tables-generated-dart/pointers tables/pointers
 	./bin/schema generate --lang dart --out build/tables-generated-dart/blobs tables/blobs
 	./bin/schema generate --lang dart --out build/tables-generated-dart/lists tables/lists
+	./bin/schema generate --lang dart --out build/tables-generated-dart/maps tables/maps
+	./bin/schema generate --lang dart --out build/tables-generated-dart/messages tables/messages
+	# backend, vocab and vocab9 are also the MESSAGE FORM's units (docs/SPEC-TABLES.md
+	# §3.3): the conformance driver's `message` surface reads their batches.
+	./bin/schema generate --lang dart --out build/tables-generated-dart/backend tables/backend
+	./bin/schema generate --lang dart --out build/tables-generated-dart/stream tables/stream
+	./bin/schema generate --lang dart --out build/tables-generated-dart/vocab tables/vocab
+	./bin/schema generate --lang dart --out build/tables-generated-dart/vocab9 tables/vocab9
+	# tables/scalars beside the tree, not in it: its FIXED library imports an
+	# Int128.dart the packet emitter does not write for a table-only 128-bit
+	# unit (a form-3 gap of its own), and the standalone and clean gates walk
+	# this tree. The conformance driver reads its form-1 library from there.
+	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/scalars tables/scalars
+	./bin/schema generate --lang dart --out build/tables-generated-dart/wide examples-wide
 	./bin/schema generate --lang dart --out build/tables-generated-dart/block tables/block
 	./bin/schema generate --lang dart --out build/tables-generated-dart/blockhome tables/blockhome
 	./bin/schema generate --lang dart --out build/tables-generated-dart/v1 test/tables/V1.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/v2 test/tables/V2.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/w1 test/tables/W1.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/w2 test/tables/W2.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/r1 test/tables/R1.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/r2 test/tables/R2.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/p1 test/tables/P1.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/p3 test/tables/P3.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/g1 test/tables/G1.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/m1 test/tables/M1.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/m2 test/tables/M2.schema
 	@touch $@
 
 # THE DART TABLE SOURCES ARE FORMAT-CANONICAL. `dart format` is the language's
@@ -661,6 +701,39 @@ tables-dart-block-build: build/tables-generated-dart/.stamp cards-dart-generate
 	@echo 'tables Dart block build and cook write: begin, the fixed root, the guarded and text-array roots and every cook-write row'
 
 test-dart: tables-dart-block-build
+# MAPS AND UNION ARMS (docs/SPEC-TABLES.md §2.4, §2.6, §2.8, §3, §3.2): maps,
+# unions whose arms are tables, arrays of unions, arms of any carried field
+# type, enum-keyed and fixed positional arrays and wstring(N) on form 1, byte
+# for byte against the oracle rows of tables/maps and tables/arms, and of the
+# fixed-root units tables/messages, tables/scalars and examples-wide (optional
+# fields and arrays, flags, `type` bodies, fixed(I,F) and the 128-bit scalars).
+# SCHEMA_REQUIRE_CORPUS=1 makes a missing SDK a failure.
+.PHONY: tables-dart-variable-arms
+tables-dart-variable-arms:
+	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run 'TestMapsAndUnionArmsOnTheTableWireDart|TestOtherVariableConstructsAreRefusedByName'
+	@echo 'tables Dart variable arms: maps, unions, keyed arrays, optionals and the wide scalars against the oracle bytes'
+
+test-dart: tables-dart-variable-arms
+# THE MESSAGE FORM'S BATCH (docs/SPEC-TABLES.md §3.3): every manifest `message`
+# row of a fixed root loads, measures and saves the reference's bytes exactly,
+# and every unit's fixed home defines the table-arm unions it names (§2.6,
+# §3.4), so no row is skipped but the §3.3 plain-table one. A bare go test
+# skips when the SDK is absent; SCHEMA_REQUIRE_CORPUS=1 makes that a failure.
+.PHONY: tables-dart-message-batch
+tables-dart-message-batch:
+	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run 'TestMessageFormBatchDart|TestFixedHomeDefinesItsTableArmUnionsDart'
+	@echo 'tables Dart message batch: every fixed-root message row against the reference bytes'
+
+test-dart: tables-dart-message-batch
+
+
+# The fixed class also speaks form 1. The W/R pairs pin defaults and `was`
+# aliases against the Go oracle (docs/SPEC-TABLES.md §3, §5).
+.PHONY: tables-dart-variable-fixed-class
+tables-dart-variable-fixed-class:
+	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run TestFixedClassOnTableWireDart
+
+test-dart: tables-dart-variable-fixed-class
 
 # THE DART LEG of `make test`. THE DART PORT's own instruments
 # (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart
