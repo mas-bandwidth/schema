@@ -634,24 +634,29 @@ test-dart: tables-dart-variable-class
 # main isolate's --verbose_gc header (`main: ... reason=initial`), which is how
 # an absent or unsupported GC trace is told from a valid trace holding zero
 # scavenges, or when either window marker is missing. No failure is
-# swallowed. THE BLADE runs first, every time: a planted run (floatjit.dart's
-# `planted-exit` shape, which warms up and exits 3 with no completion line)
-# and a run with the GC trace switched off must both be refused by the same
-# check, each for its own reason, or the target is red with BLADE LOST.
+# swallowed. THE BLADE (tables-dart-float-jit-negative-control) runs first,
+# every time: a planted run (floatjit.dart's `planted-exit` shape, which warms
+# up and exits 3 with no completion line) and a run with the GC trace switched
+# off must both be refused by the same check, each for its own reason, or the
+# target is red with BLADE LOST.
 FLOATJIT_N ?= 2000000
 FLOATJIT_DIR := build/floatjit
-.PHONY: tables-dart-float-jit
-tables-dart-float-jit: toolchain-dart generated/dart/.stamp
+define FLOATJIT_RUN
+run() { \
+	log=$(FLOATJIT_DIR)/$$1-$$2$$4; rm -f $$log.count; \
+	$(DART) $$3 test/dart/floatjit.dart $$1 $$2 >$$log.out 2>$$log.err; rc=$$?; \
+	if [ $$rc -ne 0 ]; then echo "tables-dart-float-jit: REFUSED shape=$$1 passes=$$2: dart exited $$rc ($$log.err)"; return 1; fi; \
+	if ! grep -Eqx "floatjit shape=$$1 steady=$$2 check=-?[0-9]+" $$log.out; then echo "tables-dart-float-jit: REFUSED shape=$$1 passes=$$2: no completion line ($$log.out)"; return 1; fi; \
+	if ! grep -Eq '^main: .*reason=initial' $$log.err; then echo "tables-dart-float-jit: REFUSED shape=$$1 passes=$$2: no GC trace from the main isolate, --verbose_gc absent or unsupported ($$log.err)"; return 1; fi; \
+	if [ "$$(grep -Ec '^floatjit: steady window (begins|ends)$$' $$log.err)" != 2 ]; then echo "tables-dart-float-jit: REFUSED shape=$$1 passes=$$2: the steady window markers are not both present ($$log.err)"; return 1; fi; \
+	awk '/^floatjit: steady window begins$$/ { w = 1; next } /^floatjit: steady window ends$$/ { w = 0 } w && /^\[ main *, *Scavenge/ { n++ } END { print n + 0 }' $$log.err > $$log.count; \
+}
+endef
+
+.PHONY: tables-dart-float-jit-negative-control
+tables-dart-float-jit-negative-control: toolchain-dart generated/dart/.stamp
 	@mkdir -p $(FLOATJIT_DIR)
-	@run() { \
-		log=$(FLOATJIT_DIR)/$$1-$$2$$4; rm -f $$log.count; \
-		$(DART) $$3 test/dart/floatjit.dart $$1 $$2 >$$log.out 2>$$log.err; rc=$$?; \
-		if [ $$rc -ne 0 ]; then echo "tables-dart-float-jit: REFUSED shape=$$1 passes=$$2: dart exited $$rc ($$log.err)"; return 1; fi; \
-		if ! grep -Eqx "floatjit shape=$$1 steady=$$2 check=-?[0-9]+" $$log.out; then echo "tables-dart-float-jit: REFUSED shape=$$1 passes=$$2: no completion line ($$log.out)"; return 1; fi; \
-		if ! grep -Eq '^main: .*reason=initial' $$log.err; then echo "tables-dart-float-jit: REFUSED shape=$$1 passes=$$2: no GC trace from the main isolate, --verbose_gc absent or unsupported ($$log.err)"; return 1; fi; \
-		if [ "$$(grep -Ec '^floatjit: steady window (begins|ends)$$' $$log.err)" != 2 ]; then echo "tables-dart-float-jit: REFUSED shape=$$1 passes=$$2: the steady window markers are not both present ($$log.err)"; return 1; fi; \
-		awk '/^floatjit: steady window begins$$/ { w = 1; next } /^floatjit: steady window ends$$/ { w = 0 } w && /^\[ main *, *Scavenge/ { n++ } END { print n + 0 }' $$log.err > $$log.count; \
-	}; \
+	@$(FLOATJIT_RUN); \
 	if run planted-exit 1 --verbose_gc -blade >$(FLOATJIT_DIR)/blade-exit.log; then \
 		echo "tables-dart-float-jit: BLADE LOST: a planted run that exits 3 was accepted"; exit 1; fi; \
 	grep -q 'REFUSED shape=planted-exit passes=1: dart exited 3 ' $(FLOATJIT_DIR)/blade-exit.log || \
@@ -660,7 +665,12 @@ tables-dart-float-jit: toolchain-dart generated/dart/.stamp
 		echo "tables-dart-float-jit: BLADE LOST: a run with no GC trace was accepted"; exit 1; fi; \
 	grep -q 'REFUSED shape=generated passes=1: no GC trace' $(FLOATJIT_DIR)/blade-trace.log || \
 		{ echo "tables-dart-float-jit: BLADE LOST: the untraced run was refused for another reason"; cat $(FLOATJIT_DIR)/blade-trace.log; exit 1; }; \
-	echo "tables-dart-float-jit blade: a planted exit-3 run and an untraced run are both refused"; \
+	echo "tables-dart-float-jit blade: a planted exit-3 run and an untraced run are both refused"
+
+.PHONY: tables-dart-float-jit
+tables-dart-float-jit: toolchain-dart generated/dart/.stamp tables-dart-float-jit-negative-control
+	@mkdir -p $(FLOATJIT_DIR)
+	@$(FLOATJIT_RUN); \
 	fail=0; for s in generated inlined twocallers; do \
 		run $$s $(FLOATJIT_N) --verbose_gc '' || exit 1; \
 		run $$s $$((2 * $(FLOATJIT_N))) --verbose_gc '' || exit 1; \
@@ -673,7 +683,7 @@ tables-dart-float-jit: toolchain-dart generated/dart/.stamp
 	if [ $$fail -ne 0 ]; then echo "tables-dart-float-jit: FAIL (a float boxes under the JIT)"; exit 1; fi; \
 	echo "tables-dart-float-jit: OK"
 
-test-dart: tables-dart-float-jit
+test-dart: tables-dart-float-jit tables-dart-float-jit-negative-control
 
 # THE COOK OF A MAP FIELD (docs/SPEC-TABLES.md §2.8, §7.2): the Go cook writes a
 # Squad (tables/lists) with a known roster, an absent map and an emptied one,
