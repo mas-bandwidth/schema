@@ -1,12 +1,7 @@
-// THE DESCRIPTORS (docs/SPEC-TABLES.md §8.1, §8.3), the card's slice of the
-// reflection surface: one TableFieldInfo per field — name, wire kind, shape
-// (value / list / blob) and declared bound — and one TableTypeInfo per table,
-// so a walker reads a record by name and kind without a per-version struct.
-// The registry cardDescriptors() lists the tables of the wire closure in the
-// order they are emitted (members before the table that holds them), which is
-// the declaration order the card's tables appear in. Nothing else of §8 is
-// claimed: no type view, no enum/flags/union/constant registry rows, no doc or
-// tag columns.
+// THE DESCRIPTORS (docs/SPEC-TABLES.md §8.1, §8.3): one TableFieldInfo per
+// carried field and one TableTypeInfo per carried table, with the name, kind,
+// text key, annotation and Dart storage accessors a generic walk needs.
+// The optional unit-wide vocabulary lives in unitview.go.
 package darttable
 
 import (
@@ -42,23 +37,31 @@ func cardFieldShape(f *ir.Field) string {
 // registry into the wire library (docs/SPEC-TABLES.md §8.1, §8.3).
 func (g *wireGen) emitDescriptors() {
 	g.pf("// THE DESCRIPTORS (docs/SPEC-TABLES.md §8.1, §8.3): one TableFieldInfo\n")
-	g.pf("// per field — name, wire kind, shape (value/list/blob) and declared\n")
-	g.pf("// bound — and one TableTypeInfo per table, so a walker reads a record\n")
-	g.pf("// by name and kind with no per-version struct. The registry lists the\n")
-	g.pf("// tables in declaration order and allocates nothing (§8.1).\n")
+	g.pf("// per carried field, with its storage accessors, annotation and wire\n")
+	g.pf("// identity; one TableTypeInfo per table. The optional unit registry\n")
+	g.pf("// adds declarations outside the table-wire closure.\n")
 	g.pf("final class TableFieldInfo {\n")
 	g.pf("\tfinal String name;\n")
+	g.pf("\tfinal String json, typeName, doc;\n")
+	g.pf("\tfinal int id;\n")
 	g.pf("\tfinal int kind;\n")
 	g.pf("\tfinal String shape;\n")
 	g.pf("\tfinal int? bound;\n")
 	g.pf("\tfinal int? min;\n")
 	g.pf("\tfinal int? max;\n")
-	g.pf("\tTableFieldInfo(this.name, this.kind, this.shape, this.bound, this.min, this.max);\n")
+	g.pf("\tfinal bool optional;\n")
+	g.pf("\tfinal int? elemSize;\n")
+	g.pf("\tfinal List<String> tags;\n")
+	g.pf("\tfinal dynamic Function(dynamic) read;\n")
+	g.pf("\tfinal void Function(dynamic, dynamic) write;\n")
+	g.pf("\tTableFieldInfo(this.name, this.kind, this.shape, this.bound, this.min, this.max, this.json, this.typeName, this.id, this.optional, this.elemSize, this.read, this.write, this.doc, this.tags);\n")
 	g.pf("}\n\n")
 	g.pf("final class TableTypeInfo {\n")
 	g.pf("\tfinal String name;\n")
+	g.pf("\tfinal String doc;\n")
+	g.pf("\tfinal List<String> tags;\n")
 	g.pf("\tfinal List<TableFieldInfo> fields;\n")
-	g.pf("\tTableTypeInfo(this.name, this.fields);\n")
+	g.pf("\tTableTypeInfo(this.name, this.fields, this.doc, this.tags);\n")
 	g.pf("}\n\n")
 	g.pf("Map<String, TableTypeInfo> cardDescriptors() => <String, TableTypeInfo>{\n")
 	for _, st := range g.closure {
@@ -66,7 +69,7 @@ func (g *wireGen) emitDescriptors() {
 		for _, f := range st.Fields {
 			g.emitFieldDescriptor(f)
 		}
-		g.pf("\t]),\n")
+		g.pf("\t], %s, %s),\n", viewDartString(st.Doc), viewDartTags(st.Tags))
 	}
 	g.pf("};\n\n")
 }
@@ -90,6 +93,10 @@ func (g *wireGen) emitFieldDescriptor(f *ir.Field) {
 		min = dartBoundLiteral(f.IntMin)
 		max = dartBoundLiteral(f.IntMax)
 	}
-	g.pf("\t\tTableFieldInfo(%q, %d, %q, %s, %s, %s),\n",
-		f.Name, cardFieldKind(f), cardFieldShape(f), bound, min, max)
+	member := fieldMember(f)
+	g.pf("\t\tTableFieldInfo(%s, %d, %q, %s, %s, %s, %s, %s, %s, %t, %s, (dynamic v) => v.%s, (dynamic v, dynamic x) { v.%s = x; }, %s, %s),\n",
+		viewDartString(f.Name), cardFieldKind(f), cardFieldShape(f), bound, min, max,
+		viewDartString(ir.TableFieldJsonKey(f)), viewDartString(ir.TableTypeSpelling(f)),
+		dartU64Literal(ir.TableFieldWireId(f)), f.Type.Optional, viewDartElementSize(f),
+		member, member, viewDartString(f.Doc), viewDartTags(f.Tags))
 }

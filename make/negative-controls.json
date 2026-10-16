@@ -491,10 +491,15 @@
       "when": "pull-request",
       "why": "the Dart port's controls and its four packet families: fifteen controls, the fixed form's among them and the accessor/descriptor agreement gate's two (each a go build and a regeneration of the block and pointers corpora, a few seconds apiece). Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of §5.7.",
       "targets": [
+        "cards-dart-conformance-hash-negative-control",
+        "cards-dart-conformance-negative-control",
+        "cards-dart-conformance-upgrade-negative-control",
         "packet-arm-defaults-dart-negative-control",
         "packet-defaults-dart-negative-control",
         "packet-utf8-dart-negative-control",
         "packet-wide-dart-negative-control",
+        "tables-dart-alloc-negative-control",
+        "tables-dart-alloc-runtime-negative-control",
         "tables-dart-fixed-form-negative-control",
         "tables-dart-versioning-negative-control",
         "tables-dart-fuzz-negative-control",
@@ -505,7 +510,8 @@
         "tables-dart-runtime-home-negative-control",
         "tables-dart-standalone-negative-control",
         "tables-dart-accessor-negative-control",
-        "tables-dart-slot-negative-control"
+        "tables-dart-slot-negative-control",
+        "tables-dart-text-differential-negative-control"
       ],
       "dart": "3.13.2"
     },
@@ -557,6 +563,7 @@
       "when": "pull-request",
       "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md §3.4).",
       "targets": [
+        "cards-conformance-negative-control",
         "tables-go-containers-negative-controls",
         "tables-go-accessor-negative-control",
         "tables-go-slot-negative-control",

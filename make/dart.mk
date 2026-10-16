@@ -12,6 +12,25 @@
 #   unzip into dist/ and rename dart-sdk -> dart-sdk-3.13.2
 DART ?= $(CURDIR)/dist/dart-sdk-3.13.2/bin/dart
 
+# THE OPTIONAL UNIT REGISTRY (SPEC-TABLES §8.7): a generated Dart program
+# walks UnitView() for every VIEW_CORPUS unit, byte-compared with the IR pin.
+.PHONY: tables-dart-view
+tables-dart-view: bin/schema test/dart-tables/view_main.dart
+	@rm -rf build/dart-view && mkdir -p build/dart-view
+	@set -e; for entry in $(VIEW_CORPUS); do \
+		dir=$${entry%%:*}; pkg=$${entry##*:}; \
+		cap=$$(printf '%s' "$$pkg" | cut -c1 | tr 'a-z' 'A-Z')$$(printf '%s' "$$pkg" | cut -c2-); \
+		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
+		./bin/schema generate --lang dart --out build/dart-view/$$dir $$source; \
+		sed "s|VIEW_LIBRARY|$$dir/$${cap}View.dart|" test/dart-tables/view_main.dart > build/dart-view/$$pkg-main.dart; \
+		$(DART) compile exe -o build/dart-view/prog-$$pkg build/dart-view/$$pkg-main.dart; \
+		./build/dart-view/prog-$$pkg > build/dart-view/$$pkg.listing; \
+	done
+	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/dart-view" go test -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
+	@echo "Dart unit registry: $(words $(VIEW_CORPUS)) units match the independent listing"
+
+test-dart: tables-dart-view
+
 # THE TOOLCHAIN GATE, this leg's half (issue #599; the Makefile's header and
 # docs/CONTRIBUTING.md, "Adding a language"). This leg is the one the issue was
 # opened over: a merge deleted the clone's dist link, the leg was passed over
@@ -88,7 +107,7 @@ generated/bench/paired/dart/.stamp: bin/schema bench/corpus/Bench.schema bench/c
 # generated (packet .dart + <Base>Block.dart + <Base>Cook.dart, and the wire
 # forms where the unit owns them). Fixed-class units own form 3, and every
 # carried root also owns form 1, including the V, W and R evolution pairs.
-build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/maps/*.schema tables/messages/*.schema tables/scalars/*.schema tables/backend/*.schema tables/vocab/*.schema tables/vocab9/*.schema examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema
+build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
 	# the POINTERED unit: form 1 for Scene, form 3 and cook beside it.
@@ -97,6 +116,12 @@ build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/maps/*.schema t
 	./bin/schema generate --lang dart --out build/tables-generated-dart/lists tables/lists
 	./bin/schema generate --lang dart --out build/tables-generated-dart/maps tables/maps
 	./bin/schema generate --lang dart --out build/tables-generated-dart/messages tables/messages
+	# backend, vocab and vocab9 are also the MESSAGE FORM's units (docs/SPEC-TABLES.md
+	# §3.3): the conformance driver's `message` surface reads their batches.
+	./bin/schema generate --lang dart --out build/tables-generated-dart/backend tables/backend
+	./bin/schema generate --lang dart --out build/tables-generated-dart/stream tables/stream
+	./bin/schema generate --lang dart --out build/tables-generated-dart/vocab tables/vocab
+	./bin/schema generate --lang dart --out build/tables-generated-dart/vocab9 tables/vocab9
 	# tables/scalars beside the tree, not in it: its FIXED library imports an
 	# Int128.dart the packet emitter does not write for a table-only 128-bit
 	# unit (a form-3 gap of its own), and the standalone and clean gates walk
@@ -113,11 +138,9 @@ build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/maps/*.schema t
 	./bin/schema generate --lang dart --out build/tables-generated-dart/r2 test/tables/R2.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/p1 test/tables/P1.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/p3 test/tables/P3.schema
-	# the MESSAGE FORM's units (docs/SPEC-TABLES.md §3.3): the conformance
-	# driver's `message` surface reads their connections' batches.
-	./bin/schema generate --lang dart --out build/tables-generated-dart/backend tables/backend
-	./bin/schema generate --lang dart --out build/tables-generated-dart/vocab tables/vocab
-	./bin/schema generate --lang dart --out build/tables-generated-dart/vocab9 tables/vocab9
+	./bin/schema generate --lang dart --out build/tables-generated-dart/g1 test/tables/G1.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/m1 test/tables/M1.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/m2 test/tables/M2.schema
 	@touch $@
 
 # THE DART TABLE SOURCES ARE FORMAT-CANONICAL. `dart format` is the language's
@@ -207,6 +230,69 @@ tables-dart-standalone-negative-control:
 	@grep -m1 "outside the unit" build/dart-standalone-nc/log
 	@echo "negative control: one planted package import turns the Dart standalone gate RED"
 
+# THE DART ALLOCATION GATE (docs/SPEC-TABLES.md, docs/PORTING.md I1 and I14).
+# Counts new-space scavenges between two stderr markers under --verbose_gc with
+# the semi-space pinned to 1 MB so one 16-byte allocation per record triggers a
+# scavenge every ~30,000 records. Holds every caller-owned row (fixed-load,
+# fixed-measure, fixed-save, block, cook) to zero scavenges under AOT, prints
+# the JIT counts and the variable-class card row beside them, and refuses to
+# certify off the pinned Dart SDK 3.13.2 unless SCHEMA_DART_ALLOC_ANY_SDK=1 is
+# set to report without certifying.
+DART_GC_FLAGS = --verbose_gc --new_gen_semi_initial_size=1 --new_gen_semi_max_size=1
+DART_GC_COUNT = awk '/gcgate: steady phase begins/{on=1;next} /gcgate: steady phase ends/{on=0} on && /Scavenge/{n++} END{print n+0}'
+DART_GC_ITERS ?= 20000
+
+build/dart_gcgate: build/dart-fixed/.stamp build/tables-generated-dart/.stamp cards-dart-generate test/dart-tables/gcgate.dart
+	@mkdir -p build
+	$(DART) analyze test/dart-tables/gcgate.dart
+	$(DART) format --set-exit-if-changed --output=none test/dart-tables/gcgate.dart
+	$(DART) compile exe -o $@ test/dart-tables/gcgate.dart >/dev/null
+
+.PHONY: tables-dart-alloc tables-dart-alloc-negative-control tables-dart-alloc-runtime-negative-control
+tables-dart-alloc: build/dart_gcgate build/fixedform-corpus/.stamp build/cook-fuzz/.stamp
+	$(DART) test/dart-tables/gcgate.dart drive $(DART) $(CURDIR)/build/dart_gcgate $(DART_GC_ITERS)
+
+tables-dart-alloc-negative-control: build/dart_gcgate build/fixedform-corpus/.stamp build/cook-fuzz/.stamp
+	@mkdir -p build/dart-alloc-nc
+	@if SCHEMA_DART_ALLOC_PLANT=fixed-load SCHEMA_DART_ALLOC_ROWS=fixed-load,fixed-save \
+			$(DART) test/dart-tables/gcgate.dart drive $(DART) $(CURDIR)/build/dart_gcgate $(DART_GC_ITERS) \
+			> build/dart-alloc-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a planted allocation per record in fixed-load left the gate green"; \
+		cat build/dart-alloc-nc/log; exit 1; \
+	fi
+	@grep -qE '^  fixed-load +[1-9][0-9]* +[0-9]+ +<= 0 +\[FAIL\]' build/dart-alloc-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: fixed-load did not go red on the planted allocation"; \
+		  cat build/dart-alloc-nc/log; exit 1; }
+	@grep -qE '^  fixed-save +0 +[0-9]+ +<= 0 +\[PASS\]' build/dart-alloc-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: neighbour row fixed-save did not stay green (localisation failed)"; \
+		  cat build/dart-alloc-nc/log; exit 1; }
+	@grep -E '^  fixed-(load|save)' build/dart-alloc-nc/log
+	@echo "negative control: one planted allocation per record turns fixed-load RED while fixed-save stays GREEN"
+
+tables-dart-alloc-runtime-negative-control: build/dart_gcgate build/fixedform-corpus/.stamp build/cook-fuzz/.stamp
+	@mkdir -p build/dart-alloc-runtime-nc
+	@if SCHEMA_DART_ALLOC_SDK_VERSION=0.0.0 SCHEMA_DART_ALLOC_ANY_SDK=0 SCHEMA_DART_ALLOC_ROWS=fixed-load \
+			$(DART) test/dart-tables/gcgate.dart drive $(DART) $(CURDIR)/build/dart_gcgate 2000 \
+			> build/dart-alloc-runtime-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the allocation gate certified on stand-in SDK 0.0.0"; \
+		cat build/dart-alloc-runtime-nc/log; exit 1; \
+	fi
+	@grep -qE '^  fixed-load +0 +[0-9]+ +<= 0 +\[PASS\]' build/dart-alloc-runtime-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate did not print its observations before refusing"; \
+		  cat build/dart-alloc-runtime-nc/log; exit 1; }
+	@grep -Fq 'FAILED: allocation certification requires Dart SDK 3.13.2 (pinned in make/dart.mk), running 0.0.0' build/dart-alloc-runtime-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the refusal did not name both the pinned 3.13.2 and running 0.0.0 SDKs"; \
+		  cat build/dart-alloc-runtime-nc/log; exit 1; }
+	@grep -Fq 'NOT CERTIFIED' build/dart-alloc-runtime-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate did not state NOT CERTIFIED"; \
+		  cat build/dart-alloc-runtime-nc/log; exit 1; }
+	@SCHEMA_DART_ALLOC_SDK_VERSION=0.0.0 SCHEMA_DART_ALLOC_ANY_SDK=1 SCHEMA_DART_ALLOC_ROWS=fixed-load \
+		$(DART) test/dart-tables/gcgate.dart drive $(DART) $(CURDIR)/build/dart_gcgate 2000 \
+		> build/dart-alloc-runtime-nc/any.log 2>&1
+	@grep -Fq 'NOT CERTIFIED' build/dart-alloc-runtime-nc/any.log || \
+		{ echo "NEGATIVE CONTROL FAILED: SCHEMA_DART_ALLOC_ANY_SDK=1 did not report NOT CERTIFIED"; \
+		  cat build/dart-alloc-runtime-nc/any.log; exit 1; }
+	@echo "negative control: Dart allocation gate refuses stand-in SDK 0.0.0 and SCHEMA_DART_ALLOC_ANY_SDK=1 reports without certifying"
 # THE RUNTIME HOME GATE (docs/PORTING.md J2). A unit's shared Dart table
 # runtime lives in one file named by the PACKAGE — <Package>Block.dart and
 # <Package>Cook.dart — never by the file that happens to sort first, so a
@@ -265,7 +351,7 @@ test-dart: tables-dart-runtime-home tables-dart-runtime-home-negative-control
 # port lands its expensive half by adding the target and nothing else: two
 # hundred and eighty thousand forgery-fuzz mutants over the block and cook
 # readers under two seeds (20,000 per fixture, seven fixtures, two seeds), and
-# the three planted controls. The fuzz is measured in minutes and answers a
+# the planted controls. The fuzz is measured in minutes and answers a
 # question about the runtime under hostile input rather than about the diff,
 # which is what makes it a certification instrument and not an iteration one.
 .PHONY: tables-dart-release
@@ -273,6 +359,9 @@ tables-dart-release:
 	$(MAKE) tables-dart-fuzz SEED=1 DART_FUZZ_MUTANTS=20000
 	$(MAKE) tables-dart-fuzz SEED=2 DART_FUZZ_MUTANTS=20000
 	$(MAKE) tables-dart-fuzz-negative-control
+	$(MAKE) tables-dart-alloc
+	$(MAKE) tables-dart-alloc-negative-control
+	$(MAKE) tables-dart-alloc-runtime-negative-control
 	$(MAKE) tables-dart-order
 	$(MAKE) tables-dart-order-negative-control
 	$(MAKE) tables-dart-fuzz-lead-negative-control
@@ -644,6 +733,25 @@ tables-dart-cook-map-field:
 
 test-dart: tables-dart-cook-map-field
 
+# I13 (docs/PORTING.md): the Dart leg's text differential against a third
+# implementation. A Dart probe builds N random float-only instances of a
+# variable root with the generated setters and the Go cell's splitmix64, writes
+# each as (wire, text); inside Go the engine (internal/tabletext) writes its own
+# text from the same wire, the two are byte-compared, and the engine packs the
+# leg's text back to wire the other way. The control caps a float32 at six
+# significant digits in the emitted Dart, in memory, and requires red on the
+# text comparison. The probe builds its own unit into a temp directory, so no
+# corpus stamp is a prerequisite.
+.PHONY: tables-dart-text-differential tables-dart-text-differential-negative-control
+tables-dart-text-differential:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestDartTextDifferentialAgainstTheGoEngine$$'
+	@echo 'tables Dart text differential: the generated text writer agrees with the engine byte for byte, both directions'
+tables-dart-text-differential-negative-control:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestDartTextDifferentialNegativeControl$$'
+	@echo 'tables Dart text differential negative control: a float32 capped at six digits reds the text comparison'
+
+test-dart: tables-dart-text-differential tables-dart-text-differential-negative-control
+
 # THE BLOCK BUILD AND COOK WRITE GATE (docs/SPEC-TABLES.md §19.1, §7.6): the
 # block fill path's begin against §19.1's layout facts, the fixed-root cook
 # writer and a guarded and a text-array root against `schema cook` in both byte
@@ -707,6 +815,9 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 	$(MAKE) tables-dart-standalone-negative-control
 	$(MAKE) tables-dart-fuzz DART_FUZZ_MUTANTS=1500
 	$(MAKE) tables-dart-fuzz-negative-control
+	$(MAKE) tables-dart-alloc
+	$(MAKE) tables-dart-alloc-negative-control
+	$(MAKE) tables-dart-alloc-runtime-negative-control
 	$(MAKE) tables-dart-order
 	$(MAKE) tables-dart-order-negative-control
 	# THE FIXED FORM against the C++ reference's own bytes (§3.4)

@@ -985,7 +985,7 @@ wire-save green until it went with the previous-form wire; Go's
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #412 (the cook WRITE is counted under `tables-cook-write`; the read path is a static scan) | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #518 | ✅ `TestLoadAllocatesNothing` `TestRoundTripAllocatesNothing` `TestAllocationGateCanGoRed` | ❌ #412 | ❌ #517 | ✅ `tables-js-alloc` `tables-js-alloc-negative-control` | ❌ #514 | ❌ #515 |
+| ❌ #412 (the cook WRITE is counted under `tables-cook-write`; the read path is a static scan) | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #518 | ✅ `TestLoadAllocatesNothing` `TestRoundTripAllocatesNothing` `TestAllocationGateCanGoRed` | ❌ #412 | ❌ #517 | ✅ `tables-js-alloc` `tables-js-alloc-negative-control` | ✅ `tables-dart-alloc` `tables-dart-alloc-negative-control` | ❌ #515 |
 
 ### I2 — Emitter sabotage through `go build -overlay`
 
@@ -1304,7 +1304,7 @@ a float32 at `-266744.625` rendering as an eight-digit tie.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #516 | ❌ #419 | ❌ #419 |
+| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #516 | ✅ `tables-dart-text-differential`, control `tables-dart-text-differential-negative-control` (variable and fixed roots; first run: 6 of 200 on the Go seed, ties `toStringAsFixed` broke away from even) | ❌ #419 |
 
 ### I14 — The allocation gate refuses to certify off the pinned runtime
 
@@ -1332,7 +1332,7 @@ prints observations without certification. The default requires Go 1.26.0.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` (Go 1.26.0) | ❌ #420 | ❌ #420 (pinned JDK; the gate SKIPS rather than refuses without the counter) | ✅ `test/js-tables/main.mjs:1412` | ❌ #420 (pinned SDK; nothing refuses off it) | ❌ #420 (pinned OTP; the audit does not read it) |
+| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` (Go 1.26.0) | ❌ #420 | ❌ #420 (pinned JDK; the gate SKIPS rather than refuses without the counter) | ✅ `test/js-tables/main.mjs:1412` | ✅ `tables-dart-alloc` `tables-dart-alloc-runtime-negative-control` (Dart 3.13.2) | ❌ #420 (pinned OTP; the audit does not read it) |
 
 ### I15 — The tolerant wire's differential fuzzer with an independent oracle
 
