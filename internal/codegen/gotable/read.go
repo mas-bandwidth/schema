@@ -467,7 +467,7 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 			if kind == tkF32 {
 				lo, hi = formatFloat32(f.FMin), formatFloat32(f.FMax)
 			}
-			g.pf("%s\tif v < %s { v = %s; r.Report.Clamped++ } else if v > %s { v = %s; r.Report.Clamped++ }\n", ind, lo, lo, hi, hi)
+			g.pf("%s\t%s\n", ind, compressedFloatClamp("v", lo, hi, "r.Report.Clamped++"))
 		}
 		g.pf("%s\t%s = v\n%s}\n", ind, expr, ind)
 	default:

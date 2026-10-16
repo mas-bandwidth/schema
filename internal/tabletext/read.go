@@ -1284,6 +1284,10 @@ func (in *reader) placeFloat(cell *Cell, f *ir.Field, token string, single bool)
 		} else if value > f.FMax {
 			value = f.FMax
 			in.report.Clamped++
+		} else if value == 0 {
+			// a compressed float's -0 lands as +0, uncounted (§3.3, the
+			// special values); a NaN or an infinity never reaches here
+			value = 0
 		}
 	}
 	if single {
