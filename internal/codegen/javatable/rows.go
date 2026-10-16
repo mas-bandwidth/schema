@@ -214,6 +214,9 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 			g.f("    public static %s %s(byte[] data, int at, int i) { return %s; }\n",
 				elem, name, readCall(elem, fmt.Sprintf("at + %d + i * %d", pieces[0].Offset, elemSize)))
 		}
+		if f.KeyEnum != "" {
+			g.emitRowKeyForm(f, name, elem, pieces[0].Offset, elemSize)
+		}
 		if f.Array == ir.ArrayCounted {
 			at := pieces[1].Offset
 			g.f("    public static int %sCount(byte[] data, int at) {\n", name)
@@ -234,6 +237,34 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 		g.f("    public static boolean %sPresent(byte[] data, int at) { return TableBytes.bool(data, at + %d); }\n\n",
 			name, pieces[len(pieces)-1].Offset)
 	}
+}
+
+// emitRowKeyForm is a row's KEY FORM (docs/SPEC-TABLES.md §2.4, docs/PORTING.md
+// M5), beside the slot form and additive to it: the slot accessor above still
+// takes a storage index, and this one takes the KEY, refuses None and a key past
+// Max by name in every build (javaKeyRefusal's one unsigned compare), and
+// writes the shift — key k at slot k-1 — so no caller does. A row is read over
+// a caller's byte[] that is usually wider than the row, which is where the
+// JVM's own bound gives no help: slot -1 or slot Max is a silent read of a
+// neighbour, so the refusal is the accessor's or it is nobody's. `ByKey` and
+// `AtKey` are the key form's spellings of the slot form's `<name>` and
+// `<name>At`.
+func (g *rowGen) emitRowKeyForm(f *ir.Field, name, elem string, base, elemSize int64) {
+	if isClassRef(f.Type) {
+		g.f("    /** [%s]%s %s: the element's own offset, refusing None and past Max. */\n",
+			f.KeyEnum, f.Type.Name, keyedFormMarker)
+		g.f("    public static int %sAtKey(int at, int key) {\n", name)
+		g.f("%s", javaKeyRefusal("        ", "key", f))
+		g.f("        return at + %d + (key - 1) * %d;\n", base, elemSize)
+		g.f("    }\n")
+		return
+	}
+	g.f("    /** %s %s: key k reads slot k-1, refusing None and past Max. */\n",
+		ir.FieldTypeSpelling(f), keyedFormMarker)
+	g.f("    public static %s %sByKey(byte[] data, int at, int key) {\n", elem, name)
+	g.f("%s", javaKeyRefusal("        ", "key", f))
+	g.f("        return %s;\n", readCall(elem, fmt.Sprintf("at + %d + (key - 1) * %d", base, elemSize)))
+	g.f("    }\n")
 }
 
 // emitBlockRecordInfo is §19.2's descriptor for one ROW record: the offsets a
