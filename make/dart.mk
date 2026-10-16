@@ -69,6 +69,18 @@ generated/bench/dart/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang dart --out generated/bench/dart/realworld bench/corpus/RealWorld.schema
 	@touch $@
 
+# THE PAIRED UNIT, for bench/tables/dart — the FIXED FORM's leg in `bench/paired`
+# (bench/paired/main.go, bench/tables/dart/table_main.dart). Bench.schema and
+# FixedTable.schema are ONE unit, exactly as the C, C++, Go, JS and C# paired
+# generations are: the fixed root reaches the packet type so the compiler emits
+# its table codec. The runner imports these libraries by relative path and
+# `dart compile exe` compiles them into it; the driver regenerates the same
+# files itself, so the two agree byte for byte or `generated-current` says so.
+generated/bench/paired/dart/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@mkdir -p generated/bench/paired/dart
+	./bin/schema generate --lang dart --out generated/bench/paired/dart bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@touch $@
+
  
 # The same corpus through the DART table backend (docs/SPEC-TABLES.md): the tables
 # corpus plus the evolution pair, generated at build time into build/ —

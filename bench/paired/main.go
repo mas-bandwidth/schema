@@ -77,7 +77,19 @@ var unpublishedLanguages = []string{"elixir"}
 // filling this driver's second wire with a fabricated row would be inventing a
 // measurement, so js rides the table wire alone and appears in no ratio, no
 // confirmation pass and no board.
-var tableOnlyLanguages = []string{"rust", "java", "js"}
+//
+// dart is here for java's reason: bench/dart/main.dart is the TYPE BOARD's
+// packet runner, with neither `--gate` nor `--iterations`, and the paired set
+// is the four the board is defined over. The table leg
+// (bench/tables/dart/table_main.dart) is this driver's own shape, compiled
+// with `dart compile exe` — the AOT form, the one that ships — so like rust it
+// runs as this driver's own build product. Dart has no form-1 table wire
+// (schema#514), so the leg is the FIXED form alone, as js's is. A packet leg
+// here is separate work with its own ruling, so dart rides the table wire
+// alone and appears in no ratio, no confirmation pass and no board; its packet
+// number is the type board's, measured by its own runner over the same
+// sixty-four records.
+var tableOnlyLanguages = []string{"rust", "java", "js", "dart"}
 
 // A PENDING LANGUAGE is a row the published table names that this driver has
 // no leg for at all: no generator invocation, no build step, no runner, no
@@ -85,9 +97,10 @@ var tableOnlyLanguages = []string{"rust", "java", "js"}
 // nothing can generate, build, gate or measure it. The nine-language table
 // carries the name so the row it will one day fill reads as absent rather than
 // silently missing, and `bench/paired/table.go` takes it from here rather than
-// keeping a list of its own — dart's fixed-form emitter has landed, its bench
-// leg has not.
-var pendingLanguages = []string{"dart"}
+// keeping a list of its own. It is EMPTY on this tree: dart, the last pending
+// row, has its leg (tableOnlyLanguages). The mechanism stays, because the next
+// row the published table names before its leg lands goes here.
+var pendingLanguages = []string{}
 
 // names is the ONE display-name map: every language this driver knows, plus
 // the pending rows, so nothing downstream keeps a second one.
@@ -354,6 +367,10 @@ func binary(wire, lang string) string {
 	if lang == "java" {
 		return filepath.Join(javaClassDir, "TableMain.class")
 	}
+	// THE DART LEG'S BUILD PRODUCT is one AOT executable, `dart compile exe`
+	// of bench/tables/dart/table_main.dart with the generated unit compiled
+	// into it, so it takes the ordinary path below and its hash covers the
+	// generated code the way rust's does.
 	p := filepath.Join("build", "paired", wire+"-"+lang)
 	if lang == "elixir" {
 		// AN INTERPRETED LEG HAS NO EXECUTABLE. What stands in its place is the
@@ -475,6 +492,20 @@ func jdkTool(name, tool string) string {
 	return tool
 }
 func nodeExecutable() string { return setting("NODE", "node") }
+
+// dartExecutable is the pin make/dart.mk carries: the repository-local SDK
+// when it is there, and the one on PATH otherwise, with DART overriding both
+// (CI passes DART=dart).
+func dartExecutable() string {
+	if s := os.Getenv("DART"); s != "" {
+		return s
+	}
+	local := filepath.Join("dist", "dart-sdk-3.13.2", "bin", "dart")
+	if _, err := os.Stat(local); err == nil {
+		return local
+	}
+	return "dart"
+}
 func runner(wire, lang string, args ...string) command {
 	a := []string{binary(wire, lang)}
 	var env []string
@@ -805,6 +836,24 @@ func generateAndBuild(langs []string) error {
 			if e := execute(runner("table", lang, "--gate")); e != nil {
 				return e
 			}
+		case "dart":
+			// ONE AOT EXECUTABLE, the form that ships (bench/dart/main.dart
+			// says the same of the packet runner): the generated unit is
+			// imported by relative path and compiled into it, so nothing
+			// links at run time and the binary's hash covers the unit; a
+			// compile error anywhere in the unit fails the build. Then the
+			// gate, before any clock.
+			dart := dartExecutable()
+			if e := run(dart, "--version"); e != nil {
+				return fmt.Errorf("the Dart SDK is required for the dart leg (set DART): %w", e)
+			}
+			runnerSource := filepath.Join("bench", "tables", "dart", "table_main.dart")
+			if e := run(dart, "compile", "exe", "-o", binary("table", lang), runnerSource); e != nil {
+				return e
+			}
+			if e := execute(runner("table", lang, "--gate")); e != nil {
+				return e
+			}
 		}
 	}
 	hostname, _ := os.Hostname()
@@ -815,7 +864,7 @@ func generateAndBuild(langs []string) error {
 			info.Runtimes[key] += "-dirty"
 		}
 	}
-	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}, "cargo": {cargoExecutable(), "--version"}, "rustc": {rustcExecutable(), "--version"}, "java": {javaExecutable(), "--version"}, "node": {nodeExecutable(), "--version"}} {
+	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}, "cargo": {cargoExecutable(), "--version"}, "rustc": {rustcExecutable(), "--version"}, "java": {javaExecutable(), "--version"}, "node": {nodeExecutable(), "--version"}, "dart": {dartExecutable(), "--version"}} {
 		if b, e := capture(command{args: args}); e == nil {
 			info.Tools[key] = strings.TrimSpace(string(b))
 		}
@@ -905,6 +954,11 @@ func generateAndBuild(langs []string) error {
 		// An interpreted leg has no flags to record; what decides its code is the
 		// interpreter, which the tools map above already carries by version.
 		info.Tools["js_table_flags"] = "none: node runs the generated ES modules as written"
+	}
+	if contains(langs, "dart") {
+		// Dart has no optimization level to set; what decides its code is the
+		// AOT compiler, which the tools map above carries by SDK version.
+		info.Tools["dart_table_flags"] = "dart compile exe (AOT, product mode: asserts off)"
 	}
 	hash, err := hashFile("build/paired/corpus")
 	if err != nil {
