@@ -407,9 +407,12 @@ final class AllocPaths {
     // the deep ones, still clears the margin.
     // NONE IS ZERO, and each says why:
     //
-    //   loadMeasure  M1 says 0 and this is NOT 0: it is a DEFECT the gate holds
-    //                at its floor so it cannot grow, not a contract. Every call
-    //                allocates a Report, a Reader and a NodeTable, and
+    //   loadMeasure  M1 says 0 and this is NOT 0 at BASE: it is a DEFECT in
+    //                internal/codegen/javatable/variableform.go (outside this
+    //                card's PATHS; repaired and lowered to 0 in the LAND-AFTER
+    //                card java-variable-form-save-and-load-measure-do-not-allocate-per-node)
+    //                that this gate holds at its measured floor so it cannot grow.
+    //                Every call allocates a Report, a Reader and a NodeTable, and
     //                TableVariable.nodesRaw copies every node body into a fresh
     //                byte[] (internal/codegen/javatable/variableform.go,
     //                writeLoadMeasure). C2's escape analysis removes some of
@@ -483,7 +486,7 @@ final class AllocPaths {
         int[] blocks = new int[1];
         double per = settled(() -> sink += w.loadMeasure.applyAsLong(w.bytes), VARIABLE_ITERATIONS, blocks);
         verdict("3 load-measure " + w.name, per, measureCeiling(w.name), "bytes/call", VARIABLE_ITERATIONS, blocks[0],
-                "[1 record/call]", "DEFECT held at its floor, M1 wants 0: a Report, Reader, NodeTable and a copy of every node body per call");
+                "[1 record/call]", "DEFECT in variableform.go (outside PATHS; lowered to 0 by java-variable-form-save-and-load-measure-do-not-allocate-per-node) held at its floor, M1 wants 0: a Report, Reader, NodeTable and a copy of every node body per call");
         per = settled(() -> keep = w.load.apply(w.bytes), VARIABLE_ITERATIONS, blocks);
         verdict("4 load " + w.name, per, loadCeiling(w.name), "bytes/call", VARIABLE_ITERATIONS, blocks[0],
                 "[1 record/call]", "the floor, by contract: load answers a fresh Value tree (no caller-owned form, M1)");

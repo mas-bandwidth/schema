@@ -1185,7 +1185,10 @@ enum is keyed.
   message, where a debugger can read it — and then ABORTS, and the abort is
   what stands under `NDEBUG`; C# throws; Rust panics; Go panics too, and
   `-gcflags=all=-B` does not remove it because it is a written compare and not
-  a bounds check. A port that leans on its runtime's own bounds check has met
+  a bounds check; Java throws `IllegalArgumentException` naming the field, the
+  key, the enum and its `Max`, from a written
+  `Integer.compareUnsigned(key - 1, Max) >= 0` and never from `assert`, so `-da`
+  keeps it. A port that leans on its runtime's own bounds check has met
   half the rule: the check must be the ACCESSOR's, so the behavior is the
   reference's rather than whatever the language does at the end of an array.
 
@@ -1196,8 +1199,16 @@ enum is keyed.
   language has no non-boxing generic enum-to-int conversion, so the caller
   writes `(int)ShipType.Bomber`; Rust takes a `u64`, because the enum is a
   `#[repr(transparent)]` newtype and the caller writes `ShipType::BOMBER.0 as
-  u64`; Go takes an `int`, and the caller writes `int(ShipTypeBomber)`. The
-  cast is over the KEY in every one of them — never over the shift.
+  u64`; Go takes an `int`, and the caller writes `int(ShipTypeBomber)`; Java
+  takes an `int` holding the enum's value, because the table leg's enums are
+  their integer values, and has no operator overloading, so the accessor is the
+  field's own name as an overload pair beside the slot array — `fleet.ships(key)`
+  reads and `fleet.ships(key, value)` stores, a nested-record element answering
+  its live instance and taking no store — and a block or cook row's static
+  accessors gain `shipsByKey(data, at, key)` (and `shipsAtKey(at, key)` for a
+  record element) beside the slot form. The slot array stays public and stays
+  what the codecs walk, by storage index. The cast is over the KEY in every one
+  of them — never over the shift.
 
   **WHAT IS WEAKER IN GO, and the page states it rather than letting a reader
   find it.** Go has no operator overloading and no generic array extent, so a

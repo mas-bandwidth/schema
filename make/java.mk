@@ -663,6 +663,61 @@ tables-java-versioning-negative-control: tables-fixedform-corpus
 	@grep -m1 "want a refusal named layoutNewer" $(JAVA_VERSIONING_SABOTAGE)/log
 	@echo 'negative control: the wrong refusal name for a file outside the lineage reds the Java versioning gate'
 
+# THE KEYED ACCESSOR, Java side (docs/SPEC-TABLES.md §2.4, docs/PORTING.md M5).
+# An enum-keyed array indexes by KEY: key k at slot k-1, None (0) and a key past
+# E.Max refused BY NAME in every build, with one unsigned compare and never
+# `assert`. TestKeyedArrayIndexingJava compiles a three-variant probe under the
+# consumer's flags and holds both ends, the reach of Max and the placement on
+# the saved wire, under -da and -ea; TestKeyedFormLeavesWireCodeByteIdentical
+# holds that the key form is ADDITIVE — every table unit's generated Java, with
+# the key form taken out, byte-identical to the BASE it was added on. Under
+# SCHEMA_REQUIRE_CORPUS=1 a missing JDK is a failure, not a skip.
+JAVA_KEYED_TESTS := TestKeyedArrayIndexingJava|TestKeyedFormLeavesWireCodeByteIdentical|TestStripKeyedFormTakesOnlyTheKeyForm
+.PHONY: tables-java-keyed tables-java-keyed-negative-control
+tables-java-keyed:
+	@mkdir -p build/java-keyed
+	@SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '$(JAVA_KEYED_TESTS)' \
+		> build/java-keyed/log 2>&1 || { tail -40 build/java-keyed/log; exit 1; }
+	@if grep -q -- '--- SKIP' build/java-keyed/log; then \
+		echo "tables-java-keyed: a keyed test SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; grep -- '--- SKIP' build/java-keyed/log; exit 1; \
+	fi
+	@grep -q -- '--- PASS: TestKeyedArrayIndexingJava ' build/java-keyed/log || \
+		{ echo "tables-java-keyed: TestKeyedArrayIndexingJava did not run to a PASS"; tail -20 build/java-keyed/log; exit 1; }
+	@echo 'tables Java: the keyed accessor refuses None and Max+1 by name and places key k at slot k-1 (§2.4)'
+test-java: tables-java-keyed
+
+# ITS NEGATIVE CONTROL, one end at a time. The overlay rewrites the ONE compare
+# in the emitter (javaKeyRefused, fixedform.go) — first to `key < 1`, which
+# drops the upper bound, then to `key > Max`, which drops the lower — and each
+# must red TestKeyedArrayIndexingJava ON ITS OWN END AND ONLY THERE: a control
+# that reds both ends at once could not tell a symmetric guard from a broken one.
+JAVA_KEYED_SABOTAGE := build/java-keyed-sabotage
+JAVA_KEYED_COMPARE := "Integer.compareUnsigned(%s - 1, %d) >= 0", key, max)
+tables-java-keyed-negative-control:
+	@rm -rf $(JAVA_KEYED_SABOTAGE) && mkdir -p $(JAVA_KEYED_SABOTAGE)
+	@set -e; for end in upper lower; do \
+		case $$end in \
+		upper) to='"%s < 1", key) // SABOTAGED: the upper bound is gone'; red='keyed Max+1 end:'; green='keyed None end:' ;; \
+		lower) to='"%s > %d", key, max) // SABOTAGED: the lower bound is gone'; red='keyed None end:'; green='keyed Max+1 end:' ;; \
+		esac; \
+		d=$(JAVA_KEYED_SABOTAGE)/$$end; mkdir -p $$d; \
+		sed "s|$(subst ",\",$(JAVA_KEYED_COMPARE))|$$to|" internal/codegen/javatable/fixedform.go > $$d/fixedform.gotext; \
+		grep -q SABOTAGED $$d/fixedform.gotext || { echo "NEGATIVE CONTROL FAILED: the $$end sabotage patched nothing"; exit 1; }; \
+		printf '{"Replace":{"%s/internal/codegen/javatable/fixedform.go":"%s/%s/fixedform.gotext"}}\n' \
+			"$(CURDIR)" "$(CURDIR)" "$$d" > $$d/overlay.json; \
+		if SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+				go test -overlay=$$d/overlay.json ./internal/codegen/javatable/ -count=1 -timeout 600s \
+				-run 'TestKeyedArrayIndexingJava' > $$d/log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: dropping the $$end bound left the keyed accessor green"; tail -20 $$d/log; exit 1; \
+		fi; \
+		grep -q -- "$$red" $$d/log || { echo "NEGATIVE CONTROL FAILED: the $$end sabotage went red, but not on its own end"; tail -20 $$d/log; exit 1; }; \
+		if grep -q -- "$$green" $$d/log; then echo "NEGATIVE CONTROL FAILED: the $$end sabotage also redded the other end"; grep -m3 -- "$$green" $$d/log; exit 1; fi; \
+		if grep -q -- "keyed in-range" $$d/log; then echo "NEGATIVE CONTROL FAILED: the $$end sabotage moved an in-range key"; grep -m3 -- "keyed in-range" $$d/log; exit 1; fi; \
+		grep -m1 -- "$$red" $$d/log; \
+		echo "negative control: dropping the $$end bound reds the keyed accessor on that end only"; \
+	done
+
 # THE PAIRED BENCH CORPUS on this form: the same sixty-four logical records the
 # matched bench uses, written by the C++ reference with its form-3 writer and
 # stated beside as a VALUE ORACLE, because a reader and a writer that share one
@@ -915,6 +970,9 @@ tables-java-release:
 	# compiler over a sabotaged emitter and runs both columns of every §5.7 row
 	# behind it — the expensive half, which is what this target is for (above).
 	$(MAKE) tables-java-versioning-negative-control
+	# THE KEYED ACCESSOR'S CONTROL (docs/SPEC-TABLES.md §2.4): two overlay test runs,
+	# one per dropped bound, beside the versioning control for the same reason.
+	$(MAKE) tables-java-keyed-negative-control
 	$(MAKE) conformance-negative-control-java-block
 	$(MAKE) tables-java-fuzz-negative-control
 	$(MAKE) tables-java-block-lead-negative-control
