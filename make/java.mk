@@ -531,6 +531,18 @@ tables-java-versioning: tables-fixedform-corpus
 		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
 	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
 
+# THE FIXED-FORM ROADMAP T12 GATE (union-field-arms/java/valid-data,
+# payload-free-arms/java/valid-data, union-arrays/java/valid-data,
+# optional-arrays/java/valid-data; docs/roadmap.sexp fixed-tables). Each
+# subtest generates through the registered Java target (`schema generate --lang
+# java`), compiles and runs the capability probe, and compares against the C++
+# reference bytes in build/fixedform-corpus (fu1.bin, fu2.bin).
+.PHONY: tables-java-fixed-roadmap
+tables-java-fixed-roadmap: tables-fixedform-corpus
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapJavaT12BatchesUnions'
+	@echo 'tables Java fixed roadmap (T12): union arms, payload-free arms, union arrays and optional arrays pass through the registered target'
+
 # THE FIXED TABLES' SHARED BYTE ORACLE AND HOSTILE INPUT (java/W13, java/R27,
 # java/P3, java/P4; docs/roadmap.sexp fixed-tables). The driven functional tier
 # reads the C++ reference's own byte oracle out of build/fixedform-corpus and
