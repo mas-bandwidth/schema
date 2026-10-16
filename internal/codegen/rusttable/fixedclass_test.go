@@ -472,3 +472,53 @@ table Fleet
 		t.Errorf("the by-value field lost the target's defaults:\n%s", def)
 	}
 }
+
+// TestStdNamedBodyStaysOffTheVariableWire pins the one fixed table the Rust
+// variable form leaves off by name (docs/SPEC-TABLES.md §11): a body named
+// after a standard type the codec spells unqualified (VOLD_nested_append's
+// `fixed table Vec`) would shadow it crate-wide, so it and every table that
+// reaches it are refused on the variable wire with the name in the reason,
+// no `pub struct Vec` is emitted, and the fixed form (§3.4) still is.
+func TestStdNamedBodyStaysOffTheVariableWire(t *testing.T) {
+	t.Parallel()
+
+	src := `package probe
+
+fixed table Vec
+{
+    x int32 = 0
+}
+
+fixed table Lineage
+{
+    v   Vec
+    seq int32 = 0
+}
+
+fixed table Other
+{
+    n int32 = 0
+}
+`
+	vc := newVariableClass(unitFrom(t, src))
+	for _, n := range []string{"Vec", "Lineage"} {
+		if vc.carried(n) || !strings.Contains(vc.reason[n], "Vec") {
+			t.Errorf("%s rides the variable wire or its refusal does not name Vec: %q", n, vc.reason[n])
+		}
+	}
+	if !vc.carried("Other") {
+		t.Errorf("Other reaches no standard name and was refused: %s", vc.reason["Other"])
+	}
+	out := generate(t, src)
+	for name, data := range out {
+		if strings.Contains(string(data), "pub struct Vec ") || strings.Contains(string(data), "pub struct Vec{") {
+			t.Errorf("%s declares a struct named Vec", name)
+		}
+	}
+	if !strings.Contains(string(out["probe_fixed.rs"]), "lineage_fixed_load") {
+		t.Error("the fixed form of Lineage was not emitted")
+	}
+	if !strings.Contains(string(out["probe_table.rs"]), "pub fn other_load(") {
+		t.Error("Other lost its form-1 codec")
+	}
+}

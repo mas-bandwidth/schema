@@ -64,6 +64,20 @@ type variableClass struct {
 	emitted map[string]bool
 }
 
+// rustStdShadowed is every standard-library name the emitted variable codec
+// spells unqualified (std's prelude, the derives it writes, and what its
+// modules import by name). The codec's storage struct for a body is the
+// declaration's own name and the crate root glob-exports it, and a glob import
+// shadows the prelude, so a body by one of these names would break every
+// module that reaches it: test/tables/VOLD_nested_append.schema's
+// `fixed table Vec` is the case. Such a body is left OFF the variable wire, by
+// name (docs/SPEC-TABLES.md §11), and keeps its fixed form (§3.4).
+var rustStdShadowed = map[string]bool{
+	"Any": true, "Box": true, "Clone": true, "Copy": true, "Debug": true,
+	"Default": true, "HashMap": true, "Layout": true, "Option": true,
+	"PartialEq": true, "Rc": true, "Result": true, "String": true, "Vec": true,
+}
+
 // newVariableClass decides the carried set: each table's own fields first,
 // then a fixpoint over what each one reaches, so a table reaching a table this
 // leg does not carry is refused too, at the field that reaches it.
@@ -97,6 +111,10 @@ func newVariableClass(u *ir.Unit) *variableClass {
 	for _, n := range names {
 		st := vStruct(u, n)
 		vc.reason[n] = ""
+		if rustStdShadowed[n] {
+			vc.reason[n] = "name: " + n + " is a Rust standard name the variable codec spells unqualified, and a storage struct by that name would shadow it in every module of the crate"
+			continue
+		}
 		for _, f := range st.Fields {
 			if why := variableFieldConstruct(f); why != "" {
 				// A map value of [N]T of a carried element is the entry's own row
