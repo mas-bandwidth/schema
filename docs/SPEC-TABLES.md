@@ -11651,6 +11651,34 @@ snapshot exists the gate has no referent for those units.
 Beside it, the containment gate of §8.4: not one of the six registry symbols
 appears in any generated file but the view pair.
 
+### 8.8 The `--surface` flag
+
+Go's target can emit a subset of the table surfaces. `generate --lang go
+--surface <list>` takes a comma-separated list drawn from these eight names:
+
+- **wire** — the TABLE-wire codecs (`<Name>Measure/<Name>Save/<Name>Load`)
+  and the reflection descriptors.
+- **fixed** — the fixed-form emitter.
+- **json** — the text form, `<Base>TableJson.go` (§16).
+- **cook** — the cook accelerators, `<Base>Cook.go` (§7).
+- **block** — the block accelerators, `<Base>Block.go` (§19).
+- **view** — the view file, `<Package>View.go` (§8.2–§8.7).
+- **message** — the message-form codecs (§3.3).
+- **retain** — the retain codecs.
+
+The default is the full set: a generate without `--surface` is byte-identical
+to one with `--surface wire,fixed,json,cook,block,view,message,retain`.
+
+**Dependencies resolve automatically and are named here.** `wire` is the
+base surface and cannot be dropped on its own: `json`, `cook`, `block`,
+`message` and `retain` each depend on it (the text walk and the accelerators
+drive off the wire codecs and the descriptor vocabulary), so selecting any of
+them implies `wire`. `fixed` and `view` depend on nothing and are leaves.
+The emitter never refuses a list — it emits exactly the named surfaces plus
+whatever the named ones imply.
+
+Only the Go target honors the flag; any other `--lang` refuses it by name.
+
 ## 9. Relocatable, and built wide
 
 Two properties are load-bearing for real content pipelines, and both are
