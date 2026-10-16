@@ -157,6 +157,7 @@ public final class BenchMixedFixed {
      *  body layout, so every offset here is a constant. */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
         v.sequence = TableFixed.get32(b, at + 0);
+        if (v.sequence > 65535L) { v.sequence = (int) (65535L); r.clamped++; } // bits(16) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < 0L) { q = 0L; r.clamped++; } else if (q > 65535L) { q = 65535L; r.clamped++; }
@@ -172,7 +173,12 @@ public final class BenchMixedFixed {
             v.worldTime = q;
         }
         v.frameTick = TableFixed.get64(b, at + 40);
-        v.serverTime = TableFixed.get32(b, at + 48);
+        if (v.frameTick > 281474976710655L) { v.frameTick = 281474976710655L; r.clamped++; } // bits(48) clamps to 2^N - 1
+        {
+            long q = TableFixed.get32(b, at + 48);
+            if (q < 0L) { q = 0L; r.clamped++; } else if (q > 16776960L) { q = 16776960L; r.clamped++; }
+            v.serverTime = (int) (q);
+        }
         {
             int n = TableFixed.get32(b, at + 52);
             if (n < 0) { n = 0; r.clamped++; } else if (n > 8) { n = 8; r.clamped++; }
@@ -198,6 +204,7 @@ public final class BenchMixedFixed {
             if (n < 0) { n = 0; r.clamped++; } else if (n > 15) { n = 15; r.clamped++; }
             v.playerNameLength = n;
         }
+        if (!TableFixed.textOk(TableFixed.textUtf8, b, at + 1130, v.playerNameLength)) { r.refuse(TableFixed.Reason.textIllFormed); return; }
         System.arraycopy(b, at + 1130, v.playerName, 0, v.playerNameLength);
         if (v.playerNameLength < v.playerName.length) { java.util.Arrays.fill(v.playerName, v.playerNameLength, v.playerName.length, (byte) 0); }
         {
@@ -226,8 +233,13 @@ public final class BenchMixedFixed {
         v.drift = Double.longBitsToDouble(TableFixed.get64(b, at + 1181));
         v.wideKey = new UInt128(TableFixed.get64(b, at + 1197), TableFixed.get64(b, at + 1189));
         v.flux = new Int128(TableFixed.get64(b, at + 1213), TableFixed.get64(b, at + 1205));
-        v.ping = (short) TableFixed.get16(b, at + 1221);
+        {
+            long q = TableFixed.get16(b, at + 1221);
+            if (q < 0L) { q = 0L; r.clamped++; } else if (q > 64000L) { q = 64000L; r.clamped++; }
+            v.ping = (short) (q);
+        }
         v.crcHint = TableFixed.get32(b, at + 1223);
+        if (v.crcHint > 16777215L) { v.crcHint = (int) (16777215L); r.clamped++; } // bits(24) clamps to 2^N - 1
         v.hasExtra = b[at + 1227] != 0;
         {
             long q = TableFixed.get32(b, at + 1228);

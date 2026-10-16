@@ -3284,6 +3284,7 @@ public final class Bench {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 200.0f + 0.5f);
+            if (v > 200L) v = 200L;
         }
         scratch |= v << scratchBits;
         scratchBits += 8;
@@ -3303,6 +3304,7 @@ public final class Bench {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 200.0f + 0.5f);
+            if (v > 200L) v = 200L;
         }
         scratch |= v << scratchBits;
         scratchBits += 8;
@@ -3322,6 +3324,7 @@ public final class Bench {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 200.0f + 0.5f);
+            if (v > 200L) v = 200L;
         }
         scratch |= v << scratchBits;
         scratchBits += 8;

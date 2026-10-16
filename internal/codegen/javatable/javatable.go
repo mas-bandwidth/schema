@@ -409,7 +409,7 @@ func checkNames(u *ir.Unit) error {
 func refuseVariableForm(u *ir.Unit) error {
 	seen := map[string]bool{}
 	for _, st := range u.Tables {
-		if st == nil || st.FixedDeclared || st.IsMapEntry() {
+		if st == nil || st.IsMapEntry() {
 			continue
 		}
 		if err := refuseVariableFormClosure(st, seen); err != nil {
@@ -419,10 +419,8 @@ func refuseVariableForm(u *ir.Unit) error {
 	return nil
 }
 
-// refuseVariableFormClosure walks one variable table and the table elements its
-// unbounded lists reach (§2.9), returning the first construct the variable form
-// does not carry. A pointer to a table outside a list element is a variable
-// construct (§2.1) and is refused on the field that spells it.
+// refuseVariableFormClosure walks one table and the declarations its closure
+// reaches, returning the first construct the variable form does not carry.
 func refuseVariableFormClosure(st *ir.Struct, seen map[string]bool) error {
 	if seen[st.Name] {
 		return nil
@@ -453,63 +451,8 @@ func refuseVariableFormClosure(st *ir.Struct, seen map[string]bool) error {
 	return nil
 }
 
-// cardVariableTables returns the variable tables whose whole closure (the
-// tables their unbounded lists reach, §2.9) sits inside the card boundary: the
-// set the variable-form emitter writes codecs for. A variable table whose
-// closure holds a construct outside the card's slice is left ABSENT — the
-// generate path (generateVariableFiles) never emits its wire, so a pointered
-// variable table (tables/pointers) still emits its accelerators and fixed form
-// without being refused. The by-name refusal is [refuseVariableForm]'s own job,
-// on the card's path.
-func unitNeedsVariableSurface(u *ir.Unit) bool {
-	if len(ir.VariableTables(u)) > 0 {
-		return true
-	}
-	checkFields := func(st *ir.Struct) bool {
-		if st == nil {
-			return false
-		}
-		for _, f := range st.Fields {
-			if f.IsMap() || f.Type.Optional || f.KeyEnum != "" || f.Type.Pointer {
-				return true
-			}
-			if f.Array == ir.ArrayList {
-				return true
-			}
-			if variableUnion(f) != nil {
-				return true
-			}
-			if f.Array == ir.ArrayNone && f.Type.Kind == ir.TNamed {
-				if _, ok := f.Type.Ref.(*ir.Struct); ok {
-					return true
-				}
-			}
-			switch f.Type.Kind {
-			case ir.TFixed, ir.TWString:
-				return true
-			case ir.TInt:
-				if f.Type.Width > 64 {
-					return true
-				}
-			}
-		}
-		return false
-	}
-	for _, st := range u.Tables {
-		if !st.FixedDeclared || checkFields(st) {
-			return true
-		}
-	}
-	for _, st := range u.Structs {
-		if checkFields(st) {
-			return true
-		}
-	}
-	return false
-}
-
 func cardVariableTables(u *ir.Unit) []*ir.Struct {
-	if !unitNeedsVariableSurface(u) {
+	if len(u.Tables) == 0 {
 		return nil
 	}
 	var out []*ir.Struct
