@@ -47,6 +47,7 @@ import (
 	"math/big"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -1449,16 +1450,16 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 		if v.F == nil {
 			continue
 		}
-		g.pf("            case %d: {\n", i+1)
-		g.emitWriteElement(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v."+javaName(v.F.Name), 16)
+		g.pf("            case %d:\n                {\n", i+1)
+		g.emitWriteElement(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v."+javaName(v.F.Name), 20)
 		if arm := fixedFieldBytes(v.F); arm < widest {
-			g.pf("                java.util.Arrays.fill(b, at + %d, at + %d, (byte) 0);\n", tag+arm, tag+widest)
+			g.pf("                    java.util.Arrays.fill(b, at + %d, at + %d, (byte) 0);\n", tag+arm, tag+widest)
 		}
-		g.pf("                break;\n            }\n")
+		g.pf("                    break;\n                }\n")
 	}
-	g.pf("            default: {\n")
-	g.pf("                java.util.Arrays.fill(b, at + %d, at + %d, (byte) 0);\n", tag, tag+widest)
-	g.pf("                break;\n            }\n")
+	g.pf("            default:\n                {\n")
+	g.pf("                    java.util.Arrays.fill(b, at + %d, at + %d, (byte) 0);\n", tag, tag+widest)
+	g.pf("                    break;\n                }\n")
 	g.pf("        }\n    }\n\n")
 
 	g.pf("    /** the tag, then the selected arm; an unselected arm keeps what it held. */\n")
@@ -1481,9 +1482,9 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 		if v.F == nil {
 			continue
 		}
-		g.pf("            case %d: {\n", i+1)
-		g.emitScatterElement(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v."+javaName(v.F.Name), "r", 16, v.F)
-		g.pf("                break;\n            }\n")
+		g.pf("            case %d:\n                {\n", i+1)
+		g.emitScatterElement(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v."+javaName(v.F.Name), "r", 20, v.F)
+		g.pf("                    break;\n                }\n")
 	}
 	g.pf("            default: break;\n")
 	g.pf("        }\n    }\n")
@@ -1542,7 +1543,8 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("    //     offset  16       the layout length (u32 LE), then the layout\n")
 	g.pf("    /** write the header at the front of buffer; answers where the records start. */\n")
 	g.pf("    public static int writeHeader(byte[] buffer) {\n")
-	g.pf("        java.util.Arrays.fill(buffer, 0, TableFixed.fileHeaderBytes, (byte) 0); // the seven reserved bytes, and the rest\n")
+	g.pf("        // the seven reserved bytes, and the rest\n")
+	g.pf("        java.util.Arrays.fill(buffer, 0, TableFixed.fileHeaderBytes, (byte) 0);\n")
 	g.pf("        buffer[0] = TableFixed.form;\n")
 	g.pf("        TableFixed.put64(buffer, TableFixed.hashAt, hash);\n")
 	g.pf("        TableFixed.put32(buffer, TableFixed.fileHeaderBytes, layout.length);\n")
@@ -1925,15 +1927,42 @@ func (g *fixedGen) emitByteChunks(b []byte) {
 	}
 }
 
+// fixedFillRow lays one commented row of a layout literal out the way the
+// formatter does: the elements filled to the column limit, eight columns in,
+// and the comment after the last of them, which moves down a line whenever the
+// comment would not fit behind it.
+func fixedFillRow(elems, comment string) string {
+	parts := strings.Split(elems, ", ")
+	var lines []string
+	cur := ""
+	for i, p := range parts {
+		tok := p + ","
+		if i == len(parts)-1 {
+			tok += " // " + comment
+		}
+		if cur != "" && utf8.RuneCountInString(cur)+1+utf8.RuneCountInString(tok) > 100 {
+			lines = append(lines, cur)
+			cur = ""
+		}
+		if cur == "" {
+			cur = "        " + tok
+		} else {
+			cur += " " + tok
+		}
+	}
+	lines = append(lines, cur)
+	return strings.Join(lines, "\n") + "\n"
+}
+
 func (g *fixedGen) emitByteArray(b []byte, entries []fixedLayoutEntry) {
 	if len(entries) > 0 {
 		// the layout, entry by entry, so a reader of the generated source can
 		// see the walk rather than a wall of hex
-		g.pf("        %s, // %d entries\n", fixedBytesLine(b[:4]), len(entries))
+		g.pf("%s", fixedFillRow(fixedBytesLine(b[:4]), fmt.Sprintf("%d entries", len(entries))))
 		at := 4
 		for _, e := range entries {
-			g.pf("        %s, // %s: kind %d, size %d, %d %s\n",
-				fixedBytesLine(b[at:at+17]), e.note, e.kind, e.size, e.children, fixedChildWord(e.children))
+			g.pf("%s", fixedFillRow(fixedBytesLine(b[at:at+17]),
+				fmt.Sprintf("%s: kind %d, size %d, %d %s", e.note, e.kind, e.size, e.children, fixedChildWord(e.children))))
 			at += 17
 		}
 		return

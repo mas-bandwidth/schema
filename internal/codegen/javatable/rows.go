@@ -248,15 +248,15 @@ func (g *rowGen) emitBlockRecordInfo(name string, ml *ir.MemberLayout) {
 	g.f("    private static final class BlockInfoHolder {\n")
 	g.f("        static final TableBlockInfo INFO = build();\n\n")
 	g.f("        private static TableBlockInfo build() {\n")
-	g.f("        TableBlockInfo info = new TableBlockInfo();\n")
-	g.f("        info.name = %q; info.buildVersion = BuildVersion.value; info.size = %d; info.align = %d; info.numFields = %d;\n",
+	g.f("            TableBlockInfo info = new TableBlockInfo();\n")
+	g.f("            info.name = %q; info.buildVersion = BuildVersion.value; info.size = %d; info.align = %d; info.numFields = %d;\n",
 		name, ml.Size, ml.Align, len(ml.Fields))
-	g.f("        TableBlockFieldInfo[] fields = new TableBlockFieldInfo[%d];\n", len(ml.Fields))
+	g.f("            TableBlockFieldInfo[] fields = new TableBlockFieldInfo[%d];\n", len(ml.Fields))
 	for i, fl := range ml.Fields {
-		g.f("        fields[%d] = %s;\n", i, g.blockFieldInfo(fl, false, nil))
+		g.f("            fields[%d] = %s;\n", i, g.blockFieldInfo(fl, false, nil))
 	}
-	g.f("        info.fields = fields;\n")
-	g.f("        return info;\n        }\n    }\n\n")
+	g.f("            info.fields = fields;\n")
+	g.f("            return info;\n        }\n    }\n\n")
 	g.f("    public static TableBlockInfo blockInfo() { return BlockInfoHolder.INFO; }\n\n")
 }
 
@@ -299,15 +299,15 @@ func (g *rowGen) emitCookRecordInfo(name string, ml *ir.MemberLayout) {
 	g.f("    private static final class CookInfoHolder {\n")
 	g.f("        static final TableCookInfo INFO = build();\n\n")
 	g.f("        private static TableCookInfo build() {\n")
-	g.f("        TableCookInfo info = new TableCookInfo();\n")
-	g.f("        info.name = %q; info.size = %d; info.align = %d; info.numFields = %d;\n",
+	g.f("            TableCookInfo info = new TableCookInfo();\n")
+	g.f("            info.name = %q; info.size = %d; info.align = %d; info.numFields = %d;\n",
 		name, ml.Size, ml.Align, len(ml.Fields))
-	g.f("        TableCookFieldInfo[] fields = new TableCookFieldInfo[%d];\n", len(ml.Fields))
+	g.f("            TableCookFieldInfo[] fields = new TableCookFieldInfo[%d];\n", len(ml.Fields))
 	for i, fl := range ml.Fields {
-		g.f("        fields[%d] = %s;\n", i, g.cookFieldInfo(fl))
+		g.f("            fields[%d] = %s;\n", i, g.cookFieldInfo(fl))
 	}
-	g.f("        info.fields = fields;\n")
-	g.f("        return info;\n        }\n    }\n\n")
+	g.f("            info.fields = fields;\n")
+	g.f("            return info;\n        }\n    }\n\n")
 	g.f("    public static TableCookInfo cookInfo() { return CookInfoHolder.INFO; }\n\n")
 }
 

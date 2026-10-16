@@ -245,14 +245,17 @@ tables-java-runtime-home-negative-control: bin/schema tables-java-runtime-home
 # -- to what the pinned formatter writes, in the style the emitters write.
 #
 # THE FORMATTER IS PINNED beside the JDK, and the recipe never fetches it:
-#   google-java-format 1.28.0 (google/google-java-format, the all-deps jar)
-#   url:    https://github.com/google/google-java-format/releases/download/v1.28.0/google-java-format-1.28.0-all-deps.jar
-#   sha256: OWED. It was on neither Linux bench on 2026-10-15, so the hash is
-#           recorded by the fleet admin when the jar is installed, never typed here.
-#   put the jar at dist/google-java-format-1.28.0-all-deps.jar (gitignored), or
-#   install a launcher and pass GOOGLE_JAVA_FORMAT=<launcher>. It runs on the
-#   pinned JDK above; the six --add-exports are the ones its README names for
-#   JDK 16 and later.
+#   google-java-format 1.37.0 (google/google-java-format, the all-deps jar)
+#   url:    https://github.com/google/google-java-format/releases/download/v1.37.0/google-java-format-1.37.0-all-deps.jar
+#   sha256: 834b2a0c38cb774953322a84b5ca3f2f40dd3156650b3cd44d3b744345962f7a
+#           (the jar the fleet toolchains role installed on hetzner1 and hetzner2,
+#           ~/sdk/google-java-format-1.37.0/, measured with sha256sum 2026-10-15)
+#   Put the jar at dist/google-java-format-1.37.0-all-deps.jar (gitignored) and
+#   it runs on the pinned JDK above, with the six --add-exports its README names
+#   for JDK 16 and later. Without that jar the gate runs the `google-java-format`
+#   launcher on PATH (the benches carry it in ~/sdk/bin), and the probe below
+#   holds the launcher to the same release. GOOGLE_JAVA_FORMAT=<launcher>
+#   overrides both.
 #
 # THE STYLE IS --aosp: four-space indent, which is what every emitter writes.
 # It is a style option of the same formatter, not a looser tool; the choice and
@@ -261,21 +264,28 @@ tables-java-runtime-home-negative-control: bin/schema tables-java-runtime-home
 #
 # THE GATE CANNOT SKIP SILENTLY. A formatter that does not resolve at the pinned
 # release is a FAILURE, naming the tool, under SCHEMA_REQUIRE_CORPUS=1 or
-# JAVA_REQUIRE_FORMATTER=1; without either it prints SKIP naming both. And a
-# glob that matches nothing is not a clean tree: the gate counts the files it
-# hands the formatter and refuses below JAVA_CLEAN_MIN.
-GOOGLE_JAVA_FORMAT_VERSION := 1.28.0
+# JAVA_REQUIRE_FORMATTER=1, and `make test-java` sets the second: the leg's own
+# pass never skips its format gate. Run alone without either, it prints SKIP
+# naming both. And a glob that matches nothing is not a clean tree: the gate
+# counts the files it hands the formatter and refuses below JAVA_CLEAN_MIN.
+GOOGLE_JAVA_FORMAT_VERSION := 1.37.0
+GOOGLE_JAVA_FORMAT_SHA256 := 834b2a0c38cb774953322a84b5ca3f2f40dd3156650b3cd44d3b744345962f7a
 GOOGLE_JAVA_FORMAT_JAR ?= $(CURDIR)/dist/google-java-format-$(GOOGLE_JAVA_FORMAT_VERSION)-all-deps.jar
 GOOGLE_JAVA_FORMAT_EXPORTS := $(foreach p,api code file parser tree util,--add-exports=jdk.compiler/com.sun.tools.javac.$(p)=ALL-UNNAMED)
+ifneq ($(wildcard $(GOOGLE_JAVA_FORMAT_JAR)),)
 GOOGLE_JAVA_FORMAT ?= $(JAVA) $(GOOGLE_JAVA_FORMAT_EXPORTS) -jar $(GOOGLE_JAVA_FORMAT_JAR)
+else
+GOOGLE_JAVA_FORMAT ?= google-java-format
+endif
 JAVA_FORMAT_STYLE ?= --aosp
 # THE PROBE asks the formatter its version and wants the pinned release's own
 # line back, whole. A substring match is not enough: `java -jar` over a MISSING
-# jar answers "Unable to access jarfile .../google-java-format-1.28.0-all-deps.jar",
+# jar answers "Unable to access jarfile .../google-java-format-1.37.0-all-deps.jar",
 # which carries the version in its path. The first draft of this probe passed
-# on exactly that, so the missing-formatter control now plants that case.
+# on exactly that, so the missing-formatter control plants that case.
 java_format_probe = $(GOOGLE_JAVA_FORMAT) --version 2>&1 | grep -qx 'google-java-format: Version $(GOOGLE_JAVA_FORMAT_VERSION)'
-JAVA_FORMAT_REQUIRED := $(if $(filter 1,$(SCHEMA_REQUIRE_CORPUS) $(JAVA_REQUIRE_FORMATTER)),1,)
+# deferred, so test-java's own JAVA_REQUIRE_FORMATTER (below) reaches the gate
+JAVA_FORMAT_REQUIRED = $(if $(filter 1,$(SCHEMA_REQUIRE_CORPUS) $(JAVA_REQUIRE_FORMATTER)),1,)
 
 # THE PACKET-WIRE UNITS, generated fresh from the emitter rather than read off
 # the committed generated/ tree, so the gate watches internal/codegen/java and
@@ -327,6 +337,9 @@ tables-java-clean: build/tables-generated-java/.stamp build/java-clean-packet/.s
 	fi; \
 	echo "tables Java: google-java-format $(GOOGLE_JAVA_FORMAT_VERSION) $(JAVA_FORMAT_STYLE) clean over $$n generated Java files ($(JAVA_CLEAN_PATHS))"
 test-java: tables-java-clean
+# the leg's own pass REQUIRES the formatter: a test-java that skipped its
+# format gate would report a clean leg it never checked.
+test-java: JAVA_REQUIRE_FORMATTER = 1
 test-java: tables-java-t14
 
 # THE MEASUREMENT behind the style choice (docs/JAVA-DIALECT.md): the same
@@ -402,7 +415,7 @@ JAVA_FORMAT_MISSING := build/java-format-missing
 tables-java-clean-formatter-missing-negative-control: build/tables-generated-java/.stamp build/java-clean-packet/.stamp
 	@rm -rf $(JAVA_FORMAT_MISSING) && mkdir -p $(JAVA_FORMAT_MISSING)
 	@if $(MAKE) --no-print-directory tables-java-clean SCHEMA_REQUIRE_CORPUS=1 JAVA_REQUIRE_FORMATTER= \
-			GOOGLE_JAVA_FORMAT_JAR=$(CURDIR)/$(JAVA_FORMAT_MISSING)/google-java-format-$(GOOGLE_JAVA_FORMAT_VERSION)-all-deps.jar > $(JAVA_FORMAT_MISSING)/required.out 2>&1; then \
+			GOOGLE_JAVA_FORMAT="$(JAVA) $(GOOGLE_JAVA_FORMAT_EXPORTS) -jar $(CURDIR)/$(JAVA_FORMAT_MISSING)/google-java-format-$(GOOGLE_JAVA_FORMAT_VERSION)-all-deps.jar" > $(JAVA_FORMAT_MISSING)/required.out 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: tables-java-clean passed under SCHEMA_REQUIRE_CORPUS=1 with no formatter"; cat $(JAVA_FORMAT_MISSING)/required.out; exit 1; \
 	fi
 	@grep -q "REFUSES: google-java-format $(GOOGLE_JAVA_FORMAT_VERSION) does not resolve" $(JAVA_FORMAT_MISSING)/required.out || \

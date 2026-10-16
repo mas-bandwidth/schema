@@ -187,14 +187,14 @@ const tableCookStorageSource = `// What a cooked SLOT holds, which is not always
 // (docs/SPEC-TABLES.md §7.2), where the wire rides the variant-name hash. A walker
 // reads a slot with the width elemSize gives and the signedness this names.
 public enum TableCookStorage {
-    RECORD,    // a nested record, or an array of them: descend through it
+    RECORD, // a nested record, or an array of them: descend through it
     REFERENCE, // an eight-byte SIGNED SELF-RELATIVE delta slot (§6.3)
     BOOL,
     SIGNED,
-    UNSIGNED,  // an unsigned integer, an enum ordinal, a bits(N), a flags mask
+    UNSIGNED, // an unsigned integer, an enum ordinal, a bits(N), a flags mask
     FLOAT,
-    STRING,    // char[N + 1] with an int32 used length beside it
-    BYTES,     // uint8[N] with an int32 used length beside it
+    STRING, // char[N + 1] with an int32 used length beside it
+    BYTES, // uint8[N] with an int32 used length beside it
 }
 `
 
@@ -243,29 +243,43 @@ const tableCookFieldInfoSource = `// One cooked field's reflection descriptor: t
 // where it sits, how big it is, whether it is a POINTER EDGE, the bound its
 // COUNT COMPANION is checked against, and the record it names.
 public final class TableCookFieldInfo {
-    /** the record this field NAMES, behind a supplier so the table stays
-     *  constructible in any order. null when the field is a scalar. Following it
-     *  is how a walker DESCENDS — a pointer's target, a by-value nesting, and an
-     *  array's element are all reached through this one column. */
-    public interface InfoRef { TableCookInfo get(); }
+    /**
+     * the record this field NAMES, behind a supplier so the table stays constructible in any order.
+     * null when the field is a scalar. Following it is how a walker DESCENDS — a pointer's target,
+     * a by-value nesting, and an array's element are all reached through this one column.
+     */
+    public interface InfoRef {
+        TableCookInfo get();
+    }
 
     public String name;
-    public int offset;        // the field's offset in the record this descriptor describes
-    public int size;          // its whole storage there, companions included
-    public int elemSize;      // one element's size, for an array; the field's own otherwise
+    public int offset; // the field's offset in the record this descriptor describes
+    public int size; // its whole storage there, companions included
+    public int elemSize; // one element's size, for an array; the field's own otherwise
     public boolean isArray;
-    public int arrayBound;    // the DECLARED bound: a counted array's N, a string's or bytes' length
+    public int arrayBound; // the DECLARED bound: a counted array's N, a string's or bytes' length
     public boolean isPointer; // an eight-byte SIGNED SELF-RELATIVE delta slot (§6.3)
-    public int countOffset;   // the count companion's offset, or -1 when the field has none
+    public int countOffset; // the count companion's offset, or -1 when the field has none
     public int presentOffset; // an optional's presence bool, or -1
     public TableCookStorage storage; // what one slot HOLDS, at elemSize bytes
     public InfoRef recordRef;
 
-    public TableCookInfo record() { return recordRef == null ? null : recordRef.get(); }
+    public TableCookInfo record() {
+        return recordRef == null ? null : recordRef.get();
+    }
 
-    public static TableCookFieldInfo of(String name, int offset, int size, int elemSize, boolean isArray,
-                                        int arrayBound, boolean isPointer, int countOffset,
-                                        int presentOffset, TableCookStorage storage, InfoRef record) {
+    public static TableCookFieldInfo of(
+            String name,
+            int offset,
+            int size,
+            int elemSize,
+            boolean isArray,
+            int arrayBound,
+            boolean isPointer,
+            int countOffset,
+            int presentOffset,
+            TableCookStorage storage,
+            InfoRef record) {
         TableCookFieldInfo f = new TableCookFieldInfo();
         f.name = name;
         f.offset = offset;
@@ -352,7 +366,8 @@ func (g *cookGen) emit() {
 	g.f("        this.data = data;\n        this.region = region;\n        this.regionLength = regionLength;\n    }\n\n")
 	g.f("    // §7.1's constants, so a consumer reading this file has the facts and not a\n")
 	g.f("    // description of them.\n")
-	g.f("    public static final long regionAlignment = %dL; // the greatest alignof in the region, floor eight\n", align)
+	g.f("    // the greatest alignof in the region, floor eight\n")
+	g.f("    public static final long regionAlignment = %dL;\n", align)
 	g.f("    public static final long rootSize = %dL;\n", ml.Size)
 	g.f("    public static final long rootAlign = %dL;\n\n", ml.Align)
 	g.f("    public byte[] data() { return data; }\n")
@@ -539,9 +554,14 @@ func emitCookLayoutFile(u *ir.Unit, ck *cookUnit, set *records, withBlock bool) 
     private static void number(String what, int accessors, int descriptors) {
         if (accessors != descriptors) {
             throw new IllegalStateException(
-                    "schema cook layout: " + what + " is " + accessors + " through the accessors and " +
-                    descriptors + " through the descriptors — the two halves of one generated layout " +
-                    "disagree about the bytes (docs/SPEC-TABLES.md §20.3)");
+                    "schema cook layout: "
+                            + what
+                            + " is "
+                            + accessors
+                            + " through the accessors and "
+                            + descriptors
+                            + " through the descriptors — the two halves of one generated layout "
+                            + "disagree about the bytes (docs/SPEC-TABLES.md §20.3)");
         }
     }
 }

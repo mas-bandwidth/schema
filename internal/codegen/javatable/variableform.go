@@ -46,7 +46,7 @@ public final class TableVariable {
     // widened. A refusal (an unknown form byte) moves none of them. Retained and
     // retain_lost (§6.6) accumulate across a retained load and save.
     public static final class Report {
-public int unknown;
+        public int unknown;
         public int kindMismatch;
         public int clamped;
         public boolean malformed;
@@ -77,9 +77,13 @@ public int unknown;
             this.limit = buf.length;
         }
 
-        public boolean has(int n) { return n >= 0 && (long) off + (long) n <= limit; }
+        public boolean has(int n) {
+            return n >= 0 && (long) off + (long) n <= limit;
+        }
 
-        public int get8() { return buf[off++] & 0xff; }
+        public int get8() {
+            return buf[off++] & 0xff;
+        }
 
         public int get16() {
             int v = (buf[off] & 0xff) | (buf[off + 1] & 0xff) << 8;
@@ -88,15 +92,20 @@ public int unknown;
         }
 
         public int get32() {
-            int v = (buf[off] & 0xff) | (buf[off + 1] & 0xff) << 8
-                    | (buf[off + 2] & 0xff) << 16 | (buf[off + 3] & 0xff) << 24;
+            int v =
+                    (buf[off] & 0xff)
+                            | (buf[off + 1] & 0xff) << 8
+                            | (buf[off + 2] & 0xff) << 16
+                            | (buf[off + 3] & 0xff) << 24;
             off += 4;
             return v;
         }
 
         public long get64() {
             long v = 0;
-            for (int i = 0; i < 8; i++) { v |= (long) (buf[off + i] & 0xff) << (8 * i); }
+            for (int i = 0; i < 8; i++) {
+                v |= (long) (buf[off + i] & 0xff) << (8 * i);
+            }
             off += 8;
             return v;
         }
@@ -110,12 +119,27 @@ public int unknown;
             int shift = 0;
             int start = off;
             for (int i = 0; i < 10; i++) {
-                if (!has(1)) { off = start; report.malformed = true; fail = true; return 0; }
+                if (!has(1)) {
+                    off = start;
+                    report.malformed = true;
+                    fail = true;
+                    return 0;
+                }
                 int b = get8();
-                if (shift == 63 && (b & 0xfe) != 0) { off = start; report.malformed = true; fail = true; return 0; }
+                if (shift == 63 && (b & 0xfe) != 0) {
+                    off = start;
+                    report.malformed = true;
+                    fail = true;
+                    return 0;
+                }
                 v |= (long) (b & 0x7f) << shift;
                 if ((b & 0x80) == 0) {
-                    if (i > 0 && b == 0) { off = start; report.malformed = true; fail = true; return 0; }
+                    if (i > 0 && b == 0) {
+                        off = start;
+                        report.malformed = true;
+                        fail = true;
+                        return 0;
+                    }
                     return v;
                 }
                 shift += 7;
@@ -129,7 +153,11 @@ public int unknown;
         // resolve turns a reference into the id it names, or -1 when it is past
         // the table (§3).
         public long resolve(long ref) {
-            if (ref <= 0 || ref > ids.length) { report.malformed = true; fail = true; return -1; }
+            if (ref <= 0 || ref > ids.length) {
+                report.malformed = true;
+                fail = true;
+                return -1;
+            }
             return ids[(int) ref - 1];
         }
 
@@ -137,7 +165,11 @@ public int unknown;
         // bounded by its own L, exactly as a nested body is bounded (§3).
         public Reader body() {
             long n = leb();
-            if (fail || !has((int) n)) { report.malformed = true; fail = true; return null; }
+            if (fail || !has((int) n)) {
+                report.malformed = true;
+                fail = true;
+                return null;
+            }
             Reader sub = new Reader(buf, ids, report);
             sub.off = off;
             sub.limit = off + (int) n;
@@ -150,33 +182,103 @@ public int unknown;
         // one past the closed set — and on a payload the framing cannot cover.
         public void skip(int kind) {
             switch (kind) {
-                case 1: case 2: case 6: case 20: case 25:
-                    if (has(1)) { off += 1; } else { report.malformed = true; fail = true; }
+                case 1:
+                case 2:
+                case 6:
+                case 20:
+                case 25:
+                    if (has(1)) {
+                        off += 1;
+                    } else {
+                        report.malformed = true;
+                        fail = true;
+                    }
                     break;
-                case 3: case 7: case 21: case 26:
-                    if (has(2)) { off += 2; } else { report.malformed = true; fail = true; }
+                case 3:
+                case 7:
+                case 21:
+                case 26:
+                    if (has(2)) {
+                        off += 2;
+                    } else {
+                        report.malformed = true;
+                        fail = true;
+                    }
                     break;
-                case 4: case 8: case 10: case 22: case 27:
-                    if (has(4)) { off += 4; } else { report.malformed = true; fail = true; }
+                case 4:
+                case 8:
+                case 10:
+                case 22:
+                case 27:
+                    if (has(4)) {
+                        off += 4;
+                    } else {
+                        report.malformed = true;
+                        fail = true;
+                    }
                     break;
-                case 5: case 9: case 11: case 23: case 28:
-                    if (has(8)) { off += 8; } else { report.malformed = true; fail = true; }
+                case 5:
+                case 9:
+                case 11:
+                case 23:
+                case 28:
+                    if (has(8)) {
+                        off += 8;
+                    } else {
+                        report.malformed = true;
+                        fail = true;
+                    }
                     break;
-                case 18: case 19: case 24: case 29:
-                    if (has(16)) { off += 16; } else { report.malformed = true; fail = true; }
+                case 18:
+                case 19:
+                case 24:
+                case 29:
+                    if (has(16)) {
+                        off += 16;
+                    } else {
+                        report.malformed = true;
+                        fail = true;
+                    }
                     break;
-                case 17: case 30: leb(); break;
-                case 12: case 13: case 14: case 16: case 31: case 32: case 33: {
-                    long n = leb();
-                    if (!fail && has((int) n)) { off += (int) n; } else { report.malformed = true; fail = true; }
+                case 17:
+                case 30:
+                    leb();
                     break;
-                }
-                case 15: {
-                    long arm = leb();
-                    if (arm != 0) { int k = get8(); long n = leb(); if (!fail && has((int) n)) { off += (int) n; } else { report.malformed = true; fail = true; } }
-                    break;
-                }
-                default: report.malformed = true; fail = true;
+                case 12:
+                case 13:
+                case 14:
+                case 16:
+                case 31:
+                case 32:
+                case 33:
+                    {
+                        long n = leb();
+                        if (!fail && has((int) n)) {
+                            off += (int) n;
+                        } else {
+                            report.malformed = true;
+                            fail = true;
+                        }
+                        break;
+                    }
+                case 15:
+                    {
+                        long arm = leb();
+                        if (arm != 0) {
+                            int k = get8();
+                            long n = leb();
+                            if (!fail && has((int) n)) {
+                                off += (int) n;
+                            } else {
+                                report.malformed = true;
+                                fail = true;
+                            }
+                        }
+                        break;
+                    }
+                default:
+                    report.malformed = true;
+                    fail = true;
             }
         }
     }
@@ -187,11 +289,21 @@ public int unknown;
         public final long[] entries;
         public int count;
         public boolean overflow;
-        public Ids(int cap) { entries = new long[cap]; }
+
+        public Ids(int cap) {
+            entries = new long[cap];
+        }
 
         public long ref(long id) {
-            for (int i = 0; i < count; i++) { if (entries[i] == id) { return i + 1; } }
-            if (count >= entries.length) { overflow = true; return 0; }
+            for (int i = 0; i < count; i++) {
+                if (entries[i] == id) {
+                    return i + 1;
+                }
+            }
+            if (count >= entries.length) {
+                overflow = true;
+                return 0;
+            }
             entries[count++] = id;
             return count;
         }
@@ -213,48 +325,70 @@ public int unknown;
         // sub returns a writer over the SAME id table: a list element's body is
         // written into scratch and framed by its caller, but its field ids
         // intern into the one table the whole file shares (§3).
-        public Writer sub(byte[] buf) { return new Writer(buf, ids); }
+        public Writer sub(byte[] buf) {
+            return new Writer(buf, ids);
+        }
 
         public void put8(int b) {
-            if (off >= buf.length) { overflow = true; return; }
+            if (off >= buf.length) {
+                overflow = true;
+                return;
+            }
             buf[off++] = (byte) b;
         }
 
         public void put16(int v) {
-            for (int i = 0; i < 2; i++) { put8((v >>> (8 * i)) & 0xff); }
+            for (int i = 0; i < 2; i++) {
+                put8((v >>> (8 * i)) & 0xff);
+            }
         }
 
         public void put32(int v) {
-            for (int i = 0; i < 4; i++) { put8((v >>> (8 * i)) & 0xff); }
+            for (int i = 0; i < 4; i++) {
+                put8((v >>> (8 * i)) & 0xff);
+            }
         }
 
         public void put64(long v) {
-            for (int i = 0; i < 8; i++) { put8((int) (v >>> (8 * i)) & 0xff); }
+            for (int i = 0; i < 8; i++) {
+                put8((int) (v >>> (8 * i)) & 0xff);
+            }
         }
 
         public void putLeb(long v) {
             while (true) {
                 int b = (int) (v & 0x7f);
                 v >>>= 7;
-                if (v != 0) { put8(b | 0x80); } else { put8(b); break; }
+                if (v != 0) {
+                    put8(b | 0x80);
+                } else {
+                    put8(b);
+                    break;
+                }
             }
         }
 
         public void putBytes(byte[] b, int at, int len) {
-            for (int i = 0; i < len; i++) { put8(b[at + i] & 0xff); }
+            for (int i = 0; i < len; i++) {
+                put8(b[at + i] & 0xff);
+            }
         }
 
         // ref interns an id into the table in first-use order and returns its
         // reference (1-based).
         public long ref(long id) {
             long r = ids.ref(id);
-            if (ids.overflow) { overflow = true; }
+            if (ids.overflow) {
+                overflow = true;
+            }
             return r;
         }
 
         // trailer writes the id table: the entries, then the fixed u64 count.
         public void trailer() {
-            for (int i = 0; i < ids.count; i++) { put64(ids.entries[i]); }
+            for (int i = 0; i < ids.count; i++) {
+                put64(ids.entries[i]);
+            }
             put64(ids.count);
         }
     }
@@ -266,29 +400,48 @@ public int unknown;
     // bytes no field claims — is malformed for the whole wire, and open says
     // so before any value is read.
     public static Reader open(byte[] data, Report report) {
-        if (data.length < 1) { report.malformed = true; return null; }
+        if (data.length < 1) {
+            report.malformed = true;
+            return null;
+        }
         int form = data[0] & 0xff;
         if (form != 1) {
             report.refused = true;
             report.reason = "unsupported wire form";
             return null;
         }
-        if (data.length < 9) { report.malformed = true; return null; }
+        if (data.length < 9) {
+            report.malformed = true;
+            return null;
+        }
         long count = 0;
-        for (int i = 0; i < 8; i++) { count |= (long) (data[data.length - 8 + i] & 0xff) << (8 * i); }
-        if (count < 0 || count > (data.length - 9) / 8) { report.malformed = true; return null; }
+        for (int i = 0; i < 8; i++) {
+            count |= (long) (data[data.length - 8 + i] & 0xff) << (8 * i);
+        }
+        if (count < 0 || count > (data.length - 9) / 8) {
+            report.malformed = true;
+            return null;
+        }
         long[] ids = new long[(int) count];
         int base = data.length - 8 - (int) count * 8;
         for (int i = 0; i < count; i++) {
             long id = 0;
-            for (int j = 0; j < 8; j++) { id |= (long) (data[base + i * 8 + j] & 0xff) << (8 * j); }
+            for (int j = 0; j < 8; j++) {
+                id |= (long) (data[base + i * 8 + j] & 0xff) << (8 * j);
+            }
             for (int j = 0; j < i; j++) {
-                if (ids[j] == id) { report.malformed = true; return null; }
+                if (ids[j] == id) {
+                    report.malformed = true;
+                    return null;
+                }
             }
             ids[i] = id;
         }
         int end = bodyExtent(data, ids, 1, base);
-        if (end >= 0 && end != base) { report.malformed = true; return null; }
+        if (end >= 0 && end != base) {
+            report.malformed = true;
+            return null;
+        }
         Reader r = new Reader(data, ids, report);
         r.off = 1;
         r.limit = base;
@@ -303,15 +456,25 @@ public int unknown;
     public static int bodyExtent(byte[] buf, long[] ids, int off, int limit) {
         while (off < limit) {
             long[] ref = lebAt(buf, off, limit);
-            if (ref[0] < 0) { return -1; }
+            if (ref[0] < 0) {
+                return -1;
+            }
             off = (int) ref[1];
-            if (ref[0] == 0) { return off; }
-            if (ref[0] > ids.length) { return -1; }
-            if (off >= limit) { return -1; }
+            if (ref[0] == 0) {
+                return off;
+            }
+            if (ref[0] > ids.length) {
+                return -1;
+            }
+            if (off >= limit) {
+                return -1;
+            }
             int kind = buf[off] & 0xff;
             off++;
             off = skipExtent(buf, kind, off, limit);
-            if (off < 0) { return -1; }
+            if (off < 0) {
+                return -1;
+            }
         }
         return -1;
     }
@@ -324,13 +487,19 @@ public int unknown;
         long v = 0;
         int shift = 0;
         for (int i = 0; ; i++) {
-            if (off + i >= limit || i >= 10) { return new long[]{-1, -1}; }
+            if (off + i >= limit || i >= 10) {
+                return new long[] {-1, -1};
+            }
             int b = buf[off + i] & 0xff;
-            if (i == 9 && b > 1) { return new long[]{-1, -1}; }
+            if (i == 9 && b > 1) {
+                return new long[] {-1, -1};
+            }
             v |= (long) (b & 0x7f) << shift;
             if ((b & 0x80) == 0) {
-                if (i > 0 && b == 0) { return new long[]{-1, -1}; }
-                return new long[]{v, off + i + 1};
+                if (i > 0 && b == 0) {
+                    return new long[] {-1, -1};
+                }
+                return new long[] {v, off + i + 1};
             }
             shift += 7;
         }
@@ -343,36 +512,79 @@ public int unknown;
     public static int skipExtent(byte[] buf, int kind, int off, int limit) {
         int w;
         switch (kind) {
-            case 1: case 2: case 6: case 20: case 25:
-                w = 1; break;
-            case 3: case 7: case 21: case 26:
-                w = 2; break;
-            case 4: case 8: case 10: case 22: case 27:
-                w = 4; break;
-            case 5: case 9: case 11: case 23: case 28:
-                w = 8; break;
-            case 18: case 19: case 24: case 29:
-                w = 16; break;
-            case 17: case 30: {
-                long[] v = lebAt(buf, off, limit);
-                return v[0] < 0 ? -1 : (int) v[1];
-            }
-            case 12: case 13: case 14: case 16: case 31: case 32: case 33: {
-                long[] v = lebAt(buf, off, limit);
-                if (v[0] < 0 || v[0] > limit - (int) v[1]) { return -1; }
-                return (int) v[1] + (int) v[0];
-            }
-            case 15: {
-                long[] arm = lebAt(buf, off, limit);
-                if (arm[0] < 0) { return -1; }
-                if (arm[0] == 0) { return (int) arm[1]; }
-                int at = (int) arm[1];
-                if (at >= limit) { return -1; }
-                at++; // the arm's kind byte
-                long[] n = lebAt(buf, at, limit);
-                if (n[0] < 0 || n[0] > limit - (int) n[1]) { return -1; }
-                return (int) n[1] + (int) n[0];
-            }
+            case 1:
+            case 2:
+            case 6:
+            case 20:
+            case 25:
+                w = 1;
+                break;
+            case 3:
+            case 7:
+            case 21:
+            case 26:
+                w = 2;
+                break;
+            case 4:
+            case 8:
+            case 10:
+            case 22:
+            case 27:
+                w = 4;
+                break;
+            case 5:
+            case 9:
+            case 11:
+            case 23:
+            case 28:
+                w = 8;
+                break;
+            case 18:
+            case 19:
+            case 24:
+            case 29:
+                w = 16;
+                break;
+            case 17:
+            case 30:
+                {
+                    long[] v = lebAt(buf, off, limit);
+                    return v[0] < 0 ? -1 : (int) v[1];
+                }
+            case 12:
+            case 13:
+            case 14:
+            case 16:
+            case 31:
+            case 32:
+            case 33:
+                {
+                    long[] v = lebAt(buf, off, limit);
+                    if (v[0] < 0 || v[0] > limit - (int) v[1]) {
+                        return -1;
+                    }
+                    return (int) v[1] + (int) v[0];
+                }
+            case 15:
+                {
+                    long[] arm = lebAt(buf, off, limit);
+                    if (arm[0] < 0) {
+                        return -1;
+                    }
+                    if (arm[0] == 0) {
+                        return (int) arm[1];
+                    }
+                    int at = (int) arm[1];
+                    if (at >= limit) {
+                        return -1;
+                    }
+                    at++; // the arm's kind byte
+                    long[] n = lebAt(buf, at, limit);
+                    if (n[0] < 0 || n[0] > limit - (int) n[1]) {
+                        return -1;
+                    }
+                    return (int) n[1] + (int) n[0];
+                }
             default:
                 return -1;
         }
@@ -388,24 +600,47 @@ public int unknown;
         int end = off + len;
         while (i < end) {
             int c = b[i] & 0xff;
-            if (c == 0) { return false; }
-            if (c < 0x80) { i++; continue; }
+            if (c == 0) {
+                return false;
+            }
+            if (c < 0x80) {
+                i++;
+                continue;
+            }
             if (c >= 0xc2 && c <= 0xdf) {
-                if (i + 1 >= end || (b[i + 1] & 0xc0) != 0x80) { return false; }
+                if (i + 1 >= end || (b[i + 1] & 0xc0) != 0x80) {
+                    return false;
+                }
                 i += 2;
             } else if (c >= 0xe0 && c <= 0xef) {
-                if (i + 2 >= end) { return false; }
+                if (i + 2 >= end) {
+                    return false;
+                }
                 int c1 = b[i + 1] & 0xff, c2 = b[i + 2] & 0xff;
-                if ((c1 & 0xc0) != 0x80 || (c2 & 0xc0) != 0x80) { return false; }
-                if (c == 0xe0 && c1 < 0xa0) { return false; }
-                if (c == 0xed && c1 > 0x9f) { return false; }
+                if ((c1 & 0xc0) != 0x80 || (c2 & 0xc0) != 0x80) {
+                    return false;
+                }
+                if (c == 0xe0 && c1 < 0xa0) {
+                    return false;
+                }
+                if (c == 0xed && c1 > 0x9f) {
+                    return false;
+                }
                 i += 3;
             } else if (c >= 0xf0 && c <= 0xf4) {
-                if (i + 3 >= end) { return false; }
+                if (i + 3 >= end) {
+                    return false;
+                }
                 int c1 = b[i + 1] & 0xff, c2 = b[i + 2] & 0xff, c3 = b[i + 3] & 0xff;
-                if ((c1 & 0xc0) != 0x80 || (c2 & 0xc0) != 0x80 || (c3 & 0xc0) != 0x80) { return false; }
-                if (c == 0xf0 && c1 < 0x90) { return false; }
-                if (c == 0xf4 && c1 > 0x8f) { return false; }
+                if ((c1 & 0xc0) != 0x80 || (c2 & 0xc0) != 0x80 || (c3 & 0xc0) != 0x80) {
+                    return false;
+                }
+                if (c == 0xf0 && c1 < 0x90) {
+                    return false;
+                }
+                if (c == 0xf4 && c1 > 0x8f) {
+                    return false;
+                }
                 i += 4;
             } else {
                 return false;
@@ -424,7 +659,11 @@ public int unknown;
         public String value;
         public byte[] bytes;
         public Object table;
-        public NodeRecord(long typeId, byte[] body) { this.typeId = typeId; this.body = body; }
+
+        public NodeRecord(long typeId, byte[] body) {
+            this.typeId = typeId;
+            this.body = body;
+        }
     }
 
     // nodes reads a node-table field's payload (§3.1) and returns its records.
@@ -449,17 +688,29 @@ public int unknown;
         java.util.ArrayList<NodeRecord> list = new java.util.ArrayList<>();
         while (r.off < r.limit) {
             long ref = r.leb();
-            if (r.fail || ref == 0) { r.report.malformed = true; return null; }
+            if (r.fail || ref == 0) {
+                r.report.malformed = true;
+                return null;
+            }
             long typeId = r.resolve(ref);
-            if (r.fail) { r.report.malformed = true; return null; }
+            if (r.fail) {
+                r.report.malformed = true;
+                return null;
+            }
             long size = r.leb();
-            if (r.fail || size < 0 || !r.has((int) size)) { r.report.malformed = true; return null; }
+            if (r.fail || size < 0 || !r.has((int) size)) {
+                r.report.malformed = true;
+                return null;
+            }
             byte[] body = new byte[(int) size];
             System.arraycopy(r.buf, r.off, body, 0, (int) size);
             r.off += (int) size;
             list.add(new NodeRecord(typeId, body));
         }
-        if (declared != list.size()) { r.report.malformed = true; return null; }
+        if (declared != list.size()) {
+            r.report.malformed = true;
+            return null;
+        }
         // Type resolution (§3.1), past the whole scan: a record whose type id
         // this reader cannot name keeps its index and counts unknown ONCE, and
         // a text blob whose content is not text counts malformed; in both the
@@ -494,17 +745,29 @@ public int unknown;
         java.util.ArrayList<NodeRecord> list = new java.util.ArrayList<>();
         while (r.off < r.limit) {
             long ref = r.leb();
-            if (r.fail || ref == 0) { r.report.malformed = true; return null; }
+            if (r.fail || ref == 0) {
+                r.report.malformed = true;
+                return null;
+            }
             long typeId = r.resolve(ref);
-            if (r.fail) { r.report.malformed = true; return null; }
+            if (r.fail) {
+                r.report.malformed = true;
+                return null;
+            }
             long size = r.leb();
-            if (r.fail || size < 0 || !r.has((int) size)) { r.report.malformed = true; return null; }
+            if (r.fail || size < 0 || !r.has((int) size)) {
+                r.report.malformed = true;
+                return null;
+            }
             byte[] body = new byte[(int) size];
             System.arraycopy(r.buf, r.off, body, 0, (int) size);
             r.off += (int) size;
             list.add(new NodeRecord(typeId, body));
         }
-        if (declared != list.size()) { r.report.malformed = true; return null; }
+        if (declared != list.size()) {
+            r.report.malformed = true;
+            return null;
+        }
         return list.toArray(new NodeRecord[0]);
     }
 
@@ -512,8 +775,12 @@ public int unknown;
     // k >= 2 the (k-2)-th record — to its record, or null for the null index 0
     // and for an index that names no record (§3.1).
     public static NodeRecord node(NodeRecord[] recs, long index) {
-        if (index == 0) { return null; }
-        if (index < 2 || recs == null || index - 2 >= recs.length) { return null; }
+        if (index == 0) {
+            return null;
+        }
+        if (index < 2 || recs == null || index - 2 >= recs.length) {
+            return null;
+        }
         return recs[(int) (index - 2)];
     }
 
@@ -536,15 +803,29 @@ public int unknown;
         boolean bad = false;
         while (true) {
             long ref = r.leb();
-            if (r.fail || ref == 0) { break; }
+            if (r.fail || ref == 0) {
+                break;
+            }
             long id = r.resolve(ref);
-            if (r.fail) { break; }
-            if (!r.has(1)) { break; }
+            if (r.fail) {
+                break;
+            }
+            if (!r.has(1)) {
+                break;
+            }
             int kind = r.get8();
             if (id == NODE_ID) {
-                if (kind != 12) { report.malformed = true; bad = true; break; }
+                if (kind != 12) {
+                    report.malformed = true;
+                    bad = true;
+                    break;
+                }
                 long n = r.leb();
-                if (r.fail || n < 0 || !r.has((int) n)) { report.malformed = true; bad = true; break; }
+                if (r.fail || n < 0 || !r.has((int) n)) {
+                    report.malformed = true;
+                    bad = true;
+                    break;
+                }
                 Reader sub = new Reader(r.buf, r.ids, report);
                 sub.off = r.off;
                 sub.limit = r.off + (int) n;
@@ -553,7 +834,9 @@ public int unknown;
                 continue;
             }
             r.skip(kind);
-            if (r.fail) { break; }
+            if (r.fail) {
+                break;
+            }
         }
         r.off = start;
         r.fail = startFail;
@@ -563,10 +846,17 @@ public int unknown;
         // (internal/tablewire/decodenodes.go). An ABSENT field is an empty but
         // valid numbering, and a whole read carries the records.
         NodeTable nt = new NodeTable();
-        if (bad) { nt.bad = true; return nt; }
-        if (payload == null) { return nt; }
+        if (bad) {
+            nt.bad = true;
+            return nt;
+        }
+        if (payload == null) {
+            return nt;
+        }
         nt.recs = nodes(payload, retain);
-        if (nt.recs == null) { nt.bad = true; }
+        if (nt.recs == null) {
+            nt.bad = true;
+        }
         return nt;
     }
 
@@ -576,9 +866,17 @@ public int unknown;
     // type id is not the string id reads null, its unknown already counted at
     // the scan.
     public static String resolveString(NodeRecord[] recs, long index, Report report) {
-        if (index == 0) { return null; }
-        if (index == 1) { report.kindMismatch++; return null; }
-        if (index < 2 || recs == null || index - 2 >= recs.length) { report.malformed = true; return null; }
+        if (index == 0) {
+            return null;
+        }
+        if (index == 1) {
+            report.kindMismatch++;
+            return null;
+        }
+        if (index < 2 || recs == null || index - 2 >= recs.length) {
+            report.malformed = true;
+            return null;
+        }
         return recs[(int) (index - 2)].value;
     }
 
@@ -586,9 +884,17 @@ public int unknown;
     // (§3.1), exactly as resolveString resolves a *string: 0 is null, 1 is the
     // ROOT (a kind mismatch), an index past the records is malformed.
     public static byte[] resolveBytes(NodeRecord[] recs, long index, Report report) {
-        if (index == 0) { return null; }
-        if (index == 1) { report.kindMismatch++; return null; }
-        if (index < 2 || recs == null || index - 2 >= recs.length) { report.malformed = true; return null; }
+        if (index == 0) {
+            return null;
+        }
+        if (index == 1) {
+            report.kindMismatch++;
+            return null;
+        }
+        if (index < 2 || recs == null || index - 2 >= recs.length) {
+            report.malformed = true;
+            return null;
+        }
         return recs[(int) (index - 2)].bytes;
     }
 
@@ -607,11 +913,12 @@ public int unknown;
     // NodeList is a save-side numbering: each non-null *string interned here in
     // first-visit order takes the next node index (2, 3, ...; the root is 1,
     // §3.1) and its body bytes, written once into the node table.
-        public static final class NodeEntry {
+    public static final class NodeEntry {
         public final Object value;
         public final long typeId;
         public final byte[] blobBytes;
         public final boolean isBlob;
+
         public NodeEntry(Object value, long typeId, byte[] blobBytes, boolean isBlob) {
             this.value = value;
             this.typeId = typeId;
@@ -621,10 +928,20 @@ public int unknown;
     }
 
     @SuppressWarnings("unchecked")
-    public static <T> T resolveTable(NodeRecord[] recs, long index, long targetTypeId, Object root, long rootTypeId, Report report) {
-        if (index == 0) { return null; }
+    public static <T> T resolveTable(
+            NodeRecord[] recs,
+            long index,
+            long targetTypeId,
+            Object root,
+            long rootTypeId,
+            Report report) {
+        if (index == 0) {
+            return null;
+        }
         if (index == 1) {
-            if (root != null && targetTypeId == rootTypeId) { return (T) root; }
+            if (root != null && targetTypeId == rootTypeId) {
+                return (T) root;
+            }
             report.kindMismatch++;
             return null;
         }
@@ -633,17 +950,26 @@ public int unknown;
             return null;
         }
         NodeRecord rec = recs[(int) (index - 2)];
-        if (rec.typeId == 0) { return null; }
-        if (rec.typeId != targetTypeId) { report.kindMismatch++; return null; }
+        if (rec.typeId == 0) {
+            return null;
+        }
+        if (rec.typeId != targetTypeId) {
+            report.kindMismatch++;
+            return null;
+        }
         return (T) rec.table;
     }
 
     public static final class NodeGraph {
         public final java.util.ArrayList<NodeEntry> nodes = new java.util.ArrayList<>();
-        public final java.util.IdentityHashMap<Object, Long> indices = new java.util.IdentityHashMap<>();
-        public final java.util.IdentityHashMap<Object, Integer> uses = new java.util.IdentityHashMap<>();
-        public final java.util.IdentityHashMap<Object, Long> labels = new java.util.IdentityHashMap<>();
-        public final java.util.Set<Object> open = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        public final java.util.IdentityHashMap<Object, Long> indices =
+                new java.util.IdentityHashMap<>();
+        public final java.util.IdentityHashMap<Object, Integer> uses =
+                new java.util.IdentityHashMap<>();
+        public final java.util.IdentityHashMap<Object, Long> labels =
+                new java.util.IdentityHashMap<>();
+        public final java.util.Set<Object> open =
+                java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
 
         public long index(Object obj) {
             if (obj == null) return 0;
@@ -661,7 +987,9 @@ public int unknown;
             if (target == null) return true;
             uses.put(target, useCount(target) + 1);
             if (!indices.containsKey(target)) {
-                if (open.contains(target)) { return false; }
+                if (open.contains(target)) {
+                    return false;
+                }
                 long idx = (long) (nodes.size() + 2);
                 indices.put(target, idx);
                 nodes.add(new NodeEntry(target, typeId, body, isBlob));
@@ -669,33 +997,56 @@ public int unknown;
             return true;
         }
     }
+
     public static final class NodeList {
         private static final class Entry {
             final long typeId;
             final byte[] body;
-            Entry(long typeId, byte[] body) { this.typeId = typeId; this.body = body; }
+
+            Entry(long typeId, byte[] body) {
+                this.typeId = typeId;
+                this.body = body;
+            }
         }
+
         private final java.util.ArrayList<Entry> entries = new java.util.ArrayList<>();
-        private final java.util.IdentityHashMap<String, Long> seen = new java.util.IdentityHashMap<>();
-        private final java.util.IdentityHashMap<byte[], Long> seenBytes = new java.util.IdentityHashMap<>();
+        private final java.util.IdentityHashMap<String, Long> seen =
+                new java.util.IdentityHashMap<>();
+        private final java.util.IdentityHashMap<byte[], Long> seenBytes =
+                new java.util.IdentityHashMap<>();
         private int next = 2;
+
         public long ref(String s) {
             Long have = seen.get(s);
-            if (have != null) { return have.longValue(); }
+            if (have != null) {
+                return have.longValue();
+            }
             seen.put(s, Long.valueOf(next));
             entries.add(new Entry(STRING_ID, s.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
             return next++;
         }
+
         public long refBytes(byte[] b) {
             Long have = seenBytes.get(b);
-            if (have != null) { return have.longValue(); }
+            if (have != null) {
+                return have.longValue();
+            }
             seenBytes.put(b, Long.valueOf(next));
             entries.add(new Entry(BYTES_ID, b));
             return next++;
         }
-        public int size() { return entries.size(); }
-        public long typeId(int i) { return entries.get(i).typeId; }
-        public byte[] body(int i) { return entries.get(i).body; }
+
+        public int size() {
+            return entries.size();
+        }
+
+        public long typeId(int i) {
+            return entries.get(i).typeId;
+        }
+
+        public byte[] body(int i) {
+            return entries.get(i).body;
+        }
     }
 }
 `
@@ -721,7 +1072,9 @@ public final class TableJson {
     // indent starts a new line at the given depth: two spaces per level.
     public static void indent(StringBuilder b, int depth) {
         b.append('\n');
-        for (int i = 0; i < depth; i++) { b.append("  "); }
+        for (int i = 0; i < depth; i++) {
+            b.append("  ");
+        }
     }
 
     // esc writes one string as a JSON string, escaping the code points JSON
@@ -733,19 +1086,35 @@ public final class TableJson {
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
             switch (c) {
-                case '"':  b.append("\\\""); break;
-                case '\\': b.append("\\\\"); break;
-                case '\b': b.append("\\b"); break;
-                case '\f': b.append("\\f"); break;
-                case '\n': b.append("\\n"); break;
-                case '\r': b.append("\\r"); break;
-                case '\t': b.append("\\t"); break;
+                case '"':
+                    b.append("\\\"");
+                    break;
+                case '\\':
+                    b.append("\\\\");
+                    break;
+                case '\b':
+                    b.append("\\b");
+                    break;
+                case '\f':
+                    b.append("\\f");
+                    break;
+                case '\n':
+                    b.append("\\n");
+                    break;
+                case '\r':
+                    b.append("\\r");
+                    break;
+                case '\t':
+                    b.append("\\t");
+                    break;
                 default:
                     if (c < 0x20) {
                         b.append("\\u00").append(HEX[(c >> 4) & 0xf]).append(HEX[c & 0xf]);
                     } else if (c >= 0xd800 && c <= 0xdfff) {
-                        if (c >= 0xdc00 || i + 1 >= s.length()
-                                || s.charAt(i + 1) < 0xdc00 || s.charAt(i + 1) > 0xdfff) {
+                        if (c >= 0xdc00
+                                || i + 1 >= s.length()
+                                || s.charAt(i + 1) < 0xdc00
+                                || s.charAt(i + 1) > 0xdfff) {
                             b.append('\ufffd');
                         } else {
                             b.append(c).append(s.charAt(i + 1));
@@ -761,16 +1130,18 @@ public final class TableJson {
 
     // THE READER: a cursor over the byte[] the caller owns, one report shared
     // with the wire (§4). Nothing allocates beyond the strings it reads.
-        public static final class LabelEntry {
+    public static final class LabelEntry {
         public final Object value;
         public final long typeId;
         public boolean open;
+
         public LabelEntry(Object value, long typeId, boolean open) {
             this.value = value;
             this.typeId = typeId;
             this.open = open;
         }
     }
+
     public static final class In {
         public final java.util.Map<Long, LabelEntry> labels = new java.util.HashMap<>();
 
@@ -779,25 +1150,40 @@ public final class TableJson {
         final TableVariable.Report rep;
         boolean bad;
 
-        In(byte[] t, TableVariable.Report rep) { this.t = t; this.rep = rep; }
+        In(byte[] t, TableVariable.Report rep) {
+            this.t = t;
+            this.rep = rep;
+        }
 
         // space skips whitespace and both comment forms (§16.2). An unclosed
         // block comment is malformed, as an unclosed string is.
         void space() {
             while (true) {
-                if (p >= t.length) { return; }
+                if (p >= t.length) {
+                    return;
+                }
                 byte c = t[p];
-                if (c == ' ' || c == '\t' || c == '\n' || c == '\r') { p++; continue; }
+                if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                    p++;
+                    continue;
+                }
                 if (c == '/' && p + 1 < t.length) {
                     if (t[p + 1] == '/') {
                         p += 2;
-                        while (p < t.length && t[p] != '\n') { p++; }
+                        while (p < t.length && t[p] != '\n') {
+                            p++;
+                        }
                         continue;
                     }
                     if (t[p + 1] == '*') {
                         p += 2;
-                        while (p + 1 < t.length && !(t[p] == '*' && t[p + 1] == '/')) { p++; }
-                        if (p + 1 >= t.length) { bad = true; return; }
+                        while (p + 1 < t.length && !(t[p] == '*' && t[p + 1] == '/')) {
+                            p++;
+                        }
+                        if (p + 1 >= t.length) {
+                            bad = true;
+                            return;
+                        }
                         p += 2;
                         continue;
                     }
@@ -806,14 +1192,20 @@ public final class TableJson {
             }
         }
 
-                public long scanLabel() {
+        public long scanLabel() {
             space();
-            if (p >= t.length || t[p] < '1' || t[p] > '9') { bad = true; return -1; }
+            if (p >= t.length || t[p] < '1' || t[p] > '9') {
+                bad = true;
+                return -1;
+            }
             long label = 0;
             while (p < t.length && t[p] >= '0' && t[p] <= '9') {
                 int digit = t[p] - '0';
                 p++;
-                if (label > (Long.MAX_VALUE - digit) / 10) { bad = true; return -1; }
+                if (label > (Long.MAX_VALUE - digit) / 10) {
+                    bad = true;
+                    return -1;
+                }
                 label = label * 10 + digit;
             }
             return label;
@@ -822,7 +1214,9 @@ public final class TableJson {
         public double number() {
             boolean[] integral = new boolean[1];
             String tok = scanNumber(integral);
-            if (bad || tok == null) { return 0.0; }
+            if (bad || tok == null) {
+                return 0.0;
+            }
             try {
                 return Double.parseDouble(tok);
             } catch (NumberFormatException e) {
@@ -831,31 +1225,49 @@ public final class TableJson {
             }
         }
 
-        int peek() { space(); return p < t.length ? (t[p] & 0xff) : 0; }
+        int peek() {
+            space();
+            return p < t.length ? (t[p] & 0xff) : 0;
+        }
 
         boolean lit(String w) {
             space();
-            if (p + w.length() > t.length) { bad = true; return false; }
+            if (p + w.length() > t.length) {
+                bad = true;
+                return false;
+            }
             for (int i = 0; i < w.length(); i++) {
-                if ((char) (t[p + i] & 0xff) != w.charAt(i)) { bad = true; return false; }
+                if ((char) (t[p + i] & 0xff) != w.charAt(i)) {
+                    bad = true;
+                    return false;
+                }
             }
             p += w.length();
             return true;
         }
 
         // isNull reports a null literal without consuming it.
-        boolean isNull() { return peek() == 'n'; }
+        boolean isNull() {
+            return peek() == 'n';
+        }
 
         int hex4() {
-            if (p + 4 > t.length) { return -1; }
+            if (p + 4 > t.length) {
+                return -1;
+            }
             int v = 0;
             for (int i = 0; i < 4; i++) {
                 int c = t[p + i] & 0xff;
                 int d;
-                if (c >= '0' && c <= '9') { d = c - '0'; }
-                else if (c >= 'a' && c <= 'f') { d = c - 'a' + 10; }
-                else if (c >= 'A' && c <= 'F') { d = c - 'A' + 10; }
-                else { return -1; }
+                if (c >= '0' && c <= '9') {
+                    d = c - '0';
+                } else if (c >= 'a' && c <= 'f') {
+                    d = c - 'a' + 10;
+                } else if (c >= 'A' && c <= 'F') {
+                    d = c - 'A' + 10;
+                } else {
+                    return -1;
+                }
                 v = (v << 4) | d;
             }
             p += 4;
@@ -868,57 +1280,99 @@ public final class TableJson {
         // its partner reads as the replacement character (§16.3).
         public String scanString() {
             space();
-            if (p >= t.length || t[p] != '"') { bad = true; return null; }
+            if (p >= t.length || t[p] != '"') {
+                bad = true;
+                return null;
+            }
             p++;
             StringBuilder b = new StringBuilder();
             while (true) {
-                if (p >= t.length) { bad = true; return null; }
+                if (p >= t.length) {
+                    bad = true;
+                    return null;
+                }
                 int c = t[p] & 0xff;
                 p++;
-                if (c == '"') { return b.toString(); }
+                if (c == '"') {
+                    return b.toString();
+                }
                 if (c == '\\') {
-                    if (p >= t.length) { bad = true; return null; }
+                    if (p >= t.length) {
+                        bad = true;
+                        return null;
+                    }
                     int e = t[p] & 0xff;
                     p++;
                     switch (e) {
-                        case '"': b.append('"'); break;
-                        case '\\': b.append('\\'); break;
-                        case '/': b.append('/'); break;
-                        case 'b': b.append('\b'); break;
-                        case 'f': b.append('\f'); break;
-                        case 'n': b.append('\n'); break;
-                        case 'r': b.append('\r'); break;
-                        case 't': b.append('\t'); break;
-                        case 'u': {
-                            int hi = hex4();
-                            if (hi < 0) { bad = true; return null; }
-                            if (hi >= 0xd800 && hi <= 0xdbff && p + 2 <= t.length
-                                    && t[p] == '\\' && t[p + 1] == 'u') {
-                                int mark = p;
-                                p += 2;
-                                int lo = hex4();
-                                if (lo >= 0xdc00 && lo <= 0xdfff) {
-                                    b.appendCodePoint(0x10000 + ((hi - 0xd800) << 10) + (lo - 0xdc00));
-                                } else {
-                                    p = mark;
-                                    b.append('\ufffd');
-                                }
-                            } else if (hi >= 0xd800 && hi <= 0xdfff) {
-                                b.append('\ufffd');
-                            } else {
-                                b.append((char) hi);
-                            }
+                        case '"':
+                            b.append('"');
                             break;
-                        }
-                        default: bad = true; return null;
+                        case '\\':
+                            b.append('\\');
+                            break;
+                        case '/':
+                            b.append('/');
+                            break;
+                        case 'b':
+                            b.append('\b');
+                            break;
+                        case 'f':
+                            b.append('\f');
+                            break;
+                        case 'n':
+                            b.append('\n');
+                            break;
+                        case 'r':
+                            b.append('\r');
+                            break;
+                        case 't':
+                            b.append('\t');
+                            break;
+                        case 'u':
+                            {
+                                int hi = hex4();
+                                if (hi < 0) {
+                                    bad = true;
+                                    return null;
+                                }
+                                if (hi >= 0xd800
+                                        && hi <= 0xdbff
+                                        && p + 2 <= t.length
+                                        && t[p] == '\\'
+                                        && t[p + 1] == 'u') {
+                                    int mark = p;
+                                    p += 2;
+                                    int lo = hex4();
+                                    if (lo >= 0xdc00 && lo <= 0xdfff) {
+                                        b.appendCodePoint(
+                                                0x10000 + ((hi - 0xd800) << 10) + (lo - 0xdc00));
+                                    } else {
+                                        p = mark;
+                                        b.append('\ufffd');
+                                    }
+                                } else if (hi >= 0xd800 && hi <= 0xdfff) {
+                                    b.append('\ufffd');
+                                } else {
+                                    b.append((char) hi);
+                                }
+                                break;
+                            }
+                        default:
+                            bad = true;
+                            return null;
                     }
                 } else if (c < 0x20) {
-                    bad = true; return null;
+                    bad = true;
+                    return null;
                 } else if (c < 0x80) {
                     b.append((char) c);
                 } else {
                     int cp = utf8(c);
-                    if (cp < 0) { b.append('\ufffd'); } else { b.appendCodePoint(cp); }
+                    if (cp < 0) {
+                        b.append('\ufffd');
+                    } else {
+                        b.appendCodePoint(cp);
+                    }
                 }
             }
         }
@@ -927,20 +1381,38 @@ public final class TableJson {
         // stray or ill-formed sequence, read as one replacement (§16.3).
         int utf8(int lead) {
             int want, cp;
-            if (lead >= 0xc2 && lead <= 0xdf) { want = 2; cp = lead & 0x1f; }
-            else if (lead >= 0xe0 && lead <= 0xef) { want = 3; cp = lead & 0x0f; }
-            else if (lead >= 0xf0 && lead <= 0xf4) { want = 4; cp = lead & 0x07; }
-            else { return -1; }
-            if (p + want - 1 > t.length) { return -1; }
+            if (lead >= 0xc2 && lead <= 0xdf) {
+                want = 2;
+                cp = lead & 0x1f;
+            } else if (lead >= 0xe0 && lead <= 0xef) {
+                want = 3;
+                cp = lead & 0x0f;
+            } else if (lead >= 0xf0 && lead <= 0xf4) {
+                want = 4;
+                cp = lead & 0x07;
+            } else {
+                return -1;
+            }
+            if (p + want - 1 > t.length) {
+                return -1;
+            }
             for (int i = 1; i < want; i++) {
                 int n = t[p + i - 1] & 0xff;
-                if ((n & 0xc0) != 0x80) { return -1; }
+                if ((n & 0xc0) != 0x80) {
+                    return -1;
+                }
                 cp = (cp << 6) | (n & 0x3f);
             }
             p += want - 1;
-            if (want == 3 && cp < 0x800) { return -1; }
-            if (want == 4 && cp < 0x10000) { return -1; }
-            if (cp > 0x10ffff) { return -1; }
+            if (want == 3 && cp < 0x800) {
+                return -1;
+            }
+            if (want == 4 && cp < 0x10000) {
+                return -1;
+            }
+            if (cp > 0x10ffff) {
+                return -1;
+            }
             return cp;
         }
 
@@ -950,24 +1422,47 @@ public final class TableJson {
         public String scanNumber(boolean[] integral) {
             space();
             int start = p;
-            if (p < t.length && t[p] == '-') { p++; }
-            if (p >= t.length) { bad = true; return null; }
-            if (t[p] == '0') { p++; }
-            else if (t[p] >= '1' && t[p] <= '9') {
-                while (p < t.length && t[p] >= '0' && t[p] <= '9') { p++; }
-            } else { bad = true; return null; }
+            if (p < t.length && t[p] == '-') {
+                p++;
+            }
+            if (p >= t.length) {
+                bad = true;
+                return null;
+            }
+            if (t[p] == '0') {
+                p++;
+            } else if (t[p] >= '1' && t[p] <= '9') {
+                while (p < t.length && t[p] >= '0' && t[p] <= '9') {
+                    p++;
+                }
+            } else {
+                bad = true;
+                return null;
+            }
             integral[0] = true;
             if (p < t.length && t[p] == '.') {
                 p++;
-                if (p >= t.length || t[p] < '0' || t[p] > '9') { bad = true; return null; }
-                while (p < t.length && t[p] >= '0' && t[p] <= '9') { p++; }
+                if (p >= t.length || t[p] < '0' || t[p] > '9') {
+                    bad = true;
+                    return null;
+                }
+                while (p < t.length && t[p] >= '0' && t[p] <= '9') {
+                    p++;
+                }
                 integral[0] = false;
             }
             if (p < t.length && (t[p] == 'e' || t[p] == 'E')) {
                 p++;
-                if (p < t.length && (t[p] == '-' || t[p] == '+')) { p++; }
-                if (p >= t.length || t[p] < '0' || t[p] > '9') { bad = true; return null; }
-                while (p < t.length && t[p] >= '0' && t[p] <= '9') { p++; }
+                if (p < t.length && (t[p] == '-' || t[p] == '+')) {
+                    p++;
+                }
+                if (p >= t.length || t[p] < '0' || t[p] > '9') {
+                    bad = true;
+                    return null;
+                }
+                while (p < t.length && t[p] >= '0' && t[p] <= '9') {
+                    p++;
+                }
                 integral[0] = false;
             }
             return new String(t, start, p - start, java.nio.charset.StandardCharsets.US_ASCII);
@@ -979,7 +1474,9 @@ public final class TableJson {
         public long integer(boolean signed, long min, long max) {
             boolean[] integral = new boolean[1];
             String tok = scanNumber(integral);
-            if (bad) { return 0; }
+            if (bad) {
+                return 0;
+            }
             long v;
             if (integral[0]) {
                 try {
@@ -996,12 +1493,24 @@ public final class TableJson {
                     bad = true;
                     return 0;
                 }
-                if (!Double.isFinite(d) || d != (double) (long) d) { rep.kindMismatch++; return 0; }
+                if (!Double.isFinite(d) || d != (double) (long) d) {
+                    rep.kindMismatch++;
+                    return 0;
+                }
                 v = (long) d;
             }
-            if (!signed && v < 0) { rep.clamped++; return 0; }
-            if (v < min) { rep.clamped++; return min; }
-            if (v > max) { rep.clamped++; return max; }
+            if (!signed && v < 0) {
+                rep.clamped++;
+                return 0;
+            }
+            if (v < min) {
+                rep.clamped++;
+                return min;
+            }
+            if (v > max) {
+                rep.clamped++;
+                return max;
+            }
             return v;
         }
 
@@ -1010,17 +1519,23 @@ public final class TableJson {
         // a multi-byte character.
         public String readString(int bound) {
             String s = scanString();
-            if (s == null) { return ""; }
+            if (s == null) {
+                return "";
+            }
             return clamp(s, bound);
         }
 
         String clamp(String s, int bound) {
             byte[] b = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-            if (b.length <= bound) { return s; }
+            if (b.length <= bound) {
+                return s;
+            }
             rep.clamped++;
             int keep = bound;
             // back off to a code point boundary
-            while (keep > 0 && (b[keep] & 0xc0) == 0x80) { keep--; }
+            while (keep > 0 && (b[keep] & 0xc0) == 0x80) {
+                keep--;
+            }
             return new String(b, 0, keep, java.nio.charset.StandardCharsets.UTF_8);
         }
 
@@ -1029,17 +1544,32 @@ public final class TableJson {
         public void skipValue() {
             int c = peek();
             switch (c) {
-                case '{': skipContainer('}'); return;
-                case '[': skipContainer(']'); return;
-                case '"': scanString(); return;
-                case 't': lit("true"); return;
-                case 'f': lit("false"); return;
-                case 'n': lit("null"); return;
-                case 0: bad = true; return;
-                default: {
-                    boolean[] integral = new boolean[1];
-                    scanNumber(integral);
-                }
+                case '{':
+                    skipContainer('}');
+                    return;
+                case '[':
+                    skipContainer(']');
+                    return;
+                case '"':
+                    scanString();
+                    return;
+                case 't':
+                    lit("true");
+                    return;
+                case 'f':
+                    lit("false");
+                    return;
+                case 'n':
+                    lit("null");
+                    return;
+                case 0:
+                    bad = true;
+                    return;
+                default:
+                    {
+                        boolean[] integral = new boolean[1];
+                        scanNumber(integral);
+                    }
             }
         }
 
@@ -1047,19 +1577,38 @@ public final class TableJson {
             p++; // the opening bracket
             while (true) {
                 int c = peek();
-                if (c == closing) { p++; return; }
-                if (c == 0) { bad = true; return; }
+                if (c == closing) {
+                    p++;
+                    return;
+                }
+                if (c == 0) {
+                    bad = true;
+                    return;
+                }
                 if (closing == '}') {
                     scanString();
-                    if (bad) { return; }
-                    if (peek() != ':') { bad = true; return; }
+                    if (bad) {
+                        return;
+                    }
+                    if (peek() != ':') {
+                        bad = true;
+                        return;
+                    }
                     p++;
                 }
                 skipValue();
-                if (bad) { return; }
+                if (bad) {
+                    return;
+                }
                 c = peek();
-                if (c == ',') { p++; continue; }
-                if (c == closing) { p++; return; }
+                if (c == ',') {
+                    p++;
+                    continue;
+                }
+                if (c == closing) {
+                    p++;
+                    return;
+                }
                 bad = true;
                 return;
             }
@@ -1768,7 +2317,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "    }\n\n")
 
 	fmt.Fprintf(b, "    static void jsonFields(StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {\n")
-	b.WriteString("        b.append('{' );\n")
+	b.WriteString("        b.append('{');\n")
 	b.WriteString("        jsonFieldsBody(b, graph, v, depth + 1, true);\n")
 	b.WriteString("        TableJson.indent(b, depth);\n")
 	b.WriteString("        b.append('}');\n")
@@ -1795,14 +2344,14 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("        if (label == null) {\n")
 	b.WriteString("            label = (long) (graph.labels.size() + 1);\n")
 	b.WriteString("            graph.labels.put(child, label);\n")
-	b.WriteString("            b.append('{' );\n")
+	b.WriteString("            b.append('{');\n")
 	b.WriteString("            TableJson.indent(b, depth + 1);\n")
 	b.WriteString("            b.append(\"\\\"&node\\\": \").append(label);\n")
 	fmt.Fprintf(b, "            jsonFieldsBody(b, graph, child, depth + 1, false);\n")
 	b.WriteString("            TableJson.indent(b, depth);\n")
 	b.WriteString("            b.append('}');\n")
 	b.WriteString("        } else {\n")
-	b.WriteString("            b.append('{' );\n")
+	b.WriteString("            b.append('{');\n")
 	b.WriteString("            TableJson.indent(b, depth + 1);\n")
 	b.WriteString("            b.append(\"\\\"&node\\\": \").append(label);\n")
 	b.WriteString("            TableJson.indent(b, depth);\n")
@@ -1812,7 +2361,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 
 	fmt.Fprintf(b, "    public static Value readJsonPointer(TableJson.In in, long targetTypeId) {\n")
 	b.WriteString("        if (in.peek() == 'n') { in.lit(\"null\"); return null; }\n")
-	b.WriteString("        if (in.peek() != '{' ) { in.skipValue(); in.rep.kindMismatch++; return null; }\n")
+	b.WriteString("        if (in.peek() != '{') { in.skipValue(); in.rep.kindMismatch++; return null; }\n")
 	b.WriteString("        int start = in.p;\n")
 	b.WriteString("        in.p++;\n")
 	b.WriteString("        in.space();\n")
@@ -1849,7 +2398,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 
 	fmt.Fprintf(b, "    static void jsonReadFields(TableJson.In in, Value v) {\n")
 	b.WriteString("        in.space();\n")
-	b.WriteString("        if (in.peek() != '{' ) { in.bad = true; return; }\n")
+	b.WriteString("        if (in.peek() != '{') { in.bad = true; return; }\n")
 	b.WriteString("        in.p++;\n")
 	b.WriteString("        jsonReadFieldsBody(in, v);\n")
 	b.WriteString("    }\n\n")
@@ -2138,7 +2687,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                        int ec = in.peek();\n")
 		b.WriteString("                        if (ec == ']') { in.p++; break; }\n")
 		b.WriteString("                        if (ec == 0) { in.bad = true; break; }\n")
-		b.WriteString("                        if (ec != '{' ) { in.skipValue(); in.rep.kindMismatch++; }\n")
+		b.WriteString("                        if (ec != '{') { in.skipValue(); in.rep.kindMismatch++; }\n")
 		fmt.Fprintf(b, "                        else { %sVariable.Value e = new %sVariable.Value(); %sVariable.jsonReadFields(in, e); v.%s.add(e); }\n", target.Name, target.Name, target.Name, m)
 		b.WriteString("                        ec = in.peek();\n")
 		b.WriteString("                        if (ec == ',') { in.p++; continue; }\n")
@@ -2161,7 +2710,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "                v.%s = %sVariable.readJsonPointer(in, %sVariable.TYPE_ID);\n", m, target.Name, target.Name)
 	case isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
-		b.WriteString("                if (in.peek() == '{' ) {\n")
+		b.WriteString("                if (in.peek() == '{') {\n")
 		fmt.Fprintf(b, "                    %sVariable.jsonReadFields(in, v.%s);\n", target.Name, m)
 		b.WriteString("                } else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TString:
@@ -2567,11 +3116,11 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 	case f.Type.Kind == ir.TNamed:
 		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
 			def := variableDefault(f)
-			fmt.Fprintf(b, "        if (v.%s != %s) { w.putLeb(w.ref(F_%s)); w.put8(30); switch (v.%s) {\n", m, def, m, m)
+			fmt.Fprintf(b, "        if (v.%s != %s) {\n            w.putLeb(w.ref(F_%s));\n            w.put8(30);\n            switch (v.%s) {\n", m, def, m, m)
 			for i := range enum.Variants {
-				fmt.Fprintf(b, "            case %d: w.putLeb(w.ref(0x%016xL)); break;\n", i+1, ir.TableWireId(enum.VariantWireName(i)))
+				fmt.Fprintf(b, "                case %d: w.putLeb(w.ref(0x%016xL)); break;\n", i+1, ir.TableWireId(enum.VariantWireName(i)))
 			}
-			b.WriteString("            default: w.putLeb(0); break;\n        } }\n")
+			b.WriteString("                default: w.putLeb(0); break;\n            }\n        }\n")
 		} else if _, ok := f.Type.Ref.(*ir.Flags); ok {
 			def := variableDefault(f)
 			fmt.Fprintf(b, "        if (v.%s != %s) { w.putLeb(w.ref(F_%s)); w.put8(9); w.put64(v.%s); }\n", m, def, m, m)

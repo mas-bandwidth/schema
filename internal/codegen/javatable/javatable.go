@@ -55,6 +55,7 @@ package javatable
 
 import (
 	"fmt"
+	javapkt "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"maps"
 	"sort"
 	"strings"
@@ -198,6 +199,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // `lockfile.Floor` are the caller's three calls, so the disk is read in one place
 // and a test can play the lock in one line.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	return generateLineage(u, lineage, javapkt.Canonical)
+}
+
+// generateLineage is GenerateLineage with the last pass named: canon puts each
+// file in the formatter's shape (java.Canonical), and a test passes the
+// identity to hold that the pass moves layout and never a token.
+func generateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry, canon func([]byte) []byte) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
@@ -297,6 +305,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, err
 	}
 	maps.Copy(out, retain)
+	// every file in the formatter's shape (java.Canonical, docs/JAVA-DIALECT.md).
+	for name, src := range out {
+		out[name] = canon(src)
+	}
 	return out, nil
 }
 
