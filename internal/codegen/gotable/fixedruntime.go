@@ -39,8 +39,8 @@ const (
 	TableFixedReasonTextIllFormed        = "text_ill_formed"
 	TableFixedReasonTruncated            = "truncated"
 	TableFixedReasonReservedNotZero      = "reserved_not_zero"
-	tableFixedCountOverBound             = "count_over_bound"
-	tableFixedLengthOverBound            = "length_over_bound"
+	TableFixedReasonCountOverBound       = "count_over_bound"
+	TableFixedReasonLengthOverBound      = "length_over_bound"
 )
 
 const (
@@ -656,7 +656,7 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		case tableFixedCount:
 			v := int32(tableFixedGet32(src[p.Src:]))
 			if v < 0 || v > int32(p.Size) {
-				return tableFixedCountOverBound
+				return TableFixedReasonCountOverBound
 			}
 		case tableFixedText:
 		unit := uint32(1)
@@ -666,10 +666,10 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		capn := p.Size / unit
 		v := int32(tableFixedGet32(src[p.Src:]))
 		if v < 0 || uint32(v) > capn {
-			return tableFixedLengthOverBound
+			return TableFixedReasonLengthOverBound
 		}
 		if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-			return "text_ill_formed"
+			return TableFixedReasonTextIllFormed
 		}
 		}
 	}

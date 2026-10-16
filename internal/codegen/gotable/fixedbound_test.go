@@ -63,6 +63,9 @@ func TestRefuseByName(t *testing.T) {
 		if n := RootFixedLoad(got, data, plan, &r); n >= 0 || r.Reason != wantReason {
 			t.Fatalf("%s: n=%d reason=%q, want %q", name, n, r.Reason, wantReason)
 		}
+		if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Clamped != 0 || r.Duplicate != 0 || r.Retained != 0 || r.RetainLost != 0 || r.Malformed {
+			t.Fatalf("%s: refusal moved a counter or marked malformed: %+v", name, r)
+		}
 		for i, b := range pdst {
 			if b != 0x5A {
 				t.Fatalf("%s: the refusal wrote destination byte %d: 0x%02X, want 0x5A (§5.8: not one destination byte)", name, i, b)
@@ -136,6 +139,9 @@ func TestCountOverBoundCompiled(t *testing.T) {
 		if n >= 0 || r.Reason != wantReason {
 			t.Fatalf("%%s: n=%%d reason=%%q, want %%q", name, n, r.Reason, wantReason)
 		}
+		if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Clamped != 0 || r.Duplicate != 0 || r.Retained != 0 || r.RetainLost != 0 || r.Malformed {
+			t.Fatalf("%%s: refusal moved a counter or marked malformed: %%+v", name, r)
+		}
 		for i, b := range pdst {
 			if b != 0x5A {
 				t.Fatalf("%%s: wrote destination byte %%d: 0x%%02X", name, i, b)
@@ -190,6 +196,9 @@ func TestLengthOverBoundCompiled(t *testing.T) {
 		n := %[2]sFixedLoad(back, d, plan, &r)
 		if n >= 0 || r.Reason != wantReason {
 			t.Fatalf("%%s: n=%%d reason=%%q, want %%q", name, n, r.Reason, wantReason)
+		}
+		if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Clamped != 0 || r.Duplicate != 0 || r.Retained != 0 || r.RetainLost != 0 || r.Malformed {
+			t.Fatalf("%%s: refusal moved a counter or marked malformed: %%+v", name, r)
 		}
 		for i, b := range pdst {
 			if b != 0x5A {

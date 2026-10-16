@@ -116,7 +116,7 @@ func t07GoW4(t *testing.T) {
 	if !strings.Contains(block, "capn := p.Size / unit") {
 		t.Error("W4: the used length is held to the plan's own capacity (§3.1)")
 	}
-	if !strings.Contains(block, "if v < 0 || uint32(v) > capn") || !strings.Contains(block, "return tableFixedLengthOverBound") {
+	if !strings.Contains(block, "if v < 0 || uint32(v) > capn") || !strings.Contains(block, "return TableFixedReasonLengthOverBound") {
 		t.Error("W4: a length past the capacity refuses by name, once (§3.1, §4.5)")
 	}
 	if !strings.Contains(block, "binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))") {

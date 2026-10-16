@@ -522,8 +522,8 @@ func t04GoR16(t *testing.T) {
 		t.Errorf("R16: the record loop counts KindMismatch %d times; that census is COMPILE's, once per peer", n)
 	}
 	for _, tc := range []struct{ op, want string }{
-		{"case tableFixedCount:", "return tableFixedCountOverBound"},
-		{"case tableFixedText:", "return tableFixedLengthOverBound"},
+		{"case tableFixedCount:", "return TableFixedReasonCountOverBound"},
+		{"case tableFixedText:", "return TableFixedReasonLengthOverBound"},
 	} {
 		if !strings.Contains(t02GoBlock(t, run, tc.op, "case tableFixed"), tc.want) {
 			t.Errorf("R16: %s does not refuse by name", tc.op)

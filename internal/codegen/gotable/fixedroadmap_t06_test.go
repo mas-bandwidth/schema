@@ -285,7 +285,7 @@ func t06GoC1(t *testing.T) {
 	rt := t02GoNorm(tableFixedRuntime)
 	countCase := t02GoBlock(t, rt, "case tableFixedCount:", "case tableFixedText:")
 	t02GoHas(t, countCase, "if v < 0 || v > int32(p.Size)", "C1 a count below zero or past the bound refuses")
-	t02GoHas(t, countCase, "return tableFixedCountOverBound", "C1 the refusal is named count_over_bound")
+	t02GoHas(t, countCase, "return TableFixedReasonCountOverBound", "C1 the refusal is named count_over_bound")
 }
 
 // ---- go/C2 "count clamp v>Max", rewritten to the refusal ---------------------
@@ -297,5 +297,5 @@ func t06GoC2(t *testing.T) {
 	rt := t02GoNorm(tableFixedRuntime)
 	countCase := t02GoBlock(t, rt, "case tableFixedCount:", "case tableFixedText:")
 	t02GoHas(t, countCase, "if v < 0 || v > int32(p.Size)", "C2 a count past the max refuses")
-	t02GoHas(t, countCase, "return tableFixedCountOverBound", "C2 the refusal is named count_over_bound")
+	t02GoHas(t, countCase, "return TableFixedReasonCountOverBound", "C2 the refusal is named count_over_bound")
 }

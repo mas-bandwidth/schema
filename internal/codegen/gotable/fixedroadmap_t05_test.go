@@ -89,7 +89,7 @@ func t05GoC3(t *testing.T) {
 	op := t05TextOp(t)
 	t05Has(t, op, "v := int32(tableFixedGet32(src[p.Src:]))", "the length is read as a signed i32 (§4.5 THE TEXT OP)")
 	t05Has(t, op, "if v < 0 || uint32(v) > capn", "a length below zero or past the cap refuses (§4.5 THE TEXT OP)")
-	t05Has(t, op, "return tableFixedLengthOverBound", "the refusal is named length_over_bound (§4.5 THE TEXT OP)")
+	t05Has(t, op, "return TableFixedReasonLengthOverBound", "the refusal is named length_over_bound (§4.5 THE TEXT OP)")
 }
 
 // t05GoC4 holds C4 ("text content refuses BY NAME") to the emitted runtime: the
