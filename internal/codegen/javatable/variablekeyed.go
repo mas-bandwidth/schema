@@ -162,9 +162,11 @@ func writeJsonKeyedValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 func readJsonKeyedValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
 	m := varMember(f)
 	one := variableElement(f)
-	fmt.Fprintf(b, "                if(in.peek()!='{'){in.bad=true;return;}in.p++;for(int i=0;i<%d;i++)v.%s.set(i,%s);boolean[] seen=new boolean[%d];while(in.peek()!='}'){String slotName=in.scanString();if(in.bad)return;if(in.peek()!=':'){in.bad=true;return;}in.p++;int slot=-1;\n", f.ArrayBound, m, variableDefault(one), f.ArrayBound)
+	// a keyed array spelled as anything but an object is a kind mismatch
+	// (docs/SPEC-TABLES.md §16.3): skipped, and the read goes on
+	fmt.Fprintf(b, "                if(in.peek()!='{'){in.skipValue();in.rep.kindMismatch++;}else{in.p++;for(int i=0;i<%d;i++)v.%s.set(i,%s);boolean[] seen=new boolean[%d];while(in.peek()!='}'){String slotName=in.scanString();if(in.bad)return;if(in.peek()!=':'){in.bad=true;return;}in.p++;int slot=-1;\n", f.ArrayBound, m, variableDefault(one), f.ArrayBound)
 	for i, name := range f.KeyEnumRef.Variants {
 		fmt.Fprintf(b, "                if(%q.equals(slotName))slot=%d;\n", name, i)
 	}
-	fmt.Fprintf(b, "                if(slot<0){in.rep.unknown++;in.skipValue();}else{if(seen[slot])in.rep.duplicate++;seen[slot]=true;"+st.Name+"Variable.Slot_%s value=new "+st.Name+"Variable.Slot_%s();value.%s=v.%s.get(slot);"+st.Name+"Variable.readJsonSlot_%s(in,value);v.%s.set(slot,value.%s);}int separator=in.peek();if(separator==','){in.p++;continue;}if(separator=='}')break;in.bad=true;return;}in.p++;\n", m, m, m, m, m, m, m)
+	fmt.Fprintf(b, "                if(slot<0){in.rep.unknown++;in.skipValue();}else{if(seen[slot])in.rep.duplicate++;seen[slot]=true;"+st.Name+"Variable.Slot_%s value=new "+st.Name+"Variable.Slot_%s();value.%s=v.%s.get(slot);"+st.Name+"Variable.readJsonSlot_%s(in,value);v.%s.set(slot,value.%s);}int separator=in.peek();if(separator==','){in.p++;continue;}if(separator=='}')break;in.bad=true;return;}in.p++;}\n", m, m, m, m, m, m, m)
 }
