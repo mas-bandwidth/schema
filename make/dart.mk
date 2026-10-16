@@ -334,10 +334,24 @@ tables-dart-soak-negative-control: build/dart_tables_soak
 
 # THE SHORT SOAK, REACHED FROM test-dart: the release act is an hour
 # (SOAK_SECONDS=3600); the leg's own gate runs twenty seconds so CI stays quick.
-.PHONY: tables-dart-soak-short
+.PHONY: tables-dart-soak-short tables-dart-soak-length
 tables-dart-soak-short:
 	$(MAKE) tables-dart-soak SOAK_SECONDS=20
+	$(MAKE) tables-dart-soak-length
 	$(MAKE) tables-dart-soak-negative-control
+
+# THE LENGTH CHECK: a 5-second soak must run 5 seconds and take 4..6 samples,
+# so a worker that ignores SOAK_SECONDS (and would run 20 s while claiming
+# an hour on the release act) is red here, not silently green.
+tables-dart-soak-length: build/dart_tables_soak
+	@mkdir -p build/dart-soak-len
+	@$(DART) test/dart-tables/soak.dart drive $(DART) $(CURDIR)/build/dart_tables_soak 5 \
+		> build/dart-soak-len/log 2>&1 || { cat build/dart-soak-len/log; exit 1; }
+	@grep -q 'soak: worker ran 5 s' build/dart-soak-len/log || \
+		{ echo "SOAK LENGTH FAILED: the worker did not run SOAK_SECONDS=5"; \
+		  cat build/dart-soak-len/log; exit 1; }
+	@grep 'soak: worker ran' build/dart-soak-len/log
+	@echo "soak length: SOAK_SECONDS=5 ran 5 s"
 
 test-dart: tables-dart-soak-short
 # THE RUNTIME HOME GATE (docs/PORTING.md J2). A unit's shared Dart table

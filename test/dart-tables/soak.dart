@@ -351,12 +351,26 @@ Future<int> _drive(List<String> args) async {
     stdout.writeln('NOT CERTIFIED');
     return 1;
   }
+  if (anySdk) {
+    stdout.writeln(
+      'Dart soak observation mode (SCHEMA_DART_ALLOC_ANY_SDK=1 on SDK $runningSdk, pinned $pinnedDartSdk): reporting observations only, NOT CERTIFIED',
+    );
+  }
 
   final env = Map<String, String>.from(Platform.environment);
   env['DART_VM_OPTIONS'] = vmFlagsCsv;
+  // The worker's main reads args[0] as the mode and args[1] as the seconds,
+  // so the driver passes both; passing the seconds alone left the worker on
+  // its 20-second default whatever SOAK_SECONDS said.
   final proc = await Process.start(aotBin, <String>[
+    'soak',
     '$seconds',
   ], environment: env);
+  final workerOut = StringBuffer();
+  final outDone = proc.stdout
+      .transform(utf8.decoder)
+      .listen(workerOut.write)
+      .asFuture<void>();
 
   var scavenges = 0;
   var started = false;
@@ -397,6 +411,7 @@ Future<int> _drive(List<String> args) async {
   }
   sampler.cancel();
   final workerCode = await proc.exitCode;
+  await outDone;
 
   if (workerCode != 0) {
     stdout.writeln('SOAK FAILED: worker exited $workerCode');
@@ -409,6 +424,26 @@ Future<int> _drive(List<String> args) async {
 
   for (final s in samples) {
     stdout.writeln('  $s');
+  }
+  // The run must be as long as it claims: the worker reports the seconds it
+  // ran and the driver took one sample per steady second, so a worker that
+  // ignored SOAK_SECONDS (or a sampler that stalled) cannot print "over N s".
+  final ran = RegExp(r'soak: seconds=(\d+) ').firstMatch(workerOut.toString());
+  final workerSeconds = ran == null ? -1 : int.parse(ran.group(1)!);
+  stdout.writeln(
+    'soak: worker ran $workerSeconds s, driver took ${samples.length} samples for SOAK_SECONDS=$seconds',
+  );
+  if (workerSeconds != seconds) {
+    stdout.writeln(
+      'SOAK FAILED: the worker ran $workerSeconds s but SOAK_SECONDS is $seconds',
+    );
+    return 1;
+  }
+  if (samples.length < seconds - 1 || samples.length > seconds + 1) {
+    stdout.writeln(
+      'SOAK FAILED: ${samples.length} one-second samples for a $seconds s soak (want ${seconds - 1}..${seconds + 1})',
+    );
+    return 1;
   }
   const rssDriftBoundKb = 8 * 1024;
   final firstRss = rssSamples.first;
