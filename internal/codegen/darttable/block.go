@@ -362,7 +362,7 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 // and the COOK library otherwise — so the import follows the form, not the
 // file that declared the schema type.
 func (g *blockGen) needRow(record string) {
-	base := g.unit.DeclFile[record]
+	base := cookDeclFile(g.unit, record)
 	if base == "" {
 		return
 	}
@@ -420,6 +420,11 @@ func (g *blockGen) emitInlineAccessors(ml *ir.MemberLayout, bl *ir.BlockLayout, 
 		facts := ir.BlockFieldOf(g.unit, f, fl.Offset, bl != nil)
 		name := dartName(f.Name)
 		switch {
+		case f.IsMap():
+			// a MAP slot is a delta and a count, never a scalar (§2.8, §7.2):
+			// only a cooked record reaches one, since a map refuses the block form
+			g.emitCookMapAccessors(f, fl.Offset, ind, origin)
+			continue
 		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 			g.pf("%s// %s: the USED length, and a view of the bytes it names\n", ind, tableFieldTypeName(f))
 			g.pf("%sint get %sLength {\n", ind, name)
@@ -529,7 +534,7 @@ func blockScalarWidth(t ir.FieldType) int {
 		case *ir.Enum:
 			return (ref.StorageBits + 7) / 8
 		case *ir.Flags:
-			return (ref.WireBits + 7) / 8
+			return 8 // a flags slot is uint64 in every target (ir/blocklayout.go)
 		}
 	}
 	return 1

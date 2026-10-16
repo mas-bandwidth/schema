@@ -9,6 +9,13 @@ import (
 // emitCookWriteFixed writes §7.6's fixed-root half. Variable graphs remain the
 // next part of the same stage; this helper makes no claim for their surface.
 func (g *cookGen) emitCookWriteFixed(st *ir.Struct) {
+	// A map's generated ENTRY (docs/SPEC-TABLES.md §2.8) is an extent inside
+	// its holder's node, reached through the holder's map slot — never a cooked
+	// record of its own — so it has no fixed-root cook writer, exactly as the
+	// block form refuses it (§19).
+	if st.MapEntryOf != "" {
+		return
+	}
 	if why := fixedRefusal(st); why != "" {
 		g.pf("  // %s has no fixed-root cook writer here: %s.\n", st.Name, why)
 		return

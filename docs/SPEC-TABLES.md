@@ -9523,6 +9523,23 @@ the wire, and keeps the flexibility that comes with it.
   | the descriptors | `XCook::Type()` | `XCook.Type` | `cook.Type() *TableCookInfo` | `XCook.Type` | `XCook.type`, a `const TableCookInfo` |
   | §7.1's facts | `XCook::RegionAlignment` etc. | the same constants | `cook.RegionAlignment()`, `RootSize()`, `RootAlign()` — methods, which §11 leaves a language free to make them | `XCook.RegionAlignment`, `RootSize`, `RootAlign` | `XRow.rowSize` and `XRow.rowAlign`, `static const` on every record; the region alignment is the header's, read at `open` |
 
+  **A MAP FIELD IS READ AS ITS ENTRIES, in every column** (§2.8, §7.2): the
+  slot is the delta and the count, and a cooked holder exposes the count, the
+  entry at an index in ascending key order, and `Find`. Go spells them
+  `row.F.Count`, `row.F.At(i)` and `XFFind(nil, &row.F, key)`. Dart has no
+  struct and no pointer to a scalar, so its row carries three members per map
+  field instead: `fCount` (0 for an absent or an empty map, and 0 for a slot
+  whose array would leave the view, since a Dart read past it would throw
+  rather than refuse), `fAt(index, into)`, which moves a lent `<Entry>Row`
+  cursor, and `fFind(key, into)`, the same binary search, which moves the
+  cursor onto the entry, or answers null. The handle is the ENTRY in every
+  case and the value is read through it. An integer key is a Dart `int`
+  compared at the key's own signedness (a `uint64` with its sign bit flipped);
+  a `string(N)` key is its UTF-8 bytes, a `List<int>`, ordered bytewise over
+  the used length with the shorter first, which is the order the cook was
+  written in. The entry's cursor is emitted with the holder's library, and it
+  is a cursor only: an entry has no `Open` and no `Cook` (below).
+
   **THE GENERATED STRUCT IS THE COOKED RECORD**, and the backend asserts it
   rather than assuming it: every record a unit's files declare carries
   `static_assert`s on its `sizeof`, its `alignof` and every field's `offsetof`
