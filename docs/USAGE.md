@@ -846,15 +846,17 @@ bound `N`, ill-formed UTF-8 in a `string`, and a NUL in a `string`, by name:
 the save returns `-1` and the `...Reason` twin (`<T>MeasureReason`,
 `<T>FixedSaveReason`) returns `TableRefuseInvalidValue`. Nothing is clamped on
 the way out and nothing is written for a refused fixed batch. The cost is one
-comparison per ranged field, one per count and length, and one UTF-8 scan over
-the used bytes of each string. The write path was benchmarked before and after
-(`TestGoTableWriterSpeedTable`, a functional test: `NOVA_WRITER_BENCH=1`), and
-the cost is measured, not hidden: on one bench machine a pong save went about
-300 ns to 320 ns and a fixed done record of 95 completions about 2.2 us to
-3.8 us. The coordinator amended the card's speed gate to the measured cost:
-correctness of the refusal outranks a sub-2 us per-record cost on a store
-path. The packet writers and the other languages' table writers are unchanged
-by this paragraph.
+comparison per ranged field, one per count and length, and one word-at-a-time
+scan over the used bytes of each string (ASCII passes on the word test; only
+text with a byte at or past 0x80 is asked of `utf8.Valid`). The fixed writer
+pays for its check by storing only the live extent, as
+[FIXED-FORM-ALGORITHM.md](FIXED-FORM-ALGORITHM.md) §3.1 always said it must: a
+counted array's `count` elements and a text field's `length` bytes, onto the
+zeroed template, never all `Max` and never the slack of the caller's storage.
+The write path is benchmarked before and after (`TestGoTableWriterSpeedTable`,
+a functional test: `NOVA_WRITER_BENCH=1`) under a speed gate: a save may not
+get slower than the before-run's spread. The packet writers and the other
+languages' table writers are unchanged by this paragraph.
 
 Do not build on any of it. **Keep your values inside their declared bounds on
 the write side** — your simulation already knows they are, and that is the only
