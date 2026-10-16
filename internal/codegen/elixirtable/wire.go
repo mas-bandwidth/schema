@@ -71,7 +71,7 @@ const tableRuntimeSource = `  @moduledoc """
   end
 
   defp do_leb_encode(n, acc) do
-    do_leb_encode(n >>> 7, [((n &&& 0x7F) ||| 0x80) | acc])
+    do_leb_encode(n >>> 7, [(n &&& 0x7F) ||| 0x80 | acc])
   end
 
   def leb_size(n) when is_integer(n) and n >= 0, do: do_leb_size(n, 1)
@@ -85,7 +85,7 @@ const tableRuntimeSource = `  @moduledoc """
   def leb_decode(bytes), do: do_leb_decode(bytes, 0, 0)
 
   defp do_leb_decode(<<b, rest::binary>>, shift, acc) when shift < 64 do
-    value = acc ||| ((b &&& 0x7F) <<< shift)
+    value = acc ||| (b &&& 0x7F) <<< shift
 
     cond do
       shift == 63 and b > 0x01 ->
@@ -120,7 +120,7 @@ const tableRuntimeSource = `  @moduledoc """
   defp do_fnv1a64(<<>>, hash), do: hash
 
   defp do_fnv1a64(<<b, rest::binary>>, hash) do
-    do_fnv1a64(rest, ((hash ^^^ b) * @fnv_prime) &&& @u64_mask)
+    do_fnv1a64(rest, (hash ^^^ b) * @fnv_prime &&& @u64_mask)
   end
 
   # ---- the id table, located from the END (docs/SPEC-TABLES.md §3) ----

@@ -144,7 +144,8 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   # A buffer shorter than that measure returns false and is not written. On
   # success the cook occupies the front of the returned binary and the tail of
   # the caller's buffer is kept.
-  def cook_from(table, value, buffer, order) when is_binary(buffer) and order in [:little, :big] do
+  def cook_from(table, value, buffer, order)
+      when is_binary(buffer) and order in [:little, :big] do
     case cook_plan(table, value) do
       {:error, _} ->
         false
@@ -174,7 +175,16 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
 
       desc = Map.fetch!(@tables, table)
       children = cook_collect(desc, value, []) |> Enum.reverse()
-      root = %{id: desc.type_id, kind: :table, string: false, value: value, elem: table, desc: desc}
+
+      root = %{
+        id: desc.type_id,
+        kind: :table,
+        string: false,
+        value: value,
+        elem: table,
+        desc: desc
+      }
+
       {data, align, laid} = cook_lay([root | children])
       total = 64 + data + length(laid) * 16
       {:ok, %{total: total, data: data, align: align, nodes: laid, desc: desc}}
@@ -184,7 +194,9 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   end
 
   defp cook_collect(desc, value, acc) do
-    Enum.reduce(desc.fields, acc, fn f, acc -> cook_collect_field(f, Map.get(value, f.name), acc) end)
+    Enum.reduce(desc.fields, acc, fn f, acc ->
+      cook_collect_field(f, Map.get(value, f.name), acc)
+    end)
   end
 
   defp cook_collect_field(%{t: :blob, cook_type_id: id} = f, v, acc) when not is_nil(v) do
@@ -205,7 +217,9 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     Enum.reduce(v, acc, fn e, acc -> cook_collect_elem(f, e, acc) end)
   end
 
-  defp cook_collect_field(%{t: :list}, v, _acc) when not is_nil(v) and not is_list(v), do: throw(:invalid)
+  defp cook_collect_field(%{t: :list}, v, _acc) when not is_nil(v) and not is_list(v),
+    do: throw(:invalid)
+
   defp cook_collect_field(_, _, acc), do: acc
 
   defp cook_collect_elem(%{elem_kind: 13, elem: elem}, e, acc) when is_map(e) do
@@ -241,7 +255,9 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
             start = cook_align(offset, d.align)
             ext = if(d.has_extent, do: cook_extent(d, n.value), else: 0)
             size = d.record + ext
-            {start + size, align, [Map.merge(n, %{offset: start, size: size, extent: ext, desc: d}) | acc]}
+
+            {start + size, align,
+             [Map.merge(n, %{offset: start, size: size, extent: ext, desc: d}) | acc]}
         end
       end)
 
@@ -393,11 +409,25 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     cook_record(Map.fetch!(@tables, elem), v || %{}, base + off, index, order, buf)
   end
 
-  defp cook_value(%{t: :string, cook_off: off, count_off: len_at, size: bound}, v, base, _index, order, buf) do
+  defp cook_value(
+         %{t: :string, cook_off: off, count_off: len_at, size: bound},
+         v,
+         base,
+         _index,
+         order,
+         buf
+       ) do
     cook_text(buf, base + off, base + len_at, v, bound, order)
   end
 
-  defp cook_value(%{t: :bytes, cook_off: off, count_off: len_at, size: bound}, v, base, _index, order, buf) do
+  defp cook_value(
+         %{t: :bytes, cook_off: off, count_off: len_at, size: bound},
+         v,
+         base,
+         _index,
+         order,
+         buf
+       ) do
     cook_text(buf, base + off, base + len_at, v, bound, order)
   end
 
@@ -430,7 +460,9 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     cook_slots(f, v, base, index, order, buf, false)
   end
 
-  defp cook_value(%{t: t}, v, _base, _index, _order, _buf) when not is_nil(v) and t != nil, do: throw(:invalid)
+  defp cook_value(%{t: t}, v, _base, _index, _order, _buf) when not is_nil(v) and t != nil,
+    do: throw(:invalid)
+
   defp cook_value(_f, _v, _base, _index, _order, buf), do: buf
 
   defp cook_slots(f, v, base, index, order, buf, counted) do
@@ -527,7 +559,18 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   end
 
   defp cook_carve(desc, value, node_off, index, order, buf) do
-    {_, buf} = cook_carve_fields(desc.fields, value, node_off, node_off + desc.record, 0, index, order, buf)
+    {_, buf} =
+      cook_carve_fields(
+        desc.fields,
+        value,
+        node_off,
+        node_off + desc.record,
+        0,
+        index,
+        order,
+        buf
+      )
+
     buf
   end
 
@@ -537,7 +580,16 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     end)
   end
 
-  defp cook_carve_field(%{t: :list, array: :list} = f, value, rec, extent_at, cursor, index, order, buf) do
+  defp cook_carve_field(
+         %{t: :list, array: :list} = f,
+         value,
+         rec,
+         extent_at,
+         cursor,
+         index,
+         order,
+         buf
+       ) do
     elems = cook_list(value, f)
     count = length(elems)
     cursor = cook_align(cursor, f.elem_align)
@@ -562,17 +614,44 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     cook_carve_after(f, elems, start, extent_at, cursor, index, order, buf)
   end
 
-  defp cook_carve_field(%{t: :table, elem: elem, cook_off: off, name: name}, value, rec, extent_at, cursor, index, order, buf) do
+  defp cook_carve_field(
+         %{t: :table, elem: elem, cook_off: off, name: name},
+         value,
+         rec,
+         extent_at,
+         cursor,
+         index,
+         order,
+         buf
+       ) do
     d = Map.fetch!(@tables, elem)
 
     if d.has_extent do
-      cook_carve_fields(d.fields, Map.get(value, name, %{}), rec + off, extent_at, cursor, index, order, buf)
+      cook_carve_fields(
+        d.fields,
+        Map.get(value, name, %{}),
+        rec + off,
+        extent_at,
+        cursor,
+        index,
+        order,
+        buf
+      )
     else
       {cursor, buf}
     end
   end
 
-  defp cook_carve_field(%{t: :list, elem_t: :record, elem: elem, cook_off: off, elem_size: step} = f, value, rec, extent_at, cursor, index, order, buf) do
+  defp cook_carve_field(
+         %{t: :list, elem_t: :record, elem: elem, cook_off: off, elem_size: step} = f,
+         value,
+         rec,
+         extent_at,
+         cursor,
+         index,
+         order,
+         buf
+       ) do
     d = Map.fetch!(@tables, elem)
 
     if d.has_extent do
@@ -586,7 +665,16 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
 
   defp cook_carve_field(_, _, _, _, cursor, _, _, buf), do: {cursor, buf}
 
-  defp cook_carve_after(%{elem: elem, elem_size: step}, elems, start, extent_at, cursor, index, order, buf) do
+  defp cook_carve_after(
+         %{elem: elem, elem_size: step},
+         elems,
+         start,
+         extent_at,
+         cursor,
+         index,
+         order,
+         buf
+       ) do
     d = Map.get(@tables, elem)
 
     if is_map(d) and d.has_extent do
