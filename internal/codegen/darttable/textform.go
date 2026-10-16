@@ -191,7 +191,9 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
 }
 
 // _jsonFloat spells a float at the shortest precision that reads back the same
-// value (§16.2), the same '%%g' spelling the Go leg writes. single is a float32 field.
+// value AT ITS OWN WIDTH (§16.2): a float32 from six significant digits up to
+// nine, a float64 from fifteen up to seventeen, each candidate C's %%.*g
+// (_formatG). single is a float32 field.
 // A non-finite float has no JSON spelling and the writer refuses it.
 String _jsonFloat(double v, bool single) {
   if (v.isNaN || v.isInfinite) {
@@ -212,17 +214,83 @@ String _jsonFloat(double v, bool single) {
   }
 }
 
+// _formatG is C's %%.*g for a finite double (docs/SPEC-TABLES.md §16.2), the
+// engine's formatG (internal/tabletext/write.go) spelled out: the digits are
+// the EXACT binary value rounded half to even at prec significant digits, the
+// exponent form when the decimal exponent is below -4 or at least prec, the
+// plain form otherwise, trailing zeros and a trailing point removed, and an
+// exponent of at least two digits. Dart's toStringAsFixed and
+// toStringAsExponential break an exact tie AWAY from even (ECMAScript's
+// "larger n"), so they cannot stand in for it: the float32 3624545.25 at seven
+// digits is 3624545.2 in C and 3624545.3 through toStringAsFixed (§16.2's
+// spelling is C's; the text differential against the Go engine found it).
 String _formatG(double value, int prec) {
   if (prec < 1) prec = 1;
-  final sci = value.toStringAsExponential(prec - 1);
-  final at = sci.indexOf('e');
-  final exp = int.parse(sci.substring(at + 1));
-  if (exp < -4 || exp >= prec) {
-    return _trimZeros(sci.substring(0, at)) + 'e' + _expDigits(exp);
+  final bd = ByteData(8);
+  bd.setFloat64(0, value);
+  final hi = bd.getUint32(0);
+  final lo = bd.getUint32(4);
+  final sign = (hi >> 31) != 0 ? '-' : '';
+  final biased = (hi >> 20) & 0x7FF;
+  var mant = (BigInt.from(hi & 0xFFFFF) << 32) | BigInt.from(lo);
+  var e2 = -1074;
+  if (biased != 0) {
+    mant |= BigInt.one << 52;
+    e2 = biased - 1075;
   }
-  final frac = prec - 1 - exp;
-  final plain = value.toStringAsFixed(frac < 0 ? 0 : frac);
-  return _trimZeros(plain);
+  final ten = BigInt.from(10);
+  var digits = '0' * prec;
+  var exp = 0;
+  if (mant != BigInt.zero) {
+    // value = numer / denom exactly; exp is the decimal exponent with
+    // 10^exp <= |value| < 10^(exp+1).
+    var numer = mant;
+    var denom = BigInt.one;
+    if (e2 >= 0) {
+      numer = numer << e2;
+    } else {
+      denom = denom << -e2;
+    }
+    bool atLeast(int k) =>
+        k >= 0 ? numer >= denom * ten.pow(k) : numer * ten.pow(-k) >= denom;
+    exp = numer.toString().length - denom.toString().length;
+    while (!atLeast(exp)) {
+      exp--;
+    }
+    while (atLeast(exp + 1)) {
+      exp++;
+    }
+    final shift = exp - prec + 1;
+    var n = numer;
+    var d = denom;
+    if (shift >= 0) {
+      d = d * ten.pow(shift);
+    } else {
+      n = n * ten.pow(-shift);
+    }
+    var q = n ~/ d;
+    final twice = (n - q * d) * BigInt.two;
+    if (twice > d || (twice == d && q.isOdd)) {
+      q += BigInt.one;
+    }
+    if (q == ten.pow(prec)) {
+      q = q ~/ ten;
+      exp++;
+    }
+    digits = q.toString();
+  }
+  if (exp < -4 || exp >= prec) {
+    final m = prec == 1 ? digits : digits[0] + '.' + digits.substring(1);
+    return sign + _trimZeros(m) + 'e' + _expDigits(exp);
+  }
+  if (exp < 0) {
+    return sign + _trimZeros('0.' + '0' * (-exp - 1) + digits);
+  }
+  if (exp + 1 >= prec) {
+    return sign + digits;
+  }
+  return sign +
+      _trimZeros(digits.substring(0, exp + 1) + '.' + digits.substring(exp + 1));
 }
 
 String _trimZeros(String s) {

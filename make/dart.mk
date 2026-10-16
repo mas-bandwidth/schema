@@ -487,6 +487,25 @@ tables-dart-variable-class:
 
 test-dart: tables-dart-variable-class
 
+# I13 (docs/PORTING.md): the Dart leg's text differential against a third
+# implementation. A Dart probe builds N random float-only instances of a
+# variable root with the generated setters and the Go cell's splitmix64, writes
+# each as (wire, text); inside Go the engine (internal/tabletext) writes its own
+# text from the same wire, the two are byte-compared, and the engine packs the
+# leg's text back to wire the other way. The control caps a float32 at six
+# significant digits in the emitted Dart, in memory, and requires red on the
+# text comparison. The probe builds its own unit into a temp directory, so no
+# corpus stamp is a prerequisite.
+.PHONY: tables-dart-text-differential tables-dart-text-differential-negative-control
+tables-dart-text-differential:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestDartTextDifferentialAgainstTheGoEngine$$'
+	@echo 'tables Dart text differential: the generated text writer agrees with the engine byte for byte, both directions'
+tables-dart-text-differential-negative-control:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestDartTextDifferentialNegativeControl$$'
+	@echo 'tables Dart text differential negative control: a float32 capped at six digits reds the text comparison'
+
+test-dart: tables-dart-text-differential tables-dart-text-differential-negative-control
+
 # THE DART LEG of `make test`. THE DART PORT's own instruments
 # (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart
 # format` writes and what the analyzer accepts, the name-claim control, the

@@ -501,7 +501,8 @@
         "tables-dart-keyed-negative-control",
         "tables-dart-names-negative-control",
         "tables-dart-runtime-home-negative-control",
-        "tables-dart-standalone-negative-control"
+        "tables-dart-standalone-negative-control",
+        "tables-dart-text-differential-negative-control"
       ],
       "dart": "3.13.2"
     },
