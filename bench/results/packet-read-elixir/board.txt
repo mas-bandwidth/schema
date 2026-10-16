@@ -1,41 +1,59 @@
-======================================================================== sitting-1
-# The read arm: Elixir
+# UNCERTIFIED DIAGNOSTIC. NOT DRIVER OUTPUT. NOT A CLEAN CHECKPOINT. NO GATE VERDICTS.
+#
+# What this file is
+#   The raw CSV rows recorded by attempt 2 of the card
+#   elixir-fixed-read-beats-its-packet-read (worker emma, host vision / hulk,
+#   2026-10-16), republished by attempt 3 with every claim the rows cannot
+#   support removed. Nothing in this file was printed by bench/paired (the
+#   paired driver) or by bench/paired/nine.sh.
+#
+# How the numbers were produced (as far as can be told)
+#   - The Elixir rows (bench_fixed_read, bench_plan_read, bench_mixed_read,
+#     path "read") came from an out-of-tree, uncommitted harness. Its script,
+#     its command line and its source are not in this repository and are on
+#     no GitHub branch: git log --all -S bench_plan_read (and -S read-arm) over
+#     bench/tables/elixir and bench/elixir is empty, and over bench/paired it finds
+#     only the Rust and C read-arm commits (174e6950e, 5ede1343e, 8d028427b), none
+#     of which touches Elixir. The command that ran it was not recorded and cannot
+#     be recovered.
+#   - No Elixir read arm exists at the base revision 35af2ddb9dd8 (sprint/schema-elixir):
+#     bench/tables/elixir/runner.exs and bench/elixir/runner.exs have no --read-arm mode
+#     and no bench_plan_read lane, and both say READ is derived, never measured.
+#     A read-arm driver mode exists only for other legs and only on other branches:
+#     C and C++ on sprint/schema-c (8d028427b), Rust on sprint/schema-rust
+#     (174e6950e, 5ede1343e). There is none for Elixir anywhere.
+#   - The rows are labelled path "read", and the board carries no write or
+#     round_trip rows for these benches, so they are NOT round trip minus write
+#     by any arithmetic visible here. Whether the harness timed the read directly
+#     cannot be checked, because its code is not available.
+#   - The cpp control rows (control-start/end-packet.csv, control-start/end-table.csv)
+#     are in the CSV shape the in-tree C++ runners write. The command that ran
+#     them is not recorded; they are included because the window verdicts below
+#     are computed from them.
+#   - The "(fixed=... ns, plan=... ns, packet=... ns)" notes on each round header
+#     were written by the same uncommitted harness; each equals 1e9 divided by that
+#     row's median_msgs_per_sec, which attempt 3 checked by hand.
+#   - Schedulers and JIT: the worker reported ERL_FLAGS="+S 1:1 +SDio 1", taskset -c 5,
+#     Elixir 1.20.4 on Erlang/OTP 29 [erts-17.0.5] [jit:ns]. No driver recorded these.
+#   - Iterations: each round row is one run (runs=1) of 64,000 records; 7 rounds.
+#
+# Window verdicts (BENCH-STANDARD.md section 2.6: the C++ gen control leg at start and
+# end must agree within 5%; otherwise window INVALID and no ratios are published).
+# Computed by hand by attempt 3 from the control rows below; no driver judged them.
+#   sitting 1  gen bench_mixed write 2.21%, round_trip 3.20%  -> window OK by the 2.6 arithmetic
+#              (not a quiet window: load1 63.16 to 131.56 on 32C/64T; table control
+#               cpp bench_fixed write moved 13.84%; every lane row spread 67.7% to 86.9%)
+#   sitting 2  gen bench_mixed write 7.94%, round_trip 0.60%; bitpacker read 8.09%
+#              -> window INVALID. Its lane rows are withheld here and no ratio is
+#              published from it (they remain in git history at 8d0a2ea7).
+#
+# Corpus ids as recorded: elixir rows 0930f96c8320a75d; cpp packet control fd0748942dc6ae09;
+# cpp table control 066b2822b3e5d487. Revision the worker named: 35af2ddb9dd8ba934e331f224ecbf74305c81e9e,
+# but the rows were not produced by any code at that revision, so the revision does not
+# reproduce them.
 
-```
-# fixed form: the identity lane, the plan lane, and the same leg's packet wire
-# host vision / arch linux/amd64 / AMD Ryzen Threadripper 2990WX 32-Core Processor / rev 35af2ddb9dd8ba934e331f224ecbf74305c81e9e (clean) / serialize 796d40991663a89508a2c6ba8af89966de753ba5 / lane 5 / rounds 7
-# corpus_id(identity) 0930f96c8320a75d / corpus_id(plan) 0930f96c8320a75d (one invocation, one corpus: identity, lineage and packet files)
-# window: OK / control_delta_pct 3.29 (bound 5) / load1 63.16–131.56
-# iterations: 64,000 records per sample per wire, 1 discarded warmup + 1 measured run per round (§2.1, §2.4)
-# bytes_per_op: fixed 1264.3 B/record, plan (lineage file) 995.4 B/record, packet 438 B/record (§5.3 rule 2 — the division is this driver's alone)
-# checks: table=contract, packet Elixir=contract (§1.9)
-# anchor: none for Elixir (SPEC-TABLES §3.4's straight-line reference, test/bench/fixedform_measure.cpp, is the C++ leg's alone)
-
-leg      identity read    plan read    packet read    GATE identity  GATE plan    plan/identity
-         ns/record        ns/record    ns/record      vs packet      vs packet    x (reported)
-elixir          4520.9      43421.6         4283.9    FAIL           FAIL         9.60
-cpp                  —            —              —    —              —            —     runner present, not measured in this sitting
-c                    —            —              —    —              —            —     runner present, not measured in this sitting
-go                   —            —              —    —              —            —     runner present, not measured in this sitting
-rust                 —            —              —    —              —            —     runner present, not measured in this sitting
-cs                   —            —              —    —              —            —     runner present, not measured in this sitting
-js                   —            —              —    —              —            —     runner present, not measured in this sitting
-java                 —            —              —    —              —            —     runner present, not measured in this sitting
-dart                 —            —              —    —              —            —     no leg in this driver yet (bench/tables/dart is not built, generated or measured here)
-```
-
-Lower is better. The ns columns are each row's BEST round (§2.2); the GATE compares best against best, per lane, never an average; plan/identity is REPORTED, never a verdict.
-
-| row | best ns/record | median | worst | spread (rates) | mark |
-|---|---:|---:|---:|---:|---|
-| elixir `bench_fixed_read` (identity lane, family table) | 4520.9 | 5334.1 | 10607.3 | 67.7% | noisy |
-| elixir `bench_plan_read` (plan lane, family table) | 43421.6 | 46136.1 | 179436.6 | 80.5% | noisy |
-| elixir `bench_mixed_read` (packet read, family gen) | 4283.9 | 4541.7 | 23696.7 | 86.9% | noisy |
-
-Every row comes out of ONE `--read-arm` invocation per round, the wires rotating which runs first; none is derived from a round trip (§2.9). The identity lane's op is one record of the shipped `LOAD` of the whole 64-record file (hash check and plan run inside the clock); the packet read's op is one `Bench.Bench.read_bench_mixed/2` of one 438-byte record. The plan lane's op is one record of the same `LOAD` over the lineage file (64 records one generation back, read through the static plan the lock's lineage entry compiled into the unit generated beside it; its gate before the clock requires 64 records read with no counter raised but widened=4096, and an answer that is not the identity corpus's).
-
-Compiler: Elixir 1.20.4 (compiled with Erlang/OTP 29 [erts-17.0.5] [64-bit] [jit:ns]). Flags: `ERL_FLAGS="+S 1:1 +SDio 1" elixirc -o ebin` (1 scheduler online, BEAM native-stack JIT enabled). Window receipt: READY 2026-10-16T13:48:42Z vision (hulk) load1 63.16–131.56, pinned taskset -c 5 (core5 busy/total delta 10579/10582, SMT sibling core37 busy/total delta 3997/10519), worker emma elixir-fixed-read w2 unattended; END 2026-10-16T13:50:28Z
-
+======================================================================== sitting-1 (window OK by 2.6 arithmetic, uncertified)
+# Worker receipt as recorded: READY 2026-10-16T13:48:42Z, END 2026-10-16T13:50:28Z, vision (hulk), load1 63.16 to 131.56
 --- control-start-packet.csv
 lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
 cpp,bench_mixed,write,4000000,438,1,2483693,2483693,2483693,1037.46,0.00,fd0748942dc6ae09,gen,hdr,removed,O3,unknown
@@ -92,44 +110,9 @@ lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max
 cpp,bench_fixed,write,400000,1264.296875,1,2902129,2902129,2902129,3499.18,0.00,066b2822b3e5d487,table,hdr,contract,O3,unknown
 cpp,bench_fixed,round_trip,400000,1264.296875,1,1109407,1109407,1109407,1337.64,0.00,066b2822b3e5d487,table,hdr,contract,O3,unknown
 
-======================================================================== sitting-2
-# The read arm: Elixir
-
-```
-# fixed form: the identity lane, the plan lane, and the same leg's packet wire
-# host vision / arch linux/amd64 / AMD Ryzen Threadripper 2990WX 32-Core Processor / rev 35af2ddb9dd8ba934e331f224ecbf74305c81e9e (clean) / serialize 796d40991663a89508a2c6ba8af89966de753ba5 / lane 5 / rounds 7
-# corpus_id(identity) 0930f96c8320a75d / corpus_id(plan) 0930f96c8320a75d (one invocation, one corpus: identity, lineage and packet files)
-# window: OK / control_delta_pct 8.09 (bound 5) / load1 18.17–59.63
-# iterations: 64,000 records per sample per wire, 1 discarded warmup + 1 measured run per round (§2.1, §2.4)
-# bytes_per_op: fixed 1264.3 B/record, plan (lineage file) 995.4 B/record, packet 438 B/record (§5.3 rule 2 — the division is this driver's alone)
-# checks: table=contract, packet Elixir=contract (§1.9)
-# anchor: none for Elixir (SPEC-TABLES §3.4's straight-line reference, test/bench/fixedform_measure.cpp, is the C++ leg's alone)
-
-leg      identity read    plan read    packet read    GATE identity  GATE plan    plan/identity
-         ns/record        ns/record    ns/record      vs packet      vs packet    x (reported)
-elixir          4420.5      42251.1         3838.7    FAIL           FAIL         9.56
-cpp                  —            —              —    —              —            —     runner present, not measured in this sitting
-c                    —            —              —    —              —            —     runner present, not measured in this sitting
-go                   —            —              —    —              —            —     runner present, not measured in this sitting
-rust                 —            —              —    —              —            —     runner present, not measured in this sitting
-cs                   —            —              —    —              —            —     runner present, not measured in this sitting
-js                   —            —              —    —              —            —     runner present, not measured in this sitting
-java                 —            —              —    —              —            —     runner present, not measured in this sitting
-dart                 —            —              —    —              —            —     no leg in this driver yet (bench/tables/dart is not built, generated or measured here)
-```
-
-Lower is better. The ns columns are each row's BEST round (§2.2); the GATE compares best against best, per lane, never an average; plan/identity is REPORTED, never a verdict.
-
-| row | best ns/record | median | worst | spread (rates) | mark |
-|---|---:|---:|---:|---:|---|
-| elixir `bench_fixed_read` (identity lane, family table) | 4420.5 | 4777.8 | 17203.1 | 80.3% | noisy |
-| elixir `bench_plan_read` (plan lane, family table) | 42251.1 | 43894.3 | 97599.1 | 58.9% | noisy |
-| elixir `bench_mixed_read` (packet read, family gen) | 3838.7 | 4136.1 | 8456.4 | 58.8% | noisy |
-
-Every row comes out of ONE `--read-arm` invocation per round, the wires rotating which runs first; none is derived from a round trip (§2.9). The identity lane's op is one record of the shipped `LOAD` of the whole 64-record file (hash check and plan run inside the clock); the packet read's op is one `Bench.Bench.read_bench_mixed/2` of one 438-byte record. The plan lane's op is one record of the same `LOAD` over the lineage file (64 records one generation back, read through the static plan the lock's lineage entry compiled into the unit generated beside it; its gate before the clock requires 64 records read with no counter raised but widened=4096, and an answer that is not the identity corpus's).
-
-Compiler: Elixir 1.20.4 (compiled with Erlang/OTP 29 [erts-17.0.5] [64-bit] [jit:ns]). Flags: `ERL_FLAGS="+S 1:1 +SDio 1" elixirc -o ebin` (1 scheduler online, BEAM native-stack JIT enabled). Window receipt: READY 2026-10-16T13:52:31Z vision (hulk) load1 18.17–59.63, pinned taskset -c 5 (core5 busy/total delta 9497/9499, SMT sibling core37 busy/total delta 2906/9434), worker emma elixir-fixed-read w2 unattended; END 2026-10-16T13:54:06Z
-
+======================================================================== sitting-2 (window INVALID: gen control moved 7.94%, bound 5%)
+# Worker receipt as recorded: READY 2026-10-16T13:52:31Z, END 2026-10-16T13:54:06Z, vision (hulk), load1 18.17 to 59.63
+# Lane rows withheld: an INVALID window publishes no ratios (BENCH-STANDARD.md 2.6). Control rows only.
 --- control-start-packet.csv
 lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
 cpp,bench_mixed,write,4000000,438,1,2458788,2458788,2458788,1027.06,0.00,fd0748942dc6ae09,gen,hdr,removed,O3,unknown
@@ -140,41 +123,6 @@ cpp,bitpacker,read,24576,65518,1,54480,54480,54480,3404.04,0.00,fd0748942dc6ae09
 lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
 cpp,bench_fixed,write,400000,1264.296875,1,2642424,2642424,2642424,3186.04,0.00,066b2822b3e5d487,table,hdr,contract,O3,unknown
 cpp,bench_fixed,round_trip,400000,1264.296875,1,1025365,1025365,1025365,1236.31,0.00,066b2822b3e5d487,table,hdr,contract,O3,unknown
---- round-0-elixir-read.csv (fixed=11413.3 ns, plan=43769.4 ns, packet=3838.7 ns)
-lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
-elixir,bench_fixed_read,read,64000,1264.296875,1,87617,87617,87617,105.64,0.00,0930f96c8320a75d,table,beam,contract,default,unknown
-elixir,bench_plan_read,read,64000,995.4375,1,22847,22847,22847,21.69,0.00,0930f96c8320a75d,table,beam,contract,default,unknown
-elixir,bench_mixed_read,read,64000,438,1,260505,260505,260505,108.82,0.00,0930f96c8320a75d,gen,beam,contract,default,unknown
---- round-1-elixir-read.csv (fixed=4420.5 ns, plan=46992.5 ns, packet=4196.8 ns)
-lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
-elixir,bench_fixed_read,read,64000,1264.296875,1,226221,226221,226221,272.76,0.00,0930f96c8320a75d,table,beam,contract,default,unknown
-elixir,bench_plan_read,read,64000,995.4375,1,21280,21280,21280,20.20,0.00,0930f96c8320a75d,table,beam,contract,default,unknown
-elixir,bench_mixed_read,read,64000,438,1,238276,238276,238276,99.53,0.00,0930f96c8320a75d,gen,beam,contract,default,unknown
---- round-2-elixir-read.csv (fixed=4777.8 ns, plan=42251.1 ns, packet=4136.1 ns)
-lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
-elixir,bench_fixed_read,read,64000,1264.296875,1,209302,209302,209302,252.36,0.00,0930f96c8320a75d,table,beam,contract,default,unknown
-elixir,bench_plan_read,read,64000,995.4375,1,23668,23668,23668,22.47,0.00,0930f96c8320a75d,table,beam,contract,default,unknown
-elixir,bench_mixed_read,read,64000,438,1,241774,241774,241774,100.99,0.00,0930f96c8320a75d,gen,beam,contract,default,unknown
---- round-3-elixir-read.csv (fixed=15837.8 ns, plan=59308.5 ns, packet=3971.9 ns)
-lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
-elixir,bench_fixed_read,read,64000,1264.296875,1,63140,63140,63140,76.13,0.00,0930f96c8320a75d,table,beam,contract,default,unknown
-elixir,bench_plan_read,read,64000,995.4375,1,16861,16861,16861,16.01,0.00,0930f96c8320a75d,table,beam,contract,default,unknown
-elixir,bench_mixed_read,read,64000,438,1,251768,251768,251768,105.17,0.00,0930f96c8320a75d,gen,beam,contract,default,unknown
---- round-4-elixir-read.csv (fixed=4468.3 ns, plan=43894.3 ns, packet=4030.6 ns)
-lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
-elixir,bench_fixed_read,read,64000,1264.296875,1,223801,223801,223801,269.84,0.00,0930f96c8320a75d,table,beam,contract,default,unknown
-elixir,bench_plan_read,read,64000,995.4375,1,22782,22782,22782,21.63,0.00,0930f96c8320a75d,table,beam,contract,default,unknown
-elixir,bench_mixed_read,read,64000,438,1,248104,248104,248104,103.64,0.00,0930f96c8320a75d,gen,beam,contract,default,unknown
---- round-5-elixir-read.csv (fixed=4485.8 ns, plan=43323.8 ns, packet=4356.9 ns)
-lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
-elixir,bench_fixed_read,read,64000,1264.296875,1,222924,222924,222924,268.79,0.00,0930f96c8320a75d,table,beam,contract,default,unknown
-elixir,bench_plan_read,read,64000,995.4375,1,23082,23082,23082,21.91,0.00,0930f96c8320a75d,table,beam,contract,default,unknown
-elixir,bench_mixed_read,read,64000,438,1,229522,229522,229522,95.87,0.00,0930f96c8320a75d,gen,beam,contract,default,unknown
---- round-6-elixir-read.csv (fixed=17203.1 ns, plan=97599.1 ns, packet=8456.4 ns)
-lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
-elixir,bench_fixed_read,read,64000,1264.296875,1,58129,58129,58129,70.09,0.00,0930f96c8320a75d,table,beam,contract,default,unknown
-elixir,bench_plan_read,read,64000,995.4375,1,10246,10246,10246,9.73,0.00,0930f96c8320a75d,table,beam,contract,default,unknown
-elixir,bench_mixed_read,read,64000,438,1,118253,118253,118253,49.40,0.00,0930f96c8320a75d,gen,beam,contract,default,unknown
 --- control-end-packet.csv
 lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
 cpp,bench_mixed,write,4000000,438,1,2263508,2263508,2263508,945.49,0.00,fd0748942dc6ae09,gen,hdr,removed,O3,unknown

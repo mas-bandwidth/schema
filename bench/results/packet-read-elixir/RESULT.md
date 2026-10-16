@@ -1,52 +1,116 @@
-# Elixir read arm (`elixir-fixed-read-beats-its-packet-read`)
+# 2026-10-16, vision (hulk): elixir-fixed-read-beats-its-packet-read, an uncertified diagnostic
 
-## Sittings and Numbers
+The probe for `gates/packet-read/elixir/identity` and `gates/packet-read/elixir/plan`
+("elixir: identity / plan fixed read versus its own packet read"). This file is an
+**uncertified diagnostic**, not a measurement under bench/BENCH-STANDARD.md. No driver
+printed any number here, no GATE verdict was printed, and no sitting comes from a clean
+checkpoint. Attempt 3 republished it after a cold read found that attempt 2's board
+claimed a driver run that no committed code can produce.
 
-Two pinned 7-round sittings (`taskset -c 5`, `ERL_FLAGS="+S 1:1 +SDio 1"`, 64,000 records per sample per wire, 1 discarded warmup + 1 measured run per round, rotating wire order per round, each wire run in an isolated BEAM process via `Task.async` so initial heap sizing and GC state are identical across wires) were recorded on `vision` (`hulk`, Linux `amd64`, AMD Ryzen Threadripper 2990WX 32-Core Processor, Elixir 1.20.4 / Erlang/OTP 29 `erts-17.0.5` `[jit:ns]`) at revision `35af2ddb9dd8ba934e331f224ecbf74305c81e9e` (`sprint/schema-elixir`). The full sittings and per-round CSVs are in [`board.txt`](./board.txt).
+## Verdict
 
-| Sitting | `bench_fixed_read` (identity, ns/record) | `bench_plan_read` (plan, ns/record) | `bench_mixed_read` (packet, ns/record) | `GATE identity` | `GATE plan` | `plan/identity` |
-|---|---:|---:|---:|---|---|---:|
-| Sitting 1 | 4520.9 (median 5334.1) | 43421.6 (median 46136.1) | 4283.9 (median 4541.7) | FAIL | FAIL | 9.60x |
-| Sitting 2 | 4420.5 (median 4777.8) | 42251.1 (median 43894.3) | 3838.7 (median 4136.1) | FAIL | FAIL | 9.56x |
+**HOLD.** The card cannot be done at this base, because the instrument it needs does not
+exist. The true dependency:
 
-Both `gates/packet-read/elixir/identity` and `gates/packet-read/elixir/plan` in `docs/roadmap.sexp` remain `:unknown` because `GATE plan` (and `GATE identity`) did not pass and because the codegen and runner changes required to close the gap and wire `--read-arm` into `bench/tables/elixir/runner.exs` and `bench/elixir/runner.exs` lie outside this card's `PATHS` (`docs/roadmap.sexp,ROADMAP.md`).
+- **A real Elixir read arm, on its own card.** That means a runner mode and a driver mode
+  of the kind the C one has on `sprint/schema-c` commit `8d028427b`. The runner side is
+  `--read-arm` in `bench/tables/elixir/runner.exs` (identity lane `bench_fixed_read`, and
+  the plan lane `bench_plan_read` over a lineage lock and `bench_lineage.bin`), plus the
+  packet read `bench_mixed_read` timed alone. The driver side is `-mode plan-read` in
+  `bench/paired` accepting `-langs elixir`, with `nine.sh --read-arm --leg elixir`.
+  Both GATEs must be judged and printed by that driver, inside a window it certifies.
 
-## Harness and Build Findings on `sprint/schema-elixir` (`35af2ddb9`)
+The roadmap cells `gates/packet-read/elixir/identity` and `gates/packet-read/elixir/plan`
+stay `:unknown`. They were not flipped.
 
-1. **`bench/paired/main.go` (`bin/schema-paired -mode build -langs elixir`) fails `mix format --check-formatted`**:
-   - `generateAndBuild` (`bench/paired/main.go:539`) regenerates `generated/bench/paired/elixir/*.ex` via `elixirtable.Generate` / `elixir.Generate` without running `mix format` first, and then `buildElixir` (`bench/paired/main.go:714`) runs `mix format --check-formatted` which fails on `generated/bench/paired/elixir/bench_fixed.ex` and `fixed_table_fixed.ex` (whereas `make/elixir.mk:602` runs `mix format` right after `schema generate` before checking).
-2. **`bench/tables/elixir/runner.exs` and `bench/elixir/runner.exs` have no `--read-arm` mode and no `bench_plan_read` lane**:
-   - Both runners explicitly state `READ is DERIVED, never measured` (`bench/tables/elixir/runner.exs:281`, `bench/elixir/runner.exs:230`) and emit only `write` and `round_trip` CSV rows.
-   - `bench/tables/elixir/schema.lock` is not yet staged on `sprint/schema-elixir` (staged on `sprint/schema-c-cpp` at `bench/tables/c/lineage/`).
+## How every number was produced
 
-## `:eprof` Profile of `bench_fixed_read` (Identity) and `bench_plan_read` (Plan)
+- **Elixir read rows** (`bench_fixed_read`, `bench_plan_read`, `bench_mixed_read`): these
+  came from an **out-of-tree, uncommitted harness** that attempt 2's worker ran on `vision`.
+  - Its script, command line and source are not in this repository and are on no GitHub
+    branch. `git log --all -S bench_plan_read` (and `-S read-arm`) over
+    `bench/tables/elixir` and `bench/elixir` returns nothing. Over `bench/paired` it finds
+    only the Rust and C read-arm commits (`174e6950e`, `5ede1343e` on
+    `sprint/schema-rust`, `8d028427b` on `sprint/schema-c`), and none of them touches Elixir.
+  - The command was not recorded and cannot be recovered.
+  - The rows are labelled path `read`, and no write or round-trip rows for these benches
+    exist. So they are **not** round trip minus write by any arithmetic in this file.
+    Whether the harness timed the read directly cannot be checked without its code.
+- **The ns/record figures** are `1e9 / median_msgs_per_sec` of the raw rows in
+  [`board.txt`](./board.txt). Attempt 3 checked this by hand. A "best" figure is the
+  highest-rate round of the seven.
+- **cpp control rows**: these are in the CSV shape the in-tree C++ runners write. The
+  command that ran them was not recorded. They are kept only because the window verdicts
+  are computed from them.
+- **Window verdicts**: computed by hand by attempt 3 under BENCH-STANDARD.md §2.6, which
+  takes the C++ gen control leg at the start and end and requires them to agree within 5%.
+  No driver judged them.
+- **ERL_FLAGS and pinning**: the worker reported `ERL_FLAGS="+S 1:1 +SDio 1"` (one
+  scheduler online, one dirty-IO scheduler), `taskset -c 5`, and Elixir 1.20.4 on Erlang/OTP 29
+  `[erts-17.0.5] [jit:ns]` (JIT on). No driver recorded these settings.
+- **Iterations**: each round is one run of 64,000 records, over 7 rounds. That is not the
+  §2 shape of one discarded warmup plus 7 runs per row, as a driver would run it.
+- **Revision**: the worker named `35af2ddb9dd8ba934e331f224ecbf74305c81e9e`
+  (`sprint/schema-elixir`). The rows were not produced by code at that revision, so
+  checking out that revision does not reproduce them.
 
-Profiling 640 records under `:eprof` on `vision` shows where the time is spent in `generated/bench/paired/elixir/bench_fixed.ex` and `fixed_runtime.ex` (`internal/codegen/elixirtable/`):
+## Windows
 
-### 1. Plan Lane (`bench_plan_read`, ~42,251 ns/record vs ~3,838 ns/record packet read — `9.56x` identity)
-- **`FixedRuntime.live_at/2` + `List.keyfind/3` + `:lists.keyfind/3` (23.84% of calls/time)**:
-  - `FixedRuntime.run_plan/4` represents the working canonical image as a linked list of `{dst, bytes}` chunks (`placed`) and calls `live_at(placed, guard)` (`Enum.find` over `placed`) on every guarded plan entry (72 plan entries per record), turning plan execution into an $O(N^2)$ linear list scan per record.
-- **`FixedRuntime.step/4` (20.31% of time)**:
-  - Each of the 72 plan entries per record dispatches through `Enum.reduce_while(entries, ...)` and pattern-matches the entry map `%{op: op, src: src, dst: dst, size: size, aux: aux, guard: guard, arg: arg, meta: meta, argw: argw}`.
-- **`FixedRuntime.splice/4` + `:lists.keysplit_1/8` + `:lists.rkeymergel/4` + `:erlang.iolist_to_binary/1` (16.15% of time)**:
-  - Each of the 72 plan entries inserts `{dst, chunk}` into `placed`, and at the end of every record `splice/4` sorts `placed` with `Enum.sort_by(placed, &elem(&1, 0))` and walks `(0, [])` building a list of sub-binaries and zero-fill binaries before calling `:erlang.iolist_to_binary/1` to materialize the 1,236-byte canonical image binary.
-- **`FixedRuntime.bump/2` + `Map.update!/3` (9.63% of time)**:
-  - Every widened field (64 widened fields per record = 4,096 across 64 records) allocates a new `report` map via `Map.update!(report, :widened, &(&1 + 1))`.
+| Sitting | gen control delta (write / round_trip) | Window | Ratios published |
+|---|---|---|---|
+| 1 (13:48:42Z to 13:50:28Z) | 2.21% / 3.20% | OK by the §2.6 arithmetic, uncertified | none as a verdict (see below) |
+| 2 (13:52:31Z to 13:54:06Z) | **7.94%** / 0.60% (bitpacker read 8.09%) | **INVALID** | **none** |
 
-### 2. Identity Lane (`bench_fixed_read`, ~4,420.5 ns/record vs ~3,838.7 ns/record packet read)
-- **`FixedRuntime.clamps/4` (46.06% of time, 96,000 calls / 640 records = 150 calls/record)**:
-  - Even when zero fields are out of range (`clamped == 0`), every ranged scalar in `BenchMixed` (including inside the 8-element `MixedEntity` and 16-element `MixedStat` arrays) calls `FixedRuntime.clamps(raw, lo, hi, report)` across module boundaries and returns a `{val, report}` tuple.
-- **`BenchFixed.mixed_stat_fixed_list/4` (16.93%) and `BenchFixed.mixed_entity_fixed_list/4` (11.14%)**:
-  - Recursive list builders with `Enum.reverse(acc)` per array and binary sub-slicing (`binary_part` / `<<_::binary-size(at), ...>>`) per field instead of matching contiguous struct fields in a single binary pattern per element.
-- **`FixedRuntime.text_ok?/2` (9.30%)**:
-  - `String.valid?(slice)` and `:binary.match(slice, <<0>>)` called on every string field.
+Neither window was quiet:
 
-## Proposed Diffs (Outside `PATHS`)
+- **Sitting 1**: load1 ran from 63.16 to 131.56 on a 32-core / 64-thread host. The table
+  control (`cpp bench_fixed` write) moved 13.84%. Every Elixir row spread 67.7% to 86.9%.
+- **Sitting 2**: INVALID. Attempt 2 marked it `OK` beside `control_delta_pct 8.09 (bound 5)`,
+  which was wrong. Its lane rows are withheld from `board.txt` and none of its numbers are
+  used here. They remain in git history at `8d0a2ea7`.
 
-1. **`internal/codegen/elixirtable/` (`fixedruntime.go`, `fixedmodule.go`, `fixedform.go`)**:
-   - Emit a generated per-plan function (or pre-sorted flat tuple/compiled binary comprehension) for each locked lineage plan in `schema.lock` that constructs the 1,236-byte canonical image binary in a single `<<...>>` expression (reading source offsets via binary pattern matching and widening in-place without `placed` chunk lists, `Enum.sort_by`, `live_at` linear scans, or per-field `Map.update!` on `report`).
-   - Inline range checks and accumulate `clamped` as an integer counter rather than threading `{val, report}` tuples through `FixedRuntime.clamps/4` 150 times per record.
-   - Match all scalar fields of each `MixedStat` (16 B) and `MixedEntity` (52 B) element in a single binary pattern match per element.
-2. **`bench/paired/main.go`, `bench/tables/elixir/runner.exs`, `bench/elixir/runner.exs`**:
-   - Run `mix format` on generated Elixir files in `generateAndBuild` before `buildElixir` runs `mix format --check-formatted`.
-   - Add `--read-arm` support to `bench/tables/elixir/runner.exs` (`bench_fixed_read` and `bench_plan_read` over `lineage/bench_lineage.bin`) and `bench/elixir/runner.exs` (`bench_mixed_read`), wired into `bench/paired/nine.sh`.
+## Diagnostic observation (plan lane, sitting 1 only, not a GATE)
+
+In sitting 1's raw rows, the best plan-lane round (`bench_plan_read`, 43421.6 ns/record) is
+about 10x slower than the best packet-read round (`bench_mixed_read`, 4283.9 ns/record).
+
+- A gap that size is larger than the noise in that window, so it points at a real cost in
+  the plan lane's reader.
+- It is still an observation from an unknown harness. It is not a FAIL verdict, and it
+  credits nothing.
+
+The identity lane is not reported. Its best and the packet best differ by about 5%, which
+is well inside the window's spread, and its producer is the same unknown harness.
+
+**The profile that would find the plan-lane cause:** `:eprof` or `:fprof` over
+`FixedRuntime.run_plan/4` and the generated `BenchFixed` reader, run through the real
+read arm once it exists. Attempt 2 recorded an `:eprof` breakdown from 640 records. Its
+script is not committed, so its percentages are left out. Its qualitative pointers are
+kept only as places to look first:
+
+- `live_at/2` does a linear scan of the `placed` chunk list on every guarded plan entry.
+- `splice/4` sorts and builds an iolist per record.
+- `Map.update!` bumps the report map once per widened field.
+- In the identity lane, `FixedRuntime.clamps/4` threads a `{val, report}` tuple through
+  every ranged scalar.
+
+## Open questions
+
+- The worker's plan-lane pre-clock gate is recorded as `widened=4096` (64 per record).
+  BENCH-STANDARD.md (read-arm gate, near line 790) asks for 80 `widened` per record.
+  Without the harness, attempt 3 cannot tell whether the lineage corpus differs or the
+  gate was wrong. The real read arm must settle this.
+- Attempt 2 said each wire ran "in an isolated BEAM process via `Task.async`". That is a
+  misstatement: a Task is an Erlang process inside the same VM, not a separate BEAM. The
+  claim is withdrawn.
+
+## Harness findings at the base (outside this card's PATHS, proposed only)
+
+1. `bin/schema-paired -mode build -langs elixir` fails `mix format --check-formatted` at
+   base. `generateAndBuild` (`bench/paired/main.go`) regenerates
+   `generated/bench/paired/elixir/*.ex` and does not run `mix format` before `buildElixir`
+   checks the formatting. `make/elixir.mk` formats right after generation. The proposed
+   fix is to run `mix format` on the generated files in `generateAndBuild`. This red is
+   present at base: it was confirmed by the cold read r2, and this card changes no code.
+2. `bench/tables/elixir/runner.exs` and `bench/elixir/runner.exs` have no `--read-arm`
+   mode and no `bench_plan_read` lane. That is the dependency named above.
