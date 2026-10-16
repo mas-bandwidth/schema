@@ -253,6 +253,7 @@ tables-java-clean: build/tables-generated-java/.stamp
 	echo "tables Java: google-java-format clean over the generated table units"
 test-java: tables-java-clean
 test-java: tables-java-t14
+test-java: tables-java-fixed-t18
 
 # EVERY generated unit compiles, warnings as errors, under the CONSUMER's javac
 # — the same flags the type wire's Java legs use, so a warning here is a build
@@ -409,6 +410,24 @@ tables-java-versioning: tables-fixedform-corpus
 	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
 	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
+
+# THE FIXED TABLES' SHARED BYTE ORACLE AND HOSTILE INPUT (java/W13, java/R27,
+# java/P3, java/P4; docs/roadmap.sexp fixed-tables). The driven functional tier
+# reads the C++ reference's own byte oracle out of build/fixedform-corpus and
+# runs the generated Java reader under the JVM as the sanitizer: W13 compares
+# the header hash and layout bytes in every reference file the Java leg emits
+# against the leg's own; R27 loads each manifest row the target emits through
+# the generated load and compares value for value; P3 sweeps every byte of a
+# record, one bit at a time, demanding each load refuse, read malformed, or
+# land values — never a fourth answer; P4 feeds a record body the wrong compiled
+# plan and demands the read go red. This target sets SCHEMA_REQUIRE_CORPUS=1
+# so a missing oracle turns the skip into a FAILURE.
+.PHONY: tables-java-fixed-t18
+tables-java-fixed-t18: tables-fixedform-corpus
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapJavaT18OracleHostile'
+	@echo 'tables Java fixed t18: the shared byte oracle and hostile input rows pass (java/W13, java/R27, java/P3, java/P4)'
+
 
 # THE COMPRESSED-FLOAT FP-CONTRACT GATE (java/R30, T14): the witness that the
 # compressed float's dequantize is the SPEC's order in float32 — one rounding
