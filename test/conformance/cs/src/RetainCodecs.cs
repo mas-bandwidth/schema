@@ -797,6 +797,38 @@ static partial class Program
             }
             finally { NativeMemory.AlignedFree(region); }
         };
+        // THE CARD ROOT'S RETAINING PAIR (cards-cs-retain-fuzz). CARDS_CS_RETAIN_DROP=1
+        // is a TEST-ONLY switch, off by default: it hands the load a retention
+        // store with no byte and no id capacity, so every unknown field a
+        // mutant carries is dropped rather than kept. cards-cs-retain-negative-control
+        // sets it and requires the retain arm to go red while the plain arm,
+        // which never reaches this pair, stays green.
+        bool cardsDrop=Environment.GetEnvironmentVariable("CARDS_CS_RETAIN_DROP")=="1";
+        Find("cards","Card").Retain=wire=>
+        {
+            long need=Cards.Schema.CardLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Cards.TableRetain { Bytes=scratch.Bytes,Capacity=cardsDrop?0:1<<20,Ids=(Cards.TableRetain.Id*)scratch.Ids,IdCapacity=cardsDrop?0:1<<17 };
+                var report=new Cards.TableReport();
+                var root=Cards.Schema.CardLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Cards.Schema.CardMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Cards.Schema.CardSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
         Find("tblw1","Fleet").Retain=wire=>
         {
             long need=Tblw1.Schema.FleetLoadMeasure(wire);
