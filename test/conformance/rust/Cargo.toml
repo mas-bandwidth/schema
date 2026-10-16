@@ -20,9 +20,6 @@ mapdemo = { path = "../../../build/tables-generated-rust/mapdemo" }
 listdemo = { path = "../../../build/tables-generated-rust/listdemo" }
 messagedemo = { path = "../../../build/tables-generated-rust/messagedemo" }
 streamdemo = { path = "../../../build/tables-generated-rust/streamdemo" }
-backenddemo = { path = "../../../build/tables-generated-rust/backenddemo" }
-vocabdemo = { path = "../../../build/tables-generated-rust/vocabdemo" }
-vocab9demo = { path = "../../../build/tables-generated-rust/vocab9demo" }
 blockdemo = { path = "../../../build/tables-generated-rust/blockdemo" }
 tblv1 = { path = "../../../build/tables-generated-rust/tblv1" }
 tblv2 = { path = "../../../build/tables-generated-rust/tblv2" }

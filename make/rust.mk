@@ -289,7 +289,6 @@ generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	blobdemo:tables/blobs mapdemo:tables/maps listdemo:tables/lists \
 	messagedemo:tables/messages streamdemo:tables/stream \
-	backenddemo:tables/backend vocabdemo:tables/vocab vocab9demo:tables/vocab9 \
 	scalars:tables/scalars blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \
