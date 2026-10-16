@@ -617,21 +617,57 @@ test-dart: tables-dart-variable-class
 # inlined is the inliner's budget, not the codec's. test/dart/floatjit.dart
 # drives float32 (Input) and float64 (Vec3) fields through the generated
 # packet codec in three shapes — as generated, hand-inlined, and from two
-# callers — and the VM prints one line per scavenge under --verbose_gc. Each
-# shape runs at N and 2N steady passes after the same warm-up; the difference
-# is the steady state's count (start-up and warm-up cancel). Measured on the
-# pinned SDK (3.13.2, linux x64) before the emitters inlined the float32
-# conversion: generated 76, inlined 0, twocallers 76 per 2,000,000 passes;
-# after: 0, 0, 0. Any steady scavenge is red. A functional test (the VM).
+# callers — and the VM prints one line per scavenge under --verbose_gc. The
+# program brackets its steady loop with two marker lines on stderr, after a
+# warm-up of many short calls, and only the main isolate's scavenges between
+# the markers are counted; each shape runs at N and at 2N steady passes, and a
+# steady state that allocates shows in both, in proportion. Measured on the
+# pinned SDK (3.13.2, linux x64) against the codec as it was before the
+# emitters inlined the float32 conversion: generated 76 (152 at 2N), inlined
+# 0, twocallers 76 (153 at 2N) per 2,000,000 passes; after: 0, 0, 0. Any
+# scavenge in either window is red. A functional test (the VM).
+#
+# A count is only read off a run that is proven whole. Each measured run's
+# stdout and stderr go to their own files under build/floatjit/, and the run is
+# REFUSED, by name, when the Dart process exits nonzero, when its stdout lacks
+# the completion line floatjit.dart prints last, when its stderr lacks the
+# main isolate's --verbose_gc header (`main: ... reason=initial`), which is how
+# an absent or unsupported GC trace is told from a valid trace holding zero
+# scavenges, or when either window marker is missing. No failure is
+# swallowed. THE BLADE runs first, every time: a planted run (floatjit.dart's
+# `planted-exit` shape, which warms up and exits 3 with no completion line)
+# and a run with the GC trace switched off must both be refused by the same
+# check, each for its own reason, or the target is red with BLADE LOST.
 FLOATJIT_N ?= 2000000
+FLOATJIT_DIR := build/floatjit
 .PHONY: tables-dart-float-jit
 tables-dart-float-jit: toolchain-dart generated/dart/.stamp
-	@fail=0; for s in generated inlined twocallers; do \
-		a=$$($(DART) --verbose_gc test/dart/floatjit.dart $$s $(FLOATJIT_N) 2>&1 >/dev/null | grep -c '^\[ main *, *Scavenge') || true; \
-		b=$$($(DART) --verbose_gc test/dart/floatjit.dart $$s $$((2 * $(FLOATJIT_N))) 2>&1 >/dev/null | grep -c '^\[ main *, *Scavenge') || true; \
-		$(DART) test/dart/floatjit.dart $$s 1 >/dev/null || { echo "tables-dart-float-jit: floatjit.dart $$s did not run"; exit 1; }; \
-		echo "tables-dart-float-jit shape=$$s steady_scavenges=$$((b - a)) per $(FLOATJIT_N) passes"; \
-		[ $$((b - a)) -eq 0 ] || fail=1; \
+	@mkdir -p $(FLOATJIT_DIR)
+	@run() { \
+		log=$(FLOATJIT_DIR)/$$1-$$2$$4; rm -f $$log.count; \
+		$(DART) $$3 test/dart/floatjit.dart $$1 $$2 >$$log.out 2>$$log.err; rc=$$?; \
+		if [ $$rc -ne 0 ]; then echo "tables-dart-float-jit: REFUSED shape=$$1 passes=$$2: dart exited $$rc ($$log.err)"; return 1; fi; \
+		if ! grep -Eqx "floatjit shape=$$1 steady=$$2 check=-?[0-9]+" $$log.out; then echo "tables-dart-float-jit: REFUSED shape=$$1 passes=$$2: no completion line ($$log.out)"; return 1; fi; \
+		if ! grep -Eq '^main: .*reason=initial' $$log.err; then echo "tables-dart-float-jit: REFUSED shape=$$1 passes=$$2: no GC trace from the main isolate, --verbose_gc absent or unsupported ($$log.err)"; return 1; fi; \
+		if [ "$$(grep -Ec '^floatjit: steady window (begins|ends)$$' $$log.err)" != 2 ]; then echo "tables-dart-float-jit: REFUSED shape=$$1 passes=$$2: the steady window markers are not both present ($$log.err)"; return 1; fi; \
+		awk '/^floatjit: steady window begins$$/ { w = 1; next } /^floatjit: steady window ends$$/ { w = 0 } w && /^\[ main *, *Scavenge/ { n++ } END { print n + 0 }' $$log.err > $$log.count; \
+	}; \
+	if run planted-exit 1 --verbose_gc -blade >$(FLOATJIT_DIR)/blade-exit.log; then \
+		echo "tables-dart-float-jit: BLADE LOST: a planted run that exits 3 was accepted"; exit 1; fi; \
+	grep -q 'REFUSED shape=planted-exit passes=1: dart exited 3 ' $(FLOATJIT_DIR)/blade-exit.log || \
+		{ echo "tables-dart-float-jit: BLADE LOST: the planted run was refused for another reason"; cat $(FLOATJIT_DIR)/blade-exit.log; exit 1; }; \
+	if run generated 1 '' -blade >$(FLOATJIT_DIR)/blade-trace.log; then \
+		echo "tables-dart-float-jit: BLADE LOST: a run with no GC trace was accepted"; exit 1; fi; \
+	grep -q 'REFUSED shape=generated passes=1: no GC trace' $(FLOATJIT_DIR)/blade-trace.log || \
+		{ echo "tables-dart-float-jit: BLADE LOST: the untraced run was refused for another reason"; cat $(FLOATJIT_DIR)/blade-trace.log; exit 1; }; \
+	echo "tables-dart-float-jit blade: a planted exit-3 run and an untraced run are both refused"; \
+	fail=0; for s in generated inlined twocallers; do \
+		run $$s $(FLOATJIT_N) --verbose_gc '' || exit 1; \
+		run $$s $$((2 * $(FLOATJIT_N))) --verbose_gc '' || exit 1; \
+		a=$$(cat $(FLOATJIT_DIR)/$$s-$(FLOATJIT_N).count); \
+		b=$$(cat $(FLOATJIT_DIR)/$$s-$$((2 * $(FLOATJIT_N))).count); \
+		echo "tables-dart-float-jit shape=$$s steady_scavenges=$$a per $(FLOATJIT_N) passes ($$b per $$((2 * $(FLOATJIT_N))))"; \
+		[ $$a -eq 0 ] && [ $$b -eq 0 ] || fail=1; \
 	done; \
 	echo "tables-dart-float-jit sdk: $$($(DART) --version 2>&1)"; \
 	if [ $$fail -ne 0 ]; then echo "tables-dart-float-jit: FAIL (a float boxes under the JIT)"; exit 1; fi; \

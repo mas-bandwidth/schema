@@ -12,22 +12,34 @@
 //   twocallers  the generated codec called from two different callers in
 //               alternation (the inliner's decision depends on the loop
 //               around the codec, so one caller is not the whole story)
+//   planted-exit  THE BLADE, not a measurement: the generated warm-up, then
+//               exit 3 with no completion line, standing in for a measured
+//               run that dies part way; make tables-dart-float-jit must
+//               refuse it by name before it reads any count
 //
 // Usage: dart --verbose_gc floatjit.dart <shape> <steady-iterations>
 //
 // The program runs a fixed warm-up, then <steady-iterations> passes. It
 // counts nothing itself: the VM prints one line per scavenge under
-// --verbose_gc, and make tables-dart-float-jit runs each shape twice (0 and
-// N steady passes) and prints the difference, so start-up and warm-up
-// scavenges cancel and what remains is the steady state's. Prints
-// `floatjit shape=<s> steady=<n> check=<c>` on stdout; check depends on
-// every decoded value so nothing is dead code.
+// --verbose_gc, and make tables-dart-float-jit runs each shape twice (N and
+// 2N steady passes) and prints the difference, so start-up and warm-up
+// scavenges cancel and what remains is the steady state's. Prints the
+// completion line `floatjit shape=<s> steady=<n> check=<c>` on stdout as its
+// last act; the make target reads no count from a run without it. check
+// depends on every decoded value so nothing is dead code.
 import 'dart:io';
 import 'dart:typed_data';
 
 import '../../generated/dart/Types.dart';
 
-const int warmup = 200000;
+// The warm-up is many short calls, not one long one: a single long call gets
+// its loop optimized by on-stack replacement only, and OSR code is entered
+// only through the back edge, so the steady call would re-enter the pass in
+// unoptimized code (which boxes every double) until the pass is compiled
+// again. warmupCalls calls get the pass compiled for a normal entry first,
+// and the steady window sees only the optimized code.
+const int warmupCalls = 2000;
+const int warmupChunk = 100;
 
 // The inlined control's scratch: the same overlaid views the generated
 // helpers use, so the only difference between the shapes is the call.
@@ -43,10 +55,11 @@ final Input inB = Input();
 final Vec3 vA = Vec3();
 final Vec3 vB = Vec3();
 
-void main(List<String> args) {
+Future<void> main(List<String> args) async {
   if (args.length != 2) {
     stderr.writeln(
-      'usage: floatjit.dart generated|inlined|twocallers <steady>',
+      'usage: floatjit.dart generated|inlined|twocallers|planted-exit '
+      '<steady>',
     );
     exit(2);
   }
@@ -68,14 +81,25 @@ void main(List<String> args) {
     'generated' => passGenerated,
     'inlined' => passInlined,
     'twocallers' => passTwoCallers,
+    'planted-exit' => passPlantedExit,
     _ => null,
   };
   if (pass == null) {
     stderr.writeln('floatjit: unknown shape $shape');
     exit(2);
   }
-  check += pass(warmup, 0);
+  for (var i = 0; i < warmupCalls; i++) {
+    check += pass(warmupChunk, 0);
+  }
+  // The steady window's brackets go to stderr, flushed before the loop
+  // starts and after it ends, so they land in order among the VM's
+  // --verbose_gc lines (the VM writes those to the same fd, unbuffered):
+  // the make target counts only the scavenges between them.
+  stderr.writeln('floatjit: steady window begins');
+  await stderr.flush();
   check += pass(steady, 1);
+  stderr.writeln('floatjit: steady window ends');
+  await stderr.flush();
   stdout.writeln('floatjit shape=$shape steady=$steady check=$check');
 }
 
@@ -89,6 +113,13 @@ int passGenerated(int n, int salt) {
     if (inB.yaw != inA.yaw || vB.z != vA.z) check++;
   }
   return check;
+}
+
+// The blade: warm up as the generated shape does, then die before the
+// completion line, as a measured run killed part way would.
+int passPlantedExit(int n, int salt) {
+  if (salt == 0) return passGenerated(n, salt);
+  exit(3);
 }
 
 int passTwoCallers(int n, int salt) {

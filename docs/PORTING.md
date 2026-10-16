@@ -184,7 +184,13 @@ float32 conversion in `@pragma('vm:prefer-inline')` helpers, 76 with the
 codec called from two different callers, and 0 with the conversion
 hand-inlined; the float64 helpers alone scavenged 0 (the pragma held for
 them, not for the float32 helpers with their NaN branch). With the conversion
-emitted at each assignment all three shapes read 0.
+emitted at each assignment all three shapes read 0. The count is taken only
+between the steady window's two markers, at 2,000,000 and at 4,000,000 passes
+(76 and 152 with the helpers), and only off a run proven whole: the target
+refuses, by name, a Dart exit other than 0, a missing completion line, a
+missing main-isolate GC trace (an absent or unsupported `--verbose_gc` is not
+a zero) and a missing window marker, and before it measures it requires a
+planted run that exits 3 and an untraced run to be refused.
 
 **Negative control.** The allocation gate's wire rows: a helper put back
 reads as bytes per iteration on the pinned runtime.
