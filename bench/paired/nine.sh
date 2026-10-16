@@ -2,6 +2,7 @@
 # THE NINE-LANGUAGE TABLE, from one command. Run from the repository root.
 #
 #   bench/paired/nine.sh [--lane N] [--rounds 1|2|3] [--out DIR] [--note TEXT]
+#   bench/paired/nine.sh --read-arm --receipt TEXT [--leg cpp|dart] [--pin CORE] [--out DIR]
 #
 # It builds the driver and every leg, then runs `-mode table`, which asks the
 # TREE which table runners it carries (bench/tables/<lang>/), measures exactly
@@ -35,6 +36,10 @@ LANE=
 ROUNDS=3
 OUT=
 NOTE=
+READ_ARM=
+RECEIPT=
+LEG=cpp
+PIN_CORE=
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -42,8 +47,12 @@ while [ $# -gt 0 ]; do
     --rounds) ROUNDS="$2"; shift 2 ;;
     --out)    OUT="$2"; shift 2 ;;
     --note)   NOTE="$2"; shift 2 ;;
+    --read-arm) READ_ARM=1; shift ;;
+    --receipt) RECEIPT="$2"; shift 2 ;;
+    --leg)    LEG="$2"; shift 2 ;;
+    --pin)    PIN_CORE="$2"; shift 2 ;;
     -h|--help)
-        sed -n '2,31p' "$0" | cut -c 3-
+        sed -n '2,32p' "$0" | cut -c 3-
         exit 0 ;;
     *)
         echo "nine.sh: unknown argument $1" >&2
@@ -52,6 +61,35 @@ while [ $# -gt 0 ]; do
 done
 
 [ -f bench/corpus/Bench.schema ] || { echo "nine.sh: run from the repository root" >&2; exit 2; }
+
+# The read arm runs the confirmation pass's quiet window, not the fast
+# diagnostic, and it accepts a tree whose only changes are build-regenerated
+# files under generated/ (the committed copies can lag the emitter) and names
+# them on the board; anything else refuses here as it does for the table.
+if [ -n "$READ_ARM" ]; then
+    [ -n "$RECEIPT" ] || { echo "nine.sh: --read-arm needs --receipt (the operator's READY/START record)" >&2; exit 2; }
+    [ -z "$LANE" ] || { echo "nine.sh: --read-arm does not take --lane (use --pin)" >&2; exit 2; }
+    if [ -n "$(git status --porcelain 2>/dev/null | grep -v '^ M generated/')" ]; then
+        echo "nine.sh: the tree is dirty outside generated/, and the read arm measures a named checkpoint:" >&2
+        git status --porcelain >&2
+        exit 2
+    fi
+    case "$LEG" in
+    cpp|dart) ;;
+    *) echo "nine.sh: --leg takes cpp or dart (the legs whose runner has a read arm)" >&2; exit 2 ;;
+    esac
+    : "${OUT:=build/paired-read/$(date -u +%Y%m%dT%H%M%SZ)}"
+    go build -o bin/schema-paired ./bench/paired
+    bin/schema-paired -mode build -langs "$LEG"
+    bin/schema-paired -mode gate -reuse-build -langs "$LEG"
+    if [ -n "$PIN_CORE" ]; then
+        case "$PIN_CORE" in
+        *[!0-9]*) echo "nine.sh: --pin takes a core number" >&2; exit 2 ;;
+        esac
+        exec taskset -c "$PIN_CORE" bin/schema-paired -mode plan-read -langs "$LEG" -quiet-window "$RECEIPT" -lane "$PIN_CORE" -out "$OUT"
+    fi
+    exec bin/schema-paired -mode plan-read -langs "$LEG" -quiet-window "$RECEIPT" -out "$OUT"
+fi
 
 # Say this BEFORE the build rather than after it. Table mode measures a named
 # checkpoint and refuses a tree that does not match one, and the commonest way

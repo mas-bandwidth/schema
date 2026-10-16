@@ -80,11 +80,15 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../../../generated/bench/dart/Bench.dart' as packet
+    show BenchMixed, readBenchMixed, writeBenchMixed;
 import '../../../generated/bench/paired/dart/BenchFixed.dart'
-    show FixedTable, TableFixedReport;
+    show FixedTable, TableFixedPlan, TableFixedReport;
 import '../../../generated/bench/paired/dart/FixedTableFixed.dart'
     show
+        fixedTableFixedHash,
         fixedTableFixedLayout,
+        fixedTableFixedKnown,
         fixedTableFixedLoad,
         fixedTableFixedMeasure,
         fixedTableFixedNewPlan,
@@ -95,12 +99,18 @@ const int numVariants = 64; // the corpus is 64 records, and an OP is one record
 const int defaultIterations = 400000; // the tables bench's standard table count
 
 int gNumRuns = maxNumRuns; // --round K drops this to 1 (§2.4)
+int gRound = 0; // K itself: the read arm rotates its wires' order by it
 int gIterations = 0; // explicit diagnostic count; the default stays standard
 bool gCsv = false;
 bool gGate = false;
 bool gIndexed = false;
+bool gReadArm = false;
+int gPacketIterations = 0;
 String gWireDir = 'testdata/wire';
 String gVariantDir = 'bench/corpus/variants';
+String gPacketWireDir = 'testdata/wire';
+String gPacketVariantDir = 'bench/corpus/variants';
+String gLineageDir = '';
 bool failed = false;
 
 final Stopwatch _clock = Stopwatch()..start();
@@ -123,6 +133,7 @@ double now() => _clock.elapsedMicroseconds * 1e-6;
 // and the row is the plain seventeen.
 const String csvSuffix = 'aot,contract,default,unknown';
 final List<String> gCsvRows = [];
+final List<String> gCsvFamilies = [];
 final Map<String, Uint8List> gGoldensLoaded = {}; // basename -> bytes
 
 int gSink = 0; // defeats dead code elimination of computed values
@@ -172,8 +183,8 @@ void flushCsv() {
     'lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,'
     'max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline\n',
   );
-  for (final row in gCsvRows) {
-    out.write('$row,$id,table,$csvSuffix\n');
+  for (var i = 0; i < gCsvRows.length; i++) {
+    out.write('${gCsvRows[i]},$id,${gCsvFamilies[i]},$csvSuffix\n');
   }
   stdout.write(out.toString());
 }
@@ -231,7 +242,14 @@ Stats stats(List<double> rates) {
   );
 }
 
-void report(String bench, String path, int iters, double bytesPerOp, Stats s) {
+void report(
+  String bench,
+  String path,
+  int iters,
+  double bytesPerOp,
+  Stats s, [
+  String family = 'table',
+]) {
   final mbps = s.median * bytesPerOp / (1024.0 * 1024.0);
   stderr.write(
     '${bench.padRight(18)} ${path.padRight(11)} '
@@ -248,6 +266,7 @@ void report(String bench, String path, int iters, double bytesPerOp, Stats s) {
       '${s.max.toStringAsFixed(0)},'
       '${mbps.toStringAsFixed(2)},${s.spread.toStringAsFixed(2)}',
     );
+    gCsvFamilies.add(family);
   }
 }
 
@@ -334,6 +353,299 @@ bool checkTolerantCorpus(String name, String golden) {
 // every record carries — is settled by those bytes, so it is checked first
 // and by itself, and a leg that matches it is speaking the form and not a
 // near miss.
+
+// ---- THE READ ARM (BENCH-STANDARD.md §1.10): each wire's READ, measured alone ----
+//
+// `--read-arm` replaces the clocked rows of this invocation with the arm's
+// measured reads, after every correctness gate this runner already runs and
+// the arm's own, all of them before the first clock:
+//
+//   bench_fixed_read  family table  the fixed form's IDENTITY lane: the shipped
+//                                   LOAD of the whole corpus file, one call per
+//                                   64 records, the hash check and the plan run
+//                                   inside the clock; an op is one record
+//   bench_plan_read   family table  the PLAN lane (--lineage-dir): the same
+//                                   LOAD of the lineage corpus, 64 records one
+//                                   generation back, read through the static
+//                                   plan the lock's lineage entry compiled; an
+//                                   op is one record
+//   bench_mixed_read  family gen    the PACKET wire's read of the same 64
+//                                   logical records: one generated read per
+//                                   record, exactly the read half of the packet
+//                                   leg's round trip
+
+void readArm(
+  Uint8List file,
+  Uint8List twin,
+  List<FixedTable> values,
+  List<FixedTable> out,
+  TableFixedPlan outPlan,
+  TableFixedReport report_,
+  int iters,
+) {
+  final packetIters = gPacketIterations != 0 ? gPacketIterations : 4000000;
+  final packed = readCorpus(gPacketVariantDir, 'bench_mixed.variants.bin');
+  final golden = readCorpus(gPacketWireDir, 'bench_mixed.bin');
+  if (packed == null ||
+      golden == null ||
+      packed.isEmpty ||
+      packed.length % numVariants != 0) {
+    fail('bench_mixed', 'missing or malformed packet variant corpus');
+    return;
+  }
+  final packetRecord = packed.length ~/ numVariants;
+  if (!bytesEqual(Uint8List.sublistView(packed, 0, packetRecord), golden)) {
+    fail('bench_mixed', 'packet variant 0 is not the packet wire golden');
+    return;
+  }
+  final packetVariants = <ByteData>[];
+  for (var k = 0; k < numVariants; k++) {
+    final slot = Uint8List(512);
+    slot.setRange(0, packetRecord, packed, k * packetRecord);
+    packetVariants.add(ByteData.sublistView(slot, 0, packetRecord));
+  }
+  final packetTwin = Uint8List(512);
+  final packetTwinView = ByteData.sublistView(packetTwin);
+  final gateValue = packet.BenchMixed();
+  for (var k = 0; k < numVariants; k++) {
+    if (!packet.readBenchMixed(gateValue, packetVariants[k], packetRecord * 8)) {
+      fail('bench_mixed', 'decode of a packet variant failed');
+      return;
+    }
+    final n = packet.writeBenchMixed(gateValue, packetTwinView);
+    if (n != packetRecord ||
+        !bytesEqual(
+          Uint8List.sublistView(packetTwin, 0, n),
+          Uint8List.sublistView(packed, k * packetRecord, (k + 1) * packetRecord),
+        )) {
+      fail(
+        'bench_mixed',
+        'packet variant round-trip bytes differ — refusing to bench a codec '
+        'that does not reproduce the corpus',
+      );
+      return;
+    }
+  }
+
+  Uint8List? lineageFile;
+  final planOut = List.generate(numVariants, (_) => FixedTable());
+  final planPlan = fixedTableFixedNewPlan();
+  if (gLineageDir.isNotEmpty) {
+    lineageFile = readCorpus(gLineageDir, 'bench_lineage.bin');
+    final lineageLayout = readCorpus(gLineageDir, 'bench_lineage.layout');
+    if (lineageFile == null || lineageLayout == null || lineageFile.length < 20) {
+      fail('bench_plan_read', 'missing lineage corpus in $gLineageDir');
+      return;
+    }
+    final lv = ByteData.sublistView(lineageFile);
+    final fileHash = lv.getUint64(8, Endian.little);
+    final embedded = lv.getUint32(16, Endian.little);
+    if (fixedTableFixedKnown.length != 2 ||
+        fileHash != fixedTableFixedKnown[0].hash ||
+        fixedTableFixedKnown[0].hash == fixedTableFixedHash ||
+        lineageLayout.length != fixedTableFixedKnown[0].layout.length ||
+        !bytesEqual(lineageLayout, fixedTableFixedKnown[0].layout) ||
+        embedded != lineageLayout.length ||
+        20 + embedded > lineageFile.length ||
+        !bytesEqual(
+          Uint8List.sublistView(lineageFile, 20, 20 + embedded),
+          lineageLayout,
+        )) {
+      fail(
+        'bench_plan_read',
+        "the lineage corpus is not the lock's older layout, or this build's "
+        "lineage is not that lock's",
+      );
+      return;
+    }
+    if (fixedTableFixedLoad(
+              planOut,
+              numVariants,
+              lineageFile,
+              lineageFile.length,
+              planPlan,
+              report_,
+            ) !=
+            numVariants ||
+        report_.malformed ||
+        report_.refused != 0 ||
+        report_.unknown != 0 ||
+        report_.kindMismatch != 0 ||
+        report_.clamped != 0 ||
+        report_.duplicate != 0 ||
+        report_.widened == 0) {
+      fail(
+        'bench_plan_read',
+        'the lineage corpus did not read clean through its plan',
+      );
+      return;
+    }
+    stderr.write(
+      '${'bench_plan_read'.padRight(18)} plan read of $numVariants records: '
+      'widened ${report_.widened}, clamped ${report_.clamped}\n',
+    );
+    final planPoisoned = List.generate(numVariants, (_) => FixedTable());
+    final poisonPlan = fixedTableFixedNewPlan();
+    // Seed planPoisoned with the identity corpus so every field starts non-zero.
+    if (fixedTableFixedLoad(
+          planPoisoned,
+          numVariants,
+          file,
+          file.length,
+          poisonPlan,
+          report_,
+        ) !=
+        numVariants) {
+      fail('bench_plan_read', 'poison seed load failed');
+      return;
+    }
+    final savedBytes = fixedTableFixedMeasure(numVariants);
+    final a = Uint8List(savedBytes);
+    final b = Uint8List(savedBytes);
+    if (fixedTableFixedLoad(
+              planPoisoned,
+              numVariants,
+              lineageFile,
+              lineageFile.length,
+              poisonPlan,
+              report_,
+            ) !=
+            numVariants ||
+        fixedTableFixedSave(planOut, numVariants, a) != savedBytes ||
+        fixedTableFixedSave(planPoisoned, numVariants, b) != savedBytes ||
+        !bytesEqual(a, b)) {
+      fail('bench_plan_read', 'a poisoned destination read to a different answer');
+      return;
+    }
+    if (savedBytes == file.length && bytesEqual(a, file)) {
+      fail(
+        'bench_plan_read',
+        'the lineage corpus reads to the identity corpus: the plan lane would '
+        'measure nothing older',
+      );
+      return;
+    }
+  }
+
+  if (gGate) {
+    return;
+  }
+
+  void timeFixedRead() {
+    final rates = List<double>.filled(gNumRuns, 0);
+    for (var run = -1; run < gNumRuns; run++) {
+      final start = now();
+      for (var i = 0; i < iters; i += numVariants) {
+        final loaded = fixedTableFixedLoad(
+          out,
+          numVariants,
+          file,
+          file.length,
+          outPlan,
+          report_,
+        );
+        if (loaded != numVariants) {
+          fail('bench_fixed_read', 'load failed in loop');
+          return;
+        }
+        gSink = (gSink + loaded) & 0xffffffff;
+      }
+      final elapsed = now() - start;
+      if (run >= 0) {
+        rates[run] = iters / elapsed;
+      }
+    }
+    if (fixedTableFixedSave(out, numVariants, twin) != file.length ||
+        !bytesEqual(twin, file)) {
+      fail('bench_fixed_read', 'post-clock re-save mismatch');
+      return;
+    }
+    gSink = (gSink + twin[0]) & 0xffffffff;
+    report('bench_fixed_read', 'read', iters, file.length / numVariants, stats(rates));
+  }
+
+  void timeMixedRead() {
+    final rates = List<double>.filled(gNumRuns, 0);
+    final numBits = packetRecord * 8;
+    for (var run = -1; run < gNumRuns; run++) {
+      final start = now();
+      for (var i = 0; i < packetIters; i++) {
+        if (!packet.readBenchMixed(
+          gateValue,
+          packetVariants[i & (numVariants - 1)],
+          numBits,
+        )) {
+          fail('bench_mixed_read', 'read failed in loop');
+          return;
+        }
+        gSink = (gSink + 1) & 0xffffffff;
+      }
+      final elapsed = now() - start;
+      if (run >= 0) {
+        rates[run] = packetIters / elapsed;
+      }
+    }
+    if (packet.writeBenchMixed(gateValue, packetTwinView) != packetRecord) {
+      fail('bench_mixed_read', 'post-clock packet re-encode failed');
+      return;
+    }
+    gSink = (gSink + packetTwin[0]) & 0xffffffff;
+    report(
+      'bench_mixed_read',
+      'read',
+      packetIters,
+      packetRecord.toDouble(),
+      stats(rates),
+      'gen',
+    );
+  }
+
+  void timePlanRead() {
+    final lFile = lineageFile!;
+    final rates = List<double>.filled(gNumRuns, 0);
+    for (var run = -1; run < gNumRuns; run++) {
+      final start = now();
+      for (var i = 0; i < iters; i += numVariants) {
+        final loaded = fixedTableFixedLoad(
+          planOut,
+          numVariants,
+          lFile,
+          lFile.length,
+          planPlan,
+          report_,
+        );
+        if (loaded != numVariants) {
+          fail('bench_plan_read', 'plan load failed in loop');
+          return;
+        }
+        gSink = (gSink + loaded) & 0xffffffff;
+      }
+      final elapsed = now() - start;
+      if (run >= 0) {
+        rates[run] = iters / elapsed;
+      }
+    }
+    if (fixedTableFixedSave(planOut, numVariants, twin) != file.length) {
+      fail('bench_plan_read', 'post-clock plan re-save failed');
+      return;
+    }
+    gSink = (gSink + twin[0]) & 0xffffffff;
+    report('bench_plan_read', 'read', iters, lFile.length / numVariants, stats(rates));
+  }
+
+  final steps = gLineageDir.isNotEmpty ? 3 : 2;
+  for (var step = 0; step < steps && !failed; step++) {
+    switch ((gRound + step) % steps) {
+      case 0:
+        timeFixedRead();
+      case 1:
+        timeMixedRead();
+      case 2:
+        timePlanRead();
+    }
+  }
+}
+
 void benchFixed(String name, int baseIters) {
   final iters = gIterations != 0 ? gIterations : baseIters;
   final file = readCorpus(gVariantDir, 'bench_fixed.bin');
@@ -408,6 +720,11 @@ void benchFixed(String name, int baseIters) {
     '$name: gates passed before the clock — layout, load, round-trip, '
     'reused-target round-trip (4 of 4)\n',
   );
+
+  if (gReadArm) {
+    readArm(file, twin, values, out, outPlan, report_, iters);
+    return;
+  }
 
   if (gGate) {
     return;
@@ -498,7 +815,9 @@ void benchFixed(String name, int baseIters) {
 Never usage() {
   stderr.write(
     'usage: table-dart [--indexed] [--gate] [--csv] [--round K] '
-    '[--iterations N] [--wire-dir <dir>] [--variant-dir <dir>]\n',
+    '[--iterations N] [--wire-dir <dir>] [--variant-dir <dir>] '
+    '[--read-arm [--packet-iterations N] [--packet-wire-dir <dir>] '
+    '[--packet-variant-dir <dir>] [--lineage-dir <dir>]]\n',
   );
   exit(1);
 }
@@ -512,10 +831,18 @@ void main(List<String> args) {
       gGate = true;
     } else if (a == '--csv') {
       gCsv = true;
+    } else if (a == '--read-arm') {
+      gReadArm = true;
     } else if (a == '--wire-dir' && i + 1 < args.length) {
       gWireDir = args[++i];
     } else if (a == '--variant-dir' && i + 1 < args.length) {
       gVariantDir = args[++i];
+    } else if (a == '--packet-wire-dir' && i + 1 < args.length) {
+      gPacketWireDir = args[++i];
+    } else if (a == '--packet-variant-dir' && i + 1 < args.length) {
+      gPacketVariantDir = args[++i];
+    } else if (a == '--lineage-dir' && i + 1 < args.length) {
+      gLineageDir = args[++i];
     } else if (a == '--iterations' && i + 1 < args.length) {
       final n = int.tryParse(args[++i]);
       if (n == null || n <= 0 || n > 2147483584 || n % numVariants != 0) {
@@ -525,6 +852,15 @@ void main(List<String> args) {
         exit(1);
       }
       gIterations = n;
+    } else if (a == '--packet-iterations' && i + 1 < args.length) {
+      final n = int.tryParse(args[++i]);
+      if (n == null || n <= 0 || n > 2147483584 || n % numVariants != 0) {
+        stderr.write(
+          '--packet-iterations requires a positive multiple of 64 up to 2147483584\n',
+        );
+        exit(1);
+      }
+      gPacketIterations = n;
     } else if (a == '--round' && i + 1 < args.length) {
       // §2.4: one warmup + one measured run, then exit. K only identifies the
       // round to the interleaved driver, which aggregates across rounds itself.
@@ -536,6 +872,7 @@ void main(List<String> args) {
         exit(1);
       }
       gNumRuns = 1;
+      gRound = k;
     } else {
       usage();
     }
