@@ -3797,8 +3797,12 @@ The fixed form's refusals land in `TableReport.Reason`, each under its own
 name: `previous_form`, a form-1 file, the variable form this build is newer
 than; `message_form_as_file`, form 2, a form this build carries through
 another surface; `newer_form`, a form byte the registry has not assigned;
-`layout_newer`, a layout hash this build has never served, reported with the
-file's hash and nothing else; `layout_unsupported`, a layout this build once
+`layout_unknown`, a layout hash this build's lineage does not hold, reported
+with the file's hash and nothing else (a flipped hash byte, an older layout
+nobody locked and a newer writer's layout all read this way: it does not say
+which, and it never says "ship a newer reader", because nothing in the lock
+proves a hash newer; `layout_newer` is reserved for that proof, and Go is the
+first leg to answer this way); `layout_unsupported`, a layout this build once
 served and has retired; `layout_malformed`, a header that is not a layout, or
 a known hash whose layout bytes differ; `no_layout`, a record whose hash
 names nothing; `plan_too_large`, a plan slice smaller than the plan the load

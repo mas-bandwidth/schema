@@ -10,7 +10,7 @@ package gotable
 //                    of them zero, because an append the reader knows is not an
 //                    event.
 //   OLD-REFUSES-NEW  the older reader given the widened writer's file refuses
-//                    `layout_newer` BEFORE any record, reporting THE FILE'S
+//                    `layout_unknown` BEFORE any record, reporting THE FILE'S
 //                    HASH and nothing else, with no counter moved and
 //                    `Malformed` false (§5.3's joint answer).
 //
@@ -283,11 +283,11 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 				body = `	if n != -1 {
 		t.Fatalf("the older reader did not refuse the newer writer's file: n=%d %+v", n, r)
 	}
-	if r.Reason != "layout_newer" {
-		t.Fatalf("a hash in no lineage entry owes layout_newer, not %q", r.Reason)
+	if r.Reason != "layout_unknown" {
+		t.Fatalf("a hash in no lineage entry owes layout_unknown, not %q", r.Reason)
 	}
 	if r.LayoutHash != want {
-		t.Fatalf("layout_newer reports THE FILE'S hash: 0x%016x, not 0x%016x", want, r.LayoutHash)
+		t.Fatalf("layout_unknown reports THE FILE'S hash: 0x%016x, not 0x%016x", want, r.LayoutHash)
 	}
 	if r.Malformed {
 		t.Fatal("a refusal by name never sets malformed too (§5.3, the joint answer)")
@@ -335,7 +335,8 @@ func TestOldRefusesNew(t *testing.T) {
 // The floor is ONE NUMBER and the lineage is ONE ARRAY, so "retired" is an
 // index cut and the operator's two answers stay distinct: below the floor is
 // `layout_unsupported` (upgrade the client), outside the lineage is
-// `layout_newer` (ship the reader). §5.2, §5.7's three floor rows.
+// `layout_unknown` (a layout this build's lineage does not hold; `layout_newer`
+// is reserved, SPEC-TABLES §21.3). §5.2, §5.7's three floor rows.
 
 func TestFixedVersioningFloor(t *testing.T) {
 	corpus := fixedCorpus(t)
@@ -421,7 +422,7 @@ func TestFixedVersioningHash(t *testing.T) {
 
 import ("encoding/binary"; "os"; "testing")
 
-// hash_unknown: a hash in no lineage refuses layout_newer.
+// hash_unknown: a hash in no lineage refuses layout_unknown.
 func TestHashUnknown(t *testing.T) {
 	data, err := os.ReadFile(%q)
 	if err != nil {
@@ -432,7 +433,7 @@ func TestHashUnknown(t *testing.T) {
 	plan := make([]TableFixedEntry, 4096)
 	var r TableReport
 	n := %[3]sFixedLoad(back, data, plan, &r)
-	if n != -1 || r.Reason != "layout_newer" || r.LayoutHash != 0xDEADBEEFCAFEF00D || r.Malformed {
+	if n != -1 || r.Reason != "layout_unknown" || r.LayoutHash != 0xDEADBEEFCAFEF00D || r.Malformed {
 		t.Fatalf("hash_unknown: n=%%d %%+v", n, r)
 	}
 }

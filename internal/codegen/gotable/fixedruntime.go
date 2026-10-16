@@ -25,11 +25,23 @@ const TableFixedHashAt = 8
 // report.Reason == "layout_newer" comparisons keep compiling against these
 // constants; the emitted <T>FixedLoad names every reason constant in place of
 // a string literal.
+//
+// TableFixedReasonLayoutUnknown is the Reason of a file whose header hash no
+// entry of this build's lineage holds (docs/SPEC-TABLES.md §21.3, algorithm
+// §5.3 step 5). It says what the reader knows and not which way the file lies:
+// a newer writer's layout, an older one nobody locked and a damaged hash byte
+// read the same.
+//
+// TableFixedReasonLayoutNewer ("ship the reader") is RESERVED (SPEC-TABLES
+// §21.3) for a hash the lock lineage proves newer, which nothing on the wire or
+// in the lock does today, so no Go fixed load answers it; it stays exported so
+// an adopter's existing comparisons keep compiling.
 const (
 	TableFixedReasonPreviousForm         = "previous_form"
 	TableFixedReasonMessageFormAsFile    = "message_form_as_file"
 	TableFixedReasonNewerForm            = "newer_form"
 	TableFixedReasonLayoutMalformed      = "layout_malformed"
+	TableFixedReasonLayoutUnknown        = "layout_unknown"
 	TableFixedReasonLayoutNewer          = "layout_newer"
 	TableFixedReasonLayoutUnsupported    = "layout_unsupported"
 	TableFixedReasonLayoutRecordTooLarge = "layout_record_too_large"
@@ -1426,9 +1438,11 @@ func tableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []tabl
 // A fixed table reads BACKWARD and never forward. A file is matched on the
 // eight bytes of its header's hash against the lineage the BUILD laid down, and
 // the layout it carries is held to a BYTE COMPARISON against the bytes the lock
-// recorded — never walked. A hash the lineage does not hold is layout_newer
-// (ship the reader); a hash it holds below the floor is layout_unsupported
-// (upgrade the client). Those are the operator's two distinct answers.
+// recorded — never walked. A hash the lineage does not hold is layout_unknown
+// (a layout this build's lineage does not hold; layout_newer is reserved until
+// the lineage proves direction, SPEC-TABLES §21.3); a hash it holds below the
+// floor is layout_unsupported (upgrade the client). Those are the operator's
+// two distinct answers.
 
 // TableFixedKnownLayout is one locked layout: the wire hash a file is matched
 // on, the layout bytes verbatim with its byte length BESIDE the pointer, and
