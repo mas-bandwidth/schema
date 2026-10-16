@@ -53,9 +53,7 @@ func TestRefuseByName(t *testing.T) {
 	lenOff := lAt
 
 	plan := make([]TableFixedEntry, 256)
-	run := func(name string, off int, word uint32, wantReason string) {
-		data := append([]byte(nil), buf...)
-		binary.LittleEndian.PutUint32(data[off:], word)
+	assertRefuse := func(name string, data []byte, wantReason string) {
 		got := make([]Root, 1)
 		pdst := tableFixedOverlay(unsafe.Pointer(&got[0]), unsafe.Sizeof(got[0]))
 		for i := range pdst {
@@ -72,10 +70,19 @@ func TestRefuseByName(t *testing.T) {
 		}
 	}
 
-	run("identity count over bound", countOff, 200, "count_over_bound")
-	run("identity count negative", countOff, 0xFFFFFFFF, "count_over_bound")
-	run("identity length over bound", lenOff, 99, "length_over_bound")
-	run("identity length negative", lenOff, 0xFFFFFFFF, "length_over_bound")
+	// WITHOUT SLACK behind the bound: a plain forged word.
+	data := append([]byte(nil), buf...)
+	binary.LittleEndian.PutUint32(data[countOff:], 200)
+	assertRefuse("identity count over bound", data, "count_over_bound")
+	data = append([]byte(nil), buf...)
+	binary.LittleEndian.PutUint32(data[countOff:], 0xFFFFFFFF)
+	assertRefuse("identity count negative", data, "count_over_bound")
+	data = append([]byte(nil), buf...)
+	binary.LittleEndian.PutUint32(data[lenOff:], 99)
+	assertRefuse("identity length over bound", data, "length_over_bound")
+	data = append([]byte(nil), buf...)
+	binary.LittleEndian.PutUint32(data[lenOff:], 0xFFFFFFFF)
+	assertRefuse("identity length negative", data, "length_over_bound")
 
 	// WITH SLACK BEHIND THE BOUND: garbage behind the bound changes nothing, the
 	// refusal is checked before any destination byte is written.
@@ -84,30 +91,25 @@ func TestRefuseByName(t *testing.T) {
 		slack[i] = 0xFF
 	}
 	binary.LittleEndian.PutUint32(slack[countOff:], 200)
-	got := make([]Root, 1)
-	pdst := tableFixedOverlay(unsafe.Pointer(&got[0]), unsafe.Sizeof(got[0]))
-	for i := range pdst {
-		pdst[i] = 0x5A
+	assertRefuse("identity count over bound with slack", slack, "count_over_bound")
+
+	slack = append([]byte(nil), buf...)
+	for i := lenOff + 4; i < len(slack) && i < lenOff+4+41; i++ {
+		slack[i] = 0xFF
 	}
-	var r TableReport
-	if n := RootFixedLoad(got, slack, plan, &r); n >= 0 || r.Reason != "count_over_bound" {
-		t.Fatalf("slack count: n=%d reason=%q, want count_over_bound", n, r.Reason)
-	}
-	for i, b := range pdst {
-		if b != 0x5A {
-			t.Fatalf("slack count: wrote destination byte %d: 0x%02X", i, b)
-		}
-	}
+	binary.LittleEndian.PutUint32(slack[lenOff:], 99)
+	assertRefuse("identity length over bound with slack", slack, "length_over_bound")
 }
 `)
 
-	// COMPILED LINEAGE plan: VNEW reads VOLD through its lineage, and a forged
-	// count past the WRITER's bound (4) refuses `count_over_bound`.
+	// COMPILED LINEAGE, count: VNEW reads VOLD array_bounded_grow ([..4] ->
+	// [..8]) through its lineage. A forged count of 200 past the WRITER's bound
+	// (4) refuses `count_over_bound`, with and without slack behind the bound.
 	corpus := fixedCorpus(t)
 	newer := readSchema(t, "VNEW_array_bounded_grow")
 	writer := readSchema(t, "VOLD_array_bounded_grow")
 	table := fixedRootName(t, writer)
-	src := fmt.Sprintf(`package probe
+	countSrc := fmt.Sprintf(`package probe
 import ("bytes";"encoding/binary";"os";"testing";"unsafe")
 func TestCountOverBoundCompiled(t *testing.T) {
 	data, err := os.ReadFile(%q)
@@ -117,31 +119,96 @@ func TestCountOverBoundCompiled(t *testing.T) {
 	needle := []byte{0xAA, 0xAA, 0xAA, 0xAA, 0x04, 0x00, 0x00, 0x00}
 	at := bytes.Index(data, needle)
 	if at < 0 {
-		t.Fatal("lineage: count field not found")
+		t.Fatal("lineage count: field not found")
 	}
 	if bytes.Contains(data[at+1:], needle) {
-		t.Fatal("lineage: non-unique needle")
+		t.Fatal("lineage count: non-unique needle")
 	}
-	binary.LittleEndian.PutUint32(data[at+4:], 9)
-	back := make([]%[2]s, 8)
-	pdst := tableFixedOverlay(unsafe.Pointer(&back[0]), unsafe.Sizeof(back[0]))
-	for i := range pdst {
-		pdst[i] = 0x5A
-	}
-	var r TableReport
 	plan := make([]TableFixedEntry, 4096)
-	n := %[2]sFixedLoad(back, data, plan, &r)
-	if n >= 0 || r.Reason != "count_over_bound" {
-		t.Fatalf("lineage: n=%%d reason=%%q, want count_over_bound", n, r.Reason)
-	}
-	for i, b := range pdst {
-		if b != 0x5A {
-			t.Fatalf("lineage: wrote destination byte %%d: 0x%%02X", i, b)
+	assertRefuse := func(name string, d []byte, wantReason string) {
+		back := make([]%[2]s, 8)
+		pdst := tableFixedOverlay(unsafe.Pointer(&back[0]), unsafe.Sizeof(back[0]))
+		for i := range pdst {
+			pdst[i] = 0x5A
+		}
+		var r TableReport
+		n := %[2]sFixedLoad(back, d, plan, &r)
+		if n >= 0 || r.Reason != wantReason {
+			t.Fatalf("%%s: n=%%d reason=%%q, want %%q", name, n, r.Reason, wantReason)
+		}
+		for i, b := range pdst {
+			if b != 0x5A {
+				t.Fatalf("%%s: wrote destination byte %%d: 0x%%02X", name, i, b)
+			}
 		}
 	}
+	d := append([]byte(nil), data...)
+	binary.LittleEndian.PutUint32(d[at+4:], 200)
+	assertRefuse("lineage count over bound", d, "count_over_bound")
+	d = append([]byte(nil), data...)
+	binary.LittleEndian.PutUint32(d[at+4:], 200)
+	for i := at + 8; i < len(d) && i < at+8+4*4; i++ {
+		d[i] = 0xFF
+	}
+	assertRefuse("lineage count over bound with slack", d, "count_over_bound")
 }
 `, filepath.Join(corpus, "old_array_bounded_grow.bin"), table)
-	if out, err := runVersionProbe(t, newer, []string{writer}, src); err != nil {
-		t.Fatalf("lineage: %v\n%s", err, out)
+	if out, err := runVersionProbe(t, newer, []string{writer}, countSrc); err != nil {
+		t.Fatalf("lineage count: %v\n%s", err, out)
+	}
+
+	// COMPILED LINEAGE, length: VNEW reads VOLD string_grow (string(8) ->
+	// string(16)) through its lineage. A forged length of 99 past the WRITER's
+	// bound (8) refuses `length_over_bound`, with and without slack behind the
+	// bound.
+	newerS := readSchema(t, "VNEW_string_grow")
+	writerS := readSchema(t, "VOLD_string_grow")
+	tableS := fixedRootName(t, writerS)
+	lenSrc := fmt.Sprintf(`package probe
+import ("bytes";"encoding/binary";"os";"testing";"unsafe")
+func TestLengthOverBoundCompiled(t *testing.T) {
+	data, err := os.ReadFile(%q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	needle := []byte{0xAA, 0xAA, 0xAA, 0xAA, 0x08, 0x00, 0x00, 0x00}
+	at := bytes.Index(data, needle)
+	if at < 0 {
+		t.Fatal("lineage length: field not found")
+	}
+	if bytes.Contains(data[at+1:], needle) {
+		t.Fatal("lineage length: non-unique needle")
+	}
+	plan := make([]TableFixedEntry, 4096)
+	assertRefuse := func(name string, d []byte, wantReason string) {
+		back := make([]%[2]s, 8)
+		pdst := tableFixedOverlay(unsafe.Pointer(&back[0]), unsafe.Sizeof(back[0]))
+		for i := range pdst {
+			pdst[i] = 0x5A
+		}
+		var r TableReport
+		n := %[2]sFixedLoad(back, d, plan, &r)
+		if n >= 0 || r.Reason != wantReason {
+			t.Fatalf("%%s: n=%%d reason=%%q, want %%q", name, n, r.Reason, wantReason)
+		}
+		for i, b := range pdst {
+			if b != 0x5A {
+				t.Fatalf("%%s: wrote destination byte %%d: 0x%%02X", name, i, b)
+			}
+		}
+	}
+	d := append([]byte(nil), data...)
+	binary.LittleEndian.PutUint32(d[at+4:], 99)
+	assertRefuse("lineage length over bound", d, "length_over_bound")
+	d = append([]byte(nil), data...)
+	binary.LittleEndian.PutUint32(d[at+4:], 99)
+	for i := at + 8; i < len(d) && i < at+8+8; i++ {
+		d[i] = 0xFF
+	}
+	assertRefuse("lineage length over bound with slack", d, "length_over_bound")
+}
+`, filepath.Join(corpus, "old_string_grow.bin"), tableS)
+	if out, err := runVersionProbe(t, newerS, []string{writerS}, lenSrc); err != nil {
+		t.Fatalf("lineage length: %v\n%s", err, out)
 	}
 }
