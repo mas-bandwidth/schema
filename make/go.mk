@@ -897,6 +897,11 @@ tables-go-subsets:
 	go test -count=1 -timeout 600s ./internal/codegen/gotable/ -run '^TestGoTableCompilesWithAnySubsetOfItsForms$$'
 test-go: tables-go-subsets
 
+.PHONY: tables-go-surfaces
+tables-go-surfaces:
+	go test -count=1 -timeout 600s ./internal/codegen/gotable/ -run '^TestGoGenerateSurfaceEmitsOnlyWhatItNames$$'
+test-go: tables-go-surfaces
+
 # I13 (docs/PORTING.md:1278): the go leg's text differential against a third
 # implementation. The test generates N random float-only instances with the
 # generated setters, writes each as (wire, text), then byte-compares the leg's

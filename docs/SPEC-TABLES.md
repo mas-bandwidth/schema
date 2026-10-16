@@ -11670,12 +11670,13 @@ The default is the full set: a generate without `--surface` is byte-identical
 to one with `--surface wire,fixed,json,cook,block,view,message,retain`.
 
 **Dependencies resolve automatically and are named here.** `wire` is the
-base surface and cannot be dropped on its own: `json`, `cook`, `block`,
-`message` and `retain` each depend on it (the text walk and the accelerators
-drive off the wire codecs and the descriptor vocabulary), so selecting any of
-them implies `wire`. `fixed` and `view` depend on nothing and are leaves.
-The emitter never refuses a list — it emits exactly the named surfaces plus
-whatever the named ones imply.
+base surface and cannot be dropped on its own: every other surface (`fixed`,
+`json`, `cook`, `block`, `view`, `message` and `retain`) rides on the core
+types, wire codecs or reflection descriptors in `<Base>Table.go`, so
+selecting any surface implies `wire`. The seven non-wire surfaces are
+independent leaves on top of `wire`: none implies another. The emitter never
+refuses a valid list — it emits `wire` plus whichever of the seven leaves are
+named.
 
 Only the Go target honors the flag; any other `--lang` refuses it by name.
 
