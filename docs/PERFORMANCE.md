@@ -5,6 +5,28 @@
 > ([BENCH-STANDARD §5](../bench/BENCH-STANDARD.md#5-reporting-format)). The tables below
 > are kept exactly as published, in their recorded convention (C++ = 100%).
 
+## 2026-10-16: the read arm, C++ — the identity read is slower than the packet read
+
+The first measured READ of each wire, side by side (BENCH-STANDARD §1.10's gate: each fixed
+lane must be faster than the same leg's packet read). `bench/paired/nine.sh --read-arm`, two
+sittings on hetzner1 (AMD Ryzen 7 PRO 8700GE, gcc 13.3, `-O3`), both windows OK, 7 rounds
+each, 4,000,000 records per sample
+([result](../bench/results/2026-10-16-x86_64-hetzner1-cpp-read-arm/README.md)):
+
+| C++, best of 7 | identity read | packet read | GATE identity |
+|---|---:|---:|---|
+| sitting 1 | 215.7 ns/record | 147.7 ns/record | FAIL |
+| sitting 2 | 215.8 ns/record | 148.0 ns/record | FAIL |
+
+Checks differ and are labelled: the table read keeps its contract validation, the packet
+read is the packet leg's `checks=removed` build. A source-level decomposition puts about
+143 ns of the 216 in the read-side bounds pass (`FixedTableFixedClamp`) and about 77 ns in
+the identity plan's run, which alone would beat the packet read. The plan lane has no
+lineage corpus on this tree and is not measured. The §3.4 anchor (identity plan against the
+hand-written straight-line reader) does not compile at this revision; with the proposed
+two-line fix to `test/bench/fixedform_measure.cpp` it measures 1.86x against the 1.5x bound,
+a diagnostic at a scratch commit, not a receipt.
+
 ## 2026-09-07: the Studio's nine-language table, and what moved since the Air's
 
 The first table of the day on the new node pin was a sitting on the Apple M3 Ultra Studio

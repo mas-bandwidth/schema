@@ -1,0 +1,29 @@
+{
+  "receipt": "unattended sitting by Rowan worker (card cpp-fixed-read-beats-its-packet-read-and-holds-the-reference-bound.w1) on hetzner1; no human READY/START coordination; process sampling and C++ packet control legs are the only window evidence",
+  "platform": "linux",
+  "started": "2026-10-16T00:24:39.972349725Z",
+  "ended": "2026-10-16T00:25:09.63157601Z",
+  "verdict": "OK",
+  "reason": null,
+  "interval_ms": 2000,
+  "coordinator_pid": 3462404,
+  "samples": 32,
+  "phases": [
+    "control-end-packet",
+    "control-start-packet",
+    "end",
+    "preflight",
+    "round-0-cpp-read",
+    "round-1-cpp-read",
+    "round-2-cpp-read",
+    "round-3-cpp-read",
+    "round-4-cpp-read",
+    "round-5-cpp-read",
+    "round-6-cpp-read",
+    "start"
+  ],
+  "load_first": "0.46 0.33 1.24 1/462 3463071",
+  "load_last": "0.65 0.38 1.24 2/462 3463304",
+  "window_json_sha256": "17f74160b586b42ed214520d6853fc1f600fd3a5d481c6dca5f25927c58f1723",
+  "note": "summary of the driver window.json (1.6MB of process samples, kept outside the tree); verdict and samples are copied, not retyped"
+}
