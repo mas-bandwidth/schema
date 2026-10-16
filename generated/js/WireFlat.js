@@ -1908,7 +1908,6 @@ export function ReadProbeArrayFlat(value, view, numBits) {
 // ---- type Heartbeat: the flat codec ----
 
 function writeHeartbeatFlatProduction(value, view) {
-  let v = 0;
   let lo = 0, sb = 0, wi = 0;
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -1917,7 +1916,6 @@ function writeHeartbeatFlatProduction(value, view) {
 }
 
 function writeHeartbeatFlatChecked(value, view) {
-  let v = 0;
   let lo = 0, sb = 0, wi = 0;
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -1932,9 +1930,7 @@ export const WriteHeartbeatFlat = PRODUCTION ? writeHeartbeatFlatProduction : wr
 
 // ReadHeartbeatFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadHeartbeatFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
+export function ReadHeartbeatFlat() {
   return true;
 }
 

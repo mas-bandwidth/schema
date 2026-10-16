@@ -200,7 +200,7 @@ function TableVariableUtf8Decode(bytes) {
 
 // ---- skipping a field the reader cannot name (docs/SPEC-TABLES.md §3) ------
 
-function TableVariableSkip(r, kind, report) {
+function TableVariableSkip(r, kind) {
   switch (kind) {
     case 1: case 2: case 6: case 20: case 25: { if (r.at + 1 > r.end) return false; r.at += 1; return true; }
     case 3: case 7: case 21: case 26: { if (r.at + 2 > r.end) return false; r.at += 2; return true; }
@@ -499,7 +499,7 @@ function TableVariableRetainEmit(r, ids, kind, w) {
 // Append the records that belong to this body, in the order retained, before the
 // body's terminator (§6.6). A record whose id has no entry is dropped (its
 // 'placed' byte stays 0 and CountLost reports it).
-function TableVariableRetainTail(w, ids, retain, path, report) {
+function TableVariableRetainTail(w, ids, retain, path) {
   if (retain === null) { return true; }
   let at = 0;
   while (at < retain.used) {
@@ -761,7 +761,7 @@ function TableVariableWriteFields(c, w, ids, nodes, v, retain, path) {
 // the one-byte zero reference that terminates it
 function TableVariableWriteBody(c, w, ids, nodes, v, retain, path) {
   if (!TableVariableWriteFields(c, w, ids, nodes, v, retain, path)) { return false; }
-  if (!TableVariableRetainTail(w, ids, retain, path, null)) { return false; }
+  if (!TableVariableRetainTail(w, ids, retain, path)) { return false; }
   w.u8(0);
   return true;
 }
@@ -918,17 +918,17 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
 // the retained tail, the node table LAST in the root body under the reserved
 // id at kind 12, the terminator, then the id table and its count. A data cycle
 // or a value with no wire identity refuses the save (null).
-function TableVariableSave(c, v, retain, report) {
+function TableVariableSave(c, v, retain) {
   const outer = TableVariableEntryCache;
   TableVariableEntryCache = new Map();
   try {
-    return TableVariableSaveWalk(c, v, retain, report);
+    return TableVariableSaveWalk(c, v, retain);
   } finally {
     TableVariableEntryCache = outer;
   }
 }
 
-function TableVariableSaveWalk(c, v, retain, report) {
+function TableVariableSaveWalk(c, v, retain) {
   const nodes = TableVariableNumber(c, v);
   if (nodes === null) { return null; }
   const w = new TableVariableWriter();
@@ -936,7 +936,7 @@ function TableVariableSaveWalk(c, v, retain, report) {
   const ids = new TableVariableIds(retain);
   const path = [];
   if (!TableVariableWriteFields(c, w, ids, nodes, v, retain, path)) { return null; }
-  if (!TableVariableRetainTail(w, ids, retain, path, report)) { return null; }
+  if (!TableVariableRetainTail(w, ids, retain, path)) { return null; }
   if (nodes.list.length > 0) {
     w.leb(ids.ref(TableNodeTableId));
     w.u8(12);
@@ -3261,16 +3261,16 @@ const TableVariableCodecs = {
     variable: false,
     entry: false,
     fields: [
-      { n: "entity_id", key: "entity_id", id: 0x23fcfd6678e36712n, o: 0, k: 7, s: "int", js: "n", k: 7, big: false, kw: 2, lo: null, hi: null, bits: 12, bmax: 4095, frac: 0, tlo: 0n, thi: 4095n, dlo: 0n, dhi: 4294967295n, def: 0 },
-      { n: "pos_x", key: "pos_x", id: 0xcb4b37357667310en, o: 1, k: 4, s: "int", js: "n", k: 4, big: false, kw: 4, lo: -16383, hi: 16383, bits: 0, bmax: 0, frac: 0, tlo: -16383n, thi: 16383n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
-      { n: "pos_y", key: "pos_y", id: 0xcb4b3835766732c1n, o: 2, k: 4, s: "int", js: "n", k: 4, big: false, kw: 4, lo: -16383, hi: 16383, bits: 0, bmax: 0, frac: 0, tlo: -16383n, thi: 16383n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
-      { n: "pos_z", key: "pos_z", id: 0xcb4b353576672da8n, o: 3, k: 4, s: "int", js: "n", k: 4, big: false, kw: 4, lo: -16383, hi: 16383, bits: 0, bmax: 0, frac: 0, tlo: -16383n, thi: 16383n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
-      { n: "yaw", key: "yaw", id: 0xb54d8e19798e16e8n, o: 4, k: 7, s: "int", js: "n", k: 7, big: false, kw: 2, lo: null, hi: null, bits: 9, bmax: 511, frac: 0, tlo: 0n, thi: 511n, dlo: 0n, dhi: 4294967295n, def: 0 },
-      { n: "pitch", key: "pitch", id: 0x53a9f665a90cc1b1n, o: 5, k: 7, s: "int", js: "n", k: 7, big: false, kw: 2, lo: null, hi: null, bits: 9, bmax: 511, frac: 0, tlo: 0n, thi: 511n, dlo: 0n, dhi: 4294967295n, def: 0 },
-      { n: "vel_x", key: "vel_x", id: 0x6cede6b6eb60ee67n, o: 6, k: 4, s: "int", js: "n", k: 4, big: false, kw: 4, lo: -2048, hi: 2047, bits: 0, bmax: 0, frac: 0, tlo: -2048n, thi: 2047n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
-      { n: "vel_y", key: "vel_y", id: 0x6cede5b6eb60ecb4n, o: 7, k: 4, s: "int", js: "n", k: 4, big: false, kw: 4, lo: -2048, hi: 2047, bits: 0, bmax: 0, frac: 0, tlo: -2048n, thi: 2047n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
-      { n: "vel_z", key: "vel_z", id: 0x6cede8b6eb60f1cdn, o: 8, k: 4, s: "int", js: "n", k: 4, big: false, kw: 4, lo: -2048, hi: 2047, bits: 0, bmax: 0, frac: 0, tlo: -2048n, thi: 2047n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
-      { n: "health", key: "health", id: 0x7f69d4b5288ba9cfn, o: 9, k: 4, s: "int", js: "n", k: 4, big: false, kw: 4, lo: 0, hi: 1000, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 1000n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
+      { n: "entity_id", key: "entity_id", id: 0x23fcfd6678e36712n, o: 0, s: "int", js: "n", k: 7, big: false, kw: 2, lo: null, hi: null, bits: 12, bmax: 4095, frac: 0, tlo: 0n, thi: 4095n, dlo: 0n, dhi: 4294967295n, def: 0 },
+      { n: "pos_x", key: "pos_x", id: 0xcb4b37357667310en, o: 1, s: "int", js: "n", k: 4, big: false, kw: 4, lo: -16383, hi: 16383, bits: 0, bmax: 0, frac: 0, tlo: -16383n, thi: 16383n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
+      { n: "pos_y", key: "pos_y", id: 0xcb4b3835766732c1n, o: 2, s: "int", js: "n", k: 4, big: false, kw: 4, lo: -16383, hi: 16383, bits: 0, bmax: 0, frac: 0, tlo: -16383n, thi: 16383n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
+      { n: "pos_z", key: "pos_z", id: 0xcb4b353576672da8n, o: 3, s: "int", js: "n", k: 4, big: false, kw: 4, lo: -16383, hi: 16383, bits: 0, bmax: 0, frac: 0, tlo: -16383n, thi: 16383n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
+      { n: "yaw", key: "yaw", id: 0xb54d8e19798e16e8n, o: 4, s: "int", js: "n", k: 7, big: false, kw: 2, lo: null, hi: null, bits: 9, bmax: 511, frac: 0, tlo: 0n, thi: 511n, dlo: 0n, dhi: 4294967295n, def: 0 },
+      { n: "pitch", key: "pitch", id: 0x53a9f665a90cc1b1n, o: 5, s: "int", js: "n", k: 7, big: false, kw: 2, lo: null, hi: null, bits: 9, bmax: 511, frac: 0, tlo: 0n, thi: 511n, dlo: 0n, dhi: 4294967295n, def: 0 },
+      { n: "vel_x", key: "vel_x", id: 0x6cede6b6eb60ee67n, o: 6, s: "int", js: "n", k: 4, big: false, kw: 4, lo: -2048, hi: 2047, bits: 0, bmax: 0, frac: 0, tlo: -2048n, thi: 2047n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
+      { n: "vel_y", key: "vel_y", id: 0x6cede5b6eb60ecb4n, o: 7, s: "int", js: "n", k: 4, big: false, kw: 4, lo: -2048, hi: 2047, bits: 0, bmax: 0, frac: 0, tlo: -2048n, thi: 2047n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
+      { n: "vel_z", key: "vel_z", id: 0x6cede8b6eb60f1cdn, o: 8, s: "int", js: "n", k: 4, big: false, kw: 4, lo: -2048, hi: 2047, bits: 0, bmax: 0, frac: 0, tlo: -2048n, thi: 2047n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
+      { n: "health", key: "health", id: 0x7f69d4b5288ba9cfn, o: 9, s: "int", js: "n", k: 4, big: false, kw: 4, lo: 0, hi: 1000, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 1000n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
       { n: "weapon", key: "weapon", id: 0xa0b610205f2c6e01n, o: 10, k: 30, s: "enum", js: "s", vs: [["Fists", 0xa790eee12766cf0cn], ["Pistol", 0x9fbfefa835da8476n], ["Shotgun", 0x188bbb1783928a95n], ["Rifle", 0x2c3667b9c2f272f1n], ["Sniper", 0x0ca8b41b00d755f6n], ["Smg", 0x985fc819fab21a4en], ["Rocket", 0x229d0447c3086a55n], ["Grenade", 0x011c7b49a7228f9dn], ["Plasma", 0x89f7566e1123e15fn], ["Railgun", 0x8d7f25318b3b4469n], ["Flamer", 0xd9cd0dcc285b7816n], ["Mine", 0x04dc16aea8ff5276n], ["Turret", 0x35e53bc341129217n], ["Drone", 0x2cc8282fb0de8831n], ["Repair", 0x20bada21bc8cb334n]], def: null },
       { n: "damage", key: "damage", id: 0x7f6308be8ab37fc0n, o: 11, k: 9, s: "flags", js: "a", big: true, kw: 8, lo: null, hi: null, bits: 0, vs: ["Bleeding", "Burning", "Stunned", "Slowed", "Poisoned", "Shielded", "Airborne", "Downed"], def: 0n },
       { n: "moving", key: "moving", id: 0x11a44fc1d1243da7n, o: 12, k: 1, s: "bool", js: "b", def: false },
@@ -3285,8 +3285,8 @@ const TableVariableCodecs = {
     variable: false,
     entry: false,
     fields: [
-      { n: "stat_id", key: "stat_id", id: 0x80ab75f0866dbf65n, o: 0, k: 6, s: "int", js: "n", k: 6, big: false, kw: 1, lo: null, hi: null, bits: 8, bmax: 255, frac: 0, tlo: 0n, thi: 255n, dlo: 0n, dhi: 4294967295n, def: 0 },
-      { n: "delta", key: "delta", id: 0x52076675ec13a0c1n, o: 1, k: 4, s: "int", js: "n", k: 4, big: false, kw: 4, lo: -512, hi: 511, bits: 0, bmax: 0, frac: 0, tlo: -512n, thi: 511n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
+      { n: "stat_id", key: "stat_id", id: 0x80ab75f0866dbf65n, o: 0, s: "int", js: "n", k: 6, big: false, kw: 1, lo: null, hi: null, bits: 8, bmax: 255, frac: 0, tlo: 0n, thi: 255n, dlo: 0n, dhi: 4294967295n, def: 0 },
+      { n: "delta", key: "delta", id: 0x52076675ec13a0c1n, o: 1, s: "int", js: "n", k: 4, big: false, kw: 4, lo: -512, hi: 511, bits: 0, bmax: 0, frac: 0, tlo: -512n, thi: 511n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
     ],
     place: { tables: [], str: false, bytes: false },
   },
@@ -3297,9 +3297,9 @@ const TableVariableCodecs = {
     variable: false,
     entry: false,
     fields: [
-      { n: "target_id", key: "target_id", id: 0xb7bc9ac015a25050n, o: 0, k: 7, s: "int", js: "n", k: 7, big: false, kw: 2, lo: null, hi: null, bits: 12, bmax: 4095, frac: 0, tlo: 0n, thi: 4095n, dlo: 0n, dhi: 4294967295n, def: 0 },
-      { n: "damage", key: "damage", id: 0x7f6308be8ab37fc0n, o: 1, k: 4, s: "int", js: "n", k: 4, big: false, kw: 4, lo: 0, hi: 4095, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 4095n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
-      { n: "hit_kind", key: "hit_kind", id: 0x01fbc365b059b925n, o: 2, k: 4, s: "int", js: "n", k: 4, big: false, kw: 4, lo: 0, hi: 7, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 7n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
+      { n: "target_id", key: "target_id", id: 0xb7bc9ac015a25050n, o: 0, s: "int", js: "n", k: 7, big: false, kw: 2, lo: null, hi: null, bits: 12, bmax: 4095, frac: 0, tlo: 0n, thi: 4095n, dlo: 0n, dhi: 4294967295n, def: 0 },
+      { n: "damage", key: "damage", id: 0x7f6308be8ab37fc0n, o: 1, s: "int", js: "n", k: 4, big: false, kw: 4, lo: 0, hi: 4095, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 4095n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
+      { n: "hit_kind", key: "hit_kind", id: 0x01fbc365b059b925n, o: 2, s: "int", js: "n", k: 4, big: false, kw: 4, lo: 0, hi: 7, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 7n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
       { n: "crit", key: "crit", id: 0x126167908c9aa52dn, o: 3, k: 1, s: "bool", js: "b", def: false },
     ],
     place: { tables: [], str: false, bytes: false },
@@ -3311,8 +3311,8 @@ const TableVariableCodecs = {
     variable: false,
     entry: false,
     fields: [
-      { n: "channel", key: "channel", id: 0xa5013e9ad5caeda4n, o: 0, k: 4, s: "int", js: "n", k: 4, big: false, kw: 4, lo: 0, hi: 3, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 3n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
-      { n: "speaker", key: "speaker", id: 0xfbf1ac4d96ebd022n, o: 1, k: 7, s: "int", js: "n", k: 7, big: false, kw: 2, lo: null, hi: null, bits: 12, bmax: 4095, frac: 0, tlo: 0n, thi: 4095n, dlo: 0n, dhi: 4294967295n, def: 0 },
+      { n: "channel", key: "channel", id: 0xa5013e9ad5caeda4n, o: 0, s: "int", js: "n", k: 4, big: false, kw: 4, lo: 0, hi: 3, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 3n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
+      { n: "speaker", key: "speaker", id: 0xfbf1ac4d96ebd022n, o: 1, s: "int", js: "n", k: 7, big: false, kw: 2, lo: null, hi: null, bits: 12, bmax: 4095, frac: 0, tlo: 0n, thi: 4095n, dlo: 0n, dhi: 4294967295n, def: 0 },
     ],
     place: { tables: [], str: false, bytes: false },
   },
@@ -3323,8 +3323,8 @@ const TableVariableCodecs = {
     variable: false,
     entry: false,
     fields: [
-      { n: "item_id", key: "item_id", id: 0x9e7fd06d864fbd56n, o: 0, k: 7, s: "int", js: "n", k: 7, big: false, kw: 2, lo: null, hi: null, bits: 10, bmax: 1023, frac: 0, tlo: 0n, thi: 1023n, dlo: 0n, dhi: 4294967295n, def: 0 },
-      { n: "amount", key: "amount", id: 0x8113fe7ea2b16969n, o: 1, k: 4, s: "int", js: "n", k: 4, big: false, kw: 4, lo: 0, hi: 255, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 255n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
+      { n: "item_id", key: "item_id", id: 0x9e7fd06d864fbd56n, o: 0, s: "int", js: "n", k: 7, big: false, kw: 2, lo: null, hi: null, bits: 10, bmax: 1023, frac: 0, tlo: 0n, thi: 1023n, dlo: 0n, dhi: 4294967295n, def: 0 },
+      { n: "amount", key: "amount", id: 0x8113fe7ea2b16969n, o: 1, s: "int", js: "n", k: 4, big: false, kw: 4, lo: 0, hi: 255, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 255n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
     ],
     place: { tables: [], str: false, bytes: false },
   },
@@ -3335,15 +3335,15 @@ const TableVariableCodecs = {
     variable: false,
     entry: false,
     fields: [
-      { n: "sequence", key: "sequence", id: 0xaa38aca481f528a8n, o: 0, k: 7, s: "int", js: "n", k: 7, big: false, kw: 2, lo: null, hi: null, bits: 16, bmax: 65535, frac: 0, tlo: 0n, thi: 65535n, dlo: 0n, dhi: 4294967295n, def: 0 },
-      { n: "ack_sequence", key: "ack_sequence", id: 0x0dbe005c56697c3en, o: 1, k: 4, s: "int", js: "n", k: 4, big: false, kw: 4, lo: 0, hi: 65535, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 65535n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
-      { n: "ack_bits", key: "ack_bits", id: 0x9bae0da8b829ee03n, o: 2, k: 8, s: "int", js: "n", k: 8, big: false, kw: 4, lo: null, hi: null, bits: 32, bmax: 4294967295, frac: 0, tlo: 0n, thi: 4294967295n, dlo: 0n, dhi: 4294967295n, def: 0 },
-      { n: "session_id", key: "session_id", id: 0xb7d7b5650a590b05n, o: 3, k: 9, s: "int", js: "n", k: 9, big: true, kw: 8, lo: null, hi: null, bits: 0, bmax: 0, frac: 0, tlo: null, thi: null, dlo: 0n, dhi: 18446744073709551615n, def: 0n },
-      { n: "client_id", key: "client_id", id: 0x6d7b98e2d095967en, o: 4, k: 8, s: "int", js: "n", k: 8, big: false, kw: 4, lo: null, hi: null, bits: 0, bmax: 0, frac: 0, tlo: null, thi: null, dlo: 0n, dhi: 4294967295n, def: 0 },
-      { n: "nonce", key: "nonce", id: 0x73a94c71d60dc0d8n, o: 5, k: 9, s: "int", js: "n", k: 9, big: true, kw: 8, lo: 0n, hi: 18446744073709551615n, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 18446744073709551615n, dlo: 0n, dhi: 18446744073709551615n, def: 0n },
-      { n: "world_time", key: "world_time", id: 0x3eee6b51be54fc85n, o: 6, k: 5, s: "int", js: "n", k: 5, big: true, kw: 8, lo: -1000000000000n, hi: 1000000000000n, bits: 0, bmax: 0, frac: 0, tlo: -1000000000000n, thi: 1000000000000n, dlo: -9223372036854775808n, dhi: 9223372036854775807n, def: 0n },
-      { n: "frame_tick", key: "frame_tick", id: 0x7bbc035f7b6d0112n, o: 7, k: 9, s: "int", js: "n", k: 9, big: true, kw: 8, lo: null, hi: null, bits: 48, bmax: 281474976710655n, frac: 0, tlo: 0n, thi: 281474976710655n, dlo: 0n, dhi: 18446744073709551615n, def: 0n },
-      { n: "server_time", key: "server_time", id: 0x3c460475f9be69c6n, o: 8, k: 22, s: "int", js: "n", k: 22, big: false, kw: 4, lo: 0, hi: 16776960, bits: 0, bmax: 0, frac: 8, tlo: 0n, thi: 16776960n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
+      { n: "sequence", key: "sequence", id: 0xaa38aca481f528a8n, o: 0, s: "int", js: "n", k: 7, big: false, kw: 2, lo: null, hi: null, bits: 16, bmax: 65535, frac: 0, tlo: 0n, thi: 65535n, dlo: 0n, dhi: 4294967295n, def: 0 },
+      { n: "ack_sequence", key: "ack_sequence", id: 0x0dbe005c56697c3en, o: 1, s: "int", js: "n", k: 4, big: false, kw: 4, lo: 0, hi: 65535, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 65535n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
+      { n: "ack_bits", key: "ack_bits", id: 0x9bae0da8b829ee03n, o: 2, s: "int", js: "n", k: 8, big: false, kw: 4, lo: null, hi: null, bits: 32, bmax: 4294967295, frac: 0, tlo: 0n, thi: 4294967295n, dlo: 0n, dhi: 4294967295n, def: 0 },
+      { n: "session_id", key: "session_id", id: 0xb7d7b5650a590b05n, o: 3, s: "int", js: "n", k: 9, big: true, kw: 8, lo: null, hi: null, bits: 0, bmax: 0, frac: 0, tlo: null, thi: null, dlo: 0n, dhi: 18446744073709551615n, def: 0n },
+      { n: "client_id", key: "client_id", id: 0x6d7b98e2d095967en, o: 4, s: "int", js: "n", k: 8, big: false, kw: 4, lo: null, hi: null, bits: 0, bmax: 0, frac: 0, tlo: null, thi: null, dlo: 0n, dhi: 4294967295n, def: 0 },
+      { n: "nonce", key: "nonce", id: 0x73a94c71d60dc0d8n, o: 5, s: "int", js: "n", k: 9, big: true, kw: 8, lo: 0n, hi: 18446744073709551615n, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 18446744073709551615n, dlo: 0n, dhi: 18446744073709551615n, def: 0n },
+      { n: "world_time", key: "world_time", id: 0x3eee6b51be54fc85n, o: 6, s: "int", js: "n", k: 5, big: true, kw: 8, lo: -1000000000000n, hi: 1000000000000n, bits: 0, bmax: 0, frac: 0, tlo: -1000000000000n, thi: 1000000000000n, dlo: -9223372036854775808n, dhi: 9223372036854775807n, def: 0n },
+      { n: "frame_tick", key: "frame_tick", id: 0x7bbc035f7b6d0112n, o: 7, s: "int", js: "n", k: 9, big: true, kw: 8, lo: null, hi: null, bits: 48, bmax: 281474976710655n, frac: 0, tlo: 0n, thi: 281474976710655n, dlo: 0n, dhi: 18446744073709551615n, def: 0n },
+      { n: "server_time", key: "server_time", id: 0x3c460475f9be69c6n, o: 8, s: "int", js: "n", k: 22, big: false, kw: 4, lo: 0, hi: 16776960, bits: 0, bmax: 0, frac: 8, tlo: 0n, thi: 16776960n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
       { n: "entities", key: "entities", id: 0x935d0fb07bb3822an, o: 9, k: 14, s: "arr", js: "a", list: false, fixed: false, bound: 8, ek: 13, e: { s: "tab", js: "o", t: "MixedEntity" } },
       { n: "stats", key: "stats", id: 0xee639cad45b1994cn, o: 10, k: 14, s: "arr", js: "a", list: false, fixed: false, bound: 80, ek: 13, e: { s: "tab", js: "o", t: "MixedStat" } },
       { n: "game_event", key: "game_event", id: 0x2e35dc5321aa5790n, o: 11, k: 15, s: "union", js: "o", un: "MixedEvent" },
@@ -3355,13 +3355,13 @@ const TableVariableCodecs = {
       { n: "aim_z", key: "aim_z", id: 0xdbaf79e5e2429363n, o: 17, k: 10, s: "float", js: "n", f32: true, lo: -1, hi: 1, def: 0 },
       { n: "recoil", key: "recoil", id: 0x9cef31fff7e2e457n, o: 18, k: 10, s: "float", js: "n", f32: true, lo: null, hi: null, def: 0 },
       { n: "drift", key: "drift", id: 0x5ab3f9c9341f6c04n, o: 19, k: 11, s: "float", js: "n", f32: false, lo: null, hi: null, def: 0 },
-      { n: "wide_key", key: "wide_key", id: 0xa3348580461faf16n, o: 20, k: 19, s: "int", js: "n", k: 19, big: true, kw: 16, lo: null, hi: null, bits: 0, bmax: 0, frac: 0, tlo: null, thi: null, dlo: 0n, dhi: 340282366920938463463374607431768211455n, def: 0n },
-      { n: "flux", key: "flux", id: 0xd61bdd7908af2642n, o: 21, k: 18, s: "int", js: "n", k: 18, big: true, kw: 16, lo: -1267650600228229401496703205376n, hi: 1267650600228229401496703205376n, bits: 0, bmax: 0, frac: 0, tlo: -1267650600228229401496703205376n, thi: 1267650600228229401496703205376n, dlo: -170141183460469231731687303715884105728n, dhi: 170141183460469231731687303715884105727n, def: 0n },
-      { n: "ping", key: "ping", id: 0xbf30e00dc53307a9n, o: 22, k: 26, s: "int", js: "n", k: 26, big: false, kw: 2, lo: 0, hi: 64000, bits: 0, bmax: 0, frac: 8, tlo: 0n, thi: 64000n, dlo: 0n, dhi: 65535n, def: 0 },
-      { n: "crc_hint", key: "crc_hint", id: 0x560d6527ccd8515fn, o: 23, k: 8, s: "int", js: "n", k: 8, big: false, kw: 4, lo: null, hi: null, bits: 24, bmax: 16777215, frac: 0, tlo: 0n, thi: 16777215n, dlo: 0n, dhi: 4294967295n, def: 0 },
+      { n: "wide_key", key: "wide_key", id: 0xa3348580461faf16n, o: 20, s: "int", js: "n", k: 19, big: true, kw: 16, lo: null, hi: null, bits: 0, bmax: 0, frac: 0, tlo: null, thi: null, dlo: 0n, dhi: 340282366920938463463374607431768211455n, def: 0n },
+      { n: "flux", key: "flux", id: 0xd61bdd7908af2642n, o: 21, s: "int", js: "n", k: 18, big: true, kw: 16, lo: -1267650600228229401496703205376n, hi: 1267650600228229401496703205376n, bits: 0, bmax: 0, frac: 0, tlo: -1267650600228229401496703205376n, thi: 1267650600228229401496703205376n, dlo: -170141183460469231731687303715884105728n, dhi: 170141183460469231731687303715884105727n, def: 0n },
+      { n: "ping", key: "ping", id: 0xbf30e00dc53307a9n, o: 22, s: "int", js: "n", k: 26, big: false, kw: 2, lo: 0, hi: 64000, bits: 0, bmax: 0, frac: 8, tlo: 0n, thi: 64000n, dlo: 0n, dhi: 65535n, def: 0 },
+      { n: "crc_hint", key: "crc_hint", id: 0x560d6527ccd8515fn, o: 23, s: "int", js: "n", k: 8, big: false, kw: 4, lo: null, hi: null, bits: 24, bmax: 16777215, frac: 0, tlo: 0n, thi: 16777215n, dlo: 0n, dhi: 4294967295n, def: 0 },
       { n: "has_extra", key: "has_extra", id: 0xc08292176cfd8672n, o: 24, k: 1, s: "bool", js: "b", def: true },
-      { n: "extra", key: "extra", id: 0xfd29ee12a979cb69n, o: 25, k: 4, s: "int", js: "n", k: 4, big: false, kw: 4, lo: 0, hi: 255, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 255n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
-      { n: "idle_ticks", key: "idle_ticks", id: 0x78101ac0aa8cbcfen, o: 26, k: 4, s: "int", js: "n", k: 4, big: false, kw: 4, lo: 0, hi: 15, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 15n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
+      { n: "extra", key: "extra", id: 0xfd29ee12a979cb69n, o: 25, s: "int", js: "n", k: 4, big: false, kw: 4, lo: 0, hi: 255, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 255n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
+      { n: "idle_ticks", key: "idle_ticks", id: 0x78101ac0aa8cbcfen, o: 26, s: "int", js: "n", k: 4, big: false, kw: 4, lo: 0, hi: 15, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 15n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
     ],
     place: { tables: [], str: false, bytes: false },
   },
@@ -3379,100 +3379,441 @@ const TableVariableCodecs = {
 };
 TableVariableLink(TableVariableCodecs, TableVariableUnions);
 
-function MixedEntityExtent(r, ids, at) {
-  while (true) {
-    if (r.at >= r.end) { break; }
-    const ref = r.leb();
-    if (r.bad || ref === 0 || ref > ids.length) { break; }
-    if (r.at >= r.end) { break; }
-    const id = ids[ref - 1];
-    const kind = r.u8();
-    let named = false;
-    if (!named) {
-      if (!TableVariableSkip(r, kind)) { break; }
+// Cook write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.
+export const TableCookWrite = (() => {
+  const build = 0x12bc9e07fe351b2cn;
+  const layouts = {
+    "MixedEntity": {
+      size: 64, align: 8, data: 64, measure: 144, alignCook: 8, typeId: 0x9367b84cab99cdc3n, make: () => new MixedEntity(),
+      fields: [
+        {k:"int",n:"entity_id",at:0,w:4,sg:0},
+        {k:"int",n:"pos_x",at:4,w:4,sg:1},
+        {k:"int",n:"pos_y",at:8,w:4,sg:1},
+        {k:"int",n:"pos_z",at:12,w:4,sg:1},
+        {k:"int",n:"yaw",at:16,w:4,sg:0},
+        {k:"int",n:"pitch",at:20,w:4,sg:0},
+        {k:"int",n:"vel_x",at:24,w:4,sg:1},
+        {k:"int",n:"vel_y",at:28,w:4,sg:1},
+        {k:"int",n:"vel_z",at:32,w:4,sg:1},
+        {k:"int",n:"health",at:36,w:4,sg:1},
+        {k:"venum",n:"weapon",at:40,w:1,max:15,vs:["Fists","Pistol","Shotgun","Rifle","Sniper","Smg","Rocket","Grenade","Plasma","Railgun","Flamer","Mine","Turret","Drone","Repair"]},
+        {k:"int",n:"damage",at:48,w:8,sg:0},
+        {k:"bool",n:"moving",at:56},
+        {k:"bool",n:"firing",at:57},
+      ],
+    },
+    "MixedStat": {
+      size: 8, align: 4, data: 8, measure: 88, alignCook: 8, typeId: 0xc42975bfe5e07baan, make: () => new MixedStat(),
+      fields: [
+        {k:"int",n:"stat_id",at:0,w:4,sg:0},
+        {k:"int",n:"delta",at:4,w:4,sg:1},
+      ],
+    },
+    "MixedHitEvent": {
+      size: 16, align: 4, data: 16, measure: 96, alignCook: 8, typeId: 0xac9fe3b25a77f1d7n, make: () => new MixedHitEvent(),
+      fields: [
+        {k:"int",n:"target_id",at:0,w:4,sg:0},
+        {k:"int",n:"damage",at:4,w:4,sg:1},
+        {k:"int",n:"hit_kind",at:8,w:4,sg:1},
+        {k:"bool",n:"crit",at:12},
+      ],
+    },
+    "MixedChatEvent": {
+      size: 8, align: 4, data: 8, measure: 88, alignCook: 8, typeId: 0x9f2c9da926a7408an, make: () => new MixedChatEvent(),
+      fields: [
+        {k:"int",n:"channel",at:0,w:4,sg:1},
+        {k:"int",n:"speaker",at:4,w:4,sg:0},
+      ],
+    },
+    "MixedPickupEvent": {
+      size: 8, align: 4, data: 8, measure: 88, alignCook: 8, typeId: 0x3d827cb76b809d8cn, make: () => new MixedPickupEvent(),
+      fields: [
+        {k:"int",n:"item_id",at:0,w:4,sg:0},
+        {k:"int",n:"amount",at:4,w:4,sg:1},
+      ],
+    },
+    "BenchMixed": {
+      size: 1376, align: 16, data: 1376, measure: 1456, alignCook: 16, typeId: 0xeb80cfd516eb3d5cn, make: () => new BenchMixed(),
+      fields: [
+        {k:"int",n:"sequence",at:0,w:4,sg:0},
+        {k:"int",n:"ack_sequence",at:4,w:4,sg:1},
+        {k:"int",n:"ack_bits",at:8,w:4,sg:0},
+        {k:"int",n:"session_id",at:16,w:8,sg:0},
+        {k:"int",n:"client_id",at:24,w:4,sg:0},
+        {k:"int",n:"nonce",at:32,w:8,sg:0},
+        {k:"int",n:"world_time",at:40,w:8,sg:1},
+        {k:"int",n:"frame_tick",at:48,w:8,sg:0},
+        {k:"int",n:"server_time",at:56,w:4,sg:1},
+        {k:"arr",n:"entities",at:64,countAt:576,countFrom:"len",bound:8,stride:64,elem:{k:"rec",n:"entities",at:0,t:"MixedEntity"}},
+        {k:"arr",n:"stats",at:580,countAt:1220,countFrom:"len",bound:80,stride:8,elem:{k:"rec",n:"stats",at:0,t:"MixedStat"}},
+        {k:"union",n:"game_event",at:1224,tagW:1,armAt:4,arms:3,var:1,arm:[{k:"rec",n:"value",at:0,t:"MixedHitEvent",an:"hit"},{k:"rec",n:"value",at:0,t:"MixedChatEvent",an:"chat"},{k:"rec",n:"value",at:0,t:"MixedPickupEvent",an:"pickup"}]},
+        {k:"arr",n:"loadout",at:1244,countAt:-1,countFrom:"bound",bound:4,stride:1,elem:{k:"int",n:"loadout",at:0,w:1,sg:0}},
+        {k:"vstr",n:"player_name",at:1248,lenAt:1264,cap:15},
+        {k:"vbytes",n:"payload",at:1268,lenAt:1284,cap:16},
+        {k:"f32",n:"aim_x",at:1288},
+        {k:"f32",n:"aim_y",at:1292},
+        {k:"f32",n:"aim_z",at:1296},
+        {k:"f32",n:"recoil",at:1300},
+        {k:"f64",n:"drift",at:1304},
+        {k:"int",n:"wide_key",at:1312,w:16,sg:0},
+        {k:"int",n:"flux",at:1328,w:16,sg:1},
+        {k:"int",n:"ping",at:1344,w:2,sg:0},
+        {k:"int",n:"crc_hint",at:1348,w:4,sg:0},
+        {k:"bool",n:"has_extra",at:1352},
+        {k:"int",n:"extra",at:1356,w:4,sg:1},
+        {k:"int",n:"idle_ticks",at:1360,w:4,sg:1},
+      ],
+    },
+    "FixedTable": {
+      size: 1376, align: 16, data: 1376, measure: 1456, alignCook: 16, typeId: 0x85df369cdca746b3n, make: () => new FixedTable(),
+      fields: [
+        {k:"rec",n:"value",at:0,t:"BenchMixed"},
+      ],
+    },
+  };
+  const f32Scratch = new DataView(new ArrayBuffer(8));
+  function narrowF32(v) {
+    if (v !== v) {
+      f32Scratch.setFloat64(0, v, true);
+      const lo = f32Scratch.getUint32(0, true), hi = f32Scratch.getUint32(4, true);
+      let payload = (((hi & 0xfffff) << 3) | (lo >>> 29)) & 0x7fffff;
+      if (payload === 0) { payload = 0x400000; }
+      return ((hi & 0x80000000) | 0x7f800000 | payload) >>> 0;
+    }
+    f32Scratch.setFloat32(0, v, true);
+    return f32Scratch.getUint32(0, true);
+  }
+  function fit(v, width, signed) {
+    let b;
+    if (typeof v === "bigint") { b = v; }
+    else if (typeof v === "number" && Number.isInteger(v)) { b = BigInt(v); }
+    else { return null; }
+    if (width === 16) {
+      if (signed) {
+        if (b < -(1n << 127n) || b > (1n << 127n) - 1n) { return null; }
+      } else if (b < 0n || b > (1n << 128n) - 1n) { return null; }
+      return b;
+    }
+    if (width === 8) {
+      if (signed) {
+        if (b < -0x8000000000000000n || b > 0x7fffffffffffffffn) { return null; }
+      } else if (b < 0n || b > 0xffffffffffffffffn) { return null; }
+      return b;
+    }
+    const n = Number(b);
+    let lo = 0, hi = 255;
+    if (width === 2) { hi = 65535; }
+    else if (width === 4) { hi = 4294967295; }
+    if (signed) {
+      hi = width === 1 ? 127 : width === 2 ? 32767 : 2147483647;
+      lo = width === 1 ? -128 : width === 2 ? -32768 : -2147483648;
+    }
+    if (n < lo || n > hi) { return null; }
+    return b;
+  }
+  function put64(view, at, v, le) {
+    if (view !== null) { view.setBigUint64(at, v, le); }
+  }
+  function putWidth(view, at, width, v, signed, le) {
+    const bits = fit(v, width, signed);
+    if (bits === null) { return false; }
+    if (view === null) { return true; }
+    if (width === 16) {
+      const lo = BigInt.asUintN(64, bits);
+      const hi = BigInt.asUintN(64, bits >> 64n);
+      view.setBigUint64(at, le ? lo : hi, le);
+      view.setBigUint64(at + 8, le ? hi : lo, le);
+      return true;
+    }
+    if (width === 8) {
+      if (signed) { view.setBigInt64(at, bits, le); }
+      else { view.setBigUint64(at, bits, le); }
+      return true;
+    }
+    const n = Number(bits);
+    if (width === 1) { if (signed) { view.setInt8(at, n); } else { view.setUint8(at, n); } }
+    else if (width === 2) { if (signed) { view.setInt16(at, n, le); } else { view.setUint16(at, n, le); } }
+    else { if (signed) { view.setInt32(at, n, le); } else { view.setUint32(at, n, le); } }
+    return true;
+  }
+  function writeStruct(view, base, layout, value, le, ctx) {
+    if (layout === undefined || value === null || typeof value !== "object") { return false; }
+    for (let i = 0; i < layout.fields.length; i++) {
+      if (!writeField(view, base, layout.fields[i], value, le, ctx)) { return false; }
+    }
+    return true;
+  }
+  function writeField(view, base, fd, parent, le, ctx) {
+    if (parent === null || typeof parent !== "object") { return false; }
+    if (fd.presentAt !== undefined) {
+      if (parent[fd.n] === null) {
+        if (view !== null) { view.setUint8(base + fd.presentAt, 0); }
+        if (fd.k === "rec") {
+          return writeStruct(view, base + fd.at, layouts[fd.t], layouts[fd.t].make(), le, ctx);
+        }
+        if (fd.k === "arr") {
+          if (fd.countAt >= 0 && !putWidth(view, base + fd.countAt, 4, 0, true, le)) { return false; }
+          for (let i = 0; i < fd.bound; i++) {
+            if (!writeValue(view, base + fd.at + i * fd.stride, fd.elem, holeValue(fd.elem), le, ctx)) { return false; }
+          }
+        }
+        return true;
+      }
+      if (view !== null) { view.setUint8(base + fd.presentAt, 1); }
+    }
+    if (fd.k === "arr") { return writeArray(view, base, fd, parent, le, ctx); }
+    if (fd.k === "str" || fd.k === "bytes" || fd.k === "vstr" || fd.k === "vbytes") { return writeText(view, base, fd, parent, le); }
+    if (fd.k === "union") { return writeUnion(view, base + fd.at, fd, parent[fd.n], le, ctx); }
+    if (fd.k === "ptr") { return writeRef(view, base + fd.at, ptrIndex(ctx, parent[fd.n]), le, ctx); }
+    if (fd.k === "sblob" || fd.k === "bblob") { return writeRef(view, base + fd.at, blobIndex(ctx, parent, fd, parent[fd.n]), le, ctx); }
+    return writeValue(view, base + fd.at, fd, parent[fd.n], le, ctx);
+  }
+  function writeValue(view, at, fd, value, le, ctx) {
+    switch (fd.k) {
+      case "bool":
+        if (typeof value !== "boolean") { return false; }
+        if (view !== null) { view.setUint8(at, value ? 1 : 0); }
+        return true;
+      case "f32":
+        if (typeof value !== "number") { return false; }
+        if (view !== null) { view.setUint32(at, narrowF32(value), le); }
+        return true;
+      case "f64":
+        if (typeof value !== "number") { return false; }
+        if (view !== null) { view.setFloat64(at, value, le); }
+        return true;
+      case "int":
+        return putWidth(view, at, fd.w, value, fd.sg === 1, le);
+      case "enum":
+        if (!Number.isInteger(value) || value < 0 || value > fd.max) { return false; }
+        return putWidth(view, at, fd.w, value, false, le);
+      case "venum": {
+        let ord = 0;
+        if (value !== null && value !== undefined && value !== "None") {
+          const i = fd.vs.indexOf(value);
+          if (i < 0) { return false; }
+          ord = i + 1;
+        }
+        if (ord > fd.max) { return false; }
+        return putWidth(view, at, fd.w, ord, false, le);
+      }
+      case "rec":
+        return writeStruct(view, at, layouts[fd.t], value, le, ctx);
+      case "ptr":
+        return writeRef(view, at, ptrIndex(ctx, value), le, ctx);
+      case "union":
+        return writeUnion(view, at, fd, value, le, ctx);
+      default:
+        return false;
     }
   }
-  return at;
-}
+  function holeValue(fd) {
+    switch (fd.k) {
+      case "bool": return false;
+      case "int": return fd.w >= 8 ? 0n : 0;
+      case "f32": case "f64": case "enum": return 0;
+      case "venum": case "ptr": case "sblob": case "bblob": return null;
+      case "union": return fd.var ? null : undefined;
+      case "rec": return layouts[fd.t].make();
+      default: return undefined;
+    }
+  }
+  function writeArray(view, base, fd, parent, le, ctx) {
+    const arr = parent[fd.n];
+    let count;
+    if (fd.countFrom === "bound") { count = fd.bound; }
+    else if (fd.countFrom === "len") {
+      if (!Array.isArray(arr)) { return false; }
+      count = arr.length;
+    } else { count = parent[fd.n + "Count"]; }
+    if (!Number.isInteger(count) || count < 0 || count > fd.bound) { return false; }
+    if (fd.countAt >= 0 && !putWidth(view, base + fd.countAt, 4, count, true, le)) { return false; }
+    for (let i = 0; i < fd.bound; i++) {
+      let el;
+      if (i < count || fd.countFrom !== "len") {
+        if (arr == null || arr[i] === undefined) { return false; }
+        el = arr[i];
+      } else { el = holeValue(fd.elem); }
+      if (!writeValue(view, base + fd.at + i * fd.stride, fd.elem, el, le, ctx)) { return false; }
+    }
+    return true;
+  }
+  function writeUnion(view, at, fd, value, le, ctx) {
+    if (fd.var) {
+      if (value === null) {
+        return putWidth(view, at, fd.tagW, 0, false, le);
+      }
+      if (typeof value !== "object") { return false; }
+      let tag = 0;
+      for (let i = 0; i < fd.arm.length; i++) {
+        if (fd.arm[i].an === value.arm) { tag = i + 1; break; }
+      }
+      if (tag === 0) { return false; }
+      if (!putWidth(view, at, fd.tagW, tag, false, le)) { return false; }
+      const arm = fd.arm[tag - 1];
+      if (arm.v) { return true; }
+      return writeField(view, at + fd.armAt, arm, value, le, ctx);
+    }
+    if (value === null || typeof value !== "object") { return false; }
+    const tag = value.Type;
+    if (!Number.isInteger(tag) || tag < 0 || tag > fd.arms) { return false; }
+    if (!putWidth(view, at, fd.tagW, tag, false, le)) { return false; }
+    if (tag === 0) { return true; }
+    const arm = fd.arm[tag - 1];
+    if (arm.v) { return true; }
+    return writeField(view, at + fd.armAt, arm, value, le, ctx);
+  }
+  function writeRef(view, at, idx, le, ctx) {
+    if (idx < 0) { return false; }
+    if (idx === 0) {
+      if (view !== null) { view.setBigInt64(at, 0n, le); }
+      return true;
+    }
+    if (ctx === null || ctx.entries[idx - 1] === undefined) { return false; }
+    if (view !== null) {
+      const delta = 64n + BigInt(ctx.entries[idx - 1].offset) - BigInt(at);
+      view.setBigInt64(at, delta, le);
+    }
+    return true;
+  }
+  function ptrIndex(ctx, val) {
+    if (val === null || val === undefined) { return 0; }
+    if (ctx === null) { return -1; }
+    const i = ctx.nodes.index.get(val);
+    return i === undefined ? -1 : i;
+  }
+  function blobIndex(ctx, holder, fd, val) {
+    if (val === null || val === undefined) { return 0; }
+    if (ctx === null) { return -1; }
+    if (fd.k === "sblob" && typeof val === "string") {
+      const m = ctx.nodes.slots.get(holder);
+      if (m === undefined || !m.has(fd.n)) { return -1; }
+      return m.get(fd.n);
+    }
+    const i = ctx.nodes.index.get(val);
+    return i === undefined ? -1 : i;
+  }
+  function writeText(view, base, fd, parent, le) {
+    let bytes, n;
+    if (fd.k === "vstr") {
+      if (typeof parent[fd.n] !== "string") { return false; }
+      bytes = TableVariableUtf8Encode(parent[fd.n]);
+      n = bytes.length;
+    } else if (fd.k === "vbytes") {
+      bytes = parent[fd.n];
+      if (!(bytes instanceof Uint8Array)) { return false; }
+      n = bytes.length;
+    } else {
+    bytes = parent[fd.n];
+    n = parent[fd.n + "Length"];
+    if (!(bytes instanceof Uint8Array)) { return false; }
+    }
+    if (!Number.isInteger(n) || n < 0 || n > fd.cap || bytes.length < n) { return false; }
+    if (view !== null && n > 0) {
+      const src = bytes instanceof Uint8Array ? bytes.subarray(0, n) : bytes.slice(0, n);
+      new Uint8Array(view.buffer, view.byteOffset + base + fd.at, n).set(src);
+    }
+    return putWidth(view, base + fd.lenAt, 4, n, true, le);
+  }
+  function alignUp(n, a) {
+    if (a <= 1) { return n; }
+    return Math.floor((n + a - 1) / a) * a;
+  }
+  function blobSize(entry) {
+    return 8 + entry.len + (entry.string ? 1 : 0);
+  }
+  function region(name, value) {
+    if (value === null || typeof value !== "object") { return { reason: "invalid_value" }; }
+    const codec = TableVariableCodecs[name];
+    const layout = layouts[name];
+    if (codec === undefined || layout === undefined) { return { reason: "invalid_value" }; }
+    const nodes = TableVariableNumber(codec, value);
+    if (nodes === null) { return { reason: "data_cycle" }; }
+    const entries = [{ typeId: layout.typeId, v: value, blob: false, layout, offset: 0 }];
+    for (const n of nodes.list) {
+      if (n.codec === undefined) {
+        if (n.body == null) { return { reason: "invalid_value" }; }
+        entries.push({ typeId: n.typeId, blob: true, body: n.body, string: n.typeId === TableStringBlobId, len: n.body.length, offset: 0 });
+      } else {
+        const child = layouts[n.codec.name];
+        if (child === undefined) { return { reason: "invalid_value" }; }
+        entries.push({ typeId: child.typeId, v: n.v, blob: false, layout: child, offset: 0 });
+      }
+    }
+    let data = 0, align = 8;
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      const alignment = e.blob ? 8 : e.layout.align;
+      const size = e.blob ? blobSize(e) : e.layout.size;
+      if (alignment > align) { align = alignment; }
+      data = alignUp(data, alignment);
+      e.offset = data;
+      data += size;
+    }
+    data = alignUp(data, align);
+    const ctx = { entries, nodes };
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      if (!e.blob && !writeStruct(null, 64 + e.offset, e.layout, e.v, true, ctx)) { return { reason: "invalid_value" }; }
+    }
+    return { reason: null, total: 64 + data + entries.length * 16, data, align, entries, ctx };
+  }
+  function variableMeasure(name, value) {
+    const reg = region(name, value);
+    return reg.reason === null ? reg.total : -1;
+  }
+  function variableReason(name, value) {
+    const reg = region(name, value);
+    if (reg.reason !== null) { return [-1, reg.reason]; }
+    return [reg.total, null];
+  }
+  function variableFrom(name, value, buffer, order) {
+    if (order !== 1 && order !== 2) { return false; }
+    const reg = region(name, value);
+    if (reg.reason !== null) { return false; }
+    if (!(buffer instanceof Uint8Array) || buffer.byteLength < reg.total) { return false; }
+    buffer.fill(0, 0, reg.total);
+    const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    const le = order === 1;
+    put64(view, 0, 0x4b4f4f434d484353n, le);
+    put64(view, 8, build, le);
+    put64(view, 16, BigInt(order), le);
+    put64(view, 24, BigInt(reg.data), le);
+    put64(view, 32, BigInt(reg.entries.length * 16), le);
+    put64(view, 40, BigInt(reg.align), le);
+    for (let i = 0; i < reg.entries.length; i++) {
+      const e = reg.entries[i];
+      const at = 64 + e.offset;
+      if (e.blob) {
+        view.setUint32(at, e.len, le);
+        if (e.len > 0) {
+          const src = e.body instanceof Uint8Array ? e.body : Uint8Array.from(e.body);
+          new Uint8Array(view.buffer, view.byteOffset + at + 8, e.len).set(src);
+        }
+      } else if (!writeStruct(view, at, e.layout, e.v, le, reg.ctx)) { return false; }
+    }
+    const dir = 64 + reg.data;
+    for (let i = 0; i < reg.entries.length; i++) {
+      const e = reg.entries[i];
+      put64(view, dir + i * 16, BigInt(e.offset), le);
+      put64(view, dir + i * 16 + 8, e.typeId, le);
+    }
+    return true;
+  }
+  return { variableMeasure, variableReason, variableFrom };
+})();
 
-function MixedStatExtent(r, ids, at) {
-  while (true) {
-    if (r.at >= r.end) { break; }
-    const ref = r.leb();
-    if (r.bad || ref === 0 || ref > ids.length) { break; }
-    if (r.at >= r.end) { break; }
-    const id = ids[ref - 1];
-    const kind = r.u8();
-    let named = false;
-    if (!named) {
-      if (!TableVariableSkip(r, kind)) { break; }
-    }
-  }
-  return at;
+export function FixedTableCookMeasure(value) {
+  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.
+  return TableCookWrite.variableMeasure("FixedTable", value);
 }
-
-function MixedHitEventExtent(r, ids, at) {
-  while (true) {
-    if (r.at >= r.end) { break; }
-    const ref = r.leb();
-    if (r.bad || ref === 0 || ref > ids.length) { break; }
-    if (r.at >= r.end) { break; }
-    const id = ids[ref - 1];
-    const kind = r.u8();
-    let named = false;
-    if (!named) {
-      if (!TableVariableSkip(r, kind)) { break; }
-    }
-  }
-  return at;
+export function FixedTableCookMeasureReason(value) {
+  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.
+  return TableCookWrite.variableReason("FixedTable", value);
 }
-
-function MixedChatEventExtent(r, ids, at) {
-  while (true) {
-    if (r.at >= r.end) { break; }
-    const ref = r.leb();
-    if (r.bad || ref === 0 || ref > ids.length) { break; }
-    if (r.at >= r.end) { break; }
-    const id = ids[ref - 1];
-    const kind = r.u8();
-    let named = false;
-    if (!named) {
-      if (!TableVariableSkip(r, kind)) { break; }
-    }
-  }
-  return at;
-}
-
-function MixedPickupEventExtent(r, ids, at) {
-  while (true) {
-    if (r.at >= r.end) { break; }
-    const ref = r.leb();
-    if (r.bad || ref === 0 || ref > ids.length) { break; }
-    if (r.at >= r.end) { break; }
-    const id = ids[ref - 1];
-    const kind = r.u8();
-    let named = false;
-    if (!named) {
-      if (!TableVariableSkip(r, kind)) { break; }
-    }
-  }
-  return at;
-}
-
-function BenchMixedExtent(r, ids, at) {
-  while (true) {
-    if (r.at >= r.end) { break; }
-    const ref = r.leb();
-    if (r.bad || ref === 0 || ref > ids.length) { break; }
-    if (r.at >= r.end) { break; }
-    const id = ids[ref - 1];
-    const kind = r.u8();
-    let named = false;
-    if (!named) {
-      if (!TableVariableSkip(r, kind)) { break; }
-    }
-  }
-  return at;
+export function FixedTableCookFrom(value, buffer, order) {
+  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.
+  return TableCookWrite.variableFrom("FixedTable", value, buffer, order);
 }
 
 function FixedTableExtent(r, ids, at) {
@@ -3481,23 +3822,19 @@ function FixedTableExtent(r, ids, at) {
     const ref = r.leb();
     if (r.bad || ref === 0 || ref > ids.length) { break; }
     if (r.at >= r.end) { break; }
-    const id = ids[ref - 1];
     const kind = r.u8();
-    let named = false;
-    if (!named) {
-      if (!TableVariableSkip(r, kind)) { break; }
-    }
+    if (!TableVariableSkip(r, kind)) { break; }
   }
   return at;
 }
 
 export function FixedTableMeasure(v) {
-  const b = TableVariableSave(TableVariableCodecs.FixedTable, v, null, null);
+  const b = TableVariableSave(TableVariableCodecs.FixedTable, v, null);
   return b === null ? -1 : b.length;
 }
 
 export function FixedTableSave(v) {
-  return TableVariableSave(TableVariableCodecs.FixedTable, v, null, null);
+  return TableVariableSave(TableVariableCodecs.FixedTable, v, null);
 }
 
 export function FixedTableLoad(bytes, report) {
@@ -3570,7 +3907,6 @@ export function FixedTableLoadMeasure(bytes) {
     if (tref === 0 || tref > ids.length) { break; }
     const tlen = payload.leb();
     if (payload.at + tlen > payload.end) { break; }
-    const tid = ids[tref - 1];
     payload.at += tlen;
     records++;
   }
@@ -3585,7 +3921,7 @@ export function FixedTableLoadRetain(bytes, retain, report) {
 
 export function FixedTableMeasureRetain(v, retain) {
   if (retain !== null) { retain.idUsed = 0; retain.clearPlaced(); }
-  const b = TableVariableSave(TableVariableCodecs.FixedTable, v, retain, null);
+  const b = TableVariableSave(TableVariableCodecs.FixedTable, v, retain);
   return b === null ? -1 : b.length;
 }
 
@@ -3594,7 +3930,7 @@ export function FixedTableSaveRetain(v, retain, report) {
   if (retain === null) { return FixedTableSave(v); }
   retain.idUsed = 0;
   retain.clearPlaced();
-  const b = TableVariableSave(TableVariableCodecs.FixedTable, v, retain, report);
+  const b = TableVariableSave(TableVariableCodecs.FixedTable, v, retain);
   if (b === null) { return null; }
   TableVariableRetainCountLost(retain, report);
   return b;

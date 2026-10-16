@@ -239,6 +239,7 @@ func (g *fgen) assemble() []byte {
 		h.WriteString("// MaxBytes + 8 scratch first.\n")
 	}
 	h.WriteString("\n")
+	used := jsIdentifiers(g.body.String())
 	if len(g.imports) > 0 {
 		bases := make([]string, 0, len(g.imports))
 		for b := range g.imports {
@@ -251,14 +252,21 @@ func (g *fgen) assemble() []byte {
 				syms = append(syms, s)
 			}
 			sort.Strings(syms)
+			if syms = liveImports(syms, used); len(syms) == 0 {
+				continue
+			}
 			fmt.Fprintf(&h, "import { %s } from \"./%s.js\";\n", strings.Join(syms, ", "), b)
 		}
 		h.WriteString("\n")
 	}
-	h.WriteString("// The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module\n")
-	h.WriteString("// scope is safe: single threaded per realm, consumed in the same op that\n")
-	h.WriteString("// fills it.\n")
-	h.WriteString("const SC = new DataView(new ArrayBuffer(8));\n\n")
+	// the scratch is declared only where a codec converts through it: a module
+	// with no float field would carry an unread binding (eslint no-unused-vars)
+	if used["SC"] {
+		h.WriteString("// The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module\n")
+		h.WriteString("// scope is safe: single threaded per realm, consumed in the same op that\n")
+		h.WriteString("// fills it.\n")
+		h.WriteString("const SC = new DataView(new ArrayBuffer(8));\n\n")
+	}
 	h.WriteString("// The JavaScript #ifdef, frozen at module load (serialize.js src/mode.js):\n")
 	h.WriteString("// bundlers statically replace NODE_ENV, so production bundles tree-shake\n")
 	h.WriteString("// the checked writers out. Existence-guarded for browsers without process.\n")
@@ -556,7 +564,10 @@ func (g *fgen) emitWriteVariant(st *ir.Struct, checked bool) {
 	g.pf("function write%sFlat%s(value, view) {\n", st.Name, variantName(checked))
 	g.body.WriteString(g.fn.String())
 	g.fn.Reset()
-	g.body.WriteString(g.writeLocals("  "))
+	if len(st.Items) > 0 {
+		// an empty type's writer reads no field, so it declares no value local
+		g.body.WriteString(g.writeLocals("  "))
+	}
 	g.body.WriteString("  let lo = 0, sb = 0, wi = 0;\n")
 	g.body.WriteString(body)
 	g.body.WriteString("  if (sb !== 0) {\n")
@@ -577,6 +588,18 @@ func (g *fgen) emitReadFlat(st *ir.Struct) {
 
 	g.pf("// Read%sFlat(value, view, numBits) -> bool. The buffer behind view must\n", st.Name)
 	g.pf("// extend FLAT_READ_SLACK bytes past the payload.\n")
+	if len(st.Items) == 0 {
+		// AN EMPTY TYPE READS NOTHING: no parameter and no cursor local is
+		// read, so none is declared (eslint no-unused-vars); a caller's
+		// arguments are accepted and ignored.
+		g.pf("export function Read%sFlat() {\n", st.Name)
+		g.body.WriteString(g.fn.String())
+		g.fn.Reset()
+		g.body.WriteString(body)
+		g.body.WriteString("  return true;\n")
+		g.body.WriteString("}\n\n")
+		return
+	}
 	g.pf("export function Read%sFlat(value, view, numBits) {\n", st.Name)
 	g.body.WriteString(g.fn.String())
 	g.fn.Reset()

@@ -333,6 +333,7 @@ func (g *cookGen) assemble() []byte {
 	h.WriteString("// throws, naming the fix. A reference that leaves the region throws rather\n")
 	h.WriteString("// than reads: that is a corrupt cook, and the message says so.\n\n")
 	if len(g.imports) > 0 {
+		used := jsIdentifiers(g.body.String())
 		bases := make([]string, 0, len(g.imports))
 		for b := range g.imports {
 			bases = append(bases, b)
@@ -344,6 +345,9 @@ func (g *cookGen) assemble() []byte {
 				syms = append(syms, s)
 			}
 			sort.Strings(syms)
+			if syms = liveImports(syms, used); len(syms) == 0 {
+				continue
+			}
 			fmt.Fprintf(&h, "import { %s } from \"./%s.js\";\n", strings.Join(syms, ", "), b)
 		}
 		h.WriteString("\n")

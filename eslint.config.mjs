@@ -74,6 +74,8 @@ const nodeGlobals = {
   URLSearchParams: "readonly",
   __dirname: "readonly",
   __filename: "readonly",
+  atob: "readonly",
+  btoa: "readonly",
   clearImmediate: "readonly",
   clearInterval: "readonly",
   clearTimeout: "readonly",

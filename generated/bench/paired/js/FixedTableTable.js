@@ -24,7 +24,7 @@
 // Nothing throws: a write answers its byte count or -1, a read answers its
 // record count or -1 with the reason named in the report.
 
-import { FixedTable, FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, InitFixedTable, TableBitWriter, TableFixedDecodeLayout, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
+import { FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
 
 // ---- FixedTable, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
 //

@@ -128,7 +128,7 @@ func emitRecordObject(b *strings.Builder, u *ir.Unit, name string, ml *ir.Member
 			// is what the accessor hands back beside the delta.
 			pf("  function %sSlot(at) { return at + %d; }\n", member, fl.Offset)
 			pf("  function %sDelta(view, at) { return view.getBigInt64(at + %d, true); }\n", member, fl.Offset)
-			uniform = append(uniform, fmt.Sprintf("%q: (bytes, view, at, i) => %sDelta(view, at)", f.Name, member))
+			uniform = append(uniform, fmt.Sprintf("%q: (bytes, view, at) => %sDelta(view, at)", f.Name, member))
 		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 			pf("  function %sLength(view, at) { return view.getInt32(at + %d, true); }\n", member, pieces[1].Offset)
 			pf("  function %s(bytes, view, at) {\n", member)
@@ -136,7 +136,7 @@ func emitRecordObject(b *strings.Builder, u *ir.Unit, name string, ml *ir.Member
 			pf("    if (!(used >= 0) || used > %d) { used = 0; } // a companion outside its bound is cook-check's refusal, not a read\n", facts.ArrayBound)
 			pf("    return bytes.subarray(at + %d, at + %d + used); // a VIEW over the region: no copy\n", fl.Offset, fl.Offset)
 			pf("  }\n")
-			uniform = append(uniform, fmt.Sprintf("%q: (bytes, view, at, i) => %s(bytes, view, at)", f.Name, member))
+			uniform = append(uniform, fmt.Sprintf("%q: (bytes, view, at) => %s(bytes, view, at)", f.Name, member))
 		case isClassRef(f.Type) && f.Type.Kind == ir.TNamed:
 			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
 				refs[ref.Name] = true

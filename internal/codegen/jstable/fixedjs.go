@@ -491,7 +491,12 @@ func (g *fixedGen) loadTag(ind, lhs, at string, width int64) {
 func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	g.pf("// %s's loads, out of the reader's own image and into the value the\n", st.Name)
 	g.pf("// caller handed in — filled, never returned, exactly as Read<Name>Flat is.\n")
-	g.pf("export function %sFixedDecode(value, view, at, report) {\n", st.Name)
+	// The body is emitted first so the signature can name `report` only where
+	// the body reads it: a type with no text and no nested decode never
+	// refuses, and an unread parameter is eslint no-unused-vars. A caller's
+	// report argument is accepted either way.
+	outer := g.body.String()
+	g.body.Reset()
 	// THE CONTENT RULES APPLY TO THE USED UNITS BEFORE ANY DESTINATION WRITE
 	// (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11, §5.3): REFUSE is total, so a
 	// text violation in the image refuses by name before a single property of
@@ -502,6 +507,15 @@ func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 		g.emitDecodeField(f, "at", cur, "value", "  ")
 		cur += fixedFieldBytes(f)
 	}
+	inner := g.body.String()
+	g.body.Reset()
+	g.body.WriteString(outer)
+	if jsIdentifiers(inner)["report"] {
+		g.pf("export function %sFixedDecode(value, view, at, report) {\n", st.Name)
+	} else {
+		g.pf("export function %sFixedDecode(value, view, at) {\n", st.Name)
+	}
+	g.body.WriteString(inner)
 	g.pf("}\n\n")
 }
 

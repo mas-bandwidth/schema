@@ -251,7 +251,7 @@ function TableVariableWriteFields(c, w, ids, nodes, v, retain, path) {
 // the one-byte zero reference that terminates it
 function TableVariableWriteBody(c, w, ids, nodes, v, retain, path) {
   if (!TableVariableWriteFields(c, w, ids, nodes, v, retain, path)) { return false; }
-  if (!TableVariableRetainTail(w, ids, retain, path, null)) { return false; }
+  if (!TableVariableRetainTail(w, ids, retain, path)) { return false; }
   w.u8(0);
   return true;
 }
@@ -408,17 +408,17 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
 // the retained tail, the node table LAST in the root body under the reserved
 // id at kind 12, the terminator, then the id table and its count. A data cycle
 // or a value with no wire identity refuses the save (null).
-function TableVariableSave(c, v, retain, report) {
+function TableVariableSave(c, v, retain) {
   const outer = TableVariableEntryCache;
   TableVariableEntryCache = new Map();
   try {
-    return TableVariableSaveWalk(c, v, retain, report);
+    return TableVariableSaveWalk(c, v, retain);
   } finally {
     TableVariableEntryCache = outer;
   }
 }
 
-function TableVariableSaveWalk(c, v, retain, report) {
+function TableVariableSaveWalk(c, v, retain) {
   const nodes = TableVariableNumber(c, v);
   if (nodes === null) { return null; }
   const w = new TableVariableWriter();
@@ -426,7 +426,7 @@ function TableVariableSaveWalk(c, v, retain, report) {
   const ids = new TableVariableIds(retain);
   const path = [];
   if (!TableVariableWriteFields(c, w, ids, nodes, v, retain, path)) { return null; }
-  if (!TableVariableRetainTail(w, ids, retain, path, report)) { return null; }
+  if (!TableVariableRetainTail(w, ids, retain, path)) { return null; }
   if (nodes.list.length > 0) {
     w.leb(ids.ref(TableNodeTableId));
     w.u8(12);

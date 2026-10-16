@@ -952,12 +952,12 @@ CONFORMANCE_LEGS  += $(call unless_skipped,js,build/tables-generated-js/.stamp)
 # is missing and this gate never silently skips.
 ESLINT ?= eslint
 .PHONY: tables-js-clean
-tables-js-clean: build/tables-generated-js/.stamp generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/paired/js/.stamp
+tables-js-clean: toolchain-js build/tables-generated-js/.stamp generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/paired/js/.stamp
 	$(ESLINT) build/tables-generated-js generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js
 	@echo "tables JavaScript: eslint clean over the generated table and packet units"
 
 .PHONY: tables-js-clean-negative-control
-tables-js-clean-negative-control: generated/js/.stamp
+tables-js-clean-negative-control: toolchain-js generated/js/.stamp
 	@mkdir -p build/tables-js-clean-negative
 	@cp generated/js/Degenerate.js build/tables-js-clean-negative/Degenerate.js
 	@echo 'const unused = 1;' >> build/tables-js-clean-negative/Degenerate.js
