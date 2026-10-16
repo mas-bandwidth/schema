@@ -845,6 +845,7 @@ tables-java-allocator-runtime-negative-control: build/java-tables/.stamp
 .PHONY: tables-java-soak tables-java-soak-negative-control
 tables-java-soak: build/java-tables/.stamp
 	@if [ "$${SCHEMA_JAVA_ALLOC_ANY_JDK:-}" = 1 ]; then echo "Java soak observation mode: NOT CERTIFIED"; fi
+	$(JAVA) -cp build/java-tables Soak --selftest
 	$(JAVA) -cp build/java-tables Soak $(SOAK_SECONDS) testdata/wire/tables/blob_small.bin testdata/wire/tables/graph_tree.bin
 
 # ITS NEGATIVE CONTROL: a matched allocation pair planted per iteration by an

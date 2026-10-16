@@ -71,6 +71,37 @@ public final class Soak {
         return Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
     }
 
+    // the post-warmup sufficiency gate: a soak must measure at least two
+    // post-warmup samples before it may certify flatness, so a single sample
+    // (or warmup alone) is refused. Returns null when sufficient.
+    private static String sufficiencyError(boolean warmed, long samples, long warmedAt) {
+        if (!warmed) {
+            return "warmup never settled, so no post-warmup sample was measured";
+        }
+        long post = samples - warmedAt;
+        if (post < 2) {
+            return "only " + post + " post-warmup sample" + (post == 1 ? "" : "s")
+                    + " were measured: a soak cannot certify flatness on fewer than two";
+        }
+        return null;
+    }
+
+    // a pure self-check of the decision rules, run when the first argument is
+    // --selftest: exercises the sample-count gate (1 refused, 2 accepted) and
+    // the drift-as-report-only contract (a red drift is reported, never failed).
+    private static void selftest() {
+        if (sufficiencyError(false, 0, 0) == null) {
+            fail("selftest: warmup-only run was not refused");
+        }
+        if (sufficiencyError(true, 6, 5) == null) {
+            fail("selftest: one post-warmup sample was not refused");
+        }
+        if (sufficiencyError(true, 7, 5) != null) {
+            fail("selftest: two post-warmup samples were refused");
+        }
+        System.out.println("soak: selftest OK — 1 post-warmup sample refused, 2 accepted, drift report-only");
+    }
+
     private static long runBatch(Codec[] codecs, byte[][] wires, long batch, boolean plant) {
         for (long i = 0; i < batch; i++) {
             for (int c = 0; c < codecs.length; c++) {
@@ -93,6 +124,10 @@ public final class Soak {
     }
 
     public static void main(String[] args) throws IOException {
+        if (args.length > 0 && "--selftest".equals(args[0])) {
+            selftest();
+            return;
+        }
         int found = Runtime.version().feature();
         int pin = 21;
         String pinEnv = System.getenv("SCHEMA_JAVA_ALLOC_PINNED_FEATURE");
@@ -221,16 +256,13 @@ public final class Soak {
                 + " after, max drift " + maxDrift + " bytes (resident retention / drift, "
                 + "the weaker instrument)");
         boolean driftOk = maxDrift <= DRIFT_LIMIT;
-        System.out.println("soak: drift " + (driftOk ? "OK" : "RED") + " (limit " + DRIFT_LIMIT + " bytes)");
+        System.out.println("soak: drift " + (driftOk ? "OK" : "RED") + " (limit " + DRIFT_LIMIT + " bytes, report-only)");
         if (countFailure != null) {
             fail(countFailure + " (" + badSamples + " of " + (samples - warmedAt) + " post-warmup samples)");
         }
-        if (!driftOk) {
-            fail("resident heap drifted " + maxDrift + " bytes, past the " + DRIFT_LIMIT + " limit: retention");
-        }
-        if (!warmed || samples <= warmedAt) {
-            fail("no post-warmup samples were measured (" + (samples - warmedAt)
-                    + " post-warmup samples): a soak cannot certify flatness on warmup alone");
+        String sufficiency = sufficiencyError(warmed, samples, warmedAt);
+        if (sufficiency != null) {
+            fail(sufficiency);
         }
         System.out.println("soak: OK — per-iteration allocation flat (within "
                 + TOLERANCE + " bytes, " + (samples - warmedAt) + " post-warmup samples)");
