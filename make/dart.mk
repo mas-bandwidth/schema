@@ -768,6 +768,9 @@ tables-dart-keyed-negative-control:
 	@grep -m1 "enum extent" build/dart-keyed-nc/log
 	@echo "negative control: one extra keyed slot turns the Dart keyed-array extent test RED"
 
+# reached from make test like every other Dart control (TestPortingRegisterHoldsTheTree)
+test-dart: tables-dart-keyed-negative-control
+
 # THE VARIABLE CLASS (docs/SPEC-TABLES.md §2.5, §2.9, §3, §3.1, §16.7): pointers,
 # by-value nesting, []*T, blobs, the remaining scalar kinds and unbounded
 # scalar/enum arrays, byte for byte against the oracle. A bare go test skips
