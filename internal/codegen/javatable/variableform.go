@@ -2883,7 +2883,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TFloat64:
 		fmt.Fprintf(b, "                if (kind == 11) { if (r.has(8)) { v.%s = Double.longBitsToDouble(r.get64()); } else { report.malformed = true; r.fail = true; } }\n", m)
-		fmt.Fprintf(b, "                else if(kind==10){if(r.has(4)){v.%s=TableVariable.widenF32(r.get32());report.widened++;if(report.reason==null)report.reason=\"widened\";}else{report.malformed=true;r.fail=true;}}\n", m)
+		fmt.Fprintf(b, "                else if(kind==10){if(r.has(4)){v.%s=TableVariable.widenF32(r.get32());report.widened++;}else{report.malformed=true;r.fail=true;}}\n", m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
 		writeIntFieldRead(b, f, m)
@@ -2906,7 +2906,7 @@ func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	if f.ArrayBound > 0 {
 		countCheck = fmt.Sprintf("else { if (n < 0 || n > %d) { n = %d; report.clamped++; }", f.ArrayBound, f.ArrayBound)
 	}
-	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (%s) { long n = ar.leb(); if (ar.fail) { } %s if (ek != %d) { report.widened++; if(report.reason==null)report.reason=\"widened\"; } v.%s.clear(); ", cond, countCheck, ek, m)
+	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (%s) { long n = ar.leb(); if (ar.fail) { } %s if (ek != %d) { report.widened++; } v.%s.clear(); ", cond, countCheck, ek, m)
 	writeArrayElemRead(b, f, m)
 	fmt.Fprintf(b, " } } else { report.kindMismatch++; } } } }\n")
 	fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
@@ -3014,7 +3014,7 @@ func writeIntFieldRead(b *strings.Builder, f *ir.Field, m string) {
 		case 8:
 			wread, whas = "((long) r.get32()) & 0xffffffffL", "4"
 		}
-		fmt.Fprintf(b, "                    else if (kind == %d) { if (r.has(%s)) { v.%s = %s; report.widened++; if(report.reason==null)report.reason=\"widened\"; } else { report.malformed = true; r.fail = true; } }\n", w, whas, m, wread)
+		fmt.Fprintf(b, "                    else if (kind == %d) { if (r.has(%s)) { v.%s = %s; report.widened++; } else { report.malformed = true; r.fail = true; } }\n", w, whas, m, wread)
 	}
 	if f.HasIntRange {
 		if f.Type.Signed && f.Type.Kind == ir.TInt {

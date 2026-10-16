@@ -55,7 +55,7 @@ func TestWideningReasonsJava(t *testing.T) {
     newv.TableVariable.Report report = new newv.TableVariable.Report();
     newv.SampleVariable.Value widened = newv.SampleVariable.load(wire, report);
     if (widened == null || widened.value != 37L) throw new AssertionError("widened value");
-    if (report.widened != 1 || !"widened".equals(report.reason)) throw new AssertionError("reason=" + report.reason + " widened=" + report.widened);
+    if (report.widened != 1 || report.reason != null) throw new AssertionError("reason=" + report.reason + " widened=" + report.widened);
     newv.TableVariable.Report refused = new newv.TableVariable.Report();
     newv.TableVariable.open(new byte[] { 7, 0, 0, 0, 0, 0, 0, 0, 0 }, refused);
     if (!refused.refused || !"unknown_form".equals(refused.reason) || refused.malformed) throw new AssertionError("refusal=" + refused.reason);
