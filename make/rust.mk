@@ -744,6 +744,13 @@ test-rust: tables-rust-view
 # harness counts absent are the ones no Rust codec exists for: fixed-class
 # roots' form-1 files, form-2 message entries, and units the generator refuses.
 .PHONY: tables-rust-wire-fuzz-all tables-rust-retain-negative-control
+build/tables-generated-rust/tblrt1/src/lib.rs: bin/schema test/tables/RT1.schema
+	@mkdir -p build/tables-generated-rust/tblrt1/src
+	./bin/schema generate --lang rust --out build/tables-generated-rust/tblrt1/src test/tables/RT1.schema
+	@printf '[package]\nname = "tblrt1"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' > build/tables-generated-rust/tblrt1/Cargo.toml
+
+build/conformance-rust: build/tables-generated-rust/tblrt1/src/lib.rs
+
 build/conformance-rust-all: bin/schema test/conformance/rust/src/wire_fuzz_all.rs test/conformance/rust/wire-fuzz-all-build
 	PATH="$(RUSTUP_BIN):$$PATH" sh test/conformance/rust/wire-fuzz-all-build $@
 

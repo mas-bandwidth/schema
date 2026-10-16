@@ -328,7 +328,7 @@ impl TableNodeReader {
         let mut reader = TableNodeReader { good: true, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new() };
         let mut off = 1usize;
         while off < end {
-            let Some(r) = leb_read(wire, &mut off) else { report.malformed = true; return None; };
+            let Some(r) = leb_read(&wire[..end], &mut off) else { break; };
             if r == 0 { break; }
             if off >= end { report.malformed = true; return None; }
             let kind = wire[off]; off += 1;
@@ -344,18 +344,20 @@ impl TableNodeReader {
                 if !leb_skip(wire, &mut off, end, kind) { return None; }
                 continue;
             }
-            let Some(l) = leb_read(wire, &mut off) else { report.malformed = true; return None; };
-            if l > (end - off) as u64 { report.malformed = true; return None; }
+            // A truncated node-table length cannot borrow trailer bytes. The
+            // root body still decodes its preceding fields with null nodes.
+            let Some(l) = leb_read(&wire[..end], &mut off) else { report.malformed = true; reader.good = false; reader.recs.clear(); break; };
+            if off > end || l > (end - off) as u64 { report.malformed = true; reader.good = false; reader.recs.clear(); break; }
             let sub = off + l as usize;
             let mut recs = Vec::new();
             let mut scan_ok = true;
-            match leb_read(wire, &mut off) {
+            match leb_read(&wire[..sub], &mut off) {
                 None => scan_ok = false,
                 Some(declared) => {
                     while off < sub {
-                        let Some(tref) = leb_read(wire, &mut off) else { scan_ok = false; break; };
+                        let Some(tref) = leb_read(&wire[..sub], &mut off) else { scan_ok = false; break; };
                         if tref == 0 || tref as usize > ids.len() { scan_ok = false; break; }
-                        let Some(bl) = leb_read(wire, &mut off) else { scan_ok = false; break; };
+                        let Some(bl) = leb_read(&wire[..sub], &mut off) else { scan_ok = false; break; };
                         if off > sub || bl > (sub - off) as u64 { scan_ok = false; break; }
                         recs.push((ids[tref as usize - 1], off, off + bl as usize));
                         off += bl as usize;
@@ -639,6 +641,30 @@ impl TableRetainPath {
             p.depth += 1;
         }
         p
+    }
+}
+
+/// A retained node body's address follows the Rc through save numbering.
+/// Input node indices may change when the save visits the reachable graph;
+/// the pointer identity is stable for this load/save pair and fits in the
+/// path's existing two words without growing either caller-owned store.
+pub fn retain_node_path(node: &Rc<dyn Any>) -> TableRetainPath {
+    let key = Rc::as_ptr(node) as *const () as usize as u64;
+    TableRetainPath::default().step(key as u32, (key >> 32) as u32)
+}
+
+pub fn retain_bind_node(retain: &mut TableRetain, node: &Rc<dyn Any>) {
+    let path = retain_node_path(node);
+    let mut at = 0usize;
+    while at + 17 <= retain.bytes.len() {
+        let len = retain_record_len(&retain.bytes[at..]);
+        if len < 17 || len > retain.bytes.len() - at { break; }
+        let depth = retain_record_depth(&retain.bytes[at..]);
+        if depth > 0 && 17 + 8 * depth <= len {
+            retain.bytes[at + 17..at + 21].copy_from_slice(&path.steps[0].0.to_le_bytes());
+            retain.bytes[at + 21..at + 25].copy_from_slice(&path.steps[0].1.to_le_bytes());
+        }
+        at += len;
     }
 }
 
@@ -1067,6 +1093,8 @@ fn retain_emit_ref(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetai
     }
     let id = u64::from_le_bytes(c.buf[c.off..c.off + 8].try_into().unwrap());
     c.off += 8;
+    // The zero reference is a union/enum None, not an id to intern (§3, §6.6).
+    if id == 0 { return 0; }
     retain_ref(ids, retain, known, id)
 }
 

@@ -260,7 +260,7 @@ func dispatchedRoots(t *testing.T, repo string) map[string]bool {
 	return out
 }
 
-// layoutRustUnit writes one unit's variable-wire modules as a module directory
+// layoutRustUnit writes one unit's wire modules as a module directory
 // with a mod.rs, the layout test/conformance/rust/wire-fuzz-all-build writes.
 func layoutRustUnit(t *testing.T, dir, name string, modules map[string][]byte) {
 	t.Helper()
@@ -269,14 +269,19 @@ func layoutRustUnit(t *testing.T, dir, name string, modules map[string][]byte) {
 	}
 	var files []string
 	for file := range modules {
-		if file == VariableRuntimeModule+".rs" || strings.HasSuffix(file, "_table.rs") || strings.HasSuffix(file, "_variable.rs") {
+		if file == BuildVersionModule+".rs" || file == VariableRuntimeModule+".rs" ||
+			file == FixedRuntimeModule+".rs" || file == MessageRuntimeModule+".rs" ||
+			strings.HasSuffix(file, "_records.rs") || strings.HasSuffix(file, "_fixed.rs") ||
+			strings.HasSuffix(file, "_table.rs") || strings.HasSuffix(file, "_variable.rs") ||
+			strings.HasSuffix(file, "_message.rs") {
 			files = append(files, file)
 		}
 	}
 	sort.Strings(files)
 	var mod strings.Builder
 	for _, file := range files {
-		if err := os.WriteFile(filepath.Join(dir, name, file), modules[file], 0o600); err != nil {
+		body := bytes.ReplaceAll(modules[file], []byte("use crate::*;"), []byte("use super::*;"))
+		if err := os.WriteFile(filepath.Join(dir, name, file), body, 0o600); err != nil {
 			t.Fatal(err)
 		}
 		m := strings.TrimSuffix(file, ".rs")
@@ -431,6 +436,7 @@ func oracleSeed(t *testing.T, u *ir.Unit, root string, wire []byte, retain bool)
 	if err != nil && !tablewire.Refused(err) {
 		t.Fatalf("the oracle refused the root itself: %v", err)
 	}
+	decodeRefused := tablewire.Refused(err)
 	var encoded []byte
 	if retain {
 		var saved tabletext.Report
@@ -442,9 +448,8 @@ func oracleSeed(t *testing.T, u *ir.Unit, root string, wire []byte, retain bool)
 	if err != nil {
 		encoded = nil
 	}
-	refused := tablewire.Refused(err)
 	return fmt.Sprintf("%d,%d,%d,%d,%d,%t,%t retained=%d retain_lost=%d",
-		rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped, rep.Duplicate, rep.Malformed || !ok, refused,
+		rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped, rep.Duplicate, rep.Malformed || (!ok && !decodeRefused), decodeRefused,
 		rep.Retained, rep.RetainLost), encoded
 }
 

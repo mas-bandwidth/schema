@@ -19,8 +19,30 @@ gen=${*:-./bin/schema}
 dir=$out.d
 rm -rf "$dir"
 mkdir -p "$dir/src"
-for unit in blobdemo:tables/blobs graphdemo:tables/pointers listdemo:tables/lists \
-	mapdemo:tables/maps tblp2:test/tables/P2.schema; do
+for unit in backenddemo:tables/backend \
+	blobdemo:tables/blobs \
+	graphdemo:tables/pointers \
+	listdemo:tables/lists \
+	mapdemo:tables/maps \
+	messagedemo:tables/messages \
+	streamdemo:tables/stream \
+	tabledemo:tables/examples \
+	tbla2:test/tables/A2.schema \
+	tblk1:test/tables/K1.schema \
+	tblk2:test/tables/K2.schema \
+	tblm1:test/tables/M1.schema \
+	tblm2:test/tables/M2.schema \
+	tblp1:test/tables/P1.schema \
+	tblp2:test/tables/P2.schema \
+	tblp3:test/tables/P3.schema \
+	tblr1:test/tables/R1.schema \
+	tblr2:test/tables/R2.schema \
+	tblv1:test/tables/V1.schema \
+	tblv2:test/tables/V2.schema \
+	tblw1:test/tables/W1.schema \
+	tblw2:test/tables/W2.schema \
+	vocab9demo:tables/vocab9 \
+	vocabdemo:tables/vocab; do
 	name=${unit%%:*}
 	path=${unit#*:}
 	$gen generate --lang rust --out "$dir/gen/$name" "$path" 2>"$dir/gen-$name.log" || {
@@ -29,10 +51,16 @@ for unit in blobdemo:tables/blobs graphdemo:tables/pointers listdemo:tables/list
 	}
 	mkdir -p "$dir/src/$name"
 	: >"$dir/src/$name/mod.rs"
-	for f in "$dir/gen/$name/variable_runtime.rs" "$dir/gen/$name"/*_table.rs "$dir/gen/$name"/*_variable.rs; do
+	for f in "$dir/gen/$name/build_version.rs" "$dir/gen/$name/variable_runtime.rs" \
+		"$dir/gen/$name/fixed_runtime.rs" "$dir/gen/$name/message_runtime.rs" \
+		"$dir/gen/$name"/*_records.rs "$dir/gen/$name"/*_fixed.rs \
+		"$dir/gen/$name"/*_table.rs "$dir/gen/$name"/*_variable.rs \
+		"$dir/gen/$name"/*_message.rs; do
 		[ -f "$f" ] || continue
 		m=$(basename "$f" .rs)
-		cp "$f" "$dir/src/$name/"
+		# Generated message and fixed modules normally live at crate root.
+		# In this multi-unit driver each unit is its own parent module.
+		sed 's/^use crate::\*;/use super::*;/' "$f" > "$dir/src/$name/$(basename "$f")"
 		printf '#[allow(dead_code, unused_imports)]\npub mod %s;\n#[allow(unused_imports)]\npub use %s::*;\n' "$m" "$m" >>"$dir/src/$name/mod.rs"
 	done
 done

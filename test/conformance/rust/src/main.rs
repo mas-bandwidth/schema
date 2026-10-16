@@ -1119,6 +1119,54 @@ fn surface_report(manifest: &Manifest, out: &str) {
     }
 }
 
+// The file-form retention rows exercise §6.6 with caller-owned capacities.
+// A short store is measured from the full retaining read, then reduced by one
+// byte so the loss is caused by capacity rather than a different input wire.
+fn surface_retain(manifest: &Manifest, out: &str, saves: bool) {
+    for f in manifest.lines.iter().filter(|f| f[0] == "retain" || f[0] == "retain-message") {
+        if saves && f.last().is_some_and(|v| v == "-") {
+            continue;
+        }
+        if f[0] == "retain-message" || f[2] != "tblrt1" || f[3] != "Node" {
+            spill_absent(out, &f[1]);
+            continue;
+        }
+        use tblrt1::{TableRetain, TableReport, node_load_retain, node_save_retain};
+        let wire = slurp(&f[4]);
+        let id_capacity = if f[6] == "full" { 1 << 17 } else {
+            f[6].parse::<usize>().unwrap_or_else(|_| fail(&format!("{}: invalid id capacity", f[1])))
+        };
+        let mut capacity = 1 << 20;
+        if f[5] == "short" {
+            let mut probe = TableRetain { bytes: Vec::with_capacity(capacity), ids: Vec::with_capacity(id_capacity) };
+            let mut report = TableReport::default();
+            let _ = node_load_retain(&wire, &mut probe, &mut report)
+                .unwrap_or_else(|| fail(&format!("{}: capacity probe refused", f[1])));
+            capacity = probe.bytes.len().saturating_sub(1);
+        }
+        let mut store = TableRetain { bytes: Vec::with_capacity(capacity), ids: Vec::with_capacity(id_capacity) };
+        let mut report = TableReport::default();
+        let value = node_load_retain(&wire, &mut store, &mut report)
+            .unwrap_or_else(|| fail(&format!("{}: retaining load refused", f[1])));
+        if report.malformed { fail(&format!("{}: retaining load malformed", f[1])); }
+        let retained = report.retained;
+        let lost = report.retain_lost;
+        let unknown = report.unknown;
+        let saved = node_save_retain(&value, &mut store, &mut report);
+        let save_lost = report.retain_lost - lost;
+        let mut second = TableReport::default();
+        let again = node_save_retain(&value, &mut store, &mut second);
+        if again != saved || second.retain_lost != save_lost {
+            fail(&format!("{}: retaining save is not repeatable", f[1]));
+        }
+        if saves {
+            spill(out, &f[1], &saved);
+        } else {
+            spill(out, &f[1], format!("{retained},{lost},{unknown} {save_lost}\n").as_bytes());
+        }
+    }
+}
+
 fn surface_json_read(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("instance") {
         if no_text(f) {
@@ -1307,9 +1355,8 @@ fn main() {
             // graphdemo's Scene and blobdemo's Catalog — and answer every other
             // case ABSENT, one by one; the message surface rides the message form's
             // batch for the fixed roots of backenddemo, vocabdemo and vocab9demo
-            // (§3.3), and the retain surfaces are still absent whole (retention
-            // beyond the card constructs is its own row)
-            "wire\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nblock-reason\ncook-reason"
+            // (§3.3); the retaining file rows read through tblrt1 (§6.6).
+            "wire\nreport\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nblock-reason\ncook-reason"
         );
         return;
     }
@@ -1321,6 +1368,8 @@ fn main() {
     match surface {
         "wire" => surface_wire(&manifest, out),
         "report" => surface_report(&manifest, out),
+        "retain" => surface_retain(&manifest, out, false),
+        "retain-save" => surface_retain(&manifest, out, true),
         "json-read" => surface_json_read(&manifest, out),
         "json-write" => surface_json_write(&manifest, out),
         "json-hostile" => surface_json_hostile(&manifest, out),

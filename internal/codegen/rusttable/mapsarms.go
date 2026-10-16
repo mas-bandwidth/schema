@@ -561,9 +561,9 @@ func (g *gen) emitOptionalLoadField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%s    if %s.is_none() { %s = Some(%s); }\n", i1, field, field, defExpr)
 		fmt.Fprintf(b, "%s} else {\n", i1)
 		i2 := i1 + "    "
-		fmt.Fprintf(b, "%slet mut arr = %s.take().unwrap_or_else(|| %s);\n", i2, field, defExpr)
+		fmt.Fprintf(b, "%slet mut arr = %s.clone().unwrap_or_else(|| %s);\n", i2, field, defExpr)
 		fmt.Fprintf(b, "%slet mut ok = true;\n", i2)
-		g.emitArrayBodyReadChecked(b, &inner, "arr", "sub", "ok", ordinal, i2)
+		g.emitArrayBodyReadChecked(b, &inner, "arr", "sub", "ok", ordinal, i2, true)
 		fmt.Fprintf(b, "%sif ok { %s = Some(arr); }\n", i2, field)
 		fmt.Fprintf(b, "%s}\n", i1)
 		fmt.Fprintf(b, "%s*off = sub;\n", i1)
@@ -720,10 +720,10 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%s%s[slot] = e;\n", i5, field)
 	case vEnum:
 		fmt.Fprintf(b, "%slet mut o = *off;\n", i5)
-		fmt.Fprintf(b, "%slet mut e = %s;\n", i5, enumDefault(f))
-		fmt.Fprintf(b, "%s{ let off = &mut o;\n", i5)
-		emitEnumDecode(b, f, "e", "eend", "break;", i5+"    ")
-		fmt.Fprintf(b, "%s}\n", i5)
+		fmt.Fprintf(b, "%slet mut e = %s[slot].clone();\n", i5, field)
+		fmt.Fprintf(b, "%s{ let off = &mut o; 'enum_decode: {\n", i5)
+		emitEnumDecode(b, f, "e", "eend", "break 'enum_decode;", i5+"    ")
+		fmt.Fprintf(b, "%s} }\n", i5)
 		fmt.Fprintf(b, "%s%s[slot] = e;\n", i5, field)
 	default:
 		fmt.Fprintf(b, "%slet mut o = *off;\n", i5)
@@ -872,6 +872,7 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 func (g *gen) emitUnionLoad(b *strings.Builder, f *ir.Field, ordinal int, field, in string) {
 	fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindUnion, kindSkip)
 	fmt.Fprintf(b, "%selse {\n", in)
+	fmt.Fprintf(b, "%s    if let Some(ret) = retain.as_deref_mut() { retain_discard(ret, path, %d); }\n", in, ordinal)
 	g.emitUnionDecode(b, f, field, "end", ordinal, in+"    ", true)
 	fmt.Fprintf(b, "%s}\n", in)
 }
@@ -938,22 +939,25 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 		fmt.Fprintf(b, "%sif o != %s { report.malformed = true; %s = %s::None; }\n", in, aend, field, un.Name)
 		fmt.Fprintf(b, "%selse { %s = %s::%s(body_val); }\n", in, field, un.Name, rustVariant(v.Name))
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
-		fmt.Fprintf(b, "%slet Some(index) = leb_read(wire, off) else { report.malformed = true; %s = %s::None; *off = %s; return false; };\n", in, field, un.Name, aend)
-		fmt.Fprintf(b, "%sif *off != %s { report.malformed = true; %s = %s::None; }\n", in, aend, field, un.Name)
-		fmt.Fprintf(b, "%selse {\n", in)
+		fmt.Fprintf(b, "%sif let Some(index) = leb_read(wire, off) {\n", in)
+		fmt.Fprintf(b, "%s    if *off != %s { report.malformed = true; %s = %s::None; }\n", in, aend, field, un.Name)
+		fmt.Fprintf(b, "%s    else {\n", in)
 		fmt.Fprintf(b, "%s    let slot;\n", in)
 		emitPointerResolve(b, f, "slot", in+"    ")
 		fmt.Fprintf(b, "%s    %s = %s::%s(slot);\n", in, field, un.Name, rustVariant(v.Name))
-		fmt.Fprintf(b, "%s}\n", in)
+		fmt.Fprintf(b, "%s    }\n", in)
+		fmt.Fprintf(b, "%s} else { report.malformed = true; %s = %s::None; }\n", in, field, un.Name)
 	case classOf(f) == vUnion && f.Array == ir.ArrayNone:
 		fmt.Fprintf(b, "%slet mut inner = %s::None;\n", in, f.Type.Name)
-		g.emitUnionDecode(b, f, "inner", aend, ordinal, in, true)
-		fmt.Fprintf(b, "%s%s = %s::%s(inner);\n", in, field, un.Name, rustVariant(v.Name))
+		fmt.Fprintf(b, "%slet inner_ok = (|| -> bool {\n", in)
+		g.emitUnionDecode(b, f, "inner", aend, ordinal, in+"    ", true)
+		fmt.Fprintf(b, "%s    true\n%s})();\n", in, in)
+		fmt.Fprintf(b, "%sif inner_ok { %s = %s::%s(inner); } else { %s = %s::None; }\n", in, field, un.Name, rustVariant(v.Name), field, un.Name)
 	default:
 		fmt.Fprintf(b, "%slet mut slot = %s;\n", in, fieldDefault(f))
 		fmt.Fprintf(b, "%slet mut ok = true;\n", in)
 		if f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Pointer) {
-			g.emitArrayBodyReadChecked(b, f, "slot", aend, "ok", ordinal, in)
+			g.emitArrayBodyReadChecked(b, f, "slot", aend, "ok", ordinal, in, false)
 		} else if classOf(f) == vEnum {
 			emitEnumDecode(b, f, "slot", aend, "return false;", in)
 			fmt.Fprintf(b, "%sif *off != %s { report.malformed = true; ok = false; }\n", in, aend)
@@ -974,7 +978,7 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 // emitArrayBodyReadChecked reads an array body already framed by `aend`
 // (docs/SPEC-TABLES.md §3): element kind, count, elements. Sets `okVar` to
 // false when the element kind mismatches or the count is damaged.
-func (g *gen) emitArrayBodyReadChecked(b *strings.Builder, f *ir.Field, field, aend, okVar string, ordinal int, ind string) {
+func (g *gen) emitArrayBodyReadChecked(b *strings.Builder, f *ir.Field, field, aend, okVar string, ordinal int, ind string, countDamagedPresent bool) {
 	ek := ir.TableKindU8
 	if f.Type.Kind != ir.TBytes || f.Type.Pointer {
 		ek = elemWireKind(f)
@@ -983,8 +987,14 @@ func (g *gen) emitArrayBodyReadChecked(b *strings.Builder, f *ir.Field, field, a
 	in := ind + "    "
 	fmt.Fprintf(b, "%slet ek = wire[*off]; *off += 1;\n", in)
 	fmt.Fprintf(b, "%smatch leb_read(wire, off) {\n", in)
-	fmt.Fprintf(b, "%s    None => { report.malformed = true; %s = false; }\n", in, okVar)
-	fmt.Fprintf(b, "%s    Some(_) if *off > %s => { report.malformed = true; %s = false; }\n", in, aend, okVar)
+	if countDamagedPresent {
+		// A field's optional array has ridden even if its count is damaged:
+		// §4 keeps the current value (or declared default) and marks it present.
+		fmt.Fprintf(b, "%s    None => { report.malformed = true; }\n", in)
+	} else {
+		// An arm with a damaged count is not selected (§3).
+		fmt.Fprintf(b, "%s    None => { report.malformed = true; %s = false; }\n", in, okVar)
+	}
 	fmt.Fprintf(b, "%s    Some(count) => {\n", in)
 	i2 := in + "        "
 	fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { report.kind_mismatch += 1; %s = false; }\n", i2, ek, ek, okVar)
@@ -1002,12 +1012,15 @@ func (g *gen) emitArrayBodyReadChecked(b *strings.Builder, f *ir.Field, field, a
 	} else {
 		fmt.Fprintf(b, "%slet keep = count;\n", i3)
 	}
+	if f.Array == ir.ArrayFixed {
+		fmt.Fprintf(b, "%slet prior = %s.clone();\n", i3, field)
+	}
 	fmt.Fprintf(b, "%s%s.clear();\n", i3, field)
 	fmt.Fprintf(b, "%sfor j in 0..keep {\n", i3)
 	g.emitElementReadWithKind(b, f, field, aend, "ek", ordinal, i3+"    ")
 	fmt.Fprintf(b, "%s}\n", i3)
 	if f.Array == ir.ArrayFixed {
-		fmt.Fprintf(b, "%swhile %s.len() < %d { %s.push(%s); }\n", i3, field, f.ArrayBound, field, fieldDefault(scalarOnly(f)))
+		fmt.Fprintf(b, "%swhile %s.len() < %d { %s.push(prior.get(%s.len()).cloned().unwrap_or_else(|| %s)); }\n", i3, field, f.ArrayBound, field, field, fieldDefault(scalarOnly(f)))
 	}
 	fmt.Fprintf(b, "%s}\n", i2)
 	fmt.Fprintf(b, "%s    }\n", in)
