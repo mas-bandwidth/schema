@@ -409,6 +409,7 @@
         "conformance-negative-control-cs",
         "tables-cs-alloc-runtime-negative-control",
         "tables-cs-soak-negative-control",
+        "cards-cs-retain-negative-control",
         "tables-cs-retain-negative-control",
         "tables-cs-pack-negative-control",
         "tables-cs-message-blob-endian-negative-control",
