@@ -38,13 +38,28 @@ when it is one flag of the same formatter, so the gate measures drift and
 not a style the emitters never aimed at.
 
 **The measurement** (`make tables-java-format-census`, google-java-format
-1.37.0, 585 generated files: 552 in the 17 table units, 33 in the 8 packet
-units):
+1.37.0). On 2026-10-15, 585 generated files: 552 in the 17 table units, 33 in
+the 8 packet units:
 
 | | default Google style | `--aosp` |
 |---|---|---|
 | at the base, before any emitter fix | 585 of 585 files red, 345,331 diff lines | 528 of 585 files red, 124,743 diff lines |
 | after the emitter fixes of #547 | 585 of 585 files red, 403,353 diff lines | **0 of 585 files red** |
+
+On 2026-10-16 the stream had grown to 1872 files (1802 in 33 table units, 70
+in the 8 packet units), and `sprint/schema-java` at 1620acba1 was red on all
+1802 table files under `--aosp`. With the canonical pass carried onto it, 82
+were still red, in three families from templates outside the emitters named
+above: the cook writer (`TableCookWrite.java`, 31 files: a throws clause, a
+conditional and an argument list broken by hand), the wide-number JSON
+runtime (`TableJson.java`, 34 files: method chains), and the map readers
+(17 `*Variable.java` files: a field reader written for a switch arm reused as
+a method body, a comparison chain, a generic declaration). After the canonical
+pass learned those shapes:
+
+| | default Google style | `--aosp` |
+|---|---|---|
+| 2026-10-16, 1872 files | 1872 of 1872 files red, 1,403,684 diff lines | **0 of 1872 files red** |
 
 **The decision**, stated for the owner to overrule: `--aosp`. It is the
 style the emitters write, and the only one of the two that differs from the
@@ -82,7 +97,16 @@ emitter and never in generated output:
   chain (a call's arguments, a conditional's arms, a binary chain's operands
   and a cast's operand broken in turn when they still do not fit); unused
   imports dropped; the formatter's blank lines between members and after the
-  imports.
+  imports. A signature too wide breaks before its `throws` first; a
+  conditional or argument list a template broke by hand is rejoined and
+  broken the formatter's way; a chain keeps the formatter's receiver on its
+  first line (`new T(...)`, a qualified type with its constant, a name no
+  wider than the continuation indent with its first call, whose arguments
+  then break sixteen columns in); a call leading a broken comparison breaks
+  its arguments sixteen columns in; a declaration whose `Type name =` is too
+  wide breaks before the name. A method body every line of which sits the
+  same whole number of indents too deep is moved back to its level, whole
+  (`deepBodies`); a single mis-indented line is never moved.
   **Compact templates are laid out once, in the same pass** (`relayout`):
   the emitters added with maps, unions, keyed arrays, wide integers and the
   cook writer write statement groups on one line, unspaced
@@ -133,7 +157,7 @@ path.
 
 | target | what it holds | runs from |
 |---|---|---|
-| `tables-java-clean` | google-java-format 1.37.0 `--aosp --dry-run --set-exit-if-changed` over every generated Java file: the 17 table units (`build/tables-generated-java`) and the 8 packet-wire units (`build/java-clean-packet`), counted, refused below 585 | `test-java`, which REQUIRES the formatter (`JAVA_REQUIRE_FORMATTER=1`) |
+| `tables-java-clean` | google-java-format 1.37.0 `--aosp --dry-run --set-exit-if-changed` over every generated Java file: the table units (`build/tables-generated-java`) and the 8 packet-wire units (`build/java-clean-packet`), counted, refused below 1872 | `test-java`, which REQUIRES the formatter (`JAVA_REQUIRE_FORMATTER=1`) |
 | `tables-java-compile-all` | every one of those 25 units compiled on its own under `--release 17 -Xlint:all -Werror`, counted, refused below 25 | `tables-java-release` (certify.yml) |
 | `tables-java-format-census` | the measurement above: files red and diff lines under the default style and under `--aosp` | by hand |
 | `tables-java-clean-formatter-missing-negative-control` | with the formatter pointed at a missing jar, `tables-java-clean` FAILS naming the tool under `SCHEMA_REQUIRE_CORPUS=1`, and SKIPS naming that variable without it | the negative-controls leg, group java |

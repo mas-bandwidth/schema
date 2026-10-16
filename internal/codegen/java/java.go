@@ -1137,13 +1137,24 @@ func formatFloatCore(v float64, bits int) string {
 //   - two statements on one line are two lines;
 //   - an array initializer has no space inside its braces;
 //   - no blank line before a closing brace, never two blank lines in a row,
-//     and a blank line around each member that carries a Javadoc.
+//     and a blank line around each member that carries a Javadoc;
+//   - a signature too wide breaks before its throws clause first, and a
+//     conditional or an argument list a template broke by hand is rejoined
+//     so the formatter's breaks are laid down instead (joinThrows,
+//     joinTernaries, handBroken);
+//   - a chain keeps the formatter's receiver on its first line (`new T(..)`,
+//     a qualified type with its constant, a short name with its first call),
+//     and a declaration whose `Type name =` is too wide breaks at the name.
 //
 // It NEVER moves the indentation of a line already in the formatter's shape:
 // a template that indents such a line wrongly is a template the gate must see
 // (tools/sabotage/table_java_format_drift.go plants exactly that), so the fix
 // for one is in the template. Only a compact line -- statements run together,
-// unspaced -- and the blocks it opens are laid out afresh (relayout).
+// unspaced -- and the blocks it opens are laid out afresh (relayout), and a
+// method body EVERY line of which sits the same whole number of indents too
+// deep (a field reader written for a switch arm, reused as a method body) is
+// moved back to its level whole (deepBodies); one mis-indented line among
+// lines at the right depth is never moved.
 func Canonical(src []byte) []byte {
 	lines := strings.Split(javaElseIf.ReplaceAllString(string(src), "} else if ("), "\n")
 	lines = canonJavadocs(lines)
@@ -1152,6 +1163,7 @@ func Canonical(src []byte) []byte {
 	lines = joinOpenParens(lines)
 	lines = joinLoneBraces(lines)
 	lines = relayout(lines)
+	lines = deepBodies(lines)
 	var out []string
 	for _, l := range lines {
 		out = append(out, canonLine(l)...)
@@ -1490,6 +1502,9 @@ func wrapCall(l string) []string {
 	inner := ind
 	var out []string
 	if strings.HasSuffix(lhs, " = ") {
+		if javaWidth(ind+strings.TrimSuffix(lhs, " ")) > javaColumnLimit {
+			return nil // the declaration itself breaks first (wrapLong)
+		}
 		inner = ind + "        "
 		if javaWidth(inner+call) <= javaColumnLimit {
 			return []string{ind + strings.TrimSuffix(lhs, " "), inner + call}
@@ -1608,7 +1623,8 @@ func breakArg(ind, a, end string) []string {
 	}
 	open := strings.IndexByte(a, '(')
 	if open < 0 || !strings.HasSuffix(a, ")") || matchParen(a, open) != len(a)-1 {
-		return nil
+		// a chain of calls: broken before each, eight columns in
+		return layoutChain(ind, a, end)
 	}
 	if !javaCallee.MatchString(strings.TrimPrefix(a[:open], "new ")) {
 		return nil
@@ -1778,6 +1794,53 @@ func parenDepth(s string) int {
 		}
 	}
 	return depth
+}
+
+// deepBodies moves a method body a template wrote whole levels too deep (a
+// field reader written for a switch arm, reused as a method's body) back to
+// its level. It moves a body only when EVERY line of it is deeper than the
+// level by the same whole number of indents, so a single mis-indented line
+// -- the drift the format gate exists to see -- is never absorbed.
+func deepBodies(lines []string) []string {
+	out := append([]string(nil), lines...)
+	for i := 0; i < len(out); i++ {
+		t := strings.TrimSpace(out[i])
+		if !javaDecl.MatchString(t) {
+			continue
+		}
+		ind := indentOf(out[i])
+		j := i + 1
+		for j < len(out) && out[j] != ind+"}" {
+			if t := strings.TrimSpace(out[j]); t != "" && len(indentOf(out[j])) <= len(ind) {
+				j = -1
+				break
+			}
+			j++
+		}
+		if j < 0 || j >= len(out) || j == i+1 {
+			continue
+		}
+		least := -1
+		for _, l := range out[i+1 : j] {
+			if strings.TrimSpace(l) == "" {
+				continue
+			}
+			if n := len(indentOf(l)); least < 0 || n < least {
+				least = n
+			}
+		}
+		d := least - (len(ind) + 4)
+		if d <= 0 || d%4 != 0 {
+			continue
+		}
+		for k := i + 1; k < j; k++ {
+			if strings.TrimSpace(out[k]) != "" {
+				out[k] = out[k][d:]
+			}
+		}
+		i = j
+	}
+	return out
 }
 
 // handBroken: a line a template broke inside an argument list, after a comma
@@ -2510,6 +2573,34 @@ func wrapLong(l string) []string {
 	}
 	lhs, rhs := t[:k], t[k+3:]
 	inner := ind + "        "
+	if javaWidth(ind+lhs+" =") > javaColumnLimit {
+		// `Type name = init;` with the type alone near the limit: the break
+		// is between the type and the name
+		if sp := strings.LastIndexByte(lhs, ' '); sp > 0 && javaSimpleName.MatchString(lhs[sp+1:]) {
+			typ, rest := lhs[:sp], inner+lhs[sp+1:]+" = "+rhs
+			if javaWidth(ind+typ) <= javaColumnLimit {
+				return fitAll([]string{ind + typ, rest})
+			}
+			// a generic type too wide for its line: one type argument a
+			// line, sixteen columns in
+			if lt := strings.IndexByte(typ, '<'); lt > 0 && strings.HasSuffix(typ, ">") {
+				targs, ok := splitArgs(typ[lt+1 : len(typ)-1])
+				if !ok || len(targs) < 2 {
+					return nil
+				}
+				out := []string{ind + typ[:lt+1]}
+				for i, a := range targs {
+					e := ","
+					if i == len(targs)-1 {
+						e = ">"
+					}
+					out = append(out, inner+"        "+a+e)
+				}
+				return fitAll(append(out, rest))
+			}
+		}
+		return nil
+	}
 	if javaWidth(inner+rhs) <= javaColumnLimit {
 		return []string{ind + lhs + " =", inner + rhs}
 	}
@@ -2684,6 +2775,10 @@ func breakCond(ind, head, expr, tail string) []string {
 		var sub []string
 		if strings.HasPrefix(rest, "(") && matchParen(rest, 0) == len(rest)-1 {
 			sub = breakCond(lineInd, pre+"(", rest[1:len(rest)-1], ")"+end)
+		} else if _, nested := splitBinary(rest); !nested && k == 0 && len(parts) > 1 {
+			// a call leading a broken binary: its arguments sixteen columns
+			// in, the binary's continuation and the call's own
+			sub = breakCallAt(lineInd, pre+rest, lineInd+"                ", end)
 		} else {
 			// an operand of a tighter kind: broken at its own operators
 			sub = breakCond(lineInd, pre, rest, end)
@@ -2733,7 +2828,18 @@ func wrapFor(l string) []string {
 // columns under it. A call too wide for its line breaks its own arguments
 // eight columns under it.
 func wrapChain(ind, lhs, rhs string) []string {
-	segs := chainSegments(rhs)
+	w := layoutChain(ind+"        ", strings.TrimSuffix(rhs, ";"), ";")
+	if w == nil {
+		return nil
+	}
+	return append([]string{ind + lhs + " ="}, w...)
+}
+
+// layoutChain lays a chain of two or more calls out from inner: the receiver
+// on the first line, every later dereference eight columns in; end closes the
+// last line. nil when e is not such a chain or a line will not fit.
+func layoutChain(inner, e, end string) []string {
+	segs := chainSegments(e)
 	if len(segs) < 2 {
 		return nil
 	}
@@ -2750,17 +2856,12 @@ func wrapChain(ind, lhs, rhs string) []string {
 	if calls < 2 || k >= len(segs) {
 		return nil
 	}
-	inner := ind + "        "
-	out := []string{ind + lhs + " ="}
+	var out []string
 	last := len(segs) - 1
-	recvEnd := ""
-	if k > last {
-		recvEnd = ";"
-	}
-	if one := inner + recv + recvEnd; javaWidth(one) <= javaColumnLimit {
+	if one := inner + recv; javaWidth(one) <= javaColumnLimit {
 		out = append(out, one)
 	} else if prefixCall {
-		w := breakCallAt(inner, recv, inner+"                ", recvEnd)
+		w := breakCallAt(inner, recv, inner+"                ", "")
 		if w == nil {
 			return nil
 		}
@@ -2771,8 +2872,7 @@ func wrapChain(ind, lhs, rhs string) []string {
 	for i, sg := range segs[k:] {
 		e := ""
 		if k+i == last {
-			e = ";"
-			sg = strings.TrimSuffix(sg, ";")
+			e = end
 		}
 		line := inner + "        ." + sg + e
 		if javaWidth(line) <= javaColumnLimit {

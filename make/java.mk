@@ -322,11 +322,12 @@ build/java-clean-packet/.stamp: bin/schema $(SCHEMAS) $(SCHEMAS128) $(SCHEMAS_BE
 	./bin/schema generate --lang java --out build/java-clean-packet/shapes test/packet-wide/Shapes.schema
 	@touch $@
 
-# What the gate formats, and the floor under the count: 585 files on 2026-10-15,
-# 552 in the 17 table units and 33 in the 8 packet units. A control points JAVA_CLEAN_PATHS at its
+# What the gate formats, and the floor under the count: 1872 files on 2026-10-16,
+# 1802 in the 33 table units and 70 in the 8 packet units (585 on 2026-10-15,
+# before the stream added units). A control points JAVA_CLEAN_PATHS at its
 # own tree and lowers the floor; nothing else should.
 JAVA_CLEAN_PATHS ?= build/tables-generated-java build/java-clean-packet
-JAVA_CLEAN_MIN   ?= 585
+JAVA_CLEAN_MIN   ?= 1872
 JAVA_CLEAN_LOG   ?= build/java-clean/format.log
 
 .PHONY: tables-java-clean
