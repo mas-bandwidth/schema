@@ -36,7 +36,8 @@ import (
 //     counts them, and a respelling between kind 12 and kind 33 a kind
 //     mismatch, the saved bytes the oracle's own re-encode;
 //   - the WRITE RULE: a value over N units is refused by name by
-//     <root>_save_checked.
+//     <root>_save_checked (Err), <root>_save and <root>_save_retain (panic),
+//     with no successful truncated wire from any public entry point.
 func TestWideTextOnTheTableWireRust(t *testing.T) {
 	t.Parallel()
 
@@ -287,7 +288,8 @@ func TestWideTextOnTheTableWireRust(t *testing.T) {
 		want = append(want, d.want)
 	}
 	fmt.Fprintf(&main, wideRefusalRust, mirrorTable)
-	want = append(want, "REFUSE direct OK", "REFUSE arm OK", "REFUSE map OK", "REFUSE pair OK", "REFUSE fits OK")
+	want = append(want, "REFUSE direct OK", "REFUSE arm OK", "REFUSE map OK", "REFUSE pair OK", "REFUSE fits OK",
+		"REFUSE direct save OK", "REFUSE direct retain OK", "REFUSE arm save OK", "REFUSE arm retain OK", "REFUSE map save OK", "REFUSE map retain OK", "REFUSE fits retain OK")
 	main.WriteString("}\n")
 	if err := os.WriteFile(filepath.Join(work, "main.rs"), []byte(wideReportMacro+mods.String()+main.String()), 0o600); err != nil {
 		t.Fatal(err)
@@ -474,6 +476,17 @@ macro_rules! wide_report {
 const wideRefusalRust = `    {
         use crate::widemirror::%[1]s as table;
         let units = |s: &str| -> Vec<u16> { s.encode_utf16().collect() };
+        fn check_panic<F: FnOnce() -> Vec<u8>>(what: &str, write: F, names: &[&str]) {
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(write)) {
+                Ok(_) => println!("REFUSE {} WROTE", what),
+                Err(p) => {
+                    let why = p.downcast_ref::<String>().map(|s| s.as_str())
+                        .or_else(|| p.downcast_ref::<&str>().copied()).unwrap_or("");
+                    if names.iter().all(|n| why.contains(n)) { println!("REFUSE {} OK", what); }
+                    else { println!("REFUSE {} WRONG {}", what, why); }
+                }
+            }
+        }
         let check = |what: &str, r: Result<Vec<u8>, String>, names: &[&str]| match r {
             Err(e) if names.iter().all(|n| e.contains(n)) => println!("REFUSE {} OK", what),
             Err(e) => println!("REFUSE {} WRONG {}", what, e),
@@ -482,21 +495,40 @@ const wideRefusalRust = `    {
         let mut s = table::Stamp::default();
         s.label = units("ABCDE");
         check("direct", table::stamp_save_checked(&s), &["Stamp.label", "wstring(4)", "5"]);
+        check_panic("direct save", || table::stamp_save(&s), &["Stamp.label", "wstring(4)"]);
+        let mut retain = crate::widemirror::variable_runtime::TableRetain::default();
+        let mut report = crate::widemirror::variable_runtime::TableReport::default();
+        check_panic("direct retain", || table::stamp_save_retain(&s, &mut retain, &mut report), &["Stamp.label", "wstring(4)"]);
         let mut c = table::Caption::default();
         c.body = table::Body::Wide(units("ABCDE"));
         check("arm", table::caption_save_checked(&c), &["Body.wide", "wstring(4)"]);
+        check_panic("arm save", || table::caption_save(&c), &["Body.wide", "wstring(4)"]);
+        let mut retain = crate::widemirror::variable_runtime::TableRetain::default();
+        let mut report = crate::widemirror::variable_runtime::TableReport::default();
+        check_panic("arm retain", || table::caption_save_retain(&c, &mut retain, &mut report), &["Body.wide", "wstring(4)"]);
         let mut n = table::Notes::default();
         let mut e = table::NotesByIdEntry::default();
         e.key = 1;
         e.value = units("ABCD");
         n.by_id.push(e);
         check("map", table::notes_save_checked(&n), &["NotesByIdEntry.value", "wstring(3)"]);
+        check_panic("map save", || table::notes_save(&n), &["NotesByIdEntry.value", "wstring(3)"]);
+        let mut retain = crate::widemirror::variable_runtime::TableRetain::default();
+        let mut report = crate::widemirror::variable_runtime::TableReport::default();
+        check_panic("map retain", || table::notes_save_retain(&n, &mut retain, &mut report), &["NotesByIdEntry.value", "wstring(3)"]);
         s.label = units("AB😀C");
         check("pair", table::stamp_save_checked(&s), &["Stamp.label", "wstring(4)"]);
         s.label = units("A😀B");
         match table::stamp_save_checked(&s) {
             Ok(w) if w == table::stamp_save(&s) => println!("REFUSE fits OK"),
             other => println!("REFUSE fits WRONG {:?}", other),
+        }
+        let mut retain = crate::widemirror::variable_runtime::TableRetain::default();
+        let mut report = crate::widemirror::variable_runtime::TableReport::default();
+        if table::stamp_save_retain(&s, &mut retain, &mut report) == table::stamp_save(&s) {
+            println!("REFUSE fits retain OK");
+        } else {
+            println!("REFUSE fits retain WRONG");
         }
     }
 `
