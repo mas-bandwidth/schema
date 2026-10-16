@@ -559,6 +559,7 @@ const (
 	TableRefuseMalformed
 	TableRefuseClamped
 	TableRefuseKindMismatch
+	TableRefuseBase64Damaged
 )
 
 func (r TableRefuseReason) Error() string {
@@ -603,6 +604,8 @@ func (r TableRefuseReason) Error() string {
 		return "clamped"
 	case TableRefuseKindMismatch:
 		return "kind_mismatch"
+	case TableRefuseBase64Damaged:
+		return "base64_damaged"
 	}
 	return "invalid refusal reason"
 }
@@ -1293,6 +1296,7 @@ type TableMessageReader struct {
 type TableMessageWriter struct {
 	TableBitWriter
 	IndexBits int64
+	Clamped   int32
 }
 
 const TableFixedForm uint8 = 3
@@ -4989,12 +4993,17 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 			}
 			{
 				v := math.Float32frombits(r.Get32())
-				if v < 0.0 {
+				if v != v {
+					v = 0.0
+					r.Report.Clamped++
+				} else if v < 0.0 {
 					v = 0.0
 					r.Report.Clamped++
 				} else if v > 65535.0 {
 					v = 65535.0
 					r.Report.Clamped++
+				} else if v == 0 {
+					v = 0
 				}
 				value.ServerTime = v
 			}
@@ -5315,12 +5324,17 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 			}
 			{
 				v := math.Float32frombits(r.Get32())
-				if v < -1.0 {
+				if v != v {
+					v = -1.0
+					r.Report.Clamped++
+				} else if v < -1.0 {
 					v = -1.0
 					r.Report.Clamped++
 				} else if v > 1.0 {
 					v = 1.0
 					r.Report.Clamped++
+				} else if v == 0 {
+					v = 0
 				}
 				value.AimX = v
 			}
@@ -5339,12 +5353,17 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 			}
 			{
 				v := math.Float32frombits(r.Get32())
-				if v < -1.0 {
+				if v != v {
+					v = -1.0
+					r.Report.Clamped++
+				} else if v < -1.0 {
 					v = -1.0
 					r.Report.Clamped++
 				} else if v > 1.0 {
 					v = 1.0
 					r.Report.Clamped++
+				} else if v == 0 {
+					v = 0
 				}
 				value.AimY = v
 			}
@@ -5363,12 +5382,17 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 			}
 			{
 				v := math.Float32frombits(r.Get32())
-				if v < -1.0 {
+				if v != v {
+					v = -1.0
+					r.Report.Clamped++
+				} else if v < -1.0 {
 					v = -1.0
 					r.Report.Clamped++
 				} else if v > 1.0 {
 					v = 1.0
 					r.Report.Clamped++
+				} else if v == 0 {
+					v = 0
 				}
 				value.AimZ = v
 			}
@@ -5510,12 +5534,17 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 			}
 			{
 				v := math.Float32frombits(r.Get32())
-				if v < 0.0 {
+				if v != v {
+					v = 0.0
+					r.Report.Clamped++
+				} else if v < 0.0 {
 					v = 0.0
 					r.Report.Clamped++
 				} else if v > 250.0 {
 					v = 250.0
 					r.Report.Clamped++
+				} else if v == 0 {
+					v = 0
 				}
 				value.Ping = v
 			}
@@ -7283,12 +7312,17 @@ func TableMixedFixedClampBody(value *TableMixed, clamped *int32) {
 		value.FrameTick = 281474976710655
 		(*clamped)++
 	}
-	if value.ServerTime < 0.0 {
+	if value.ServerTime != value.ServerTime {
+		value.ServerTime = 0.0
+		(*clamped)++
+	} else if value.ServerTime < 0.0 {
 		value.ServerTime = 0.0
 		(*clamped)++
 	} else if value.ServerTime > 65535.0 {
 		value.ServerTime = 65535.0
 		(*clamped)++
+	} else if value.ServerTime == 0 {
+		value.ServerTime = 0
 	}
 	for i := int64(0); i < int64(value.EntitiesCount); i++ {
 		TableEntityFixedClampBody(&value.Entities[i], clamped)
@@ -7308,26 +7342,41 @@ func TableMixedFixedClampBody(value *TableMixed, clamped *int32) {
 	case TableEventTypePickup:
 		TablePickupEventFixedClampBody(&value.GameEvent.Pickup, clamped)
 	}
-	if value.AimX < -1.0 {
+	if value.AimX != value.AimX {
+		value.AimX = -1.0
+		(*clamped)++
+	} else if value.AimX < -1.0 {
 		value.AimX = -1.0
 		(*clamped)++
 	} else if value.AimX > 1.0 {
 		value.AimX = 1.0
 		(*clamped)++
+	} else if value.AimX == 0 {
+		value.AimX = 0
 	}
-	if value.AimY < -1.0 {
+	if value.AimY != value.AimY {
+		value.AimY = -1.0
+		(*clamped)++
+	} else if value.AimY < -1.0 {
 		value.AimY = -1.0
 		(*clamped)++
 	} else if value.AimY > 1.0 {
 		value.AimY = 1.0
 		(*clamped)++
+	} else if value.AimY == 0 {
+		value.AimY = 0
 	}
-	if value.AimZ < -1.0 {
+	if value.AimZ != value.AimZ {
+		value.AimZ = -1.0
+		(*clamped)++
+	} else if value.AimZ < -1.0 {
 		value.AimZ = -1.0
 		(*clamped)++
 	} else if value.AimZ > 1.0 {
 		value.AimZ = 1.0
 		(*clamped)++
+	} else if value.AimZ == 0 {
+		value.AimZ = 0
 	}
 	if value.Flux < -1000000000000000000 {
 		value.Flux = -1000000000000000000
@@ -7336,12 +7385,17 @@ func TableMixedFixedClampBody(value *TableMixed, clamped *int32) {
 		value.Flux = 1000000000000000000
 		(*clamped)++
 	}
-	if value.Ping < 0.0 {
+	if value.Ping != value.Ping {
+		value.Ping = 0.0
+		(*clamped)++
+	} else if value.Ping < 0.0 {
 		value.Ping = 0.0
 		(*clamped)++
 	} else if value.Ping > 250.0 {
 		value.Ping = 250.0
 		(*clamped)++
+	} else if value.Ping == 0 {
+		value.Ping = 0
 	}
 	if value.CrcHint > 16777215 {
 		value.CrcHint = 16777215

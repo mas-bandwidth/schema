@@ -21,6 +21,7 @@
 package benchtable
 
 import (
+	"encoding/base64"
 	"math"
 	"strconv"
 	"time"
@@ -1359,12 +1360,19 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 			return true
 		}
 		if f.HasRange {
+			// A COMPRESSED FLOAT'S -0 LANDS AS +0 (§3.3, the special values):
+			// it is inside the range, so it does not count, and the sign bit
+			// is a spelling the declaration cannot name. A NaN or an infinity
+			// never reaches this line: the text has no spelling for either
+			// and the walk above refused it as kind_mismatch.
 			if value < f.RangeMin {
 				value = f.RangeMin
 				in.report.Clamped++
 			} else if value > f.RangeMax {
 				value = f.RangeMax
 				in.report.Clamped++
+			} else if value == 0 {
+				value = 0
 			}
 		}
 		if single {
@@ -2982,6 +2990,56 @@ func TableEntityToJson(value *TableEntity, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), TableEntityTableType(), buffer)
 }
 
+// TableEntitySaveText returns the base64 of TableEntity's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the whole file, form byte first, so the text keeps the form byte,
+// the framing check and every versioning guarantee and is opaque.
+func TableEntitySaveText(value *TableEntity) (string, error) {
+	n := TableEntityMeasure(value)
+	if n < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	buf := make([]byte, n)
+	if TableEntitySave(value, buf) < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+// TableEntityLoadText fills one TableEntity from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
+// whenever the read's report holds an error (TableReport.Err), whatever the
+// tolerant Load answered, so a recovered value never comes back. It refuses
+// by name: base64_damaged when the body does not decode, unknown_form when
+// the decoded wire's form byte is not one this build carries, wire_damaged
+// for framing damage, and the report's own reason (malformed, clamped,
+// kind_mismatch, ...) otherwise. A nil report is allowed; a supplied one
+// receives THIS read's report, so earlier counts in it never decide.
+func TableEntityLoadText(text string, report *TableReport) (*TableEntity, error) {
+	if report != nil {
+		*report = TableReport{}
+	}
+	wire, err := base64.StdEncoding.DecodeString(text)
+	if err != nil {
+		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(wire) == 0 || wire[0] != 1 {
+		return nil, tableRefuseError(TableRefuseUnknownForm)
+	}
+	var v TableEntity
+	var read TableReport
+	ok := TableEntityLoad(&v, wire, &read)
+	if report != nil {
+		*report = read
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
+	}
+	if err := read.Err(); err != nil {
+		return nil, err
+	}
+	return &v, nil
+}
+
 // TableStatFromJson fills one TableStat from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
 // A nil report is allowed; every tolerance event still decides the same way.
 func TableStatFromJson(value *TableStat, text []byte, report *TableReport) bool {
@@ -2997,6 +3055,56 @@ func TableStatToJsonMeasure(value *TableStat) int64 {
 // bytes written — exactly TableStatToJsonMeasure's answer — or -1 when it is short.
 func TableStatToJson(value *TableStat, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), TableStatTableType(), buffer)
+}
+
+// TableStatSaveText returns the base64 of TableStat's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the whole file, form byte first, so the text keeps the form byte,
+// the framing check and every versioning guarantee and is opaque.
+func TableStatSaveText(value *TableStat) (string, error) {
+	n := TableStatMeasure(value)
+	if n < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	buf := make([]byte, n)
+	if TableStatSave(value, buf) < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+// TableStatLoadText fills one TableStat from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
+// whenever the read's report holds an error (TableReport.Err), whatever the
+// tolerant Load answered, so a recovered value never comes back. It refuses
+// by name: base64_damaged when the body does not decode, unknown_form when
+// the decoded wire's form byte is not one this build carries, wire_damaged
+// for framing damage, and the report's own reason (malformed, clamped,
+// kind_mismatch, ...) otherwise. A nil report is allowed; a supplied one
+// receives THIS read's report, so earlier counts in it never decide.
+func TableStatLoadText(text string, report *TableReport) (*TableStat, error) {
+	if report != nil {
+		*report = TableReport{}
+	}
+	wire, err := base64.StdEncoding.DecodeString(text)
+	if err != nil {
+		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(wire) == 0 || wire[0] != 1 {
+		return nil, tableRefuseError(TableRefuseUnknownForm)
+	}
+	var v TableStat
+	var read TableReport
+	ok := TableStatLoad(&v, wire, &read)
+	if report != nil {
+		*report = read
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
+	}
+	if err := read.Err(); err != nil {
+		return nil, err
+	}
+	return &v, nil
 }
 
 // TableMixedFromJson fills one TableMixed from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
@@ -3016,6 +3124,56 @@ func TableMixedToJson(value *TableMixed, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), TableMixedTableType(), buffer)
 }
 
+// TableMixedSaveText returns the base64 of TableMixed's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the whole file, form byte first, so the text keeps the form byte,
+// the framing check and every versioning guarantee and is opaque.
+func TableMixedSaveText(value *TableMixed) (string, error) {
+	n := TableMixedMeasure(value)
+	if n < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	buf := make([]byte, n)
+	if TableMixedSave(value, buf) < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+// TableMixedLoadText fills one TableMixed from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
+// whenever the read's report holds an error (TableReport.Err), whatever the
+// tolerant Load answered, so a recovered value never comes back. It refuses
+// by name: base64_damaged when the body does not decode, unknown_form when
+// the decoded wire's form byte is not one this build carries, wire_damaged
+// for framing damage, and the report's own reason (malformed, clamped,
+// kind_mismatch, ...) otherwise. A nil report is allowed; a supplied one
+// receives THIS read's report, so earlier counts in it never decide.
+func TableMixedLoadText(text string, report *TableReport) (*TableMixed, error) {
+	if report != nil {
+		*report = TableReport{}
+	}
+	wire, err := base64.StdEncoding.DecodeString(text)
+	if err != nil {
+		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(wire) == 0 || wire[0] != 1 {
+		return nil, tableRefuseError(TableRefuseUnknownForm)
+	}
+	var v TableMixed
+	var read TableReport
+	ok := TableMixedLoad(&v, wire, &read)
+	if report != nil {
+		*report = read
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
+	}
+	if err := read.Err(); err != nil {
+		return nil, err
+	}
+	return &v, nil
+}
+
 // TableHitEventFromJson fills one TableHitEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
 // A nil report is allowed; every tolerance event still decides the same way.
 func TableHitEventFromJson(value *TableHitEvent, text []byte, report *TableReport) bool {
@@ -3031,6 +3189,56 @@ func TableHitEventToJsonMeasure(value *TableHitEvent) int64 {
 // bytes written — exactly TableHitEventToJsonMeasure's answer — or -1 when it is short.
 func TableHitEventToJson(value *TableHitEvent, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), TableHitEventTableType(), buffer)
+}
+
+// TableHitEventSaveText returns the base64 of TableHitEvent's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the whole file, form byte first, so the text keeps the form byte,
+// the framing check and every versioning guarantee and is opaque.
+func TableHitEventSaveText(value *TableHitEvent) (string, error) {
+	n := TableHitEventMeasure(value)
+	if n < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	buf := make([]byte, n)
+	if TableHitEventSave(value, buf) < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+// TableHitEventLoadText fills one TableHitEvent from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
+// whenever the read's report holds an error (TableReport.Err), whatever the
+// tolerant Load answered, so a recovered value never comes back. It refuses
+// by name: base64_damaged when the body does not decode, unknown_form when
+// the decoded wire's form byte is not one this build carries, wire_damaged
+// for framing damage, and the report's own reason (malformed, clamped,
+// kind_mismatch, ...) otherwise. A nil report is allowed; a supplied one
+// receives THIS read's report, so earlier counts in it never decide.
+func TableHitEventLoadText(text string, report *TableReport) (*TableHitEvent, error) {
+	if report != nil {
+		*report = TableReport{}
+	}
+	wire, err := base64.StdEncoding.DecodeString(text)
+	if err != nil {
+		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(wire) == 0 || wire[0] != 1 {
+		return nil, tableRefuseError(TableRefuseUnknownForm)
+	}
+	var v TableHitEvent
+	var read TableReport
+	ok := TableHitEventLoad(&v, wire, &read)
+	if report != nil {
+		*report = read
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
+	}
+	if err := read.Err(); err != nil {
+		return nil, err
+	}
+	return &v, nil
 }
 
 // TableChatEventFromJson fills one TableChatEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
@@ -3050,6 +3258,56 @@ func TableChatEventToJson(value *TableChatEvent, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), TableChatEventTableType(), buffer)
 }
 
+// TableChatEventSaveText returns the base64 of TableChatEvent's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the whole file, form byte first, so the text keeps the form byte,
+// the framing check and every versioning guarantee and is opaque.
+func TableChatEventSaveText(value *TableChatEvent) (string, error) {
+	n := TableChatEventMeasure(value)
+	if n < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	buf := make([]byte, n)
+	if TableChatEventSave(value, buf) < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+// TableChatEventLoadText fills one TableChatEvent from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
+// whenever the read's report holds an error (TableReport.Err), whatever the
+// tolerant Load answered, so a recovered value never comes back. It refuses
+// by name: base64_damaged when the body does not decode, unknown_form when
+// the decoded wire's form byte is not one this build carries, wire_damaged
+// for framing damage, and the report's own reason (malformed, clamped,
+// kind_mismatch, ...) otherwise. A nil report is allowed; a supplied one
+// receives THIS read's report, so earlier counts in it never decide.
+func TableChatEventLoadText(text string, report *TableReport) (*TableChatEvent, error) {
+	if report != nil {
+		*report = TableReport{}
+	}
+	wire, err := base64.StdEncoding.DecodeString(text)
+	if err != nil {
+		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(wire) == 0 || wire[0] != 1 {
+		return nil, tableRefuseError(TableRefuseUnknownForm)
+	}
+	var v TableChatEvent
+	var read TableReport
+	ok := TableChatEventLoad(&v, wire, &read)
+	if report != nil {
+		*report = read
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
+	}
+	if err := read.Err(); err != nil {
+		return nil, err
+	}
+	return &v, nil
+}
+
 // TablePickupEventFromJson fills one TablePickupEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
 // A nil report is allowed; every tolerance event still decides the same way.
 func TablePickupEventFromJson(value *TablePickupEvent, text []byte, report *TableReport) bool {
@@ -3065,4 +3323,54 @@ func TablePickupEventToJsonMeasure(value *TablePickupEvent) int64 {
 // bytes written — exactly TablePickupEventToJsonMeasure's answer — or -1 when it is short.
 func TablePickupEventToJson(value *TablePickupEvent, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), TablePickupEventTableType(), buffer)
+}
+
+// TablePickupEventSaveText returns the base64 of TablePickupEvent's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the whole file, form byte first, so the text keeps the form byte,
+// the framing check and every versioning guarantee and is opaque.
+func TablePickupEventSaveText(value *TablePickupEvent) (string, error) {
+	n := TablePickupEventMeasure(value)
+	if n < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	buf := make([]byte, n)
+	if TablePickupEventSave(value, buf) < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+// TablePickupEventLoadText fills one TablePickupEvent from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
+// whenever the read's report holds an error (TableReport.Err), whatever the
+// tolerant Load answered, so a recovered value never comes back. It refuses
+// by name: base64_damaged when the body does not decode, unknown_form when
+// the decoded wire's form byte is not one this build carries, wire_damaged
+// for framing damage, and the report's own reason (malformed, clamped,
+// kind_mismatch, ...) otherwise. A nil report is allowed; a supplied one
+// receives THIS read's report, so earlier counts in it never decide.
+func TablePickupEventLoadText(text string, report *TableReport) (*TablePickupEvent, error) {
+	if report != nil {
+		*report = TableReport{}
+	}
+	wire, err := base64.StdEncoding.DecodeString(text)
+	if err != nil {
+		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(wire) == 0 || wire[0] != 1 {
+		return nil, tableRefuseError(TableRefuseUnknownForm)
+	}
+	var v TablePickupEvent
+	var read TableReport
+	ok := TablePickupEventLoad(&v, wire, &read)
+	if report != nil {
+		*report = read
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
+	}
+	if err := read.Err(); err != nil {
+		return nil, err
+	}
+	return &v, nil
 }
