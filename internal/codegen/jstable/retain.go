@@ -141,7 +141,9 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
   const width = tableRetainWidth(kind);
   if (width > 0) { if (r.at + width > r.end) { return false; } out.raw(r.b.subarray(r.at, r.at + width)); r.at += width; return true; }
   switch (kind) {
-    case 12: {
+    case 12: case 33: {
+      // a string and a wide string (§6.6, internal/tablewire retain.go): the
+      // payload copies verbatim under its L
       const L = r.leb(); if (r.bad || r.at + L > r.end) { return false; }
       out.leb(L); out.raw(r.b.subarray(r.at, r.at + L)); r.at += L; return true;
     }
@@ -228,7 +230,7 @@ function TableVariableRetainEmit(r, ids, kind, w) {
   const width = tableRetainWidth(kind);
   if (width > 0) { if (r.at + width > r.end) { return false; } w.raw(r.b.subarray(r.at, r.at + width)); r.at += width; return true; }
   switch (kind) {
-    case 12: {
+    case 12: case 33: {
       const L = r.leb(); if (r.bad || r.at + L > r.end) { return false; }
       w.leb(L); w.raw(r.b.subarray(r.at, r.at + L)); r.at += L; return true;
     }
