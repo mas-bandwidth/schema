@@ -79,7 +79,7 @@ generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .js + <Base>Table.js + the two accelerators' readers),
 # because a table's closure decodes into the packet emitter's own classes.
-build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(wildcard examples-wide/*.schema) test/tables/Scalars2.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema
+build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(wildcard examples-wide/*.schema) test/tables/Scalars2.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema
 	@mkdir -p build/tables-generated-js
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
 	# the POINTERED unit: its FIXED surface is refused by name for every
@@ -102,6 +102,10 @@ build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(
 	# as a union arm; WideVariable.js answers the widedemo rows on the variable
 	# wire (docs/SPEC-TABLES.md §3).
 	./bin/schema generate --lang js --out build/tables-generated-js/wide examples-wide
+	# the LIST unit (tables/lists, docs/SPEC-TABLES.md §2.7): ListdemoVariable.js
+	# carries the listdemo roots, so their instances answer the text form
+	# (json-read, json-write, json-hostile, §16) like every other generated unit.
+	./bin/schema generate --lang js --out build/tables-generated-js/lists tables/lists
 	./bin/schema generate --lang js --out build/tables-generated-js/block tables/block
 	./bin/schema generate --lang js --out build/tables-generated-js/blockhome tables/blockhome
 	./bin/schema generate --lang js --out build/tables-generated-js/v1 test/tables/V1.schema
