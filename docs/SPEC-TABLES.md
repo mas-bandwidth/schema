@@ -1161,6 +1161,13 @@ table Player
   as it is without the marker.
 - **The refusal names only the fields that are missing**, in declaration
   order, e.g. `missing_required: b`.
+- **The refusal is the RECORD's, at any depth.** A nested table, an array
+  element, a map entry or a pointer node whose body lacks a required field
+  refuses every body above it: the record is refused, never read as a parent
+  holding a defaulted child, and the reason names the missing field of the
+  body that lacked it. A strict caller gets it by name — `ReadStrict` and
+  `TableReport.Err()` answer the typed `TableMissingRequired`, whose text is
+  the report's reason (§6.5), never a bare `wire_damaged`.
 
 **Evolution** (§4). Adding `required` to a shipped field is a BREAK the
 tables baseline refuses: old records were written without it and a newer
@@ -8612,14 +8619,14 @@ The builder is designed to go wide, lock-free by ownership:
   construct that can raise one is (§2.9).
 - **The STRICT read** — one call, `<Name>ReadStrict( wire )`, that answers
   the root or refuses. It refuses, with ONE typed reason, a read that is
-  malformed, clamped, kind-mismatched, of an unknown form, wire-damaged or
-  build-version-mismatched. It does NOT refuse `unknown`, `widened` or
+  malformed, clamped, kind-mismatched, of an unknown form, wire-damaged,
+  build-version-mismatched or missing a required field (§2.3). It does NOT refuse `unknown`, `widened` or
   `retained` alone: `unknown` is evolution, `widened` decoded exactly, and
   `retained` reports on retention rather than on a loss (the cards facade's
   `ReadStrict`, docs/CARDS.md: `Unknown`, `Retained` and `Widened` alone are
   not loss). The reason is `TableRefuseReason`, the same enum a measure's
   `-1` carries, or `TableBuildVersionMismatch` for the announcement's strict
-  refusal (§3.3), so the language's typed-error test matches it (`errors.Is`
+  refusal (§3.3), or `TableMissingRequired` naming the missing field (§2.3), so the language's typed-error test matches it (`errors.Is`
   in Go). Values this read adds (`malformed`, `clamped`, `kind_mismatch`)
   are appended to that enum and never renumbered. `TableReport.Err()`
   answers the same reason for every counter this read refuses, and nil on a
@@ -11976,7 +11983,7 @@ in build version (§20.5).
   return `(int64, error)`, with literal `nil` on success and a typed
   `TableRefuseReason` on refusal. `<Name>ReadStrict(wire) (*<Name>, error)`
   is §6.5's STRICT read: one call, its own builder, the reason a
-  `TableRefuseReason` or `TableBuildVersionMismatch`. `TableReport.Err()`
+  `TableRefuseReason`, `TableBuildVersionMismatch` or `TableMissingRequired`. `TableReport.Err()`
   answers that same reason. Builder `PackMeasureReason` follows the
   same rule. `invalid_value` and `allocation_failed` distinguish Go
   authoring failures from file count, form, blob-size, and cycle refusals.
