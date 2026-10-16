@@ -176,6 +176,11 @@ func (g *blockGen) emit() {
 		g.pf("// Its wire (§3) is unaffected — only this projection is absent, and it is\n")
 		g.pf("// absent by construction rather than by refusal.\n\n")
 	}
+	// a float32 accessor of this module calls the unit's one conversion,
+	// defined in the home (jsF32ReaderSource) and imported here
+	if !g.home && strings.Contains(g.body.String(), jsF32Reader+"(") {
+		g.needHome(jsF32Reader)
+	}
 }
 
 func (g *blockGen) assemble() []byte {
@@ -751,5 +756,5 @@ export const TableBlockLayout = Object.freeze({
   },
 });
 
-`
+` + jsF32ReaderSource()
 }

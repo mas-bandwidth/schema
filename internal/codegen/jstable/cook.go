@@ -286,6 +286,12 @@ func (g *cookGen) emit() {
 				emitRecordObject(&g.body, g.unit, name, ml, refs)
 			}
 		}
+		// the unit's one float32 conversion lives in the block home when the
+		// block owns the runtime; a cook-only record that reads a float32
+		// imports it from there
+		if g.blockOwnsRuntime() && strings.Contains(g.body.String(), jsF32Reader+"(") {
+			g.need(blockHome(g.unit, g.blocks)+"Block", jsF32Reader)
+		}
 	}
 	if g.file == nil {
 		return // the runtime home the unit has no file for: nothing declares here
@@ -771,5 +777,10 @@ export const TableCookLayout = Object.freeze({
 });
 
 `)
+	if withBuildVersion {
+		// no block form owns the runtime, so the cook home carries the unit's
+		// one float32 conversion its record objects call (jsF32ReaderSource)
+		b.WriteString(jsF32ReaderSource())
+	}
 	return b.String()
 }
