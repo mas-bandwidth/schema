@@ -157,11 +157,19 @@ public final class Soak {
         // count is the unplanted floor, so the planted pair — which the control
         // turns on for the measured loop alone — is visible as a jump in the
         // per-iteration count, while the matched pair keeps the heap flat.
+        //
+        // A red count does NOT exit the loop: the soak runs its full real-time
+        // slice and reports BOTH instruments, so the negative control can show
+        // the count red beside a drift line that stayed green — the whole point
+        // of the planted matched pair. The verdict is returned at the end.
+        boolean countRed = false;
+        long redFrom = 0, redTo = 0;
+
         while (System.nanoTime() < deadline) {
             boolean plantHere = warmed && plant;
-            long before = bean.getCurrentThreadAllocatedBytes();
+            long before = bean != null ? bean.getCurrentThreadAllocatedBytes() : 0L;
             long iters = runBatch(codecs, wires, batch, plantHere);
-            long after = bean.getCurrentThreadAllocatedBytes();
+            long after = bean != null ? bean.getCurrentThreadAllocatedBytes() : 0L;
             long perIter = (after - before) / iters;
             iterations += iters;
             samples++;
@@ -181,11 +189,9 @@ public final class Soak {
                 continue;
             }
 
-            if (Math.abs(perIter - settled) > TOLERANCE) {
-                fail("per-iteration allocation moved from " + settled + " to " + perIter
-                        + " bytes (tolerance " + TOLERANCE + ") — the count is not flat: "
-                        + "a path that allocates and frees the same bytes every iteration "
-                        + "is invisible to drift, which is why the COUNT is the gate");
+            if (counterPresent && Math.abs(perIter - settled) > TOLERANCE) {
+                if (!countRed) { redFrom = settled; redTo = perIter; }
+                countRed = true;
             }
 
             long drift = usedHeap() - heapStart;
@@ -200,12 +206,23 @@ public final class Soak {
             System.out.println("soak: run was too short to leave warmup (settled "
                     + settled + " bytes per iteration at sample " + samples + ")");
         }
-        System.out.println("soak: settled per-iteration ALLOCATION = " + settled + " bytes"
-                + " — the floor is not zero, because a Java load builds a Value tree; "
-                + "the gate is on STABILITY, not on zero");
+        if (counterPresent) {
+            System.out.println("soak: settled per-iteration ALLOCATION = " + settled + " bytes"
+                    + " — the floor is not zero, because a Java load builds a Value tree; "
+                    + "the gate is on STABILITY, not on zero");
+        } else {
+            System.out.println("soak: no per-thread allocation counter on this JVM — the "
+                    + "per-iteration count went unmeasured, nothing is gated");
+        }
         System.out.println("soak: live heap " + heapStart + " bytes before, " + heapEnd
                 + " after, max drift " + maxDrift + " bytes (resident retention / drift, "
                 + "the weaker instrument)");
+        if (countRed) {
+            fail("per-iteration allocation moved from " + redFrom + " to " + redTo
+                    + " bytes (tolerance " + TOLERANCE + ") — the count is not flat: "
+                    + "a path that allocates and frees the same bytes every iteration "
+                    + "is invisible to drift, which is why the COUNT is the gate");
+        }
         if (warmed) {
             System.out.println("soak: OK — per-iteration allocation flat (within "
                     + TOLERANCE + " bytes, " + (samples - warmedAt) + " post-warmup samples)");

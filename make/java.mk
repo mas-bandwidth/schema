@@ -655,7 +655,10 @@ tables-java-allocator-runtime-negative-control: build/java-tables/.stamp
 # not on zero — with resident-heap drift reported beside it as the weaker
 # instrument that sees retention. It refuses to certify off the pinned JDK
 # exactly as modeAllocator does, and honours SCHEMA_JAVA_ALLOC_ANY_JDK=1 as
-# observation only (reports, does not certify).
+# observation only (reports, does not certify). The release act is the hour:
+# `make tables-java-soak` with no override soaks for SOAK_SECONDS ?= 3600, and
+# `make test-java` passes SOAK_SECONDS=20 for the two-second gate.
+SOAK_SECONDS ?= 3600
 .PHONY: tables-java-soak tables-java-soak-negative-control
 tables-java-soak: build/java-tables/.stamp
 	@if [ "$${SCHEMA_JAVA_ALLOC_ANY_JDK:-}" = 1 ]; then echo "Java soak observation mode: NOT CERTIFIED"; fi
@@ -664,7 +667,9 @@ tables-java-soak: build/java-tables/.stamp
 # ITS NEGATIVE CONTROL: a matched allocation pair planted per iteration by an
 # environment variable read in Soak.java (never a change to generated code) for
 # the measured loop alone, so the settled clean floor stays put and the count
-# must go red while the drift line stays green.
+# must go red while the drift line stays green. The soak runs its full slice and
+# reports BOTH instruments, so the control greps for the red count AND the live
+# heap (drift) line the planted match keeps green.
 tables-java-soak-negative-control: build/java-tables/.stamp
 	@if SCHEMA_JAVA_SOAK_PLANT=1 $(JAVA) -cp build/java-tables Soak 12 testdata/wire/tables/blob_small.bin testdata/wire/tables/graph_tree.bin > build/java-soak-negative.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a planted per-iteration allocation left the soak count green'; \
@@ -672,7 +677,9 @@ tables-java-soak-negative-control: build/java-tables/.stamp
 	fi
 	@grep -Fq 'per-iteration allocation moved from' build/java-soak-negative.log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the soak went red, but not on the COUNT'; cat build/java-soak-negative.log; exit 1; }
-	@echo 'java tables soak negative control: a planted per-iteration allocation turns the COUNT red'
+	@grep -Fq 'live heap' build/java-soak-negative.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the drift half did not run — the drift line is absent'; cat build/java-soak-negative.log; exit 1; }
+	@echo 'java tables soak negative control: a planted per-iteration allocation turns the COUNT red while the drift line stays green'
 
 test-java: tables-java-allocator tables-java-allocator-runtime-negative-control tables-java-soak-negative-control
 
