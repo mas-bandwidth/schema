@@ -28,6 +28,7 @@
     <!-- Overridable so the harness's NEGATIVE CONTROL can point this leg at a
          sabotaged copy of the generated sources and require it to go red. -->
     <TablesGeneratedDir Condition="'$(TablesGeneratedDir)' == ''">../../../build/tables-generated-cs</TablesGeneratedDir>
+    <CardsGeneratedDir Condition="'$(CardsGeneratedDir)' == ''">$(MSBuildThisFileDirectory)../../../build/tables-generated-cs/cards</CardsGeneratedDir>
   </PropertyGroup>
 
   <ItemGroup>
@@ -63,6 +64,12 @@
     <Compile Include="$(TablesGeneratedDir)/p1/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/p3/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/block/*.cs" />
+    <!-- The cards unit (tables/cards), from cards-cs-generate: the Card root
+         rides the wire fuzzer and its retain arm (cards-cs-wire-fuzz and
+         cards-cs-retain-fuzz in make/cs.mk). Its own directory property, so a
+         negative control that points TablesGeneratedDir at a sabotaged corpus
+         still compiles the unsabotaged Card unit beside it. -->
+    <Compile Include="$(CardsGeneratedDir)/*.cs" />
     <Compile Include="../../../../serialize.cs/src/Serialize.cs" />
     <Compile Include="../../../../serialize.cs/src/Int128Pair.cs" />
   </ItemGroup>

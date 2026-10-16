@@ -349,7 +349,7 @@ generated/bench/cs/.stamp: bin/schema $(SCHEMAS_BENCH)
 	@touch $@
 
 .PHONY: build-conformance-cs
-build-conformance-cs: build/tables-generated-cs/.stamp
+build-conformance-cs: build/tables-generated-cs/.stamp cards-cs-generate
 	cd test/conformance/cs && $(DOTNET) build -v q --nologo
 
 # THE NEGATIVE CONTROL FOR THE C# WALK (docs/SPEC-TABLES.md §16.5), and it is a
@@ -567,7 +567,7 @@ test-cs: tables-cs-bench-gate
 # project compiles, so an emitter that drifts from what it writes goes red here
 # rather than on a reviewer. It SKIPS cleanly where the pinned SDK is not on PATH.
 .PHONY: tables-cs-clean
-tables-cs-clean: build/tables-generated-cs/.stamp
+tables-cs-clean: build/tables-generated-cs/.stamp cards-cs-generate
 	@if ! command -v $(DOTNET) >/dev/null 2>&1; then \
 		echo "SKIP tables-cs-clean: $(DOTNET) is not installed"; exit 0; \
 	fi
@@ -748,3 +748,82 @@ cards-cs-conformance-hash-negative-control: build/conformance-harness cards-cs-d
 	@echo 'cards C# negative control: folding needs into the hash turns exactly taskhash red'
 
 test-cs: cards-cs-test cards-cs-conformance cards-cs-conformance-negative-control cards-cs-conformance-upgrade-negative-control cards-cs-conformance-hash-negative-control
+
+# THE CARDS UNIT RIDES THE C# CONFORMANCE DRIVER'S WIRE FUZZER (§4.2, §6.6).
+# These mirror make/dart.mk's cards-dart-wire-fuzz and cards-dart-retain-fuzz
+# line for line, against the same oracle harness, the same manifest
+# (tables/cards/fuzz/MANIFEST.txt: unit cards, root Card, one pinned populated
+# instance) and the same seed, so the C# Card codec is held to the identical
+# byte-for-byte contract the Go leg's cards-wire-fuzz pins. The driver is
+# test/conformance/cs, which compiles build/tables-generated-cs/cards (from
+# cards-cs-generate, through build-conformance-cs) and registers the Card root
+# in its codec table (src/Program.cs) and its retaining pairs
+# (src/RetainCodecs.cs).
+CARDS_CS_FUZZ_TIME ?= 60s
+CARDS_CS_DRIVER = $(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz
+
+# cards-cs-wire-fuzz is the oracle harness over the Card root only. --vectors
+# '' keeps the default pinned vectors out of this Card-only manifest. The greps
+# hold the nonzero seed/root/mutant claim and the zero-divergence claim, as
+# make/go.mk's cards-wire-fuzz does.
+.PHONY: cards-cs-wire-fuzz
+cards-cs-wire-fuzz: build-conformance-cs build/conformance-harness
+	@timeout $(CARDS_CS_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+		--driver '$(CARDS_CS_DRIVER)' --seed 24845619678 --n 100 \
+		> build/cards-cs-wire-fuzz.log 2>&1; \
+		status=$$?; cat build/cards-cs-wire-fuzz.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -q '0 divergences' build/cards-cs-wire-fuzz.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-cs-wire-fuzz.log
+	@grep -qE '[1-9][0-9]* mutants' build/cards-cs-wire-fuzz.log
+
+# THE CARD WIRE-FUZZ RIDES THE C# LEG'S GATE (§4.2): the same oracle harness,
+# the same seed, over the Card root only.
+test-cs: cards-cs-wire-fuzz
+
+# cards-cs-retain-fuzz is the SAME fuzzer through the RETENTION ARM
+# (docs/SPEC-TABLES.md §6.6): every mutant is read and written back through the
+# Card codec's retaining pair, and the two retention counters ride beside the
+# six. The seed, count and coverage greps are cards-cs-wire-fuzz's, plus
+# --retain, so a retained save is held to the Go reference leg byte for byte.
+.PHONY: cards-cs-retain-fuzz
+cards-cs-retain-fuzz: build-conformance-cs build/conformance-harness
+	@timeout $(CARDS_CS_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+		--driver '$(CARDS_CS_DRIVER)' --seed 24845619678 --n 100 --retain \
+		> build/cards-cs-retain-fuzz.log 2>&1; \
+		status=$$?; cat build/cards-cs-retain-fuzz.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -q '0 divergences' build/cards-cs-retain-fuzz.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-cs-retain-fuzz.log
+	@grep -qE '[1-9][0-9]* mutants' build/cards-cs-retain-fuzz.log
+
+# THE CARD WIRE-FUZZ'S RETAIN ARM RIDES THE C# LEG'S GATE (§6.6).
+test-cs: cards-cs-retain-fuzz
+
+# cards-cs-retain-negative-control: the driver's test-only CARDS_CS_RETAIN_DROP=1
+# switch hands the Card root's retaining load a store with no capacity, so
+# every unknown field is dropped. The retain arm must go RED on the retention
+# report (the leg keeps nothing where the Go oracle keeps the unknown field)
+# while the plain arm, run with the same switch set, stays GREEN: the break is
+# the retention's and nothing else's. A crash or a timeout is not detection.
+.PHONY: cards-cs-retain-negative-control
+cards-cs-retain-negative-control: build-conformance-cs build/conformance-harness
+	@mkdir -p build/wire-fuzz
+	@if CARDS_CS_RETAIN_DROP=1 timeout $(CARDS_CS_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+		--driver '$(CARDS_CS_DRIVER)' --seed 24845619678 --n 100 --retain \
+		--failed build/wire-fuzz/failed-cards-retain-neg-cs.bin \
+		> build/cards-cs-retain-neg.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the Card retain arm stayed green with retention dropped'; cat build/cards-cs-retain-neg.log; exit 1; fi
+	@grep -qE 'FAILED after [1-9][0-9]* mutants: the retention report differs' build/cards-cs-retain-neg.log || { echo 'NEGATIVE CONTROL FAILED: the retain arm did not go red on the retention report'; cat build/cards-cs-retain-neg.log; exit 1; }
+	@! grep -Eq 'driver exited|driver wrote nothing|panic|Unhandled exception' build/cards-cs-retain-neg.log || { echo 'NEGATIVE CONTROL FAILED: the driver broke rather than diverged'; cat build/cards-cs-retain-neg.log; exit 1; }
+	@CARDS_CS_RETAIN_DROP=1 timeout $(CARDS_CS_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+		--driver '$(CARDS_CS_DRIVER)' --seed 24845619678 --n 100 \
+		> build/cards-cs-retain-neg-plain.log 2>&1 || { echo 'NEGATIVE CONTROL FAILED: the plain arm went red too'; cat build/cards-cs-retain-neg-plain.log; exit 1; }
+	@grep -q '0 divergences' build/cards-cs-retain-neg-plain.log || { echo 'NEGATIVE CONTROL FAILED: the plain arm diverged'; cat build/cards-cs-retain-neg-plain.log; exit 1; }
+	@echo 'cards C# negative control: dropping the Card retention turns exactly the retain arm red'
+
+test-cs: cards-cs-retain-negative-control
