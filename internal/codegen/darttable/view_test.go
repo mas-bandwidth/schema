@@ -2,6 +2,7 @@ package darttable
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +15,79 @@ import (
 func TestUnitViewDescriptorsDart(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
+	makefile, err := os.ReadFile(filepath.Join(repo, "Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var corpus string
+	collecting := false
+	for _, line := range strings.Split(string(makefile), "\n") {
+		if strings.HasPrefix(line, "VIEW_CORPUS :=") {
+			collecting = true
+			line = strings.TrimPrefix(line, "VIEW_CORPUS :=")
+		}
+		if !collecting {
+			continue
+		}
+		line = strings.TrimSpace(line)
+		more := strings.HasSuffix(line, "\\")
+		corpus += " " + strings.TrimSpace(strings.TrimSuffix(line, "\\"))
+		if !more {
+			break
+		}
+	}
+	if corpus == "" {
+		t.Fatal("Makefile has no VIEW_CORPUS")
+	}
+	for _, entry := range strings.Fields(corpus) {
+		parts := strings.SplitN(entry, ":", 2)
+		if len(parts) != 2 {
+			t.Fatalf("VIEW_CORPUS entry %q has no package", entry)
+		}
+		dir := filepath.Join(repo, "tables", parts[0])
+		if parts[0] == "wide" {
+			dir = filepath.Join(repo, "examples-wide")
+		}
+		schemas, err := filepath.Glob(filepath.Join(dir, "*.schema"))
+		if err != nil || len(schemas) == 0 {
+			t.Fatalf("VIEW_CORPUS %s: %v, %d schema files", entry, err, len(schemas))
+		}
+		unit := loadUnit(t, schemas...)
+		generated, err := Generate(unit)
+		if err != nil {
+			t.Fatalf("VIEW_CORPUS %s: %v", entry, err)
+		}
+		view := string(generated[runtimeHome(unit)+"View.dart"])
+		if view == "" {
+			t.Errorf("VIEW_CORPUS %s has no UnitView", entry)
+			continue
+		}
+		for _, name := range sortedKeys(unit.Tables) {
+			st := unit.Tables[name]
+			if st.IsMapEntry() {
+				continue
+			}
+			if !strings.Contains(view, "// table "+name) {
+				t.Errorf("VIEW_CORPUS %s lacks table %s", entry, name)
+			}
+			for _, field := range st.Fields {
+				if !strings.Contains(view, "ViewField("+viewDartString(field.Name)+",") {
+					t.Errorf("VIEW_CORPUS %s lacks %s.%s", entry, name, field.Name)
+				}
+			}
+		}
+		for _, group := range []struct {
+			label string
+			names []string
+		}{{"enum", sortedKeys(unit.Enums)}, {"flags", sortedKeys(unit.Flags)},
+			{"union", sortedKeys(unit.Unions)}, {"constant", sortedKeys(unit.Consts)}} {
+			for _, name := range group.names {
+				if !strings.Contains(view, "// "+group.label+" "+name) {
+					t.Errorf("VIEW_CORPUS %s lacks %s %s", entry, group.label, name)
+				}
+			}
+		}
+	}
 	paths, err := filepath.Glob(filepath.Join(repo, "tables", "examples", "*.schema"))
 	if err != nil || len(paths) == 0 {
 		t.Fatalf("VIEW_CORPUS examples: %v, %d schema files", err, len(paths))
