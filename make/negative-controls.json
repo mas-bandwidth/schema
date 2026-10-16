@@ -560,7 +560,7 @@
     {
       "name": "elixir",
       "when": "pull-request",
-      "why": "the Elixir port's controls and its three packet families. Measured 1 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (one rendered byte, one dropped retained field, extra needs in the task hash, each required to red exactly its own surface) ride here too: 16 s over 3 controls on the author's machine. The allocation audit's two controls (issue #420: a sabotaged emitter whose every load allocates sixteen refc binaries and a thousand-cell list must red the heap-word and binary-call columns of every pinned case, and the audit on a pin nothing is running must refuse before it measures) ride here too: 45 s and under 1 s on a loaded 16-core Linux bench, over the derived manifest the fuzz control already builds.",
+      "why": "the Elixir port's controls and its three packet families. Measured 1 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (one rendered byte, one dropped retained field, extra needs in the task hash, each required to red exactly its own surface) ride here too: 16 s over 3 controls on the author's machine. The allocation audit's two controls (issue #420: a sabotaged emitter whose every load allocates sixteen refc binaries and a thousand-cell list must red the heap-word and binary-call columns of every pinned case, and the audit on a pin nothing is running must refuse before it measures) ride here too: 45 s and under 1 s on a loaded 16-core Linux bench, over the derived manifest the fuzz control already builds. The I13 text differential's control (a float32 capped at six digits, red on the text comparison) adds 1.3 s on hetzner1.",
       "targets": [
         "cards-elixir-conformance-negative-control",
         "cards-elixir-conformance-upgrade-negative-control",
@@ -574,6 +574,7 @@
         "tables-elixir-block-lead-negative-control",
         "tables-elixir-fixed-form-negative-control",
         "tables-elixir-fuzz-negative-control",
+        "tables-elixir-json-differential-negative-control",
         "tables-elixir-keyed-max-negative-control",
         "tables-elixir-keyed-none-negative-control",
         "tables-elixir-runtime-pin-negative-control",

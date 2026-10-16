@@ -566,6 +566,55 @@ tables-elixir-variable-class: build/conformance/manifest.txt
 
 test-elixir: tables-elixir-variable-class
 
+# THE FILE-MODULE STEP-ASIDE GATE (docs/SPEC.md, the Elixir backend list):
+# a schema file whose base is also a declaration's name (tables/arms/Carry.schema
+# declares union Carry) makes the packet emitter's file-scope module step aside
+# from <Ns>.<Base> to <Ns>.<Base>File. This generates the unit out of tree,
+# compiles the output with $(ELIXIRC_STRICT), and runs
+# test/elixir-filemodule/main.exs, which calls a function of the renamed file
+# module and a function of the union's own module and asserts both resolve — two
+# distinct modules.
+.PHONY: tables-elixir-file-module
+tables-elixir-file-module: bin/schema
+	@rm -rf build/elixir-filemodule && mkdir -p build/elixir-filemodule/gen build/elixir-filemodule/ebin
+	./bin/schema generate --lang elixir --out build/elixir-filemodule/gen tables/arms
+	$(ELIXIRC_STRICT) -o build/elixir-filemodule/ebin build/elixir-filemodule/gen/Carry.ex
+	$(ELIXIR) -pa build/elixir-filemodule/ebin test/elixir-filemodule/main.exs
+
+test-elixir: tables-elixir-file-module
+
+# I13 (docs/PORTING.md, the text differential against a third implementation)
+# on the Elixir leg. TestTextDifferentialElixir generates a float-only probe
+# unit, has the generated Elixir draw 200 instances from a splitmix64 stream
+# and write each as (Table.save wire, Table.to_json text), then has the
+# compiler's own engine (internal/tabletext, internal/tablepack) read every wire
+# and byte-compare its text with the leg's, and pack every leg text back and
+# byte-compare the wire. The probe builds its own unit, so no corpus is a
+# prerequisite. It is a FUNCTIONAL test (it runs elixir), so the target runs it
+# under SCHEMA_REQUIRE_CORPUS=1 and fails on any SKIP. The control caps a
+# float32 at six significant digits in the emitted json_float, in memory, and
+# requires the run red on the text comparison and not on a compile error.
+.PHONY: tables-elixir-json-differential tables-elixir-json-differential-negative-control
+tables-elixir-json-differential:
+	@out=$$(SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestTextDifferentialElixir$$' 2>&1); status=$$?; \
+	printf '%s\n' "$$out"; \
+	if [ $$status -ne 0 ]; then exit $$status; fi; \
+	if printf '%s\n' "$$out" | grep -q -- '--- SKIP'; then echo 'tables-elixir-json-differential: a SKIP is a failure here'; exit 1; fi; \
+	printf '%s\n' "$$out" | grep -q -- '--- PASS: TestTextDifferentialElixir' || { echo 'tables-elixir-json-differential: TestTextDifferentialElixir did not run'; exit 1; }
+	@echo 'tables Elixir json differential: 200 of 200 instances agree with the engine in both directions'
+
+tables-elixir-json-differential-negative-control:
+	@out=$$(SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestTextDifferentialNegativeControlElixir$$' 2>&1); status=$$?; \
+	printf '%s\n' "$$out"; \
+	if [ $$status -ne 0 ]; then exit $$status; fi; \
+	if printf '%s\n' "$$out" | grep -q -- '--- SKIP'; then echo 'tables-elixir-json-differential-negative-control: a SKIP is a failure here'; exit 1; fi; \
+	printf '%s\n' "$$out" | grep -q -- '--- PASS: TestTextDifferentialNegativeControlElixir' || { echo 'tables-elixir-json-differential-negative-control: the control did not run'; exit 1; }
+	@echo 'tables Elixir json differential negative control: a float32 capped at six digits went red on the text comparison'
+
+test-elixir: tables-elixir-json-differential tables-elixir-json-differential-negative-control
+
 # THE BUILDER SIDE (docs/SPEC-TABLES.md §19.1, §7.6). TestBlockBuildAndCookWriteElixir
 # builds the pinned block golden and cooks the carried instances to `schema cook`
 # in both byte orders; a short buffer returns false and writes nothing. It is a

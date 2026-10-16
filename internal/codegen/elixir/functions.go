@@ -725,7 +725,7 @@ func (g *gen) zeroCall(typeName string) string {
 	if base == g.file.Base {
 		return call
 	}
-	return g.mod(ir.GoExportName(base)) + "." + call
+	return fileModuleName(g.unit, &ir.File{Base: base}) + "." + call
 }
 
 func (g *gen) emitWriteFunction(name string, items []ir.Item) {
