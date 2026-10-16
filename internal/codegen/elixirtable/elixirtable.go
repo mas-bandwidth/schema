@@ -78,20 +78,12 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	blocks := ir.Blocks(u)
 	ns := ir.GoExportName(u.Package)
 
-	// THE VARIABLE FORM'S BOUNDARY (docs/SPEC-TABLES.md §11). A unit whose
-	// closure holds no fixed table is the variable form's own, and a construct
-	// outside the class is refused by name rather than mis-encoded. A unit the
-	// block, cook or fixed form already serves still emits those forms, and
-	// the variable form (form byte 1) is emitted beside them for every
-	// variable table. Refusing that mixed unit here would take the accelerators
-	// down with the wire (docs/SPEC-TABLES.md §2.7, §3.4). A root in it that
-	// reaches a map, a union, or an enum-keyed array is named uncarried and
-	// answers an error (§2.4, §2.6, §2.8); the driver writes <case>.absent.
-	if !closureHoldsFixedTable(u, closure) {
-		if err := refuseCardUnsupportedVariableConstructs(u); err != nil {
-			return nil, err
-		}
-	}
+	// THE VARIABLE FORM'S BOUNDARY (docs/SPEC-TABLES.md §11) is the compiler's
+	// now: maps (§2.8), optional fields and arrays (§2.3), enum-keyed arrays
+	// (§2.4, §3.2), the fixed-point and 128-bit kinds (§3), and union arms of
+	// every field type (§2.6) are carried by the variable form, so the backend
+	// refuses none of them; the `was` rows this leg does not carry (§5) are
+	// refused by name in compiler/target_elixir.go.
 
 	// A DECLARATION LOWERS TO A MODULE under the unit's namespace, so one named
 	// for a generated file's module would merge two unrelated modules. The
@@ -99,6 +91,20 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// docs/SPEC-TABLES.md §11); these two are derived from a schema FILE's own
 	// basename, which no unit-level registry can hold, so they are refused here
 	// — beside the same refusal the packet emitter already makes for <Base>.
+	// A FIXED ROOT LOWERS TO A STRUCT MODULE <ns>.<Table> (fixedelixir.go),
+	// and the packet emitter writes <ns>.<Base> for every schema file, so a
+	// fixed table named after its own file is two modules under one name: the
+	// later one loaded replaces the earlier, and elixirc refuses the pair. The
+	// packet emitter leaves a table's name to this backend (internal/codegen/
+	// elixir), so the refusal is here, by name (docs/SPEC-TABLES.md §11).
+	for _, st := range fixedRoots(u) {
+		for _, f := range u.Files {
+			if st.Name == ir.GoExportName(f.Base) {
+				return nil, fmt.Errorf("fixed table %s collides with the module the Elixir packet emitter writes for schema file %s.schema (%s.%s); rename one of them (docs/SPEC-TABLES.md §11)",
+					st.Name, f.Base, ns, st.Name)
+			}
+		}
+	}
 	for decl := range u.DeclFile {
 		for _, suffix := range []string{"Block", "Cook", FixedModuleSuffix} {
 			for _, f := range u.Files {

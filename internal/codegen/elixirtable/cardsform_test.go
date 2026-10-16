@@ -33,9 +33,6 @@ func TestCardConstructsAreNotRefused(t *testing.T) {
 		&ir.Field{Name: "body", Type: ir.FieldType{Kind: ir.TString, Pointer: true}},
 	)
 
-	if err := refuseCardUnsupportedVariableConstructs(unit); err != nil {
-		t.Errorf("card constructs were refused by the boundary: %v", err)
-	}
 	if _, err := Generate(unit); err != nil {
 		t.Errorf("card constructs were refused: %v", err)
 	}
@@ -67,4 +64,3 @@ func TestFixedUnitWithRefusedVariableConstructStillGenerates(t *testing.T) {
 		t.Fatalf("a fixed unit with a refused variable table was refused whole: %v", err)
 	}
 }
-

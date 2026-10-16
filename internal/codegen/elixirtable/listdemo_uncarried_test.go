@@ -13,11 +13,12 @@ import (
 )
 
 // TestListdemoNamesUncarriedRoots pins docs/SPEC-TABLES.md §2.6, §2.8 and §11:
-// tables/lists generates through the elixir target, because it carries
-// unbounded arrays, and the roots that reach a map or a union are named
-// uncarried rather than refusing the unit. A map-only unit, which declares no
-// unbounded array, stays refused by name. No Elixir: this test never leaves
-// the generator.
+// tables/lists generates through the elixir target, and the roots that reach
+// a map or a union are named in @uncarried — the set the cook write and the
+// wire-fuzz roster do not yet walk; the id-table wire and the text form carry
+// them (TestMapsAndUnionArmsOnTheTableWireElixir). A map-only unit, refused by
+// name before the elixir target registered as a map carrier, now generates.
+// No Elixir: this test never leaves the generator.
 //
 // The test is an external package. elixirtable's own tests cannot import
 // compiler: target_elixir.go imports elixirtable, and that cycle is refused.
@@ -75,9 +76,12 @@ table Fleet
     ships map[uint8]Item
 }
 `)
-	_, err = compiler.New().Generate(only, "elixir", compiler.Options{})
-	if err == nil || !strings.Contains(err.Error(), "map") {
-		t.Fatalf("a map-only unit must still be refused by name, got %v", err)
+	files, err = compiler.New().Generate(only, "elixir", compiler.Options{})
+	if err != nil {
+		t.Fatalf("a map-only unit generates now that elixir carries maps (docs/SPEC-TABLES.md §2.8), got %v", err)
+	}
+	if _, ok := files["Table.ex"]; !ok {
+		t.Fatal("a map-only unit generated no Table.ex")
 	}
 }
 

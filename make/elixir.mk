@@ -91,17 +91,25 @@ generated/bench/elixir/.stamp: bin/schema $(SCHEMAS_BENCH)
 # graphdemo (tables/pointers) exercises the pointered variable class
 # (docs/SPEC-TABLES.md §2.1); blobdemo (tables/blobs) the byte buffers (§2.5);
 # listdemo (tables/lists) the unbounded arrays (§2.9); tblp1/tblp2/tblp3 the
-# evolution rows. The variable-class surfaces (wire, json-read, json-write,
-# report) answer every carried instance; a construct outside the class writes
-# <case>.absent rather than a wrong answer.
+# evolution rows; mapdemo (tables/maps) the maps (§2.8); messagedemo
+# (tables/messages) union arms of every field type, arrays of unions and
+# optional arrays (§2.3, §2.6); scalars (tables/scalars) the fixed-point and
+# 128-bit kinds and an enum-keyed array (§2.4, §3). widedemo (examples-wide)
+# is not here: its `fixed table Caption` in Caption.schema is refused by name
+# (two modules named Wide.Caption), so its instances write <case>.absent;
+# TestMapsAndUnionArmsOnTheTableWireElixir proves wstring(N) on its goldens
+# under another file name. The variable-class surfaces (wire,
+# json-read, json-write, report) answer every carried instance; a construct
+# outside the class writes <case>.absent rather than a wrong answer.
 ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblp1:test/tables/P1.schema \
 	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
-	blobdemo:tables/blobs listdemo:tables/lists tblp2:test/tables/P2.schema
+	blobdemo:tables/blobs listdemo:tables/lists tblp2:test/tables/P2.schema \
+	mapdemo:tables/maps messagedemo:tables/messages scalars:tables/scalars
 
-build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
 	@mkdir -p build/tables-generated-elixir
 	@for unit in $(ELIXIR_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -465,17 +473,37 @@ test-elixir: packet-wide-elixir packet-wide-elixir-negative-control
 # the Go oracle bytes and text form; it is a FUNCTIONAL
 # test (it runs the leg's own toolchain through elixirBinary), so
 # SCHEMA_REQUIRE_CORPUS=1 turns a missing toolchain or corpus into a FAILURE,
-# never a skip. The shrunken refusal gate — TestOtherVariableConstructsAreRefusedByName,
-# now only map, optional, enum-keyed array, int128, fixed-point and union arms —
-# and TestListdemoNamesUncarriedRoots (the roots a mixed unit leaves uncarried)
-# ride the same -run. The conformance run answers the wire, json-read,
+# never a skip. TestListdemoNamesUncarriedRoots (the roots the cook write and
+# the wire-fuzz roster leave uncarried) rides the same -run; the refusal gate
+# TestOtherVariableConstructsAreRefusedByName retired with
+# tables-elixir-variable-arms below, which carries every construct it named. The conformance run answers the wire, json-read,
 # json-write and report surfaces for the variable-class instances.
 .PHONY: tables-elixir-variable-class
 tables-elixir-variable-class: build/conformance/manifest.txt
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestVariableClassBeyondCardConstructsElixir|TestOtherVariableConstructsAreRefusedByName|TestListdemoNamesUncarriedRoots'
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestVariableClassBeyondCardConstructsElixir|TestListdemoNamesUncarriedRoots'
 	./build/conformance-harness run --only elixir
 
 test-elixir: tables-elixir-variable-class
+
+# THE VARIABLE CLASS'S REMAINING CONSTRUCTS (docs/SPEC-TABLES.md §2.3, §2.4,
+# §2.6, §2.8, §3, §3.2, §4.12): maps, union arms of every field type and
+# arrays of unions, optional fields and optional arrays, enum-keyed arrays,
+# the fixed-point and 128-bit kinds, and wstring(N).
+# TestMapsAndUnionArmsOnTheTableWireElixir generates tables/maps,
+# tables/messages, tables/scalars and examples-wide through the COMPILER path
+# (`schema generate --lang elixir`) and round-trips every committed instance,
+# and the tables/arms goldens, through the generated Elixir against the Go
+# oracle's wire and text byte for byte. It is a FUNCTIONAL test (it runs the
+# leg's own toolchain), so SCHEMA_REQUIRE_CORPUS=1 turns a missing toolchain
+# into a failure, never a skip. The conformance run answers wire, report,
+# json-read and json-write for the mapdemo, messagedemo and scalars
+# instances (widedemo writes <case>.absent: the module collision above).
+.PHONY: tables-elixir-variable-arms
+tables-elixir-variable-arms: build/conformance/manifest.txt
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run TestMapsAndUnionArmsOnTheTableWireElixir
+	./build/conformance-harness run --only elixir
+
+test-elixir: tables-elixir-variable-arms
 
 # THE BUILDER SIDE (docs/SPEC-TABLES.md §19.1, §7.6). TestBlockBuildAndCookWriteElixir
 # builds the pinned block golden and cooks the carried instances to `schema cook`

@@ -514,8 +514,12 @@ defmodule Driver do
 
   # the variable-form codec a (unit, root) names: <Unit>.Table, which exports
   # load/2, save/2, to_json/2 and from_json/2. nil when the leg has no codec.
+  # a manifest unit key names its module by the unit's package, which is the
+  # key itself except where the schema's package line says otherwise
+  @unit_packages %{"scalars" => "scalardemo", "widedemo" => "wide"}
+
   defp table_module(unit) do
-    mod = Module.concat([Macro.camelize(unit), "Table"])
+    mod = Module.concat([Macro.camelize(Map.get(@unit_packages, unit, unit)), "Table"])
 
     if Code.ensure_loaded?(mod) and function_exported?(mod, :load, 2) and
          function_exported?(mod, :save, 2),
