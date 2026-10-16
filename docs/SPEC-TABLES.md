@@ -11670,10 +11670,11 @@ The default is the full set: a generate without `--surface` is byte-identical
 to one with `--surface wire,fixed,json,cook,block,view,message,retain`.
 
 **Dependencies resolve automatically and are named here.** `wire` is the
-base surface and cannot be dropped on its own: `json`, `cook`, `block`,
-`message` and `retain` each depend on it (the text walk and the accelerators
-drive off the wire codecs and the descriptor vocabulary), so selecting any of
-them implies `wire`. `fixed` and `view` depend on nothing and are leaves.
+base surface and cannot be dropped on its own: `fixed`, `json`, `cook`,
+`block`, `view`, `message` and `retain` each depend on it (the text walk and
+the accelerators drive off the wire codecs and the descriptor vocabulary, and
+`fixed` and `view` both emit code that reads the wire form), so selecting any
+of them implies `wire`. No other surface implies another.
 The emitter never refuses a list — it emits exactly the named surfaces plus
 whatever the named ones imply.
 
