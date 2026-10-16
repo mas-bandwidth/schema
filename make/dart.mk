@@ -178,11 +178,75 @@ tables-dart-standalone-negative-control:
 	@grep -m1 "outside the unit" build/dart-standalone-nc/log
 	@echo "negative control: one planted package import turns the Dart standalone gate RED"
 
+# THE DART ALLOCATION GATE (docs/SPEC-TABLES.md, docs/PORTING.md I1 and I14).
+# Counts new-space scavenges between two stderr markers under --verbose_gc with
+# the semi-space pinned to 1 MB so one 16-byte allocation per record triggers a
+# scavenge every ~30,000 records. Holds every caller-owned row (fixed-load,
+# fixed-measure, fixed-save, block, cook) to zero scavenges under AOT, prints
+# the JIT counts and the variable-class card row beside them, and refuses to
+# certify off the pinned Dart SDK 3.13.2 unless SCHEMA_DART_ALLOC_ANY_SDK=1 is
+# set to report without certifying.
+DART_GC_FLAGS = --verbose_gc --new_gen_semi_initial_size=1 --new_gen_semi_max_size=1
+DART_GC_COUNT = awk '/gcgate: steady phase begins/{on=1;next} /gcgate: steady phase ends/{on=0} on && /Scavenge/{n++} END{print n+0}'
+DART_GC_ITERS ?= 20000
+
+build/dart_gcgate: build/dart-fixed/.stamp build/tables-generated-dart/.stamp cards-dart-generate test/dart-tables/gcgate.dart
+	@mkdir -p build
+	$(DART) analyze test/dart-tables/gcgate.dart
+	$(DART) format --set-exit-if-changed --output=none test/dart-tables/gcgate.dart
+	$(DART) compile exe -o $@ test/dart-tables/gcgate.dart >/dev/null
+
+.PHONY: tables-dart-alloc tables-dart-alloc-negative-control tables-dart-alloc-runtime-negative-control
+tables-dart-alloc: build/dart_gcgate build/fixedform-corpus/.stamp build/cook-fuzz/.stamp
+	$(DART) test/dart-tables/gcgate.dart drive $(DART) $(CURDIR)/build/dart_gcgate $(DART_GC_ITERS)
+
+tables-dart-alloc-negative-control: build/dart_gcgate build/fixedform-corpus/.stamp build/cook-fuzz/.stamp
+	@mkdir -p build/dart-alloc-nc
+	@if SCHEMA_DART_ALLOC_PLANT=fixed-load SCHEMA_DART_ALLOC_ROWS=fixed-load,fixed-save \
+			$(DART) test/dart-tables/gcgate.dart drive $(DART) $(CURDIR)/build/dart_gcgate $(DART_GC_ITERS) \
+			> build/dart-alloc-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a planted allocation per record in fixed-load left the gate green"; \
+		cat build/dart-alloc-nc/log; exit 1; \
+	fi
+	@grep -qE '^  fixed-load +[1-9][0-9]* +[0-9]+ +<= 0 +\[FAIL\]' build/dart-alloc-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: fixed-load did not go red on the planted allocation"; \
+		  cat build/dart-alloc-nc/log; exit 1; }
+	@grep -qE '^  fixed-save +0 +[0-9]+ +<= 0 +\[PASS\]' build/dart-alloc-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: neighbour row fixed-save did not stay green (localisation failed)"; \
+		  cat build/dart-alloc-nc/log; exit 1; }
+	@grep -E '^  fixed-(load|save)' build/dart-alloc-nc/log
+	@echo "negative control: one planted allocation per record turns fixed-load RED while fixed-save stays GREEN"
+
+tables-dart-alloc-runtime-negative-control: build/dart_gcgate build/fixedform-corpus/.stamp build/cook-fuzz/.stamp
+	@mkdir -p build/dart-alloc-runtime-nc
+	@if SCHEMA_DART_ALLOC_SDK_VERSION=0.0.0 SCHEMA_DART_ALLOC_ANY_SDK=0 SCHEMA_DART_ALLOC_ROWS=fixed-load \
+			$(DART) test/dart-tables/gcgate.dart drive $(DART) $(CURDIR)/build/dart_gcgate 2000 \
+			> build/dart-alloc-runtime-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the allocation gate certified on stand-in SDK 0.0.0"; \
+		cat build/dart-alloc-runtime-nc/log; exit 1; \
+	fi
+	@grep -qE '^  fixed-load +0 +[0-9]+ +<= 0 +\[PASS\]' build/dart-alloc-runtime-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate did not print its observations before refusing"; \
+		  cat build/dart-alloc-runtime-nc/log; exit 1; }
+	@grep -Fq 'FAILED: allocation certification requires Dart SDK 3.13.2 (pinned in make/dart.mk), running 0.0.0' build/dart-alloc-runtime-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the refusal did not name both the pinned 3.13.2 and running 0.0.0 SDKs"; \
+		  cat build/dart-alloc-runtime-nc/log; exit 1; }
+	@grep -Fq 'NOT CERTIFIED' build/dart-alloc-runtime-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate did not state NOT CERTIFIED"; \
+		  cat build/dart-alloc-runtime-nc/log; exit 1; }
+	@SCHEMA_DART_ALLOC_SDK_VERSION=0.0.0 SCHEMA_DART_ALLOC_ANY_SDK=1 SCHEMA_DART_ALLOC_ROWS=fixed-load \
+		$(DART) test/dart-tables/gcgate.dart drive $(DART) $(CURDIR)/build/dart_gcgate 2000 \
+		> build/dart-alloc-runtime-nc/any.log 2>&1
+	@grep -Fq 'NOT CERTIFIED' build/dart-alloc-runtime-nc/any.log || \
+		{ echo "NEGATIVE CONTROL FAILED: SCHEMA_DART_ALLOC_ANY_SDK=1 did not report NOT CERTIFIED"; \
+		  cat build/dart-alloc-runtime-nc/any.log; exit 1; }
+	@echo "negative control: Dart allocation gate refuses stand-in SDK 0.0.0 and SCHEMA_DART_ALLOC_ANY_SDK=1 reports without certifying"
+
 # THE DART PORT'S RELEASE GATE. certify.yml DERIVES this target by name, so a
 # port lands its expensive half by adding the target and nothing else: two
 # hundred and eighty thousand forgery-fuzz mutants over the block and cook
 # readers under two seeds (20,000 per fixture, seven fixtures, two seeds), and
-# the three planted controls. The fuzz is measured in minutes and answers a
+# the planted controls. The fuzz is measured in minutes and answers a
 # question about the runtime under hostile input rather than about the diff,
 # which is what makes it a certification instrument and not an iteration one.
 .PHONY: tables-dart-release
@@ -190,6 +254,9 @@ tables-dart-release:
 	$(MAKE) tables-dart-fuzz SEED=1 DART_FUZZ_MUTANTS=20000
 	$(MAKE) tables-dart-fuzz SEED=2 DART_FUZZ_MUTANTS=20000
 	$(MAKE) tables-dart-fuzz-negative-control
+	$(MAKE) tables-dart-alloc
+	$(MAKE) tables-dart-alloc-negative-control
+	$(MAKE) tables-dart-alloc-runtime-negative-control
 	$(MAKE) tables-dart-fixed-form-negative-control
 	$(MAKE) tables-dart-names-negative-control
 	$(MAKE) tables-dart-standalone-negative-control
@@ -420,6 +487,9 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 	$(MAKE) tables-dart-standalone-negative-control
 	$(MAKE) tables-dart-fuzz DART_FUZZ_MUTANTS=1500
 	$(MAKE) tables-dart-fuzz-negative-control
+	$(MAKE) tables-dart-alloc
+	$(MAKE) tables-dart-alloc-negative-control
+	$(MAKE) tables-dart-alloc-runtime-negative-control
 	# THE FIXED FORM against the C++ reference's own bytes (§3.4)
 	$(MAKE) tables-dart-fixed-form
 	$(MAKE) tables-dart-fixed-form-negative-control
