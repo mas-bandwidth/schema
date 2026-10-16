@@ -338,6 +338,12 @@ func abs(p string) string {
 	}
 	return s
 }
+
+// pairedSchemas are the paired unit's two schema files, generated as ONE unit
+// for every leg (and a second time, beside the lineage's lock, for the C plan
+// lane: table.go, buildCPlan).
+var pairedSchemas = []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"}
+
 func binary(wire, lang string) string {
 	// AN INTERPRETED LEG HAS NO BUILD PRODUCT, so the thing this driver pins,
 	// hashes and runs is the runner source itself. Its generated modules are
@@ -493,7 +499,7 @@ func runner(wire, lang string, args ...string) command {
 		a = []string{"elixir", elixirLeg(wire)}
 		env = []string{"PATH=" + beamPath() + string(os.PathListSeparator) + os.Getenv("PATH")}
 	}
-	if wire == "table" {
+	if wire == "table" || wire == "plan" {
 		a = append(a, "--indexed", "--wire-dir", "bench/paired/corpus", "--variant-dir", "bench/paired/corpus")
 	} else {
 		a = append(a, "--wire-dir", "testdata/wire", "--variant-dir", "bench/corpus/variants")
@@ -590,7 +596,7 @@ func generateAndBuild(langs []string) error {
 		return e
 	}
 	for _, lang := range langs {
-		paired := []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"}
+		paired := append([]string(nil), pairedSchemas...)
 		if lang == "elixir" {
 			// THE UNIT'S SCHEMA FILES ARE COPIED UNDER OTHER BASENAMES, and only
 			// that: a declaration whose name is its own file's basename collides
@@ -685,6 +691,15 @@ func generateAndBuild(langs []string) error {
 			a = append(a, "-Igenerated/bench/c", "-I"+serC, "bench/c/bench_main.c", filepath.Join(serC, "serialize.c"), "-o", binary("packet", lang), "-lm")
 			if e := run(a...); e != nil {
 				return e
+			}
+			// AND THE PLAN LANE'S BINARY (BENCH-STANDARD.md §1.10), when the
+			// lineage corpus is on the tree: the same runner source, against
+			// the unit generated beside the lineage's lock (table.go,
+			// buildCPlan). -mode plan-read -langs c runs this one.
+			if cPlanRefusal(fileExists) == "" {
+				if e := buildCPlan(schema, cc, cFlags, serC); e != nil {
+					return e
+				}
 			}
 		case "go":
 			if e := os.WriteFile("generated/bench/paired/go/go.mod", []byte("module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../../serialize.go\n"), 0644); e != nil {
@@ -920,6 +935,16 @@ func generateAndBuild(langs []string) error {
 	info.Tools["cpp_packet_flags"] = strings.Join(cppFlags, " ") + " -DSERIALIZE_RELEASE"
 	info.Tools["cpp_table_flags"] = strings.Join(cppFlags, " ") + " -DBENCH_MATCHED"
 	info.Tools["c_packet_flags"] = strings.Join(cFlags, " ")
+	if contains(langs, "c") && cPlanRefusal(fileExists) == "" {
+		info.Tools["c_plan_flags"] = strings.Join(cFlags, " ") + " " + strings.Join(cPlanDefines, " ")
+		for _, p := range append(cPlanModules(), binary("plan", "c")) {
+			h, e := hashFile(p)
+			if e != nil {
+				return e
+			}
+			info.Binaries[p] = h
+		}
+	}
 	info.Tools["c_table_flags"] = strings.Join(cFlags, " ") + " -DBENCH_MATCHED -ffp-contract=off"
 	if contains(langs, "rust") {
 		// The Rust leg's "flags" are cargo settings; the level is also stamped
@@ -946,7 +971,13 @@ func generateAndBuild(langs []string) error {
 		return err
 	}
 	info.Binaries["build/paired/corpus"] = hash
-	for _, p := range []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema", "testdata/wire/bench_mixed.bin", "bench/corpus/variants/bench_mixed.variants.bin", "bench/paired/corpus/bench_table.bin", "bench/paired/corpus/bench_table.variants.bin", "bench/paired/corpus/bench_table.lengths", "bench/paired/corpus/bench_fixed.bin", "bench/paired/corpus/bench_fixed.layout"} {
+	corpora := []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema", "testdata/wire/bench_mixed.bin", "bench/corpus/variants/bench_mixed.variants.bin", "bench/paired/corpus/bench_table.bin", "bench/paired/corpus/bench_table.variants.bin", "bench/paired/corpus/bench_table.lengths", "bench/paired/corpus/bench_fixed.bin", "bench/paired/corpus/bench_fixed.layout"}
+	if contains(langs, "c") && cPlanRefusal(fileExists) == "" {
+		// the C plan lane's lineage, lock included: a re-pin after the build
+		// refuses the sitting like any other corpus change
+		corpora = append(corpora, cLineageCorpus...)
+	}
+	for _, p := range corpora {
 		h, e := hashFile(p)
 		if e != nil {
 			return e
@@ -1438,7 +1469,7 @@ func renderReport(dir string, writeOutputs bool) error {
 	return nil
 }
 func main() {
-	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, table report, plan-read (the read arm, C++), run confirmation, or render")
+	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, table report, plan-read (the read arm, C++ or C), run confirmation, or render")
 	out := flag.String("out", "", "new results directory (or existing directory for render)")
 	langsFlag := flag.String("langs", "cpp,c,go,cs", "comma-separated required build/gate languages")
 	rounds := flag.Int("rounds", 7, "interleaved measured rounds")
@@ -1453,7 +1484,7 @@ func main() {
 	// Recorded, never applied: the caller pins the sitting (bench/paired/nine.sh
 	// runs the whole pass under `bench-lane <core>` so every runner inherits it)
 	// and this only carries that fact into the rendered header.
-	lane := flag.String("lane", "", "core this sitting was pinned to, recorded in the table header, table mode only")
+	lane := flag.String("lane", "", "core this sitting was pinned to, recorded in the board header, table and plan-read modes only")
 	flag.Parse()
 	fail := func(e error) { fmt.Fprintln(os.Stderr, "paired:", e); os.Exit(1) }
 	if _, e := os.Stat("bench/corpus/Bench.schema"); e != nil {
@@ -1487,8 +1518,8 @@ func main() {
 	if *mode != "build" && *mode != "gate" && *mode != "run" && *mode != "fast" && *mode != "table" && *mode != "table-langs" && *mode != "plan-read" {
 		fail(errors.New("unknown mode"))
 	}
-	if *lane != "" && *mode != "table" {
-		fail(errors.New("-lane is recorded by table mode only"))
+	if *lane != "" && *mode != "table" && *mode != "plan-read" {
+		fail(errors.New("-lane is recorded by table and plan-read modes only"))
 	}
 	if *mode == "run" && strings.TrimSpace(*receipt) == "" {
 		fail(errors.New("run requires -quiet-window with the operator’s READY/START receipt or reference"))
@@ -1545,7 +1576,7 @@ func main() {
 		return
 	}
 	if *mode == "plan-read" {
-		if e := planReadPass(langs, *out, *rounds, info, *receipt); e != nil {
+		if e := planReadPassOn(langs, *out, *rounds, info, *receipt, *lane); e != nil {
 			fail(e)
 		}
 		return
