@@ -319,17 +319,15 @@ void _runPhase(String phase, int n) {
             keyedPlan,
             demoReport,
           );
-          final n3 = (i & 7) == 0
-              ? pack.packConfigFixedLoad(
-                  packValues,
-                  n3Seed,
-                  packBytes,
-                  packBytes.length,
-                  packPlan,
-                  demoReport,
-                )
-              : n3Seed;
-          if (n1 != poolSize || n2 != poolSize || n3 != n3Seed) {
+          final n3 = pack.packConfigFixedLoad(
+            packValues,
+            poolSize,
+            packBatchBytes,
+            packBatchBytes.length,
+            packPlan,
+            demoReport,
+          );
+          if (n1 != poolSize || n2 != poolSize || n3 != poolSize) {
             exit(3);
           }
           for (var k = 0; k < poolSize; k++) {
@@ -367,9 +365,11 @@ void _runPhase(String phase, int n) {
             poolSize,
             keyedSaveBuf,
           );
-          final w3 = (i & 7) == 0
-              ? pack.packConfigFixedSave(packValues, n3Seed, packSaveBuf)
-              : packBatchLen;
+          final w3 = pack.packConfigFixedSave(
+            packValues,
+            poolSize,
+            packSaveBuf,
+          );
           if (w1 <= 0 || w2 <= 0 || w3 <= 0) {
             exit(3);
           }
