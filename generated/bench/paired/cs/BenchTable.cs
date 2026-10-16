@@ -2742,6 +2742,13 @@ namespace Bench
         {
             public enum Verdict { Ok, Refused, Damaged, BodyStopped }
 
+            // A null report is DISCARDED, not created: one cached instance carries the
+            // ledger for a caller who supplies no report, so a null-report read
+            // allocates nothing (docs/SPEC-TABLES.md §6.5). The head of every read
+            // resets it exactly as it resets a caller-supplied report, so no earlier
+            // read's verdict leaks into the next.
+            public static readonly TableReport Ignored = new TableReport();
+
             // One schema-bounded vocabulary lives on the caller's stack for a save.
             // Collect follows the emitted fields in order. Measuring and writing then
             // look up stable references, so a nested length never needs patching.
@@ -5138,7 +5145,7 @@ namespace Bench
             static Verdict Finish(TableReport report, Verdict verdict) { report.Verdict = verdict; return verdict; }
             public static Verdict Load(object value, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableReport report)
             {
-                if (report == null) { report = new TableReport(); }
+                if (report == null) { report = Ignored; }
                 type.Reset(value);
                 report.Refused = false; report.Reason = null;
                 if (bytes.Length == 0) { Damage(report); return Finish(report, Verdict.Damaged); }
@@ -8085,8 +8092,8 @@ namespace Bench
             else if (value.AimY > 1.0f) { value.AimY = 1.0f; clamped++; }
             if (value.AimZ < -1.0f) { value.AimZ = -1.0f; clamped++; }
             else if (value.AimZ > 1.0f) { value.AimZ = 1.0f; clamped++; }
-            if (value.Flux < unchecked((Int128)(((UInt128)0xfffffff000000000ul << 64) | 0x0ul))) { value.Flux = unchecked((Int128)(((UInt128)0xfffffff000000000ul << 64) | 0x0ul)); clamped++; }
-            else if (value.Flux > unchecked((Int128)(((UInt128)0x1000000000ul << 64) | 0x0ul))) { value.Flux = unchecked((Int128)(((UInt128)0x1000000000ul << 64) | 0x0ul)); clamped++; }
+            if (((System.Int128)value.Flux) < unchecked((Int128)(((UInt128)0xfffffff000000000ul << 64) | 0x0ul))) { value.Flux = unchecked((Int128)(((UInt128)0xfffffff000000000ul << 64) | 0x0ul)); clamped++; }
+            else if (((System.Int128)value.Flux) > unchecked((Int128)(((UInt128)0x1000000000ul << 64) | 0x0ul))) { value.Flux = unchecked((Int128)(((UInt128)0x1000000000ul << 64) | 0x0ul)); clamped++; }
             if (value.Ping > 64000) { value.Ping = 64000; clamped++; }
             // bits(24) width clamp
             if (value.CrcHint > 16777215) { value.CrcHint = 16777215; clamped++; }

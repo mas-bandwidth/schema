@@ -41,6 +41,7 @@ static partial class Program
         TestFixedSlackCase();
         TestFixedNegativeControl();
         TestFixedFormHeaderProbes();
+        TestFixedHashOracleCase();
         // SKIPPED BY NAME, NOT DELETED (docs/FIXED-FORM-ALGORITHM.md §5.6, and
         // §5.9 #23 for a suite whose verb is a printed line): TestFixedLayoutValidation
         // asserts the RUN-TIME WALK of a stranger's layout, which §5 retires —
@@ -974,11 +975,61 @@ static partial class Program
         }
     }
 
+    // HashOf IS THE TEST'S OWN WRITER-SIDE HASH, and the emitted runtime's no
+    // longer: cs/R7 (fixedroadmap_t12) retired TableFixedWire.HashOf, because a
+    // runtime never computes a hash from layout bytes it holds (§5.3) — the
+    // identity lane is an index comparison. A FORGER still has to stamp a
+    // header, so the hash lives here, beside the files it forges. It is the
+    // Go oracle's walk, ir.TableFixedLayoutHash: fnv1a64 over the layout bytes
+    // and then the definitions digest (bill §13). A hostile layout has no
+    // schema and so no digest. TestFixedHashOracleCase pins it to the oracle
+    // for every fixed root this program compiles.
+    static ulong HashOf(ReadOnlySpan<byte> layout, ReadOnlySpan<byte> digest = default)
+    {
+        ulong h = 0xcbf29ce484222325ul;
+        for (int i = 0; i < layout.Length; ++i)
+        {
+            h ^= layout[i];
+            h *= 0x100000001b3ul;
+        }
+        for (int i = 0; i < digest.Length; ++i)
+        {
+            h ^= digest[i];
+            h *= 0x100000001b3ul;
+        }
+        return h;
+    }
+
+    // THE ORACLE PIN: every fixed root this program compiles, from
+    // FixedHashOracle.cs, which TestCSharpHashOfPinsTheGoOracle writes from the
+    // Go oracle and holds byte for byte. HashOf over the emitted layout and the
+    // carried digest must be the oracle's number AND the compiled constant.
+    static void TestFixedHashOracleCase()
+    {
+        Check(FixedHashOracleRoots.Length > 0, "hash oracle: the fixture carries the fixed roots");
+        int bad = 0;
+        foreach (var r in FixedHashOracleRoots)
+        {
+            ulong h = HashOf(r.Layout, r.Digest);
+            if (h != r.Oracle || r.Oracle != r.Emitted)
+            {
+                bad++;
+                Console.WriteLine("hash oracle: " + r.Root + " HashOf=0x" + h.ToString("x16") + " oracle=0x" + r.Oracle.ToString("x16") + " emitted=0x" + r.Emitted.ToString("x16"));
+            }
+        }
+        Check(bad == 0, "hash oracle: HashOf(layout ‖ digest) is the Go oracle's hash and the compiled <Root>FixedHash for every fixed root (" + FixedHashOracleRoots.Length + ")");
+        // A FLIPPED BYTE MOVES IT: the pin is not vacuous.
+        var first = FixedHashOracleRoots[0];
+        byte[] flipped = (byte[])first.Layout.Clone();
+        flipped[flipped.Length - 1] ^= 0x01;
+        Check(HashOf(flipped, first.Digest) != first.Oracle, "hash oracle: a flipped layout byte moves HashOf off the oracle");
+    }
+
     static byte[] LayoutFileOf(byte[] layout)
     {
         byte[] f = new byte[FX1.Schema.TableFixedWire.HeaderBytes + 4 + layout.Length];
         f[0] = 3;
-        BinaryPrimitives.WriteUInt64LittleEndian(f.AsSpan(FX1.Schema.TableFixedWire.HashAt), FX1.Schema.TableFixedWire.HashOf(layout));
+        BinaryPrimitives.WriteUInt64LittleEndian(f.AsSpan(FX1.Schema.TableFixedWire.HashAt), HashOf(layout));
         BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(FX1.Schema.TableFixedWire.HeaderBytes), (uint)layout.Length);
         layout.CopyTo(f, FX1.Schema.TableFixedWire.HeaderBytes + 4);
         return f;
