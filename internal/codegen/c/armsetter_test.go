@@ -111,6 +111,49 @@ func TestUnionArmSetterSetsTagAndArmC(t *testing.T) {
 		}
 	})
 
+	// THE SELECTOR'S FLAT NAME IS CLAIMED. snake(union) + "_select_" + arm is
+	// many-to-one across legal declarations: Foo's arm select_bar and
+	// FooSelect's arm bar both spell foo_select_select_bar, one static C
+	// function defined twice in one translation unit. The checker claims the
+	// spelling in its one registry, so the pair is refused at the source
+	// instead of failing the C compile; each union alone still checks, and
+	// emits exactly the name the claim names.
+	t.Run("colliding selector names are refused by the checker", func(t *testing.T) {
+		t.Parallel()
+		for _, src := range []string{
+			"package t\ntype Arm { x uint8 }\nunion Foo { select_bar Arm }\n",
+			"package t\ntype Arm { x uint8 }\nunion FooSelect { bar Arm }\n",
+			"package t\nunion Foo { select_bar }\n",
+			"package t\nunion FooSelect { bar }\n",
+		} {
+			files, err := Generate(unitFromSource(t, "Alone.schema", src))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(files["Alone.h"]), " foo_select_select_bar( ") {
+				t.Errorf("the claim must name the emitted selector; %q does not emit foo_select_select_bar", src)
+			}
+		}
+		for _, src := range []string{
+			"package t\ntype Arm { x uint8 }\nunion Foo { select_bar Arm }\nunion FooSelect { bar Arm }\n",
+			"package t\nunion Foo { select_bar }\nunion FooSelect { bar }\n",
+			"package t\ntype Arm { x uint8 }\nunion Foo { bar Arm }\ntype foo_select_bar { y uint8 }\n",
+		} {
+			f, perrs := parser.Parse("Clash.schema", []byte(src))
+			if len(perrs) > 0 {
+				t.Fatalf("parse: %v", perrs[0])
+			}
+			_, cerrs := check.Unit([]check.SourceFile{{Path: "Clash.schema", Name: "Clash.schema", Base: "Clash", Bytes: []byte(src), AST: f}})
+			if len(cerrs) == 0 {
+				t.Errorf("%q checks clean, but its C header defines one symbol twice", src)
+				continue
+			}
+			if msg := fmt.Sprint(cerrs); !strings.Contains(msg, "both generate the symbol foo_select_") || !strings.Contains(msg, "selector (C form)") {
+				t.Errorf("%q is refused, but not as a selector collision: %s", src, msg)
+			}
+		}
+	})
+
 	t.Run("a forgotten tag goes red", func(t *testing.T) {
 		t.Parallel()
 		forget := regexp.MustCompile(`(?m)^    value->type = [A-Z0-9_]+;\n`)

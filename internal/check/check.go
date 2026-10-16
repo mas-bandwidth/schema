@@ -3733,6 +3733,18 @@ func (c *checker) checkClaimedNames() {
 				addRust(ir.RustConstName(name+"Type")+"_"+ir.RustConstName(v.Name), whyCTag, v.Pos, name+"Type"+ir.GoExportName(v.Name))
 			}
 			addRust("enum_name_"+ir.RustSnake(name+"Type"), fmt.Sprintf("union %s's generated tag debug-name function (C form)", name), d.Pos)
+			// the C per-arm selectors (#449): <snake(union)>_select_<arm>,
+			// one static function per arm in the data header. The spelling is
+			// MANY-TO-ONE across legal declarations — Foo's arm select_bar and
+			// FooSelect's arm bar both become foo_select_select_bar — and an
+			// unclaimed pair was a redefinition in the C header while the
+			// schema checked clean. Spelled exactly as internal/codegen/c's
+			// emitUnionSelectors spells it; TestUnionArmSetterSetsTagAndArmC
+			// holds the two together.
+			for _, v := range d.Variants {
+				addRust(ir.RustSnake(name)+"_select_"+v.Name,
+					fmt.Sprintf("union %s's generated arm %s selector (C form)", name, v.Name), v.Pos)
+			}
 			// THE UNION TWIN (docs/SPEC-TABLES.md §7.2, §15): the blittable
 			// `<Name>Row` a union takes in the Rust table surface, and the
 			// `#[repr(C)]` overlay of its arms beside it. C++ spells the
