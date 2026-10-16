@@ -356,6 +356,7 @@ func TestReadArmElixir(t *testing.T) {
 		"# corpus_id(identity) 0930f96c8320a75d / corpus_id(plan) 0930f96c8320a75d",
 		"plan (lineage file) 995.4 B/record",
 		"# anchor: none for Elixir",
+		"# checks: table=contract, packet C/C++/C#=removed, packet Go=always, packet Elixir=contract (§1.9)\n",
 		"elixir         1500.0       7000.0         1650.0    PASS           FAIL         4.67",
 		"elixir `bench_plan_read` (plan lane, family table)",
 		"plan/identity is REPORTED, never a verdict",

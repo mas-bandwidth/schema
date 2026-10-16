@@ -1184,7 +1184,7 @@ func (b readArmBoard) markdown() string {
 	} else {
 		fmt.Fprintf(&w, "# bytes_per_op: fixed %.1f B/record, packet %.0f B/record (§5.3 rule 2 — the division is this driver's alone)\n", b.FixedBytes, b.PacketBytes)
 	}
-	w.WriteString("# checks: table=contract, packet C/C++/C#=removed, packet Go=always (§1.9)\n")
+	w.WriteString(checksLine(leg))
 	if leg != "cpp" {
 		fmt.Fprintf(&w, "# anchor: none for %s (SPEC-TABLES §3.4's straight-line reference, %s, is the C++ leg's alone)\n", legTitle(leg), anchorSource)
 	} else if b.Anchor.Refusal != "" {
@@ -1294,9 +1294,17 @@ func planReadPass(langs []string, out string, rounds int, info buildInfo, receip
 // readArmLegs are the legs whose runner carries `--read-arm` on this tree.
 var readArmLegs = []string{"cpp", "c", "elixir"}
 
-// readArmIterationsFor is the per-sample record count for a read-arm sitting:
-// 4,000,000 for native legs, 400,000 for the BEAM leg so each sample stays comfortably
-// above §2.1's 200ms floor without dragging a 7-round sitting across minutes.
+// checksLine is the board's §1.9 checks axis. It names the measured leg's
+// packet axis as expectedChecks has it: the Elixir board's packet row is
+// checks=contract, which the C/C++/C#/Go sentence alone never says.
+func checksLine(leg string) string {
+	line := "# checks: table=contract, packet C/C++/C#=removed, packet Go=always"
+	if leg == "elixir" {
+		line += ", packet Elixir=" + expectedChecks("elixir", "packet")
+	}
+	return line + " (§1.9)\n"
+}
+
 // planGateClaim is the sentence the board prints for what the leg's plan gate
 // checked before the clock. It names only checks the leg's runner makes: the
 // Elixir runner (bench/tables/elixir/runner.exs gates P2 to P4) pins the plan's
@@ -1309,6 +1317,9 @@ func planGateClaim(leg string) string {
 	return "its gate before the clock requires 64 records read with no counter raised but widened, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's"
 }
 
+// readArmIterationsFor is the per-sample record count for a read-arm sitting:
+// 4,000,000 for native legs, 400,000 for the BEAM leg so each sample stays comfortably
+// above §2.1's 200ms floor without dragging a 7-round sitting across minutes.
 func readArmIterationsFor(leg string) int64 {
 	if leg == "elixir" {
 		return 400000
