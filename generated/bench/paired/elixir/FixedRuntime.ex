@@ -398,8 +398,11 @@ defmodule Bench.FixedRuntime do
 
   @doc """
   A `string(N)`'s used bytes: well-formed UTF-8 with no zero among them, or
-  the field's declared default and `malformed`. An ABSENT optional does not
-  run the rule — the payload is unspecified and nobody wrote it (§3.4).
+  a REFUSAL BY NAME. An ABSENT optional does not run the rule — the payload is
+  unspecified and nobody wrote it (§3.4). ILL-FORMED TEXT IN THE USED UNITS
+  refuses the read by name rather than landing the default (§4.5 fix 11, the
+  ruling this page gives where §3.4 disagrees): the used units alone are held,
+  never the slack, and the refusal is `text_ill_formed`.
   """
   def text(used, default, m), do: text(used, default, m, true)
 
@@ -408,8 +411,8 @@ defmodule Bench.FixedRuntime do
   end
 
   @doc """
-  A `wstring(N)`'s used units: paired UTF-16 with no zero unit, or the
-  field's declared default and `malformed`. The same present-flag rule.
+  A `wstring(N)`'s used units: paired UTF-16 with no zero unit, or a
+  REFUSAL BY NAME (`text_ill_formed`), on the same present-flag rule.
   """
   def wtext(used, default, m), do: wtext(used, default, m, true)
 
@@ -869,7 +872,7 @@ defmodule Bench.FixedRuntime do
   """
   def compile(theirs, mine, dst, capacity, report) do
     record = size_at(theirs, 0)
-    {acc, report} = match_children(theirs, 0, 0, mine, 0, dst, 0, nil, 0, {[], 0}, report, true)
+    {acc, report} = match_children(theirs, 0, 0, mine, 0, dst, 0, [], [], {[], 0}, report, true)
     {entries, n} = acc
 
     cond do
@@ -912,14 +915,24 @@ defmodule Bench.FixedRuntime do
   # reached past it would read the NEXT record's bytes.
   defp any_past?(entries, record), do: Enum.any?(entries, fn e -> src_end(e) > record end)
 
-  # A GUARD IS AN OFFSET AND A WIDTH, never an offset alone: `argw` is the
-  # WRITER'S tag width in bytes, clamped to 1..8, and a zero reads as one
-  # (docs/FIXED-FORM-ALGORITHM.md §5.2). The pair rides together so every push
-  # beneath a union carries the width the tag is COMPARED at.
-  defp guarded(acc, nil, _tag, entry), do: push(acc, entry)
+  # A GUARD CHAIN IS OFFSET+WIDTH LINKS, OUTERMOST FIRST (§4.1, §5.8 row 6):
+  # guards is the links {at, argw} and tags the parallel ordinals, the outer
+  # union's first and each inner union's next, so an arm inside an arm answers
+  # to EVERY tag that rode above it and not only its own. argw is the writer's
+  # tag width in bytes, clamped to 1..8, and a zero reads as one
+  # (docs/FIXED-FORM-ALGORITHM.md §5.2). The chain's only bound is the layout's
+  # own depth, 64, the same walk bound ir.TableFixedMaxDepth holds.
+  defp guarded(acc, [], _tags, entry), do: push(acc, entry)
 
-  defp guarded(acc, {guard, argw}, tag, entry),
-    do: push(acc, {:guard, guard, tag, argw, entry})
+  defp guarded(acc, guards, tags, entry) do
+    inner =
+      [guards, tags]
+      |> Enum.zip()
+      |> Enum.reverse()
+      |> Enum.reduce(entry, fn {{at, argw}, tag}, e -> {:guard, at, tag, argw, e} end)
+
+    push(acc, inner)
+  end
 
   # ZERO MEANS ONE, because one is the width a tag had when this lane did not
   # exist, and anything past eight clamps to eight (§5.2).
@@ -1410,7 +1423,13 @@ defmodule Bench.FixedRuntime do
             # WIDTH: a one-byte compare fires arm 1 on a foreign tag of 0x0101,
             # and an ordinal past 255 under a wider tag could never match at
             # all (§5.2, §7 fix 12).
-            acc = push(acc, {:guard, their_at, j + 1, argw, {:const, aux_at, my_tag, k + 1}})
+            acc =
+              guarded(
+                acc,
+                guard ++ [{their_at, argw}],
+                tag ++ [j + 1],
+                {:const, aux_at, my_tag, k + 1}
+              )
 
             compile_entry(
               theirs,
@@ -1420,8 +1439,8 @@ defmodule Bench.FixedRuntime do
               my_arm,
               dst,
               at,
-              {their_at, argw},
-              j + 1,
+              guard ++ [{their_at, argw}],
+              tag ++ [j + 1],
               acc,
               report,
               census
@@ -1607,18 +1626,10 @@ defmodule Bench.FixedRuntime do
         if text_ok?(flavour, binary_part(take, 0, v * unit)) do
           step(rest, body, [{aux, take}, {dst, <<v::little-signed-32>>} | writes], report)
         else
-          # A PAYLOAD THAT IS NOT THE TEXT ITS KIND SAYS IT IS is DAMAGE and not
-          # data, and the verdict is the one every form reaches: THE FIELD READS
-          # ITS DECLARED DEFAULT, one damage flag fires, and the rest of the
-          # record stands. SPEC.md §4.7 refuses the whole read on the packet
-          # wire because a packet has no position after a field that did not
-          # decode; a FIXED RECORD IS POSITIONAL, so the damage is one field's.
-          #
-          # LANDING THE DEFAULT COSTS NOTHING HERE. A field with no write in the
-          # plan's output is a GAP, and the assembler fills every gap from the
-          # PREFILL — which is this type's declared defaults, the string's
-          # length in front of its bytes. So the answer is the absence of an
-          # answer, which is the same mechanism that answers "absent field".
+          # A PAYLOAD THAT IS NOT THE TEXT ITS KIND SAYS IT IS is a REFUSAL BY
+          # NAME (§4.5 fix 11, the ruling this page gives where §3.4 disagrees):
+          # the read refuses `text_ill_formed` and writes nothing, refusing the
+          # whole read as the packet reader does rather than landing a default.
           step(rest, body, writes, %{report | malformed: true})
         end
 
