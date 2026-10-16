@@ -44,7 +44,7 @@ func TestRoundTrip(t *testing.T) {
 		markers: map[Surface][]string{
 			SurfaceFixed:   {"RootFixedSave("},
 			SurfaceCook:    {"RootCookMeasure("},
-			SurfaceMessage: {"RootSaveMessageBody("},
+			SurfaceMessage: {"RootSaveMessageBody(", "func AnnounceMeasure(", "func AnnounceRead(", "func Announce(", "type TableVocabulary"},
 			SurfaceRetain:  {"RootLoadRetainMessages"},
 			SurfaceJSON:    {"RootFromJson("},
 		},
@@ -75,7 +75,7 @@ func TestRoundTrip(t *testing.T) {
 		variable: true,
 		markers: map[Surface][]string{
 			SurfaceCook:    {"RootCookMeasure("},
-			SurfaceMessage: {"RootSaveMessageBody("},
+			SurfaceMessage: {"RootSaveMessageBody(", "func AnnounceMeasure(", "func AnnounceRead(", "func Announce(", "type TableVocabulary"},
 			SurfaceRetain:  {"RootSaveRetain("},
 			SurfaceJSON:    {"RootFromJson("},
 		},

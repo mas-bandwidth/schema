@@ -255,7 +255,14 @@ func GenerateSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, surf Su
 	emitRuntime := func(g *tableGen) {
 		g.needsMath = true
 		g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
-		g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u))
+		runtime := tableRuntimeForUnit(regional) + tableRefusalSource + tableWireRuntime(u)
+		if surf.Has(SurfaceMessage) {
+			// the message form API (docs/SPEC-TABLES.md §8.4) is a surface of
+			// its own: it is emitted only when the list names it, never for
+			// wire alone
+			runtime += tableMessageRuntime(u)
+		}
+		g.pf("%s", runtime)
 		if surf.Has(SurfaceFixed) {
 			g.pf("%s", tableFixedRuntime)
 		}
