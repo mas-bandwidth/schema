@@ -662,13 +662,12 @@ defmodule Bench.BenchFixed do
       end)
 
     acc =
-      <<acc::binary, 0::size((4 - n_loadout) * 1)-unit(8),
-        byte_size(v_player_name)::little-signed-32, v_player_name::binary,
-        0::size(R.text_slack(v_player_name, 15))-unit(8), byte_size(v_payload)::little-signed-32,
-        v_payload::binary, 0::size(R.text_slack(v_payload, 16))-unit(8),
-        R.f32_bits(v_aim_x)::little-unsigned-32, R.f32_bits(v_aim_y)::little-unsigned-32,
-        R.f32_bits(v_aim_z)::little-unsigned-32, R.f32_bits(v_recoil)::little-unsigned-32,
-        R.f64_bits(v_drift)::little-unsigned-64,
+      <<acc::binary, 0::size(4 - n_loadout)-unit(8), byte_size(v_player_name)::little-signed-32,
+        v_player_name::binary, 0::size(R.text_slack(v_player_name, 15))-unit(8),
+        byte_size(v_payload)::little-signed-32, v_payload::binary,
+        0::size(R.text_slack(v_payload, 16))-unit(8), R.f32_bits(v_aim_x)::little-unsigned-32,
+        R.f32_bits(v_aim_y)::little-unsigned-32, R.f32_bits(v_aim_z)::little-unsigned-32,
+        R.f32_bits(v_recoil)::little-unsigned-32, R.f64_bits(v_drift)::little-unsigned-64,
         R.fits(v_wide_key, 128, false)::little-unsigned-128,
         R.ranged(v_flux, @r_bench_mixed_flux)::little-signed-128,
         R.ranged(v_ping, @r_bench_mixed_ping)::little-unsigned-16,

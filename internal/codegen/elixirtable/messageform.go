@@ -134,19 +134,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
       # returns the refusal" (docs/SPEC-TABLES.md §3.3).
       {:error, :batch_too_large, count}
     else
-      case read_bodies(vocab, {bytes_to_int(rest), 0, bit_size(rest)}, count, []) do
-        {:ok, bodies, r} ->
-          if batch_ends_clean?(r) do
-            {:ok, bodies}
-          else
-            # "BYTES AFTER THE PAD ARE MALFORMED" (docs/SPEC-TABLES.md §3.3).
-            {:malformed, count, bodies}
-          end
-
-        # "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1" (§3.3).
-        {:malformed, k, bodies} ->
-          {:malformed, k, bodies}
-      end
+      batch_result(read_bodies(vocab, {bytes_to_int(rest), 0, bit_size(rest)}, count, []), count)
     end
   end
 
@@ -158,6 +146,20 @@ const messageBatchRuntimeBody = `  @batch_max 256
   def load_messages(%__MODULE__{announced: true}, _data, _capacity), do: {:error, :malformed}
 
   def load_messages(_vocab, _data, _capacity), do: {:error, :no_vocabulary}
+
+  # What a batch's bodies read to, a helper of its own so load_messages nests
+  # no deeper than credo's Nesting allows (issue #547).
+  defp batch_result({:ok, bodies, r}, count) do
+    if batch_ends_clean?(r) do
+      {:ok, bodies}
+    else
+      # "BYTES AFTER THE PAD ARE MALFORMED" (docs/SPEC-TABLES.md §3.3).
+      {:malformed, count, bodies}
+    end
+  end
+
+  # "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1" (§3.3).
+  defp batch_result({:malformed, k, bodies}, _count), do: {:malformed, k, bodies}
 
   # ---------------------------------------------------------------------------
   # THE BATCH: form byte 2, a count of bodies minus one, then one bit stream
@@ -324,18 +326,24 @@ const messageBatchRuntimeBody = `  @batch_max 256
         {:ok, Enum.reverse(acc), rest}
 
       {:ok, ref, rest} ->
-        case entry_at(vocab, ref) do
-          {:ok, entry} when entry.id < 0xFFFFFFFFFFFFFFFD ->
-            case read_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), rest) do
-              {:ok, value, rest2} -> read_body(vocab, rest2, [{ref, value} | acc])
-              :malformed -> :malformed
-            end
-
-          _ ->
-            :malformed
+        case message_field_value(vocab, ref, rest) do
+          {:ok, value, rest2} -> read_body(vocab, rest2, [{ref, value} | acc])
+          :malformed -> :malformed
         end
 
       :error ->
+        :malformed
+    end
+  end
+
+  # One body field's value by its vocabulary entry; a ref to an id the batch
+  # reserves is malformed. A helper of its own (credo's Nesting, issue #547).
+  defp message_field_value(vocab, ref, rest) do
+    case entry_at(vocab, ref) do
+      {:ok, entry} when entry.id < 0xFFFFFFFFFFFFFFFD ->
+        read_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), rest)
+
+      _ ->
         :malformed
     end
   end
@@ -425,18 +433,24 @@ const messageBatchRuntimeBody = `  @batch_max 256
         {:ok, :none, rest}
 
       {:ok, ref, rest} ->
-        case entry_at(vocab, ref) do
-          {:ok, entry} when entry.kind != 0 and entry.id < 0xFFFFFFFFFFFFFFFD ->
-            case read_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), rest) do
-              {:ok, value, rest2} -> {:ok, {ref, value}, rest2}
-              :malformed -> :malformed
-            end
-
-          _ ->
-            :malformed
+        case message_arm_value(vocab, ref, rest) do
+          {:ok, value, rest2} -> {:ok, {ref, value}, rest2}
+          :malformed -> :malformed
         end
 
       :error ->
+        :malformed
+    end
+  end
+
+  # A union arm's value by its vocabulary entry: the entry must carry a kind
+  # and not be an id the batch reserves (credo's Nesting, issue #547).
+  defp message_arm_value(vocab, ref, rest) do
+    case entry_at(vocab, ref) do
+      {:ok, entry} when entry.kind != 0 and entry.id < 0xFFFFFFFFFFFFFFFD ->
+        read_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), rest)
+
+      _ ->
         :malformed
     end
   end
@@ -612,7 +626,7 @@ const messageRuntimeBody = `  defstruct announced: false,
             entries: [],
             count: 0,
             ref_bits: 0,
-            max_bytes: 65536,
+            max_bytes: 65_536,
             max_entries: 4096
 
   # ---------------------------------------------------------------------------
@@ -688,20 +702,18 @@ const messageRuntimeBody = `  defstruct announced: false,
     size = byte_size(data)
     count = :binary.decode_unsigned(binary_part(data, size - 8, 8), :little)
 
-    cond do
-      count > div(size - 9, 8) ->
+    if count > div(size - 9, 8) do
+      {:error, :malformed}
+    else
+      start = size - 8 - count * 8
+      body = binary_part(data, 1, start - 1)
+      ids = binary_part(data, start, count * 8)
+
+      if unique_ids?(ids) do
+        {:ok, body, ids}
+      else
         {:error, :malformed}
-
-      true ->
-        start = size - 8 - count * 8
-        body = binary_part(data, 1, start - 1)
-        ids = binary_part(data, start, count * 8)
-
-        if unique_ids?(ids) do
-          {:ok, body, ids}
-        else
-          {:error, :malformed}
-        end
+      end
     end
   end
 
@@ -738,131 +750,92 @@ const messageRuntimeBody = `  defstruct announced: false,
         end
 
       {:ok, ref, rest} ->
-        case resolve(ids, ref) do
-          :error ->
-            {:malformed, build_version}
-
-          {:ok, id} ->
-            case rest do
-              <<kind, rest2::binary>> ->
-                cond do
-                  id == 0xFFFFFFFFFFFFFFFE ->
-                    case rest2 do
-                      <<bv::little-unsigned-64, rest3::binary>> when kind == 9 ->
-                        walk(rest3, ids, versions + 1, words_count, bv, words, max_bytes)
-
-                      _ ->
-                        {:malformed, build_version}
-                    end
-
-                  id == 0xFFFFFFFFFFFFFFFD ->
-                    if kind != 14 do
-                      {:malformed, build_version}
-                    else
-                      case read_vocab(rest2, max_bytes) do
-                        {:ok, words, rest3} ->
-                          walk(
-                            rest3,
-                            ids,
-                            versions,
-                            words_count + 1,
-                            build_version,
-                            words,
-                            max_bytes
-                          )
-
-                        {:refuse, reason} ->
-                          {:refuse, reason}
-
-                        :error ->
-                          {:malformed, build_version}
-                      end
-                    end
-
-                  true ->
-                    case skip(kind, rest2) do
-                      {:ok, rest3} ->
-                        walk(rest3, ids, versions, words_count, build_version, words, max_bytes)
-
-                      :error ->
-                        {:malformed, build_version}
-                    end
-                end
-
-              _ ->
-                {:malformed, build_version}
-            end
-        end
+        walk_field(
+          resolve(ids, ref),
+          rest,
+          {ids, versions, words_count, build_version, words, max_bytes}
+        )
     end
   end
+
+  # One field of the announcement body, by its resolved id: the build version
+  # (kind 9, eight bytes), the vocabulary (kind 14), or any other field, which
+  # is skipped by its kind. One clause per case, so walk itself stays under
+  # credo's Nesting and CyclomaticComplexity bounds (issue #547); the walk's
+  # state rides as one tuple.
+  defp walk_field(
+         {:ok, 0xFFFFFFFFFFFFFFFE},
+         <<9, bv::little-unsigned-64, rest::binary>>,
+         {ids, versions, words_count, _build_version, words, max_bytes}
+       ),
+       do: walk(rest, ids, versions + 1, words_count, bv, words, max_bytes)
+
+  defp walk_field({:ok, 0xFFFFFFFFFFFFFFFD}, <<14, rest::binary>>, state) do
+    {ids, versions, words_count, build_version, _words, max_bytes} = state
+
+    case read_vocab(rest, max_bytes) do
+      {:ok, words, rest2} ->
+        walk(rest2, ids, versions, words_count + 1, build_version, words, max_bytes)
+
+      {:refuse, reason} ->
+        {:refuse, reason}
+
+      :error ->
+        {:malformed, build_version}
+    end
+  end
+
+  defp walk_field({:ok, id}, <<kind, rest::binary>>, state)
+       when id != 0xFFFFFFFFFFFFFFFE and id != 0xFFFFFFFFFFFFFFFD do
+    {ids, versions, words_count, build_version, words, max_bytes} = state
+
+    case skip(kind, rest) do
+      {:ok, rest2} -> walk(rest2, ids, versions, words_count, build_version, words, max_bytes)
+      :error -> {:malformed, build_version}
+    end
+  end
+
+  defp walk_field(_resolved, _rest, {_, _, _, build_version, _, _}),
+    do: {:malformed, build_version}
 
   # The vocabulary field: kind 14, element kind 6, a length and the bytes. The
   # BYTE BOUND is checked from the field's own length before an entry is touched
   # (docs/SPEC-TABLES.md §3.3).
+  # One with over the three reads (credo's Nesting, issue #547).
   defp read_vocab(bin, max_bytes) do
-    case leb(bin) do
-      {:ok, l, sub} when byte_size(sub) >= l ->
-        body = binary_part(sub, 0, l)
-        rest = binary_part(sub, l, byte_size(sub) - l)
-
-        case body do
-          <<6, count_rest::binary>> ->
-            case leb(count_rest) do
-              {:ok, n, words} when n == byte_size(words) ->
-                if n > max_bytes do
-                  {:refuse, :vocabulary_too_large}
-                else
-                  {:ok, words, rest}
-                end
-
-              _ ->
-                :error
-            end
-
-          _ ->
-            :error
-        end
-
-      _ ->
-        :error
+    with {:ok, l, sub} when byte_size(sub) >= l <- leb(bin),
+         <<6, count_rest::binary>> <- binary_part(sub, 0, l),
+         {:ok, n, words} when n == byte_size(words) <- leb(count_rest) do
+      if n > max_bytes do
+        {:refuse, :vocabulary_too_large}
+      else
+        {:ok, words, binary_part(sub, l, byte_size(sub) - l)}
+      end
+    else
+      _ -> :error
     end
   end
 
   # Skip an unknown field by its declared kind (§3's closed set).
-  defp skip(kind, bin) do
-    cond do
-      kind in [1, 2, 6, 20, 25] ->
-        take(1, bin)
+  # One clause per width class, so no single function carries every class
+  # (credo's CyclomaticComplexity, issue #547).
+  defp skip(kind, bin) when kind in [1, 2, 6, 20, 25], do: take(1, bin)
+  defp skip(kind, bin) when kind in [3, 7, 21, 26], do: take(2, bin)
+  defp skip(kind, bin) when kind in [4, 8, 10, 22, 27], do: take(4, bin)
+  defp skip(kind, bin) when kind in [5, 9, 11, 23, 28], do: take(8, bin)
+  defp skip(kind, bin) when kind in [18, 19, 24, 29], do: take(16, bin)
+  defp skip(kind, bin) when kind in [17, 30], do: leb_rest(bin)
+  defp skip(kind, bin) when kind in [12, 13, 14, 16, 31, 32, 33], do: body(bin)
 
-      kind in [3, 7, 21, 26] ->
-        take(2, bin)
-
-      kind in [4, 8, 10, 22, 27] ->
-        take(4, bin)
-
-      kind in [5, 9, 11, 23, 28] ->
-        take(8, bin)
-
-      kind in [18, 19, 24, 29] ->
-        take(16, bin)
-
-      kind in [17, 30] ->
-        leb_rest(bin)
-
-      kind in [12, 13, 14, 16, 31, 32, 33] ->
-        body(bin)
-
-      kind == 15 ->
-        case leb(bin) do
-          {:ok, 0, rest} -> {:ok, rest}
-          {:ok, _ref, <<_k, rest::binary>>} -> body(rest)
-          _ -> :error
-        end
-
-      true ->
-        :error
+  defp skip(15, bin) do
+    case leb(bin) do
+      {:ok, 0, rest} -> {:ok, rest}
+      {:ok, _ref, <<_k, rest::binary>>} -> body(rest)
+      _ -> :error
     end
   end
+
+  defp skip(_kind, _bin), do: :error
 
   defp take(n, bin) when byte_size(bin) >= n,
     do: {:ok, binary_part(bin, n, byte_size(bin) - n)}
@@ -920,24 +893,26 @@ const messageRuntimeBody = `  defstruct announced: false,
   defp parse_entries(bin, max, acc, count, node) do
     case entry(bin) do
       {:ok, e, rest} ->
-        cond do
-          e.id == 0xFFFFFFFFFFFFFFFE or e.id == 0xFFFFFFFFFFFFFFFD ->
-            :error
-
-          e.id == 0xFFFFFFFFFFFFFFFF and node ->
-            :error
-
-          duplicate?(e, acc) ->
-            :error
-
-          true ->
-            parse_entries(rest, max, [e | acc], count + 1, node or e.id == 0xFFFFFFFFFFFFFFFF)
+        if entry_refused?(e, acc, node) do
+          :error
+        else
+          parse_entries(rest, max, [e | acc], count + 1, node or e.id == 0xFFFFFFFFFFFFFFFF)
         end
 
       :error ->
         :error
     end
   end
+
+  # An entry the vocabulary refuses: one of the two ids the announcement
+  # reserves, a second node entry, or a duplicate. A predicate of its own so
+  # parse_entries stays under credo's CyclomaticComplexity bound (issue #547).
+  defp entry_refused?(e, _acc, _node)
+       when e.id == 0xFFFFFFFFFFFFFFFE or e.id == 0xFFFFFFFFFFFFFFFD,
+       do: true
+
+  defp entry_refused?(e, _acc, true) when e.id == 0xFFFFFFFFFFFFFFFF, do: true
+  defp entry_refused?(e, acc, _node), do: duplicate?(e, acc)
 
   defp duplicate?(_e, []), do: false
   defp duplicate?(e, [x | rest]), do: e == x or duplicate?(e, rest)
@@ -950,158 +925,80 @@ const messageRuntimeBody = `  defstruct announced: false,
   # ---- one entry -----------------------------------------------------------------
 
   defp entry(<<id::little-unsigned-64, kind, rest::binary>>) do
-    if not known_kind?(kind) do
-      :error
-    else
-      case shape(kind, rest) do
-        {:ok, s, rest2} ->
-          if kind in [14, 16] do
-            read_element(kind, id, s, rest2)
-          else
-            {:ok, %{id: id, kind: kind, shape: s}, rest2}
-          end
-
-        :error ->
-          :error
+    with true <- known_kind?(kind),
+         {:ok, s, rest2} <- shape(kind, rest) do
+      if kind in [14, 16] do
+        read_element(kind, id, s, rest2)
+      else
+        {:ok, %{id: id, kind: kind, shape: s}, rest2}
       end
+    else
+      _ -> :error
     end
   end
 
   defp entry(_), do: :error
 
   defp read_element(kind, id, s, <<elem, rest::binary>>) do
-    if not known_kind?(elem) or elem in [12, 33] do
-      :error
+    with true <- known_kind?(elem) and elem not in [12, 33],
+         {:ok, es, rest2} <- shape(elem, rest),
+         {:ok, rest3} <- element_tail(elem, rest2) do
+      {:ok, %{id: id, kind: kind, shape: s, element: %{kind: elem, shape: es}}, rest3}
     else
-      case shape(elem, rest) do
-        {:ok, es, rest2} ->
-          if elem in [14, 16] do
-            # A nested array carries one more kind byte, which nothing decodes.
-            case rest2 do
-              <<inner, rest3::binary>> ->
-                if known_kind?(inner) and inner not in [12, 33] do
-                  {:ok, %{id: id, kind: kind, shape: s, element: %{kind: elem, shape: es}}, rest3}
-                else
-                  :error
-                end
-
-              _ ->
-                :error
-            end
-          else
-            {:ok, %{id: id, kind: kind, shape: s, element: %{kind: elem, shape: es}}, rest2}
-          end
-
-        :error ->
-          :error
-      end
+      _ -> :error
     end
   end
 
   defp read_element(_kind, _id, _s, _), do: :error
 
+  # A nested array carries one more kind byte, which nothing decodes. A helper
+  # of its own, so read_element is one with (credo's Nesting, issue #547).
+  defp element_tail(elem, <<inner, rest::binary>>) when elem in [14, 16] do
+    if known_kind?(inner) and inner not in [12, 33], do: {:ok, rest}, else: :error
+  end
+
+  defp element_tail(elem, _rest) when elem in [14, 16], do: :error
+  defp element_tail(_elem, rest), do: {:ok, rest}
+
   defp known_kind?(kind), do: kind >= 0 and kind <= 33
 
-  defp kind_bits(kind) do
-    case kind do
-      1 -> 1
-      2 -> 8
-      3 -> 16
-      4 -> 32
-      5 -> 64
-      6 -> 8
-      7 -> 16
-      8 -> 32
-      9 -> 64
-      10 -> 32
-      11 -> 64
-      18 -> 128
-      19 -> 128
-      20 -> 8
-      21 -> 16
-      22 -> 32
-      23 -> 64
-      24 -> 128
-      25 -> 8
-      26 -> 16
-      27 -> 32
-      28 -> 64
-      29 -> 128
-      _ -> 0
-    end
-  end
+  # Each scalar kind's width in bits, and 0 for a kind that has none. A map
+  # lookup rather than a case of 23 clauses: credo's default
+  # Credo.Check.Refactor.CyclomaticComplexity counts every clause (issue #547).
+  @kind_bits %{
+    1 => 1,
+    2 => 8,
+    3 => 16,
+    4 => 32,
+    5 => 64,
+    6 => 8,
+    7 => 16,
+    8 => 32,
+    9 => 64,
+    10 => 32,
+    11 => 64,
+    18 => 128,
+    19 => 128,
+    20 => 8,
+    21 => 16,
+    22 => 32,
+    23 => 64,
+    24 => 128,
+    25 => 8,
+    26 => 16,
+    27 => 32,
+    28 => 64,
+    29 => 128
+  }
+
+  defp kind_bits(kind), do: Map.get(@kind_bits, kind, 0)
 
   # ---- one shape -----------------------------------------------------------------
 
   defp shape(kind, bin) when (kind >= 2 and kind <= 10) or (kind >= 18 and kind <= 29) do
     case bin do
-      <<packing, rest::binary>> ->
-        cond do
-          packing == 0 ->
-            {:ok, %{kind: kind, packing: 0}, rest}
-
-          packing == 1 and kind != 10 ->
-            case leb(rest) do
-              {:ok, n, rest2} ->
-                if n <= kind_bits(kind) do
-                  if kind >= 18 do
-                    case rest2 do
-                      <<lo::little-unsigned-64, hi::little-unsigned-64, rest3::binary>> ->
-                        {:ok, %{kind: kind, packing: 1, bits: n, base: hi <<< 64 ||| lo}, rest3}
-
-                      _ ->
-                        :error
-                    end
-                  else
-                    case leb(rest2) do
-                      {:ok, raw, rest3} ->
-                        base = if kind >= 2 and kind <= 5, do: zigzag(raw), else: raw
-                        {:ok, %{kind: kind, packing: 1, bits: n, base: base}, rest3}
-
-                      :error ->
-                        :error
-                    end
-                  end
-                else
-                  :error
-                end
-
-              :error ->
-                :error
-            end
-
-          packing == 2 and kind == 10 ->
-            case rest do
-              <<lo::little-unsigned-32, hi::little-unsigned-32, res::little-unsigned-32,
-                rest2::binary>> ->
-                lof = f32(lo)
-                hif = f32(hi)
-                resf = f32(res)
-
-                # A quantized triple whose delta or delta/res is not finite in
-                # float32 is a hostile width (docs/SPEC-TABLES.md §3.3).
-                if is_float(lof) and is_float(hif) and is_float(resf) and lof < hif and resf > 0.0 do
-                  delta = round_f32(hif - lof)
-
-                  if delta != :nonfinite and round_f32(delta / resf) != :nonfinite do
-                    {:ok, %{kind: kind, packing: 2, qmin: lof, qmax: hif, qres: resf}, rest2}
-                  else
-                    :error
-                  end
-                else
-                  :error
-                end
-
-              _ ->
-                :error
-            end
-
-          true ->
-            :error
-        end
-
-      _ ->
-        :error
+      <<packing, rest::binary>> -> scalar_shape(kind, packing, rest)
+      _ -> :error
     end
   end
 
@@ -1115,22 +1012,13 @@ const messageRuntimeBody = `  defstruct announced: false,
   # An array's shape is min, max, then the element kind (u8) after them, two
   # numbers (§3.3's shape table).
   defp shape(kind, bin) when kind == 14 do
-    case leb(bin) do
-      {:ok, min, rest} ->
-        case leb(rest) do
-          {:ok, max, rest2} ->
-            if min > 0xFFFFFFFF or max > 0xFFFFFFFF or max < min do
-              :error
-            else
-              {:ok, %{kind: kind, min: min, max: max}, rest2}
-            end
-
-          :error ->
-            :error
-        end
-
-      :error ->
+    with {:ok, min, rest} <- leb(bin),
+         {:ok, max, rest2} <- leb(rest) do
+      if min > 0xFFFFFFFF or max > 0xFFFFFFFF or max < min do
         :error
+      else
+        {:ok, %{kind: kind, min: min, max: max}, rest2}
+      end
     end
   end
 
@@ -1152,6 +1040,68 @@ const messageRuntimeBody = `  defstruct announced: false,
   end
 
   defp shape(kind, bin), do: {:ok, %{kind: kind}, bin}
+
+  # A scalar kind's shape, by its packing byte, one clause per packing: 0 is
+  # none; 1 is a bit width and a base (two u64 halves for the 128-bit kinds,
+  # LEB128 otherwise, zigzagged for the signed kinds) on any kind but 10; 2 is
+  # the quantized triple and kind 10's alone. Helpers of their own, so shape
+  # stays under credo's Nesting and CyclomaticComplexity bounds (issue #547).
+  defp scalar_shape(kind, 0, rest), do: {:ok, %{kind: kind, packing: 0}, rest}
+
+  defp scalar_shape(kind, 1, rest) when kind != 10 do
+    case leb(rest) do
+      {:ok, n, rest2} -> if n <= kind_bits(kind), do: packed_base(kind, n, rest2), else: :error
+      :error -> :error
+    end
+  end
+
+  defp scalar_shape(10, 2, rest), do: quantized_shape(rest)
+  defp scalar_shape(_kind, _packing, _rest), do: :error
+
+  defp packed_base(kind, n, <<lo::little-unsigned-64, hi::little-unsigned-64, rest::binary>>)
+       when kind >= 18,
+       do: {:ok, %{kind: kind, packing: 1, bits: n, base: hi <<< 64 ||| lo}, rest}
+
+  defp packed_base(kind, _n, _rest) when kind >= 18, do: :error
+
+  defp packed_base(kind, n, rest) do
+    case leb(rest) do
+      {:ok, raw, rest2} ->
+        base = if kind >= 2 and kind <= 5, do: zigzag(raw), else: raw
+        {:ok, %{kind: kind, packing: 1, bits: n, base: base}, rest2}
+
+      :error ->
+        :error
+    end
+  end
+
+  defp quantized_shape(
+         <<lo::little-unsigned-32, hi::little-unsigned-32, res::little-unsigned-32, rest::binary>>
+       ) do
+    lof = f32(lo)
+    hif = f32(hi)
+    resf = f32(res)
+
+    # A quantized triple whose delta or delta/res is not finite in
+    # float32 is a hostile width (docs/SPEC-TABLES.md §3.3).
+    if is_float(lof) and is_float(hif) and is_float(resf) and lof < hif and resf > 0.0 do
+      quantized_delta(lof, hif, resf, rest)
+    else
+      :error
+    end
+  end
+
+  defp quantized_shape(_), do: :error
+
+  defp quantized_delta(lof, hif, resf, rest) do
+    delta = round_f32(hif - lof)
+
+    if delta != :nonfinite and round_f32(delta / resf) != :nonfinite do
+      {:ok, %{kind: 10, packing: 2, qmin: lof, qmax: hif, qres: resf}, rest}
+    else
+      :error
+    end
+  end
 
   # ---- LEB128 and friends -------------------------------------------------------
 

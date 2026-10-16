@@ -539,57 +539,57 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp emit_field(%{t: :enum} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if not emit_scalar?(f, v) do
-      {idx_map, ids, order, acc}
-    else
+    if emit_scalar?(f, v) do
       vid = Map.fetch!(f.by_name, v)
       {ref, ids, order} = intern(ids, order, f.id)
       {vref, ids, order} = intern(ids, order, vid)
       {idx_map, ids, order, [acc, leb_encode(ref), <<30>>, leb_encode(vref)]}
+    else
+      {idx_map, ids, order, acc}
     end
   end
 
   defp emit_field(%{t: :int} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if not emit_scalar?(f, v) do
-      {idx_map, ids, order, acc}
-    else
+    if emit_scalar?(f, v) do
       {ref, ids, order} = intern(ids, order, f.id)
       {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, int_bytes(v, f.width, f.signed)]}
+    else
+      {idx_map, ids, order, acc}
     end
   end
 
   defp emit_field(%{t: :float} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if not emit_scalar?(f, v) do
-      {idx_map, ids, order, acc}
-    else
+    if emit_scalar?(f, v) do
       {ref, ids, order} = intern(ids, order, f.id)
       {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, float_bytes(v, f.width)]}
+    else
+      {idx_map, ids, order, acc}
     end
   end
 
   defp emit_field(%{t: :string} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if not emit_scalar?(f, v) do
-      {idx_map, ids, order, acc}
-    else
+    if emit_scalar?(f, v) do
       {ref, ids, order} = intern(ids, order, f.id)
       {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, leb_encode(byte_size(v)), v]}
+    else
+      {idx_map, ids, order, acc}
     end
   end
 
   defp emit_field(%{t: :bool} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if not emit_scalar?(f, v) do
-      {idx_map, ids, order, acc}
-    else
+    if emit_scalar?(f, v) do
       {ref, ids, order} = intern(ids, order, f.id)
       {idx_map, ids, order, [acc, leb_encode(ref), <<1>>, if(v, do: <<1>>, else: <<0>>)]}
+    else
+      {idx_map, ids, order, acc}
     end
   end
 
@@ -1304,27 +1304,25 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             # a narrower scalar element kind widens and counts once
             # (docs/SPEC-TABLES.md §2.9, §4). Any other disagreement skips
             # the field and counts a kind mismatch.
-            cond do
-              elem_kind == f.elem_kind or kind_widens?(elem_kind, f.elem_kind) ->
-                case leb(count_rest) do
-                  {n, elems} ->
-                    report =
-                      if elem_kind == f.elem_kind do
-                        report
-                      else
-                        %{report | widened: report.widened + 1}
-                      end
+            if elem_kind == f.elem_kind or kind_widens?(elem_kind, f.elem_kind) do
+              case leb(count_rest) do
+                {n, elems} ->
+                  report =
+                    if elem_kind == f.elem_kind do
+                      report
+                    else
+                      %{report | widened: report.widened + 1}
+                    end
 
-                    reader = %{f | elem_kind: elem_kind}
-                    {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
-                    {:cont, value, report} |> clamp_count(f)
+                  reader = %{f | elem_kind: elem_kind}
+                  {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
+                  {:cont, value, report} |> clamp_count(f)
 
-                  :error ->
-                    {:cont, [], %{report | malformed: true}}
-                end
-
-              true ->
-                {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}}
+                :error ->
+                  {:cont, [], %{report | malformed: true}}
+              end
+            else
+              {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}}
             end
 
           _ ->
@@ -3993,8 +3991,11 @@ func tableDescriptor(u *ir.Unit, st *ir.Struct) string {
 	// variable is this table's own class (docs/SPEC-TABLES.md §3.1). A variable
 	// root carries the node-table id as transport. A fixed root cannot name
 	// that id, so a body that brings one counts it unknown, once (§4).
-	fmt.Fprintf(&b, "    %q => %%{name: %q, size: %d, align: %d, type_id: 0x%016X, record: %d, has_extent: %v, string_blob: %v, variable: %v, doc: %s, tags: %s, fields: [\n",
-		st.Name, st.Name, ml.Size, ml.Align, ir.TableTypeId(st.WireName()), cookRecordBytes(u, st), cookHasExtent(u, st), str, ir.VariableTables(u)[st.Name], elixirQuote(st.Doc), elixirTags(st.Tags))
+	// Every decimal integer goes through exInt: credo's default
+	// Credo.Check.Readability.LargeNumbers reports one past 9999 written
+	// without underscores (issue #547).
+	fmt.Fprintf(&b, "    %q => %%{name: %q, size: %s, align: %s, type_id: 0x%016X, record: %s, has_extent: %v, string_blob: %v, variable: %v, doc: %s, tags: %s, fields: [\n",
+		st.Name, st.Name, exInt(int64(ml.Size)), exInt(int64(ml.Align)), ir.TableTypeId(st.WireName()), exInt(cookRecordBytes(u, st)), cookHasExtent(u, st), str, ir.VariableTables(u)[st.Name], elixirQuote(st.Doc), elixirTags(st.Tags))
 	for i, f := range st.Fields {
 		b.WriteString("      " + fieldDescriptor(u, f, i, ml.FieldByName(f.Name)))
 	}
@@ -4066,7 +4067,7 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, fl *ir.FieldLayout) s
 			b.WriteString("]")
 		}
 		if f.Array != ir.ArrayList {
-			fmt.Fprintf(&b, ", array_bound: %d", f.ArrayBound)
+			fmt.Fprintf(&b, ", array_bound: %s", exInt(int64(f.ArrayBound)))
 		}
 		if f.Array == ir.ArrayFixed {
 			// SPEC-TABLES §3: a [N]T writes all N elements; a table element
@@ -4076,7 +4077,7 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, fl *ir.FieldLayout) s
 			elem.Array = ir.ArrayNone
 			elem.ArrayBound = 0
 			elem.Type.Optional = false
-			fmt.Fprintf(&b, ", fixed_array: %d, elem_default: %s", f.ArrayBound, variableFieldDefault(&elem))
+			fmt.Fprintf(&b, ", fixed_array: %s, elem_default: %s", exInt(int64(f.ArrayBound)), variableFieldDefault(&elem))
 		}
 		switch elemKind {
 		case ir.TableKindTable:
@@ -4091,7 +4092,7 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, fl *ir.FieldLayout) s
 			// zero reference for None.
 			fmt.Fprintf(&b, ", elem: %q", f.Type.Name)
 		case ir.TableKindString:
-			fmt.Fprintf(&b, ", size: %d", f.Type.Size)
+			fmt.Fprintf(&b, ", size: %s", exInt(int64(f.Type.Size)))
 		}
 		elemSize, elemAlign := ir.ListElementLayout(u, f)
 		fmt.Fprintf(&b, ", elem_size: %d, elem_align: %d", elemSize, elemAlign)
@@ -4103,7 +4104,7 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, fl *ir.FieldLayout) s
 	case unionRef(f) != nil:
 		fmt.Fprintf(&b, ", t: :union, elem: %q", f.Type.Name)
 	case f.Type.Kind == ir.TBytes:
-		fmt.Fprintf(&b, ", t: :bytes, size: %d", f.Type.Size)
+		fmt.Fprintf(&b, ", t: :bytes, size: %s", exInt(int64(f.Type.Size)))
 	case enumRef(f) != nil:
 		b.WriteString(", t: :enum")
 		writeEnumMaps(&b, enumRef(f))
@@ -4117,11 +4118,11 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, fl *ir.FieldLayout) s
 		b.WriteString("]")
 	case f.Type.Kind == ir.TString:
 		b.WriteString(", t: :string")
-		fmt.Fprintf(&b, ", size: %d", f.Type.Size)
+		fmt.Fprintf(&b, ", size: %s", exInt(int64(f.Type.Size)))
 	case f.Type.Kind == ir.TWString:
 		// wstring(N) is kind 33 on the variable wire: L counts UTF-16LE bytes,
 		// two per code unit (docs/SPEC-TABLES.md §3). The value is UTF-8.
-		fmt.Fprintf(&b, ", t: :wstring, size: %d", f.Type.Size)
+		fmt.Fprintf(&b, ", t: :wstring, size: %s", exInt(int64(f.Type.Size)))
 	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || f.Type.Kind == ir.TFixed:
 		b.WriteString(", t: :int")
 		width := (f.Type.Width + 7) / 8
@@ -4140,7 +4141,7 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, fl *ir.FieldLayout) s
 			fmt.Fprintf(&b, ", bits: %d", f.Type.Width)
 		}
 		if lo, hi, ok := ir.TableRawRange(f); ok {
-			fmt.Fprintf(&b, ", min: %s, max: %s", lo.String(), hi.String())
+			fmt.Fprintf(&b, ", min: %s, max: %s", fixedIntLiteral(lo), fixedIntLiteral(hi))
 		}
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		// A float's payload width is its kind (docs/SPEC-TABLES.md §3).
@@ -4270,9 +4271,9 @@ func cardShape(f *ir.Field) string {
 func cardBound(f *ir.Field) string {
 	switch {
 	case f.Type.Kind == ir.TString && !f.Type.Pointer:
-		return fmt.Sprintf("%d", f.Type.Size)
+		return exInt(int64(f.Type.Size))
 	case f.Type.Kind == ir.TInt && f.HasIntRange && f.IntMin != nil && f.IntMax != nil:
-		return "{" + f.IntMin.String() + ", " + f.IntMax.String() + "}"
+		return "{" + fixedIntLiteral(f.IntMin) + ", " + fixedIntLiteral(f.IntMax) + "}"
 	default:
 		return "nil"
 	}

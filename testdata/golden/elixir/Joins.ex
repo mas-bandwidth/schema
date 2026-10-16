@@ -6,6 +6,7 @@
 
 # type ArmsAgree
 defmodule Example.ArmsAgree do
+  @moduledoc "Type ArmsAgree of Joins.schema."
   # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # !flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct lead: 0, flag: false, a: 0, b: 0, tail: 0
@@ -13,6 +14,7 @@ end
 
 # type ArmsDisagree
 defmodule Example.ArmsDisagree do
+  @moduledoc "Type ArmsDisagree of Joins.schema."
   # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # !flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct lead: 0, flag: false, a: 0, b: 0, tail: 0
@@ -20,12 +22,14 @@ end
 
 # type ArmEmpty
 defmodule Example.ArmEmpty do
+  @moduledoc "Type ArmEmpty of Joins.schema."
   # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct lead: 0, flag: false, a: 0, tail: 0
 end
 
 # type ArmsNested
 defmodule Example.ArmsNested do
+  @moduledoc "Type ArmsNested of Joins.schema."
   # outer — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # outer && inner — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # outer && !inner — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
@@ -35,6 +39,7 @@ end
 
 # type ArmAlign
 defmodule Example.ArmAlign do
+  @moduledoc "Type ArmAlign of Joins.schema."
   # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # s: string(4) — a UTF-8 binary; byte_size is the used length (SPEC §4.7)
   # !flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
@@ -43,6 +48,7 @@ end
 
 # type ArmArray
 defmodule Example.ArmArray do
+  @moduledoc "Type ArmArray of Joins.schema."
   # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # items: counted array — a list of up to 3 elements; wire [0, 8191]
   # !flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
@@ -51,16 +57,19 @@ end
 
 # type Narrow
 defmodule Example.Narrow do
+  @moduledoc "Type Narrow of Joins.schema."
   defstruct n: 0
 end
 
 # type Wide
 defmodule Example.Wide do
+  @moduledoc "Type Wide of Joins.schema."
   defstruct w: 0
 end
 
 # UnevenType: union Uneven's tag — None = 0, then each variant in declared order (SPEC §4.8)
 defmodule Example.UnevenType do
+  @moduledoc "Union Uneven's tag: none is 0, then each variant in declared order."
   def none, do: 0
   def narrow, do: 1
   def wide, do: 2
@@ -75,22 +84,26 @@ end
 # arms hold their construction form (SPEC §4.8 leaves them unspecified).
 # Consumers read the selected arm only.
 defmodule Example.Uneven do
+  @moduledoc "Union Uneven of Joins.schema: the tag and one field per variant."
   defstruct type: 0, narrow: %Example.Narrow{}, wide: %Example.Wide{}
 end
 
 # type HoldsUneven
 defmodule Example.HoldsUneven do
+  @moduledoc "Type HoldsUneven of Joins.schema."
   defstruct lead: 0, u: %Example.Uneven{}, tail: 0
 end
 
 # type ArrUneven
 defmodule Example.ArrUneven do
+  @moduledoc "Type ArrUneven of Joins.schema."
   # items: counted array — a list of up to 3 elements
   defstruct lead: 0, items: [], tail: 0
 end
 
 # type RegainAfterAlign
 defmodule Example.RegainAfterAlign do
+  @moduledoc "Type RegainAfterAlign of Joins.schema."
   # items: counted array — a list of up to 3 elements; wire [0, 8191]
   # s: string(4) — a UTF-8 binary; byte_size is the used length (SPEC §4.7)
   defstruct lead: 0, items: [], s: <<>>, p: 0, q: 0, r: 0, tail: 0
@@ -99,6 +112,7 @@ end
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Joins.schema.
 defmodule Example.Joins do
+  @moduledoc "The file-scope surface of Joins.schema: constants, flags masks, name helpers and wire functions."
   import Bitwise
 
   @compile {:inline, rd: 3}

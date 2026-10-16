@@ -21,6 +21,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `dart-tables/` | Dart table tests | `make test-dart` | `make test-dart` |
 | `elixir/` | Elixir packet tests | `make test-elixir` | `make test-elixir` |
 | `elixir-alloc/` | Elixir allocation tests | `make test-elixir` | `make test-elixir` |
+| `elixir-credo/` | Elixir credo analyzer host | `make tables-elixir-credo` | `make toolchain-elixir-credo` |
 | `elixir-filemodule/` | Elixir file-module tests | `make test-elixir` | `make test-elixir` |
 | `elixir-fixedform/` | Elixir fixed-form tests | `make test-elixir` | `make test-elixir` |
 | `elixir-ludicrous/` | Elixir int128 tests | `make test-elixir` | `make test-elixir` |

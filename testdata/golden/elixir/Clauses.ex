@@ -6,81 +6,95 @@
 
 # type W13
 defmodule Example.W13 do
+  @moduledoc "Type W13 of Clauses.schema."
   # items: counted array — a list of up to 12 elements; wire [0, 8191]
   defstruct items: []
 end
 
 # type W17
 defmodule Example.W17 do
+  @moduledoc "Type W17 of Clauses.schema."
   # items: counted array — a list of up to 9 elements; wire [0, 131071]
   defstruct items: []
 end
 
 # type W26
 defmodule Example.W26 do
+  @moduledoc "Type W26 of Clauses.schema."
   # items: counted array — a list of up to 6 elements; wire [0, 67108863]
   defstruct items: []
 end
 
 # type W1
 defmodule Example.W1 do
+  @moduledoc "Type W1 of Clauses.schema."
   # items: counted array — a list of up to 20 elements; wire [0, 1]
   defstruct items: []
 end
 
 # type W52
 defmodule Example.W52 do
+  @moduledoc "Type W52 of Clauses.schema."
   # items: counted array — a list of up to 3 elements; wire [0, 4503599627370495]
   defstruct items: []
 end
 
 # type W50
 defmodule Example.W50 do
+  @moduledoc "Type W50 of Clauses.schema."
   # items: counted array — a list of up to 3 elements; wire [0, 1125899906842623]
   defstruct items: []
 end
 
 # type F13
 defmodule Example.F13 do
+  @moduledoc "Type F13 of Clauses.schema."
   # items: wire [0, 8191]
   defstruct items: List.duplicate(0, 7)
 end
 
 # type Tri3
 defmodule Example.Tri3 do
+  @moduledoc "Type Tri3 of Clauses.schema."
   defstruct a: 0, b: 0
 end
 
 # type ArrTri3
 defmodule Example.ArrTri3 do
+  @moduledoc "Type ArrTri3 of Clauses.schema."
   # items: counted array — a list of up to 10 elements
   defstruct items: []
 end
 
 # type Eleven
 defmodule Example.Eleven do
+  @moduledoc "Type Eleven of Clauses.schema."
   defstruct a: 0, b: 0
 end
 
 # type ArrEleven
 defmodule Example.ArrEleven do
+  @moduledoc "Type ArrEleven of Clauses.schema."
   defstruct items: List.duplicate(%Example.Eleven{}, 9)
 end
 
 # type EmptyA
 defmodule Example.EmptyA do
+  @moduledoc "Type EmptyA of Clauses.schema."
   # empty body — presence is the payload (SPEC §4.6)
   defstruct []
 end
 
 # type EmptyB
 defmodule Example.EmptyB do
+  @moduledoc "Type EmptyB of Clauses.schema."
   # empty body — presence is the payload (SPEC §4.6)
   defstruct []
 end
 
 # EmptyUnionType: union EmptyUnion's tag — None = 0, then each variant in declared order (SPEC §4.8)
 defmodule Example.EmptyUnionType do
+  @moduledoc "Union EmptyUnion's tag: none is 0, then each variant in declared order."
   def none, do: 0
   def a, do: 1
   def b, do: 2
@@ -95,16 +109,19 @@ end
 # arms hold their construction form (SPEC §4.8 leaves them unspecified).
 # Consumers read the selected arm only.
 defmodule Example.EmptyUnion do
+  @moduledoc "Union EmptyUnion of Clauses.schema: the tag and one field per variant."
   defstruct type: 0, a: %Example.EmptyA{}, b: %Example.EmptyB{}
 end
 
 # type HoldsEmptyUnion
 defmodule Example.HoldsEmptyUnion do
+  @moduledoc "Type HoldsEmptyUnion of Clauses.schema."
   defstruct lead: 0, u: %Example.EmptyUnion{}, tail: 0
 end
 
 # type Strs
 defmodule Example.Strs do
+  @moduledoc "Type Strs of Clauses.schema."
   # s: string(8) — a UTF-8 binary; byte_size is the used length (SPEC §4.7)
   # b: bytes(8) — a binary; byte_size is the used length (SPEC §4.7)
   defstruct lead: 0, s: <<>>, b: <<>>, tail: 0
@@ -112,18 +129,21 @@ end
 
 # type ArrNested
 defmodule Example.ArrNested do
+  @moduledoc "Type ArrNested of Clauses.schema."
   # items: counted array — a list of up to 4 elements
   defstruct lead: 0, items: [], tail: 0
 end
 
 # type Sole
 defmodule Example.Sole do
+  @moduledoc "Type Sole of Clauses.schema."
   defstruct only: 0
 end
 
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Clauses.schema.
 defmodule Example.Clauses do
+  @moduledoc "The file-scope surface of Clauses.schema: constants, flags masks, name helpers and wire functions."
   import Bitwise
 
   @compile {:inline, rd: 3}
@@ -399,7 +419,7 @@ defmodule Example.Clauses do
       # the count guards the loop — reject, never clamp
       if v > 20, do: throw(:invalid)
       n = v
-      if bits_read + n * 1 > num_bits, do: throw(:invalid)
+      if bits_read + n > num_bits, do: throw(:invalid)
       {bits_read, v_items} = r_w1_items_align(n, [], data, num_bits, bits_read)
       value = %Example.W1{items: v_items}
       {:ok, value, bits_read}
@@ -422,7 +442,7 @@ defmodule Example.Clauses do
   def measure_w1(value) do
     bits = 0
     bits = bits + 5
-    bits = bits + length(value.items) * 1
+    bits = bits + length(value.items)
     bits
   end
 

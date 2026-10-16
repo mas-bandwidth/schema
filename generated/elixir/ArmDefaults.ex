@@ -6,6 +6,7 @@
 
 # type DefaultArm
 defmodule Example.DefaultArm do
+  @moduledoc "Type DefaultArm of ArmDefaults.schema."
   # entries: counted array — a list of up to 2 elements
   # marker: wire [0, 7]
   defstruct entries: [], marker: 0
@@ -13,6 +14,7 @@ end
 
 # DefaultChoiceType: union DefaultChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
 defmodule Example.DefaultChoiceType do
+  @moduledoc "Union DefaultChoice's tag: none is 0, then each variant in declared order."
   def none, do: 0
   def first, do: 1
   def second, do: 2
@@ -27,22 +29,26 @@ end
 # arms hold their construction form (SPEC §4.8 leaves them unspecified).
 # Consumers read the selected arm only.
 defmodule Example.DefaultChoice do
+  @moduledoc "Union DefaultChoice of ArmDefaults.schema: the tag and one field per variant."
   defstruct type: 0, first: %Example.DefaultArm{}, second: %Example.DefaultArm{}
 end
 
 # type DefaultChoicePacket
 defmodule Example.DefaultChoicePacket do
+  @moduledoc "Type DefaultChoicePacket of ArmDefaults.schema."
   defstruct choice: %Example.DefaultChoice{}
 end
 
 # type DefaultBulkArm
 defmodule Example.DefaultBulkArm do
+  @moduledoc "Type DefaultBulkArm of ArmDefaults.schema."
   # data: bytes(2) — a binary; byte_size is the used length (SPEC §4.7)
   defstruct payload: %Example.DefaultArm{}, data: <<>>
 end
 
 # DefaultBulkChoiceType: union DefaultBulkChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
 defmodule Example.DefaultBulkChoiceType do
+  @moduledoc "Union DefaultBulkChoice's tag: none is 0, then each variant in declared order."
   def none, do: 0
   def first, do: 1
   def second, do: 2
@@ -57,12 +63,14 @@ end
 # arms hold their construction form (SPEC §4.8 leaves them unspecified).
 # Consumers read the selected arm only.
 defmodule Example.DefaultBulkChoice do
+  @moduledoc "Union DefaultBulkChoice of ArmDefaults.schema: the tag and one field per variant."
   defstruct type: 0, first: %Example.DefaultBulkArm{}, second: %Example.DefaultBulkArm{}
 end
 
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in ArmDefaults.schema.
 defmodule Example.ArmDefaults do
+  @moduledoc "The file-scope surface of ArmDefaults.schema: constants, flags masks, name helpers and wire functions."
   import Bitwise
 
   @compile {:inline, rd: 3}

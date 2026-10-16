@@ -511,7 +511,7 @@ func (g *gen) emitCookHandle(st *ir.Struct) {
 	g.pf("  def %s_cook_root_size, do: %s\n", lo, exInt(layout.Size))
 	g.pf("  def %s_cook_root_align, do: %s\n\n", lo, exInt(layout.Align))
 
-	g.pf("  def cook_open_%s(data), do: cook_open_%s(data, 0)\n\n", lo, lo)
+	g.pf("%s\n", exDefDo("  ", "def cook_open_"+lo+"(data)", "cook_open_"+lo+"(data, 0)"))
 	g.pf("  # lead is how many bytes past an aligned base the caller's buffer\n")
 	g.pf("  # begins — the one pointer fact a BEAM binary cannot carry, so the caller\n")
 	g.pf("  # states it (see CookRuntime.open/5).\n")
@@ -564,7 +564,7 @@ func (g *gen) cookAccessors(st *ir.Struct, fl ir.FieldLayout) []string {
 		}
 		out = append(out, fmt.Sprintf("  def %s_node_%s(%s, node) do\n", lo, f.Name, regionParam(f))+
 			fmt.Sprintf("    Enum.map(0..%s//1, fn i -> %s end)\n", exInt(f.ArrayBound-1),
-				g.cookReadAt(f, fmt.Sprintf("node + %s + i * %s", exInt(fl.Offset), exInt(size)), size))+
+				g.cookReadAt(f, fmt.Sprintf("node + %s + %s", exInt(fl.Offset), exTimes("i", int64(size))), size))+
 			"  end\n")
 		return out
 	default:

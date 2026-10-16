@@ -6,6 +6,8 @@
 
 # table FixedTable — the value a fixed record of it carries (docs/SPEC-TABLES.md §3.4)
 defmodule Bench.FixedTable do
+  @moduledoc "Table FixedTable: the value a fixed record of it carries (docs/SPEC-TABLES.md §3.4)."
+
   defstruct value: %Bench.BenchMixed{}
 end
 

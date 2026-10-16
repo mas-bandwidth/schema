@@ -6,22 +6,26 @@
 
 # type Vec3
 defmodule Example.Vec3 do
+  @moduledoc "Type Vec3 of Types.schema."
   defstruct x: 0.0, y: 0.0, z: 0.0
 end
 
 # type Quat
 defmodule Example.Quat do
+  @moduledoc "Type Quat of Types.schema."
   defstruct x: 0.0, y: 0.0, z: 0.0, w: 0.0
 end
 
 # type Handle
 defmodule Example.Handle do
+  @moduledoc "Type Handle of Types.schema."
   # object_id: wire [0, 9999]
   defstruct object_id: 0, object_sequence: 0
 end
 
 # type QuantizedPosition
 defmodule Example.QuantizedPosition do
+  @moduledoc "Type QuantizedPosition of Types.schema."
   # x: wire [-8388608, 8388608]
   # y: wire [-8388608, 8388608]
   # z: wire [-8388608, 8388608]
@@ -30,6 +34,7 @@ end
 
 # type QuantizedVelocity
 defmodule Example.QuantizedVelocity do
+  @moduledoc "Type QuantizedVelocity of Types.schema."
   # x: wire [-2097152, 2097152]
   # y: wire [-2097152, 2097152]
   # z: wire [-2097152, 2097152]
@@ -38,6 +43,7 @@ end
 
 # type QuantizedRotation
 defmodule Example.QuantizedRotation do
+  @moduledoc "Type QuantizedRotation of Types.schema."
   # x: wire [-1024, 1024]
   # y: wire [-1024, 1024]
   # z: wire [-1024, 1024]
@@ -47,6 +53,7 @@ end
 
 # type RigidBody
 defmodule Example.RigidBody do
+  @moduledoc "Type RigidBody of Types.schema."
   # !at_rest — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct position: %Example.Vec3{},
             orientation: %Example.Quat{},
@@ -57,6 +64,7 @@ end
 
 # type Input
 defmodule Example.Input do
+  @moduledoc "Type Input of Types.schema."
   defstruct stick_x: 0.0,
             stick_y: 0.0,
             throttle: 0.0,
@@ -74,12 +82,14 @@ end
 
 # type InputPacket
 defmodule Example.InputPacket do
+  @moduledoc "Type InputPacket of Types.schema."
   # inputs: counted array — a list of up to MaxInputsPerPacket elements
   defstruct synchronize_sequence: 0, current_frame: 0, start_frame: 0, inputs: []
 end
 
 # type ShipCreate
 defmodule Example.ShipCreate do
+  @moduledoc "Type ShipCreate of Types.schema."
   # has_flags — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # flags: ShipFlags — consumed as masks, uint64 storage (SPEC §4.2)
   # health: wire [0, 1000]
@@ -98,6 +108,7 @@ end
 
 # type ExpressionProbe
 defmodule Example.ExpressionProbe do
+  @moduledoc "Type ExpressionProbe of Types.schema."
   # hardpoint_index: wire [0, 31]
   # spin_rate: specified default at construction; zero_* gives the §5 zero form; wire [1024, 2048]
   defstruct hardpoint_index: 0, spin_rate: 1024
@@ -105,6 +116,7 @@ end
 
 # type ExtremeProbe
 defmodule Example.ExtremeProbe do
+  @moduledoc "Type ExtremeProbe of Types.schema."
   # floor_bound: wire [-9223372036854775808, 100]
   # doubled_floor: wire [-9223372036854775808, 100]
   # ceiling_range: specified default at construction; zero_* gives the §5 zero form; wire [1, 18446744073709551615]
@@ -119,6 +131,7 @@ end
 
 # type ExtremeRow
 defmodule Example.ExtremeRow do
+  @moduledoc "Type ExtremeRow of Types.schema."
   # clamped_floor: wire [-9223372036854775808, 100]
   # clamped_ceiling: specified default at construction; zero_* gives the §5 zero form; wire [1, 18446744073709551614]
   # floor_def: specified default at construction; zero_* gives the §5 zero form
@@ -132,6 +145,7 @@ end
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Types.schema.
 defmodule Example.Types do
+  @moduledoc "The file-scope surface of Types.schema: constants, flags masks, name helpers and wire functions."
   import Bitwise
 
   @compile {:inline, rd: 3}
@@ -872,7 +886,9 @@ defmodule Example.Types do
     scratch = scratch >>> 32
 
     {data, scratch} =
-      if not value_at_rest do
+      if value_at_rest do
+        {data, scratch}
+      else
         %{
           linear_velocity: value_linear_velocity,
           angular_velocity: value_angular_velocity
@@ -953,8 +969,6 @@ defmodule Example.Types do
             sc23::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
 
         scratch = scratch >>> 32
-        {data, scratch}
-      else
         {data, scratch}
       end
 
@@ -1053,7 +1067,11 @@ defmodule Example.Types do
       v_at_rest = v == 1
 
       {bits_read, v_linear_velocity, v_angular_velocity} =
-        if not v_at_rest do
+        if v_at_rest do
+          v_linear_velocity = zero_vec3()
+          v_angular_velocity = zero_vec3()
+          {bits_read, v_linear_velocity, v_angular_velocity}
+        else
           if bits_read + 384 > num_bits, do: throw(:invalid)
           rv = rdw(data, bits_read, 49)
           v = rv &&& 0xFFFFFFFF
@@ -1124,10 +1142,6 @@ defmodule Example.Types do
           }
 
           {bits_read, v_linear_velocity, v_angular_velocity}
-        else
-          v_linear_velocity = zero_vec3()
-          v_angular_velocity = zero_vec3()
-          {bits_read, v_linear_velocity, v_angular_velocity}
         end
 
       value = %Example.RigidBody{
@@ -1160,10 +1174,10 @@ defmodule Example.Types do
     bits = bits + 449
 
     bits =
-      if not value.at_rest do
-        bits + 384
-      else
+      if value.at_rest do
         bits
+      else
+        bits + 384
       end
 
     bits

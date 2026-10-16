@@ -6,11 +6,13 @@
 
 # type RenderSprite
 defmodule Example.RenderSprite do
+  @moduledoc "Type RenderSprite of Render.schema."
   defstruct sort_key: 0, mesh_id: 0, material_id: 0, layer: 0, team: 0
 end
 
 # type RenderBlock
 defmodule Example.RenderBlock do
+  @moduledoc "Type RenderBlock of Render.schema."
   # sprites: counted array — a list of up to RenderBlockMaxSprites elements
   defstruct worker_index: 0, sprite_count_hint: 0, sprites: []
 end
@@ -18,6 +20,7 @@ end
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Render.schema.
 defmodule Example.Render do
+  @moduledoc "The file-scope surface of Render.schema: constants, flags masks, name helpers and wire functions."
   import Bitwise
 
   @compile {:inline, rd: 3}

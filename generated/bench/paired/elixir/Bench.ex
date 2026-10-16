@@ -31,6 +31,7 @@
 
 # type BenchPacket
 defmodule Bench.BenchPacket do
+  @moduledoc "Type BenchPacket of Bench.schema."
   # a: wire [-100, 100]
   # b: wire [0, 65535]
   # c: wire [-1000000, 1000000]
@@ -50,6 +51,7 @@ end
 
 # type BenchInts
 defmodule Bench.BenchInts do
+  @moduledoc "Type BenchInts of Bench.schema."
   # f0: wire [-100, 100]
   # f1: wire [0, 65535]
   # f2: wire [-1000000, 1000000]
@@ -65,6 +67,7 @@ end
 
 # type BenchBits
 defmodule Bench.BenchBits do
+  @moduledoc "Type BenchBits of Bench.schema."
   defstruct b7: 0, b13: 0, b23: 0, b3: 0, b32: 0, b11: 0, b19: 0, b48: 0
 end
 
@@ -73,6 +76,7 @@ end
 # integer-backed enums: storage must hold every wire-legal value, and
 # | max = ... headroom values have no richer Elixir value to be
 defmodule Bench.MixedWeapon do
+  @moduledoc "Enum MixedWeapon of Bench.schema: none is 0, then each variant in declared order."
   def none, do: 0
   def fists, do: 1
   def pistol, do: 2
@@ -97,6 +101,7 @@ end
 
 # type MixedEntity
 defmodule Bench.MixedEntity do
+  @moduledoc "Type MixedEntity of Bench.schema."
   # pos_x: wire [-16383, 16383]
   # pos_y: wire [-16383, 16383]
   # pos_z: wire [-16383, 16383]
@@ -123,12 +128,14 @@ end
 
 # type MixedStat
 defmodule Bench.MixedStat do
+  @moduledoc "Type MixedStat of Bench.schema."
   # delta: wire [-512, 511]
   defstruct stat_id: 0, delta: 0
 end
 
 # type MixedHitEvent
 defmodule Bench.MixedHitEvent do
+  @moduledoc "Type MixedHitEvent of Bench.schema."
   # damage: wire [0, 4095]
   # hit_kind: wire [0, 7]
   defstruct target_id: 0, damage: 0, hit_kind: 0, crit: false
@@ -136,18 +143,21 @@ end
 
 # type MixedChatEvent
 defmodule Bench.MixedChatEvent do
+  @moduledoc "Type MixedChatEvent of Bench.schema."
   # channel: wire [0, 3]
   defstruct channel: 0, speaker: 0
 end
 
 # type MixedPickupEvent
 defmodule Bench.MixedPickupEvent do
+  @moduledoc "Type MixedPickupEvent of Bench.schema."
   # amount: wire [0, 255]
   defstruct item_id: 0, amount: 0
 end
 
 # MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
 defmodule Bench.MixedEventType do
+  @moduledoc "Union MixedEvent's tag: none is 0, then each variant in declared order."
   def none, do: 0
   def hit, do: 1
   def chat, do: 2
@@ -163,6 +173,7 @@ end
 # arms hold their construction form (SPEC §4.8 leaves them unspecified).
 # Consumers read the selected arm only.
 defmodule Bench.MixedEvent do
+  @moduledoc "Union MixedEvent of Bench.schema: the tag and one field per variant."
   defstruct type: 0,
             hit: %Bench.MixedHitEvent{},
             chat: %Bench.MixedChatEvent{},
@@ -171,6 +182,7 @@ end
 
 # type BenchMixed
 defmodule Bench.BenchMixed do
+  @moduledoc "Type BenchMixed of Bench.schema."
   # ack_sequence: wire [0, 65535]
   # nonce: wire [0, 18446744073709551615]
   # world_time: wire [-1000000000000, 1000000000000]
@@ -219,13 +231,14 @@ end
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Bench.schema.
 defmodule Bench.Bench do
+  @moduledoc "The file-scope surface of Bench.schema: constants, flags masks, name helpers and wire functions."
   import Bitwise
 
   @cf_tab_0 (fn ->
                fr = fn value ->
                  ax = abs(value)
 
-                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+                 if ax >= 1.1754943508222875e-38 and ax < 3.4_028_235_677_973_366e38 do
                    y = value * 536_870_913.0
                    y - (y - value)
                  else
@@ -318,7 +331,7 @@ defmodule Bench.Bench do
       raise ArgumentError, "value.b is below the wire minimum"
     end
 
-    if value_b > 65535 do
+    if value_b > 65_535 do
       raise ArgumentError, "value.b is above the wire maximum"
     end
 
@@ -548,7 +561,7 @@ defmodule Bench.Bench do
       raise ArgumentError, "value.f1 is below the wire minimum"
     end
 
-    if value_f1 > 65535 do
+    if value_f1 > 65_535 do
       raise ArgumentError, "value.f1 is above the wire maximum"
     end
 
@@ -1011,37 +1024,37 @@ defmodule Bench.Bench do
     v = value_entity_id &&& 0xFFF
     scratch = v
 
-    if value_pos_x < -16383 do
+    if value_pos_x < -16_383 do
       raise ArgumentError, "value.pos_x is below the wire minimum"
     end
 
-    if value_pos_x > 16383 do
+    if value_pos_x > 16_383 do
       raise ArgumentError, "value.pos_x is above the wire maximum"
     end
 
-    v = value_pos_x + 16383
+    v = value_pos_x + 16_383
     scratch = scratch ||| v <<< 12
 
-    if value_pos_y < -16383 do
+    if value_pos_y < -16_383 do
       raise ArgumentError, "value.pos_y is below the wire minimum"
     end
 
-    if value_pos_y > 16383 do
+    if value_pos_y > 16_383 do
       raise ArgumentError, "value.pos_y is above the wire maximum"
     end
 
-    v = value_pos_y + 16383
+    v = value_pos_y + 16_383
     scratch = scratch ||| v <<< 27
 
-    if value_pos_z < -16383 do
+    if value_pos_z < -16_383 do
       raise ArgumentError, "value.pos_z is below the wire minimum"
     end
 
-    if value_pos_z > 16383 do
+    if value_pos_z > 16_383 do
       raise ArgumentError, "value.pos_z is above the wire maximum"
     end
 
-    v = value_pos_z + 16383
+    v = value_pos_z + 16_383
     sc0 = scratch
     scratch = scratch >>> 40
     scratch = scratch ||| v <<< 2
@@ -1148,19 +1161,19 @@ defmodule Bench.Bench do
       v = rv >>> 12 &&& 0x7FFF
       bits_read = bits_read + 15
       # a smuggled offset is refused
-      if v > 32766, do: throw(:invalid)
-      v_pos_x = v - 16383
+      if v > 32_766, do: throw(:invalid)
+      v_pos_x = v - 16_383
       v = rv >>> 27 &&& 0x7FFF
       bits_read = bits_read + 15
       # a smuggled offset is refused
-      if v > 32766, do: throw(:invalid)
-      v_pos_y = v - 16383
+      if v > 32_766, do: throw(:invalid)
+      v_pos_y = v - 16_383
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x7FFF
       bits_read = bits_read + 15
       # a smuggled offset is refused
-      if v > 32766, do: throw(:invalid)
-      v_pos_z = v - 16383
+      if v > 32_766, do: throw(:invalid)
+      v_pos_z = v - 16_383
       v = rv >>> 15 &&& 0x1FF
       bits_read = bits_read + 9
       v_yaw = v
@@ -1889,7 +1902,7 @@ defmodule Bench.Bench do
     } = value
 
     # const(0xC0DE, 16) rides the wire (SPEC §4.3)
-    v = 49374
+    v = 49_374
     scratch = v
     v = value_sequence &&& 0xFFFF
     scratch = scratch ||| v <<< 16
@@ -1898,7 +1911,7 @@ defmodule Bench.Bench do
       raise ArgumentError, "value.ack_sequence is below the wire minimum"
     end
 
-    if value_ack_sequence > 65535 do
+    if value_ack_sequence > 65_535 do
       raise ArgumentError, "value.ack_sequence is above the wire maximum"
     end
 
@@ -2212,7 +2225,7 @@ defmodule Bench.Bench do
       raise ArgumentError, "value.ping is below the wire minimum"
     end
 
-    if value_ping > 64000 do
+    if value_ping > 64_000 do
       raise ArgumentError, "value.ping is above the wire maximum"
     end
 
@@ -2284,7 +2297,7 @@ defmodule Bench.Bench do
       v = rv &&& 0xFFFF
       bits_read = bits_read + 16
       # a read rejects any other value (SPEC §4.3)
-      if v != 49374, do: throw(:invalid)
+      if v != 49_374, do: throw(:invalid)
       v = rv >>> 16 &&& 0xFFFF
       bits_read = bits_read + 16
       v_sequence = v
@@ -2552,7 +2565,7 @@ defmodule Bench.Bench do
       v = rv &&& 0xFFFF
       bits_read = bits_read + 16
       # a smuggled offset is refused
-      if v > 64000, do: throw(:invalid)
+      if v > 64_000, do: throw(:invalid)
       v_ping = v
       v = rv >>> 16
       bits_read = bits_read + 4
@@ -2841,39 +2854,39 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
 
-    if e_pos_x < -16383 do
+    if e_pos_x < -16_383 do
       raise ArgumentError, "e.pos_x is below the wire minimum"
     end
 
-    if e_pos_x > 16383 do
+    if e_pos_x > 16_383 do
       raise ArgumentError, "e.pos_x is above the wire maximum"
     end
 
-    v = e_pos_x + 16383
+    v = e_pos_x + 16_383
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 15
 
-    if e_pos_y < -16383 do
+    if e_pos_y < -16_383 do
       raise ArgumentError, "e.pos_y is below the wire minimum"
     end
 
-    if e_pos_y > 16383 do
+    if e_pos_y > 16_383 do
       raise ArgumentError, "e.pos_y is above the wire maximum"
     end
 
-    v = e_pos_y + 16383
+    v = e_pos_y + 16_383
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 15
 
-    if e_pos_z < -16383 do
+    if e_pos_z < -16_383 do
       raise ArgumentError, "e.pos_z is below the wire minimum"
     end
 
-    if e_pos_z > 16383 do
+    if e_pos_z > 16_383 do
       raise ArgumentError, "e.pos_z is above the wire maximum"
     end
 
-    v = e_pos_z + 16383
+    v = e_pos_z + 16_383
     sc0 = scratch
     fl0 = scratch_bits >>> 3
     scratch = scratch >>> (fl0 <<< 3)
@@ -3121,19 +3134,19 @@ defmodule Bench.Bench do
     v = rv >>> 12 &&& 0x7FFF
     bits_read = bits_read + 15
     # a smuggled offset is refused
-    if v > 32766, do: throw(:invalid)
-    e_pos_x = v - 16383
+    if v > 32_766, do: throw(:invalid)
+    e_pos_x = v - 16_383
     v = rv >>> 27 &&& 0x7FFF
     bits_read = bits_read + 15
     # a smuggled offset is refused
-    if v > 32766, do: throw(:invalid)
-    e_pos_y = v - 16383
+    if v > 32_766, do: throw(:invalid)
+    e_pos_y = v - 16_383
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0x7FFF
     bits_read = bits_read + 15
     # a smuggled offset is refused
-    if v > 32766, do: throw(:invalid)
-    e_pos_z = v - 16383
+    if v > 32_766, do: throw(:invalid)
+    e_pos_z = v - 16_383
     v = rv >>> 15 &&& 0x1FF
     bits_read = bits_read + 9
     e_yaw = v
@@ -3522,7 +3535,7 @@ defmodule Bench.Bench do
   defp fr(value) do
     ax = abs(value)
 
-    if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+    if ax >= 1.1754943508222875e-38 and ax < 3.4_028_235_677_973_366e38 do
       y = value * 536_870_913.0
       y - (y - value)
     else

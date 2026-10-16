@@ -6,67 +6,80 @@
 
 # type Vec2
 defmodule Example.Vec2 do
+  @moduledoc "Type Vec2 of Degenerate.schema."
   defstruct x: 0.0, y: 0.0
 end
 
 # type SpanF64
 defmodule Example.SpanF64 do
+  @moduledoc "Type SpanF64 of Degenerate.schema."
   defstruct values: List.duplicate(0.0, 2)
 end
 
 # type SpanU64
 defmodule Example.SpanU64 do
+  @moduledoc "Type SpanU64 of Degenerate.schema."
   defstruct values: List.duplicate(0, 2)
 end
 
 # type SpanI64
 defmodule Example.SpanI64 do
+  @moduledoc "Type SpanI64 of Degenerate.schema."
   defstruct values: List.duplicate(0, 2)
 end
 
 # type SpanOne
 defmodule Example.SpanOne do
+  @moduledoc "Type SpanOne of Degenerate.schema."
   defstruct values: List.duplicate(0, 1)
 end
 
 # type SpanChunk
 defmodule Example.SpanChunk do
+  @moduledoc "Type SpanChunk of Degenerate.schema."
   defstruct values: List.duplicate(0, 4)
 end
 
 # type SpanTail
 defmodule Example.SpanTail do
+  @moduledoc "Type SpanTail of Degenerate.schema."
   defstruct values: List.duplicate(0.0, 2), tail: 0
 end
 
 # type SpanTwice
 defmodule Example.SpanTwice do
+  @moduledoc "Type SpanTwice of Degenerate.schema."
   defstruct a: List.duplicate(0.0, 2), b: List.duplicate(0.0, 2)
 end
 
 # type Trio
 defmodule Example.Trio do
+  @moduledoc "Type Trio of Degenerate.schema."
   defstruct a: 0, b: 0, c: 0
 end
 
 # type TrioSole
 defmodule Example.TrioSole do
+  @moduledoc "Type TrioSole of Degenerate.schema."
   defstruct inner: %Example.Trio{}
 end
 
 # type TrioFirst
 defmodule Example.TrioFirst do
+  @moduledoc "Type TrioFirst of Degenerate.schema."
   defstruct inner: %Example.Trio{}, trailer: 0
 end
 
 # type TrioStraddle
 defmodule Example.TrioStraddle do
+  @moduledoc "Type TrioStraddle of Degenerate.schema."
   defstruct pad0: 0, pad1: 0, pad2: 0, pad3: 0, pad4: 0, pad5: 0, inner: %Example.Trio{}
 end
 
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Degenerate.schema.
 defmodule Example.Degenerate do
+  @moduledoc "The file-scope surface of Degenerate.schema: constants, flags masks, name helpers and wire functions."
   import Bitwise
 
   @compile {:inline, rd: 3}

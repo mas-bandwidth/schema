@@ -149,12 +149,12 @@ defmodule Bench.Table do
           width: 4,
           signed: true,
           min: 0,
-          max: 65535,
+          max: 65_535,
           cook_off: 4,
           count_off: -1,
           present_off: -1,
           shape: :value,
-          bound: {0, 65535},
+          bound: {0, 65_535},
           doc: "",
           tags: [],
           default: 0
@@ -582,7 +582,7 @@ defmodule Bench.Table do
           signed: false,
           frac: 8,
           min: 0,
-          max: 64000,
+          max: 64_000,
           cook_off: 1344,
           count_off: -1,
           present_off: -1,
@@ -802,13 +802,13 @@ defmodule Bench.Table do
           t: :int,
           width: 4,
           signed: true,
-          min: -16383,
-          max: 16383,
+          min: -16_383,
+          max: 16_383,
           cook_off: 4,
           count_off: -1,
           present_off: -1,
           shape: :value,
-          bound: {-16383, 16383},
+          bound: {-16_383, 16_383},
           doc: "",
           tags: [],
           default: 0
@@ -823,13 +823,13 @@ defmodule Bench.Table do
           t: :int,
           width: 4,
           signed: true,
-          min: -16383,
-          max: 16383,
+          min: -16_383,
+          max: 16_383,
           cook_off: 8,
           count_off: -1,
           present_off: -1,
           shape: :value,
-          bound: {-16383, 16383},
+          bound: {-16_383, 16_383},
           doc: "",
           tags: [],
           default: 0
@@ -844,13 +844,13 @@ defmodule Bench.Table do
           t: :int,
           width: 4,
           signed: true,
-          min: -16383,
-          max: 16383,
+          min: -16_383,
+          max: 16_383,
           cook_off: 12,
           count_off: -1,
           present_off: -1,
           shape: :value,
-          bound: {-16383, 16383},
+          bound: {-16_383, 16_383},
           doc: "",
           tags: [],
           default: 0
@@ -1731,57 +1731,57 @@ defmodule Bench.Table do
   defp emit_field(%{t: :enum} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if not emit_scalar?(f, v) do
-      {idx_map, ids, order, acc}
-    else
+    if emit_scalar?(f, v) do
       vid = Map.fetch!(f.by_name, v)
       {ref, ids, order} = intern(ids, order, f.id)
       {vref, ids, order} = intern(ids, order, vid)
       {idx_map, ids, order, [acc, leb_encode(ref), <<30>>, leb_encode(vref)]}
+    else
+      {idx_map, ids, order, acc}
     end
   end
 
   defp emit_field(%{t: :int} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if not emit_scalar?(f, v) do
-      {idx_map, ids, order, acc}
-    else
+    if emit_scalar?(f, v) do
       {ref, ids, order} = intern(ids, order, f.id)
       {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, int_bytes(v, f.width, f.signed)]}
+    else
+      {idx_map, ids, order, acc}
     end
   end
 
   defp emit_field(%{t: :float} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if not emit_scalar?(f, v) do
-      {idx_map, ids, order, acc}
-    else
+    if emit_scalar?(f, v) do
       {ref, ids, order} = intern(ids, order, f.id)
       {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, float_bytes(v, f.width)]}
+    else
+      {idx_map, ids, order, acc}
     end
   end
 
   defp emit_field(%{t: :string} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if not emit_scalar?(f, v) do
-      {idx_map, ids, order, acc}
-    else
+    if emit_scalar?(f, v) do
       {ref, ids, order} = intern(ids, order, f.id)
       {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, leb_encode(byte_size(v)), v]}
+    else
+      {idx_map, ids, order, acc}
     end
   end
 
   defp emit_field(%{t: :bool} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if not emit_scalar?(f, v) do
-      {idx_map, ids, order, acc}
-    else
+    if emit_scalar?(f, v) do
       {ref, ids, order} = intern(ids, order, f.id)
       {idx_map, ids, order, [acc, leb_encode(ref), <<1>>, if(v, do: <<1>>, else: <<0>>)]}
+    else
+      {idx_map, ids, order, acc}
     end
   end
 
@@ -2531,27 +2531,25 @@ defmodule Bench.Table do
             # a narrower scalar element kind widens and counts once
             # (docs/SPEC-TABLES.md §2.9, §4). Any other disagreement skips
             # the field and counts a kind mismatch.
-            cond do
-              elem_kind == f.elem_kind or kind_widens?(elem_kind, f.elem_kind) ->
-                case leb(count_rest) do
-                  {n, elems} ->
-                    report =
-                      if elem_kind == f.elem_kind do
-                        report
-                      else
-                        %{report | widened: report.widened + 1}
-                      end
+            if elem_kind == f.elem_kind or kind_widens?(elem_kind, f.elem_kind) do
+              case leb(count_rest) do
+                {n, elems} ->
+                  report =
+                    if elem_kind == f.elem_kind do
+                      report
+                    else
+                      %{report | widened: report.widened + 1}
+                    end
 
-                    reader = %{f | elem_kind: elem_kind}
-                    {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
-                    {:cont, value, report} |> clamp_count(f)
+                  reader = %{f | elem_kind: elem_kind}
+                  {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
+                  {:cont, value, report} |> clamp_count(f)
 
-                  :error ->
-                    {:cont, [], %{report | malformed: true}}
-                end
-
-              true ->
-                {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}}
+                :error ->
+                  {:cont, [], %{report | malformed: true}}
+              end
+            else
+              {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}}
             end
 
           _ ->

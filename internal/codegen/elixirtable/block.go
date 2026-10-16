@@ -204,22 +204,26 @@ const blockRuntimeSource = `  @moduledoc """
   # written; rows and padding stay the zeros the extent was allocated with.
   # A count past the declared maximum, or a negative count, names the array
   # and writes nothing.
+  #
+  # The first array whose count is refused names the refusal; the check is a
+  # predicate of its own so begin nests no deeper than credo's Nesting allows
+  # (issue #547).
   def begin(counts, arrays, projection, build) when is_map(counts) and is_integer(projection) do
-    case Enum.reduce_while(arrays, :ok, fn a, _ ->
-           c = count_of(counts, a.name)
+    case Enum.find(arrays, &count_refused?(counts, &1)) do
+      nil ->
+        lay(counts, arrays, projection, build)
 
-           if c < 0 or c > a.max do
-             {:halt, {:error, %{array: a.name, count: c, maximum: a.max}}}
-           else
-             {:cont, :ok}
-           end
-         end) do
-      {:error, _} = err -> err
-      :ok -> lay(counts, arrays, projection, build)
+      a ->
+        {:error, %{array: a.name, count: count_of(counts, a.name), maximum: a.max}}
     end
   end
 
   def begin(_, _, _, _), do: false
+
+  defp count_refused?(counts, a) do
+    c = count_of(counts, a.name)
+    c < 0 or c > a.max
+  end
 
   defp count_of(counts, name) do
     cond do
@@ -360,22 +364,19 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	b.pf("  def block_open_%s(data), do: block_open_%s(data, 0)\n\n", lo, lo)
 	b.pf("  def block_open_%s(data, lead) when is_binary(data) and is_integer(lead) do\n", lo)
 	b.pf("    bytes = byte_size(data)\n\n")
-	b.pf("    if bytes < %s or rem(lead, B.align()) != 0 do\n", exInt(proj.Size))
-	b.pf("      :error\n")
+	// One `with` and no nested if/case/if: credo's default
+	// Credo.Check.Refactor.Nesting reports a body nested past depth 2
+	// (issue #547), and the three refusals read in order as its clauses.
+	b.pf("    # the prologue's size and the base's alignment, then the magic, the\n")
+	b.pf("    # build and the byte order: a byte-swapped magic is a FOREIGN BYTE\n")
+	b.pf("    # ORDER, and anything else is not a block at all. All refuse.\n")
+	b.pf("    with true <- bytes >= %s and rem(lead, B.align()) == 0,\n", exInt(proj.Size))
+	b.pf("         <<magic::little-unsigned-64, build::little-unsigned-64, order::little-unsigned-64,\n")
+	b.pf("           _::binary>> <- data,\n")
+	b.pf("         true <- magic == B.magic() and build == @build_version and order == B.byte_order() do\n")
+	b.pf("      block_extent_%s(data, bytes)\n", lo)
 	b.pf("    else\n")
-	b.pf("      case data do\n")
-	b.pf("        <<magic::little-unsigned-64, build::little-unsigned-64, order::little-unsigned-64,\n")
-	b.pf("          _::binary>> ->\n")
-	b.pf("          # a byte-swapped magic is a FOREIGN BYTE ORDER, and anything else\n")
-	b.pf("          # is not a block at all. Both refuse.\n")
-	b.pf("          if magic != B.magic() or build != @build_version or order != B.byte_order() do\n")
-	b.pf("            :error\n")
-	b.pf("          else\n")
-	b.pf("            block_extent_%s(data, bytes)\n", lo)
-	b.pf("          end\n\n")
-	b.pf("        _ ->\n")
-	b.pf("          :error\n")
-	b.pf("      end\n")
+	b.pf("      _ -> :error\n")
 	b.pf("    end\n")
 	b.pf("  end\n\n")
 	b.pf("  def block_open_%s(_data, _lead), do: :error\n\n", lo)
@@ -582,7 +583,7 @@ func (b *blockGen) rowAccessor(record string, fl ir.FieldLayout, emit func(strin
 				fmt.Sprintf("B.i32(row, %s)", exInt(pieces[len(pieces)-1].Offset))))
 		}
 		emit("  def %s_row_%s(row) do\n    Enum.map(0..%s//1, fn i -> %s end)\n  end\n", lo, f.Name, exInt(count-1),
-			b.readAt(f, fmt.Sprintf("%s + i * %s", exInt(fl.Offset), exInt(size)), size))
+			b.readAt(f, fmt.Sprintf("%s + %s", exInt(fl.Offset), exTimes("i", int64(size))), size))
 	default:
 		size := elementSizeOf(b.unit, f)
 		if f.Type.Optional {

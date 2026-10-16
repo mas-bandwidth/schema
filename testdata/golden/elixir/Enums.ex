@@ -9,6 +9,7 @@
 # integer-backed enums: storage must hold every wire-legal value, and
 # | max = ... headroom values have no richer Elixir value to be
 defmodule Example.Team do
+  @moduledoc "Enum Team of Enums.schema: none is 0, then each variant in declared order."
   def none, do: 0
   def red, do: 1
   def blue, do: 2
@@ -23,6 +24,7 @@ end
 # integer-backed enums: storage must hold every wire-legal value, and
 # | max = ... headroom values have no richer Elixir value to be
 defmodule Example.ShipType do
+  @moduledoc "Enum ShipType of Enums.schema: none is 0, then each variant in declared order."
   def none, do: 0
   def fighter, do: 1
   def corvette, do: 2
@@ -40,6 +42,7 @@ end
 # integer-backed enums: storage must hold every wire-legal value, and
 # | max = ... headroom values have no richer Elixir value to be
 defmodule Example.MissileType do
+  @moduledoc "Enum MissileType of Enums.schema: none is 0, then each variant in declared order."
   def none, do: 0
   def heatseeker, do: 1
   def torpedo, do: 2
@@ -55,6 +58,7 @@ end
 # integer-backed enums: storage must hold every wire-legal value, and
 # | max = ... headroom values have no richer Elixir value to be
 defmodule Example.PropType do
+  @moduledoc "Enum PropType of Enums.schema: none is 0, then each variant in declared order."
   def none, do: 0
   def asteroid, do: 1
   def chunk, do: 2
@@ -73,6 +77,7 @@ end
 # integer-backed enums: storage must hold every wire-legal value, and
 # | max = ... headroom values have no richer Elixir value to be
 defmodule Example.Pending do
+  @moduledoc "Enum Pending of Enums.schema: none is 0, then each variant in declared order."
   def none, do: 0
   # the declared variant count (SPEC §4.2)
   def count, do: 0
@@ -83,6 +88,7 @@ end
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Enums.schema.
 defmodule Example.Enums do
+  @moduledoc "The file-scope surface of Enums.schema: constants, flags masks, name helpers and wire functions."
   import Bitwise
 
   # enum_name_team: debug/log/tooling name for any Team wire value —

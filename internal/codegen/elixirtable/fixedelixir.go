@@ -254,6 +254,8 @@ func (g *fixedGen) structModule(st *ir.Struct) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# table %s — the value a fixed record of it carries (docs/SPEC-TABLES.md §3.4)\n", st.Name)
 	fmt.Fprintf(&b, "defmodule %s.%s do\n", g.ns, st.Name)
+	// credo's default Credo.Check.Readability.ModuleDoc (issue #547).
+	fmt.Fprintf(&b, "  @moduledoc %s\n\n", ir.QuoteDocElixir("Table "+st.Name+": the value a fixed record of it carries (docs/SPEC-TABLES.md §3.4)."))
 	fields := make([]string, 0, len(st.Fields))
 	for _, f := range st.Fields {
 		if f.Type.Optional {
@@ -425,7 +427,7 @@ func (g *fixedGen) writeElements(f *ir.Field, name string, bound, min int64) []w
 	}
 	walk := g.elementWalk(f, name)
 	out = append(out, wseg{stmt: func(col int) []string { return g.assign("acc", walk, col) }})
-	out = append(out, wseg{inline: fmt.Sprintf("0::size((%d - %s) * %d)-unit(8)", bound, n, elem)})
+	out = append(out, wseg{inline: fmt.Sprintf("0::size(%s)-unit(8)", exFixedSlack(bound, n, elem))})
 	return out
 }
 
@@ -818,7 +820,7 @@ func (g *fixedGen) readPayload(out *rseg, f *ir.Field, v string, present node) {
 		g.readText(out, f, v, 1, present)
 	case f.Type.Kind == ir.TBytes:
 		segN := "n_" + v + "::little-signed-32"
-		segB := fmt.Sprintf("b_%s::binary-size(%d)", v, f.Type.Size)
+		segB := fmt.Sprintf("b_%s::binary-size(%s)", v, exInt(int64(f.Type.Size)))
 		out.match = append(out.match, segN, segB)
 		out.stmt("c", rawf("R.clamps(c, n_%s, 0, %d)", v, f.Type.Size))
 		out.field(f.Name, rawf("binary_part(b_%s, 0, min(max(n_%s, 0), %d))", v, v, f.Type.Size))
@@ -837,7 +839,7 @@ func (g *fixedGen) readText(out *rseg, f *ir.Field, v string, unit int64, presen
 	bound := f.Type.Size
 	bytes := unit * bound
 	segN := "n_" + v + "::little-signed-32"
-	segB := fmt.Sprintf("b_%s::binary-size(%d)", v, bytes)
+	segB := fmt.Sprintf("b_%s::binary-size(%s)", v, exInt(int64(bytes)))
 	out.match = append(out.match, segN, segB)
 	out.stmt("c", rawf("R.clamps(c, n_%s, 0, %d)", v, bound))
 	used := rawf("binary_part(b_%s, 0, %d * min(max(n_%s, 0), %d))", v, unit, v, bound)
@@ -878,7 +880,7 @@ func (g *fixedGen) readElements(out *rseg, f *ir.Field, v string, live node) {
 			return
 		}
 	}
-	seg := fmt.Sprintf("b_%s::binary-size(%d)", v, bound*elem)
+	seg := fmt.Sprintf("b_%s::binary-size(%s)", v, exInt(int64(bound*elem)))
 	out.match = append(out.match, seg)
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
@@ -946,12 +948,12 @@ func (g *fixedGen) readElement(out *rseg, f *ir.Field, v, field string) {
 				out.field(field, g.structNodeOf(r, sub))
 				return
 			}
-			out.match = append(out.match, fmt.Sprintf("b_%s::binary-size(%d)", v, fixedTypeBytes(r)))
+			out.match = append(out.match, fmt.Sprintf("b_%s::binary-size(%s)", v, exInt(int64(fixedTypeBytes(r)))))
 			out.stmt("{f_"+v+", c, m}", rawf("%s(b_%s, c, m)", g.decodeName(r), v))
 			out.field(field, raw("f_"+v))
 			return
 		case *ir.Union:
-			out.match = append(out.match, fmt.Sprintf("b_%s::binary-size(%d)", v, fixedElementBytes(f)))
+			out.match = append(out.match, fmt.Sprintf("b_%s::binary-size(%s)", v, exInt(int64(fixedElementBytes(f)))))
 			out.stmt("{f_"+v+", c, m}", rawf("%s%s_fixed_decode(b_%s, c, m)", g.unionModule(r), ir.RustSnake(r.Name), v))
 			out.field(field, raw("f_"+v))
 			return
@@ -1107,7 +1109,7 @@ func (g *fixedGen) emitListHelpers(st *ir.Struct, snake string, size int64, r rs
 		g.pf("    {tail, c, m} = %s_fixed_list(rest, n - 1, c, m)\n", snake)
 		g.pf("    {[v | tail], c, m}\n")
 	} else {
-		g.pf("  def %s_fixed_list(<<e::binary-size(%d), rest::binary>>, n, c, m) do\n", snake, size)
+		g.pf("  def %s_fixed_list(<<e::binary-size(%s), rest::binary>>, n, c, m) do\n", snake, exInt(int64(size)))
 		g.pf("    {v, c, m} = %s_fixed_decode(e, c, m)\n", snake)
 		g.pf("    {tail, c, m} = %s_fixed_list(rest, n - 1, c, m)\n", snake)
 		g.pf("    {[v | tail], c, m}\n")
@@ -1473,7 +1475,7 @@ func (g *fixedGen) unionHelpers(u *ir.Union) {
 
 	g.pf("  # A RUN OF %s: the LIVE elements walked into a list, the count beside it.\n", u.Name)
 	g.emitForwardListBase("def", snake+"_fixed_list")
-	g.pf("  def %s_fixed_list(<<e::binary-size(%d), rest::binary>>, n, c, m) do\n", snake, total)
+	g.pf("  def %s_fixed_list(<<e::binary-size(%s), rest::binary>>, n, c, m) do\n", snake, exInt(int64(total)))
 	g.pf("    {v, c, m} = %s_fixed_decode(e, c, m)\n", snake)
 	g.pf("    {tail, c, m} = %s_fixed_list(rest, n - 1, c, m)\n", snake)
 	g.pf("    {[v | tail], c, m}\n")
@@ -1639,7 +1641,7 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("  # MEASURE IS A CONSTANT on this form: the body is the same size for every\n")
 	g.pf("  # value the type can hold (docs/SPEC-TABLES.md §3.4).\n")
 	g.pf("  @%s_body_bytes %d\n", snake, body)
-	g.pf("  @%s_record_bytes %d\n", snake, fixedHashBytes+body)
+	g.pf("  @%s_record_bytes %s\n", snake, exInt(int64(fixedHashBytes+body)))
 	g.pf("  @%s_hash 0x%016X\n\n", snake, hash)
 
 	g.pf("  # THE LAYOUT: %d entries, a PRE-ORDER walk of the closure in the writer's\n", len(entries))
@@ -1702,7 +1704,7 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 			g.pf("      layout:\n        %s,\n", fixedBinaryLiteral(e.Layout, len("        ")))
 		}
 		g.pf("      layout_bytes: %d,\n", len(e.Layout))
-		g.pf("      record_bytes: %d\n", e.Record)
+		g.pf("      record_bytes: %s\n", exInt(int64(e.Record)))
 		g.pf("    }%s\n", sep)
 	}
 	g.pf("  }\n\n")

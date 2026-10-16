@@ -32,6 +32,7 @@
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Constants.schema.
 defmodule Example.Constants do
+  @moduledoc "The file-scope surface of Constants.schema: constants, flags masks, name helpers and wire functions."
   # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
   # sides at the same id speak identical bits; there is no other versioning.
   def protocol_id, do: 0x8656AE68C06B97A7
@@ -52,7 +53,7 @@ defmodule Example.Constants do
 
   def max_health, do: 1000
 
-  def max_objects, do: 10000
+  def max_objects, do: 10_000
 
   def ship_max_lasers, do: 16
 

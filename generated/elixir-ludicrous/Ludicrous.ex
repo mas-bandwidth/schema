@@ -34,6 +34,7 @@
 # integer-backed enums: storage must hold every wire-legal value, and
 # | max = ... headroom values have no richer Elixir value to be
 defmodule Ludicrous.DriveMode do
+  @moduledoc "Enum DriveMode of Ludicrous.schema: none is 0, then each variant in declared order."
   def none, do: 0
   def cruise, do: 1
   def warp, do: 2
@@ -46,6 +47,7 @@ end
 
 # type FixedProbe
 defmodule Ludicrous.FixedProbe do
+  @moduledoc "Type FixedProbe of Ludicrous.schema."
   # angle: fixed point Q16.16 — the raw scaled integer; wire [-180, 180]
   # position: fixed point Q48.16 — the raw scaled integer; wire [-30000, 30000]
   # reach: fixed point Q112.16 — the raw scaled integer; wire [-1000000, 1000000]
@@ -56,6 +58,7 @@ end
 
 # type UnsignedProbe
 defmodule Ludicrous.UnsignedProbe do
+  @moduledoc "Type UnsignedProbe of Ludicrous.schema."
   # angle: fixed point Q16.16 — the raw scaled integer; wire [0, 360]
   # span: fixed point Q48.16 — the raw scaled integer; wire [0, 281474976710655]
   # reach: fixed point Q112.16 — the raw scaled integer; wire [0, 2000000]
@@ -73,6 +76,7 @@ end
 
 # type WideProbe
 defmodule Ludicrous.WideProbe do
+  @moduledoc "Type WideProbe of Ludicrous.schema."
   # energy: wire [-5000000000, 5000000000]
   # flux: wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
   # bias: specified default at construction; zero_* gives the §5 zero form; wire [-1000, 1000]
@@ -82,6 +86,7 @@ end
 
 # type LudicrousState
 defmodule Ludicrous.LudicrousState do
+  @moduledoc "Type LudicrousState of Ludicrous.schema."
   # keys: counted array — a list of up to 4 elements
   # has_target — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct mode: 0,
@@ -94,6 +99,7 @@ end
 
 # type DegenerateProbe
 defmodule Ludicrous.DegenerateProbe do
+  @moduledoc "Type DegenerateProbe of Ludicrous.schema."
   # locked_fixed: fixed point Q16.16 — the raw scaled integer; specified default at construction; zero_* gives the §5 zero form; wire [-3, -3]
   # locked_int: specified default at construction; zero_* gives the §5 zero form; wire [7, 7]
   # locked_wide: specified default at construction; zero_* gives the §5 zero form; wire [-12345678901234, -12345678901234]
@@ -102,6 +108,7 @@ end
 
 # type FixedVec
 defmodule Ludicrous.FixedVec do
+  @moduledoc "Type FixedVec of Ludicrous.schema."
   # x: fixed point Q48.16 — the raw scaled integer; wire [-100000, 100000]
   # y: fixed point Q48.16 — the raw scaled integer; wire [-100000, 100000]
   # z: fixed point Q48.16 — the raw scaled integer; wire [-100000, 100000]
@@ -110,6 +117,7 @@ end
 
 # type FixedQuat
 defmodule Ludicrous.FixedQuat do
+  @moduledoc "Type FixedQuat of Ludicrous.schema."
   # x: fixed point Q2.30 — the raw scaled integer; wire [-1, 1]
   # y: fixed point Q2.30 — the raw scaled integer; wire [-1, 1]
   # z: fixed point Q2.30 — the raw scaled integer; wire [-1, 1]
@@ -120,6 +128,7 @@ end
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Ludicrous.schema.
 defmodule Ludicrous.Ludicrous do
+  @moduledoc "The file-scope surface of Ludicrous.schema: constants, flags masks, name helpers and wire functions."
   import Bitwise
 
   @compile {:inline, rd: 3}
@@ -130,7 +139,7 @@ defmodule Ludicrous.Ludicrous do
   # sides at the same id speak identical bits; there is no other versioning.
   def protocol_id, do: 0xF4A226F4166D919B
 
-  def max_world_units, do: 30000
+  def max_world_units, do: 30_000
 
   # enum_name_drive_mode: debug/log/tooling name for any DriveMode wire value —
   # out-of-set values (wire-legal up to the declared max) name as "???"

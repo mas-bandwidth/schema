@@ -34,6 +34,7 @@
 # integer-backed enums: storage must hold every wire-legal value, and
 # | max = ... headroom values have no richer Elixir value to be
 defmodule Realworld.PacketMode do
+  @moduledoc "Enum PacketMode of RealWorld.schema: none is 0, then each variant in declared order."
   def none, do: 0
   def idle, do: 1
   def active, do: 2
@@ -48,6 +49,7 @@ end
 
 # type RealPacket
 defmodule Realworld.RealPacket do
+  @moduledoc "Type RealPacket of RealWorld.schema."
   # f001_int: wire [-805495, 805495]
   # f003_int: wire [-835897, 835897]
   # f004_cf32: compressed float [0.0, 2000.0] @ 0.1
@@ -204,13 +206,14 @@ end
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in RealWorld.schema.
 defmodule Realworld.RealWorld do
+  @moduledoc "The file-scope surface of RealWorld.schema: constants, flags masks, name helpers and wire functions."
   import Bitwise
 
   @cf_tab_0 (fn ->
                fr = fn value ->
                  ax = abs(value)
 
-                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+                 if ax >= 1.1754943508222875e-38 and ax < 3.4_028_235_677_973_366e38 do
                    y = value * 536_870_913.0
                    y - (y - value)
                  else
@@ -239,7 +242,7 @@ defmodule Realworld.RealWorld do
                fr = fn value ->
                  ax = abs(value)
 
-                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+                 if ax >= 1.1754943508222875e-38 and ax < 3.4_028_235_677_973_366e38 do
                    y = value * 536_870_913.0
                    y - (y - value)
                  else
@@ -268,7 +271,7 @@ defmodule Realworld.RealWorld do
                fr = fn value ->
                  ax = abs(value)
 
-                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+                 if ax >= 1.1754943508222875e-38 and ax < 3.4_028_235_677_973_366e38 do
                    y = value * 536_870_913.0
                    y - (y - value)
                  else
@@ -297,7 +300,7 @@ defmodule Realworld.RealWorld do
                fr = fn value ->
                  ax = abs(value)
 
-                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+                 if ax >= 1.1754943508222875e-38 and ax < 3.4_028_235_677_973_366e38 do
                    y = value * 536_870_913.0
                    y - (y - value)
                  else
@@ -326,7 +329,7 @@ defmodule Realworld.RealWorld do
                fr = fn value ->
                  ax = abs(value)
 
-                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+                 if ax >= 1.1754943508222875e-38 and ax < 3.4_028_235_677_973_366e38 do
                    y = value * 536_870_913.0
                    y - (y - value)
                  else
@@ -644,7 +647,7 @@ defmodule Realworld.RealWorld do
     sc2 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 5
-    v = cf_quantize(value_f004_cf32, 0.0, 2000.0, 20000, 20000.0)
+    v = cf_quantize(value_f004_cf32, 0.0, 2000.0, 20_000, 20_000.0)
     scratch = scratch ||| v <<< 26
 
     if value_f005_uint < 0 do
@@ -819,15 +822,15 @@ defmodule Realworld.RealWorld do
     scratch = scratch >>> 24
     scratch = scratch ||| v <<< 2
 
-    if value_f025_fixed < -30464 do
+    if value_f025_fixed < -30_464 do
       raise ArgumentError, "value.f025_fixed is below the wire minimum"
     end
 
-    if value_f025_fixed > 30464 do
+    if value_f025_fixed > 30_464 do
       raise ArgumentError, "value.f025_fixed is above the wire maximum"
     end
 
-    v = value_f025_fixed + 30464
+    v = value_f025_fixed + 30_464
     scratch = scratch ||| v <<< 34
     v = value_f026_bits &&& 0x1FF
     sc13 = scratch
@@ -877,7 +880,7 @@ defmodule Realworld.RealWorld do
       raise ArgumentError, "value.f034_uint is below the wire minimum"
     end
 
-    if value_f034_uint > 14149 do
+    if value_f034_uint > 14_149 do
       raise ArgumentError, "value.f034_uint is above the wire maximum"
     end
 
@@ -905,15 +908,15 @@ defmodule Realworld.RealWorld do
     scratch = scratch >>> 40
     scratch = scratch ||| v <<< 6
 
-    if value_f040_fixed < -20480 do
+    if value_f040_fixed < -20_480 do
       raise ArgumentError, "value.f040_fixed is below the wire minimum"
     end
 
-    if value_f040_fixed > 20480 do
+    if value_f040_fixed > 20_480 do
       raise ArgumentError, "value.f040_fixed is above the wire maximum"
     end
 
-    v = value_f040_fixed + 20480
+    v = value_f040_fixed + 20_480
     scratch = scratch ||| v <<< 25
 
     if value_f041_int < -55 do
@@ -959,7 +962,7 @@ defmodule Realworld.RealWorld do
           raise ArgumentError, "value.f046_uint is below the wire minimum"
         end
 
-        if value_f046_uint > 76063 do
+        if value_f046_uint > 76_063 do
           raise ArgumentError, "value.f046_uint is above the wire maximum"
         end
 
@@ -1003,7 +1006,7 @@ defmodule Realworld.RealWorld do
       raise ArgumentError, "value.f049_ufixed is below the wire minimum"
     end
 
-    if value_f049_ufixed > 49152 do
+    if value_f049_ufixed > 49_152 do
       raise ArgumentError, "value.f049_ufixed is above the wire maximum"
     end
 
@@ -1163,7 +1166,7 @@ defmodule Realworld.RealWorld do
       raise ArgumentError, "value.f066_ufixed is below the wire minimum"
     end
 
-    if value_f066_ufixed > 32768 do
+    if value_f066_ufixed > 32_768 do
       raise ArgumentError, "value.f066_ufixed is above the wire maximum"
     end
 
@@ -1202,7 +1205,7 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
-    v = cf_quantize(value_f072_cf32, 0.0, 100.0, 10000, 10000.0)
+    v = cf_quantize(value_f072_cf32, 0.0, 100.0, 10_000, 10_000.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 14
 
@@ -1252,15 +1255,15 @@ defmodule Realworld.RealWorld do
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
 
-        if value_f076_int < -26218 do
+        if value_f076_int < -26_218 do
           raise ArgumentError, "value.f076_int is below the wire minimum"
         end
 
-        if value_f076_int > 26218 do
+        if value_f076_int > 26_218 do
           raise ArgumentError, "value.f076_int is above the wire maximum"
         end
 
-        v = value_f076_int + 26218
+        v = value_f076_int + 26_218
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 16
 
@@ -1518,8 +1521,8 @@ defmodule Realworld.RealWorld do
       v = rv >>> 21 &&& 0x7FFF
       bits_read = bits_read + 15
       # headroom above the quantum count is refused
-      if v > 20000, do: throw(:invalid)
-      v_f004_cf32 = cf_decode(v, 20000.0, 2000.0, 0.0)
+      if v > 20_000, do: throw(:invalid)
+      v_f004_cf32 = cf_decode(v, 20_000.0, 2000.0, 0.0)
       v = rv >>> 36
       bits_read = bits_read + 13
       # a smuggled offset is refused
@@ -1637,8 +1640,8 @@ defmodule Realworld.RealWorld do
       v = rv >>> 32 &&& 0xFFFF
       bits_read = bits_read + 16
       # a smuggled offset is refused
-      if v > 60928, do: throw(:invalid)
-      v_f025_fixed = v - 30464
+      if v > 60_928, do: throw(:invalid)
+      v_f025_fixed = v - 30_464
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x1FF
       bits_read = bits_read + 9
@@ -1681,7 +1684,7 @@ defmodule Realworld.RealWorld do
       v = rv >>> 18 &&& 0x3FFF
       bits_read = bits_read + 14
       # a smuggled offset is refused
-      if v > 14149, do: throw(:invalid)
+      if v > 14_149, do: throw(:invalid)
       v_f034_uint = v
       v = rv >>> 32 &&& 0x1FF
       bits_read = bits_read + 9
@@ -1704,8 +1707,8 @@ defmodule Realworld.RealWorld do
       v = rv >>> 19 &&& 0xFFFF
       bits_read = bits_read + 16
       # a smuggled offset is refused
-      if v > 40960, do: throw(:invalid)
-      v_f040_fixed = v - 20480
+      if v > 40_960, do: throw(:invalid)
+      v_f040_fixed = v - 20_480
       v = rv >>> 35 &&& 0x7F
       bits_read = bits_read + 7
       # a smuggled offset is refused
@@ -1733,7 +1736,7 @@ defmodule Realworld.RealWorld do
           v = rv &&& 0x1FFFF
           bits_read = bits_read + 17
           # a smuggled offset is refused
-          if v > 76063, do: throw(:invalid)
+          if v > 76_063, do: throw(:invalid)
           v_f046_uint = v
           v = rv >>> 17
           bits_read = bits_read + 20
@@ -1762,7 +1765,7 @@ defmodule Realworld.RealWorld do
       v = rv >>> 32 &&& 0xFFFF
       bits_read = bits_read + 16
       # a smuggled offset is refused
-      if v > 49152, do: throw(:invalid)
+      if v > 49_152, do: throw(:invalid)
       v_f049_ufixed = v
       v = rv >>> 48
       bits_read = bits_read + 1
@@ -1860,7 +1863,7 @@ defmodule Realworld.RealWorld do
       v = rv &&& 0xFFFF
       bits_read = bits_read + 16
       # a smuggled offset is refused
-      if v > 32768, do: throw(:invalid)
+      if v > 32_768, do: throw(:invalid)
       v_f066_ufixed = v
       v = rv >>> 16 &&& 0x3FF
       bits_read = bits_read + 10
@@ -1889,8 +1892,8 @@ defmodule Realworld.RealWorld do
       v = rv >>> 11 &&& 0x3FFF
       bits_read = bits_read + 14
       # headroom above the quantum count is refused
-      if v > 10000, do: throw(:invalid)
-      v_f072_cf32 = cf_decode(v, 10000.0, 100.0, 0.0)
+      if v > 10_000, do: throw(:invalid)
+      v_f072_cf32 = cf_decode(v, 10_000.0, 100.0, 0.0)
       v = rv >>> 25 &&& 0xF
       bits_read = bits_read + 4
       # a smuggled offset is refused
@@ -1915,8 +1918,8 @@ defmodule Realworld.RealWorld do
           v = rv >>> 32 &&& 0xFFFF
           bits_read = bits_read + 16
           # a smuggled offset is refused
-          if v > 52436, do: throw(:invalid)
-          v_f076_int = v - 26218
+          if v > 52_436, do: throw(:invalid)
+          v_f076_int = v - 26_218
           rv = rd(data, bits_read, 20)
           v = rv &&& 0x3F
           bits_read = bits_read + 6
@@ -2296,7 +2299,7 @@ defmodule Realworld.RealWorld do
   defp fr(value) do
     ax = abs(value)
 
-    if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+    if ax >= 1.1754943508222875e-38 and ax < 3.4_028_235_677_973_366e38 do
       y = value * 536_870_913.0
       y - (y - value)
     else
