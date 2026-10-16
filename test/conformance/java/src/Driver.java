@@ -787,9 +787,9 @@ public final class Driver {
         final java.lang.reflect.Method measure;
         final java.lang.reflect.Method measureReason;
         final java.lang.reflect.Method cookFrom;
-        CookCodec(String pkg, String root) throws ReflectiveOperationException {
+        CookCodec(String pkg, String root, Class<?> cook) throws ReflectiveOperationException {
             variable = new VariableCodec(pkg, root);
-            cook = Class.forName(pkg + "." + root + "Cook");
+            this.cook = cook;
             measure = cook.getMethod("cookMeasure", Object.class);
             measureReason = cook.getMethod("cookMeasureReason", Object.class);
             cookFrom = cook.getMethod("cookFrom", Object.class, byte[].class, int.class);
@@ -805,9 +805,31 @@ public final class Driver {
         }
     }
 
-    private static CookCodec cookCodec(String unit, String root) {
-        try { return new CookCodec(variableUnitPackage(unit), root); }
-        catch (ReflectiveOperationException absent) { return null; }
+    // A cook-write row is ABSENT only for a reason the generator wrote down
+    // (docs/SPEC-TABLES.md §7.6), never because a lookup failed:
+    //   - the root's <Root>Cook is the generated STUB (cook.go emits a class
+    //     with a private constructor and no method when the root's closure
+    //     holds a construct the Java cook form does not carry, a union), or
+    //   - the unit has no cook form in this leg at all: neither <Root>Cook nor
+    //     the unit's TableCookInfo exists (the wide-kind unit gets no
+    //     accelerators, and a unit off this classpath has neither).
+    // Every other failure (a missing <Root>Cook in a unit that has a cook
+    // form, a real writer whose cookMeasure, cookMeasureReason or cookFrom
+    // lookup breaks, a Value class that will not load) is thrown, and the
+    // surface FAILS, so a renamed or re-typed writer can never turn its rows
+    // absent and leave the cell green.
+    private static CookCodec cookCodec(String unit, String root) throws ReflectiveOperationException {
+        String pkg = variableUnitPackage(unit);
+        Class<?> cook;
+        try {
+            cook = Class.forName(pkg + "." + root + "Cook");
+        } catch (ClassNotFoundException missing) {
+            try { Class.forName(pkg + ".TableCookInfo"); }
+            catch (ClassNotFoundException noCookForm) { return null; }
+            throw missing;
+        }
+        if (cook.getDeclaredMethods().length == 0) { return null; }
+        return new CookCodec(pkg, root, cook);
     }
 
     private static String[] instanceNamed(String name) {
@@ -821,7 +843,11 @@ public final class Driver {
         for (String[] f : kind("cook-write")) {
             String[] inst = instanceNamed(f[1]);
             if (inst == null) { return failInt("missing instance " + f[1]); }
-            CookCodec codec = cookCodec(inst[2], inst[3]);
+            CookCodec codec;
+            try { codec = cookCodec(inst[2], inst[3]); }
+            catch (ReflectiveOperationException broken) {
+                return failInt(f[1] + ": cook writer lookup failed: " + broken);
+            }
             if (codec == null) {
                 spillAbsent(out, f[1]);
                 spillAbsent(out, f[1] + "-be");

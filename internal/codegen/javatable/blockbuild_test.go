@@ -1,7 +1,6 @@
 package javatable
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -55,16 +54,24 @@ func TestBlockBuildAndCookWriteJava(t *testing.T) {
 		javac, javaBin := javaTools(t)
 		dir := t.TempDir()
 		srcDir := filepath.Join(dir, "blockdemo")
-		if err := os.MkdirAll(srcDir, 0o755); err != nil { t.Fatal(err) }
+		if err := os.MkdirAll(srcDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
 		var sources []string
 		for name, body := range files {
-			if !strings.HasSuffix(name, ".java") { continue }
+			if !strings.HasSuffix(name, ".java") {
+				continue
+			}
 			path := filepath.Join(srcDir, name)
-			if err := os.WriteFile(path, body, 0o644); err != nil { t.Fatal(err) }
+			if err := os.WriteFile(path, body, 0o644); err != nil {
+				t.Fatal(err)
+			}
 			sources = append(sources, path)
 		}
 		driver := filepath.Join(srcDir, "BlockGoldenDriver.java")
-		if err := os.WriteFile(driver, []byte(blockGoldenDriver), 0o644); err != nil { t.Fatal(err) }
+		if err := os.WriteFile(driver, []byte(blockGoldenDriver), 0o644); err != nil {
+			t.Fatal(err)
+		}
 		args := append([]string{"--release", "17", "-d", dir}, sources...)
 		args = append(args, driver)
 		if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
@@ -77,50 +84,311 @@ func TestBlockBuildAndCookWriteJava(t *testing.T) {
 			t.Fatalf("java block: %v\n%s", err, out)
 		}
 	})
-	for _, tc := range []struct{ name, dir, pkg, root, wire, little, big string }{
-		{"graph_tree", "../../../tables/pointers", "graphdemo", "Scene", "graph_tree.bin", "graph_tree.cook", "graph_tree-be.cook"},
-		{"blob_small", "../../../tables/blobs", "blobdemo", "Catalog", "blob_small.bin", "blob_small.cook", "blob_small-be.cook"},
-	} {
-		t.Run("cook_"+tc.name, func(t *testing.T) {
+	t.Run("cook_rows_partition", func(t *testing.T) {
+		t.Parallel()
+		cookWritePartition(t, readCookManifest(t))
+	})
+	t.Run("cook_absent_is_structural", func(t *testing.T) {
+		t.Parallel()
+		cookWriteAbsenceIsStructural(t)
+	})
+	for _, u := range cookWriteCarried {
+		t.Run("cook_"+u.pkg, func(t *testing.T) {
 			t.Parallel()
-			cookGolden(t, tc.dir, tc.pkg, tc.root, tc.wire, tc.little, tc.big)
+			cookGoldenUnit(t, readCookManifest(t), u)
 		})
+	}
+	t.Run("cook_refusal_invalid_value", func(t *testing.T) {
+		t.Parallel()
+		cookRefusal(t, readCookManifest(t))
+	})
+}
+
+// THE COOK-WRITE ROWS, partitioned (docs/SPEC-TABLES.md §7.6). Every
+// `cook-write` row of testdata/conformance/tables/MANIFEST.txt is in exactly
+// one of the three lists below, and cook_rows_partition holds the lists to the
+// manifest, so a row added there without a Java answer is a red test here.
+//
+// cookWriteCarried: the Java cook writer carries the root, and each row is
+// written in both byte orders and compared byte for byte with `schema cook`.
+type cookWriteRoot struct {
+	root string
+	rows []string
+}
+
+type cookWriteUnit struct {
+	schema string // a unit directory, or one .schema file
+	unit   string // the manifest's unit key
+	pkg    string // the unit's Java package
+	roots  []cookWriteRoot
+}
+
+var cookWriteCarried = []cookWriteUnit{
+	{"../../../tables/blobs", "blobdemo", "blobdemo", []cookWriteRoot{
+		{"Catalog", []string{"blob_small", "blob_empty", "blob_large", "blob_shared", "blob_str8", "blob_str16"}},
+	}},
+	{"../../../tables/pointers", "graphdemo", "graphdemo", []cookWriteRoot{
+		{"Scene", []string{"graph_tree", "graph_shared", "graph_empty", "graph_deep"}},
+	}},
+	{"../../../test/tables/P1.schema", "tblp1", "tblp1", []cookWriteRoot{
+		{"Chain", []string{"chain_value", "chain_value_empty"}},
+	}},
+	{"../../../test/tables/P3.schema", "tblp3", "tblp3", []cookWriteRoot{
+		{"Chain", []string{"chain_optional", "chain_optional_empty"}},
+	}},
+	{"../../../tables/examples", "tabledemo", "tabledemo", []cookWriteRoot{
+		{"KeyedConfig", []string{"keyed_config", "keyed_default"}},
+		{"WideBlob", []string{"wide_blob"}},
+	}},
+}
+
+// cookWriteStub: the root's closure holds a union, which the Java cook form
+// does not carry yet, so cook.go emits <Root>Cook as the STUB (a private
+// constructor, no method). The conformance driver answers these rows absent
+// on exactly that evidence, and cook_absent_is_structural pins it here.
+var cookWriteStub = []cookWriteUnit{
+	{"../../../tables/examples", "tabledemo", "tabledemo", []cookWriteRoot{
+		{"RootConfig", []string{"root_full", "root_default"}},
+		{"ProfileConfig", []string{"profile_elide"}},
+		{"LoadoutConfig", []string{"loadout_full"}},
+		{"ArchiveConfig", []string{"archive"}},
+	}},
+	{"../../../test/tables/V1.schema", "tblv1", "tblv1", []cookWriteRoot{
+		{"Cfg", []string{"v1_cfg", "v1_seams"}},
+	}},
+	{"../../../test/tables/V2.schema", "tblv2", "tblv2", []cookWriteRoot{
+		{"Cfg", []string{"v2_cfg", "v2_seams"}},
+	}},
+	{"../../../tables/messages", "messagedemo", "messagedemo", []cookWriteRoot{
+		{"ToolMessage", []string{"message_open", "message_transaction", "message_ping", "message_save",
+			"message_empty", "message_batch", "message_arms", "message_arm_edits", "message_ack", "message_trace"}},
+	}},
+	{"../../../tables/stream", "streamdemo", "streamdemo", []cookWriteRoot{
+		{"Feed", []string{"stream_chain", "stream_header", "stream_parts", "stream_arm_first", "stream_arm_pointer"}},
+	}},
+	{"../../../test/tables/M1.schema", "tblm1", "tblm1", []cookWriteRoot{
+		{"Msg", []string{"m1_open"}},
+	}},
+	{"../../../test/tables/M2.schema", "tblm2", "tblm2", []cookWriteRoot{
+		{"Msg", []string{"m2_open"}},
+	}},
+}
+
+// cookWriteNoForm: the wide-kind unit (§15) gets no accelerators, so the
+// generator emits no cook form for it at all: no <Root>Cook and no
+// TableCookInfo. The driver answers these rows absent on that evidence.
+var cookWriteNoForm = []cookWriteUnit{
+	{"../../../tables/scalars", "scalars", "scalardemo", []cookWriteRoot{
+		{"SimState", []string{"scalars_full", "scalars_default", "scalars_edges"}},
+	}},
+}
+
+type cookManifest struct {
+	instance map[string][3]string // row -> unit, root, wire path (repo-relative)
+	cook     map[string][2]string // row -> little, big (repo-relative)
+	order    []string             // cook-write rows in manifest order
+}
+
+func readCookManifest(t *testing.T) cookManifest {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "..", "testdata", "conformance", "tables", "MANIFEST.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := cookManifest{instance: map[string][3]string{}, cook: map[string][2]string{}}
+	for _, line := range strings.Split(string(b), "\n") {
+		f := strings.Fields(line)
+		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
+			continue
+		}
+		switch {
+		case f[0] == "instance" && len(f) >= 5:
+			m.instance[f[1]] = [3]string{f[2], f[3], f[4]}
+		case f[0] == "cook-write" && len(f) == 4:
+			if _, dup := m.cook[f[1]]; dup {
+				t.Fatalf("MANIFEST.txt names cook-write %s twice", f[1])
+			}
+			m.cook[f[1]] = [2]string{f[2], f[3]}
+			m.order = append(m.order, f[1])
+		}
+	}
+	if len(m.order) == 0 {
+		t.Fatal("MANIFEST.txt holds no cook-write row: this test would pass over an empty set")
+	}
+	return m
+}
+
+func cookWritePartition(t *testing.T, m cookManifest) {
+	t.Helper()
+	seen := map[string]string{}
+	count := map[string]int{}
+	for list, units := range map[string][]cookWriteUnit{"carried": cookWriteCarried, "stub": cookWriteStub, "no-cook-form": cookWriteNoForm} {
+		for _, u := range units {
+			for _, r := range u.roots {
+				for _, row := range r.rows {
+					if prev, dup := seen[row]; dup {
+						t.Errorf("%s is listed twice (%s and %s)", row, prev, list)
+					}
+					seen[row] = list
+					count[list]++
+					if _, ok := m.cook[row]; !ok {
+						t.Errorf("%s (%s) is no cook-write row of MANIFEST.txt", row, list)
+					}
+					inst, ok := m.instance[row]
+					if !ok {
+						t.Errorf("%s has no instance row in MANIFEST.txt", row)
+					} else if inst[0] != u.unit || inst[1] != r.root {
+						t.Errorf("%s: MANIFEST.txt says %s %s, the %s list says %s %s", row, inst[0], inst[1], list, u.unit, r.root)
+					}
+				}
+			}
+		}
+	}
+	for _, row := range m.order {
+		if _, ok := seen[row]; !ok {
+			t.Errorf("cook-write %s has no Java answer: add it to cookWriteCarried, or name why it is absent", row)
+		}
+	}
+	t.Logf("cook-write rows: %d in the manifest, %d carried, %d absent (stub, a union in the closure), %d absent (no cook form)",
+		len(m.order), count["carried"], count["stub"], count["no-cook-form"])
+}
+
+// cookUnitFiles generates one unit for java, from a directory or from one
+// .schema file (copied alone into a directory so unitFromDir reads only it).
+func cookUnitFiles(t *testing.T, schema string) map[string][]byte {
+	t.Helper()
+	dir := schema
+	if strings.HasSuffix(schema, ".schema") {
+		dir = t.TempDir()
+		b, err := os.ReadFile(schema)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, filepath.Base(schema)), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files, err := Generate(unitFromDir(t, dir))
+	if err != nil {
+		t.Fatalf("generate %s: %v", schema, err)
+	}
+	return files
+}
+
+func cookWriteAbsenceIsStructural(t *testing.T) {
+	t.Helper()
+	for _, u := range cookWriteStub {
+		files := cookUnitFiles(t, u.schema)
+		if _, ok := files["TableCookInfo.java"]; !ok {
+			t.Errorf("%s: no TableCookInfo.java, so its stub rows would be absent for the wrong reason", u.pkg)
+		}
+		for _, r := range u.roots {
+			src, ok := files[r.root+"Cook.java"]
+			if !ok {
+				t.Errorf("%s.%sCook.java is not emitted, where the stub is expected (rows %v)", u.pkg, r.root, r.rows)
+				continue
+			}
+			for _, name := range []string{"cookMeasure(", "cookMeasureReason(", "cookFrom(", "open("} {
+				if strings.Contains(string(src), name) {
+					t.Errorf("%s.%sCook now declares %s: it is no stub, so rows %v belong in cookWriteCarried", u.pkg, r.root, name, r.rows)
+				}
+			}
+		}
+	}
+	for _, u := range cookWriteNoForm {
+		files := cookUnitFiles(t, u.schema)
+		if _, ok := files["TableCookInfo.java"]; ok {
+			t.Errorf("%s now emits a cook form (TableCookInfo.java): its rows belong in cookWriteCarried or cookWriteStub", u.pkg)
+		}
+		for _, r := range u.roots {
+			if _, ok := files[r.root+"Cook.java"]; ok {
+				t.Errorf("%s.%sCook.java is emitted: rows %v are no longer a unit without a cook form", u.pkg, r.root, r.rows)
+			}
+		}
 	}
 }
 
-// cookGolden loads the committed table wire and writes the two schema cook
-// reference images (§7.6), including refusal paths that must not touch output.
-func cookGolden(t *testing.T, schemaDir, pkg, root, wire, little, big string) {
+// compileCookUnit writes one generated unit and the given drivers into a
+// temporary classpath and compiles them together.
+func compileCookUnit(t *testing.T, javac string, files map[string][]byte, pkg string, drivers map[string]string) string {
 	t.Helper()
-	javac, javaBin := javaTools(t)
-	files, err := Generate(unitFromDir(t, schemaDir))
-	if err != nil { t.Fatal(err) }
 	dir := t.TempDir()
 	srcDir := filepath.Join(dir, pkg)
-	if err := os.MkdirAll(srcDir, 0o755); err != nil { t.Fatal(err) }
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	var sources []string
 	for name, body := range files {
-		if !strings.HasSuffix(name, ".java") { continue }
+		if !strings.HasSuffix(name, ".java") {
+			continue
+		}
 		path := filepath.Join(srcDir, name)
-		if err := os.WriteFile(path, body, 0o644); err != nil { t.Fatal(err) }
+		if err := os.WriteFile(path, body, 0o644); err != nil {
+			t.Fatal(err)
+		}
 		sources = append(sources, path)
 	}
-	driver := fmt.Sprintf(cookGoldenDriver, pkg, pkg, pkg, root, pkg, root,
-		pkg, root, pkg, root, pkg, root, pkg, root, pkg, root, pkg, root)
-	driverPath := filepath.Join(dir, "CookGoldenDriver.java")
-	if err := os.WriteFile(driverPath, []byte(driver), 0o644); err != nil { t.Fatal(err) }
+	for name, body := range drivers {
+		path := filepath.Join(dir, name+".java")
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		sources = append(sources, path)
+	}
 	args := append([]string{"--release", "17", "-d", dir}, sources...)
-	args = append(args, driverPath)
 	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	rootPath := filepath.Join("..", "..", "..", "testdata")
-	cmd := exec.Command(javaBin, "-ea", "-cp", dir, "CookGoldenDriver",
-		filepath.Join(rootPath, "wire", "tables", wire),
-		filepath.Join(rootPath, "conformance", "tables", "cook-write", little),
-		filepath.Join(rootPath, "conformance", "tables", "cook-write", big))
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("java cook %s: %v\n%s", wire, err, out)
+	return dir
+}
+
+func cookDriverSource(class, pkg, root string) string {
+	return strings.NewReplacer("COOKCLASS", class, "PKG", pkg, "ROOT", root).Replace(cookGoldenDriver)
+}
+
+// cookGoldenUnit compiles one carried unit once, then loads every row's
+// committed table wire and writes the two schema cook reference images
+// (§7.6), including the refusal paths that must not touch the output.
+func cookGoldenUnit(t *testing.T, m cookManifest, u cookWriteUnit) {
+	t.Helper()
+	javac, javaBin := javaTools(t)
+	drivers := map[string]string{}
+	for _, r := range u.roots {
+		drivers["CookGolden"+r.root] = cookDriverSource("CookGolden"+r.root, u.pkg, r.root)
+	}
+	dir := compileCookUnit(t, javac, cookUnitFiles(t, u.schema), u.pkg, drivers)
+	repo := filepath.Join("..", "..", "..")
+	for _, r := range u.roots {
+		for _, row := range r.rows {
+			t.Run(row, func(t *testing.T) {
+				inst, cook := m.instance[row], m.cook[row]
+				cmd := exec.Command(javaBin, "-ea", "-cp", dir, "CookGolden"+r.root,
+					filepath.Join(repo, inst[2]), filepath.Join(repo, cook[0]), filepath.Join(repo, cook[1]))
+				if out, err := cmd.CombinedOutput(); err != nil {
+					t.Fatalf("java cook %s: %v\n%s", row, err, out)
+				}
+			})
+		}
+	}
+}
+
+// cookRefusal pins §7.6's refusal by NAME: a value the cook cannot hold
+// measures -1, cookMeasureReason answers "invalid_value", and cookFrom refuses
+// in both orders without writing a byte. The value is graph_tree's Scene with
+// one Layer past the declared bound of `layers [..MaxLayers]Layer`.
+func cookRefusal(t *testing.T, m cookManifest) {
+	t.Helper()
+	javac, javaBin := javaTools(t)
+	dir := compileCookUnit(t, javac, cookUnitFiles(t, "../../../tables/pointers"), "graphdemo",
+		map[string]string{"CookRefusalDriver": cookRefusalDriver})
+	cmd := exec.Command(javaBin, "-ea", "-cp", dir, "CookRefusalDriver",
+		filepath.Join("..", "..", "..", m.instance["graph_tree"][2]))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("java cook refusal: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "refused invalid_value layers") {
+		t.Fatalf("the refusal driver did not reach the bound check:\n%s", out)
 	}
 }
 
@@ -128,22 +396,28 @@ const cookGoldenDriver = `import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 
-public final class CookGoldenDriver {
+public final class COOKCLASS {
     public static void main(String[] args) throws Exception {
         byte[] wire = Files.readAllBytes(Path.of(args[0]));
-        %s.TableVariable.Report report = new %s.TableVariable.Report();
-        %s.%sVariable.Value value = %s.%sVariable.load(wire, report);
+        PKG.TableVariable.Report report = new PKG.TableVariable.Report();
+        PKG.ROOTVariable.Value value = PKG.ROOTVariable.load(wire, report);
         if (value == null || report.refused || report.malformed) throw new AssertionError("wire load");
-        long n = %s.%sCook.cookMeasure(value);
-        %s.%sCook.MeasureReason reason = %s.%sCook.cookMeasureReason(value);
+        long n = PKG.ROOTCook.cookMeasure(value);
+        PKG.ROOTCook.MeasureReason reason = PKG.ROOTCook.cookMeasureReason(value);
         if (n < 0 || reason.bytes() != n || !reason.reason().equals("ok")) throw new AssertionError("measure");
+        // a null root is no value: refused by name, and nothing written
+        PKG.ROOTCook.MeasureReason none = PKG.ROOTCook.cookMeasureReason(null);
+        if (PKG.ROOTCook.cookMeasure(null) != -1 || none.bytes() != -1 || !none.reason().equals("invalid_value")) {
+            throw new AssertionError("null root measured " + none);
+        }
         byte[] out = new byte[(int) n];
         Arrays.fill(out, (byte) 0x5a);
-        if (%s.%sCook.cookFrom(value, new byte[(int) n - 1], 1)) throw new AssertionError("short accepted");
-        if (%s.%sCook.cookFrom(value, out, 3)) throw new AssertionError("bad order accepted");
+        if (PKG.ROOTCook.cookFrom(null, out, 1)) throw new AssertionError("null root accepted");
+        if (PKG.ROOTCook.cookFrom(value, new byte[(int) n - 1], 1)) throw new AssertionError("short accepted");
+        if (PKG.ROOTCook.cookFrom(value, out, 3)) throw new AssertionError("bad order accepted");
         for (byte b : out) if (b != (byte) 0x5a) throw new AssertionError("refusal wrote bytes");
         for (int order = 1; order <= 2; order++) {
-            if (!%s.%sCook.cookFrom(value, out, order)) throw new AssertionError("cook order " + order);
+            if (!PKG.ROOTCook.cookFrom(value, out, order)) throw new AssertionError("cook order " + order);
             byte[] want = Files.readAllBytes(Path.of(args[order]));
             if (!Arrays.equals(out, want)) {
                 int at = Arrays.mismatch(out, want);
@@ -152,6 +426,39 @@ public final class CookGoldenDriver {
                         " want " + (at < want.length ? (want[at] & 255) : -1));
             }
         }
+    }
+}
+`
+
+const cookRefusalDriver = `import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
+
+public final class CookRefusalDriver {
+    public static void main(String[] args) throws Exception {
+        graphdemo.TableVariable.Report report = new graphdemo.TableVariable.Report();
+        graphdemo.SceneVariable.Value value = graphdemo.SceneVariable.load(Files.readAllBytes(Path.of(args[0])), report);
+        if (value == null || report.refused || report.malformed) throw new AssertionError("wire load");
+        long valid = graphdemo.SceneCook.cookMeasure(value);
+        if (valid < 1) throw new AssertionError("graph_tree did not measure");
+        int bound = -1;
+        for (graphdemo.TableCookFieldInfo f : graphdemo.SceneCook.type().fields) {
+            if (f.sourceName.equals("layers")) bound = f.arrayBound;
+        }
+        if (bound < 1) throw new AssertionError("no layers bound in the descriptors");
+        while (value.layers.size() <= bound) value.layers.add(new graphdemo.LayerVariable.Value());
+        long n = graphdemo.SceneCook.cookMeasure(value);
+        graphdemo.SceneCook.MeasureReason reason = graphdemo.SceneCook.cookMeasureReason(value);
+        if (n != -1 || reason.bytes() != -1 || !reason.reason().equals("invalid_value")) {
+            throw new AssertionError("layers past the bound measured " + n + " " + reason);
+        }
+        byte[] out = new byte[(int) valid * 2];
+        Arrays.fill(out, (byte) 0x5a);
+        for (int order = 1; order <= 2; order++) {
+            if (graphdemo.SceneCook.cookFrom(value, out, order)) throw new AssertionError("order " + order + " accepted");
+        }
+        for (byte b : out) if (b != (byte) 0x5a) throw new AssertionError("refusal wrote bytes");
+        System.out.println("refused invalid_value layers " + value.layers.size() + " > " + bound);
     }
 }
 `
