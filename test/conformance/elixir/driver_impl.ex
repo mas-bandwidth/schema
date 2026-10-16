@@ -319,7 +319,7 @@ defmodule Driver do
   # the accelerators' surfaces beside the variable form's: wire, json-read,
   # json-write and report ride the <Unit>.Table codec, the rest the block and
   # cook readers
-  @surfaces ~w(wire json-read json-write report cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery)
+  @surfaces ~w(wire json-read json-write report retain retain-save cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -508,6 +508,108 @@ defmodule Driver do
 
       write(outdir, name, verdict)
     end
+  end
+
+  # THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §7, §19.2): one word per
+  # forgery a `refusal` line names, the generated reader's own
+  # cook_open_reason_<root>/2 or block_open_reason_<root>/2, which spell the
+  # reference leg's TableRefuseReason value names. A null pointer is no buffer
+  # at all, and the reader is handed nil for it.
+  defp run(surface, rows, outdir) when surface in ["cook-reason", "block-reason"] do
+    kind = if surface == "cook-reason", do: "cook", else: "block"
+    forgeries = Map.new(rows(rows, "forgery"), fn [name | rest] -> {name, rest} end)
+
+    for [name, ^kind] <- rows(rows, "refusal") do
+      [^kind, subject, file, extent, pointer] = Map.fetch!(forgeries, name)
+
+      {bytes, lead} =
+        case claim(file, extent, pointer) do
+          :no_buffer -> {nil, 0}
+          bytes -> {bytes, String.to_integer(pointer)}
+        end
+
+      reason =
+        case kind do
+          "cook" ->
+            {mod, fun} = accessor(cook_unit(rows, subject), subject, "cook_open_reason", 2)
+            apply(mod, fun, [bytes, lead])
+
+          "block" ->
+            {mod, fun} = accessor(block_unit(subject), block_table(subject), "block_open_reason", 2)
+            apply(mod, fun, [bytes, lead])
+        end
+
+      write(outdir, name, Atom.to_string(reason) <> "\n")
+    end
+  end
+
+  # THE TWO RETAIN SURFACES, one round trip and two shapes (docs/SPEC-TABLES.md
+  # §6.6, test/conformance/README.md): LoadRetain at the row's two capacities,
+  # MeasureRetain, SaveRetain. `retain` prints the load's three counters and the
+  # save's own retain_lost; `retain-save` writes the saved bytes. `short` is
+  # ONE BYTE SHORT OF THE LAST RECORD in this port's own layout, so the driver
+  # loads once at a roomy capacity, reads what it used, and loads again one byte
+  # under that. A `retain-message` row needs the form-2 retaining read, which
+  # this leg does not carry, and writes <case>.absent.
+  defp run(surface, rows, outdir) when surface in ["retain", "retain-save"] do
+    for [name, unit, root, wire, capacity, ids] <- rows(rows, "retain") do
+      case retain_round_trip(table_module(unit), root, File.read!(wire), capacity, ids) do
+        {:ok, load, save_lost, bytes} ->
+          if surface == "retain" do
+            write(outdir, name, "#{load.retained},#{load.retain_lost},#{load.unknown} #{save_lost}\n")
+          else
+            write(outdir, name, bytes)
+          end
+
+        :absent ->
+          write_absent(outdir, name)
+      end
+    end
+
+    for [name | _] <- rows(rows, "retain-message"), do: write_absent(outdir, name)
+  end
+
+  @retain_room 1_048_576
+
+  defp retain_round_trip(nil, _root, _wire, _capacity, _ids), do: :absent
+
+  defp retain_round_trip(mod, root, wire, capacity, ids) do
+    if not function_exported?(mod, :load_retain, 4) or not mod.carried?(root) do
+      :absent
+    else
+      id_cap = if ids == "full", do: div(@retain_room, 8), else: String.to_integer(ids)
+
+      cap =
+        case capacity do
+          "full" ->
+            @retain_room
+
+          "short" ->
+            case retain_load(mod, root, wire, @retain_room, id_cap) do
+              {:ok, _value, _report, retain} -> retain.used - 1
+              _ -> @retain_room
+            end
+        end
+
+      case retain_load(mod, root, wire, cap, id_cap) do
+        {:ok, value, load, retain} ->
+          _ = mod.measure_retain(root, value, retain)
+
+          case mod.save_retain(root, value, retain, load) do
+            {:ok, bytes, saved, _retain} -> {:ok, load, saved.retain_lost - load.retain_lost, bytes}
+            _ -> :absent
+          end
+
+        _ ->
+          :absent
+      end
+    end
+  end
+
+  defp retain_load(mod, root, wire, cap, id_cap) do
+    retain = %{records: [], used: 0, cap: cap, ids: [], id_cap: id_cap}
+    report = %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
+    mod.load_retain(root, wire, retain, report)
   end
 
   # ---- the VARIABLE FORM's surfaces (docs/SPEC-TABLES.md §3, §16) ----
@@ -1068,7 +1170,35 @@ defmodule WireFuzz do
   end
 
   # the plain arm (docs/SPEC-TABLES.md §4.2): load, report, save.
+  #
+  # A FIXED-CLASS ROOT has no region to size (§3.1, §6.5), so it is never
+  # gated on load_measure: it reads into its declared defaults, and a read that
+  # refused or stopped still has a value, the defaults, which is what it saves.
+  # The reference leg answers the same way (test/conformance/go/wire_fuzz.go).
   defp answer_plain(mod, r, wire) do
+    if fixed_root?(mod, r.root), do: answer_fixed(mod, r, wire), else: answer_variable(mod, r, wire)
+  end
+
+  defp fixed_root?(mod, root), do: function_exported?(mod, :variable?, 1) and not mod.variable?(root)
+
+  defp answer_fixed(mod, r, wire) do
+    {value, report} =
+      case mod.load_tolerant(r.root, wire) do
+        {:refused, value, _report} -> {value, %{refused: true}}
+        {_verdict, value, report} -> {value, report}
+      end
+
+    case mod.save(r.root, value) do
+      {:ok, bytes} ->
+        stdout_write(header(1, report, -1) <> <<byte_size(bytes)::little-signed-64>>)
+        stdout_write(bytes)
+
+      _ ->
+        stdout_write(header(1, report, -1) <> <<-1::little-signed-64>>)
+    end
+  end
+
+  defp answer_variable(mod, r, wire) do
     measure = mod.load_measure(r.root, wire)
 
     if measure < 0 do

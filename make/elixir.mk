@@ -94,14 +94,34 @@ generated/bench/elixir/.stamp: bin/schema $(SCHEMAS_BENCH)
 # evolution rows. The variable-class surfaces (wire, json-read, json-write,
 # report) answer every carried instance; a construct outside the class writes
 # <case>.absent rather than a wrong answer.
+# THE EVERY-ROOT UNITS (docs/SPEC-TABLES.md §4.2, §6.6): every unit of the
+# conformance manifest the Elixir emitter generates today rides the corpus, so
+# the wire fuzzer and the retain surfaces answer for its roots. A unit the
+# emitter refuses by name (a union in a table closure, a payload-free arm,
+# `was` on a variant or arm) is not listed and its roots print as absent.
+# tblw1 and tblw2 (W1/W2, the fixed class inside a variable root) generate but
+# their codec raises on a fixed-class field kind, so they wait for the fixed
+# class on the table wire and print as absent here. tblg1 (G1, guarded
+# optionals) generates but its saved wire carries 12 bytes the reference's does
+# not (guard_false_no_edge, guard_true_both_edges, optional_absent_no_edge), so
+# it waits for its own card rather than turning the wire surface red here.
+ELIXIR_TABLE_UNITS_EVERY_ROOT := test/tables/K1.schema test/tables/K2.schema \
+	test/tables/Scalars2.schema \
+	test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema \
+	$(wildcard tables/scalars/*.schema tables/vocab/*.schema tables/vocab9/*.schema tables/maps/*.schema)
 ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblp1:test/tables/P1.schema \
 	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
-	blobdemo:tables/blobs listdemo:tables/lists tblp2:test/tables/P2.schema
+	blobdemo:tables/blobs listdemo:tables/lists tblp2:test/tables/P2.schema \
+	tblk1:test/tables/K1.schema tblk2:test/tables/K2.schema \
+	scalars:tables/scalars tblscalars2:test/tables/Scalars2.schema \
+	vocabdemo:tables/vocab vocab9demo:tables/vocab9 \
+	tblrt1:test/tables/RT1.schema tblrt2:test/tables/RT2.schema tblrt3:test/tables/RT3.schema \
+	mapdemo:tables/maps
 
-build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(ELIXIR_TABLE_UNITS_EVERY_ROOT)
 	@mkdir -p build/tables-generated-elixir
 	@for unit in $(ELIXIR_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -489,6 +509,53 @@ tables-elixir-block-build: build/conformance/manifest.txt
 	./build/conformance-harness run --only elixir
 
 test-elixir: tables-elixir-block-build
+
+# THE WIRE FUZZER OVER EVERY ROOT (docs/SPEC-TABLES.md §4, §4.2): the
+# conformance harness's wire fuzzer over its DEFAULT manifest,
+# testdata/conformance/tables/MANIFEST.txt, exactly as tables-go-wire-fuzz runs
+# it (make/go.mk), so every unit, instance and report seed the corpus pins is a
+# root this leg is held to byte for byte against the engine. No --manifest
+# override. The coverage greps are cards-elixir-wire-fuzz's, and one more: THE
+# GATE FAILS ON ANY ROOT THE LEG CANNOT OPEN, because the harness prints a
+# root with no codec as `N seeds absent` rather than failing on it.
+.PHONY: tables-elixir-wire-fuzz-all
+tables-elixir-wire-fuzz-all: build/conformance-harness build/elixir-tables-ebin/.stamp
+	@ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin ./build/conformance-harness wire-fuzz \
+		--driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N) \
+		> build/tables-elixir-wire-fuzz-all.log 2>&1; \
+		status=$$?; cat build/tables-elixir-wire-fuzz-all.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -q '0 divergences' build/tables-elixir-wire-fuzz-all.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-elixir-wire-fuzz-all.log
+	@grep -qE '[1-9][0-9]* mutants' build/tables-elixir-wire-fuzz-all.log
+	@if grep -q 'seeds absent' build/tables-elixir-wire-fuzz-all.log; then \
+		echo "tables-elixir-wire-fuzz-all FAILED: the leg cannot open every root of the default manifest (the absent count above)"; \
+		exit 1; \
+	fi
+
+# RETAIN-UNKNOWN'S NEGATIVE CONTROL (docs/SPEC-TABLES.md §6.6): the retaining
+# SAVE loses its tail in the EMITTER — emit_retain_tail writes nothing back —
+# and the retain surface, over the same rows, must go red. A sed that matched
+# nothing fails the control (ELIXIR_SABOTAGED_BUILD checks it applied).
+CONFORMANCE_NEGATIVE_ELIXIR_RETAIN := build/elixir-retain-negative
+ELIXIR_RETAIN_SED := -e 's|{ids, order, retain, report, \[acc, leb_encode(ref), <<kind>>, body\]}|{ids, order, retain, report, acc}|'
+
+.PHONY: tables-elixir-retain-negative-control
+tables-elixir-retain-negative-control: build/conformance-harness build/conformance/manifest.txt
+	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN),internal/codegen/elixirtable/variableform.go,ELIXIR_RETAIN_SED)
+	@printf 'elixir env ELIXIR_TABLES_EBIN=%s test/conformance/elixir/driver\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/ebin" \
+		> $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/drivers.txt \
+			--work $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/work > $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a retaining save that writes no retained record left the conformance run green"; \
+		cat $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log; exit 1; \
+	fi
+	@grep -qE '^retain +FAIL' $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the run went red, but not on the retain surface"; \
+		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log; exit 1; }
+	@echo "elixir retain negative control: a retaining save that drops its tail reds the retain surface"
+
+test-elixir: tables-elixir-wire-fuzz-all tables-elixir-retain-negative-control
 
 # ---------------------------------------------------------------------------
 # THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)

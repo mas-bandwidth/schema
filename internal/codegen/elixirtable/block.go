@@ -362,6 +362,62 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	b.pf("  end\n\n")
 	b.pf("  def block_open_%s(_data, _lead), do: :error\n\n", lo)
 
+	// THE REASON BESIDE THE FALSE (docs/SPEC-TABLES.md §19.2, §4, §4.2): the
+	// first failing clause, spelled with the reference leg's TableRefuseReason
+	// names (internal/codegen/gotable/refusal.go) in the reference's own order
+	// (internal/codegen/gotable/block.go, emitBlockOpen): a missing buffer, a
+	// short one, the magic, the order, the build, every array's layout, the
+	// padding, and the base's alignment LAST. block_open_<root> keeps its own
+	// order and its :error; this is the word a caller reports beside it.
+	b.pf("  # block_open_reason_%s is the word beside block_open_%s's :error\n", lo, lo)
+	b.pf("  # (docs/SPEC-TABLES.md §19.2): the first failing clause, as the reference\n")
+	b.pf("  # leg's TableRefuseReason value name, or :ok. nil is no buffer at all.\n")
+	b.pf("  def block_open_reason_%s(nil, _lead), do: :unaligned_base\n\n", lo)
+	b.pf("  def block_open_reason_%s(data, lead) when is_binary(data) and is_integer(lead) do\n", lo)
+	b.pf("    bytes = byte_size(data)\n\n")
+	b.pf("    if bytes < %d do\n", proj.Size)
+	b.pf("      :truncated\n")
+	b.pf("    else\n")
+	b.pf("      <<magic::little-unsigned-64, build::little-unsigned-64,\n")
+	b.pf("        order::little-unsigned-64, _::binary>> = data\n\n")
+	b.pf("      foreign = :binary.decode_unsigned(<<B.magic()::little-unsigned-64>>, :big)\n\n")
+	b.pf("      cond do\n")
+	b.pf("        magic == foreign and magic != B.magic() -> :foreign_order\n")
+	b.pf("        magic != B.magic() -> :not_a_cook\n")
+	b.pf("        order != B.byte_order() -> :not_a_cook\n")
+	b.pf("        build != @build_version -> :wrong_build_version\n")
+	b.pf("        true -> block_reason_extent_%s(data, bytes, lead)\n", lo)
+	b.pf("      end\n")
+	b.pf("    end\n")
+	b.pf("  end\n\n")
+	b.pf("  def block_open_reason_%s(_data, _lead), do: :unaligned_base\n\n", lo)
+	b.pf("  defp block_reason_extent_%s(data, bytes, lead) do\n", lo)
+	if len(bl.Arrays) == 0 {
+		b.pf("    used = %d\n", proj.Size)
+		b.pf("    _ = data\n")
+	} else {
+		b.pf("    used =\n")
+		b.pf("      Enum.reduce_while(%s_block_arrays(), %d, fn a, used ->\n", lo, proj.Size)
+		b.pf("        offset_of = B.u64(data, a.offset_of_offset)\n")
+		b.pf("        count = B.u32(data, a.count_offset)\n")
+		b.pf("        stride = B.u32(data, a.stride_offset)\n")
+		b.pf("        rows = count * stride\n\n")
+		b.pf("        if stride != a.stride or count > a.max or offset_of < %d or\n", proj.Size)
+		b.pf("             rem(offset_of, B.align()) != 0 or offset_of > bytes or rows > bytes - offset_of,\n")
+		b.pf("           do: {:halt, :bad_layout},\n")
+		b.pf("           else: {:cont, max(used, offset_of + rows)}\n")
+		b.pf("      end)\n\n")
+	}
+	b.pf("    cond do\n")
+	if len(bl.Arrays) > 0 {
+		b.pf("      used == :bad_layout -> :bad_layout\n")
+	}
+	b.pf("      rem(B.align() - rem(used, B.align()), B.align()) > bytes - used -> :truncated\n")
+	b.pf("      rem(lead, B.align()) != 0 -> :unaligned_base\n")
+	b.pf("      true -> :ok\n")
+	b.pf("    end\n")
+	b.pf("  end\n\n")
+
 	b.pf("  defp block_extent_%s(data, bytes) do\n", lo)
 	if len(bl.Arrays) == 0 {
 		b.pf("    # this table declares no out-of-line array, so the prologue and the\n")

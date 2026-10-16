@@ -205,6 +205,13 @@ func uncarriedAttribute(names []string) string {
 	}
 	b.WriteString("  ]\n\n")
 	b.WriteString("  def carried?(table), do: table not in @uncarried\n\n")
+	b.WriteString("  # variable?/1 is the table's own class (docs/SPEC-TABLES.md §3.1): a\n")
+	b.WriteString("  # variable root sizes a region before it loads (§6.5), a fixed root reads\n")
+	b.WriteString("  # into its declared defaults and has no region to measure.\n")
+	b.WriteString("  def variable?(table), do: Map.fetch!(@tables, table).variable\n\n")
+	b.WriteString("  # new/1 is a table's value at its declared defaults (§4): what a read that\n")
+	b.WriteString("  # decoded nothing leaves behind, and so what a refused read saves (§4.2).\n")
+	b.WriteString("  def new(table), do: defaults(Map.fetch!(@tables, table))\n\n")
 	return b.String()
 }
 
@@ -530,27 +537,77 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
     case open(data) do
       {:error, reason} ->
-        {:error, reason, empty_report()}
+        {:error, reason, reasoned(empty_report(), reason)}
 
       {:ok, body, ids} ->
         case entries(body, ids, desc.string_blob, desc.variable) do
           {:error, _} ->
-            {:error, :malformed, empty_report()}
+            {:error, :malformed, reasoned(empty_report(), :malformed)}
 
           {:stop, _fields, _nodes, _remaining} ->
             # a ROOT body the walk could not finish is malformed; nothing below
             # the damage is read, so there is no value to save (§3)
-            {:error, :malformed, empty_report()}
+            {:error, :malformed, reasoned(empty_report(), :malformed)}
 
           {:ok, fields, nodes} ->
             {value, report} = decode(desc, fields, nodes, ids)
             report = if :malformed in nodes, do: %{report | malformed: true}, else: report
             unknown = Enum.count(nodes, &(&1 == :unknown))
             report = %{report | unknown: report.unknown + unknown}
-            {:ok, Map.merge(defaults(desc), value), report}
+            {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
         end
     end
   end
+
+  # load_tolerant is the read that ALWAYS leaves a value (docs/SPEC-TABLES.md
+  # §4, §4.2): the table's declared defaults with every field decoded before
+  # the damage laid over them, and the report those fields earned. It is what
+  # a FIXED-CLASS root answers on the wire fuzzer, where there is no region to
+  # size and a stopped walk keeps its partial result exactly as the reference
+  # engine's does (internal/tablewire). The verdict is :ok, :refused (a form
+  # byte this reader does not carry, §3, which decodes nothing) or :malformed.
+  def load_tolerant(table, data) when is_binary(data) do
+    desc = Map.fetch!(@tables, table)
+
+    case open(data) do
+      {:error, :newer_form} ->
+        {:refused, defaults(desc), reasoned(empty_report(), :newer_form)}
+
+      {:error, reason} ->
+        {:malformed, defaults(desc), reasoned(empty_report(), reason)}
+
+      {:ok, body, ids} ->
+        case entries(body, ids, desc.string_blob, desc.variable) do
+          {:error, _} ->
+            {:malformed, defaults(desc), reasoned(empty_report(), :malformed)}
+
+          {:stop, fields, nodes, _remaining} ->
+            {value, report} = decode(desc, fields, nodes, ids)
+            unknown = Enum.count(nodes, &(&1 == :unknown))
+            report = %{report | unknown: report.unknown + unknown}
+            {:malformed, Map.merge(defaults(desc), value), reasoned(report, :malformed)}
+
+          {:ok, fields, nodes} ->
+            {value, report} = decode(desc, fields, nodes, ids)
+            report = if :malformed in nodes, do: %{report | malformed: true}, else: report
+            unknown = Enum.count(nodes, &(&1 == :unknown))
+            report = %{report | unknown: report.unknown + unknown}
+            verdict = if report.malformed, do: :malformed, else: :ok
+            {verdict, Map.merge(defaults(desc), value), reasoned(report, :ok)}
+        end
+    end
+  end
+
+  # THE REASON IN THE REPORT (docs/SPEC-TABLES.md §4, §4.2): the load's one
+  # verdict word beside the counters, spelled with the reference leg's
+  # TableRefuseReason names (internal/codegen/gotable/refusal.go). A read that
+  # finished, however tolerant (a widened, clamped, unknown or mismatched field
+  # is an event and never a refusal, §4), says ok; a form byte this reader does
+  # not carry says unknown_form (§3); framing damage says wire_damaged, and the
+  # report's malformed flag is set beside it.
+  defp reasoned(report, :ok), do: Map.put(report, :reason, if(report.malformed, do: :wire_damaged, else: :ok))
+  defp reasoned(report, :newer_form), do: Map.put(report, :reason, :unknown_form)
+  defp reasoned(report, _malformed), do: Map.put(%{report | malformed: true}, :reason, :wire_damaged)
 
   # open reads the form byte and the id trailer (docs/SPEC-TABLES.md §3).
   defp open(<<>>), do: {:error, :malformed}
@@ -979,6 +1036,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
               _ ->
                 {:cont, <<>>, %{report | malformed: true}}
             end
+
+          # an array with no element-kind byte is framing damage, not a kind
+          # this reader can name or refuse (docs/SPEC-TABLES.md §3, §4.2)
+          <<>> ->
+            {:cont, <<>>, %{report | malformed: true}}
 
           _ ->
             {:cont, <<>>, %{report | kind_mismatch: report.kind_mismatch + 1}}
@@ -2237,8 +2299,8 @@ const variableRetainSource = `
     retain = %{retain | records: [], used: 0, ids: []}
 
     case open(data) do
-      {:error, _} ->
-        {:error, :malformed, report, retain}
+      {:error, reason} ->
+        {:error, :malformed, reasoned(report, reason), retain}
 
       {:ok, body, ids} ->
         case entries(body, ids, desc.string_blob, desc.variable) do
@@ -2249,10 +2311,10 @@ const variableRetainSource = `
             # excluded class (§6.6): one retain_lost, counted once at the record
             unknown = Enum.count(nodes, &(&1 == :unknown))
             report = %{report | unknown: report.unknown + unknown, retain_lost: report.retain_lost + unknown}
-            {:ok, Map.merge(defaults(desc), value), report, retain}
+            {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok), retain}
 
           _ ->
-            {:error, :malformed, report, retain}
+            {:error, :malformed, reasoned(report, :malformed), retain}
         end
     end
   end
@@ -2291,7 +2353,10 @@ const variableRetainSource = `
     {idx_map, ids, order, retain, report, acc}
   end
 
-  defp emit_field_retain(%{t: :list} = f, value, idx_map, ids, order, retain, report, path, acc) do
+  # only an array of TABLES carries element bodies a retained record can name
+  # (docs/SPEC-TABLES.md §6.6); an array of scalars, strings, enums or pointers
+  # has no body of its own and is the plain codec's (§2.9).
+  defp emit_field_retain(%{t: :list, elem_kind: 13} = f, value, idx_map, ids, order, retain, report, path, acc) do
     case Map.get(value, f.name, []) do
       [] ->
         {idx_map, ids, order, retain, report, acc}
@@ -2397,7 +2462,8 @@ const variableRetainSource = `
     end)
   end
 
-  defp read_payload_retain(%{t: :list} = f, payload, nodes, ids, report, retain, path) do
+  # an array of TABLES only (§6.6, §2.9): every other array is the plain read's
+  defp read_payload_retain(%{t: :list, elem_kind: 13} = f, payload, nodes, ids, report, retain, path) do
     case leb(payload) do
       {_len, arr} ->
         elem_desc = Map.fetch!(@tables, f.elem)
