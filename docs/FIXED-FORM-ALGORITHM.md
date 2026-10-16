@@ -855,13 +855,13 @@ is a bug in the lock, refused by name at build.
 
 ```
 LOAD(R, file, out, capacity, report):                  -- R the static data COMPILE laid down for T
-  1  if file is absent or len(file) < 1:                report.malformed := true ; return -1
-     if file[0] != 3:                                   REFUSE by DIRECTION: 1 previous_form,
-                                                            2 message_form_as_file, otherwise newer_form
-                                                        -- THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH
-  2  if len(file) < 20:                                 report.malformed := true ; return -1
-     if any of file[1..7] != 0:                         report.malformed := true ; return -1
-                                                        -- the seven reserved bytes, so they stay usable later
+  1  if file is absent or len(file) < 1:                report.malformed := true ; report.reason := truncated ; return -1
+      if file[0] != 3:                                   REFUSE by DIRECTION: 1 previous_form,
+                                                             2 message_form_as_file, otherwise newer_form
+                                                         -- THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH
+  2  if len(file) < 20:                                 report.malformed := true ; report.reason := truncated ; return -1
+      if any of file[1..7] != 0:                         report.malformed := true ; report.reason := reserved_not_zero ; return -1
+                                                         -- the seven reserved bytes, so they stay usable later
   3  L := LE(4, file+16) ; if 20 + L > len(file):       REFUSE layout_malformed
      layout := file + 20
   4  h := LE(8, file+8)                                 -- THE HEADER'S HASH, TAKEN AS GIVEN.
@@ -878,8 +878,8 @@ LOAD(R, file, out, capacity, report):                  -- R the static data COMP
      record_bytes IS THE WHOLE RECORD, 8 + body, handed down already added (§5.2)
      for the identity entry the fills are EMPTY and record_bytes is 8 + C(root)
   9  rest := len(file) - 20 - L
-     if record_bytes <= 8 or rest mod record_bytes != 0: report.malformed := true ; return -1
-                                                        -- 8 is the per-record hash; a body of nothing behind
+      if record_bytes <= 8 or rest mod record_bytes != 0: report.malformed := true ; report.reason := truncated ; return -1
+                                                         -- 8 is the per-record hash; a body of nothing behind
                                                         -- it would make `n` the file's length (fixedform.go:563)
  10  n := rest / record_bytes ; if n > capacity:         REFUSE batch_too_large
  11  per record, at `at`:
@@ -921,10 +921,10 @@ nothing could reach.
 
 | condition | refusal | what it reports |
 |---|---|---|
-| no bytes at all — there is no first byte to read | — | `malformed`, and `-1` |
+| no bytes at all — there is no first byte to read | `truncated` | `malformed`, named, and `-1` |
 | form byte `1` / `2` / anything else, **whatever the file's length** | `previous_form` / `message_form_as_file` / `newer_form` | the name |
-| shorter than 20 bytes, the form byte having already answered | — | `malformed`, and `-1` |
-| any reserved byte `1..7` nonzero | — | `malformed`, and `-1` |
+| shorter than 20 bytes, the form byte having already answered | `truncated` | `malformed`, named, and `-1` |
+| any reserved byte `1..7` nonzero | `reserved_not_zero` | `malformed`, named, and `-1` |
 | `20 + L` past the file | `layout_malformed` | the name |
 | the hash is in no lineage entry | `layout_newer` | **the file's hash, and nothing else** |
 | the hash is in the lineage, below the floor | `layout_unsupported` | the file's hash |
@@ -932,14 +932,16 @@ nothing could reach.
 | a known hash whose LINEAGE ENTRY would not build | `layout_malformed` / `plan_too_large` | the name the entry's own lane carries, never a throw (§5.9 #36) |
 | the plan does not fit the caller's capacity | `plan_too_large` | the name (owed by every leg — §5.9 #45) |
 | an entry past the writer's record size | `layout_record_too_large` | the name |
-| a record size of `8` or less — the per-record hash and no body behind it | — | `malformed`, and `-1` |
-| a ragged tail: `rest mod record_bytes != 0` | — | `malformed`, and `-1` |
+| a record size of `8` or less — the per-record hash and no body behind it | `truncated` | `malformed`, named, and `-1` |
+| a ragged tail: `rest mod record_bytes != 0` | `truncated` | `malformed`, named, and `-1` |
 | more records than the caller's capacity | `batch_too_large` | the name |
 | a record hash that is not the file's | `no_layout` | the name |
 | ill-formed text in the USED units | the name fix 11 owes (§4.5) | nothing decoded past it; the reference sets `malformed` instead — §5.8 |
 
 **REFUSE is total: no counter moves, nothing is decoded, and not one destination byte is written** — the
-prefill included. `malformed` is the residue and not a bucket a named rule falls into.
+prefill included. `malformed` is the residue of a damaged framing — no first byte, a short header, a nonzero
+reserved byte, a ragged tail — and that damage is NAMED, never a silent bucket: each sets its `reason` beside
+`malformed` (`truncated`, `reserved_not_zero`).
 
 **TOTAL OVER THE BATCH, TOO.** A refusal a multi-record file earns at record `k` (`no_layout`, or the text
 refusal of §4.5 fix 11) leaves `out[0..k-1]` exactly as untouched as `out[k]`: a reader checks EVERY record's
@@ -949,12 +951,17 @@ beside §5.8 row 9; the one-record corpus files of that row hold under either re
 
 **THE REPORT IS TWO ANSWERS, AND EVERY FIXTURE ASSERTS THEM JOINTLY** (`test/tables/versioning_lists.cpp:178`,
 the three lines `refuses_newer` shares with every OLD-REFUSES-NEW column). `refused` plus `reason` is one
-answer; `malformed` is the other; they are NEVER both set, and the counters are a third thing again.
+answer, `malformed` is the other, and the counters are a third thing again. **EVERY REFUSAL OF THE FIXED
+LOAD HAS A NAME, AND THE FRAMING-DAMAGE RETURNS ARE NAMED TOO** — a `malformed` read is not silent; it sets
+`reason` beside `malformed`, so a caller that switches on `reason` sees the framing damage by name as well as
+the refusals. The names are the ones this page already gives where it gives them, and `truncated` for a short
+input or ragged tail and `reserved_not_zero` for a reserved byte, matching the cooked form's
+`TableRefuseTruncated` and `TableRefuseReservedNotZero` spellings (SPEC-TABLES §3.4's registry, §7).
 
 | the outcome | `refused` | `reason` | `malformed` | returns | the counters |
 |---|---|---|---|---|---|
 | a REFUSAL BY NAME — every row above that HAS a name | `true` | that name; `layout_newer` ALSO sets `layout_hash` to THE FILE'S hash and nothing else | **`false`** | `-1` | all zero, and not one destination byte written |
-| a MALFORMED read — no first byte, under 20 bytes, a nonzero reserved byte, `record_bytes <= 8`, a ragged tail | **`false`** | untouched | `true` | `-1` | all zero |
+| a MALFORMED read — no first byte, under 20 bytes, a nonzero reserved byte, `record_bytes <= 8`, a ragged tail | **`false`** | its name: `truncated` for no first byte / under 20 bytes / `record_bytes <= 8` / a ragged tail, `reserved_not_zero` for a nonzero reserved byte | `true` | `-1` | all zero |
 | a read that lands values | `false` | untouched | `false` | `n` | §5.4's |
 
 **`layout_unsupported` fills `layout_hash` too** — both layout refusals report the file's hash, and what belongs
@@ -975,9 +982,9 @@ the tail behind the layout, is the file's. **A LINEAGE ENTRY whose
 recorded record size is wrong is a LOCK BUG and the build fails** (§5.9 #26); a leg that routes it into step 9
 has read a lock bug as a wire event.
 
-So a port that sets `malformed` BESIDE a reason fails the joint assertion even though it refused correctly,
-and a port that refuses with no reason fails it too. That is exactly what §5.8 row 8 is: ill-formed text
-zeroes the field and sets `malformed`, where the ruling is a refusal by name.
+A port that refuses with no reason fails it too. For the FRAMING-DAMAGE rows the `malformed` flag and the
+`reason` name are set together — the flag the reader is damaged, the name which damage. That is exactly what
+§5.8 row 8 is: ill-formed text zeroes the field and sets `malformed`, where the ruling is a refusal by name.
 
 ### 5.4 The counters, per op and per condition
 

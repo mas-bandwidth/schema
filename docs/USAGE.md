@@ -1317,6 +1317,19 @@ place the Rust codecs read differently from the C++ ones: a reader holding
 `&mut TableReport` could not hand a sub-reader out of its own buffer while that
 borrow stood. One report, one caller, the same six counters.
 
+**Every refusal of the fixed form's load has a name, and the names are EXPORTED
+string constants** (docs/FIXED-FORM-ALGORITHM.md §5.3): `TableFixedReasonPreviousForm`,
+`TableFixedReasonMessageFormAsFile`, `TableFixedReasonNewerForm`,
+`TableFixedReasonLayoutMalformed`, `TableFixedReasonLayoutNewer`,
+`TableFixedReasonLayoutUnsupported`, `TableFixedReasonLayoutRecordTooLarge`,
+`TableFixedReasonPlanTooLarge`, `TableFixedReasonBatchTooLarge`,
+`TableFixedReasonNoLayout`, `TableFixedReasonTextIllFormed`, and the two
+framing-damage names `TableFixedReasonTruncated` and
+`TableFixedReasonReservedNotZero`. Compare `report.Reason == example.TableFixedReasonNewerForm` rather than spelling the literal. A short
+input, a sub-twenty-byte header or a ragged tail set `report.Malformed` beside
+`TableFixedReasonTruncated`; a nonzero reserved byte sets it beside
+`TableFixedReasonReservedNotZero`.
+
 `string(N)` and `bytes(N)` are a `[u8; N]` beside an `i32` used length, arrays
 a `[T; N]` beside an `i32` used count, `?T` a value beside a `<name>_present`
 bool, and a union is a real Rust `enum` — the same spelling the packet backend

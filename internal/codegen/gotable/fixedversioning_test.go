@@ -600,11 +600,11 @@ func TestFormHeader(t *testing.T) {
 		in   []byte
 		want TableReport
 	}{
-		{"empty-file", []byte{}, TableReport{Malformed: true}},
+		{"empty-file", []byte{}, TableReport{Malformed: true, Reason: "truncated"}},
 		{"short-form1", []byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0}, TableReport{Verdict: TableOpenRefused, Reason: "previous_form"}},
 		{"short-form2", []byte{2, 1, 0}, TableReport{Verdict: TableOpenRefused, Reason: "message_form_as_file"}},
 		{"unassigned-form0", form0, TableReport{Verdict: TableOpenRefused, Reason: "newer_form"}},
-		{"reserved-byte3", reserved3, TableReport{Malformed: true}},
+		{"reserved-byte3", reserved3, TableReport{Malformed: true, Reason: "reserved_not_zero"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

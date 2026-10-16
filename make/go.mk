@@ -58,8 +58,8 @@ generated/go/.stamp: bin/schema $(SCHEMAS)
 .PHONY: tables-go-fixedform
 tables-go-fixedform:
 	sh test/slowgate/proof tables-go-fixedform \
-		'TestFixedFormRoundTrip TestFixedFormHostileBoolByte TestFixedFormHostileUnionTag TestFixedFormArgLaneOldEncodingControl TestFixedFormClampLiveCount TestFixedFormRecordBound TestFixedFormIdentityEqualsCompiled TestFixedFormZeroBehindNarrowerArm TestFixedPlanMaxCoversEveryLineagePlan TestTimestampKindInGo TestFixedLoadAllocatesNothingPerCall' \
-		./internal/codegen/gotable -run 'TestFixedForm|TestFixedPlanMaxCoversEveryLineagePlan|TestTimestampKindInGo|TestFixedLoadAllocatesNothingPerCall' -count=1
+		'TestFixedFormRoundTrip TestFixedFormHostileBoolByte TestFixedFormHostileUnionTag TestFixedFormArgLaneOldEncodingControl TestFixedFormClampLiveCount TestFixedFormRecordBound TestFixedFormIdentityEqualsCompiled TestFixedFormZeroBehindNarrowerArm TestFixedPlanMaxCoversEveryLineagePlan TestTimestampKindInGo TestFixedLoadAllocatesNothingPerCall TestFixedLoadNamesEveryRefusal' \
+		./internal/codegen/gotable -run 'TestFixedForm|TestFixedPlanMaxCoversEveryLineagePlan|TestTimestampKindInGo|TestFixedLoadAllocatesNothingPerCall|TestFixedLoadNamesEveryRefusal' -count=1
 test-go: tables-go-fixedform
 
 # THE OPTIONAL SHARED GO RUNTIME (docs/SPEC-TABLES.md §8.4). tables/goruntime is
