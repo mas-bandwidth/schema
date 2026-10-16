@@ -430,12 +430,28 @@ func (v *viewGen) armFieldDescriptor(f *ir.Field, armOffset int64) string {
 		size, _ := ir.ArmLayout(v.unit, ir.UnionVariant{Name: f.Name, F: f})
 		facts.ElemSize = size
 	}
+	// All vocabularies and type descriptors exist before emitArms runs.
+	// Link the same columns as an ordinary field before freezing the arm,
+	// so a generic walker can follow a nested union or a pointed-at table
+	// without looking up type names (docs/SPEC-TABLES.md §8.1, §8.3).
+	vocabulary, key, table := "null", "null", "null"
+	if name := vocabularyOf(f); name != "" {
+		vocabulary = v.vocabularyRef(name)
+	}
+	if f.KeyEnum != "" {
+		key = "enums[" + jsStr(f.KeyEnum) + "]"
+	}
+	if f.Type.Kind == ir.TNamed {
+		if ref, ok := f.Type.Ref.(*ir.Struct); ok {
+			table = "types[" + jsStr(ref.Name) + "]"
+		}
+	}
 	return fmt.Sprintf("Object.freeze({ name: %s, json: %s, id: %s, typeName: %s, kind: %d, shape: %s, bound: %d, arrayBound: %d, "+
 		"isArray: %v, counted: %v, optional: %v, isPointer: %v, offset: %d, elementSize: %d, countOffset: %d, presentOffset: %d, "+
-		"vocabulary: null, key: null, table: null, doc: %s, tags: %s })",
+		"vocabulary: %s, key: %s, table: %s, doc: %s, tags: %s })",
 		jsStr(f.Name), jsStr(ir.TableFieldJsonKey(f)), jsId(ir.TableFieldWireId(f)), jsStr(ir.TableTypeSpelling(f)), viewKind(f),
 		jsStr(fieldShape(f)), fieldBound(f), viewArrayBound(f), facts.IsArray, facts.Counted, f.Type.Optional, f.Type.Pointer,
-		armOffset, facts.ElemSize, facts.CountOffset, facts.PresentOffset, viewDoc(f.Doc), viewTags(f.Tags))
+		armOffset, facts.ElemSize, facts.CountOffset, facts.PresentOffset, vocabulary, key, table, viewDoc(f.Doc), viewTags(f.Tags))
 }
 
 // emitRegistry writes the unit registry (docs/SPEC-TABLES.md §8.3): the

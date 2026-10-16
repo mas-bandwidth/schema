@@ -326,6 +326,24 @@ func TestUnitViewDescriptorsJavaScript(t *testing.T) {
 				{Value: 1, Name: "leaf", Payload: "Leaf"},
 				{Value: 2, Name: "plain", Doc: "The arm that names no record: a scalar in the union's own overlay.", Tags: []string{"overlay"}},
 			})
+			// A general arm must be walkable through the same reference columns
+			// as a field (SPEC-TABLES §8.3), including nested unions and pointers.
+			for _, want := range []struct{ union, arm, vocabulary, table string }{
+				{"Outer", "inner", "Inner", ""},
+				{"Reach", "only", "", "Only"},
+				{"Slot", "node", "", "Node"},
+				{"Slots", "many", "", "Node"},
+			} {
+				var found *viewDumpField
+				for _, arm := range d.Vocab[want.union].Variants {
+					if arm.Name == want.arm {
+						found = arm.Field
+					}
+				}
+				if found == nil || found.Vocabulary != want.vocabulary || found.Table != want.table {
+					t.Errorf("arms: %s.%s must link vocabulary %q and table %q, got %+v", want.union, want.arm, want.vocabulary, want.table, found)
+				}
+			}
 			carry := d.Vocab["Carry"]
 			plain := carry.Variants[2].Field
 			_, _, _, base := ir.UnionLayout(u, u.TableUnions["Carry"])
