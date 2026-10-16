@@ -169,3 +169,52 @@ type Guarded {
 		}
 	}
 }
+
+// TestRangeShapesPastInt32 reaches the range shapes no corpus declared
+// (functions.go:389, 498, 501, 654): a degenerate int64 range outside int32
+// (zero bits, assert only on write, materialized on read), a full-range-raw
+// uint64 whose low bound is vacuous and high bound is not (the one-sided
+// assert), and a degenerate uint64 above INT64_MAX (the ull spelling on both
+// sides, no wire call).
+func TestRangeShapesPastInt32(t *testing.T) {
+	t.Parallel()
+	u := unitFromSources(t, map[string]string{
+		"Ranges.schema": `package t
+type Ranges {
+    pinned64 int64  = 5000000000 | min = 5000000000, max = 5000000000
+    capped   uint64 | min = 0, max = 10000000000000000000
+    pinnedU  uint64 = 10000000000000000000 | min = 10000000000000000000, max = 10000000000000000000
+}
+`,
+	})
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := string(files["RangesWire.h"])
+	write := w[strings.Index(w, "bool WriteRanges("):strings.Index(w, "bool ReadRanges(")]
+	read := w[strings.Index(w, "bool ReadRanges("):]
+	for _, want := range []string{
+		"serialize_assert( int64_t( value.pinned64 ) >= int64_t( 5000000000 ) && int64_t( value.pinned64 ) <= int64_t( 5000000000 ) );",
+		"serialize_assert( value.capped <= 10000000000000000000ull );",
+		"write_bits( stream, value.capped, 64 );",
+		"serialize_assert( value.pinnedU >= 10000000000000000000ull && value.pinnedU <= 10000000000000000000ull );",
+	} {
+		if !strings.Contains(write, want) {
+			t.Errorf("WriteRanges: want %q\n%s", want, write)
+		}
+	}
+	for _, line := range strings.Split(write, "\n") {
+		if strings.Contains(line, "write_bits(") && (strings.Contains(line, "pinned64") || strings.Contains(line, "pinnedU")) {
+			t.Errorf("WriteRanges puts a degenerate range on the wire: %s", strings.TrimSpace(line))
+		}
+	}
+	for _, want := range []string{
+		"value.pinned64 = int64_t( 5000000000 );",
+		"value.pinnedU = uint64_t( 10000000000000000000ull );",
+	} {
+		if !strings.Contains(read, want) {
+			t.Errorf("ReadRanges must materialize the degenerate range with %q:\n%s", want, read)
+		}
+	}
+}
