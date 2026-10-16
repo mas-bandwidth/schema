@@ -534,7 +534,7 @@ func blockScalarWidth(t ir.FieldType) int {
 		case *ir.Enum:
 			return (ref.StorageBits + 7) / 8
 		case *ir.Flags:
-			return (ref.WireBits + 7) / 8
+			return 8 // a flags slot is uint64 in every target (ir/blocklayout.go)
 		}
 	}
 	return 1
