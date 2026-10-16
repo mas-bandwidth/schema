@@ -11232,6 +11232,17 @@ inline void SettingsFixedWriteBody( uint8_t * b, const Settings & value )
     memcpy( b + 8, value.label, (size_t) ( value.label_length ) );
 }
 
+// Meta's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool MetaFixedInRange( const Meta & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.build < 0 ) | (int) ( value.build > 1000 );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length );
+    return bad == 0;
+}
+
 // Meta's read-side bounds.
 inline void MetaFixedClampBody( Meta & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -11242,6 +11253,17 @@ inline void MetaFixedClampBody( Meta & value, int32_t & TABLE_CLAMP_RESTRICT cla
     {
         damaged++;
     }
+}
+
+// Settings's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool SettingsFixedInRange( const Settings & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.quality < 0 ) | (int) ( value.quality > 4 );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length );
+    return bad == 0;
 }
 
 // Settings's read-side bounds.
@@ -11266,7 +11288,7 @@ inline bool MetaFixedClamp( Meta & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    MetaFixedClampBody( value, clamped, damaged );
+    if ( !MetaFixedInRange( value ) ) { MetaFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -11555,7 +11577,7 @@ inline bool SettingsFixedClamp( Settings & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    SettingsFixedClampBody( value, clamped, damaged );
+    if ( !SettingsFixedInRange( value ) ) { SettingsFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.

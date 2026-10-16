@@ -4312,6 +4312,16 @@ inline void FixedTableFixedWriteBody( uint8_t * b, const FixedTable & value )
     BenchMixedFixedWriteBody( b + 0, value.value );
 }
 
+// FixedTable's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool FixedTableFixedInRange( const FixedTable & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !BenchMixedFixedInRange( value.value );
+    return bad == 0;
+}
+
 // FixedTable's read-side bounds.
 inline void FixedTableFixedClampBody( FixedTable & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -4329,7 +4339,7 @@ inline bool FixedTableFixedClamp( FixedTable & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    FixedTableFixedClampBody( value, clamped, damaged );
+    if ( !FixedTableFixedInRange( value ) ) { FixedTableFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.

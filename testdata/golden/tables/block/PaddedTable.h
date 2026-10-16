@@ -5964,6 +5964,16 @@ inline void PaddedFrameFixedWriteBody( uint8_t * b, const PaddedFrame & value )
     memcpy( b + 3217, value.blob, (size_t) ( value.blob_length ) );
 }
 
+// PaddedRow's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool PaddedRowFixedInRange( const PaddedRow & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length );
+    return bad == 0;
+}
+
 // PaddedRow's read-side bounds.
 inline void PaddedRowFixedClampBody( PaddedRow & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -5972,6 +5982,19 @@ inline void PaddedRowFixedClampBody( PaddedRow & value, int32_t & TABLE_CLAMP_RE
     {
         damaged++;
     }
+}
+
+// PaddedFrame's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool PaddedFrameFixedInRange( const PaddedFrame & value )
+{
+    (void) value;
+    int bad = 0;
+    for ( int64_t i = 0; i < (int64_t) value.rows_count; ++i )
+    {
+        bad |= (int) !PaddedRowFixedInRange( value.rows[i] );
+    }
+    return bad == 0;
 }
 
 // PaddedFrame's read-side bounds.
@@ -5994,7 +6017,7 @@ inline bool PaddedRowFixedClamp( PaddedRow & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    PaddedRowFixedClampBody( value, clamped, damaged );
+    if ( !PaddedRowFixedInRange( value ) ) { PaddedRowFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -6334,7 +6357,7 @@ inline bool PaddedFrameFixedClamp( PaddedFrame & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    PaddedFrameFixedClampBody( value, clamped, damaged );
+    if ( !PaddedFrameFixedInRange( value ) ) { PaddedFrameFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.

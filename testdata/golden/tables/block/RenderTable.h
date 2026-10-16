@@ -14892,6 +14892,17 @@ inline void RenderExplosionFixedWriteBody( uint8_t * b, const RenderExplosion & 
     TableFixedPut8( b + 73, (uint8_t) value.team );
 }
 
+// RenderShip's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool RenderShipFixedInRange( const RenderShip & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.ship_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderShip's read-side bounds.
 inline void RenderShipFixedClampBody( RenderShip & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -14900,11 +14911,32 @@ inline void RenderShipFixedClampBody( RenderShip & value, int32_t & TABLE_CLAMP_
     if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
 }
 
+// RenderTurret's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool RenderTurretFixedInRange( const RenderTurret & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderTurret's read-side bounds.
 inline void RenderTurretFixedClampBody( RenderTurret & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
+}
+
+// RenderMissile's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool RenderMissileFixedInRange( const RenderMissile & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.missile_type > 2u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
 }
 
 // RenderMissile's read-side bounds.
@@ -14915,12 +14947,34 @@ inline void RenderMissileFixedClampBody( RenderMissile & value, int32_t & TABLE_
     if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
 }
 
+// RenderDynamicProp's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool RenderDynamicPropFixedInRange( const RenderDynamicProp & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.prop_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderDynamicProp's read-side bounds.
 inline void RenderDynamicPropFixedClampBody( RenderDynamicProp & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.prop_type > 3u ) { value.prop_type = PropType::None; clamped++; }
     if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
+}
+
+// RenderStaticProp's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool RenderStaticPropFixedInRange( const RenderStaticProp & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.prop_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
 }
 
 // RenderStaticProp's read-side bounds.
@@ -14931,6 +14985,17 @@ inline void RenderStaticPropFixedClampBody( RenderStaticProp & value, int32_t & 
     if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
 }
 
+// RenderCosmeticProp's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool RenderCosmeticPropFixedInRange( const RenderCosmeticProp & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.prop_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderCosmeticProp's read-side bounds.
 inline void RenderCosmeticPropFixedClampBody( RenderCosmeticProp & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -14939,12 +15004,34 @@ inline void RenderCosmeticPropFixedClampBody( RenderCosmeticProp & value, int32_
     if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
 }
 
+// RenderLaser's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool RenderLaserFixedInRange( const RenderLaser & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.laser_type > 2u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderLaser's read-side bounds.
 inline void RenderLaserFixedClampBody( RenderLaser & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.laser_type > 2u ) { value.laser_type = LaserType::None; clamped++; }
     if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
+}
+
+// RenderExplosion's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool RenderExplosionFixedInRange( const RenderExplosion & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.explosion_type > 2u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
 }
 
 // RenderExplosion's read-side bounds.
@@ -15257,7 +15344,7 @@ inline bool RenderShipFixedClamp( RenderShip & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    RenderShipFixedClampBody( value, clamped, damaged );
+    if ( !RenderShipFixedInRange( value ) ) { RenderShipFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -15616,7 +15703,7 @@ inline bool RenderTurretFixedClamp( RenderTurret & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    RenderTurretFixedClampBody( value, clamped, damaged );
+    if ( !RenderTurretFixedInRange( value ) ) { RenderTurretFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -15951,7 +16038,7 @@ inline bool RenderMissileFixedClamp( RenderMissile & value, TableReport * report
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    RenderMissileFixedClampBody( value, clamped, damaged );
+    if ( !RenderMissileFixedInRange( value ) ) { RenderMissileFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -16294,7 +16381,7 @@ inline bool RenderDynamicPropFixedClamp( RenderDynamicProp & value, TableReport 
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    RenderDynamicPropFixedClampBody( value, clamped, damaged );
+    if ( !RenderDynamicPropFixedInRange( value ) ) { RenderDynamicPropFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -16640,7 +16727,7 @@ inline bool RenderStaticPropFixedClamp( RenderStaticProp & value, TableReport * 
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    RenderStaticPropFixedClampBody( value, clamped, damaged );
+    if ( !RenderStaticPropFixedInRange( value ) ) { RenderStaticPropFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -16986,7 +17073,7 @@ inline bool RenderCosmeticPropFixedClamp( RenderCosmeticProp & value, TableRepor
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    RenderCosmeticPropFixedClampBody( value, clamped, damaged );
+    if ( !RenderCosmeticPropFixedInRange( value ) ) { RenderCosmeticPropFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -17335,7 +17422,7 @@ inline bool RenderLaserFixedClamp( RenderLaser & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    RenderLaserFixedClampBody( value, clamped, damaged );
+    if ( !RenderLaserFixedInRange( value ) ) { RenderLaserFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -17672,7 +17759,7 @@ inline bool RenderExplosionFixedClamp( RenderExplosion & value, TableReport * re
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    RenderExplosionFixedClampBody( value, clamped, damaged );
+    if ( !RenderExplosionFixedInRange( value ) ) { RenderExplosionFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.

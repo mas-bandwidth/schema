@@ -7405,6 +7405,17 @@ inline void ArchiveConfigFixedWriteBody( uint8_t * b, const ArchiveConfig & valu
     TableFixedPut32( b + 1248, (uint32_t) value.count );
 }
 
+// ArchiveConfig's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool ArchiveConfigFixedInRange( const ArchiveConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !RootConfigFixedInRange( value.root );
+    bad |= (int) ( value.count < 0 ) | (int) ( value.count > 100 );
+    return bad == 0;
+}
+
 // ArchiveConfig's read-side bounds.
 inline void ArchiveConfigFixedClampBody( ArchiveConfig & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -7424,7 +7435,7 @@ inline bool ArchiveConfigFixedClamp( ArchiveConfig & value, TableReport * report
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    ArchiveConfigFixedClampBody( value, clamped, damaged );
+    if ( !ArchiveConfigFixedInRange( value ) ) { ArchiveConfigFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.

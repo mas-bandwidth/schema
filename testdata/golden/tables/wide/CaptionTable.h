@@ -5840,6 +5840,16 @@ inline void StampFixedWriteBody( uint8_t * b, const Stamp & value )
     TableFixedPut32( b + 12, (uint32_t) value.seq );
 }
 
+// Line's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool LineFixedInRange( const Line & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf16Valid( (const uint8_t *) value.text, (int64_t) value.text_length );
+    return bad == 0;
+}
+
 // Line's read-side bounds.
 inline void LineFixedClampBody( Line & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -5848,6 +5858,34 @@ inline void LineFixedClampBody( Line & value, int32_t & TABLE_CLAMP_RESTRICT cla
     {
         damaged++;
     }
+}
+
+// Caption's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool CaptionFixedInRange( const Caption & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf16Valid( (const uint8_t *) value.title, (int64_t) value.title_length );
+    bad |= (int) !LineFixedInRange( value.line );
+    for ( int64_t i = 0; i < (int64_t) value.lines_count; ++i )
+    {
+        bad |= (int) !LineFixedInRange( value.lines[i] );
+    }
+    bad |= (int) ( (uint64_t) value.body.type > 3u );
+    switch ( value.body.type )
+    {
+        case BodyType::Wide:
+        {
+            break;
+        }
+        case BodyType::Narrow:
+        {
+            break;
+        }
+        default: break;
+    }
+    return bad == 0;
 }
 
 // Caption's read-side bounds.
@@ -5878,6 +5916,16 @@ inline void CaptionFixedClampBody( Caption & value, int32_t & TABLE_CLAMP_RESTRI
     }
 }
 
+// Stamp's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool StampFixedInRange( const Stamp & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf16Valid( (const uint8_t *) value.label, (int64_t) value.label_length );
+    return bad == 0;
+}
+
 // Stamp's read-side bounds.
 inline void StampFixedClampBody( Stamp & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -5898,7 +5946,7 @@ inline bool CaptionFixedClamp( Caption & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    CaptionFixedClampBody( value, clamped, damaged );
+    if ( !CaptionFixedInRange( value ) ) { CaptionFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -6226,7 +6274,7 @@ inline bool StampFixedClamp( Stamp & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    StampFixedClampBody( value, clamped, damaged );
+    if ( !StampFixedInRange( value ) ) { StampFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.

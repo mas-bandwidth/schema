@@ -15302,6 +15302,16 @@ inline void ToolMessageFixedWriteBody( uint8_t * b, const ToolMessage & value )
     }
 }
 
+// User's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool UserFixedInRange( const User & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length );
+    return bad == 0;
+}
+
 // User's read-side bounds.
 inline void UserFixedClampBody( User & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -15312,6 +15322,16 @@ inline void UserFixedClampBody( User & value, int32_t & TABLE_CLAMP_RESTRICT cla
     }
 }
 
+// Script's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool ScriptFixedInRange( const Script & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length );
+    return bad == 0;
+}
+
 // Script's read-side bounds.
 inline void ScriptFixedClampBody( Script & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -15320,6 +15340,74 @@ inline void ScriptFixedClampBody( Script & value, int32_t & TABLE_CLAMP_RESTRICT
     {
         damaged++;
     }
+}
+
+// InsertText's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool InsertTextFixedInRange( const InsertText & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.text, (uint64_t) value.text_length );
+    bad |= (int) ( (uint64_t) value.origin.type > 4u );
+    switch ( value.origin.type )
+    {
+        case OriginType::User:
+        {
+            bad |= (int) !UserFixedInRange( value.origin.user );
+            break;
+        }
+        case OriginType::Script:
+        {
+            bad |= (int) !ScriptFixedInRange( value.origin.script );
+            break;
+        }
+        case OriginType::Pid:
+        {
+            bad |= (int) ( value.origin.pid > 1000 );
+            break;
+        }
+        case OriginType::Note:
+        {
+            break;
+        }
+        default: break;
+    }
+    for ( int64_t i = 0; i < (int64_t) value.origins_count; ++i )
+    {
+        bad |= (int) ( (uint64_t) value.origins[i].type > 4u );
+        switch ( value.origins[i].type )
+        {
+            case OriginType::User:
+            {
+                bad |= (int) !UserFixedInRange( value.origins[i].user );
+                break;
+            }
+            case OriginType::Script:
+            {
+                bad |= (int) !ScriptFixedInRange( value.origins[i].script );
+                break;
+            }
+            case OriginType::Pid:
+            {
+                bad |= (int) ( value.origins[i].pid > 1000 );
+                break;
+            }
+            case OriginType::Note:
+            {
+                break;
+            }
+            default: break;
+        }
+    }
+    if ( value.modes_present )
+    {
+        for ( int64_t i = 0; i < (int64_t) value.modes_count; ++i )
+        {
+            bad |= (int) ( (uint64_t) value.modes[i] > 2u );
+        }
+    }
+    return bad == 0;
 }
 
 // InsertText's read-side bounds.
@@ -15392,6 +15480,35 @@ inline void InsertTextFixedClampBody( InsertText & value, int32_t & TABLE_CLAMP_
     }
 }
 
+// Edit's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool EditFixedInRange( const Edit & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.body.type > 6u );
+    switch ( value.body.type )
+    {
+        case EditBodyType::Insert:
+        {
+            bad |= (int) !InsertTextFixedInRange( value.body.insert );
+            break;
+        }
+        case EditBodyType::Tally:
+        {
+            bad |= (int) ( value.body.tally < 0 ) | (int) ( value.body.tally > 100 );
+            break;
+        }
+        case EditBodyType::Mode:
+        {
+            bad |= (int) ( (uint64_t) value.body.mode > 2u );
+            break;
+        }
+        default: break;
+    }
+    return bad == 0;
+}
+
 // Edit's read-side bounds.
 inline void EditFixedClampBody( Edit & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -15419,6 +15536,17 @@ inline void EditFixedClampBody( Edit & value, int32_t & TABLE_CLAMP_RESTRICT cla
     }
 }
 
+// OpenDocument's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool OpenDocumentFixedInRange( const OpenDocument & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length );
+    bad |= (int) ( (uint64_t) value.mode > 2u );
+    return bad == 0;
+}
+
 // OpenDocument's read-side bounds.
 inline void OpenDocumentFixedClampBody( OpenDocument & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -15430,6 +15558,16 @@ inline void OpenDocumentFixedClampBody( OpenDocument & value, int32_t & TABLE_CL
     if ( (uint64_t) value.mode > 2u ) { value.mode = Mode::None; clamped++; }
 }
 
+// SaveDocument's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool SaveDocumentFixedInRange( const SaveDocument & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length );
+    return bad == 0;
+}
+
 // SaveDocument's read-side bounds.
 inline void SaveDocumentFixedClampBody( SaveDocument & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -15438,6 +15576,43 @@ inline void SaveDocumentFixedClampBody( SaveDocument & value, int32_t & TABLE_CL
     {
         damaged++;
     }
+}
+
+// Transaction's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool TransactionFixedInRange( const Transaction & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.reason, (uint64_t) value.reason_length );
+    for ( int64_t i = 0; i < (int64_t) value.edits_count; ++i )
+    {
+        bad |= (int) !EditFixedInRange( value.edits[i] );
+    }
+    for ( int64_t i = 0; i < 2; ++i )
+    {
+        bad |= (int) ( (uint64_t) value.pending[i].type > 6u );
+        switch ( value.pending[i].type )
+        {
+            case EditBodyType::Insert:
+            {
+                bad |= (int) !InsertTextFixedInRange( value.pending[i].insert );
+                break;
+            }
+            case EditBodyType::Tally:
+            {
+                bad |= (int) ( value.pending[i].tally < 0 ) | (int) ( value.pending[i].tally > 100 );
+                break;
+            }
+            case EditBodyType::Mode:
+            {
+                bad |= (int) ( (uint64_t) value.pending[i].mode > 2u );
+                break;
+            }
+            default: break;
+        }
+    }
+    return bad == 0;
 }
 
 // Transaction's read-side bounds.
@@ -15476,6 +15651,128 @@ inline void TransactionFixedClampBody( Transaction & value, int32_t & TABLE_CLAM
             default: break;
         }
     }
+}
+
+// ToolMessage's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool ToolMessageFixedInRange( const ToolMessage & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.body.type > 8u );
+    switch ( value.body.type )
+    {
+        case ToolBodyType::Open:
+        {
+            bad |= (int) !OpenDocumentFixedInRange( value.body.open );
+            break;
+        }
+        case ToolBodyType::Save:
+        {
+            bad |= (int) !SaveDocumentFixedInRange( value.body.save );
+            break;
+        }
+        case ToolBodyType::Transact:
+        {
+            bad |= (int) !TransactionFixedInRange( value.body.transact );
+            break;
+        }
+        case ToolBodyType::Origin:
+        {
+            bad |= (int) ( (uint64_t) value.body.origin.type > 4u );
+            switch ( value.body.origin.type )
+            {
+                case OriginType::User:
+                {
+                    bad |= (int) !UserFixedInRange( value.body.origin.user );
+                    break;
+                }
+                case OriginType::Script:
+                {
+                    bad |= (int) !ScriptFixedInRange( value.body.origin.script );
+                    break;
+                }
+                case OriginType::Pid:
+                {
+                    bad |= (int) ( value.body.origin.pid > 1000 );
+                    break;
+                }
+                case OriginType::Note:
+                {
+                    break;
+                }
+                default: break;
+            }
+            break;
+        }
+        default: break;
+    }
+    for ( int64_t i = 0; i < (int64_t) value.history_count; ++i )
+    {
+        bad |= (int) ( (uint64_t) value.history[i].type > 8u );
+        switch ( value.history[i].type )
+        {
+            case ToolBodyType::Open:
+            {
+                bad |= (int) !OpenDocumentFixedInRange( value.history[i].open );
+                break;
+            }
+            case ToolBodyType::Save:
+            {
+                bad |= (int) !SaveDocumentFixedInRange( value.history[i].save );
+                break;
+            }
+            case ToolBodyType::Transact:
+            {
+                bad |= (int) !TransactionFixedInRange( value.history[i].transact );
+                break;
+            }
+            case ToolBodyType::Origin:
+            {
+                bad |= (int) ( (uint64_t) value.history[i].origin.type > 4u );
+                switch ( value.history[i].origin.type )
+                {
+                    case OriginType::User:
+                    {
+                        bad |= (int) !UserFixedInRange( value.history[i].origin.user );
+                        break;
+                    }
+                    case OriginType::Script:
+                    {
+                        bad |= (int) !ScriptFixedInRange( value.history[i].origin.script );
+                        break;
+                    }
+                    case OriginType::Pid:
+                    {
+                        bad |= (int) ( value.history[i].origin.pid > 1000 );
+                        break;
+                    }
+                    case OriginType::Note:
+                    {
+                        break;
+                    }
+                    default: break;
+                }
+                break;
+            }
+            default: break;
+        }
+    }
+    if ( value.trace_present )
+    {
+        for ( int64_t i = 0; i < (int64_t) value.trace_count; ++i )
+        {
+            bad |= (int) !ScriptFixedInRange( value.trace[i] );
+        }
+    }
+    if ( value.marks_present )
+    {
+        for ( int64_t i = 0; i < 2; ++i )
+        {
+            bad |= (int) ( (uint64_t) value.marks[i] > 2u );
+        }
+    }
+    return bad == 0;
 }
 
 // ToolMessage's read-side bounds.
@@ -15609,7 +15906,7 @@ inline bool UserFixedClamp( User & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    UserFixedClampBody( value, clamped, damaged );
+    if ( !UserFixedInRange( value ) ) { UserFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -15894,7 +16191,7 @@ inline bool ScriptFixedClamp( Script & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    ScriptFixedClampBody( value, clamped, damaged );
+    if ( !ScriptFixedInRange( value ) ) { ScriptFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -16452,7 +16749,7 @@ inline bool InsertTextFixedClamp( InsertText & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    InsertTextFixedClampBody( value, clamped, damaged );
+    if ( !InsertTextFixedInRange( value ) ) { InsertTextFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -17128,7 +17425,7 @@ inline bool EditFixedClamp( Edit & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    EditFixedClampBody( value, clamped, damaged );
+    if ( !EditFixedInRange( value ) ) { EditFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -17619,7 +17916,7 @@ inline bool OpenDocumentFixedClamp( OpenDocument & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    OpenDocumentFixedClampBody( value, clamped, damaged );
+    if ( !OpenDocumentFixedInRange( value ) ) { OpenDocumentFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -17925,7 +18222,7 @@ inline bool SaveDocumentFixedClamp( SaveDocument & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    SaveDocumentFixedClampBody( value, clamped, damaged );
+    if ( !SaveDocumentFixedInRange( value ) ) { SaveDocumentFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -18214,7 +18511,7 @@ inline bool TransactionFixedClamp( Transaction & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    TransactionFixedClampBody( value, clamped, damaged );
+    if ( !TransactionFixedInRange( value ) ) { TransactionFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -19184,7 +19481,7 @@ inline bool ToolMessageFixedClamp( ToolMessage & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    ToolMessageFixedClampBody( value, clamped, damaged );
+    if ( !ToolMessageFixedInRange( value ) ) { ToolMessageFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.

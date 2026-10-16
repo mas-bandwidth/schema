@@ -10113,6 +10113,16 @@ inline void PackConfigFixedWriteBody( uint8_t * b, const PackConfig & value )
     }
 }
 
+// GunnerSettings's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool GunnerSettingsFixedInRange( const GunnerSettings & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.callsign, (uint64_t) value.callsign_length );
+    return bad == 0;
+}
+
 // GunnerSettings's read-side bounds.
 inline void GunnerSettingsFixedClampBody( GunnerSettings & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -10121,6 +10131,24 @@ inline void GunnerSettingsFixedClampBody( GunnerSettings & value, int32_t & TABL
     {
         damaged++;
     }
+}
+
+// ShipEntry's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool ShipEntryFixedInRange( const ShipEntry & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.display_name, (uint64_t) value.display_name_length );
+    for ( int64_t i = 0; i < (int64_t) value.hardpoints_count; ++i )
+    {
+        bad |= (int) ( value.hardpoints[i] < 0 ) | (int) ( value.hardpoints[i] > 8 );
+    }
+    if ( value.gunner_present )
+    {
+        bad |= (int) !GunnerSettingsFixedInRange( value.gunner );
+    }
+    return bad == 0;
 }
 
 // ShipEntry's read-side bounds.
@@ -10142,6 +10170,18 @@ inline void ShipEntryFixedClampBody( ShipEntry & value, int32_t & TABLE_CLAMP_RE
     }
 }
 
+// GlobalSettings's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool GlobalSettingsFixedInRange( const GlobalSettings & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.tick_rate < 1 ) | (int) ( value.tick_rate > 240 );
+    bad |= (int) ( (uint64_t) value.difficulty > 3u );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.build_note, (uint64_t) value.build_note_length );
+    return bad == 0;
+}
+
 // GlobalSettings's read-side bounds.
 inline void GlobalSettingsFixedClampBody( GlobalSettings & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -10153,6 +10193,28 @@ inline void GlobalSettingsFixedClampBody( GlobalSettings & value, int32_t & TABL
     {
         damaged++;
     }
+}
+
+// PackConfig's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool PackConfigFixedInRange( const PackConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !GlobalSettingsFixedInRange( value.global );
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        bad |= (int) !ShipEntryFixedInRange( value.ships.slots[i] );
+    }
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        bad |= (int) ( value.thresholds.slots[i] < 0 ) | (int) ( value.thresholds.slots[i] > 1000 );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.reserves_count; ++i )
+    {
+        bad |= (int) !ShipEntryFixedInRange( value.reserves[i] );
+    }
+    return bad == 0;
 }
 
 // PackConfig's read-side bounds.
@@ -10185,7 +10247,7 @@ inline bool GunnerSettingsFixedClamp( GunnerSettings & value, TableReport * repo
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    GunnerSettingsFixedClampBody( value, clamped, damaged );
+    if ( !GunnerSettingsFixedInRange( value ) ) { GunnerSettingsFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -10478,7 +10540,7 @@ inline bool ShipEntryFixedClamp( ShipEntry & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    ShipEntryFixedClampBody( value, clamped, damaged );
+    if ( !ShipEntryFixedInRange( value ) ) { ShipEntryFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -10798,7 +10860,7 @@ inline bool GlobalSettingsFixedClamp( GlobalSettings & value, TableReport * repo
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    GlobalSettingsFixedClampBody( value, clamped, damaged );
+    if ( !GlobalSettingsFixedInRange( value ) ) { GlobalSettingsFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -11106,7 +11168,7 @@ inline bool PackConfigFixedClamp( PackConfig & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    PackConfigFixedClampBody( value, clamped, damaged );
+    if ( !PackConfigFixedInRange( value ) ) { PackConfigFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.

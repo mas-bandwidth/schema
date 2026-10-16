@@ -7565,6 +7565,16 @@ inline void TallyFixedWriteBody( uint8_t * b, const Tally & value )
     TableFixedPut32( b + 0, (uint32_t) value.hits );
 }
 
+// Tally's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool TallyFixedInRange( const Tally & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.hits < 0 ) | (int) ( value.hits > 10000 );
+    return bad == 0;
+}
+
 // Tally's read-side bounds.
 inline void TallyFixedClampBody( Tally & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -7583,7 +7593,7 @@ inline bool TallyFixedClamp( Tally & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    TallyFixedClampBody( value, clamped, damaged );
+    if ( !TallyFixedInRange( value ) ) { TallyFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.

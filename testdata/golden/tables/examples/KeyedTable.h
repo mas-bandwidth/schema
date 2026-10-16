@@ -10390,6 +10390,17 @@ inline void KeyedConfigFixedWriteBody( uint8_t * b, const KeyedConfig & value )
     ScoreBoardFixedWriteBody( b + 222, value.scores );
 }
 
+// TeamConfig's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool TeamConfigFixedInRange( const TeamConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.spawn_count < 0 ) | (int) ( value.spawn_count > 64 );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.banner, (uint64_t) value.banner_length );
+    return bad == 0;
+}
+
 // TeamConfig's read-side bounds.
 inline void TeamConfigFixedClampBody( TeamConfig & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -10402,6 +10413,19 @@ inline void TeamConfigFixedClampBody( TeamConfig & value, int32_t & TABLE_CLAMP_
     }
 }
 
+// ScoreBoard's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool ScoreBoardFixedInRange( const ScoreBoard & value )
+{
+    (void) value;
+    int bad = 0;
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        bad |= (int) ( value.per_team[i] < 0 ) | (int) ( value.per_team[i] > 100000 );
+    }
+    return bad == 0;
+}
+
 // ScoreBoard's read-side bounds.
 inline void ScoreBoardFixedClampBody( ScoreBoard & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -10411,6 +10435,20 @@ inline void ScoreBoardFixedClampBody( ScoreBoard & value, int32_t & TABLE_CLAMP_
         clamped += (int) ( value.per_team[i] < 0 ) | (int) ( value.per_team[i] > 100000 );
         value.per_team[i] = ( value.per_team[i] < 0 ) ? 0 : ( ( value.per_team[i] > 100000 ) ? 100000 : value.per_team[i] );
     }
+}
+
+// KeyedConfig's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool KeyedConfigFixedInRange( const KeyedConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        bad |= (int) !TeamConfigFixedInRange( value.teams.slots[i] );
+    }
+    bad |= (int) !ScoreBoardFixedInRange( value.scores );
+    return bad == 0;
 }
 
 // KeyedConfig's read-side bounds.
@@ -10434,7 +10472,7 @@ inline bool TeamConfigFixedClamp( TeamConfig & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    TeamConfigFixedClampBody( value, clamped, damaged );
+    if ( !TeamConfigFixedInRange( value ) ) { TeamConfigFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -11565,7 +11603,7 @@ inline bool KeyedConfigFixedClamp( KeyedConfig & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    KeyedConfigFixedClampBody( value, clamped, damaged );
+    if ( !KeyedConfigFixedInRange( value ) ) { KeyedConfigFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.

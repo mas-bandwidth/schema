@@ -7680,6 +7680,17 @@ inline void StampFixedWriteBody( uint8_t * b, const Stamp & value )
     TableFixedPut32( b + 12, (uint32_t) value.seq );
 }
 
+// Stamp's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool StampFixedInRange( const Stamp & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length );
+    bad |= (int) ( value.seq < 0 ) | (int) ( value.seq > 1000 );
+    return bad == 0;
+}
+
 // Stamp's read-side bounds.
 inline void StampFixedClampBody( Stamp & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -7702,7 +7713,7 @@ inline bool StampFixedClamp( Stamp & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    StampFixedClampBody( value, clamped, damaged );
+    if ( !StampFixedInRange( value ) ) { StampFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.

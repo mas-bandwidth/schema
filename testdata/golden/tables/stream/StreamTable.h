@@ -8596,6 +8596,16 @@ inline void HeaderFixedWriteBody( uint8_t * b, const Header & value )
     memcpy( b + 4, value.name, (size_t) ( value.name_length ) );
 }
 
+// Header's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool HeaderFixedInRange( const Header & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length );
+    return bad == 0;
+}
+
 // Header's read-side bounds.
 inline void HeaderFixedClampBody( Header & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -8616,7 +8626,7 @@ inline bool HeaderFixedClamp( Header & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    HeaderFixedClampBody( value, clamped, damaged );
+    if ( !HeaderFixedInRange( value ) ) { HeaderFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
