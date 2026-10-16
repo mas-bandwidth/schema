@@ -274,29 +274,28 @@ func t06GoR17(t *testing.T) {
 	}
 }
 
-// ---- go/C1 "count clamp v<0" ------------------------------------------------
+// ---- go/C1 "count clamp v<0", rewritten to the refusal -----------------------
 
-// t06GoC1 holds C1's hostile half: a count word below zero clamps to zero and
-// counts. docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-VERSIONING-TESTS.md
-// "the count clamp across bounds (C1/C2's cross-version half; the hostile half
-// stays)". The count op reads a 32-bit word and holds it to the declared bound.
+// t06GoC1 holds C1's hostile half: a count word below zero REFUSES
+// `count_over_bound`. The OWNER RULE (2026-10-15) replaced the count clamp with
+// a named refusal (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md
+// §4.5). The count op reads a 32-bit word and refuses a value past the plan's
+// bound before any destination byte is written.
 func t06GoC1(t *testing.T) {
 	rt := t02GoNorm(tableFixedRuntime)
 	countCase := t02GoBlock(t, rt, "case tableFixedCount:", "case tableFixedText:")
-	t02GoHas(t, countCase, "if v < 0 { v = 0", "C1 a count below zero clamps to zero")
-	t02GoHas(t, countCase, "report.Clamped++", "C1 the negative clamp counts")
+	t02GoHas(t, countCase, "if v < 0 || v > int32(p.Size)", "C1 a count below zero or past the bound refuses")
+	t02GoHas(t, countCase, "return tableFixedCountOverBound", "C1 the refusal is named count_over_bound")
 }
 
-// ---- go/C2 "count clamp v>Max" ----------------------------------------------
+// ---- go/C2 "count clamp v>Max", rewritten to the refusal ---------------------
 
 // t06GoC2 holds C2's hostile half: a count word above the declared maximum
-// clamps to the maximum and counts. docs/SPEC-TABLES.md §3.4: a counted array's
-// bound is the declared maximum and a count past it is the writer's fault.
+// REFUSES `count_over_bound`. docs/SPEC-TABLES.md §3.4: a counted array's bound
+// is the declared maximum and a count past it is refused by name.
 func t06GoC2(t *testing.T) {
 	rt := t02GoNorm(tableFixedRuntime)
 	countCase := t02GoBlock(t, rt, "case tableFixedCount:", "case tableFixedText:")
-	t02GoHas(t, countCase, "else if v > int32(p.Size) { v = int32(p.Size)", "C2 a count above the max clamps to the max")
-	if n := strings.Count(countCase, "report.Clamped++"); n != 2 {
-		t.Errorf("C2: the count op counts at %d sites, want the low and high ends", n)
-	}
+	t02GoHas(t, countCase, "if v < 0 || v > int32(p.Size)", "C2 a count past the max refuses")
+	t02GoHas(t, countCase, "return tableFixedCountOverBound", "C2 the refusal is named count_over_bound")
 }

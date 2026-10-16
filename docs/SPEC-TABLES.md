@@ -6922,9 +6922,10 @@ so the used extent is always stated before the bytes are reached.
 - **THE CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE.** A
   `string(N)`'s UTF-8 validity (§3) is checked over its stated length, not over
   `N`; a `wstring(N)`'s code units over its stated length, not over `2N`. A
-  length past the field's own bound is a different thing entirely and is
-  `malformed`, because that is the length lying about the wire and not about
-  the slack.
+  count or length past the field's own bound is a different thing entirely: it
+  is a NAMED REFUSAL — `count_over_bound` for a count, `length_over_bound` for
+  a length — checked before any destination byte is written, because that is
+  the count or length lying about the wire and not about the slack.
 
 This is §3's "nothing is aligned and nothing is padded" holding for ALIGNMENT
 and departing for SLACK, and the departure is the whole form: slack at a
@@ -7040,8 +7041,8 @@ the bounds pass that runs after the loop, over storage, for either plan:
   | op | what the loop does |
   |---|---|
   | `copy` | move `size` bytes from `src` to `dst` |
-  | `count` | read the count, clamp it to the reader's own `Max` (`size`), store it; `clamped` counts if it fired |
-  | `text` | `count`'s work on the length, then the units, then terminate at the used length; the content rules of §3 apply and a violation is `malformed` |
+  | `count` | read the count; a value past the PLAN's bound (`size`) refuses `count_over_bound`, before any destination byte is written |
+  | `text` | read the length; a value past the plan's cap refuses `length_over_bound`; then the units, then terminate at the used length; the content rules of §3 apply and a violation refuses `text_ill_formed` |
   | `union` | read the tag, resolve it to the reader's own arm, run that arm's sub-plan |
   | `widen` | decode a narrower source at its own width into a wider destination, `widened` counts |
   | `ordinal` | resolve a variant ordinal through the plan's own remap table at `aux` |

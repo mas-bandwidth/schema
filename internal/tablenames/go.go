@@ -383,6 +383,8 @@ func init() {
 		Name{Name: "tableFixedConst", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedWidenF", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedBool", What: "the fixed form (form 3)"},
+		Name{Name: "tableFixedCountOverBound", What: "the fixed form (form 3)"},
+		Name{Name: "tableFixedLengthOverBound", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedTag", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedTextUtf8", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedTextWide", What: "the fixed form (form 3)"},

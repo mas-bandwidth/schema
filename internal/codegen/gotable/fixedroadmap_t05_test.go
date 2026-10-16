@@ -80,22 +80,16 @@ func t05Has(t *testing.T, got, want, sentence string) {
 	}
 }
 
-// t05GoC3 holds C3 ("text length clamp") to the emitted text op: the length is
-// read as a SIGNED i32 and clamped into [0, cap], and the clamp counts once.
-// §4.5 THE TEXT OP: "v := LE(4, src + p.src) read as SIGNED; if v < 0: v := 0 ;
-// COUNT clamped; if v > cap: v := cap ; COUNT clamped" and the §5.4 row:
-// "`count`, `text` | `clamped` | once per entry per record, when the length or
-// count was out of range".
+// t05GoC3 holds C3 ("text length", rewritten to the refusal) to the emitted text
+// op: the length is read as a SIGNED i32 and a value past the plan's bound —
+// negative or over — REFUSES `length_over_bound`. The OWNER RULE (2026-10-15)
+// replaced the text length clamp with a named refusal (docs/SPEC-TABLES.md
+// §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5).
 func t05GoC3(t *testing.T) {
 	op := t05TextOp(t)
 	t05Has(t, op, "v := int32(tableFixedGet32(src[p.Src:]))", "the length is read as a signed i32 (§4.5 THE TEXT OP)")
-	t05Has(t, op, "if v < 0 {", "a negative length is the first clamp arm (§4.5 THE TEXT OP)")
-	t05Has(t, op, "v = 0", "a negative length clamps UP to zero (§4.5 THE TEXT OP)")
-	t05Has(t, op, "else if uint32(v) > capn {", "a length past the cap is the second clamp arm (§4.5 THE TEXT OP)")
-	t05Has(t, op, "v = int32(capn)", "a length past the cap clamps DOWN to it (§4.5 THE TEXT OP)")
-	if n := strings.Count(op, "report.Clamped++"); n != 2 {
-		t.Errorf("t05: the text op counts clamped at %d sites, want the two clamp arms — once per field (§5.4)", n)
-	}
+	t05Has(t, op, "if v < 0 || uint32(v) > capn", "a length below zero or past the cap refuses (§4.5 THE TEXT OP)")
+	t05Has(t, op, "return tableFixedLengthOverBound", "the refusal is named length_over_bound (§4.5 THE TEXT OP)")
 }
 
 // t05GoC4 holds C4 ("text content refuses BY NAME") to the emitted runtime: the
@@ -163,8 +157,8 @@ func t05GoR24(t *testing.T) {
 	// the payload is two bytes each"; §4.5: "unit := (meta == wide) ? 2 : 1;
 	// cap := size / unit").
 	t05Has(t, op, "unit := uint32(1)", "R24 a string's unit is one byte, so its cap is its byte span (§3.4)")
-	t05Has(t, op, "capn := p.Size / unit", "R24 the clamp is the byte span over the unit — bytes narrow, code units wide (§4.5, §3.4)")
-	t05Has(t, op, "else if uint32(v) > capn {", "R24 the wire length word is clamped against that unit cap (§4.5)")
+	t05Has(t, op, "capn := p.Size / unit", "R24 the cap is the byte span over the unit — bytes narrow, code units wide (§4.5, §3.4)")
+	t05Has(t, op, "if v < 0 || uint32(v) > capn", "R24 the wire length word past that unit cap refuses by name (§4.5)")
 	// BYTES is never a content refusal.
 	if strings.Contains(ill, "tableFixedTextBytes") {
 		t.Error("t05: bytes(N) is content-validated; bytes carries no text rule (§4.5)")

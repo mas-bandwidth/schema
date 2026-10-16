@@ -521,9 +521,12 @@ func t04GoR16(t *testing.T) {
 	if n := strings.Count(run, "report.KindMismatch++"); n != 0 {
 		t.Errorf("R16: the record loop counts KindMismatch %d times; that census is COMPILE's, once per peer", n)
 	}
-	for _, op := range []string{"case tableFixedCount:", "case tableFixedText:"} {
-		if !strings.Contains(t02GoBlock(t, run, op, "case tableFixed"), "report.Clamped++") {
-			t.Errorf("R16: %s does not clamp once per entry", op)
+	for _, tc := range []struct{ op, want string }{
+		{"case tableFixedCount:", "return tableFixedCountOverBound"},
+		{"case tableFixedText:", "return tableFixedLengthOverBound"},
+	} {
+		if !strings.Contains(t02GoBlock(t, run, tc.op, "case tableFixed"), tc.want) {
+			t.Errorf("R16: %s does not refuse by name", tc.op)
 		}
 	}
 	// THE OPS MOVE NOTHING (§5.4): the ordinal and const ops land their value and
