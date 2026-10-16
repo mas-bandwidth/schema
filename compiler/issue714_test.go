@@ -55,7 +55,10 @@ func TestIssue714Base64WriterIntegerWrap(t *testing.T) {
 			}
 
 			var foundBase64 bool
-			for _, content := range files {
+			for name, content := range files {
+				if strings.Contains(string(content), "TableRefuseBase64Damaged") {
+					continue // the typed refusal list (SPEC-TABLES §16.6) names base64, it holds no writer
+				}
 				str := string(content)
 				if strings.Contains(str, "Base64") || strings.Contains(str, "base64") {
 					foundBase64 = true
@@ -63,7 +66,7 @@ func TestIssue714Base64WriterIntegerWrap(t *testing.T) {
 						t.Errorf("%s: emitted code contains wrapping loop condition %q", tt.lang, tt.forbidden)
 					}
 					if !strings.Contains(str, tt.required) {
-						t.Errorf("%s: emitted code missing safe loop condition %q", tt.lang, tt.required)
+						t.Errorf("%s: %s: emitted code missing safe loop condition %q", tt.lang, name, tt.required)
 					}
 				}
 			}
