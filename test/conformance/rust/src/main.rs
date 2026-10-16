@@ -854,12 +854,116 @@ macro_rules! with_root {
                 use mapdemo::{runs_from_json as $from_json, runs_load as $load, runs_save as $save, runs_to_json_checked as $to_json};
                 Some($body)
             }
-            // THE FIXED CLASS (docs/SPEC-TABLES.md §2.2, §3, §5): the three
-            // evolution pairs, each a closure holding a fixed table, on the
-            // variable form — V's fixed root Cfg, W's Fleet over the fixed
-            // Vessel/Ship (string, bytes and flags defaults, the table renamed
-            // under `was`) and R's fixed root Cfg (variant, arm and type-field
-            // renames under `was`)
+            ("tabledemo", "RootConfig") => {
+                #[allow(unused_imports)]
+                use tabledemo::{root_config_from_json as $from_json, root_config_load as $load, root_config_save as $save, root_config_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tabledemo", "PackConfig") => {
+                #[allow(unused_imports)]
+                use tabledemo::{pack_config_from_json as $from_json, pack_config_load as $load, pack_config_save as $save, pack_config_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tabledemo", "LoadoutConfig") => {
+                #[allow(unused_imports)]
+                use tabledemo::{loadout_config_from_json as $from_json, loadout_config_load as $load, loadout_config_save as $save, loadout_config_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tabledemo", "ProfileConfig") => {
+                #[allow(unused_imports)]
+                use tabledemo::{profile_config_from_json as $from_json, profile_config_load as $load, profile_config_save as $save, profile_config_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tabledemo", "ArchiveConfig") => {
+                #[allow(unused_imports)]
+                use tabledemo::{archive_config_from_json as $from_json, archive_config_load as $load, archive_config_save as $save, archive_config_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tabledemo", "KeyedConfig") => {
+                #[allow(unused_imports)]
+                use tabledemo::{keyed_config_from_json as $from_json, keyed_config_load as $load, keyed_config_save as $save, keyed_config_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tabledemo", "WideBlob") => {
+                #[allow(unused_imports)]
+                use tabledemo::{wide_blob_from_json as $from_json, wide_blob_load as $load, wide_blob_save as $save, wide_blob_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("streamdemo", "Feed") => {
+                #[allow(unused_imports)]
+                use streamdemo::{feed_from_json as $from_json, feed_load as $load, feed_save as $save, feed_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("listdemo", "Album") => {
+                #[allow(unused_imports)]
+                use listdemo::{album_from_json as $from_json, album_load as $load, album_save as $save, album_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("listdemo", "Army") => {
+                #[allow(unused_imports)]
+                use listdemo::{army_from_json as $from_json, army_load as $load, army_save as $save, army_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("listdemo", "Mixed") => {
+                #[allow(unused_imports)]
+                use listdemo::{mixed_from_json as $from_json, mixed_load as $load, mixed_save as $save, mixed_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("listdemo", "Save") => {
+                #[allow(unused_imports)]
+                use listdemo::{save_from_json as $from_json, save_load as $load, save_save as $save, save_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("listdemo", "Sheet") => {
+                #[allow(unused_imports)]
+                use listdemo::{sheet_from_json as $from_json, sheet_load as $load, sheet_save as $save, sheet_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("listdemo", "Unbounded") => {
+                #[allow(unused_imports)]
+                use listdemo::{unbounded_from_json as $from_json, unbounded_load as $load, unbounded_save as $save, unbounded_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("messagedemo", "ToolMessage") => {
+                #[allow(unused_imports)]
+                use messagedemo::{tool_message_from_json as $from_json, tool_message_load as $load, tool_message_save as $save, tool_message_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("backenddemo", "LoginRequest") => {
+                #[allow(unused_imports)]
+                use backenddemo::{login_request_from_json as $from_json, login_request_load as $load, login_request_save as $save, login_request_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("backenddemo", "MatchResult") => {
+                #[allow(unused_imports)]
+                use backenddemo::{match_result_from_json as $from_json, match_result_load as $load, match_result_save as $save, match_result_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("backenddemo", "StorePurchase") => {
+                #[allow(unused_imports)]
+                use backenddemo::{store_purchase_from_json as $from_json, store_purchase_load as $load, store_purchase_save as $save, store_purchase_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("vocabdemo", "Wide00") => {
+                #[allow(unused_imports)]
+                use vocabdemo::{wide00_from_json as $from_json, wide00_load as $load, wide00_save as $save, wide00_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("vocabdemo", "Wide09") => {
+                #[allow(unused_imports)]
+                use vocabdemo::{wide09_from_json as $from_json, wide09_load as $load, wide09_save as $save, wide09_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("vocab9demo", "Wide00") => {
+                #[allow(unused_imports)]
+                use vocab9demo::{wide00_from_json as $from_json, wide00_load as $load, wide00_save as $save, wide00_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("vocab9demo", "Wide19") => {
+                #[allow(unused_imports)]
+                use vocab9demo::{wide19_from_json as $from_json, wide19_load as $load, wide19_save as $save, wide19_to_json_checked as $to_json};
+                Some($body)
+            }
             ("tblv1", "Cfg") => {
                 #[allow(unused_imports)]
                 use tblv1::{cfg_from_json as $from_json, cfg_load as $load, cfg_save as $save, cfg_to_json_checked as $to_json};
@@ -868,6 +972,46 @@ macro_rules! with_root {
             ("tblv2", "Cfg") => {
                 #[allow(unused_imports)]
                 use tblv2::{cfg_from_json as $from_json, cfg_load as $load, cfg_save as $save, cfg_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblp1", "Chain") => {
+                #[allow(unused_imports)]
+                use tblp1::{chain_from_json as $from_json, chain_load as $load, chain_save as $save, chain_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblp2", "Chain") => {
+                #[allow(unused_imports)]
+                use tblp2::{chain_from_json as $from_json, chain_load as $load, chain_save as $save, chain_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblp3", "Chain") => {
+                #[allow(unused_imports)]
+                use tblp3::{chain_from_json as $from_json, chain_load as $load, chain_save as $save, chain_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblm1", "Msg") => {
+                #[allow(unused_imports)]
+                use tblm1::{msg_from_json as $from_json, msg_load as $load, msg_save as $save, msg_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblm2", "Msg") => {
+                #[allow(unused_imports)]
+                use tblm2::{msg_from_json as $from_json, msg_load as $load, msg_save as $save, msg_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tbla2", "Root") => {
+                #[allow(unused_imports)]
+                use tbla2::{root_from_json as $from_json, root_load as $load, root_save as $save, root_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblk1", "Root") => {
+                #[allow(unused_imports)]
+                use tblk1::{root_from_json as $from_json, root_load as $load, root_save as $save, root_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblk2", "Root") => {
+                #[allow(unused_imports)]
+                use tblk2::{root_from_json as $from_json, root_load as $load, root_save as $save, root_to_json_checked as $to_json};
                 Some($body)
             }
             ("tblw1", "Fleet") => {
@@ -1001,23 +1145,17 @@ fn surface_json_hostile(manifest: &Manifest, out: &str) {
                 Ok(t) => t,
                 Err(e) => fail(&format!("cannot read {path}: {e}")),
             };
-            // a tree that is not UTF-8 is malformed text, and the text form
-            // refuses it rather than reading a lossy copy
-            match std::str::from_utf8(&text) {
-                Err(_) => "refused\n".to_string(),
-                Ok(text) => {
-                    let mut report = Default::default();
-                    let value = from_json(text, &mut report);
-                    let r = &report;
-                    if value.is_none() || r.malformed || r.refused {
-                        "refused\n".to_string()
-                    } else {
-                        format!(
-                            "{},{},{},{},{},false,read\n",
-                            r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate
-                        )
-                    }
-                }
+            let text = String::from_utf8_lossy(&text);
+            let mut report = Default::default();
+            let value = from_json(&text, &mut report);
+            let r = &report;
+            if value.is_none() || r.malformed || r.refused {
+                "refused\n".to_string()
+            } else {
+                format!(
+                    "{},{},{},{},{},false,read\n",
+                    r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate
+                )
             }
         });
         match answer {

@@ -463,6 +463,11 @@ func (b *blockGen) blockFieldRow(bl *ir.BlockLayout, fl ir.FieldLayout, projecti
 		if len(pieces) > 1 {
 			countOffset = fmt.Sprint(pieces[1].Offset)
 		}
+	case f.Type.Kind == ir.TWString:
+		counted, arrayBound, elemSize = true, f.Type.Size, 2
+		if len(pieces) > 1 {
+			countOffset = fmt.Sprint(pieces[1].Offset)
+		}
 	case f.Type.Kind == ir.TBytes:
 		isArray, counted, arrayBound, elemSize = true, true, f.Type.Size, 1
 		if len(pieces) > 1 {
@@ -531,7 +536,7 @@ func (b *blockGen) projectionMembers(bl *ir.BlockLayout, f *ir.Field) []string {
 	var names []string
 	names = append(names, f.Name)
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		names = append(names, f.Name+"_length")
 	case f.Array == ir.ArrayCounted && f.KeyEnum == "":
 		names = append(names, f.Name+"_count")
@@ -552,6 +557,10 @@ func (b *blockGen) emitProjectionField(bl *ir.BlockLayout, fl ir.FieldLayout) {
 	switch {
 	case f.Type.Kind == ir.TString:
 		b.pf("    pub %s: [u8; %d], // string(%s): buffer, used length beside it\n",
+			f.Name, f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
+		b.pf("    pub %s_length: i32,\n", f.Name)
+	case f.Type.Kind == ir.TWString:
+		b.pf("    pub %s: [u16; %d], // wstring(%s): UTF-16 code units, used length beside it\n",
 			f.Name, f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
 		b.pf("    pub %s_length: i32,\n", f.Name)
 	case f.Type.Kind == ir.TBytes:
