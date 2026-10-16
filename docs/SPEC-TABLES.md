@@ -247,10 +247,12 @@ id-table file and bitpacked message forms, JSON, runtime cook writing, block
 construction, native regions, builders, retain-unknown and UnitView. Go carries
 these surfaces too. Rust, Elixir and Java carry no table
 wire: each emits the block and cook read halves only (schema#518, #515
-and #517 bring the id-table wire to those ports). **Dart and JavaScript carry the
-FIXED form (§3.4) and nothing else**: form 3 is each port's first table wire —
-the write template, the plan-driven read and the LAYOUT / vocabulary block — and
-neither has form 1 at all until schema#514 and #516 bring one. Their fixed forms carry the
+and #517 bring the id-table wire to those ports). **Dart carries the id-table
+wire (form 1) and the FIXED form (§3.4)**; JavaScript carries the FIXED form
+and nothing else — form 3 is JavaScript's first table wire, the write template,
+the plan-driven read and the LAYOUT / vocabulary block, and it has no form 1
+until schema#516 brings one. Dart's variable form carries the card constructs
+and refuses maps, unions, optionals and keyed arrays by name. Their fixed forms carry the
 fixed-point and 128-bit kinds §15 refuses their ACCELERATORS, because
 §3.4's constant-size table fixes them; a unit declaring one gets the fixed form and no
 block or cook read half in Dart, and JavaScript carries the OPTIONAL wrapper —
@@ -262,7 +264,8 @@ none for a `table` — neither declares the member nor reads it. Every generated
 language has a table backend; refusal is scoped to a construct, never the table declaration.
 
 **WIRE FORM STATUS.** Section 3's id-table form is carried by the C++
-reference, the compiler engine (`internal/tablewire`), C, C# and Go. Section
+reference, the compiler engine (`internal/tablewire`), C, C#, Go and Dart
+(`<Package>Wire.dart`). Section
 3.4's FIXED form is carried by the C++ reference, by Dart, and by JavaScript, whose
 layout/block, hash and record bytes are held against the reference's own over the
 paired bench's corpus, the seven reference files (`tables-dart-fixed-form`), and over an
@@ -524,12 +527,14 @@ carrying data alone, so there are no attribution bytes to absorb the overrun.
 The size is the pointee's own `<Name>Row.size`, which every call site knows.
 `make tables-java-cook-extent` is that forgery as a gate and its negative
 control puts the start-only bound back and requires the gate to go red.
-**DART emits two libraries per unit file**: `<Base>Block.dart` and
-`<Base>Cook.dart` (the two accelerators, §19 and §7) — plus one runtime home
-per unit and per surface, `<Package>Block.dart` and `<Package>Cook.dart`, which
-every other library of the unit imports. It emits no `<Base>Table.dart`: the
-Dart port of the table wire wrote the form that preceded the id-table wire and
-was removed rather than carried (schema#514 brings the current wire to Dart). A Dart library IS a file, so a runtime shared across a unit's
+**DART emits the id-table wire and the fixed form beside the accelerators.**
+A unit file grows `<Base>Fixed.dart` (the fixed form, §3.4), `<Base>Block.dart`
+and `<Base>Cook.dart` (the two accelerators, §19 and §7), and the unit grows
+`<Package>Wire.dart` (the variable form's id-table wire, §3) — plus one runtime
+home per unit and per surface, `<Package>Fixed.dart`, `<Package>Block.dart` and
+`<Package>Cook.dart`, which every other library of the unit imports. There is
+no `<Base>Table.dart`: the wire library is named for the package
+(`<Package>Wire.dart`) rather than the base, per §19.2's home rule. A Dart library IS a file, so a runtime shared across a unit's
 files has to be PUBLIC, and every spelling of it is claimed by the front end
 (§11); the backend spells NO PRIVATE LIBRARY-SCOPE NAME AT ALL, because a schema
 identifier may begin with an underscore and a private top-level name would be a

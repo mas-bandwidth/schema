@@ -3698,17 +3698,49 @@ if (!ok) {
 }
 ```
 
-Dart carries the two **table accelerators** (docs/SPEC-TABLES.md §19 and §7)
-and not the table wire: a unit that declares tables grows `<Base>Block.dart`
-and `<Base>Cook.dart` beside its packet library, plus one runtime home per
-unit and per surface, `<Package>Block.dart` and `<Package>Cook.dart`. A block
-is pointed at and a cook is opened; neither parses a wire, both are read-only,
-and both refuse a forged image rather than throwing on it (`make
-tables-dart-fuzz` is that oracle over mutated corpus images, with its planted
-control). There is no `<Base>Table.dart`: the Dart port of the table wire wrote
-the form that preceded the id-table wire, which the current specification does
-not describe, and it was removed rather than carried; schema#514 is the row that
-brings the id-table wire to Dart, and ROADMAP.md marks the cells.
+Dart carries the **id-table wire** (docs/SPEC-TABLES.md §3, form byte 1)
+for the card constructs — plain `table` roots, by-value nesting, pointers,
+blobs, lists and unbounded arrays — plus the **fixed form** (§3.4) and the
+two **table accelerators** (§19 and §7). A unit that declares tables grows
+`<Package>Wire.dart` (the variable form's load-tolerant reader and canonical
+writer, which refuses maps, unions, optionals and keyed arrays by name), and
+per schema file `<Base>Fixed.dart` (the fixed form) beside its packet library,
+plus one runtime home per unit and per surface, `<Package>Fixed.dart`,
+`<Package>Block.dart` and `<Package>Cook.dart`. A block is pointed at and a
+cook is opened; the accelerators parse no wire, are read-only, and refuse a
+forged image rather than throwing on it (`make tables-dart-fuzz` is that oracle
+over mutated corpus images, with its planted control). There is no
+`<Base>Table.dart`: the wire library is named for the package (`<Package>Wire.dart`)
+rather than the base, per §19.2's home rule.
+
+This fragment is compiled and run against the `tables/pointers` generated unit
+(whose `<Package>Wire.dart` is `GraphdemoWire.dart`) by `make tables-dart-usage`:
+
+<!-- dart-table-usage -->
+```dart
+import 'dart:io';
+import 'GraphdemoWire.dart';
+
+void main() {
+  final scene = Scene();
+  scene.name = 'bridge';
+  scene.version = 7;
+  scene.ground = Layer();
+
+  // save the variable form: returns the canonical wire bytes
+  final wire = sceneWireSave(scene);
+
+  // load it back, tolerantly
+  final report = TableWireReport();
+  final loaded = sceneWireLoad(wire, report);
+  if (loaded.name != 'bridge' || loaded.version != 7) {
+    stderr.writeln('round trip changed the value');
+    exit(1);
+  }
+  stdout.writeln('ok');
+}
+```
+<!-- /dart-table-usage -->
 
 **Go** — accessors, file/message loads and block fill avoid allocation and
 operate on caller-owned buffers. Variable table builders own a `TableArena`;

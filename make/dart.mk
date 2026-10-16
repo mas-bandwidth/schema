@@ -406,6 +406,37 @@ tables-dart-variable-class:
 
 test-dart: tables-dart-variable-class
 
+# THE DOCUMENTED DART SURFACE COMPILES AND RUNS (docs/PORTING.md I12). The
+# fragment between the dart-table-usage markers in docs/USAGE.md is not a sketch:
+# a gate pulls it out of the page, wraps it in a program against the real
+# generated tables/pointers unit (whose variable-form wire library is
+# GraphdemoWire.dart), and runs it under the Dart SDK — so the day the emitted
+# surface moves, the page goes red with it.
+.PHONY: tables-dart-usage
+tables-dart-usage: build/tables-generated-dart/.stamp docs/USAGE.md
+	@mkdir -p build/dart-usage
+	@cp build/tables-generated-dart/pointers/GraphdemoWire.dart build/dart-usage/GraphdemoWire.dart
+	sed -n '/<!-- dart-table-usage -->/,/<!-- \/dart-table-usage -->/p' docs/USAGE.md \
+		| sed '1,2d' | sed '$$d' | sed '$$d' > build/dart-usage/usage.dart
+	grep -q 'GraphdemoWire.dart' build/dart-usage/usage.dart || \
+		{ echo "MISSING: docs/USAGE.md carries no dart-table-usage example"; exit 1; }
+	$(DART) --enable-asserts build/dart-usage/usage.dart
+	@echo "usage: docs/USAGE.md's Dart example compiles and runs against tables/pointers"
+
+.PHONY: tables-dart-usage-negative-control
+tables-dart-usage-negative-control: tables-dart-usage
+	@mkdir -p build/dart-usage-nc
+	@cp build/dart-usage/GraphdemoWire.dart build/dart-usage-nc/GraphdemoWire.dart
+	@sed 's/scene.name = '\''bridge'\''/scene.name = '\''bridge'\''; scene.nonexistent = 0/' \
+		build/dart-usage/usage.dart > build/dart-usage-nc/usage.dart
+	@grep -q 'nonexistent' build/dart-usage-nc/usage.dart || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing"; exit 1; }
+	@if $(DART) --enable-asserts build/dart-usage-nc/usage.dart > build/dart-usage-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a member the library does not have compiled in Dart"; \
+		tail -5 build/dart-usage-nc/log; exit 1; \
+	fi
+	@echo "negative control: writing a member the generated library lacks turns the Dart usage example RED"
+
 # THE DART LEG of `make test`. THE DART PORT's own instruments
 # (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart
 # format` writes and what the analyzer accepts, the name-claim control, the
@@ -426,6 +457,8 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 	# AND IT READS BACKWARD (§5): every versioning row, both columns
 	$(MAKE) tables-dart-versioning
 	$(MAKE) tables-dart-versioning-negative-control
+	$(MAKE) tables-dart-usage
+	$(MAKE) tables-dart-usage-negative-control
 	$(DART) analyze generated/dart generated/dart-ludicrous generated/bench/dart test/dart test/dart-ludicrous bench/dart
 	$(DART) format --set-exit-if-changed --output=none generated/dart generated/dart-ludicrous generated/bench/dart
 	cd test/dart && $(DART) --enable-asserts main.dart

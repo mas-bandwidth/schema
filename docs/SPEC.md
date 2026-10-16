@@ -2500,13 +2500,15 @@ or a file per declaration where the language demands one.
   `<Package>View.cs`, on the same terms as the C++ pair above.
 - **Dart:** one library per schema file, cross-file `import`s derived from
   actual references, with `show` clauses naming exactly the symbols used. A
-  unit that declares TABLES grows two further libraries per schema file —
-  `<Base>Block.dart` and `<Base>Cook.dart` (the two accelerators,
-  SPEC-TABLES.md §19 and §7) — plus one RUNTIME HOME per unit and per surface,
-  `<Package>Block.dart` and `<Package>Cook.dart`, which the per-file libraries
-  import. Dart emits no table-wire library (`<Base>Table.dart`): its port of
-  the table wire wrote the form that preceded the id-table wire and was
-  removed; schema#514 brings the current wire to Dart. **A Dart library
+  unit that declares TABLES grows the **id-table wire** (SPEC-TABLES.md §3,
+  form byte 1) as `<Package>Wire.dart`, the **fixed form** (§3.4) as
+  `<Base>Fixed.dart` per schema file, and two further ACCELERATOR libraries per
+  schema file — `<Base>Block.dart` and `<Base>Cook.dart` (SPEC-TABLES.md §19
+  and §7) — plus one RUNTIME HOME per unit and per surface,
+  `<Package>Fixed.dart`, `<Package>Block.dart` and `<Package>Cook.dart`, which
+  the per-file libraries import. `<Package>Wire.dart` refuses maps, unions,
+  optionals and keyed arrays by name; the fixed form covers the fixed kinds and
+  the message batch, and the accelerators parse no wire. **A Dart library
   IS a file**, so a runtime shared across a unit's files must be public, and
   the home is named for the PACKAGE on §19.2's rule for every port: a runtime
   that lived in whichever file sorted first would relocate whole the day a

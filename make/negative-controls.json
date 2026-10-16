@@ -499,7 +499,8 @@
         "tables-dart-versioning-negative-control",
         "tables-dart-fuzz-negative-control",
         "tables-dart-names-negative-control",
-        "tables-dart-standalone-negative-control"
+        "tables-dart-standalone-negative-control",
+        "tables-dart-usage-negative-control"
       ],
       "dart": "3.13.2"
     },
