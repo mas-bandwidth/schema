@@ -141,6 +141,8 @@ function blockLead(lines) {
   const align = 64;
   let missed = 0;
   let images = 0;
+  let totalOpened = 0;
+  let totalRefused = 0;
   for (const f of kind(lines, "block")) {
     const source = new Uint8Array(readFileSync(f[3]));
     const block = blockNamed(f[1]);
@@ -167,9 +169,13 @@ function blockLead(lines) {
     }
     process.stdout.write(f[1] + ": " + (align + 1) + " leads, " + opened + " opened (0 and 64), " +
       refused + " refused (1..63)\n");
+    totalOpened += opened;
+    totalRefused += refused;
   }
   if (images === 0) { fail("block-lead: the manifest names no block image"); }
   if (missed > 0) { fail("block-lead: " + missed + " lead(s) missed the rule"); }
+  process.stdout.write(images + " images x " + (align + 1) + " leads: " + totalOpened + " opened (0 and 64), " +
+    totalRefused + " refused (1..63)\n");
 }
 
 function surfaceForgery(lines, outDir) {
