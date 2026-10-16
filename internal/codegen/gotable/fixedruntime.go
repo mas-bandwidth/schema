@@ -573,6 +573,63 @@ func tableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 	return false
 }
 
+// tableFixedUtf8Ok is the WRITER's string rule over the used bytes: well-formed
+// UTF-8 with no zero byte, the answer unicode/utf8.Valid and a NUL scan give
+// (docs/FIXED-FORM-ALGORITHM.md §3.1, the same rule tableFixedTextIllFormed
+// holds on read). It is one pass, eight bytes a step, with no branch in the
+// loop: z gathers each word's zero-byte test, which is exact (a word has a
+// zero byte if and only if its lane is set), and hi gathers the high bits. A
+// zero refuses; text with no high bit is ASCII and passes; only text with a
+// byte at or past 0x80 goes on to utf8.Valid. The result is identical to the
+// two-pass spelling.
+func tableFixedUtf8Ok(p []byte) bool {
+	var hi, z uint64
+	i := 0
+	for ; i+8 <= len(p); i += 8 {
+		x := tableFixedGet64(p[i:])
+		hi |= x
+		z |= (x - 0x0101010101010101) &^ x
+	}
+	if i < len(p) && len(p) >= 8 {
+		// The tail as one word, overlapping bytes already tested: the test
+		// is the same answer for a byte seen twice.
+		x := tableFixedGet64(p[len(p)-8:])
+		hi |= x
+		z |= (x - 0x0101010101010101) &^ x
+	} else {
+		for ; i < len(p); i++ {
+			c := uint64(p[i])
+			hi |= c
+			z |= (c - 1) &^ c
+		}
+	}
+	if z&0x8080808080808080 != 0 {
+		return false
+	}
+	return hi&0x8080808080808080 == 0 || utf8.Valid(p)
+}
+
+// tableFixedUnitsIllFormed is the WRITER's twin of the wide arm above, over the
+// caller's own wstring storage: the used units are paired UTF-16 with no zero
+// unit (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5).
+func tableFixedUnitsIllFormed(units []uint16) bool {
+	for i := 0; i < len(units); i++ {
+		u := units[i]
+		switch {
+		case u == 0:
+			return true
+		case u >= 0xD800 && u <= 0xDBFF:
+			if i+1 >= len(units) || units[i+1] < 0xDC00 || units[i+1] > 0xDFFF {
+				return true
+			}
+			i++
+		case u >= 0xDC00 && u <= 0xDFFF:
+			return true
+		}
+	}
+	return false
+}
+
 // tableFixedTextRefusal is the text CONTENT refusal as a PRE-SCAN of the plan's
 // text entries, run before the caller's storage is touched. It walks each text
 // entry under its own guard, clamps its length exactly as the scatter will, and
