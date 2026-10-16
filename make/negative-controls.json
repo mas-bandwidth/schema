@@ -588,6 +588,16 @@
       "elixir": "1.20.4"
     },
     {
+      "name": "elixir-credo",
+      "when": "nightly",
+      "why": "the credo gate's control (issue #547, the analyzer half): it needs credo 1.7.19, which the per-pull-request image does not carry, so the row's make runs toolchain-elixir-credo (a once-per-host fetch into dist/, the one network step) as the control's prerequisite and then plants a TODO in the cook emitter, regenerates the table corpus and runs mix credo over it. It rides tables-elixir-release too, which certify.yml runs on the same schedule; it is not in test-elixir, and TestCredoGateRunsAtDefaultStrictness holds that.",
+      "targets": [
+        "tables-elixir-credo-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
       "name": "nightly",
       "when": "nightly",
       "why": "the one control that does not fit the owner's rule for CI that runs per commit, on its own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120. The message form's four blades run on the pull request, so what moves nightly is this one pass and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",

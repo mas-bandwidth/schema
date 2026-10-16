@@ -169,6 +169,7 @@ var catalog = []Entry{
 	e("test/dart-tables", "Dart table tests", "make test-dart", "make test-dart"),
 	e("test/elixir", "Elixir packet tests", "make test-elixir", "make test-elixir"),
 	e("test/elixir-alloc", "Elixir allocation tests", "make test-elixir", "make test-elixir"),
+	e("test/elixir-credo", "Elixir credo analyzer host", "make tables-elixir-credo", "make toolchain-elixir-credo"),
 	e("test/elixir-filemodule", "Elixir file-module tests", "make test-elixir", "make test-elixir"),
 	e("test/elixir-fixedform", "Elixir fixed-form tests", "make test-elixir", "make test-elixir"),
 	e("test/elixir-ludicrous", "Elixir int128 tests", "make test-elixir", "make test-elixir"),

@@ -249,6 +249,114 @@ tables-elixir-emit-format-negative-control: bin/schema
 	@echo 'elixir emit-format negative control: dropping a call'"'"'s parentheses in the cook emitter reds the raw-format gate on CookRuntime.ex'
 test-elixir: tables-elixir-emit-format-negative-control
 
+# THE ANALYZER HALF OF #547: generated Elixir passes credo at its DEFAULT
+# strictness. test/elixir-credo is a minimal mix project whose one dependency is
+# credo, pinned in its committed mix.lock (credo and its three dependencies,
+# bunt, file_system and jason, with their hashes). docs/DIALECT-ELIXIR.md says
+# how generated Elixir reads and which checks, if any, are switched off.
+#
+# THE TOOLCHAIN follows the dist/ convention of the BEAM pins above: it is
+# fetched ONCE per host into $(ELIXIR_CREDO_DIR) (gitignored, beside
+# dist/otp-* and dist/elixir-*) by toolchain-elixir-credo, the one target here
+# that touches the network. The gate never fetches: it refuses, naming this
+# target, when no credo is compiled there, and it refuses when the compiled
+# credo is not ELIXIR_PIN_CREDO, as tables-elixir-runtime-pin refuses a runtime
+# that is not the pin.
+ELIXIR_PIN_CREDO ?= 1.7.19
+ELIXIR_CREDO_DIR ?= $(CURDIR)/dist/elixir-credo
+ELIXIR_CREDO_ENV  = MIX_HOME=$(ELIXIR_CREDO_DIR)/mix-home HEX_HOME=$(ELIXIR_CREDO_DIR)/hex-home \
+	MIX_ENV=dev SCHEMA_CREDO_DEPS=$(ELIXIR_CREDO_DIR)/deps SCHEMA_CREDO_BUILD=$(ELIXIR_CREDO_DIR)/_build
+ELIXIR_CREDO_APP  = $(ELIXIR_CREDO_DIR)/_build/dev/lib/credo/ebin/credo.app
+
+.PHONY: toolchain-elixir-credo
+toolchain-elixir-credo:
+	@mkdir -p $(ELIXIR_CREDO_DIR)
+	cd test/elixir-credo && $(ELIXIR_CREDO_ENV) $(MIX) local.hex --force --if-missing
+	cd test/elixir-credo && $(ELIXIR_CREDO_ENV) $(MIX) deps.get --check-locked
+	cd test/elixir-credo && $(ELIXIR_CREDO_ENV) $(MIX) deps.compile
+	@$(MAKE) --no-print-directory tables-elixir-credo-pin
+	@echo "toolchain-elixir-credo: credo $(ELIXIR_PIN_CREDO) compiled into $(ELIXIR_CREDO_DIR)"
+
+# THE PIN, checked FIRST by the gate: the version the compiled credo.app
+# carries against ELIXIR_PIN_CREDO, with both named on a refusal.
+.PHONY: tables-elixir-credo-pin
+tables-elixir-credo-pin:
+	@if [ ! -f $(ELIXIR_CREDO_APP) ]; then \
+		echo "tables-elixir-credo: FAILED: no compiled credo at $(ELIXIR_CREDO_APP); run make toolchain-elixir-credo once on this host (the gate never fetches)"; exit 1; fi
+	@found=$$(sed -n 's/.*{vsn,"\([^"]*\)"}.*/\1/p' $(ELIXIR_CREDO_APP) | head -1); \
+	if [ "$$found" != "$(ELIXIR_PIN_CREDO)" ]; then \
+		echo "tables-elixir-credo: FAILED: this gate certifies on credo $(ELIXIR_PIN_CREDO) (ELIXIR_PIN_CREDO); the compiled credo is $$found; run make toolchain-elixir-credo"; exit 1; fi; \
+	echo "tables-elixir-credo: credo $$found is the pin"
+
+# THE GATE: `mix credo` at DEFAULT strictness — no --strict, no check filter,
+# the configuration test/elixir-credo/.credo.exs, which is credo's own
+# `mix credo gen.config` output — over the RAW generated Elixir: the committed
+# packet units (generated/elixir/*.ex) and the table corpus
+# tables-elixir-emit-format-clean generates into $(ELIXIR_EMIT_FORMAT_DIR)
+# (run first, with the same compiler, so this gate reads exactly what that
+# gate held to the formatter). It prints the issue count per check name and
+# exits non-zero on any issue; the full listing is in the log it names.
+ELIXIR_CREDO_PACKET_DIR ?= generated/elixir
+ELIXIR_CREDO_LOG        ?= build/elixir-credo
+
+.PHONY: tables-elixir-credo
+tables-elixir-credo: bin/schema generated/elixir/.stamp
+	@$(MAKE) --no-print-directory tables-elixir-credo-pin
+	@rm -rf $(ELIXIR_CREDO_LOG) && mkdir -p $(ELIXIR_CREDO_LOG)
+	@$(MAKE) --no-print-directory tables-elixir-emit-format-clean > $(ELIXIR_CREDO_LOG)/emit-format.log 2>&1 || \
+		{ echo "tables-elixir-credo: FAILED: the corpus it reads did not generate format-clean (tables-elixir-emit-format-clean):"; \
+		  tail -40 $(ELIXIR_CREDO_LOG)/emit-format.log; exit 1; }
+	@set -e; files=""; \
+	for f in $(CURDIR)/$(ELIXIR_CREDO_PACKET_DIR)/*.ex $(CURDIR)/$(ELIXIR_EMIT_FORMAT_DIR)/gen/*/*.ex; do files="$$files $$f"; done; \
+	n=$$(echo $$files | wc -w | tr -d ' '); \
+	if [ "$$n" -lt 100 ]; then echo "tables-elixir-credo: found $$n generated files, expected at least 100 — the glob, not the property, broke"; exit 1; fi; \
+	echo "tables-elixir-credo: credo at default strictness over $$n raw generated files"; \
+	cd test/elixir-credo && $(ELIXIR_CREDO_ENV) $(MIX) credo suggest --all --format json $$files \
+		> $(CURDIR)/$(ELIXIR_CREDO_LOG)/issues.json 2> $(CURDIR)/$(ELIXIR_CREDO_LOG)/stderr.txt || true
+	@grep -q '"issues"' $(ELIXIR_CREDO_LOG)/issues.json || \
+		{ echo "tables-elixir-credo: FAILED: credo did not run"; cat $(ELIXIR_CREDO_LOG)/stderr.txt; exit 1; }
+	@sed -n 's/^ *"check": *"\([^"]*\)".*/\1/p' $(ELIXIR_CREDO_LOG)/issues.json | sort | uniq -c | sort -rn > $(ELIXIR_CREDO_LOG)/counts.txt
+	@total=$$(grep -c '"check":' $(ELIXIR_CREDO_LOG)/issues.json || true); \
+	if [ "$$total" -ne 0 ]; then \
+		echo "tables-elixir-credo: FAILED: $$total credo issues at default strictness, per check:"; \
+		cat $(ELIXIR_CREDO_LOG)/counts.txt; \
+		echo "tables-elixir-credo: the issues are listed in $(ELIXIR_CREDO_LOG)/issues.json"; exit 1; fi
+	@echo "tables Elixir credo: 0 issues at default strictness over the raw generated Elixir"
+
+# ITS NEGATIVE CONTROL, on the EMITTER for the fuzz control's reason: every
+# generated cook module gains one comment line, `# TODO: planted by the credo
+# negative control`, ahead of its @moduledoc (valid, inert, and a form mix
+# format leaves alone), which credo's default Credo.Check.Design.TagTODO
+# reports. The gate, run over the sabotaged compiler's raw output, must go red
+# NAMING that check. The plant is not an alias: credo's default set has no
+# unused-alias check (an unused alias is the compiler's warning), and its alias
+# checks (UnnecessaryAliasExpansion, AliasOrder) are low priority, which the
+# default strictness does not report. Measured: `alias Kernel.{SpecialForms}`
+# planted in every cook module left the gate's per-check counts unchanged.
+CONFORMANCE_NEGATIVE_ELIXIR_CREDO := build/elixir-credo-negative
+ELIXIR_CREDO_SED := -e 's|^const cookModuleBanner = `  @moduledoc """|const cookModuleBanner = "  \# TODO: planted by the credo negative control\\n" + `  @moduledoc """|'
+
+.PHONY: tables-elixir-credo-negative-control
+tables-elixir-credo-negative-control: bin/schema toolchain-elixir-credo
+	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_CREDO),internal/codegen/elixirtable/cook.go,ELIXIR_CREDO_SED)
+	@if $(MAKE) --no-print-directory tables-elixir-credo \
+			ELIXIR_EMIT_FORMAT_SCHEMA=$(CONFORMANCE_NEGATIVE_ELIXIR_CREDO)/schema \
+			ELIXIR_EMIT_FORMAT_DIR=$(CONFORMANCE_NEGATIVE_ELIXIR_CREDO)/emit-format \
+			ELIXIR_CREDO_LOG=$(CONFORMANCE_NEGATIVE_ELIXIR_CREDO)/credo \
+			> $(CONFORMANCE_NEGATIVE_ELIXIR_CREDO)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a TODO planted in every cook module left the credo gate green"; \
+		cat $(CONFORMANCE_NEGATIVE_ELIXIR_CREDO)/log; exit 1; \
+	fi
+	@grep -q 'Credo.Check.Design.TagTODO' $(CONFORMANCE_NEGATIVE_ELIXIR_CREDO)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the credo gate went red, but did not name Credo.Check.Design.TagTODO"; \
+		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_CREDO)/log; exit 1; }
+	@echo 'elixir credo negative control: a TODO planted in the cook emitter reds the credo gate naming Credo.Check.Design.TagTODO'
+
+# Both ride tables-elixir-release (the leg's expensive half, below) and NOT
+# test-elixir: the per-pull-request image carries no credo, and
+# TestCredoGateRunsAtDefaultStrictness holds that neither is reachable from
+# test-elixir.
+
 .PHONY: build-conformance-elixir
 build-conformance-elixir: build/elixir-tables-ebin/.stamp
 
@@ -630,6 +738,9 @@ tables-elixir-release:
 	$(MAKE) tables-elixir-block-lead
 	$(MAKE) tables-elixir-block-lead-negative-control
 	$(MAKE) tables-elixir-usage
+	$(MAKE) toolchain-elixir-credo
+	$(MAKE) tables-elixir-credo
+	$(MAKE) tables-elixir-credo-negative-control
 
 # THE ELIXIR LEG of `make test`: THE ELIXIR PORT's own instruments over the
 # two readers it emits (docs/SPEC-TABLES.md §7, §19) — the forgery fuzzer over
