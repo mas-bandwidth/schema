@@ -1171,6 +1171,11 @@ func (r *TableReader) Signed(kind uint8) int64 {
 	}
 }
 
+// tableUtf8Word is the form-1 writer's little-endian word load for its in-line
+// text test (emitTextWords): a function of the runtime file, which imports
+// encoding/binary, so the generated writers in any file of the unit can call it.
+func tableUtf8Word(p []byte) uint64 { return binary.LittleEndian.Uint64(p) }
+
 func tableWidenFloat(b uint32) uint64 {
 	if b&0x7f800000 == 0x7f800000 {
 		return uint64(b>>31)<<63 | 0x7ff0000000000000 | uint64(b&0x7fffff)<<29
@@ -1179,15 +1184,26 @@ func tableWidenFloat(b uint32) uint64 {
 }
 
 func tableUtf8Valid(data []byte) bool {
-	if !utf8.Valid(data) {
+	// One pass, eight bytes a step: z gathers the zero-byte test of every word
+	// (exact: a word has a zero byte if and only if its lane is set), hi gathers
+	// the high bits. No zero and no high bit is ASCII with no NUL; a high bit
+	// sends the text to utf8.Valid, the zero test having already been answered.
+	var hi, z uint64
+	i := 0
+	for ; i+8 <= len(data); i += 8 {
+		x := uint64(data[i]) | uint64(data[i+1])<<8 | uint64(data[i+2])<<16 | uint64(data[i+3])<<24 | uint64(data[i+4])<<32 | uint64(data[i+5])<<40 | uint64(data[i+6])<<48 | uint64(data[i+7])<<56
+		hi |= x
+		z |= (x - 0x0101010101010101) &^ x
+	}
+	for ; i < len(data); i++ {
+		c := uint64(data[i])
+		hi |= c
+		z |= (c - 1) &^ c
+	}
+	if z&0x8080808080808080 != 0 {
 		return false
 	}
-	for _, b := range data {
-		if b == 0 {
-			return false
-		}
-	}
-	return true
+	return hi&0x8080808080808080 == 0 || utf8.Valid(data)
 }
 
 func tableUtf8Clamp(data []byte, n int64) int64 {
@@ -1289,6 +1305,13 @@ const (
 
 const tableFixedNoGuard uint32 = 0xFFFFFFFF
 const tableFixedEntryBytes int32 = 17
+
+// THE NAMED REFUSALS A COUNT OR TEXT LENGTH PAST THE PLAN'S BOUND ANSWERS
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5): a forged
+// count or length refuses by name before any destination byte is written, so
+// REFUSE stays total — it never clamps (OWNER RULE, 2026-10-15).
+const tableFixedCountOverBound = "count_over_bound"
+const tableFixedLengthOverBound = "length_over_bound"
 
 // THE LAYOUT'S OWN BOUNDS (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §1.1). The header is
 // the u32 entry count and nothing else. 65536 is the form's record body bound,
@@ -1598,12 +1621,8 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 		case tableFixedCount:
 			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 {
-				v = 0
-				report.Clamped++
-			} else if v > int32(p.Size) {
-				v = int32(p.Size)
-				report.Clamped++
+			if v < 0 || v > int32(p.Size) {
+				return tableFixedCountOverBound
 			}
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 		case tableFixedText:
@@ -1613,12 +1632,8 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 			capn := p.Size / unit
 			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 {
-				v = 0
-				report.Clamped++
-			} else if uint32(v) > capn {
-				v = int32(capn)
-				report.Clamped++
+			if v < 0 || uint32(v) > capn {
+				return tableFixedLengthOverBound
 			}
 			// THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE, and a
 			// violation REFUSES BY NAME, the verdict the packet reader gives
@@ -1801,40 +1816,104 @@ func tableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 	return false
 }
 
-// tableFixedTextRefusal is the text CONTENT refusal as a PRE-SCAN of the plan's
-// text entries, run before the caller's storage is touched. It walks each text
-// entry under its own guard, clamps its length exactly as the scatter will, and
-// answers the one name an ill-formed payload refuses with
-// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8). §5.8: "REFUSE
-// is total: no counter moves, nothing is decoded, and not one destination byte
-// is written — the prefill included", so the check lives here rather than only
-// inside the scatter, where an earlier entry's write would already have landed.
-// It writes nothing and moves no counter.
+// tableFixedUtf8Ok is the WRITER's string rule over the used bytes: well-formed
+// UTF-8 with no zero byte, the answer unicode/utf8.Valid and a NUL scan give
+// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1, the same rule tableFixedTextIllFormed
+// holds on read). It is one pass, eight bytes a step, with no branch in the
+// loop: z gathers each word's zero-byte test, which is exact (a word has a
+// zero byte if and only if its lane is set), and hi gathers the high bits. A
+// zero refuses; text with no high bit is ASCII and passes; only text with a
+// byte at or past 0x80 goes on to utf8.Valid. The result is identical to the
+// two-pass spelling.
+func tableFixedUtf8Ok(p []byte) bool {
+	var hi, z uint64
+	i := 0
+	for ; i+8 <= len(p); i += 8 {
+		x := tableFixedGet64(p[i:])
+		hi |= x
+		z |= (x - 0x0101010101010101) &^ x
+	}
+	if i < len(p) && len(p) >= 8 {
+		// The tail as one word, overlapping bytes already tested: the test
+		// is the same answer for a byte seen twice.
+		x := tableFixedGet64(p[len(p)-8:])
+		hi |= x
+		z |= (x - 0x0101010101010101) &^ x
+	} else {
+		for ; i < len(p); i++ {
+			c := uint64(p[i])
+			hi |= c
+			z |= (c - 1) &^ c
+		}
+	}
+	if z&0x8080808080808080 != 0 {
+		return false
+	}
+	return hi&0x8080808080808080 == 0 || utf8.Valid(p)
+}
+
+// tableFixedUnitsIllFormed is the WRITER's twin of the wide arm above, over the
+// caller's own wstring storage: the used units are paired UTF-16 with no zero
+// unit (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5).
+func tableFixedUnitsIllFormed(units []uint16) bool {
+	for i := 0; i < len(units); i++ {
+		u := units[i]
+		switch {
+		case u == 0:
+			return true
+		case u >= 0xD800 && u <= 0xDBFF:
+			if i+1 >= len(units) || units[i+1] < 0xDC00 || units[i+1] > 0xDFFF {
+				return true
+			}
+			i++
+		case u >= 0xDC00 && u <= 0xDFFF:
+			return true
+		}
+	}
+	return false
+}
+
+// tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count and
+// text entries, run before the caller's storage is touched. A count or a text
+// length past the PLAN's bound refuses by name — count_over_bound /
+// length_over_bound — and an ill-formed payload refuses text_ill_formed
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11,
+// §5.8 row 8). §5.8: "REFUSE is total: no counter moves, nothing is decoded,
+// and not one destination byte is written — the prefill included", so the check
+// lives here rather than only inside the scatter, where an earlier entry's write
+// would already have landed. It walks each entry under its own guard(s), writes
+// nothing and moves no counter.
 func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
 	for i := int32(0); i < count; i++ {
 		p := plan[i]
-		if p.Op != tableFixedText {
-			continue
-		}
 		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2): an arm's
 		// entry runs only under its own tag, and one that does not run cannot
-		// refuse.
+		// refuse. An arm inside an arm answers the outer tag too (§4.1).
 		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
 			continue
 		}
-		unit := uint32(1)
-		if p.Meta == tableFixedTextWide {
-			unit = 2
+		if p.ArgW2 != 0 && tableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
+			continue
 		}
-		capn := p.Size / unit
-		v := int32(tableFixedGet32(src[p.Src:]))
-		if v < 0 {
-			v = 0
-		} else if uint32(v) > capn {
-			v = int32(capn)
-		}
-		if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-			return TableFixedReasonTextIllFormed
+		switch p.Op {
+		case tableFixedCount:
+			v := int32(tableFixedGet32(src[p.Src:]))
+			if v < 0 || v > int32(p.Size) {
+				return tableFixedCountOverBound
+			}
+		case tableFixedText:
+			unit := uint32(1)
+			if p.Meta == tableFixedTextWide {
+				unit = 2
+			}
+			capn := p.Size / unit
+			v := int32(tableFixedGet32(src[p.Src:]))
+			if v < 0 || uint32(v) > capn {
+				return tableFixedLengthOverBound
+			}
+			if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
+				return "text_ill_formed"
+			}
 		}
 	}
 	return ""
@@ -2352,8 +2431,8 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// THE COUNT'S BOUND IS THE WRITER'S their_n (§5.2 EMIT kind 14,
 			// §5.3 step 11: BOUNDS runs against the PLAN's bounds). The
 			// reader's own bound is the wrong number: a forged 7 from a writer
-			// bounded at 4 must land 4 and COUNT, not be admitted because this
-			// reader grew to 8. n is their_n held to this reader's storage,
+			// bounded at 4 REFUSES count_over_bound (§4.5), not admitted because
+			// this reader grew to 8, and never clamped. n is their_n held to this reader's storage,
 			// which is their_n itself on every legal widening.
 			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Guard: guard, Op: tableFixedCount, Arg: arg})
 		}
@@ -2859,33 +2938,63 @@ func MixedEntityReset(value *MixedEntity) {
 
 func MixedEntityMeasureBody(value *MixedEntity, ids *TableIds) int64 {
 	bytes := int64(1)
+	if (value.EntityId != 0) && (value.EntityId > 4095) {
+		return -1
+	}
 	if value.EntityId != 0 {
 		bytes += tableLebBytes(ids.refAtHit(11, 0x23fcfd6678e36712)) + 1 + 2
 	} // entity_id
+	if (value.PosX != 0) && (value.PosX < -16383 || value.PosX > 16383) {
+		return -1
+	}
 	if value.PosX != 0 {
 		bytes += tableLebBytes(ids.refAtHit(65, 0xcb4b37357667310e)) + 1 + 4
 	} // pos_x
+	if (value.PosY != 0) && (value.PosY < -16383 || value.PosY > 16383) {
+		return -1
+	}
 	if value.PosY != 0 {
 		bytes += tableLebBytes(ids.refAtHit(66, 0xcb4b3835766732c1)) + 1 + 4
 	} // pos_y
+	if (value.PosZ != 0) && (value.PosZ < -16383 || value.PosZ > 16383) {
+		return -1
+	}
 	if value.PosZ != 0 {
 		bytes += tableLebBytes(ids.refAtHit(64, 0xcb4b353576672da8)) + 1 + 4
 	} // pos_z
+	if (value.Yaw != 0) && (value.Yaw > 511) {
+		return -1
+	}
 	if value.Yaw != 0 {
 		bytes += tableLebBytes(ids.refAtHit(58, 0xb54d8e19798e16e8)) + 1 + 2
 	} // yaw
+	if (value.Pitch != 0) && (value.Pitch > 511) {
+		return -1
+	}
 	if value.Pitch != 0 {
 		bytes += tableLebBytes(ids.refAtHit(22, 0x53a9f665a90cc1b1)) + 1 + 2
 	} // pitch
+	if (value.VelX != 0) && (value.VelX < -2048 || value.VelX > 2047) {
+		return -1
+	}
 	if value.VelX != 0 {
 		bytes += tableLebBytes(ids.refAtHit(27, 0x6cede6b6eb60ee67)) + 1 + 4
 	} // vel_x
+	if (value.VelY != 0) && (value.VelY < -2048 || value.VelY > 2047) {
+		return -1
+	}
 	if value.VelY != 0 {
 		bytes += tableLebBytes(ids.refAtHit(26, 0x6cede5b6eb60ecb4)) + 1 + 4
 	} // vel_y
+	if (value.VelZ != 0) && (value.VelZ < -2048 || value.VelZ > 2047) {
+		return -1
+	}
 	if value.VelZ != 0 {
 		bytes += tableLebBytes(ids.refAtHit(28, 0x6cede8b6eb60f1cd)) + 1 + 4
 	} // vel_z
+	if (value.Health != 0) && (value.Health < 0 || value.Health > 1000) {
+		return -1
+	}
 	if value.Health != 0 {
 		bytes += tableLebBytes(ids.refAtHit(37, 0x7f69d4b5288ba9cf)) + 1 + 4
 	} // health
@@ -2966,6 +3075,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 			if ref := w.Ids.refAtHit(11, 0x23fcfd6678e36712); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
+			if value.EntityId > 4095 {
+				return false
+			}
 			w.Put16(uint16(value.EntityId))
 		}
 	}
@@ -2973,6 +3085,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 		if value.PosX != 0 {
 			if ref := w.Ids.refAtHit(65, 0xcb4b37357667310e); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
+			}
+			if value.PosX < -16383 || value.PosX > 16383 {
+				return false
 			}
 			w.Put32(uint32(value.PosX))
 		}
@@ -2982,6 +3097,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 			if ref := w.Ids.refAtHit(66, 0xcb4b3835766732c1); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
+			if value.PosY < -16383 || value.PosY > 16383 {
+				return false
+			}
 			w.Put32(uint32(value.PosY))
 		}
 	}
@@ -2989,6 +3107,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 		if value.PosZ != 0 {
 			if ref := w.Ids.refAtHit(64, 0xcb4b353576672da8); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
+			}
+			if value.PosZ < -16383 || value.PosZ > 16383 {
+				return false
 			}
 			w.Put32(uint32(value.PosZ))
 		}
@@ -2998,6 +3119,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 			if ref := w.Ids.refAtHit(58, 0xb54d8e19798e16e8); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
+			if value.Yaw > 511 {
+				return false
+			}
 			w.Put16(uint16(value.Yaw))
 		}
 	}
@@ -3005,6 +3129,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 		if value.Pitch != 0 {
 			if ref := w.Ids.refAtHit(22, 0x53a9f665a90cc1b1); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
+			}
+			if value.Pitch > 511 {
+				return false
 			}
 			w.Put16(uint16(value.Pitch))
 		}
@@ -3014,6 +3141,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 			if ref := w.Ids.refAtHit(27, 0x6cede6b6eb60ee67); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
+			if value.VelX < -2048 || value.VelX > 2047 {
+				return false
+			}
 			w.Put32(uint32(value.VelX))
 		}
 	}
@@ -3021,6 +3151,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 		if value.VelY != 0 {
 			if ref := w.Ids.refAtHit(26, 0x6cede5b6eb60ecb4); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
+			}
+			if value.VelY < -2048 || value.VelY > 2047 {
+				return false
 			}
 			w.Put32(uint32(value.VelY))
 		}
@@ -3030,6 +3163,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 			if ref := w.Ids.refAtHit(28, 0x6cede8b6eb60f1cd); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
+			if value.VelZ < -2048 || value.VelZ > 2047 {
+				return false
+			}
 			w.Put32(uint32(value.VelZ))
 		}
 	}
@@ -3037,6 +3173,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 		if value.Health != 0 {
 			if ref := w.Ids.refAtHit(37, 0x7f69d4b5288ba9cf); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
+			}
+			if value.Health < 0 || value.Health > 1000 {
+				return false
 			}
 			w.Put32(uint32(value.Health))
 		}
@@ -3749,9 +3888,15 @@ func MixedStatReset(value *MixedStat) {
 
 func MixedStatMeasureBody(value *MixedStat, ids *TableIds) int64 {
 	bytes := int64(1)
+	if (value.StatId != 0) && (value.StatId > 255) {
+		return -1
+	}
 	if value.StatId != 0 {
 		bytes += tableLebBytes(ids.refAtHit(38, 0x80ab75f0866dbf65)) + 1 + 1
 	} // stat_id
+	if (value.Delta != 0) && (value.Delta < -512 || value.Delta > 511) {
+		return -1
+	}
 	if value.Delta != 0 {
 		bytes += tableLebBytes(ids.refAtHit(21, 0x52076675ec13a0c1)) + 1 + 4
 	} // delta
@@ -3783,6 +3928,9 @@ func MixedStatSaveBody(w *TableWriter, value *MixedStat) bool {
 			if ref := w.Ids.refAtHit(38, 0x80ab75f0866dbf65); !w.headerPair(ref, 6) {
 				w.headerRest(ref, 6)
 			}
+			if value.StatId > 255 {
+				return false
+			}
 			w.Put8(uint8(value.StatId))
 		}
 	}
@@ -3790,6 +3938,9 @@ func MixedStatSaveBody(w *TableWriter, value *MixedStat) bool {
 		if value.Delta != 0 {
 			if ref := w.Ids.refAtHit(21, 0x52076675ec13a0c1); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
+			}
+			if value.Delta < -512 || value.Delta > 511 {
+				return false
 			}
 			w.Put32(uint32(value.Delta))
 		}
@@ -3994,12 +4145,21 @@ func MixedHitEventReset(value *MixedHitEvent) {
 
 func MixedHitEventMeasureBody(value *MixedHitEvent, ids *TableIds) int64 {
 	bytes := int64(1)
+	if (value.TargetId != 0) && (value.TargetId > 4095) {
+		return -1
+	}
 	if value.TargetId != 0 {
 		bytes += tableLebBytes(ids.refAtHit(59, 0xb7bc9ac015a25050)) + 1 + 2
 	} // target_id
+	if (value.Damage != 0) && (value.Damage < 0 || value.Damage > 4095) {
+		return -1
+	}
 	if value.Damage != 0 {
 		bytes += tableLebBytes(ids.refAtHit(36, 0x7f6308be8ab37fc0)) + 1 + 4
 	} // damage
+	if (value.HitKind != 0) && (value.HitKind < 0 || value.HitKind > 7) {
+		return -1
+	}
 	if value.HitKind != 0 {
 		bytes += tableLebBytes(ids.refAtHit(1, 0x01fbc365b059b925)) + 1 + 4
 	} // hit_kind
@@ -4034,6 +4194,9 @@ func MixedHitEventSaveBody(w *TableWriter, value *MixedHitEvent) bool {
 			if ref := w.Ids.refAtHit(59, 0xb7bc9ac015a25050); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
+			if value.TargetId > 4095 {
+				return false
+			}
 			w.Put16(uint16(value.TargetId))
 		}
 	}
@@ -4042,6 +4205,9 @@ func MixedHitEventSaveBody(w *TableWriter, value *MixedHitEvent) bool {
 			if ref := w.Ids.refAtHit(36, 0x7f6308be8ab37fc0); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
+			if value.Damage < 0 || value.Damage > 4095 {
+				return false
+			}
 			w.Put32(uint32(value.Damage))
 		}
 	}
@@ -4049,6 +4215,9 @@ func MixedHitEventSaveBody(w *TableWriter, value *MixedHitEvent) bool {
 		if value.HitKind != 0 {
 			if ref := w.Ids.refAtHit(1, 0x01fbc365b059b925); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
+			}
+			if value.HitKind < 0 || value.HitKind > 7 {
+				return false
 			}
 			w.Put32(uint32(value.HitKind))
 		}
@@ -4336,9 +4505,15 @@ func MixedChatEventReset(value *MixedChatEvent) {
 
 func MixedChatEventMeasureBody(value *MixedChatEvent, ids *TableIds) int64 {
 	bytes := int64(1)
+	if (value.Channel != 0) && (value.Channel < 0 || value.Channel > 3) {
+		return -1
+	}
 	if value.Channel != 0 {
 		bytes += tableLebBytes(ids.refAtHit(54, 0xa5013e9ad5caeda4)) + 1 + 4
 	} // channel
+	if (value.Speaker != 0) && (value.Speaker > 4095) {
+		return -1
+	}
 	if value.Speaker != 0 {
 		bytes += tableLebBytes(ids.refAtHit(76, 0xfbf1ac4d96ebd022)) + 1 + 2
 	} // speaker
@@ -4370,6 +4545,9 @@ func MixedChatEventSaveBody(w *TableWriter, value *MixedChatEvent) bool {
 			if ref := w.Ids.refAtHit(54, 0xa5013e9ad5caeda4); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
+			if value.Channel < 0 || value.Channel > 3 {
+				return false
+			}
 			w.Put32(uint32(value.Channel))
 		}
 	}
@@ -4377,6 +4555,9 @@ func MixedChatEventSaveBody(w *TableWriter, value *MixedChatEvent) bool {
 		if value.Speaker != 0 {
 			if ref := w.Ids.refAtHit(76, 0xfbf1ac4d96ebd022); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
+			}
+			if value.Speaker > 4095 {
+				return false
 			}
 			w.Put16(uint16(value.Speaker))
 		}
@@ -4595,9 +4776,15 @@ func MixedPickupEventReset(value *MixedPickupEvent) {
 
 func MixedPickupEventMeasureBody(value *MixedPickupEvent, ids *TableIds) int64 {
 	bytes := int64(1)
+	if (value.ItemId != 0) && (value.ItemId > 1023) {
+		return -1
+	}
 	if value.ItemId != 0 {
 		bytes += tableLebBytes(ids.refAtHit(48, 0x9e7fd06d864fbd56)) + 1 + 2
 	} // item_id
+	if (value.Amount != 0) && (value.Amount < 0 || value.Amount > 255) {
+		return -1
+	}
 	if value.Amount != 0 {
 		bytes += tableLebBytes(ids.refAtHit(39, 0x8113fe7ea2b16969)) + 1 + 4
 	} // amount
@@ -4629,6 +4816,9 @@ func MixedPickupEventSaveBody(w *TableWriter, value *MixedPickupEvent) bool {
 			if ref := w.Ids.refAtHit(48, 0x9e7fd06d864fbd56); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
+			if value.ItemId > 1023 {
+				return false
+			}
 			w.Put16(uint16(value.ItemId))
 		}
 	}
@@ -4636,6 +4826,9 @@ func MixedPickupEventSaveBody(w *TableWriter, value *MixedPickupEvent) bool {
 		if value.Amount != 0 {
 			if ref := w.Ids.refAtHit(39, 0x8113fe7ea2b16969); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
+			}
+			if value.Amount < 0 || value.Amount > 255 {
+				return false
 			}
 			w.Put32(uint32(value.Amount))
 		}
@@ -4921,6 +5114,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if ref := w.Ids.refAtHit(56, 0xaa38aca481f528a8); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
+			if value.Sequence > 65535 {
+				return false
+			}
 			w.Put16(uint16(value.Sequence))
 		}
 	}
@@ -4928,6 +5124,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 		if value.AckSequence != 0 {
 			if ref := w.Ids.refAtHit(4, 0x0dbe005c56697c3e); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
+			}
+			if value.AckSequence < 0 || value.AckSequence > 65535 {
+				return false
 			}
 			w.Put32(uint32(value.AckSequence))
 		}
@@ -4969,6 +5168,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if ref := w.Ids.refAtHit(20, 0x3eee6b51be54fc85); !w.headerPair(ref, 5) {
 				w.headerRest(ref, 5)
 			}
+			if value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000 {
+				return false
+			}
 			w.Put64(uint64(value.WorldTime))
 		}
 	}
@@ -4977,6 +5179,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if ref := w.Ids.refAtHit(34, 0x7bbc035f7b6d0112); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
+			if value.FrameTick > 281474976710655 {
+				return false
+			}
 			w.Put64(uint64(value.FrameTick))
 		}
 	}
@@ -4984,6 +5189,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 		if value.ServerTime != 0 {
 			if ref := w.Ids.refAtHit(18, 0x3c460475f9be69c6); !w.headerPair(ref, 22) {
 				w.headerRest(ref, 22)
+			}
+			if value.ServerTime < 0 || value.ServerTime > 16776960 {
+				return false
 			}
 			w.Put32(uint32(value.ServerTime))
 		}
@@ -5236,6 +5444,33 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if value.PlayerNameLength < 0 || value.PlayerNameLength > 15 {
 				return false
 			}
+			{
+				n := int(value.PlayerNameLength)
+				var hi, z uint64
+				p := value.PlayerName[:n]
+				if len(p) >= 8 {
+					x := tableUtf8Word(p)
+					hi |= x
+					z |= (x - 0x0101010101010101) &^ x
+					p = p[8:]
+				}
+				if len(p) > 0 {
+					if n >= 8 {
+						x := tableUtf8Word(value.PlayerName[n-8:])
+						hi |= x
+						z |= (x - 0x0101010101010101) &^ x
+					} else {
+						for _, c := range p {
+							x := uint64(c)
+							hi |= x
+							z |= (x - 1) &^ x
+						}
+					}
+				}
+				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.PlayerName[:n]) {
+					return false
+				}
+			}
 			if !w.putLebPair(uint64(value.PlayerNameLength)) {
 				w.putLebWide(uint64(value.PlayerNameLength))
 			}
@@ -5288,6 +5523,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if ref := w.Ids.refAtHit(72, 0xdbaf7be5e24296c9); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.AimX != value.AimX || value.AimX < -1.0 || value.AimX > 1.0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.AimX))
 		}
 	}
@@ -5296,6 +5534,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if ref := w.Ids.refAtHit(71, 0xdbaf7ae5e2429516); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.AimY != value.AimY || value.AimY < -1.0 || value.AimY > 1.0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.AimY))
 		}
 	}
@@ -5303,6 +5544,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 		if value.AimZ != 0.0 {
 			if ref := w.Ids.refAtHit(70, 0xdbaf79e5e2429363); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.AimZ != value.AimZ || value.AimZ < -1.0 || value.AimZ > 1.0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.AimZ))
 		}
@@ -5336,6 +5580,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if ref := w.Ids.refAtHit(68, 0xd61bdd7908af2642); !w.headerPair(ref, 18) {
 				w.headerRest(ref, 18)
 			}
+			if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
+				return false
+			}
 			w.Put128(value.Flux.Lo, value.Flux.Hi)
 		}
 	}
@@ -5344,6 +5591,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if ref := w.Ids.refAtHit(61, 0xbf30e00dc53307a9); !w.headerPair(ref, 26) {
 				w.headerRest(ref, 26)
 			}
+			if value.Ping > 64000 {
+				return false
+			}
 			w.Put16(uint16(value.Ping))
 		}
 	}
@@ -5351,6 +5601,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 		if value.CrcHint != 0 {
 			if ref := w.Ids.refAtHit(23, 0x560d6527ccd8515f); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
+			}
+			if value.CrcHint > 16777215 {
+				return false
 			}
 			w.Put32(uint32(value.CrcHint))
 		}
@@ -5372,6 +5625,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if ref := w.Ids.refAtHit(77, 0xfd29ee12a979cb69); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
+			if value.Extra < 0 || value.Extra > 255 {
+				return false
+			}
 			w.Put32(uint32(value.Extra))
 		}
 	}
@@ -5379,6 +5635,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 		if value.IdleTicks != 0 {
 			if ref := w.Ids.refAtHit(33, 0x78101ac0aa8cbcfe); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
+			}
+			if value.IdleTicks < 0 || value.IdleTicks > 15 {
+				return false
 			}
 			w.Put32(uint32(value.IdleTicks))
 		}

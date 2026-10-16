@@ -1187,8 +1187,8 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// THE COUNT'S BOUND IS THE WRITER'S their_n (§5.2 EMIT kind 14,
 			// §5.3 step 11: BOUNDS runs against the PLAN's bounds). The
 			// reader's own bound is the wrong number: a forged 7 from a writer
-			// bounded at 4 must land 4 and COUNT, not be admitted because this
-			// reader grew to 8. n is their_n held to this reader's storage,
+			// bounded at 4 REFUSES count_over_bound (§4.5), not admitted because
+			// this reader grew to 8, and never clamped. n is their_n held to this reader's storage,
 			// which is their_n itself on every legal widening.
 			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Guard: guard, Op: tableFixedCount, Arg: arg})
 		}

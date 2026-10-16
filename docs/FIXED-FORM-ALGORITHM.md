@@ -749,7 +749,7 @@ hands both down beside the reader's layout entry (`Dst` and `Aux` on `TableFixed
 | `35` optional | the payload's own storage; the wrapper row adds none | the PRESENT byte | `T` into `?T` lands `present`, a CONSTANT `1` — constant in its VALUE and still carrying the row's own `guard`/`arg` (§5.9 #13) — at `aux` (971-980); `?T` into `?T` lands the writer's flag with a one-byte `copy` at `aux` (1008) |
 | a COUNTED array `[..N]T` | the element run | the live COUNT word | `count` writes its four bytes at `aux` (1024) |
 | `bytes(N)` | the BUFFER | the LENGTH word | the same `count` op, at `aux` — `bytes(N)` is an ARRAY row (fix 10) |
-| `12` / `33` text | the LENGTH word | the BUFFER | `text` puts the length at `dst` and copies the payload to `aux` (1137, 281-295) |
+| `12` / `33` text | the LENGTH word | the BUFFER | `text` puts the length at `dst` and copies the payload to `aux` (1137, 378-400) |
 | `15` union | the union's own storage | the TAG — **`dst` PLUS the tag's offset inside that storage**, the `AuxExtendsDst` row | both `const`s write at `aux`: the unguarded `None` (1074) and each arm's ordinal (1090) |
 | `13` table, `14` uncounted, `16` keyed | the field's storage | unused, `0` | nothing; these recurse |
 | every LEAF | the field's storage | unused, `0` | `copy`, `widen`, `widenf`, `ordinal` write at `dst` |
@@ -765,7 +765,7 @@ companion member, `_present` / `_count` / `_length` / the union's `type` — and
 names covers both lanes, not just `dst`. It is never derived from the wire: a companion is storage the wire
 does not carry.
 
-**THE TEXT OP, in full** (the reference: fixedruntime.go:281-295). `span` is BYTES and the refusal bound is UNITS,
+**THE TEXT OP, in full** (the reference: fixedruntime.go:378-400). `span` is BYTES and the refusal bound is UNITS,
 and they are not the same number:
 
 ```
