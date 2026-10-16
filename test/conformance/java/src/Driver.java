@@ -9,7 +9,7 @@
 //
 // It answers every surface this port carries from ONE binary — the block
 // surfaces, the cook surfaces (cook-forgery included) and the WIRE-CARRYING
-// surfaces (wire, report, json-read, json-write) the variable form (form byte
+// surfaces (wire, report, json-read, json-write, json-hostile) the variable form (form byte
 // 1, docs/SPEC-TABLES.md §3) carries for the roots this leg's variable wire
 // answers: the public root codecs compiled from the manifest units. Every case a
 // surface meets is answered `<case>.absent` (test/conformance/README.md).
@@ -704,6 +704,11 @@ public final class Driver {
             case "tblk2":
             case "kind1":
             case "kind2":
+            case "streamdemo":
+            case "listdemo":
+            case "backenddemo":
+            case "vocabdemo":
+            case "vocab9demo":
                 return true;
             default:
                 return false;
@@ -796,6 +801,29 @@ public final class Driver {
                 if (text == null) return failInt(f[1] + ": toJson refused the value");
                 spill(out, f[1] + ".json", text);
             } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": JSON writer failed: " + failure); }
+        }
+        return 0;
+    }
+
+    // THE TEXT FORM'S HOSTILE BATTERY (docs/SPEC-TABLES.md §16.2, §16.3, §17.5):
+    // FromJson <tree>/<root>.json, and the verdict is `refused` or the §4 report
+    // the read produced (test/conformance/README.md, "The surfaces").
+    private static int surfaceJsonHostile(String out) throws IOException {
+        for (String[] f : kind("json-hostile")) {
+            try {
+                VariableCodec codec = variableCodec(f[2], f[3]);
+                if (codec == null) { spillAbsent(out, f[1]); continue; }
+                Object report = codec.report();
+                Object value = codec.fromJson(Files.readAllBytes(Paths.get(f[4], f[3] + ".json")), report);
+                String verdict = "refused\n";
+                if (value != null && !codec.flag(report, "malformed") && !codec.flag(report, "refused")) {
+                    verdict = String.format("%d,%d,%d,%d,%d,false,read\n",
+                            codec.count(report, "unknown"), codec.count(report, "kindMismatch"),
+                            codec.count(report, "widened"), codec.count(report, "clamped"),
+                            codec.count(report, "duplicate"));
+                }
+                spill(out, f[1], verdict);
+            } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": JSON reader failed: " + failure); }
         }
         return 0;
     }
@@ -921,7 +949,7 @@ public final class Driver {
             // §3, §3.1, §16.7) for the roots this leg's variable wire carries —
             // graphdemo's Scene and blobdemo's Catalog — and answer every other
             // case ABSENT, one by one.
-            System.out.print("wire\nreport\njson-read\njson-write\n"
+            System.out.print("wire\nreport\njson-read\njson-write\njson-hostile\n"
                     + "block\nblock-foreign\n"
                     + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n");
             return 0;
@@ -936,6 +964,7 @@ public final class Driver {
             case "report": return surfaceReport(out);
             case "json-read": return surfaceJsonRead(out);
             case "json-write": return surfaceJsonWrite(out);
+            case "json-hostile": return surfaceJsonHostile(out);
             case "block": return surfaceBlock(out);
             case "block-foreign": return surfaceBlockForeign(out);
             case "block-dump": return surfaceBlockDump(out);
