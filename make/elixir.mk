@@ -566,6 +566,23 @@ tables-elixir-variable-class: build/conformance/manifest.txt
 
 test-elixir: tables-elixir-variable-class
 
+# THE FILE-MODULE STEP-ASIDE GATE (docs/SPEC.md, the Elixir backend list):
+# a schema file whose base is also a declaration's name (tables/arms/Carry.schema
+# declares union Carry) makes the packet emitter's file-scope module step aside
+# from <Ns>.<Base> to <Ns>.<Base>File. This generates the unit out of tree,
+# compiles the output with $(ELIXIRC_STRICT), and runs
+# test/elixir-filemodule/main.exs, which calls a function of the renamed file
+# module and a function of the union's own module and asserts both resolve — two
+# distinct modules.
+.PHONY: tables-elixir-file-module
+tables-elixir-file-module: bin/schema
+	@rm -rf build/elixir-filemodule && mkdir -p build/elixir-filemodule/gen build/elixir-filemodule/ebin
+	./bin/schema generate --lang elixir --out build/elixir-filemodule/gen tables/arms
+	$(ELIXIRC_STRICT) -o build/elixir-filemodule/ebin build/elixir-filemodule/gen/Carry.ex
+	$(ELIXIR) -pa build/elixir-filemodule/ebin test/elixir-filemodule/main.exs
+
+test-elixir: tables-elixir-file-module
+
 # I13 (docs/PORTING.md, the text differential against a third implementation)
 # on the Elixir leg. TestTextDifferentialElixir generates a float-only probe
 # unit, has the generated Elixir draw 200 instances from a splitmix64 stream
