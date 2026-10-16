@@ -11790,6 +11790,7 @@ in build version (§20.5).
   Cook  CookMeasure  CookMeasureReason  CookBody  CookLayout  CookMeasureFrom  CookFrom
   Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure  Table
+  SaveText  LoadText
   MeasureMessages  SaveMessages  LoadMessages
   LoadMessagesMeasure  SaveMessageBody  LoadMessageBody
   LoadRetain LoadRetainBuilder  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages
@@ -14369,6 +14370,10 @@ wire reader's own refusal — a form byte this build does not carry, `unknown_fo
 (§3, THE FIRST BYTE), and framing damage, `wire_damaged` or `truncated`
 (§3); a JSON document the JSON reader refuses is `malformed` (§16.2). A
 reader never guesses at an unnameable byte.
+
+`SaveText` and `LoadText` are generated name-first as `<Name>SaveText` and
+`<Name>LoadText`, and both suffixes are in §11's claimed list: a declaration
+spelling one beside a table `<Name>` is refused naming the collision.
 
 ## 17. Packing: a directory tree that mirrors a root table
 

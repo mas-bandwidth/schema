@@ -95,6 +95,14 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { x int32 }\ntype TableReport { y int32 }\n"},
 		{name: "a declaration colliding with generated table codecs", want: "generated TABLE-wire functions",
 			src: "package t\ntable Tab { x int32 }\ntype TabLoad { y int32 }\n"},
+		// the Go text-transport helpers (docs/SPEC-TABLES.md §16.6, §11): the Go backend
+		// emits <Name>SaveText and <Name>LoadText, so a schema declaring Root and
+		// either name must be refused by name at the checker, not redeclared in
+		// the generated package
+		{name: "a declaration colliding with the text transport's save", want: "TabSaveText",
+			src: "package t\ntable Tab { x int32 }\ntype TabSaveText { y int32 }\n"},
+		{name: "a declaration colliding with the text transport's load", want: "TabLoadText",
+			src: "package t\ntable Tab { x int32 }\ntype TabLoadText { y int32 }\n"},
 		{name: "a declaration colliding with the mutable-life surface", want: "generated TABLE-wire functions",
 			src: "package t\ntable Tab { x int32 }\ntype TabBuilder { y int32 }\n"},
 		// THE FIXED FORM'S SPELLINGS (docs/SPEC-TABLES.md §3.4, §11), and the
