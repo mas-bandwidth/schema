@@ -597,7 +597,7 @@ build/conformance-rust-all: bin/schema test/conformance/rust/src/wire_fuzz_all.r
 	PATH="$(RUSTUP_BIN):$$PATH" sh test/conformance/rust/wire-fuzz-all-build $@
 
 tables-rust-wire-fuzz-all: build/conformance-harness build/conformance-rust-all
-	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run TestRetainsAndWidensOnEveryRootRust -v
+	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run TestRetainsAndWidensOnEveryRootRust -v
 	@set -e; for arm in '' '--retain'; do \
 		./build/conformance-harness wire-fuzz --driver 'build/conformance-rust-all' $$arm --seed $(SEED) --n $(N) \
 			> build/rust-wire-fuzz-all.log 2>&1 || { cat build/rust-wire-fuzz-all.log; exit 1; }; \
@@ -619,7 +619,7 @@ tables-rust-retain-negative-control:
 		{ echo "NEGATIVE CONTROL: the retention sabotage did not apply"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/variablecodec.go":"%s/build/rust-retain-control/variablecodec.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/rust-retain-control/overlay.json
-	@if PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 20m \
+	@if PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s \
 			-overlay=build/rust-retain-control/overlay.json \
 			-run TestRetainsAndWidensOnEveryRootRust ./internal/codegen/rusttable/ > build/rust-retain-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the suite stayed green with Rust retention turned off"; \

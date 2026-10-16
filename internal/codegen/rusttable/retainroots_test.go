@@ -100,6 +100,21 @@ func TestRetainsAndWidensOnEveryRootRust(t *testing.T) {
 				seeds = append(seeds, p)
 			}
 		}
+		// A forged pointer cycle is accepted on load and refused on save
+		// (docs/SPEC-TABLES.md §3.1). The ordinary corpus contains only
+		// acyclic writers, so exercise the pinned hostile vector explicitly.
+		if carried["graphdemo.Scene"] {
+			seeds = append(seeds, rosterSeed{
+				name: "graph_self_cycle", unit: "graphdemo", root: "Scene",
+				wire: "testdata/wire/tables/fuzz-vectors/pointer_self_cycle.bin",
+			})
+			shared, err := os.ReadFile(filepath.Join(repo, "testdata/wire/tables/graph_shared.bin"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			shared[29] = byte(ir.TableKindUnion)
+			seeds = append(seeds, rosterSeed{name: "graph_union_kind_mutant", unit: "graphdemo", root: "Scene", data: shared})
+		}
 		for _, retain := range []bool{false, true} {
 			driveSeeds(t, repo, bin, units, seeds, retain)
 		}
@@ -368,23 +383,29 @@ func driveSeeds(t *testing.T, repo, bin string, units map[string]*carriedUnit, s
 		if _, err := io.ReadFull(stdout, reply[:]); err != nil {
 			t.Fatalf("%s: the driver died: %v\n%s", s.name, err, stderr.String())
 		}
-		saved := make([]byte, int64(binary.LittleEndian.Uint64(reply[39:])))
-		if _, err := io.ReadFull(stdout, saved); err != nil {
-			t.Fatalf("%s: the driver died: %v", s.name, err)
+		saveLen := int64(binary.LittleEndian.Uint64(reply[39:]))
+		var saved []byte
+		if saveLen >= 0 {
+			saved = make([]byte, saveLen)
+			if _, err := io.ReadFull(stdout, saved); err != nil {
+				t.Fatalf("%s: the driver died: %v", s.name, err)
+			}
 		}
 		leg := fmt.Sprintf("%d,%d,%d,%d,%d,%t,%t retained=%d retain_lost=%d",
 			binary.LittleEndian.Uint32(reply[1:]), binary.LittleEndian.Uint32(reply[5:]), binary.LittleEndian.Uint32(reply[9:]),
 			binary.LittleEndian.Uint32(reply[13:]), binary.LittleEndian.Uint32(reply[17:]), reply[21] != 0, reply[22] != 0,
 			binary.LittleEndian.Uint32(reply[31:]), binary.LittleEndian.Uint32(reply[35:]))
 		want, encoded := oracleSeed(t, units[s.unit].unit, s.root, wire, retain)
-		if retain && s.data != nil && !strings.Contains(want, "retained=1 ") {
+		if retain && strings.HasSuffix(s.name, "+unknown") && !strings.Contains(want, "retained=1 ") {
 			t.Errorf("%s (%s.%s): the planted unknown was not retained by the oracle (%s), so this seed proves nothing", s.name, s.unit, s.root, want)
 		}
 		if leg != want {
 			t.Errorf("%s (%s.%s, retain=%t): the leg reports %s, the oracle %s", s.name, s.unit, s.root, retain, leg, want)
 			continue
 		}
-		if encoded != nil && !bytes.Equal(saved, encoded) {
+		if (saveLen < 0) != (encoded == nil) {
+			t.Errorf("%s (%s.%s, retain=%t): save refusal differs from oracle", s.name, s.unit, s.root, retain)
+		} else if encoded != nil && !bytes.Equal(saved, encoded) {
 			t.Errorf("%s (%s.%s, retain=%t): the leg saves %d bytes, the oracle %d, first difference at byte %d",
 				s.name, s.unit, s.root, retain, len(saved), len(encoded), firstDiff(saved, encoded))
 		}

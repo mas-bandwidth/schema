@@ -280,6 +280,34 @@ pub unsafe fn table_cook_open(
     }
 }
 
+/// Name the first failed cook-open clause (§7) using the reference vocabulary
+/// in gotable/refusal.go. The ordinary open stays the fast path.
+///
+/// # Safety
+/// bytes must point at length readable bytes.
+pub unsafe fn table_cook_open_reason(bytes: *const u8, length: u64, root_size: u64, root_align: u64) -> &'static str {
+    unsafe {
+        if table_cook_open(bytes, length, root_size, root_align).is_some() { return "ok"; }
+        if bytes.is_null() { return "unaligned_base"; }
+        if length < TABLE_COOK_HEADER_BYTES { return "truncated"; }
+        let magic = table_cook_read64(bytes);
+        if magic != TABLE_COOK_MAGIC {
+            return if magic.swap_bytes() == TABLE_COOK_MAGIC { "foreign_order" } else { "not_a_cook" };
+        }
+        if table_cook_read64(bytes.add(16)) != TABLE_COOK_BYTE_ORDER { return "not_a_cook"; }
+        if table_cook_read64(bytes.add(8)) != BUILD_VERSION { return "wrong_build_version"; }
+        if table_cook_read64(bytes.add(48)) != 0 || table_cook_read64(bytes.add(56)) != 0 { return "reserved_not_zero"; }
+        let data_length = table_cook_read64(bytes.add(24));
+        let attribution_length = table_cook_read64(bytes.add(32));
+        let alignment = table_cook_read64(bytes.add(40));
+        if alignment < 8 || alignment > TABLE_COOK_MAX_ALIGN || alignment & (alignment - 1) != 0 || !alignment.is_multiple_of(root_align) { return "bad_alignment"; }
+        let data_offset = (TABLE_COOK_HEADER_BYTES + alignment - 1) & !(alignment - 1);
+        if length < data_offset || data_length > length - data_offset || attribution_length != length - data_offset - data_length || data_length < root_size { return "truncated"; }
+        if !(bytes.add(data_offset as usize) as usize as u64).is_multiple_of(alignment) { return "unaligned_base"; }
+        "truncated"
+    }
+}
+
 `
 
 // ---- the blittable records (docs/SPEC-TABLES.md §7.2, §19.3) ----

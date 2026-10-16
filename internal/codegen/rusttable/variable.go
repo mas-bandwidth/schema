@@ -107,6 +107,55 @@ use std::rc::Rc;
 /// header is the form byte alone. Nothing is aligned and nothing is padded.
 pub const TABLE_WIRE_FORM: u8 = 1;
 
+/// Variable file refusal names use the Go reference's vocabulary
+/// (gotable/refusal.go, SPEC-TABLES §5). Damaged framing is malformed, not a
+/// refusal; a foreign form is the one refusal this reader can issue.
+#[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TableRefuseReason {
+    #[default]
+    Ok,
+    NotACook,
+    ForeignOrder,
+    WrongBuildVersion,
+    ReservedNotZero,
+    BadAlignment,
+    Truncated,
+    UnalignedBase,
+    BadLayout,
+    UnknownForm,
+    CountOverLength,
+    CountOverExtentCap,
+    BlobOverSizeCap,
+    DataCycle,
+    InvalidValue,
+    AllocationFailed,
+    WireDamaged,
+}
+
+impl TableRefuseReason {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::NotACook => "not_a_cook",
+            Self::ForeignOrder => "foreign_order",
+            Self::WrongBuildVersion => "wrong_build_version",
+            Self::ReservedNotZero => "reserved_not_zero",
+            Self::BadAlignment => "bad_alignment",
+            Self::Truncated => "truncated",
+            Self::UnalignedBase => "unaligned_base",
+            Self::BadLayout => "bad_layout",
+            Self::UnknownForm => "unknown_form",
+            Self::CountOverLength => "count_over_length",
+            Self::CountOverExtentCap => "count_over_extent_cap",
+            Self::BlobOverSizeCap => "blob_over_size_cap",
+            Self::DataCycle => "data_cycle",
+            Self::InvalidValue => "invalid_value",
+            Self::AllocationFailed => "allocation_failed",
+            Self::WireDamaged => "wire_damaged",
+        }
+    }
+}
+
 /// The tolerant read report (docs/SPEC-TABLES.md §4, §5): a field this build
 /// cannot name is skipped and counted, a field it can name but that arrives at
 /// another kind is a kind mismatch, and an absent field reads its default.
@@ -122,6 +171,10 @@ pub struct TableReport {
     pub duplicate: u64,
     pub malformed: bool,
     pub refused: bool,
+    pub reason: TableRefuseReason,
+    /// A pointer cycle is valid on load (§3.1), but a subsequent builder
+    /// save must refuse its traversal instead of writing a shortened graph.
+    pub cycle_on_save: bool,
     /// RETAIN-UNKNOWN'S TWO COUNTERS (docs/SPEC-TABLES.md §6.6): retained
     /// counts the unknown fields whose bytes were kept, retain_lost counts
     /// every unknown this load or save could not keep (capacity, an excluded
@@ -325,6 +378,9 @@ pub struct TableNodeReader {
     pub good: bool,
     pub root_type: u64,
     pub retaining: bool,
+    pub retain_capacity: usize,
+    pub retained: Vec<u8>,
+    pub node_ids: HashMap<usize, u32>,
     pub recs: Vec<(u64, usize, usize)>,
     pub slots: Vec<TableNodeSlot>,
 }
@@ -340,8 +396,8 @@ impl TableNodeReader {
     /// place keeps its index and counts unknown once; a *string blob that is
     /// not well-formed text is malformed and its slots read null.
     #[allow(clippy::too_many_arguments)]
-    pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, report: &mut TableReport) -> Option<TableNodeReader> {
-        let mut reader = TableNodeReader { good: true, root_type, retaining, recs: Vec::new(), slots: Vec::new() };
+    pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, retain_capacity: usize, report: &mut TableReport) -> Option<TableNodeReader> {
+        let mut reader = TableNodeReader { good: true, root_type, retaining, retain_capacity, retained: Vec::new(), node_ids: HashMap::new(), recs: Vec::new(), slots: Vec::new() };
         let mut off = 1usize;
         while off < end {
             let Some(r) = leb_read(wire, &mut off) else { report.malformed = true; return None; };
@@ -380,7 +436,6 @@ impl TableNodeReader {
                 }
             }
             if !scan_ok {
-                report.malformed = true;
                 reader.good = false;
                 reader.recs.clear();
             } else {
@@ -412,6 +467,7 @@ impl TableNodeReader {
                 }
             }
         } else {
+            report.malformed = true;
             reader.recs.clear();
         }
         Some(reader)
@@ -572,8 +628,12 @@ pub fn table_widen_f32(bits: u32) -> f64 {
 /// one LEB128; a union reads its arm header and L. A kind the reader does not
 /// know at all is framing damage and returns false (§3).
 pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
+    // A nested body has its own byte boundary (§3, §4). Parse every LEB from
+    // that slice so a truncated header cannot consume the parent's next byte.
+    if end > buf.len() { return false; }
+    let bounded = &buf[..end];
     let fixed = |o: &mut usize, w: usize| -> bool {
-        if *o + w > end { return false; }
+        if *o > end || w > end - *o { return false; }
         *o += w;
         true
     };
@@ -584,23 +644,23 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
         5 | 9 | 11 | 23 | 28 => fixed(off, 8),
         18 | 19 | 24 | 29 => fixed(off, 16),
         17 | 30 => {
-            if let Some(_) = leb_read(buf, off) { *off <= end } else { false }
+            if let Some(_) = leb_read(bounded, off) { *off <= end } else { false }
         }
         12 | 13 | 14 | 16 | 31 | 32 | 33 => {
-            let Some(n) = leb_read(buf, off) else { return false; };
+            let Some(n) = leb_read(bounded, off) else { return false; };
             let n = n as usize;
-            if *off + n > end { return false; }
+            if *off > end || n > end - *off { return false; }
             *off += n;
             true
         }
         15 => {
-            let Some(arm) = leb_read(buf, off) else { return false; };
+            let Some(arm) = leb_read(bounded, off) else { return false; };
             if arm == 0 { return true; }
-            if *off + 1 > end { return false; }
+            if *off >= end { return false; }
             *off += 1;
-            let Some(n) = leb_read(buf, off) else { return false; };
+            let Some(n) = leb_read(bounded, off) else { return false; };
             let n = n as usize;
-            if *off + n > end { return false; }
+            if *off > end || n > end - *off { return false; }
             *off += n;
             true
         }
@@ -617,6 +677,8 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
 pub struct TableRetain {
     pub bytes: Vec<u8>,
     pub ids: Vec<u64>,
+    /// Node identity to the wire index that owned retained fields on load.
+    pub nodes: HashMap<usize, u32>,
 }
 
 /// THE WALK'S NESTING CAP (docs/SPEC-TABLES.md §6.6): a small stated constant,
@@ -660,7 +722,29 @@ impl TableRetainPath {
 /// every reference is the eight-byte id it names and every framed length is
 /// eight bytes, so a save re-interns references against a different id table.
 pub fn retain_record_len(rec: &[u8]) -> usize {
-    u32::from_le_bytes(rec[..4].try_into().unwrap()) as usize
+    (u32::from_le_bytes(rec[..4].try_into().unwrap()) & 0x7fff_ffff) as usize
+}
+
+/// The high bit of the private record length is a per-save placement mark
+/// (§6.6). Each save clears it, then counts records no body visited.
+pub fn retain_clear_placed(retain: &mut TableRetain) {
+    let mut at = 0usize;
+    while at + 4 <= retain.bytes.len() {
+        let len = retain_record_len(&retain.bytes[at..]);
+        if len < 17 || len > retain.bytes.len() - at { break; }
+        retain.bytes[at + 3] &= 0x7f;
+        at += len;
+    }
+}
+
+pub fn retain_count_unplaced(retain: &TableRetain, report: &mut TableReport) {
+    let mut at = 0usize;
+    while at + 4 <= retain.bytes.len() {
+        let len = retain_record_len(&retain.bytes[at..]);
+        if len < 17 || len > retain.bytes.len() - at { break; }
+        if retain.bytes[at + 3] & 0x80 == 0 { report.retain_lost += 1; }
+        at += len;
+    }
 }
 
 /// The record's path depth (docs/SPEC-TABLES.md §6.6), read from the four bytes
@@ -980,6 +1064,7 @@ pub fn retain_emit_tail(out: &mut Vec<u8>, ids: &mut IdTable, retain: &mut Table
         let field_id = u64::from_le_bytes(rec[8..16].try_into().unwrap());
         let kind = rec[16];
         let payload = rec[17 + 8 * depth..len].to_vec();
+        retain.bytes[at - len + 3] |= 0x80;
         let mut bad = false;
         let slot = retain_ref(ids, retain, known, field_id);
         if slot == 0 {
@@ -1021,6 +1106,27 @@ pub fn retain_discard(retain: &mut TableRetain, path: TableRetainPath, ordinal: 
             if write != read {
                 retain.bytes.copy_within(read..read + len, write);
             }
+            write += len;
+        }
+        read += len;
+    }
+    retain.bytes.truncate(write);
+}
+
+/// A repeated map key replaces one entry occurrence (§6.6), including the
+/// unknown fields retained directly in that entry and its nested bodies.
+pub fn retain_discard_body(retain: &mut TableRetain, path: TableRetainPath) {
+    let mut read = 0usize;
+    let mut write = 0usize;
+    while read + 4 <= retain.bytes.len() {
+        let len = retain_record_len(&retain.bytes[read..]);
+        if len < 17 || len > retain.bytes.len() - read { break; }
+        let rec = &retain.bytes[read..read + len];
+        let depth = retain_record_depth(rec);
+        let drop = depth <= TABLE_RETAIN_DEPTH_CAP && 17 + 8 * depth <= len
+            && (retain_path_eq(rec, depth, &path) || retain_under(rec, depth, &path, false, 0));
+        if !drop {
+            if write != read { retain.bytes.copy_within(read..read + len, write); }
             write += len;
         }
         read += len;

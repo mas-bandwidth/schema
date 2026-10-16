@@ -437,6 +437,41 @@ fn surface_cook_forgery(manifest: &Manifest, out: &str) {
     }
 }
 
+// The reason surfaces use the same forged pointer and caller extent as the
+// open surfaces, then name the first failed clause (§7, §19.2).
+fn surface_reason(manifest: &Manifest, out: &str, kind: &str) {
+    for f in manifest.of_kind("forgery") {
+        if f[2] != kind { continue; }
+        let data = slurp(&f[4]);
+        let extent: i64 = parse_int(&f[5]);
+        let claim = if extent < 0 { data.len() as i64 } else { extent };
+        let null_buffer = f[6] == "null";
+        let lead = if null_buffer { 0 } else { parse_int(&f[6]) as usize };
+        let storage = Aligned::placed(&data, claim, lead);
+        let base = if null_buffer { std::ptr::null() } else { storage.at(lead) as *const u8 };
+        let reason = unsafe {
+            if kind == "block" {
+                if f[3].starts_with("block_render") {
+                    blockdemo::RenderFrameBlock::open_reason(base, claim)
+                } else if f[3].starts_with("block_padded") {
+                    blockdemo::PaddedFrameBlock::open_reason(base, claim)
+                } else { fail(&format!("no block named {}", f[3])) }
+            } else {
+                let (size, align) = match f[3].as_str() {
+                    "Scene" => (graphdemo::SceneCook::ROOT_SIZE, graphdemo::SceneCook::ROOT_ALIGN),
+                    "Depot" => (graphdemo::DepotCook::ROOT_SIZE, graphdemo::DepotCook::ROOT_ALIGN),
+                    "Album" => (graphdemo::AlbumCook::ROOT_SIZE, graphdemo::AlbumCook::ROOT_ALIGN),
+                    "TreeNode" => (graphdemo::TreeNodeCook::ROOT_SIZE, graphdemo::TreeNodeCook::ROOT_ALIGN),
+                    "ListNode" => (graphdemo::ListNodeCook::ROOT_SIZE, graphdemo::ListNodeCook::ROOT_ALIGN),
+                    _ => fail(&format!("no cook root named {}", f[3])),
+                };
+                graphdemo::table_cook_open_reason(base, claim as u64, size, align)
+            }
+        };
+        spill(out, &f[1], format!("{reason}\n").as_bytes());
+    }
+}
+
 fn parse_int(text: &str) -> i64 {
     let text = text.trim();
     let (negative, digits) = match text.strip_prefix('-') {
@@ -994,7 +1029,7 @@ fn main() {
             // case ABSENT, one by one; the message and retain surfaces are still
             // absent whole (the message form's batch and retention beyond the card
             // constructs are their own rows)
-            "wire\nreport\njson-read\njson-write\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write"
+            "wire\nreport\njson-read\njson-write\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nblock-reason\ncook-reason"
         );
         return;
     }
@@ -1016,6 +1051,8 @@ fn main() {
         "cook-forgery" => surface_cook_forgery(&manifest, out),
         "block" => surface_block(&manifest, out),
         "forgery" => surface_forgery(&manifest, out),
+        "block-reason" => surface_reason(&manifest, out, "block"),
+        "cook-reason" => surface_reason(&manifest, out, "cook"),
         _ => exit(2),
     }
 }

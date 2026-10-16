@@ -46,6 +46,7 @@ struct Reply {
     measure: i64,
     retained: u64,
     retain_lost: u64,
+    save_fail: bool,
     saved: Vec<u8>,
 }
 
@@ -64,18 +65,26 @@ macro_rules! arm {
         let mut report = TableReport::default();
         let mut reply = Reply { measure: $measure(wire), ..Default::default() };
         if $retain {
-            let mut store = TableRetain { bytes: Vec::with_capacity(RETAIN_BYTES), ids: Vec::with_capacity(RETAIN_IDS) };
+            let mut store = TableRetain { bytes: Vec::with_capacity(RETAIN_BYTES), ids: Vec::with_capacity(RETAIN_IDS), nodes: Default::default() };
             let value = $load_retain(wire, &mut store, &mut report);
             reply.loaded = value.is_some();
             // THE REPORT ACCUMULATES ACROSS THE PAIR (§6.6): one report is
             // zeroed before the load and read after the save
-            reply.saved = $save_retain(&value.unwrap_or_default(), &mut store, &mut report);
+            if !report.cycle_on_save {
+                reply.saved = $save_retain(&value.unwrap_or_default(), &mut store, &mut report);
+            } else {
+                reply.save_fail = true;
+            }
             reply.retained = report.retained;
             reply.retain_lost = report.retain_lost;
         } else {
             let value = $load(wire, &mut report);
             reply.loaded = value.is_some();
-            reply.saved = $save(&value.unwrap_or_default());
+            if !report.cycle_on_save {
+                reply.saved = $save(&value.unwrap_or_default());
+            } else {
+                reply.save_fail = true;
+            }
         }
         reply.unknown = report.unknown;
         reply.kind_mismatch = report.kind_mismatch;
@@ -216,7 +225,7 @@ fn main() {
         head[23..31].copy_from_slice(&reply.measure.to_le_bytes());
         head[31..35].copy_from_slice(&(reply.retained as u32).to_le_bytes());
         head[35..39].copy_from_slice(&(reply.retain_lost as u32).to_le_bytes());
-        head[39..47].copy_from_slice(&(reply.saved.len() as i64).to_le_bytes());
+        head[39..47].copy_from_slice(&(if reply.save_fail { -1i64 } else { reply.saved.len() as i64 }).to_le_bytes());
         let _ = out.write_all(&head);
         let _ = out.write_all(&reply.saved);
         let _ = out.flush();

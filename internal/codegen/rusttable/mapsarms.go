@@ -768,6 +768,7 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	fmt.Fprintf(b, "%selse if count > 0x7fffffff { report.malformed = true; }\n", i3)
 	fmt.Fprintf(b, "%selse {\n", i3)
 	i4 := i3 + "    "
+	fmt.Fprintf(b, "%sif let Some(ret) = retain.as_deref_mut() { retain_discard(ret, path, %d); }\n", i4, ordinal)
 	fmt.Fprintf(b, "%s%s.clear();\n", i4, field)
 	fmt.Fprintf(b, "%slet mut landed = false;\n", i4)
 	fmt.Fprintf(b, "%slet mut widened = false;\n", i4)
@@ -847,6 +848,7 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	fmt.Fprintf(b, "%slet mut e = %s::default();\n", i5, f.MapEntry.Name)
 	fmt.Fprintf(b, "%slet mut o = *off;\n", i5)
 	fmt.Fprintf(b, "%slet slot_idx = if order == std::cmp::Ordering::Equal { %s.len() - 1 } else { %s.len() };\n", i5, field, field)
+	fmt.Fprintf(b, "%sif order == std::cmp::Ordering::Equal { if let Some(ret) = retain.as_deref_mut() { retain_discard_body(ret, path.step(%d, slot_idx as u32)); } }\n", i5, ordinal)
 	fmt.Fprintf(b, "%slet _ = %s(wire, &mut o, eend, ids, &mut e, nodes, report, path.step(%d, slot_idx as u32), retain.as_deref_mut(), true);\n", i5, fn(f.MapEntry.Name, "load_body"), ordinal)
 	fmt.Fprintf(b, "%s*off = eend;\n", i5)
 	fmt.Fprintf(b, "%se.%s = key_val;\n", i5, key)

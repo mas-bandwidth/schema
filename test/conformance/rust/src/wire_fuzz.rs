@@ -96,6 +96,7 @@ fn main() {
             let mut store = TableRetain {
                 bytes: Vec::with_capacity(1 << 20),
                 ids: Vec::with_capacity(1 << 17),
+                nodes: Default::default(),
             };
             let value = card_load_retain(&wire, &mut store, &mut report);
             loaded = value.is_some();
