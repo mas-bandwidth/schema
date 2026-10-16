@@ -88,3 +88,38 @@ flags Moods { Calm, Angry, Sleepy }
 		}
 	}
 }
+
+// TestZeroWireAndStoragelessBodies reaches the (void) casts emitStructWire
+// writes for a struct whose every range is degenerate (zero wire bits:
+// functions.go:146, 159) and for one with wire items but no storage
+// (functions.go:148, 162). Without them a -Wall -Wextra -Werror consumer
+// breaks under NDEBUG, where the only value uses are compiled-away asserts.
+func TestZeroWireAndStoragelessBodies(t *testing.T) {
+	t.Parallel()
+	u := unitFromSources(t, map[string]string{
+		"Shapes.schema": `package t
+type Pinned {
+    x int32 = 5 | min = 5, max = 5
+}
+type Padding {
+    reserved(3)
+    align
+}
+`,
+	})
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := string(files["ShapesWire.h"])
+	for _, want := range []string{
+		"bool WritePinned( serialize::WriteStream & stream, const Pinned & value )\n{\n    (void) stream;\n    (void) value; // zero wire bits — asserts compile away under NDEBUG\n",
+		"bool ReadPinned( serialize::ReadStream & stream, Pinned & value )\n{\n    (void) stream; // zero wire bits — nothing to read, defaults prefill below\n",
+		"bool WritePadding( serialize::WriteStream & stream, const Padding & value )\n{\n    (void) value; // items only — reserved/const/align carry no storage\n",
+		"bool ReadPadding( serialize::ReadStream & stream, Padding & value )\n{\n    (void) value; // items only — reserved/const/align carry no storage\n",
+	} {
+		if !strings.Contains(w, want) {
+			t.Errorf("ShapesWire.h: want\n%s\nin\n%s", want, w)
+		}
+	}
+}
