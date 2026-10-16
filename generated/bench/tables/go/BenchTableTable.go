@@ -108,7 +108,11 @@ type TableReport struct {
 	// A body carrying an id twice is legal input
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
 	Duplicate int32
-	Malformed bool // framing damage; decode stopped, partial result kept
+	// MissingRequired counts required fields (mas-bandwidth/schema docs/SPEC-TABLES.md §2.3) the
+	// record did not carry: a record an older writer produced before the field
+	// became required. The refusal names the field in Reason.
+	MissingRequired int32
+	Malformed       bool // framing damage; decode stopped, partial result kept
 	// BuildVersionPeer and BuildVersionOwn are the two build versions a strict
 	// announcement refusal carries (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): the peer's
 	// announcement and this unit's own. They are zero on every other read.
@@ -369,10 +373,18 @@ func (m TableBuildVersionMismatch) Error() string {
 	return "build_version_mismatch: peer 0x" + string(peer[:]) + " own 0x" + string(own[:])
 }
 
+// TableMissingRequired is the typed error a strict read reports for a record
+// that lacks a | required field (mas-bandwidth/schema docs/SPEC-TABLES.md §2.3): Fields names the
+// missing fields, comma-separated in declaration order, at whatever depth of
+// the record they were missing, and Error() is the report's own reason.
+type TableMissingRequired struct{ Fields string }
+
+func (m TableMissingRequired) Error() string { return "missing_required: " + m.Fields }
+
 // Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
-// unknown form, wire-damaged and build-version-mismatched, each as one typed
-// reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
+// unknown form, wire-damaged, build-version-mismatched and missing-required
+// (§2.3, naming the field), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
 func (r *TableReport) Err() error {
 	if r == nil {
 		return nil
@@ -385,6 +397,14 @@ func (r *TableReport) Err() error {
 	}
 	if r.Verdict == TableOpenDamaged {
 		return TableRefuseWireDamaged
+	}
+	if r.MissingRequired > 0 {
+		const p = "missing_required: "
+		f := r.Reason
+		if len(f) >= len(p) && f[:len(p)] == p {
+			f = f[len(p):]
+		}
+		return TableMissingRequired{Fields: f}
 	}
 	if r.Malformed {
 		return TableRefuseMalformed
@@ -772,7 +792,7 @@ func tableKindBytes(kind uint8) int64 {
 		return 2
 	case 4, 8, 10, 22, 27:
 		return 4
-	case 5, 9, 11, 23, 28:
+	case 5, 9, 11, 23, 28, 36:
 		return 8
 	case 18, 19, 24, 29:
 		return 16
@@ -11125,6 +11145,25 @@ const TableEntityFixedFloor = 0
 // compiles on the load path (§5.8 row 3).
 var TableEntityFixedLineagePlans = tableFixedLineagePlans(TableEntityFixedKnown, TableEntityFixedLayout, TableEntityFixedDst, TableEntityFixedHash)
 
+var TableEntityFixedResetImage = func() []byte {
+	var def TableEntity
+	TableEntityReset(&def)
+	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+}()
+
+var TableEntityFixedHoles = tableFixedHoles(TableEntityFixedPlan.Entries, TableEntityFixedPlan.Count, uint32(len(TableEntityFixedResetImage)))
+
+var TableEntityFixedLineageHoles = func() [][]tableFixedHole {
+	out := make([][]tableFixedHole, len(TableEntityFixedLineagePlans))
+	for i := range TableEntityFixedLineagePlans {
+		lane := &TableEntityFixedLineagePlans[i]
+		if lane.Why == "" {
+			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(TableEntityFixedResetImage)))
+		}
+	}
+	return out
+}()
+
 // TableEntityFixedPlanMax is the plan capacity every layout this build reads needs:
 // the largest entry count over the identity plan and every lineage plan
 // (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.2). A plan slice of this length never
@@ -11221,6 +11260,9 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 	}
 	entries := TableEntityFixedPlan.Entries
 	entryCount := TableEntityFixedPlan.Count
+	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
+	// a lineage plan's when a peer selects one. Nothing computes them per call.
+	holes := TableEntityFixedHoles
 	recordBytes := known.Record
 	censusUnknown, censusKind := int32(0), int32(0)
 	if hash != TableEntityFixedHash {
@@ -11229,6 +11271,7 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 			return tableFixedRefuse(report, lane.Why)
 		}
 		entries, entryCount = lane.Entries, lane.Count
+		holes = TableEntityFixedLineageHoles[pick]
 		// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
@@ -11247,14 +11290,7 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableFixedReasonBatchTooLarge)
 	}
-	var def TableEntity
-	var defBytes []byte
-	var holes []tableFixedHole
-	if n > 0 {
-		TableEntityReset(&def)
-		defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
-		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
-	}
+	defBytes := TableEntityFixedResetImage
 	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
 		if tableFixedGet64(scan) != hash {
 			return tableFixedRefuse(report, TableFixedReasonNoLayout)
@@ -11339,6 +11375,25 @@ const TableStatFixedFloor = 0
 // One plan per lineage entry, laid down from THE LOCK's bytes: nothing
 // compiles on the load path (§5.8 row 3).
 var TableStatFixedLineagePlans = tableFixedLineagePlans(TableStatFixedKnown, TableStatFixedLayout, TableStatFixedDst, TableStatFixedHash)
+
+var TableStatFixedResetImage = func() []byte {
+	var def TableStat
+	TableStatReset(&def)
+	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+}()
+
+var TableStatFixedHoles = tableFixedHoles(TableStatFixedPlan.Entries, TableStatFixedPlan.Count, uint32(len(TableStatFixedResetImage)))
+
+var TableStatFixedLineageHoles = func() [][]tableFixedHole {
+	out := make([][]tableFixedHole, len(TableStatFixedLineagePlans))
+	for i := range TableStatFixedLineagePlans {
+		lane := &TableStatFixedLineagePlans[i]
+		if lane.Why == "" {
+			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(TableStatFixedResetImage)))
+		}
+	}
+	return out
+}()
 
 // TableStatFixedPlanMax is the plan capacity every layout this build reads needs:
 // the largest entry count over the identity plan and every lineage plan
@@ -11436,6 +11491,9 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 	}
 	entries := TableStatFixedPlan.Entries
 	entryCount := TableStatFixedPlan.Count
+	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
+	// a lineage plan's when a peer selects one. Nothing computes them per call.
+	holes := TableStatFixedHoles
 	recordBytes := known.Record
 	censusUnknown, censusKind := int32(0), int32(0)
 	if hash != TableStatFixedHash {
@@ -11444,6 +11502,7 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 			return tableFixedRefuse(report, lane.Why)
 		}
 		entries, entryCount = lane.Entries, lane.Count
+		holes = TableStatFixedLineageHoles[pick]
 		// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
@@ -11462,14 +11521,7 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableFixedReasonBatchTooLarge)
 	}
-	var def TableStat
-	var defBytes []byte
-	var holes []tableFixedHole
-	if n > 0 {
-		TableStatReset(&def)
-		defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
-		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
-	}
+	defBytes := TableStatFixedResetImage
 	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
 		if tableFixedGet64(scan) != hash {
 			return tableFixedRefuse(report, TableFixedReasonNoLayout)
@@ -11779,6 +11831,25 @@ const TableMixedFixedFloor = 0
 // compiles on the load path (§5.8 row 3).
 var TableMixedFixedLineagePlans = tableFixedLineagePlans(TableMixedFixedKnown, TableMixedFixedLayout, TableMixedFixedDst, TableMixedFixedHash)
 
+var TableMixedFixedResetImage = func() []byte {
+	var def TableMixed
+	TableMixedReset(&def)
+	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+}()
+
+var TableMixedFixedHoles = tableFixedHoles(TableMixedFixedPlan.Entries, TableMixedFixedPlan.Count, uint32(len(TableMixedFixedResetImage)))
+
+var TableMixedFixedLineageHoles = func() [][]tableFixedHole {
+	out := make([][]tableFixedHole, len(TableMixedFixedLineagePlans))
+	for i := range TableMixedFixedLineagePlans {
+		lane := &TableMixedFixedLineagePlans[i]
+		if lane.Why == "" {
+			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(TableMixedFixedResetImage)))
+		}
+	}
+	return out
+}()
+
 // TableMixedFixedPlanMax is the plan capacity every layout this build reads needs:
 // the largest entry count over the identity plan and every lineage plan
 // (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.2). A plan slice of this length never
@@ -11875,6 +11946,9 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 	}
 	entries := TableMixedFixedPlan.Entries
 	entryCount := TableMixedFixedPlan.Count
+	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
+	// a lineage plan's when a peer selects one. Nothing computes them per call.
+	holes := TableMixedFixedHoles
 	recordBytes := known.Record
 	censusUnknown, censusKind := int32(0), int32(0)
 	if hash != TableMixedFixedHash {
@@ -11883,6 +11957,7 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 			return tableFixedRefuse(report, lane.Why)
 		}
 		entries, entryCount = lane.Entries, lane.Count
+		holes = TableMixedFixedLineageHoles[pick]
 		// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
@@ -11901,14 +11976,7 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableFixedReasonBatchTooLarge)
 	}
-	var def TableMixed
-	var defBytes []byte
-	var holes []tableFixedHole
-	if n > 0 {
-		TableMixedReset(&def)
-		defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
-		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
-	}
+	defBytes := TableMixedFixedResetImage
 	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
 		if tableFixedGet64(scan) != hash {
 			return tableFixedRefuse(report, TableFixedReasonNoLayout)

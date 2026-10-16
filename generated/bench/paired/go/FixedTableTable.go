@@ -1410,6 +1410,25 @@ const FixedTableFixedFloor = 0
 // compiles on the load path (§5.8 row 3).
 var FixedTableFixedLineagePlans = tableFixedLineagePlans(FixedTableFixedKnown, FixedTableFixedLayout, FixedTableFixedDst, FixedTableFixedHash)
 
+var FixedTableFixedResetImage = func() []byte {
+	var def FixedTable
+	FixedTableReset(&def)
+	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+}()
+
+var FixedTableFixedHoles = tableFixedHoles(FixedTableFixedPlan.Entries, FixedTableFixedPlan.Count, uint32(len(FixedTableFixedResetImage)))
+
+var FixedTableFixedLineageHoles = func() [][]tableFixedHole {
+	out := make([][]tableFixedHole, len(FixedTableFixedLineagePlans))
+	for i := range FixedTableFixedLineagePlans {
+		lane := &FixedTableFixedLineagePlans[i]
+		if lane.Why == "" {
+			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(FixedTableFixedResetImage)))
+		}
+	}
+	return out
+}()
+
 // FixedTableFixedPlanMax is the plan capacity every layout this build reads needs:
 // the largest entry count over the identity plan and every lineage plan
 // (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.2). A plan slice of this length never
@@ -1506,6 +1525,9 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 	}
 	entries := FixedTableFixedPlan.Entries
 	entryCount := FixedTableFixedPlan.Count
+	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
+	// a lineage plan's when a peer selects one. Nothing computes them per call.
+	holes := FixedTableFixedHoles
 	recordBytes := known.Record
 	censusUnknown, censusKind := int32(0), int32(0)
 	if hash != FixedTableFixedHash {
@@ -1514,6 +1536,7 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 			return tableFixedRefuse(report, lane.Why)
 		}
 		entries, entryCount = lane.Entries, lane.Count
+		holes = FixedTableFixedLineageHoles[pick]
 		// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
@@ -1532,14 +1555,7 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableFixedReasonBatchTooLarge)
 	}
-	var def FixedTable
-	var defBytes []byte
-	var holes []tableFixedHole
-	if n > 0 {
-		FixedTableReset(&def)
-		defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
-		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
-	}
+	defBytes := FixedTableFixedResetImage
 	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
 		if tableFixedGet64(scan) != hash {
 			return tableFixedRefuse(report, TableFixedReasonNoLayout)
