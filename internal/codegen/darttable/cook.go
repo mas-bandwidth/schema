@@ -31,6 +31,7 @@ package darttable
 
 import (
 	"fmt"
+	"math/bits"
 	"sort"
 	"strings"
 
@@ -39,6 +40,11 @@ import (
 
 // cookHeaderBytes is §7.1's header: eight u64 words.
 const cookHeaderBytes = int64(64)
+
+// cookMagic is cookruntime.go's tableCookMagic, the cooked header's first
+// word (§7.1). Its byte reversal is what a cook of the other order reads back,
+// which refuseReason names foreign_order rather than not_a_cook.
+const cookMagic = uint64(0x4b4f4f434d484353)
 
 // cookMaxAlign is the ceiling on the header's `alignment` word (§7).
 const cookMaxAlign = int64(64)
@@ -432,82 +438,102 @@ func (g *cookGen) needRow(record string) {
 	g.need(base+"Cook.dart", record+"Row")
 }
 
+// emitCookOpen emits the cook's one check and its entry point
+// (docs/SPEC-TABLES.md §7, "Open NAMES ITS REFUSAL"): refuseReason walks §7's
+// clauses IN THE ORDER the spec writes them and names the FIRST that fails in
+// the reference leg's vocabulary (internal/codegen/gotable/refusal.go, the
+// TableRefuseReason Error() strings), and open is that check plus the
+// pointing, so a refusal and its reason can never disagree. The reason is a
+// String rather than an enum because the Dart registry claims no
+// TableRefuseReason yet (internal/tablenames/dart.go); a static member claims
+// nothing (§11).
 func (g *cookGen) emitCookOpen(st *ir.Struct, ml *ir.MemberLayout) {
 	name := st.Name
-	g.pf("  // open checks the header and POINTS, and this is the WHOLE check (§7): the\n")
-	g.pf("  // magic read bytewise, the byte order it establishes, the build version,\n")
-	g.pf("  // every RESERVED word zero, the region ALIGNMENT the header names, the two\n")
-	g.pf("  // part lengths against the length the caller passed — a truncated file\n")
-	g.pf("  // refuses — the ROOT's own storage inside the data part, and the alignment\n")
-	g.pf("  // of the base. Nothing per node, ever: that is what makes this O(1) in the\n")
-	g.pf("  // file's size.\n")
-	g.pf("  //\n")
-	g.pf("  // On a match the bytes ARE what this build wrote, in this build's layout and\n")
-	g.pf("  // this build's byte order, so there is nothing to validate and nothing to\n")
-	g.pf("  // fix up. On any failure it returns null and points at nothing, and the\n")
-	g.pf("  // caller falls back to a wire load — the path that carries every version.\n")
+	g.pf("  // refuseReason is the WHOLE check (§7), and the reason beside the null:\n")
+	g.pf("  // the magic read bytewise, the byte order it establishes, the build\n")
+	g.pf("  // version, every RESERVED word zero, the region ALIGNMENT the header names,\n")
+	g.pf("  // the two part lengths against the length the caller passed, the ROOT's\n")
+	g.pf("  // own storage inside the data part, and the alignment of the base, in\n")
+	g.pf("  // that order. The FIRST failing clause is named in the reference\n")
+	g.pf("  // vocabulary (not_a_cook, foreign_order, wrong_build_version,\n")
+	g.pf("  // reserved_not_zero, bad_alignment, truncated, unaligned_base), and 'ok'\n")
+	g.pf("  // is a match. Nothing per node, ever: that is what makes this O(1).\n")
 	g.pf("  //\n")
 	g.pf("  // EVERY NUMBER BELOW COMES OUT OF THE FILE. Dart's int is signed and 64 bits\n")
 	g.pf("  // wide, so a forged word near 2^63 arrives NEGATIVE — and every term is\n")
 	g.pf("  // bounded BEFORE it is added, so nothing here wraps past the top of the\n")
 	g.pf("  // type and lands back inside the buffer.\n")
-	g.pf("  static %sCook? open(Uint8List? bytes, int at, int length) {\n", name)
-	g.pf("    if (bytes == null || at < 0 || length < %d) {\n      return null;\n    }\n", cookHeaderBytes)
-	g.pf("    if (length > bytes.length - at) {\n")
-	g.pf("      return null; // the claim runs past the bytes the caller owns\n    }\n")
+	g.pf("  static String refuseReason(Uint8List? bytes, int at, int length) {\n")
+	g.pf("    // a null buffer is the CALLER's defect, as an unaligned base is; a claim\n")
+	g.pf("    // shorter than the header has no header to read and is truncated\n")
+	g.pf("    if (bytes == null || at < 0) {\n      return 'unaligned_base';\n    }\n")
+	g.pf("    if (length < %d || length > bytes.length - at) {\n", cookHeaderBytes)
+	g.pf("      return 'truncated'; // or the claim runs past the bytes the caller owns\n    }\n")
 	g.pf("    final view = ByteData.view(\n")
 	g.pf("      bytes.buffer,\n      bytes.offsetInBytes,\n      bytes.lengthInBytes,\n    );\n\n")
 	g.pf("    // THE MAGIC, read BYTEWISE before anything else: it is what establishes\n")
 	g.pf("    // the byte order every other header word is written in. A cook of the\n")
-	g.pf("    // other order reads back this constant byte-reversed and refuses HERE,\n")
-	g.pf("    // rather than reaching a fix-up pass this design does not have.\n")
-	g.pf("    if (tableCookRead64(view, at) != tableCookMagic) {\n      return null;\n    }\n")
-	g.pf("    // and the ORDER WORD does the other job: it RECORDS which order wrote the\n")
-	g.pf("    // file, so a refusal names the order rather than inferring it.\n")
-	g.pf("    if (tableCookRead64(view, at + 16) != tableCookByteOrder) {\n      return null;\n    }\n")
+	g.pf("    // other order reads back this constant byte-reversed (§7.1).\n")
+	g.pf("    final magic = tableCookRead64(view, at);\n")
+	g.pf("    if (magic != tableCookMagic) {\n")
+	g.pf("      return magic == 0x%016x ? 'foreign_order' : 'not_a_cook';\n    }\n", bits.ReverseBytes64(cookMagic))
+	g.pf("    // and the ORDER WORD: a header whose byte_order contradicts its own magic\n")
+	g.pf("    // describes no cook in EITHER order, so it shares the magic's value.\n")
+	g.pf("    if (tableCookRead64(view, at + 16) != tableCookByteOrder) {\n      return 'not_a_cook';\n    }\n")
 	g.pf("    // THE BUILD VERSION: under the match-and-point rule a matching id means\n")
 	g.pf("    // open checks nothing further, so it is the sole guard between this\n")
 	g.pf("    // runtime and a foreign region (§20).\n")
-	g.pf("    if (tableCookRead64(view, at + 8) != tableBuildVersion) {\n      return null;\n    }\n")
+	g.pf("    if (tableCookRead64(view, at + 8) != tableBuildVersion) {\n      return 'wrong_build_version';\n    }\n")
 	g.pf("    // THE RESERVED WORDS: a non-zero one means a writer used a form this\n")
 	g.pf("    // build does not understand, and open refuses rather than ignoring it.\n")
-	g.pf("    if (tableCookRead64(view, at + 48) != 0) {\n      return null;\n    }\n")
-	g.pf("    if (tableCookRead64(view, at + 56) != 0) {\n      return null;\n    }\n\n")
+	g.pf("    if (tableCookRead64(view, at + 48) != 0 ||\n        tableCookRead64(view, at + 56) != 0) {\n")
+	g.pf("      return 'reserved_not_zero';\n    }\n\n")
 	g.pf("    // THE ALIGNMENT WORD is the one field the check COMPUTES WITH rather than\n")
 	g.pf("    // only compares against — the data part begins at align_up(64, alignment)\n")
-	g.pf("    // — so a word that is not an alignment rounds nothing and aligns nothing.\n")
+	g.pf("    // — so a word that is not an alignment rounds nothing and aligns nothing:\n")
+	g.pf("    // inside the floor and the ceiling, a power of two, and a multiple of the\n")
+	g.pf("    // ROOT's own alignof.\n")
 	g.pf("    final alignment = tableCookRead64(view, at + 40);\n")
-	g.pf("    if (alignment < %d || alignment > %d) {\n      return null;\n    }\n",
-		ir.RegionAlignFloor, cookMaxAlign)
-	g.pf("    if (alignment & (alignment - 1) != 0) {\n")
-	g.pf("      return null; // a power of two\n    }\n")
-	g.pf("    if (alignment %% %d != 0) {\n", ml.Align)
-	g.pf("      return null; // and a multiple of the ROOT's own alignof\n    }\n\n")
+	g.pf("    if (alignment < %d ||\n        alignment > %d ||\n", ir.RegionAlignFloor, cookMaxAlign)
+	g.pf("        alignment & (alignment - 1) != 0 ||\n        alignment %% %d != 0) {\n", ml.Align)
+	g.pf("      return 'bad_alignment';\n    }\n\n")
 	g.pf("    // THE DATA OFFSET IS DERIVED, never a header field: a fact a reader\n")
 	g.pf("    // computes is a fact two writers cannot disagree about.\n")
 	g.pf("    final dataOffset = (%d + alignment - 1) & ~(alignment - 1);\n\n", cookHeaderBytes)
 	g.pf("    // THE TWO PART LENGTHS against the length the caller passed. The whole\n")
 	g.pf("    // file is dataOffset + data + attribution, and a size that is not exactly\n")
 	g.pf("    // that refuses: a truncated file and a file with trailing bytes are the\n")
-	g.pf("    // same refusal.\n")
+	g.pf("    // same refusal. A length past 2^63 is not a length.\n")
 	g.pf("    final dataLength = tableCookRead64(view, at + 24);\n")
 	g.pf("    final attribution = tableCookRead64(view, at + 32);\n")
-	g.pf("    if (dataLength < 0 || attribution < 0) {\n")
-	g.pf("      return null; // a length past 2^63 is not a length\n    }\n")
-	g.pf("    if (dataLength > length || attribution > length - dataLength) {\n")
-	g.pf("      return null;\n    }\n")
-	g.pf("    if (dataOffset > length - dataLength - attribution) {\n      return null;\n    }\n")
-	g.pf("    if (dataOffset + dataLength + attribution != length) {\n      return null;\n    }\n\n")
+	g.pf("    if (dataLength < 0 ||\n        attribution < 0 ||\n")
+	g.pf("        dataLength > length ||\n        attribution > length - dataLength ||\n")
+	g.pf("        dataOffset > length - dataLength - attribution ||\n")
+	g.pf("        dataOffset + dataLength + attribution != length) {\n")
+	g.pf("      return 'truncated';\n    }\n\n")
 	g.pf("    // THE DATA PART MUST HOLD THE ROOT. The part lengths frame the FILE; they\n")
 	g.pf("    // do not say the region is at least sizeof(root). Without this a forged\n")
 	g.pf("    // short data part describes a root partly outside the file, and a\n")
 	g.pf("    // match-and-point reader would hand back storage the caller never gave\n")
 	g.pf("    // it — the one way this design could read past the length it was passed.\n")
-	g.pf("    if (dataLength < %d) {\n      return null;\n    }\n\n", ml.Size)
-	g.pf("    // THE ALIGNMENT OF THE BASE, on the offset the caller placed the file at —\n")
-	g.pf("    // the only base a Dart consumer holds (§19.1's rule, in this language's\n")
-	g.pf("    // currency).\n")
-	g.pf("    if (at %% alignment != 0) {\n      return null;\n    }\n\n")
+	g.pf("    if (dataLength < %d) {\n      return 'truncated';\n    }\n\n", ml.Size)
+	g.pf("    // THE ALIGNMENT OF THE BASE, LAST: the only clause that reads nothing out\n")
+	g.pf("    // of the file, on the offset the caller placed it at — the only base a\n")
+	g.pf("    // Dart consumer holds (§19.1's rule, in this language's currency).\n")
+	g.pf("    if (at %% alignment != 0) {\n      return 'unaligned_base';\n    }\n")
+	g.pf("    return 'ok';\n  }\n\n")
+	g.pf("  // open checks the header and POINTS (§7): refuseReason is the whole check,\n")
+	g.pf("  // so on a match the bytes ARE what this build wrote, in this build's layout\n")
+	g.pf("  // and byte order, and there is nothing to validate and nothing to fix up.\n")
+	g.pf("  // On any failure it returns null and points at nothing, and the caller\n")
+	g.pf("  // falls back to a wire load — the path that carries every version.\n")
+	g.pf("  static %sCook? open(Uint8List? bytes, int at, int length) {\n", name)
+	g.pf("    if (bytes == null || refuseReason(bytes, at, length) != 'ok') {\n      return null;\n    }\n")
+	g.pf("    final view = ByteData.view(\n")
+	g.pf("      bytes.buffer,\n      bytes.offsetInBytes,\n      bytes.lengthInBytes,\n    );\n")
+	g.pf("    final alignment = tableCookRead64(view, at + 40);\n")
+	g.pf("    final dataOffset = (%d + alignment - 1) & ~(alignment - 1);\n", cookHeaderBytes)
+	g.pf("    final dataLength = tableCookRead64(view, at + 24);\n")
 	g.pf("    return %sCook(bytes, view, at + dataOffset, dataLength);\n  }\n\n", name)
 }
 

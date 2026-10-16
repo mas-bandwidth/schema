@@ -88,7 +88,7 @@ generated/bench/paired/dart/.stamp: bin/schema bench/corpus/Bench.schema bench/c
 # generated (packet .dart + <Base>Block.dart + <Base>Cook.dart, and the wire
 # forms where the unit owns them). Fixed-class units own form 3, and every
 # carried root also owns form 1, including the V, W and R evolution pairs.
-build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/maps/*.schema tables/messages/*.schema tables/scalars/*.schema tables/backend/*.schema tables/vocab/*.schema tables/vocab9/*.schema examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema
+build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/maps/*.schema tables/messages/*.schema tables/scalars/*.schema tables/backend/*.schema tables/vocab/*.schema tables/vocab9/*.schema examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/G1.schema test/tables/RT1.schema
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
 	# the POINTERED unit: form 1 for Scene, form 3 and cook beside it.
@@ -118,6 +118,11 @@ build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/maps/*.schema t
 	./bin/schema generate --lang dart --out build/tables-generated-dart/backend tables/backend
 	./bin/schema generate --lang dart --out build/tables-generated-dart/vocab tables/vocab
 	./bin/schema generate --lang dart --out build/tables-generated-dart/vocab9 tables/vocab9
+	# the two variable roots of the versioning corpus the wire fuzzer and the
+	# report surface bind (docs/SPEC-TABLES.md §4): P2's Chain and G1's Guarded
+	./bin/schema generate --lang dart --out build/tables-generated-dart/p2 test/tables/P2.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/g1 test/tables/G1.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/rt1 test/tables/RT1.schema
 	@touch $@
 
 # THE DART TABLE SOURCES ARE FORMAT-CANONICAL. `dart format` is the language's
@@ -844,6 +849,81 @@ cards-dart-retain-fuzz: cards-dart-generate build/conformance-harness build/conf
 # codec's retained save is held to the identical byte-for-byte contract the Go
 # leg's cards-retain-fuzz pins.
 test-dart: cards-dart-retain-fuzz
+
+# THE WIRE FUZZER OVER EVERY ROOT (docs/SPEC-TABLES.md §4.2): the harness's
+# DEFAULT manifest, exactly as the Makefile's tables-wire-fuzz runs it — no
+# --manifest, so every corpus root is on the roster — against the Dart driver,
+# which binds every variable root the leg carries (wireCodecs in
+# test/conformance/dart/main.dart) and answers the rest absent. The greps are
+# cards-dart-wire-fuzz's three: zero divergences, nonzero seeds over nonzero
+# roots, nonzero mutants. The RETAIN ARM rides beside it over the same roster
+# (§6.6), so every carried root's retained save is held to the Go reference
+# leg byte for byte.
+DART_WIRE_FUZZ_SEED ?= 24845619678
+DART_WIRE_FUZZ_N ?= 100
+DART_WIRE_FUZZ_TIME ?= 120s
+
+# $(1) the log  $(2) the driver  $(3) extra harness flags
+define dart_wire_fuzz_all
+	@timeout $(DART_WIRE_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+		--driver '$(2) wire-fuzz' --seed $(DART_WIRE_FUZZ_SEED) --n $(DART_WIRE_FUZZ_N) $(3) \
+		> $(1) 2>&1; \
+		status=$$?; cat $(1); \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -q '0 divergences' $(1)
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' $(1)
+	@grep -qE '[1-9][0-9]* mutants' $(1)
+endef
+
+.PHONY: tables-dart-wire-fuzz-all tables-dart-retain-fuzz-all
+tables-dart-wire-fuzz-all: build/conformance-harness build/conformance-dart
+	$(call dart_wire_fuzz_all,build/tables-dart-wire-fuzz-all.log,build/conformance-dart,)
+
+tables-dart-retain-fuzz-all: build/conformance-harness build/conformance-dart
+	$(call dart_wire_fuzz_all,build/tables-dart-retain-fuzz-all.log,build/conformance-dart,--retain)
+
+# THE RETENTION NEGATIVE CONTROL (docs/SPEC-TABLES.md §6.6). A retain gate that
+# has never gone red proves nothing, so this one turns RETENTION OFF in a COPY
+# of the emitter — the retained tail re-emits no record — through `go build
+# -overlay` (under build/, never committed), regenerates every wire unit the
+# driver binds from the sabotaged compiler, compiles the same driver against
+# it, and requires the RETAIN arm over every root to go red on a divergence
+# while the PLAIN arm, which retains nothing, stays green: red on retain and
+# only there.
+.PHONY: tables-dart-retain-negative-control
+DART_RETAIN_NC_UNITS := cards:tables/cards pointers:tables/pointers blobs:tables/blobs lists:tables/lists p2:test/tables/P2.schema g1:test/tables/G1.schema
+tables-dart-retain-negative-control: build/conformance-harness build/tables-generated-dart/.stamp cards-dart-generate
+	@rm -rf build/dart-retain-nc && mkdir -p build/dart-retain-nc
+	@sed 's#if (!identical(rec.owner, owner) || rec.placed) continue;#continue; // SABOTAGED: retention is off#' \
+		internal/codegen/darttable/retainwire.go > build/dart-retain-nc/retainwire.go.txt
+	@cmp -s internal/codegen/darttable/retainwire.go build/dart-retain-nc/retainwire.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/darttable/retainwire.go":"%s/build/dart-retain-nc/retainwire.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-retain-nc/overlay.json
+	go build -overlay build/dart-retain-nc/overlay.json -o build/dart-retain-nc/schema ./cmd/schema
+	@cp -r build/tables-generated-dart build/dart-retain-nc/generated
+	@for pair in $(DART_RETAIN_NC_UNITS); do \
+		dir=$${pair%%:*}; src=$${pair#*:}; \
+		rm -rf build/dart-retain-nc/generated/$$dir; \
+		./build/dart-retain-nc/schema generate --lang dart --out build/dart-retain-nc/generated/$$dir $$src > /dev/null || exit 1; \
+	done
+	@sed -e "s|../../../build/tables-generated-dart/|$(CURDIR)/build/dart-retain-nc/generated/|g" \
+		test/conformance/dart/main.dart > build/dart-retain-nc/main.dart
+	$(DART) compile exe -o build/dart-retain-nc/driver build/dart-retain-nc/main.dart >/dev/null
+	@if timeout $(DART_WIRE_FUZZ_TIME) ./build/conformance-harness wire-fuzz --driver 'build/dart-retain-nc/driver wire-fuzz' \
+		--seed $(DART_WIRE_FUZZ_SEED) --n $(DART_WIRE_FUZZ_N) --retain > build/dart-retain-nc/retain.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the retain arm stayed green with retention off"; tail -5 build/dart-retain-nc/retain.log; exit 1; fi
+	@grep -q 'FAILED after' build/dart-retain-nc/retain.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the retain arm went red for some other reason"; tail -20 build/dart-retain-nc/retain.log; exit 1; }
+	@grep -m1 'FAILED after' build/dart-retain-nc/retain.log
+	@timeout $(DART_WIRE_FUZZ_TIME) ./build/conformance-harness wire-fuzz --driver 'build/dart-retain-nc/driver wire-fuzz' \
+		--seed $(DART_WIRE_FUZZ_SEED) --n $(DART_WIRE_FUZZ_N) > build/dart-retain-nc/plain.log 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the plain arm went red too, so the sabotage is not retention's alone"; tail -20 build/dart-retain-nc/plain.log; exit 1; }
+	@grep -q '0 divergences' build/dart-retain-nc/plain.log
+	@echo "negative control: retention turned off in the Dart emitter turns the retain arm over every root RED, and only it"
+
+# THE EVERY-ROOT FUZZ AND ITS RETENTION CONTROL RIDE THE DART LEG'S GATE.
+test-dart: tables-dart-wire-fuzz-all tables-dart-retain-fuzz-all tables-dart-retain-negative-control
 
 # THE CARDS UNIT'S DART LEG, L1 and L2 (docs/SPEC-TABLES.md §2): the owning
 # facade (tables/cards/dart/lib/cards.dart) over the generated Card codec, the

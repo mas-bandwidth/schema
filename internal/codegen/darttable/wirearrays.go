@@ -181,26 +181,54 @@ func (g *wireGen) emitArrayHelpers(st *ir.Struct) {
 func (g *wireGen) emitFixedHelper(st *ir.Struct, f *ir.Field) {
 	ek := arrayElemKind(f)
 	et := dartListElemType(f)
+	wideningScalar := f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || isFlags(f) || f.Type.Kind == ir.TFloat64
 	g.pf("bool %s(TableWireReader p, %s v) {\n", arrayHelper(st, f, "Fixed"), st.Name)
+	g.pf("\tif (p.limit - p.pos < 2) return true; // inert body (§4)\n")
 	g.pf("\tif (!p.has(1)) { p.report.malformed = true; return false; }\n")
 	g.pf("\tfinal elemKind = p.readByte();\n")
 	g.pf("\tfinal count = p.readLeb();\n")
 	g.pf("\tif (count == null) { p.report.malformed = true; return false; }\n")
-	g.pf("\tif (elemKind != %d) { p.report.kindMismatch++; return true; }\n", ek)
+	if wideningScalar {
+		g.pf("\tif (elemKind != %d) {\n", ek)
+		g.pf("\t\tif (!_kindWidens(elemKind, %d)) { p.report.kindMismatch++; p.arrayKindMismatch = true; return true; }\n", ek)
+		g.pf("\t\tp.report.widened++;\n")
+		g.pf("\t}\n")
+		g.pf("\tfinal r = p;\n") // scalar reader reports through r
+	} else {
+		g.pf("\tif (elemKind != %d) { p.report.kindMismatch++; p.arrayKindMismatch = true; return true; }\n", ek)
+	}
 	g.pf("\tfinal out = <%s>[];\n", et)
 	// a count past the declared slots keeps them and counts one clamp; the
 	// excess skips via the length (§4, internal/tablewire arrayBody)
 	g.pf("\tvar keep = count;\n")
-	g.pf("\tif (keep > %d) { keep = %d; p.report.clamped++; }\n", f.ArrayBound, f.ArrayBound)
-	g.pf("\tfor (var i = 0; i < keep; i++) {\n")
-	g.emitGetElem(f, ek, "out", "p", "\t\t")
+	g.pf("\tif (_u64Above(keep, %d)) { keep = %d; p.report.clamped++; }\n", f.ArrayBound, f.ArrayBound)
+	// A damaged later element keeps the prefix already decoded. The emitted
+	// element reader returns on damage, so finally commits that prefix before
+	// its return (internal/tablewire arrayBody, §4).
+	g.pf("\ttry {\n")
+	g.pf("\t\tfor (var i = 0; i < keep; i++) {\n")
+	if unionRef(f) != nil {
+		// The reference resets a fixed union slot once the arm header starts,
+		// including when its L is damaged. A slot the body never reaches keeps
+		// its previous value (internal/tablewire/decode.go element).
+		g.pf("\t\t\tif (p.has(1)) v.%s[i] = %s();\n", fieldMember(f), f.Type.Name)
+	}
+	if wideningScalar {
+		g.emitLoadScalarListElem(f, "out", "p", "")
+	} else {
+		g.emitGetElem(f, ek, "out", "p", "\t\t\t")
+	}
+	g.pf("\t\t}\n")
+	g.pf("\t} finally {\n")
+	// The body length is authoritative for where the parent resumes. Unused
+	// bytes after the declared elements are skipped, not a reason to discard
+	// the decoded prefix (§4, internal/tablewire arrayBody).
+	g.pf("\t\tfinal fresh = List<%s>.from(v.%s);\n", et, fieldMember(f))
+	g.pf("\t\tfor (var i = 0; i < out.length && i < %d; i++) {\n", f.ArrayBound)
+	g.pf("\t\t\tfresh[i] = out[i];\n")
+	g.pf("\t\t}\n")
+	g.pf("\t\tv.%s = fresh;\n", fieldMember(f))
 	g.pf("\t}\n")
-	g.pf("\tif (keep == count && p.pos != p.limit) { p.report.malformed = true; return false; }\n")
-	g.pf("\tfinal fresh = List<%s>.generate(%d, (_) => %s);\n", et, f.ArrayBound, g.elemDefault(f))
-	g.pf("\tfor (var i = 0; i < out.length && i < %d; i++) {\n", f.ArrayBound)
-	g.pf("\t\tfresh[i] = out[i];\n")
-	g.pf("\t}\n")
-	g.pf("\tv.%s = fresh;\n", fieldMember(f))
 	g.pf("\treturn true;\n")
 	g.pf("}\n\n")
 }
@@ -214,13 +242,20 @@ func (g *wireGen) emitKeyedHelper(st *ir.Struct, f *ir.Field) {
 	g.emitGetPayload(singleOf(f), "v[slot]", "p", "\t")
 	g.pf("}\n\n")
 	g.pf("bool %s(TableWireReader p, %s v) {\n", arrayHelper(st, f, "Keyed"), st.Name)
+	g.pf("\tif (p.limit - p.pos < 2) return true; // inert body (§4)\n")
 	g.pf("\tif (!p.has(1)) { p.report.malformed = true; return false; }\n")
 	g.pf("\tfinal elemKind = p.readByte();\n")
 	g.pf("\tfinal pairs = p.readLeb();\n")
 	g.pf("\tif (pairs == null) { p.report.malformed = true; return false; }\n")
-	g.pf("\tif (elemKind != %d) { p.report.kindMismatch++; return true; }\n", ek)
-	g.pf("\tfinal fresh = List<%s>.generate(%d, (_) => %s);\n", et, f.ArrayBound, g.elemDefault(f))
-	g.pf("\tfor (var k = 0; k < pairs; k++) {\n")
+	g.pf("\tif (elemKind != %d) {\n", ek)
+	g.pf("\t\tif (!_kindWidens(elemKind, %d)) { p.report.kindMismatch++; p.arrayKindMismatch = true; return true; }\n", ek)
+	g.pf("\t\tp.report.widened++;\n")
+	g.pf("\t}\n")
+	g.pf("\tfinal fresh = List<%s>.from(v.%s);\n", et, fieldMember(f))
+	// The keyed body commits each decoded slot even if a later triple is
+	// damaged, and its length skips any trailing slack (§3.2, tablewire.keyed).
+	g.pf("\ttry {\n")
+	g.pf("\tfor (var k = 0; pairs < 0 || k < pairs; k++) {\n")
 	g.pf("\t\tfinal keyRef = p.readLeb();\n")
 	g.pf("\t\tif (keyRef == null) { p.report.malformed = true; return false; }\n")
 	g.pf("\t\tfinal vid = p.refToId[keyRef];\n")
@@ -235,12 +270,28 @@ func (g *wireGen) emitKeyedHelper(st *ir.Struct, f *ir.Field) {
 	g.pf("\t\t\tp.report.unknown++;\n")
 	g.pf("\t\t\tif (p.retain != null) p.report.retainLost++;\n")
 	g.pf("\t\t} else {\n")
-	g.pf("\t\t\t%s(TableWireReader.sub(p, p.pos, p.pos + n), fresh, slot, elemKind);\n", elem)
+	if f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || isFlags(f) || f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
+		// A keyed triple's L can contain padding after a scalar. The reference
+		// consumes the wire kind's width and resumes at L (§3.2, tablewire.keyed).
+		g.pf("\t\t\tfinal width = _kindWidth(elemKind);\n")
+		g.pf("\t\t\tfinal payloadEnd = width > 0 && width <= n ? p.pos + width : p.pos + n;\n")
+		g.pf("\t\t\t%s(TableWireReader.sub(p, p.pos, payloadEnd), fresh, slot, elemKind);\n", elem)
+	} else if enumRef(f) != nil {
+		// The enum value is one LEB reference. The enclosing keyed triple's L
+		// may contain slack; the reference reads the value then skips to L.
+		g.pf("\t\t\tfinal probe = TableWireReader.sub(p, p.pos, p.pos + n);\n")
+		g.pf("\t\t\tfinal enumRef = probe.readLeb();\n")
+		g.pf("\t\t\tfinal payloadEnd = enumRef == null ? p.pos + n : probe.pos;\n")
+		g.pf("\t\t\t%s(TableWireReader.sub(p, p.pos, payloadEnd), fresh, slot, elemKind);\n", elem)
+	} else {
+		g.pf("\t\t\t%s(TableWireReader.sub(p, p.pos, p.pos + n), fresh, slot, elemKind);\n", elem)
+	}
 	g.pf("\t\t}\n")
 	g.pf("\t\tp.pos += n;\n")
 	g.pf("\t}\n")
-	g.pf("\tif (p.pos != p.limit) { p.report.malformed = true; return false; }\n")
-	g.pf("\tv.%s = fresh;\n", fieldMember(f))
+	g.pf("\t} finally {\n")
+	g.pf("\t\tv.%s = fresh;\n", fieldMember(f))
+	g.pf("\t}\n")
 	g.pf("\treturn true;\n")
 	g.pf("}\n\n")
 }
@@ -256,7 +307,15 @@ func (g *wireGen) emitLoadArray(st *ir.Struct, f *ir.Field, ind string) {
 	g.pf("%s\t{\n", ind)
 	g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
 	g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
-	g.pf("%s\t\t%s(TableWireReader.sub(r, r.pos, r.pos + len), v);\n", ind, helper)
+	g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, r.pos + len);\n", ind)
+	g.pf("%s\t\t%s(arr, v);\n", ind, helper)
+	for _, original := range st.Fields {
+		if original.Name == f.Name && original.Type.Optional {
+			has := hasMember(original)
+			g.pf("%s\t\tif (arr.arrayKindMismatch) v.%s = was%s;\n", ind, has, capitalize(has))
+			break
+		}
+	}
 	g.pf("%s\t\tr.pos += len;\n", ind)
 	g.pf("%s\t}\n", ind)
 	g.pf("%s\tbreak;\n", ind)

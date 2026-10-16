@@ -541,6 +541,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		// does not carry at its default
 		ek := arrayElemKind(f)
 		et := dartListElemType(f)
+		g.pf("%sif (%s.limit - %s.pos < 2) { %s = List<%s>.generate(%d, (_) => %s); %s.pos = %s.limit; return true; }\n", ind, p, p, dest, et, f.ArrayBound, g.elemDefault(f), p, p)
 		g.pf("%sif (!%s.has(1)) %s\n", ind, p, bad)
 		g.pf("%sfinal elemKind = %s.readByte();\n", ind, p)
 		g.pf("%sfinal count = %s.readLeb();\n", ind, p)
@@ -550,7 +551,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%sfor (var i = 0; i < count; i++) {\n", ind)
 		g.emitGetElem(f, ek, "out", p, ind+"\t")
 		g.pf("%s}\n", ind)
-		g.pf("%sif (%s.pos != %s.limit) %s\n", ind, p, p, bad)
+		g.pf("%s%s.pos = %s.limit; // the array body's L skips trailing slack (§4)\n", ind, p, p)
 		g.pf("%sfinal fresh = List<%s>.generate(%d, (_) => %s);\n", ind, et, f.ArrayBound, g.elemDefault(f))
 		g.pf("%sfor (var i = 0; i < out.length && i < %d; i++) { fresh[i] = out[i]; }\n", ind, f.ArrayBound)
 		g.pf("%s%s = fresh;\n", ind, dest)
@@ -687,16 +688,17 @@ func (g *wireGen) emitGetElem(f *ir.Field, ek int, out, p, ind string) {
 		e := enumRef(f)
 		g.pf("%sfinal vref = %s.readLeb();\n", ind, p)
 		g.pf("%sif (vref == null) %s\n", ind, bad)
-		g.pf("%sfinal vid = vref == 0 ? 0 : %s.refToId[vref];\n", ind, p)
-		g.pf("%sif (vid == null) %s\n", ind, bad)
+		g.pf("%sif (vref == 0) { %s.add(0); } else {\n", ind, out)
+		g.pf("%s\tfinal vid = %s.refToId[vref];\n", ind, p)
+		g.pf("%s\tif (vid == null) %s\n", ind, bad)
 		// an element naming no variant this reader knows reads None and
 		// counts unknown, exactly as an enum field does (§4)
-		g.pf("%sswitch (vid) {\n", ind)
-		g.pf("%s\tcase 0: %s.add(0);\n", ind, out)
+		g.pf("%s\tswitch (vid) {\n", ind)
 		for i := range e.Variants {
-			g.pf("%s\tcase %s: %s.add(%d);\n", ind, dartU64Literal(ir.TableWireId(e.VariantWireName(i))), out, i+1)
+			g.pf("%s\t\tcase %s: %s.add(%d);\n", ind, dartU64Literal(ir.TableWireId(e.VariantWireName(i))), out, i+1)
 		}
-		g.pf("%s\tdefault: %s.add(0); %s.report.unknown++; if (%s.retain != null) %s.report.retainLost++;\n", ind, out, p, p, p)
+		g.pf("%s\t\tdefault: %s.add(0); %s.report.unknown++; if (%s.retain != null) %s.report.retainLost++;\n", ind, out, p, p, p)
+		g.pf("%s\t}\n", ind)
 		g.pf("%s}\n", ind)
 	case wireKindBool:
 		g.pf("%sif (!%s.has(1)) %s\n", ind, p, bad)

@@ -39,6 +39,9 @@ import '../../../build/tables-generated-dart/vocab/VocabdemoFixed.dart' as vocab
 import '../../../build/tables-generated-dart/vocab/VocabFixed.dart' as vocab;
 import '../../../build/tables-generated-dart/vocab9/Vocab9demoFixed.dart' as vocab9demo;
 import '../../../build/tables-generated-dart/vocab9/Vocab9Fixed.dart' as vocab9;
+import '../../../build/tables-generated-dart/p2/Tblp2Wire.dart' as tblp2;
+import '../../../build/tables-generated-dart/g1/Tblg1Wire.dart' as tblg1;
+import '../../../build/tables-generated-dart/rt1/Tblrt1Wire.dart' as tblrt1;
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -463,6 +466,84 @@ int surfaceCookForeign(String outDir) {
   return 0;
 }
 
+// ---- THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §7, §19.2) ----
+//
+// cook-reason and block-reason: for each `refusal <forgery> <kind>` line, the
+// forgery is placed exactly as the forgery surfaces place it and the reader's
+// own refuseReason names the FIRST failing clause, one word in the reference
+// vocabulary (internal/codegen/gotable/refusal.go). The expectation stays in
+// the harness; nothing here knows which word a forgery owes.
+
+List<String>? forgeryLine(String name) {
+  for (final f in kind('forgery')) {
+    if (f[1] == name) {
+      return f;
+    }
+  }
+  return null;
+}
+
+String cookReasonAt(String root, Uint8List? buffer, int base, int bytes) {
+  switch (root) {
+    case 'Scene':
+      return ck.SceneCook.refuseReason(buffer, base, bytes);
+    case 'Depot':
+      return ck.DepotCook.refuseReason(buffer, base, bytes);
+    case 'Album':
+      return ck.AlbumCook.refuseReason(buffer, base, bytes);
+    case 'TreeNode':
+      return ck.TreeNodeCook.refuseReason(buffer, base, bytes);
+    case 'ListNode':
+      return ck.ListNodeCook.refuseReason(buffer, base, bytes);
+  }
+  throw StateError('driver: no cook root named $root');
+}
+
+String blockReason(String name, Uint8List image, int extent, int pointer) {
+  if (pointer < 0) {
+    return blk.RenderFrameBlock.refuseReason(null, 0, 0);
+  }
+  final claim = extent < 0 ? image.length : extent;
+  final buffer = blockBuffer(image, extent, pointer);
+  if (name.startsWith('block_render')) {
+    return blk.RenderFrameBlock.refuseReason(buffer, pointer, claim);
+  }
+  if (name.startsWith('block_padded')) {
+    return blk.PaddedFrameBlock.refuseReason(buffer, pointer, claim);
+  }
+  throw StateError('driver: no block named $name');
+}
+
+int surfaceReason(String outDir, String want) {
+  for (final r in kind('refusal')) {
+    if (r[2] != want) {
+      continue;
+    }
+    final f = forgeryLine(r[1]);
+    if (f == null) {
+      stderr.writeln('driver: refusal ${r[1]} names no forgery line');
+      return 1;
+    }
+    final data = File(f[4]).readAsBytesSync();
+    final extent = int.parse(f[5]);
+    final pointer = f[6] == 'null' ? -1 : int.parse(f[6]);
+    String why;
+    if (want == 'cook') {
+      final (buffer, base, bytes) = place(
+        data,
+        extent,
+        pointer < 0 ? 0 : pointer,
+        cookAlignment(data),
+      );
+      why = cookReasonAt(f[3], pointer < 0 ? null : buffer, base, bytes);
+    } else {
+      why = blockReason(f[3], data, extent, pointer);
+    }
+    File('$outDir/${r[1]}').writeAsStringSync('$why\n');
+  }
+  return 0;
+}
+
 // ---- THE COOK'S NODE DUMP (testdata/conformance/tables/FORMAT.md) ----
 //
 // Every node this side reaches through its OWN derefs, written as canonical
@@ -747,6 +828,10 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return widedemo.captionWireSave(widedemo.captionWireLoad(wire));
     case 'widedemo Stamp':
       return widedemo.stampWireSave(widedemo.stampWireLoad(wire));
+    case 'tblp2 Chain':
+      return tblp2.chainWireSave(tblp2.chainWireLoad(wire));
+    case 'tblg1 Guarded':
+      return tblg1.guardedWireSave(tblg1.guardedWireLoad(wire));
   }
   return null;
 }
@@ -973,6 +1058,14 @@ String? loadReport(String unit, String root, Uint8List wire) {
       final r = widedemo.TableWireReport();
       widedemo.stampWireLoad(wire, r);
       return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'tblp2 Chain':
+      final r = tblp2.TableWireReport();
+      tblp2.chainWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'tblg1 Guarded':
+      final r = tblg1.TableWireReport();
+      tblg1.guardedWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
   }
   return null;
 }
@@ -1135,6 +1228,65 @@ int surfaceReport(String outDir) {
       continue;
     }
     File('$outDir/${f[1]}').writeAsStringSync(line);
+  }
+  return 0;
+}
+
+// §6.6's two retain surfaces run the same round trip. The manifest states
+// capacities as rules: "short" is one byte below this port's own roomy load,
+// while the id-list capacity is a count shared across languages.
+int surfaceRetain(String outDir, bool saves) {
+  for (final f in lines.where((row) => row[0] == 'retain' || row[0] == 'retain-message')) {
+    if (saves && f.last == '-') continue;
+    if (f[0] == 'retain-message') {
+      // A plain table has no message-form verbs (§3.3).
+      File('$outDir/${f[1]}.absent').writeAsStringSync('plain table: §3.3');
+      continue;
+    }
+    if (f[2] != 'tblrt1' || f[3] != 'Node') {
+      spillAbsent(outDir, f[1]);
+      continue;
+    }
+    final wire = File(f[4]).readAsBytesSync();
+    final idCapacity = f[6] == 'full' ? 131072 : int.parse(f[6]);
+    var capacity = 1048576;
+    if (f[5] == 'short') {
+      final probe = tblrt1.TableRetain(capacity, List<int>.filled(idCapacity, 0));
+      final probeReport = tblrt1.TableWireReport();
+      tblrt1.nodeWireLoadRetain(wire, probe, probeReport);
+      if (probeReport.malformed || probeReport.refused || probe.used == 0) {
+        stderr.writeln('retain ${f[1]}: capacity probe refused');
+        return 1;
+      }
+      capacity = probe.used - 1;
+    }
+    final retain = tblrt1.TableRetain(capacity, List<int>.filled(idCapacity, 0));
+    final report = tblrt1.TableWireReport();
+    final value = tblrt1.nodeWireLoadRetain(wire, retain, report);
+    if (report.malformed || report.refused) {
+      stderr.writeln('retain ${f[1]}: load refused (${report.reason})');
+      return 1;
+    }
+    final retained = report.retained;
+    final lost = report.retainLost;
+    final unknown = report.unknown;
+    final saved = tblrt1.nodeWireSaveRetain(value, retain, report);
+    final saveLost = report.retainLost - lost;
+    final secondReport = tblrt1.TableWireReport();
+    final again = tblrt1.nodeWireSaveRetain(value, retain, secondReport);
+    if (saved.length != tblrt1.nodeWireMeasureRetain(value, retain) ||
+        again.length != saved.length ||
+        !again.asMap().entries.every((e) => e.value == saved[e.key]) ||
+        secondReport.retainLost != saveLost) {
+      stderr.writeln('retain ${f[1]}: save is not repeatable');
+      return 1;
+    }
+    final path = File('$outDir/${f[1]}');
+    if (saves) {
+      path.writeAsBytesSync(saved);
+    } else {
+      path.writeAsStringSync('$retained,$lost,$unknown $saveLost\n');
+    }
   }
   return 0;
 }
@@ -1323,14 +1475,15 @@ const String surfaces =
     // accelerators and the forgery surfaces stay. The wire fuzzer's roots are
     // another card's.
     ''
-    'wire\nmessage\njson-read\njson-write\nreport\n'
+    'wire\nmessage\njson-read\njson-write\nreport\nretain\nretain-save\n'
     'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
     'forgery\ncook-forgery\n';
 
 void main(List<String> args) {
   if (args.isNotEmpty && args[0] == 'wire-fuzz') {
-    wireFuzz().then((_) => exit(0)).catchError((Object e) {
+    wireFuzz().then((_) => exit(0)).catchError((Object e, StackTrace stack) {
       stderr.writeln('wire-fuzz: $e');
+      stderr.writeln(stack);
       exit(1);
     });
     return;
@@ -1340,9 +1493,9 @@ void main(List<String> args) {
 
 // ---- the WIRE-FUZZ driver (test/conformance/harness/wirefuzz.go) ----
 //
-// The harness owns the mutations and the oracle; this process only binds the
-// roster entry to the generated Card codec and returns the report and the
-// saved value. The protocol is the binary one the Go leg speaks
+// The harness owns the mutations and the oracle; this process only binds each
+// roster entry to the generated codec of that root (wireCodecs) and returns
+// the report and the saved value. The protocol is the binary one the Go leg speaks
 // (test/conformance/go/wire_fuzz.go): a roster of (unit, root, form, retain),
 // one availability byte a root, then for each mutant an index, a length, the
 // wire bytes, and back the loaded flag, the six counters, the verdict, the
@@ -1405,10 +1558,325 @@ Future<String> _readString(_ByteSource src) async {
   return String.fromCharCodes(await src.read(n));
 }
 
+// _FuzzAnswer is one mutant's reply: the measure (and the loaded flag it
+// implies), the report's counters and the saved bytes.
+final class _FuzzAnswer {
+  final int measure;
+  final dynamic report; // each unit's own TableWireReport: the same members
+  final List<int>? saved; // null: the save refused (a data cycle, §3.1)
+  _FuzzAnswer(this.measure, this.report, this.saved);
+}
+
+// _trySave runs one load-and-save, and a save that REFUSES — a value whose
+// pointers close a cycle, which no file can carry (docs/SPEC-TABLES.md §3.1)
+// — answers null, which the protocol carries as a negative saved length.
+List<int>? _trySave(List<int> Function() save) {
+  try {
+    return save();
+  } on StateError {
+    return null;
+  }
+}
+
+typedef _FuzzCodec = _FuzzAnswer Function(Uint8List wire, bool retain);
+
+// the caller-owned stores the retention arm fixes (docs/SPEC-TABLES.md §6.6):
+// 1 MiB of bytes and one id per eight bytes, the harness's own two numbers.
+const int _fuzzRetainBytes = 1048576;
+const int _fuzzRetainIds = 131072;
+
+// wireCodecs binds EVERY variable root this leg carries (docs/SPEC-TABLES.md
+// §3, §6.6) to its plain and retaining verbs, keyed `<unit> <root>` as the
+// roster names it. A root that is not here answers 0 on the roster and the
+// harness counts its seeds absent; a root that is here is held to the Go
+// reference leg byte for byte, through both pairs.
+final Map<String, _FuzzCodec> wireCodecs = <String, _FuzzCodec>{
+  'cards Card': (w, retain) {
+    final r = TableWireReport();
+    final m = cardWireMeasure(w);
+    if (retain) {
+      final t = TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => cardWireSaveRetain(cardWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => cardWireSave(cardWireLoad(w, r))));
+  },
+  'graphdemo Scene': (w, retain) {
+    final r = graphdemo.TableWireReport();
+    final m = graphdemo.sceneWireMeasure(w);
+    if (retain) {
+      final t = graphdemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => graphdemo.sceneWireSaveRetain(graphdemo.sceneWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => graphdemo.sceneWireSave(graphdemo.sceneWireLoad(w, r))));
+  },
+  'blobdemo Catalog': (w, retain) {
+    final r = blobdemo.TableWireReport();
+    final m = blobdemo.catalogWireMeasure(w);
+    if (retain) {
+      final t = blobdemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => blobdemo.catalogWireSaveRetain(blobdemo.catalogWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => blobdemo.catalogWireSave(blobdemo.catalogWireLoad(w, r))));
+  },
+  'listdemo Save': (w, retain) {
+    final r = listdemo.TableWireReport();
+    final m = listdemo.saveWireMeasure(w);
+    if (retain) {
+      final t = listdemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => listdemo.saveWireSaveRetain(listdemo.saveWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => listdemo.saveWireSave(listdemo.saveWireLoad(w, r))));
+  },
+  'listdemo Album': (w, retain) {
+    final r = listdemo.TableWireReport();
+    final m = listdemo.albumWireMeasure(w);
+    if (retain) {
+      final t = listdemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => listdemo.albumWireSaveRetain(listdemo.albumWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => listdemo.albumWireSave(listdemo.albumWireLoad(w, r))));
+  },
+  'listdemo Sheet': (w, retain) {
+    final r = listdemo.TableWireReport();
+    final m = listdemo.sheetWireMeasure(w);
+    if (retain) {
+      final t = listdemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => listdemo.sheetWireSaveRetain(listdemo.sheetWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => listdemo.sheetWireSave(listdemo.sheetWireLoad(w, r))));
+  },
+  'listdemo Unbounded': (w, retain) {
+    final r = listdemo.TableWireReport();
+    final m = listdemo.unboundedWireMeasure(w);
+    if (retain) {
+      final t = listdemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => listdemo.unboundedWireSaveRetain(listdemo.unboundedWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => listdemo.unboundedWireSave(listdemo.unboundedWireLoad(w, r))));
+  },
+  'tblp2 Chain': (w, retain) {
+    final r = tblp2.TableWireReport();
+    final m = tblp2.chainWireMeasure(w);
+    if (retain) {
+      final t = tblp2.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => tblp2.chainWireSaveRetain(tblp2.chainWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => tblp2.chainWireSave(tblp2.chainWireLoad(w, r))));
+  },
+  'tblg1 Guarded': (w, retain) {
+    final r = tblg1.TableWireReport();
+    final m = tblg1.guardedWireMeasure(w);
+    if (retain) {
+      final t = tblg1.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => tblg1.guardedWireSaveRetain(tblg1.guardedWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => tblg1.guardedWireSave(tblg1.guardedWireLoad(w, r))));
+  },
+  'tblv1 Cfg': (w, retain) {
+    final r = tblv1.TableWireReport();
+    final m = 0; // fixed-class root: no region preflight on form 1
+    if (retain) {
+      final t = tblv1.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => tblv1.cfgWireSaveRetain(tblv1.cfgWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => tblv1.cfgWireSave(tblv1.cfgWireLoad(w, r))));
+  },
+  'tblv2 Cfg': (w, retain) {
+    final r = tblv2.TableWireReport();
+    final m = 0; // fixed-class root: no region preflight on form 1
+    if (retain) {
+      final t = tblv2.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => tblv2.cfgWireSaveRetain(tblv2.cfgWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => tblv2.cfgWireSave(tblv2.cfgWireLoad(w, r))));
+  },
+  'tblw1 Fleet': (w, retain) {
+    final r = tblw1.TableWireReport();
+    final m = tblw1.fleetWireMeasure(w);
+    if (retain) {
+      final t = tblw1.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => tblw1.fleetWireSaveRetain(tblw1.fleetWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => tblw1.fleetWireSave(tblw1.fleetWireLoad(w, r))));
+  },
+  'tblw2 Fleet': (w, retain) {
+    final r = tblw2.TableWireReport();
+    final m = tblw2.fleetWireMeasure(w);
+    if (retain) {
+      final t = tblw2.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => tblw2.fleetWireSaveRetain(tblw2.fleetWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => tblw2.fleetWireSave(tblw2.fleetWireLoad(w, r))));
+  },
+  'tblr1 Cfg': (w, retain) {
+    final r = tblr1.TableWireReport();
+    final m = 0; // fixed-class root: no region preflight on form 1
+    if (retain) {
+      final t = tblr1.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => tblr1.cfgWireSaveRetain(tblr1.cfgWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => tblr1.cfgWireSave(tblr1.cfgWireLoad(w, r))));
+  },
+  'tblr2 Cfg': (w, retain) {
+    final r = tblr2.TableWireReport();
+    final m = 0; // fixed-class root: no region preflight on form 1
+    if (retain) {
+      final t = tblr2.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => tblr2.cfgWireSaveRetain(tblr2.cfgWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => tblr2.cfgWireSave(tblr2.cfgWireLoad(w, r))));
+  },
+  'mapdemo Cells': (w, retain) {
+    final r = mapdemo.TableWireReport();
+    final m = mapdemo.cellsWireMeasure(w);
+    if (retain) {
+      final t = mapdemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => mapdemo.cellsWireSaveRetain(mapdemo.cellsWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => mapdemo.cellsWireSave(mapdemo.cellsWireLoad(w, r))));
+  },
+  'mapdemo Chunks': (w, retain) {
+    final r = mapdemo.TableWireReport();
+    final m = mapdemo.chunksWireMeasure(w);
+    if (retain) {
+      final t = mapdemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => mapdemo.chunksWireSaveRetain(mapdemo.chunksWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => mapdemo.chunksWireSave(mapdemo.chunksWireLoad(w, r))));
+  },
+  'mapdemo Crews': (w, retain) {
+    final r = mapdemo.TableWireReport();
+    final m = mapdemo.crewsWireMeasure(w);
+    if (retain) {
+      final t = mapdemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => mapdemo.crewsWireSaveRetain(mapdemo.crewsWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => mapdemo.crewsWireSave(mapdemo.crewsWireLoad(w, r))));
+  },
+  'mapdemo Depth': (w, retain) {
+    final r = mapdemo.TableWireReport();
+    final m = mapdemo.depthWireMeasure(w);
+    if (retain) {
+      final t = mapdemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => mapdemo.depthWireSaveRetain(mapdemo.depthWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => mapdemo.depthWireSave(mapdemo.depthWireLoad(w, r))));
+  },
+  'mapdemo Docs': (w, retain) {
+    final r = mapdemo.TableWireReport();
+    final m = mapdemo.docsWireMeasure(w);
+    if (retain) {
+      final t = mapdemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => mapdemo.docsWireSaveRetain(mapdemo.docsWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => mapdemo.docsWireSave(mapdemo.docsWireLoad(w, r))));
+  },
+  'mapdemo Fleet': (w, retain) {
+    final r = mapdemo.TableWireReport();
+    final m = mapdemo.fleetWireMeasure(w);
+    if (retain) {
+      final t = mapdemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => mapdemo.fleetWireSaveRetain(mapdemo.fleetWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => mapdemo.fleetWireSave(mapdemo.fleetWireLoad(w, r))));
+  },
+  'mapdemo Pairs': (w, retain) {
+    final r = mapdemo.TableWireReport();
+    final m = mapdemo.pairsWireMeasure(w);
+    if (retain) {
+      final t = mapdemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => mapdemo.pairsWireSaveRetain(mapdemo.pairsWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => mapdemo.pairsWireSave(mapdemo.pairsWireLoad(w, r))));
+  },
+  'mapdemo Runs': (w, retain) {
+    final r = mapdemo.TableWireReport();
+    final m = mapdemo.runsWireMeasure(w);
+    if (retain) {
+      final t = mapdemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => mapdemo.runsWireSaveRetain(mapdemo.runsWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => mapdemo.runsWireSave(mapdemo.runsWireLoad(w, r))));
+  },
+  'mapdemo Slots': (w, retain) {
+    final r = mapdemo.TableWireReport();
+    final m = mapdemo.slotsWireMeasure(w);
+    if (retain) {
+      final t = mapdemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => mapdemo.slotsWireSaveRetain(mapdemo.slotsWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => mapdemo.slotsWireSave(mapdemo.slotsWireLoad(w, r))));
+  },
+  'mapdemo Spans': (w, retain) {
+    final r = mapdemo.TableWireReport();
+    final m = mapdemo.spansWireMeasure(w);
+    if (retain) {
+      final t = mapdemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => mapdemo.spansWireSaveRetain(mapdemo.spansWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => mapdemo.spansWireSave(mapdemo.spansWireLoad(w, r))));
+  },
+  'mapdemo Text': (w, retain) {
+    final r = mapdemo.TableWireReport();
+    final m = mapdemo.textWireMeasure(w);
+    if (retain) {
+      final t = mapdemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => mapdemo.textWireSaveRetain(mapdemo.textWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => mapdemo.textWireSave(mapdemo.textWireLoad(w, r))));
+  },
+  'mapdemo Trails': (w, retain) {
+    final r = mapdemo.TableWireReport();
+    final m = mapdemo.trailsWireMeasure(w);
+    if (retain) {
+      final t = mapdemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => mapdemo.trailsWireSaveRetain(mapdemo.trailsWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => mapdemo.trailsWireSave(mapdemo.trailsWireLoad(w, r))));
+  },
+  'messagedemo ToolMessage': (w, retain) {
+    final r = messagedemo.TableWireReport();
+    final m = 0; // fixed-class root: no region preflight on form 1
+    if (retain) {
+      final t = messagedemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => messagedemo.toolMessageWireSaveRetain(messagedemo.toolMessageWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => messagedemo.toolMessageWireSave(messagedemo.toolMessageWireLoad(w, r))));
+  },
+  'scalars SimState': (w, retain) {
+    final r = scalardemo.TableWireReport();
+    final m = 0; // fixed-class root: no region preflight on form 1
+    if (retain) {
+      final t = scalardemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => scalardemo.simStateWireSaveRetain(scalardemo.simStateWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => scalardemo.simStateWireSave(scalardemo.simStateWireLoad(w, r))));
+  },
+  'widedemo Caption': (w, retain) {
+    final r = widedemo.TableWireReport();
+    final m = 0; // fixed-class root: no region preflight on form 1
+    if (retain) {
+      final t = widedemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => widedemo.captionWireSaveRetain(widedemo.captionWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => widedemo.captionWireSave(widedemo.captionWireLoad(w, r))));
+  },
+  'widedemo Stamp': (w, retain) {
+    final r = widedemo.TableWireReport();
+    final m = 0; // fixed-class root: no region preflight on form 1
+    if (retain) {
+      final t = widedemo.TableRetain(_fuzzRetainBytes, List<int>.filled(_fuzzRetainIds, 0));
+      return _FuzzAnswer(m, r, _trySave(() => widedemo.stampWireSaveRetain(widedemo.stampWireLoadRetain(w, t, r), t, r)));
+    }
+    return _FuzzAnswer(m, r, _trySave(() => widedemo.stampWireSave(widedemo.stampWireLoad(w, r))));
+  },
+
+};
+
 Future<void> wireFuzz() async {
   final src = _ByteSource();
   final count = ByteData.sublistView(await src.read(4)).getUint32(0, Endian.little);
-  final roster = <bool>[];
+  final roster = <_FuzzCodec?>[];
   final retains = <bool>[];
   final available = <int>[];
   for (var i = 0; i < count; i++) {
@@ -1416,10 +1884,12 @@ Future<void> wireFuzz() async {
     final root = await _readString(src);
     final form = (await src.read(1))[0];
     final retain = (await src.read(1))[0];
-    final ok = unit == 'cards' && root == 'Card' && form == 1;
-    roster.add(ok);
-    retains.add(ok && retain == 1);
-    available.add(ok ? 1 : 0);
+    // the variable form only (§3): a message-form entry (form 2) is another
+    // surface's, and this leg answers it absent
+    final codec = form == 1 ? wireCodecs['$unit $root'] : null;
+    roster.add(codec);
+    retains.add(codec != null && retain == 1);
+    available.add(codec != null ? 1 : 0);
   }
   stdout.add(available);
   await stdout.flush();
@@ -1431,42 +1901,42 @@ Future<void> wireFuzz() async {
     final index = ByteData.sublistView(idxBytes).getUint32(0, Endian.little);
     final size = ByteData.sublistView(await src.read(4)).getUint32(0, Endian.little);
     final wire = await src.read(size);
-    final report = TableWireReport();
-    var loaded = true;
-    var measure = 0;
-    var saved = <int>[];
-    if (!roster[index]) {
-      loaded = false;
-      measure = -1;
-    } else if (retains[index]) {
-      // the retention arm (docs/SPEC-TABLES.md §6.6): read and write back
-      // through the retaining pair, with the two caller-owned stores the
-      // harness fixes (1 MiB of bytes and one id per eight bytes).
-      final retain = TableRetain(1048576, List<int>.filled(131072, 0));
-      measure = cardWireMeasure(wire);
-      loaded = measure >= 0;
-      final card = cardWireLoadRetain(wire, retain, report);
-      saved = cardWireSaveRetain(card, retain, report);
-    } else {
-      measure = cardWireMeasure(wire);
-      loaded = measure >= 0;
-      final card = cardWireLoad(wire, report);
-      saved = cardWireSave(card);
-    }
+    final codec = roster[index];
     final out = <int>[];
-    _putU8(out, loaded ? 1 : 0);
-    _putU32(out, report.unknown);
-    _putU32(out, report.kindMismatch);
-    _putU32(out, report.widened);
-    _putU32(out, report.clamped);
-    _putU32(out, 0); // duplicate: the card carries no map
-    _putU8(out, report.malformed ? 1 : 0);
-    _putU8(out, report.refused ? 1 : 0);
-    _putU64(out, measure);
-    _putU32(out, report.retained);
-    _putU32(out, report.retainLost);
-    _putU64(out, saved.length);
-    out.addAll(saved);
+    if (codec == null) {
+      // a root the roster answered 0 for is never sent; answer unloaded
+      _putU8(out, 0);
+      for (var k = 0; k < 5; k++) {
+        _putU32(out, 0);
+      }
+      _putU8(out, 0);
+      _putU8(out, 0);
+      _putU64(out, -1);
+      _putU32(out, 0);
+      _putU32(out, 0);
+      _putU64(out, 0);
+    } else {
+      final a = codec(wire, retains[index]);
+      final r = a.report;
+      _putU8(out, a.measure >= 0 ? 1 : 0);
+      _putU32(out, r.unknown as int);
+      _putU32(out, r.kindMismatch as int);
+      _putU32(out, r.widened as int);
+      _putU32(out, r.clamped as int);
+      _putU32(out, 0); // duplicate: no carried root holds a map
+      _putU8(out, (r.malformed as bool) ? 1 : 0);
+      _putU8(out, (r.refused as bool) ? 1 : 0);
+      _putU64(out, a.measure);
+      _putU32(out, r.retained as int);
+      _putU32(out, r.retainLost as int);
+      final saved = a.saved;
+      if (saved == null) {
+        _putU64(out, -1);
+      } else {
+        _putU64(out, saved.length);
+        out.addAll(saved);
+      }
+    }
     stdout.add(out);
     await stdout.flush();
   }
@@ -1502,6 +1972,10 @@ int run(List<String> args) {
       return surfaceJsonWrite(out);
     case 'report':
       return surfaceReport(out);
+    case 'retain':
+      return surfaceRetain(out, false);
+    case 'retain-save':
+      return surfaceRetain(out, true);
     case 'cook':
       return surfaceCook(out);
     case 'cook-write':
@@ -1518,6 +1992,10 @@ int run(List<String> args) {
       return surfaceBlockDump(out);
     case 'forgery':
       return surfaceForgery(out);
+    case 'cook-reason':
+      return surfaceReason(out, 'cook');
+    case 'block-reason':
+      return surfaceReason(out, 'block');
   }
   return 2;
 }
