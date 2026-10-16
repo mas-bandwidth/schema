@@ -1043,14 +1043,30 @@ int readU32(Uint8List d, int off) {
 
 // _f32Bits/_f64Bits render a Dart double as its IEEE 754 bit pattern
 // (docs/SPEC-TABLES.md §3, kinds 10 and 11): the value rides as its raw bits,
-// little-endian, exactly as the other backends write it.
+// little-endian, exactly as the other backends write it. Float32 narrowing and
+// widening are done in software: hardware conversion quiets a signalling NaN
+// (SPEC-TABLES §3), so the sign and mantissa ride in the double representation.
 int _f32Bits(double d) {
-  final bd = ByteData(4);
-  bd.setFloat32(0, d, Endian.little);
-  return bd.getUint32(0, Endian.little);
+  if (!d.isNaN) {
+    final bd = ByteData(4);
+    bd.setFloat32(0, d, Endian.little);
+    return bd.getUint32(0, Endian.little);
+  }
+  final f64 = ByteData(8);
+  f64.setFloat64(0, d, Endian.little);
+  final bits = f64.getUint64(0, Endian.little);
+  var mantissa = (bits >>> 29) & 0x7fffff;
+  if (mantissa == 0) mantissa = 0x400000;
+  return ((bits >>> 63) << 31) | 0x7f800000 | mantissa;
 }
 
 double _f32FromBits(int b) {
+  if ((b & 0x7f800000) == 0x7f800000 && (b & 0x7fffff) != 0) {
+    final f64 = ByteData(8);
+    f64.setUint64(0, ((b >>> 31) << 63) |
+        0x7ff0000000000000 | ((b & 0x7fffff) << 29), Endian.little);
+    return f64.getFloat64(0, Endian.little);
+  }
   final bd = ByteData(4);
   bd.setUint32(0, b, Endian.little);
   return bd.getFloat32(0, Endian.little);
