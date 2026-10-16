@@ -267,7 +267,7 @@ func t02GoR23(t *testing.T) {
 	if n := strings.Count(src, "report.LayoutHash = hash"); n != 2 {
 		t.Errorf("R23: report.LayoutHash is set at %d sites, want the one refusal helper and the one restore", n)
 	}
-	t02GoHas(t, src, "tableFixedRefuseHash(report, TableFixedReasonLayoutNewer, hash)", "R23 layout_newer reports the file's hash")
+	t02GoHas(t, src, "tableFixedRefuseHash(report, TableFixedReasonLayoutUnknown, hash)", "R23 layout_unknown reports the file's hash")
 	t02GoHas(t, src, "tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)", "R23 layout_unsupported reports the file's hash")
 }
 

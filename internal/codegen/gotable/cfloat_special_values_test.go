@@ -86,7 +86,7 @@ fixed table Reading
 // input written into both fields and read back by the form's own reader.
 const cfSpecialProbe = `package probe
 
-import ("math"; "testing")
+import ("bytes"; "math"; "testing")
 
 type cfCase struct {
 	name   string
@@ -187,15 +187,21 @@ func TestMessageIndex(t *testing.T) {
 	}
 }
 
-// THE FIXED FORM: the record carries the float32 whole (§3.4) and the READ's
-// bounds pass holds it, so the reader counts.
+// THE FIXED FORM: forge the hostile bits into a valid record because the Go
+// writer refuses values that its reader would clamp. The READ counts.
 func TestFixed(t *testing.T) {
 	for _, c := range cfCases {
-		v := cfValue(c.in)
+		v := cfValue(0)
 		buf := make([]byte, ReadingFixedMeasure(1))
+		if c.counts > 0 && ReadingFixedSave([]Reading{cfValue(c.in)}, buf) >= 0 {
+			t.Fatalf("fixed %s: writer accepted a value its reader clamps", c.name)
+		}
 		if ReadingFixedSave([]Reading{v}, buf) < 0 {
 			t.Fatalf("fixed %s: save", c.name)
 		}
+		record := buf[len(buf)-ReadingFixedRecordBytes:]
+		tableFixedPut32(record[8:], c.in)
+		tableFixedPut32(record[12:], c.in)
 		var got [1]Reading
 		var plan [64]TableFixedEntry
 		var rep TableReport
@@ -209,14 +215,34 @@ func TestFixed(t *testing.T) {
 	}
 }
 
-// THE VARIABLE FORM: the cell carries the float32 whole (kind 10) and the
-// READ clamps it to the declared range, so the reader counts.
+// THE VARIABLE FORM: replace two known finite field payloads with hostile
+// bits. The writer's refusal cannot be used to create a reader test record.
 func TestVariable(t *testing.T) {
 	for _, c := range cfCases {
-		v := cfValue(c.in)
+		v := cfValue(0x3F000000) // 0.5, present in both fields
 		buf := make([]byte, ReadingMeasure(&v))
+		if c.counts > 0 {
+			invalid := cfValue(c.in)
+			if ReadingSave(&invalid, buf) >= 0 {
+				t.Fatalf("variable %s: writer accepted a value its reader clamps", c.name)
+			}
+		}
 		if ReadingSave(&v, buf) != int64(len(buf)) {
 			t.Fatalf("variable %s: save", c.name)
+		}
+		var from, to [4]byte
+		tableFixedPut32(from[:], 0x3F000000)
+		tableFixedPut32(to[:], c.in)
+		replaced := 0
+		for i := 0; i+4 <= len(buf); i++ {
+			if bytes.Equal(buf[i:i+4], from[:]) {
+				copy(buf[i:i+4], to[:])
+				replaced++
+				i += 3
+			}
+		}
+		if replaced != 2 {
+			t.Fatalf("variable %s: patched %d payloads, want 2", c.name, replaced)
 		}
 		var got Reading
 		var rep TableReport

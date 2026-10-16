@@ -73,7 +73,7 @@ fixed table Point {
 	// SELECT BY HASH, never parse a stranger (docs/FIXED-FORM-ALGORITHM.md §5.3):
 	// the lineage and the floor are static data, and the two answers an
 	// unmatched hash owes are distinct.
-	for _, want := range []string{"tableFixedSelect(PointFixedKnown", "TableFixedReasonLayoutNewer", "PointFixedFloor", "TableFixedReasonLayoutUnsupported"} {
+	for _, want := range []string{"tableFixedSelect(PointFixedKnown", "TableFixedReasonLayoutUnknown", "PointFixedFloor", "TableFixedReasonLayoutUnsupported"} {
 		if !strings.Contains(fixedLoad, want) {
 			t.Errorf("FixedLoad does not select by hash: missing %q", want)
 		}
@@ -454,11 +454,11 @@ func fixedBodySpan(off int) string {
 // judged BEFORE the hash is looked up, so a file whose u32 layout length
 // overruns it answers `layout_malformed` even when its header hash is one this
 // reader has never locked. A reader that consulted the hash first would answer
-// `layout_newer` and bury the framing damage — the order is the property, not
+// `layout_unknown` and bury the framing damage — the order is the property, not
 // the two individual names (§5.3: "The order is load-bearing").
 //
 // The reference states the same pair by hand: test/tables/fixedform_main.cpp's
-// negative_control() flips the header hash and demands `layout_newer`
+// negative_control() flips the header hash and demands `layout_unknown`
 // (312-325), and layout_validation()'s residue builds a file whose length runs
 // past its bytes under an unlocked hash and demands `layout_malformed`
 // (519-527). This is that reasoning in the Go leg's generated-probe idiom; the
@@ -491,15 +491,15 @@ func TestHashCheckedLast(t *testing.T) {
 	}
 
 	// THE HASH IS TAKEN AS GIVEN, NEVER RECOMPUTED. A hash no lineage entry
-	// holds is layout_newer, and the report carries THE FILE'S hash — the
+	// holds is layout_unknown, and the report carries THE FILE'S hash — the
 	// flipped value, not this build's. A reader that recomputed hash_of(layout)
 	// would find its own entry and read the file.
 	unknown := append([]byte(nil), buf...)
 	flipped := binary.LittleEndian.Uint64(unknown[TableFixedHashAt:]) ^ 0xFFFFFFFFFFFFFFFF
 	binary.LittleEndian.PutUint64(unknown[TableFixedHashAt:], flipped)
 	r = TableReport{}
-	if n := PointFixedLoad(got, unknown, plan, &r); n != -1 || r.Reason != "layout_newer" || r.LayoutHash != flipped || r.Malformed {
-		t.Fatalf("an unknown header hash is layout_newer carrying the file's hash: n=%d report=%+v", n, r)
+	if n := PointFixedLoad(got, unknown, plan, &r); n != -1 || r.Reason != "layout_unknown" || r.LayoutHash != flipped || r.Malformed {
+		t.Fatalf("an unknown header hash is layout_unknown carrying the file's hash: n=%d report=%+v", n, r)
 	}
 
 	// AND THE LAYOUT FRAMING IS JUDGED FIRST (§5.3 step 3 before steps 4-5): the
@@ -521,7 +521,7 @@ func TestHashCheckedLast(t *testing.T) {
 // stranger's layout — the seven §1.1 names, and a forward read. §5.6 retires
 // exactly that: "Reading a layout the lock has never seen. The run-time walk of
 // a stranger's layout ... the recompute of the header's hash". Under §5 every
-// one of these files comes back layout_newer, which is the new law and not a
+// one of these files comes back layout_unknown, which is the new law and not a
 // regression. What is OWED is the same coverage on the lineage harness
 // (fixedversioning_test.go's runVersionProbe): the plan path with the peer's
 // entry handed to the reader as its lock, and §1.1's seven rules moved to the
@@ -1779,7 +1779,7 @@ func TestRecordBound(t *testing.T) {
 		t.Fatalf("W10: COMPILE's refusal is named %q, want layout_record_too_large", lineage[0].Why)
 	}
 
-	// LOAD of the same bytes: hash selects, and a stranger is layout_newer.
+	// LOAD of the same bytes: hash selects, and a stranger is layout_unknown.
 	file := make([]byte, TableFixedHeaderBytes+4)
 	file[0] = TableFixedForm
 	tableFixedPut64(file[TableFixedHashAt:], hashOf(hostile))
@@ -1789,7 +1789,7 @@ func TestRecordBound(t *testing.T) {
 	HostReset(&got[0])
 	var r TableReport
 	n := HostFixedLoad(got, file, make([]TableFixedEntry, 256), &r)
-	if n >= 0 || r.Reason != "layout_newer" || r.Verdict != TableOpenRefused {
+	if n >= 0 || r.Reason != "layout_unknown" || r.Verdict != TableOpenRefused {
 		t.Fatalf("W10: LOAD of the same bytes is not refused: n=%d %+v", n, r)
 	}
 	if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Clamped != 0 || r.Malformed {
@@ -1941,7 +1941,7 @@ func TestLiveCount(t *testing.T) {
 	one.Note = 99
 	need := RootFixedMeasure(1)
 	buf := make([]byte, need)
-	if n := RootFixedSave([]Root{one}, buf); n != need {
+	if n := RootForgeFixed([]Root{one}, buf); n != need {
 		t.Fatalf("save %d", n)
 	}
 	got := make([]Root, 1)
@@ -1961,7 +1961,7 @@ func TestLiveCount(t *testing.T) {
 	RootReset(&tag)
 	tag.Pick.Type = PickType(7)
 	tb := make([]byte, RootFixedMeasure(1))
-	if n := RootFixedSave([]Root{tag}, tb); n != int64(len(tb)) {
+	if n := RootForgeFixed([]Root{tag}, tb); n != int64(len(tb)) {
 		t.Fatalf("tag save %d", n)
 	}
 	got = make([]Root, 1)
@@ -1977,7 +1977,7 @@ func TestLiveCount(t *testing.T) {
 	RootReset(&en)
 	en.Grade = Grade(9)
 	eb := make([]byte, RootFixedMeasure(1))
-	if n := RootFixedSave([]Root{en}, eb); n != int64(len(eb)) {
+	if n := RootForgeFixed([]Root{en}, eb); n != int64(len(eb)) {
 		t.Fatalf("enum save %d", n)
 	}
 	got = make([]Root, 1)
@@ -1994,7 +1994,7 @@ func TestLiveCount(t *testing.T) {
 	arm.Pick.Type = PickTypeB
 	arm.Pick.A.N = 99
 	ab := make([]byte, RootFixedMeasure(1))
-	if n := RootFixedSave([]Root{arm}, ab); n != int64(len(ab)) {
+	if n := RootForgeFixed([]Root{arm}, ab); n != int64(len(ab)) {
 		t.Fatalf("arm save %d", n)
 	}
 	got = make([]Root, 1)
@@ -2006,7 +2006,7 @@ func TestLiveCount(t *testing.T) {
 		t.Fatalf("unselected arm must not count: clamped=%d", r.Clamped)
 	}
 }
-`)
+`+forgedFixedSource("Root"))
 }
 
 // TestGoFixedFormLayoutAndHashAreIrsByteForByte is this leg's §7 item 1 gate —
@@ -2610,7 +2610,7 @@ func TestRead(t *testing.T) {
 // Two answers are asserted by name: (1) FxOld's identity plan run straight
 // over FxNew's record body — the path select-by-hash exists to prevent — must
 // NOT reproduce the record; (2) the loader refuses the file whose hash it does
-// not lock with `layout_newer` and moves no counter. The legitimate value the
+// not lock with `layout_unknown` and moves no counter. The legitimate value the
 // rule admits (FxOld reading FxOld) is asserted too, so neither half can pass
 // vacuously.
 //
@@ -2678,15 +2678,15 @@ func TestWrongPlanGoesRed(t *testing.T) {
 
     // (2) THE LOADER REFUSES. FxNew's record carries FxNew's hash in the
     // header at offset 8; FxOld's lock holds only FxOld's hash, so FxOld's
-    // plan is never entered and the file is layout_newer.
+    // plan is never entered and the file is layout_unknown.
     plan := make([]TableFixedEntry, 1024)
     var r TableReport
     old := make([]FxOld, 1)
-    if n := FxOldFixedLoad(old, w2, plan, &r); n >= 0 || r.Reason != "layout_newer" {
+    if n := FxOldFixedLoad(old, w2, plan, &r); n >= 0 || r.Reason != "layout_unknown" {
         t.Fatalf("the loader did not refuse a file under another layout: n=%d %+v", n, r)
     }
     if r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Malformed {
-        t.Fatalf("layout_newer is a refusal and moves no counter: %+v", r)
+        t.Fatalf("layout_unknown is a refusal and moves no counter: %+v", r)
     }
 
     // (1) THE WRONG PLAN IS WRONG. FxOld's identity plan over FxNew's record
@@ -2769,11 +2769,11 @@ func TestAbsentOptionalSkipsStore(t *testing.T) {
 	copy(one.Name[:], "absent")
 	one.NameLength = 6
 	one.LinkPresent = false
-	one.Link.Value = 0x5A5A5A
+	one.Link.Value = 0x5A
 	for i := range one.Link.Tag {
 		one.Link.Tag[i] = 0x5A
 	}
-	if one.Link.Value != 0x5A5A5A || one.Link.Tag[0] != 0x5A {
+	if one.Link.Value != 0x5A || one.Link.Tag[0] != 0x5A {
 		t.Fatal("CONTROL: the absent payload really is stained in storage")
 	}
 
@@ -2900,9 +2900,10 @@ func TestBytesRow(t *testing.T) {
 // both ends are shifted by F first; a `bits(N)` clamps to `2^N - 1`." The
 // emitter's numbers are ir.TableRawRange's — the declared whole-unit bounds
 // Lsh(F) — and the bits branch clamps at the N-bit mask, NOT at the storage
-// width. A poisoned raw rides the writer (the write side's bounds are
-// debug-only and a range is not one of them) and the read-side pass over
-// STORAGE is what holds it. The legitimate value the rule admits is the
+// width. A poisoned raw is FORGED past the Go writer's contract
+// (forgedFixedSource: the writer refuses a value off its range in every
+// build, docs/FIXED-FORM-ALGORITHM.md §3.1, so a foreign writer's bytes are
+// what reaches the reader) and the read-side pass over STORAGE is what holds it. The legitimate value the rule admits is the
 // CONTROL and must not move the counter.
 func TestFixedFormBoundsShiftFixedAndBits(t *testing.T) {
 	runGenerated(t, `package probe
@@ -2917,7 +2918,7 @@ func oneRound(t *testing.T, in Probe) (Probe, TableReport) {
 	t.Helper()
 	need := ProbeFixedMeasure(1)
 	buf := make([]byte, need)
-	if n := ProbeFixedSave([]Probe{in}, buf); n != need {
+	if n := ProbeForgeFixed([]Probe{in}, buf); n != need {
 		t.Fatalf("save %d want %d", n, need)
 	}
 	got := make([]Probe, 1)
@@ -2958,7 +2959,7 @@ func TestShiftAndBits(t *testing.T) {
 		t.Fatalf("clamped=%d, want 2 (one per poisoned field)", r.Clamped)
 	}
 }
-`)
+`+forgedFixedSource("Probe"))
 }
 
 // TestFixedFormDuplicateNeverRaised pins E9 (schema#876): the fixed form's §4
@@ -3109,18 +3110,19 @@ func TestReadSlackUnspecified(t *testing.T) {
 `)
 }
 
-// TestFixedFormWriteSideBoundsAreDebugOnly names the rule that
-// TestFixedFormClampLiveCount only exercises. It writes an out-of-contract
-// count and length, and asserts the WRITE side does nothing: the save refuses
-// nothing and clamps nothing, so the caller's own bytes land on the wire. The
-// read side is what clamps, and only it (docs/FIXED-FORM-ALGORITHM.md §3.1:
-// "Write-side bound checks are DEBUG ONLY, by rule. `count <= Max` and
-// `length <= N` are a caller contract"). Go has no debug-only idiom (AGENTS.md
-// rule 4), so the fixed form's save path holds NO write-side bound check in
-// ANY build — this test asserts the rule's consequence by name: the write side
-// clamps nothing and refuses nothing, and a caller's bug rides the wire
-// unchanged rather than being silently clamped into a lawful record.
-func TestFixedFormWriteSideBoundsAreDebugOnly(t *testing.T) {
+// TestFixedFormWriteSideRefusesInEveryGoBuild names the rule that
+// TestFixedFormClampLiveCount only exercises from the read side. It writes an
+// out-of-contract count and length and asserts the Go WRITE side refuses them
+// BY NAME and stores nothing. docs/FIXED-FORM-ALGORITHM.md §3.1 reads: "Write-side
+// bound checks are DEBUG ONLY, by rule ... Go has no debug-only idiom, so the
+// Go fixed writer REFUSES in every build" (Glenn, 2026-10-15). It was this
+// test's predecessor, TestFixedFormWriteSideBoundsAreDebugOnly, that pinned the
+// opposite: a Go save that checked nothing and put the caller's bug on the
+// wire. The rule moved, so the test moved with it and was renamed because the
+// old name now lied; the read side is still what clamps a FOREIGN writer's
+// bytes, and the last half of this test keeps that pinned by forging them.
+func TestFixedFormWriteSideRefusesInEveryGoBuild(t *testing.T) {
+	t.Parallel()
 	runGenerated(t, `package probe
 fixed table Host {
     marks [..4]int32
@@ -3130,15 +3132,14 @@ fixed table Host {
 `, `package probe
 import ("testing")
 
-func TestWriteSideClampsNothingRefusesNothing(t *testing.T) {
+func TestWriteSideRefusesByName(t *testing.T) {
 	if HostFixedBodyBytes != 36 {
 		t.Fatalf("the record body moved: %d bytes, so the offsets below are stale", HostFixedBodyBytes)
 	}
 
 	// THE NOT-VACUOUS CONTROL, first: a lawful count and length round-trip
-	// cleanly — the write side produces the record's own bytes and the read
-	// side clamps nothing, so this case is about the caller contract, not a
-	// broken save.
+	// cleanly and the reason is nil, so the refusals below are about the
+	// caller's values and not about a broken save.
 	lawful := Host{Tail: 7}
 	HostReset(&lawful)
 	lawful.MarksCount = 2
@@ -3147,8 +3148,8 @@ func TestWriteSideClampsNothingRefusesNothing(t *testing.T) {
 	lawful.NameLength = 3
 	copy(lawful.Name[:], "abc")
 	lb := make([]byte, HostFixedMeasure(1))
-	if n := HostFixedSave([]Host{lawful}, lb); n != int64(len(lb)) {
-		t.Fatalf("lawful save %d", n)
+	if n, err := HostFixedSaveReason([]Host{lawful}, lb); n != int64(len(lb)) || err != nil {
+		t.Fatalf("lawful save %d %v", n, err)
 	}
 	got := make([]Host, 1)
 	var r TableReport
@@ -3160,27 +3161,51 @@ func TestWriteSideClampsNothingRefusesNothing(t *testing.T) {
 		t.Fatalf("a lawful count and length must not clamp: %+v %+v", got[0], r)
 	}
 
-	// THE RULE, BY NAME. count <= Max and length <= N are a CALLER CONTRACT:
-	// 7 > 4 and 9 > 8 are the caller's bug, and the write side must refuse
-	// nothing and clamp nothing — the release path pays nothing.
+	// THE RULE, BY NAME. count <= Max and length <= N: 7 > 4 and 9 > 8 are the
+	// caller's bug, and the Go write side refuses them in every build, names
+	// the refusal, clamps nothing and stores nothing.
 	one := Host{Tail: 7}
 	HostReset(&one)
 	one.MarksCount = 7
 	one.NameLength = 9
 	need := HostFixedMeasure(1)
 	buf := make([]byte, need)
-	if n := HostFixedSave([]Host{one}, buf); n != need {
-		t.Fatalf("write-side bound checks are DEBUG ONLY, by rule: count <= Max and length <= N are a caller contract, not a wire defence — the release path must REFUSE NOTHING, but FixedSave returned %d, want %d", n, need)
+	if n := HostFixedSave([]Host{one}, buf); n != -1 {
+		t.Fatalf("Go has no debug-only idiom: the fixed writer must REFUSE a count past Max and a length past N in every build, but FixedSave returned %d", n)
 	}
-	body := buf[len(buf)-HostFixedRecordBytes+8:]
-	if got := tableFixedGet32(body[0:]); got != 7 {
-		t.Fatalf("write-side bound checks are DEBUG ONLY, by rule: count <= Max is a caller contract — the write side must CLAMP NOTHING, but marks count landed on the wire as %d, want the caller's 7", got)
+	if n, err := HostFixedSaveReason([]Host{one}, buf); n != -1 || err != TableRefuseInvalidValue {
+		t.Fatalf("the refusal must be named: %d %v, want -1 and TableRefuseInvalidValue", n, err)
 	}
-	if got := tableFixedGet32(body[20:]); got != 9 {
-		t.Fatalf("write-side bound checks are DEBUG ONLY, by rule: length <= N is a caller contract — the write side must CLAMP NOTHING, but name length landed on the wire as %d, want the caller's 9", got)
+	for i, b := range buf {
+		if b != 0 {
+			t.Fatalf("a refused save must store nothing, but byte %d is %#x", i, b)
+		}
 	}
-	if got := tableFixedGet32(body[32:]); got != 7 {
-		t.Fatalf("the field past the out-of-contract count and length moved: %d, want the writer's 7", got)
+	// A buffer that is merely too short is the caller's sizing, and says so.
+	if n, err := HostFixedSaveReason([]Host{lawful}, make([]byte, need-1)); n != -1 || err != TableRefuseTruncated {
+		t.Fatalf("a short buffer must be named too: %d %v", n, err)
+	}
+
+	// THE READ SIDE STAYS THE WIRE'S DEFENCE. A FOREIGN writer is not held by
+	// this writer's contract, so forge the image the refused save would have
+	// made: the reader still clamps the count and the length, and counts them.
+	full := lawful
+	full.NameLength = 8
+	copy(full.Name[:], "abcdefgh")
+	forged := make([]byte, HostFixedMeasure(1))
+	if n := HostFixedSave([]Host{full}, forged); n != int64(len(forged)) {
+		t.Fatalf("full-width save %d", n)
+	}
+	body := forged[len(forged)-HostFixedRecordBytes+8:]
+	tableFixedPut32(body[0:], 7)
+	tableFixedPut32(body[20:], 9)
+	var fr TableReport
+	fgot := make([]Host, 1)
+	if n := HostFixedLoad(fgot, forged, plan, &fr); n != 1 {
+		t.Fatalf("forged load %d %+v", n, fr)
+	}
+	if fgot[0].MarksCount != 4 || fgot[0].NameLength != 8 || fr.Clamped == 0 || fgot[0].Tail != 7 {
+		t.Fatalf("the read side must clamp a foreign writer's count and length and count it: %+v %+v", fgot[0], fr)
 	}
 }
 `)

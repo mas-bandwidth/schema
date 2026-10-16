@@ -205,6 +205,7 @@ func init() {
 		Name{Name: "tableRegionValueEdges", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableStringTypeId", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableUtf16Valid", What: "wide text conversion"},
+		Name{Name: "tableUtf16UnitsValid", What: "wide text: the writer's check of the caller's own UTF-16 units (docs/FIXED-FORM-ALGORITHM.md §3.1)"},
 		Name{Name: "tableUtf16Clamp", What: "wide text conversion"},
 		Name{Name: "tableJsonWriteWString", What: "wide text conversion"},
 		Name{Name: "tableJsonWriteStringBody", What: "wide text conversion"},
@@ -235,6 +236,7 @@ func init() {
 		Name{Name: "tableOpenFramed", What: "the form-1 wire runtime"},
 		Name{Name: "tableKindWidens", What: "the form-1 wire runtime"},
 		Name{Name: "tableUtf8Valid", What: "the form-1 wire runtime"},
+		Name{Name: "tableUtf8Word", What: "the form-1 wire runtime: the writer's word load for its in-line text test (docs/FIXED-FORM-ALGORITHM.md §3.1)"},
 		Name{Name: "tableUtf8Clamp", What: "the form-1 wire runtime"},
 		Name{Name: "tableWidenFloat", What: "the form-1 wire runtime"},
 
@@ -391,6 +393,10 @@ func init() {
 		Name{Name: "tableFixedNoGuard", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedEntryBytes", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedPlan", What: "the fixed form (form 3)"},
+		// The write-side text rule (docs/FIXED-FORM-ALGORITHM.md §3.1): the fixed
+		// form's refusal of ill-formed UTF-8 and NUL, the twin of the reader's.
+		Name{Name: "tableFixedUtf8Ok", What: "the fixed form (form 3): the writer's UTF-8 and no-NUL rule over a text field's used bytes"},
+		Name{Name: "tableFixedUnitsIllFormed", What: "the fixed form (form 3): the writer's wstring rule, true when the used units are not paired UTF-16 or hold a zero unit"},
 		// <T>FixedPlanMax (docs/FIXED-FORM-ALGORITHM.md §5.2): the generated
 		// export, claimed under the template spelling the page writes. A plan
 		// slice of this length never refuses plan_too_large for a layout the
@@ -462,7 +468,8 @@ func init() {
 		Name{Name: "TableFixedReasonMessageFormAsFile", What: "the fixed load's refusal name: a form-2 file (§5.3)"},
 		Name{Name: "TableFixedReasonNewerForm", What: "the fixed load's refusal name: a form byte the registry has not assigned (§5.3)"},
 		Name{Name: "TableFixedReasonLayoutMalformed", What: "the fixed load's refusal name: a stranger's layout, or a known hash over different bytes (§5.3)"},
-		Name{Name: "TableFixedReasonLayoutNewer", What: "the fixed load's refusal name: a hash in no lineage entry (§5.3)"},
+		Name{Name: "TableFixedReasonLayoutUnknown", What: "the fixed load's refusal name: a layout hash this build's lineage does not hold (SPEC-TABLES §21.3, algorithm §5.3 step 5)"},
+		Name{Name: "TableFixedReasonLayoutNewer", What: "the fixed load's refusal name, RESERVED (SPEC-TABLES §21.3): a hash the lock lineage proves newer; nothing proves it today, so no Go fixed load answers it"},
 		Name{Name: "TableFixedReasonLayoutUnsupported", What: "the fixed load's refusal name: a hash below the floor (§5.3)"},
 		Name{Name: "TableFixedReasonLayoutRecordTooLarge", What: "the fixed load's refusal name: an entry past the writer's record size (§5.3)"},
 		Name{Name: "TableFixedReasonPlanTooLarge", What: "the fixed load's refusal name: the plan does not fit the caller's capacity (§5.3)"},
