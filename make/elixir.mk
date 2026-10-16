@@ -102,7 +102,9 @@ generated/bench/elixir/.stamp: bin/schema $(SCHEMAS_BENCH)
 # (tables/messages) union arms of every field type, arrays of unions and
 # optional arrays (§2.3, §2.6); scalars (tables/scalars) the fixed-point and
 # 128-bit kinds and an enum-keyed array (§2.4, §3); widedemo (examples-wide)
-# wstring(N) on the variable wire (§3). The variable-class surfaces (wire,
+# wstring(N) on the variable wire (§3); tbla1 (test/tables/A1.schema) the
+# writer side of the arm-retype pair, a payload-free arm among its arms (§2.6).
+# The variable-class surfaces (wire,
 # json-read, json-write, report) answer every carried instance; a construct
 # outside the class writes <case>.absent rather than a wrong answer.
 ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
@@ -112,9 +114,9 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
 	blobdemo:tables/blobs listdemo:tables/lists tblp2:test/tables/P2.schema \
 	mapdemo:tables/maps messagedemo:tables/messages scalars:tables/scalars \
-	widedemo:examples-wide
+	widedemo:examples-wide tbla1:test/tables/A1.schema
 
-build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) $(wildcard examples-wide/*.schema) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) $(wildcard examples-wide/*.schema) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/A1.schema
 	@mkdir -p build/tables-generated-elixir
 	@for unit in $(ELIXIR_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -790,6 +792,31 @@ tables-elixir-variable-arms: build/conformance/manifest.txt
 	./build/conformance-harness run --only elixir
 
 test-elixir: tables-elixir-variable-arms
+
+# THE PAYLOAD-FREE ARM (docs/SPEC-TABLES.md §2.6, §3's kind-32 paragraph, §16;
+# SPEC §4.8 on the packet side): an arm with no storage rides as the arm id
+# under kind 32 with L = 0, and its value is the arm's name alone.
+# TestPayloadFreeArmsOnTheTableWireElixir round-trips test/tables/A1.schema's
+# Root with each kind of arm selected against internal/tablewire's bytes and
+# internal/tabletext's text, reads message_ack, judges L = 1 under kind 32 and
+# the kind mismatch in both directions by the Go oracle's report, and generates
+# A1, tables/messages and A2 through the compiler path. It runs the leg's own
+# toolchain, so it is a FUNCTIONAL test: SCHEMA_REQUIRE_CORPUS=1, and a SKIP is
+# a failure here. The conformance run answers message_ack on wire, json-read
+# and json-write.
+.PHONY: tables-elixir-void-arms
+tables-elixir-void-arms: build/conformance/manifest.txt
+	@out=$$(SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestPayloadFreeArmsOnTheTableWireElixir$$' 2>&1); status=$$?; \
+	printf '%s\n' "$$out"; \
+	if [ $$status -ne 0 ]; then exit $$status; fi; \
+	if printf '%s\n' "$$out" | grep -q -- '--- SKIP'; then echo 'tables-elixir-void-arms: a SKIP is a failure here'; exit 1; fi; \
+	for sub in a_round_trip b_malformed_and_kind_mismatch c_compiler_path; do \
+		printf '%s\n' "$$out" | grep -q -- "--- PASS: TestPayloadFreeArmsOnTheTableWireElixir/$$sub " || { echo "tables-elixir-void-arms: $$sub did not run and pass"; exit 1; }; \
+	done
+	./build/conformance-harness run --only elixir
+
+test-elixir: tables-elixir-void-arms
 
 # THE BUILDER SIDE (docs/SPEC-TABLES.md §19.1, §7.6). TestBlockBuildAndCookWriteElixir
 # builds the pinned block golden and cooks the carried instances to `schema cook`

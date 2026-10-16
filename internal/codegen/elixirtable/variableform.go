@@ -72,6 +72,15 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	b.WriteString("  backends do. `save/2` writes one value; `load/2` reads one tolerantly and\n")
 	b.WriteString("  reports the unknown, mismatched and clamped events (§4). Identity is the\n")
 	b.WriteString("  name hash and `was` (§5).\n")
+	b.WriteString("\n")
+	b.WriteString("  A union field's value is `nil` (None) or the selected arm. An arm that\n")
+	b.WriteString("  carries a payload is `{arm, payload}`, the arm's name and its value. A\n")
+	b.WriteString("  PAYLOAD-FREE ARM (§2.6) has no storage, so its value is the arm's name\n")
+	b.WriteString("  alone, the same tag with no payload: an arm `ack` loads as `\"ack\"`, and\n")
+	b.WriteString("  `save/2` takes `\"ack\"` (or `{\"ack\", nil}`). It rides as the arm id\n")
+	b.WriteString("  under kind 32 with L = 0; `load/2` reads an L that is\n")
+	b.WriteString("  not 0 there as malformed and the union as None, and a payload where kind\n")
+	b.WriteString("  32 is declared, or kind 32 where a payload is, as a kind mismatch (§3).\n")
 	b.WriteString("  \"\"\"\n\n")
 	b.WriteString("  import Bitwise\n\n")
 	fmt.Fprintf(&b, "  @node_id 0x%016X\n", ir.TableNodeWireId)
@@ -317,6 +326,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # a union's selected arm is a field line (docs/SPEC-TABLES.md §2.6, §3.1):
   # its nodes are visited where the union sits, exactly as a field's are.
   defp collect_union_nodes(_union, nil, acc), do: acc
+
+  defp collect_union_nodes(union, arm, acc) when is_binary(arm), do: collect_union_nodes(union, void_arm(union, arm), acc)
 
   defp collect_union_nodes(union, {arm, payload}, acc) do
     case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
@@ -635,11 +646,25 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # arm's kind byte, L, and the arm's payload. None is the zero reference.
   defp arm_header(_union, nil, _idx_map, ids, order), do: {leb_encode(0), ids, order}
 
+  defp arm_header(union, arm, idx_map, ids, order) when is_binary(arm),
+    do: arm_header(union, void_arm(union, arm), idx_map, ids, order)
+
   defp arm_header(union, {arm, payload}, idx_map, ids, order) do
     a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
     {aref, ids, order} = intern(ids, order, Map.get(a, :arm_id, a.id))
     {content, ids, order} = arm_content(a, if(payload == nil, do: a.default, else: payload), idx_map, ids, order)
     {[leb_encode(aref), <<a.arm_kind>>, leb_encode(IO.iodata_length(content)), content], ids, order}
+  end
+
+  # a PAYLOAD-FREE arm's value is its name alone (docs/SPEC-TABLES.md §2.6):
+  # the writer spells it {arm, nil} inside, and a bare name that names an arm
+  # with a payload is refused rather than written with a payload it lacks.
+  defp void_arm(union, arm) do
+    case Map.fetch(Map.fetch!(@unions, union).by_name, arm) do
+      {:ok, %{t: :void}} -> {arm, nil}
+      {:ok, _} -> raise ArgumentError, "union #{union}: arm #{inspect(arm)} carries a payload; spell it {#{inspect(arm)}, value}"
+      :error -> raise ArgumentError, "union #{union} has no arm #{inspect(arm)}"
+    end
   end
 
   # an arm's payload under its L (docs/SPEC-TABLES.md §3's arm payload table):
@@ -1380,7 +1405,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp read_arm_payload(%{t: :void}, name, _inner, _framed, _nodes, _ids, report), do: {:cont, {name, nil}, report}
+  # a payload-free arm carries nothing (docs/SPEC-TABLES.md §3's kind-32
+  # paragraph): its value is the arm's name alone, and an L that is not zero is
+  # that arm's own framing damage, the union None and the parent reading on.
+  defp read_arm_payload(%{t: :void}, name, <<>>, _framed, _nodes, _ids, report), do: {:cont, name, report}
+
+  defp read_arm_payload(%{t: :void}, _name, _inner, _framed, _nodes, _ids, report), do: {:cont, nil, %{report | malformed: true}}
 
   defp read_arm_payload(a, name, inner, framed, nodes, ids, report) do
     # the length-framed kinds read their own L, so they take the framed bytes;
@@ -1933,6 +1963,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     Enum.reduce(values, acc, fn {_key, v}, acc -> tally_field(vf, v, acc) end)
   end
 
+  defp tally_field(%{t: :union}, arm, acc) when is_binary(arm), do: acc
+
   defp tally_field(%{t: :union, elem: union}, {arm, payload}, acc) do
     case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
       %{t: :void} -> acc
@@ -2212,6 +2244,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # a union is an object with ONE key, the arm's name, and None is {}
   # (docs/SPEC-TABLES.md §2.6, §16.2); a payload-free arm's value is null.
   defp json_arm(_union, nil, _depth), do: "{}"
+
+  defp json_arm(union, arm, depth) when is_binary(arm), do: json_arm(union, void_arm(union, arm), depth)
 
   defp json_arm(union, {arm, payload}, depth) do
     a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
@@ -2704,7 +2738,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         {nil, %{report | unknown: report.unknown + 1}}
 
       {:ok, %{t: :void}} ->
-        if input == nil, do: {{name, nil}, report}, else: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+        if input == nil, do: {name, report}, else: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
 
       {:ok, a} ->
         if input == nil and a.t != :pointer and a.t != :blob do
