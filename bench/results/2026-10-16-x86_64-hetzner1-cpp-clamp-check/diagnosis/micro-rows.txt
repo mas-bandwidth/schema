@@ -1,0 +1,15 @@
+# diagnosis/micro.cpp, hetzner1, pinned taskset -c 6, best of 3 rounds x 2,000,000 records, ns/record.
+# clamp_only = FixedTableFixedClamp over 64 loaded (hot, in-range) records; run_only = TableFixedRun alone;
+# load = the whole FixedTableFixedLoad. Header sets: hdr = shipped at 66d571b (TABLE_CLAMP_RESTRICT),
+# h-inl = every *FixedClampBody always_inline, h-red = h-inl + hoisted count + local counter per array loop,
+# h-pred = the check form this commit ships (pred.py derives it from the shipped bodies).
+# (micro's run_only under g++ is not the runner's: the runner's stub build measured 69 ns without the clamp.)
+compiler,headers,clamp_only,run_only,load
+clang++,hdr,85.3,62.5,149.0
+clang++,h-inl,79.4,62.9,142.9
+clang++,h-red,79.6,62.0,142.4
+clang++,h-pred,30.6,70.5,101.6
+g++,hdr,175.3,243.0,216.2
+g++,h-inl,173.8,246.4,250.6
+g++,h-red,173.1,243.7,248.0
+g++,h-pred,39.3,243.1,104.6

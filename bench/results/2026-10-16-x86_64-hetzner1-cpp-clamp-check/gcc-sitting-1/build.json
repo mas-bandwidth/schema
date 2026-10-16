@@ -1,0 +1,71 @@
+{
+  "date": "2026-10-16T07:05:04Z",
+  "host": "hetzner1",
+  "os": "linux",
+  "arch": "amd64",
+  "cpu": "AMD Ryzen 7 PRO 8700GE w/ Radeon 780M Graphics",
+  "os_version": "Linux 6.8.0-139-generic",
+  "revision": "bdb901be5d679f1cd6853e5caa667dd12374714d",
+  "dirty": true,
+  "tools": {
+    "c": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0\nCopyright (C) 2023 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.",
+    "c_packet_flags": "-std=c99 -Wall -Wextra -Werror -O3 -DNDEBUG -DBENCH_OPT=\"O3\" -Wno-stringop-truncation",
+    "c_table_flags": "-std=c99 -Wall -Wextra -Werror -O3 -DNDEBUG -DBENCH_OPT=\"O3\" -Wno-stringop-truncation -DBENCH_MATCHED -ffp-contract=off",
+    "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+    "cpp": "g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0\nCopyright (C) 2023 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.",
+    "cpp_anchor": "does not compile: test/bench/fixedform_measure.cpp:517:38: error: ‘atoi’ is not a member of ‘std’; did you mean ‘atoi’?",
+    "cpp_packet_flags": "-std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -O3 -DNDEBUG -DBENCH_OPT=\"O3\" -Wno-class-memaccess -Wno-type-limits -DSERIALIZE_RELEASE",
+    "cpp_table_flags": "-std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -O3 -DNDEBUG -DBENCH_OPT=\"O3\" -Wno-class-memaccess -Wno-type-limits -DBENCH_MATCHED",
+    "dotnet": ".NET SDK:\n Version:           10.0.401\n Commit:            e34a38d2ae\n Workload version:  10.0.400-manifests.63b36e85\n MSBuild version:   18.9.11+e34a38d2a\n\nRuntime Environment:\n OS Name:     ubuntu\n OS Version:  24.04\n OS Platform: Linux\n RID:         linux-x64\n Base Path:   /home/nova/sdk/dotnet-10.0.401/sdk/10.0.401/\n\n.NET workloads installed:\nThere are no installed workloads to display.\nConfigured to use workload sets when installing new manifests.\nNo workload sets are installed. Run \"dotnet workload restore\" to install a workload set.\n\nHost:\n  Version:      10.0.12\n  Architecture: x64\n  Commit:       95017c711e\n\n.NET SDKs installed:\n  10.0.401 [/home/nova/sdk/dotnet-10.0.401/sdk]\n\n.NET runtimes installed:\n  Microsoft.AspNetCore.App 10.0.12 [/home/nova/sdk/dotnet-10.0.401/shared/Microsoft.AspNetCore.App]\n  Microsoft.NETCore.App 10.0.12 [/home/nova/sdk/dotnet-10.0.401/shared/Microsoft.NETCore.App]\n\nOther architectures found:\n  None\n\nEnvironment variables:\n  DOTNET_CLI_HOME                          [/home/nova/sdk/dotnet-home]\n  DOTNET_CLI_TELEMETRY_OPTOUT              [1]\n  DOTNET_NOLOGO                            [1]\n\nglobal.json file:\n  Not found\n\nLearn more:\n  https://aka.ms/dotnet/info\n\nDownload .NET:\n  https://aka.ms/dotnet/download",
+    "elixir": "Erlang/OTP 29 [erts-17.0.5] [source] [64-bit] [smp:16:1] [ds:16:1:10] [async-threads:1] [jit:ns]\n\nElixir 1.20.4 (compiled with Erlang/OTP 29)",
+    "go": "go version go1.26.6 linux/amd64",
+    "java": "openjdk 21.0.12.1 2026-08-18 LTS\nOpenJDK Runtime Environment Temurin-21.0.12.1+1 (build 21.0.12.1+1-LTS)\nOpenJDK 64-Bit Server VM Temurin-21.0.12.1+1 (build 21.0.12.1+1-LTS, mixed mode, sharing)",
+    "node": "v26.7.0",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+  },
+  "runtimes": {
+    "serialize": "93b8ea2a958ea3deeef9d4aff16101171ac49e15",
+    "serialize.c": "a742a3d80c0e8a90acd3d2b6c73f585e1735bcaf",
+    "serialize.cs": "1bf2b19fdb339d73c2ef351f3e4ef4276d3b8db4",
+    "serialize.go": "963f6dfe2327163053301bac16f55bc281902f9a"
+  },
+  "binary_sha256": {
+    "build/paired/corpus": "9eecb2409c999780b2c13a771ea0a797b4d4a47899f7bd554d37a98c327ab324",
+    "build/paired/packet-cpp": "cce0d908f677bc51b76485f66f71782b3cb2ce030b629532cbfe7757f3e9936d",
+    "build/paired/table-cpp": "a057413c27fbf26259f41dbbfde5beb6f950c134b956ccb53d68b9087961c3d2"
+  },
+  "corpus_sha256": {
+    "bench/corpus/Bench.schema": "fd35458e9f4a0c229df4d25979cbed8efa262397a847ad8d594a6d75458be99c",
+    "bench/corpus/FixedTable.schema": "372cc111232cffbb003718ecc3a7f857058d0163506a2d2d79dda58752d7cd4b",
+    "bench/corpus/variants/bench_mixed.variants.bin": "a1f0113d3c9cbdad743df7ecc27fa4e0ba6ce885f7b343ccd127692ef896e167",
+    "bench/paired/corpus/bench_fixed.bin": "431e2db6318dcbb1bace9ab6f1221457a9a4756ae863c2a6673a7b13e785a67f",
+    "bench/paired/corpus/bench_fixed.layout": "532f366d89060f09c3936fa368d866d2dd9468724ce705d2e3656016db04c2f3",
+    "bench/paired/corpus/bench_table.bin": "720bae2165ea73670b63f015480dfa7df4343f8b2951b08a6461c5595123f65e",
+    "bench/paired/corpus/bench_table.lengths": "feda54a482e4f3317b27ce578cd952c8dd65f6b7f790ec9037050e64842834b0",
+    "bench/paired/corpus/bench_table.variants.bin": "0174c5c6bfcfa74302e0370fbc66097d9e7744e01577b23589581eb18d5d18ce",
+    "testdata/wire/bench_mixed.bin": "a6237d04c5a9a358156f3ce411fa3f49d601884968a2625738cf6cebfe27b4bc"
+  },
+  "corpus_ids": {
+    "packet": "fd0748942dc6ae09",
+    "table": "066b2822b3e5d487"
+  },
+  "environment": {
+    "CGO_ENABLED": "",
+    "COMPlus_ReadyToRun": "",
+    "COMPlus_TieredCompilation": "",
+    "COMPlus_TieredPGO": "",
+    "COMPlus_gcServer": "",
+    "DOTNET_ReadyToRun": "",
+    "DOTNET_TC_QuickJitForLoops": "",
+    "DOTNET_TieredCompilation": "",
+    "DOTNET_TieredPGO": "",
+    "DOTNET_gcServer": "",
+    "GOAMD64": "",
+    "GOARM64": "",
+    "GOFLAGS": "-mod=readonly",
+    "GOGC": "",
+    "GOMAXPROCS": "",
+    "GOMEMLIMIT": ""
+  },
+  "rounds": 7
+}
