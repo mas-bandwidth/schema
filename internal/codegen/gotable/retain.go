@@ -14,7 +14,9 @@ func (g *tableGen) emitRetainRuntime() {
 		g.pf("0x%016x,", id)
 	}
 	g.pf("}\n%s", goRetainRuntime)
-	g.emitRetainMessageRuntime()
+	if g.surf.Has(SurfaceMessage) {
+		g.emitRetainMessageRuntime()
+	}
 	source := tableSourceSpan(tableWireSource, "type TableWriter struct", "// TableOpenVerdict")
 	source = tableSourceReplace(source, "TableWriter", "TableRetainWriter", -1)
 	source = tableSourceReplace(source, "TableIds", "TableRetainIds", -1)
@@ -51,10 +53,21 @@ func (g *tableGen) emitRetainRuntime() {
 	}
 }
 
-func tableRuntimeForUnit(regional bool) string {
+func tableRuntimeForUnit(regional bool, surf Surface) string {
 	s := tableRuntime()
 	if regional {
-		s = tableSourceReplace(s, "type TableTypeInfo struct {", "type TableTypeInfo struct {\nSaveBodyRetain func(*TableRetainWriter,unsafe.Pointer)bool\nLoadBodyRetain func(TableRetainReader,unsafe.Pointer)bool\nLoadMessageBodyRetain func(TableRetainMessageReader,unsafe.Pointer)(TableRetainMessageReader,bool)", 1)
+		fields := "type TableTypeInfo struct {\nSaveBodyRetain func(*TableRetainWriter,unsafe.Pointer)bool\nLoadBodyRetain func(TableRetainReader,unsafe.Pointer)bool"
+		if surf.Has(SurfaceMessage) {
+			fields += "\nLoadMessageBodyRetain func(TableRetainMessageReader,unsafe.Pointer)(TableRetainMessageReader,bool)"
+		}
+		s = tableSourceReplace(s, "type TableTypeInfo struct {", fields, 1)
+	}
+	if !surf.Has(SurfaceMessage) {
+		// the message form's two descriptor codec hooks name the TableMessage*
+		// types, which live only in the message runtime (docs/SPEC-TABLES.md
+		// §8.4); strip them when the list omits message so an emitted unit needs
+		// no message runtime to compile
+		s = tableSourceReplace(s, "\n SaveMessageBody func(*TableMessageWriter,unsafe.Pointer) bool\n LoadMessageBody func(TableMessageReader,unsafe.Pointer)(TableMessageReader,bool)", "", 1)
 	}
 	return s
 }
@@ -145,13 +158,19 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	side.emitTableMeasure(st)
 	side.emitTableWrite(st)
 	side.emitTableRead(st)
-	side.emitMessageRead(st)
+	if g.surf.Has(SurfaceMessage) {
+		side.emitMessageRead(st)
+	}
 	source := side.body.String()
 	if !retainBodyName.MatchString(source) {
 		panic("retaining body family has no source codecs")
 	}
 	source = retainBodyName.ReplaceAllString(source, "${1}${2}Retain")
-	source = tableSourceRewriter(source, "TableMessageReader", "TableRetainMessageReader", "TableWriter", "TableRetainWriter", "TableReader", "TableRetainReader", "TableIds", "TableRetainIds")
+	if g.surf.Has(SurfaceMessage) {
+		source = tableSourceRewriter(source, "TableMessageReader", "TableRetainMessageReader", "TableWriter", "TableRetainWriter", "TableReader", "TableRetainReader", "TableIds", "TableRetainIds")
+	} else {
+		source = tableSourceRewriter(source, "TableWriter", "TableRetainWriter", "TableReader", "TableRetainReader", "TableIds", "TableRetainIds")
+	}
 	g.pf("%s", source)
 	g.needsMath = g.needsMath || side.needsMath
 	g.unsafeUsed = true

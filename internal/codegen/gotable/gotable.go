@@ -253,9 +253,8 @@ func GenerateSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, surf Su
 	// §19.2). Extracted so the synthesized home and a file that happens to be
 	// named for the package emit the same bytes.
 	emitRuntime := func(g *tableGen) {
-		g.needsMath = true
 		g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
-		runtime := tableRuntimeForUnit(regional) + tableRefusalSource + tableWireRuntime(u)
+		runtime := tableRuntimeForUnit(regional, surf) + tableRefusalSource + tableWireRuntime(u)
 		if surf.Has(SurfaceMessage) {
 			// the message form API (docs/SPEC-TABLES.md §8.4) is a surface of
 			// its own: it is emitted only when the list names it, never for
@@ -263,6 +262,14 @@ func GenerateSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, surf Su
 			runtime += tableMessageRuntime(u)
 		}
 		g.pf("%s", runtime)
+		if !surf.Has(SurfaceMessage) && (surf.Has(SurfaceCook) || surf.Has(SurfaceBlock)) {
+			// BuildVersion is defined by the message runtime (§3.3's
+			// announcement) when message is emitted; cook and block compare the
+			// header's build version against it, so a list that omits message
+			// but keeps cook or block must still define it (docs/SPEC-TABLES.md
+			// §8.4)
+			g.pf("const BuildVersion uint64 = 0x%016x\n", ir.BuildVersion(u))
+		}
 		if surf.Has(SurfaceFixed) {
 			g.pf("%s", tableFixedRuntime)
 		}
@@ -454,7 +461,7 @@ func (g *tableGen) assemble() ([]byte, error) {
 			std = append(std, `"slices"`)
 		}
 	}
-	if g.needsMath {
+	if g.needsMath || strings.Contains(g.types.String()+g.body.String(), "math.") {
 		std = append(std, `"math"`)
 	}
 	if g.unsafeUsed {
