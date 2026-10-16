@@ -181,5 +181,14 @@ func init() {
 		Name{Name: "TableFixedDstArg", What: "my side's lane holding a text field's flavour"},
 
 		Name{Name: "BuildVersion", What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust, Java, Elixir and JavaScript put it at unit scope — Java in a file of its own name, Elixir as a module, JavaScript as a module-scope export — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},
+
+		// THE VIEW (docs/SPEC-TABLES.md §8.3, §8.5): the module-scope bindings of
+		// the unit's <Home>View.js. Every descriptor and vocabulary row is a
+		// local of TableUnitView's closure. The fourth, UnitView, is the unit
+		// registry's own symbol, which internal/check already reserves for every
+		// target (§8.3), so it is not claimed a second time here.
+		Name{Name: "TableDocNone", What: "the one shared empty doc every unannotated descriptor row names"},
+		Name{Name: "TableTagsNone", What: "the one shared empty tag list every untagged descriptor row names"},
+		Name{Name: "TableUnitView", What: "the unit registry and every descriptor of the view, built once (§8.3)"},
 	)
 }

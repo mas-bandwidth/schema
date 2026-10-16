@@ -22,7 +22,7 @@
 // bytes into a fresh ArrayBuffer, and its residue modulo the form's alignment
 // is exactly the residue the C++ and C# legs place by hand.
 
-import { readFileSync, writeFileSync, readSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, readSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -639,13 +639,54 @@ const wireRows = [
 async function wireCodec(unit, root) {
   const row = wireRows.find((r) => r[0] === unit && r[1] === root);
   if (row === undefined) { return null; }
-  const m = await load(row[2]);
+  return codecOf(unit, root, row[2]);
+}
+
+async function codecOf(unit, root, path) {
+  const m = await load(path);
   const codec = {
     load: m[root + "Load"], save: m[root + "Save"], toJson: m[root + "ToJson"], fromJson: m[root + "FromJson"],
     report: () => new m.TableVariableReport(),
   };
-  if (Object.values(codec).some((f) => typeof f !== "function")) { fail(unit + "." + root + ": the variable surface is missing from " + row[2]); }
+  if (Object.values(codec).some((f) => typeof f !== "function")) { fail(unit + "." + root + ": the variable surface is missing from " + path); }
   return codec;
+}
+
+// ---- THE TEXT FORM FOR EVERY TABLE (docs/SPEC-TABLES.md §16, §16.7)
+//
+// json-read, json-write and json-hostile answer EVERY instance whose unit this
+// leg generates, not only the wire rows above: the unit's <Package>Variable.js
+// is found by package, and a root it carries is one it exports a
+// ToJson/FromJson pair for. A root the unit's module does not carry (refused
+// by name at generation, §11) and a unit this leg does not generate at all
+// (tables/lists, the wide-text units) answer `<case>.absent`, which the matrix
+// counts as the row of work that is left, never as a pass.
+const textUnits = {
+  tabledemo: "examples/TabledemoVariable.js",
+  graphdemo: "pointers/GraphdemoVariable.js",
+  blobdemo: "blobs/BlobdemoVariable.js",
+  mapdemo: "maps/MapdemoVariable.js",
+  blockdemo: "block/BlockdemoVariable.js",
+  blockhome: "blockhome/BlockhomeVariable.js",
+  messagedemo: "messages/MessagedemoVariable.js",
+  streamdemo: "stream/StreamdemoVariable.js",
+  scalars: "scalars/ScalardemoVariable.js",
+  backenddemo: "backend/BackenddemoVariable.js",
+  vocabdemo: "vocab/VocabdemoVariable.js",
+  vocab9demo: "vocab9/Vocab9demoVariable.js",
+  tblv1: "v1/Tblv1Variable.js", tblv2: "v2/Tblv2Variable.js",
+  tblw1: "w1/Tblw1Variable.js", tblw2: "w2/Tblw2Variable.js",
+  tblr1: "r1/Tblr1Variable.js", tblr2: "r2/Tblr2Variable.js",
+  tblp1: "p1/Tblp1Variable.js", tblp3: "p3/Tblp3Variable.js",
+  tblm1: "m1/Tblm1Variable.js", tblm2: "m2/Tblm2Variable.js",
+};
+
+async function textCodec(unit, root) {
+  const path = textUnits[unit];
+  if (path === undefined || !existsSync(resolve(generated, path))) { return null; }
+  const m = await load(path);
+  if (typeof m[root + "ToJson"] !== "function") { return null; }
+  return codecOf(unit, root, path);
 }
 
 function wireAbsent(outDir, name) {
@@ -681,7 +722,7 @@ async function surfaceReport(lines, outDir) {
 async function surfaceJsonRead(lines, outDir) {
   for (const f of kind(lines, "instance")) {
     if (noText(f)) { continue; }
-    const codec = await wireCodec(f[2], f[3]);
+    const codec = await textCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1]); continue; }
     const r = codec.report();
     const v = codec.fromJson(readFileSync(join("testdata/conformance/tables/json", f[1] + ".json"), "utf8"), r);
@@ -695,13 +736,29 @@ async function surfaceJsonRead(lines, outDir) {
 async function surfaceJsonWrite(lines, outDir) {
   for (const f of kind(lines, "instance")) {
     if (noText(f)) { continue; }
-    const codec = await wireCodec(f[2], f[3]);
+    const codec = await textCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1] + ".json"); continue; }
     const v = codec.load(new Uint8Array(readFileSync(f[4])), codec.report());
     if (v === null) { fail(f[1] + ": load refused " + f[4]); }
     const text = codec.toJson(v);
     if (text === null) { fail(f[1] + ": ToJson refused the value"); }
     writeFileSync(join(outDir, f[1] + ".json"), text);
+  }
+}
+
+// json-hostile: one tree per rule the text form states (docs/SPEC-TABLES.md
+// §16.2, §16.3, §17.5), the text at <tree>/<root>.json as `schema pack` reads
+// it. The answer is the REPORT the read produces, or `refused`.
+async function surfaceJsonHostile(lines, outDir) {
+  for (const f of kind(lines, "json-hostile")) {
+    const codec = await textCodec(f[2], f[3]);
+    if (codec === null) { wireAbsent(outDir, f[1]); continue; }
+    const r = codec.report();
+    const v = codec.fromJson(readFileSync(join(f[4], f[3] + ".json"), "utf8"), r);
+    const verdict = v === null || v === undefined || r.malformed || r.refused
+      ? "refused"
+      : [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, false, "read"].join(",");
+    writeFileSync(join(outDir, f[1]), verdict + "\n");
   }
 }
 
@@ -910,7 +967,7 @@ if (surface === "list") {
   // (§3.3). A row a surface cannot reach is `<case>.absent`, which the matrix
   // counts rather than reading as a feature the leg lacks. The retain surfaces
   // are absent whole: retention beyond the card constructs is its own row.
-  process.stdout.write("wire\nreport\njson-read\njson-write\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nmessage\n");
+  process.stdout.write("wire\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nmessage\n");
   process.exit(0);
 }
 if (surface === "block-lead") {
@@ -927,6 +984,7 @@ switch (surface) {
   case "report": await surfaceReport(lines, outDir); break;
   case "json-read": await surfaceJsonRead(lines, outDir); break;
   case "json-write": await surfaceJsonWrite(lines, outDir); break;
+  case "json-hostile": await surfaceJsonHostile(lines, outDir); break;
   case "message": await surfaceMessage(lines, outDir); break;
   case "cook": surfaceCook(lines, outDir); break;
   case "cook-write": await surfaceCookWrite(lines, outDir); break;
