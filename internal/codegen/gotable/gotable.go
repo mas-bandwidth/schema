@@ -31,7 +31,10 @@ package gotable
 
 import (
 	"fmt"
+	"go/ast"
 	"go/format"
+	"go/parser"
+	"go/token"
 	"maps"
 	"regexp"
 	"sort"
@@ -75,6 +78,15 @@ type tableGen struct {
 	types  strings.Builder // the table storage structs
 	body   strings.Builder // everything else
 	indent string          // extra per-line indent while emitting inside a branch guard
+
+	// The OPTIONAL forms this generator emits beside the core: pf writes to
+	// out while a form's declarations are being emitted (into), and to body
+	// otherwise. The emitters run in one order on one generator either way, so
+	// a form's declarations are the bytes they always were; only their file
+	// moves (docs/SPEC-TABLES.md, "GO's optional forms").
+	out     *strings.Builder
+	message strings.Builder // the MESSAGE form: <Base>TableMessage.go
+	cook    strings.Builder // the COOK form's write entry points: <Base>Cook.go
 
 	lineage       map[string][]FixedLineageEntry // the locked layouts, oldest first (§5.2)
 	needsMath     bool
@@ -155,7 +167,19 @@ func (g *tableGen) pf(format string, args ...any) {
 			s += "\n"
 		}
 	}
+	if g.out != nil {
+		g.out.WriteString(s)
+		return
+	}
 	g.body.WriteString(s)
+}
+
+// into emits one optional form's declarations into that form's own buffer.
+func (g *tableGen) into(b *strings.Builder, emit func()) {
+	saved := g.out
+	g.out = b
+	emit()
+	g.out = saved
 }
 
 // runtimeHome is the basename of the file that carries a unit's shared Go table
@@ -202,24 +226,64 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	return GenerateLineage(u, nil)
 }
 
+// Form is one OPTIONAL form of a unit's Go table output, as a set of bits
+// (docs/SPEC-TABLES.md, "GO's optional forms"). The core — every
+// <Base>Table.go and the unit's <Package>View.go — is never optional; each form
+// is a set of files that only ADD that form's entry points, so any subset of
+// them may be left out and the package still compiles.
+type Form uint8
+
+const (
+	FormJson    Form = 1 << iota // <Base>TableJson.go: the TEXT form (§16)
+	FormCook                     // <Base>Cook.go: the COOKED form, read and write (§7)
+	FormBlock                    // <Base>Block.go: the BLOCK form (§19)
+	FormMessage                  // <Base>TableMessage.go: the MESSAGE form (§3.3)
+
+	// FormsAll is every optional form.
+	FormsAll = FormJson | FormCook | FormBlock | FormMessage
+)
+
+// GenerateOmitting is GenerateLineage without the files of the forms omit
+// names. The files are the emitter's own: each optional form is emitted into
+// files of its own, so leaving one out is leaving its files out, and what is
+// left is exactly what GenerateLineage emits for the forms that remain.
+func GenerateOmitting(u *ir.Unit, lineage map[string][]FixedLineageEntry, omit Form) (map[string][]byte, error) {
+	out, forms, err := generateForms(u, lineage)
+	if err != nil {
+		return nil, err
+	}
+	for name, form := range forms {
+		if form&omit != 0 {
+			delete(out, name)
+		}
+	}
+	return out, nil
+}
+
 // GenerateLineage is Generate with the LINEAGE the build holds for each fixed
 // table: the locked layouts, OLDEST FIRST, the current one last
 // (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
 // every table then carries the one entry it can always compute: its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	out, _, err := generateForms(u, lineage)
+	return out, err
+}
+
+// generateForms is the whole output, and the optional form each file belongs
+// to (0 for the core).
+func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, map[string]Form, error) {
+	forms := map[string]Form{}
 	if len(u.Tables) == 0 {
-		return map[string][]byte{}, nil
+		return map[string][]byte{}, forms, nil
 	}
 	blocks := ir.Blocks(u)
 	out, err := generateBlockFiles(u, blocks)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	cooks, err := generateCookFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	for name := range out {
+		forms[name] = FormBlock
 	}
-	maps.Copy(out, cooks)
 
 	regional := len(variableTableNames(u)) > 0
 
@@ -237,12 +301,18 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// whether or not a schema file names the package (docs/SPEC-TABLES.md
 	// §19.2). Extracted so the synthesized home and a file that happens to be
 	// named for the package emit the same bytes.
+	// the cook form's write half: the unit's writer runtime, and each file's
+	// <Name>CookFrom entry points, carried into that file's <Base>Cook.go
+	cookRuntime := ""
 	emitRuntime := func(g *tableGen) {
 		g.needsMath = true
 		g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
 		g.pf("// BuildVersion is the unit's build version (docs/SPEC-TABLES.md §20): the\n// one digest a block carries and BlockOpen compares, and the fact §3.3's\n// announcement carries before the first body so a peer's build is knowable.\nconst BuildVersion uint64 = 0x%016x\n\n", ir.BuildVersion(u))
-		g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u)+tableFixedRuntime)
-		g.pf("%s", tableCookWriteSource(u))
+		// the message form's TYPES are the core's: the descriptor's message
+		// columns are typed by them, and the core declares the descriptor
+		g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageCoreTypes(u)+tableFixedRuntime)
+		g.into(&g.message, func() { g.pf("%s", tableMessageRuntime(u)) })
+		cookRuntime = tableCookWriteSource(u)
 		g.emitUnitBlittableRows(blocks)
 		if regional {
 			g.emitRegionRuntime(blocks)
@@ -273,6 +343,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		}
 	}
 	runtimeWritten := false
+	cookWriters := map[string]string{}
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage}
 		members := fileMembers(f, closure)
@@ -301,12 +372,14 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			g.emitTableSave(st)
 			g.emitTableRead(st)
 			g.emitRetainMember(st)
-			g.emitCookWriteSurface(st)
-			g.emitMessageWrite(st)
-			g.emitMessageRead(st)
-			if regional {
-				g.emitRegionMessage(st)
-			}
+			g.into(&g.cook, func() { g.emitCookWriteSurface(st) })
+			g.into(&g.message, func() {
+				g.emitMessageWrite(st)
+				g.emitMessageRead(st)
+				if regional {
+					g.emitRegionMessage(st)
+				}
+			})
 			if regional {
 				g.emitRegionMember(st)
 				for _, f := range st.Fields {
@@ -329,9 +402,13 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		}
 		src, err := g.assemble()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		out[f.Base+"Table.go"] = src
+		if err := g.emitForm(out, forms, f.Base+"TableMessage.go", FormMessage, &g.message); err != nil {
+			return nil, nil, err
+		}
+		cookWriters[f.Base] = g.cook.String()
 	}
 	// No file of the unit is named for the package, so the home is emitted FOR
 	// the unit rather than for a file. The runtime lands in <Package>Table.go
@@ -342,25 +419,119 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		emitRuntime(g)
 		src, err := g.assemble()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		out[home+"Table.go"] = src
+		if err := g.emitForm(out, forms, home+"TableMessage.go", FormMessage, &g.message); err != nil {
+			return nil, nil, err
+		}
 	}
+	cooks, err := generateCookFiles(u, blocks, cookRuntime, cookWriters)
+	if err != nil {
+		return nil, nil, err
+	}
+	for name := range cooks {
+		forms[name] = FormCook
+	}
+	maps.Copy(out, cooks)
 
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
 	// descriptors, in its own file so a project that never reads or writes a
 	// text does not compile it
 	texts, err := generateJsonFiles(u, closure, home)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	for name := range texts {
+		forms[name] = FormJson
 	}
 	maps.Copy(out, texts)
 	view, err := generateViewFile(u, closure, armSlots)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	maps.Copy(out, view)
-	return out, nil
+	return out, forms, nil
+}
+
+// emitForm assembles one optional form's buffer into its own file, when the
+// form emitted anything for this file.
+func (g *tableGen) emitForm(out map[string][]byte, forms map[string]Form, name string, form Form, b *strings.Builder) error {
+	if b.Len() == 0 {
+		return nil
+	}
+	src, err := g.assembleForm(name, form, b.String())
+	if err != nil {
+		return err
+	}
+	out[name] = src
+	forms[name] = form
+	return nil
+}
+
+// assembleForm is assemble for an optional form's own file: the same header,
+// that form's declarations, and the imports they use.
+func (g *tableGen) assembleForm(name string, form Form, body string) ([]byte, error) {
+	var h strings.Builder
+	if g.file != nil {
+		fmt.Fprintf(&h, "// Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n", g.file.Base)
+	} else {
+		fmt.Fprintf(&h, "// Code generated by the schema compiler for package %s. DO NOT EDIT.\n", g.unit.Package)
+	}
+	h.WriteString("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
+	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
+	h.WriteString("// AGPL-3.0, its output is not.\n")
+	switch form {
+	case FormMessage:
+		fmt.Fprintf(&h, "// package %s — the MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the\n", g.unit.Package)
+		h.WriteString("// announcement, the vocabulary, the bit-packed batch codec and every fixed\n")
+		h.WriteString("// table's <Name>MeasureMessages, <Name>SaveMessages and <Name>LoadMessages.\n")
+		h.WriteString("// An OPTIONAL form (docs/SPEC-TABLES.md, GO's optional forms): the types it\n")
+		h.WriteString("// works on are the core's, so the package compiles with this file left out.\n")
+	}
+	h.WriteString("\n")
+	fmt.Fprintf(&h, "package %s\n\n", g.unit.Package)
+	h.WriteString(goImports(usedImports(body, formImports)))
+	h.WriteString(body)
+	src, err := format.Source([]byte(repoPrefix(h.String())))
+	if err != nil {
+		return nil, fmt.Errorf("generated Go for %s does not parse — a compiler bug, not a schema error: %w", name, err)
+	}
+	return src, nil
+}
+
+// formImports is every import an optional form's file may need, in the order
+// a core file spells them.
+var formImports = []string{`"encoding/binary"`, `"unicode/utf8"`, `"sync"`, `"sync/atomic"`, `"slices"`, `"math"`, `"time"`, `"unsafe"`, `"github.com/mas-bandwidth/serialize.go"`}
+
+// usedImports keeps the imports body refers to: a selector on an identifier
+// the file does not declare (go/parser leaves it unresolved) names a package.
+// A file of one form references only what it uses, so an import the core
+// needed and the form does not is not spelled — Go refuses an unused import.
+func usedImports(body string, candidates []string) []string {
+	f, err := parser.ParseFile(token.NewFileSet(), "", "package p\n\n"+body, 0)
+	if err != nil {
+		return candidates // format.Source reports the real error
+	}
+	used := map[string]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		if sel, ok := n.(*ast.SelectorExpr); ok {
+			if id, ok := sel.X.(*ast.Ident); ok && id.Obj == nil {
+				used[id.Name] = true
+			}
+		}
+		return true
+	})
+	var keep []string
+	for _, c := range candidates {
+		path := strings.Trim(c, `"`)
+		name := path[strings.LastIndex(path, "/")+1:]
+		name = strings.TrimSuffix(name, ".go")
+		if used[name] {
+			keep = append(keep, c)
+		}
+	}
+	return keep
 }
 
 // fileMembers is a file's closure members: its tables, then the plain `type`
@@ -428,7 +599,8 @@ func (g *tableGen) assemble() ([]byte, error) {
 	if usesSerialize {
 		std = append(std, `"github.com/mas-bandwidth/serialize.go"`)
 	}
-	h.WriteString(goImports(std))
+	// the core's imports are its own: what an optional form needed went with it
+	h.WriteString(goImports(usedImports(g.types.String()+g.body.String(), std)))
 	h.WriteString(g.types.String())
 	h.WriteString(g.body.String())
 	src, err := format.Source([]byte(repoPrefix(h.String())))
@@ -786,7 +958,16 @@ type TableTypeInfo struct {
 	Tags    []string
 }
 
+// The helpers below began as the TEXT form's, and the core uses them too: the
+// table and view sources read storage through the same width switch and
+// evaluate the same guards, so they are declared here, once, and the text
+// form's own file only adds its walk (docs/SPEC-TABLES.md, "GO's optional forms").
+
 type tableJsonGraphNode struct { refs int; label uint64; written bool }
+
+// ---- storage access: the descriptors give an offset and a width, and the
+// ---- storage is the HOST's, so every load and store goes through a width
+// ---- switch rather than a copy into the low bytes of a wider word
 
 func tableJsonGetRaw(storage unsafe.Pointer, width uint32) uint64 {
 	switch width {
@@ -832,6 +1013,13 @@ func tableMapStoredKey(p unsafe.Pointer,f *TableFieldInfo)tableMapKey {key:=tabl
 func tableMapStoreKey(p unsafe.Pointer,f *TableFieldInfo,k tableMapKey) {if f.Kind==12 {clear(unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),int(f.ArrayBound)+1));copy(unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),len(k.text)),k.text);*(*int32)(unsafe.Add(p,f.CountOffset))=int32(len(k.text))}else{tableJsonSetRaw(unsafe.Add(p,f.Offset),f.ElemSize,k.raw)}}
 func tableMapKeyOrder(a,b tableMapKey,f *TableFieldInfo)int {if f.Kind==12 {for i:=0;i<len(a.text)&&i<len(b.text);i++ {if a.text[i]<b.text[i]{return -1};if a.text[i]>b.text[i]{return 1}};if len(a.text)<len(b.text){return -1};if len(a.text)>len(b.text){return 1};return 0};if f.Kind>=2&&f.Kind<=5 {if int64(a.raw)<int64(b.raw){return -1};if int64(a.raw)>int64(b.raw){return 1};return 0};if a.raw<b.raw{return -1};if a.raw>b.raw{return 1};return 0}
 
+// A guarded group rides only when its guard reads true — the wire's own elision
+// (§4), carried into the text so a text and a wire written from one instance
+// say the same thing. The guard is spelled as its branch condition over bool
+// fields of the SAME type ("at_rest", "!at_rest", "active && has_target"), so
+// evaluating it is a walk of the same descriptor. Nothing is inferred in the
+// other direction: reading places every key it can name, and the guard is a
+// plain bool key (§16.2).
 func tableJsonGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string) bool {
 	p := 0
 	for {

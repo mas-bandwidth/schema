@@ -4,41 +4,69 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
-	"go/format"
 	"go/parser"
 	"go/token"
 	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// subsetCorpusUnits lists the corpus units whose generated Go packages must
-// compile and pass go vet when any subset of {json, cook, block, message} is
-// omitted (docs/SPEC-TABLES.md §2.9).
+// subsetCorpusUnits is the corpus whose generated Go packages must compile and
+// pass go vet with any subset of the optional forms {json, cook, block,
+// message} omitted (docs/SPEC-TABLES.md, "GO's optional forms"): every table corpus under
+// tables/, the bench table units, and the wide-value examples.
 var subsetCorpusUnits = []struct {
 	name  string
 	paths []string
 }{
+	{"tables/arms", []string{"tables/arms"}},
+	{"tables/backend", []string{"tables/backend"}},
+	{"tables/blobs", []string{"tables/blobs"}},
+	{"tables/block", []string{"tables/block"}},
+	{"tables/blockhome", []string{"tables/blockhome"}},
+	{"tables/cards", []string{"tables/cards"}},
 	{"tables/examples", []string{"tables/examples"}},
-	{"tables/pointers", []string{"tables/pointers"}},
 	{"tables/lists", []string{"tables/lists"}},
 	{"tables/maps", []string{"tables/maps"}},
 	{"tables/messages", []string{"tables/messages"}},
-	{"tables/cards", []string{"tables/cards"}},
+	{"tables/pointers", []string{"tables/pointers"}},
+	{"tables/scalars", []string{"tables/scalars"}},
+	{"tables/stream", []string{"tables/stream"}},
+	{"tables/vocab", []string{"tables/vocab"}},
+	{"tables/vocab9", []string{"tables/vocab9"}},
+	{"examples-wide", []string{"examples-wide"}},
 	{"bench/corpus/BenchTable", []string{"bench/corpus/BenchTable.schema"}},
 	{"bench/corpus/FixedTable", []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"}},
-	{"tables/block", []string{"tables/block"}},
 }
 
-// TestGoTableCompilesWithAnySubsetOfItsForms generates each corpus unit and
-// builds all sixteen subsets of {json, cook, block, message} omitted in
-// t.TempDir() (with go build and go vet) without requiring SCHEMA_SLOW.
+// subsetForms is the optional forms, in the bit order a subset mask uses.
+var subsetForms = []struct {
+	form Form
+	name string
+}{{FormJson, "json"}, {FormCook, "cook"}, {FormBlock, "block"}, {FormMessage, "message"}}
+
+// TestGoTableCompilesWithAnySubsetOfItsForms generates every corpus unit through
+// the emitter's own omit path, GenerateOmitting, once for each of the sixteen
+// subsets of {json, cook, block, message}, and builds and vets each package in
+// t.TempDir(). No declaration is edited here: what is compiled is exactly what
+// the emitter wrote. Beside the compile, it holds the split to its contract:
+//
+//   - omitting nothing is Generate, byte for byte;
+//   - omitting a form only REMOVES files — every file left is byte-identical to
+//     Generate's, so a form's omission cannot change the core;
+//   - a form the unit carries has files of its own, and none of the
+//     declarations in them survives the form's omission, so every form omitted
+//     here is really gone.
+//
+// It runs under the default gate (no SCHEMA_SLOW): the compile is a local go
+// build against the sibling serialize.go runtime, as the other
+// generated-compile tests in this package resolve it.
 func TestGoTableCompilesWithAnySubsetOfItsForms(t *testing.T) {
 	t.Parallel()
 	root, err := filepath.Abs("../../..")
@@ -49,22 +77,46 @@ func TestGoTableCompilesWithAnySubsetOfItsForms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	units := make(map[string]*ir.Unit, len(subsetCorpusUnits))
-	for _, entry := range subsetCorpusUnits {
-		units[entry.name] = loadUnitPaths(t, root, entry.paths)
+	if _, err := os.Stat(filepath.Join(runtime, "go.mod")); err != nil {
+		t.Fatalf("the generated packet types import the sibling serialize.go runtime, not staged at %s: %v", runtime, err)
 	}
 	for _, entry := range subsetCorpusUnits {
-		dir := entry.name
-		u := units[dir]
-		t.Run(dir, func(t *testing.T) {
+		u := loadUnitPaths(t, root, entry.paths)
+		t.Run(entry.name, func(t *testing.T) {
 			t.Parallel()
-			baseFiles, err := golang.Generate(u)
+			packet, err := golang.Generate(u)
 			if err != nil {
-				t.Fatalf("golang.Generate(%s): %v", dir, err)
+				t.Fatalf("golang.Generate: %v", err)
 			}
-			tableFiles, err := Generate(u)
+			full, err := Generate(u)
 			if err != nil {
-				t.Fatalf("gotable.Generate(%s): %v", dir, err)
+				t.Fatalf("Generate: %v", err)
+			}
+			// each form's own files, read off the omit path one form at a time
+			formFiles := map[Form][]string{}
+			for _, f := range subsetForms {
+				without, err := GenerateOmitting(u, nil, f.form)
+				if err != nil {
+					t.Fatalf("GenerateOmitting(%s): %v", f.name, err)
+				}
+				for name := range full {
+					if _, kept := without[name]; !kept {
+						formFiles[f.form] = append(formFiles[f.form], name)
+					}
+				}
+				slices.Sort(formFiles[f.form])
+			}
+			// the core and the forms that every table unit carries
+			for _, f := range []Form{FormJson, FormCook, FormMessage} {
+				if len(formFiles[f]) == 0 {
+					t.Fatalf("form %d emitted no file of its own, so omitting it would prove nothing", f)
+				}
+			}
+			formDecls := map[Form][]string{}
+			for _, f := range subsetForms {
+				for _, name := range formFiles[f.form] {
+					formDecls[f.form] = append(formDecls[f.form], subsetDeclaredNames(t, name, full[name])...)
+				}
 			}
 			modDir := t.TempDir()
 			goMod := fmt.Sprintf("module subsetprobe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime)
@@ -72,30 +124,35 @@ func TestGoTableCompilesWithAnySubsetOfItsForms(t *testing.T) {
 				t.Fatal(err)
 			}
 			for mask := range 16 {
-				mask := mask
+				omit := Form(0)
+				for i, f := range subsetForms {
+					if mask&(1<<i) != 0 {
+						omit |= f.form
+					}
+				}
 				name := subsetMaskName(mask)
 				t.Run(name, func(t *testing.T) {
 					t.Parallel()
+					files, err := GenerateOmitting(u, nil, omit)
+					if err != nil {
+						t.Fatalf("GenerateOmitting: %v", err)
+					}
+					subsetCheckOmission(t, full, files, omit, formFiles, formDecls)
 					pkgDir := filepath.Join(modDir, name)
 					if err := os.MkdirAll(pkgDir, 0o700); err != nil {
 						t.Fatal(err)
 					}
-					files := make(map[string][]byte, len(baseFiles)+len(tableFiles))
-					maps.Copy(files, baseFiles)
-					for file, data := range subsetFilterTableFiles(t, tableFiles, mask) {
-						files[file] = data
-					}
-					for file, data := range files {
+					all := maps.Clone(packet)
+					maps.Copy(all, files)
+					for file, data := range all {
 						if err := os.WriteFile(filepath.Join(pkgDir, file), data, 0o600); err != nil {
 							t.Fatal(err)
 						}
 					}
-					pkg := "./" + name
-					if out, err := runGoCmd(modDir, "build", pkg); err != nil {
-						t.Fatalf("go build %s (%s): %v\n%s", dir, name, err, out)
-					}
-					if out, err := runGoCmd(modDir, "vet", pkg); err != nil {
-						t.Fatalf("go vet %s (%s): %v\n%s", dir, name, err, out)
+					for _, verb := range []string{"build", "vet"} {
+						if out, err := subsetGo(modDir, verb, "./"+name); err != nil {
+							t.Fatalf("go %s with %s: %v\n%s", verb, name, err, out)
+						}
 					}
 				})
 			}
@@ -103,254 +160,99 @@ func TestGoTableCompilesWithAnySubsetOfItsForms(t *testing.T) {
 	}
 }
 
-func runGoCmd(dir string, subcmd string, pkg string) ([]byte, error) {
-	cmd := exec.Command("go", subcmd, pkg)
+// subsetCheckOmission holds one omitted output to the split's contract.
+func subsetCheckOmission(t *testing.T, full, files map[string][]byte, omit Form, formFiles map[Form][]string, formDecls map[Form][]string) {
+	t.Helper()
+	if omit == 0 && !maps.EqualFunc(full, files, bytes.Equal) {
+		t.Fatalf("GenerateOmitting with nothing omitted is not Generate")
+	}
+	for name, data := range files {
+		if !bytes.Equal(full[name], data) {
+			t.Fatalf("%s differs from Generate's: omitting a form changed a file it does not own", name)
+		}
+	}
+	declared := map[string]bool{}
+	for name, data := range files {
+		for _, d := range subsetDeclaredNames(t, name, data) {
+			declared[d] = true
+		}
+	}
+	for _, f := range subsetForms {
+		gone := omit&f.form != 0
+		for _, name := range formFiles[f.form] {
+			if _, kept := files[name]; kept == gone {
+				t.Fatalf("%s (form %s) kept=%v with the form omitted=%v", name, f.name, kept, gone)
+			}
+		}
+		if !gone {
+			continue
+		}
+		for _, d := range formDecls[f.form] {
+			if declared[d] {
+				t.Fatalf("%s, declared by the %s form, is still declared with the form omitted", d, f.name)
+			}
+		}
+	}
+}
+
+// subsetDeclaredNames is every package-level name a file declares, methods as
+// Type.Method; init functions declare nothing.
+func subsetDeclaredNames(t *testing.T, name string, src []byte) []string {
+	t.Helper()
+	f, err := parser.ParseFile(token.NewFileSet(), name, src, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("parse %s: %v", name, err)
+	}
+	var names []string
+	for _, decl := range f.Decls {
+		switch d := decl.(type) {
+		case *ast.FuncDecl:
+			if d.Recv == nil {
+				if d.Name.Name != "init" {
+					names = append(names, d.Name.Name)
+				}
+				continue
+			}
+			recv := d.Recv.List[0].Type
+			if star, ok := recv.(*ast.StarExpr); ok {
+				recv = star.X
+			}
+			if id, ok := recv.(*ast.Ident); ok {
+				names = append(names, id.Name+"."+d.Name.Name)
+			}
+		case *ast.GenDecl:
+			for _, spec := range d.Specs {
+				switch s := spec.(type) {
+				case *ast.TypeSpec:
+					names = append(names, s.Name.Name)
+				case *ast.ValueSpec:
+					for _, id := range s.Names {
+						if id.Name != "_" {
+							names = append(names, id.Name)
+						}
+					}
+				}
+			}
+		}
+	}
+	return names
+}
+
+func subsetGo(dir, verb, pkg string) ([]byte, error) {
+	cmd := exec.Command("go", verb, pkg)
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }
 
 func subsetMaskName(mask int) string {
-	if mask == 0 {
+	var parts []string
+	for i, f := range subsetForms {
+		if mask&(1<<i) != 0 {
+			parts = append(parts, f.name)
+		}
+	}
+	if len(parts) == 0 {
 		return "omit_none"
 	}
-	var parts []string
-	if mask&1 != 0 {
-		parts = append(parts, "json")
-	}
-	if mask&2 != 0 {
-		parts = append(parts, "cook")
-	}
-	if mask&4 != 0 {
-		parts = append(parts, "block")
-	}
-	if mask&8 != 0 {
-		parts = append(parts, "message")
-	}
 	return "omit_" + strings.Join(parts, "_")
-}
-
-func subsetFilterTableFiles(t *testing.T, tableFiles map[string][]byte, mask int) map[string][]byte {
-	t.Helper()
-	omitJSON := mask&1 != 0
-	omitCook := mask&2 != 0
-	omitBlock := mask&4 != 0
-	omitMessage := mask&8 != 0
-
-	out := make(map[string][]byte, len(tableFiles))
-	for name, data := range tableFiles {
-		if omitJSON && strings.HasSuffix(name, "TableJson.go") {
-			continue
-		}
-		if omitCook && strings.HasSuffix(name, "Cook.go") {
-			continue
-		}
-		if omitBlock && strings.HasSuffix(name, "Block.go") {
-			continue
-		}
-		if (omitCook || omitMessage) && strings.HasSuffix(name, "Table.go") {
-			data = subsetStripTableDecls(t, name, data, omitCook, omitMessage)
-		}
-		out[name] = data
-	}
-	return out
-}
-
-func subsetStripTableDecls(t *testing.T, filename string, src []byte, omitCook, omitMessage bool) []byte {
-	t.Helper()
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
-	if err != nil {
-		t.Fatalf("parse %s: %v", filename, err)
-	}
-	var kept []ast.Decl
-	for _, decl := range file.Decls {
-		if subsetDropDecl(decl, omitCook, omitMessage) {
-			continue
-		}
-		kept = append(kept, decl)
-	}
-	file.Decls = kept
-	var bodyBuf bytes.Buffer
-	for _, decl := range file.Decls {
-		if gd, ok := decl.(*ast.GenDecl); ok && gd.Tok == token.IMPORT {
-			continue
-		}
-		if err := format.Node(&bodyBuf, fset, decl); err != nil {
-			t.Fatalf("format decl in %s: %v", filename, err)
-		}
-		bodyBuf.WriteByte('\n')
-	}
-	bodyText := bodyBuf.String()
-	for _, decl := range file.Decls {
-		gd, ok := decl.(*ast.GenDecl)
-		if !ok || gd.Tok != token.IMPORT {
-			continue
-		}
-		var specs []ast.Spec
-		for _, sp := range gd.Specs {
-			imp, ok := sp.(*ast.ImportSpec)
-			if !ok || imp.Path == nil {
-				continue
-			}
-			path := strings.Trim(imp.Path.Value, `"`)
-			pkg := path
-			if idx := strings.LastIndex(path, "/"); idx >= 0 {
-				pkg = path[idx+1:]
-			}
-			pkg = strings.TrimSuffix(pkg, ".go")
-			if strings.Contains(bodyText, pkg+".") {
-				specs = append(specs, sp)
-			}
-		}
-		gd.Specs = specs
-	}
-	var finalDecls []ast.Decl
-	for _, decl := range file.Decls {
-		if gd, ok := decl.(*ast.GenDecl); ok && gd.Tok == token.IMPORT && len(gd.Specs) == 0 {
-			continue
-		}
-		finalDecls = append(finalDecls, decl)
-	}
-	file.Decls = finalDecls
-	file.Comments = nil
-	var out bytes.Buffer
-	if err := format.Node(&out, fset, file); err != nil {
-		t.Fatalf("format %s: %v", filename, err)
-	}
-	return out.Bytes()
-}
-
-func subsetDropDecl(decl ast.Decl, omitCook, omitMessage bool) bool {
-	switch d := decl.(type) {
-	case *ast.FuncDecl:
-		if d.Recv != nil && len(d.Recv.List) > 0 {
-			recv := subsetRecvTypeName(d.Recv.List[0].Type)
-			if omitCook && recv == "tableCookWriter" {
-				return true
-			}
-			if omitMessage && subsetIsMessageRecv(recv) {
-				return true
-			}
-		}
-		name := d.Name.Name
-		if name == "init" && d.Body != nil {
-			var buf bytes.Buffer
-			_ = format.Node(&buf, token.NewFileSet(), d.Body)
-			text := buf.String()
-			if omitMessage && !strings.Contains(text, "TableTypeInfo{") && (strings.Contains(text, "SaveMessageBody") || strings.Contains(text, "LoadMessageBody")) {
-				return true
-			}
-		}
-		if omitCook && subsetIsCookIdent(name) {
-			return true
-		}
-		if omitMessage && subsetIsMessageIdent(name) {
-			return true
-		}
-	case *ast.GenDecl:
-		if d.Tok == token.IMPORT {
-			return false
-		}
-		var specs []ast.Spec
-		for _, sp := range d.Specs {
-			switch s := sp.(type) {
-			case *ast.TypeSpec:
-				if omitCook && subsetIsCookType(s.Name.Name) {
-					continue
-				}
-				if omitMessage && subsetIsMessageType(s.Name.Name) {
-					continue
-				}
-			case *ast.ValueSpec:
-				var names []*ast.Ident
-				for _, id := range s.Names {
-					if omitCook && subsetIsCookIdent(id.Name) {
-						continue
-					}
-					if omitMessage && subsetIsMessageIdent(id.Name) {
-						continue
-					}
-					names = append(names, id)
-				}
-				if len(names) == 0 {
-					continue
-				}
-				s.Names = names
-			}
-			specs = append(specs, sp)
-		}
-		if len(specs) == 0 {
-			return true
-		}
-		d.Specs = specs
-	}
-	return false
-}
-
-func subsetRecvTypeName(expr ast.Expr) string {
-	switch t := expr.(type) {
-	case *ast.Ident:
-		return t.Name
-	case *ast.StarExpr:
-		return subsetRecvTypeName(t.X)
-	}
-	return ""
-}
-
-func subsetIsCookType(name string) bool {
-	return name == "TableByteOrder" || name == "tableCookWriter"
-}
-
-func subsetIsCookIdent(name string) bool {
-	if name == "tableCookBuildVersion" || name == "TableByteOrderLittle" || name == "TableByteOrderBig" ||
-		name == "tableCookFixed" || name == "tableCookRegion" || name == "tableCookRegionReason" {
-		return true
-	}
-	for _, suf := range []string{"CookMeasure", "CookMeasureReason", "CookFrom"} {
-		if strings.HasSuffix(name, suf) {
-			return true
-		}
-	}
-	return false
-}
-
-func subsetIsMessageRecv(recv string) bool {
-	switch recv {
-	case "TableBitWriter", "TableBitReader", "TableMessageWriter", "TableMessageReader",
-		"TableVocabulary", "TableRetainMessageReader", "tableRetainMessageIn":
-		return true
-	}
-	return false
-}
-
-func subsetIsMessageType(name string) bool {
-	return name == "tableRetainMessageIn"
-}
-
-func subsetIsMessageIdent(name string) bool {
-	if name == "Announce" || name == "AnnounceMeasure" || name == "AnnounceRead" ||
-		name == "tableAnnounceRead" || name == "tableAnnouncement" ||
-		name == "TableMessageEntriesHere" || name == "TableMessageRefBitsHere" || name == "TableMessageBatchMax" ||
-		strings.HasPrefix(name, "tableMessage") || strings.HasPrefix(name, "tableRetainMessage") {
-		return true
-	}
-	for _, suf := range []string{
-		"MeasureMessages",
-		"SaveMessages",
-		"LoadMessages",
-		"SaveMessageBody",
-		"LoadMessageBody",
-		"LoadMessageBodyRetain",
-		"LoadMeasureMessages",
-		"LoadBuilderMessages",
-		"SaveRetainMessages",
-		"LoadRetainMeasureMessages",
-		"LoadRetainMessages",
-		"LoadRetainBuilderMessages",
-	} {
-		if strings.HasSuffix(name, suf) {
-			return true
-		}
-	}
-	return false
 }

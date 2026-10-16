@@ -38,7 +38,12 @@ const cookMaxAlign = int64(64)
 
 // generateCookFiles emits <Base>Cook.go for every file of a unit that declares
 // a table.
-func generateCookFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, error) {
+// writerRuntime is the unit's cook WRITER runtime and writers each file's
+// <Name>CookFrom entry points (emitted by the table generator, in its order):
+// the write half of the cooked form, carried into the same optional files as
+// the read half so that leaving the form out leaves out all of it
+// (docs/SPEC-TABLES.md, "GO's optional forms").
+func generateCookFiles(u *ir.Unit, blocks *ir.BlockUnit, writerRuntime string, writers map[string]string) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	if len(u.Tables) == 0 {
 		return out, nil
@@ -60,6 +65,10 @@ func generateCookFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, err
 		}
 		g := &cookGen{unit: u, file: f, cook: ck, blocks: blocks, home: f.Base == home,
 			wroteDescriptor: map[string]bool{}}
+		if g.home {
+			g.writer.WriteString(writerRuntime)
+		}
+		g.writer.WriteString(writers[f.Base])
 		g.emit()
 		src, err := g.assemble()
 		if err != nil {
@@ -206,6 +215,7 @@ type cookGen struct {
 	runtime strings.Builder
 	structs strings.Builder
 	handles strings.Builder
+	writer  strings.Builder // the WRITE half: the writer runtime, <Name>CookFrom
 
 	// a unit's roots share records, and one package cannot declare a var twice
 	wroteDescriptor map[string]bool
@@ -231,11 +241,14 @@ func (g *cookGen) blockHasRecord(name string) bool {
 }
 
 func (g *cookGen) emit() {
+	if g.writer.Len() > 0 {
+		g.needsUnsafe = true
+	}
 	if g.home {
 		g.needsUnsafe = true
 		// BuildVersion and the blittable <Name>Row records live in the TABLE
 		// source for every table-bearing unit, so the cook never spells them:
-		// one package, exactly one definition (docs/SPEC-TABLES.md §2.9, §20.7).
+		// one package, exactly one definition (docs/SPEC-TABLES.md §20.7, "GO's optional forms").
 		g.rf("%s", cookRuntime(ir.BuildVersion(g.unit), false))
 		g.emitLayoutCheck()
 		// EVERY cooked record's descriptor, here and nowhere else: a unit's
@@ -255,7 +268,9 @@ func (g *cookGen) assemble() ([]byte, error) {
 	h.WriteString("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
-	fmt.Fprintf(&h, "// package %s — the COOKED FORM (docs/SPEC-TABLES.md §7): the READ half.\n", g.unit.Package)
+	fmt.Fprintf(&h, "// package %s — the COOKED FORM (docs/SPEC-TABLES.md §7): the READ half, then\n", g.unit.Package)
+	h.WriteString("// the WRITE half (<Name>CookMeasure, <Name>CookFrom). An OPTIONAL form\n")
+	h.WriteString("// (docs/SPEC-TABLES.md, GO's optional forms): the package compiles without it.\n")
 	h.WriteString("//\n")
 	h.WriteString("// A cook is a LOAD-TRUSTED-DATA-FROM-TOOLS format and not a wire. Tooling writes\n")
 	h.WriteString("// a region for one BUILD VERSION and that build points at it: Open matches the\n")
@@ -272,9 +287,9 @@ func (g *cookGen) assemble() ([]byte, error) {
 	h.WriteString("// a pointer and a length and points — the block form's contract (§19.2), for the\n")
 	h.WriteString("// same reason.\n")
 	h.WriteString("//\n")
-	h.WriteString("// THIS FILE AND <Base>Block.go ARE A PAIR: they share one set of blittable\n")
-	h.WriteString("// <Name>Row records, because a cooked record IS the blittable row. Compile both\n")
-	h.WriteString("// or neither — one without the other leaves those records undefined.\n\n")
+	h.WriteString("// A cooked record IS the blittable <Name>Row, the block form's row too: the\n")
+	h.WriteString("// rows are the core's, in the TABLE source, so this file and <Base>Block.go each\n")
+	h.WriteString("// compile with or without the other.\n\n")
 	fmt.Fprintf(&h, "package %s\n\n", g.unit.Package)
 	var imports []string
 	if g.needsBinary {
@@ -302,6 +317,7 @@ func (g *cookGen) assemble() ([]byte, error) {
 		h.WriteString("\n")
 	}
 	h.WriteString(g.handles.String())
+	h.WriteString(g.writer.String())
 	src, err := format.Source([]byte(repoPrefix(h.String())))
 	if err != nil {
 		return nil, fmt.Errorf("generated Go for %sCook.go does not parse — a compiler bug, not a schema error: %w", g.file.Base, err)
@@ -508,7 +524,7 @@ func (g *cookGen) emitCookHandle(st *ir.Struct) {
 	g.hf("func (c %sCook) RootSize() int64        { return %d }\n", name, ml.Size)
 	g.hf("func (c %sCook) RootAlign() int64       { return %d }\n\n", name, ml.Align)
 
-	g.hf("// Root is the root record (type %sRow struct) at the region's base. It is a POINTER and not a\n", name)
+	g.hf("// Root is the root record at the region's base. It is a POINTER and not a\n")
 	g.hf("// copy: a cooked graph is walked by adding deltas to slot addresses.\n")
 	g.hf("func (c %sCook) Root() *%sRow { return (*%sRow)(c.Region) }\n\n", name, name, name)
 

@@ -51,14 +51,26 @@ func (g *tableGen) typeCodecColumns(st *ir.Struct) string {
 	}
 	return columns
 }
+
+// emitMessageDescriptorInit links the descriptor's MESSAGE columns from the
+// message form's own file. They are the closures the descriptor literal carried
+// before the forms were split, spelled as they were; they are assigned in an
+// init() of <Base>TableMessage.go because a core literal that named
+// <Name>SaveMessageBody would not compile without the form. Go runs a package's
+// init functions file by file in the order the files are presented, which the
+// go command makes lexical, and <Base>Table.go sorts before
+// <Base>TableMessage.go ('.' < 'M'), so the core's literal is in place first
+// (docs/SPEC-TABLES.md, "GO's optional forms").
 func (g *tableGen) emitMessageDescriptorInit(st *ir.Struct) {
 	n := st.Name
 	typ := g.storageName(st.Name)
+	g.pf("func init() {\n")
 	if g.regional {
-		g.pf("func init() { %sTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool { return %sSaveMessageBody(w, (*%s)(p)) }; %sTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) { ok := %sLoadMessageBody(&r, (*%s)(p)); return r, ok }; %sTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) { ok := %sLoadMessageBodyRetain(&r, (*%s)(p)); return r, ok } }\n", n, n, typ, n, n, typ, n, n, typ)
-		return
+		g.pf("%sTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader,p unsafe.Pointer)(TableRetainMessageReader,bool){ok:=%sLoadMessageBodyRetain(&r,(*%s)(p));return r,ok}\n", n, n, typ)
 	}
-	g.pf("func init() { %sTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool { return %sSaveMessageBody(w, (*%s)(p)) }; %sTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) { ok := %sLoadMessageBody(&r, (*%s)(p)); return r, ok } }\n", n, n, typ, n, n, typ)
+	g.pf("%sTableInfo.SaveMessageBody = func(w *TableMessageWriter,p unsafe.Pointer)bool{return %sSaveMessageBody(w,(*%s)(p))}\n", n, n, typ)
+	g.pf("%sTableInfo.LoadMessageBody = func(r TableMessageReader,p unsafe.Pointer)(TableMessageReader,bool){ok:=%sLoadMessageBody(&r,(*%s)(p));return r,ok}\n", n, n, typ)
+	g.pf("}\n\n")
 }
 func (g *tableGen) emitUnitBlittableRows(blocks *ir.BlockUnit) {
 	if blocks != nil && blockHome(g.unit, blocks) != "" {
