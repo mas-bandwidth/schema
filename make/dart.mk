@@ -244,6 +244,7 @@ tables-dart-release:
 	$(MAKE) tables-dart-fuzz SEED=1 DART_FUZZ_MUTANTS=20000
 	$(MAKE) tables-dart-fuzz SEED=2 DART_FUZZ_MUTANTS=20000
 	$(MAKE) tables-dart-fuzz-negative-control
+	$(MAKE) tables-dart-fuzz-lead-negative-control
 	$(MAKE) tables-dart-fixed-form-negative-control
 	$(MAKE) tables-dart-names-negative-control
 	$(MAKE) tables-dart-standalone-negative-control
@@ -263,12 +264,19 @@ DART_FUZZ_MUTANTS ?= 4000
 # fuzzer that has never gone red proves nothing about the reader it points at.
 # ONE CHECK is removed from the block Open — the count against the declared
 # maximum — in a COPY of the emitter, the corpus is regenerated from the
-# sabotaged compiler, and the oracle must find it. No tracked file is written
-# to, so an interrupt cannot leave a sabotaged working tree.
-.PHONY: tables-dart-fuzz-negative-control tables-dart-release
+# sabotaged compiler, and the oracle must find it. BOTH halves of the extent
+# bound are removed — the rows-inside-extent test AND the padding test — so
+# nothing downstream catches what the first lets through (I3: removing the
+# rows bound alone leaves the padding check to refuse on the negative slack, so
+# only both keep the verdict seed-independent). The count against the declared
+# maximum stays in place, so the named finding is the oracle's own walk. Red is
+# required on that named finding at both seeds. No tracked file is written to,
+# so an interrupt cannot leave a sabotaged working tree.
+.PHONY: tables-dart-fuzz-negative-control
 tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 	@rm -rf build/dart-fuzz-nc && mkdir -p build/dart-fuzz-nc
-	@sed 's|g.pf("      if (count > %sMax) {\\n        return null;\\n      }\\n", field)|_ = field // SABOTAGED: the count bound is gone|' \
+	@sed -e 's|g.pf("      if (rows > extent - offsetOf) {\\n        return null;\\n      }\\n")|_ = field // SABOTAGED: the rows-inside-extent bound is gone|' \
+	     -e 's|g.pf("    if (padding > extent - used) {\\n      return null;\\n    }\\n")|// SABOTAGED: the padding bound is gone|' \
 		internal/codegen/darttable/block.go > build/dart-fuzz-nc/block.go.txt
 	@cmp -s internal/codegen/darttable/block.go build/dart-fuzz-nc/block.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
@@ -280,15 +288,47 @@ tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 	@sed -e "s|../../build/tables-generated-dart/block/|$(CURDIR)/build/dart-fuzz-nc/generated/block/|g" \
 	     -e "s|../../build/tables-generated-dart/pointers/|$(CURDIR)/build/dart-fuzz-nc/generated/pointers/|g" \
 		test/dart-tables/fuzz.dart > build/dart-fuzz-nc/fuzz.dart
-	@if $(DART) build/dart-fuzz-nc/fuzz.dart 4000 > build/dart-fuzz-nc/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the fuzzer stayed green with the count bound removed"; \
-		tail -5 build/dart-fuzz-nc/log; exit 1; \
-	fi
-	@grep -q "past the declared" build/dart-fuzz-nc/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the fuzzer went red for some other reason"; \
-		  tail -20 build/dart-fuzz-nc/log; exit 1; }
-	@grep -m1 "past the declared" build/dart-fuzz-nc/log
-	@echo "negative control: one check removed from the Dart block Open turns the fuzzer RED"
+	@for s in 1 2; do \
+		if SEED=$$s $(DART) build/dart-fuzz-nc/fuzz.dart 4000 > build/dart-fuzz-nc/log-$$s 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the fuzzer stayed green at seed $$s with both extent bounds removed"; \
+			tail -5 build/dart-fuzz-nc/log-$$s; exit 1; \
+		fi; \
+		grep -q "past the claimed" build/dart-fuzz-nc/log-$$s || \
+			{ echo "NEGATIVE CONTROL FAILED: the fuzzer at seed $$s went red for some other reason"; \
+			  tail -20 build/dart-fuzz-nc/log-$$s; exit 1; }; \
+	done
+	@grep -m1 "past the claimed" build/dart-fuzz-nc/log-1
+	@echo "negative control: both halves of the extent bound removed from the Dart block Open turn the fuzzer RED at both seeds"
+
+# THE LEAD GATE'S NEGATIVE CONTROL: the base-alignment check is removed from the
+# block Open in a copy, and the enumerated lead pass must go red — every middle
+# lead 1..63 opens when the check that should refuse them is gone (I5).
+.PHONY: tables-dart-fuzz-lead-negative-control
+tables-dart-fuzz-lead-negative-control: build/cook-fuzz/.stamp
+	@rm -rf build/dart-fuzz-lead-nc && mkdir -p build/dart-fuzz-lead-nc
+	@sed -e 's|g.pf("    if (base %% %d != 0) {\\n      return null; // the base'"'"'s alignment\\n    }\\n", ir.BlockAlign)|// SABOTAGED: the base-alignment check is gone|' \
+		internal/codegen/darttable/block.go > build/dart-fuzz-lead-nc/block.go.txt
+	@cmp -s internal/codegen/darttable/block.go build/dart-fuzz-lead-nc/block.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/darttable/block.go":"%s/build/dart-fuzz-lead-nc/block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-fuzz-lead-nc/overlay.json
+	go build -overlay build/dart-fuzz-lead-nc/overlay.json -o build/dart-fuzz-lead-nc/schema ./cmd/schema
+	./build/dart-fuzz-lead-nc/schema generate --lang dart --out build/dart-fuzz-lead-nc/generated/block tables/block
+	./build/dart-fuzz-lead-nc/schema generate --lang dart --out build/dart-fuzz-lead-nc/generated/pointers tables/pointers
+	@sed -e "s|../../build/tables-generated-dart/block/|$(CURDIR)/build/dart-fuzz-lead-nc/generated/block/|g" \
+	     -e "s|../../build/tables-generated-dart/pointers/|$(CURDIR)/build/dart-fuzz-lead-nc/generated/pointers/|g" \
+		test/dart-tables/fuzz.dart > build/dart-fuzz-lead-nc/fuzz.dart
+	@for s in 1 2; do \
+		if SEED=$$s $(DART) build/dart-fuzz-lead-nc/fuzz.dart 4000 > build/dart-fuzz-lead-nc/log-$$s 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the lead pass stayed green at seed $$s with the alignment check removed"; \
+			tail -5 build/dart-fuzz-lead-nc/log-$$s; exit 1; \
+		fi; \
+		grep -q "answered open, wanted refuse" build/dart-fuzz-lead-nc/log-$$s || \
+			{ echo "NEGATIVE CONTROL FAILED: the lead pass at seed $$s went red for some other reason"; \
+			  tail -20 build/dart-fuzz-lead-nc/log-$$s; exit 1; }; \
+	done
+	@grep -m1 "answered open, wanted refuse" build/dart-fuzz-lead-nc/log-1
+	@echo "negative control: the base-alignment check removed from the Dart block Open turns the lead pass RED at both seeds"
 
 # The DART leg's driver: one AOT executable, because `dart run` would pay a JIT
 # start-up per surface and the two-minute rule is measured across every leg.
