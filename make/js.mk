@@ -22,6 +22,13 @@
 #   sha256: 7ee659a7768e641bbfd5360940660b8e8fd0052f77488f365562bac522fc15d4
 #   untar into dist/ (the tarball already unpacks to node-v26.7.0-darwin-arm64)
 NODE ?= $(CURDIR)/dist/node-v26.7.0-darwin-arm64/bin/node
+
+# eslint, pinned the way NODE is (issue #547, #599). It is the language's own
+# analyzer and the authority over every generated JavaScript file, so a bench
+# without it cannot certify the leg: toolchain-js refuses by name and
+# tables-js-clean FAILS, never SKIPs. There is no package.json and nothing is
+# installed by the build; eslint 9 on PATH, configured by eslint.config.mjs.
+ESLINT ?= eslint
 # the conformance driver is a shell script the harness spawns, so it reads the
 # pin from the environment and falls back to PATH
 export NODE
@@ -33,6 +40,7 @@ export NODE
 .PHONY: toolchain-js
 toolchain-js:
 	@$(call toolchain_probe,js,NODE,$(NODE))
+	@$(call toolchain_probe,js,ESLINT,$(ESLINT))
 build/packet-defaults/js/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/js.mk
 	./bin/schema generate --lang js --out build/packet-defaults/js/defaults test/packet-defaults/Defaults.schema
 	./bin/schema generate --lang js --out build/packet-defaults/js/plain test/packet-defaults/Plain.schema
@@ -940,23 +948,40 @@ test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generate
 
 TEST_LEGS         += test-js
 TOOLCHAIN_LEGS    += js
-TOOLCHAIN_PINS_js  := NODE
+TOOLCHAIN_PINS_js  := NODE ESLINT
 CONFORMANCE_LEGS  += $(call unless_skipped,js,build/tables-generated-js/.stamp)
 
-# THE JAVASCRIPT TABLE SOURCES ARE LINT-CLEAN AND FORMAT-CANONICAL (issue #424).
-# `eslint` is the language's authority over the generated table units, so an
-# emitter that drifts from the conventions it enforces goes red on the diff
-# rather than on a reviewer. It SKIPS cleanly where eslint is not on PATH.
-ESLINT ?= eslint
+# THE GENERATED JAVASCRIPT IS LINT-CLEAN AT DEFAULT STRICTNESS (issues #424,
+# #547). `eslint` with eslint.config.mjs (the eslint:recommended rule set
+# written out rule by rule, no npm package imported) is the language's
+# authority over the generated table units AND the packet units: the committed
+# generated/js, generated/js-ludicrous, generated/bench/js and
+# generated/bench/paired/js. A finding is cleared in the emitter, never by a
+# disable comment or an --ignore flag. Where eslint is not on PATH the target
+# FAILS naming the pin: a lint that skips in silence is a gate with no blade.
 .PHONY: tables-js-clean
-tables-js-clean: build/tables-generated-js/.stamp
-	@if ! command -v $(ESLINT) >/dev/null 2>&1; then \
-		echo "SKIP tables-js-clean: $(ESLINT) is not installed"; \
-	else \
-		$(ESLINT) build/tables-generated-js; \
-		echo "tables JavaScript: eslint clean over the generated table units"; \
-	fi
+tables-js-clean: build/tables-generated-js/.stamp generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/paired/js/.stamp
+	@$(call toolchain_probe,js,ESLINT,$(ESLINT))
+	$(ESLINT) --max-warnings 0 build/tables-generated-js generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js
+	@echo "JavaScript: eslint clean over the generated table units and the packet units"
 test-js: tables-js-clean
+
+# ITS NEGATIVE CONTROL: plant `const unused = 1` in a COPY of one generated
+# unit and the lint must go red naming no-unused-vars. Without this the lint
+# could be linting nothing and nobody would know.
+.PHONY: tables-js-clean-negative-control
+tables-js-clean-negative-control: generated/js/.stamp
+	@$(call toolchain_probe,js,ESLINT,$(ESLINT))
+	@rm -rf build/js-clean-sabotage && mkdir -p build/js-clean-sabotage
+	@cp generated/js/Enums.js build/js-clean-sabotage/Enums.js
+	@printf '\nconst unused = 1;\n' >> build/js-clean-sabotage/Enums.js
+	@if $(ESLINT) --max-warnings 0 build/js-clean-sabotage > build/js-clean-sabotage/out.txt 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: eslint passed a planted unused variable"; exit 1; \
+	fi
+	@grep -q no-unused-vars build/js-clean-sabotage/out.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: eslint went red but not on no-unused-vars"; cat build/js-clean-sabotage/out.txt; exit 1; }
+	@echo "tables-js-clean negative control: red on no-unused-vars, as it must be"
+test-js: tables-js-clean-negative-control
 
 # Both JavaScript packet tiers share the UTF-8 rule and mutation corpus.
 build/packet-text/js/.stamp: bin/schema test/packet-text/Narrow.schema

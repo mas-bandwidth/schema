@@ -475,6 +475,7 @@
         "packet-wide-js-negative-control",
         "tables-js-accessor-negative-control",
         "tables-js-alloc-negative-control",
+        "tables-js-clean-negative-control",
         "tables-js-fixed-form-negative-control",
         "tables-js-fixed-optional-negative-control",
         "tables-js-fuzz-negative-control",
