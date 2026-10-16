@@ -27,21 +27,27 @@ func (t elixirTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, err
 // elixirtable opens no file and a build ships a reader for every layout the lock
 // records.
 func (elixirTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
-	// Packet wide text is carried; table kind 33 remains refused.
+	// Packet wide text is carried, and table kind 33 too: elixir is in
+	// tableWideTextTargets (compiler/widetext.go, docs/SPEC-TABLES.md §3).
 	if err := refuseWideText(u, "elixir"); err != nil {
 		return nil, err
 	}
-	// refuseUnported, split so a unit that carries unbounded arrays
-	// (docs/SPEC-TABLES.md §2.9) is not refused whole for a map (§2.8) or a
-	// union the closure also holds (§2.6). A unit that is only that construct
-	// is still refused by name — the cross-target gates. On a mixed unit
-	// (tables/lists) the codec names those roots uncarried and the driver
-	// writes <case>.absent rather than a wrong byte (§11).
+	// refuseUnported, split per construct. This target registers as a carrier
+	// of maps (§2.8), optional arrays (§2.3), table arms and arrays of unions
+	// (§2.6) in init below, so those refusals pass by registration; the calls
+	// stay so a carrier that is unregistered is refused by name again (§11).
 	if err := refuseValueDefaults(u, "elixir"); err != nil {
 		return nil, err
 	}
-	if err := refuseWasRows(u, "elixir"); err != nil {
-		return nil, err
+	// docs/SPEC-TABLES.md §2.6, §3 and §5: the variable form's arm header
+	// hashes a selected arm's WireName (internal/codegen/elixirtable's
+	// armDescriptor), so a `was` on an arm of a TABLE union is carried. A unit
+	// with any other `was` row — an enum variant, a packet union's arm, a
+	// type's field — still takes refuseWasRows unchanged.
+	if !elixirCarriesTableArmWasOnly(u) {
+		if err := refuseWasRows(u, "elixir"); err != nil {
+			return nil, err
+		}
 	}
 	if err := refuseVoidArms(u, "elixir"); err != nil {
 		return nil, err
@@ -88,6 +94,34 @@ func (elixirTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage
 		files[name] = data
 	}
 	return files, nil
+}
+
+// elixirCarriesTableArmWasOnly reports whether every `was` row ir.WasRows
+// would name sits on an arm of a table union (docs/SPEC-TABLES.md §2.6, §5):
+// false at the first enum-variant, type-field or packet-union `was`.
+func elixirCarriesTableArmWasOnly(u *ir.Unit) bool {
+	for _, e := range u.Enums {
+		for _, old := range e.Was {
+			if old != "" {
+				return false
+			}
+		}
+	}
+	for _, st := range u.Structs {
+		for _, f := range st.Fields {
+			if f.WasName != "" {
+				return false
+			}
+		}
+	}
+	for _, un := range u.Unions {
+		for _, arm := range un.Variants {
+			if arm.WasName != "" {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // elixirListsBesideUncarried reports whether the unit declares an unbounded
@@ -148,8 +182,12 @@ func init() {
 	valueDefaultTargets = append(valueDefaultTargets, "elixir")
 	registerWideTextCarrier("elixir")
 	registerListCarrier("elixir")
-	// blobs=true: the variable class carries *string and *bytes (docs/SPEC-TABLES.md
-	// §2.5), so the compiler-level byte-buffer gate must not fire for the two
-	// blobs the wire rides as nodes.
-	registerBuiltin(elixirTarget{}, true, false, false, true)
+	registerMapCarrier("elixir")
+	registerOptionalArrayCarrier("elixir")
+	// arms=true and unionArrays=true: the variable form carries a union whose
+	// arms are field lines of any type, payload-free arms among them, and an
+	// array of unions (docs/SPEC-TABLES.md §2.6, §3). blobs=true: it carries
+	// *string and *bytes (§2.5), so the compiler-level byte-buffer gate must
+	// not fire for the two blobs the wire rides as nodes.
+	registerBuiltin(elixirTarget{}, true, true, true, true)
 }
