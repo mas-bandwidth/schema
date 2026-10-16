@@ -1247,6 +1247,11 @@ func fixedCheckNeededStruct(st *ir.Struct, seen map[string]bool) bool {
 }
 
 func fixedCheckNeededField(f *ir.Field, seen map[string]bool) bool {
+	// A counted array must check its own count even when its element has no
+	// bounded fields. In particular, an unbounded named struct still has Max.
+	if f.Array == ir.ArrayCounted {
+		return true
+	}
 	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Struct); ok {
 			return fixedCheckNeededStruct(r, seen)
@@ -1257,7 +1262,7 @@ func fixedCheckNeededField(f *ir.Field, seen map[string]bool) bool {
 	case ir.TString, ir.TWString, ir.TBytes:
 		return true
 	}
-	return f.Array == ir.ArrayCounted || ir.TableFixedClampNeededField(f)
+	return ir.TableFixedClampNeededField(f)
 }
 
 // fixedBoundNeeded answers the one question both passes ask of a field: is

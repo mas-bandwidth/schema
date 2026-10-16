@@ -118,6 +118,60 @@ func TestVariableWriterRefuses(t *testing.T) {
 }
 `)
 	})
+	t.Run("counted-unbounded-struct", func(t *testing.T) {
+		t.Parallel()
+		runGenerated(t, `package probe
+fixed table Item { n int32 }
+fixed table Only { items [..2]Item }
+fixed table WithBound {
+    items [..2]Item
+    limit int32 | min = 0, max = 10
+}
+`, `package probe
+import "testing"
+
+func TestCountedUnboundedStruct(t *testing.T) {
+	t.Parallel()
+	var only Only
+	OnlyReset(&only)
+	only.ItemsCount = 2
+	only.Items[0].N, only.Items[1].N = 3, 4
+	buffer := make([]byte, OnlyFixedMeasure(1))
+	if n := OnlyFixedSave([]Only{only}, buffer); n != int64(len(buffer)) {
+		t.Fatalf("lawful unbounded struct array refused: %d", n)
+	}
+	got := make([]Only, 1)
+	var report TableReport
+	if n := OnlyFixedLoad(got, buffer, make([]TableFixedEntry, 256), &report); n != 1 || report != (TableReport{}) || got[0].ItemsCount != 2 || got[0].Items[1].N != 4 {
+		t.Fatalf("lawful count did not reload cleanly: n=%d got=%+v report=%+v", n, got[0], report)
+	}
+	for _, count := range []int32{-1, 3, 9} {
+		only.ItemsCount = count
+		clear(buffer)
+		if n := OnlyFixedSave([]Only{only}, buffer); n != -1 {
+			t.Fatalf("OnlyFixedSave accepted count %d past Max 2: %d", count, n)
+		}
+		if n, err := OnlyFixedSaveReason([]Only{only}, buffer); n != -1 || err != TableRefuseInvalidValue {
+			t.Fatalf("OnlyFixedSaveReason(%d) = %d, %v", count, n, err)
+		}
+		for i, b := range buffer {
+			if b != 0 { t.Fatalf("refused count %d wrote byte %d", count, i) }
+		}
+		var with WithBound
+		WithBoundReset(&with)
+		with.Limit = 5
+		with.ItemsCount = count
+		bufferWith := make([]byte, WithBoundFixedMeasure(1))
+		if n := WithBoundFixedSave([]WithBound{with}, bufferWith); n != -1 {
+			t.Fatalf("WithBoundFixedSave accepted count %d past Max 2: %d", count, n)
+		}
+		if n, err := WithBoundFixedSaveReason([]WithBound{with}, bufferWith); n != -1 || err != TableRefuseInvalidValue {
+			t.Fatalf("WithBoundFixedSaveReason(%d) = %d, %v", count, n, err)
+		}
+	}
+}
+`)
+	})
 	t.Run("fixed", func(t *testing.T) {
 		t.Parallel()
 		runGenerated(t, `package probe
