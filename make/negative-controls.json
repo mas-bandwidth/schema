@@ -574,6 +574,8 @@
         "tables-elixir-block-lead-negative-control",
         "tables-elixir-fixed-form-negative-control",
         "tables-elixir-fuzz-negative-control",
+        "tables-elixir-keyed-max-negative-control",
+        "tables-elixir-keyed-none-negative-control",
         "tables-elixir-runtime-pin-negative-control",
         "tables-elixir-slot-negative-control",
         "tables-elixir-versioning-negative-control"
