@@ -57,6 +57,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
@@ -1138,14 +1139,17 @@ func formatFloatCore(v float64, bits int) string {
 //   - no blank line before a closing brace, never two blank lines in a row,
 //     and a blank line around each member that carries a Javadoc.
 //
-// It NEVER moves a code line's indentation: a template that indents wrongly
-// is a template the gate must see (tools/sabotage/table_java_format_drift.go
-// plants exactly that), so the fix for one is in the template.
+// It NEVER moves the indentation of a line already in the formatter's shape:
+// a template that indents such a line wrongly is a template the gate must see
+// (tools/sabotage/table_java_format_drift.go plants exactly that), so the fix
+// for one is in the template. Only a compact line -- statements run together,
+// unspaced -- and the blocks it opens are laid out afresh (relayout).
 func Canonical(src []byte) []byte {
 	lines := strings.Split(javaElseIf.ReplaceAllString(string(src), "} else if ("), "\n")
 	lines = canonJavadocs(lines)
 	lines = joinOpenParens(lines)
 	lines = joinLoneBraces(lines)
+	lines = relayout(lines)
 	var out []string
 	for _, l := range lines {
 		out = append(out, canonLine(l)...)
@@ -1318,6 +1322,9 @@ func canonLine(l string) []string {
 		return w
 	}
 	if w := wrapFor(l); w != nil {
+		return w
+	}
+	if w := wrapBracelessFor(l); w != nil {
 		return w
 	}
 	if w := splitCases(l); w != nil {
@@ -1507,9 +1514,122 @@ func wrapCall(l string) []string {
 			end = ");"
 		}
 		if javaWidth(argInd+a+end) > javaColumnLimit && !(strings.HasPrefix(a, "\"") && strings.HasSuffix(a, "\"")) {
-			return nil
+			w := breakArg(argInd, a, end)
+			if w == nil {
+				return nil
+			}
+			out = append(out, w...)
+			continue
 		}
 		out = append(out, argInd+a+end)
+	}
+	return out
+}
+
+// breakPrefixed is breakArg for an operand behind a prefix (`? `, `: `, an
+// operator): the prefix leads its first line.
+func breakPrefixed(ind, prefix, e, tail string) []string {
+	w := breakArg(ind, e, tail)
+	if w == nil {
+		return nil
+	}
+	w[0] = ind + prefix + strings.TrimLeft(w[0], " ")
+	return fitAll(w)
+}
+
+// breakArg lays out one argument that does not fit on its line: a call (or a
+// `new`) opens its own argument list eight columns deeper, all on one line
+// when they fit and one a line otherwise, recursively; a string literal is
+// left whole. nil when the argument is neither.
+func breakArg(ind, a, end string) []string {
+	if javaWidth(ind+a+end) <= javaColumnLimit || (strings.HasPrefix(a, "\"") && strings.HasSuffix(a, "\"")) {
+		return []string{ind + a + end}
+	}
+	if c, x, y, ok := splitTernary(a); ok {
+		// a conditional: its arms eight columns under the condition, each
+		// broken as an argument of its own when it does not fit
+		yes, no := breakPrefixed(ind+"        ", "? ", x, ""), breakPrefixed(ind+"        ", ": ", y, end)
+		if yes == nil || no == nil || javaWidth(ind+c) > javaColumnLimit {
+			return nil
+		}
+		return append(append([]string{ind + c}, yes...), no...)
+	}
+	if parts, ok := splitBinary(a); ok && len(parts) > 1 {
+		// a binary chain: one operand a line, each later one eight columns
+		// in behind its operator, broken in turn when it does not fit
+		tail := ""
+		if len(parts) == 1 {
+			tail = end
+		}
+		out := breakArg(ind, parts[0], tail)
+		if out == nil {
+			return nil
+		}
+		for i, p := range parts[1:] {
+			op, operand, _ := strings.Cut(p, " ")
+			t := ""
+			if i == len(parts)-2 {
+				t = end
+			}
+			w := breakPrefixed(ind+"        ", op+" ", operand, t)
+			if w == nil {
+				return nil
+			}
+			out = append(out, w...)
+		}
+		return out
+	}
+	if m := javaArrayArg.FindStringSubmatch(a); m != nil {
+		// `new T[] {a, b}`: one element a line, four columns in
+		elems, ok := splitArgs(m[2])
+		if !ok {
+			return nil
+		}
+		out := []string{ind + m[1] + " {"}
+		for i, e := range elems {
+			if i < len(elems)-1 {
+				e += ","
+			}
+			out = append(out, ind+"    "+e)
+		}
+		return fitAll(append(out, ind+"}"+end))
+	}
+	if strings.HasPrefix(a, "(") {
+		// a cast: the operand eight columns under it
+		if c := matchParen(a, 0); c > 0 && c+2 < len(a) && a[c+1] == ' ' && javaCallee.MatchString(a[1:c]) {
+			rest := breakArg(ind+"        ", a[c+2:], end)
+			if rest == nil {
+				return nil
+			}
+			return append([]string{ind + a[:c+1]}, rest...)
+		}
+	}
+	open := strings.IndexByte(a, '(')
+	if open < 0 || !strings.HasSuffix(a, ")") || matchParen(a, open) != len(a)-1 {
+		return nil
+	}
+	if !javaCallee.MatchString(strings.TrimPrefix(a[:open], "new ")) {
+		return nil
+	}
+	args, ok := splitArgs(a[open+1 : len(a)-1])
+	if !ok || len(args) == 0 {
+		return nil
+	}
+	out := []string{ind + a[:open+1]}
+	inner := ind + "        "
+	if one := inner + strings.Join(args, ", ") + ")" + end; javaWidth(one) <= javaColumnLimit {
+		return append(out, one)
+	}
+	for i, x := range args {
+		e := ","
+		if i == len(args)-1 {
+			e = ")" + end
+		}
+		w := breakArg(inner, x, e)
+		if w == nil {
+			return nil
+		}
+		out = append(out, w...)
 	}
 	return out
 }
@@ -1931,6 +2051,8 @@ func wrapBinary(l string) []string {
 		}
 	case strings.HasPrefix(t, "if (") && strings.HasSuffix(t, ") {") && matchParen(t, 3) == len(t)-3:
 		return breakCond(ind, "if (", t[len("if ("):len(t)-3], ") {")
+	case strings.HasPrefix(t, "} else if (") && strings.HasSuffix(t, ") {") && matchParen(t, 10) == len(t)-3:
+		return breakCond(ind, "} else if (", t[len("} else if ("):len(t)-3], ") {")
 	}
 	return nil
 }
@@ -1975,6 +2097,9 @@ func memberBlankLines(lines []string) []string {
 				}
 			}
 		}
+		if len(stack) == 0 && javaTypeHeader.MatchString(t) && len(out) > 0 && strings.HasPrefix(strings.TrimSpace(out[len(out)-1]), "import ") {
+			out = append(out, "") // the imports and the type are apart
+		}
 		out = append(out, l)
 		// track the braces this line opens and closes
 		code, _, _ := strings.Cut(t, "//")
@@ -1990,6 +2115,8 @@ func memberBlankLines(lines []string) []string {
 			lastMemberEnd = ""
 		} else if atMember(l) && strings.HasSuffix(code, ";") && !strings.HasPrefix(t, "*") {
 			lastMemberEnd = "field"
+		} else if atMember(l) && strings.HasSuffix(code, "{}") && !strings.HasPrefix(t, "*") {
+			lastMemberEnd = "block" // a member whose body is empty, on one line
 		}
 	}
 	return out
@@ -2163,10 +2290,10 @@ func wrapBracelessIf(l string) []string {
 	}
 	body := ind + "    " + stmt
 	if head := ind + "if (" + cond + ")"; javaWidth(head) <= javaColumnLimit {
-		return []string{head, body}
+		return append([]string{head}, canonLine(body)...)
 	}
 	if w := breakCond(ind, "if (", cond, ")"); w != nil {
-		return append(w, body)
+		return append(w, canonLine(body)...)
 	}
 	// `if (!call(args)) stmt;`: the arguments on one line eight columns in
 	c := strings.TrimPrefix(cond, "!")
@@ -2263,6 +2390,18 @@ func wrapLong(l string) []string {
 	if strings.Contains(t, "//") || !strings.HasSuffix(t, ";") {
 		return nil
 	}
+	if strings.HasPrefix(t, "return ") {
+		// `return c ? a : b;`: the condition stays, each arm eight columns in
+		if c, a, b, ok := splitTernary(strings.TrimSuffix(t[len("return "):], ";")); ok {
+			return fitAll([]string{ind + "return " + c, ind + "        ? " + a, ind + "        : " + b + ";"})
+		}
+	}
+	if m := javaCompound.FindStringSubmatch(t); m != nil {
+		// `x op= rhs;`: the right side eight columns in, broken as an argument
+		if w := breakArg(ind+"        ", m[3], ";"); w != nil {
+			return append([]string{ind + m[1] + " " + m[2] + "="}, w...)
+		}
+	}
 	k := topAssign(t)
 	if k < 0 {
 		return nil
@@ -2271,6 +2410,16 @@ func wrapLong(l string) []string {
 	inner := ind + "        "
 	if javaWidth(inner+rhs) <= javaColumnLimit {
 		return []string{ind + lhs + " =", inner + rhs}
+	}
+	if _, _, _, ok := splitTernary(strings.TrimSuffix(rhs, ";")); ok {
+		if w := breakArg(inner, strings.TrimSuffix(rhs, ";"), ";"); w != nil {
+			return append([]string{ind + lhs + " ="}, w...)
+		}
+	}
+	if parts, ok := splitBinary(strings.TrimSuffix(rhs, ";")); ok && len(parts) > 1 {
+		if w := breakArg(inner, strings.TrimSuffix(rhs, ";"), ";"); w != nil {
+			return append([]string{ind + lhs + " ="}, w...)
+		}
 	}
 	if w := wrapChain(ind, lhs, rhs); w != nil {
 		return w
@@ -2299,6 +2448,88 @@ func wrapLong(l string) []string {
 	}
 	return nil
 }
+
+// splitTernary cuts `c ? a : b` at its top-level operators; ok is false when
+// the expression is not one conditional.
+func splitTernary(e string) (c, a, b string, ok bool) {
+	depth, q, colon, nest := 0, -1, -1, 0
+	var quote byte
+	for i := 0; i < len(e); i++ {
+		ch := e[i]
+		if quote != 0 {
+			if ch == '\\' {
+				i++
+			} else if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch ch {
+		case '"', '\'':
+			quote = ch
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			depth--
+		case '?':
+			if depth == 0 {
+				if q < 0 {
+					q = i
+				} else {
+					nest++
+				}
+			}
+		case ':':
+			if depth == 0 && q >= 0 {
+				if nest > 0 {
+					nest--
+				} else if colon < 0 {
+					colon = i
+				}
+			}
+		}
+	}
+	if q < 1 || colon < 0 || e[q-1] != ' ' || colon+2 > len(e) || e[colon-1] != ' ' {
+		return "", "", "", false
+	}
+	return strings.TrimSpace(e[:q]), strings.TrimSpace(e[q+1 : colon]), strings.TrimSpace(e[colon+1:]), true
+}
+
+// fitAll is lines when every one is within the limit, else nil.
+func fitAll(lines []string) []string {
+	for _, l := range lines {
+		if javaWidth(l) > javaColumnLimit {
+			return nil
+		}
+	}
+	return lines
+}
+
+// wrapBracelessFor: a loop whose one-statement body overflows puts the body on
+// the next line, four columns in, and lays that line out on its own.
+func wrapBracelessFor(l string) []string {
+	if javaWidth(l) <= javaColumnLimit || strings.Contains(l, "//") {
+		return nil
+	}
+	ind := indentOf(l)
+	t := strings.TrimSpace(l)
+	if !strings.HasPrefix(t, "for (") || !strings.HasSuffix(t, ";") {
+		return nil
+	}
+	end := matchParen(t, 4)
+	if end < 0 || end+2 >= len(t) || t[end+1] != ' ' || strings.HasPrefix(t[end+2:], "{") {
+		return nil
+	}
+	head := ind + t[:end+1]
+	if javaWidth(head) > javaColumnLimit {
+		return nil
+	}
+	return append([]string{head}, canonLine(ind+"    "+t[end+2:])...)
+}
+
+var javaCompound = regexp.MustCompile(`^([\w.\[\]]+) ([-+*/%&|^]|<<|>>|>>>)= (.*);$`)
+
+var javaArrayArg = regexp.MustCompile(`^(new [\w.]+\[\]) \{(.*)\}$`)
 
 var javaCastCall = regexp.MustCompile(`^(\([\w.<>\[\]]+\)) ([A-Za-z_][\w.]*)\((.*)\);$`)
 
@@ -2529,4 +2760,653 @@ func CommentText(src string) string {
 		}
 	}
 	return strings.Join(strings.Fields(b.String()), "")
+}
+
+// COMPACT TEMPLATES ARE LAID OUT ONCE, HERE (#547). Some emitters write a
+// statement group on one line, unspaced (`if(kind==15){v.x=...;}else{...}`),
+// or a whole method on a few lines whose indentation is not the block's. The
+// formatter's answer for such text is mechanical: one statement per line,
+// one block level per four columns, the standard spacing between tokens.
+// relayout gives that answer for those lines only, so each emitter need not
+// carry it.
+//
+// A line is re-laid when its own token spacing is not the standard spacing,
+// or it holds more than one statement or a block's opening and its contents.
+// The lines a re-laid line opens a block over, up to its closing brace, are
+// re-laid with it (their indentation is the block's, whatever was written).
+// A line already in the formatter's shape is never touched, so a template
+// that indents one correct line wrongly is still red at the gate
+// (tools/sabotage/table_java_format_drift.go plants exactly that).
+
+type jtok struct {
+	s    string
+	line int    // source line index
+	kind byte   // 'i' ident/keyword, 'n' number, 's' string/char, 'o' operator/punct, 'c' line comment, 'b' block comment
+	raw  string // for s == "r": a whole comment or annotation line, kept as written
+}
+
+var javaOps = []string{">>>=", "<<=", ">>=", ">>>", "...", "->", "::", "++", "--", "&&", "||", "==", "!=", "<=", ">=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<", ">>"}
+
+// lexJava splits one line's code into tokens; ok is false for text the lexer
+// does not understand (an unterminated literal, a text block), which is then
+// left exactly as written.
+func lexJava(s string, line int) (toks []jtok, ok bool) {
+	i := 0
+	for i < len(s) {
+		c := s[i]
+		switch {
+		case c == ' ' || c == '\t':
+			i++
+		case c == '/' && i+1 < len(s) && s[i+1] == '/':
+			toks = append(toks, jtok{s: strings.TrimRight(s[i:], " "), line: line, kind: 'c'})
+			i = len(s)
+		case c == '/' && i+1 < len(s) && s[i+1] == '*':
+			end := strings.Index(s[i+2:], "*/")
+			if end < 0 {
+				return nil, false
+			}
+			toks = append(toks, jtok{s: s[i : i+2+end+2], line: line, kind: 'b'})
+			i += 2 + end + 2
+		case c == '"' || c == '\'':
+			if c == '"' && strings.HasPrefix(s[i:], `"""`) {
+				return nil, false
+			}
+			j := i + 1
+			for j < len(s) && s[j] != c {
+				if s[j] == '\\' {
+					j++
+				}
+				j++
+			}
+			if j >= len(s) {
+				return nil, false
+			}
+			toks = append(toks, jtok{s: s[i : j+1], line: line, kind: 's'})
+			i = j + 1
+		case c == '_' || c == '$' || unicode.IsLetter(rune(c)) || c >= 0x80:
+			j := i
+			for j < len(s) && (s[j] == '_' || s[j] == '$' || s[j] >= 0x80 || unicode.IsLetter(rune(s[j])) || unicode.IsDigit(rune(s[j]))) {
+				j++
+			}
+			toks = append(toks, jtok{s: s[i:j], line: line, kind: 'i'})
+			i = j
+		case unicode.IsDigit(rune(c)) || (c == '.' && i+1 < len(s) && unicode.IsDigit(rune(s[i+1]))):
+			j := i
+			for j < len(s) {
+				d := s[j]
+				if unicode.IsDigit(rune(d)) || unicode.IsLetter(rune(d)) || d == '.' || d == '_' {
+					j++
+					continue
+				}
+				if (d == '-' || d == '+') && (s[j-1] == 'e' || s[j-1] == 'E') && !strings.HasPrefix(strings.ToLower(s[i:]), "0x") {
+					j++
+					continue
+				}
+				break
+			}
+			toks = append(toks, jtok{s: s[i:j], line: line, kind: 'n'})
+			i = j
+		default:
+			op := string(c)
+			for _, o := range javaOps {
+				if strings.HasPrefix(s[i:], o) {
+					op = o
+					break
+				}
+			}
+			toks = append(toks, jtok{s: op, line: line, kind: 'o'})
+			i += len(op)
+		}
+	}
+	return toks, true
+}
+
+var javaBinary = map[string]bool{
+	"=": true, "==": true, "!=": true, "<": true, ">": true, "<=": true, ">=": true, "&&": true, "||": true,
+	"+": true, "-": true, "*": true, "/": true, "%": true, "&": true, "|": true, "^": true, "<<": true, ">>": true, ">>>": true,
+	"+=": true, "-=": true, "*=": true, "/=": true, "%=": true, "&=": true, "|=": true, "^=": true, "<<=": true, ">>=": true, ">>>=": true,
+	"?": true, ":": true, "->": true,
+}
+
+var javaPrimitive = map[string]bool{"byte": true, "short": true, "int": true, "long": true, "float": true, "double": true, "boolean": true, "char": true}
+
+var javaSpaceParen = map[string]bool{"if": true, "for": true, "while": true, "switch": true, "catch": true, "synchronized": true, "return": true, "throw": true, "case": true, "else": true, "try": true}
+
+func isTypeName(s string) bool {
+	return javaPrimitive[s] || (s != "" && unicode.IsUpper(rune(s[0])))
+}
+
+// genericSpans marks each `<` and `>` that is a type argument bracket.
+func genericSpans(t []jtok) map[int]bool {
+	g := map[int]bool{}
+	for i := 0; i < len(t); i++ {
+		if t[i].s != "<" || i == 0 || t[i-1].kind != 'i' || !isTypeName(t[i-1].s) {
+			continue
+		}
+		depth, j := 0, i
+		okSpan := true
+		var marks []int
+		for ; j < len(t); j++ {
+			s := t[j].s
+			switch {
+			case s == "<":
+				depth++
+				marks = append(marks, j)
+			case s == ">":
+				depth--
+				marks = append(marks, j)
+			case s == ">>":
+				okSpan = false
+			case t[j].kind == 'i' || s == "," || s == "." || s == "?" || s == "[" || s == "]":
+			default:
+				okSpan = false
+			}
+			if !okSpan || depth == 0 {
+				break
+			}
+		}
+		if okSpan && depth == 0 {
+			for _, m := range marks {
+				g[m] = true
+			}
+			i = j
+		}
+	}
+	return g
+}
+
+// joinTokens prints one line's tokens with the formatter's spacing.
+func joinTokens(t []jtok) string {
+	gen := genericSpans(t)
+	casts := map[int]bool{} // index of a cast's closing paren
+	for i := 0; i+2 < len(t); i++ {
+		if t[i].s != "(" || (i > 0 && t[i-1].kind == 'i' && !javaSpaceParen[t[i-1].s]) {
+			continue
+		}
+		j := i + 1
+		if !isTypeName(t[j].s) {
+			continue
+		}
+		for j+1 < len(t) && (t[j+1].s == "." || t[j+1].s == "[" || t[j+1].s == "]" || (t[j].s == "." && t[j+1].kind == 'i')) {
+			j++
+		}
+		if j+2 < len(t) && t[j+1].s == ")" {
+			n := t[j+2]
+			if n.kind == 'i' || n.kind == 'n' || n.kind == 's' || n.s == "(" || n.s == "!" || n.s == "~" {
+				if n.kind != 'i' || !javaBinaryWord(n.s) {
+					casts[j+1] = true
+				}
+			}
+		}
+	}
+	var b strings.Builder
+	question := 0
+	for i, k := range t {
+		if i == 0 {
+			b.WriteString(k.s)
+			if k.s == "?" {
+				question++
+			}
+			continue
+		}
+		p := t[i-1]
+		unary := func(j int) bool { // is t[j] a unary + or -?
+			if t[j].s != "-" && t[j].s != "+" {
+				return false
+			}
+			if j == 0 {
+				return true
+			}
+			q := t[j-1]
+			if q.kind == 'o' && q.s != ")" && q.s != "]" && q.s != "++" && q.s != "--" && !(q.s == ">" && gen[j-1]) {
+				return true
+			}
+			return q.kind == 'i' && (q.s == "return" || q.s == "case" || q.s == "throw")
+		}
+		space := true
+		switch {
+		case k.kind == 'c' || k.kind == 'b':
+			space = true
+		case k.s == "," || k.s == ";":
+			space = false
+		case k.s == ")" || k.s == "]":
+			space = false
+		case k.s == ".":
+			space = false
+		case p.s == ".":
+			space = false
+		case k.s == "::" || p.s == "::":
+			space = false
+		case p.s == "(" || p.s == "[":
+			space = false
+		case p.s == "@":
+			space = false
+		case k.s == "++" || k.s == "--":
+			space = p.kind == 'o' && javaBinary[p.s] && !(p.s == ">" && gen[i-1])
+			if p.s == "(" || p.s == "[" {
+				space = false
+			}
+		case p.s == "++" || p.s == "--":
+			space = !(k.kind == 'i' || k.kind == 'n') || (i >= 2 && (t[i-2].kind == 'i' || t[i-2].s == ")" || t[i-2].s == "]"))
+		case k.s == "(":
+			space = p.kind == 'i' && javaSpaceParen[p.s] || (p.kind == 'o' && javaBinary[p.s] && !(p.s == ">" && gen[i-1])) || p.s == "," || p.kind == 'c'
+			if p.s == "!" || p.s == "~" || unary(i-1) || p.s == "(" || p.s == "[" {
+				space = false
+			}
+			if p.s == ")" && casts[i-1] {
+				space = true
+			}
+		case k.s == "[":
+			space = false
+		case k.s == "<" && gen[i]:
+			space = false
+		case k.s == ">" && gen[i]:
+			space = false
+		case p.s == "<" && gen[i-1]:
+			space = false
+		case p.s == ">" && gen[i-1]:
+			space = k.s != "(" && k.s != "." && k.s != "[" && k.s != ")" && k.s != ","
+		case p.s == "!" || p.s == "~":
+			space = false
+		case unary(i - 1):
+			space = false
+		case k.s == ":" && i >= 1 && question == 0 && (t[0].s == "case" || t[0].s == "default"):
+			space = false
+		case p.s == ")" && !casts[i-1] && (k.kind == 'i' || k.kind == 'n' || k.kind == 's'):
+			space = true
+		case p.s == "]" && k.s == "{":
+			space = true
+		case p.s == "{" || k.s == "}":
+			// an initializer's braces hold their elements tight
+			space = false
+		}
+		if k.s == "?" {
+			question++
+		}
+		if space {
+			b.WriteByte(' ')
+		}
+		b.WriteString(k.s)
+	}
+	return b.String()
+}
+
+func javaBinaryWord(s string) bool { return s == "instanceof" }
+
+// relayLine is the standard text of one line that holds whole statements, or
+// "" when the line is not something relayout prints.
+func blockOpens(t []jtok, i int) bool {
+	if t[i].s != "{" {
+		return false
+	}
+	if i == 0 {
+		return true
+	}
+	p := t[i-1].s
+	return !(p == "]" || p == "=" || p == "," || p == "{" || p == "return")
+}
+
+type relayFrame struct {
+	isSwitch bool
+	inCase   bool
+	isDo     bool
+	extra    int // a braceless loop's body: the block sits one level in
+}
+
+type relayPrinter struct {
+	base     string
+	stack    []relayFrame
+	cur      []jtok
+	out      []string
+	under    int  // closing braces of blocks opened before the region
+	rootCase bool // the region opened inside a switch, under a case label
+}
+
+func (p *relayPrinter) level(label bool) int {
+	n := 0
+	if p.rootCase && !(label && len(p.stack) == 0) {
+		n++
+	}
+	for i, f := range p.stack {
+		n += 1 + f.extra
+		if f.isSwitch && f.inCase && !(label && i == len(p.stack)-1) {
+			n++
+		}
+	}
+	return n - p.under
+}
+
+func (p *relayPrinter) emit(s string, label bool) { p.emitAt(s, label, 0) }
+
+func (p *relayPrinter) emitAt(s string, label bool, extra int) {
+	lv := p.level(label) + extra
+	ind := len(p.base) + 4*lv
+	if ind < 0 {
+		ind = 0
+	}
+	p.out = append(p.out, strings.Repeat(" ", ind)+s)
+}
+
+func (p *relayPrinter) flush(label bool) {
+	if len(p.cur) == 0 {
+		return
+	}
+	p.emit(joinTokens(p.cur), label)
+	p.cur = nil
+}
+
+// relayout re-lays each compact line (and the block it opens) in the
+// formatter's shape; everything else passes through unchanged.
+func relayout(lines []string) []string {
+	var out []string
+	for i := 0; i < len(lines); i++ {
+		l := lines[i]
+		t := strings.TrimSpace(l)
+		if t == "" || strings.HasPrefix(t, "//") || strings.HasPrefix(t, "*") || strings.HasPrefix(t, "/*") || strings.HasPrefix(t, "@") || strings.HasPrefix(t, "package ") || strings.HasPrefix(t, "import ") {
+			out = append(out, l)
+			continue
+		}
+		toks, ok := lexJava(t, i)
+		if !ok || len(toks) == 0 || !relayNeeded(l, toks) {
+			out = append(out, l)
+			continue
+		}
+		ind := indentOf(l)
+		if ind == "" {
+			ind = contextIndent(out)
+		}
+		// gather the region: this line and every line inside the blocks it opens
+		depth, parens := 0, 0
+		var region []jtok
+		j := i
+		blank := map[int]bool{}
+		for {
+			lj := strings.TrimSpace(lines[j])
+			if strings.HasPrefix(lj, "//") || strings.HasPrefix(lj, "/*") || strings.HasPrefix(lj, "*") || strings.HasPrefix(lj, "@") {
+				raw := lj
+				if strings.HasPrefix(lj, "*") {
+					raw = " " + lj
+				}
+				region = append(region, jtok{s: raw, line: j, kind: 'r', raw: raw})
+				if j+1 >= len(lines) {
+					break
+				}
+				j++
+				continue
+			}
+			lt, ok2 := lexJava(lj, j)
+			if !ok2 {
+				depth = 1 // a line the lexer cannot read ends the attempt
+				break
+			}
+			if strings.TrimSpace(lines[j]) == "" {
+				blank[j] = true
+			}
+			for _, k := range lt {
+				switch k.s {
+				case "{", "(", "[":
+					if k.s == "{" {
+						depth++
+					} else {
+						parens++
+					}
+				case "}", ")", "]":
+					if k.s == "}" {
+						depth--
+					} else {
+						parens--
+					}
+				}
+			}
+			region = append(region, lt...)
+			if (depth <= 0 && parens <= 0) || j+1 >= len(lines) {
+				break
+			}
+			j++
+		}
+		if depth > 0 || parens > 0 {
+			out = append(out, l)
+			continue
+		}
+		if len(region) > 0 && region[0].s == "}" {
+			ind += "    " // the closing brace is at the line's own indentation
+		}
+		out = append(out, printRegion(ind, region, blank)...)
+		i = j
+	}
+	return out
+}
+
+// relayNeeded: the line's spacing is not the standard spacing, or it holds a
+// statement after a statement, or a block's opening with its contents.
+func relayNeeded(l string, toks []jtok) bool {
+	t := strings.TrimSpace(l)
+	// a line of a statement broken over several (its parentheses do not
+	// balance on it) is the formatter's own continuation: left alone
+	parens := 0
+	for _, k := range toks {
+		switch k.s {
+		case "(", "[":
+			parens++
+		case ")", "]":
+			parens--
+		}
+		if parens < 0 {
+			return false
+		}
+	}
+	if parens != 0 {
+		return false
+	}
+	for i, k := range toks {
+		if k.kind == 'c' || k.kind == 'b' {
+			return false // a commented line is left as written
+		}
+		if k.s == "{" && blockOpens(toks, i) && i+1 < len(toks) && toks[i+1].s != "}" {
+			return true
+		}
+		if k.s == "}" && i > 0 && i+1 < len(toks) && !(toks[i+1].s == "else" || toks[i+1].s == "catch" || toks[i+1].s == "finally" || toks[i+1].s == "while" || toks[i+1].s == ";" || toks[i+1].s == ")" || toks[i+1].s == ",") {
+			if toks[i-1].s != "{" {
+				return true
+			}
+		}
+		if k.s == ";" && i+1 < len(toks) && toks[0].s != "for" {
+			return true
+		}
+		if k.s == ":" && i+1 < len(toks) && (toks[0].s == "case" || toks[0].s == "default") && !strings.Contains(t, "?") && !strings.Contains(t, "->") {
+			return true
+		}
+	}
+	if !javaCompactSmell.MatchString(javaStrings.ReplaceAllString(t, `""`)) {
+		return false
+	}
+	return joinTokens(toks) != t
+}
+
+var (
+	javaStrings      = regexp.MustCompile(`"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'`)
+	javaCompactSmell = regexp.MustCompile(`\b(if|for|while|switch|catch)\(|\)\{|\}else|else\{|[\w\])]=[^=]|[^=!<>+\-*/%&|^ ]=[\w("'!-]|,[^ ]|;[^ ]|[\w)\]](==|!=|&&|\|\||<=|>=)|(==|!=|&&|\|\||<=|>=)[\w(!]`)
+)
+
+// contextIndent is the indentation a line written at column 0 takes from the
+// code line above it.
+func contextIndent(out []string) string {
+	for k := len(out) - 1; k >= 0; k-- {
+		t := strings.TrimSpace(out[k])
+		if t == "" || strings.HasPrefix(t, "//") || strings.HasPrefix(t, "*") || strings.HasPrefix(t, "/*") {
+			continue
+		}
+		ind := indentOf(out[k])
+		if strings.HasSuffix(t, "{") || ((strings.HasPrefix(t, "case ") || strings.HasPrefix(t, "default")) && strings.HasSuffix(t, ":")) {
+			return ind + "    "
+		}
+		return ind
+	}
+	return ""
+}
+
+func printRegion(base string, toks []jtok, blank map[int]bool) []string {
+	p := &relayPrinter{base: base}
+	parens := 0
+	lastLine := -1
+	for i := 0; i < len(toks); i++ {
+		k := toks[i]
+		if lastLine >= 0 && k.line > lastLine+1 {
+			for b := lastLine + 1; b < k.line; b++ {
+				if blank[b] && len(p.cur) == 0 {
+					p.out = append(p.out, "")
+				}
+			}
+		}
+		lastLine = k.line
+		next := func() string {
+			if i+1 < len(toks) {
+				return toks[i+1].s
+			}
+			return ""
+		}
+		switch {
+		case k.kind == 'c':
+			if len(p.cur) > 0 {
+				p.cur = append(p.cur, k)
+				p.flush(false)
+			} else if len(p.out) > 0 && i > 0 && toks[i-1].line == k.line {
+				p.out[len(p.out)-1] += " " + k.s
+			} else {
+				p.emit(k.s, false)
+			}
+		case k.s == "(" || k.s == "[":
+			parens++
+			p.cur = append(p.cur, k)
+		case k.s == ")" || k.s == "]":
+			parens--
+			p.cur = append(p.cur, k)
+		case k.s == ";" && parens == 0:
+			p.cur = append(p.cur, k)
+			p.flush(false)
+		case k.s == ":" && parens == 0 && len(p.cur) > 0 && (p.cur[0].s == "case" || p.cur[0].s == "default") && !hasTok(p.cur, "?"):
+			p.cur = append(p.cur, k)
+			if n := len(p.stack); n > 0 && p.stack[n-1].isSwitch {
+				p.stack[n-1].inCase = true
+			} else if n == 0 {
+				p.rootCase = true
+			}
+			p.flush(true)
+		case k.kind == 'r':
+			p.flush(false)
+			p.emit(k.raw, false)
+		case k.s == "{" && parens == 0 && (len(p.cur) == 0 || !isInitializer(p.cur)):
+			isSwitch := len(p.cur) > 0 && p.cur[0].s == "switch"
+			isDo := len(p.cur) > 0 && p.cur[len(p.cur)-1].s == "do"
+			extra := 0
+			if len(p.cur) == 0 {
+				p.emit("{", false)
+			} else if sp := bracelessHead(p.cur); sp > 0 {
+				// `for (...) if (...) {`: the loop's body goes one level in
+				p.emit(joinTokens(p.cur[:sp]), false)
+				body := append(append([]jtok{}, p.cur[sp:]...), k)
+				p.cur = nil
+				p.emitAt(joinTokens(body), false, 1)
+				isSwitch = body[0].s == "switch"
+				extra = 1
+			} else {
+				p.cur = append(p.cur, k)
+				p.flush(false)
+			}
+			p.stack = append(p.stack, relayFrame{isSwitch: isSwitch, isDo: isDo, extra: extra})
+			if next() == "}" && !(i+2 < len(toks) && (toks[i+2].s == "else" || toks[i+2].s == "catch" || toks[i+2].s == "finally")) {
+				// an empty block closes on its opening line
+				p.stack = p.stack[:len(p.stack)-1]
+				p.out[len(p.out)-1] += "}"
+				i++
+				if n := next(); n == "else" || n == "catch" || n == "finally" {
+					last := strings.TrimLeft(p.out[len(p.out)-1], " ")
+					p.out = p.out[:len(p.out)-1]
+					p.cur = []jtok{{s: last, line: k.line, kind: 'i'}}
+				}
+			}
+		case k.s == "{" && parens == 0:
+			// an initializer: copy it inline up to its closing brace
+			depth := 0
+			for ; i < len(toks); i++ {
+				p.cur = append(p.cur, toks[i])
+				if toks[i].s == "{" {
+					depth++
+				} else if toks[i].s == "}" {
+					depth--
+					if depth == 0 {
+						break
+					}
+				}
+			}
+		case k.s == "}" && parens == 0:
+			p.flush(false)
+			var f relayFrame
+			closeExtra := 0
+			if len(p.stack) == 0 {
+				p.under++
+			} else {
+				f = p.stack[len(p.stack)-1]
+				p.stack = p.stack[:len(p.stack)-1]
+				closeExtra = f.extra
+			}
+			n := next()
+			if n == "else" || n == "catch" || n == "finally" || (n == "while" && f.isDo) {
+				p.cur = []jtok{k}
+			} else if n == ";" || n == ")" || n == "," {
+				p.cur = []jtok{k}
+			} else {
+				p.emitAt("}", false, closeExtra)
+			}
+		default:
+			p.cur = append(p.cur, k)
+		}
+	}
+	p.flush(false)
+	return p.out
+}
+
+// bracelessHead is where a braceless loop or if header ends when a statement
+// follows it on the same line, or 0.
+func bracelessHead(t []jtok) int {
+	if len(t) < 4 {
+		return 0
+	}
+	switch t[0].s {
+	case "for", "while", "if":
+		if t[1].s != "(" {
+			return 0
+		}
+		depth := 0
+		for i := 1; i < len(t); i++ {
+			switch t[i].s {
+			case "(":
+				depth++
+			case ")":
+				depth--
+				if depth == 0 {
+					if i+1 < len(t) {
+						return i + 1
+					}
+					return 0
+				}
+			}
+		}
+	}
+	return 0
+}
+
+func hasTok(t []jtok, s string) bool {
+	for _, k := range t {
+		if k.s == s {
+			return true
+		}
+	}
+	return false
+}
+
+// isInitializer: a brace after these opens an array initializer, not a block.
+func isInitializer(cur []jtok) bool {
+	last := cur[len(cur)-1].s
+	return last == "]" || last == "=" || last == "," || last == "{" || last == "return"
 }

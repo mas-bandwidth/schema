@@ -89,7 +89,7 @@ func TestVariableKeyedAndUnionSaveNoScratch(t *testing.T) {
 		dir, file string
 		methods   []string
 	}{
-		{"examples", "KeyedConfigVariable.java", []string{"static void writeKeyedField_", "static int writeKeyedPayload_", "static boolean isDefault(Value v,TableVariable.Writer w,TableVariable.NodeGraph graph)"}},
+		{"examples", "KeyedConfigVariable.java", []string{"static void writeKeyedField_", "static int writeKeyedPayload_", "static boolean isDefault(Value v, TableVariable.Writer w, TableVariable.NodeGraph graph)"}},
 		{"arms", "ReachVariable.java", []string{"static void writePayload(TableVariable.Writer w,TableVariable.NodeGraph graph,Value v)"}},
 	} {
 		u := unitFromDir(t, filepath.Join("..", "..", "..", "tables", tc.dir))

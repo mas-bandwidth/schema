@@ -195,7 +195,9 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        TableVariable.Ids ids = new TableVariable.Ids(64);\n")
 	b.WriteString("        TableVariable.Writer w = new TableVariable.Writer(buf, ids);\n")
 	b.WriteString("        TableVariable.NodeGraph nodes = new TableVariable.NodeGraph();\n")
-	fmt.Fprintf(&b, "        nodes.setOpen(v,true);if(!%sVariable.buildGraph(nodes,v))return -1;nodes.setOpen(v,false);\n", st.Name)
+	b.WriteString("        nodes.setOpen(v, true);\n")
+	fmt.Fprintf(&b, "        if (!%sVariable.buildGraph(nodes, v)) return -1;\n", st.Name)
+	b.WriteString("        nodes.setOpen(v, false);\n")
 	b.WriteString("        w.put8(1);\n")
 	b.WriteString("        writeFieldsRetain(w, nodes, v, retain, report, path, 0);\n")
 	b.WriteString("        emitTail(w, retain, report, path, 0);\n")
@@ -233,7 +235,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	// writeFieldsRetain: the canonical write, threading the path into list
 	// elements so each element's body carries its own retained tail (§6.6).
 	fmt.Fprintf(&b, "    static void writeFieldsRetain(TableVariable.Writer w, TableVariable.NodeGraph nodes, %sVariable.Value v, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
-	b.WriteString("        TableVariable.NodeGraph graph=nodes;\n")
+	b.WriteString("        TableVariable.NodeGraph graph = nodes;\n")
 	for i, f := range st.Fields {
 		writeFieldSaveRetain(&b, u, st, f, i)
 	}
@@ -425,44 +427,78 @@ public final class TableRetain {
     // including descendants, without moving either cumulative report counter.
     void discardField(int[] path, int depth, int field) {
         int write = 0;
-        for (int at = 0; at < used;) {
-            int len = (bytes[at]&255)|((bytes[at+1]&255)<<8)|((bytes[at+2]&255)<<16)|((bytes[at+3]&255)<<24);
-            int d = bytes[at+4]&255;
+        for (int at = 0; at < used; ) {
+            int len =
+                    (bytes[at] & 255)
+                            | ((bytes[at + 1] & 255) << 8)
+                            | ((bytes[at + 2] & 255) << 16)
+                            | ((bytes[at + 3] & 255) << 24);
+            int d = bytes[at + 4] & 255;
             boolean match = d > depth;
             for (int k = 0; match && k < depth; k++) {
-                int p = at+5+8*k;
-                int f=(bytes[p]&255)|((bytes[p+1]&255)<<8)|((bytes[p+2]&255)<<16)|((bytes[p+3]&255)<<24);
-                int i=(bytes[p+4]&255)|((bytes[p+5]&255)<<8)|((bytes[p+6]&255)<<16)|((bytes[p+7]&255)<<24);
-                match = f==path[2*k] && i==path[2*k+1];
+                int p = at + 5 + 8 * k;
+                int f =
+                        (bytes[p] & 255)
+                                | ((bytes[p + 1] & 255) << 8)
+                                | ((bytes[p + 2] & 255) << 16)
+                                | ((bytes[p + 3] & 255) << 24);
+                int i =
+                        (bytes[p + 4] & 255)
+                                | ((bytes[p + 5] & 255) << 8)
+                                | ((bytes[p + 6] & 255) << 16)
+                                | ((bytes[p + 7] & 255) << 24);
+                match = f == path[2 * k] && i == path[2 * k + 1];
             }
             if (match) {
-                int p=at+5+8*depth;
-                int f=(bytes[p]&255)|((bytes[p+1]&255)<<8)|((bytes[p+2]&255)<<16)|((bytes[p+3]&255)<<24);
-                match=f==field;
+                int p = at + 5 + 8 * depth;
+                int f =
+                        (bytes[p] & 255)
+                                | ((bytes[p + 1] & 255) << 8)
+                                | ((bytes[p + 2] & 255) << 16)
+                                | ((bytes[p + 3] & 255) << 24);
+                match = f == field;
             }
-            if (!match) { System.arraycopy(bytes,at,bytes,write,len); write+=len; }
-            at+=len;
+            if (!match) {
+                System.arraycopy(bytes, at, bytes, write, len);
+                write += len;
+            }
+            at += len;
         }
-        used=write;
+        used = write;
     }
 
     // A winning duplicate map key replaces the entry itself and every child.
     void discardPath(int[] path, int depth) {
         int write = 0;
-        for (int at = 0; at < used;) {
-            int len = (bytes[at]&255)|((bytes[at+1]&255)<<8)|((bytes[at+2]&255)<<16)|((bytes[at+3]&255)<<24);
-            int d = bytes[at+4]&255;
+        for (int at = 0; at < used; ) {
+            int len =
+                    (bytes[at] & 255)
+                            | ((bytes[at + 1] & 255) << 8)
+                            | ((bytes[at + 2] & 255) << 16)
+                            | ((bytes[at + 3] & 255) << 24);
+            int d = bytes[at + 4] & 255;
             boolean match = d >= depth;
             for (int k = 0; match && k < depth; k++) {
-                int p = at+5+8*k;
-                int f=(bytes[p]&255)|((bytes[p+1]&255)<<8)|((bytes[p+2]&255)<<16)|((bytes[p+3]&255)<<24);
-                int i=(bytes[p+4]&255)|((bytes[p+5]&255)<<8)|((bytes[p+6]&255)<<16)|((bytes[p+7]&255)<<24);
-                match = f==path[2*k] && i==path[2*k+1];
+                int p = at + 5 + 8 * k;
+                int f =
+                        (bytes[p] & 255)
+                                | ((bytes[p + 1] & 255) << 8)
+                                | ((bytes[p + 2] & 255) << 16)
+                                | ((bytes[p + 3] & 255) << 24);
+                int i =
+                        (bytes[p + 4] & 255)
+                                | ((bytes[p + 5] & 255) << 8)
+                                | ((bytes[p + 6] & 255) << 16)
+                                | ((bytes[p + 7] & 255) << 24);
+                match = f == path[2 * k] && i == path[2 * k + 1];
             }
-            if (!match) { System.arraycopy(bytes,at,bytes,write,len); write+=len; }
-            at+=len;
+            if (!match) {
+                System.arraycopy(bytes, at, bytes, write, len);
+                write += len;
+            }
+            at += len;
         }
-        used=write;
+        used = write;
     }
 
     public TableRetain(int byteCapacity, int idCapacity) {

@@ -101,3 +101,54 @@ func packetUnit(t *testing.T, root string, paths []string) *ir.Unit {
 	}
 	return u
 }
+
+// RELAYOUT LAYS OUT A COMPACT TEMPLATE AND NOTHING ELSE (#547): a statement
+// group an emitter wrote on one line, unspaced, comes out one statement a
+// line in the block's indentation; a line already in the formatter's shape
+// keeps even a wrong indentation, so the drift control still sees it.
+func TestRelayoutLaysOutCompactTemplatesOnly(t *testing.T) {
+	t.Parallel()
+	in := []string{
+		"    static void f(Report report, Reader r, int kind) {",
+		"        if (kind == 2) {",
+		"            r.skip(kind);",
+		"        } else if (kind == 15) {",
+		"if(kind==15){v.value=X.readPayload(r,nt,report);}else{r.skip(kind);report.kindMismatch++;}",
+		"        }",
+		"         int misIndented = 0;",
+		"        switch (kind) {",
+		"            case 1:w.putLeb(0);break;",
+		"        }",
+		"    }",
+	}
+	want := []string{
+		"    static void f(Report report, Reader r, int kind) {",
+		"        if (kind == 2) {",
+		"            r.skip(kind);",
+		"        } else if (kind == 15) {",
+		"            if (kind == 15) {",
+		"                v.value = X.readPayload(r, nt, report);",
+		"            } else {",
+		"                r.skip(kind);",
+		"                report.kindMismatch++;",
+		"            }",
+		"        }",
+		"         int misIndented = 0;",
+		"        switch (kind) {",
+		"            case 1:",
+		"                w.putLeb(0);",
+		"                break;",
+		"        }",
+		"    }",
+	}
+	got := relayout(in)
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("relayout:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	if again := relayout(got); strings.Join(again, "\n") != strings.Join(got, "\n") {
+		t.Fatalf("relayout is not idempotent:\n%s", strings.Join(again, "\n"))
+	}
+	if CodeTokens(strings.Join(got, "\n")) != CodeTokens(strings.Join(in, "\n")) {
+		t.Fatalf("relayout changed a token")
+	}
+}

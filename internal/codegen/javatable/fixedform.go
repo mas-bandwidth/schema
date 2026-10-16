@@ -810,11 +810,50 @@ func javaKeyRefused(key string, max int64) string {
 // asked for and what the enum holds.
 func javaKeyRefusal(indent, key string, f *ir.Field) string {
 	e, max := f.KeyEnum, f.KeyEnumRef.Max
-	return fmt.Sprintf("%[1]sif (%[2]s) {\n"+
-		"%[1]s    throw new IllegalArgumentException(\"%[3]s [%[4]s]: key \" + %[5]s\n"+
-		"%[1]s        + (%[5]s == 0 ? \" is None, which keys no slot\" : \" names no variant of %[4]s\")\n"+
-		"%[1]s        + \"; an enum-keyed array holds one slot per named variant, keys 1 .. %[4]s.Max (%[6]d)\");\n"+
-		"%[1]s}\n", indent, javaKeyRefused(key, max), f.Name, e, key, max)
+	// The statement is written in the formatter's shape (#547): the argument
+	// one operand a line, the choice of message broken when it does not fit,
+	// and the closing sentence cut at words into literals that each fit, so
+	// the formatter has no literal of its own to reflow.
+	const limit = 100
+	t := indent + "    "
+	arg, op, arm := t+"        ", t+"                ", t+"                        "
+	var b strings.Builder
+	fmt.Fprintf(&b, "%sif (%s) {\n", indent, javaKeyRefused(key, max))
+	fmt.Fprintf(&b, "%sthrow new IllegalArgumentException(\n", t)
+	fmt.Fprintf(&b, "%s\"%s [%s]: key \"\n", arg, f.Name, e)
+	fmt.Fprintf(&b, "%s+ %s\n", op, key)
+	choice := fmt.Sprintf("+ (%s == 0 ? \" is None, which keys no slot\" : \" names no variant of %s\")", key, e)
+	if utf8.RuneCountInString(op+choice) <= limit {
+		fmt.Fprintf(&b, "%s%s\n", op, choice)
+	} else {
+		fmt.Fprintf(&b, "%s+ (%s == 0\n", op, key)
+		fmt.Fprintf(&b, "%s? \" is None, which keys no slot\"\n", arm)
+		fmt.Fprintf(&b, "%s: \" names no variant of %s\")\n", arm, e)
+	}
+	words := strings.SplitAfter(fmt.Sprintf("; an enum-keyed array holds one slot per named variant, keys 1 .. %s.Max (%d)", e, max), " ")
+	var parts []string
+	cur := ""
+	for i, w := range words {
+		tail := ""
+		if i == len(words)-1 {
+			tail = ");"
+		}
+		if cur != "" && utf8.RuneCountInString(op+"+ \""+cur+w+"\""+tail) > limit {
+			parts = append(parts, cur)
+			cur = ""
+		}
+		cur += w
+	}
+	parts = append(parts, cur)
+	for i, part := range parts {
+		tail := ""
+		if i == len(parts)-1 {
+			tail = ");"
+		}
+		fmt.Fprintf(&b, "%s+ \"%s\"%s\n", op, part, tail)
+	}
+	fmt.Fprintf(&b, "%s}\n", indent)
+	return b.String()
 }
 
 // fixedSlots answers how many elements a field's storage holds, and whether

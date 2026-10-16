@@ -79,10 +79,23 @@ emitter and never in generated output:
   the formatter's way (items shorter than ten columns filled, otherwise all on
   one line or one a line); a statement past the limit broken after its `=`,
   inside its call, before its loosest operator, or before each call of a
-  chain; unused imports dropped; the formatter's blank lines between members.
-  **It never moves a code line's indentation**, so a template that indents
-  wrongly is a template the gate sees, which is exactly what the drift
-  control plants.
+  chain (a call's arguments, a conditional's arms, a binary chain's operands
+  and a cast's operand broken in turn when they still do not fit); unused
+  imports dropped; the formatter's blank lines between members and after the
+  imports.
+  **Compact templates are laid out once, in the same pass** (`relayout`):
+  the emitters added with maps, unions, keyed arrays, wide integers and the
+  cook writer write statement groups on one line, unspaced
+  (`if(kind==15){v.x=...;}else{...}`), sometimes at column 0. A line whose
+  token spacing is not the standard spacing, or that holds a statement after
+  a statement or a block's opening and its contents, is re-laid one
+  statement a line, with the standard spacing, and the lines of the blocks
+  it opens are re-laid with it at the block's indentation (a line written at
+  column 0 takes its indentation from the code above it). A line already in
+  the formatter's shape is never re-laid, so **it never moves the indentation
+  of such a line**: a template that indents a well-formed line wrongly is a
+  template the gate sees, which is exactly what the drift control plants.
+  `TestRelayoutLaysOutCompactTemplatesOnly` pins both halves.
 
 `TestCanonicalMovesLayoutNotTokens` (in both packages) holds the pass to that:
 over every corpus the gate formats, the code tokens and the words of every
