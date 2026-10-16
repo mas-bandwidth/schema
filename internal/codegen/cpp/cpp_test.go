@@ -116,22 +116,25 @@ union Empty {}
 	}
 	for name, contents := range files {
 		got := strings.Contains(string(contents), "\n#include <new>\n")
-		want := name == "ChoiceWire.h"
+		// the wire header's read and the data header's arm setter (SPEC §4.8,
+		// the arm setter) construct a payload; a header with no payload arm
+		// constructs nothing
+		want := name == "ChoiceWire.h" || name == "Choice.h"
 		if got != want {
-			t.Errorf("%s: direct <new> include = %v, want %v; only the wire header constructs a payload", name, got, want)
+			t.Errorf("%s: direct <new> include = %v, want %v; only a header that constructs a payload includes it", name, got, want)
 		}
 	}
 	if !strings.Contains(string(files["ChoiceWire.h"]), "::new ( (void*) &value.payload ) Payload{};") {
 		t.Error("ChoiceWire.h lost selected-payload placement construction")
 	}
-	if !strings.Contains(string(files["Choice.h"]), "Application code must include <new>") {
-		t.Error("Choice.h must tell applications to include <new> for its placement-construction example")
+	if !strings.Contains(string(files["Choice.h"]), "        ::new ( (void*) &payload ) Payload{};\n") {
+		t.Error("Choice.h lost the arm setter's placement construction")
 	}
-	if !strings.Contains(string(files["Choice.h"]), "// ::new ( (void*) &value.payload ) Payload{}; value.type = ChoiceType::Payload;") {
-		t.Error("Choice.h must use its first payload arm, not its first tag, for the construction example")
+	if !strings.Contains(string(files["Choice.h"]), "// together (SPEC §4.8, the arm setter): Payload & arm = value.SelectPayload();") {
+		t.Error("Choice.h must use its first payload arm, not its first tag, for the setter example")
 	}
-	if !strings.Contains(string(files["Signals.h"]), "// For example: value.type = SignalsType::Ping;") {
-		t.Error("Signals.h must demonstrate tag-only application selection")
+	if !strings.Contains(string(files["Signals.h"]), "// For example: value.SelectPing();") {
+		t.Error("Signals.h must demonstrate tag-only application selection through the setter")
 	}
 	for _, name := range []string{"Signals.h", "Empty.h"} {
 		if strings.Contains(string(files[name]), "\n    union\n") {
