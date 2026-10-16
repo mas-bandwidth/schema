@@ -381,7 +381,7 @@ tables-java-block-lead-negative-control: build/java-tables/.stamp
 	@grep -lq SABOTAGED $(JAVA_BLOCK_LEAD_SABOTAGE)/generated/block/*Block.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged Open"; exit 1; }
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_BLOCK_LEAD_SABOTAGE)/classes \
-		$(JAVA_BLOCK_LEAD_SABOTAGE)/generated/block/*.java test/java-tables/src/BlockLead.java test/java-tables/src/Soak.java
+		$(JAVA_BLOCK_LEAD_SABOTAGE)/generated/block/*.java test/java-tables/src/BlockLead.java
 	@if $(JAVA) -cp $(JAVA_BLOCK_LEAD_SABOTAGE)/classes BlockLead testdata/wire/tables/block_render.bin testdata/wire/tables/block_padded.bin \
 			> $(JAVA_BLOCK_LEAD_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a block reader with no alignment check left the base-alignment gate green"; \
