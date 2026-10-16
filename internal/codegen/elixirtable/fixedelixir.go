@@ -1211,12 +1211,33 @@ func suffixRseg(r rseg, suf string) rseg {
 		keys:  append([]string{}, r.keys...),
 	}
 	for _, p := range r.post {
-		out.post = append(out.post, postStmt{name: p.name, val: raw(suffixIdent(p.val.flat(), suf))})
+		out.post = append(out.post, postStmt{name: p.name, val: suffixNode(p.val, suf)})
 	}
 	for _, v := range r.vals {
-		out.vals = append(out.vals, raw(suffixIdent(v.flat(), suf)))
+		out.vals = append(out.vals, suffixNode(v, suf))
 	}
 	return out
+}
+
+// suffixNode is suffixIdent over a SHAPE rather than its flat text, so a
+// nested struct or call an unrolled element carries still breaks the
+// formatter's way when it outgrows the line.
+func suffixNode(n node, suf string) node {
+	switch v := n.(type) {
+	case structNode:
+		vals := make([]node, len(v.vals))
+		for i, x := range v.vals {
+			vals[i] = suffixNode(x, suf)
+		}
+		return structNode{mod: v.mod, keys: v.keys, vals: vals}
+	case callNode:
+		args := make([]node, len(v.args))
+		for i, x := range v.args {
+			args[i] = suffixNode(x, suf)
+		}
+		return callNode{fn: v.fn, args: args}
+	}
+	return raw(suffixIdent(n.flat(), suf))
 }
 
 // emitShortDef prints `def head, do: body`, broken after the head's comma with
@@ -1243,6 +1264,11 @@ func (t tripleNode) flat() string {
 func (t tripleNode) render(at, ind, tail int) string {
 	if one := t.flat(); fits(at, tail, one) {
 		return one
+	}
+	// a first item that fits flat keeps its line and the tuple FILLS the way
+	// any tuple does, breaking before the item that would pass the width
+	if fits(at+1, 1, t.a.flat()) {
+		return tupleNode{items: []string{t.a.flat(), t.b.flat(), t.c.flat()}}.render(at, ind, tail)
 	}
 	return "{" + t.a.render(at+1, ind+1, tail+2+len(t.b.flat())+2+len(t.c.flat())) + ", " + t.b.flat() + ", " + t.c.flat() + "}"
 }
@@ -1714,7 +1740,7 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("  # pass, no id interning, no trailer, no second walk and no flatten: a file\n")
 	g.pf("  # of records is one binary every record was appended to in place.\n")
 	g.pf("  def %s_fixed_record(value) do\n", snake)
-	g.pf("    %s_fixed_write_into(value, <<@%s_hash::little-unsigned-64>>)\n", snake, snake)
+	g.pf("    %s\n", call(snake+"_fixed_write_into", raw("value"), rawf("<<@%s_hash::little-unsigned-64>>", snake)).render(4, 4, 0))
 	g.pf("  end\n\n")
 
 	g.pf("  def %s_fixed_save(values) when is_list(values) do\n", snake)
@@ -1825,22 +1851,29 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("    # refusal is caught, with no destination byte landed and every counter\n")
 	g.pf("    # left at zero.\n")
 	g.pf("    try do\n")
-	g.pf("    with :ok <- R.batch_within(byte_size(records), size + 8, bcap),\n")
-	g.pf("         {:ok, bodies} <- %s_fixed_split(records, hash, size, []) do\n", snake)
-	g.pf("      {values, report} =\n")
-	g.pf("        Enum.map_reduce(bodies, report, fn body, report ->\n")
-	g.pf("          {image, report} = R.run(plan, R.detach(body, copy), @%s_prefill, report)\n", snake)
-	g.pf("          {value, c, m} = %s_fixed_decode(image, 0, false)\n", snake)
-	g.pf("          {value, R.damaged(R.clamped(report, c), m)}\n")
-	g.pf("        end)\n\n")
-	g.pf("      # THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, and only on a read that\n")
-	g.pf("      # RETURNS (§5.9 #6): §5.4 says once per peer and never per record, and a\n")
-	g.pf("      # refusal that came after would have moved a counter.\n")
-	g.pf("      {:ok, values, R.census(report, census_u, census_k)}\n")
-	g.pf("    else\n")
-	g.pf("      {:error, :malformed} -> {:error, :malformed, %%{report | malformed: true}}\n")
-	g.pf("      {:error, why} -> {:error, why, report}\n")
-	g.pf("    end\n")
+	g.pf("      with :ok <- R.batch_within(byte_size(records), size + 8, bcap),\n")
+	g.pf("           {:ok, bodies} <- %s_fixed_split(records, hash, size, []) do\n", snake)
+	g.pf("        {values, report} =\n")
+	g.pf("          Enum.map_reduce(bodies, report, fn body, report ->\n")
+	// the formatter breaks a match past column 98 after its `=`, and a
+	// multi-line expression takes a blank line after it
+	if run := fmt.Sprintf("            {image, report} = R.run(plan, R.detach(body, copy), @%s_prefill, report)", snake); exWidth(run) <= exLineLimit {
+		g.pf("%s\n", run)
+	} else {
+		g.pf("            {image, report} =\n")
+		g.pf("              R.run(plan, R.detach(body, copy), @%s_prefill, report)\n\n", snake)
+	}
+	g.pf("            {value, c, m} = %s_fixed_decode(image, 0, false)\n", snake)
+	g.pf("            {value, R.damaged(R.clamped(report, c), m)}\n")
+	g.pf("          end)\n\n")
+	g.pf("        # THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, and only on a read that\n")
+	g.pf("        # RETURNS (§5.9 #6): §5.4 says once per peer and never per record, and a\n")
+	g.pf("        # refusal that came after would have moved a counter.\n")
+	g.pf("        {:ok, values, R.census(report, census_u, census_k)}\n")
+	g.pf("      else\n")
+	g.pf("        {:error, :malformed} -> {:error, :malformed, %%{report | malformed: true}}\n")
+	g.pf("        {:error, why} -> {:error, why, report}\n")
+	g.pf("      end\n")
 	g.pf("    catch\n")
 	g.pf("      :throw, {:refuse, why} -> {:error, why, report}\n")
 	g.pf("    end\n")
