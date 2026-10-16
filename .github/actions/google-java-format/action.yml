@@ -1,0 +1,29 @@
+name: google-java-format 1.37.0
+description: >
+  Installs the google-java-format release pinned in make/java.mk
+  (GOOGLE_JAVA_FORMAT_VERSION / GOOGLE_JAVA_FORMAT_SHA256) at
+  dist/google-java-format-1.37.0-all-deps.jar, which is where make/java.mk looks
+  for it. `make test-java` sets JAVA_REQUIRE_FORMATTER=1, so a runner without
+  the jar fails tables-java-clean by name. Run this after actions/setup-java.
+  The download is checked against the pinned sha256 and the step FAILS on a
+  mismatch; the jar is never used unchecked.
+runs:
+  using: composite
+  steps:
+    - name: download and verify google-java-format 1.37.0
+      shell: bash
+      env:
+        GJF_VERSION: '1.37.0'
+        GJF_SHA256: 834b2a0c38cb774953322a84b5ca3f2f40dd3156650b3cd44d3b744345962f7a
+      run: |
+        set -euo pipefail
+        jar="dist/google-java-format-${GJF_VERSION}-all-deps.jar"
+        mkdir -p dist
+        curl -fsSL --retry 3 -o "$jar" \
+          "https://github.com/google/google-java-format/releases/download/v${GJF_VERSION}/google-java-format-${GJF_VERSION}-all-deps.jar"
+        # shasum is on both the ubuntu and the macOS hosted images; sha256sum is not on macOS.
+        if ! echo "${GJF_SHA256}  ${jar}" | shasum -a 256 -c -; then
+          echo "::error::${jar} does not match the pinned sha256 ${GJF_SHA256} (make/java.mk GOOGLE_JAVA_FORMAT_SHA256); refusing to use it"
+          rm -f "$jar"
+          exit 1
+        fi
