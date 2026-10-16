@@ -102,9 +102,13 @@ func t06C7(t *testing.T) {
 func t06R30(t *testing.T) {
 	src := t06Generated(t, "VNEW_cfloat_range_widen")
 	body := t02Block(t, src, "void cfloatRangeWidenFixedDecode(", "\n}\n")
-	// (1) IT RIDES AS THE FLOAT: an f32 load, never a quantized index.
-	t02Has(t, body, "value.aim = view.getFloat32(at + 4, Endian.little);",
-		"R30 the compressed float rides as the float itself")
+	// (1) IT RIDES AS THE FLOAT: raw f32 IEEE bits, never a quantized
+	// index. Software widening preserves signalling NaNs that getFloat32
+	// would quiet on the way to Dart's double scalar (§3.4).
+	t02Has(t, body, "value.aim = TableBitWriter._doubleFromFloat32Bits(",
+		"R30 the compressed float uses IEEE-preserving software widening")
+	t02Has(t, body, "view.getUint32(at + 4, Endian.little)",
+		"R30 the compressed float rides as its raw 32-bit pattern")
 	// (2) THE BOUNDS ARE THE READER'S OWN (schema#1164 statement B), stated on
 	// the widened reader's -2..2.
 	t02Has(t, body, "if (value.aim < -2.0) {", "R30 clamps to the reader's own min")

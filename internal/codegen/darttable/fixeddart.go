@@ -228,6 +228,14 @@ func fixedGetter(t ir.FieldType) (string, bool) {
 
 // store emits one ByteData call at a constant offset.
 func (g *fixedGen) store(ind, at string, t ir.FieldType, expr string) {
+	if t.Kind == ir.TFloat32 {
+		// §3.4 stores the IEEE bits, not a native narrowing conversion:
+		// setFloat32 quiets signalling NaNs held by Dart's double scalar.
+		// The fixed home already owns the message codec's software mapping.
+		g.call(ind, "", "view.setUint32", []string{at,
+			"TableBitWriter._float32BitsFromDouble(" + expr + ")", "Endian.little"}, ";")
+		return
+	}
 	if fixedIs128(t) {
 		// SIXTEEN BYTES, THE LOW 64-BIT HALF FIRST (docs/SPEC-TABLES.md §3).
 		// Dart holds a 128-bit value as the packet emitter's pair, so the two
@@ -249,6 +257,13 @@ func (g *fixedGen) store(ind, at string, t ir.FieldType, expr string) {
 }
 
 func (g *fixedGen) load(ind, lhs, at string, t ir.FieldType) {
+	if t.Kind == ir.TFloat32 {
+		// §3.4 forbids NaN canonicalisation. Widen the raw payload in
+		// software before assigning the fixed-form scalar's Dart double.
+		g.call(ind, lhs+" = ", "TableBitWriter._doubleFromFloat32Bits",
+			[]string{"view.getUint32(" + at + ", Endian.little)"}, ";")
+		return
+	}
 	if fixedIs128(t) {
 		cls := "UInt128"
 		if fixedSigned(t) {
