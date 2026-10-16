@@ -14,10 +14,13 @@ package darttable
 // array, the count and the declared maximum, through TableBlockRefusal, and a
 // refused begin leaves the caller's bytes untouched.
 //
-// THE COOK WRITE HALF IS NOT HERE YET. Cook and CookMeasure in the generated
-// cook runtime, byte-identical to `schema cook` in both byte orders and with
-// the reference leg's TableRefuse* name for a write past the measured size, is
-// the second half of this card and is reported not done.
+// AND AGAINST THE GO BUILDER ITSELF: over tables/block (blockdemo) the Dart
+// image is compared byte for byte with the image the Go leg's own generated
+// builder writes for the same counts (go-builder-over-blockdemo below).
+//
+// THE COOK WRITE HALF lives beside it: TestCookWriteFixedDart
+// (cookwrite_test.go) and TestCookWriteAnswersEveryCookWriteRowDart
+// (cookwrite_rows_test.go), byte-identical to `schema cook` in both orders.
 
 import (
 	"bytes"
@@ -32,6 +35,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -135,6 +140,7 @@ extension on Uint8List {
 func TestBlockBuildAndCookWriteDart(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "dart")
+	t.Run("go-builder-over-blockdemo", blockBuildMatchesTheGoBuilderOverBlockdemo)
 
 	u := unitFrom(t, blockBuildSchema)
 	files, err := dart.Generate(u)
@@ -220,3 +226,297 @@ func fieldOf(t *testing.T, text, name string) string {
 	t.Fatalf("the probe printed no %s line:\n%s", name, text)
 	return ""
 }
+
+// blockBuildMatchesTheGoBuilderOverBlockdemo is the cross-leg pin the
+// fill path owes (docs/SPEC-TABLES.md §19.1): over tables/block (blockdemo),
+// for the same counts and the same 0xa5-filled extent, the Dart begin's image
+// is BYTE-IDENTICAL to the Go builder's (internal/codegen/gotable/blockbuild.go,
+// which already agrees with the C++ reference) — the Go bytes are the pin, run
+// here by compiling the Go leg's own generated builder, not recomputed.
+func blockBuildMatchesTheGoBuilderOverBlockdemo(t *testing.T) {
+	t.Parallel()
+	dartBin := dartBinary(t)
+	runtime, err := filepath.Abs("../../../../serialize.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(runtime); err != nil {
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the Go runtime sibling is not at %s: %v", runtime, err)
+		}
+		t.Skip("the serialize.go sibling checkout is absent: the Go builder cannot be compiled")
+	}
+	paths, err := filepath.Glob(filepath.Join("..", "..", "..", "tables", "block", "*.schema"))
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("tables/block: %v", err)
+	}
+	u := loadUnit(t, paths...)
+	blocks := ir.Blocks(u)
+	var goProbe, dartProbe strings.Builder
+	goProbe.WriteString("package " + u.Package + "\nimport (\"bytes\";\"fmt\";\"testing\";\"unsafe\")\nfunc TestImage(t *testing.T) {\n")
+	dartProbe.WriteString("import 'dart:typed_data';\n")
+	roots := []string{"PaddedFrame", "RenderFrame"}
+	for _, root := range roots {
+		dartProbe.WriteString(fmt.Sprintf("import '%sBlock.dart' as %s;\n", u.DeclFile[root], strings.ToLower(root)))
+	}
+	dartProbe.WriteString("String hex(Uint8List b, int n) => b.take(n).map((v) => v.toRadixString(16).padLeft(2, '0')).join();\nvoid main() {\n")
+	for _, root := range roots {
+		bl := blocks.Block(root)
+		if bl == nil {
+			t.Fatalf("%s has no block form", root)
+		}
+		var goCounts, dartCounts []string
+		for i, a := range bl.Arrays {
+			count := min(a.Max, int64(3+7*i))
+			goCounts = append(goCounts, fmt.Sprintf("%s:%d", ir.GoExportName(a.Field.Name), count))
+			dartCounts = append(dartCounts, fmt.Sprintf("%sCount: %d", dartName(a.Field.Name), count))
+		}
+		goProbe.WriteString(fmt.Sprintf(" {var s %sBlockStorage;if !s.Create(TableBlockAllocator{Alloc:func(n int64)[]byte{return bytes.Repeat([]byte{0xa5},int(n))},Free:func([]byte){}}){t.Fatal(\"create\")};defer s.Destroy()\n", root))
+		goProbe.WriteString(fmt.Sprintf("  var b %sBlock;if !%sBlockBegin(&b,&s,%sCounts{%s},nil){t.Fatal(\"begin\")}\n", root, root, root, strings.Join(goCounts, ",")))
+		goProbe.WriteString(fmt.Sprintf("  fmt.Printf(\"%s %%x\\n\",unsafe.Slice((*byte)(b.Base),b.Bytes))}\n", root))
+		dartProbe.WriteString(fmt.Sprintf("  {\n    final bytes = Uint8List(%s.%sBlock.blockMaxBytes)..fillRange(0, %s.%sBlock.blockMaxBytes, 0xa5);\n", strings.ToLower(root), root, strings.ToLower(root), root))
+		dartProbe.WriteString(fmt.Sprintf("    final b = %s.%sBlock.begin(bytes, 0, %s)!;\n", strings.ToLower(root), root, strings.Join(dartCounts, ", ")))
+		dartProbe.WriteString(fmt.Sprintf("    print('%s ${hex(bytes, b.length)}');\n  }\n", root))
+	}
+	goProbe.WriteString("}\n")
+	dartProbe.WriteString("}\n")
+
+	goDir := t.TempDir()
+	files, err := golang.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	goTables, err := gotable.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, goTables)
+	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
+	files["image_test.go"] = []byte(goProbe.String())
+	for name, data := range files {
+		if !strings.Contains(name, "/") {
+			if err := os.WriteFile(filepath.Join(goDir, name), data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	cmd := exec.Command("go", "test", "-count=1", "-v", "-run", "^TestImage$", ".")
+	cmd.Dir = goDir
+	goOut, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("the Go builder probe: %v\n%s", err, goOut)
+	}
+
+	dartDir := t.TempDir()
+	dartFiles, err := dart.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dartTables, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(dartFiles, dartTables)
+	dartFiles["block_image_probe.dart"] = []byte(dartProbe.String())
+	for name, data := range dartFiles {
+		if !strings.Contains(name, "/") {
+			if err := os.WriteFile(filepath.Join(dartDir, name), data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	cmd = exec.Command(dartBin, "--enable-asserts", "block_image_probe.dart")
+	cmd.Dir = dartDir
+	dartOut, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("the Dart builder probe: %v\n%s", err, dartOut)
+	}
+	for _, root := range roots {
+		want, err := hex.DecodeString(fieldOf(t, string(goOut), root))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := hex.DecodeString(fieldOf(t, string(dartOut), root))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, want) {
+			at := 0
+			for at < len(got) && at < len(want) && got[at] == want[at] {
+				at++
+			}
+			t.Fatalf("%s: the Dart builder's image differs from the Go builder's at byte %d (%d bytes, want %d)", root, at, len(got), len(want))
+		}
+		t.Logf("%s: %d bytes, byte-identical to the Go builder", root, len(got))
+	}
+}
+
+// cookWriteAbsentDart is every unit whose cook-write rows the Dart leg answers
+// ABSENT (test/conformance/README.md: absent is not failure, and it is said per
+// case), and why. It is a RATCHET in both directions: a row of a unit NOT named
+// here that comes back absent fails by name, and a row of a unit named here
+// that comes back ANSWERED fails too, so the entry is deleted the day the leg
+// carries it rather than going stale.
+var cookWriteAbsentDart = map[string]string{
+	// the Dart fixed class reads form 3 only, and these instances are form 1
+	// (docs/SPEC-TABLES.md §3, §3.4): the leg has no Dart value to cook
+	"tabledemo": "form 3 only",
+	"tblv1":     "form 3 only",
+	"tblv2":     "form 3 only",
+	"tblp1":     "form 3 only",
+	"tblp3":     "form 3 only",
+	"tblm1":     "form 3 only",
+	"tblm2":     "form 3 only",
+	// the Dart table backend refuses the unit outright (§2.6, §5, §11)
+	"messagedemo": "refuses the unit",
+	"streamdemo":  "refuses the unit",
+	// the wide kinds take no Dart cook form (§3)
+	"scalars": "no cook form",
+}
+
+// TestCookWriteAnswersEveryCookWriteRowDart pins §7.6's runtime writer to
+// `schema cook`'s committed bytes in BOTH byte orders, one manifest row at a
+// time, through the conformance driver's own cook-write surface
+// (test/conformance/dart/main.dart): the driver loads each row's instance wire,
+// measures it, is refused one byte short without writing a byte, and cooks it
+// in each order. A row is a passing cook or a named absence; never a skip.
+//
+// It runs the driver over the generated corpus in build/tables-generated-dart,
+// which make's tables-dart-block-build builds first; a bare `go test` without
+// the corpus skips by name, and SCHEMA_REQUIRE_CORPUS=1 makes that a failure.
+func TestCookWriteAnswersEveryCookWriteRowDart(t *testing.T) {
+	t.Parallel()
+	dart := dartBinary(t)
+	repo, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, need := range []string{"pointers/GraphCook.dart", "blobs/AssetsCook.dart", "cards/CardsWire.dart"} {
+		if _, err := os.Stat(filepath.Join(repo, "build", "tables-generated-dart", need)); err != nil {
+			if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+				t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the generated Dart corpus lacks %s: run make tables-dart-block-build", need)
+			}
+			t.Skip("the generated Dart corpus is not built: make tables-dart-block-build")
+		}
+	}
+	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
+	data, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type row struct{ name, unit, little, big string }
+	units := map[string]string{}
+	var rows []row
+	seen := map[string]bool{}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 3 && fields[0] == "instance" {
+			units[fields[1]] = fields[2]
+		}
+		if len(fields) == 0 || fields[0] != "cook-write" {
+			continue
+		}
+		if len(fields) != 4 || seen[fields[1]] {
+			t.Fatalf("bad or duplicate cook-write row: %q", line)
+		}
+		seen[fields[1]] = true
+		rows = append(rows, row{name: fields[1], little: fields[2], big: fields[3]})
+	}
+	if len(rows) != 46 {
+		t.Fatalf("cook-write manifest has %d rows, want 46", len(rows))
+	}
+	outDir := t.TempDir()
+	cmd := exec.Command(dart, "--enable-asserts", "test/conformance/dart/main.dart", manifest, "cook-write", outDir)
+	cmd.Dir = repo
+	output, runErr := cmd.CombinedOutput()
+	if runErr != nil {
+		t.Errorf("the driver's cook-write surface failed: %v\n%s", runErr, output)
+	}
+	for _, r := range rows {
+		r.unit = units[r.name]
+		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
+			if r.unit == "" {
+				t.Fatalf("cook-write %s names no instance", r.name)
+			}
+			absent, listed := cookWriteAbsentDart[r.unit]
+			for _, order := range []struct{ suffix, golden string }{{"", r.little}, {"-be", r.big}} {
+				out := filepath.Join(outDir, r.name+order.suffix)
+				if why, err := os.ReadFile(out + ".absent"); err == nil {
+					if !listed {
+						t.Fatalf("%s%s: the Dart leg answered ABSENT for unit %s, which it carries: %s", r.name, order.suffix, r.unit, why)
+					}
+					if !strings.Contains(string(why), absent) {
+						t.Fatalf("%s%s: absent for %q, the ratchet names %q", r.name, order.suffix, why, absent)
+					}
+					continue
+				}
+				got, err := os.ReadFile(out)
+				if err != nil {
+					t.Fatalf("%s%s: runtime cook output missing (driver: %v): %v\n%s", r.name, order.suffix, runErr, err, output)
+				}
+				if listed {
+					t.Fatalf("%s%s: unit %s is answered now; delete it from cookWriteAbsentDart", r.name, order.suffix, r.unit)
+				}
+				want, err := os.ReadFile(filepath.Join(repo, order.golden))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(got, want) {
+					at := 0
+					for at < len(got) && at < len(want) && got[at] == want[at] {
+						at++
+					}
+					t.Fatalf("%s%s: the runtime cook differs from schema cook at byte %d: got %d bytes, want %d", r.name, order.suffix, at, len(got), len(want))
+				}
+			}
+		})
+	}
+	// THE REFUSALS BY THE REFERENCE LEG'S NAMES (§7.6, the TableRefuse* words
+	// of internal/codegen/gotable/refusal.go): a buffer one byte short of the
+	// measured extent is TableRefuseInvalidValue and writes nothing, and a
+	// cyclic graph is TableRefuseDataCycle with no extent at all.
+	t.Run("refusals", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		probe := strings.ReplaceAll(cookWriteRefusalProbe, "@CORPUS@", filepath.Join(repo, "build", "tables-generated-dart"))
+		if err := os.WriteFile(filepath.Join(dir, "cook_refusal_probe.dart"), []byte(probe), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(dart, "--enable-asserts", "cook_refusal_probe.dart")
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "ok") {
+			t.Fatalf("the variable cook refusal probe: %v\n%s", err, out)
+		}
+	})
+}
+
+const cookWriteRefusalProbe = `import 'dart:typed_data';
+import '@CORPUS@/pointers/GraphdemoWire.dart' as wire;
+import '@CORPUS@/pointers/GraphCook.dart' as cook;
+import '@CORPUS@/pointers/GraphdemoCook.dart' show TableCookWriteReport;
+void check(bool ok, String what) { if (!ok) throw StateError(what); }
+void main() {
+  final shared = wire.ListNode()..value = 7;
+  final scene = wire.Scene()..head = shared..alias = shared;
+  final report = TableCookWriteReport();
+  final size = cook.SceneCook.cookMeasure(scene, report: report);
+  check(size > 0 && report.reason == 'ok', 'measure: $size ${report.reason}');
+  for (final order in [Endian.little, Endian.big]) {
+    final bytes = Uint8List(size)..fillRange(0, size, 0xa5);
+    check(!cook.SceneCook.cook(scene, Uint8List.sublistView(bytes, 0, size - 1), order, report: report), 'short write accepted');
+    check(report.reason == 'invalid_value', 'short write named ${report.reason}, not TableRefuseInvalidValue');
+    check(bytes.every((b) => b == 0xa5), 'a refused write changed the output');
+    check(cook.SceneCook.cook(scene, bytes, order, report: report) && report.reason == 'ok', 'valid write refused');
+  }
+  final loop = wire.ListNode();
+  loop.next = loop;
+  final cyclic = wire.Scene()..head = loop;
+  check(cook.SceneCook.cookMeasure(cyclic, report: report) < 0, 'a cycle measured');
+  check(report.reason == 'data_cycle', 'a cycle named ${report.reason}, not TableRefuseDataCycle');
+  final bytes = Uint8List(4096)..fillRange(0, 4096, 0xa5);
+  check(!cook.SceneCook.cook(cyclic, bytes, Endian.little, report: report), 'a cycle written');
+  check(bytes.every((b) => b == 0xa5), 'a refused cycle changed the output');
+  print('ok');
+}
+`
