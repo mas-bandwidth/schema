@@ -106,7 +106,7 @@ defmodule Bench.TableMessage do
             entries: [],
             count: 0,
             ref_bits: 0,
-            max_bytes: 65536,
+            max_bytes: 65_536,
             max_entries: 4096
 
   # ---------------------------------------------------------------------------

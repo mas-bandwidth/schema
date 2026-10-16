@@ -934,8 +934,10 @@ func (g *gen) emitFlags(d *ir.Flags) {
 
 // intLit renders an integer literal: decimal at any width — BEAM integers
 // are arbitrary precision, so every schema value has a direct spelling —
-// with mix format's own digit grouping (underscores every three digits on
-// literals of six digits or more).
+// with underscores every three digits on literals of five digits or more:
+// mix format groups six or more and keeps a five-digit grouping, and credo's
+// default Credo.Check.Readability.LargeNumbers reports any integer past 9999
+// written without them (issue #547).
 func intLit(v *big.Int) string { return groupDigits(v.String()) }
 
 // intLit64 is intLit over an int64.
@@ -947,7 +949,7 @@ func intLitU64(v uint64) string { return groupDigits(strconv.FormatUint(v, 10)) 
 func groupDigits(s string) string {
 	neg := strings.HasPrefix(s, "-")
 	digits := strings.TrimPrefix(s, "-")
-	if len(digits) < 6 {
+	if len(digits) < 5 {
 		return s
 	}
 	var parts []string
@@ -1041,6 +1043,35 @@ func formatFloat32(v float64) string {
 	return elixirFloat(strconv.FormatFloat(v, 'g', -1, 32))
 }
 
+// creditFloatDigits groups a float literal's digits the way credo's default
+// Credo.Check.Readability.LargeNumbers reads them (issue #547): a float past
+// 9999 is reported unless the digits it takes for the number are grouped in
+// threes from the right. Without an exponent that is the integer part; with
+// one, credo 1.7.19 takes the digits after the point, so those are grouped.
+// mix format keeps either grouping, and the value is unchanged.
+func creditFloatDigits(mant, exp string, hasExp bool) string {
+	whole, frac, _ := strings.Cut(mant, ".")
+	if !hasExp {
+		return groupDigits(whole) + "." + frac
+	}
+	if e, err := strconv.Atoi(strings.TrimPrefix(exp, "+")); err != nil || e < 4 || len(frac) <= 3 {
+		return mant
+	}
+	return whole + "." + groupThrees(frac)
+}
+
+// groupThrees puts an underscore between every three digits, from the right.
+func groupThrees(digits string) string {
+	var b strings.Builder
+	for i, c := range digits {
+		if i > 0 && (len(digits)-i)%3 == 0 {
+			b.WriteByte('_')
+		}
+		b.WriteRune(c)
+	}
+	return b.String()
+}
+
 // elixirFloat rewrites a Go shortest-float form into Elixir's literal
 // grammar, which requires a digit on both sides of the point and a point
 // before any exponent: 5e-324 -> 5.0e-324, 1e+21 -> 1.0e21.
@@ -1053,6 +1084,7 @@ func elixirFloat(s string) string {
 	if !strings.Contains(mant, ".") {
 		mant += ".0"
 	}
+	mant = creditFloatDigits(mant, exp, hasExp)
 	out := mant
 	if hasExp {
 		exp = strings.TrimPrefix(exp, "+")

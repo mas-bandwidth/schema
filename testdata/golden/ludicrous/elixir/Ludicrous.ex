@@ -130,7 +130,7 @@ defmodule Ludicrous.Ludicrous do
   # sides at the same id speak identical bits; there is no other versioning.
   def protocol_id, do: 0xF4A226F4166D919B
 
-  def max_world_units, do: 30000
+  def max_world_units, do: 30_000
 
   # enum_name_drive_mode: debug/log/tooling name for any DriveMode wire value —
   # out-of-set values (wire-legal up to the declared max) name as "???"

@@ -235,15 +235,18 @@ func moduleBase(base string) string { return ir.GoExportName(base) }
 // the formatter would write (issue #547).
 const exLineLimit = 98
 
-// exInt spells a decimal integer the way `mix format` spells it: six digits or
-// more are grouped in threes by underscores.
+// exInt spells a decimal integer the way `mix format` and credo both accept
+// it: five digits or more are grouped in threes by underscores. The formatter
+// groups six or more and keeps a five-digit grouping it is given; credo's
+// default Credo.Check.Readability.LargeNumbers reports any integer past 9999
+// written without them (issue #547), so the emitters group from five.
 func exInt(n int64) string {
 	s := strconv.FormatInt(n, 10)
 	sign := ""
 	if strings.HasPrefix(s, "-") {
 		sign, s = "-", s[1:]
 	}
-	if len(s) < 6 {
+	if len(s) < 5 {
 		return sign + s
 	}
 	var b strings.Builder

@@ -58,7 +58,7 @@ func writeCookLayout(b *strings.Builder, u *ir.Unit, f *ir.Field, fl *ir.FieldLa
 			presentOff = pieces[i].Offset
 		}
 	}
-	fmt.Fprintf(b, ", cook_off: %d, count_off: %d, present_off: %d", off, countOff, presentOff)
+	fmt.Fprintf(b, ", cook_off: %s, count_off: %s, present_off: %s", exInt(off), exInt(countOff), exInt(presentOff))
 	switch f.Array {
 	case ir.ArrayList:
 		b.WriteString(", array: :list")
@@ -89,7 +89,7 @@ func writeCookLayout(b *strings.Builder, u *ir.Unit, f *ir.Field, fl *ir.FieldLa
 		fmt.Fprintf(b, ", enum_width: %d", int(e.StorageBits)/8)
 	}
 	if f.Array == ir.ArrayCounted || f.Array == ir.ArrayFixed {
-		fmt.Fprintf(b, ", max_count: %d", f.ArrayBound)
+		fmt.Fprintf(b, ", max_count: %s", exInt(int64(f.ArrayBound)))
 	}
 	if f.Array != ir.ArrayNone {
 		switch {

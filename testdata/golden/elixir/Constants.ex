@@ -52,7 +52,7 @@ defmodule Example.Constants do
 
   def max_health, do: 1000
 
-  def max_objects, do: 10000
+  def max_objects, do: 10_000
 
   def ship_max_lasers, do: 16
 

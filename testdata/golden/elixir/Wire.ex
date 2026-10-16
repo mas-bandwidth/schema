@@ -178,7 +178,7 @@ defmodule Example.Wire do
                fr = fn value ->
                  ax = abs(value)
 
-                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+                 if ax >= 1.1754943508222875e-38 and ax < 3.4_028_235_677_973_366e38 do
                    y = value * 536_870_913.0
                    y - (y - value)
                  else
@@ -565,7 +565,7 @@ defmodule Example.Wire do
 
     v = if value_active, do: 1, else: 0
     scratch = v
-    v = cf_quantize(value_orientation, -180.0, 360.0, 36000, 36000.0)
+    v = cf_quantize(value_orientation, -180.0, 360.0, 36_000, 36_000.0)
     scratch = scratch ||| v <<< 1
     v = value_raw_delta &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< 17
@@ -668,8 +668,8 @@ defmodule Example.Wire do
       v = rv >>> 1 &&& 0xFFFF
       bits_read = bits_read + 16
       # headroom above the quantum count is refused
-      if v > 36000, do: throw(:invalid)
-      v_orientation = cf_decode(v, 36000.0, 360.0, -180.0)
+      if v > 36_000, do: throw(:invalid)
+      v_orientation = cf_decode(v, 36_000.0, 360.0, -180.0)
       v = rv >>> 17
       bits_read = bits_read + 32
       v_raw_delta = if v >= 2_147_483_648, do: v - 4_294_967_296, else: v
@@ -1762,7 +1762,7 @@ defmodule Example.Wire do
 
   # block_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
   # block_max_bytes is rounded up to the family 8-byte write-buffer granularity.
-  def block_max_bits, do: 16018
+  def block_max_bits, do: 16_018
   def block_max_bytes, do: 2008
 
   # The §5 zero form: all-zero storage; specified defaults live only in
@@ -2479,7 +2479,7 @@ defmodule Example.Wire do
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFFFF
       bits_read = bits_read + 16
-      v_int16_value = if v >= 32768, do: v - 65536, else: v
+      v_int16_value = if v >= 32_768, do: v - 65_536, else: v
       v = rv >>> 16 &&& 0xFF
       bits_read = bits_read + 8
       v_uint8_value = v
@@ -2641,7 +2641,7 @@ defmodule Example.Wire do
     %{boundary: value_boundary, offset: value_offset} = value
     v = cf_quantize(value_boundary, 0.0, 10.0, 1000, 1000.0)
     scratch = v
-    v = cf_quantize(value_offset, -5.0, 10.0, 10000, 10000.0)
+    v = cf_quantize(value_offset, -5.0, 10.0, 10_000, 10_000.0)
     scratch = scratch ||| v <<< 10
     data = <<data::binary, scratch::little-size(3)-unit(8)>>
     data
@@ -2670,8 +2670,8 @@ defmodule Example.Wire do
       v = rv >>> 10
       bits_read = bits_read + 14
       # headroom above the quantum count is refused
-      if v > 10000, do: throw(:invalid)
-      v_offset = cf_decode(v, 10000.0, 10.0, -5.0)
+      if v > 10_000, do: throw(:invalid)
+      v_offset = cf_decode(v, 10_000.0, 10.0, -5.0)
       value = %Example.CompressedProbe{boundary: v_boundary, offset: v_offset}
       {:ok, value, bits_read}
     catch
@@ -2974,7 +2974,7 @@ defmodule Example.Wire do
     v = if e_active, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-    v = cf_quantize(e_orientation, -180.0, 360.0, 36000, 36000.0)
+    v = cf_quantize(e_orientation, -180.0, 360.0, 36_000, 36_000.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
     v = e_raw_delta &&& 0xFFFFFFFF
@@ -3084,8 +3084,8 @@ defmodule Example.Wire do
     v = rv >>> 1 &&& 0xFFFF
     bits_read = bits_read + 16
     # headroom above the quantum count is refused
-    if v > 36000, do: throw(:invalid)
-    e_orientation = cf_decode(v, 36000.0, 360.0, -180.0)
+    if v > 36_000, do: throw(:invalid)
+    e_orientation = cf_decode(v, 36_000.0, 360.0, -180.0)
     v = rv >>> 17
     bits_read = bits_read + 32
     e_raw_delta = if v >= 2_147_483_648, do: v - 4_294_967_296, else: v
@@ -3622,7 +3622,7 @@ defmodule Example.Wire do
   defp fr(value) do
     ax = abs(value)
 
-    if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+    if ax >= 1.1754943508222875e-38 and ax < 3.4_028_235_677_973_366e38 do
       y = value * 536_870_913.0
       y - (y - value)
     else
