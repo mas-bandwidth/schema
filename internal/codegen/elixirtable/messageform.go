@@ -58,7 +58,7 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	b.WriteString("  — answer `:malformed`, never a refusal.\n")
 	b.WriteString("  \"\"\"\n\n")
 	b.WriteString("  import Bitwise\n\n")
-	fmt.Fprintf(&b, "  @announcement <<%s>>\n", elixirBytes(ir.TableAnnouncement(u)))
+	b.WriteString(exAttrBinary("  @announcement ", elixirBytes(ir.TableAnnouncement(u))))
 	fmt.Fprintf(&b, "  @entries_here %d\n\n", len(ir.TableVocabulary(u)))
 	b.WriteString(messageRuntimeBody)
 	b.WriteString(messageBatchRuntimeBody)
@@ -175,7 +175,8 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # own low-bit-first order; int_to_bytes spills it into bytes at the end.
   # ---------------------------------------------------------------------------
 
-  defp put_bits({acc, nbits}, value, n), do: {acc ||| ((value &&& bit_mask(n)) <<< nbits), nbits + n}
+  defp put_bits({acc, nbits}, value, n),
+    do: {acc ||| (value &&& bit_mask(n)) <<< nbits, nbits + n}
 
   defp align_write({acc, nbits}), do: {acc, nbits + rem(8 - rem(nbits, 8), 8)}
 
@@ -285,8 +286,11 @@ const messageBatchRuntimeBody = `  @batch_max 256
     acc2 = put_bits(acc, ref, vocab.ref_bits)
 
     case entry_at(vocab, ref) do
-      {:ok, entry} -> encode_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), value, acc2)
-      :error -> :error
+      {:ok, entry} ->
+        encode_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), value, acc2)
+
+      :error ->
+        :error
     end
   end
 
@@ -294,7 +298,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # align that precedes a string or a bytes array guarantees.
   defp put_bytes({acc, nbits}, bytes) do
     n = byte_size(bytes)
-    {acc ||| (bytes_to_int(bytes) <<< nbits), nbits + n * 8}
+    {acc ||| bytes_to_int(bytes) <<< nbits, nbits + n * 8}
   end
 
   # ---------------------------------------------------------------------------
@@ -472,7 +476,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp scalar_value(_kind, _shape, raw), do: raw
 
   defp sign_extend(raw, bits) do
-    if ((raw >>> (bits - 1)) &&& 1) == 1 do
+    if (raw >>> (bits - 1) &&& 1) == 1 do
       raw - (1 <<< bits)
     else
       raw
@@ -488,14 +492,14 @@ const messageBatchRuntimeBody = `  @batch_max 256
     if off + n > total do
       :error
     else
-      {:ok, (int >>> off) &&& bit_mask(n), {int, off + n, total}}
+      {:ok, int >>> off &&& bit_mask(n), {int, off + n, total}}
     end
   end
 
   defp align({int, off, total}) do
     pad = rem(8 - rem(off, 8), 8)
 
-    if off + pad > total or ((int >>> off) &&& bit_mask(pad)) != 0 do
+    if off + pad > total or (int >>> off &&& bit_mask(pad)) != 0 do
       :error
     else
       {:ok, {int, off + pad, total}}
@@ -507,7 +511,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
     if off + n * 8 > total do
       :error
     else
-      bytes = for i <- 0..(n - 1), into: <<>>, do: <<(int >>> (off + 8 * i)) &&& 0xFF>>
+      bytes = for i <- 0..(n - 1), into: <<>>, do: <<int >>> (off + 8 * i) &&& 0xFF>>
       {:ok, bytes, {int, off + n * 8, total}}
     end
   end
@@ -524,18 +528,20 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # and all of them zero (docs/SPEC-TABLES.md §3.3).
   defp batch_ends_clean?({int, off, total}) do
     rem_bits = total - off
-    rem_bits < 8 and (rem_bits == 0 or ((int >>> off) &&& bit_mask(rem_bits)) == 0)
+    rem_bits < 8 and (rem_bits == 0 or (int >>> off &&& bit_mask(rem_bits)) == 0)
   end
 
   defp int_to_bytes(_int, 0), do: <<>>
 
   defp int_to_bytes(int, nbytes) do
-    for i <- 0..(nbytes - 1), into: <<>>, do: <<(int >>> (8 * i)) &&& 0xFF>>
+    for i <- 0..(nbytes - 1), into: <<>>, do: <<int >>> (8 * i) &&& 0xFF>>
   end
 
   defp bytes_to_int(bin), do: bytes_to_int(bin, 0, 0)
   defp bytes_to_int(<<>>, _i, acc), do: acc
-  defp bytes_to_int(<<b, rest::binary>>, i, acc), do: bytes_to_int(rest, i + 1, acc ||| (b <<< (8 * i)))
+
+  defp bytes_to_int(<<b, rest::binary>>, i, acc),
+    do: bytes_to_int(rest, i + 1, acc ||| b <<< (8 * i))
 
   defp bit_length(0), do: 0
   defp bit_length(n), do: bit_length(n, 0)
@@ -563,28 +569,51 @@ const messageBatchRuntimeBody = `  @batch_max 256
   end
 `
 
-// elixirBytes spells a byte run as an Elixir binary literal, low byte first.
-func elixirBytes(bytes []byte) string {
-	var s strings.Builder
+// elixirBytes spells a byte run as the segments of an Elixir binary literal,
+// low byte first.
+func elixirBytes(bytes []byte) []string {
+	segs := make([]string, len(bytes))
 	for i, v := range bytes {
-		if i > 0 {
-			s.WriteByte(',')
-		}
-		fmt.Fprintf(&s, "0x%02X", v)
+		segs[i] = fmt.Sprintf("0x%02X", v)
 	}
-	return s.String()
+	return segs
 }
 
-const messageRuntimeBody = `  defstruct [
-    announced: false,
-    refused: false,
-    build_version: 0,
-    entries: [],
-    count: 0,
-    ref_bits: 0,
-    max_bytes: 65536,
-    max_entries: 4096
-  ]
+// exAttrBinary writes `<prefix><<a, b, ...>>` the way `mix format` writes a
+// module attribute's binary: one line when it fits, and otherwise FILLED to
+// the line limit, every continuation aligned under the first segment.
+func exAttrBinary(prefix string, segs []string) string {
+	if one := prefix + "<<" + strings.Join(segs, ", ") + ">>"; exWidth(one) <= exLineLimit {
+		return one + "\n"
+	}
+	cont := strings.Repeat(" ", exWidth(prefix)+2)
+	var b strings.Builder
+	b.WriteString(prefix + "<<" + segs[0])
+	col := exWidth(prefix) + 2 + exWidth(segs[0])
+	for i := 1; i < len(segs); i++ {
+		after := 1 // the comma that follows it
+		if i == len(segs)-1 {
+			after = 2 // the closing >>
+		}
+		if col+2+exWidth(segs[i])+after > exLineLimit {
+			b.WriteString(",\n" + cont + segs[i])
+			col = exWidth(cont) + exWidth(segs[i])
+			continue
+		}
+		b.WriteString(", " + segs[i])
+		col += 2 + exWidth(segs[i])
+	}
+	return b.String() + ">>\n"
+}
+
+const messageRuntimeBody = `  defstruct announced: false,
+            refused: false,
+            build_version: 0,
+            entries: [],
+            count: 0,
+            ref_bits: 0,
+            max_bytes: 65536,
+            max_entries: 4096
 
   # ---------------------------------------------------------------------------
   # THE CONSTANT, and nothing but the constant
@@ -732,7 +761,15 @@ const messageRuntimeBody = `  defstruct [
                     else
                       case read_vocab(rest2, max_bytes) do
                         {:ok, words, rest3} ->
-                          walk(rest3, ids, versions, words_count + 1, build_version, words, max_bytes)
+                          walk(
+                            rest3,
+                            ids,
+                            versions,
+                            words_count + 1,
+                            build_version,
+                            words,
+                            max_bytes
+                          )
 
                         {:refuse, reason} ->
                           {:refuse, reason}
@@ -794,13 +831,27 @@ const messageRuntimeBody = `  defstruct [
   # Skip an unknown field by its declared kind (§3's closed set).
   defp skip(kind, bin) do
     cond do
-      kind in [1, 2, 6, 20, 25] -> take(1, bin)
-      kind in [3, 7, 21, 26] -> take(2, bin)
-      kind in [4, 8, 10, 22, 27] -> take(4, bin)
-      kind in [5, 9, 11, 23, 28] -> take(8, bin)
-      kind in [18, 19, 24, 29] -> take(16, bin)
-      kind in [17, 30] -> leb_rest(bin)
-      kind in [12, 13, 14, 16, 31, 32, 33] -> body(bin)
+      kind in [1, 2, 6, 20, 25] ->
+        take(1, bin)
+
+      kind in [3, 7, 21, 26] ->
+        take(2, bin)
+
+      kind in [4, 8, 10, 22, 27] ->
+        take(4, bin)
+
+      kind in [5, 9, 11, 23, 28] ->
+        take(8, bin)
+
+      kind in [18, 19, 24, 29] ->
+        take(16, bin)
+
+      kind in [17, 30] ->
+        leb_rest(bin)
+
+      kind in [12, 13, 14, 16, 31, 32, 33] ->
+        body(bin)
+
       kind == 15 ->
         case leb(bin) do
           {:ok, 0, rest} -> {:ok, rest}
@@ -870,10 +921,17 @@ const messageRuntimeBody = `  defstruct [
     case entry(bin) do
       {:ok, e, rest} ->
         cond do
-          e.id == 0xFFFFFFFFFFFFFFFE or e.id == 0xFFFFFFFFFFFFFFFD -> :error
-          e.id == 0xFFFFFFFFFFFFFFFF and node -> :error
-          duplicate?(e, acc) -> :error
-          true -> parse_entries(rest, max, [e | acc], count + 1, node or e.id == 0xFFFFFFFFFFFFFFFF)
+          e.id == 0xFFFFFFFFFFFFFFFE or e.id == 0xFFFFFFFFFFFFFFFD ->
+            :error
+
+          e.id == 0xFFFFFFFFFFFFFFFF and node ->
+            :error
+
+          duplicate?(e, acc) ->
+            :error
+
+          true ->
+            parse_entries(rest, max, [e | acc], count + 1, node or e.id == 0xFFFFFFFFFFFFFFFF)
         end
 
       :error ->
@@ -1030,7 +1088,6 @@ const messageRuntimeBody = `  defstruct [
                   else
                     :error
                   end
-
                 else
                   :error
                 end
@@ -1144,7 +1201,8 @@ const messageRuntimeBody = `  defstruct [
 
   # docs/SPEC.md Floating-point discipline and docs/FIXED-FORM-ALGORITHM.md §5.1.
   # The product rounds to float32 before the add. Elixir does not contract.
-  def dequantize_bits(index, qmin, delta, count) when is_integer(index) and is_integer(count) and count > 0 do
+  def dequantize_bits(index, qmin, delta, count)
+      when is_integer(index) and is_integer(count) and count > 0 do
     index = if index < 0, do: 0, else: index
     index = if index > count, do: count, else: index
     normalized = round_f32(index / count)
@@ -1166,4 +1224,5 @@ const messageRuntimeBody = `  defstruct [
       f
     end
   end
+
 `
