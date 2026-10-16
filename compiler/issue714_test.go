@@ -55,15 +55,22 @@ func TestIssue714Base64WriterIntegerWrap(t *testing.T) {
 			}
 
 			var foundBase64 bool
-			for _, content := range files {
+			for name, content := range files {
 				str := string(content)
-				if strings.Contains(str, "Base64") || strings.Contains(str, "base64") {
+				// The Go text carrier (SPEC-TABLES §16.8) names base64 without
+				// being a writer: the typed refusal, its spelling, and the
+				// standard library encoder SaveText/LoadText call. With those
+				// spellings set aside, what still says base64 is a writer.
+				writer := strings.NewReplacer("TableRefuseBase64Damaged", "", "base64_damaged", "",
+					"\"encoding/base64\"", "", "base64.StdEncoding", "", "base64 carrier", "",
+					"base64 of", "", "base64 wire", "").Replace(str)
+				if strings.Contains(writer, "Base64") || strings.Contains(writer, "base64") {
 					foundBase64 = true
 					if strings.Contains(str, tt.forbidden) {
 						t.Errorf("%s: emitted code contains wrapping loop condition %q", tt.lang, tt.forbidden)
 					}
 					if !strings.Contains(str, tt.required) {
-						t.Errorf("%s: emitted code missing safe loop condition %q", tt.lang, tt.required)
+						t.Errorf("%s: %s: emitted code missing safe loop condition %q", tt.lang, name, tt.required)
 					}
 				}
 			}

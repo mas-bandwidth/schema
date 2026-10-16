@@ -96,6 +96,9 @@ const (
 	// declaration's own walk; changing it to any other is judged on whether
 	// the new one can STAND IN for the old (see substitutable).
 	RuleRefs
+	// RuleGain — ADDING the token is a refusal, removing it passes: the fact
+	// is a promise records must keep (`| required`, docs/SPEC-TABLES.md §2.3).
+	RuleGain
 )
 
 // DefaultTokenPolicy is the WHOLE compatibility policy, one row per fact.
@@ -130,6 +133,10 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	// PRESENCE IS RECORDED AND JUDGED ON NOTHING: T, ?T and *T are one
 	// framing, so a field moving between them moves no byte (§3.1, §18.1)
 	"optional": RulePass,
+	// `| required` ADDED to a shipped field: old records never wrote it and a
+	// newer reader refuses them as missing_required. Removed, the writer just
+	// starts eliding again, so removal passes (docs/SPEC-TABLES.md §2.3).
+	"required": RuleGain,
 
 	// ---- a field's REFERENT, split by what it names ----
 	//
@@ -518,6 +525,19 @@ func (d *differ) diffTables() []Finding {
 			}
 			out = append(out, d.diffTokens(lt.Name+"."+lf.Name, bf, lf)...)
 		}
+		// A NEW FIELD marked `| required` is the same break: every stored
+		// record lacks it (docs/SPEC-TABLES.md §2.3)
+		if d.policy["required"] == RuleGain {
+			baseIds := map[uint64]bool{}
+			for _, bf := range bt.Fields {
+				baseIds[bf.Id] = true
+			}
+			for _, lf := range lt.Fields {
+				if _, req := lf.Get("required"); req && !baseIds[lf.Id] {
+					out = append(out, Finding{Refuse, lt.Name + "." + lf.Name, "new field is `| required`: records written before it lack the field and a reader refuses them as missing_required"})
+				}
+			}
+		}
 		out = append(out, d.wasChain(bt, lt)...)
 		out = append(out, d.renamePair(bt, lt, gone)...)
 	}
@@ -720,6 +740,8 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 		switch d.policy[lt.Key] {
 		case RuleFixed, RuleRefs:
 			out = append(out, Finding{Refuse, where, fmt.Sprintf("%s %s added", tokenNoun(lt.Key), lt.Value)})
+		case RuleGain:
+			out = append(out, Finding{Refuse, where, fmt.Sprintf("%s added: records written before it lack the field and a reader refuses them as missing_required", lt.Key)})
 		case RuleShrink, RuleRaise:
 			out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s added (%s)", tokenNoun(lt.Key), lt.Value, tightenNote(lt.Key))})
 		}

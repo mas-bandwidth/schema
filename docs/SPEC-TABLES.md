@@ -451,13 +451,35 @@ blittable `<Name>Row` records, because a cooked record IS the blittable row
 (§7.2, §19.3) and a block-only build wants the same structs a cook-only build
 does.
 
-**GO emits four sources per unit file**: `<Base>Table.go` (the storage structs,
-the codecs, the reflection descriptors), `<Base>Block.go` and `<Base>Cook.go`
-(the two accelerators, §19 and §7), and one `<Home>TableJson.go` per unit (the
-generic text walk). The unit's shared runtime is emitted ONCE, into the
-package's home `<Package>Table.go` — the file named for the package when one
-exists, else a file emitted for the unit — named by the PACKAGE so an
-earlier-sorting file cannot relocate it (§19.2). Two spellings are Go's own and
+**GO emits a CORE and four OPTIONAL FORMS.** The core is `<Base>Table.go` per
+unit file (the storage structs, the codecs, the reflection descriptors) and the
+unit's `<Package>View.go`; it is always emitted and it compiles alone. The
+unit's shared runtime is emitted ONCE, into the package's home
+`<Package>Table.go` — the file named for the package when one exists, else a
+file emitted for the unit — named by the PACKAGE so an earlier-sorting file
+cannot relocate it (§19.2). **GO's optional forms** are files that only ADD
+their form's entry points, and any subset of them may be left out:
+`<Base>TableMessage.go` (the message form, §3.3: the announcement, the
+vocabulary, the batch codec and every fixed table's `<Name>MeasureMessages`,
+`<Name>SaveMessages` and `<Name>LoadMessages`), `<Base>Cook.go` (the cooked
+form, §7, both halves: the handles that read a region and the
+`<Name>CookMeasure` / `<Name>CookFrom` writers), `<Base>Block.go` (§19) and one
+`<Home>TableJson.go` per unit (the generic text walk, §16). The rule that makes
+every subset compile is a placement rule: A DECLARATION A CORE FILE NAMES IS A
+CORE DECLARATION. So `BuildVersion` (§20), the blittable `<Name>Row` records
+(a cooked record IS the blittable row, §7.2, §19.3), the storage and guard
+helpers the text walk shares, and the message form's TYPES (its writer, its
+reader and what they hold, because the descriptor's message columns are typed
+by them) all live in the core, and a form's file declares only what the core
+never names. The descriptor's message columns are the one place a form fills in
+a core declaration: the message file assigns them in an `init()` of its own,
+which runs after the core's because Go runs a package's `init` functions file by
+file in the lexical order the go command presents them, and `<Base>Table.go`
+sorts before `<Base>TableMessage.go`; with the form left out they stay nil,
+and nothing that remains reads them. Default generation emits every form; the
+emitter's own omit path is `gotable.GenerateOmitting`, and
+`TestGoTableCompilesWithAnySubsetOfItsForms` builds and vets every corpus unit
+with each of the sixteen subsets of `{json, cook, block, message}` omitted. Two spellings are Go's own and
 the reason is at each site:
 an enum's identity pair (`TableEnumId` / `TableEnumValue`) is a METHOD on the
 enum type, because Go has no overloading and a free pair would have to mint a
@@ -1119,6 +1141,62 @@ any scalar, and a bounded array of those. It is refused, by name, on:
   unions serve today without the `?` (§2.1, §2.6), and a table wrapping
   the field serves with it.
 - **a specified default** — presence is the only default an optional has.
+
+#### The `| required` marker
+
+A variable table cannot say a field must be present: a zero field is not
+written, so absence and a written default are indistinguishable. `| required`
+closes that gap. It is a TAG — a valueless qualifier in the open half of the
+qualification section (SPEC §4.2) — read exactly the way `| deprecated` is.
+What it means:
+
+```
+table Player
+{
+    name     string(32) | required   // always written; a record missing it is refused
+    score    int32                     // elided when zero, as usual
+}
+```
+
+- **The writer ALWAYS writes it.** A required field never elides at its
+  default: it rides on every record, and a variable table's writer emits it
+  even when it holds zero. Absence is no longer expressible for the field.
+- **The reader REFUSES a record missing it.** An older record written before
+  the field was required lacks it; reading it is refused with the event
+  `missing_required`, naming the field. The record does not silently fall
+  back to a default — the field was declared mandatory and is not there.
+- **It is TABLE fields only.** `| required` is refused, by name, on a packet
+  `type` field — a type's wire is positional and every field always rides, so
+  there is no absence for a required marker to cure — and on an optional
+  `?T` — an optional is absent or present by definition, and `required`
+  would forbid the absence that makes it optional.
+- **A FIXED table REFUSES `required` at compile time**, by name: every fixed
+  field is always written, so there is no elision to suppress and no absence
+  to refuse, and the marker would promise nothing. The check names the table
+  and the field.
+- **The attribute is part of the tables baseline row**, as a `required`
+  token in the field's row (§18), and that row is the table projection the
+  evolution rule below is judged on. It moves NEITHER unit-wide id: the
+  protocol id (`schema id`) hashes the `type` wire projection (SPEC §3.1),
+  which no table field reaches, and the build version (§20) hashes the cook
+  projection, where a required field is laid out, cooked and blocked exactly
+  as it is without the marker.
+- **The refusal names only the fields that are missing**, in declaration
+  order, e.g. `missing_required: b`.
+- **The refusal is the RECORD's, at any depth.** A nested table, an array
+  element, a map entry or a pointer node whose body lacks a required field
+  refuses every body above it: the record is refused, never read as a parent
+  holding a defaulted child, and the reason names the missing field of the
+  body that lacked it. A strict caller gets it by name — `ReadStrict` and
+  `TableReport.Err()` answer the typed `TableMissingRequired`, whose text is
+  the report's reason (§6.5), never a bare `wire_damaged`.
+
+**Evolution** (§4). Adding `required` to a shipped field is a BREAK the
+tables baseline refuses: old records were written without it and a newer
+reader would refuse them. Removing `required` is free — the writer simply
+starts eliding again. Adding a NEW field marked `| required` to an
+existing table is the same break, and the baseline refuses it too (every
+stored record lacks the field); a new field that is not required is free.
 
 ### 2.4 Enum-keyed arrays: `ships [ShipType]ShipConfig`
 
@@ -3848,6 +3926,10 @@ one document rather than two.
   `make tables-float-nan-negative-control` puts the conversion back and
   watches the pin go red. The rule crosses §4's FLOAT RUNG, `10` into `11`,
   where the 23 payload bits ride in the top of the double's 52.
+  **A COMPRESSED float is the one float whose READ moves a pattern**, and it
+  is not a normalization: its declared range is a read-side clamp (§4), so a
+  NaN under it clamps to `min` and counts and a `-0` lands as `+0`, by §3.3's
+  special-values rule. The bits on the wire are still the writer's own.
 
   **The scalars the type wire brought ride as their STORAGE and nothing
   else.** A `fixed(I, F)` value is the integer its storage holds, units ×
@@ -5745,6 +5827,60 @@ exception, because a name is the value on both forms and the variable form alrea
 carries it. A value that is on the grid and inside W reproduces its file byte
 for byte, which is what every vector below is.
 
+**A COMPRESSED FLOAT'S SPECIAL VALUES TAKE ONE RULE, IN EVERY FORM.** A
+compressed float is defined for the values in `[min, max]`, and a NaN, the
+infinities and a negative zero are each stated here, because every comparison
+against a NaN is false and a bounds test of `< min` and `> max` alone hands a
+NaN through whole: a value outside the declared range, uncounted, given to a
+caller the declaration promises a number inside it. The rule, the same in the
+message, fixed, variable and text forms:
+
+- **A VALUE WRITTEN AS NaN NEVER LANDS AS NaN.** It clamps to `min` and COUNTS,
+  exactly as `-Inf` and a finite value below `min` do, or, in the one form
+  with no spelling for it, it is REFUSED BY NAME. A quiet NaN, a signalling
+  NaN, a NaN with any payload and either sign are one case.
+- **`+Inf` CLAMPS TO `max` AND `-Inf` TO `min`, AND EACH COUNTS**, as a finite
+  value past that end does, or is refused by name where a NaN is.
+- **`-0` IS `+0`.** It lands as exactly what `+0` lands as in that form: the
+  value `0` itself where the form carries the float, and the INDEX OF 0 FOR
+  THAT RANGE where the form quantizes, which decodes to the grid point the
+  rule chooses for `0`. No sign bit is kept and nothing is counted, because the
+  value is inside the range and only its spelling differs.
+
+Where the clamp runs, and what counts it, is each form's own:
+
+| form | where a NaN, an infinity and a `-0` are held |
+| --- | --- |
+| MESSAGE (§3.3) | the WRITER's quantizer (above): `!(ratio >= 0)` is true for a NaN, so it takes the `0` end, and the writer COUNTS every value its quantizer clamps — a NaN, an infinity, a finite value past either end — into `clamped` on the report handed to `SaveMessages`. The reader sees only an index in `[0, count]`, so it decodes a value inside `[min, max]` and counts nothing |
+| FIXED (§3.4) | the READ's bounds pass, which tests for the NaN FIRST and then each end; `clamped` on the load's report. The record carries the float whole, so the writer moves nothing |
+| VARIABLE (§3) | the READ's clamp to the declared range (§4), the same test in the same order; `clamped` on the load's report |
+| TEXT / JSON (§16) | JSON has no spelling for a NaN or an infinity, so the WRITER REFUSES each (§16.2: measure and write return `-1`, and the reference's refusal names the value) and nothing lands; a text cannot carry one in. A `-0` is spelled `-0`, and the READ lands it as `+0`, uncounted |
+
+The quantizer, read off the Go oracle (`ir.TableMessageQuantize` and
+`TableMessageDequantize`) on two shapes, because a range that starts at `0`
+cannot tell "the index of 0" from "index 0":
+
+| input | `[0, 1]` at `0.01` (`count` 100): index → decoded | `[-1, 1]` at `0.01` (`count` 200): index → decoded |
+| --- | --- | --- |
+| a NaN | `0` → `0`, which is `min` | `0` → `-1`, which is `min` |
+| `-0` | `0` → `+0`, the index of `0` | `100` → `+0`, the index of `0` |
+| `+0` | `0` → `+0`, the index of `0` | `100` → `+0`, the index of `0` |
+| `+Inf` | `100` → `1`, which is `max` | `200` → `1`, which is `max` |
+| `-Inf` | `0` → `0`, which is `min` | `0` → `-1`, which is `min` |
+| below `min` | `0` → `min` | `0` → `min` |
+| above `max` | `count` → `max` | `count` → `max` |
+
+In general `-0` and `+0` take the index of the grid point the rule chooses for
+`0`, and decode to that point; it is index `0` only when `min` is `0`. The index
+never leaves `[0, count]` and a decoded value never leaves `[min, max]`, so in
+every form a compressed float lands inside its declared range and a NaN never
+lands at all. The rule is held on the Go leg and in the Go oracle by
+`internal/codegen/gotable/cfloat_special_values_test.go`, which pins NaN,
+`-0`, `+0`, `+Inf` and `-Inf` in all four forms on both shapes above, and by
+`internal/codegen/gotable/fixedcfloat_test.go`'s NaN and negative-zero rows. A
+leg that lands a NaN, keeps a `-0`'s sign bit, or clamps without counting here
+is out of conformance with this paragraph.
+
 **FORM `2` IS A STREAM FORM AND NEVER A FILE'S OWN FORM.** `schema pack` writes form
 `1`, `schema unpack` reads form `1`, and a reader handed a form-`2` wire where a
 file was expected refuses by name: a batch stored on its own is not readable,
@@ -6832,7 +6968,7 @@ VALUE.**
   | `bits(N)` | the declared storage width, 4 for `N <= 32` and 8 above |
   | a RANGED integer | its own storage width; the bounds do not ride and clamp on load, as they do in §3 |
   | `float32`, `float64` | 4, 8 — the IEEE-754 bit pattern, with no canonicalisation (§3) |
-  | a COMPRESSED float | 4 — it rides as the float, not as a quantized index; this form is not optimized for bandwidth |
+  | a COMPRESSED float | 4 — it rides as the float, not as a quantized index; this form is not optimized for bandwidth. The read's bounds pass holds a NaN, the infinities and a `-0` by §3.3's special-values rule: a NaN clamps to `min` and counts, `+Inf`/`-Inf` clamp to `max`/`min` and count, `-0` lands as `+0` |
   | `int128`/`uint128` | 16, the low 64-bit half then the high |
   | `fixed(I, F)`, `ufixed(I, F)` | the storage width, the raw scaled integer |
   | `flags` | 8, the raw mask, as §3 carries it |
@@ -7088,19 +7224,23 @@ HASH is the hash §3 puts at offset `8`:
 
 ```
 offset  0        form byte 3
-offsets 1 .. 7   reserved, zero — and a reader REFUSES a nonzero one, `malformed`
+offsets 1 .. 7   reserved, zero — and a reader REFUSES a nonzero one, `malformed` and named `reserved_not_zero`
 offsets 8 .. 15  the LAYOUT HASH (u64 LE)
 offset  16       layout length (u32 LE), then the layout
                  records, back to back, to the end of the file
 ```
 
 **AND THE ORDER THE HEADER IS READ IN** (algorithm §5.3 steps 1 and 2): a file
-with NO FIRST BYTE is `malformed`; **then the form byte earns its name, BEFORE
-the file's length is measured** — a committed form-`1` file is ten bytes and a
-form-`2` batch three, so a reader that measured first would answer `malformed`
-for every real file of the two forms this section promises to name; then the
-twenty-byte minimum, `malformed`; then the seven reserved bytes, `malformed` if
-any is nonzero; and only then the layout's length and the hash.
+with NO FIRST BYTE is `malformed`, named `truncated`; **then the form byte earns
+its name, BEFORE the file's length is measured** — a committed form-`1` file is
+ten bytes and a form-`2` batch three, so a reader that measured first would
+answer `malformed` for every real file of the two forms this section promises to
+name; then the twenty-byte minimum, `malformed`, named `truncated`; then the
+seven reserved bytes, `malformed` — named `reserved_not_zero` — if any is
+nonzero; and only then the layout's length and the hash. **EVERY REFUSAL OF THE
+FIXED LOAD HAS A NAME**, and the framing-damage returns are named too, so a
+caller that switches on the reason sees them by name instead of a silent empty
+reason (§5.3's joint table).
 
 - **THE HEADER NAMES THE LAYOUT ONCE; A RECORD NAMES IT AGAIN.** The eight bytes
   at `8` are the hash of the layout behind them, and every record still carries
@@ -7124,9 +7264,9 @@ any is nonzero; and only then the layout's length and the hash.
   length and not a constant, and a form that wants MAPPED RECORDS will pad the
   layout too — which is a byte this form does not spend until something reads it.
 - **THE RECORDS FILL THE REST OF THE FILE and there is no count.** A reader
-  knows the record size from the layout, so the count is arithmetic; **BYTES
-  LEFT OVER ARE `malformed`**, which is §3's rule for the same reason, that the
-  two ends of the file have met.
+    knows the record size from the layout, so the count is arithmetic; **BYTES
+    LEFT OVER ARE `malformed`**, named `truncated`, which is §3's rule for the
+    same reason, that the two ends of the file have met.
 - **A ONE-RECORD FILE PAYS FOR THE WHOLE LAYOUT**, and that is stated rather
   than hidden: this form is for many records of one small type, which is what
   the owner said it was for — *"effectively, fixed tables should only be used
@@ -7233,8 +7373,8 @@ added moves it without anyone remembering to.
   that hash is refused `layout_malformed`, which is what proves the header's
   eight bytes are READ and not merely written; a hash in no entry is
   `layout_unknown` (§21.3, algorithm §5.3). **AND THE SEVEN RESERVED BYTES**: any of
-  offsets `1..7` nonzero is `malformed`, refused rather than ignored, which is
-  what keeps them spendable later.
+  offsets `1..7` nonzero is `malformed`, named `reserved_not_zero`, refused
+  rather than ignored, which is what keeps them spendable later.
 - **THE FIRST BYTE, AT THE TOOL** (§3): `schema check` handed a saved file
   answers `FORM <n> <name>` before it says anything else about the file, or
   refuses the byte by name, over every row of the registry and over a file with
@@ -8564,14 +8704,14 @@ The builder is designed to go wide, lock-free by ownership:
   construct that can raise one is (§2.9).
 - **The STRICT read** — one call, `<Name>ReadStrict( wire )`, that answers
   the root or refuses. It refuses, with ONE typed reason, a read that is
-  malformed, clamped, kind-mismatched, of an unknown form, wire-damaged or
-  build-version-mismatched. It does NOT refuse `unknown`, `widened` or
+  malformed, clamped, kind-mismatched, of an unknown form, wire-damaged,
+  build-version-mismatched or missing a required field (§2.3). It does NOT refuse `unknown`, `widened` or
   `retained` alone: `unknown` is evolution, `widened` decoded exactly, and
   `retained` reports on retention rather than on a loss (the cards facade's
   `ReadStrict`, docs/CARDS.md: `Unknown`, `Retained` and `Widened` alone are
   not loss). The reason is `TableRefuseReason`, the same enum a measure's
   `-1` carries, or `TableBuildVersionMismatch` for the announcement's strict
-  refusal (§3.3), so the language's typed-error test matches it (`errors.Is`
+  refusal (§3.3), or `TableMissingRequired` naming the missing field (§2.3), so the language's typed-error test matches it (`errors.Is`
   in Go). Values this read adds (`malformed`, `clamped`, `kind_mismatch`)
   are appended to that enum and never renumbered. `TableReport.Err()`
   answers the same reason for every counter this read refuses, and nil on a
@@ -11866,6 +12006,7 @@ in build version (§20.5).
   Cook  CookMeasure  CookMeasureReason  CookBody  CookLayout  CookMeasureFrom  CookFrom
   Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure  Table
+  SaveText  LoadText
   MeasureMessages  SaveMessages  LoadMessages
   LoadMessagesMeasure  SaveMessageBody  LoadMessageBody
   LoadRetain LoadRetainBuilder  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages
@@ -11928,7 +12069,7 @@ in build version (§20.5).
   return `(int64, error)`, with literal `nil` on success and a typed
   `TableRefuseReason` on refusal. `<Name>ReadStrict(wire) (*<Name>, error)`
   is §6.5's STRICT read: one call, its own builder, the reason a
-  `TableRefuseReason` or `TableBuildVersionMismatch`. `TableReport.Err()`
+  `TableRefuseReason`, `TableBuildVersionMismatch` or `TableMissingRequired`. `TableReport.Err()`
   answers that same reason. Builder `PackMeasureReason` follows the
   same rule. `invalid_value` and `allocation_failed` distinguish Go
   authoring failures from file count, form, blob-size, and cycle refusals.
@@ -13834,7 +13975,7 @@ Per kind:
 | declaration | JSON | notes |
 |---|---|---|
 | integers, `bits(N)` | number | see **Numbers** below; a `bits(N)` value over its implied `[0, 2^N − 1]` clamps and counts |
-| `float32`, `float64`, compressed floats | number | a value a float32 field cannot hold is `kind_mismatch`, never stored as infinity |
+| `float32`, `float64`, compressed floats | number | a value a float32 field cannot hold is `kind_mismatch`, never stored as infinity. A compressed float's `-0` reads as `+0`, uncounted, and a NaN or an infinity in one is refused at write (§3.3, the special values) |
 | `fixed(I, F)`, `ufixed(I, F)` | number, in WHOLE UNITS | the spelling SPEC.md §4.6 gives a fixed default: `1.0`, `-0.25`, `3.0000152587890625`. Written as the shortest EXACT decimal with at least one fractional digit; read from any number token whose value is exactly representable in Q I.F — `2`, `15e-1` and `1.5` are the same value — and a finer fraction is `kind_mismatch`, the wrong shape for the field, never rounded. See **Numbers** |
 | `int128`, `uint128` | number | a decimal integer, exact past 2^53 in both directions: `340282366920938463463374607431768211455` reads back as itself. Integral forms read as for every integer; a fractional value is `kind_mismatch` |
 | `bool` | `true` / `false` | |
@@ -13854,7 +13995,7 @@ Per kind:
 | `*bytes` | string, base64, or `null` | the blob in place, as `bytes(N)` spells its bytes, with NO bound to clamp against; `""` is a present blob of length zero and `null` is a null reference (§2.5). A body that is not base64 is `kind_mismatch`, the reference left null |
 | `*string` | string, or `null` | the blob's bytes as a string, with no bound; the same two values at the empty end |
 | `*wstring` | string, or `null` | the blob's code units as a string, transcoded as `wstring(N)`'s row is, with no bound to clamp against, and the same two values at the empty end |
-| `map[K]V` | object keyed by the KEY | a string key is the string, and one longer than `N` drops its entry and counts `clamped`; an integer key is its decimal spelling, quoted, read by the integer rule above and by nothing else, so a token that rule calls `malformed` makes the key malformed and one with a fractional value or out of the key kind's range drops its entry as `kind_mismatch`; written in ASCENDING key order; a repeated key is last-wins and counted; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7) |
+| `map[K]V` | object keyed by the KEY | a string key is the string, and one longer than `N` drops its entry and counts `clamped`; an integer key is its decimal spelling, quoted, read by the integer rule above and by nothing else, so a token that rule calls `malformed` makes the key malformed and one with a fractional value or out of the key kind's range drops its entry as `kind_mismatch`; written in ASCENDING key order; a repeated key is last-wins and counted; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7); a `?T` VALUE (`map[K]?T`) is written `null` when ABSENT and as its value when PRESENT, defaults included, and read the same way: the object's key is the ENTRY and never the value's presence, so `null` is the one spelling of an absent value and any other value is present (§2.3) |
 | `[]T`, `[]*T` unbounded array | array | the bounded array's row with NO bound, so no element is dropped and `clamped` cannot fire on the count (§2.9); `[]` is an empty list and `null` is `kind_mismatch`; a `[]*T`'s elements take the pointer row above, `&node` and all; written in INDEX order, which is the only order there is |
 
 **The one-key object is the UNION's form, and the arm's own row supplies
@@ -14419,6 +14560,58 @@ cannot pack back to the bytes it came from.
 - A label named from inside its own definition is refused, in both engines and
   in the corpus battery, beside a label that overflows a `u64`, a signed one
   and one with a leading zero.
+
+### 16.8 Carrying a table over a text channel
+
+A text channel is a pipe a wire byte cannot cross as-is — a bus body, a log
+line, a config field, a terminal. A table has two text carriers, and the
+choice is what this section is about. **EVERY TABLE HAS BOTH**: a `fixed table` and a plain (variable) `table` alike, each over its own wire — form
+`1` for the variable class, and for a fixed table the wire its `Save` writes:
+
+- **Base64 of the binary wire** (`SaveText` / `LoadText`): the text is the
+  wire's bytes, `encoding/base64` standard alphabet, padded, whole. It keeps
+  the form byte, the framing check and every versioning guarantee of §3, and
+  it is opaque — no field is readable, nothing is editable, and a hand edit
+  is damage. Use it when the channel is machines talking to machines and the
+  wire itself would have been ideal, e.g. a bus body or a stored file's
+  value. It is the lossless, schema-exact carrier: `LoadText(SaveText(v))`
+  equals the wire `Save(v)` byte for byte.
+- **The JSON text form** (`FromJson` / `ToJson`, §16.1): the text is for a
+  human to read, diff or edit. It carries exactly what §16 says it carries —
+  the fields, by key, pretty-printed, with the mapping, clamping, counting
+  and refusal rules of §16.2 and §16.3. Use it when a person must inspect or
+  change the value in transit.
+
+Both readers refuse damaged or newer input BY NAME. A base64 body that does
+not decode is `base64_damaged`; a decoded wire the binary reader refuses is the
+wire reader's own refusal — a form byte this build does not carry, `unknown_form`
+(§3, THE FIRST BYTE), and framing damage, `wire_damaged` or `truncated`
+(§3); a JSON document the JSON reader refuses is `malformed` (§16.2). A
+reader never guesses at an unnameable byte.
+
+**The shape follows the class's own binary pair.** For a fixed table,
+`<Name>SaveText(value)` encodes `<Name>Save`'s bytes and
+`<Name>LoadText(text, report)` returns a new value filled by `<Name>Load`. For
+a variable table, `<Name>SaveText(value, context...)` takes the write context
+`<Name>Save` takes, and `<Name>LoadText(text, report)` reads into a builder of
+its own and returns the LOCKED, packed root, exactly as `<Name>ReadStrict`
+does (§6.5) — a variable value lives in a region, and the carrier hands back
+one. **`LoadText` IS THE STRICT READ (§6.5) for both classes**: it refuses
+whenever the read's report holds an error — `TableReport.Err()`'s reason,
+`malformed`, `clamped`, `kind_mismatch`, `missing_required` and the rest —
+WHATEVER the tolerant load answered. A tolerant load can recover a value and
+still report damage (a declared list count past its payload is read as the
+prefix it carries and reported `malformed`); the carrier never hands that
+value back with a nil error. `unknown`, `widened` and `retained` alone do not
+refuse, exactly as for `ReadStrict`. `report` is optional, nil allowed; a
+supplied one receives THIS read's report, so counts already in it neither
+decide the verdict nor survive the call. Either way the carrier is byte for byte: the value
+`LoadText` returns saves to exactly the wire bytes `SaveText` encoded, and
+the value `FromJson` reads from `ToJson`'s text saves to the same bytes too.
+
+`SaveText` and `LoadText` are generated name-first as `<Name>SaveText` and
+`<Name>LoadText`, and both suffixes are in §11's claimed list: a declaration
+spelling one beside a table `<Name>` is refused naming the collision.
 
 ## 17. Packing: a directory tree that mirrors a root table
 
@@ -16617,7 +16810,7 @@ reader an ordered fact about a hash it does not hold (for example a lineage posi
 reserved bytes, or a lock tail recording layouts ahead of the build), and that change is made here first.
 
 **Go is first, and the other legs have a gap.** Go answers `layout_unknown` (the exported constant
-`TableFixedLayoutUnknown`). The C, C++, C#, Java, Rust, JS, Dart and Elixir legs keep answering `layout_newer`
+`TableFixedReasonLayoutUnknown`). The C, C++, C#, Java, Rust, JS, Dart and Elixir legs keep answering `layout_newer`
 for a hash outside the lineage until each takes this rule in its turn; until then those legs overstate, and the
 two names are the same refusal in everything but what they claim about direction. The C and C++ integers
 (algorithm §5.3) are assigned when those legs take the rule.

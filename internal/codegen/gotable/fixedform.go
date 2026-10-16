@@ -362,6 +362,11 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range order {
 		g.emitFixedClampBodyFn(st)
 	}
+	// THE WRITE-SIDE CONTRACT, in the same order: the checks the read side
+	// would answer with a clamp or a refusal, answered here with a refusal.
+	for _, st := range order {
+		g.emitFixedCheckBodyFn(st)
+	}
 	for _, st := range roots {
 		g.emitFixedClamp(st)
 		g.emitFixedRoot(st)
@@ -670,17 +675,17 @@ func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string
 		g.emitFixedWriteLoop(f, dest, f.ArrayBound, val+"."+member(f), depth, tabs)
 	case f.Array == ir.ArrayCounted:
 		g.pf("%stableFixedPut32(%s, uint32(%s.%sCount))\n", ind, dest, val, member(f))
-		g.emitFixedWriteLoop(f, fmt.Sprintf("%s[%d:]", buf, base+fixedCountBytes), f.ArrayBound, val+"."+member(f), depth, tabs)
+		g.emitFixedWriteLive(f, fmt.Sprintf("%s[%d:]", buf, base+fixedCountBytes), fmt.Sprintf("%s.%sCount", val, member(f)), val+"."+member(f), depth, tabs)
 	case f.Type.Kind == ir.TString:
 		g.pf("%stableFixedPut32(%s, uint32(%s.%sLength))\n", ind, dest, val, member(f))
-		g.pf("%scopy(%s[4:], %s.%s[:])\n", ind, dest, val, member(f))
+		g.pf("%scopy(%s[4:], %s.%s[:min(uint32(%s.%sLength), %d)])\n", ind, dest, val, member(f), val, member(f), f.Type.Size)
 	case f.Type.Kind == ir.TWString:
 		g.pf("%stableFixedPut32(%s, uint32(%s.%sLength))\n", ind, dest, val, member(f))
-		g.pf("%sfor %s := 0; %s < %d; %s++ {\n%s\ttableFixedPut16(%s[4+%s*2:], %s.%s[%s])\n%s}\n",
-			ind, fixedLoopVar(depth), fixedLoopVar(depth), f.Type.Size, fixedLoopVar(depth), ind, dest, fixedLoopVar(depth), val, member(f), fixedLoopVar(depth), ind)
+		g.pf("%sfor %s := uint32(0); %s < min(uint32(%s.%sLength), %d); %s++ {\n%s\ttableFixedPut16(%s[4+%s*2:], %s.%s[%s])\n%s}\n",
+			ind, fixedLoopVar(depth), fixedLoopVar(depth), val, member(f), f.Type.Size, fixedLoopVar(depth), ind, dest, fixedLoopVar(depth), val, member(f), fixedLoopVar(depth), ind)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("%stableFixedPut32(%s, uint32(%s.%sLength))\n", ind, dest, val, member(f))
-		g.pf("%scopy(%s[4:], %s.%s[:])\n", ind, dest, val, member(f))
+		g.pf("%scopy(%s[4:], %s.%s[:min(uint32(%s.%sLength), %d)])\n", ind, dest, val, member(f), val, member(f), f.Type.Size)
 	default:
 		g.emitFixedWriteElement(f, dest, val+"."+member(f), depth, tabs)
 	}
@@ -693,6 +698,74 @@ func (g *tableGen) emitFixedWriteLoop(f *ir.Field, dest string, count int64, exp
 	g.pf("%sfor %s := int64(0); %s < %d; %s++ {\n", ind, loop, loop, count, loop)
 	g.emitFixedWriteElement(f, fmt.Sprintf("%s[%s*%d:]", dest, loop, elem), expr+"["+loop+"]", depth+1, tabs+1)
 	g.pf("%s}\n", ind)
+}
+
+// fixedOwnsSlots is whether a counted array's write zeroes its own slots: an
+// array of structs or unions, whose element slots carry slack of their own. Its
+// slots are zeroed one at a time just before each element's stores, so the
+// slot is hot in cache when they land (the speed gate measured the difference
+// against one template-wide zero), and the dead slots past the count in one
+// clear. An array of scalars is stored whole by its live puts and keeps its
+// dead slots in the template.
+func fixedOwnsSlots(f *ir.Field) bool {
+	if f.Array != ir.ArrayCounted || f.Type.Kind != ir.TNamed {
+		return false
+	}
+	switch f.Type.Ref.(type) {
+	case *ir.Struct, *ir.Union:
+		return true
+	}
+	return false
+}
+
+// emitFixedWriteLive stores a counted array's LIVE extent
+// (docs/FIXED-FORM-ALGORITHM.md §3.1: "Arrays write `count` elements ...
+// never all `Max`"); an array that owns its slots (fixedOwnsSlots) zeroes
+// them too. The count is clamped to 0..Max here only so a caller of the write
+// body itself can never index past the array; <T>FixedSave has already
+// refused a count outside it.
+func (g *tableGen) emitFixedWriteLive(f *ir.Field, dest, count, expr string, depth, tabs int) {
+	ind := strings.Repeat("\t", tabs)
+	elem := fixedElementBytes(f)
+	loop := fixedLoopVar(depth)
+	live := "live" + loop
+	slot := fixedOwnsSlots(f)
+	g.pf("%s{\n", ind)
+	g.pf("%s\t%s := min(max(int64(%s), 0), %d)\n", ind, live, count, f.ArrayBound)
+	g.pf("%s\tfor %s := int64(0); %s < %s; %s++ {\n", ind, loop, loop, live, loop)
+	if slot {
+		g.pf("%s\t\tclear(%s[%s*%d : %s*%d+%d])\n", ind, dest, loop, elem, loop, elem, elem)
+	}
+	g.emitFixedWriteElement(f, fmt.Sprintf("%s[%s*%d:]", dest, loop, elem), expr+"["+loop+"]", depth+1, tabs+2)
+	g.pf("%s\t}\n", ind)
+	if slot {
+		g.pf("%s\tclear(%s[%s*%d : %d])\n", ind, dest, live, elem, f.ArrayBound*elem)
+	}
+	g.pf("%s}\n", ind)
+}
+
+// fixedTemplateRanges is the record body's template-zero ranges for the root
+// save: every byte except the root's own counted arrays that own their slots
+// (fixedOwnsSlots), which emitFixedWriteLive zeroes as it stores them, so the
+// save does not zero them twice. One under an optional stays inside the
+// template, because an absent payload is never stored.
+func fixedTemplateRanges(st *ir.Struct) [][2]int64 {
+	var out [][2]int64
+	at, from := int64(0), int64(0)
+	for _, f := range st.Fields {
+		n := fixedFieldBytes(f)
+		if fixedOwnsSlots(f) && !f.Type.Optional {
+			if at > from {
+				out = append(out, [2]int64{from, at})
+			}
+			from = at + n
+		}
+		at += n
+	}
+	if at > from {
+		out = append(out, [2]int64{from, at})
+	}
+	return out
 }
 
 func (g *tableGen) emitFixedWriteElement(f *ir.Field, dest, expr string, depth, tabs int) {
@@ -754,18 +827,18 @@ func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, dest, arm string, depth,
 		g.emitFixedWriteLoop(f, dest, f.ArrayBound, arm, depth, tabs)
 	case f.Array == ir.ArrayCounted:
 		g.pf("%stableFixedPut32(%s, uint32(%sCount))\n", ind, dest, arm)
-		g.emitFixedWriteLoop(f, fmt.Sprintf("%s[%d:]", dest, fixedCountBytes), f.ArrayBound, arm, depth, tabs)
+		g.emitFixedWriteLive(f, fmt.Sprintf("%s[%d:]", dest, fixedCountBytes), arm+"Count", arm, depth, tabs)
 	case f.Type.Kind == ir.TString:
 		g.pf("%stableFixedPut32(%s, uint32(%sLength))\n", ind, dest, arm)
-		g.pf("%scopy(%s[4:], %s[:])\n", ind, dest, arm)
+		g.pf("%scopy(%s[4:], %s[:min(uint32(%sLength), %d)])\n", ind, dest, arm, arm, f.Type.Size)
 	case f.Type.Kind == ir.TWString:
 		loop := fixedLoopVar(depth)
 		g.pf("%stableFixedPut32(%s, uint32(%sLength))\n", ind, dest, arm)
-		g.pf("%sfor %s := 0; %s < %d; %s++ {\n%s\ttableFixedPut16(%s[4+%s*2:], %s[%s])\n%s}\n",
-			ind, loop, loop, f.Type.Size, loop, ind, dest, loop, arm, loop, ind)
+		g.pf("%sfor %s := uint32(0); %s < min(uint32(%sLength), %d); %s++ {\n%s\ttableFixedPut16(%s[4+%s*2:], %s[%s])\n%s}\n",
+			ind, loop, loop, arm, f.Type.Size, loop, ind, dest, loop, arm, loop, ind)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("%stableFixedPut32(%s, uint32(%sLength))\n", ind, dest, arm)
-		g.pf("%scopy(%s[4:], %s[:])\n", ind, dest, arm)
+		g.pf("%scopy(%s[4:], %s[:min(uint32(%sLength), %d)])\n", ind, dest, arm, arm, f.Type.Size)
 	default:
 		g.emitFixedWriteElement(f, dest, arm, depth, tabs)
 	}
@@ -839,6 +912,27 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("var %sFixedLineagePlans = tableFixedLineagePlans(%sFixedKnown, %sFixedLayout, %sFixedDst, %sFixedHash)\n\n",
 		st.Name, st.Name, st.Name, st.Name, st.Name)
 
+	// THE PREFILL IS LAID ONCE (§4.3): the hole list and the default image are
+	// per plan and computed once, at init, never per call. A load path that
+	// recomputed either would allocate on every call with records.
+	g.pf("var %sFixedResetImage = func() []byte {\n", st.Name)
+	g.pf("\tvar def %s\n", st.Name)
+	g.pf("\t%sReset(&def)\n", st.Name)
+	g.pf("\treturn tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))\n")
+	g.pf("}()\n\n")
+	g.pf("var %sFixedHoles = tableFixedHoles(%sFixedPlan.Entries, %sFixedPlan.Count, uint32(len(%sFixedResetImage)))\n\n",
+		st.Name, st.Name, st.Name, st.Name)
+	g.pf("var %sFixedLineageHoles = func() [][]tableFixedHole {\n", st.Name)
+	g.pf("\tout := make([][]tableFixedHole, len(%sFixedLineagePlans))\n", st.Name)
+	g.pf("\tfor i := range %sFixedLineagePlans {\n", st.Name)
+	g.pf("\t\tlane := &%sFixedLineagePlans[i]\n", st.Name)
+	g.pf("\t\tif lane.Why == \"\" {\n")
+	g.pf("\t\t\tout[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(%sFixedResetImage)))\n", st.Name)
+	g.pf("\t\t}\n")
+	g.pf("\t}\n")
+	g.pf("\treturn out\n")
+	g.pf("}()\n\n")
+
 	// THE CAPACITY A CALLER WOULD GUESS IS EXPORTED INSTEAD (§5.2, "AND THE
 	// CAPACITY A CALLER WOULD GUESS IS EXPORTED INSTEAD"): the largest entry
 	// count over the identity plan and every lineage plan, so a plan slice of
@@ -867,9 +961,21 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("func %sFixedMeasure(count int64) int64 {\n", st.Name)
 	g.pf("\treturn TableFixedHeaderBytes + 4 + int64(len(%sFixedLayout)) + count*%sFixedRecordBytes\n}\n\n", st.Name, st.Name)
 
+	// THE WRITE-SIDE CONTRACT (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/USAGE.md
+	// "Writes are the caller's responsibility"): Go has no debug-only idiom, so
+	// FixedSave REFUSES in every build — a count past Max, a length past N, a
+	// value off its min/max, an ordinal past its set, ill-formed text — with -1,
+	// and FixedSaveReason names it TableRefuseInvalidValue. The whole batch is
+	// checked before the first byte is stored, so a refused batch leaves the
+	// buffer untouched; nothing is clamped.
+	g.pf("// %sFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a\n", st.Name)
+	g.pf("// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.\n")
 	g.pf("func %sFixedSave(values []%s, buffer []byte) int64 {\n", st.Name, st.Name)
 	g.pf("\tneed := %sFixedMeasure(int64(len(values)))\n", st.Name)
 	g.pf("\tif int64(len(buffer)) < need {\n\t\treturn -1\n\t}\n")
+	if fixedCheckNeededStruct(st, map[string]bool{}) {
+		g.pf("\tfor k := range values {\n\t\tif !%sFixedCheckBody(&values[k]) {\n\t\t\treturn -1\n\t\t}\n\t}\n", st.Name)
+	}
 	g.pf("\tclear(buffer[:TableFixedHeaderBytes])\n")
 	g.pf("\tbuffer[0] = TableFixedForm\n")
 	g.pf("\ttableFixedPut64(buffer[TableFixedHashAt:], %sFixedHash)\n", st.Name)
@@ -878,21 +984,40 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\tat := buffer[TableFixedHeaderBytes+4+len(%sFixedLayout):]\n", st.Name)
 	g.pf("\tfor k := range values {\n")
 	g.pf("\t\ttableFixedPut64(at, %sFixedHash)\n", st.Name)
-	g.pf("\t\tclear(at[8 : 8+%sFixedBodyBytes])\n", st.Name)
+	if ranges := fixedTemplateRanges(st); len(ranges) == 1 && ranges[0] == [2]int64{0, fixedTypeBytes(st)} {
+		g.pf("\t\tclear(at[8 : 8+%sFixedBodyBytes])\n", st.Name)
+	} else {
+		for _, r := range ranges {
+			g.pf("\t\tclear(at[%d:%d])\n", 8+r[0], 8+r[1])
+		}
+	}
 	g.pf("\t\t%sFixedWriteBody(at[8:], &values[k])\n", st.Name)
 	g.pf("\t\tat = at[%sFixedRecordBytes:]\n", st.Name)
 	g.pf("\t}\n\treturn need\n}\n\n")
+
+	// THE NAMED TWIN: -1 is two refusals, and the reason says which. A buffer
+	// short of the measure is TableRefuseTruncated (the caller's sizing), and a
+	// value outside its contract is TableRefuseInvalidValue (the caller's data).
+	g.pf("func %sFixedSaveReason(values []%s, buffer []byte) (int64, error) {\n", st.Name, st.Name)
+	g.pf("\tif n := %sFixedSave(values, buffer); n >= 0 {\n\t\treturn n, nil\n\t}\n", st.Name)
+	g.pf("\tif int64(len(buffer)) < %sFixedMeasure(int64(len(values))) {\n\t\treturn -1, TableRefuseTruncated\n\t}\n", st.Name)
+	g.pf("\treturn -1, TableRefuseInvalidValue\n}\n\n")
 
 	g.pf("func %sFixedLoad(values []%s, data []byte, plan []TableFixedEntry, report *TableReport) int64 {\n", st.Name, st.Name)
 	g.pf("\tif report == nil {\n\t\tvar local TableReport\n\t\treport = &local\n\t}\n")
 	// A LOAD'S REPORT IS ITS OWN (§5.3's joint table): a report a caller reuses
 	// must not carry a previous read's counters or a previous refusal's name.
 	g.pf("\t*report = TableReport{}\n")
+	// EVERY REFUSAL OF THE LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS INCLUDED
+	// (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4): each leaves
+	// report.Reason set to its exported constant — TableFixedReasonTruncated or
+	// TableFixedReasonReservedNotZero for the four damage returns below, which
+	// keep report.Malformed set beside the name.
 	// STEP 1: only whether there IS a first byte. THE FORM BYTE IS READ BEFORE
 	// THE FILE'S LENGTH — a committed form-1 file is TEN bytes and a form-2
 	// batch THREE, so a reader that measured first would answer `malformed` for
 	// every real file of the two forms it is supposed to name (§5.3).
-	g.pf("\tif len(data) < 1 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
+	g.pf("\tif len(data) < 1 {\n\t\treport.Malformed = true\n\t\treport.Reason = TableFixedReasonTruncated\n\t\treturn -1\n\t}\n")
 	// THE FORM REGISTRY IS THREE (docs/SPEC-TABLES.md §3, THE FIRST BYTE): 1
 	// the variable form, 2 the message form, 3 this one. Each assigned byte
 	// gets its OWN name, and `newer_form` — "a form byte this reader does not
@@ -903,17 +1028,17 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// else (SPEC-TABLES §4, `unknown_form`).
 	g.pf("\tif data[0] != TableFixedForm {\n")
 	g.pf("\t\tswitch data[0] {\n")
-	g.pf("\t\tcase 1: // the VARIABLE form, and the only form this one is newer than\n\t\t\treturn tableFixedRefuse(report, \"previous_form\")\n")
-	g.pf("\t\tcase 2: // the MESSAGE form: a form this build carries, through another surface\n\t\t\treturn tableFixedRefuse(report, \"message_form_as_file\")\n")
+	g.pf("\t\tcase 1: // the VARIABLE form, and the only form this one is newer than\n\t\t\treturn tableFixedRefuse(report, TableFixedReasonPreviousForm)\n")
+	g.pf("\t\tcase 2: // the MESSAGE form: a form this build carries, through another surface\n\t\t\treturn tableFixedRefuse(report, TableFixedReasonMessageFormAsFile)\n")
 	g.pf("\t\t}\n")
-	g.pf("\t\treturn tableFixedRefuse(report, \"newer_form\")\n\t}\n")
+	g.pf("\t\treturn tableFixedRefuse(report, TableFixedReasonNewerForm)\n\t}\n")
 	// STEP 2: the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which
 	// are REFUSED and not ignored so they stay spendable later (§3.4, §5.3).
-	g.pf("\tif len(data) < TableFixedHeaderBytes+4 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
-	g.pf("\tfor _, reserved := range data[1:TableFixedHashAt] {\n\t\tif reserved != 0 {\n\t\t\treport.Malformed = true\n\t\t\treturn -1\n\t\t}\n\t}\n")
+	g.pf("\tif len(data) < TableFixedHeaderBytes+4 {\n\t\treport.Malformed = true\n\t\treport.Reason = TableFixedReasonTruncated\n\t\treturn -1\n\t}\n")
+	g.pf("\tfor _, reserved := range data[1:TableFixedHashAt] {\n\t\tif reserved != 0 {\n\t\t\treport.Malformed = true\n\t\t\treport.Reason = TableFixedReasonReservedNotZero\n\t\t\treturn -1\n\t\t}\n\t}\n")
 	// STEP 3: the layout's length, and the bytes behind it.
 	g.pf("\tlayoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])\n")
-	g.pf("\tif int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t}\n")
+	g.pf("\tif int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {\n\t\treturn tableFixedRefuse(report, TableFixedReasonLayoutMalformed)\n\t}\n")
 	g.pf("\tlayout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]\n")
 	// STEP 4: THE HEADER'S HASH, TAKEN AS GIVEN. Nothing is recomputed from the
 	// wire: the definitions digest is not on the wire, so the hash cannot be
@@ -927,23 +1052,27 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// layout_unsupported — upgrade the client. Both report THE FILE'S hash and
 	// nothing else.
 	g.pf("\tpick := tableFixedSelect(%sFixedKnown, hash)\n", st.Name)
-	g.pf("\tif pick < 0 {\n\t\treturn tableFixedRefuseHash(report, TableFixedLayoutUnknown, hash)\n\t}\n")
-	g.pf("\tif pick < %sFixedFloor {\n\t\treturn tableFixedRefuseHash(report, \"layout_unsupported\", hash)\n\t}\n", st.Name)
+	g.pf("\tif pick < 0 {\n\t\treturn tableFixedRefuseHash(report, TableFixedReasonLayoutUnknown, hash)\n\t}\n")
+	g.pf("\tif pick < %sFixedFloor {\n\t\treturn tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)\n\t}\n", st.Name)
 	// STEP 7: a known hash is read under THE LOCK'S layout bytes. A difference
 	// is one name — a lie about a known version — and the seven §1.1 rules do
 	// not run at read time at all: no stranger's layout is ever walked.
 	g.pf("\tknown := &%sFixedKnown[pick]\n", st.Name)
-	g.pf("\tif int(layoutBytes) != len(known.Layout) {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t}\n")
-	g.pf("\tfor i := range layout {\n\t\tif layout[i] != known.Layout[i] {\n\t\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t\t}\n\t}\n")
+	g.pf("\tif int(layoutBytes) != len(known.Layout) {\n\t\treturn tableFixedRefuse(report, TableFixedReasonLayoutMalformed)\n\t}\n")
+	g.pf("\tfor i := range layout {\n\t\tif layout[i] != known.Layout[i] {\n\t\t\treturn tableFixedRefuse(report, TableFixedReasonLayoutMalformed)\n\t\t}\n\t}\n")
 	// STEP 8: the plan this peer resolves to, and the record size FROM THE LOCK.
 	g.pf("\tentries := %sFixedPlan.Entries\n", st.Name)
 	g.pf("\tentryCount := %sFixedPlan.Count\n", st.Name)
+	g.pf("\t// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then\n")
+	g.pf("\t// a lineage plan's when a peer selects one. Nothing computes them per call.\n")
+	g.pf("\tholes := %sFixedHoles\n", st.Name)
 	g.pf("\trecordBytes := known.Record\n")
 	g.pf("\tcensusUnknown, censusKind := int32(0), int32(0)\n")
 	g.pf("\tif hash != %sFixedHash {\n", st.Name)
 	g.pf("\t\tlane := &%sFixedLineagePlans[pick]\n", st.Name)
 	g.pf("\t\tif lane.Why != \"\" {\n\t\t\treturn tableFixedRefuse(report, lane.Why)\n\t\t}\n")
 	g.pf("\t\tentries, entryCount = lane.Entries, lane.Count\n")
+	g.pf("\t\tholes = %sFixedLineageHoles[pick]\n", st.Name)
 	g.pf("\t\t// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it\n")
 	g.pf("\t\t// lands only on a read that returns: REFUSE moves no counter.\n")
 	g.pf("\t\tcensusUnknown, censusKind = lane.Unknown, lane.KindMismatch\n")
@@ -951,24 +1080,17 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// THE SELECTED PLAN'S ENTRY COUNT IS CHECKED EITHER WAY (§5.9 #5, #45):
 	// the identity lane is a plan too, and a caller's short plan slice owes the
 	// same name there as it does for a lineage entry.
-	g.pf("\tif int64(entryCount) > int64(len(plan)) {\n\t\treturn tableFixedRefuse(report, \"plan_too_large\")\n\t}\n")
+	g.pf("\tif int64(entryCount) > int64(len(plan)) {\n\t\treturn tableFixedRefuse(report, TableFixedReasonPlanTooLarge)\n\t}\n")
 	// STEP 9 and STEP 10.
 	g.pf("\tat := data[TableFixedHeaderBytes+4+layoutBytes:]\n")
 	g.pf("\trest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)\n")
-	g.pf("\tif recordBytes <= 8 || rest%%recordBytes != 0 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
+	g.pf("\tif recordBytes <= 8 || rest%%recordBytes != 0 {\n\t\treport.Malformed = true\n\t\treport.Reason = TableFixedReasonTruncated\n\t\treturn -1\n\t}\n")
 	g.pf("\tn := rest / recordBytes\n")
-	g.pf("\tif n > int64(len(values)) {\n\t\treturn tableFixedRefuse(report, \"batch_too_large\")\n\t}\n")
+	g.pf("\tif n > int64(len(values)) {\n\t\treturn tableFixedRefuse(report, TableFixedReasonBatchTooLarge)\n\t}\n")
 	// Prefill is the dest ranges the winning plan does not land, copied from
-	// one Reset image. Identity's list on Go is the ABI padding and unselected
-	// arms. There is no identity flag in the record loop.
-	g.pf("\tvar def %s\n", st.Name)
-	g.pf("\tvar defBytes []byte\n")
-	g.pf("\tvar holes []tableFixedHole\n")
-	g.pf("\tif n > 0 {\n")
-	g.pf("\t\t%sReset(&def)\n", st.Name)
-	g.pf("\t\tdefBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))\n")
-	g.pf("\t\tholes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))\n")
-	g.pf("\t}\n")
+	// one Reset image laid once at init (§4.3). Identity's list on Go is the
+	// ABI padding and unselected arms. There is no identity flag in the loop.
+	g.pf("\tdefBytes := %sFixedResetImage\n", st.Name)
 	// STEP 11: EVERY RECORD'S HASH AND TEXT FIRST, in a pass of its own ahead
 	// of the first prefill. REFUSE is total over the batch too: a refusal at
 	// record k leaves out[0..k-1] as untouched as out[k], so a hostile image is
@@ -977,7 +1099,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// row 9). The text content is the §4.5 fix 11 refusal, checked here for
 	// the same reason.
 	g.pf("\tfor k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {\n")
-	g.pf("\t\tif tableFixedGet64(scan) != hash {\n\t\t\treturn tableFixedRefuse(report, \"no_layout\")\n\t\t}\n")
+	g.pf("\t\tif tableFixedGet64(scan) != hash {\n\t\t\treturn tableFixedRefuse(report, TableFixedReasonNoLayout)\n\t\t}\n")
 	g.pf("\t\tif why := tableFixedTextRefusal(entries, entryCount, scan[8:recordBytes]); why != \"\" {\n")
 	g.pf("\t\t\treturn tableFixedRefuse(report, why)\n")
 	g.pf("\t\t}\n")
@@ -1032,9 +1154,135 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 	g.pf("func %sFixedClampBody(value *%s, clamped *int32) {\n", st.Name, st.Name)
 	g.pf("\t_, _ = value, clamped\n")
 	for _, f := range st.Fields {
-		g.emitFixedClampField(f, "value", 1)
+		g.emitFixedClampField(f, "value", 1, fixedPassClamp)
 	}
 	g.pf("}\n\n")
+}
+
+// emitFixedCheckBodyFn is the WRITE-SIDE twin of emitFixedClampBodyFn
+// (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/USAGE.md "Writes are the caller's
+// responsibility"): the same walk over the same live extent, with every bound
+// the read side would clamp (and every count, length and text rule it would
+// refuse) answered by `return false` instead. Go has no debug-only idiom, so
+// the fixed writer holds the contract in every build; <T>FixedSave calls it
+// before the first byte is stored. A type that bounds nothing gets no function
+// (§2.2's zero-cost rule).
+func (g *tableGen) emitFixedCheckBodyFn(st *ir.Struct) {
+	if !fixedCheckNeededStruct(st, map[string]bool{}) {
+		return
+	}
+	g.pf("// %s's write-side contract (docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.\n", st.Name)
+	g.pf("func %sFixedCheckBody(value *%s) bool {\n", st.Name, st.Name)
+	text := fixedDirectText(st)
+	if text {
+		// z and hi are the whole body's zero-byte and high-bit tests
+		// (emitFixedTextCheck), gathered across every string and asked once.
+		g.pf("\tvar z, hi uint64\n")
+	} else {
+		g.pf("\t_ = value\n")
+	}
+	for _, f := range st.Fields {
+		g.emitFixedClampField(f, "value", 1, fixedPassCheck)
+	}
+	if !text {
+		g.pf("\treturn true\n}\n\n")
+		return
+	}
+	g.pf("\tif z&0x8080808080808080 != 0 {\n\t\treturn false\n\t}\n")
+	g.pf("\tif hi&0x8080808080808080 != 0 {\n\t\treturn %sFixedCheckBodyExact(value)\n\t}\n", st.Name)
+	g.pf("\treturn true\n}\n\n")
+	g.pf("// %sFixedCheckBodyExact is %sFixedCheckBody with each string asked by\n", st.Name, st.Name)
+	g.pf("// tableFixedUtf8Ok: the answer for text with a byte at or past 0x80 (§3.1).\n")
+	g.pf("func %sFixedCheckBodyExact(value *%s) bool {\n", st.Name, st.Name)
+	g.pf("\t_ = value\n")
+	for _, f := range st.Fields {
+		g.emitFixedClampField(f, "value", 1, fixedPassExact)
+	}
+	g.pf("\treturn true\n}\n\n")
+}
+
+// fixedDirectText is whether the check body of st asks a string's text rule
+// itself: a string field, under an optional or in a union arm (at any depth of
+// unions, whose arms are emitted in line), but not inside a nested struct,
+// which has a check body of its own.
+func fixedDirectText(st *ir.Struct) bool {
+	for _, f := range st.Fields {
+		if fixedFieldText(f, map[*ir.Union]bool{}) {
+			return true
+		}
+	}
+	return false
+}
+
+func fixedFieldText(f *ir.Field, seen map[*ir.Union]bool) bool {
+	if f.Type.Kind == ir.TString {
+		return true
+	}
+	if f.Type.Kind != ir.TNamed {
+		return false
+	}
+	u, ok := f.Type.Ref.(*ir.Union)
+	if !ok || seen[u] {
+		return false
+	}
+	seen[u] = true
+	for _, v := range u.Variants {
+		if v.F != nil && fixedFieldText(v.F, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+// fixedCheckNeededStruct is TableFixedClampNeeded widened to what only a
+// writer holds: a counted array's count and a text or bytes length are bounds
+// the read side clamps but a write side must refuse.
+func fixedCheckNeededStruct(st *ir.Struct, seen map[string]bool) bool {
+	if seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if fixedCheckNeededField(f, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+func fixedCheckNeededField(f *ir.Field, seen map[string]bool) bool {
+	// A counted array must check its own count even when its element has no
+	// bounded fields. In particular, an unbounded named struct still has Max.
+	if f.Array == ir.ArrayCounted {
+		return true
+	}
+	if f.Type.Kind == ir.TNamed {
+		if r, ok := f.Type.Ref.(*ir.Struct); ok {
+			return fixedCheckNeededStruct(r, seen)
+		}
+		return ir.TableFixedClampNeededField(f)
+	}
+	switch f.Type.Kind {
+	case ir.TString, ir.TWString, ir.TBytes:
+		return true
+	}
+	return ir.TableFixedClampNeededField(f)
+}
+
+// fixedBoundNeeded answers the one question both passes ask of a field: is
+// there anything for this pass to do. The check pass (chk) asks the wider one.
+func fixedBoundNeeded(f *ir.Field, chk bool) bool {
+	if chk {
+		return fixedCheckNeededField(f, map[string]bool{})
+	}
+	return ir.TableFixedClampNeededField(f)
+}
+
+func fixedBoundNeededStruct(r *ir.Struct, chk bool) bool {
+	if chk {
+		return fixedCheckNeededStruct(r, map[string]bool{})
+	}
+	return ir.TableFixedClampNeeded(r)
 }
 
 func (g *tableGen) emitFixedClamp(st *ir.Struct) {
@@ -1055,58 +1303,141 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	g.pf("\treport.Clamped += clamped\n}\n\n")
 }
 
-func (g *tableGen) emitFixedClampField(f *ir.Field, val string, tabs int) {
-	if !ir.TableFixedClampNeededField(f) {
+// compressedFloatClamp is the ONE bounds rule a compressed float takes wherever
+// a read holds it to its declared range (docs/SPEC-TABLES.md §3.3, A COMPRESSED
+// FLOAT'S SPECIAL VALUES): a NaN clamps to `min` and COUNTS, exactly as -Inf
+// and a finite value below `min` do, because every comparison against a NaN is
+// false and a pass of `< min` / `> max` alone hands the NaN to the caller
+// whole; +Inf and a value above `max` clamp to `max` and count; and a -0 lands
+// as +0, the value 0 itself, with no sign bit and no count, because it is
+// inside the range and only its spelling differs. `v != v` is the NaN test,
+// and it needs no import in the generated file.
+func compressedFloatClamp(expr, lo, hi, count string) string {
+	return fmt.Sprintf("if %[1]s != %[1]s { %[1]s = %[2]s; %[4]s } else if %[1]s < %[2]s { %[1]s = %[2]s; %[4]s } else if %[1]s > %[3]s { %[1]s = %[3]s; %[4]s } else if %[1]s == 0 { %[1]s = 0 }",
+		expr, lo, hi, count)
+}
+
+// fixedPass is which of the passes below is being emitted.
+type fixedPass int
+
+const (
+	// fixedPassClamp is the READ side's bounds pass: every violation is
+	// repaired and counted.
+	fixedPassClamp fixedPass = iota
+	// fixedPassCheck is the WRITE side's check (<T>FixedCheckBody): every
+	// violation is a `return false`, and a string's text rule is the in-line
+	// word test of emitFixedTextCheck.
+	fixedPassCheck
+	// fixedPassExact is the same check with each string asked exactly, one
+	// tableFixedUtf8Ok per string (<T>FixedCheckBodyExact): the fast pass
+	// hands a body to it only when some used byte is at or past 0x80.
+	fixedPassExact
+)
+
+// The pass below is written once and emitted for each fixedPass. The clamp
+// and the checks walk the same extent and hold the same bounds, because both
+// come from scalarBounds.
+func (g *tableGen) emitFixedClampField(f *ir.Field, val string, tabs int, pass fixedPass) {
+	chk := pass != fixedPassClamp
+	if !fixedBoundNeeded(f, chk) {
 		return
 	}
 	ind := strings.Repeat("\t", tabs)
 	if f.Type.Optional {
 		g.pf("%sif %s.%sPresent {\n", ind, val, member(f))
-		g.emitFixedClampPayload(f, val, tabs+1)
+		g.emitFixedClampPayload(f, val, tabs+1, pass)
 		g.pf("%s}\n", ind)
 		return
 	}
-	g.emitFixedClampPayload(f, val, tabs)
+	g.emitFixedClampPayload(f, val, tabs, pass)
 }
 
-func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, tabs int) {
+func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, tabs int, pass fixedPass) {
+	chk := pass != fixedPassClamp
 	ind := strings.Repeat("\t", tabs)
+	elem := *f
+	elem.Array, elem.KeyEnum = ir.ArrayNone, ""
+	loop := func(count string, down bool) {
+		if chk && !fixedCheckNeededField(&elem, map[string]bool{}) {
+			return
+		}
+		if down {
+			// THE CHECK WALKS A COUNTED ARRAY DOWN (docs/FIXED-FORM-ALGORITHM.md
+			// §3.1): every live element is checked either way, and ending on
+			// the FIRST elements leaves them in cache for the store, which
+			// walks up (measured by TestGoTableWriterSpeedTable).
+			g.pf("%sfor i := %s - 1; i >= 0; i-- {\n", ind, count)
+		} else {
+			g.pf("%sfor i := int64(0); i < %s; i++ {\n", ind, count)
+		}
+		g.emitFixedClampElement(f, fmt.Sprintf("%s.%s[i]", val, member(f)), tabs+1, pass)
+		g.pf("%s}\n", ind)
+	}
 	switch {
 	case f.KeyEnum != "":
-		g.pf("%sfor i := int64(0); i < %d; i++ {\n", ind, f.KeyEnumRef.Max)
-		g.emitFixedClampElement(f, fmt.Sprintf("%s.%s[i]", val, member(f)), tabs+1)
-		g.pf("%s}\n", ind)
+		loop(fmt.Sprint(f.KeyEnumRef.Max), false)
 	case f.Array == ir.ArrayFixed:
-		g.pf("%sfor i := int64(0); i < %d; i++ {\n", ind, f.ArrayBound)
-		g.emitFixedClampElement(f, fmt.Sprintf("%s.%s[i]", val, member(f)), tabs+1)
-		g.pf("%s}\n", ind)
+		loop(fmt.Sprint(f.ArrayBound), false)
 	case f.Array == ir.ArrayCounted:
-		g.pf("%sfor i := int64(0); i < int64(%s.%sCount); i++ {\n", ind, val, member(f))
-		g.emitFixedClampElement(f, fmt.Sprintf("%s.%s[i]", val, member(f)), tabs+1)
-		g.pf("%s}\n", ind)
+		if chk {
+			g.pf("%sif %s.%sCount < 0 || %s.%sCount > %d { return false }\n", ind, val, member(f), val, member(f), f.ArrayBound)
+		}
+		loop(fmt.Sprintf("int64(%s.%sCount)", val, member(f)), chk)
 	default:
-		g.emitFixedClampElement(f, val+"."+member(f), tabs)
+		g.emitFixedClampElement(f, val+"."+member(f), tabs, pass)
 	}
 }
 
-func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int) {
+func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int, pass fixedPass) {
+	chk := pass != fixedPassClamp
 	ind := strings.Repeat("\t", tabs)
+	// bound repairs one violated bound in the read pass and refuses it in the
+	// write pass; both is the same condition.
+	bound := func(conds []scalarBound) {
+		if len(conds) == 0 {
+			return
+		}
+		if chk {
+			var parts []string
+			for _, c := range conds {
+				parts = append(parts, c.cond)
+			}
+			g.pf("%sif %s { return false }\n", ind, strings.Join(parts, " || "))
+			return
+		}
+		for i, c := range conds {
+			if i == 0 {
+				g.pf("%sif %s { %s = %s; (*clamped)++ }", ind, c.cond, expr, c.set)
+			} else {
+				g.pf(" else if %s { %s = %s; (*clamped)++ }", c.cond, expr, c.set)
+			}
+		}
+		g.pf("\n")
+	}
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			if ir.TableFixedClampNeeded(r) {
-				g.pf("%s%sFixedClampBody(&%s, clamped)\n", ind, r.Name, expr)
+			if fixedBoundNeededStruct(r, chk) {
+				if chk {
+					g.pf("%sif !%sFixedCheckBody(&%s) { return false }\n", ind, r.Name, expr)
+				} else {
+					g.pf("%s%sFixedClampBody(&%s, clamped)\n", ind, r.Name, expr)
+				}
 			}
 			return
 		case *ir.Union:
-			g.pf("%sif uint32(%s.Type) > %d { %s.Type = %sTypeNone; (*clamped)++ }\n",
-				ind, expr, r.Max, expr, f.Type.Name)
-			if !ir.TableFixedClampNeededUnionArm(r) {
+			if chk {
+				g.pf("%sif uint32(%s.Type) > %d { return false }\n", ind, expr, r.Max)
+			} else {
+				g.pf("%sif uint32(%s.Type) > %d { %s.Type = %sTypeNone; (*clamped)++ }\n",
+					ind, expr, r.Max, expr, f.Type.Name)
+			}
+			if !g.fixedArmNeeded(r, chk) {
 				return
 			}
 			g.pf("%sswitch %s.Type {\n", ind, expr)
 			for _, v := range r.Variants {
-				if v.F == nil || !ir.TableFixedClampNeededField(v.F) {
+				if v.F == nil || !fixedBoundNeeded(v.F, chk) {
 					continue
 				}
 				// An arm is a field line: its payload gets the per-element
@@ -1120,55 +1451,126 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int) {
 				arm := *v.F
 				arm.Name = v.Name
 				g.pf("%scase %sType%s:\n", ind, f.Type.Name, ir.GoExportName(v.Name))
-				g.emitFixedClampField(&arm, expr, tabs+1)
+				g.emitFixedClampField(&arm, expr, tabs+1, pass)
 			}
 			g.pf("%s}\n", ind)
 			return
 		case *ir.Enum:
-			g.pf("%sif uint64(%s) > %d { %s = %sNone; (*clamped)++ }\n",
-				ind, expr, r.Max, expr, f.Type.Name)
+			if chk {
+				g.pf("%sif uint64(%s) > %d { return false }\n", ind, expr, r.Max)
+			} else {
+				g.pf("%sif uint64(%s) > %d { %s = %sNone; (*clamped)++ }\n",
+					ind, expr, r.Max, expr, f.Type.Name)
+			}
 			return
 		}
 		return
 	}
-	width := int(ir.TableFixedStorageBytes(f.Type))
-	switch {
-	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
-		lo, hi := formatFloat32(f.FMin), formatFloat32(f.FMax)
-		g.pf("%sif %s < %s { %s = %s; (*clamped)++ } else if %s > %s { %s = %s; (*clamped)++ }\n",
-			ind, expr, lo, expr, lo, expr, hi, expr, hi)
-	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
-		lo, hi := formatFloat64(f.FMin), formatFloat64(f.FMax)
-		g.pf("%sif %s < %s { %s = %s; (*clamped)++ } else if %s > %s { %s = %s; (*clamped)++ }\n",
-			ind, expr, lo, expr, lo, expr, hi, expr, hi)
-	default:
-		signed := ir.TableKindSigned(ir.TableScalarKind(f))
-		if rlo, rhi, ok := ir.TableRawRange(f); ok {
-			low, high := tableClampEnds(f, width)
-			wide := width == 16
-			var lo, hi, lt, gt string
-			if wide {
-				lo, hi = wideLiteral(rlo, signed), wideLiteral(rhi, signed)
-				lt, gt = expr+".Cmp("+lo+") < 0", expr+".Cmp("+hi+") > 0"
+	if chk {
+		switch f.Type.Kind {
+		case ir.TString:
+			if pass == fixedPassCheck {
+				g.emitFixedTextCheck(expr, f.Type.Size, ind)
 			} else {
-				lo, hi = goIntLit(rlo, signed, width), goIntLit(rhi, signed, width)
-				lt, gt = expr+" < "+lo, expr+" > "+hi
+				g.pf("%sif uint32(%sLength) > %d || !tableFixedUtf8Ok(%s[:%sLength]) { return false }\n",
+					ind, expr, f.Type.Size, expr, expr)
 			}
-			switch {
-			case low && high:
-				g.pf("%sif %s { %s = %s; (*clamped)++ } else if %s { %s = %s; (*clamped)++ }\n",
-					ind, lt, expr, lo, gt, expr, hi)
-			case low:
-				g.pf("%sif %s { %s = %s; (*clamped)++ }\n", ind, lt, expr, lo)
-			case high:
-				g.pf("%sif %s { %s = %s; (*clamped)++ }\n", ind, gt, expr, hi)
-			}
-		}
-		if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*int64(width) {
-			maxv := (uint64(1) << f.Type.Width) - 1
-			g.pf("%sif %s > %d { %s = %d; (*clamped)++ }\n", ind, expr, maxv, expr, maxv)
+			return
+		case ir.TWString:
+			g.pf("%sif %sLength < 0 || %sLength > %d || tableFixedUnitsIllFormed(%s[:%sLength]) { return false }\n",
+				ind, expr, expr, f.Type.Size, expr, expr)
+			return
+		case ir.TBytes:
+			g.pf("%sif %sLength < 0 || %sLength > %d { return false }\n", ind, expr, expr, f.Type.Size)
+			return
 		}
 	}
+	// Keep the read-side compressed-float special-values rule from §3.3.
+	// The writer instead uses the refusal bounds below.
+	if !chk && f.HasFloatRange {
+		switch f.Type.Kind {
+		case ir.TFloat32:
+			g.pf("%s%s\n", ind, compressedFloatClamp(expr, formatFloat32(f.FMin), formatFloat32(f.FMax), "(*clamped)++"))
+			return
+		case ir.TFloat64:
+			g.pf("%s%s\n", ind, compressedFloatClamp(expr, formatFloat64(f.FMin), formatFloat64(f.FMax), "(*clamped)++"))
+			return
+		}
+	}
+	bounds := scalarRangeBounds(f, expr)
+	bound(bounds)
+	if b, ok := scalarWidthBound(f, expr); ok {
+		bound([]scalarBound{b})
+	}
+}
+
+// emitFixedTextCheck is the WRITER's string rule for one string(N) field
+// (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/USAGE.md "Writes are the caller's
+// responsibility"): a length outside 0..N refuses, and the used bytes must be
+// well-formed UTF-8 with no NUL. It is emitted in line rather than called,
+// because the speed gate measured the call. Eight bytes a step: z (the check
+// body's own, asked once at its end) gathers each word's zero-byte test
+// (exact: a word has a zero byte if and only if some lane of (x-0x01..)&^x has
+// its high bit set), and hi (the body's own too) gathers the high bits.
+// The last partial word is read whole from the field's own storage: when
+// n >= 8 it overlaps used bytes already tested, and when n < 8 it is masked to
+// the used bytes, with 0x01 (neither zero nor high) in the lanes past n. A
+// zero anywhere refuses; text with no high bit anywhere is ASCII and passes;
+// a body with a byte at or past 0x80 is asked again by its exact twin, one
+// tableFixedUtf8Ok per string. The answer is exactly utf8.Valid plus a NUL
+// scan over the used bytes of every string.
+func (g *tableGen) emitFixedTextCheck(expr string, size int64, ind string) {
+	g.pf("%sif n := int(%sLength); uint(n) > %d {\n%s\treturn false\n%s} else {\n", ind, expr, size, ind, ind)
+	g.emitTextWords(expr, size, ind+"\t", "tableFixedGet64", true)
+	g.pf("%s}\n", ind)
+}
+
+// emitTextWords is the word test both writers share (emitFixedTextCheck,
+// emitWireValue): over p := expr[:n], with n already inside 0..size, it ORs
+// each word's zero-byte test into z and its high bits into hi, both declared by
+// the caller. get is the unit's little-endian 64-bit load. masked says the
+// last partial word of a string shorter than a word may be read whole from the
+// field's own storage (a fixed string(N) of N >= 8 always may); otherwise
+// that tail is tested a byte at a time.
+func (g *tableGen) emitTextWords(expr string, size int64, in, get string, masked bool) {
+	const ones = "0x0101010101010101"
+	g.pf("%sp := %s[:n]\n", in, expr)
+	if size >= 16 {
+		g.pf("%sfor len(p) >= 16 {\n", in)
+		g.pf("%s\tx, y := %s(p), %s(p[8:])\n", in, get, get)
+		g.pf("%s\thi |= x | y\n", in)
+		g.pf("%s\tz |= (x-%s)&^x | (y-%s)&^y\n", in, ones, ones)
+		g.pf("%s\tp = p[16:]\n%s}\n", in, in)
+	}
+	if size < 8 {
+		g.pf("%sfor _, c := range p {\n%s\tx := uint64(c)\n%s\thi |= x\n%s\tz |= (x - 1) &^ x\n%s}\n", in, in, in, in, in)
+		return
+	}
+	g.pf("%sif len(p) >= 8 {\n%s\tx := %s(p)\n%s\thi |= x\n%s\tz |= (x - %s) &^ x\n%s\tp = p[8:]\n%s}\n",
+		in, in, get, in, in, ones, in, in)
+	g.pf("%sif len(p) > 0 {\n", in)
+	if masked {
+		g.pf("%s\tvar x uint64\n", in)
+		g.pf("%s\tif n >= 8 {\n%s\t\tx = %s(%s[n-8:])\n", in, in, get, expr)
+		g.pf("%s\t} else {\n%s\t\tm := uint64(1)<<(8*uint(n)) - 1\n%s\t\tx = %s(%s[:])&m | %s&^m\n%s\t}\n", in, in, in, get, expr, ones, in)
+		g.pf("%s\thi |= x\n%s\tz |= (x - %s) &^ x\n", in, in, ones)
+	} else {
+		g.pf("%s\tif n >= 8 {\n%s\t\tx := %s(%s[n-8:])\n%s\t\thi |= x\n%s\t\tz |= (x - %s) &^ x\n", in, in, get, expr, in, in, ones)
+		g.pf("%s\t} else {\n%s\t\tfor _, c := range p {\n%s\t\t\tx := uint64(c)\n%s\t\t\thi |= x\n%s\t\t\tz |= (x - 1) &^ x\n%s\t\t}\n%s\t}\n", in, in, in, in, in, in, in)
+	}
+	g.pf("%s}\n", in)
+}
+
+// fixedArmNeeded is whether ANY arm's payload needs this pass: the clamp's
+// TableFixedClampNeededUnionArm for the read side, the wider question for the
+// write side.
+func (g *tableGen) fixedArmNeeded(r *ir.Union, chk bool) bool {
+	for _, v := range r.Variants {
+		if v.F != nil && fixedBoundNeeded(v.F, chk) {
+			return true
+		}
+	}
+	return false
 }
 
 func (g *tableGen) emitByteArray(b []byte) {

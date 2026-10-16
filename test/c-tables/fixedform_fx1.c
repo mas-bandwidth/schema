@@ -267,8 +267,8 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
     fx_root_reset( &loose );
     memset( &r, 0, sizeof( r ) );
     body = data + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( fx_root_fixed_layout ) + 8;
-    table_fixed_run( fx_root_fixed_plan, fx_root_fixed_guards, fx_root_fixed_plan_count, fx_root_fixed_plan_guarded,
-                     body, (uint8_t *) &loose, &r.clamped, &r.widened );
+    table_fixed_run( fx_root_fixed_plan, fx_root_fixed_plan_count, fx_root_fixed_plan_guarded,
+                     body, (uint8_t *) &loose, &r, fx_root_fixed_guards );
     fixed_check( loose.renamed == 5000 && loose.gone == -7,
                  "C NEGATIVE CONTROL: the loop alone really does leave an out-of-range value standing" );
     fixed_check( r.clamped == 0, "C NEGATIVE CONTROL: and counts nothing" );
@@ -305,7 +305,7 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
 
         fx_root_reset( &held );
         memset( &r, 0, sizeof( r ) );
-        table_fixed_run( compiled, NULL, made, guarded, body, (uint8_t *) &held, &r.clamped, &r.widened );
+        table_fixed_run( compiled, made, guarded, body, (uint8_t *) &held, &r, NULL );
         fixed_check( held.renamed == 5000 && held.gone == -7,
                      "C COMPILED, NEGATIVE CONTROL: the loop alone leaves an out-of-range value standing here too" );
         fixed_check( r.clamped == 0, "C COMPILED, NEGATIVE CONTROL: and counts nothing" );
@@ -375,8 +375,8 @@ void fixed_fx1_text_content( void )
             fx_root_reset( &loose );
             memset( &r2, 0, sizeof( r2 ) );
             body = file + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( fx_root_fixed_layout ) + 8;
-            table_fixed_run( fx_root_fixed_plan, fx_root_fixed_guards, fx_root_fixed_plan_count, fx_root_fixed_plan_guarded,
-                             body, (uint8_t *) &loose, &r2.clamped, &r2.widened );
+            table_fixed_run( fx_root_fixed_plan, fx_root_fixed_plan_count, fx_root_fixed_plan_guarded,
+                             body, (uint8_t *) &loose, &r2, fx_root_fixed_guards );
             fixed_check( loose.label_length == 1 && (uint8_t) loose.label[0] == 0xFFu,
                          "C NEGATIVE CONTROL: the loop alone really does leave a byte that is not text standing" );
             fixed_check( !r2.malformed, "C NEGATIVE CONTROL: and says nothing about it" );
@@ -427,19 +427,19 @@ void fixed_guard_width( void )
 
     memset( dst, 0, sizeof( dst ) );
     memset( &r, 0, sizeof( r ) );
-    table_fixed_run( plan, NULL, 2, 1, src, dst, &r.clamped, &r.widened );
+    table_fixed_run( plan, 2, 1, src, dst, &r, NULL );
     fixed_check( dst[2] == 0, "C GUARD WIDTH: tag 0x0101 at width 2 does not take arm 1" );
 
     src[1] = 0x00;
     memset( dst, 0, sizeof( dst ) );
     memset( &r, 0, sizeof( r ) );
-    table_fixed_run( plan, NULL, 2, 1, src, dst, &r.clamped, &r.widened );
+    table_fixed_run( plan, 2, 1, src, dst, &r, NULL );
     fixed_check( dst[2] == 0xAA, "C GUARD WIDTH: tag 0x0001 at width 2 takes arm 1" );
 
     src[1] = 0x01;
     plan[1].argw = 1;
     memset( dst, 0, sizeof( dst ) );
     memset( &r, 0, sizeof( r ) );
-    table_fixed_run( plan, NULL, 2, 1, src, dst, &r.clamped, &r.widened );
+    table_fixed_run( plan, 2, 1, src, dst, &r, NULL );
     fixed_check( dst[2] == 0xAA, "C NEGATIVE CONTROL: a one-byte compare really does fire arm 1 on 0x0101" );
 }

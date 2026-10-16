@@ -252,24 +252,39 @@ func TestRetired(t *testing.T) {
 `)
 	})
 
-	// The name is exported, and the Go fixed load emits no layout_newer at all:
-	// the lineage proves nothing newer today, so the name is reserved.
+	// The name is exported, and the emitted Go fixed load never answers
+	// layout_newer: the lineage proves nothing newer today, so the name is
+	// reserved. The runtime may still export TableFixedReasonLayoutNewer (an
+	// adopter's comparisons keep compiling); only the load's body is checked,
+	// so putting the old pick<0 line back is red here.
 	t.Run("the name is exported and layout_newer is reserved", func(t *testing.T) {
 		t.Parallel()
 		files, err := Generate(unitOf(t, unknownHashReader))
 		if err != nil {
 			t.Fatal(err)
 		}
-		for name, data := range files {
-			if strings.Contains(string(data), `"layout_newer"`) {
-				t.Errorf("%s emits layout_newer, which is reserved until the lineage proves direction (SPEC-TABLES §21.3)", name)
+		var all strings.Builder
+		for _, data := range files {
+			all.Write(data)
+			all.WriteByte('\n')
+		}
+		load := funcSource(all.String(), "func PointFixedLoad(")
+		if load == "" {
+			t.Fatal("the emitted module has no PointFixedLoad")
+		}
+		for _, banned := range []string{`"layout_newer"`, "TableFixedReasonLayoutNewer"} {
+			if strings.Contains(load, banned) {
+				t.Errorf("PointFixedLoad names %s, which is reserved until the lineage proves direction (SPEC-TABLES §21.3)", banned)
 			}
+		}
+		if !strings.Contains(load, "tableFixedRefuseHash(report, TableFixedReasonLayoutUnknown, hash)") {
+			t.Error("PointFixedLoad does not answer an unknown hash with TableFixedReasonLayoutUnknown and the file's hash")
 		}
 		unknownHashProbe(t, unknownHashReader, nil, 0, `package probe
 import "testing"
 func TestExported(t *testing.T) {
-	if TableFixedLayoutUnknown != "layout_unknown" {
-		t.Fatalf("TableFixedLayoutUnknown = %q", TableFixedLayoutUnknown)
+	if TableFixedReasonLayoutUnknown != "layout_unknown" {
+		t.Fatalf("TableFixedReasonLayoutUnknown = %q", TableFixedReasonLayoutUnknown)
 	}
 }
 `)

@@ -58,8 +58,8 @@ generated/go/.stamp: bin/schema $(SCHEMAS)
 .PHONY: tables-go-fixedform
 tables-go-fixedform:
 	sh test/slowgate/proof tables-go-fixedform \
-		'TestFixedFormRoundTrip TestFixedFormHostileBoolByte TestFixedFormHostileUnionTag TestFixedFormArgLaneOldEncodingControl TestFixedFormClampLiveCount TestFixedFormRecordBound TestFixedFormIdentityEqualsCompiled TestFixedFormZeroBehindNarrowerArm TestFixedPlanMaxCoversEveryLineagePlan TestTimestampKindInGo TestFixedLoadUnknownHashIsLayoutUnknown' \
-		./internal/codegen/gotable -run 'TestFixedForm|TestFixedPlanMaxCoversEveryLineagePlan|TestTimestampKindInGo|TestFixedLoadUnknownHashIsLayoutUnknown' -count=1
+		'TestFixedFormRoundTrip TestFixedFormHostileBoolByte TestFixedFormHostileUnionTag TestFixedFormArgLaneOldEncodingControl TestFixedFormClampLiveCount TestFixedFormRecordBound TestFixedFormIdentityEqualsCompiled TestFixedFormZeroBehindNarrowerArm TestFixedPlanMaxCoversEveryLineagePlan TestTimestampKindInGo TestFixedLoadAllocatesNothingPerCall TestFixedLoadNamesEveryRefusal TestFixedFormWriteSideRefusesInEveryGoBuild TestGoTableWritersRefuseWhatTheirReadersRefuse TestFixedLoadUnknownHashIsLayoutUnknown' \
+		./internal/codegen/gotable -run 'TestFixedForm|TestFixedPlanMaxCoversEveryLineagePlan|TestTimestampKindInGo|TestFixedLoadAllocatesNothingPerCall|TestFixedLoadNamesEveryRefusal|TestGoTableWritersRefuseWhatTheirReadersRefuse|TestFixedLoadUnknownHashIsLayoutUnknown' -count=1
 test-go: tables-go-fixedform
 
 .PHONY: tables-go-json-walk
@@ -886,6 +886,16 @@ tables-go-fixed-form-negative-control: bin/schema build/schema_test_bench_paired
 tables-go-usage: build/tables-generated-go/.stamp
 	cd test/go-tables && go test -run '^TestUsage$$' -count=1
 test-go: tables-go-usage
+
+# The Go table output compiles with any subset of its optional forms {json,
+# cook, block, message} omitted (docs/SPEC-TABLES.md, "GO's optional forms"): every corpus unit,
+# all sixteen subsets, through the emitter's own omit path (GenerateOmitting),
+# built and vetted against the sibling serialize.go. Part of the default gate:
+# it needs no SCHEMA_SLOW.
+.PHONY: tables-go-subsets
+tables-go-subsets:
+	go test -count=1 -timeout 600s ./internal/codegen/gotable/ -run '^TestGoTableCompilesWithAnySubsetOfItsForms$$'
+test-go: tables-go-subsets
 
 # I13 (docs/PORTING.md:1278): the go leg's text differential against a third
 # implementation. The test generates N random float-only instances with the

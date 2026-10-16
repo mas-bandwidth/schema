@@ -144,7 +144,7 @@ func TestTagPastArmSet(t *testing.T) {
 	var v Root
 	RootReset(&v)
 	v.Lead = 7
-	v.Pick.Type = 99 // past the set
+	v.Pick.Type = PickTypeNone // lawful: the Go writer refuses a tag past the set (§3.1)
 	v.Trail = 9
 	buf := make([]byte, RootFixedMeasure(1))
 	if n := RootFixedSave([]Root{v}, buf); n != int64(len(buf)) {

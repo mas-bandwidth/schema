@@ -2,6 +2,8 @@ package gotable
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -12,8 +14,54 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	if g.retain {
 		g.pf("r.Retain.discard(r.Path,false,0)\n")
 	}
+	// `| required` fields (docs/SPEC-TABLES.md §2.3): each gets a seen flag,
+	// set when its id rides, and a record that ends without one is refused
+	// with missing_required naming the field.
+	var req []*ir.Field
+	for _, f := range st.Fields {
+		if f.Required {
+			req = append(req, f)
+		}
+	}
+	reqIdx := map[*ir.Field]int{}
+	for i, f := range req {
+		reqIdx[f] = i
+		g.pf("\treqSeen%d := false\n", i)
+	}
+	if unitHasRequired(g.unit) {
+		// Counted from this body's start, so a report the caller reuses does
+		// not refuse a clean record for an earlier read's missing field.
+		g.pf("\tmissingBefore := r.Report.MissingRequired\n")
+	}
 	g.pf("\tfor {\n\t\tref, ok := r.lebPair(); if !ok { ref, ok = r.lebWide() }; if !ok { r.Report.Malformed = true; return false }\n")
-	g.pf("\t\tif ref == 0 { return true }\n")
+	if len(req) > 0 {
+		g.pf("\t\tif ref == 0 {\n")
+		parts := make([]string, len(req))
+		for i := range req {
+			parts[i] = fmt.Sprintf("!reqSeen%d", i)
+		}
+		g.pf("\t\t\tif %s {\n", strings.Join(parts, " || "))
+		g.pf("\t\t\t\tr.Report.MissingRequired++\n")
+		g.pf("\t\t\t\tmissingReq := \"\"\n")
+		for i, n := range requiredFieldNames(req) {
+			g.pf("\t\t\t\tif !reqSeen%d { if missingReq != \"\" { missingReq += \", \" }; missingReq += %q }\n", i, n)
+		}
+		g.pf("\t\t\t\tr.Report.Reason = \"missing_required: \" + missingReq\n")
+		g.pf("\t\t\t\treturn false\n")
+		g.pf("\t\t\t}\n")
+		g.pf("\t\t\treturn r.Report.MissingRequired == missingBefore\n")
+		g.pf("\t\t}\n")
+	} else if unitHasRequired(g.unit) {
+		// A BODY BELOW THIS ONE that was refused for a missing required field
+		// refuses this one too (docs/SPEC-TABLES.md §2.3): the report is shared
+		// down the walk, so a nested table, an element, a map entry or a node
+		// body that set MissingRequired stops every body above it, and the
+		// whole record is refused naming the field — never read as a parent
+		// with a defaulted child. A unit with no required field pays nothing.
+		g.pf("\t\tif ref == 0 { return r.Report.MissingRequired == missingBefore }\n")
+	} else {
+		g.pf("\t\tif ref == 0 { return true }\n")
+	}
 	g.pf("\t\tfieldID, ok := r.Resolve(ref); if !ok || !r.Has(1) { r.Report.Malformed = true; return false }\n")
 	// THE FIELD HEADER IS READ WHOLE BEFORE A RESERVED ID IS JUDGED, as the
 	// oracle reads it (internal/tablewire bodyAt). A reserved id in a body
@@ -42,6 +90,9 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			if f.Type.Optional {
 				g.pf("\t\t\t\t\tvalue.%sPresent = true\n", member(f))
 			}
+			if idx, ok := reqIdx[f]; ok {
+				g.pf("\t\t\t\t\treqSeen%d = true\n", idx)
+			}
 			g.pf("\t\t\t\t\tbreak\n")
 			g.pf("\t\t\t\t}\n")
 		}
@@ -50,6 +101,9 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.emitReadField(f, "\t\t\t")
 		if f.Type.Optional {
 			g.pf("\t\t\tvalue.%sPresent = true\n", member(f))
+		}
+		if idx, ok := reqIdx[f]; ok {
+			g.pf("\t\t\treqSeen%d = true\n", idx)
 		}
 	}
 	// THE NODE TABLE'S RESERVED ID, AND ONLY WHERE IT IS THIS BODY'S OWN
@@ -480,7 +534,7 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 			if kind == tkF32 {
 				lo, hi = formatFloat32(f.FMin), formatFloat32(f.FMax)
 			}
-			g.pf("%s\tif v < %s { v = %s; r.Report.Clamped++ } else if v > %s { v = %s; r.Report.Clamped++ }\n", ind, lo, lo, hi, hi)
+			g.pf("%s\t%s\n", ind, compressedFloatClamp("v", lo, hi, "r.Report.Clamped++"))
 		}
 		g.pf("%s\t%s = v\n%s}\n", ind, expr, ind)
 	default:
@@ -551,4 +605,28 @@ func (g *tableGen) emitCarveReturn(parent, child, ind string) {
 		}
 		g.pf("return false }\n")
 	}
+}
+
+// requiredFieldNames returns the wire names of the required fields, for the
+// missing_required refusal (docs/SPEC-TABLES.md §2.3).
+func requiredFieldNames(req []*ir.Field) []string {
+	out := make([]string, len(req))
+	for i, f := range req {
+		out[i] = f.Name
+	}
+	return out
+}
+
+// unitHasRequired reports whether any table of the unit marks a field
+// `| required` (docs/SPEC-TABLES.md §2.3): only then does a body end ask the
+// shared report whether a body below it was refused for a missing one.
+func unitHasRequired(u *ir.Unit) bool {
+	for _, st := range u.Tables {
+		for _, f := range st.Fields {
+			if f.Required {
+				return true
+			}
+		}
+	}
+	return false
 }
