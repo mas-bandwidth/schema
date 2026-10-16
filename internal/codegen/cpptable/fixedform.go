@@ -955,7 +955,9 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 	}
 	g.fixedOwner = st
 	g.pf("// %s's read-side bounds.\n", st.Name)
-	g.pf("inline void %sFixedClampBody( %s & value, int32_t & clamped, int32_t & damaged )\n{\n", st.Name, st.Name)
+	// THE COUNTERS ARE TABLE_CLAMP_RESTRICT: they never alias the value, and
+	// the runtime spells that per compiler, as measured.
+	g.pf("inline void %sFixedClampBody( %s & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )\n{\n", st.Name, st.Name)
 	g.pf("    (void) value; (void) clamped; (void) damaged;\n")
 	for _, f := range st.Fields {
 		g.emitFixedClampField(f, "value", 4)

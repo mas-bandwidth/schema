@@ -2457,6 +2457,26 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 #define TABLE_RESTRICT
 #endif
 
+// THE CLAMP PASS'S COUNTERS NEVER ALIAS THE RECORD IT CLAMPS: the two
+// counters a *FixedClampBody takes are the caller's locals, never a field of
+// the value. An int32_t & may alias every int32_t field the pass stores to, so
+// unqualified, each clamp reloads the counter and the pass does not vectorize.
+// The qualifier is per compiler, each one's MEASURED best of the plain
+// reference, __restrict, a local counter stored once at the end, and both
+// (bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-restrict):
+//   clang: __restrict, 185.8 -> 148.5 ns/record (the local counter ties it);
+//   g++:   the plain reference, 215.8; __restrict measured 247.9 and the
+//          local counter 307.7, both slower;
+//   MSVC and any other compiler: the plain reference, the portable form.
+// A build may define TABLE_CLAMP_RESTRICT itself to override the choice.
+#ifndef TABLE_CLAMP_RESTRICT
+#if defined( __clang__ )
+#define TABLE_CLAMP_RESTRICT __restrict__
+#else
+#define TABLE_CLAMP_RESTRICT
+#endif
+#endif
+
 // THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
 // halves of the loop below, and a call there is the whole cost of the form.
 #if defined( _MSC_VER )
@@ -10371,7 +10391,7 @@ inline void KeyedConfigFixedWriteBody( uint8_t * b, const KeyedConfig & value )
 }
 
 // TeamConfig's read-side bounds.
-inline void TeamConfigFixedClampBody( TeamConfig & value, int32_t & clamped, int32_t & damaged )
+inline void TeamConfigFixedClampBody( TeamConfig & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.spawn_count < 0 ) | (int) ( value.spawn_count > 64 );
@@ -10383,7 +10403,7 @@ inline void TeamConfigFixedClampBody( TeamConfig & value, int32_t & clamped, int
 }
 
 // ScoreBoard's read-side bounds.
-inline void ScoreBoardFixedClampBody( ScoreBoard & value, int32_t & clamped, int32_t & damaged )
+inline void ScoreBoardFixedClampBody( ScoreBoard & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     for ( int64_t i = 0; i < 3; ++i )
@@ -10394,7 +10414,7 @@ inline void ScoreBoardFixedClampBody( ScoreBoard & value, int32_t & clamped, int
 }
 
 // KeyedConfig's read-side bounds.
-inline void KeyedConfigFixedClampBody( KeyedConfig & value, int32_t & clamped, int32_t & damaged )
+inline void KeyedConfigFixedClampBody( KeyedConfig & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     for ( int64_t i = 0; i < 3; ++i )

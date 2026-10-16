@@ -2457,6 +2457,26 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 #define TABLE_RESTRICT
 #endif
 
+// THE CLAMP PASS'S COUNTERS NEVER ALIAS THE RECORD IT CLAMPS: the two
+// counters a *FixedClampBody takes are the caller's locals, never a field of
+// the value. An int32_t & may alias every int32_t field the pass stores to, so
+// unqualified, each clamp reloads the counter and the pass does not vectorize.
+// The qualifier is per compiler, each one's MEASURED best of the plain
+// reference, __restrict, a local counter stored once at the end, and both
+// (bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-restrict):
+//   clang: __restrict, 185.8 -> 148.5 ns/record (the local counter ties it);
+//   g++:   the plain reference, 215.8; __restrict measured 247.9 and the
+//          local counter 307.7, both slower;
+//   MSVC and any other compiler: the plain reference, the portable form.
+// A build may define TABLE_CLAMP_RESTRICT itself to override the choice.
+#ifndef TABLE_CLAMP_RESTRICT
+#if defined( __clang__ )
+#define TABLE_CLAMP_RESTRICT __restrict__
+#else
+#define TABLE_CLAMP_RESTRICT
+#endif
+#endif
+
 // THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
 // halves of the loop below, and a call there is the whole cost of the form.
 #if defined( _MSC_VER )
@@ -10094,7 +10114,7 @@ inline void PackConfigFixedWriteBody( uint8_t * b, const PackConfig & value )
 }
 
 // GunnerSettings's read-side bounds.
-inline void GunnerSettingsFixedClampBody( GunnerSettings & value, int32_t & clamped, int32_t & damaged )
+inline void GunnerSettingsFixedClampBody( GunnerSettings & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.callsign, (uint64_t) value.callsign_length ) )
@@ -10104,7 +10124,7 @@ inline void GunnerSettingsFixedClampBody( GunnerSettings & value, int32_t & clam
 }
 
 // ShipEntry's read-side bounds.
-inline void ShipEntryFixedClampBody( ShipEntry & value, int32_t & clamped, int32_t & damaged )
+inline void ShipEntryFixedClampBody( ShipEntry & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.display_name, (uint64_t) value.display_name_length ) )
@@ -10123,7 +10143,7 @@ inline void ShipEntryFixedClampBody( ShipEntry & value, int32_t & clamped, int32
 }
 
 // GlobalSettings's read-side bounds.
-inline void GlobalSettingsFixedClampBody( GlobalSettings & value, int32_t & clamped, int32_t & damaged )
+inline void GlobalSettingsFixedClampBody( GlobalSettings & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.tick_rate < 1 ) | (int) ( value.tick_rate > 240 );
@@ -10136,7 +10156,7 @@ inline void GlobalSettingsFixedClampBody( GlobalSettings & value, int32_t & clam
 }
 
 // PackConfig's read-side bounds.
-inline void PackConfigFixedClampBody( PackConfig & value, int32_t & clamped, int32_t & damaged )
+inline void PackConfigFixedClampBody( PackConfig & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     GlobalSettingsFixedClampBody( value.global, clamped, damaged );

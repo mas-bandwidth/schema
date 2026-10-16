@@ -2457,6 +2457,26 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 #define TABLE_RESTRICT
 #endif
 
+// THE CLAMP PASS'S COUNTERS NEVER ALIAS THE RECORD IT CLAMPS: the two
+// counters a *FixedClampBody takes are the caller's locals, never a field of
+// the value. An int32_t & may alias every int32_t field the pass stores to, so
+// unqualified, each clamp reloads the counter and the pass does not vectorize.
+// The qualifier is per compiler, each one's MEASURED best of the plain
+// reference, __restrict, a local counter stored once at the end, and both
+// (bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-restrict):
+//   clang: __restrict, 185.8 -> 148.5 ns/record (the local counter ties it);
+//   g++:   the plain reference, 215.8; __restrict measured 247.9 and the
+//          local counter 307.7, both slower;
+//   MSVC and any other compiler: the plain reference, the portable form.
+// A build may define TABLE_CLAMP_RESTRICT itself to override the choice.
+#ifndef TABLE_CLAMP_RESTRICT
+#if defined( __clang__ )
+#define TABLE_CLAMP_RESTRICT __restrict__
+#else
+#define TABLE_CLAMP_RESTRICT
+#endif
+#endif
+
 // THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
 // halves of the loop below, and a call there is the whole cost of the form.
 #if defined( _MSC_VER )
@@ -12270,7 +12290,7 @@ inline void RootConfigFixedWriteBody( uint8_t * b, const RootConfig & value )
 }
 
 // Debuff's read-side bounds.
-inline void DebuffFixedClampBody( Debuff & value, int32_t & clamped, int32_t & damaged )
+inline void DebuffFixedClampBody( Debuff & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.amount < 0 ) | (int) ( value.amount > 100 );
@@ -12278,7 +12298,7 @@ inline void DebuffFixedClampBody( Debuff & value, int32_t & clamped, int32_t & d
 }
 
 // WeaponConfig's read-side bounds.
-inline void WeaponConfigFixedClampBody( WeaponConfig & value, int32_t & clamped, int32_t & damaged )
+inline void WeaponConfigFixedClampBody( WeaponConfig & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.penetration < 0 ) | (int) ( value.penetration > 10 );
@@ -12299,7 +12319,7 @@ inline void WeaponConfigFixedClampBody( WeaponConfig & value, int32_t & clamped,
 }
 
 // Attachment's read-side bounds.
-inline void AttachmentFixedClampBody( Attachment & value, int32_t & clamped, int32_t & damaged )
+inline void AttachmentFixedClampBody( Attachment & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.slot < 0 ) | (int) ( value.slot > 7 );
@@ -12307,7 +12327,7 @@ inline void AttachmentFixedClampBody( Attachment & value, int32_t & clamped, int
 }
 
 // LoadoutConfig's read-side bounds.
-inline void LoadoutConfigFixedClampBody( LoadoutConfig & value, int32_t & clamped, int32_t & damaged )
+inline void LoadoutConfigFixedClampBody( LoadoutConfig & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.grade > 3u ) { value.grade = Grade::None; clamped++; }
@@ -12331,7 +12351,7 @@ inline void LoadoutConfigFixedClampBody( LoadoutConfig & value, int32_t & clampe
 }
 
 // ProfileConfig's read-side bounds.
-inline void ProfileConfigFixedClampBody( ProfileConfig & value, int32_t & clamped, int32_t & damaged )
+inline void ProfileConfigFixedClampBody( ProfileConfig & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) )
@@ -12342,7 +12362,7 @@ inline void ProfileConfigFixedClampBody( ProfileConfig & value, int32_t & clampe
 }
 
 // RootConfig's read-side bounds.
-inline void RootConfigFixedClampBody( RootConfig & value, int32_t & clamped, int32_t & damaged )
+inline void RootConfigFixedClampBody( RootConfig & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.version_note, (uint64_t) value.version_note_length ) )

@@ -2212,6 +2212,26 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 #define TABLE_RESTRICT
 #endif
 
+// THE CLAMP PASS'S COUNTERS NEVER ALIAS THE RECORD IT CLAMPS: the two
+// counters a *FixedClampBody takes are the caller's locals, never a field of
+// the value. An int32_t & may alias every int32_t field the pass stores to, so
+// unqualified, each clamp reloads the counter and the pass does not vectorize.
+// The qualifier is per compiler, each one's MEASURED best of the plain
+// reference, __restrict, a local counter stored once at the end, and both
+// (bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-restrict):
+//   clang: __restrict, 185.8 -> 148.5 ns/record (the local counter ties it);
+//   g++:   the plain reference, 215.8; __restrict measured 247.9 and the
+//          local counter 307.7, both slower;
+//   MSVC and any other compiler: the plain reference, the portable form.
+// A build may define TABLE_CLAMP_RESTRICT itself to override the choice.
+#ifndef TABLE_CLAMP_RESTRICT
+#if defined( __clang__ )
+#define TABLE_CLAMP_RESTRICT __restrict__
+#else
+#define TABLE_CLAMP_RESTRICT
+#endif
+#endif
+
 // THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
 // halves of the loop below, and a call there is the whole cost of the form.
 #if defined( _MSC_VER )
@@ -15283,7 +15303,7 @@ inline void ToolMessageFixedWriteBody( uint8_t * b, const ToolMessage & value )
 }
 
 // User's read-side bounds.
-inline void UserFixedClampBody( User & value, int32_t & clamped, int32_t & damaged )
+inline void UserFixedClampBody( User & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) )
@@ -15293,7 +15313,7 @@ inline void UserFixedClampBody( User & value, int32_t & clamped, int32_t & damag
 }
 
 // Script's read-side bounds.
-inline void ScriptFixedClampBody( Script & value, int32_t & clamped, int32_t & damaged )
+inline void ScriptFixedClampBody( Script & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) )
@@ -15303,7 +15323,7 @@ inline void ScriptFixedClampBody( Script & value, int32_t & clamped, int32_t & d
 }
 
 // InsertText's read-side bounds.
-inline void InsertTextFixedClampBody( InsertText & value, int32_t & clamped, int32_t & damaged )
+inline void InsertTextFixedClampBody( InsertText & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.text, (uint64_t) value.text_length ) )
@@ -15373,7 +15393,7 @@ inline void InsertTextFixedClampBody( InsertText & value, int32_t & clamped, int
 }
 
 // Edit's read-side bounds.
-inline void EditFixedClampBody( Edit & value, int32_t & clamped, int32_t & damaged )
+inline void EditFixedClampBody( Edit & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.body.type > 6u ) { value.body.type = EditBodyType::None; clamped++; }
@@ -15400,7 +15420,7 @@ inline void EditFixedClampBody( Edit & value, int32_t & clamped, int32_t & damag
 }
 
 // OpenDocument's read-side bounds.
-inline void OpenDocumentFixedClampBody( OpenDocument & value, int32_t & clamped, int32_t & damaged )
+inline void OpenDocumentFixedClampBody( OpenDocument & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) )
@@ -15411,7 +15431,7 @@ inline void OpenDocumentFixedClampBody( OpenDocument & value, int32_t & clamped,
 }
 
 // SaveDocument's read-side bounds.
-inline void SaveDocumentFixedClampBody( SaveDocument & value, int32_t & clamped, int32_t & damaged )
+inline void SaveDocumentFixedClampBody( SaveDocument & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) )
@@ -15421,7 +15441,7 @@ inline void SaveDocumentFixedClampBody( SaveDocument & value, int32_t & clamped,
 }
 
 // Transaction's read-side bounds.
-inline void TransactionFixedClampBody( Transaction & value, int32_t & clamped, int32_t & damaged )
+inline void TransactionFixedClampBody( Transaction & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.reason, (uint64_t) value.reason_length ) )
@@ -15459,7 +15479,7 @@ inline void TransactionFixedClampBody( Transaction & value, int32_t & clamped, i
 }
 
 // ToolMessage's read-side bounds.
-inline void ToolMessageFixedClampBody( ToolMessage & value, int32_t & clamped, int32_t & damaged )
+inline void ToolMessageFixedClampBody( ToolMessage & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.body.type > 8u ) { value.body.type = ToolBodyType::None; clamped++; }

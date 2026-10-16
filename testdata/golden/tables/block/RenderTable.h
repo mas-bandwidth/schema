@@ -2350,6 +2350,26 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 #define TABLE_RESTRICT
 #endif
 
+// THE CLAMP PASS'S COUNTERS NEVER ALIAS THE RECORD IT CLAMPS: the two
+// counters a *FixedClampBody takes are the caller's locals, never a field of
+// the value. An int32_t & may alias every int32_t field the pass stores to, so
+// unqualified, each clamp reloads the counter and the pass does not vectorize.
+// The qualifier is per compiler, each one's MEASURED best of the plain
+// reference, __restrict, a local counter stored once at the end, and both
+// (bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-restrict):
+//   clang: __restrict, 185.8 -> 148.5 ns/record (the local counter ties it);
+//   g++:   the plain reference, 215.8; __restrict measured 247.9 and the
+//          local counter 307.7, both slower;
+//   MSVC and any other compiler: the plain reference, the portable form.
+// A build may define TABLE_CLAMP_RESTRICT itself to override the choice.
+#ifndef TABLE_CLAMP_RESTRICT
+#if defined( __clang__ )
+#define TABLE_CLAMP_RESTRICT __restrict__
+#else
+#define TABLE_CLAMP_RESTRICT
+#endif
+#endif
+
 // THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
 // halves of the loop below, and a call there is the whole cost of the form.
 #if defined( _MSC_VER )
@@ -14873,7 +14893,7 @@ inline void RenderExplosionFixedWriteBody( uint8_t * b, const RenderExplosion & 
 }
 
 // RenderShip's read-side bounds.
-inline void RenderShipFixedClampBody( RenderShip & value, int32_t & clamped, int32_t & damaged )
+inline void RenderShipFixedClampBody( RenderShip & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.ship_type > 3u ) { value.ship_type = ShipType::None; clamped++; }
@@ -14881,14 +14901,14 @@ inline void RenderShipFixedClampBody( RenderShip & value, int32_t & clamped, int
 }
 
 // RenderTurret's read-side bounds.
-inline void RenderTurretFixedClampBody( RenderTurret & value, int32_t & clamped, int32_t & damaged )
+inline void RenderTurretFixedClampBody( RenderTurret & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
 }
 
 // RenderMissile's read-side bounds.
-inline void RenderMissileFixedClampBody( RenderMissile & value, int32_t & clamped, int32_t & damaged )
+inline void RenderMissileFixedClampBody( RenderMissile & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.missile_type > 2u ) { value.missile_type = MissileType::None; clamped++; }
@@ -14896,7 +14916,7 @@ inline void RenderMissileFixedClampBody( RenderMissile & value, int32_t & clampe
 }
 
 // RenderDynamicProp's read-side bounds.
-inline void RenderDynamicPropFixedClampBody( RenderDynamicProp & value, int32_t & clamped, int32_t & damaged )
+inline void RenderDynamicPropFixedClampBody( RenderDynamicProp & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.prop_type > 3u ) { value.prop_type = PropType::None; clamped++; }
@@ -14904,7 +14924,7 @@ inline void RenderDynamicPropFixedClampBody( RenderDynamicProp & value, int32_t 
 }
 
 // RenderStaticProp's read-side bounds.
-inline void RenderStaticPropFixedClampBody( RenderStaticProp & value, int32_t & clamped, int32_t & damaged )
+inline void RenderStaticPropFixedClampBody( RenderStaticProp & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.prop_type > 3u ) { value.prop_type = PropType::None; clamped++; }
@@ -14912,7 +14932,7 @@ inline void RenderStaticPropFixedClampBody( RenderStaticProp & value, int32_t & 
 }
 
 // RenderCosmeticProp's read-side bounds.
-inline void RenderCosmeticPropFixedClampBody( RenderCosmeticProp & value, int32_t & clamped, int32_t & damaged )
+inline void RenderCosmeticPropFixedClampBody( RenderCosmeticProp & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.prop_type > 3u ) { value.prop_type = PropType::None; clamped++; }
@@ -14920,7 +14940,7 @@ inline void RenderCosmeticPropFixedClampBody( RenderCosmeticProp & value, int32_
 }
 
 // RenderLaser's read-side bounds.
-inline void RenderLaserFixedClampBody( RenderLaser & value, int32_t & clamped, int32_t & damaged )
+inline void RenderLaserFixedClampBody( RenderLaser & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.laser_type > 2u ) { value.laser_type = LaserType::None; clamped++; }
@@ -14928,7 +14948,7 @@ inline void RenderLaserFixedClampBody( RenderLaser & value, int32_t & clamped, i
 }
 
 // RenderExplosion's read-side bounds.
-inline void RenderExplosionFixedClampBody( RenderExplosion & value, int32_t & clamped, int32_t & damaged )
+inline void RenderExplosionFixedClampBody( RenderExplosion & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.explosion_type > 2u ) { value.explosion_type = ExplosionType::None; clamped++; }

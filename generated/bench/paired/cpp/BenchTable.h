@@ -2230,6 +2230,26 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 #define TABLE_RESTRICT
 #endif
 
+// THE CLAMP PASS'S COUNTERS NEVER ALIAS THE RECORD IT CLAMPS: the two
+// counters a *FixedClampBody takes are the caller's locals, never a field of
+// the value. An int32_t & may alias every int32_t field the pass stores to, so
+// unqualified, each clamp reloads the counter and the pass does not vectorize.
+// The qualifier is per compiler, each one's MEASURED best of the plain
+// reference, __restrict, a local counter stored once at the end, and both
+// (bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-restrict):
+//   clang: __restrict, 185.8 -> 148.5 ns/record (the local counter ties it);
+//   g++:   the plain reference, 215.8; __restrict measured 247.9 and the
+//          local counter 307.7, both slower;
+//   MSVC and any other compiler: the plain reference, the portable form.
+// A build may define TABLE_CLAMP_RESTRICT itself to override the choice.
+#ifndef TABLE_CLAMP_RESTRICT
+#if defined( __clang__ )
+#define TABLE_CLAMP_RESTRICT __restrict__
+#else
+#define TABLE_CLAMP_RESTRICT
+#endif
+#endif
+
 // THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
 // halves of the loop below, and a call there is the whole cost of the form.
 #if defined( _MSC_VER )
@@ -10333,7 +10353,7 @@ inline void BenchMixedFixedWriteBody( uint8_t * b, const BenchMixed & value )
 }
 
 // MixedEntity's read-side bounds.
-inline void MixedEntityFixedClampBody( MixedEntity & value, int32_t & clamped, int32_t & damaged )
+inline void MixedEntityFixedClampBody( MixedEntity & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     // bits(12) width clamp
@@ -10363,7 +10383,7 @@ inline void MixedEntityFixedClampBody( MixedEntity & value, int32_t & clamped, i
 }
 
 // MixedStat's read-side bounds.
-inline void MixedStatFixedClampBody( MixedStat & value, int32_t & clamped, int32_t & damaged )
+inline void MixedStatFixedClampBody( MixedStat & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     // bits(8) width clamp
@@ -10374,7 +10394,7 @@ inline void MixedStatFixedClampBody( MixedStat & value, int32_t & clamped, int32
 }
 
 // MixedHitEvent's read-side bounds.
-inline void MixedHitEventFixedClampBody( MixedHitEvent & value, int32_t & clamped, int32_t & damaged )
+inline void MixedHitEventFixedClampBody( MixedHitEvent & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     // bits(12) width clamp
@@ -10387,7 +10407,7 @@ inline void MixedHitEventFixedClampBody( MixedHitEvent & value, int32_t & clampe
 }
 
 // MixedChatEvent's read-side bounds.
-inline void MixedChatEventFixedClampBody( MixedChatEvent & value, int32_t & clamped, int32_t & damaged )
+inline void MixedChatEventFixedClampBody( MixedChatEvent & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.channel < 0 ) | (int) ( value.channel > 3 );
@@ -10398,7 +10418,7 @@ inline void MixedChatEventFixedClampBody( MixedChatEvent & value, int32_t & clam
 }
 
 // MixedPickupEvent's read-side bounds.
-inline void MixedPickupEventFixedClampBody( MixedPickupEvent & value, int32_t & clamped, int32_t & damaged )
+inline void MixedPickupEventFixedClampBody( MixedPickupEvent & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     // bits(10) width clamp
@@ -10409,7 +10429,7 @@ inline void MixedPickupEventFixedClampBody( MixedPickupEvent & value, int32_t & 
 }
 
 // BenchMixed's read-side bounds.
-inline void BenchMixedFixedClampBody( BenchMixed & value, int32_t & clamped, int32_t & damaged )
+inline void BenchMixedFixedClampBody( BenchMixed & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     // bits(16) width clamp
