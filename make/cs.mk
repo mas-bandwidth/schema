@@ -562,19 +562,148 @@ tables-cs-bench-gate: generated/bench/tables/cs/.stamp
 	bench/tables/cs/leg run --gate
 test-cs: tables-cs-bench-gate
 
-# THE C# TABLE SOURCES ARE FORMAT-CANONICAL (issue #424). `dotnet format` is the
-# language's formatting authority over the generated table units the conformance
-# project compiles, so an emitter that drifts from what it writes goes red here
-# rather than on a reviewer. It SKIPS cleanly where the pinned SDK is not on PATH.
+# THE GENERATED C# IS FORMAT-CANONICAL AND ANALYZER-CLEAN (issues #424 and #547;
+# docs/CS-TABLES.md, "The generated C# dialect"). `dotnet format` is the
+# language's formatting authority and the Roslyn analyzers the SDK ships
+# (Microsoft.CodeAnalysis.NetAnalyzers) are its linter, so an emitter that drifts
+# from what they accept goes red here rather than on a reviewer.
+#
+# "Default strictness" is exactly CS_ANALYSIS_PROPS: the SDK's analyzers on, the
+# latest analysis level, the Default mode, and no suppression file and no
+# .editorconfig beside the generated units. test/cs/schematest.csproj and
+# test/conformance/cs/schemaconformance.csproj carry the same three properties;
+# the other packet projects carry none, so the gate hands the set to every
+# project it checks, both to `dotnet format` (MSBuild reads an environment
+# variable as a property) and to the build. A finding is fixed in the emitter
+# (internal/codegen/csharp, internal/codegen/cstable), never silenced.
+#
+# cs_clean_check runs BOTH halves and reports each by name before it fails, so
+# one red never hides the other: `dotnet format --verify-no-changes`
+# (whitespace, style and analyzers at their default severity; a finding prints
+# as `error WHITESPACE` or `error <rule id>` with its file), then a full rebuild
+# with the analyzer set on and TreatWarningsAsErrors, so a compiler or analyzer
+# warning (CS0169 for an unused private field, CA<n> for an analyzer finding)
+# turns it red. $(1) the gate's label, $(2) the project, $(3) the generated
+# directories formatted, $(4) extra NAME=VALUE properties (the negative
+# control's redirect).
+#
+# --include takes each directory RELATIVE to the repository and WITH a trailing
+# slash. dotnet format matches it as a glob against the project's documents,
+# and an absolute directory path matches none of them and passes having checked
+# nothing: that is how tables-cs-clean stood green at d713c7d66 over 295 table
+# units that are not format-canonical (issue #547's census). The planted
+# control below is what keeps this form honest.
+CS_ANALYSIS_PROPS := EnableNETAnalyzers=true AnalysisLevel=latest AnalysisMode=Default
+
+define cs_clean_check
+	@mkdir -p build/cs-clean/$(1); st=0; \
+	if env $(CS_ANALYSIS_PROPS) $(4) $(DOTNET) format $(2) --verify-no-changes \
+		--include $(addsuffix /,$(3)) > build/cs-clean/$(1)/format.log 2>&1; then :; else \
+		st=1; echo "RED $(1): dotnet format --verify-no-changes over $(3)"; \
+		grep -E ' (error|warning) [A-Z]+[A-Z0-9]*:' build/cs-clean/$(1)/format.log || cat build/cs-clean/$(1)/format.log; \
+	fi; \
+	if $(DOTNET) build $(2) --no-incremental --nologo -v q -o build/cs-clean/$(1)/bin \
+		$(addprefix -p:,$(CS_ANALYSIS_PROPS) $(4)) -p:TreatWarningsAsErrors=true \
+		> build/cs-clean/$(1)/build.log 2>&1; then :; else \
+		st=1; echo "RED $(1): dotnet build with $(CS_ANALYSIS_PROPS)"; \
+		grep -E ' (error|warning) [A-Z]+[0-9]+:' build/cs-clean/$(1)/build.log | sort -u | grep . || tail -20 build/cs-clean/$(1)/build.log; \
+	fi; \
+	test $$st -eq 0 && echo "$(1): dotnet format and the analyzers clean over $(3)"
+endef
+
+# The SDK probe both gates share: a dotnet not on PATH SKIPS cleanly, and under
+# SCHEMA_REQUIRE_CORPUS=1 that skip is a FAILURE (the corpus legs' idiom).
+define cs_clean_probe
+	@if ! command -v $(DOTNET) >/dev/null 2>&1; then \
+		if [ "$(SCHEMA_REQUIRE_CORPUS)" = 1 ]; then \
+			echo "FAIL $(1): $(DOTNET) is not installed and SCHEMA_REQUIRE_CORPUS=1"; exit 1; fi; \
+		echo "SKIP $(1): $(DOTNET) is not installed"; exit 0; \
+	fi
+endef
+
+# The generated TABLE units the conformance project compiles (issue #424).
 .PHONY: tables-cs-clean
 tables-cs-clean: build/tables-generated-cs/.stamp
-	@if ! command -v $(DOTNET) >/dev/null 2>&1; then \
-		echo "SKIP tables-cs-clean: $(DOTNET) is not installed"; exit 0; \
-	fi
-	$(DOTNET) format test/conformance/cs/schemaconformance.csproj \
-		--verify-no-changes --include $(CURDIR)/build/tables-generated-cs
-	@echo "tables C#: dotnet format clean over the generated table units"
+	$(call cs_clean_probe,tables-cs-clean)
+	@if command -v $(DOTNET) >/dev/null 2>&1; then $(MAKE) --no-print-directory tables-cs-clean-run; fi
+
+.PHONY: tables-cs-clean-run
+tables-cs-clean-run:
+	$(call cs_clean_check,tables-cs-clean,test/conformance/cs/schemaconformance.csproj,build/tables-generated-cs)
 test-cs: tables-cs-clean
+
+# The generated PACKET units (internal/codegen/csharp, issue #547): the
+# examples and the bench corpus (schematest), the 128-bit examples (the
+# ludicrous twin), the RealWorld bench unit (the bench project), and the
+# packet-defaults, packet-text and packet-wide units, each through the project
+# that compiles it.
+PACKET_CLEAN_CS_STAMPS := generated/cs/.stamp generated/bench/cs/.stamp generated/cs-ludicrous/.stamp \
+	build/packet-defaults/cs/.stamp build/packet-text/cs/.stamp build/packet-wide/cs/.stamp
+
+.PHONY: packet-clean-cs
+packet-clean-cs: $(PACKET_CLEAN_CS_STAMPS)
+	$(call cs_clean_probe,packet-clean-cs)
+	@if command -v $(DOTNET) >/dev/null 2>&1; then $(MAKE) --no-print-directory packet-clean-cs-run; fi
+
+.PHONY: packet-clean-cs-run
+packet-clean-cs-run:
+	@st=0; \
+	$(MAKE) --no-print-directory packet-clean-cs-unit-examples || st=1; \
+	$(MAKE) --no-print-directory packet-clean-cs-unit-ludicrous || st=1; \
+	$(MAKE) --no-print-directory packet-clean-cs-unit-realworld || st=1; \
+	$(MAKE) --no-print-directory packet-clean-cs-unit-defaults || st=1; \
+	$(MAKE) --no-print-directory packet-clean-cs-unit-text || st=1; \
+	$(MAKE) --no-print-directory packet-clean-cs-unit-wide || st=1; \
+	if [ $$st -ne 0 ]; then echo "RED packet-clean-cs: a generated C# packet unit is not format- and analyzer-clean"; exit 1; fi
+	@echo "packet C#: dotnet format and the analyzers clean over the generated packet units"
+
+.PHONY: packet-clean-cs-unit-examples packet-clean-cs-unit-ludicrous packet-clean-cs-unit-realworld \
+	packet-clean-cs-unit-defaults packet-clean-cs-unit-text packet-clean-cs-unit-wide
+packet-clean-cs-unit-examples:
+	$(call cs_clean_check,packet-clean-cs-examples,test/cs/schematest.csproj,generated/cs generated/bench/cs)
+packet-clean-cs-unit-ludicrous:
+	$(call cs_clean_check,packet-clean-cs-ludicrous,test/cs-ludicrous/ludicroustest.csproj,generated/cs-ludicrous)
+packet-clean-cs-unit-realworld:
+	$(call cs_clean_check,packet-clean-cs-realworld,bench/cs/schemabench.csproj,generated/bench/cs/realworld)
+packet-clean-cs-unit-defaults:
+	$(call cs_clean_check,packet-clean-cs-defaults,test/packet-defaults/cs/packet-defaults.csproj,build/packet-defaults/cs)
+packet-clean-cs-unit-text:
+	$(call cs_clean_check,packet-clean-cs-text,test/packet-text/cs/packet-text.csproj,build/packet-text/cs)
+packet-clean-cs-unit-wide:
+	$(call cs_clean_check,packet-clean-cs-wide,test/packet-wide/cs/packet-wide.csproj,build/packet-wide/cs)
+test-cs: packet-clean-cs
+
+# THE PACKET-CLEAN NEGATIVE CONTROL: a copy of the generated examples with ONE
+# unit (Constants.cs) carrying two planted violations, a misindented block and
+# an unused private field, compiled by the same project through its
+# PacketGeneratedDir redirect. The gate must go red on BOTH by name: dotnet
+# format's WHITESPACE finding in Constants.cs, and the build's CS0169 on the
+# planted field. A gate that stayed green, or went red for another reason,
+# fails the control.
+PACKET_CLEAN_CS_NEG := build/packet-clean-cs-negative
+.PHONY: packet-clean-cs-negative-control
+packet-clean-cs-negative-control: generated/cs/.stamp generated/bench/cs/.stamp
+	@rm -rf $(PACKET_CLEAN_CS_NEG) && mkdir -p $(PACKET_CLEAN_CS_NEG)/cs
+	@cp generated/cs/*.cs $(PACKET_CLEAN_CS_NEG)/cs/
+	@awk 'done != 1 && prev ~ /public static partial class Schema/ && $$0 ~ /^    \{$$/ { \
+		print; print "        private static int plantedUnusedField;"; \
+		print "  private static class PlantedMisindentedBlock"; print "  {"; \
+		print "  public const int Planted = 1;"; print "  }"; done = 1; next } \
+		{ prev = $$0; print }' generated/cs/Constants.cs > $(PACKET_CLEAN_CS_NEG)/cs/Constants.cs
+	@grep -q plantedUnusedField $(PACKET_CLEAN_CS_NEG)/cs/Constants.cs || \
+		{ echo 'NEGATIVE CONTROL FAILED: the plant found no Schema class in Constants.cs'; exit 1; }
+	@if $(MAKE) --no-print-directory packet-clean-cs-negative-run > $(PACKET_CLEAN_CS_NEG)/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: packet-clean-cs stayed green over a planted violation'; cat $(PACKET_CLEAN_CS_NEG)/log; exit 1; fi
+	@grep -Eq 'Constants\.cs.* error WHITESPACE:' $(PACKET_CLEAN_CS_NEG)/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the misindented block was not named'; cat $(PACKET_CLEAN_CS_NEG)/log; exit 1; }
+	@grep -Eq 'Constants\.cs.* error CS0169:.*plantedUnusedField' $(PACKET_CLEAN_CS_NEG)/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the unused private field was not named'; cat $(PACKET_CLEAN_CS_NEG)/log; exit 1; }
+	@echo 'packet C# clean negative control: a misindented block and an unused private field turn packet-clean-cs red by name'
+
+.PHONY: packet-clean-cs-negative-run
+packet-clean-cs-negative-run:
+	$(call cs_clean_check,packet-clean-cs-negative,test/cs/schematest.csproj,$(PACKET_CLEAN_CS_NEG)/cs,PacketGeneratedDir=$(CURDIR)/$(PACKET_CLEAN_CS_NEG)/cs)
+test-cs: packet-clean-cs-negative-control
 
 .PHONY: tables-cs-fixedform-arm-negative-control
 tables-cs-fixedform-arm-negative-control: bin/schema
