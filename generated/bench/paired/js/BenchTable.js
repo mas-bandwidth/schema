@@ -70,10 +70,11 @@ export const TableFixedRecordMaxBytes = 65536;
 // otherwise spend a reader's stack before any rule fired. The reference states 64.
 export const TableFixedMaxDepth = 64;
 
-// A PLAN ENTRY is nine int32 lanes of one flat Int32Array. A flat array of a
+// A PLAN ENTRY is eleven int32 lanes of one flat Int32Array (nine, and the
+// guard chain's offset+count, docs/FIXED-FORM-ALGORITHM.md §4.1). A flat array of a
 // fixed stride is what keeps the read loop monomorphic: every lane is a
 // Smi, the loop never touches a property name, and nothing is allocated.
-export const TableFixedLanes = 9;
+export const TableFixedLanes = 11;
 // ONE BINDING PER LINE, and that is not a style choice: §11's claim is made
 // name by name, and a scan that reads a module's bindings sees the FIRST name
 // of a comma list. A lane folded into a list beside another is a lane nobody
@@ -87,6 +88,12 @@ const TableFixedLaneGuard = 5;
 const TableFixedLaneArg = 6;
 const TableFixedLaneMeta = 7; // a widen's width and sign, a text entry's flavour
 const TableFixedLaneArgW = 8; // THE GUARD'S WIDTH IN BYTES: a union tag is 1, 2, 4 or 8
+// THE GUARD CHAIN (docs/FIXED-FORM-ALGORITHM.md §4.1): offset+count into a pool
+// of (guard, arg, argw) links, OUTERMOST FIRST, the only bound the layout's 64.
+// The pool is the plan's own remap pool, three ints a link; the count is 0 for
+// an entry under one tag or none, whose guard lane is the whole of it.
+const TableFixedLaneGuards = 9;
+const TableFixedLaneGuardCount = 10;
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first; the
 // others are what a plan compiled from another writer's layout adds.
@@ -232,6 +239,13 @@ export class TableFixedPlan {
     this.hostile = false;
     // the CURRENT union's tag width, stamped onto every push — C++'s c.argw
     this.argw = 1;
+    // THE GUARD CHAIN of the arm being compiled, OUTERMOST FIRST (§4.1): one
+    // (guard, arg, argw) link per enclosing union, pushed on the way into an
+    // arm and popped on the way out; chainAt is where it was laid in the pool,
+    // once per arm, or -1. Sized once for the layout's 64.
+    this.chain = new Int32Array(65 * 3);
+    this.chainLen = 0;
+    this.chainAt = -1;
     // THE PLAN IS PARTITIONED (§4.1): every UNGUARDED entry first, then every
     // guarded one, and split is the index the second half starts at. pass is
     // which half the compile is keeping (§5.2's two passes).
@@ -383,6 +397,16 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
     if (guard !== TableFixedNoGuard &&
         TableFixedTagAt(src, srcAt + guard, e[b + TableFixedLaneArgW]) !== (e[b + TableFixedLaneArg] >>> 0)) {
       continue;
+    }
+    // AN ARM INSIDE AN ARM ANSWERS TO EVERY OUTER TAG TOO (§4.1, the guard
+    // chain): the links outside the innermost, outermost first, all must hold.
+    const links = e[b + TableFixedLaneGuardCount];
+    if (links > 1) {
+      let holds = true;
+      for (let j = 0, at = e[b + TableFixedLaneGuards]; j < links - 1; j++, at += 3) {
+        if (TableFixedTagAt(src, srcAt + remap[at], remap[at + 2]) !== (remap[at + 1] >>> 0)) { holds = false; break; }
+      }
+      if (!holds) { continue; }
     }
     const s = srcAt + e[b + TableFixedLaneSrc];
     const d = e[b + TableFixedLaneDst];
@@ -946,6 +970,29 @@ function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
   let w = plan.argw | 0;
   if (w === 0) { w = 1; }
   e[b + TableFixedLaneArgW] = w;
+  e[b + TableFixedLaneGuards] = 0;
+  e[b + TableFixedLaneGuardCount] = 0;
+  // THE GUARD CHAIN (§4.1): an entry beneath a union answers to EVERY enclosing
+  // tag. Its guard lane is the chain's innermost link, and a chain past one is
+  // laid into the pool, once per arm, as offset+count.
+  if (guard !== TableFixedNoGuard && plan.chainLen > 0) {
+    const c = plan.chain;
+    const inner = (plan.chainLen - 1) * 3;
+    e[b + TableFixedLaneGuard] = c[inner];
+    e[b + TableFixedLaneArg] = c[inner + 1];
+    e[b + TableFixedLaneArgW] = c[inner + 2];
+    if (plan.chainLen > 1) {
+      if (plan.chainAt < 0) {
+        const need = plan.chainLen * 3;
+        if (plan.remapUsed + need > plan.remap.length) { plan.overflow = true; return; }
+        plan.chainAt = plan.remapUsed;
+        for (let k = 0; k < need; k++) { plan.remap[plan.chainAt + k] = c[k]; }
+        plan.remapUsed += need;
+      }
+      e[b + TableFixedLaneGuards] = plan.chainAt;
+      e[b + TableFixedLaneGuardCount] = plan.chainLen;
+    }
+  }
   plan.count++;
 }
 
@@ -1162,10 +1209,23 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
         let theirArm = ti + 1;
         for (let j = 0; j < theirArms; j++) {
           if (TableFixedSameId(theirs, theirArm, mine, myArm)) {
+            // THE ARM ANSWERS TO THIS TAG AND TO EVERY TAG OUTSIDE IT (§4.1, the
+            // guard chain): one link pushed on the way in, the arm's own tag
+            // const included, popped on the way out. The layout's 64 bounds it.
+            if (plan.chainLen >= 65) { plan.overflow = true; return; }
+            const savedAt = plan.chainAt;
+            const l = plan.chainLen * 3;
+            plan.chain[l] = theirAt;
+            plan.chain[l + 1] = j + 1;
+            plan.chain[l + 2] = plan.argw;
+            plan.chainLen++;
+            plan.chainAt = -1;
             // MY tag value, written under THEIR tag's guard
             TableFixedPush(plan, TableFixedOpConst, theirAt, auxAt, myTag, k + 1, theirAt, j + 1, 0);
             TableFixedCompileEntry(plan, theirs, theirArm, theirAt + theirTag,
               mine, myArm, dst, at, theirAt, j + 1, report);
+            plan.chainLen--;
+            plan.chainAt = savedAt;
             break;
           }
           theirArm += TableFixedSubtree(theirs, theirArm);
@@ -1237,6 +1297,8 @@ function TableFixedCoalesce(plan, from) {
       if (e[p + TableFixedLaneOp] === TableFixedOpCopy && e[b + TableFixedLaneOp] === TableFixedOpCopy &&
           e[p + TableFixedLaneGuard] === e[b + TableFixedLaneGuard] && e[p + TableFixedLaneArg] === e[b + TableFixedLaneArg] &&
           e[p + TableFixedLaneArgW] === e[b + TableFixedLaneArgW] &&
+          e[p + TableFixedLaneGuards] === e[b + TableFixedLaneGuards] &&
+          e[p + TableFixedLaneGuardCount] === e[b + TableFixedLaneGuardCount] &&
           e[p + TableFixedLaneSrc] + e[p + TableFixedLaneSize] === e[b + TableFixedLaneSrc] &&
           e[p + TableFixedLaneDst] + e[p + TableFixedLaneSize] === e[b + TableFixedLaneDst]) {
         e[p + TableFixedLaneSize] += e[b + TableFixedLaneSize];
@@ -1379,6 +1441,8 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   const mine = new TableFixedLayoutView();
   if (!TableFixedParseLayout(myLayout, 0, myLayout.length, mine)) { return -1; }
   plan.count = 0;
+  plan.chainLen = 0;
+  plan.chainAt = -1;
   plan.remapUsed = 0;
   plan.overflow = false;
   plan.hostile = false;
