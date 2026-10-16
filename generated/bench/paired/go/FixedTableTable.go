@@ -289,6 +289,9 @@ func FixedTableSaveMessages(values []*FixedTable, buffer []byte, report *TableRe
 	if w.Overflow {
 		return -1
 	}
+	if report != nil {
+		report.Clamped += w.Clamped
+	}
 	return 2 + w.Bits/8
 }
 func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
@@ -1033,26 +1036,41 @@ func BenchMixedFixedClampBody(value *BenchMixed, clamped *int32) {
 	case MixedEventTypePickup:
 		MixedPickupEventFixedClampBody(&value.GameEvent.Pickup, clamped)
 	}
-	if value.AimX < -1.0 {
+	if value.AimX != value.AimX {
+		value.AimX = -1.0
+		(*clamped)++
+	} else if value.AimX < -1.0 {
 		value.AimX = -1.0
 		(*clamped)++
 	} else if value.AimX > 1.0 {
 		value.AimX = 1.0
 		(*clamped)++
+	} else if value.AimX == 0 {
+		value.AimX = 0
 	}
-	if value.AimY < -1.0 {
+	if value.AimY != value.AimY {
+		value.AimY = -1.0
+		(*clamped)++
+	} else if value.AimY < -1.0 {
 		value.AimY = -1.0
 		(*clamped)++
 	} else if value.AimY > 1.0 {
 		value.AimY = 1.0
 		(*clamped)++
+	} else if value.AimY == 0 {
+		value.AimY = 0
 	}
-	if value.AimZ < -1.0 {
+	if value.AimZ != value.AimZ {
+		value.AimZ = -1.0
+		(*clamped)++
+	} else if value.AimZ < -1.0 {
 		value.AimZ = -1.0
 		(*clamped)++
 	} else if value.AimZ > 1.0 {
 		value.AimZ = 1.0
 		(*clamped)++
+	} else if value.AimZ == 0 {
+		value.AimZ = 0
 	}
 	if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 {
 		value.Flux = (serialize.Int128{Lo: 0, Hi: 18446744004990074880})
