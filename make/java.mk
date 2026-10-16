@@ -294,11 +294,11 @@ tables-java-compile-all: build/tables-generated-java/.stamp
 # THE JAVA TABLES LEG (test/java-tables/src/Main.java): the gates the
 # conformance harness does not hold, because none of them is a case — the
 # readers' fuzz oracle, the reference extent gate and the byte-order leg.
-build/java-tables/.stamp: build/tables-generated-java/.stamp test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java
+build/java-tables/.stamp: build/tables-generated-java/.stamp test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java
 	@rm -rf build/java-tables && mkdir -p build/java-tables
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-tables \
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
-		build/tables-generated-java/block/*.java test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java
+		build/tables-generated-java/block/*.java test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java
 	@touch $@
 
 # THE READERS' ORACLE (docs/SPEC-TABLES.md §7.5, §19.2). Mutants of a block image
@@ -348,6 +348,44 @@ tables-java-fuzz-negative-control: build/cook-open/.stamp
 		  cat $(JAVA_FUZZ_SABOTAGE)/log; exit 1; }
 	@grep -m1 "FAILED:" $(JAVA_FUZZ_SABOTAGE)/log
 	@echo "negative control: the Java block Open with its two extent bounds removed turns the fuzz oracle RED"
+
+# THE BASE-ALIGNMENT GATE (docs/PORTING.md I5, #387): every committed block
+# image at every lead in 0..64, and the alignment rule exactly — 0 and 64 open
+# (and a row reads), 1..63 refuse. §19.2 checks the base's alignment and this
+# leg carries it as the OFFSET a caller passes beside its array, so a stated
+# fact nothing checks would be a comment rather than a check.
+.PHONY: tables-java-block-lead
+tables-java-block-lead: build/java-tables/.stamp
+	$(JAVA) -cp build/java-tables BlockLead testdata/wire/tables/block_render.bin testdata/wire/tables/block_padded.bin
+
+# ITS NEGATIVE CONTROL, on the EMITTER for the fuzz control's reason: drop the
+# residue check and the gate must go red at lead 1 naming the image.
+JAVA_BLOCK_LEAD_SABOTAGE := build/java-block-lead-sabotage
+JAVA_BLOCK_LEAD_SABOTAGE_SED := s|if ((offset %% TableBlockInfo.alignment) != 0) { return null; }|if ((offset %% TableBlockInfo.alignment) != 0) { } // SABOTAGED|
+.PHONY: tables-java-block-lead-negative-control
+tables-java-block-lead-negative-control: build/java-tables/.stamp
+	@rm -rf $(JAVA_BLOCK_LEAD_SABOTAGE) && mkdir -p $(JAVA_BLOCK_LEAD_SABOTAGE)
+	@sed '$(JAVA_BLOCK_LEAD_SABOTAGE_SED)' internal/codegen/javatable/block.go > $(JAVA_BLOCK_LEAD_SABOTAGE)/javatable-block.go.txt
+	@cmp -s internal/codegen/javatable/block.go $(JAVA_BLOCK_LEAD_SABOTAGE)/javatable-block.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Java block-lead sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/javatable/block.go":"%s/$(JAVA_BLOCK_LEAD_SABOTAGE)/javatable-block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(JAVA_BLOCK_LEAD_SABOTAGE)/overlay.json
+	go build -overlay $(JAVA_BLOCK_LEAD_SABOTAGE)/overlay.json -o $(JAVA_BLOCK_LEAD_SABOTAGE)/schema ./cmd/schema
+	$(JAVA_BLOCK_LEAD_SABOTAGE)/schema generate --lang java --out $(JAVA_BLOCK_LEAD_SABOTAGE)/generated/block tables/block
+	@grep -lq SABOTAGED $(JAVA_BLOCK_LEAD_SABOTAGE)/generated/block/*Block.java || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged Open"; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_BLOCK_LEAD_SABOTAGE)/classes \
+		$(JAVA_BLOCK_LEAD_SABOTAGE)/generated/block/*.java test/java-tables/src/BlockLead.java
+	@if $(JAVA) -cp $(JAVA_BLOCK_LEAD_SABOTAGE)/classes BlockLead testdata/wire/tables/block_render.bin testdata/wire/tables/block_padded.bin \
+			> $(JAVA_BLOCK_LEAD_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a block reader with no alignment check left the base-alignment gate green"; \
+		cat $(JAVA_BLOCK_LEAD_SABOTAGE)/log; exit 1; \
+	fi
+	@grep -q "block_render at lead 1 answered open" $(JAVA_BLOCK_LEAD_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the alignment at lead 1"; \
+		  cat $(JAVA_BLOCK_LEAD_SABOTAGE)/log; exit 1; }
+	@grep -m1 "FAILED:" $(JAVA_BLOCK_LEAD_SABOTAGE)/log
+	@echo "negative control: one missing alignment check in the Java block Open turns the base-alignment gate RED at lead 1"
 
 # THE ACCESSOR/DESCRIPTOR AGREEMENT GATE (docs/PORTING.md J1). Every row of
 # every committed block image and every node of the cook is read twice — once
@@ -809,6 +847,7 @@ tables-java-release:
 	$(MAKE) tables-java-versioning-negative-control
 	$(MAKE) conformance-negative-control-java-block
 	$(MAKE) tables-java-fuzz-negative-control
+	$(MAKE) tables-java-block-lead-negative-control
 	$(MAKE) tables-java-cook-extent-negative-control
 	$(MAKE) tables-java-runtime-home-negative-control
 
@@ -940,6 +979,8 @@ test-java: toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp 
 	$(MAKE) tables-java-zero-cost
 	$(MAKE) tables-java-runtime-home
 	$(MAKE) tables-java-fuzz
+	$(MAKE) tables-java-block-lead
+	$(MAKE) tables-java-block-lead-negative-control
 	$(MAKE) tables-java-order
 	$(MAKE) tables-java-cook-extent
 	# THE FIXED FORM against the C++ reference's own bytes (docs/SPEC-TABLES.md §3.4)
