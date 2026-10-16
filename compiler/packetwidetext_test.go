@@ -30,10 +30,10 @@ func TestPacketWideTextRefusesTableClosure(t *testing.T) {
 		}
 		u := unitFromSource(t, "package wide\n"+decl+edge+"\n")
 		for _, target := range packetWidePorts {
-			// go, cs and dart CARRY table wide text: go and cs on the id-table
-			// wire, dart on §3.4's fixed form. The refusal under test is the
-			// one every other port gives.
-			if target == "go" || target == "cs" || target == "dart" {
+			// go, cs, dart and js CARRY table wide text: go and cs on the
+			// id-table wire, dart and js on §3.4's fixed form. The refusal
+			// under test is the one every other port gives.
+			if target == "go" || target == "cs" || target == "dart" || target == "js" {
 				continue
 			}
 			_, err := New().Generate(u, target, nil)
