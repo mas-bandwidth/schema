@@ -1191,8 +1191,11 @@ func (b readArmBoard) markdown() string {
 // whose only changes are files under generated/ — the build regenerates them
 // from the committed emitter, and a revision whose committed copy is stale
 // would otherwise refuse every C++ sitting — and NAMES them on the board.
-// Any other change refuses the sitting.
-func dirtyPaths(porcelain string) ([]string, error) {
+// An UNTRACKED file is accepted only inside the measured leg's own emitter
+// output (generated/bench/paired/<leg>/ or generated/bench/<leg>/): a module
+// the emitter now writes that the committed copy predates (the Dart unit's
+// BenchWire.dart on sprint/schema-dart). Any other change refuses the sitting.
+func dirtyPaths(porcelain string, legs ...string) ([]string, error) {
 	var paths []string
 	for line := range strings.SplitSeq(porcelain, "\n") {
 		if strings.TrimSpace(line) == "" {
@@ -1202,12 +1205,28 @@ func dirtyPaths(porcelain string) ([]string, error) {
 			return nil, fmt.Errorf("unreadable status line %q", line)
 		}
 		p := strings.TrimSpace(line[3:])
-		if !strings.HasPrefix(p, "generated/") || strings.HasPrefix(line, "??") {
+		if !strings.HasPrefix(p, "generated/") || (strings.HasPrefix(line, "??") && !legEmitted(p, legs)) {
 			return nil, fmt.Errorf("the tree is dirty outside the build's own regenerated files: %s", p)
 		}
 		paths = append(paths, p)
 	}
 	return paths, nil
+}
+
+// legEmitted is true when p is a file (never a directory) directly inside one
+// of the legs' own generated output directories.
+func legEmitted(p string, legs []string) bool {
+	if strings.HasSuffix(p, "/") {
+		return false
+	}
+	for _, leg := range legs {
+		for _, dir := range []string{"generated/bench/paired/" + leg + "/", "generated/bench/" + leg + "/"} {
+			if rest, ok := strings.CutPrefix(p, dir); ok && rest != "" && !strings.Contains(rest, "/") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // porcelain is `git status --porcelain` UNTRIMMED: its first column is
@@ -1248,7 +1267,7 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 	if err != nil {
 		return err
 	}
-	dirty, err := dirtyPaths(status)
+	dirty, err := dirtyPaths(status, leg)
 	if err != nil {
 		return err
 	}

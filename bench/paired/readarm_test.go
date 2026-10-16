@@ -168,6 +168,28 @@ func TestTheReadArmAcceptsOnlyTheBuildsOwnRegeneratedFiles(t *testing.T) {
 	}
 }
 
+func TestTheReadArmAcceptsAnUntrackedModuleOnlyFromTheMeasuredLegsEmitter(t *testing.T) {
+	t.Parallel()
+	got, err := dirtyPaths("?? generated/bench/paired/dart/BenchWire.dart\n M generated/bench/dart/Bench.dart\n", "dart")
+	if err != nil || len(got) != 2 || got[0] != "generated/bench/paired/dart/BenchWire.dart" {
+		t.Fatalf("%v %v", got, err)
+	}
+	for _, status := range []string{
+		"?? generated/stray.h\n",
+		"?? generated/bench/paired/cpp/BenchWire.h\n",
+		"?? generated/bench/paired/dart/\n",
+		"?? generated/bench/paired/dart/sub/x.dart\n",
+		"?? bench/paired/dart/BenchWire.dart\n",
+	} {
+		if _, err := dirtyPaths(status, "dart"); err == nil {
+			t.Errorf("accepted %q for the dart leg", status)
+		}
+	}
+	if _, err := dirtyPaths("?? generated/bench/paired/dart/BenchWire.dart\n"); err == nil {
+		t.Error("accepted an untracked module with no measured leg named")
+	}
+}
+
 func TestTheReadArmBoardHasTheStandardsShape(t *testing.T) {
 	t.Parallel()
 	b := readArmBoard{
