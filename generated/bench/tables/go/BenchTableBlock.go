@@ -6,7 +6,8 @@
 //
 // NOTHING DECLARES THIS FORM. Every fixed table has one, and it is emitted on
 // the side: compile this file when you build or read a block. The unit's
-// <Base>Table.go carries not one symbol of it.
+// <Base>Table.go carries none of its entry points; the blittable <Name>Row
+// records it lays out are the core's, shared with the cooked form.
 //
 // It is UNSAFE by nature, not by taste: a block is memory another language
 // wrote, and pointing at it without a copy is the whole point (§12.1).
