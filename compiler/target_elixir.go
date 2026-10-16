@@ -49,9 +49,13 @@ func (elixirTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage
 			return nil, err
 		}
 	}
-	if err := refuseVoidArms(u, "elixir"); err != nil {
-		return nil, err
-	}
+	// refuseVoidArms is retired here on purpose (docs/SPEC-TABLES.md §2.6, §3's
+	// kind-32 paragraph): the variable form carries a PAYLOAD-FREE arm as the
+	// arm id under kind 32 with L = 0, its value the arm's name alone, and
+	// reads L != 0 there as malformed (internal/codegen/elixirtable,
+	// TestPayloadFreeArmsOnTheTableWireElixir). The fixed form's shared
+	// eligibility walk still declines a union with one (ir/fixedform.go), so
+	// such a root takes the variable form rather than a mis-encoded record.
 	if err := refuseBytes(u, "elixir"); err != nil {
 		return nil, err
 	}
