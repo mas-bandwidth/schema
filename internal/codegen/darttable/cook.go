@@ -66,6 +66,14 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	c := &cookUnit{members: map[string]*ir.MemberLayout{}, skipped: map[string]string{}}
 	for _, name := range sortedKeys(u.Tables) {
 		st := u.Tables[name]
+		// A map's generated ENTRY (docs/SPEC-TABLES.md §2.8) is never a root or
+		// a row: it is an extent inside its holder's node, reached through the
+		// holder's map slot, exactly as the block form treats it (§19). A cook
+		// for it would name a value class that lives only in the variable form's
+		// <Base>Wire.dart, which a cook library does not import.
+		if st.MapEntryOf != "" {
+			continue
+		}
 		if why := cookableClosure(u, st); why != "" {
 			c.skipped[name] = why
 			continue
