@@ -137,14 +137,15 @@ func TestCsCarriesBlobs(t *testing.T) {
 			t.Errorf("blob field %q missing from generated C#", want)
 		}
 	}
-	// rust carries both buffers on the variable wire now
-	// (internal/codegen/rusttable/variableclass_test.go), so the non-carrier
-	// this refusal is asked for is java
-	err = refuseBlobs(u, "java")
+	// rust carries both buffers on the variable wire
+	// (internal/codegen/rusttable/variableclass_test.go) and java carries them
+	// on its variable wire too (compiler/target_java.go registers blobs), so
+	// the non-carrier this refusal is asked for is dart
+	err = refuseBlobs(u, "dart")
 	if err == nil {
-		t.Fatal("refuseBlobs accepted a blob-bearing unit for java")
+		t.Fatal("refuseBlobs accepted a blob-bearing unit for dart")
 	}
-	for _, want := range []string{"*bytes and *string are c, cpp, cs, elixir, go, js and rust only today", "--lang cs", "--lang js", "--lang rust"} {
+	for _, want := range []string{"*bytes and *string are c, cpp, cs, elixir, go, java, js and rust only today", "--lang cs", "--lang java", "--lang js", "--lang rust"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("blob-carrier refusal does not name %q: %v", want, err)
 		}
