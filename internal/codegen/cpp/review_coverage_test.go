@@ -123,3 +123,49 @@ type Padding {
 		}
 	}
 }
+
+// TestUntakenBranchZeroesFloatsAndUnions reaches emitZeroField's float32,
+// float64 and union arms (functions.go:267, 269, 291): an untaken branch side
+// reads as ZERO values (SPEC §5), not as the declared defaults.
+func TestUntakenBranchZeroesFloatsAndUnions(t *testing.T) {
+	t.Parallel()
+	u := unitFromSources(t, map[string]string{
+		"Guarded.schema": `package t
+type Ring {
+    radius int32
+}
+union Shape {
+    ring Ring
+}
+type Guarded {
+    on bool
+    if on
+    {
+        f float32 = 1.5
+        d float64 = 2.5
+        s Shape
+    }
+}
+`,
+	})
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := string(files["GuardedWire.h"])
+	read := w[strings.Index(w, "bool ReadGuarded("):]
+	for _, want := range []string{
+		"value.f = 0.0f;",
+		"value.d = 0.0;",
+		"memset( (void*) &value.s, 0, sizeof( value.s ) );",
+	} {
+		if !strings.Contains(read, want) {
+			t.Errorf("ReadGuarded must zero the untaken side with %q:\n%s", want, read)
+		}
+	}
+	for _, bad := range []string{"value.f = 1.5f;", "value.d = 2.5;"} {
+		if strings.Contains(read, bad) {
+			t.Errorf("ReadGuarded restores a declared default on the untaken side (%q); §5 wants zero", bad)
+		}
+	}
+}
