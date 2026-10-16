@@ -1,3 +1,9 @@
+> **SUPERSEDED (derived reads), 2026-10-16.** Both "read (derived)" numbers
+> below are round-trip minus write, which the gate's contract forbids
+> (BENCH-STANDARD.md §2.9; docs/roadmap.sexp `gates/packet-read/java/identity`).
+> This file is kept as history and credits nothing. The measured receipt is
+> `bench/results/packet-read-java/RESULT.md`, where both reads are timed alone.
+
 # gates/packet-read/java/identity — java: identity fixed read versus its own packet read
 
 **Verdict: FIXED-FASTER (2.12x)**
