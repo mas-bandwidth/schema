@@ -566,6 +566,23 @@ tables-elixir-variable-class: build/conformance/manifest.txt
 
 test-elixir: tables-elixir-variable-class
 
+# THE FILE-MODULE STEP-ASIDE GATE (docs/SPEC.md, the Elixir backend list):
+# a schema file whose base is also a declaration's name (tables/arms/Carry.schema
+# declares union Carry) makes the packet emitter's file-scope module step aside
+# from <Ns>.<Base> to <Ns>.<Base>File. This generates the unit out of tree,
+# compiles the output with $(ELIXIRC) --warnings-as-errors, and runs
+# test/elixir-filemodule/main.exs, which calls a function of the renamed file
+# module and a function of the union's own module and asserts both resolve — two
+# distinct modules.
+.PHONY: tables-elixir-file-module
+tables-elixir-file-module: bin/schema
+	@rm -rf build/elixir-filemodule && mkdir -p build/elixir-filemodule/gen build/elixir-filemodule/ebin
+	./bin/schema generate --lang elixir --out build/elixir-filemodule/gen tables/arms
+	$(ELIXIRC) --warnings-as-errors -o build/elixir-filemodule/ebin build/elixir-filemodule/gen/*.ex
+	$(ELIXIR) -pa build/elixir-filemodule/ebin test/elixir-filemodule/main.exs
+
+test-elixir: tables-elixir-file-module
+
 # THE BUILDER SIDE (docs/SPEC-TABLES.md §19.1, §7.6). TestBlockBuildAndCookWriteElixir
 # builds the pinned block golden and cooks the carried instances to `schema cook`
 # in both byte orders; a short buffer returns false and writes nothing. It is a
