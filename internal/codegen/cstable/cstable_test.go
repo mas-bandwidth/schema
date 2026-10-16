@@ -340,8 +340,10 @@ func TestCsInliningStopsAtTheVariableClass(t *testing.T) {
 		}
 	}
 
-	if got, want := strings.Count(src, attr), len(wantInlinedPrimitives); got != want {
+	// Counted by the option name, not the attribute spelling, so a planted
+	// attribute is caught however it is qualified
+	// ([global::System.Runtime.CompilerServices.MethodImpl(...)] included).
+	if got, want := strings.Count(src, "MethodImplOptions.AggressiveInlining"), len(wantInlinedPrimitives); got != want {
 		t.Errorf("AggressiveInlining count = %d, want %d (primitive helpers only; Fixed-class body attributes reverted in bench/results/cs-inlining-405.md)", got, want)
 	}
 }
-
