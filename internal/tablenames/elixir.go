@@ -35,5 +35,6 @@ func init() {
 		// TableMessage would collide with.
 		Name{Name: "TableMessage", What: "the MESSAGE FORM's announcement surface module (docs/SPEC-TABLES.md §3.3)"},
 		Name{Name: "BuildVersion", What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust, Java, Elixir and JavaScript put it at unit scope — Java in a file of its own name, Elixir as a module, JavaScript as a module-scope export — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},
+		Name{Name: "UnitView", What: "the generated unit-registry module (<Package>.UnitView, docs/SPEC-TABLES.md §8.3)", Scoped: true, View: true},
 	)
 }
