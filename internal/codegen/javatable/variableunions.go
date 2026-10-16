@@ -20,7 +20,7 @@ func variableUnionStruct(un *ir.Union) *ir.Struct {
 	for _, arm := range un.Variants {
 		if !arm.Void() {
 			one := *arm.F
-			one.Name = arm.Name
+			nameArmField(&one, arm)
 			st.Fields = append(st.Fields, &one)
 		}
 	}
@@ -54,7 +54,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 		fmt.Fprintf(&b, "        case %d:{\n", i+1)
 		if !arm.Void() {
 			one := *arm.F
-			one.Name = arm.Name
+			nameArmField(&one, arm)
 			writeVariableGraphField(&b, &one)
 		}
 		b.WriteString("        return true;}\n")
@@ -65,7 +65,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 		if !arm.Void() {
 			fmt.Fprintf(&b, "        case %d:{\n", i+1)
 			one := *arm.F
-			one.Name = arm.Name
+			nameArmField(&one, arm)
 			writeVariableResolveField(&b, &one)
 			b.WriteString("        break;}\n")
 		}
@@ -89,7 +89,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 				continue
 			}
 			one := *arm.F
-			one.Name = arm.Name
+			nameArmField(&one, arm)
 			b.WriteString("        int body=w.off;\n")
 			if retaining {
 				fmt.Fprintf(&b, "path[2*depth]=%d;path[2*depth+1]=0;\n", i)
@@ -115,7 +115,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 				continue
 			}
 			one := *arm.F
-			one.Name = arm.Name
+			nameArmField(&one, arm)
 			expected := ir.TableWireFieldKind(&one)
 			condition := fmt.Sprintf("kind==%d", expected)
 			for k := 1; k <= 33; k++ {
@@ -147,7 +147,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			b.WriteString("        b.append(\"null\");\n")
 		} else {
 			one := *arm.F
-			one.Name = arm.Name
+			nameArmField(&one, arm)
 			b.WriteString("        {int nestedDepth=depth+1;\n")
 			var child strings.Builder
 			writeJsonFieldValue(&child, u, st, &one)
@@ -164,7 +164,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			fmt.Fprintf(&b, "        if(in.peek()=='n'){in.lit(\"null\");v.tag=%d;}else{in.skipValue();in.rep.kindMismatch++;}\n", i+1)
 		} else {
 			one := *arm.F
-			one.Name = arm.Name
+			nameArmField(&one, arm)
 			shape := variableJsonShape(&one, "in.peek()")
 			if one.Type.Pointer {
 				shape = "(" + shape + "||in.peek()=='n')"
@@ -228,4 +228,25 @@ func writeUnionFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	fmt.Fprintf(b, "        if(!v.%s.isEmpty()){w.putLeb(w.ref(F_%s));w.put8(14);\n", m, m)
 	writeVariablePayload(b, u, st.Name, f, "v."+m, "w", 0)
 	b.WriteString("        }\n")
+}
+
+// nameArmField names an arm's payload field for the union's Value class. The
+// class's discriminant is the public member `tag` (SPEC-TABLES §2.6), so an
+// arm whose Java member would also be `tag` (tables/stream's Frame declares
+// one) is stored as `tagArm` (the name `tag_arm`). The
+// arm's wire id and text key are its declared name's either way: both are read
+// off the arm (arm.WireName(), arm.Name), and WasName/JsonKey keep the field's
+// own id and key on that name should a helper derive them from the field.
+func nameArmField(one *ir.Field, arm ir.UnionVariant) {
+	one.Name = arm.Name
+	if javaName(arm.Name) != "tag" {
+		return
+	}
+	if one.WasName == "" {
+		one.WasName = arm.WireName()
+	}
+	if one.JsonKey == "" {
+		one.JsonKey = arm.Name
+	}
+	one.Name = arm.Name + "_arm"
 }

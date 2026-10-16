@@ -2,67 +2,82 @@ package javatable
 
 import (
 	"fmt"
+	"maps"
+	"math"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// THE REFLECTION DESCRIPTORS (docs/SPEC-TABLES.md §8), the card's slice only:
-// one table type descriptor per table in the card closure, carrying each
-// field's name, wire kind, shape (value/list/blob) and declared bound, plus a
-// unit registry that lists every descriptor. Enough to walk a record by name
-// and kind without a per-version struct. Nothing else of §8 is claimed: no
-// doc/tags columns, no type view for a `type` no table reaches, no union or
-// flags rows.
+// THE REFLECTION DESCRIPTORS (docs/SPEC-TABLES.md §8), for EVERY declaration
+// the unit holds: one type descriptor per table (§8.1) and per `type` (§8.2,
+// the type view), each carrying its fields' name, wire kind, shape, declared
+// bound, text key, type spelling, wire id, optionality, doc comment and tags;
+// the unit's vocabulary (enums, flags, unions with their arms' payload
+// descriptors, constants); and the unit registry with its UnitView (§8.3),
+// which lists every table and every type. The Go leg
+// (internal/codegen/gotable/view.go) is the model; the listing a program
+// prints from TableRegistry.unitView() is byte-compared against the
+// compiler's own (internal/viewlisting, §8.7) by `make tables-java-view`.
 //
-// A field's SHAPE (docs/SPEC-TABLES.md §8.1) is the three-way the card's
-// constructs split into: `value` for a scalar (bool, int32/int64, enum) and an
-// inline string(N); `blob` for the *string byte buffer (§2.5); `list` for an
-// unbounded []T (§2.9). A field's DECLARED BOUND is the string's declared
-// length, and 0 for a blob and an unbounded list, which have none.
+// A field's SHAPE (docs/SPEC-TABLES.md §8.1) is the three-way the constructs
+// split into: `value` for a scalar, an enum, a nested record and an inline
+// string(N); `blob` for the *string and *bytes byte buffers (§2.5); `list` for
+// an array (§2.9). A field's DECLARED BOUND is the string's declared length,
+// and 0 for a blob and a list.
+//
+// JAVA HAS NO RECORD LAYOUT. A field's OFFSET (§8.1) is therefore relative to
+// the object that holds it, and an arm's descriptor states the one thing §8.7
+// asks of it: every arm of a union overlays the union's payload, so each arm
+// field's offset is 0.
 func generateViewFiles(u *ir.Unit) (map[string][]byte, error) {
-	tables := cardDescriptorTables(u)
-	if len(tables) == 0 {
+	types, tables := viewDeclarations(u)
+	if len(types)+len(tables) == 0 {
 		return map[string][]byte{}, nil
 	}
+	closure := ir.TableClosure(u)
 	out := map[string][]byte{
-		"TableFieldInfo.java": javaFile(u, "a table field's descriptor (docs/SPEC-TABLES.md §8)", tableFieldInfoRuntime),
-		"TableTypeInfo.java":  javaFile(u, "a table type's descriptor (docs/SPEC-TABLES.md §8)", tableTypeInfoRuntime),
+		"TableFieldInfo.java":      javaFile(u, "a field's descriptor (docs/SPEC-TABLES.md §8.1)", tableFieldInfoRuntime),
+		"TableTypeInfo.java":       javaFile(u, "a table's or a type's descriptor (docs/SPEC-TABLES.md §8.1, §8.2)", tableTypeInfoRuntime),
+		"TableVariantInfo.java":    javaFile(u, "one row of an enum, flags or union vocabulary (docs/SPEC-TABLES.md §8.3)", tableVariantInfoRuntime),
+		"TableVocabularyInfo.java": javaFile(u, "an enum, flags or union declaration's descriptor (docs/SPEC-TABLES.md §8.3)", tableVocabularyInfoRuntime),
+		"TableConstantInfo.java":   javaFile(u, "a constant's descriptor (docs/SPEC-TABLES.md §8.3)", tableConstantInfoRuntime),
+		"TableViewEntry.java":      javaFile(u, "one registry entry: a table or a type (docs/SPEC-TABLES.md §8.3)", tableViewEntryRuntime),
 	}
-	for _, st := range tables {
+	for _, st := range append(slices.Clone(types), tables...) {
 		out[st.Name+"Descriptor.java"] = javaFile(u,
-			fmt.Sprintf("the descriptor for table %s (docs/SPEC-TABLES.md §8)", st.Name),
-			descriptorFor(u, st))
+			fmt.Sprintf("the descriptor for %s %s (docs/SPEC-TABLES.md §8)", declWhat(st), st.Name),
+			descriptorFor(u, st, !st.IsTable && !closure[st.Name]))
 	}
-	out["TableRegistry.java"] = javaFile(u, "the unit's registry of table descriptors (docs/SPEC-TABLES.md §8.3)", registryFor(tables))
+	out["TableRegistry.java"] = javaFile(u, "the unit's registry of descriptors (docs/SPEC-TABLES.md §8.3)", registryFor(tables, types))
+	out["TableUnitView.java"] = javaFile(u, "the unit's view: every declaration, its doc and tags (docs/SPEC-TABLES.md §8.3)", unitViewFor(u, types, tables))
 	return out, nil
 }
 
-// cardDescriptorTables is the set of tables the descriptors name: every card
-// variable root plus the table elements its unbounded lists reach (§2.9), in
-// declaration order, deduplicated.
-func cardDescriptorTables(u *ir.Unit) []*ir.Struct {
-	seen := map[string]bool{}
-	var tables []*ir.Struct
-	var add func(*ir.Struct)
-	add = func(st *ir.Struct) {
-		if st == nil || st.IsMapEntry() || seen[st.Name] {
-			return
-		}
-		seen[st.Name] = true
-		for _, f := range st.Fields {
-			if f.Type.Kind == ir.TNamed {
-				if elem, ok := f.Type.Ref.(*ir.Struct); ok {
-					add(elem)
-				}
-			}
-		}
-		tables = append(tables, st)
+func declWhat(st *ir.Struct) string {
+	if st.IsTable {
+		return "table"
 	}
-	for _, st := range cardVariableTables(u) {
-		add(st)
+	return "type"
+}
+
+// viewDeclarations is the registry's two sets, the `type`s and the tables, each
+// in declaration-NAME order (docs/SPEC-TABLES.md §8.3). A map's generated entry
+// table is claimed rather than declared (§2.8), so it is no row of the
+// registry.
+func viewDeclarations(u *ir.Unit) (types, tables []*ir.Struct) {
+	for _, n := range slices.Sorted(maps.Keys(u.Structs)) {
+		if st := u.Structs[n]; st != nil && !st.IsTable {
+			types = append(types, st)
+		}
 	}
-	return tables
+	for _, n := range slices.Sorted(maps.Keys(u.Tables)) {
+		if st := u.Tables[n]; st != nil && !st.IsMapEntry() {
+			tables = append(tables, st)
+		}
+	}
+	return types, tables
 }
 
 // fieldShape is a field's descriptor shape (docs/SPEC-TABLES.md §8.1).
@@ -88,7 +103,98 @@ func fieldBound(f *ir.Field) int64 {
 	return 0
 }
 
-func descriptorFor(u *ir.Unit, st *ir.Struct) string {
+// viewArmKind and viewArmBound are an arm field's kind and bound as §8.7 reads
+// them off the arm's FIELD descriptor: a pointer arm states the wire it rides,
+// a byte buffer is an array of u8, and the bound is the array's capacity or
+// the string's or buffer's maximum length.
+func viewArmKind(f *ir.Field) int {
+	switch {
+	case f.Type.Pointer:
+		return ir.TableKindPointer
+	case f.Type.Kind == ir.TBytes && !f.Type.Blob():
+		return ir.TableKindU8 // a byte buffer is an array of u8
+	}
+	return ir.TableWireScalarKind(f)
+}
+
+func viewArmBound(f *ir.Field) int64 {
+	switch {
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		return 0
+	case f.Array != ir.ArrayNone:
+		return f.ArrayBound
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+		return f.Type.Size
+	}
+	return 0
+}
+
+// javaString is a Java string literal for any text, a doc comment included.
+// Java translates \uXXXX escapes BEFORE it lexes a literal, so a control
+// character is written as an octal escape (a \u000a would end the line inside
+// the literal), and anything outside ASCII as \uXXXX UTF-16 units.
+func javaString(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range s {
+		switch {
+		case r == '"':
+			b.WriteString(`\"`)
+		case r == '\\':
+			b.WriteString(`\\`)
+		case r < 0x20 || r == 0x7f:
+			fmt.Fprintf(&b, `\%03o`, r)
+		case r < 0x80:
+			b.WriteRune(r)
+		case r < 0x10000:
+			fmt.Fprintf(&b, `\u%04x`, r)
+		default:
+			r -= 0x10000
+			fmt.Fprintf(&b, `\u%04x\u%04x`, 0xd800+(r>>10), 0xdc00+(r&0x3ff))
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
+}
+
+// javaTags is a declaration's tags (SPEC §4.2) as a String[] in declared order.
+func javaTags(tags []string) string {
+	if len(tags) == 0 {
+		return "new String[0]"
+	}
+	parts := make([]string, len(tags))
+	for i, t := range tags {
+		parts[i] = javaString(t)
+	}
+	return "new String[] {" + strings.Join(parts, ", ") + "}"
+}
+
+func viewFile(u *ir.Unit, name string) string {
+	if base, ok := u.DeclFile[name]; ok {
+		return base + ".schema"
+	}
+	return ""
+}
+
+// fieldDescriptor is one field's descriptor row (docs/SPEC-TABLES.md §8.1):
+// the wire columns of `of` and the view columns of `view`. A `type` no table
+// closure reaches has no table wire, so its text key is null and its id 0
+// (§8.2).
+func fieldDescriptor(f *ir.Field, kind int, bound int64, outside bool) string {
+	json, id := javaString(ir.TableFieldJsonKey(f)), ir.TableFieldWireId(f)
+	if outside {
+		json, id = "null", 0
+	}
+	named := ""
+	if f.Type.Kind == ir.TNamed {
+		named = f.Type.Name
+	}
+	return fmt.Sprintf("TableFieldInfo.of(%q, %d, %q, %dL).view(%s, %s, 0x%016xL, %v, %s, %s, %s)",
+		f.Name, kind, fieldShape(f), bound, json, javaString(ir.TableTypeSpelling(f)), id,
+		f.Type.Optional, javaString(named), javaString(f.Doc), javaTags(f.Tags))
+}
+
+func descriptorFor(u *ir.Unit, st *ir.Struct, outside bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "public final class %sDescriptor {\n", st.Name)
 	fmt.Fprintf(&b, "    private %sDescriptor() {}\n\n", st.Name)
@@ -98,43 +204,187 @@ func descriptorFor(u *ir.Unit, st *ir.Struct) string {
 	b.WriteString("    private static final class Holder {\n")
 	b.WriteString("        static final TableTypeInfo TABLE = build();\n\n")
 	b.WriteString("        private static TableTypeInfo build() {\n")
-	fmt.Fprintf(&b, "        TableTypeInfo t = new TableTypeInfo();\n")
+	b.WriteString("        TableTypeInfo t = new TableTypeInfo();\n")
 	fmt.Fprintf(&b, "        t.name = %q;\n", st.Name)
-	fmt.Fprintf(&b, "        t.fields = new TableFieldInfo[] {\n")
+	fmt.Fprintf(&b, "        t.table = %v;\n", st.IsTable)
+	fmt.Fprintf(&b, "        t.doc = %s;\n", javaString(st.Doc))
+	fmt.Fprintf(&b, "        t.tags = %s;\n", javaTags(st.Tags))
+	b.WriteString("        t.fields = new TableFieldInfo[] {\n")
 	for _, f := range st.Fields {
-		fmt.Fprintf(&b, "            TableFieldInfo.of(%q, %d, %q, %dL),\n", f.Name, variableWireKind(f), fieldShape(f), fieldBound(f))
+		fmt.Fprintf(&b, "            %s,\n", fieldDescriptor(f, variableWireKind(f), fieldBound(f), outside))
 	}
 	b.WriteString("        };\n")
 	b.WriteString("        return t;\n")
 	b.WriteString("        }\n")
 	b.WriteString("    }\n\n")
-	fmt.Fprintf(&b, "    public static TableTypeInfo tableType() { return Holder.TABLE; }\n")
+	b.WriteString("    public static TableTypeInfo tableType() { return Holder.TABLE; }\n")
+	b.WriteString("}\n")
+	_ = u
+	return b.String()
+}
+
+// registryFor is the unit registry (docs/SPEC-TABLES.md §8.3): every table's
+// and every type's descriptor, tables first, each set in declaration-name
+// order, and the unit's view.
+func registryFor(tables, types []*ir.Struct) string {
+	var b strings.Builder
+	b.WriteString("public final class TableRegistry {\n")
+	b.WriteString("    private TableRegistry() {}\n\n")
+	b.WriteString("    // Every table's and every type's descriptor (docs/SPEC-TABLES.md §8.3),\n")
+	b.WriteString("    // tables first, each in declaration-name order. A fresh array per call;\n")
+	b.WriteString("    // the descriptors are immutable after class initialization.\n")
+	b.WriteString("    public static TableTypeInfo[] tables() {\n")
+	b.WriteString("        return new TableTypeInfo[] {\n")
+	for _, st := range append(slices.Clone(tables), types...) {
+		fmt.Fprintf(&b, "            %sDescriptor.tableType(),\n", st.Name)
+	}
+	b.WriteString("        };\n")
+	b.WriteString("    }\n\n")
+	b.WriteString("    // The unit's view (docs/SPEC-TABLES.md §8.3): every declaration with its\n")
+	b.WriteString("    // doc comment and tags, built once.\n")
+	b.WriteString("    public static TableUnitView unitView() { return TableUnitView.unit(); }\n")
 	b.WriteString("}\n")
 	return b.String()
 }
 
-func registryFor(tables []*ir.Struct) string {
+// unitViewFor is TableUnitView: the runtime type and this unit's one instance
+// (docs/SPEC-TABLES.md §8.3). Every set is in declaration-name order, a
+// variant list in declared order with None first for an enum and a union.
+func unitViewFor(u *ir.Unit, types, tables []*ir.Struct) string {
+	reached := ir.TableClosureVocabulary(u)
 	var b strings.Builder
-	b.WriteString("public final class TableRegistry {\n")
-	b.WriteString("    private TableRegistry() {}\n\n")
-	b.WriteString("    // The unit's table descriptors (docs/SPEC-TABLES.md §8.3), in\n")
-	b.WriteString("    // declaration order. Immutable after class initialization.\n")
-	b.WriteString("    public static TableTypeInfo[] tables() {\n")
-	b.WriteString("        return new TableTypeInfo[] {\n")
-	for _, st := range tables {
-		fmt.Fprintf(&b, "            %sDescriptor.tableType(),\n", st.Name)
+	b.WriteString(tableUnitViewRuntime)
+	b.WriteString("    private static final class Holder {\n")
+	b.WriteString("        static final TableUnitView UNIT = build();\n\n")
+	b.WriteString("        private static TableUnitView build() {\n")
+	b.WriteString("        TableUnitView v = new TableUnitView();\n")
+	fmt.Fprintf(&b, "        v.packageName = %q;\n", u.Package)
+	fmt.Fprintf(&b, "        v.protocolId = 0x%016xL;\n", u.ProtocolId)
+	for _, set := range []struct {
+		member string
+		decls  []*ir.Struct
+	}{{"types", types}, {"tables", tables}} {
+		fmt.Fprintf(&b, "        v.%s = new TableViewEntry[] {\n", set.member)
+		for _, st := range set.decls {
+			fmt.Fprintf(&b, "            TableViewEntry.of(%q, %s, %v, %sDescriptor.tableType(), %s, %s),\n",
+				st.Name, javaString(viewFile(u, st.Name)), st.IsTable, st.Name, javaString(st.Doc), javaTags(st.Tags))
+		}
+		b.WriteString("        };\n")
+	}
+	// enums: row 0 is None, then the variants in DECLARED order
+	b.WriteString("        v.enums = new TableVocabularyInfo[] {\n")
+	for _, n := range slices.Sorted(maps.Keys(u.Enums)) {
+		e := u.Enums[n]
+		fmt.Fprintf(&b, "            TableVocabularyInfo.of(%q, %s, %dL, %d, %s, %s, new TableVariantInfo[] {\n",
+			n, javaString(viewFile(u, n)), e.Max, e.StorageBits, javaString(e.Doc), javaTags(e.Tags))
+		b.WriteString("                TableVariantInfo.of(0L, \"None\", 0x0000000000000000L, \"\", new String[0]),\n")
+		for i, variant := range e.Variants {
+			id := uint64(0)
+			if reached[n] {
+				id = ir.TableWireId(e.VariantWireName(i))
+			}
+			fmt.Fprintf(&b, "                TableVariantInfo.of(%dL, %q, 0x%016xL, %s, %s),\n",
+				i+1, variant, id, javaString(e.VariantDocs[i]), javaTags(e.VariantTags[i]))
+		}
+		b.WriteString("            }),\n")
 	}
 	b.WriteString("        };\n")
-	b.WriteString("    }\n")
+	// flags: a BIT INDEX per variant, and no wire id: a mask's variants ride by
+	// position (docs/SPEC-TABLES.md §4, §8.3)
+	b.WriteString("        v.flags = new TableVocabularyInfo[] {\n")
+	for _, n := range slices.Sorted(maps.Keys(u.Flags)) {
+		f := u.Flags[n]
+		bits := 64
+		for _, w := range []int{8, 16, 32, 64} {
+			if f.WireBits <= w {
+				bits = w
+				break
+			}
+		}
+		fmt.Fprintf(&b, "            TableVocabularyInfo.of(%q, %s, %dL, %d, %s, %s, new TableVariantInfo[] {\n",
+			n, javaString(viewFile(u, n)), len(f.Variants)-1, bits, javaString(f.Doc), javaTags(f.Tags))
+		for i, variant := range f.Variants {
+			fmt.Fprintf(&b, "                TableVariantInfo.of(%dL, %q, 0x0000000000000000L, %s, %s),\n",
+				i, variant, javaString(f.VariantDocs[i]), javaTags(f.VariantTags[i]))
+		}
+		b.WriteString("            }),\n")
+	}
+	b.WriteString("        };\n")
+	// unions, the packet and the table ones in one name-ordered set: an arm
+	// carries its payload's spelling and either the payload's record
+	// descriptor (a body arm) or its own field descriptor (a general arm)
+	all := map[string]*ir.Union{}
+	maps.Copy(all, u.Unions)
+	maps.Copy(all, u.TableUnions)
+	b.WriteString("        v.unions = new TableVocabularyInfo[] {\n")
+	for _, n := range slices.Sorted(maps.Keys(all)) {
+		un := all[n]
+		fmt.Fprintf(&b, "            TableVocabularyInfo.of(%q, %s, %dL, %d, %s, %s, new TableVariantInfo[] {\n",
+			n, javaString(viewFile(u, n)), un.Max, un.StorageBits, javaString(un.Doc), javaTags(un.Tags))
+		b.WriteString("                TableVariantInfo.of(0L, \"None\", 0x0000000000000000L, \"\", new String[0]),\n")
+		for i, arm := range un.Variants {
+			id := uint64(0)
+			if reached[n] {
+				id = ir.TableWireId(arm.WireName())
+			}
+			row := fmt.Sprintf("TableVariantInfo.of(%dL, %q, 0x%016xL, %s, %s)", i+1, arm.Name, id, javaString(arm.Doc), javaTags(arm.Tags))
+			switch {
+			case arm.Void():
+			case arm.Body():
+				row += fmt.Sprintf(".body(%s, %sDescriptor.tableType())", javaString(ir.FieldTypeSpelling(arm.F)), arm.Ref.Name)
+			default:
+				f := *arm.F
+				f.Name = arm.Name
+				row += fmt.Sprintf(".field(%s, %s)", javaString(ir.FieldTypeSpelling(arm.F)),
+					fieldDescriptor(&f, viewArmKind(arm.F), viewArmBound(arm.F), false))
+			}
+			fmt.Fprintf(&b, "                %s,\n", row)
+		}
+		b.WriteString("            }),\n")
+	}
+	b.WriteString("        };\n")
+	b.WriteString("        v.constants = new TableConstantInfo[] {\n")
+	for _, n := range slices.Sorted(maps.Keys(u.Consts)) {
+		c := u.Consts[n]
+		integer, real := int64(0), uint64(0)
+		if c.IsFloat {
+			real = math.Float64bits(c.Float)
+		} else if c.Int != nil {
+			integer = int64(c.Int.Uint64())
+		}
+		fmt.Fprintf(&b, "            TableConstantInfo.of(%q, %s, %s, %v, %dL, Double.longBitsToDouble(0x%016xL), %s, %s),\n",
+			n, javaString(viewFile(u, n)), javaString(c.Storage), c.IsFloat, integer, real, javaString(c.Doc), javaTags(c.Tags))
+	}
+	b.WriteString("        };\n")
+	b.WriteString("        return v;\n")
+	b.WriteString("        }\n")
+	b.WriteString("    }\n\n")
+	b.WriteString("    public static TableUnitView unit() { return Holder.UNIT; }\n")
 	b.WriteString("}\n")
 	return b.String()
 }
 
 const tableFieldInfoRuntime = `public final class TableFieldInfo {
     public String name;
+    /** the field's wire kind (docs/SPEC-TABLES.md §3); an arm's, the kind its payload rides. */
     public int kind;
+    /** value, blob or list (§8.1). */
     public String shape;
+    /** the declared bound: a string's length, an arm's capacity; 0 for none. */
     public long bound;
+    /** the text form's key (§16.3); null on a type no table closure reaches. */
+    public String json;
+    /** the declared type, spelled as the schema spells it. */
+    public String typeName;
+    /** the table-wire id (§5); 0 on a type no table closure reaches. */
+    public long id;
+    public boolean optional;
+    /** the declaration a named field refers to, "" for none. */
+    public String named;
+    /** relative to the object that holds the field: 0 for every union arm, which all overlay the payload. */
+    public int offset;
+    public String doc;
+    public String[] tags;
 
     public static TableFieldInfo of(String name, int kind, String shape, long bound) {
         TableFieldInfo f = new TableFieldInfo();
@@ -144,11 +394,154 @@ const tableFieldInfoRuntime = `public final class TableFieldInfo {
         f.bound = bound;
         return f;
     }
+
+    TableFieldInfo view(String json, String typeName, long id, boolean optional, String named, String doc, String[] tags) {
+        this.json = json;
+        this.typeName = typeName;
+        this.id = id;
+        this.optional = optional;
+        this.named = named;
+        this.doc = doc;
+        this.tags = tags;
+        return this;
+    }
 }
 `
 
 const tableTypeInfoRuntime = `public final class TableTypeInfo {
     public String name;
+    /** true for a table, false for a type (docs/SPEC-TABLES.md §8.2). */
+    public boolean table;
     public TableFieldInfo[] fields;
+    public String doc;
+    public String[] tags;
 }
+`
+
+const tableVariantInfoRuntime = `public final class TableVariantInfo {
+    /** the variant's value: an enum's or a union's tag, a flag's bit index. */
+    public long value;
+    public String name;
+    /** the table-wire id (§5); 0 for a flag and for a declaration no table closure reaches. */
+    public long id;
+    /** a union arm's payload type, spelled as the schema spells it; null for a void arm and every non-arm row. */
+    public String payloadName;
+    /** a BODY arm's record descriptor, else null. */
+    public TableTypeInfo payload;
+    /** a GENERAL arm's field descriptor, else null. */
+    public TableFieldInfo field;
+    public String doc;
+    public String[] tags;
+
+    static TableVariantInfo of(long value, String name, long id, String doc, String[] tags) {
+        TableVariantInfo v = new TableVariantInfo();
+        v.value = value;
+        v.name = name;
+        v.id = id;
+        v.doc = doc;
+        v.tags = tags;
+        return v;
+    }
+
+    TableVariantInfo body(String payloadName, TableTypeInfo payload) {
+        this.payloadName = payloadName;
+        this.payload = payload;
+        return this;
+    }
+
+    TableVariantInfo field(String payloadName, TableFieldInfo field) {
+        this.payloadName = payloadName;
+        this.field = field;
+        return this;
+    }
+}
+`
+
+const tableVocabularyInfoRuntime = `public final class TableVocabularyInfo {
+    public String name;
+    /** the schema file that declares it. */
+    public String file;
+    public long max;
+    public int storageBits;
+    /** None first for an enum and a union, then the variants in declared order. */
+    public TableVariantInfo[] variants;
+    public String doc;
+    public String[] tags;
+
+    static TableVocabularyInfo of(String name, String file, long max, int storageBits, String doc, String[] tags, TableVariantInfo[] variants) {
+        TableVocabularyInfo v = new TableVocabularyInfo();
+        v.name = name;
+        v.file = file;
+        v.max = max;
+        v.storageBits = storageBits;
+        v.doc = doc;
+        v.tags = tags;
+        v.variants = variants;
+        return v;
+    }
+}
+`
+
+const tableConstantInfoRuntime = `public final class TableConstantInfo {
+    public String name;
+    public String file;
+    public String typeName;
+    public boolean isFloat;
+    public long intValue;
+    public double floatValue;
+    public String doc;
+    public String[] tags;
+
+    static TableConstantInfo of(String name, String file, String typeName, boolean isFloat, long intValue, double floatValue, String doc, String[] tags) {
+        TableConstantInfo c = new TableConstantInfo();
+        c.name = name;
+        c.file = file;
+        c.typeName = typeName;
+        c.isFloat = isFloat;
+        c.intValue = intValue;
+        c.floatValue = floatValue;
+        c.doc = doc;
+        c.tags = tags;
+        return c;
+    }
+}
+`
+
+const tableViewEntryRuntime = `public final class TableViewEntry {
+    public String name;
+    public String file;
+    public boolean table;
+    public TableTypeInfo type;
+    public String doc;
+    public String[] tags;
+
+    static TableViewEntry of(String name, String file, boolean table, TableTypeInfo type, String doc, String[] tags) {
+        TableViewEntry e = new TableViewEntry();
+        e.name = name;
+        e.file = file;
+        e.table = table;
+        e.type = type;
+        e.doc = doc;
+        e.tags = tags;
+        return e;
+    }
+}
+`
+
+const tableUnitViewRuntime = `public final class TableUnitView {
+    private TableUnitView() {}
+
+    public String packageName;
+    public long protocolId;
+    /** every type and every table, each in declaration-name order. */
+    public TableViewEntry[] types;
+    public TableViewEntry[] tables;
+    /** every enum, flags and union (packet and table unions in one set), and every constant, each in name order. */
+    public TableVocabularyInfo[] enums;
+    public TableVocabularyInfo[] flags;
+    public TableVocabularyInfo[] unions;
+    public TableConstantInfo[] constants;
+
+    // Published by CLASS INITIALIZATION (JLS §12.4), so every reader sees the
+    // whole view or waits for it.
 `

@@ -85,14 +85,11 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema
+build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema
 	@mkdir -p build/tables-generated-java
 	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit and the BYTE-BUFFER unit: their cook readers and
-	# variable-class codecs ride this stamp. tables/lists is NOT generated here:
-	# the compiler refuses the unit whole for java because Mixed holds an array
-	# of unions and Holders declares a map, so its rows answer absent and the
-	# lists corpus rides TestVariableClassBeyondCardConstructsJava instead.
+	# variable-class codecs ride this stamp.
 	./bin/schema generate --lang java --out build/tables-generated-java/pointers tables/pointers
 	./bin/schema generate --lang java --out build/tables-generated-java/blobs tables/blobs
 	./bin/schema generate --lang java --out build/tables-generated-java/block tables/block
@@ -148,6 +145,14 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAP
 	# unit: the conformance report rows read scalars_*.bin through it, counting
 	# the kind mismatches and raw-scale clamps of docs/SPEC-TABLES.md §15.
 	./bin/schema generate --lang java --out build/tables-generated-java/scalars2 test/tables/Scalars2.schema
+	# the remaining corpus units whose instances the conformance manifest names
+	# (stream, lists, backend, vocab, vocab9): the variable form carries every
+	# table of each, so every instance answers wire, report and the text form.
+	./bin/schema generate --lang java --out build/tables-generated-java/stream tables/stream
+	./bin/schema generate --lang java --out build/tables-generated-java/lists tables/lists
+	./bin/schema generate --lang java --out build/tables-generated-java/backend tables/backend
+	./bin/schema generate --lang java --out build/tables-generated-java/vocab tables/vocab
+	./bin/schema generate --lang java --out build/tables-generated-java/vocab9 tables/vocab9
 	@touch $@
 
 # The Java twin of the C++ "no serialize include path" build: a generated
@@ -1062,6 +1067,9 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/a1/*.java build/tables-generated-java/a2/*.java \
 		build/tables-generated-java/g1/*.java \
 		build/tables-generated-java/k1/*.java build/tables-generated-java/k2/*.java \
+		build/tables-generated-java/stream/*.java build/tables-generated-java/lists/*.java \
+		build/tables-generated-java/backend/*.java build/tables-generated-java/vocab/*.java \
+		build/tables-generated-java/vocab9/*.java \
 		test/conformance/java/src/Driver.java
 
 # THE JAVA CONFORMANCE NEGATIVE CONTROL, and it localises the block form's
@@ -1369,3 +1377,35 @@ tables-java-variable-fixed-class: bin/schema
 		-count=1 -timeout 600s -v -run '^TestFixedClassOnTableWireJava$$'
 
 test-java: tables-java-variable-arms tables-java-variable-fixed-class
+
+# THE JAVA UNIT REGISTRY GATE (docs/SPEC-TABLES.md §8.3, §8.7), the C leg's
+# tables-c-view through the Java surface: for every VIEW_CORPUS unit, the
+# listing test/java-view/View.java prints from TableRegistry.unitView() must be
+# byte-identical to the compiler's own (internal/viewlisting). The printer names
+# no declaration; its one import line is rewritten to the unit's package. The
+# doc and tag annotations of every row are what hold the doc-tags cell, and the
+# NEGATIVE CONTROL damages one doc in a copy of tabledemo's listing and requires
+# the comparison to go red.
+.PHONY: tables-java-view
+tables-java-view: bin/schema test/java-view/View.java
+	@rm -rf build/java-view && mkdir -p build/java-view
+	@set -e; for entry in $(VIEW_CORPUS); do \
+		dir=$${entry%%:*}; pkg=$${entry##*:}; \
+		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
+		./bin/schema generate --lang java --out build/java-view/generated/$$dir $$source > build/java-view/$$pkg.generate.log 2>&1 || { cat build/java-view/$$pkg.generate.log; exit 1; }; \
+		mkdir -p build/java-view/src-$$pkg build/java-view/classes-$$pkg; \
+		sed "s/^import tabledemo\.\*; \/\/ UNIT$$/import $$pkg.*; \/\/ UNIT/" test/java-view/View.java > build/java-view/src-$$pkg/View.java; \
+		grep -q "^import $$pkg\.\*; // UNIT$$" build/java-view/src-$$pkg/View.java || { echo "tables-java-view: the unit import was not rewritten for $$pkg"; exit 1; }; \
+		$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-view/classes-$$pkg \
+			build/java-view/generated/$$dir/*.java build/java-view/src-$$pkg/View.java; \
+		$(JAVA) -cp build/java-view/classes-$$pkg View > build/java-view/$$pkg.listing; \
+	done
+	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/java-view" go test -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
+	@mkdir -p build/java-view/negative
+	@sed '0,/ doc=[^ ]/s/ doc=\([^ ]\)/ doc=X\1/' build/java-view/tabledemo.listing > build/java-view/negative/tabledemo.listing
+	@if cmp -s build/java-view/tabledemo.listing build/java-view/negative/tabledemo.listing; then echo "tables-java-view negative control damaged nothing"; exit 1; fi
+	@if SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/java-view/negative" SCHEMA_VIEW_LISTING_UNITS=tabledemo go test -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > build/java-view/negative.log 2>&1; then echo "Java UnitView negative control escaped"; exit 1; fi
+	@grep -q "listing is not the compiler's" build/java-view/negative.log
+	@echo "Java UnitView: $(words $(VIEW_CORPUS)) units match the compiler's listing; a damaged doc is detected"
+
+test-java: tables-java-view
