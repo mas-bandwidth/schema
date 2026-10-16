@@ -209,14 +209,18 @@ defmodule AllocAudit do
       spawn_monitor(fn ->
         ref = reference(c)
         once(c, ref)
+        # binary_calls/0 builds one {:instance, id, stats} term per allocator
+        # instance (one per scheduler) on THIS heap: read it before the
+        # collection that opens the window and after live1 closes it, so the
+        # heap-word figure does not carry a scheduler-count-dependent term
+        binary0 = binary_calls()
         :erlang.garbage_collect()
         live0 = used()
-        binary0 = binary_calls()
         {:reductions, r0} = :erlang.process_info(self(), :reductions)
         reclaimed = traced(fn -> spin(c, ref, @iterations) end)
         {:reductions, r1} = :erlang.process_info(self(), :reductions)
-        binary1 = binary_calls()
         live1 = used()
+        binary1 = binary_calls()
 
         send(
           parent,
