@@ -686,13 +686,14 @@ async function codecOf(unit, root, path) {
 // is found by package, and a root it carries is one it exports a
 // ToJson/FromJson pair for. A root the unit's module does not carry (refused
 // by name at generation, §11) and a unit this leg does not generate at all
-// (tables/lists, the wide-text units) answer `<case>.absent`, which the matrix
-// counts as the row of work that is left, never as a pass.
+// (tables/lists) answer `<case>.absent`, which the matrix counts as the row of
+// work that is left, never as a pass.
 const textUnits = {
   tabledemo: "examples/TabledemoVariable.js",
   graphdemo: "pointers/GraphdemoVariable.js",
   blobdemo: "blobs/BlobdemoVariable.js",
   mapdemo: "maps/MapdemoVariable.js",
+  widedemo: "wide/WideVariable.js",
   blockdemo: "block/BlockdemoVariable.js",
   blockhome: "blockhome/BlockhomeVariable.js",
   messagedemo: "messages/MessagedemoVariable.js",
