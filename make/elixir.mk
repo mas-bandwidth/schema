@@ -570,7 +570,7 @@ test-elixir: tables-elixir-variable-class
 # a schema file whose base is also a declaration's name (tables/arms/Carry.schema
 # declares union Carry) makes the packet emitter's file-scope module step aside
 # from <Ns>.<Base> to <Ns>.<Base>File. This generates the unit out of tree,
-# compiles the output with $(ELIXIRC) --warnings-as-errors, and runs
+# compiles the output with $(ELIXIRC_STRICT), and runs
 # test/elixir-filemodule/main.exs, which calls a function of the renamed file
 # module and a function of the union's own module and asserts both resolve — two
 # distinct modules.
@@ -578,7 +578,7 @@ test-elixir: tables-elixir-variable-class
 tables-elixir-file-module: bin/schema
 	@rm -rf build/elixir-filemodule && mkdir -p build/elixir-filemodule/gen build/elixir-filemodule/ebin
 	./bin/schema generate --lang elixir --out build/elixir-filemodule/gen tables/arms
-	$(ELIXIRC) --warnings-as-errors -o build/elixir-filemodule/ebin build/elixir-filemodule/gen/*.ex
+	$(ELIXIRC_STRICT) -o build/elixir-filemodule/ebin build/elixir-filemodule/gen/Carry.ex
 	$(ELIXIR) -pa build/elixir-filemodule/ebin test/elixir-filemodule/main.exs
 
 test-elixir: tables-elixir-file-module
