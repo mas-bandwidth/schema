@@ -93,7 +93,9 @@ type TableMixed struct {
 
 // TableReport is the table-wire read report — the permissive contract's
 // ledger. Silence (all zero) means the data matched this reader's schema
-// exactly.
+// exactly. Err (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5) is the STRICT read's typed reason
+// for malformed, clamped, kind-mismatched, unknown form, wire-damaged and
+// build-version-mismatched. Unknown, Widened and Retained alone are not one.
 type TableReport struct {
 	Retained, RetainLost int32
 	Verdict              TableOpenVerdict // unsupported form is distinct from damage
@@ -290,6 +292,9 @@ const (
 	TableRefuseInvalidValue
 	TableRefuseAllocationFailed
 	TableRefuseWireDamaged
+	TableRefuseMalformed
+	TableRefuseClamped
+	TableRefuseKindMismatch
 )
 
 func (r TableRefuseReason) Error() string {
@@ -328,6 +333,12 @@ func (r TableRefuseReason) Error() string {
 		return "allocation_failed"
 	case TableRefuseWireDamaged:
 		return "wire_damaged"
+	case TableRefuseMalformed:
+		return "malformed"
+	case TableRefuseClamped:
+		return "clamped"
+	case TableRefuseKindMismatch:
+		return "kind_mismatch"
 	}
 	return "invalid refusal reason"
 }
@@ -358,11 +369,31 @@ func (m TableBuildVersionMismatch) Error() string {
 	return "build_version_mismatch: peer 0x" + string(peer[:]) + " own 0x" + string(own[:])
 }
 
-// Err is the report's typed error: the strict build-version refusal as a
-// TableBuildVersionMismatch (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3), nil on a clean read.
+// Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
+// The read report). A strict read refuses malformed, clamped, kind-mismatched,
+// unknown form, wire-damaged and build-version-mismatched, each as one typed
+// reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
 func (r *TableReport) Err() error {
-	if r != nil && r.Reason == "build_version_mismatch" {
+	if r == nil {
+		return nil
+	}
+	if r.Reason == "build_version_mismatch" {
 		return TableBuildVersionMismatch{Peer: r.BuildVersionPeer, Own: r.BuildVersionOwn}
+	}
+	if r.Verdict == TableOpenRefused || r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
+		return TableRefuseUnknownForm
+	}
+	if r.Verdict == TableOpenDamaged {
+		return TableRefuseWireDamaged
+	}
+	if r.Malformed {
+		return TableRefuseMalformed
+	}
+	if r.Clamped > 0 {
+		return TableRefuseClamped
+	}
+	if r.KindMismatch > 0 {
+		return TableRefuseKindMismatch
 	}
 	return nil
 }
@@ -1712,6 +1743,28 @@ const TableFixedForm uint8 = 3
 const TableFixedHeaderBytes = 16
 const TableFixedHashAt = 8
 
+// THE FIXED LOAD'S REFUSAL NAMES — EXPORTED (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+// §5.3, mas-bandwidth/schema docs/SPEC-TABLES.md §3.4). Every refusal of the fixed load has a name,
+// the framing-damage returns included, so an adopter's existing
+// report.Reason == "layout_newer" comparisons keep compiling against these
+// constants; the emitted <T>FixedLoad names every reason constant in place of
+// a string literal.
+const (
+	TableFixedReasonPreviousForm         = "previous_form"
+	TableFixedReasonMessageFormAsFile    = "message_form_as_file"
+	TableFixedReasonNewerForm            = "newer_form"
+	TableFixedReasonLayoutMalformed      = "layout_malformed"
+	TableFixedReasonLayoutNewer          = "layout_newer"
+	TableFixedReasonLayoutUnsupported    = "layout_unsupported"
+	TableFixedReasonLayoutRecordTooLarge = "layout_record_too_large"
+	TableFixedReasonPlanTooLarge         = "plan_too_large"
+	TableFixedReasonBatchTooLarge        = "batch_too_large"
+	TableFixedReasonNoLayout             = "no_layout"
+	TableFixedReasonTextIllFormed        = "text_ill_formed"
+	TableFixedReasonTruncated            = "truncated"
+	TableFixedReasonReservedNotZero      = "reserved_not_zero"
+)
+
 const (
 	tableFixedCopy uint8 = iota
 	tableFixedCount
@@ -2069,7 +2122,7 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			// length above CLAMPS and counts; the bytes it kept are checked now,
 			// over v units and never over the span.
 			if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-				return "text_ill_formed"
+				return TableFixedReasonTextIllFormed
 			}
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 			tableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
@@ -2277,7 +2330,7 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 			v = int32(capn)
 		}
 		if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-			return "text_ill_formed"
+			return TableFixedReasonTextIllFormed
 		}
 	}
 	return ""
@@ -3103,7 +3156,7 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 		if why != "" {
 			// A lineage entry that is not a layout is a bug in the LOCK, not a
 			// wire event; the reader still owes a name rather than a panic.
-			out[i].Why = "layout_malformed"
+			out[i].Why = TableFixedReasonLayoutMalformed
 			continue
 		}
 		for room := 256; ; room *= 4 {
@@ -3111,16 +3164,16 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 			var census TableReport
 			made := tableFixedCompile(parsed, myLayout, dst, plan, &census)
 			if made == -2 {
-				out[i].Why = "layout_malformed"
+				out[i].Why = TableFixedReasonLayoutMalformed
 				break
 			}
 			if made == -3 {
-				out[i].Why = "layout_record_too_large"
+				out[i].Why = TableFixedReasonLayoutRecordTooLarge
 				break
 			}
 			if made < 0 {
 				if room >= 1<<18 {
-					out[i].Why = "plan_too_large"
+					out[i].Why = TableFixedReasonPlanTooLarge
 					break
 				}
 				continue
@@ -4334,6 +4387,20 @@ func TableEntityLoad(value *TableEntity, data []byte, report *TableReport) bool 
 	return true
 }
 
+// TableEntityReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func TableEntityReadStrict(wire []byte) (*TableEntity, error) {
+	value := new(TableEntity)
+	var report TableReport
+	ok := TableEntityLoad(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
+}
+
 const TableEntityLoadRetainBuilder = "TableEntity: retention requires a region round trip through the VARIABLE form"
 const TableEntitySaveRetainMessages = "TableEntity: retention requires a region round trip through the VARIABLE form"
 const TableEntityLoadRetainMessages = "TableEntity: retention requires a region round trip through the VARIABLE form"
@@ -5325,6 +5392,20 @@ func TableStatLoad(value *TableStat, data []byte, report *TableReport) bool {
 		return false
 	}
 	return true
+}
+
+// TableStatReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func TableStatReadStrict(wire []byte) (*TableStat, error) {
+	value := new(TableStat)
+	var report TableReport
+	ok := TableStatLoad(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
 }
 
 const TableStatLoadRetainBuilder = "TableStat: retention requires a region round trip through the VARIABLE form"
@@ -7197,6 +7278,20 @@ func TableMixedLoad(value *TableMixed, data []byte, report *TableReport) bool {
 		return false
 	}
 	return true
+}
+
+// TableMixedReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func TableMixedReadStrict(wire []byte) (*TableMixed, error) {
+	value := new(TableMixed)
+	var report TableReport
+	ok := TableMixedLoad(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
 }
 
 const TableMixedLoadRetainBuilder = "TableMixed: retention requires a region round trip through the VARIABLE form"
@@ -9142,6 +9237,20 @@ func TableHitEventLoad(value *TableHitEvent, data []byte, report *TableReport) b
 	return true
 }
 
+// TableHitEventReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func TableHitEventReadStrict(wire []byte) (*TableHitEvent, error) {
+	value := new(TableHitEvent)
+	var report TableReport
+	ok := TableHitEventLoad(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
+}
+
 func TableHitEventSaveMessageBody(w *TableMessageWriter, value *TableHitEvent) bool {
 	{
 		if value.TargetId != 0 {
@@ -9601,6 +9710,20 @@ func TableChatEventLoad(value *TableChatEvent, data []byte, report *TableReport)
 	return true
 }
 
+// TableChatEventReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func TableChatEventReadStrict(wire []byte) (*TableChatEvent, error) {
+	value := new(TableChatEvent)
+	var report TableReport
+	ok := TableChatEventLoad(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
+}
+
 func TableChatEventSaveMessageBody(w *TableMessageWriter, value *TableChatEvent) bool {
 	{
 		if value.Channel != 0 {
@@ -9968,6 +10091,20 @@ func TablePickupEventLoad(value *TablePickupEvent, data []byte, report *TableRep
 		return false
 	}
 	return true
+}
+
+// TablePickupEventReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func TablePickupEventReadStrict(wire []byte) (*TablePickupEvent, error) {
+	value := new(TablePickupEvent)
+	var report TableReport
+	ok := TablePickupEventLoad(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
 }
 
 func TablePickupEventSaveMessageBody(w *TableMessageWriter, value *TablePickupEvent) bool {
@@ -11036,47 +11173,50 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 	*report = TableReport{}
 	if len(data) < 1 {
 		report.Malformed = true
+		report.Reason = TableFixedReasonTruncated
 		return -1
 	}
 	if data[0] != TableFixedForm {
 		switch data[0] {
 		case 1: // the VARIABLE form, and the only form this one is newer than
-			return tableFixedRefuse(report, "previous_form")
+			return tableFixedRefuse(report, TableFixedReasonPreviousForm)
 		case 2: // the MESSAGE form: a form this build carries, through another surface
-			return tableFixedRefuse(report, "message_form_as_file")
+			return tableFixedRefuse(report, TableFixedReasonMessageFormAsFile)
 		}
-		return tableFixedRefuse(report, "newer_form")
+		return tableFixedRefuse(report, TableFixedReasonNewerForm)
 	}
 	if len(data) < TableFixedHeaderBytes+4 {
 		report.Malformed = true
+		report.Reason = TableFixedReasonTruncated
 		return -1
 	}
 	for _, reserved := range data[1:TableFixedHashAt] {
 		if reserved != 0 {
 			report.Malformed = true
+			report.Reason = TableFixedReasonReservedNotZero
 			return -1
 		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
 	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
-		return tableFixedRefuse(report, "layout_malformed")
+		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
 	hash := tableFixedGet64(data[TableFixedHashAt:])
 	pick := tableFixedSelect(TableEntityFixedKnown, hash)
 	if pick < 0 {
-		return tableFixedRefuseHash(report, "layout_newer", hash)
+		return tableFixedRefuseHash(report, TableFixedReasonLayoutNewer, hash)
 	}
 	if pick < TableEntityFixedFloor {
-		return tableFixedRefuseHash(report, "layout_unsupported", hash)
+		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)
 	}
 	known := &TableEntityFixedKnown[pick]
 	if int(layoutBytes) != len(known.Layout) {
-		return tableFixedRefuse(report, "layout_malformed")
+		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 	}
 	for i := range layout {
 		if layout[i] != known.Layout[i] {
-			return tableFixedRefuse(report, "layout_malformed")
+			return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 		}
 	}
 	entries := TableEntityFixedPlan.Entries
@@ -11094,17 +11234,18 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
 	if int64(entryCount) > int64(len(plan)) {
-		return tableFixedRefuse(report, "plan_too_large")
+		return tableFixedRefuse(report, TableFixedReasonPlanTooLarge)
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
+		report.Reason = TableFixedReasonTruncated
 		return -1
 	}
 	n := rest / recordBytes
 	if n > int64(len(values)) {
-		return tableFixedRefuse(report, "batch_too_large")
+		return tableFixedRefuse(report, TableFixedReasonBatchTooLarge)
 	}
 	var def TableEntity
 	var defBytes []byte
@@ -11116,7 +11257,7 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 	}
 	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
 		if tableFixedGet64(scan) != hash {
-			return tableFixedRefuse(report, "no_layout")
+			return tableFixedRefuse(report, TableFixedReasonNoLayout)
 		}
 		if why := tableFixedTextRefusal(entries, entryCount, scan[8:recordBytes]); why != "" {
 			return tableFixedRefuse(report, why)
@@ -11247,47 +11388,50 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 	*report = TableReport{}
 	if len(data) < 1 {
 		report.Malformed = true
+		report.Reason = TableFixedReasonTruncated
 		return -1
 	}
 	if data[0] != TableFixedForm {
 		switch data[0] {
 		case 1: // the VARIABLE form, and the only form this one is newer than
-			return tableFixedRefuse(report, "previous_form")
+			return tableFixedRefuse(report, TableFixedReasonPreviousForm)
 		case 2: // the MESSAGE form: a form this build carries, through another surface
-			return tableFixedRefuse(report, "message_form_as_file")
+			return tableFixedRefuse(report, TableFixedReasonMessageFormAsFile)
 		}
-		return tableFixedRefuse(report, "newer_form")
+		return tableFixedRefuse(report, TableFixedReasonNewerForm)
 	}
 	if len(data) < TableFixedHeaderBytes+4 {
 		report.Malformed = true
+		report.Reason = TableFixedReasonTruncated
 		return -1
 	}
 	for _, reserved := range data[1:TableFixedHashAt] {
 		if reserved != 0 {
 			report.Malformed = true
+			report.Reason = TableFixedReasonReservedNotZero
 			return -1
 		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
 	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
-		return tableFixedRefuse(report, "layout_malformed")
+		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
 	hash := tableFixedGet64(data[TableFixedHashAt:])
 	pick := tableFixedSelect(TableStatFixedKnown, hash)
 	if pick < 0 {
-		return tableFixedRefuseHash(report, "layout_newer", hash)
+		return tableFixedRefuseHash(report, TableFixedReasonLayoutNewer, hash)
 	}
 	if pick < TableStatFixedFloor {
-		return tableFixedRefuseHash(report, "layout_unsupported", hash)
+		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)
 	}
 	known := &TableStatFixedKnown[pick]
 	if int(layoutBytes) != len(known.Layout) {
-		return tableFixedRefuse(report, "layout_malformed")
+		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 	}
 	for i := range layout {
 		if layout[i] != known.Layout[i] {
-			return tableFixedRefuse(report, "layout_malformed")
+			return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 		}
 	}
 	entries := TableStatFixedPlan.Entries
@@ -11305,17 +11449,18 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
 	if int64(entryCount) > int64(len(plan)) {
-		return tableFixedRefuse(report, "plan_too_large")
+		return tableFixedRefuse(report, TableFixedReasonPlanTooLarge)
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
+		report.Reason = TableFixedReasonTruncated
 		return -1
 	}
 	n := rest / recordBytes
 	if n > int64(len(values)) {
-		return tableFixedRefuse(report, "batch_too_large")
+		return tableFixedRefuse(report, TableFixedReasonBatchTooLarge)
 	}
 	var def TableStat
 	var defBytes []byte
@@ -11327,7 +11472,7 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 	}
 	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
 		if tableFixedGet64(scan) != hash {
-			return tableFixedRefuse(report, "no_layout")
+			return tableFixedRefuse(report, TableFixedReasonNoLayout)
 		}
 		if why := tableFixedTextRefusal(entries, entryCount, scan[8:recordBytes]); why != "" {
 			return tableFixedRefuse(report, why)
@@ -11682,47 +11827,50 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 	*report = TableReport{}
 	if len(data) < 1 {
 		report.Malformed = true
+		report.Reason = TableFixedReasonTruncated
 		return -1
 	}
 	if data[0] != TableFixedForm {
 		switch data[0] {
 		case 1: // the VARIABLE form, and the only form this one is newer than
-			return tableFixedRefuse(report, "previous_form")
+			return tableFixedRefuse(report, TableFixedReasonPreviousForm)
 		case 2: // the MESSAGE form: a form this build carries, through another surface
-			return tableFixedRefuse(report, "message_form_as_file")
+			return tableFixedRefuse(report, TableFixedReasonMessageFormAsFile)
 		}
-		return tableFixedRefuse(report, "newer_form")
+		return tableFixedRefuse(report, TableFixedReasonNewerForm)
 	}
 	if len(data) < TableFixedHeaderBytes+4 {
 		report.Malformed = true
+		report.Reason = TableFixedReasonTruncated
 		return -1
 	}
 	for _, reserved := range data[1:TableFixedHashAt] {
 		if reserved != 0 {
 			report.Malformed = true
+			report.Reason = TableFixedReasonReservedNotZero
 			return -1
 		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
 	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
-		return tableFixedRefuse(report, "layout_malformed")
+		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
 	hash := tableFixedGet64(data[TableFixedHashAt:])
 	pick := tableFixedSelect(TableMixedFixedKnown, hash)
 	if pick < 0 {
-		return tableFixedRefuseHash(report, "layout_newer", hash)
+		return tableFixedRefuseHash(report, TableFixedReasonLayoutNewer, hash)
 	}
 	if pick < TableMixedFixedFloor {
-		return tableFixedRefuseHash(report, "layout_unsupported", hash)
+		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)
 	}
 	known := &TableMixedFixedKnown[pick]
 	if int(layoutBytes) != len(known.Layout) {
-		return tableFixedRefuse(report, "layout_malformed")
+		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 	}
 	for i := range layout {
 		if layout[i] != known.Layout[i] {
-			return tableFixedRefuse(report, "layout_malformed")
+			return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
 		}
 	}
 	entries := TableMixedFixedPlan.Entries
@@ -11740,17 +11888,18 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
 	if int64(entryCount) > int64(len(plan)) {
-		return tableFixedRefuse(report, "plan_too_large")
+		return tableFixedRefuse(report, TableFixedReasonPlanTooLarge)
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
+		report.Reason = TableFixedReasonTruncated
 		return -1
 	}
 	n := rest / recordBytes
 	if n > int64(len(values)) {
-		return tableFixedRefuse(report, "batch_too_large")
+		return tableFixedRefuse(report, TableFixedReasonBatchTooLarge)
 	}
 	var def TableMixed
 	var defBytes []byte
@@ -11762,7 +11911,7 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 	}
 	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
 		if tableFixedGet64(scan) != hash {
-			return tableFixedRefuse(report, "no_layout")
+			return tableFixedRefuse(report, TableFixedReasonNoLayout)
 		}
 		if why := tableFixedTextRefusal(entries, entryCount, scan[8:recordBytes]); why != "" {
 			return tableFixedRefuse(report, why)

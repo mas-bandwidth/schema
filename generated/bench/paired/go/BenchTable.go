@@ -31,7 +31,9 @@ type MixedEventRow struct {
 
 // TableReport is the table-wire read report — the permissive contract's
 // ledger. Silence (all zero) means the data matched this reader's schema
-// exactly.
+// exactly. Err (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5) is the STRICT read's typed reason
+// for malformed, clamped, kind-mismatched, unknown form, wire-damaged and
+// build-version-mismatched. Unknown, Widened and Retained alone are not one.
 type TableReport struct {
 	Retained, RetainLost int32
 	Verdict              TableOpenVerdict // unsupported form is distinct from damage
@@ -228,6 +230,9 @@ const (
 	TableRefuseInvalidValue
 	TableRefuseAllocationFailed
 	TableRefuseWireDamaged
+	TableRefuseMalformed
+	TableRefuseClamped
+	TableRefuseKindMismatch
 )
 
 func (r TableRefuseReason) Error() string {
@@ -266,6 +271,12 @@ func (r TableRefuseReason) Error() string {
 		return "allocation_failed"
 	case TableRefuseWireDamaged:
 		return "wire_damaged"
+	case TableRefuseMalformed:
+		return "malformed"
+	case TableRefuseClamped:
+		return "clamped"
+	case TableRefuseKindMismatch:
+		return "kind_mismatch"
 	}
 	return "invalid refusal reason"
 }
@@ -296,11 +307,31 @@ func (m TableBuildVersionMismatch) Error() string {
 	return "build_version_mismatch: peer 0x" + string(peer[:]) + " own 0x" + string(own[:])
 }
 
-// Err is the report's typed error: the strict build-version refusal as a
-// TableBuildVersionMismatch (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3), nil on a clean read.
+// Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
+// The read report). A strict read refuses malformed, clamped, kind-mismatched,
+// unknown form, wire-damaged and build-version-mismatched, each as one typed
+// reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
 func (r *TableReport) Err() error {
-	if r != nil && r.Reason == "build_version_mismatch" {
+	if r == nil {
+		return nil
+	}
+	if r.Reason == "build_version_mismatch" {
 		return TableBuildVersionMismatch{Peer: r.BuildVersionPeer, Own: r.BuildVersionOwn}
+	}
+	if r.Verdict == TableOpenRefused || r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
+		return TableRefuseUnknownForm
+	}
+	if r.Verdict == TableOpenDamaged {
+		return TableRefuseWireDamaged
+	}
+	if r.Malformed {
+		return TableRefuseMalformed
+	}
+	if r.Clamped > 0 {
+		return TableRefuseClamped
+	}
+	if r.KindMismatch > 0 {
+		return TableRefuseKindMismatch
 	}
 	return nil
 }
@@ -1648,6 +1679,28 @@ const TableFixedForm uint8 = 3
 const TableFixedHeaderBytes = 16
 const TableFixedHashAt = 8
 
+// THE FIXED LOAD'S REFUSAL NAMES — EXPORTED (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+// §5.3, mas-bandwidth/schema docs/SPEC-TABLES.md §3.4). Every refusal of the fixed load has a name,
+// the framing-damage returns included, so an adopter's existing
+// report.Reason == "layout_newer" comparisons keep compiling against these
+// constants; the emitted <T>FixedLoad names every reason constant in place of
+// a string literal.
+const (
+	TableFixedReasonPreviousForm         = "previous_form"
+	TableFixedReasonMessageFormAsFile    = "message_form_as_file"
+	TableFixedReasonNewerForm            = "newer_form"
+	TableFixedReasonLayoutMalformed      = "layout_malformed"
+	TableFixedReasonLayoutNewer          = "layout_newer"
+	TableFixedReasonLayoutUnsupported    = "layout_unsupported"
+	TableFixedReasonLayoutRecordTooLarge = "layout_record_too_large"
+	TableFixedReasonPlanTooLarge         = "plan_too_large"
+	TableFixedReasonBatchTooLarge        = "batch_too_large"
+	TableFixedReasonNoLayout             = "no_layout"
+	TableFixedReasonTextIllFormed        = "text_ill_formed"
+	TableFixedReasonTruncated            = "truncated"
+	TableFixedReasonReservedNotZero      = "reserved_not_zero"
+)
+
 const (
 	tableFixedCopy uint8 = iota
 	tableFixedCount
@@ -2005,7 +2058,7 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			// length above CLAMPS and counts; the bytes it kept are checked now,
 			// over v units and never over the span.
 			if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-				return "text_ill_formed"
+				return TableFixedReasonTextIllFormed
 			}
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 			tableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
@@ -2213,7 +2266,7 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 			v = int32(capn)
 		}
 		if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-			return "text_ill_formed"
+			return TableFixedReasonTextIllFormed
 		}
 	}
 	return ""
@@ -3039,7 +3092,7 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 		if why != "" {
 			// A lineage entry that is not a layout is a bug in the LOCK, not a
 			// wire event; the reader still owes a name rather than a panic.
-			out[i].Why = "layout_malformed"
+			out[i].Why = TableFixedReasonLayoutMalformed
 			continue
 		}
 		for room := 256; ; room *= 4 {
@@ -3047,16 +3100,16 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 			var census TableReport
 			made := tableFixedCompile(parsed, myLayout, dst, plan, &census)
 			if made == -2 {
-				out[i].Why = "layout_malformed"
+				out[i].Why = TableFixedReasonLayoutMalformed
 				break
 			}
 			if made == -3 {
-				out[i].Why = "layout_record_too_large"
+				out[i].Why = TableFixedReasonLayoutRecordTooLarge
 				break
 			}
 			if made < 0 {
 				if room >= 1<<18 {
-					out[i].Why = "plan_too_large"
+					out[i].Why = TableFixedReasonPlanTooLarge
 					break
 				}
 				continue
@@ -4266,6 +4319,20 @@ func MixedEntityLoad(value *MixedEntity, data []byte, report *TableReport) bool 
 	return true
 }
 
+// MixedEntityReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func MixedEntityReadStrict(wire []byte) (*MixedEntity, error) {
+	value := new(MixedEntity)
+	var report TableReport
+	ok := MixedEntityLoad(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
+}
+
 func MixedEntitySaveMessageBody(w *TableMessageWriter, value *MixedEntity) bool {
 	{
 		if value.EntityId != 0 {
@@ -5178,6 +5245,20 @@ func MixedStatLoad(value *MixedStat, data []byte, report *TableReport) bool {
 	return true
 }
 
+// MixedStatReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func MixedStatReadStrict(wire []byte) (*MixedStat, error) {
+	value := new(MixedStat)
+	var report TableReport
+	ok := MixedStatLoad(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
+}
+
 func MixedStatSaveMessageBody(w *TableMessageWriter, value *MixedStat) bool {
 	{
 		if value.StatId != 0 {
@@ -5630,6 +5711,20 @@ func MixedHitEventLoad(value *MixedHitEvent, data []byte, report *TableReport) b
 		return false
 	}
 	return true
+}
+
+// MixedHitEventReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func MixedHitEventReadStrict(wire []byte) (*MixedHitEvent, error) {
+	value := new(MixedHitEvent)
+	var report TableReport
+	ok := MixedHitEventLoad(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
 }
 
 func MixedHitEventSaveMessageBody(w *TableMessageWriter, value *MixedHitEvent) bool {
@@ -6091,6 +6186,20 @@ func MixedChatEventLoad(value *MixedChatEvent, data []byte, report *TableReport)
 	return true
 }
 
+// MixedChatEventReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func MixedChatEventReadStrict(wire []byte) (*MixedChatEvent, error) {
+	value := new(MixedChatEvent)
+	var report TableReport
+	ok := MixedChatEventLoad(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
+}
+
 func MixedChatEventSaveMessageBody(w *TableMessageWriter, value *MixedChatEvent) bool {
 	{
 		if value.Channel != 0 {
@@ -6458,6 +6567,20 @@ func MixedPickupEventLoad(value *MixedPickupEvent, data []byte, report *TableRep
 		return false
 	}
 	return true
+}
+
+// MixedPickupEventReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func MixedPickupEventReadStrict(wire []byte) (*MixedPickupEvent, error) {
+	value := new(MixedPickupEvent)
+	var report TableReport
+	ok := MixedPickupEventLoad(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
 }
 
 func MixedPickupEventSaveMessageBody(w *TableMessageWriter, value *MixedPickupEvent) bool {
@@ -8227,6 +8350,20 @@ func BenchMixedLoad(value *BenchMixed, data []byte, report *TableReport) bool {
 		return false
 	}
 	return true
+}
+
+// BenchMixedReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+func BenchMixedReadStrict(wire []byte) (*BenchMixed, error) {
+	value := new(BenchMixed)
+	var report TableReport
+	ok := BenchMixedLoad(value, wire, &report)
+	if err := report.Err(); err != nil || !ok {
+		if err == nil {
+			err = TableRefuseWireDamaged
+		}
+		return nil, err
+	}
+	return value, nil
 }
 
 func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
