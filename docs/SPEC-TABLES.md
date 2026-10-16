@@ -5745,6 +5745,33 @@ exception, because a name is the value on both forms and the variable form alrea
 carries it. A value that is on the grid and inside W reproduces its file byte
 for byte, which is what every vector below is.
 
+**A COMPRESSED FLOAT IS DEFINED FOR THE VALUES IN `[min, max]`, AND THE LAW IS
+SILENT ON THE REST — SO THIS PARAGRAPH STATES IT.** The quantizer is specified
+for values inside the declared range, and every value outside it is pinned to
+the same rule as any finite out-of-range value, on every leg: the writer
+quantizes it onto the grid and the reader decodes exactly what the grid says.
+Per the Go oracle (SPEC.md §4.3), a compressed float:
+
+| input | quantized index | decoded value |
+| --- | --- | --- |
+| `-0` | `0` | `min` (the zero point; `-0` is `+0`) |
+| `+0` | `0` | `min` |
+| a `NaN` (quiet or signalling, any payload) | `0` | `min` |
+| `+Inf` | `count` | `max` |
+| `-Inf` | `0` | `min` |
+| below `min` | `0` | `min` |
+| above `max` | `count` | `max` |
+
+The index never leaves `[0, count]` and the decoded value never leaves
+`[min, max]`, so no special value addresses a byte the reader cannot decode and
+none overflows into a neighbour. `-0` and `+0` share the zero point's index,
+and the infinities and a `NaN` clamp exactly as a finite value beyond the range
+does. It holds for every leg, and the conformance corpus is where a leg is held
+to it. The FIXED form's record (§3.4) is the one deliberate difference: its
+field rides as the float itself, not as a quantized index, and its read-side
+bounds pass carries a `NaN` through uncounted and keeps a `-0`'s sign bit, which
+is the subject of a separate card (§3.4).
+
 **FORM `2` IS A STREAM FORM AND NEVER A FILE'S OWN FORM.** `schema pack` writes form
 `1`, `schema unpack` reads form `1`, and a reader handed a form-`2` wire where a
 file was expected refuses by name: a batch stored on its own is not readable,
