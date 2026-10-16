@@ -3571,6 +3571,44 @@ the tree and compares byte for byte, and compiles each of those units with the
 check on.
 
 
+### 2.11 The forms a table carries: `forms`
+
+**What a table carries is a property of the table, not of one generate call.** A
+table line may declare the FORMS it carries — the surfaces a backend emits for
+it — with the valued key `forms`:
+
+```
+table Pong | forms = "wire,json"
+{
+    x int32
+}
+```
+
+**The spelling fits SPEC §4.2's valued keys.** A valued key takes one value, and
+the quoted string is a legal one (the `was` key uses it too); a comma-separated
+list inside the string names several forms without a parser change. The forms
+are the closed vocabulary `wire` (the id-table wire, its storage and codecs),
+`json` (the text form, §16), `block` (the block accelerator, §2.7, §19) and
+`cook` (the cooked-form accelerator, §7). A name outside it is refused by name,
+as is a bare `forms` (a tag is a different thing) and a non-string value.
+
+**The default is every form — today's behaviour.** A table with no `forms`
+line carries each form its backend emits, exactly as before; the declaration
+only ever restricts. It changes no wire byte — it is not part of the projection
+(SPEC §3.1) and not part of the build version (§20) — so adding or removing a
+`forms` line costs no redeploy of the bytes. It is part of the table's
+declaration, not of one generate call: every build of the unit agrees on what
+the table carries.
+
+**A backend either honours the declaration or refuses the construct by name.**
+Go honours it: a unit whose tables declare `forms` emits exactly the declared
+forms' files and no other, and the intersection with a `--surface` request is
+the intersection — a `--surface` naming a form the table does not declare is
+refused by name. Every other target refuses the whole construct by name,
+centrally, at generation, and no other emitter is edited; the other languages
+carry `forms` when their turn comes.
+
+
 ## 3. The wire
 
 **The wire is neutral.** It carries none of schema's packing opinions, no

@@ -91,6 +91,13 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		}
 		return nil, fmt.Errorf("target %q is not implemented — %s are the live targets", target, englishList(c.Targets()))
 	}
+	if target != "go" {
+		for _, t := range u.Tables {
+			if t.DeclaredForms() {
+				return nil, fmt.Errorf("target %q refuses the construct forms on table %s — Go carries it first; no other target honours it until its turn (docs/SPEC-TABLES.md §2.12)", target, t.Name)
+			}
+		}
+	}
 	if lg, takes := g.(lineageGenerator); takes {
 		lineage, err := openFixedLineage(u)
 		if err != nil {
