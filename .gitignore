@@ -26,6 +26,8 @@
 /test/cs-cook/obj/
 /test/conformance/cs/bin/
 /test/conformance/cs/obj/
+/test/conformance/cs/rows/*/bin/
+/test/conformance/cs/rows/*/obj/
 /test/conformance/rust/target/
 /test/conformance/rust/Cargo.lock
 /test/rust-fuzz/target/
