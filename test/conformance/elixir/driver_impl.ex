@@ -340,6 +340,7 @@ defmodule Driver do
 
   def main([manifest, surface, outdir]) do
     rows = parse(File.read!(manifest))
+    :persistent_term.put({__MODULE__, :packages}, unit_packages(rows))
     run(surface, rows, outdir)
   end
 
@@ -362,6 +363,32 @@ defmodule Driver do
   end
 
   defp rows(rows, kind), do: Map.get(rows, kind, [])
+
+  # unit_packages maps a manifest unit key to the package its schema declares.
+  # The generated namespace is the PACKAGE (tblscalars2 is package scalardemo2),
+  # so a key that is not its package still finds its codec, and a row it cannot
+  # answer is absent for the codec's own reason rather than a missing module.
+  defp unit_packages(rows) do
+    for [key, path | _] <- rows(rows, "unit"), into: %{} do
+      files = if File.dir?(path), do: Path.wildcard(Path.join(path, "*.schema")), else: [path]
+
+      package =
+        Enum.find_value(files, fn file ->
+          case File.read(file) do
+            {:ok, text} ->
+              case Regex.run(~r/^package[ \t]+([A-Za-z0-9_]+)/m, text) do
+                [_, name] -> name
+                _ -> nil
+              end
+
+            _ ->
+              nil
+          end
+        end)
+
+      {key, package}
+    end
+  end
 
   # ---- module lookup ----
 
@@ -515,12 +542,16 @@ defmodule Driver do
   # the variable-form codec a (unit, root) names: <Unit>.Table, which exports
   # load/2, save/2, to_json/2 and from_json/2. nil when the leg has no codec.
   defp table_module(unit) do
-    mod = Module.concat([Macro.camelize(unit), "Table"])
+    package = Map.get(:persistent_term.get({__MODULE__, :packages}, %{}), unit)
 
-    if Code.ensure_loaded?(mod) and function_exported?(mod, :load, 2) and
-         function_exported?(mod, :save, 2),
-       do: mod,
-       else: nil
+    [unit, package]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> Enum.map(&Module.concat([Macro.camelize(&1), "Table"]))
+    |> Enum.find(fn mod ->
+      Code.ensure_loaded?(mod) and function_exported?(mod, :load, 2) and
+        function_exported?(mod, :save, 2)
+    end)
   end
 
   defp run("wire", rows, outdir) do

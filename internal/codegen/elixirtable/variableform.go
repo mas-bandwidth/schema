@@ -241,7 +241,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # table_name, content}: kind :blob for a byte buffer, :table for a pointer
   # pointee.
   defp collect_nodes(desc, value, acc) do
-    Enum.reduce(desc.fields, acc, fn f, acc ->
+    Enum.reduce(riding_fields(desc, value), acc, fn f, acc ->
       case f.t do
         :blob ->
           case Map.get(value, f.name) do
@@ -258,7 +258,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           end
 
         :table ->
-          collect_nodes(Map.fetch!(@tables, f.elem), Map.get(value, f.name, %{}), acc)
+          collect_nodes(Map.fetch!(@tables, f.elem), Map.get(value, f.name) || %{}, acc)
 
         :list ->
           collect_list_nodes(f, Map.get(value, f.name, []), acc)
@@ -301,9 +301,31 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # save_fields writes one body's fields and returns the iodata, the node
   # index map, the id map and the reversed first-use order.
   defp save_fields(desc, value, idx_map, ids, order, acc) do
-    Enum.reduce(desc.fields, {idx_map, ids, order, acc}, fn f, {idx_map, ids, order, acc} ->
+    fields = riding_fields(desc, value)
+
+    Enum.reduce(fields, {idx_map, ids, order, acc}, fn f, {idx_map, ids, order, acc} ->
       emit_field(f, value, idx_map, ids, order, acc)
     end)
+  end
+
+  # riding_fields are the fields the writer writes (docs/SPEC-TABLES.md §3.1,
+  # schema#440): a field under a false guard is not on the wire, so neither the
+  # numbering nor the body walk visits it, and a pointer it holds is not an
+  # edge. The guard is the branch's bool conditions, each against the value's
+  # own field or, absent, that field's declared default.
+  defp riding_fields(desc, value) do
+    Enum.filter(desc.fields, fn f ->
+      Enum.all?(Map.get(f, :guard, []), fn {cond, want} ->
+        guard_value(desc, value, cond) == want
+      end)
+    end)
+  end
+
+  defp guard_value(desc, value, cond) do
+    case Map.fetch(value, cond) do
+      {:ok, v} -> v == true
+      :error -> Enum.any?(desc.fields, fn f -> f.name == cond and f.default == true end)
+    end
   end
 
   defp emit_field(%{t: :blob} = f, value, idx_map, ids, order, acc) do
@@ -547,8 +569,18 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             report = if :malformed in nodes, do: %{report | malformed: true}, else: report
             unknown = Enum.count(nodes, &(&1 == :unknown))
             report = %{report | unknown: report.unknown + unknown}
-            {:ok, Map.merge(defaults(desc), value), report}
+            {:ok, Map.merge(read_defaults(desc), value), report}
         end
+    end
+  end
+
+  # read_defaults is what a load folds under the fields a wire carried: every
+  # declared default but an optional's (docs/SPEC-TABLES.md §2.3). An optional
+  # the wire does not carry is ABSENT, not its default, so a save of the loaded
+  # value writes no frame for it and numbers no node inside it (schema#526).
+  defp read_defaults(desc) do
+    for f <- desc.fields, not Map.get(f, :optional, false), into: %{} do
+      {f.name, Map.get(f, :default)}
     end
   end
 
@@ -2249,7 +2281,7 @@ const variableRetainSource = `
             # excluded class (§6.6): one retain_lost, counted once at the record
             unknown = Enum.count(nodes, &(&1 == :unknown))
             report = %{report | unknown: report.unknown + unknown, retain_lost: report.retain_lost + unknown}
-            {:ok, Map.merge(defaults(desc), value), report, retain}
+            {:ok, Map.merge(read_defaults(desc), value), report, retain}
 
           _ ->
             {:error, :malformed, report, retain}
@@ -2958,6 +2990,11 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, fl *ir.FieldLayout) s
 	case f.Type.Kind == ir.TBool:
 		b.WriteString(", t: :bool")
 	}
+	if g := guardTerms(f.Guard); g != "" {
+		// the branch a guarded field rides under (docs/SPEC-TABLES.md §3.1):
+		// the save walk skips it when the branch is not taken (schema#440)
+		fmt.Fprintf(&b, ", guard: [%s]", g)
+	}
 	if f.Type.Optional {
 		// presence is the field, not a kind (docs/SPEC-TABLES.md §2.3): a present
 		// optional writes its frame even when the body is all defaults.
@@ -2968,6 +3005,25 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, fl *ir.FieldLayout) s
 	fmt.Fprintf(&b, ", default: %s", variableFieldDefault(f))
 	b.WriteString("},\n")
 	return b.String()
+}
+
+// guardTerms spells a field's branch context ("at_rest", "!at_rest",
+// "active && has_target", ir.Field.Guard) as Elixir {bool field, taken-when}
+// tuples. Empty for a field outside a branch.
+func guardTerms(guard string) string {
+	if guard == "" {
+		return ""
+	}
+	var terms []string
+	for _, c := range strings.Split(guard, "&&") {
+		c = strings.TrimSpace(c)
+		want := "true"
+		if strings.HasPrefix(c, "!") {
+			c, want = strings.TrimSpace(c[1:]), "false"
+		}
+		terms = append(terms, fmt.Sprintf("{%q, %s}", c, want))
+	}
+	return strings.Join(terms, ", ")
 }
 
 // variableFieldDefault is a field's declared default as an Elixir literal, the
