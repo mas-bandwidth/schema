@@ -24,13 +24,17 @@ import (
 // A field's SHAPE (docs/SPEC-TABLES.md §8.1) is the three-way the constructs
 // split into: `value` for a scalar, an enum, a nested record and an inline
 // string(N); `blob` for the *string and *bytes byte buffers (§2.5); `list` for
-// an array (§2.9). A field's DECLARED BOUND is the string's declared length,
-// and 0 for a blob and a list.
+// an array (§2.9). A field's DECLARED BOUND is an array's capacity (fixed,
+// bounded or enum-keyed) and a string's or byte buffer's declared length; 0
+// for a blob, an unbounded list, a map and a scalar (fieldCapacity).
 //
-// JAVA HAS NO RECORD LAYOUT. A field's OFFSET (§8.1) is therefore relative to
-// the object that holds it, and an arm's descriptor states the one thing §8.7
-// asks of it: every arm of a union overlays the union's payload, so each arm
-// field's offset is 0.
+// A TABLE's or TYPE's field also carries the walkable columns (viewaccess.go):
+// its place in the cooked record (offset, element size, count and presence
+// companions), the nested table's descriptor, and the cached accessors that
+// read and write the field on <Name>Variable.Value, because a Java field has no
+// address (§8.1). A union ARM's descriptor states the one thing §8.7 asks of
+// it: every arm of a union overlays the union's payload, so each arm field's
+// offset is 0.
 func generateViewFiles(u *ir.Unit) (map[string][]byte, error) {
 	types, tables := viewDeclarations(u)
 	if len(types)+len(tables) == 0 {
@@ -45,10 +49,24 @@ func generateViewFiles(u *ir.Unit) (map[string][]byte, error) {
 		"TableConstantInfo.java":   javaFile(u, "a constant's descriptor (docs/SPEC-TABLES.md §8.3)", tableConstantInfoRuntime),
 		"TableViewEntry.java":      javaFile(u, "one registry entry: a table or a type (docs/SPEC-TABLES.md §8.3)", tableViewEntryRuntime),
 	}
+	valued := map[string]bool{}
+	for _, st := range cardVariableTables(u) {
+		valued[st.Name] = true
+	}
 	for _, st := range append(slices.Clone(types), tables...) {
 		out[st.Name+"Descriptor.java"] = javaFile(u,
 			fmt.Sprintf("the descriptor for %s %s (docs/SPEC-TABLES.md §8)", declWhat(st), st.Name),
-			descriptorFor(u, st, !st.IsTable && !closure[st.Name]))
+			descriptorFor(u, st, !st.IsTable && !closure[st.Name], valued[st.Name]))
+	}
+	// A map's generated entry table is no registry row (§2.8), but a map
+	// field's nested-table column names its descriptor, so a walker steps
+	// into an entry exactly as into any record (§8.1).
+	for _, n := range slices.Sorted(maps.Keys(u.Tables)) {
+		if st := u.Tables[n]; st != nil && st.IsMapEntry() {
+			out[st.Name+"Descriptor.java"] = javaFile(u,
+				fmt.Sprintf("the descriptor for map entry %s (docs/SPEC-TABLES.md §2.8, §8.1)", st.Name),
+				descriptorFor(u, st, false, valued[st.Name]))
+		}
 	}
 	out["TableRegistry.java"] = javaFile(u, "the unit's registry of descriptors (docs/SPEC-TABLES.md §8.3)", registryFor(tables, types))
 	out["TableUnitView.java"] = javaFile(u, "the unit's view: every declaration, its doc and tags (docs/SPEC-TABLES.md §8.3)", unitViewFor(u, types, tables))
@@ -91,16 +109,6 @@ func fieldShape(f *ir.Field) string {
 		return "list"
 	}
 	return "value"
-}
-
-// fieldBound is a field's declared bound (docs/SPEC-TABLES.md §8.1): the
-// string's declared length; 0 for a blob and an unbounded list, which have no
-// bound.
-func fieldBound(f *ir.Field) int64 {
-	if f.Type.Kind == ir.TString && !f.Type.Blob() {
-		return f.Type.Size
-	}
-	return 0
 }
 
 // viewArmKind and viewArmBound are an arm field's kind and bound as §8.7 reads
@@ -194,7 +202,11 @@ func fieldDescriptor(f *ir.Field, kind int, bound int64, outside bool) string {
 		f.Type.Optional, javaString(named), javaString(f.Doc), javaTags(f.Tags))
 }
 
-func descriptorFor(u *ir.Unit, st *ir.Struct, outside bool) string {
+// descriptorFor is one table's or type's descriptor (docs/SPEC-TABLES.md §8.1,
+// §8.2): every field's declaration columns, its cooked-record place and, on a
+// declaration with a Value class (valued), its accessors and the type's create
+// and reset hooks.
+func descriptorFor(u *ir.Unit, st *ir.Struct, outside, valued bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "public final class %sDescriptor {\n", st.Name)
 	fmt.Fprintf(&b, "    private %sDescriptor() {}\n\n", st.Name)
@@ -211,15 +223,25 @@ func descriptorFor(u *ir.Unit, st *ir.Struct, outside bool) string {
 	fmt.Fprintf(&b, "        t.tags = %s;\n", javaTags(st.Tags))
 	b.WriteString("        t.fields = new TableFieldInfo[] {\n")
 	for _, f := range st.Fields {
-		fmt.Fprintf(&b, "            %s,\n", fieldDescriptor(f, variableWireKind(f), fieldBound(f), outside))
+		p := cookedPlace(u, st, f)
+		row := fieldDescriptor(f, variableWireKind(f), fieldCapacity(f), outside) +
+			fmt.Sprintf(".at(%v, %v, %d, %d, %d, %d)", p.isArray, p.counted, p.offset, p.elementSize, p.countOffset, p.presentOffset)
+		if valued {
+			row += accessorColumns(st.Name+"Variable.Value", f)
+		} else if ref, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
+			row += fmt.Sprintf(".nested(() -> %sDescriptor.tableType())", ref.Name)
+		}
+		fmt.Fprintf(&b, "            %s,\n", row)
 	}
 	b.WriteString("        };\n")
+	if valued {
+		b.WriteString(typeHooks(st))
+	}
 	b.WriteString("        return t;\n")
 	b.WriteString("        }\n")
 	b.WriteString("    }\n\n")
 	b.WriteString("    public static TableTypeInfo tableType() { return Holder.TABLE; }\n")
 	b.WriteString("}\n")
-	_ = u
 	return b.String()
 }
 
@@ -370,7 +392,8 @@ const tableFieldInfoRuntime = `public final class TableFieldInfo {
     public int kind;
     /** value, blob or list (§8.1). */
     public String shape;
-    /** the declared bound: a string's length, an arm's capacity; 0 for none. */
+    /** the declared bound: an array's capacity (fixed, bounded or enum-keyed), a
+     *  string's or byte buffer's length; 0 for a scalar, a blob, a list, a map. */
     public long bound;
     /** the text form's key (§16.3); null on a type no table closure reaches. */
     public String json;
@@ -381,10 +404,60 @@ const tableFieldInfoRuntime = `public final class TableFieldInfo {
     public boolean optional;
     /** the declaration a named field refers to, "" for none. */
     public String named;
-    /** relative to the object that holds the field: 0 for every union arm, which all overlay the payload. */
+    /** an array, a byte buffer, a list or a map: the accessors take an element index. */
+    public boolean isArray;
+    /** a count or length companion exists (a bounded array, a string, a list, a map). */
+    public boolean counted;
+    /** the field's byte offset in the COOKED record (§7.2, the layout <Name>Row reads);
+     *  0 for every union arm, which all overlay the payload. */
     public int offset;
+    /** one element's cooked size: the scalar, one array element, one list element. */
+    public int elementSize;
+    /** the count/length companion's cooked offset, or -1. */
+    public int countOffset;
+    /** the presence companion's cooked offset (an optional field), or -1. */
+    public int presentOffset;
     public String doc;
     public String[] tags;
+
+    // THE ACCESSORS (§8.1): a Java field has no address, so a descriptor carries
+    // the pair that reads and writes it on <Name>Variable.Value, built once with
+    // the descriptor and cached with it. A field's element is read through the
+    // one lane its type takes (long, double or object); the others are null.
+    // index is the element for an array and ignored otherwise. Every accessor is
+    // null on a declaration with no Value class (a type no table reaches, §8.2).
+    public interface Count { int count(Object holder); }
+    public interface Resize { void resize(Object holder, int count); }
+    public interface LongGet { long get(Object holder, int index); }
+    public interface LongSet { void set(Object holder, int index, long value); }
+    public interface DoubleGet { double get(Object holder, int index); }
+    public interface DoubleSet { void set(Object holder, int index, double value); }
+    public interface ObjectGet { Object get(Object holder, int index); }
+    public interface ObjectSet { void set(Object holder, int index, Object value); }
+    public interface PresentGet { boolean get(Object holder); }
+    public interface PresentSet { void set(Object holder, boolean present); }
+
+    /** an array's element count: a list's size, an enum-keyed array's extent. */
+    public Count count;
+    /** grows (with default elements) or shrinks an array; null for an enum-keyed array. */
+    public Resize resize;
+    /** an integer-valued element: bool as 0/1, enum value, flags mask, bits(N), integers to 64 bits (unsigned zero-extended). */
+    public LongGet getLong;
+    public LongSet setLong;
+    /** a float32 or float64 element. */
+    public DoubleGet getDouble;
+    public DoubleSet setDouble;
+    /** an element held by reference: a string, a byte buffer, a nested record's or union's Value, a 128-bit value. */
+    public ObjectGet getObject;
+    public ObjectSet setObject;
+    /** an optional field's presence companion. */
+    public PresentGet present;
+    public PresentSet setPresent;
+    /** the nested record's descriptor (a nested table, an array of records, a pointer, a map's entry), else null. */
+    public java.util.function.Supplier<TableTypeInfo> nested;
+
+    /** the nested record's descriptor, or null (§8.1). */
+    public TableTypeInfo table() { return nested == null ? null : nested.get(); }
 
     public static TableFieldInfo of(String name, int kind, String shape, long bound) {
         TableFieldInfo f = new TableFieldInfo();
@@ -394,6 +467,23 @@ const tableFieldInfoRuntime = `public final class TableFieldInfo {
         f.bound = bound;
         return f;
     }
+
+    TableFieldInfo at(boolean isArray, boolean counted, int offset, int elementSize, int countOffset, int presentOffset) {
+        this.isArray = isArray;
+        this.counted = counted;
+        this.offset = offset;
+        this.elementSize = elementSize;
+        this.countOffset = countOffset;
+        this.presentOffset = presentOffset;
+        return this;
+    }
+
+    TableFieldInfo nested(java.util.function.Supplier<TableTypeInfo> nested) { this.nested = nested; return this; }
+    TableFieldInfo items(Count count, Resize resize) { this.count = count; this.resize = resize; return this; }
+    TableFieldInfo longs(LongGet get, LongSet set) { this.getLong = get; this.setLong = set; return this; }
+    TableFieldInfo doubles(DoubleGet get, DoubleSet set) { this.getDouble = get; this.setDouble = set; return this; }
+    TableFieldInfo objects(ObjectGet get, ObjectSet set) { this.getObject = get; this.setObject = set; return this; }
+    TableFieldInfo presence(PresentGet get, PresentSet set) { this.present = get; this.setPresent = set; return this; }
 
     TableFieldInfo view(String json, String typeName, long id, boolean optional, String named, String doc, String[] tags) {
         this.json = json;
@@ -415,6 +505,11 @@ const tableTypeInfoRuntime = `public final class TableTypeInfo {
     public TableFieldInfo[] fields;
     public String doc;
     public String[] tags;
+    /** a fresh instance at its declared defaults (<Name>Variable.Value); null on a type no table reaches. */
+    public java.util.function.Supplier<Object> create;
+    /** THE RESET HOOK (§8.1): puts one instance back at its declared defaults, in place,
+     *  one member at a time; null on a type no table reaches. */
+    public java.util.function.Consumer<Object> reset;
 }
 `
 
