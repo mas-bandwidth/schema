@@ -244,13 +244,21 @@ func TestTheRowSetIsMainsRoster(t *testing.T) {
 // its wiring does must still be reported absent, because nothing here can
 // generate, build or measure it — and it is named with the reason that is
 // actually true of it.
+//
+// No row is pending on this tree (dart, the last one, has its leg), so the
+// test names a hypothetical one for its own duration. It is not parallel: it
+// changes the working directory, and the pending list with it.
 func TestAPendingLanguageIsNeverMeasuredEvenWithARunner(t *testing.T) {
 	previous, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
+	const pending = "zig"
+	saved := pendingLanguages
+	pendingLanguages = []string{pending}
+	t.Cleanup(func() { pendingLanguages = saved })
 	root := t.TempDir()
-	for _, lang := range []string{"cpp", "dart"} {
+	for _, lang := range []string{"cpp", pending} {
 		if err := os.MkdirAll(filepath.Join(root, "bench", "tables", lang), 0755); err != nil {
 			t.Fatal(err)
 		}
@@ -259,12 +267,18 @@ func TestAPendingLanguageIsNeverMeasuredEvenWithARunner(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chdir(previous) })
+	// discoverTableLanguages walks the published row set, which is derived
+	// once; the hypothetical pending row is appended the way orderedRoster
+	// appends a roster name the order forgot.
+	nine := nineLanguages
+	nineLanguages = orderedRoster()
+	t.Cleanup(func() { nineLanguages = nine })
 	present, absent := discoverTableLanguages()
-	if contains(present, "dart") {
+	if contains(present, pending) || !contains(present, "cpp") {
 		t.Fatal("a pending language reached the measured set:", present)
 	}
-	if !contains(absent, "dart") || !strings.Contains(absentReason("dart"), "no leg in this driver yet") {
-		t.Fatal(absent, absentReason("dart"))
+	if !contains(absent, pending) || !strings.Contains(absentReason(pending), "no leg in this driver yet") {
+		t.Fatal(absent, absentReason(pending))
 	}
 	if !strings.Contains(absentReason("go"), "no runner on this tree") {
 		t.Fatal(absentReason("go"))
