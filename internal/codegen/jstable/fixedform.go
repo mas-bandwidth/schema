@@ -24,7 +24,6 @@ package jstable
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -589,6 +588,13 @@ func variableFieldRefusal(st *ir.Struct, f *ir.Field) string {
 // []U / [..N]U, whose arms are payload-free, tables, or carried field lines
 // (§2.6, §3); an OPTIONAL ?T over a carried field line, arrays included (§2.3);
 // and an ENUM-KEYED ARRAY [E]T of a scalar, an enum or a table (§2.4, §3.2).
+//
+// AND WITH js-carries-nested-types-and-fixed-arrays-on-the-table-wire: a
+// FIXED-LENGTH ARRAY [N]T as a MAP'S VALUE (§2.8, laid out as §3 lays out a
+// fixed-length array: N elements, no count) is no longer refused; as a field,
+// an optional ?[N]T and a union arm it was already carried, as were a nested
+// `type` by value (§2) and a flags arm (§2.6), each held byte for byte by
+// TestNestedTypesAndFixedArraysOnTheTableWireJavaScript.
 func variableFieldRefusalNamed(name string, f *ir.Field) string {
 	switch {
 	case f.IsMap():
@@ -614,8 +620,6 @@ func variableFieldRefusalNamed(name string, f *ir.Field) string {
 		}
 	case f.Type.Optional && f.Type.Pointer:
 		return name + ": an optional pointer (docs/SPEC-TABLES.md §2.3)"
-	case f.Array == ir.ArrayFixed && strings.HasSuffix(name, " (map value)"):
-		return name + ": a fixed-length array [N]T (docs/SPEC-TABLES.md §3)"
 	case f.Array != ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
 		return name + ": an array of strings or byte strings (docs/SPEC-TABLES.md §2.9)"
 	}

@@ -78,7 +78,7 @@ generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .js + <Base>Table.js + the two accelerators' readers),
 # because a table's closure decodes into the packet emitter's own classes.
-build/tables-generated-js/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema
+build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema
 	@mkdir -p build/tables-generated-js
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
 	# the POINTERED unit: its FIXED surface is refused by name for every
@@ -90,6 +90,11 @@ build/tables-generated-js/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	# the BYTE-BUFFER unit (§2.5): *bytes and *string on the variable wire
 	# (BlobdemoVariable.js).
 	./bin/schema generate --lang js --out build/tables-generated-js/blobs tables/blobs
+	# the MAP unit (§2.8) without Text.schema, whose wstring(N) map value this
+	# leg's table codec still refuses whole: MapdemoVariable.js carries Cells
+	# (a [N]T map value) and Pairs (an [N]*T map value), which the conformance
+	# driver's wire surfaces answer (js-carries-nested-types-and-fixed-arrays).
+	./bin/schema generate --lang js --out build/tables-generated-js/maps $(filter-out tables/maps/Text.schema,$(wildcard tables/maps/*.schema))
 	./bin/schema generate --lang js --out build/tables-generated-js/block tables/block
 	./bin/schema generate --lang js --out build/tables-generated-js/blockhome tables/blockhome
 	./bin/schema generate --lang js --out build/tables-generated-js/v1 test/tables/V1.schema
@@ -570,13 +575,17 @@ test-js: tables-js-variable-class
 # MAPS AND UNION ARMS ON THE VARIABLE WIRE (docs/SPEC-TABLES.md §2.3, §2.4, §2.6,
 # §2.8, §3): maps, union arms of any field type, optional ?T, enum-keyed arrays,
 # optional arrays and 128-bit scalars round-trip the variable wire byte for byte
-# against the Go oracle (TestMapsAndUnionArmsOnTheTableWireJavaScript), and the
-# refusal test no longer names those constructs (TestOtherVariableConstructsAreRefusedByName).
+# against the Go oracle (TestMapsAndUnionArmsOnTheTableWireJavaScript); a nested
+# `type` by value (§2), a fixed-length array [N]T as a field, an optional ?[N]T,
+# a map value and a union arm, and a flags arm do too, over keyed_config,
+# keyed_default, map_cells and map_pairs
+# (TestNestedTypesAndFixedArraysOnTheTableWireJavaScript); and the refusal test
+# no longer names those constructs (TestOtherVariableConstructsAreRefusedByName).
 # SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE rather than a skip.
 .PHONY: tables-js-variable-arms
 tables-js-variable-arms:
-	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestMapsAndUnionArmsOnTheTableWireJavaScript|TestOtherVariableConstructsAreRefusedByName)$$'
-	@echo 'tables JS variable arms: maps, union arms, optional ?T and enum-keyed arrays round-trip the oracle bytes and are no longer refused by name'
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestNestedTypesAndFixedArraysOnTheTableWireJavaScript|TestMapsAndUnionArmsOnTheTableWireJavaScript|TestOtherVariableConstructsAreRefusedByName)$$'
+	@echo 'tables JS variable arms: maps, union arms, optional ?T, enum-keyed arrays, nested types and fixed-length arrays [N]T round-trip the oracle bytes and are no longer refused by name'
 
 test-js: tables-js-variable-arms
 

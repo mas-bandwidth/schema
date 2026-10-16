@@ -34,9 +34,10 @@ import (
 // must be clean), measured, written as text (the oracle's text), and read back
 // from the text and saved (the wire again).
 //
-// The corpus roots this leg does NOT carry are refused BY NAME, never
-// mis-encoded (§11): Cells and Pairs hold a fixed array [N]T as a map value and
-// Text a wstring(N), neither on this leg's variable wire yet.
+// The corpus root this leg does NOT carry is refused BY NAME, never
+// mis-encoded (§11): Text holds a wstring(N), not on this leg's variable wire
+// yet. Cells and Pairs (a fixed array [N]T as a map value) are carried, held by
+// TestNestedTypesAndFixedArraysOnTheTableWireJavaScript.
 func TestMapsAndUnionArmsOnTheTableWireJavaScript(t *testing.T) {
 	t.Parallel()
 	node := jsNode(t)
@@ -78,12 +79,10 @@ func TestMapsAndUnionArmsOnTheTableWireJavaScript(t *testing.T) {
 		}},
 	}
 
-	// THE BOUNDARY: the map corpus roots still refused are refused by name
+	// THE BOUNDARY: the map corpus root still refused is refused by name
 	vc := newVariableClass(maps)
 	for root, want := range map[string]string{
-		"Cells": "a fixed-length array [N]T",
-		"Pairs": "a fixed-length array [N]T",
-		"Text":  "a wstring(N)",
+		"Text": "a wstring(N)",
 	} {
 		if why := vc.reason[root]; !strings.Contains(why, root+".") || !strings.Contains(why, want) {
 			t.Errorf("%s: refusal %q does not name the field and %q", root, why, want)
