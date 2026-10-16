@@ -779,7 +779,9 @@ func (g *gen) emitCookNamedTextDefaults(st *ir.Struct, ind string) {
 			g.pf("%svalue.%s_length = %d;\n", ind, f.Name, n)
 			continue
 		}
-		if f.Type.Kind != ir.TNamed {
+		// a pointer's slot is a self-relative delta, zero is null (§6.3): the
+		// target's defaults live in the target's own record, never in the slot
+		if f.Type.Kind != ir.TNamed || f.Type.Pointer {
 			continue
 		}
 		nested, ok := f.Type.Ref.(*ir.Struct)

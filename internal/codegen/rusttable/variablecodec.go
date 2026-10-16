@@ -13,6 +13,7 @@ package rusttable
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"sort"
 	"strconv"
 	"strings"
@@ -731,6 +732,37 @@ func intRange(f *ir.Field) (lo, hi string, ok bool) {
 	return f.IntMin.String(), f.IntMax.String(), true
 }
 
+// clampStmt is §4's declared clamp (docs/SPEC-TABLES.md §4) on a decode local
+// of `bits` width and the given signedness, spelled with `suffix` and counted
+// on `counter`: each end that sits ON the local's own limit is elided, because
+// a comparison that cannot fire is a deny-by-default clippy error
+// (absurd_extreme_comparisons) and describes a value the local cannot hold —
+// the same "this check cannot fire" rule tables/examples/Ranges.schema pins
+// for the C and C++ legs. "" when there is no declared range or neither end
+// can fire.
+func clampStmt(f *ir.Field, bits int, signed bool, suffix, counter, ind string) string {
+	if !f.HasIntRange || f.IntMin == nil || f.IntMax == nil {
+		return ""
+	}
+	localMin, localMax := new(big.Int), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
+	if signed {
+		localMin = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(bits-1)))
+		localMax = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits-1)), big.NewInt(1))
+	}
+	lo, hi := f.IntMin.String(), f.IntMax.String()
+	low := fmt.Sprintf("if x < %s%s { x = %s%s; %s += 1; }", lo, suffix, lo, suffix, counter)
+	high := fmt.Sprintf("if x > %s%s { x = %s%s; %s += 1; }", hi, suffix, hi, suffix, counter)
+	switch canLow, canHigh := f.IntMin.Cmp(localMin) > 0, f.IntMax.Cmp(localMax) < 0; {
+	case canLow && canHigh:
+		return ind + low + " else " + high + "\n"
+	case canLow:
+		return ind + low + "\n"
+	case canHigh:
+		return ind + high + "\n"
+	}
+	return ""
+}
+
 func scalarReadFn(f *ir.Field) string {
 	if f.Type.Width == 128 {
 		return "scalar_read_128"
@@ -754,38 +786,35 @@ func emitScalarConvert(b *strings.Builder, f *ir.Field, dst, kvar, ind string) {
 		return
 	}
 	signed := f.Type.Kind == ir.TInt && f.Type.Signed
+	// the local is mutable only when a clamp below can write it
+	mut := func(clamps string) string {
+		if clamps == "" {
+			return ""
+		}
+		return "mut "
+	}
 	if f.Type.Width == 128 {
+		suffix, from := "u128", "raw"
 		if signed {
-			fmt.Fprintf(b, "%slet mut x = raw as i128;\n", ind)
-		} else {
-			fmt.Fprintf(b, "%slet mut x = raw;\n", ind)
+			suffix, from = "i128", "raw as i128"
 		}
-		if lo, hi, ok := intRange(f); ok {
-			suffix := "u128"
-			if signed {
-				suffix = "i128"
-			}
-			fmt.Fprintf(b, "%sif x < %s%s { x = %s%s; report.clamped += 1; } else if x > %s%s { x = %s%s; report.clamped += 1; }\n", ind, lo, suffix, lo, suffix, hi, suffix, hi, suffix)
-		}
+		clamp := clampStmt(f, 128, signed, suffix, "report.clamped", ind)
+		fmt.Fprintf(b, "%slet %sx = %s;\n", ind, mut(clamp), from)
+		b.WriteString(clamp)
 		fmt.Fprintf(b, "%s%s = x as %s;\n", ind, dst, scalarRust(f))
 		return
 	}
+	suffix, from := "u64", "raw"
 	if signed {
-		fmt.Fprintf(b, "%slet mut x = raw as i64;\n", ind)
-	} else {
-		fmt.Fprintf(b, "%slet mut x = raw;\n", ind)
+		suffix, from = "i64", "raw as i64"
 	}
-	if lo, hi, ok := intRange(f); ok {
-		suffix := "u64"
-		if signed {
-			suffix = "i64"
-		}
-		fmt.Fprintf(b, "%sif x < %s%s { x = %s%s; report.clamped += 1; } else if x > %s%s { x = %s%s; report.clamped += 1; }\n", ind, lo, suffix, lo, suffix, hi, suffix, hi, suffix)
-	}
+	clamp := clampStmt(f, 64, signed, suffix, "report.clamped", ind)
 	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 		max := uint64(1)<<uint(f.Type.Width) - 1
-		fmt.Fprintf(b, "%sif x > %du64 { x = %du64; report.clamped += 1; }\n", ind, max, max)
+		clamp += fmt.Sprintf("%sif x > %du64 { x = %du64; report.clamped += 1; }\n", ind, max, max)
 	}
+	fmt.Fprintf(b, "%slet %sx = %s;\n", ind, mut(clamp), from)
+	b.WriteString(clamp)
 	fmt.Fprintf(b, "%s%s = x as %s;\n", ind, dst, scalarRust(f))
 }
 

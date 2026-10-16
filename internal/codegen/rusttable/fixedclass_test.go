@@ -389,3 +389,86 @@ var fixedClassProbeTexts = []fixedClassProbeText{
 	{"fc_config_default", "Config", `{}`},
 	{"fc_config_values", "Config", `{"level": 9, "name": "there", "leaf": {"id": 1, "name": "l", "perks": [], "on": false, "grade": "Bronze"}, "badge": {"label": "b", "perks": ["Shielded", "Boosted"]}, "many": [1, 2, 3], "podium": ["Gold", "None", "Silver"]}`},
 }
+
+// TestFixedClassClampElidesImpossibleEnds pins §4's read clamp on the form-1
+// codec a fixed table now gets (docs/SPEC-TABLES.md §4): an end of a declared
+// range that sits ON the decode local's own limit (0 and u64::MAX for an
+// unsigned field, i64::MIN and i64::MAX for a signed one) is not written,
+// because that comparison cannot fire and is a deny-by-default clippy error
+// (absurd_extreme_comparisons) that `make tables-rust-clippy` reds on
+// tables/examples/Ranges.schema; an end that can fire is kept and counted.
+func TestFixedClassClampElidesImpossibleEnds(t *testing.T) {
+	t.Parallel()
+
+	out := generate(t, `package probe
+
+fixed table Ranged
+{
+    u8_span  uint8  | min = 0, max = 255
+    u64_span uint64 | min = 0, max = 18446744073709551615
+    u64_low  uint64 = 1 | min = 1, max = 18446744073709551615
+    i64_span int64  | min = -9223372036854775808, max = 9223372036854775807
+    i64_high int64  | min = -9223372036854775808, max = 9
+    i8_span  int8   | min = -128, max = 127
+}
+`)
+	codec := string(out["probe_table.rs"])
+	if codec == "" {
+		t.Fatal("the fixed table Ranged emitted no form-1 codec probe_table.rs")
+	}
+	for _, never := range []string{
+		"x < 0u64", "x > 18446744073709551615u64",
+		"x < -9223372036854775808i64", "x > 9223372036854775807i64",
+	} {
+		if strings.Contains(codec, never) {
+			t.Errorf("the form-1 read writes a clamp that cannot fire: %q", never)
+		}
+	}
+	for _, want := range []string{
+		"if x > 255u64 { x = 255u64; report.clamped += 1; }",
+		"if x < 1u64 { x = 1u64; report.clamped += 1; }",
+		"if x > 9i64 { x = 9i64; report.clamped += 1; }",
+		"if x < -128i64 { x = -128i64; report.clamped += 1; } else if x > 127i64 { x = 127i64; report.clamped += 1; }",
+	} {
+		if !strings.Contains(codec, want) {
+			t.Errorf("the form-1 read lost a clamp that can fire: %q", want)
+		}
+	}
+}
+
+// TestPointerToDefaultedTableKeepsANullSlot pins the cooked record a
+// variable table holding a pointer to a defaulted fixed table gets (W1's Fleet
+// over Vessel; docs/SPEC-TABLES.md §6.3, §7.2): the pointer's slot is an i64
+// self-relative delta whose zero is null, so <Name>Row::default() never
+// assigns the target's Row into it, scalar or bounded array, while a by-value
+// field of the same table still takes the target's defaults.
+func TestPointerToDefaultedTableKeepsANullSlot(t *testing.T) {
+	t.Parallel()
+
+	out := generate(t, `package probe
+
+fixed table Vessel
+{
+    name string(8) = "boat"
+}
+
+table Fleet
+{
+    flagship *Vessel
+    escorts  [..4]*Vessel
+    home     Vessel
+}
+`)
+	def := rustDefaultImpl(string(out["probe_records.rs"]), "FleetRow")
+	if def == "" {
+		t.Fatal("impl Default for FleetRow was not emitted")
+	}
+	for _, never := range []string{"value.flagship = VesselRow::default()", "value.escorts[i] = VesselRow::default()"} {
+		if strings.Contains(def, never) {
+			t.Errorf("a pointer slot takes the target's record: %q\n%s", never, def)
+		}
+	}
+	if !strings.Contains(def, "value.home = VesselRow::default()") {
+		t.Errorf("the by-value field lost the target's defaults:\n%s", def)
+	}
+}
