@@ -256,6 +256,10 @@ function TableVariableRound(n, a) {
 // caller owns it; the codec never makes one.
 export class TableVariableReport {
   constructor() {
+    // The named reason is kept alongside the counters so callers can
+    // distinguish a clean read from a refusal without reverse-engineering
+    // which counter moved.  A successful read, including widening, is ok.
+    this.reason = "ok";
     this.malformed = false;
     this.refused = 0;
     this.unknown = 0;

@@ -928,7 +928,7 @@ async function wireFuzz() {
     const codec = roster[index];
 
     let loaded = false, measure = -1, saved = null;
-    const report = { unknown: 0, kindMismatch: 0, widened: 0, clamped: 0, duplicate: 0, malformed: false, refused: 0, retained: 0, retainLost: 0 };
+    const report = { reason: "ok", unknown: 0, kindMismatch: 0, widened: 0, clamped: 0, duplicate: 0, malformed: false, refused: 0, retained: 0, retainLost: 0 };
     if (codec !== null) {
       measure = codec.CardLoadMeasure(wire);
       if (measure >= 0) {
@@ -955,6 +955,7 @@ async function wireFuzz() {
         report.refused = rep.refused;
         report.retained = rep.retained;
         report.retainLost = rep.retainLost;
+        report.reason = rep.reason;
       }
     }
 
