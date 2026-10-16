@@ -285,7 +285,7 @@ tables-elixir-offsets:
 		echo "tables-elixir-offsets: the gate SKIPPED a subtest; under SCHEMA_REQUIRE_CORPUS=1 a missing toolchain or corpus is a failure"; \
 		exit 1; \
 	fi
-	@echo 'tables Elixir offsets: composition holds, 0 words allocated, forgery refused from the high half'
+	@echo 'tables Elixir offsets: composition holds, forged offset_of refused with no extra collections'
 
 # ITS NEGATIVE CONTROL: sabotage the block's composed read back to the
 # whole-word read, and the forged-offset assertion must go red (a bignum gets

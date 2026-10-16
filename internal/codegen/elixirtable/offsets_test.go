@@ -22,10 +22,23 @@ func TestOffsetsComposeFromHalvesElixir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// HOW ALLOCATION IS MEASURED. The first version of this test bracketed the
+	// open with garbage_collection_info heap_size inside a process with a huge
+	// min_heap_size. Measured on OTP 29: heap_size and total_heap_size are the
+	// heap BLOCK size and do not move as terms are allocated until a collection
+	// runs, so a bignum formed by a whole-word read changed nothing and the
+	// negative control could never go red. What does move is the number of
+	// minor collections, so the probe runs in a spawned process with a small
+	// heap and counts minor_gcs over many calls. A refusal of a forged offset
+	// whose high half is 0x7FFFFFFF is compared with a refusal of a forged offset
+	// whose high half is 1 (an immediate in either reader): the same code runs
+	// and the same garbage is made, except that only a reader that forms the
+	// 64-bit integer allocates a bignum for the first. Equal collection counts
+	// mean the high half was refused before any 64-bit integer was formed.
 	heaps := `
-heap = fn ->
-  {:garbage_collection_info, p} = :erlang.process_info(self(), :garbage_collection_info)
-  p[:heap_size]
+gcs = fn ->
+  {:garbage_collection, p} = :erlang.process_info(self(), :garbage_collection)
+  p[:minor_gcs]
 end
 `
 	probeSetup := `defmodule Probe do
@@ -50,28 +63,42 @@ end
 			t.Fatal(err)
 		}
 		probe := probeSetup + `image = File.read!(` + elixirString(golden) + `)
+parent = self()
+{_pid, ref} = :erlang.spawn_opt(fn ->
 ` + heaps + `
-before = heap.()
-block = Blockdemo.RenderBlock.block_open_render_frame(image)
-after_open = heap.()
-# an ordinary open composes the offset without forming a bignum: 0 words
-Probe.check(after_open - before == 0, "open allocated words")
-# a FORGED offset_of word: high half 0x7FFFFFFF (>= 0x08000000, past a BEAM
-# immediate) is refused from the high half alone, before any 64-bit integer is
-# formed, so the refusal allocates 0 words
+Probe.check(is_map(Blockdemo.RenderBlock.block_open_render_frame(image)) or
+  is_tuple(Blockdemo.RenderBlock.block_open_render_frame(image)) or
+  is_struct(Blockdemo.RenderBlock.block_open_render_frame(image)), "an ordinary open is accepted")
 [array | _] = Blockdemo.RenderBlock.render_frame_block_arrays()
 off = array.offset_of_offset
 <<head::binary-size(off), _::binary-size(8), tail::binary>> = image
+# a FORGED offset_of word: high half 0x7FFFFFFF (>= 0x08000000, past a BEAM
+# immediate) must be refused from the high half alone, before any 64-bit
+# integer is formed
 forged = head <> <<0::little-unsigned-32, 0x7FFFFFFF::little-unsigned-32>> <> tail
-refused = Blockdemo.RenderBlock.block_open_render_frame(forged)
-Probe.check(refused == :error, "a forged offset_of high half is refused")
-fbefore = heap.()
-Enum.each(1..2000, fn _ -> Blockdemo.RenderBlock.block_open_render_frame(forged) end)
-fafter = heap.()
-Probe.check(fafter - fbefore == 0, "forged offset_of refusal allocated words")
-IO.puts("ok")
+# the control: an out-of-extent offset that is an immediate in either reader
+small = head <> <<0::little-unsigned-32, 1::little-unsigned-32>> <> tail
+Probe.check(Blockdemo.RenderBlock.block_open_render_frame(forged) == :error, "a forged offset_of high half is refused")
+Probe.check(Blockdemo.RenderBlock.block_open_render_frame(small) == :error, "an out-of-extent offset_of is refused")
+count = fn img ->
+  :erlang.garbage_collect()
+  g0 = gcs.()
+  Enum.each(1..50_000, fn _ -> Blockdemo.RenderBlock.block_open_render_frame(img) end)
+  gcs.() - g0
+end
+small_gcs = count.(small)
+forged_gcs = count.(forged)
+IO.puts("minor gcs over 50000 refusals: forged=#{forged_gcs} immediate=#{small_gcs}")
+Probe.check(forged_gcs <= small_gcs, "forged offset_of refusal allocated: " <> Integer.to_string(forged_gcs) <> " collections against " <> Integer.to_string(small_gcs))
+send(parent, :done)
+end, [:monitor])
+receive do
+  :done -> IO.puts("ok")
+  {:DOWN, ^ref, _, _, reason} -> IO.puts(:stderr, "probe process died: " <> inspect(reason)); System.halt(1)
+after 120_000 -> IO.puts(:stderr, "probe timed out"); System.halt(1)
+end
 `
-		runProbe(t, elixirBin, dir, names, probe)
+		t.Log(runProbe(t, elixirBin, dir, names, probe))
 	})
 	t.Run("cook", func(t *testing.T) {
 		t.Parallel()
