@@ -24,11 +24,30 @@
 // absent. TestRetainsAndWidensOnEveryRootRust holds ROOTS equal, both ways, to
 // the roster roots whose unit the Rust generator gives a variable codec.
 
+mod backenddemo;
 mod blobdemo;
 mod graphdemo;
 mod listdemo;
 mod mapdemo;
+mod messagedemo;
+mod streamdemo;
+mod tabledemo;
+mod tbla2;
+mod tblk1;
+mod tblk2;
+mod tblm1;
+mod tblm2;
+mod tblp1;
 mod tblp2;
+mod tblp3;
+mod tblr1;
+mod tblr2;
+mod tblv1;
+mod tblv2;
+mod tblw1;
+mod tblw2;
+mod vocab9demo;
+mod vocabdemo;
 
 use std::io::{self, Read, Write};
 
@@ -47,6 +66,7 @@ struct Reply {
     retained: u64,
     retain_lost: u64,
     saved: Vec<u8>,
+    save_refused: bool,
 }
 
 /// THE RETENTION ARM'S TWO STORES (docs/SPEC-TABLES.md §6.6), large on purpose
@@ -84,6 +104,11 @@ macro_rules! arm {
         reply.duplicate = report.duplicate;
         reply.malformed = report.malformed;
         reply.refused = report.refused;
+        // A DATA CYCLE IS REFUSED AT SAVE (docs/SPEC-TABLES.md §3.1): the load
+        // read it clean and named it, this storage could not hold it, and what
+        // it handed back is not the wire's value, so the save is refused, as
+        // the oracle's is
+        reply.save_refused = report.reason == TableReason::DataCycle;
         Some(reply)
     }};
 }
@@ -91,10 +116,14 @@ macro_rules! arm {
 /// ROOTS is every (unit, root) this driver answers, in the order `drive`
 /// matches them.
 const ROOTS: &[(&str, &str)] = &[
+    ("backenddemo", "LoginRequest"),
+    ("backenddemo", "MatchResult"),
+    ("backenddemo", "StorePurchase"),
     ("blobdemo", "Catalog"),
     ("graphdemo", "Scene"),
     ("listdemo", "Album"),
     ("listdemo", "Army"),
+    ("listdemo", "Mixed"),
     ("listdemo", "Save"),
     ("listdemo", "Sheet"),
     ("listdemo", "Unbounded"),
@@ -109,15 +138,86 @@ const ROOTS: &[(&str, &str)] = &[
     ("mapdemo", "Slots"),
     ("mapdemo", "Spans"),
     ("mapdemo", "Trails"),
+    ("messagedemo", "ToolMessage"),
+    ("streamdemo", "Feed"),
+    ("tabledemo", "ArchiveConfig"),
+    ("tabledemo", "KeyedConfig"),
+    ("tabledemo", "LoadoutConfig"),
+    ("tabledemo", "ProfileConfig"),
+    ("tabledemo", "RootConfig"),
+    ("tabledemo", "WideBlob"),
+    ("tbla2", "Root"),
+    ("tblk1", "Root"),
+    ("tblk2", "Root"),
+    ("tblm1", "Msg"),
+    ("tblm2", "Msg"),
+    ("tblp1", "Chain"),
     ("tblp2", "Chain"),
+    ("tblp3", "Chain"),
+    ("tblr1", "Cfg"),
+    ("tblr2", "Cfg"),
+    ("tblv1", "Cfg"),
+    ("tblv2", "Cfg"),
+    ("tblw1", "Fleet"),
+    ("tblw2", "Fleet"),
+    ("vocab9demo", "Wide00"),
+    ("vocab9demo", "Wide19"),
+    ("vocabdemo", "Wide00"),
+    ("vocabdemo", "Wide09"),
+];
+
+/// VALUE_ONLY is every root in ROOTS that is a `fixed table`
+/// (docs/SPEC-TABLES.md §2.2): its form-1 read is value-only, with no region to
+/// measure, so it answers loaded with measure -1 whatever the wire, the way
+/// the Go driver answers a root with no LoadMeasure (test/conformance/go/wire_fuzz.go),
+/// and wirefuzz.go never puts it on the retention arm.
+const VALUE_ONLY: &[(&str, &str)] = &[
+    ("backenddemo", "LoginRequest"),
+    ("backenddemo", "MatchResult"),
+    ("backenddemo", "StorePurchase"),
+    ("messagedemo", "ToolMessage"),
+    ("tabledemo", "ArchiveConfig"),
+    ("tabledemo", "KeyedConfig"),
+    ("tabledemo", "LoadoutConfig"),
+    ("tabledemo", "ProfileConfig"),
+    ("tabledemo", "RootConfig"),
+    ("tabledemo", "WideBlob"),
+    ("tbla2", "Root"),
+    ("tblk1", "Root"),
+    ("tblk2", "Root"),
+    ("tblm1", "Msg"),
+    ("tblm2", "Msg"),
+    ("tblp1", "Chain"),
+    ("tblp3", "Chain"),
+    ("tblr1", "Cfg"),
+    ("tblr2", "Cfg"),
+    ("tblv1", "Cfg"),
+    ("tblv2", "Cfg"),
+    ("vocab9demo", "Wide00"),
+    ("vocab9demo", "Wide19"),
+    ("vocabdemo", "Wide00"),
+    ("vocabdemo", "Wide09"),
 ];
 
 fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
+    let mut reply = dispatch(unit, root, wire, retain)?;
+    if VALUE_ONLY.iter().any(|(u, r)| *u == unit && *r == root) {
+        reply.loaded = true;
+        reply.measure = -1;
+    }
+    Some(reply)
+}
+
+fn dispatch(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
     match (unit, root) {
+        ("backenddemo", "LoginRequest") => arm!(backenddemo, login_request_load, login_request_load_retain, login_request_save, login_request_save_retain, login_request_load_measure, wire, retain),
+        ("backenddemo", "MatchResult") => arm!(backenddemo, match_result_load, match_result_load_retain, match_result_save, match_result_save_retain, match_result_load_measure, wire, retain),
+        ("backenddemo", "StorePurchase") => arm!(backenddemo, store_purchase_load, store_purchase_load_retain, store_purchase_save, store_purchase_save_retain, store_purchase_load_measure, wire, retain),
         ("blobdemo", "Catalog") => arm!(blobdemo, catalog_load, catalog_load_retain, catalog_save, catalog_save_retain, catalog_load_measure, wire, retain),
         ("graphdemo", "Scene") => arm!(graphdemo, scene_load, scene_load_retain, scene_save, scene_save_retain, scene_load_measure, wire, retain),
         ("listdemo", "Album") => arm!(listdemo, album_load, album_load_retain, album_save, album_save_retain, album_load_measure, wire, retain),
         ("listdemo", "Army") => arm!(listdemo, army_load, army_load_retain, army_save, army_save_retain, army_load_measure, wire, retain),
+        ("listdemo", "Mixed") => arm!(listdemo, mixed_load, mixed_load_retain, mixed_save, mixed_save_retain, mixed_load_measure, wire, retain),
         ("listdemo", "Save") => arm!(listdemo, save_load, save_load_retain, save_save, save_save_retain, save_load_measure, wire, retain),
         ("listdemo", "Sheet") => arm!(listdemo, sheet_load, sheet_load_retain, sheet_save, sheet_save_retain, sheet_load_measure, wire, retain),
         ("listdemo", "Unbounded") => arm!(listdemo, unbounded_load, unbounded_load_retain, unbounded_save, unbounded_save_retain, unbounded_load_measure, wire, retain),
@@ -132,7 +232,32 @@ fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
         ("mapdemo", "Slots") => arm!(mapdemo, slots_load, slots_load_retain, slots_save, slots_save_retain, slots_load_measure, wire, retain),
         ("mapdemo", "Spans") => arm!(mapdemo, spans_load, spans_load_retain, spans_save, spans_save_retain, spans_load_measure, wire, retain),
         ("mapdemo", "Trails") => arm!(mapdemo, trails_load, trails_load_retain, trails_save, trails_save_retain, trails_load_measure, wire, retain),
+        ("messagedemo", "ToolMessage") => arm!(messagedemo, tool_message_load, tool_message_load_retain, tool_message_save, tool_message_save_retain, tool_message_load_measure, wire, retain),
+        ("streamdemo", "Feed") => arm!(streamdemo, feed_load, feed_load_retain, feed_save, feed_save_retain, feed_load_measure, wire, retain),
+        ("tabledemo", "ArchiveConfig") => arm!(tabledemo, archive_config_load, archive_config_load_retain, archive_config_save, archive_config_save_retain, archive_config_load_measure, wire, retain),
+        ("tabledemo", "KeyedConfig") => arm!(tabledemo, keyed_config_load, keyed_config_load_retain, keyed_config_save, keyed_config_save_retain, keyed_config_load_measure, wire, retain),
+        ("tabledemo", "LoadoutConfig") => arm!(tabledemo, loadout_config_load, loadout_config_load_retain, loadout_config_save, loadout_config_save_retain, loadout_config_load_measure, wire, retain),
+        ("tabledemo", "ProfileConfig") => arm!(tabledemo, profile_config_load, profile_config_load_retain, profile_config_save, profile_config_save_retain, profile_config_load_measure, wire, retain),
+        ("tabledemo", "RootConfig") => arm!(tabledemo, root_config_load, root_config_load_retain, root_config_save, root_config_save_retain, root_config_load_measure, wire, retain),
+        ("tabledemo", "WideBlob") => arm!(tabledemo, wide_blob_load, wide_blob_load_retain, wide_blob_save, wide_blob_save_retain, wide_blob_load_measure, wire, retain),
+        ("tbla2", "Root") => arm!(tbla2, root_load, root_load_retain, root_save, root_save_retain, root_load_measure, wire, retain),
+        ("tblk1", "Root") => arm!(tblk1, root_load, root_load_retain, root_save, root_save_retain, root_load_measure, wire, retain),
+        ("tblk2", "Root") => arm!(tblk2, root_load, root_load_retain, root_save, root_save_retain, root_load_measure, wire, retain),
+        ("tblm1", "Msg") => arm!(tblm1, msg_load, msg_load_retain, msg_save, msg_save_retain, msg_load_measure, wire, retain),
+        ("tblm2", "Msg") => arm!(tblm2, msg_load, msg_load_retain, msg_save, msg_save_retain, msg_load_measure, wire, retain),
+        ("tblp1", "Chain") => arm!(tblp1, chain_load, chain_load_retain, chain_save, chain_save_retain, chain_load_measure, wire, retain),
         ("tblp2", "Chain") => arm!(tblp2, chain_load, chain_load_retain, chain_save, chain_save_retain, chain_load_measure, wire, retain),
+        ("tblp3", "Chain") => arm!(tblp3, chain_load, chain_load_retain, chain_save, chain_save_retain, chain_load_measure, wire, retain),
+        ("tblr1", "Cfg") => arm!(tblr1, cfg_load, cfg_load_retain, cfg_save, cfg_save_retain, cfg_load_measure, wire, retain),
+        ("tblr2", "Cfg") => arm!(tblr2, cfg_load, cfg_load_retain, cfg_save, cfg_save_retain, cfg_load_measure, wire, retain),
+        ("tblv1", "Cfg") => arm!(tblv1, cfg_load, cfg_load_retain, cfg_save, cfg_save_retain, cfg_load_measure, wire, retain),
+        ("tblv2", "Cfg") => arm!(tblv2, cfg_load, cfg_load_retain, cfg_save, cfg_save_retain, cfg_load_measure, wire, retain),
+        ("tblw1", "Fleet") => arm!(tblw1, fleet_load, fleet_load_retain, fleet_save, fleet_save_retain, fleet_load_measure, wire, retain),
+        ("tblw2", "Fleet") => arm!(tblw2, fleet_load, fleet_load_retain, fleet_save, fleet_save_retain, fleet_load_measure, wire, retain),
+        ("vocab9demo", "Wide00") => arm!(vocab9demo, wide00_load, wide00_load_retain, wide00_save, wide00_save_retain, wide00_load_measure, wire, retain),
+        ("vocab9demo", "Wide19") => arm!(vocab9demo, wide19_load, wide19_load_retain, wide19_save, wide19_save_retain, wide19_load_measure, wire, retain),
+        ("vocabdemo", "Wide00") => arm!(vocabdemo, wide00_load, wide00_load_retain, wide00_save, wide00_save_retain, wide00_load_measure, wire, retain),
+        ("vocabdemo", "Wide09") => arm!(vocabdemo, wide09_load, wide09_load_retain, wide09_save, wide09_save_retain, wide09_load_measure, wire, retain),
         _ => None,
     }
 }
@@ -216,9 +341,11 @@ fn main() {
         head[23..31].copy_from_slice(&reply.measure.to_le_bytes());
         head[31..35].copy_from_slice(&(reply.retained as u32).to_le_bytes());
         head[35..39].copy_from_slice(&(reply.retain_lost as u32).to_le_bytes());
-        head[39..47].copy_from_slice(&(reply.saved.len() as i64).to_le_bytes());
+        let saved: &[u8] = if reply.save_refused { &[] } else { &reply.saved };
+        let length: i64 = if reply.save_refused { -1 } else { saved.len() as i64 };
+        head[39..47].copy_from_slice(&length.to_le_bytes());
         let _ = out.write_all(&head);
-        let _ = out.write_all(&reply.saved);
+        let _ = out.write_all(saved);
         let _ = out.flush();
     }
 }

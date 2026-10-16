@@ -1253,6 +1253,78 @@ fn surface_message(manifest: &Manifest, out: &str) {
 }
 
 // ---------------------------------------------------------------------------
+// the RETAIN surfaces (docs/SPEC-TABLES.md §6.6, test/conformance/README.md)
+// ---------------------------------------------------------------------------
+//
+// RETAIN-UNKNOWN's round trip over the caller's two stores: the load's
+// `retained,retain_lost,unknown` and the save's own `retain_lost` on `retain`,
+// the bytes the retaining save writes on `retain-save`. The byte capacity
+// travels as a RULE (`full`, or `short`: one byte under what the full load
+// kept, measured here, because a record's byte cost is the port's own) and the
+// id capacity as a count. A retain-message row's root is a plain `table`,
+// which carries no message verbs (§3.3: "a plain `table T` may not" ride the
+// form), so it is answered ABSENT with the reason, as the Go driver does.
+
+macro_rules! retain_round_trip {
+    ($krate:ident, $load:ident, $save:ident, $wire:expr, $capacity:expr, $ids:expr) => {{
+        use $krate as k;
+        let wire: &[u8] = $wire;
+        let full = 1usize << 20;
+        let id_capacity: usize = $ids;
+        let mut capacity = full;
+        if $capacity == "short" {
+            let mut probe = k::TableRetain { bytes: Vec::with_capacity(full), ids: Vec::with_capacity(id_capacity) };
+            let mut report = k::TableReport::default();
+            if k::$load(wire, &mut probe, &mut report).is_none() {
+                fail("the retaining capacity probe did not load");
+            }
+            capacity = probe.bytes.len().saturating_sub(1);
+        }
+        let mut store = k::TableRetain { bytes: Vec::with_capacity(capacity), ids: Vec::with_capacity(id_capacity) };
+        let mut report = k::TableReport::default();
+        let Some(value) = k::$load(wire, &mut store, &mut report) else {
+            fail(&format!("the retaining load failed: {:?}", report));
+        };
+        if report.malformed {
+            fail(&format!("the retaining load reports damage: {:?}", report));
+        }
+        let (retained, lost, unknown) = (report.retained, report.retain_lost, report.unknown);
+        let saved = k::$save(&value, &mut store, &mut report);
+        let save_lost = report.retain_lost - lost;
+        // THE SAVE IS REPEATABLE (§6.6): the stores are the load's, and a
+        // second save writes the same bytes and loses the same records
+        let mut second = k::TableReport::default();
+        if k::$save(&value, &mut store, &mut second) != saved || second.retain_lost != save_lost {
+            fail("the retaining save is not repeatable");
+        }
+        (format!("{retained},{lost},{unknown} {save_lost}\n"), saved)
+    }};
+}
+
+// One retain row's round trip by its unit and root: None for a root this leg
+// carries no retaining verbs for.
+fn retain_codec(unit: &str, root: &str, wire: &[u8], capacity: &str, ids: usize) -> Option<(String, Vec<u8>)> {
+    Some(match (unit, root) {
+        ("tblrt1", "Node") => retain_round_trip!(tblrt1, node_load_retain, node_save_retain, wire, capacity, ids),
+        _ => return None,
+    })
+}
+
+fn surface_retain(manifest: &Manifest, out: &str, saves: bool) {
+    for f in manifest.of_kind("retain-message") {
+        spill(out, &format!("{}.absent", f[1]), "plain table: \u{a7}3.3".as_bytes());
+    }
+    for f in manifest.of_kind("retain") {
+        let wire = slurp(&f[4]);
+        let ids = if f[6] == "full" { (1usize << 20) / 8 } else { parse_int(&f[6]) as usize };
+        match retain_codec(f[2].as_str(), f[3].as_str(), &wire, f[5].as_str(), ids) {
+            Some((counters, bytes)) => spill(out, &f[1], if saves { &bytes } else { counters.as_bytes() }),
+            None => spill_absent(out, &f[1]),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -1272,9 +1344,9 @@ fn main() {
             // graphdemo's Scene and blobdemo's Catalog — and answer every other
             // case ABSENT, one by one; the message surface rides the message form's
             // batch for the fixed roots of backenddemo, vocabdemo and vocab9demo
-            // (§3.3), and the retain surfaces are still absent whole (retention
-            // beyond the card constructs is its own row)
-            "wire\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage"
+            // (§3.3), and the retain surfaces ride the retaining pair over the
+            // corpus's retain rows (§6.6)
+            "wire\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nretain\nretain-save"
         );
         return;
     }
@@ -1298,6 +1370,8 @@ fn main() {
         "block" => surface_block(&manifest, out),
         "forgery" => surface_forgery(&manifest, out),
         "message" => surface_message(&manifest, out),
+        "retain" => surface_retain(&manifest, out, false),
+        "retain-save" => surface_retain(&manifest, out, true),
         _ => exit(2),
     }
 }

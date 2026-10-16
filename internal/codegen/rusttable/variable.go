@@ -412,7 +412,10 @@ impl TableNodeReader {
             return None;
         }
         if index == 1 {
-            if want != self.root_type { report.kind_mismatch += 1; }
+            // a slot naming the ROOT is a data cycle: the root's descent is
+            // open for the whole read (§3.1), and the reference refuses it at
+            // save, so the load names it (TableRefuseDataCycle)
+            if want != self.root_type { report.kind_mismatch += 1; } else { report.reason = TableReason::DataCycle; }
             return None;
         }
         let k = (index - 2) as usize;
@@ -570,9 +573,10 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
         }
         12 | 13 | 14 | 16 | 31 | 32 | 33 => {
             let Some(n) = leb_read(buf, off) else { return false; };
-            let n = n as usize;
-            if *off + n > end { return false; }
-            *off += n;
+            // a length past the body is damage, compared without the sum, which
+            // a hostile LEB128 near 2^64 would carry past the top (§3)
+            if *off > end || n > (end - *off) as u64 { return false; }
+            *off += n as usize;
             true
         }
         15 => {
@@ -581,9 +585,10 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
             if *off + 1 > end { return false; }
             *off += 1;
             let Some(n) = leb_read(buf, off) else { return false; };
-            let n = n as usize;
-            if *off + n > end { return false; }
-            *off += n;
+            // a length past the body is damage, compared without the sum, which
+            // a hostile LEB128 near 2^64 would carry past the top (§3)
+            if *off > end || n > (end - *off) as u64 { return false; }
+            *off += n as usize;
             true
         }
         _ => false,
@@ -648,7 +653,7 @@ pub fn retain_record_len(rec: &[u8]) -> usize {
 /// The record's path depth (docs/SPEC-TABLES.md §6.6), read from the four bytes
 /// after the record length.
 fn retain_record_depth(rec: &[u8]) -> usize {
-    u32::from_le_bytes(rec[4..8].try_into().unwrap()) as usize
+    (u32::from_le_bytes(rec[4..8].try_into().unwrap()) & 0x7fff_ffff) as usize
 }
 
 /// Does the record's path equal the save's current path? (docs/SPEC-TABLES.md
@@ -950,6 +955,7 @@ pub fn retain_emit_tail(out: &mut Vec<u8>, ids: &mut IdTable, retain: &mut Table
         if len < 17 || at + len > retain.bytes.len() {
             break;
         }
+        let start = at;
         let rec = &retain.bytes[at..at + len];
         let depth = retain_record_depth(rec);
         if depth > TABLE_RETAIN_DEPTH_CAP || 17 + 8 * depth > len {
@@ -962,6 +968,7 @@ pub fn retain_emit_tail(out: &mut Vec<u8>, ids: &mut IdTable, retain: &mut Table
         let field_id = u64::from_le_bytes(rec[8..16].try_into().unwrap());
         let kind = rec[16];
         let payload = rec[17 + 8 * depth..len].to_vec();
+        retain.bytes[start + 7] |= RETAIN_PLACED;
         let mut bad = false;
         let slot = retain_ref(ids, retain, known, field_id);
         if slot == 0 {
@@ -1008,6 +1015,64 @@ pub fn retain_discard(retain: &mut TableRetain, path: TableRetainPath, ordinal: 
         read += len;
     }
     retain.bytes.truncate(write);
+}
+
+/// THE NODE ADDRESS ON THE RETAIN PATH (docs/SPEC-TABLES.md §3.1, §6.6): a
+/// retained record belongs to the BODY OCCURRENCE that carried it, and a node
+/// record's body is one occurrence however many slots share it. Its path opens
+/// with two reserved steps holding the node's own address, low half then high
+/// half (ordinals u32::MAX and u32::MAX - 1, which no field ordinal reaches),
+/// so the save finds the node's records by the node it is writing, whatever
+/// index the save's numbering gives it — the reference keys them the same way
+/// (gotable retain.go, tableRetainPath.node).
+pub fn retain_node_path(addr: usize) -> TableRetainPath {
+    TableRetainPath::default()
+        .step(u32::MAX, addr as u64 as u32)
+        .step(u32::MAX - 1, ((addr as u64) >> 32) as u32)
+}
+
+/// The address a node's records are keyed by (docs/SPEC-TABLES.md §6.6): the
+/// shared allocation every slot naming the node holds.
+pub fn retain_node_addr<T: ?Sized>(node: &Rc<T>) -> usize {
+    Rc::as_ptr(node) as *const () as usize
+}
+
+/// THE SAVE'S OWN MARK (docs/SPEC-TABLES.md §6.6): the top bit of a record's
+/// depth word says the save placed it, or counted it lost where it could not
+/// intern its id. Every save clears the marks first, so a second save of the
+/// same stores answers the same.
+const RETAIN_PLACED: u8 = 0x80;
+
+pub fn retain_clear_placed(retain: &mut TableRetain) {
+    let mut at = 0usize;
+    while at + 8 <= retain.bytes.len() {
+        let len = retain_record_len(&retain.bytes[at..]);
+        if len < 17 || at + len > retain.bytes.len() {
+            break;
+        }
+        retain.bytes[at + 7] &= !RETAIN_PLACED;
+        at += len;
+    }
+}
+
+/// A record the save's walk never reached is one whose PATH NO LONGER NAMES A
+/// BODY — a body damage reset, an arm the value no longer selects, a node no
+/// written slot names — and it counts one retain_lost at the save, as the
+/// oracle counts a record its walk never placed (docs/SPEC-TABLES.md §6.6).
+pub fn retain_unplaced(retain: &TableRetain) -> u64 {
+    let mut lost = 0u64;
+    let mut at = 0usize;
+    while at + 8 <= retain.bytes.len() {
+        let len = retain_record_len(&retain.bytes[at..]);
+        if len < 17 || at + len > retain.bytes.len() {
+            break;
+        }
+        if retain.bytes[at + 7] & RETAIN_PLACED == 0 {
+            lost += 1;
+        }
+        at += len;
+    }
+    lost
 }
 
 fn retain_emit_ref(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], bad: &mut bool) -> u64 {

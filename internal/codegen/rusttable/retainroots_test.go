@@ -49,7 +49,8 @@ func TestRetainsAndWidensOnEveryRootRust(t *testing.T) {
 	}
 	roster := manifestRoster(t, repo)
 	carried, units := carriedRoots(t, repo, roster)
-	dispatched := dispatchedRoots(t, repo)
+	dispatched := dispatchedRoots(t, repo, "ROOTS")
+	valueOnly := dispatchedRoots(t, repo, "VALUE_ONLY")
 
 	// THE ROSTER, both ways
 	for key := range carried {
@@ -64,6 +65,21 @@ func TestRetainsAndWidensOnEveryRootRust(t *testing.T) {
 	}
 	if len(carried) == 0 {
 		t.Fatal("no roster root is carried by the Rust generator")
+	}
+	// THE FIXED-CLASS ROOTS, both ways (docs/SPEC-TABLES.md §2.2, §6.6): a
+	// `fixed table` root read from a form-1 file is a value-only read with no
+	// region to measure, so the driver answers it loaded with measure -1 the
+	// way the Go driver does, and the retention arm leaves it out the way
+	// wirefuzz.go's roster does
+	for key := range carried {
+		if fixedRoot(units, key) != valueOnly[key] {
+			t.Errorf("%s: fixed class %t, but wire_fuzz_all.rs VALUE_ONLY says %t", key, fixedRoot(units, key), valueOnly[key])
+		}
+	}
+	for key := range valueOnly {
+		if !carried[key] {
+			t.Errorf("%s: wire_fuzz_all.rs VALUE_ONLY names a root it does not dispatch", key)
+		}
 	}
 	if t.Failed() {
 		return
@@ -100,9 +116,16 @@ func TestRetainsAndWidensOnEveryRootRust(t *testing.T) {
 				seeds = append(seeds, p)
 			}
 		}
-		for _, retain := range []bool{false, true} {
-			driveSeeds(t, repo, bin, units, seeds, retain)
+		driveSeeds(t, repo, bin, units, seeds, false)
+		// THE RETENTION ARM'S ROSTER IS THE VARIABLE-CLASS FILE ROOTS AND
+		// NOTHING ELSE (docs/SPEC-TABLES.md §6.6), as in wirefuzz.go
+		var variable []rosterSeed
+		for _, s := range seeds {
+			if !fixedRoot(units, s.unit+"."+s.root) {
+				variable = append(variable, s)
+			}
 		}
+		driveSeeds(t, repo, bin, units, variable, true)
 	})
 	t.Run("WideningOnRead", func(t *testing.T) {
 		widenOnRead(t)
@@ -226,16 +249,25 @@ type carriedUnit struct {
 
 var rootsRe = regexp.MustCompile(`\("([a-z0-9]+)", "([A-Za-z0-9]+)"\),`)
 
-// dispatchedRoots parses ROOTS out of wire_fuzz_all.rs.
-func dispatchedRoots(t *testing.T, repo string) map[string]bool {
+// fixedRoot answers whether a carried root is a `fixed table`, which the
+// oracle reads value-only (docs/SPEC-TABLES.md §2.2; ir.VariableTables).
+func fixedRoot(units map[string]*carriedUnit, key string) bool {
+	unit, root, _ := strings.Cut(key, ".")
+	cu := units[unit]
+	return cu != nil && !ir.VariableTables(cu.unit)[root]
+}
+
+// dispatchedRoots parses one (unit, root) list, ROOTS or VALUE_ONLY, out of
+// wire_fuzz_all.rs.
+func dispatchedRoots(t *testing.T, repo, list string) map[string]bool {
 	t.Helper()
 	src, err := os.ReadFile(filepath.Join(repo, "test/conformance/rust/src/wire_fuzz_all.rs"))
 	if err != nil {
 		t.Fatalf("the all-roots wire-fuzz driver is missing: %v", err)
 	}
-	start := bytes.Index(src, []byte("const ROOTS"))
+	start := bytes.Index(src, []byte("const "+list+":"))
 	if start < 0 {
-		t.Fatal("wire_fuzz_all.rs declares no ROOTS")
+		t.Fatalf("wire_fuzz_all.rs declares no %s", list)
 	}
 	end := bytes.Index(src[start:], []byte("];"))
 	out := map[string]bool{}
@@ -368,9 +400,15 @@ func driveSeeds(t *testing.T, repo, bin string, units map[string]*carriedUnit, s
 		if _, err := io.ReadFull(stdout, reply[:]); err != nil {
 			t.Fatalf("%s: the driver died: %v\n%s", s.name, err, stderr.String())
 		}
-		saved := make([]byte, int64(binary.LittleEndian.Uint64(reply[39:])))
-		if _, err := io.ReadFull(stdout, saved); err != nil {
-			t.Fatalf("%s: the driver died: %v", s.name, err)
+		// a negative saved length is a SAVE REFUSAL (wirefuzz.go legReply):
+		// the data cycle the load named (docs/SPEC-TABLES.md §3.1)
+		n := int64(binary.LittleEndian.Uint64(reply[39:]))
+		var saved []byte
+		if n >= 0 {
+			saved = make([]byte, n)
+			if _, err := io.ReadFull(stdout, saved); err != nil {
+				t.Fatalf("%s: the driver died: %v", s.name, err)
+			}
 		}
 		leg := fmt.Sprintf("%d,%d,%d,%d,%d,%t,%t retained=%d retain_lost=%d",
 			binary.LittleEndian.Uint32(reply[1:]), binary.LittleEndian.Uint32(reply[5:]), binary.LittleEndian.Uint32(reply[9:]),
@@ -382,6 +420,10 @@ func driveSeeds(t *testing.T, repo, bin string, units map[string]*carriedUnit, s
 		}
 		if leg != want {
 			t.Errorf("%s (%s.%s, retain=%t): the leg reports %s, the oracle %s", s.name, s.unit, s.root, retain, leg, want)
+			continue
+		}
+		if (n < 0) != (encoded == nil) {
+			t.Errorf("%s (%s.%s, retain=%t): the leg refuses its save %t, the oracle refuses its encode %t", s.name, s.unit, s.root, retain, n < 0, encoded == nil)
 			continue
 		}
 		if encoded != nil && !bytes.Equal(saved, encoded) {
@@ -410,6 +452,7 @@ func oracleSeed(t *testing.T, u *ir.Unit, root string, wire []byte, retain bool)
 	if err != nil && !tablewire.Refused(err) {
 		t.Fatalf("the oracle refused the root itself: %v", err)
 	}
+	derr := err
 	var encoded []byte
 	if retain {
 		var saved tabletext.Report
@@ -422,8 +465,15 @@ func oracleSeed(t *testing.T, u *ir.Unit, root string, wire []byte, retain bool)
 		encoded = nil
 	}
 	refused := tablewire.Refused(err)
+	malformed := rep.Malformed || !ok
+	if tablewire.Refused(derr) {
+		// A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL, and the refusal
+		// is the answer: nothing was decoded, no counter moved, no damage is
+		// reported (docs/SPEC-TABLES.md §3), as wirefuzz.go's oracle answers
+		malformed, refused = false, true
+	}
 	return fmt.Sprintf("%d,%d,%d,%d,%d,%t,%t retained=%d retain_lost=%d",
-		rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped, rep.Duplicate, rep.Malformed || !ok, refused,
+		rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped, rep.Duplicate, malformed, refused,
 		rep.Retained, rep.RetainLost), encoded
 }
 

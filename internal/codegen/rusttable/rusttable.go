@@ -180,6 +180,9 @@ type gen struct {
 	// vc is the unit's carried variable class (variablerefusal.go), shared by
 	// every file of one emission so the set is decided once.
 	vc *variableClass
+	// armSeq numbers the labelled block each union arm's decode runs in, so
+	// a nested union's label never shadows its parent's (mapsarms.go)
+	armSeq int
 
 	body strings.Builder
 }

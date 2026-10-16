@@ -774,6 +774,12 @@ pub enum TableReason {
     BuildVersionMismatch,
     VocabularyTooLarge,
     BatchTooLarge,
+    /// THE VARIABLE FORM's one reason (§3.1): the load met a data cycle, a
+    /// slot naming a record whose descent is still open. Load reads it clean
+    /// and no counter moves; this storage cannot hold the cycle, so that slot
+    /// reads null, and the value is not the wire's: the reference refuses its
+    /// save by this name (gotable refusal.go, TableRefuseDataCycle).
+    DataCycle,
 }
 
 impl TableReason {
@@ -787,6 +793,7 @@ impl TableReason {
             TableReason::BuildVersionMismatch => "build_version_mismatch",
             TableReason::VocabularyTooLarge => "vocabulary_too_large",
             TableReason::BatchTooLarge => "batch_too_large",
+            TableReason::DataCycle => "data_cycle",
         }
     }
 }
@@ -821,7 +828,8 @@ pub struct TableReport {
     pub retained: u64,
     pub retain_lost: u64,
     /// The message form's refusal by name and the two build versions its
-    /// strict check compared (§3.3); None and zero on the variable form.
+    /// strict check compared (§3.3); on the variable form None, or DataCycle
+    /// when the load met a data cycle (§3.1), with refused unset.
     pub reason: TableReason,
     pub build_version_peer: u64,
     pub build_version_own: u64,
