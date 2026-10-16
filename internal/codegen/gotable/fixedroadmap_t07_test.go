@@ -155,8 +155,11 @@ func t07GoW9(t *testing.T) {
 	if load == "" {
 		t.Fatal("RootFixedLoad is not emitted")
 	}
-	if !strings.Contains(load, "holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))") {
-		t.Error("W9: the prefill ranges are the plan's UNWRITTEN ranges (§4.3)")
+	if strings.Contains(load, "tableFixedHoles") {
+		t.Error("W9: the load path still computes the hole list per call; §4.3 lays it once per plan")
+	}
+	if !strings.Contains(load, "holes = RootFixedLineageHoles[pick]") {
+		t.Error("W9: the hole list is laid once beside the plan, never computed per call (§4.3)")
 	}
 	if !strings.Contains(load, "copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])") {
 		t.Error("W9: only the holes take the declared defaults (§4.3)")

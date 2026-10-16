@@ -839,6 +839,27 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("var %sFixedLineagePlans = tableFixedLineagePlans(%sFixedKnown, %sFixedLayout, %sFixedDst, %sFixedHash)\n\n",
 		st.Name, st.Name, st.Name, st.Name, st.Name)
 
+	// THE PREFILL IS LAID ONCE (§4.3): the hole list and the default image are
+	// per plan and computed once, at init, never per call. A load path that
+	// recomputed either would allocate on every call with records.
+	g.pf("var %sFixedResetImage = func() []byte {\n", st.Name)
+	g.pf("\tvar def %s\n", st.Name)
+	g.pf("\t%sReset(&def)\n", st.Name)
+	g.pf("\treturn tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))\n")
+	g.pf("}()\n\n")
+	g.pf("var %sFixedHoles = tableFixedHoles(%sFixedPlan.Entries, %sFixedPlan.Count, uint32(len(%sFixedResetImage)))\n\n",
+		st.Name, st.Name, st.Name, st.Name)
+	g.pf("var %sFixedLineageHoles = func() [][]tableFixedHole {\n", st.Name)
+	g.pf("\tout := make([][]tableFixedHole, len(%sFixedLineagePlans))\n", st.Name)
+	g.pf("\tfor i := range %sFixedLineagePlans {\n", st.Name)
+	g.pf("\t\tlane := &%sFixedLineagePlans[i]\n", st.Name)
+	g.pf("\t\tif lane.Why == \"\" {\n")
+	g.pf("\t\t\tout[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(%sFixedResetImage)))\n", st.Name)
+	g.pf("\t\t}\n")
+	g.pf("\t}\n")
+	g.pf("\treturn out\n")
+	g.pf("}()\n\n")
+
 	// THE CAPACITY A CALLER WOULD GUESS IS EXPORTED INSTEAD (§5.2, "AND THE
 	// CAPACITY A CALLER WOULD GUESS IS EXPORTED INSTEAD"): the largest entry
 	// count over the identity plan and every lineage plan, so a plan slice of
@@ -934,12 +955,16 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// STEP 8: the plan this peer resolves to, and the record size FROM THE LOCK.
 	g.pf("\tentries := %sFixedPlan.Entries\n", st.Name)
 	g.pf("\tentryCount := %sFixedPlan.Count\n", st.Name)
+	g.pf("\t// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then\n")
+	g.pf("\t// a lineage plan's when a peer selects one. Nothing computes them per call.\n")
+	g.pf("\tholes := %sFixedHoles\n", st.Name)
 	g.pf("\trecordBytes := known.Record\n")
 	g.pf("\tcensusUnknown, censusKind := int32(0), int32(0)\n")
 	g.pf("\tif hash != %sFixedHash {\n", st.Name)
 	g.pf("\t\tlane := &%sFixedLineagePlans[pick]\n", st.Name)
 	g.pf("\t\tif lane.Why != \"\" {\n\t\t\treturn tableFixedRefuse(report, lane.Why)\n\t\t}\n")
 	g.pf("\t\tentries, entryCount = lane.Entries, lane.Count\n")
+	g.pf("\t\tholes = %sFixedLineageHoles[pick]\n", st.Name)
 	g.pf("\t\t// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it\n")
 	g.pf("\t\t// lands only on a read that returns: REFUSE moves no counter.\n")
 	g.pf("\t\tcensusUnknown, censusKind = lane.Unknown, lane.KindMismatch\n")
@@ -955,16 +980,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\tn := rest / recordBytes\n")
 	g.pf("\tif n > int64(len(values)) {\n\t\treturn tableFixedRefuse(report, \"batch_too_large\")\n\t}\n")
 	// Prefill is the dest ranges the winning plan does not land, copied from
-	// one Reset image. Identity's list on Go is the ABI padding and unselected
-	// arms. There is no identity flag in the record loop.
-	g.pf("\tvar def %s\n", st.Name)
-	g.pf("\tvar defBytes []byte\n")
-	g.pf("\tvar holes []tableFixedHole\n")
-	g.pf("\tif n > 0 {\n")
-	g.pf("\t\t%sReset(&def)\n", st.Name)
-	g.pf("\t\tdefBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))\n")
-	g.pf("\t\tholes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))\n")
-	g.pf("\t}\n")
+	// one Reset image laid once at init (§4.3). Identity's list on Go is the
+	// ABI padding and unselected arms. There is no identity flag in the loop.
+	g.pf("\tdefBytes := %sFixedResetImage\n", st.Name)
 	// STEP 11: EVERY RECORD'S HASH AND TEXT FIRST, in a pass of its own ahead
 	// of the first prefill. REFUSE is total over the batch too: a refusal at
 	// record k leaves out[0..k-1] as untouched as out[k], so a hostile image is

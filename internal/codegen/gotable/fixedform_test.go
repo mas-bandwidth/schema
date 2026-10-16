@@ -67,8 +67,8 @@ fixed table Point {
 	if fixedLoad == "" {
 		t.Fatal("PointFixedLoad was not emitted")
 	}
-	if !strings.Contains(fixedLoad, "tableFixedHoles") {
-		t.Error("compiled FixedLoad does not prefill the plan's holes")
+	if strings.Contains(fixedLoad, "tableFixedHoles") {
+		t.Error("the load path still computes the hole list per call; §4.3 lays it once per plan")
 	}
 	// SELECT BY HASH, never parse a stranger (docs/FIXED-FORM-ALGORITHM.md §5.3):
 	// the lineage and the floor are static data, and the two answers an
@@ -84,8 +84,8 @@ fixed table Point {
 	if strings.Contains(fixedLoad, "PointReset(&values[k])") {
 		t.Error("identity still Reset's each record; prefill is the hole list")
 	}
-	if !strings.Contains(fixedLoad, "PointReset(&def)") {
-		t.Error("holes have no default image")
+	if !strings.Contains(fixedLoad, "PointFixedResetImage") {
+		t.Error("the load does not prefill from the laid-once default image (§4.3)")
 	}
 	if !strings.Contains(fixedLoad, "tableFixedRun(") {
 		t.Error("FixedLoad does not walk the winning plan")
