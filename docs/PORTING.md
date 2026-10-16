@@ -1405,7 +1405,7 @@ puts the file-order rule back and requires them to move (#347).
 **Reference.** `tables-runtime-home` and `tables-runtime-home-negative-control`
 in the Makefile; `tables-js-runtime-home` and its control.
 
-**Proven in.** C#.
+**Proven in.** C#; the Dart leg.
 
 **Measured effect.** Adding a file that sorted earlier relocated ~2,000
 lines of correct output into a diff nobody could read (#347).
@@ -1416,7 +1416,7 @@ lines of correct output into a diff nobody could read (#347).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #422 | ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ❌ #422 | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ❌ #422 | ❌ #422 |
+| ❌ #422 | ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ❌ #422 | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ✅ `tables-dart-runtime-home` `tables-dart-runtime-home-negative-control` | ❌ #422 |
 
 ### J3 — The release tier
 
