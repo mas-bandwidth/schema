@@ -2,7 +2,7 @@
 # THE NINE-LANGUAGE TABLE, from one command. Run from the repository root.
 #
 #   bench/paired/nine.sh [--lane N] [--rounds 1|2|3] [--out DIR] [--note TEXT]
-#   bench/paired/nine.sh --read-arm --receipt TEXT [--out DIR]
+#   bench/paired/nine.sh --read-arm --receipt TEXT [--leg cpp|cs] [--out DIR]
 #
 # It builds the driver and every leg, then runs `-mode table`, which asks the
 # TREE which table runners it carries (bench/tables/<lang>/), measures exactly
@@ -30,10 +30,11 @@
 # fixed form's identity read, plan read and the same leg's packet read, each
 # MEASURED alone, the two GATE verdicts against that packet read, and the C++
 # anchor line against the hand-written straight-line reader. It builds and
-# gates the C++ leg — the one leg whose runner carries the arm today; the
-# board names every other leg and the plan lane's missing corpus — and runs
-# `-mode plan-read` inside the confirmation pass's quiet window, bracketed by
-# the C++ packet control leg. --receipt is the operator's READY/START record
+# gates ONE leg whose runner carries the arm (--leg: cpp, the default, or cs);
+# the board names every other leg and the plan lane's missing corpus — and
+# runs `-mode plan-read` inside the confirmation pass's quiet window,
+# bracketed by that leg's own packet control leg. The anchor is the C++
+# leg's line only. --receipt is the operator's READY/START record
 # for that window and is required. An INVALID window prints its numbers with
 # no verdict and the script exits non-zero.
 #
@@ -49,6 +50,7 @@ OUT=
 NOTE=
 READ_ARM=
 RECEIPT=
+LEG=cpp
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -58,8 +60,9 @@ while [ $# -gt 0 ]; do
     --note)   NOTE="$2"; shift 2 ;;
     --read-arm) READ_ARM=1; shift ;;
     --receipt) RECEIPT="$2"; shift 2 ;;
+    --leg)    LEG="$2"; shift 2 ;;
     -h|--help)
-        sed -n '2,43p' "$0" | cut -c 3-
+        sed -n '2,44p' "$0" | cut -c 3-
         exit 0 ;;
     *)
         echo "nine.sh: unknown argument $1" >&2
@@ -79,6 +82,10 @@ done
 if [ -n "$READ_ARM" ]; then
     [ -n "$RECEIPT" ] || { echo "nine.sh: --read-arm needs --receipt (the operator's READY/START record)" >&2; exit 2; }
     [ -z "$LANE" ] || { echo "nine.sh: --read-arm does not take --lane" >&2; exit 2; }
+    case "$LEG" in
+    cpp|cs) ;;
+    *) echo "nine.sh: --leg is cpp or cs (the legs whose runner has a read arm)" >&2; exit 2 ;;
+    esac
     if [ -n "$(git status --porcelain 2>/dev/null | grep -v '^ M generated/')" ]; then
         echo "nine.sh: the tree is dirty outside generated/, and the read arm measures a named checkpoint:" >&2
         git status --porcelain >&2
@@ -86,9 +93,9 @@ if [ -n "$READ_ARM" ]; then
     fi
     : "${OUT:=build/paired-read/$(date -u +%Y%m%dT%H%M%SZ)}"
     go build -o bin/schema-paired ./bench/paired
-    bin/schema-paired -mode build -langs cpp
-    bin/schema-paired -mode gate -reuse-build -langs cpp
-    exec bin/schema-paired -mode plan-read -langs cpp -quiet-window "$RECEIPT" -out "$OUT"
+    bin/schema-paired -mode build -langs "$LEG"
+    bin/schema-paired -mode gate -reuse-build -langs "$LEG"
+    exec bin/schema-paired -mode plan-read -langs "$LEG" -quiet-window "$RECEIPT" -out "$OUT"
 fi
 
 if [ -n "$(git status --porcelain 2>/dev/null)" ]; then

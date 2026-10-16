@@ -607,7 +607,8 @@ func tablePass(out string, info buildInfo, config fastConfig, lane string) error
 //
 // What this tree can and cannot measure is said from the tree:
 //
-//   - the identity lane and the packet read: the C++ runner's `--read-arm`;
+//   - the identity lane and the packet read: the leg runner's `--read-arm`,
+//     today the C++ and the C# runners (readArmLegs), one leg per sitting;
 //   - the plan lane: needs the lineage corpus §1.10 names, and the board
 //     prints the missing files by name rather than a number;
 //   - the anchor: built beside the C++ legs by -mode build; a reference that
@@ -615,7 +616,7 @@ func tablePass(out string, info buildInfo, config fastConfig, lane string) error
 //   - every other leg: its runner has no read arm yet, named per leg.
 //
 // The sitting runs inside the confirmation pass's quiet window (window.go),
-// bracketed by the C++ packet control leg (§2.6): a moved control or a
+// bracketed by the measured leg's own packet control leg (§2.6): a moved control or a
 // competing process makes the window INVALID, and an INVALID window prints its
 // numbers with NO verdict and exits non-zero.
 
@@ -634,9 +635,13 @@ const (
 // lineageCorpus is the plan lane's input (§1.10 work list items 1–7). The plan
 // lane is measured only when every one of these is on the tree AND the leg's
 // runner answers for it; neither is true here yet.
+// readArmLegs are the legs whose runner carries `--read-arm`. Each sits alone:
+// a board is one leg's identity lane against that SAME leg's packet read.
+var readArmLegs = []string{"cpp", "cs"}
+
 var lineageCorpus = []string{"bench/corpus/VOLD_bench_lineage.schema", "bench/corpus/schema.lock", "bench/paired/corpus/bench_lineage.bin", "bench/paired/corpus/bench_lineage.layout"}
 
-func planLaneRefusal(present func(string) bool) string {
+func planLaneRefusal(leg string, present func(string) bool) string {
 	var missing []string
 	for _, p := range lineageCorpus {
 		if !present(p) {
@@ -646,7 +651,7 @@ func planLaneRefusal(present func(string) bool) string {
 	if len(missing) > 0 {
 		return "no lineage corpus on this tree: " + strings.Join(missing, ", ") + " absent (BENCH-STANDARD §1.10 work list items 1–7)"
 	}
-	return "the C++ runner has no plan lane yet (BENCH-STANDARD §1.10 work list item 8)"
+	return "the " + names[leg] + " runner has no plan lane yet (BENCH-STANDARD §1.10 work list item 8)"
 }
 
 func fileExists(p string) bool {
@@ -747,7 +752,7 @@ type readArmRow struct {
 
 // parseReadArm accepts exactly the read arm's two rows: identity, family,
 // path, checks, corpus id, iterations and the 200ms floor, all checked.
-func parseReadArm(data []byte, id string, iterations int64) (fixed, packet readArmRow, err error) {
+func parseReadArm(data []byte, leg, id string, iterations int64) (fixed, packet readArmRow, err error) {
 	want := map[string][2]string{"bench_fixed_read": {"table", "contract"}, "bench_mixed_read": {"gen", "removed"}}
 	got := map[string]readArmRow{}
 	r := csv.NewReader(bytes.NewReader(data))
@@ -763,7 +768,7 @@ func parseReadArm(data []byte, id string, iterations int64) (fixed, packet readA
 		if len(cols) == 0 || strings.HasPrefix(cols[0], "#") || cols[0] == "lang" {
 			continue
 		}
-		if len(cols) != 17 || cols[0] != "cpp" {
+		if len(cols) != 17 || cols[0] != leg {
 			return fixed, packet, errors.New("invalid read-arm CSV row")
 		}
 		axes, ok := want[cols[1]]
@@ -892,12 +897,13 @@ func anchorOf(samples []anchorSample, refusal string, windowOK bool) anchorResul
 // readArmBoard is the read arm's whole rendered input, kept apart from the
 // measuring so a test can build one without a machine.
 type readArmBoard struct {
+	Leg          string       `json:"leg"`
 	Host         string       `json:"host"`
 	OS           string       `json:"os"`
 	Arch         string       `json:"arch"`
 	CPU          string       `json:"cpu"`
-	Compiler     string       `json:"cpp_compiler"`
-	Flags        string       `json:"cpp_table_flags"`
+	Compiler     string       `json:"compiler"`
+	Flags        string       `json:"table_flags"`
 	Revision     string       `json:"revision"`
 	Serialize    string       `json:"serialize_revision"`
 	Dirty        []string     `json:"dirty_paths"`
@@ -923,15 +929,18 @@ type readArmBoard struct {
 
 func (b readArmBoard) windowOK() bool { return b.Window == "OK" }
 
-// otherLegs names every leg but C++ with the reason it has no line yet.
-func otherLegs() []skipped {
+// otherLegs names every leg but the measured one with the reason it has no
+// line on this board.
+func otherLegs(leg string) []skipped {
 	var out []skipped
 	for _, lang := range nineLanguages {
-		if lang == "cpp" {
+		if lang == leg {
 			continue
 		}
 		reason := absentReason(lang)
-		if tableRunnerPresent(lang) && contains(allLanguages(), lang) {
+		if contains(readArmLegs, lang) {
+			reason = "runner has a read arm; its own sitting and board (nine.sh --read-arm --leg " + lang + ")"
+		} else if tableRunnerPresent(lang) && contains(allLanguages(), lang) {
 			reason = "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
 		}
 		out = append(out, skipped{Language: lang, Reason: reason})
@@ -956,7 +965,7 @@ func (b readArmBoard) markdown() string {
 	if b.WindowReason != "" {
 		window += " (" + b.WindowReason + ")"
 	}
-	w.WriteString("# The read arm: C++\n\n```\n")
+	fmt.Fprintf(&w, "# The read arm: %s\n\n```\n", names[b.Leg])
 	w.WriteString("# fixed form: the identity lane, the plan lane, and the same leg's packet wire\n")
 	fmt.Fprintf(&w, "# host %s / arch %s/%s / %s / rev %s (%s) / serialize %s / lane none / rounds %d\n", b.Host, b.OS, b.Arch, b.CPU, b.Revision, dirty, b.Serialize, b.Rounds)
 	fmt.Fprintf(&w, "# corpus_id(identity) %s / corpus_id(plan) — (%s)\n", b.CorpusID, b.PlanRefusal)
@@ -964,14 +973,16 @@ func (b readArmBoard) markdown() string {
 	fmt.Fprintf(&w, "# iterations: %s records per sample per wire, 1 discarded warmup + 1 measured run per round (§2.1, §2.4)\n", grouped(b.Iterations))
 	fmt.Fprintf(&w, "# bytes_per_op: fixed %.1f B/record, packet %.0f B/record (§5.3 rule 2 — the division is this driver's alone)\n", b.FixedBytes, b.PacketBytes)
 	w.WriteString("# checks: table=contract, packet C/C++/C#=removed, packet Go=always (§1.9)\n")
-	if b.Anchor.Refusal != "" {
+	if b.Leg != "cpp" {
+		fmt.Fprintf(&w, "# C++ anchor: — not this leg's line (%s is the C++ reference; SPEC-TABLES §3.4 binds the C++ leg)\n", anchorSource)
+	} else if b.Anchor.Refusal != "" {
 		fmt.Fprintf(&w, "# C++ anchor: — %s %s  (bound %.1fx, SPEC-TABLES §3.4)\n", anchorSource, b.Anchor.Refusal, anchorBound)
 	} else {
 		fmt.Fprintf(&w, "# C++ anchor: identity %.1f ns/record / straight-line %.1f = %.2fx  (bound %.1fx, SPEC-TABLES §3.4)  %s\n", b.Anchor.Identity.BestNs, b.Anchor.StraightLine.BestNs, b.Anchor.Ratio, anchorBound, b.Anchor.Verdict)
 	}
 	w.WriteString("\nleg      identity read    plan read    packet read    GATE identity  GATE plan    plan/identity\n")
 	w.WriteString("         ns/record        ns/record    ns/record      vs packet      vs packet    x (reported)\n")
-	fmt.Fprintf(&w, "%-8s %12s %12s %14s    %-14s %-12s %s\n", "cpp", nsCell(b.Identity), "—", nsCell(b.Packet), b.GateIdentity, b.GatePlan, "—")
+	fmt.Fprintf(&w, "%-8s %12s %12s %14s    %-14s %-12s %s\n", b.Leg, nsCell(b.Identity), "—", nsCell(b.Packet), b.GateIdentity, b.GatePlan, "—")
 	for _, s := range b.Absent {
 		fmt.Fprintf(&w, "%-8s %12s %12s %14s    %-14s %-12s %s     %s\n", s.Language, "—", "—", "—", "—", "—", "—", s.Reason)
 	}
@@ -985,14 +996,18 @@ func (b readArmBoard) markdown() string {
 		}
 		fmt.Fprintf(&w, "| %s | %.1f | %.1f | %.1f | %.1f%% | %s |\n", name, s.BestNs, s.MedianNs, s.WorstNs, s.SpreadPct, spreadMark(s))
 	}
-	row("cpp `bench_fixed_read` (identity lane, family table)", b.Identity)
-	row("cpp `bench_mixed_read` (packet read, family gen)", b.Packet)
-	if b.Anchor.Refusal == "" {
+	row(b.Leg+" `bench_fixed_read` (identity lane, family table)", b.Identity)
+	row(b.Leg+" `bench_mixed_read` (packet read, family gen)", b.Packet)
+	if b.Leg == "cpp" && b.Anchor.Refusal == "" {
 		row("anchor arm A, identity plan (shipped loop)", b.Anchor.Identity)
 		row("anchor arm B, hand-written straight-line", b.Anchor.StraightLine)
 	}
-	fmt.Fprintf(&w, "\nBoth GATE rows come out of ONE `--read-arm` invocation per round, the two wires alternating which runs first; neither is derived from a round trip (§2.9). The identity lane's op is one record of the shipped `LOAD` of the whole 64-record file (hash check and plan run inside the clock); the packet read's op is one `ReadStream` plus the generated read of one %.0f-byte record. The anchor is the reference's own process (arms A and B side by side, its best of %d per round at %s rotations of the 64 records), compiled with the C++ legs' flag line, and its ratio is best A over best B across the rounds.\n", b.PacketBytes, anchorBestOf, grouped(int64(b.AnchorReps)))
-	if b.Anchor.Refusal != "" {
+	fmt.Fprintf(&w, "\nBoth GATE rows come out of ONE `--read-arm` invocation per round, the two wires alternating which runs first; neither is derived from a round trip (§2.9). The identity lane's op is one record of the shipped `LOAD` of the whole 64-record file (hash check and plan run inside the clock); the packet read's op is one `ReadStream` plus the generated read of one %.0f-byte record.", b.PacketBytes)
+	if b.Leg == "cpp" {
+		fmt.Fprintf(&w, " The anchor is the reference's own process (arms A and B side by side, its best of %d per round at %s rotations of the 64 records), compiled with the C++ legs' flag line, and its ratio is best A over best B across the rounds.", anchorBestOf, grouped(int64(b.AnchorReps)))
+	}
+	w.WriteString("\n")
+	if b.Leg == "cpp" && b.Anchor.Refusal != "" {
 		fmt.Fprintf(&w, "\nThe anchor did not run: `%s` %s. No ratio is printed for it and none is estimated.\n", anchorSource, b.Anchor.Refusal)
 	}
 	fmt.Fprintf(&w, "\nCompiler: %s. Flags: `%s`. Window receipt: %s\n", b.Compiler, b.Flags, b.Receipt)
@@ -1038,9 +1053,10 @@ func porcelain() (string, error) {
 // planReadPass is the whole of `-mode plan-read`: gate, window, control,
 // rounds, control, verdicts, board.
 func planReadPass(langs []string, out string, rounds int, info buildInfo, receipt string) (resultErr error) {
-	if !slices.Equal(langs, []string{"cpp"}) {
-		return errors.New("plan-read measures the C++ leg alone on this tree (-langs cpp): no other leg's runner has a read arm yet")
+	if len(langs) != 1 || !contains(readArmLegs, langs[0]) {
+		return fmt.Errorf("plan-read measures ONE leg whose runner has a read arm (-langs one of %s)", strings.Join(readArmLegs, ","))
 	}
+	leg := langs[0]
 	if rounds < 7 {
 		return errors.New("plan-read requires at least 7 rounds (§2.1)")
 	}
@@ -1059,8 +1075,8 @@ func planReadPass(langs []string, out string, rounds int, info buildInfo, receip
 		return err
 	}
 	for _, wire := range []string{"packet", "table"} {
-		if info.Binaries[binary(wire, "cpp")] == "" {
-			return fmt.Errorf("cached build lacks cpp/%s; build it first (-mode build -langs cpp)", wire)
+		if info.Binaries[binary(wire, leg)] == "" {
+			return fmt.Errorf("cached build lacks %s/%s; build it first (-mode build -langs %s)", leg, wire, leg)
 		}
 	}
 	id, err := readArmCorpusID()
@@ -1075,11 +1091,13 @@ func planReadPass(langs []string, out string, rounds int, info buildInfo, receip
 	if err := gate(langs); err != nil {
 		return err
 	}
-	if data, err := capture(runner("table", "cpp", "--read-arm", "--gate", "--packet-wire-dir", "testdata/wire", "--packet-variant-dir", "bench/corpus/variants")); err != nil || len(bytes.TrimSpace(data)) != 0 {
-		return errors.Join(errors.New("cpp read-arm gate failed or emitted timing rows"), err)
+	if data, err := capture(runner("table", leg, "--read-arm", "--gate", "--packet-wire-dir", "testdata/wire", "--packet-variant-dir", "bench/corpus/variants")); err != nil || len(bytes.TrimSpace(data)) != 0 {
+		return errors.Join(fmt.Errorf("%s read-arm gate failed or emitted timing rows", leg), err)
 	}
 	anchorRefusal := ""
-	if note := info.Tools["cpp_anchor"]; !strings.HasPrefix(note, "built: ") {
+	if leg != "cpp" {
+		anchorRefusal = "not this leg's line: the anchor is the C++ reference"
+	} else if note := info.Tools["cpp_anchor"]; !strings.HasPrefix(note, "built: ") {
 		anchorRefusal = note
 		if anchorRefusal == "" {
 			anchorRefusal = "not built by this build"
@@ -1100,9 +1118,9 @@ func planReadPass(langs []string, out string, rounds int, info buildInfo, receip
 		return e
 	}
 	board := readArmBoard{
-		Host: info.Host, OS: info.OS, Arch: info.Arch, CPU: info.CPU, Compiler: firstLine(info.Tools["cpp"]), Flags: info.Tools["cpp_table_flags"],
+		Leg: leg, Host: info.Host, OS: info.OS, Arch: info.Arch, CPU: info.CPU, Compiler: readArmCompiler(leg, info), Flags: readArmFlags(leg, info),
 		Revision: info.Revision, Serialize: info.Runtimes["serialize"], Dirty: dirty, Rounds: rounds, Iterations: readArmIterations, AnchorReps: anchorReps,
-		CorpusID: id, PlanRefusal: planLaneRefusal(fileExists), Window: "INVALID", Receipt: strings.TrimSpace(receipt), Absent: otherLegs(),
+		CorpusID: id, PlanRefusal: planLaneRefusal(leg, fileExists), Window: "INVALID", Receipt: strings.TrimSpace(receipt), Absent: otherLegs(leg),
 		GatePlan: "— (absent)",
 	}
 	window, err := beginWindow(tmp, receipt)
@@ -1113,12 +1131,12 @@ func planReadPass(langs []string, out string, rounds int, info buildInfo, receip
 	var anchors []anchorSample
 	measureErr := func() error {
 		control := func(label string) (map[string]float64, error) {
-			output, runErr := window.capture(runner("packet", "cpp", "--csv", "--round", "0"), "control-"+label+"-packet")
+			output, runErr := window.capture(runner("packet", leg, "--csv", "--round", "0"), "control-"+label+"-packet")
 			writeErr := os.WriteFile(filepath.Join(tmp, "control-"+label+"-packet.csv"), output, 0644)
 			if err := errors.Join(runErr, writeErr); err != nil {
 				return nil, err
 			}
-			rows, err := parseRows(output, "cpp", "packet", info.CorpusIDs["packet"])
+			rows, err := parseRows(output, leg, "packet", info.CorpusIDs["packet"])
 			if err != nil {
 				return nil, err
 			}
@@ -1138,15 +1156,15 @@ func planReadPass(langs []string, out string, rounds int, info buildInfo, receip
 				steps = []string{"anchor", "read"}
 			}
 			for _, step := range steps {
-				phase := fmt.Sprintf("round-%d-cpp-%s", round, step)
+				phase := fmt.Sprintf("round-%d-%s-%s", round, leg, step)
 				fmt.Fprintln(os.Stderr, phase)
 				switch step {
 				case "read":
-					output, runErr := window.capture(runner("table", "cpp", readArgs(round)...), phase)
+					output, runErr := window.capture(runner("table", leg, readArgs(round)...), phase)
 					if err := errors.Join(runErr, os.WriteFile(filepath.Join(tmp, phase+".csv"), output, 0644)); err != nil {
 						return err
 					}
-					fixed, packet, err := parseReadArm(output, id, readArmIterations)
+					fixed, packet, err := parseReadArm(output, leg, id, readArmIterations)
 					if err != nil {
 						return err
 					}
@@ -1184,7 +1202,7 @@ func planReadPass(langs []string, out string, rounds int, info buildInfo, receip
 			delta := math.Abs(after[key]/start - 1)
 			board.ControlDelta = math.Max(board.ControlDelta, delta*100)
 			if delta > controlTolerance {
-				return fmt.Errorf("C++ packet control %s moved %.1f%% (> 5%%); repeat the sitting", key, delta*100)
+				return fmt.Errorf("%s packet control %s moved %.1f%% (> 5%%); repeat the sitting", names[leg], key, delta*100)
 			}
 		}
 		if now, err := porcelain(); err != nil || now != status {
@@ -1238,4 +1256,45 @@ func loadRangeOf(samples []windowSample) string {
 		return "unavailable"
 	}
 	return fmt.Sprintf("%.2f–%.2f", low, high)
+}
+
+// readArmCompiler names the toolchain that built the measured leg: the C++
+// compiler's banner, or the .NET SDK and runtime the C# leg was built and run
+// with (dotnet --info, recorded whole in build.json).
+func readArmCompiler(leg string, info buildInfo) string {
+	if leg != "cs" {
+		return firstLine(info.Tools["cpp"])
+	}
+	var parts []string
+	for line := range strings.SplitSeq(info.Tools["dotnet"], "\n") {
+		t := strings.TrimSpace(line)
+		if strings.HasPrefix(t, "Version:") || strings.HasPrefix(t, "RID:") {
+			parts = append(parts, t)
+		}
+	}
+	if len(parts) == 0 {
+		return "dotnet (version unrecorded)"
+	}
+	return "dotnet " + strings.Join(parts, " / ")
+}
+
+// readArmFlags is the measured leg's build line as build.json recorded it. The
+// C# leg has no flag line: it is `dotnet build -c Release` of
+// bench/paired/cs/paired.csproj (BENCH_MATCHED) and runs under the JIT's
+// defaults unless the recorded DOTNET_/COMPlus_ environment says otherwise.
+func readArmFlags(leg string, info buildInfo) string {
+	if leg != "cs" {
+		return info.Tools["cpp_table_flags"]
+	}
+	env := []string{}
+	for _, key := range measuredEnvironment {
+		if v := info.Environment[key]; v != "" && (strings.HasPrefix(key, "DOTNET_") || strings.HasPrefix(key, "COMPlus_")) {
+			env = append(env, key+"="+v)
+		}
+	}
+	jit := "JIT defaults (tiered, PGO on)"
+	if len(env) > 0 {
+		jit = strings.Join(env, " ")
+	}
+	return "dotnet build bench/paired/cs -c Release (net10.0, DefineConstants BENCH_MATCHED); " + jit
 }
