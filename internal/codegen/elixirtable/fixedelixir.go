@@ -254,6 +254,8 @@ func (g *fixedGen) structModule(st *ir.Struct) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# table %s — the value a fixed record of it carries (docs/SPEC-TABLES.md §3.4)\n", st.Name)
 	fmt.Fprintf(&b, "defmodule %s.%s do\n", g.ns, st.Name)
+	// credo's default Credo.Check.Readability.ModuleDoc (issue #547).
+	fmt.Fprintf(&b, "  @moduledoc %s\n\n", ir.QuoteDocElixir("Table "+st.Name+": the value a fixed record of it carries (docs/SPEC-TABLES.md §3.4)."))
 	fields := make([]string, 0, len(st.Fields))
 	for _, f := range st.Fields {
 		if f.Type.Optional {

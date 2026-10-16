@@ -31,24 +31,28 @@
 
 # type WideSeven
 defmodule Wide.WideSeven do
+  @moduledoc "Type WideSeven of WideText.schema."
   # text: wstring(7): a little-endian UTF-16 code-unit binary (SPEC §4.12)
   defstruct text: <<>>
 end
 
 # type WideFour
 defmodule Wide.WideFour do
+  @moduledoc "Type WideFour of WideText.schema."
   # text: wstring(4): a little-endian UTF-16 code-unit binary (SPEC §4.12)
   defstruct text: <<>>
 end
 
 # type NarrowFifteen
 defmodule Wide.NarrowFifteen do
+  @moduledoc "Type NarrowFifteen of WideText.schema."
   # text: string(15) — a UTF-8 binary; byte_size is the used length (SPEC §4.7)
   defstruct text: <<>>
 end
 
 # type WideInterop
 defmodule Wide.WideInterop do
+  @moduledoc "Type WideInterop of WideText.schema."
   # caption: wstring(7): a little-endian UTF-16 code-unit binary (SPEC §4.12)
   defstruct caption: <<>>
 end
@@ -56,6 +60,7 @@ end
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in WideText.schema.
 defmodule Wide.WideText do
+  @moduledoc "The file-scope surface of WideText.schema: constants, flags masks, name helpers and wire functions."
   import Bitwise
 
   @compile {:inline, rd: 3}

@@ -34,6 +34,7 @@
 # integer-backed enums: storage must hold every wire-legal value, and
 # | max = ... headroom values have no richer Elixir value to be
 defmodule Realworld.PacketMode do
+  @moduledoc "Enum PacketMode of RealWorld.schema: none is 0, then each variant in declared order."
   def none, do: 0
   def idle, do: 1
   def active, do: 2
@@ -48,6 +49,7 @@ end
 
 # type RealPacket
 defmodule Realworld.RealPacket do
+  @moduledoc "Type RealPacket of RealWorld.schema."
   # f001_int: wire [-805495, 805495]
   # f003_int: wire [-835897, 835897]
   # f004_cf32: compressed float [0.0, 2000.0] @ 0.1
@@ -204,6 +206,7 @@ end
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in RealWorld.schema.
 defmodule Realworld.RealWorld do
+  @moduledoc "The file-scope surface of RealWorld.schema: constants, flags masks, name helpers and wire functions."
   import Bitwise
 
   @cf_tab_0 (fn ->

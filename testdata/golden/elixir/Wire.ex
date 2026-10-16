@@ -9,6 +9,7 @@
 # integer-backed enums: storage must hold every wire-legal value, and
 # | max = ... headroom values have no richer Elixir value to be
 defmodule Example.Weapon do
+  @moduledoc "Enum Weapon of Wire.schema: none is 0, then each variant in declared order."
   def none, do: 0
   def laser, do: 1
   def missile, do: 2
@@ -21,11 +22,13 @@ end
 
 # type ProbeHeader
 defmodule Example.ProbeHeader do
+  @moduledoc "Type ProbeHeader of Wire.schema."
   defstruct version: 0, probe_id: 0
 end
 
 # type ProbeBits
 defmodule Example.ProbeBits do
+  @moduledoc "Type ProbeBits of Wire.schema."
   # sensor: wire [0, 4294967295]
   # nonce: wire [0, 18446744073709551615]
   defstruct small: 0, boundary: 0, wide: 0, sensor: 0, nonce: 0
@@ -33,6 +36,7 @@ end
 
 # type ProbeSample
 defmodule Example.ProbeSample do
+  @moduledoc "Type ProbeSample of Wire.schema."
   # active: specified default at construction; zero_* gives the §5 zero form
   # orientation: compressed float [-180.0, 180.0] @ 0.01
   # active — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
@@ -52,17 +56,20 @@ end
 
 # type ProbeRing
 defmodule Example.ProbeRing do
+  @moduledoc "Type ProbeRing of Wire.schema."
   defstruct radius: 0
 end
 
 # type ProbeSlab
 defmodule Example.ProbeSlab do
+  @moduledoc "Type ProbeSlab of Wire.schema."
   # width: wire [0, 100]
   defstruct width: 0, height: 0
 end
 
 # ProbeShapeType: union ProbeShape's tag — None = 0, then each variant in declared order (SPEC §4.8)
 defmodule Example.ProbeShapeType do
+  @moduledoc "Union ProbeShape's tag: none is 0, then each variant in declared order."
   def none, do: 0
   def ring, do: 1
   def slab, do: 2
@@ -77,17 +84,20 @@ end
 # arms hold their construction form (SPEC §4.8 leaves them unspecified).
 # Consumers read the selected arm only.
 defmodule Example.ProbeShape do
+  @moduledoc "Union ProbeShape of Wire.schema: the tag and one field per variant."
   defstruct type: 0, ring: %Example.ProbeRing{}, slab: %Example.ProbeSlab{}
 end
 
 # type ProbeCollider
 defmodule Example.ProbeCollider do
+  @moduledoc "Type ProbeCollider of Wire.schema."
   # extras: counted array — a list of up to 2 elements
   defstruct armor: 0, shape: %Example.ProbeShape{}, backup: %Example.ProbeShape{}, extras: []
 end
 
 # type ProbeConfig
 defmodule Example.ProbeConfig do
+  @moduledoc "Type ProbeConfig of Wire.schema."
   # retries: specified default at construction; zero_* gives the §5 zero form
   # preferred: specified default at construction; zero_* gives the §5 zero form
   defstruct retries: -1, preferred: 3
@@ -95,17 +105,20 @@ end
 
 # type ProbeArray
 defmodule Example.ProbeArray do
+  @moduledoc "Type ProbeArray of Wire.schema."
   defstruct samples: List.duplicate(%Example.ProbeSample{}, 2), config: %Example.ProbeConfig{}
 end
 
 # type Heartbeat
 defmodule Example.Heartbeat do
+  @moduledoc "Type Heartbeat of Wire.schema."
   # empty body — presence is the payload (SPEC §4.6)
   defstruct []
 end
 
 # type Test
 defmodule Example.Test do
+  @moduledoc "Type Test of Wire.schema."
   # test_b: wire [0, 1000]
   # test_c: wire [0, 1000]
   # test_d: wire [0, 1000]
@@ -114,24 +127,28 @@ end
 
 # type Block
 defmodule Example.Block do
+  @moduledoc "Type Block of Wire.schema."
   # data: bytes(MaxBlockSize) — a binary; byte_size is the used length (SPEC §4.7)
   defstruct data: <<>>
 end
 
 # type Chat
 defmodule Example.Chat do
+  @moduledoc "Type Chat of Wire.schema."
   # text: string(MaxChatLength) — a UTF-8 binary; byte_size is the used length (SPEC §4.7)
   defstruct text: <<>>
 end
 
 # type ProbeReport
 defmodule Example.ProbeReport do
+  @moduledoc "Type ProbeReport of Wire.schema."
   # flags: ProbeFlags — consumed as masks, uint64 storage (SPEC §4.2)
   defstruct header: %Example.ProbeHeader{}, flags: 0, echo: %Example.Test{}
 end
 
 # type TestData
 defmodule Example.TestData do
+  @moduledoc "Type TestData of Wire.schema."
   # a: wire [-100, 100]
   # b: wire [-100, 100]
   # c: wire [-100, 150]
@@ -164,6 +181,7 @@ end
 
 # type CompressedProbe
 defmodule Example.CompressedProbe do
+  @moduledoc "Type CompressedProbe of Wire.schema."
   # boundary: compressed float [0.0, 10.0] @ 0.01
   # offset: compressed float [-5.0, 5.0] @ 0.001
   defstruct boundary: 0.0, offset: 0.0
@@ -172,6 +190,7 @@ end
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Wire.schema.
 defmodule Example.Wire do
+  @moduledoc "The file-scope surface of Wire.schema: constants, flags masks, name helpers and wire functions."
   import Bitwise
 
   @cf_tab_0 (fn ->

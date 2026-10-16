@@ -31,6 +31,7 @@
 
 # type BenchPacket
 defmodule Bench.BenchPacket do
+  @moduledoc "Type BenchPacket of Bench.schema."
   # a: wire [-100, 100]
   # b: wire [0, 65535]
   # c: wire [-1000000, 1000000]
@@ -50,6 +51,7 @@ end
 
 # type BenchInts
 defmodule Bench.BenchInts do
+  @moduledoc "Type BenchInts of Bench.schema."
   # f0: wire [-100, 100]
   # f1: wire [0, 65535]
   # f2: wire [-1000000, 1000000]
@@ -65,6 +67,7 @@ end
 
 # type BenchBits
 defmodule Bench.BenchBits do
+  @moduledoc "Type BenchBits of Bench.schema."
   defstruct b7: 0, b13: 0, b23: 0, b3: 0, b32: 0, b11: 0, b19: 0, b48: 0
 end
 
@@ -73,6 +76,7 @@ end
 # integer-backed enums: storage must hold every wire-legal value, and
 # | max = ... headroom values have no richer Elixir value to be
 defmodule Bench.MixedWeapon do
+  @moduledoc "Enum MixedWeapon of Bench.schema: none is 0, then each variant in declared order."
   def none, do: 0
   def fists, do: 1
   def pistol, do: 2
@@ -97,6 +101,7 @@ end
 
 # type MixedEntity
 defmodule Bench.MixedEntity do
+  @moduledoc "Type MixedEntity of Bench.schema."
   # pos_x: wire [-16383, 16383]
   # pos_y: wire [-16383, 16383]
   # pos_z: wire [-16383, 16383]
@@ -123,12 +128,14 @@ end
 
 # type MixedStat
 defmodule Bench.MixedStat do
+  @moduledoc "Type MixedStat of Bench.schema."
   # delta: wire [-512, 511]
   defstruct stat_id: 0, delta: 0
 end
 
 # type MixedHitEvent
 defmodule Bench.MixedHitEvent do
+  @moduledoc "Type MixedHitEvent of Bench.schema."
   # damage: wire [0, 4095]
   # hit_kind: wire [0, 7]
   defstruct target_id: 0, damage: 0, hit_kind: 0, crit: false
@@ -136,18 +143,21 @@ end
 
 # type MixedChatEvent
 defmodule Bench.MixedChatEvent do
+  @moduledoc "Type MixedChatEvent of Bench.schema."
   # channel: wire [0, 3]
   defstruct channel: 0, speaker: 0
 end
 
 # type MixedPickupEvent
 defmodule Bench.MixedPickupEvent do
+  @moduledoc "Type MixedPickupEvent of Bench.schema."
   # amount: wire [0, 255]
   defstruct item_id: 0, amount: 0
 end
 
 # MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
 defmodule Bench.MixedEventType do
+  @moduledoc "Union MixedEvent's tag: none is 0, then each variant in declared order."
   def none, do: 0
   def hit, do: 1
   def chat, do: 2
@@ -163,6 +173,7 @@ end
 # arms hold their construction form (SPEC §4.8 leaves them unspecified).
 # Consumers read the selected arm only.
 defmodule Bench.MixedEvent do
+  @moduledoc "Union MixedEvent of Bench.schema: the tag and one field per variant."
   defstruct type: 0,
             hit: %Bench.MixedHitEvent{},
             chat: %Bench.MixedChatEvent{},
@@ -171,6 +182,7 @@ end
 
 # type BenchMixed
 defmodule Bench.BenchMixed do
+  @moduledoc "Type BenchMixed of Bench.schema."
   # ack_sequence: wire [0, 65535]
   # nonce: wire [0, 18446744073709551615]
   # world_time: wire [-1000000000000, 1000000000000]
@@ -219,6 +231,7 @@ end
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Bench.schema.
 defmodule Bench.Bench do
+  @moduledoc "The file-scope surface of Bench.schema: constants, flags masks, name helpers and wire functions."
   import Bitwise
 
   @cf_tab_0 (fn ->

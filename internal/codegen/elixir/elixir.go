@@ -491,9 +491,15 @@ func tableUnionsOrder(f *ir.File) []*ir.Union {
 // documentation rather than as a line comment, because a declaration lowers
 // to a module here and a module has an attribute to hang it on. A field and a
 // variant have none, so theirs reach the descriptor column alone.
-func (g *gen) emitModuleDoc(doc string) {
+//
+// A declaration with no `///` block gets the one-line fallback, which says
+// what the module is: credo's default Credo.Check.Readability.ModuleDoc
+// reports every module without a @moduledoc (issue #547), and a generated
+// module is public API, so it is documented rather than hidden with
+// `@moduledoc false`.
+func (g *gen) emitModuleDoc(doc, fallback string) {
 	if doc == "" {
-		return
+		doc = fallback
 	}
 	g.bpf("  @moduledoc %s\n", ir.QuoteDocElixir(doc))
 }
@@ -504,7 +510,7 @@ func (g *gen) emitEnumModule(d *ir.Enum) {
 	g.bpf("# integer-backed enums: storage must hold every wire-legal value, and\n")
 	g.bpf("# | max = ... headroom values have no richer Elixir value to be\n")
 	g.bpf("defmodule %s do\n", g.mod(d.Name))
-	g.emitModuleDoc(d.Doc)
+	g.emitModuleDoc(d.Doc, fmt.Sprintf("Enum %s of %s.schema: none is 0, then each variant in declared order.", d.Name, g.file.Base))
 	g.bpf("  def none, do: 0\n")
 	for i, v := range d.Variants {
 		g.bpf("  def %s, do: %d\n", elixirName(v), i+1)
@@ -522,6 +528,7 @@ func (g *gen) emitEnumModule(d *ir.Enum) {
 func (g *gen) emitUnionModules(d *ir.Union) {
 	g.bpf("# %sType: union %s's tag — None = 0, then each variant in declared order (SPEC §4.8)\n", d.Name, d.Name)
 	g.bpf("defmodule %sType do\n", g.mod(d.Name))
+	g.emitModuleDoc("", fmt.Sprintf("Union %s's tag: none is 0, then each variant in declared order.", d.Name))
 	g.bpf("  def none, do: 0\n")
 	for i, v := range d.Variants {
 		g.bpf("  def %s, do: %d\n", elixirName(v.Name), i+1)
@@ -544,7 +551,7 @@ func (g *gen) emitUnionModules(d *ir.Union) {
 		fields = append(fields, fmt.Sprintf("%s: %s", elixirName(v.Name), g.storageDefault(v.F)))
 	}
 	g.bpf("defmodule %s do\n", g.mod(d.Name))
-	g.emitModuleDoc(d.Doc)
+	g.emitModuleDoc(d.Doc, fmt.Sprintf("Union %s of %s.schema: the tag and one field per variant.", d.Name, g.file.Base))
 	g.emitDefstruct(fields)
 	g.bpf("end\n\n")
 }
@@ -556,7 +563,7 @@ func (g *gen) emitStructModule(d *ir.Struct) {
 		fields = append(fields, fmt.Sprintf("%s: %s", elixirName(f.Name), g.storageDefault(f)))
 	}
 	g.bpf("defmodule %s do\n", g.mod(d.Name))
-	g.emitModuleDoc(d.Doc)
+	g.emitModuleDoc(d.Doc, fmt.Sprintf("Type %s of %s.schema.", d.Name, g.file.Base))
 	if len(d.Fields) == 0 {
 		g.bpf("  # empty body — presence is the payload (SPEC §4.6)\n")
 		g.bpf("  defstruct []\n")
@@ -795,6 +802,7 @@ func (g *gen) emitFileModule(order []ir.Decl) {
 	g.bpf("# The file-scope surface: constants, flags masks, name helpers and the\n")
 	g.bpf("# wire functions of every declaration in %s.schema.\n", g.file.Base)
 	g.bpf("defmodule %s do\n", fileModuleName(g.unit, g.file))
+	g.emitModuleDoc("", fmt.Sprintf("The file-scope surface of %s.schema: constants, flags masks, name helpers and wire functions.", g.file.Base))
 
 	var b strings.Builder
 	saved := g.body

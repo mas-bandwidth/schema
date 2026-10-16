@@ -7,4 +7,5 @@
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Wrap.schema.
 defmodule Bench.Wrap do
+  @moduledoc "The file-scope surface of Wrap.schema: constants, flags masks, name helpers and wire functions."
 end
