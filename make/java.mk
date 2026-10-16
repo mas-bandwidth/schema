@@ -293,11 +293,12 @@ tables-java-compile-all: build/tables-generated-java/.stamp
 # THE JAVA TABLES LEG (test/java-tables/src/Main.java): the gates the
 # conformance harness does not hold, because none of them is a case — the
 # readers' fuzz oracle, the reference extent gate and the byte-order leg.
-build/java-tables/.stamp: build/tables-generated-java/.stamp test/java-tables/src/Main.java
+build/java-tables/.stamp: build/tables-generated-java/.stamp test/java-tables/src/Main.java test/java-tables/src/Soak.java
 	@rm -rf build/java-tables && mkdir -p build/java-tables
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-tables \
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
-		build/tables-generated-java/block/*.java test/java-tables/src/Main.java
+		build/tables-generated-java/blobs/*.java build/tables-generated-java/block/*.java \
+		test/java-tables/src/Main.java test/java-tables/src/Soak.java
 	@touch $@
 
 # THE READERS' ORACLE (docs/SPEC-TABLES.md §7.5, §19.2). Mutants of a block image
@@ -645,7 +646,35 @@ tables-java-allocator-runtime-negative-control: build/java-tables/.stamp
 		{ echo 'NEGATIVE CONTROL FAILED: the allocation gate refused for another reason'; cat build/java-allocator-runtime-negative-control/log; exit 1; }
 	@echo 'java allocation gate refuses a JDK that is not the pin (wants 21, ran 17)'
 
-test-java: tables-java-allocator tables-java-allocator-runtime-negative-control
+# THE JAVA TABLES SOAK (docs/PORTING.md I9, #517). A functional soak, never a
+# unit test: it loops the variable form's load, loadMeasure and save over the
+# committed wires the tables-java-variable-class target round-trips (the blob
+# and pointer units on this classpath) for SOAK_SECONDS of real time, and gates
+# on the per-iteration ALLOCATION COUNT being flat after warmup — a Java load
+# builds a Value tree, so the floor is not zero and the gate is on STABILITY,
+# not on zero — with resident-heap drift reported beside it as the weaker
+# instrument that sees retention. It refuses to certify off the pinned JDK
+# exactly as modeAllocator does, and honours SCHEMA_JAVA_ALLOC_ANY_JDK=1 as
+# observation only (reports, does not certify).
+.PHONY: tables-java-soak tables-java-soak-negative-control
+tables-java-soak: build/java-tables/.stamp
+	@if [ "$${SCHEMA_JAVA_ALLOC_ANY_JDK:-}" = 1 ]; then echo "Java soak observation mode: NOT CERTIFIED"; fi
+	$(JAVA) -cp build/java-tables Soak $(SOAK_SECONDS) testdata/wire/tables/blob_small.bin testdata/wire/tables/graph_tree.bin
+
+# ITS NEGATIVE CONTROL: a matched allocation pair planted per iteration by an
+# environment variable read in Soak.java (never a change to generated code) for
+# the measured loop alone, so the settled clean floor stays put and the count
+# must go red while the drift line stays green.
+tables-java-soak-negative-control: build/java-tables/.stamp
+	@if SCHEMA_JAVA_SOAK_PLANT=1 $(JAVA) -cp build/java-tables Soak 12 testdata/wire/tables/blob_small.bin testdata/wire/tables/graph_tree.bin > build/java-soak-negative.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a planted per-iteration allocation left the soak count green'; \
+		cat build/java-soak-negative.log; exit 1; \
+	fi
+	@grep -Fq 'per-iteration allocation moved from' build/java-soak-negative.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the soak went red, but not on the COUNT'; cat build/java-soak-negative.log; exit 1; }
+	@echo 'java tables soak negative control: a planted per-iteration allocation turns the COUNT red'
+
+test-java: tables-java-allocator tables-java-allocator-runtime-negative-control tables-java-soak tables-java-soak-negative-control
 
 # I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Java side.
 # The cook example is pulled from docs/USAGE.md into a class that reads the
