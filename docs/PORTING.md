@@ -1210,7 +1210,7 @@ goes red.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #416 | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #416 (`tables-rust-soak` gates on the count; nothing runs it) | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ❌ #416 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
+| ❌ #416 | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #416 (`tables-rust-soak` gates on the count; nothing runs it) | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ❌ #416 | ❌ #517 | ❌ #516 | 🟡 `tables-dart-soak` `tables-dart-soak-negative-control` (the soak samples the scavenge count every second and is RED at base: generated fixed Load/Save allocate a view per call, which `tables-dart-alloc` is too short to see; the control is reached from `test-dart`, the 20 s soak is not until the emitter is fixed) | ❌ #515 |
 
 ### I10 — The zero-cost gate
 
