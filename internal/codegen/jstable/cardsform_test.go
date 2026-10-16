@@ -34,8 +34,6 @@ func unitWith(st *ir.Struct) *ir.Unit {
 func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 	t.Parallel()
 
-	field := func(name string, typ ir.FieldType) *ir.Field { return &ir.Field{Name: name, Type: typ} }
-
 	for _, tc := range []struct {
 		field *ir.Field
 		want  string
@@ -44,9 +42,12 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 			field: &ir.Field{Name: "words", Type: ir.FieldType{Kind: ir.TString, Size: 8}, Array: ir.ArrayList},
 			want:  "an array of strings or byte strings (docs/SPEC-TABLES.md §2.9)",
 		},
+		// a wstring(N) is CARRIED (docs/SPEC-TABLES.md §3, SPEC.md §4.12;
+		// widescalarstext_test.go TestFixedPointAndWideTextOnTheTableWireJavaScript),
+		// as fixed/ufixed are, so neither is a case here any more
 		{
-			field: field("title", ir.FieldType{Kind: ir.TWString, Size: 8}),
-			want:  "a wstring(N) (docs/SPEC-TABLES.md §16)",
+			field: &ir.Field{Name: "titles", Type: ir.FieldType{Kind: ir.TWString, Size: 8}, Array: ir.ArrayList},
+			want:  "an array of strings or byte strings (docs/SPEC-TABLES.md §2.9)",
 		},
 	} {
 		st := &ir.Struct{Name: "Probe", IsTable: true, Fields: []*ir.Field{tc.field}}
@@ -151,7 +152,8 @@ func TestFixedUnitWithRefusedVariableConstructStillGenerates(t *testing.T) {
 		Package: "cards",
 		Tables: map[string]*ir.Struct{
 			"Probe": {Name: "Probe", IsTable: true, Fields: []*ir.Field{
-				{Name: "title", Type: ir.FieldType{Kind: ir.TWString, Size: 8}},
+				// an array of strings, still outside this leg's variable wire
+				{Name: "words", Type: ir.FieldType{Kind: ir.TString, Size: 8}, Array: ir.ArrayList},
 			}},
 			"Stamp": {Name: "Stamp", IsTable: true, FixedDeclared: true, Fields: []*ir.Field{
 				{Name: "id", Type: ir.FieldType{Kind: ir.TInt, Signed: true, Width: 32}},

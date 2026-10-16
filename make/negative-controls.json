@@ -71,6 +71,7 @@
       "when": "pull-request",
       "why": "The shared conformance harness controls, including the sabotaged C++ reference. The completed C driver now has three separate compile-heavy groups below; combining them exceeded the five-minute job ceiling on run 34186742566.",
       "targets": [
+        "cards-conformance-negative-control",
         "conformance-negative-control",
         "conformance-negative-control-block-dump",
         "conformance-negative-control-go",
@@ -468,6 +469,9 @@
       "when": "pull-request",
       "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families, with the FIXED FORM's two beside them \u2014 one byte off the write template, one off an optional's present byte, and \u00a75's own \u2014 the wrong name on a file outside the lineage \u2014 for thirteen controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost.",
       "targets": [
+        "cards-js-conformance-hash-negative-control",
+        "cards-js-conformance-negative-control",
+        "cards-js-conformance-upgrade-negative-control",
         "conformance-negative-control-js-walk",
         "packet-arm-defaults-js-flat-negative-control",
         "packet-arm-defaults-js-runtime-negative-control",
@@ -479,12 +483,15 @@
         "tables-js-block-lead-negative-control",
         "tables-js-fixed-form-negative-control",
         "tables-js-fixed-optional-negative-control",
+        "tables-js-fixed-roadmap-negative-control",
         "tables-js-fuzz-negative-control",
+        "tables-js-message-form-negative-control",
         "tables-js-runtime-home-negative-control",
         "tables-js-slot-negative-control",
         "tables-js-fixed-slack-negative-control",
         "tables-js-union-arm-text-negative-control",
         "tables-js-versioning-negative-control",
+        "tables-js-clean-negative-control",
         "tables-js-text-differential-negative-control"
       ],
       "node": "26"

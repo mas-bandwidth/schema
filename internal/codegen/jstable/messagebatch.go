@@ -430,7 +430,13 @@ func (g *fixedModule) emitMessageWriteField(f *ir.Field, ind string) {
 	entry := ir.TableFieldEntry(f)
 	slot := messageSlot(g.unit, entry)
 	ride := g.messageRides(f, mem, ind)
-	g.pf("%sif (%s) {\n", ind, ride)
+	if ride == "true" {
+		// a field that always rides is a plain block: `if (true)` is a
+		// constant condition (eslint no-constant-condition)
+		g.pf("%s{\n", ind)
+	} else {
+		g.pf("%sif (%s) {\n", ind, ride)
+	}
 	g.pf("%s  w.Put(%dn, TableMessageRefBitsHere);\n", ind, slot)
 	g.emitMessageWriteValue(f, entry, mem, ind+"  ")
 	g.pf("%s}\n", ind)

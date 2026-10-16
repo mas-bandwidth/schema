@@ -33,6 +33,7 @@ export NODE
 .PHONY: toolchain-js
 toolchain-js:
 	@$(call toolchain_probe,js,NODE,$(NODE))
+	@$(call toolchain_probe,js,ESLINT,$(ESLINT))
 build/packet-defaults/js/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/js.mk
 	./bin/schema generate --lang js --out build/packet-defaults/js/defaults test/packet-defaults/Defaults.schema
 	./bin/schema generate --lang js --out build/packet-defaults/js/plain test/packet-defaults/Plain.schema
@@ -78,7 +79,7 @@ generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .js + <Base>Table.js + the two accelerators' readers),
 # because a table's closure decodes into the packet emitter's own classes.
-build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema
+build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(wildcard examples-wide/*.schema) test/tables/Scalars2.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema
 	@mkdir -p build/tables-generated-js
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
 	# the POINTERED unit: its FIXED surface is refused by name for every
@@ -90,11 +91,17 @@ build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(
 	# the BYTE-BUFFER unit (§2.5): *bytes and *string on the variable wire
 	# (BlobdemoVariable.js).
 	./bin/schema generate --lang js --out build/tables-generated-js/blobs tables/blobs
-	# the MAP unit (§2.8) without Text.schema, whose wstring(N) map value this
-	# leg's table codec still refuses whole: MapdemoVariable.js carries Cells
-	# (a [N]T map value) and Pairs (an [N]*T map value), which the conformance
-	# driver's wire surfaces answer (js-carries-nested-types-and-fixed-arrays).
-	./bin/schema generate --lang js --out build/tables-generated-js/maps $(filter-out tables/maps/Text.schema,$(wildcard tables/maps/*.schema))
+	# the MAP unit (§2.8), whole: MapdemoVariable.js carries Cells (a [N]T map
+	# value), Pairs (an [N]*T map value) and Text (a wstring(N) map value, kind
+	# 33, §3), which the conformance driver's wire surfaces answer
+	# (js-carries-nested-types-and-fixed-arrays,
+	# js-carries-fixed-point-and-wide-text-on-the-table-wire).
+	./bin/schema generate --lang js --out build/tables-generated-js/maps tables/maps
+	# the WIDE-TEXT unit (examples-wide, SPEC.md §4.12): Caption and Stamp carry
+	# wstring(N) as a field, inside a type, in a counted array of that type and
+	# as a union arm; WideVariable.js answers the widedemo rows on the variable
+	# wire (docs/SPEC-TABLES.md §3).
+	./bin/schema generate --lang js --out build/tables-generated-js/wide examples-wide
 	./bin/schema generate --lang js --out build/tables-generated-js/block tables/block
 	./bin/schema generate --lang js --out build/tables-generated-js/blockhome tables/blockhome
 	./bin/schema generate --lang js --out build/tables-generated-js/v1 test/tables/V1.schema
@@ -110,6 +117,9 @@ build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(
 	./bin/schema generate --lang js --out build/tables-generated-js/m2 test/tables/M2.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/stream tables/stream
 	./bin/schema generate --lang js --out build/tables-generated-js/scalars tables/scalars
+	# the evolved SimState (§4): the scalars wires read by a type that did not
+	# write them, the tblscalars2 report rows
+	./bin/schema generate --lang js --out build/tables-generated-js/scalars2 test/tables/Scalars2.schema
 	# THE MESSAGE FORM's WIDE-VOCABULARY units (docs/SPEC-TABLES.md §3.3): the
 	# conformance driver's `message` surface AnnounceReads a connection's
 	# announcement, LoadMessages the form-2 batch against it and SaveMessages
@@ -579,13 +589,17 @@ test-js: tables-js-variable-class
 # `type` by value (§2), a fixed-length array [N]T as a field, an optional ?[N]T,
 # a map value and a union arm, and a flags arm do too, over keyed_config,
 # keyed_default, map_cells and map_pairs
-# (TestNestedTypesAndFixedArraysOnTheTableWireJavaScript); and the refusal test
-# no longer names those constructs (TestOtherVariableConstructsAreRefusedByName).
+# (TestNestedTypesAndFixedArraysOnTheTableWireJavaScript); fixed/ufixed and
+# wstring(N) as fields, arms and map values, over scalars_*, map_text, the
+# widedemo and the messagedemo instances, with wide text's read report and its
+# write refusal (TestFixedPointAndWideTextOnTheTableWireJavaScript); and the
+# refusal test no longer names those constructs
+# (TestOtherVariableConstructsAreRefusedByName).
 # SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE rather than a skip.
 .PHONY: tables-js-variable-arms
 tables-js-variable-arms:
-	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestNestedTypesAndFixedArraysOnTheTableWireJavaScript|TestMapsAndUnionArmsOnTheTableWireJavaScript|TestOtherVariableConstructsAreRefusedByName)$$'
-	@echo 'tables JS variable arms: maps, union arms, optional ?T, enum-keyed arrays, nested types and fixed-length arrays [N]T round-trip the oracle bytes and are no longer refused by name'
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestNestedTypesAndFixedArraysOnTheTableWireJavaScript|TestMapsAndUnionArmsOnTheTableWireJavaScript|TestFixedPointAndWideTextOnTheTableWireJavaScript|TestOtherVariableConstructsAreRefusedByName)$$'
+	@echo 'tables JS variable arms: maps, union arms, optional ?T, enum-keyed arrays, nested types, fixed-length arrays [N]T, fixed-point scalars and wstring(N) round-trip the oracle bytes and are no longer refused by name'
 
 test-js: tables-js-variable-arms
 
@@ -645,6 +659,81 @@ tables-js-fixed-roadmap:
 	@echo 'tables JS fixed roadmap: a second layout under a held hash is layout_malformed (js/F12)'
 
 test-js: tables-js-fixed-roadmap
+
+# THE MESSAGE FORM'S JAVASCRIPT TESTS, UNDER A TARGET THAT CANNOT SKIP.
+# TestMessageFormAnnounceJavaScript, TestMessageFormBatchJavaScript and
+# TestMessageFormConformanceJavaScript (docs/SPEC-TABLES.md §3.2, §3.3 and the
+# conformance driver's message rows) and the two small regressions beside them
+# take node through jsNode, which SKIPS a test when no node is on PATH — the
+# exact failure tables-js-versioning's comment above describes: `go test ./...`
+# asserts nothing there, so a regression rides into CI green. Under this target
+# SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE, and the target ALSO
+# fails if the -v output holds a SKIP line (a subtest skipped for any other
+# reason is a test that did not run). internal/codegen/jstable/gatecoverage_test.go
+# refuses a roadmap or message-form test no -run pattern in this file names.
+.PHONY: tables-js-message-form
+tables-js-message-form:
+	@mkdir -p build
+	@rc=0; SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestMessageFormAnnounceJavaScript|TestMessageFormBatchJavaScript|TestMessageFormConformanceJavaScript|TestJsMessageSkipOfZeroWidthElementsIsBounded|TestJsAnnounceKeepsTwoDeclaredShapesThatDeriveOneQuantization)$$' > build/js-message-form.log 2>&1 || rc=$$?; \
+		cat build/js-message-form.log; \
+		if [ $$rc -ne 0 ]; then echo "tables-js-message-form: go test exited $$rc"; exit $$rc; fi; \
+		if grep -Eq '^ *--- SKIP' build/js-message-form.log; then \
+			echo "tables-js-message-form: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1:"; grep -E '^ *--- SKIP' build/js-message-form.log; exit 1; \
+		fi
+	@echo 'tables JS message form: announce, batch and conformance rows plus two regressions ran under node, none skipped'
+
+test-js: tables-js-message-form
+
+# THE FIXED ROADMAP'S JAVASCRIPT TESTS, T01 TO T09 PLUS T15 AND T19, UNDER THE
+# SAME NO-SKIP RULE. tables-js-fixed-roadmap above runs only T12 and T13 (the
+# earlier in-memory files that need no C++ oracle). T01 to T09 read
+# build/fixedform-corpus, THE C++ REFERENCE'S OWN BYTE ORACLE (T08's js/R27
+# reads it), and T15 (js/W16, js/R28) and T19 (utf16-values/js/valid-data,
+# js/C5) close the guard-chain and wide-text cells, so this target takes the
+# oracle stamp and runs all eleven; the serialize sibling it needs is the one
+# tables-js-fixed-form already needs.
+.PHONY: tables-js-fixed-roadmap-all
+tables-js-fixed-roadmap-all: build/fixedform-corpus/.stamp
+	@mkdir -p build
+	@rc=0; SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestFixedRoadmapT01Framing|TestFixedRoadmapT02Plans|TestFixedRoadmapJsT03PlansVersions|TestFixedRoadmapJsT04Versions|TestFixedRoadmapJsT05Evolution|TestFixedRoadmapJsT06Bounds|TestFixedRoadmapJsT07Writes|TestFixedRoadmapJsT08ConformanceComposites|TestFixedRoadmapJsT09UnionsOptionals|TestFixedRoadmapJsT15GuardChain|TestFixedRoadmapJsT19WideText)$$' > build/js-fixed-roadmap-all.log 2>&1 || rc=$$?; \
+		cat build/js-fixed-roadmap-all.log; \
+		if [ $$rc -ne 0 ]; then echo "tables-js-fixed-roadmap-all: go test exited $$rc"; exit $$rc; fi; \
+		if grep -Eq '^ *--- SKIP' build/js-fixed-roadmap-all.log; then \
+			echo "tables-js-fixed-roadmap-all: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1:"; grep -E '^ *--- SKIP' build/js-fixed-roadmap-all.log; exit 1; \
+		fi
+	@echo 'tables JS fixed roadmap (T01 to T09, T15, T19): every roadmap test ran over the reference own bytes, none skipped'
+
+test-js: tables-js-fixed-roadmap-all
+
+# ITS NEGATIVE CONTROL. Move ONE BYTE of the batch writer's alignment padding
+# (messagebatch.go: the bit writer pads to a byte with (-Bits) & 7) and the bytes
+# TestMessageFormBatchJavaScript's round trip writes no longer equal the
+# reference batch file, so the test must go red — and for that reason, not a
+# compile error: the sabotage is inside the emitted JavaScript's source text, so
+# the Go package still builds. It rides `go test -overlay`, like the controls above.
+.PHONY: tables-js-message-form-negative-control
+tables-js-message-form-negative-control:
+	@rm -rf build/js-message-form-sabotage && mkdir -p build/js-message-form-sabotage
+	@sed 's|Align() { this.Put(0n, (-this.Bits) \& 7); }|Align() { this.Put(0n, (-this.Bits) \& 6); }|' \
+		internal/codegen/jstable/messagebatch.go > build/js-message-form-sabotage/messagebatch.go.txt
+	@grep -q '(-this.Bits) & 6' build/js-message-form-sabotage/messagebatch.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/jstable/messagebatch.go":"%s/build/js-message-form-sabotage/messagebatch.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/js-message-form-sabotage/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-message-form-sabotage/overlay.json \
+			-count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestMessageFormBatchJavaScript$$' \
+			> build/js-message-form-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the batch writer padded wrongly and the gate stayed green"; \
+		cat build/js-message-form-sabotage/log; exit 1; \
+	fi
+	@grep -q -- "--- FAIL: TestMessageFormBatchJavaScript" build/js-message-form-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the message-form gate went red for another reason"; \
+		  cat build/js-message-form-sabotage/log; exit 1; }
+	@if grep -Eq '\[build failed\]|cannot find|undefined:|syntax error' build/js-message-form-sabotage/log; then \
+		echo "NEGATIVE CONTROL FAILED: the sabotage broke the build, not the behaviour"; \
+		cat build/js-message-form-sabotage/log; exit 1; \
+	fi
+	@echo 'tables JS message form negative control: one byte of batch padding reds TestMessageFormBatchJavaScript'
 
 # ITS NEGATIVE CONTROL (§5.9 #11: each gate owes one, "because a byte comparison
 # nobody has seen fail may be comparing a file with itself"). Drop the held
@@ -963,27 +1052,38 @@ test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generate
 	$(MAKE) tables-js-versioning
 	$(MAKE) tables-js-versioning-negative-control
 	$(MAKE) tables-js-fixed-roadmap-negative-control
+	$(MAKE) tables-js-message-form-negative-control
 	cd test/js && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
 	cd test/js-ludicrous && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
 
 TEST_LEGS         += test-js
 TOOLCHAIN_LEGS    += js
-TOOLCHAIN_PINS_js  := NODE
+TOOLCHAIN_PINS_js  := NODE ESLINT
 CONFORMANCE_LEGS  += $(call unless_skipped,js,build/tables-generated-js/.stamp)
 
-# THE JAVASCRIPT TABLE SOURCES ARE LINT-CLEAN AND FORMAT-CANONICAL (issue #424).
-# `eslint` is the language's authority over the generated table units, so an
-# emitter that drifts from the conventions it enforces goes red on the diff
-# rather than on a reviewer. It SKIPS cleanly where eslint is not on PATH.
+# THE JAVASCRIPT TABLE SOURCES ARE LINT-CLEAN AND FORMAT-CANONICAL (issue #424,
+# issue #547). `eslint` is the language's authority over the generated table
+# units and packet units, so an emitter that drifts from the conventions it
+# enforces goes red on the diff rather than on a reviewer. eslint is a pinned
+# toolchain item (TOOLCHAIN_PINS_js), so toolchain-js refuses by name where it
+# is missing and this gate never silently skips.
 ESLINT ?= eslint
 .PHONY: tables-js-clean
-tables-js-clean: build/tables-generated-js/.stamp
-	@if ! command -v $(ESLINT) >/dev/null 2>&1; then \
-		echo "SKIP tables-js-clean: $(ESLINT) is not installed"; \
-	else \
-		$(ESLINT) build/tables-generated-js; \
-		echo "tables JavaScript: eslint clean over the generated table units"; \
-	fi
+tables-js-clean: toolchain-js build/tables-generated-js/.stamp generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/paired/js/.stamp
+	$(ESLINT) build/tables-generated-js generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js
+	@echo "tables JavaScript: eslint clean over the generated table and packet units"
+
+.PHONY: tables-js-clean-negative-control
+tables-js-clean-negative-control: toolchain-js generated/js/.stamp
+	@mkdir -p build/tables-js-clean-negative
+	@cp generated/js/Degenerate.js build/tables-js-clean-negative/Degenerate.js
+	@echo 'const unused = 1;' >> build/tables-js-clean-negative/Degenerate.js
+	@if $(ESLINT) build/tables-js-clean-negative > build/tables-js-clean-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: eslint did not flag the planted unused constant'; exit 1; fi
+	@grep -Fq 'no-unused-vars' build/tables-js-clean-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: eslint failed for another reason'; cat build/tables-js-clean-negative/log; exit 1; }
+	@echo 'tables JavaScript negative control: a planted unused constant fails eslint on no-unused-vars'
+
 test-js: tables-js-clean
 
 # Both JavaScript packet tiers share the UTF-8 rule and mutation corpus.

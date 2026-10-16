@@ -29,7 +29,9 @@ func (t jsTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) 
 // jstable opens no file and a build ships a reader for every layout the lock
 // records.
 func (jsTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
-	// Packet wide text is carried; table kind 33 remains refused.
+	// Wide text is carried on the packet wire and on both table wires (kind 33
+	// on the variable form, docs/SPEC-TABLES.md §3; §3.4's fixed form), so
+	// refuseWideText answers nil for js (compiler/widetext.go).
 	if err := refuseWideText(u, "js"); err != nil {
 		return nil, err
 	}

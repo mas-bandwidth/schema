@@ -274,3 +274,67 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	maps.Copy(out, generateViewFile(u))
 	return out, nil
 }
+
+// liveImports keeps, of the symbols a module was about to import from one
+// sibling, only those its body names: an import nothing reads is an unused
+// binding (eslint no-unused-vars) and says nothing to a reader. The scan is
+// over identifier tokens, so a name that appears only in a comment is kept
+// rather than dropped: a miss here is a lint finding, never a broken module.
+func liveImports(syms []string, used map[string]bool) []string {
+	live := syms[:0:0]
+	for _, s := range syms {
+		if used[s] {
+			live = append(live, s)
+		}
+	}
+	return live
+}
+
+// jsIdentifiers is the set of identifier tokens in a module body's code, the
+// lookup liveImports keeps an import by. Comments and string literals are
+// skipped, so a type named only in a string (a codec's "Envelope") or a
+// comment does not keep an import alive. A misread here can only drop an
+// import the code names, which the lint's no-undef then names.
+func jsIdentifiers(body string) map[string]bool {
+	set := map[string]bool{}
+	isWord := func(c byte, first bool) bool {
+		return c == '_' || c == '$' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (!first && c >= '0' && c <= '9')
+	}
+	for i := 0; i < len(body); {
+		c := body[i]
+		switch {
+		case c == '/' && i+1 < len(body) && body[i+1] == '/':
+			for i < len(body) && body[i] != '\n' {
+				i++
+			}
+		case c == '/' && i+1 < len(body) && body[i+1] == '*':
+			end := strings.Index(body[i+2:], "*/")
+			if end < 0 {
+				return set
+			}
+			i += end + 4
+		case c == '"' || c == '\'' || c == '`':
+			i++
+			for i < len(body) && body[i] != c {
+				if body[i] == '\\' {
+					i++
+				}
+				i++
+			}
+			i++
+		case isWord(c, true):
+			start := i
+			for i < len(body) && isWord(body[i], false) {
+				i++
+			}
+			set[body[start:i]] = true
+		case c >= '0' && c <= '9':
+			for i < len(body) && isWord(body[i], false) {
+				i++
+			}
+		default:
+			i++
+		}
+	}
+	return set
+}

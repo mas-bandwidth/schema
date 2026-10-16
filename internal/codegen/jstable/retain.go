@@ -47,7 +47,7 @@ func (g *variableGen) emitRetainMember(st *ir.Struct) {
 	// and a record the measure placed must not mask one the save never emitted.
 	g.pf("export function %sMeasureRetain(v, retain) {\n", st.Name)
 	g.pf("  if (retain !== null) { retain.idUsed = 0; retain.clearPlaced(); }\n")
-	g.pf("  const b = TableVariableSave(%s, v, retain, null);\n", c)
+	g.pf("  const b = TableVariableSave(%s, v, retain);\n", c)
 	g.pf("  return b === null ? -1 : b.length;\n")
 	g.pf("}\n\n")
 	g.pf("export function %sSaveRetain(v, retain, report) {\n", st.Name)
@@ -55,7 +55,7 @@ func (g *variableGen) emitRetainMember(st *ir.Struct) {
 	g.pf("  if (retain === null) { return %sSave(v); }\n", st.Name)
 	g.pf("  retain.idUsed = 0;\n")
 	g.pf("  retain.clearPlaced();\n")
-	g.pf("  const b = TableVariableSave(%s, v, retain, report);\n", c)
+	g.pf("  const b = TableVariableSave(%s, v, retain);\n", c)
 	g.pf("  if (b === null) { return null; }\n")
 	g.pf("  TableVariableRetainCountLost(retain, report);\n")
 	g.pf("  return b;\n")
@@ -141,7 +141,9 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
   const width = tableRetainWidth(kind);
   if (width > 0) { if (r.at + width > r.end) { return false; } out.raw(r.b.subarray(r.at, r.at + width)); r.at += width; return true; }
   switch (kind) {
-    case 12: {
+    case 12: case 33: {
+      // a string and a wide string (§6.6, internal/tablewire retain.go): the
+      // payload copies verbatim under its L
       const L = r.leb(); if (r.bad || r.at + L > r.end) { return false; }
       out.leb(L); out.raw(r.b.subarray(r.at, r.at + L)); r.at += L; return true;
     }
@@ -228,7 +230,7 @@ function TableVariableRetainEmit(r, ids, kind, w) {
   const width = tableRetainWidth(kind);
   if (width > 0) { if (r.at + width > r.end) { return false; } w.raw(r.b.subarray(r.at, r.at + width)); r.at += width; return true; }
   switch (kind) {
-    case 12: {
+    case 12: case 33: {
       const L = r.leb(); if (r.bad || r.at + L > r.end) { return false; }
       w.leb(L); w.raw(r.b.subarray(r.at, r.at + L)); r.at += L; return true;
     }
@@ -268,7 +270,7 @@ function TableVariableRetainEmit(r, ids, kind, w) {
 // Append the records that belong to this body, in the order retained, before the
 // body's terminator (§6.6). A record whose id has no entry is dropped (its
 // 'placed' byte stays 0 and CountLost reports it).
-function TableVariableRetainTail(w, ids, retain, path, report) {
+function TableVariableRetainTail(w, ids, retain, path) {
   if (retain === null) { return true; }
   let at = 0;
   while (at < retain.used) {

@@ -70,10 +70,11 @@ export const TableFixedRecordMaxBytes = 65536;
 // otherwise spend a reader's stack before any rule fired. The reference states 64.
 export const TableFixedMaxDepth = 64;
 
-// A PLAN ENTRY is nine int32 lanes of one flat Int32Array. A flat array of a
+// A PLAN ENTRY is eleven int32 lanes of one flat Int32Array (nine, and the
+// guard chain's offset+count, docs/FIXED-FORM-ALGORITHM.md §4.1). A flat array of a
 // fixed stride is what keeps the read loop monomorphic: every lane is a
 // Smi, the loop never touches a property name, and nothing is allocated.
-export const TableFixedLanes = 9;
+export const TableFixedLanes = 11;
 // ONE BINDING PER LINE, and that is not a style choice: §11's claim is made
 // name by name, and a scan that reads a module's bindings sees the FIRST name
 // of a comma list. A lane folded into a list beside another is a lane nobody
@@ -87,6 +88,12 @@ const TableFixedLaneGuard = 5;
 const TableFixedLaneArg = 6;
 const TableFixedLaneMeta = 7; // a widen's width and sign, a text entry's flavour
 const TableFixedLaneArgW = 8; // THE GUARD'S WIDTH IN BYTES: a union tag is 1, 2, 4 or 8
+// THE GUARD CHAIN (docs/FIXED-FORM-ALGORITHM.md §4.1): offset+count into a pool
+// of (guard, arg, argw) links, OUTERMOST FIRST, the only bound the layout's 64.
+// The pool is the plan's own remap pool, three ints a link; the count is 0 for
+// an entry under one tag or none, whose guard lane is the whole of it.
+const TableFixedLaneGuards = 9;
+const TableFixedLaneGuardCount = 10;
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first; the
 // others are what a plan compiled from another writer's layout adds.
@@ -232,6 +239,13 @@ export class TableFixedPlan {
     this.hostile = false;
     // the CURRENT union's tag width, stamped onto every push — C++'s c.argw
     this.argw = 1;
+    // THE GUARD CHAIN of the arm being compiled, OUTERMOST FIRST (§4.1): one
+    // (guard, arg, argw) link per enclosing union, pushed on the way into an
+    // arm and popped on the way out; chainAt is where it was laid in the pool,
+    // once per arm, or -1. Sized once for the layout's 64.
+    this.chain = new Int32Array(65 * 3);
+    this.chainLen = 0;
+    this.chainAt = -1;
     // THE PLAN IS PARTITIONED (§4.1): every UNGUARDED entry first, then every
     // guarded one, and split is the index the second half starts at. pass is
     // which half the compile is keeping (§5.2's two passes).
@@ -383,6 +397,16 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
     if (guard !== TableFixedNoGuard &&
         TableFixedTagAt(src, srcAt + guard, e[b + TableFixedLaneArgW]) !== (e[b + TableFixedLaneArg] >>> 0)) {
       continue;
+    }
+    // AN ARM INSIDE AN ARM ANSWERS TO EVERY OUTER TAG TOO (§4.1, the guard
+    // chain): the links outside the innermost, outermost first, all must hold.
+    const links = e[b + TableFixedLaneGuardCount];
+    if (links > 1) {
+      let holds = true;
+      for (let j = 0, at = e[b + TableFixedLaneGuards]; j < links - 1; j++, at += 3) {
+        if (TableFixedTagAt(src, srcAt + remap[at], remap[at + 2]) !== (remap[at + 1] >>> 0)) { holds = false; break; }
+      }
+      if (!holds) { continue; }
     }
     const s = srcAt + e[b + TableFixedLaneSrc];
     const d = e[b + TableFixedLaneDst];
@@ -946,6 +970,29 @@ function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
   let w = plan.argw | 0;
   if (w === 0) { w = 1; }
   e[b + TableFixedLaneArgW] = w;
+  e[b + TableFixedLaneGuards] = 0;
+  e[b + TableFixedLaneGuardCount] = 0;
+  // THE GUARD CHAIN (§4.1): an entry beneath a union answers to EVERY enclosing
+  // tag. Its guard lane is the chain's innermost link, and a chain past one is
+  // laid into the pool, once per arm, as offset+count.
+  if (guard !== TableFixedNoGuard && plan.chainLen > 0) {
+    const c = plan.chain;
+    const inner = (plan.chainLen - 1) * 3;
+    e[b + TableFixedLaneGuard] = c[inner];
+    e[b + TableFixedLaneArg] = c[inner + 1];
+    e[b + TableFixedLaneArgW] = c[inner + 2];
+    if (plan.chainLen > 1) {
+      if (plan.chainAt < 0) {
+        const need = plan.chainLen * 3;
+        if (plan.remapUsed + need > plan.remap.length) { plan.overflow = true; return; }
+        plan.chainAt = plan.remapUsed;
+        for (let k = 0; k < need; k++) { plan.remap[plan.chainAt + k] = c[k]; }
+        plan.remapUsed += need;
+      }
+      e[b + TableFixedLaneGuards] = plan.chainAt;
+      e[b + TableFixedLaneGuardCount] = plan.chainLen;
+    }
+  }
   plan.count++;
 }
 
@@ -1162,10 +1209,23 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
         let theirArm = ti + 1;
         for (let j = 0; j < theirArms; j++) {
           if (TableFixedSameId(theirs, theirArm, mine, myArm)) {
+            // THE ARM ANSWERS TO THIS TAG AND TO EVERY TAG OUTSIDE IT (§4.1, the
+            // guard chain): one link pushed on the way in, the arm's own tag
+            // const included, popped on the way out. The layout's 64 bounds it.
+            if (plan.chainLen >= 65) { plan.overflow = true; return; }
+            const savedAt = plan.chainAt;
+            const l = plan.chainLen * 3;
+            plan.chain[l] = theirAt;
+            plan.chain[l + 1] = j + 1;
+            plan.chain[l + 2] = plan.argw;
+            plan.chainLen++;
+            plan.chainAt = -1;
             // MY tag value, written under THEIR tag's guard
             TableFixedPush(plan, TableFixedOpConst, theirAt, auxAt, myTag, k + 1, theirAt, j + 1, 0);
             TableFixedCompileEntry(plan, theirs, theirArm, theirAt + theirTag,
               mine, myArm, dst, at, theirAt, j + 1, report);
+            plan.chainLen--;
+            plan.chainAt = savedAt;
             break;
           }
           theirArm += TableFixedSubtree(theirs, theirArm);
@@ -1237,6 +1297,8 @@ function TableFixedCoalesce(plan, from) {
       if (e[p + TableFixedLaneOp] === TableFixedOpCopy && e[b + TableFixedLaneOp] === TableFixedOpCopy &&
           e[p + TableFixedLaneGuard] === e[b + TableFixedLaneGuard] && e[p + TableFixedLaneArg] === e[b + TableFixedLaneArg] &&
           e[p + TableFixedLaneArgW] === e[b + TableFixedLaneArgW] &&
+          e[p + TableFixedLaneGuards] === e[b + TableFixedLaneGuards] &&
+          e[p + TableFixedLaneGuardCount] === e[b + TableFixedLaneGuardCount] &&
           e[p + TableFixedLaneSrc] + e[p + TableFixedLaneSize] === e[b + TableFixedLaneSrc] &&
           e[p + TableFixedLaneDst] + e[p + TableFixedLaneSize] === e[b + TableFixedLaneDst]) {
         e[p + TableFixedLaneSize] += e[b + TableFixedLaneSize];
@@ -1278,6 +1340,9 @@ export class TableFixedKnownLayout {
     this.layout = layout;
     this.layoutBytes = layoutBytes | 0;
     this.recordBytes = recordBytes | 0;
+    // the lock's bytes as a view, made ONCE at module load, so the per-read
+    // layout compare moves in 32-bit lanes and allocates nothing
+    this.layoutView = new DataView(layout.buffer, layout.byteOffset, layout.length);
   }
 }
 
@@ -1379,6 +1444,8 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   const mine = new TableFixedLayoutView();
   if (!TableFixedParseLayout(myLayout, 0, myLayout.length, mine)) { return -1; }
   plan.count = 0;
+  plan.chainLen = 0;
+  plan.chainAt = -1;
   plan.remapUsed = 0;
   plan.overflow = false;
   plan.hostile = false;
@@ -2246,10 +2313,21 @@ export function BenchMixedFixedDecode(value, view, at, report) {
   value.SessionId = view.getBigUint64(at + 12, true);
   value.ClientId = view.getUint32(at + 20, true);
   value.Nonce = view.getBigUint64(at + 24, true);
-  value.WorldTime = view.getBigInt64(at + 32, true);
-  if (value.WorldTime < -1000000000000n) { value.WorldTime = -1000000000000n; report.clamped++; } else if (value.WorldTime > 1000000000000n) { value.WorldTime = 1000000000000n; report.clamped++; }
-  value.FrameTick = view.getBigUint64(at + 40, true);
-  if (value.FrameTick > 281474976710655n) { value.FrameTick = 281474976710655n; report.clamped++; }
+  {
+    const n = view.getInt32(at + 32 + 4, true) * 4294967296 + view.getUint32(at + 32, true);
+    if (n < -1000000000000) { value.WorldTime = -1000000000000n; report.clamped++; }
+    else if (n > 1000000000000) { value.WorldTime = 1000000000000n; report.clamped++; }
+    else {
+      value.WorldTime = view.getBigInt64(at + 32, true);
+    }
+  }
+  {
+    const n = view.getUint32(at + 40 + 4, true) * 4294967296 + view.getUint32(at + 40, true);
+    if (n > 281474976710655) { value.FrameTick = 281474976710655n; report.clamped++; }
+    else {
+      value.FrameTick = view.getBigUint64(at + 40, true);
+    }
+  }
   value.ServerTime = view.getInt32(at + 48, true);
   if (value.ServerTime < 0) { value.ServerTime = 0; report.clamped++; } else if (value.ServerTime > 16776960) { value.ServerTime = 16776960; report.clamped++; }
   {
@@ -2257,30 +2335,90 @@ export function BenchMixedFixedDecode(value, view, at, report) {
     if (n < 0) { n = 0; report.clamped++; } else if (n > 8) { n = 8; report.clamped++; }
     value.EntitiesCount = n;
   }
-  for (let i = 0; i < value.EntitiesCount; i++) {
-    MixedEntityFixedDecode(value.Entities[i], view, at + 56 + i * 51, report);
+  {
+    const ai = value.Entities, ni = value.EntitiesCount;
+    for (let i = 0, oi = at + 56; i < ni; i++, oi += 51) {
+      {
+        const e1 = ai[i];
+        e1.EntityId = view.getUint32(oi, true);
+        if (e1.EntityId > 4095) { e1.EntityId = 4095; report.clamped++; }
+        e1.PosX = view.getInt32(oi + 4, true);
+        if (e1.PosX < -16383) { e1.PosX = -16383; report.clamped++; } else if (e1.PosX > 16383) { e1.PosX = 16383; report.clamped++; }
+        e1.PosY = view.getInt32(oi + 8, true);
+        if (e1.PosY < -16383) { e1.PosY = -16383; report.clamped++; } else if (e1.PosY > 16383) { e1.PosY = 16383; report.clamped++; }
+        e1.PosZ = view.getInt32(oi + 12, true);
+        if (e1.PosZ < -16383) { e1.PosZ = -16383; report.clamped++; } else if (e1.PosZ > 16383) { e1.PosZ = 16383; report.clamped++; }
+        e1.Yaw = view.getUint32(oi + 16, true);
+        if (e1.Yaw > 511) { e1.Yaw = 511; report.clamped++; }
+        e1.Pitch = view.getUint32(oi + 20, true);
+        if (e1.Pitch > 511) { e1.Pitch = 511; report.clamped++; }
+        e1.VelX = view.getInt32(oi + 24, true);
+        if (e1.VelX < -2048) { e1.VelX = -2048; report.clamped++; } else if (e1.VelX > 2047) { e1.VelX = 2047; report.clamped++; }
+        e1.VelY = view.getInt32(oi + 28, true);
+        if (e1.VelY < -2048) { e1.VelY = -2048; report.clamped++; } else if (e1.VelY > 2047) { e1.VelY = 2047; report.clamped++; }
+        e1.VelZ = view.getInt32(oi + 32, true);
+        if (e1.VelZ < -2048) { e1.VelZ = -2048; report.clamped++; } else if (e1.VelZ > 2047) { e1.VelZ = 2047; report.clamped++; }
+        e1.Health = view.getInt32(oi + 36, true);
+        if (e1.Health < 0) { e1.Health = 0; report.clamped++; } else if (e1.Health > 1000) { e1.Health = 1000; report.clamped++; }
+        e1.Weapon = view.getUint8(oi + 40);
+        if (e1.Weapon > 15) { e1.Weapon = 0; report.clamped++; }
+        e1.Damage = view.getBigUint64(oi + 41, true);
+        e1.Moving = view.getUint8(oi + 49) !== 0;
+        e1.Firing = view.getUint8(oi + 50) !== 0;
+      }
+    }
   }
   {
     let n = view.getInt32(at + 464, true);
     if (n < 0) { n = 0; report.clamped++; } else if (n > 80) { n = 80; report.clamped++; }
     value.StatsCount = n;
   }
-  for (let i = 0; i < value.StatsCount; i++) {
-    MixedStatFixedDecode(value.Stats[i], view, at + 468 + i * 8, report);
+  {
+    const ai = value.Stats, ni = value.StatsCount;
+    for (let i = 0, oi = at + 468; i < ni; i++, oi += 8) {
+      {
+        const e2 = ai[i];
+        e2.StatId = view.getUint32(oi, true);
+        if (e2.StatId > 255) { e2.StatId = 255; report.clamped++; }
+        e2.Delta = view.getInt32(oi + 4, true);
+        if (e2.Delta < -512) { e2.Delta = -512; report.clamped++; } else if (e2.Delta > 511) { e2.Delta = 511; report.clamped++; }
+      }
+    }
   }
   value.GameEvent.Type = view.getUint8(at + 1108);
   if (value.GameEvent.Type > 3) { value.GameEvent.Type = 0; report.clamped++; }
   switch (value.GameEvent.Type) {
     case 1: {
-      MixedHitEventFixedDecode(value.GameEvent.Hit, view, at + 1109, report);
+      {
+        const e3 = value.GameEvent.Hit;
+        e3.TargetId = view.getUint32(at + 1109, true);
+        if (e3.TargetId > 4095) { e3.TargetId = 4095; report.clamped++; }
+        e3.Damage = view.getInt32(at + 1113, true);
+        if (e3.Damage < 0) { e3.Damage = 0; report.clamped++; } else if (e3.Damage > 4095) { e3.Damage = 4095; report.clamped++; }
+        e3.HitKind = view.getInt32(at + 1117, true);
+        if (e3.HitKind < 0) { e3.HitKind = 0; report.clamped++; } else if (e3.HitKind > 7) { e3.HitKind = 7; report.clamped++; }
+        e3.Crit = view.getUint8(at + 1121) !== 0;
+      }
       break;
     }
     case 2: {
-      MixedChatEventFixedDecode(value.GameEvent.Chat, view, at + 1109, report);
+      {
+        const e4 = value.GameEvent.Chat;
+        e4.Channel = view.getInt32(at + 1109, true);
+        if (e4.Channel < 0) { e4.Channel = 0; report.clamped++; } else if (e4.Channel > 3) { e4.Channel = 3; report.clamped++; }
+        e4.Speaker = view.getUint32(at + 1113, true);
+        if (e4.Speaker > 4095) { e4.Speaker = 4095; report.clamped++; }
+      }
       break;
     }
     case 3: {
-      MixedPickupEventFixedDecode(value.GameEvent.Pickup, view, at + 1109, report);
+      {
+        const e5 = value.GameEvent.Pickup;
+        e5.ItemId = view.getUint32(at + 1109, true);
+        if (e5.ItemId > 1023) { e5.ItemId = 1023; report.clamped++; }
+        e5.Amount = view.getInt32(at + 1113, true);
+        if (e5.Amount < 0) { e5.Amount = 0; report.clamped++; } else if (e5.Amount > 255) { e5.Amount = 255; report.clamped++; }
+      }
       break;
     }
     default: break;
@@ -2352,10 +2490,19 @@ export function BenchMixedFixedDecode(value, view, at, report) {
     }
   }
   value.Drift = view.getFloat64(at + 1181, true);
-  value.WideKey = view.getBigUint64(at + 1189, true) | (view.getBigUint64(at + 1189 + 8, true) << 64n);
-  value.Flux = view.getBigUint64(at + 1205, true) | (view.getBigUint64(at + 1205 + 8, true) << 64n);
-  value.Flux = BigInt.asIntN(128, value.Flux);
-  if (value.Flux < -1267650600228229401496703205376n) { value.Flux = -1267650600228229401496703205376n; report.clamped++; } else if (value.Flux > 1267650600228229401496703205376n) { value.Flux = 1267650600228229401496703205376n; report.clamped++; }
+  value.WideKey = (view.getUint32(at + 1189 + 8, true) | view.getUint32(at + 1189 + 12, true)) === 0
+    ? view.getBigUint64(at + 1189, true)
+    : (view.getBigUint64(at + 1189 + 8, true) << 64n) | view.getBigUint64(at + 1189, true);
+  {
+    const n = view.getInt32(at + 1205 + 12, true) * 4294967296 + view.getUint32(at + 1205 + 8, true);
+    if (n < -68719476736) { value.Flux = -1267650600228229401496703205376n; report.clamped++; }
+    else if (n > 68719476736 || (n === 68719476736 && (view.getUint32(at + 1205, true) | view.getUint32(at + 1205 + 4, true)) !== 0)) { value.Flux = 1267650600228229401496703205376n; report.clamped++; }
+    else {
+      value.Flux = (view.getUint32(at + 1205 + 8, true) | view.getUint32(at + 1205 + 12, true)) === 0
+        ? view.getBigUint64(at + 1205, true)
+        : (view.getBigInt64(at + 1205 + 8, true) << 64n) | view.getBigUint64(at + 1205, true);
+    }
+  }
   value.Ping = view.getUint16(at + 1221, true);
   if (value.Ping > 64000) { value.Ping = 64000; report.clamped++; }
   value.CrcHint = view.getUint32(at + 1223, true);
@@ -2381,7 +2528,216 @@ export function FixedTableFixedDecode(value, view, at, report) {
     if (n < 0) { n = 0; } else if (n > 15) { n = 15; }
     if (!TableFixedTextOk(TableFixedTextUtf8, view, at + 1130, n)) { report.refused = TableFixedRefusal.TextIllFormed; return; }
   }
-  BenchMixedFixedDecode(value.Value, view, at, report);
+  {
+    const e1 = value.Value;
+    e1.Sequence = view.getUint32(at, true);
+    if (e1.Sequence > 65535) { e1.Sequence = 65535; report.clamped++; }
+    e1.AckSequence = view.getInt32(at + 4, true);
+    if (e1.AckSequence < 0) { e1.AckSequence = 0; report.clamped++; } else if (e1.AckSequence > 65535) { e1.AckSequence = 65535; report.clamped++; }
+    e1.AckBits = view.getUint32(at + 8, true);
+    e1.SessionId = view.getBigUint64(at + 12, true);
+    e1.ClientId = view.getUint32(at + 20, true);
+    e1.Nonce = view.getBigUint64(at + 24, true);
+    {
+      const n = view.getInt32(at + 32 + 4, true) * 4294967296 + view.getUint32(at + 32, true);
+      if (n < -1000000000000) { e1.WorldTime = -1000000000000n; report.clamped++; }
+      else if (n > 1000000000000) { e1.WorldTime = 1000000000000n; report.clamped++; }
+      else {
+        e1.WorldTime = view.getBigInt64(at + 32, true);
+      }
+    }
+    {
+      const n = view.getUint32(at + 40 + 4, true) * 4294967296 + view.getUint32(at + 40, true);
+      if (n > 281474976710655) { e1.FrameTick = 281474976710655n; report.clamped++; }
+      else {
+        e1.FrameTick = view.getBigUint64(at + 40, true);
+      }
+    }
+    e1.ServerTime = view.getInt32(at + 48, true);
+    if (e1.ServerTime < 0) { e1.ServerTime = 0; report.clamped++; } else if (e1.ServerTime > 16776960) { e1.ServerTime = 16776960; report.clamped++; }
+    {
+      let n = view.getInt32(at + 52, true);
+      if (n < 0) { n = 0; report.clamped++; } else if (n > 8) { n = 8; report.clamped++; }
+      e1.EntitiesCount = n;
+    }
+    {
+      const ai = e1.Entities, ni = e1.EntitiesCount;
+      for (let i = 0, oi = at + 56; i < ni; i++, oi += 51) {
+        {
+          const e2 = ai[i];
+          e2.EntityId = view.getUint32(oi, true);
+          if (e2.EntityId > 4095) { e2.EntityId = 4095; report.clamped++; }
+          e2.PosX = view.getInt32(oi + 4, true);
+          if (e2.PosX < -16383) { e2.PosX = -16383; report.clamped++; } else if (e2.PosX > 16383) { e2.PosX = 16383; report.clamped++; }
+          e2.PosY = view.getInt32(oi + 8, true);
+          if (e2.PosY < -16383) { e2.PosY = -16383; report.clamped++; } else if (e2.PosY > 16383) { e2.PosY = 16383; report.clamped++; }
+          e2.PosZ = view.getInt32(oi + 12, true);
+          if (e2.PosZ < -16383) { e2.PosZ = -16383; report.clamped++; } else if (e2.PosZ > 16383) { e2.PosZ = 16383; report.clamped++; }
+          e2.Yaw = view.getUint32(oi + 16, true);
+          if (e2.Yaw > 511) { e2.Yaw = 511; report.clamped++; }
+          e2.Pitch = view.getUint32(oi + 20, true);
+          if (e2.Pitch > 511) { e2.Pitch = 511; report.clamped++; }
+          e2.VelX = view.getInt32(oi + 24, true);
+          if (e2.VelX < -2048) { e2.VelX = -2048; report.clamped++; } else if (e2.VelX > 2047) { e2.VelX = 2047; report.clamped++; }
+          e2.VelY = view.getInt32(oi + 28, true);
+          if (e2.VelY < -2048) { e2.VelY = -2048; report.clamped++; } else if (e2.VelY > 2047) { e2.VelY = 2047; report.clamped++; }
+          e2.VelZ = view.getInt32(oi + 32, true);
+          if (e2.VelZ < -2048) { e2.VelZ = -2048; report.clamped++; } else if (e2.VelZ > 2047) { e2.VelZ = 2047; report.clamped++; }
+          e2.Health = view.getInt32(oi + 36, true);
+          if (e2.Health < 0) { e2.Health = 0; report.clamped++; } else if (e2.Health > 1000) { e2.Health = 1000; report.clamped++; }
+          e2.Weapon = view.getUint8(oi + 40);
+          if (e2.Weapon > 15) { e2.Weapon = 0; report.clamped++; }
+          e2.Damage = view.getBigUint64(oi + 41, true);
+          e2.Moving = view.getUint8(oi + 49) !== 0;
+          e2.Firing = view.getUint8(oi + 50) !== 0;
+        }
+      }
+    }
+    {
+      let n = view.getInt32(at + 464, true);
+      if (n < 0) { n = 0; report.clamped++; } else if (n > 80) { n = 80; report.clamped++; }
+      e1.StatsCount = n;
+    }
+    {
+      const ai = e1.Stats, ni = e1.StatsCount;
+      for (let i = 0, oi = at + 468; i < ni; i++, oi += 8) {
+        {
+          const e3 = ai[i];
+          e3.StatId = view.getUint32(oi, true);
+          if (e3.StatId > 255) { e3.StatId = 255; report.clamped++; }
+          e3.Delta = view.getInt32(oi + 4, true);
+          if (e3.Delta < -512) { e3.Delta = -512; report.clamped++; } else if (e3.Delta > 511) { e3.Delta = 511; report.clamped++; }
+        }
+      }
+    }
+    e1.GameEvent.Type = view.getUint8(at + 1108);
+    if (e1.GameEvent.Type > 3) { e1.GameEvent.Type = 0; report.clamped++; }
+    switch (e1.GameEvent.Type) {
+      case 1: {
+        {
+          const e4 = e1.GameEvent.Hit;
+          e4.TargetId = view.getUint32(at + 1109, true);
+          if (e4.TargetId > 4095) { e4.TargetId = 4095; report.clamped++; }
+          e4.Damage = view.getInt32(at + 1113, true);
+          if (e4.Damage < 0) { e4.Damage = 0; report.clamped++; } else if (e4.Damage > 4095) { e4.Damage = 4095; report.clamped++; }
+          e4.HitKind = view.getInt32(at + 1117, true);
+          if (e4.HitKind < 0) { e4.HitKind = 0; report.clamped++; } else if (e4.HitKind > 7) { e4.HitKind = 7; report.clamped++; }
+          e4.Crit = view.getUint8(at + 1121) !== 0;
+        }
+        break;
+      }
+      case 2: {
+        {
+          const e5 = e1.GameEvent.Chat;
+          e5.Channel = view.getInt32(at + 1109, true);
+          if (e5.Channel < 0) { e5.Channel = 0; report.clamped++; } else if (e5.Channel > 3) { e5.Channel = 3; report.clamped++; }
+          e5.Speaker = view.getUint32(at + 1113, true);
+          if (e5.Speaker > 4095) { e5.Speaker = 4095; report.clamped++; }
+        }
+        break;
+      }
+      case 3: {
+        {
+          const e6 = e1.GameEvent.Pickup;
+          e6.ItemId = view.getUint32(at + 1109, true);
+          if (e6.ItemId > 1023) { e6.ItemId = 1023; report.clamped++; }
+          e6.Amount = view.getInt32(at + 1113, true);
+          if (e6.Amount < 0) { e6.Amount = 0; report.clamped++; } else if (e6.Amount > 255) { e6.Amount = 255; report.clamped++; }
+        }
+        break;
+      }
+      default: break;
+    }
+    for (let i = 0; i < 4; i++) {
+      e1.Loadout[i] = view.getUint8(at + 1122 + i * 1);
+    }
+    {
+      let n = view.getInt32(at + 1126, true);
+      if (n < 0) { n = 0; report.clamped++; } else if (n > 15) { n = 15; report.clamped++; }
+      e1.PlayerNameLength = n;
+    }
+    for (let i = 0; i < 15; i++) { e1.PlayerName[i] = view.getUint8(at + 1130 + i); }
+    {
+      let n = view.getInt32(at + 1145, true);
+      if (n < 0) { n = 0; report.clamped++; } else if (n > 16) { n = 16; report.clamped++; }
+      e1.PayloadLength = n;
+    }
+    for (let i = 0; i < 16; i++) { e1.Payload[i] = view.getUint8(at + 1149 + i); }
+    {
+      const bits = view.getUint32(at + 1165, true);
+      if ((bits & 0x7f800000) === 0x7f800000 && (bits & 0x007fffff) !== 0) {
+        const payload = bits & 0x007fffff;
+        TableFixedConv.setUint32(4, ((bits & 0x80000000) | 0x7ff00000 | (payload >>> 3)) >>> 0, true);
+        TableFixedConv.setUint32(0, ((payload & 7) << 29) >>> 0, true);
+        e1.AimX = TableFixedConv.getFloat64(0, true);
+      } else {
+        TableFixedConv.setUint32(0, bits, true);
+        e1.AimX = TableFixedConv.getFloat32(0, true);
+      }
+    }
+    if (e1.AimX < -1) { e1.AimX = -1; report.clamped++; } else if (e1.AimX > 1) { e1.AimX = 1; report.clamped++; }
+    {
+      const bits = view.getUint32(at + 1169, true);
+      if ((bits & 0x7f800000) === 0x7f800000 && (bits & 0x007fffff) !== 0) {
+        const payload = bits & 0x007fffff;
+        TableFixedConv.setUint32(4, ((bits & 0x80000000) | 0x7ff00000 | (payload >>> 3)) >>> 0, true);
+        TableFixedConv.setUint32(0, ((payload & 7) << 29) >>> 0, true);
+        e1.AimY = TableFixedConv.getFloat64(0, true);
+      } else {
+        TableFixedConv.setUint32(0, bits, true);
+        e1.AimY = TableFixedConv.getFloat32(0, true);
+      }
+    }
+    if (e1.AimY < -1) { e1.AimY = -1; report.clamped++; } else if (e1.AimY > 1) { e1.AimY = 1; report.clamped++; }
+    {
+      const bits = view.getUint32(at + 1173, true);
+      if ((bits & 0x7f800000) === 0x7f800000 && (bits & 0x007fffff) !== 0) {
+        const payload = bits & 0x007fffff;
+        TableFixedConv.setUint32(4, ((bits & 0x80000000) | 0x7ff00000 | (payload >>> 3)) >>> 0, true);
+        TableFixedConv.setUint32(0, ((payload & 7) << 29) >>> 0, true);
+        e1.AimZ = TableFixedConv.getFloat64(0, true);
+      } else {
+        TableFixedConv.setUint32(0, bits, true);
+        e1.AimZ = TableFixedConv.getFloat32(0, true);
+      }
+    }
+    if (e1.AimZ < -1) { e1.AimZ = -1; report.clamped++; } else if (e1.AimZ > 1) { e1.AimZ = 1; report.clamped++; }
+    {
+      const bits = view.getUint32(at + 1177, true);
+      if ((bits & 0x7f800000) === 0x7f800000 && (bits & 0x007fffff) !== 0) {
+        const payload = bits & 0x007fffff;
+        TableFixedConv.setUint32(4, ((bits & 0x80000000) | 0x7ff00000 | (payload >>> 3)) >>> 0, true);
+        TableFixedConv.setUint32(0, ((payload & 7) << 29) >>> 0, true);
+        e1.Recoil = TableFixedConv.getFloat64(0, true);
+      } else {
+        TableFixedConv.setUint32(0, bits, true);
+        e1.Recoil = TableFixedConv.getFloat32(0, true);
+      }
+    }
+    e1.Drift = view.getFloat64(at + 1181, true);
+    e1.WideKey = (view.getUint32(at + 1189 + 8, true) | view.getUint32(at + 1189 + 12, true)) === 0
+      ? view.getBigUint64(at + 1189, true)
+      : (view.getBigUint64(at + 1189 + 8, true) << 64n) | view.getBigUint64(at + 1189, true);
+    {
+      const n = view.getInt32(at + 1205 + 12, true) * 4294967296 + view.getUint32(at + 1205 + 8, true);
+      if (n < -68719476736) { e1.Flux = -1267650600228229401496703205376n; report.clamped++; }
+      else if (n > 68719476736 || (n === 68719476736 && (view.getUint32(at + 1205, true) | view.getUint32(at + 1205 + 4, true)) !== 0)) { e1.Flux = 1267650600228229401496703205376n; report.clamped++; }
+      else {
+        e1.Flux = (view.getUint32(at + 1205 + 8, true) | view.getUint32(at + 1205 + 12, true)) === 0
+          ? view.getBigUint64(at + 1205, true)
+          : (view.getBigInt64(at + 1205 + 8, true) << 64n) | view.getBigUint64(at + 1205, true);
+      }
+    }
+    e1.Ping = view.getUint16(at + 1221, true);
+    if (e1.Ping > 64000) { e1.Ping = 64000; report.clamped++; }
+    e1.CrcHint = view.getUint32(at + 1223, true);
+    if (e1.CrcHint > 16777215) { e1.CrcHint = 16777215; report.clamped++; }
+    e1.HasExtra = view.getUint8(at + 1227) !== 0;
+    e1.Extra = view.getInt32(at + 1228, true);
+    if (e1.Extra < 0) { e1.Extra = 0; report.clamped++; } else if (e1.Extra > 255) { e1.Extra = 255; report.clamped++; }
+    e1.IdleTicks = view.getInt32(at + 1232, true);
+    if (e1.IdleTicks < 0) { e1.IdleTicks = 0; report.clamped++; } else if (e1.IdleTicks > 15) { e1.IdleTicks = 15; report.clamped++; }
+  }
 }
 
 // ---- MixedEntity, THE MESSAGE FORM'S BODY (docs/SPEC-TABLES.md §3.3) ----

@@ -1090,7 +1090,6 @@ export function ReadArrElevenFlat(value, view, numBits) {
 // ---- type EmptyA: the flat codec ----
 
 function writeEmptyAFlatProduction(value, view) {
-  let v = 0;
   let lo = 0, sb = 0, wi = 0;
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -1099,7 +1098,6 @@ function writeEmptyAFlatProduction(value, view) {
 }
 
 function writeEmptyAFlatChecked(value, view) {
-  let v = 0;
   let lo = 0, sb = 0, wi = 0;
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -1114,16 +1112,13 @@ export const WriteEmptyAFlat = PRODUCTION ? writeEmptyAFlatProduction : writeEmp
 
 // ReadEmptyAFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadEmptyAFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
+export function ReadEmptyAFlat() {
   return true;
 }
 
 // ---- type EmptyB: the flat codec ----
 
 function writeEmptyBFlatProduction(value, view) {
-  let v = 0;
   let lo = 0, sb = 0, wi = 0;
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -1132,7 +1127,6 @@ function writeEmptyBFlatProduction(value, view) {
 }
 
 function writeEmptyBFlatChecked(value, view) {
-  let v = 0;
   let lo = 0, sb = 0, wi = 0;
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -1147,9 +1141,7 @@ export const WriteEmptyBFlat = PRODUCTION ? writeEmptyBFlatProduction : writeEmp
 
 // ReadEmptyBFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadEmptyBFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
+export function ReadEmptyBFlat() {
   return true;
 }
 

@@ -251,7 +251,7 @@ function TableVariableWriteFields(c, w, ids, nodes, v, retain, path) {
 // the one-byte zero reference that terminates it
 function TableVariableWriteBody(c, w, ids, nodes, v, retain, path) {
   if (!TableVariableWriteFields(c, w, ids, nodes, v, retain, path)) { return false; }
-  if (!TableVariableRetainTail(w, ids, retain, path, null)) { return false; }
+  if (!TableVariableRetainTail(w, ids, retain, path)) { return false; }
   w.u8(0);
   return true;
 }
@@ -295,6 +295,17 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
         TableVariableHeader(w, ids, fd, 12);
         w.leb(b.length);
         w.raw(b);
+      }
+      return true;
+    case "wstr":
+      // WIDE TEXT (docs/SPEC-TABLES.md §3; SPEC.md §4.12): it takes no
+      // declared default, so the EMPTY text is what elides; L is a BYTE length,
+      // twice the units, and a value past N units refuses the save
+      if (val.length !== 0) {
+        if (val.length > fd.bound) { return false; }
+        TableVariableHeader(w, ids, fd, 33);
+        w.leb(val.length * 2);
+        TableVariableWideWrite(w, val, fd.bound);
       }
       return true;
     case "bytes":
@@ -408,17 +419,17 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
 // the retained tail, the node table LAST in the root body under the reserved
 // id at kind 12, the terminator, then the id table and its count. A data cycle
 // or a value with no wire identity refuses the save (null).
-function TableVariableSave(c, v, retain, report) {
+function TableVariableSave(c, v, retain) {
   const outer = TableVariableEntryCache;
   TableVariableEntryCache = new Map();
   try {
-    return TableVariableSaveWalk(c, v, retain, report);
+    return TableVariableSaveWalk(c, v, retain);
   } finally {
     TableVariableEntryCache = outer;
   }
 }
 
-function TableVariableSaveWalk(c, v, retain, report) {
+function TableVariableSaveWalk(c, v, retain) {
   const nodes = TableVariableNumber(c, v);
   if (nodes === null) { return null; }
   const w = new TableVariableWriter();
@@ -426,7 +437,7 @@ function TableVariableSaveWalk(c, v, retain, report) {
   const ids = new TableVariableIds(retain);
   const path = [];
   if (!TableVariableWriteFields(c, w, ids, nodes, v, retain, path)) { return null; }
-  if (!TableVariableRetainTail(w, ids, retain, path, report)) { return null; }
+  if (!TableVariableRetainTail(w, ids, retain, path)) { return null; }
   if (nodes.list.length > 0) {
     w.leb(ids.ref(TableNodeTableId));
     w.u8(12);
@@ -731,6 +742,21 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path) {
       } else {
         v[fd.n] = dec.s;
       }
+      return true;
+    }
+    case "wstr": {
+      // WIDE TEXT (docs/SPEC-TABLES.md §3, §4; internal/tablewire decode.go):
+      // an ODD L is framing damage on this field and ill-formed UTF-16 (an
+      // unpaired surrogate, a zero unit) is damage too — each reads the
+      // declared default, counts one malformed, and the parent reads on past
+      // L; a payload past N units is CLAMPED, a pair never split
+      const L = r.leb();
+      if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
+      const s = TableVariableWideDecode(r.b.subarray(r.at, r.at + L));
+      r.at += L;
+      if (s === null) { report.malformed = true; v[fd.n] = fd.def; return true; }
+      if (s.length > fd.bound) { report.clamped++; v[fd.n] = TableVariableWideClamp(s, fd.bound); }
+      else { v[fd.n] = s; }
       return true;
     }
     case "enum": {
@@ -1107,6 +1133,9 @@ function TableVariableJsonField(fd, val, depth, g, out) {
       out.push(fd.s === "sblob" ? TableVariableJsonString(String(val)) : TableVariableBase64Text(val));
       return true;
     case "str": out.push(TableVariableJsonString(val)); return true;
+    // wide text's text is the same JSON string (docs/SPEC-TABLES.md §16.2;
+    // tabletext writeWString), an unpaired surrogate written as U+FFFD
+    case "wstr": out.push(TableVariableJsonString(val)); return true;
     case "bytes": out.push(TableVariableBase64Text(val)); return true;
     case "map": return TableVariableJsonMap(fd, val, depth, g, out);
     case "keyed": return TableVariableJsonKeyed(fd, val, depth, g, out);
@@ -1507,6 +1536,16 @@ function TableVariableTextField(fd, inp, v, depth, graph, report) {
       } else {
         v[fd.n] = s;
       }
+      return true;
+    }
+    case "wstr": {
+      // the wstring row of §16.2 (tabletext scanWString): the same text,
+      // TRANSCODED at the boundary — a JavaScript string already is UTF-16 —
+      // and clamped at N CODE UNITS with a pair never split
+      const s = inp.str();
+      if (s === null) { return false; }
+      if (s.length > fd.bound) { report.clamped++; v[fd.n] = TableVariableWideClamp(s, fd.bound); }
+      else { v[fd.n] = s; }
       return true;
     }
     case "bytes": {

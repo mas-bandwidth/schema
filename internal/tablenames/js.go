@@ -11,6 +11,7 @@ func init() {
 		Name{Name: "TableBlockMagic", What: "the block prologue's magic, and the byte-order check with it", RustConst: true},
 		Name{Name: "TableBlockLayout", What: "the layout contract's check, run once. C# spells it a nested class of Schema; Java puts it at package scope and JavaScript at module scope, so the claim is the UNION"},
 		Name{Name: "TableBlockByteOrder", What: "this build's byte order, as the prologue carries it", RustConst: true},
+		Name{Name: "TableBlockReadF32", What: "the unit's one float32 read: the bits cross in as an integer, a NaN keeps its payload by bit surgery (docs/PORTING.md M21)"},
 		Name{Name: "TableCookMagic", What: "the cooked header's magic, and the byte-order check with it", RustConst: true},
 		Name{Name: "TableCookByteOrder", What: "this build's byte order, as a cooked header records it", RustConst: true},
 		Name{Name: "TableCookMaxAlign", What: "the greatest region alignment a cooked header may name", RustConst: true},
@@ -103,10 +104,10 @@ func init() {
 		Name{Name: "TableFixedGetU32", What: "the little-endian u32 read the framing itself needs"},
 		Name{Name: "TableFixedTagAt", What: "the little-endian tag load at ArgW bytes, never a prefix — a two-byte 0x0101 is not arm 1"},
 
-		// THE PLAN: nine int32 lanes of one flat Int32Array, and the lane
+		// THE PLAN: eleven int32 lanes of one flat Int32Array, and the lane
 		// indices ONE BINDING PER LINE. A lane folded into a comma list beside
 		// another is a lane nobody claimed.
-		Name{Name: "TableFixedLanes", What: "a plan entry is nine int32 lanes, which is what keeps the read loop monomorphic"},
+		Name{Name: "TableFixedLanes", What: "a plan entry is eleven int32 lanes, which is what keeps the read loop monomorphic"},
 		Name{Name: "TableFixedLaneOp", What: "the plan lane holding the op"},
 		Name{Name: "TableFixedLaneSrc", What: "the plan lane holding the source offset"},
 		Name{Name: "TableFixedLaneDst", What: "the plan lane holding the destination offset"},
@@ -116,6 +117,10 @@ func init() {
 		Name{Name: "TableFixedLaneArg", What: "the plan lane holding the guard's VALUE: the tag an arm's entry answers to"},
 		Name{Name: "TableFixedLaneMeta", What: "the plan lane holding what an op needs beside its size — a widen's width and sign, a text entry's flavour"},
 		Name{Name: "TableFixedLaneArgW", What: "the plan lane holding the guard's WIDTH IN BYTES: a union tag is one, two, four or eight"},
+		// THE GUARD CHAIN (docs/FIXED-FORM-ALGORITHM.md §4.1): offset+count
+		// into the plan's pool of (guard, arg, argw) links, outermost first.
+		Name{Name: "TableFixedLaneGuards", What: "the plan lane holding where an entry's guard chain starts in the plan's pool"},
+		Name{Name: "TableFixedLaneGuardCount", What: "the plan lane holding how many links an entry's guard chain has: every enclosing union's tag"},
 		Name{Name: "TableFixedNoGuard", What: "the guard a plan entry belonging to no union arm carries"},
 
 		// THE OPS ARE THE WHOLE SET, one binding each, and the flavours a text

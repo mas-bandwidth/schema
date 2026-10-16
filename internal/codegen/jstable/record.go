@@ -30,6 +30,51 @@ import (
 // unit can take it.
 func recordName(name string) string { return name + "Row" }
 
+// jsF32Reader is the ONE module-level function every float32 accessor of a
+// unit calls: the block home defines it (blockRuntime), or the cook home where
+// the unit has no block form (cookRuntime), and every other module that reads
+// a float32 imports it from there.
+const jsF32Reader = "TableBlockReadF32"
+
+// jsF32ReaderSource is that function's text, emitted ONCE per unit.
+//
+// It was an arrow built and run at EVERY read — `((b) => {...})(bits)` — and a
+// closure created per call is a heap allocation, with a fresh DataView and
+// ArrayBuffer(8) on top for a NaN: 246 bytes per iteration on the block walk,
+// against docs/PORTING.md M1 (the read path allocates nothing) and the gate
+// I9 holds it to (`make tables-js-alloc`). Hoisted here it allocates nothing;
+// the NaN branch's scratch is built once, at module scope.
+//
+// THE VALUE IS UNCHANGED, bit for bit (docs/PORTING.md M21): a NaN moves its
+// sign and 23 payload bits into the TOP of the double's mantissa by bit
+// surgery, never through a hardware float32 conversion that would set the
+// quiet bit, and every other pattern takes the exact arithmetic it took inline.
+// Only the INTEGER crosses into the call (docs/PORTING.md M3); the double
+// comes back out of it, which is the per-language allowance JavaScript takes
+// here for performance (Glenn, 2026-10-15) — test/js-tables/main.mjs's float32
+// oracle check proves no value moved, and the allocation gate proves the cost.
+func jsF32ReaderSource() string {
+	return `// ONE float32 read for every float32 accessor of the unit (docs/PORTING.md
+// M1, M3, M21): the 32 bits cross in as an integer, and a NaN keeps its
+// payload by bit surgery through a scratch built ONCE, here, never per read.
+// One module-scope binding, claimed in internal/tablenames.
+export const ` + jsF32Reader + ` = (() => {
+  const scratch = new DataView(new ArrayBuffer(8));
+  return function ` + jsF32Reader + `(b) {
+    if ((b & 0x7f800000) === 0x7f800000 && (b & 0x007fffff) !== 0) {
+      const p = b & 0x007fffff;
+      scratch.setUint32(4, ((b & 0x80000000) | 0x7ff00000 | (p >>> 3)) >>> 0, true);
+      scratch.setUint32(0, ((p & 7) << 29) >>> 0, true);
+      return scratch.getFloat64(0, true);
+    }
+    const s = b < 0 ? -1 : 1, e = (b >>> 23) & 0xff, m = b & 0x007fffff;
+    return e === 0 ? s * m * 1.401298464324817e-45 : e === 0xff ? s * Infinity : s * (m | 0x00800000) * (2 ** (e - 150));
+  };
+})();
+
+`
+}
+
 // jsScalarRead renders the DataView call that reads one value of a record
 // field, by the WIRE KIND the descriptors carry and the STORAGE width the
 // layout model gives it — the same pair the canonical row dump reads with, so
@@ -39,7 +84,9 @@ func jsScalarRead(kind int, elemSize int64, at string) string {
 	case tkBool:
 		return fmt.Sprintf("view.getUint8(%s) !== 0", at)
 	case tkF32:
-		return fmt.Sprintf("((b) => { if ((b & 0x7f800000) === 0x7f800000 && (b & 0x007fffff) !== 0) { const c = new DataView(new ArrayBuffer(8)), p = b & 0x007fffff; c.setUint32(4, ((b & 0x80000000) | 0x7ff00000 | (p >>> 3)) >>> 0, true); c.setUint32(0, ((p & 7) << 29) >>> 0, true); return c.getFloat64(0, true); } const s = b < 0 ? -1 : 1, e = (b >>> 23) & 0xff, m = b & 0x007fffff; return e === 0 ? s * m * 1.401298464324817e-45 : e === 0xff ? s * Infinity : s * (m | 0x00800000) * (2 ** (e - 150)); })(view.getUint32(%s, true) | 0)", at)
+		// the 32 bits cross as an INTEGER into the unit's one module-level
+		// conversion (jsF32ReaderSource); nothing is built at the call site
+		return fmt.Sprintf("%s(view.getUint32(%s, true) | 0)", jsF32Reader, at)
 	case tkF64:
 		return fmt.Sprintf("view.getFloat64(%s, true)", at)
 	case tkI8, tkI16, tkI32, tkI64:
@@ -128,7 +175,7 @@ func emitRecordObject(b *strings.Builder, u *ir.Unit, name string, ml *ir.Member
 			// is what the accessor hands back beside the delta.
 			pf("  function %sSlot(at) { return at + %d; }\n", member, fl.Offset)
 			pf("  function %sDelta(view, at) { return view.getBigInt64(at + %d, true); }\n", member, fl.Offset)
-			uniform = append(uniform, fmt.Sprintf("%q: (bytes, view, at, i) => %sDelta(view, at)", f.Name, member))
+			uniform = append(uniform, fmt.Sprintf("%q: (bytes, view, at) => %sDelta(view, at)", f.Name, member))
 		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 			pf("  function %sLength(view, at) { return view.getInt32(at + %d, true); }\n", member, pieces[1].Offset)
 			pf("  function %s(bytes, view, at) {\n", member)
@@ -136,7 +183,7 @@ func emitRecordObject(b *strings.Builder, u *ir.Unit, name string, ml *ir.Member
 			pf("    if (!(used >= 0) || used > %d) { used = 0; } // a companion outside its bound is cook-check's refusal, not a read\n", facts.ArrayBound)
 			pf("    return bytes.subarray(at + %d, at + %d + used); // a VIEW over the region: no copy\n", fl.Offset, fl.Offset)
 			pf("  }\n")
-			uniform = append(uniform, fmt.Sprintf("%q: (bytes, view, at, i) => %s(bytes, view, at)", f.Name, member))
+			uniform = append(uniform, fmt.Sprintf("%q: (bytes, view, at) => %s(bytes, view, at)", f.Name, member))
 		case isClassRef(f.Type) && f.Type.Kind == ir.TNamed:
 			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
 				refs[ref.Name] = true

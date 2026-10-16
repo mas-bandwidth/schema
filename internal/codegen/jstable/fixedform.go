@@ -595,7 +595,12 @@ func variableFieldRefusalNamed(name string, f *ir.Field) string {
 	case ir.TFixed:
 		return ""
 	case ir.TWString:
-		return name + ": a wstring(N) (docs/SPEC-TABLES.md §16)"
+		// WIDE TEXT IS CARRIED (docs/SPEC-TABLES.md §2, §3, §4; SPEC.md §4.12):
+		// kind 33, a byte length L that is twice the UTF-16 code units, then
+		// the units little-endian — as a field, an arm, a map value and inside
+		// a nested type (variableruntime.go TableVariableWide*). An array of
+		// them stays refused above, with every other array of text.
+		return ""
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:

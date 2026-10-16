@@ -176,6 +176,11 @@ func (g *blockGen) emit() {
 		g.pf("// Its wire (§3) is unaffected — only this projection is absent, and it is\n")
 		g.pf("// absent by construction rather than by refusal.\n\n")
 	}
+	// a float32 accessor of this module calls the unit's one conversion,
+	// defined in the home (jsF32ReaderSource) and imported here
+	if !g.home && strings.Contains(g.body.String(), jsF32Reader+"(") {
+		g.needHome(jsF32Reader)
+	}
 }
 
 func (g *blockGen) assemble() []byte {
@@ -205,6 +210,7 @@ func (g *blockGen) assemble() []byte {
 	h.WriteString("// so the one alignment fact a consumer can state is where its view starts\n")
 	h.WriteString("// inside its buffer, and that is what Open measures against §19.1's sixty-four.\n\n")
 	if len(g.imports) > 0 {
+		used := jsIdentifiers(g.body.String())
 		bases := make([]string, 0, len(g.imports))
 		for b := range g.imports {
 			bases = append(bases, b)
@@ -216,6 +222,9 @@ func (g *blockGen) assemble() []byte {
 				syms = append(syms, s)
 			}
 			sort.Strings(syms)
+			if syms = liveImports(syms, used); len(syms) == 0 {
+				continue
+			}
 			fmt.Fprintf(&h, "import { %s } from \"./%s.js\";\n", strings.Join(syms, ", "), b)
 		}
 		h.WriteString("\n")
@@ -429,7 +438,13 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	g.pf("  // the padding — so its bytes are the Go builder's for the same counts.\n")
 	g.pf("  // Every count is checked BEFORE any byte of the extent changes, and the\n")
 	g.pf("  // answer is the used extent, (offset+63)&^63, or -1 on a refusal.\n")
-	g.pf("  function Begin(bytes, counts) {\n")
+	// A layout with no out-of-line array has no count to read, so its Begin
+	// takes the extent alone (a caller's counts argument is ignored).
+	if len(bl.Arrays) > 0 {
+		g.pf("  function Begin(bytes, counts) {\n")
+	} else {
+		g.pf("  function Begin(bytes) {\n")
+	}
 	g.pf("    if (!(bytes instanceof Uint8Array)) {\n")
 	g.pf("      throw new TypeError(\"%sBlock.Begin takes the block's extent as a Uint8Array, not \" + (bytes === null ? \"null\" : typeof bytes));\n", name)
 	g.pf("    }\n")
@@ -751,5 +766,5 @@ export const TableBlockLayout = Object.freeze({
   },
 });
 
-`
+` + jsF32ReaderSource()
 }
