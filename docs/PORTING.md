@@ -309,7 +309,7 @@ in post-order in the emitter and requires the lock red;
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-flat-wire` `tables-flat-wire-negative-control` | ✅ `TestCTableWireGraphIdentity` `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` | ✅ `tables-cs-leg` `tables-cs-region-fuzz` (flat native and managed graphs) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
+| ✅ `tables-flat-wire` `tables-flat-wire-negative-control` | ✅ `TestCTableWireGraphIdentity` `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` | ✅ `tables-cs-leg` `tables-cs-region-fuzz` (flat native and managed graphs) | ❌ #349 | ❌ #349 | ❌ #349 | ✅ `tables-elixir-variable-class` |
 
 ### M7 — A block row is reached by stride, with no per-row object
 
@@ -667,7 +667,7 @@ reads it back after the nodes allocated behind it and the bytes are gone.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-blob-span-negative-control` | ✅ `internal/codegen/ctable/arena.go:312` `TestCTableWireBlobIdentity` | ❌ #259 | ✅ `TestBlobSpanHoldsAfterLaterAllocations` `tables-go-blob-span-negative-control` | ✅ `tables-cs-leg` (large spans, descending addresses and failed blob allocation) | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 |
+| ✅ `tables-blob-span-negative-control` | ✅ `internal/codegen/ctable/arena.go:312` `TestCTableWireBlobIdentity` | ❌ #259 | ✅ `TestBlobSpanHoldsAfterLaterAllocations` `tables-go-blob-span-negative-control` | ✅ `tables-cs-leg` (large spans, descending addresses and failed blob allocation) | ❌ #259 | ❌ #259 | ❌ #259 | — the BEAM owns all memory; a blob lives in a managed binary and there is no caller-visible arena or address-space span (docs/SPEC-TABLES.md) |
 
 
 ### M18 — A union arm is a field line
@@ -1401,7 +1401,7 @@ each through `go build -overlay`; each must turn the leg red.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #421 | ❌ #421 | ❌ #421 | ✅ `tables-go-accessor-descriptor-agreement` `tables-go-accessor-negative-control` `tables-go-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ❌ #421 | ❌ #421 |
+| ❌ #421 | ❌ #421 | ❌ #421 | ✅ `tables-go-accessor-descriptor-agreement` `tables-go-accessor-negative-control` `tables-go-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ❌ #421 | ✅ `tables-elixir-accessor-descriptor-agreement` `tables-elixir-accessor-negative-control` `tables-elixir-slot-negative-control` (plain scalar block-record fields and pointer cook slots (make/elixir.mk:279)) |
 
 ### J2 — The runtime home, with a file-order control
 
