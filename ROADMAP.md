@@ -163,7 +163,7 @@ A leg that is red at the branch head holds its cells ❌ even where the row's te
 | the unit registry, UnitView | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | cards: the sprint's card record as a variable table (tables/cards) | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| complete | 96% | 0% | 0% | 87% | 9% | 9% | 78% | 9% | 12% |
+| complete | 96% | 0% | 0% | 87% | 9% | 9% | 90% | 9% | 12% |
 
 [Source data](docs/roadmap.sexp)
 
