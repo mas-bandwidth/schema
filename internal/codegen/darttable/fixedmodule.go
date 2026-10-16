@@ -319,6 +319,9 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	body := fixedTypeBytes(st)
 	prefill := fixedPrefillBytes(st)
 	plan, split := fixedIdentityPlan(st)
+	// THE GUARD CHAIN'S POOL (docs/FIXED-FORM-ALGORITHM.md §4.1, §5.8 row 6):
+	// every chain past the two inline lanes, each distinct one laid down once.
+	pool := fixedLayPool(plan)
 	lower := lowerFirst(st.Name)
 
 	// exactly the names the surface below spells, and no more: the analyzer
@@ -414,12 +417,26 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		if e.note != "" {
 			note = " // " + e.note
 		}
-		g.pf("  %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d,%s\n",
-			e.op, e.src, e.dst, e.size, e.aux, e.guard, e.arg, e.meta, e.argw, e.guard2, e.arg2, e.argw2, note)
+		g.pf("  %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d,%s\n",
+			e.op, e.src, e.dst, e.size, e.aux, e.guard, e.arg, e.meta, e.argw, e.guard2, e.arg2, e.argw2,
+			e.poolAt, len(e.chain), note)
 	}
 	g.pf("]);\n")
 	g.pf("%s", fixedFormatOn)
 	g.pf("const int %sFixedIdentityCount = %d;\n\n", lower, len(plan))
+	g.pf("/// THE GUARD CHAIN'S POOL (docs/FIXED-FORM-ALGORITHM.md §4.1, §5.8 row 6):\n")
+	g.pf("/// (guard, arg, argW) links, one run per distinct chain, OUTERMOST FIRST.\n")
+	g.pf("/// An entry's poolAt and poolCount lanes name its run; the two inline guard\n")
+	g.pf("/// lanes are the chain's innermost links, and a union nested three deep or\n")
+	g.pf("/// more puts every tag past them here. Static data, read in place: the load\n")
+	g.pf("/// allocates nothing for it.\n")
+	g.pf("%s", fixedFormatOff)
+	g.pf("final Int32List %sFixedIdentityPool = Int32List.fromList(const <int>[\n", lower)
+	for i, l := range pool {
+		g.pf("  %d, %d, %d, // link %d\n", l.guard, l.arg, l.argw, i)
+	}
+	g.pf("]);\n")
+	g.pf("%s\n", fixedFormatOn)
 	g.pf("/// THE SPLIT: the index the identity plan's GUARDED half starts at — the\n")
 	g.pf("/// number of unguarded entries (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4,\n")
 	g.pf("/// §5.9 #42). Every entry below it carries no guard and every entry at or\n")
@@ -630,6 +647,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  // identity plan lands all of them.\n")
 	g.pf("  var fillCount = 0;\n")
 	g.pf("  var remap = plan.remap;\n")
+	g.pf("  var pool = %sFixedIdentityPool;\n", lower)
 	g.pf("  // THE COMPILE CENSUS IS THE PLAN'S OWN NUMBERS, carried onto the report\n")
 	g.pf("  // ONCE after the record loop and only on a read that returns (§5.9 #6):\n")
 	g.pf("  // once per peer, never per record, and REFUSE moves no counter at all.\n")
@@ -647,6 +665,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    entries = lane.entries;\n    entryCount = lane.count;\n")
 	g.pf("    fills = lane.fill;\n    fillCount = lane.fillCount;\n")
 	g.pf("    remap = lane.remap;\n")
+	g.pf("    pool = lane.pool;\n")
 	g.pf("    censusUnknown = lane.unknown;\n    censusKind = lane.kindMismatch;\n")
 	g.pf("  }\n")
 	g.pf("  // THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout\n")
@@ -680,7 +699,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    final runWhy = tableFixedRun(\n")
 	g.pf("      entries,\n      entryCount,\n      bytes,\n      view,\n      at + 8,\n")
 	g.pf("      plan.image,\n      plan.imageView,\n      remap,\n      plan.conv,\n")
-	g.pf("      report,\n    );\n")
+	g.pf("      report,\n      pool,\n    );\n")
 	g.pf("    if (runWhy != TableFixedRefusal.none) {\n")
 	g.pf("      report.refused = runWhy;\n      return -1;\n    }\n")
 	g.call("    ", "", lower+"FixedDecode",
