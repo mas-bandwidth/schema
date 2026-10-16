@@ -1120,6 +1120,55 @@ any scalar, and a bounded array of those. It is refused, by name, on:
   the field serves with it.
 - **a specified default** — presence is the only default an optional has.
 
+#### The `| required` marker
+
+A variable table cannot say a field must be present: a zero field is not
+written, so absence and a written default are indistinguishable. `| required`
+closes that gap. It is a TAG — a valueless qualifier in the open half of the
+qualification section (SPEC §4.2) — read exactly the way `| deprecated` is.
+What it means:
+
+```
+table Player
+{
+    name     string(32) | required   // always written; a record missing it is refused
+    score    int32                     // elided when zero, as usual
+}
+```
+
+- **The writer ALWAYS writes it.** A required field never elides at its
+  default: it rides on every record, and a variable table's writer emits it
+  even when it holds zero. Absence is no longer expressible for the field.
+- **The reader REFUSES a record missing it.** An older record written before
+  the field was required lacks it; reading it is refused with the event
+  `missing_required`, naming the field. The record does not silently fall
+  back to a default — the field was declared mandatory and is not there.
+- **It is TABLE fields only.** `| required` is refused, by name, on a packet
+  `type` field — a type's wire is positional and every field always rides, so
+  there is no absence for a required marker to cure — and on an optional
+  `?T` — an optional is absent or present by definition, and `required`
+  would forbid the absence that makes it optional.
+- **A FIXED table REFUSES `required` at compile time**, by name: every fixed
+  field is always written, so there is no elision to suppress and no absence
+  to refuse, and the marker would promise nothing. The check names the table
+  and the field.
+- **The attribute is part of the tables baseline row**, as a `required`
+  token in the field's row (§18), and that row is the table projection the
+  evolution rule below is judged on. It moves NEITHER unit-wide id: the
+  protocol id (`schema id`) hashes the `type` wire projection (SPEC §3.1),
+  which no table field reaches, and the build version (§20) hashes the cook
+  projection, where a required field is laid out, cooked and blocked exactly
+  as it is without the marker.
+- **The refusal names only the fields that are missing**, in declaration
+  order, e.g. `missing_required: b`.
+
+**Evolution** (§4). Adding `required` to a shipped field is a BREAK the
+tables baseline refuses: old records were written without it and a newer
+reader would refuse them. Removing `required` is free — the writer simply
+starts eliding again. Adding a NEW field marked `| required` to an
+existing table is the same break, and the baseline refuses it too (every
+stored record lacks the field); a new field that is not required is free.
+
 ### 2.4 Enum-keyed arrays: `ships [ShipType]ShipConfig`
 
 ```
