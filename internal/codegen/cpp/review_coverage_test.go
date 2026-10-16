@@ -56,3 +56,35 @@ type Other {
 		t.Errorf("Probe.schema beside ProbeWire.schema must be refused by name; got %v", err)
 	}
 }
+
+// TestFlagAppendHelperOncePerFile reaches emitFlagAppendHelper's once-per-file
+// guard (cpp.go:460): with two flags declarations in one file the bounded
+// append pair is defined exactly once, inside its per-package guard.
+func TestFlagAppendHelperOncePerFile(t *testing.T) {
+	t.Parallel()
+	u := unitFromSources(t, map[string]string{
+		"Bits.schema": `package t
+flags Caps { Jump, Crouch }
+flags Moods { Calm, Angry, Sleepy }
+`,
+	})
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := string(files["Bits.h"])
+	for _, def := range []string{
+		"inline int SchemaFlagAppend_( char * buffer, int bufferSize, int position, const char * name )",
+		"inline int SchemaFlagAppendHex_( char * buffer, int bufferSize, int position, uint64_t bits )",
+		"#ifndef SCHEMA_T_FLAG_APPEND_DEFINED",
+	} {
+		if got := strings.Count(h, def); got != 1 {
+			t.Errorf("Bits.h defines %q %d times, want once per file", def, got)
+		}
+	}
+	for _, use := range []string{"FlagNamesCaps(", "FlagNamesMoods("} {
+		if !strings.Contains(h, use) {
+			t.Errorf("Bits.h lost %s", use)
+		}
+	}
+}
