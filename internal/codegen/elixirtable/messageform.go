@@ -797,70 +797,41 @@ const messageRuntimeBody = `  defstruct announced: false,
   # The vocabulary field: kind 14, element kind 6, a length and the bytes. The
   # BYTE BOUND is checked from the field's own length before an entry is touched
   # (docs/SPEC-TABLES.md §3.3).
+  # One with over the three reads (credo's Nesting, issue #547).
   defp read_vocab(bin, max_bytes) do
-    case leb(bin) do
-      {:ok, l, sub} when byte_size(sub) >= l ->
-        body = binary_part(sub, 0, l)
-        rest = binary_part(sub, l, byte_size(sub) - l)
-
-        case body do
-          <<6, count_rest::binary>> ->
-            case leb(count_rest) do
-              {:ok, n, words} when n == byte_size(words) ->
-                if n > max_bytes do
-                  {:refuse, :vocabulary_too_large}
-                else
-                  {:ok, words, rest}
-                end
-
-              _ ->
-                :error
-            end
-
-          _ ->
-            :error
-        end
-
-      _ ->
-        :error
+    with {:ok, l, sub} when byte_size(sub) >= l <- leb(bin),
+         <<6, count_rest::binary>> <- binary_part(sub, 0, l),
+         {:ok, n, words} when n == byte_size(words) <- leb(count_rest) do
+      if n > max_bytes do
+        {:refuse, :vocabulary_too_large}
+      else
+        {:ok, words, binary_part(sub, l, byte_size(sub) - l)}
+      end
+    else
+      _ -> :error
     end
   end
 
   # Skip an unknown field by its declared kind (§3's closed set).
-  defp skip(kind, bin) do
-    cond do
-      kind in [1, 2, 6, 20, 25] ->
-        take(1, bin)
+  # One clause per width class, so no single function carries every class
+  # (credo's CyclomaticComplexity, issue #547).
+  defp skip(kind, bin) when kind in [1, 2, 6, 20, 25], do: take(1, bin)
+  defp skip(kind, bin) when kind in [3, 7, 21, 26], do: take(2, bin)
+  defp skip(kind, bin) when kind in [4, 8, 10, 22, 27], do: take(4, bin)
+  defp skip(kind, bin) when kind in [5, 9, 11, 23, 28], do: take(8, bin)
+  defp skip(kind, bin) when kind in [18, 19, 24, 29], do: take(16, bin)
+  defp skip(kind, bin) when kind in [17, 30], do: leb_rest(bin)
+  defp skip(kind, bin) when kind in [12, 13, 14, 16, 31, 32, 33], do: body(bin)
 
-      kind in [3, 7, 21, 26] ->
-        take(2, bin)
-
-      kind in [4, 8, 10, 22, 27] ->
-        take(4, bin)
-
-      kind in [5, 9, 11, 23, 28] ->
-        take(8, bin)
-
-      kind in [18, 19, 24, 29] ->
-        take(16, bin)
-
-      kind in [17, 30] ->
-        leb_rest(bin)
-
-      kind in [12, 13, 14, 16, 31, 32, 33] ->
-        body(bin)
-
-      kind == 15 ->
-        case leb(bin) do
-          {:ok, 0, rest} -> {:ok, rest}
-          {:ok, _ref, <<_k, rest::binary>>} -> body(rest)
-          _ -> :error
-        end
-
-      true ->
-        :error
+  defp skip(15, bin) do
+    case leb(bin) do
+      {:ok, 0, rest} -> {:ok, rest}
+      {:ok, _ref, <<_k, rest::binary>>} -> body(rest)
+      _ -> :error
     end
   end
+
+  defp skip(_kind, _bin), do: :error
 
   defp take(n, bin) when byte_size(bin) >= n,
     do: {:ok, binary_part(bin, n, byte_size(bin) - n)}
@@ -948,86 +919,73 @@ const messageRuntimeBody = `  defstruct announced: false,
   # ---- one entry -----------------------------------------------------------------
 
   defp entry(<<id::little-unsigned-64, kind, rest::binary>>) do
-    if known_kind?(kind) do
-      case shape(kind, rest) do
-        {:ok, s, rest2} ->
-          if kind in [14, 16] do
-            read_element(kind, id, s, rest2)
-          else
-            {:ok, %{id: id, kind: kind, shape: s}, rest2}
-          end
-
-        :error ->
-          :error
+    with true <- known_kind?(kind),
+         {:ok, s, rest2} <- shape(kind, rest) do
+      if kind in [14, 16] do
+        read_element(kind, id, s, rest2)
+      else
+        {:ok, %{id: id, kind: kind, shape: s}, rest2}
       end
     else
-      :error
+      _ -> :error
     end
   end
 
   defp entry(_), do: :error
 
   defp read_element(kind, id, s, <<elem, rest::binary>>) do
-    if not known_kind?(elem) or elem in [12, 33] do
-      :error
+    with true <- known_kind?(elem) and elem not in [12, 33],
+         {:ok, es, rest2} <- shape(elem, rest),
+         {:ok, rest3} <- element_tail(elem, rest2) do
+      {:ok, %{id: id, kind: kind, shape: s, element: %{kind: elem, shape: es}}, rest3}
     else
-      case shape(elem, rest) do
-        {:ok, es, rest2} ->
-          if elem in [14, 16] do
-            # A nested array carries one more kind byte, which nothing decodes.
-            case rest2 do
-              <<inner, rest3::binary>> ->
-                if known_kind?(inner) and inner not in [12, 33] do
-                  {:ok, %{id: id, kind: kind, shape: s, element: %{kind: elem, shape: es}}, rest3}
-                else
-                  :error
-                end
-
-              _ ->
-                :error
-            end
-          else
-            {:ok, %{id: id, kind: kind, shape: s, element: %{kind: elem, shape: es}}, rest2}
-          end
-
-        :error ->
-          :error
-      end
+      _ -> :error
     end
   end
 
   defp read_element(_kind, _id, _s, _), do: :error
 
+  # A nested array carries one more kind byte, which nothing decodes. A helper
+  # of its own, so read_element is one with (credo's Nesting, issue #547).
+  defp element_tail(elem, <<inner, rest::binary>>) when elem in [14, 16] do
+    if known_kind?(inner) and inner not in [12, 33], do: {:ok, rest}, else: :error
+  end
+
+  defp element_tail(elem, _rest) when elem in [14, 16], do: :error
+  defp element_tail(_elem, rest), do: {:ok, rest}
+
   defp known_kind?(kind), do: kind >= 0 and kind <= 33
 
-  defp kind_bits(kind) do
-    case kind do
-      1 -> 1
-      2 -> 8
-      3 -> 16
-      4 -> 32
-      5 -> 64
-      6 -> 8
-      7 -> 16
-      8 -> 32
-      9 -> 64
-      10 -> 32
-      11 -> 64
-      18 -> 128
-      19 -> 128
-      20 -> 8
-      21 -> 16
-      22 -> 32
-      23 -> 64
-      24 -> 128
-      25 -> 8
-      26 -> 16
-      27 -> 32
-      28 -> 64
-      29 -> 128
-      _ -> 0
-    end
-  end
+  # Each scalar kind's width in bits, and 0 for a kind that has none. A map
+  # lookup rather than a case of 23 clauses: credo's default
+  # Credo.Check.Refactor.CyclomaticComplexity counts every clause (issue #547).
+  @kind_bits %{
+    1 => 1,
+    2 => 8,
+    3 => 16,
+    4 => 32,
+    5 => 64,
+    6 => 8,
+    7 => 16,
+    8 => 32,
+    9 => 64,
+    10 => 32,
+    11 => 64,
+    18 => 128,
+    19 => 128,
+    20 => 8,
+    21 => 16,
+    22 => 32,
+    23 => 64,
+    24 => 128,
+    25 => 8,
+    26 => 16,
+    27 => 32,
+    28 => 64,
+    29 => 128
+  }
+
+  defp kind_bits(kind), do: Map.get(@kind_bits, kind, 0)
 
   # ---- one shape -----------------------------------------------------------------
 
