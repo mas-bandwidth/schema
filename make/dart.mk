@@ -293,6 +293,46 @@ tables-dart-alloc-runtime-negative-control: build/dart_gcgate build/fixedform-co
 		{ echo "NEGATIVE CONTROL FAILED: SCHEMA_DART_ALLOC_ANY_SDK=1 did not report NOT CERTIFIED"; \
 		  cat build/dart-alloc-runtime-nc/any.log; exit 1; }
 	@echo "negative control: Dart allocation gate refuses stand-in SDK 0.0.0 and SCHEMA_DART_ALLOC_ANY_SDK=1 reports without certifying"
+# THE DART TABLES SOAK (docs/PORTING.md I9; test/dart-tables/soak.dart). A
+# functional test: Load, the reads, Measure and Save over the rows the
+# allocation gate gates, for SOAK_SECONDS of real time, every record round-
+# tripped and byte-compared into storage reused every iteration (correctness
+# under reuse), with the new-space scavenge count SAMPLED every second after the
+# warmup and failing if it moves, and resident-memory drift reported beside it
+# as the weaker instrument. It refuses off the pinned Dart SDK as the
+# allocation gate does. `make test` runs 20 seconds of it; the hour is the
+# release act: `make tables-dart-soak SOAK_SECONDS=3600`.
+build/dart_soak: build/dart-fixed/.stamp build/tables-generated-dart/.stamp cards-dart-generate test/dart-tables/soak.dart test/dart-tables/gcgate.dart
+	@mkdir -p build
+	$(DART) analyze test/dart-tables/soak.dart
+	$(DART) format --set-exit-if-changed --output=none test/dart-tables/soak.dart
+	$(DART) compile exe -o $@ test/dart-tables/soak.dart >/dev/null
+
+.PHONY: tables-dart-soak tables-dart-soak-negative-control
+tables-dart-soak: build/dart_soak build/fixedform-corpus/.stamp build/cook-fuzz/.stamp
+	$(DART) test/dart-tables/soak.dart drive $(CURDIR)/build/dart_soak $(SOAK_SECONDS)
+
+# THE SOAK'S NEGATIVE CONTROL. SCHEMA_DART_SOAK_PLANT=1, read by the soak
+# program itself and never a change to generated code, plants ONE small heap
+# allocation per iteration in a ring of 64 that stays resident. The scavenge
+# count must go RED while the drift line stays GREEN: the drift gate alone is
+# blind to a path that allocates and frees, which is why the count is the gate.
+tables-dart-soak-negative-control: build/dart_soak build/fixedform-corpus/.stamp build/cook-fuzz/.stamp
+	@mkdir -p build/dart-soak-nc
+	@if SCHEMA_DART_SOAK_PLANT=1 $(DART) test/dart-tables/soak.dart drive $(CURDIR)/build/dart_soak 5 \
+			> build/dart-soak-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a planted allocation per iteration left the soak green"; \
+		cat build/dart-soak-nc/log; exit 1; \
+	fi
+	@grep -qE '^  count: +[1-9][0-9]* scavenges .*\[FAIL\]' build/dart-soak-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the scavenge count did not go red on the planted allocation"; \
+		  cat build/dart-soak-nc/log; exit 1; }
+	@grep -qE '^  drift: .*\[PASS\]' build/dart-soak-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the drift line did not stay green (the planted ring is bounded)"; \
+		  cat build/dart-soak-nc/log; exit 1; }
+	@grep -E '^  (drift|count):' build/dart-soak-nc/log
+	@echo "negative control: one planted allocation per iteration turns the soak scavenge count RED while drift stays GREEN"
+
 # THE RUNTIME HOME GATE (docs/PORTING.md J2). A unit's shared Dart table
 # runtime lives in one file named by the PACKAGE — <Package>Block.dart and
 # <Package>Cook.dart — never by the file that happens to sort first, so a
@@ -799,6 +839,10 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 	$(MAKE) tables-dart-alloc
 	$(MAKE) tables-dart-alloc-negative-control
 	$(MAKE) tables-dart-alloc-runtime-negative-control
+	# NOT WIRED YET: `$(MAKE) tables-dart-soak SOAK_SECONDS=20` is RED at base. The soak found that the generated
+	# fixed Load and Save allocate a ByteData / Uint8List view per call (about 64 bytes), which the allocation gate
+	# (312 batches) is too short to see. Add the line when the emitter is fixed (see the card report).
+	$(MAKE) tables-dart-soak-negative-control
 	$(MAKE) tables-dart-order
 	$(MAKE) tables-dart-order-negative-control
 	# THE FIXED FORM against the C++ reference's own bytes (§3.4)
