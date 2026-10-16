@@ -69,6 +69,18 @@ generated/bench/dart/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang dart --out generated/bench/dart/realworld bench/corpus/RealWorld.schema
 	@touch $@
 
+# THE PAIRED UNIT, for bench/tables/dart — the FIXED FORM's leg in `bench/paired`
+# (bench/paired/main.go, bench/tables/dart/table_main.dart). Bench.schema and
+# FixedTable.schema are ONE unit, exactly as the C, C++, Go, JS and C# paired
+# generations are: the fixed root reaches the packet type so the compiler emits
+# its table codec. The runner imports these libraries by relative path and
+# `dart compile exe` compiles them into it; the driver regenerates the same
+# files itself, so the two agree byte for byte or `generated-current` says so.
+generated/bench/paired/dart/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@mkdir -p generated/bench/paired/dart
+	./bin/schema generate --lang dart --out generated/bench/paired/dart bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@touch $@
+
  
 # The same corpus through the DART table backend (docs/SPEC-TABLES.md): the tables
 # corpus plus the evolution pair, generated at build time into build/ —
@@ -241,6 +253,59 @@ tables-dart-alloc-runtime-negative-control: build/dart_gcgate build/fixedform-co
 		{ echo "NEGATIVE CONTROL FAILED: SCHEMA_DART_ALLOC_ANY_SDK=1 did not report NOT CERTIFIED"; \
 		  cat build/dart-alloc-runtime-nc/any.log; exit 1; }
 	@echo "negative control: Dart allocation gate refuses stand-in SDK 0.0.0 and SCHEMA_DART_ALLOC_ANY_SDK=1 reports without certifying"
+# THE RUNTIME HOME GATE (docs/PORTING.md J2). A unit's shared Dart table
+# runtime lives in one file named by the PACKAGE — <Package>Block.dart and
+# <Package>Cook.dart — never by the file that happens to sort first, so a
+# schema file that sorts earlier relocates nothing and the runtime is
+# byte-identical across the two trees. The gate adds an earlier-sorting file
+# to a copy of the unit and requires the homes not to move; the control puts
+# the file-order rule back and requires them to move (#347).
+.PHONY: tables-dart-runtime-home
+tables-dart-runtime-home: bin/schema
+	@rm -rf build/runtime-home-dart && mkdir -p build/runtime-home-dart/src
+	@cp tables/examples/*.schema build/runtime-home-dart/src/
+	@printf 'package tabledemo\n\ntable AaaRow\n{\n    tag uint8\n}\n' > build/runtime-home-dart/src/Aaa.schema
+	@./bin/schema generate --lang dart --out build/runtime-home-dart/base tables/examples
+	@./bin/schema generate --lang dart --out build/runtime-home-dart/added build/runtime-home-dart/src
+	@for surface in Block Cook; do \
+		if [ "$$surface" = "Block" ]; then marker='final class TableBlockInfo'; \
+		else marker='final class TableCookInfo'; fi; \
+		base=$$(cd build/runtime-home-dart/base && grep -lF "$$marker" *$$surface.dart); \
+		added=$$(cd build/runtime-home-dart/added && grep -lF "$$marker" *$$surface.dart); \
+		if [ "$$base" != "Tabledemo$$surface.dart" ] || [ "$$added" != "Tabledemo$$surface.dart" ]; then \
+			echo "RUNTIME HOME GATE FAILED: the $$surface runtime is in $$base before the added file and $$added after — expected Tabledemo$$surface.dart both times"; exit 1; \
+		fi; \
+	done
+	@grep -v "tableBuildVersion" build/runtime-home-dart/base/TabledemoBlock.dart > build/runtime-home-dart/base.block.strip
+	@grep -v "tableBuildVersion" build/runtime-home-dart/added/TabledemoBlock.dart > build/runtime-home-dart/added.block.strip
+	@cmp -s build/runtime-home-dart/base.block.strip build/runtime-home-dart/added.block.strip || \
+		{ echo "RUNTIME HOME GATE FAILED: the Dart block runtime's bytes moved when the unit gained a file"; exit 1; }
+	@grep -v "tableBuildVersion" build/runtime-home-dart/base/TabledemoCook.dart > build/runtime-home-dart/base.cook.strip
+	@grep -v "tableBuildVersion" build/runtime-home-dart/added/TabledemoCook.dart > build/runtime-home-dart/added.cook.strip
+	@cmp -s build/runtime-home-dart/base.cook.strip build/runtime-home-dart/added.cook.strip || \
+		{ echo "RUNTIME HOME GATE FAILED: the Dart cook runtime's bytes moved when the unit gained a file"; exit 1; }
+	@echo "runtime home gate (Dart): the block and cook runtimes stay in <Package><Surface>.dart when an earlier-sorting file joins the unit"
+
+.PHONY: tables-dart-runtime-home-negative-control
+tables-dart-runtime-home-negative-control: bin/schema tables-dart-runtime-home
+	@sed 's|home := capitalize(u.Package)|home := ir.ProtocolIdHome(u) // SABOTAGED: back to the file order|' \
+		internal/codegen/darttable/darttable.go > build/dartruntime-fileorder.gotext
+	@grep -q SABOTAGED build/dartruntime-fileorder.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/darttable/darttable.go":"%s/build/dartruntime-fileorder.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dartruntime-overlay.json
+	@go build -overlay=build/dartruntime-overlay.json -o build/schema-dartruntime-sabotaged ./cmd/schema
+	@rm -rf build/runtime-home-dart/base-sabotage build/runtime-home-dart/added-sabotage
+	@./build/schema-dartruntime-sabotaged generate --lang dart --out build/runtime-home-dart/base-sabotage tables/examples
+	@./build/schema-dartruntime-sabotaged generate --lang dart --out build/runtime-home-dart/added-sabotage build/runtime-home-dart/src
+	@base=$$(cd build/runtime-home-dart/base-sabotage && grep -lF "final class TableBlockInfo" *.dart); \
+	 added=$$(cd build/runtime-home-dart/added-sabotage && grep -lF "final class TableBlockInfo" *.dart); \
+	 if [ "$$base" = "$$added" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the runtime in $$base — the gate is watching nothing"; exit 1; \
+	 fi; \
+	 echo "runtime home negative control (Dart): the file-order rule moves the runtime from $$base to $$added"
+
+test-dart: tables-dart-runtime-home tables-dart-runtime-home-negative-control
 
 # THE DART PORT'S RELEASE GATE. certify.yml DERIVES this target by name, so a
 # port lands its expensive half by adding the target and nothing else: two
@@ -257,6 +322,9 @@ tables-dart-release:
 	$(MAKE) tables-dart-alloc
 	$(MAKE) tables-dart-alloc-negative-control
 	$(MAKE) tables-dart-alloc-runtime-negative-control
+	$(MAKE) tables-dart-order
+	$(MAKE) tables-dart-order-negative-control
+	$(MAKE) tables-dart-fuzz-lead-negative-control
 	$(MAKE) tables-dart-fixed-form-negative-control
 	$(MAKE) tables-dart-names-negative-control
 	$(MAKE) tables-dart-standalone-negative-control
@@ -276,12 +344,19 @@ DART_FUZZ_MUTANTS ?= 4000
 # fuzzer that has never gone red proves nothing about the reader it points at.
 # ONE CHECK is removed from the block Open — the count against the declared
 # maximum — in a COPY of the emitter, the corpus is regenerated from the
-# sabotaged compiler, and the oracle must find it. No tracked file is written
-# to, so an interrupt cannot leave a sabotaged working tree.
-.PHONY: tables-dart-fuzz-negative-control tables-dart-release
+# sabotaged compiler, and the oracle must find it. BOTH halves of the extent
+# bound are removed — the rows-inside-extent test AND the padding test — so
+# nothing downstream catches what the first lets through (I3: removing the
+# rows bound alone leaves the padding check to refuse on the negative slack, so
+# only both keep the verdict seed-independent). The count against the declared
+# maximum stays in place, so the named finding is the oracle's own walk. Red is
+# required on that named finding at both seeds. No tracked file is written to,
+# so an interrupt cannot leave a sabotaged working tree.
+.PHONY: tables-dart-fuzz-negative-control
 tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 	@rm -rf build/dart-fuzz-nc && mkdir -p build/dart-fuzz-nc
-	@sed 's|g.pf("      if (count > %sMax) {\\n        return null;\\n      }\\n", field)|_ = field // SABOTAGED: the count bound is gone|' \
+	@sed -e 's|g.pf("      if (rows > extent - offsetOf) {\\n        return null;\\n      }\\n")|_ = field // SABOTAGED: the rows-inside-extent bound is gone|' \
+	     -e 's|g.pf("    if (padding > extent - used) {\\n      return null;\\n    }\\n")|// SABOTAGED: the padding bound is gone|' \
 		internal/codegen/darttable/block.go > build/dart-fuzz-nc/block.go.txt
 	@cmp -s internal/codegen/darttable/block.go build/dart-fuzz-nc/block.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
@@ -293,15 +368,118 @@ tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 	@sed -e "s|../../build/tables-generated-dart/block/|$(CURDIR)/build/dart-fuzz-nc/generated/block/|g" \
 	     -e "s|../../build/tables-generated-dart/pointers/|$(CURDIR)/build/dart-fuzz-nc/generated/pointers/|g" \
 		test/dart-tables/fuzz.dart > build/dart-fuzz-nc/fuzz.dart
-	@if $(DART) build/dart-fuzz-nc/fuzz.dart 4000 > build/dart-fuzz-nc/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the fuzzer stayed green with the count bound removed"; \
-		tail -5 build/dart-fuzz-nc/log; exit 1; \
+	@for s in 1 2; do \
+		if SEED=$$s $(DART) build/dart-fuzz-nc/fuzz.dart 4000 > build/dart-fuzz-nc/log-$$s 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the fuzzer stayed green at seed $$s with both extent bounds removed"; \
+			tail -5 build/dart-fuzz-nc/log-$$s; exit 1; \
+		fi; \
+		grep -q "past the claimed" build/dart-fuzz-nc/log-$$s || \
+			{ echo "NEGATIVE CONTROL FAILED: the fuzzer at seed $$s went red for some other reason"; \
+			  tail -20 build/dart-fuzz-nc/log-$$s; exit 1; }; \
+	done
+	@grep -m1 "past the claimed" build/dart-fuzz-nc/log-1
+	@echo "negative control: both halves of the extent bound removed from the Dart block Open turn the fuzzer RED at both seeds"
+
+# THE LEAD GATE'S NEGATIVE CONTROL: the base-alignment check is removed from the
+# block Open in a copy, and the enumerated lead pass must go red — every middle
+# lead 1..63 opens when the check that should refuse them is gone (I5).
+.PHONY: tables-dart-fuzz-lead-negative-control
+tables-dart-fuzz-lead-negative-control: build/cook-fuzz/.stamp
+	@rm -rf build/dart-fuzz-lead-nc && mkdir -p build/dart-fuzz-lead-nc
+	@sed -e 's|g.pf("    if (base %% %d != 0) {\\n      return null; // the base'"'"'s alignment\\n    }\\n", ir.BlockAlign)|// SABOTAGED: the base-alignment check is gone|' \
+		internal/codegen/darttable/block.go > build/dart-fuzz-lead-nc/block.go.txt
+	@cmp -s internal/codegen/darttable/block.go build/dart-fuzz-lead-nc/block.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/darttable/block.go":"%s/build/dart-fuzz-lead-nc/block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-fuzz-lead-nc/overlay.json
+	go build -overlay build/dart-fuzz-lead-nc/overlay.json -o build/dart-fuzz-lead-nc/schema ./cmd/schema
+	./build/dart-fuzz-lead-nc/schema generate --lang dart --out build/dart-fuzz-lead-nc/generated/block tables/block
+	./build/dart-fuzz-lead-nc/schema generate --lang dart --out build/dart-fuzz-lead-nc/generated/pointers tables/pointers
+	@sed -e "s|../../build/tables-generated-dart/block/|$(CURDIR)/build/dart-fuzz-lead-nc/generated/block/|g" \
+	     -e "s|../../build/tables-generated-dart/pointers/|$(CURDIR)/build/dart-fuzz-lead-nc/generated/pointers/|g" \
+		test/dart-tables/fuzz.dart > build/dart-fuzz-lead-nc/fuzz.dart
+	@for s in 1 2; do \
+		if SEED=$$s $(DART) build/dart-fuzz-lead-nc/fuzz.dart 4000 > build/dart-fuzz-lead-nc/log-$$s 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the lead pass stayed green at seed $$s with the alignment check removed"; \
+			tail -5 build/dart-fuzz-lead-nc/log-$$s; exit 1; \
+		fi; \
+		grep -q "answered open, wanted refuse" build/dart-fuzz-lead-nc/log-$$s || \
+			{ echo "NEGATIVE CONTROL FAILED: the lead pass at seed $$s went red for some other reason"; \
+			  tail -20 build/dart-fuzz-lead-nc/log-$$s; exit 1; }; \
+	done
+	@grep -m1 "answered open, wanted refuse" build/dart-fuzz-lead-nc/log-1
+	@echo "negative control: the base-alignment check removed from the Dart block Open turns the lead pass RED at both seeds"
+
+# THE CROSS-ENDIAN ORDER-WORD GATE (docs/SPEC-TABLES.md §19.1, §7.1; issue
+# #415; docs/PORTING.md I7). The harness's two foreign surfaces (cook-foreign,
+# block-foreign) reverse the MAGIC word, which every leg answers on any host;
+# nothing forges the half a reader leaning on one check would open — a file
+# whose magic is intact and whose order word says the other order. This gate
+# holds that half: each corpus image opens unmodified, a copy with ONLY the
+# order word (offset 16, 8 bytes) set to the other order's value (2) refuses,
+# and no exception escapes either call. Dart's typed data is read at an
+# explicit endianness everywhere, so the order word is the whole of the
+# byte-order check.
+.PHONY: tables-dart-order
+tables-dart-order: build/tables-generated-dart/.stamp build/cook-fuzz/.stamp
+	$(DART) test/dart-tables/order.dart
+
+# ITS NEGATIVE CONTROL: remove the order check from a COPY of the emitter — one
+# for block.go and one for cook.go in the same target — regenerate the reader
+# from the sabotaged compiler, and require the gate to go red on the named row
+# while the other stays green. No tracked file is written to.
+.PHONY: tables-dart-order-negative-control
+tables-dart-order-negative-control: build/tables-generated-dart/.stamp build/cook-fuzz/.stamp
+	# the BLOCK row: the order check gone from block.go must turn only it red
+	@rm -rf build/dart-order-nc && mkdir -p build/dart-order-nc
+	@sed '/tableBlockRead64(view, base + 16)/d' \
+		internal/codegen/darttable/block.go > build/dart-order-nc/block.go.txt
+	@grep -q 'tableBlockRead64(view, base + 16)' internal/codegen/darttable/block.go || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }
+	@if grep -q 'tableBlockRead64(view, base + 16)' build/dart-order-nc/block.go.txt; then \
+		echo "NEGATIVE CONTROL FAILED: the order check survived the sabotage"; exit 1; fi
+	@printf '{"Replace":{"%s/internal/codegen/darttable/block.go":"%s/build/dart-order-nc/block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-order-nc/overlay-block.json
+	go build -overlay build/dart-order-nc/overlay-block.json -o build/dart-order-nc/schema-block ./cmd/schema
+	./build/dart-order-nc/schema-block generate --lang dart --out build/dart-order-nc/generated/block tables/block
+	@sed -e "s|../../build/tables-generated-dart/block/|$(CURDIR)/build/dart-order-nc/generated/block/|g" \
+		test/dart-tables/order.dart > build/dart-order-nc/order-block.dart
+	@if $(DART) build/dart-order-nc/order-block.dart > build/dart-order-nc/log-block 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the block row stayed green with the order check removed"; \
+		tail -20 build/dart-order-nc/log-block; exit 1; \
 	fi
-	@grep -q "past the declared" build/dart-fuzz-nc/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the fuzzer went red for some other reason"; \
-		  tail -20 build/dart-fuzz-nc/log; exit 1; }
-	@grep -m1 "past the declared" build/dart-fuzz-nc/log
-	@echo "negative control: one check removed from the Dart block Open turns the fuzzer RED"
+	@grep -q "ORDER FAIL block" build/dart-order-nc/log-block || \
+		{ echo "NEGATIVE CONTROL FAILED: the block row went red for another reason"; \
+		  tail -20 build/dart-order-nc/log-block; exit 1; }
+	@if grep -q "ORDER FAIL cook" build/dart-order-nc/log-block; then \
+		echo "NEGATIVE CONTROL FAILED: the cook row went red too"; \
+		tail -20 build/dart-order-nc/log-block; exit 1; fi
+	@grep -m1 "ORDER FAIL block" build/dart-order-nc/log-block
+	# the COOK row: the order check gone from cook.go must turn only it red
+	@sed '/tableCookRead64(view, at + 16)/d' \
+		internal/codegen/darttable/cook.go > build/dart-order-nc/cook.go.txt
+	@grep -q 'tableCookRead64(view, at + 16)' internal/codegen/darttable/cook.go || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }
+	@if grep -q 'tableCookRead64(view, at + 16)' build/dart-order-nc/cook.go.txt; then \
+		echo "NEGATIVE CONTROL FAILED: the order check survived the sabotage"; exit 1; fi
+	@printf '{"Replace":{"%s/internal/codegen/darttable/cook.go":"%s/build/dart-order-nc/cook.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-order-nc/overlay-cook.json
+	go build -overlay build/dart-order-nc/overlay-cook.json -o build/dart-order-nc/schema-cook ./cmd/schema
+	./build/dart-order-nc/schema-cook generate --lang dart --out build/dart-order-nc/generated/pointers tables/pointers
+	@sed -e "s|../../build/tables-generated-dart/pointers/|$(CURDIR)/build/dart-order-nc/generated/pointers/|g" \
+		test/dart-tables/order.dart > build/dart-order-nc/order-cook.dart
+	@if $(DART) build/dart-order-nc/order-cook.dart > build/dart-order-nc/log-cook 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the cook row stayed green with the order check removed"; \
+		tail -20 build/dart-order-nc/log-cook; exit 1; \
+	fi
+	@grep -q "ORDER FAIL cook" build/dart-order-nc/log-cook || \
+		{ echo "NEGATIVE CONTROL FAILED: the cook row went red for another reason"; \
+		  tail -20 build/dart-order-nc/log-cook; exit 1; }
+	@if grep -q "ORDER FAIL block" build/dart-order-nc/log-cook; then \
+		echo "NEGATIVE CONTROL FAILED: the block row went red too"; \
+		tail -20 build/dart-order-nc/log-cook; exit 1; fi
+	@grep -m1 "ORDER FAIL cook" build/dart-order-nc/log-cook
+	@echo "negative control: the order check removed turns its own row red and leaves the other green"
 
 # The DART leg's driver: one AOT executable, because `dart run` would pay a JIT
 # start-up per surface and the two-minute rule is measured across every leg.
@@ -462,6 +640,33 @@ tables-dart-versioning-negative-control: tables-fixedform-corpus
 		  cat build/dart-versioning-nc/log; exit 1; }
 	@echo 'negative control: the wrong name for a hash outside the lineage reds the Dart versioning gate'
 
+# THE KEYED-ARRAY EXTENT GATE'S NEGATIVE CONTROL (issue 407): Dart indexes keyed
+# arrays by SLOT — a keyed array holds exactly one slot per named variant, key k
+# rides at slot k-1, and key None and key Max+1 are refused by the typed list's
+# own RangeError (docs/PORTING.md M5). The extent is the whole contract, so
+# TestDartKeyedArraysAreHeldAtBothEnds holds it. One extra slot planted in a COPY
+# of the emitter (the array extent Max becomes Max+1) must turn that test red
+# naming the extent. No tracked file is written to.
+.PHONY: tables-dart-keyed-negative-control
+tables-dart-keyed-negative-control:
+	@rm -rf build/dart-keyed-nc && mkdir -p build/dart-keyed-nc
+	@sed 's|g.emitListStorage(f, ind, name, f.KeyEnumRef.Max)|g.emitListStorage(f, ind, name, f.KeyEnumRef.Max + 1) // SABOTAGED|' \
+		internal/codegen/darttable/fixeddart.go > build/dart-keyed-nc/fixeddart.go.txt
+	@grep -q SABOTAGED build/dart-keyed-nc/fixeddart.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/darttable/fixeddart.go":"%s/build/dart-keyed-nc/fixeddart.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-keyed-nc/overlay.json
+	@if go test -count=1 -overlay build/dart-keyed-nc/overlay.json -run TestDartKeyedArraysAreHeldAtBothEnds \
+			./internal/codegen/dart/ > build/dart-keyed-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: an extra keyed slot left the extent test green"; \
+		cat build/dart-keyed-nc/log; exit 1; \
+	fi
+	@grep -q "must hold exactly the enum extent" build/dart-keyed-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the extent test went red for some other reason"; \
+		  cat build/dart-keyed-nc/log; exit 1; }
+	@grep -m1 "enum extent" build/dart-keyed-nc/log
+	@echo "negative control: one extra keyed slot turns the Dart keyed-array extent test RED"
+
 # THE VARIABLE CLASS (docs/SPEC-TABLES.md §2.5, §2.9, §3, §3.1, §16.7): pointers,
 # by-value nesting, []*T, blobs, the remaining scalar kinds and unbounded
 # scalar/enum arrays, byte for byte against the oracle. A bare go test skips
@@ -472,6 +677,37 @@ tables-dart-variable-class:
 	@echo 'tables Dart variable class: pointers, blobs, lists and the scalar kinds against the oracle bytes'
 
 test-dart: tables-dart-variable-class
+
+# THE COOK OF A MAP FIELD (docs/SPEC-TABLES.md §2.8, §7.2): the Go cook writes a
+# Squad (tables/lists) with a known roster, an absent map and an emptied one,
+# and a unit holding every key kind §2.8 admits; the Dart programs in
+# test/dart-tables read EVERY entry, by index and by Find, and must print the
+# oracle's lines entry for entry. A bare go test skips by name without the SDK;
+# SCHEMA_REQUIRE_CORPUS=1 makes that skip a failure.
+.PHONY: tables-dart-cook-map-field
+tables-dart-cook-map-field:
+	@mkdir -p build/dart-cook-map-field
+	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -v -run 'TestCookMapFieldExposesItsEntriesLikeGo' > build/dart-cook-map-field/log 2>&1 || { cat build/dart-cook-map-field/log; exit 1; }
+	@grep 'lines agree' build/dart-cook-map-field/log | sed 's/^ *//'
+	@echo 'tables Dart cook: every map entry read as the Go cook reads it'
+
+test-dart: tables-dart-cook-map-field
+
+# THE BLOCK BUILD AND COOK WRITE GATE (docs/SPEC-TABLES.md §19.1, §7.6): the
+# block fill path's begin against §19.1's layout facts, the fixed-root cook
+# writer and a guarded and a text-array root against `schema cook` in both byte
+# orders, and every `cook-write` row
+# of testdata/conformance/tables/MANIFEST.txt through the conformance driver's
+# own surface — a byte-identical cook in both orders, or the named absence the
+# test's ratchet holds. The row test runs the driver over the generated corpus,
+# so the corpus is built first; SCHEMA_REQUIRE_CORPUS=1 makes a missing SDK or
+# corpus a failure rather than a skip.
+.PHONY: tables-dart-block-build
+tables-dart-block-build: build/tables-generated-dart/.stamp cards-dart-generate
+	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^(TestBlockBuildAndCookWriteDart|TestCookWriteFixedDart|TestCookWriteGuardedAndTextArrayRootsDart|TestCookWriteAnswersEveryCookWriteRowDart)$$'
+	@echo 'tables Dart block build and cook write: begin, the fixed root, the guarded and text-array roots and every cook-write row'
+
+test-dart: tables-dart-block-build
 
 # THE DART LEG of `make test`. THE DART PORT's own instruments
 # (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart
@@ -490,6 +726,8 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 	$(MAKE) tables-dart-alloc
 	$(MAKE) tables-dart-alloc-negative-control
 	$(MAKE) tables-dart-alloc-runtime-negative-control
+	$(MAKE) tables-dart-order
+	$(MAKE) tables-dart-order-negative-control
 	# THE FIXED FORM against the C++ reference's own bytes (§3.4)
 	$(MAKE) tables-dart-fixed-form
 	$(MAKE) tables-dart-fixed-form-negative-control
@@ -688,3 +926,84 @@ cards-dart-conformance-negative-control: build/conformance-harness cards-dart-dr
 	@echo 'cards Dart negative control: one changed rendered byte turns exactly render red'
 
 test-dart: cards-dart-test cards-dart-conformance cards-dart-conformance-negative-control cards-dart-conformance-upgrade-negative-control cards-dart-conformance-hash-negative-control
+
+# THE ACCESSOR/DESCRIPTOR AGREEMENT GATE (docs/PORTING.md J1; issue #421). Every
+# row of the block images, every node of the cook images and every record type
+# either descriptor graph reaches is read through the generated accessor and
+# through the descriptor's offset, kind, width and signedness, and the two must
+# agree. It prints the counts it read: a gate that read nothing says so.
+.PHONY: tables-dart-agree
+tables-dart-agree: build/tables-generated-dart/.stamp build/cook-fuzz/.stamp
+	$(DART) test/dart-tables/agree.dart
+
+# ITS TWO NEGATIVE CONTROLS, each through go build -overlay on a COPY of an
+# emitter, so no tracked file is written to. Each must turn the gate red ON THE
+# NAMED FIELD and on nothing else, which is also the proof that the other
+# derivation still passes: a gate that went red on both would be red for some
+# other reason.
+#
+# THE ACCESSOR control moves one scalar accessor four bytes in the row emitter
+# (block.go, which writes the cook's rows too): RenderCamera.camera_id reads
+# the next field's bytes, the descriptor still says where it is.
+.PHONY: tables-dart-accessor-negative-control
+tables-dart-accessor-negative-control: build/cook-fuzz/.stamp
+	@rm -rf build/dart-agree-acc-nc && mkdir -p build/dart-agree-acc-nc
+	@sed -e 's|g.readAt(f, fmt.Sprintf("%s + %d", origin, fl.Offset)))|g.readAt(f, fmt.Sprintf("%s + %d", origin, fl.Offset+accessorMoved(f.Name))))|' \
+		internal/codegen/darttable/block.go > build/dart-agree-acc-nc/block.go.txt
+	@grep -q 'accessorMoved(f.Name)' build/dart-agree-acc-nc/block.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing - the emitter moved"; exit 1; }
+	@printf '\nfunc accessorMoved(name string) int64 {\n\tif name == "camera_id" {\n\t\treturn 4\n\t}\n\treturn 0\n}\n' >> build/dart-agree-acc-nc/block.go.txt
+	@printf '{"Replace":{"%s/internal/codegen/darttable/block.go":"%s/build/dart-agree-acc-nc/block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-agree-acc-nc/overlay.json
+	go build -overlay build/dart-agree-acc-nc/overlay.json -o build/dart-agree-acc-nc/schema ./cmd/schema
+	./build/dart-agree-acc-nc/schema generate --lang dart --out build/dart-agree-acc-nc/generated/block tables/block
+	./build/dart-agree-acc-nc/schema generate --lang dart --out build/dart-agree-acc-nc/generated/pointers tables/pointers
+	@sed -e "s|../../build/tables-generated-dart/block/|$(CURDIR)/build/dart-agree-acc-nc/generated/block/|g" \
+	     -e "s|../../build/tables-generated-dart/pointers/|$(CURDIR)/build/dart-agree-acc-nc/generated/pointers/|g" \
+		test/dart-tables/agree.dart > build/dart-agree-acc-nc/agree.dart
+	@if $(DART) build/dart-agree-acc-nc/agree.dart > build/dart-agree-acc-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the gate stayed green with an accessor four bytes off"; \
+		tail -5 build/dart-agree-acc-nc/log; exit 1; \
+	fi
+	@grep -q '^DISAGREE  RenderCamera .*\.cameraId: accessor' build/dart-agree-acc-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on RenderCamera.cameraId"; \
+		  tail -20 build/dart-agree-acc-nc/log; exit 1; }
+	@if grep '^DISAGREE' build/dart-agree-acc-nc/log | grep -v '^DISAGREE  RenderCamera .*\.cameraId: accessor'; then \
+		echo "NEGATIVE CONTROL FAILED: the gate went red on a field other than the one moved"; exit 1; \
+	fi
+	@grep -m1 '^DISAGREE  RenderCamera .*\.cameraId: accessor' build/dart-agree-acc-nc/log
+	@echo "negative control: an accessor four bytes off turns the Dart agreement gate RED on RenderCamera.cameraId and on nothing else"
+
+# THE SLOT control moves one pointer slot's offset eight in the cook emitter's
+# DESCRIPTOR (cook.go): TreeNode.left is described at the slot after its own,
+# while the accessor still reads where it always did.
+.PHONY: tables-dart-slot-negative-control
+tables-dart-slot-negative-control: build/cook-fuzz/.stamp
+	@rm -rf build/dart-agree-slot-nc && mkdir -p build/dart-agree-slot-nc
+	@sed -e 's|g.pf("        offset: %d,\\n", fl.Offset)|g.pf("        offset: %d,\\n", fl.Offset+slotMoved(record, f.Name))|' \
+		internal/codegen/darttable/cook.go > build/dart-agree-slot-nc/cook.go.txt
+	@grep -q 'slotMoved(record, f.Name)' build/dart-agree-slot-nc/cook.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing - the emitter moved"; exit 1; }
+	@printf '\nfunc slotMoved(record, name string) int64 {\n\tif record == "TreeNode" && name == "left" {\n\t\treturn 8\n\t}\n\treturn 0\n}\n' >> build/dart-agree-slot-nc/cook.go.txt
+	@printf '{"Replace":{"%s/internal/codegen/darttable/cook.go":"%s/build/dart-agree-slot-nc/cook.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-agree-slot-nc/overlay.json
+	go build -overlay build/dart-agree-slot-nc/overlay.json -o build/dart-agree-slot-nc/schema ./cmd/schema
+	./build/dart-agree-slot-nc/schema generate --lang dart --out build/dart-agree-slot-nc/generated/block tables/block
+	./build/dart-agree-slot-nc/schema generate --lang dart --out build/dart-agree-slot-nc/generated/pointers tables/pointers
+	@sed -e "s|../../build/tables-generated-dart/block/|$(CURDIR)/build/dart-agree-slot-nc/generated/block/|g" \
+	     -e "s|../../build/tables-generated-dart/pointers/|$(CURDIR)/build/dart-agree-slot-nc/generated/pointers/|g" \
+		test/dart-tables/agree.dart > build/dart-agree-slot-nc/agree.dart
+	@if $(DART) build/dart-agree-slot-nc/agree.dart > build/dart-agree-slot-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the gate stayed green with a pointer slot eight bytes off"; \
+		tail -5 build/dart-agree-slot-nc/log; exit 1; \
+	fi
+	@grep -q '^DISAGREE  TreeNode .*\.left: accessor' build/dart-agree-slot-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on TreeNode.left"; \
+		  tail -20 build/dart-agree-slot-nc/log; exit 1; }
+	@if grep '^DISAGREE' build/dart-agree-slot-nc/log | grep -v '^DISAGREE  TreeNode .*\.left: accessor'; then \
+		echo "NEGATIVE CONTROL FAILED: the gate went red on a field other than the one moved"; exit 1; \
+	fi
+	@grep -m1 '^DISAGREE  TreeNode .*\.left: accessor' build/dart-agree-slot-nc/log
+	@echo "negative control: a pointer slot eight bytes off turns the Dart agreement gate RED on TreeNode.left and on nothing else"
+
+test-dart: tables-dart-agree tables-dart-accessor-negative-control tables-dart-slot-negative-control

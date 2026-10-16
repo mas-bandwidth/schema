@@ -226,6 +226,23 @@ func fixedGetter(t ir.FieldType) (string, bool) {
 	return "g" + strings.TrimPrefix(call, "s"), endian
 }
 
+// fixedFloat32Bits and fixedFloat32Value are the runtime's two float32
+// conversions (fixedruntime.go, TableFixedLayout): every float32 cell a
+// generated store or load touches goes through them, bit-exact, NaN payloads
+// and the signalling bit included.
+const (
+	fixedFloat32Bits  = "TableFixedLayout.float32Bits"
+	fixedFloat32Value = "TableFixedLayout.float32Value"
+)
+
+// fixedIsFloat32List reports a scalar float32 element run: a Float32List,
+// whose element assignment would convert through the hardware and quiet a
+// signalling NaN, so a loop over it moves the elements' BITS through a
+// Uint32List view of the same storage instead.
+func fixedIsFloat32List(f *ir.Field) bool {
+	return f.Type.Kind == ir.TFloat32 && fixedElementClass(f.Type) == ""
+}
+
 // store emits one ByteData call at a constant offset.
 func (g *fixedGen) store(ind, at string, t ir.FieldType, expr string) {
 	if fixedIs128(t) {
@@ -234,6 +251,14 @@ func (g *fixedGen) store(ind, at string, t ir.FieldType, expr string) {
 		// halves are stored as they are held.
 		g.call(ind, "", "view.setUint64", []string{at, expr + ".lo", "Endian.little"}, ";")
 		g.call(ind, "", "view.setUint64", []string{fixedOff(at, 8), expr + ".hi", "Endian.little"}, ";")
+		return
+	}
+	if t.Kind == ir.TFloat32 {
+		// A FLOAT32 CELL STORES ITS BITS, never a double through setFloat32:
+		// the hardware conversion quiets a signalling NaN, and the cell stores
+		// what the record held (docs/FIXED-FORM-ALGORITHM.md §3.1).
+		g.call(ind, "", "view.setUint32",
+			[]string{at, fixedFloat32Bits + "(" + expr + ")", "Endian.little"}, ";")
 		return
 	}
 	name, endian := fixedSetter(t)
@@ -259,6 +284,12 @@ func (g *fixedGen) load(ind, lhs, at string, t ir.FieldType) {
 		g.pf("%s  view.getUint64(%s, Endian.little),\n", ind, fixedOff(at, 8))
 		g.pf("%s  view.getUint64(%s, Endian.little),\n", ind, at)
 		g.pf("%s);\n", ind)
+		return
+	}
+	if t.Kind == ir.TFloat32 {
+		// the bits, widened by hand where the hardware would quiet a NaN
+		g.call(ind, lhs+" = ", fixedFloat32Value,
+			[]string{"view.getUint32(" + at + ", Endian.little)"}, ";")
 		return
 	}
 	name, endian := fixedGetter(t)
@@ -690,6 +721,18 @@ func (g *fixedGen) emitWriteLoop(f *ir.Field, base string, at int64, count, expr
 			[]string{fixedOff(base, at), fixedOff(base, at) + " + " + count, expr}, ";")
 		return
 	}
+	if fixedIsFloat32List(f) {
+		// THE ELEMENTS' BITS, read through a view of the Float32List's own
+		// storage: reading an element as a double would quiet a NaN.
+		g.pf("%s{\n", ind)
+		g.call(ind+"  ", "final words = ", "Uint32List.sublistView", []string{expr}, ";")
+		g.pf("%s  for (var i = 0; i < %s; i++) {\n", ind, count)
+		g.call(ind+"    ", "", "view.setUint32",
+			[]string{fmt.Sprintf("%s + i * %d", fixedOff(base, at), elem), "words[i]", "Endian.little"}, ";")
+		g.pf("%s  }\n", ind)
+		g.pf("%s}\n", ind)
+		return
+	}
 	g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, count)
 	g.emitWriteElement(f, fmt.Sprintf("%s + i * %d", fixedOff(base, at), elem), 0, expr+"[i]", ind+"  ")
 	g.pf("%s}\n", ind)
@@ -823,6 +866,23 @@ func (g *fixedGen) emitDecodeLoop(f *ir.Field, base string, at int64, count, exp
 	if fixedElementClass(f.Type) == "" && fixedIsByteList(f.Type) && !fixedHasClamp(f) {
 		g.call(ind, "", expr+".setRange",
 			[]string{"0", count, "image", fixedOff(base, at)}, ";")
+		return
+	}
+	if fixedIsFloat32List(f) {
+		// THE ELEMENTS' BITS, written through a view of the Float32List's own
+		// storage: assigning a double element would quiet a NaN. A declared
+		// range then clamps the element as a double, which an IEEE comparison
+		// does without touching a NaN (emitClamp).
+		g.pf("%s{\n", ind)
+		g.call(ind+"  ", "final words = ", "Uint32List.sublistView", []string{expr}, ";")
+		g.pf("%s  for (var i = 0; i < %s; i++) {\n", ind, count)
+		g.call(ind+"    ", "words[i] = ", "view.getUint32",
+			[]string{fmt.Sprintf("%s + i * %d", fixedOff(base, at), elem), "Endian.little"}, ";")
+		if fixedHasClamp(f) {
+			g.emitClamp(f, expr+"[i]", ind+"    ")
+		}
+		g.pf("%s  }\n", ind)
+		g.pf("%s}\n", ind)
 		return
 	}
 	g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, count)

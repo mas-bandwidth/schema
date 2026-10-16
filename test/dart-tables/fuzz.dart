@@ -211,7 +211,7 @@ void cookWhole(
   int region,
   int length,
   TableCookInfo root,
-  int Function(int slot) at,
+  int Function(int slot, int size) at,
 ) {
   final view = ByteData.view(
     bytes.buffer,
@@ -240,7 +240,7 @@ void cookWhole(
   void storageBody(int start, TableCookInfo type, int depth) {
     for (final f in type.fields) {
       if (f.isPointer) {
-        final target = at(start + f.offset);
+        final target = at(start + f.offset, f.info == null ? 0 : f.info!.size);
         if (target == TableCookRef.none || target == TableCookRef.outside) {
           continue;
         }
@@ -317,6 +317,47 @@ void report(String fixture, int pass, int index, int seed, Object what) {
   );
 }
 
+// blockLeadCheck is the enumerated LEAD pass (docs/PORTING.md I5): every
+// committed block image is placed at every lead 0..64 past a 64-aligned base
+// inside a larger buffer, and open must succeed at the aligned leads 0 and 64
+// and refuse 1..63 by name — a base-alignment check that is never exercised is
+// dead code to any gate, and unaligned reads succeed on every host. Returns
+// the number of aligned leads that opened (0 and 64) and the number of middle
+// leads that refused (1..63) — 2 and 62 when the check is present.
+(int, int) blockLeadCheck(BlockCase c, int seed) {
+  const alignedBase = 128;
+  const leads = 64;
+  var openedAligned = 0;
+  var refusedMiddle = 0;
+  final buffer = Uint8List(alignedBase + leads + c.image.length);
+  for (var lead = 0; lead <= leads; lead++) {
+    buffer.fillRange(0, buffer.length, 0);
+    buffer.setRange(alignedBase + lead, alignedBase + lead + c.image.length, c.image);
+    final base = alignedBase + lead;
+    try {
+      final opened = c.open(buffer, base, c.image.length);
+      final aligned = lead == 0 || lead == leads;
+      if (aligned && opened != null) {
+        openedAligned++;
+      } else if (!aligned && opened == null) {
+        refusedMiddle++;
+      }
+      if ((aligned && opened == null) || (!aligned && opened != null)) {
+        report(
+          c.name,
+          -1,
+          lead,
+          seed,
+          '${c.name}: at lead $lead ${aligned ? "open refused, wanted open" : "open answered open, wanted refuse"}',
+        );
+      }
+    } catch (e) {
+      report(c.name, -1, lead, seed, '${c.name}: at lead $lead open threw: $e');
+    }
+  }
+  return (openedAligned, refusedMiddle);
+}
+
 void main(List<String> args) {
   final seed = int.parse(Platform.environment['SEED'] ?? '20260903');
   final mutants = args.isEmpty ? 4000 : int.parse(args[0]);
@@ -379,6 +420,11 @@ void main(List<String> args) {
         report(c.name, i % 6, i, seed, 'an exception ESCAPED the reader: $e');
       }
     }
+    final (openedAligned, refusedMiddle) = blockLeadCheck(c, seed);
+    stdout.write(
+      'dart tables fuzz: ${c.name} leads: $openedAligned/2 aligned opened, '
+      '$refusedMiddle/63 middle refused\n',
+    );
   }
 
   for (final c in cooks) {
@@ -431,7 +477,7 @@ TableCookInfo cookType(String root) {
   throw StateError('not a cook');
 }
 
-int Function(int) derefOf(Object cook) {
+int Function(int, int) derefOf(Object cook) {
   if (cook is ck.SceneCook) return cook.at;
   if (cook is ck.DepotCook) return cook.at;
   if (cook is ck.AlbumCook) return cook.at;

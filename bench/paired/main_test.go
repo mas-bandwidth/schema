@@ -477,3 +477,62 @@ func TestALanguageIsClassifiedInExactlyOnePlace(t *testing.T) {
 		}
 	}
 }
+
+// DART IS A TABLE-ONLY LANGUAGE (bench/tables/dart/table_main.dart). Its
+// packet runner, bench/dart/main.dart, is the type board's, with neither
+// `--gate` nor `--iterations`, so Dart rides the table wire alone as java and
+// js do: `-langs` accepts it, it is in no ratio and no confirmation pass, its
+// one wire is the table wire, its runner is the AOT executable the build
+// compiles, and the published nine-row order does not move.
+func TestDartIsATableOnlyLanguage(t *testing.T) {
+	t.Parallel()
+	if !contains(allLanguages(), "dart") {
+		t.Fatal("-langs must accept dart")
+	}
+	if !contains(tableOnlyLanguages, "dart") || contains(pendingLanguages, "dart") {
+		t.Fatal("dart is table-only and no longer pending:", tableOnlyLanguages, pendingLanguages)
+	}
+	if contains(languages, "dart") || contains(unpublishedLanguages, "dart") {
+		t.Fatal("dart has no packet leg here, so it is in no ratio and no confirmation pass")
+	}
+	if got := wiresFor("dart"); len(got) != 1 || got[0] != "table" {
+		t.Fatal("wiresFor(dart) is the table wire alone:", got)
+	}
+	for _, mode := range []string{"gate", "run", "fast", "table"} {
+		if err := checkRequestShape(mode, []string{"dart"}); err != nil {
+			t.Fatal(mode, err)
+		}
+		if err := checkRequestShape(mode, append([]string{"dart"}, languages...)); err == nil {
+			t.Fatal("dart rode a paired request in", mode)
+		}
+	}
+	if err := checkRequestShape("build", append(append([]string{}, languages...), "dart")); err != nil {
+		t.Fatal("the one build takes the whole sitting, dart included:", err)
+	}
+	for _, p := range ninePasses("out", []string{"cpp", "c", "go", "cs", "dart"}) {
+		if p.name == "paired" && contains(p.langs, "dart") {
+			t.Fatal("dart reached the paired pass:", p.langs)
+		}
+	}
+	args := runner("table", "dart", "--gate").args
+	if args[0] != binary("table", "dart") || args[0] != filepath.Join("build", "paired", "table-dart") {
+		t.Fatal("dart runs as the AOT executable the build compiles:", args)
+	}
+	if !contains(args, "--indexed") || !contains(args, "bench/paired/corpus") {
+		t.Fatal(args)
+	}
+	if expectedChecks("dart", "table") != "contract" {
+		t.Fatal("a table leg keeps wire/API validation")
+	}
+	if strings.Join(nineLanguages, ",") != "cpp,c,go,rust,cs,js,java,dart,elixir" {
+		t.Fatal("the nine-row order moved:", nineLanguages)
+	}
+	if !strings.Contains(absentReason("dart"), "no runner on this tree") {
+		t.Fatal("an absent dart runner is a missing runner, not a missing leg:", absentReason("dart"))
+	}
+	row := "dart,bench_fixed,%s,400000,1264.0625,1,%d,%d,%d,0,0,table,table,aot,contract,default,unknown\n"
+	data := header + "\n" + fmt.Sprintf(row, "write", 1795168, 1795168, 1795168) + fmt.Sprintf(row, "round_trip", 604972, 604972, 604972)
+	if rows, err := parseRows([]byte(data), "dart", "table", "table"); err != nil || len(rows) != 2 {
+		t.Fatal(rows, err)
+	}
+}
