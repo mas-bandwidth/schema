@@ -43,6 +43,7 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
 fi
 cat "$out/log"
 grep -q 'js / json-read' "$out/log"
+grep -q 'json-read     FAIL' "$out/log"
 grep -Eq '^ *json-write +pass' "$out/log"
 grep -Eq '^ *wire +pass' "$out/log"
 echo "JavaScript walk negative control: $mode detected by js / json-read"
