@@ -142,13 +142,14 @@ func TestUnionArmSetterLeavesTheWireUnmoved(t *testing.T) {
 
 // TestUnionArmSetterRefusesACollidingName pins the refusal: a setter spelled
 // like the union itself (a constructor), its tag enum, or an arm's payload
-// type cannot compile, so generation names it instead of emitting it.
+// type or member cannot compile, so generation names it instead of emitting it.
 func TestUnionArmSetterRefusesACollidingName(t *testing.T) {
 	t.Parallel()
 	for name, src := range map[string]string{
-		"its own name":   "package t\ntype P {\n    v uint8\n}\nunion SelectA {\n    a P\n}\n",
-		"its tag enum":   "package t\ntype P {\n    v uint8\n}\nunion SelectX {\n    x_type P\n}\n",
-		"a payload type": "package t\ntype SelectB {\n    v uint8\n}\nunion U {\n    b SelectB\n}\n",
+		"its own name":     "package t\ntype P {\n    v uint8\n}\nunion SelectA {\n    a P\n}\n",
+		"its tag enum":     "package t\ntype P {\n    v uint8\n}\nunion SelectX {\n    x_type P\n}\n",
+		"a payload type":   "package t\ntype SelectB {\n    v uint8\n}\nunion U {\n    b SelectB\n}\n",
+		"a payload member": "package t\ntype P {\n    v uint8\n}\ntype Q {\n    v uint8\n}\nunion U {\n    first P\n    SelectFirst Q\n}\n",
 	} {
 		_, err := Generate(unitFromSources(t, map[string]string{"S.schema": src}))
 		if err == nil || !strings.Contains(err.Error(), "the arm setter") {

@@ -396,18 +396,20 @@ func (g *gen) emitArmSetters(d *ir.Union) {
 
 // armSetterCollision names the first arm whose generated setter Select<Variant>
 // would be spelled like a name the union struct already uses — the struct's
-// own name (a constructor), its tag enum, or an arm's payload type — which
-// C++ cannot compile (SPEC §4.8, the arm setter). "" when none collides.
+// own name (a constructor), its tag enum, an arm's payload type, or an arm's
+// payload member — which C++ cannot compile (SPEC §4.8, the arm setter). ""
+// when none collides.
 func armSetterCollision(d *ir.Union) string {
 	used := map[string]bool{d.Name: true, d.Name + "Type": true}
 	for _, v := range d.Variants {
 		if !v.Void() {
 			used[v.Type] = true
+			used[v.Name] = true
 		}
 	}
 	for _, v := range d.Variants {
 		if setter := "Select" + ir.GoExportName(v.Name); used[setter] {
-			return fmt.Sprintf("union %s's arm %s generates the C++ setter %s, which is also the name of a type the union struct uses; rename the arm or the type (SPEC §4.8, the arm setter)", d.Name, v.Name, setter)
+			return fmt.Sprintf("union %s's arm %s generates the C++ setter %s, which is also the name of a type or member the union struct uses; rename the arm or the type (SPEC §4.8, the arm setter)", d.Name, v.Name, setter)
 		}
 	}
 	return ""
