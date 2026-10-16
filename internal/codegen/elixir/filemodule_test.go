@@ -1,6 +1,9 @@
 package elixir
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -102,30 +105,78 @@ type Foo
 	}
 }
 
+// The corpus the build generates generated/elixir from (make/elixir.mk:
+// ./bin/schema generate --lang elixir --out generated/elixir examples), and
+// the committed output it must reproduce. Paths are relative to this
+// package's directory, which is where go test runs it.
+const (
+	corpusDir       = "../../../examples"
+	committedElixir = "../../../generated/elixir"
+)
+
+// loadUnitFromDir reads every *.schema of dir into one unit, by basename as
+// the compiler's own Load names them.
+func loadUnitFromDir(t *testing.T, dir string) *ir.Unit {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".schema") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[e.Name()] = string(data)
+	}
+	if len(files) == 0 {
+		t.Fatalf("no .schema files under %s", dir)
+	}
+	return loadUnitFromSrc(t, files)
+}
+
 func TestFileModuleStepsAsideByteIdenticalToBase(t *testing.T) {
 	t.Parallel()
-	// A no-collision unit emits byte-identical output whether it is generated
-	// once or twice: the rename must only ever touch the colliding case.
-	a, err := emitUnit(t, map[string]string{
-		"A.schema": `package Armdemo
-
-type A { x int32 }
-`,
-	})
+	// The step-aside must only ever touch the colliding case: on the corpus,
+	// where no file base is taken, the generator's output must be BYTE-IDENTICAL
+	// to the COMMITTED generated/elixir files on disk — never merely to a
+	// second run of this same generator, which a rename on every file would
+	// also agree with.
+	out, err := Generate(loadUnitFromDir(t, corpusDir))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	b, err := emitUnit(t, map[string]string{
-		"A.schema": `package Armdemo
-
-type A { x int32 }
-`,
-	})
+	entries, err := os.ReadDir(committedElixir)
 	if err != nil {
-		t.Fatalf("Generate: %v", err)
+		t.Fatal(err)
 	}
-	if string(a["A.ex"]) != string(b["A.ex"]) {
-		t.Fatalf("byte-identical output expected for a no-collision unit")
+	committed := map[string]bool{}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".ex") {
+			continue
+		}
+		committed[e.Name()] = true
+		want, err := os.ReadFile(filepath.Join(committedElixir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, ok := out[e.Name()]
+		if !ok {
+			t.Errorf("%s is committed under generated/elixir but the generator no longer emits it", e.Name())
+			continue
+		}
+		if !bytes.Equal(got, want) {
+			t.Errorf("%s: generator output differs from the committed generated/elixir/%s (%d bytes generated, %d committed) — a rename leaked into a no-collision unit, or run: make generated/elixir/.stamp", e.Name(), e.Name(), len(got), len(want))
+		}
+	}
+	for name := range out {
+		if !committed[name] {
+			t.Errorf("generator emits %s, which is not committed under generated/elixir", name)
+		}
 	}
 }
 

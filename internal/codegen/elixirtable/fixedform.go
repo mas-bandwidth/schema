@@ -25,6 +25,7 @@ package elixirtable
 import (
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixirtable/fixedclosure"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -236,70 +237,9 @@ func imageFieldMember(f *ir.Field, at int64, member string) (int64, bool) {
 // other plan is compiled at load time" — described the shape §5.6 retired. The
 // RECORD CEILING is the wire's, so it is kept: ir.TableFixedFormRoots applies it
 // and the compiler names every table it costs.
-func fixedRoots(u *ir.Unit) []*ir.Struct {
-	var out []*ir.Struct
-	for _, st := range ir.TableFixedFormRoots(u) {
-		if !ir.TableFixedSupported(st, 0) {
-			continue
-		}
-		out = append(out, st)
-	}
-	return out
-}
+func fixedRoots(u *ir.Unit) []*ir.Struct { return fixedclosure.Roots(u) }
 
 // fixedClosure is every TYPE the unit's fixed roots reach, with a nested type
-// ordered before the type that holds it.
-func fixedClosure(roots []*ir.Struct) []*ir.Struct {
-	seen := map[string]bool{}
-	var order []*ir.Struct
-	for _, st := range roots {
-		fixedCollectTypes(st, seen, &order)
-	}
-	return order
-}
-
-func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct) {
-	if seen[st.Name] {
-		return
-	}
-	seen[st.Name] = true
-	for _, f := range st.Fields {
-		if f.Type.Kind != ir.TNamed {
-			continue
-		}
-		switch r := f.Type.Ref.(type) {
-		case *ir.Struct:
-			fixedCollectTypes(r, seen, order)
-		case *ir.Union:
-			fixedCollectUnion(r, map[string]bool{}, seen, order)
-		}
-	}
-	*order = append(*order, st)
-}
-
-// fixedCollectUnion descends through a union's arms for the structs the closure
-// reaches. An arm that names a `type` descends into it; an arm that is ITSELF A
-// UNION descends into THAT union's arms in turn, so a nested union's own arm
-// structs are part of the closure and its helper is emitted where its caller's
-// dispatch names it (docs/FIXED-FORM-ALGORITHM.md §4.1 "an arm inside an arm
-// answers to the OUTER tag"). seenUnion is fresh per union field, so a union
-// cycle cannot loop this walk.
-func fixedCollectUnion(u *ir.Union, seenUnion, seen map[string]bool, order *[]*ir.Struct) {
-	if seenUnion[u.Name] {
-		return
-	}
-	seenUnion[u.Name] = true
-	for _, v := range u.Variants {
-		if v.F == nil {
-			continue
-		}
-		switch r := v.F.Type.Ref.(type) {
-		case *ir.Struct:
-			if v.F.Type.Kind == ir.TNamed {
-				fixedCollectTypes(r, seen, order)
-			}
-		case *ir.Union:
-			fixedCollectUnion(r, seenUnion, seen, order)
-		}
-	}
-}
+// ordered before the type that holds it. The walk is fixedclosure.Closure, the
+// one copy the packet emitter's file-module step-aside also reads.
+func fixedClosure(roots []*ir.Struct) []*ir.Struct { return fixedclosure.Closure(roots) }

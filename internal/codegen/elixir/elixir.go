@@ -57,6 +57,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixirtable/fixedclosure"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -110,35 +111,12 @@ func checkNames(u *ir.Unit) error {
 		}
 		return nil
 	}
-	// The declaration module names and union tag module names under <Ns>. A
-	// file whose <Base> is taken by one of them STEPS ASIDE to <Base>File; a
-	// declaration or tag module name the stepped-aside file module would take
-	// is still refused, by name.
-	taken := map[string]bool{}
-	for decl := range u.DeclFile {
-		if _, isConst := u.Consts[decl]; isConst {
-			continue // consts are file-module functions, not modules
-		}
-		if _, isFlags := u.Flags[decl]; isFlags {
-			continue // flags are file-module functions, not modules
-		}
-		if _, isTable := u.Tables[decl]; isTable {
-			// Tables are deliberately absent from the packet wire (ir.go:
-			// Tables) and lower to modules in the TABLE backend; a FIXED table
-			// emits its value struct as <Ns>.<Name> (docs/SPEC-TABLES.md §3.4),
-			// so one named after its schema file takes the file module's name
-			// and the file module steps aside — the loop below that adds the
-			// fixed table names makes that step-aside the same one every other
-			// taken <Base> gets.
-			continue
-		}
-		taken[decl] = true
-	}
-	for n := range fixedTableModuleNames(u) {
-		taken[n] = true
-	}
+	// The module names under <Ns> (moduleNamesUnderNs). A file whose <Base>
+	// is taken by one of them STEPS ASIDE to <Base>File; a declaration or tag
+	// module name the stepped-aside file module would take is still refused,
+	// by name.
+	taken := moduleNamesUnderNs(u)
 	for _, un := range u.Unions {
-		taken[un.Name+"Type"] = true
 		// the union's tag module <Name>Type colliding with a declaration of
 		// that name is a declaration-vs-declaration collision — the file
 		// module's step-aside cannot resolve it, so the refusal stands.
@@ -314,10 +292,23 @@ func fileModuleName(u *ir.Unit, f *ir.File) string {
 	return ir.GoExportName(u.Package) + "." + base
 }
 
-// fileModuleStepsAside reports whether a declaration or union tag module of
-// the unit takes the module name <Ns>.<base>, forcing the file module for a
-// file whose base is `base` to step aside to <Ns>.<base>File.
+// fileModuleStepsAside reports whether a declaration, union tag module or
+// fixed table value module of the unit takes the module name <Ns>.<base>,
+// forcing the file module for a file whose base is `base` to step aside to
+// <Ns>.<base>File. It reads the same set checkNames refuses against.
 func fileModuleStepsAside(u *ir.Unit, base string) bool {
+	return moduleNamesUnderNs(u)[base]
+}
+
+// moduleNamesUnderNs is THE ONE SKIP LIST: every module name under <Ns> that is
+// not a file module, which checkNames refuses against and fileModuleStepsAside
+// steps aside for. A declaration lowers to <Ns>.<Name> except a const or a
+// flags (file-module functions, not modules) and a table (absent from the
+// packet wire, ir.go Tables); a union adds its tag module <Name>Type; and a
+// FIXED table adds the value module <Ns>.<Name> the table backend emits for it
+// (docs/SPEC-TABLES.md §3.4, fixedTableModuleNames).
+func moduleNamesUnderNs(u *ir.Unit) map[string]bool {
+	taken := map[string]bool{}
 	for decl := range u.DeclFile {
 		if _, isConst := u.Consts[decl]; isConst {
 			continue // consts are file-module functions, not modules
@@ -326,79 +317,32 @@ func fileModuleStepsAside(u *ir.Unit, base string) bool {
 			continue // flags are file-module functions, not modules
 		}
 		if _, isTable := u.Tables[decl]; isTable {
-			// a FIXED table's value module is <Ns>.<base> (the TABLE backend),
-			// so one named after its schema file takes the file module's name
-			// and the file module steps aside (checked below, after the loop)
-			continue
+			continue // a fixed table's value module is added below, by the backend's own closure
 		}
-		if decl == base {
-			return true
-		}
+		taken[decl] = true
 	}
 	for _, un := range u.Unions {
-		if un.Name+"Type" == base {
-			return true
-		}
+		taken[un.Name+"Type"] = true
 	}
-	if fixedTableModuleNames(u)[base] {
-		return true
+	for n := range fixedTableModuleNames(u) {
+		taken[n] = true
 	}
-	return false
+	return taken
 }
 
 // fixedTableModuleNames is the set of table names whose FIXED FORM value module
 // (<Ns>.<Name>) the table backend emits (elixirtable/fixedelixir.go structModule)
 // beside the file module. A fixed table named after a schema file takes the
 // module name <Ns>.<Base>, so the packet emitter's file module must step aside
-// to <Base>File rather than merge two unrelated modules. The walk mirrors the
-// fixed backend's closure (fixedform.go fixedClosure): roots from
-// ir.TableFixedFormRoots, then every type and union arm they reach.
+// to <Base>File rather than merge two unrelated modules. The roots and closure
+// are the fixed backend's own (fixedclosure.Roots and fixedclosure.Closure,
+// which elixirtable's fixedRoots and fixedClosure are), never a copy of them.
 func fixedTableModuleNames(u *ir.Unit) map[string]bool {
 	names := map[string]bool{}
-	seen := map[string]bool{}
-	var collect func(st *ir.Struct)
-	var collectUnion func(un *ir.Union, seenUnion map[string]bool)
-	collect = func(st *ir.Struct) {
-		if seen[st.Name] {
-			return
-		}
-		seen[st.Name] = true
+	for _, st := range fixedclosure.Closure(fixedclosure.Roots(u)) {
 		if st.IsTable {
 			names[st.Name] = true
 		}
-		for _, f := range st.Fields {
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			switch r := f.Type.Ref.(type) {
-			case *ir.Struct:
-				collect(r)
-			case *ir.Union:
-				collectUnion(r, map[string]bool{})
-			}
-		}
-	}
-	collectUnion = func(un *ir.Union, seenUnion map[string]bool) {
-		if seenUnion[un.Name] {
-			return
-		}
-		seenUnion[un.Name] = true
-		for _, v := range un.Variants {
-			if v.F == nil {
-				continue
-			}
-			switch r := v.F.Type.Ref.(type) {
-			case *ir.Struct:
-				if v.F.Type.Kind == ir.TNamed {
-					collect(r)
-				}
-			case *ir.Union:
-				collectUnion(r, seenUnion)
-			}
-		}
-	}
-	for _, st := range ir.TableFixedFormRoots(u) {
-		collect(st)
 	}
 	return names
 }
