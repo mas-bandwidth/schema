@@ -781,6 +781,115 @@ public final class Driver {
         return 0;
     }
 
+    private static final class CookCodec {
+        final VariableCodec variable;
+        final Class<?> cook;
+        final java.lang.reflect.Method measure;
+        final java.lang.reflect.Method measureReason;
+        final java.lang.reflect.Method cookFrom;
+        CookCodec(String pkg, String root, Class<?> cook) throws ReflectiveOperationException {
+            variable = new VariableCodec(pkg, root);
+            this.cook = cook;
+            measure = cook.getMethod("cookMeasure", Object.class);
+            measureReason = cook.getMethod("cookMeasureReason", Object.class);
+            cookFrom = cook.getMethod("cookFrom", Object.class, byte[].class, int.class);
+        }
+        long measure(Object value) throws ReflectiveOperationException {
+            return (long) measure.invoke(null, value);
+        }
+        Object measureReason(Object value) throws ReflectiveOperationException {
+            return measureReason.invoke(null, value);
+        }
+        boolean cookFrom(Object value, byte[] buffer, int order) throws ReflectiveOperationException {
+            return (boolean) cookFrom.invoke(null, value, buffer, order);
+        }
+    }
+
+    // A cook-write row is ABSENT only for a reason the generator wrote down
+    // (docs/SPEC-TABLES.md §7.6), never because a lookup failed:
+    //   - the root's <Root>Cook is the generated STUB (cook.go emits a class
+    //     with a private constructor and no method when the root's closure
+    //     holds a construct the Java cook form does not carry, a union), or
+    //   - the unit has no cook form in this leg at all: neither <Root>Cook nor
+    //     the unit's TableCookInfo exists (the wide-kind unit gets no
+    //     accelerators, and a unit off this classpath has neither).
+    // Every other failure (a missing <Root>Cook in a unit that has a cook
+    // form, a real writer whose cookMeasure, cookMeasureReason or cookFrom
+    // lookup breaks, a Value class that will not load) is thrown, and the
+    // surface FAILS, so a renamed or re-typed writer can never turn its rows
+    // absent and leave the cell green.
+    private static CookCodec cookCodec(String unit, String root) throws ReflectiveOperationException {
+        String pkg = variableUnitPackage(unit);
+        Class<?> cook;
+        try {
+            cook = Class.forName(pkg + "." + root + "Cook");
+        } catch (ClassNotFoundException missing) {
+            try { Class.forName(pkg + ".TableCookInfo"); }
+            catch (ClassNotFoundException noCookForm) { return null; }
+            throw missing;
+        }
+        if (cook.getDeclaredMethods().length == 0) { return null; }
+        return new CookCodec(pkg, root, cook);
+    }
+
+    private static String[] instanceNamed(String name) {
+        for (String[] f : kind("instance")) {
+            if (f[1].equals(name)) { return f; }
+        }
+        return null;
+    }
+
+    private static int surfaceCookWrite(String out) throws IOException {
+        for (String[] f : kind("cook-write")) {
+            String[] inst = instanceNamed(f[1]);
+            if (inst == null) { return failInt("missing instance " + f[1]); }
+            CookCodec codec;
+            try { codec = cookCodec(inst[2], inst[3]); }
+            catch (ReflectiveOperationException broken) {
+                return failInt(f[1] + ": cook writer lookup failed: " + broken);
+            }
+            if (codec == null) {
+                spillAbsent(out, f[1]);
+                spillAbsent(out, f[1] + "-be");
+                continue;
+            }
+            try {
+                Object report = codec.variable.report();
+                Object value = codec.variable.load(Files.readAllBytes(Paths.get(inst[4])), report);
+                if (value == null || codec.variable.flag(report, "refused") || codec.variable.flag(report, "malformed")) {
+                    return failInt(f[1] + ": cook input did not load");
+                }
+                long size = codec.measure(value);
+                if (size < 1) { return failInt(f[1] + ": cookMeasure refused"); }
+                Object reason = codec.measureReason(value);
+                long rBytes = (long) reason.getClass().getMethod("bytes").invoke(reason);
+                String rText = (String) reason.getClass().getMethod("reason").invoke(reason);
+                if (rBytes != size || !"ok".equals(rText)) {
+                    return failInt(f[1] + ": cookMeasureReason disagreed with cookMeasure");
+                }
+                for (int order : new int[] { 1, 2 }) {
+                    String name = order == 2 ? f[1] + "-be" : f[1];
+                    byte[] shortBuf = new byte[(int) size - 1];
+                    java.util.Arrays.fill(shortBuf, (byte) 0xa5);
+                    if (codec.cookFrom(value, shortBuf, order)) {
+                        return failInt(name + ": short buffer succeeded");
+                    }
+                    for (byte b : shortBuf) {
+                        if (b != (byte) 0xa5) { return failInt(name + ": short buffer wrote bytes"); }
+                    }
+                    byte[] buffer = new byte[(int) size];
+                    if (!codec.cookFrom(value, buffer, order)) {
+                        return failInt(name + ": cookFrom refused");
+                    }
+                    spill(out, name, buffer);
+                }
+            } catch (ReflectiveOperationException failure) {
+                return failInt(f[1] + ": cook-write codec failed: " + failure);
+            }
+        }
+        return 0;
+    }
+
     public static int run(String[] args) throws IOException {
         if (args.length < 2) {
             System.err.println("usage: driver <manifest> list\n       driver <manifest> <surface> <outdir>");
@@ -795,7 +904,7 @@ public final class Driver {
             // case ABSENT, one by one.
             System.out.print("wire\nreport\njson-read\njson-write\n"
                     + "block\nblock-foreign\n"
-                    + "block-dump\nforgery\ncook\ncook-foreign\ncook-forgery\n");
+                    + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n");
             return 0;
         }
         if (args.length < 3) {
@@ -813,6 +922,7 @@ public final class Driver {
             case "block-dump": return surfaceBlockDump(out);
             case "forgery": return surfaceForgery(out);
             case "cook": return surfaceCook(out);
+            case "cook-write": return surfaceCookWrite(out);
             case "cook-foreign": return surfaceCookForeign(out);
             case "cook-forgery": return surfaceCookForgery(out);
             default: return 2;

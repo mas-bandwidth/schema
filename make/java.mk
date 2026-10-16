@@ -596,6 +596,18 @@ tables-java-json-differential-negative-control:
 
 test-java: tables-java-json-differential
 
+# THE BLOCK BUILDER AND COOK WRITER GATE (docs/SPEC-TABLES.md §7.6, §19.1):
+# the Java block builder produces the committed block_render and block_padded
+# images byte-for-byte, and the Java cook writer produces the committed
+# little-endian and big-endian cooked images byte-for-byte.
+.PHONY: tables-java-block-build
+tables-java-block-build:
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestBlockBuildAndCookWriteJava$$'
+	@echo 'tables Java block builder and cook writer: block_render, block_padded and cook-write match the committed reference bytes'
+
+test-java: tables-java-block-build
+
 # THE VARIABLE-CLASS GATE (docs/SPEC-TABLES.md §2, §3, §16), the Java twin of
 # `tables-go-variable-class`: the variable form's codecs for the pointered,
 # blob and list corpora round-trip against the committed reference bytes. It is
