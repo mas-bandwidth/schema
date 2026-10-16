@@ -1,0 +1,388 @@
+# bench/results/packet-read-js/board.txt: w3 section first (hulk, 2026-10-16), then w2 (hetzner2) and w1 (hetzner1) below, unedited.
+# w3: each sitting is ONE script invocation running four node processes back to back, pinned to one core (taskset -c 4).
+# Sitting 1 ran in, shared, base, packet; sitting 2 (the control) ran the reverse. Sitting 3 is a declared DIAGNOSTIC, not counted.
+# Legs: in = the committed codec (in-place identity read); shared = the same commit with the door closed; base = d1f6577c4 regenerated (before this card).
+# Both runners run 1 discarded warmup + 7 measured runs in-process (table 400000 records, packet 4000000 records).
+# core busy: jiffies on the pinned core and its SMT sibling across the window (busy total -> busy total).
+
+# sitting 1 order in shared base packet
+# host: hulk x86_64 kernel 6.8.0-142-generic
+# cpu: AMD Ryzen Threadripper 2990WX 32-Core Processor
+# node: v26.7.0  serialize.js: v1.4.2 de0591c9e6fddbbc5d4512b4558f091ffa2158ad
+# schema rev: 752c99c178e31486bb4266f5903c98f9053f54e1 dirty-files: 0
+# leg in: /home/gaffer/rowan-working/jobs/js-fixed-read-beats-its-packet-read.w3~21.g2/schema (the committed codec, in-place identity read)
+# leg shared: t-shared = the same commit with the door closed (const identity = false;): the shared path, control
+# leg base: t-base = d1f6577c4 regenerated with its own emitter: the codec before this card, control
+# sha256 schema FixedTableTable.js 7336a4ba1f3abedd BenchTable.js c896a0e970df5b2a
+# sha256 t-shared FixedTableTable.js 46d7a073b410416d BenchTable.js c896a0e970df5b2a
+# sha256 t-base FixedTableTable.js 652a3ae26180860b BenchTable.js 36a35c6f7c70dc50
+# pin: taskset -c 4 (SMT siblings 4,36)
+# date_start: 2026-10-16T03:00:23Z
+# load_start: 0.17 0.71 0.70
+in rc=0
+shared rc=0
+base rc=0
+packet rc=0
+# date_end: 2026-10-16T03:00:57Z
+# load_end: 1.11 0.89 0.76
+# core4 busy jiffies/total over window: 9356 604122 -> 12726 607495
+# core36 (SMT sibling) busy jiffies/total over window: 7282 604387 -> 7284 607760
+# top at end:
+#   %CPU PSR COMMAND
+#    2.2  31 alloy
+#    1.0  34 tailscaled
+#    0.8  40 prometheus-node
+#    0.4  61 nova-swarm
+#    0.3  23 systemd
+## leg in
+schema tables bench (js, node 26.7.0, the FIXED FORM, --plan-read: the identity read measured alone)
+bench_fixed_read   read             1.406 M msg/s     1695.4 MB/s   (min 1.351, max 1.411, spread 4.3%)
+bench_fixed_read   read        ns/record best 708.9 median 711.2 (MEASURED, read alone)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_fixed_read,read,400000,1264.296875,7,1406162,1350846,1410662,1695.45,4.25,066b2822b3e5d487,table,esm,contract,default,unknown
+OK (corpus_id 066b2822b3e5d487, sink nonzero)
+## leg shared
+schema tables bench (js, node 26.7.0, the FIXED FORM, --plan-read: the identity read measured alone)
+bench_fixed_read   read             0.763 M msg/s      920.6 MB/s   (min 0.746, max 0.766, spread 2.5%)
+bench_fixed_read   read        ns/record best 1306.1 median 1309.8 (MEASURED, read alone)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_fixed_read,read,400000,1264.296875,7,763494,746397,765645,920.57,2.52,066b2822b3e5d487,table,esm,contract,default,unknown
+OK (corpus_id 066b2822b3e5d487, sink nonzero)
+## leg base
+schema tables bench (js, node 26.7.0, the FIXED FORM, --plan-read: the identity read measured alone)
+bench_fixed_read   read             0.678 M msg/s      816.9 MB/s   (min 0.668, max 0.681, spread 1.8%)
+bench_fixed_read   read        ns/record best 1468.8 median 1475.9 (MEASURED, read alone)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_fixed_read,read,400000,1264.296875,7,677534,668483,680809,816.92,1.82,066b2822b3e5d487,table,esm,contract,default,unknown
+OK (corpus_id 066b2822b3e5d487, sink nonzero)
+## leg packet
+schema bench (js, node 26.7.0, production mode, --plan-read: the packet read measured alone)
+bench_mixed_read [flat] read        1.47 M msg/s      614.6 MB/s   (min 1.46, max 1.48, spread 1.1%)
+bench_mixed_read   read  ns/record best 677.6 median 679.7 (MEASURED, read alone)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_mixed_read,read,4000000,438,7,1471277,1459676,1475764,614.57,1.09,fd0748942dc6ae09,gen,esm,contract,default,unknown,flat
+OK (corpus_id fd0748942dc6ae09)
+
+# sitting 2 order packet base shared in
+# host: hulk x86_64 kernel 6.8.0-142-generic
+# cpu: AMD Ryzen Threadripper 2990WX 32-Core Processor
+# node: v26.7.0  serialize.js: v1.4.2 de0591c9e6fddbbc5d4512b4558f091ffa2158ad
+# schema rev: 752c99c178e31486bb4266f5903c98f9053f54e1 dirty-files: 0
+# leg in: /home/gaffer/rowan-working/jobs/js-fixed-read-beats-its-packet-read.w3~21.g2/schema (the committed codec, in-place identity read)
+# leg shared: t-shared = the same commit with the door closed (const identity = false;): the shared path, control
+# leg base: t-base = d1f6577c4 regenerated with its own emitter: the codec before this card, control
+# sha256 schema FixedTableTable.js 7336a4ba1f3abedd BenchTable.js c896a0e970df5b2a
+# sha256 t-shared FixedTableTable.js 46d7a073b410416d BenchTable.js c896a0e970df5b2a
+# sha256 t-base FixedTableTable.js 652a3ae26180860b BenchTable.js 36a35c6f7c70dc50
+# pin: taskset -c 4 (SMT siblings 4,36)
+# date_start: 2026-10-16T03:00:57Z
+# load_start: 1.11 0.89 0.76
+packet rc=0
+base rc=0
+shared rc=0
+in rc=0
+# date_end: 2026-10-16T03:01:30Z
+# load_end: 1.18 0.93 0.78
+# core4 busy jiffies/total over window: 12726 607512 -> 16099 610888
+# core36 (SMT sibling) busy jiffies/total over window: 7285 607778 -> 7287 611153
+# top at end:
+#   %CPU PSR COMMAND
+#    2.2  31 alloy
+#    1.0   6 tailscaled
+#    0.8  40 prometheus-node
+#    0.4  61 nova-swarm
+#    0.3  50 systemd
+## leg packet
+schema bench (js, node 26.7.0, production mode, --plan-read: the packet read measured alone)
+bench_mixed_read [flat] read        1.46 M msg/s      610.7 MB/s   (min 1.45, max 1.48, spread 1.9%)
+bench_mixed_read   read  ns/record best 677.3 median 684.0 (MEASURED, read alone)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_mixed_read,read,4000000,438,7,1462047,1448349,1476382,610.71,1.92,fd0748942dc6ae09,gen,esm,contract,default,unknown,flat
+OK (corpus_id fd0748942dc6ae09)
+## leg base
+schema tables bench (js, node 26.7.0, the FIXED FORM, --plan-read: the identity read measured alone)
+bench_fixed_read   read             0.672 M msg/s      810.0 MB/s   (min 0.659, max 0.678, spread 2.8%)
+bench_fixed_read   read        ns/record best 1475.3 median 1488.6 (MEASURED, read alone)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_fixed_read,read,400000,1264.296875,7,671763,659162,677814,809.96,2.78,066b2822b3e5d487,table,esm,contract,default,unknown
+OK (corpus_id 066b2822b3e5d487, sink nonzero)
+## leg shared
+schema tables bench (js, node 26.7.0, the FIXED FORM, --plan-read: the identity read measured alone)
+bench_fixed_read   read             0.763 M msg/s      919.6 MB/s   (min 0.746, max 0.765, spread 2.5%)
+bench_fixed_read   read        ns/record best 1306.5 median 1311.2 (MEASURED, read alone)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_fixed_read,read,400000,1264.296875,7,762683,746285,765420,919.59,2.51,066b2822b3e5d487,table,esm,contract,default,unknown
+OK (corpus_id 066b2822b3e5d487, sink nonzero)
+## leg in
+schema tables bench (js, node 26.7.0, the FIXED FORM, --plan-read: the identity read measured alone)
+bench_fixed_read   read             1.480 M msg/s     1784.3 MB/s   (min 1.430, max 1.488, spread 3.9%)
+bench_fixed_read   read        ns/record best 672.0 median 675.8 (MEASURED, read alone)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_fixed_read,read,400000,1264.296875,7,1479820,1430474,1488181,1784.26,3.90,066b2822b3e5d487,table,esm,contract,default,unknown
+OK (corpus_id 066b2822b3e5d487, sink nonzero)
+
+# sitting 3 order in packet in packet
+# host: hulk x86_64 kernel 6.8.0-142-generic
+# cpu: AMD Ryzen Threadripper 2990WX 32-Core Processor
+# node: v26.7.0  serialize.js: v1.4.2 de0591c9e6fddbbc5d4512b4558f091ffa2158ad
+# schema rev: 752c99c178e31486bb4266f5903c98f9053f54e1 dirty-files: 0
+# leg in: /home/gaffer/rowan-working/jobs/js-fixed-read-beats-its-packet-read.w3~21.g2/schema (the committed codec, in-place identity read)
+# leg shared: t-shared = the same commit with the door closed (const identity = false;): the shared path, control
+# leg base: t-base = d1f6577c4 regenerated with its own emitter: the codec before this card, control
+# sha256 schema FixedTableTable.js 7336a4ba1f3abedd BenchTable.js c896a0e970df5b2a
+# sha256 t-shared FixedTableTable.js 46d7a073b410416d BenchTable.js c896a0e970df5b2a
+# sha256 t-base FixedTableTable.js 652a3ae26180860b BenchTable.js 36a35c6f7c70dc50
+# pin: taskset -c 4 (SMT siblings 4,36)
+# date_start: 2026-10-16T03:01:48Z
+# load_start: 0.99 0.90 0.77
+in rc=0
+packet rc=0
+in rc=0
+packet rc=0
+# date_end: 2026-10-16T03:02:37Z
+# load_end: 1.37 1.02 0.83
+# core4 busy jiffies/total over window: 16106 612621 -> 21005 617523
+# core36 (SMT sibling) busy jiffies/total over window: 7289 612886 -> 7293 617780
+# top at end:
+#   %CPU PSR COMMAND
+#    2.2  31 alloy
+#    1.0  39 tailscaled
+#    0.8  40 prometheus-node
+#    0.4   1 nova-swarm
+#    0.3   5 systemd
+## leg in
+schema tables bench (js, node 26.7.0, the FIXED FORM, --plan-read: the identity read measured alone)
+bench_fixed_read   read             1.389 M msg/s     1674.9 MB/s   (min 1.355, max 1.406, spread 3.7%)
+bench_fixed_read   read        ns/record best 711.2 median 719.9 (MEASURED, read alone)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_fixed_read,read,400000,1264.296875,7,1389153,1355347,1406118,1674.94,3.65,066b2822b3e5d487,table,esm,contract,default,unknown
+OK (corpus_id 066b2822b3e5d487, sink nonzero)
+## leg packet
+schema bench (js, node 26.7.0, production mode, --plan-read: the packet read measured alone)
+bench_mixed_read [flat] read        1.47 M msg/s      612.7 MB/s   (min 1.44, max 1.48, spread 2.2%)
+bench_mixed_read   read  ns/record best 677.4 median 681.7 (MEASURED, read alone)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_mixed_read,read,4000000,438,7,1466875,1443606,1476249,612.73,2.23,fd0748942dc6ae09,gen,esm,contract,default,unknown,flat
+OK (corpus_id fd0748942dc6ae09)
+## leg in
+schema tables bench (js, node 26.7.0, the FIXED FORM, --plan-read: the identity read measured alone)
+bench_fixed_read   read             1.422 M msg/s     1715.1 MB/s   (min 1.408, max 1.473, spread 4.6%)
+bench_fixed_read   read        ns/record best 678.8 median 703.0 (MEASURED, read alone)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_fixed_read,read,400000,1264.296875,7,1422437,1408053,1473287,1715.07,4.59,066b2822b3e5d487,table,esm,contract,default,unknown
+OK (corpus_id 066b2822b3e5d487, sink nonzero)
+## leg packet
+schema bench (js, node 26.7.0, production mode, --plan-read: the packet read measured alone)
+bench_mixed_read [flat] read        1.46 M msg/s      609.6 MB/s   (min 1.44, max 1.47, spread 2.1%)
+bench_mixed_read   read  ns/record best 678.1 median 685.2 (MEASURED, read alone)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_mixed_read,read,4000000,438,7,1459423,1443933,1474665,609.61,2.11,fd0748942dc6ae09,gen,esm,contract,default,unknown,flat
+OK (corpus_id fd0748942dc6ae09)
+
+# ---- w2 and w1 below ----
+# bench/results/packet-read-js/board.txt — the JS read arm (BENCH-STANDARD §1.10), identity lane, two sittings on hetzner1
+# Each sitting is ONE script invocation running the two runners back to back as TWO node processes, pinned to one core (taskset -c 11);
+# sitting 1 ran table then packet, sitting 2 (the control) packet then table. Rows below are the runners' own output, unedited.
+# Both runners run 1 discarded warmup + 7 measured runs in-process; iteration counts are each runner's fixed standard count (table 400000 records, packet 4000000 records).
+# dirty-files: 2 = the two runner files of this card, uncommitted at bench time; the bench tree is d6edc12a4 + this card's diff to bench/tables/js/table_main.mjs and bench/js/main.mjs.
+# core busy: jiffies on the pinned core across the window (busy total -> busy total); the delta being equal shows the pinned core was ours for the whole window.
+
+# sitting 1 order tp
+# host: hetzner1 x86_64 kernel 6.8.0-139-generic
+# cpu: AMD Ryzen 7 PRO 8700GE w/ Radeon 780M Graphics
+# node: v26.7.0  serialize.js: v1.4.2 de0591c9e6fddbbc5d4512b4558f091ffa2158ad
+# schema rev: d6edc12a4751273e4eb162ff59d0cae3372698c6 dirty-files: 2
+# pin: taskset -c 11
+# date_start: 2026-10-16T01:56:28Z
+# load_start: 14.06 13.19 13.00
+table rc=0
+packet rc=0
+schema tables bench (js, node 26.7.0, the FIXED FORM, --plan-read: the identity read measured alone)
+bench_fixed_read   read             1.107 M msg/s     1334.5 MB/s   (min 1.045, max 1.161, spread 10.5%)
+bench_fixed_read   read        ns/record best 861.4 median 903.5 (MEASURED, read alone)
+OK (corpus_id 066b2822b3e5d487, sink nonzero)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_fixed_read,read,400000,1264.296875,7,1106835,1045117,1160966,1334.54,10.47,066b2822b3e5d487,table,esm,contract,default,unknown
+schema bench (js, node 26.7.0, production mode, --plan-read: the packet read measured alone)
+bench_mixed_read [flat] read        2.71 M msg/s     1130.8 MB/s   (min 2.66, max 2.74, spread 3.2%)
+bench_mixed_read   read  ns/record best 364.4 median 369.4 (MEASURED, read alone)
+OK (corpus_id fd0748942dc6ae09)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_mixed_read,read,4000000,438,7,2707179,2658534,2744094,1130.81,3.16,fd0748942dc6ae09,gen,esm,contract,default,unknown,flat
+# date_end: 2026-10-16T01:56:43Z
+# load_end: 12.80 12.93 12.92
+# core11 busy jiffies/total over window: 18868191 225662416 -> 18869681 225663906
+# top at end:
+#   %CPU PSR COMMAND
+#    216  14 beam.smp
+#    100  13 cc1plus
+#   29.6  14 opencode.bin
+#    0.9   9 go
+#    0.7   4 kworker/u32:14-iou_exit
+
+# sitting 2 order pt
+# host: hetzner1 x86_64 kernel 6.8.0-139-generic
+# cpu: AMD Ryzen 7 PRO 8700GE w/ Radeon 780M Graphics
+# node: v26.7.0  serialize.js: v1.4.2 de0591c9e6fddbbc5d4512b4558f091ffa2158ad
+# schema rev: d6edc12a4751273e4eb162ff59d0cae3372698c6 dirty-files: 2
+# pin: taskset -c 11
+# date_start: 2026-10-16T01:56:49Z
+# load_start: 11.94 12.75 12.87
+packet rc=0
+table rc=0
+schema tables bench (js, node 26.7.0, the FIXED FORM, --plan-read: the identity read measured alone)
+bench_fixed_read   read             1.101 M msg/s     1327.7 MB/s   (min 1.044, max 1.134, spread 8.2%)
+bench_fixed_read   read        ns/record best 881.9 median 908.1 (MEASURED, read alone)
+OK (corpus_id 066b2822b3e5d487, sink nonzero)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_fixed_read,read,400000,1264.296875,7,1101195,1043726,1133966,1327.74,8.19,066b2822b3e5d487,table,esm,contract,default,unknown
+schema bench (js, node 26.7.0, production mode, --plan-read: the packet read measured alone)
+bench_mixed_read [flat] read        2.68 M msg/s     1120.5 MB/s   (min 2.61, max 2.76, spread 5.8%)
+bench_mixed_read   read  ns/record best 362.2 median 372.8 (MEASURED, read alone)
+OK (corpus_id fd0748942dc6ae09)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_mixed_read,read,4000000,438,7,2682587,2605208,2761130,1120.54,5.81,fd0748942dc6ae09,gen,esm,contract,default,unknown,flat
+# date_end: 2026-10-16T01:57:04Z
+# load_end: 9.96 12.28 12.71
+# core11 busy jiffies/total over window: 18869727 225664526 -> 18871238 225666037
+# top at end:
+#   %CPU PSR COMMAND
+#    187  10 beam.smp
+#   21.3  14 opencode.bin
+#    2.3  10 git-remote-http
+#    0.7   4 kworker/u32:14-iou_exit
+#    0.5   3 nova-sandbox
+
+
+# ============================================================================
+# ATTEMPT w2 (2026-10-16), hetzner2, taskset -c 12 (no SMT on this host). Head under test: c704b7f43, clean tree.
+# Each sitting is ONE script invocation: the shipped table runner, three SCRATCH codecs run by the SAME committed table runner
+# (each a copy of the tree whose generated/bench/paired/js was replaced; never committed), and the packet runner. Sitting 1 tables then packet,
+# sitting 2 (control) packet then tables. Lines are each process's own output, unedited; the ns/record lines are in each section.
+#   emitted      = the proposed emitter diff's own output (schema generate), identity projects from the file
+#   emitted-noid = the same emission with only the identity branch removed (copy kept): the ruling-neutral half alone
+#   p6-mz        = hand-patched scratch codec, the upper bound found while profiling
+
+# sitting 1 order tp (t = table halves: shipped then candidate; p = packet half)
+# host: hetzner2 x86_64 kernel 6.8.0-139-generic
+# cpu: AMD Ryzen 9 7950X3D 16-Core Processor
+# node: v26.7.0  serialize.js: v1.4.2 de0591c9e6fddbbc5d4512b4558f091ffa2158ad
+# schema rev: c704b7f4359ad81c1222c1c03a4381a790d3b744 dirty-files: 0
+# candidate: scratch/emitted-noid (generated/bench/paired/js patched; sha256 BenchTable.js c896a0e970df5b2a FixedTableTable.js 60810ab34421f82b)
+# candidate: scratch/emitted (generated/bench/paired/js patched; sha256 BenchTable.js c896a0e970df5b2a FixedTableTable.js 02a4bbea947a7308)
+# candidate: scratch/p6-mz (generated/bench/paired/js patched; sha256 BenchTable.js 1f98498fbd3f49ac FixedTableTable.js c33e5dfd58724bac)
+# pin: taskset -c 12 (SMT siblings 12)
+# date_start: 2026-10-16T02:43:35Z
+# load_start: 0.91 5.29 6.02
+table-shipped rc=0
+table-emitted-noid rc=0
+table-emitted rc=0
+table-p6-mz rc=0
+packet rc=0
+## table half, SHIPPED codec
+schema tables bench (js, node 26.7.0, the FIXED FORM, --plan-read: the identity read measured alone)
+bench_fixed_read   read             1.195 M msg/s     1440.8 MB/s   (min 1.169, max 1.200, spread 2.6%)
+bench_fixed_read   read        ns/record best 833.2 median 836.8 (MEASURED, read alone)
+OK (corpus_id 066b2822b3e5d487, sink nonzero)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_fixed_read,read,400000,1264.296875,7,1194990,1168708,1200180,1440.83,2.63,066b2822b3e5d487,table,esm,contract,default,unknown
+## table half, CANDIDATE codec scratch/emitted-noid (scratch, not committed)
+schema tables bench (js, node 26.7.0, the FIXED FORM, --plan-read: the identity read measured alone)
+bench_fixed_read   read             1.345 M msg/s     1621.7 MB/s   (min 1.320, max 1.357, spread 2.8%)
+bench_fixed_read   read        ns/record best 736.7 median 743.5 (MEASURED, read alone)
+OK (corpus_id 066b2822b3e5d487, sink nonzero)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_fixed_read,read,400000,1264.296875,7,1344962,1319928,1357412,1621.66,2.79,066b2822b3e5d487,table,esm,contract,default,unknown
+## table half, CANDIDATE codec scratch/emitted (scratch, not committed)
+schema tables bench (js, node 26.7.0, the FIXED FORM, --plan-read: the identity read measured alone)
+bench_fixed_read   read             2.940 M msg/s     3544.6 MB/s   (min 2.861, max 2.955, spread 3.2%)
+bench_fixed_read   read        ns/record best 338.4 median 340.2 (MEASURED, read alone)
+OK (corpus_id 066b2822b3e5d487, sink nonzero)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_fixed_read,read,400000,1264.296875,7,2939818,2861336,2954675,3544.62,3.18,066b2822b3e5d487,table,esm,contract,default,unknown
+## table half, CANDIDATE codec scratch/p6-mz (scratch, not committed)
+schema tables bench (js, node 26.7.0, the FIXED FORM, --plan-read: the identity read measured alone)
+bench_fixed_read   read             3.014 M msg/s     3633.6 MB/s   (min 2.963, max 3.078, spread 3.8%)
+bench_fixed_read   read        ns/record best 324.9 median 331.8 (MEASURED, read alone)
+OK (corpus_id 066b2822b3e5d487, sink nonzero)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_fixed_read,read,400000,1264.296875,7,3013576,2962976,3077817,3633.55,3.81,066b2822b3e5d487,table,esm,contract,default,unknown
+## packet half
+schema bench (js, node 26.7.0, production mode, --plan-read: the packet read measured alone)
+bench_mixed_read [flat] read        2.85 M msg/s     1188.8 MB/s   (min 2.83, max 2.88, spread 2.0%)
+bench_mixed_read   read  ns/record best 346.7 median 351.4 (MEASURED, read alone)
+OK (corpus_id fd0748942dc6ae09)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_mixed_read,read,4000000,438,7,2845897,2827042,2884335,1188.76,2.01,fd0748942dc6ae09,gen,esm,contract,default,unknown,flat
+# date_end: 2026-10-16T02:43:54Z
+# load_end: 0.94 5.01 5.91
+# core12 busy jiffies/total over window: 8387423 54921997 -> 8389312 54923886
+# top at end:
+#   %CPU PSR COMMAND
+#    2.3   0 git-remote-http
+#    1.0  12 nova-swarm
+#    0.5  13 jbd2/md2-8
+#    0.5   2 grafana
+#    0.5   4 nova-swarm
+
+# sitting 2 order pt (t = table halves: shipped then candidate; p = packet half)
+# host: hetzner2 x86_64 kernel 6.8.0-139-generic
+# cpu: AMD Ryzen 9 7950X3D 16-Core Processor
+# node: v26.7.0  serialize.js: v1.4.2 de0591c9e6fddbbc5d4512b4558f091ffa2158ad
+# schema rev: c704b7f4359ad81c1222c1c03a4381a790d3b744 dirty-files: 0
+# candidate: scratch/emitted-noid (generated/bench/paired/js patched; sha256 BenchTable.js c896a0e970df5b2a FixedTableTable.js 60810ab34421f82b)
+# candidate: scratch/emitted (generated/bench/paired/js patched; sha256 BenchTable.js c896a0e970df5b2a FixedTableTable.js 02a4bbea947a7308)
+# candidate: scratch/p6-mz (generated/bench/paired/js patched; sha256 BenchTable.js 1f98498fbd3f49ac FixedTableTable.js c33e5dfd58724bac)
+# pin: taskset -c 12 (SMT siblings 12)
+# date_start: 2026-10-16T02:43:54Z
+# load_start: 0.94 5.01 5.91
+packet rc=0
+table-emitted-noid rc=0
+table-emitted rc=0
+table-p6-mz rc=0
+table-shipped rc=0
+## table half, SHIPPED codec
+schema tables bench (js, node 26.7.0, the FIXED FORM, --plan-read: the identity read measured alone)
+bench_fixed_read   read             1.180 M msg/s     1423.1 MB/s   (min 1.154, max 1.184, spread 2.6%)
+bench_fixed_read   read        ns/record best 844.4 median 847.2 (MEASURED, read alone)
+OK (corpus_id 066b2822b3e5d487, sink nonzero)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_fixed_read,read,400000,1264.296875,7,1180310,1153910,1184228,1423.13,2.57,066b2822b3e5d487,table,esm,contract,default,unknown
+## table half, CANDIDATE codec scratch/emitted-noid (scratch, not committed)
+schema tables bench (js, node 26.7.0, the FIXED FORM, --plan-read: the identity read measured alone)
+bench_fixed_read   read             1.326 M msg/s     1599.0 MB/s   (min 1.293, max 1.330, spread 2.8%)
+bench_fixed_read   read        ns/record best 751.7 median 754.1 (MEASURED, read alone)
+OK (corpus_id 066b2822b3e5d487, sink nonzero)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_fixed_read,read,400000,1264.296875,7,1326157,1293445,1330251,1598.98,2.78,066b2822b3e5d487,table,esm,contract,default,unknown
+## table half, CANDIDATE codec scratch/emitted (scratch, not committed)
+schema tables bench (js, node 26.7.0, the FIXED FORM, --plan-read: the identity read measured alone)
+bench_fixed_read   read             2.857 M msg/s     3445.2 MB/s   (min 2.793, max 2.866, spread 2.6%)
+bench_fixed_read   read        ns/record best 348.9 median 350.0 (MEASURED, read alone)
+OK (corpus_id 066b2822b3e5d487, sink nonzero)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_fixed_read,read,400000,1264.296875,7,2857376,2792912,2865902,3445.22,2.55,066b2822b3e5d487,table,esm,contract,default,unknown
+## table half, CANDIDATE codec scratch/p6-mz (scratch, not committed)
+schema tables bench (js, node 26.7.0, the FIXED FORM, --plan-read: the identity read measured alone)
+bench_fixed_read   read             3.037 M msg/s     3661.6 MB/s   (min 2.950, max 3.054, spread 3.4%)
+bench_fixed_read   read        ns/record best 327.4 median 329.3 (MEASURED, read alone)
+OK (corpus_id 066b2822b3e5d487, sink nonzero)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_fixed_read,read,400000,1264.296875,7,3036819,2950311,3053980,3661.58,3.41,066b2822b3e5d487,table,esm,contract,default,unknown
+## packet half
+schema bench (js, node 26.7.0, production mode, --plan-read: the packet read measured alone)
+bench_mixed_read [flat] read        2.72 M msg/s     1137.5 MB/s   (min 2.59, max 2.83, spread 8.7%)
+bench_mixed_read   read  ns/record best 353.4 median 367.2 (MEASURED, read alone)
+OK (corpus_id fd0748942dc6ae09)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_mixed_read,read,4000000,438,7,2723253,2592742,2829894,1137.53,8.71,fd0748942dc6ae09,gen,esm,contract,default,unknown,flat
+# date_end: 2026-10-16T02:44:13Z
+# load_end: 1.40 4.85 5.84
+# core12 busy jiffies/total over window: 8389313 54923893 -> 8391265 54925846
+# top at end:
+#   %CPU PSR COMMAND
+#   96.3  15 VBCSCompiler
+#    1.0  12 nova-swarm
+#    0.5   8 jbd2/md2-8
+#    0.5   2 grafana
+#    0.5   3 nova-swarm

@@ -370,11 +370,12 @@ export function FixedTableFixedSave(values, count, bytes) {
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout otherwise. THE SAME LOOP EITHER WAY: there is no strict
-// flag, no fast path and no second reader to keep honest against the first,
-// which is the owner's own ruling — a form whose cost moved when a peer
-// shipped would be a cliff at exactly the moment a deployment cannot afford
-// one. Answers the records read, or -1 with the reason named in the report.
+// writer's layout otherwise. Every COMPILED plan runs the same loop; there
+// is no strict flag. THE ONE LISTED EXCEPTION (docs/SPEC-TABLES.md §3.4,
+// THE IN-PLACE IDENTITY READ): this language's identity plan is one copy of
+// the whole body, so it projects straight from the file's view with no
+// intermediate copy, and its results are held equal to the shared path's by
+// test. Answers the records read, or -1 with the reason named in the report.
 export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, report) {
   TableFixedResetReport(report);
   if (bytes === null || byteLength < 1) { report.malformed = true; return -1; }
@@ -406,8 +407,17 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
   if (pick < FixedTableFixedFloor) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnsupported, hashLo, hashHi); }
   const known = FixedTableFixedKnown[pick];
   if (layoutBytes !== known.layoutBytes) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
-  for (let i = 0; i < layoutBytes; i++) {
-    if (bytes[layoutAt + i] !== known.layout[i]) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
+  const srcView = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
+  {
+    // THE LAYOUT COMPARE MOVES IN 32-BIT LANES, then a tail of at most three bytes.
+    const lv = known.layoutView;
+    let i = 0;
+    for (; i + 4 <= layoutBytes; i += 4) {
+      if (srcView.getUint32(layoutAt + i, true) !== lv.getUint32(i, true)) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
+    }
+    for (; i < layoutBytes; i++) {
+      if (bytes[layoutAt + i] !== known.layout[i]) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
+    }
   }
   if (plan === null) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }
   let entries = FixedTableFixedIdentity, entryCount = 1, remap = null;
@@ -438,23 +448,25 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
   // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's plan is one
   // COPY of the whole body, so the hole list is empty and the inner loop is a
   // no-op. A compiled plan that leaves a field out has that field in the list,
-  // and the declared default is what it keeps. Same loop either way. There is
-  // no identity flag in the record loop — an empty list is what skips the work.
+  // and the declared default is what it keeps. An empty list is what skips
+  // the prefill; the identity door below is §3.4's in-place read, not a hole rule.
   const holeN = TableFixedHoles(entries, entryCount, plan.cover, plan.holes);
-  // ONE VIEW OVER THE FILE, MADE ONCE PER READ AND NEVER PER RECORD: the
-  // read loop moves a run in 32-bit lanes and a DataView is what has an
-  // unaligned word move in this language (§3.4).
-  const srcView = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
   // §4.5, §5.3: stage the record loop's counters so a refusal leaves the
   // caller's clamped and widened untouched; commit after the loop.
   const stage = TableFixedResetReport(plan.stage);
+  const identity = entries === FixedTableFixedIdentity && holeN === 0;
   let at = layoutAt + layoutBytes;
   for (let k = 0; k < n; k++) {
     // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY
     // NAME, never a guess and never damage: nothing is decoded, no counter moves.
-    if (((bytes[at] | (bytes[at + 1] << 8) | (bytes[at + 2] << 16) | (bytes[at + 3] << 24)) >>> 0) !== hashLo ||
-        ((bytes[at + 4] | (bytes[at + 5] << 8) | (bytes[at + 6] << 16) | (bytes[at + 7] << 24)) >>> 0) !== hashHi) {
+    if (srcView.getUint32(at, true) !== hashLo || srcView.getUint32(at + 4, true) !== hashHi) {
       report.refused = TableFixedRefusal.NoLayout; return -1;
+    }
+    if (identity) {
+      FixedTableFixedDecode(values[k], srcView, at + 8, stage);
+      if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }
+      at += recordBytes;
+      continue;
     }
     for (let h = 0; h < holeN; h++) {
       const o = plan.holes[h * 2], z = plan.holes[h * 2 + 1];
@@ -465,9 +477,9 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
     // projection: refuse is total, no counter moves and no record lands.
     if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }
     FixedTableFixedDecode(values[k], imageView, 0, stage);
-    // THE IDENTITY PROJECTION'S OWN CONTENT RULE (§4.5 fix 11): the body is
-    // one COPY, so no text op ran, and the decode is where a byte string or
-    // a wide string refuses by name.
+    // THE PROJECTION'S OWN CONTENT RULE (§4.5 fix 11): a copied run carries
+    // no text op, so the decode is where a byte string or a wide string
+    // refuses by name, here and at the in-place door alike.
     if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }
     at += recordBytes;
   }
