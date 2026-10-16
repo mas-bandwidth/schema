@@ -776,7 +776,8 @@ fn surface_cook(manifest: &Manifest, out: &str) {
 // The variable form, form byte 1, over the roots this leg's variable wire
 // carries: the pointer corpus's Scene (graphdemo), the byte-buffer corpus's
 // Catalog (blobdemo), the map corpus's roots (mapdemo) and the fixed roots of
-// the three evolution pairs (tblv1/tblv2, tblw1/tblw2, tblr1/tblr2). Every
+// the three evolution pairs (tblv1/tblv2, tblw1/tblw2, tblr1/tblr2) and the
+// wide-text unit's roots (widedemo). Every
 // other case is answered `<case>.absent` — a root this driver does not name
 // yet, or a unit the compiler refuses for rust whole, as tables/lists is for
 // its union — which the matrix counts as the row of work that is left, never
@@ -1032,6 +1033,26 @@ macro_rules! with_root {
             ("tblr2", "Cfg") => {
                 #[allow(unused_imports)]
                 use tblr2::{cfg_from_json as $from_json, cfg_load as $load, cfg_save as $save, cfg_to_json_checked as $to_json};
+                Some($body)
+            }
+            // wstring(N) ON THE TABLE WIRE (docs/SPEC-TABLES.md §3 kind 33,
+            // SPEC.md §4.12): widedemo's fixed roots ride the variable form
+            // (§2.2), so Caption carries the kind at every site the wire has
+            // (its own field, a `type` it reaches, an element and a union arm)
+            // and Stamp beside it; map_text is the kind as a MAP VALUE (§2.8)
+            ("widedemo", "Caption") => {
+                #[allow(unused_imports)]
+                use widedemo::{caption_from_json as $from_json, caption_load as $load, caption_save as $save, caption_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("widedemo", "Stamp") => {
+                #[allow(unused_imports)]
+                use widedemo::{stamp_from_json as $from_json, stamp_load as $load, stamp_save as $save, stamp_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Text") => {
+                #[allow(unused_imports)]
+                use mapdemo::{text_from_json as $from_json, text_load as $load, text_save as $save, text_to_json_checked as $to_json};
                 Some($body)
             }
             _ => None,

@@ -173,17 +173,69 @@ pub fn text_valid(b: &[u8]) -> bool {
     std::str::from_utf8(b).is_ok() && !b.contains(&0)
 }
 
+/// WIDE TEXT ON THE WIRE (docs/SPEC-TABLES.md §3, kind 33; SPEC.md §4.12): a
+/// payload of L BYTES is L / 2 UTF-16 code units, little-endian. None is
+/// damage, the oracle's (internal/tablewire decode.go): an odd L is not a
+/// wstring at any length, and the content rule is paired surrogates with no
+/// zero unit among the used units. The bound is the reader's, applied after.
+pub fn table_wide_units(b: &[u8]) -> Option<Vec<u16>> {
+    if b.len() & 1 != 0 { return None; }
+    let units: Vec<u16> = b.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect();
+    let mut i = 0;
+    while i < units.len() {
+        let u = units[i];
+        if u == 0 || (0xDC00..=0xDFFF).contains(&u) { return None; }
+        if (0xD800..=0xDBFF).contains(&u) {
+            if i + 1 >= units.len() || !(0xDC00..=0xDFFF).contains(&units[i + 1]) { return None; }
+            i += 2;
+            continue;
+        }
+        i += 1;
+    }
+    Some(units)
+}
+
+/// A CLAMP NEVER SPLITS A PAIR (docs/SPEC-TABLES.md §3): the longest prefix
+/// of at most the bound's units that does not end on a pair's high half.
+pub fn table_wide_boundary(units: &[u16], bound: usize) -> usize {
+    if units.len() <= bound { return units.len(); }
+    let mut keep = bound;
+    if keep > 0 && (0xD800..=0xDBFF).contains(&units[keep - 1]) { keep -= 1; }
+    keep
+}
+
+/// THE WRITER'S BOUND (docs/SPEC-TABLES.md §3, SPEC.md §4.12): a value over
+/// the bound's code units is the save's refusal, recorded BY NAME (at is
+/// <owner>.<field>) for <root>_save_checked; the units that ride are the
+/// longest prefix that fits without splitting a pair.
+pub fn table_wide_fit(ids: &mut IdTable, units: &[u16], bound: usize, at: &str) -> usize {
+    if units.len() <= bound { return units.len(); }
+    if ids.refused.is_none() {
+        ids.refused = Some(format!("{at}: wstring({bound}) holds {} code units, over its bound (docs/SPEC-TABLES.md §3)", units.len()));
+    }
+    table_wide_boundary(units, bound)
+}
+
+/// The units, little-endian, with no length of their own: the caller's L
+/// frames them (docs/SPEC-TABLES.md §3, kind 33 and an arm's payload).
+pub fn table_wide_put(dst: &mut Vec<u8>, units: &[u16]) {
+    for u in units { dst.extend_from_slice(&u.to_le_bytes()); }
+}
+
 /// The id table a save builds in FIRST-USE order (docs/SPEC-TABLES.md §3): one
 /// entry per distinct id, referenced by position from 1. id_ref returns the
 /// position, appending the id when it has not been named yet.
 #[derive(Default)]
 pub struct IdTable {
     pub entries: Vec<u64>,
+    /// the save's refusal BY NAME, when a value is over its bound
+    /// (docs/SPEC-TABLES.md §3): <root>_save_checked answers it
+    pub refused: Option<String>,
 }
 
 impl IdTable {
     pub fn new() -> Self {
-        IdTable { entries: Vec::new() }
+        IdTable { entries: Vec::new(), refused: None }
     }
 
     /// A mark to roll back to: an ELIDED field costs nothing in the id table
