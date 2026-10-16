@@ -1730,6 +1730,23 @@ union Value
   output or the selected arm). Consumers read the selected arm only. Nothing branches on
   a union's tag in v1 — `if` takes bools only (§4.4) — and a `switch` over
   `<Union>Type` is ruled-not-now, banked with §4.4's switch design.
+- **The arm setter (C++; C mirrors it, #449).** Selection is ONE call, so the
+  tag and the arm cannot disagree. The generated C++ union struct carries a
+  member function `Select<Variant>()` for every arm, `<Variant>` the arm's
+  exported spelling (its tag member's). For an arm with a payload it sets the
+  tag, constructs the arm in place with its declared defaults (the
+  construction above) and returns a reference to the fresh arm, for the
+  caller to populate: `shape.SelectSphere().radius = 2.0f;`. For a
+  payload-free arm it returns `void` and sets the tag alone. The two-step
+  form it replaces (construct the member in place, then assign the tag)
+  stays legal, but a forgotten tag in it leaves None, and the payload is
+  lost on the next write with no assert. The setter is additive: the wire,
+  `Write<Union>`, `Read<Union>` and the Max constants do not move with it,
+  and a read constructs its arm itself, not through the setter. A data
+  header declaring a union with a payload arm includes `<new>` for the
+  setter's placement construction. A setter whose name is the union's own
+  name or an arm type's name cannot compile, and C++ generation refuses it
+  by name.
 - **A union field.** A union name is a field type inside `type` bodies,
   arrays included (`shapes [..4]ColliderShape`).
 - **The id moves.** A union is wire structure: its arm order and count, every

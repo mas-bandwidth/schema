@@ -45,6 +45,15 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			return nil, fmt.Errorf("schema files %s and %sWire collide — the C++ emitter writes %sWire.h as %s's wire header; rename one file (SPEC §6.1)", f.Base, f.Base, f.Base, f.Base)
 		}
 	}
+	for _, f := range u.Files {
+		for _, d := range f.Decls {
+			if un, ok := d.(*ir.Union); ok {
+				if msg := armSetterCollision(un); msg != "" {
+					return nil, fmt.Errorf("%s", msg)
+				}
+			}
+		}
+	}
 	out := map[string][]byte{}
 	home := ir.ProtocolIdHome(u)
 	for _, f := range u.Files {
@@ -301,7 +310,8 @@ func (g *gen) emitTagEnum(name string, members []string, docs []string, comment 
 // tag enum, then the tagged-union shape — a struct holding the tag
 // over an anonymous union of the arms, constructed as None, trivially
 // copyable. Selection constructs a fresh arm with its declared defaults,
-// both in Read<Name> and when application code constructs a payload.
+// both in Read<Name> and in the arm's Select<Variant>() setter, which sets
+// the tag in the same call (SPEC §4.8, the arm setter).
 func (g *gen) emitUnion(d *ir.Union) {
 	members := make([]string, len(d.Variants))
 	docs := make([]string, len(d.Variants))
@@ -323,17 +333,17 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.pf("// union %s — at most one of the arms; the tag says which. Construction is\n", d.Name)
 	g.pf("// None: the tag alone is initialized; an arm is freshly constructed with its defaults\n")
-	g.pf("// when selected, by Read%s before decoding (SPEC §4.8), or by application code.\n", d.Name)
+	g.pf("// when selected, by Read%s before decoding (SPEC §4.8), or by its setter.\n", d.Name)
 	if hasVoid {
-		g.pf("// Payload-free arms select by assigning the tag alone; they have no storage.\n")
+		g.pf("// Payload-free arms have no storage; their setter assigns the tag alone.\n")
 	}
 	switch {
 	case firstPayload != nil:
-		g.pf("// Application code must include <new> before constructing an arm in place:\n")
-		g.pf("// ::new ( (void*) &value.%s ) %s{}; value.type = %sType::%s;\n",
-			firstPayload.Name, firstPayload.Type, d.Name, ir.GoExportName(firstPayload.Name))
+		g.pf("// Select an arm through its setter, which sets the tag and constructs the arm\n")
+		g.pf("// together (SPEC §4.8, the arm setter): %s & arm = value.Select%s();\n",
+			firstPayload.Type, ir.GoExportName(firstPayload.Name))
 	case len(d.Variants) > 0:
-		g.pf("// For example: value.type = %sType::%s;\n", d.Name, ir.GoExportName(d.Variants[0].Name))
+		g.pf("// For example: value.Select%s();\n", ir.GoExportName(d.Variants[0].Name))
 	default:
 		g.pf("// there is no payload to construct in this empty union.\n")
 	}
@@ -352,7 +362,55 @@ func (g *gen) emitUnion(d *ir.Union) {
 		g.pf("    };\n")
 	}
 	g.pf("\n    %s() : type( %sType::None ) {} // the tag only — arms are freshly constructed at selection\n", d.Name, d.Name)
+	g.emitArmSetters(d)
 	g.pf("};\n\n")
+}
+
+// emitArmSetters emits one Select<Variant>() member per arm (SPEC §4.8, the
+// arm setter): selection is one call, so the tag and the arm cannot disagree.
+// An arm with a payload is constructed in place with its declared defaults —
+// the same construction Read<Name> performs — and returned for the caller to
+// populate; a payload-free arm's setter assigns the tag alone. The setters sit
+// in the data header and touch no wire function, so the wire half is unmoved.
+func (g *gen) emitArmSetters(d *ir.Union) {
+	tag := d.Name + "Type"
+	for _, v := range d.Variants {
+		arm := ir.GoExportName(v.Name)
+		g.pf("\n")
+		if v.Void() {
+			g.pf("    void Select%s() // payload-free: the tag is the whole selection (SPEC §4.8)\n", arm)
+			g.pf("    {\n")
+			g.pf("        type = %s::%s;\n", tag, arm)
+			g.pf("    }\n")
+			continue
+		}
+		g.needsNew = true
+		g.pf("    %s & Select%s() // sets the tag and constructs the arm with its defaults (SPEC §4.8)\n", v.Type, arm)
+		g.pf("    {\n")
+		g.pf("        ::new ( (void*) &%s ) %s{};\n", v.Name, v.Type)
+		g.pf("        type = %s::%s;\n", tag, arm)
+		g.pf("        return %s;\n", v.Name)
+		g.pf("    }\n")
+	}
+}
+
+// armSetterCollision names the first arm whose generated setter Select<Variant>
+// would be spelled like a name the union struct already uses — the struct's
+// own name (a constructor), its tag enum, or an arm's payload type — which
+// C++ cannot compile (SPEC §4.8, the arm setter). "" when none collides.
+func armSetterCollision(d *ir.Union) string {
+	used := map[string]bool{d.Name: true, d.Name + "Type": true}
+	for _, v := range d.Variants {
+		if !v.Void() {
+			used[v.Type] = true
+		}
+	}
+	for _, v := range d.Variants {
+		if setter := "Select" + ir.GoExportName(v.Name); used[setter] {
+			return fmt.Sprintf("union %s's arm %s generates the C++ setter %s, which is also the name of a type the union struct uses; rename the arm or the type (SPEC §4.8, the arm setter)", d.Name, v.Name, setter)
+		}
+	}
+	return ""
 }
 
 func (g *gen) emitConst(d *ir.Const) {

@@ -231,10 +231,126 @@ static int test_selected_arm_defaults()
     return 0;
 }
 
+// The arm setter (SPEC §4.8, issue #449): one call sets the tag and constructs
+// the arm. Each example union's arms are selected through Select<Variant>(),
+// populated, written, read back and compared: a setter that forgot the tag
+// writes None, so the read's tag and payload checks fail.
+template <typename Union, typename Write, typename Read>
+static bool setter_round_trip( const Union & in, Union & out, Write write, Read read )
+{
+    alignas(8) uint8_t buffer[64 + 8] = {}; // + 8: the reader loads 64-bit windows
+    serialize::WriteStream writer( buffer, 64 );
+    if ( !write( writer, in ) )
+        return false;
+    writer.Flush();
+    serialize::ReadStream reader( buffer, writer.GetBytesProcessed() );
+    return read( reader, out ) && reader.GetBitsProcessed() == writer.GetBitsProcessed();
+}
+
+static int test_arm_setters()
+{
+    using namespace example;
+    auto write_choice = []( serialize::WriteStream & ws, const DefaultChoice & v ) { return WriteDefaultChoice( ws, v ); };
+    auto read_choice = []( serialize::ReadStream & rs, DefaultChoice & v ) { return ReadDefaultChoice( rs, v ); };
+    {
+        DefaultChoice in;
+        DefaultArm & dirty = in.SelectSecond();
+        check( in.type == DefaultChoiceType::Second && &dirty == &in.second );
+        dirty.entries_count = 2;
+        dirty.marker = 7;
+        for ( auto & entry : dirty.entries )
+        {
+            entry.retries = 99;
+            entry.preferred = Weapon::Laser;
+        }
+        // re-selection over the same storage constructs a fresh arm with its defaults
+        DefaultArm & arm = in.SelectFirst();
+        check( in.type == DefaultChoiceType::First && &arm == &in.first );
+        arm.marker = 5;
+        check( selected_arm_defaults( arm ) );
+        arm.marker = 6;
+        arm.entries_count = 1;
+        arm.entries[0].retries = 3;
+        DefaultChoice out;
+        check( setter_round_trip( in, out, write_choice, read_choice ) );
+        check( out.type == DefaultChoiceType::First );
+        check( out.first.marker == 6 && out.first.entries_count == 1 && out.first.entries[0].retries == 3 );
+    }
+    {
+        DefaultChoice in;
+        in.SelectSecond().marker = 4;
+        DefaultChoice out;
+        check( setter_round_trip( in, out, write_choice, read_choice ) );
+        check( out.type == DefaultChoiceType::Second && out.second.marker == 4 && out.second.entries_count == 0 );
+    }
+    auto write_bulk = []( serialize::WriteStream & ws, const DefaultBulkChoice & v ) { return WriteDefaultBulkChoice( ws, v ); };
+    auto read_bulk = []( serialize::ReadStream & rs, DefaultBulkChoice & v ) { return ReadDefaultBulkChoice( rs, v ); };
+    {
+        DefaultBulkChoice in;
+        DefaultBulkArm & arm = in.SelectFirst();
+        arm.payload.marker = 5;
+        check( selected_arm_defaults( arm.payload ) && arm.data_length == 0 );
+        arm.payload.marker = 2;
+        arm.data[0] = 0xAB;
+        arm.data[1] = 0xCD;
+        arm.data_length = 2;
+        DefaultBulkChoice out;
+        check( setter_round_trip( in, out, write_bulk, read_bulk ) );
+        check( out.type == DefaultBulkChoiceType::First && out.first.payload.marker == 2 );
+        check( out.first.data_length == 2 && out.first.data[0] == 0xAB && out.first.data[1] == 0xCD );
+    }
+    {
+        DefaultBulkChoice in;
+        in.SelectSecond().payload.marker = 1;
+        DefaultBulkChoice out;
+        check( setter_round_trip( in, out, write_bulk, read_bulk ) );
+        check( out.type == DefaultBulkChoiceType::Second && out.second.payload.marker == 1 );
+    }
+    auto write_empty = []( serialize::WriteStream & ws, const EmptyUnion & v ) { return WriteEmptyUnion( ws, v ); };
+    auto read_empty = []( serialize::ReadStream & rs, EmptyUnion & v ) { return ReadEmptyUnion( rs, v ); };
+    {
+        EmptyUnion in, out;
+        EmptyA & a = in.SelectA();
+        check( &a == &in.a );
+        check( setter_round_trip( in, out, write_empty, read_empty ) );
+        check( out.type == EmptyUnionType::A );
+        in.SelectB();
+        check( setter_round_trip( in, out, write_empty, read_empty ) );
+        check( out.type == EmptyUnionType::B );
+    }
+    auto write_uneven = []( serialize::WriteStream & ws, const Uneven & v ) { return WriteUneven( ws, v ); };
+    auto read_uneven = []( serialize::ReadStream & rs, Uneven & v ) { return ReadUneven( rs, v ); };
+    {
+        Uneven in, out;
+        in.SelectNarrow().n = 5;
+        check( setter_round_trip( in, out, write_uneven, read_uneven ) );
+        check( out.type == UnevenType::Narrow && out.narrow.n == 5 );
+        in.SelectWide().w = 123456789012ull;
+        check( setter_round_trip( in, out, write_uneven, read_uneven ) );
+        check( out.type == UnevenType::Wide && out.wide.w == 123456789012ull );
+    }
+    auto write_shape = []( serialize::WriteStream & ws, const ProbeShape & v ) { return WriteProbeShape( ws, v ); };
+    auto read_shape = []( serialize::ReadStream & rs, ProbeShape & v ) { return ReadProbeShape( rs, v ); };
+    {
+        ProbeShape in, out;
+        in.SelectRing().radius = 1234;
+        check( setter_round_trip( in, out, write_shape, read_shape ) );
+        check( out.type == ProbeShapeType::Ring && out.ring.radius == 1234 );
+        ProbeSlab & slab = in.SelectSlab();
+        check( slab.width == 0 && slab.height == 0 ); // fresh, not the ring's bytes
+        slab.width = 100;
+        slab.height = 7;
+        check( setter_round_trip( in, out, write_shape, read_shape ) );
+        check( out.type == ProbeShapeType::Slab && out.slab.width == 100 && out.slab.height == 7 );
+    }
+    return 0;
+}
+
 int main()
 {
     using namespace example;
     check( test_selected_arm_defaults() == 0 );
+    check( test_arm_setters() == 0 );
 
     // constants fold and export (SPEC §4.2)
     static_assert(MaxPositionUnits == MaxWorldMeters * PositionUnits, "constants compose");

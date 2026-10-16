@@ -262,6 +262,11 @@ struct ColliderShape
     };
 
     ColliderShape() : type( ColliderShapeType::None ) {}
+
+    BoxCollider & SelectBox();         // sets the tag and constructs the arm (below)
+    SphereCollider & SelectSphere();
+    CapsuleCollider & SelectCapsule();
+    HullCollider & SelectHull();
 };
 ```
 
@@ -275,16 +280,33 @@ tag beside one pre-allocated arm per variant with a payload; Elixir uses
 immutable structs with a tag and arm fields; Rust gets a real
 `enum ColliderShape { None, Box(BoxCollider), ... }`.
 
+**In C++, select an arm with its setter.** Every arm gets a generated member
+function `Select<Variant>()` on the union struct. For an arm with a payload it
+sets the tag, constructs the arm in place with its declared defaults, and
+returns a reference to the fresh arm; for a payload-free arm it returns `void`
+and sets the tag alone:
+
+```cpp
+Collider collider;
+SphereCollider & sphere = collider.shape.SelectSphere(); // tag and arm together
+sphere.radius = 2.0f;
+```
+
+The setter replaces the two-assignment form,
+`::new ( (void*) &shape.sphere ) SphereCollider{}; shape.type = ColliderShapeType::Sphere;`,
+which is still legal: forget its second line and the tag stays `None`, so the
+next write drops the payload with no assert. The generated header includes
+`<new>` for the setter.
+
 Selecting an arm with a payload initializes it with its declared defaults, just
-like a fresh value of that type. Initialize the payload before populating it
-and setting the tag; assigning the tag alone does not initialize storage.
-Use the generated constructor where available, or `Init<Type>` / `init<Type>`
-in C#, JavaScript, Java and Dart to initialize an existing payload in place.
-For C++, construct the member in place, for example
-`::new ( (void*) &shape.sphere ) SphereCollider{}`. Decoding performs the same
-initialization on every selection, even when the tag repeats, before reading
-the payload. Mutable managed targets keep their existing arm objects and
-leave unselected arms unchanged.
+like a fresh value of that type, and the C++ setter does exactly that. In the
+other targets, initialize the payload before populating it and setting the
+tag; assigning the tag alone does not initialize storage. Use the generated
+constructor where available, or `Init<Type>` / `init<Type>` in C#, JavaScript,
+Java and Dart to initialize an existing payload in place. Decoding performs
+the same initialization on every selection, even when the tag repeats, before
+reading the payload. Mutable managed targets keep their existing arm objects
+and leave unselected arms unchanged.
 
 An arm is a field line: its type is any type a field's is, and an arm may
 name no type at all, which is an arm that selects and carries nothing. A
@@ -294,7 +316,8 @@ that name nothing. A union with an arm whose payload is anything else — a
 closure (SPEC-TABLES.md §2.6). Unions ride `type` bodies, arrays included.
 
 All nine targets carry payload-free arms in a `type` body. Select one by
-setting its tag alone: it has no payload to initialize. C and C++ emit no
+setting its tag alone: it has no payload to initialize. In C++ its setter,
+`Select<Variant>()` returning `void`, is that assignment. C and C++ emit no
 member for a payload-free arm, and omit the storage union entirely when no
 arm has a payload. Payload-free arms in a table closure are C++ only;
 the other eight targets refuse that table-side use (SPEC-TABLES.md §11).
