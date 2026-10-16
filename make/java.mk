@@ -66,8 +66,9 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 
 # ---------------------------------------------------------------------------
 # The JAVA table backend (internal/codegen/javatable, docs/SPEC-TABLES.md). The
-# two ACCELERATORS' read halves — the block form (§19) and the cook (§7), their
-# record accessors and reflection descriptors — and the build-version check.
+# two ACCELERATORS, both halves — the block form (§19: builder and reader) and
+# the cook (§7: reader and the §7.6 writer), their record accessors and
+# reflection descriptors — and the build-version check.
 # The TABLE WIRE — the fixed form (§3.4) for every table, the message form
 # (§3.3) for a `fixed table` root, and the variable form (§3, form byte 1) with
 # its retain-unknown surface (§6.6) — rides beside the two accelerators. The
@@ -420,6 +421,20 @@ tables-java-t14:
 	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^TestFixedRoadmapJavaT14CompressedFloats$$'
 	@echo 'tables Java T14: the compressed float rides as the float, unfused dequantize (java/R30)'
+
+# THE ACCELERATOR PRODUCER GATE (docs/SPEC-TABLES.md §19.1, §7.6): the Java
+# block builder writes the two images the C++ producer committed
+# (testdata/wire/tables/block_render.bin, block_padded.bin) byte for byte and
+# both Opens read them; the Java cook writer turns the loaded pointered and
+# blob instances into the files `schema cook` wrote, little and big, and its
+# refusals (short buffer, bad order, invalid_value) touch no byte.
+# `SCHEMA_REQUIRE_CORPUS=1` keeps a missing JDK or corpus from passing silently.
+.PHONY: tables-java-block-build
+tables-java-block-build:
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestBlockBuildAndCookWriteJava$$'
+	@echo 'tables Java block build and cook write: the C++ block images and the schema cook files, byte for byte'
+test-java: tables-java-block-build
 
 # THE VARIABLE-CLASS GATE (docs/SPEC-TABLES.md §2, §3, §16), the Java twin of
 # `tables-go-variable-class`: the variable form's codecs for the pointered,

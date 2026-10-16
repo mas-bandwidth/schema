@@ -8,7 +8,8 @@
 //   driver <manifest> <surface> <outdir>
 //
 // It answers every surface this port carries from ONE binary — the block
-// surfaces, the cook surfaces (cook-forgery included) and the WIRE-CARRYING
+// surfaces, the cook surfaces (cook-forgery included), the cook WRITER's
+// cook-write (§7.6) and the WIRE-CARRYING
 // surfaces (wire, report, json-read, json-write) the variable form (form byte
 // 1, docs/SPEC-TABLES.md §3) carries for the roots this leg's variable wire
 // answers: graphdemo's Scene and blobdemo's Catalog. Every other case a
@@ -778,6 +779,81 @@ public final class Driver {
         return 0;
     }
 
+    // ---- the WRITE surface (docs/SPEC-TABLES.md §7.6; test/conformance/README.md)
+    //
+    // `cook-write`: Load the instance's wire, Cook it in each byte order, and
+    // write the bytes as `<instance>` and `<instance>-be`; the expectation is the
+    // pair `schema cook` wrote. The writer is <Root>Cook.cookMeasure/cookFrom over
+    // the value this leg's variable wire loads, so it answers the same roots the
+    // wire surfaces do — graphdemo's Scene and blobdemo's Catalog — and every
+    // other row ABSENT, both halves, exactly as the Go driver spells an absence.
+
+    private interface Cooker {
+        long measure();
+        boolean cook(byte[] buffer, boolean big);
+    }
+
+    private static int cookBoth(String out, String name, Cooker c) throws IOException {
+        long size = c.measure();
+        if (size < 1) return failInt(name + ": cookMeasure refused the value");
+        for (boolean big : new boolean[] {false, true}) {
+            String file = big ? name + "-be" : name;
+            byte[] buffer = new byte[(int) size];
+            java.util.Arrays.fill(buffer, (byte) 0xa5);
+            // §7.6: a buffer one byte short is refused before the first store.
+            if (c.cook(java.util.Arrays.copyOf(buffer, buffer.length - 1), big)) {
+                return failInt(file + ": a short buffer was accepted");
+            }
+            if (!c.cook(buffer, big)) return failInt(file + ": cookFrom refused the value");
+            spill(out, file, buffer);
+        }
+        return 0;
+    }
+
+    private static int surfaceCookWrite(String out) throws IOException {
+        for (String[] f : kind("cook-write")) {
+            String name = f[1];
+            String[] inst = null;
+            for (String[] c : kind("instance")) {
+                if (c[1].equals(name)) {
+                    inst = c;
+                    break;
+                }
+            }
+            if (inst == null) return failInt("driver: cook-write " + name + " names no instance");
+            String pkg = inst[2];
+            String root = inst[3];
+            int rc;
+            if ("graphdemo".equals(pkg) && "Scene".equals(root)) {
+                graphdemo.TableVariable.Report rep = new graphdemo.TableVariable.Report();
+                graphdemo.SceneVariable.Value v = graphdemo.SceneVariable.load(Files.readAllBytes(Paths.get(inst[4])), rep);
+                if (v == null || rep.refused || rep.malformed) return failInt(name + ": cook input did not load");
+                rc = cookBoth(out, name, new Cooker() {
+                    public long measure() { return graphdemo.SceneCook.cookMeasure(v); }
+                    public boolean cook(byte[] b, boolean big) {
+                        return graphdemo.SceneCook.cookFrom(v, b, big ? graphdemo.TableByteOrder.BIG : graphdemo.TableByteOrder.LITTLE);
+                    }
+                });
+            } else if ("blobdemo".equals(pkg) && "Catalog".equals(root)) {
+                blobdemo.TableVariable.Report rep = new blobdemo.TableVariable.Report();
+                blobdemo.CatalogVariable.Value v = blobdemo.CatalogVariable.load(Files.readAllBytes(Paths.get(inst[4])), rep);
+                if (v == null || rep.refused || rep.malformed) return failInt(name + ": cook input did not load");
+                rc = cookBoth(out, name, new Cooker() {
+                    public long measure() { return blobdemo.CatalogCook.cookMeasure(v); }
+                    public boolean cook(byte[] b, boolean big) {
+                        return blobdemo.CatalogCook.cookFrom(v, b, big ? blobdemo.TableByteOrder.BIG : blobdemo.TableByteOrder.LITTLE);
+                    }
+                });
+            } else {
+                spillAbsent(out, name);
+                spillAbsent(out, name + "-be");
+                rc = 0;
+            }
+            if (rc != 0) return rc;
+        }
+        return 0;
+    }
+
     public static int run(String[] args) throws IOException {
         if (args.length < 2) {
             System.err.println("usage: driver <manifest> list\n       driver <manifest> <surface> <outdir>");
@@ -791,6 +867,7 @@ public final class Driver {
             // graphdemo's Scene and blobdemo's Catalog — and answer every other
             // case ABSENT, one by one.
             System.out.print("wire\nreport\njson-read\njson-write\n"
+                    + "cook-write\n"
                     + "block\nblock-foreign\n"
                     + "block-dump\nforgery\ncook\ncook-foreign\ncook-forgery\n");
             return 0;
@@ -805,6 +882,7 @@ public final class Driver {
             case "report": return surfaceReport(out);
             case "json-read": return surfaceJsonRead(out);
             case "json-write": return surfaceJsonWrite(out);
+            case "cook-write": return surfaceCookWrite(out);
             case "block": return surfaceBlock(out);
             case "block-foreign": return surfaceBlockForeign(out);
             case "block-dump": return surfaceBlockDump(out);

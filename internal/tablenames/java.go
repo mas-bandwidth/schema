@@ -19,6 +19,11 @@ func init() {
 		Name{Name: "TableCookInfo", What: "a cooked record's reflection descriptor"},
 		Name{Name: "TableCookFieldInfo", What: "a cooked field's reflection descriptor"},
 		Name{Name: "TableCookStorage", What: "what a cooked slot HOLDS, which is not always what the wire carries (§7.2)"},
+		// THE COOK WRITER (§7.6): the shared planner each <T>Cook's cookMeasure,
+		// cookMeasureReason and cookFrom call, and the target order they take —
+		// Go's TableByteOrder spelled as a class of two constants.
+		Name{Name: "TableCookWrite", What: "the cook writer's planner: numbering, measure, the invalid_value refusal and the target-order stores (docs/SPEC-TABLES.md §7.6)"},
+		Name{Name: "TableByteOrder", What: "the cook writer's target byte order, LITTLE = 1 and BIG = 2 as Go's TableByteOrder (docs/SPEC-TABLES.md §7.6)"},
 		// THE FIXED FORM's runtime (docs/SPEC-TABLES.md §3.4), form byte 3, and
 		// it is ONE class: Java has no free functions, so the plan entry, the
 		// report, the layout reader and the one read loop all live inside

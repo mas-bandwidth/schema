@@ -1,5 +1,5 @@
-// THE COOKED FORM in Java (docs/SPEC-TABLES.md §7): the READ side, emitted ON THE
-// SIDE into <Table>Cook.java.
+// THE COOKED FORM in Java (docs/SPEC-TABLES.md §7): the READ side and the
+// runtime WRITER (§7.6), emitted ON THE SIDE into <Table>Cook.java.
 //
 // A cook is a LOAD-TRUSTED-DATA-FROM-TOOLS format, not a wire. Tooling writes a
 // region for one build version and that build reads it: the header is matched,
@@ -9,6 +9,15 @@
 //
 // NOTHING DECLARES IT, exactly as nothing declares the block form. Every table
 // gets an Open, and a consumer compiles this file only if it opens a cook.
+//
+// THE WRITER (§7.6) is the Java spelling of Go's <T>CookMeasure,
+// <T>CookMeasureReason and <T>CookFrom: cookMeasure, cookMeasureReason and
+// cookFrom on <T>Cook, over the value this leg's variable codec loads
+// (<T>Variable.Value). It is emitted for a table whose closure that codec
+// carries (cardVariableTables); a table with no Java value class gets the
+// reader alone and the file says so. The bytes are `schema cook`'s in either
+// order (TableByteOrder), and the shared planner lives in TableCookWrite.java
+// (cookwrite.go).
 //
 // A COOKED RECORD IS THE BLITTABLE ROW. The region is laid out by §20.3's C ABI
 // model, which is the same model <Name>Row's accessors read at — so the two
@@ -295,7 +304,18 @@ func generateCookFiles(u *ir.Unit, ck *cookUnit) (map[string][]byte, error) {
 		return out, nil
 	}
 	maps.Copy(out, cookRuntimeFiles(u))
-	out["TableCookWrite.java"] = javaFile(u, "the cook writer's measured region and target-order stores (docs/SPEC-TABLES.md §7.6).", tableCookWriteSource(u, ck))
+	// §7.6: the writer rides only beside a table whose value class this leg
+	// generates; the runtime it shares is emitted once, when any table writes.
+	writes := map[string]bool{}
+	for _, st := range cardVariableTables(u) {
+		if ck.opens(st.Name) {
+			writes[st.Name] = true
+		}
+	}
+	if len(writes) > 0 {
+		out["TableCookWrite.java"] = javaFile(u, "the cook writer's measured region and target-order stores (docs/SPEC-TABLES.md §7.6).", tableCookWriteRuntime)
+		out["TableByteOrder.java"] = javaFile(u, "the cook writer's target byte order (docs/SPEC-TABLES.md §7.6).", tableByteOrderSource)
+	}
 	names := make([]string, 0, len(u.Tables))
 	for name := range u.Tables {
 		names = append(names, name)
@@ -310,10 +330,10 @@ func generateCookFiles(u *ir.Unit, ck *cookUnit) (map[string][]byte, error) {
 			b.WriteString("// reaching for open gets a missing name from its own compiler, beside this\n")
 			b.WriteString("// file, which says why.\n")
 			fmt.Fprintf(&b, "public final class %sCook {\n    private %sCook() {}\n}\n", name, name)
-			out[name+"Cook.java"] = javaFile(u, "the COOKED FORM's read half (docs/SPEC-TABLES.md §7).", b.String())
+			out[name+"Cook.java"] = javaFile(u, "the COOKED FORM, absent for this table (docs/SPEC-TABLES.md §7).", b.String())
 			continue
 		}
-		g := &cookGen{unit: u, cook: ck, table: u.Tables[name]}
+		g := &cookGen{unit: u, cook: ck, table: u.Tables[name], writes: writes[name]}
 		g.emit()
 		out[name+"Cook.java"] = javaFile(u, "the COOKED FORM's reader and writer (docs/SPEC-TABLES.md §7).", g.b.String())
 	}
@@ -321,10 +341,11 @@ func generateCookFiles(u *ir.Unit, ck *cookUnit) (map[string][]byte, error) {
 }
 
 type cookGen struct {
-	unit  *ir.Unit
-	cook  *cookUnit
-	table *ir.Struct
-	b     strings.Builder
+	unit   *ir.Unit
+	cook   *cookUnit
+	table  *ir.Struct
+	writes bool // §7.6: the table's value class exists, so the writer is emitted
+	b      strings.Builder
 }
 
 func (g *cookGen) f(format string, args ...any) { fmt.Fprintf(&g.b, format, args...) }
@@ -346,8 +367,9 @@ func (g *cookGen) emit() {
 	g.f("// `schema cook-check`'s business, run by a person, once, offline.\n")
 	g.f("//\n")
 	g.f("// THE MEMORY IS THE CONSUMER'S: the array must stay put for as long as this\n")
-	g.f("// handle or anything reached through it is used. Nothing here copies and\n")
-	g.f("// nothing here allocates beyond the handle.\n")
+	g.f("// handle or anything reached through it is used. Nothing on the read path\n")
+	g.f("// copies or allocates beyond the handle; the writer (§7.6) plans on the heap,\n")
+	g.f("// which is the cold producer path.\n")
 	g.f("public final class %sCook {\n", name)
 	g.f("    private final byte[] data;\n")
 	g.f("    private final int region;       // the DATA part's base: the root sits at offset zero\n")
@@ -375,22 +397,34 @@ func (g *cookGen) emit() {
 	g.f("}\n")
 }
 
-// emitWrite is §7.6's Java spelling of <T>CookMeasure,
-// <T>CookMeasureReason and <T>CookFrom. The shared writer plans and validates
-// the complete region before its first store.
+// emitWrite is §7.6's Java spelling of Go's <T>CookMeasure, <T>CookMeasureReason
+// and <T>CookFrom (internal/codegen/gotable/cookwrite.go): measure before
+// write; cookFrom writes nothing and answers false when the buffer is short or
+// the order is neither TableByteOrder.LITTLE nor BIG; the reason is Go's
+// TableRefuseReason name, "ok" or "invalid_value" (gotable/refusal.go). The
+// shared planner validates the whole region before its first store.
 func (g *cookGen) emitWrite() {
-	g.f("    public static long cookMeasure(Object value) {\n")
-	g.f("        TableCookWrite.Plan p = TableCookWrite.plan(value, type());\n")
-	g.f("        return p == null ? -1 : p.total;\n    }\n\n")
-	g.f("    public record MeasureReason(long bytes, String reason) {}\n\n")
-	g.f("    public static MeasureReason cookMeasureReason(Object value) {\n")
-	g.f("        long bytes = cookMeasure(value);\n")
-	g.f("        return new MeasureReason(bytes, bytes < 0 ? \"invalid_value\" : \"ok\");\n    }\n\n")
-	g.f("    public static boolean cookFrom(Object value, byte[] buffer, int order) {\n")
-	g.f("        if (order != TableCookWrite.LITTLE && order != TableCookWrite.BIG) { return false; }\n")
-	g.f("        TableCookWrite.Plan p = TableCookWrite.plan(value, type());\n")
-	g.f("        if (p == null || buffer == null || buffer.length < p.total) { return false; }\n")
-	g.f("        return TableCookWrite.write(p, buffer, order);\n    }\n\n")
+	name := g.table.Name
+	if !g.writes {
+		g.f("    // NO WRITER for %s (§7.6): this leg generates no value class for its\n", name)
+		g.f("    // closure (%sVariable), so there is nothing typed to cook from. The\n", name)
+		g.f("    // reader above is unaffected.\n\n")
+		return
+	}
+	v := name + "Variable.Value"
+	g.f("    /** §7.6 measure: the whole cooked file's bytes for this value, or -1 when\n")
+	g.f("     *  the value cannot be cooked (Go's %sCookMeasure). */\n", name)
+	g.f("    public static long cookMeasure(%s value) {\n", v)
+	g.f("        return TableCookWrite.measure(value, type());\n    }\n\n")
+	g.f("    /** §7.6 measure with Go's reason beside it: \"ok\", or \"invalid_value\"\n")
+	g.f("     *  with -1 (Go's %sCookMeasureReason, TableRefuseInvalidValue). */\n", name)
+	g.f("    public static TableCookWrite.MeasureReason cookMeasureReason(%s value) {\n", v)
+	g.f("        return TableCookWrite.measureReason(value, type());\n    }\n\n")
+	g.f("    /** §7.6 write in the target order: false, and no byte of buffer touched,\n")
+	g.f("     *  for a short buffer, an order other than TableByteOrder.LITTLE or BIG, or\n")
+	g.f("     *  a value measure refuses (Go's %sCookFrom). */\n", name)
+	g.f("    public static boolean cookFrom(%s value, byte[] buffer, int order) {\n", v)
+	g.f("        return TableCookWrite.cookFrom(value, type(), buffer, order);\n    }\n\n")
 }
 
 func (g *cookGen) emitOpen(ml *ir.MemberLayout, align int64) {

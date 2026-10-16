@@ -1,6 +1,8 @@
 // Package javatable emits a unit's Java table surface (docs/SPEC-TABLES.md):
-// the BLOCK form's read half in <Table>Block.java (§19) and the COOKED form's
-// read half in <Table>Cook.java (§7), the record accessors the two share
+// the BLOCK form in <Table>Block.java (§19) — its builder (§19.1: Counts,
+// begin, blockBytes) and its reader — and the COOKED form in <Table>Cook.java
+// (§7) — its reader and its runtime writer (§7.6: cookMeasure,
+// cookMeasureReason, cookFrom) — the record accessors the two share
 // (<Name>Row.java), their reflection descriptors and the unit's build version
 // — plus the shared runtime those need, one PUBLIC TYPE PER FILE, which is
 // what Java's package scope is. It is emitted only when the unit declares
@@ -10,7 +12,11 @@
 // THE ACCELERATOR TIER. A block is POINTED AT and a cook is OPENED; neither
 // parses a wire, so both reach every table of the unit whatever its closure
 // declares — a pointered unit's cooks open in full. In Java both are read at
-// explicit offsets out of a byte[] the consumer owns. The TABLE WIRE — measure,
+// explicit offsets out of a byte[] the consumer owns, and both are WRITTEN
+// here too (all features across all languages, Glenn 2026-10-12): a Java
+// producer builds a block whose bytes are the C++ producer's, and cooks the
+// value its variable wire loaded into the bytes `schema cook` writes, in
+// either byte order. The TABLE WIRE — measure,
 // save, load, the reflection descriptors and the JSON text form of
 // docs/SPEC-TABLES.md §3, §4, §8 and §16 in their id-table form — rides the
 // FIXED form (§3.4) for every table, and the VARIABLE form (§3, form byte 1)
@@ -50,7 +56,9 @@
 //     the accessors' own constants against the descriptors' (block.go).
 //
 // Nothing on the read path allocates: the caller owns the array, and a block
-// or a cook is read where it lies.
+// or a cook is read where it lies. The block builder writes into the caller's
+// array too; only the cook writer's planner (§7.6) allocates, on the cold
+// producer path.
 package javatable
 
 import (
@@ -181,7 +189,8 @@ func javaFile(u *ir.Unit, summary, body string) []byte {
 }
 
 // Generate emits the unit's Java table surface — the record accessors, the
-// block and cook read halves with their runtime types, and the build version —
+// block form (builder and reader) and the cook (reader and writer) with their
+// runtime types, and the build version —
 // and nothing when the unit declares no table: a table-free unit's generated
 // Java is byte-identical with or without this package.
 func Generate(u *ir.Unit) (map[string][]byte, error) {

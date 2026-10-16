@@ -1,37 +1,28 @@
 package javatable
 
-import (
-	"fmt"
-	"strings"
-
-	"github.com/mas-bandwidth/schema/v2/ir"
-)
-
-// tableCookWriteSource is the shared Java writer. It uses the same generated
-// layout descriptors as Open, and reflects over the generated Value classes
-// only on the cold producer path (docs/SPEC-TABLES.md §7.6).
-func tableCookWriteSource(u *ir.Unit, ck *cookUnit) string {
-	var b strings.Builder
-	b.WriteString(tableCookWriteRuntime)
-	b.WriteString("    private static TableCookInfo info(long id) {\n")
-	for _, name := range ck.order {
-		st := u.Tables[name]
-		if st == nil {
-			continue
-		}
-		fmt.Fprintf(&b, "        if (id == 0x%016xL) { return %sRow.cookInfo(); }\n", ir.TableWireId(st.WireName()), name)
-	}
-	b.WriteString("        return null;\n    }\n}\n")
-	return b.String()
+// tableByteOrderSource is the writer's target order (docs/SPEC-TABLES.md §7.6),
+// Go's TableByteOrder with its two values at the same numbers. The order is a
+// parameter of the write and never the host's, so a little-endian JVM writes a
+// big-endian cook and the bytes are `schema cook`'s.
+const tableByteOrderSource = `/** The cook writer's target byte order (§7.6): Go's TableByteOrderLittle and
+ *  TableByteOrderBig at the same values. The same word is the header's
+ *  byte_order field (§7.1). */
+public final class TableByteOrder {
+    private TableByteOrder() {}
+    public static final int LITTLE = 1;
+    public static final int BIG = 2;
 }
+`
 
+// tableCookWriteRuntime is the shared Java writer (docs/SPEC-TABLES.md §7.6).
+// It walks the generated cook descriptors Open reads by (TableCookInfo), and
+// reflects over the generated <T>Variable.Value classes only on this cold
+// producer path; the typed entries are each <T>Cook's (cook.go emitWrite).
 const tableCookWriteRuntime = `// The measured cook producer (docs/SPEC-TABLES.md §7.6). Numbering follows
 // declaration order through generated descriptors, including by-value records
 // and pointer edges. A failed plan touches no byte of the caller's buffer.
 public final class TableCookWrite {
     private TableCookWrite() {}
-    public static final int LITTLE = 1;
-    public static final int BIG = 2;
     private static final long STRING_ID = 0x704be0d8faaffc58L;
     private static final long BYTES_ID = 0x2f2ec0474f1c4fe4L;
 
@@ -54,10 +45,37 @@ public final class TableCookWrite {
         long align() { return info != null ? Math.max(8, info.align) : 8; }
     }
 
-    public static final class Plan {
+    /** §7.6 measure with Go's reason beside it: bytes and "ok", or -1 and
+     *  "invalid_value" (Go's TableRefuseOk and TableRefuseInvalidValue names). */
+    public record MeasureReason(long bytes, String reason) {}
+
+    public static final String REASON_OK = "ok";
+    public static final String REASON_INVALID_VALUE = "invalid_value";
+
+    /** §7.6: the whole file's bytes, or -1 for a value that cannot be cooked. */
+    public static long measure(Object value, TableCookInfo info) {
+        Plan p = plan(value, info);
+        return p == null ? -1 : p.total;
+    }
+
+    public static MeasureReason measureReason(Object value, TableCookInfo info) {
+        long bytes = measure(value, info);
+        return new MeasureReason(bytes, bytes < 0 ? REASON_INVALID_VALUE : REASON_OK);
+    }
+
+    /** §7.6: measure before write. A bad order, a short buffer or a refused plan
+     *  answers false before the first store, so no byte of buffer changes. */
+    public static boolean cookFrom(Object value, TableCookInfo info, byte[] buffer, int order) {
+        if (order != TableByteOrder.LITTLE && order != TableByteOrder.BIG) { return false; }
+        Plan p = plan(value, info);
+        if (p == null || buffer == null || buffer.length < p.total) { return false; }
+        return write(p, buffer, order);
+    }
+
+    static final class Plan {
         private final java.util.ArrayList<Node> nodes = new java.util.ArrayList<>();
         private final java.util.IdentityHashMap<Object, Node> index = new java.util.IdentityHashMap<>();
-        public long total;
+        long total;
         private long dataLength;
         private long alignment;
     }
@@ -139,7 +157,7 @@ public final class TableCookWrite {
     }
 
     /** Measure and validate before writing; invalid values answer null (§7.6). */
-    public static Plan plan(Object root, TableCookInfo info) {
+    static Plan plan(Object root, TableCookInfo info) {
         if (root == null || info == null) { return null; }
         try {
             Plan p = new Plan();
@@ -168,7 +186,7 @@ public final class TableCookWrite {
     }
 
     private static void put(byte[] out, int order, long at, long value, int width) {
-        if (out != null) { TableBytes.put(out, (int) at, value, width, order == BIG); }
+        if (out != null) { TableBytes.put(out, (int) at, value, width, order == TableByteOrder.BIG); }
     }
 
     private static long bits(Object source, TableCookStorage storage, int width) {
@@ -235,8 +253,8 @@ public final class TableCookWrite {
     }
 
     /** §7.6: after plan succeeds, write header, records, and attribution. */
-    public static boolean write(Plan p, byte[] out, int order) {
-        if (p == null || out == null || out.length < p.total || (order != LITTLE && order != BIG)) {
+    static boolean write(Plan p, byte[] out, int order) {
+        if (p == null || out == null || out.length < p.total || (order != TableByteOrder.LITTLE && order != TableByteOrder.BIG)) {
             return false;
         }
         java.util.Arrays.fill(out, 0, (int) p.total, (byte) 0);
@@ -265,5 +283,5 @@ public final class TableCookWrite {
             return false;
         }
     }
-
+}
 `

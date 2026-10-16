@@ -1,7 +1,6 @@
 package javatable
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,8 +9,12 @@ import (
 )
 
 // TestBlockBuildAndCookWriteJava pins the producer entries of the two
-// accelerators (docs/SPEC-TABLES.md §19.1 and §7.6). The runtime subtests
-// below exercise the committed C++ block images and schema cook bytes.
+// accelerators (docs/SPEC-TABLES.md §19.1 and §7.6): the block builder
+// (<T>Block.Counts, begin, blockBytes, Refusal) byte-equal to the two images the
+// C++ producer test/tables/block_main.cpp committed, and the cook writer
+// (<T>Cook.cookMeasure, cookMeasureReason, cookFrom; the Java spelling of Go's
+// <T>CookMeasure, <T>CookMeasureReason and <T>CookFrom) byte-equal to the two
+// files `schema cook` wrote, in TableByteOrder.LITTLE and BIG.
 func TestBlockBuildAndCookWriteJava(t *testing.T) {
 	t.Parallel()
 	files, err := Generate(unitFromDir(t, "../../../tables/block"))
@@ -19,15 +22,41 @@ func TestBlockBuildAndCookWriteJava(t *testing.T) {
 		t.Fatal(err)
 	}
 	block := string(files["PaddedFrameBlock.java"])
-	for _, name := range []string{"begin(", "blockBytes(", "class Counts"} {
+	for _, name := range []string{"public static PaddedFrameBlock begin(byte[] storage, int base, Counts counts, Refusal refusal)",
+		"public long blockBytes()", "public static final class Counts", "public static final class Refusal"} {
 		if !strings.Contains(block, name) {
-			t.Errorf("PaddedFrameBlock lacks %s: docs/SPEC-TABLES.md §19.1 build side", name)
+			t.Errorf("PaddedFrameBlock lacks %q: docs/SPEC-TABLES.md §19.1 build side", name)
 		}
 	}
-	cook := string(files["PaddedFrameCook.java"])
-	for _, name := range []string{"cookMeasure(", "cookMeasureReason(", "cookFrom("} {
-		if !strings.Contains(cook, name) {
-			t.Errorf("PaddedFrameCook lacks %s: docs/SPEC-TABLES.md §7.6 write side", name)
+	// A table with no Java value class has no writer, and its file says so
+	// rather than offering an untyped entry (§7.6).
+	if cook := string(files["PaddedFrameCook.java"]); strings.Contains(cook, "cookFrom(") || !strings.Contains(cook, "NO WRITER for PaddedFrame") {
+		t.Errorf("PaddedFrameCook: want no writer and the NO WRITER line (blockdemo generates no PaddedFrameVariable)")
+	}
+	graph, err := Generate(unitFromDir(t, "../../../tables/pointers"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	scene := string(graph["SceneCook.java"])
+	for _, name := range []string{
+		"public static long cookMeasure(SceneVariable.Value value)",
+		"public static TableCookWrite.MeasureReason cookMeasureReason(SceneVariable.Value value)",
+		"public static boolean cookFrom(SceneVariable.Value value, byte[] buffer, int order)",
+	} {
+		if !strings.Contains(scene, name) {
+			t.Errorf("SceneCook lacks %q: docs/SPEC-TABLES.md §7.6 write side", name)
+		}
+	}
+	order := string(graph["TableByteOrder.java"])
+	for _, name := range []string{"public static final int LITTLE = 1;", "public static final int BIG = 2;"} {
+		if !strings.Contains(order, name) {
+			t.Errorf("TableByteOrder lacks %q: Go's TableByteOrderLittle/Big values (§7.6)", name)
+		}
+	}
+	writer := string(graph["TableCookWrite.java"])
+	for _, name := range []string{`REASON_OK = "ok"`, `REASON_INVALID_VALUE = "invalid_value"`} {
+		if !strings.Contains(writer, name) {
+			t.Errorf("TableCookWrite lacks %q: Go's TableRefuseReason names (gotable/refusal.go)", name)
 		}
 	}
 	t.Run("compile", func(t *testing.T) {
@@ -55,16 +84,24 @@ func TestBlockBuildAndCookWriteJava(t *testing.T) {
 		javac, javaBin := javaTools(t)
 		dir := t.TempDir()
 		srcDir := filepath.Join(dir, "blockdemo")
-		if err := os.MkdirAll(srcDir, 0o755); err != nil { t.Fatal(err) }
+		if err := os.MkdirAll(srcDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
 		var sources []string
 		for name, body := range files {
-			if !strings.HasSuffix(name, ".java") { continue }
+			if !strings.HasSuffix(name, ".java") {
+				continue
+			}
 			path := filepath.Join(srcDir, name)
-			if err := os.WriteFile(path, body, 0o644); err != nil { t.Fatal(err) }
+			if err := os.WriteFile(path, body, 0o644); err != nil {
+				t.Fatal(err)
+			}
 			sources = append(sources, path)
 		}
 		driver := filepath.Join(srcDir, "BlockGoldenDriver.java")
-		if err := os.WriteFile(driver, []byte(blockGoldenDriver), 0o644); err != nil { t.Fatal(err) }
+		if err := os.WriteFile(driver, []byte(blockGoldenDriver), 0o644); err != nil {
+			t.Fatal(err)
+		}
 		args := append([]string{"--release", "17", "-d", dir}, sources...)
 		args = append(args, driver)
 		if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
@@ -79,7 +116,9 @@ func TestBlockBuildAndCookWriteJava(t *testing.T) {
 	})
 	for _, tc := range []struct{ name, dir, pkg, root, wire, little, big string }{
 		{"graph_tree", "../../../tables/pointers", "graphdemo", "Scene", "graph_tree.bin", "graph_tree.cook", "graph_tree-be.cook"},
+		{"graph_shared", "../../../tables/pointers", "graphdemo", "Scene", "graph_shared.bin", "graph_shared.cook", "graph_shared-be.cook"},
 		{"blob_small", "../../../tables/blobs", "blobdemo", "Catalog", "blob_small.bin", "blob_small.cook", "blob_small-be.cook"},
+		{"blob_shared", "../../../tables/blobs", "blobdemo", "Catalog", "blob_shared.bin", "blob_shared.cook", "blob_shared-be.cook"},
 	} {
 		t.Run("cook_"+tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -94,21 +133,30 @@ func cookGolden(t *testing.T, schemaDir, pkg, root, wire, little, big string) {
 	t.Helper()
 	javac, javaBin := javaTools(t)
 	files, err := Generate(unitFromDir(t, schemaDir))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	dir := t.TempDir()
 	srcDir := filepath.Join(dir, pkg)
-	if err := os.MkdirAll(srcDir, 0o755); err != nil { t.Fatal(err) }
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	var sources []string
 	for name, body := range files {
-		if !strings.HasSuffix(name, ".java") { continue }
+		if !strings.HasSuffix(name, ".java") {
+			continue
+		}
 		path := filepath.Join(srcDir, name)
-		if err := os.WriteFile(path, body, 0o644); err != nil { t.Fatal(err) }
+		if err := os.WriteFile(path, body, 0o644); err != nil {
+			t.Fatal(err)
+		}
 		sources = append(sources, path)
 	}
-	driver := fmt.Sprintf(cookGoldenDriver, pkg, pkg, pkg, root, pkg, root,
-		pkg, root, pkg, root, pkg, root, pkg, root, pkg, root, pkg, root)
+	driver := strings.NewReplacer("PKG", pkg, "ROOT", root).Replace(cookGoldenDriver)
 	driverPath := filepath.Join(dir, "CookGoldenDriver.java")
-	if err := os.WriteFile(driverPath, []byte(driver), 0o644); err != nil { t.Fatal(err) }
+	if err := os.WriteFile(driverPath, []byte(driver), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	args := append([]string{"--release", "17", "-d", dir}, sources...)
 	args = append(args, driverPath)
 	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
@@ -129,21 +177,30 @@ import java.nio.file.Path;
 import java.util.Arrays;
 
 public final class CookGoldenDriver {
+    private static void untouched(byte[] b, String what) {
+        for (byte x : b) if (x != (byte) 0x5a) throw new AssertionError(what + " wrote bytes");
+    }
     public static void main(String[] args) throws Exception {
         byte[] wire = Files.readAllBytes(Path.of(args[0]));
-        %s.TableVariable.Report report = new %s.TableVariable.Report();
-        %s.%sVariable.Value value = %s.%sVariable.load(wire, report);
+        PKG.TableVariable.Report report = new PKG.TableVariable.Report();
+        PKG.ROOTVariable.Value value = PKG.ROOTVariable.load(wire, report);
         if (value == null || report.refused || report.malformed) throw new AssertionError("wire load");
-        long n = %s.%sCook.cookMeasure(value);
-        %s.%sCook.MeasureReason reason = %s.%sCook.cookMeasureReason(value);
-        if (n < 0 || reason.bytes() != n || !reason.reason().equals("ok")) throw new AssertionError("measure");
+        long n = PKG.ROOTCook.cookMeasure(value);
+        PKG.TableCookWrite.MeasureReason reason = PKG.ROOTCook.cookMeasureReason(value);
+        if (n < 0 || reason.bytes() != n || !reason.reason().equals("ok")) throw new AssertionError("measure " + reason);
         byte[] out = new byte[(int) n];
         Arrays.fill(out, (byte) 0x5a);
-        if (%s.%sCook.cookFrom(value, new byte[(int) n - 1], 1)) throw new AssertionError("short accepted");
-        if (%s.%sCook.cookFrom(value, out, 3)) throw new AssertionError("bad order accepted");
-        for (byte b : out) if (b != (byte) 0x5a) throw new AssertionError("refusal wrote bytes");
-        for (int order = 1; order <= 2; order++) {
-            if (!%s.%sCook.cookFrom(value, out, order)) throw new AssertionError("cook order " + order);
+        // §7.6's refusals: a short buffer, an order neither little nor big, no buffer.
+        byte[] shortBuf = new byte[(int) n - 1];
+        Arrays.fill(shortBuf, (byte) 0x5a);
+        if (PKG.ROOTCook.cookFrom(value, shortBuf, PKG.TableByteOrder.LITTLE)) throw new AssertionError("short accepted");
+        untouched(shortBuf, "short refusal");
+        if (PKG.ROOTCook.cookFrom(value, out, 0)) throw new AssertionError("order 0 accepted");
+        if (PKG.ROOTCook.cookFrom(value, out, 3)) throw new AssertionError("order 3 accepted");
+        if (PKG.ROOTCook.cookFrom(value, null, PKG.TableByteOrder.LITTLE)) throw new AssertionError("null buffer accepted");
+        untouched(out, "order refusal");
+        for (int order : new int[] {PKG.TableByteOrder.LITTLE, PKG.TableByteOrder.BIG}) {
+            if (!PKG.ROOTCook.cookFrom(value, out, order)) throw new AssertionError("cook order " + order);
             byte[] want = Files.readAllBytes(Path.of(args[order]));
             if (!Arrays.equals(out, want)) {
                 int at = Arrays.mismatch(out, want);
@@ -152,6 +209,21 @@ public final class CookGoldenDriver {
                         " want " + (at < want.length ? (want[at] & 255) : -1));
             }
         }
+        // invalid_value (Go's TableRefuseInvalidValue): the root's string(N) name
+        // at N bytes cooks, at N + 1 it is refused by measure and by write alike.
+        int bound = -1;
+        for (PKG.TableCookFieldInfo f : PKG.ROOTCook.type().fields) if (f.name.equals("name")) bound = f.arrayBound;
+        if (bound < 1) throw new AssertionError("no name bound");
+        value.name = "n".repeat(bound);
+        if (PKG.ROOTCook.cookMeasure(value) < 0) throw new AssertionError("name at its bound refused");
+        value.name = "n".repeat(bound + 1);
+        PKG.TableCookWrite.MeasureReason bad = PKG.ROOTCook.cookMeasureReason(value);
+        if (PKG.ROOTCook.cookMeasure(value) != -1 || bad.bytes() != -1 || !bad.reason().equals("invalid_value"))
+            throw new AssertionError("over-long name: " + bad);
+        Arrays.fill(out, (byte) 0x5a);
+        if (PKG.ROOTCook.cookFrom(value, out, PKG.TableByteOrder.LITTLE)) throw new AssertionError("invalid value written");
+        untouched(out, "invalid_value refusal");
+        System.out.println("cook-write ok " + n);
     }
 }
 `

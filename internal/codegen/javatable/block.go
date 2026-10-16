@@ -75,7 +75,9 @@ func buildVersionFile(u *ir.Unit) []byte {
 	return javaFile(u, "the unit's build version (docs/SPEC-TABLES.md §20).", b.String())
 }
 
-const tableBytesSource = `// Explicit little-endian reads out of a byte[]. Every multi-byte read a block
+const tableBytesSource = `// Explicit little-endian reads out of a byte[], and the one store the two
+// producers share (put: the block builder's little-endian prologue, §19.1, and
+// the cook writer's target order, §7.6). Every multi-byte read a block
 // or a cook makes goes through here, so the BYTE ORDER of the two accelerators
 // is this reader's own and never the host's — which is what lets a foreign-order
 // file be refused by its magic rather than silently misread.
