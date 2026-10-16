@@ -113,6 +113,13 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		if body := g.fixedModule(); body != nil {
 			out[strings.ToLower(f.Base)+"_fixed.rs"] = body
 		}
+		// THE MESSAGE FORM's bodies (§3.3) ride beside the fixed form they
+		// reset from: a fixed root's batch and the walkers of what it reaches.
+		if fixed {
+			if body := g.messageModule(); body != nil {
+				out[strings.ToLower(f.Base)+"_message.rs"] = body
+			}
+		}
 	}
 
 	// the BLOCK form: nothing declares it, every fixed table has one, and it
