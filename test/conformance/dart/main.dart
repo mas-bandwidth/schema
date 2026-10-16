@@ -22,6 +22,7 @@ import '../../../build/tables-generated-dart/pointers/GraphCook.dart' as ck;
 import '../../../build/tables-generated-dart/pointers/GraphdemoWire.dart' as graphdemo;
 import '../../../build/tables-generated-dart/blobs/BlobdemoWire.dart' as blobdemo;
 import '../../../build/tables-generated-dart/lists/ListdemoWire.dart' as listdemo;
+import '../../../build/tables-generated-dart/maps/MapdemoWire.dart' as mapdemo;
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -653,8 +654,11 @@ int surfaceCook(String outDir) {
 
 // A row this leg cannot carry writes <case>.absent (test/conformance/README.md).
 // graphdemo, blobdemo and listdemo answer wire, json-read, json-write and
-// report for the roots the variable class carries. Maps, union arrays and
-// every other unit stay absent. no-text rows are not asked for a text.
+// report for the roots the variable class carries. mapdemo answers wire for
+// every root (maps, keyed and fixed arrays, union arms, wstring on form 1);
+// its text and report rows stay absent until the text form and the map's
+// tolerant-read battery land. Every other unit stays absent. no-text rows are
+// not asked for a text.
 bool noTextRow(List<String> f) => f.length > 5 && f[5] == 'no-text';
 
 void spillAbsent(String outDir, String name) {
@@ -681,6 +685,30 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return listdemo.sheetWireSave(listdemo.sheetWireLoad(wire));
     case 'listdemo Unbounded':
       return listdemo.unboundedWireSave(listdemo.unboundedWireLoad(wire));
+    case 'mapdemo Cells':
+      return mapdemo.cellsWireSave(mapdemo.cellsWireLoad(wire));
+    case 'mapdemo Chunks':
+      return mapdemo.chunksWireSave(mapdemo.chunksWireLoad(wire));
+    case 'mapdemo Crews':
+      return mapdemo.crewsWireSave(mapdemo.crewsWireLoad(wire));
+    case 'mapdemo Depth':
+      return mapdemo.depthWireSave(mapdemo.depthWireLoad(wire));
+    case 'mapdemo Docs':
+      return mapdemo.docsWireSave(mapdemo.docsWireLoad(wire));
+    case 'mapdemo Fleet':
+      return mapdemo.fleetWireSave(mapdemo.fleetWireLoad(wire));
+    case 'mapdemo Pairs':
+      return mapdemo.pairsWireSave(mapdemo.pairsWireLoad(wire));
+    case 'mapdemo Runs':
+      return mapdemo.runsWireSave(mapdemo.runsWireLoad(wire));
+    case 'mapdemo Slots':
+      return mapdemo.slotsWireSave(mapdemo.slotsWireLoad(wire));
+    case 'mapdemo Spans':
+      return mapdemo.spansWireSave(mapdemo.spansWireLoad(wire));
+    case 'mapdemo Text':
+      return mapdemo.textWireSave(mapdemo.textWireLoad(wire));
+    case 'mapdemo Trails':
+      return mapdemo.trailsWireSave(mapdemo.trailsWireLoad(wire));
   }
   return null;
 }

@@ -30,23 +30,24 @@ import (
 // rather than in the emitted text so a change is one place (docs/SPEC-TABLES.md
 // §3).
 const (
-	wireKindBool   = 1
-	wireKindI8     = 2
-	wireKindI16    = 3
-	wireKindI32    = 4
-	wireKindI64    = 5
-	wireKindU8     = 6
-	wireKindU16    = 7
-	wireKindU32    = 8
-	wireKindU64    = 9
-	wireKindF32    = 10
-	wireKindF64    = 11
-	wireKindString = 12
-	wireKindTable  = 13
-	wireKindArray  = 14
-	wireKindPtr    = 17
-	wireKindEnum   = 30
-	wireKindEscape = 31
+	wireKindBool    = 1
+	wireKindI8      = 2
+	wireKindI16     = 3
+	wireKindI32     = 4
+	wireKindI64     = 5
+	wireKindU8      = 6
+	wireKindU16     = 7
+	wireKindU32     = 8
+	wireKindU64     = 9
+	wireKindF32     = 10
+	wireKindF64     = 11
+	wireKindString  = 12
+	wireKindTable   = 13
+	wireKindArray   = 14
+	wireKindPtr     = 17
+	wireKindEnum    = 30
+	wireKindEscape  = 31
+	wireKindWString = 33
 )
 
 // dartU64Literal renders a wire id (fnv1a64, §5) as a Dart int literal: the
@@ -104,20 +105,42 @@ func cardWireField(f *ir.Field) bool {
 }
 
 func cardWireFieldSeen(f *ir.Field, seen map[string]bool) bool {
-	if f.Type.Optional || f.KeyEnum != "" || f.IsMap() || f.Type.Kind == ir.TMap {
+	if f.Type.Optional {
 		return false
 	}
-	if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
+	// A MAP (§2.8) rides as an array of its generated entry table, so it is
+	// carried exactly when that entry is.
+	if f.IsMap() {
+		return f.Array == ir.ArrayNone && cardWireTableSeen(f.MapEntry, seen)
+	}
+	if f.Type.Kind == ir.TMap {
 		return false
 	}
-	if f.Type.Kind == ir.TFixed || f.Type.Kind == ir.TWString {
+	// A UNION (§2.6) and a counted or unbounded array of them (§3) are carried
+	// when every arm is: an arm is a field line, judged by these same rules.
+	if un := unionRef(f); un != nil {
+		if f.Array != ir.ArrayNone && !f.CountedOnWire() {
+			return false
+		}
+		return cardWireUnionSeen(un, seen)
+	}
+	if f.Type.Kind == ir.TFixed {
 		return false
+	}
+	// wstring(N) (§3, kind 33) by value as a field; not yet inside an array
+	if f.Type.Kind == ir.TWString {
+		return f.Array == ir.ArrayNone && !f.Type.Pointer
 	}
 	if f.Type.Blob() && f.Array == ir.ArrayNone {
 		return true
 	}
 	if f.CountedOnWire() {
 		return cardScalarOrTable(f, seen)
+	}
+	// a fixed positional array [N]T and an enum-keyed array [E]T (§2.4, §3,
+	// §3.2) of a carried element
+	if f.Array == ir.ArrayFixed {
+		return fixedElemCarried(f, seen)
 	}
 	if f.Array != ir.ArrayNone {
 		return false
@@ -184,7 +207,12 @@ func variableRoots(u *ir.Unit) []*ir.Struct {
 			continue
 		}
 		for _, f := range st.Fields {
-			if ref := tableRef(f); ref != nil && (f.CountedOnWire() || isByValueTable(f)) {
+			if ref := tableRef(f); ref != nil && (f.CountedOnWire() || isByValueTable(f) || (f.Array == ir.ArrayFixed && !f.Type.Pointer)) {
+				named[ref.Name] = true
+			}
+			// a map's entry and a table an arm carries by value are reached
+			// by value too, so neither is a file root (§2.6, §2.8)
+			for _, ref := range byValueReaches(f) {
 				named[ref.Name] = true
 			}
 		}
@@ -192,7 +220,7 @@ func variableRoots(u *ir.Unit) []*ir.Struct {
 	var roots []*ir.Struct
 	for _, name := range sortedTableNames(u) {
 		st := u.Tables[name]
-		if !variable[st.Name] || !cardWireTable(st) || named[st.Name] {
+		if !variable[st.Name] || st.IsMapEntry() || !cardWireTable(st) || named[st.Name] {
 			continue
 		}
 		roots = append(roots, st)
@@ -224,7 +252,11 @@ func wireClosure(u *ir.Unit) []*ir.Struct {
 		}
 		seen[st.Name] = true
 		for _, f := range st.Fields {
-			if ref := tableRef(f); ref != nil && (f.CountedOnWire() || f.Array == ir.ArrayNone) {
+			if ref := tableRef(f); ref != nil && (f.CountedOnWire() || f.Array == ir.ArrayNone || f.Array == ir.ArrayFixed) {
+				visit(ref)
+			}
+			// the entry of a map and every table a union arm names (§2.6, §2.8)
+			for _, ref := range fieldReaches(f) {
 				visit(ref)
 			}
 		}
@@ -266,6 +298,7 @@ type wireGen struct {
 	closure []*ir.Struct
 	roots   []*ir.Struct
 	body    strings.Builder
+	cur     *ir.Struct // the table whose load body is being emitted
 }
 
 func (g *wireGen) pf(format string, args ...any) { fmt.Fprintf(&g.body, format, args...) }
@@ -362,8 +395,13 @@ func (g *wireGen) emit() {
 	g.emitRuntime()
 	g.emitRetainRuntime()
 	g.emitNodeDispatch()
+	g.emitMapRuntime()
 	for _, st := range g.closure {
 		g.emitStorage(st)
+	}
+	for _, un := range g.closureUnions() {
+		g.emitUnionStorage(un)
+		g.emitUnion(un)
 	}
 	for _, st := range g.closure {
 		g.emitSaveBody(st)
@@ -1075,34 +1113,7 @@ double _f64FromBits(int b) {
 func (g *wireGen) emitStorage(st *ir.Struct) {
 	g.pf("final class %s {\n", st.Name)
 	for _, f := range st.Fields {
-		name := fieldMember(f)
-		switch {
-		case f.Type.Blob():
-			if f.Type.Kind == ir.TString {
-				g.pf("  String? %s;\n", name)
-			} else {
-				g.pf("  Uint8List? %s;\n", name)
-			}
-		case f.CountedOnWire():
-			et := dartListElemType(f)
-			g.pf("  List<%s> %s = <%s>[];\n", et, name, et)
-		case isPointerTable(f):
-			g.pf("  %s? %s;\n", f.Type.Name, name)
-		case isByValueTable(f):
-			g.pf("  %s %s = %s();\n", f.Type.Name, name, f.Type.Name)
-		case f.Type.Kind == ir.TBool:
-			g.pf("  bool %s = %v;\n", name, f.HasDefault && f.DefBool)
-		case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
-			g.pf("  int %s = %s;\n", name, g.intDefault(f))
-		case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-			g.pf("  double %s = %s;\n", name, g.floatDefault(f))
-		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-			g.pf("  String %s = %s;\n", name, g.stringDefault(f))
-		case f.Type.Kind == ir.TNamed && enumRef(f) != nil:
-			g.pf("  int %s = %s;\n", name, g.enumDefault(f))
-		default:
-			g.pf("  int %s = 0;\n", name)
-		}
+		g.pf("  %s\n", g.storageDecl(f, fieldMember(f)))
 	}
 	g.pf("}\n\n")
 }
@@ -1165,6 +1176,14 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	expr := "v." + name
 	id := fieldId(f)
 	switch {
+	case f.IsMap(): // a map rides as kind 14 over its entry bodies (§2.8)
+		g.emitSaveMap(f, expr, ind, id, ordinal)
+	case isUnionField(f): // a union rides as kind 15 and its arm header (§2.6, §3)
+		g.emitSaveUnionField(f, expr, ind, id)
+	case isKeyed(f): // [E]T rides as kind 16 (§2.4, §3.2)
+		g.emitSaveKeyed(f, expr, ind, id)
+	case isFixedArray(f): // [N]T rides as kind 14, every element (§3)
+		g.emitSaveFixed(f, expr, ind, id)
 	case f.Type.Blob(): // *string/*bytes ride as a kind-17 node index (§2.5, §3.1)
 		g.pf("%sif (%s != null) {\n", ind, expr)
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
@@ -1185,6 +1204,8 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.emitSaveByValue(f, expr, ind, id)
 	case f.CountedOnWire(): // []T and [..N]T ride as kind 14 (§2.9, §3)
 		switch listElementKind(f) {
+		case wireKindUnion:
+			g.emitSaveUnionList(f, expr, ind, id)
 		case wireKindPtr:
 			g.emitSavePointerList(f, expr, ind, id)
 		case wireKindTable:
@@ -1192,6 +1213,16 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		default:
 			g.emitSaveScalarList(f, expr, ind, id)
 		}
+	case f.Type.Kind == ir.TWString:
+		// WIDE TEXT TAKES NO SPECIFIED DEFAULT, so the empty value elides; L is
+		// a BYTE length, twice the code-unit count, and each UTF-16 unit rides
+		// little-endian (§3, kind 33)
+		g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
+		g.pf("%s\tw.putByte(%d);\n", ind, wireKindWString)
+		g.pf("%s\tw.putLeb(%s.length * 2);\n", ind, expr)
+		g.pf("%s\tfor (final u in %s.codeUnits) { w.putU16(u); }\n", ind, expr)
+		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TString:
 		g.pf("%sif (%s != %s) {\n", ind, expr, g.stringDefault(f))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
@@ -1200,10 +1231,10 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tw.putLeb(b.length);\n", ind)
 		g.pf("%s\tw.putBytes(b);\n", ind)
 		g.pf("%s}\n", ind)
-	case f.Type.Kind == ir.TBytes: // bytes(N) rides as kind 14 over element kind 6 (§3)
+	case f.Type.Kind == ir.TBytes: // bytes(N) rides as kind 14 over element kind 6 (§3); the String holds one byte a code unit (latin1), so every byte value survives
 		g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
 		g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
-		g.pf("%s\tfinal b = utf8.encode(%s);\n", ind, expr)
+		g.pf("%s\tfinal b = latin1.encode(%s);\n", ind, expr)
 		g.pf("%s\tfinal s = w.sub();\n", ind)
 		g.pf("%s\ts.putByte(%d);\n", ind, wireKindU8)
 		g.pf("%s\ts.putLeb(b.length);\n", ind)
@@ -1404,6 +1435,8 @@ func (g *wireGen) emitSaveScalarList(f *ir.Field, expr, ind string, id uint64) {
 func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	n := st.Name
 	fn := dartName(n) + "WireLoadBody"
+	g.cur = st
+	g.emitArrayHelpers(st)
 	g.pf("void %s(TableWireReader r, %s v, bool nested) {\n", fn, n)
 	g.pf("\twhile (true) {\n")
 	g.pf("\t\tfinal ref = r.readLeb();\n")
@@ -1458,6 +1491,14 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 	id := fieldId(f)
 	g.pf("%scase %s:\n", ind, dartU64Literal(id))
 	switch {
+	case f.IsMap(): // kind 14 over the entry bodies (§2.8)
+		g.emitLoadMap(f, ind, ordinal)
+	case isKeyed(f) || isFixedArray(f): // kind 16 / kind 14 (§3, §3.2)
+		g.emitLoadArray(g.cur, f, ind)
+	case isUnionField(f): // kind 15, the arm header in place (§2.6, §3)
+		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindUnion)
+		g.pf("%s\tif (!%s(r, v.%s)) { r.report.malformed = true; return; }\n", ind, unionFn(unionRef(f), "LoadArm"), name)
+		g.pf("%s\tbreak;\n", ind)
 	case f.Type.Blob(): // *string/*bytes ride as a kind-17 node index (§2.5, §3.1)
 		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindPtr)
 		g.pf("%s\t{\n", ind)
@@ -1507,7 +1548,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
 		declKind := listElementKind(f)
 		switch declKind {
-		case wireKindTable, wireKindPtr, wireKindString, wireKindEnum, wireKindBool:
+		case wireKindTable, wireKindPtr, wireKindString, wireKindEnum, wireKindBool, wireKindUnion:
 			g.pf("%s\t\tif (elemKind != %d) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, declKind)
 		default:
 			// A smaller kind on the same ladder widens the whole array once (§4).
@@ -1518,6 +1559,12 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		}
 		g.pf("%s\t\tfor (var i = 0; i < count; i++) {\n", ind)
 		switch listElementKind(f) {
+		case wireKindUnion:
+			// one element of an array of unions: the arm header in place, a
+			// None element the single zero byte (§3)
+			g.pf("%s\t\t\tfinal e = %s();\n", ind, f.Type.Name)
+			g.pf("%s\t\t\tif (!%s(arr, e)) { r.report.malformed = true; break; }\n", ind, unionFn(unionRef(f), "LoadArm"))
+			g.pf("%s\t\t\tv.%s.add(e);\n", ind, name)
 		case wireKindTable:
 			g.pf("%s\t\t\tfinal elen = arr.readLeb();\n", ind)
 			g.pf("%s\t\t\tif (elen == null || !arr.has(elen)) { r.report.malformed = true; break; }\n", ind)
@@ -1538,6 +1585,28 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		}
 		g.pf("%s\t\t}\n", ind)
 		g.pf("%s\t\tr.pos = end;\n", ind)
+		g.pf("%s\t}\n", ind)
+		g.pf("%s\tbreak;\n", ind)
+	case f.Type.Kind == ir.TWString:
+		// kind 33 (§3): an odd L is framing damage, ill-formed UTF-16 (a lone
+		// surrogate) is malformed and reads the default, and a value past the
+		// bound clamps at a code-point boundary, never through a pair
+		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindWString)
+		g.pf("%s\t{\n", ind)
+		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
+		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\t\tif (len.isOdd) { r.report.malformed = true; r.pos += len; break; }\n", ind)
+		g.pf("%s\t\tfinal units = <int>[];\n", ind)
+		g.pf("%s\t\tfor (var i = 0; i < len; i += 2) { units.add(r.data[r.pos + i] | (r.data[r.pos + i + 1] << 8)); }\n", ind)
+		g.pf("%s\t\tr.pos += len;\n", ind)
+		g.pf("%s\t\tif (!_wideValid(units)) { r.report.malformed = true; break; }\n", ind)
+		g.pf("%s\t\tvar keep = units.length;\n", ind)
+		g.pf("%s\t\tif (keep > %d) {\n", ind, f.Type.Size)
+		g.pf("%s\t\t\tkeep = %d;\n", ind, f.Type.Size)
+		g.pf("%s\t\t\tif (keep > 0 && units[keep - 1] >= 0xD800 && units[keep - 1] <= 0xDBFF) keep--;\n", ind)
+		g.pf("%s\t\t\tr.report.clamped++;\n", ind)
+		g.pf("%s\t\t}\n", ind)
+		g.pf("%s\t\tv.%s = String.fromCharCodes(units.sublist(0, keep));\n", ind, name)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
 	case f.Type.Kind == ir.TString:
@@ -1693,7 +1762,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tif (!arr.has(count)) { r.report.malformed = true; r.pos = end; break; }\n", ind)
 		g.pf("%s\t\tvar keep = count;\n", ind)
 		g.pf("%s\t\tif (keep > %d) { keep = %d; r.report.clamped++; }\n", ind, f.Type.Size, f.Type.Size)
-		g.pf("%s\t\tv.%s = utf8.decode(arr.data.sublist(arr.pos, arr.pos + keep));\n", ind, name)
+		g.pf("%s\t\tv.%s = latin1.decode(arr.data.sublist(arr.pos, arr.pos + keep));\n", ind, name)
 		g.pf("%s\t\tr.pos = end;\n", ind)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
@@ -1844,6 +1913,20 @@ func (g *wireGen) emitNumber(st *ir.Struct) {
 func (g *wireGen) emitNumberField(f *ir.Field, ind string) {
 	expr := "v." + fieldMember(f)
 	switch {
+	case f.IsMap():
+		// a map is a by-value edge at its field's position, its entries in
+		// ascending key order, each descended before the next (§2.8, §3.1)
+		g.pf("%sfor (final e in %s) {\n", ind, mapSorted(f, expr))
+		g.pf("%s\t%sNumber(s, e, open);\n", ind, dartName(f.MapEntry.Name))
+		g.pf("%s}\n", ind)
+	case isUnionField(f):
+		g.pf("%s%s(s, %s, open);\n", ind, unionFn(unionRef(f), "Number"), expr)
+	case f.Array == ir.ArrayFixed:
+		g.emitNumberArray(f, expr, ind)
+	case f.CountedOnWire() && unionRef(f) != nil:
+		g.pf("%sfor (final e in %s) {\n", ind, expr)
+		g.pf("%s\t%s(s, e, open);\n", ind, unionFn(unionRef(f), "Number"))
+		g.pf("%s}\n", ind)
 	case f.Type.Blob() && f.Array == ir.ArrayNone:
 		g.pf("%sif (%s != null) {\n", ind, expr)
 		if f.Type.Kind == ir.TString {

@@ -284,14 +284,22 @@ func tableFieldTypeName(f *ir.Field) string {
 // by name — the table, the field and the construct — so it is never mis-
 // encoded and never silently dropped. The card's own closure — a plain table,
 // bool/int32/int64/enum fields, string(N), *string (the string kind of §2.5)
-// and unbounded []T of table elements (§2.9) — passes.
+// and unbounded []T of table elements (§2.9) — passes, and so do a map, an
+// enum-keyed array and a union whose every part form 1 carries (§2.4, §2.6,
+// §2.8).
 func checkUnsupportedConstructs(u *ir.Unit) error {
 	variable := ir.VariableTables(u)
 	for _, name := range sortedKeys(u.Tables) {
 		st := u.Tables[name]
 		for _, f := range st.Fields {
+			// A MAP, AN ENUM-KEYED ARRAY AND A UNION ARM are carried on form 1
+			// (wireunion.go, wirearrays.go) exactly when every construct they
+			// hold is: the refusals below fire only for one that is not, so a
+			// construct this form cannot encode is still refused by name and
+			// never mis-encoded (§11).
+			carried := cardWireField(f)
 			// maps (docs/SPEC-TABLES.md §2.8)
-			if f.Type.Kind == ir.TMap || f.MapEntry != nil {
+			if (f.Type.Kind == ir.TMap || f.MapEntry != nil) && !carried {
 				return fmt.Errorf("table %s field %s: map[K]V is refused in the Dart table backend (docs/SPEC-TABLES.md §2.8, §11)",
 					name, f.Name)
 			}
@@ -317,7 +325,7 @@ func checkUnsupportedConstructs(u *ir.Unit) error {
 			// ArrayFixed of one slot per named variant, keyed by variant id on
 			// the wire; the card's form-1 writer has no keyed body, so it must
 			// be refused, never mis-encoded as a plain scalar enum.
-			if f.KeyEnum != "" {
+			if f.KeyEnum != "" && !carried {
 				return fmt.Errorf("table %s field %s: enum-keyed array [E]T is refused in the Dart table backend (docs/SPEC-TABLES.md §2.4, §11)",
 					name, f.Name)
 			}
@@ -325,7 +333,7 @@ func checkUnsupportedConstructs(u *ir.Unit) error {
 			// union carries an arm id and a per-arm body; the card's form-1
 			// writer has no union tag, so it must be refused, never silently
 			// dropped from the variable form.
-			if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
+			if _, isUnion := f.Type.Ref.(*ir.Union); isUnion && !carried {
 				return fmt.Errorf("table %s field %s: a union arm is refused in the Dart table backend (docs/SPEC-TABLES.md §2.6, §11)",
 					name, f.Name)
 			}

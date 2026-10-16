@@ -387,6 +387,11 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 	g.pf("\tout.raw(_jsonString(%s));\n", strconv.Quote(key))
 	g.pf("\tout.raw(': ');\n")
 	switch {
+	case f.IsMap() || unionRef(f) != nil || f.Array == ir.ArrayFixed || f.Type.Kind == ir.TWString:
+		// The text form of a map and of a union (§16.2) is not carried by this
+		// leg yet: the wire form is, and the conformance driver answers the
+		// text surfaces of these units absent rather than with this null.
+		g.pf("\tout.raw('null');\n")
 	case f.Type.Blob(): // *string rides as a string or null; *bytes as base64 or null (§2.5, §16.2)
 		if f.Type.Kind == ir.TString {
 			g.pf("\tif (v.%s == null) { out.raw('null'); } else { out.raw(_jsonString(v.%s!)); }\n", name, name)
@@ -472,7 +477,7 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 	case f.Type.Kind == ir.TString:
 		g.pf("\tout.raw(_jsonString(v.%s));\n", name)
 	case f.Type.Kind == ir.TBytes: // bytes(N) rides as base64 in the text (§16.7)
-		g.pf("\tout.raw(_jsonString(base64Encode(utf8.encode(v.%s))));\n", name)
+		g.pf("\tout.raw(_jsonString(base64Encode(latin1.encode(v.%s))));\n", name)
 	case f.Type.Kind == ir.TFloat32, f.Type.Kind == ir.TFloat64:
 		single := "false"
 		if f.Type.Kind == ir.TFloat32 {
@@ -513,6 +518,10 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 	name := fieldMember(f)
 	g.pf("\t\t\tcase %s:\n", strconv.Quote(key))
 	switch {
+	case f.IsMap() || unionRef(f) != nil || f.Array == ir.ArrayFixed || f.Type.Kind == ir.TWString:
+		// not carried on the text form yet (§16.2): counted, never misread
+		g.pf("\t\t\t\tif (val != null || val == null) r.kindMismatch++;\n")
+		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Blob():
 		if f.Type.Kind == ir.TString {
 			g.pf("\t\t\t\tif (val == null) { v.%s = null; }\n", name)
@@ -599,7 +608,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tv.%s = _jsonIntField(val, r, null, %s, true);\n", name, hi)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TBytes:
-		g.pf("\t\t\t\tif (val is String) { v.%s = utf8.decode(base64Decode(val)); } else { r.kindMismatch++; }\n", name)
+		g.pf("\t\t\t\tif (val is String) { v.%s = latin1.decode(base64Decode(val)); } else { r.kindMismatch++; }\n", name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		g.pf("\t\t\t\tv.%s = _jsonFloatField(val, r);\n", name)

@@ -63,11 +63,21 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 			refuse: false,
 		},
 		{
-			name: "map is refused by table and field name",
+			name: "map is carried on form 1",
 			def: `package test
 				table Mapped {
 					id string(64)
 					meta map[uint8]int32
+				}
+			`,
+			refuse: false,
+		},
+		{
+			name: "map whose value form 1 cannot carry is refused by table and field name",
+			def: `package test
+				table Mapped {
+					id string(64)
+					meta map[uint8]?int32
 				}
 			`,
 			refuse:    true,
@@ -100,7 +110,7 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 			construct: "optional ?T",
 		},
 		{
-			name: "enum-keyed array is refused by table and field name",
+			name: "enum-keyed array is carried on form 1",
 			def: `package test
 				enum Slot { alpha, beta, gamma }
 				table Keyed {
@@ -108,15 +118,24 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 					slots [Slot]int32
 				}
 			`,
-			refuse:    true,
-			table:     "Keyed",
-			field:     "slots",
-			construct: "enum-keyed array",
+			refuse: false,
 		},
 		{
-			name: "union arm is refused by table and field name",
+			name: "union arm is carried on form 1",
 			def: `package test
 				union Pick { plain int32 }
+				table Armed {
+					id string(64)
+					u Pick
+				}
+			`,
+			refuse: false,
+		},
+		{
+			name: "union arm form 1 cannot carry is refused by table and field name",
+			def: `package test
+				type Pos { x int32 }
+				union Pick { at Pos }
 				table Armed {
 					id string(64)
 					u Pick
