@@ -564,7 +564,49 @@ func (g *gen) emitStructModule(d *ir.Struct) {
 		g.emitFieldComments(d)
 		g.emitDefstruct(fields)
 	}
+	EmitKeyedAccessors(&g.body, d)
 	g.bpf("end\n\n")
+}
+
+// EmitKeyedAccessors emits the 1-based keyed array accessor pair (<field>_at/2,
+// put_<field>_at/3) and the key-element iterator (<field>_entries/1) on a
+// struct's module for every enum-keyed array field [E]T (SPEC §4.3, §4.6,
+// docs/PORTING.md M5). Key 0 (None), keys past E.Max, negative keys, and
+// non-integer keys raise ArgumentError naming the field, the key, and the bound.
+func EmitKeyedAccessors(b *strings.Builder, st *ir.Struct) {
+	for _, f := range st.Fields {
+		if f.KeyEnum == "" || f.KeyEnumRef == nil || f.KeyEnumRef.Max <= 0 {
+			continue
+		}
+		fn := elixirName(f.Name)
+		if st.IsTable {
+			fn = f.Name
+		}
+		enumName := f.KeyEnum
+		maxLit := intLit64(f.KeyEnumRef.Max)
+		maxPlain := strconv.FormatInt(f.KeyEnumRef.Max, 10)
+		b.WriteString("\n  # [" + enumName + "] — 1-based keyed access (1.." + maxPlain + "); 0 (None) and > " + enumName + ".max raise ArgumentError (SPEC §4.3).\n")
+		b.WriteString("  def " + fn + "_at(s, key) when is_integer(key) and key >= 1 and key <= " + maxLit + " do\n")
+		b.WriteString("    Enum.at(s." + fn + ", key - 1)\n")
+		b.WriteString("  end\n\n")
+		b.WriteString("  def " + fn + "_at(_s, key), do: refuse_" + fn + "_key(key)\n\n")
+		b.WriteString("  def put_" + fn + "_at(s, key, v) when is_integer(key) and key >= 1 and key <= " + maxLit + " do\n")
+		b.WriteString("    %{s | " + fn + ": List.replace_at(s." + fn + ", key - 1, v)}\n")
+		b.WriteString("  end\n\n")
+		b.WriteString("  def put_" + fn + "_at(_s, key, _v), do: refuse_" + fn + "_key(key)\n\n")
+		b.WriteString("  def " + fn + "_entries(s) do\n")
+		b.WriteString("    Enum.with_index(s." + fn + ", 1) |> Enum.map(fn {v, k} -> {k, v} end)\n")
+		b.WriteString("  end\n\n")
+		b.WriteString("  defp refuse_" + fn + "_key(0) do\n")
+		b.WriteString("    raise ArgumentError, \"" + fn + ": key 0 is None and names no slot\"\n")
+		b.WriteString("  end\n\n")
+		b.WriteString("  defp refuse_" + fn + "_key(key) when is_integer(key) and key > " + maxLit + " do\n")
+		b.WriteString("    raise ArgumentError, \"" + fn + ": key #{key} is past " + enumName + ".max (" + maxPlain + ")\"\n")
+		b.WriteString("  end\n\n")
+		b.WriteString("  defp refuse_" + fn + "_key(key) do\n")
+		b.WriteString("    raise ArgumentError, \"" + fn + ": key #{inspect(key)} is not a variant of " + enumName + "\"\n")
+		b.WriteString("  end\n")
+	}
 }
 
 // emitFieldComments writes one comment block above defstruct carrying the

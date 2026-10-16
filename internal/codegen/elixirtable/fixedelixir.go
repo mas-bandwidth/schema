@@ -35,6 +35,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -265,6 +266,7 @@ func (g *fixedGen) structModule(st *ir.Struct) string {
 			fmt.Fprintf(&b, "            %s%s\n", fields[i], sep)
 		}
 	}
+	elixir.EmitKeyedAccessors(&b, st)
 	b.WriteString("end\n\n")
 	return b.String()
 }

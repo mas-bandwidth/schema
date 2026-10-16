@@ -907,11 +907,75 @@ tables-elixir-fixed-roadmap-t12: tables-fixedform-corpus
 		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapElixirT12OrdinalsArms'
 	@echo 'tables Elixir T12: R27 manifest oracle, union-field-arms and payload-free-arms verified'
 
+# M5 (#407): 1-based keyed array accessors (<field>_at/2, put_<field>_at/3,
+# <field>_entries/1) on both table structs and type structs, refusing None (0)
+# and keys past E.Max with ArgumentError.
+.PHONY: tables-elixir-keyed
+tables-elixir-keyed:
+	@mkdir -p build
+	@SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
+		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestKeyedAccessorCoversBothEndsElixir$$' \
+		> build/tables-elixir-keyed.log 2>&1; \
+		status=$$?; cat build/tables-elixir-keyed.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@if grep -q -- '--- SKIP' build/tables-elixir-keyed.log; then \
+		echo "tables-elixir-keyed: the keyed array gate SKIPPED; under SCHEMA_REQUIRE_CORPUS=1 a missing toolchain is a failure"; \
+		exit 1; \
+	fi
+	@echo 'tables Elixir keyed: 1-based keyed array accessors refuse None (0) and keys past E.Max on both table and type structs'
+
+ELIXIR_KEYED_NONE_SED := -e 's|key >= 1 and ||'
+
+.PHONY: tables-elixir-keyed-none-negative-control
+tables-elixir-keyed-none-negative-control:
+	@rm -rf build/elixir-keyed-none-nc && mkdir -p build/elixir-keyed-none-nc
+	@sed $(ELIXIR_KEYED_NONE_SED) \
+		internal/codegen/elixir/elixir.go > build/elixir-keyed-none-nc/elixir.go.txt
+	@cmp -s internal/codegen/elixir/elixir.go build/elixir-keyed-none-nc/elixir.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: ELIXIR_KEYED_NONE_SED matched nothing — the emitter moved"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/elixir/elixir.go":"%s/build/elixir-keyed-none-nc/elixir.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/elixir-keyed-none-nc/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
+			go test -overlay build/elixir-keyed-none-nc/overlay.json \
+			./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestKeyedAccessorCoversBothEndsElixir$$' \
+			> build/elixir-keyed-none-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: dropping the key >= 1 guard left TestKeyedAccessorCoversBothEndsElixir green"; \
+		cat build/elixir-keyed-none-nc/log; exit 1; \
+	fi
+	@grep -q 'key 0 (None) was not refused' build/elixir-keyed-none-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: TestKeyedAccessorCoversBothEndsElixir went red for another reason"; \
+		  cat build/elixir-keyed-none-nc/log; exit 1; }
+	@echo 'negative control: dropping the key >= 1 guard reds TestKeyedAccessorCoversBothEndsElixir on key 0 (None)'
+
+ELIXIR_KEYED_MAX_SED := -e 's| and key <= " + maxLit + "||'
+
+.PHONY: tables-elixir-keyed-max-negative-control
+tables-elixir-keyed-max-negative-control:
+	@rm -rf build/elixir-keyed-max-nc && mkdir -p build/elixir-keyed-max-nc
+	@sed $(ELIXIR_KEYED_MAX_SED) \
+		internal/codegen/elixir/elixir.go > build/elixir-keyed-max-nc/elixir.go.txt
+	@cmp -s internal/codegen/elixir/elixir.go build/elixir-keyed-max-nc/elixir.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: ELIXIR_KEYED_MAX_SED matched nothing — the emitter moved"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/elixir/elixir.go":"%s/build/elixir-keyed-max-nc/elixir.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/elixir-keyed-max-nc/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
+			go test -overlay build/elixir-keyed-max-nc/overlay.json \
+			./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestKeyedAccessorCoversBothEndsElixir$$' \
+			> build/elixir-keyed-max-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: dropping the key <= max guard left TestKeyedAccessorCoversBothEndsElixir green"; \
+		cat build/elixir-keyed-max-nc/log; exit 1; \
+	fi
+	@grep -q 'key past max' build/elixir-keyed-max-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: TestKeyedAccessorCoversBothEndsElixir went red for another reason"; \
+		  cat build/elixir-keyed-max-nc/log; exit 1; }
+	@echo 'negative control: dropping the key <= max guard reds TestKeyedAccessorCoversBothEndsElixir on key past max'
+
 test-elixir: tables-elixir-fixed-form tables-elixir-fixed-form-negative-control tables-elixir-fixed-bench
 test-elixir: tables-elixir-versioning tables-elixir-versioning-negative-control
 test-elixir: tables-elixir-message-batch
 test-elixir: tables-elixir-paired-gate
 test-elixir: tables-elixir-row-f12 tables-elixir-t13 tables-elixir-fixed-roadmap-t12
+test-elixir: tables-elixir-keyed tables-elixir-keyed-none-negative-control tables-elixir-keyed-max-negative-control
 
 # ---------------------------------------------------------------------------
 # THE CARDS UNIT'S ELIXIR LEG (docs/SPEC-TABLES.md §2)
