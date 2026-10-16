@@ -54,13 +54,32 @@ final class TableRetain {
   }
 }
 
+// A record names THE BODY IT BELONGS TO by the object that body was loaded
+// into (§6.6: what a record must carry is the body, the field's identity and
+// its resolved bytes), so a nested, a by-value, a list-element and a node body
+// each keep their own fields and a shared node's are written once. The path is
+// kept for the record's byte cost only. placed is the save's own mark: a
+// record no save reached names a body the value no longer holds, and counts
+// one retainLost.
 final class _RetainRecord {
   final List<int> path;
+  Object owner;
   final int id;
   final int kind;
   final List<int> resolved;
-  _RetainRecord(this.path, this.id, this.kind, this.resolved);
+  bool placed = false;
+  _RetainRecord(this.path, this.owner, this.id, this.kind, this.resolved);
   int cost() => 9 + 8 * (path.length - 1) + resolved.length;
+}
+
+// _retainReown moves the records a damaged body kept onto the default value
+// that replaces it (§6.6): the reference resets that body IN PLACE, so what it
+// retained before the damage still belongs to it and rides back at its end.
+void _retainReown(TableRetain? t, Object from, Object to) {
+  if (t == null) return;
+  for (final rec in t.records) {
+    if (identical(rec.owner, from)) rec.owner = to;
+  }
 }
 
 // the ids this build can name (docs/SPEC-TABLES.md §6.6): a retained id is by
@@ -430,23 +449,16 @@ List<int>? _retainEmitArray(WireState state, int kind, _RetainCursor c, int end,
   return o;
 }
 
-// _retainTail re-emits the retained records whose path names the body being
+// _retainTail re-emits the retained records that belong to the body being
 // written, in the order retained, at the end of that body (§6.6). A record
 // whose id cannot be interned (the caller's list is full) or whose walk is
 // damaged is dropped and counted one retainLost.
-void _retainTail(TableWireWriter w) {
+void _retainTail(TableWireWriter w, Object owner) {
   final t = w.state.retain;
   if (t == null) return;
   for (final rec in t.records) {
-    if (rec.path.length != w.path.length) continue;
-    var same = true;
-    for (var i = 0; i < w.path.length; i++) {
-      if (rec.path[i] != w.path[i]) {
-        same = false;
-        break;
-      }
-    }
-    if (!same) continue;
+    if (!identical(rec.owner, owner) || rec.placed) continue;
+    rec.placed = true;
     w.state.lost = false;
     final ref = w.state.retainRefFor(rec.id);
     if (ref == 0 || w.state.lost) {
@@ -474,7 +486,7 @@ void _retainTail(TableWireWriter w) {
 func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	n := st.Name
 	d := dartName(n)
-	_, strBlob := ir.PointerReachableBlobs(st)
+	bytesBlob, strBlob := ir.PointerReachableBlobs(st)
 
 	g.pf("%s %sWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {\n", n, d)
 	g.pf("\tretain.reset();\n")
@@ -482,6 +494,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	g.pf("\tr.report = report;\n")
 	g.pf("\tr.stringBlob = %v;\n", strBlob)
+	g.pf("\tr.bytesBlob = %v;\n", bytesBlob)
 	g.pf("\tr.retain = retain;\n")
 	g.pf("\tr.path = [1];\n")
 	g.emitKnownTypes(st, "r", "v")
@@ -489,6 +502,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\tif (verdict == 1) { r.report.refused = true; return v; }\n")
 	g.pf("\tif (verdict == 2) { r.report.malformed = true; return v; }\n")
 	g.pf("\tr.scanNodeTable();\n")
+	g.pf("\tr.decodeNodes();\n")
 	g.pf("\tr.pos = 1;\n")
 	g.pf("\t%s(r, v, false);\n", d+"WireLoadBody")
 	g.pf("\treturn v;\n")
@@ -505,11 +519,14 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\tfinal w = TableWireWriter(state);\n")
 	g.pf("\tw.path = [1];\n")
 	g.pf("\tw.putByte(1);\n")
+	g.pf("\tfor (final rec in retain.records) { rec.placed = false; }\n")
 	g.pf("\t%sWireSaveBodyFields(w, v);\n", d)
 	g.pf("\t_writeNodeTable(w);\n")
 	g.pf("\tw.putByte(0);\n")
 	g.pf("\tfor (final id in state.ids) { w.putU64(id); }\n")
 	g.pf("\tw.putU64(state.ids.length);\n")
+	g.pf("\t// a record no body reached names one the value no longer holds (§6.6)\n")
+	g.pf("\tfor (final rec in retain.records) { if (!rec.placed) report.retainLost++; }\n")
 	g.pf("\treturn Uint8List.fromList(w.buf);\n")
 	g.pf("}\n\n")
 
