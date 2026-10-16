@@ -310,16 +310,16 @@ namespace Bench
             new TableFixedDst(10, 14, 9, 1, 0), // entities
             new TableFixedDst(0, 0, 0, 0, 0), // element
             new TableFixedDst(0, 0, 0, 0, 0), // entity_id
-            new TableFixedDst(0, 0, 0, 0, 0), // pos_x
-            new TableFixedDst(0, 0, 0, 0, 0), // pos_y
-            new TableFixedDst(0, 0, 0, 0, 0), // pos_z
-            new TableFixedDst(0, 0, 0, 0, 0), // yaw
-            new TableFixedDst(0, 0, 0, 0, 0), // pitch
-            new TableFixedDst(0, 0, 0, 0, 0), // vel_x
-            new TableFixedDst(0, 0, 0, 0, 0), // vel_y
-            new TableFixedDst(0, 0, 0, 0, 0), // vel_z
-            new TableFixedDst(0, 0, 0, 0, 0), // health
-            new TableFixedDst(0, 0, 0, 0, 0), // weapon
+            new TableFixedDst(1, 0, 0, 0, 0), // pos_x
+            new TableFixedDst(2, 0, 0, 0, 0), // pos_y
+            new TableFixedDst(3, 0, 0, 0, 0), // pos_z
+            new TableFixedDst(4, 0, 0, 0, 0), // yaw
+            new TableFixedDst(5, 0, 0, 0, 0), // pitch
+            new TableFixedDst(6, 0, 0, 0, 0), // vel_x
+            new TableFixedDst(7, 0, 0, 0, 0), // vel_y
+            new TableFixedDst(8, 0, 0, 0, 0), // vel_z
+            new TableFixedDst(9, 0, 0, 0, 0), // health
+            new TableFixedDst(10, 0, 0, 0, 0), // weapon
             new TableFixedDst(0, 0, 0, 0, 0), // Fists
             new TableFixedDst(0, 0, 0, 0, 0), // Pistol
             new TableFixedDst(0, 0, 0, 0, 0), // Shotgun
@@ -335,13 +335,13 @@ namespace Bench
             new TableFixedDst(0, 0, 0, 0, 0), // Turret
             new TableFixedDst(0, 0, 0, 0, 0), // Drone
             new TableFixedDst(0, 0, 0, 0, 0), // Repair
-            new TableFixedDst(0, 0, 0, 0, 0), // damage
-            new TableFixedDst(0, 0, 0, 0, 0), // moving
-            new TableFixedDst(0, 0, 0, 0, 0), // firing
+            new TableFixedDst(11, 0, 0, 0, 0), // damage
+            new TableFixedDst(12, 0, 0, 0, 0), // moving
+            new TableFixedDst(13, 0, 0, 0, 0), // firing
             new TableFixedDst(123, 2, 122, 1, 0), // stats
             new TableFixedDst(0, 0, 0, 0, 0), // element
             new TableFixedDst(0, 0, 0, 0, 0), // stat_id
-            new TableFixedDst(0, 0, 0, 0, 0), // delta
+            new TableFixedDst(1, 0, 0, 0, 0), // delta
             new TableFixedDst(284, 0, 283, 0, 0), // game_event
             new TableFixedDst(0, 0, 0, 0, 0), // hit
             new TableFixedDst(0, 0, 0, 0, 0), // target_id
@@ -684,6 +684,868 @@ namespace Bench
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Extra = unchecked((int)v), reset: (t) => { t.Value.Extra = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.IdleTicks = unchecked((int)v), reset: (t) => { t.Value.IdleTicks = 0; }),
         };
+
+        private static void FixedTableFixedSetRaw(FixedTable t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Value.Sequence = (uint)v; break;
+                case 1: t.Value.AckSequence = unchecked((int)v); break;
+                case 2: t.Value.AckBits = (uint)v; break;
+                case 3: t.Value.SessionId = unchecked((ulong)v); break;
+                case 4: t.Value.ClientId = unchecked((uint)v); break;
+                case 5: t.Value.Nonce = unchecked((ulong)v); break;
+                case 6: t.Value.WorldTime = unchecked((long)v); break;
+                case 7: t.Value.FrameTick = (ulong)v; break;
+                case 8: t.Value.ServerTime = (int)v; break;
+                case 9: t.Value.EntitiesCount = (int)v; break;
+                case 10: t.Value.Entities[0].EntityId = (uint)v; break;
+                case 11: t.Value.Entities[0].PosX = unchecked((int)v); break;
+                case 12: t.Value.Entities[0].PosY = unchecked((int)v); break;
+                case 13: t.Value.Entities[0].PosZ = unchecked((int)v); break;
+                case 14: t.Value.Entities[0].Yaw = (uint)v; break;
+                case 15: t.Value.Entities[0].Pitch = (uint)v; break;
+                case 16: t.Value.Entities[0].VelX = unchecked((int)v); break;
+                case 17: t.Value.Entities[0].VelY = unchecked((int)v); break;
+                case 18: t.Value.Entities[0].VelZ = unchecked((int)v); break;
+                case 19: t.Value.Entities[0].Health = unchecked((int)v); break;
+                case 20: { t.Value.Entities[0].Weapon = (MixedWeapon)v; } break;
+                case 21: t.Value.Entities[0].Damage = v; break;
+                case 22: t.Value.Entities[0].Moving = v != 0; break;
+                case 23: t.Value.Entities[0].Firing = v != 0; break;
+                case 24: t.Value.Entities[1].EntityId = (uint)v; break;
+                case 25: t.Value.Entities[1].PosX = unchecked((int)v); break;
+                case 26: t.Value.Entities[1].PosY = unchecked((int)v); break;
+                case 27: t.Value.Entities[1].PosZ = unchecked((int)v); break;
+                case 28: t.Value.Entities[1].Yaw = (uint)v; break;
+                case 29: t.Value.Entities[1].Pitch = (uint)v; break;
+                case 30: t.Value.Entities[1].VelX = unchecked((int)v); break;
+                case 31: t.Value.Entities[1].VelY = unchecked((int)v); break;
+                case 32: t.Value.Entities[1].VelZ = unchecked((int)v); break;
+                case 33: t.Value.Entities[1].Health = unchecked((int)v); break;
+                case 34: { t.Value.Entities[1].Weapon = (MixedWeapon)v; } break;
+                case 35: t.Value.Entities[1].Damage = v; break;
+                case 36: t.Value.Entities[1].Moving = v != 0; break;
+                case 37: t.Value.Entities[1].Firing = v != 0; break;
+                case 38: t.Value.Entities[2].EntityId = (uint)v; break;
+                case 39: t.Value.Entities[2].PosX = unchecked((int)v); break;
+                case 40: t.Value.Entities[2].PosY = unchecked((int)v); break;
+                case 41: t.Value.Entities[2].PosZ = unchecked((int)v); break;
+                case 42: t.Value.Entities[2].Yaw = (uint)v; break;
+                case 43: t.Value.Entities[2].Pitch = (uint)v; break;
+                case 44: t.Value.Entities[2].VelX = unchecked((int)v); break;
+                case 45: t.Value.Entities[2].VelY = unchecked((int)v); break;
+                case 46: t.Value.Entities[2].VelZ = unchecked((int)v); break;
+                case 47: t.Value.Entities[2].Health = unchecked((int)v); break;
+                case 48: { t.Value.Entities[2].Weapon = (MixedWeapon)v; } break;
+                case 49: t.Value.Entities[2].Damage = v; break;
+                case 50: t.Value.Entities[2].Moving = v != 0; break;
+                case 51: t.Value.Entities[2].Firing = v != 0; break;
+                case 52: t.Value.Entities[3].EntityId = (uint)v; break;
+                case 53: t.Value.Entities[3].PosX = unchecked((int)v); break;
+                case 54: t.Value.Entities[3].PosY = unchecked((int)v); break;
+                case 55: t.Value.Entities[3].PosZ = unchecked((int)v); break;
+                case 56: t.Value.Entities[3].Yaw = (uint)v; break;
+                case 57: t.Value.Entities[3].Pitch = (uint)v; break;
+                case 58: t.Value.Entities[3].VelX = unchecked((int)v); break;
+                case 59: t.Value.Entities[3].VelY = unchecked((int)v); break;
+                case 60: t.Value.Entities[3].VelZ = unchecked((int)v); break;
+                case 61: t.Value.Entities[3].Health = unchecked((int)v); break;
+                case 62: { t.Value.Entities[3].Weapon = (MixedWeapon)v; } break;
+                case 63: t.Value.Entities[3].Damage = v; break;
+                case 64: t.Value.Entities[3].Moving = v != 0; break;
+                case 65: t.Value.Entities[3].Firing = v != 0; break;
+                case 66: t.Value.Entities[4].EntityId = (uint)v; break;
+                case 67: t.Value.Entities[4].PosX = unchecked((int)v); break;
+                case 68: t.Value.Entities[4].PosY = unchecked((int)v); break;
+                case 69: t.Value.Entities[4].PosZ = unchecked((int)v); break;
+                case 70: t.Value.Entities[4].Yaw = (uint)v; break;
+                case 71: t.Value.Entities[4].Pitch = (uint)v; break;
+                case 72: t.Value.Entities[4].VelX = unchecked((int)v); break;
+                case 73: t.Value.Entities[4].VelY = unchecked((int)v); break;
+                case 74: t.Value.Entities[4].VelZ = unchecked((int)v); break;
+                case 75: t.Value.Entities[4].Health = unchecked((int)v); break;
+                case 76: { t.Value.Entities[4].Weapon = (MixedWeapon)v; } break;
+                case 77: t.Value.Entities[4].Damage = v; break;
+                case 78: t.Value.Entities[4].Moving = v != 0; break;
+                case 79: t.Value.Entities[4].Firing = v != 0; break;
+                case 80: t.Value.Entities[5].EntityId = (uint)v; break;
+                case 81: t.Value.Entities[5].PosX = unchecked((int)v); break;
+                case 82: t.Value.Entities[5].PosY = unchecked((int)v); break;
+                case 83: t.Value.Entities[5].PosZ = unchecked((int)v); break;
+                case 84: t.Value.Entities[5].Yaw = (uint)v; break;
+                case 85: t.Value.Entities[5].Pitch = (uint)v; break;
+                case 86: t.Value.Entities[5].VelX = unchecked((int)v); break;
+                case 87: t.Value.Entities[5].VelY = unchecked((int)v); break;
+                case 88: t.Value.Entities[5].VelZ = unchecked((int)v); break;
+                case 89: t.Value.Entities[5].Health = unchecked((int)v); break;
+                case 90: { t.Value.Entities[5].Weapon = (MixedWeapon)v; } break;
+                case 91: t.Value.Entities[5].Damage = v; break;
+                case 92: t.Value.Entities[5].Moving = v != 0; break;
+                case 93: t.Value.Entities[5].Firing = v != 0; break;
+                case 94: t.Value.Entities[6].EntityId = (uint)v; break;
+                case 95: t.Value.Entities[6].PosX = unchecked((int)v); break;
+                case 96: t.Value.Entities[6].PosY = unchecked((int)v); break;
+                case 97: t.Value.Entities[6].PosZ = unchecked((int)v); break;
+                case 98: t.Value.Entities[6].Yaw = (uint)v; break;
+                case 99: t.Value.Entities[6].Pitch = (uint)v; break;
+                case 100: t.Value.Entities[6].VelX = unchecked((int)v); break;
+                case 101: t.Value.Entities[6].VelY = unchecked((int)v); break;
+                case 102: t.Value.Entities[6].VelZ = unchecked((int)v); break;
+                case 103: t.Value.Entities[6].Health = unchecked((int)v); break;
+                case 104: { t.Value.Entities[6].Weapon = (MixedWeapon)v; } break;
+                case 105: t.Value.Entities[6].Damage = v; break;
+                case 106: t.Value.Entities[6].Moving = v != 0; break;
+                case 107: t.Value.Entities[6].Firing = v != 0; break;
+                case 108: t.Value.Entities[7].EntityId = (uint)v; break;
+                case 109: t.Value.Entities[7].PosX = unchecked((int)v); break;
+                case 110: t.Value.Entities[7].PosY = unchecked((int)v); break;
+                case 111: t.Value.Entities[7].PosZ = unchecked((int)v); break;
+                case 112: t.Value.Entities[7].Yaw = (uint)v; break;
+                case 113: t.Value.Entities[7].Pitch = (uint)v; break;
+                case 114: t.Value.Entities[7].VelX = unchecked((int)v); break;
+                case 115: t.Value.Entities[7].VelY = unchecked((int)v); break;
+                case 116: t.Value.Entities[7].VelZ = unchecked((int)v); break;
+                case 117: t.Value.Entities[7].Health = unchecked((int)v); break;
+                case 118: { t.Value.Entities[7].Weapon = (MixedWeapon)v; } break;
+                case 119: t.Value.Entities[7].Damage = v; break;
+                case 120: t.Value.Entities[7].Moving = v != 0; break;
+                case 121: t.Value.Entities[7].Firing = v != 0; break;
+                case 122: t.Value.StatsCount = (int)v; break;
+                case 123: t.Value.Stats[0].StatId = (uint)v; break;
+                case 124: t.Value.Stats[0].Delta = unchecked((int)v); break;
+                case 125: t.Value.Stats[1].StatId = (uint)v; break;
+                case 126: t.Value.Stats[1].Delta = unchecked((int)v); break;
+                case 127: t.Value.Stats[2].StatId = (uint)v; break;
+                case 128: t.Value.Stats[2].Delta = unchecked((int)v); break;
+                case 129: t.Value.Stats[3].StatId = (uint)v; break;
+                case 130: t.Value.Stats[3].Delta = unchecked((int)v); break;
+                case 131: t.Value.Stats[4].StatId = (uint)v; break;
+                case 132: t.Value.Stats[4].Delta = unchecked((int)v); break;
+                case 133: t.Value.Stats[5].StatId = (uint)v; break;
+                case 134: t.Value.Stats[5].Delta = unchecked((int)v); break;
+                case 135: t.Value.Stats[6].StatId = (uint)v; break;
+                case 136: t.Value.Stats[6].Delta = unchecked((int)v); break;
+                case 137: t.Value.Stats[7].StatId = (uint)v; break;
+                case 138: t.Value.Stats[7].Delta = unchecked((int)v); break;
+                case 139: t.Value.Stats[8].StatId = (uint)v; break;
+                case 140: t.Value.Stats[8].Delta = unchecked((int)v); break;
+                case 141: t.Value.Stats[9].StatId = (uint)v; break;
+                case 142: t.Value.Stats[9].Delta = unchecked((int)v); break;
+                case 143: t.Value.Stats[10].StatId = (uint)v; break;
+                case 144: t.Value.Stats[10].Delta = unchecked((int)v); break;
+                case 145: t.Value.Stats[11].StatId = (uint)v; break;
+                case 146: t.Value.Stats[11].Delta = unchecked((int)v); break;
+                case 147: t.Value.Stats[12].StatId = (uint)v; break;
+                case 148: t.Value.Stats[12].Delta = unchecked((int)v); break;
+                case 149: t.Value.Stats[13].StatId = (uint)v; break;
+                case 150: t.Value.Stats[13].Delta = unchecked((int)v); break;
+                case 151: t.Value.Stats[14].StatId = (uint)v; break;
+                case 152: t.Value.Stats[14].Delta = unchecked((int)v); break;
+                case 153: t.Value.Stats[15].StatId = (uint)v; break;
+                case 154: t.Value.Stats[15].Delta = unchecked((int)v); break;
+                case 155: t.Value.Stats[16].StatId = (uint)v; break;
+                case 156: t.Value.Stats[16].Delta = unchecked((int)v); break;
+                case 157: t.Value.Stats[17].StatId = (uint)v; break;
+                case 158: t.Value.Stats[17].Delta = unchecked((int)v); break;
+                case 159: t.Value.Stats[18].StatId = (uint)v; break;
+                case 160: t.Value.Stats[18].Delta = unchecked((int)v); break;
+                case 161: t.Value.Stats[19].StatId = (uint)v; break;
+                case 162: t.Value.Stats[19].Delta = unchecked((int)v); break;
+                case 163: t.Value.Stats[20].StatId = (uint)v; break;
+                case 164: t.Value.Stats[20].Delta = unchecked((int)v); break;
+                case 165: t.Value.Stats[21].StatId = (uint)v; break;
+                case 166: t.Value.Stats[21].Delta = unchecked((int)v); break;
+                case 167: t.Value.Stats[22].StatId = (uint)v; break;
+                case 168: t.Value.Stats[22].Delta = unchecked((int)v); break;
+                case 169: t.Value.Stats[23].StatId = (uint)v; break;
+                case 170: t.Value.Stats[23].Delta = unchecked((int)v); break;
+                case 171: t.Value.Stats[24].StatId = (uint)v; break;
+                case 172: t.Value.Stats[24].Delta = unchecked((int)v); break;
+                case 173: t.Value.Stats[25].StatId = (uint)v; break;
+                case 174: t.Value.Stats[25].Delta = unchecked((int)v); break;
+                case 175: t.Value.Stats[26].StatId = (uint)v; break;
+                case 176: t.Value.Stats[26].Delta = unchecked((int)v); break;
+                case 177: t.Value.Stats[27].StatId = (uint)v; break;
+                case 178: t.Value.Stats[27].Delta = unchecked((int)v); break;
+                case 179: t.Value.Stats[28].StatId = (uint)v; break;
+                case 180: t.Value.Stats[28].Delta = unchecked((int)v); break;
+                case 181: t.Value.Stats[29].StatId = (uint)v; break;
+                case 182: t.Value.Stats[29].Delta = unchecked((int)v); break;
+                case 183: t.Value.Stats[30].StatId = (uint)v; break;
+                case 184: t.Value.Stats[30].Delta = unchecked((int)v); break;
+                case 185: t.Value.Stats[31].StatId = (uint)v; break;
+                case 186: t.Value.Stats[31].Delta = unchecked((int)v); break;
+                case 187: t.Value.Stats[32].StatId = (uint)v; break;
+                case 188: t.Value.Stats[32].Delta = unchecked((int)v); break;
+                case 189: t.Value.Stats[33].StatId = (uint)v; break;
+                case 190: t.Value.Stats[33].Delta = unchecked((int)v); break;
+                case 191: t.Value.Stats[34].StatId = (uint)v; break;
+                case 192: t.Value.Stats[34].Delta = unchecked((int)v); break;
+                case 193: t.Value.Stats[35].StatId = (uint)v; break;
+                case 194: t.Value.Stats[35].Delta = unchecked((int)v); break;
+                case 195: t.Value.Stats[36].StatId = (uint)v; break;
+                case 196: t.Value.Stats[36].Delta = unchecked((int)v); break;
+                case 197: t.Value.Stats[37].StatId = (uint)v; break;
+                case 198: t.Value.Stats[37].Delta = unchecked((int)v); break;
+                case 199: t.Value.Stats[38].StatId = (uint)v; break;
+                case 200: t.Value.Stats[38].Delta = unchecked((int)v); break;
+                case 201: t.Value.Stats[39].StatId = (uint)v; break;
+                case 202: t.Value.Stats[39].Delta = unchecked((int)v); break;
+                case 203: t.Value.Stats[40].StatId = (uint)v; break;
+                case 204: t.Value.Stats[40].Delta = unchecked((int)v); break;
+                case 205: t.Value.Stats[41].StatId = (uint)v; break;
+                case 206: t.Value.Stats[41].Delta = unchecked((int)v); break;
+                case 207: t.Value.Stats[42].StatId = (uint)v; break;
+                case 208: t.Value.Stats[42].Delta = unchecked((int)v); break;
+                case 209: t.Value.Stats[43].StatId = (uint)v; break;
+                case 210: t.Value.Stats[43].Delta = unchecked((int)v); break;
+                case 211: t.Value.Stats[44].StatId = (uint)v; break;
+                case 212: t.Value.Stats[44].Delta = unchecked((int)v); break;
+                case 213: t.Value.Stats[45].StatId = (uint)v; break;
+                case 214: t.Value.Stats[45].Delta = unchecked((int)v); break;
+                case 215: t.Value.Stats[46].StatId = (uint)v; break;
+                case 216: t.Value.Stats[46].Delta = unchecked((int)v); break;
+                case 217: t.Value.Stats[47].StatId = (uint)v; break;
+                case 218: t.Value.Stats[47].Delta = unchecked((int)v); break;
+                case 219: t.Value.Stats[48].StatId = (uint)v; break;
+                case 220: t.Value.Stats[48].Delta = unchecked((int)v); break;
+                case 221: t.Value.Stats[49].StatId = (uint)v; break;
+                case 222: t.Value.Stats[49].Delta = unchecked((int)v); break;
+                case 223: t.Value.Stats[50].StatId = (uint)v; break;
+                case 224: t.Value.Stats[50].Delta = unchecked((int)v); break;
+                case 225: t.Value.Stats[51].StatId = (uint)v; break;
+                case 226: t.Value.Stats[51].Delta = unchecked((int)v); break;
+                case 227: t.Value.Stats[52].StatId = (uint)v; break;
+                case 228: t.Value.Stats[52].Delta = unchecked((int)v); break;
+                case 229: t.Value.Stats[53].StatId = (uint)v; break;
+                case 230: t.Value.Stats[53].Delta = unchecked((int)v); break;
+                case 231: t.Value.Stats[54].StatId = (uint)v; break;
+                case 232: t.Value.Stats[54].Delta = unchecked((int)v); break;
+                case 233: t.Value.Stats[55].StatId = (uint)v; break;
+                case 234: t.Value.Stats[55].Delta = unchecked((int)v); break;
+                case 235: t.Value.Stats[56].StatId = (uint)v; break;
+                case 236: t.Value.Stats[56].Delta = unchecked((int)v); break;
+                case 237: t.Value.Stats[57].StatId = (uint)v; break;
+                case 238: t.Value.Stats[57].Delta = unchecked((int)v); break;
+                case 239: t.Value.Stats[58].StatId = (uint)v; break;
+                case 240: t.Value.Stats[58].Delta = unchecked((int)v); break;
+                case 241: t.Value.Stats[59].StatId = (uint)v; break;
+                case 242: t.Value.Stats[59].Delta = unchecked((int)v); break;
+                case 243: t.Value.Stats[60].StatId = (uint)v; break;
+                case 244: t.Value.Stats[60].Delta = unchecked((int)v); break;
+                case 245: t.Value.Stats[61].StatId = (uint)v; break;
+                case 246: t.Value.Stats[61].Delta = unchecked((int)v); break;
+                case 247: t.Value.Stats[62].StatId = (uint)v; break;
+                case 248: t.Value.Stats[62].Delta = unchecked((int)v); break;
+                case 249: t.Value.Stats[63].StatId = (uint)v; break;
+                case 250: t.Value.Stats[63].Delta = unchecked((int)v); break;
+                case 251: t.Value.Stats[64].StatId = (uint)v; break;
+                case 252: t.Value.Stats[64].Delta = unchecked((int)v); break;
+                case 253: t.Value.Stats[65].StatId = (uint)v; break;
+                case 254: t.Value.Stats[65].Delta = unchecked((int)v); break;
+                case 255: t.Value.Stats[66].StatId = (uint)v; break;
+                case 256: t.Value.Stats[66].Delta = unchecked((int)v); break;
+                case 257: t.Value.Stats[67].StatId = (uint)v; break;
+                case 258: t.Value.Stats[67].Delta = unchecked((int)v); break;
+                case 259: t.Value.Stats[68].StatId = (uint)v; break;
+                case 260: t.Value.Stats[68].Delta = unchecked((int)v); break;
+                case 261: t.Value.Stats[69].StatId = (uint)v; break;
+                case 262: t.Value.Stats[69].Delta = unchecked((int)v); break;
+                case 263: t.Value.Stats[70].StatId = (uint)v; break;
+                case 264: t.Value.Stats[70].Delta = unchecked((int)v); break;
+                case 265: t.Value.Stats[71].StatId = (uint)v; break;
+                case 266: t.Value.Stats[71].Delta = unchecked((int)v); break;
+                case 267: t.Value.Stats[72].StatId = (uint)v; break;
+                case 268: t.Value.Stats[72].Delta = unchecked((int)v); break;
+                case 269: t.Value.Stats[73].StatId = (uint)v; break;
+                case 270: t.Value.Stats[73].Delta = unchecked((int)v); break;
+                case 271: t.Value.Stats[74].StatId = (uint)v; break;
+                case 272: t.Value.Stats[74].Delta = unchecked((int)v); break;
+                case 273: t.Value.Stats[75].StatId = (uint)v; break;
+                case 274: t.Value.Stats[75].Delta = unchecked((int)v); break;
+                case 275: t.Value.Stats[76].StatId = (uint)v; break;
+                case 276: t.Value.Stats[76].Delta = unchecked((int)v); break;
+                case 277: t.Value.Stats[77].StatId = (uint)v; break;
+                case 278: t.Value.Stats[77].Delta = unchecked((int)v); break;
+                case 279: t.Value.Stats[78].StatId = (uint)v; break;
+                case 280: t.Value.Stats[78].Delta = unchecked((int)v); break;
+                case 281: t.Value.Stats[79].StatId = (uint)v; break;
+                case 282: t.Value.Stats[79].Delta = unchecked((int)v); break;
+                case 283: { t.Value.GameEvent.Type = (MixedEventType)v; } break;
+                case 284: t.Value.GameEvent.Hit.TargetId = (uint)v; break;
+                case 285: t.Value.GameEvent.Hit.Damage = unchecked((int)v); break;
+                case 286: t.Value.GameEvent.Hit.HitKind = unchecked((int)v); break;
+                case 287: t.Value.GameEvent.Hit.Crit = v != 0; break;
+                case 288: t.Value.GameEvent.Chat.Channel = unchecked((int)v); break;
+                case 289: t.Value.GameEvent.Chat.Speaker = (uint)v; break;
+                case 290: t.Value.GameEvent.Pickup.ItemId = (uint)v; break;
+                case 291: t.Value.GameEvent.Pickup.Amount = unchecked((int)v); break;
+                case 293: t.Value.PlayerNameLength = (int)v; break;
+                case 295: t.Value.PayloadLength = (int)v; break;
+                case 297: t.Value.AimX = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 298: t.Value.AimY = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 299: t.Value.AimZ = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 300: t.Value.Recoil = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 301: t.Value.Drift = BitConverter.UInt64BitsToDouble(v); break;
+                case 302: t.Value.WideKey = unchecked((System.UInt128)v); break;
+                case 303: t.Value.Flux = unchecked((System.Int128)v); break;
+                case 304: t.Value.Ping = (ushort)v; break;
+                case 305: t.Value.CrcHint = (uint)v; break;
+                case 306: t.Value.HasExtra = v != 0; break;
+                case 307: t.Value.Extra = unchecked((int)v); break;
+                case 308: t.Value.IdleTicks = unchecked((int)v); break;
+                default: break;
+            }
+        }
+
+        private static void FixedTableFixedSetDouble(FixedTable t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 297: t.Value.AimX = (float)d; break;
+                case 298: t.Value.AimY = (float)d; break;
+                case 299: t.Value.AimZ = (float)d; break;
+                case 300: t.Value.Recoil = (float)d; break;
+                case 301: t.Value.Drift = d; break;
+                default: break;
+            }
+        }
+
+        private static void FixedTableFixedSetWide(FixedTable t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                case 302: t.Value.WideKey = unchecked((System.UInt128)w); break;
+                case 303: t.Value.Flux = unchecked((System.Int128)w); break;
+                default: break;
+            }
+        }
+
+        private static void FixedTableFixedSetBytes(FixedTable t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                case 292: { if (t.Value.Loadout != null) b.Slice(0, Math.Min(b.Length, t.Value.Loadout.Length)).CopyTo(t.Value.Loadout); } break;
+                case 294: { if (t.Value.PlayerName != null) b.Slice(0, Math.Min(b.Length, t.Value.PlayerName.Length)).CopyTo(t.Value.PlayerName); } break;
+                case 296: { if (t.Value.Payload != null) b.Slice(0, Math.Min(b.Length, t.Value.Payload.Length)).CopyTo(t.Value.Payload); } break;
+                default: break;
+            }
+        }
+
+        private static void FixedTableFixedSetChars(FixedTable t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void FixedTableFixedResetSlot(FixedTable t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Value.Sequence = 0; } break;
+                case 1: { t.Value.AckSequence = 0; } break;
+                case 2: { t.Value.AckBits = 0; } break;
+                case 3: { t.Value.SessionId = 0; } break;
+                case 4: { t.Value.ClientId = 0; } break;
+                case 5: { t.Value.Nonce = 0; } break;
+                case 6: { t.Value.WorldTime = 0; } break;
+                case 7: { t.Value.FrameTick = 0; } break;
+                case 8: { t.Value.ServerTime = 0; } break;
+                case 9: { t.Value.EntitiesCount = 0; } break;
+                case 10: { t.Value.Entities[0].EntityId = 0; } break;
+                case 11: { t.Value.Entities[0].PosX = 0; } break;
+                case 12: { t.Value.Entities[0].PosY = 0; } break;
+                case 13: { t.Value.Entities[0].PosZ = 0; } break;
+                case 14: { t.Value.Entities[0].Yaw = 0; } break;
+                case 15: { t.Value.Entities[0].Pitch = 0; } break;
+                case 16: { t.Value.Entities[0].VelX = 0; } break;
+                case 17: { t.Value.Entities[0].VelY = 0; } break;
+                case 18: { t.Value.Entities[0].VelZ = 0; } break;
+                case 19: { t.Value.Entities[0].Health = 0; } break;
+                case 20: { t.Value.Entities[0].Weapon = global::Bench.MixedWeapon.None; } break;
+                case 21: { t.Value.Entities[0].Damage = 0; } break;
+                case 22: { t.Value.Entities[0].Moving = false; } break;
+                case 23: { t.Value.Entities[0].Firing = false; } break;
+                case 24: { t.Value.Entities[1].EntityId = 0; } break;
+                case 25: { t.Value.Entities[1].PosX = 0; } break;
+                case 26: { t.Value.Entities[1].PosY = 0; } break;
+                case 27: { t.Value.Entities[1].PosZ = 0; } break;
+                case 28: { t.Value.Entities[1].Yaw = 0; } break;
+                case 29: { t.Value.Entities[1].Pitch = 0; } break;
+                case 30: { t.Value.Entities[1].VelX = 0; } break;
+                case 31: { t.Value.Entities[1].VelY = 0; } break;
+                case 32: { t.Value.Entities[1].VelZ = 0; } break;
+                case 33: { t.Value.Entities[1].Health = 0; } break;
+                case 34: { t.Value.Entities[1].Weapon = global::Bench.MixedWeapon.None; } break;
+                case 35: { t.Value.Entities[1].Damage = 0; } break;
+                case 36: { t.Value.Entities[1].Moving = false; } break;
+                case 37: { t.Value.Entities[1].Firing = false; } break;
+                case 38: { t.Value.Entities[2].EntityId = 0; } break;
+                case 39: { t.Value.Entities[2].PosX = 0; } break;
+                case 40: { t.Value.Entities[2].PosY = 0; } break;
+                case 41: { t.Value.Entities[2].PosZ = 0; } break;
+                case 42: { t.Value.Entities[2].Yaw = 0; } break;
+                case 43: { t.Value.Entities[2].Pitch = 0; } break;
+                case 44: { t.Value.Entities[2].VelX = 0; } break;
+                case 45: { t.Value.Entities[2].VelY = 0; } break;
+                case 46: { t.Value.Entities[2].VelZ = 0; } break;
+                case 47: { t.Value.Entities[2].Health = 0; } break;
+                case 48: { t.Value.Entities[2].Weapon = global::Bench.MixedWeapon.None; } break;
+                case 49: { t.Value.Entities[2].Damage = 0; } break;
+                case 50: { t.Value.Entities[2].Moving = false; } break;
+                case 51: { t.Value.Entities[2].Firing = false; } break;
+                case 52: { t.Value.Entities[3].EntityId = 0; } break;
+                case 53: { t.Value.Entities[3].PosX = 0; } break;
+                case 54: { t.Value.Entities[3].PosY = 0; } break;
+                case 55: { t.Value.Entities[3].PosZ = 0; } break;
+                case 56: { t.Value.Entities[3].Yaw = 0; } break;
+                case 57: { t.Value.Entities[3].Pitch = 0; } break;
+                case 58: { t.Value.Entities[3].VelX = 0; } break;
+                case 59: { t.Value.Entities[3].VelY = 0; } break;
+                case 60: { t.Value.Entities[3].VelZ = 0; } break;
+                case 61: { t.Value.Entities[3].Health = 0; } break;
+                case 62: { t.Value.Entities[3].Weapon = global::Bench.MixedWeapon.None; } break;
+                case 63: { t.Value.Entities[3].Damage = 0; } break;
+                case 64: { t.Value.Entities[3].Moving = false; } break;
+                case 65: { t.Value.Entities[3].Firing = false; } break;
+                case 66: { t.Value.Entities[4].EntityId = 0; } break;
+                case 67: { t.Value.Entities[4].PosX = 0; } break;
+                case 68: { t.Value.Entities[4].PosY = 0; } break;
+                case 69: { t.Value.Entities[4].PosZ = 0; } break;
+                case 70: { t.Value.Entities[4].Yaw = 0; } break;
+                case 71: { t.Value.Entities[4].Pitch = 0; } break;
+                case 72: { t.Value.Entities[4].VelX = 0; } break;
+                case 73: { t.Value.Entities[4].VelY = 0; } break;
+                case 74: { t.Value.Entities[4].VelZ = 0; } break;
+                case 75: { t.Value.Entities[4].Health = 0; } break;
+                case 76: { t.Value.Entities[4].Weapon = global::Bench.MixedWeapon.None; } break;
+                case 77: { t.Value.Entities[4].Damage = 0; } break;
+                case 78: { t.Value.Entities[4].Moving = false; } break;
+                case 79: { t.Value.Entities[4].Firing = false; } break;
+                case 80: { t.Value.Entities[5].EntityId = 0; } break;
+                case 81: { t.Value.Entities[5].PosX = 0; } break;
+                case 82: { t.Value.Entities[5].PosY = 0; } break;
+                case 83: { t.Value.Entities[5].PosZ = 0; } break;
+                case 84: { t.Value.Entities[5].Yaw = 0; } break;
+                case 85: { t.Value.Entities[5].Pitch = 0; } break;
+                case 86: { t.Value.Entities[5].VelX = 0; } break;
+                case 87: { t.Value.Entities[5].VelY = 0; } break;
+                case 88: { t.Value.Entities[5].VelZ = 0; } break;
+                case 89: { t.Value.Entities[5].Health = 0; } break;
+                case 90: { t.Value.Entities[5].Weapon = global::Bench.MixedWeapon.None; } break;
+                case 91: { t.Value.Entities[5].Damage = 0; } break;
+                case 92: { t.Value.Entities[5].Moving = false; } break;
+                case 93: { t.Value.Entities[5].Firing = false; } break;
+                case 94: { t.Value.Entities[6].EntityId = 0; } break;
+                case 95: { t.Value.Entities[6].PosX = 0; } break;
+                case 96: { t.Value.Entities[6].PosY = 0; } break;
+                case 97: { t.Value.Entities[6].PosZ = 0; } break;
+                case 98: { t.Value.Entities[6].Yaw = 0; } break;
+                case 99: { t.Value.Entities[6].Pitch = 0; } break;
+                case 100: { t.Value.Entities[6].VelX = 0; } break;
+                case 101: { t.Value.Entities[6].VelY = 0; } break;
+                case 102: { t.Value.Entities[6].VelZ = 0; } break;
+                case 103: { t.Value.Entities[6].Health = 0; } break;
+                case 104: { t.Value.Entities[6].Weapon = global::Bench.MixedWeapon.None; } break;
+                case 105: { t.Value.Entities[6].Damage = 0; } break;
+                case 106: { t.Value.Entities[6].Moving = false; } break;
+                case 107: { t.Value.Entities[6].Firing = false; } break;
+                case 108: { t.Value.Entities[7].EntityId = 0; } break;
+                case 109: { t.Value.Entities[7].PosX = 0; } break;
+                case 110: { t.Value.Entities[7].PosY = 0; } break;
+                case 111: { t.Value.Entities[7].PosZ = 0; } break;
+                case 112: { t.Value.Entities[7].Yaw = 0; } break;
+                case 113: { t.Value.Entities[7].Pitch = 0; } break;
+                case 114: { t.Value.Entities[7].VelX = 0; } break;
+                case 115: { t.Value.Entities[7].VelY = 0; } break;
+                case 116: { t.Value.Entities[7].VelZ = 0; } break;
+                case 117: { t.Value.Entities[7].Health = 0; } break;
+                case 118: { t.Value.Entities[7].Weapon = global::Bench.MixedWeapon.None; } break;
+                case 119: { t.Value.Entities[7].Damage = 0; } break;
+                case 120: { t.Value.Entities[7].Moving = false; } break;
+                case 121: { t.Value.Entities[7].Firing = false; } break;
+                case 122: { t.Value.StatsCount = 0; } break;
+                case 123: { t.Value.Stats[0].StatId = 0; } break;
+                case 124: { t.Value.Stats[0].Delta = 0; } break;
+                case 125: { t.Value.Stats[1].StatId = 0; } break;
+                case 126: { t.Value.Stats[1].Delta = 0; } break;
+                case 127: { t.Value.Stats[2].StatId = 0; } break;
+                case 128: { t.Value.Stats[2].Delta = 0; } break;
+                case 129: { t.Value.Stats[3].StatId = 0; } break;
+                case 130: { t.Value.Stats[3].Delta = 0; } break;
+                case 131: { t.Value.Stats[4].StatId = 0; } break;
+                case 132: { t.Value.Stats[4].Delta = 0; } break;
+                case 133: { t.Value.Stats[5].StatId = 0; } break;
+                case 134: { t.Value.Stats[5].Delta = 0; } break;
+                case 135: { t.Value.Stats[6].StatId = 0; } break;
+                case 136: { t.Value.Stats[6].Delta = 0; } break;
+                case 137: { t.Value.Stats[7].StatId = 0; } break;
+                case 138: { t.Value.Stats[7].Delta = 0; } break;
+                case 139: { t.Value.Stats[8].StatId = 0; } break;
+                case 140: { t.Value.Stats[8].Delta = 0; } break;
+                case 141: { t.Value.Stats[9].StatId = 0; } break;
+                case 142: { t.Value.Stats[9].Delta = 0; } break;
+                case 143: { t.Value.Stats[10].StatId = 0; } break;
+                case 144: { t.Value.Stats[10].Delta = 0; } break;
+                case 145: { t.Value.Stats[11].StatId = 0; } break;
+                case 146: { t.Value.Stats[11].Delta = 0; } break;
+                case 147: { t.Value.Stats[12].StatId = 0; } break;
+                case 148: { t.Value.Stats[12].Delta = 0; } break;
+                case 149: { t.Value.Stats[13].StatId = 0; } break;
+                case 150: { t.Value.Stats[13].Delta = 0; } break;
+                case 151: { t.Value.Stats[14].StatId = 0; } break;
+                case 152: { t.Value.Stats[14].Delta = 0; } break;
+                case 153: { t.Value.Stats[15].StatId = 0; } break;
+                case 154: { t.Value.Stats[15].Delta = 0; } break;
+                case 155: { t.Value.Stats[16].StatId = 0; } break;
+                case 156: { t.Value.Stats[16].Delta = 0; } break;
+                case 157: { t.Value.Stats[17].StatId = 0; } break;
+                case 158: { t.Value.Stats[17].Delta = 0; } break;
+                case 159: { t.Value.Stats[18].StatId = 0; } break;
+                case 160: { t.Value.Stats[18].Delta = 0; } break;
+                case 161: { t.Value.Stats[19].StatId = 0; } break;
+                case 162: { t.Value.Stats[19].Delta = 0; } break;
+                case 163: { t.Value.Stats[20].StatId = 0; } break;
+                case 164: { t.Value.Stats[20].Delta = 0; } break;
+                case 165: { t.Value.Stats[21].StatId = 0; } break;
+                case 166: { t.Value.Stats[21].Delta = 0; } break;
+                case 167: { t.Value.Stats[22].StatId = 0; } break;
+                case 168: { t.Value.Stats[22].Delta = 0; } break;
+                case 169: { t.Value.Stats[23].StatId = 0; } break;
+                case 170: { t.Value.Stats[23].Delta = 0; } break;
+                case 171: { t.Value.Stats[24].StatId = 0; } break;
+                case 172: { t.Value.Stats[24].Delta = 0; } break;
+                case 173: { t.Value.Stats[25].StatId = 0; } break;
+                case 174: { t.Value.Stats[25].Delta = 0; } break;
+                case 175: { t.Value.Stats[26].StatId = 0; } break;
+                case 176: { t.Value.Stats[26].Delta = 0; } break;
+                case 177: { t.Value.Stats[27].StatId = 0; } break;
+                case 178: { t.Value.Stats[27].Delta = 0; } break;
+                case 179: { t.Value.Stats[28].StatId = 0; } break;
+                case 180: { t.Value.Stats[28].Delta = 0; } break;
+                case 181: { t.Value.Stats[29].StatId = 0; } break;
+                case 182: { t.Value.Stats[29].Delta = 0; } break;
+                case 183: { t.Value.Stats[30].StatId = 0; } break;
+                case 184: { t.Value.Stats[30].Delta = 0; } break;
+                case 185: { t.Value.Stats[31].StatId = 0; } break;
+                case 186: { t.Value.Stats[31].Delta = 0; } break;
+                case 187: { t.Value.Stats[32].StatId = 0; } break;
+                case 188: { t.Value.Stats[32].Delta = 0; } break;
+                case 189: { t.Value.Stats[33].StatId = 0; } break;
+                case 190: { t.Value.Stats[33].Delta = 0; } break;
+                case 191: { t.Value.Stats[34].StatId = 0; } break;
+                case 192: { t.Value.Stats[34].Delta = 0; } break;
+                case 193: { t.Value.Stats[35].StatId = 0; } break;
+                case 194: { t.Value.Stats[35].Delta = 0; } break;
+                case 195: { t.Value.Stats[36].StatId = 0; } break;
+                case 196: { t.Value.Stats[36].Delta = 0; } break;
+                case 197: { t.Value.Stats[37].StatId = 0; } break;
+                case 198: { t.Value.Stats[37].Delta = 0; } break;
+                case 199: { t.Value.Stats[38].StatId = 0; } break;
+                case 200: { t.Value.Stats[38].Delta = 0; } break;
+                case 201: { t.Value.Stats[39].StatId = 0; } break;
+                case 202: { t.Value.Stats[39].Delta = 0; } break;
+                case 203: { t.Value.Stats[40].StatId = 0; } break;
+                case 204: { t.Value.Stats[40].Delta = 0; } break;
+                case 205: { t.Value.Stats[41].StatId = 0; } break;
+                case 206: { t.Value.Stats[41].Delta = 0; } break;
+                case 207: { t.Value.Stats[42].StatId = 0; } break;
+                case 208: { t.Value.Stats[42].Delta = 0; } break;
+                case 209: { t.Value.Stats[43].StatId = 0; } break;
+                case 210: { t.Value.Stats[43].Delta = 0; } break;
+                case 211: { t.Value.Stats[44].StatId = 0; } break;
+                case 212: { t.Value.Stats[44].Delta = 0; } break;
+                case 213: { t.Value.Stats[45].StatId = 0; } break;
+                case 214: { t.Value.Stats[45].Delta = 0; } break;
+                case 215: { t.Value.Stats[46].StatId = 0; } break;
+                case 216: { t.Value.Stats[46].Delta = 0; } break;
+                case 217: { t.Value.Stats[47].StatId = 0; } break;
+                case 218: { t.Value.Stats[47].Delta = 0; } break;
+                case 219: { t.Value.Stats[48].StatId = 0; } break;
+                case 220: { t.Value.Stats[48].Delta = 0; } break;
+                case 221: { t.Value.Stats[49].StatId = 0; } break;
+                case 222: { t.Value.Stats[49].Delta = 0; } break;
+                case 223: { t.Value.Stats[50].StatId = 0; } break;
+                case 224: { t.Value.Stats[50].Delta = 0; } break;
+                case 225: { t.Value.Stats[51].StatId = 0; } break;
+                case 226: { t.Value.Stats[51].Delta = 0; } break;
+                case 227: { t.Value.Stats[52].StatId = 0; } break;
+                case 228: { t.Value.Stats[52].Delta = 0; } break;
+                case 229: { t.Value.Stats[53].StatId = 0; } break;
+                case 230: { t.Value.Stats[53].Delta = 0; } break;
+                case 231: { t.Value.Stats[54].StatId = 0; } break;
+                case 232: { t.Value.Stats[54].Delta = 0; } break;
+                case 233: { t.Value.Stats[55].StatId = 0; } break;
+                case 234: { t.Value.Stats[55].Delta = 0; } break;
+                case 235: { t.Value.Stats[56].StatId = 0; } break;
+                case 236: { t.Value.Stats[56].Delta = 0; } break;
+                case 237: { t.Value.Stats[57].StatId = 0; } break;
+                case 238: { t.Value.Stats[57].Delta = 0; } break;
+                case 239: { t.Value.Stats[58].StatId = 0; } break;
+                case 240: { t.Value.Stats[58].Delta = 0; } break;
+                case 241: { t.Value.Stats[59].StatId = 0; } break;
+                case 242: { t.Value.Stats[59].Delta = 0; } break;
+                case 243: { t.Value.Stats[60].StatId = 0; } break;
+                case 244: { t.Value.Stats[60].Delta = 0; } break;
+                case 245: { t.Value.Stats[61].StatId = 0; } break;
+                case 246: { t.Value.Stats[61].Delta = 0; } break;
+                case 247: { t.Value.Stats[62].StatId = 0; } break;
+                case 248: { t.Value.Stats[62].Delta = 0; } break;
+                case 249: { t.Value.Stats[63].StatId = 0; } break;
+                case 250: { t.Value.Stats[63].Delta = 0; } break;
+                case 251: { t.Value.Stats[64].StatId = 0; } break;
+                case 252: { t.Value.Stats[64].Delta = 0; } break;
+                case 253: { t.Value.Stats[65].StatId = 0; } break;
+                case 254: { t.Value.Stats[65].Delta = 0; } break;
+                case 255: { t.Value.Stats[66].StatId = 0; } break;
+                case 256: { t.Value.Stats[66].Delta = 0; } break;
+                case 257: { t.Value.Stats[67].StatId = 0; } break;
+                case 258: { t.Value.Stats[67].Delta = 0; } break;
+                case 259: { t.Value.Stats[68].StatId = 0; } break;
+                case 260: { t.Value.Stats[68].Delta = 0; } break;
+                case 261: { t.Value.Stats[69].StatId = 0; } break;
+                case 262: { t.Value.Stats[69].Delta = 0; } break;
+                case 263: { t.Value.Stats[70].StatId = 0; } break;
+                case 264: { t.Value.Stats[70].Delta = 0; } break;
+                case 265: { t.Value.Stats[71].StatId = 0; } break;
+                case 266: { t.Value.Stats[71].Delta = 0; } break;
+                case 267: { t.Value.Stats[72].StatId = 0; } break;
+                case 268: { t.Value.Stats[72].Delta = 0; } break;
+                case 269: { t.Value.Stats[73].StatId = 0; } break;
+                case 270: { t.Value.Stats[73].Delta = 0; } break;
+                case 271: { t.Value.Stats[74].StatId = 0; } break;
+                case 272: { t.Value.Stats[74].Delta = 0; } break;
+                case 273: { t.Value.Stats[75].StatId = 0; } break;
+                case 274: { t.Value.Stats[75].Delta = 0; } break;
+                case 275: { t.Value.Stats[76].StatId = 0; } break;
+                case 276: { t.Value.Stats[76].Delta = 0; } break;
+                case 277: { t.Value.Stats[77].StatId = 0; } break;
+                case 278: { t.Value.Stats[77].Delta = 0; } break;
+                case 279: { t.Value.Stats[78].StatId = 0; } break;
+                case 280: { t.Value.Stats[78].Delta = 0; } break;
+                case 281: { t.Value.Stats[79].StatId = 0; } break;
+                case 282: { t.Value.Stats[79].Delta = 0; } break;
+                case 283: { t.Value.GameEvent.Type = MixedEventType.None; } break;
+                case 284: { t.Value.GameEvent.Hit.TargetId = 0; } break;
+                case 285: { t.Value.GameEvent.Hit.Damage = 0; } break;
+                case 286: { t.Value.GameEvent.Hit.HitKind = 0; } break;
+                case 287: { t.Value.GameEvent.Hit.Crit = false; } break;
+                case 288: { t.Value.GameEvent.Chat.Channel = 0; } break;
+                case 289: { t.Value.GameEvent.Chat.Speaker = 0; } break;
+                case 290: { t.Value.GameEvent.Pickup.ItemId = 0; } break;
+                case 291: { t.Value.GameEvent.Pickup.Amount = 0; } break;
+                case 292: { if (t.Value.Loadout != null) Array.Clear(t.Value.Loadout, 0, t.Value.Loadout.Length); } break;
+                case 293: { t.Value.PlayerNameLength = 0; } break;
+                case 294: { if (t.Value.PlayerName != null) { Array.Clear(t.Value.PlayerName, 0, t.Value.PlayerName.Length); } } break;
+                case 295: { t.Value.PayloadLength = 0; } break;
+                case 296: { if (t.Value.Payload != null) { Array.Clear(t.Value.Payload, 0, t.Value.Payload.Length); } } break;
+                case 297: { t.Value.AimX = 0.0f; } break;
+                case 298: { t.Value.AimY = 0.0f; } break;
+                case 299: { t.Value.AimZ = 0.0f; } break;
+                case 300: { t.Value.Recoil = 0.0f; } break;
+                case 301: { t.Value.Drift = 0.0; } break;
+                case 302: { t.Value.WideKey = 0; } break;
+                case 303: { t.Value.Flux = 0; } break;
+                case 304: { t.Value.Ping = 0; } break;
+                case 305: { t.Value.CrcHint = 0; } break;
+                case 306: { t.Value.HasExtra = true; } break;
+                case 307: { t.Value.Extra = 0; } break;
+                case 308: { t.Value.IdleTicks = 0; } break;
+                default: break;
+            }
+        }
+
+        public static void FixedTableFixedFillRun(ReadOnlySpan<TableFixedFill> fill, FixedTable dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    FixedTableFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string FixedTableFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            FixedTable dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { FixedTableFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { FixedTableFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { FixedTableFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { FixedTableFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            FixedTableFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { FixedTableFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        FixedTableFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        FixedTableFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        FixedTableFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        FixedTableFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            FixedTableFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            FixedTableFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        FixedTableFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            FixedTableFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            FixedTableFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        FixedTableFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        FixedTableFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -1272,9 +2134,11 @@ namespace Bench
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new FixedTable(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), FixedTableFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), FixedTableFixedSlots, values[k]); }
+                FixedTableFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, FixedTableFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, FixedTableFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = FixedTableFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -1313,7 +2177,7 @@ namespace Bench
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, FixedTableFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = FixedTableFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }

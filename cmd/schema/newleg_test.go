@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,7 +17,7 @@ func runFail(t *testing.T, bin string, args ...string) (string, int) {
 		t.Fatalf("schema %s: exited 0, want a refusal\n%s", strings.Join(args, " "), out)
 	}
 	status := 1
-	if ee, ok := err.(*exec.ExitError); ok {
+	if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 		status = ee.ExitCode()
 	}
 	return string(out), status

@@ -592,6 +592,270 @@ namespace Blockdemo
             new TableFixedSlot<PaddedRow>(setRaw: (t, v) => t.Counter = unchecked((int)v), reset: (t) => { t.Counter = 0; }),
         };
 
+        private static void PaddedRowFixedSetRaw(PaddedRow t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Tag = unchecked((byte)v); break;
+                case 1: t.Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 2: t.Flag = v != 0; break;
+                case 3: t.Id = unchecked((uint)v); break;
+                case 4: t.LabelLength = (int)v; break;
+                case 7: t.Teams.Slots[0] = unchecked((byte)v); break;
+                case 8: t.Teams.Slots[1] = unchecked((byte)v); break;
+                case 9: t.Teams.Slots[2] = unchecked((byte)v); break;
+                case 10: t.Teams.Slots[3] = unchecked((byte)v); break;
+                case 11: t.CounterPresent = v != 0; break;
+                case 12: t.Counter = unchecked((int)v); break;
+                default: break;
+            }
+        }
+
+        private static void PaddedRowFixedSetDouble(PaddedRow t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 1: t.Value = d; break;
+                default: break;
+            }
+        }
+
+        private static void PaddedRowFixedSetWide(PaddedRow t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void PaddedRowFixedSetBytes(PaddedRow t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                case 5: { if (t.Label != null) b.Slice(0, Math.Min(b.Length, t.Label.Length)).CopyTo(t.Label); } break;
+                case 6: { if (t.Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Slots.Length * 2))).CopyTo(t.Slots); } break;
+                default: break;
+            }
+        }
+
+        private static void PaddedRowFixedSetChars(PaddedRow t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void PaddedRowFixedResetSlot(PaddedRow t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Tag = 0; } break;
+                case 1: { t.Value = 0.0; } break;
+                case 2: { t.Flag = false; } break;
+                case 3: { t.Id = 0; } break;
+                case 4: { t.LabelLength = 0; } break;
+                case 5: { if (t.Label != null) { Array.Clear(t.Label, 0, t.Label.Length); } } break;
+                case 6: { if (t.Slots != null) Array.Clear(t.Slots, 0, t.Slots.Length); } break;
+                case 7: { t.Teams.Slots[0] = 0; } break;
+                case 8: { t.Teams.Slots[1] = 0; } break;
+                case 9: { t.Teams.Slots[2] = 0; } break;
+                case 10: { t.Teams.Slots[3] = 0; } break;
+                case 11: { t.CounterPresent = false; } break;
+                case 12: { t.Counter = 0; } break;
+                default: break;
+            }
+        }
+
+        public static void PaddedRowFixedFillRun(ReadOnlySpan<TableFixedFill> fill, PaddedRow dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    PaddedRowFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string PaddedRowFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            PaddedRow dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { PaddedRowFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { PaddedRowFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { PaddedRowFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { PaddedRowFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            PaddedRowFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { PaddedRowFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        PaddedRowFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        PaddedRowFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        PaddedRowFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        PaddedRowFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            PaddedRowFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            PaddedRowFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        PaddedRowFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            PaddedRowFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            PaddedRowFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        PaddedRowFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        PaddedRowFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
+
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
         // identity plan it is empty and the identity read writes no slot twice.
@@ -823,9 +1087,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new PaddedRow(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PaddedRowFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PaddedRowFixedSlots, values[k]); }
+                PaddedRowFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, PaddedRowFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, PaddedRowFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = PaddedRowFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -864,7 +1130,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, PaddedRowFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = PaddedRowFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -923,21 +1189,21 @@ namespace Blockdemo
             new TableFixedDst(3, 13, 2, 1, 0), // rows
             new TableFixedDst(0, 0, 0, 0, 0), // element
             new TableFixedDst(0, 0, 0, 0, 0), // tag
-            new TableFixedDst(0, 0, 0, 0, 0), // value
-            new TableFixedDst(0, 0, 0, 0, 0), // flag
-            new TableFixedDst(0, 0, 0, 0, 0), // id
-            new TableFixedDst(0, 0, 0, 0, 0), // label
-            new TableFixedDst(0, 0, 0, 0, 0), // slots
+            new TableFixedDst(1, 0, 0, 0, 0), // value
+            new TableFixedDst(2, 0, 0, 0, 0), // flag
+            new TableFixedDst(3, 0, 0, 0, 0), // id
+            new TableFixedDst(4, 0, 5, 0, 1), // label
+            new TableFixedDst(6, 0, 0, 0, 0), // slots
             new TableFixedDst(0, 0, 0, 0, 0), // element
-            new TableFixedDst(0, 0, 0, 0, 0), // teams
+            new TableFixedDst(7, 1, 0, 0, 0), // teams
             new TableFixedDst(0, 0, 0, 0, 0), // Team
             new TableFixedDst(0, 0, 0, 0, 0), // Red
             new TableFixedDst(0, 0, 0, 0, 0), // Blue
             new TableFixedDst(0, 0, 0, 0, 0), // Green
             new TableFixedDst(0, 0, 0, 0, 0), // Gold
             new TableFixedDst(0, 0, 0, 0, 0), // element
-            new TableFixedDst(0, 0, 0, 0, 0), // counter ?
-            new TableFixedDst(0, 0, 0, 0, 0), // counter
+            new TableFixedDst(0, 0, 11, 0, 0), // counter ?
+            new TableFixedDst(12, 0, 0, 0, 0), // counter
             new TableFixedDst(836, 1, 835, 1, 3), // blob
             new TableFixedDst(0, 0, 0, 0, 0), // u8
         };
@@ -1781,6 +2047,1981 @@ namespace Blockdemo
             new TableFixedSlot<PaddedFrame>(setRaw: (t, v) => t.BlobLength = (int)v, reset: (t) => { t.BlobLength = 0; }),
             new TableFixedSlot<PaddedFrame>(setBytes: (t, b, l) => { if (t.Blob != null) b.Slice(0, Math.Min(b.Length, t.Blob.Length)).CopyTo(t.Blob); }, reset: (t) => { if (t.Blob != null) { Array.Clear(t.Blob, 0, t.Blob.Length); } }),
         };
+
+        private static void PaddedFrameFixedSetRaw(PaddedFrame t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Marker = unchecked((byte)v); break;
+                case 1: t.Stamp = unchecked((ulong)v); break;
+                case 2: t.RowsCount = (int)v; break;
+                case 3: t.Rows[0].Tag = unchecked((byte)v); break;
+                case 4: t.Rows[0].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 5: t.Rows[0].Flag = v != 0; break;
+                case 6: t.Rows[0].Id = unchecked((uint)v); break;
+                case 7: t.Rows[0].LabelLength = (int)v; break;
+                case 10: t.Rows[0].Teams.Slots[0] = unchecked((byte)v); break;
+                case 11: t.Rows[0].Teams.Slots[1] = unchecked((byte)v); break;
+                case 12: t.Rows[0].Teams.Slots[2] = unchecked((byte)v); break;
+                case 13: t.Rows[0].Teams.Slots[3] = unchecked((byte)v); break;
+                case 14: t.Rows[0].CounterPresent = v != 0; break;
+                case 15: t.Rows[0].Counter = unchecked((int)v); break;
+                case 16: t.Rows[1].Tag = unchecked((byte)v); break;
+                case 17: t.Rows[1].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 18: t.Rows[1].Flag = v != 0; break;
+                case 19: t.Rows[1].Id = unchecked((uint)v); break;
+                case 20: t.Rows[1].LabelLength = (int)v; break;
+                case 23: t.Rows[1].Teams.Slots[0] = unchecked((byte)v); break;
+                case 24: t.Rows[1].Teams.Slots[1] = unchecked((byte)v); break;
+                case 25: t.Rows[1].Teams.Slots[2] = unchecked((byte)v); break;
+                case 26: t.Rows[1].Teams.Slots[3] = unchecked((byte)v); break;
+                case 27: t.Rows[1].CounterPresent = v != 0; break;
+                case 28: t.Rows[1].Counter = unchecked((int)v); break;
+                case 29: t.Rows[2].Tag = unchecked((byte)v); break;
+                case 30: t.Rows[2].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 31: t.Rows[2].Flag = v != 0; break;
+                case 32: t.Rows[2].Id = unchecked((uint)v); break;
+                case 33: t.Rows[2].LabelLength = (int)v; break;
+                case 36: t.Rows[2].Teams.Slots[0] = unchecked((byte)v); break;
+                case 37: t.Rows[2].Teams.Slots[1] = unchecked((byte)v); break;
+                case 38: t.Rows[2].Teams.Slots[2] = unchecked((byte)v); break;
+                case 39: t.Rows[2].Teams.Slots[3] = unchecked((byte)v); break;
+                case 40: t.Rows[2].CounterPresent = v != 0; break;
+                case 41: t.Rows[2].Counter = unchecked((int)v); break;
+                case 42: t.Rows[3].Tag = unchecked((byte)v); break;
+                case 43: t.Rows[3].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 44: t.Rows[3].Flag = v != 0; break;
+                case 45: t.Rows[3].Id = unchecked((uint)v); break;
+                case 46: t.Rows[3].LabelLength = (int)v; break;
+                case 49: t.Rows[3].Teams.Slots[0] = unchecked((byte)v); break;
+                case 50: t.Rows[3].Teams.Slots[1] = unchecked((byte)v); break;
+                case 51: t.Rows[3].Teams.Slots[2] = unchecked((byte)v); break;
+                case 52: t.Rows[3].Teams.Slots[3] = unchecked((byte)v); break;
+                case 53: t.Rows[3].CounterPresent = v != 0; break;
+                case 54: t.Rows[3].Counter = unchecked((int)v); break;
+                case 55: t.Rows[4].Tag = unchecked((byte)v); break;
+                case 56: t.Rows[4].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 57: t.Rows[4].Flag = v != 0; break;
+                case 58: t.Rows[4].Id = unchecked((uint)v); break;
+                case 59: t.Rows[4].LabelLength = (int)v; break;
+                case 62: t.Rows[4].Teams.Slots[0] = unchecked((byte)v); break;
+                case 63: t.Rows[4].Teams.Slots[1] = unchecked((byte)v); break;
+                case 64: t.Rows[4].Teams.Slots[2] = unchecked((byte)v); break;
+                case 65: t.Rows[4].Teams.Slots[3] = unchecked((byte)v); break;
+                case 66: t.Rows[4].CounterPresent = v != 0; break;
+                case 67: t.Rows[4].Counter = unchecked((int)v); break;
+                case 68: t.Rows[5].Tag = unchecked((byte)v); break;
+                case 69: t.Rows[5].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 70: t.Rows[5].Flag = v != 0; break;
+                case 71: t.Rows[5].Id = unchecked((uint)v); break;
+                case 72: t.Rows[5].LabelLength = (int)v; break;
+                case 75: t.Rows[5].Teams.Slots[0] = unchecked((byte)v); break;
+                case 76: t.Rows[5].Teams.Slots[1] = unchecked((byte)v); break;
+                case 77: t.Rows[5].Teams.Slots[2] = unchecked((byte)v); break;
+                case 78: t.Rows[5].Teams.Slots[3] = unchecked((byte)v); break;
+                case 79: t.Rows[5].CounterPresent = v != 0; break;
+                case 80: t.Rows[5].Counter = unchecked((int)v); break;
+                case 81: t.Rows[6].Tag = unchecked((byte)v); break;
+                case 82: t.Rows[6].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 83: t.Rows[6].Flag = v != 0; break;
+                case 84: t.Rows[6].Id = unchecked((uint)v); break;
+                case 85: t.Rows[6].LabelLength = (int)v; break;
+                case 88: t.Rows[6].Teams.Slots[0] = unchecked((byte)v); break;
+                case 89: t.Rows[6].Teams.Slots[1] = unchecked((byte)v); break;
+                case 90: t.Rows[6].Teams.Slots[2] = unchecked((byte)v); break;
+                case 91: t.Rows[6].Teams.Slots[3] = unchecked((byte)v); break;
+                case 92: t.Rows[6].CounterPresent = v != 0; break;
+                case 93: t.Rows[6].Counter = unchecked((int)v); break;
+                case 94: t.Rows[7].Tag = unchecked((byte)v); break;
+                case 95: t.Rows[7].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 96: t.Rows[7].Flag = v != 0; break;
+                case 97: t.Rows[7].Id = unchecked((uint)v); break;
+                case 98: t.Rows[7].LabelLength = (int)v; break;
+                case 101: t.Rows[7].Teams.Slots[0] = unchecked((byte)v); break;
+                case 102: t.Rows[7].Teams.Slots[1] = unchecked((byte)v); break;
+                case 103: t.Rows[7].Teams.Slots[2] = unchecked((byte)v); break;
+                case 104: t.Rows[7].Teams.Slots[3] = unchecked((byte)v); break;
+                case 105: t.Rows[7].CounterPresent = v != 0; break;
+                case 106: t.Rows[7].Counter = unchecked((int)v); break;
+                case 107: t.Rows[8].Tag = unchecked((byte)v); break;
+                case 108: t.Rows[8].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 109: t.Rows[8].Flag = v != 0; break;
+                case 110: t.Rows[8].Id = unchecked((uint)v); break;
+                case 111: t.Rows[8].LabelLength = (int)v; break;
+                case 114: t.Rows[8].Teams.Slots[0] = unchecked((byte)v); break;
+                case 115: t.Rows[8].Teams.Slots[1] = unchecked((byte)v); break;
+                case 116: t.Rows[8].Teams.Slots[2] = unchecked((byte)v); break;
+                case 117: t.Rows[8].Teams.Slots[3] = unchecked((byte)v); break;
+                case 118: t.Rows[8].CounterPresent = v != 0; break;
+                case 119: t.Rows[8].Counter = unchecked((int)v); break;
+                case 120: t.Rows[9].Tag = unchecked((byte)v); break;
+                case 121: t.Rows[9].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 122: t.Rows[9].Flag = v != 0; break;
+                case 123: t.Rows[9].Id = unchecked((uint)v); break;
+                case 124: t.Rows[9].LabelLength = (int)v; break;
+                case 127: t.Rows[9].Teams.Slots[0] = unchecked((byte)v); break;
+                case 128: t.Rows[9].Teams.Slots[1] = unchecked((byte)v); break;
+                case 129: t.Rows[9].Teams.Slots[2] = unchecked((byte)v); break;
+                case 130: t.Rows[9].Teams.Slots[3] = unchecked((byte)v); break;
+                case 131: t.Rows[9].CounterPresent = v != 0; break;
+                case 132: t.Rows[9].Counter = unchecked((int)v); break;
+                case 133: t.Rows[10].Tag = unchecked((byte)v); break;
+                case 134: t.Rows[10].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 135: t.Rows[10].Flag = v != 0; break;
+                case 136: t.Rows[10].Id = unchecked((uint)v); break;
+                case 137: t.Rows[10].LabelLength = (int)v; break;
+                case 140: t.Rows[10].Teams.Slots[0] = unchecked((byte)v); break;
+                case 141: t.Rows[10].Teams.Slots[1] = unchecked((byte)v); break;
+                case 142: t.Rows[10].Teams.Slots[2] = unchecked((byte)v); break;
+                case 143: t.Rows[10].Teams.Slots[3] = unchecked((byte)v); break;
+                case 144: t.Rows[10].CounterPresent = v != 0; break;
+                case 145: t.Rows[10].Counter = unchecked((int)v); break;
+                case 146: t.Rows[11].Tag = unchecked((byte)v); break;
+                case 147: t.Rows[11].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 148: t.Rows[11].Flag = v != 0; break;
+                case 149: t.Rows[11].Id = unchecked((uint)v); break;
+                case 150: t.Rows[11].LabelLength = (int)v; break;
+                case 153: t.Rows[11].Teams.Slots[0] = unchecked((byte)v); break;
+                case 154: t.Rows[11].Teams.Slots[1] = unchecked((byte)v); break;
+                case 155: t.Rows[11].Teams.Slots[2] = unchecked((byte)v); break;
+                case 156: t.Rows[11].Teams.Slots[3] = unchecked((byte)v); break;
+                case 157: t.Rows[11].CounterPresent = v != 0; break;
+                case 158: t.Rows[11].Counter = unchecked((int)v); break;
+                case 159: t.Rows[12].Tag = unchecked((byte)v); break;
+                case 160: t.Rows[12].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 161: t.Rows[12].Flag = v != 0; break;
+                case 162: t.Rows[12].Id = unchecked((uint)v); break;
+                case 163: t.Rows[12].LabelLength = (int)v; break;
+                case 166: t.Rows[12].Teams.Slots[0] = unchecked((byte)v); break;
+                case 167: t.Rows[12].Teams.Slots[1] = unchecked((byte)v); break;
+                case 168: t.Rows[12].Teams.Slots[2] = unchecked((byte)v); break;
+                case 169: t.Rows[12].Teams.Slots[3] = unchecked((byte)v); break;
+                case 170: t.Rows[12].CounterPresent = v != 0; break;
+                case 171: t.Rows[12].Counter = unchecked((int)v); break;
+                case 172: t.Rows[13].Tag = unchecked((byte)v); break;
+                case 173: t.Rows[13].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 174: t.Rows[13].Flag = v != 0; break;
+                case 175: t.Rows[13].Id = unchecked((uint)v); break;
+                case 176: t.Rows[13].LabelLength = (int)v; break;
+                case 179: t.Rows[13].Teams.Slots[0] = unchecked((byte)v); break;
+                case 180: t.Rows[13].Teams.Slots[1] = unchecked((byte)v); break;
+                case 181: t.Rows[13].Teams.Slots[2] = unchecked((byte)v); break;
+                case 182: t.Rows[13].Teams.Slots[3] = unchecked((byte)v); break;
+                case 183: t.Rows[13].CounterPresent = v != 0; break;
+                case 184: t.Rows[13].Counter = unchecked((int)v); break;
+                case 185: t.Rows[14].Tag = unchecked((byte)v); break;
+                case 186: t.Rows[14].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 187: t.Rows[14].Flag = v != 0; break;
+                case 188: t.Rows[14].Id = unchecked((uint)v); break;
+                case 189: t.Rows[14].LabelLength = (int)v; break;
+                case 192: t.Rows[14].Teams.Slots[0] = unchecked((byte)v); break;
+                case 193: t.Rows[14].Teams.Slots[1] = unchecked((byte)v); break;
+                case 194: t.Rows[14].Teams.Slots[2] = unchecked((byte)v); break;
+                case 195: t.Rows[14].Teams.Slots[3] = unchecked((byte)v); break;
+                case 196: t.Rows[14].CounterPresent = v != 0; break;
+                case 197: t.Rows[14].Counter = unchecked((int)v); break;
+                case 198: t.Rows[15].Tag = unchecked((byte)v); break;
+                case 199: t.Rows[15].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 200: t.Rows[15].Flag = v != 0; break;
+                case 201: t.Rows[15].Id = unchecked((uint)v); break;
+                case 202: t.Rows[15].LabelLength = (int)v; break;
+                case 205: t.Rows[15].Teams.Slots[0] = unchecked((byte)v); break;
+                case 206: t.Rows[15].Teams.Slots[1] = unchecked((byte)v); break;
+                case 207: t.Rows[15].Teams.Slots[2] = unchecked((byte)v); break;
+                case 208: t.Rows[15].Teams.Slots[3] = unchecked((byte)v); break;
+                case 209: t.Rows[15].CounterPresent = v != 0; break;
+                case 210: t.Rows[15].Counter = unchecked((int)v); break;
+                case 211: t.Rows[16].Tag = unchecked((byte)v); break;
+                case 212: t.Rows[16].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 213: t.Rows[16].Flag = v != 0; break;
+                case 214: t.Rows[16].Id = unchecked((uint)v); break;
+                case 215: t.Rows[16].LabelLength = (int)v; break;
+                case 218: t.Rows[16].Teams.Slots[0] = unchecked((byte)v); break;
+                case 219: t.Rows[16].Teams.Slots[1] = unchecked((byte)v); break;
+                case 220: t.Rows[16].Teams.Slots[2] = unchecked((byte)v); break;
+                case 221: t.Rows[16].Teams.Slots[3] = unchecked((byte)v); break;
+                case 222: t.Rows[16].CounterPresent = v != 0; break;
+                case 223: t.Rows[16].Counter = unchecked((int)v); break;
+                case 224: t.Rows[17].Tag = unchecked((byte)v); break;
+                case 225: t.Rows[17].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 226: t.Rows[17].Flag = v != 0; break;
+                case 227: t.Rows[17].Id = unchecked((uint)v); break;
+                case 228: t.Rows[17].LabelLength = (int)v; break;
+                case 231: t.Rows[17].Teams.Slots[0] = unchecked((byte)v); break;
+                case 232: t.Rows[17].Teams.Slots[1] = unchecked((byte)v); break;
+                case 233: t.Rows[17].Teams.Slots[2] = unchecked((byte)v); break;
+                case 234: t.Rows[17].Teams.Slots[3] = unchecked((byte)v); break;
+                case 235: t.Rows[17].CounterPresent = v != 0; break;
+                case 236: t.Rows[17].Counter = unchecked((int)v); break;
+                case 237: t.Rows[18].Tag = unchecked((byte)v); break;
+                case 238: t.Rows[18].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 239: t.Rows[18].Flag = v != 0; break;
+                case 240: t.Rows[18].Id = unchecked((uint)v); break;
+                case 241: t.Rows[18].LabelLength = (int)v; break;
+                case 244: t.Rows[18].Teams.Slots[0] = unchecked((byte)v); break;
+                case 245: t.Rows[18].Teams.Slots[1] = unchecked((byte)v); break;
+                case 246: t.Rows[18].Teams.Slots[2] = unchecked((byte)v); break;
+                case 247: t.Rows[18].Teams.Slots[3] = unchecked((byte)v); break;
+                case 248: t.Rows[18].CounterPresent = v != 0; break;
+                case 249: t.Rows[18].Counter = unchecked((int)v); break;
+                case 250: t.Rows[19].Tag = unchecked((byte)v); break;
+                case 251: t.Rows[19].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 252: t.Rows[19].Flag = v != 0; break;
+                case 253: t.Rows[19].Id = unchecked((uint)v); break;
+                case 254: t.Rows[19].LabelLength = (int)v; break;
+                case 257: t.Rows[19].Teams.Slots[0] = unchecked((byte)v); break;
+                case 258: t.Rows[19].Teams.Slots[1] = unchecked((byte)v); break;
+                case 259: t.Rows[19].Teams.Slots[2] = unchecked((byte)v); break;
+                case 260: t.Rows[19].Teams.Slots[3] = unchecked((byte)v); break;
+                case 261: t.Rows[19].CounterPresent = v != 0; break;
+                case 262: t.Rows[19].Counter = unchecked((int)v); break;
+                case 263: t.Rows[20].Tag = unchecked((byte)v); break;
+                case 264: t.Rows[20].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 265: t.Rows[20].Flag = v != 0; break;
+                case 266: t.Rows[20].Id = unchecked((uint)v); break;
+                case 267: t.Rows[20].LabelLength = (int)v; break;
+                case 270: t.Rows[20].Teams.Slots[0] = unchecked((byte)v); break;
+                case 271: t.Rows[20].Teams.Slots[1] = unchecked((byte)v); break;
+                case 272: t.Rows[20].Teams.Slots[2] = unchecked((byte)v); break;
+                case 273: t.Rows[20].Teams.Slots[3] = unchecked((byte)v); break;
+                case 274: t.Rows[20].CounterPresent = v != 0; break;
+                case 275: t.Rows[20].Counter = unchecked((int)v); break;
+                case 276: t.Rows[21].Tag = unchecked((byte)v); break;
+                case 277: t.Rows[21].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 278: t.Rows[21].Flag = v != 0; break;
+                case 279: t.Rows[21].Id = unchecked((uint)v); break;
+                case 280: t.Rows[21].LabelLength = (int)v; break;
+                case 283: t.Rows[21].Teams.Slots[0] = unchecked((byte)v); break;
+                case 284: t.Rows[21].Teams.Slots[1] = unchecked((byte)v); break;
+                case 285: t.Rows[21].Teams.Slots[2] = unchecked((byte)v); break;
+                case 286: t.Rows[21].Teams.Slots[3] = unchecked((byte)v); break;
+                case 287: t.Rows[21].CounterPresent = v != 0; break;
+                case 288: t.Rows[21].Counter = unchecked((int)v); break;
+                case 289: t.Rows[22].Tag = unchecked((byte)v); break;
+                case 290: t.Rows[22].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 291: t.Rows[22].Flag = v != 0; break;
+                case 292: t.Rows[22].Id = unchecked((uint)v); break;
+                case 293: t.Rows[22].LabelLength = (int)v; break;
+                case 296: t.Rows[22].Teams.Slots[0] = unchecked((byte)v); break;
+                case 297: t.Rows[22].Teams.Slots[1] = unchecked((byte)v); break;
+                case 298: t.Rows[22].Teams.Slots[2] = unchecked((byte)v); break;
+                case 299: t.Rows[22].Teams.Slots[3] = unchecked((byte)v); break;
+                case 300: t.Rows[22].CounterPresent = v != 0; break;
+                case 301: t.Rows[22].Counter = unchecked((int)v); break;
+                case 302: t.Rows[23].Tag = unchecked((byte)v); break;
+                case 303: t.Rows[23].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 304: t.Rows[23].Flag = v != 0; break;
+                case 305: t.Rows[23].Id = unchecked((uint)v); break;
+                case 306: t.Rows[23].LabelLength = (int)v; break;
+                case 309: t.Rows[23].Teams.Slots[0] = unchecked((byte)v); break;
+                case 310: t.Rows[23].Teams.Slots[1] = unchecked((byte)v); break;
+                case 311: t.Rows[23].Teams.Slots[2] = unchecked((byte)v); break;
+                case 312: t.Rows[23].Teams.Slots[3] = unchecked((byte)v); break;
+                case 313: t.Rows[23].CounterPresent = v != 0; break;
+                case 314: t.Rows[23].Counter = unchecked((int)v); break;
+                case 315: t.Rows[24].Tag = unchecked((byte)v); break;
+                case 316: t.Rows[24].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 317: t.Rows[24].Flag = v != 0; break;
+                case 318: t.Rows[24].Id = unchecked((uint)v); break;
+                case 319: t.Rows[24].LabelLength = (int)v; break;
+                case 322: t.Rows[24].Teams.Slots[0] = unchecked((byte)v); break;
+                case 323: t.Rows[24].Teams.Slots[1] = unchecked((byte)v); break;
+                case 324: t.Rows[24].Teams.Slots[2] = unchecked((byte)v); break;
+                case 325: t.Rows[24].Teams.Slots[3] = unchecked((byte)v); break;
+                case 326: t.Rows[24].CounterPresent = v != 0; break;
+                case 327: t.Rows[24].Counter = unchecked((int)v); break;
+                case 328: t.Rows[25].Tag = unchecked((byte)v); break;
+                case 329: t.Rows[25].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 330: t.Rows[25].Flag = v != 0; break;
+                case 331: t.Rows[25].Id = unchecked((uint)v); break;
+                case 332: t.Rows[25].LabelLength = (int)v; break;
+                case 335: t.Rows[25].Teams.Slots[0] = unchecked((byte)v); break;
+                case 336: t.Rows[25].Teams.Slots[1] = unchecked((byte)v); break;
+                case 337: t.Rows[25].Teams.Slots[2] = unchecked((byte)v); break;
+                case 338: t.Rows[25].Teams.Slots[3] = unchecked((byte)v); break;
+                case 339: t.Rows[25].CounterPresent = v != 0; break;
+                case 340: t.Rows[25].Counter = unchecked((int)v); break;
+                case 341: t.Rows[26].Tag = unchecked((byte)v); break;
+                case 342: t.Rows[26].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 343: t.Rows[26].Flag = v != 0; break;
+                case 344: t.Rows[26].Id = unchecked((uint)v); break;
+                case 345: t.Rows[26].LabelLength = (int)v; break;
+                case 348: t.Rows[26].Teams.Slots[0] = unchecked((byte)v); break;
+                case 349: t.Rows[26].Teams.Slots[1] = unchecked((byte)v); break;
+                case 350: t.Rows[26].Teams.Slots[2] = unchecked((byte)v); break;
+                case 351: t.Rows[26].Teams.Slots[3] = unchecked((byte)v); break;
+                case 352: t.Rows[26].CounterPresent = v != 0; break;
+                case 353: t.Rows[26].Counter = unchecked((int)v); break;
+                case 354: t.Rows[27].Tag = unchecked((byte)v); break;
+                case 355: t.Rows[27].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 356: t.Rows[27].Flag = v != 0; break;
+                case 357: t.Rows[27].Id = unchecked((uint)v); break;
+                case 358: t.Rows[27].LabelLength = (int)v; break;
+                case 361: t.Rows[27].Teams.Slots[0] = unchecked((byte)v); break;
+                case 362: t.Rows[27].Teams.Slots[1] = unchecked((byte)v); break;
+                case 363: t.Rows[27].Teams.Slots[2] = unchecked((byte)v); break;
+                case 364: t.Rows[27].Teams.Slots[3] = unchecked((byte)v); break;
+                case 365: t.Rows[27].CounterPresent = v != 0; break;
+                case 366: t.Rows[27].Counter = unchecked((int)v); break;
+                case 367: t.Rows[28].Tag = unchecked((byte)v); break;
+                case 368: t.Rows[28].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 369: t.Rows[28].Flag = v != 0; break;
+                case 370: t.Rows[28].Id = unchecked((uint)v); break;
+                case 371: t.Rows[28].LabelLength = (int)v; break;
+                case 374: t.Rows[28].Teams.Slots[0] = unchecked((byte)v); break;
+                case 375: t.Rows[28].Teams.Slots[1] = unchecked((byte)v); break;
+                case 376: t.Rows[28].Teams.Slots[2] = unchecked((byte)v); break;
+                case 377: t.Rows[28].Teams.Slots[3] = unchecked((byte)v); break;
+                case 378: t.Rows[28].CounterPresent = v != 0; break;
+                case 379: t.Rows[28].Counter = unchecked((int)v); break;
+                case 380: t.Rows[29].Tag = unchecked((byte)v); break;
+                case 381: t.Rows[29].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 382: t.Rows[29].Flag = v != 0; break;
+                case 383: t.Rows[29].Id = unchecked((uint)v); break;
+                case 384: t.Rows[29].LabelLength = (int)v; break;
+                case 387: t.Rows[29].Teams.Slots[0] = unchecked((byte)v); break;
+                case 388: t.Rows[29].Teams.Slots[1] = unchecked((byte)v); break;
+                case 389: t.Rows[29].Teams.Slots[2] = unchecked((byte)v); break;
+                case 390: t.Rows[29].Teams.Slots[3] = unchecked((byte)v); break;
+                case 391: t.Rows[29].CounterPresent = v != 0; break;
+                case 392: t.Rows[29].Counter = unchecked((int)v); break;
+                case 393: t.Rows[30].Tag = unchecked((byte)v); break;
+                case 394: t.Rows[30].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 395: t.Rows[30].Flag = v != 0; break;
+                case 396: t.Rows[30].Id = unchecked((uint)v); break;
+                case 397: t.Rows[30].LabelLength = (int)v; break;
+                case 400: t.Rows[30].Teams.Slots[0] = unchecked((byte)v); break;
+                case 401: t.Rows[30].Teams.Slots[1] = unchecked((byte)v); break;
+                case 402: t.Rows[30].Teams.Slots[2] = unchecked((byte)v); break;
+                case 403: t.Rows[30].Teams.Slots[3] = unchecked((byte)v); break;
+                case 404: t.Rows[30].CounterPresent = v != 0; break;
+                case 405: t.Rows[30].Counter = unchecked((int)v); break;
+                case 406: t.Rows[31].Tag = unchecked((byte)v); break;
+                case 407: t.Rows[31].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 408: t.Rows[31].Flag = v != 0; break;
+                case 409: t.Rows[31].Id = unchecked((uint)v); break;
+                case 410: t.Rows[31].LabelLength = (int)v; break;
+                case 413: t.Rows[31].Teams.Slots[0] = unchecked((byte)v); break;
+                case 414: t.Rows[31].Teams.Slots[1] = unchecked((byte)v); break;
+                case 415: t.Rows[31].Teams.Slots[2] = unchecked((byte)v); break;
+                case 416: t.Rows[31].Teams.Slots[3] = unchecked((byte)v); break;
+                case 417: t.Rows[31].CounterPresent = v != 0; break;
+                case 418: t.Rows[31].Counter = unchecked((int)v); break;
+                case 419: t.Rows[32].Tag = unchecked((byte)v); break;
+                case 420: t.Rows[32].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 421: t.Rows[32].Flag = v != 0; break;
+                case 422: t.Rows[32].Id = unchecked((uint)v); break;
+                case 423: t.Rows[32].LabelLength = (int)v; break;
+                case 426: t.Rows[32].Teams.Slots[0] = unchecked((byte)v); break;
+                case 427: t.Rows[32].Teams.Slots[1] = unchecked((byte)v); break;
+                case 428: t.Rows[32].Teams.Slots[2] = unchecked((byte)v); break;
+                case 429: t.Rows[32].Teams.Slots[3] = unchecked((byte)v); break;
+                case 430: t.Rows[32].CounterPresent = v != 0; break;
+                case 431: t.Rows[32].Counter = unchecked((int)v); break;
+                case 432: t.Rows[33].Tag = unchecked((byte)v); break;
+                case 433: t.Rows[33].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 434: t.Rows[33].Flag = v != 0; break;
+                case 435: t.Rows[33].Id = unchecked((uint)v); break;
+                case 436: t.Rows[33].LabelLength = (int)v; break;
+                case 439: t.Rows[33].Teams.Slots[0] = unchecked((byte)v); break;
+                case 440: t.Rows[33].Teams.Slots[1] = unchecked((byte)v); break;
+                case 441: t.Rows[33].Teams.Slots[2] = unchecked((byte)v); break;
+                case 442: t.Rows[33].Teams.Slots[3] = unchecked((byte)v); break;
+                case 443: t.Rows[33].CounterPresent = v != 0; break;
+                case 444: t.Rows[33].Counter = unchecked((int)v); break;
+                case 445: t.Rows[34].Tag = unchecked((byte)v); break;
+                case 446: t.Rows[34].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 447: t.Rows[34].Flag = v != 0; break;
+                case 448: t.Rows[34].Id = unchecked((uint)v); break;
+                case 449: t.Rows[34].LabelLength = (int)v; break;
+                case 452: t.Rows[34].Teams.Slots[0] = unchecked((byte)v); break;
+                case 453: t.Rows[34].Teams.Slots[1] = unchecked((byte)v); break;
+                case 454: t.Rows[34].Teams.Slots[2] = unchecked((byte)v); break;
+                case 455: t.Rows[34].Teams.Slots[3] = unchecked((byte)v); break;
+                case 456: t.Rows[34].CounterPresent = v != 0; break;
+                case 457: t.Rows[34].Counter = unchecked((int)v); break;
+                case 458: t.Rows[35].Tag = unchecked((byte)v); break;
+                case 459: t.Rows[35].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 460: t.Rows[35].Flag = v != 0; break;
+                case 461: t.Rows[35].Id = unchecked((uint)v); break;
+                case 462: t.Rows[35].LabelLength = (int)v; break;
+                case 465: t.Rows[35].Teams.Slots[0] = unchecked((byte)v); break;
+                case 466: t.Rows[35].Teams.Slots[1] = unchecked((byte)v); break;
+                case 467: t.Rows[35].Teams.Slots[2] = unchecked((byte)v); break;
+                case 468: t.Rows[35].Teams.Slots[3] = unchecked((byte)v); break;
+                case 469: t.Rows[35].CounterPresent = v != 0; break;
+                case 470: t.Rows[35].Counter = unchecked((int)v); break;
+                case 471: t.Rows[36].Tag = unchecked((byte)v); break;
+                case 472: t.Rows[36].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 473: t.Rows[36].Flag = v != 0; break;
+                case 474: t.Rows[36].Id = unchecked((uint)v); break;
+                case 475: t.Rows[36].LabelLength = (int)v; break;
+                case 478: t.Rows[36].Teams.Slots[0] = unchecked((byte)v); break;
+                case 479: t.Rows[36].Teams.Slots[1] = unchecked((byte)v); break;
+                case 480: t.Rows[36].Teams.Slots[2] = unchecked((byte)v); break;
+                case 481: t.Rows[36].Teams.Slots[3] = unchecked((byte)v); break;
+                case 482: t.Rows[36].CounterPresent = v != 0; break;
+                case 483: t.Rows[36].Counter = unchecked((int)v); break;
+                case 484: t.Rows[37].Tag = unchecked((byte)v); break;
+                case 485: t.Rows[37].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 486: t.Rows[37].Flag = v != 0; break;
+                case 487: t.Rows[37].Id = unchecked((uint)v); break;
+                case 488: t.Rows[37].LabelLength = (int)v; break;
+                case 491: t.Rows[37].Teams.Slots[0] = unchecked((byte)v); break;
+                case 492: t.Rows[37].Teams.Slots[1] = unchecked((byte)v); break;
+                case 493: t.Rows[37].Teams.Slots[2] = unchecked((byte)v); break;
+                case 494: t.Rows[37].Teams.Slots[3] = unchecked((byte)v); break;
+                case 495: t.Rows[37].CounterPresent = v != 0; break;
+                case 496: t.Rows[37].Counter = unchecked((int)v); break;
+                case 497: t.Rows[38].Tag = unchecked((byte)v); break;
+                case 498: t.Rows[38].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 499: t.Rows[38].Flag = v != 0; break;
+                case 500: t.Rows[38].Id = unchecked((uint)v); break;
+                case 501: t.Rows[38].LabelLength = (int)v; break;
+                case 504: t.Rows[38].Teams.Slots[0] = unchecked((byte)v); break;
+                case 505: t.Rows[38].Teams.Slots[1] = unchecked((byte)v); break;
+                case 506: t.Rows[38].Teams.Slots[2] = unchecked((byte)v); break;
+                case 507: t.Rows[38].Teams.Slots[3] = unchecked((byte)v); break;
+                case 508: t.Rows[38].CounterPresent = v != 0; break;
+                case 509: t.Rows[38].Counter = unchecked((int)v); break;
+                case 510: t.Rows[39].Tag = unchecked((byte)v); break;
+                case 511: t.Rows[39].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 512: t.Rows[39].Flag = v != 0; break;
+                case 513: t.Rows[39].Id = unchecked((uint)v); break;
+                case 514: t.Rows[39].LabelLength = (int)v; break;
+                case 517: t.Rows[39].Teams.Slots[0] = unchecked((byte)v); break;
+                case 518: t.Rows[39].Teams.Slots[1] = unchecked((byte)v); break;
+                case 519: t.Rows[39].Teams.Slots[2] = unchecked((byte)v); break;
+                case 520: t.Rows[39].Teams.Slots[3] = unchecked((byte)v); break;
+                case 521: t.Rows[39].CounterPresent = v != 0; break;
+                case 522: t.Rows[39].Counter = unchecked((int)v); break;
+                case 523: t.Rows[40].Tag = unchecked((byte)v); break;
+                case 524: t.Rows[40].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 525: t.Rows[40].Flag = v != 0; break;
+                case 526: t.Rows[40].Id = unchecked((uint)v); break;
+                case 527: t.Rows[40].LabelLength = (int)v; break;
+                case 530: t.Rows[40].Teams.Slots[0] = unchecked((byte)v); break;
+                case 531: t.Rows[40].Teams.Slots[1] = unchecked((byte)v); break;
+                case 532: t.Rows[40].Teams.Slots[2] = unchecked((byte)v); break;
+                case 533: t.Rows[40].Teams.Slots[3] = unchecked((byte)v); break;
+                case 534: t.Rows[40].CounterPresent = v != 0; break;
+                case 535: t.Rows[40].Counter = unchecked((int)v); break;
+                case 536: t.Rows[41].Tag = unchecked((byte)v); break;
+                case 537: t.Rows[41].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 538: t.Rows[41].Flag = v != 0; break;
+                case 539: t.Rows[41].Id = unchecked((uint)v); break;
+                case 540: t.Rows[41].LabelLength = (int)v; break;
+                case 543: t.Rows[41].Teams.Slots[0] = unchecked((byte)v); break;
+                case 544: t.Rows[41].Teams.Slots[1] = unchecked((byte)v); break;
+                case 545: t.Rows[41].Teams.Slots[2] = unchecked((byte)v); break;
+                case 546: t.Rows[41].Teams.Slots[3] = unchecked((byte)v); break;
+                case 547: t.Rows[41].CounterPresent = v != 0; break;
+                case 548: t.Rows[41].Counter = unchecked((int)v); break;
+                case 549: t.Rows[42].Tag = unchecked((byte)v); break;
+                case 550: t.Rows[42].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 551: t.Rows[42].Flag = v != 0; break;
+                case 552: t.Rows[42].Id = unchecked((uint)v); break;
+                case 553: t.Rows[42].LabelLength = (int)v; break;
+                case 556: t.Rows[42].Teams.Slots[0] = unchecked((byte)v); break;
+                case 557: t.Rows[42].Teams.Slots[1] = unchecked((byte)v); break;
+                case 558: t.Rows[42].Teams.Slots[2] = unchecked((byte)v); break;
+                case 559: t.Rows[42].Teams.Slots[3] = unchecked((byte)v); break;
+                case 560: t.Rows[42].CounterPresent = v != 0; break;
+                case 561: t.Rows[42].Counter = unchecked((int)v); break;
+                case 562: t.Rows[43].Tag = unchecked((byte)v); break;
+                case 563: t.Rows[43].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 564: t.Rows[43].Flag = v != 0; break;
+                case 565: t.Rows[43].Id = unchecked((uint)v); break;
+                case 566: t.Rows[43].LabelLength = (int)v; break;
+                case 569: t.Rows[43].Teams.Slots[0] = unchecked((byte)v); break;
+                case 570: t.Rows[43].Teams.Slots[1] = unchecked((byte)v); break;
+                case 571: t.Rows[43].Teams.Slots[2] = unchecked((byte)v); break;
+                case 572: t.Rows[43].Teams.Slots[3] = unchecked((byte)v); break;
+                case 573: t.Rows[43].CounterPresent = v != 0; break;
+                case 574: t.Rows[43].Counter = unchecked((int)v); break;
+                case 575: t.Rows[44].Tag = unchecked((byte)v); break;
+                case 576: t.Rows[44].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 577: t.Rows[44].Flag = v != 0; break;
+                case 578: t.Rows[44].Id = unchecked((uint)v); break;
+                case 579: t.Rows[44].LabelLength = (int)v; break;
+                case 582: t.Rows[44].Teams.Slots[0] = unchecked((byte)v); break;
+                case 583: t.Rows[44].Teams.Slots[1] = unchecked((byte)v); break;
+                case 584: t.Rows[44].Teams.Slots[2] = unchecked((byte)v); break;
+                case 585: t.Rows[44].Teams.Slots[3] = unchecked((byte)v); break;
+                case 586: t.Rows[44].CounterPresent = v != 0; break;
+                case 587: t.Rows[44].Counter = unchecked((int)v); break;
+                case 588: t.Rows[45].Tag = unchecked((byte)v); break;
+                case 589: t.Rows[45].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 590: t.Rows[45].Flag = v != 0; break;
+                case 591: t.Rows[45].Id = unchecked((uint)v); break;
+                case 592: t.Rows[45].LabelLength = (int)v; break;
+                case 595: t.Rows[45].Teams.Slots[0] = unchecked((byte)v); break;
+                case 596: t.Rows[45].Teams.Slots[1] = unchecked((byte)v); break;
+                case 597: t.Rows[45].Teams.Slots[2] = unchecked((byte)v); break;
+                case 598: t.Rows[45].Teams.Slots[3] = unchecked((byte)v); break;
+                case 599: t.Rows[45].CounterPresent = v != 0; break;
+                case 600: t.Rows[45].Counter = unchecked((int)v); break;
+                case 601: t.Rows[46].Tag = unchecked((byte)v); break;
+                case 602: t.Rows[46].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 603: t.Rows[46].Flag = v != 0; break;
+                case 604: t.Rows[46].Id = unchecked((uint)v); break;
+                case 605: t.Rows[46].LabelLength = (int)v; break;
+                case 608: t.Rows[46].Teams.Slots[0] = unchecked((byte)v); break;
+                case 609: t.Rows[46].Teams.Slots[1] = unchecked((byte)v); break;
+                case 610: t.Rows[46].Teams.Slots[2] = unchecked((byte)v); break;
+                case 611: t.Rows[46].Teams.Slots[3] = unchecked((byte)v); break;
+                case 612: t.Rows[46].CounterPresent = v != 0; break;
+                case 613: t.Rows[46].Counter = unchecked((int)v); break;
+                case 614: t.Rows[47].Tag = unchecked((byte)v); break;
+                case 615: t.Rows[47].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 616: t.Rows[47].Flag = v != 0; break;
+                case 617: t.Rows[47].Id = unchecked((uint)v); break;
+                case 618: t.Rows[47].LabelLength = (int)v; break;
+                case 621: t.Rows[47].Teams.Slots[0] = unchecked((byte)v); break;
+                case 622: t.Rows[47].Teams.Slots[1] = unchecked((byte)v); break;
+                case 623: t.Rows[47].Teams.Slots[2] = unchecked((byte)v); break;
+                case 624: t.Rows[47].Teams.Slots[3] = unchecked((byte)v); break;
+                case 625: t.Rows[47].CounterPresent = v != 0; break;
+                case 626: t.Rows[47].Counter = unchecked((int)v); break;
+                case 627: t.Rows[48].Tag = unchecked((byte)v); break;
+                case 628: t.Rows[48].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 629: t.Rows[48].Flag = v != 0; break;
+                case 630: t.Rows[48].Id = unchecked((uint)v); break;
+                case 631: t.Rows[48].LabelLength = (int)v; break;
+                case 634: t.Rows[48].Teams.Slots[0] = unchecked((byte)v); break;
+                case 635: t.Rows[48].Teams.Slots[1] = unchecked((byte)v); break;
+                case 636: t.Rows[48].Teams.Slots[2] = unchecked((byte)v); break;
+                case 637: t.Rows[48].Teams.Slots[3] = unchecked((byte)v); break;
+                case 638: t.Rows[48].CounterPresent = v != 0; break;
+                case 639: t.Rows[48].Counter = unchecked((int)v); break;
+                case 640: t.Rows[49].Tag = unchecked((byte)v); break;
+                case 641: t.Rows[49].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 642: t.Rows[49].Flag = v != 0; break;
+                case 643: t.Rows[49].Id = unchecked((uint)v); break;
+                case 644: t.Rows[49].LabelLength = (int)v; break;
+                case 647: t.Rows[49].Teams.Slots[0] = unchecked((byte)v); break;
+                case 648: t.Rows[49].Teams.Slots[1] = unchecked((byte)v); break;
+                case 649: t.Rows[49].Teams.Slots[2] = unchecked((byte)v); break;
+                case 650: t.Rows[49].Teams.Slots[3] = unchecked((byte)v); break;
+                case 651: t.Rows[49].CounterPresent = v != 0; break;
+                case 652: t.Rows[49].Counter = unchecked((int)v); break;
+                case 653: t.Rows[50].Tag = unchecked((byte)v); break;
+                case 654: t.Rows[50].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 655: t.Rows[50].Flag = v != 0; break;
+                case 656: t.Rows[50].Id = unchecked((uint)v); break;
+                case 657: t.Rows[50].LabelLength = (int)v; break;
+                case 660: t.Rows[50].Teams.Slots[0] = unchecked((byte)v); break;
+                case 661: t.Rows[50].Teams.Slots[1] = unchecked((byte)v); break;
+                case 662: t.Rows[50].Teams.Slots[2] = unchecked((byte)v); break;
+                case 663: t.Rows[50].Teams.Slots[3] = unchecked((byte)v); break;
+                case 664: t.Rows[50].CounterPresent = v != 0; break;
+                case 665: t.Rows[50].Counter = unchecked((int)v); break;
+                case 666: t.Rows[51].Tag = unchecked((byte)v); break;
+                case 667: t.Rows[51].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 668: t.Rows[51].Flag = v != 0; break;
+                case 669: t.Rows[51].Id = unchecked((uint)v); break;
+                case 670: t.Rows[51].LabelLength = (int)v; break;
+                case 673: t.Rows[51].Teams.Slots[0] = unchecked((byte)v); break;
+                case 674: t.Rows[51].Teams.Slots[1] = unchecked((byte)v); break;
+                case 675: t.Rows[51].Teams.Slots[2] = unchecked((byte)v); break;
+                case 676: t.Rows[51].Teams.Slots[3] = unchecked((byte)v); break;
+                case 677: t.Rows[51].CounterPresent = v != 0; break;
+                case 678: t.Rows[51].Counter = unchecked((int)v); break;
+                case 679: t.Rows[52].Tag = unchecked((byte)v); break;
+                case 680: t.Rows[52].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 681: t.Rows[52].Flag = v != 0; break;
+                case 682: t.Rows[52].Id = unchecked((uint)v); break;
+                case 683: t.Rows[52].LabelLength = (int)v; break;
+                case 686: t.Rows[52].Teams.Slots[0] = unchecked((byte)v); break;
+                case 687: t.Rows[52].Teams.Slots[1] = unchecked((byte)v); break;
+                case 688: t.Rows[52].Teams.Slots[2] = unchecked((byte)v); break;
+                case 689: t.Rows[52].Teams.Slots[3] = unchecked((byte)v); break;
+                case 690: t.Rows[52].CounterPresent = v != 0; break;
+                case 691: t.Rows[52].Counter = unchecked((int)v); break;
+                case 692: t.Rows[53].Tag = unchecked((byte)v); break;
+                case 693: t.Rows[53].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 694: t.Rows[53].Flag = v != 0; break;
+                case 695: t.Rows[53].Id = unchecked((uint)v); break;
+                case 696: t.Rows[53].LabelLength = (int)v; break;
+                case 699: t.Rows[53].Teams.Slots[0] = unchecked((byte)v); break;
+                case 700: t.Rows[53].Teams.Slots[1] = unchecked((byte)v); break;
+                case 701: t.Rows[53].Teams.Slots[2] = unchecked((byte)v); break;
+                case 702: t.Rows[53].Teams.Slots[3] = unchecked((byte)v); break;
+                case 703: t.Rows[53].CounterPresent = v != 0; break;
+                case 704: t.Rows[53].Counter = unchecked((int)v); break;
+                case 705: t.Rows[54].Tag = unchecked((byte)v); break;
+                case 706: t.Rows[54].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 707: t.Rows[54].Flag = v != 0; break;
+                case 708: t.Rows[54].Id = unchecked((uint)v); break;
+                case 709: t.Rows[54].LabelLength = (int)v; break;
+                case 712: t.Rows[54].Teams.Slots[0] = unchecked((byte)v); break;
+                case 713: t.Rows[54].Teams.Slots[1] = unchecked((byte)v); break;
+                case 714: t.Rows[54].Teams.Slots[2] = unchecked((byte)v); break;
+                case 715: t.Rows[54].Teams.Slots[3] = unchecked((byte)v); break;
+                case 716: t.Rows[54].CounterPresent = v != 0; break;
+                case 717: t.Rows[54].Counter = unchecked((int)v); break;
+                case 718: t.Rows[55].Tag = unchecked((byte)v); break;
+                case 719: t.Rows[55].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 720: t.Rows[55].Flag = v != 0; break;
+                case 721: t.Rows[55].Id = unchecked((uint)v); break;
+                case 722: t.Rows[55].LabelLength = (int)v; break;
+                case 725: t.Rows[55].Teams.Slots[0] = unchecked((byte)v); break;
+                case 726: t.Rows[55].Teams.Slots[1] = unchecked((byte)v); break;
+                case 727: t.Rows[55].Teams.Slots[2] = unchecked((byte)v); break;
+                case 728: t.Rows[55].Teams.Slots[3] = unchecked((byte)v); break;
+                case 729: t.Rows[55].CounterPresent = v != 0; break;
+                case 730: t.Rows[55].Counter = unchecked((int)v); break;
+                case 731: t.Rows[56].Tag = unchecked((byte)v); break;
+                case 732: t.Rows[56].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 733: t.Rows[56].Flag = v != 0; break;
+                case 734: t.Rows[56].Id = unchecked((uint)v); break;
+                case 735: t.Rows[56].LabelLength = (int)v; break;
+                case 738: t.Rows[56].Teams.Slots[0] = unchecked((byte)v); break;
+                case 739: t.Rows[56].Teams.Slots[1] = unchecked((byte)v); break;
+                case 740: t.Rows[56].Teams.Slots[2] = unchecked((byte)v); break;
+                case 741: t.Rows[56].Teams.Slots[3] = unchecked((byte)v); break;
+                case 742: t.Rows[56].CounterPresent = v != 0; break;
+                case 743: t.Rows[56].Counter = unchecked((int)v); break;
+                case 744: t.Rows[57].Tag = unchecked((byte)v); break;
+                case 745: t.Rows[57].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 746: t.Rows[57].Flag = v != 0; break;
+                case 747: t.Rows[57].Id = unchecked((uint)v); break;
+                case 748: t.Rows[57].LabelLength = (int)v; break;
+                case 751: t.Rows[57].Teams.Slots[0] = unchecked((byte)v); break;
+                case 752: t.Rows[57].Teams.Slots[1] = unchecked((byte)v); break;
+                case 753: t.Rows[57].Teams.Slots[2] = unchecked((byte)v); break;
+                case 754: t.Rows[57].Teams.Slots[3] = unchecked((byte)v); break;
+                case 755: t.Rows[57].CounterPresent = v != 0; break;
+                case 756: t.Rows[57].Counter = unchecked((int)v); break;
+                case 757: t.Rows[58].Tag = unchecked((byte)v); break;
+                case 758: t.Rows[58].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 759: t.Rows[58].Flag = v != 0; break;
+                case 760: t.Rows[58].Id = unchecked((uint)v); break;
+                case 761: t.Rows[58].LabelLength = (int)v; break;
+                case 764: t.Rows[58].Teams.Slots[0] = unchecked((byte)v); break;
+                case 765: t.Rows[58].Teams.Slots[1] = unchecked((byte)v); break;
+                case 766: t.Rows[58].Teams.Slots[2] = unchecked((byte)v); break;
+                case 767: t.Rows[58].Teams.Slots[3] = unchecked((byte)v); break;
+                case 768: t.Rows[58].CounterPresent = v != 0; break;
+                case 769: t.Rows[58].Counter = unchecked((int)v); break;
+                case 770: t.Rows[59].Tag = unchecked((byte)v); break;
+                case 771: t.Rows[59].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 772: t.Rows[59].Flag = v != 0; break;
+                case 773: t.Rows[59].Id = unchecked((uint)v); break;
+                case 774: t.Rows[59].LabelLength = (int)v; break;
+                case 777: t.Rows[59].Teams.Slots[0] = unchecked((byte)v); break;
+                case 778: t.Rows[59].Teams.Slots[1] = unchecked((byte)v); break;
+                case 779: t.Rows[59].Teams.Slots[2] = unchecked((byte)v); break;
+                case 780: t.Rows[59].Teams.Slots[3] = unchecked((byte)v); break;
+                case 781: t.Rows[59].CounterPresent = v != 0; break;
+                case 782: t.Rows[59].Counter = unchecked((int)v); break;
+                case 783: t.Rows[60].Tag = unchecked((byte)v); break;
+                case 784: t.Rows[60].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 785: t.Rows[60].Flag = v != 0; break;
+                case 786: t.Rows[60].Id = unchecked((uint)v); break;
+                case 787: t.Rows[60].LabelLength = (int)v; break;
+                case 790: t.Rows[60].Teams.Slots[0] = unchecked((byte)v); break;
+                case 791: t.Rows[60].Teams.Slots[1] = unchecked((byte)v); break;
+                case 792: t.Rows[60].Teams.Slots[2] = unchecked((byte)v); break;
+                case 793: t.Rows[60].Teams.Slots[3] = unchecked((byte)v); break;
+                case 794: t.Rows[60].CounterPresent = v != 0; break;
+                case 795: t.Rows[60].Counter = unchecked((int)v); break;
+                case 796: t.Rows[61].Tag = unchecked((byte)v); break;
+                case 797: t.Rows[61].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 798: t.Rows[61].Flag = v != 0; break;
+                case 799: t.Rows[61].Id = unchecked((uint)v); break;
+                case 800: t.Rows[61].LabelLength = (int)v; break;
+                case 803: t.Rows[61].Teams.Slots[0] = unchecked((byte)v); break;
+                case 804: t.Rows[61].Teams.Slots[1] = unchecked((byte)v); break;
+                case 805: t.Rows[61].Teams.Slots[2] = unchecked((byte)v); break;
+                case 806: t.Rows[61].Teams.Slots[3] = unchecked((byte)v); break;
+                case 807: t.Rows[61].CounterPresent = v != 0; break;
+                case 808: t.Rows[61].Counter = unchecked((int)v); break;
+                case 809: t.Rows[62].Tag = unchecked((byte)v); break;
+                case 810: t.Rows[62].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 811: t.Rows[62].Flag = v != 0; break;
+                case 812: t.Rows[62].Id = unchecked((uint)v); break;
+                case 813: t.Rows[62].LabelLength = (int)v; break;
+                case 816: t.Rows[62].Teams.Slots[0] = unchecked((byte)v); break;
+                case 817: t.Rows[62].Teams.Slots[1] = unchecked((byte)v); break;
+                case 818: t.Rows[62].Teams.Slots[2] = unchecked((byte)v); break;
+                case 819: t.Rows[62].Teams.Slots[3] = unchecked((byte)v); break;
+                case 820: t.Rows[62].CounterPresent = v != 0; break;
+                case 821: t.Rows[62].Counter = unchecked((int)v); break;
+                case 822: t.Rows[63].Tag = unchecked((byte)v); break;
+                case 823: t.Rows[63].Value = BitConverter.UInt64BitsToDouble(v); break;
+                case 824: t.Rows[63].Flag = v != 0; break;
+                case 825: t.Rows[63].Id = unchecked((uint)v); break;
+                case 826: t.Rows[63].LabelLength = (int)v; break;
+                case 829: t.Rows[63].Teams.Slots[0] = unchecked((byte)v); break;
+                case 830: t.Rows[63].Teams.Slots[1] = unchecked((byte)v); break;
+                case 831: t.Rows[63].Teams.Slots[2] = unchecked((byte)v); break;
+                case 832: t.Rows[63].Teams.Slots[3] = unchecked((byte)v); break;
+                case 833: t.Rows[63].CounterPresent = v != 0; break;
+                case 834: t.Rows[63].Counter = unchecked((int)v); break;
+                case 835: t.BlobLength = (int)v; break;
+                default: break;
+            }
+        }
+
+        private static void PaddedFrameFixedSetDouble(PaddedFrame t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 4: t.Rows[0].Value = d; break;
+                case 17: t.Rows[1].Value = d; break;
+                case 30: t.Rows[2].Value = d; break;
+                case 43: t.Rows[3].Value = d; break;
+                case 56: t.Rows[4].Value = d; break;
+                case 69: t.Rows[5].Value = d; break;
+                case 82: t.Rows[6].Value = d; break;
+                case 95: t.Rows[7].Value = d; break;
+                case 108: t.Rows[8].Value = d; break;
+                case 121: t.Rows[9].Value = d; break;
+                case 134: t.Rows[10].Value = d; break;
+                case 147: t.Rows[11].Value = d; break;
+                case 160: t.Rows[12].Value = d; break;
+                case 173: t.Rows[13].Value = d; break;
+                case 186: t.Rows[14].Value = d; break;
+                case 199: t.Rows[15].Value = d; break;
+                case 212: t.Rows[16].Value = d; break;
+                case 225: t.Rows[17].Value = d; break;
+                case 238: t.Rows[18].Value = d; break;
+                case 251: t.Rows[19].Value = d; break;
+                case 264: t.Rows[20].Value = d; break;
+                case 277: t.Rows[21].Value = d; break;
+                case 290: t.Rows[22].Value = d; break;
+                case 303: t.Rows[23].Value = d; break;
+                case 316: t.Rows[24].Value = d; break;
+                case 329: t.Rows[25].Value = d; break;
+                case 342: t.Rows[26].Value = d; break;
+                case 355: t.Rows[27].Value = d; break;
+                case 368: t.Rows[28].Value = d; break;
+                case 381: t.Rows[29].Value = d; break;
+                case 394: t.Rows[30].Value = d; break;
+                case 407: t.Rows[31].Value = d; break;
+                case 420: t.Rows[32].Value = d; break;
+                case 433: t.Rows[33].Value = d; break;
+                case 446: t.Rows[34].Value = d; break;
+                case 459: t.Rows[35].Value = d; break;
+                case 472: t.Rows[36].Value = d; break;
+                case 485: t.Rows[37].Value = d; break;
+                case 498: t.Rows[38].Value = d; break;
+                case 511: t.Rows[39].Value = d; break;
+                case 524: t.Rows[40].Value = d; break;
+                case 537: t.Rows[41].Value = d; break;
+                case 550: t.Rows[42].Value = d; break;
+                case 563: t.Rows[43].Value = d; break;
+                case 576: t.Rows[44].Value = d; break;
+                case 589: t.Rows[45].Value = d; break;
+                case 602: t.Rows[46].Value = d; break;
+                case 615: t.Rows[47].Value = d; break;
+                case 628: t.Rows[48].Value = d; break;
+                case 641: t.Rows[49].Value = d; break;
+                case 654: t.Rows[50].Value = d; break;
+                case 667: t.Rows[51].Value = d; break;
+                case 680: t.Rows[52].Value = d; break;
+                case 693: t.Rows[53].Value = d; break;
+                case 706: t.Rows[54].Value = d; break;
+                case 719: t.Rows[55].Value = d; break;
+                case 732: t.Rows[56].Value = d; break;
+                case 745: t.Rows[57].Value = d; break;
+                case 758: t.Rows[58].Value = d; break;
+                case 771: t.Rows[59].Value = d; break;
+                case 784: t.Rows[60].Value = d; break;
+                case 797: t.Rows[61].Value = d; break;
+                case 810: t.Rows[62].Value = d; break;
+                case 823: t.Rows[63].Value = d; break;
+                default: break;
+            }
+        }
+
+        private static void PaddedFrameFixedSetWide(PaddedFrame t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void PaddedFrameFixedSetBytes(PaddedFrame t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                case 8: { if (t.Rows[0].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[0].Label.Length)).CopyTo(t.Rows[0].Label); } break;
+                case 9: { if (t.Rows[0].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[0].Slots.Length * 2))).CopyTo(t.Rows[0].Slots); } break;
+                case 21: { if (t.Rows[1].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[1].Label.Length)).CopyTo(t.Rows[1].Label); } break;
+                case 22: { if (t.Rows[1].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[1].Slots.Length * 2))).CopyTo(t.Rows[1].Slots); } break;
+                case 34: { if (t.Rows[2].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[2].Label.Length)).CopyTo(t.Rows[2].Label); } break;
+                case 35: { if (t.Rows[2].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[2].Slots.Length * 2))).CopyTo(t.Rows[2].Slots); } break;
+                case 47: { if (t.Rows[3].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[3].Label.Length)).CopyTo(t.Rows[3].Label); } break;
+                case 48: { if (t.Rows[3].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[3].Slots.Length * 2))).CopyTo(t.Rows[3].Slots); } break;
+                case 60: { if (t.Rows[4].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[4].Label.Length)).CopyTo(t.Rows[4].Label); } break;
+                case 61: { if (t.Rows[4].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[4].Slots.Length * 2))).CopyTo(t.Rows[4].Slots); } break;
+                case 73: { if (t.Rows[5].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[5].Label.Length)).CopyTo(t.Rows[5].Label); } break;
+                case 74: { if (t.Rows[5].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[5].Slots.Length * 2))).CopyTo(t.Rows[5].Slots); } break;
+                case 86: { if (t.Rows[6].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[6].Label.Length)).CopyTo(t.Rows[6].Label); } break;
+                case 87: { if (t.Rows[6].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[6].Slots.Length * 2))).CopyTo(t.Rows[6].Slots); } break;
+                case 99: { if (t.Rows[7].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[7].Label.Length)).CopyTo(t.Rows[7].Label); } break;
+                case 100: { if (t.Rows[7].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[7].Slots.Length * 2))).CopyTo(t.Rows[7].Slots); } break;
+                case 112: { if (t.Rows[8].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[8].Label.Length)).CopyTo(t.Rows[8].Label); } break;
+                case 113: { if (t.Rows[8].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[8].Slots.Length * 2))).CopyTo(t.Rows[8].Slots); } break;
+                case 125: { if (t.Rows[9].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[9].Label.Length)).CopyTo(t.Rows[9].Label); } break;
+                case 126: { if (t.Rows[9].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[9].Slots.Length * 2))).CopyTo(t.Rows[9].Slots); } break;
+                case 138: { if (t.Rows[10].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[10].Label.Length)).CopyTo(t.Rows[10].Label); } break;
+                case 139: { if (t.Rows[10].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[10].Slots.Length * 2))).CopyTo(t.Rows[10].Slots); } break;
+                case 151: { if (t.Rows[11].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[11].Label.Length)).CopyTo(t.Rows[11].Label); } break;
+                case 152: { if (t.Rows[11].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[11].Slots.Length * 2))).CopyTo(t.Rows[11].Slots); } break;
+                case 164: { if (t.Rows[12].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[12].Label.Length)).CopyTo(t.Rows[12].Label); } break;
+                case 165: { if (t.Rows[12].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[12].Slots.Length * 2))).CopyTo(t.Rows[12].Slots); } break;
+                case 177: { if (t.Rows[13].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[13].Label.Length)).CopyTo(t.Rows[13].Label); } break;
+                case 178: { if (t.Rows[13].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[13].Slots.Length * 2))).CopyTo(t.Rows[13].Slots); } break;
+                case 190: { if (t.Rows[14].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[14].Label.Length)).CopyTo(t.Rows[14].Label); } break;
+                case 191: { if (t.Rows[14].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[14].Slots.Length * 2))).CopyTo(t.Rows[14].Slots); } break;
+                case 203: { if (t.Rows[15].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[15].Label.Length)).CopyTo(t.Rows[15].Label); } break;
+                case 204: { if (t.Rows[15].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[15].Slots.Length * 2))).CopyTo(t.Rows[15].Slots); } break;
+                case 216: { if (t.Rows[16].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[16].Label.Length)).CopyTo(t.Rows[16].Label); } break;
+                case 217: { if (t.Rows[16].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[16].Slots.Length * 2))).CopyTo(t.Rows[16].Slots); } break;
+                case 229: { if (t.Rows[17].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[17].Label.Length)).CopyTo(t.Rows[17].Label); } break;
+                case 230: { if (t.Rows[17].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[17].Slots.Length * 2))).CopyTo(t.Rows[17].Slots); } break;
+                case 242: { if (t.Rows[18].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[18].Label.Length)).CopyTo(t.Rows[18].Label); } break;
+                case 243: { if (t.Rows[18].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[18].Slots.Length * 2))).CopyTo(t.Rows[18].Slots); } break;
+                case 255: { if (t.Rows[19].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[19].Label.Length)).CopyTo(t.Rows[19].Label); } break;
+                case 256: { if (t.Rows[19].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[19].Slots.Length * 2))).CopyTo(t.Rows[19].Slots); } break;
+                case 268: { if (t.Rows[20].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[20].Label.Length)).CopyTo(t.Rows[20].Label); } break;
+                case 269: { if (t.Rows[20].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[20].Slots.Length * 2))).CopyTo(t.Rows[20].Slots); } break;
+                case 281: { if (t.Rows[21].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[21].Label.Length)).CopyTo(t.Rows[21].Label); } break;
+                case 282: { if (t.Rows[21].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[21].Slots.Length * 2))).CopyTo(t.Rows[21].Slots); } break;
+                case 294: { if (t.Rows[22].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[22].Label.Length)).CopyTo(t.Rows[22].Label); } break;
+                case 295: { if (t.Rows[22].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[22].Slots.Length * 2))).CopyTo(t.Rows[22].Slots); } break;
+                case 307: { if (t.Rows[23].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[23].Label.Length)).CopyTo(t.Rows[23].Label); } break;
+                case 308: { if (t.Rows[23].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[23].Slots.Length * 2))).CopyTo(t.Rows[23].Slots); } break;
+                case 320: { if (t.Rows[24].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[24].Label.Length)).CopyTo(t.Rows[24].Label); } break;
+                case 321: { if (t.Rows[24].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[24].Slots.Length * 2))).CopyTo(t.Rows[24].Slots); } break;
+                case 333: { if (t.Rows[25].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[25].Label.Length)).CopyTo(t.Rows[25].Label); } break;
+                case 334: { if (t.Rows[25].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[25].Slots.Length * 2))).CopyTo(t.Rows[25].Slots); } break;
+                case 346: { if (t.Rows[26].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[26].Label.Length)).CopyTo(t.Rows[26].Label); } break;
+                case 347: { if (t.Rows[26].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[26].Slots.Length * 2))).CopyTo(t.Rows[26].Slots); } break;
+                case 359: { if (t.Rows[27].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[27].Label.Length)).CopyTo(t.Rows[27].Label); } break;
+                case 360: { if (t.Rows[27].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[27].Slots.Length * 2))).CopyTo(t.Rows[27].Slots); } break;
+                case 372: { if (t.Rows[28].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[28].Label.Length)).CopyTo(t.Rows[28].Label); } break;
+                case 373: { if (t.Rows[28].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[28].Slots.Length * 2))).CopyTo(t.Rows[28].Slots); } break;
+                case 385: { if (t.Rows[29].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[29].Label.Length)).CopyTo(t.Rows[29].Label); } break;
+                case 386: { if (t.Rows[29].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[29].Slots.Length * 2))).CopyTo(t.Rows[29].Slots); } break;
+                case 398: { if (t.Rows[30].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[30].Label.Length)).CopyTo(t.Rows[30].Label); } break;
+                case 399: { if (t.Rows[30].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[30].Slots.Length * 2))).CopyTo(t.Rows[30].Slots); } break;
+                case 411: { if (t.Rows[31].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[31].Label.Length)).CopyTo(t.Rows[31].Label); } break;
+                case 412: { if (t.Rows[31].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[31].Slots.Length * 2))).CopyTo(t.Rows[31].Slots); } break;
+                case 424: { if (t.Rows[32].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[32].Label.Length)).CopyTo(t.Rows[32].Label); } break;
+                case 425: { if (t.Rows[32].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[32].Slots.Length * 2))).CopyTo(t.Rows[32].Slots); } break;
+                case 437: { if (t.Rows[33].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[33].Label.Length)).CopyTo(t.Rows[33].Label); } break;
+                case 438: { if (t.Rows[33].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[33].Slots.Length * 2))).CopyTo(t.Rows[33].Slots); } break;
+                case 450: { if (t.Rows[34].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[34].Label.Length)).CopyTo(t.Rows[34].Label); } break;
+                case 451: { if (t.Rows[34].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[34].Slots.Length * 2))).CopyTo(t.Rows[34].Slots); } break;
+                case 463: { if (t.Rows[35].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[35].Label.Length)).CopyTo(t.Rows[35].Label); } break;
+                case 464: { if (t.Rows[35].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[35].Slots.Length * 2))).CopyTo(t.Rows[35].Slots); } break;
+                case 476: { if (t.Rows[36].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[36].Label.Length)).CopyTo(t.Rows[36].Label); } break;
+                case 477: { if (t.Rows[36].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[36].Slots.Length * 2))).CopyTo(t.Rows[36].Slots); } break;
+                case 489: { if (t.Rows[37].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[37].Label.Length)).CopyTo(t.Rows[37].Label); } break;
+                case 490: { if (t.Rows[37].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[37].Slots.Length * 2))).CopyTo(t.Rows[37].Slots); } break;
+                case 502: { if (t.Rows[38].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[38].Label.Length)).CopyTo(t.Rows[38].Label); } break;
+                case 503: { if (t.Rows[38].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[38].Slots.Length * 2))).CopyTo(t.Rows[38].Slots); } break;
+                case 515: { if (t.Rows[39].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[39].Label.Length)).CopyTo(t.Rows[39].Label); } break;
+                case 516: { if (t.Rows[39].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[39].Slots.Length * 2))).CopyTo(t.Rows[39].Slots); } break;
+                case 528: { if (t.Rows[40].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[40].Label.Length)).CopyTo(t.Rows[40].Label); } break;
+                case 529: { if (t.Rows[40].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[40].Slots.Length * 2))).CopyTo(t.Rows[40].Slots); } break;
+                case 541: { if (t.Rows[41].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[41].Label.Length)).CopyTo(t.Rows[41].Label); } break;
+                case 542: { if (t.Rows[41].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[41].Slots.Length * 2))).CopyTo(t.Rows[41].Slots); } break;
+                case 554: { if (t.Rows[42].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[42].Label.Length)).CopyTo(t.Rows[42].Label); } break;
+                case 555: { if (t.Rows[42].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[42].Slots.Length * 2))).CopyTo(t.Rows[42].Slots); } break;
+                case 567: { if (t.Rows[43].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[43].Label.Length)).CopyTo(t.Rows[43].Label); } break;
+                case 568: { if (t.Rows[43].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[43].Slots.Length * 2))).CopyTo(t.Rows[43].Slots); } break;
+                case 580: { if (t.Rows[44].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[44].Label.Length)).CopyTo(t.Rows[44].Label); } break;
+                case 581: { if (t.Rows[44].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[44].Slots.Length * 2))).CopyTo(t.Rows[44].Slots); } break;
+                case 593: { if (t.Rows[45].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[45].Label.Length)).CopyTo(t.Rows[45].Label); } break;
+                case 594: { if (t.Rows[45].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[45].Slots.Length * 2))).CopyTo(t.Rows[45].Slots); } break;
+                case 606: { if (t.Rows[46].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[46].Label.Length)).CopyTo(t.Rows[46].Label); } break;
+                case 607: { if (t.Rows[46].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[46].Slots.Length * 2))).CopyTo(t.Rows[46].Slots); } break;
+                case 619: { if (t.Rows[47].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[47].Label.Length)).CopyTo(t.Rows[47].Label); } break;
+                case 620: { if (t.Rows[47].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[47].Slots.Length * 2))).CopyTo(t.Rows[47].Slots); } break;
+                case 632: { if (t.Rows[48].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[48].Label.Length)).CopyTo(t.Rows[48].Label); } break;
+                case 633: { if (t.Rows[48].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[48].Slots.Length * 2))).CopyTo(t.Rows[48].Slots); } break;
+                case 645: { if (t.Rows[49].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[49].Label.Length)).CopyTo(t.Rows[49].Label); } break;
+                case 646: { if (t.Rows[49].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[49].Slots.Length * 2))).CopyTo(t.Rows[49].Slots); } break;
+                case 658: { if (t.Rows[50].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[50].Label.Length)).CopyTo(t.Rows[50].Label); } break;
+                case 659: { if (t.Rows[50].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[50].Slots.Length * 2))).CopyTo(t.Rows[50].Slots); } break;
+                case 671: { if (t.Rows[51].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[51].Label.Length)).CopyTo(t.Rows[51].Label); } break;
+                case 672: { if (t.Rows[51].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[51].Slots.Length * 2))).CopyTo(t.Rows[51].Slots); } break;
+                case 684: { if (t.Rows[52].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[52].Label.Length)).CopyTo(t.Rows[52].Label); } break;
+                case 685: { if (t.Rows[52].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[52].Slots.Length * 2))).CopyTo(t.Rows[52].Slots); } break;
+                case 697: { if (t.Rows[53].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[53].Label.Length)).CopyTo(t.Rows[53].Label); } break;
+                case 698: { if (t.Rows[53].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[53].Slots.Length * 2))).CopyTo(t.Rows[53].Slots); } break;
+                case 710: { if (t.Rows[54].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[54].Label.Length)).CopyTo(t.Rows[54].Label); } break;
+                case 711: { if (t.Rows[54].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[54].Slots.Length * 2))).CopyTo(t.Rows[54].Slots); } break;
+                case 723: { if (t.Rows[55].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[55].Label.Length)).CopyTo(t.Rows[55].Label); } break;
+                case 724: { if (t.Rows[55].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[55].Slots.Length * 2))).CopyTo(t.Rows[55].Slots); } break;
+                case 736: { if (t.Rows[56].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[56].Label.Length)).CopyTo(t.Rows[56].Label); } break;
+                case 737: { if (t.Rows[56].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[56].Slots.Length * 2))).CopyTo(t.Rows[56].Slots); } break;
+                case 749: { if (t.Rows[57].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[57].Label.Length)).CopyTo(t.Rows[57].Label); } break;
+                case 750: { if (t.Rows[57].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[57].Slots.Length * 2))).CopyTo(t.Rows[57].Slots); } break;
+                case 762: { if (t.Rows[58].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[58].Label.Length)).CopyTo(t.Rows[58].Label); } break;
+                case 763: { if (t.Rows[58].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[58].Slots.Length * 2))).CopyTo(t.Rows[58].Slots); } break;
+                case 775: { if (t.Rows[59].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[59].Label.Length)).CopyTo(t.Rows[59].Label); } break;
+                case 776: { if (t.Rows[59].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[59].Slots.Length * 2))).CopyTo(t.Rows[59].Slots); } break;
+                case 788: { if (t.Rows[60].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[60].Label.Length)).CopyTo(t.Rows[60].Label); } break;
+                case 789: { if (t.Rows[60].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[60].Slots.Length * 2))).CopyTo(t.Rows[60].Slots); } break;
+                case 801: { if (t.Rows[61].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[61].Label.Length)).CopyTo(t.Rows[61].Label); } break;
+                case 802: { if (t.Rows[61].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[61].Slots.Length * 2))).CopyTo(t.Rows[61].Slots); } break;
+                case 814: { if (t.Rows[62].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[62].Label.Length)).CopyTo(t.Rows[62].Label); } break;
+                case 815: { if (t.Rows[62].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[62].Slots.Length * 2))).CopyTo(t.Rows[62].Slots); } break;
+                case 827: { if (t.Rows[63].Label != null) b.Slice(0, Math.Min(b.Length, t.Rows[63].Label.Length)).CopyTo(t.Rows[63].Label); } break;
+                case 828: { if (t.Rows[63].Slots != null) MemoryMarshal.Cast<byte, ushort>(b.Slice(0, Math.Min(b.Length, t.Rows[63].Slots.Length * 2))).CopyTo(t.Rows[63].Slots); } break;
+                case 836: { if (t.Blob != null) b.Slice(0, Math.Min(b.Length, t.Blob.Length)).CopyTo(t.Blob); } break;
+                default: break;
+            }
+        }
+
+        private static void PaddedFrameFixedSetChars(PaddedFrame t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void PaddedFrameFixedResetSlot(PaddedFrame t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Marker = 0; } break;
+                case 1: { t.Stamp = 0; } break;
+                case 2: { t.RowsCount = 0; } break;
+                case 3: { t.Rows[0].Tag = 0; } break;
+                case 4: { t.Rows[0].Value = 0.0; } break;
+                case 5: { t.Rows[0].Flag = false; } break;
+                case 6: { t.Rows[0].Id = 0; } break;
+                case 7: { t.Rows[0].LabelLength = 0; } break;
+                case 8: { if (t.Rows[0].Label != null) { Array.Clear(t.Rows[0].Label, 0, t.Rows[0].Label.Length); } } break;
+                case 9: { if (t.Rows[0].Slots != null) Array.Clear(t.Rows[0].Slots, 0, t.Rows[0].Slots.Length); } break;
+                case 10: { t.Rows[0].Teams.Slots[0] = 0; } break;
+                case 11: { t.Rows[0].Teams.Slots[1] = 0; } break;
+                case 12: { t.Rows[0].Teams.Slots[2] = 0; } break;
+                case 13: { t.Rows[0].Teams.Slots[3] = 0; } break;
+                case 14: { t.Rows[0].CounterPresent = false; } break;
+                case 15: { t.Rows[0].Counter = 0; } break;
+                case 16: { t.Rows[1].Tag = 0; } break;
+                case 17: { t.Rows[1].Value = 0.0; } break;
+                case 18: { t.Rows[1].Flag = false; } break;
+                case 19: { t.Rows[1].Id = 0; } break;
+                case 20: { t.Rows[1].LabelLength = 0; } break;
+                case 21: { if (t.Rows[1].Label != null) { Array.Clear(t.Rows[1].Label, 0, t.Rows[1].Label.Length); } } break;
+                case 22: { if (t.Rows[1].Slots != null) Array.Clear(t.Rows[1].Slots, 0, t.Rows[1].Slots.Length); } break;
+                case 23: { t.Rows[1].Teams.Slots[0] = 0; } break;
+                case 24: { t.Rows[1].Teams.Slots[1] = 0; } break;
+                case 25: { t.Rows[1].Teams.Slots[2] = 0; } break;
+                case 26: { t.Rows[1].Teams.Slots[3] = 0; } break;
+                case 27: { t.Rows[1].CounterPresent = false; } break;
+                case 28: { t.Rows[1].Counter = 0; } break;
+                case 29: { t.Rows[2].Tag = 0; } break;
+                case 30: { t.Rows[2].Value = 0.0; } break;
+                case 31: { t.Rows[2].Flag = false; } break;
+                case 32: { t.Rows[2].Id = 0; } break;
+                case 33: { t.Rows[2].LabelLength = 0; } break;
+                case 34: { if (t.Rows[2].Label != null) { Array.Clear(t.Rows[2].Label, 0, t.Rows[2].Label.Length); } } break;
+                case 35: { if (t.Rows[2].Slots != null) Array.Clear(t.Rows[2].Slots, 0, t.Rows[2].Slots.Length); } break;
+                case 36: { t.Rows[2].Teams.Slots[0] = 0; } break;
+                case 37: { t.Rows[2].Teams.Slots[1] = 0; } break;
+                case 38: { t.Rows[2].Teams.Slots[2] = 0; } break;
+                case 39: { t.Rows[2].Teams.Slots[3] = 0; } break;
+                case 40: { t.Rows[2].CounterPresent = false; } break;
+                case 41: { t.Rows[2].Counter = 0; } break;
+                case 42: { t.Rows[3].Tag = 0; } break;
+                case 43: { t.Rows[3].Value = 0.0; } break;
+                case 44: { t.Rows[3].Flag = false; } break;
+                case 45: { t.Rows[3].Id = 0; } break;
+                case 46: { t.Rows[3].LabelLength = 0; } break;
+                case 47: { if (t.Rows[3].Label != null) { Array.Clear(t.Rows[3].Label, 0, t.Rows[3].Label.Length); } } break;
+                case 48: { if (t.Rows[3].Slots != null) Array.Clear(t.Rows[3].Slots, 0, t.Rows[3].Slots.Length); } break;
+                case 49: { t.Rows[3].Teams.Slots[0] = 0; } break;
+                case 50: { t.Rows[3].Teams.Slots[1] = 0; } break;
+                case 51: { t.Rows[3].Teams.Slots[2] = 0; } break;
+                case 52: { t.Rows[3].Teams.Slots[3] = 0; } break;
+                case 53: { t.Rows[3].CounterPresent = false; } break;
+                case 54: { t.Rows[3].Counter = 0; } break;
+                case 55: { t.Rows[4].Tag = 0; } break;
+                case 56: { t.Rows[4].Value = 0.0; } break;
+                case 57: { t.Rows[4].Flag = false; } break;
+                case 58: { t.Rows[4].Id = 0; } break;
+                case 59: { t.Rows[4].LabelLength = 0; } break;
+                case 60: { if (t.Rows[4].Label != null) { Array.Clear(t.Rows[4].Label, 0, t.Rows[4].Label.Length); } } break;
+                case 61: { if (t.Rows[4].Slots != null) Array.Clear(t.Rows[4].Slots, 0, t.Rows[4].Slots.Length); } break;
+                case 62: { t.Rows[4].Teams.Slots[0] = 0; } break;
+                case 63: { t.Rows[4].Teams.Slots[1] = 0; } break;
+                case 64: { t.Rows[4].Teams.Slots[2] = 0; } break;
+                case 65: { t.Rows[4].Teams.Slots[3] = 0; } break;
+                case 66: { t.Rows[4].CounterPresent = false; } break;
+                case 67: { t.Rows[4].Counter = 0; } break;
+                case 68: { t.Rows[5].Tag = 0; } break;
+                case 69: { t.Rows[5].Value = 0.0; } break;
+                case 70: { t.Rows[5].Flag = false; } break;
+                case 71: { t.Rows[5].Id = 0; } break;
+                case 72: { t.Rows[5].LabelLength = 0; } break;
+                case 73: { if (t.Rows[5].Label != null) { Array.Clear(t.Rows[5].Label, 0, t.Rows[5].Label.Length); } } break;
+                case 74: { if (t.Rows[5].Slots != null) Array.Clear(t.Rows[5].Slots, 0, t.Rows[5].Slots.Length); } break;
+                case 75: { t.Rows[5].Teams.Slots[0] = 0; } break;
+                case 76: { t.Rows[5].Teams.Slots[1] = 0; } break;
+                case 77: { t.Rows[5].Teams.Slots[2] = 0; } break;
+                case 78: { t.Rows[5].Teams.Slots[3] = 0; } break;
+                case 79: { t.Rows[5].CounterPresent = false; } break;
+                case 80: { t.Rows[5].Counter = 0; } break;
+                case 81: { t.Rows[6].Tag = 0; } break;
+                case 82: { t.Rows[6].Value = 0.0; } break;
+                case 83: { t.Rows[6].Flag = false; } break;
+                case 84: { t.Rows[6].Id = 0; } break;
+                case 85: { t.Rows[6].LabelLength = 0; } break;
+                case 86: { if (t.Rows[6].Label != null) { Array.Clear(t.Rows[6].Label, 0, t.Rows[6].Label.Length); } } break;
+                case 87: { if (t.Rows[6].Slots != null) Array.Clear(t.Rows[6].Slots, 0, t.Rows[6].Slots.Length); } break;
+                case 88: { t.Rows[6].Teams.Slots[0] = 0; } break;
+                case 89: { t.Rows[6].Teams.Slots[1] = 0; } break;
+                case 90: { t.Rows[6].Teams.Slots[2] = 0; } break;
+                case 91: { t.Rows[6].Teams.Slots[3] = 0; } break;
+                case 92: { t.Rows[6].CounterPresent = false; } break;
+                case 93: { t.Rows[6].Counter = 0; } break;
+                case 94: { t.Rows[7].Tag = 0; } break;
+                case 95: { t.Rows[7].Value = 0.0; } break;
+                case 96: { t.Rows[7].Flag = false; } break;
+                case 97: { t.Rows[7].Id = 0; } break;
+                case 98: { t.Rows[7].LabelLength = 0; } break;
+                case 99: { if (t.Rows[7].Label != null) { Array.Clear(t.Rows[7].Label, 0, t.Rows[7].Label.Length); } } break;
+                case 100: { if (t.Rows[7].Slots != null) Array.Clear(t.Rows[7].Slots, 0, t.Rows[7].Slots.Length); } break;
+                case 101: { t.Rows[7].Teams.Slots[0] = 0; } break;
+                case 102: { t.Rows[7].Teams.Slots[1] = 0; } break;
+                case 103: { t.Rows[7].Teams.Slots[2] = 0; } break;
+                case 104: { t.Rows[7].Teams.Slots[3] = 0; } break;
+                case 105: { t.Rows[7].CounterPresent = false; } break;
+                case 106: { t.Rows[7].Counter = 0; } break;
+                case 107: { t.Rows[8].Tag = 0; } break;
+                case 108: { t.Rows[8].Value = 0.0; } break;
+                case 109: { t.Rows[8].Flag = false; } break;
+                case 110: { t.Rows[8].Id = 0; } break;
+                case 111: { t.Rows[8].LabelLength = 0; } break;
+                case 112: { if (t.Rows[8].Label != null) { Array.Clear(t.Rows[8].Label, 0, t.Rows[8].Label.Length); } } break;
+                case 113: { if (t.Rows[8].Slots != null) Array.Clear(t.Rows[8].Slots, 0, t.Rows[8].Slots.Length); } break;
+                case 114: { t.Rows[8].Teams.Slots[0] = 0; } break;
+                case 115: { t.Rows[8].Teams.Slots[1] = 0; } break;
+                case 116: { t.Rows[8].Teams.Slots[2] = 0; } break;
+                case 117: { t.Rows[8].Teams.Slots[3] = 0; } break;
+                case 118: { t.Rows[8].CounterPresent = false; } break;
+                case 119: { t.Rows[8].Counter = 0; } break;
+                case 120: { t.Rows[9].Tag = 0; } break;
+                case 121: { t.Rows[9].Value = 0.0; } break;
+                case 122: { t.Rows[9].Flag = false; } break;
+                case 123: { t.Rows[9].Id = 0; } break;
+                case 124: { t.Rows[9].LabelLength = 0; } break;
+                case 125: { if (t.Rows[9].Label != null) { Array.Clear(t.Rows[9].Label, 0, t.Rows[9].Label.Length); } } break;
+                case 126: { if (t.Rows[9].Slots != null) Array.Clear(t.Rows[9].Slots, 0, t.Rows[9].Slots.Length); } break;
+                case 127: { t.Rows[9].Teams.Slots[0] = 0; } break;
+                case 128: { t.Rows[9].Teams.Slots[1] = 0; } break;
+                case 129: { t.Rows[9].Teams.Slots[2] = 0; } break;
+                case 130: { t.Rows[9].Teams.Slots[3] = 0; } break;
+                case 131: { t.Rows[9].CounterPresent = false; } break;
+                case 132: { t.Rows[9].Counter = 0; } break;
+                case 133: { t.Rows[10].Tag = 0; } break;
+                case 134: { t.Rows[10].Value = 0.0; } break;
+                case 135: { t.Rows[10].Flag = false; } break;
+                case 136: { t.Rows[10].Id = 0; } break;
+                case 137: { t.Rows[10].LabelLength = 0; } break;
+                case 138: { if (t.Rows[10].Label != null) { Array.Clear(t.Rows[10].Label, 0, t.Rows[10].Label.Length); } } break;
+                case 139: { if (t.Rows[10].Slots != null) Array.Clear(t.Rows[10].Slots, 0, t.Rows[10].Slots.Length); } break;
+                case 140: { t.Rows[10].Teams.Slots[0] = 0; } break;
+                case 141: { t.Rows[10].Teams.Slots[1] = 0; } break;
+                case 142: { t.Rows[10].Teams.Slots[2] = 0; } break;
+                case 143: { t.Rows[10].Teams.Slots[3] = 0; } break;
+                case 144: { t.Rows[10].CounterPresent = false; } break;
+                case 145: { t.Rows[10].Counter = 0; } break;
+                case 146: { t.Rows[11].Tag = 0; } break;
+                case 147: { t.Rows[11].Value = 0.0; } break;
+                case 148: { t.Rows[11].Flag = false; } break;
+                case 149: { t.Rows[11].Id = 0; } break;
+                case 150: { t.Rows[11].LabelLength = 0; } break;
+                case 151: { if (t.Rows[11].Label != null) { Array.Clear(t.Rows[11].Label, 0, t.Rows[11].Label.Length); } } break;
+                case 152: { if (t.Rows[11].Slots != null) Array.Clear(t.Rows[11].Slots, 0, t.Rows[11].Slots.Length); } break;
+                case 153: { t.Rows[11].Teams.Slots[0] = 0; } break;
+                case 154: { t.Rows[11].Teams.Slots[1] = 0; } break;
+                case 155: { t.Rows[11].Teams.Slots[2] = 0; } break;
+                case 156: { t.Rows[11].Teams.Slots[3] = 0; } break;
+                case 157: { t.Rows[11].CounterPresent = false; } break;
+                case 158: { t.Rows[11].Counter = 0; } break;
+                case 159: { t.Rows[12].Tag = 0; } break;
+                case 160: { t.Rows[12].Value = 0.0; } break;
+                case 161: { t.Rows[12].Flag = false; } break;
+                case 162: { t.Rows[12].Id = 0; } break;
+                case 163: { t.Rows[12].LabelLength = 0; } break;
+                case 164: { if (t.Rows[12].Label != null) { Array.Clear(t.Rows[12].Label, 0, t.Rows[12].Label.Length); } } break;
+                case 165: { if (t.Rows[12].Slots != null) Array.Clear(t.Rows[12].Slots, 0, t.Rows[12].Slots.Length); } break;
+                case 166: { t.Rows[12].Teams.Slots[0] = 0; } break;
+                case 167: { t.Rows[12].Teams.Slots[1] = 0; } break;
+                case 168: { t.Rows[12].Teams.Slots[2] = 0; } break;
+                case 169: { t.Rows[12].Teams.Slots[3] = 0; } break;
+                case 170: { t.Rows[12].CounterPresent = false; } break;
+                case 171: { t.Rows[12].Counter = 0; } break;
+                case 172: { t.Rows[13].Tag = 0; } break;
+                case 173: { t.Rows[13].Value = 0.0; } break;
+                case 174: { t.Rows[13].Flag = false; } break;
+                case 175: { t.Rows[13].Id = 0; } break;
+                case 176: { t.Rows[13].LabelLength = 0; } break;
+                case 177: { if (t.Rows[13].Label != null) { Array.Clear(t.Rows[13].Label, 0, t.Rows[13].Label.Length); } } break;
+                case 178: { if (t.Rows[13].Slots != null) Array.Clear(t.Rows[13].Slots, 0, t.Rows[13].Slots.Length); } break;
+                case 179: { t.Rows[13].Teams.Slots[0] = 0; } break;
+                case 180: { t.Rows[13].Teams.Slots[1] = 0; } break;
+                case 181: { t.Rows[13].Teams.Slots[2] = 0; } break;
+                case 182: { t.Rows[13].Teams.Slots[3] = 0; } break;
+                case 183: { t.Rows[13].CounterPresent = false; } break;
+                case 184: { t.Rows[13].Counter = 0; } break;
+                case 185: { t.Rows[14].Tag = 0; } break;
+                case 186: { t.Rows[14].Value = 0.0; } break;
+                case 187: { t.Rows[14].Flag = false; } break;
+                case 188: { t.Rows[14].Id = 0; } break;
+                case 189: { t.Rows[14].LabelLength = 0; } break;
+                case 190: { if (t.Rows[14].Label != null) { Array.Clear(t.Rows[14].Label, 0, t.Rows[14].Label.Length); } } break;
+                case 191: { if (t.Rows[14].Slots != null) Array.Clear(t.Rows[14].Slots, 0, t.Rows[14].Slots.Length); } break;
+                case 192: { t.Rows[14].Teams.Slots[0] = 0; } break;
+                case 193: { t.Rows[14].Teams.Slots[1] = 0; } break;
+                case 194: { t.Rows[14].Teams.Slots[2] = 0; } break;
+                case 195: { t.Rows[14].Teams.Slots[3] = 0; } break;
+                case 196: { t.Rows[14].CounterPresent = false; } break;
+                case 197: { t.Rows[14].Counter = 0; } break;
+                case 198: { t.Rows[15].Tag = 0; } break;
+                case 199: { t.Rows[15].Value = 0.0; } break;
+                case 200: { t.Rows[15].Flag = false; } break;
+                case 201: { t.Rows[15].Id = 0; } break;
+                case 202: { t.Rows[15].LabelLength = 0; } break;
+                case 203: { if (t.Rows[15].Label != null) { Array.Clear(t.Rows[15].Label, 0, t.Rows[15].Label.Length); } } break;
+                case 204: { if (t.Rows[15].Slots != null) Array.Clear(t.Rows[15].Slots, 0, t.Rows[15].Slots.Length); } break;
+                case 205: { t.Rows[15].Teams.Slots[0] = 0; } break;
+                case 206: { t.Rows[15].Teams.Slots[1] = 0; } break;
+                case 207: { t.Rows[15].Teams.Slots[2] = 0; } break;
+                case 208: { t.Rows[15].Teams.Slots[3] = 0; } break;
+                case 209: { t.Rows[15].CounterPresent = false; } break;
+                case 210: { t.Rows[15].Counter = 0; } break;
+                case 211: { t.Rows[16].Tag = 0; } break;
+                case 212: { t.Rows[16].Value = 0.0; } break;
+                case 213: { t.Rows[16].Flag = false; } break;
+                case 214: { t.Rows[16].Id = 0; } break;
+                case 215: { t.Rows[16].LabelLength = 0; } break;
+                case 216: { if (t.Rows[16].Label != null) { Array.Clear(t.Rows[16].Label, 0, t.Rows[16].Label.Length); } } break;
+                case 217: { if (t.Rows[16].Slots != null) Array.Clear(t.Rows[16].Slots, 0, t.Rows[16].Slots.Length); } break;
+                case 218: { t.Rows[16].Teams.Slots[0] = 0; } break;
+                case 219: { t.Rows[16].Teams.Slots[1] = 0; } break;
+                case 220: { t.Rows[16].Teams.Slots[2] = 0; } break;
+                case 221: { t.Rows[16].Teams.Slots[3] = 0; } break;
+                case 222: { t.Rows[16].CounterPresent = false; } break;
+                case 223: { t.Rows[16].Counter = 0; } break;
+                case 224: { t.Rows[17].Tag = 0; } break;
+                case 225: { t.Rows[17].Value = 0.0; } break;
+                case 226: { t.Rows[17].Flag = false; } break;
+                case 227: { t.Rows[17].Id = 0; } break;
+                case 228: { t.Rows[17].LabelLength = 0; } break;
+                case 229: { if (t.Rows[17].Label != null) { Array.Clear(t.Rows[17].Label, 0, t.Rows[17].Label.Length); } } break;
+                case 230: { if (t.Rows[17].Slots != null) Array.Clear(t.Rows[17].Slots, 0, t.Rows[17].Slots.Length); } break;
+                case 231: { t.Rows[17].Teams.Slots[0] = 0; } break;
+                case 232: { t.Rows[17].Teams.Slots[1] = 0; } break;
+                case 233: { t.Rows[17].Teams.Slots[2] = 0; } break;
+                case 234: { t.Rows[17].Teams.Slots[3] = 0; } break;
+                case 235: { t.Rows[17].CounterPresent = false; } break;
+                case 236: { t.Rows[17].Counter = 0; } break;
+                case 237: { t.Rows[18].Tag = 0; } break;
+                case 238: { t.Rows[18].Value = 0.0; } break;
+                case 239: { t.Rows[18].Flag = false; } break;
+                case 240: { t.Rows[18].Id = 0; } break;
+                case 241: { t.Rows[18].LabelLength = 0; } break;
+                case 242: { if (t.Rows[18].Label != null) { Array.Clear(t.Rows[18].Label, 0, t.Rows[18].Label.Length); } } break;
+                case 243: { if (t.Rows[18].Slots != null) Array.Clear(t.Rows[18].Slots, 0, t.Rows[18].Slots.Length); } break;
+                case 244: { t.Rows[18].Teams.Slots[0] = 0; } break;
+                case 245: { t.Rows[18].Teams.Slots[1] = 0; } break;
+                case 246: { t.Rows[18].Teams.Slots[2] = 0; } break;
+                case 247: { t.Rows[18].Teams.Slots[3] = 0; } break;
+                case 248: { t.Rows[18].CounterPresent = false; } break;
+                case 249: { t.Rows[18].Counter = 0; } break;
+                case 250: { t.Rows[19].Tag = 0; } break;
+                case 251: { t.Rows[19].Value = 0.0; } break;
+                case 252: { t.Rows[19].Flag = false; } break;
+                case 253: { t.Rows[19].Id = 0; } break;
+                case 254: { t.Rows[19].LabelLength = 0; } break;
+                case 255: { if (t.Rows[19].Label != null) { Array.Clear(t.Rows[19].Label, 0, t.Rows[19].Label.Length); } } break;
+                case 256: { if (t.Rows[19].Slots != null) Array.Clear(t.Rows[19].Slots, 0, t.Rows[19].Slots.Length); } break;
+                case 257: { t.Rows[19].Teams.Slots[0] = 0; } break;
+                case 258: { t.Rows[19].Teams.Slots[1] = 0; } break;
+                case 259: { t.Rows[19].Teams.Slots[2] = 0; } break;
+                case 260: { t.Rows[19].Teams.Slots[3] = 0; } break;
+                case 261: { t.Rows[19].CounterPresent = false; } break;
+                case 262: { t.Rows[19].Counter = 0; } break;
+                case 263: { t.Rows[20].Tag = 0; } break;
+                case 264: { t.Rows[20].Value = 0.0; } break;
+                case 265: { t.Rows[20].Flag = false; } break;
+                case 266: { t.Rows[20].Id = 0; } break;
+                case 267: { t.Rows[20].LabelLength = 0; } break;
+                case 268: { if (t.Rows[20].Label != null) { Array.Clear(t.Rows[20].Label, 0, t.Rows[20].Label.Length); } } break;
+                case 269: { if (t.Rows[20].Slots != null) Array.Clear(t.Rows[20].Slots, 0, t.Rows[20].Slots.Length); } break;
+                case 270: { t.Rows[20].Teams.Slots[0] = 0; } break;
+                case 271: { t.Rows[20].Teams.Slots[1] = 0; } break;
+                case 272: { t.Rows[20].Teams.Slots[2] = 0; } break;
+                case 273: { t.Rows[20].Teams.Slots[3] = 0; } break;
+                case 274: { t.Rows[20].CounterPresent = false; } break;
+                case 275: { t.Rows[20].Counter = 0; } break;
+                case 276: { t.Rows[21].Tag = 0; } break;
+                case 277: { t.Rows[21].Value = 0.0; } break;
+                case 278: { t.Rows[21].Flag = false; } break;
+                case 279: { t.Rows[21].Id = 0; } break;
+                case 280: { t.Rows[21].LabelLength = 0; } break;
+                case 281: { if (t.Rows[21].Label != null) { Array.Clear(t.Rows[21].Label, 0, t.Rows[21].Label.Length); } } break;
+                case 282: { if (t.Rows[21].Slots != null) Array.Clear(t.Rows[21].Slots, 0, t.Rows[21].Slots.Length); } break;
+                case 283: { t.Rows[21].Teams.Slots[0] = 0; } break;
+                case 284: { t.Rows[21].Teams.Slots[1] = 0; } break;
+                case 285: { t.Rows[21].Teams.Slots[2] = 0; } break;
+                case 286: { t.Rows[21].Teams.Slots[3] = 0; } break;
+                case 287: { t.Rows[21].CounterPresent = false; } break;
+                case 288: { t.Rows[21].Counter = 0; } break;
+                case 289: { t.Rows[22].Tag = 0; } break;
+                case 290: { t.Rows[22].Value = 0.0; } break;
+                case 291: { t.Rows[22].Flag = false; } break;
+                case 292: { t.Rows[22].Id = 0; } break;
+                case 293: { t.Rows[22].LabelLength = 0; } break;
+                case 294: { if (t.Rows[22].Label != null) { Array.Clear(t.Rows[22].Label, 0, t.Rows[22].Label.Length); } } break;
+                case 295: { if (t.Rows[22].Slots != null) Array.Clear(t.Rows[22].Slots, 0, t.Rows[22].Slots.Length); } break;
+                case 296: { t.Rows[22].Teams.Slots[0] = 0; } break;
+                case 297: { t.Rows[22].Teams.Slots[1] = 0; } break;
+                case 298: { t.Rows[22].Teams.Slots[2] = 0; } break;
+                case 299: { t.Rows[22].Teams.Slots[3] = 0; } break;
+                case 300: { t.Rows[22].CounterPresent = false; } break;
+                case 301: { t.Rows[22].Counter = 0; } break;
+                case 302: { t.Rows[23].Tag = 0; } break;
+                case 303: { t.Rows[23].Value = 0.0; } break;
+                case 304: { t.Rows[23].Flag = false; } break;
+                case 305: { t.Rows[23].Id = 0; } break;
+                case 306: { t.Rows[23].LabelLength = 0; } break;
+                case 307: { if (t.Rows[23].Label != null) { Array.Clear(t.Rows[23].Label, 0, t.Rows[23].Label.Length); } } break;
+                case 308: { if (t.Rows[23].Slots != null) Array.Clear(t.Rows[23].Slots, 0, t.Rows[23].Slots.Length); } break;
+                case 309: { t.Rows[23].Teams.Slots[0] = 0; } break;
+                case 310: { t.Rows[23].Teams.Slots[1] = 0; } break;
+                case 311: { t.Rows[23].Teams.Slots[2] = 0; } break;
+                case 312: { t.Rows[23].Teams.Slots[3] = 0; } break;
+                case 313: { t.Rows[23].CounterPresent = false; } break;
+                case 314: { t.Rows[23].Counter = 0; } break;
+                case 315: { t.Rows[24].Tag = 0; } break;
+                case 316: { t.Rows[24].Value = 0.0; } break;
+                case 317: { t.Rows[24].Flag = false; } break;
+                case 318: { t.Rows[24].Id = 0; } break;
+                case 319: { t.Rows[24].LabelLength = 0; } break;
+                case 320: { if (t.Rows[24].Label != null) { Array.Clear(t.Rows[24].Label, 0, t.Rows[24].Label.Length); } } break;
+                case 321: { if (t.Rows[24].Slots != null) Array.Clear(t.Rows[24].Slots, 0, t.Rows[24].Slots.Length); } break;
+                case 322: { t.Rows[24].Teams.Slots[0] = 0; } break;
+                case 323: { t.Rows[24].Teams.Slots[1] = 0; } break;
+                case 324: { t.Rows[24].Teams.Slots[2] = 0; } break;
+                case 325: { t.Rows[24].Teams.Slots[3] = 0; } break;
+                case 326: { t.Rows[24].CounterPresent = false; } break;
+                case 327: { t.Rows[24].Counter = 0; } break;
+                case 328: { t.Rows[25].Tag = 0; } break;
+                case 329: { t.Rows[25].Value = 0.0; } break;
+                case 330: { t.Rows[25].Flag = false; } break;
+                case 331: { t.Rows[25].Id = 0; } break;
+                case 332: { t.Rows[25].LabelLength = 0; } break;
+                case 333: { if (t.Rows[25].Label != null) { Array.Clear(t.Rows[25].Label, 0, t.Rows[25].Label.Length); } } break;
+                case 334: { if (t.Rows[25].Slots != null) Array.Clear(t.Rows[25].Slots, 0, t.Rows[25].Slots.Length); } break;
+                case 335: { t.Rows[25].Teams.Slots[0] = 0; } break;
+                case 336: { t.Rows[25].Teams.Slots[1] = 0; } break;
+                case 337: { t.Rows[25].Teams.Slots[2] = 0; } break;
+                case 338: { t.Rows[25].Teams.Slots[3] = 0; } break;
+                case 339: { t.Rows[25].CounterPresent = false; } break;
+                case 340: { t.Rows[25].Counter = 0; } break;
+                case 341: { t.Rows[26].Tag = 0; } break;
+                case 342: { t.Rows[26].Value = 0.0; } break;
+                case 343: { t.Rows[26].Flag = false; } break;
+                case 344: { t.Rows[26].Id = 0; } break;
+                case 345: { t.Rows[26].LabelLength = 0; } break;
+                case 346: { if (t.Rows[26].Label != null) { Array.Clear(t.Rows[26].Label, 0, t.Rows[26].Label.Length); } } break;
+                case 347: { if (t.Rows[26].Slots != null) Array.Clear(t.Rows[26].Slots, 0, t.Rows[26].Slots.Length); } break;
+                case 348: { t.Rows[26].Teams.Slots[0] = 0; } break;
+                case 349: { t.Rows[26].Teams.Slots[1] = 0; } break;
+                case 350: { t.Rows[26].Teams.Slots[2] = 0; } break;
+                case 351: { t.Rows[26].Teams.Slots[3] = 0; } break;
+                case 352: { t.Rows[26].CounterPresent = false; } break;
+                case 353: { t.Rows[26].Counter = 0; } break;
+                case 354: { t.Rows[27].Tag = 0; } break;
+                case 355: { t.Rows[27].Value = 0.0; } break;
+                case 356: { t.Rows[27].Flag = false; } break;
+                case 357: { t.Rows[27].Id = 0; } break;
+                case 358: { t.Rows[27].LabelLength = 0; } break;
+                case 359: { if (t.Rows[27].Label != null) { Array.Clear(t.Rows[27].Label, 0, t.Rows[27].Label.Length); } } break;
+                case 360: { if (t.Rows[27].Slots != null) Array.Clear(t.Rows[27].Slots, 0, t.Rows[27].Slots.Length); } break;
+                case 361: { t.Rows[27].Teams.Slots[0] = 0; } break;
+                case 362: { t.Rows[27].Teams.Slots[1] = 0; } break;
+                case 363: { t.Rows[27].Teams.Slots[2] = 0; } break;
+                case 364: { t.Rows[27].Teams.Slots[3] = 0; } break;
+                case 365: { t.Rows[27].CounterPresent = false; } break;
+                case 366: { t.Rows[27].Counter = 0; } break;
+                case 367: { t.Rows[28].Tag = 0; } break;
+                case 368: { t.Rows[28].Value = 0.0; } break;
+                case 369: { t.Rows[28].Flag = false; } break;
+                case 370: { t.Rows[28].Id = 0; } break;
+                case 371: { t.Rows[28].LabelLength = 0; } break;
+                case 372: { if (t.Rows[28].Label != null) { Array.Clear(t.Rows[28].Label, 0, t.Rows[28].Label.Length); } } break;
+                case 373: { if (t.Rows[28].Slots != null) Array.Clear(t.Rows[28].Slots, 0, t.Rows[28].Slots.Length); } break;
+                case 374: { t.Rows[28].Teams.Slots[0] = 0; } break;
+                case 375: { t.Rows[28].Teams.Slots[1] = 0; } break;
+                case 376: { t.Rows[28].Teams.Slots[2] = 0; } break;
+                case 377: { t.Rows[28].Teams.Slots[3] = 0; } break;
+                case 378: { t.Rows[28].CounterPresent = false; } break;
+                case 379: { t.Rows[28].Counter = 0; } break;
+                case 380: { t.Rows[29].Tag = 0; } break;
+                case 381: { t.Rows[29].Value = 0.0; } break;
+                case 382: { t.Rows[29].Flag = false; } break;
+                case 383: { t.Rows[29].Id = 0; } break;
+                case 384: { t.Rows[29].LabelLength = 0; } break;
+                case 385: { if (t.Rows[29].Label != null) { Array.Clear(t.Rows[29].Label, 0, t.Rows[29].Label.Length); } } break;
+                case 386: { if (t.Rows[29].Slots != null) Array.Clear(t.Rows[29].Slots, 0, t.Rows[29].Slots.Length); } break;
+                case 387: { t.Rows[29].Teams.Slots[0] = 0; } break;
+                case 388: { t.Rows[29].Teams.Slots[1] = 0; } break;
+                case 389: { t.Rows[29].Teams.Slots[2] = 0; } break;
+                case 390: { t.Rows[29].Teams.Slots[3] = 0; } break;
+                case 391: { t.Rows[29].CounterPresent = false; } break;
+                case 392: { t.Rows[29].Counter = 0; } break;
+                case 393: { t.Rows[30].Tag = 0; } break;
+                case 394: { t.Rows[30].Value = 0.0; } break;
+                case 395: { t.Rows[30].Flag = false; } break;
+                case 396: { t.Rows[30].Id = 0; } break;
+                case 397: { t.Rows[30].LabelLength = 0; } break;
+                case 398: { if (t.Rows[30].Label != null) { Array.Clear(t.Rows[30].Label, 0, t.Rows[30].Label.Length); } } break;
+                case 399: { if (t.Rows[30].Slots != null) Array.Clear(t.Rows[30].Slots, 0, t.Rows[30].Slots.Length); } break;
+                case 400: { t.Rows[30].Teams.Slots[0] = 0; } break;
+                case 401: { t.Rows[30].Teams.Slots[1] = 0; } break;
+                case 402: { t.Rows[30].Teams.Slots[2] = 0; } break;
+                case 403: { t.Rows[30].Teams.Slots[3] = 0; } break;
+                case 404: { t.Rows[30].CounterPresent = false; } break;
+                case 405: { t.Rows[30].Counter = 0; } break;
+                case 406: { t.Rows[31].Tag = 0; } break;
+                case 407: { t.Rows[31].Value = 0.0; } break;
+                case 408: { t.Rows[31].Flag = false; } break;
+                case 409: { t.Rows[31].Id = 0; } break;
+                case 410: { t.Rows[31].LabelLength = 0; } break;
+                case 411: { if (t.Rows[31].Label != null) { Array.Clear(t.Rows[31].Label, 0, t.Rows[31].Label.Length); } } break;
+                case 412: { if (t.Rows[31].Slots != null) Array.Clear(t.Rows[31].Slots, 0, t.Rows[31].Slots.Length); } break;
+                case 413: { t.Rows[31].Teams.Slots[0] = 0; } break;
+                case 414: { t.Rows[31].Teams.Slots[1] = 0; } break;
+                case 415: { t.Rows[31].Teams.Slots[2] = 0; } break;
+                case 416: { t.Rows[31].Teams.Slots[3] = 0; } break;
+                case 417: { t.Rows[31].CounterPresent = false; } break;
+                case 418: { t.Rows[31].Counter = 0; } break;
+                case 419: { t.Rows[32].Tag = 0; } break;
+                case 420: { t.Rows[32].Value = 0.0; } break;
+                case 421: { t.Rows[32].Flag = false; } break;
+                case 422: { t.Rows[32].Id = 0; } break;
+                case 423: { t.Rows[32].LabelLength = 0; } break;
+                case 424: { if (t.Rows[32].Label != null) { Array.Clear(t.Rows[32].Label, 0, t.Rows[32].Label.Length); } } break;
+                case 425: { if (t.Rows[32].Slots != null) Array.Clear(t.Rows[32].Slots, 0, t.Rows[32].Slots.Length); } break;
+                case 426: { t.Rows[32].Teams.Slots[0] = 0; } break;
+                case 427: { t.Rows[32].Teams.Slots[1] = 0; } break;
+                case 428: { t.Rows[32].Teams.Slots[2] = 0; } break;
+                case 429: { t.Rows[32].Teams.Slots[3] = 0; } break;
+                case 430: { t.Rows[32].CounterPresent = false; } break;
+                case 431: { t.Rows[32].Counter = 0; } break;
+                case 432: { t.Rows[33].Tag = 0; } break;
+                case 433: { t.Rows[33].Value = 0.0; } break;
+                case 434: { t.Rows[33].Flag = false; } break;
+                case 435: { t.Rows[33].Id = 0; } break;
+                case 436: { t.Rows[33].LabelLength = 0; } break;
+                case 437: { if (t.Rows[33].Label != null) { Array.Clear(t.Rows[33].Label, 0, t.Rows[33].Label.Length); } } break;
+                case 438: { if (t.Rows[33].Slots != null) Array.Clear(t.Rows[33].Slots, 0, t.Rows[33].Slots.Length); } break;
+                case 439: { t.Rows[33].Teams.Slots[0] = 0; } break;
+                case 440: { t.Rows[33].Teams.Slots[1] = 0; } break;
+                case 441: { t.Rows[33].Teams.Slots[2] = 0; } break;
+                case 442: { t.Rows[33].Teams.Slots[3] = 0; } break;
+                case 443: { t.Rows[33].CounterPresent = false; } break;
+                case 444: { t.Rows[33].Counter = 0; } break;
+                case 445: { t.Rows[34].Tag = 0; } break;
+                case 446: { t.Rows[34].Value = 0.0; } break;
+                case 447: { t.Rows[34].Flag = false; } break;
+                case 448: { t.Rows[34].Id = 0; } break;
+                case 449: { t.Rows[34].LabelLength = 0; } break;
+                case 450: { if (t.Rows[34].Label != null) { Array.Clear(t.Rows[34].Label, 0, t.Rows[34].Label.Length); } } break;
+                case 451: { if (t.Rows[34].Slots != null) Array.Clear(t.Rows[34].Slots, 0, t.Rows[34].Slots.Length); } break;
+                case 452: { t.Rows[34].Teams.Slots[0] = 0; } break;
+                case 453: { t.Rows[34].Teams.Slots[1] = 0; } break;
+                case 454: { t.Rows[34].Teams.Slots[2] = 0; } break;
+                case 455: { t.Rows[34].Teams.Slots[3] = 0; } break;
+                case 456: { t.Rows[34].CounterPresent = false; } break;
+                case 457: { t.Rows[34].Counter = 0; } break;
+                case 458: { t.Rows[35].Tag = 0; } break;
+                case 459: { t.Rows[35].Value = 0.0; } break;
+                case 460: { t.Rows[35].Flag = false; } break;
+                case 461: { t.Rows[35].Id = 0; } break;
+                case 462: { t.Rows[35].LabelLength = 0; } break;
+                case 463: { if (t.Rows[35].Label != null) { Array.Clear(t.Rows[35].Label, 0, t.Rows[35].Label.Length); } } break;
+                case 464: { if (t.Rows[35].Slots != null) Array.Clear(t.Rows[35].Slots, 0, t.Rows[35].Slots.Length); } break;
+                case 465: { t.Rows[35].Teams.Slots[0] = 0; } break;
+                case 466: { t.Rows[35].Teams.Slots[1] = 0; } break;
+                case 467: { t.Rows[35].Teams.Slots[2] = 0; } break;
+                case 468: { t.Rows[35].Teams.Slots[3] = 0; } break;
+                case 469: { t.Rows[35].CounterPresent = false; } break;
+                case 470: { t.Rows[35].Counter = 0; } break;
+                case 471: { t.Rows[36].Tag = 0; } break;
+                case 472: { t.Rows[36].Value = 0.0; } break;
+                case 473: { t.Rows[36].Flag = false; } break;
+                case 474: { t.Rows[36].Id = 0; } break;
+                case 475: { t.Rows[36].LabelLength = 0; } break;
+                case 476: { if (t.Rows[36].Label != null) { Array.Clear(t.Rows[36].Label, 0, t.Rows[36].Label.Length); } } break;
+                case 477: { if (t.Rows[36].Slots != null) Array.Clear(t.Rows[36].Slots, 0, t.Rows[36].Slots.Length); } break;
+                case 478: { t.Rows[36].Teams.Slots[0] = 0; } break;
+                case 479: { t.Rows[36].Teams.Slots[1] = 0; } break;
+                case 480: { t.Rows[36].Teams.Slots[2] = 0; } break;
+                case 481: { t.Rows[36].Teams.Slots[3] = 0; } break;
+                case 482: { t.Rows[36].CounterPresent = false; } break;
+                case 483: { t.Rows[36].Counter = 0; } break;
+                case 484: { t.Rows[37].Tag = 0; } break;
+                case 485: { t.Rows[37].Value = 0.0; } break;
+                case 486: { t.Rows[37].Flag = false; } break;
+                case 487: { t.Rows[37].Id = 0; } break;
+                case 488: { t.Rows[37].LabelLength = 0; } break;
+                case 489: { if (t.Rows[37].Label != null) { Array.Clear(t.Rows[37].Label, 0, t.Rows[37].Label.Length); } } break;
+                case 490: { if (t.Rows[37].Slots != null) Array.Clear(t.Rows[37].Slots, 0, t.Rows[37].Slots.Length); } break;
+                case 491: { t.Rows[37].Teams.Slots[0] = 0; } break;
+                case 492: { t.Rows[37].Teams.Slots[1] = 0; } break;
+                case 493: { t.Rows[37].Teams.Slots[2] = 0; } break;
+                case 494: { t.Rows[37].Teams.Slots[3] = 0; } break;
+                case 495: { t.Rows[37].CounterPresent = false; } break;
+                case 496: { t.Rows[37].Counter = 0; } break;
+                case 497: { t.Rows[38].Tag = 0; } break;
+                case 498: { t.Rows[38].Value = 0.0; } break;
+                case 499: { t.Rows[38].Flag = false; } break;
+                case 500: { t.Rows[38].Id = 0; } break;
+                case 501: { t.Rows[38].LabelLength = 0; } break;
+                case 502: { if (t.Rows[38].Label != null) { Array.Clear(t.Rows[38].Label, 0, t.Rows[38].Label.Length); } } break;
+                case 503: { if (t.Rows[38].Slots != null) Array.Clear(t.Rows[38].Slots, 0, t.Rows[38].Slots.Length); } break;
+                case 504: { t.Rows[38].Teams.Slots[0] = 0; } break;
+                case 505: { t.Rows[38].Teams.Slots[1] = 0; } break;
+                case 506: { t.Rows[38].Teams.Slots[2] = 0; } break;
+                case 507: { t.Rows[38].Teams.Slots[3] = 0; } break;
+                case 508: { t.Rows[38].CounterPresent = false; } break;
+                case 509: { t.Rows[38].Counter = 0; } break;
+                case 510: { t.Rows[39].Tag = 0; } break;
+                case 511: { t.Rows[39].Value = 0.0; } break;
+                case 512: { t.Rows[39].Flag = false; } break;
+                case 513: { t.Rows[39].Id = 0; } break;
+                case 514: { t.Rows[39].LabelLength = 0; } break;
+                case 515: { if (t.Rows[39].Label != null) { Array.Clear(t.Rows[39].Label, 0, t.Rows[39].Label.Length); } } break;
+                case 516: { if (t.Rows[39].Slots != null) Array.Clear(t.Rows[39].Slots, 0, t.Rows[39].Slots.Length); } break;
+                case 517: { t.Rows[39].Teams.Slots[0] = 0; } break;
+                case 518: { t.Rows[39].Teams.Slots[1] = 0; } break;
+                case 519: { t.Rows[39].Teams.Slots[2] = 0; } break;
+                case 520: { t.Rows[39].Teams.Slots[3] = 0; } break;
+                case 521: { t.Rows[39].CounterPresent = false; } break;
+                case 522: { t.Rows[39].Counter = 0; } break;
+                case 523: { t.Rows[40].Tag = 0; } break;
+                case 524: { t.Rows[40].Value = 0.0; } break;
+                case 525: { t.Rows[40].Flag = false; } break;
+                case 526: { t.Rows[40].Id = 0; } break;
+                case 527: { t.Rows[40].LabelLength = 0; } break;
+                case 528: { if (t.Rows[40].Label != null) { Array.Clear(t.Rows[40].Label, 0, t.Rows[40].Label.Length); } } break;
+                case 529: { if (t.Rows[40].Slots != null) Array.Clear(t.Rows[40].Slots, 0, t.Rows[40].Slots.Length); } break;
+                case 530: { t.Rows[40].Teams.Slots[0] = 0; } break;
+                case 531: { t.Rows[40].Teams.Slots[1] = 0; } break;
+                case 532: { t.Rows[40].Teams.Slots[2] = 0; } break;
+                case 533: { t.Rows[40].Teams.Slots[3] = 0; } break;
+                case 534: { t.Rows[40].CounterPresent = false; } break;
+                case 535: { t.Rows[40].Counter = 0; } break;
+                case 536: { t.Rows[41].Tag = 0; } break;
+                case 537: { t.Rows[41].Value = 0.0; } break;
+                case 538: { t.Rows[41].Flag = false; } break;
+                case 539: { t.Rows[41].Id = 0; } break;
+                case 540: { t.Rows[41].LabelLength = 0; } break;
+                case 541: { if (t.Rows[41].Label != null) { Array.Clear(t.Rows[41].Label, 0, t.Rows[41].Label.Length); } } break;
+                case 542: { if (t.Rows[41].Slots != null) Array.Clear(t.Rows[41].Slots, 0, t.Rows[41].Slots.Length); } break;
+                case 543: { t.Rows[41].Teams.Slots[0] = 0; } break;
+                case 544: { t.Rows[41].Teams.Slots[1] = 0; } break;
+                case 545: { t.Rows[41].Teams.Slots[2] = 0; } break;
+                case 546: { t.Rows[41].Teams.Slots[3] = 0; } break;
+                case 547: { t.Rows[41].CounterPresent = false; } break;
+                case 548: { t.Rows[41].Counter = 0; } break;
+                case 549: { t.Rows[42].Tag = 0; } break;
+                case 550: { t.Rows[42].Value = 0.0; } break;
+                case 551: { t.Rows[42].Flag = false; } break;
+                case 552: { t.Rows[42].Id = 0; } break;
+                case 553: { t.Rows[42].LabelLength = 0; } break;
+                case 554: { if (t.Rows[42].Label != null) { Array.Clear(t.Rows[42].Label, 0, t.Rows[42].Label.Length); } } break;
+                case 555: { if (t.Rows[42].Slots != null) Array.Clear(t.Rows[42].Slots, 0, t.Rows[42].Slots.Length); } break;
+                case 556: { t.Rows[42].Teams.Slots[0] = 0; } break;
+                case 557: { t.Rows[42].Teams.Slots[1] = 0; } break;
+                case 558: { t.Rows[42].Teams.Slots[2] = 0; } break;
+                case 559: { t.Rows[42].Teams.Slots[3] = 0; } break;
+                case 560: { t.Rows[42].CounterPresent = false; } break;
+                case 561: { t.Rows[42].Counter = 0; } break;
+                case 562: { t.Rows[43].Tag = 0; } break;
+                case 563: { t.Rows[43].Value = 0.0; } break;
+                case 564: { t.Rows[43].Flag = false; } break;
+                case 565: { t.Rows[43].Id = 0; } break;
+                case 566: { t.Rows[43].LabelLength = 0; } break;
+                case 567: { if (t.Rows[43].Label != null) { Array.Clear(t.Rows[43].Label, 0, t.Rows[43].Label.Length); } } break;
+                case 568: { if (t.Rows[43].Slots != null) Array.Clear(t.Rows[43].Slots, 0, t.Rows[43].Slots.Length); } break;
+                case 569: { t.Rows[43].Teams.Slots[0] = 0; } break;
+                case 570: { t.Rows[43].Teams.Slots[1] = 0; } break;
+                case 571: { t.Rows[43].Teams.Slots[2] = 0; } break;
+                case 572: { t.Rows[43].Teams.Slots[3] = 0; } break;
+                case 573: { t.Rows[43].CounterPresent = false; } break;
+                case 574: { t.Rows[43].Counter = 0; } break;
+                case 575: { t.Rows[44].Tag = 0; } break;
+                case 576: { t.Rows[44].Value = 0.0; } break;
+                case 577: { t.Rows[44].Flag = false; } break;
+                case 578: { t.Rows[44].Id = 0; } break;
+                case 579: { t.Rows[44].LabelLength = 0; } break;
+                case 580: { if (t.Rows[44].Label != null) { Array.Clear(t.Rows[44].Label, 0, t.Rows[44].Label.Length); } } break;
+                case 581: { if (t.Rows[44].Slots != null) Array.Clear(t.Rows[44].Slots, 0, t.Rows[44].Slots.Length); } break;
+                case 582: { t.Rows[44].Teams.Slots[0] = 0; } break;
+                case 583: { t.Rows[44].Teams.Slots[1] = 0; } break;
+                case 584: { t.Rows[44].Teams.Slots[2] = 0; } break;
+                case 585: { t.Rows[44].Teams.Slots[3] = 0; } break;
+                case 586: { t.Rows[44].CounterPresent = false; } break;
+                case 587: { t.Rows[44].Counter = 0; } break;
+                case 588: { t.Rows[45].Tag = 0; } break;
+                case 589: { t.Rows[45].Value = 0.0; } break;
+                case 590: { t.Rows[45].Flag = false; } break;
+                case 591: { t.Rows[45].Id = 0; } break;
+                case 592: { t.Rows[45].LabelLength = 0; } break;
+                case 593: { if (t.Rows[45].Label != null) { Array.Clear(t.Rows[45].Label, 0, t.Rows[45].Label.Length); } } break;
+                case 594: { if (t.Rows[45].Slots != null) Array.Clear(t.Rows[45].Slots, 0, t.Rows[45].Slots.Length); } break;
+                case 595: { t.Rows[45].Teams.Slots[0] = 0; } break;
+                case 596: { t.Rows[45].Teams.Slots[1] = 0; } break;
+                case 597: { t.Rows[45].Teams.Slots[2] = 0; } break;
+                case 598: { t.Rows[45].Teams.Slots[3] = 0; } break;
+                case 599: { t.Rows[45].CounterPresent = false; } break;
+                case 600: { t.Rows[45].Counter = 0; } break;
+                case 601: { t.Rows[46].Tag = 0; } break;
+                case 602: { t.Rows[46].Value = 0.0; } break;
+                case 603: { t.Rows[46].Flag = false; } break;
+                case 604: { t.Rows[46].Id = 0; } break;
+                case 605: { t.Rows[46].LabelLength = 0; } break;
+                case 606: { if (t.Rows[46].Label != null) { Array.Clear(t.Rows[46].Label, 0, t.Rows[46].Label.Length); } } break;
+                case 607: { if (t.Rows[46].Slots != null) Array.Clear(t.Rows[46].Slots, 0, t.Rows[46].Slots.Length); } break;
+                case 608: { t.Rows[46].Teams.Slots[0] = 0; } break;
+                case 609: { t.Rows[46].Teams.Slots[1] = 0; } break;
+                case 610: { t.Rows[46].Teams.Slots[2] = 0; } break;
+                case 611: { t.Rows[46].Teams.Slots[3] = 0; } break;
+                case 612: { t.Rows[46].CounterPresent = false; } break;
+                case 613: { t.Rows[46].Counter = 0; } break;
+                case 614: { t.Rows[47].Tag = 0; } break;
+                case 615: { t.Rows[47].Value = 0.0; } break;
+                case 616: { t.Rows[47].Flag = false; } break;
+                case 617: { t.Rows[47].Id = 0; } break;
+                case 618: { t.Rows[47].LabelLength = 0; } break;
+                case 619: { if (t.Rows[47].Label != null) { Array.Clear(t.Rows[47].Label, 0, t.Rows[47].Label.Length); } } break;
+                case 620: { if (t.Rows[47].Slots != null) Array.Clear(t.Rows[47].Slots, 0, t.Rows[47].Slots.Length); } break;
+                case 621: { t.Rows[47].Teams.Slots[0] = 0; } break;
+                case 622: { t.Rows[47].Teams.Slots[1] = 0; } break;
+                case 623: { t.Rows[47].Teams.Slots[2] = 0; } break;
+                case 624: { t.Rows[47].Teams.Slots[3] = 0; } break;
+                case 625: { t.Rows[47].CounterPresent = false; } break;
+                case 626: { t.Rows[47].Counter = 0; } break;
+                case 627: { t.Rows[48].Tag = 0; } break;
+                case 628: { t.Rows[48].Value = 0.0; } break;
+                case 629: { t.Rows[48].Flag = false; } break;
+                case 630: { t.Rows[48].Id = 0; } break;
+                case 631: { t.Rows[48].LabelLength = 0; } break;
+                case 632: { if (t.Rows[48].Label != null) { Array.Clear(t.Rows[48].Label, 0, t.Rows[48].Label.Length); } } break;
+                case 633: { if (t.Rows[48].Slots != null) Array.Clear(t.Rows[48].Slots, 0, t.Rows[48].Slots.Length); } break;
+                case 634: { t.Rows[48].Teams.Slots[0] = 0; } break;
+                case 635: { t.Rows[48].Teams.Slots[1] = 0; } break;
+                case 636: { t.Rows[48].Teams.Slots[2] = 0; } break;
+                case 637: { t.Rows[48].Teams.Slots[3] = 0; } break;
+                case 638: { t.Rows[48].CounterPresent = false; } break;
+                case 639: { t.Rows[48].Counter = 0; } break;
+                case 640: { t.Rows[49].Tag = 0; } break;
+                case 641: { t.Rows[49].Value = 0.0; } break;
+                case 642: { t.Rows[49].Flag = false; } break;
+                case 643: { t.Rows[49].Id = 0; } break;
+                case 644: { t.Rows[49].LabelLength = 0; } break;
+                case 645: { if (t.Rows[49].Label != null) { Array.Clear(t.Rows[49].Label, 0, t.Rows[49].Label.Length); } } break;
+                case 646: { if (t.Rows[49].Slots != null) Array.Clear(t.Rows[49].Slots, 0, t.Rows[49].Slots.Length); } break;
+                case 647: { t.Rows[49].Teams.Slots[0] = 0; } break;
+                case 648: { t.Rows[49].Teams.Slots[1] = 0; } break;
+                case 649: { t.Rows[49].Teams.Slots[2] = 0; } break;
+                case 650: { t.Rows[49].Teams.Slots[3] = 0; } break;
+                case 651: { t.Rows[49].CounterPresent = false; } break;
+                case 652: { t.Rows[49].Counter = 0; } break;
+                case 653: { t.Rows[50].Tag = 0; } break;
+                case 654: { t.Rows[50].Value = 0.0; } break;
+                case 655: { t.Rows[50].Flag = false; } break;
+                case 656: { t.Rows[50].Id = 0; } break;
+                case 657: { t.Rows[50].LabelLength = 0; } break;
+                case 658: { if (t.Rows[50].Label != null) { Array.Clear(t.Rows[50].Label, 0, t.Rows[50].Label.Length); } } break;
+                case 659: { if (t.Rows[50].Slots != null) Array.Clear(t.Rows[50].Slots, 0, t.Rows[50].Slots.Length); } break;
+                case 660: { t.Rows[50].Teams.Slots[0] = 0; } break;
+                case 661: { t.Rows[50].Teams.Slots[1] = 0; } break;
+                case 662: { t.Rows[50].Teams.Slots[2] = 0; } break;
+                case 663: { t.Rows[50].Teams.Slots[3] = 0; } break;
+                case 664: { t.Rows[50].CounterPresent = false; } break;
+                case 665: { t.Rows[50].Counter = 0; } break;
+                case 666: { t.Rows[51].Tag = 0; } break;
+                case 667: { t.Rows[51].Value = 0.0; } break;
+                case 668: { t.Rows[51].Flag = false; } break;
+                case 669: { t.Rows[51].Id = 0; } break;
+                case 670: { t.Rows[51].LabelLength = 0; } break;
+                case 671: { if (t.Rows[51].Label != null) { Array.Clear(t.Rows[51].Label, 0, t.Rows[51].Label.Length); } } break;
+                case 672: { if (t.Rows[51].Slots != null) Array.Clear(t.Rows[51].Slots, 0, t.Rows[51].Slots.Length); } break;
+                case 673: { t.Rows[51].Teams.Slots[0] = 0; } break;
+                case 674: { t.Rows[51].Teams.Slots[1] = 0; } break;
+                case 675: { t.Rows[51].Teams.Slots[2] = 0; } break;
+                case 676: { t.Rows[51].Teams.Slots[3] = 0; } break;
+                case 677: { t.Rows[51].CounterPresent = false; } break;
+                case 678: { t.Rows[51].Counter = 0; } break;
+                case 679: { t.Rows[52].Tag = 0; } break;
+                case 680: { t.Rows[52].Value = 0.0; } break;
+                case 681: { t.Rows[52].Flag = false; } break;
+                case 682: { t.Rows[52].Id = 0; } break;
+                case 683: { t.Rows[52].LabelLength = 0; } break;
+                case 684: { if (t.Rows[52].Label != null) { Array.Clear(t.Rows[52].Label, 0, t.Rows[52].Label.Length); } } break;
+                case 685: { if (t.Rows[52].Slots != null) Array.Clear(t.Rows[52].Slots, 0, t.Rows[52].Slots.Length); } break;
+                case 686: { t.Rows[52].Teams.Slots[0] = 0; } break;
+                case 687: { t.Rows[52].Teams.Slots[1] = 0; } break;
+                case 688: { t.Rows[52].Teams.Slots[2] = 0; } break;
+                case 689: { t.Rows[52].Teams.Slots[3] = 0; } break;
+                case 690: { t.Rows[52].CounterPresent = false; } break;
+                case 691: { t.Rows[52].Counter = 0; } break;
+                case 692: { t.Rows[53].Tag = 0; } break;
+                case 693: { t.Rows[53].Value = 0.0; } break;
+                case 694: { t.Rows[53].Flag = false; } break;
+                case 695: { t.Rows[53].Id = 0; } break;
+                case 696: { t.Rows[53].LabelLength = 0; } break;
+                case 697: { if (t.Rows[53].Label != null) { Array.Clear(t.Rows[53].Label, 0, t.Rows[53].Label.Length); } } break;
+                case 698: { if (t.Rows[53].Slots != null) Array.Clear(t.Rows[53].Slots, 0, t.Rows[53].Slots.Length); } break;
+                case 699: { t.Rows[53].Teams.Slots[0] = 0; } break;
+                case 700: { t.Rows[53].Teams.Slots[1] = 0; } break;
+                case 701: { t.Rows[53].Teams.Slots[2] = 0; } break;
+                case 702: { t.Rows[53].Teams.Slots[3] = 0; } break;
+                case 703: { t.Rows[53].CounterPresent = false; } break;
+                case 704: { t.Rows[53].Counter = 0; } break;
+                case 705: { t.Rows[54].Tag = 0; } break;
+                case 706: { t.Rows[54].Value = 0.0; } break;
+                case 707: { t.Rows[54].Flag = false; } break;
+                case 708: { t.Rows[54].Id = 0; } break;
+                case 709: { t.Rows[54].LabelLength = 0; } break;
+                case 710: { if (t.Rows[54].Label != null) { Array.Clear(t.Rows[54].Label, 0, t.Rows[54].Label.Length); } } break;
+                case 711: { if (t.Rows[54].Slots != null) Array.Clear(t.Rows[54].Slots, 0, t.Rows[54].Slots.Length); } break;
+                case 712: { t.Rows[54].Teams.Slots[0] = 0; } break;
+                case 713: { t.Rows[54].Teams.Slots[1] = 0; } break;
+                case 714: { t.Rows[54].Teams.Slots[2] = 0; } break;
+                case 715: { t.Rows[54].Teams.Slots[3] = 0; } break;
+                case 716: { t.Rows[54].CounterPresent = false; } break;
+                case 717: { t.Rows[54].Counter = 0; } break;
+                case 718: { t.Rows[55].Tag = 0; } break;
+                case 719: { t.Rows[55].Value = 0.0; } break;
+                case 720: { t.Rows[55].Flag = false; } break;
+                case 721: { t.Rows[55].Id = 0; } break;
+                case 722: { t.Rows[55].LabelLength = 0; } break;
+                case 723: { if (t.Rows[55].Label != null) { Array.Clear(t.Rows[55].Label, 0, t.Rows[55].Label.Length); } } break;
+                case 724: { if (t.Rows[55].Slots != null) Array.Clear(t.Rows[55].Slots, 0, t.Rows[55].Slots.Length); } break;
+                case 725: { t.Rows[55].Teams.Slots[0] = 0; } break;
+                case 726: { t.Rows[55].Teams.Slots[1] = 0; } break;
+                case 727: { t.Rows[55].Teams.Slots[2] = 0; } break;
+                case 728: { t.Rows[55].Teams.Slots[3] = 0; } break;
+                case 729: { t.Rows[55].CounterPresent = false; } break;
+                case 730: { t.Rows[55].Counter = 0; } break;
+                case 731: { t.Rows[56].Tag = 0; } break;
+                case 732: { t.Rows[56].Value = 0.0; } break;
+                case 733: { t.Rows[56].Flag = false; } break;
+                case 734: { t.Rows[56].Id = 0; } break;
+                case 735: { t.Rows[56].LabelLength = 0; } break;
+                case 736: { if (t.Rows[56].Label != null) { Array.Clear(t.Rows[56].Label, 0, t.Rows[56].Label.Length); } } break;
+                case 737: { if (t.Rows[56].Slots != null) Array.Clear(t.Rows[56].Slots, 0, t.Rows[56].Slots.Length); } break;
+                case 738: { t.Rows[56].Teams.Slots[0] = 0; } break;
+                case 739: { t.Rows[56].Teams.Slots[1] = 0; } break;
+                case 740: { t.Rows[56].Teams.Slots[2] = 0; } break;
+                case 741: { t.Rows[56].Teams.Slots[3] = 0; } break;
+                case 742: { t.Rows[56].CounterPresent = false; } break;
+                case 743: { t.Rows[56].Counter = 0; } break;
+                case 744: { t.Rows[57].Tag = 0; } break;
+                case 745: { t.Rows[57].Value = 0.0; } break;
+                case 746: { t.Rows[57].Flag = false; } break;
+                case 747: { t.Rows[57].Id = 0; } break;
+                case 748: { t.Rows[57].LabelLength = 0; } break;
+                case 749: { if (t.Rows[57].Label != null) { Array.Clear(t.Rows[57].Label, 0, t.Rows[57].Label.Length); } } break;
+                case 750: { if (t.Rows[57].Slots != null) Array.Clear(t.Rows[57].Slots, 0, t.Rows[57].Slots.Length); } break;
+                case 751: { t.Rows[57].Teams.Slots[0] = 0; } break;
+                case 752: { t.Rows[57].Teams.Slots[1] = 0; } break;
+                case 753: { t.Rows[57].Teams.Slots[2] = 0; } break;
+                case 754: { t.Rows[57].Teams.Slots[3] = 0; } break;
+                case 755: { t.Rows[57].CounterPresent = false; } break;
+                case 756: { t.Rows[57].Counter = 0; } break;
+                case 757: { t.Rows[58].Tag = 0; } break;
+                case 758: { t.Rows[58].Value = 0.0; } break;
+                case 759: { t.Rows[58].Flag = false; } break;
+                case 760: { t.Rows[58].Id = 0; } break;
+                case 761: { t.Rows[58].LabelLength = 0; } break;
+                case 762: { if (t.Rows[58].Label != null) { Array.Clear(t.Rows[58].Label, 0, t.Rows[58].Label.Length); } } break;
+                case 763: { if (t.Rows[58].Slots != null) Array.Clear(t.Rows[58].Slots, 0, t.Rows[58].Slots.Length); } break;
+                case 764: { t.Rows[58].Teams.Slots[0] = 0; } break;
+                case 765: { t.Rows[58].Teams.Slots[1] = 0; } break;
+                case 766: { t.Rows[58].Teams.Slots[2] = 0; } break;
+                case 767: { t.Rows[58].Teams.Slots[3] = 0; } break;
+                case 768: { t.Rows[58].CounterPresent = false; } break;
+                case 769: { t.Rows[58].Counter = 0; } break;
+                case 770: { t.Rows[59].Tag = 0; } break;
+                case 771: { t.Rows[59].Value = 0.0; } break;
+                case 772: { t.Rows[59].Flag = false; } break;
+                case 773: { t.Rows[59].Id = 0; } break;
+                case 774: { t.Rows[59].LabelLength = 0; } break;
+                case 775: { if (t.Rows[59].Label != null) { Array.Clear(t.Rows[59].Label, 0, t.Rows[59].Label.Length); } } break;
+                case 776: { if (t.Rows[59].Slots != null) Array.Clear(t.Rows[59].Slots, 0, t.Rows[59].Slots.Length); } break;
+                case 777: { t.Rows[59].Teams.Slots[0] = 0; } break;
+                case 778: { t.Rows[59].Teams.Slots[1] = 0; } break;
+                case 779: { t.Rows[59].Teams.Slots[2] = 0; } break;
+                case 780: { t.Rows[59].Teams.Slots[3] = 0; } break;
+                case 781: { t.Rows[59].CounterPresent = false; } break;
+                case 782: { t.Rows[59].Counter = 0; } break;
+                case 783: { t.Rows[60].Tag = 0; } break;
+                case 784: { t.Rows[60].Value = 0.0; } break;
+                case 785: { t.Rows[60].Flag = false; } break;
+                case 786: { t.Rows[60].Id = 0; } break;
+                case 787: { t.Rows[60].LabelLength = 0; } break;
+                case 788: { if (t.Rows[60].Label != null) { Array.Clear(t.Rows[60].Label, 0, t.Rows[60].Label.Length); } } break;
+                case 789: { if (t.Rows[60].Slots != null) Array.Clear(t.Rows[60].Slots, 0, t.Rows[60].Slots.Length); } break;
+                case 790: { t.Rows[60].Teams.Slots[0] = 0; } break;
+                case 791: { t.Rows[60].Teams.Slots[1] = 0; } break;
+                case 792: { t.Rows[60].Teams.Slots[2] = 0; } break;
+                case 793: { t.Rows[60].Teams.Slots[3] = 0; } break;
+                case 794: { t.Rows[60].CounterPresent = false; } break;
+                case 795: { t.Rows[60].Counter = 0; } break;
+                case 796: { t.Rows[61].Tag = 0; } break;
+                case 797: { t.Rows[61].Value = 0.0; } break;
+                case 798: { t.Rows[61].Flag = false; } break;
+                case 799: { t.Rows[61].Id = 0; } break;
+                case 800: { t.Rows[61].LabelLength = 0; } break;
+                case 801: { if (t.Rows[61].Label != null) { Array.Clear(t.Rows[61].Label, 0, t.Rows[61].Label.Length); } } break;
+                case 802: { if (t.Rows[61].Slots != null) Array.Clear(t.Rows[61].Slots, 0, t.Rows[61].Slots.Length); } break;
+                case 803: { t.Rows[61].Teams.Slots[0] = 0; } break;
+                case 804: { t.Rows[61].Teams.Slots[1] = 0; } break;
+                case 805: { t.Rows[61].Teams.Slots[2] = 0; } break;
+                case 806: { t.Rows[61].Teams.Slots[3] = 0; } break;
+                case 807: { t.Rows[61].CounterPresent = false; } break;
+                case 808: { t.Rows[61].Counter = 0; } break;
+                case 809: { t.Rows[62].Tag = 0; } break;
+                case 810: { t.Rows[62].Value = 0.0; } break;
+                case 811: { t.Rows[62].Flag = false; } break;
+                case 812: { t.Rows[62].Id = 0; } break;
+                case 813: { t.Rows[62].LabelLength = 0; } break;
+                case 814: { if (t.Rows[62].Label != null) { Array.Clear(t.Rows[62].Label, 0, t.Rows[62].Label.Length); } } break;
+                case 815: { if (t.Rows[62].Slots != null) Array.Clear(t.Rows[62].Slots, 0, t.Rows[62].Slots.Length); } break;
+                case 816: { t.Rows[62].Teams.Slots[0] = 0; } break;
+                case 817: { t.Rows[62].Teams.Slots[1] = 0; } break;
+                case 818: { t.Rows[62].Teams.Slots[2] = 0; } break;
+                case 819: { t.Rows[62].Teams.Slots[3] = 0; } break;
+                case 820: { t.Rows[62].CounterPresent = false; } break;
+                case 821: { t.Rows[62].Counter = 0; } break;
+                case 822: { t.Rows[63].Tag = 0; } break;
+                case 823: { t.Rows[63].Value = 0.0; } break;
+                case 824: { t.Rows[63].Flag = false; } break;
+                case 825: { t.Rows[63].Id = 0; } break;
+                case 826: { t.Rows[63].LabelLength = 0; } break;
+                case 827: { if (t.Rows[63].Label != null) { Array.Clear(t.Rows[63].Label, 0, t.Rows[63].Label.Length); } } break;
+                case 828: { if (t.Rows[63].Slots != null) Array.Clear(t.Rows[63].Slots, 0, t.Rows[63].Slots.Length); } break;
+                case 829: { t.Rows[63].Teams.Slots[0] = 0; } break;
+                case 830: { t.Rows[63].Teams.Slots[1] = 0; } break;
+                case 831: { t.Rows[63].Teams.Slots[2] = 0; } break;
+                case 832: { t.Rows[63].Teams.Slots[3] = 0; } break;
+                case 833: { t.Rows[63].CounterPresent = false; } break;
+                case 834: { t.Rows[63].Counter = 0; } break;
+                case 835: { t.BlobLength = 0; } break;
+                case 836: { if (t.Blob != null) { Array.Clear(t.Blob, 0, t.Blob.Length); } } break;
+                default: break;
+            }
+        }
+
+        public static void PaddedFrameFixedFillRun(ReadOnlySpan<TableFixedFill> fill, PaddedFrame dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    PaddedFrameFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string PaddedFrameFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            PaddedFrame dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { PaddedFrameFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { PaddedFrameFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { PaddedFrameFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { PaddedFrameFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            PaddedFrameFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { PaddedFrameFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        PaddedFrameFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        PaddedFrameFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        PaddedFrameFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        PaddedFrameFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            PaddedFrameFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            PaddedFrameFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        PaddedFrameFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            PaddedFrameFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            PaddedFrameFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        PaddedFrameFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        PaddedFrameFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -2779,9 +5020,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new PaddedFrame(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PaddedFrameFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PaddedFrameFixedSlots, values[k]); }
+                PaddedFrameFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, PaddedFrameFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, PaddedFrameFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = PaddedFrameFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -2820,7 +5063,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, PaddedFrameFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = PaddedFrameFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }

@@ -106,14 +106,14 @@ namespace Wide
                 info.StorageSize = 20; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "text", Json = null, TypeName = "string", Id = 0x0000000000000000, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 15, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((global::Wide.NarrowFifteen)o).Text; }, GetCount = delegate(object o) { return ((global::Wide.NarrowFifteen)o).TextLength; }, SetCount = delegate(object o, int n) { ((global::Wide.NarrowFifteen)o).TextLength = n; }, MessageSlot = 0, Ordinal = 0, NativeOffset = 0, NativeElementSize = 16, NativeCountOffset = 16, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Wide.NarrowFifteen)o; Array.Clear(value.Text, 0, value.Text.Length); value.TextLength = 0; } },
+                    new TableFieldInfo { Name = "text", Json = null, TypeName = "string", Id = 0x0000000000000000, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 15, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate (object o) { return ((global::Wide.NarrowFifteen)o).Text; }, GetCount = delegate (object o) { return ((global::Wide.NarrowFifteen)o).TextLength; }, SetCount = delegate (object o, int n) { ((global::Wide.NarrowFifteen)o).TextLength = n; }, MessageSlot = 0, Ordinal = 0, NativeOffset = 0, NativeElementSize = 16, NativeCountOffset = 16, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Wide.NarrowFifteen)o; Array.Clear(value.Text, 0, value.Text.Length); value.TextLength = 0; } },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Wide.NarrowFifteen)o); };
+                info.Reset = delegate (object o) { TableReset((global::Wide.NarrowFifteen)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -149,14 +149,14 @@ namespace Wide
                 info.StorageSize = 16; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "text", Json = null, TypeName = "wstring", Id = 0x0000000000000000, Kind = 33, IsArray = false, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChars = delegate(object o) { return ((global::Wide.WideFour)o).Text; }, GetCount = delegate(object o) { return ((global::Wide.WideFour)o).TextLength; }, SetCount = delegate(object o, int n) { ((global::Wide.WideFour)o).TextLength = n; }, MessageSlot = 5, Ordinal = 0, NativeOffset = 0, NativeElementSize = 10, NativeCountOffset = 12, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Wide.WideFour)o; Array.Clear(value.Text, 0, value.Text.Length); value.TextLength = 0; } },
+                    new TableFieldInfo { Name = "text", Json = null, TypeName = "wstring", Id = 0x0000000000000000, Kind = 33, IsArray = false, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChars = delegate (object o) { return ((global::Wide.WideFour)o).Text; }, GetCount = delegate (object o) { return ((global::Wide.WideFour)o).TextLength; }, SetCount = delegate (object o, int n) { ((global::Wide.WideFour)o).TextLength = n; }, MessageSlot = 5, Ordinal = 0, NativeOffset = 0, NativeElementSize = 10, NativeCountOffset = 12, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Wide.WideFour)o; Array.Clear(value.Text, 0, value.Text.Length); value.TextLength = 0; } },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Wide.WideFour)o); };
+                info.Reset = delegate (object o) { TableReset((global::Wide.WideFour)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -192,14 +192,14 @@ namespace Wide
                 info.StorageSize = 20; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "caption", Json = null, TypeName = "wstring", Id = 0x0000000000000000, Kind = 33, IsArray = false, Counted = true, Optional = false, ArrayBound = 7, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChars = delegate(object o) { return ((global::Wide.WideInterop)o).Caption; }, GetCount = delegate(object o) { return ((global::Wide.WideInterop)o).CaptionLength; }, SetCount = delegate(object o, int n) { ((global::Wide.WideInterop)o).CaptionLength = n; }, MessageSlot = 0, Ordinal = 0, NativeOffset = 0, NativeElementSize = 16, NativeCountOffset = 16, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Wide.WideInterop)o; Array.Clear(value.Caption, 0, value.Caption.Length); value.CaptionLength = 0; } },
+                    new TableFieldInfo { Name = "caption", Json = null, TypeName = "wstring", Id = 0x0000000000000000, Kind = 33, IsArray = false, Counted = true, Optional = false, ArrayBound = 7, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChars = delegate (object o) { return ((global::Wide.WideInterop)o).Caption; }, GetCount = delegate (object o) { return ((global::Wide.WideInterop)o).CaptionLength; }, SetCount = delegate (object o, int n) { ((global::Wide.WideInterop)o).CaptionLength = n; }, MessageSlot = 0, Ordinal = 0, NativeOffset = 0, NativeElementSize = 16, NativeCountOffset = 16, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Wide.WideInterop)o; Array.Clear(value.Caption, 0, value.Caption.Length); value.CaptionLength = 0; } },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Wide.WideInterop)o); };
+                info.Reset = delegate (object o) { TableReset((global::Wide.WideInterop)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -235,14 +235,14 @@ namespace Wide
                 info.StorageSize = 20; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "text", Json = null, TypeName = "wstring", Id = 0x0000000000000000, Kind = 33, IsArray = false, Counted = true, Optional = false, ArrayBound = 7, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChars = delegate(object o) { return ((global::Wide.WideSeven)o).Text; }, GetCount = delegate(object o) { return ((global::Wide.WideSeven)o).TextLength; }, SetCount = delegate(object o, int n) { ((global::Wide.WideSeven)o).TextLength = n; }, MessageSlot = 0, Ordinal = 0, NativeOffset = 0, NativeElementSize = 16, NativeCountOffset = 16, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Wide.WideSeven)o; Array.Clear(value.Text, 0, value.Text.Length); value.TextLength = 0; } },
+                    new TableFieldInfo { Name = "text", Json = null, TypeName = "wstring", Id = 0x0000000000000000, Kind = 33, IsArray = false, Counted = true, Optional = false, ArrayBound = 7, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChars = delegate (object o) { return ((global::Wide.WideSeven)o).Text; }, GetCount = delegate (object o) { return ((global::Wide.WideSeven)o).TextLength; }, SetCount = delegate (object o, int n) { ((global::Wide.WideSeven)o).TextLength = n; }, MessageSlot = 0, Ordinal = 0, NativeOffset = 0, NativeElementSize = 16, NativeCountOffset = 16, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Wide.WideSeven)o; Array.Clear(value.Text, 0, value.Text.Length); value.TextLength = 0; } },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Wide.WideSeven)o); };
+                info.Reset = delegate (object o) { TableReset((global::Wide.WideSeven)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -256,17 +256,25 @@ namespace Wide
             return WideSevenTableInfo.Instance;
         }
 
-        private static readonly UnitViewInfo tableUnitView = new UnitViewInfo { Package = "wide", ProtocolId = 0x4b9b89c718af5d5eul,
-        Types = new ViewType[] { new ViewType { Name = "Line", File = "Caption.schema", Table = false, TypeRef = LineTableType, Doc = "", Tags = new string[] {  } },
-        new ViewType { Name = "NarrowFifteen", File = "WideText.schema", Table = false, TypeRef = NarrowFifteenTableType, Doc = "", Tags = new string[] {  } },
-        new ViewType { Name = "WideFour", File = "WideText.schema", Table = false, TypeRef = WideFourTableType, Doc = "", Tags = new string[] {  } },
-        new ViewType { Name = "WideInterop", File = "WideText.schema", Table = false, TypeRef = WideInteropTableType, Doc = "", Tags = new string[] {  } },
-        new ViewType { Name = "WideSeven", File = "WideText.schema", Table = false, TypeRef = WideSevenTableType, Doc = "", Tags = new string[] {  } } }, Tables = new ViewType[] { new ViewType { Name = "Caption", File = "Caption.schema", Table = true, TypeRef = CaptionTableType, Doc = "", Tags = new string[] {  } },
-        new ViewType { Name = "Stamp", File = "Caption.schema", Table = true, TypeRef = StampTableType, Doc = "", Tags = new string[] {  } } },
-        Enums = new ViewVocabulary[] {  }, Flags = new ViewVocabulary[] {  }, Unions = new ViewVocabulary[] { new ViewVocabulary { Name = "Body", File = "Caption.schema", Max = 3, StorageBits = 8, Doc = "", Tags = new string[] {  }, Variants = new ViewVariant[] { new ViewVariant { Value = 0, Name = "None", Id = 0x0000000000000000ul, Doc = "", Tags = new string[] {  } },
-        new ViewVariant { Value = 1, Name = "wide", Id = 0xa633f1f655715ccaul, Doc = "", Tags = new string[] {  }, PayloadName = "wstring(4)", Field = new TableFieldInfo { Name = "wide", Json = "wide", TypeName = "wstring", Id = 0xa633f1f655715cca, Kind = 33, IsArray = false, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChars = delegate(object o) { return ((global::Wide.Body)o).Wide; }, GetCount = delegate(object o) { return ((global::Wide.Body)o).WideLength; }, SetCount = delegate(object o, int n) { ((global::Wide.Body)o).WideLength = n; }, MessageSlot = 8, Ordinal = 0, NativeOffset = 0, NativeElementSize = 10, NativeCountOffset = 12, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Wide.Body)o; Array.Clear(value.Wide, 0, value.Wide.Length); value.WideLength = 0; } } },
-        new ViewVariant { Value = 2, Name = "narrow", Id = 0x96569b06f223c29aul, Doc = "", Tags = new string[] {  }, PayloadName = "string(4)", Field = new TableFieldInfo { Name = "narrow", Json = "narrow", TypeName = "string", Id = 0x96569b06f223c29a, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((global::Wide.Body)o).Narrow; }, GetCount = delegate(object o) { return ((global::Wide.Body)o).NarrowLength; }, SetCount = delegate(object o, int n) { ((global::Wide.Body)o).NarrowLength = n; }, MessageSlot = 9, Ordinal = 0, NativeOffset = 0, NativeElementSize = 5, NativeCountOffset = 8, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Wide.Body)o; Array.Clear(value.Narrow, 0, value.Narrow.Length); value.NarrowLength = 0; } } },
-        new ViewVariant { Value = 3, Name = "tally", Id = 0xb1e5e28e4479a274ul, Doc = "", Tags = new string[] {  }, PayloadName = "int32", Field = new TableFieldInfo { Name = "tally", Json = "tally", TypeName = "int32", Id = 0xb1e5e28e4479a274, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Wide.Body)o).Tally; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Wide.Body)o).Tally = unchecked((int)(long)r); }, MessageSlot = 10, Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Wide.Body)o; value.Tally = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); return (ulong)(long)v; } } } } } }, Constants = new ViewConstant[] {  } };
+        private static readonly UnitViewInfo tableUnitView = new UnitViewInfo
+        {
+            Package = "wide",
+            ProtocolId = 0x4b9b89c718af5d5eul,
+            Types = new ViewType[] { new ViewType { Name = "Line", File = "Caption.schema", Table = false, TypeRef = LineTableType, Doc = "", Tags = new string[] { } },
+        new ViewType { Name = "NarrowFifteen", File = "WideText.schema", Table = false, TypeRef = NarrowFifteenTableType, Doc = "", Tags = new string[] { } },
+        new ViewType { Name = "WideFour", File = "WideText.schema", Table = false, TypeRef = WideFourTableType, Doc = "", Tags = new string[] { } },
+        new ViewType { Name = "WideInterop", File = "WideText.schema", Table = false, TypeRef = WideInteropTableType, Doc = "", Tags = new string[] { } },
+        new ViewType { Name = "WideSeven", File = "WideText.schema", Table = false, TypeRef = WideSevenTableType, Doc = "", Tags = new string[] { } } },
+            Tables = new ViewType[] { new ViewType { Name = "Caption", File = "Caption.schema", Table = true, TypeRef = CaptionTableType, Doc = "", Tags = new string[] { } },
+        new ViewType { Name = "Stamp", File = "Caption.schema", Table = true, TypeRef = StampTableType, Doc = "", Tags = new string[] { } } },
+            Enums = new ViewVocabulary[] { },
+            Flags = new ViewVocabulary[] { },
+            Unions = new ViewVocabulary[] { new ViewVocabulary { Name = "Body", File = "Caption.schema", Max = 3, StorageBits = 8, Doc = "", Tags = new string[] { }, Variants = new ViewVariant[] { new ViewVariant { Value = 0, Name = "None", Id = 0x0000000000000000ul, Doc = "", Tags = new string[] { } },
+        new ViewVariant { Value = 1, Name = "wide", Id = 0xa633f1f655715ccaul, Doc = "", Tags = new string[] { }, PayloadName = "wstring(4)", Field = new TableFieldInfo { Name = "wide", Json = "wide", TypeName = "wstring", Id = 0xa633f1f655715cca, Kind = 33, IsArray = false, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChars = delegate (object o) { return ((global::Wide.Body)o).Wide; }, GetCount = delegate (object o) { return ((global::Wide.Body)o).WideLength; }, SetCount = delegate (object o, int n) { ((global::Wide.Body)o).WideLength = n; }, MessageSlot = 8, Ordinal = 0, NativeOffset = 0, NativeElementSize = 10, NativeCountOffset = 12, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Wide.Body)o; Array.Clear(value.Wide, 0, value.Wide.Length); value.WideLength = 0; } } },
+        new ViewVariant { Value = 2, Name = "narrow", Id = 0x96569b06f223c29aul, Doc = "", Tags = new string[] { }, PayloadName = "string(4)", Field = new TableFieldInfo { Name = "narrow", Json = "narrow", TypeName = "string", Id = 0x96569b06f223c29a, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate (object o) { return ((global::Wide.Body)o).Narrow; }, GetCount = delegate (object o) { return ((global::Wide.Body)o).NarrowLength; }, SetCount = delegate (object o, int n) { ((global::Wide.Body)o).NarrowLength = n; }, MessageSlot = 9, Ordinal = 0, NativeOffset = 0, NativeElementSize = 5, NativeCountOffset = 8, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Wide.Body)o; Array.Clear(value.Narrow, 0, value.Narrow.Length); value.NarrowLength = 0; } } },
+        new ViewVariant { Value = 3, Name = "tally", Id = 0xb1e5e28e4479a274ul, Doc = "", Tags = new string[] { }, PayloadName = "int32", Field = new TableFieldInfo { Name = "tally", Json = "tally", TypeName = "int32", Id = 0xb1e5e28e4479a274, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Wide.Body)o).Tally; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Wide.Body)o).Tally = unchecked((int)(long)r); }, MessageSlot = 10, Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Wide.Body)o; value.Tally = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); return (ulong)(long)v; } } } } } },
+            Constants = new ViewConstant[] { }
+        };
         public static UnitViewInfo UnitView() { return tableUnitView; }
     }
 
