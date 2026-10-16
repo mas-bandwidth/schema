@@ -55,6 +55,7 @@ defmodule SchemaTablesBenchElixir do
   # leg); opt `default` (the BEAM takes no level from us); inline `unknown`
   # until the §4 verdict pass has an Elixir branch.
   @csv_suffix "table,beam,contract,default,unknown"
+  @packet_csv_suffix "gen,beam,contract,default,unknown"
 
   @mask64 0xFFFFFFFFFFFFFFFF
 
@@ -178,6 +179,162 @@ defmodule SchemaTablesBenchElixir do
     end
   end
 
+  # the packet wire's gates for --read-arm: variant 0 IS the packet golden, and
+  # every variant decodes, re-encodes, and comes back byte-identical.
+  defp gate_mixed_read(opts) do
+    variant_path = Path.join(opts.packet_variant_dir, "bench_mixed.variants.bin")
+
+    packed =
+      case File.read(variant_path) do
+        {:ok, bytes} when byte_size(bytes) > 0 and rem(byte_size(bytes), @num_records) == 0 ->
+          bytes
+
+        _ ->
+          IO.write(
+            :stderr,
+            "missing or malformed packet corpus #{variant_path} — pass --packet-variant-dir\n"
+          )
+
+          System.halt(1)
+      end
+
+    record = div(byte_size(packed), @num_records)
+    variants = for <<chunk::binary-size(^record) <- packed>>, do: chunk
+
+    golden_path = Path.join(opts.packet_wire_dir, "bench_mixed.bin")
+
+    golden_bytes =
+      case File.read(golden_path) do
+        {:ok, bytes} ->
+          bytes
+
+        {:error, _} ->
+          IO.write(
+            :stderr,
+            "missing packet wire golden #{golden_path} — pass --packet-wire-dir\n"
+          )
+
+          System.halt(1)
+      end
+
+    if hd(variants) != golden_bytes do
+      gate_fail("packet variant 0 is not the packet wire golden")
+    end
+
+    Enum.with_index(variants)
+    |> Enum.each(fn {variant, k} ->
+      case Bench.Bench.read_bench_mixed(variant, record * 8) do
+        {:ok, decoded} ->
+          if Bench.Bench.write_bench_mixed(decoded) != variant do
+            gate_fail(
+              "packet variant #{k} round-trip bytes differ — refusing to bench a codec " <>
+                "that does not reproduce the corpus"
+            )
+          end
+
+        :error ->
+          gate_fail("decode of packet variant #{k} failed")
+      end
+    end)
+
+    {List.to_tuple(variants), record,
+     [{"bench_mixed.bin", golden_bytes}, {"bench_mixed.variants.bin", packed}]}
+  end
+
+  # the plan lane's gates, shape-blind: no field is named, only the lineage the
+  # build laid down and the bytes the shipped calls return.
+  defp gate_plan_read(lineage_dir, identity_file) do
+    bin_path = Path.join(lineage_dir, "bench_lineage.bin")
+    layout_path = Path.join(lineage_dir, "bench_lineage.layout")
+
+    {lineage_file, lineage_layout} =
+      with {:ok, bin} when byte_size(bin) >= 20 <- File.read(bin_path),
+           {:ok, lay} <- File.read(layout_path) do
+        {bin, lay}
+      else
+        _ ->
+          IO.write(:stderr, "missing lineage corpus in #{lineage_dir} — pass --lineage-dir\n")
+          System.halt(1)
+      end
+
+    # gate P1: THE LINEAGE IS THE LOCK'S. This build knows two layouts, the
+    # older one first, and the lineage file carries that older layout's hash
+    # and bytes — so the read below runs a plan, never the identity.
+    known = Bench.WrapFixed.fixed_table_fixed_known()
+
+    if tuple_size(known) != 2 do
+      gate_fail("this build's lineage does not carry the older layout")
+    end
+
+    old = elem(known, 0)
+    new_hash = Bench.WrapFixed.fixed_table_fixed_hash()
+
+    case Bench.FixedRuntime.read_file_header(lineage_file) do
+      {:ok, file_hash, file_layout, _records}
+      when old.hash != new_hash and
+             file_hash == old.hash and
+             old.layout_bytes == byte_size(lineage_layout) and
+             old.layout == lineage_layout and
+             file_layout == lineage_layout ->
+        :ok
+
+      _ ->
+        gate_fail(
+          "the lineage corpus is not the lock's older layout, or this build's lineage is not that lock's"
+        )
+    end
+
+    # gate P2: the whole file reads, and nothing but a widening is reported.
+    plan_values =
+      case Bench.WrapFixed.fixed_table_fixed_load(lineage_file) do
+        {:ok, loaded, report}
+        when length(loaded) == @num_records and
+               report.malformed == false and
+               report.unknown == 0 and
+               report.kind_mismatch == 0 and
+               report.clamped == 0 and
+               report.duplicate == 0 and
+               report.widened > 0 ->
+          IO.write(
+            :stderr,
+            "#{String.pad_trailing("bench_plan_read", 18)} plan read of #{@num_records} records: " <>
+              "widened #{report.widened}, clamped #{report.clamped}\n"
+          )
+
+          loaded
+
+        other ->
+          gate_fail("the lineage corpus did not read clean through its plan: #{inspect(other)}")
+      end
+
+    # gate P3: the prefill owns every byte the plan does not land — a second
+    # load saves to the same bytes byte for byte.
+    saved_a = Bench.WrapFixed.fixed_table_fixed_save(plan_values)
+
+    case Bench.WrapFixed.fixed_table_fixed_load(lineage_file) do
+      {:ok, second_values, _report} ->
+        saved_b = Bench.WrapFixed.fixed_table_fixed_save(second_values)
+
+        if saved_a != saved_b do
+          gate_fail("a second plan load saved to different bytes")
+        end
+
+      other ->
+        gate_fail("second plan load failed: #{inspect(other)}")
+    end
+
+    # gate P4: the plan lane reads something the identity lane does not —
+    # its records saved in today's layout are not the identity corpus.
+    if saved_a == identity_file do
+      gate_fail(
+        "the lineage corpus reads to the identity corpus: the plan lane would measure nothing older"
+      )
+    end
+
+    {lineage_file,
+     [{"bench_lineage.bin", lineage_file}, {"bench_lineage.layout", lineage_layout}]}
+  end
+
   # ------------------------------------------------------------------
   # the clock
   # ------------------------------------------------------------------
@@ -229,6 +386,24 @@ defmodule SchemaTablesBenchElixir do
     )
   end
 
+  # READ (fixed form, identity or plan): read the whole file alone, never
+  # derived from a round trip minus a write (§2.9).
+  defp read_loop(remaining, _file, acc) when remaining <= 0, do: acc
+
+  defp read_loop(remaining, file, acc) do
+    {:ok, values, _report} = Bench.WrapFixed.fixed_table_fixed_load(file)
+    read_loop(remaining - @num_records, file, acc + length(values))
+  end
+
+  # READ (packet wire): decode the 64 rotating packet variants alone.
+  defp packet_read_loop(0, _i, _variants, _num_bits, acc), do: acc
+
+  defp packet_read_loop(n, i, variants, num_bits, acc) do
+    variant = elem(variants, i &&& @num_records - 1)
+    {:ok, decoded} = Bench.Bench.read_bench_mixed(variant, num_bits)
+    packet_read_loop(n - 1, i + 1, variants, num_bits, acc + map_size(decoded))
+  end
+
   defp report(bench, path, iters, bytes_per_op, rates) do
     {median, min, max, spread} = stats(rates)
     mbps = median * bytes_per_op / (1024.0 * 1024.0)
@@ -254,10 +429,16 @@ defmodule SchemaTablesBenchElixir do
       csv: false,
       gate: false,
       quick: false,
+      read_arm: false,
       num_runs: 7,
+      round: 0,
       iterations: 0,
+      packet_iterations: 0,
       wire_dir: "bench/paired/corpus",
-      variant_dir: "bench/paired/corpus"
+      variant_dir: "bench/paired/corpus",
+      packet_wire_dir: "testdata/wire",
+      packet_variant_dir: "bench/corpus/variants",
+      lineage_dir: nil
     })
   end
 
@@ -265,19 +446,38 @@ defmodule SchemaTablesBenchElixir do
   defp parse_args(["--csv" | rest], opts), do: parse_args(rest, %{opts | csv: true})
   defp parse_args(["--gate" | rest], opts), do: parse_args(rest, %{opts | gate: true})
   defp parse_args(["--quick" | rest], opts), do: parse_args(rest, %{opts | quick: true})
+  defp parse_args(["--read-arm" | rest], opts), do: parse_args(rest, %{opts | read_arm: true})
 
   # `--indexed` names the tolerant form's 64-entry length index. The fixed form
   # carries no lengths at all — a record's size is the layout's, so the count is
   # arithmetic — so the flag is accepted and means nothing here.
   defp parse_args(["--indexed" | rest], opts), do: parse_args(rest, opts)
 
-  defp parse_args(["--round", _k | rest], opts), do: parse_args(rest, %{opts | num_runs: 1})
+  defp parse_args(["--round", k | rest], opts) do
+    case Integer.parse(k) do
+      {v, ""} when v >= 0 ->
+        parse_args(rest, %{opts | num_runs: 1, round: v})
+
+      _ ->
+        IO.write(:stderr, "--round requires a non-negative integer\n")
+        System.halt(1)
+    end
+  end
 
   defp parse_args(["--wire-dir", dir | rest], opts),
     do: parse_args(rest, %{opts | wire_dir: dir})
 
   defp parse_args(["--variant-dir", dir | rest], opts),
     do: parse_args(rest, %{opts | variant_dir: dir})
+
+  defp parse_args(["--packet-wire-dir", dir | rest], opts),
+    do: parse_args(rest, %{opts | packet_wire_dir: dir})
+
+  defp parse_args(["--packet-variant-dir", dir | rest], opts),
+    do: parse_args(rest, %{opts | packet_variant_dir: dir})
+
+  defp parse_args(["--lineage-dir", dir | rest], opts),
+    do: parse_args(rest, %{opts | lineage_dir: dir})
 
   defp parse_args(["--iterations", n | rest], opts) do
     case Integer.parse(n) do
@@ -294,14 +494,108 @@ defmodule SchemaTablesBenchElixir do
     end
   end
 
+  defp parse_args(["--packet-iterations", n | rest], opts) do
+    case Integer.parse(n) do
+      {v, ""} when v > 0 and v <= @max_iterations and rem(v, @num_records) == 0 ->
+        parse_args(rest, %{opts | packet_iterations: v})
+
+      _ ->
+        IO.write(
+          :stderr,
+          "--packet-iterations requires a positive multiple of #{@num_records} up to #{@max_iterations}\n"
+        )
+
+        System.halt(1)
+    end
+  end
+
   defp parse_args([arg | _], _opts) do
     IO.write(
       :stderr,
       "usage: main.exs [--indexed] [--gate] [--csv] [--round K] [--quick] [--iterations N] " <>
-        "[--wire-dir <dir>] [--variant-dir <dir>] (got #{arg})\n"
+        "[--wire-dir <dir>] [--variant-dir <dir>] [--read-arm [--packet-iterations N] " <>
+        "[--packet-wire-dir <dir>] [--packet-variant-dir <dir>] [--lineage-dir <dir>]] (got #{arg})\n"
     )
 
     System.halt(1)
+  end
+
+  defp run_read_arm(opts, file, table_goldens) do
+    {packet_variants, packet_record, packet_goldens} = gate_mixed_read(opts)
+    plan? = opts.lineage_dir != nil or tuple_size(Bench.WrapFixed.fixed_table_fixed_known()) > 1
+
+    {lineage_file, lineage_goldens} =
+      if plan? do
+        gate_plan_read(opts.lineage_dir || "bench/tables/elixir/lineage", file)
+      else
+        {nil, []}
+      end
+
+    id = corpus_id(table_goldens ++ packet_goldens ++ lineage_goldens)
+
+    if opts.gate do
+      IO.write(:stderr, "OK (gate only, corpus_id #{id})\n")
+      System.halt(0)
+    end
+
+    iters =
+      cond do
+        opts.iterations > 0 -> opts.iterations
+        opts.quick -> @quick_fixed_iters
+        true -> @fixed_iters
+      end
+
+    packet_iters = if opts.packet_iterations > 0, do: opts.packet_iterations, else: iters
+    num_steps = if plan?, do: 3, else: 2
+    fixed_bytes = byte_size(file) / @num_records
+    num_bits = packet_record * 8
+
+    rows =
+      for step <- 0..(num_steps - 1)//1 do
+        case rem(opts.round + step, num_steps) do
+          0 ->
+            rates =
+              timed_runs(opts.num_runs, fn -> sink(read_loop(iters, file, 0), iters) end)
+
+            "#{report("bench_fixed_read", "read", iters, fixed_bytes, rates)},#{id},#{@csv_suffix}"
+
+          1 ->
+            rates =
+              timed_runs(opts.num_runs, fn ->
+                sink(
+                  packet_read_loop(packet_iters, 0, packet_variants, num_bits, 0),
+                  packet_iters
+                )
+              end)
+
+            "#{report("bench_mixed_read", "read", packet_iters, packet_record * 1.0, rates)},#{id},#{@packet_csv_suffix}"
+
+          2 ->
+            plan_bytes = byte_size(lineage_file) / @num_records
+
+            rates =
+              timed_runs(opts.num_runs, fn ->
+                sink(read_loop(iters, lineage_file, 0), iters)
+              end)
+
+            "#{report("bench_plan_read", "read", iters, plan_bytes, rates)},#{id},#{@csv_suffix}"
+        end
+      end
+
+    if opts.csv do
+      IO.write(
+        "lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec," <>
+          "max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline\n"
+      )
+
+      for row <- rows, do: IO.write("#{row}\n")
+    end
+
+    IO.write(:stderr, "OK (corpus_id #{id})\n")
+
+    if System.get_env("SERIALIZE_BENCH_SINK") do
+      IO.write(:stderr, "sink: #{Process.get(:bench_sink, 0)}\n")
+    end
   end
 
   def main(argv) do
@@ -333,6 +627,11 @@ defmodule SchemaTablesBenchElixir do
     values = gate_load(file)
     gate_save(values, file, "same-storage")
     gate_reload(file)
+
+    if opts.read_arm do
+      run_read_arm(opts, file, goldens)
+      System.halt(0)
+    end
 
     # `--gate` IS THE GATE AND NOTHING ELSE (bench/paired/main.go's `gate`): the
     # whole report is an exit status and an empty stdout.
