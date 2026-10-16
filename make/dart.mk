@@ -922,11 +922,13 @@ tables-dart-agree: build/tables-generated-dart/.stamp build/cook-fuzz/.stamp
 #
 # THE ACCESSOR control moves one scalar accessor four bytes in the row emitter
 # (block.go, which writes the cook's rows too): RenderCamera.camera_id reads
-# the next field's bytes, the descriptor still says where it is.
+# the next field's bytes, the descriptor still says where it is. The anchor is
+# the offset argument of the plain scalar getter's scalarGetter call (the
+# getter body is a statement since issue 404, so the offset is on its own line).
 .PHONY: tables-dart-accessor-negative-control
 tables-dart-accessor-negative-control: build/cook-fuzz/.stamp
 	@rm -rf build/dart-agree-acc-nc && mkdir -p build/dart-agree-acc-nc
-	@sed -e 's|g.readAt(f, fmt.Sprintf("%s + %d", origin, fl.Offset)))|g.readAt(f, fmt.Sprintf("%s + %d", origin, fl.Offset+accessorMoved(f.Name))))|' \
+	@sed -e 's|fmt.Sprintf("%s + %d", origin, fl.Offset))$$|fmt.Sprintf("%s + %d", origin, fl.Offset+accessorMoved(f.Name)))|' \
 		internal/codegen/darttable/block.go > build/dart-agree-acc-nc/block.go.txt
 	@grep -q 'accessorMoved(f.Name)' build/dart-agree-acc-nc/block.go.txt || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing - the emitter moved"; exit 1; }
