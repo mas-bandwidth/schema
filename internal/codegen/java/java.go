@@ -1147,6 +1147,8 @@ func formatFloatCore(v float64, bits int) string {
 func Canonical(src []byte) []byte {
 	lines := strings.Split(javaElseIf.ReplaceAllString(string(src), "} else if ("), "\n")
 	lines = canonJavadocs(lines)
+	lines = joinThrows(lines)
+	lines = joinTernaries(lines)
 	lines = joinOpenParens(lines)
 	lines = joinLoneBraces(lines)
 	lines = relayout(lines)
@@ -1698,17 +1700,52 @@ func wrapDecl(l string) []string {
 	if !ok || len(params) == 0 {
 		return nil
 	}
-	out := []string{ind + m[1] + "("}
 	pin := ind + "        "
-	if one := pin + strings.Join(params, ", ") + ")" + m[3] + " {"; javaWidth(one) <= javaColumnLimit {
-		return append(out, one)
-	}
-	for i, p := range params {
-		end := ","
-		if i == len(params)-1 {
-			end = ")" + m[3] + " {"
+	// a throws clause is the outer break: it goes onto its own line, eight
+	// columns in, before the parameters break, and once they break it is on
+	// a line of its own as well
+	throws, tail := strings.TrimSpace(m[3]), ")"+m[3]+" {"
+	if throws != "" {
+		if sig := ind + m[1] + "(" + strings.Join(params, ", ") + ")"; javaWidth(sig) <= javaColumnLimit {
+			return []string{sig, pin + throws + " {"}
 		}
-		out = append(out, pin+p+end)
+		tail = ")"
+	}
+	out := []string{ind + m[1] + "("}
+	if one := pin + strings.Join(params, ", ") + tail; javaWidth(one) <= javaColumnLimit {
+		out = append(out, one)
+	} else {
+		for i, p := range params {
+			end := ","
+			if i == len(params)-1 {
+				end = tail
+			}
+			out = append(out, pin+p+end)
+		}
+	}
+	if throws != "" {
+		out = append(out, pin+throws+" {")
+	}
+	return out
+}
+
+// joinThrows rejoins a signature a template broke before its throws clause,
+// so wrapDecl lays the break down where the formatter puts it.
+func joinThrows(lines []string) []string {
+	var out []string
+	for i := 0; i < len(lines); i++ {
+		l := lines[i]
+		t := strings.TrimSpace(l)
+		if i+1 < len(lines) && strings.HasSuffix(t, ")") && !strings.Contains(t, "//") && parenDepth(l) == 0 {
+			n := strings.TrimSpace(lines[i+1])
+			if strings.HasPrefix(n, "throws ") && strings.HasSuffix(n, " {") && len(indentOf(lines[i+1])) == len(indentOf(l))+8 &&
+				javaDecl.MatchString(t+" "+n) {
+				out = append(out, l+" "+n)
+				i++
+				continue
+			}
+		}
+		out = append(out, l)
 	}
 	return out
 }
@@ -1743,6 +1780,71 @@ func parenDepth(s string) int {
 	return depth
 }
 
+// handBroken: a line a template broke inside an argument list, after a comma
+// with arguments already behind the open parenthesis. The formatter never
+// writes that shape -- it breaks right after the parenthesis or not at all --
+// so the continuation below it is the template's and is rejoined.
+func handBroken(l string) bool {
+	t := strings.TrimSpace(l)
+	if !strings.HasSuffix(t, ",") || strings.Contains(t, "//") {
+		return false
+	}
+	var opens []int
+	var quote byte
+	for i := 0; i < len(t); i++ {
+		c := t[i]
+		if quote != 0 {
+			if c == '\\' {
+				i++
+			} else if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case '"', '\'':
+			quote = c
+		case '(':
+			opens = append(opens, i)
+		case ')':
+			if len(opens) > 0 {
+				opens = opens[:len(opens)-1]
+			}
+		}
+	}
+	return len(opens) == 1 && strings.TrimSpace(t[opens[0]+1:len(t)-1]) != ""
+}
+
+// joinTernaries rejoins a conditional a template broke before its `:`, so the
+// formatter's breaks (before `?` and `:`, eight columns in) are laid down in
+// its place.
+func joinTernaries(lines []string) []string {
+	var out []string
+	for i := 0; i < len(lines); i++ {
+		l := lines[i]
+		t := strings.TrimSpace(l)
+		if i+1 < len(lines) && strings.Contains(t, " ? ") && !strings.HasPrefix(t, "? ") && !strings.HasPrefix(t, ": ") &&
+			!strings.Contains(t, "//") && parenDepth(l) == 0 {
+			n := strings.TrimSpace(lines[i+1])
+			if strings.HasPrefix(n, ": ") && strings.HasSuffix(n, ";") && len(indentOf(lines[i+1])) > len(indentOf(l)) {
+				e := strings.TrimSuffix(t+" "+n, ";")
+				if strings.HasPrefix(e, "return ") {
+					e = e[len("return "):]
+				} else if k := topAssign(e); k >= 0 {
+					e = e[k+3:]
+				}
+				if _, _, _, ok := splitTernary(e); ok {
+					out = append(out, l+" "+n)
+					i++
+					continue
+				}
+			}
+		}
+		out = append(out, l)
+	}
+	return out
+}
+
 // joinOpenParens rejoins a parenthesised list a template broke by hand, so
 // the formatter's own breaks can be laid down in its place.
 func joinOpenParens(lines []string) []string {
@@ -1762,7 +1864,7 @@ func joinOpenParens(lines []string) []string {
 			if n == "" || strings.Contains(n, "//") || strings.HasPrefix(n, "*") || strings.HasPrefix(n, "/*") {
 				break
 			}
-			if step := len(indentOf(lines[j+1])) - len(indentOf(l)); step > 0 && step%8 == 0 {
+			if step := len(indentOf(lines[j+1])) - len(indentOf(l)); step > 0 && step%8 == 0 && !handBroken(l) {
 				break
 			}
 			j++
