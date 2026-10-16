@@ -35,6 +35,10 @@ ELIXIRC_STRICT ?= PATH="$(BEAM_PATH):$$PATH" sh $(CURDIR)/make/elixir-strict.sh 
 # make/negative-controls.json and test/conformance/elixir/ci.json carry.
 ELIXIR_PIN_OTP    ?= 29.0.5
 ELIXIR_PIN_ELIXIR ?= 1.20.4
+# The analyzer the credo gate certifies on (issue #547), the version
+# test/elixir-credo/mix.lock pins; tables-elixir-credo-pin compares the
+# compiled credo against it.
+ELIXIR_PIN_CREDO  ?= 1.7.19
 
 # THE TOOLCHAIN GATE, this leg's half (issue #599; the Makefile's header and
 # docs/CONTRIBUTING.md, "Adding a language"). The three pins carry an
@@ -260,9 +264,8 @@ test-elixir: tables-elixir-emit-format-negative-control
 # dist/otp-* and dist/elixir-*) by toolchain-elixir-credo, the one target here
 # that touches the network. The gate never fetches: it refuses, naming this
 # target, when no credo is compiled there, and it refuses when the compiled
-# credo is not ELIXIR_PIN_CREDO, as tables-elixir-runtime-pin refuses a runtime
-# that is not the pin.
-ELIXIR_PIN_CREDO ?= 1.7.19
+# credo is not ELIXIR_PIN_CREDO (beside the runtime pins at the top of this
+# file), as tables-elixir-runtime-pin refuses a runtime that is not the pin.
 ELIXIR_CREDO_DIR ?= $(CURDIR)/dist/elixir-credo
 ELIXIR_CREDO_ENV  = MIX_HOME=$(ELIXIR_CREDO_DIR)/mix-home HEX_HOME=$(ELIXIR_CREDO_DIR)/hex-home \
 	MIX_ENV=dev SCHEMA_CREDO_DEPS=$(ELIXIR_CREDO_DIR)/deps SCHEMA_CREDO_BUILD=$(ELIXIR_CREDO_DIR)/_build
