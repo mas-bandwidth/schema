@@ -3379,6 +3379,443 @@ const TableVariableCodecs = {
 };
 TableVariableLink(TableVariableCodecs, TableVariableUnions);
 
+// Cook write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.
+export const TableCookWrite = (() => {
+  const build = 0x12bc9e07fe351b2cn;
+  const layouts = {
+    "MixedEntity": {
+      size: 64, align: 8, data: 64, measure: 144, alignCook: 8, typeId: 0x9367b84cab99cdc3n, make: () => new MixedEntity(),
+      fields: [
+        {k:"int",n:"entity_id",at:0,w:4,sg:0},
+        {k:"int",n:"pos_x",at:4,w:4,sg:1},
+        {k:"int",n:"pos_y",at:8,w:4,sg:1},
+        {k:"int",n:"pos_z",at:12,w:4,sg:1},
+        {k:"int",n:"yaw",at:16,w:4,sg:0},
+        {k:"int",n:"pitch",at:20,w:4,sg:0},
+        {k:"int",n:"vel_x",at:24,w:4,sg:1},
+        {k:"int",n:"vel_y",at:28,w:4,sg:1},
+        {k:"int",n:"vel_z",at:32,w:4,sg:1},
+        {k:"int",n:"health",at:36,w:4,sg:1},
+        {k:"venum",n:"weapon",at:40,w:1,max:15,vs:["Fists","Pistol","Shotgun","Rifle","Sniper","Smg","Rocket","Grenade","Plasma","Railgun","Flamer","Mine","Turret","Drone","Repair"]},
+        {k:"int",n:"damage",at:48,w:8,sg:0},
+        {k:"bool",n:"moving",at:56},
+        {k:"bool",n:"firing",at:57},
+      ],
+    },
+    "MixedStat": {
+      size: 8, align: 4, data: 8, measure: 88, alignCook: 8, typeId: 0xc42975bfe5e07baan, make: () => new MixedStat(),
+      fields: [
+        {k:"int",n:"stat_id",at:0,w:4,sg:0},
+        {k:"int",n:"delta",at:4,w:4,sg:1},
+      ],
+    },
+    "MixedHitEvent": {
+      size: 16, align: 4, data: 16, measure: 96, alignCook: 8, typeId: 0xac9fe3b25a77f1d7n, make: () => new MixedHitEvent(),
+      fields: [
+        {k:"int",n:"target_id",at:0,w:4,sg:0},
+        {k:"int",n:"damage",at:4,w:4,sg:1},
+        {k:"int",n:"hit_kind",at:8,w:4,sg:1},
+        {k:"bool",n:"crit",at:12},
+      ],
+    },
+    "MixedChatEvent": {
+      size: 8, align: 4, data: 8, measure: 88, alignCook: 8, typeId: 0x9f2c9da926a7408an, make: () => new MixedChatEvent(),
+      fields: [
+        {k:"int",n:"channel",at:0,w:4,sg:1},
+        {k:"int",n:"speaker",at:4,w:4,sg:0},
+      ],
+    },
+    "MixedPickupEvent": {
+      size: 8, align: 4, data: 8, measure: 88, alignCook: 8, typeId: 0x3d827cb76b809d8cn, make: () => new MixedPickupEvent(),
+      fields: [
+        {k:"int",n:"item_id",at:0,w:4,sg:0},
+        {k:"int",n:"amount",at:4,w:4,sg:1},
+      ],
+    },
+    "BenchMixed": {
+      size: 1376, align: 16, data: 1376, measure: 1456, alignCook: 16, typeId: 0xeb80cfd516eb3d5cn, make: () => new BenchMixed(),
+      fields: [
+        {k:"int",n:"sequence",at:0,w:4,sg:0},
+        {k:"int",n:"ack_sequence",at:4,w:4,sg:1},
+        {k:"int",n:"ack_bits",at:8,w:4,sg:0},
+        {k:"int",n:"session_id",at:16,w:8,sg:0},
+        {k:"int",n:"client_id",at:24,w:4,sg:0},
+        {k:"int",n:"nonce",at:32,w:8,sg:0},
+        {k:"int",n:"world_time",at:40,w:8,sg:1},
+        {k:"int",n:"frame_tick",at:48,w:8,sg:0},
+        {k:"int",n:"server_time",at:56,w:4,sg:1},
+        {k:"arr",n:"entities",at:64,countAt:576,countFrom:"len",bound:8,stride:64,elem:{k:"rec",n:"entities",at:0,t:"MixedEntity"}},
+        {k:"arr",n:"stats",at:580,countAt:1220,countFrom:"len",bound:80,stride:8,elem:{k:"rec",n:"stats",at:0,t:"MixedStat"}},
+        {k:"union",n:"game_event",at:1224,tagW:1,armAt:4,arms:3,var:1,arm:[{k:"rec",n:"value",at:0,t:"MixedHitEvent",an:"hit"},{k:"rec",n:"value",at:0,t:"MixedChatEvent",an:"chat"},{k:"rec",n:"value",at:0,t:"MixedPickupEvent",an:"pickup"}]},
+        {k:"arr",n:"loadout",at:1244,countAt:-1,countFrom:"bound",bound:4,stride:1,elem:{k:"int",n:"loadout",at:0,w:1,sg:0}},
+        {k:"vstr",n:"player_name",at:1248,lenAt:1264,cap:15},
+        {k:"vbytes",n:"payload",at:1268,lenAt:1284,cap:16},
+        {k:"f32",n:"aim_x",at:1288},
+        {k:"f32",n:"aim_y",at:1292},
+        {k:"f32",n:"aim_z",at:1296},
+        {k:"f32",n:"recoil",at:1300},
+        {k:"f64",n:"drift",at:1304},
+        {k:"int",n:"wide_key",at:1312,w:16,sg:0},
+        {k:"int",n:"flux",at:1328,w:16,sg:1},
+        {k:"int",n:"ping",at:1344,w:2,sg:0},
+        {k:"int",n:"crc_hint",at:1348,w:4,sg:0},
+        {k:"bool",n:"has_extra",at:1352},
+        {k:"int",n:"extra",at:1356,w:4,sg:1},
+        {k:"int",n:"idle_ticks",at:1360,w:4,sg:1},
+      ],
+    },
+    "FixedTable": {
+      size: 1376, align: 16, data: 1376, measure: 1456, alignCook: 16, typeId: 0x85df369cdca746b3n, make: () => new FixedTable(),
+      fields: [
+        {k:"rec",n:"value",at:0,t:"BenchMixed"},
+      ],
+    },
+  };
+  const f32Scratch = new DataView(new ArrayBuffer(8));
+  function narrowF32(v) {
+    if (v !== v) {
+      f32Scratch.setFloat64(0, v, true);
+      const lo = f32Scratch.getUint32(0, true), hi = f32Scratch.getUint32(4, true);
+      let payload = (((hi & 0xfffff) << 3) | (lo >>> 29)) & 0x7fffff;
+      if (payload === 0) { payload = 0x400000; }
+      return ((hi & 0x80000000) | 0x7f800000 | payload) >>> 0;
+    }
+    f32Scratch.setFloat32(0, v, true);
+    return f32Scratch.getUint32(0, true);
+  }
+  function alignUp(n, a) {
+    if (a <= 1) { return n; }
+    return Math.floor((n + a - 1) / a) * a;
+  }
+  function fit(v, width, signed) {
+    let b;
+    if (typeof v === "bigint") { b = v; }
+    else if (typeof v === "number" && Number.isInteger(v)) { b = BigInt(v); }
+    else { return null; }
+    if (width === 16) {
+      if (signed) {
+        if (b < -(1n << 127n) || b > (1n << 127n) - 1n) { return null; }
+      } else if (b < 0n || b > (1n << 128n) - 1n) { return null; }
+      return b;
+    }
+    if (width === 8) {
+      if (signed) {
+        if (b < -0x8000000000000000n || b > 0x7fffffffffffffffn) { return null; }
+      } else if (b < 0n || b > 0xffffffffffffffffn) { return null; }
+      return b;
+    }
+    const n = Number(b);
+    let lo = 0, hi = 255;
+    if (width === 2) { hi = 65535; }
+    else if (width === 4) { hi = 4294967295; }
+    if (signed) {
+      hi = width === 1 ? 127 : width === 2 ? 32767 : 2147483647;
+      lo = width === 1 ? -128 : width === 2 ? -32768 : -2147483648;
+    }
+    if (n < lo || n > hi) { return null; }
+    return b;
+  }
+  function put64(view, at, v, le) {
+    if (view !== null) { view.setBigUint64(at, v, le); }
+  }
+  function putWidth(view, at, width, v, signed, le) {
+    const bits = fit(v, width, signed);
+    if (bits === null) { return false; }
+    if (view === null) { return true; }
+    if (width === 16) {
+      const lo = BigInt.asUintN(64, bits);
+      const hi = BigInt.asUintN(64, bits >> 64n);
+      view.setBigUint64(at, le ? lo : hi, le);
+      view.setBigUint64(at + 8, le ? hi : lo, le);
+      return true;
+    }
+    if (width === 8) {
+      if (signed) { view.setBigInt64(at, bits, le); }
+      else { view.setBigUint64(at, bits, le); }
+      return true;
+    }
+    const n = Number(bits);
+    if (width === 1) { if (signed) { view.setInt8(at, n); } else { view.setUint8(at, n); } }
+    else if (width === 2) { if (signed) { view.setInt16(at, n, le); } else { view.setUint16(at, n, le); } }
+    else { if (signed) { view.setInt32(at, n, le); } else { view.setUint32(at, n, le); } }
+    return true;
+  }
+  function writeStruct(view, base, layout, value, le, ctx) {
+    if (layout === undefined || value === null || typeof value !== "object") { return false; }
+    for (let i = 0; i < layout.fields.length; i++) {
+      if (!writeField(view, base, layout.fields[i], value, le, ctx)) { return false; }
+    }
+    return true;
+  }
+  function writeField(view, base, fd, parent, le, ctx) {
+    if (parent === null || typeof parent !== "object") { return false; }
+    if (fd.presentAt !== undefined) {
+      if (parent[fd.n] === null) {
+        if (view !== null) { view.setUint8(base + fd.presentAt, 0); }
+        if (fd.k === "rec") {
+          return writeStruct(view, base + fd.at, layouts[fd.t], layouts[fd.t].make(), le, ctx);
+        }
+        if (fd.k === "arr") {
+          if (fd.countAt >= 0 && !putWidth(view, base + fd.countAt, 4, 0, true, le)) { return false; }
+          for (let i = 0; i < fd.bound; i++) {
+            if (!writeValue(view, base + fd.at + i * fd.stride, fd.elem, holeValue(fd.elem), le, ctx)) { return false; }
+          }
+        }
+        return true;
+      }
+      if (view !== null) { view.setUint8(base + fd.presentAt, 1); }
+    }
+    if (fd.k === "arr") { return writeArray(view, base, fd, parent, le, ctx); }
+    if (fd.k === "str" || fd.k === "bytes" || fd.k === "vstr" || fd.k === "vbytes") { return writeText(view, base, fd, parent, le); }
+    if (fd.k === "union") { return writeUnion(view, base + fd.at, fd, parent[fd.n], le, ctx); }
+    if (fd.k === "ptr") { return writeRef(view, base + fd.at, ptrIndex(ctx, parent[fd.n]), le, ctx); }
+    if (fd.k === "sblob" || fd.k === "bblob") { return writeRef(view, base + fd.at, blobIndex(ctx, parent, fd, parent[fd.n]), le, ctx); }
+    return writeValue(view, base + fd.at, fd, parent[fd.n], le, ctx);
+  }
+  function writeValue(view, at, fd, value, le, ctx) {
+    switch (fd.k) {
+      case "bool":
+        if (typeof value !== "boolean") { return false; }
+        if (view !== null) { view.setUint8(at, value ? 1 : 0); }
+        return true;
+      case "f32":
+        if (typeof value !== "number") { return false; }
+        if (view !== null) { view.setUint32(at, narrowF32(value), le); }
+        return true;
+      case "f64":
+        if (typeof value !== "number") { return false; }
+        if (view !== null) { view.setFloat64(at, value, le); }
+        return true;
+      case "int":
+        return putWidth(view, at, fd.w, value, fd.sg === 1, le);
+      case "enum":
+        if (!Number.isInteger(value) || value < 0 || value > fd.max) { return false; }
+        return putWidth(view, at, fd.w, value, false, le);
+      case "venum": {
+        let ord = 0;
+        if (value !== null && value !== undefined && value !== "None") {
+          const i = fd.vs.indexOf(value);
+          if (i < 0) { return false; }
+          ord = i + 1;
+        }
+        if (ord > fd.max) { return false; }
+        return putWidth(view, at, fd.w, ord, false, le);
+      }
+      case "rec":
+        return writeStruct(view, at, layouts[fd.t], value, le, ctx);
+      case "ptr":
+        return writeRef(view, at, ptrIndex(ctx, value), le, ctx);
+      case "union":
+        return writeUnion(view, at, fd, value, le, ctx);
+      default:
+        return false;
+    }
+  }
+  function holeValue(fd) {
+    switch (fd.k) {
+      case "bool": return false;
+      case "int": return fd.w >= 8 ? 0n : 0;
+      case "f32": case "f64": case "enum": return 0;
+      case "venum": case "ptr": case "sblob": case "bblob": return null;
+      case "union": return fd.var ? null : undefined;
+      case "rec": return layouts[fd.t].make();
+      default: return undefined;
+    }
+  }
+  function writeArray(view, base, fd, parent, le, ctx) {
+    const arr = parent[fd.n];
+    let count;
+    if (fd.countFrom === "bound") { count = fd.bound; }
+    else if (fd.countFrom === "len") {
+      if (!Array.isArray(arr)) { return false; }
+      count = arr.length;
+    } else { count = parent[fd.n + "Count"]; }
+    if (!Number.isInteger(count) || count < 0 || count > fd.bound) { return false; }
+    if (fd.countAt >= 0 && !putWidth(view, base + fd.countAt, 4, count, true, le)) { return false; }
+    for (let i = 0; i < fd.bound; i++) {
+      let el;
+      if (i < count || fd.countFrom !== "len") {
+        if (arr == null || arr[i] === undefined) { return false; }
+        el = arr[i];
+      } else { el = holeValue(fd.elem); }
+      if (!writeValue(view, base + fd.at + i * fd.stride, fd.elem, el, le, ctx)) { return false; }
+    }
+    return true;
+  }
+  function writeUnion(view, at, fd, value, le, ctx) {
+    if (fd.var) {
+      if (value === null) {
+        return putWidth(view, at, fd.tagW, 0, false, le);
+      }
+      if (typeof value !== "object") { return false; }
+      let tag = 0;
+      for (let i = 0; i < fd.arm.length; i++) {
+        if (fd.arm[i].an === value.arm) { tag = i + 1; break; }
+      }
+      if (tag === 0) { return false; }
+      if (!putWidth(view, at, fd.tagW, tag, false, le)) { return false; }
+      const arm = fd.arm[tag - 1];
+      if (arm.v) { return true; }
+      return writeField(view, at + fd.armAt, arm, value, le, ctx);
+    }
+    if (value === null || typeof value !== "object") { return false; }
+    const tag = value.Type;
+    if (!Number.isInteger(tag) || tag < 0 || tag > fd.arms) { return false; }
+    if (!putWidth(view, at, fd.tagW, tag, false, le)) { return false; }
+    if (tag === 0) { return true; }
+    const arm = fd.arm[tag - 1];
+    if (arm.v) { return true; }
+    return writeField(view, at + fd.armAt, arm, value, le, ctx);
+  }
+  function writeRef(view, at, idx, le, ctx) {
+    if (idx < 0) { return false; }
+    if (idx === 0) {
+      if (view !== null) { view.setBigInt64(at, 0n, le); }
+      return true;
+    }
+    if (ctx === null || ctx.entries[idx - 1] === undefined) { return false; }
+    if (view !== null) {
+      const delta = 64n + BigInt(ctx.entries[idx - 1].offset) - BigInt(at);
+      view.setBigInt64(at, delta, le);
+    }
+    return true;
+  }
+  function ptrIndex(ctx, val) {
+    if (val === null || val === undefined) { return 0; }
+    if (ctx === null) { return -1; }
+    const i = ctx.nodes.index.get(val);
+    return i === undefined ? -1 : i;
+  }
+  function blobIndex(ctx, holder, fd, val) {
+    if (val === null || val === undefined) { return 0; }
+    if (ctx === null) { return -1; }
+    if (fd.k === "sblob" && typeof val === "string") {
+      const m = ctx.nodes.slots.get(holder);
+      if (m === undefined || !m.has(fd.n)) { return -1; }
+      return m.get(fd.n);
+    }
+    const i = ctx.nodes.index.get(val);
+    return i === undefined ? -1 : i;
+  }
+  function writeText(view, base, fd, parent, le) {
+    let bytes, n;
+    if (fd.k === "vstr") {
+      if (typeof parent[fd.n] !== "string") { return false; }
+      bytes = TableVariableUtf8Encode(parent[fd.n]);
+      n = bytes.length;
+    } else if (fd.k === "vbytes") {
+      bytes = parent[fd.n];
+      if (!(bytes instanceof Uint8Array)) { return false; }
+      n = bytes.length;
+    } else {
+    bytes = parent[fd.n];
+    n = parent[fd.n + "Length"];
+    if (!(bytes instanceof Uint8Array)) { return false; }
+    }
+    if (!Number.isInteger(n) || n < 0 || n > fd.cap || bytes.length < n) { return false; }
+    if (view !== null && n > 0) {
+      const src = bytes instanceof Uint8Array ? bytes.subarray(0, n) : bytes.slice(0, n);
+      new Uint8Array(view.buffer, view.byteOffset + base + fd.at, n).set(src);
+    }
+    return putWidth(view, base + fd.lenAt, 4, n, true, le);
+  }
+  function blobSize(entry) {
+    return 8 + entry.len + (entry.string ? 1 : 0);
+  }
+  function region(name, value) {
+    if (value === null || typeof value !== "object") { return { reason: "invalid_value" }; }
+    const codec = TableVariableCodecs[name];
+    const layout = layouts[name];
+    if (codec === undefined || layout === undefined) { return { reason: "invalid_value" }; }
+    const nodes = TableVariableNumber(codec, value);
+    if (nodes === null) { return { reason: "data_cycle" }; }
+    const entries = [{ typeId: layout.typeId, v: value, blob: false, layout, offset: 0 }];
+    for (const n of nodes.list) {
+      if (n.codec === undefined) {
+        if (n.body == null) { return { reason: "invalid_value" }; }
+        entries.push({ typeId: n.typeId, blob: true, body: n.body, string: n.typeId === TableStringBlobId, len: n.body.length, offset: 0 });
+      } else {
+        const child = layouts[n.codec.name];
+        if (child === undefined) { return { reason: "invalid_value" }; }
+        entries.push({ typeId: child.typeId, v: n.v, blob: false, layout: child, offset: 0 });
+      }
+    }
+    let data = 0, align = 8;
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      const alignment = e.blob ? 8 : e.layout.align;
+      const size = e.blob ? blobSize(e) : e.layout.size;
+      if (alignment > align) { align = alignment; }
+      data = alignUp(data, alignment);
+      e.offset = data;
+      data += size;
+    }
+    data = alignUp(data, align);
+    const ctx = { entries, nodes };
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      if (!e.blob && !writeStruct(null, 64 + e.offset, e.layout, e.v, true, ctx)) { return { reason: "invalid_value" }; }
+    }
+    return { reason: null, total: 64 + data + entries.length * 16, data, align, entries, ctx };
+  }
+  function variableMeasure(name, value) {
+    const reg = region(name, value);
+    return reg.reason === null ? reg.total : -1;
+  }
+  function variableReason(name, value) {
+    const reg = region(name, value);
+    if (reg.reason !== null) { return [-1, reg.reason]; }
+    return [reg.total, null];
+  }
+  function variableFrom(name, value, buffer, order) {
+    if (order !== 1 && order !== 2) { return false; }
+    const reg = region(name, value);
+    if (reg.reason !== null) { return false; }
+    if (!(buffer instanceof Uint8Array) || buffer.byteLength < reg.total) { return false; }
+    buffer.fill(0, 0, reg.total);
+    const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    const le = order === 1;
+    put64(view, 0, 0x4b4f4f434d484353n, le);
+    put64(view, 8, build, le);
+    put64(view, 16, BigInt(order), le);
+    put64(view, 24, BigInt(reg.data), le);
+    put64(view, 32, BigInt(reg.entries.length * 16), le);
+    put64(view, 40, BigInt(reg.align), le);
+    for (let i = 0; i < reg.entries.length; i++) {
+      const e = reg.entries[i];
+      const at = 64 + e.offset;
+      if (e.blob) {
+        view.setUint32(at, e.len, le);
+        if (e.len > 0) {
+          const src = e.body instanceof Uint8Array ? e.body : Uint8Array.from(e.body);
+          new Uint8Array(view.buffer, view.byteOffset + at + 8, e.len).set(src);
+        }
+      } else if (!writeStruct(view, at, e.layout, e.v, le, reg.ctx)) { return false; }
+    }
+    const dir = 64 + reg.data;
+    for (let i = 0; i < reg.entries.length; i++) {
+      const e = reg.entries[i];
+      put64(view, dir + i * 16, BigInt(e.offset), le);
+      put64(view, dir + i * 16 + 8, e.typeId, le);
+    }
+    return true;
+  }
+  return { variableMeasure, variableReason, variableFrom };
+})();
+
+export function FixedTableCookMeasure(value) {
+  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.
+  return TableCookWrite.variableMeasure("FixedTable", value);
+}
+export function FixedTableCookMeasureReason(value) {
+  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.
+  return TableCookWrite.variableReason("FixedTable", value);
+}
+export function FixedTableCookFrom(value, buffer, order) {
+  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.
+  return TableCookWrite.variableFrom("FixedTable", value, buffer, order);
+}
+
 function MixedEntityExtent(r, ids, at) {
   while (true) {
     if (r.at >= r.end) { break; }
