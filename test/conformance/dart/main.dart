@@ -22,6 +22,8 @@ import '../../../build/tables-generated-dart/pointers/GraphCook.dart' as ck;
 import '../../../build/tables-generated-dart/pointers/GraphdemoWire.dart' as graphdemo;
 import '../../../build/tables-generated-dart/blobs/BlobdemoWire.dart' as blobdemo;
 import '../../../build/tables-generated-dart/lists/ListdemoWire.dart' as listdemo;
+import '../../../build/tables-generated-dart/w1/Tblw1Wire.dart' as tblw1;
+import '../../../build/tables-generated-dart/w2/Tblw2Wire.dart' as tblw2;
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -653,7 +655,9 @@ int surfaceCook(String outDir) {
 
 // A row this leg cannot carry writes <case>.absent (test/conformance/README.md).
 // graphdemo, blobdemo and listdemo answer wire, json-read, json-write and
-// report for the roots the variable class carries. Maps, union arrays and
+// report for the roots the variable class carries, and tblw1/tblw2 for Fleet:
+// the fixed table Vessel/Ship on form 1, with its string, bytes and flags
+// defaults and the table rename between the two (docs/SPEC-TABLES.md §3, §5). Maps, union arrays and
 // every other unit stay absent. no-text rows are not asked for a text.
 bool noTextRow(List<String> f) => f.length > 5 && f[5] == 'no-text';
 
@@ -681,6 +685,10 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return listdemo.sheetWireSave(listdemo.sheetWireLoad(wire));
     case 'listdemo Unbounded':
       return listdemo.unboundedWireSave(listdemo.unboundedWireLoad(wire));
+    case 'tblw1 Fleet':
+      return tblw1.fleetWireSave(tblw1.fleetWireLoad(wire));
+    case 'tblw2 Fleet':
+      return tblw2.fleetWireSave(tblw2.fleetWireLoad(wire));
   }
   return null;
 }
@@ -699,6 +707,10 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       return listdemo.sheetWireSave(listdemo.sheetFromJson(text));
     case 'listdemo Unbounded':
       return listdemo.unboundedWireSave(listdemo.unboundedFromJson(text));
+    case 'tblw1 Fleet':
+      return tblw1.fleetWireSave(tblw1.fleetFromJson(text));
+    case 'tblw2 Fleet':
+      return tblw2.fleetWireSave(tblw2.fleetFromJson(text));
   }
   return null;
 }
@@ -717,6 +729,10 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       return listdemo.sheetToJson(listdemo.sheetWireLoad(wire));
     case 'listdemo Unbounded':
       return listdemo.unboundedToJson(listdemo.unboundedWireLoad(wire));
+    case 'tblw1 Fleet':
+      return tblw1.fleetToJson(tblw1.fleetWireLoad(wire));
+    case 'tblw2 Fleet':
+      return tblw2.fleetToJson(tblw2.fleetWireLoad(wire));
   }
   return null;
 }
@@ -746,6 +762,14 @@ String? loadReport(String unit, String root, Uint8List wire) {
     case 'listdemo Unbounded':
       final r = listdemo.TableWireReport();
       listdemo.unboundedWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'tblw1 Fleet':
+      final r = tblw1.TableWireReport();
+      tblw1.fleetWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'tblw2 Fleet':
+      final r = tblw2.TableWireReport();
+      tblw2.fleetWireLoad(wire, r);
       return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
   }
   return null;
@@ -808,7 +832,8 @@ int surfaceReport(String outDir) {
 
 const String surfaces =
     // wire, json-read, json-write and report answer the variable class for
-    // graphdemo, blobdemo and listdemo (docs/SPEC-TABLES.md §3, §16.7). The
+    // graphdemo, blobdemo and listdemo, and the fixed class on form 1 for
+    // tblw1/tblw2 (docs/SPEC-TABLES.md §3, §5, §16.7). The
     // accelerators and the forgery surfaces stay. The wire fuzzer's roots are
     // another card's.
     ''

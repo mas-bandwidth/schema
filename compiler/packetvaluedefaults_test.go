@@ -102,42 +102,18 @@ type Loose
 			src := "package vdef\nflags Caps { Jump, Crouch }\n" +
 				tc.decl + " Badge {\n" + fields + "}\n" + tc.edge + packet
 			u := unitFromSource(t, src)
-			// NEITHER JAVA NOR ELIXIR NOR JS IS ON THIS LIST ANY MORE: java
-			// carries the table half (compiler/target_java.go) the way go and
-			// rust do, elixir carries it too (compiler/target_elixir.go), and
-			// js lays the default into the table's own storage and the fixed
-			// form's prefill (compiler/target_javascript.go). Their carrier
-			// test is TestTableValueDefaultsCarriers. What is left here is the
-			// ports that carry neither table form.
+			// NO PORT IS LEFT ON THIS LIST: java, elixir, js and — since
+			// TestFixedClassOnTableWireDart — dart carry the table half, the
+			// way go and rust do (compiler/target_dart.go registers dart in
+			// valueDefaultTargets). Their carrier test is
+			// TestTableValueDefaultsCarriers. What is pinned here is that the
+			// last port off the list no longer refuses a table-closure default
+			// as "table-wire defaults" on any edge; a refusal of the edge itself
+			// (a map, a union array) is that construct's own and is allowed.
 			for _, target := range []string{"dart"} {
 				_, err := New().Generate(u, target, Options{})
-				// Rust's form-3 prefill carries string/bytes/flags defaults on a
-				// unit of fixed roots. A variable table, a union arm of text, a
-				// pointer or a map still has nowhere to put them.
-				if target == "rust" && !tc.form1 {
-					if err != nil {
-						t.Fatalf("rust form 3 refused table defaults on a unit of fixed roots: %v", err)
-					}
-					continue
-				}
-				if !tc.form1 {
-					if err != nil && strings.Contains(err.Error(), "table-wire defaults") {
-						t.Errorf("fixed-form defaults refused as form-1 table-wire: %v", err)
-					}
-					continue
-				}
-				if err == nil {
-					t.Fatal("form-1 table-closure defaults accepted without table reset and elision support")
-				}
-				// A later refusal of maps or table unions is not enough: the
-				// defaults must be found through those edges before codec generation.
-				for _, want := range []string{"table-wire defaults", "Badge.label", "Badge.tag", "Badge.caps", "--lang cpp"} {
-					if !strings.Contains(err.Error(), want) {
-						t.Errorf("refusal does not name %q: %v", want, err)
-					}
-				}
-				if strings.Contains(err.Error(), "Loose.label") || !strings.Contains(err.Error(), "generate with --lang c, --lang cpp, --lang cs, --lang elixir, --lang go, --lang java, --lang js and --lang rust, or drop the default") {
-					t.Errorf("table refusal includes a supported packet field or names %s as a table carrier: %v", target, err)
+				if err != nil && strings.Contains(err.Error(), "table-wire defaults") {
+					t.Errorf("%s carries form-1 table defaults and still refused them (form1=%v): %v", target, tc.form1, err)
 				}
 			}
 		})

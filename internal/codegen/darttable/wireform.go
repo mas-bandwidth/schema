@@ -70,17 +70,39 @@ func dartBoundLiteral(n *big.Int) string {
 	return dartU64Literal(n.Uint64())
 }
 
-// tableRef is the table a field names, or nil for a scalar, an enum, a blob,
-// a union or a non-table struct (docs/SPEC-TABLES.md §2.1).
+// tableRef is the table — or the declared `type` — a field names, or nil for
+// a scalar, an enum, a flags mask, a blob or a union (docs/SPEC-TABLES.md
+// §2.1). A `type` a table reaches BY VALUE rides form 1 exactly as a nested
+// table does: kind 13, its own body of id-keyed fields, its field ids the
+// hash of each field's wire name (`was` included, §5). It is never a pointer
+// target and never a file root, so it gets no node record.
 func tableRef(f *ir.Field) *ir.Struct {
 	if f.Type.Kind != ir.TNamed {
 		return nil
 	}
 	st, ok := f.Type.Ref.(*ir.Struct)
-	if !ok || !st.IsTable {
+	if !ok || st == nil {
 		return nil
 	}
 	return st
+}
+
+// flagsRef returns the flags declaration a field's mask comes from, or nil. A
+// flags mask rides form 1 as kind 9, the uint64 mask of its set bits, bit i
+// for variant i (ir.TableScalarKind; docs/SPEC-TABLES.md §3), elided at its
+// declared default mask (SPEC §4.2).
+func flagsRef(f *ir.Field) *ir.Flags {
+	if f.Type.Kind != ir.TNamed {
+		return nil
+	}
+	fl, _ := f.Type.Ref.(*ir.Flags)
+	return fl
+}
+
+// isIntLike is an integer, a bits(N) or a flags mask: every one stores as a
+// Dart int and rides under §3's integer kind for its storage width.
+func isIntLike(f *ir.Field) bool {
+	return f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || (flagsRef(f) != nil && !f.Type.Pointer)
 }
 
 func isPointerTable(f *ir.Field) bool {
@@ -117,6 +139,9 @@ func cardWireFieldSeen(f *ir.Field, seen map[string]bool) bool {
 		return true
 	}
 	if f.CountedOnWire() {
+		if flagsRef(f) != nil {
+			return false // an array of masks has no element codec here (§11)
+		}
 		return cardScalarOrTable(f, seen)
 	}
 	if f.Array != ir.ArrayNone {
@@ -135,6 +160,9 @@ func cardScalarOrTable(f *ir.Field, seen map[string]bool) bool {
 		if _, isEnum := f.Type.Ref.(*ir.Enum); isEnum {
 			return !f.Type.Pointer
 		}
+		if flagsRef(f) != nil {
+			return !f.Type.Pointer
+		}
 		if ref := tableRef(f); ref != nil {
 			return cardWireTableSeen(ref, seen)
 		}
@@ -149,7 +177,7 @@ func cardWireTable(st *ir.Struct) bool {
 }
 
 func cardWireTableSeen(st *ir.Struct, seen map[string]bool) bool {
-	if st == nil || !st.IsTable {
+	if st == nil {
 		return false
 	}
 	if seen[st.Name] {
@@ -1092,7 +1120,7 @@ func (g *wireGen) emitStorage(st *ir.Struct) {
 			g.pf("  %s %s = %s();\n", f.Type.Name, name, f.Type.Name)
 		case f.Type.Kind == ir.TBool:
 			g.pf("  bool %s = %v;\n", name, f.HasDefault && f.DefBool)
-		case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
+		case isIntLike(f):
 			g.pf("  int %s = %s;\n", name, g.intDefault(f))
 		case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 			g.pf("  double %s = %s;\n", name, g.floatDefault(f))
@@ -1107,18 +1135,52 @@ func (g *wireGen) emitStorage(st *ir.Struct) {
 	g.pf("}\n\n")
 }
 
+// intDefault is an integer, bits or flags field's declared default: the value
+// the storage starts at, the value the save elides against, and the value an
+// absent field reads as (docs/SPEC-TABLES.md §3, §4; a flags mask's brace
+// list is DefInt, SPEC §4.2).
 func (g *wireGen) intDefault(f *ir.Field) string {
 	if f.HasDefault && f.DefInt != nil {
+		if flagsRef(f) != nil {
+			return dartU64Literal(f.DefInt.Uint64())
+		}
 		return dartBoundLiteral(f.DefInt)
 	}
 	return "0"
 }
 
+// stringDefault is a string(N) or bytes(N) field's declared default as a Dart
+// string literal (SPEC §4.2): the storage's initial value, the value the
+// form-1 save elides against, and so the value an absent field reads as
+// (docs/SPEC-TABLES.md §3, §4).
 func (g *wireGen) stringDefault(f *ir.Field) string {
 	if f.HasDefault && len(f.DefBytes) > 0 {
-		return fmt.Sprintf("%q", string(f.DefBytes))
+		return dartStringLiteral(string(f.DefBytes))
 	}
 	return "''"
+}
+
+// dartStringLiteral spells s as a single-quoted Dart literal that the
+// language reads back as exactly s: the quote, the backslash and `$` (Dart's
+// interpolation sigil) are escaped, and every control or non-ASCII rune is a
+// \u{...} escape, so no default can change meaning on its way into the
+// source (SPEC §4.2).
+func dartStringLiteral(s string) string {
+	var b strings.Builder
+	b.WriteByte('\'')
+	for _, r := range s {
+		switch {
+		case r == '\'' || r == '\\' || r == '$':
+			b.WriteByte('\\')
+			b.WriteRune(r)
+		case r < 0x20 || r >= 0x7f:
+			fmt.Fprintf(&b, "\\u{%x}", r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('\'')
+	return b.String()
 }
 
 func (g *wireGen) floatDefault(f *ir.Field) string {
@@ -1200,8 +1262,8 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tw.putLeb(b.length);\n", ind)
 		g.pf("%s\tw.putBytes(b);\n", ind)
 		g.pf("%s}\n", ind)
-	case f.Type.Kind == ir.TBytes: // bytes(N) rides as kind 14 over element kind 6 (§3)
-		g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+	case f.Type.Kind == ir.TBytes: // bytes(N) rides as kind 14 over element kind 6 (§3), elided at its declared default (SPEC §4.2)
+		g.pf("%sif (%s != %s) {\n", ind, expr, g.stringDefault(f))
 		g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 		g.pf("%s\tfinal b = utf8.encode(%s);\n", ind, expr)
 		g.pf("%s\tfinal s = w.sub();\n", ind)
@@ -1219,10 +1281,11 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindBool)
 		g.pf("%s\tw.putByte(%s ? 1 : 0);\n", ind, expr)
 		g.pf("%s}\n", ind)
-	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
+	case isIntLike(f):
 		// An integer or bits field rides under its own kind (§3): int8/16/32/64
 		// at 2/3/4/5, uint8/16/32/64 at 6/7/8/9, bits(N) at the unsigned kind of
-		// its storage width. The payload is the value at the kind's width.
+		// its storage width, a flags mask at kind 9. The payload is the value at
+		// the kind's width.
 		kind := ir.TableWireScalarKind(f)
 		put := "putU64"
 		switch ir.TableKindWidth(kind) {
@@ -1557,7 +1620,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tif (!r.has(1)) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\tv.%s = r.readByte() != 0;\n", ind, name)
 		g.pf("%s\tbreak;\n", ind)
-	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
+	case isIntLike(f):
 		// An int/bits field's declared kind is §3's integer kind for its width
 		// and signedness: int8/16/32/64 at 2/3/4/5, uint8/16/32/64 at 6/7/8/9,
 		// bits(N) at the unsigned kind of its storage width. A payload under a

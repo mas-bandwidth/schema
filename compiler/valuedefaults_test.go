@@ -191,6 +191,31 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 			}
 			continue
 		}
+		if target == "dart" {
+			// FORM 1 IN DART (internal/codegen/darttable): the default is the
+			// storage's initial value, and the save elides against the same
+			// literal, so an absent field reads back as the default. The wire
+			// itself is pinned against the oracle bytes by
+			// TestFixedClassOnTableWireDart.
+			if err != nil {
+				t.Fatalf("dart refused supported table defaults: %v", err)
+			}
+			code := string(out["VdefWire.dart"])
+			for _, want := range []string{
+				"String name = 'untitled';",
+				"String tag = 'ab';",
+				"int caps = 3;",
+				"String label = 'new';",
+				"int caps = 1;",
+				"if (v.tag != 'ab') {",
+				"if (v.caps != 3) {",
+			} {
+				if !strings.Contains(code, want) {
+					t.Errorf("dart default output lacks %q", want)
+				}
+			}
+			continue
+		}
 		if err == nil {
 			t.Errorf("%s emitted a unit with string, bytes and flags defaults instead of refusing it", target)
 			continue

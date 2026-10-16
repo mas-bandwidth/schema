@@ -52,6 +52,94 @@ func (g *wireGen) textEnums() []*ir.Enum {
 	return out
 }
 
+// textFlags is every flags declaration a closure field names, in name order:
+// the text form spells a mask as the array of its set bits' variant NAMES
+// (docs/SPEC-TABLES.md §16.2, internal/tabletext readFlags/write), so each owes
+// its name list emitted once beside the tables.
+func (g *wireGen) textFlags() []*ir.Flags {
+	seen := map[string]bool{}
+	var out []*ir.Flags
+	for _, st := range g.closure {
+		for _, f := range st.Fields {
+			if fl := flagsRef(f); fl != nil && !seen[fl.Name] {
+				seen[fl.Name] = true
+				out = append(out, fl)
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+func flagsNamesConst(fl *ir.Flags) string { return "_kFlags" + fl.Name }
+
+// emitTextFlags emits one flags declaration's bit-name list, bit i naming
+// variant i (docs/SPEC-TABLES.md §16.2), and — once per unit — the mask writer
+// and the tolerant mask reader every flags field shares: a mask writes as the
+// array of its set bits in bit order, `[]` when none is set, and a bit no
+// variant names has no spelling, so the writer refuses it the way the oracle
+// does; on read an unknown name is counted unknown and a non-string element a
+// kind mismatch, each skipped, and a value that is not an array keeps the field
+// as it was (§16.3).
+func (g *wireGen) emitTextFlags(all []*ir.Flags) {
+	if len(all) == 0 {
+		return
+	}
+	for _, fl := range all {
+		g.pf("const List<String> %s = <String>[", flagsNamesConst(fl))
+		for i, v := range fl.Variants {
+			if i > 0 {
+				g.pf(", ")
+			}
+			g.pf("%s", strconv.Quote(v))
+		}
+		g.pf("];\n\n")
+	}
+	g.pf(`void _jsonFlags(_JOut out, int mask, List<String> names, int depth, String where) {
+	if (mask == 0) {
+		out.raw('[]');
+		return;
+	}
+	out.raw('[');
+	var first = true;
+	for (var bit = 0; bit < 64; bit++) {
+		if ((mask >> bit) & 1 == 0) continue;
+		if (bit >= names.length) {
+			throw StateError('$where: flags bit $bit names no variant (docs/SPEC-TABLES.md §16.2)');
+		}
+		if (!first) out.raw(',');
+		first = false;
+		out.line(depth + 1);
+		out.raw(_jsonString(names[bit]));
+	}
+	out.line(depth);
+	out.raw(']');
+}
+
+int _jsonFlagsField(dynamic val, List<String> names, TableTextReport r, int keep) {
+	if (val is! List) {
+		r.kindMismatch++;
+		return keep;
+	}
+	var bits = 0;
+	for (final item in val) {
+		if (item is! String) {
+			r.kindMismatch++;
+			continue;
+		}
+		final bit = names.indexOf(item);
+		if (bit < 0) {
+			r.unknown++;
+			continue;
+		}
+		bits |= 1 << bit;
+	}
+	return bits;
+}
+
+`)
+}
+
 // emitTextForm emits the JSON text half of the wire library, once the wire
 // load/save have landed: the generic writer/reader runtime, the enum helpers,
 // and per-table toJson/fromJson bodies (roots get the top-level entry points).
@@ -60,6 +148,7 @@ func (g *wireGen) emitTextForm() {
 	for _, e := range g.textEnums() {
 		g.emitTextEnum(e)
 	}
+	g.emitTextFlags(g.textFlags())
 	for _, st := range g.closure {
 		g.emitTextCount(st)
 		g.emitTextToJsonBody(st)
@@ -465,6 +554,8 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 			g.pf("\t\tout.raw(']');\n")
 			g.pf("\t}\n")
 		}
+	case flagsRef(f) != nil: // a mask is the array of its set bits' names (§16.2)
+		g.pf("\t_jsonFlags(out, v.%s, %s, depth + 1, '%s.%s');\n", name, flagsNamesConst(flagsRef(f)), st.Name, f.Name)
 	case f.Type.Kind == ir.TBool:
 		g.pf("\tout.raw(v.%s ? 'true' : 'false');\n", name)
 	case f.Type.Kind == ir.TInt, f.Type.Kind == ir.TBits:
@@ -577,6 +668,9 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 			}
 		}
 		g.pf("\t\t\t\t}\n")
+		g.pf("\t\t\t\tbreak;\n")
+	case flagsRef(f) != nil: // §16.2, §16.3: the array of set bits' names
+		g.pf("\t\t\t\tv.%s = _jsonFlagsField(val, %s, r, v.%s);\n", name, flagsNamesConst(flagsRef(f)), name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TBool:
 		g.pf("\t\t\t\tif (val is bool) { v.%s = val; } else { r.kindMismatch++; }\n", name)

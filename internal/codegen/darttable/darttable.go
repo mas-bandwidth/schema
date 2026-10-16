@@ -165,7 +165,8 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	}
 	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: emitted for a
 	// unit that declares a fixed table, beside the VARIABLE FORM (form byte 1)
-	// emitted for the unit the variable form owns (below).
+	// emitted for every variable root the unit declares (below) — whether or
+	// not its closure holds a fixed table.
 	fixed, err := generateFixedFiles(u, wide, lineage)
 	if err != nil {
 		return nil, err
@@ -173,9 +174,14 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	maps.Copy(out, fixed)
 	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1. A fixed-only unit
 	// has no variable root and gets nothing from generateWireFiles (its form 3
-	// is above). A unit that mixes fixed tables with a variable root this card
-	// carries emits BOTH: form 3 for the fixed tables, form 1 for the variable
-	// roots. Fixed tables are not encoded as form 1.
+	// is above). A unit that mixes fixed tables with a variable root emits
+	// BOTH: form 3 for each fixed table as a root of its own, and form 1 for
+	// each variable root — and THE FIXED CLASS RIDES FORM 1 there: a fixed
+	// table (or a `type`) the root reaches by pointer, by value or as a counted
+	// element is encoded on the variable wire as a node record or a nested
+	// body, byte for byte against the oracle (§3.1; TestFixedClassOnTableWireDart
+	// over test/tables/W1.schema and W2.schema). A fixed table is never a FILE
+	// root on form 1 (variableRoots).
 	wire, err := generateWireFiles(u)
 	if err != nil {
 		return nil, err

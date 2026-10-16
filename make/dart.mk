@@ -76,7 +76,7 @@ generated/bench/dart/.stamp: bin/schema $(SCHEMAS_BENCH)
 # generated (packet .dart + <Base>Block.dart + <Base>Cook.dart, and the wire
 # forms where the unit owns them). Fixed-class units own form 3. tables/pointers,
 # tables/blobs and tables/lists own form 1 beside it (the variable class).
-build/tables-generated-dart/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
+build/tables-generated-dart/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/W1.schema test/tables/W2.schema
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
 	# the POINTERED unit: form 1 for Scene, form 3 and cook beside it.
@@ -89,6 +89,10 @@ build/tables-generated-dart/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 	./bin/schema generate --lang dart --out build/tables-generated-dart/v2 test/tables/V2.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/p1 test/tables/P1.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/p3 test/tables/P3.schema
+	# the W pair: a fixed table on form 1 beside its variable root, with
+	# string, bytes and flags defaults and a table rename (SPEC §4.2, §5).
+	./bin/schema generate --lang dart --out build/tables-generated-dart/w1 test/tables/W1.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/w2 test/tables/W2.schema
 	@touch $@
 
 # THE DART TABLE SOURCES ARE FORMAT-CANONICAL. `dart format` is the language's
@@ -405,6 +409,17 @@ tables-dart-variable-class:
 	@echo 'tables Dart variable class: pointers, blobs, lists and the scalar kinds against the oracle bytes'
 
 test-dart: tables-dart-variable-class
+
+# THE FIXED CLASS ON FORM 1 (docs/SPEC-TABLES.md §3, §3.1, §5; SPEC §4.2): a
+# fixed table a variable root reaches rides the variable wire, string, bytes and
+# flags defaults are elided and read back, and a renamed table, variant and
+# type field read across the hop, byte for byte against the oracle.
+.PHONY: tables-dart-variable-fixed-class
+tables-dart-variable-fixed-class:
+	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run TestFixedClassOnTableWireDart
+	@echo 'tables Dart fixed class on form 1: tblw1/tblw2, defaults and renames against the oracle bytes'
+
+test-dart: tables-dart-variable-fixed-class
 
 # THE DART LEG of `make test`. THE DART PORT's own instruments
 # (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart
