@@ -33,7 +33,6 @@ package rusttable
 // generator's output and the oracles: no clock, no socket, no network.
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -42,8 +41,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -62,37 +61,44 @@ func TestMessageFormBatchRust(t *testing.T) {
 	t.Run("manifest_rows", func(t *testing.T) {
 		t.Parallel()
 		rows := messageBatchManifest(t, root)
+		// "`fixed table T` may ride here, a plain `table T` may not" (§3.3):
+		// a row whose root is a plain table (graph_tree's Scene) carries no
+		// verbs, and its absence is the conformance driver's `.absent`, never a
+		// pass here. Such rows are set aside before any subtest runs, so the
+		// target never reports a SKIP.
 		byUnit := map[string][]messageBatchRow{}
-		var units []string
+		units := map[string]*ir.Unit{}
+		var names []string
+		var plain []string
 		for _, row := range rows {
+			u, ok := units[row.unit]
+			if !ok {
+				u = generateUnit(t, root, row.paths)
+				units[row.unit] = u
+			}
+			if st := messageBatchTable(u, row.root); st == nil || !st.FixedDeclared {
+				plain = append(plain, row.name)
+				continue
+			}
 			if _, ok := byUnit[row.unit]; !ok {
-				units = append(units, row.unit)
+				names = append(names, row.unit)
 			}
 			byUnit[row.unit] = append(byUnit[row.unit], row)
 		}
-		sort.Strings(units)
-		for _, unit := range units {
+		sort.Strings(names)
+		if len(names) == 0 {
+			t.Fatal("no manifest message row has a fixed root")
+		}
+		t.Logf("plain-table message rows, absent by §3.3: %v", plain)
+		for _, unit := range names {
 			unit := unit
 			t.Run(unit, func(t *testing.T) {
 				t.Parallel()
-				rs := byUnit[unit]
-				u := generateUnit(t, root, rs[0].paths)
+				carried := byUnit[unit]
+				u := units[unit]
 				var body strings.Builder
-				var carried []messageBatchRow
-				for _, row := range rs {
-					st := messageBatchTable(u, row.root)
-					if st == nil || !st.FixedDeclared {
-						// "`fixed table T` may ride here, a plain `table T` may
-						// not" (§3.3): the manifest's Scene row is a plain
-						// table, and its absence is the conformance driver's
-						// `.absent`, never a pass here.
-						continue
-					}
-					carried = append(carried, row)
+				for _, row := range carried {
 					body.WriteString(messageBatchRoundTrip(row.name, row.root, row.announce, row.message))
-				}
-				if len(carried) == 0 {
-					t.Skipf("%s carries no fixed root among its message rows (§3.3)", unit)
 				}
 				out := runMessageBatchProbe(t, u, body.String())
 				for _, row := range carried {
@@ -467,9 +473,9 @@ fixed table Leaf
 union Pick
 {
     leaf  Leaf
-    count uint16 | min = 10, max = 500
+    qty   uint16 | min = 0, max = 500
     mood  Mood
-    none
+    ping
 }
 
 fixed table Probe
@@ -483,7 +489,7 @@ fixed table Probe
     u32v  uint32 = 7
     u64v  uint64
     r32   int32 | min = -1000, max = 1000
-    ru64  uint64 | min = 5, max = 900000
+    ru64  uint64 = 5 | min = 5, max = 900000
     i128v int128 | min = -5000000000, max = 5000000000
     u128v uint128
     b3    bits(3)
@@ -507,22 +513,26 @@ fixed table Probe
 }
 `
 
+// Every text is a FIXED POINT of load-then-save. A text field rides when it is
+// non-empty (the C++ reference's rule, and tablewire's), so `label` set to ""
+// under its declared default "hi" is absent on the wire and loads back as "hi":
+// that value is not a round trip on this form, and no text here spells it.
 var messageBatchProbeTexts = []string{
 	`{}`,
 	`{
   "i8v": -128, "i16v": 32767, "i32v": -2147483648, "i64v": 9223372036854775807,
   "u8v": 255, "u16v": 65535, "u32v": 4294967295, "u64v": 18446744073709551615,
-  "r32": -1000, "ru64": 900000, "i128v": -5000000000, "u128v": "340282366920938463463374607431768211455",
+  "r32": -1000, "ru64": 900000, "i128v": -5000000000, "u128v": 340282366920938463463374607431768211455,
   "b3": 7, "caps": ["Jump", "Fly"], "flag": true, "f32v": 3.25, "cf": 0.37, "f64v": -1e-300,
-  "mood": "Sleepy", "moods": ["Calm", "None", "Angry"], "label": "héllo wörld",
+  "mood": "Sleepy", "moods": ["Calm", "None", "Angry"], "label": "héllo wörl",
   "blob": "AQIDBAUG", "wide": "wïde", "small": [-1, 0, 127, -32768],
   "many": [1, 2, 3, 4, 5], "spot": {"x": -4, "y": 9},
   "spots": [{"x": 1, "y": 2}, {"x": 0, "y": 3}], "pair": [{"x": 5, "y": 3}, {"x": -5, "y": 0}],
   "pick": {"leaf": {"id": 77, "name": "leafy"}},
-  "picks": [{"count": 499}, {"mood": "Calm"}]
+  "picks": [{"qty": 499}, {"mood": "Calm"}]
 }`,
-	`{"i16v": -3, "u32v": 7, "mood": "Angry", "label": "hi", "pick": {"none": null}, "picks": [{"count": 10}, {}], "spot": {"x": 0, "y": 3}}`,
-	`{"label": "", "mood": "None", "cf": -1, "many": [], "spots": [{"x": 0, "y": 0}], "pick": {"mood": "Sleepy"}, "small": [0, 0, 0, 1]}`,
+	`{"i16v": -3, "u32v": 7, "mood": "Angry", "label": "hi", "pick": {"ping": null}, "picks": [{"qty": 10}, {}], "spot": {"x": 0, "y": 3}}`,
+	`{"mood": "None", "cf": -1, "many": [], "spots": [{"x": 0, "y": 0}], "pick": {"mood": "Sleepy"}, "small": [0, 0, 0, 1]}`,
 }
 
 // messageBatchOlderSrc and messageBatchNewerSrc are ONE CARD at two versions:

@@ -296,7 +296,8 @@ RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblfe1:test/tables/FE1.schema tblfe2:test/tables/FE2.schema \
 	tblfu1:test/tables/FU1.schema tblfu2:test/tables/FU2.schema \
 	tblw1:test/tables/W1.schema tblw2:test/tables/W2.schema \
-	tblr1:test/tables/R1.schema tblr2:test/tables/R2.schema
+	tblr1:test/tables/R1.schema tblr2:test/tables/R2.schema \
+	backenddemo:tables/backend vocabdemo:tables/vocab vocab9demo:tables/vocab9
 
 # THE PAIRED BENCH UNIT is TWO SCHEMA FILES AS ONE UNIT
 # (bench/corpus/FixedTable.schema wraps Bench.schema's own BenchMixed), so it
@@ -666,6 +667,18 @@ tables-rust-variable-fixed-class:
 	@echo 'tables Rust variable fixed class: a fixed table carries the form-1 codec, its defaults and its renames, byte for byte against the oracle'
 
 test-rust: tables-rust-variable-fixed-class
+
+# THE MESSAGE FORM's BATCH on the Rust leg (docs/SPEC-TABLES.md §3.3):
+# MeasureMessages, SaveMessages and LoadMessages, byte for byte against the
+# manifest's message rows and the Go codec, beside the announcement.
+# SCHEMA_REQUIRE_CORPUS=1 turns the rustc skip into a failure, so the target
+# never passes on a SKIP.
+.PHONY: tables-rust-message-batch
+tables-rust-message-batch:
+	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestMessageFormBatchRust|TestMessageFormAnnounceRust' -v
+	@echo 'tables Rust message batch: the message form reads and writes the reference bytes'
+
+test-rust: tables-rust-message-batch
 
 # THE CARDS UNIT'S RUST LEG (docs/SPEC-TABLES.md §2). These targets are the
 # Rust side of the cards wire-fuzz gate: they mirror the Go leg's

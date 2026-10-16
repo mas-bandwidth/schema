@@ -1006,6 +1006,76 @@ fn surface_cook_write(manifest: &Manifest, out: &str) {
 }
 
 // ---------------------------------------------------------------------------
+// the MESSAGE surface (docs/SPEC-TABLES.md §3.3, test/conformance/README.md)
+// ---------------------------------------------------------------------------
+//
+// The one surface that reads two files: the CONNECTION's announcement into one
+// direction's vocabulary, then the message-form batch against it. The verbs are
+// PLURAL — LoadMessages, MeasureMessages and SaveMessages over the batch — and
+// the bytes written are SaveMessages' own. A row whose root is a plain `table`
+// carries no verbs ("`fixed table T` may ride here, a plain `table T` may
+// not", §3.3), so it is answered ABSENT with the reason, as the Go driver does.
+
+macro_rules! message_round_trip {
+    ($krate:ident, $row:ident, $load:ident, $measure:ident, $save:ident, $ann:expr, $wire:expr) => {{
+        use $krate as k;
+        let mut storage = vec![k::TableMessageEntry::default(); 4096];
+        let mut vocabulary = k::TableVocabulary::new(&mut storage);
+        let mut report = k::TableReport::default();
+        if !k::announce_read(&mut vocabulary, $ann, &mut report) {
+            None
+        } else {
+            let mut values = vec![k::$row::default(); k::TABLE_MESSAGE_BATCH_MAX];
+            let (count, ok) = k::$load(&mut values, &vocabulary, $wire, &mut report);
+            if !ok || count < 1 {
+                None
+            } else {
+                let mut ignored = k::TableReport::default();
+                let n = k::$measure(&values[..count], &mut ignored);
+                let mut bytes = vec![0u8; n.max(0) as usize];
+                if n < 0 || k::$save(&values[..count], &mut bytes, &mut ignored) != n {
+                    None
+                } else {
+                    Some(bytes)
+                }
+            }
+        }
+    }};
+}
+
+// One message root's round trip, by its connection's unit and the row's root:
+// None for a root this leg carries no message verbs for, Some(None) for a batch
+// it refused.
+fn message_codec(unit: &str, root: &str, ann: &[u8], wire: &[u8]) -> Option<Option<Vec<u8>>> {
+    Some(match (unit, root) {
+        ("backenddemo", "LoginRequest") => message_round_trip!(backenddemo, LoginRequestRow, login_request_load_messages, login_request_measure_messages, login_request_save_messages, ann, wire),
+        ("backenddemo", "MatchResult") => message_round_trip!(backenddemo, MatchResultRow, match_result_load_messages, match_result_measure_messages, match_result_save_messages, ann, wire),
+        ("backenddemo", "StorePurchase") => message_round_trip!(backenddemo, StorePurchaseRow, store_purchase_load_messages, store_purchase_measure_messages, store_purchase_save_messages, ann, wire),
+        ("backenddemo", "Envelope") => message_round_trip!(backenddemo, EnvelopeRow, envelope_load_messages, envelope_measure_messages, envelope_save_messages, ann, wire),
+        ("vocabdemo", "Wide00") => message_round_trip!(vocabdemo, Wide00Row, wide00_load_messages, wide00_measure_messages, wide00_save_messages, ann, wire),
+        ("vocabdemo", "Wide09") => message_round_trip!(vocabdemo, Wide09Row, wide09_load_messages, wide09_measure_messages, wide09_save_messages, ann, wire),
+        ("vocab9demo", "Wide00") => message_round_trip!(vocab9demo, Wide00Row, wide00_load_messages, wide00_measure_messages, wide00_save_messages, ann, wire),
+        ("vocab9demo", "Wide19") => message_round_trip!(vocab9demo, Wide19Row, wide19_load_messages, wide19_measure_messages, wide19_save_messages, ann, wire),
+        _ => return None,
+    })
+}
+
+fn surface_message(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("message") {
+        let Some(c) = manifest.of_kind("connection").find(|c| c[1] == f[2]) else {
+            fail(&format!("message {} names no connection {}", f[1], f[2]));
+        };
+        let ann = slurp(&c[4]);
+        let wire = slurp(&f[5]);
+        match message_codec(c[2].as_str(), f[3].as_str(), &ann, &wire) {
+            Some(Some(bytes)) => spill(out, &f[1], &bytes),
+            Some(None) => fail(&format!("{}: message load/save refused {}", f[1], f[5])),
+            None => spill(out, &format!("{}.absent", f[1]), b"plain table: \xc2\xa73.3"),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -1023,10 +1093,11 @@ fn main() {
             // the WIRE-CARRYING surfaces ride the id-table form (docs/SPEC-TABLES.md
             // §3, §3.1, §16.7) for the roots this leg's variable wire carries —
             // graphdemo's Scene and blobdemo's Catalog — and answer every other
-            // case ABSENT, one by one; the message and retain surfaces are still
-            // absent whole (the message form's batch and retention beyond the card
-            // constructs are their own rows)
-            "wire\nreport\njson-read\njson-write\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write"
+            // case ABSENT, one by one; the message surface rides the message form's
+            // batch for the fixed roots of backenddemo, vocabdemo and vocab9demo
+            // (§3.3), and the retain surfaces are still absent whole (retention
+            // beyond the card constructs is its own row)
+            "wire\nreport\njson-read\njson-write\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage"
         );
         return;
     }
@@ -1048,6 +1119,7 @@ fn main() {
         "cook-forgery" => surface_cook_forgery(&manifest, out),
         "block" => surface_block(&manifest, out),
         "forgery" => surface_forgery(&manifest, out),
+        "message" => surface_message(&manifest, out),
         _ => exit(2),
     }
 }

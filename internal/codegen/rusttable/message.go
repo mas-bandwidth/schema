@@ -10,10 +10,12 @@
 //
 // The surface and its names follow the C# leg (internal/codegen/cstable/
 // message.go): TableVocabulary, Announce, AnnounceMeasure and AnnounceRead
-// (this card), then MeasureMessages, SaveMessages and LoadMessages (the next
-// card). Rust spells the free functions snake_case (SPEC.md §6.1), so they
-// land as `announce`, `announce_measure` and `announce_read`, exactly as the
-// fixed form spells `<name>_load`.
+// here, and MeasureMessages, SaveMessages and LoadMessages, the batch itself,
+// in messagebatch.go (the bit stream's runtime rides in this module, the
+// per-root verbs in each file's <base>_message.rs). Rust spells the free
+// functions snake_case (SPEC.md §6.1), so they land as `announce`,
+// `announce_measure`, `announce_read` and `<root>_load_messages`, exactly as
+// the fixed form spells `<name>_load`.
 //
 // The form is "A FIXED TABLE'S, and that is a declaration, not a derivation"
 // (§3.3), so the surface is emitted for a unit that carries a fixed root,
@@ -79,7 +81,14 @@ func messageRuntimeModule(u *ir.Unit) []byte {
 	}
 	b.WriteString("\n];\n\n")
 
+	// THE WRITER's reference width is its OWN vocabulary's (§3.3): every slot
+	// of the announcement it sent, and the zero reference beside them.
+	b.WriteString("/// The width of a reference on a body this build WRITES: bits_required(0, n)\n")
+	b.WriteString("/// over its own announced vocabulary of n entries (§3.3).\n")
+	fmt.Fprintf(&b, "pub const TABLE_MESSAGE_REF_BITS: u32 = %d;\n\n", ir.TableMessageRefBits(len(ir.TableVocabulary(u))))
+
 	b.WriteString(messageRuntimeBody)
+	b.WriteString(messageBatchRuntime)
 	return []byte(b.String())
 }
 
@@ -158,6 +167,17 @@ impl<'a> TableVocabulary<'a> {
         }
         Some(&self.entries[reference as usize - 1])
     }
+
+    /// THE ID a NAME reference spells (§3.3): an enum's variant or a keyed
+    /// slot rides as a reference to a kind-0 entry, never a reserved id.
+    pub fn name(&self, reference: u64) -> Option<u64> {
+        let e = self.entry(reference)?;
+        if e.kind == 0 && e.id < 0xffff_ffff_ffff_fffd {
+            Some(e.id)
+        } else {
+            None
+        }
+    }
 }
 
 // ---- the report -------------------------------------------------------------
@@ -191,11 +211,17 @@ impl TableReason {
     }
 }
 
-/// The message form's read report. A refusal BY NAME: nothing is decoded, no
+/// The message form's read report, the batch's too (§3.3). A refusal BY NAME: nothing is decoded, no
 /// counter moves, and malformed does not fire (§3.3).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct TableReport {
     pub unknown: u32,
+    /// §4's counters on a batch read (§3.3): a peer kind this declaration
+    /// neither is nor widens, skipped; a kind it widens, decoded exactly; and a
+    /// value clamped into a narrower declaration.
+    pub kind_mismatch: u32,
+    pub widened: u32,
+    pub clamped: u32,
     pub malformed: bool,
     pub refused: bool,
     pub reason: TableReason,
