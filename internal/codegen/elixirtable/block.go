@@ -99,6 +99,8 @@ const blockRuntimeSource = `  @moduledoc """
   all (§11) and still has both accelerators.
   """
 
+  import Bitwise
+
   # The block's magic, and the byte-order check with it (§19.1). It is stored in
   # the producer's NATIVE order; a consumer that reads back the byte-swapped
   # value has found a foreign byte order, and one that reads back anything else
@@ -121,17 +123,43 @@ const blockRuntimeSource = `  @moduledoc """
 
   # the prologue, read at explicit widths out of the caller's own binary
   def u64(data, at), do: read(data, at, 8)
-  def u32(data, at), do: read(data, at, 4)
+
+  def u32(data, at)
+      when is_binary(data) and is_integer(at) and at >= 0 and at + 4 <= byte_size(data) do
+    :binary.at(data, at) |||
+      (:binary.at(data, at + 1) <<< 8) |||
+      (:binary.at(data, at + 2) <<< 16) |||
+      (:binary.at(data, at + 3) <<< 24)
+  end
+
+  def u32(_data, _at), do: nil
 
   # a 64-bit word composed from two 32-bit halves, so no bignum is formed on
   # the hot path before the bound that refuses it runs: a high half of
   # 0x08000000 or more would compose to 2^59 or above, which is not a BEAM
   # immediate.
-  def u64halves(data, at) do
-    lo = u32(data, at)
-    hi = u32(data, at + 4)
-    if hi >= 0x08000000, do: nil, else: hi * 0x100000000 + lo
+  def u64halves(data, at)
+      when is_binary(data) and is_integer(at) and at >= 0 and at + 8 <= byte_size(data) do
+    hi =
+      :binary.at(data, at + 4) |||
+        (:binary.at(data, at + 5) <<< 8) |||
+        (:binary.at(data, at + 6) <<< 16) |||
+        (:binary.at(data, at + 7) <<< 24)
+
+    if hi >= 0x08000000 do
+      nil
+    else
+      lo =
+        :binary.at(data, at) |||
+          (:binary.at(data, at + 1) <<< 8) |||
+          (:binary.at(data, at + 2) <<< 16) |||
+          (:binary.at(data, at + 3) <<< 24)
+
+      (hi <<< 32) ||| lo
+    end
   end
+
+  def u64halves(_data, _at), do: nil
 
   def i32(data, at) do
     case data do
@@ -252,7 +280,8 @@ const blockRuntimeSource = `  @moduledoc """
 
   defp align_up(v, a), do: div(v + a - 1, a) * a
 
-  def put64(data, at, v), do: put(data, at, <<v::little-unsigned-64>>)
+  def put64(data, at, v),
+    do: put(data, at, <<band(v, 0xFFFFFFFF)::little-unsigned-32, bsr(v, 32)::little-unsigned-32>>)
   def put32(data, at, v), do: put(data, at, <<v::little-unsigned-32>>)
 
   defp put(data, at, bytes) do

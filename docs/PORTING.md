@@ -1319,7 +1319,7 @@ a float32 at `-266744.625` rendering as an eight-digit tie.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #517 | ❌ #516 | ❌ #419 | ❌ #419 |
+| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #517 | ❌ #516 | ❌ #419 | ✅ `tables-elixir-json-differential`, `tables-elixir-json-differential-negative-control` (`TestTextDifferentialElixir`) |
 
 ### I14 — The allocation gate refuses to certify off the pinned runtime
 

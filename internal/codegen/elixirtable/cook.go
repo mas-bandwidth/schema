@@ -207,9 +207,23 @@ const cookRuntimeSource = `  @moduledoc """
 
   # ---- reading one slot out of a region ----
 
+  def uint(region, at, 4)
+      when is_binary(region) and is_integer(at) and at >= 0 and at + 4 <= byte_size(region) do
+    :binary.at(region, at) |||
+      (:binary.at(region, at + 1) <<< 8) |||
+      (:binary.at(region, at + 2) <<< 16) |||
+      (:binary.at(region, at + 3) <<< 24)
+  end
+
   def uint(region, at, width) do
     <<_::binary-size(^at), v::little-unsigned-size(^width)-unit(8), _::binary>> = region
     v
+  end
+
+  def int(region, at, 4)
+      when is_binary(region) and is_integer(at) and at >= 0 and at + 4 <= byte_size(region) do
+    v = uint(region, at, 4)
+    if v >= 0x80000000, do: v - 0x100000000, else: v
   end
 
   def int(region, at, width) do

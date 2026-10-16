@@ -611,8 +611,11 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   defp put_u32(buf, at, v, :big), do: put_raw(buf, at, <<v::big-unsigned-32>>)
   defp put_i32(buf, at, v, :little), do: put_raw(buf, at, <<v::little-signed-32>>)
   defp put_i32(buf, at, v, :big), do: put_raw(buf, at, <<v::big-signed-32>>)
-  defp put_i64(buf, at, v, :little), do: put_raw(buf, at, <<v::little-signed-64>>)
-  defp put_i64(buf, at, v, :big), do: put_raw(buf, at, <<v::big-signed-64>>)
+  defp put_i64(buf, at, v, :little),
+    do: put_raw(buf, at, <<band(v, 0xFFFFFFFF)::little-unsigned-32, bsr(v, 32)::little-signed-32>>)
+
+  defp put_i64(buf, at, v, :big),
+    do: put_raw(buf, at, <<bsr(v, 32)::big-signed-32, band(v, 0xFFFFFFFF)::big-unsigned-32>>)
 
   defp put_uint(buf, at, v, 1, _), do: put_u8(buf, at, v)
   defp put_uint(buf, at, v, 2, :little), do: put_raw(buf, at, <<v::little-unsigned-16>>)
