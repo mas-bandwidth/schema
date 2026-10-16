@@ -77,6 +77,11 @@ wire format and frozen (`ir/tablekind.go:17-62`, `ir/tablewire.go:117-127`, `ir/
 | `16` | enum-keyed array | `34` | reserved (float16) — **NOT in the closed set** |
 | `17` | a `*T` pointer index | `35` | the OPTIONAL wrapper — a LAYOUT kind, the one §3.4 adds to §3's set |
 
+**The union row and the payload-free arm row are FIELD LINES**: under §2.6 an arm's type is any type a field's is,
+so the form admits a direct scalar, text, bytes or bounded-array arm, a by-value struct arm, and a payload-free arm
+whose whole storage is the tag (`32`, size `0`), while the arm position refuses a pointer, a map, an unbounded
+array, a keyed array and an optional (SPEC-TABLES §2.6).
+
 `0` is the reserved value no declaration spells. `17`, `18`, `19` and both fixed-point runs ARE in the closed
 set and a stranger may send them; a pointer inside a fixed table's own closure is a compile refusal (§5.5), so
 `17` reaches a reader only from a peer, where it is a kind mismatch against whatever the reader names there.

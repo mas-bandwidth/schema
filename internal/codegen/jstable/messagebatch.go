@@ -716,11 +716,11 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, mem, ind, shape string)
 	big := fixedIsBig(f.Type)
 	signed := fixedSigned(f.Type)
 	width := f.Type.Width
-	switch {
-	case f.Type.Kind == ir.TBool:
+	switch f.Type.Kind {
+	case ir.TBool:
 		g.pf("%s{ const [v, ok] = r.Bits.Get(1); if (!ok) { r.Report.Malformed = true; return false; } %s = v !== 0n; }\n", ind, mem)
 		return
-	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
+	case ir.TFloat32, ir.TFloat64:
 		// A compressed float reconstructs by the packet wire's rule, two
 		// roundings each side; a raw float is its own bits.
 		if f.Type.Kind == ir.TFloat32 {
@@ -731,7 +731,7 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, mem, ind, shape string)
 		g.emitMessageFloatClamp(f, "x", ind+"  ")
 		g.pf("%s  %s = x;\n%s}\n", ind, mem, ind)
 		return
-	case f.Type.Kind == ir.TBits:
+	case ir.TBits:
 		g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];\n", ind, shape)
 		g.pf("%s  x = BigInt.asUintN(%d, x);\n", ind, width)
 		g.pf("%s  if (x > %dn) { x = %dn; r.Report.Clamped++; }\n", ind, (uint64(1)<<uint(f.Type.Width))-1, (uint64(1)<<uint(f.Type.Width))-1)

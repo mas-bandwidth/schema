@@ -67,19 +67,22 @@ func TestWideTextInATableClosureReachesTheTableEmitter(t *testing.T) {
 	}
 }
 
-// TestTableWideTextTargetsCarryTheJSLeg is the RED-FIRST unit for the js leg
-// (the js half of sprint/schema-shared's wide-text-in-table-closures card): js
-// carries a `wstring(N)` table field through its fixed form (SPEC §4.12,
-// docs/SPEC-TABLES.md §3.4), so it is in tableWideTextTargets, named by
-// tableWideTextNames, and a unit with a wstring(N) table field is no longer
-// refused for it. rust, java and elixir are other legs and stay as they are.
-func TestTableWideTextTargetsCarryTheJSLeg(t *testing.T) {
+// TestTableWideTextTargetsCarryEveryLeg is the RED-FIRST unit for the four
+// legs this card lands: rust, java, js and elixir each carry a `wstring(N)`
+// table field through their fixed form (SPEC §4.12), so all four are in
+// tableWideTextTargets, named by tableWideTextNames, and a unit with a
+// wstring(N) table field is no longer refused for them.
+func TestTableWideTextTargetsCarryEveryLeg(t *testing.T) {
 	t.Parallel()
-	if !tableWideTextTargets["js"] {
-		t.Errorf("js does not carry wide text in a table closure (SPEC §4.12)")
+	for _, leg := range []string{"rust", "java", "js", "elixir"} {
+		if !tableWideTextTargets[leg] {
+			t.Errorf("%s does not carry wide text in a table closure (SPEC §4.12)", leg)
+		}
 	}
-	if !slices.Contains(tableWideTextNames, "JavaScript") {
-		t.Errorf("tableWideTextNames does not name JavaScript")
+	for _, name := range []string{"Rust", "Java", "JavaScript", "Elixir"} {
+		if !slices.Contains(tableWideTextNames, name) {
+			t.Errorf("tableWideTextNames does not name %s", name)
+		}
 	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "Wide.schema")
@@ -91,15 +94,20 @@ func TestTableWideTextTargetsCarryTheJSLeg(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load refused a wstring(N) inside a table closure: %v", err)
 	}
-	if _, err := c.Generate(u, "js", Options{}); err != nil {
-		t.Errorf("js still refuses a wstring(N) table field it carries: %v", err)
+	for _, leg := range []string{"rust", "java", "js", "elixir"} {
+		if _, err := c.Generate(u, leg, Options{}); err != nil {
+			t.Errorf("%s still refuses a wstring(N) table field it carries: %v", leg, err)
+		}
 	}
 }
 
-// TestWideTextInATableClosureRefusesMissingCarriers is the same unit against
-// a target that carries neither wire's half: the refusal names the field, so
-// no port emits a member it never laid out (SPEC.md §4.12).
+// TestWideTextInATableClosureRefusesMissingCarriers pins the named refusal a
+// target without the construct still gives. Every current target carries it
+// (c, cpp, cs, go, dart, rust, java, js, elixir), so the list is empty and the
+// test is the guard against a future target being added without a table codec:
+// it refuses by field name (SPEC.md §4.12).
 func TestWideTextInATableClosureRefusesMissingCarriers(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "Wide.schema")
 	if err := os.WriteFile(path, []byte(wideTextInATableClosure), 0o644); err != nil {
@@ -110,12 +118,9 @@ func TestWideTextInATableClosureRefusesMissingCarriers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load refused a wstring(N) inside a table closure: %v", err)
 	}
-	// DART IS NOT IN THIS LIST: its table surface is §3.4's fixed form, which
-	// lays wide text out, so it CARRIES the construct — see
-	// TestWideTextInATableClosureRidesTheDartFixedForm below.
-	// JS IS NOT IN THIS LIST either: it carries the construct on the same fixed
-	// form — see TestTableWideTextTargetsCarryTheJSLeg above.
-	for _, target := range []string{"rust", "java", "elixir"} {
+	// No target lacks the table codec today; a new one added to the registry
+	// without one goes here and the refusal must name the field.
+	for _, target := range []string{} {
 		_, err := c.Generate(u, target, Options{})
 		if err == nil {
 			t.Errorf("%s took a wstring(N) it does not carry", target)

@@ -23,11 +23,6 @@
 // unconditionally; copy exactly-sized receive buffers into a persistent
 // MaxBytes + 8 scratch first.
 
-// The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
-// scope is safe: single threaded per realm, consumed in the same op that
-// fills it.
-const SC = new DataView(new ArrayBuffer(8));
-
 // The JavaScript #ifdef, frozen at module load (serialize.js src/mode.js):
 // bundlers statically replace NODE_ENV, so production bundles tree-shake
 // the checked writers out. Existence-guarded for browsers without process.

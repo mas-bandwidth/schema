@@ -346,6 +346,7 @@ public final class FixedTableFixed {
             }
             TableFixed.run(entries, made, table, data, at + 8, bodySize, image, report);
             scatter(image, 0, values[k], report);
+            if (report.refused) { return -1; }
             at += (int) recordSize;
         }
         // THE COMPILE CENSUS LANDS ONCE, after the loop and only on a read that
