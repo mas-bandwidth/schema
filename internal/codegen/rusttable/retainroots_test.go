@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -115,6 +116,9 @@ func TestRetainsAndWidensOnEveryRootRust(t *testing.T) {
 			shared[29] = byte(ir.TableKindUnion)
 			seeds = append(seeds, rosterSeed{name: "graph_union_kind_mutant", unit: "graphdemo", root: "Scene", data: shared})
 		}
+		if carried["listdemo.Mixed"] {
+			seeds = append(seeds, repeatedUnionSeeds(t)...)
+		}
 		for _, retain := range []bool{false, true} {
 			driveSeeds(t, repo, bin, units, seeds, retain)
 		}
@@ -129,6 +133,64 @@ type rosterSeed struct {
 	// data is a seed made here rather than read from the corpus: the first
 	// seed of a root with one UNKNOWN field planted in its root body
 	data []byte
+	// retainWant, when set, is the RETAINING report this seed must answer in
+	// the driver's spelling, pinned here instead of read from the oracle;
+	// the saved bytes are still the oracle's
+	retainWant string
+	// retainedAtLeast is how many fields the ORACLE must retain from this
+	// seed, so a seed meant to exercise retention cannot quietly stop doing it
+	retainedAtLeast int
+}
+
+// mixed91317 is the default retaining fuzzer's mutant random #91317 of
+// list_mixed (listdemo.Mixed, run seed 24845619678). The `hits` list (an
+// array of unions, docs/SPEC-TABLES.md §2.9) rides TWICE: the first
+// occurrence's element 0 is a Point arm whose body keeps one unknown field
+// and then runs past its `L` (damaged: the element reads None), and the
+// second occurrence is a whole Point arm with its own unknown field, a damage
+// arm and a None.
+const mixed91317 = "01010e051e03020304050e12090203000000000000000400000000000000060e1a0f03070d0d080401001000091402000000000a04040700000000060e1a0f03070d0d080401000000090402000000000a040407000000000b0e0e040300000000320000006400000000e599f782764e0ad9ec2202864cfc63af522602864cfe63af052802864cff63afa82e867084edf24abbf00c9bccfb2d73b145c34435abfe73071702864cf5638f541502864cf463afc07fb38abe08637f68b7f0ae4c0cf65a0b00000000000000"
+
+// repeatedUnionSeeds pins RETENTION ACROSS AN ARRAY OF UNIONS
+// (docs/SPEC-TABLES.md §6.6): each element's arm body is its OWN body
+// occurrence, and a later occurrence of the field discards every record an
+// earlier one held, a damaged arm's included.
+//
+//   - mixed91317 itself: the second `hits` occurrence replaces the first
+//     whole, so the record kept under the first occurrence's damaged arm goes
+//     with it and nothing is lost: retained=4 retain_lost=0. The generated
+//     Go leg (build/conformance-go wire-fuzz --retain) answers the same. The
+//     Go oracle answers retain_lost=1 only because it keys an arm body by its
+//     cell's address and the list's append moved the cell, so the discard
+//     never finds it; that is the oracle's defect (internal/tablewire
+//     decode.go, out of this leg's paths), and the count is pinned here.
+//   - two Point arms in one list, each with its own unknown field: each
+//     record rides back in ITS element's arm body, never both in element 0's
+//     (a retain path that named the field and not the element did that).
+func repeatedUnionSeeds(t *testing.T) []rosterSeed {
+	t.Helper()
+	mutant, err := hex.DecodeString(mixed91317)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := int(binary.LittleEndian.Uint64(mutant[len(mutant)-8:]))
+	trailer := mutant[len(mutant)-8-8*count:]
+	point := func(unknown, y byte) []byte {
+		// arm ref 7 (Point), kind 13, L 13: unknown ref 8 (i32), ref 9 (i32), end
+		return []byte{7, 13, 13, 8, 4, unknown, 0, 0, 0, 9, 4, y, 0, 0, 0, 0}
+	}
+	hits := []byte{byte(ir.TableKindUnion), 2}
+	hits = append(hits, point(1, 2)...)
+	hits = append(hits, point(5, 6)...)
+	two := []byte{byte(ir.TableWireForm), 6, byte(ir.TableKindArray), byte(len(hits))}
+	two = append(two, hits...)
+	two = append(two, 0)
+	two = append(two, trailer...)
+	return []rosterSeed{
+		{name: "mixed91317", unit: "listdemo", root: "Mixed", data: mutant,
+			retainWant: "4,1,0,0,0,true,false retained=4 retain_lost=0", retainedAtLeast: 4},
+		{name: "list_two_point_arms", unit: "listdemo", root: "Mixed", data: two, retainedAtLeast: 2},
+	}
 }
 
 // plantUnknown writes one field this reader cannot name at the front of the
@@ -401,6 +463,15 @@ func driveSeeds(t *testing.T, repo, bin string, units map[string]*carriedUnit, s
 			binary.LittleEndian.Uint32(reply[13:]), binary.LittleEndian.Uint32(reply[17:]), reply[21] != 0, reply[22] != 0,
 			binary.LittleEndian.Uint32(reply[31:]), binary.LittleEndian.Uint32(reply[35:]))
 		want, encoded := oracleSeed(t, units[s.unit].unit, s.root, wire, retain)
+		if retain && s.retainedAtLeast > 0 {
+			var kept int
+			if _, err := fmt.Sscanf(want[strings.Index(want, "retained="):], "retained=%d", &kept); err != nil || kept < s.retainedAtLeast {
+				t.Errorf("%s (%s.%s): the oracle retains %s, fewer than the %d this seed exists to exercise", s.name, s.unit, s.root, want, s.retainedAtLeast)
+			}
+		}
+		if retain && s.retainWant != "" {
+			want = s.retainWant
+		}
 		if retain && strings.HasSuffix(s.name, "+unknown") && !strings.Contains(want, "retained=1 ") {
 			t.Errorf("%s (%s.%s): the planted unknown was not retained by the oracle (%s), so this seed proves nothing", s.name, s.unit, s.root, want)
 		}

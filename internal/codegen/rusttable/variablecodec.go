@@ -618,7 +618,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 			fmt.Fprintf(b, "%slet vref = %s;\n", ein, enumRef(f, "*e"))
 			fmt.Fprintf(b, "%sleb_write(&mut body, vref);\n", ein)
 		case vUnion:
-			g.emitUnionElement(b, f, "e", "body", ordinal, ein)
+			g.withArmIndex("j as u32", func() { g.emitUnionElement(b, f, "e", "body", ordinal, ein) })
 		default:
 			fmt.Fprintf(b, "%slet _ = j;\n", ein)
 			fmt.Fprintf(b, "%s%s\n", ein, scalarWrite(f, "(*e)", "body"))
@@ -1117,7 +1117,8 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	case cls == vUnion:
 		fmt.Fprintf(b, "%slet mut e = %s::None;\n", i5, f.Type.Name)
 		fmt.Fprintf(b, "%slet item_ok = (|| -> bool {\n", i5)
-		g.emitUnionDecode(b, f, "e", "sub", ordinal, i5+"    ", true)
+		// each element is its own body occurrence (§6.6)
+		g.withArmIndex("j as u32", func() { g.emitUnionDecode(b, f, "e", "sub", ordinal, i5+"    ", true) })
 		fmt.Fprintf(b, "%s    true\n%s})();\n", i5, i5)
 		if f.Array == ir.ArrayFixed {
 			// The oracle resets a fixed union slot as soon as its arm id is

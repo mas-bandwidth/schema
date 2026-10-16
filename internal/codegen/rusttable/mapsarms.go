@@ -320,7 +320,7 @@ func (g *gen) emitKeyedSave(b *strings.Builder, f *ir.Field, ordinal int, x, ind
 			fmt.Fprintf(b, "%slet vref = %s;\n", ein, enumRef(f, "*e"))
 			fmt.Fprintf(b, "%sleb_write(&mut eb, vref);\n", ein)
 		case vUnion:
-			g.emitUnionElement(b, f, "e", "eb", ordinal, ein)
+			g.withArmIndex("j as u32", func() { g.emitUnionElement(b, f, "e", "eb", ordinal, ein) })
 		case vString:
 			fmt.Fprintf(b, "%seb.extend_from_slice(e.as_bytes());\n", ein)
 		default:
@@ -443,9 +443,9 @@ func (g *gen) emitArmPayload(b *strings.Builder, v ir.UnionVariant, arm string, 
 	f := v.F
 	switch {
 	case v.Body():
-		fmt.Fprintf(b, "%s%s(%s, &mut payload, ids, g, retain.as_deref_mut(), report.as_deref_mut(), path.step(%d, 0));\n", ind, fn(f.Type.Name, "save_body"), arm, ordinal)
+		fmt.Fprintf(b, "%s%s(%s, &mut payload, ids, g, retain.as_deref_mut(), report.as_deref_mut(), %s);\n", ind, fn(f.Type.Name, "save_body"), arm, g.armPath(ordinal))
 		fmt.Fprintf(b, "%sif let (Some(ret), Some(rep)) = (retain.as_deref_mut(), report.as_deref_mut()) {\n", ind)
-		fmt.Fprintf(b, "%s    retain_emit_tail(&mut payload, ids, ret, KNOWN_IDS, path.step(%d, 0), rep);\n", ind, ordinal)
+		fmt.Fprintf(b, "%s    retain_emit_tail(&mut payload, ids, ret, KNOWN_IDS, %s, rep);\n", ind, g.armPath(ordinal))
 		fmt.Fprintf(b, "%s}\n", ind)
 		fmt.Fprintf(b, "%spayload.push(0);\n", ind)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
@@ -514,7 +514,7 @@ func (g *gen) emitElementWrite(b *strings.Builder, f *ir.Field, x, dst string, o
 	case vEnum:
 		fmt.Fprintf(b, "%sleb_write(&mut %s, %s);\n", ind, dst, enumRef(f, "*"+x))
 	case vUnion:
-		g.emitUnionElement(b, f, x, dst, ordinal, ind)
+		g.withArmIndex("j as u32", func() { g.emitUnionElement(b, f, x, dst, ordinal, ind) })
 	case vString:
 		fmt.Fprintf(b, "%s%s.extend_from_slice(%s.as_bytes());\n", ind, dst, x)
 	case vBytes:
@@ -715,7 +715,7 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%slet mut o = *off;\n", i5)
 		fmt.Fprintf(b, "%slet mut e = %s::None;\n", i5, f.Type.Name)
 		fmt.Fprintf(b, "%s{ let off = &mut o;\n", i5)
-		g.emitUnionDecode(b, f, "e", "eend", ordinal, i5+"    ", true)
+		g.withArmIndex("slot as u32", func() { g.emitUnionDecode(b, f, "e", "eend", ordinal, i5+"    ", true) })
 		fmt.Fprintf(b, "%s}\n", i5)
 		fmt.Fprintf(b, "%s%s[slot] = e;\n", i5, field)
 	case vEnum:
@@ -935,7 +935,7 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 	case v.Body():
 		fmt.Fprintf(b, "%slet mut body_val = %s::default();\n", in, f.Type.Name)
 		fmt.Fprintf(b, "%slet mut o = *off;\n", in)
-		fmt.Fprintf(b, "%slet _ = %s(wire, &mut o, %s, ids, &mut body_val, nodes, report, path.step(%d, 0), retain.as_deref_mut(), true);\n", in, fn(f.Type.Name, "load_body"), aend, ordinal)
+		fmt.Fprintf(b, "%slet _ = %s(wire, &mut o, %s, ids, &mut body_val, nodes, report, %s, retain.as_deref_mut(), true);\n", in, fn(f.Type.Name, "load_body"), aend, g.armPath(ordinal))
 		fmt.Fprintf(b, "%sif o != %s { report.malformed = true; %s = %s::None; }\n", in, aend, field, un.Name)
 		fmt.Fprintf(b, "%selse { %s = %s::%s(body_val); }\n", in, field, un.Name, rustVariant(v.Name))
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
@@ -1053,7 +1053,7 @@ func (g *gen) emitElementReadWithKind(b *strings.Builder, f *ir.Field, field, bo
 		fmt.Fprintf(b, "%s%s.push(e);\n", ind, field)
 	case vUnion:
 		fmt.Fprintf(b, "%slet mut e = %s::None;\n", ind, f.Type.Name)
-		g.emitUnionDecode(b, f, "e", bound, ordinal, ind, true)
+		g.withArmIndex("j as u32", func() { g.emitUnionDecode(b, f, "e", bound, ordinal, ind, true) })
 		fmt.Fprintf(b, "%s%s.push(e);\n", ind, field)
 	case vEnum:
 		fmt.Fprintf(b, "%slet mut e = %s::None;\n", ind, f.Type.Name)
