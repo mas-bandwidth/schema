@@ -84,7 +84,9 @@ func (g *wireGen) emitFieldDescriptor(f *ir.Field) {
 		// *string is unbounded (§2.5): no declared bound.
 	case f.Type.Kind == ir.TString:
 		bound = fmt.Sprintf("%d", f.Type.Size)
-	case f.HasIntRange:
+	case f.HasIntRange && !isWide(f):
+		// a wide field's range is a raw integer a Dart int may not hold
+		// (§3, §15), so its row names no min/max
 		min = dartBoundLiteral(f.IntMin)
 		max = dartBoundLiteral(f.IntMax)
 	}

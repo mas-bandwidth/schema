@@ -40,25 +40,19 @@ func (dartTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) 
 	if err := refuseWasRows(u, "dart"); err != nil {
 		return nil, err
 	}
-	// §2.6, §3.4: supported explicitly fixed closures have tag/arm storage in
-	// the fixed library. A unit with a variable root this card carries is not
-	// refused whole for a union, an array of unions or a map that sits beside
-	// that root — tables/lists is that shape. Those constructs stay unencoded
-	// on form 1 (cardWireField does not claim them) and a unit the variable
-	// form owns still refuses them by name. A unit with no carried root keeps
-	// the named compiler refusal.
-	if !darttable.CarriesVariableRoot(u) && !darttable.FixedTableClosureSupported(u) {
-		if err := refuseTableArms(u, "dart"); err != nil {
-			return nil, err
-		}
-		if err := refuseVoidArms(u, "dart"); err != nil {
-			return nil, err
-		}
+	// §2.6, §2.8, §3: the Dart table backend carries union arms of every field
+	// type (payload-free arms included), arrays of unions and maps on form 1
+	// for every root, fixed or variable, so dart is a registered carrier of
+	// each (init, below) and these refusals pass it; they stay called so a
+	// construct a registration does not name is still refused by name.
+	if err := refuseTableArms(u, "dart"); err != nil {
+		return nil, err
 	}
-	if !darttable.CarriesVariableRoot(u) {
-		if err := refuseUnionArrays(u, "dart"); err != nil {
-			return nil, err
-		}
+	if err := refuseVoidArms(u, "dart"); err != nil {
+		return nil, err
+	}
+	if err := refuseUnionArrays(u, "dart"); err != nil {
+		return nil, err
 	}
 	// §2.5: *bytes and *string both ride the node table on this leg.
 	if err := refuseBytes(u, "dart"); err != nil {
@@ -70,10 +64,8 @@ func (dartTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) 
 	if err := refuseOptionalArrays(u, "dart"); err != nil {
 		return nil, err
 	}
-	if !darttable.CarriesVariableRoot(u) {
-		if err := refuseMaps(u, "dart"); err != nil {
-			return nil, err
-		}
+	if err := refuseMaps(u, "dart"); err != nil {
+		return nil, err
 	}
 	if err := refuseLists(u, "dart"); err != nil {
 		return nil, err
@@ -142,5 +134,18 @@ func init() {
 	// The variable wire carries BOTH blobs — *bytes and *string (§2.5) — so
 	// dart registers through registerBuiltin's blobs flag, which names it a
 	// byte-buffer AND string carrier together.
-	registerBuiltin(dartTarget{}, true, false, false, true)
+	//
+	// Union arms of every field type and arrays of unions ride form 1
+	// (docs/SPEC-TABLES.md §2.6, §3: internal/codegen/darttable wireunion.go),
+	// so the arms and unionArrays flags are set; maps (§2.8) and optional
+	// arrays (§2.3) register as Go's do (compiler/target_go.go).
+	registerBuiltin(dartTarget{}, true, true, true, true)
+	registerOptionalArrayCarrier("dart")
+	registerMapCarrier("dart")
+	// A `was` on an enum variant, a union arm or a type's field (§5): the
+	// form-1 codec hashes the alias the wire carries (enum VariantWireName,
+	// arm WireName, ir.TableFieldWireId), pinned byte for byte by
+	// TestMapsAndUnionArmsOnTheTableWireDart over tables/messages and
+	// examples-wide, whose arms carry `was = "count"`.
+	wasRowTargets = append(wasRowTargets, "dart")
 }

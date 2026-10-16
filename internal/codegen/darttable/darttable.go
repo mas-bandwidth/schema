@@ -171,11 +171,12 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, err
 	}
 	maps.Copy(out, fixed)
-	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1. A fixed-only unit
-	// has no variable root and gets nothing from generateWireFiles (its form 3
-	// is above). A unit that mixes fixed tables with a variable root this card
-	// carries emits BOTH: form 3 for the fixed tables, form 1 for the variable
-	// roots. Fixed tables are not encoded as form 1.
+	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1, for EVERY root
+	// this backend carries, fixed or variable: form 1 is the table wire every
+	// table speaks, and form 3 (above) is a second encoding of a fixed table,
+	// not a replacement for it (§2.2, §3.4). A unit with fixed tables therefore
+	// emits both libraries, and the tables/messages, tables/scalars and
+	// examples-wide oracle rows (fixed roots, form-1 wires) pin the bytes.
 	wire, err := generateWireFiles(u)
 	if err != nil {
 		return nil, err
@@ -199,10 +200,11 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 
 // closureHoldsFixedTable reports whether the unit's table closure holds a
 // `fixed table` (docs/SPEC-TABLES.md §2.2). Such a unit is served by the
-// block, cook and fixed forms, so the variable form's boundary — the refusal
-// in checkUnsupportedConstructs and the form-1 emission — does not bind it
-// (docs/SPEC-TABLES.md §11): a variable table beside a fixed one is not
-// mis-encoded by anything the accelerators or the fixed form write.
+// block, cook and fixed forms, so the variable form's REFUSAL in
+// checkUnsupportedConstructs does not bind it (docs/SPEC-TABLES.md §11): a
+// construct form 1 cannot carry is left out of the form-1 library (no codec
+// is claimed for a table holding one) rather than refusing the unit's other
+// forms.
 func closureHoldsFixedTable(u *ir.Unit, closure map[string]bool) bool {
 	variable := ir.VariableTables(u)
 	for name := range closure {
@@ -284,14 +286,22 @@ func tableFieldTypeName(f *ir.Field) string {
 // by name — the table, the field and the construct — so it is never mis-
 // encoded and never silently dropped. The card's own closure — a plain table,
 // bool/int32/int64/enum fields, string(N), *string (the string kind of §2.5)
-// and unbounded []T of table elements (§2.9) — passes.
+// and unbounded []T of table elements (§2.9) — passes, and so do a map, an
+// enum-keyed array and a union whose every part form 1 carries (§2.4, §2.6,
+// §2.8).
 func checkUnsupportedConstructs(u *ir.Unit) error {
 	variable := ir.VariableTables(u)
 	for _, name := range sortedKeys(u.Tables) {
 		st := u.Tables[name]
 		for _, f := range st.Fields {
+			// A MAP, AN ENUM-KEYED ARRAY AND A UNION ARM are carried on form 1
+			// (wireunion.go, wirearrays.go) exactly when every construct they
+			// hold is: the refusals below fire only for one that is not, so a
+			// construct this form cannot encode is still refused by name and
+			// never mis-encoded (§11).
+			carried := cardWireField(f)
 			// maps (docs/SPEC-TABLES.md §2.8)
-			if f.Type.Kind == ir.TMap || f.MapEntry != nil {
+			if (f.Type.Kind == ir.TMap || f.MapEntry != nil) && !carried {
 				return fmt.Errorf("table %s field %s: map[K]V is refused in the Dart table backend (docs/SPEC-TABLES.md §2.8, §11)",
 					name, f.Name)
 			}
@@ -309,7 +319,7 @@ func checkUnsupportedConstructs(u *ir.Unit) error {
 			// carries a generated presence bool beside its value; the card's
 			// form-1 wire has no cell for it, so it must be refused, never
 			// mis-encoded as its bare value.
-			if f.Type.Optional {
+			if f.Type.Optional && !carried {
 				return fmt.Errorf("table %s field %s: optional ?T is refused in the Dart table backend (docs/SPEC-TABLES.md §2.3, §11)",
 					name, f.Name)
 			}
@@ -317,7 +327,7 @@ func checkUnsupportedConstructs(u *ir.Unit) error {
 			// ArrayFixed of one slot per named variant, keyed by variant id on
 			// the wire; the card's form-1 writer has no keyed body, so it must
 			// be refused, never mis-encoded as a plain scalar enum.
-			if f.KeyEnum != "" {
+			if f.KeyEnum != "" && !carried {
 				return fmt.Errorf("table %s field %s: enum-keyed array [E]T is refused in the Dart table backend (docs/SPEC-TABLES.md §2.4, §11)",
 					name, f.Name)
 			}
@@ -325,7 +335,7 @@ func checkUnsupportedConstructs(u *ir.Unit) error {
 			// union carries an arm id and a per-arm body; the card's form-1
 			// writer has no union tag, so it must be refused, never silently
 			// dropped from the variable form.
-			if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
+			if _, isUnion := f.Type.Ref.(*ir.Union); isUnion && !carried {
 				return fmt.Errorf("table %s field %s: a union arm is refused in the Dart table backend (docs/SPEC-TABLES.md §2.6, §11)",
 					name, f.Name)
 			}

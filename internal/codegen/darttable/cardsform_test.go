@@ -63,17 +63,26 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 			refuse: false,
 		},
 		{
-			name: "map is refused by table and field name",
+			name: "map is carried on form 1",
 			def: `package test
 				table Mapped {
 					id string(64)
 					meta map[uint8]int32
 				}
 			`,
-			refuse:    true,
-			table:     "Mapped",
-			field:     "meta",
-			construct: "map[K]V",
+			refuse: false,
+		},
+		{
+			// maps-and-arms: an optional map value rides as the optional it is
+			// (docs/SPEC-TABLES.md §2.3, §2.8), so this case is carried now
+			name: "map of an optional value is carried on form 1",
+			def: `package test
+				table Mapped {
+					id string(64)
+					meta map[uint8]?int32
+				}
+			`,
+			refuse: false,
 		},
 		{
 			name: "pointer to a table is carried",
@@ -87,20 +96,22 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 			refuse: false,
 		},
 		{
-			name: "optional ?T is refused by table and field name",
+			// maps-and-arms: presence rides as the field's own presence (§2.3)
+			name: "optional ?T is carried on form 1",
 			def: `package test
+				type Pos { x int32 }
 				table Optional {
 					id string(64)
 					maybe ?int32
+					at    ?Pos
+					few   ?[..2]int32
+					pair  ?[2]int32
 				}
 			`,
-			refuse:    true,
-			table:     "Optional",
-			field:     "maybe",
-			construct: "optional ?T",
+			refuse: false,
 		},
 		{
-			name: "enum-keyed array is refused by table and field name",
+			name: "enum-keyed array is carried on form 1",
 			def: `package test
 				enum Slot { alpha, beta, gamma }
 				table Keyed {
@@ -108,13 +119,10 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 					slots [Slot]int32
 				}
 			`,
-			refuse:    true,
-			table:     "Keyed",
-			field:     "slots",
-			construct: "enum-keyed array",
+			refuse: false,
 		},
 		{
-			name: "union arm is refused by table and field name",
+			name: "union arm is carried on form 1",
 			def: `package test
 				union Pick { plain int32 }
 				table Armed {
@@ -122,10 +130,35 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 					u Pick
 				}
 			`,
-			refuse:    true,
-			table:     "Armed",
-			field:     "u",
-			construct: "union arm",
+			refuse: false,
+		},
+		{
+			// maps-and-arms: a `type` arm and a table arm are one framing
+			// (§2.6), so this case is carried now
+			name: "union arm of a type is carried on form 1",
+			def: `package test
+				type Pos { x int32 }
+				union Pick { at Pos }
+				table Armed {
+					id string(64)
+					u Pick
+				}
+			`,
+			refuse: false,
+		},
+		{
+			// maps-and-arms: the wide scalars ride kinds 18-29 (§3, §15)
+			name: "fixed-point and 128-bit scalars are carried on form 1",
+			def: `package test
+				table Wide {
+					id string(64)
+					q  fixed(16, 16)  | min = -8, max = 8
+					u  ufixed(48, 16) | min = 0, max = 1000
+					n  int128         | min = -5000000000, max = 5000000000
+					m  [..2]uint128
+				}
+			`,
+			refuse: false,
 		},
 	}
 
