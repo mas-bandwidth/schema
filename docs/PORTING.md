@@ -156,7 +156,7 @@ per edge to 0.7 bytes per iteration (ceiling 8) once the delta was composed.
 (`tables-elixir-offsets-negative-control`) sabotages the block's composed read
 back to the whole-word read; the forged-offset assertion must go red.
 
-**Targets:** `tables-elixir-offsets`, `tables-elixir-offsets-negative-control`
+**Targets:** none
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
