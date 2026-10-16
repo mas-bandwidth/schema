@@ -253,6 +253,7 @@ func TestMessageFormBatchRust(t *testing.T) {
 			"no_vocabulary", "batch_too_large_measure", "batch_too_large_save",
 			"batch_too_large_read", "newer_form", "damage_in_body_two",
 			"bytes_after_pad", "short_buffer", "unknown_field_skipped",
+			"quantized_index_at_count", "quantized_index_above_count",
 		} {
 			if line := messageBatchLine(out, id); line != "BATCH "+id+" ok" {
 				t.Errorf("%s: %s", id, line)
@@ -614,6 +615,7 @@ fixed table Root
     a int32
     b bool
     c uint8
+    d float32 | min = -1, max = 1, resolution = 0.01
 }
 `
 
@@ -736,5 +738,48 @@ const messageBatchRefusalsMain = `
         let (count, ok) = root_load_messages(&mut values, &v2, &w_buf[..2 + used], &mut rep);
         ok_all = ok_all && ok && count == 1 && rep.unknown == 1 && !rep.malformed && values[0].a == 0;
         say("unknown_field_skipped", ok_all, format!("count={count} ok={ok} report={rep:?}"));
+    }
+    {
+        // "AN INDEX ABOVE count IS BATCH DAMAGE" (§3.3): d's 0.01 steps over
+        // [-1, 1] announce count = 200 at eight bits, which spell up to 255.
+        // An index of exactly count is the range's top and reads; one above it
+        // stops the batch at this body (no body delivered, ONE malformed) and
+        // is never reconstructed and clamped onto max.
+        let mut slot = 0u64;
+        let mut qbits = 0u32;
+        let mut qcount = 0u32;
+        for (i, e) in vocab.entries[..vocab.count].iter().enumerate() {
+            if e.kind == 10 && e.shape.packing == 2 {
+                slot = (i + 1) as u64;
+                qbits = e.shape.bits as u32;
+                qcount = e.shape.qcount;
+            }
+        }
+        let forge = |index: u64| -> Vec<u8> {
+            let mut buf = vec![0u8; 16];
+            let used = {
+                let mut w = TableBitWriter::new(&mut buf[2..]);
+                w.put(slot, vocab.ref_bits);
+                w.put(index, qbits);
+                w.put(0, vocab.ref_bits);
+                w.align();
+                (w.bits / 8) as usize
+            };
+            buf[0] = 2;
+            buf[1] = 0;
+            buf.truncate(2 + used);
+            buf
+        };
+        let shaped = slot != 0 && qcount == 200 && qbits == 8;
+        let mut values = vec![RootRow::default(); 1];
+        let mut rep = TableReport::default();
+        let (count, ok) = root_load_messages(&mut values, &vocab, &forge(qcount as u64), &mut rep);
+        say("quantized_index_at_count", shaped && ok && count == 1 && !rep.malformed && values[0].d == 1.0,
+            format!("slot={slot} bits={qbits} count={qcount} delivered={count} ok={ok} d={} report={rep:?}", values[0].d));
+        let mut values = vec![RootRow::default(); 1];
+        let mut rep = TableReport::default();
+        let (count, ok) = root_load_messages(&mut values, &vocab, &forge(255), &mut rep);
+        say("quantized_index_above_count", shaped && !ok && count == 0 && rep.malformed && !rep.refused && values[0].d == 0.0,
+            format!("slot={slot} bits={qbits} count={qcount} delivered={count} ok={ok} d={} report={rep:?}", values[0].d));
     }
 `

@@ -937,7 +937,16 @@ pub fn table_message_read_scalar(r: &mut TableBitReader, kind: u8, s: &TableMess
         hi = hi.wrapping_add(s.base_hi).wrapping_add(carry as u64);
     }
     if s.packing == 2 && kind == 10 {
-        let index = core::cmp::min(lo as u32, s.qcount);
+        // AN INDEX ABOVE THE PEER's ANNOUNCED count IS BATCH DAMAGE (§3.3,
+        // SPEC.md §4.3), checked on the whole wire value before any narrowing
+        // and never reconstructed and clamped: the width spells such an index
+        // whenever count is not one less than a power of two (eight bits
+        // spelling 255 over a count of 200). internal/tablewire's
+        // bitDecoder.float32 is the oracle.
+        if hi != 0 || lo > s.qcount as u64 {
+            return None;
+        }
+        let index = lo as u32;
         let ratio = index as f32 / s.qcount as f32;
         let scaled = ratio * s.qdelta;
         lo = (scaled + s.qmin).to_bits() as u64;
