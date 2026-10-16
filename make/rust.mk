@@ -575,6 +575,49 @@ tables-rust-variable-arms:
 
 test-rust: tables-rust-variable-arms
 
+# THE RUST UNIT REGISTRY GATE (docs/SPEC-TABLES.md §8.7): the same registry
+# listing oracle as the reference, through the Rust surface, mirroring
+# tables-c-view. For each VIEW_CORPUS unit the target generates the unit with
+# bin/schema into build/rust-view/unit, builds test/rust-view (copied beside
+# it, so its Cargo.lock and target stay in build/) against that unit and
+# nothing else, writes build/rust-view/<pkg>.listing, and the listing gate
+# compares every listing with the one the compiler produces from its own IR.
+#
+# A UNIT THE RUST LEG REFUSES WHOLE is named, never skipped silently: its
+# refusal must be the leg's own named follow-on (today `was` on an enum
+# variant, a union arm or a type's field, docs/SPEC-TABLES.md §5, which is
+# messages and wide), the gate compares every unit it carries, and any other
+# generate failure fails the target.
+.PHONY: tables-rust-view
+tables-rust-view: bin/schema test/rust-view/src/main.rs test/rust-view/Cargo.toml
+	@rm -rf build/rust-view
+	@mkdir -p build/rust-view/prog/src
+	@cp test/rust-view/Cargo.toml build/rust-view/prog/Cargo.toml
+	@cp test/rust-view/src/main.rs build/rust-view/prog/src/main.rs
+	@set -e; carried=; refused=; for entry in $(VIEW_CORPUS); do \
+		dir=$${entry%%:*}; pkg=$${entry##*:}; \
+		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
+		rm -rf build/rust-view/unit; mkdir -p build/rust-view/unit; \
+		if ! ./bin/schema generate --lang rust --out build/rust-view/unit/src $$source > build/rust-view/$$pkg.generate.log 2>&1; then \
+			if grep -q 'the rust form is a named follow-on' build/rust-view/$$pkg.generate.log; then \
+				echo "tables-rust-view: $$pkg is refused whole by the Rust leg, by name: $$(grep -o 'unit declares was on [^;]*' build/rust-view/$$pkg.generate.log)"; \
+				refused="$$refused $$pkg"; continue; \
+			fi; \
+			cat build/rust-view/$$pkg.generate.log; exit 1; \
+		fi; \
+		printf '[package]\nname = "viewunit"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" \
+			> build/rust-view/unit/Cargo.toml; \
+		PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --manifest-path build/rust-view/prog/Cargo.toml; \
+		./build/rust-view/prog/target/debug/rust-view > build/rust-view/$$pkg.listing; \
+		carried="$$carried,$$pkg"; \
+	done; \
+	echo "$$carried" | cut -c2- > build/rust-view/carried; echo "$$refused" > build/rust-view/refused
+	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/rust-view" SCHEMA_VIEW_LISTING_UNITS="$$(cat build/rust-view/carried)" \
+		go test ./internal/viewlisting -count=1 -timeout 600s -run TestUnitViewListingMatchesTheIR -v
+	@echo "Rust unit registry: $$(tr ',' ' ' < build/rust-view/carried | wc -w) of $(words $(VIEW_CORPUS)) VIEW_CORPUS units match the independent listing; refused whole by name:$$(cat build/rust-view/refused)"
+
+test-rust: tables-rust-view
+
 # THE CARDS UNIT'S RUST LEG (docs/SPEC-TABLES.md §2). These targets are the
 # Rust side of the cards wire-fuzz gate: they mirror the Go leg's
 # cards-generate and cards-wire-fuzz (make/go.mk) against the same oracle
