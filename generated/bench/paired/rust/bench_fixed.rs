@@ -72,7 +72,7 @@ pub fn mixed_event_fixed_write_body(b: &mut [u8], value: &MixedEventRow) {
             let at = 1;
             mixed_pickup_event_fixed_write_body(&mut b[at..at + 8], &arm);
         }
-        _ => {} // None, and any tag no arm of this build names: the tag is all of it
+        _ => {} // None, a payload-free arm, and any tag no arm of this build names: the tag is all of it
     }
 }
 
@@ -115,7 +115,7 @@ pub fn mixed_event_fixed_scatter(b: &[u8], value: &mut MixedEventRow, report: &m
             }
             value.arms.pickup = arm; // a WRITE of a union field, which is safe
         }
-        _ => {} // None: the overlay stays the zeros the default laid down
+        _ => {} // None and payload-free arms: the overlay stays the zeros the default laid down
     }
 }
 

@@ -727,7 +727,7 @@ reference writes these bytes too and every leg reads the same ones.
   | widened text | `player_name string(8)` | `player_name string(15)` | length and used bytes exact, the slack zeroed |
   | new union arm | `MixedEvent { hit, chat }` | `{ hit, chat, pickup }` | the pinned arm is `hit`, so the read lands through a plan ARM; the tag width is equal both sides |
   | enum append | `MixedWeapon`, 12 variants | 15 variants | the bounds pass guards against the WRITER's variant count, carried by the plan |
-  | integer widen | `MixedStat.delta int16` | `delta int32` | **80 widen entries per record**: §5.9 #33 forbids folding a run across a widening, so this is the only arm that puts ARITHMETIC rather than a copy on the clock, and a plan-read number without it measures the cheap half |
+  | integer widen | `MixedStat.delta int16` | `delta int32` | **64 widen entries per record** (§5.4: an unfolded run counts `min(their_n, my_n)` = min(64, 80); the Rust leg's reader reports exactly 4,096 over the 64 records): §5.9 #33 forbids folding a run across a widening, so this is the only arm that puts ARITHMETIC rather than a copy on the clock, and a plan-read number without it measures the cheap half |
 
   **What this corpus does NOT carry, named rather than faked:** an enum ORDINAL
   WIDTH widen needs 255 → 256 variants, which would destroy the shape §1.9's
@@ -792,7 +792,7 @@ restated because the arm is new:
   start this clock until its `bench_plan_read` mode has proved, on all 64
   records, that every OLD value landed exactly, that the reader's appended tail
   holds its declared DEFAULT, and that the counters are what
-  docs/FIXED-FORM-ALGORITHM.md §5.4 says for these six classes — 80 `widened`
+  docs/FIXED-FORM-ALGORITHM.md §5.4 says for these six classes — 64 `widened`
   per record among them. A plan read that decoded wrongly does not get to be
   fast.
 - **The prefill and the scatter are ON the clock, and the LOAD is the whole
@@ -982,7 +982,7 @@ names:
 4. `test/tables/fixedform_dump.cpp` — write `bench_lineage.bin` + `.layout` from the 64 packet-decoded records, and its `manifest.txt` line through `MS`/`MSI`/`MSTR` like every other row (§5.9 #32).
 5. `Makefile`, `bench-paired-corpus` — re-pin the two lineage files into `bench/paired/corpus/`; ordinary builds only verify them.
 6. `bench/paired/corpus/bench_lineage.bin`, `bench_lineage.layout` — NEW: the committed bytes.
-7. `test/tables/versioning_numbers.cpp` — the reference's NEW-READS-OLD case for this row, counters included (80 `widened` per record), RED before the arm is timed.
+7. `test/tables/versioning_numbers.cpp` — the reference's NEW-READS-OLD case for this row, counters included (64 `widened` per record, §5.4's `min(their_n, my_n)`), RED before the arm is timed.
 8. `bench/tables/cpp/table_main.cpp` — the `--plan-read` mode: the pre-clock gate, then the two timed `read` paths.
 9. `bench/tables/c/table_main.c` — the same mode, held to the C/C++ twin gate's text.
 10. `bench/tables/go/table_main.go` — the same mode.
@@ -998,6 +998,40 @@ names:
 20. `docs/SPEC-TABLES.md` §3.4 — **nothing to record**: the plan/identity bound is WITHDRAWN as a gate (Glenn, 2026-09-11) and lives here as a reported number only. §3.4's own `identity / hand-written straight-line ≤ 1.5x` stays exactly as written — the reference's older rule, C++'s alone — and the two coexist.
 21. `bench/tables/<lang>/` + `bench/paired/main.go` — the PACKET leg's `bench_mixed_read`: the packet wire's read timed ALONE in the plan-read invocation, measured, the gate's comparand, never folded into the published `gen` / `bench_mixed` series.
 
+**Landed so far (2026-10-16):** the Rust leg end to end — items 11, 18, 19
+and 21, and items 1, 2, 5 and 6 IN THE RUST LEG'S OWN DIRECTORY rather than
+the homes named above:
+
+- `bench/tables/rust/lineage/VOLD_bench_lineage.schema` (item 1) and
+  `schema.lock` (item 2: `FixedTable`'s lineage, the VOLD layout
+  `0x0c2ce17509b80494` at index 0, the identity `0x5f1320927e9ad910` at 1,
+  floor 0), and the committed `bench_lineage.bin` / `.layout` (item 6);
+- the producer is NOT the C++ dump (item 4): `table-rust-plan --plan-read --emit-lineage DIR` narrows the paired corpus's own 64 records
+  into the VOLD generation and writes them with the VOLD Rust codec, whose
+  fixed writer `make tables-rust-fixedform` holds to the C++ dump's bytes;
+  every build re-derives the file and refuses a mismatch (item 5's "ordinary
+  builds only verify them");
+- one value the table above did not foresee: the paired corpus uses the three
+  appended `MixedWeapon` variants (77 of 512 entity ordinals), which no OLD
+  writer could have written, so the producer folds each onto an OLD variant
+  (`((v - 1) mod 12) + 1`, never onto None) and the gate expects the fold;
+- `bench/paired -mode build` generates the unchanged paired unit a SECOND time
+  beside that lock and builds `build/paired/plan-rust`, and `-mode plan-read`
+  runs that binary: identity, plan and packet read timed alone in one
+  invocation, the versioning gate before the clock (every OLD value exact, the
+  appended field and the bound's tail at their declared defaults, 64
+  `widened` per record and no other counter, a poisoned destination reading to
+  the same answer). One thing that gate cannot see, found by a negative
+  control: the filled slots' declared defaults are all zero and the generated
+  LOAD builds each record in a zeroed per-call image, so a reader with its
+  prefill deleted still passes; the prefill's place inside the per-record
+  loop is checked by reading the generated reader.
+
+Still owed: the move of the pair to `bench/corpus/` + `bench/paired/corpus/`
+with the C++ dump as producer (items 1-6 as written), the reference's case
+(item 7), and every other leg's plan path (items 8-10, 12-16). Sittings:
+`bench/results/2026-10-16-hetzner2-plan-read-rust.md` (identity lane only) and
+`bench/results/2026-10-16-hetzner2-plan-read-rust-plan.md` (all three lanes).
 
 ---
 

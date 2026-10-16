@@ -41,7 +41,7 @@ func (g *gen) collectVariableUnions(names []string) []*ir.Union {
 		order = append(order, un)
 	}
 	for _, n := range names {
-		for _, f := range g.unit.Tables[n].Fields {
+		for _, f := range vStruct(g.unit, n).Fields {
 			g.walkFieldUnions(f, walk)
 		}
 	}

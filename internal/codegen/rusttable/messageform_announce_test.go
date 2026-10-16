@@ -275,6 +275,13 @@ func runAnnounceProbe(t *testing.T, u *announceUnit) string {
 			t.Fatal(err)
 		}
 	}
+	// THE ONE REPORT (§4, §3.3): a unit that carries the variable form owns
+	// TableReport there, so the probe carries that runtime beside the message's.
+	if data, ok := u.files[VariableRuntimeModule+".rs"]; ok {
+		if err := os.WriteFile(filepath.Join(root, VariableRuntimeModule+".rs"), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := os.WriteFile(filepath.Join(root, "main.rs"), []byte(announceProbe(u)), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -299,6 +306,9 @@ func runAnnounceProbe(t *testing.T, u *announceUnit) string {
 func announceProbe(u *announceUnit) string {
 	var b strings.Builder
 	b.WriteString("mod build_version;\nmod message_runtime;\npub use build_version::*;\npub use message_runtime::*;\n\n")
+	if _, ok := u.files[VariableRuntimeModule+".rs"]; ok {
+		b.WriteString("mod variable_runtime;\npub use variable_runtime::*;\n\n")
+	}
 	b.WriteString("fn say(id: &str, ok: bool, why: &str) {\n")
 	b.WriteString("    if ok { println!(\"ANNOUNCE {id} ok\"); } else { println!(\"ANNOUNCE {id} BAD {why}\"); }\n")
 	b.WriteString("}\n\n")
