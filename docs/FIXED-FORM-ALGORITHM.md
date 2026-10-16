@@ -960,10 +960,11 @@ after a newer reader that may not exist. `layout_unknown` is "a layout hash this
 lineage is oldest first with the reader's own layout LAST and `schema check` holds the last entry to the
 declaration, so every entry a build holds is the reader's own or older (a `retired` mark is older too, and is
 `layout_unsupported`); a hash outside it has no position in it; and the wire carries a hash and no ordinal. So
-a reader never emits `layout_newer` today and every step-5 miss is `layout_unknown`; the name is spent only when
-the standard gives a reader an ordered fact about a hash it does not hold, and that change is made in this file
-first. **Go is first**: it answers `layout_unknown` and exports `TableFixedLayoutUnknown`; the other legs keep
-`layout_newer` at step 5 until each takes the rule, and the gap is named, not hidden.
+a reader that has taken this rule (Go today) never emits `layout_newer` today and every step-5 miss is
+`layout_unknown`; the name is spent only when the standard gives a reader an ordered fact about a hash it does
+not hold, and that change is made in this file first. **Go is first**: it answers `layout_unknown` and exports
+`TableFixedLayoutUnknown`; the other legs keep `layout_newer` at step 5 until each takes the rule, and the gap is
+named, not hidden.
 
 **`layout_unsupported` fills `layout_hash` too** — both layout refusals report the file's hash, and what belongs
 to `layout_newer` alone is "and nothing else" (§5.9 #7). **The field is called `layout_hash`** and it is the
