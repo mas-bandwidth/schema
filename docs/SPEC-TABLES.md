@@ -451,13 +451,35 @@ blittable `<Name>Row` records, because a cooked record IS the blittable row
 (§7.2, §19.3) and a block-only build wants the same structs a cook-only build
 does.
 
-**GO emits four sources per unit file**: `<Base>Table.go` (the storage structs,
-the codecs, the reflection descriptors), `<Base>Block.go` and `<Base>Cook.go`
-(the two accelerators, §19 and §7), and one `<Home>TableJson.go` per unit (the
-generic text walk). The unit's shared runtime is emitted ONCE, into the
-package's home `<Package>Table.go` — the file named for the package when one
-exists, else a file emitted for the unit — named by the PACKAGE so an
-earlier-sorting file cannot relocate it (§19.2). Two spellings are Go's own and
+**GO emits a CORE and four OPTIONAL FORMS.** The core is `<Base>Table.go` per
+unit file (the storage structs, the codecs, the reflection descriptors) and the
+unit's `<Package>View.go`; it is always emitted and it compiles alone. The
+unit's shared runtime is emitted ONCE, into the package's home
+`<Package>Table.go` — the file named for the package when one exists, else a
+file emitted for the unit — named by the PACKAGE so an earlier-sorting file
+cannot relocate it (§19.2). **GO's optional forms** are files that only ADD
+their form's entry points, and any subset of them may be left out:
+`<Base>TableMessage.go` (the message form, §3.3: the announcement, the
+vocabulary, the batch codec and every fixed table's `<Name>MeasureMessages`,
+`<Name>SaveMessages` and `<Name>LoadMessages`), `<Base>Cook.go` (the cooked
+form, §7, both halves: the handles that read a region and the
+`<Name>CookMeasure` / `<Name>CookFrom` writers), `<Base>Block.go` (§19) and one
+`<Home>TableJson.go` per unit (the generic text walk, §16). The rule that makes
+every subset compile is a placement rule: A DECLARATION A CORE FILE NAMES IS A
+CORE DECLARATION. So `BuildVersion` (§20), the blittable `<Name>Row` records
+(a cooked record IS the blittable row, §7.2, §19.3), the storage and guard
+helpers the text walk shares, and the message form's TYPES (its writer, its
+reader and what they hold, because the descriptor's message columns are typed
+by them) all live in the core, and a form's file declares only what the core
+never names. The descriptor's message columns are the one place a form fills in
+a core declaration: the message file assigns them in an `init()` of its own,
+which runs after the core's because Go runs a package's `init` functions file by
+file in the lexical order the go command presents them, and `<Base>Table.go`
+sorts before `<Base>TableMessage.go`; with the form left out they stay nil,
+and nothing that remains reads them. Default generation emits every form; the
+emitter's own omit path is `gotable.GenerateOmitting`, and
+`TestGoTableCompilesWithAnySubsetOfItsForms` builds and vets every corpus unit
+with each of the sixteen subsets of `{json, cook, block, message}` omitted. Two spellings are Go's own and
 the reason is at each site:
 an enum's identity pair (`TableEnumId` / `TableEnumValue`) is a METHOD on the
 enum type, because Go has no overloading and a free pair would have to mint a
