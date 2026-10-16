@@ -727,7 +727,7 @@ reference writes these bytes too and every leg reads the same ones.
   | widened text | `player_name string(8)` | `player_name string(15)` | length and used bytes exact, the slack zeroed |
   | new union arm | `MixedEvent { hit, chat }` | `{ hit, chat, pickup }` | the pinned arm is `hit`, so the read lands through a plan ARM; the tag width is equal both sides |
   | enum append | `MixedWeapon`, 12 variants | 15 variants | the bounds pass guards against the WRITER's variant count, carried by the plan |
-  | integer widen | `MixedStat.delta int16` | `delta int32` | **80 widen entries per record**: §5.9 #33 forbids folding a run across a widening, so this is the only arm that puts ARITHMETIC rather than a copy on the clock, and a plan-read number without it measures the cheap half |
+  | integer widen | `MixedStat.delta int16` | `delta int32` | **64 widen entries per record**: §5.9 #33 forbids folding a run across a widening, so this is the only arm that puts ARITHMETIC rather than a copy on the clock, and a plan-read number without it measures the cheap half |
 
   **What this corpus does NOT carry, named rather than faked:** an enum ORDINAL
   WIDTH widen needs 255 → 256 variants, which would destroy the shape §1.9's
@@ -792,7 +792,7 @@ restated because the arm is new:
   start this clock until its `bench_plan_read` mode has proved, on all 64
   records, that every OLD value landed exactly, that the reader's appended tail
   holds its declared DEFAULT, and that the counters are what
-  docs/FIXED-FORM-ALGORITHM.md §5.4 says for these six classes — 80 `widened`
+  docs/FIXED-FORM-ALGORITHM.md §5.4 says for these six classes — 64 `widened`
   per record among them. A plan read that decoded wrongly does not get to be
   fast.
 - **The prefill and the scatter are ON the clock, and the LOAD is the whole
@@ -982,7 +982,7 @@ names:
 4. `test/tables/fixedform_dump.cpp` — write `bench_lineage.bin` + `.layout` from the 64 packet-decoded records, and its `manifest.txt` line through `MS`/`MSI`/`MSTR` like every other row (§5.9 #32).
 5. `Makefile`, `bench-paired-corpus` — re-pin the two lineage files into `bench/paired/corpus/`; ordinary builds only verify them.
 6. `bench/paired/corpus/bench_lineage.bin`, `bench_lineage.layout` — NEW: the committed bytes.
-7. `test/tables/versioning_numbers.cpp` — the reference's NEW-READS-OLD case for this row, counters included (80 `widened` per record), RED before the arm is timed.
+7. `test/tables/versioning_numbers.cpp` — the reference's NEW-READS-OLD case for this row, counters included (64 `widened` per record), RED before the arm is timed.
 8. `bench/tables/cpp/table_main.cpp` — the `--plan-read` mode: the pre-clock gate, then the two timed `read` paths.
 9. `bench/tables/c/table_main.c` — the same mode, held to the C/C++ twin gate's text.
 10. `bench/tables/go/table_main.go` — the same mode.

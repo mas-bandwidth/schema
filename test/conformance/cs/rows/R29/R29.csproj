@@ -40,15 +40,18 @@
 
   <ItemGroup>
     <Compile Include="Program.cs" />
-    <Compile Include="$(TablesGeneratedDir)/vold_uint_widen/*.cs" />
-    <Compile Include="$(TablesGeneratedDir)/vnew_uint_widen/*.cs" />
   </ItemGroup>
 
-  <Target Name="GenerateUintWidenTables" BeforeBuild>
-    <Exec Command="$(RepoRoot)/bin/schema generate --lang cs --out $(TablesGeneratedDir)/vold_uint_widen $(RepoRoot)/test/tables/VOLD_uint_widen.schema"
-          WorkingDirectory="$(RepoRoot)" />
-    <Exec Command="$(RepoRoot)/bin/schema generate --lang cs --out $(TablesGeneratedDir)/vnew_uint_widen $(RepoRoot)/test/tables/VNEW_uint_widen.schema"
-          WorkingDirectory="$(RepoRoot)" />
+  <!-- The generated units are not in the tables-generated-cs stamp, so the row
+       generates its own and globs them INSIDE the target, as R21 does: a static
+       glob is evaluated before any target runs and would miss a fresh tree. -->
+  <Target Name="GenerateUintWidenTables" BeforeTargets="CoreCompile">
+    <Exec Command="$(RepoRoot)/bin/schema generate --lang cs --out $(TablesGeneratedDir)/vold_uint_widen $(RepoRoot)/test/tables/VOLD_uint_widen.schema" />
+    <Exec Command="$(RepoRoot)/bin/schema generate --lang cs --out $(TablesGeneratedDir)/vnew_uint_widen $(RepoRoot)/test/tables/VNEW_uint_widen.schema" />
+    <ItemGroup>
+      <Compile Include="$(TablesGeneratedDir)/vold_uint_widen/*.cs" />
+      <Compile Include="$(TablesGeneratedDir)/vnew_uint_widen/*.cs" />
+    </ItemGroup>
   </Target>
 
 </Project>
