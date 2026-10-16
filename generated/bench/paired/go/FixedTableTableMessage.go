@@ -71,6 +71,9 @@ func FixedTableSaveMessages(values []*FixedTable, buffer []byte, report *TableRe
 	if w.Overflow {
 		return -1
 	}
+	if report != nil {
+		report.Clamped += w.Clamped
+	}
 	return 2 + w.Bits/8
 }
 func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {

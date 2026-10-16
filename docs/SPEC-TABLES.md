@@ -3926,6 +3926,10 @@ one document rather than two.
   `make tables-float-nan-negative-control` puts the conversion back and
   watches the pin go red. The rule crosses §4's FLOAT RUNG, `10` into `11`,
   where the 23 payload bits ride in the top of the double's 52.
+  **A COMPRESSED float is the one float whose READ moves a pattern**, and it
+  is not a normalization: its declared range is a read-side clamp (§4), so a
+  NaN under it clamps to `min` and counts and a `-0` lands as `+0`, by §3.3's
+  special-values rule. The bits on the wire are still the writer's own.
 
   **The scalars the type wire brought ride as their STORAGE and nothing
   else.** A `fixed(I, F)` value is the integer its storage holds, units ×
@@ -5823,6 +5827,60 @@ exception, because a name is the value on both forms and the variable form alrea
 carries it. A value that is on the grid and inside W reproduces its file byte
 for byte, which is what every vector below is.
 
+**A COMPRESSED FLOAT'S SPECIAL VALUES TAKE ONE RULE, IN EVERY FORM.** A
+compressed float is defined for the values in `[min, max]`, and a NaN, the
+infinities and a negative zero are each stated here, because every comparison
+against a NaN is false and a bounds test of `< min` and `> max` alone hands a
+NaN through whole: a value outside the declared range, uncounted, given to a
+caller the declaration promises a number inside it. The rule, the same in the
+message, fixed, variable and text forms:
+
+- **A VALUE WRITTEN AS NaN NEVER LANDS AS NaN.** It clamps to `min` and COUNTS,
+  exactly as `-Inf` and a finite value below `min` do, or, in the one form
+  with no spelling for it, it is REFUSED BY NAME. A quiet NaN, a signalling
+  NaN, a NaN with any payload and either sign are one case.
+- **`+Inf` CLAMPS TO `max` AND `-Inf` TO `min`, AND EACH COUNTS**, as a finite
+  value past that end does, or is refused by name where a NaN is.
+- **`-0` IS `+0`.** It lands as exactly what `+0` lands as in that form: the
+  value `0` itself where the form carries the float, and the INDEX OF 0 FOR
+  THAT RANGE where the form quantizes, which decodes to the grid point the
+  rule chooses for `0`. No sign bit is kept and nothing is counted, because the
+  value is inside the range and only its spelling differs.
+
+Where the clamp runs, and what counts it, is each form's own:
+
+| form | where a NaN, an infinity and a `-0` are held |
+| --- | --- |
+| MESSAGE (§3.3) | the WRITER's quantizer (above): `!(ratio >= 0)` is true for a NaN, so it takes the `0` end, and the writer COUNTS every value its quantizer clamps — a NaN, an infinity, a finite value past either end — into `clamped` on the report handed to `SaveMessages`. The reader sees only an index in `[0, count]`, so it decodes a value inside `[min, max]` and counts nothing |
+| FIXED (§3.4) | the READ's bounds pass, which tests for the NaN FIRST and then each end; `clamped` on the load's report. The record carries the float whole, so the writer moves nothing |
+| VARIABLE (§3) | the READ's clamp to the declared range (§4), the same test in the same order; `clamped` on the load's report |
+| TEXT / JSON (§16) | JSON has no spelling for a NaN or an infinity, so the WRITER REFUSES each (§16.2: measure and write return `-1`, and the reference's refusal names the value) and nothing lands; a text cannot carry one in. A `-0` is spelled `-0`, and the READ lands it as `+0`, uncounted |
+
+The quantizer, read off the Go oracle (`ir.TableMessageQuantize` and
+`TableMessageDequantize`) on two shapes, because a range that starts at `0`
+cannot tell "the index of 0" from "index 0":
+
+| input | `[0, 1]` at `0.01` (`count` 100): index → decoded | `[-1, 1]` at `0.01` (`count` 200): index → decoded |
+| --- | --- | --- |
+| a NaN | `0` → `0`, which is `min` | `0` → `-1`, which is `min` |
+| `-0` | `0` → `+0`, the index of `0` | `100` → `+0`, the index of `0` |
+| `+0` | `0` → `+0`, the index of `0` | `100` → `+0`, the index of `0` |
+| `+Inf` | `100` → `1`, which is `max` | `200` → `1`, which is `max` |
+| `-Inf` | `0` → `0`, which is `min` | `0` → `-1`, which is `min` |
+| below `min` | `0` → `min` | `0` → `min` |
+| above `max` | `count` → `max` | `count` → `max` |
+
+In general `-0` and `+0` take the index of the grid point the rule chooses for
+`0`, and decode to that point; it is index `0` only when `min` is `0`. The index
+never leaves `[0, count]` and a decoded value never leaves `[min, max]`, so in
+every form a compressed float lands inside its declared range and a NaN never
+lands at all. The rule is held on the Go leg and in the Go oracle by
+`internal/codegen/gotable/cfloat_special_values_test.go`, which pins NaN,
+`-0`, `+0`, `+Inf` and `-Inf` in all four forms on both shapes above, and by
+`internal/codegen/gotable/fixedcfloat_test.go`'s NaN and negative-zero rows. A
+leg that lands a NaN, keeps a `-0`'s sign bit, or clamps without counting here
+is out of conformance with this paragraph.
+
 **FORM `2` IS A STREAM FORM AND NEVER A FILE'S OWN FORM.** `schema pack` writes form
 `1`, `schema unpack` reads form `1`, and a reader handed a form-`2` wire where a
 file was expected refuses by name: a batch stored on its own is not readable,
@@ -6910,7 +6968,7 @@ VALUE.**
   | `bits(N)` | the declared storage width, 4 for `N <= 32` and 8 above |
   | a RANGED integer | its own storage width; the bounds do not ride and clamp on load, as they do in §3 |
   | `float32`, `float64` | 4, 8 — the IEEE-754 bit pattern, with no canonicalisation (§3) |
-  | a COMPRESSED float | 4 — it rides as the float, not as a quantized index; this form is not optimized for bandwidth |
+  | a COMPRESSED float | 4 — it rides as the float, not as a quantized index; this form is not optimized for bandwidth. The read's bounds pass holds a NaN, the infinities and a `-0` by §3.3's special-values rule: a NaN clamps to `min` and counts, `+Inf`/`-Inf` clamp to `max`/`min` and count, `-0` lands as `+0` |
   | `int128`/`uint128` | 16, the low 64-bit half then the high |
   | `fixed(I, F)`, `ufixed(I, F)` | the storage width, the raw scaled integer |
   | `flags` | 8, the raw mask, as §3 carries it |
@@ -13916,7 +13974,7 @@ Per kind:
 | declaration | JSON | notes |
 |---|---|---|
 | integers, `bits(N)` | number | see **Numbers** below; a `bits(N)` value over its implied `[0, 2^N − 1]` clamps and counts |
-| `float32`, `float64`, compressed floats | number | a value a float32 field cannot hold is `kind_mismatch`, never stored as infinity |
+| `float32`, `float64`, compressed floats | number | a value a float32 field cannot hold is `kind_mismatch`, never stored as infinity. A compressed float's `-0` reads as `+0`, uncounted, and a NaN or an infinity in one is refused at write (§3.3, the special values) |
 | `fixed(I, F)`, `ufixed(I, F)` | number, in WHOLE UNITS | the spelling SPEC.md §4.6 gives a fixed default: `1.0`, `-0.25`, `3.0000152587890625`. Written as the shortest EXACT decimal with at least one fractional digit; read from any number token whose value is exactly representable in Q I.F — `2`, `15e-1` and `1.5` are the same value — and a finer fraction is `kind_mismatch`, the wrong shape for the field, never rounded. See **Numbers** |
 | `int128`, `uint128` | number | a decimal integer, exact past 2^53 in both directions: `340282366920938463463374607431768211455` reads back as itself. Integral forms read as for every integer; a fractional value is `kind_mismatch` |
 | `bool` | `true` / `false` | |
