@@ -5,6 +5,25 @@
 > ([BENCH-STANDARD §5](../bench/BENCH-STANDARD.md#5-reporting-format)). The tables below
 > are kept exactly as published, in their recorded convention (C++ = 100%).
 
+## 2026-10-16: tables, the fixed form's read, Rust against C++ (#358)
+
+#358 said Rust tables read at 0.72x of C++. That number is the
+[2026-09-03 pairing check](../bench/tables/results/2026-09-03-rust-inline-arm64-macbook.md)
+on the TOLERANT wire, a form-1 codec that the Rust backend no longer emits for a fixed table.
+On the surface Rust carries today, the fixed form (form 3) through `bench/tables/rust` and
+`bench/paired`'s build, two interleaved sittings on hetzner2 (Ryzen 9 7950X3D, pinned to core
+15, 11 rounds each, 4,000,000 records per sample, a shared box at load1 9 to 30, which is
+declared rather than certified) put **Rust's derived read at 1.43x the clang build and 1.70x the
+g++ build**. The round trip is 1.54x and 2.15x. Per-round ranges are [1.37, 1.50] and
+[1.59, 1.86], and the two sittings agree to the third decimal
+([raw rows](../bench/results/2026-10-16-rust-tables-read-hetzner2/)). The line-level profile
+is in [docs/notes/rust-tables-read-profile.md](notes/rust-tables-read-profile.md). The
+difference is the read-side range clamp pass. In C++ it is a scalar loop that keeps its
+`int32_t &` counter in memory, because the counter may alias the value. In Rust it is
+vectorized, because `&mut` cannot alias. Marking the C++ counters `__restrict` makes the clang
+read 1.25x faster in its own sitting. No Rust emitter change was made: there is no Rust gap
+to close.
+
 ## 2026-09-07: the Studio's nine-language table, and what moved since the Air's
 
 The first table of the day on the new node pin was a sitting on the Apple M3 Ultra Studio
