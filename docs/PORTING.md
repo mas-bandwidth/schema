@@ -1379,7 +1379,7 @@ offset is seen without a pinned dump that happens to cover the field.
 **Reference.** `test/js-tables/main.mjs` (the leg's two-way read);
 `tables-js-accessor-negative-control` and `tables-js-slot-negative-control`.
 
-**Proven in.** JavaScript.
+**Proven in.** JavaScript and Dart.
 
 **Measured effect.** Structural.
 
@@ -1387,11 +1387,28 @@ offset is seen without a pinned dump that happens to cover the field.
 `internal/codegen/jstable/record.go`, and a pointer slot's offset moved eight,
 each through `go build -overlay`; each must turn the leg red.
 
+**Dart.** `test/dart-tables/agree.dart` (`tables-dart-agree`, reached from
+`test-dart`) reads every row of `block_render.bin` and `block_padded.bin`, every
+node of the five `build/cook-fuzz` images (each reference also resolved from the
+descriptor's own slot offset), and every record type either descriptor graph
+reaches over seeded noise, through the generated accessor and through the
+descriptor's offset, kind, width and signedness, and prints the counts it read.
+`tables-dart-accessor-negative-control` moves `RenderCamera.camera_id` four bytes
+in `darttable/block.go` and `tables-dart-slot-negative-control` moves
+`TreeNode.left`'s descriptor offset eight in `darttable/cook.go`, each through
+`go build -overlay`; each must turn the gate red on that field and on nothing
+else. Its first run found two real disagreements, both in `block.go`'s one
+scalar emitter: a `flags` field is a `uint64` slot in every target
+(`ir/blocklayout.go`) and the accessor read one byte of it (`RenderShip.flags`),
+and a pointer slot is an eight-byte delta that the row getter also reads one
+byte of, which the gate pins as the low byte of the delta until the getter is
+settled.
+
 **Targets:** accessor-negative-control
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #421 | ❌ #421 | ❌ #421 | ✅ `tables-go-accessor-descriptor-agreement` `tables-go-accessor-negative-control` `tables-go-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ❌ #421 | ❌ #421 |
+| ❌ #421 | ❌ #421 | ❌ #421 | ✅ `tables-go-accessor-descriptor-agreement` `tables-go-accessor-negative-control` `tables-go-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ✅ `tables-dart-agree` `tables-dart-accessor-negative-control` `tables-dart-slot-negative-control` | ❌ #421 |
 
 ### J2 — The runtime home, with a file-order control
 

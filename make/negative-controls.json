@@ -489,7 +489,7 @@
     {
       "name": "dart",
       "when": "pull-request",
-      "why": "the Dart port's controls and its four packet families: thirteen controls, the fixed form's among them. Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of §5.7.",
+      "why": "the Dart port's controls and its four packet families: fifteen controls, the fixed form's among them and the accessor/descriptor agreement gate's two (each a go build and a regeneration of the block and pointers corpora, a few seconds apiece). Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of §5.7.",
       "targets": [
         "packet-arm-defaults-dart-negative-control",
         "packet-defaults-dart-negative-control",
@@ -503,7 +503,9 @@
         "tables-dart-fuzz-lead-negative-control",
         "tables-dart-names-negative-control",
         "tables-dart-runtime-home-negative-control",
-        "tables-dart-standalone-negative-control"
+        "tables-dart-standalone-negative-control",
+        "tables-dart-accessor-negative-control",
+        "tables-dart-slot-negative-control"
       ],
       "dart": "3.13.2"
     },
