@@ -448,7 +448,7 @@ tables-elixir-block-lead: build/conformance/manifest.txt
 
 # and its control, on the EMITTER for the fuzz control's reason
 CONFORMANCE_NEGATIVE_ELIXIR_LEAD := build/elixir-lead-negative
-ELIXIR_LEAD_SED := -e 's|or rem(lead, B.align()) != 0 do|or lead < 0 do|'
+ELIXIR_LEAD_SED := -e 's|and rem(lead, B.align()) == 0,|and lead >= 0,|'
 
 .PHONY: tables-elixir-block-lead-negative-control
 tables-elixir-block-lead-negative-control: build/conformance/manifest.txt
