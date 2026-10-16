@@ -85,7 +85,7 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema
+build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9)
 	@mkdir -p build/tables-generated-java
 	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit and the BYTE-BUFFER unit: their cook readers and
@@ -136,6 +136,9 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAP
 	# unit: the conformance report rows read scalars_*.bin through it, counting
 	# the kind mismatches and raw-scale clamps of docs/SPEC-TABLES.md §15.
 	./bin/schema generate --lang java --out build/tables-generated-java/scalars2 test/tables/Scalars2.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/backend tables/backend
+	./bin/schema generate --lang java --out build/tables-generated-java/vocab tables/vocab
+	./bin/schema generate --lang java --out build/tables-generated-java/vocab9 tables/vocab9
 	@touch $@
 
 # The Java twin of the C++ "no serialize include path" build: a generated
@@ -166,7 +169,7 @@ tables-java-zero-cost: bin/schema
 	./bin/schema generate --lang java --out build/tables-java-zero examples
 	@for f in build/tables-java-zero/*.java; do \
 		case $$(basename $$f) in \
-			Table*|*Table.java|*Row.java|*Block.java|*Cook.java|BuildVersion.java) \
+			Table*|*Table.java|*Row.java|*Block.java|*Cook.java|*Message.java|BuildVersion.java) \
 				echo "ZERO-COST GATE FAILED: a table-free unit emitted $$f"; exit 1;; \
 		esac; \
 	done
@@ -530,6 +533,19 @@ tables-java-versioning: tables-fixedform-corpus
 	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
 	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
+
+# THE MESSAGE FORM, form byte 2 (docs/SPEC-TABLES.md §3.3;
+# internal/codegen/javatable/messageform_announce_test.go,
+# internal/codegen/javatable/messageform_batch_test.go). The announcement wire
+# (TableVocabulary) and the bitpacked message batch (TableMessage and
+# <Type>Message) round-trip against the C++ reference bytes for the backend,
+# vocab and vocab9 corpora, land versioned batches across v1/v2, and refuse
+# every malformed and out-of-range message batch by name.
+.PHONY: tables-java-message-batch
+tables-java-message-batch:
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestMessageFormBatchJava|TestMessageFormAnnounceJava'
+	@echo 'tables Java message form: announcement and batch round-trip, versioning and refusals pass'
 
 # THE FIXED-FORM ROADMAP T12 GATE (union-field-arms/java/valid-data,
 # payload-free-arms/java/valid-data, union-arrays/java/valid-data,
@@ -946,6 +962,8 @@ build-conformance-java: build/tables-generated-java/.stamp build/tables-generate
 		build/tables-generated-java/v2/*.java build/tables-generated-java/p1/*.java \
 		build/tables-generated-java/p3/*.java \
 		build/tables-generated-java/k1/*.java build/tables-generated-java/k2/*.java \
+		build/tables-generated-java/backend/*.java build/tables-generated-java/vocab/*.java \
+		build/tables-generated-java/vocab9/*.java \
 		test/conformance/java/src/Driver.java
 
 # THE JAVA CONFORMANCE NEGATIVE CONTROL, and it localises the block form's
@@ -1019,6 +1037,8 @@ test-java: toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp 
 	# THE FIXED FORM against the C++ reference's own bytes (docs/SPEC-TABLES.md §3.4)
 	$(MAKE) tables-java-fixedform
 	$(MAKE) tables-java-fixedform-bench
+	# THE MESSAGE FORM against the C++ reference's own bytes (docs/SPEC-TABLES.md §3.3)
+	$(MAKE) tables-java-message-batch
 	# THE VARIABLE CLASS against the committed reference bytes (docs/SPEC-TABLES.md §2, §3, §16)
 	$(MAKE) tables-java-variable-class
 	cd test/java && $(JAVA) -ea -cp ../../build/java-test Main
