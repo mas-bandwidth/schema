@@ -54,6 +54,7 @@ public final class MixedChatEventFixed {
             v.channel = (int) (q);
         }
         v.speaker = TableFixed.get32(b, at + 4);
+        if (v.speaker > 4095L) { v.speaker = (int) (4095L); r.clamped++; } // bits(12) clamps to 2^N - 1
     }
 
 }

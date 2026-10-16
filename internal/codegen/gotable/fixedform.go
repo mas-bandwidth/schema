@@ -440,7 +440,10 @@ func (g *tableGen) fixedElementLeafCount(f *ir.Field) int {
 }
 
 func (g *tableGen) emitFixedLeafWalk(st *ir.Struct) {
-	g.pf("func %sFixedLeaves(out []TableFixedEntry, src, dst uint32) int {\n", st.Name)
+	// links is the walk's record of each entry's GUARD CHAIN, innermost first,
+	// beside out and indexed alike; tableFixedBuildPlan turns it outermost first
+	// and lays it into the pool (docs/FIXED-FORM-ALGORITHM.md §4.1).
+	g.pf("func %sFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {\n", st.Name)
 	g.pf("\tn := 0\n")
 	off := int64(0)
 	for _, f := range st.Fields {
@@ -526,7 +529,7 @@ func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs i
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			g.pf("%sn += %sFixedLeaves(out[n:], %s, %s)\n", ind, r.Name, src, dst)
+			g.pf("%sn += %sFixedLeaves(out[n:], links[n:], %s, %s)\n", ind, r.Name, src, dst)
 			return
 		case *ir.Union:
 			tag := int64(ir.StorageBitsFor(r.Max) / 8)
@@ -544,19 +547,15 @@ func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs i
 				}
 				// THE GUARD'S WIDTH IS THE TAG'S (§5.2): stamped here, the read
 				// loop compares the tag WHOLE and a foreign 0x0101 is not arm 1.
-				// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG (§4.1): an entry
-				// an inner union already guarded gets the outer tag on the
-				// SECOND lane, never over the first, so both tags must hold.
+				// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG (§4.1, the guard
+				// chain): every entry this arm produced gets ONE MORE LINK, never
+				// a lane written over another, so an arm three unions deep keeps
+				// all three. The walk records links innermost first (an inner
+				// union stamps before this one); tableFixedBuildPlan turns them
+				// outermost first, lays the innermost two on the Guard and Guard2
+				// lanes, and the whole chain into the pool.
 				g.pf("%s\tfor q := guardAt; q < n; q++ {\n", ind)
-				g.pf("%s\t\tif out[q].Guard == tableFixedNoGuard {\n", ind)
-				g.pf("%s\t\t\tout[q].Guard = %s\n", ind, src)
-				g.pf("%s\t\t\tout[q].Arg = %d\n", ind, i+1)
-				g.pf("%s\t\t\tout[q].ArgW = %d\n", ind, tag)
-				g.pf("%s\t\t} else {\n", ind)
-				g.pf("%s\t\t\tout[q].Guard2 = %s\n", ind, src)
-				g.pf("%s\t\t\tout[q].Arg2 = %d\n", ind, i+1)
-				g.pf("%s\t\t\tout[q].ArgW2 = %d\n", ind, tag)
-				g.pf("%s\t\t}\n", ind)
+				g.pf("%s\t\tlinks[q] = append(links[q], TableFixedGuardLink{Guard: %s, Arg: %d, ArgW: %d})\n", ind, src, i+1, tag)
 				g.pf("%s\t}\n", ind)
 				g.pf("%s}\n", ind)
 			}
@@ -1079,8 +1078,18 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int) {
 				if v.F == nil || !ir.TableFixedClampNeededField(v.F) {
 					continue
 				}
+				// An arm is a field line: its payload gets the per-element
+				// walk a declared field gets, not a single-element clamp.
+				// Name the copy after the arm, as the union's own storage
+				// does (unions.go), and hand it to emitFixedClampField: a
+				// fixed array walks to its bound, a counted array to its live
+				// Count, an optional only when present. §3.4 walks LIVE
+				// elements only, so a fixed array never touches slack and a
+				// counted array never touches [Count:].
+				arm := *v.F
+				arm.Name = v.Name
 				g.pf("%scase %sType%s:\n", ind, f.Type.Name, ir.GoExportName(v.Name))
-				g.emitFixedClampElement(v.F, expr+"."+ir.GoExportName(v.Name), tabs+1)
+				g.emitFixedClampField(&arm, expr, tabs+1)
 			}
 			g.pf("%s}\n", ind)
 			return

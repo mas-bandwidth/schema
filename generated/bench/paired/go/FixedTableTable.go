@@ -218,6 +218,7 @@ func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
 
 const FixedTableLoadRetainBuilder = "FixedTable: retention requires a region round trip through the VARIABLE form"
 const FixedTableSaveRetainMessages = "FixedTable: retention requires a region round trip through the VARIABLE form"
+const FixedTableLoadRetainMessages = "FixedTable: retention requires a region round trip through the VARIABLE form"
 const FixedTableLoadRetain = "FixedTable: retention requires a variable root and its region directory"
 const FixedTableMeasureRetain = "FixedTable: retention requires a variable root and its region directory"
 const FixedTableSaveRetain = "FixedTable: retention requires a variable root and its region directory"
@@ -365,7 +366,7 @@ func FixedTableLoadMessages(values []FixedTable, vocabulary *TableVocabulary, da
 // in declared order, every field at its declared storage width. The writer is
 // constant-offset stores; the reader is ONE loop over ONE plan.
 
-func MixedEntityFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedEntityFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -483,7 +484,7 @@ func MixedEntityFixedWriteBody(b []byte, value *MixedEntity) {
 	}
 }
 
-func MixedStatFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedStatFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -505,7 +506,7 @@ func MixedStatFixedWriteBody(b []byte, value *MixedStat) {
 	tableFixedPut32(b[4:], uint32(value.Delta))
 }
 
-func MixedHitEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedHitEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -547,7 +548,7 @@ func MixedHitEventFixedWriteBody(b []byte, value *MixedHitEvent) {
 	}
 }
 
-func MixedChatEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedChatEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -569,7 +570,7 @@ func MixedChatEventFixedWriteBody(b []byte, value *MixedChatEvent) {
 	tableFixedPut32(b[4:], uint32(value.Speaker))
 }
 
-func MixedPickupEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func MixedPickupEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -591,7 +592,7 @@ func MixedPickupEventFixedWriteBody(b []byte, value *MixedPickupEvent) {
 	tableFixedPut32(b[4:], uint32(value.Amount))
 }
 
-func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func BenchMixedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -652,14 +653,14 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	for i := uint32(0); i < 8; i++ {
 		es := src + 56 + i*51
 		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Entities)) + i*uint32(unsafe.Sizeof(MixedEntity{}))
-		n += MixedEntityFixedLeaves(out[n:], es, ed)
+		n += MixedEntityFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	out[n] = TableFixedEntry{Src: src + 464, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.StatsCount)), Size: 80, Guard: tableFixedNoGuard, Op: tableFixedCount} // stats count
 	n++
 	for i := uint32(0); i < 80; i++ {
 		es := src + 468 + i*8
 		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Stats)) + i*uint32(unsafe.Sizeof(MixedStat{}))
-		n += MixedStatFixedLeaves(out[n:], es, ed)
+		n += MixedStatFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	{
 		es := src + 1108
@@ -668,29 +669,23 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 		n++
 		{ // arm hit, ordinal 1
 			guardAt := n
-			n += MixedHitEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Hit)))
+			n += MixedHitEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Hit)))
 			for q := guardAt; q < n; q++ {
-				out[q].Guard = es
-				out[q].Arg = 1
-				out[q].ArgW = 1
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 1, ArgW: 1})
 			}
 		}
 		{ // arm chat, ordinal 2
 			guardAt := n
-			n += MixedChatEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Chat)))
+			n += MixedChatEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Chat)))
 			for q := guardAt; q < n; q++ {
-				out[q].Guard = es
-				out[q].Arg = 2
-				out[q].ArgW = 1
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 2, ArgW: 1})
 			}
 		}
 		{ // arm pickup, ordinal 3
 			guardAt := n
-			n += MixedPickupEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Pickup)))
+			n += MixedPickupEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Pickup)))
 			for q := guardAt; q < n; q++ {
-				out[q].Guard = es
-				out[q].Arg = 3
-				out[q].ArgW = 1
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 3, ArgW: 1})
 			}
 		}
 	}
@@ -833,12 +828,12 @@ func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 	tableFixedPut32(b[1232:], uint32(value.IdleTicks))
 }
 
-func FixedTableFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func FixedTableFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
 		ed := dst + uint32(unsafe.Offsetof(FixedTable{}.Value))
-		n += BenchMixedFixedLeaves(out[n:], es, ed)
+		n += BenchMixedFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	return n
 }
@@ -1493,12 +1488,18 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 		if tableFixedGet64(at) != hash {
 			return tableFixedRefuse(report, "no_layout")
 		}
+		if why := tableFixedTextRefusal(entries, entryCount, at[8:recordBytes]); why != "" {
+			return tableFixedRefuse(report, why)
+		}
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
 		}
-		tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report)
+		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
+			return tableFixedRefuse(report, why)
+		}
+		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4).
 		FixedTableFixedClamp(&values[k], report)

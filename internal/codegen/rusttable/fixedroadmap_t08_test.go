@@ -377,7 +377,7 @@ func t08R28(t *testing.T) {
 // t08R28Line is the probe's one line for an id.
 func t08R28Line(out, id string) string {
 	prefix := "R28 " + id + " "
-	for _, l := range strings.Split(out, "\n") {
+	for l := range strings.SplitSeq(out, "\n") {
 		if strings.HasPrefix(l, prefix) {
 			return l
 		}

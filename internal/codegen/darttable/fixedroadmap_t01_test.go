@@ -23,7 +23,7 @@ import (
 //
 // "REFUSE is total: no counter moves, nothing is decoded, and not one
 // destination byte is written" and "`refused` plus `reason` is one answer;
-// `malformed` is the other; they are NEVER both set."
+// `malformed` is the other; they are NEVER both set.".
 const roadmapPrelude = `  final data = File(FILE).readAsBytesSync();
   final head = ByteData.sublistView(data);
   final layoutBytes = head.getUint32(t.TableFixedLimits.headerBytes, Endian.little);

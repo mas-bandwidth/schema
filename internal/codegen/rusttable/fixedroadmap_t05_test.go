@@ -81,8 +81,8 @@ func t05Report(runtime string) string {
 		return ""
 	}
 	rest := runtime[at:]
-	if end := strings.Index(rest, "\n}"); end >= 0 {
-		return rest[:end]
+	if before, _, ok := strings.Cut(rest, "\n}"); ok {
+		return before
 	}
 	return rest
 }
@@ -91,7 +91,7 @@ func t05Report(runtime string) string {
 func t05Enum(n int) string {
 	var b strings.Builder
 	b.WriteString("package probe\n\nenum E\n{\n")
-	for i := 0; i < n; i++ {
+	for i := range n {
 		fmt.Fprintf(&b, "    v%d\n", i)
 	}
 	b.WriteString("}\n\nfixed table Lineage\n{\n    e E\n}\n")
@@ -102,7 +102,7 @@ func t05Enum(n int) string {
 func t05Union(n int) string {
 	var b strings.Builder
 	b.WriteString("package probe\n\ntype Arm { m int32 = 0 }\n\nunion Pick\n{\n")
-	for i := 0; i < n; i++ {
+	for i := range n {
 		fmt.Fprintf(&b, "    a%d Arm\n", i)
 	}
 	b.WriteString("}\n\nfixed table Lineage\n{\n    pick Pick\n}\n")
