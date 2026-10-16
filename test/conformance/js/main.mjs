@@ -605,8 +605,10 @@ async function surfaceMessage(lines, outDir) {
 // ---- the WIRE-CARRYING surfaces (docs/SPEC-TABLES.md §3, §3.1, §4, §16, §16.7)
 //
 // The variable form, form byte 1, over the roots this leg's variable wire
-// carries: the pointer corpus's Scene (graphdemo) and the byte-buffer corpus's
-// Catalog (blobdemo), each through its unit's <Package>Variable.js. Every other
+// carries: the pointer corpus's Scene (graphdemo), the byte-buffer corpus's
+// Catalog (blobdemo) and the map corpus's Cells and Pairs (mapdemo, whose map
+// values are fixed-length arrays [N]T), each through its unit's
+// <Package>Variable.js. Every other
 // case is answered `<case>.absent` beside where the answer would go — a root
 // whose unit this leg does not generate (tables/lists, which the compiler
 // refuses for js whole because of its array of unions), or one its variable
@@ -629,6 +631,9 @@ const wireRows = [
   ["tblp3", "Chain", "p3/Tblp3Variable.js"],
   ["graphdemo", "Scene", "pointers/GraphdemoVariable.js"],
   ["blobdemo", "Catalog", "blobs/BlobdemoVariable.js"],
+  // a map whose value is a fixed-length array [N]T (§2.8, §3)
+  ["mapdemo", "Cells", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Pairs", "maps/MapdemoVariable.js"],
 ];
 
 async function wireCodec(unit, root) {

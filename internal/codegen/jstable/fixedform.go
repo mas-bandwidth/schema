@@ -24,7 +24,6 @@ package jstable
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -363,49 +362,13 @@ func appendFixedU64(b []byte, v uint64) []byte {
 // compiled at load time, which is the follow-on §3.4 names for the reference's
 // own bound.
 func fixedRoots(u *ir.Unit, tables []*ir.Struct) []*ir.Struct {
-	var out []*ir.Struct
-	for _, st := range tables {
-		// THE FILTER IS THE REFUSAL ITSELF, and it has to be: a form emitted
-		// for a table the refusal names is a module that says in a comment it
-		// carries nothing and then carries it anyway. That is how the optional
-		// hole shipped — fixedRefusal named `?T` while this loop asked only
-		// fixedSupported, so the writer emitted a body with no present byte in
-		// it and the comment above said the form was not there.
-		if !st.IsTable || st.IsMapEntry() || fixedRefusal(st) != "" {
-			continue
-		}
-		_ = u
-		out = append(out, st)
-	}
-	return out
+	return ir.TableFixedJSRoots(u, tables)
 }
 
 // fixedCollectTypes orders a root's closure so that a nested type's helpers are
 // emitted before the type that uses them.
 func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct) {
-	if seen[st.Name] {
-		return
-	}
-	seen[st.Name] = true
-	for _, f := range st.Fields {
-		if f.Type.Kind != ir.TNamed {
-			continue
-		}
-		switch r := f.Type.Ref.(type) {
-		case *ir.Struct:
-			fixedCollectTypes(r, seen, order)
-		case *ir.Union:
-			for _, v := range r.Variants {
-				if v.F == nil {
-					continue // a payload-free arm reaches no nested type
-				}
-				if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed {
-					fixedCollectTypes(s, seen, order)
-				}
-			}
-		}
-	}
-	*order = append(*order, st)
+	ir.TableFixedJSCollectTypes(st, seen, order)
 }
 
 // ---------------------------------------------------------------------------
@@ -589,6 +552,13 @@ func variableFieldRefusal(st *ir.Struct, f *ir.Field) string {
 // []U / [..N]U, whose arms are payload-free, tables, or carried field lines
 // (§2.6, §3); an OPTIONAL ?T over a carried field line, arrays included (§2.3);
 // and an ENUM-KEYED ARRAY [E]T of a scalar, an enum or a table (§2.4, §3.2).
+//
+// AND WITH js-carries-nested-types-and-fixed-arrays-on-the-table-wire: a
+// FIXED-LENGTH ARRAY [N]T as a MAP'S VALUE (§2.8, laid out as §3 lays out a
+// fixed-length array: N elements, no count) is no longer refused; as a field,
+// an optional ?[N]T and a union arm it was already carried, as were a nested
+// `type` by value (§2) and a flags arm (§2.6), each held byte for byte by
+// TestNestedTypesAndFixedArraysOnTheTableWireJavaScript.
 func variableFieldRefusalNamed(name string, f *ir.Field) string {
 	switch {
 	case f.IsMap():
@@ -614,8 +584,6 @@ func variableFieldRefusalNamed(name string, f *ir.Field) string {
 		}
 	case f.Type.Optional && f.Type.Pointer:
 		return name + ": an optional pointer (docs/SPEC-TABLES.md §2.3)"
-	case f.Array == ir.ArrayFixed && strings.HasSuffix(name, " (map value)"):
-		return name + ": a fixed-length array [N]T (docs/SPEC-TABLES.md §3)"
 	case f.Array != ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
 		return name + ": an array of strings or byte strings (docs/SPEC-TABLES.md §2.9)"
 	}
