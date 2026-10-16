@@ -841,3 +841,84 @@ cards-dart-conformance-negative-control: build/conformance-harness cards-dart-dr
 	@echo 'cards Dart negative control: one changed rendered byte turns exactly render red'
 
 test-dart: cards-dart-test cards-dart-conformance cards-dart-conformance-negative-control cards-dart-conformance-upgrade-negative-control cards-dart-conformance-hash-negative-control
+
+# THE ACCESSOR/DESCRIPTOR AGREEMENT GATE (docs/PORTING.md J1; issue #421). Every
+# row of the block images, every node of the cook images and every record type
+# either descriptor graph reaches is read through the generated accessor and
+# through the descriptor's offset, kind, width and signedness, and the two must
+# agree. It prints the counts it read: a gate that read nothing says so.
+.PHONY: tables-dart-agree
+tables-dart-agree: build/tables-generated-dart/.stamp build/cook-fuzz/.stamp
+	$(DART) test/dart-tables/agree.dart
+
+# ITS TWO NEGATIVE CONTROLS, each through go build -overlay on a COPY of an
+# emitter, so no tracked file is written to. Each must turn the gate red ON THE
+# NAMED FIELD and on nothing else, which is also the proof that the other
+# derivation still passes: a gate that went red on both would be red for some
+# other reason.
+#
+# THE ACCESSOR control moves one scalar accessor four bytes in the row emitter
+# (block.go, which writes the cook's rows too): RenderCamera.camera_id reads
+# the next field's bytes, the descriptor still says where it is.
+.PHONY: tables-dart-accessor-negative-control
+tables-dart-accessor-negative-control: build/cook-fuzz/.stamp
+	@rm -rf build/dart-agree-acc-nc && mkdir -p build/dart-agree-acc-nc
+	@sed -e 's|g.readAt(f, fmt.Sprintf("%s + %d", origin, fl.Offset)))|g.readAt(f, fmt.Sprintf("%s + %d", origin, fl.Offset+accessorMoved(f.Name))))|' \
+		internal/codegen/darttable/block.go > build/dart-agree-acc-nc/block.go.txt
+	@grep -q 'accessorMoved(f.Name)' build/dart-agree-acc-nc/block.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing - the emitter moved"; exit 1; }
+	@printf '\nfunc accessorMoved(name string) int64 {\n\tif name == "camera_id" {\n\t\treturn 4\n\t}\n\treturn 0\n}\n' >> build/dart-agree-acc-nc/block.go.txt
+	@printf '{"Replace":{"%s/internal/codegen/darttable/block.go":"%s/build/dart-agree-acc-nc/block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-agree-acc-nc/overlay.json
+	go build -overlay build/dart-agree-acc-nc/overlay.json -o build/dart-agree-acc-nc/schema ./cmd/schema
+	./build/dart-agree-acc-nc/schema generate --lang dart --out build/dart-agree-acc-nc/generated/block tables/block
+	./build/dart-agree-acc-nc/schema generate --lang dart --out build/dart-agree-acc-nc/generated/pointers tables/pointers
+	@sed -e "s|../../build/tables-generated-dart/block/|$(CURDIR)/build/dart-agree-acc-nc/generated/block/|g" \
+	     -e "s|../../build/tables-generated-dart/pointers/|$(CURDIR)/build/dart-agree-acc-nc/generated/pointers/|g" \
+		test/dart-tables/agree.dart > build/dart-agree-acc-nc/agree.dart
+	@if $(DART) build/dart-agree-acc-nc/agree.dart > build/dart-agree-acc-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the gate stayed green with an accessor four bytes off"; \
+		tail -5 build/dart-agree-acc-nc/log; exit 1; \
+	fi
+	@grep -q '^DISAGREE  RenderCamera .*\.cameraId: accessor' build/dart-agree-acc-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on RenderCamera.cameraId"; \
+		  tail -20 build/dart-agree-acc-nc/log; exit 1; }
+	@if grep '^DISAGREE' build/dart-agree-acc-nc/log | grep -v '^DISAGREE  RenderCamera .*\.cameraId: accessor'; then \
+		echo "NEGATIVE CONTROL FAILED: the gate went red on a field other than the one moved"; exit 1; \
+	fi
+	@grep -m1 '^DISAGREE  RenderCamera .*\.cameraId: accessor' build/dart-agree-acc-nc/log
+	@echo "negative control: an accessor four bytes off turns the Dart agreement gate RED on RenderCamera.cameraId and on nothing else"
+
+# THE SLOT control moves one pointer slot's offset eight in the cook emitter's
+# DESCRIPTOR (cook.go): TreeNode.left is described at the slot after its own,
+# while the accessor still reads where it always did.
+.PHONY: tables-dart-slot-negative-control
+tables-dart-slot-negative-control: build/cook-fuzz/.stamp
+	@rm -rf build/dart-agree-slot-nc && mkdir -p build/dart-agree-slot-nc
+	@sed -e 's|g.pf("        offset: %d,\\n", fl.Offset)|g.pf("        offset: %d,\\n", fl.Offset+slotMoved(record, f.Name))|' \
+		internal/codegen/darttable/cook.go > build/dart-agree-slot-nc/cook.go.txt
+	@grep -q 'slotMoved(record, f.Name)' build/dart-agree-slot-nc/cook.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing - the emitter moved"; exit 1; }
+	@printf '\nfunc slotMoved(record, name string) int64 {\n\tif record == "TreeNode" && name == "left" {\n\t\treturn 8\n\t}\n\treturn 0\n}\n' >> build/dart-agree-slot-nc/cook.go.txt
+	@printf '{"Replace":{"%s/internal/codegen/darttable/cook.go":"%s/build/dart-agree-slot-nc/cook.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-agree-slot-nc/overlay.json
+	go build -overlay build/dart-agree-slot-nc/overlay.json -o build/dart-agree-slot-nc/schema ./cmd/schema
+	./build/dart-agree-slot-nc/schema generate --lang dart --out build/dart-agree-slot-nc/generated/block tables/block
+	./build/dart-agree-slot-nc/schema generate --lang dart --out build/dart-agree-slot-nc/generated/pointers tables/pointers
+	@sed -e "s|../../build/tables-generated-dart/block/|$(CURDIR)/build/dart-agree-slot-nc/generated/block/|g" \
+	     -e "s|../../build/tables-generated-dart/pointers/|$(CURDIR)/build/dart-agree-slot-nc/generated/pointers/|g" \
+		test/dart-tables/agree.dart > build/dart-agree-slot-nc/agree.dart
+	@if $(DART) build/dart-agree-slot-nc/agree.dart > build/dart-agree-slot-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the gate stayed green with a pointer slot eight bytes off"; \
+		tail -5 build/dart-agree-slot-nc/log; exit 1; \
+	fi
+	@grep -q '^DISAGREE  TreeNode .*\.left: accessor' build/dart-agree-slot-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on TreeNode.left"; \
+		  tail -20 build/dart-agree-slot-nc/log; exit 1; }
+	@if grep '^DISAGREE' build/dart-agree-slot-nc/log | grep -v '^DISAGREE  TreeNode .*\.left: accessor'; then \
+		echo "NEGATIVE CONTROL FAILED: the gate went red on a field other than the one moved"; exit 1; \
+	fi
+	@grep -m1 '^DISAGREE  TreeNode .*\.left: accessor' build/dart-agree-slot-nc/log
+	@echo "negative control: a pointer slot eight bytes off turns the Dart agreement gate RED on TreeNode.left and on nothing else"
+
+test-dart: tables-dart-agree tables-dart-accessor-negative-control tables-dart-slot-negative-control
