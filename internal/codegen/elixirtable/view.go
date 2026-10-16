@@ -16,6 +16,19 @@ import (
 // docs/SPEC-TABLES.md §8.3), emitted once per unit that declares a table.
 const UnitViewModule = "UnitView"
 
+// UnitView is the unit registry's source alone (docs/SPEC-TABLES.md §8.3),
+// for the listing gate (make tables-elixir-view) over the VIEW_CORPUS units
+// whose full Generate this leg still refuses by name: the registry is data
+// about the IR and names no codec, so it is emitted whole for every unit.
+func UnitView(u *ir.Unit) []byte { return unitViewModule(u, ir.GoExportName(u.Package)) }
+
+// unitViewModule writes <Ns>.UnitView (docs/SPEC-TABLES.md §8.3): the unit's
+// constants, enums, flags and unions with their vocabulary (§8.1: every
+// variant's value and wire id, every union arm's payload or field line), then
+// the type view (§8.2: every non-table struct, on the side) and the tables,
+// each in declaration-name order, every entry carrying its doc comment and
+// tags (§8.1). The order and the spellings are the ones internal/viewlisting
+// reads, so the printed listing is byte-comparable to the compiler's (§8.7).
 func unitViewModule(u *ir.Unit, ns string) []byte {
 	closure := ir.TableClosure(u)
 	reached := ir.TableClosureVocabulary(u)
@@ -171,6 +184,12 @@ func unitViewModule(u *ir.Unit, ns string) []byte {
 	return []byte(b.String())
 }
 
+// emitViewStructList writes one list of the registry: the §8.2 type view
+// (isTable false) or the tables (isTable true). Each field carries its §8.1
+// facts: JSON key (§16.4) and wire id, its kind and element bound, whether it
+// is optional, the union it holds, and its doc and tags. A type outside the
+// table closure has no wire identity, so its keys and ids are nil and zero
+// (docs/SPEC-TABLES.md §8.2).
 func emitViewStructList(b *strings.Builder, u *ir.Unit, closure map[string]bool, key, countKey string, isTable bool, list []*ir.Struct, trailingComma bool) {
 	fmt.Fprintf(b, "    %s: %d,\n", countKey, len(list))
 	comma := ""
@@ -220,6 +239,9 @@ func emitViewStructList(b *strings.Builder, u *ir.Unit, closure map[string]bool,
 	fmt.Fprintf(b, "    ]%s\n", comma)
 }
 
+// viewDeclarations splits the unit's structs into the §8.2 type view and the
+// §8.3 table list, each sorted by name; a map's synthesized entry table is
+// not a declaration and is not listed (docs/SPEC-TABLES.md §8.3).
 func viewDeclarations(u *ir.Unit) (types, tables []*ir.Struct) {
 	for _, f := range u.Files {
 		for _, d := range f.Decls {
@@ -238,6 +260,7 @@ func viewDeclarations(u *ir.Unit) (types, tables []*ir.Struct) {
 	return types, tables
 }
 
+// viewFile is the schema file a declaration was written in, as §8.3 lists it.
 func viewFile(u *ir.Unit, name string) string {
 	if base, ok := u.DeclFile[name]; ok {
 		return base + ".schema"
@@ -245,6 +268,8 @@ func viewFile(u *ir.Unit, name string) string {
 	return ""
 }
 
+// viewFlagsStorageBits is a flags set's storage width, the smallest of 8, 16,
+// 32 and 64 bits that holds its wire bits (docs/SPEC-TABLES.md §8.1).
 func viewFlagsStorageBits(f *ir.Flags) int {
 	for _, w := range []int{8, 16, 32, 64} {
 		if f.WireBits <= w {
@@ -254,6 +279,8 @@ func viewFlagsStorageBits(f *ir.Flags) int {
 	return 64
 }
 
+// viewTableTypeSpelling is a field's type as §8.1 spells it; a map without
+// a two-field entry is spelled "map" (docs/SPEC-TABLES.md §8.1).
 func viewTableTypeSpelling(f *ir.Field) string {
 	if f.Type.Kind == ir.TMap && (f.MapEntry == nil || len(f.MapEntry.Fields) < 2) {
 		return "map"
@@ -261,6 +288,8 @@ func viewTableTypeSpelling(f *ir.Field) string {
 	return ir.TableTypeSpelling(f)
 }
 
+// viewArmKind is a field's §8.1 kind: a pointer is the pointer kind, a
+// fixed byte array is u8 elements, every other field its wire scalar kind.
 func viewArmKind(f *ir.Field) int {
 	switch {
 	case f.Type.Pointer:
@@ -271,6 +300,8 @@ func viewArmKind(f *ir.Field) int {
 	return ir.TableWireScalarKind(f)
 }
 
+// viewArmBound is a field's §8.1 element bound: an array's length, a fixed
+// string's or bytes' size, and zero for a scalar or a lone pointer.
 func viewArmBound(f *ir.Field) int64 {
 	switch {
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
@@ -283,6 +314,8 @@ func viewArmBound(f *ir.Field) int64 {
 	return 0
 }
 
+// viewFloatLiteral spells a float constant (docs/SPEC-TABLES.md §8.3) as an
+// Elixir float literal that round-trips, -0.0 kept.
 func viewFloatLiteral(v float64) string {
 	if v == 0 {
 		if math.Signbit(v) {
@@ -300,6 +333,9 @@ func viewFloatLiteral(v float64) string {
 	return s
 }
 
+// elixirQuote spells a doc comment, a tag or a name as an Elixir string
+// literal byte for byte, so the doc comment §8.1 carries is the source's own
+// text, interpolation refused.
 func elixirQuote(s string) string {
 	var b strings.Builder
 	b.WriteByte('"')
@@ -334,6 +370,8 @@ func elixirQuote(s string) string {
 	return b.String()
 }
 
+// elixirTags spells a declaration's tags (docs/SPEC-TABLES.md §8.1) as an
+// Elixir list of strings, in source order.
 func elixirTags(tags []string) string {
 	if len(tags) == 0 {
 		return "[]"

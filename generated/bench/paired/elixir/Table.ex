@@ -2901,6 +2901,10 @@ defmodule Bench.Table do
     {value, report}
   end
 
+  # json_skip_value walks a value the reader drops (an unknown key, a kind
+  # mismatch, an element past its bound), so a label defined inside it is
+  # still defined and a later reference to it reads null, never malformed
+  # (docs/SPEC-TABLES.md §16.2, §16.7).
   defp json_skip_value({:obj, [{"&node", label} | rest]}) when is_integer(label) and label > 0 do
     if Process.get(:elixir_json_variable, false) do
       defs = Process.get(:elixir_json_defs, %{})
@@ -2971,6 +2975,8 @@ defmodule Bench.Table do
     {Map.get(f, :default, 0), %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
+  # clamp_json_int clamps a JSON integer to the field's declared range and
+  # then to its storage domain, counting each clamp (docs/SPEC-TABLES.md §16.2).
   defp clamp_json_int(v, f, report) do
     {v, report} = clamp_int(v, f, report)
     {lo, hi} = int_domain_bounds(f)
@@ -2982,6 +2988,7 @@ defmodule Bench.Table do
     end
   end
 
+  # int_domain_bounds is an integer field's storage domain (§16.2).
   defp int_domain_bounds(%{bits: bits}) when is_integer(bits) and bits > 0 do
     {0, (1 <<< bits) - 1}
   end
@@ -3036,6 +3043,8 @@ defmodule Bench.Table do
     {Map.get(f, :default, <<>>), %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
+  # json_decode_base64 reads §16.2's bytes spelling: standard base64, padded
+  # or unpadded (docs/SPEC-TABLES.md §16.2).
   defp json_decode_base64(""), do: {:ok, <<>>}
 
   defp json_decode_base64(raw) do
@@ -3252,6 +3261,8 @@ defmodule Bench.Table do
   end
 
   defp json_skip(<<c, rest::binary>>) when c in [?\s, ?\t, ?\n, ?\r], do: json_skip(rest)
+  # comments are accepted on read (docs/SPEC-TABLES.md §16.2); an
+  # unclosed block comment leaves a byte behind, so the document is malformed.
   defp json_skip(<<"//", rest::binary>>), do: json_skip_line(rest)
   defp json_skip(<<"/*", rest::binary>>), do: json_skip_block(rest)
   defp json_skip(bin), do: bin
@@ -3294,6 +3305,8 @@ defmodule Bench.Table do
     end
   end
 
+  # json_object_val reads one member's value; in a variable-class document
+  # a key opening with & is the §16.7 label and only "&node", first, is one.
   defp json_object_val(key, acc, bin, depth) do
     if String.starts_with?(key, "&") and Process.get(:elixir_json_variable, false) do
       if key != "&node" or acc != [] do
@@ -3306,6 +3319,8 @@ defmodule Bench.Table do
     end
   end
 
+  # json_label reads a §16.7 label: a positive decimal integer of at most
+  # 64 bits, no sign, fraction or exponent (docs/SPEC-TABLES.md §16.7).
   defp json_label(bin) do
     case json_skip(bin) do
       <<first, rest::binary>> when first in ?1..?9 ->
@@ -3414,6 +3429,9 @@ defmodule Bench.Table do
   defp hex_digit(c) when c in ?A..?F, do: {:ok, c - ?A + 10}
   defp hex_digit(_), do: :error
 
+  # json_number reads the RFC 8259 number grammar strictly (no leading zero,
+  # no plus sign, digits after a point and an exponent); an integer stays an
+  # integer and anything else is a float (docs/SPEC-TABLES.md §16.2).
   defp json_number(bin) do
     with {:ok, neg, r1} <- json_num_sign(bin),
          {:ok, int_digits, r2} <- json_num_int(r1),

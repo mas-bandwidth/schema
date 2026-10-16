@@ -1707,6 +1707,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {value, report}
   end
 
+  # json_skip_value walks a value the reader drops (an unknown key, a kind
+  # mismatch, an element past its bound), so a label defined inside it is
+  # still defined and a later reference to it reads null, never malformed
+  # (docs/SPEC-TABLES.md §16.2, §16.7).
   defp json_skip_value({:obj, [{"&node", label} | rest]}) when is_integer(label) and label > 0 do
     if Process.get(:elixir_json_variable, false) do
       defs = Process.get(:elixir_json_defs, %{})
@@ -1777,6 +1781,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {Map.get(f, :default, 0), %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
+  # clamp_json_int clamps a JSON integer to the field's declared range and
+  # then to its storage domain, counting each clamp (docs/SPEC-TABLES.md §16.2).
   defp clamp_json_int(v, f, report) do
     {v, report} = clamp_int(v, f, report)
     {lo, hi} = int_domain_bounds(f)
@@ -1788,6 +1794,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
+  # int_domain_bounds is an integer field's storage domain (§16.2).
   defp int_domain_bounds(%{bits: bits}) when is_integer(bits) and bits > 0 do
     {0, (1 <<< bits) - 1}
   end
@@ -1842,6 +1849,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {Map.get(f, :default, <<>>), %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
+  # json_decode_base64 reads §16.2's bytes spelling: standard base64, padded
+  # or unpadded (docs/SPEC-TABLES.md §16.2).
   defp json_decode_base64(""), do: {:ok, <<>>}
 
   defp json_decode_base64(raw) do
@@ -2046,6 +2055,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_skip(<<c, rest::binary>>) when c in [?\s, ?\t, ?\n, ?\r], do: json_skip(rest)
+  # comments are accepted on read (docs/SPEC-TABLES.md §16.2); an
+  # unclosed block comment leaves a byte behind, so the document is malformed.
   defp json_skip(<<"//", rest::binary>>), do: json_skip_line(rest)
   defp json_skip(<<"/*", rest::binary>>), do: json_skip_block(rest)
   defp json_skip(bin), do: bin
@@ -2088,6 +2099,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
+  # json_object_val reads one member's value; in a variable-class document
+  # a key opening with & is the §16.7 label and only "&node", first, is one.
   defp json_object_val(key, acc, bin, depth) do
     if String.starts_with?(key, "&") and Process.get(:elixir_json_variable, false) do
       if key != "&node" or acc != [] do
@@ -2100,6 +2113,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
+  # json_label reads a §16.7 label: a positive decimal integer of at most
+  # 64 bits, no sign, fraction or exponent (docs/SPEC-TABLES.md §16.7).
   defp json_label(bin) do
     case json_skip(bin) do
       <<first, rest::binary>> when first in ?1..?9 ->
@@ -2192,6 +2207,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp hex_digit(c) when c in ?A..?F, do: {:ok, c - ?A + 10}
   defp hex_digit(_), do: :error
 
+  # json_number reads the RFC 8259 number grammar strictly (no leading zero,
+  # no plus sign, digits after a point and an exponent); an integer stays an
+  # integer and anything else is a float (docs/SPEC-TABLES.md §16.2).
   defp json_number(bin) do
     with {:ok, neg, r1} <- json_num_sign(bin),
          {:ok, int_digits, r2} <- json_num_int(r1),
@@ -3120,8 +3138,8 @@ func closureStruct(u *ir.Unit, name string) *ir.Struct {
 }
 
 // tableDescriptor spells one table's fields as data the engine walks
-// (docs/SPEC-TABLES.md §3): each field's effective id, its wire kind, and the
-// facts a codec needs — a string's bound, an int's clamp range, an enum's
+// (docs/SPEC-TABLES.md §3, §8.1): its name, doc comment and tags, each
+// field's effective id, its wire kind, and the facts a codec needs — a string's bound, an int's clamp range, an enum's
 // variant names, a list's element table, a *string/*bytes blob's type id, a
 // pointer's target. The descriptor covers the closure, fixed tables included,
 // because a pointer can name one.
@@ -3141,6 +3159,10 @@ func tableDescriptor(u *ir.Unit, st *ir.Struct) string {
 	return b.String()
 }
 
+// fieldDescriptor spells one field's descriptor: its §8.1 facts (type name,
+// wire id, kind, element bound) and its doc comment and tags (§8.1), beside
+// what the codecs read, including the §16.2 clamp range the text reader
+// applies (docs/SPEC-TABLES.md §8.1, §16.2).
 func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, fl *ir.FieldLayout) string {
 	var b strings.Builder
 	id := ir.TableFieldWireId(f)
