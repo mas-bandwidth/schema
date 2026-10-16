@@ -22,8 +22,8 @@
 // The program runs a fixed warm-up, then <steady-iterations> passes. It
 // counts nothing itself: the VM prints one line per scavenge under
 // --verbose_gc, and make tables-dart-float-jit runs each shape twice (N and
-// 2N steady passes) and prints the difference, so start-up and warm-up
-// scavenges cancel and what remains is the steady state's. Prints the
+// 2N steady passes), counting only events between the steady markers and
+// requiring zero in each window. Start-up and warm-up are excluded. Prints the
 // completion line `floatjit shape=<s> steady=<n> check=<c>` on stdout as its
 // last act; the make target reads no count from a run without it. check
 // depends on every decoded value so nothing is dead code.
@@ -88,17 +88,26 @@ Future<void> main(List<String> args) async {
     stderr.writeln('floatjit: unknown shape $shape');
     exit(2);
   }
+  // Stdout is blocking on the pinned SDK. Prepare both byte buffers and its
+  // synchronous stream consumer before warm-up: encoding the end marker or
+  // closing/reopening the consumer inside the window can itself scavenge.
+  final windowBegins = Uint8List.fromList(
+    'floatjit: steady window begins\n'.codeUnits,
+  );
+  final windowEnds = Uint8List.fromList(
+    'floatjit: steady window ends\n'.codeUnits,
+  );
+  stderr.add(Uint8List(0));
   for (var i = 0; i < warmupCalls; i++) {
     check += pass(warmupChunk, 0);
   }
-  // The steady window's brackets go to stderr, flushed before the loop
-  // starts and after it ends, so they land in order among the VM's
-  // --verbose_gc lines (the VM writes those to the same fd, unbuffered):
-  // the make target counts only the scavenges between them.
-  stderr.writeln('floatjit: steady window begins');
-  await stderr.flush();
+  // Blocking writes put the preencoded brackets on the same fd as the VM's
+  // --verbose_gc lines, in order. No await, encoding or stream teardown may
+  // enter this interval: the instrument must not charge its own allocations
+  // to the codec. Flush only after the end marker is already written.
+  stderr.add(windowBegins);
   check += pass(steady, 1);
-  stderr.writeln('floatjit: steady window ends');
+  stderr.add(windowEnds);
   await stderr.flush();
   stdout.writeln('floatjit shape=$shape steady=$steady check=$check');
 }
