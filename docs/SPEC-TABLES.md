@@ -11341,6 +11341,24 @@ either direction, so a unit and a runtime from different compilers is a
 compile error naming `goruntime.Version`, never a run-time surprise.
 Mixing is not a supported state and nothing is negotiated.
 
+**What the package holds, and what stays in the unit.** The package holds the
+declarations the emitter writes byte-identically for every unit shape: the
+refusal reasons and the report, the bit and byte codecs, the message
+vocabulary types, and the whole fixed-form runtime (plan, run, guard chain,
+layout parse, lineage select). The VARIABLE form's machinery (the
+`TableAllocator`, `TableArena` and `TableWorker` that author a variable table,
+the containers, the region reader and writer) is NOT in the package yet, and
+a unit keeps its own copy of it. The reason is the emitter's, not the
+option's: that machinery is built from core types the emitter writes in more
+than one spelling (the reader and the type descriptor gain fields when a unit
+has a list or a map; the id table is sized by the unit's own type count; the
+unit's build version and vocabulary are named inside it), so no single
+exported spelling is the one every unit emits. A declaration with two
+spellings, and everything that names it, is left in the unit by the
+derivation, never merged. Sharing the variable form is a change to the
+emitter first (one spelling per core type), and standalone output must stay
+byte-identical while it is made.
+
 ### 8.5 On the side
 
 **The view is one generated file per UNIT, not per schema file** —
