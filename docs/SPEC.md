@@ -599,7 +599,7 @@ TableDecl   = "table" ident ( Block
             | AttrSection NL Block ) NL .               // the TABLE wire, SPEC-TABLES.md —
                                                         // a type body, plus pointers and `was`.
                                                         // A table declaration's qualification
-                                                        // carries TAGS and `was` (§4.2)
+                                                        // carries TAGS, `was` and `forms` (§4.2)
 
 Block       = "{" { Item } "}" .
 Item        = Field | ConstField | Reserved | Align | If .
@@ -932,7 +932,8 @@ sequence    uint16
   declarations take the `cpp_native`/`cpp_include` pair (below); a field of a
   **table** body takes `was` (below) and `json` (SPEC-TABLES.md §16.4), a
   field of a **type** that a table closure reaches takes `was` and `json`
-  on the same terms, a **table** declaration, an **enum variant** and a
+  on the same terms, a **table** declaration takes `was` (below) and `forms`
+  (below), an **enum variant** and a
   union **arm** take `was` (below), and a **union** declaration, a
   **constant** and a **flags variant** take no valued key at all. **The
   VALUELESS half is open at every one of them** — that is the tag, below.
@@ -941,7 +942,7 @@ sequence    uint16
   open namespace must not be able to swallow a typo in the closed one.
   **The lookup is against the UNION of every valued key the language has, on
   every line kind** — `min`, `max`, `resolution`, `was`, `json`,
-  `cpp_native`, `cpp_include` — **plus the keys refused by name**
+  `cpp_native`, `cpp_include`, `forms` — **plus the keys refused by name**
   (`doc`, `round`; §4.11). It is deliberately not the line's own vocabulary:
   `| min` on a `string(N)` field, where `min` was never legal, is the exact
   case a per-line check would wave through as a tag, and one union table
@@ -950,6 +951,13 @@ sequence    uint16
   word named, so `| table` draws "table is a reserved word" rather than
   becoming a tag. **A repeated tag on one line is refused by name** too, and
   so is a tag that repeats a valued key already on the line.
+- **`forms = "wire,json"`, the forms a table carries, on a table declaration
+  only** (SPEC-TABLES.md §2.11). The value is a QUOTED STRING of form names
+  separated by single commas, because `,` already separates the attributes of
+  a qualification, so a bare list would read as a tag. The vocabulary is
+  closed (`wire`, `json`, `cook`; `wire` is required), the default is every
+  form, it composes with a generate-time surface by intersection, it moves no
+  hash, and a target other than Go refuses a unit that uses it by name.
 - **`was = "old_name"`, the rename attribute, table closures only**
   (SPEC-TABLES.md §5). A table field's wire id is the hash of its name, so a
   bare rename would orphan every byte ever written under the old one; `was`

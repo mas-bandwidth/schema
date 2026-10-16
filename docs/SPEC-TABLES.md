@@ -3570,6 +3570,75 @@ round-trips through its own parser.
 the tree and compares byte for byte, and compiles each of those units with the
 check on.
 
+### 2.11 The forms a table carries: `forms = "wire,json"`
+
+What a table CARRIES in a generated language is a property of the table, not
+of one generate call, so it is written where the table is declared and every
+build of the unit agrees:
+
+```
+table Pong | forms = "wire,json"
+{
+    seq int32
+}
+```
+
+**The spelling.** `forms` is a VALUED key of a table declaration's
+qualification (SPEC §4.2), and its value is a QUOTED STRING of form names
+separated by single commas, no spaces: `forms = "wire,json"`. The value is a
+string rather than a bare list because `,` already separates the attributes of
+a qualification: `forms = wire, json` is the key `forms = wire` and a TAG named
+`json`, and the first is refused as a value that is not a quoted string. A
+bare `| forms` is refused by name as a valued key, never taken as a tag. A
+`type`, a `union`, an `enum` and a `flags` declaration take no `forms`.
+
+**The vocabulary is closed**, and each name is a form with its own generated
+entry points:
+
+| form   | what the Go target emits for the table |
+|--------|----------------------------------------|
+| `wire` | the table-wire codecs (`<T>Measure`, `<T>Save`, `<T>Load`, the builders), the message form, the retain surface and the reflection descriptors |
+| `json` | the text form of §16: `<T>FromJson`, `<T>ToJson`, `<T>ToJsonMeasure` |
+| `cook` | the cook of §7: the read handle `<T>Cook` and its `Open` in `<Base>Cook.go` and the writer `<T>CookMeasure`, `<T>CookFrom` |
+
+`wire` is the table: every other form is a view of it, so a declaration that
+does not list `wire` is refused by name. The block form (§2.7) and the view
+(§8) are not declarable: nothing selects the block form, and the view is a
+unit's, not a table's. Naming either is refused as "not a form a table can
+declare", as is any other unknown name; a repeated name and an empty value are
+refused too.
+
+**The default is every form.** A table with no `forms` carries all of them, so
+a unit that declares none generates byte-identically to a compiler that did not
+know the key, and `forms = "wire,json,cook"` is the same table written out.
+
+**It composes with a generate-time surface by INTERSECTION.** A generate call
+that names the surface it wants (`--surface`) gets, for each table, the forms
+the call names that the table also declares. A call that names a form a table
+does not declare is REFUSED, naming the table and the form, never narrowed in
+silence: a build asking for `json` of a table its author kept out of `json`
+disagrees with the declaration, and that is an error the author wants to see.
+
+**It is part of neither hash.** It adds no field, no kind and no byte to any
+wire, so it is outside the cook projection (§20.2) and so outside the build
+version; the protocol id (SPEC §3.1) and the table type ids (§5) do not read
+it; `schema.lock` does not record it. It is a GENERATION input, like the
+target.
+
+**One target carries it, and the others refuse it by name.** Go carries the
+declaration first (docs/SPEC-TABLES.md is written ahead of the other
+languages, by the owner's rule). A unit in which any table declares `forms`,
+generated for any target but `go`, is a generate error naming the construct,
+the target and the sentence "Go carries it first"; no other emitter reads the
+declaration, so none can honour it in part.
+
+**What the Go target omits is exactly what is not declared, and no more.** The
+descriptors stay in `wire`, so the text and cook walks of a table that DOES
+declare them still reach a nested table that does not; a plain `type` in a
+closure carries whatever its holders carry. The runtimes a form shares across
+a unit (the text walker, the cook writer) are emitted once per unit and are
+not per table.
+
 
 ## 3. The wire
 

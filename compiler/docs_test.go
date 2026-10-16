@@ -39,6 +39,7 @@ var docExamples = []docExample{
 	{"../docs/SPEC-TABLES.md", "fixed table Item { count int32 }", 1}, // §2.8, maps
 	{"../docs/SPEC-TABLES.md", "package demo", 1},                     // §7.3, a cook worked to the byte
 	{"../docs/SPEC-TABLES.md", "name    string(16)", 1},               // §16.7, one declaration, two texts
+	{"../docs/SPEC-TABLES.md", `table Pong | forms = "wire,json"`, 1}, // §2.11, the forms a table carries
 	{"../docs/USAGE.md", "table OpenDocument", 1},                     // messages: a union whose arms are tables
 	{"../docs/USAGE.md", "table Node", 1},                             // pointers
 }
