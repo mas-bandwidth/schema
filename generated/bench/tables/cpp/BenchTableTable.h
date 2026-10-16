@@ -10488,8 +10488,21 @@ inline void TableMixedFixedWriteBody( uint8_t * b, const TableMixed & value )
     TableFixedPut32( b + 1220, (uint32_t) value.idle_ticks );
 }
 
+// HOW THE CLAMP COUNTERS ARE HELD (docs/PERFORMANCE.md, "The clamp counters").
+// An int32_t counter may alias an int32_t field as far as the compiler can
+// prove; __restrict says it never does. Spelled where it measured faster
+// (clang, x86-64 and arm64); GCC measured slower with it, and GCC, MSVC and
+// every compiler not named keep the plain reference, correct everywhere.
+#if !defined( TABLE_FIXED_COUNTER_RESTRICT )
+#if defined( __clang__ )
+#define TABLE_FIXED_COUNTER_RESTRICT __restrict__
+#else
+#define TABLE_FIXED_COUNTER_RESTRICT
+#endif
+#endif
+
 // TableEntity's read-side bounds.
-inline void TableEntityFixedClampBody( TableEntity & value, int32_t & clamped, int32_t & damaged )
+inline void TableEntityFixedClampBody( TableEntity & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     // bits(12) width clamp
@@ -10519,7 +10532,7 @@ inline void TableEntityFixedClampBody( TableEntity & value, int32_t & clamped, i
 }
 
 // TableStat's read-side bounds.
-inline void TableStatFixedClampBody( TableStat & value, int32_t & clamped, int32_t & damaged )
+inline void TableStatFixedClampBody( TableStat & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     // bits(8) width clamp
@@ -10530,7 +10543,7 @@ inline void TableStatFixedClampBody( TableStat & value, int32_t & clamped, int32
 }
 
 // TableHitEvent's read-side bounds.
-inline void TableHitEventFixedClampBody( TableHitEvent & value, int32_t & clamped, int32_t & damaged )
+inline void TableHitEventFixedClampBody( TableHitEvent & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     // bits(12) width clamp
@@ -10543,7 +10556,7 @@ inline void TableHitEventFixedClampBody( TableHitEvent & value, int32_t & clampe
 }
 
 // TableChatEvent's read-side bounds.
-inline void TableChatEventFixedClampBody( TableChatEvent & value, int32_t & clamped, int32_t & damaged )
+inline void TableChatEventFixedClampBody( TableChatEvent & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.channel < 0 ) | (int) ( value.channel > 3 );
@@ -10554,7 +10567,7 @@ inline void TableChatEventFixedClampBody( TableChatEvent & value, int32_t & clam
 }
 
 // TablePickupEvent's read-side bounds.
-inline void TablePickupEventFixedClampBody( TablePickupEvent & value, int32_t & clamped, int32_t & damaged )
+inline void TablePickupEventFixedClampBody( TablePickupEvent & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     // bits(10) width clamp
@@ -10565,7 +10578,7 @@ inline void TablePickupEventFixedClampBody( TablePickupEvent & value, int32_t & 
 }
 
 // TableMixed's read-side bounds.
-inline void TableMixedFixedClampBody( TableMixed & value, int32_t & clamped, int32_t & damaged )
+inline void TableMixedFixedClampBody( TableMixed & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     // bits(16) width clamp

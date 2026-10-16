@@ -15282,8 +15282,21 @@ inline void ToolMessageFixedWriteBody( uint8_t * b, const ToolMessage & value )
     }
 }
 
+// HOW THE CLAMP COUNTERS ARE HELD (docs/PERFORMANCE.md, "The clamp counters").
+// An int32_t counter may alias an int32_t field as far as the compiler can
+// prove; __restrict says it never does. Spelled where it measured faster
+// (clang, x86-64 and arm64); GCC measured slower with it, and GCC, MSVC and
+// every compiler not named keep the plain reference, correct everywhere.
+#if !defined( TABLE_FIXED_COUNTER_RESTRICT )
+#if defined( __clang__ )
+#define TABLE_FIXED_COUNTER_RESTRICT __restrict__
+#else
+#define TABLE_FIXED_COUNTER_RESTRICT
+#endif
+#endif
+
 // User's read-side bounds.
-inline void UserFixedClampBody( User & value, int32_t & clamped, int32_t & damaged )
+inline void UserFixedClampBody( User & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) )
@@ -15293,7 +15306,7 @@ inline void UserFixedClampBody( User & value, int32_t & clamped, int32_t & damag
 }
 
 // Script's read-side bounds.
-inline void ScriptFixedClampBody( Script & value, int32_t & clamped, int32_t & damaged )
+inline void ScriptFixedClampBody( Script & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) )
@@ -15303,7 +15316,7 @@ inline void ScriptFixedClampBody( Script & value, int32_t & clamped, int32_t & d
 }
 
 // InsertText's read-side bounds.
-inline void InsertTextFixedClampBody( InsertText & value, int32_t & clamped, int32_t & damaged )
+inline void InsertTextFixedClampBody( InsertText & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.text, (uint64_t) value.text_length ) )
@@ -15373,7 +15386,7 @@ inline void InsertTextFixedClampBody( InsertText & value, int32_t & clamped, int
 }
 
 // Edit's read-side bounds.
-inline void EditFixedClampBody( Edit & value, int32_t & clamped, int32_t & damaged )
+inline void EditFixedClampBody( Edit & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.body.type > 6u ) { value.body.type = EditBodyType::None; clamped++; }
@@ -15400,7 +15413,7 @@ inline void EditFixedClampBody( Edit & value, int32_t & clamped, int32_t & damag
 }
 
 // OpenDocument's read-side bounds.
-inline void OpenDocumentFixedClampBody( OpenDocument & value, int32_t & clamped, int32_t & damaged )
+inline void OpenDocumentFixedClampBody( OpenDocument & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) )
@@ -15411,7 +15424,7 @@ inline void OpenDocumentFixedClampBody( OpenDocument & value, int32_t & clamped,
 }
 
 // SaveDocument's read-side bounds.
-inline void SaveDocumentFixedClampBody( SaveDocument & value, int32_t & clamped, int32_t & damaged )
+inline void SaveDocumentFixedClampBody( SaveDocument & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) )
@@ -15421,7 +15434,7 @@ inline void SaveDocumentFixedClampBody( SaveDocument & value, int32_t & clamped,
 }
 
 // Transaction's read-side bounds.
-inline void TransactionFixedClampBody( Transaction & value, int32_t & clamped, int32_t & damaged )
+inline void TransactionFixedClampBody( Transaction & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.reason, (uint64_t) value.reason_length ) )
@@ -15459,7 +15472,7 @@ inline void TransactionFixedClampBody( Transaction & value, int32_t & clamped, i
 }
 
 // ToolMessage's read-side bounds.
-inline void ToolMessageFixedClampBody( ToolMessage & value, int32_t & clamped, int32_t & damaged )
+inline void ToolMessageFixedClampBody( ToolMessage & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.body.type > 8u ) { value.body.type = ToolBodyType::None; clamped++; }

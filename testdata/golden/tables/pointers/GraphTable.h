@@ -11212,8 +11212,21 @@ inline void SettingsFixedWriteBody( uint8_t * b, const Settings & value )
     memcpy( b + 8, value.label, (size_t) ( value.label_length ) );
 }
 
+// HOW THE CLAMP COUNTERS ARE HELD (docs/PERFORMANCE.md, "The clamp counters").
+// An int32_t counter may alias an int32_t field as far as the compiler can
+// prove; __restrict says it never does. Spelled where it measured faster
+// (clang, x86-64 and arm64); GCC measured slower with it, and GCC, MSVC and
+// every compiler not named keep the plain reference, correct everywhere.
+#if !defined( TABLE_FIXED_COUNTER_RESTRICT )
+#if defined( __clang__ )
+#define TABLE_FIXED_COUNTER_RESTRICT __restrict__
+#else
+#define TABLE_FIXED_COUNTER_RESTRICT
+#endif
+#endif
+
 // Meta's read-side bounds.
-inline void MetaFixedClampBody( Meta & value, int32_t & clamped, int32_t & damaged )
+inline void MetaFixedClampBody( Meta & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.build < 0 ) | (int) ( value.build > 1000 );
@@ -11225,7 +11238,7 @@ inline void MetaFixedClampBody( Meta & value, int32_t & clamped, int32_t & damag
 }
 
 // Settings's read-side bounds.
-inline void SettingsFixedClampBody( Settings & value, int32_t & clamped, int32_t & damaged )
+inline void SettingsFixedClampBody( Settings & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.quality < 0 ) | (int) ( value.quality > 4 );

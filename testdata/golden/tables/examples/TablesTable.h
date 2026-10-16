@@ -12269,8 +12269,21 @@ inline void RootConfigFixedWriteBody( uint8_t * b, const RootConfig & value )
     }
 }
 
+// HOW THE CLAMP COUNTERS ARE HELD (docs/PERFORMANCE.md, "The clamp counters").
+// An int32_t counter may alias an int32_t field as far as the compiler can
+// prove; __restrict says it never does. Spelled where it measured faster
+// (clang, x86-64 and arm64); GCC measured slower with it, and GCC, MSVC and
+// every compiler not named keep the plain reference, correct everywhere.
+#if !defined( TABLE_FIXED_COUNTER_RESTRICT )
+#if defined( __clang__ )
+#define TABLE_FIXED_COUNTER_RESTRICT __restrict__
+#else
+#define TABLE_FIXED_COUNTER_RESTRICT
+#endif
+#endif
+
 // Debuff's read-side bounds.
-inline void DebuffFixedClampBody( Debuff & value, int32_t & clamped, int32_t & damaged )
+inline void DebuffFixedClampBody( Debuff & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.amount < 0 ) | (int) ( value.amount > 100 );
@@ -12278,7 +12291,7 @@ inline void DebuffFixedClampBody( Debuff & value, int32_t & clamped, int32_t & d
 }
 
 // WeaponConfig's read-side bounds.
-inline void WeaponConfigFixedClampBody( WeaponConfig & value, int32_t & clamped, int32_t & damaged )
+inline void WeaponConfigFixedClampBody( WeaponConfig & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.penetration < 0 ) | (int) ( value.penetration > 10 );
@@ -12299,7 +12312,7 @@ inline void WeaponConfigFixedClampBody( WeaponConfig & value, int32_t & clamped,
 }
 
 // Attachment's read-side bounds.
-inline void AttachmentFixedClampBody( Attachment & value, int32_t & clamped, int32_t & damaged )
+inline void AttachmentFixedClampBody( Attachment & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.slot < 0 ) | (int) ( value.slot > 7 );
@@ -12307,7 +12320,7 @@ inline void AttachmentFixedClampBody( Attachment & value, int32_t & clamped, int
 }
 
 // LoadoutConfig's read-side bounds.
-inline void LoadoutConfigFixedClampBody( LoadoutConfig & value, int32_t & clamped, int32_t & damaged )
+inline void LoadoutConfigFixedClampBody( LoadoutConfig & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.grade > 3u ) { value.grade = Grade::None; clamped++; }
@@ -12331,7 +12344,7 @@ inline void LoadoutConfigFixedClampBody( LoadoutConfig & value, int32_t & clampe
 }
 
 // ProfileConfig's read-side bounds.
-inline void ProfileConfigFixedClampBody( ProfileConfig & value, int32_t & clamped, int32_t & damaged )
+inline void ProfileConfigFixedClampBody( ProfileConfig & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) )
@@ -12342,7 +12355,7 @@ inline void ProfileConfigFixedClampBody( ProfileConfig & value, int32_t & clampe
 }
 
 // RootConfig's read-side bounds.
-inline void RootConfigFixedClampBody( RootConfig & value, int32_t & clamped, int32_t & damaged )
+inline void RootConfigFixedClampBody( RootConfig & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.version_note, (uint64_t) value.version_note_length ) )

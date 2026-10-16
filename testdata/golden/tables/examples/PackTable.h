@@ -10093,8 +10093,21 @@ inline void PackConfigFixedWriteBody( uint8_t * b, const PackConfig & value )
     }
 }
 
+// HOW THE CLAMP COUNTERS ARE HELD (docs/PERFORMANCE.md, "The clamp counters").
+// An int32_t counter may alias an int32_t field as far as the compiler can
+// prove; __restrict says it never does. Spelled where it measured faster
+// (clang, x86-64 and arm64); GCC measured slower with it, and GCC, MSVC and
+// every compiler not named keep the plain reference, correct everywhere.
+#if !defined( TABLE_FIXED_COUNTER_RESTRICT )
+#if defined( __clang__ )
+#define TABLE_FIXED_COUNTER_RESTRICT __restrict__
+#else
+#define TABLE_FIXED_COUNTER_RESTRICT
+#endif
+#endif
+
 // GunnerSettings's read-side bounds.
-inline void GunnerSettingsFixedClampBody( GunnerSettings & value, int32_t & clamped, int32_t & damaged )
+inline void GunnerSettingsFixedClampBody( GunnerSettings & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.callsign, (uint64_t) value.callsign_length ) )
@@ -10104,7 +10117,7 @@ inline void GunnerSettingsFixedClampBody( GunnerSettings & value, int32_t & clam
 }
 
 // ShipEntry's read-side bounds.
-inline void ShipEntryFixedClampBody( ShipEntry & value, int32_t & clamped, int32_t & damaged )
+inline void ShipEntryFixedClampBody( ShipEntry & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.display_name, (uint64_t) value.display_name_length ) )
@@ -10123,7 +10136,7 @@ inline void ShipEntryFixedClampBody( ShipEntry & value, int32_t & clamped, int32
 }
 
 // GlobalSettings's read-side bounds.
-inline void GlobalSettingsFixedClampBody( GlobalSettings & value, int32_t & clamped, int32_t & damaged )
+inline void GlobalSettingsFixedClampBody( GlobalSettings & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.tick_rate < 1 ) | (int) ( value.tick_rate > 240 );
@@ -10136,7 +10149,7 @@ inline void GlobalSettingsFixedClampBody( GlobalSettings & value, int32_t & clam
 }
 
 // PackConfig's read-side bounds.
-inline void PackConfigFixedClampBody( PackConfig & value, int32_t & clamped, int32_t & damaged )
+inline void PackConfigFixedClampBody( PackConfig & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     GlobalSettingsFixedClampBody( value.global, clamped, damaged );

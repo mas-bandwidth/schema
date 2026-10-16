@@ -5944,8 +5944,21 @@ inline void PaddedFrameFixedWriteBody( uint8_t * b, const PaddedFrame & value )
     memcpy( b + 3217, value.blob, (size_t) ( value.blob_length ) );
 }
 
+// HOW THE CLAMP COUNTERS ARE HELD (docs/PERFORMANCE.md, "The clamp counters").
+// An int32_t counter may alias an int32_t field as far as the compiler can
+// prove; __restrict says it never does. Spelled where it measured faster
+// (clang, x86-64 and arm64); GCC measured slower with it, and GCC, MSVC and
+// every compiler not named keep the plain reference, correct everywhere.
+#if !defined( TABLE_FIXED_COUNTER_RESTRICT )
+#if defined( __clang__ )
+#define TABLE_FIXED_COUNTER_RESTRICT __restrict__
+#else
+#define TABLE_FIXED_COUNTER_RESTRICT
+#endif
+#endif
+
 // PaddedRow's read-side bounds.
-inline void PaddedRowFixedClampBody( PaddedRow & value, int32_t & clamped, int32_t & damaged )
+inline void PaddedRowFixedClampBody( PaddedRow & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) )
@@ -5955,7 +5968,7 @@ inline void PaddedRowFixedClampBody( PaddedRow & value, int32_t & clamped, int32
 }
 
 // PaddedFrame's read-side bounds.
-inline void PaddedFrameFixedClampBody( PaddedFrame & value, int32_t & clamped, int32_t & damaged )
+inline void PaddedFrameFixedClampBody( PaddedFrame & value, int32_t & TABLE_FIXED_COUNTER_RESTRICT clamped, int32_t & TABLE_FIXED_COUNTER_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     for ( int64_t i = 0; i < (int64_t) value.rows_count; ++i )
