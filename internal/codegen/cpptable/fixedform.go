@@ -44,19 +44,6 @@ func offOf(owner, member string) string {
 	return fmt.Sprintf("(uint32_t) __builtin_offsetof( %s, %s )", owner, member)
 }
 
-// dstTerms renders a destination — a sum of offsetofs, and nothing at all is
-// the record's own base.
-func dstTerms(terms []ir.TableFixedTerm) string {
-	if len(terms) == 0 {
-		return "0"
-	}
-	parts := make([]string, 0, len(terms))
-	for _, t := range terms {
-		parts = append(parts, offOf(t.Type, t.Member))
-	}
-	return strings.Join(parts, " + ")
-}
-
 // dstRow is one TableFixedDst: MY side of a layout entry, in C++.
 func (g *tableGen) dstRow(e ir.TableFixedLayoutEntry) string {
 	d := e.Dst
@@ -287,37 +274,6 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 		}
 	}
 	*order = append(*order, st)
-}
-
-// fixedElemStorage is the C++ storage type of ONE element, which is what the
-// loop above strides by.
-func (g *tableGen) fixedElemStorage(f *ir.Field) string {
-	if f.Type.Kind == ir.TNamed {
-		return f.Type.Name
-	}
-	switch f.Type.Kind {
-	case ir.TBool:
-		return "bool"
-	case ir.TFloat32:
-		return "float"
-	case ir.TFloat64:
-		return "double"
-	case ir.TBits:
-		if f.Type.Width <= 32 {
-			return "uint32_t"
-		}
-		return "uint64_t"
-	}
-	if f.Type.Width == 128 {
-		if f.Type.Signed {
-			return "serialize::int128_t"
-		}
-		return "serialize::uint128_t"
-	}
-	if f.Type.Signed {
-		return fmt.Sprintf("int%d_t", f.Type.Width)
-	}
-	return fmt.Sprintf("uint%d_t", f.Type.Width)
 }
 
 // ---- the writer ------------------------------------------------------------
@@ -614,6 +570,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("constexpr TableFixedGuardLink %sFixedGuards[] = {\n", st.Name)
 	for _, l := range pool {
 		g.pf("    { %du, %du, %d },\n", l.Guard, l.Arg, l.ArgW)
+	}
+	if len(pool) == 0 {
+		// AN EMPTY POOL STILL DECLARES ONE LINK: `T x[] = {}` is an array of
+		// size 0, which MSVC refuses (C2466) and ISO C++ does not allow. No
+		// chain points here (every entry's count is 0), and the count below
+		// stays 0, so the placeholder is never read.
+		g.pf("    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool\n")
 	}
 	g.pf("};\n")
 	g.pf("constexpr int32_t %sFixedGuardCount = %d;\n\n", st.Name, len(pool))

@@ -1838,7 +1838,7 @@ static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEn
             ( e.guard >= c->record || (uint64_t) e.guard + gw > (uint64_t) c->record ) ) ||
             ( e.guard2 != SCHEMA_TABLE_FIXED_NO_GUARD &&
             ( e.guard2 >= c->record || (uint64_t) e.guard2 + gw2 > (uint64_t) c->record ) );
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == kTableFixedText || e.op == kTableFixedCount ) ? 4ull : 0ull );
         if ( reach > (uint64_t) c->record || guard_out )
         {
             c->hostile = 1;
@@ -2013,6 +2013,11 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
             }
             case 14: /* an array: the count, then min( their bound, my bound ) elements */
             {
+                /* A COUNTED LOCAL against a PEER whose array is too small to hold
+                   the four-byte count is a mismatch the head subtraction below
+                   would underflow: refuse it rather than land a count op that
+                   over-reads. break (never return) so the depth decrement runs. */
+                if ( d->counted && te.size < 4u ) { c->hostile = 1; break; }
                 const TableFixedLayoutEntry tel = table_fixed_entry_at( theirs, ti + 1 );
                 const TableFixedLayoutEntry mel = table_fixed_entry_at( mine, mi + 1 );
                 const uint32_t head = d->counted ? 4u : 0u;
@@ -8788,6 +8793,7 @@ static SCHEMA_UNUSED const TableFixedEntry ranged_signed_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t ranged_signed_fixed_plan_count = 4;
 static SCHEMA_UNUSED const int32_t ranged_signed_fixed_plan_guarded = 4;
 static SCHEMA_UNUSED const TableFixedGuardLink ranged_signed_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t ranged_signed_fixed_guard_count = 0;
 
@@ -9075,6 +9081,7 @@ static SCHEMA_UNUSED const TableFixedEntry ranged_unsigned_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t ranged_unsigned_fixed_plan_count = 4;
 static SCHEMA_UNUSED const int32_t ranged_unsigned_fixed_plan_guarded = 4;
 static SCHEMA_UNUSED const TableFixedGuardLink ranged_unsigned_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t ranged_unsigned_fixed_guard_count = 0;
 
@@ -9336,6 +9343,7 @@ static SCHEMA_UNUSED const TableFixedEntry ranged_widths_fixed_plan[] = {
 static SCHEMA_UNUSED const int32_t ranged_widths_fixed_plan_count = 3;
 static SCHEMA_UNUSED const int32_t ranged_widths_fixed_plan_guarded = 3;
 static SCHEMA_UNUSED const TableFixedGuardLink ranged_widths_fixed_guards[] = {
+    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
 static SCHEMA_UNUSED const int32_t ranged_widths_fixed_guard_count = 0;
 

@@ -184,9 +184,6 @@ type wireGen struct {
 
 func (g *wireGen) pf(format string, args ...any) { fmt.Fprintf(&g.body, format, args...) }
 
-// tableWireId is a table's NODE TYPE id (§3.1): the hash of its wire name.
-func tableWireId(st *ir.Struct) uint64 { return ir.TableWireId(st.WireName()) }
-
 // fieldMember is the Dart storage member for a field: the lowerCamelCase
 // spelling every Dart surface uses, with an underscore appended when that
 // spelling lands on a Dart reserved word (an ordinary schema field like `_new`

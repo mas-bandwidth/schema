@@ -3083,6 +3083,9 @@ namespace Blockdemo
 
         public const int RenderCameraFixedPlanSplit = 11;
 
+        public static readonly byte[] RenderCameraFixedGuardPool = new byte[] {
+        };
+
         public static readonly TableFixedPlan RenderCameraFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(8u, 1u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3240,7 +3243,7 @@ namespace Blockdemo
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderCameraFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = RenderCameraFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -3299,12 +3302,14 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new RenderCamera(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCameraFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, RenderCameraFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, RenderCameraFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -3335,7 +3340,9 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, RenderCameraFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, RenderCameraFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -3431,8 +3438,8 @@ namespace Blockdemo
             new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.TargetObjectId = unchecked((uint)v), reset: (t) => { t.TargetObjectId = 0; }),
             new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Thrust = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Thrust = (float)d, reset: (t) => { t.Thrust = 0.0f; }),
             new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.ObjectSequence = unchecked((byte)v), reset: (t) => { t.ObjectSequence = 0; }),
-            new TableFixedSlot<RenderShip>(setRawReport: (t, v, rep) => { if (v > 3) { t.ShipType = 0; if (rep != null) rep.Clamped++; } else { t.ShipType = (ShipType)v; } }, reset: (t) => { t.ShipType = global::Blockdemo.ShipType.None; }),
-            new TableFixedSlot<RenderShip>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
+            new TableFixedSlot<RenderShip>(setRawReport: (t, v, rep) => { t.ShipType = (ShipType)v; }, reset: (t) => { t.ShipType = global::Blockdemo.ShipType.None; }),
+            new TableFixedSlot<RenderShip>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
             new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.HasTargetLock = v != 0, reset: (t) => { t.HasTargetLock = false; }),
             new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.PredictedExplode = v != 0, reset: (t) => { t.PredictedExplode = false; }),
         };
@@ -3445,6 +3452,9 @@ namespace Blockdemo
         };
 
         public const int RenderShipFixedPlanSplit = 16;
+
+        public static readonly byte[] RenderShipFixedGuardPool = new byte[] {
+        };
 
         public static readonly TableFixedPlan RenderShipFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3620,7 +3630,7 @@ namespace Blockdemo
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderShipFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = RenderShipFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -3679,13 +3689,15 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new RenderShip(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderShipFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, RenderShipFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, RenderShipFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 RenderShipFixedClamp(values[k], report);
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -3716,7 +3728,9 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, RenderShipFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, RenderShipFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -3794,7 +3808,7 @@ namespace Blockdemo
             new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.TurretIndex = unchecked((uint)v), reset: (t) => { t.TurretIndex = 0; }),
             new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.TargetObjectId = unchecked((uint)v), reset: (t) => { t.TargetObjectId = 0; }),
             new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.ObjectSequence = unchecked((byte)v), reset: (t) => { t.ObjectSequence = 0; }),
-            new TableFixedSlot<RenderTurret>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
+            new TableFixedSlot<RenderTurret>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
             new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.HasTargetLock = v != 0, reset: (t) => { t.HasTargetLock = false; }),
         };
 
@@ -3806,6 +3820,9 @@ namespace Blockdemo
         };
 
         public const int RenderTurretFixedPlanSplit = 12;
+
+        public static readonly byte[] RenderTurretFixedGuardPool = new byte[] {
+        };
 
         public static readonly TableFixedPlan RenderTurretFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3969,7 +3986,7 @@ namespace Blockdemo
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderTurretFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = RenderTurretFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -4028,13 +4045,15 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new RenderTurret(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderTurretFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, RenderTurretFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, RenderTurretFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 RenderTurretFixedClamp(values[k], report);
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -4065,7 +4084,9 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, RenderTurretFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, RenderTurretFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -4149,8 +4170,8 @@ namespace Blockdemo
             new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Flags = unchecked((ulong)v), reset: (t) => { t.Flags = 0; }),
             new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.ObjectId = unchecked((uint)v), reset: (t) => { t.ObjectId = 0; }),
             new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.ObjectSequence = unchecked((byte)v), reset: (t) => { t.ObjectSequence = 0; }),
-            new TableFixedSlot<RenderMissile>(setRawReport: (t, v, rep) => { if (v > 2) { t.MissileType = 0; if (rep != null) rep.Clamped++; } else { t.MissileType = (MissileType)v; } }, reset: (t) => { t.MissileType = global::Blockdemo.MissileType.None; }),
-            new TableFixedSlot<RenderMissile>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
+            new TableFixedSlot<RenderMissile>(setRawReport: (t, v, rep) => { t.MissileType = (MissileType)v; }, reset: (t) => { t.MissileType = global::Blockdemo.MissileType.None; }),
+            new TableFixedSlot<RenderMissile>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
         };
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
@@ -4161,6 +4182,9 @@ namespace Blockdemo
         };
 
         public const int RenderMissileFixedPlanSplit = 12;
+
+        public static readonly byte[] RenderMissileFixedGuardPool = new byte[] {
+        };
 
         public static readonly TableFixedPlan RenderMissileFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -4327,7 +4351,7 @@ namespace Blockdemo
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderMissileFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = RenderMissileFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -4386,13 +4410,15 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new RenderMissile(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderMissileFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, RenderMissileFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, RenderMissileFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 RenderMissileFixedClamp(values[k], report);
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -4423,7 +4449,9 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, RenderMissileFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, RenderMissileFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -4509,8 +4537,8 @@ namespace Blockdemo
             new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Flags = unchecked((ulong)v), reset: (t) => { t.Flags = 0; }),
             new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.ObjectId = unchecked((uint)v), reset: (t) => { t.ObjectId = 0; }),
             new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.ObjectSequence = unchecked((byte)v), reset: (t) => { t.ObjectSequence = 0; }),
-            new TableFixedSlot<RenderDynamicProp>(setRawReport: (t, v, rep) => { if (v > 3) { t.PropType = 0; if (rep != null) rep.Clamped++; } else { t.PropType = (PropType)v; } }, reset: (t) => { t.PropType = global::Blockdemo.PropType.None; }),
-            new TableFixedSlot<RenderDynamicProp>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
+            new TableFixedSlot<RenderDynamicProp>(setRawReport: (t, v, rep) => { t.PropType = (PropType)v; }, reset: (t) => { t.PropType = global::Blockdemo.PropType.None; }),
+            new TableFixedSlot<RenderDynamicProp>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
         };
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
@@ -4521,6 +4549,9 @@ namespace Blockdemo
         };
 
         public const int RenderDynamicPropFixedPlanSplit = 12;
+
+        public static readonly byte[] RenderDynamicPropFixedGuardPool = new byte[] {
+        };
 
         public static readonly TableFixedPlan RenderDynamicPropFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -4688,7 +4719,7 @@ namespace Blockdemo
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderDynamicPropFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = RenderDynamicPropFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -4747,13 +4778,15 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new RenderDynamicProp(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderDynamicPropFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, RenderDynamicPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, RenderDynamicPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 RenderDynamicPropFixedClamp(values[k], report);
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -4784,7 +4817,9 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, RenderDynamicPropFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, RenderDynamicPropFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -4870,8 +4905,8 @@ namespace Blockdemo
             new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Scale = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Scale = d, reset: (t) => { t.Scale = 0.0; }),
             new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Flags = unchecked((ulong)v), reset: (t) => { t.Flags = 0; }),
             new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.StaticPropId = unchecked((uint)v), reset: (t) => { t.StaticPropId = 0; }),
-            new TableFixedSlot<RenderStaticProp>(setRawReport: (t, v, rep) => { if (v > 3) { t.PropType = 0; if (rep != null) rep.Clamped++; } else { t.PropType = (PropType)v; } }, reset: (t) => { t.PropType = global::Blockdemo.PropType.None; }),
-            new TableFixedSlot<RenderStaticProp>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
+            new TableFixedSlot<RenderStaticProp>(setRawReport: (t, v, rep) => { t.PropType = (PropType)v; }, reset: (t) => { t.PropType = global::Blockdemo.PropType.None; }),
+            new TableFixedSlot<RenderStaticProp>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
         };
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
@@ -4882,6 +4917,9 @@ namespace Blockdemo
         };
 
         public const int RenderStaticPropFixedPlanSplit = 12;
+
+        public static readonly byte[] RenderStaticPropFixedGuardPool = new byte[] {
+        };
 
         public static readonly TableFixedPlan RenderStaticPropFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -5049,7 +5087,7 @@ namespace Blockdemo
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderStaticPropFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = RenderStaticPropFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -5108,13 +5146,15 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new RenderStaticProp(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderStaticPropFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, RenderStaticPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, RenderStaticPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 RenderStaticPropFixedClamp(values[k], report);
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -5145,7 +5185,9 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, RenderStaticPropFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, RenderStaticPropFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -5234,8 +5276,8 @@ namespace Blockdemo
             new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Flags = unchecked((ulong)v), reset: (t) => { t.Flags = 0; }),
             new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.CosmeticPropId = unchecked((uint)v), reset: (t) => { t.CosmeticPropId = 0; }),
             new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.PropSequence = unchecked((byte)v), reset: (t) => { t.PropSequence = 0; }),
-            new TableFixedSlot<RenderCosmeticProp>(setRawReport: (t, v, rep) => { if (v > 3) { t.PropType = 0; if (rep != null) rep.Clamped++; } else { t.PropType = (PropType)v; } }, reset: (t) => { t.PropType = global::Blockdemo.PropType.None; }),
-            new TableFixedSlot<RenderCosmeticProp>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
+            new TableFixedSlot<RenderCosmeticProp>(setRawReport: (t, v, rep) => { t.PropType = (PropType)v; }, reset: (t) => { t.PropType = global::Blockdemo.PropType.None; }),
+            new TableFixedSlot<RenderCosmeticProp>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
         };
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
@@ -5246,6 +5288,9 @@ namespace Blockdemo
         };
 
         public const int RenderCosmeticPropFixedPlanSplit = 13;
+
+        public static readonly byte[] RenderCosmeticPropFixedGuardPool = new byte[] {
+        };
 
         public static readonly TableFixedPlan RenderCosmeticPropFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -5415,7 +5460,7 @@ namespace Blockdemo
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderCosmeticPropFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = RenderCosmeticPropFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -5474,13 +5519,15 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new RenderCosmeticProp(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCosmeticPropFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, RenderCosmeticPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, RenderCosmeticPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 RenderCosmeticPropFixedClamp(values[k], report);
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -5511,7 +5558,9 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, RenderCosmeticPropFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, RenderCosmeticPropFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -5589,8 +5638,8 @@ namespace Blockdemo
             new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.Finish.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Finish.Z = d, reset: (t) => { t.Finish.Z = 0.0; }),
             new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.T = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.T = d, reset: (t) => { t.T = 0.0; }),
             new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.LaserId = unchecked((uint)v), reset: (t) => { t.LaserId = 0; }),
-            new TableFixedSlot<RenderLaser>(setRawReport: (t, v, rep) => { if (v > 2) { t.LaserType = 0; if (rep != null) rep.Clamped++; } else { t.LaserType = (LaserType)v; } }, reset: (t) => { t.LaserType = global::Blockdemo.LaserType.None; }),
-            new TableFixedSlot<RenderLaser>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
+            new TableFixedSlot<RenderLaser>(setRawReport: (t, v, rep) => { t.LaserType = (LaserType)v; }, reset: (t) => { t.LaserType = global::Blockdemo.LaserType.None; }),
+            new TableFixedSlot<RenderLaser>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
         };
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
@@ -5601,6 +5650,9 @@ namespace Blockdemo
         };
 
         public const int RenderLaserFixedPlanSplit = 10;
+
+        public static readonly byte[] RenderLaserFixedGuardPool = new byte[] {
+        };
 
         public static readonly TableFixedPlan RenderLaserFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -5763,7 +5815,7 @@ namespace Blockdemo
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderLaserFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = RenderLaserFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -5822,13 +5874,15 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new RenderLaser(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderLaserFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, RenderLaserFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, RenderLaserFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 RenderLaserFixedClamp(values[k], report);
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -5859,7 +5913,9 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, RenderLaserFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, RenderLaserFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -5943,8 +5999,8 @@ namespace Blockdemo
             new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.T = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.T = d, reset: (t) => { t.T = 0.0; }),
             new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.ExplosionId = unchecked((uint)v), reset: (t) => { t.ExplosionId = 0; }),
             new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.ParentObjectId = unchecked((uint)v), reset: (t) => { t.ParentObjectId = 0; }),
-            new TableFixedSlot<RenderExplosion>(setRawReport: (t, v, rep) => { if (v > 2) { t.ExplosionType = 0; if (rep != null) rep.Clamped++; } else { t.ExplosionType = (ExplosionType)v; } }, reset: (t) => { t.ExplosionType = global::Blockdemo.ExplosionType.None; }),
-            new TableFixedSlot<RenderExplosion>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
+            new TableFixedSlot<RenderExplosion>(setRawReport: (t, v, rep) => { t.ExplosionType = (ExplosionType)v; }, reset: (t) => { t.ExplosionType = global::Blockdemo.ExplosionType.None; }),
+            new TableFixedSlot<RenderExplosion>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
         };
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
@@ -5955,6 +6011,9 @@ namespace Blockdemo
         };
 
         public const int RenderExplosionFixedPlanSplit = 12;
+
+        public static readonly byte[] RenderExplosionFixedGuardPool = new byte[] {
+        };
 
         public static readonly TableFixedPlan RenderExplosionFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -6121,7 +6180,7 @@ namespace Blockdemo
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderExplosionFixedPlan;
             long record_bytes = known.RecordBytes;
-            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> planBytes = RenderExplosionFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
@@ -6180,13 +6239,15 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new RenderExplosion(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderExplosionFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, RenderExplosionFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                int forgedOrdinal = 0;
+                string run_why = TableFixedWire.Run(entries, RenderExplosionFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 RenderExplosionFixedClamp(values[k], report);
+                if (report != null) { report.Clamped += forgedOrdinal; }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -6217,7 +6278,9 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, RenderExplosionFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            int forgedOrdinal = 0;
+            string run_why = TableFixedWire.Run(plan, RenderExplosionFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
     }

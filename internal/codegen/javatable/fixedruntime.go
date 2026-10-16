@@ -321,12 +321,22 @@ public final class TableFixed {
         public long arg2;
         /** the OUTER tag's width in bytes, zero read as one (§4.1). */
         public byte argw2;
+        /** THE GUARD CHAIN (docs/FIXED-FORM-ALGORITHM.md §4.1): offset+count
+         *  into a pool of (guard, arg, argw) links, OUTERMOST FIRST, the only
+         *  bound the layout's 64. gindex is the first link's index in gpool,
+         *  two longs a link (guard | argw << 32, then arg), and gcount the
+         *  number of links. A chain of one or two rides guard and guard2 alone,
+         *  the two-lane special case, and carries gcount 0. */
+        public int gindex;
+        public int gcount;
+        public long[] gpool;
 
         /** an entry, reset to a plain copy that belongs to no arm. */
         public void reset() {
             src = 0; dst = 0; size = 0; aux = 0; guard = noGuard;
             op = opCopy; arg = 0; argw = 0; dstsize = 0; sign = 0; meta = 0;
             guard2 = noGuard; arg2 = 0; argw2 = 0;
+            gindex = 0; gcount = 0; gpool = null;
         }
     }
 
@@ -510,13 +520,34 @@ public final class TableFixed {
         return true;
     }
 
+    /** EVERY LINK OF A GUARD CHAIN PAST TWO HOLDS (docs/FIXED-FORM-ALGORITHM.md
+     *  §4.1): an arm inside an arm inside an arm answers to every enclosing
+     *  tag, outermost first, each at its own width and inside the writer's
+     *  record. A link past the record sets malformed. */
+    static boolean chainHolds(Entry p, byte[] src, int srcAt, int srcLength, Report report) {
+        for (int j = 0; j < p.gcount; j++) {
+            final long gl = p.gpool[2 * (p.gindex + j)];
+            final int g = (int) gl;
+            final int gw = guardWidth((byte) (gl >>> 32));
+            if (g < 0 || g + gw > srcLength) { report.malformed = true; return false; }
+            if (tagAt(src, srcAt + g, gw) != p.gpool[2 * (p.gindex + j) + 1]) { return false; }
+        }
+        return true;
+    }
+
     /** run one plan over one record body, landing it in this reader's image. */
     public static void run(Entry[] plan, int count, short[] remap,
                            byte[] src, int srcAt, int srcLength,
                            byte[] image, Report report) {
+        // THE PLAN IS PARTITIONED (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4):
+        // the first split entries are UNGUARDED and run without a guard test;
+        // the guarded half from split on tests one. compile lays unguarded
+        // entries first, so the split is the first guarded index.
+        int split = 0;
+        while (split < count && plan[split].guard == noGuard) { split++; }
         for (int i = 0; i < count; i++) {
             final Entry p = plan[i];
-            if (p.guard != noGuard) {
+            if (i >= split && p.guard != noGuard) {
                 // THE TAG IS COMPARED AT ITS OWN WIDTH, and its own reach is
                 // bounded by the writer's record like every other offset (5.2).
                 final int gw = guardWidth(p.argw);
@@ -530,6 +561,10 @@ public final class TableFixed {
                 final int gw2 = guardWidth(p.argw2);
                 if (p.guard2 < 0 || p.guard2 + gw2 > srcLength) { report.malformed = true; return; }
                 if (tagAt(src, srcAt + p.guard2, gw2) != p.arg2) { continue; }
+            }
+            if (p.gcount > 2 && !chainHolds(p, src, srcAt, srcLength, report)) {
+                if (report.malformed) { return; }
+                continue;
             }
             switch (p.op) {
                 case opCopy: {
@@ -969,6 +1004,32 @@ public final class TableFixed {
         /** THE CURRENT UNION'S TAG WIDTH IN BYTES, 1 outside every union. */
         byte argw = 1;
         Report report;
+        /** THE GUARD CHAIN of the arm being compiled, OUTERMOST FIRST
+         *  (docs/FIXED-FORM-ALGORITHM.md §4.1): one link per enclosing union,
+         *  pushed on the way into an arm and popped on the way out. A chain past
+         *  the two lanes is laid into pool once per arm, lazily (chainAt). */
+        final int[] chainGuard = new int[maxDepth + 1];
+        final long[] chainArg = new long[maxDepth + 1];
+        final byte[] chainArgw = new byte[maxDepth + 1];
+        int chainLen;
+        int chainAt = -1;
+        long[] pool = new long[0];
+        int poolUsed;
+
+        /** lays the current chain into the pool, two longs a link, and answers
+         *  the first link's index (§4.1). */
+        int layGuards() {
+            if (2 * (poolUsed + chainLen) > pool.length) {
+                pool = java.util.Arrays.copyOf(pool, Math.max(2 * (poolUsed + chainLen), 2 * pool.length + 16));
+            }
+            final int at = poolUsed;
+            for (int j = 0; j < chainLen; j++) {
+                pool[2 * (at + j)] = (chainGuard[j] & 0xFFFFFFFFL) | ((long) (chainArgw[j] & 0xFF) << 32);
+                pool[2 * (at + j) + 1] = chainArg[j];
+            }
+            poolUsed += chainLen;
+            return at;
+        }
 
         void push(int src, int dst, int size, int aux, int guard, byte op, long arg, byte dstsize, byte sign) {
             push(src, dst, size, aux, guard, op, arg, dstsize, sign, (byte) 0);
@@ -1005,6 +1066,26 @@ public final class TableFixed {
             // beneath it, a zero read as one (5.2). An unguarded entry compares
             // nothing, so it carries no width.
             e.argw = (guard != noGuard) ? (byte) guardWidth(argw) : (byte) 0;
+            e.guard2 = noGuard; e.arg2 = 0; e.argw2 = 0;
+            e.gindex = 0; e.gcount = 0; e.gpool = null;
+            // THE GUARD CHAIN (§4.1): an entry beneath a union answers to EVERY
+            // enclosing tag. Its two lanes are the chain's innermost two, and a
+            // chain past two rides the pool as offset+count.
+            if (guard != noGuard && chainLen > 0) {
+                e.guard = chainGuard[chainLen - 1];
+                e.arg = chainArg[chainLen - 1];
+                e.argw = chainArgw[chainLen - 1];
+                if (chainLen >= 2) {
+                    e.guard2 = chainGuard[chainLen - 2];
+                    e.arg2 = chainArg[chainLen - 2];
+                    e.argw2 = chainArgw[chainLen - 2];
+                }
+                if (chainLen > 2) {
+                    if (chainAt < 0) { chainAt = layGuards(); }
+                    e.gindex = chainAt;
+                    e.gcount = chainLen;
+                }
+            }
             count++;
         }
 
@@ -1229,42 +1310,41 @@ public final class TableFixed {
                 // union and, when this union is itself inside an outer arm,
                 // must answer to the OUTER tag too (§4.1). The None entry just
                 // above carries the outer guard DIRECTLY, so it is not restamped.
-                final int restampFrom = c.count;
                 int myArm = mi + 1;
                 for (long k = 0; k < myArms; k++) {
                     final long myId = mine.id(myArm);
                     int theirArm = ti + 1;
                     for (long j = 0; j < theirArms; j++) {
                         if (theirs.id(theirArm) == myId) {
+                            // THE ARM ANSWERS TO THIS TAG AND TO EVERY TAG
+                            // OUTSIDE IT (§4.1, the guard chain): one link is
+                            // pushed on the way in, the arm's own tag const
+                            // included, and popped on the way out. The layout's
+                            // 64 bounds the depth, so the stack never overflows.
+                            if (c.chainLen > maxDepth) { c.overflow = true; return; }
+                            final int savedAt = c.chainAt;
+                            c.chainGuard[c.chainLen] = theirAt;
+                            c.chainArg[c.chainLen] = j + 1;
+                            c.chainArgw[c.chainLen] = (byte) guardWidth(c.argw);
+                            c.chainLen++;
+                            c.chainAt = -1;
                             // MY tag value, written under THEIR tag's guard
                             c.push(theirAt, auxAt, myTag, (int) (k + 1), theirAt,
                                     opConst, j + 1, (byte) 0, (byte) 0);
                             compileEntry(c, theirs, theirArm, theirAt + theirTag,
                                     mine, myArm, at, theirAt, j + 1, census);
+                            c.chainLen--;
+                            c.chainAt = savedAt;
                             break;
                         }
                         theirArm += theirs.subtree(theirArm);
                     }
                     myArm += mine.subtree(myArm);
                 }
-                // NESTED: an arm inside an arm answers to the OUTER tag TOO —
-                // the one that decides whether any of those bytes are there at
-                // all — and its OWN arm selection must survive that (§4.1). So
-                // the two tags are CONJOINED on the second guard lane rather
-                // than the outer one replacing the inner (§5.8 row 6).
-                if (guard != noGuard) {
-                    final byte outerW = (byte) guardWidth(savedArgw);
-                    for (int q = restampFrom; q < c.count; q++) {
-                        // A THIRD NESTED UNION HAS A THIRD CONDITION and two
-                        // lanes cannot carry it: the plan REFUSES BY NAME
-                        // rather than drop one (the guard chain is the
-                        // follow-on, §5.8 row 6).
-                        if (c.plan[q].guard2 != noGuard) { c.recordTooLarge = true; break; }
-                        c.plan[q].guard2 = guard;
-                        c.plan[q].arg2 = arg;
-                        c.plan[q].argw2 = outerW;
-                    }
-                }
+                // NESTED: an arm inside an arm answers to the OUTER tag TOO, and
+                // to every tag outside that: the guard chain above carries them
+                // all, conjoined, outermost first (§4.1), so nothing is restamped
+                // here and a third nested union is no longer refused.
                 c.argw = savedArgw;
                 break;
             }
@@ -1352,11 +1432,29 @@ public final class TableFixed {
             return -1;
         }
         if (c.overflow) { return -1; }
+        // THE POOL IS FINAL NOW: every chained entry reads the one array (§4.1).
+        for (int i = 0; i < c.count; i++) {
+            if (plan[i].gcount > 0) { plan[i].gpool = c.pool; }
+        }
         // COALESCE, exactly as the identity plan is coalesced: two neighbouring
         // COPY entries whose source and destination both advance together are
         // one entry. It is the only optimization a plan compiler performs and
         // it is performed identically on both sides.
-        return coalesce(plan, c.count);
+        final int count = coalesce(plan, c.count);
+        // PARTITION UNGUARDED-FIRST (docs/FIXED-FORM-ALGORITHM.md §4.1): every
+        // unguarded entry before every guarded one, stable within each half, so
+        // the plan states where the second half starts and no coalesced run
+        // crosses the split (coalescing finished above, before the partition).
+        int split = 0;
+        for (int i = 0; i < count; i++) {
+            if (plan[i].guard == noGuard) {
+                final Entry e = plan[i];
+                System.arraycopy(plan, split, plan, split + 1, i - split);
+                plan[split] = e;
+                split++;
+            }
+        }
+        return count;
     }
 
     /** the coalescing pass, over a plan already written. */
@@ -1369,6 +1467,7 @@ public final class TableFixed {
                 if (prev.op == opCopy && e.op == opCopy && prev.guard == e.guard && prev.arg == e.arg
                         && prev.argw == e.argw
                         && prev.guard2 == e.guard2 && prev.arg2 == e.arg2 && prev.argw2 == e.argw2
+                        && prev.gindex == e.gindex && prev.gcount == e.gcount
                         && prev.src + prev.size == e.src && prev.dst + prev.size == e.dst) {
                     prev.size += e.size;
                     continue;
@@ -1379,6 +1478,7 @@ public final class TableFixed {
                 dst.src = e.src; dst.dst = e.dst; dst.size = e.size; dst.aux = e.aux;
                 dst.guard = e.guard; dst.op = e.op; dst.arg = e.arg; dst.argw = e.argw;
                 dst.guard2 = e.guard2; dst.arg2 = e.arg2; dst.argw2 = e.argw2;
+                dst.gindex = e.gindex; dst.gcount = e.gcount; dst.gpool = e.gpool;
                 dst.dstsize = e.dstsize; dst.sign = e.sign;
                 dst.meta = e.meta;
             }

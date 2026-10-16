@@ -947,6 +947,8 @@ static void union_text_case()
         tblut1::UtRootReset( wrong );
         tblut1::TableReport r;
         const uint8_t * body = w.data() + tblut1::kTableFixedHeaderBytes + 4 + tblut1::UtRootFixedLayoutBytes + 8;
+        // The copy keeps the identity plan's pooled guard chains, so it runs
+        // against the identity plan's pool, exactly as UtRootFixedLoad does.
         tblut1::TableFixedRun( shared.data(), tblut1::UtRootFixedPlanCount, tblut1::UtRootFixedPlanGuarded,
                                body, (uint8_t *) &wrong, &r, tblut1::UtRootFixedGuards );
         check( wrong.pick.b.label_length != 7 || std::strcmp( wrong.pick.b.label, "seven77" ) != 0,
