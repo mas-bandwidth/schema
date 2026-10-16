@@ -604,6 +604,25 @@ tables-js-variable-fixed-class:
 
 test-js: tables-js-variable-fixed-class
 
+# I13 (docs/PORTING.md:1278): the js leg's text differential against a third
+# implementation. A node probe draws 200 random float-only instances of a fixed
+# table (seed 24845619678, splitmix64) and writes each as (wire, text) with the
+# generated RootSave and RootToJson; the Go engine (internal/tabletext,
+# internal/tablepack) writes its own text from the leg's wire, byte-compared,
+# and packs the leg's text back to wire, byte-compared
+# (TestTextDifferentialJavaScript). The control caps the emitted float32 text at
+# six significant digits in memory and must go red on the text comparison.
+# SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE rather than a skip.
+.PHONY: tables-js-text-differential tables-js-text-differential-negative-control
+tables-js-text-differential:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestTextDifferentialJavaScript$$'
+	@echo 'tables JS text differential: 200 random float instances agree with the Go engine byte for byte, both directions'
+tables-js-text-differential-negative-control:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestTextDifferentialNegativeControlJavaScript$$'
+	@echo 'tables JS text differential negative control: a six-digit float32 writer is red on the text comparison'
+
+test-js: tables-js-text-differential
+
 # js/F12 — "a second layout under a held hash" (docs/FIXED-FORM-ALGORITHM.md §2
 # row 5: "a known hash over different bytes is `layout_malformed`"; SPEC-TABLES
 # §3.4: "A second layout for a hash already held is refused by name"). The test
