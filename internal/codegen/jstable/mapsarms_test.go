@@ -34,10 +34,10 @@ import (
 // must be clean), measured, written as text (the oracle's text), and read back
 // from the text and saved (the wire again).
 //
-// The corpus root this leg does NOT carry is refused BY NAME, never
-// mis-encoded (§11): Text holds a wstring(N), not on this leg's variable wire
-// yet. Cells and Pairs (a fixed array [N]T as a map value) are carried, held by
-// TestNestedTypesAndFixedArraysOnTheTableWireJavaScript.
+// Every map corpus root is carried: Cells and Pairs (a fixed array [N]T as a
+// map value) are held by TestNestedTypesAndFixedArraysOnTheTableWireJavaScript,
+// and Text (a wstring(N) map value) by
+// TestFixedPointAndWideTextOnTheTableWireJavaScript.
 func TestMapsAndUnionArmsOnTheTableWireJavaScript(t *testing.T) {
 	t.Parallel()
 	node := jsNode(t)
@@ -79,15 +79,7 @@ func TestMapsAndUnionArmsOnTheTableWireJavaScript(t *testing.T) {
 		}},
 	}
 
-	// THE BOUNDARY: the map corpus root still refused is refused by name
 	vc := newVariableClass(maps)
-	for root, want := range map[string]string{
-		"Text": "a wstring(N)",
-	} {
-		if why := vc.reason[root]; !strings.Contains(why, root+".") || !strings.Contains(why, want) {
-			t.Errorf("%s: refusal %q does not name the field and %q", root, why, want)
-		}
-	}
 
 	// THE CORPUS IS THE ORACLE'S: decode, re-encode the same bytes, and write
 	// the committed text.

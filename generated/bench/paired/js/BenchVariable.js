@@ -198,6 +198,54 @@ function TableVariableUtf8Decode(bytes) {
   return { s, ok: true };
 }
 
+// ---- WIDE TEXT, kind 33 (docs/SPEC-TABLES.md §3, §4; SPEC.md §4.12) --------
+//
+// A wstring(N) is held as a JavaScript string, which IS a sequence of UTF-16
+// code units, so the wire's units are the string's own char codes: two bytes
+// each, LITTLE-ENDIAN, under a byte length L that is twice the unit count
+// (internal/tablewire text.go wideUnits, wideBytes).
+
+// the units onto the wire, or false for a value past its N units: wide text is
+// never truncated on the way out (SPEC.md §4.12) — the save is refused (null)
+function TableVariableWideWrite(w, s, bound) {
+  if (s.length > bound) { return false; }
+  for (let i = 0; i < s.length; i++) { const u = s.charCodeAt(i); w.u8(u & 0xff); w.u8(u >>> 8); }
+  return true;
+}
+
+// a kind 33 payload's text (wideUnits + wideValid): null for an odd L or for
+// content that is not paired UTF-16 with no zero unit — the reader's damage
+function TableVariableWideDecode(bytes) {
+  if ((bytes.length & 1) !== 0) { return null; }
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 2) {
+    const u = bytes[i] | (bytes[i + 1] << 8);
+    if (u === 0) { return null; }
+    if (u >= 0xd800 && u <= 0xdbff) {
+      if (i + 3 >= bytes.length) { return null; } // a high surrogate with no low half
+      const lo = bytes[i + 2] | (bytes[i + 3] << 8);
+      if (lo < 0xdc00 || lo > 0xdfff) { return null; }
+    } else if (u >= 0xdc00 && u <= 0xdfff) {
+      const hi = i >= 2 ? bytes[i - 2] | (bytes[i - 1] << 8) : 0;
+      if (hi < 0xd800 || hi > 0xdbff) { return null; } // a low surrogate first
+    }
+    s += String.fromCharCode(u);
+  }
+  return s;
+}
+
+// THE CLAMP (wideBoundary, §3, §16.2): the first N units, and where the last
+// kept unit is a high surrogate whose low half did not fit, that unit goes too,
+// so a clamp never invents an unpaired surrogate. Over well-formed text this is
+// the longest prefix of whole code points within N, which is the text form's
+// rule as well (internal/tabletext read.go scanWString).
+function TableVariableWideClamp(s, bound) {
+  if (s.length <= bound) { return s; }
+  let cut = bound;
+  if (cut > 0) { const u = s.charCodeAt(cut - 1); if (u >= 0xd800 && u <= 0xdbff) { cut--; } }
+  return s.slice(0, cut);
+}
+
 // ---- skipping a field the reader cannot name (docs/SPEC-TABLES.md §3) ------
 
 function TableVariableSkip(r, kind) {
@@ -372,7 +420,9 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
   const width = tableRetainWidth(kind);
   if (width > 0) { if (r.at + width > r.end) { return false; } out.raw(r.b.subarray(r.at, r.at + width)); r.at += width; return true; }
   switch (kind) {
-    case 12: {
+    case 12: case 33: {
+      // a string and a wide string (§6.6, internal/tablewire retain.go): the
+      // payload copies verbatim under its L
       const L = r.leb(); if (r.bad || r.at + L > r.end) { return false; }
       out.leb(L); out.raw(r.b.subarray(r.at, r.at + L)); r.at += L; return true;
     }
@@ -459,7 +509,7 @@ function TableVariableRetainEmit(r, ids, kind, w) {
   const width = tableRetainWidth(kind);
   if (width > 0) { if (r.at + width > r.end) { return false; } w.raw(r.b.subarray(r.at, r.at + width)); r.at += width; return true; }
   switch (kind) {
-    case 12: {
+    case 12: case 33: {
       const L = r.leb(); if (r.bad || r.at + L > r.end) { return false; }
       w.leb(L); w.raw(r.b.subarray(r.at, r.at + L)); r.at += L; return true;
     }
@@ -805,6 +855,17 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
         TableVariableHeader(w, ids, fd, 12);
         w.leb(b.length);
         w.raw(b);
+      }
+      return true;
+    case "wstr":
+      // WIDE TEXT (docs/SPEC-TABLES.md §3; SPEC.md §4.12): it takes no
+      // declared default, so the EMPTY text is what elides; L is a BYTE length,
+      // twice the units, and a value past N units refuses the save
+      if (val.length !== 0) {
+        if (val.length > fd.bound) { return false; }
+        TableVariableHeader(w, ids, fd, 33);
+        w.leb(val.length * 2);
+        TableVariableWideWrite(w, val, fd.bound);
       }
       return true;
     case "bytes":
@@ -1243,6 +1304,21 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path) {
       }
       return true;
     }
+    case "wstr": {
+      // WIDE TEXT (docs/SPEC-TABLES.md §3, §4; internal/tablewire decode.go):
+      // an ODD L is framing damage on this field and ill-formed UTF-16 (an
+      // unpaired surrogate, a zero unit) is damage too — each reads the
+      // declared default, counts one malformed, and the parent reads on past
+      // L; a payload past N units is CLAMPED, a pair never split
+      const L = r.leb();
+      if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
+      const s = TableVariableWideDecode(r.b.subarray(r.at, r.at + L));
+      r.at += L;
+      if (s === null) { report.malformed = true; v[fd.n] = fd.def; return true; }
+      if (s.length > fd.bound) { report.clamped++; v[fd.n] = TableVariableWideClamp(s, fd.bound); }
+      else { v[fd.n] = s; }
+      return true;
+    }
     case "enum": {
       const x = TableVariableEnumRead(fd, r, table, report, retain);
       if (x === undefined) { return false; }
@@ -1472,7 +1548,7 @@ function TableVariableLinkUnions(codecs, unions) {
 // fresh arm hold (tabletext FieldDefaultCell, NewArm)
 function TableVariableFieldDefault(fd) {
   switch (fd.s) {
-    case "bool": case "int": case "flags": case "float": case "str": case "enum": return fd.def;
+    case "bool": case "int": case "flags": case "float": case "str": case "wstr": case "enum": return fd.def;
     case "bytes": return Uint8Array.from(fd.def);
     case "arr": return fd.fixed ? Array.from({ length: fd.bound }, () => TableVariableElemDefault(fd.e)) : [];
     case "tab": return fd.c.make();
@@ -1666,6 +1742,9 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
       if (f.f32) { w.u32(TableVariableNarrowF32(x)); } else { w.f64(x); }
       return true;
     case "str": w.raw(TableVariableUtf8Encode(x)); return true;
+    // AN ARM'S L IS THE WSTRING'S BYTE LENGTH (§3's arm payload table): the
+    // units ride under it with no length of their own; past N units refuses
+    case "wstr": return TableVariableWideWrite(w, x, f.bound);
     case "bytes": w.u8(6); w.leb(x.length); w.raw(x); return true;
     case "enum": {
       const vref = TableVariableEnumRef(f, ids, x);
@@ -1928,6 +2007,16 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
       } else {
         holder.value = dec.s;
       }
+      return holder;
+    }
+    case "wstr": {
+      // an ODD L or ill-formed UTF-16 at an arm is that arm's own damage: the
+      // union reads None, one malformed counts, the parent reads on past L
+      // (§3; decode.go arm); past N units clamps, a pair never split
+      const s = TableVariableWideDecode(r.b.subarray(r.at, r.end));
+      if (s === null) { report.malformed = true; return null; }
+      if (s.length > f.bound) { report.clamped++; holder.value = TableVariableWideClamp(s, f.bound); }
+      else { holder.value = s; }
       return holder;
     }
     case "bytes": case "arr": {
@@ -2384,6 +2473,9 @@ function TableVariableJsonField(fd, val, depth, g, out) {
       out.push(fd.s === "sblob" ? TableVariableJsonString(String(val)) : TableVariableBase64Text(val));
       return true;
     case "str": out.push(TableVariableJsonString(val)); return true;
+    // wide text's text is the same JSON string (docs/SPEC-TABLES.md §16.2;
+    // tabletext writeWString), an unpaired surrogate written as U+FFFD
+    case "wstr": out.push(TableVariableJsonString(val)); return true;
     case "bytes": out.push(TableVariableBase64Text(val)); return true;
     case "map": return TableVariableJsonMap(fd, val, depth, g, out);
     case "keyed": return TableVariableJsonKeyed(fd, val, depth, g, out);
@@ -2784,6 +2876,16 @@ function TableVariableTextField(fd, inp, v, depth, graph, report) {
       } else {
         v[fd.n] = s;
       }
+      return true;
+    }
+    case "wstr": {
+      // the wstring row of §16.2 (tabletext scanWString): the same text,
+      // TRANSCODED at the boundary — a JavaScript string already is UTF-16 —
+      // and clamped at N CODE UNITS with a pair never split
+      const s = inp.str();
+      if (s === null) { return false; }
+      if (s.length > fd.bound) { report.clamped++; v[fd.n] = TableVariableWideClamp(s, fd.bound); }
+      else { v[fd.n] = s; }
       return true;
     }
     case "bytes": {
