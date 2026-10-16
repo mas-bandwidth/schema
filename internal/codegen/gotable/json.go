@@ -56,10 +56,12 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	// timestamp
 	walk := tableJsonWalkSource
 	imports := "\t\"math\"\n\t\"strconv\"\n\t\"time\"\n\t\"unsafe\"\n\t\"unicode/utf8\"\n"
-	needBase64 := false // only fixed members get SaveText/LoadText (§16.6)
+	// every member but a map entry gets SaveText/LoadText, fixed and variable
+	// alike (docs/SPEC-TABLES.md §16.8), and they are what imports base64
+	needBase64 := false
 	for _, f := range u.Files {
 		for _, st := range fileMembers(f, closure) {
-			if !st.IsMapEntry() && !ir.VariableTables(u)[st.Name] {
+			if !st.IsMapEntry() {
 				needBase64 = true
 			}
 		}
@@ -82,7 +84,8 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 			if ir.VariableTables(u)[n] {
 				fmt.Fprintf(&b, "func %sFromJson(builder *%sBuilder,text []byte,report *TableReport) bool { if builder.Arena.Locked {return false};return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()),%sTableType(),&builder.Main,text,report) }\n", n, n, n)
 				fmt.Fprintf(&b, "func %sToJsonMeasure(value *%s,allocator ...TableAllocator) int64 {return tableRegionToJson(unsafe.Pointer(value),%sTableType(),nil,allocator...)}\n", n, storageName(u, n), n)
-				fmt.Fprintf(&b, "func %sToJson(value *%s,buffer []byte,allocator ...TableAllocator) int64 {return tableRegionToJson(unsafe.Pointer(value),%sTableType(),buffer,allocator...)}\n", n, storageName(u, n), n)
+				fmt.Fprintf(&b, "func %sToJson(value *%s,buffer []byte,allocator ...TableAllocator) int64 {return tableRegionToJson(unsafe.Pointer(value),%sTableType(),buffer,allocator...)}\n\n", n, storageName(u, n), n)
+				writeVariableTextCarrier(&b, n, storageName(u, n))
 				continue
 			}
 			fmt.Fprintf(&b, "// %sFromJson fills one %s from a JSON text (docs/SPEC-TABLES.md §16).\n", n, n)
@@ -97,7 +100,7 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 			fmt.Fprintf(&b, "func %sToJson(value *%s, buffer []byte) int64 {\n", n, storageName(u, n))
 			fmt.Fprintf(&b, "\treturn tableJsonWrite(unsafe.Pointer(value), %sTableType(), buffer)\n}\n\n", n)
 			fmt.Fprintf(&b, "// %sSaveText returns the base64 of %s's binary wire (docs/SPEC-TABLES.md\n", n, n)
-			fmt.Fprintf(&b, "// §16.6): the whole file, form byte first, so the text keeps the form byte,\n")
+			fmt.Fprintf(&b, "// §16.8): the whole file, form byte first, so the text keeps the form byte,\n")
 			fmt.Fprintf(&b, "// the framing check and every versioning guarantee and is opaque.\n")
 			fmt.Fprintf(&b, "func %sSaveText(value *%s) (string, error) {\n", n, storageName(u, n))
 			fmt.Fprintf(&b, "\tn := %sMeasure(value)\n", n)
@@ -107,7 +110,7 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 			fmt.Fprintf(&b, "\treturn base64.StdEncoding.EncodeToString(buf), nil\n")
 			fmt.Fprintf(&b, "}\n\n")
 			fmt.Fprintf(&b, "// %sLoadText fills one %s from a base64 wire text (docs/SPEC-TABLES.md\n", n, n)
-			fmt.Fprintf(&b, "// §16.6). It refuses by name: base64_damaged when the body does not decode,\n")
+			fmt.Fprintf(&b, "// §16.8). It refuses by name: base64_damaged when the body does not decode,\n")
 			fmt.Fprintf(&b, "// unknown_form when the decoded wire's form byte is not one this build carries,\n")
 			fmt.Fprintf(&b, "// and wire_damaged for framing damage.\n")
 			fmt.Fprintf(&b, "func %sLoadText(text string, report *TableReport) (*%s, error) {\n", n, storageName(u, n))
@@ -126,6 +129,49 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	}
 	out[home+"TableJson.go"] = src
 	return out, nil
+}
+
+// writeVariableTextCarrier emits a VARIABLE table's base64 carrier
+// (docs/SPEC-TABLES.md §16.8): every table has both text carriers, and a
+// variable one gets the pair in its own class's shape. SaveText takes the
+// write context Save takes; LoadText reads into a builder of its own and
+// returns the locked, packed root, as ReadStrict does (§6.5), since a variable
+// value lives in a region. Refusals are the report's own typed reasons
+// (TableReport.Err), so a form byte this build does not carry is unknown_form
+// and framing damage is wire_damaged, exactly as the binary reader says.
+func writeVariableTextCarrier(b *strings.Builder, n, storage string) {
+	fmt.Fprintf(b, "// %sSaveText returns the base64 of %s's binary wire (docs/SPEC-TABLES.md\n", n, n)
+	b.WriteString("// §16.8): the whole file, form byte first, so the text keeps the form byte,\n")
+	b.WriteString("// the framing check and every versioning guarantee and is opaque. It takes\n")
+	fmt.Fprintf(b, "// the write context %sSave takes.\n", n)
+	fmt.Fprintf(b, "func %sSaveText(value *%s, context ...TableWriteContext) (string, error) {\n", n, storage)
+	fmt.Fprintf(b, "\tn, err := %sMeasureReason(value, context...)\n", n)
+	b.WriteString("\tif err != nil { return \"\", err }\n")
+	b.WriteString("\tif n < 0 { return \"\", tableRefuseError(TableRefuseInvalidValue) }\n")
+	b.WriteString("\tbuf := make([]byte, n)\n")
+	fmt.Fprintf(b, "\tif %sSave(value, buf, context...) != n { return \"\", tableRefuseError(TableRefuseInvalidValue) }\n", n)
+	b.WriteString("\treturn base64.StdEncoding.EncodeToString(buf), nil\n")
+	b.WriteString("}\n\n")
+	fmt.Fprintf(b, "// %sLoadText reads one %s from a base64 wire text (docs/SPEC-TABLES.md\n", n, n)
+	fmt.Fprintf(b, "// §16.8) into a builder of its own and returns the locked root, as %sReadStrict\n", n)
+	b.WriteString("// does. A nil report is allowed; tolerance events are counted there and do not\n")
+	b.WriteString("// refuse. It refuses by name: base64_damaged when the body does not decode,\n")
+	b.WriteString("// unknown_form when the decoded wire's form byte is not one this build carries,\n")
+	b.WriteString("// and wire_damaged for framing damage.\n")
+	fmt.Fprintf(b, "func %sLoadText(text string, report *TableReport) (*%s, error) {\n", n, storage)
+	b.WriteString("\twire, err := base64.StdEncoding.DecodeString(text)\n")
+	b.WriteString("\tif err != nil { return nil, tableRefuseError(TableRefuseBase64Damaged) }\n")
+	b.WriteString("\tif report == nil { report = new(TableReport) }\n")
+	fmt.Fprintf(b, "\tvar builder %sBuilder\n", n)
+	b.WriteString("\tif !builder.Init() { return nil, tableRefuseError(TableRefuseAllocationFailed) }\n")
+	fmt.Fprintf(b, "\tif !%sLoadBuilder(&builder, wire, report) {\n", n)
+	b.WriteString("\t\tbuilder.Shutdown()\n")
+	b.WriteString("\t\tif err := report.Err(); err != nil { return nil, err }\n")
+	b.WriteString("\t\treturn nil, tableRefuseError(TableRefuseWireDamaged)\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\tif !builder.Lock() { builder.Shutdown(); return nil, tableRefuseError(TableRefuseAllocationFailed) }\n")
+	b.WriteString("\treturn builder.AsConst(), nil\n")
+	b.WriteString("}\n\n")
 }
 
 // tableJsonWalkSource is the walker. It reads and writes ONLY the columns
