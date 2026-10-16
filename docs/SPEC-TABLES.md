@@ -15352,7 +15352,9 @@ schema name, as everywhere else in that backend.
   §7's own order so that one enum and one order serve both accelerators: the
   magic read bytewise, the byte order it establishes, the build version
   against this build's own, then each array's PITCH against this build's own,
-  its COUNT against the declared maximum, its `offset_of` and its extent
+  its COUNT against the declared maximum, its `offset_of` (at or past the end
+  of the projection, and a multiple of the array's start alignment,
+  `max( 64, alignof( element ) )`, §19.1) and its extent
   inside the block, THEN the used extent against the `bytes` the caller
   passed, and LAST the base's alignment, which is the only clause that reads
   nothing out of the block. **The used extent sits after the arrays because it
@@ -15388,7 +15390,9 @@ schema name, as everywhere else in that backend.
   block, void * base, int64_t bytes, TableRefuseReason * reason = NULL )`,
   written on the refusal path only, and every prologue word is read bytewise
   so that the base's alignment can be the last clause. A block whose bytes
-  are fewer than its prologue answers `truncated`, and a null base
+  are fewer than its projection answers `truncated` (the projection, not the
+  24-byte prologue, because the per-array triples the next clauses read sit
+  in it), and a null base
   `unaligned_base`, on the readings §7 gives those two.
 
   **THE READ SIDE TAKES A CONST OVERLOAD, and the surface SPLITS the way C#'s

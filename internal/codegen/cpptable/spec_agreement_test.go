@@ -145,3 +145,43 @@ table Root {
 		}
 	}
 }
+
+// TestSpecBlockOpenClauses pins §19.2's BlockOpen paragraph to the emitted
+// check: a block shorter than its PROJECTION (not the 24-byte prologue)
+// answers truncated, and an offset_of below the projection or off the array's
+// start alignment is bad_layout — two clauses the paragraph has to state.
+func TestSpecBlockOpenClauses(t *testing.T) {
+	t.Parallel()
+	out := specEmitAll(t, `package p
+fixed table Row {
+    v uint32
+}
+fixed table Frame {
+    stamp uint64
+    rows  [..8]Row
+}
+`)
+	// Frame carries the out-of-line array, so its check carries the per-array
+	// clauses; the projection size is read off its offset_of floor
+	m := regexp.MustCompile(`if \( offset_of < (\d+) \|\| \( offset_of % 64 \) != 0 \) \{ return TableCookRefuse\( reason, bad_layout \)`).FindStringSubmatch(out)
+	if m == nil {
+		t.Fatalf("the emitted BlockOpen check lost its offset_of floor and alignment clause")
+	}
+	if m[1] == "24" {
+		t.Fatalf("expected the projection to be larger than the 24-byte prologue; got %s", m[1])
+	}
+	if !strings.Contains(out, "if ( bytes < "+m[1]+" ) { return TableCookRefuse( reason, truncated )") {
+		t.Errorf("the emitted BlockOpen check's short-buffer clause does not compare against the projection (%s bytes)", m[1])
+	}
+	para := foldSpace(specTablesBetween(t, "- **`BlockOpen` checks once and points", "**THE READ SIDE TAKES A CONST OVERLOAD"))
+	for _, bad := range []string{"fewer than its prologue"} {
+		if strings.Contains(para, bad) {
+			t.Errorf("§19.2 says %q; the emitted check compares against the projection (%s bytes here)", bad, m[1])
+		}
+	}
+	for _, want := range []string{"fewer than its projection", "past the end of the projection", "max( 64, alignof( element ) )"} {
+		if !strings.Contains(para, want) {
+			t.Errorf("§19.2's BlockOpen paragraph must state the emitted clause (missing %q)", want)
+		}
+	}
+}
