@@ -7020,16 +7020,18 @@ paired bench's `FixedTable`), and the projection reads every field again
 through a DataView; there is no `memcpy`-speed move to make the copy free, as
 there is in the compiled legs. Measured on the paired bench's 64 records
 (`bench/results/packet-read-js/RESULT.md`, node v26.7.0, pinned, two interleaved
-sittings), `bench_fixed_read` best ns/record against the same leg's packet read
-`bench_mixed_read`:
+sittings, sitting 1 / sitting 2), `bench_fixed_read` best ns/record against the
+same leg's packet read `bench_mixed_read`:
 
-  | host | shared path (copy) | in-place identity | packet read |
-  |---|---|---|---|
-  | hetzner2, 2026-10-16 (w2) | 833.2 / 844.4 | 338.4 / 348.9 | 346.7 / 353.4 |
-  | HULK_ROW |
+  | host | codec before the change | shared path, same codec | in-place identity | packet read |
+  |---|---|---|---|---|
+  | hetzner2 (Ryzen 9 7950X3D), 2026-10-16 | 833.2 / 844.4 | 736.7 / 751.7 | 338.4 / 348.9 | 346.7 / 353.4 |
+  | hulk (Threadripper 2990WX), 2026-10-16 | 1468.8 / 1475.3 | 1306.1 / 1306.5 | 708.9 / 672.0 | 677.6 / 677.3 |
 
-Without the in-place read the fixed read loses to its own packet read by more
-than 2x; with it, it wins. The JavaScript door is `if (identity)` in
+The in-place read is about half of the shared path on both hosts (the copy is
+the other half); against the packet read it is 1% to 2% faster on hetzner2 and
+level on hulk (one sitting slower, one faster). On the shared path the fixed
+read is about twice its own packet read on both. The JavaScript door is `if (identity)` in
 `<T>FixedLoad`, chosen by `entries === <T>FixedIdentity && holeN === 0`, and it
 projects with `<T>FixedDecode(values[k], srcView, at + 8, stage)`; the guards
 are `internal/codegen/jstable/fixedform_test.go` and the equality test is

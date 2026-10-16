@@ -1,5 +1,122 @@
 # JavaScript: the fixed read against its own packet read (identity lane)
 
+## Attempt w3 (2026-10-16, hulk): the in-place identity read is landed; on hulk it is level with the packet read, so identity is NOT flipped
+
+**Verdict: FAIL** for the gate on hulk: FIXED-FASTER in sitting 2 only. The
+committed codec's in-place read is 708.9 / 672.0 ns/record (best, sitting 1 /
+sitting 2), and the same leg's packet read is 677.6 / 677.3. Sitting 1 is 4.6%
+slower and sitting 2 is 0.8% faster. The brief flips identity only on two
+FIXED-FASTER sittings, so `gates/packet-read/js/identity` stays `:unknown` and
+the roadmap is unchanged.
+
+What landed (the owner's decision of 2026-10-16, which reopened §3.4's
+no-fast-path ruling): w2's proposed emitter diff, now in
+`internal/codegen/jstable/`. It is the in-place identity read, one-pass nested
+structs, BigInt-free 64/128-bit clamps, and 32-bit layout and hash compares.
+Alongside it: docs/SPEC-TABLES.md §3.4 THE IN-PLACE IDENTITY READ, the general
+per-language rule with javascript listed; the three ruling guards narrowed to
+the spec's list; and fixedform_inplace_test.go, which holds the in-place and
+shared paths value- and byte-identical. generated/bench/paired/js was
+regenerated.
+
+| sitting | order | before the change (`base`, control) | shared path, same codec (`shared`, control) | **in-place (`in`, committed)** | **packet `bench_mixed_read`** | gate |
+|---|---|---|---|---|---|---|
+| 1 | in, shared, base, packet | 1468.8 / 1475.9 | 1306.1 / 1309.8 | **708.9 / 711.2** | **677.6 / 679.7** | FAIL |
+| 2 (control) | packet, base, shared, in | 1475.3 / 1488.6 | 1306.5 / 1311.2 | **672.0 / 675.8** | **677.3 / 684.0** | pass |
+
+These are best / median ns/record for `bench_fixed_read` and `bench_mixed_read`,
+copied from the runners' output in [board.txt](board.txt), w3 section. Every
+spread is under §2.3's 15%: 1.82% to 4.25% on the table legs and 1.09% / 1.92%
+on the packet leg.
+
+**Diagnostic sitting 3, declared and NOT counted toward the verdict.** It ran
+after the two sittings, in the order in, packet, in, packet. The in-place read
+was 711.2 then 678.8, and the packet read was 677.4 then 678.1. The in-place
+read is bimodal on this host, at about 672 to 679 or about 709 to 711 per
+process, while the packet read holds at 677 to 678. So on hulk the two reads
+are level, and the order of the sitting does not decide which side wins.
+
+### The w3 sitting
+
+- **Host:** hulk, x86_64, AMD Ryzen Threadripper 2990WX 32-Core (Zen+, SMT,
+  4 NUMA nodes), kernel 6.8.0-142-generic. It was chosen as the quietest of
+  amd-2, amd-3 and hulk at 02:52Z. amd-2 had two 100% jobs and a 1-min load
+  of 2.24. amd-3 was compiling, with a 5-min load of 3.45. hulk's 1-min load
+  was 0.68. The bench was never the studio Mac.
+- **Node** v26.7.0. **serialize.js** v1.4.2 (de0591c9e6fddbbc5d4512b4558f091ffa2158ad),
+  sibling checkout at `SERIALIZE_JS=../serialize.js`. The packet runner ran
+  in `NODE_ENV=production`.
+- **Pin:** `taskset -c 4` (NUMA node 0, SMT sibling 36) for every process. In
+  every sitting, core 4's busy-jiffy delta equals its total delta, so the core
+  was ours. Core 36's busy delta is 2 to 4 jiffies over the window, so the
+  sibling was idle.
+- **Load, declared:** sitting 1 ran 03:00:23Z to 03:00:57Z, 1-min load
+  0.17 to 1.11. Sitting 2 ran 03:00:57Z to 03:01:30Z, 1.11 to 1.18. The
+  diagnostic sitting 3 started at load 0.99 and ended at 1.37. The script
+  waited for a 1-min load under 1.5 before each sitting. The `top` lines at
+  each end show nothing above 2.2% CPU (board.txt). **Window verdict: valid.**
+  The pinned core and its sibling were ours, the host was otherwise idle, and
+  every spread is under 15%.
+- **Legs:** four node processes per sitting, run back to back by one script,
+  in reversed order in the control. The legs are:
+  - `in`: the committed tree at 752c99c17, dirty-files 0. The measured code
+    is the same as at the branch head, which changes only docs and results.
+  - `shared`: the same commit with the door closed (`const identity = false;`
+    in FixedTableTable.js). This is the shared path that every compiled plan
+    takes.
+  - `base`: d1f6577c4 regenerated with its own emitter. This is the codec
+    before this card.
+  - `packet`: the packet runner.
+
+  The sha256 of each leg's generated files is in board.txt. Corpus ids are
+  `066b2822b3e5d487` for the table legs and `fd0748942dc6ae09` for the packet
+  leg. Iterations are 400000 records for the table legs and 4000000 for the
+  packet leg, with 1 discarded warmup plus 7 runs. Every process passed its
+  golden gates before the clock (`rc=0` on every leg), and `--gate --plan-read`
+  passes on both runners on hulk.
+
+### What the two hosts say together
+
+| host | before | shared path | in-place | packet |
+|---|---|---|---|---|
+| hetzner2 (w2, Ryzen 9 7950X3D) | 833.2 / 844.4 | 736.7 / 751.7 | 338.4 / 348.9 | 346.7 / 353.4 |
+| hulk (w3, Threadripper 2990WX) | 1468.8 / 1475.3 | 1306.1 / 1306.5 | 708.9 / 672.0 | 677.6 / 677.3 |
+
+The change halves the fixed read on both hosts. On hetzner2 the w2 numbers
+were taken with this same diff as scratch, and the in-place read is
+FIXED-FASTER by 1.3% to 2.4%. On hulk the in-place read is level with the
+packet read. The gate needs a margin that holds on any quiet host, and this
+change does not give one. The next causes are the ones w2 named: BigInt
+allocation and its write barrier (~95 ns on hetzner2), and the 80-stat loop
+(~145 ns). w2's hand-tuned `p6-mz` scratch codec (local clamps, byte arrays in
+32-bit lanes, small-u64 `BigInt(Number)`) was 4% faster than the emitted diff
+on hetzner2. Profile it with `node --cpu-prof` on the `in` leg, pinned on hulk,
+and compare the `--trace-deopt` output of a 709 ns process with that of a
+672 ns one.
+
+### Tests
+
+These ran on hulk with go1.26.6 and node v26.7.0:
+
+- `go test -count=1 -timeout 600s ./internal/codegen/jstable/` with
+  `SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1`, after `make tables-fixedform-corpus`
+  (serialize v1.16.2 sibling, the tag certify.yml pins): `ok`.
+- `make shape-gate`: clean, 46 files on the ledger.
+- `go test -count=1 -timeout 600s ./bench/paired/ ./internal/ci/`: both `ok`.
+- Reverse witness: with the door projecting at `at + 10` instead of `at + 8`,
+  two tests go red. TestJSFixedInPlaceEqualsSharedPath fails, and so does the
+  narrowed guard TestDecodeClampsEnumOrdinalAndRangedInt ("must be exactly
+  §3.4's shape").
+
+### The plan lane
+
+`gates/packet-read/js/plan` stays `:unknown`, for the reason w1 gives below:
+there is no lineage corpus from BENCH-STANDARD §1.10 (items 4 to 6) and no
+paired-driver plan-read mode. On the plan lane the JS reader takes the shared
+path, which is the `shared` column above.
+
+---
+
 ## Attempt w2 (2026-10-16): the cause is fixed in a proposed emitter diff, measured, and HELD
 
 **Verdict for the shipped codec: FAIL**, still, in both w2 sittings (833.2 / 844.4
