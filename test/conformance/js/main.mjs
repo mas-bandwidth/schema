@@ -35,16 +35,12 @@ import { pathToFileURL } from "node:url";
 const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
 const load = (path) => import(pathToFileURL(resolve(generated, path)).href);
 
-// The WIRE-FUZZ arm (docs/SPEC-TABLES.md §4.2) answers before the surface
-// modules load: it needs only the cards unit, never the block or cook trees.
-if (process.argv[2] === "wire-fuzz") {
-  await wireFuzz();
-  process.exit(0);
+let renderBlock, paddedBlock, graphCook;
+if (process.argv[2] !== "wire-fuzz") {
+  renderBlock = await load("block/RenderBlock.js");
+  paddedBlock = await load("block/PaddedBlock.js");
+  graphCook = await load("pointers/GraphCook.js");
 }
-
-const renderBlock = await load("block/RenderBlock.js");
-const paddedBlock = await load("block/PaddedBlock.js");
-const graphCook = await load("pointers/GraphCook.js");
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -81,7 +77,7 @@ function place(source, claim, lead) {
   return bytes;
 }
 
-const blocks = {
+const blocks = process.argv[2] === "wire-fuzz" ? {} : {
   block_render: renderBlock.RenderFrameBlock,
   block_padded: paddedBlock.PaddedFrameBlock,
 };
@@ -340,7 +336,7 @@ function surfaceBlockDump(lines, outDir) {
 // inside one, and the walk descends through it to reach the pointer slots
 // inside.
 
-const cooks = {
+const cooks = process.argv[2] === "wire-fuzz" ? {} : {
   Scene: graphCook.SceneCook,
   Depot: graphCook.DepotCook,
   Album: graphCook.AlbumCook,
@@ -618,6 +614,9 @@ async function surfaceMessage(lines, outDir) {
 // wire does not carry (a union, a map, an optional, an enum-keyed array) —
 // which the matrix counts as the row of work that is left, never as a pass.
 const wireRows = [
+  ["backenddemo", "LoginRequest", "backend/BackenddemoVariable.js"],
+  ["backenddemo", "MatchResult", "backend/BackenddemoVariable.js"],
+  ["backenddemo", "StorePurchase", "backend/BackenddemoVariable.js"],
   ["tabledemo", "RootConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "ProfileConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "LoadoutConfig", "examples/TabledemoVariable.js"],
@@ -663,16 +662,39 @@ const wireRows = [
   ["messagedemo", "ToolMessage", "messages/MessagedemoVariable.js"],
 ];
 
+// The harness roster includes fixed tables as well as variable roots.  The
+// wire-fuzz protocol carries form 1 for both, so the driver must explicitly
+// leave fixed roots absent; they are covered by their fixed-form gates.
+const wireFuzzRoots = new Set([
+  "backenddemo.LoginRequest", "backenddemo.MatchResult", "backenddemo.StorePurchase",
+  "blobdemo.Catalog", "graphdemo.Scene", "mapdemo.Cells", "mapdemo.Pairs",
+  "mapdemo.Text", "mapdemo.Chunks", "mapdemo.Crews", "mapdemo.Depth",
+  "mapdemo.Docs", "mapdemo.Fleet", "mapdemo.Runs", "mapdemo.Slots",
+  "mapdemo.Spans", "mapdemo.Trails", "streamdemo.Feed", "tblw1.Fleet", "tblw2.Fleet",
+]);
+
 async function wireCodec(unit, root) {
   const row = wireRows.find((r) => r[0] === unit && r[1] === root);
   if (row === undefined) { return null; }
   const m = await load(row[2]);
   const codec = {
-    load: m[root + "Load"], save: m[root + "Save"], toJson: m[root + "ToJson"], fromJson: m[root + "FromJson"],
+    load: m[root + "Load"], loadMeasure: m[root + "LoadMeasure"], save: m[root + "Save"],
+    loadRetain: m[root + "LoadRetain"], saveRetain: m[root + "SaveRetain"],
+    toJson: m[root + "ToJson"], fromJson: m[root + "FromJson"],
     report: () => new m.TableVariableReport(),
+    retainStore: () => new m.TableVariableRetain(new Uint8Array(1 << 20), new Array((1 << 20) / 8)),
   };
-  if (Object.values(codec).some((f) => typeof f !== "function")) { fail(unit + "." + root + ": the variable surface is missing from " + row[2]); }
+  if (typeof codec.load !== "function" || typeof codec.loadMeasure !== "function" || typeof codec.save !== "function") {
+    fail(unit + "." + root + ": the variable surface is missing from " + row[2]);
+  }
   return codec;
+}
+
+// The WIRE-FUZZ arm (docs/SPEC-TABLES.md §4.2) is placed after wireRows and
+// wireCodec so it can bind every root named by the harness's default roster.
+if (process.argv[2] === "wire-fuzz") {
+  await wireFuzz();
+  process.exit(0);
 }
 
 function wireAbsent(outDir, name) {
@@ -814,16 +836,6 @@ const args = process.argv.slice(2);
 // region measure and the saved bytes. The protocol is the twin of the Go and C
 // legs (test/conformance/go/wire_fuzz.go, test/c-tables/wire_fuzz_main.c).
 async function wireFuzz() {
-  const cards = await load("cards/CardsVariable.js");
-  const CardLoad = cards.CardLoad;
-  const CardLoadMeasure = cards.CardLoadMeasure;
-  const CardSave = cards.CardSave;
-  const CardLoadRetain = cards.CardLoadRetain;
-  const CardSaveRetain = cards.CardSaveRetain;
-  const TableVariableReport = cards.TableVariableReport;
-  const TableVariableRetain = cards.TableVariableRetain;
-  const retainBytes = 1 << 20;
-
   const readExact = (n) => {
     const buf = Buffer.alloc(n);
     let off = 0;
@@ -849,9 +861,12 @@ async function wireFuzz() {
     const root = rLen === null ? "" : readExact(rLen).toString("utf8");
     const form = readU8();
     const retain = readU8();
-    if (unit === "cards" && root === "Card" && form === 1) {
-      roster[i] = { CardLoad, CardLoadMeasure, CardSave, CardLoadRetain, CardSaveRetain, TableVariableReport, TableVariableRetain, retain: retain === 1 };
-      known[i] = 1;
+    if (form === 1 && wireFuzzRoots.has(unit + "." + root)) {
+      const codec = await wireCodec(unit, root);
+      if (codec !== null) {
+        roster[i] = { ...codec, retain: retain === 1 };
+        known[i] = 1;
+      }
     } else {
       known[i] = 0;
     }
@@ -871,21 +886,21 @@ async function wireFuzz() {
     let loaded = false, measure = -1, saved = null;
     const report = { unknown: 0, kindMismatch: 0, widened: 0, clamped: 0, duplicate: 0, malformed: false, refused: 0, retained: 0, retainLost: 0 };
     if (codec !== null) {
-      measure = codec.CardLoadMeasure(wire);
+      measure = codec.loadMeasure(wire);
       if (measure >= 0) {
-        const rep = new codec.TableVariableReport();
+        const rep = codec.report();
         let card = null;
-        if (codec.retain) {
-          const retainStore = new codec.TableVariableRetain(new Uint8Array(retainBytes), new Array(retainBytes / 8));
-          card = codec.CardLoadRetain(wire, retainStore, rep);
+        if (codec.retain && typeof codec.loadRetain === "function" && typeof codec.saveRetain === "function") {
+          const retainStore = codec.retainStore();
+          card = codec.loadRetain(wire, retainStore, rep);
           loaded = card !== null;
           if (loaded) {
-            saved = codec.CardSaveRetain(card, retainStore, rep);
+            saved = codec.saveRetain(card, retainStore, rep);
           }
         } else {
-          card = codec.CardLoad(wire, rep);
+          card = codec.load(wire, rep);
           loaded = card !== null;
-          if (loaded) { saved = codec.CardSave(card); }
+          if (loaded) { saved = codec.save(card); }
         }
         report.unknown = rep.unknown;
         report.kindMismatch = rep.kindMismatch;

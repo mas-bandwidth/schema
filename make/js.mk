@@ -935,7 +935,7 @@ tables-js-fixed-optional-negative-control: bin/schema build/js-fixed-corpus/.sta
 # refusal gate (tables-ports-refuse-wide-scalars) discovers every make/*.mk as
 # a live port, and a fragment named cards-js.mk would be refused there as a
 # phantom port (docs/SPEC-TABLES.md §11 names the port registry).
-.PHONY: cards-js-generate cards-js-wire-fuzz cards-js-retain-fuzz
+.PHONY: cards-js-generate cards-js-wire-fuzz cards-js-retain-fuzz tables-js-wire-fuzz-all
 
 # cards-js-generate emits the JavaScript variable-form surface for tables/cards.
 cards-js-generate: bin/schema
@@ -974,6 +974,20 @@ cards-js-retain-fuzz: build/conformance-harness cards-js-generate
 	@grep -q '0 divergences' build/cards-js-retain-fuzz.log
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-js-retain-fuzz.log
 	@grep -qE '[1-9][0-9]* mutants' build/cards-js-retain-fuzz.log
+
+# tables-js-wire-fuzz-all runs the JavaScript wire fuzzer over the harness's
+# default roster (docs/SPEC-TABLES.md §4.2).  Omitting --manifest is deliberate:
+# the harness owns the roster, and the coverage greps make an empty JS roster a
+# named failure instead of a green no-op.
+tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.stamp
+	@./build/conformance-harness wire-fuzz \
+		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
+		> build/tables-js-wire-fuzz-all.log 2>&1; \
+		status=$$?; cat build/tables-js-wire-fuzz-all.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -q '0 divergences' build/tables-js-wire-fuzz-all.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-js-wire-fuzz-all.log
+	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-all.log
 
 # THE CARDS CONFORMANCE CHECK, this leg's half (tables/cards/conformance/FORMAT.md).
 # cards-js-test runs the facade's node:test cases against the generated unit;
@@ -1027,6 +1041,7 @@ cards-js-conformance-hash-negative-control: build/conformance-harness cards-js-g
 
 test-js: cards-js-wire-fuzz
 test-js: cards-js-retain-fuzz
+test-js: tables-js-wire-fuzz-all
 test-js: cards-js-test cards-js-conformance cards-js-conformance-negative-control cards-js-conformance-upgrade-negative-control cards-js-conformance-hash-negative-control
 
 # THE JAVASCRIPT LEG of `make test`: the table accelerator gates and their
