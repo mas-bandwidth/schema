@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestFixedJavaT18ManifestAndHeader is the unit tier, pure Go: no javac, no
@@ -139,11 +141,106 @@ func le32(b []byte) uint32 {
 
 // TestFixedRoadmapJavaT18OracleHostile runs the functional tier. W13 and R27
 // (the shared byte oracle) are carried by the same corpus gates as the
-// versioning harness: they are not yet written on this branch.
+// versioning harness.
 func TestFixedRoadmapJavaT18OracleHostile(t *testing.T) {
 	t.Parallel()
+	t.Run("java/W13", testFixedJavaT18W13)
 	t.Run("java/P3", testFixedJavaT18P3)
 	t.Run("java/P4", testFixedJavaT18P4)
+}
+
+// corpusSchemaFor maps one manifest row to the schema file whose fixed table the
+// reference wrote that row's bytes from. The versioning rows are the
+// VOLD_/VNEW_/VMID_<row>.schema set; the non-versioning fixture rows map to the
+// example schemas of the same base name. A row the Java target refuses — the
+// wide-text, union and keyed/pack rows — maps to "" and is named and reported,
+// never silently skipped.
+func corpusSchemaFor(row manifestRow) string {
+	switch row.Row {
+	case "fx1":
+		return "FX1.schema"
+	case "fx2":
+		return "FX2.schema"
+	case "p1":
+		return "P1.schema"
+	case "p3":
+		return "P3.schema"
+	case "fxw", "fu1", "fu2", "keyed", "pack":
+		return ""
+	}
+	switch row.Side {
+	case "old", "hostile", "past":
+		return "VOLD_" + row.Row + ".schema"
+	case "new":
+		return "VNEW_" + row.Row + ".schema"
+	case "mid":
+		return "VMID_" + row.Row + ".schema"
+	case "a":
+		return "VBRA_lineage_merge.schema"
+	case "b":
+		return "VBRB_lineage_merge.schema"
+	case "many":
+		return "VOLD_" + row.Row + ".schema"
+	}
+	return ""
+}
+
+// testFixedJavaT18W13 is java/W13: layout+hash == C++ reference
+// (docs/FIXED-FORM-ALGORITHM.md §7 item 1). For every corpus file of a row the
+// Java leg emits a fixed form for, the header's hash and layout bytes (§2: hash
+// at 8, layout length at 16, layout at 20) equal the leg's own for the same
+// unit, which is ir's walk (the one law every port renders). A row the leg does
+// not emit is named in the log and reported; zero rows compared fails by name.
+func testFixedJavaT18W13(t *testing.T) {
+	corpus := corpusDir(t)
+	rows := manifestRows(t, corpus)
+	compared := 0
+	var notEmitted []string
+	for file, row := range rows {
+		schema := corpusSchemaFor(row)
+		if schema == "" {
+			notEmitted = append(notEmitted, file)
+			continue
+		}
+		u := versioningSchemaUnit(t, schema)
+		var root *ir.Struct
+		for _, st := range ir.TableFixedRoots(u) {
+			if st.Name == row.Root {
+				root = st
+				break
+			}
+		}
+		if root == nil {
+			notEmitted = append(notEmitted, file)
+			continue
+		}
+		if !ir.TableFixedEmitted(u, root) {
+			notEmitted = append(notEmitted, file)
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(corpus, file))
+		if err != nil {
+			t.Fatalf("W13: read %s: %v", file, err)
+		}
+		gotHash, gotLayout, ok := parseFixedHeader(b)
+		if !ok {
+			t.Errorf("W13: %s is not a parseable form-3 header", file)
+			continue
+		}
+		wantBytes := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(root))
+		wantHash := ir.TableFixedLayoutHash(wantBytes, root)
+		if gotHash != wantHash {
+			t.Errorf("W13: %s header hash = %#x, the leg's own for %s is %#x (§7 item 1)", file, gotHash, row.Root, wantHash)
+		}
+		if string(gotLayout) != string(wantBytes) {
+			t.Errorf("W13: %s layout bytes differ from the leg's own for %s:\n  file % x\n  leg  % x", file, row.Root, gotLayout, wantBytes)
+		}
+		compared++
+	}
+	t.Logf("W13: compared %d corpus rows; rows the java leg does not emit: %v", compared, notEmitted)
+	if compared == 0 {
+		t.Fatal("W13: zero rows were compared against the reference — the oracle is exercised" )
+	}
 }
 
 // t18BuildProbe is t07BuildProbe (fixedroadmap_t07_test.go) generalized to an
