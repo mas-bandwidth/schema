@@ -10704,7 +10704,7 @@ before this section, so the rule is here, one shape for both:
   `is_array` says, exactly as it says it for a `[..N]T`, and the `type_name`
   says which of the two constructs it is, `map[...]` or the element's own,
   the way `bytes` separates a byte buffer from an array of `u8` (below).
-- **`element_size` is the pitch**: `sizeof( Entry )` for a map, `sizeof( T )`
+- **`elem_size` is the pitch**: `sizeof( Entry )` for a map, `sizeof( T )`
   for a list. It is the stride a walker steps, as on every array line.
 - **`counted` is set and `count_offset` names the `int32` count**, which sits
   beside the reference in the sixteen-byte slot (§7.2), so a walker reads the
@@ -10730,7 +10730,7 @@ cannot spell for itself it still cannot spell: placing an entry by key in a
 the walk has no name for, so a resolver stays where a resolver is needed, and
 it is one column, `place( worker, slot, key, key_length, key_value )`, which a
 map reads as an insert by key and a list reads as an append. The SHAPE is read
-from `kind`, `is_array`, `counted`, `element_size` and `array_bound = 0` like
+from `kind`, `is_array`, `counted`, `elem_size` and `array_bound = 0` like
 every other array's, the count from `count_offset`, and the array from the
 reference at `offset`, so nothing about the two constructs is inferred from a
 column of their own. A unit that has neither construct carries no `place`

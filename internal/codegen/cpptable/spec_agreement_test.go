@@ -107,3 +107,41 @@ table Scene {
 		}
 	}
 }
+
+// TestSpecFieldInfoColumnNames pins §8's map-and-list rule to the column names
+// of the emitted TableFieldInfo: every snake_case column the rule names is a
+// member of the descriptor the C++ reference writes.
+func TestSpecFieldInfoColumnNames(t *testing.T) {
+	t.Parallel()
+	out := specEmitAll(t, `package p
+enum Slot { A, B }
+table Root {
+    m map[int32]int32
+    l []int32
+    k [Slot]int32
+}
+`)
+	i := strings.Index(out, "struct TableFieldInfo\n{")
+	if i < 0 {
+		t.Fatal("no struct TableFieldInfo in the emitted runtime")
+	}
+	body := out[i:]
+	body = body[:strings.Index(body, "\n};")]
+	members := map[string]bool{}
+	for _, m := range regexp.MustCompile(`(?m)^\s+[^/\n]*?\b(\w+)\s*;`).FindAllStringSubmatch(body, -1) {
+		members[m[1]] = true
+	}
+	for _, m := range regexp.MustCompile(`\(\s*\*\s*(\w+)\s*\)`).FindAllStringSubmatch(body, -1) {
+		members[m[1]] = true
+	}
+	rule := specTablesBetween(t, "**A MAP AND AN UNBOUNDED ARRAY ARE ARRAY FIELDS", "**The public currency is the KEY")
+	named := regexp.MustCompile("`([a-z]+(?:_[a-z]+)+)`").FindAllStringSubmatch(rule, -1)
+	if len(named) == 0 {
+		t.Fatal("§8's map-and-list rule names no column")
+	}
+	for _, n := range named {
+		if !members[n[1]] {
+			t.Errorf("§8's map-and-list rule names the column `%s`, which the emitted TableFieldInfo does not have", n[1])
+		}
+	}
+}
