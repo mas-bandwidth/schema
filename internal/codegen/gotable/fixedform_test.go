@@ -3185,7 +3185,6 @@ func TestWriteSideRefusesByName(t *testing.T) {
 	if n := HostFixedSave([]Host{full}, forged); n != int64(len(forged)) {
 		t.Fatalf("full-width save %d", n)
 	}
-	body := forged[len(forged)-HostFixedRecordBytes+8:]
 	assertRefuse := func(name string, data []byte, want string) {
 		fgot := make([]Host, 1)
 		pdst := tableFixedOverlay(unsafe.Pointer(&fgot[0]), unsafe.Sizeof(fgot[0]))
