@@ -813,7 +813,7 @@ test-elixir: tables-elixir-block-build
 # tblg1 (a pointer under a false guard or inside an absent optional is not an
 # edge, schema#440, #526), tblk1/tblk2 (an enum rides kind 30, so an enum
 # respelled as its raw uint16 or the reverse is a counted kind mismatch both
-# ways), tblscalars2 (named absent while SimState is uncarried) and the
+# ways), tblscalars2 (later-build scalar mismatch and clamp reports), and the
 # vocabulary units' plain instances. TestGuardKindAndScalarVersionUnitsElixir
 # generates each through the compiler path and, being FUNCTIONAL, answers every
 # instance and report row against the Go engine's bytes and reports.txt under
