@@ -65,7 +65,7 @@ macro_rules! arm {
         let mut report = TableReport::default();
         let mut reply = Reply { measure: $measure(wire), ..Default::default() };
         if $retain {
-            let mut store = TableRetain { bytes: Vec::with_capacity(RETAIN_BYTES), ids: Vec::with_capacity(RETAIN_IDS), nodes: Default::default() };
+            let mut store = TableRetain { bytes: Vec::with_capacity(RETAIN_BYTES), ids: Vec::with_capacity(RETAIN_IDS) };
             let value = $load_retain(wire, &mut store, &mut report);
             reply.loaded = value.is_some();
             // THE REPORT ACCUMULATES ACROSS THE PAIR (§6.6): one report is

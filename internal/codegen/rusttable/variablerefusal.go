@@ -64,6 +64,20 @@ type variableClass struct {
 	emitted map[string]bool
 }
 
+// rustStdShadowed is every standard-library name the emitted variable codec
+// spells unqualified (std's prelude, the derives it writes, and what its
+// modules import by name). The codec's storage struct for a body is the
+// declaration's own name and the crate root glob-exports it, and a glob import
+// shadows the prelude, so a body by one of these names would break every
+// module that reaches it: test/tables/VOLD_nested_append.schema's
+// `fixed table Vec` is the case. Such a body is left OFF the variable wire, by
+// name (docs/SPEC-TABLES.md §11), and keeps its fixed form (§3.4).
+var rustStdShadowed = map[string]bool{
+	"Any": true, "Box": true, "Clone": true, "Copy": true, "Debug": true,
+	"Default": true, "HashMap": true, "Layout": true, "Option": true,
+	"PartialEq": true, "Rc": true, "Result": true, "String": true, "Vec": true,
+}
+
 // newVariableClass decides the carried set: each table's own fields first,
 // then a fixpoint over what each one reaches, so a table reaching a table this
 // leg does not carry is refused too, at the field that reaches it.
@@ -73,15 +87,34 @@ func newVariableClass(u *ir.Unit) *variableClass {
 		for _, st := range f.Tables {
 			vc.file[st.Name] = f.Base
 		}
+		for _, d := range f.Decls {
+			if st, ok := d.(*ir.Struct); ok {
+				vc.file[st.Name] = f.Base
+			}
+		}
 	}
-	names := make([]string, 0, len(u.Tables))
+	// THE CARRIED SET IS EVERY BODY A TABLE CAN REACH BY VALUE: the unit's
+	// tables and its `type`s alike. A `type` a table holds by value, as an
+	// array element, as an optional or as a union arm rides as a nested body
+	// exactly as a table does (docs/SPEC-TABLES.md §2, §3: kind 13, L, the
+	// body), so the same storage, numbering walk and codec carry it.
+	names := make([]string, 0, len(u.Tables)+len(u.Structs))
 	for n := range u.Tables {
 		names = append(names, n)
 	}
+	for n := range u.Structs {
+		if _, dup := u.Tables[n]; !dup {
+			names = append(names, n)
+		}
+	}
 	sort.Strings(names)
 	for _, n := range names {
-		st := u.Tables[n]
+		st := vStruct(u, n)
 		vc.reason[n] = ""
+		if rustStdShadowed[n] {
+			vc.reason[n] = "name: " + n + " is a Rust standard name the variable codec spells unqualified, and a storage struct by that name would shadow it in every module of the crate"
+			continue
+		}
 		for _, f := range st.Fields {
 			if why := variableFieldConstruct(f); why != "" {
 				// A map value of [N]T of a carried element is the entry's own row
@@ -100,7 +133,7 @@ func newVariableClass(u *ir.Unit) *variableClass {
 			if vc.reason[n] != "" {
 				continue
 			}
-			st := u.Tables[n]
+			st := vStruct(u, n)
 			for _, f := range st.Fields {
 				if why, ok := vc.reached(n, f); ok && why != "" {
 					vc.reason[n] = why
@@ -110,13 +143,16 @@ func newVariableClass(u *ir.Unit) *variableClass {
 			}
 		}
 	}
-	variable := ir.VariableTables(u)
+	// THE ROOTS ARE EVERY TABLE OF THE CLOSURE, fixed and variable alike: a
+	// `fixed table` rides the variable form too (docs/SPEC-TABLES.md §2.2,
+	// §3), so its form-1 file is this codec's as much as a variable table's.
+	roots := ir.TableClosure(u)
 	var reach func(n string)
 	reach = func(n string) {
 		if vc.emitted[n] {
 			return
 		}
-		st := u.Tables[n]
+		st := vStruct(u, n)
 		if st == nil {
 			return
 		}
@@ -126,11 +162,20 @@ func newVariableClass(u *ir.Unit) *variableClass {
 		}
 	}
 	for _, n := range names {
-		if variable[n] && vc.reason[n] == "" {
+		if roots[n] && vc.reason[n] == "" {
 			reach(n)
 		}
 	}
 	return vc
+}
+
+// vStruct is the declaration a carried body names: a table, or a `type` a
+// table reaches by value (docs/SPEC-TABLES.md §2).
+func vStruct(u *ir.Unit, name string) *ir.Struct {
+	if st := u.Tables[name]; st != nil {
+		return st
+	}
+	return u.Structs[name]
 }
 
 // carried reports whether the variable wire carries one table.
@@ -146,7 +191,7 @@ func (vc *variableClass) carried(name string) bool { return vc.reason[name] == "
 // carried is the table-level fixpoint's question ([newVariableClass]).
 func variableFieldConstruct(f *ir.Field) string {
 	switch {
-	case f.Type.Optional && (f.Type.Pointer || f.Array == ir.ArrayFixed || f.KeyEnum != "" || f.IsMap()):
+	case f.Type.Optional && (f.Type.Pointer || f.KeyEnum != "" || f.IsMap()):
 		return "optional ?T of this shape is outside the variable class this leg carries (§2.3)"
 	case f.KeyEnum != "":
 		if f.KeyEnumRef == nil || f.Type.Pointer || f.Type.Optional || (classOf(f) != vScalar && classOf(f) != vEnum && classOf(f) != vTable) {
@@ -166,18 +211,10 @@ func variableFieldConstruct(f *ir.Field) string {
 		return "a guarded field (an if group) is outside the variable class this leg carries (§16.2)"
 	case f.HasFloatRange:
 		return "the compressed float is outside the variable class this leg carries (§3)"
-	case f.Array == ir.ArrayFixed:
-		return "the fixed-length array [N]T is outside the variable class this leg carries (§3)"
 	case f.Array == ir.ArrayCounted && f.ArrayMin > 0:
 		return "a counted array with a declared minimum [Min..N]T is outside the variable class this leg carries (§3)"
 	}
 	switch ref := f.Type.Ref.(type) {
-	case *ir.Flags:
-		return "the flags mask is outside the variable class this leg carries (§3)"
-	case *ir.Struct:
-		if !ref.IsTable && !f.Type.Pointer {
-			return "a nested type is outside the variable class this leg carries (§2)"
-		}
 	case *ir.Union:
 		return unionFieldConstruct(ref, map[*ir.Union]bool{})
 	}
@@ -194,9 +231,6 @@ func unionFieldConstruct(un *ir.Union, seen map[*ir.Union]bool) string {
 			continue
 		}
 		if v.Body() {
-			if v.Ref != nil && !v.Ref.IsTable {
-				return "arm " + v.Name + ": a nested type is outside the variable class this leg carries (§2)"
-			}
 			continue
 		}
 		if why := variableFieldConstruct(v.F); why != "" {

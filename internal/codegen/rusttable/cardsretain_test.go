@@ -317,7 +317,7 @@ fn main() {
     let id_cap: usize = std::env::args().nth(4).unwrap().parse().unwrap();
     let wire = std::fs::read(&wire_path).unwrap();
     let mut report = TableReport::default();
-    let mut retain = TableRetain { bytes: Vec::with_capacity(byte_cap), ids: Vec::with_capacity(id_cap), nodes: Default::default() };
+    let mut retain = TableRetain { bytes: Vec::with_capacity(byte_cap), ids: Vec::with_capacity(id_cap) };
     let v = card_load_retain(&wire, &mut retain, &mut report).unwrap();
     println!("LOAD unknown={} retained={} retain_lost={}", report.unknown, report.retained, report.retain_lost);
     let saved = card_save_retain(&v, &mut retain, &mut report);

@@ -1,0 +1,9 @@
+02:51:44 start load1=1.95 buildbench=1 above5%: 1739593:dotnet:98.0
+02:52:06 round-1 load1=2.22 buildbench=1 above5%: 1740729:dotnet:98.0
+02:52:23 round-2 load1=2.33 buildbench=1 above5%: 1741158:dotnet:99.0
+02:52:41 round-3 load1=2.30 buildbench=1 above5%: 1742979:dotnet:27.7
+02:52:58 round-4 load1=2.23 buildbench=1 above5%: 1743470:table-cpp:100.0
+02:53:15 round-5 load1=2.18 buildbench=1 above5%: 1743853:dotnet:100.0
+02:53:31 round-6 load1=2.06 buildbench=0 above5%: 1745271:schema_tables_b:93.1
+02:53:48 round-7 load1=2.05 buildbench=0 above5%: 1745297:schematablesben:100.0 1745914:git:32.7 1745911:git-remote-http:11.9
+02:53:55 end load1=2.05 buildbench=0 above5%: 1745940:schema_tables_b:101.0

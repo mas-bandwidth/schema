@@ -104,10 +104,19 @@ func init() {
 	// §3.4's answer to a field a record does not carry is a PREFILL of the
 	// declared defaults, and rusttable lays that prefill down as a record image
 	// (internal/codegen/rusttable/fixedform.go's fixedDefaultImage) — a string,
-	// a bytes buffer and a flags mask included. The refusal was written for
-	// form 1's ELISION, which this port does not emit at all; leaving it up
-	// refused a schema the reference writes bytes for and this port reads.
+	// a bytes buffer and a flags mask included. Form 1 carries them as well:
+	// a fixed table rides the variable form, whose writer elides a string,
+	// bytes or flags field at its declared default and whose reader restores
+	// it (docs/SPEC-TABLES.md §3, §4.2; internal/codegen/rusttable
+	// fixedclass_test.go TestFixedClassOnTableWireRust, the w1 and probe rows).
 	valueDefaultTargets = append(valueDefaultTargets, "rust")
+	// THE `was` ROWS (docs/SPEC-TABLES.md §5): an enum variant, a union arm
+	// and a `type`'s field renamed under `was` ride the table wire under the
+	// old name's id, which the Rust variable codec spells through
+	// VariantWireName, the arm's WireName and TableFieldWireId, as the Go leg
+	// does (target_go.go). TestFixedClassOnTableWireRust reads R1 against R2
+	// and back in silence.
+	wasRowTargets = append(wasRowTargets, "rust")
 	registerListCarrier("rust") // and the unbounded array codec (docs/SPEC-TABLES.md §2.9)
 	registerMapCarrier("rust")
 	registerOptionalArrayCarrier("rust")

@@ -1,0 +1,13 @@
+02:58:39 start load1=0.41 buildbench=0 above5%:
+02:58:54 round-1 load1=0.47 buildbench=0 above5%:
+02:59:04 round-2 load1=0.48 buildbench=0 above5%:
+02:59:14 round-3 load1=0.49 buildbench=0 above5%:
+02:59:25 round-4 load1=0.49 buildbench=0 above5%: 1761467:p-c:100.0
+02:59:35 round-5 load1=0.65 buildbench=0 above5%:
+02:59:45 round-6 load1=0.87 buildbench=1 above5%: 1762433:p-c:100.0 1762985:go:12.0
+02:59:55 round-7 load1=1.12 buildbench=0 above5%:
+03:00:05 round-8 load1=1.19 buildbench=0 above5%:
+03:00:16 round-9 load1=1.58 buildbench=1 above5%: 1762919:nova-swarm.test:15.8 1763706:nova-swarm:13.9
+03:00:26 round-10 load1=1.56 buildbench=0 above5%:
+03:00:36 round-11 load1=1.47 buildbench=0 above5%:
+03:00:42 end load1=1.44 buildbench=0 above5%:

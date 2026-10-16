@@ -54,8 +54,12 @@ func cardVariableModules(u *ir.Unit) (map[string][]byte, error) {
 // emits the fixed form. The by-name refusal lives on the card's own path, in
 // [cardVariableModules], where a unit that gains an excluded construct is
 // refused naming table, field and construct (docs/SPEC-TABLES.md §11).
+//
+// A closure that holds only FIXED tables takes the modules too: a fixed table
+// rides the variable form as well as its own (docs/SPEC-TABLES.md §2.2, §3),
+// so the gate is the closure, not the variable class.
 func scopedVariableModules(u *ir.Unit) map[string][]byte {
-	if len(ir.VariableTables(u)) == 0 {
+	if len(ir.TableClosure(u)) == 0 {
 		return nil
 	}
 	return variableModules(u)
@@ -66,7 +70,7 @@ func scopedVariableModules(u *ir.Unit) map[string][]byte {
 func variableModules(u *ir.Unit) map[string][]byte {
 	vc := newVariableClass(u)
 	any := false
-	for n := range ir.VariableTables(u) {
+	for n := range ir.TableClosure(u) {
 		if vc.emitted[n] {
 			any = true
 			break
@@ -107,84 +111,9 @@ use std::rc::Rc;
 /// header is the form byte alone. Nothing is aligned and nothing is padded.
 pub const TABLE_WIRE_FORM: u8 = 1;
 
-/// Variable file refusal names use the Go reference's vocabulary
-/// (gotable/refusal.go, SPEC-TABLES §5). Damaged framing is malformed, not a
-/// refusal; a foreign form is the one refusal this reader can issue.
-#[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
-pub enum TableRefuseReason {
-    #[default]
-    Ok,
-    NotACook,
-    ForeignOrder,
-    WrongBuildVersion,
-    ReservedNotZero,
-    BadAlignment,
-    Truncated,
-    UnalignedBase,
-    BadLayout,
-    UnknownForm,
-    CountOverLength,
-    CountOverExtentCap,
-    BlobOverSizeCap,
-    DataCycle,
-    InvalidValue,
-    AllocationFailed,
-    WireDamaged,
-}
-
-impl TableRefuseReason {
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Ok => "ok",
-            Self::NotACook => "not_a_cook",
-            Self::ForeignOrder => "foreign_order",
-            Self::WrongBuildVersion => "wrong_build_version",
-            Self::ReservedNotZero => "reserved_not_zero",
-            Self::BadAlignment => "bad_alignment",
-            Self::Truncated => "truncated",
-            Self::UnalignedBase => "unaligned_base",
-            Self::BadLayout => "bad_layout",
-            Self::UnknownForm => "unknown_form",
-            Self::CountOverLength => "count_over_length",
-            Self::CountOverExtentCap => "count_over_extent_cap",
-            Self::BlobOverSizeCap => "blob_over_size_cap",
-            Self::DataCycle => "data_cycle",
-            Self::InvalidValue => "invalid_value",
-            Self::AllocationFailed => "allocation_failed",
-            Self::WireDamaged => "wire_damaged",
-        }
-    }
-}
-
-/// The tolerant read report (docs/SPEC-TABLES.md §4, §5): a field this build
-/// cannot name is skipped and counted, a field it can name but that arrives at
-/// another kind is a kind mismatch, and an absent field reads its default.
-/// widened counts a kind that GREW since the writer (§4), duplicate a repeated
-/// id (zero on the card's wire: no maps), and refused is the form byte this
-/// reader does not carry (§3) — the verdict, not one of §4's events.
-#[derive(Default, Clone, Copy)]
-pub struct TableReport {
-    pub unknown: u64,
-    pub kind_mismatch: u64,
-    pub widened: u64,
-    pub clamped: u64,
-    pub duplicate: u64,
-    pub malformed: bool,
-    pub refused: bool,
-    pub reason: TableRefuseReason,
-    /// A pointer cycle is valid on load (§3.1), but a subsequent builder
-    /// save must refuse its traversal instead of writing a shortened graph.
-    pub cycle_on_save: bool,
-    /// RETAIN-UNKNOWN'S TWO COUNTERS (docs/SPEC-TABLES.md §6.6): retained
-    /// counts the unknown fields whose bytes were kept, retain_lost counts
-    /// every unknown this load or save could not keep (capacity, an excluded
-    /// class, or a damaged resolving walk). Both are zero in every read that
-    /// did not opt in, and both ride the one report type for the reason
-    /// duplicate does (§4).
-    pub retained: u64,
-    pub retain_lost: u64,
-}
-
+`)
+	b.WriteString(tableReportRust)
+	b.WriteString(`
 /// Read one canonical LEB128 u64 from the cursor; None when it overruns, runs
 /// past ten bytes, or is NON-MINIMAL — a redundant continuation byte, or a tenth
 /// byte above the 64th value bit, is malformed (docs/SPEC-TABLES.md §3).
@@ -380,7 +309,6 @@ pub struct TableNodeReader {
     pub retaining: bool,
     pub retain_capacity: usize,
     pub retained: Vec<u8>,
-    pub node_ids: HashMap<usize, u32>,
     pub recs: Vec<(u64, usize, usize)>,
     pub slots: Vec<TableNodeSlot>,
 }
@@ -397,7 +325,7 @@ impl TableNodeReader {
     /// not well-formed text is malformed and its slots read null.
     #[allow(clippy::too_many_arguments)]
     pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, retain_capacity: usize, report: &mut TableReport) -> Option<TableNodeReader> {
-        let mut reader = TableNodeReader { good: true, root_type, retaining, retain_capacity, retained: Vec::new(), node_ids: HashMap::new(), recs: Vec::new(), slots: Vec::new() };
+        let mut reader = TableNodeReader { good: true, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new() };
         let mut off = 1usize;
         while off < end {
             let Some(r) = leb_read(wire, &mut off) else { report.malformed = true; return None; };
@@ -677,8 +605,6 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
 pub struct TableRetain {
     pub bytes: Vec<u8>,
     pub ids: Vec<u64>,
-    /// Node identity to the wire index that owned retained fields on load.
-    pub nodes: HashMap<usize, u32>,
 }
 
 /// THE WALK'S NESTING CAP (docs/SPEC-TABLES.md §6.6): a small stated constant,
@@ -1334,16 +1260,24 @@ func fileVariableTableNames(u *ir.Unit, file *ir.File, vc *variableClass) []stri
 			names = append(names, st.Name)
 		}
 	}
+	// a `type` the carried set reaches by value is a body of this file's
+	// codec too (docs/SPEC-TABLES.md §2, §3)
+	for _, d := range file.Decls {
+		if st, ok := d.(*ir.Struct); ok && vc.emitted[st.Name] {
+			names = append(names, st.Name)
+		}
+	}
 	sort.Strings(names)
 	return names
 }
 
-// isVariableRoot reports whether an emitted table is a VARIABLE-class root,
-// which takes the whole-file save, load and text roots; a fixed table the
-// variable class reaches takes only its body codec (a fixed root's own form-1
-// file is vt/fixed-class's row, not this one's).
+// isVariableRoot reports whether an emitted body is a ROOT of the variable
+// form, which takes the whole-file save, load and text roots: every table of
+// the closure, a FIXED table included, because a fixed table's own form-1 file
+// is a variable-form file like any other (docs/SPEC-TABLES.md §2.2, §3). A map
+// entry and a `type` are bodies only, never a file's root.
 func (g *gen) isVariableRoot(st *ir.Struct) bool {
-	return ir.VariableTables(g.unit)[st.Name] && !st.IsMapEntry()
+	return st.IsTable && ir.TableClosure(g.unit)[st.Name] && !st.IsMapEntry()
 }
 
 // variableModule emits one source file's variable-table constant block. Nil
@@ -1358,7 +1292,7 @@ func (g *gen) variableModule() []byte {
 	var b strings.Builder
 	b.WriteString(header(g.file.Base, g.unit.Package, "the variable wire's field header constants (docs/SPEC-TABLES.md §3, §5)"))
 	for _, n := range names {
-		g.emitVariableConstants(&b, g.unit.Tables[n])
+		g.emitVariableConstants(&b, vStruct(g.unit, n))
 	}
 	return []byte(b.String())
 }

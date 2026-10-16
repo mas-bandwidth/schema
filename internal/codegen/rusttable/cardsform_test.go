@@ -57,11 +57,8 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 	}{
 		{"wstring", &ir.Field{Name: "title", Type: ir.FieldType{Kind: ir.TWString, Size: 16}}, []string{"wstring"}},
 		{"guarded", &ir.Field{Name: "when", Guard: "armed", Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}}, []string{"guarded"}},
-		{"fixed_array", &ir.Field{Name: "three", Array: ir.ArrayFixed, ArrayBound: 3, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}}, []string{"fixed-length array"}},
 		{"fixed_point", &ir.Field{Name: "rate", Type: ir.FieldType{Kind: ir.TFixed, Width: 32, Signed: true}}, []string{"fixed-point"}},
 		{"counted_minimum", &ir.Field{Name: "some", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}}, []string{"declared minimum"}},
-		{"flags", &ir.Field{Name: "perms", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Flags{Name: "Perm"}}}, []string{"flags"}},
-		{"nested_type", &ir.Field{Name: "tint", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "Colour"}}}, []string{"nested type"}},
 		{"compressed_float", &ir.Field{Name: "speed", HasFloatRange: true, Type: ir.FieldType{Kind: ir.TFloat32}}, []string{"compressed float"}},
 	}
 
@@ -79,6 +76,26 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestFixedClassConstructsAreCarried pins the three constructs the fixed class
+// brought onto the Rust variable wire (docs/SPEC-TABLES.md §2, §2.2, §3): a
+// fixed-length array [N]T, a flags mask (kind 9, its set bits' names in text)
+// and a `type` nested by value (kind 13, a body like a table's). They were
+// refused by name before vt/fixed-class/rust; TestFixedClassOnTableWireRust
+// holds their bytes to the oracle.
+func TestFixedClassConstructsAreCarried(t *testing.T) {
+	t.Parallel()
+
+	for _, f := range []*ir.Field{
+		{Name: "three", Array: ir.ArrayFixed, ArrayBound: 3, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}},
+		{Name: "perms", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Flags{Name: "Perm"}}},
+		{Name: "tint", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "Colour"}}},
+	} {
+		if err := refuseCardUnsupportedVariableConstructs(cardUnit(f)); err != nil {
+			t.Errorf("%s: the fixed class's construct was refused: %v", f.Name, err)
+		}
 	}
 }
 

@@ -1,0 +1,12 @@
+# THE RUST EDITOR GATE (docs/SPEC-TABLES.md §8.7): a program with the
+# generated unit and NOTHING ELSE. `make tables-rust-view` copies this crate
+# into build/rust-view/prog and generates each VIEW_CORPUS unit into
+# build/rust-view/unit beside it, so the path below is the copy's, and the
+# crate is never built from here.
+[package]
+name = "rust-view"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+viewunit = { path = "../unit" }

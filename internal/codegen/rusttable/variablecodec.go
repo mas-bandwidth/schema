@@ -13,6 +13,7 @@ package rusttable
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"sort"
 	"strconv"
 	"strings"
@@ -52,32 +53,32 @@ func (g *gen) variableCodecModule() []byte {
 	g.emitVariableEnums(&b, names)
 	var plain, holding []string
 	for _, n := range names {
-		if structHoldsUnion(g.unit.Tables[n]) {
+		if structHoldsUnion(vStruct(g.unit, n)) {
 			holding = append(holding, n)
 		} else {
 			plain = append(plain, n)
 		}
 	}
 	for _, n := range plain {
-		g.emitVariableStruct(&b, g.unit.Tables[n])
+		g.emitVariableStruct(&b, vStruct(g.unit, n))
 	}
 	g.emitUnionTypes(&b, names)
 	for _, n := range holding {
-		g.emitVariableStruct(&b, g.unit.Tables[n])
+		g.emitVariableStruct(&b, vStruct(g.unit, n))
 	}
 	for _, n := range names {
-		g.emitVariableNumber(&b, g.unit.Tables[n])
+		g.emitVariableNumber(&b, vStruct(g.unit, n))
 	}
 	for _, n := range names {
-		g.emitVariableSaveBody(&b, g.unit.Tables[n])
+		g.emitVariableSaveBody(&b, vStruct(g.unit, n))
 	}
 	for _, n := range names {
-		g.emitVariableLoadBody(&b, g.unit.Tables[n])
+		g.emitVariableLoadBody(&b, vStruct(g.unit, n))
 	}
 	g.emitVariableDispatch(&b, names)
 	for _, n := range names {
-		if g.isVariableRoot(g.unit.Tables[n]) {
-			g.emitVariableRoot(&b, g.unit.Tables[n])
+		if g.isVariableRoot(vStruct(g.unit, n)) {
+			g.emitVariableRoot(&b, vStruct(g.unit, n))
 		}
 	}
 	g.emitVariableText(&b)
@@ -139,10 +140,24 @@ func classOf(f *ir.Field) vClass {
 			return vEnum
 		case *ir.Union:
 			return vUnion
+		case *ir.Flags:
+			// a FLAGS MASK rides as a u64 scalar (docs/SPEC-TABLES.md §3:
+			// kind 9), its default the mask the brace list spells (SPEC §4.2)
+			return vScalar
 		}
 		return vTable
 	}
 	return vScalar
+}
+
+// isFlags reports a flags-mask field, whose text form is the array of its set
+// bits' names (docs/SPEC-TABLES.md §16.2).
+func isFlags(f *ir.Field) *ir.Flags {
+	if f.Type.Kind != ir.TNamed {
+		return nil
+	}
+	fl, _ := f.Type.Ref.(*ir.Flags)
+	return fl
 }
 
 // fieldWireKind is the kind byte a FIELD rides under (the oracle's wireKind):
@@ -187,6 +202,10 @@ func scalarRust(f *ir.Field) string {
 			return rustInt(f.Type.Width)
 		}
 		return rustUint(f.Type.Width)
+	case ir.TNamed:
+		if isFlags(f) != nil {
+			return "u64" // a flags mask's storage is u64 in every target (SPEC §4.2)
+		}
 	}
 	return "()"
 }
@@ -308,10 +327,10 @@ func fieldDefault(f *ir.Field) string {
 		return "None"
 	}
 	if f.KeyEnum != "" && f.KeyEnumRef != nil {
-		return fmt.Sprintf("(0..%d).map(|_| %s).collect()", len(f.KeyEnumRef.Variants), fieldDefault(scalarOnly(f)))
+		return fmt.Sprintf("(0..%d).map(|_| %s).collect::<Vec<_>>()", len(f.KeyEnumRef.Variants), fieldDefault(scalarOnly(f)))
 	}
 	if f.Array == ir.ArrayFixed {
-		return fmt.Sprintf("(0..%d).map(|_| %s).collect()", f.ArrayBound, fieldDefault(scalarOnly(f)))
+		return fmt.Sprintf("(0..%d).map(|_| %s).collect::<Vec<_>>()", f.ArrayBound, fieldDefault(scalarOnly(f)))
 	}
 	if f.Array != ir.ArrayNone {
 		return "Vec::new()"
@@ -371,7 +390,7 @@ func (g *gen) collectVariableEnums(names []string) []*ir.Enum {
 		}
 	}
 	for _, n := range names {
-		for _, f := range g.unit.Tables[n].Fields {
+		for _, f := range vStruct(g.unit, n).Fields {
 			walkField(f)
 		}
 	}
@@ -713,6 +732,37 @@ func intRange(f *ir.Field) (lo, hi string, ok bool) {
 	return f.IntMin.String(), f.IntMax.String(), true
 }
 
+// clampStmt is §4's declared clamp (docs/SPEC-TABLES.md §4) on a decode local
+// of `bits` width and the given signedness, spelled with `suffix` and counted
+// on `counter`: each end that sits ON the local's own limit is elided, because
+// a comparison that cannot fire is a deny-by-default clippy error
+// (absurd_extreme_comparisons) and describes a value the local cannot hold —
+// the same "this check cannot fire" rule tables/examples/Ranges.schema pins
+// for the C and C++ legs. "" when there is no declared range or neither end
+// can fire.
+func clampStmt(f *ir.Field, bits int, signed bool, suffix, counter, ind string) string {
+	if !f.HasIntRange || f.IntMin == nil || f.IntMax == nil {
+		return ""
+	}
+	localMin, localMax := new(big.Int), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
+	if signed {
+		localMin = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(bits-1)))
+		localMax = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits-1)), big.NewInt(1))
+	}
+	lo, hi := f.IntMin.String(), f.IntMax.String()
+	low := fmt.Sprintf("if x < %s%s { x = %s%s; %s += 1; }", lo, suffix, lo, suffix, counter)
+	high := fmt.Sprintf("if x > %s%s { x = %s%s; %s += 1; }", hi, suffix, hi, suffix, counter)
+	switch canLow, canHigh := f.IntMin.Cmp(localMin) > 0, f.IntMax.Cmp(localMax) < 0; {
+	case canLow && canHigh:
+		return ind + low + " else " + high + "\n"
+	case canLow:
+		return ind + low + "\n"
+	case canHigh:
+		return ind + high + "\n"
+	}
+	return ""
+}
+
 func scalarReadFn(f *ir.Field) string {
 	if f.Type.Width == 128 {
 		return "scalar_read_128"
@@ -736,38 +786,35 @@ func emitScalarConvert(b *strings.Builder, f *ir.Field, dst, kvar, ind string) {
 		return
 	}
 	signed := f.Type.Kind == ir.TInt && f.Type.Signed
+	// the local is mutable only when a clamp below can write it
+	mut := func(clamps string) string {
+		if clamps == "" {
+			return ""
+		}
+		return "mut "
+	}
 	if f.Type.Width == 128 {
+		suffix, from := "u128", "raw"
 		if signed {
-			fmt.Fprintf(b, "%slet mut x = raw as i128;\n", ind)
-		} else {
-			fmt.Fprintf(b, "%slet mut x = raw;\n", ind)
+			suffix, from = "i128", "raw as i128"
 		}
-		if lo, hi, ok := intRange(f); ok {
-			suffix := "u128"
-			if signed {
-				suffix = "i128"
-			}
-			fmt.Fprintf(b, "%sif x < %s%s { x = %s%s; report.clamped += 1; } else if x > %s%s { x = %s%s; report.clamped += 1; }\n", ind, lo, suffix, lo, suffix, hi, suffix, hi, suffix)
-		}
+		clamp := clampStmt(f, 128, signed, suffix, "report.clamped", ind)
+		fmt.Fprintf(b, "%slet %sx = %s;\n", ind, mut(clamp), from)
+		b.WriteString(clamp)
 		fmt.Fprintf(b, "%s%s = x as %s;\n", ind, dst, scalarRust(f))
 		return
 	}
+	suffix, from := "u64", "raw"
 	if signed {
-		fmt.Fprintf(b, "%slet mut x = raw as i64;\n", ind)
-	} else {
-		fmt.Fprintf(b, "%slet mut x = raw;\n", ind)
+		suffix, from = "i64", "raw as i64"
 	}
-	if lo, hi, ok := intRange(f); ok {
-		suffix := "u64"
-		if signed {
-			suffix = "i64"
-		}
-		fmt.Fprintf(b, "%sif x < %s%s { x = %s%s; report.clamped += 1; } else if x > %s%s { x = %s%s; report.clamped += 1; }\n", ind, lo, suffix, lo, suffix, hi, suffix, hi, suffix)
-	}
+	clamp := clampStmt(f, 64, signed, suffix, "report.clamped", ind)
 	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 		max := uint64(1)<<uint(f.Type.Width) - 1
-		fmt.Fprintf(b, "%sif x > %du64 { x = %du64; report.clamped += 1; }\n", ind, max, max)
+		clamp += fmt.Sprintf("%sif x > %du64 { x = %du64; report.clamped += 1; }\n", ind, max, max)
 	}
+	fmt.Fprintf(b, "%slet %sx = %s;\n", ind, mut(clamp), from)
+	b.WriteString(clamp)
 	fmt.Fprintf(b, "%s%s = x as %s;\n", ind, dst, scalarRust(f))
 }
 
@@ -1121,7 +1168,7 @@ func (g *gen) pointerTargets(names []string) []*ir.Struct {
 		}
 	}
 	for _, n := range names {
-		considerStruct(g.unit.Tables[n])
+		considerStruct(vStruct(g.unit, n))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
@@ -1165,7 +1212,7 @@ func (g *gen) emitVariableDispatch(b *strings.Builder, names []string) {
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    let (type_id, start, end) = nodes.recs[k];\n")
 	fmt.Fprintf(b, "    nodes.slots[k] = TableNodeSlot::Building;\n")
-	fmt.Fprintf(b, "    let mut sink = TableRetain { bytes: Vec::with_capacity(nodes.retain_capacity), ids: Vec::new(), nodes: HashMap::new() };\n")
+	fmt.Fprintf(b, "    let mut sink = TableRetain { bytes: Vec::with_capacity(nodes.retain_capacity), ids: Vec::new() };\n")
 	fmt.Fprintf(b, "    let retaining = nodes.retaining;\n")
 	fmt.Fprintf(b, "    let node: Option<Rc<dyn Any>> = match type_id {\n")
 	for _, st := range targets {
@@ -1179,7 +1226,6 @@ func (g *gen) emitVariableDispatch(b *strings.Builder, names []string) {
 	fmt.Fprintf(b, "        _ => None,\n")
 	fmt.Fprintf(b, "    };\n")
 	fmt.Fprintf(b, "    nodes.slots[k] = match &node { Some(n) => TableNodeSlot::Built(type_id, n.clone()), None => TableNodeSlot::Null };\n")
-	fmt.Fprintf(b, "    if let Some(n) = &node { nodes.node_ids.insert(Rc::as_ptr(n) as *const () as usize, k as u32); }\n")
 	fmt.Fprintf(b, "    nodes.retained.extend_from_slice(&sink.bytes);\n")
 	fmt.Fprintf(b, "    node\n")
 	fmt.Fprintf(b, "}\n\n")
@@ -1206,8 +1252,7 @@ func emitNodeTableWrite(b *strings.Builder, retaining bool) {
 	fmt.Fprintf(b, "                    leb_write(&mut payload, ids.id_ref(*type_id));\n")
 	fmt.Fprintf(b, "                    let mut body = Vec::new();\n")
 	if retaining {
-		fmt.Fprintf(b, "                    let source = retain.nodes.get(&(Rc::as_ptr(node) as *const () as usize)).copied().unwrap_or(k as u32);\n")
-		fmt.Fprintf(b, "                    variable_record_save(*type_id, node, &mut body, &mut ids, &g, Some(&mut *retain), Some(&mut *report), TableRetainPath::default().step(u32::MAX, source));\n")
+		fmt.Fprintf(b, "                    variable_record_save(*type_id, node, &mut body, &mut ids, &g, Some(&mut *retain), Some(&mut *report), TableRetainPath::default().step(u32::MAX, k as u32));\n")
 	} else {
 		fmt.Fprintf(b, "                    variable_record_save(*type_id, node, &mut body, &mut ids, &g, None, None, TableRetainPath::default());\n")
 	}
@@ -1277,7 +1322,6 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "pub fn %s_load_retain(wire: &[u8], retain: &mut TableRetain, report: &mut TableReport) -> Option<%s> {\n", fnName, st.Name)
 	fmt.Fprintf(b, "    retain.bytes.clear();\n")
 	fmt.Fprintf(b, "    retain.ids.clear();\n")
-	fmt.Fprintf(b, "    retain.nodes.clear();\n")
 	fmt.Fprintf(b, "    %s_load_inner(wire, Some(retain), report)\n", fnName)
 	fmt.Fprintf(b, "}\n\n")
 
@@ -1339,7 +1383,6 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    report.cycle_on_save = reachable_cycle;\n")
 	fmt.Fprintf(b, "    if let Some(ret) = retain.as_deref_mut() {\n")
-	fmt.Fprintf(b, "        ret.nodes.extend(nodes.node_ids);\n")
 	fmt.Fprintf(b, "        let mut at = 0usize;\n")
 	fmt.Fprintf(b, "        while at + 4 <= nodes.retained.len() {\n")
 	fmt.Fprintf(b, "            let len = retain_record_len(&nodes.retained[at..]);\n")
