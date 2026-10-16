@@ -2821,16 +2821,19 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
         value.posX = r.bits.get(15);
         if (r.bits.failed) { r.report.Damage(); return false; }
         value.posX += -16383;
+        value.posX = value.posX.toSigned(32);
         break;
       case 33:
         value.posY = r.bits.get(15);
         if (r.bits.failed) { r.report.Damage(); return false; }
         value.posY += -16383;
+        value.posY = value.posY.toSigned(32);
         break;
       case 34:
         value.posZ = r.bits.get(15);
         if (r.bits.failed) { r.report.Damage(); return false; }
         value.posZ += -16383;
+        value.posZ = value.posZ.toSigned(32);
         break;
       case 35:
         value.yaw = r.bits.get(9);
@@ -2846,21 +2849,25 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
         value.velX = r.bits.get(12);
         if (r.bits.failed) { r.report.Damage(); return false; }
         value.velX += -2048;
+        value.velX = value.velX.toSigned(32);
         break;
       case 38:
         value.velY = r.bits.get(12);
         if (r.bits.failed) { r.report.Damage(); return false; }
         value.velY += -2048;
+        value.velY = value.velY.toSigned(32);
         break;
       case 39:
         value.velZ = r.bits.get(12);
         if (r.bits.failed) { r.report.Damage(); return false; }
         value.velZ += -2048;
+        value.velZ = value.velZ.toSigned(32);
         break;
       case 40:
         value.health = r.bits.get(10);
         if (r.bits.failed) { r.report.Damage(); return false; }
         value.health += 0;
+        value.health = value.health.toSigned(32);
         break;
       case 41:
         {
@@ -2935,6 +2942,7 @@ bool mixedStatLoadMessageBody(TableMessageReader r, MixedStat value) {
         value.delta = r.bits.get(10);
         if (r.bits.failed) { r.report.Damage(); return false; }
         value.delta += -512;
+        value.delta = value.delta.toSigned(32);
         break;
       default:
         r.report.unknown++;
@@ -2981,11 +2989,13 @@ bool mixedHitEventLoadMessageBody(TableMessageReader r, MixedHitEvent value) {
         value.damage = r.bits.get(12);
         if (r.bits.failed) { r.report.Damage(); return false; }
         value.damage += 0;
+        value.damage = value.damage.toSigned(32);
         break;
       case 47:
         value.hitKind = r.bits.get(3);
         if (r.bits.failed) { r.report.Damage(); return false; }
         value.hitKind += 0;
+        value.hitKind = value.hitKind.toSigned(32);
         break;
       case 48:
         value.crit = r.bits.get(1) != 0;
@@ -3023,6 +3033,7 @@ bool mixedChatEventLoadMessageBody(TableMessageReader r, MixedChatEvent value) {
         value.channel = r.bits.get(2);
         if (r.bits.failed) { r.report.Damage(); return false; }
         value.channel += 0;
+        value.channel = value.channel.toSigned(32);
         break;
       case 30:
         value.speaker = r.bits.get(12);
@@ -3069,6 +3080,7 @@ bool mixedPickupEventLoadMessageBody(
         value.amount = r.bits.get(8);
         if (r.bits.failed) { r.report.Damage(); return false; }
         value.amount += 0;
+        value.amount = value.amount.toSigned(32);
         break;
       default:
         r.report.unknown++;
@@ -3189,11 +3201,19 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
   }
   if (value.wideKey != UInt128.zero) {
     w.put(21, tableMessageRefBits);
-    w.put(value.wideKey, 128);
+    {
+      final v = value.wideKey;
+      w.put(v.lo, 64);
+      w.put(v.hi, 64);
+    }
   }
   if (value.flux != Int128.zero) {
     w.put(22, tableMessageRefBits);
-    w.put(value.flux - 0, 102);
+    {
+      final v = (value.flux - Int128(0xfffffff000000000, 0));
+      w.put(v.lo, 64);
+      w.put(v.hi, 38);
+    }
   }
   if (value.ping != 0) {
     w.put(23, tableMessageRefBits);
@@ -3235,6 +3255,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
         value.ackSequence = r.bits.get(16);
         if (r.bits.failed) { r.report.Damage(); return false; }
         value.ackSequence += 0;
+        value.ackSequence = value.ackSequence.toSigned(32);
         break;
       case 3:
         value.ackBits = r.bits.get(32);
@@ -3358,13 +3379,20 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
         if (r.bits.failed) { r.report.Damage(); return false; }
         break;
       case 21:
-        value.wideKey = r.bits.get(128);
-        if (r.bits.failed) { r.report.Damage(); return false; }
+        {
+          final lo = r.bits.get(64);
+          final hi = r.bits.get(64);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.wideKey = UInt128(hi, lo);
+        }
         break;
       case 22:
-        value.flux = r.bits.get(102);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.flux += 0;
+        {
+          final lo = r.bits.get(64);
+          final hi = r.bits.get(38);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.flux = Int128(hi, lo) + Int128(0xfffffff000000000, 0);
+        }
         break;
       case 23:
         value.ping = r.bits.get(16);
@@ -3384,11 +3412,13 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
         value.extra = r.bits.get(8);
         if (r.bits.failed) { r.report.Damage(); return false; }
         value.extra += 0;
+        value.extra = value.extra.toSigned(32);
         break;
       case 27:
         value.idleTicks = r.bits.get(4);
         if (r.bits.failed) { r.report.Damage(); return false; }
         value.idleTicks += 0;
+        value.idleTicks = value.idleTicks.toSigned(32);
         break;
       default:
         r.report.unknown++;
