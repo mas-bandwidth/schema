@@ -485,6 +485,29 @@ tables-cs-fixed-t18:
 
 test-cs: tables-cs-fixed-t18
 
+# I13 (docs/PORTING.md): the C# leg's text differential against a third
+# implementation, slug json-differential. A C# probe (Roslyn csc + dotnet exec,
+# the t10 harness's build, with the sibling serialize.cs for the nested plain
+# type) fills 200 random float-only instances from a splitmix64 and writes each
+# as (wire, text); internal/tabletext reads the wire and its text is
+# byte-compared against the leg's, then the leg's text is packed back and
+# byte-compared against the leg's wire. The control caps the emitted walker's
+# float32 at six significant digits in memory and must go red on the text
+# comparison. Its first run found the walker writing a float64 at fifteen
+# digits through .NET's custom format cap (json.go FormatG).
+.PHONY: tables-cs-json-differential tables-cs-json-differential-negative-control
+tables-cs-json-differential:
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 sh test/slowgate/proof tables-cs-json-differential \
+		'TestCsTextDifferential' \
+		./internal/codegen/cstable -run '^TestCsTextDifferential$$' -count=1 -timeout 600s
+	@grep -h 'cs text differential: ' build/slowgate/tables-cs-json-differential.log | sed 's/^ *//'
+tables-cs-json-differential-negative-control:
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 sh test/slowgate/proof tables-cs-json-differential-negative-control \
+		'TestCsTextDifferentialNegativeControl' \
+		./internal/codegen/cstable -run '^TestCsTextDifferentialNegativeControl$$' -count=1 -timeout 600s
+	@grep -h -A1 'cs text differential negative control: \|leg text and engine text differ' build/slowgate/tables-cs-json-differential-negative-control.log | sed 's/^ *//' | head -3
+test-cs: tables-cs-json-differential tables-cs-json-differential-negative-control
+
 .PHONY: tables-cs-fixed-roadmap
 tables-cs-fixed-roadmap:
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedRoadmapCSharpT12PlansVersions'

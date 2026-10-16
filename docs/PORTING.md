@@ -1304,7 +1304,7 @@ a float32 at `-266744.625` rendering as an eight-digit tie.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #516 | ❌ #419 | ❌ #419 |
+| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ✅ `tables-cs-json-differential` `tables-cs-json-differential-negative-control` `TestCsTextDifferential` (`internal/codegen/cstable/textdifferential_test.go`; its first run found float64 written at fifteen digits, fixed in `internal/codegen/cstable/json.go`) | ❌ #419 | ❌ #516 | ❌ #419 | ❌ #419 |
 
 ### I14 — The allocation gate refuses to certify off the pinned runtime
 

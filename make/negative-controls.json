@@ -411,6 +411,7 @@
         "tables-cs-pack-negative-control",
         "tables-cs-message-blob-endian-negative-control",
         "tables-cs-fixedform-arm-negative-control",
+        "tables-cs-json-differential-negative-control",
         "packet-arm-defaults-cs-negative-control",
         "packet-defaults-cs-negative-control",
         "packet-utf8-cs-negative-control",
