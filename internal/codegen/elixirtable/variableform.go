@@ -3963,26 +3963,10 @@ func armDescriptor(u *ir.Unit, arm ir.UnionVariant, ordinal int) string {
 	f.WasName = ""
 	f.JsonKey = ""
 	d := strings.TrimSuffix(fieldDescriptor(u, &f, ordinal, nil), "},\n")
-	return fmt.Sprintf("%s, arm_id: 0x%016X, arm_kind: %d},\n", d, id, armWireKind(arm))
-}
-
-// armWireKind is the arm header's kind byte (docs/SPEC-TABLES.md §3's kind-15
-// row), internal/tablewire's armWireKind spelled once more for this backend.
-func armWireKind(arm ir.UnionVariant) int {
-	if arm.Void() {
-		return ir.TableKindNoPayload
-	}
-	if arm.Body() {
-		return ir.TableKindTable
-	}
-	f := arm.F
-	if f.Type.Pointer && f.Array == ir.ArrayNone {
-		return ir.TableKindPointer
-	}
-	if f.Type.Kind == ir.TBytes {
-		return ir.TableKindArray
-	}
-	return ir.TableWireFieldKind(f)
+	// the arm header's kind byte is the arm's announced entry kind
+	// (ir.TableArmEntry, docs/SPEC-TABLES.md §2.6, §3), the one answer the
+	// message vocabulary already gives
+	return fmt.Sprintf("%s, arm_id: 0x%016X, arm_kind: %d},\n", d, id, ir.TableArmEntry(arm).Kind)
 }
 
 // closureStruct is a closure member whether it was declared `table` or
