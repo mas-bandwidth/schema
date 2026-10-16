@@ -1368,11 +1368,12 @@ func (r *wireReader) scalarAt(cell *tabletext.Cell, f *ir.Field, kind int) bool 
 		return true
 	case ir.TableKindF32:
 		bits := r.u32()
-		if bits&0x7F800000 == 0x7F800000 && bits&0x007FFFFF != 0 {
-			// a NaN's PAYLOAD IS DATA the reference carries bit for bit: the
-			// hardware float32→float64 conversion would set the quiet bit, so
-			// the widening is done on the bits. A NaN compares outside every
-			// range, so the clamp below could not fire on it anyway.
+		if bits&0x7F800000 == 0x7F800000 && bits&0x007FFFFF != 0 && (!f.HasFloatRange || declared == ir.TableKindF64) {
+			// a NaN's PAYLOAD IS DATA the reference carries bit for bit on an
+			// unranged float (or when widened into f64): the hardware
+			// float32→float64 conversion would set the quiet bit, so the
+			// widening is done on the bits. On a compressed float, NaN falls
+			// through to the range clamp below and lands at FMin (counted).
 			cell.F = widenF32NaN(bits)
 			return true
 		}
@@ -1385,12 +1386,14 @@ func (r *wireReader) scalarAt(cell *tabletext.Cell, f *ir.Field, kind int) bool 
 			return true
 		}
 		if f.HasFloatRange {
-			if v < f.FMin {
+			if !(v >= f.FMin) {
 				v = f.FMin
 				r.report.Clamped++
 			} else if v > f.FMax {
 				v = f.FMax
 				r.report.Clamped++
+			} else if v == 0 {
+				v = 0
 			}
 		}
 		cell.F = float64(float32(v))

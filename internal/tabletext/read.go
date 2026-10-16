@@ -1284,6 +1284,8 @@ func (in *reader) placeFloat(cell *Cell, f *ir.Field, token string, single bool)
 		} else if value > f.FMax {
 			value = f.FMax
 			in.report.Clamped++
+		} else if value == 0 {
+			value = 0
 		}
 	}
 	if single {

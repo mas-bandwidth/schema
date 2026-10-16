@@ -127,8 +127,8 @@ fixed table T
 	}
 	body := t06ClampBody(t, src)
 	t02GoHas(t, t02GoNorm(body),
-		"if value.Q < 0.0 { value.Q = 0.0 (*clamped)++ } else if value.Q > 1.0 { value.Q = 1.0 (*clamped)++ }",
-		"R30 the compressed float clamps to the reader's min/max, the bounds following the float")
+		"if !(value.Q >= 0.0) { value.Q = 0.0 (*clamped)++ } else if value.Q > 1.0 { value.Q = 1.0 (*clamped)++ } else if value.Q == 0 { value.Q = 0 }",
+		"R30 the compressed float clamps NaN and below-min to min, above-max to max, and canonicalises -0.0 to +0.0")
 }
 
 // ---- go/C9 "union tag past arms → None" -------------------------------------

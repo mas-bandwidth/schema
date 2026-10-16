@@ -529,9 +529,17 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 		}
 		return nil
 	case ir.TableKindF32:
-		return writeFloat(w, cell.F, true)
+		v := cell.F
+		if f.HasFloatRange && v == 0 {
+			v = 0
+		}
+		return writeFloat(w, v, true)
 	case ir.TableKindF64:
-		return writeFloat(w, cell.F, false)
+		v := cell.F
+		if f.HasFloatRange && v == 0 {
+			v = 0
+		}
+		return writeFloat(w, v, false)
 	case ir.TableKindI8, ir.TableKindI16, ir.TableKindI32, ir.TableKindI64:
 		w.raw(strconv.FormatInt(cell.I, 10))
 		return nil

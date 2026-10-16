@@ -1338,9 +1338,10 @@ func (d *bitDecoder) float32(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 		return false
 	}
 	bits := uint32(raw)
-	if bits&0x7F800000 == 0x7F800000 && bits&0x007FFFFF != 0 {
-		// a NaN's PAYLOAD IS DATA the reference carries bit for bit, and a NaN
-		// compares outside every range, so no clamp could fire on it
+	if bits&0x7F800000 == 0x7F800000 && bits&0x007FFFFF != 0 && (!f.HasFloatRange || ir.TableScalarKind(f) == ir.TableKindF64) {
+		// a NaN's PAYLOAD IS DATA the reference carries bit for bit on an
+		// unranged float (or when widened into f64). On a compressed float,
+		// NaN falls through to clampFloat and lands at FMin (counted).
 		cell.F = widenF32NaN(bits)
 		return true
 	}
@@ -1360,13 +1361,16 @@ func (d *bitDecoder) clampFloat(v float64, f *ir.Field) float64 {
 	if !f.HasFloatRange {
 		return v
 	}
-	if v < f.FMin {
+	if !(v >= f.FMin) {
 		d.report.Clamped++
 		return f.FMin
 	}
 	if v > f.FMax {
 		d.report.Clamped++
 		return f.FMax
+	}
+	if v == 0 {
+		return 0
 	}
 	return v
 }

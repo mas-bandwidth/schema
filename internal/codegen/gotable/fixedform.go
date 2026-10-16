@@ -1131,12 +1131,12 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int) {
 	switch {
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
 		lo, hi := formatFloat32(f.FMin), formatFloat32(f.FMax)
-		g.pf("%sif %s < %s { %s = %s; (*clamped)++ } else if %s > %s { %s = %s; (*clamped)++ }\n",
-			ind, expr, lo, expr, lo, expr, hi, expr, hi)
+		g.pf("%sif !(%s >= %s) { %s = %s; (*clamped)++ } else if %s > %s { %s = %s; (*clamped)++ } else if %s == 0 { %s = 0 }\n",
+			ind, expr, lo, expr, lo, expr, hi, expr, hi, expr, expr)
 	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
 		lo, hi := formatFloat64(f.FMin), formatFloat64(f.FMax)
-		g.pf("%sif %s < %s { %s = %s; (*clamped)++ } else if %s > %s { %s = %s; (*clamped)++ }\n",
-			ind, expr, lo, expr, lo, expr, hi, expr, hi)
+		g.pf("%sif !(%s >= %s) { %s = %s; (*clamped)++ } else if %s > %s { %s = %s; (*clamped)++ } else if %s == 0 { %s = 0 }\n",
+			ind, expr, lo, expr, lo, expr, hi, expr, hi, expr, expr)
 	default:
 		signed := ir.TableKindSigned(ir.TableScalarKind(f))
 		if rlo, rhi, ok := ir.TableRawRange(f); ok {

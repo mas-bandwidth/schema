@@ -667,9 +667,17 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 		}
 		return true
 	case 10:
-		return tableJsonWriteFloat(out, float64(*(*float32)(storage)), true)
+		v := float64(*(*float32)(storage))
+		if f.HasRange && v == 0 {
+			v = 0
+		}
+		return tableJsonWriteFloat(out, v, true)
 	case 11:
-		return tableJsonWriteFloat(out, *(*float64)(storage), false)
+		v := *(*float64)(storage)
+		if f.HasRange && v == 0 {
+			v = 0
+		}
+		return tableJsonWriteFloat(out, v, false)
 	case 2, 3, 4, 5:
 		tableJsonWriteSigned(out, tableJsonGetSigned(storage, f.ElemSize))
 		return true
@@ -1442,6 +1450,8 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 			} else if value > f.RangeMax {
 				value = f.RangeMax
 				in.report.Clamped++
+			} else if value == 0 {
+				value = 0
 			}
 		}
 		if single {
