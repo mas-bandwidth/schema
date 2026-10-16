@@ -73,19 +73,6 @@ func TestNames(t *testing.T) {
 			t.Fatalf("%s: n=%d report=%+v want=%+v", c.what, n, r, c.want)
 		}
 	}
-	// layout_unsupported (hash below the lineage floor) and layout_record_too_large
-	// (a plan entry past the writer's record, carried as the lineage entry's Why)
-	// cannot be reached from a clean one-layout table; their behaviour is pinned
-	// by TestFixedFormRecordBound and the FixedLoad source assertions in
-	// fixedform_test.go, and here their exported spelling is pinned.
-	for got, want := range map[string]string{
-		TableFixedReasonLayoutUnsupported:    "layout_unsupported",
-		TableFixedReasonLayoutRecordTooLarge: "layout_record_too_large",
-	} {
-		if got != want {
-			t.Fatalf("exported name %q, want %q", got, want)
-		}
-	}
 	// layout_newer carries the file's hash and nothing else
 	forged := forge(func(b []byte) []byte { b[TableFixedHashAt] ^= 1; return b })
 	want := TableReport{Verdict: TableOpenRefused, Reason: TableFixedReasonLayoutNewer,
@@ -125,4 +112,12 @@ func TestTextIllFormed(t *testing.T) {
 	}
 }
 `)
+
+	// layout_unsupported (a hash below the lineage floor) and
+	// layout_record_too_large (an entry past the writer's record, carried as the
+	// lineage entry's Why) cannot be reached from a clean one-layout table; each
+	// needs a multi-version lineage, so each gets its own generated unit, proving
+	// the LOAD refuses by the exported constant.
+	testFixedLoadNamesUnsupported(t)
+	testFixedLoadNamesRecordTooLarge(t)
 }
