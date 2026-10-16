@@ -41,48 +41,7 @@ import (
 // table, which field and why, so a consumer reaching for Save gets a missing
 // name from its own tooling beside a file that says why.
 func fixedRefusal(st *ir.Struct) string {
-	// THE WALK'S DEPTH BOUND GOES FIRST, AND IT IS ITS OWN SENTENCE. This leg
-	// held a private closure test with `16` written into it, so a table nested 17
-	// deep lost the form here while C++ emitted it — and the line this function
-	// wrote blamed the CLOSURE, naming a pointer or a map in a schema that has
-	// neither. The bound is read through ir now, and the reason it gives is the
-	// bound's own: past ir.TableFixedMaxDepth no conforming reader takes the walk
-	// (docs/FIXED-FORM-ALGORITHM.md §5.2's `layout_malformed`).
-	if !ir.TableFixedWithinDepth(st) {
-		return fmt.Sprintf("its layout nests %d deep, past the form's %d-entry depth bound, so no conforming reader takes the walk (`layout_malformed`) — it keeps form 1 (docs/FIXED-FORM-ALGORITHM.md §5.2, docs/SPEC-TABLES.md §3.4)",
-			ir.TableFixedTypeDepth(st), ir.TableFixedMaxDepth)
-	}
-	if !ir.TableFixedSupported(st, 0) {
-		return "its closure carries a construct the fixed class refuses — a pointer, a map, an unbounded array or a guarded branch (docs/SPEC-TABLES.md §3.4)"
-	}
-	// AN OPTIONAL IS NOT A REFUSAL. §3.4's kind table CARRIES `?T` — kind 35,
-	// a present byte in front of a payload that rides WHOLE — so the leg that
-	// refused it was refusing a wire the form already spells.
-	//
-	// WHAT THE OLD REFUSAL SAID was that the JavaScript packet classes had
-	// nowhere to land the present byte, and that inventing a member in one
-	// would be this backend inventing storage for a class another emitter
-	// owns. THE PREMISE WAS WRONG, in the port's own favour: `?T` is a TABLE
-	// construct — a `type`'s wire is positional and every field of one always
-	// rides, so the compiler refuses the `?` there outright (§2.3) — and
-	// internal/codegen/js emits a class for every `type` and NONE for a
-	// `table`. So the only class that can ever hold a present flag is the one
-	// THIS FILE emits (emitTableClass), and there was never another emitter's
-	// storage to invent.
-	//
-	// §3.4's 65536-BYTE CEILING IS A REFUSAL OF THE FORM, and it belongs here
-	// rather than in the roots loop, because the refusal IS the filter
-	// (fixedRoots): a ceiling the filter knew and this function did not would be
-	// a module that carries a 280020-byte record and says nothing about it. The
-	// compiler already warns, naming the table and the size — *"THE FIXED FORM
-	// IS NOT EMITTED FOR IT, because no conforming reader decodes a record that
-	// size"* (ir.TableFixedRecordBounds) — and the class is untouched: the table
-	// keeps form 1, its by-value storage, its cook and its block form. So this
-	// is not a refusal of the TABLE and never of the unit.
-	if fixedTypeBytes(st) > ir.TableFixedRecordMaxBytes {
-		return "its record body is past §3.4's 65536-byte ceiling, so no conforming reader would decode a record that size — it keeps form 1 (docs/SPEC-TABLES.md §3.4)"
-	}
-	return ""
+	return ir.TableFixedJSRefusal(st)
 }
 
 // ---------------------------------------------------------------------------

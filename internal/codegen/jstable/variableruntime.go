@@ -924,21 +924,68 @@ function TableVariableBase64Text(data) {
 
 // C's %.*g for a finite double (tabletext formatG): the exponent form when the
 // decimal exponent is below -4 or at least the precision, trailing zeros and a
-// trailing point removed, an exponent of at least two digits
+// trailing point removed, an exponent of at least two digits. The digits are
+// the double's EXACT decimal expansion rounded to prec significant digits, a
+// tie to EVEN, as C and Go round. The host's toExponential and toFixed round a
+// tie AWAY from zero (ECMA-262 "pick the larger n"), which is not the engine's
+// rule: the float32 3624545.25 (0x4a5d3985) at eight digits is 3624545.2 in
+// the engine and was 3624545.3 here (I13, TestTextDifferentialJavaScript).
+function TableVariableExactDigits(a) {
+  // a finite, positive double as m * 2^e, then its exact decimal digits D with
+  // the decimal exponent of D's first digit
+  const view = new DataView(new ArrayBuffer(8));
+  view.setFloat64(0, a);
+  const bits = view.getBigUint64(0);
+  const biased = Number((bits >> 52n) & 0x7FFn);
+  let m = bits & 0xFFFFFFFFFFFFFn;
+  let e = -1074;
+  if (biased !== 0) { m |= 1n << 52n; e = biased - 1075; }
+  if (e >= 0) {
+    const d = (m << BigInt(e)).toString();
+    return { d, exp: d.length - 1 };
+  }
+  const d = (m * 5n ** BigInt(-e)).toString();
+  return { d, exp: d.length - 1 + e };
+}
+
 function TableVariableFormatG(v, prec) {
   const neg = v < 0 || Object.is(v, -0);
   const a = Math.abs(v);
-  const sci = a.toExponential(prec - 1);
-  const at = sci.indexOf("e");
-  const exp = parseInt(sci.slice(at + 1), 10);
+  let keep, exp;
+  if (a === 0) {
+    keep = "0".repeat(prec);
+    exp = 0;
+  } else {
+    const x = TableVariableExactDigits(a);
+    exp = x.exp;
+    if (x.d.length <= prec) {
+      keep = x.d + "0".repeat(prec - x.d.length);
+    } else {
+      keep = x.d.slice(0, prec);
+      const rest = x.d.slice(prec);
+      let up = rest[0] > "5" || (rest[0] === "5" && /[1-9]/.test(rest.slice(1)));
+      if (rest[0] === "5" && !up && !/[1-9]/.test(rest.slice(1))) {
+        up = (keep.charCodeAt(prec - 1) - 48) % 2 === 1;
+      }
+      if (up) {
+        keep = (BigInt(keep) + 1n).toString();
+        if (keep.length > prec) { keep = keep.slice(0, prec); exp++; }
+      }
+    }
+  }
   let s;
   if (exp < -4 || exp >= prec) {
-    let m = sci.slice(0, at);
-    if (m.indexOf(".") >= 0) { m = m.replace(/0+$/, "").replace(/\.$/, ""); }
+    let m = keep[0];
+    if (prec > 1) { m = (m + "." + keep.slice(1)).replace(/0+$/, "").replace(/\.$/, ""); }
     const e = Math.abs(exp);
     s = m + "e" + (exp < 0 ? "-" : "+") + (e < 10 ? "0" + e : String(e));
   } else {
-    s = a.toFixed(prec - 1 - exp);
+    if (exp >= 0) {
+      s = keep.slice(0, exp + 1);
+      if (keep.length > exp + 1) { s += "." + keep.slice(exp + 1); }
+    } else {
+      s = "0." + "0".repeat(-exp - 1) + keep;
+    }
     if (s.indexOf(".") >= 0) { s = s.replace(/0+$/, "").replace(/\.$/, ""); }
   }
   return (neg ? "-" : "") + s;

@@ -604,6 +604,25 @@ tables-js-variable-fixed-class:
 
 test-js: tables-js-variable-fixed-class
 
+# I13 (docs/PORTING.md:1278): the js leg's text differential against a third
+# implementation. A node probe draws 200 random float-only instances of a fixed
+# table (seed 24845619678, splitmix64) and writes each as (wire, text) with the
+# generated RootSave and RootToJson; the Go engine (internal/tabletext,
+# internal/tablepack) writes its own text from the leg's wire, byte-compared,
+# and packs the leg's text back to wire, byte-compared
+# (TestTextDifferentialJavaScript). The control caps the emitted float32 text at
+# six significant digits in memory and must go red on the text comparison.
+# SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE rather than a skip.
+.PHONY: tables-js-text-differential tables-js-text-differential-negative-control
+tables-js-text-differential:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestTextDifferentialJavaScript$$'
+	@echo 'tables JS text differential: 200 random float instances agree with the Go engine byte for byte, both directions'
+tables-js-text-differential-negative-control:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestTextDifferentialNegativeControlJavaScript$$'
+	@echo 'tables JS text differential negative control: a six-digit float32 writer is red on the text comparison'
+
+test-js: tables-js-text-differential
+
 # js/F12 — "a second layout under a held hash" (docs/FIXED-FORM-ALGORITHM.md §2
 # row 5: "a known hash over different bytes is `layout_malformed`"; SPEC-TABLES
 # §3.4: "A second layout for a hash already held is refused by name"). The test
@@ -1080,3 +1099,15 @@ tables-js-view-descriptors:
 # answer every instance whose unit this leg generates, through `make conformance`.
 
 test-js: tables-js-view tables-js-view-descriptors
+
+# THE JAVASCRIPT LEG's WALK NEGATIVE CONTROL (docs/PORTING.md I11): one statement
+# of the GENERATED text reader (the bool arm of the from-text walk) is changed in
+# a COPY of build/tables-generated-js, and the driver, which imports from
+# SCHEMA_JS_GENERATED, is aimed at the copy. The matrix must go red on
+# `js / json-read` while `json-write` and `wire` stay green. Nothing tracked is
+# written to.
+.PHONY: conformance-negative-control-js-walk
+conformance-negative-control-js-walk: build/conformance-harness build/tables-generated-js/.stamp
+	sh test/conformance/js/negative-control walk
+
+test-js: conformance-negative-control-js-walk
