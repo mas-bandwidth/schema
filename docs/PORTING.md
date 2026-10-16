@@ -154,13 +154,16 @@ per edge to 0.7 bytes per iteration (ceiling 8) once the delta was composed.
 **Negative control.** The JavaScript allocation gate's row for the path: a
 `getBigUint64` on it reads as bytes per iteration. The Elixir control
 (`tables-elixir-offsets-negative-control`) sabotages the block's composed read
-back to the whole-word read; the forged-offset assertion must go red.
+back to the whole-word read; the forged-offset assertion must go red. The
+cook control (`tables-elixir-cook-negative-control`) does the same to the
+cook's delta read; the forged-delta assertion must go red. Both count minor
+collections over 50000 refusals against an immediate-high-half twin.
 
 **Targets:** none
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:513` | ✅ `internal/codegen/ctable/ctable.go:514-518` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go:152` | ✅ `internal/codegen/cstable/cstable.go:986-991` | ❌ #517 | — the accelerator paths compose (`internal/codegen/jstable/block.go:384`, `cook.go:513`); a 64-bit wire FIELD's value is a BigInt or loses precision, so those rows read one under a stated ceiling (`test/js-tables/main.mjs`, the RootConfig rows) | — an `int` is a 64-bit machine word and nothing boxes (`internal/codegen/darttable/block.go:213`) | ✅ `tables-elixir-offsets` `tables-elixir-offsets-negative-control` `TestOffsetsComposeFromHalvesElixir` (the block's `offset_of` and the cook's delta compose from 32-bit halves, refused from the high half before any bignum forms; a 64-bit FIELD value of 2^59 or more is a bignum on the BEAM whatever a reader does) |
+| ✅ `internal/codegen/cpptable/cpptable.go:513` | ✅ `internal/codegen/ctable/ctable.go:514-518` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go:152` | ✅ `internal/codegen/cstable/cstable.go:986-991` | ❌ #517 | — the accelerator paths compose (`internal/codegen/jstable/block.go:384`, `cook.go:513`); a 64-bit wire FIELD's value is a BigInt or loses precision, so those rows read one under a stated ceiling (`test/js-tables/main.mjs`, the RootConfig rows) | — an `int` is a 64-bit machine word and nothing boxes (`internal/codegen/darttable/block.go:213`) | ✅ `tables-elixir-offsets` `tables-elixir-offsets-negative-control` `tables-elixir-cook-negative-control` `TestOffsetsComposeFromHalvesElixir` (the block's `offset_of` and the cook's delta compose from 32-bit halves, refused from the high half before any bignum forms; a 64-bit FIELD value of 2^59 or more is a bignum on the BEAM whatever a reader does) |
 
 ### M3 — A float never crosses a call
 
