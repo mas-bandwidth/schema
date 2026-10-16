@@ -544,7 +544,7 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			var widened uint64
 			if bits&0x7f800000 == 0x7f800000 {
 				// THE ALL-ONES EXPONENT IS ASSEMBLED BY HAND (docs/SPEC-TABLES.md
-				// §3.4, §21.2; the packet runtime's tableWidenFloat): the hardware
+				// §3.4, §21.2; the variable form's own float rung): the hardware
 				// f32->f64 conversion QUIETS a signalling NaN and can drop a
 				// payload bit, so the sign, the all-ones exponent and the 23-bit
 				// mantissa shifted left by 29 are carried exactly and the quiet
