@@ -1113,6 +1113,43 @@ leaves the field PRESENT, because the field rode. In the text form the
 key's presence is presence and `null` is the absence, the rule §16.2
 already states for every `?T`.
 
+**`?T` over a variable closure: `inner ?Inner`, where `Inner` holds a
+pointer.** A scalar `?T` whose T's closure is variable-length is ALLOWED
+in a variable table. Its holder is variable-length by §2.2 already, and its
+storage is T by value plus the presence bool, exactly as above; the framing
+is the one this section states, so no byte of the wire changes. §3.1's law
+— a field the writer does not write is not an edge — is kept by ONE RULE:
+**every walk that follows pointer edges visits T's edges only when the
+presence companion is set, and an absent value owns no node.** The walks,
+each by name:
+
+- **save** — the body writer writes the field only when it is present, and
+  the numbering that runs first (§3.1's first-visit walk) follows T's edges
+  only then, so the targets of an absent T get no index and no node record;
+- **measure** — `Measure`, `PackMeasure` and `Lock`'s sizing run that same
+  gated numbering, so the targets of an absent T count no bytes;
+- **load** — a field that did not ride leaves T at its declared defaults,
+  every pointer null, so a loaded absent value holds no edge, and the
+  region measure sizes only the nodes the wire carries;
+- **retain** — the retaining load, measure and save (§6.6) gate exactly as
+  load, measure and save do;
+- **cook** — the cooked form's sizing and writer (§7) follow T's edges only
+  when present; an absent T is written as its defaults, every reference
+  null, with its presence byte clear;
+- **the JSON writer and reader** (§16) — the writer writes no key for an
+  absent T and numbers no node behind it; the reader leaves T at its
+  defaults on a missing key or `null`, and sets presence only on a value
+  that rode;
+- **the view** — each field descriptor carries `optional` and the presence
+  offset, so a walk over the descriptors gates exactly as the generated
+  walks do.
+
+A value made absent after it was present — the presence bool cleared, T's
+storage untouched — therefore writes NO STALE NODE for the edges T still
+holds: the gate reads presence, never content. Go carries the construct
+first; every other target refuses a unit holding one, by name, until its
+own turn (§11).
+
 `?` applies to a nested table, a nested `type`, an enum, a `flags` mask,
 any scalar, and a bounded array of those. It is refused, by name, on:
 
@@ -1133,13 +1170,14 @@ any scalar, and a bounded array of those. It is refused, by name, on:
 - **an enum-keyed array** — `?[E]T` elides slots BY NAME (§3.2), so its
   empty end wants stating before a presence bit sits beside it — the
   reason `[E]*T` and `[E]Body` wait (§15);
-- **an array of pointers, an array of unions, and any VALUE whose closure
-  is variable-length** — scalar `?T` and array `?[N]T` alike, one rule, a
-  named follow-on (§15): an absent field is not an edge (§3.1), and the
-  authoring walks must gate on the presence companion before an optional
-  field may hold pointer edges. The bounded arrays of pointers and of
-  unions serve today without the `?` (§2.1, §2.6), and a table wrapping
-  the field serves with it.
+- **an array of pointers, an array of unions, and an optional ARRAY of a
+  value whose closure is variable-length** — `?[N]*T`, `?[N]Body`, and
+  `?[N]T` or `?[..N]T` of such a T — a named follow-on (§15): the gated
+  walks below are stated and corpus-held for the scalar `?T` only, and the
+  array forms wait for their own change, walks and corpus together. The
+  bounded arrays of pointers and of unions serve today without the `?`
+  (§2.1, §2.6), and a table wrapping the field serves with it. The SCALAR
+  `?T` over a variable closure is allowed, by the rule below.
 - **a specified default** — presence is the only default an optional has.
 
 #### The `| required` marker
@@ -13924,13 +13962,14 @@ inspects everything in the schema built:
   bit buys nothing a wrapper table does not already give. Wrap the field in
   a table and make that optional today; `?[..N]T` and `?[N]T` landed and
   are not part of this entry.
-- **An OPTIONAL whose value holds POINTER EDGES** (§2.3): `?T` where T's
-  closure is variable, `?[N]T` and `?[..N]T` of such a T, `?[N]*T`, and
+- **An OPTIONAL ARRAY whose elements hold POINTER EDGES** (§2.3):
+  `?[N]T` and `?[..N]T` of a T whose closure is variable, `?[N]*T`, and
   `?[N]Body`. §3.1's law — a field the writer does not write is not an
-  edge — obliges the authoring walks (the numbering, the pack, `Lock`'s
-  sizing) to gate on the presence companion, and none of them does yet; the
-  refusal keeps the two writers byte-identical until that gating lands as
-  its own change, walks and corpus together.
+  edge — obliges every walk that follows pointer edges to gate on the
+  presence companion; §2.3 states that gate for the scalar `?T` over a
+  variable closure, which landed (Go first) and is not part of this entry.
+  The array forms wait for the same gate held over each element, walks and
+  corpus together.
 - **An array of `?T`** — a different question one level down: an element's
   presence bit beside the array's own count.
 - **AN OPTIONAL ARRAY in every ported backend** (§2.3): C++ and the tool
