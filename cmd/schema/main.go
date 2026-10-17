@@ -339,7 +339,7 @@ func main() {
 		if err := os.MkdirAll(*out, 0o755); err != nil {
 			fatalf("%v", err)
 		}
-		if err := writeGenerated(*out, files, verbose); err != nil {
+		if err := writeGenerated(*out, files, *lang, false, unit.Package, nil, verbose); err != nil {
 			fail(err)
 		}
 	case "pack":
