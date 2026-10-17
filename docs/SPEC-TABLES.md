@@ -1114,7 +1114,8 @@ key's presence is presence and `null` is the absence, the rule §16.2
 already states for every `?T`.
 
 `?` applies to a nested table, a nested `type`, an enum, a `flags` mask,
-any scalar, and a bounded array of those. It is refused, by name, on:
+any scalar, a bounded array of those, and a MAP in a variable table (§2.8,
+the optional map: absent apart from empty). It is refused, by name, on:
 
 - **a `type` body** — a type's wire is positional and every field always
   rides, so there is no absence to express;
@@ -1164,7 +1165,9 @@ table Player
 - **The reader REFUSES a record missing it.** An older record written before
   the field was required lacks it; reading it is refused with the event
   `missing_required`, naming the field. The record does not silently fall
-  back to a default — the field was declared mandatory and is not there.
+  back to a default — the field was declared mandatory and is not there. The
+  TEXT form (§16) refuses the same absence: a JSON object that omits the key
+  is refused, naming the field, exactly as the binary and base64 forms do.
 - **It is TABLE fields only.** `| required` is refused, by name, on a packet
   `type` field — a type's wire is positional and every field always rides, so
   there is no absence for a required marker to cure — and on an optional
@@ -1190,6 +1193,11 @@ table Player
   body that lacked it. A strict caller gets it by name — `ReadStrict` and
   `TableReport.Err()` answer the typed `TableMissingRequired`, whose text is
   the report's reason (§6.5), never a bare `wire_damaged`.
+- **A `| required` field whose range excludes zero takes NO default.**
+  A fresh record's field is the storage zero, which is outside the range, so
+  the writer refuses the record until the field is set; a stored record
+  lacking it is `missing_required` on read (SPEC §4.6). A declared default on
+  such a field stays legal.
 
 **Evolution** (§4). Adding `required` to a shipped field is a BREAK the
 tables baseline refuses: old records were written without it and a newer
@@ -1983,8 +1991,56 @@ would drop entries by key order, a quieter loss than an array's dropped
 tail. What a program gets instead is §6.5's defense, unchanged.
 `LoadMeasure` answers from the framing, and the caller owns the allocation
 precisely so it can refuse a number it did not expect. A map takes no
-default and has no `?map`: a fresh map is empty, and an empty map is elided
-under §3's by-value elision rule, the rule that elides an empty array.
+default: a fresh map is empty, and a PLAIN map that is empty is elided under
+§3's by-value elision rule, the rule that elides an empty array, so for a
+plain map the count's zero is its absence.
+
+**`?map[K]V` IS THE OPTIONAL MAP, and it is §2.3's optional array one shape
+over** (owner's ruling, 2026-10-17: an empty map and an absent map must not
+read the same). In a VARIABLE table, `tags ?map[string(8)]int32` is PRESENT
+or ABSENT apart from its content. Its storage is the sixteen-byte map slot
+then the generated `<field>_present` bool every `?T` carries (§2.3, §7.2),
+and that name is CLAIMED exactly as it is for any optional. PRESENCE decides
+whether the field rides, never the count:
+
+- **absent writes nothing**, exactly as an absent optional array writes
+  nothing;
+- **present ALWAYS rides**, as the map's own framing (kind `14`, element kind
+  `13`, the count, the entries) with its live count, **zero included**. A
+  present EMPTY map is the field header and the two-byte array body
+  `0d 00` (element kind `13`, count `0`), under `L = 2`;
+- **present with entries is byte-identical to a plain map** holding the same
+  entries.
+
+THE WIRE RULE, stated before any code: the present-and-empty map spends the
+bytes the elision rule does not write today (the field header, `L = 2`, and
+the body `0d 00`), and it spends no new kind, no new byte form and no new
+reader rule, because a counted array with a zero count is already a legal
+body that every reader decodes (§3). So `map[K]V` ⇄ `?map[K]V` is §2.3's
+**one framing with two spellings**: for a map with a live entry no byte moves
+in either direction; at the empty end the bytes differ, and no direction
+misdecodes. A reader built WITHOUT the `?` reads the present-empty field as
+an empty map, which is what it would have held; a reader built WITH it reads
+a plain writer's elided empty map as ABSENT, which is the only thing those
+bytes can say.
+
+PRESENCE FOLLOWS THE FRAMING, as §2.3 states it for an optional array: a
+body whose element kind is not `13` is the element-kind mismatch, counted,
+and leaves the map ABSENT, exactly as a reader that skipped the field leaves
+it; every in-body event short of that (a damaged entry, a key of the wrong
+kind, a descending or repeated key) leaves the map PRESENT, because the field
+rode. In the text form (§16.2) presence is the key: ABSENT writes no key,
+PRESENT writes the object, an empty one as `{}`, and `null` reads as ABSENT.
+
+`?map` is refused, by name, everywhere a map is refused and on the `?`'s own
+terms: in a `fixed table` and in a `type` (packet) body, as any map is, the
+map refusal naming the construct whatever the `?`; and beside `| required`,
+by §2.3's rule that a required marker would forbid the absence that makes a
+field optional. An optional map as a map's VALUE, `map[K]?map[K2]V`, is
+refused by name as a named follow-on (§15): the optional map is a FIELD's
+presence, and a table wrapping the inner map, made optional, serves. A target
+that does not carry the optional map refuses a unit that declares one, by
+name (§15); Go carries it first.
 
 **A VALUE is anything a table field can hold**: a scalar, an enum, a `flags`
 mask, `string(N)`, `wstring(N)`, `bytes(N)`, a declared `type`, a table by value, `*T`, `*wstring`,
@@ -4233,7 +4289,7 @@ key does not replace one.
 **WHAT IT ENTERS, AND WHAT IT DOES NOT.** The key is part of the table's
 declaration, so every build of the unit agrees on it. It is **not** part of
 the projection (SPEC §3.1), **not** part of the build version (§20), **not**
-in the fixed-table lock (§2.10: the key is refused on a `fixed table`, below)
+in the fixed-table lock (§2.10; a `fixed table` may declare it now that its message-form batch carries the trailer, below)
 and **not** in the tables baseline (§18). Those four record identity and
 layout, the names, ids, kinds and offsets a reader resolves, and the trailer
 is none of them: it is framing at the end of one file. Moving it moves no
@@ -4249,15 +4305,38 @@ its stored files across the change: load each under the build that wrote it
 and save it under the new one. Because the change cannot go unnoticed, the
 baseline does not have to catch it, which is why it is not recorded there.
 
-**THE FIXED FORM AND THE MESSAGE FORM ARE FOLLOW-ONS.** Form `3` (§3.4) and
-form `2` (§3.3) carry their own framing, and each gets the trailer in its own
-change (schema-go-wire-integrity-fixed-form, schema-go-wire-integrity-message-form).
-Until then a `fixed table` that declares `integrity` is refused by name at
-check, since the class carries form `3` and is the one class that rides the
-message form (§3.3: "`fixed table T` may ride here, a plain `table T` may
-not"). A plain `table` carries neither, so the key on it is complete. The
-cook (§7) and the block form (§19) are trusted accelerators whose integrity
-answer is a signature, and the key does not touch them.
+**THE MESSAGE FORM CARRIES THE TRAILER PER BATCH.** Form `2` (§3.3) is a
+batch of bodies under one announced vocabulary, and the batch is the unit the
+form reads and writes, so its trailer is the BATCH's: four bytes, little-endian,
+the CRC-32C of every byte of the batch before them — the form byte, the count
+byte and the bit stream with its pad — written after the pad so they are the
+last four bytes of the batch buffer. **Per batch and not per message**, because
+a body's end is known only after its bits are decoded: a trailer inside the bit
+stream cannot be checked before the body it names is decoded, while the batch's
+trailer sits at a fixed offset from the end, so a reader refuses a damaged batch
+before it decodes its first body, which is the property §2.14 gives the file. A
+per-message trailer would also need a byte boundary per message, undoing §3.3's
+"no alignment inside a message or between messages".
+
+**A WRITER** emits the batch exactly as §3.3 says and then appends the trailer.
+The measure counts it, so `MeasureMessages` answers four bytes more than the
+same bodies under an undeclared table and `SaveMessages` writes exactly that
+many. **A READER CHECKS IT BEFORE IT DECODES ANY BODY.** Order, with §3.3's
+framing kept: the form byte is read first; a batch shorter than six bytes cannot
+hold the trailer, and a batch whose last four bytes are not the CRC-32C of the
+bytes before them is refused, **`integrity_mismatch`**, and nothing is decoded;
+the trailer is then removed and the batch is read as §3.3's. The name is the
+variable form's, `integrity_mismatch`, and a batch of a table without the key is
+read and written byte for byte as before.
+
+**THE FIXED FORM IS STILL A FOLLOW-ON.** Form `3` (§3.4) carries its own
+framing and gets its per-file trailer in its own change
+(schema-go-wire-integrity-fixed-form). A `fixed table` may declare `integrity`
+now, because it is the class that rides the message form (§3.3: "`fixed table T` may ride here, a plain `table T` may not") and this form carries the trailer;
+the form-3 file keeps its own follow-on. A plain `table` carries the variable
+form, which is complete. The cook (§7) and the block form (§19) are trusted
+accelerators whose integrity answer is a signature, and the key does not touch
+them.
 
 **BASE64 TEXT carries the trailer with no rule of its own**: it is the base64
 of the binary file (§16.8), trailer included, and `LoadText` decodes it and
@@ -10696,7 +10775,7 @@ fields would get wrong:
 | `[..N]*T` | the same `N` slots, then `int32` used count; a slot past the live count is zero (a counted array writes all `N` slots, below) |
 | `*bytes`, `*string`, `*wstring` | `int64` self-relative delta, eight bytes at eight, to a BLOB NODE (below) |
 | `?T` | the value's own pieces, then `bool` present |
-| `map[K]V` | `int64` self-relative delta to the entry array, then `int32` count; the entries follow the record inside the node's extent (§2.8) |
+| `map[K]V` | `int64` self-relative delta to the entry array, then `int32` count; the entries follow the record inside the node's extent (§2.8); `?map[K]V` adds the `bool` present after the slot, as every `?T` does |
 | `[]T`, `[]*T` | `int64` self-relative delta to the element array, then `int32` count; the elements follow the record inside the node's extent (§2.9), a `[]*T`'s elements being `int64` deltas of their own |
 
 - **An ENUM slot holds the ORDINAL**, at the enum's own derived storage width
@@ -12514,8 +12593,9 @@ in build version (§20.5).
   `memcmp` over UTF-8 is the portable order and a little-endian code unit's
   bytes are not), an `int128` or `uint128`, a `fixed`/`ufixed`, a `type`, a
   `table`, a pointer, an optional or a union; an
-  attribute on the key (`| min`, `| max`, a default); `?map`, a default on a
-  map, `| max` on a map and the bounded spellings `[..N]map` and `[N]map`; **a
+  attribute on the key (`| min`, `| max`, a default); `?map` in a `fixed table` or a `type` (packet) body, as any map there, `?map ... | required` (§2.3: required forbids the absence that makes a field optional)
+  and `?map` as a map's VALUE (a named follow-on);
+  a default on a map, `| max` on a map and the bounded spellings `[..N]map` and `[N]map`; **a
   map as a UNION ARM** (§2.6), on the ground `[]T` is refused there, the
   diagnostic naming the table wrapper that serves; a
   table that holds a map of ITSELF by value, directly or through any chain
@@ -14703,7 +14783,7 @@ Per kind:
 | `*bytes` | string, base64, or `null` | the blob in place, as `bytes(N)` spells its bytes, with NO bound to clamp against; `""` is a present blob of length zero and `null` is a null reference (§2.5). A body that is not base64 is `kind_mismatch`, the reference left null |
 | `*string` | string, or `null` | the blob's bytes as a string, with no bound; the same two values at the empty end |
 | `*wstring` | string, or `null` | the blob's code units as a string, transcoded as `wstring(N)`'s row is, with no bound to clamp against, and the same two values at the empty end |
-| `map[K]V` | object keyed by the KEY | a string key is the string, and one longer than `N` drops its entry and counts `clamped`; an integer key is its decimal spelling, quoted, read by the integer rule above and by nothing else, so a token that rule calls `malformed` makes the key malformed and one with a fractional value or out of the key kind's range drops its entry as `kind_mismatch`; written in ASCENDING key order; a repeated key is last-wins and counted; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7); a `?T` VALUE (`map[K]?T`) is written `null` when ABSENT and as its value when PRESENT, defaults included, and read the same way: the object's key is the ENTRY and never the value's presence, so `null` is the one spelling of an absent value and any other value is present (§2.3) |
+| `map[K]V` | object keyed by the KEY | a string key is the string, and one longer than `N` drops its entry and counts `clamped`; an integer key is its decimal spelling, quoted, read by the integer rule above and by nothing else, so a token that rule calls `malformed` makes the key malformed and one with a fractional value or out of the key kind's range drops its entry as `kind_mismatch`; written in ASCENDING key order; a repeated key is last-wins and counted; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7); a `?T` VALUE (`map[K]?T`) is written `null` when ABSENT and as its value when PRESENT, defaults included, and read the same way: the object's key is the ENTRY and never the value's presence, so `null` is the one spelling of an absent value and any other value is present (§2.3); an OPTIONAL MAP (`?map[K]V`) is a `?T` at its field: ABSENT writes no key, PRESENT writes the object, `{}` when empty, and a `null` reads as ABSENT (§2.8) |
 | text list `[..N]string(M)`, `[]string(M)` | array of strings | `["a","b"]`, `[]` for an empty list, written in INDEX order (§2.13). An element that is not a string, `null` included, is `kind_mismatch`; an element longer than `M` clamps as `string(N)`'s row does, and an element past a `[..N]` bound is dropped, counted, as the bounded array's row says |
 | unbounded text list `[]string`, `[..N]string` | array of strings | `["a","b"]` as above, with NO element bound: no element is clamped and `clamped` never fires for a length; a `[..N]` count past `N` is dropped, counted (§2.13.1) |
 | unbounded text list `[]?string`, `[..N]?string` | array of strings and `null` | as the `?string(M)` row, with no element bound |
@@ -15409,7 +15489,7 @@ The rules below replace §16.2's tolerant behavior for this form only.
 | `[..N]T` bounded array | Sequence of zero through N elements; count is its length. |
 | `[]T`, `[]*T` | Sequence in index order, without a schema count bound; resource limits still apply. |
 | `[E]T` enum-keyed array | Record keyed by enum variant names (`:Fighter` or `"Fighter"`); missing slots use defaults. `None` and unknown variants are `text_unknown_key`; duplicate slots are `text_duplicate_key`. |
-| `?T`, including optional arrays | Omitted field or `null` is absent; any valid T value is present. `()` at an array site is present-and-empty. |
+| `?T`, including optional arrays and optional maps | Omitted field or `null` is absent; any valid T value is present. `()` at an array or a map site is present-and-empty. |
 | Union | Record with exactly one arm key and its arm-kind value; `()` is None. Example `(:amount 7)` or `(:ping null)` for a payload-free arm. Unknown arm is `text_unknown_key`, duplicate arm is `text_duplicate_key`, multiple different arms are `text_kind_mismatch`. |
 | `*T` | `null` or the pointee record, with sharing as below. |
 | `*bytes`, `*string`, `*wstring` | `null` or the corresponding string representation above, without a schema length bound; empty string is a present empty blob. |
