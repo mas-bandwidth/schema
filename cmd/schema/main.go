@@ -577,7 +577,7 @@ func main() {
 		if verbose {
 			fmt.Printf("uncooked %s into %s: %d wire bytes\n", *in, *out, len(wire))
 		}
- 	case "pin":
+	case "pin":
 		cmdPin(os.Args[2:])
 	case "new-leg", "newleg":
 		// A LANGUAGE-LEG SKELETON (docs/CONTRIBUTING.md, "Adding a language"):
@@ -650,8 +650,13 @@ func packTree(verb string, args []string) (string, []string) {
 
 // writeAtomic writes through a temporary beside the destination and renames it
 // into place, so a run that never reaches this line leaves nothing at all and a
-// half-written file is never observable.
+// half-written file is never observable. An existing file keeps its mode; a new
+// one is 0644, the mode every generated file in this tree carries.
 func writeAtomic(path string, data []byte) error {
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
 	if err != nil {
 		return err
@@ -667,7 +672,7 @@ func writeAtomic(path string, data []byte) error {
 		if err := tmp.Close(); err != nil {
 			return err
 		}
-		if err := os.Chmod(name, 0o644); err != nil {
+		if err := os.Chmod(name, mode); err != nil {
 			return err
 		}
 		return os.Rename(name, path)

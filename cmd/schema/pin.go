@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"flag"
 	"fmt"
 	iofs "io/fs"
 	"os"
@@ -28,18 +27,40 @@ func validPinVersion(v string) bool {
 	return pinSemver.MatchString(v) || pinPseudo.MatchString(v)
 }
 
+// splitPinArgs takes the flag out of the argument list wherever it sits:
+// `schema pin v2.8.0 a b c --mixed-ok` is the same command as the flag-first
+// spelling the usage line shows, because adopters type it both ways.
+func splitPinArgs(args []string) (pos []string, mixedOk bool) {
+	for _, arg := range args {
+		switch {
+		case arg == "--mixed-ok" || arg == "-mixed-ok":
+			mixedOk = true
+		case strings.HasPrefix(arg, "--mixed-ok=") || strings.HasPrefix(arg, "-mixed-ok="):
+			switch arg[strings.IndexByte(arg, '=')+1:] {
+			case "true":
+				mixedOk = true
+			case "false":
+				mixedOk = false
+			default:
+				fatalf("schema pin: --mixed-ok takes true or false")
+			}
+		default:
+			pos = append(pos, arg)
+		}
+	}
+	return pos, mixedOk
+}
+
 // cmdPin is `schema pin <version> <dir>...`: under each dir, for every
 // generate.go file, it rewrites the version in each line that starts with
 // pinPrefix to <version> and changes nothing else. It refuses by name a
 // version that is not a Go pseudo-version or semver tag, a directory that
-// does not exist, and a tree whose pins already differ from each other unless
-// --mixed-ok is given. It prints one line per file changed and exits 0, or
-// exits 1 having changed nothing on a refusal. No other file is touched.
+// does not exist or holds no pin line, and a tree whose pins already differ
+// from each other unless --mixed-ok is given. It prints one line per file
+// changed and exits 0, or exits 1 having changed nothing on a refusal. No
+// other file is touched.
 func cmdPin(args []string) {
-	fs := flag.NewFlagSet("pin", flag.ExitOnError)
-	mixedOk := fs.Bool("mixed-ok", false, "move a tree whose pins already differ from each other")
-	_ = fs.Parse(args)
-	pos := fs.Args()
+	pos, mixedOk := splitPinArgs(args)
 	if len(pos) < 1 {
 		fatalf("schema pin needs a version: schema pin <version> <dir>...")
 	}
@@ -58,6 +79,7 @@ func cmdPin(args []string) {
 		next []byte
 	}
 	var changes []change
+	var noPin []string
 	versions := map[string]bool{}
 	for _, dir := range dirs {
 		info, err := os.Stat(dir)
@@ -67,6 +89,7 @@ func cmdPin(args []string) {
 		if !info.IsDir() {
 			fatalf("schema pin: %s is not a directory", dir)
 		}
+		pins := 0
 		werr := filepath.WalkDir(dir, func(path string, d iofs.DirEntry, e error) error {
 			if e != nil {
 				return e
@@ -91,6 +114,7 @@ func cmdPin(args []string) {
 						tail = rest[end:]
 					}
 					versions[old] = true
+					pins++
 					out = append(out, pinPrefix+version+tail)
 				} else {
 					out = append(out, ln)
@@ -105,9 +129,15 @@ func cmdPin(args []string) {
 		if werr != nil {
 			fatalf("schema pin: %v", werr)
 		}
+		if pins == 0 {
+			noPin = append(noPin, dir)
+		}
 	}
 
-	if len(versions) > 1 && !*mixedOk {
+	if len(noPin) > 0 {
+		fatalf("schema pin: no go:generate pin to move under %s", strings.Join(noPin, ", "))
+	}
+	if len(versions) > 1 && !mixedOk {
 		names := make([]string, 0, len(versions))
 		for v := range versions {
 			names = append(names, v)

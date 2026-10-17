@@ -3675,9 +3675,11 @@ schema pin v2.6.0 .
 ```
 
 It refuses, by name, a version that is not a Go pseudo-version or semver tag,
-a directory that does not exist, and a tree whose pins already differ from
-each other (`--mixed-ok` accepts the tree and moves them together). Nothing
-else in the files moves, and no other file is touched.
+a directory that does not exist or holds no pin line (an empty directory is
+the same refusal, never a silent success), and a tree whose pins already
+differ from each other (`--mixed-ok` accepts the tree and moves them
+together; the flag may sit before or after the directories). Nothing else in
+the files moves, and no other file is touched.
 
 **A unit that declares only tables needs no dependency.** The generated Go
 imports the standard library alone, so the files drop into any Go module

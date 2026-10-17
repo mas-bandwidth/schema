@@ -8,8 +8,7 @@ import (
 )
 
 // writePinPkg writes a package directory with a generate.go named exactly as
-// an adopter's, holding pin lines of the form the Go adoption notes bless:
-// `//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@<ver> ...`.
+// an adopter's, holding pin lines of the form the Go adoption notes bless.
 func writePinPkg(t *testing.T, root, pkg, content string) string {
 	t.Helper()
 	dir := filepath.Join(root, pkg)
@@ -22,36 +21,39 @@ func writePinPkg(t *testing.T, root, pkg, content string) string {
 	return dir
 }
 
-const pinPkg1 = `package p1
+// pinDirective is assembled here so no line of THIS source file starts with
+// the directive: `go generate ./...` scans test files too, and a fixture
+// written as a column-0 raw-string line would be run as a real command.
+const pinDirective = "//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@"
 
-//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@v2.5.0 generate --lang go --out .
-//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@v2.5.0 generate --lang cpp --out generated
-// keep me exactly, trailing spaces and all   
-func Thing() {}
-`
+var (
+	pinPkg1 = "package p1\n\n" +
+		pinDirective + "v2.5.0 generate --lang go --out .\n" +
+		pinDirective + "v2.5.0 generate --lang cpp --out generated\n" +
+		"// keep me exactly, trailing spaces and all   \n" +
+		"func Thing() {}\n"
 
-const pinPkg2 = `package p2
+	pinPkg2 = "package p2\n\n" +
+		pinDirective + "v2.5.0 generate --lang go --out .\n" +
+		"// an ordinary comment that is not a pin\n" +
+		"func Other() {}\n"
 
-//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@v2.5.0 generate --lang go --out .
-// an ordinary comment that is not a pin
-func Other() {}
-`
+	pinPkg3 = "package p3\n\n" +
+		pinDirective + "v2.5.0 generate --lang go --out .\n" +
+		pinDirective + "v2.5.0\n" +
+		"func Last() {}\n"
 
-const pinPkg3 = `package p3
+	pinPkg4 = "package p4\n\n" +
+		pinDirective + "v2.6.0 generate --lang go --out .\n" +
+		"func Mixed() {}\n"
 
-//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@v2.5.0 generate --lang go --out .
-//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@v2.5.0
-func Last() {}
-`
+	pinPkgNoPin = "package p5\n\n" +
+		"// an ordinary comment that is not a pin\n" +
+		"func NoPin() {}\n"
+)
 
-const pinPkg4 = `package p4
-
-//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@v2.6.0 generate --lang go --out .
-func Mixed() {}
-`
-
-// funcTestPinMovesEveryGenerateLine drives the whole one-command move: every
-// pin moves, every other byte stays, each refusal exits 1 with the files
+// TestPinMovesEveryGenerateLine drives the whole one-command move: every pin
+// moves, every other byte stays, each refusal exits 1 with the files
 // unchanged.
 func TestPinMovesEveryGenerateLine(t *testing.T) {
 	t.Parallel()
@@ -98,6 +100,20 @@ func TestPinMovesEveryGenerateLine(t *testing.T) {
 		t.Errorf("pseudo-version target not honored: %q", got)
 	}
 
+	// rewriting an existing file keeps the mode it had; 0644 is only for a
+	// file the command creates
+	if err := os.Chmod(filepath.Join(p3, "generate.go"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run(t, bin, "pin", "v7.0.0", p3)
+	info, err := os.Stat(filepath.Join(p3, "generate.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Errorf("pinned generate.go mode = %04o, want 0600", got)
+	}
+
 	// REFUSALS: each exits 1 and leaves every file byte-identical.
 	assertTree := func() map[string]string {
 		m := map[string]string{}
@@ -141,7 +157,36 @@ func TestPinMovesEveryGenerateLine(t *testing.T) {
 		}
 	}
 
-	// 3. a tree whose pins already differ, without --mixed-ok
+	// 3. a directory with no pin line, and an empty one: refused by name,
+	// never silently accepted
+	unpinned := writePinPkg(t, root, "unpinned", pinPkgNoPin)
+	empty := filepath.Join(root, "empty")
+	if err := os.MkdirAll(empty, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	before = assertTree()
+	before[filepath.Join(unpinned, "generate.go")] = pinPkgNoPin
+	msg, status = runFail(t, bin, "pin", "v9.9.9", unpinned)
+	if status != 1 {
+		t.Fatalf("no-pin refusal exit %d, want 1\n%s", status, msg)
+	}
+	if !strings.Contains(msg, "unpinned") || !strings.Contains(msg, "no go:generate pin") {
+		t.Fatalf("no-pin refusal does not name the directory: %q", msg)
+	}
+	msg, status = runFail(t, bin, "pin", "v9.9.9", empty)
+	if status != 1 {
+		t.Fatalf("empty-dir refusal exit %d, want 1\n%s", status, msg)
+	}
+	if !strings.Contains(msg, "empty") || !strings.Contains(msg, "no go:generate pin") {
+		t.Fatalf("empty-dir refusal does not name the directory: %q", msg)
+	}
+	for f, data := range before {
+		if got := mustRead(t, f); got != data {
+			t.Errorf("no-pin refusal changed %s", f)
+		}
+	}
+
+	// 4. a tree whose pins already differ, without --mixed-ok
 	p4 := writePinPkg(t, root, "p4", pinPkg4)
 	before = assertTree()
 	before[filepath.Join(p4, "generate.go")] = pinPkg4
@@ -174,6 +219,14 @@ func TestPinMovesEveryGenerateLine(t *testing.T) {
 	}
 	if got := mustRead(t, filepath.Join(p1, "generate.go")); !strings.Contains(got, "v8.8.8 generate --lang go --out .") {
 		t.Errorf("--mixed-ok did not move p1's pin: %q", got)
+	}
+
+	// the flag may sit after the directories, as the usage line invites
+	run(t, bin, "pin", "v7.7.7", p1, p2, p4, "--mixed-ok")
+	for _, dir := range []string{p1, p2, p4} {
+		if got := mustRead(t, filepath.Join(dir, "generate.go")); !strings.Contains(got, "@v7.7.7 ") {
+			t.Errorf("trailing --mixed-ok did not move %s's pin: %q", dir, got)
+		}
 	}
 }
 
