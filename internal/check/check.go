@@ -2779,15 +2779,15 @@ func (c *checker) checkTables() {
 	c.checkWasInClosure()
 }
 
-// checkOptionalVariableClosures refuses an OPTIONAL whose value's closure is
-// VARIABLE-LENGTH — `?T` and `?[N]T`/`?[..N]T` where T declares or nests a
-// pointer — as a named follow-on (docs/SPEC-TABLES.md §2.3, §15). An absent
-// field is not an edge (§3.1), so the authoring walks (the numbering, the
-// pack, Lock's sizing) must gate on the presence companion before an optional
-// field may hold pointer edges; until that gating lands, the refusal is what
-// keeps the two writers byte-identical. The derivation mirrors
-// ir.VariableTables over the checker's own members, because the unit is not
-// assembled yet when this runs.
+// checkOptionalVariableClosures refuses an OPTIONAL ARRAY whose element's
+// closure is VARIABLE-LENGTH — `?[N]T`/`?[..N]T` where T declares or nests a
+// pointer — as a named follow-on (docs/SPEC-TABLES.md §2.3, §15). The SCALAR
+// `?T` over a variable closure is allowed: §2.3's rule gates every walk that
+// follows pointer edges on the presence companion, so an absent value owns no
+// node (§3.1); the array forms wait for that gate over each element, and a map
+// value is not lifted with it. The derivation mirrors ir.VariableTables over
+// the checker's own members, because the unit is not assembled yet when this
+// runs.
 // unionVariable mirrors ir.VariableTables' arm rule over the checker's own
 // members (docs/SPEC-TABLES.md §2.2, §2.6): a POINTER arm makes the holder
 // variable, as does an arm naming a variable member or an arm that is a union
@@ -2871,7 +2871,11 @@ func (c *checker) checkOptionalVariableClosures(names []string) {
 			if !ok || !variable[ref.Name] {
 				continue
 			}
-			c.errf(pos, "%s.%s: ? on a value whose closure is variable-length is a named follow-on — %s holds a pointer, an absent field is not an edge, and the authoring walks must gate on the presence companion before an optional field may hold pointer edges; drop the ?, or point at the table instead (docs/SPEC-TABLES.md §2.3, §15)",
+			// the SCALAR ?T is §2.3's gated construct: allowed
+			if f.Array == ir.ArrayNone && st.MapEntryOf == "" {
+				continue
+			}
+			c.errf(pos, "%s.%s: ? on a value whose closure is variable-length is a named follow-on — %s holds a pointer, and §2.3's presence gate is held for a scalar ?T only, not over each element of an optional array or a map value; drop the ?, or wrap the field in a table and make that optional (docs/SPEC-TABLES.md §2.3, §15)",
 				name, f.Name, ref.Name)
 		}
 	}
