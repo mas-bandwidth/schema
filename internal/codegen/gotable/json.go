@@ -71,13 +71,13 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	}
 	extra := tableJsonWideSource + tableJsonWStringSource + tableJsonGraphSource + tableJsonListSource + tableJsonMapSource + tableJsonMapDecimalSource + tableJsonTimestampSource + tableTimestampRuntime
 	b.WriteString("import (\n" + imports + ")\n\n")
-	b.WriteString(requiredJson(u, textListJson(u, strings.Replace(walk, "// ---- json walk: end ----", extra+"// ---- json walk: end ----", 1))))
+	b.WriteString(requiredJson(u, unboundedTextJson(u, textListJson(u, strings.Replace(walk, "// ---- json walk: end ----", extra+"// ---- json walk: end ----", 1)))))
 	if len(variableTableNames(u)) > 0 {
 		regionJson := tableRegionJsonSource
 		if unitHasContainers(u) {
 			regionJson = containerRegionJsonSource(regionJson)
 		}
-		b.WriteString(textListJson(u, regionJson))
+		b.WriteString(unboundedTextJson(u, textListJson(u, regionJson)))
 	}
 
 	// the per-member surface, in the order the closure declares it, so the
@@ -1593,12 +1593,26 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		in.report.Clamped++
 	}
 	if f.HasRange {
-		if float64(value) < f.RangeMin {
-			value = int64(f.RangeMin)
-			in.report.Clamped++
-		} else if float64(value) > f.RangeMax {
-			value = int64(f.RangeMax)
-			in.report.Clamped++
+		// an integer field clamps against its EXACT range (docs/SPEC-TABLES.md
+		// §8.1) so a bound past 2^53 is not degraded through a float64; float
+		// and fixed-point ranges keep the float64 pair
+		if isSigned {
+			if value < f.RangeIntMin {
+				value = f.RangeIntMin
+				in.report.Clamped++
+			} else if value > f.RangeIntMax {
+				value = f.RangeIntMax
+				in.report.Clamped++
+			}
+		} else {
+			uv := uint64(value)
+			if uv < f.RangeUintMin {
+				value = int64(f.RangeUintMin)
+				in.report.Clamped++
+			} else if uv > f.RangeUintMax {
+				value = int64(f.RangeUintMax)
+				in.report.Clamped++
+			}
 		}
 	}
 	// the field's own storage width is the last bound: a value past it clamps

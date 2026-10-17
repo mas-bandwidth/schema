@@ -130,7 +130,7 @@ func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
 		source = containerRegionSource(source)
 		source += tableContainerSource + tableMapSource
 	}
-	g.pf("%s", source)
+	g.pf("%s", unboundedTextRegion(g.unit, source))
 }
 func (g *tableGen) emitRegionMember(st *ir.Struct) {
 	n, typ := st.Name, g.storageName(st.Name)

@@ -276,6 +276,12 @@ type TableFieldInfo struct {
 	HasRange         bool      // a declared [min, max] (int or float)
 	RangeMin         float64   // NOTE: int64 ranges beyond 2^53 lose precision here
 	RangeMax         float64
+	// EXACT integer ranges (mas-bandwidth/schema docs/SPEC-TABLES.md §8.1): a signed integer kind
+	// fills RangeIntMin/RangeIntMax, an unsigned kind (and bits(N)) fills
+	// RangeUintMin/RangeUintMax, beside the float64 pair which stays for float
+	// and fixed-point ranges. Zero on every other field.
+	RangeIntMin, RangeIntMax   int64
+	RangeUintMin, RangeUintMax uint64
 
 	// EnumMax bounds the vocabulary: enums, the highest valid value (None = 0
 	// is always valid); unions, the arm count (tag range [0, EnumMax]); a
@@ -1351,6 +1357,8 @@ const (
 	TableFixedReasonTextIllFormed        = "text_ill_formed"
 	TableFixedReasonTruncated            = "truncated"
 	TableFixedReasonReservedNotZero      = "reserved_not_zero"
+	TableFixedReasonCountOverBound       = "count_over_bound"
+	TableFixedReasonLengthOverBound      = "length_over_bound"
 )
 
 const (
@@ -1729,6 +1737,12 @@ func tableFixedCopyRun(d, s []byte, n uint32) {
 }
 
 func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) string {
+	// REFUSE is total even for direct callers of the runner: the generated load
+	// performs this pre-scan too, but the compiled-plan tests and any future
+	// internal caller must not observe the old clamp-and-write path.
+	if why := tableFixedTextRefusal(plan, count, src); why != "" {
+		return why
+	}
 	// READ(plan, split, ...) (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.4): the plan is
 	// partitioned unguarded-first (§4.1), so the split is the first guarded
 	// index; entries below it run WITHOUT a guard test and only the guarded
@@ -1792,36 +1806,16 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 		case tableFixedCount:
 			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 {
-				v = 0
-				report.Clamped++
-			} else if v > int32(p.Size) {
-				v = int32(p.Size)
-				report.Clamped++
-			}
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 		case tableFixedText:
+			v := int32(tableFixedGet32(src[p.Src:]))
 			unit := uint32(1)
 			if p.Meta == tableFixedTextWide {
 				unit = 2
 			}
 			capn := p.Size / unit
-			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 {
-				v = 0
-				report.Clamped++
-			} else if uint32(v) > capn {
-				v = int32(capn)
-				report.Clamped++
-			}
-			// THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE, and a
-			// violation REFUSES BY NAME, the verdict the packet reader gives
-			// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8): the
-			// length above CLAMPS and counts; the bytes it kept are checked now,
-			// over v units and never over the span.
-			if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-				return TableFixedReasonTextIllFormed
-			}
+			// tableFixedTextRefusal above already proved the used extent and
+			// content; this path only lands the validated value and live bytes.
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 			tableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
 			if p.Meta != tableFixedTextBytes && uint32(v) < capn {
@@ -2055,24 +2049,20 @@ func tableFixedUnitsIllFormed(units []uint16) bool {
 	return false
 }
 
-// tableFixedTextRefusal is the text CONTENT refusal as a PRE-SCAN of the plan's
-// text entries, run before the caller's storage is touched. It walks each text
-// entry under its own guard, clamps its length exactly as the scatter will, and
-// answers the one name an ill-formed payload refuses with
-// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8). §5.8: "REFUSE
-// is total: no counter moves, nothing is decoded, and not one destination byte
-// is written — the prefill included", so the check lives here rather than only
-// inside the scatter, where an earlier entry's write would already have landed.
-// It writes nothing and moves no counter.
+// tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count and
+// text entries, run before the caller's storage is touched. A count or a text
+// length past the PLAN's bound refuses by name — count_over_bound /
+// length_over_bound — and an ill-formed payload refuses text_ill_formed
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11,
+// §5.8 row 8). REFUSE is total: no counter moves, nothing is decoded, and not
+// one destination byte is written. It walks each entry under its own guards,
+// writes nothing and moves no counter.
 func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
 	for i := int32(0); i < count; i++ {
 		p := plan[i]
-		if p.Op != tableFixedText {
-			continue
-		}
 		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2): an arm's
 		// entry runs only under its own tag, and one that does not run cannot
-		// refuse.
+		// refuse. An arm inside an arm answers the outer tag too (§4.1).
 		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
 			continue
 		}
@@ -2083,19 +2073,25 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
 			continue
 		}
-		unit := uint32(1)
-		if p.Meta == tableFixedTextWide {
-			unit = 2
-		}
-		capn := p.Size / unit
-		v := int32(tableFixedGet32(src[p.Src:]))
-		if v < 0 {
-			v = 0
-		} else if uint32(v) > capn {
-			v = int32(capn)
-		}
-		if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-			return TableFixedReasonTextIllFormed
+		switch p.Op {
+		case tableFixedCount:
+			v := int32(tableFixedGet32(src[p.Src:]))
+			if v < 0 || v > int32(p.Size) {
+				return TableFixedReasonCountOverBound
+			}
+		case tableFixedText:
+			unit := uint32(1)
+			if p.Meta == tableFixedTextWide {
+				unit = 2
+			}
+			capn := p.Size / unit
+			v := int32(tableFixedGet32(src[p.Src:]))
+			if v < 0 || uint32(v) > capn {
+				return TableFixedReasonLengthOverBound
+			}
+			if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
+				return TableFixedReasonTextIllFormed
+			}
 		}
 	}
 	return ""
@@ -9213,7 +9209,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "entity_id", Json: "entity_id", TypeName: "bits(12)", DeclaredTypeName: "bits(12)", Id: 0x23fcfd6678e36712, Kind: 7, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.EntityId)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.EntityId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, EnumMax: -1,
+		HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, RangeUintMin: 0, RangeUintMax: 4095, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9224,7 +9220,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "pos_x", Json: "pos_x", TypeName: "int32", DeclaredTypeName: "int32", Id: 0xcb4b37357667310e, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.PosX)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.PosX)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: -16383.0, RangeMax: 16383.0, EnumMax: -1,
+		HasRange: true, RangeMin: -16383.0, RangeMax: 16383.0, RangeIntMin: -16383, RangeIntMax: 16383, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9235,7 +9231,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "pos_y", Json: "pos_y", TypeName: "int32", DeclaredTypeName: "int32", Id: 0xcb4b3835766732c1, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.PosY)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.PosY)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 8, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: -16383.0, RangeMax: 16383.0, EnumMax: -1,
+		HasRange: true, RangeMin: -16383.0, RangeMax: 16383.0, RangeIntMin: -16383, RangeIntMax: 16383, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9246,7 +9242,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "pos_z", Json: "pos_z", TypeName: "int32", DeclaredTypeName: "int32", Id: 0xcb4b353576672da8, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.PosZ)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.PosZ)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 12, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: -16383.0, RangeMax: 16383.0, EnumMax: -1,
+		HasRange: true, RangeMin: -16383.0, RangeMax: 16383.0, RangeIntMin: -16383, RangeIntMax: 16383, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9257,7 +9253,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "yaw", Json: "yaw", TypeName: "bits(9)", DeclaredTypeName: "bits(9)", Id: 0xb54d8e19798e16e8, Kind: 7, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Yaw)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Yaw)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 16, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 0.0, RangeMax: 511.0, EnumMax: -1,
+		HasRange: true, RangeMin: 0.0, RangeMax: 511.0, RangeUintMin: 0, RangeUintMax: 511, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9268,7 +9264,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "pitch", Json: "pitch", TypeName: "bits(9)", DeclaredTypeName: "bits(9)", Id: 0x53a9f665a90cc1b1, Kind: 7, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Pitch)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Pitch)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 20, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 0.0, RangeMax: 511.0, EnumMax: -1,
+		HasRange: true, RangeMin: 0.0, RangeMax: 511.0, RangeUintMin: 0, RangeUintMax: 511, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9279,7 +9275,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "vel_x", Json: "vel_x", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x6cede6b6eb60ee67, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.VelX)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.VelX)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 24, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: -2048.0, RangeMax: 2047.0, EnumMax: -1,
+		HasRange: true, RangeMin: -2048.0, RangeMax: 2047.0, RangeIntMin: -2048, RangeIntMax: 2047, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9290,7 +9286,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "vel_y", Json: "vel_y", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x6cede5b6eb60ecb4, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.VelY)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.VelY)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 28, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: -2048.0, RangeMax: 2047.0, EnumMax: -1,
+		HasRange: true, RangeMin: -2048.0, RangeMax: 2047.0, RangeIntMin: -2048, RangeIntMax: 2047, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9301,7 +9297,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "vel_z", Json: "vel_z", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x6cede8b6eb60f1cd, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.VelZ)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.VelZ)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 32, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: -2048.0, RangeMax: 2047.0, EnumMax: -1,
+		HasRange: true, RangeMin: -2048.0, RangeMax: 2047.0, RangeIntMin: -2048, RangeIntMax: 2047, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9312,7 +9308,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "health", Json: "health", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x7f69d4b5288ba9cf, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Health)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Health)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 36, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 0.0, RangeMax: 1000.0, EnumMax: -1,
+		HasRange: true, RangeMin: 0.0, RangeMax: 1000.0, RangeIntMin: 0, RangeIntMax: 1000, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9381,7 +9377,7 @@ var TableStatTableFields = []TableFieldInfo{
 	{Name: "stat_id", Json: "stat_id", TypeName: "bits(8)", DeclaredTypeName: "bits(8)", Id: 0x80ab75f0866dbf65, Kind: 6, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableStat{}.StatId)), ElemSize: uint32(unsafe.Sizeof(TableStat{}.StatId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 0.0, RangeMax: 255.0, EnumMax: -1,
+		HasRange: true, RangeMin: 0.0, RangeMax: 255.0, RangeUintMin: 0, RangeUintMax: 255, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9392,7 +9388,7 @@ var TableStatTableFields = []TableFieldInfo{
 	{Name: "delta", Json: "delta", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x52076675ec13a0c1, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableStat{}.Delta)), ElemSize: uint32(unsafe.Sizeof(TableStat{}.Delta)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: -512.0, RangeMax: 511.0, EnumMax: -1,
+		HasRange: true, RangeMin: -512.0, RangeMax: 511.0, RangeIntMin: -512, RangeIntMax: 511, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9428,7 +9424,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "sequence", Json: "sequence", TypeName: "bits(16)", DeclaredTypeName: "bits(16)", Id: 0xaa38aca481f528a8, Kind: 7, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Sequence)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Sequence)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 0.0, RangeMax: 65535.0, EnumMax: -1,
+		HasRange: true, RangeMin: 0.0, RangeMax: 65535.0, RangeUintMin: 0, RangeUintMax: 65535, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9439,7 +9435,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "ack_sequence", Json: "ack_sequence", TypeName: "int32", DeclaredTypeName: "int32", Id: 0xdbe005c56697c3e, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.AckSequence)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.AckSequence)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 8, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 0.0, RangeMax: 65535.0, EnumMax: -1,
+		HasRange: true, RangeMin: 0.0, RangeMax: 65535.0, RangeIntMin: 0, RangeIntMax: 65535, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9450,7 +9446,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "ack_bits", Json: "ack_bits", TypeName: "bits(32)", DeclaredTypeName: "bits(32)", Id: 0x9bae0da8b829ee03, Kind: 8, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.AckBits)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.AckBits)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 12, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 0.0, RangeMax: 4.294967295e+09, EnumMax: -1,
+		HasRange: true, RangeMin: 0.0, RangeMax: 4.294967295e+09, RangeUintMin: 0, RangeUintMax: 4294967295, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9483,7 +9479,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "nonce", Json: "nonce", TypeName: "uint64", DeclaredTypeName: "uint64", Id: 0x73a94c71d60dc0d8, Kind: 9, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Nonce)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Nonce)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 32, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 1.0, RangeMax: 9.223372036854776e+18, EnumMax: -1,
+		HasRange: true, RangeMin: 1.0, RangeMax: 9.223372036854776e+18, RangeUintMin: 1, RangeUintMax: 9223372036854775807, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9494,7 +9490,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "world_time", Json: "world_time", TypeName: "int64", DeclaredTypeName: "int64", Id: 0x3eee6b51be54fc85, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.WorldTime)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.WorldTime)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 40, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: -1e+12, RangeMax: 1e+12, EnumMax: -1,
+		HasRange: true, RangeMin: -1e+12, RangeMax: 1e+12, RangeIntMin: -1000000000000, RangeIntMax: 1000000000000, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9505,7 +9501,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "frame_tick", Json: "frame_tick", TypeName: "bits(48)", DeclaredTypeName: "bits(48)", Id: 0x7bbc035f7b6d0112, Kind: 9, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.FrameTick)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.FrameTick)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 48, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 0.0, RangeMax: 2.81474976710655e+14, EnumMax: -1,
+		HasRange: true, RangeMin: 0.0, RangeMax: 2.81474976710655e+14, RangeUintMin: 0, RangeUintMax: 281474976710655, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9683,7 +9679,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "flux", Json: "flux", TypeName: "int64", DeclaredTypeName: "int64", Id: 0xd61bdd7908af2642, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Flux)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Flux)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1320, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: -1e+18, RangeMax: 1e+18, EnumMax: -1,
+		HasRange: true, RangeMin: -1e+18, RangeMax: 1e+18, RangeIntMin: -1000000000000000000, RangeIntMax: 1000000000000000000, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9705,7 +9701,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "crc_hint", Json: "crc_hint", TypeName: "bits(24)", DeclaredTypeName: "bits(24)", Id: 0x560d6527ccd8515f, Kind: 8, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.CrcHint)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.CrcHint)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1332, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 0.0, RangeMax: 1.6777215e+07, EnumMax: -1,
+		HasRange: true, RangeMin: 0.0, RangeMax: 1.6777215e+07, RangeUintMin: 0, RangeUintMax: 16777215, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9727,7 +9723,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "extra", Json: "extra", TypeName: "int32", DeclaredTypeName: "int32", Id: 0xfd29ee12a979cb69, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Extra)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Extra)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1340, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 0.0, RangeMax: 255.0, EnumMax: -1,
+		HasRange: true, RangeMin: 0.0, RangeMax: 255.0, RangeIntMin: 0, RangeIntMax: 255, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9738,7 +9734,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "idle_ticks", Json: "idle_ticks", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x78101ac0aa8cbcfe, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.IdleTicks)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.IdleTicks)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1344, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 0.0, RangeMax: 15.0, EnumMax: -1,
+		HasRange: true, RangeMin: 0.0, RangeMax: 15.0, RangeIntMin: 0, RangeIntMax: 15, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9763,7 +9759,7 @@ var TableHitEventTableFields = []TableFieldInfo{
 	{Name: "target_id", Json: "target_id", TypeName: "bits(12)", DeclaredTypeName: "bits(12)", Id: 0xb7bc9ac015a25050, Kind: 7, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.TargetId)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.TargetId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, EnumMax: -1,
+		HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, RangeUintMin: 0, RangeUintMax: 4095, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9774,7 +9770,7 @@ var TableHitEventTableFields = []TableFieldInfo{
 	{Name: "damage", Json: "damage", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x7f6308be8ab37fc0, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.Damage)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.Damage)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, EnumMax: -1,
+		HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, RangeIntMin: 0, RangeIntMax: 4095, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9785,7 +9781,7 @@ var TableHitEventTableFields = []TableFieldInfo{
 	{Name: "hit_kind", Json: "hit_kind", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x1fbc365b059b925, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.HitKind)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.HitKind)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 8, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 0.0, RangeMax: 7.0, EnumMax: -1,
+		HasRange: true, RangeMin: 0.0, RangeMax: 7.0, RangeIntMin: 0, RangeIntMax: 7, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9821,7 +9817,7 @@ var TableChatEventTableFields = []TableFieldInfo{
 	{Name: "channel", Json: "channel", TypeName: "int32", DeclaredTypeName: "int32", Id: 0xa5013e9ad5caeda4, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableChatEvent{}.Channel)), ElemSize: uint32(unsafe.Sizeof(TableChatEvent{}.Channel)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 0.0, RangeMax: 3.0, EnumMax: -1,
+		HasRange: true, RangeMin: 0.0, RangeMax: 3.0, RangeIntMin: 0, RangeIntMax: 3, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9832,7 +9828,7 @@ var TableChatEventTableFields = []TableFieldInfo{
 	{Name: "speaker", Json: "speaker", TypeName: "bits(12)", DeclaredTypeName: "bits(12)", Id: 0xfbf1ac4d96ebd022, Kind: 7, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableChatEvent{}.Speaker)), ElemSize: uint32(unsafe.Sizeof(TableChatEvent{}.Speaker)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, EnumMax: -1,
+		HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, RangeUintMin: 0, RangeUintMax: 4095, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9857,7 +9853,7 @@ var TablePickupEventTableFields = []TableFieldInfo{
 	{Name: "item_id", Json: "item_id", TypeName: "bits(10)", DeclaredTypeName: "bits(10)", Id: 0x9e7fd06d864fbd56, Kind: 7, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TablePickupEvent{}.ItemId)), ElemSize: uint32(unsafe.Sizeof(TablePickupEvent{}.ItemId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 0.0, RangeMax: 1023.0, EnumMax: -1,
+		HasRange: true, RangeMin: 0.0, RangeMax: 1023.0, RangeUintMin: 0, RangeUintMax: 1023, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -9868,7 +9864,7 @@ var TablePickupEventTableFields = []TableFieldInfo{
 	{Name: "amount", Json: "amount", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x8113fe7ea2b16969, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TablePickupEvent{}.Amount)), ElemSize: uint32(unsafe.Sizeof(TablePickupEvent{}.Amount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
-		HasRange: true, RangeMin: 0.0, RangeMax: 255.0, EnumMax: -1,
+		HasRange: true, RangeMin: 0.0, RangeMax: 255.0, RangeIntMin: 0, RangeIntMax: 255, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,

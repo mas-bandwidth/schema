@@ -171,7 +171,7 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	}
 	g.pf("%s", core)
 	// the retaining MESSAGE read is the message form's, beside the plain one
-	if message != "" {
+	if message != "" && g.messageCarries(st) {
 		g.into(&g.message, func() { g.pf("%s", message) })
 	}
 	g.needsMath = g.needsMath || side.needsMath

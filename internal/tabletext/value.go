@@ -34,6 +34,9 @@ type Report struct {
 	Clamped   int
 	Duplicate int
 	Malformed bool
+	// Reason names the rule a Malformed read refused, where the rule has a
+	// name: `timestamp_not_rfc3339: <field>` is §16.2's named refusal.
+	Reason string
 	// Refused is the VERDICT, not one of §4's events (docs/SPEC-TABLES.md §3):
 	// a FORM BYTE this reader does not carry. It moves no counter and reports
 	// no damage, so without it a refusal and a clean read are the same answer.
@@ -63,6 +66,9 @@ func (r *Report) Add(o Report) {
 	r.Clamped += o.Clamped
 	r.Duplicate += o.Duplicate
 	r.Malformed = r.Malformed || o.Malformed
+	if o.Reason != "" {
+		r.Reason = o.Reason
+	}
 	r.Retained += o.Retained
 	r.RetainLost += o.RetainLost
 }

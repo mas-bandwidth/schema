@@ -49,6 +49,10 @@ func (g *tableGen) textValueHolder(f *ir.Field) string {
 // own L, then L bytes of well-formed UTF-8 with no zero byte, clamped at M on a
 // code point boundary and counted, the field named in the report.
 func (g *tableGen) emitReadTextElement(f *ir.Field, expr, ind string) {
+	if ir.TextListUnbounded(f) {
+		g.emitReadUnboundedTextElement(f, expr, ind) // §2.13.1
+		return
+	}
 	v := ir.TextListValue(f)
 	m := v.Type.Size
 	value := expr + "." + member(v)
@@ -61,6 +65,10 @@ func (g *tableGen) emitReadTextElement(f *ir.Field, expr, ind string) {
 // emitTextListSurface emits a text list's accessors (§2.13): TextAt, Append and,
 // for the ? spelling, AppendAbsent.
 func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
+	if ir.TextListUnbounded(f) {
+		g.emitUnboundedTextListSurface(st, f) // §2.13.1
+		return
+	}
 	name := st.Name + ir.GoExportName(f.Name)
 	storage := g.storageName(st.Name)
 	elem := f.Type.Name

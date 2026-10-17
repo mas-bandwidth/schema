@@ -229,6 +229,7 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 		goRuntimeSrc + "\ntable Drift {ratio float64\n}\n",
 		goRuntimeSrc + "\ntable Texts {words []string(8)\n}\n",
 		goRuntimeSrc + "\ntable Needs {id int32 | required\n}\n",
+		goRuntimeSrc + "\ntable Unbounded {words []string\nkeys map[string]int32\n}\n",
 	} {
 		for name, data := range goFiles(t, source) {
 			files[fmt.Sprintf("%d/%s", i, name)] = data

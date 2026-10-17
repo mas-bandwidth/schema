@@ -201,6 +201,11 @@ jobs:
       - name: fuzz seeds
         run: go test ./internal/fuzz/
 
+      # The nightly long run of the table-front-end fuzz target. Bounded to
+      # ten minutes of fuzzing; it never runs in ci-fast or ci-full.
+      - name: fuzz tables front end
+        run: make fuzz-tables-go FUZZTIME=10m
+
   # EVERY PORT'S RELEASE GATE, by name. A port whose `make test` half had to
   # stay cheap puts its expensive half — the soak, the allocation gate at
   # scale, the fuzz oracle's own negative control — behind one

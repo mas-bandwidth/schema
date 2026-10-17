@@ -48,7 +48,7 @@ func (c *checker) resolveTextListField(owner string, f *ast.Field, inTable bool)
 		return nil
 	}
 	if f.Array.Kind == ast.ArrayFixed || f.Array.Kind == ast.ArrayRange {
-		c.errf(f.Pos, "field %s: %s is refused — a text list is COUNTED, so a fixed extent, an enum key or a lower bound names a count that cannot vary the way a list's does; spell it [..N]string(M) (docs/SPEC-TABLES.md §2.13, §11)", f.Name, spelling)
+		c.errf(f.Pos, "field %s: %s is refused — a text list is COUNTED, so a fixed extent, an enum key or a lower bound names a count that cannot vary the way a list's does; spell it [..N]%s (docs/SPEC-TABLES.md §2.13, §2.13.1, §11)", f.Name, spelling, textElemSpelling(f))
 		return nil
 	}
 	if f.Default != nil {
@@ -78,7 +78,12 @@ func (c *checker) resolveTextListField(owner string, f *ast.Field, inTable bool)
 	vf := &ast.Field{Name: ir.TextListValueFieldName, Pos: f.Pos, Type: f.Type}
 	vf.Type.Optional = false
 	vf.Type.ElemOptional = false
+	// an UNBOUNDED element, `[]string` (§2.13.1), resolves through the same
+	// path, which takes the bare word here and nowhere else
+	saved := c.unboundedText
+	c.unboundedText = true
 	value := c.resolveField(elemName, vf, true)
+	c.unboundedText = saved
 	if value == nil {
 		return nil
 	}
@@ -139,7 +144,34 @@ func textListSpelling(f *ast.Field) string {
 	if f.Type.ElemOptional {
 		bound += "?"
 	}
-	return bound + "string(M)"
+	return bound + textElemSpelling(f)
+}
+
+// textElemSpelling is the element as written: `string(M)`, or the bare
+// `string` of an unbounded element (§2.13.1).
+func textElemSpelling(f *ast.Field) string {
+	if f.Type.Unbounded {
+		return "string"
+	}
+	return "string(M)"
+}
+
+// refuseBareString refuses a bare `string` wherever it is not a text-list
+// element or a map key (docs/SPEC-TABLES.md §2.13.1, §11), naming the route.
+func (c *checker) refuseBareString(owner string, f *ast.Field, inTable bool) {
+	st := c.tables[owner]
+	switch {
+	case c.arm != "":
+		c.errf(f.Type.Pos, "%s: a bare `string` is not an arm — unbounded text is a plain table's text-list element ([]string) or map key (map[string]V) and nothing else; declare string(N) for inline text or *string for a buffer at its used size (docs/SPEC-TABLES.md §2.13.1, §2.6, §11)", c.arm)
+	case c.mapValue:
+		c.errf(f.Type.Pos, "field %s: a map VALUE of bare `string` is refused — unbounded text is a text-list element or a map KEY; declare the value string(N) or *string, or wrap the text in a table (docs/SPEC-TABLES.md §2.13.1, §2.8, §11)", f.Name)
+	case !inTable:
+		c.errf(f.Type.Pos, "field %s: a bare `string` in a `type` body or a packet is refused — the type wire carries no unbounded text (SPEC.md §4.6); declare string(N), or move the field to a plain `table` (docs/SPEC-TABLES.md §2.13.1, §11)", f.Name)
+	case st != nil && st.FixedDeclared:
+		c.errf(f.Type.Pos, "fixed table %s: field %s is a bare `string`, and unbounded text is a VARIABLE-table construct — declare string(N), or drop `fixed` from %s and hold the text as []string or a map[string]V key in a plain `table` (docs/SPEC-TABLES.md §2.13.1, §2.2, §11)", owner, f.Name, owner)
+	default:
+		c.errf(f.Type.Pos, "field %s: a bare `string` has no bound, and only a text-list element ([]string, [..N]string) and a map key (map[string]V) may be unbounded text; declare string(N) for inline text, or *string for a buffer at its used size (docs/SPEC-TABLES.md §2.13.1, §2.5, §11)", f.Name)
+	}
 }
 
 // tableJsonRoot reads a table line's `json = "array"` (docs/SPEC-TABLES.md

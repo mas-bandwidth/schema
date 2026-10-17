@@ -46,6 +46,12 @@ type checker struct {
 	unions   map[string]*ir.Union
 	tables   map[string]*ir.Struct // `table` declarations (docs/SPEC-TABLES.md)
 
+	// unboundedText is set while a text-list ELEMENT or a map KEY resolves
+	// (docs/SPEC-TABLES.md §2.13.1): the two places a bare `string` stands.
+	// mapValue is set while a map VALUE resolves, so a bare `string` there is
+	// refused naming the value.
+	unboundedText, mapValue bool
+
 	// the GENERATED entry tables of the `map` fields resolved so far, in
 	// synthesis order — innermost first, so a header emitting them in list
 	// order declares an inner entry before the outer one that holds it
@@ -1594,6 +1600,17 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 				return nil
 			}
 		}
+		if f.Type.Unbounded && !f.Type.Pointer {
+			// a bare `string` — UNBOUNDED text (docs/SPEC-TABLES.md §2.13.1):
+			// legal as a text-list element and a map key, through this one
+			// path, and refused by name everywhere else
+			if !c.unboundedText {
+				c.refuseBareString(owner, f, inTable)
+				return nil
+			}
+			out.Type = ir.FieldType{Kind: ir.TString, Unbounded: true}
+			break
+		}
 		if f.Type.Pointer {
 			// `*bytes` / `*string` — a BYTE BUFFER at its used size
 			// (docs/SPEC-TABLES.md §2.5): a pointer to a blob node, under
@@ -1784,7 +1801,7 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		}
 	}
 
-	c.resolveAttrs(f, out)
+	c.resolveAttrsInTable(f, out, inTable)
 	if out.Required {
 		if !inTable {
 			c.errf(f.Pos, "field %s: | required is refused on a `type` field — a type's wire is positional and every field always rides, so there is no absence for a required marker to cure; move the field to a table body (docs/SPEC-TABLES.md §2.3)", f.Name)
@@ -2065,7 +2082,14 @@ func scalarName(k ir.FieldTypeKind) string {
 	return "?"
 }
 
+// resolveAttrs reads a `type` body's or packet field's attributes. A table
+// field goes through resolveAttrsInTable, which knows the owner's kind (the
+// one-sided integer range is a table spelling, docs/SPEC-TABLES.md §4.3).
 func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
+	c.resolveAttrsInTable(f, out, false)
+}
+
+func (c *checker) resolveAttrsInTable(f *ast.Field, out *ir.Field, inTable bool) {
 	// the section's tags, and its valued entries with every refusal the
 	// vocabulary shares already drawn (a bare valued key, doc, round, an
 	// unknown or repeated key), so nothing below meets a nil value
@@ -2148,7 +2172,18 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 			c.errf(f.Pos, "field %s: the compressed float is float32 (SPEC §4.3)", f.Name)
 			return
 		}
-		if !hasMin || !hasMax || !hasRes {
+		if hasMin != hasMax {
+			// a one-sided float range — with or without resolution beside it — is
+			// refused by name: a compressed float needs the whole triple
+			// (SPEC §4.6)
+			if hasRes {
+				c.errf(f.Pos, "field %s: a one-sided range beside resolution is refused — a float range is min, max and resolution, all three together (SPEC §4.6)", f.Name)
+			} else {
+				c.errf(f.Pos, "field %s: a one-sided float range is refused — a float range is min, max and resolution, all three together (SPEC §4.6)", f.Name)
+			}
+			return
+		}
+		if !hasMin || !hasRes {
 			c.errf(f.Pos, "field %s: a float range is min, max and resolution, all three together (SPEC §4.6)", f.Name)
 			return
 		}
@@ -2226,8 +2261,47 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 	}
 
 	if hasMin != hasMax {
-		c.errf(f.Pos, "field %s: min without max (or vice versa) is a compile error (SPEC §4.6)", f.Name)
-		return
+		if inTable && isInt && out.Type.Width != 128 {
+			// A one-sided range on an integer table field IS the two-sided
+			// declaration: the type's own limit stands in for the missing side
+			// (docs/SPEC-TABLES.md §4, SPEC §4.6). The filled spelling is byte
+			// identical to spelling both sides, so the checkers' two-sided path
+			// below runs unchanged.
+			out.RangeOneSided = true
+			lo, hi := storageBounds(out.Type.Signed, out.Type.Width)
+			side := byKey["min"]
+			if !hasMin {
+				side = byKey["max"]
+				byKey["min"] = &ast.Attr{Key: "min", Pos: side.Pos, Value: &ast.IntLit{Pos: side.Pos, Value: lo, Text: lo.String()}}
+			} else {
+				byKey["max"] = &ast.Attr{Key: "max", Pos: side.Pos, Value: &ast.IntLit{Pos: side.Pos, Value: hi, Text: hi.String()}}
+			}
+			hasMin, hasMax = true, true
+		} else {
+			side := byKey["min"]
+			if !hasMin {
+				side = byKey["max"]
+			}
+			switch {
+			case !inTable:
+				// the sentence the SPEC has always carried — a one-sided range is
+				// a compile error on a type body or a packet field (SPEC §4.6)
+				c.errf(f.Pos, "field %s: min without max (or vice versa) is a compile error (SPEC §4.6)", f.Name)
+			case out.Type.Timestamp:
+				c.errf(side.Pos, "field %s: a one-sided range is not valid on timestamp — every count of nanoseconds is a legal time (SPEC §4.13)", f.Name)
+			case out.Type.Kind == ir.TNamed:
+				c.errf(side.Pos, "field %s: a one-sided range is not valid on %s — a field that indexes a declared set derives its range from the set (SPEC §4.2)", f.Name, out.Type.Name)
+			case isFixed:
+				c.errf(side.Pos, "field %s: a one-sided range is not valid on fixed point — a fixed-point range always spells both bounds (SPEC §4.6)", f.Name)
+			case isInt && out.Type.Width == 128 && !out.Type.Signed:
+				c.errf(side.Pos, "field %s: a one-sided range is not valid on uint128 — it is the raw 128-bit field; a ranged 128-bit integer always spells both bounds (SPEC §4.3)", f.Name)
+			case isInt && out.Type.Width == 128:
+				c.errf(side.Pos, "field %s: a one-sided range is not valid on int128 — a ranged 128-bit integer always spells both bounds (SPEC §4.3)", f.Name)
+			default:
+				c.errf(f.Pos, "field %s: min without max (or vice versa) is a compile error (SPEC §4.6)", f.Name)
+			}
+			return
+		}
 	}
 	if hasMin && hasMax {
 		if !isInt && !isFixed {

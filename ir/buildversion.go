@@ -338,6 +338,10 @@ func cookFacts(u *Unit, fl FieldLayout, enums map[string]*Enum, flags map[string
 		fmt.Fprintf(&b, " elem=%d array=unbounded", elementPiece(u, f).size)
 	case f.Type.Blob():
 		// a byte buffer has no capacity: its blob node is exactly its size
+	case f.Type.TextUnbounded():
+		// UNBOUNDED TEXT has no capacity either (docs/SPEC-TABLES.md §2.13.1,
+		// §20.2): its own token, so the line is no string(M)'s line
+		b.WriteString(" text=unbounded")
 	case f.Type.Kind == TString, f.Type.Kind == TBytes:
 		// a string's and a bytes' CAPACITY, which §20.1 files beside an
 		// array's bound for the same reason: it is the extent the storage took

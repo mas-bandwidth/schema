@@ -22,7 +22,7 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 // names sorted, each name then its bytes. The go digest moved once, on
 // purpose, with the strict plain read names (docs/SPEC-TABLES.md §6.5).
 var neitherDigest = map[string]string{
-	"go":  "1fc887f2d06b07b92a5a3a859b3d8710993161081d40f9e6ae149c81d148b103",
+	"go":  "8e8e955802691c44f6e88eec7d5fc15cbda9311d0d1e4c23bb903678630182c4",
 	"cpp": "5aabda2cf12ca342bd480b18084def13f06d87a85b6bdddeea12f955f761da1d",
 }
 
