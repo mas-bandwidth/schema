@@ -769,17 +769,11 @@ func FormatFloat(v float64) string {
 	return s
 }
 
-// FormatFloat32 renders a float32-precision literal: the shortest form that
-// parses to exactly float32(v), which a Luau double holds exactly (f32 ⊂ f64)
-// — the stored value is already the rounded one (docs/PORT-LUAU.md, BYTE
-// BUFFERS).
+// FormatFloat32 renders a float32 value as the Luau literal of float32(v)
+// held as a double (f32 ⊂ f64): the shortest form that parses AS A DOUBLE to
+// exactly float32(v), so the stored value is already the rounded one, as
+// Go's float32(v) computes it (docs/PORT-LUAU.md, BYTE BUFFERS). The
+// shortest float32 form ("0.1") would parse in Luau to the unrounded double.
 func FormatFloat32(v float64) string {
-	if math.IsInf(v, 0) || math.IsNaN(v) {
-		return FormatFloat(v)
-	}
-	s := strconv.FormatFloat(v, 'g', -1, 32)
-	if !strings.ContainsAny(s, ".eE") {
-		s += ".0"
-	}
-	return s
+	return FormatFloat(float64(float32(v)))
 }

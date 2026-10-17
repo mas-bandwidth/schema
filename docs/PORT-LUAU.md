@@ -54,7 +54,7 @@ few bits it rides in.
 | `int128` (ranged), `uint128` | `Int128` = `{ lo: integer, hi: integer }`, the low half first, as the wire orders it | `_Rt.int128(lo, hi)` |
 | `bits(N)` | `number` for N ≤ 32, `integer` for N > 32 | `0` / `0i` |
 | `fixed(I, F)`, `ufixed(I, F)` | the RAW scaled integer at its storage width I+F: `number` ≤ 32, `integer` at 64, `Int128` at 128 | the default's raw value |
-| `float32` | `number` holding the float32 value exactly (f32 ⊂ f64) | the default, rendered as the shortest literal that parses to `float32(v)` |
+| `float32` | `number` holding the float32 value exactly (f32 ⊂ f64) | the default rounded as Go's `float32(v)`, rendered as the shortest literal that parses AS A DOUBLE to it (never the shortest float32 text, which Luau reads as the unrounded double); pinned by TestLuauFloat32DefaultsRoundAsGo |
 | `float32 \| min, max, resolution` | `number` — the attributes describe the wire, not the storage | as `float32` |
 | `float64` | `number` | `0`, or the default |
 | an enum `E` | `number`; `M.E` is a frozen table `{ None = 0, <variants> = 1.., Count, Max }` and `M.EnumNameE(v)` names a value | the default variant's number, else `0` (None) |

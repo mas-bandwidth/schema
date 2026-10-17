@@ -1,11 +1,14 @@
 package luau
 
 import (
+	"encoding/binary"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -238,4 +241,207 @@ func TestLuauRequiresResolveInsideTheUnitOnly(t *testing.T) {
 	if out := string(luaurun.Run(t, outside, filepath.Join("unit", "reach.luau"), nil)); !strings.Contains(out, "SHADOW LOADED") {
 		t.Fatalf("the control did not reach the planted shadow: %q", out)
 	}
+}
+
+// TestLuauFloat32DefaultsRoundAsGo pins the float32 ruling of
+// docs/PORT-LUAU.md, BYTE BUFFERS: a float32 field holds the nearest float32
+// to its value, as Go's float32(v) computes it, and a float64 sibling keeps
+// the double. A float32 field defaulting to 0.1 must construct to
+// float32(0.1) = 0.10000000149011612 while the float64 field stays 0.1; and
+// the runtime's _Rt.fround, which every float32 write goes through, must
+// agree bit for bit with Go's float32(v) over 0.1, the two round-half-even
+// ties above 1.0, 3.5e38 (past the float32 range, so +inf), -inf and NaN.
+func TestLuauFloat32DefaultsRoundAsGo(t *testing.T) {
+	t.Parallel()
+	src := t.TempDir()
+	writeFile(t, src, "Tuning.schema", "package tuning\n\ntype Tuning\n{\n    gain  float32 = 0.1\n    exact float64 = 0.1\n}\n")
+	files, err := Generate(unitFromDir(t, src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the probes: each a double Go converts with float32(v)
+	probes := []float64{
+		0.1,
+		1 + math.Ldexp(1, -24),   // halfway between 1 and 1+2^-23: the tie goes to the even 1
+		1 + 3*math.Ldexp(1, -24), // halfway between 1+2^-23 and 1+2^-22: the tie goes to the even 1+2^-22
+		3.5e38,                   // past float32's largest finite value: +inf
+		math.Inf(-1),
+		math.NaN(),
+	}
+	inputs := map[string][]byte{}
+	var main strings.Builder
+	main.WriteString(luaurun.HexProbe)
+	main.WriteString("local T = require(\"./Tuning\")\nlocal R = require(\"./schema_runtime\")\nlocal inputs = require(\"./inputs\")\n")
+	main.WriteString("local b = buffer.create(8)\nlocal function bits(x: number) buffer.writef64(b, 0, x); hex(b) end\n")
+	main.WriteString("local v = T.NewTuning()\nbits(v.Gain)\nbits(v.Exact)\n")
+	for i, p := range probes {
+		name := fmt.Sprintf("p%d", i)
+		inputs[name] = binary.LittleEndian.AppendUint64(nil, math.Float64bits(p))
+		fmt.Fprintf(&main, "bits(R.fround(buffer.readf64(inputs[%q], 0)))\n", name)
+	}
+	dir := t.TempDir()
+	writeAll(t, dir, files)
+	writeFile(t, dir, "main.luau", main.String())
+	lines := luaurun.HexLines(t, luaurun.Run(t, dir, "main.luau", inputs))
+	if len(lines) != 2+len(probes) {
+		t.Fatalf("main.luau printed %d lines, want %d", len(lines), 2+len(probes))
+	}
+	got := func(i int) float64 { return math.Float64frombits(binary.LittleEndian.Uint64(lines[i])) }
+	tenth := 0.1
+	if g, w := got(0), float64(float32(tenth)); math.Float64bits(g) != math.Float64bits(w) {
+		t.Errorf("float32 default 0.1 constructed to %v, want Go's float32(0.1) = %v", g, w)
+	}
+	if g := got(1); g != tenth {
+		t.Errorf("float64 default 0.1 constructed to %v, want 0.1 unrounded", g)
+	}
+	for i, p := range probes {
+		g, w := got(2+i), float64(float32(p))
+		if math.IsNaN(w) {
+			if !math.IsNaN(g) {
+				t.Errorf("fround(%v) = %v, want NaN", p, g)
+			}
+			continue
+		}
+		if math.Float64bits(g) != math.Float64bits(w) {
+			t.Errorf("fround(%v) = %v, want Go's float32(v) = %v", p, g, w)
+		}
+	}
+}
+
+// TestLuauRuntimeRefusesWithoutIntegerType pins the integer gate of
+// docs/PORT-LUAU.md, 64-BIT AND 128-BIT INTEGERS: a Luau with no integer type
+// refuses at load, by name, never later as a wrong value. The runtime is
+// loaded with loadstring under a stripped environment that lacks the integer
+// library (setting integer = nil in a caller does not reach a required
+// module's environment); the control is the same environment with integer
+// put back, which loads.
+func TestLuauRuntimeRefusesWithoutIntegerType(t *testing.T) {
+	t.Parallel()
+	rt, ok := Runtime()["schema_runtime.luau"]
+	if !ok {
+		t.Fatalf("Runtime() has no schema_runtime.luau: %v", keysOf(Runtime()))
+	}
+	dir := t.TempDir()
+	writeFile(t, dir, "main.luau", `local inputs = require("./inputs")
+local src = buffer.tostring(inputs.runtime)
+local function load(withInteger: boolean)
+	local env: { [string]: any } = { typeof = typeof, error = error, buffer = buffer, table = table }
+	if withInteger then
+		env.integer = integer
+	end
+	local chunk = assert(loadstring(src, "=schema_runtime"))
+	setfenv(chunk, env)
+	return pcall(chunk)
+end
+local ok, err = load(false)
+print(if ok then "LOADED" else "REFUSED " .. tostring(err))
+local ok2, r = load(true)
+print(if ok2 then "LOADED " .. typeof(r) else "REFUSED " .. tostring(r))
+`)
+	out := strings.Split(strings.TrimRight(string(luaurun.Run(t, dir, "main.luau", map[string][]byte{"runtime": rt})), "\n"), "\n")
+	if len(out) != 2 {
+		t.Fatalf("main.luau printed %q", out)
+	}
+	if want := "schema: this Luau has no integer type"; !strings.HasPrefix(out[0], "REFUSED ") || !strings.Contains(out[0], want) {
+		t.Errorf("without the integer type the runtime printed %q, want a refusal naming %q", out[0], want)
+	}
+	if out[1] != "LOADED table" {
+		t.Errorf("the control (integer present) printed %q, want LOADED table", out[1])
+	}
+}
+
+// TestLuauEveryScalarFieldIsBornAtItsIRDefault checks every scalar field of
+// every examples/ type against the IR, not hand-picked values: a bool is its
+// default or false, an integer of 32 bits or fewer its DefInt or 0, a float32
+// float32(DefFloat), a float64 DefFloat, an enum its default variant or 0
+// (SPEC §5; docs/PORT-LUAU.md, THE TYPE MAPPING). The expected literals come
+// from the IR here, never from the emitter.
+func TestLuauEveryScalarFieldIsBornAtItsIRDefault(t *testing.T) {
+	t.Parallel()
+	u := unitFromDir(t, filepath.Join("..", "..", "..", "examples"))
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var main strings.Builder
+	for _, f := range u.Files {
+		fmt.Fprintf(&main, "local %s = require(\"./%s\")\n", f.Base, f.Base)
+	}
+	main.WriteString("local checked, bad = 0, {}\nlocal function check(what: string, ok: boolean) checked += 1; if not ok then table.insert(bad, what) end end\n")
+	n := 0
+	for _, file := range u.Files {
+		for _, d := range file.Decls {
+			s, ok := d.(*ir.Struct)
+			if !ok {
+				continue
+			}
+			for _, f := range s.Fields {
+				if f.Array != ir.ArrayNone || f.IsMap() || f.Type.Pointer {
+					continue
+				}
+				want := irDefault(u, file.Base, f)
+				if want == "" {
+					continue
+				}
+				slot := ir.GoExportName(f.Name)
+				fmt.Fprintf(&main, "check(%q, %s.New%s().%s == %s)\n", s.Name+"."+slot+" == "+want, file.Base, s.Name, slot, want)
+				n++
+			}
+		}
+	}
+	main.WriteString("for _, b in bad do print(\"BAD \" .. b) end\nprint(\"checked \" .. checked)\n")
+	if n == 0 {
+		t.Fatal("examples/ declared no scalar fields")
+	}
+	dir := t.TempDir()
+	writeAll(t, dir, files)
+	writeFile(t, dir, "main.luau", main.String())
+	if out, want := string(luaurun.Run(t, dir, "main.luau", nil)), fmt.Sprintf("checked %d\n", n); out != want {
+		t.Fatalf("main.luau printed %q, want %q", out, want)
+	}
+}
+
+// irDefault is the Luau literal a scalar field is born at, computed from the
+// IR alone; "" for a kind this check does not cover (64-bit and wider
+// integers, flags, strings, composites, non-finite floats).
+func irDefault(u *ir.Unit, base string, f *ir.Field) string {
+	t := f.Type
+	switch t.Kind {
+	case ir.TBool:
+		return strconv.FormatBool(f.HasDefault && f.DefBool)
+	case ir.TInt, ir.TBits, ir.TFixed:
+		if t.Width > 32 {
+			return ""
+		}
+		if f.HasDefault && f.DefInt != nil {
+			return f.DefInt.String()
+		}
+		return "0"
+	case ir.TFloat32, ir.TFloat64:
+		v := 0.0
+		if f.HasDefault {
+			v = f.DefFloat
+		}
+		if t.Kind == ir.TFloat32 {
+			v = float64(float32(v))
+		}
+		if math.IsInf(v, 0) || math.IsNaN(v) {
+			return ""
+		}
+		return strconv.FormatFloat(v, 'g', -1, 64)
+	case ir.TNamed:
+		e, ok := t.Ref.(*ir.Enum)
+		if !ok {
+			return ""
+		}
+		if !f.HasDefault {
+			return "0"
+		}
+		mod := base
+		if df, ok := u.DeclFile[e.Name]; ok {
+			mod = df
+		}
+		return mod + "." + e.Name + "." + f.DefVariant
+	}
+	return ""
 }
