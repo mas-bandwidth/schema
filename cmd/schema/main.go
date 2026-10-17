@@ -15,6 +15,7 @@
 //	schema uncook     --root T --in C --out F        the cook becomes the wire again
 //	schema version                                   print the build identity
 //	schema new-leg    <lang> [--root .] [--verbose]  write a language-leg skeleton
+//	schema pin        <version> <dir>... [--mixed-ok]  move every go:generate pin to <version>
 //
 // Every command here is a few lines over the public API in
 // github.com/mas-bandwidth/schema/v2/compiler: this binary holds the CLI's
@@ -587,6 +588,8 @@ func main() {
 		if verbose {
 			fmt.Printf("uncooked %s into %s: %d wire bytes\n", *in, *out, len(wire))
 		}
+	case "pin":
+		cmdPin(os.Args[2:])
 	case "new-leg", "newleg":
 		// A LANGUAGE-LEG SKELETON (docs/CONTRIBUTING.md, "Adding a language"):
 		// files, makefile, harness, one passing fixture. Not a codec. The
@@ -658,8 +661,13 @@ func packTree(verb string, args []string) (string, []string) {
 
 // writeAtomic writes through a temporary beside the destination and renames it
 // into place, so a run that never reaches this line leaves nothing at all and a
-// half-written file is never observable.
+// half-written file is never observable. An existing file keeps its mode; a new
+// one is 0644, the mode every generated file in this tree carries.
 func writeAtomic(path string, data []byte) error {
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
 	if err != nil {
 		return err
@@ -675,7 +683,7 @@ func writeAtomic(path string, data []byte) error {
 		if err := tmp.Close(); err != nil {
 			return err
 		}
-		if err := os.Chmod(name, 0o644); err != nil {
+		if err := os.Chmod(name, mode); err != nil {
 			return err
 		}
 		return os.Rename(name, path)
@@ -738,6 +746,7 @@ func usage() {
   schema uncook     --root <Table> --in  <file.cook> --out <file> [--attribution <file>] [--verbose] [dir|files...]
   schema version
   schema new-leg    <lang> [--root .] [--verbose]
+  schema pin        <version> <dir>... [--mixed-ok]
 
 check handed a SAVED FILE rather than a schema source answers its FORM BYTE
 first, on one line — FORM 1 the variable form, FORM 2 the message form, FORM 3
