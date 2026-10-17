@@ -4262,7 +4262,7 @@ key does not replace one.
 **WHAT IT ENTERS, AND WHAT IT DOES NOT.** The key is part of the table's
 declaration, so every build of the unit agrees on it. It is **not** part of
 the projection (SPEC §3.1), **not** part of the build version (§20), **not**
-in the fixed-table lock (§2.10: the key is refused on a `fixed table`, below)
+in the fixed-table lock (§2.10; a `fixed table` may declare it now that its message-form batch carries the trailer, below)
 and **not** in the tables baseline (§18). Those four record identity and
 layout, the names, ids, kinds and offsets a reader resolves, and the trailer
 is none of them: it is framing at the end of one file. Moving it moves no
@@ -4278,15 +4278,38 @@ its stored files across the change: load each under the build that wrote it
 and save it under the new one. Because the change cannot go unnoticed, the
 baseline does not have to catch it, which is why it is not recorded there.
 
-**THE FIXED FORM AND THE MESSAGE FORM ARE FOLLOW-ONS.** Form `3` (§3.4) and
-form `2` (§3.3) carry their own framing, and each gets the trailer in its own
-change (schema-go-wire-integrity-fixed-form, schema-go-wire-integrity-message-form).
-Until then a `fixed table` that declares `integrity` is refused by name at
-check, since the class carries form `3` and is the one class that rides the
-message form (§3.3: "`fixed table T` may ride here, a plain `table T` may
-not"). A plain `table` carries neither, so the key on it is complete. The
-cook (§7) and the block form (§19) are trusted accelerators whose integrity
-answer is a signature, and the key does not touch them.
+**THE MESSAGE FORM CARRIES THE TRAILER PER BATCH.** Form `2` (§3.3) is a
+batch of bodies under one announced vocabulary, and the batch is the unit the
+form reads and writes, so its trailer is the BATCH's: four bytes, little-endian,
+the CRC-32C of every byte of the batch before them — the form byte, the count
+byte and the bit stream with its pad — written after the pad so they are the
+last four bytes of the batch buffer. **Per batch and not per message**, because
+a body's end is known only after its bits are decoded: a trailer inside the bit
+stream cannot be checked before the body it names is decoded, while the batch's
+trailer sits at a fixed offset from the end, so a reader refuses a damaged batch
+before it decodes its first body, which is the property §2.14 gives the file. A
+per-message trailer would also need a byte boundary per message, undoing §3.3's
+"no alignment inside a message or between messages".
+
+**A WRITER** emits the batch exactly as §3.3 says and then appends the trailer.
+The measure counts it, so `MeasureMessages` answers four bytes more than the
+same bodies under an undeclared table and `SaveMessages` writes exactly that
+many. **A READER CHECKS IT BEFORE IT DECODES ANY BODY.** Order, with §3.3's
+framing kept: the form byte is read first; a batch shorter than six bytes cannot
+hold the trailer, and a batch whose last four bytes are not the CRC-32C of the
+bytes before them is refused, **`integrity_mismatch`**, and nothing is decoded;
+the trailer is then removed and the batch is read as §3.3's. The name is the
+variable form's, `integrity_mismatch`, and a batch of a table without the key is
+read and written byte for byte as before.
+
+**THE FIXED FORM IS STILL A FOLLOW-ON.** Form `3` (§3.4) carries its own
+framing and gets its per-file trailer in its own change
+(schema-go-wire-integrity-fixed-form). A `fixed table` may declare `integrity`
+now, because it is the class that rides the message form (§3.3: "`fixed table T` may ride here, a plain `table T` may not") and this form carries the trailer;
+the form-3 file keeps its own follow-on. A plain `table` carries the variable
+form, which is complete. The cook (§7) and the block form (§19) are trusted
+accelerators whose integrity answer is a signature, and the key does not touch
+them.
 
 **BASE64 TEXT carries the trailer with no rule of its own**: it is the base64
 of the binary file (§16.8), trailer included, and `LoadText` decodes it and
