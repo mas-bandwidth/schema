@@ -3776,6 +3776,19 @@ Go's own zero `time.Time{}` is the zero time and stores `0`. Every `int64` the
 field can hold is a time, so nothing after the setter can refuse: the variable
 wire, the fixed form and the text form write any count.
 
+**ITS TEXT IS RFC 3339 SECTION 5.6, STRICTLY.** The text form is exactly the
+`date-time` production of RFC 3339 §5.6 and nothing else, and every reader
+reads it the same way: a four-digit year `0000`–`9999`; month `01`–`12`; a day
+valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`;
+second `00`–`59`; a fraction of one or more digits after a dot, truncated to
+nanoseconds; and `Z`, `z`, or a numeric offset whose hours are `00`–`23` and
+minutes `00`–`59`; nothing before it and nothing after it. A comma is not a
+fraction separator. **A leap second is refused: second `60` is not accepted.**
+This kind counts UTC seconds from the epoch, and an instant in a second that a
+leap repeats has no distinct nanosecond count in that model, so no spelling of
+one lands a value. A text outside `Time.UnixNano`'s domain — the years 1678
+through 2262 — names no count and is refused with it.
+
 **GO CARRIES IT FIRST.** Every other target refuses the construct by name,
 naming the construct, the target and that Go carries it first (§11); no other
 emitter is edited until its own card. Go's other storage forms — the cook, the
@@ -14747,7 +14760,7 @@ Per kind:
 | `string(N)` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted |
 | `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), so one there was built in code, and §16.3 writes it as `U+FFFD` |
 | `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted |
-| `timestamp` | string, RFC 3339 with nanoseconds | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any RFC 3339 spelling of the same instant, an offset included, which lands as its UTC nanosecond count. **A string that does not parse as RFC 3339 — or names an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false, the report is `Malformed` and its `Reason` is `timestamp_not_rfc3339: <field>`. A NUMBER token is not a refusal but the dialect's own wrong-JSON-type rule (§16.1): skipped, counted as a kind mismatch, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13) |
+| `timestamp` | string, strict RFC 3339 §5.6 date-time | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any spelling RFC 3339 §5.6 accepts of the same instant, which lands as its UTC nanosecond count. The spelling is EXACTLY the `date-time` production: four-digit year `0000`–`9999`; month `01`–`12`; day valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`; second `00`–`59`; a fraction of one or more digits after a dot, truncated to nanoseconds; and `Z`, `z`, or an offset whose hours are `00`–`23` and minutes `00`–`59`; nothing before or after. A comma is not a fraction separator, and second `60` is refused (§2.11). **A string outside that spelling — or one naming an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false, the report is `Malformed` and its `Reason` is `timestamp_not_rfc3339: <field>`. A NUMBER token is not a refusal but the dialect's own wrong-JSON-type rule (§16.1): skipped, counted as a kind mismatch, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13) |
 | enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted |
 | flags | array of variant names | `["Shielded", "Turbo"]`; an empty mask writes as `[]`; an unknown name is skipped, counted |
 | `[N]T` fixed array | array | fewer elements pad with defaults; more are dropped, counted |

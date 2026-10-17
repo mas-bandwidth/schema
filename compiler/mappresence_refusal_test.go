@@ -16,9 +16,12 @@ const plainMapSchema = "package probe\n\ntable Holder\n{\n    tags map[string(8)
 
 // plainMapDigest is the sha256 of the go and cpp outputs of plainMapSchema at
 // the base this card started from (sprint/schema-go @ f820a0c1f5, re-pinned on the merge of that tip: measured with the base compiler, which has no ?map, the base moved the go output from 5864563260e2 at 3f4d111f44, this card does not), file
-// names sorted, each name then its bytes (outputDigest).
+// names sorted, each name then its bytes (outputDigest). The go digest was
+// re-pinned at head: the strict timestamp parser now rides in every Go text
+// form (docs/SPEC-TABLES.md §2.11, §16.2).
 var plainMapDigest = map[string]string{
-	"go":  "0bf931f6ac4f3f5dc39cc7281f1024bd50654b6a9fcc99943c572ac19aca9e40",
+	// go re-pinned by the tolerant measure flag (load-measure-stays-tolerant).
+	"go":  "d4bb6cd3b74bd6330583c9ba75d2143fc74c32d763c51f0da3cf7f7cb6453c86",
 	"cpp": "89878cf368053213bfe10cbe20a4fe38eae626ce4a6d3af244008f811675365e",
 }
 

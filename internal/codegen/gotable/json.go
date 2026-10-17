@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/rfc3339"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -73,7 +74,7 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	if needBase64 {
 		imports = "\t\"encoding/base64\"\n" + imports
 	}
-	extra := tableJsonWideSource + tableJsonWStringSource + tableJsonGraphSource + tableJsonListSource + tableJsonMapSource + tableJsonMapDecimalSource + tableJsonTimestampSource + tableTimestampRuntime
+	extra := tableJsonWideSource + tableJsonWStringSource + tableJsonGraphSource + tableJsonListSource + tableJsonMapSource + tableJsonMapDecimalSource + timestampParserSource() + tableJsonTimestampSource + tableTimestampRuntime
 	b.WriteString("import (\n" + imports + ")\n\n")
 	b.WriteString(optionalMapJson(u, unboundedTextJson(u, textListJson(u, strings.Replace(walk, "// ---- json walk: end ----", extra+"// ---- json walk: end ----", 1)))))
 	if len(variableTableNames(u)) > 0 {
@@ -2135,10 +2136,23 @@ func tableJsonWrite(value unsafe.Pointer, info *TableTypeInfo, buffer []byte) in
 
 `
 
+// timestampParserSource is the source text of internal/rfc3339's parser,
+// embedded in the compiler so the generated reader carries the same parser the
+// engine compiles (docs/SPEC-TABLES.md §2.11, §16.2). The generated unit stays
+// self-contained: it never imports internal/rfc3339.
+func timestampParserSource() string {
+	const prefix = "package rfc3339\n"
+	src := rfc3339.Source
+	if !strings.HasPrefix(src, prefix) {
+		panic("internal/rfc3339/rfc3339.go does not begin with its package clause")
+	}
+	return strings.TrimPrefix(src, prefix)
+}
+
 // tableJsonTimestampSource is the text form of kind 36 (docs/SPEC-TABLES.md
-// §16.2): an RFC 3339 string with nanoseconds, written with a Z offset and read
-// from any RFC 3339 spelling of the instant. A string that does not parse, or
-// names an instant outside Time.UnixNano's domain, is REFUSED BY NAME: the
+// §16.2): a strict RFC 3339 §5.6 date-time, written with a Z offset and read by
+// the parser internal/rfc3339 embeds above. A string the parser refuses, or one
+// naming an instant outside Time.UnixNano's domain, is REFUSED BY NAME: the
 // whole text is refused, the report is Malformed and its Reason names the
 // field.
 const tableJsonTimestampSource = `
@@ -2149,20 +2163,38 @@ func tableJsonWriteTimestamp(out *tableJsonOut, storage unsafe.Pointer) bool {
 }
 
 func tableJsonReadTimestamp(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo) bool {
-	var text [64]byte
-	n, ok := in.scanString(text[:63])
+	// A fraction is 1*DIGIT with no bound, so the text is measured first and
+	// only a text longer than the scratch is allocated for; a clamp here would
+	// refuse a spelling the parser and the engine accept.
+	start := in.pos
+	length, ok := in.scanString(nil)
 	if !ok {
 		return false
 	}
-	t, err := time.Parse(time.RFC3339Nano, string(text[:n]))
-	// an instant outside Time.UnixNano's domain names no count and is refused too
-	named := err == nil && !t.Before(time.Unix(0, -1<<63)) && !t.After(time.Unix(0, 1<<63-1))
+	in.pos = start
+	var scratch [64]byte
+	var text []byte
+	if int(length) <= len(scratch) {
+		n, ok := in.scanString(scratch[:])
+		if !ok {
+			return false
+		}
+		text = scratch[:n]
+	} else {
+		text = make([]byte, length)
+		n, ok := in.scanString(text)
+		if !ok {
+			return false
+		}
+		text = text[:n]
+	}
+	nanos, named := rfc3339Parse(text)
 	if !named {
 		in.report.Reason = "timestamp_not_rfc3339: " + f.Name
 		in.bad = true
 		return false
 	}
-	*(*int64)(storage) = t.UnixNano()
+	*(*int64)(storage) = nanos
 	return true
 }
 `

@@ -93,6 +93,11 @@ func TestRowW2(t *testing.T) {
 	present.LinkPresent = true
 	present.Link.TagLength = 4
 	pbuf := make([]byte, need)
+	// The old payload stains Link.Value too, past the field's 0..1000 bound,
+	// so the writer refuses it: print the writer's own reason.
+	_, reason := tblp3.ChainFixedSaveReason([]tblp3.Chain{present}, pbuf)
+	t.Logf("W2: the writer refuses the old present payload (Link.Value=%d): %v", present.Link.Value, reason)
+	present.Link.Value = 1000 // the accepted maximum; the 0x5A stain stays in Tag
 	n = tblp3.ChainFixedSave([]tblp3.Chain{present}, pbuf)
 	pbody := pbuf[bodyAt : bodyAt+tblp3.ChainFixedBodyBytes]
 	w2Check(n == need && bytes.IndexByte(pbody, 0x5A) >= 0 && pbody[20] == 1,
@@ -101,4 +106,27 @@ func TestRowW2(t *testing.T) {
 	if w2Failed != 0 {
 		t.Fatalf("go/W2: %d assertion(s) red", w2Failed)
 	}
+}
+
+func TestRowW2WriterRefusesTheOldPayload(t *testing.T) {
+	t.Parallel()
+	v := tblp3.Chain{}
+	copy(v.Name[:], "present")
+	v.NameLength = 7
+	v.LinkPresent = true
+	v.Link.Value = 0x5A5A5A // past the field's 0..1000 bound
+	for i := range v.Link.Tag {
+		v.Link.Tag[i] = 0x5A
+	}
+	v.Link.TagLength = 4
+
+	buf := make([]byte, tblp3.ChainFixedMeasure(1))
+	n, reason := tblp3.ChainFixedSaveReason([]tblp3.Chain{v}, buf)
+	if n >= 0 {
+		t.Fatalf("ChainFixedSave accepted Link.Value=0x%X; want refusal", v.Link.Value)
+	}
+	if reason != tblp3.TableRefuseInvalidValue {
+		t.Fatalf("ChainFixedSave refused with %v, want %v", reason, tblp3.TableRefuseInvalidValue)
+	}
+	t.Logf("W2: the writer refuses the value the row used to save: %v", reason)
 }
