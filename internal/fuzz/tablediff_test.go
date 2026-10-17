@@ -230,6 +230,16 @@ func TestProbe(t *testing.T) {
 		if err := os.WriteFile(dir+"/inst-"+strconv.Itoa(i)+".json", tj, 0o600); err != nil {
 			t.Fatal(err)
 		}
+		var v2 Root
+		RootReset(&v2)
+		if RootFromJson(&v2, tj, &report) {
+			tj2 := make([]byte, RootToJsonMeasure(&v2))
+			if RootToJson(&v2, tj2) != int64(len(tj2)) || string(tj2) != string(tj) {
+				record(&div, "fromjsontojson %d %s %s", i, b64(tj), b64(tj2))
+			}
+		} else {
+			record(&div, "fromjsontojsonrefuse %d %s", i, b64(tj))
+		}
 		wire := make([]byte, RootMeasure(&v))
 		if RootSave(&v, wire) != int64(len(wire)) {
 			record(&div, "save %d", i)
@@ -250,6 +260,9 @@ func TestProbe(t *testing.T) {
 			}
 		}
 		st := base64.StdEncoding.EncodeToString(wire)
+		if stxt, err := RootSaveText(&v); err != nil || stxt != st {
+			record(&div, "savetext %s %s", st, stxt)
+		}
 		lt, err := RootLoadText(st, &report)
 		if err != nil {
 			record(&div, "loadtext %s %s", b64([]byte(st)), b64([]byte("error")))

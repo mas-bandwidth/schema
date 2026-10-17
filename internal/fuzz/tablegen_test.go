@@ -12,10 +12,12 @@ package fuzz_test
 // here.
 
 import (
+	"encoding/base64"
 	"fmt"
 	"math"
 	"math/rand"
 	"strings"
+	"unicode/utf8"
 )
 
 // genKind is the algebraic type of one generated field.
@@ -306,10 +308,18 @@ var jsonPool = []string{"hello", "a\"b", "line\nbreak", "\u2028", "🌍", "é\u0
 func pickText(r *rand.Rand, n int) string {
 	s := jsonPool[r.Intn(len(jsonPool))]
 	if len(s) > n {
-		s = s[:n]
+		// truncate at a rune boundary so the text stays valid UTF-8 and the
+		// Go %q spelling stays valid JSON (never \xNN escapes)
+		cut := n
+		for cut > 0 && !utf8.RuneStart(s[cut]) {
+			cut--
+		}
+		s = s[:cut]
 	}
 	return s
 }
+
+var b64 = base64.StdEncoding
 
 // randomValue writes JSON for one field value into b.
 func randomValue(b *strings.Builder, r *rand.Rand, f *genField) {
@@ -369,7 +379,15 @@ func randomValue(b *strings.Builder, r *rand.Rand, f *genField) {
 	case gString:
 		fmt.Fprintf(b, "%q", pickText(r, f.StrN))
 	case gBytes:
-		fmt.Fprintf(b, "%q", pickText(r, f.StrN))
+		// bytes(N) is a base64 string (SPEC-TABLES §16.2), standard alphabet,
+		// padded on write.
+		nb := 1 + r.Intn(f.StrN)
+		raw := make([]byte, nb)
+		if _, err := r.Read(raw); err != nil {
+			b.WriteString(`""`)
+			break
+		}
+		fmt.Fprintf(b, "%q", b64.EncodeToString(raw))
 	case gTimestamp:
 		fmt.Fprintf(b, "%d", r.Int63n(1<<40))
 	case gScalarArray:
