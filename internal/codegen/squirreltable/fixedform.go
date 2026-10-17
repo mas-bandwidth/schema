@@ -186,16 +186,18 @@ func fixedEmitWriteField(m *Module, f *ir.Field, at int64, expr, ind string) {
 func fixedEmitWritePayload(m *Module, f *ir.Field, at int64, expr, ind string) {
 	switch {
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
+		count := fmt.Sprintf("%d", f.ArrayBound)
 		if f.Array == ir.ArrayCounted {
-			m.Printf("%s_rt_fixed.puti32(b, at + %d, %sCount);\n", ind, at, expr)
+			// the COUNT is the array's own length (docs/SPEC-TABLES.md §2.9):
+			// the Squirrel table surface stores a counted array as the array
+			// alone, born at its min length, so len() is the live extent and
+			// the slack stays the template's zeros.
+			m.Printf("%s_rt_fixed.puti32(b, at + %d, %s.len());\n", ind, at, expr)
+			count = expr + ".len()"
 		}
 		base := at
 		if f.Array == ir.ArrayCounted {
 			base += fixedCountBytes
-		}
-		count := fmt.Sprintf("%d", f.ArrayBound)
-		if f.Array == ir.ArrayCounted {
-			count = expr + "Count"
 		}
 		m.Printf("%sfor (local i = 0; i < %s; i++) {\n", ind, count)
 		fixedEmitWriteElement(m, f, base, expr+"[i]", ind+"  ", "i * "+fmt.Sprint(fixedElementBytes(f)))
@@ -260,14 +262,17 @@ func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) 
 	switch {
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
 		base := at
-		m.Printf("%s  while (%s.len() < %d) %s.append(%s);\n", ind, expr, f.ArrayBound, expr, elemZero(f))
 		if f.Array == ir.ArrayCounted {
+			// the count is the array's OWN LENGTH: resize the array to the
+			// clamped wire count, so a save reproduces the oracle byte for byte
+			// and one load's slack is not the next save's count.
 			m.Printf("%s  local c = _rt_fixed.geti32(b, at + %d);\n", ind, at)
 			m.Printf("%s  if (c < 0) c = 0; else if (c > %d) c = %d;\n", ind, f.ArrayBound, f.ArrayBound)
-			m.Printf("%s  %sCount = c;\n", ind, expr)
+			m.Printf("%s  %s.resize(c);\n", ind, expr)
 			base += fixedCountBytes
 			m.Printf("%s  for (local i = 0; i < c; i++) {\n", ind)
 		} else {
+			m.Printf("%s  while (%s.len() < %d) %s.append(%s);\n", ind, expr, f.ArrayBound, expr, elemZero(f))
 			m.Printf("%s  for (local i = 0; i < %d; i++) {\n", ind, f.ArrayBound)
 		}
 		fixedEmitDecodeElement(m, f, base, expr+"[i]", ind+"    ", "i * "+fmt.Sprint(fixedElementBytes(f)))

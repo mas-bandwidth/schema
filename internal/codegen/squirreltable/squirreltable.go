@@ -232,9 +232,6 @@ func emitClass(m *Module, st *ir.Struct) {
 	m.Printf("_M.%s <- class {\n", st.Name)
 	for _, f := range st.Fields {
 		m.Printf("  %s = null;\n", squirrel.Member(f))
-		if f.Array == ir.ArrayCounted {
-			m.Printf("  %sCount = null;\n", squirrel.Member(f))
-		}
 		if f.Type.Optional {
 			m.Printf("  %sPresent = null;\n", squirrel.Member(f))
 		}
@@ -263,9 +260,6 @@ func emitInit(m *Module, f *ir.Field, target string) {
 		m.Printf("    for (local i = 0; i < %d; i++) %s[i] = %s;\n", n, target, elemZero(f))
 	default:
 		m.Printf("    %s = %s;\n", target, valueDefault(f))
-	}
-	if f.Array == ir.ArrayCounted {
-		m.Printf("    %sCount = %d;\n", target, bornLength(f))
 	}
 	if f.Type.Optional {
 		// ?T: the generated present bool beside the value, born absent
@@ -599,9 +593,6 @@ func emitUnion(m *Module, un *ir.Union) {
 	for _, v := range un.Variants {
 		if !v.Void() {
 			m.Printf("  %s = null;\n", ir.GoExportName(v.Name))
-			if v.F.Array == ir.ArrayCounted {
-				m.Printf("  %sCount = null;\n", ir.GoExportName(v.Name))
-			}
 			if v.F.Type.Optional {
 				m.Printf("  %sPresent = null;\n", ir.GoExportName(v.Name))
 			}
