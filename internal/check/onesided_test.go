@@ -108,7 +108,7 @@ table OneSided
 			{"on uint128", "package t\ntable T\n{\n    a uint128 | min = 0\n}\n", "not valid on uint128"},
 			{"on a timestamp", "package t\ntable T\n{\n    at timestamp | min = 0\n}\n", "not valid on timestamp"},
 			{"on a named type", "package t\ntype Name\n{\n    x int32\n}\ntable T\n{\n    n Name | min = 0\n}\n", "not valid on Name"},
-			{"beside resolution", "package t\ntable T\n{\n    a float32 | min = 0, resolution = 0.5\n}\n", "a one-sided float range is refused"},
+			{"beside resolution", "package t\ntable T\n{\n    a float32 | min = 0, resolution = 0.5\n}\n", "a one-sided range beside resolution is refused"},
 			{"on a type body field", "package t\ntype P\n{\n    x int32 | min = 0\n}\n", "min without max (or vice versa) is a compile error"},
 		}
 		for _, tc := range cases {

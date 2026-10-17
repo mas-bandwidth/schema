@@ -8277,7 +8277,7 @@ wire and compares the six counters in every language — is where it lives.
 The evolution seams and the pointer-spelling cases there are exactly that
 shape already.
 
-### 4.13 One-sided integer ranges
+### 4.3 One-sided integer ranges
 
 On a field of a `table` or a `fixed table` whose type is an integer
 (`int8`..`int64`, `uint8`..`uint64`), a one-sided range declares the two-sided

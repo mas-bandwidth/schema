@@ -2067,7 +2067,7 @@ func scalarName(k ir.FieldTypeKind) string {
 
 // resolveAttrs reads a `type` body's or packet field's attributes. A table
 // field goes through resolveAttrsInTable, which knows the owner's kind (the
-// one-sided integer range is a table spelling, docs/SPEC-TABLES.md §4.13).
+// one-sided integer range is a table spelling, docs/SPEC-TABLES.md §4.3).
 func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 	c.resolveAttrsInTable(f, out, false)
 }
@@ -2159,7 +2159,11 @@ func (c *checker) resolveAttrsInTable(f *ast.Field, out *ir.Field, inTable bool)
 			// a one-sided float range — with or without resolution beside it — is
 			// refused by name: a compressed float needs the whole triple
 			// (SPEC §4.6)
-			c.errf(f.Pos, "field %s: a one-sided float range is refused — a float range is min, max and resolution, all three together (SPEC §4.6)", f.Name)
+			if hasRes {
+				c.errf(f.Pos, "field %s: a one-sided range beside resolution is refused — a float range is min, max and resolution, all three together (SPEC §4.6)", f.Name)
+			} else {
+				c.errf(f.Pos, "field %s: a one-sided float range is refused — a float range is min, max and resolution, all three together (SPEC §4.6)", f.Name)
+			}
 			return
 		}
 		if !hasMin || !hasRes {
