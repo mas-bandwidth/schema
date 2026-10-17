@@ -146,7 +146,9 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	side.emitTableMeasure(st)
 	side.emitTableWrite(st)
 	side.emitTableRead(st)
-	side.into(&side.message, func() { side.emitMessageRead(st) })
+	if g.surfaces.Message {
+		side.into(&side.message, func() { side.emitMessageRead(st) })
+	}
 	rewrites := []string{"TableMessageReader", "TableRetainMessageReader", "TableWriter", "TableRetainWriter", "TableReader", "TableRetainReader", "TableIds", "TableRetainIds"}
 	retained := func(source string) string {
 		source = retainBodyName.ReplaceAllString(source, "${1}${2}Retain")

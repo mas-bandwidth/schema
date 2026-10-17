@@ -286,3 +286,17 @@ func TestReadOnlyTreeRunsEveryReadingCommand(t *testing.T) {
 		before.unchanged(t, path, "schema generate --lang "+target)
 	}
 }
+
+// TestNonGoTargetRefusesSurfaceByPresence pins SPEC-TABLES §8.8's flag-by-name
+// refusal: the non-Go targets refuse --surface however it is spelled, including
+// the empty `--surface=`, because refusal turns on the flag's presence, not on
+// its value.
+func TestNonGoTargetRefusesSurfaceByPresence(t *testing.T) {
+	t.Parallel()
+	bin := buildCLI(t)
+	dir, _ := writeUnit(t, t.TempDir())
+	cmd := exec.Command(bin, "generate", "--lang", "cpp", "--surface=", dir)
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("schema generate --lang cpp --surface= must exit nonzero, got 0\n%s", out)
+	}
+}
