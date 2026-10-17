@@ -113,6 +113,17 @@ against any other runtime fails to COMPILE (SPEC-TABLES.md §8.4), never at
 run time. Pin the compiler and the module to the same tag. Any other value of
 `runtime` is refused by name.
 
+The Go target can narrow what it emits to the surfaces your build uses:
+
+```
+schema generate --lang go --surface wire,json --out generated/go .
+```
+
+`--surface` takes a comma-separated list of the table surfaces (SPEC-TABLES.md
+§8.8). Its default is the full set — the command above without `--surface` is
+byte-identical to the one with `--surface wire,fixed,json,cook,block,view,message,retain`.
+Only the Go target accepts it; any other `--lang` refuses the flag by name.
+
 ---
 
 ## Declarations

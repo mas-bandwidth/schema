@@ -41,6 +41,12 @@ func (goTarget) GenerateLineage(u *ir.Unit, opts Options, lineage *FixedLineage)
 	if err := refuseUnported(u, "go"); err != nil {
 		return nil, err
 	}
+	// the surface list (docs/SPEC-TABLES.md §8.8): the default full set is
+	// byte-identical to today's output
+	surfaces, err := gotable.ParseSurfaces(opts["surface"])
+	if err != nil {
+		return nil, err
+	}
 	files, err := golang.Generate(u)
 	if err != nil {
 		return nil, err
@@ -49,7 +55,7 @@ func (goTarget) GenerateLineage(u *ir.Unit, opts Options, lineage *FixedLineage)
 	// TABLE-wire codecs and the reflection descriptors (SPEC-TABLES.md); a
 	// table-free unit's output is byte-identical to what the packet emitter
 	// alone produces
-	tables, err := gotable.GenerateRuntime(u, goTableLineage(u, lineage), rt)
+	tables, err := gotable.GenerateRuntimeSurface(u, goTableLineage(u, lineage), surfaces, rt)
 	if err != nil {
 		return nil, err
 	}
