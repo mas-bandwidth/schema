@@ -24,9 +24,10 @@ var boundedTextSchema = map[string]string{
 // The go digest moved once since, by the integrity_mismatch refusal name
 // every Go unit's runtime carries (docs/SPEC-TABLES.md §2.14), and again by
 // blob_shared (§2.5): its refusal name, TableReport.BlobShared, and the
-// runtime's refusal of a blob named from two slots.
+// runtime's refusal of a blob named from two slots, in the file and the
+// message form.
 var boundedTextDigest = map[string]string{
-	"go":  "27cfb7818dfb20f71daa3756b8f8d967f96ee66b32a04e373ce548a3655bf64d",
+	"go":  "f9d143aa07dad6a583257de5394f656f19711555e24ff2880cb736ce7a5b2960",
 	"cpp": "ff5e30ac14304bb0ab07460f917a19a1efa46fa1c5dac34498d4bd856dfe9605",
 }
 
