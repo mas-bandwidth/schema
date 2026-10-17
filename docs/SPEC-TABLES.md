@@ -8911,9 +8911,9 @@ The builder is designed to go wide, lock-free by ownership:
   are appended to that enum and never renumbered. `TableReport.Err()`
   answers the same reason for every counter this read refuses, and nil on a
   clean read and on a read whose only counters are `unknown`, `widened` or
-   `retained`. The call owns its builder: the caller does not measure, does
-   not `Init`, and does not check the counters by hand. Go emits it for each
-   root; the citation on the emitter is this section.
+  `retained`. The call owns its builder: the caller does not measure, does
+  not `Init`, and does not check the counters by hand. Go emits it for each
+  root; the citation on the emitter is this section.
 
    **A FIXED-FORM REFUSAL'S STRICT ERROR IS ITS OWN NAME.** For a refused
    fixed report whose reason is a fixed reason other than a form-byte one, the
