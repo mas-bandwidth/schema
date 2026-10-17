@@ -749,7 +749,11 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	// field with an integer range, so a field that has none emits the same
 	// descriptor row as before
 	exact := ""
-	if f.HasIntRange || f.Type.Kind == ir.TBits {
+	// the EXACT int64/uint64 pair rides only a kind whose narrow JSON path reads
+	// it — int8..int64, uint8..uint64 and bits (docs/SPEC-TABLES.md §8.1).
+	// The wide kinds (18–29: int128, uint128 and the fixed-point family) clamp
+	// via WideRange and their bounds may not fit 64 bits, so they emit no pair.
+	if (f.HasIntRange || f.Type.Kind == ir.TBits) && !ir.TableKindWide(kind) {
 		if f.Type.Signed {
 			exact = fmt.Sprintf(", RangeIntMin: %s, RangeIntMax: %s", rangeIntMin, rangeIntMax)
 		} else {
