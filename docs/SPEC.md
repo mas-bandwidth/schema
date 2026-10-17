@@ -1453,7 +1453,11 @@ All compile errors with positions:
 - **Target-name safety:** a declaration or field name is checked against the
   reserved words of the targets being generated (SPEC §4.6): `schema generate
   --lang L` checks L's words only, and `schema check` — and every command
-  that names no target — checks every target's words. A name that is a
+  that names no target — checks every target's words. A target the checker
+  has no reserved-word list of its own for has no words to narrow to, so
+  `generate` on it checks every target's words rather than none: a collision
+  the checker knows how to refuse is never let through because the target
+  being generated does not carry a list. A name that is a
   reserved word in a checked target (`type`, `match`, `impl`, `func`,
   `class`, ...), or that collides with another name after Go export-casing
   (`atRest` → `AtRest`), is rejected, with one diagnostic per name listing

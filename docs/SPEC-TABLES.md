@@ -809,7 +809,9 @@ variable class's: a guarded field and a plain nested table are refused in a
 same target-name safety as packet declarations (SPEC.md §4.6), narrowed to the
 targets being generated: `schema generate --lang L` checks L's reserved words
 only, and `schema check` — and every command that names no target — checks
-every target's. Nine additions:
+every target's. A target with no reserved-word list of its own has no words
+to narrow to, so `generate` on it checks every target's words rather than
+none. Nine additions:
 
 - **Tables nest.** A named table is a field type (above); nesting is by
   value, and a bounded array of tables is a collection. A table may not
