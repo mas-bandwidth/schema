@@ -72,6 +72,30 @@ func TestEnginePackRefusesZeroByteInText(t *testing.T) {
 		"table Root { lst [..4]string(8) }",
 		`{"lst":[{"value":"a"},{"value":"b\u0000c"}]}`)
 
+	t.Run("bytes holding a zero byte packs and unpacks silent", func(t *testing.T) {
+		t.Parallel()
+		c, u := loadUnit(t, "table Root { b *bytes }\n")
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "Root.json"), []byte(`{"b":"AA=="}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		wire, _, report, err := c.Pack(u, "Root", dir)
+		if err != nil {
+			t.Fatalf("*bytes holding a zero byte was refused: %v", err)
+		}
+		if !report.Silent() {
+			t.Fatalf("clean pack did not read silent: %+v", report)
+		}
+		out := t.TempDir()
+		r, err := c.Unpack(u, "Root", wire, out)
+		if err != nil {
+			t.Fatalf("unpack failed: %v", err)
+		}
+		if !r.Silent() {
+			t.Fatalf("clean unpack did not read silent: %+v", r)
+		}
+	})
+
 	t.Run("clean text packs and unpacks silent", func(t *testing.T) {
 		t.Parallel()
 		c, u := loadUnit(t, "table Root { t string(8) }\n")
