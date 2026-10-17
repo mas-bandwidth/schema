@@ -1860,13 +1860,13 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 		}
 	}
 	{
-		if value.Recoil != 0.0 {
+		if math.Float32bits(value.Recoil) != math.Float32bits(0.0) {
 			w.Put(40, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Recoil)), uint64(0))
 		}
 	}
 	{
-		if value.Drift != 0.0 {
+		if math.Float64bits(value.Drift) != math.Float64bits(0.0) {
 			w.Put(41, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.Drift), uint64(0))
 		}
@@ -2939,6 +2939,9 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 					}
 					{
 						v := math.Float32frombits(payload47.Get32())
+						if v != v || v-v != 0 {
+							r.Report.tableNonFinite("TableMixed.recoil")
+						}
 						value.Recoil = v
 					}
 				}
@@ -2978,6 +2981,9 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 							v = math.Float64frombits(tableWidenFloat(payload48.Get32()))
 						} else {
 							v = math.Float64frombits(payload48.Get64())
+						}
+						if v != v || v-v != 0 {
+							r.Report.tableNonFinite("TableMixed.drift")
 						}
 						value.Drift = v
 					}

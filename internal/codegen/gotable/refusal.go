@@ -26,6 +26,7 @@ TableRefuseMalformed
 TableRefuseClamped
 TableRefuseKindMismatch
 TableRefuseBase64Damaged
+TableRefuseNonFinite
 )
 func(r TableRefuseReason) Error()string{switch r {
 case TableRefuseOk:return "ok"
@@ -49,6 +50,7 @@ case TableRefuseMalformed:return "malformed"
 case TableRefuseClamped:return "clamped"
 case TableRefuseKindMismatch:return "kind_mismatch"
 case TableRefuseBase64Damaged:return "base64_damaged"
+case TableRefuseNonFinite:return "non_finite"
 };return "invalid refusal reason"}
 func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{return nil};return reason}
 // TableBuildVersionMismatch is the typed error a strict announcement refusal
@@ -64,8 +66,9 @@ type TableMissingRequired struct { Fields string }
 func(m TableMissingRequired) Error() string {return "missing_required: "+m.Fields}
 // Err is the report's typed error (docs/SPEC-TABLES.md §6.5, docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
-// unknown form, wire-damaged, build-version-mismatched and missing-required
-// (§2.3, naming the field), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
+// unknown form, wire-damaged, build-version-mismatched, missing-required
+// (§2.3, naming the field) and a non-finite plain float (§3.3, a plain float's
+// special values: non_finite, named in Reason), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
 func(r *TableReport) Err() error {
 if r==nil {return nil}
 if r.Reason=="build_version_mismatch" {return TableBuildVersionMismatch{Peer:r.BuildVersionPeer,Own:r.BuildVersionOwn}}
@@ -75,6 +78,12 @@ if r.MissingRequired>0 {const p="missing_required: ";f:=r.Reason;if len(f)>=len(
 if r.Malformed {return TableRefuseMalformed}
 if r.Clamped>0 {return TableRefuseClamped}
 if r.KindMismatch>0 {return TableRefuseKindMismatch}
+{const p="non_finite: ";if len(r.Reason)>=len(p)&&r.Reason[:len(p)]==p {return TableRefuseNonFinite}}
 return nil}
+// tableNonFinite names a plain float32/float64 the read landed as a NaN or an
+// infinity (docs/SPEC-TABLES.md §3.3, a plain float's special values): the
+// pattern lands as written and counts nothing, and the name is what the
+// strict read refuses as non_finite. The first name a read records wins.
+func(r *TableReport) tableNonFinite(field string){if r!=nil&&r.Reason==""{r.Reason="non_finite: "+field}}
 
 `

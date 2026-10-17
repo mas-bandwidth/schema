@@ -548,6 +548,12 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 				lo, hi = formatFloat32(f.FMin), formatFloat32(f.FMax)
 			}
 			g.pf("%s\t%s\n", ind, compressedFloatClamp("v", lo, hi, "r.Report.Clamped++"))
+		} else {
+			// A PLAIN float's NaN or infinity lands as its pattern and counts
+			// nothing, and the read NAMES it so the strict read refuses it as
+			// non_finite (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL
+			// VALUES"; §6.5): the text writer has no spelling for one (§16.3).
+			g.pf("%s\tif v != v || v-v != 0 { r.Report.tableNonFinite(%q) }\n", ind, g.floatOwner(f))
 		}
 		g.pf("%s\t%s = v\n%s}\n", ind, expr, ind)
 	default:
@@ -642,4 +648,30 @@ func unitHasRequired(u *ir.Unit) bool {
 		}
 	}
 	return false
+}
+
+// floatOwner names a float field as <Owner>.<field> for the report's
+// non_finite reason (docs/SPEC-TABLES.md §3.3), the owner being the table,
+// type or union that declares it; a field the unit does not hold by pointer
+// (an element copy) is named by its own name.
+func (g *tableGen) floatOwner(f *ir.Field) string {
+	for _, m := range []map[string]*ir.Struct{g.unit.Tables, g.unit.Structs} {
+		for _, st := range m {
+			for _, x := range st.Fields {
+				if x == f {
+					return st.Name + "." + f.Name
+				}
+			}
+		}
+	}
+	for _, m := range []map[string]*ir.Union{g.unit.Unions, g.unit.TableUnions} {
+		for _, u := range m {
+			for i := range u.Variants {
+				if u.Variants[i].F == f {
+					return u.Name + "." + f.Name
+				}
+			}
+		}
+	}
+	return f.Name
 }
