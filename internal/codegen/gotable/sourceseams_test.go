@@ -27,6 +27,7 @@ func TestGoSourceSeamsFailClosed(t *testing.T) {
 	t.Parallel()
 	scanSourceSeams(t)
 	negativeControlFailClosed(t)
+	negativeControlDoubledAnchor(t)
 	generateSeamSurfaceUnits(t)
 	generateEverySurface(t)
 }
@@ -117,6 +118,24 @@ func negativeControlFailClosed(t *testing.T) {
 		}
 	}()
 	tableSourceReplace("func ok() {}", "func broke() {}", "x", 1)
+}
+
+// negativeControlDoubledAnchor extends half (d): an anchor appearing twice in the
+// source string must make tableSourceReplace panic, naming the seam, rather than
+// patch one occurrence and silently leave the other.
+func negativeControlDoubledAnchor(t *testing.T) {
+	t.Helper()
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("tableSourceReplace did not panic on a doubled anchor")
+		}
+		msg := fmt.Sprint(r)
+		if !strings.Contains(msg, "Go table source seam") {
+			t.Fatalf("panic did not name the seam: %v", r)
+		}
+	}()
+	tableSourceReplace("func ok() ok() {}", "func broke() {}", "func ok()", 1)
 }
 
 // surfacesExercises is a table of units that together touch each seam, and the
