@@ -1,0 +1,9 @@
+JSONTestSuite, vendored for docs/SPEC-TABLES.md section 16.11.
+
+url:      https://github.com/nst/JSONTestSuite
+commit:   1ef36fa01286573e846ac449e8683f8833c5b26a
+date:     2024-11-22
+license:  MIT (LICENSE, copied from the upstream LICENSE; sha256 8bd0e0578be788c617ea01d18b2a8146e3746ae50bddadc65a5f9d3aad08ad49)
+vendored: test_parsing/ only (318 files), byte for byte; nothing else of the upstream tree.
+sums:     SHA256SUMS, made inside test_parsing by: LC_ALL=C sha256sum $(LC_ALL=C ls)
+pending:  PENDING.tsv is schema's own: <file> TAB <card>, each file a reader does not yet meet.
