@@ -97,6 +97,8 @@ func init() {
 		Name{Name: "tableAnnouncement", What: "the announced message bit codec"},
 		Name{Name: "tableMessageBatchClose", What: "the announced message bit codec"},
 		Name{Name: "tableMessageBatchOpen", What: "the announced message bit codec"},
+		Name{Name: "tableMessageBatchOpenSealed", What: "the announced message bit codec (docs/SPEC-TABLES.md §2.14, §3.3)"},
+		Name{Name: "tableMessageIntegritySum", What: "the announced message bit codec (docs/SPEC-TABLES.md §2.14, §3.3)"},
 		Name{Name: "tableMessageBits", What: "the announced message bit codec"},
 		Name{Name: "tableMessageCount", What: "the announced message bit codec"},
 		Name{Name: "tableMessageEntries", What: "the announced message bit codec"},
