@@ -12495,6 +12495,7 @@ in build version (§20.5).
   Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure  Table
   SaveText  LoadText
+  LoadTolerant  LoadBuilderTolerant  FromJsonTolerant  FixedLoadTolerant  LoadMessagesTolerant
   MeasureMessages  SaveMessages  LoadMessages
   LoadMessagesMeasure  SaveMessageBody  LoadMessageBody
   LoadRetain LoadRetainBuilder  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages
