@@ -4164,10 +4164,13 @@ The `MeasureReason`, `LoadMeasureReason`, `CookMeasureReason`, and builder
 `PackMeasureReason` variants return `(int64, error)`. Success returns a literal
 `nil`; refusals carry `TableRefuseReason`, usable with `errors.As` or direct
 comparison. The existing integer measure and boolean open calls remain available.
-Cook and block handles also provide `Open(base, bytes) error`. A damaged file
-trailer returns `TableRefuseWireDamaged` (`wire_damaged`) from
+Cook and block handles also provide `Open(base, bytes) error`. `LoadMeasureReason`
+validates the wire's framing: a root or node body that runs past its end or
+lacks its terminating zero reference, a node scan that is not whole, and a
+damaged file trailer all return `TableRefuseWireDamaged` (`wire_damaged`) from
 `LoadMeasureReason`; this is distinct from a format refusal and from the
-accelerator-only `truncated` reason. `<Name>ReadStrict(wire)` is the one-call
+accelerator-only `truncated` reason. Value-level events (clamped,
+`kind_mismatch`, ill-formed text, unknown ids) do not fail the measure. `<Name>ReadStrict(wire)` is the one-call
 strict read (docs/SPEC-TABLES.md §6.5): it builds its own builder and returns
 `(*<Name>, error)`. The error is a `TableRefuseReason` (`clamped`,
 `kind_mismatch`, `malformed`, `unknown_form`, `wire_damaged`), a
