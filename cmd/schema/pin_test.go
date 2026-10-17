@@ -50,6 +50,13 @@ var (
 	pinPkgNoPin = "package p5\n\n" +
 		"// an ordinary comment that is not a pin\n" +
 		"func NoPin() {}\n"
+
+	// CRLF line endings: the version must stop at the CR, not absorb it,
+	// so a uniform tree is not refused as mixed and the trailing CR survives.
+	pinPkgCRLF = "package p6\r\n\r\n" +
+		pinDirective + "v2.5.0 generate --lang go --out .\r\n" +
+		pinDirective + "v2.5.0\r\n" +
+		"func CRLF() {}\r\n"
 )
 
 // TestPinMovesEveryGenerateLine drives the whole one-command move: every pin
@@ -63,6 +70,17 @@ func TestPinMovesEveryGenerateLine(t *testing.T) {
 	p1 := writePinPkg(t, root, "p1", pinPkg1)
 	p2 := writePinPkg(t, root, "p2", pinPkg2)
 	p3 := writePinPkg(t, root, "p3", pinPkg3)
+
+	// a CRLF generate.go: the bare pin line keeps its CR and the tree is
+	// not refused as mixed
+	p6 := writePinPkg(t, root, "p6", pinPkgCRLF)
+	run(t, bin, "pin", "v9.9.9", p6)
+	if got := mustRead(t, filepath.Join(p6, "generate.go")); got != strings.ReplaceAll(pinPkgCRLF, "v2.5.0", "v9.9.9") {
+		t.Errorf("CRLF generate.go changed unexpectedly after pin:\n%q\nexpect\n%q", got, strings.ReplaceAll(pinPkgCRLF, "v2.5.0", "v9.9.9"))
+	}
+	if !strings.HasSuffix(mustRead(t, filepath.Join(p6, "generate.go")), "func CRLF() {}\r\n") {
+		t.Errorf("CRLF file lost its CRLF endings")
+	}
 
 	out := run(t, bin, "pin", "v9.9.9", p1, p2, p3)
 	want := "v9.9.9"

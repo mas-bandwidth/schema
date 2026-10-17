@@ -106,7 +106,7 @@ func cmdPin(args []string) {
 			for _, ln := range lines {
 				if strings.HasPrefix(ln, pinPrefix) {
 					rest := ln[len(pinPrefix):]
-					end := strings.IndexAny(rest, " \t")
+					end := strings.IndexAny(rest, " \t\r")
 					old := rest
 					tail := ""
 					if end >= 0 {
