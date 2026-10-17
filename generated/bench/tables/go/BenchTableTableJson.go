@@ -685,6 +685,9 @@ type tableJsonIn struct {
 	pos    int
 	report *TableReport
 	bad    bool // the text is not JSON: the walk stops and keeps what it placed
+	// zero is set when the walk stopped on a U+0000 bound for text storage
+	// (mas-bandwidth/schema docs/SPEC-TABLES.md 16.3): the field loop names the field in Reason
+	zero bool
 }
 
 func (in *tableJsonIn) space() {
@@ -808,9 +811,21 @@ func tableJsonEncodeUtf8(code uint32, unit []byte) int32 {
 // never cut through a multi-byte character. Clamping is counted, never fatal,
 // exactly as it is on the wire (§4). A nil destination scans past a string
 // without keeping it.
-func (in *tableJsonIn) scanString(out []byte) (int32, bool) { return in.scanText(out, nil) }
+//
+// A ZERO IN TEXT TAKES ONE RULE IN EVERY FORM (mas-bandwidth/schema docs/SPEC-TABLES.md 16.3, 2.13,
+// 4.2): a string scanned into storage — a destination given — that decodes to
+// U+0000 refuses the read, because no wire carries a zero in text and a read
+// must never place a value the writer or the strict reader refuses. Only the
+// \u0000 escape can produce one; a raw control byte is already not JSON. A
+// string only skipped or measured (no destination) stores nothing, and
+// scanKey's names (object keys, enum and flag names) store nothing either.
+func (in *tableJsonIn) scanString(out []byte) (int32, bool) { return in.scanText(out, nil, false) }
 
-func (in *tableJsonIn) scanText(out []byte, wide []uint16) (int32, bool) {
+// scanKey scans a NAME: an object key or a variant name, compared and never
+// stored, so a zero in it is not 16.3's event (it simply names nothing).
+func (in *tableJsonIn) scanKey(out []byte) (int32, bool) { return in.scanText(out, nil, true) }
+
+func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bool) {
 	if in.peek() != '"' {
 		in.bad = true
 		return 0, false
@@ -880,6 +895,13 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16) (int32, bool) {
 				// as the replacement character
 				if code >= 0xd800 && code <= 0xdfff {
 					code = 0xfffd
+				}
+				// mas-bandwidth/schema docs/SPEC-TABLES.md 16.3: a U+0000 bound for text storage
+				// refuses the read (narrow and wide alike)
+				if code == 0 && !name && (out != nil || wide != nil) {
+					in.zero = true
+					in.bad = true
+					return 0, false
 				}
 				unitLength = tableJsonEncodeUtf8(code, unit[:])
 			default:
@@ -1183,7 +1205,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 			return true
 		}
 		var key [tableJsonMaxKey]byte
-		keyLength, ok := in.scanString(key[:tableJsonMaxKey-1])
+		keyLength, ok := in.scanKey(key[:tableJsonMaxKey-1])
 		if !ok {
 			return false
 		}
@@ -1248,7 +1270,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 	}
 	if tableJsonIsEnum(f) {
 		var name [tableJsonMaxKey]byte
-		nameLength, ok := in.scanString(name[:tableJsonMaxKey-1])
+		nameLength, ok := in.scanKey(name[:tableJsonMaxKey-1])
 		if !ok {
 			return false
 		}
@@ -1288,7 +1310,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 				}
 			} else {
 				var name [tableJsonMaxKey]byte
-				nameLength, ok := in.scanString(name[:tableJsonMaxKey-1])
+				nameLength, ok := in.scanKey(name[:tableJsonMaxKey-1])
 				if !ok {
 					return false
 				}
@@ -1504,7 +1526,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 	if f.Kind == 33 {
 		units := unsafe.Slice((*uint16)(storage), f.ArrayBound)
 		clear(units)
-		n, ok := in.scanText(nil, units)
+		n, ok := in.scanText(nil, units, false)
 		if !ok {
 			return false
 		}
@@ -1641,7 +1663,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 				return false
 			}
 			var key [tableJsonMaxKey]byte
-			keyLength, ok := in.scanString(key[:tableJsonMaxKey-1])
+			keyLength, ok := in.scanKey(key[:tableJsonMaxKey-1])
 			if !ok {
 				return false
 			}
@@ -1805,7 +1827,7 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 			return false
 		}
 		var key [tableJsonMaxKey]byte
-		keyLength, ok := in.scanString(key[:tableJsonMaxKey-1])
+		keyLength, ok := in.scanKey(key[:tableJsonMaxKey-1])
 		if !ok {
 			return false
 		}
@@ -1868,6 +1890,11 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 						return false
 					}
 				} else if !tableJsonReadField(in, base, f, depth) {
+					// mas-bandwidth/schema docs/SPEC-TABLES.md 16.3: the innermost field that held
+					// a zero in text is the one the refusal names
+					if in.zero && in.report.Reason == "" {
+						in.report.Reason = "text_holds_zero: " + info.Name + "." + f.Name
+					}
 					return false
 				}
 				if f.Optional {
@@ -2458,7 +2485,7 @@ func tableJsonReadPointer(in *tableJsonIn, slot *int64, f *TableFieldInfo, depth
 	hasLabel := false
 	if probe.peek() != '}' {
 		var key [tableJsonMaxKey]byte
-		length, ok := probe.scanString(key[:])
+		length, ok := probe.scanKey(key[:])
 		if !ok {
 			in.bad = true
 			return false
@@ -2592,7 +2619,7 @@ func tableJsonDropLabel(in *tableJsonIn) {
 	probe := *in
 	probe.pos++
 	var key [16]byte
-	n, ok := probe.scanString(key[:])
+	n, ok := probe.scanKey(key[:])
 	if !ok || string(key[:n]) != "&node" || probe.peek() != ':' {
 		return
 	}
