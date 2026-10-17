@@ -150,10 +150,10 @@ func TestThePageCarriesTheThreeTables(t *testing.T) {
 	}
 }
 
-// TestEveryTableHasNineLanguages holds every table header to the nine supported
-// packet-wire languages (#1861), in the same order.
-func TestEveryTableHasNineLanguages(t *testing.T) {
-	want := "| feature | cpp | c | cs | go | rust | java | js | dart | elixir |"
+// TestEveryTableHasTwelveLanguages holds every table header to the nine supported
+// packet-wire languages (#1861) plus the three queued ports (luau, lua, squirrel), in the same order.
+func TestEveryTableHasTwelveLanguages(t *testing.T) {
+	want := "| feature | cpp | c | cs | go | rust | java | js | dart | elixir | luau | lua | squirrel |"
 	headers := 0
 	for n, line := range strings.Split(readRoadmap(t), "\n") {
 		if strings.HasPrefix(line, "| feature") {
