@@ -14750,8 +14750,12 @@ produced, wire or text, is one the writer re-saves and the strict reader
 accepts, which is §5's guarantee held across the forms. The writer half above
 is unchanged: storage a program built holding a zero still writes `\u0000`,
 and the text it writes is one this read refuses, which is the honest answer
-for a value no wire can carry. Held first in Go (`internal/codegen/gotable/
-json.go`, `scanText`); every other backend keeps its behaviour until its port.
+for a value no wire can carry. Held first in Go, in both of its text readers:
+the generated walk (`internal/codegen/gotable/json.go`, `scanText`) and the
+pack text reader `schema pack` reads a tree with (`internal/tabletext/read.go`,
+`scanStored` and `scanWString`), which refuses with the same `Malformed` and
+the same `Reason`, so a pack never encodes a wire its own decode calls
+`malformed`; every other backend keeps its behaviour until its port.
 
 ### 16.4 The key: `json`
 
