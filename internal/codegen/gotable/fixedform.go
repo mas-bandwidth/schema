@@ -163,8 +163,22 @@ func dstGo(dst, stride, aux string, counted, arg int) string {
 	return fmt.Sprintf("{%s, %s, %s, %d, %d, %d}", dst, stride, aux, counted, arg, arg)
 }
 
-func offGo(owner, field string) string {
-	return fmt.Sprintf("uint32(unsafe.Offsetof(%s{}.%s))", owner, field)
+// offGo is a destination over the storage the unit actually holds: in a
+// regional unit a plain type nested in a fixed table is its <Name>Row, whose
+// layout is not the packet struct's (docs/SPEC-TABLES.md §3.4, A VARIABLE TABLE
+// IN THE UNIT CHANGES NOTHING FOR ITS FIXED TABLES); in a plain unit
+// fixedStorage is the name itself.
+func (g *tableGen) offGo(owner, field string) string {
+	return fmt.Sprintf("uint32(unsafe.Offsetof(%s{}.%s))", g.fixedStorage(owner), field)
+}
+
+// fixedStorage is the Go type a fixed-form destination names: the <Name>Row in
+// a regional unit (storageName), and the name itself in a plain unit.
+func (g *tableGen) fixedStorage(n string) string {
+	if !g.regional {
+		return n
+	}
+	return g.storageName(n)
 }
 
 func (g *tableGen) fixedWalkRoot(st *ir.Struct) *fixedWalk {
@@ -181,7 +195,7 @@ func (g *tableGen) fixedWalkField(w *fixedWalk, owner string, f *ir.Field) {
 	size := fixedFieldBytes(f)
 	if f.Type.Optional {
 		w.push(fixedLayoutEntry{id: id, kind: fixedKindOptional, size: size, children: 1, note: f.Name + " ?"},
-			dstGo("0", "", offGo(owner, member(f)+"Present"), 0, 0))
+			dstGo("0", "", g.offGo(owner, member(f)+"Present"), 0, 0))
 		g.fixedWalkPayload(w, owner, f, id, size-fixedPresentBytes)
 		return
 	}
@@ -192,16 +206,16 @@ func (g *tableGen) fixedWalkPayload(w *fixedWalk, owner string, f *ir.Field, id 
 	switch {
 	case f.KeyEnum != "":
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindKeyed, size: size, children: 2, note: f.Name},
-			dstGo(offGo(owner, member(f)), g.sizeofGo(f), "", 0, 0))
+			dstGo(g.offGo(owner, member(f)), g.sizeofGo(f), "", 0, 0))
 		g.fixedWalkEnum(w, f.KeyEnumRef, ir.TableWireId(f.KeyEnum), f.KeyEnum, "0")
 		g.fixedWalkElement(w, f, 0, "element", "0")
 	case f.Array != ir.ArrayNone:
 		counted, aux := 0, ""
 		if f.Array == ir.ArrayCounted {
-			counted, aux = 1, offGo(owner, member(f)+"Count")
+			counted, aux = 1, g.offGo(owner, member(f)+"Count")
 		}
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
-			dstGo(offGo(owner, member(f)), g.sizeofGo(f), aux, counted, 0))
+			dstGo(g.offGo(owner, member(f)), g.sizeofGo(f), aux, counted, 0))
 		g.fixedWalkElement(w, f, 0, "element", "0")
 	case f.Type.Kind == ir.TBytes:
 		// `bytes(N)` is an ARRAY of u8 on this wire (ir/fixedform.go, the
@@ -210,16 +224,16 @@ func (g *tableGen) fixedWalkPayload(w *fixedWalk, owner string, f *ir.Field, id 
 		// array uses. The identity plan still lands the field with the TEXT op
 		// and reads neither column; only the compiled path reads these.
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
-			dstGo(offGo(owner, member(f)), "1", offGo(owner, member(f)+"Length"), 1, 3))
+			dstGo(g.offGo(owner, member(f)), "1", g.offGo(owner, member(f)+"Length"), 1, 3))
 		w.push(fixedLayoutEntry{id: 0, kind: ir.TableKindU8, size: 1, children: 0, note: "u8"}, dstGo("0", "", "", 0, 0))
 	case f.Type.Kind == ir.TString:
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name},
-			dstGo(offGo(owner, member(f)+"Length"), "", offGo(owner, member(f)), 0, 1))
+			dstGo(g.offGo(owner, member(f)+"Length"), "", g.offGo(owner, member(f)), 0, 1))
 	case f.Type.Kind == ir.TWString:
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindWstring, size: size, children: 0, note: f.Name},
-			dstGo(offGo(owner, member(f)+"Length"), "", offGo(owner, member(f)), 0, 2))
+			dstGo(g.offGo(owner, member(f)+"Length"), "", g.offGo(owner, member(f)), 0, 2))
 	default:
-		g.fixedWalkElement(w, f, id, f.Name, offGo(owner, member(f)))
+		g.fixedWalkElement(w, f, id, f.Name, g.offGo(owner, member(f)))
 	}
 }
 
@@ -235,7 +249,7 @@ func (g *tableGen) fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note, 
 			return
 		case *ir.Union:
 			w.push(fixedLayoutEntry{id: id, kind: ir.TableKindUnion, size: size, children: len(r.Variants), note: note},
-				dstGo(dst, "", dst+" + "+offGo(f.Type.Name, "Type"), 0, 0))
+				dstGo(dst, "", dst+" + "+g.offGo(f.Type.Name, "Type"), 0, 0))
 			for _, v := range r.Variants {
 				armID := ir.TableWireId(v.WireName())
 				if v.F == nil {
@@ -296,11 +310,18 @@ func (g *tableGen) isVarTable(name string) bool {
 }
 
 // hasFixedForm is whether this table emits FixedLoad/FixedSave. It is a
-// question about SHAPE — the closure this form can lay out — and a regional
-// unit skips the form entirely, so a mixed unit's fixed-size tables keep
-// form-1 Load.
+// question about SHAPE — the closure this form can lay out — and NOT about what
+// else the unit holds: a variable table in the unit changes nothing for its
+// fixed tables (docs/SPEC-TABLES.md §3.4, A VARIABLE TABLE IN THE UNIT CHANGES
+// NOTHING FOR ITS FIXED TABLES). A regional unit's storage is the <Name>Row,
+// and every destination below is unsafe.Offsetof/Sizeof over that storage, so
+// a string(N)'s N+1 buffer and the Row's padding land where the Row puts them.
+// The one shape the Row cannot carry yet is a union (fixedRowHoldsUnion).
 func (g *tableGen) hasFixedForm(st *ir.Struct) bool {
-	if g.regional || !st.IsTable || st.IsMapEntry() || g.isVarTable(st.Name) || !ir.TableFixedSupported(st, 0) {
+	if g.regional && fixedRowHoldsUnion(st, map[*ir.Struct]bool{}) {
+		return false
+	}
+	if !st.IsTable || st.IsMapEntry() || g.isVarTable(st.Name) || !ir.TableFixedSupported(st, 0) {
 		return false
 	}
 	// AND THE RECORD CEILING, the same 65536 TableFixedFormRoots applies
@@ -324,6 +345,34 @@ func (g *tableGen) hasFixedForm(st *ir.Struct) bool {
 	return g.fixedLeafCount(st) <= fixedLeafCap
 }
 
+// fixedRowHoldsUnion is THE NAMED FOLLOW-ON of docs/SPEC-TABLES.md §3.4 (A
+// UNION IN A REGIONAL UNIT'S FIXED TABLE): in a regional unit a union is its
+// overlay Row (a tag and one payload extent, arms behind accessors), so the
+// per-arm destinations this walk names (unsafe.Offsetof(U{}.Arm)) do not exist
+// there. A fixed table whose closure reaches a union, directly, through a
+// nested table or through an arm, keeps form 1 in a regional unit, decided
+// here at compile time and never at run time.
+func fixedRowHoldsUnion(st *ir.Struct, seen map[*ir.Struct]bool) bool {
+	if seen[st] {
+		return false
+	}
+	seen[st] = true
+	for _, f := range st.Fields {
+		if f.Type.Kind != ir.TNamed {
+			continue
+		}
+		switch r := f.Type.Ref.(type) {
+		case *ir.Union:
+			return true
+		case *ir.Struct:
+			if fixedRowHoldsUnion(r, seen) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (g *tableGen) fixedRoots(members []*ir.Struct) []*ir.Struct {
 	var out []*ir.Struct
 	for _, st := range members {
@@ -334,10 +383,10 @@ func (g *tableGen) fixedRoots(members []*ir.Struct) []*ir.Struct {
 	return out
 }
 
+// emitFixedForm emits the form-3 surface for every qualifying fixed table of
+// the file, in a plain unit and a regional one alike (docs/SPEC-TABLES.md §3.4,
+// A VARIABLE TABLE IN THE UNIT CHANGES NOTHING FOR ITS FIXED TABLES).
 func (g *tableGen) emitFixedForm(members []*ir.Struct) {
-	if g.regional {
-		return
-	}
 	roots := g.fixedRoots(members)
 	if len(roots) == 0 {
 		return
@@ -463,7 +512,7 @@ func (g *tableGen) emitFixedFieldLeaves(st *ir.Struct, f *ir.Field, off int64) {
 	if f.Type.Optional {
 		// the PRESENT byte lands in a Go bool, so it is normalised, not copied
 		g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool} // %s present\n",
-			base, offGo(st.Name, member(f)+"Present"), f.Name)
+			base, g.offGo(st.Name, member(f)+"Present"), f.Name)
 		g.pf("\tn++\n")
 		base += fixedPresentBytes
 	}
@@ -474,7 +523,7 @@ func (g *tableGen) emitFixedFieldLeaves(st *ir.Struct, f *ir.Field, off int64) {
 		g.emitFixedElementLoop(st, f, base, f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
 		g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
-			base, offGo(st.Name, member(f)+"Count"), f.ArrayBound, f.Name)
+			base, g.offGo(st.Name, member(f)+"Count"), f.ArrayBound, f.Name)
 		g.pf("\tn++\n")
 		g.emitFixedElementLoop(st, f, base+fixedCountBytes, f.ArrayBound)
 	case f.Type.Kind == ir.TString:
@@ -484,7 +533,7 @@ func (g *tableGen) emitFixedFieldLeaves(st *ir.Struct, f *ir.Field, off int64) {
 	case f.Type.Kind == ir.TBytes:
 		g.emitFixedTextLeaf(st, f, base, f.Type.Size, 3)
 	default:
-		g.pf("\t{\n\t\tes := src + %d\n\t\ted := dst + %s\n", base, offGo(st.Name, member(f)))
+		g.pf("\t{\n\t\tes := src + %d\n\t\ted := dst + %s\n", base, g.offGo(st.Name, member(f)))
 		g.emitFixedElementLeavesAt(f, "es", "ed", 2)
 		g.pf("\t}\n")
 	}
@@ -492,7 +541,7 @@ func (g *tableGen) emitFixedFieldLeaves(st *ir.Struct, f *ir.Field, off int64) {
 
 func (g *tableGen) emitFixedTextLeaf(st *ir.Struct, f *ir.Field, base, units int64, flavour int) {
 	g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: %d, Aux: dst + %s, Guard: tableFixedNoGuard, Op: tableFixedText, Meta: %d} // %s\n",
-		base, offGo(st.Name, member(f)+"Length"), units, offGo(st.Name, member(f)), flavour, f.Name)
+		base, g.offGo(st.Name, member(f)+"Length"), units, g.offGo(st.Name, member(f)), flavour, f.Name)
 	g.pf("\tn++\n")
 }
 
@@ -500,7 +549,7 @@ func (g *tableGen) emitFixedElementLoop(st *ir.Struct, f *ir.Field, base, count 
 	elem := fixedElementBytes(f)
 	g.pf("\tfor i := uint32(0); i < %d; i++ {\n", count)
 	g.pf("\t\tes := src + %d + i*%d\n", base, elem)
-	g.pf("\t\ted := dst + %s + i*%s\n", offGo(st.Name, member(f)), g.sizeofGo(f))
+	g.pf("\t\ted := dst + %s + i*%s\n", g.offGo(st.Name, member(f)), g.sizeofGo(f))
 	g.emitFixedElementLeavesAt(f, "es", "ed", 2)
 	g.pf("\t}\n")
 }
@@ -511,7 +560,7 @@ func (g *tableGen) sizeofGo(f *ir.Field) string {
 		case *ir.Enum, *ir.Flags:
 			return fmt.Sprintf("uint32(unsafe.Sizeof(%s(0)))", f.Type.Name)
 		default:
-			return fmt.Sprintf("uint32(unsafe.Sizeof(%s{}))", f.Type.Name)
+			return fmt.Sprintf("uint32(unsafe.Sizeof(%s{}))", g.fixedStorage(f.Type.Name))
 		}
 	}
 	t := goFieldType(f.Type)
@@ -543,7 +592,7 @@ func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs i
 			// never a plan entry, which would cover slack slots of a counted
 			// array of unions and count them (docs/SPEC-TABLES.md §3.4).
 			g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s + %s, Size: %d, Guard: tableFixedNoGuard, Op: tableFixedCopy} // the tag\n",
-				ind, src, dst, offGo(f.Type.Name, "Type"), tag)
+				ind, src, dst, g.offGo(f.Type.Name, "Type"), tag)
 			g.pf("%sn++\n", ind)
 			for i, v := range r.Variants {
 				g.pf("%s{ // arm %s, ordinal %d\n%s\tguardAt := n\n", ind, v.Name, i+1, ind)
@@ -585,17 +634,17 @@ func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs i
 // (emitFixedFieldLeaves) with the arm's flat Go storage spellings: an array arm
 // puts its live count in member+"Count", a text/bytes arm its used length in
 // member+"Length". src is the arm's payload start (past the tag), dst the union
-// member's base; the value member is offGo(unionName, arm).
+// member's base; the value member is g.offGo(unionName, arm).
 func (g *tableGen) emitFixedArmLeaves(v ir.UnionVariant, unionName, src, dst string, tabs int) {
 	f := v.F
 	ind := strings.Repeat("\t", tabs)
-	valueDst := dst + " + " + offGo(unionName, ir.GoExportName(v.Name))
+	valueDst := dst + " + " + g.offGo(unionName, ir.GoExportName(v.Name))
 	switch {
 	case f.Array == ir.ArrayFixed:
 		g.emitFixedArmLoop(f, src, valueDst, strconv.FormatInt(f.ArrayBound, 10), tabs)
 	case f.Array == ir.ArrayCounted:
 		g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s, Size: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
-			ind, src, dst+" + "+offGo(unionName, ir.GoExportName(v.Name)+"Count"), f.ArrayBound, v.Name)
+			ind, src, dst+" + "+g.offGo(unionName, ir.GoExportName(v.Name)+"Count"), f.ArrayBound, v.Name)
 		g.pf("%sn++\n", ind)
 		g.emitFixedArmLoop(f, src+" + "+strconv.FormatInt(fixedCountBytes, 10), valueDst, strconv.FormatInt(f.ArrayBound, 10), tabs)
 	case f.Type.Kind == ir.TString:
@@ -614,7 +663,7 @@ func (g *tableGen) emitFixedArmLeaves(v ir.UnionVariant, unionName, src, dst str
 // emitFixedTextLeaf).
 func (g *tableGen) emitFixedArmTextLeaf(ind, src, dst, valueDst, unionName, arm string, units int64, flavour int) {
 	g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s, Size: %d, Aux: %s, Guard: tableFixedNoGuard, Op: tableFixedText, Meta: %d} // %s\n",
-		ind, src, dst+" + "+offGo(unionName, arm+"Length"), units, valueDst, flavour, arm)
+		ind, src, dst+" + "+g.offGo(unionName, arm+"Length"), units, valueDst, flavour, arm)
 	g.pf("%sn++\n", ind)
 }
 
@@ -631,7 +680,7 @@ func (g *tableGen) emitFixedArmLoop(f *ir.Field, src, dst, count string, tabs in
 }
 
 func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
-	g.pf("func %sFixedWriteBody(b []byte, value *%s) {\n", st.Name, st.Name)
+	g.pf("func %sFixedWriteBody(b []byte, value *%s) {\n", st.Name, g.fixedStorage(st.Name))
 	off := int64(0)
 	if len(st.Fields) == 0 {
 		g.pf("\t_, _ = b, value\n")
@@ -1150,7 +1199,7 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 		return
 	}
 	g.pf("// %s's read-side bounds.\n", st.Name)
-	g.pf("func %sFixedClampBody(value *%s, clamped *int32) {\n", st.Name, st.Name)
+	g.pf("func %sFixedClampBody(value *%s, clamped *int32) {\n", st.Name, g.fixedStorage(st.Name))
 	g.pf("\t_, _ = value, clamped\n")
 	for _, f := range st.Fields {
 		g.emitFixedClampField(f, "value", 1, fixedPassClamp)
@@ -1171,7 +1220,7 @@ func (g *tableGen) emitFixedCheckBodyFn(st *ir.Struct) {
 		return
 	}
 	g.pf("// %s's write-side contract (docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.\n", st.Name)
-	g.pf("func %sFixedCheckBody(value *%s) bool {\n", st.Name, st.Name)
+	g.pf("func %sFixedCheckBody(value *%s) bool {\n", st.Name, g.fixedStorage(st.Name))
 	text := fixedDirectText(st)
 	if text {
 		// z and hi are the whole body's zero-byte and high-bit tests
@@ -1192,7 +1241,7 @@ func (g *tableGen) emitFixedCheckBodyFn(st *ir.Struct) {
 	g.pf("\treturn true\n}\n\n")
 	g.pf("// %sFixedCheckBodyExact is %sFixedCheckBody with each string asked by\n", st.Name, st.Name)
 	g.pf("// tableFixedUtf8Ok: the answer for text with a byte at or past 0x80 (§3.1).\n")
-	g.pf("func %sFixedCheckBodyExact(value *%s) bool {\n", st.Name, st.Name)
+	g.pf("func %sFixedCheckBodyExact(value *%s) bool {\n", st.Name, g.fixedStorage(st.Name))
 	g.pf("\t_ = value\n")
 	for _, f := range st.Fields {
 		g.emitFixedClampField(f, "value", 1, fixedPassExact)

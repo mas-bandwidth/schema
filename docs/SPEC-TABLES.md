@@ -7443,6 +7443,37 @@ between the two forms** — which is the surprise the keyword exists to prevent.
   KEYWORD.** `ir.VariableTables` is its complement and `ir.TableFixedRoots` is
   the declared set, so every emitter switches on one flag with one origin.
 
+#### A VARIABLE TABLE IN THE UNIT CHANGES NOTHING FOR ITS FIXED TABLES
+
+**THE FIXED FORM IS CARRIED BY EVERY FIXED TABLE THAT QUALIFIES FOR IT,
+WHATEVER ELSE THE UNIT HOLDS.** The qualification is the one this section
+already names and nothing more: the record ceiling (65536), the walk's depth
+bound and the generator's leaf cap (4096). A unit that also declares a variable
+table is generated over the unit's canonical `<Name>Row` storage (§7, §11), and
+its fixed tables carry the same six form-`3` entry points over that storage
+(`<T>FixedMeasure`, `<T>FixedSave`, `<T>FixedSaveReason`, `<T>FixedLoad`, and
+the `<T>FixedLeaves` and `<T>FixedWriteBody` the plan and the template are made
+of) and write THE SAME BYTES, record for record, that the same declarations
+write in a unit with no variable table. Every refusal this form names answers
+the same in both units. The layout is the declaration's and the storage is the
+port's, so a port whose storage differs between the two units (a `string(N)`
+held in an `N+1` buffer, padding the Row lays down) takes its destinations from
+its own compiler's `offsetof` and `sizeof` over the storage it actually holds,
+as THE PLAN'S DESTINATIONS rule below already requires.
+
+Source: the v1.5 adoption, where adding one variable table to a unit silently
+dropped every fixed table's form-`3` surface and its fixed tables rode the
+ordinary table wire. That is the surprise the keyword exists to prevent.
+
+- **FOLLOW-ON, NAMED: A UNION IN A REGIONAL UNIT'S FIXED TABLE.** In a unit that
+  holds a variable table a union is stored as its overlay Row (a tag and one
+  payload extent, arms reached through accessors) and not as one member per
+  arm, so the Go leg's per-arm destinations do not exist there. Until the Go
+  leg lays a union's arms over the overlay, a fixed table whose closure holds a
+  union keeps form `1` in a regional unit, decided at compile time by a named
+  predicate (`fixedRowHoldsUnion`) and never at run time. The same table in a
+  unit with no variable table carries form `3` as before.
+
 ---
 
 #### THE ONE READER PATH: A PLAN
