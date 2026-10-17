@@ -1594,6 +1594,24 @@ cards-java-retain-fuzz: build/conformance-harness build/cards-java-wire-fuzz/.st
 
 test-java: cards-java-retain-fuzz
 
+# THE ALL-ROOT WIRE-FUZZ GATE (java-wire-fuzz-every-root): the same fuzzer as
+# cards-java-wire-fuzz, over the harness's DEFAULT roster (testdata/conformance/
+# tables/MANIFEST.txt — no --manifest), so every root of the roster rides the
+# wire once. The zero-coverage greps make a roster that opens nothing fail.
+.PHONY: tables-java-wire-fuzz-all
+tables-java-wire-fuzz-all: build/conformance-harness build/tables-generated-java/.stamp build-conformance-java
+	@rm -f build/tables-java-wire-fuzz-all.log
+	./build/conformance-harness wire-fuzz \
+		--driver 'test/conformance/java/driver wire-fuzz' --seed $(SEED) --n $(N) \
+		> build/tables-java-wire-fuzz-all.log 2>&1; \
+	status=$$?; cat build/tables-java-wire-fuzz-all.log; \
+	[ $$status -eq 0 ] || exit $$status
+	@grep -q '0 divergences' build/tables-java-wire-fuzz-all.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-java-wire-fuzz-all.log
+	@grep -qE '[1-9][0-9]* mutants' build/tables-java-wire-fuzz-all.log
+
+test-java: tables-java-wire-fuzz-all
+
 # ---------------------------------------------------------------------------
 # THE CARD FACADE LEG (docs/SPEC-TABLES.md §2, §16; tables/cards/java,
 # tables/cards/conformance/FORMAT.md "The leg contract"). The Java facade
