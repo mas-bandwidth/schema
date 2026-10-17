@@ -38,7 +38,7 @@
     "choice": {
       "ping": null
     },
-    "optional": "",
+    "optional": [],
     "text": []
   },
   "remaining_fields": "contract defaults"

@@ -17,8 +17,12 @@
       }
     ],
     "text": [
-      "a ; semicolon is data",
-      "line\nwith escape"
+      {
+        "line": "a ; semicolon is data"
+      },
+      {
+        "line": "line\nwith escape"
+      }
     ],
     "count": 2
   },

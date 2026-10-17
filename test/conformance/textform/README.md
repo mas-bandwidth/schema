@@ -12,7 +12,7 @@ compiler input file. All ordinary missing fields have the stated defaults;
 value. Wrapper objects in the oracle denote exact wide numbers, raw fixed
 storage, byte strings, float bits or an instant, not extra table fields.
 `State` has two non-None variants, `unknown` and `done`; `None` is implicit.
-`Features` has Fast and Safe bits. `Node` has the fields stated in the contract.
+`Features` has Fast and Safe bits. `Node` and `TextItem` have the fields stated in the contract.
 Run Document vectors for both fixed and variable roots. `variable-*` uses
 its separate Graph contract, only for variable tables. Graph labels in the
 oracle express identity: both items MUST point to the same node.

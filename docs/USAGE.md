@@ -104,6 +104,9 @@ schema generate --lang go --surface wire,json --out generated/go .
 `--surface` takes a comma-separated list of the table surfaces (SPEC-TABLES.md
 §8.8). Its default is the full set — the command above without `--surface` is
 byte-identical to the one with `--surface wire,fixed,json,cook,block,view,message,retain`.
+The one surface outside the default is `textform`, the hand-editable text form
+(below, "Hand-edited tables and comments"): it is emitted only when named, and
+naming it implies `json` and `wire`.
 Only the Go target accepts it; any other `--lang` refuses the flag by name.
 A table that declares `forms` (SPEC-TABLES.md §2.12) narrows it further: the
 list intersects the table's forms, and a list naming `json`, `cook` or `block`
@@ -3736,10 +3739,14 @@ require github.com/mas-bandwidth/serialize.go <tag>
 and all — rides the id-table wire through a builder and its arena; a fixed
 table is a positional image at declared storage widths, written and read by
 one layout hash. A unit that declares any variable table is generated
-regionally, and a regional unit emits no fixed-form surface at all: its
-`fixed table`s keep the variable wire's entry points and never grow
-`FixedSave`/`FixedLoad`. So adopt one class per unit; each recipe below
-carries its own declaration.
+regionally, and its `fixed table`s still carry the fixed form: each one
+that qualifies (the record ceiling, depth and leaf caps of
+docs/SPEC-TABLES.md §3.4) grows `FixedSave`/`FixedLoad` over the unit's
+`<Name>Row` storage, and writes the same bytes it writes in a unit with no
+variable table. Adding a variable table to a unit changes nothing for its
+fixed tables. The one exception today is a fixed table whose closure holds
+a union: in a regional unit it keeps the variable wire's entry points only,
+named as a follow-on in docs/SPEC-TABLES.md §3.4. Each recipe below carries its own declaration.
 
 The variable class, one unit. The builder owns the arena, the caller owns
 every byte:
@@ -4179,10 +4186,13 @@ The `MeasureReason`, `LoadMeasureReason`, `CookMeasureReason`, and builder
 `PackMeasureReason` variants return `(int64, error)`. Success returns a literal
 `nil`; refusals carry `TableRefuseReason`, usable with `errors.As` or direct
 comparison. The existing integer measure and boolean open calls remain available.
-Cook and block handles also provide `Open(base, bytes) error`. A damaged file
-trailer returns `TableRefuseWireDamaged` (`wire_damaged`) from
+Cook and block handles also provide `Open(base, bytes) error`. `LoadMeasureReason`
+validates the wire's framing: a root or node body that runs past its end or
+lacks its terminating zero reference, a node scan that is not whole, and a
+damaged file trailer all return `TableRefuseWireDamaged` (`wire_damaged`) from
 `LoadMeasureReason`; this is distinct from a format refusal and from the
-accelerator-only `truncated` reason. `<Name>ReadStrict(wire)` is the one-call
+accelerator-only `truncated` reason. Value-level events (clamped,
+`kind_mismatch`, ill-formed text, unknown ids) do not fail the measure. `<Name>ReadStrict(wire)` is the one-call
 strict read (docs/SPEC-TABLES.md §6.5): it builds its own builder and returns
 `(*<Name>, error)`. The error is a `TableRefuseReason` (`clamped`,
 `kind_mismatch`, `malformed`, `unknown_form`, `wire_damaged`), a
@@ -4471,10 +4481,35 @@ the document to rewrite it byte for byte or change a single value in place.
 The table value alone cannot retain layout. Unknown and duplicate keys,
 over-bound values and unterminated forms are named refusals, not repairs.
 
-This is the standard and its conformance contract; it does not yet promise a
-generated Go reader or writer. That implementation follows separately. Existing
-roadmap/work-file grammars need declared tables and explicit migration: tagged
-records and positional IDs in older work files are not accepted implicitly.
+The Go target generates it on the `textform` surface, which a generate names
+explicitly (it is not in the default set): `schema generate --lang go --surface wire,fixed,json,cook,block,view,message,retain,textform`. Every table and type
+the JSON form carries, fixed and plain alike, then gets three functions in
+`<Base>TableTextForm.go`, which imports the standard library only:
+
+```go
+doc, ship, err := example.ShipConfigLoadTextForm(text, example.TableTextFormDefaultLimits())
+if err != nil {
+	var refusal *example.TableTextFormError // .Name is the §16.9.4 name, .Offset and .Path say where
+	errors.As(err, &refusal)
+}
+same, _ := example.ShipConfigSaveTextForm(doc) // the input, byte for byte
+edited, ship, err := example.ShipConfigEditTextForm(doc,
+	example.TableTextFormEdit{Path: "name", Text: `"Renamed"`},
+	example.TableTextFormEdit{Path: "weapons[0].damage", Text: "12"})
+```
+
+`LoadTextForm` returns the document and the typed value (for a plain table,
+the locked root of a builder of its own, as `LoadText` does). `SaveTextForm`
+writes the retained document. `EditTextForm` replaces existing scalar values:
+each edit's `Text` is one token of the form, replaced at its original span,
+so only that value's line changes; a semantically equal value keeps the old
+spelling; the edited document is read again under the same limits and a
+refusal leaves the old document as it was. Inserting, deleting or replacing a
+whole compound is a structural edit and refuses as `text_edit_conflict`. The
+document also answers `Comments()` (each comment with the path it attaches
+to), `Span(path)`, `Paths()` and `Scalar(path)`. Existing roadmap/work-file
+grammars need declared tables and explicit migration: tagged records and
+positional IDs in older work files are not accepted implicitly.
 
 Do not use this document form for data only a program reads. Use the binary
 table wire, or padded base64 of that wire on text-only channels (§16.8); use

@@ -11,7 +11,7 @@
   ; Second element stays below a blank line.
 
   (:id "two" :title "Second" :state :done))
- :text ("a ; semicolon is data" "line\nwith escape")
+ :text ((:line "a ; semicolon is data") (:line "line\nwith escape"))
  :count 2 ; trailing field comment
  ; container footer
 )

@@ -5,4 +5,4 @@
  :fraction 0.0000152587890625 :float -0.0
  :time "2026-10-15T08:34:05-04:00"
  :flags (:Fast "Safe") :keyed (:unknown 4 :done 7)
- :choice (:ping null) :optional "" :text ())
+ :choice (:ping null) :optional () :text ())
