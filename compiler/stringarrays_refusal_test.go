@@ -17,14 +17,14 @@ import (
 // a map, and a json key on a field.
 const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntable Holder\n{\n    name string(16) | json = \"label\"\n    words [..4]Word\n    more []Word\n    index map[string(8)]int32\n}\n"
 
-// neitherDigest is the sha256 of the go and cpp outputs of neitherSchema at
-// the base this card started from (sprint/schema-go @ f001d67e2086), file
+// neitherDigest is the sha256 of the go and cpp outputs of neitherSchema, file
 // names sorted, each name then its bytes. The go digest is recomputed on the
-// merge of sprint/schema-go @ 3f4d111f4442: it moves from that base only by
-// the integrity_mismatch refusal name every Go unit's runtime carries
-// (docs/SPEC-TABLES.md §2.14): the enum value, its Error case and its Err line.
+// merge of sprint/schema-go @ 60047ec8c2ff: it moves from the base by the
+// integrity_mismatch refusal name every Go unit's runtime carries
+// (docs/SPEC-TABLES.md §2.14) and by the strict timestamp parser that now rides
+// in every Go text form (§2.11, §16.2).
 var neitherDigest = map[string]string{
-	"go":  "6cc2b169e14b33f8b43bdae40d590e570e41ffa33f52489c18b7dfc240382219",
+	"go":  "e28d11179d3e7aaf76f3456280d56c6e0ed97a7f9b1b07787fba9a76e03702f9",
 	"cpp": "5aabda2cf12ca342bd480b18084def13f06d87a85b6bdddeea12f955f761da1d",
 }
 
