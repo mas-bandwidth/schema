@@ -8916,6 +8916,23 @@ Every node starts at its own type's alignment and the directory's offsets
 are those padded starts, so "is a directory entry" and "is aligned" are
 one check rather than two.
 
+**A FIXED-FORM REFUSAL'S STRICT ERROR IS ITS OWN NAME.** For a refused
+  fixed report whose reason is a fixed reason other than a form-byte one, the
+  typed error is that reason itself — `layout_unknown`, `count_over_bound`,
+  `plan_too_large`, and so on — never `unknown_form`. Only a form-byte
+  refusal (`newer_form`, `previous_form`, `message_form_as_file`, an
+  unsupported wire form) answers `unknown_form`. A Go strict read returns
+  `TableFixedRefusal{Reason}` for the former and `TableRefuseUnknownForm`
+  (so `errors.Is` works) for the latter.
+
+**A message-form refusal answers `unknown_form`.** Every message-form
+  refusal — `no_vocabulary`, `vocabulary_too_large`, `second_announcement`,
+  `batch_too_large`, and the form-byte ones — answers `TableRefuseUnknownForm`
+  (so `errors.Is` works), whatever the reason string. `batch_too_large` is a
+  message path's capacity name that also names a fixed load's capacity refusal;
+  on the message path it still answers `unknown_form`, never
+  `TableFixedRefusal`.
+
 **A BLOB NODE in a region** (§2.5) is an eight-byte header and then the
 bytes: `length (u32)` in the cook's byte order, then four pad bytes written
 as zero, then `length` bytes of data at offset eight, so the data itself is
