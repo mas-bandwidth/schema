@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -186,4 +187,55 @@ func keysOf(files map[string][]byte) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// TestLuauRequiresResolveInsideTheUnitOnly is the security rule of
+// docs/PORT-LUAU.md, THE RUNTIME LAYOUT: the unit directory and the runtime
+// beside it REPLACE the module search path. Every require a generated module
+// makes is "./<module>" — never a bare name, never "../", never an "@alias"
+// a .luaurc could point elsewhere — and every module it names is emitted
+// beside it. The planted control: a shadowing schema_runtime.luau and Wire.luau
+// in the working directory, one level OUTSIDE the unit, and a .luaurc there
+// aliasing it, each of which raises if loaded; the unit loads its own.
+func TestLuauRequiresResolveInsideTheUnitOnly(t *testing.T) {
+	t.Parallel()
+	u := unitFromDir(t, filepath.Join("..", "..", "..", "examples"))
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := regexp.MustCompile(`require\(([^)]*)\)`)
+	local := regexp.MustCompile(`^"\./([A-Za-z0-9_]+)"$`)
+	for name, data := range files {
+		for _, m := range req.FindAllStringSubmatch(string(data), -1) {
+			lm := local.FindStringSubmatch(m[1])
+			if lm == nil {
+				t.Errorf("%s: require(%s) is not a ./<module> path inside the unit", name, m[1])
+				continue
+			}
+			if _, ok := files[lm[1]+".luau"]; !ok {
+				t.Errorf("%s: require(%s) names a module the unit does not emit", name, m[1])
+			}
+		}
+	}
+	outside := t.TempDir()
+	unit := filepath.Join(outside, "unit")
+	if err := os.Mkdir(unit, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeAll(t, unit, files)
+	for _, shadow := range []string{"schema_runtime.luau", "Wire.luau", "ArmDefaults.luau"} {
+		writeFile(t, outside, shadow, "error(\"SHADOW LOADED: "+shadow+" from outside the unit\")\n")
+	}
+	writeFile(t, outside, ".luaurc", "{\"aliases\": {\"schema\": \".\"}}\n")
+	writeFile(t, unit, "main.luau", "local w = require(\"./Wire\")\nlocal a = require(\"./ArmDefaults\")\nassert(w.Weapon.Railgun == 3 and a.NewDefaultArm().EntriesCount == 0)\nprint(\"inside\")\n")
+	if out := string(luaurun.Run(t, outside, filepath.Join("unit", "main.luau"), nil)); out != "inside\n" {
+		t.Fatalf("main.luau printed %q", out)
+	}
+	// the control: the shadow is live, so a require that reached outside the
+	// unit would have raised
+	writeFile(t, unit, "reach.luau", "print(pcall(function() return require(\"../schema_runtime\") end))\n")
+	if out := string(luaurun.Run(t, outside, filepath.Join("unit", "reach.luau"), nil)); !strings.Contains(out, "SHADOW LOADED") {
+		t.Fatalf("the control did not reach the planted shadow: %q", out)
+	}
 }

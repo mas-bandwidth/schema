@@ -154,14 +154,23 @@ definition (so no read consults the host, PORTING M12). The codec uses
 packing), `readstring` / `writestring`, `copy`, `fill`, `len`, and
 `buffer.fromstring` / `tostring` at the edges.
 
-**float32 rounding.** A `float32` field stores a double holding a float32
-value. Construction writes the default already rounded (the shortest literal
-for `float32(v)`); a write path rounds a caller's value through a 4-byte
-buffer (`_Rt.fround`: `writef32` then `readf32`), which is round-to-nearest,
-the same as every other target. **A NaN never goes through that conversion**
-(SPEC §4.3, PORTING M21): the read and write paths move a float32's bits by
-bit surgery between `readu32` and the double's two 32-bit halves, as
-`internal/codegen/jstable` does, so a signalling NaN and its payload survive.
+**float32 writes (coordinator ruling from the Lua design read, 2026-10-17).**
+A `float32` field stores a double. When a write is handed a double that is
+not exactly a float32, it converts the value THE WAY THE GO REFERENCE WRITER
+DOES — `float32(v)`, round to nearest, ties to even — so the bytes are the
+same as the reference's, byte for byte. Strict writing means canonical,
+deterministic output; it does not mean refusing ordinary rounding, so no
+write refuses a double for having more precision than a float32. Luau's
+`buffer.writef32` is that conversion (the C++ `float` cast, IEEE
+round-to-nearest-even), and `_Rt.fround` exposes it. Non-finite values follow
+the Go writer's rule as well: a finite double past float32's range becomes
+±infinity, ±infinity stays itself, and a NaN converts as Go's `float32(v)`
+converts it. Construction writes each default already rounded (the shortest
+literal for `float32(v)`). **A float32 read from the wire never goes through
+a conversion** (SPEC §4.3, PORTING M21): the read path, and a write of a
+value that came off the wire, move a float32's bits by bit surgery between
+`readu32` and the double's two 32-bit halves, as `internal/codegen/jstable`
+does, so a signalling NaN and its payload survive a round trip.
 
 ## THE RUNTIME LAYOUT
 
@@ -194,6 +203,30 @@ refused by name, as is a schema file `X` beside a file `XTable`. A require
 cycle does not load in Luau, so a cycle between modules is refused by name
 (`luau.RequireCycle`); a cross-file TABLE cycle never reaches it, because the
 checker refuses that first (docs/SPEC-TABLES.md §11).
+
+**Security: the unit directory and the runtime REPLACE the module search
+path; they are never prepended to it** (coordinator ruling from the Lua
+design read, 2026-10-17). Lua's form of the rule is `package.path` replaced
+and `package.cpath` cleared. Luau has neither: its `require` has no search
+path at all — a bare name is refused by the interpreter (measured: `require
+path must start with a valid prefix: ./, ../, or @`) — so the Luau form is
+a rule on what generated code spells. **Every require a generated module or
+runtime makes is `"./<module>"`, naming a module emitted into the same
+directory**: never a bare name, never `../`, and never an `@alias`, because an
+alias comes from a `.luaurc` the unit does not own (measured: a `.luaurc`
+alias above the unit directory DOES resolve to a file outside it), and `../`
+walks out of the directory. Nothing outside the unit directory and its
+runtime can resolve, whatever the working directory or the files around it.
+No native modules load: the pinned interpreter has no `package`, `dofile`,
+`loadfile` or `io` (measured: all `nil`) and no C module loader, and an
+embedding host (Virtual Go, the space game, lego) is told the same: its
+require resolver for a schema unit resolves `./` against the unit directory
+alone and refuses everything else. `TestLuauRequiresResolveInsideTheUnitOnly`
+holds it: every require in the generated unit is `./` to a module the unit
+emits, and with a shadowing `schema_runtime.luau`, `Wire.luau` and
+`ArmDefaults.luau` planted one level outside the unit (each raising if
+loaded) and a `.luaurc` aliasing that directory, the unit loads its own
+modules; the control requires the shadow through `../` and sees it raise.
 
 ## THE HARNESS
 
