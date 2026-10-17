@@ -11,6 +11,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `blockhome/` | block-home corpus | `make check` | `bin/schema check tables/blockhome` |
 | `cards/` | work-card corpus | `make cards-test` | `make cards-test` |
 | `examples/` | table examples corpus | `make check` | `bin/schema check tables/examples` |
+| `goruntime/` | optional shared Go table runtime (generated) | `make tables-go-shared-runtime` | `make go-runtime` |
 | `lists/` | unbounded-array corpus | `make check` | `bin/schema check tables/lists` |
 | `maps/` | map corpus | `make check` | `bin/schema check tables/maps` |
 | `messages/` | message-union corpus | `make check` | `bin/schema check tables/messages` |
