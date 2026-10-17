@@ -49,16 +49,22 @@ type unchangedProbe struct {
 // keep declaration when its name, or its method's receiver, is the keep name
 // or the keep name followed by an upper-case letter (Word, WordBuilder,
 // WordSaveBody). The keep declarations must be the same set in the two
-// outputs and the same bytes, numeric literals masked (maskUnitNumbers): a
-// byte of a non-using declaration's code that depends on the construct is a
-// leak, named by construct, target and declaration. Code that is the unit's
+// outputs and the same bytes, the two unit ordinals masked (maskUnitOrdinals):
+// a byte of a non-using declaration's code that depends on the construct is a
+// leak, named by construct, target and declaration. Every other number in a
+// keep declaration (a width, a bound, an offset, a wire constant) is compared
+// as it is. Code that is the unit's
 // as a whole (runtime, registries, the build version) belongs to no keep
 // declaration and may carry the construct's support. For a refusing target
 // the construct's unit must be refused by name (the refusal is central, in
 // Generate, before any emitter runs, so no construct-keyed byte reaches its
-// output), and the base must still generate. The probe declarations sort
-// after every keep declaration, so the keep declarations' ordinals do not
-// move between the two units either.
+// output), and the base must still generate. The keep declarations' unit
+// ordinals do move between the two units, because the using and control
+// declarations differ in the wire ids and vocabulary entries they add: the
+// unbounded optional text list probe moves WordSaveBodyFields from
+// refAtHit(11, ...) to refAtHit(10, ...), and every text list probe moves
+// WordSaveMessageBody from w.Put(8, TableMessageRefBitsHere) to
+// w.Put(7, TableMessageRefBitsHere). Those two positions are the ones masked.
 func checkRefusalUnchanged(gen generateFunc, targets []string, p unchangedProbe) error {
 	var errs []string
 	for _, lang := range targets {
@@ -112,7 +118,7 @@ func checkRefusalUnchanged(gen generateFunc, targets []string, p unchangedProbe)
 		}
 		sort.Strings(sorted)
 		for _, k := range sorted {
-			if !bytes.Equal(maskUnitNumbers(a[k]), maskUnitNumbers(b[k])) {
+			if !bytes.Equal(maskUnitOrdinals(a[k]), maskUnitOrdinals(b[k])) {
 				errs = append(errs, fmt.Sprintf("%s: target %s: the declaration %s, which does not use the construct, changed when the unit uses it", p.construct, lang, k))
 			}
 		}
@@ -153,19 +159,23 @@ func genSource(gen generateFunc, src, lang string) (map[string][]byte, error) {
 	return gen(u, lang)
 }
 
-// unitNumber is a numeric literal in generated Go. A declaration's code
-// carries numbers that are the unit's as a whole (a record index, an intern
-// slot, the bit width of a vocabulary reference), and those move whenever the
-// unit gains a declaration, so the check compares the keep declarations with
-// every numeric literal masked: a construct-keyed line, call, name or branch
-// in them still differs.
-var unitNumber = regexp.MustCompile(`\b(?:0[xX][0-9a-fA-F]+|[0-9]+)\b`)
+// unitOrdinal is a number in generated Go that is the unit's as a whole and
+// moves whenever the unit gains a wire id or a vocabulary entry, so it differs
+// between the using and the control unit with no leak. There are exactly two
+// such positions in a keep declaration's code: the first argument of refAtHit
+// (the id's ordinal in TableWireIds, gotable knownOrdinal) and the slot written
+// by Put at TableMessageRefBitsHere (the entry's index in the message
+// vocabulary, gotable messageSlot, never 0; a written 0 is the None slot and
+// stays compared). Only those are masked: a construct-keyed number anywhere
+// else in a non-using declaration (a width, a bound, an offset, a return
+// value, a wire constant) still differs.
+var unitOrdinal = regexp.MustCompile(`(refAtHit\()[0-9]+(,)|(\.Put\()[1-9][0-9]*(, ?TableMessageRefBitsHere\))`)
 
-func maskUnitNumbers(b []byte) []byte {
+func maskUnitOrdinals(b []byte) []byte {
 	if b == nil {
 		return nil
 	}
-	return unitNumber.ReplaceAll(b, []byte("#"))
+	return unitOrdinal.ReplaceAll(b, []byte("${1}${3}#${2}${4}"))
 }
 
 // keepDecls cuts generated Go files into top-level declarations and returns
@@ -329,8 +339,60 @@ func TestRefusalUnchangedCatchesConstructKeyedLeak(t *testing.T) {
 				t.Errorf("%s: the failure does not name %q: %s", p.construct, want, msg)
 			}
 		}
+		// only when the unit uses the construct, a number in the code of a
+		// declaration that does not use it changes (a width, bound or return
+		// value of keep[0]'s MeasureBody gains a digit): the mask must not hide it
+		fn := "func " + p.keep[0] + "MeasureBody"
+		planted = func(u *ir.Unit, lang string) (map[string][]byte, error) {
+			files, err := c.Generate(u, lang, nil)
+			if err != nil || !p.uses(u) {
+				return files, err
+			}
+			out := make(map[string][]byte, len(files))
+			for name, b := range files {
+				out[name] = plantNumberLeak(b, fn)
+			}
+			return out, nil
+		}
+		err = checkRefusalUnchanged(planted, unchangedTargets, p)
+		if err == nil {
+			t.Errorf("%s: a construct-keyed number leak into %s passed the check", p.construct, fn)
+			continue
+		}
+		msg = err.Error()
+		for _, want := range []string{p.construct + ":", "target go", "declaration ", fn + ","} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("%s: the number leak failure does not name %q: %s", p.construct, want, msg)
+			}
+		}
 	}
 }
+
+// plantNumberLeak appends a digit to the first numeric literal in the body of
+// the function fn names that is not a masked unit ordinal, so the declaration
+// changes by a number alone.
+func plantNumberLeak(b []byte, fn string) []byte {
+	s := string(b)
+	at := strings.Index(s, "\n"+fn+"(")
+	if at < 0 {
+		return b
+	}
+	end := len(s)
+	if next := strings.Index(s[at+1:], "\nfunc "); next >= 0 {
+		end = at + 1 + next
+	}
+	for _, m := range unitNumber.FindAllStringIndex(s[at:end], -1) {
+		lo, hi := at+m[0], at+m[1]
+		if strings.HasSuffix(s[:lo], "refAtHit(") || strings.HasPrefix(strings.TrimLeft(s[hi:], ", "), "TableMessageRefBitsHere") {
+			continue
+		}
+		return []byte(s[:hi] + "9" + s[hi:])
+	}
+	return b
+}
+
+// unitNumber is a decimal integer literal, for plantNumberLeak.
+var unitNumber = regexp.MustCompile(`\b[0-9]+\b`)
 
 // pinnedDigest is a quoted 64-hex-digit literal: a sha256 committed beside the
 // code whose output it pins.
