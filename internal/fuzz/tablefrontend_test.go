@@ -76,8 +76,8 @@ var tableHandSeeds = []string{
 	"package t\ntype T { x uint64 | min = 0, max = 18446744073709551615 }\n",
 	"package t\nenum E { One, Two }\ntype T { x [4]E }\n",
 	"package t\nenum E { One, Two }\ntable T { m map[E]int32 }\n",
-	"package t\ntype Sub { v int32 }\nunion U { s *Sub }\ntable T { u U }\n",
-	"package t\nfixed table T { lines []string(16) }\n",
+	"package t\ntable Sub { v int32 }\nunion U { s *Sub }\ntable T { u U }\n",
+	"package t\ntable T { lines []string(16) }\n",
 	"package t\nfixed table Sub { v int32 }\nfixed table T { s ?Sub }\n",
 	"package t\ntable T | json = \"array\"\n{\n    xs []int32\n}\n",
 }
