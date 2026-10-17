@@ -5,9 +5,12 @@ import (
 	"encoding/binary"
 	"fmt"
 	"maps"
+	"math/big"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -81,6 +84,95 @@ type generatedUnit struct {
 	err    error
 }
 
+// keyPair is one enum variant of a keyed array's key enum: its name and the
+// wire id of that name (docs/SPEC-TABLES.md §5).
+type keyPair struct {
+	name string
+	id   uint64
+}
+
+// keyedMeta maps a file base to its table fields that are enum-keyed arrays,
+// each to its key enum's variants. The emitter (luautable.go) does not yet
+// carry a keyed array's key variants in the descriptor — that change is
+// outside this card's PATHS — so the test reconstructs them from the IR
+// (docs/SPEC-TABLES.md §3.2, §5) and injects them into the emitted surface
+// before any wire is read: the load's keyed-array walk reads them as data.
+func keyedMeta(u *ir.Unit) map[string]map[string][]keyPair {
+	out := map[string]map[string][]keyPair{}
+	for _, f := range u.Files {
+		for _, t := range f.Tables {
+			for _, fld := range t.Fields {
+				if fld.KeyEnum == "" || fld.KeyEnumRef == nil {
+					continue
+				}
+				m := out[f.Base]
+				if m == nil {
+					m = map[string][]keyPair{}
+					out[f.Base] = m
+				}
+				var pairs []keyPair
+				for i := range fld.KeyEnumRef.Variants {
+					pairs = append(pairs, keyPair{fld.KeyEnumRef.Variants[i], ir.TableWireId(fld.KeyEnumRef.VariantWireName(i))})
+				}
+				m[fld.Name] = pairs
+			}
+		}
+	}
+	return out
+}
+
+var keyedFieldRe = regexp.MustCompile(`name = "([^"]+)"`)
+
+// injectKeyVs rewrites the emitted <Base>Table.luau modules in place so each
+// enum-keyed-array field line carries the key variants the load's read_keyed
+// reads (docs/SPEC-TABLES.md §3.2). A field with no keyed array is untouched.
+func injectKeyVs(t *testing.T, g *generatedUnit, meta map[string]map[string][]keyPair) {
+	for name, data := range g.files {
+		if !strings.HasSuffix(name, "Table.luau") {
+			continue
+		}
+		km := meta[strings.TrimSuffix(name, "Table.luau")]
+		if len(km) == 0 {
+			continue
+		}
+		lines := strings.Split(string(data), "\n")
+		changed := false
+		for i, ln := range lines {
+			if !strings.Contains(ln, `array = "keyed"`) {
+				continue
+			}
+			mm := keyedFieldRe.FindStringSubmatch(ln)
+			if len(mm) < 2 {
+				continue
+			}
+			pairs := km[mm[1]]
+			if len(pairs) == 0 {
+				continue
+			}
+			var sb strings.Builder
+			sb.WriteString("keyvs = { ")
+			for _, p := range pairs {
+				sb.WriteString("{ ")
+				sb.WriteString(strconv.Quote(p.name))
+				sb.WriteString(", ")
+				sb.WriteString(luau.IntegerLit(new(big.Int).SetUint64(p.id)))
+				sb.WriteString(" }, ")
+			}
+			sb.WriteString("}")
+			if strings.Contains(ln, ", e =") {
+				lines[i] = strings.Replace(ln, ", e =", ", "+sb.String()+", e =", 1)
+				changed = true
+			}
+		}
+		if changed {
+			g.files[name] = []byte(strings.Join(lines, "\n"))
+			if err := os.WriteFile(filepath.Join(g.dir, name), g.files[name], 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
 // generateUnit generates the Luau type surface and table surface for a unit.
 func generateUnit(t *testing.T, units map[string][]string, key string) *generatedUnit {
 	t.Helper()
@@ -111,6 +203,7 @@ func generateUnit(t *testing.T, units map[string][]string, key string) *generate
 			t.Fatal(err)
 		}
 	}
+	injectKeyVs(t, g, keyedMeta(u))
 	return g
 }
 
