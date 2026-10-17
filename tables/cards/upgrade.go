@@ -61,7 +61,7 @@ func upgrade(wire []byte, retainBytes, retainIDs int) ([]byte, Report, error) {
 		if reason != nil {
 			report.Reason = reason.Error()
 		}
-		CardLoad(make([]byte, 64), wire, &report)
+		CardLoadTolerant(make([]byte, 64), wire, &report)
 		return nil, report, fmt.Errorf("cards: upgrade: wire is not a card: %v", reason)
 	}
 	if n > int64(maxHostInt)-64 {
