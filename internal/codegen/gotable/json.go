@@ -75,7 +75,7 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	}
 	extra := tableJsonWideSource + tableJsonWStringSource + tableJsonGraphSource + tableJsonListSource + tableJsonMapSource + tableJsonMapDecimalSource + tableJsonTimestampSource + tableTimestampRuntime
 	b.WriteString("import (\n" + imports + ")\n\n")
-	b.WriteString(requiredJson(u, optionalMapJson(u, unboundedTextJson(u, textListJson(u, strings.Replace(walk, "// ---- json walk: end ----", extra+"// ---- json walk: end ----", 1))))))
+	b.WriteString(optionalMapJson(u, unboundedTextJson(u, textListJson(u, strings.Replace(walk, "// ---- json walk: end ----", extra+"// ---- json walk: end ----", 1)))))
 	if len(variableTableNames(u)) > 0 {
 		regionJson := tableRegionJsonSource
 		if unitHasContainers(u) {
@@ -165,49 +165,6 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	out[home+"TableJson.go"] = src
 	return out, nil
 }
-
-// requiredRuntime gives TableFieldInfo the Required column, and requiredJson
-// gives the text walk the count it drives, in a unit that marks a field
-// `| required` and nowhere else (docs/SPEC-TABLES.md §2.3, §6.5): the plain
-// FromJson is the strict read, and a text that leaves a required field out is
-// refused as missing_required, naming it, as the binary read refuses it.
-func requiredRuntime(u *ir.Unit, s string) string {
-	if !unitHasRequired(u) {
-		return s
-	}
-	return tableSourceReplace(s, "type TableFieldInfo struct {\n", "type TableFieldInfo struct {\nRequired bool // a | required field (docs/SPEC-TABLES.md §2.3): the text read counts its absence\n", 1)
-}
-
-func requiredJson(u *ir.Unit, s string) string {
-	if !unitHasRequired(u) {
-		return s
-	}
-	s = tableSourceReplace(s, "\tvar seen [8]uint64\n\tfor {\n\t\tc := in.peek()\n\t\tif c == '}' {\n\t\t\tin.pos++\n", "\tvar seen [8]uint64\n\tfor {\n\t\tc := in.peek()\n\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\ttableJsonRequired(in, info, &seen)\n", 1)
-	s = tableSourceReplace(s, "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true\n\t\treturn false\n\t}\n}\n\n// ---- the two entry points", "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\ttableJsonRequired(in, info, &seen)\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true\n\t\treturn false\n\t}\n}\n\n// ---- the two entry points", 1)
-	return s + tableJsonRequiredSource
-}
-
-const tableJsonRequiredSource = `
-// tableJsonRequired counts an object that leaves a | required field out
-// (docs/SPEC-TABLES.md §2.3, §6.5): once per object, the missing fields named
-// in declaration order in the report's reason, as the binary read names them.
-func tableJsonRequired(in *tableJsonIn, info *TableTypeInfo, seen *[8]uint64) {
-	missing := ""
-	for i := range info.Fields {
-		if !info.Fields[i].Required || i >= 512 || seen[i>>6]&(uint64(1)<<(i&63)) != 0 {
-			continue
-		}
-		if missing != "" {
-			missing += ", "
-		}
-		missing += info.Fields[i].Name
-	}
-	if missing != "" {
-		in.report.MissingRequired++
-		in.report.Reason = "missing_required: " + missing
-	}
-}
-`
 
 // writeVariableTextCarrier emits a VARIABLE table's base64 carrier
 // (docs/SPEC-TABLES.md §16.8): every table has both text carriers, and a
