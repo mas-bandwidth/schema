@@ -911,6 +911,10 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 		case count > uint64(bound):
 			keep = bound
 			r.report.Clamped++
+			if f.IsTextList() && r.report.Reason == "" {
+				// a text-list COUNT clamp names the field (§2.13), as the Go leg does
+				r.report.Reason = "clamped: " + f.TextListElem().MapEntryOf
+			}
 		}
 		// elements are BOUNDED by the field body: a count the length cannot
 		// cover keeps the decoded prefix, flags malformed, and the parent
@@ -965,6 +969,11 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 
 func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 	f := fv.Def
+	if ir.TextListPlain(f) {
+		// A PLAIN TEXT LIST's element is kind 12: its own L, then L bytes
+		// (docs/SPEC-TABLES.md §2.13, §3).
+		return r.textListElement(fv, i)
+	}
 	if tabletext.UnionOf(f) != nil {
 		// an element of an ARRAY OF UNIONS is an ARM HEADER and carries its own
 		// kind, so the arm rules apply once per element (§3). The element is
@@ -1024,6 +1033,43 @@ func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 	// a scalar element decodes at the ELEMENT KIND the header carried, which
 	// is the declared kind or one it widens (§4)
 	return r.scalarAt(&fv.Elems[i], f, ek)
+}
+
+// textListElement reads one element of a PLAIN text list (docs/SPEC-TABLES.md
+// §2.13, §3): its own L, then L bytes of well-formed UTF-8 with no zero byte,
+// clamped at M on a code point boundary and counted. The value lands in the
+// element record's one field.
+func (r *wireReader) textListElement(fv *tabletext.Field, i int) bool {
+	f := fv.Def
+	n, ok := r.leb()
+	if !ok || !r.has(int(n)) || n > uint64(len(r.buf)) {
+		r.report.Malformed = true
+		return false
+	}
+	if !textValid(r.buf[r.off : r.off+int(n)]) {
+		// ill-formed UTF-8 or a zero byte in an element is malformed (§2.13)
+		r.report.Malformed = true
+		return false
+	}
+	keep := int(n)
+	if bound := int(ir.TextListValue(f).Type.Size); keep > bound {
+		keep = textBoundary(r.buf[r.off:r.off+int(n)], bound)
+		r.report.Clamped++
+		if r.report.Reason == "" {
+			// a text-list ELEMENT clamp names the field (§2.13), as the Go leg does
+			r.report.Reason = "clamped: " + f.TextListElem().MapEntryOf
+		}
+	}
+	rec := fv.Elems[i].Tab
+	if rec == nil {
+		rec = r.m.New(f.TextListElem())
+		fv.Elems[i].Tab = rec
+	}
+	vc := &rec.Fields[0]
+	vc.Cell.Str = append([]byte(nil), r.buf[r.off:r.off+keep]...)
+	vc.Count = keep
+	r.off += int(n)
+	return true
 }
 
 // keyed places an enum-keyed array's triples BY KEY REFERENCE, so a slot lands
