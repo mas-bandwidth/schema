@@ -8924,13 +8924,13 @@ The builder is designed to go wide, lock-free by ownership:
   `TableFixedRefusal{Reason}` for the former and `TableRefuseUnknownForm`
   (so `errors.Is` works) for the latter.
 
-  **A message-form refusal answers a named error when its reason is itself a
-  fixed reason.** `batch_too_large` is one: it is named on both the fixed and
-  the message path (§7's message form names it on both sides), so a message
-  refusal of it is `TableFixedRefusal{batch_too_large}`. Every other
-  message-form refusal — `no_vocabulary`, `vocabulary_too_large`,
-  `second_announcement`, and the form-byte ones — answers
-  `TableRefuseUnknownForm`.
+  **A message-form refusal answers `unknown_form`.** Every message-form
+  refusal — `no_vocabulary`, `vocabulary_too_large`, `second_announcement`,
+  `batch_too_large`, and the form-byte ones — answers `TableRefuseUnknownForm`
+  (so `errors.Is` works), whatever the reason string. `batch_too_large` is a
+  message path's capacity name that also names a fixed load's capacity refusal;
+  on the message path it still answers `unknown_form`, never
+  `TableFixedRefusal`.
 
 Contract split, stated once: the AUTHORING path (builder growth, `Lock`)
 may allocate; the reading path allocates nothing of its own — the caller

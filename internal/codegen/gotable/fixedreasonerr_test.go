@@ -10,9 +10,8 @@ import (
 // file with a wrong layout hash and one with a count past its bound each give
 // errors.As TableFixedRefusal (layout_unknown, count_over_bound); a form-1
 // byte is a form-byte refusal and stays TableRefuseUnknownForm under errors.Is.
-// A message-form refusal of batch_too_large is named on both paths and gives
-// errors.As TableFixedRefusal{batch_too_large}, while every other message-form
-// refusal (no_vocabulary) stays TableRefuseUnknownForm.
+// A message-form refusal answers unknown_form: batch_too_large (Measure, Save
+// and Load) and no_vocabulary each stay TableRefuseUnknownForm under errors.Is.
 func TestGoFixedRefusalErrKeepsItsName(t *testing.T) {
 	t.Parallel()
 	runGenerated(t, `package probe
@@ -74,13 +73,46 @@ func TestFixedRefusalErrKeepsItsName(t *testing.T) {
 		t.Fatalf("previous_form Err: %v (%T), want TableRefuseUnknownForm", err, err)
 	}
 
+	// batch_too_large is a message-form refusal even though the name is also a
+	// fixed load's capacity refusal; on the message path it answers unknown_form.
 	huge := make([]*Root, TableMessageBatchMax+1)
 	r = TableReport{}
 	if n := RootMeasureMessages(huge, &r); n >= 0 || r.Reason != "batch_too_large" {
 		t.Fatalf("message batch_too_large not refused: n=%d reason=%q", n, r.Reason)
 	}
-	if err := r.Err(); !errors.As(err, &tf) || tf.Reason != "batch_too_large" || err.Error() != "batch_too_large" {
-		t.Fatalf("message batch_too_large Err: %v (%T), want TableFixedRefusal batch_too_large", err, err)
+	if err := r.Err(); !errors.Is(err, TableRefuseUnknownForm) || err.Error() != "unknown_form" {
+		t.Fatalf("message batch_too_large Err: %v (%T), want TableRefuseUnknownForm", err, err)
+	}
+
+	save := TableReport{}
+	if RootSaveMessages(huge, make([]byte, 8), &save) != -1 || save.Reason != "batch_too_large" {
+		t.Fatalf("message save batch_too_large not refused: %+v", save)
+	}
+	if err := save.Err(); !errors.Is(err, TableRefuseUnknownForm) || err.Error() != "unknown_form" {
+		t.Fatalf("message save batch_too_large Err: %v (%T), want TableRefuseUnknownForm", err, err)
+	}
+
+	var vocab TableVocabulary
+	vocab.Init(make([]TableMessageEntry, TableMessageEntriesHere))
+	ann := make([]byte, AnnounceMeasure())
+	Announce(ann)
+	var announced TableReport
+	if !AnnounceRead(&vocab, ann, &announced) {
+		t.Fatalf("announce: %+v", announced)
+	}
+	var a, b Root
+	vals := []*Root{&a, &b}
+	buf2 := make([]byte, RootMeasureMessages(vals, nil))
+	if RootSaveMessages(vals, buf2, nil) != int64(len(buf2)) {
+		t.Fatalf("save messages")
+	}
+	dst2 := make([]Root, 1)
+	r = TableReport{}
+	if n, ok := RootLoadMessages(dst2, &vocab, buf2, &r); ok || n != 2 || r.Reason != "batch_too_large" {
+		t.Fatalf("message load batch_too_large not refused: n=%d ok=%v reason=%q", n, ok, r.Reason)
+	}
+	if err := r.Err(); !errors.Is(err, TableRefuseUnknownForm) || err.Error() != "unknown_form" {
+		t.Fatalf("message load batch_too_large Err: %v (%T), want TableRefuseUnknownForm", err, err)
 	}
 
 	values := []*Root{&one}
@@ -89,10 +121,10 @@ func TestFixedRefusalErrKeepsItsName(t *testing.T) {
 	if n := RootSaveMessages(values, messages, &send); n != int64(len(messages)) {
 		t.Fatalf("save messages: n=%d %+v", n, send)
 	}
-	var vocab TableVocabulary
-	vocab.Init(make([]TableMessageEntry, TableMessageEntriesHere))
+	var vocab2 TableVocabulary
+	vocab2.Init(make([]TableMessageEntry, TableMessageEntriesHere))
 	r = TableReport{}
-	if n, ok := RootLoadMessages(dst, &vocab, messages, &r); ok || n != 0 || r.Reason != "no_vocabulary" {
+	if n, ok := RootLoadMessages(dst, &vocab2, messages, &r); ok || n != 0 || r.Reason != "no_vocabulary" {
 		t.Fatalf("no_vocabulary not refused: n=%d ok=%v reason=%q", n, ok, r.Reason)
 	}
 	if err := r.Err(); !errors.Is(err, TableRefuseUnknownForm) || err.Error() != "unknown_form" {

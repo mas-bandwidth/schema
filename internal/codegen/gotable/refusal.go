@@ -69,11 +69,11 @@ type TableFixedRefusal struct { Reason string }
 func(r TableFixedRefusal) Error() string {return r.Reason}
 // tableFixedReasonNamed reports whether reason is a fixed-form refusal reason (a
 // TableFixedReason* constant other than the form-byte ones), not a form-byte or
-// message-form one (docs/SPEC-TABLES.md §6.5). batch_too_large is named on both
-// the fixed and the message paths, so a message refusal of it answers
-// TableFixedRefusal too.
+// message-form one (docs/SPEC-TABLES.md §6.5). batch_too_large is a message
+// path's capacity name too, so a message refusal of it answers unknown_form; it
+// is left out here and never answers TableFixedRefusal.
 func tableFixedReasonNamed(reason string) bool {switch reason {
-case TableFixedReasonLayoutMalformed, TableFixedReasonLayoutUnknown, TableFixedReasonLayoutNewer, TableFixedReasonLayoutUnsupported, TableFixedReasonLayoutRecordTooLarge, TableFixedReasonPlanTooLarge, TableFixedReasonBatchTooLarge, TableFixedReasonNoLayout, TableFixedReasonTextIllFormed, TableFixedReasonTruncated, TableFixedReasonReservedNotZero, TableFixedReasonCountOverBound, TableFixedReasonLengthOverBound:return true};return false}
+case TableFixedReasonLayoutMalformed, TableFixedReasonLayoutUnknown, TableFixedReasonLayoutNewer, TableFixedReasonLayoutUnsupported, TableFixedReasonLayoutRecordTooLarge, TableFixedReasonPlanTooLarge, TableFixedReasonNoLayout, TableFixedReasonTextIllFormed, TableFixedReasonTruncated, TableFixedReasonReservedNotZero, TableFixedReasonCountOverBound, TableFixedReasonLengthOverBound:return true};return false}
 // Err is the report's typed error (docs/SPEC-TABLES.md §6.5, docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched and missing-required

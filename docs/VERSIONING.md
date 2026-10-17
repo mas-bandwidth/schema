@@ -368,11 +368,11 @@ today) answers it yet; the legs that have not taken it still answer
 fixed-form refusal is the refusal's own §3.4 reason (`layout_unknown`,
 `count_over_bound`, `plan_too_large`, ...), never `unknown_form`. Only a
 form-byte refusal — `newer_form`, `previous_form`, `message_form_as_file`, or
-an unsupported wire form — answers `unknown_form` (§6.5). A message-form
-refusal answers a named error when its reason is itself a fixed reason:
-`batch_too_large` is named on both the fixed and the message paths, so a
-message refusal of it answers `TableFixedRefusal{batch_too_large}`; every
-other message-form refusal answers `unknown_form`.
+an unsupported wire form — answers `unknown_form` (§6.5). Every message-form
+refusal — `no_vocabulary`, `vocabulary_too_large`, `second_announcement`,
+`batch_too_large`, and the form-byte ones — answers `unknown_form`, never
+`TableFixedRefusal`, even when the reason string is also a fixed name like
+`batch_too_large`.
 
 **Two more counters ride on the same struct and stay zero unless a caller asks
 for them**: `retained` and `retain_lost`, the retain-unknown pair
