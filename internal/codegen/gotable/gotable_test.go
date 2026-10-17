@@ -75,7 +75,7 @@ fixed table Ship
 	if len(seen) != 2 {
 		t.Fatalf("expected two tag lists, got %v", seen)
 	}
- 	for name, n := range seen {
+	for name, n := range seen {
 		if n != 1 {
 			t.Fatalf("tag list %s is declared %d times: two rows share one package-level name", name, n)
 		}
