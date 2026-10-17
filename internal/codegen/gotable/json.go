@@ -55,6 +55,9 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	// kind 36's text form is part of it whether or not the unit declares a
 	// timestamp
 	walk := tableJsonWalkSource
+	if unitHasRequired(u) {
+		walk = tableJsonRequiredWalk(walk, tableJsonRequiredNames(u))
+	}
 	imports := "\t\"math\"\n\t\"strconv\"\n\t\"time\"\n\t\"unsafe\"\n\t\"unicode/utf8\"\n"
 	// every member but a map entry gets SaveText/LoadText, fixed and variable
 	// alike (docs/SPEC-TABLES.md §16.8), and they are what imports base64
@@ -196,6 +199,94 @@ func writeVariableTextCarrier(b *strings.Builder, n, storage string) {
 	b.WriteString("\tif !builder.Lock() { builder.Shutdown(); return nil, tableRefuseError(TableRefuseAllocationFailed) }\n")
 	b.WriteString("\treturn builder.AsConst(), nil\n")
 	b.WriteString("}\n\n")
+}
+
+// tableJsonRequiredWalk adds the required-field refusal (docs/SPEC-TABLES.md
+// §2.3) to the generic walk for a unit that declares a required field. A unit
+// without one emits the walker byte for byte as before, so the text form's
+// generated output changes only where the marker is used.
+func tableJsonRequiredWalk(walk string, names []string) string {
+	start := strings.Index(walk, "func tableJsonReadTableFields(")
+	if start >= 0 {
+		end := strings.Index(walk[start:], "\n}\n")
+		if end >= 0 {
+			end += start + 3
+			body := walk[start:end]
+			body = strings.Replace(body, "\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tif c == 0 {", "\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, info, &seen)\n\t\t}\n\t\tif c == 0 {", 1)
+			body = strings.Replace(body, "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true", "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, info, &seen)\n\t\t}\n\t\tin.bad = true", 1)
+			walk = walk[:start] + body + walk[end:]
+		}
+	}
+	return strings.Replace(walk, "// ---- json walk: end ----", tableJsonRequiredSource(names)+"// ---- json walk: end ----", 1)
+}
+
+// tableJsonRequiredNames collects a unit's required field names in declaration
+// order (docs/SPEC-TABLES.md §2.3), the order the refusal names them in.
+func tableJsonRequiredNames(u *ir.Unit) []string {
+	var names []string
+	for _, file := range u.Files {
+		for _, st := range file.Tables {
+			for _, f := range st.Fields {
+				if f.Required {
+					names = append(names, f.Name)
+				}
+			}
+		}
+	}
+	return names
+}
+
+// tableJsonRequiredSource is the close-of-object check tableJsonRequiredWalk
+// splices into a unit that declares a required field. It carries the names, so
+// the shared descriptor gains no column and a unit without the marker emits no
+// new bytes.
+func tableJsonRequiredSource(names []string) string {
+	var b strings.Builder
+	b.WriteString(`
+// tableJsonRequireSeen closes ONE object: every field marked required
+// (docs/SPEC-TABLES.md §2.3) must have been named, and one that was not is
+// refused as missing_required, in declaration order, exactly as the binary
+// reader refuses a record that omitted it. The bounded seen bitmap is the
+// duplicate tracker; a table with more than 512 fields keeps its old reading
+// for the fields past the window.
+func tableJsonRequireSeen(in *tableJsonIn, info *TableTypeInfo, seen *[8]uint64) bool {
+	var missing string
+	for i := range info.Fields {
+		f := &info.Fields[i]
+		if i >= 512 || !tableJsonRequiredName(f.Name) {
+			continue
+		}
+		if seen[i>>6]&(uint64(1)<<(i&63)) == 0 {
+			if missing != "" {
+				missing += ", "
+			}
+			missing += f.Name
+		}
+	}
+	if missing == "" {
+		return true
+	}
+	in.report.MissingRequired++
+	in.report.Reason = "missing_required: " + missing
+	return false
+}
+
+// tableJsonRequiredName says whether a schema field name is marked required.
+func tableJsonRequiredName(name string) bool {
+	for _, n := range tableJsonRequiredNames {
+		if n == name {
+			return true
+		}
+	}
+	return false
+}
+
+var tableJsonRequiredNames = []string{`)
+	for _, n := range names {
+		fmt.Fprintf(&b, "%q,", n)
+	}
+	b.WriteString("}\n")
+	return b.String()
 }
 
 // tableJsonWalkSource is the walker. It reads and writes ONLY the columns
