@@ -604,6 +604,9 @@ Four spellings are Dart's own and the reason is at each site.
   float semantics rather than the double's — -0.0 equal to 0.0, a NaN equal to
   nothing — and what makes a Dart wire byte equal the C++ one for a value the
   two languages cannot store alike.
+  The `-0.0 equal to 0.0` half is the comparison §3.3's plain-float rule
+  retires: a plain float's elision compares BIT PATTERNS, so this port owes
+  the bit compare after the narrowing (Go first, §3.3).
 - **THE DESCRIPTORS ARE `const`, and their memory columns are STATIC METHODS**
   of a per-type `<Name>TableFields` class rather than C++'s offset and width: a
   Dart field has no address, and a tear-off of a static method is a
@@ -4265,6 +4268,10 @@ one document rather than two.
   is not a normalization: its declared range is a read-side clamp (§4), so a
   NaN under it clamps to `min` and counts and a `-0` lands as `+0`, by §3.3's
   special-values rule. The bits on the wire are still the writer's own.
+  A PLAIN float's pattern is never moved by any read, and §3.3's plain-float
+  rule says what each form does with a `-0` (elision compares bits, so it
+  rides) and with a NaN or an infinity (it rides, and the strict read refuses
+  it by name).
 
   **The scalars the type wire brought ride as their STORAGE and nothing
   else.** A `fixed(I, F)` value is the integer its storage holds, units ×
@@ -6233,6 +6240,70 @@ lands at all. The rule is held on the Go leg and in the Go oracle by
 `internal/codegen/gotable/fixedcfloat_test.go`'s NaN and negative-zero rows. A
 leg that lands a NaN, keeps a `-0`'s sign bit, or clamps without counting here
 is out of conformance with this paragraph.
+
+**A PLAIN FLOAT'S SPECIAL VALUES TAKE ONE RULE, IN EVERY FORM.** A `float32`
+or `float64` with no declared range is defined for every IEEE-754 pattern,
+and §3's FLOAT RIDES AS ITS BIT PATTERN holds for it unchanged: no writer
+normalizes one and no reader repairs one. The rule settles the two places
+that pattern can still fail to agree with itself across the forms — a
+default elision that compares with `==`, under which `-0 == +0`, and a text
+form that has no spelling for a NaN or an infinity — and it is chosen so that
+§16.2's last sentence holds for the binary reads too: **no value a strict
+read calls clean is one any writer refuses.**
+
+- **`-0` IS A VALUE, AND IT RIDES.** A plain float's default ELISION COMPARES
+  BIT PATTERNS, not values: a field is left off the wire only when its 32 or
+  64 bits equal its default's own, so a `-0` under a `+0` default rides as
+  its pattern (and a `+0` under a declared `-0` default rides too). The rule
+  is the same at every elision a writer makes — a scalar field, a `[N]` array
+  left off because every element is its default, an enum-keyed array's slot
+  — and in both forms that elide, the variable form (§3) and the message form
+  (§3.3). The fixed form (§3.4) carries the record whole, so it elides
+  nothing and already carries the sign. The text form writes `-0` and READS
+  `-0` AS `-0`, SIGN KEPT, uncounted: a plain float is not a compressed one,
+  whose `-0` lands as `+0` by the rule above, because a plain float declares
+  no range for `-0` to be inside. `-0` in, `-0` out, in every form, and
+  nothing counts it.
+- **A NaN, `+Inf` AND `-Inf` RIDE THE BINARY FORMS AND ARE REFUSED BY THE
+  STRICT READ, BY NAME.** The variable, message and fixed forms carry the
+  pattern bit for bit — a quiet NaN, a signalling NaN, a NaN with any payload,
+  either sign, either infinity — and a TOLERANT read lands it exactly as
+  written and counts nothing, since nothing moved. The variable form's read
+  NAMES the field in the report's `Reason` as
+  `non_finite: <Table>.<field>` (the first name a read records wins, as for
+  `clamped`), and **THE STRICT READ (§6.5) REFUSES IT**,
+  with `TableRefuseReason` `non_finite` (`TableReport.Err()` answers the same
+  reason). The text form has no spelling for one, so its WRITER REFUSES it
+  (§16.3: measure and write return `-1`) and its READ cannot produce one: a
+  token is a finite number or it is `kind_mismatch` (§16.2). The pair is what
+  keeps the guarantee: a value the strict read accepts is finite in every
+  plain float, so `Save`, `ToJson` and `SaveText` all write it, and a
+  binary-to-text relay that read strictly cannot fail at the write.
+- **EVERY OTHER PATTERN IS AN ORDINARY VALUE**, a subnormal included: the
+  largest subnormal rides every binary form as its bits, writes as the
+  shortest text that reads back as the same value at the field's width, and
+  reads back as itself.
+
+| form | `-0` | a NaN, `+Inf`, `-Inf` |
+| --- | --- | --- |
+| VARIABLE (§3) | rides (elision compares bits); read lands `-0` | rides; tolerant read lands the pattern, counts nothing, names the field in `Reason`; STRICT read refuses `non_finite` |
+| MESSAGE (§3.3) | rides (the same elision); read lands `-0` | rides; read lands the pattern and counts nothing. The form has no strict read |
+| FIXED (§3.4) | carried whole; read lands `-0` | carried whole; read lands the pattern and counts nothing. The form has no strict read |
+| TEXT / JSON (§16) | written `-0`; read lands `-0`, uncounted | writer refuses (`-1`); a read cannot produce one |
+
+**What it costs, Go first** (the owner's ruling of 2026-10-15: the standard
+moves, the Go leg is made to match it, and the other legs follow after the
+Go dogfooding). Go's wire for a value holding `-0` in an elided plain float
+GAINS that field — its header and four or eight bytes — where a leg still
+comparing with `==` elides it, so until each leg adopts the bit compare the
+legs agree byte for byte on every value except that one. Each other leg owes
+three things: elision by bit pattern (Dart's `tableNarrowFloat` comparison
+included, which today gives `-0` C's `==`), the `non_finite` name on its
+variable-form read, and the refusal on its strict read with the enum value
+appended. The Go gate's corpus vectors are unchanged under the rule, and the NaN pins (`testdata/wire/tables/floats_nan.bin`) are
+read tolerantly, which still lands them bit for bit. The rule is held on the
+Go leg by `internal/codegen/gotable/floatspecial_test.go`
+(`TestGoPlainFloatSpecialValuesAgreeAcrossForms`).
 
 **FORM `2` IS A STREAM FORM AND NEVER A FILE'S OWN FORM.** `schema pack` writes form
 `1`, `schema unpack` reads form `1`, and a reader handed a form-`2` wire where a
@@ -9077,7 +9148,8 @@ The builder is designed to go wide, lock-free by ownership:
 - **The STRICT read** — one call, `<Name>ReadStrict( wire )`, that answers
   the root or refuses. It refuses, with ONE typed reason, a read that is
   malformed, clamped, kind-mismatched, of an unknown form, wire-damaged,
-  build-version-mismatched or missing a required field (§2.3). It does NOT refuse `unknown`, `widened` or
+  build-version-mismatched, missing a required field (§2.3) or holding a
+  non-finite plain float (`non_finite`, §3.3, a plain float's special values). It does NOT refuse `unknown`, `widened` or
   `retained` alone: `unknown` is evolution, `widened` decoded exactly, and
   `retained` reports on retention rather than on a loss (the cards facade's
   `ReadStrict`, docs/CARDS.md: `Unknown`, `Retained` and `Widened` alone are
@@ -9085,7 +9157,7 @@ The builder is designed to go wide, lock-free by ownership:
   `-1` carries, or `TableBuildVersionMismatch` for the announcement's strict
   refusal (§3.3), or `TableMissingRequired` naming the missing field (§2.3), so the language's typed-error test matches it (`errors.Is`
   in Go). Values this read adds (`malformed`, `clamped`, `kind_mismatch`)
-  are appended to that enum and never renumbered. `TableReport.Err()`
+  (and `non_finite`) are appended to that enum and never renumbered. `TableReport.Err()`
   answers the same reason for every counter this read refuses, and nil on a
   clean read and on a read whose only counters are `unknown`, `widened` or
   `retained`. The call owns its builder: the caller does not measure, does
@@ -14420,7 +14492,7 @@ Per kind:
 | declaration | JSON | notes |
 |---|---|---|
 | integers, `bits(N)` | number | see **Numbers** below; a `bits(N)` value over its implied `[0, 2^N − 1]` clamps and counts |
-| `float32`, `float64`, compressed floats | number | a value a float32 field cannot hold is `kind_mismatch`, never stored as infinity. A compressed float's `-0` reads as `+0`, uncounted, and a NaN or an infinity in one is refused at write (§3.3, the special values) |
+| `float32`, `float64`, compressed floats | number | a value a float32 field cannot hold is `kind_mismatch`, never stored as infinity. A compressed float's `-0` reads as `+0`, uncounted, and a NaN or an infinity in one is refused at write (§3.3, the special values). A PLAIN float's `-0` is written `-0` and reads as `-0`, sign kept and uncounted, and a NaN or an infinity in one is refused at write; the strict binary read refuses one by name, `non_finite`, so a value it accepts always writes (§3.3, a plain float's special values) |
 | `fixed(I, F)`, `ufixed(I, F)` | number, in WHOLE UNITS | the spelling SPEC.md §4.6 gives a fixed default: `1.0`, `-0.25`, `3.0000152587890625`. Written as the shortest EXACT decimal with at least one fractional digit; read from any number token whose value is exactly representable in Q I.F — `2`, `15e-1` and `1.5` are the same value — and a finer fraction is `kind_mismatch`, the wrong shape for the field, never rounded. See **Numbers** |
 | `int128`, `uint128` | number | a decimal integer, exact past 2^53 in both directions: `340282366920938463463374607431768211455` reads back as itself. Integral forms read as for every integer; a fractional value is `kind_mismatch` |
 | `bool` | `true` / `false` | |
@@ -14577,6 +14649,10 @@ written as something else.
 - **A non-finite float.** The read path cannot produce one (above), so an
   instance that came from a text is always writable; one built in code with
   an infinity in it is refused, and says so.
+  One that came from a BINARY wire can hold one — the binary forms carry the
+  pattern (§3) — and the STRICT read is what refuses it, as `non_finite`
+  (§3.3, a plain float's special values), so an instance a strict read
+  accepted is always writable too.
 
 `-1` therefore has two meanings on `ToJson` — a buffer too small, and a
 value that cannot be written — and a caller that distinguishes them calls
