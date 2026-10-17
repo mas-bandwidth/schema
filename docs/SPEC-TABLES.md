@@ -9321,6 +9321,56 @@ The builder is designed to go wide, lock-free by ownership:
   `retained`. The call owns its builder: the caller does not measure, does
   not `Init`, and does not check the counters by hand. Go emits it for each
   root; the citation on the emitter is this section.
+- **THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS
+  OWN** (Go first). An unchecked read cannot be written by accident: every
+  generated read entry point a caller reaches by the plain name refuses
+  whatever the strict read above refuses — malformed, clamped,
+  kind-mismatched, of an unknown form, wire-damaged, build-version-mismatched
+  and `missing_required` — and hands back no recovered value. The plain names
+  are `<Name>Load` (both shapes: the value read of a fixed-class root and the
+  region read of a variable root), `<Name>LoadBuilder`, `<Name>FromJson` (both
+  shapes), `<Name>FixedLoad` and the message read `<Name>LoadMessages`;
+  `<Name>LoadText` and `<Name>ReadStrict` were strict already and keep their
+  signatures and their answers. **The text read counts a missing required
+  field as the binary read does**: a JSON object that leaves a `| required`
+  field out counts `missing_required` once, naming the fields in its reason
+  (§2.3), so the plain `FromJson` refuses it and `FromJsonTolerant` keeps the
+  recovered value with the count.
+  **Each keeps its signature and answers its own refusal value**: `false` for
+  `Load` into a value, `LoadBuilder` and `FromJson`, a nil root for the region
+  `Load`, `-1` for `FixedLoad`, and `ok == false` for `LoadMessages`, whose count is
+  `0` when the strict rule alone refused and what the tolerant read answered
+  otherwise. **The
+  typed reason reaches the caller through the report it passes**: the plain
+  name decides on THIS read alone, so a supplied report is overwritten with
+  this read's report (every counter counted, as the tolerant read counts it),
+  and on a refusal `report.Err()` is non-nil and is the reason, the same value
+  `ReadStrict` returns, so `errors.Is` and `errors.As` match it. A nil report
+  is allowed and refuses the same way; a caller who wants the reason in one
+  call uses `ReadStrict` or `LoadText`. The measure stays where the two paths
+  above put it: the region read's caller measures with `LoadMeasure` and owns
+  the region, and the builder, text and fixed reads walk the framing before
+  they decode. On a refusal the value read and the value `FromJson` reset the
+  value to its declared defaults, `FixedLoad` and `LoadMessages` reset every
+  value they had written, the region read hands back no root, and a builder
+  read leaves a builder whose root the caller does not use and shuts down.
+  **The tolerant read keeps the recovered value and its report, and exists
+  only under an explicit name**: `<Name>LoadTolerant`,
+  `<Name>LoadBuilderTolerant`, `<Name>FromJsonTolerant`,
+  `<Name>FixedLoadTolerant` and `<Name>LoadMessagesTolerant`, each with the
+  signature and the answers the plain name had before this rule. It accepts
+  every wire the framing walk accepts and returns the recovered value with
+  the counters counted (§4); it refuses only what it refused before this rule:
+  framing damage, a form it does not carry, and a body the binary walk stops
+  on, §2.3's missing required field among them. A tool that re-walks a damaged file or
+  reports on a fleet's mixed builds calls it by that name. The retain family
+  (`LoadRetain`, `LoadRetainBuilder`, `LoadRetainMessages`, §6.6) and the
+  cook's and block's `Open` are outside this rule today and keep their
+  behaviour: a named follow-on.
+  **Go is first and the only target that carries the rule**: the citation on
+  its emitter is this bullet. Every other target keeps the behaviour it has,
+  its plain name tolerant and its strict read (where it has one) separate,
+  until its emitter takes the rule; no other emitter is edited by it.
 
 Contract split, stated once: the AUTHORING path (builder growth, `Lock`)
 may allocate; the reading path allocates nothing of its own — the caller
@@ -12682,6 +12732,7 @@ in build version (§20.5).
   Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure  Table
   SaveText  LoadText
+  LoadTolerant  LoadBuilderTolerant  FromJsonTolerant  FixedLoadTolerant  LoadMessagesTolerant
   MeasureMessages  SaveMessages  LoadMessages
   LoadMessagesMeasure  SaveMessageBody  LoadMessageBody
   LoadRetain LoadRetainBuilder  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages

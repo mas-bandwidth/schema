@@ -4223,6 +4223,12 @@ var tableGeneratedVerbs = []string{
 	// rule: a schema declaring Root and RootSaveText would otherwise pass
 	// checking and redeclare the function in the generated package.
 	"SaveText", "LoadText",
+	// the TOLERANT twins of the plain reads (docs/SPEC-TABLES.md §6.5): the
+	// plain Load, LoadBuilder, FromJson, FixedLoad and LoadMessages are the
+	// strict read, and the read that keeps a recovered value with its report
+	// exists only under these explicit names, which Go emits beside each plain
+	// read, so each is claimed on this list's own rule.
+	"LoadTolerant", "LoadBuilderTolerant", "FromJsonTolerant", "FixedLoadTolerant", "LoadMessagesTolerant",
 	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen", "Counts",
 	// THE FIXED FORM's spellings (docs/SPEC-TABLES.md §3.4). Nothing declares
 	// the form and every fixed table whose closure §3.4 lays out has one, so a

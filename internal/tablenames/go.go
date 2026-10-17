@@ -200,6 +200,7 @@ func init() {
 		Name{Name: "tableJsonReadLabel", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableJsonReadPointer", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableJsonReadTableFields", What: "the canonical region and graph text runtime"},
+		Name{Name: "tableJsonRequired", What: "the text read's missing_required count, in a unit with a | required field (docs/SPEC-TABLES.md §2.3, §6.5)"},
 		Name{Name: "tableJsonWriteLabeledValue", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableJsonWritePointer", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableNodeEntry", What: "the canonical region and graph text runtime"},

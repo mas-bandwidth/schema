@@ -56,7 +56,7 @@ func TestTableWireOverATextTransport(t *testing.T) {
 	if !b.Init() { t.Fatal("init") }
 	defer b.Shutdown()
 	var tolerant TableReport
-	if !RootLoadBuilder(&b, wire, &tolerant) || !tolerant.Malformed {
+	if !RootLoadBuilderTolerant(&b, wire, &tolerant) || !tolerant.Malformed {
 		t.Fatalf("fixture is not the recoverable shape: %+v", tolerant)
 	}
 	text := base64.StdEncoding.EncodeToString(wire)
@@ -106,7 +106,7 @@ func TestTableWireOverATextTransport(t *testing.T) {
 	WideSave(&w, buf)
 	var v Root
 	var tolerant TableReport
-	if !RootLoad(&v, buf, &tolerant) || tolerant.Clamped == 0 {
+	if !RootLoadTolerant(&v, buf, &tolerant) || tolerant.Clamped == 0 {
 		t.Fatalf("fixture is not the recoverable shape: %+v", tolerant)
 	}
 	got, err := RootLoadText(text, nil)
@@ -158,7 +158,7 @@ func TestTableWireOverATextTransport(t *testing.T) {
 	jsonText := make([]byte, RootToJsonMeasure(&v))
 	if RootToJson(&v, jsonText) != int64(len(jsonText)) { t.Fatal("json write") }
 	var j Root
-	if !RootFromJson(&j, jsonText, nil) || j.Id != 7 || string(j.Name[:j.NameLength]) != "hi" {
+	if !RootFromJsonTolerant(&j, jsonText, nil) || j.Id != 7 || string(j.Name[:j.NameLength]) != "hi" {
 		t.Fatalf("json round trip: %+v", j)
 	}
 	again = make([]byte, RootMeasure(&j))
@@ -190,7 +190,7 @@ func TestTableWireOverATextTransport(t *testing.T) {
 
 	// A DAMAGED JSON DOCUMENT REFUSES BY NAME.
 	var r TableReport
-	if RootFromJson(&v, []byte("{ \"id\": 7 not json"), &r) || !r.Malformed {
+	if RootFromJsonTolerant(&v, []byte("{ \"id\": 7 not json"), &r) || !r.Malformed {
 		t.Fatalf("damaged json: %+v", r)
 	}
 }
@@ -213,7 +213,7 @@ func TestTableWireOverATextTransport(t *testing.T) {
 	if !b.Init() { t.Fatal("init") }
 	defer b.Shutdown()
 	var r TableReport
-	if !NodeFromJson(&b, []byte("{\"id\":7,\"name\":\"hi\",\"next\":{\"id\":8,\"name\":\"yo\"}}"), &r) || !b.Lock() {
+	if !NodeFromJsonTolerant(&b, []byte("{\"id\":7,\"name\":\"hi\",\"next\":{\"id\":8,\"name\":\"yo\"}}"), &r) || !b.Lock() {
 		t.Fatalf("source: %+v", r)
 	}
 	v := b.AsConst()
@@ -242,7 +242,7 @@ func TestTableWireOverATextTransport(t *testing.T) {
 	var jb NodeBuilder
 	if !jb.Init() { t.Fatal("init") }
 	defer jb.Shutdown()
-	if !NodeFromJson(&jb, jsonText, nil) || !jb.Lock() { t.Fatal("json read") }
+	if !NodeFromJsonTolerant(&jb, jsonText, nil) || !jb.Lock() { t.Fatal("json read") }
 	again = make([]byte, NodeMeasure(jb.AsConst()))
 	if NodeSave(jb.AsConst(), again) != int64(len(again)) || !bytes.Equal(again, wire) {
 		t.Fatalf("json carrier is not byte for byte: %x vs %x", again, wire)
@@ -275,7 +275,7 @@ func TestTableWireOverATextTransport(t *testing.T) {
 	if !db.Init() { t.Fatal("init") }
 	defer db.Shutdown()
 	var dr TableReport
-	if NodeFromJson(&db, []byte("{ \"id\": 7 not json"), &dr) || !dr.Malformed {
+	if NodeFromJsonTolerant(&db, []byte("{ \"id\": 7 not json"), &dr) || !dr.Malformed {
 		t.Fatalf("damaged json: %+v", dr)
 	}
 }

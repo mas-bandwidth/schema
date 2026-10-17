@@ -1,7 +1,7 @@
 // Package cards owns a typed work card and its wire/JSON round trips.
 //
-// The generated table codecs (CardLoad/CardMeasure/CardSave, CardBuilder,
-// CardFromJson/CardToJson) answer the wire and text forms; this facade is the
+// The generated table codecs (CardLoadTolerant/CardMeasure/CardSave, CardBuilder,
+// CardFromJsonTolerant/CardToJson) answer the wire and text forms; this facade is the
 // thin owning layer that a customer imports: a Record that keeps its own
 // defensive copy of the wire and its measured region, checked writes that
 // refuse before publishing, and the two customer ceilings the schema
@@ -56,11 +56,11 @@ func Load(wire []byte) (*Record, Report, error) {
 		if reason != nil {
 			report.Reason = reason.Error()
 		}
-		CardLoad(make([]byte, 64), wire, &report)
+		CardLoadTolerant(make([]byte, 64), wire, &report)
 		return nil, report, fmt.Errorf("cards: wire is not a card: %v", reason)
 	}
 	region := alignedRegion(n)
-	root := CardLoad(region, wire, &report)
+	root := CardLoadTolerant(region, wire, &report)
 	if root == nil {
 		return nil, report, errors.New("cards: wire is malformed")
 	}
@@ -73,7 +73,7 @@ func Load(wire []byte) (*Record, Report, error) {
 }
 
 // FromJSON builds a Record from JSON text through the generated CardBuilder and
-// CardFromJson (docs/SPEC-TABLES.md §16), then the generated save. Unknown,
+// CardFromJsonTolerant (docs/SPEC-TABLES.md §16), then the generated save. Unknown,
 // mismatched, clamped and malformed inputs are refused, as are the customer
 // bounds and any body or element that is not well-formed UTF-8 without NUL.
 // Bytes are published only on complete success; a refused write leaves no
@@ -85,7 +85,7 @@ func FromJSON(text []byte) (*Record, error) {
 	}
 	defer b.Shutdown()
 	var report TableReport
-	if !CardFromJson(&b, text, &report) || report.Malformed {
+	if !CardFromJsonTolerant(&b, text, &report) || report.Malformed {
 		return nil, errors.New("cards: JSON is malformed")
 	}
 	if report.Unknown > 0 || report.KindMismatch > 0 || report.Clamped > 0 {

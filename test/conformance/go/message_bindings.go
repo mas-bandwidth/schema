@@ -26,168 +26,168 @@ func init() {
 			v := new(messagedemo.TableVocabulary)
 			v.Init(make([]messagedemo.TableMessageEntry, messagedemo.TableMessageEntriesHere))
 			return v
-		}, messagedemo.AnnounceMeasure, messagedemo.Announce, messagedemo.AnnounceRead, messagedemo.ToolMessageLoadMessages, messagedemo.ToolMessageMeasureMessages, messagedemo.ToolMessageSaveMessages, func(r *messagedemo.TableReport) report {
+		}, messagedemo.AnnounceMeasure, messagedemo.Announce, messagedemo.AnnounceRead, messagedemo.ToolMessageLoadMessagesTolerant, messagedemo.ToolMessageMeasureMessages, messagedemo.ToolMessageSaveMessages, func(r *messagedemo.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == messagedemo.TableOpenRefused}
 		}),
 		messageRow("widedemo", "Caption", widedemo.CaptionReset, func() *widedemo.TableVocabulary {
 			v := new(widedemo.TableVocabulary)
 			v.Init(make([]widedemo.TableMessageEntry, widedemo.TableMessageEntriesHere))
 			return v
-		}, widedemo.AnnounceMeasure, widedemo.Announce, widedemo.AnnounceRead, widedemo.CaptionLoadMessages, widedemo.CaptionMeasureMessages, widedemo.CaptionSaveMessages, func(r *widedemo.TableReport) report {
+		}, widedemo.AnnounceMeasure, widedemo.Announce, widedemo.AnnounceRead, widedemo.CaptionLoadMessagesTolerant, widedemo.CaptionMeasureMessages, widedemo.CaptionSaveMessages, func(r *widedemo.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == widedemo.TableOpenRefused}
 		}),
 		messageRow("widedemo", "Stamp", widedemo.StampReset, func() *widedemo.TableVocabulary {
 			v := new(widedemo.TableVocabulary)
 			v.Init(make([]widedemo.TableMessageEntry, widedemo.TableMessageEntriesHere))
 			return v
-		}, widedemo.AnnounceMeasure, widedemo.Announce, widedemo.AnnounceRead, widedemo.StampLoadMessages, widedemo.StampMeasureMessages, widedemo.StampSaveMessages, func(r *widedemo.TableReport) report {
+		}, widedemo.AnnounceMeasure, widedemo.Announce, widedemo.AnnounceRead, widedemo.StampLoadMessagesTolerant, widedemo.StampMeasureMessages, widedemo.StampSaveMessages, func(r *widedemo.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == widedemo.TableOpenRefused}
 		}),
 		messageRow("scalars", "SimState", scalardemo.SimStateReset, func() *scalardemo.TableVocabulary {
 			v := new(scalardemo.TableVocabulary)
 			v.Init(make([]scalardemo.TableMessageEntry, scalardemo.TableMessageEntriesHere))
 			return v
-		}, scalardemo.AnnounceMeasure, scalardemo.Announce, scalardemo.AnnounceRead, scalardemo.SimStateLoadMessages, scalardemo.SimStateMeasureMessages, scalardemo.SimStateSaveMessages, func(r *scalardemo.TableReport) report {
+		}, scalardemo.AnnounceMeasure, scalardemo.Announce, scalardemo.AnnounceRead, scalardemo.SimStateLoadMessagesTolerant, scalardemo.SimStateMeasureMessages, scalardemo.SimStateSaveMessages, func(r *scalardemo.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == scalardemo.TableOpenRefused}
 		}),
 		messageRow("tblscalars2", "SimState", tblscalars2.SimStateReset, func() *tblscalars2.TableVocabulary {
 			v := new(tblscalars2.TableVocabulary)
 			v.Init(make([]tblscalars2.TableMessageEntry, tblscalars2.TableMessageEntriesHere))
 			return v
-		}, tblscalars2.AnnounceMeasure, tblscalars2.Announce, tblscalars2.AnnounceRead, tblscalars2.SimStateLoadMessages, tblscalars2.SimStateMeasureMessages, tblscalars2.SimStateSaveMessages, func(r *tblscalars2.TableReport) report {
+		}, tblscalars2.AnnounceMeasure, tblscalars2.Announce, tblscalars2.AnnounceRead, tblscalars2.SimStateLoadMessagesTolerant, tblscalars2.SimStateMeasureMessages, tblscalars2.SimStateSaveMessages, func(r *tblscalars2.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblscalars2.TableOpenRefused}
 		}),
 		messageRow("tblm1", "Msg", tblm1.MsgReset, func() *tblm1.TableVocabulary {
 			v := new(tblm1.TableVocabulary)
 			v.Init(make([]tblm1.TableMessageEntry, tblm1.TableMessageEntriesHere))
 			return v
-		}, tblm1.AnnounceMeasure, tblm1.Announce, tblm1.AnnounceRead, tblm1.MsgLoadMessages, tblm1.MsgMeasureMessages, tblm1.MsgSaveMessages, func(r *tblm1.TableReport) report {
+		}, tblm1.AnnounceMeasure, tblm1.Announce, tblm1.AnnounceRead, tblm1.MsgLoadMessagesTolerant, tblm1.MsgMeasureMessages, tblm1.MsgSaveMessages, func(r *tblm1.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblm1.TableOpenRefused}
 		}),
 		messageRow("tblm2", "Msg", tblm2.MsgReset, func() *tblm2.TableVocabulary {
 			v := new(tblm2.TableVocabulary)
 			v.Init(make([]tblm2.TableMessageEntry, tblm2.TableMessageEntriesHere))
 			return v
-		}, tblm2.AnnounceMeasure, tblm2.Announce, tblm2.AnnounceRead, tblm2.MsgLoadMessages, tblm2.MsgMeasureMessages, tblm2.MsgSaveMessages, func(r *tblm2.TableReport) report {
+		}, tblm2.AnnounceMeasure, tblm2.Announce, tblm2.AnnounceRead, tblm2.MsgLoadMessagesTolerant, tblm2.MsgMeasureMessages, tblm2.MsgSaveMessages, func(r *tblm2.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblm2.TableOpenRefused}
 		}),
 		messageRow("tbla1", "Root", tbla1.RootReset, func() *tbla1.TableVocabulary {
 			v := new(tbla1.TableVocabulary)
 			v.Init(make([]tbla1.TableMessageEntry, tbla1.TableMessageEntriesHere))
 			return v
-		}, tbla1.AnnounceMeasure, tbla1.Announce, tbla1.AnnounceRead, tbla1.RootLoadMessages, tbla1.RootMeasureMessages, tbla1.RootSaveMessages, func(r *tbla1.TableReport) report {
+		}, tbla1.AnnounceMeasure, tbla1.Announce, tbla1.AnnounceRead, tbla1.RootLoadMessagesTolerant, tbla1.RootMeasureMessages, tbla1.RootSaveMessages, func(r *tbla1.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tbla1.TableOpenRefused}
 		}),
 		messageRow("tbla2", "Root", tbla2.RootReset, func() *tbla2.TableVocabulary {
 			v := new(tbla2.TableVocabulary)
 			v.Init(make([]tbla2.TableMessageEntry, tbla2.TableMessageEntriesHere))
 			return v
-		}, tbla2.AnnounceMeasure, tbla2.Announce, tbla2.AnnounceRead, tbla2.RootLoadMessages, tbla2.RootMeasureMessages, tbla2.RootSaveMessages, func(r *tbla2.TableReport) report {
+		}, tbla2.AnnounceMeasure, tbla2.Announce, tbla2.AnnounceRead, tbla2.RootLoadMessagesTolerant, tbla2.RootMeasureMessages, tbla2.RootSaveMessages, func(r *tbla2.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tbla2.TableOpenRefused}
 		}),
 		messageRow("tblk1", "Root", tblk1.RootReset, func() *tblk1.TableVocabulary {
 			v := new(tblk1.TableVocabulary)
 			v.Init(make([]tblk1.TableMessageEntry, tblk1.TableMessageEntriesHere))
 			return v
-		}, tblk1.AnnounceMeasure, tblk1.Announce, tblk1.AnnounceRead, tblk1.RootLoadMessages, tblk1.RootMeasureMessages, tblk1.RootSaveMessages, func(r *tblk1.TableReport) report {
+		}, tblk1.AnnounceMeasure, tblk1.Announce, tblk1.AnnounceRead, tblk1.RootLoadMessagesTolerant, tblk1.RootMeasureMessages, tblk1.RootSaveMessages, func(r *tblk1.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblk1.TableOpenRefused}
 		}),
 		messageRow("tblk2", "Root", tblk2.RootReset, func() *tblk2.TableVocabulary {
 			v := new(tblk2.TableVocabulary)
 			v.Init(make([]tblk2.TableMessageEntry, tblk2.TableMessageEntriesHere))
 			return v
-		}, tblk2.AnnounceMeasure, tblk2.Announce, tblk2.AnnounceRead, tblk2.RootLoadMessages, tblk2.RootMeasureMessages, tblk2.RootSaveMessages, func(r *tblk2.TableReport) report {
+		}, tblk2.AnnounceMeasure, tblk2.Announce, tblk2.AnnounceRead, tblk2.RootLoadMessagesTolerant, tblk2.RootMeasureMessages, tblk2.RootSaveMessages, func(r *tblk2.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblk2.TableOpenRefused}
 		}),
 		messageRow("tblr1", "Cfg", tblr1.CfgReset, func() *tblr1.TableVocabulary {
 			v := new(tblr1.TableVocabulary)
 			v.Init(make([]tblr1.TableMessageEntry, tblr1.TableMessageEntriesHere))
 			return v
-		}, tblr1.AnnounceMeasure, tblr1.Announce, tblr1.AnnounceRead, tblr1.CfgLoadMessages, tblr1.CfgMeasureMessages, tblr1.CfgSaveMessages, func(r *tblr1.TableReport) report {
+		}, tblr1.AnnounceMeasure, tblr1.Announce, tblr1.AnnounceRead, tblr1.CfgLoadMessagesTolerant, tblr1.CfgMeasureMessages, tblr1.CfgSaveMessages, func(r *tblr1.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblr1.TableOpenRefused}
 		}),
 		messageRow("tblr2", "Cfg", tblr2.CfgReset, func() *tblr2.TableVocabulary {
 			v := new(tblr2.TableVocabulary)
 			v.Init(make([]tblr2.TableMessageEntry, tblr2.TableMessageEntriesHere))
 			return v
-		}, tblr2.AnnounceMeasure, tblr2.Announce, tblr2.AnnounceRead, tblr2.CfgLoadMessages, tblr2.CfgMeasureMessages, tblr2.CfgSaveMessages, func(r *tblr2.TableReport) report {
+		}, tblr2.AnnounceMeasure, tblr2.Announce, tblr2.AnnounceRead, tblr2.CfgLoadMessagesTolerant, tblr2.CfgMeasureMessages, tblr2.CfgSaveMessages, func(r *tblr2.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblr2.TableOpenRefused}
 		}),
 		messageRow("tabledemo", "RootConfig", tabledemo.RootConfigReset, func() *tabledemo.TableVocabulary {
 			v := new(tabledemo.TableVocabulary)
 			v.Init(make([]tabledemo.TableMessageEntry, tabledemo.TableMessageEntriesHere))
 			return v
-		}, tabledemo.AnnounceMeasure, tabledemo.Announce, tabledemo.AnnounceRead, tabledemo.RootConfigLoadMessages, tabledemo.RootConfigMeasureMessages, tabledemo.RootConfigSaveMessages, func(r *tabledemo.TableReport) report {
+		}, tabledemo.AnnounceMeasure, tabledemo.Announce, tabledemo.AnnounceRead, tabledemo.RootConfigLoadMessagesTolerant, tabledemo.RootConfigMeasureMessages, tabledemo.RootConfigSaveMessages, func(r *tabledemo.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tabledemo.TableOpenRefused}
 		}),
 		messageRow("tabledemo", "ProfileConfig", tabledemo.ProfileConfigReset, func() *tabledemo.TableVocabulary {
 			v := new(tabledemo.TableVocabulary)
 			v.Init(make([]tabledemo.TableMessageEntry, tabledemo.TableMessageEntriesHere))
 			return v
-		}, tabledemo.AnnounceMeasure, tabledemo.Announce, tabledemo.AnnounceRead, tabledemo.ProfileConfigLoadMessages, tabledemo.ProfileConfigMeasureMessages, tabledemo.ProfileConfigSaveMessages, func(r *tabledemo.TableReport) report {
+		}, tabledemo.AnnounceMeasure, tabledemo.Announce, tabledemo.AnnounceRead, tabledemo.ProfileConfigLoadMessagesTolerant, tabledemo.ProfileConfigMeasureMessages, tabledemo.ProfileConfigSaveMessages, func(r *tabledemo.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tabledemo.TableOpenRefused}
 		}),
 		messageRow("tabledemo", "LoadoutConfig", tabledemo.LoadoutConfigReset, func() *tabledemo.TableVocabulary {
 			v := new(tabledemo.TableVocabulary)
 			v.Init(make([]tabledemo.TableMessageEntry, tabledemo.TableMessageEntriesHere))
 			return v
-		}, tabledemo.AnnounceMeasure, tabledemo.Announce, tabledemo.AnnounceRead, tabledemo.LoadoutConfigLoadMessages, tabledemo.LoadoutConfigMeasureMessages, tabledemo.LoadoutConfigSaveMessages, func(r *tabledemo.TableReport) report {
+		}, tabledemo.AnnounceMeasure, tabledemo.Announce, tabledemo.AnnounceRead, tabledemo.LoadoutConfigLoadMessagesTolerant, tabledemo.LoadoutConfigMeasureMessages, tabledemo.LoadoutConfigSaveMessages, func(r *tabledemo.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tabledemo.TableOpenRefused}
 		}),
 		messageRow("tabledemo", "WideBlob", tabledemo.WideBlobReset, func() *tabledemo.TableVocabulary {
 			v := new(tabledemo.TableVocabulary)
 			v.Init(make([]tabledemo.TableMessageEntry, tabledemo.TableMessageEntriesHere))
 			return v
-		}, tabledemo.AnnounceMeasure, tabledemo.Announce, tabledemo.AnnounceRead, tabledemo.WideBlobLoadMessages, tabledemo.WideBlobMeasureMessages, tabledemo.WideBlobSaveMessages, func(r *tabledemo.TableReport) report {
+		}, tabledemo.AnnounceMeasure, tabledemo.Announce, tabledemo.AnnounceRead, tabledemo.WideBlobLoadMessagesTolerant, tabledemo.WideBlobMeasureMessages, tabledemo.WideBlobSaveMessages, func(r *tabledemo.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tabledemo.TableOpenRefused}
 		}),
 		messageRow("tabledemo", "ArchiveConfig", tabledemo.ArchiveConfigReset, func() *tabledemo.TableVocabulary {
 			v := new(tabledemo.TableVocabulary)
 			v.Init(make([]tabledemo.TableMessageEntry, tabledemo.TableMessageEntriesHere))
 			return v
-		}, tabledemo.AnnounceMeasure, tabledemo.Announce, tabledemo.AnnounceRead, tabledemo.ArchiveConfigLoadMessages, tabledemo.ArchiveConfigMeasureMessages, tabledemo.ArchiveConfigSaveMessages, func(r *tabledemo.TableReport) report {
+		}, tabledemo.AnnounceMeasure, tabledemo.Announce, tabledemo.AnnounceRead, tabledemo.ArchiveConfigLoadMessagesTolerant, tabledemo.ArchiveConfigMeasureMessages, tabledemo.ArchiveConfigSaveMessages, func(r *tabledemo.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tabledemo.TableOpenRefused}
 		}),
 		messageRow("tabledemo", "PackConfig", tabledemo.PackConfigReset, func() *tabledemo.TableVocabulary {
 			v := new(tabledemo.TableVocabulary)
 			v.Init(make([]tabledemo.TableMessageEntry, tabledemo.TableMessageEntriesHere))
 			return v
-		}, tabledemo.AnnounceMeasure, tabledemo.Announce, tabledemo.AnnounceRead, tabledemo.PackConfigLoadMessages, tabledemo.PackConfigMeasureMessages, tabledemo.PackConfigSaveMessages, func(r *tabledemo.TableReport) report {
+		}, tabledemo.AnnounceMeasure, tabledemo.Announce, tabledemo.AnnounceRead, tabledemo.PackConfigLoadMessagesTolerant, tabledemo.PackConfigMeasureMessages, tabledemo.PackConfigSaveMessages, func(r *tabledemo.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tabledemo.TableOpenRefused}
 		}),
 		messageRow("tabledemo", "KeyedConfig", tabledemo.KeyedConfigReset, func() *tabledemo.TableVocabulary {
 			v := new(tabledemo.TableVocabulary)
 			v.Init(make([]tabledemo.TableMessageEntry, tabledemo.TableMessageEntriesHere))
 			return v
-		}, tabledemo.AnnounceMeasure, tabledemo.Announce, tabledemo.AnnounceRead, tabledemo.KeyedConfigLoadMessages, tabledemo.KeyedConfigMeasureMessages, tabledemo.KeyedConfigSaveMessages, func(r *tabledemo.TableReport) report {
+		}, tabledemo.AnnounceMeasure, tabledemo.Announce, tabledemo.AnnounceRead, tabledemo.KeyedConfigLoadMessagesTolerant, tabledemo.KeyedConfigMeasureMessages, tabledemo.KeyedConfigSaveMessages, func(r *tabledemo.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tabledemo.TableOpenRefused}
 		}),
 		messageRow("tblv1", "Cfg", tblv1.CfgReset, func() *tblv1.TableVocabulary {
 			v := new(tblv1.TableVocabulary)
 			v.Init(make([]tblv1.TableMessageEntry, tblv1.TableMessageEntriesHere))
 			return v
-		}, tblv1.AnnounceMeasure, tblv1.Announce, tblv1.AnnounceRead, tblv1.CfgLoadMessages, tblv1.CfgMeasureMessages, tblv1.CfgSaveMessages, func(r *tblv1.TableReport) report {
+		}, tblv1.AnnounceMeasure, tblv1.Announce, tblv1.AnnounceRead, tblv1.CfgLoadMessagesTolerant, tblv1.CfgMeasureMessages, tblv1.CfgSaveMessages, func(r *tblv1.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblv1.TableOpenRefused}
 		}),
 		messageRow("tblv2", "Cfg", tblv2.CfgReset, func() *tblv2.TableVocabulary {
 			v := new(tblv2.TableVocabulary)
 			v.Init(make([]tblv2.TableMessageEntry, tblv2.TableMessageEntriesHere))
 			return v
-		}, tblv2.AnnounceMeasure, tblv2.Announce, tblv2.AnnounceRead, tblv2.CfgLoadMessages, tblv2.CfgMeasureMessages, tblv2.CfgSaveMessages, func(r *tblv2.TableReport) report {
+		}, tblv2.AnnounceMeasure, tblv2.Announce, tblv2.AnnounceRead, tblv2.CfgLoadMessagesTolerant, tblv2.CfgMeasureMessages, tblv2.CfgSaveMessages, func(r *tblv2.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblv2.TableOpenRefused}
 		}),
 		messageRow("tblp1", "Chain", tblp1.ChainReset, func() *tblp1.TableVocabulary {
 			v := new(tblp1.TableVocabulary)
 			v.Init(make([]tblp1.TableMessageEntry, tblp1.TableMessageEntriesHere))
 			return v
-		}, tblp1.AnnounceMeasure, tblp1.Announce, tblp1.AnnounceRead, tblp1.ChainLoadMessages, tblp1.ChainMeasureMessages, tblp1.ChainSaveMessages, func(r *tblp1.TableReport) report {
+		}, tblp1.AnnounceMeasure, tblp1.Announce, tblp1.AnnounceRead, tblp1.ChainLoadMessagesTolerant, tblp1.ChainMeasureMessages, tblp1.ChainSaveMessages, func(r *tblp1.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblp1.TableOpenRefused}
 		}),
 		messageRow("tblp3", "Chain", tblp3.ChainReset, func() *tblp3.TableVocabulary {
 			v := new(tblp3.TableVocabulary)
 			v.Init(make([]tblp3.TableMessageEntry, tblp3.TableMessageEntriesHere))
 			return v
-		}, tblp3.AnnounceMeasure, tblp3.Announce, tblp3.AnnounceRead, tblp3.ChainLoadMessages, tblp3.ChainMeasureMessages, tblp3.ChainSaveMessages, func(r *tblp3.TableReport) report {
+		}, tblp3.AnnounceMeasure, tblp3.Announce, tblp3.AnnounceRead, tblp3.ChainLoadMessagesTolerant, tblp3.ChainMeasureMessages, tblp3.ChainSaveMessages, func(r *tblp3.TableReport) report {
 			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblp3.TableOpenRefused}
 		}),
 	}...)

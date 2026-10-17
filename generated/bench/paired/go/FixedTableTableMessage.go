@@ -124,7 +124,30 @@ func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
 		}
 	}
 }
+
+// FixedTableLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
+// recovered value, with the counters counted onto the report passed.
+// FixedTableLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
+// FixedTableReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
+// value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
 func FixedTableLoadMessages(values []FixedTable, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+	var read TableReport
+	count, ok := FixedTableLoadMessagesTolerant(values, vocabulary, data, &read)
+	if report != nil {
+		*report = read
+	}
+	if !ok {
+		return count, false
+	}
+	if read.Err() != nil {
+		for i := int64(0); i < count; i++ {
+			FixedTableReset(&values[i])
+		}
+		return 0, false
+	}
+	return count, true
+}
+func FixedTableLoadMessagesTolerant(values []FixedTable, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored

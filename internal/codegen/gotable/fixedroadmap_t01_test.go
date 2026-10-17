@@ -54,7 +54,7 @@ func r7IdentityLaneIsAnIndexComparison(t *testing.T, schema string) {
 			body += string(data)
 		}
 	}
-	load := funcSource(body, "func PointFixedLoad(")
+	load := funcSource(body, "func PointFixedLoadTolerant(")
 	if load == "" {
 		t.Fatal("PointFixedLoad was not emitted")
 	}
@@ -125,14 +125,14 @@ func TestF9(t *testing.T) {
 		file := cleanFile(t, records)
 		exact := make([]Point, records)
 		r := dirty()
-		if n := PointFixedLoad(exact, file, plan, &r); n != int64(records) || r != (TableReport{}) {
+		if n := PointFixedLoadTolerant(exact, file, plan, &r); n != int64(records) || r != (TableReport{}) {
 			t.Fatalf("capacity == records (%d) must read: n=%d %+v", records, n, r)
 		}
 		for short := 0; short < records; short++ {
 			dst, bytes := poisoned(short + 1)
 			dst = dst[:short]
 			r = dirty()
-			if n := PointFixedLoad(dst, file, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "batch_too_large"}) {
+			if n := PointFixedLoadTolerant(dst, file, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "batch_too_large"}) {
 				t.Fatalf("records=%d capacity=%d: n=%d %+v", records, short, n, r)
 			}
 			if !untouched(bytes) {
@@ -159,7 +159,7 @@ func TestF10(t *testing.T) {
 			forged[recordAt()+rec*int(PointFixedRecordBytes)+b] ^= 0x01
 			dst, bytes := poisoned(2)
 			r := dirty()
-			n := PointFixedLoad(dst, forged, plan, &r)
+			n := PointFixedLoadTolerant(dst, forged, plan, &r)
 			if n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "no_layout"}) {
 				t.Fatalf("record %d byte %d: n=%d %+v", rec, b, n, r)
 			}
@@ -197,7 +197,7 @@ func TestR8(t *testing.T) {
 		binary.LittleEndian.PutUint64(forged[TableFixedHashAt:], want)
 		dst, bytes := poisoned(1)
 		r := dirty()
-		if n := PointFixedLoad(dst, forged, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_unknown", LayoutHash: want}) {
+		if n := PointFixedLoadTolerant(dst, forged, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_unknown", LayoutHash: want}) {
 			t.Fatalf("bit %d: n=%d %+v", bit, n, r)
 		}
 		if !untouched(bytes) {
@@ -226,7 +226,7 @@ func TestR9(t *testing.T) {
 		t.Helper()
 		dst, bytes := poisoned(1)
 		r := dirty()
-		if n := PointFixedLoad(dst, forged, plan, &r); n != -1 || r != want {
+		if n := PointFixedLoadTolerant(dst, forged, plan, &r); n != -1 || r != want {
 			t.Fatalf("%s: n=%d %+v", what, n, r)
 		}
 		if !untouched(bytes) {
@@ -341,7 +341,7 @@ func TestR13(t *testing.T) {
 		dst, bytes := poisoned(2)
 		dst = dst[:c.cap]
 		r := dirty()
-		if n := PointFixedLoad(dst, c.file, c.plan, &r); n != -1 || r != c.want {
+		if n := PointFixedLoadTolerant(dst, c.file, c.plan, &r); n != -1 || r != c.want {
 			t.Fatalf("%s: n=%d %+v", c.what, n, r)
 		}
 		if r.Verdict == TableOpenRefused && r.Malformed {
@@ -355,7 +355,7 @@ func TestR13(t *testing.T) {
 	forged := forge(func(b []byte) []byte { b[TableFixedHashAt] ^= 1; return b })
 	dst, bytes := poisoned(2)
 	r := dirty()
-	if n := PointFixedLoad(dst, forged, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_unknown", LayoutHash: binary.LittleEndian.Uint64(forged[TableFixedHashAt:])}) || !untouched(bytes) {
+	if n := PointFixedLoadTolerant(dst, forged, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_unknown", LayoutHash: binary.LittleEndian.Uint64(forged[TableFixedHashAt:])}) || !untouched(bytes) {
 		t.Fatalf("layout_unknown: n=%d %+v", n, r)
 	}
 }
