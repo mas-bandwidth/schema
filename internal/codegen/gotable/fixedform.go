@@ -1002,7 +1002,16 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\tif int64(len(buffer)) < %sFixedMeasure(int64(len(values))) {\n\t\treturn -1, TableRefuseTruncated\n\t}\n", st.Name)
 	g.pf("\treturn -1, TableRefuseInvalidValue\n}\n\n")
 
+	// THE PLAIN NAME IS THE STRICT READ, THE TOLERANT ONE IS NAMED (docs/SPEC-TABLES.md §6.5).
+	g.pf("// %sFixedLoad is the plain fixed-form read, and it is STRICT (docs/SPEC-TABLES.md §6.5): -1 for\n", st.Name)
+	g.pf("// every refusal of %sFixedLoadTolerant and for a read whose report.Err() is not nil, with\n", st.Name)
+	g.pf("// every value it had written reset. A supplied report receives THIS read's report.\n")
 	g.pf("func %sFixedLoad(values []%s, data []byte, plan []TableFixedEntry, report *TableReport) int64 {\n", st.Name, st.Name)
+	g.pf("\tvar read TableReport\n\tn := %sFixedLoadTolerant(values, data, plan, &read)\n\tif report != nil {\n\t\t*report = read\n\t}\n", st.Name)
+	g.pf("\tif n < 0 {\n\t\treturn -1\n\t}\n\tif read.Err() != nil {\n\t\tfor k := int64(0); k < n; k++ {\n\t\t\t%sReset(&values[k])\n\t\t}\n\t\treturn -1\n\t}\n\treturn n\n}\n\n", st.Name)
+	g.pf("// %sFixedLoadTolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps\n", st.Name)
+	g.pf("// every recovered record, with the counters counted onto the report passed.\n")
+	g.pf("func %sFixedLoadTolerant(values []%s, data []byte, plan []TableFixedEntry, report *TableReport) int64 {\n", st.Name, st.Name)
 	g.pf("\tif report == nil {\n\t\tvar local TableReport\n\t\treport = &local\n\t}\n")
 	// A LOAD'S REPORT IS ITS OWN (§5.3's joint table): a report a caller reuses
 	// must not carry a previous read's counters or a previous refusal's name.

@@ -71,7 +71,7 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	}
 	extra := tableJsonWideSource + tableJsonWStringSource + tableJsonGraphSource + tableJsonListSource + tableJsonMapSource + tableJsonMapDecimalSource + tableJsonTimestampSource + tableTimestampRuntime
 	b.WriteString("import (\n" + imports + ")\n\n")
-	b.WriteString(textListJson(u, strings.Replace(walk, "// ---- json walk: end ----", extra+"// ---- json walk: end ----", 1)))
+	b.WriteString(requiredJson(u, textListJson(u, strings.Replace(walk, "// ---- json walk: end ----", extra+"// ---- json walk: end ----", 1))))
 	if len(variableTableNames(u)) > 0 {
 		regionJson := tableRegionJsonSource
 		if unitHasContainers(u) {
@@ -89,16 +89,30 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 				continue
 			}
 			if ir.VariableTables(u)[n] {
-				fmt.Fprintf(&b, "func %sFromJson(builder *%sBuilder,text []byte,report *TableReport) bool { if builder.Arena.Locked {return false};return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()),%sTableType(),&builder.Main,text,report) }\n", n, n, n)
+				// THE PLAIN NAME IS THE STRICT READ, THE TOLERANT ONE IS NAMED (docs/SPEC-TABLES.md §6.5).
+				fmt.Fprintf(&b, "// %sFromJsonTolerant is the TOLERANT text read (docs/SPEC-TABLES.md §6.5, §16): it keeps the recovered\n// value in the builder, with the counters counted onto the report passed.\n", n)
+				fmt.Fprintf(&b, "func %sFromJsonTolerant(builder *%sBuilder,text []byte,report *TableReport) bool { if builder.Arena.Locked {return false};return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()),%sTableType(),&builder.Main,text,report) }\n", n, n, n)
+				fmt.Fprintf(&b, "// %sFromJson is the plain text read, and it is STRICT (docs/SPEC-TABLES.md §6.5): false for whatever\n// %sReadStrict refuses; a supplied report receives THIS read's report, and report.Err() is the reason.\n", n, n)
+				fmt.Fprintf(&b, "func %sFromJson(builder *%sBuilder,text []byte,report *TableReport) bool {var read TableReport;ok:=%sFromJsonTolerant(builder,text,&read);if report!=nil{*report=read};return ok&&read.Err()==nil}\n", n, n, n)
 				fmt.Fprintf(&b, "func %sToJsonMeasure(value *%s,allocator ...TableAllocator) int64 {return tableRegionToJson(unsafe.Pointer(value),%sTableType(),nil,allocator...)}\n", n, storageName(u, n), n)
 				fmt.Fprintf(&b, "func %sToJson(value *%s,buffer []byte,allocator ...TableAllocator) int64 {return tableRegionToJson(unsafe.Pointer(value),%sTableType(),buffer,allocator...)}\n\n", n, storageName(u, n), n)
 				writeVariableTextCarrier(&b, n, storageName(u, n))
 				continue
 			}
-			fmt.Fprintf(&b, "// %sFromJson fills one %s from a JSON text (docs/SPEC-TABLES.md §16).\n", n, n)
-			b.WriteString("// A nil report is allowed; every tolerance event still decides the same way.\n")
-			fmt.Fprintf(&b, "func %sFromJson(value *%s, text []byte, report *TableReport) bool {\n", n, storageName(u, n))
+			// THE PLAIN NAME IS THE STRICT READ, THE TOLERANT ONE IS NAMED (docs/SPEC-TABLES.md §6.5).
+			fmt.Fprintf(&b, "// %sFromJsonTolerant fills one %s from a JSON text (docs/SPEC-TABLES.md §16) and\n", n, n)
+			b.WriteString("// is the TOLERANT text read (§6.5): it keeps the recovered value, with the\n")
+			b.WriteString("// counters counted onto the report passed. A nil report is allowed; every\n")
+			b.WriteString("// tolerance event still decides the same way.\n")
+			fmt.Fprintf(&b, "func %sFromJsonTolerant(value *%s, text []byte, report *TableReport) bool {\n", n, storageName(u, n))
 			fmt.Fprintf(&b, "\treturn tableJsonRead(unsafe.Pointer(value), %sTableType(), text, report)\n}\n\n", n)
+			fmt.Fprintf(&b, "// %sFromJson fills one %s from a JSON text (docs/SPEC-TABLES.md §16) and is\n", n, n)
+			fmt.Fprintf(&b, "// STRICT (§6.5): it refuses whatever %sReadStrict refuses, resets value to its\n", n)
+			b.WriteString("// defaults and answers false. A supplied report receives THIS read's report,\n")
+			b.WriteString("// and on a refusal report.Err() is the typed reason.\n")
+			fmt.Fprintf(&b, "func %sFromJson(value *%s, text []byte, report *TableReport) bool {\n", n, storageName(u, n))
+			fmt.Fprintf(&b, "\tvar read TableReport\n\tok := %sFromJsonTolerant(value, text, &read)\n\tif report != nil { *report = read }\n", n)
+			fmt.Fprintf(&b, "\tif !ok || read.Err() != nil { %sReset(value); return false }\n\treturn true\n}\n\n", n)
 			fmt.Fprintf(&b, "// %sToJsonMeasure is the exact size of %s's JSON text, writing nothing.\n", n, n)
 			fmt.Fprintf(&b, "func %sToJsonMeasure(value *%s) int64 {\n", n, storageName(u, n))
 			fmt.Fprintf(&b, "\treturn tableJsonWrite(unsafe.Pointer(value), %sTableType(), nil)\n}\n\n", n)
@@ -118,8 +132,8 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 			fmt.Fprintf(&b, "}\n\n")
 			fmt.Fprintf(&b, "// %sLoadText fills one %s from a base64 wire text (docs/SPEC-TABLES.md\n", n, n)
 			fmt.Fprintf(&b, "// §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses\n")
-			fmt.Fprintf(&b, "// whenever the read's report holds an error (TableReport.Err), whatever the\n")
-			fmt.Fprintf(&b, "// tolerant Load answered, so a recovered value never comes back. It refuses\n")
+			fmt.Fprintf(&b, "// whenever the read's report holds an error (TableReport.Err), whatever\n")
+			fmt.Fprintf(&b, "// LoadTolerant answered, so a recovered value never comes back. It refuses\n")
 			fmt.Fprintf(&b, "// by name: base64_damaged when the body does not decode, unknown_form when\n")
 			fmt.Fprintf(&b, "// the decoded wire's form byte is not one this build carries, wire_damaged\n")
 			fmt.Fprintf(&b, "// for framing damage, and the report's own reason (malformed, clamped,\n")
@@ -132,7 +146,7 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 			fmt.Fprintf(&b, "\tif len(wire) == 0 || wire[0] != 1 { return nil, tableRefuseError(TableRefuseUnknownForm) }\n")
 			fmt.Fprintf(&b, "\tvar v %s\n", storageName(u, n))
 			fmt.Fprintf(&b, "\tvar read TableReport\n")
-			fmt.Fprintf(&b, "\tok := %sLoad(&v, wire, &read)\n", n)
+			fmt.Fprintf(&b, "\tok := %sLoadTolerant(&v, wire, &read)\n", n)
 			fmt.Fprintf(&b, "\tif report != nil { *report = read }\n")
 			fmt.Fprintf(&b, "\tif !ok { return nil, tableRefuseError(TableRefuseWireDamaged) }\n")
 			fmt.Fprintf(&b, "\tif err := read.Err(); err != nil { return nil, err }\n")
@@ -147,6 +161,49 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	out[home+"TableJson.go"] = src
 	return out, nil
 }
+
+// requiredRuntime gives TableFieldInfo the Required column, and requiredJson
+// gives the text walk the count it drives, in a unit that marks a field
+// `| required` and nowhere else (docs/SPEC-TABLES.md §2.3, §6.5): the plain
+// FromJson is the strict read, and a text that leaves a required field out is
+// refused as missing_required, naming it, as the binary read refuses it.
+func requiredRuntime(u *ir.Unit, s string) string {
+	if !unitHasRequired(u) {
+		return s
+	}
+	return tableSourceReplace(s, "type TableFieldInfo struct {\n", "type TableFieldInfo struct {\nRequired bool // a | required field (docs/SPEC-TABLES.md §2.3): the text read counts its absence\n", 1)
+}
+
+func requiredJson(u *ir.Unit, s string) string {
+	if !unitHasRequired(u) {
+		return s
+	}
+	s = tableSourceReplace(s, "\tvar seen [8]uint64\n\tfor {\n\t\tc := in.peek()\n\t\tif c == '}' {\n\t\t\tin.pos++\n", "\tvar seen [8]uint64\n\tfor {\n\t\tc := in.peek()\n\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\ttableJsonRequired(in, info, &seen)\n", 1)
+	s = tableSourceReplace(s, "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true\n\t\treturn false\n\t}\n}\n\n// ---- the two entry points", "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\ttableJsonRequired(in, info, &seen)\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true\n\t\treturn false\n\t}\n}\n\n// ---- the two entry points", 1)
+	return s + tableJsonRequiredSource
+}
+
+const tableJsonRequiredSource = `
+// tableJsonRequired counts an object that leaves a | required field out
+// (docs/SPEC-TABLES.md §2.3, §6.5): once per object, the missing fields named
+// in declaration order in the report's reason, as the binary read names them.
+func tableJsonRequired(in *tableJsonIn, info *TableTypeInfo, seen *[8]uint64) {
+	missing := ""
+	for i := range info.Fields {
+		if !info.Fields[i].Required || i >= 512 || seen[i>>6]&(uint64(1)<<(i&63)) != 0 {
+			continue
+		}
+		if missing != "" {
+			missing += ", "
+		}
+		missing += info.Fields[i].Name
+	}
+	if missing != "" {
+		in.report.MissingRequired++
+		in.report.Reason = "missing_required: " + missing
+	}
+}
+`
 
 // writeVariableTextCarrier emits a VARIABLE table's base64 carrier
 // (docs/SPEC-TABLES.md §16.8): every table has both text carriers, and a
@@ -172,7 +229,7 @@ func writeVariableTextCarrier(b *strings.Builder, n, storage string) {
 	fmt.Fprintf(b, "// %sLoadText reads one %s from a base64 wire text (docs/SPEC-TABLES.md\n", n, n)
 	fmt.Fprintf(b, "// §16.8) into a builder of its own and returns the locked root, as %sReadStrict\n", n)
 	b.WriteString("// does: it is the STRICT read (§6.5) and refuses whenever the read's report\n")
-	b.WriteString("// holds an error (TableReport.Err), whatever the tolerant LoadBuilder answered,\n")
+	b.WriteString("// holds an error (TableReport.Err), whatever LoadBuilderTolerant answered,\n")
 	b.WriteString("// so a recovered value never comes back. It refuses by name: base64_damaged\n")
 	b.WriteString("// when the body does not decode, unknown_form when the decoded wire's form byte\n")
 	b.WriteString("// is not one this build carries, wire_damaged for framing damage, and the\n")
@@ -186,7 +243,7 @@ func writeVariableTextCarrier(b *strings.Builder, n, storage string) {
 	fmt.Fprintf(b, "\tvar builder %sBuilder\n", n)
 	b.WriteString("\tif !builder.Init() { return nil, tableRefuseError(TableRefuseAllocationFailed) }\n")
 	b.WriteString("\tvar read TableReport\n")
-	fmt.Fprintf(b, "\tok := %sLoadBuilder(&builder, wire, &read)\n", n)
+	fmt.Fprintf(b, "\tok := %sLoadBuilderTolerant(&builder, wire, &read)\n", n)
 	b.WriteString("\tif report != nil { *report = read }\n")
 	b.WriteString("\tif err := read.Err(); err != nil || !ok {\n")
 	b.WriteString("\t\tbuilder.Shutdown()\n")

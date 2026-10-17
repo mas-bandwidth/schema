@@ -735,6 +735,10 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		g.emitCookFieldColumns(st, f)
 	}
 	g.pf("\t\tHasRange: %s, RangeMin: %s, RangeMax: %s, EnumMax: %s,\n", hasRange, rangeMin, rangeMax, enumMax)
+	if f.Required && unitHasRequired(g.unit) {
+		// a | required field (docs/SPEC-TABLES.md §2.3, §6.5): the text read counts its absence
+		g.pf("Required:true,\n")
+	}
 	if f.IsTextList() {
 		// a TEXT LIST (docs/SPEC-TABLES.md §2.13): 1 for string(M) elements, 2 for ?string(M)
 		g.pf("TextList:%d,\n", textListCode(f))
