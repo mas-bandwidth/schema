@@ -8,19 +8,16 @@
 package luatable
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 const (
-	messageFormByte    = 2
-	messageBatchMax    = 256
-	messageVersionID   = uint64(0xFFFFFFFFFFFFFFFE)
+	messageFormByte     = 2
+	messageBatchMax     = 256
+	messageVersionID    = uint64(0xFFFFFFFFFFFFFFFE)
 	messageVocabularyID = uint64(0xFFFFFFFFFFFFFFFD)
-	messageNodeID      = uint64(0xFFFFFFFFFFFFFFFF)
+	messageNodeID       = uint64(0xFFFFFFFFFFFFFFFF)
 )
 
 func init() {
@@ -98,7 +95,3 @@ func emitMessageForm(m *Module) error {
 	m.Printf("end\n\n")
 	return nil
 }
-
-var _ = fmt.Sprintf
-var _ = strings.Builder{}
-

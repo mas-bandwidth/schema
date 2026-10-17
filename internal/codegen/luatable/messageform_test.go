@@ -129,6 +129,51 @@ func TestLuaMessageFormMatchesTheGoldens(t *testing.T) {
 	if count == 0 {
 		t.Fatal("no message rows found in the manifest")
 	}
+	assertDamagedBatch(t, repo, units, conns)
+}
+
+// assertDamagedBatch holds the batch's damage rule (§3.3): "DAMAGE INSIDE BODY
+// k DELIVERS BODIES 1 to k - 1", one `malformed`, and nothing at or after body
+// k. The pinned three-body batch has body 2's field reference planted at 63,
+// thirty past E, so body 1 stands and the batch is refused.
+func assertDamagedBatch(t *testing.T, repo string, units map[string][]string, conns map[string]manifestConn) {
+	t.Helper()
+	conn, ok := conns["backend_conn"]
+	if !ok {
+		t.Fatal("the manifest names no backend_conn connection")
+	}
+	paths := units[conn.unit]
+	if len(paths) == 0 {
+		t.Fatalf("connection %s names unknown unit %s", conn.key, conn.unit)
+	}
+	schemaPaths := make([]string, len(paths))
+	for i, p := range paths {
+		schemaPaths[i] = filepath.Join(repo, p)
+	}
+	unit := luarun.LoadUnit(t, schemaPaths...)
+	files, err := Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	luarun.WriteFiles(t, dir, files)
+	announce := readFile(t, filepath.Join(repo, conn.ann))
+	batch := readFile(t, filepath.Join(repo, "testdata/wire/tables/backend_batch_damaged_second_message.bin"))
+	writeFile(t, filepath.Join(dir, "main.lua"), `
+local T = require("`+ModuleName(unit)+`")
+local inputs = require("inputs")
+local report = { malformed = false, refused = 0 }
+local vocab = {}
+for i = 1, T.MessageEntries do vocab[i] = {} end
+assert(T.AnnounceRead(vocab, inputs.announce, report))
+local values = T.LoadMessages("LoginRequest", vocab, inputs.batch, report)
+assert(values ~= nil, "a damaged batch was refused rather than read")
+assert(#values == 1, "damage in body 2 delivered " .. #values .. " bodies, not one")
+assert(report.malformed == true, "damage in body 2 did not report malformed")
+assert(report.refused == 0, "damage in body 2 was reported as a refusal")
+print("damage-ok")
+`)
+	luarun.Run(t, dir, "main.lua", map[string][]byte{"announce": announce, "batch": batch})
 }
 
 // TestLuaMessageFormNegativeControl patches the emitted runtime in memory (one
@@ -177,7 +222,10 @@ local ok2 = pcall(function()
 end)
 if ok2 then print("green") else print("red") end
 `)
-	luarun.Run(t, dir, "main.lua", map[string][]byte{"announce": announce, "batch": batch})
+	out := luarun.Run(t, dir, "main.lua", map[string][]byte{"announce": announce, "batch": batch})
+	if !strings.Contains(string(out), "red") {
+		t.Fatalf("the sabotaged batch count stayed green; the negative control proves nothing:\n%s", out)
+	}
 }
 
 // patchMessageRuntime sabotages the batch count read so the comparison goes
