@@ -248,8 +248,53 @@ func TestLuauRefusesByName(t *testing.T) {
 	if err := load(map[string]string{"A.schema": "package cyc\ntable Ta\n{\n    b *Tb\n}\ntable Tb\n{\n    a *Ta\n}\n"}); err != nil {
 		t.Errorf("the control, both tables in one file: %v", err)
 	}
-	err = load(map[string]string{"schema_runtime.schema": "package clash\ntype T\n{\n    x uint8\n}\n"})
+	err := load(map[string]string{"schema_runtime.schema": "package clash\ntype T\n{\n    x uint8\n}\n"})
 	if err == nil || !strings.Contains(err.Error(), "collides with the Luau runtime module schema_runtime.luau") {
 		t.Errorf("a schema file named for the runtime: want the collision refused, got %v", err)
 	}
+}
+
+// TestLuauTableFreeUnitAddsNothing is the zero-cost gate's half for this
+// leg (docs/PORTING.md I10): a unit with no tables gets no table module and
+// no table runtime, so its output is the type surface's alone.
+func TestLuauTableFreeUnitAddsNothing(t *testing.T) {
+	t.Parallel()
+	paths, err := compiler.GatherPaths([]string{filepath.Join(root, "examples")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(u.Tables) != 0 {
+		t.Fatalf("examples/ declares %d tables; the gate needs a table-free unit", len(u.Tables))
+	}
+	files, err := luautable.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 {
+		t.Fatalf("a table-free unit got %d table-surface files: %v", len(files), slicesSorted(files))
+	}
+	// the control: a unit with a table does get its module and runtime
+	paths, err = compiler.GatherPaths([]string{filepath.Join(root, "tables", "examples")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u, err = compiler.New().Load(paths); err != nil {
+		t.Fatal(err)
+	}
+	if files, err = luautable.Generate(u); err != nil || files[luautable.RuntimeModule+".luau"] == nil {
+		t.Fatalf("the control, a unit with tables, got no table runtime: %v (%v)", slicesSorted(files), err)
+	}
+}
+
+func slicesSorted(files map[string][]byte) []string {
+	out := make([]string, 0, len(files))
+	for k := range files {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
