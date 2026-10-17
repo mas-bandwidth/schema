@@ -3950,6 +3950,26 @@ so in Go every append takes the worker: `WhereRecentAppend(&b.Main, v, "a")`.
 A bare `string` anywhere else is refused by name with the spelling to use.
 Only Go generates the construct today; every other `--lang` refuses it by name.
 
+### Generated tests: `schema testgen`
+
+The round-trip and damage tests every table owes are written for you
+(docs/SPEC-TABLES.md §16.11):
+
+```
+schema generate --lang go --out gen tables/examples
+schema testgen  --lang go --out gen tables/examples
+go test ./gen
+```
+
+`testgen` writes `<Base>Table_gen_test.go` beside each `<Base>Table.go`. For
+every table it builds deterministic sample values from the declaration (fields
+at their bounds and inside them, every union arm, every optional present and
+absent) and checks that each reads back equal through the binary wire, base64
+text and JSON text; then it damages the wire and the texts and checks that each
+damage is refused by its named reason. Regenerate it whenever you regenerate
+the code. Only `--lang go` is carried today; every other target refuses by
+name.
+
 ## Embedding the compiler
 
 The compiler is a Go library as well as a binary. `cmd/schema` is a client of
