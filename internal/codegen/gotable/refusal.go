@@ -26,6 +26,7 @@ TableRefuseMalformed
 TableRefuseClamped
 TableRefuseKindMismatch
 TableRefuseBase64Damaged
+TableRefuseIntegrityMismatch
 TableRefuseNonFinite
 )
 func(r TableRefuseReason) Error()string{switch r {
@@ -50,6 +51,7 @@ case TableRefuseMalformed:return "malformed"
 case TableRefuseClamped:return "clamped"
 case TableRefuseKindMismatch:return "kind_mismatch"
 case TableRefuseBase64Damaged:return "base64_damaged"
+case TableRefuseIntegrityMismatch:return "integrity_mismatch"
 case TableRefuseNonFinite:return "non_finite"
 };return "invalid refusal reason"}
 func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{return nil};return reason}
@@ -73,6 +75,7 @@ func(r *TableReport) Err() error {
 if r==nil {return nil}
 if r.Reason=="build_version_mismatch" {return TableBuildVersionMismatch{Peer:r.BuildVersionPeer,Own:r.BuildVersionOwn}}
 if r.Verdict==TableOpenRefused || r.Reason=="unsupported wire form" || r.Reason=="newer_form" || r.Reason=="message_form_as_file" || r.Reason=="message form requires an announced vocabulary and a message reader" {return TableRefuseUnknownForm}
+if r.Reason=="integrity_mismatch" {return TableRefuseIntegrityMismatch}
 if r.Verdict==TableOpenDamaged {return TableRefuseWireDamaged}
 if r.MissingRequired>0 {const p="missing_required: ";f:=r.Reason;if len(f)>=len(p)&&f[:len(p)]==p{f=f[len(p):]};return TableMissingRequired{Fields:f}}
 if r.Malformed {return TableRefuseMalformed}

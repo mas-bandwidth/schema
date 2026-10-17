@@ -299,7 +299,11 @@ func (p *packer) readTableText(inst *tabletext.Instance, path string, text []byt
 	p.m.Read(inst, text, &r)
 	p.report.Add(r)
 	if r.Malformed {
-		p.refusef("%s: not one JSON text for table %s (docs/SPEC-TABLES.md §17.3)", path, inst.Def.Name)
+		reason := ""
+		if r.Reason != "" {
+			reason = ": " + r.Reason
+		}
+		p.refusef("%s: not one JSON text for table %s%s (docs/SPEC-TABLES.md §17.3)", path, inst.Def.Name, reason)
 	}
 }
 

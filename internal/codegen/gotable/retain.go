@@ -133,9 +133,13 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 			if b {
 				blobs |= 2
 			}
-			g.pf("func %sLoadRetain(region,wire []byte,retain *TableRetain,report *TableReport)*%s{return (*%s)(tableRegionLoadRetain(region,wire,%sTableType(),%sTableType().NodeType,%d,report,retain))}\n", n, typ, typ, n, n, blobs)
-			g.pf("func %sMeasureRetain(value *%s,retain *TableRetain,allocator ...TableAllocator)int64{return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),nil,true,retain,nil,allocator...)}\n", n, typ, n)
-			g.pf("func %sSaveRetain(value *%s,retain *TableRetain,buffer []byte,report *TableReport,allocator ...TableAllocator)int64{if report==nil{return -1};return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),buffer,false,retain,report,allocator...)}\n", n, typ, n)
+			if st.Integrity != "" {
+				g.emitIntegrityRetain(st, blobs)
+			} else {
+				g.pf("func %sLoadRetain(region,wire []byte,retain *TableRetain,report *TableReport)*%s{return (*%s)(tableRegionLoadRetain(region,wire,%sTableType(),%sTableType().NodeType,%d,report,retain))}\n", n, typ, typ, n, n, blobs)
+				g.pf("func %sMeasureRetain(value *%s,retain *TableRetain,allocator ...TableAllocator)int64{return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),nil,true,retain,nil,allocator...)}\n", n, typ, n)
+				g.pf("func %sSaveRetain(value *%s,retain *TableRetain,buffer []byte,report *TableReport,allocator ...TableAllocator)int64{if report==nil{return -1};return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),buffer,false,retain,report,allocator...)}\n", n, typ, n)
+			}
 		}
 	}
 	g.emitRetainMessageSurface(st)

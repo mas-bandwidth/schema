@@ -178,6 +178,7 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 			g.pf("%sif %s {\n", ind, cond)
 			ind += "\t"
 		}
+		g.emitTextTotalWrite(f, "value."+member(f), "w.Ids.Numbering.arena", ind)
 		g.emitWireField(f, "value."+member(f), ind)
 		if cond != "" {
 			g.pf("\t}\n")

@@ -159,6 +159,10 @@ func Shape(f *ir.Field) byte {
 	case UnionOf(f) != nil:
 		return 'o'
 	case StructOf(f) != nil:
+		if StructOf(f).JsonArray {
+			// a `json = "array"` table's field IS the array (docs/SPEC-TABLES.md §16.10)
+			return 'a'
+		}
 		return 'o'
 	case EnumOf(f) != nil:
 		return 's'
@@ -176,7 +180,12 @@ func Shape(f *ir.Field) byte {
 // ElementShape is the same classifier one level down, for an array's elements.
 func ElementShape(f *ir.Field) byte {
 	switch {
-	case StructOf(f) != nil, UnionOf(f) != nil:
+	case UnionOf(f) != nil:
+		return 'o'
+	case StructOf(f) != nil:
+		if StructOf(f).JsonArray {
+			return 'a'
+		}
 		return 'o'
 	case EnumOf(f) != nil:
 		return 's'
@@ -599,6 +608,23 @@ func (in *reader) readTable(inst *Instance, depth int) bool {
 		in.bad = true
 		return false
 	}
+	if inst.Def.JsonArray {
+		// THE ARRAY ROOT (docs/SPEC-TABLES.md §16.10): the table's text is its
+		// one field's array. Any other top-level value is refused by name —
+		// the report is Malformed and its Reason is `json_root_not_array: <Table>`.
+		if len(inst.Fields) != 1 {
+			in.bad = true
+			return false
+		}
+		if in.valueShape() != 'a' {
+			if in.report.Reason == "" {
+				in.report.Reason = "json_root_not_array: " + inst.Def.Name
+			}
+			in.bad = true
+			return false
+		}
+		return in.readField(&inst.Fields[0], depth)
+	}
 	if in.peek() != '{' {
 		in.bad = true
 		return false
@@ -750,6 +776,9 @@ func (in *reader) readField(fv *Field, depth int) bool {
 	case f.KeyEnum != "":
 		return in.readKeyed(fv, depth)
 	case f.Array != ir.ArrayNone:
+		if f.IsTextList() {
+			return in.readTextList(fv, depth)
+		}
 		return in.readArray(fv, depth)
 	}
 	// a SCALAR is not re-established: it is written only when a value is
@@ -1100,6 +1129,97 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 	}
 	// a fixed array's tail keeps the defaults the reset left there, exactly as
 	// a short wire count does
+	fv.Count = placed
+	return true
+}
+
+// readTextList places a TEXT LIST's elements (docs/SPEC-TABLES.md §2.13,
+// §16.2): a plain array of strings — `null` for an absent `?string(M)` element
+// and the string for a present one, `""` included. The bounds are the variable
+// wire's tolerance: an element past `N` drops and counts `clamped`, an element
+// past `M` clamps at a code point boundary and counts `clamped`, and an
+// element that is not a string (or `null` for the optional spelling) is
+// `kind_mismatch`, skipped and counted.
+func (in *reader) readTextList(fv *Field, depth int) bool {
+	f := fv.Def
+	if in.peek() != '[' {
+		in.bad = true
+		return false
+	}
+	in.pos++
+	// re-establish every element at the element record's defaults, as readArray
+	// re-establishes its slots
+	for i := range fv.Elems {
+		fv.Elems[i] = in.m.elementZero(f)
+	}
+	fv.Count = 0
+	placed := 0
+	bound := int(f.ArrayBound)
+	if f.Array == ir.ArrayList {
+		bound = math.MaxInt32
+		fv.Elems = fv.Elems[:0]
+	}
+	valueF := ir.TextListValue(f)
+	boundM := int(valueF.Type.Size)
+	optional := ir.TextListOptional(f)
+	for {
+		c := in.peek()
+		if c == ']' {
+			in.pos++
+			break
+		}
+		if c == 0 {
+			in.bad = true
+			return false
+		}
+		if f.Array == ir.ArrayList && placed == len(fv.Elems) {
+			fv.Elems = append(fv.Elems, in.m.elementZero(f))
+		}
+		switch {
+		case placed >= bound:
+			in.report.Clamped++
+			if !in.skipValue(depth + 1) {
+				return false
+			}
+		case optional && in.valueShape() == 'z':
+			if !in.literal("null") {
+				return false
+			}
+			placed++
+		case in.valueShape() != 's':
+			in.report.KindMismatch++
+			if !in.skipValue(depth + 1) {
+				return false
+			}
+			placed++
+		default:
+			out, clamped, ok := in.scanString(boundM)
+			if !ok {
+				return false
+			}
+			if clamped {
+				in.report.Clamped++
+			}
+			rec := fv.Elems[placed].Tab
+			rec.Fields[0].Cell.Str = out
+			rec.Fields[0].Count = len(out)
+			if optional {
+				rec.Fields[0].Present = true
+			}
+			placed++
+		}
+		c = in.peek()
+		if c == ',' {
+			in.pos++
+			continue
+		}
+		if c == ']' {
+			in.pos++
+			break
+		}
+		in.bad = true
+		return false
+	}
 	fv.Count = placed
 	return true
 }

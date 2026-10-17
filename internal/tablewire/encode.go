@@ -478,6 +478,17 @@ func encodeKeyed(e *encoder, w *buf, fv *tabletext.Field, id uint64, kind int) e
 // carries its own length, a scalar rides at its fixed width, and an enum rides
 // as the reference to its variant name's id.
 func encodeElement(e *encoder, w *buf, f *ir.Field, kind int, cell *tabletext.Cell) error {
+	if ir.TextListPlain(f) {
+		// A PLAIN TEXT LIST's element is kind 12: its own L, then L bytes
+		// (docs/SPEC-TABLES.md §2.13, §3).
+		var val []byte
+		if rec := cell.Tab; rec != nil {
+			val = rec.Fields[0].Cell.Str
+		}
+		w.leb(uint64(len(val)))
+		w.raw(val)
+		return nil
+	}
 	if en := tabletext.EnumOf(f); en != nil {
 		vid, none, err := variantWireId(en, cell.U, f.Name)
 		if err != nil {
@@ -493,6 +504,11 @@ func encodeElement(e *encoder, w *buf, f *ir.Field, kind int, cell *tabletext.Ce
 		} else {
 			w.u8(0)
 		}
+	case ir.TableKindString:
+		// a string value under kind 12 rides its own L, then its bytes
+		// (docs/SPEC-TABLES.md §3) — the optional string field's payload
+		w.leb(uint64(len(cell.Str)))
+		w.raw(cell.Str)
 	case ir.TableKindF32:
 		w.u32(narrowF32(cell.F))
 	case ir.TableKindF64:

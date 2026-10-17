@@ -35,6 +35,17 @@ func refuseMaps(u *ir.Unit, target string) error {
 		englishList(fields), englishList(carry), target, englishList(flags))
 }
 
+// refuseOptionalMaps is the named refusal every target but go gives a unit
+// whose table closure holds an OPTIONAL MAP (docs/SPEC-TABLES.md §2.8): Go
+// carries `?map[K]V` first, and a target that carries the plain map is refused
+// too, because its writer would elide a present empty map as absent.
+func refuseOptionalMaps(u *ir.Unit, target string) error {
+	if fields := ir.OptionalMapFields(u); len(fields) > 0 {
+		return fmt.Errorf("target %q refuses the construct optional map on field %s — ?map[K]V is Go's first; no other target carries it until its turn (docs/SPEC-TABLES.md §2.8)", target, fields[0])
+	}
+	return nil
+}
+
 // refuseToolMaps is the TOOL's COOK refusal (docs/SPEC-TABLES.md §2.8, §15): a unit
 // whose table closure declares a map is refused by name at the tool's COOK and
 // UNCOOK surfaces, because internal/tablecook does not lay out the entry

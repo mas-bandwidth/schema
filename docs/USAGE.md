@@ -104,6 +104,9 @@ schema generate --lang go --surface wire,json --out generated/go .
 `--surface` takes a comma-separated list of the table surfaces (SPEC-TABLES.md
 §8.8). Its default is the full set — the command above without `--surface` is
 byte-identical to the one with `--surface wire,fixed,json,cook,block,view,message,retain`.
+The one surface outside the default is `textform`, the hand-editable text form
+(below, "Hand-edited tables and comments"): it is emitted only when named, and
+naming it implies `json` and `wire`.
 Only the Go target accepts it; any other `--lang` refuses the flag by name.
 A table that declares `forms` (SPEC-TABLES.md §2.12) narrows it further: the
 list intersects the table's forms, and a list naming `json`, `cook` or `block`
@@ -764,6 +767,11 @@ from a table; the other six targets refuse a unit declaring these defaults.
 Packet defaults initialize storage and do not omit fields from the wire.
 In C, call the generated `new_<type>()` constructor to apply declared defaults;
 in Go, call `New<Type>()`. Zero-filled storage alone does not apply them.
+
+A table field marked `| required` whose range excludes zero takes no default:
+its fresh value is the storage zero, which is outside the range, so the
+writer refuses the record until the field is set, and a stored record lacking
+it is `missing_required` on read (docs/SPEC-TABLES.md §2.3).
 
 A fixed default must be **exactly representable** in its format; the
 compiler refuses one that would silently round.
@@ -2326,9 +2334,20 @@ first. Never a locale, never a code point, never a case fold.
 **A map makes its holder VARIABLE-LENGTH**, whatever its key and value are,
 so a table declaring one rides in the arena with the pointers and has no block
 form. A `type` body refuses one by name. There is no bound on the count, no
-`| max` on a map, no `?map` and no default: a fresh map is empty, and an empty
-map elides. What bounds a read is `LoadMeasure`, whose answer the caller owns
+`| max` on a map and no default: a fresh map is empty, and an empty plain map
+elides. What bounds a read is `LoadMeasure`, whose answer the caller owns
 and can refuse.
+
+**`?map[K]V` says absent apart from empty** (SPEC-TABLES.md §2.8; Go carries
+it first, every other target refuses it by name). In a variable table,
+`tags ?map[string(8)]int32` carries a `TagsPresent` bool beside the map, as
+every `?T` does. Absent writes nothing; present always rides, so a present
+EMPTY map writes its two-byte array body (`0d 00`) and reads back present
+and empty, and a present map with entries is the plain map's bytes. In JSON
+absent is the key omitted, present-and-empty is `{}`, and `null` reads as
+absent. A reader built without the `?` reads the present-empty field as an
+empty map. `?map` is refused in a `fixed table`, a `type`, and beside
+`| required`.
 
 The surface is a builder and a reader:
 
@@ -3724,10 +3743,14 @@ require github.com/mas-bandwidth/serialize.go <tag>
 and all — rides the id-table wire through a builder and its arena; a fixed
 table is a positional image at declared storage widths, written and read by
 one layout hash. A unit that declares any variable table is generated
-regionally, and a regional unit emits no fixed-form surface at all: its
-`fixed table`s keep the variable wire's entry points and never grow
-`FixedSave`/`FixedLoad`. So adopt one class per unit; each recipe below
-carries its own declaration.
+regionally, and its `fixed table`s still carry the fixed form: each one
+that qualifies (the record ceiling, depth and leaf caps of
+docs/SPEC-TABLES.md §3.4) grows `FixedSave`/`FixedLoad` over the unit's
+`<Name>Row` storage, and writes the same bytes it writes in a unit with no
+variable table. Adding a variable table to a unit changes nothing for its
+fixed tables. The one exception today is a fixed table whose closure holds
+a union: in a regional unit it keeps the variable wire's entry points only,
+named as a follow-on in docs/SPEC-TABLES.md §3.4. Each recipe below carries its own declaration.
 
 The variable class, one unit. The builder owns the arena, the caller owns
 every byte:
@@ -3913,6 +3936,21 @@ In Go, `HandoverRulesAppend(&h, "a")` appends (false past either bound),
 strings. Only Go generates either construct today; every other `--lang`
 refuses it by name.
 
+A text list can also bound the SUM of its elements' bytes, so one record never
+holds the count times `M`:
+
+```
+table Handover
+{
+    rules [..16]string(64) | total = 256   // 256 bytes of text across the list
+}
+```
+
+`Save` and `Measure` return -1 for a value past the total, `HandoverRulesAppend`
+returns false for the element that would cross it, and a read keeps the
+elements that fit (in order), drops the rest and counts `clamped`, naming the
+field, so `HandoverReadStrict` refuses it (docs/SPEC-TABLES.md §2.13).
+
 ### Unbounded text in lists and map keys
 
 When no code bounds a list's elements or a map's keys, leave the bound off
@@ -3933,6 +3971,34 @@ byte), nothing is clamped for length, and the bytes live in the builder's arena,
 so in Go every append takes the worker: `WhereRecentAppend(&b.Main, v, "a")`.
 A bare `string` anywhere else is refused by name with the spelling to use.
 Only Go generates the construct today; every other `--lang` refuses it by name.
+
+### A checksum on a saved file: `integrity`
+
+A plain `table` may declare that the file it is the root of carries a CRC-32C
+trailer (docs/SPEC-TABLES.md §2.14):
+
+```
+table Ledger | integrity = "crc32c"
+{
+    balance int64
+}
+```
+
+`LedgerSave` appends four bytes, the little-endian CRC-32C of everything
+before them, and `LedgerMeasure` counts them. Every read checks them after the
+form byte and before any field: `LedgerReadStrict` and `LedgerLoadText` refuse a
+mismatch with `TableRefuseIntegrityMismatch` (`errors.Is`), and the tolerant
+`LedgerLoad` sets `malformed` with the reason `integrity_mismatch` and decodes
+nothing. Every single-bit flip and every damaged byte is caught; it guards
+against accident, not against someone rewriting the file, which is still a
+signature's job. Adding or removing the key changes the file's framing, so
+rewrite stored files across the change. A `fixed table` may carry the key too:
+its message-form batch (docs/SPEC-TABLES.md §3.3) carries one trailer for the
+whole batch, checked before the first body is decoded, so `SaveMessages` writes
+four more bytes than `MeasureMessages` would without the key and
+`LoadMessages` refuses a damaged batch with the same `integrity_mismatch` and
+decodes nothing. The fixed form's per-file trailer is still a follow-on. Only
+Go generates the key today; every other `--lang` refuses it by name.
 
 ## Embedding the compiler
 
@@ -4167,10 +4233,13 @@ The `MeasureReason`, `LoadMeasureReason`, `CookMeasureReason`, and builder
 `PackMeasureReason` variants return `(int64, error)`. Success returns a literal
 `nil`; refusals carry `TableRefuseReason`, usable with `errors.As` or direct
 comparison. The existing integer measure and boolean open calls remain available.
-Cook and block handles also provide `Open(base, bytes) error`. A damaged file
-trailer returns `TableRefuseWireDamaged` (`wire_damaged`) from
+Cook and block handles also provide `Open(base, bytes) error`. `LoadMeasureReason`
+validates the wire's framing: a root or node body that runs past its end or
+lacks its terminating zero reference, a node scan that is not whole, and a
+damaged file trailer all return `TableRefuseWireDamaged` (`wire_damaged`) from
 `LoadMeasureReason`; this is distinct from a format refusal and from the
-accelerator-only `truncated` reason. `<Name>ReadStrict(wire)` is the one-call
+accelerator-only `truncated` reason. Value-level events (clamped,
+`kind_mismatch`, ill-formed text, unknown ids) do not fail the measure. `<Name>ReadStrict(wire)` is the one-call
 strict read (docs/SPEC-TABLES.md §6.5): it builds its own builder and returns
 `(*<Name>, error)`. The error is a `TableRefuseReason` (`clamped`,
 `kind_mismatch`, `malformed`, `non_finite`, `unknown_form`, `wire_damaged`), a
@@ -4459,10 +4528,35 @@ the document to rewrite it byte for byte or change a single value in place.
 The table value alone cannot retain layout. Unknown and duplicate keys,
 over-bound values and unterminated forms are named refusals, not repairs.
 
-This is the standard and its conformance contract; it does not yet promise a
-generated Go reader or writer. That implementation follows separately. Existing
-roadmap/work-file grammars need declared tables and explicit migration: tagged
-records and positional IDs in older work files are not accepted implicitly.
+The Go target generates it on the `textform` surface, which a generate names
+explicitly (it is not in the default set): `schema generate --lang go --surface wire,fixed,json,cook,block,view,message,retain,textform`. Every table and type
+the JSON form carries, fixed and plain alike, then gets three functions in
+`<Base>TableTextForm.go`, which imports the standard library only:
+
+```go
+doc, ship, err := example.ShipConfigLoadTextForm(text, example.TableTextFormDefaultLimits())
+if err != nil {
+	var refusal *example.TableTextFormError // .Name is the §16.9.4 name, .Offset and .Path say where
+	errors.As(err, &refusal)
+}
+same, _ := example.ShipConfigSaveTextForm(doc) // the input, byte for byte
+edited, ship, err := example.ShipConfigEditTextForm(doc,
+	example.TableTextFormEdit{Path: "name", Text: `"Renamed"`},
+	example.TableTextFormEdit{Path: "weapons[0].damage", Text: "12"})
+```
+
+`LoadTextForm` returns the document and the typed value (for a plain table,
+the locked root of a builder of its own, as `LoadText` does). `SaveTextForm`
+writes the retained document. `EditTextForm` replaces existing scalar values:
+each edit's `Text` is one token of the form, replaced at its original span,
+so only that value's line changes; a semantically equal value keeps the old
+spelling; the edited document is read again under the same limits and a
+refusal leaves the old document as it was. Inserting, deleting or replacing a
+whole compound is a structural edit and refuses as `text_edit_conflict`. The
+document also answers `Comments()` (each comment with the path it attaches
+to), `Span(path)`, `Paths()` and `Scalar(path)`. Existing roadmap/work-file
+grammars need declared tables and explicit migration: tagged records and
+positional IDs in older work files are not accepted implicitly.
 
 Do not use this document form for data only a program reads. Use the binary
 table wire, or padded base64 of that wire on text-only channels (§16.8); use

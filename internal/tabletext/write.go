@@ -219,6 +219,15 @@ func (m *Model) writeValue(w *writer, inst *Instance, depth int) error {
 	if depth > maxJsonDepth {
 		return fmt.Errorf("table %s: nested past the depth cap of %d — a pointer chain nests as deep as it is long (docs/SPEC-TABLES.md §16.7)", inst.Def.Name, maxJsonDepth)
 	}
+	if inst.Def.JsonArray {
+		// THE ARRAY ROOT (docs/SPEC-TABLES.md §16.10): the table's text IS its
+		// one field's array — written and read as that field's own §16.2 row,
+		// with no object around it and no key.
+		if len(inst.Fields) != 1 {
+			return fmt.Errorf("table %s: a `json = \"array\"` table must declare exactly one array field (docs/SPEC-TABLES.md §16.10)", inst.Def.Name)
+		}
+		return m.writeField(w, &inst.Fields[0], depth)
+	}
 	any := false
 	if err := m.writeFields(w, inst, depth, &any); err != nil {
 		return err
@@ -317,6 +326,8 @@ func (m *Model) writeField(w *writer, fv *Field, depth int) error {
 		return m.writeMap(w, fv, depth)
 	case f.KeyEnum != "":
 		return m.writeKeyed(w, fv, depth)
+	case f.IsTextList():
+		return m.writeTextList(w, fv, depth)
 	case f.Array != ir.ArrayNone:
 		count := int(f.ArrayBound)
 		if f.CountedOnWire() {
@@ -341,6 +352,38 @@ func (m *Model) writeField(w *writer, fv *Field, depth int) error {
 		return nil
 	}
 	return m.writeScalar(w, &fv.Cell, f, depth)
+}
+
+// writeTextList renders a TEXT LIST's elements (docs/SPEC-TABLES.md §2.13,
+// §16.2): a plain array of strings in index order — the element's string for a
+// present `?string(M)` element, `null` for an absent one. It is the same count
+// rule the plain array's writer follows.
+func (m *Model) writeTextList(w *writer, fv *Field, depth int) error {
+	f := fv.Def
+	count := int(f.ArrayBound)
+	if f.CountedOnWire() {
+		count = fv.Count
+	}
+	if count == 0 {
+		w.raw("[]")
+		return nil
+	}
+	w.put('[')
+	for i := 0; i < count; i++ {
+		if i > 0 {
+			w.put(',')
+		}
+		w.line(depth + 1)
+		rec := fv.Elems[i].Tab
+		if ir.TextListOptional(f) && !rec.Fields[0].Present {
+			w.raw("null")
+			continue
+		}
+		writeString(w, rec.Fields[0].Cell.Str)
+	}
+	w.line(depth)
+	w.put(']')
+	return nil
 }
 
 // writeMap renders a MAP as a plain JSON object keyed by the KEY
