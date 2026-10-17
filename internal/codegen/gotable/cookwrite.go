@@ -102,7 +102,7 @@ func(w *tableCookWriter) field(base unsafe.Pointer,f *TableFieldInfo,at int64,li
  if f.Optional {v:=uint64(0);if *(*bool)(unsafe.Add(base,f.PresentOffset)){v=1};w.put(at+int64(f.CookPresentOffset),v,1)}
  if f.List||f.Map {return w.container(p,f,dest,live)}
  count:=int32(1);used:=int32(1)
- if f.Counted {used=*(*int32)(unsafe.Add(base,f.CountOffset));if used<0||used>f.ArrayBound{return false};w.put(at+int64(f.CookCountOffset),uint64(used),4)}
+  if f.Counted {used=*(*int32)(unsafe.Add(base,f.CountOffset));if used<0||(!f.Unbounded&&used>f.ArrayBound){return false};w.put(at+int64(f.CookCountOffset),uint64(used),4)}
  if !f.Pointer&&(f.TypeName=="string"||f.TypeName=="bytes"||f.TypeName=="wstring") {
   width:=f.CookElemSize;for i:=int32(0);i<used;i++{v:=tableJsonGetRaw(unsafe.Add(p,int64(i)*int64(width)),width);w.put(dest+int64(i)*int64(width),v,width)};return true
  }

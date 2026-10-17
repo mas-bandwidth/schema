@@ -1026,8 +1026,9 @@ type TableFieldInfo struct {
 	IsArray  bool   // fixed or counted array (bytes included)
 	Counted  bool   // a <Name>Count/<Name>Length int32 companion exists
 	Optional bool   // a ?T field: a <Name>Present bool decides whether it rides
+	Unbounded bool  // a map or an unbounded []T: no declared bound, ArrayBound is 0 (docs/SPEC-TABLES.md §8.1)
 
-	ArrayBound    int32  // array capacity / string max length; 0 for plain scalars
+	ArrayBound    int32  // array capacity / string max length; 0 for plain scalars and unbounded containers
 	Offset        uint32 // unsafe.Offsetof the storage member
 	ElemSize      uint32 // unsafe.Sizeof the member (element size for arrays)
 	CountOffset   uint32 // unsafe.Offsetof the count/length companion, or 0xffffffff
