@@ -2032,9 +2032,27 @@ func tableJsonWriteTimestamp(out *tableJsonOut, storage unsafe.Pointer) bool {
 }
 
 func tableJsonReadTimestamp(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo) bool {
-	var text [64]byte
-	n, ok := in.scanString(text[:63])
+	// THE WHOLE STRING TOKEN IS SCANNED, THEN PARSED (docs/SPEC-TABLES.md
+	// §16.2): a fraction longer than nine digits truncates to nanoseconds as
+	// time.Parse does — truncation, never rounding — and a spelling with an
+	// offset reads as its UTC count. A string longer than the 128-byte bound
+	// §16.2 declares cannot be one this walk reads, so it is refused by name,
+	// on the length of the token, before anything proportional to it is copied.
+	// The length is measured through a COPY of the reader, which scans without
+	// allocating.
+	probe := *in
+	n, ok := probe.scanString(nil)
 	if !ok {
+		in.bad = true
+		return false
+	}
+	if n > 128 {
+		in.report.Reason = "timestamp_not_rfc3339: " + f.Name
+		in.bad = true
+		return false
+	}
+	var text [128]byte
+	if _, ok := in.scanString(text[:n]); !ok {
 		return false
 	}
 	t, err := time.Parse(time.RFC3339Nano, string(text[:n]))
