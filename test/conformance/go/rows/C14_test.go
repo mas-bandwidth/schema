@@ -58,7 +58,9 @@ func TestRowC14(t *testing.T) {
 	var scratch [1]tblv2.Cfg
 	var report tblv2.TableReport
 	scratch[0] = tblv2.Cfg{}
-	got := tblv2.CfgFixedLoad(scratch[:], data, plan, &report)
+	// The row pins the clamp itself (values and count), which the plain read now
+	// refuses (docs/SPEC-TABLES.md §6.5), so it reads through the tolerant twin.
+	got := tblv2.CfgFixedLoadTolerant(scratch[:], data, plan, &report)
 	if got != 1 {
 		t.Fatalf("CfgFixedLoad: got %d records, want 1", got)
 	}

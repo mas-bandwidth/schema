@@ -9413,8 +9413,10 @@ The builder is designed to go wide, lock-free by ownership:
   signatures and their answers. **The text read counts a missing required
   field as the binary read does**: a JSON object that leaves a `| required`
   field out counts `missing_required` once, naming the fields in its reason
-  (§2.3), so the plain `FromJson` refuses it and `FromJsonTolerant` keeps the
-  recovered value with the count.
+  (§2.3), so the plain `FromJson` refuses it, and `FromJsonTolerant` answers
+  `false` on it too, with the count, as the binary builder read does: §2.3
+  refuses a record missing a required field in every form, so no tolerant
+  read keeps one.
   **Each keeps its signature and answers its own refusal value**: `false` for
   `Load` into a value, `LoadBuilder` and `FromJson`, a nil root for the region
   `Load`, `-1` for `FixedLoad`, and `ok == false` for `LoadMessages`, whose count is

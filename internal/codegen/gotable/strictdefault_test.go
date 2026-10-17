@@ -250,8 +250,9 @@ func TestVariableStrict(t *testing.T) {
 		} else if c.name == "missing_required" {
 			// §2.3: the binary walk stops on a record missing a required field, as
 			// it did before this rule (the region read still hands back its root,
-			// the builder read answers false); the text read keeps the value.
-			if root == nil || ok || !jok || !c.counted(tr) || !c.counted(br) || !c.counted(jr) || jb.GetRoot().N != 3 {t.Fatalf("missing_required: tolerant reads: %+v %+v %+v", tr, br, jr)}
+			// the builder read answers false), and the text read refuses it the
+			// same way, since §2.3 refuses the absence in the text form too.
+			if root == nil || ok || jok || !c.counted(tr) || !c.counted(br) || !c.counted(jr) {t.Fatalf("missing_required: tolerant reads: %+v %+v %+v", tr, br, jr)}
 		} else if root == nil || !ok || !jok || !c.counted(tr) || !c.counted(br) || !c.counted(jr) {t.Fatalf("%s: a tolerant read did not keep the recovered value: %+v %+v %+v", c.name, tr, br, jr)}
 		b.Shutdown();jb.Shutdown()
 	}
