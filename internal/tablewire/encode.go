@@ -685,6 +685,14 @@ func variantWireId(e *ir.Enum, value uint64, field string) (id uint64, none bool
 // cellIsDefault is the writer's elision test: a field holding its declared
 // default is not written at all, which is why old readers and new writers meet
 // cleanly (§3).
+//
+// A PLAIN float compares BIT PATTERNS, not values (docs/SPEC-TABLES.md §3.3,
+// "A PLAIN FLOAT'S SPECIAL VALUES": elision compares bit patterns at every
+// elision a writer makes): under ==, -0 equals +0 and would be elided and read
+// back as +0. This one test serves the scalar, the [N] all-default and the
+// enum-keyed slot elisions here, and the message encoder's through
+// cellIsDefaultIn. A compressed float keeps ==, because its -0 IS +0 by §3.3's
+// compressed-float rule.
 func cellIsDefault(e *encoder, f *ir.Field, cell *tabletext.Cell) bool {
 	if f.Type.Pointer {
 		return cell.Node == nil // null is a pointer slot's only default (§2.1)
@@ -693,10 +701,14 @@ func cellIsDefault(e *encoder, f *ir.Field, cell *tabletext.Cell) bool {
 	switch {
 	case f.Type.Kind == ir.TBool:
 		return cell.B == def.B
-	case f.Type.Kind == ir.TFloat32:
+	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
 		return float32(cell.F) == float32(def.F)
-	case f.Type.Kind == ir.TFloat64:
+	case f.Type.Kind == ir.TFloat32:
+		return narrowF32(cell.F) == narrowF32(def.F)
+	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
 		return cell.F == def.F
+	case f.Type.Kind == ir.TFloat64:
+		return math.Float64bits(cell.F) == math.Float64bits(def.F)
 	case ir.TableKindWide(ir.TableScalarKind(f)):
 		return tabletext.WideValue(cell).Cmp(tabletext.WideValue(&def)) == 0
 	case f.Type.Kind == ir.TInt && f.Type.Signed:
