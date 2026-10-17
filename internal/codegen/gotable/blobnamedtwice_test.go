@@ -50,12 +50,19 @@ table Root {
 
 const blobNamedTwiceSeed24Wire = "01010101021103030820dad064041e05060401000080070246080f091101030a0c0d020b06c100ff2e7d080b02d11d00382842b5078b9808512d42b5078e98089e2b42b5078d9808042f42b5078f98088be145c2cb04da4f1d3442b5079298086a3242b507919808404667b5077ac408c9e19b56195cf677ffffffffffffffffe44f1c4f47c02e2f0b00000000000000"
 
-const blobNamedTwiceProbeHead = `package probe
+const blobNamedTwiceBenchHead = `package probe
 import("bytes";"encoding/base64";"encoding/hex";"errors";"runtime";"testing";"unsafe")
 var _ = bytes.Equal; var _ = base64.StdEncoding; var _ = hex.DecodeString; var _ = runtime.GC; var _ = unsafe.Pointer(nil)
 const seed24 = "` + blobNamedTwiceSeed24Wire + `"
 func wires(t testing.TB)([]byte,[]byte){d,err:=hex.DecodeString(seed24);if err!=nil{t.Fatal(err)};c:=append([]byte(nil),d...);c[6]^=0x01;return d,c}
 func region(size int64)[]byte{raw:=make([]byte,size+64);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;return raw[off:off+uintptr(size)]}
+var _ = errors.Is
+`
+
+// blobNamedTwiceProbeHead is the tests' probe head: the benchmark's, plus the
+// blob_shared check (the benchmark's head names nothing the ruling adds, so
+// the same benchmark runs at BASE).
+const blobNamedTwiceProbeHead = blobNamedTwiceBenchHead + `
 func shared(t *testing.T,what string,err error){t.Helper();if !errors.Is(err,TableRefuseBlobShared)||err.Error()!="blob_shared"{t.Fatalf("%s: %v, want blob_shared",what,err)}}
 `
 
@@ -181,7 +188,7 @@ func BenchmarkBlobNamedTwiceLoad(b *testing.B) {
 		b.Fatal(err)
 	}
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
-	files["values_test.go"] = []byte(blobNamedTwiceProbeHead + `
+	files["values_test.go"] = []byte(blobNamedTwiceBenchHead + `
 func BenchmarkLoad(b *testing.B){_,clean:=wires(b);size:=RootLoadMeasure(clean);reg:=region(size);var report TableReport;if RootLoad(reg,clean,&report)==nil||report.Err()!=nil{b.Fatal("clean load")};b.ReportAllocs();b.ResetTimer();for i:=0;i<b.N;i++{report=TableReport{};if RootLoad(reg,clean,&report)==nil{b.Fatal("load")}}}
 `)
 	dir := b.TempDir()
