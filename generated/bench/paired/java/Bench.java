@@ -2122,7 +2122,8 @@ public final class Bench {
         value.amount = 0;
     }
 
-    // checkWriteMixedPickupEvent is writeMixedPickupEvent's contract walk, called once through assert —
+    // checkWriteMixedPickupEvent is writeMixedPickupEvent's contract walk, called once through
+    // assert —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
@@ -2216,13 +2217,15 @@ public final class Bench {
         return true;
     }
 
-    // measureMixedPickupEvent is the exact wire bits writeMixedPickupEvent would produce for value —
+    // measureMixedPickupEvent is the exact wire bits writeMixedPickupEvent would produce for value
+    // —
     // trusted like the writer; static runs fold to literals at generation time.
     public static int measureMixedPickupEvent(MixedPickupEvent value) {
         return 18;
     }
 
-    // MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
+    // MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC
+    // §4.8)
     public static final class MixedEventType {
         private MixedEventType() {}
 
@@ -3230,7 +3233,12 @@ public final class Bench {
         if (scratchBits != 0) {
             LONG_LE.set(data, wordIndex * 8, scratch);
         }
-        System.arraycopy(value.playerName, 0, data, wordIndex * 8 + (scratchBits >>> 3), value.playerNameLength);
+        System.arraycopy(
+                value.playerName,
+                0,
+                data,
+                wordIndex * 8 + (scratchBits >>> 3),
+                value.playerNameLength);
         scratchBits += value.playerNameLength * 8;
         wordIndex += scratchBits >>> 6;
         scratchBits &= 63;
@@ -3265,7 +3273,8 @@ public final class Bench {
         if (scratchBits != 0) {
             LONG_LE.set(data, wordIndex * 8, scratch);
         }
-        System.arraycopy(value.payload, 0, data, wordIndex * 8 + (scratchBits >>> 3), value.payloadLength);
+        System.arraycopy(
+                value.payload, 0, data, wordIndex * 8 + (scratchBits >>> 3), value.payloadLength);
         scratchBits += value.payloadLength * 8;
         wordIndex += scratchBits >>> 6;
         scratchBits &= 63;
@@ -3401,7 +3410,8 @@ public final class Bench {
             scratch = v >>> (32 - scratchBits);
         }
         {
-            final UInt128 off = value.flux.subtract(new Int128(0xfffffff000000000L, 0)).toUnsigned();
+            final UInt128 off =
+                    value.flux.subtract(new Int128(0xfffffff000000000L, 0)).toUnsigned();
             v = off.lo & 0xffffffffL;
             scratch |= v << scratchBits;
             scratchBits += 32;
@@ -4067,24 +4077,30 @@ public final class Bench {
         }
         System.arraycopy(data, bitsRead >>> 3, value.playerName, 0, value.playerNameLength);
         bitsRead += value.playerNameLength * 8;
-        for (int utf8Index = 0; utf8Index < value.playerNameLength;)
-        {
+        for (int utf8Index = 0; utf8Index < value.playerNameLength; ) {
             int utf8Lead = value.playerName[utf8Index++] & 0xFF;
             if (utf8Lead < 0x80) continue;
             int utf8Remaining, utf8Point;
-            if ((utf8Lead & 0xE0) == 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
-            else if ((utf8Lead & 0xF0) == 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
-            else if ((utf8Lead & 0xF8) == 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
-            else return false; // malformed UTF-8 lead (SPEC §4.7)
+            if ((utf8Lead & 0xE0) == 0xC0) {
+                utf8Remaining = 1;
+                utf8Point = utf8Lead & 0x1F;
+            } else if ((utf8Lead & 0xF0) == 0xE0) {
+                utf8Remaining = 2;
+                utf8Point = utf8Lead & 0x0F;
+            } else if ((utf8Lead & 0xF8) == 0xF0) {
+                utf8Remaining = 3;
+                utf8Point = utf8Lead & 0x07;
+            } else return false; // malformed UTF-8 lead (SPEC §4.7)
             if (utf8Remaining > value.playerNameLength - utf8Index) return false;
-            for (int utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
-            {
+            for (int utf8Part = 0; utf8Part < utf8Remaining; utf8Part++) {
                 int utf8Byte = value.playerName[utf8Index++] & 0xFF;
                 if ((utf8Byte & 0xC0) != 0x80) return false;
                 utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
             }
             if (utf8Remaining == 1 && utf8Point < 0x80) return false;
-            if (utf8Remaining == 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
+            if (utf8Remaining == 2
+                    && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF)))
+                return false;
             if (utf8Remaining == 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
         }
         for (int i0 = 0; i0 < value.playerNameLength; i0++) {

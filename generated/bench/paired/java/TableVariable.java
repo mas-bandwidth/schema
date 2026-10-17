@@ -14,9 +14,13 @@ package bench;
 public final class TableVariable {
     static double widenF32(int raw) {
         if ((raw & 0x7f800000) == 0x7f800000 && (raw & 0x7fffff) != 0)
-            return Double.longBitsToDouble(((long)(raw & 0x80000000) << 32) | 0x7ff0000000000000L | ((long)(raw & 0x7fffff) << 29));
-        return (double)Float.intBitsToFloat(raw);
+            return Double.longBitsToDouble(
+                    ((long) (raw & 0x80000000) << 32)
+                            | 0x7ff0000000000000L
+                            | ((long) (raw & 0x7fffff) << 29));
+        return (double) Float.intBitsToFloat(raw);
     }
+
     private TableVariable() {}
 
     // The two RESERVED ids the node table names (docs/SPEC-TABLES.md §3.1, §5):
@@ -32,7 +36,7 @@ public final class TableVariable {
     // widened. A refusal (an unknown form byte) moves none of them. Retained and
     // retain_lost (§6.6) accumulate across a retained load and save.
     public static final class Report {
-public int unknown;
+        public int unknown;
         public int kindMismatch;
         public int clamped;
         public boolean malformed;
@@ -89,11 +93,17 @@ public int unknown;
             this.limit = buf.length;
         }
 
-        Reader(Report report) { this.report = report; }
+        Reader(Report report) {
+            this.report = report;
+        }
 
-        public boolean has(int n) { return n >= 0 && (long) off + (long) n <= limit; }
+        public boolean has(int n) {
+            return n >= 0 && (long) off + (long) n <= limit;
+        }
 
-        public int get8() { return buf[off++] & 0xff; }
+        public int get8() {
+            return buf[off++] & 0xff;
+        }
 
         public int get16() {
             int v = (buf[off] & 0xff) | (buf[off + 1] & 0xff) << 8;
@@ -102,15 +112,20 @@ public int unknown;
         }
 
         public int get32() {
-            int v = (buf[off] & 0xff) | (buf[off + 1] & 0xff) << 8
-                    | (buf[off + 2] & 0xff) << 16 | (buf[off + 3] & 0xff) << 24;
+            int v =
+                    (buf[off] & 0xff)
+                            | (buf[off + 1] & 0xff) << 8
+                            | (buf[off + 2] & 0xff) << 16
+                            | (buf[off + 3] & 0xff) << 24;
             off += 4;
             return v;
         }
 
         public long get64() {
             long v = 0;
-            for (int i = 0; i < 8; i++) { v |= (long) (buf[off + i] & 0xff) << (8 * i); }
+            for (int i = 0; i < 8; i++) {
+                v |= (long) (buf[off + i] & 0xff) << (8 * i);
+            }
             off += 8;
             return v;
         }
@@ -124,12 +139,27 @@ public int unknown;
             int shift = 0;
             int start = off;
             for (int i = 0; i < 10; i++) {
-                if (!has(1)) { off = start; report.malformed = true; fail = true; return 0; }
+                if (!has(1)) {
+                    off = start;
+                    report.malformed = true;
+                    fail = true;
+                    return 0;
+                }
                 int b = get8();
-                if (shift == 63 && (b & 0xfe) != 0) { off = start; report.malformed = true; fail = true; return 0; }
+                if (shift == 63 && (b & 0xfe) != 0) {
+                    off = start;
+                    report.malformed = true;
+                    fail = true;
+                    return 0;
+                }
                 v |= (long) (b & 0x7f) << shift;
                 if ((b & 0x80) == 0) {
-                    if (i > 0 && b == 0) { off = start; report.malformed = true; fail = true; return 0; }
+                    if (i > 0 && b == 0) {
+                        off = start;
+                        report.malformed = true;
+                        fail = true;
+                        return 0;
+                    }
                     return v;
                 }
                 shift += 7;
@@ -146,8 +176,14 @@ public int unknown;
         // count word, so its length is read off the buffer, not stored.
         public long resolve(long ref) {
             int count = ids != null ? ids.length : (buf.length - 8 - idBase) >>> 3;
-            if (ref <= 0 || ref > count) { report.malformed = true; fail = true; return -1; }
-            if (ids != null) { return ids[(int) ref - 1]; }
+            if (ref <= 0 || ref > count) {
+                report.malformed = true;
+                fail = true;
+                return -1;
+            }
+            if (ids != null) {
+                return ids[(int) ref - 1];
+            }
             return u64(buf, idBase + ((int) ref - 1) * 8);
         }
 
@@ -155,7 +191,11 @@ public int unknown;
         // bounded by its own L, exactly as a nested body is bounded (§3).
         public Reader body() {
             long n = leb();
-            if (fail || !has((int) n)) { report.malformed = true; fail = true; return null; }
+            if (fail || !has((int) n)) {
+                report.malformed = true;
+                fail = true;
+                return null;
+            }
             Reader sub = new Reader(buf, ids, idBase, report);
             sub.off = off;
             sub.limit = off + (int) n;
@@ -171,7 +211,11 @@ public int unknown;
         // how the measure reads a nested body with no object per body.
         public int bodyEnd() {
             long n = leb();
-            if (fail || !has((int) n)) { report.malformed = true; fail = true; return -1; }
+            if (fail || !has((int) n)) {
+                report.malformed = true;
+                fail = true;
+                return -1;
+            }
             return off + (int) n;
         }
 
@@ -180,33 +224,103 @@ public int unknown;
         // one past the closed set — and on a payload the framing cannot cover.
         public void skip(int kind) {
             switch (kind) {
-                case 1: case 2: case 6: case 20: case 25:
-                    if (has(1)) { off += 1; } else { report.malformed = true; fail = true; }
+                case 1:
+                case 2:
+                case 6:
+                case 20:
+                case 25:
+                    if (has(1)) {
+                        off += 1;
+                    } else {
+                        report.malformed = true;
+                        fail = true;
+                    }
                     break;
-                case 3: case 7: case 21: case 26:
-                    if (has(2)) { off += 2; } else { report.malformed = true; fail = true; }
+                case 3:
+                case 7:
+                case 21:
+                case 26:
+                    if (has(2)) {
+                        off += 2;
+                    } else {
+                        report.malformed = true;
+                        fail = true;
+                    }
                     break;
-                case 4: case 8: case 10: case 22: case 27:
-                    if (has(4)) { off += 4; } else { report.malformed = true; fail = true; }
+                case 4:
+                case 8:
+                case 10:
+                case 22:
+                case 27:
+                    if (has(4)) {
+                        off += 4;
+                    } else {
+                        report.malformed = true;
+                        fail = true;
+                    }
                     break;
-                case 5: case 9: case 11: case 23: case 28:
-                    if (has(8)) { off += 8; } else { report.malformed = true; fail = true; }
+                case 5:
+                case 9:
+                case 11:
+                case 23:
+                case 28:
+                    if (has(8)) {
+                        off += 8;
+                    } else {
+                        report.malformed = true;
+                        fail = true;
+                    }
                     break;
-                case 18: case 19: case 24: case 29:
-                    if (has(16)) { off += 16; } else { report.malformed = true; fail = true; }
+                case 18:
+                case 19:
+                case 24:
+                case 29:
+                    if (has(16)) {
+                        off += 16;
+                    } else {
+                        report.malformed = true;
+                        fail = true;
+                    }
                     break;
-                case 17: case 30: leb(); break;
-                case 12: case 13: case 14: case 16: case 31: case 32: case 33: {
-                    long n = leb();
-                    if (!fail && has((int) n)) { off += (int) n; } else { report.malformed = true; fail = true; }
+                case 17:
+                case 30:
+                    leb();
                     break;
-                }
-                case 15: {
-                    long arm = leb();
-                    if (arm != 0) { int k = get8(); long n = leb(); if (!fail && has((int) n)) { off += (int) n; } else { report.malformed = true; fail = true; } }
-                    break;
-                }
-                default: report.malformed = true; fail = true;
+                case 12:
+                case 13:
+                case 14:
+                case 16:
+                case 31:
+                case 32:
+                case 33:
+                    {
+                        long n = leb();
+                        if (!fail && has((int) n)) {
+                            off += (int) n;
+                        } else {
+                            report.malformed = true;
+                            fail = true;
+                        }
+                        break;
+                    }
+                case 15:
+                    {
+                        long arm = leb();
+                        if (arm != 0) {
+                            int k = get8();
+                            long n = leb();
+                            if (!fail && has((int) n)) {
+                                off += (int) n;
+                            } else {
+                                report.malformed = true;
+                                fail = true;
+                            }
+                        }
+                        break;
+                    }
+                default:
+                    report.malformed = true;
+                    fail = true;
             }
         }
     }
@@ -217,11 +331,21 @@ public int unknown;
         public final long[] entries;
         public int count;
         public boolean overflow;
-        public Ids(int cap) { entries = new long[cap]; }
+
+        public Ids(int cap) {
+            entries = new long[cap];
+        }
 
         public long ref(long id) {
-            for (int i = 0; i < count; i++) { if (entries[i] == id) { return i + 1; } }
-            if (count >= entries.length) { overflow = true; return 0; }
+            for (int i = 0; i < count; i++) {
+                if (entries[i] == id) {
+                    return i + 1;
+                }
+            }
+            if (count >= entries.length) {
+                overflow = true;
+                return 0;
+            }
             entries[count++] = id;
             return count;
         }
@@ -249,10 +373,18 @@ public int unknown;
         // scratch is sized by the wire it writes, then kept); a fixed one
         // answers false and marks overflow.
         boolean room(int n) {
-            if ((long) off + n <= buf.length) { return true; }
-            if (!growable) { overflow = true; return false; }
+            if ((long) off + n <= buf.length) {
+                return true;
+            }
+            if (!growable) {
+                overflow = true;
+                return false;
+            }
             long want = Math.max((long) buf.length * 2, (long) off + n);
-            if (want > Integer.MAX_VALUE - 8) { overflow = true; return false; }
+            if (want > Integer.MAX_VALUE - 8) {
+                overflow = true;
+                return false;
+            }
             buf = java.util.Arrays.copyOf(buf, (int) want);
             return true;
         }
@@ -260,7 +392,9 @@ public int unknown;
         // lebLen is the canonical LEB128 spelling's length for v (§3).
         public static int lebLen(long v) {
             int n = 1;
-            while ((v >>>= 7) != 0) { n++; }
+            while ((v >>>= 7) != 0) {
+                n++;
+            }
             return n;
         }
 
@@ -268,7 +402,12 @@ public int unknown;
             while (true) {
                 int b = (int) (v & 0x7f);
                 v >>>= 7;
-                if (v != 0) { buf[at++] = (byte) (b | 0x80); } else { buf[at++] = (byte) b; return at; }
+                if (v != 0) {
+                    buf[at++] = (byte) (b | 0x80);
+                } else {
+                    buf[at++] = (byte) b;
+                    return at;
+                }
             }
         }
 
@@ -277,7 +416,9 @@ public int unknown;
         public void frame(int start) {
             int len = off - start;
             int k = lebLen(len);
-            if (!room(k)) { return; }
+            if (!room(k)) {
+                return;
+            }
             System.arraycopy(buf, start, buf, start + k, len);
             putLebAt(start, len);
             off += k;
@@ -288,7 +429,9 @@ public int unknown;
         public void frameField(int start, long ref, int kind) {
             int len = off - start;
             int k = lebLen(ref) + 1 + lebLen(len);
-            if (!room(k)) { return; }
+            if (!room(k)) {
+                return;
+            }
             System.arraycopy(buf, start, buf, start + k, len);
             int at = putLebAt(start, ref);
             buf[at++] = (byte) kind;
@@ -301,7 +444,9 @@ public int unknown;
         public void frameBody(int start, int drop) {
             int len = off - start - drop;
             int k = lebLen(len);
-            if (k > drop && !room(k - drop)) { return; }
+            if (k > drop && !room(k - drop)) {
+                return;
+            }
             System.arraycopy(buf, start + drop, buf, start + k, len);
             putLebAt(start, len);
             off = start + k + len;
@@ -312,7 +457,9 @@ public int unknown;
         public void frameEntry(int start, long key, int drop) {
             int len = off - start - drop;
             int k = lebLen(key) + lebLen(len);
-            if (k > drop && !room(k - drop)) { return; }
+            if (k > drop && !room(k - drop)) {
+                return;
+            }
             System.arraycopy(buf, start + drop, buf, start + k, len);
             int at = putLebAt(start, key);
             putLebAt(at, len);
@@ -324,7 +471,9 @@ public int unknown;
             int entries = off - start;
             int length = 1 + lebLen(count) + entries;
             int k = lebLen(length) + 1 + lebLen(count);
-            if (!room(k)) { return; }
+            if (!room(k)) {
+                return;
+            }
             System.arraycopy(buf, start, buf, start + k, entries);
             int at = putLebAt(start, length);
             buf[at++] = (byte) kind;
@@ -340,72 +489,113 @@ public int unknown;
             long len = 0;
             for (int i = 0; i < n; i++) {
                 char c = s.charAt(i);
-                if (c < 0x80) { len += 1; }
-                else if (c < 0x800) { len += 2; }
-                else if (Character.isHighSurrogate(c) && i + 1 < n && Character.isLowSurrogate(s.charAt(i + 1))) { len += 4; i++; }
-                else if (Character.isSurrogate(c)) { len += 1; }
-                else { len += 3; }
+                if (c < 0x80) {
+                    len += 1;
+                } else if (c < 0x800) {
+                    len += 2;
+                } else if (Character.isHighSurrogate(c)
+                        && i + 1 < n
+                        && Character.isLowSurrogate(s.charAt(i + 1))) {
+                    len += 4;
+                    i++;
+                } else if (Character.isSurrogate(c)) {
+                    len += 1;
+                } else {
+                    len += 3;
+                }
             }
             putLeb(len);
             for (int i = 0; i < n; i++) {
                 char c = s.charAt(i);
-                if (c < 0x80) { put8(c); }
-                else if (c < 0x800) { put8(0xc0 | (c >> 6)); put8(0x80 | (c & 0x3f)); }
-                else if (Character.isHighSurrogate(c) && i + 1 < n && Character.isLowSurrogate(s.charAt(i + 1))) {
+                if (c < 0x80) {
+                    put8(c);
+                } else if (c < 0x800) {
+                    put8(0xc0 | (c >> 6));
+                    put8(0x80 | (c & 0x3f));
+                } else if (Character.isHighSurrogate(c)
+                        && i + 1 < n
+                        && Character.isLowSurrogate(s.charAt(i + 1))) {
                     int cp = Character.toCodePoint(c, s.charAt(++i));
-                    put8(0xf0 | (cp >> 18)); put8(0x80 | ((cp >> 12) & 0x3f));
-                    put8(0x80 | ((cp >> 6) & 0x3f)); put8(0x80 | (cp & 0x3f));
+                    put8(0xf0 | (cp >> 18));
+                    put8(0x80 | ((cp >> 12) & 0x3f));
+                    put8(0x80 | ((cp >> 6) & 0x3f));
+                    put8(0x80 | (cp & 0x3f));
+                } else if (Character.isSurrogate(c)) {
+                    put8('?');
+                } else {
+                    put8(0xe0 | (c >> 12));
+                    put8(0x80 | ((c >> 6) & 0x3f));
+                    put8(0x80 | (c & 0x3f));
                 }
-                else if (Character.isSurrogate(c)) { put8('?'); }
-                else { put8(0xe0 | (c >> 12)); put8(0x80 | ((c >> 6) & 0x3f)); put8(0x80 | (c & 0x3f)); }
             }
         }
 
         // sub returns a writer over the SAME id table: a list element's body is
         // written into scratch and framed by its caller, but its field ids
         // intern into the one table the whole file shares (§3).
-        public Writer sub(byte[] buf) { return new Writer(buf, ids); }
+        public Writer sub(byte[] buf) {
+            return new Writer(buf, ids);
+        }
 
         public void put8(int b) {
-            if (off >= buf.length && !room(1)) { return; }
+            if (off >= buf.length && !room(1)) {
+                return;
+            }
             buf[off++] = (byte) b;
         }
 
         public void put16(int v) {
-            for (int i = 0; i < 2; i++) { put8((v >>> (8 * i)) & 0xff); }
+            for (int i = 0; i < 2; i++) {
+                put8((v >>> (8 * i)) & 0xff);
+            }
         }
 
         public void put32(int v) {
-            for (int i = 0; i < 4; i++) { put8((v >>> (8 * i)) & 0xff); }
+            for (int i = 0; i < 4; i++) {
+                put8((v >>> (8 * i)) & 0xff);
+            }
         }
 
         public void put64(long v) {
-            for (int i = 0; i < 8; i++) { put8((int) (v >>> (8 * i)) & 0xff); }
+            for (int i = 0; i < 8; i++) {
+                put8((int) (v >>> (8 * i)) & 0xff);
+            }
         }
 
         public void putLeb(long v) {
             while (true) {
                 int b = (int) (v & 0x7f);
                 v >>>= 7;
-                if (v != 0) { put8(b | 0x80); } else { put8(b); break; }
+                if (v != 0) {
+                    put8(b | 0x80);
+                } else {
+                    put8(b);
+                    break;
+                }
             }
         }
 
         public void putBytes(byte[] b, int at, int len) {
-            for (int i = 0; i < len; i++) { put8(b[at + i] & 0xff); }
+            for (int i = 0; i < len; i++) {
+                put8(b[at + i] & 0xff);
+            }
         }
 
         // ref interns an id into the table in first-use order and returns its
         // reference (1-based).
         public long ref(long id) {
             long r = ids.ref(id);
-            if (ids.overflow) { overflow = true; }
+            if (ids.overflow) {
+                overflow = true;
+            }
             return r;
         }
 
         // trailer writes the id table: the entries, then the fixed u64 count.
         public void trailer() {
-            for (int i = 0; i < ids.count; i++) { put64(ids.entries[i]); }
+            for (int i = 0; i < ids.count; i++) {
+                put64(ids.entries[i]);
+            }
             put64(ids.count);
         }
     }
@@ -418,10 +608,14 @@ public int unknown;
     // so before any value is read.
     public static Reader open(byte[] data, Report report) {
         int base = trailerBase(data, report);
-        if (base < 0) { return null; }
+        if (base < 0) {
+            return null;
+        }
         int count = (data.length - 8 - base) / 8;
         long[] ids = new long[count];
-        for (int i = 0; i < count; i++) { ids[i] = u64(data, base + i * 8); }
+        for (int i = 0; i < count; i++) {
+            ids[i] = u64(data, base + i * 8);
+        }
         Reader r = new Reader(data, ids, report);
         r.off = 1;
         r.limit = base;
@@ -434,32 +628,49 @@ public int unknown;
     // body's extent (§3). It answers the offset of the table's first entry, or
     // -1 with the report moved exactly as open moves it, and allocates nothing.
     public static int trailerBase(byte[] data, Report report) {
-        if (data.length < 1) { report.malformed = true; return -1; }
+        if (data.length < 1) {
+            report.malformed = true;
+            return -1;
+        }
         int form = data[0] & 0xff;
         if (form != 1) {
             report.refused = true;
             report.reason = "unsupported wire form";
             return -1;
         }
-        if (data.length < 9) { report.malformed = true; return -1; }
+        if (data.length < 9) {
+            report.malformed = true;
+            return -1;
+        }
         long count = u64(data, data.length - 8);
-        if (count < 0 || count > (data.length - 9) / 8) { report.malformed = true; return -1; }
+        if (count < 0 || count > (data.length - 9) / 8) {
+            report.malformed = true;
+            return -1;
+        }
         int base = data.length - 8 - (int) count * 8;
         for (int i = 0; i < count; i++) {
             long id = u64(data, base + i * 8);
             for (int j = 0; j < i; j++) {
-                if (u64(data, base + j * 8) == id) { report.malformed = true; return -1; }
+                if (u64(data, base + j * 8) == id) {
+                    report.malformed = true;
+                    return -1;
+                }
             }
         }
         int end = bodyExtent(data, (int) count, 1, base);
-        if (end >= 0 && end != base) { report.malformed = true; return -1; }
+        if (end >= 0 && end != base) {
+            report.malformed = true;
+            return -1;
+        }
         return base;
     }
 
     // u64 reads one little-endian u64 at at.
     public static long u64(byte[] b, int at) {
         long v = 0;
-        for (int i = 0; i < 8; i++) { v |= (long) (b[at + i] & 0xff) << (8 * i); }
+        for (int i = 0; i < 8; i++) {
+            v |= (long) (b[at + i] & 0xff) << (8 * i);
+        }
         return v;
     }
 
@@ -471,17 +682,29 @@ public int unknown;
     public static int bodyExtent(byte[] buf, int idCount, int off, int limit) {
         while (off < limit) {
             int end = lebEnd(buf, off, limit);
-            if (end < 0) { return -1; }
+            if (end < 0) {
+                return -1;
+            }
             long ref = lebValue(buf, off);
-            if (ref < 0) { return -1; }
+            if (ref < 0) {
+                return -1;
+            }
             off = end;
-            if (ref == 0) { return off; }
-            if (ref > idCount) { return -1; }
-            if (off >= limit) { return -1; }
+            if (ref == 0) {
+                return off;
+            }
+            if (ref > idCount) {
+                return -1;
+            }
+            if (off >= limit) {
+                return -1;
+            }
             int kind = buf[off] & 0xff;
             off++;
             off = skipExtent(buf, kind, off, limit);
-            if (off < 0) { return -1; }
+            if (off < 0) {
+                return -1;
+            }
         }
         return -1;
     }
@@ -493,11 +716,17 @@ public int unknown;
     // The pair answers in two ints what one array per call used to.
     public static int lebEnd(byte[] buf, int off, int limit) {
         for (int i = 0; ; i++) {
-            if (off + i >= limit || i >= 10) { return -1; }
+            if (off + i >= limit || i >= 10) {
+                return -1;
+            }
             int b = buf[off + i] & 0xff;
-            if (i == 9 && b > 1) { return -1; }
+            if (i == 9 && b > 1) {
+                return -1;
+            }
             if ((b & 0x80) == 0) {
-                if (i > 0 && b == 0) { return -1; }
+                if (i > 0 && b == 0) {
+                    return -1;
+                }
                 return off + i + 1;
             }
         }
@@ -509,7 +738,9 @@ public int unknown;
         for (int i = 0; i < 10; i++) {
             int b = buf[off + i] & 0xff;
             v |= (long) (b & 0x7f) << shift;
-            if ((b & 0x80) == 0) { return v; }
+            if ((b & 0x80) == 0) {
+                return v;
+            }
             shift += 7;
         }
         return v;
@@ -522,43 +753,94 @@ public int unknown;
     public static int skipExtent(byte[] buf, int kind, int off, int limit) {
         int w;
         switch (kind) {
-            case 1: case 2: case 6: case 20: case 25:
-                w = 1; break;
-            case 3: case 7: case 21: case 26:
-                w = 2; break;
-            case 4: case 8: case 10: case 22: case 27:
-                w = 4; break;
-            case 5: case 9: case 11: case 23: case 28:
-                w = 8; break;
-            case 18: case 19: case 24: case 29:
-                w = 16; break;
-            case 17: case 30: {
-                int e = lebEnd(buf, off, limit);
-                if (e < 0) { return -1; }
-                return lebValue(buf, off) < 0 ? -1 : e;
-            }
-            case 12: case 13: case 14: case 16: case 31: case 32: case 33: {
-                int e = lebEnd(buf, off, limit);
-                if (e < 0) { return -1; }
-                long n = lebValue(buf, off);
-                if (n < 0 || n > limit - e) { return -1; }
-                return e + (int) n;
-            }
-            case 15: {
-                int e = lebEnd(buf, off, limit);
-                if (e < 0) { return -1; }
-                long arm = lebValue(buf, off);
-                if (arm < 0) { return -1; }
-                if (arm == 0) { return e; }
-                int at = e;
-                if (at >= limit) { return -1; }
-                at++; // the arm's kind byte
-                int ne = lebEnd(buf, at, limit);
-                if (ne < 0) { return -1; }
-                long n = lebValue(buf, at);
-                if (n < 0 || n > limit - ne) { return -1; }
-                return ne + (int) n;
-            }
+            case 1:
+            case 2:
+            case 6:
+            case 20:
+            case 25:
+                w = 1;
+                break;
+            case 3:
+            case 7:
+            case 21:
+            case 26:
+                w = 2;
+                break;
+            case 4:
+            case 8:
+            case 10:
+            case 22:
+            case 27:
+                w = 4;
+                break;
+            case 5:
+            case 9:
+            case 11:
+            case 23:
+            case 28:
+                w = 8;
+                break;
+            case 18:
+            case 19:
+            case 24:
+            case 29:
+                w = 16;
+                break;
+            case 17:
+            case 30:
+                {
+                    int e = lebEnd(buf, off, limit);
+                    if (e < 0) {
+                        return -1;
+                    }
+                    return lebValue(buf, off) < 0 ? -1 : e;
+                }
+            case 12:
+            case 13:
+            case 14:
+            case 16:
+            case 31:
+            case 32:
+            case 33:
+                {
+                    int e = lebEnd(buf, off, limit);
+                    if (e < 0) {
+                        return -1;
+                    }
+                    long n = lebValue(buf, off);
+                    if (n < 0 || n > limit - e) {
+                        return -1;
+                    }
+                    return e + (int) n;
+                }
+            case 15:
+                {
+                    int e = lebEnd(buf, off, limit);
+                    if (e < 0) {
+                        return -1;
+                    }
+                    long arm = lebValue(buf, off);
+                    if (arm < 0) {
+                        return -1;
+                    }
+                    if (arm == 0) {
+                        return e;
+                    }
+                    int at = e;
+                    if (at >= limit) {
+                        return -1;
+                    }
+                    at++; // the arm's kind byte
+                    int ne = lebEnd(buf, at, limit);
+                    if (ne < 0) {
+                        return -1;
+                    }
+                    long n = lebValue(buf, at);
+                    if (n < 0 || n > limit - ne) {
+                        return -1;
+                    }
+                    return ne + (int) n;
+                }
             default:
                 return -1;
         }
@@ -574,24 +856,47 @@ public int unknown;
         int end = off + len;
         while (i < end) {
             int c = b[i] & 0xff;
-            if (c == 0) { return false; }
-            if (c < 0x80) { i++; continue; }
+            if (c == 0) {
+                return false;
+            }
+            if (c < 0x80) {
+                i++;
+                continue;
+            }
             if (c >= 0xc2 && c <= 0xdf) {
-                if (i + 1 >= end || (b[i + 1] & 0xc0) != 0x80) { return false; }
+                if (i + 1 >= end || (b[i + 1] & 0xc0) != 0x80) {
+                    return false;
+                }
                 i += 2;
             } else if (c >= 0xe0 && c <= 0xef) {
-                if (i + 2 >= end) { return false; }
+                if (i + 2 >= end) {
+                    return false;
+                }
                 int c1 = b[i + 1] & 0xff, c2 = b[i + 2] & 0xff;
-                if ((c1 & 0xc0) != 0x80 || (c2 & 0xc0) != 0x80) { return false; }
-                if (c == 0xe0 && c1 < 0xa0) { return false; }
-                if (c == 0xed && c1 > 0x9f) { return false; }
+                if ((c1 & 0xc0) != 0x80 || (c2 & 0xc0) != 0x80) {
+                    return false;
+                }
+                if (c == 0xe0 && c1 < 0xa0) {
+                    return false;
+                }
+                if (c == 0xed && c1 > 0x9f) {
+                    return false;
+                }
                 i += 3;
             } else if (c >= 0xf0 && c <= 0xf4) {
-                if (i + 3 >= end) { return false; }
+                if (i + 3 >= end) {
+                    return false;
+                }
                 int c1 = b[i + 1] & 0xff, c2 = b[i + 2] & 0xff, c3 = b[i + 3] & 0xff;
-                if ((c1 & 0xc0) != 0x80 || (c2 & 0xc0) != 0x80 || (c3 & 0xc0) != 0x80) { return false; }
-                if (c == 0xf0 && c1 < 0x90) { return false; }
-                if (c == 0xf4 && c1 > 0x8f) { return false; }
+                if ((c1 & 0xc0) != 0x80 || (c2 & 0xc0) != 0x80 || (c3 & 0xc0) != 0x80) {
+                    return false;
+                }
+                if (c == 0xf0 && c1 < 0x90) {
+                    return false;
+                }
+                if (c == 0xf4 && c1 > 0x8f) {
+                    return false;
+                }
                 i += 4;
             } else {
                 return false;
@@ -611,7 +916,11 @@ public int unknown;
         public byte[] bytes;
         public Object table;
         public boolean textMalformed;
-        public NodeRecord(long typeId, byte[] body) { this.typeId = typeId; this.body = body; }
+
+        public NodeRecord(long typeId, byte[] body) {
+            this.typeId = typeId;
+            this.body = body;
+        }
     }
 
     // nodes reads a node-table field's payload (§3.1) and returns its records.
@@ -636,17 +945,29 @@ public int unknown;
         java.util.ArrayList<NodeRecord> list = new java.util.ArrayList<>();
         while (r.off < r.limit) {
             long ref = r.leb();
-            if (r.fail || ref == 0) { r.report.malformed = true; return null; }
+            if (r.fail || ref == 0) {
+                r.report.malformed = true;
+                return null;
+            }
             long typeId = r.resolve(ref);
-            if (r.fail) { r.report.malformed = true; return null; }
+            if (r.fail) {
+                r.report.malformed = true;
+                return null;
+            }
             long size = r.leb();
-            if (r.fail || size < 0 || !r.has((int) size)) { r.report.malformed = true; return null; }
+            if (r.fail || size < 0 || !r.has((int) size)) {
+                r.report.malformed = true;
+                return null;
+            }
             byte[] body = new byte[(int) size];
             System.arraycopy(r.buf, r.off, body, 0, (int) size);
             r.off += (int) size;
             list.add(new NodeRecord(typeId, body));
         }
-        if (declared != list.size()) { r.report.malformed = true; return null; }
+        if (declared != list.size()) {
+            r.report.malformed = true;
+            return null;
+        }
         // Type resolution (§3.1), past the whole scan: a record whose type id
         // this reader cannot name keeps its index and counts unknown ONCE, and
         // a text blob whose content is not text counts malformed; in both the
@@ -690,7 +1011,9 @@ public int unknown;
             nodeRecords = -1;
             nodeBlobBytes = 0;
             int base = trailerBase(data, report);
-            if (base < 0) { return null; }
+            if (base < 0) {
+                return null;
+            }
             Reader r = reader;
             r.buf = data;
             r.ids = null;
@@ -721,17 +1044,31 @@ public int unknown;
         long blobs = 0;
         while (r.off < r.limit) {
             long ref = r.leb();
-            if (r.fail || ref == 0) { r.report.malformed = true; return; }
+            if (r.fail || ref == 0) {
+                r.report.malformed = true;
+                return;
+            }
             long typeId = r.resolve(ref);
-            if (r.fail) { r.report.malformed = true; return; }
+            if (r.fail) {
+                r.report.malformed = true;
+                return;
+            }
             long size = r.leb();
-            if (r.fail || size < 0 || !r.has((int) size)) { r.report.malformed = true; return; }
+            if (r.fail || size < 0 || !r.has((int) size)) {
+                r.report.malformed = true;
+                return;
+            }
             int n = (int) size;
-            if (typeId == STRING_ID) { blobs += (8 + n + 1 + align - 1) & -align; }
+            if (typeId == STRING_ID) {
+                blobs += (8 + n + 1 + align - 1) & -align;
+            }
             r.off += n;
             count++;
         }
-        if (declared != count) { r.report.malformed = true; return; }
+        if (declared != count) {
+            r.report.malformed = true;
+            return;
+        }
         m.nodeRecords = count;
         m.nodeBlobBytes = blobs;
     }
@@ -740,8 +1077,12 @@ public int unknown;
     // k >= 2 the (k-2)-th record — to its record, or null for the null index 0
     // and for an index that names no record (§3.1).
     public static NodeRecord node(NodeRecord[] recs, long index) {
-        if (index == 0) { return null; }
-        if (index < 2 || recs == null || index - 2 >= recs.length) { return null; }
+        if (index == 0) {
+            return null;
+        }
+        if (index < 2 || recs == null || index - 2 >= recs.length) {
+            return null;
+        }
         return recs[(int) (index - 2)];
     }
 
@@ -764,15 +1105,29 @@ public int unknown;
         boolean bad = false;
         while (true) {
             long ref = r.leb();
-            if (r.fail || ref == 0) { break; }
+            if (r.fail || ref == 0) {
+                break;
+            }
             long id = r.resolve(ref);
-            if (r.fail) { break; }
-            if (!r.has(1)) { break; }
+            if (r.fail) {
+                break;
+            }
+            if (!r.has(1)) {
+                break;
+            }
             int kind = r.get8();
             if (id == NODE_ID) {
-                if (kind != 12) { report.malformed = true; bad = true; break; }
+                if (kind != 12) {
+                    report.malformed = true;
+                    bad = true;
+                    break;
+                }
                 long n = r.leb();
-                if (r.fail || n < 0 || !r.has((int) n)) { report.malformed = true; bad = true; break; }
+                if (r.fail || n < 0 || !r.has((int) n)) {
+                    report.malformed = true;
+                    bad = true;
+                    break;
+                }
                 Reader sub = new Reader(r.buf, r.ids, report);
                 sub.off = r.off;
                 sub.limit = r.off + (int) n;
@@ -781,7 +1136,9 @@ public int unknown;
                 continue;
             }
             r.skip(kind);
-            if (r.fail) { break; }
+            if (r.fail) {
+                break;
+            }
         }
         r.off = start;
         r.fail = startFail;
@@ -791,10 +1148,17 @@ public int unknown;
         // (internal/tablewire/decodenodes.go). An ABSENT field is an empty but
         // valid numbering, and a whole read carries the records.
         NodeTable nt = new NodeTable();
-        if (bad) { nt.bad = true; return nt; }
-        if (payload == null) { return nt; }
+        if (bad) {
+            nt.bad = true;
+            return nt;
+        }
+        if (payload == null) {
+            return nt;
+        }
         nt.recs = nodes(payload, retain);
-        if (nt.recs == null) { nt.bad = true; }
+        if (nt.recs == null) {
+            nt.bad = true;
+        }
         return nt;
     }
 
@@ -804,9 +1168,17 @@ public int unknown;
     // type id is not the string id reads null, its unknown already counted at
     // the scan.
     public static String resolveString(NodeRecord[] recs, long index, Report report) {
-        if (index == 0) { return null; }
-        if (index == 1) { report.kindMismatch++; return null; }
-        if (index < 2 || recs == null || index - 2 >= recs.length) { report.malformed = true; return null; }
+        if (index == 0) {
+            return null;
+        }
+        if (index == 1) {
+            report.kindMismatch++;
+            return null;
+        }
+        if (index < 2 || recs == null || index - 2 >= recs.length) {
+            report.malformed = true;
+            return null;
+        }
         return recs[(int) (index - 2)].value;
     }
 
@@ -814,21 +1186,38 @@ public int unknown;
     // (§3.1), exactly as resolveString resolves a *string: 0 is null, 1 is the
     // ROOT (a kind mismatch), an index past the records is malformed.
     public static byte[] resolveBytes(NodeRecord[] recs, long index, Report report) {
-        if (index == 0) { return null; }
-        if (index == 1) { report.kindMismatch++; return null; }
-        if (index < 2 || recs == null || index - 2 >= recs.length) { report.malformed = true; return null; }
+        if (index == 0) {
+            return null;
+        }
+        if (index == 1) {
+            report.kindMismatch++;
+            return null;
+        }
+        if (index < 2 || recs == null || index - 2 >= recs.length) {
+            report.malformed = true;
+            return null;
+        }
         return recs[(int) (index - 2)].bytes;
     }
 
     // Wide values use UTF-16 code units in the public value API. Wire bytes
     // are always little endian, independent of the cooked region's order.
-    static Reader fieldPayload(Reader raw,int kind) {
-        if(kind!=12&&kind!=13&&kind!=14&&kind!=16&&kind!=33)return raw;
-        int size=raw.limit-raw.off;Writer framed=new Writer(new byte[size+10],new Ids(1));framed.putLeb(size);framed.putBytes(raw.buf,raw.off,size);
-        Reader r=new Reader(framed.buf,raw.ids,raw.report);r.limit=framed.off;return r;
+    static Reader fieldPayload(Reader raw, int kind) {
+        if (kind != 12 && kind != 13 && kind != 14 && kind != 16 && kind != 33) return raw;
+        int size = raw.limit - raw.off;
+        Writer framed = new Writer(new byte[size + 10], new Ids(1));
+        framed.putLeb(size);
+        framed.putBytes(raw.buf, raw.off, size);
+        Reader r = new Reader(framed.buf, raw.ids, raw.report);
+        r.limit = framed.off;
+        return r;
     }
 
-    static int lebLen(long value) { int n=1;while((value >>>= 7)!=0)n++;return n; }
+    static int lebLen(long value) {
+        int n = 1;
+        while ((value >>>= 7) != 0) n++;
+        return n;
+    }
 
     static boolean wideValid(char[] text) {
         if (text == null) return false;
@@ -863,10 +1252,20 @@ public int unknown;
     }
 
     @SuppressWarnings("unchecked")
-    public static <T> T resolveTable(NodeRecord[] recs, long index, long targetTypeId, Object root, long rootTypeId, Report report) {
-        if (index == 0) { return null; }
+    public static <T> T resolveTable(
+            NodeRecord[] recs,
+            long index,
+            long targetTypeId,
+            Object root,
+            long rootTypeId,
+            Report report) {
+        if (index == 0) {
+            return null;
+        }
         if (index == 1) {
-            if (root != null && targetTypeId == rootTypeId) { return (T) root; }
+            if (root != null && targetTypeId == rootTypeId) {
+                return (T) root;
+            }
             report.kindMismatch++;
             return null;
         }
@@ -875,8 +1274,13 @@ public int unknown;
             return null;
         }
         NodeRecord rec = recs[(int) (index - 2)];
-        if (rec.typeId == 0) { return null; }
-        if (rec.typeId != targetTypeId) { report.kindMismatch++; return null; }
+        if (rec.typeId == 0) {
+            return null;
+        }
+        if (rec.typeId != targetTypeId) {
+            report.kindMismatch++;
+            return null;
+        }
         return (T) rec.table;
     }
 
@@ -897,19 +1301,30 @@ public int unknown;
         private long[] nodeType = new long[8];
         private boolean[] nodeBlob = new boolean[8];
         private int nodeCount;
-        public final java.util.IdentityHashMap<Object, Long> labels = new java.util.IdentityHashMap<>();
+        public final java.util.IdentityHashMap<Object, Long> labels =
+                new java.util.IdentityHashMap<>();
 
         public void reset() {
-            if (keyCount > 0) { java.util.Arrays.fill(keys, null); keyCount = 0; }
-            if (nodeCount > 0) { java.util.Arrays.fill(nodeValue, 0, nodeCount, null); nodeCount = 0; }
-            if (!labels.isEmpty()) { labels.clear(); }
+            if (keyCount > 0) {
+                java.util.Arrays.fill(keys, null);
+                keyCount = 0;
+            }
+            if (nodeCount > 0) {
+                java.util.Arrays.fill(nodeValue, 0, nodeCount, null);
+                nodeCount = 0;
+            }
+            if (!labels.isEmpty()) {
+                labels.clear();
+            }
         }
 
         private int slot(Object obj) {
             int mask = keys.length - 1;
             int h = System.identityHashCode(obj);
             int i = (h ^ (h >>> 16)) & mask;
-            while (keys[i] != null && keys[i] != obj) { i = (i + 1) & mask; }
+            while (keys[i] != null && keys[i] != obj) {
+                i = (i + 1) & mask;
+            }
             return i;
         }
 
@@ -920,15 +1335,26 @@ public int unknown;
 
         private int insert(Object obj) {
             int i = slot(obj);
-            if (keys[i] == obj) { return i; }
+            if (keys[i] == obj) {
+                return i;
+            }
             if ((keyCount + 1) * 2 > keys.length) {
-                Object[] ok = keys; long[] oi = keyIndex; int[] ou = keyUses; boolean[] oo = keyOpen;
+                Object[] ok = keys;
+                long[] oi = keyIndex;
+                int[] ou = keyUses;
+                boolean[] oo = keyOpen;
                 int cap = keys.length * 2;
-                keys = new Object[cap]; keyIndex = new long[cap]; keyUses = new int[cap]; keyOpen = new boolean[cap];
+                keys = new Object[cap];
+                keyIndex = new long[cap];
+                keyUses = new int[cap];
+                keyOpen = new boolean[cap];
                 for (int j = 0; j < ok.length; j++) {
                     if (ok[j] != null) {
                         int k = slot(ok[j]);
-                        keys[k] = ok[j]; keyIndex[k] = oi[j]; keyUses[k] = ou[j]; keyOpen[k] = oo[j];
+                        keys[k] = ok[j];
+                        keyIndex[k] = oi[j];
+                        keyUses[k] = ou[j];
+                        keyOpen[k] = oo[j];
                     }
                 }
                 i = slot(obj);
@@ -947,7 +1373,9 @@ public int unknown;
             return i < 0 ? 0 : keyIndex[i];
         }
 
-        public boolean indexed(Object obj) { return index(obj) != 0; }
+        public boolean indexed(Object obj) {
+            return index(obj) != 0;
+        }
 
         public int useCount(Object obj) {
             if (obj == null) return 0;
@@ -965,7 +1393,9 @@ public int unknown;
         public boolean recordPointer(Object target, long typeId, boolean isBlob) {
             if (target == null) return true;
             int i = insert(target);
-            if (keyOpen[i]) { return false; }
+            if (keyOpen[i]) {
+                return false;
+            }
             keyUses[i]++;
             if (keyIndex[i] == 0) {
                 if (nodeCount == nodeValue.length) {
@@ -983,10 +1413,21 @@ public int unknown;
             return true;
         }
 
-        public int nodeCount() { return nodeCount; }
-        public Object nodeValue(int i) { return nodeValue[i]; }
-        public long nodeType(int i) { return nodeType[i]; }
-        public boolean nodeBlob(int i) { return nodeBlob[i]; }
+        public int nodeCount() {
+            return nodeCount;
+        }
+
+        public Object nodeValue(int i) {
+            return nodeValue[i];
+        }
+
+        public long nodeType(int i) {
+            return nodeType[i];
+        }
+
+        public boolean nodeBlob(int i) {
+            return nodeBlob[i];
+        }
     }
 
     // SAVER is a save's reusable state: the numbering, the id table and ONE
@@ -1000,7 +1441,9 @@ public int unknown;
         public final Ids ids = new Ids(64);
         public final Writer writer;
 
-        public Saver() { this(256); }
+        public Saver() {
+            this(256);
+        }
 
         public Saver(int capacity) {
             writer = new Writer(new byte[Math.max(capacity, 16)], ids);
@@ -1025,43 +1468,124 @@ public int unknown;
         private static final class Entry {
             final long typeId;
             final byte[] body;
-            Entry(long typeId, byte[] body) { this.typeId = typeId; this.body = body; }
+
+            Entry(long typeId, byte[] body) {
+                this.typeId = typeId;
+                this.body = body;
+            }
         }
+
         private final java.util.ArrayList<Entry> entries = new java.util.ArrayList<>();
-        private final java.util.IdentityHashMap<String, Long> seen = new java.util.IdentityHashMap<>();
-        private final java.util.IdentityHashMap<byte[], Long> seenBytes = new java.util.IdentityHashMap<>();
+        private final java.util.IdentityHashMap<String, Long> seen =
+                new java.util.IdentityHashMap<>();
+        private final java.util.IdentityHashMap<byte[], Long> seenBytes =
+                new java.util.IdentityHashMap<>();
         private int next = 2;
+
         public long ref(String s) {
             Long have = seen.get(s);
-            if (have != null) { return have.longValue(); }
+            if (have != null) {
+                return have.longValue();
+            }
             seen.put(s, Long.valueOf(next));
             entries.add(new Entry(STRING_ID, s.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
             return next++;
         }
+
         public long refBytes(byte[] b) {
             Long have = seenBytes.get(b);
-            if (have != null) { return have.longValue(); }
+            if (have != null) {
+                return have.longValue();
+            }
             seenBytes.put(b, Long.valueOf(next));
             entries.add(new Entry(BYTES_ID, b));
             return next++;
         }
-        public int size() { return entries.size(); }
-        public long typeId(int i) { return entries.get(i).typeId; }
-        public byte[] body(int i) { return entries.get(i).body; }
+
+        public int size() {
+            return entries.size();
+        }
+
+        public long typeId(int i) {
+            return entries.get(i).typeId;
+        }
+
+        public byte[] body(int i) {
+            return entries.get(i).body;
+        }
     }
 
-    static java.math.BigInteger wide(long hi,long lo,boolean signed) {
-        java.math.BigInteger upper=signed?java.math.BigInteger.valueOf(hi):new java.math.BigInteger(Long.toUnsignedString(hi));
+    static java.math.BigInteger wide(long hi, long lo, boolean signed) {
+        java.math.BigInteger upper =
+                signed
+                        ? java.math.BigInteger.valueOf(hi)
+                        : new java.math.BigInteger(Long.toUnsignedString(hi));
         return upper.shiftLeft(64).add(new java.math.BigInteger(Long.toUnsignedString(lo)));
     }
-    static int integerWidth(int kind){switch(kind){case 2:case 6:case 20:case 25:return 1;case 3:case 7:case 21:case 26:return 2;case 4:case 8:case 22:case 27:return 4;case 5:case 9:case 23:case 28:return 8;case 18:case 19:case 24:case 29:return 16;default:return 0;}}
-    static boolean signedKind(int kind){return kind>=2&&kind<=5||kind==18||kind>=20&&kind<=24;}
-    static java.math.BigInteger readInteger(Reader r,int kind){
-        int width=integerWidth(kind);if(width==0||!r.has(width)){r.report.malformed=true;r.fail=true;return null;}
-        byte[] bytes=new byte[width];for(int i=0;i<width;i++)bytes[width-i-1]=(byte)r.get8();
-        return signedKind(kind)?new java.math.BigInteger(bytes):new java.math.BigInteger(1,bytes);
+
+    static int integerWidth(int kind) {
+        switch (kind) {
+            case 2:
+            case 6:
+            case 20:
+            case 25:
+                return 1;
+            case 3:
+            case 7:
+            case 21:
+            case 26:
+                return 2;
+            case 4:
+            case 8:
+            case 22:
+            case 27:
+                return 4;
+            case 5:
+            case 9:
+            case 23:
+            case 28:
+                return 8;
+            case 18:
+            case 19:
+            case 24:
+            case 29:
+                return 16;
+            default:
+                return 0;
+        }
     }
-    static java.math.BigInteger clampInteger(java.math.BigInteger raw,java.math.BigInteger lo,java.math.BigInteger hi,Report report){
-        if(raw.compareTo(lo)<0){report.clamped++;return lo;}if(raw.compareTo(hi)>0){report.clamped++;return hi;}return raw;
+
+    static boolean signedKind(int kind) {
+        return kind >= 2 && kind <= 5 || kind == 18 || kind >= 20 && kind <= 24;
+    }
+
+    static java.math.BigInteger readInteger(Reader r, int kind) {
+        int width = integerWidth(kind);
+        if (width == 0 || !r.has(width)) {
+            r.report.malformed = true;
+            r.fail = true;
+            return null;
+        }
+        byte[] bytes = new byte[width];
+        for (int i = 0; i < width; i++) bytes[width - i - 1] = (byte) r.get8();
+        return signedKind(kind)
+                ? new java.math.BigInteger(bytes)
+                : new java.math.BigInteger(1, bytes);
+    }
+
+    static java.math.BigInteger clampInteger(
+            java.math.BigInteger raw,
+            java.math.BigInteger lo,
+            java.math.BigInteger hi,
+            Report report) {
+        if (raw.compareTo(lo) < 0) {
+            report.clamped++;
+            return lo;
+        }
+        if (raw.compareTo(hi) > 0) {
+            report.clamped++;
+            return hi;
+        }
+        return raw;
     }
 }

@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — the variable form's tolerant load and canonical save for table MixedEntity (docs/SPEC-TABLES.md §3, §4)
+// package bench — the variable form's tolerant load and canonical save for table MixedEntity
+// (docs/SPEC-TABLES.md §3, §4)
 
 package bench;
 
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
 
 public final class MixedEntityVariable {
     private MixedEntityVariable() {}
@@ -28,8 +27,8 @@ public final class MixedEntityVariable {
         public long damage = 0L;
         public boolean moving = false;
         public boolean firing = false;
-        public Value(){
-        }
+
+        public Value() {}
     }
 
     public static final long TYPE_ID = 0x9367b84cab99cdc3L;
@@ -49,220 +48,818 @@ public final class MixedEntityVariable {
     public static final long F_firing = 0x7674cfd19b9031caL;
 
     static Object createNode(long typeId) {
-        if (typeId == BenchBitsVariable.TYPE_ID) { return new BenchBitsVariable.Value(); }
-        if (typeId == BenchIntsVariable.TYPE_ID) { return new BenchIntsVariable.Value(); }
-        if (typeId == BenchMixedVariable.TYPE_ID) { return new BenchMixedVariable.Value(); }
-        if (typeId == BenchPacketVariable.TYPE_ID) { return new BenchPacketVariable.Value(); }
-        if (typeId == FixedTableVariable.TYPE_ID) { return new FixedTableVariable.Value(); }
-        if (typeId == MixedChatEventVariable.TYPE_ID) { return new MixedChatEventVariable.Value(); }
-        if (typeId == MixedEntityVariable.TYPE_ID) { return new MixedEntityVariable.Value(); }
-        if (typeId == MixedHitEventVariable.TYPE_ID) { return new MixedHitEventVariable.Value(); }
-        if (typeId == MixedPickupEventVariable.TYPE_ID) { return new MixedPickupEventVariable.Value(); }
-        if (typeId == MixedStatVariable.TYPE_ID) { return new MixedStatVariable.Value(); }
+        if (typeId == BenchBitsVariable.TYPE_ID) {
+            return new BenchBitsVariable.Value();
+        }
+        if (typeId == BenchIntsVariable.TYPE_ID) {
+            return new BenchIntsVariable.Value();
+        }
+        if (typeId == BenchMixedVariable.TYPE_ID) {
+            return new BenchMixedVariable.Value();
+        }
+        if (typeId == BenchPacketVariable.TYPE_ID) {
+            return new BenchPacketVariable.Value();
+        }
+        if (typeId == FixedTableVariable.TYPE_ID) {
+            return new FixedTableVariable.Value();
+        }
+        if (typeId == MixedChatEventVariable.TYPE_ID) {
+            return new MixedChatEventVariable.Value();
+        }
+        if (typeId == MixedEntityVariable.TYPE_ID) {
+            return new MixedEntityVariable.Value();
+        }
+        if (typeId == MixedHitEventVariable.TYPE_ID) {
+            return new MixedHitEventVariable.Value();
+        }
+        if (typeId == MixedPickupEventVariable.TYPE_ID) {
+            return new MixedPickupEventVariable.Value();
+        }
+        if (typeId == MixedStatVariable.TYPE_ID) {
+            return new MixedStatVariable.Value();
+        }
         return null;
     }
 
-    static void decodeNodeBody(TableVariable.Reader r, Object val, long typeId, TableVariable.Report report) {
-        if (typeId == BenchBitsVariable.TYPE_ID) { BenchBitsVariable.readFields(r, (BenchBitsVariable.Value) val, null, report); return; }
-        if (typeId == BenchIntsVariable.TYPE_ID) { BenchIntsVariable.readFields(r, (BenchIntsVariable.Value) val, null, report); return; }
-        if (typeId == BenchMixedVariable.TYPE_ID) { BenchMixedVariable.readFields(r, (BenchMixedVariable.Value) val, null, report); return; }
-        if (typeId == BenchPacketVariable.TYPE_ID) { BenchPacketVariable.readFields(r, (BenchPacketVariable.Value) val, null, report); return; }
-        if (typeId == FixedTableVariable.TYPE_ID) { FixedTableVariable.readFields(r, (FixedTableVariable.Value) val, null, report); return; }
-        if (typeId == MixedChatEventVariable.TYPE_ID) { MixedChatEventVariable.readFields(r, (MixedChatEventVariable.Value) val, null, report); return; }
-        if (typeId == MixedEntityVariable.TYPE_ID) { MixedEntityVariable.readFields(r, (MixedEntityVariable.Value) val, null, report); return; }
-        if (typeId == MixedHitEventVariable.TYPE_ID) { MixedHitEventVariable.readFields(r, (MixedHitEventVariable.Value) val, null, report); return; }
-        if (typeId == MixedPickupEventVariable.TYPE_ID) { MixedPickupEventVariable.readFields(r, (MixedPickupEventVariable.Value) val, null, report); return; }
-        if (typeId == MixedStatVariable.TYPE_ID) { MixedStatVariable.readFields(r, (MixedStatVariable.Value) val, null, report); return; }
-    }
-
-    static void writeNodeBody(TableVariable.Writer w, TableVariable.NodeGraph graph, Object val, long typeId) {
-        if (typeId == BenchBitsVariable.TYPE_ID) { BenchBitsVariable.writeFields(w, graph, (BenchBitsVariable.Value) val); return; }
-        if (typeId == BenchIntsVariable.TYPE_ID) { BenchIntsVariable.writeFields(w, graph, (BenchIntsVariable.Value) val); return; }
-        if (typeId == BenchMixedVariable.TYPE_ID) { BenchMixedVariable.writeFields(w, graph, (BenchMixedVariable.Value) val); return; }
-        if (typeId == BenchPacketVariable.TYPE_ID) { BenchPacketVariable.writeFields(w, graph, (BenchPacketVariable.Value) val); return; }
-        if (typeId == FixedTableVariable.TYPE_ID) { FixedTableVariable.writeFields(w, graph, (FixedTableVariable.Value) val); return; }
-        if (typeId == MixedChatEventVariable.TYPE_ID) { MixedChatEventVariable.writeFields(w, graph, (MixedChatEventVariable.Value) val); return; }
-        if (typeId == MixedEntityVariable.TYPE_ID) { MixedEntityVariable.writeFields(w, graph, (MixedEntityVariable.Value) val); return; }
-        if (typeId == MixedHitEventVariable.TYPE_ID) { MixedHitEventVariable.writeFields(w, graph, (MixedHitEventVariable.Value) val); return; }
-        if (typeId == MixedPickupEventVariable.TYPE_ID) { MixedPickupEventVariable.writeFields(w, graph, (MixedPickupEventVariable.Value) val); return; }
-        if (typeId == MixedStatVariable.TYPE_ID) { MixedStatVariable.writeFields(w, graph, (MixedStatVariable.Value) val); return; }
-    }
-
-    static void resolveNodePointers(Object val, long typeId, TableVariable.NodeTable nt, Object root, long rootTypeId, TableVariable.Report report) {
-        if (typeId == BenchBitsVariable.TYPE_ID) { BenchBitsVariable.resolveNodes((BenchBitsVariable.Value) val, nt, root, rootTypeId, report); return; }
-        if (typeId == BenchIntsVariable.TYPE_ID) { BenchIntsVariable.resolveNodes((BenchIntsVariable.Value) val, nt, root, rootTypeId, report); return; }
-        if (typeId == BenchMixedVariable.TYPE_ID) { BenchMixedVariable.resolveNodes((BenchMixedVariable.Value) val, nt, root, rootTypeId, report); return; }
-        if (typeId == BenchPacketVariable.TYPE_ID) { BenchPacketVariable.resolveNodes((BenchPacketVariable.Value) val, nt, root, rootTypeId, report); return; }
-        if (typeId == FixedTableVariable.TYPE_ID) { FixedTableVariable.resolveNodes((FixedTableVariable.Value) val, nt, root, rootTypeId, report); return; }
-        if (typeId == MixedChatEventVariable.TYPE_ID) { MixedChatEventVariable.resolveNodes((MixedChatEventVariable.Value) val, nt, root, rootTypeId, report); return; }
-        if (typeId == MixedEntityVariable.TYPE_ID) { MixedEntityVariable.resolveNodes((MixedEntityVariable.Value) val, nt, root, rootTypeId, report); return; }
-        if (typeId == MixedHitEventVariable.TYPE_ID) { MixedHitEventVariable.resolveNodes((MixedHitEventVariable.Value) val, nt, root, rootTypeId, report); return; }
-        if (typeId == MixedPickupEventVariable.TYPE_ID) { MixedPickupEventVariable.resolveNodes((MixedPickupEventVariable.Value) val, nt, root, rootTypeId, report); return; }
-        if (typeId == MixedStatVariable.TYPE_ID) { MixedStatVariable.resolveNodes((MixedStatVariable.Value) val, nt, root, rootTypeId, report); return; }
-    }
-
-    public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {
-        if (v == null) { return true; }
-        return true;
-    }
-
-    public static boolean readFields(TableVariable.Reader r, Value v, TableVariable.NodeTable nt, TableVariable.Report report) {
-        while (true) {
-            long ref = r.leb();
-            if (r.fail) { return false; }
-            if (ref == 0) { return true; }
-            long id = r.resolve(ref);
-            if (r.fail) { return false; }
-            if (!r.has(1)) { report.malformed = true; return false; }
-            int kind = r.get8();
-            if (id == F_entityId) {
-                if (kind == 7 || kind == 6) {
-                    if (kind == 7) { if (r.has(2)) { v.entityId = r.get16(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 6) { if (r.has(1)) { v.entityId = r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                } else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_posX) {
-                if (kind == 4 || kind == 2 || kind == 3) {
-                    if (kind == 4) { if (r.has(4)) { v.posX = r.get32(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 2) { if (r.has(1)) { v.posX = (byte) r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 3) { if (r.has(2)) { v.posX = (short) r.get16(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    if (!r.fail && (v.posX < -16383 || v.posX > 16383)) { if (v.posX < -16383) { v.posX = -16383; } else { v.posX = 16383; } report.clamped++; }
-                } else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_posY) {
-                if (kind == 4 || kind == 2 || kind == 3) {
-                    if (kind == 4) { if (r.has(4)) { v.posY = r.get32(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 2) { if (r.has(1)) { v.posY = (byte) r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 3) { if (r.has(2)) { v.posY = (short) r.get16(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    if (!r.fail && (v.posY < -16383 || v.posY > 16383)) { if (v.posY < -16383) { v.posY = -16383; } else { v.posY = 16383; } report.clamped++; }
-                } else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_posZ) {
-                if (kind == 4 || kind == 2 || kind == 3) {
-                    if (kind == 4) { if (r.has(4)) { v.posZ = r.get32(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 2) { if (r.has(1)) { v.posZ = (byte) r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 3) { if (r.has(2)) { v.posZ = (short) r.get16(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    if (!r.fail && (v.posZ < -16383 || v.posZ > 16383)) { if (v.posZ < -16383) { v.posZ = -16383; } else { v.posZ = 16383; } report.clamped++; }
-                } else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_yaw) {
-                if (kind == 7 || kind == 6) {
-                    if (kind == 7) { if (r.has(2)) { v.yaw = r.get16(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 6) { if (r.has(1)) { v.yaw = r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                } else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_pitch) {
-                if (kind == 7 || kind == 6) {
-                    if (kind == 7) { if (r.has(2)) { v.pitch = r.get16(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 6) { if (r.has(1)) { v.pitch = r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                } else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_velX) {
-                if (kind == 4 || kind == 2 || kind == 3) {
-                    if (kind == 4) { if (r.has(4)) { v.velX = r.get32(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 2) { if (r.has(1)) { v.velX = (byte) r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 3) { if (r.has(2)) { v.velX = (short) r.get16(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    if (!r.fail && (v.velX < -2048 || v.velX > 2047)) { if (v.velX < -2048) { v.velX = -2048; } else { v.velX = 2047; } report.clamped++; }
-                } else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_velY) {
-                if (kind == 4 || kind == 2 || kind == 3) {
-                    if (kind == 4) { if (r.has(4)) { v.velY = r.get32(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 2) { if (r.has(1)) { v.velY = (byte) r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 3) { if (r.has(2)) { v.velY = (short) r.get16(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    if (!r.fail && (v.velY < -2048 || v.velY > 2047)) { if (v.velY < -2048) { v.velY = -2048; } else { v.velY = 2047; } report.clamped++; }
-                } else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_velZ) {
-                if (kind == 4 || kind == 2 || kind == 3) {
-                    if (kind == 4) { if (r.has(4)) { v.velZ = r.get32(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 2) { if (r.has(1)) { v.velZ = (byte) r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 3) { if (r.has(2)) { v.velZ = (short) r.get16(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    if (!r.fail && (v.velZ < -2048 || v.velZ > 2047)) { if (v.velZ < -2048) { v.velZ = -2048; } else { v.velZ = 2047; } report.clamped++; }
-                } else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_health) {
-                if (kind == 4 || kind == 2 || kind == 3) {
-                    if (kind == 4) { if (r.has(4)) { v.health = r.get32(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 2) { if (r.has(1)) { v.health = (byte) r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 3) { if (r.has(2)) { v.health = (short) r.get16(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    if (!r.fail && (v.health < 0 || v.health > 1000)) { if (v.health < 0) { v.health = 0; } else { v.health = 1000; } report.clamped++; }
-                } else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_weapon) {
-                if (kind == 30) { long vref = r.leb(); if (!r.fail) { if (vref == 0) { v.weapon = 0; } else { long vid = r.resolve(vref); if (!r.fail) { v.weapon = weaponEnum(vid, report); } } } }
-                else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_damage) {
-                if (kind == 9) { if (r.has(8)) { v.damage = r.get64(); } else { report.malformed = true; r.fail = true; } }
-                else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_moving) {
-                if (kind == 1) { if (r.has(1)) { v.moving = r.get8() != 0; } else { report.malformed = true; r.fail = true; } }
-                else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_firing) {
-                if (kind == 1) { if (r.has(1)) { v.firing = r.get8() != 0; } else { report.malformed = true; r.fail = true; } }
-                else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == TableVariable.NODE_ID) {
-                if (nt != null && r.rootBody) { r.skip(kind); }
-                else { report.malformed = true; return false; }
-            } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {
-                report.malformed = true; return false;
-            } else {
-                r.skip(kind); report.unknown++;
-            }
-            if (r.fail) { return false; }
+    static void decodeNodeBody(
+            TableVariable.Reader r, Object val, long typeId, TableVariable.Report report) {
+        if (typeId == BenchBitsVariable.TYPE_ID) {
+            BenchBitsVariable.readFields(r, (BenchBitsVariable.Value) val, null, report);
+            return;
+        }
+        if (typeId == BenchIntsVariable.TYPE_ID) {
+            BenchIntsVariable.readFields(r, (BenchIntsVariable.Value) val, null, report);
+            return;
+        }
+        if (typeId == BenchMixedVariable.TYPE_ID) {
+            BenchMixedVariable.readFields(r, (BenchMixedVariable.Value) val, null, report);
+            return;
+        }
+        if (typeId == BenchPacketVariable.TYPE_ID) {
+            BenchPacketVariable.readFields(r, (BenchPacketVariable.Value) val, null, report);
+            return;
+        }
+        if (typeId == FixedTableVariable.TYPE_ID) {
+            FixedTableVariable.readFields(r, (FixedTableVariable.Value) val, null, report);
+            return;
+        }
+        if (typeId == MixedChatEventVariable.TYPE_ID) {
+            MixedChatEventVariable.readFields(r, (MixedChatEventVariable.Value) val, null, report);
+            return;
+        }
+        if (typeId == MixedEntityVariable.TYPE_ID) {
+            MixedEntityVariable.readFields(r, (MixedEntityVariable.Value) val, null, report);
+            return;
+        }
+        if (typeId == MixedHitEventVariable.TYPE_ID) {
+            MixedHitEventVariable.readFields(r, (MixedHitEventVariable.Value) val, null, report);
+            return;
+        }
+        if (typeId == MixedPickupEventVariable.TYPE_ID) {
+            MixedPickupEventVariable.readFields(
+                    r, (MixedPickupEventVariable.Value) val, null, report);
+            return;
+        }
+        if (typeId == MixedStatVariable.TYPE_ID) {
+            MixedStatVariable.readFields(r, (MixedStatVariable.Value) val, null, report);
+            return;
         }
     }
 
-    public static void resolveNodes(Value v, TableVariable.NodeTable nt, TableVariable.Report report) {
+    static void writeNodeBody(
+            TableVariable.Writer w, TableVariable.NodeGraph graph, Object val, long typeId) {
+        if (typeId == BenchBitsVariable.TYPE_ID) {
+            BenchBitsVariable.writeFields(w, graph, (BenchBitsVariable.Value) val);
+            return;
+        }
+        if (typeId == BenchIntsVariable.TYPE_ID) {
+            BenchIntsVariable.writeFields(w, graph, (BenchIntsVariable.Value) val);
+            return;
+        }
+        if (typeId == BenchMixedVariable.TYPE_ID) {
+            BenchMixedVariable.writeFields(w, graph, (BenchMixedVariable.Value) val);
+            return;
+        }
+        if (typeId == BenchPacketVariable.TYPE_ID) {
+            BenchPacketVariable.writeFields(w, graph, (BenchPacketVariable.Value) val);
+            return;
+        }
+        if (typeId == FixedTableVariable.TYPE_ID) {
+            FixedTableVariable.writeFields(w, graph, (FixedTableVariable.Value) val);
+            return;
+        }
+        if (typeId == MixedChatEventVariable.TYPE_ID) {
+            MixedChatEventVariable.writeFields(w, graph, (MixedChatEventVariable.Value) val);
+            return;
+        }
+        if (typeId == MixedEntityVariable.TYPE_ID) {
+            MixedEntityVariable.writeFields(w, graph, (MixedEntityVariable.Value) val);
+            return;
+        }
+        if (typeId == MixedHitEventVariable.TYPE_ID) {
+            MixedHitEventVariable.writeFields(w, graph, (MixedHitEventVariable.Value) val);
+            return;
+        }
+        if (typeId == MixedPickupEventVariable.TYPE_ID) {
+            MixedPickupEventVariable.writeFields(w, graph, (MixedPickupEventVariable.Value) val);
+            return;
+        }
+        if (typeId == MixedStatVariable.TYPE_ID) {
+            MixedStatVariable.writeFields(w, graph, (MixedStatVariable.Value) val);
+            return;
+        }
+    }
+
+    static void resolveNodePointers(
+            Object val,
+            long typeId,
+            TableVariable.NodeTable nt,
+            Object root,
+            long rootTypeId,
+            TableVariable.Report report) {
+        if (typeId == BenchBitsVariable.TYPE_ID) {
+            BenchBitsVariable.resolveNodes(
+                    (BenchBitsVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+        if (typeId == BenchIntsVariable.TYPE_ID) {
+            BenchIntsVariable.resolveNodes(
+                    (BenchIntsVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+        if (typeId == BenchMixedVariable.TYPE_ID) {
+            BenchMixedVariable.resolveNodes(
+                    (BenchMixedVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+        if (typeId == BenchPacketVariable.TYPE_ID) {
+            BenchPacketVariable.resolveNodes(
+                    (BenchPacketVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+        if (typeId == FixedTableVariable.TYPE_ID) {
+            FixedTableVariable.resolveNodes(
+                    (FixedTableVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+        if (typeId == MixedChatEventVariable.TYPE_ID) {
+            MixedChatEventVariable.resolveNodes(
+                    (MixedChatEventVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+        if (typeId == MixedEntityVariable.TYPE_ID) {
+            MixedEntityVariable.resolveNodes(
+                    (MixedEntityVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+        if (typeId == MixedHitEventVariable.TYPE_ID) {
+            MixedHitEventVariable.resolveNodes(
+                    (MixedHitEventVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+        if (typeId == MixedPickupEventVariable.TYPE_ID) {
+            MixedPickupEventVariable.resolveNodes(
+                    (MixedPickupEventVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+        if (typeId == MixedStatVariable.TYPE_ID) {
+            MixedStatVariable.resolveNodes(
+                    (MixedStatVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+    }
+
+    public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {
+        if (v == null) {
+            return true;
+        }
+        return true;
+    }
+
+    public static boolean readFields(
+            TableVariable.Reader r,
+            Value v,
+            TableVariable.NodeTable nt,
+            TableVariable.Report report) {
+        while (true) {
+            long ref = r.leb();
+            if (r.fail) {
+                return false;
+            }
+            if (ref == 0) {
+                return true;
+            }
+            long id = r.resolve(ref);
+            if (r.fail) {
+                return false;
+            }
+            if (!r.has(1)) {
+                report.malformed = true;
+                return false;
+            }
+            int kind = r.get8();
+            if (id == F_entityId) {
+                if (kind == 7 || kind == 6) {
+                    if (kind == 7) {
+                        if (r.has(2)) {
+                            v.entityId = r.get16();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 6) {
+                        if (r.has(1)) {
+                            v.entityId = r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_posX) {
+                if (kind == 4 || kind == 2 || kind == 3) {
+                    if (kind == 4) {
+                        if (r.has(4)) {
+                            v.posX = r.get32();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 2) {
+                        if (r.has(1)) {
+                            v.posX = (byte) r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 3) {
+                        if (r.has(2)) {
+                            v.posX = (short) r.get16();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                    if (!r.fail && (v.posX < -16383 || v.posX > 16383)) {
+                        if (v.posX < -16383) {
+                            v.posX = -16383;
+                        } else {
+                            v.posX = 16383;
+                        }
+                        report.clamped++;
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_posY) {
+                if (kind == 4 || kind == 2 || kind == 3) {
+                    if (kind == 4) {
+                        if (r.has(4)) {
+                            v.posY = r.get32();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 2) {
+                        if (r.has(1)) {
+                            v.posY = (byte) r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 3) {
+                        if (r.has(2)) {
+                            v.posY = (short) r.get16();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                    if (!r.fail && (v.posY < -16383 || v.posY > 16383)) {
+                        if (v.posY < -16383) {
+                            v.posY = -16383;
+                        } else {
+                            v.posY = 16383;
+                        }
+                        report.clamped++;
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_posZ) {
+                if (kind == 4 || kind == 2 || kind == 3) {
+                    if (kind == 4) {
+                        if (r.has(4)) {
+                            v.posZ = r.get32();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 2) {
+                        if (r.has(1)) {
+                            v.posZ = (byte) r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 3) {
+                        if (r.has(2)) {
+                            v.posZ = (short) r.get16();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                    if (!r.fail && (v.posZ < -16383 || v.posZ > 16383)) {
+                        if (v.posZ < -16383) {
+                            v.posZ = -16383;
+                        } else {
+                            v.posZ = 16383;
+                        }
+                        report.clamped++;
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_yaw) {
+                if (kind == 7 || kind == 6) {
+                    if (kind == 7) {
+                        if (r.has(2)) {
+                            v.yaw = r.get16();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 6) {
+                        if (r.has(1)) {
+                            v.yaw = r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_pitch) {
+                if (kind == 7 || kind == 6) {
+                    if (kind == 7) {
+                        if (r.has(2)) {
+                            v.pitch = r.get16();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 6) {
+                        if (r.has(1)) {
+                            v.pitch = r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_velX) {
+                if (kind == 4 || kind == 2 || kind == 3) {
+                    if (kind == 4) {
+                        if (r.has(4)) {
+                            v.velX = r.get32();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 2) {
+                        if (r.has(1)) {
+                            v.velX = (byte) r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 3) {
+                        if (r.has(2)) {
+                            v.velX = (short) r.get16();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                    if (!r.fail && (v.velX < -2048 || v.velX > 2047)) {
+                        if (v.velX < -2048) {
+                            v.velX = -2048;
+                        } else {
+                            v.velX = 2047;
+                        }
+                        report.clamped++;
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_velY) {
+                if (kind == 4 || kind == 2 || kind == 3) {
+                    if (kind == 4) {
+                        if (r.has(4)) {
+                            v.velY = r.get32();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 2) {
+                        if (r.has(1)) {
+                            v.velY = (byte) r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 3) {
+                        if (r.has(2)) {
+                            v.velY = (short) r.get16();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                    if (!r.fail && (v.velY < -2048 || v.velY > 2047)) {
+                        if (v.velY < -2048) {
+                            v.velY = -2048;
+                        } else {
+                            v.velY = 2047;
+                        }
+                        report.clamped++;
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_velZ) {
+                if (kind == 4 || kind == 2 || kind == 3) {
+                    if (kind == 4) {
+                        if (r.has(4)) {
+                            v.velZ = r.get32();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 2) {
+                        if (r.has(1)) {
+                            v.velZ = (byte) r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 3) {
+                        if (r.has(2)) {
+                            v.velZ = (short) r.get16();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                    if (!r.fail && (v.velZ < -2048 || v.velZ > 2047)) {
+                        if (v.velZ < -2048) {
+                            v.velZ = -2048;
+                        } else {
+                            v.velZ = 2047;
+                        }
+                        report.clamped++;
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_health) {
+                if (kind == 4 || kind == 2 || kind == 3) {
+                    if (kind == 4) {
+                        if (r.has(4)) {
+                            v.health = r.get32();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 2) {
+                        if (r.has(1)) {
+                            v.health = (byte) r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 3) {
+                        if (r.has(2)) {
+                            v.health = (short) r.get16();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                    if (!r.fail && (v.health < 0 || v.health > 1000)) {
+                        if (v.health < 0) {
+                            v.health = 0;
+                        } else {
+                            v.health = 1000;
+                        }
+                        report.clamped++;
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_weapon) {
+                if (kind == 30) {
+                    long vref = r.leb();
+                    if (!r.fail) {
+                        if (vref == 0) {
+                            v.weapon = 0;
+                        } else {
+                            long vid = r.resolve(vref);
+                            if (!r.fail) {
+                                v.weapon = weaponEnum(vid, report);
+                            }
+                        }
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_damage) {
+                if (kind == 9) {
+                    if (r.has(8)) {
+                        v.damage = r.get64();
+                    } else {
+                        report.malformed = true;
+                        r.fail = true;
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_moving) {
+                if (kind == 1) {
+                    if (r.has(1)) {
+                        v.moving = r.get8() != 0;
+                    } else {
+                        report.malformed = true;
+                        r.fail = true;
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_firing) {
+                if (kind == 1) {
+                    if (r.has(1)) {
+                        v.firing = r.get8() != 0;
+                    } else {
+                        report.malformed = true;
+                        r.fail = true;
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == TableVariable.NODE_ID) {
+                if (nt != null && r.rootBody) {
+                    r.skip(kind);
+                } else {
+                    report.malformed = true;
+                    return false;
+                }
+            } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {
+                report.malformed = true;
+                return false;
+            } else {
+                r.skip(kind);
+                report.unknown++;
+            }
+            if (r.fail) {
+                return false;
+            }
+        }
+    }
+
+    public static void resolveNodes(
+            Value v, TableVariable.NodeTable nt, TableVariable.Report report) {
         resolveNodes(v, nt, v, TYPE_ID, report);
     }
 
-    public static void resolveNodes(Value v, TableVariable.NodeTable nt, Object root, long rootTypeId, TableVariable.Report report) {
-        if (nt.bad) { return; }
+    public static void resolveNodes(
+            Value v,
+            TableVariable.NodeTable nt,
+            Object root,
+            long rootTypeId,
+            TableVariable.Report report) {
+        if (nt.bad) {
+            return;
+        }
     }
 
-    static boolean isDefault(Value v,TableVariable.Writer w,TableVariable.NodeGraph graph){if(v==null)return true;int at=w.off;int mark=w.ids.count;boolean overflow=w.overflow;writeFields(w,graph,v);boolean empty=w.off==at;w.off=at;w.ids.count=mark;w.overflow=overflow;return empty;}
+    static boolean isDefault(Value v, TableVariable.Writer w, TableVariable.NodeGraph graph) {
+        if (v == null) return true;
+        int at = w.off;
+        int mark = w.ids.count;
+        boolean overflow = w.overflow;
+        writeFields(w, graph, v);
+        boolean empty = w.off == at;
+        w.off = at;
+        w.ids.count = mark;
+        w.overflow = overflow;
+        return empty;
+    }
 
     public static void writeFields(TableVariable.Writer w, TableVariable.NodeGraph graph, Value v) {
-        if (v.entityId != 0) { w.putLeb(w.ref(F_entityId)); w.put8(7); w.put16(v.entityId); }
-        if (v.posX != 0) { w.putLeb(w.ref(F_posX)); w.put8(4); w.put32(v.posX); }
-        if (v.posY != 0) { w.putLeb(w.ref(F_posY)); w.put8(4); w.put32(v.posY); }
-        if (v.posZ != 0) { w.putLeb(w.ref(F_posZ)); w.put8(4); w.put32(v.posZ); }
-        if (v.yaw != 0) { w.putLeb(w.ref(F_yaw)); w.put8(7); w.put16(v.yaw); }
-        if (v.pitch != 0) { w.putLeb(w.ref(F_pitch)); w.put8(7); w.put16(v.pitch); }
-        if (v.velX != 0) { w.putLeb(w.ref(F_velX)); w.put8(4); w.put32(v.velX); }
-        if (v.velY != 0) { w.putLeb(w.ref(F_velY)); w.put8(4); w.put32(v.velY); }
-        if (v.velZ != 0) { w.putLeb(w.ref(F_velZ)); w.put8(4); w.put32(v.velZ); }
-        if (v.health != 0) { w.putLeb(w.ref(F_health)); w.put8(4); w.put32(v.health); }
-        if (v.weapon != 0) { w.putLeb(w.ref(F_weapon)); w.put8(30); switch (v.weapon) {
-            case 1: w.putLeb(w.ref(0xa790eee12766cf0cL)); break;
-            case 2: w.putLeb(w.ref(0x9fbfefa835da8476L)); break;
-            case 3: w.putLeb(w.ref(0x188bbb1783928a95L)); break;
-            case 4: w.putLeb(w.ref(0x2c3667b9c2f272f1L)); break;
-            case 5: w.putLeb(w.ref(0x0ca8b41b00d755f6L)); break;
-            case 6: w.putLeb(w.ref(0x985fc819fab21a4eL)); break;
-            case 7: w.putLeb(w.ref(0x229d0447c3086a55L)); break;
-            case 8: w.putLeb(w.ref(0x011c7b49a7228f9dL)); break;
-            case 9: w.putLeb(w.ref(0x89f7566e1123e15fL)); break;
-            case 10: w.putLeb(w.ref(0x8d7f25318b3b4469L)); break;
-            case 11: w.putLeb(w.ref(0xd9cd0dcc285b7816L)); break;
-            case 12: w.putLeb(w.ref(0x04dc16aea8ff5276L)); break;
-            case 13: w.putLeb(w.ref(0x35e53bc341129217L)); break;
-            case 14: w.putLeb(w.ref(0x2cc8282fb0de8831L)); break;
-            case 15: w.putLeb(w.ref(0x20bada21bc8cb334L)); break;
-            default: w.putLeb(0); break;
-        } }
-        if (v.damage != 0L) { w.putLeb(w.ref(F_damage)); w.put8(9); w.put64(v.damage); }
-        if (v.moving != false) { w.putLeb(w.ref(F_moving)); w.put8(1); w.put8(v.moving ? 1 : 0); }
-        if (v.firing != false) { w.putLeb(w.ref(F_firing)); w.put8(1); w.put8(v.firing ? 1 : 0); }
+        if (v.entityId != 0) {
+            w.putLeb(w.ref(F_entityId));
+            w.put8(7);
+            w.put16(v.entityId);
+        }
+        if (v.posX != 0) {
+            w.putLeb(w.ref(F_posX));
+            w.put8(4);
+            w.put32(v.posX);
+        }
+        if (v.posY != 0) {
+            w.putLeb(w.ref(F_posY));
+            w.put8(4);
+            w.put32(v.posY);
+        }
+        if (v.posZ != 0) {
+            w.putLeb(w.ref(F_posZ));
+            w.put8(4);
+            w.put32(v.posZ);
+        }
+        if (v.yaw != 0) {
+            w.putLeb(w.ref(F_yaw));
+            w.put8(7);
+            w.put16(v.yaw);
+        }
+        if (v.pitch != 0) {
+            w.putLeb(w.ref(F_pitch));
+            w.put8(7);
+            w.put16(v.pitch);
+        }
+        if (v.velX != 0) {
+            w.putLeb(w.ref(F_velX));
+            w.put8(4);
+            w.put32(v.velX);
+        }
+        if (v.velY != 0) {
+            w.putLeb(w.ref(F_velY));
+            w.put8(4);
+            w.put32(v.velY);
+        }
+        if (v.velZ != 0) {
+            w.putLeb(w.ref(F_velZ));
+            w.put8(4);
+            w.put32(v.velZ);
+        }
+        if (v.health != 0) {
+            w.putLeb(w.ref(F_health));
+            w.put8(4);
+            w.put32(v.health);
+        }
+        if (v.weapon != 0) {
+            w.putLeb(w.ref(F_weapon));
+            w.put8(30);
+            switch (v.weapon) {
+                case 1:
+                    w.putLeb(w.ref(0xa790eee12766cf0cL));
+                    break;
+                case 2:
+                    w.putLeb(w.ref(0x9fbfefa835da8476L));
+                    break;
+                case 3:
+                    w.putLeb(w.ref(0x188bbb1783928a95L));
+                    break;
+                case 4:
+                    w.putLeb(w.ref(0x2c3667b9c2f272f1L));
+                    break;
+                case 5:
+                    w.putLeb(w.ref(0x0ca8b41b00d755f6L));
+                    break;
+                case 6:
+                    w.putLeb(w.ref(0x985fc819fab21a4eL));
+                    break;
+                case 7:
+                    w.putLeb(w.ref(0x229d0447c3086a55L));
+                    break;
+                case 8:
+                    w.putLeb(w.ref(0x011c7b49a7228f9dL));
+                    break;
+                case 9:
+                    w.putLeb(w.ref(0x89f7566e1123e15fL));
+                    break;
+                case 10:
+                    w.putLeb(w.ref(0x8d7f25318b3b4469L));
+                    break;
+                case 11:
+                    w.putLeb(w.ref(0xd9cd0dcc285b7816L));
+                    break;
+                case 12:
+                    w.putLeb(w.ref(0x04dc16aea8ff5276L));
+                    break;
+                case 13:
+                    w.putLeb(w.ref(0x35e53bc341129217L));
+                    break;
+                case 14:
+                    w.putLeb(w.ref(0x2cc8282fb0de8831L));
+                    break;
+                case 15:
+                    w.putLeb(w.ref(0x20bada21bc8cb334L));
+                    break;
+                default:
+                    w.putLeb(0);
+                    break;
+            }
+        }
+        if (v.damage != 0L) {
+            w.putLeb(w.ref(F_damage));
+            w.put8(9);
+            w.put64(v.damage);
+        }
+        if (v.moving != false) {
+            w.putLeb(w.ref(F_moving));
+            w.put8(1);
+            w.put8(v.moving ? 1 : 0);
+        }
+        if (v.firing != false) {
+            w.putLeb(w.ref(F_firing));
+            w.put8(1);
+            w.put8(v.firing ? 1 : 0);
+        }
     }
 
     private static int weaponEnum(long vid, TableVariable.Report report) {
-        if (vid == 0xa790eee12766cf0cL) { return 1; }
-        if (vid == 0x9fbfefa835da8476L) { return 2; }
-        if (vid == 0x188bbb1783928a95L) { return 3; }
-        if (vid == 0x2c3667b9c2f272f1L) { return 4; }
-        if (vid == 0x0ca8b41b00d755f6L) { return 5; }
-        if (vid == 0x985fc819fab21a4eL) { return 6; }
-        if (vid == 0x229d0447c3086a55L) { return 7; }
-        if (vid == 0x011c7b49a7228f9dL) { return 8; }
-        if (vid == 0x89f7566e1123e15fL) { return 9; }
-        if (vid == 0x8d7f25318b3b4469L) { return 10; }
-        if (vid == 0xd9cd0dcc285b7816L) { return 11; }
-        if (vid == 0x04dc16aea8ff5276L) { return 12; }
-        if (vid == 0x35e53bc341129217L) { return 13; }
-        if (vid == 0x2cc8282fb0de8831L) { return 14; }
-        if (vid == 0x20bada21bc8cb334L) { return 15; }
+        if (vid == 0xa790eee12766cf0cL) {
+            return 1;
+        }
+        if (vid == 0x9fbfefa835da8476L) {
+            return 2;
+        }
+        if (vid == 0x188bbb1783928a95L) {
+            return 3;
+        }
+        if (vid == 0x2c3667b9c2f272f1L) {
+            return 4;
+        }
+        if (vid == 0x0ca8b41b00d755f6L) {
+            return 5;
+        }
+        if (vid == 0x985fc819fab21a4eL) {
+            return 6;
+        }
+        if (vid == 0x229d0447c3086a55L) {
+            return 7;
+        }
+        if (vid == 0x011c7b49a7228f9dL) {
+            return 8;
+        }
+        if (vid == 0x89f7566e1123e15fL) {
+            return 9;
+        }
+        if (vid == 0x8d7f25318b3b4469L) {
+            return 10;
+        }
+        if (vid == 0xd9cd0dcc285b7816L) {
+            return 11;
+        }
+        if (vid == 0x04dc16aea8ff5276L) {
+            return 12;
+        }
+        if (vid == 0x35e53bc341129217L) {
+            return 13;
+        }
+        if (vid == 0x2cc8282fb0de8831L) {
+            return 14;
+        }
+        if (vid == 0x20bada21bc8cb334L) {
+            return 15;
+        }
         report.unknown++;
         return 0;
     }
@@ -277,7 +874,9 @@ public final class MixedEntityVariable {
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
         graph.setOpen(v, true);
-        if (!buildGraph(graph, v)) { return null; }
+        if (!buildGraph(graph, v)) {
+            return null;
+        }
         graph.setOpen(v, false);
         w.put8(1);
         writeFields(w, graph, v);
@@ -314,7 +913,9 @@ public final class MixedEntityVariable {
 
     public static Value load(byte[] data, TableVariable.Report report) {
         TableVariable.Reader r = TableVariable.open(data, report);
-        if (r == null) { return null; }
+        if (r == null) {
+            return null;
+        }
         Value v = new Value();
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, false);
         if (nt.recs != null && !nt.bad) {
@@ -328,7 +929,8 @@ public final class MixedEntityVariable {
                     }
                 } else if (rec.typeId == TableVariable.BYTES_ID) {
                     rec.bytes = rec.body;
-                } else if (!rec.textMalformed) { // §3.1: a cleared text node is damage; an actual id of zero is unknown.
+                } else if (!rec.textMalformed) {
+                    // §3.1: a cleared text node is damage; an actual id of zero is unknown.
                     rec.table = createNode(rec.typeId);
                     if (rec.table == null) {
                         report.unknown++;
@@ -344,7 +946,9 @@ public final class MixedEntityVariable {
             }
         }
         readFields(r, v, nt, report);
-        if (report.refused) { return null; }
+        if (report.refused) {
+            return null;
+        }
         resolveNodes(v, nt, v, TYPE_ID, report);
         if (nt.recs != null && !nt.bad) {
             for (TableVariable.NodeRecord rec : nt.recs) {
@@ -359,8 +963,15 @@ public final class MixedEntityVariable {
     // loadMeasure sizes the region a tolerant load would need (§6.5).
     private static final long ALIGN = 16;
     private static final long RECORD_SIZE = 64;
-    private static long alignUp(long n, long a) { return (n + a - 1) & -a; }
-    private static long round(long n) { return (n + ALIGN - 1) & -ALIGN; }
+
+    private static long alignUp(long n, long a) {
+        return (n + a - 1) & -a;
+    }
+
+    private static long round(long n) {
+        return (n + ALIGN - 1) & -ALIGN;
+    }
+
     // The one-argument form allocates ONE Measure handle per call; a caller
     // that keeps a Measure measures with no allocation at all: the walk reads
     // every nested body in place on the Measure's one reader (Reader.bodyEnd)
@@ -371,9 +982,13 @@ public final class MixedEntityVariable {
 
     public static long loadMeasure(byte[] data, TableVariable.Measure m) {
         TableVariable.Reader r = m.open(data);
-        if (r == null) { return -1; }
+        if (r == null) {
+            return -1;
+        }
         long extent = measureFields(r, m, m.report);
-        if (m.report.refused) { return -1; }
+        if (m.report.refused) {
+            return -1;
+        }
         long total = round(round(RECORD_SIZE) + extent);
         long records = 0;
         if (m.nodeRecords >= 0) {
@@ -384,11 +999,14 @@ public final class MixedEntityVariable {
         return total;
     }
 
-    static long measureFields(TableVariable.Reader r, TableVariable.Measure nt, TableVariable.Report report) {
+    static long measureFields(
+            TableVariable.Reader r, TableVariable.Measure nt, TableVariable.Report report) {
         long extent = 0;
         while (true) {
             long ref = r.leb();
-            if (ref == 0) { return extent; }
+            if (ref == 0) {
+                return extent;
+            }
             int kind = r.get8();
             long id = r.resolve(ref);
             if (id == F_entityId) {
@@ -420,8 +1038,19 @@ public final class MixedEntityVariable {
             } else if (id == F_firing) {
                 r.skip(kind);
             } else if (id == TableVariable.NODE_ID && nt != null) {
-                if (kind == 12) { int end = r.bodyEnd(); if (end >= 0) { int lim = r.limit; r.limit = end; TableVariable.measureNodes(r, nt, ALIGN); r.off = end; r.limit = lim; r.fail = false; } }
-                else { r.skip(kind); }
+                if (kind == 12) {
+                    int end = r.bodyEnd();
+                    if (end >= 0) {
+                        int lim = r.limit;
+                        r.limit = end;
+                        TableVariable.measureNodes(r, nt, ALIGN);
+                        r.off = end;
+                        r.limit = lim;
+                        r.fail = false;
+                    }
+                } else {
+                    r.skip(kind);
+                }
             } else {
                 r.skip(kind);
             }
@@ -431,10 +1060,16 @@ public final class MixedEntityVariable {
     public static byte[] toJson(Value v) {
         TableVariable.NodeGraph graph = new TableVariable.NodeGraph();
         graph.setOpen(v, true);
-        if (!buildGraph(graph, v)) { return null; }
+        if (!buildGraph(graph, v)) {
+            return null;
+        }
         graph.setOpen(v, false);
         StringBuilder b = new StringBuilder();
-        try { jsonFields(b, graph, v, 0); } catch (TableJson.Refused e) { return null; }
+        try {
+            jsonFields(b, graph, v, 0);
+        } catch (TableJson.Refused e) {
+            return null;
+        }
         b.append('\n');
         return b.toString().getBytes(StandardCharsets.UTF_8);
     }
@@ -443,114 +1078,190 @@ public final class MixedEntityVariable {
         TableJson.In in = new TableJson.In(text, report);
         Value v = new Value();
         jsonReadFields(in, v);
-        if (in.bad) { report.malformed = true; }
+        if (in.bad) {
+            report.malformed = true;
+        }
         return v;
     }
 
     static void jsonFields(StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
-        b.append('{' );
+        b.append('{');
         boolean empty = jsonFieldsBody(b, graph, v, depth + 1, true);
         if (!empty) TableJson.indent(b, depth);
         b.append('}');
     }
 
-    static boolean jsonFieldsBody(StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth, boolean first) {
-        if (!first) { b.append(','); }
+    static boolean jsonFieldsBody(
+            StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth, boolean first) {
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "entity_id");
         b.append(": ");
         b.append(Integer.toUnsignedString(v.entityId));
-        if (!first) { b.append(','); }
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "pos_x");
         b.append(": ");
         b.append(Integer.toString(v.posX));
-        if (!first) { b.append(','); }
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "pos_y");
         b.append(": ");
         b.append(Integer.toString(v.posY));
-        if (!first) { b.append(','); }
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "pos_z");
         b.append(": ");
         b.append(Integer.toString(v.posZ));
-        if (!first) { b.append(','); }
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "yaw");
         b.append(": ");
         b.append(Integer.toUnsignedString(v.yaw));
-        if (!first) { b.append(','); }
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "pitch");
         b.append(": ");
         b.append(Integer.toUnsignedString(v.pitch));
-        if (!first) { b.append(','); }
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "vel_x");
         b.append(": ");
         b.append(Integer.toString(v.velX));
-        if (!first) { b.append(','); }
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "vel_y");
         b.append(": ");
         b.append(Integer.toString(v.velY));
-        if (!first) { b.append(','); }
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "vel_z");
         b.append(": ");
         b.append(Integer.toString(v.velZ));
-        if (!first) { b.append(','); }
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "health");
         b.append(": ");
         b.append(Integer.toString(v.health));
-        if (!first) { b.append(','); }
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "weapon");
         b.append(": ");
         switch (v.weapon) {
-            case 1: TableJson.esc(b, "Fists"); break;
-            case 2: TableJson.esc(b, "Pistol"); break;
-            case 3: TableJson.esc(b, "Shotgun"); break;
-            case 4: TableJson.esc(b, "Rifle"); break;
-            case 5: TableJson.esc(b, "Sniper"); break;
-            case 6: TableJson.esc(b, "Smg"); break;
-            case 7: TableJson.esc(b, "Rocket"); break;
-            case 8: TableJson.esc(b, "Grenade"); break;
-            case 9: TableJson.esc(b, "Plasma"); break;
-            case 10: TableJson.esc(b, "Railgun"); break;
-            case 11: TableJson.esc(b, "Flamer"); break;
-            case 12: TableJson.esc(b, "Mine"); break;
-            case 13: TableJson.esc(b, "Turret"); break;
-            case 14: TableJson.esc(b, "Drone"); break;
-            case 15: TableJson.esc(b, "Repair"); break;
-            default: TableJson.esc(b, "None"); break;
+            case 1:
+                TableJson.esc(b, "Fists");
+                break;
+            case 2:
+                TableJson.esc(b, "Pistol");
+                break;
+            case 3:
+                TableJson.esc(b, "Shotgun");
+                break;
+            case 4:
+                TableJson.esc(b, "Rifle");
+                break;
+            case 5:
+                TableJson.esc(b, "Sniper");
+                break;
+            case 6:
+                TableJson.esc(b, "Smg");
+                break;
+            case 7:
+                TableJson.esc(b, "Rocket");
+                break;
+            case 8:
+                TableJson.esc(b, "Grenade");
+                break;
+            case 9:
+                TableJson.esc(b, "Plasma");
+                break;
+            case 10:
+                TableJson.esc(b, "Railgun");
+                break;
+            case 11:
+                TableJson.esc(b, "Flamer");
+                break;
+            case 12:
+                TableJson.esc(b, "Mine");
+                break;
+            case 13:
+                TableJson.esc(b, "Turret");
+                break;
+            case 14:
+                TableJson.esc(b, "Drone");
+                break;
+            case 15:
+                TableJson.esc(b, "Repair");
+                break;
+            default:
+                TableJson.esc(b, "None");
+                break;
         }
-        if (!first) { b.append(','); }
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "damage");
         b.append(": ");
-        TableJson.writeFlags(b,v.damage,new String[]{"Bleeding","Burning","Stunned","Slowed","Poisoned","Shielded","Airborne","Downed"},depth);
-        if (!first) { b.append(','); }
+        TableJson.writeFlags(
+                b,
+                v.damage,
+                new String[] {
+                    "Bleeding",
+                    "Burning",
+                    "Stunned",
+                    "Slowed",
+                    "Poisoned",
+                    "Shielded",
+                    "Airborne",
+                    "Downed"
+                },
+                depth);
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "moving");
         b.append(": ");
         b.append(v.moving ? "true" : "false");
-        if (!first) { b.append(','); }
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "firing");
@@ -559,8 +1270,12 @@ public final class MixedEntityVariable {
         return first;
     }
 
-    public static void writeJsonPointer(StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {
-        if (child == null) { b.append("null"); return; }
+    public static void writeJsonPointer(
+            StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {
+        if (child == null) {
+            b.append("null");
+            return;
+        }
         if (graph.useCount(child) <= 1) {
             jsonFields(b, graph, child, depth);
             return;
@@ -569,14 +1284,14 @@ public final class MixedEntityVariable {
         if (label == null) {
             label = (long) (graph.labels.size() + 1);
             graph.labels.put(child, label);
-            b.append('{' );
+            b.append('{');
             TableJson.indent(b, depth + 1);
             b.append("\"&node\": ").append(label);
             jsonFieldsBody(b, graph, child, depth + 1, false);
             TableJson.indent(b, depth);
             b.append('}');
         } else {
-            b.append('{' );
+            b.append('{');
             TableJson.indent(b, depth + 1);
             b.append("\"&node\": ").append(label);
             TableJson.indent(b, depth);
@@ -585,16 +1300,36 @@ public final class MixedEntityVariable {
     }
 
     public static Value readJsonPointer(TableJson.In in, long targetTypeId) {
-        if (in.peek() == 'n') { in.lit("null"); return null; }
-        if (in.peek() != '{' ) { in.skipValue(); in.rep.kindMismatch++; return null; }
+        if (in.peek() == 'n') {
+            in.lit("null");
+            return null;
+        }
+        if (in.peek() != '{') {
+            in.skipValue();
+            in.rep.kindMismatch++;
+            return null;
+        }
         int start = in.p;
         in.p++;
         in.space();
-        if (in.peek() == '}') { in.p = start; Value v = new Value(); jsonReadFields(in, v); return v; }
+        if (in.peek() == '}') {
+            in.p = start;
+            Value v = new Value();
+            jsonReadFields(in, v);
+            return v;
+        }
         String key = in.scanString();
         if (in.bad || key == null) return null;
-        if (!"&node".equals(key)) { in.p = start; Value v = new Value(); jsonReadFields(in, v); return v; }
-        if (in.peek() != ':') { in.bad = true; return null; }
+        if (!"&node".equals(key)) {
+            in.p = start;
+            Value v = new Value();
+            jsonReadFields(in, v);
+            return v;
+        }
+        if (in.peek() != ':') {
+            in.bad = true;
+            return null;
+        }
         in.p++;
         long labelId = in.scanLabel();
         if (in.bad || labelId <= 0) return null;
@@ -602,14 +1337,28 @@ public final class MixedEntityVariable {
         if (c == '}') {
             in.p++;
             TableJson.LabelEntry entry = in.labels.get(labelId);
-            if (entry == null || entry.open) { in.bad = true; return null; }
-            if (entry.typeId == 0) { return null; }
-            if (entry.typeId != targetTypeId) { in.rep.kindMismatch++; return null; }
+            if (entry == null || entry.open) {
+                in.bad = true;
+                return null;
+            }
+            if (entry.typeId == 0) {
+                return null;
+            }
+            if (entry.typeId != targetTypeId) {
+                in.rep.kindMismatch++;
+                return null;
+            }
             return (Value) entry.value;
         } else if (c == ',') {
             in.p++;
-            if (in.peek() == '}') { in.bad = true; return null; }
-            if (in.labels.containsKey(labelId)) { in.bad = true; return null; }
+            if (in.peek() == '}') {
+                in.bad = true;
+                return null;
+            }
+            if (in.labels.containsKey(labelId)) {
+                in.bad = true;
+                return null;
+            }
             Value child = new Value();
             TableJson.LabelEntry entry = new TableJson.LabelEntry(child, targetTypeId, true);
             in.labels.put(labelId, entry);
@@ -617,13 +1366,17 @@ public final class MixedEntityVariable {
             entry.open = false;
             return child;
         } else {
-            in.bad = true; return null;
+            in.bad = true;
+            return null;
         }
     }
 
     static void jsonReadFields(TableJson.In in, Value v) {
         in.space();
-        if (in.peek() != '{' ) { in.bad = true; return; }
+        if (in.peek() != '{') {
+            in.bad = true;
+            return;
+        }
         in.p++;
         jsonReadFieldsBody(in, v);
     }
@@ -631,81 +1384,194 @@ public final class MixedEntityVariable {
     static void jsonReadFieldsBody(TableJson.In in, Value v) {
         while (true) {
             int c = in.peek();
-            if (c == 0) { in.bad = true; return; }
-            if (c == '}') { in.p++; return; }
+            if (c == 0) {
+                in.bad = true;
+                return;
+            }
+            if (c == '}') {
+                in.p++;
+                return;
+            }
             String key = in.scanString();
-            if (in.bad) { return; }
-            if (key != null && key.startsWith("&")) { in.bad = true; return; }
-            if (in.peek() != ':') { in.bad = true; return; }
+            if (in.bad) {
+                return;
+            }
+            if (key != null && key.startsWith("&")) {
+                in.bad = true;
+                return;
+            }
+            if (in.peek() != ':') {
+                in.bad = true;
+                return;
+            }
             in.p++;
             if ("entity_id".equals(key)) {
-                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.entityId = (int) in.integer(false, 0L, 0xfffL); }
-                else { in.skipValue(); in.rep.kindMismatch++; }
-            } else             if ("pos_x".equals(key)) {
-                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.posX = (int) in.integer(true, -16383, 16383); }
-                else { in.skipValue(); in.rep.kindMismatch++; }
-            } else             if ("pos_y".equals(key)) {
-                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.posY = (int) in.integer(true, -16383, 16383); }
-                else { in.skipValue(); in.rep.kindMismatch++; }
-            } else             if ("pos_z".equals(key)) {
-                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.posZ = (int) in.integer(true, -16383, 16383); }
-                else { in.skipValue(); in.rep.kindMismatch++; }
-            } else             if ("yaw".equals(key)) {
-                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.yaw = (int) in.integer(false, 0L, 0x1ffL); }
-                else { in.skipValue(); in.rep.kindMismatch++; }
-            } else             if ("pitch".equals(key)) {
-                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.pitch = (int) in.integer(false, 0L, 0x1ffL); }
-                else { in.skipValue(); in.rep.kindMismatch++; }
-            } else             if ("vel_x".equals(key)) {
-                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.velX = (int) in.integer(true, -2048, 2047); }
-                else { in.skipValue(); in.rep.kindMismatch++; }
-            } else             if ("vel_y".equals(key)) {
-                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.velY = (int) in.integer(true, -2048, 2047); }
-                else { in.skipValue(); in.rep.kindMismatch++; }
-            } else             if ("vel_z".equals(key)) {
-                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.velZ = (int) in.integer(true, -2048, 2047); }
-                else { in.skipValue(); in.rep.kindMismatch++; }
-            } else             if ("health".equals(key)) {
-                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.health = (int) in.integer(true, 0, 1000); }
-                else { in.skipValue(); in.rep.kindMismatch++; }
-            } else             if ("weapon".equals(key)) {
+                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
+                    v.entityId = (int) in.integer(false, 0L, 0xfffL);
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+            } else if ("pos_x".equals(key)) {
+                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
+                    v.posX = (int) in.integer(true, -16383, 16383);
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+            } else if ("pos_y".equals(key)) {
+                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
+                    v.posY = (int) in.integer(true, -16383, 16383);
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+            } else if ("pos_z".equals(key)) {
+                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
+                    v.posZ = (int) in.integer(true, -16383, 16383);
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+            } else if ("yaw".equals(key)) {
+                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
+                    v.yaw = (int) in.integer(false, 0L, 0x1ffL);
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+            } else if ("pitch".equals(key)) {
+                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
+                    v.pitch = (int) in.integer(false, 0L, 0x1ffL);
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+            } else if ("vel_x".equals(key)) {
+                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
+                    v.velX = (int) in.integer(true, -2048, 2047);
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+            } else if ("vel_y".equals(key)) {
+                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
+                    v.velY = (int) in.integer(true, -2048, 2047);
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+            } else if ("vel_z".equals(key)) {
+                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
+                    v.velZ = (int) in.integer(true, -2048, 2047);
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+            } else if ("health".equals(key)) {
+                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
+                    v.health = (int) in.integer(true, 0, 1000);
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+            } else if ("weapon".equals(key)) {
                 if (in.peek() == '"') {
                     String s = in.scanString();
-                    if("None".equals(s)){v.weapon=0;}else                     if ("Fists".equals(s)) { v.weapon = 1; }
-                    else                     if ("Pistol".equals(s)) { v.weapon = 2; }
-                    else                     if ("Shotgun".equals(s)) { v.weapon = 3; }
-                    else                     if ("Rifle".equals(s)) { v.weapon = 4; }
-                    else                     if ("Sniper".equals(s)) { v.weapon = 5; }
-                    else                     if ("Smg".equals(s)) { v.weapon = 6; }
-                    else                     if ("Rocket".equals(s)) { v.weapon = 7; }
-                    else                     if ("Grenade".equals(s)) { v.weapon = 8; }
-                    else                     if ("Plasma".equals(s)) { v.weapon = 9; }
-                    else                     if ("Railgun".equals(s)) { v.weapon = 10; }
-                    else                     if ("Flamer".equals(s)) { v.weapon = 11; }
-                    else                     if ("Mine".equals(s)) { v.weapon = 12; }
-                    else                     if ("Turret".equals(s)) { v.weapon = 13; }
-                    else                     if ("Drone".equals(s)) { v.weapon = 14; }
-                    else                     if ("Repair".equals(s)) { v.weapon = 15; }
-                    else { v.weapon = 0; in.rep.unknown++; }
-                } else { in.skipValue(); in.rep.kindMismatch++; }
-            } else             if ("damage".equals(key)) {
-                {Long bits=TableJson.readFlags(in,new String[]{"Bleeding","Burning","Stunned","Slowed","Poisoned","Shielded","Airborne","Downed"});if(bits!=null)v.damage=bits;}
-            } else             if ("moving".equals(key)) {
-                if (in.peek() == 't') { in.lit("true"); v.moving = true; }
-                else if (in.peek() == 'f') { in.lit("false"); v.moving = false; }
-                else { in.skipValue(); in.rep.kindMismatch++; }
-            } else             if ("firing".equals(key)) {
-                if (in.peek() == 't') { in.lit("true"); v.firing = true; }
-                else if (in.peek() == 'f') { in.lit("false"); v.firing = false; }
-                else { in.skipValue(); in.rep.kindMismatch++; }
+                    if ("None".equals(s)) {
+                        v.weapon = 0;
+                    } else if ("Fists".equals(s)) {
+                        v.weapon = 1;
+                    } else if ("Pistol".equals(s)) {
+                        v.weapon = 2;
+                    } else if ("Shotgun".equals(s)) {
+                        v.weapon = 3;
+                    } else if ("Rifle".equals(s)) {
+                        v.weapon = 4;
+                    } else if ("Sniper".equals(s)) {
+                        v.weapon = 5;
+                    } else if ("Smg".equals(s)) {
+                        v.weapon = 6;
+                    } else if ("Rocket".equals(s)) {
+                        v.weapon = 7;
+                    } else if ("Grenade".equals(s)) {
+                        v.weapon = 8;
+                    } else if ("Plasma".equals(s)) {
+                        v.weapon = 9;
+                    } else if ("Railgun".equals(s)) {
+                        v.weapon = 10;
+                    } else if ("Flamer".equals(s)) {
+                        v.weapon = 11;
+                    } else if ("Mine".equals(s)) {
+                        v.weapon = 12;
+                    } else if ("Turret".equals(s)) {
+                        v.weapon = 13;
+                    } else if ("Drone".equals(s)) {
+                        v.weapon = 14;
+                    } else if ("Repair".equals(s)) {
+                        v.weapon = 15;
+                    } else {
+                        v.weapon = 0;
+                        in.rep.unknown++;
+                    }
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+            } else if ("damage".equals(key)) {
+                {
+                    Long bits =
+                            TableJson.readFlags(
+                                    in,
+                                    new String[] {
+                                        "Bleeding",
+                                        "Burning",
+                                        "Stunned",
+                                        "Slowed",
+                                        "Poisoned",
+                                        "Shielded",
+                                        "Airborne",
+                                        "Downed"
+                                    });
+                    if (bits != null) v.damage = bits;
+                }
+            } else if ("moving".equals(key)) {
+                if (in.peek() == 't') {
+                    in.lit("true");
+                    v.moving = true;
+                } else if (in.peek() == 'f') {
+                    in.lit("false");
+                    v.moving = false;
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+            } else if ("firing".equals(key)) {
+                if (in.peek() == 't') {
+                    in.lit("true");
+                    v.firing = true;
+                } else if (in.peek() == 'f') {
+                    in.lit("false");
+                    v.firing = false;
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
             } else {
-                in.skipValue(); in.rep.unknown++;
+                in.skipValue();
+                in.rep.unknown++;
             }
             c = in.peek();
-            if (c == ',') { in.p++; continue; }
-            if (c == '}') { in.p++; return; }
-            in.bad = true; return;
+            if (c == ',') {
+                in.p++;
+                continue;
+            }
+            if (c == '}') {
+                in.p++;
+                return;
+            }
+            in.bad = true;
+            return;
         }
     }
-
 }

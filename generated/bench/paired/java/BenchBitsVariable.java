@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — the variable form's tolerant load and canonical save for table BenchBits (docs/SPEC-TABLES.md §3, §4)
+// package bench — the variable form's tolerant load and canonical save for table BenchBits
+// (docs/SPEC-TABLES.md §3, §4)
 
 package bench;
 
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
 
 public final class BenchBitsVariable {
     private BenchBitsVariable() {}
@@ -22,8 +21,8 @@ public final class BenchBitsVariable {
         public int b11 = 0;
         public int b19 = 0;
         public long b48 = 0L;
-        public Value(){
-        }
+
+        public Value() {}
     }
 
     public static final long TYPE_ID = 0xa404df3668cb76f5L;
@@ -37,146 +36,506 @@ public final class BenchBitsVariable {
     public static final long F_b48 = 0xff8b681912a535a1L;
 
     static Object createNode(long typeId) {
-        if (typeId == BenchBitsVariable.TYPE_ID) { return new BenchBitsVariable.Value(); }
-        if (typeId == BenchIntsVariable.TYPE_ID) { return new BenchIntsVariable.Value(); }
-        if (typeId == BenchMixedVariable.TYPE_ID) { return new BenchMixedVariable.Value(); }
-        if (typeId == BenchPacketVariable.TYPE_ID) { return new BenchPacketVariable.Value(); }
-        if (typeId == FixedTableVariable.TYPE_ID) { return new FixedTableVariable.Value(); }
-        if (typeId == MixedChatEventVariable.TYPE_ID) { return new MixedChatEventVariable.Value(); }
-        if (typeId == MixedEntityVariable.TYPE_ID) { return new MixedEntityVariable.Value(); }
-        if (typeId == MixedHitEventVariable.TYPE_ID) { return new MixedHitEventVariable.Value(); }
-        if (typeId == MixedPickupEventVariable.TYPE_ID) { return new MixedPickupEventVariable.Value(); }
-        if (typeId == MixedStatVariable.TYPE_ID) { return new MixedStatVariable.Value(); }
+        if (typeId == BenchBitsVariable.TYPE_ID) {
+            return new BenchBitsVariable.Value();
+        }
+        if (typeId == BenchIntsVariable.TYPE_ID) {
+            return new BenchIntsVariable.Value();
+        }
+        if (typeId == BenchMixedVariable.TYPE_ID) {
+            return new BenchMixedVariable.Value();
+        }
+        if (typeId == BenchPacketVariable.TYPE_ID) {
+            return new BenchPacketVariable.Value();
+        }
+        if (typeId == FixedTableVariable.TYPE_ID) {
+            return new FixedTableVariable.Value();
+        }
+        if (typeId == MixedChatEventVariable.TYPE_ID) {
+            return new MixedChatEventVariable.Value();
+        }
+        if (typeId == MixedEntityVariable.TYPE_ID) {
+            return new MixedEntityVariable.Value();
+        }
+        if (typeId == MixedHitEventVariable.TYPE_ID) {
+            return new MixedHitEventVariable.Value();
+        }
+        if (typeId == MixedPickupEventVariable.TYPE_ID) {
+            return new MixedPickupEventVariable.Value();
+        }
+        if (typeId == MixedStatVariable.TYPE_ID) {
+            return new MixedStatVariable.Value();
+        }
         return null;
     }
 
-    static void decodeNodeBody(TableVariable.Reader r, Object val, long typeId, TableVariable.Report report) {
-        if (typeId == BenchBitsVariable.TYPE_ID) { BenchBitsVariable.readFields(r, (BenchBitsVariable.Value) val, null, report); return; }
-        if (typeId == BenchIntsVariable.TYPE_ID) { BenchIntsVariable.readFields(r, (BenchIntsVariable.Value) val, null, report); return; }
-        if (typeId == BenchMixedVariable.TYPE_ID) { BenchMixedVariable.readFields(r, (BenchMixedVariable.Value) val, null, report); return; }
-        if (typeId == BenchPacketVariable.TYPE_ID) { BenchPacketVariable.readFields(r, (BenchPacketVariable.Value) val, null, report); return; }
-        if (typeId == FixedTableVariable.TYPE_ID) { FixedTableVariable.readFields(r, (FixedTableVariable.Value) val, null, report); return; }
-        if (typeId == MixedChatEventVariable.TYPE_ID) { MixedChatEventVariable.readFields(r, (MixedChatEventVariable.Value) val, null, report); return; }
-        if (typeId == MixedEntityVariable.TYPE_ID) { MixedEntityVariable.readFields(r, (MixedEntityVariable.Value) val, null, report); return; }
-        if (typeId == MixedHitEventVariable.TYPE_ID) { MixedHitEventVariable.readFields(r, (MixedHitEventVariable.Value) val, null, report); return; }
-        if (typeId == MixedPickupEventVariable.TYPE_ID) { MixedPickupEventVariable.readFields(r, (MixedPickupEventVariable.Value) val, null, report); return; }
-        if (typeId == MixedStatVariable.TYPE_ID) { MixedStatVariable.readFields(r, (MixedStatVariable.Value) val, null, report); return; }
-    }
-
-    static void writeNodeBody(TableVariable.Writer w, TableVariable.NodeGraph graph, Object val, long typeId) {
-        if (typeId == BenchBitsVariable.TYPE_ID) { BenchBitsVariable.writeFields(w, graph, (BenchBitsVariable.Value) val); return; }
-        if (typeId == BenchIntsVariable.TYPE_ID) { BenchIntsVariable.writeFields(w, graph, (BenchIntsVariable.Value) val); return; }
-        if (typeId == BenchMixedVariable.TYPE_ID) { BenchMixedVariable.writeFields(w, graph, (BenchMixedVariable.Value) val); return; }
-        if (typeId == BenchPacketVariable.TYPE_ID) { BenchPacketVariable.writeFields(w, graph, (BenchPacketVariable.Value) val); return; }
-        if (typeId == FixedTableVariable.TYPE_ID) { FixedTableVariable.writeFields(w, graph, (FixedTableVariable.Value) val); return; }
-        if (typeId == MixedChatEventVariable.TYPE_ID) { MixedChatEventVariable.writeFields(w, graph, (MixedChatEventVariable.Value) val); return; }
-        if (typeId == MixedEntityVariable.TYPE_ID) { MixedEntityVariable.writeFields(w, graph, (MixedEntityVariable.Value) val); return; }
-        if (typeId == MixedHitEventVariable.TYPE_ID) { MixedHitEventVariable.writeFields(w, graph, (MixedHitEventVariable.Value) val); return; }
-        if (typeId == MixedPickupEventVariable.TYPE_ID) { MixedPickupEventVariable.writeFields(w, graph, (MixedPickupEventVariable.Value) val); return; }
-        if (typeId == MixedStatVariable.TYPE_ID) { MixedStatVariable.writeFields(w, graph, (MixedStatVariable.Value) val); return; }
-    }
-
-    static void resolveNodePointers(Object val, long typeId, TableVariable.NodeTable nt, Object root, long rootTypeId, TableVariable.Report report) {
-        if (typeId == BenchBitsVariable.TYPE_ID) { BenchBitsVariable.resolveNodes((BenchBitsVariable.Value) val, nt, root, rootTypeId, report); return; }
-        if (typeId == BenchIntsVariable.TYPE_ID) { BenchIntsVariable.resolveNodes((BenchIntsVariable.Value) val, nt, root, rootTypeId, report); return; }
-        if (typeId == BenchMixedVariable.TYPE_ID) { BenchMixedVariable.resolveNodes((BenchMixedVariable.Value) val, nt, root, rootTypeId, report); return; }
-        if (typeId == BenchPacketVariable.TYPE_ID) { BenchPacketVariable.resolveNodes((BenchPacketVariable.Value) val, nt, root, rootTypeId, report); return; }
-        if (typeId == FixedTableVariable.TYPE_ID) { FixedTableVariable.resolveNodes((FixedTableVariable.Value) val, nt, root, rootTypeId, report); return; }
-        if (typeId == MixedChatEventVariable.TYPE_ID) { MixedChatEventVariable.resolveNodes((MixedChatEventVariable.Value) val, nt, root, rootTypeId, report); return; }
-        if (typeId == MixedEntityVariable.TYPE_ID) { MixedEntityVariable.resolveNodes((MixedEntityVariable.Value) val, nt, root, rootTypeId, report); return; }
-        if (typeId == MixedHitEventVariable.TYPE_ID) { MixedHitEventVariable.resolveNodes((MixedHitEventVariable.Value) val, nt, root, rootTypeId, report); return; }
-        if (typeId == MixedPickupEventVariable.TYPE_ID) { MixedPickupEventVariable.resolveNodes((MixedPickupEventVariable.Value) val, nt, root, rootTypeId, report); return; }
-        if (typeId == MixedStatVariable.TYPE_ID) { MixedStatVariable.resolveNodes((MixedStatVariable.Value) val, nt, root, rootTypeId, report); return; }
-    }
-
-    public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {
-        if (v == null) { return true; }
-        return true;
-    }
-
-    public static boolean readFields(TableVariable.Reader r, Value v, TableVariable.NodeTable nt, TableVariable.Report report) {
-        while (true) {
-            long ref = r.leb();
-            if (r.fail) { return false; }
-            if (ref == 0) { return true; }
-            long id = r.resolve(ref);
-            if (r.fail) { return false; }
-            if (!r.has(1)) { report.malformed = true; return false; }
-            int kind = r.get8();
-            if (id == F_b7) {
-                if (kind == 6) {
-                    if (kind == 6) { if (r.has(1)) { v.b7 = r.get8(); } else { report.malformed = true; r.fail = true; } }
-                } else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_b13) {
-                if (kind == 7 || kind == 6) {
-                    if (kind == 7) { if (r.has(2)) { v.b13 = r.get16(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 6) { if (r.has(1)) { v.b13 = r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                } else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_b23) {
-                if (kind == 8 || kind == 6 || kind == 7) {
-                    if (kind == 8) { if (r.has(4)) { v.b23 = r.get32(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 6) { if (r.has(1)) { v.b23 = r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 7) { if (r.has(2)) { v.b23 = r.get16(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                } else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_b3) {
-                if (kind == 6) {
-                    if (kind == 6) { if (r.has(1)) { v.b3 = r.get8(); } else { report.malformed = true; r.fail = true; } }
-                } else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_b32) {
-                if (kind == 8 || kind == 6 || kind == 7) {
-                    if (kind == 8) { if (r.has(4)) { v.b32 = r.get32(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 6) { if (r.has(1)) { v.b32 = r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 7) { if (r.has(2)) { v.b32 = r.get16(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                } else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_b11) {
-                if (kind == 7 || kind == 6) {
-                    if (kind == 7) { if (r.has(2)) { v.b11 = r.get16(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 6) { if (r.has(1)) { v.b11 = r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                } else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_b19) {
-                if (kind == 8 || kind == 6 || kind == 7) {
-                    if (kind == 8) { if (r.has(4)) { v.b19 = r.get32(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 6) { if (r.has(1)) { v.b19 = r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 7) { if (r.has(2)) { v.b19 = r.get16(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                } else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == F_b48) {
-                if (kind == 9 || kind == 6 || kind == 7 || kind == 8) {
-                    if (kind == 9) { if (r.has(8)) { v.b48 = r.get64(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 6) { if (r.has(1)) { v.b48 = r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 7) { if (r.has(2)) { v.b48 = r.get16(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 8) { if (r.has(4)) { v.b48 = ((long) r.get32()) & 0xffffffffL; report.widened++; } else { report.malformed = true; r.fail = true; } }
-                } else { r.skip(kind); report.kindMismatch++; }
-            } else if (id == TableVariable.NODE_ID) {
-                if (nt != null && r.rootBody) { r.skip(kind); }
-                else { report.malformed = true; return false; }
-            } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {
-                report.malformed = true; return false;
-            } else {
-                r.skip(kind); report.unknown++;
-            }
-            if (r.fail) { return false; }
+    static void decodeNodeBody(
+            TableVariable.Reader r, Object val, long typeId, TableVariable.Report report) {
+        if (typeId == BenchBitsVariable.TYPE_ID) {
+            BenchBitsVariable.readFields(r, (BenchBitsVariable.Value) val, null, report);
+            return;
+        }
+        if (typeId == BenchIntsVariable.TYPE_ID) {
+            BenchIntsVariable.readFields(r, (BenchIntsVariable.Value) val, null, report);
+            return;
+        }
+        if (typeId == BenchMixedVariable.TYPE_ID) {
+            BenchMixedVariable.readFields(r, (BenchMixedVariable.Value) val, null, report);
+            return;
+        }
+        if (typeId == BenchPacketVariable.TYPE_ID) {
+            BenchPacketVariable.readFields(r, (BenchPacketVariable.Value) val, null, report);
+            return;
+        }
+        if (typeId == FixedTableVariable.TYPE_ID) {
+            FixedTableVariable.readFields(r, (FixedTableVariable.Value) val, null, report);
+            return;
+        }
+        if (typeId == MixedChatEventVariable.TYPE_ID) {
+            MixedChatEventVariable.readFields(r, (MixedChatEventVariable.Value) val, null, report);
+            return;
+        }
+        if (typeId == MixedEntityVariable.TYPE_ID) {
+            MixedEntityVariable.readFields(r, (MixedEntityVariable.Value) val, null, report);
+            return;
+        }
+        if (typeId == MixedHitEventVariable.TYPE_ID) {
+            MixedHitEventVariable.readFields(r, (MixedHitEventVariable.Value) val, null, report);
+            return;
+        }
+        if (typeId == MixedPickupEventVariable.TYPE_ID) {
+            MixedPickupEventVariable.readFields(
+                    r, (MixedPickupEventVariable.Value) val, null, report);
+            return;
+        }
+        if (typeId == MixedStatVariable.TYPE_ID) {
+            MixedStatVariable.readFields(r, (MixedStatVariable.Value) val, null, report);
+            return;
         }
     }
 
-    public static void resolveNodes(Value v, TableVariable.NodeTable nt, TableVariable.Report report) {
+    static void writeNodeBody(
+            TableVariable.Writer w, TableVariable.NodeGraph graph, Object val, long typeId) {
+        if (typeId == BenchBitsVariable.TYPE_ID) {
+            BenchBitsVariable.writeFields(w, graph, (BenchBitsVariable.Value) val);
+            return;
+        }
+        if (typeId == BenchIntsVariable.TYPE_ID) {
+            BenchIntsVariable.writeFields(w, graph, (BenchIntsVariable.Value) val);
+            return;
+        }
+        if (typeId == BenchMixedVariable.TYPE_ID) {
+            BenchMixedVariable.writeFields(w, graph, (BenchMixedVariable.Value) val);
+            return;
+        }
+        if (typeId == BenchPacketVariable.TYPE_ID) {
+            BenchPacketVariable.writeFields(w, graph, (BenchPacketVariable.Value) val);
+            return;
+        }
+        if (typeId == FixedTableVariable.TYPE_ID) {
+            FixedTableVariable.writeFields(w, graph, (FixedTableVariable.Value) val);
+            return;
+        }
+        if (typeId == MixedChatEventVariable.TYPE_ID) {
+            MixedChatEventVariable.writeFields(w, graph, (MixedChatEventVariable.Value) val);
+            return;
+        }
+        if (typeId == MixedEntityVariable.TYPE_ID) {
+            MixedEntityVariable.writeFields(w, graph, (MixedEntityVariable.Value) val);
+            return;
+        }
+        if (typeId == MixedHitEventVariable.TYPE_ID) {
+            MixedHitEventVariable.writeFields(w, graph, (MixedHitEventVariable.Value) val);
+            return;
+        }
+        if (typeId == MixedPickupEventVariable.TYPE_ID) {
+            MixedPickupEventVariable.writeFields(w, graph, (MixedPickupEventVariable.Value) val);
+            return;
+        }
+        if (typeId == MixedStatVariable.TYPE_ID) {
+            MixedStatVariable.writeFields(w, graph, (MixedStatVariable.Value) val);
+            return;
+        }
+    }
+
+    static void resolveNodePointers(
+            Object val,
+            long typeId,
+            TableVariable.NodeTable nt,
+            Object root,
+            long rootTypeId,
+            TableVariable.Report report) {
+        if (typeId == BenchBitsVariable.TYPE_ID) {
+            BenchBitsVariable.resolveNodes(
+                    (BenchBitsVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+        if (typeId == BenchIntsVariable.TYPE_ID) {
+            BenchIntsVariable.resolveNodes(
+                    (BenchIntsVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+        if (typeId == BenchMixedVariable.TYPE_ID) {
+            BenchMixedVariable.resolveNodes(
+                    (BenchMixedVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+        if (typeId == BenchPacketVariable.TYPE_ID) {
+            BenchPacketVariable.resolveNodes(
+                    (BenchPacketVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+        if (typeId == FixedTableVariable.TYPE_ID) {
+            FixedTableVariable.resolveNodes(
+                    (FixedTableVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+        if (typeId == MixedChatEventVariable.TYPE_ID) {
+            MixedChatEventVariable.resolveNodes(
+                    (MixedChatEventVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+        if (typeId == MixedEntityVariable.TYPE_ID) {
+            MixedEntityVariable.resolveNodes(
+                    (MixedEntityVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+        if (typeId == MixedHitEventVariable.TYPE_ID) {
+            MixedHitEventVariable.resolveNodes(
+                    (MixedHitEventVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+        if (typeId == MixedPickupEventVariable.TYPE_ID) {
+            MixedPickupEventVariable.resolveNodes(
+                    (MixedPickupEventVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+        if (typeId == MixedStatVariable.TYPE_ID) {
+            MixedStatVariable.resolveNodes(
+                    (MixedStatVariable.Value) val, nt, root, rootTypeId, report);
+            return;
+        }
+    }
+
+    public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {
+        if (v == null) {
+            return true;
+        }
+        return true;
+    }
+
+    public static boolean readFields(
+            TableVariable.Reader r,
+            Value v,
+            TableVariable.NodeTable nt,
+            TableVariable.Report report) {
+        while (true) {
+            long ref = r.leb();
+            if (r.fail) {
+                return false;
+            }
+            if (ref == 0) {
+                return true;
+            }
+            long id = r.resolve(ref);
+            if (r.fail) {
+                return false;
+            }
+            if (!r.has(1)) {
+                report.malformed = true;
+                return false;
+            }
+            int kind = r.get8();
+            if (id == F_b7) {
+                if (kind == 6) {
+                    if (kind == 6) {
+                        if (r.has(1)) {
+                            v.b7 = r.get8();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_b13) {
+                if (kind == 7 || kind == 6) {
+                    if (kind == 7) {
+                        if (r.has(2)) {
+                            v.b13 = r.get16();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 6) {
+                        if (r.has(1)) {
+                            v.b13 = r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_b23) {
+                if (kind == 8 || kind == 6 || kind == 7) {
+                    if (kind == 8) {
+                        if (r.has(4)) {
+                            v.b23 = r.get32();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 6) {
+                        if (r.has(1)) {
+                            v.b23 = r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 7) {
+                        if (r.has(2)) {
+                            v.b23 = r.get16();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_b3) {
+                if (kind == 6) {
+                    if (kind == 6) {
+                        if (r.has(1)) {
+                            v.b3 = r.get8();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_b32) {
+                if (kind == 8 || kind == 6 || kind == 7) {
+                    if (kind == 8) {
+                        if (r.has(4)) {
+                            v.b32 = r.get32();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 6) {
+                        if (r.has(1)) {
+                            v.b32 = r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 7) {
+                        if (r.has(2)) {
+                            v.b32 = r.get16();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_b11) {
+                if (kind == 7 || kind == 6) {
+                    if (kind == 7) {
+                        if (r.has(2)) {
+                            v.b11 = r.get16();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 6) {
+                        if (r.has(1)) {
+                            v.b11 = r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_b19) {
+                if (kind == 8 || kind == 6 || kind == 7) {
+                    if (kind == 8) {
+                        if (r.has(4)) {
+                            v.b19 = r.get32();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 6) {
+                        if (r.has(1)) {
+                            v.b19 = r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 7) {
+                        if (r.has(2)) {
+                            v.b19 = r.get16();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == F_b48) {
+                if (kind == 9 || kind == 6 || kind == 7 || kind == 8) {
+                    if (kind == 9) {
+                        if (r.has(8)) {
+                            v.b48 = r.get64();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 6) {
+                        if (r.has(1)) {
+                            v.b48 = r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 7) {
+                        if (r.has(2)) {
+                            v.b48 = r.get16();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 8) {
+                        if (r.has(4)) {
+                            v.b48 = ((long) r.get32()) & 0xffffffffL;
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
+            } else if (id == TableVariable.NODE_ID) {
+                if (nt != null && r.rootBody) {
+                    r.skip(kind);
+                } else {
+                    report.malformed = true;
+                    return false;
+                }
+            } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {
+                report.malformed = true;
+                return false;
+            } else {
+                r.skip(kind);
+                report.unknown++;
+            }
+            if (r.fail) {
+                return false;
+            }
+        }
+    }
+
+    public static void resolveNodes(
+            Value v, TableVariable.NodeTable nt, TableVariable.Report report) {
         resolveNodes(v, nt, v, TYPE_ID, report);
     }
 
-    public static void resolveNodes(Value v, TableVariable.NodeTable nt, Object root, long rootTypeId, TableVariable.Report report) {
-        if (nt.bad) { return; }
+    public static void resolveNodes(
+            Value v,
+            TableVariable.NodeTable nt,
+            Object root,
+            long rootTypeId,
+            TableVariable.Report report) {
+        if (nt.bad) {
+            return;
+        }
     }
 
-    static boolean isDefault(Value v,TableVariable.Writer w,TableVariable.NodeGraph graph){if(v==null)return true;int at=w.off;int mark=w.ids.count;boolean overflow=w.overflow;writeFields(w,graph,v);boolean empty=w.off==at;w.off=at;w.ids.count=mark;w.overflow=overflow;return empty;}
+    static boolean isDefault(Value v, TableVariable.Writer w, TableVariable.NodeGraph graph) {
+        if (v == null) return true;
+        int at = w.off;
+        int mark = w.ids.count;
+        boolean overflow = w.overflow;
+        writeFields(w, graph, v);
+        boolean empty = w.off == at;
+        w.off = at;
+        w.ids.count = mark;
+        w.overflow = overflow;
+        return empty;
+    }
 
     public static void writeFields(TableVariable.Writer w, TableVariable.NodeGraph graph, Value v) {
-        if (v.b7 != 0) { w.putLeb(w.ref(F_b7)); w.put8(6); w.put8(v.b7); }
-        if (v.b13 != 0) { w.putLeb(w.ref(F_b13)); w.put8(7); w.put16(v.b13); }
-        if (v.b23 != 0) { w.putLeb(w.ref(F_b23)); w.put8(8); w.put32(v.b23); }
-        if (v.b3 != 0) { w.putLeb(w.ref(F_b3)); w.put8(6); w.put8(v.b3); }
-        if (v.b32 != 0) { w.putLeb(w.ref(F_b32)); w.put8(8); w.put32(v.b32); }
-        if (v.b11 != 0) { w.putLeb(w.ref(F_b11)); w.put8(7); w.put16(v.b11); }
-        if (v.b19 != 0) { w.putLeb(w.ref(F_b19)); w.put8(8); w.put32(v.b19); }
-        if (v.b48 != 0L) { w.putLeb(w.ref(F_b48)); w.put8(9); w.put64(v.b48); }
+        if (v.b7 != 0) {
+            w.putLeb(w.ref(F_b7));
+            w.put8(6);
+            w.put8(v.b7);
+        }
+        if (v.b13 != 0) {
+            w.putLeb(w.ref(F_b13));
+            w.put8(7);
+            w.put16(v.b13);
+        }
+        if (v.b23 != 0) {
+            w.putLeb(w.ref(F_b23));
+            w.put8(8);
+            w.put32(v.b23);
+        }
+        if (v.b3 != 0) {
+            w.putLeb(w.ref(F_b3));
+            w.put8(6);
+            w.put8(v.b3);
+        }
+        if (v.b32 != 0) {
+            w.putLeb(w.ref(F_b32));
+            w.put8(8);
+            w.put32(v.b32);
+        }
+        if (v.b11 != 0) {
+            w.putLeb(w.ref(F_b11));
+            w.put8(7);
+            w.put16(v.b11);
+        }
+        if (v.b19 != 0) {
+            w.putLeb(w.ref(F_b19));
+            w.put8(8);
+            w.put32(v.b19);
+        }
+        if (v.b48 != 0L) {
+            w.putLeb(w.ref(F_b48));
+            w.put8(9);
+            w.put64(v.b48);
+        }
     }
 
     // save writes v as the variable form (§3). The one-argument form makes a
@@ -189,7 +548,9 @@ public final class BenchBitsVariable {
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
         graph.setOpen(v, true);
-        if (!buildGraph(graph, v)) { return null; }
+        if (!buildGraph(graph, v)) {
+            return null;
+        }
         graph.setOpen(v, false);
         w.put8(1);
         writeFields(w, graph, v);
@@ -226,7 +587,9 @@ public final class BenchBitsVariable {
 
     public static Value load(byte[] data, TableVariable.Report report) {
         TableVariable.Reader r = TableVariable.open(data, report);
-        if (r == null) { return null; }
+        if (r == null) {
+            return null;
+        }
         Value v = new Value();
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, false);
         if (nt.recs != null && !nt.bad) {
@@ -240,7 +603,8 @@ public final class BenchBitsVariable {
                     }
                 } else if (rec.typeId == TableVariable.BYTES_ID) {
                     rec.bytes = rec.body;
-                } else if (!rec.textMalformed) { // §3.1: a cleared text node is damage; an actual id of zero is unknown.
+                } else if (!rec.textMalformed) {
+                    // §3.1: a cleared text node is damage; an actual id of zero is unknown.
                     rec.table = createNode(rec.typeId);
                     if (rec.table == null) {
                         report.unknown++;
@@ -256,7 +620,9 @@ public final class BenchBitsVariable {
             }
         }
         readFields(r, v, nt, report);
-        if (report.refused) { return null; }
+        if (report.refused) {
+            return null;
+        }
         resolveNodes(v, nt, v, TYPE_ID, report);
         if (nt.recs != null && !nt.bad) {
             for (TableVariable.NodeRecord rec : nt.recs) {
@@ -271,8 +637,15 @@ public final class BenchBitsVariable {
     // loadMeasure sizes the region a tolerant load would need (§6.5).
     private static final long ALIGN = 16;
     private static final long RECORD_SIZE = 40;
-    private static long alignUp(long n, long a) { return (n + a - 1) & -a; }
-    private static long round(long n) { return (n + ALIGN - 1) & -ALIGN; }
+
+    private static long alignUp(long n, long a) {
+        return (n + a - 1) & -a;
+    }
+
+    private static long round(long n) {
+        return (n + ALIGN - 1) & -ALIGN;
+    }
+
     // The one-argument form allocates ONE Measure handle per call; a caller
     // that keeps a Measure measures with no allocation at all: the walk reads
     // every nested body in place on the Measure's one reader (Reader.bodyEnd)
@@ -283,9 +656,13 @@ public final class BenchBitsVariable {
 
     public static long loadMeasure(byte[] data, TableVariable.Measure m) {
         TableVariable.Reader r = m.open(data);
-        if (r == null) { return -1; }
+        if (r == null) {
+            return -1;
+        }
         long extent = measureFields(r, m, m.report);
-        if (m.report.refused) { return -1; }
+        if (m.report.refused) {
+            return -1;
+        }
         long total = round(round(RECORD_SIZE) + extent);
         long records = 0;
         if (m.nodeRecords >= 0) {
@@ -296,11 +673,14 @@ public final class BenchBitsVariable {
         return total;
     }
 
-    static long measureFields(TableVariable.Reader r, TableVariable.Measure nt, TableVariable.Report report) {
+    static long measureFields(
+            TableVariable.Reader r, TableVariable.Measure nt, TableVariable.Report report) {
         long extent = 0;
         while (true) {
             long ref = r.leb();
-            if (ref == 0) { return extent; }
+            if (ref == 0) {
+                return extent;
+            }
             int kind = r.get8();
             long id = r.resolve(ref);
             if (id == F_b7) {
@@ -320,8 +700,19 @@ public final class BenchBitsVariable {
             } else if (id == F_b48) {
                 r.skip(kind);
             } else if (id == TableVariable.NODE_ID && nt != null) {
-                if (kind == 12) { int end = r.bodyEnd(); if (end >= 0) { int lim = r.limit; r.limit = end; TableVariable.measureNodes(r, nt, ALIGN); r.off = end; r.limit = lim; r.fail = false; } }
-                else { r.skip(kind); }
+                if (kind == 12) {
+                    int end = r.bodyEnd();
+                    if (end >= 0) {
+                        int lim = r.limit;
+                        r.limit = end;
+                        TableVariable.measureNodes(r, nt, ALIGN);
+                        r.off = end;
+                        r.limit = lim;
+                        r.fail = false;
+                    }
+                } else {
+                    r.skip(kind);
+                }
             } else {
                 r.skip(kind);
             }
@@ -331,10 +722,16 @@ public final class BenchBitsVariable {
     public static byte[] toJson(Value v) {
         TableVariable.NodeGraph graph = new TableVariable.NodeGraph();
         graph.setOpen(v, true);
-        if (!buildGraph(graph, v)) { return null; }
+        if (!buildGraph(graph, v)) {
+            return null;
+        }
         graph.setOpen(v, false);
         StringBuilder b = new StringBuilder();
-        try { jsonFields(b, graph, v, 0); } catch (TableJson.Refused e) { return null; }
+        try {
+            jsonFields(b, graph, v, 0);
+        } catch (TableJson.Refused e) {
+            return null;
+        }
         b.append('\n');
         return b.toString().getBytes(StandardCharsets.UTF_8);
     }
@@ -343,61 +740,80 @@ public final class BenchBitsVariable {
         TableJson.In in = new TableJson.In(text, report);
         Value v = new Value();
         jsonReadFields(in, v);
-        if (in.bad) { report.malformed = true; }
+        if (in.bad) {
+            report.malformed = true;
+        }
         return v;
     }
 
     static void jsonFields(StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
-        b.append('{' );
+        b.append('{');
         boolean empty = jsonFieldsBody(b, graph, v, depth + 1, true);
         if (!empty) TableJson.indent(b, depth);
         b.append('}');
     }
 
-    static boolean jsonFieldsBody(StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth, boolean first) {
-        if (!first) { b.append(','); }
+    static boolean jsonFieldsBody(
+            StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth, boolean first) {
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "b7");
         b.append(": ");
         b.append(Integer.toUnsignedString(v.b7));
-        if (!first) { b.append(','); }
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "b13");
         b.append(": ");
         b.append(Integer.toUnsignedString(v.b13));
-        if (!first) { b.append(','); }
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "b23");
         b.append(": ");
         b.append(Integer.toUnsignedString(v.b23));
-        if (!first) { b.append(','); }
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "b3");
         b.append(": ");
         b.append(Integer.toUnsignedString(v.b3));
-        if (!first) { b.append(','); }
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "b32");
         b.append(": ");
         b.append(Integer.toUnsignedString(v.b32));
-        if (!first) { b.append(','); }
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "b11");
         b.append(": ");
         b.append(Integer.toUnsignedString(v.b11));
-        if (!first) { b.append(','); }
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "b19");
         b.append(": ");
         b.append(Integer.toUnsignedString(v.b19));
-        if (!first) { b.append(','); }
+        if (!first) {
+            b.append(',');
+        }
         first = false;
         TableJson.indent(b, depth);
         TableJson.esc(b, "b48");
@@ -406,8 +822,12 @@ public final class BenchBitsVariable {
         return first;
     }
 
-    public static void writeJsonPointer(StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {
-        if (child == null) { b.append("null"); return; }
+    public static void writeJsonPointer(
+            StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {
+        if (child == null) {
+            b.append("null");
+            return;
+        }
         if (graph.useCount(child) <= 1) {
             jsonFields(b, graph, child, depth);
             return;
@@ -416,14 +836,14 @@ public final class BenchBitsVariable {
         if (label == null) {
             label = (long) (graph.labels.size() + 1);
             graph.labels.put(child, label);
-            b.append('{' );
+            b.append('{');
             TableJson.indent(b, depth + 1);
             b.append("\"&node\": ").append(label);
             jsonFieldsBody(b, graph, child, depth + 1, false);
             TableJson.indent(b, depth);
             b.append('}');
         } else {
-            b.append('{' );
+            b.append('{');
             TableJson.indent(b, depth + 1);
             b.append("\"&node\": ").append(label);
             TableJson.indent(b, depth);
@@ -432,16 +852,36 @@ public final class BenchBitsVariable {
     }
 
     public static Value readJsonPointer(TableJson.In in, long targetTypeId) {
-        if (in.peek() == 'n') { in.lit("null"); return null; }
-        if (in.peek() != '{' ) { in.skipValue(); in.rep.kindMismatch++; return null; }
+        if (in.peek() == 'n') {
+            in.lit("null");
+            return null;
+        }
+        if (in.peek() != '{') {
+            in.skipValue();
+            in.rep.kindMismatch++;
+            return null;
+        }
         int start = in.p;
         in.p++;
         in.space();
-        if (in.peek() == '}') { in.p = start; Value v = new Value(); jsonReadFields(in, v); return v; }
+        if (in.peek() == '}') {
+            in.p = start;
+            Value v = new Value();
+            jsonReadFields(in, v);
+            return v;
+        }
         String key = in.scanString();
         if (in.bad || key == null) return null;
-        if (!"&node".equals(key)) { in.p = start; Value v = new Value(); jsonReadFields(in, v); return v; }
-        if (in.peek() != ':') { in.bad = true; return null; }
+        if (!"&node".equals(key)) {
+            in.p = start;
+            Value v = new Value();
+            jsonReadFields(in, v);
+            return v;
+        }
+        if (in.peek() != ':') {
+            in.bad = true;
+            return null;
+        }
         in.p++;
         long labelId = in.scanLabel();
         if (in.bad || labelId <= 0) return null;
@@ -449,14 +889,28 @@ public final class BenchBitsVariable {
         if (c == '}') {
             in.p++;
             TableJson.LabelEntry entry = in.labels.get(labelId);
-            if (entry == null || entry.open) { in.bad = true; return null; }
-            if (entry.typeId == 0) { return null; }
-            if (entry.typeId != targetTypeId) { in.rep.kindMismatch++; return null; }
+            if (entry == null || entry.open) {
+                in.bad = true;
+                return null;
+            }
+            if (entry.typeId == 0) {
+                return null;
+            }
+            if (entry.typeId != targetTypeId) {
+                in.rep.kindMismatch++;
+                return null;
+            }
             return (Value) entry.value;
         } else if (c == ',') {
             in.p++;
-            if (in.peek() == '}') { in.bad = true; return null; }
-            if (in.labels.containsKey(labelId)) { in.bad = true; return null; }
+            if (in.peek() == '}') {
+                in.bad = true;
+                return null;
+            }
+            if (in.labels.containsKey(labelId)) {
+                in.bad = true;
+                return null;
+            }
             Value child = new Value();
             TableJson.LabelEntry entry = new TableJson.LabelEntry(child, targetTypeId, true);
             in.labels.put(labelId, entry);
@@ -464,13 +918,17 @@ public final class BenchBitsVariable {
             entry.open = false;
             return child;
         } else {
-            in.bad = true; return null;
+            in.bad = true;
+            return null;
         }
     }
 
     static void jsonReadFields(TableJson.In in, Value v) {
         in.space();
-        if (in.peek() != '{' ) { in.bad = true; return; }
+        if (in.peek() != '{') {
+            in.bad = true;
+            return;
+        }
         in.p++;
         jsonReadFieldsBody(in, v);
     }
@@ -478,45 +936,98 @@ public final class BenchBitsVariable {
     static void jsonReadFieldsBody(TableJson.In in, Value v) {
         while (true) {
             int c = in.peek();
-            if (c == 0) { in.bad = true; return; }
-            if (c == '}') { in.p++; return; }
+            if (c == 0) {
+                in.bad = true;
+                return;
+            }
+            if (c == '}') {
+                in.p++;
+                return;
+            }
             String key = in.scanString();
-            if (in.bad) { return; }
-            if (key != null && key.startsWith("&")) { in.bad = true; return; }
-            if (in.peek() != ':') { in.bad = true; return; }
+            if (in.bad) {
+                return;
+            }
+            if (key != null && key.startsWith("&")) {
+                in.bad = true;
+                return;
+            }
+            if (in.peek() != ':') {
+                in.bad = true;
+                return;
+            }
             in.p++;
             if ("b7".equals(key)) {
-                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.b7 = (int) in.integer(false, 0L, 0x7fL); }
-                else { in.skipValue(); in.rep.kindMismatch++; }
-            } else             if ("b13".equals(key)) {
-                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.b13 = (int) in.integer(false, 0L, 0x1fffL); }
-                else { in.skipValue(); in.rep.kindMismatch++; }
-            } else             if ("b23".equals(key)) {
-                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.b23 = (int) in.integer(false, 0L, 0x7fffffL); }
-                else { in.skipValue(); in.rep.kindMismatch++; }
-            } else             if ("b3".equals(key)) {
-                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.b3 = (int) in.integer(false, 0L, 0x7L); }
-                else { in.skipValue(); in.rep.kindMismatch++; }
-            } else             if ("b32".equals(key)) {
-                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.b32 = (int) in.integer(false, 0L, 0xffffffffL); }
-                else { in.skipValue(); in.rep.kindMismatch++; }
-            } else             if ("b11".equals(key)) {
-                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.b11 = (int) in.integer(false, 0L, 0x7ffL); }
-                else { in.skipValue(); in.rep.kindMismatch++; }
-            } else             if ("b19".equals(key)) {
-                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.b19 = (int) in.integer(false, 0L, 0x7ffffL); }
-                else { in.skipValue(); in.rep.kindMismatch++; }
-            } else             if ("b48".equals(key)) {
-                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.b48 = in.integer(false, 0L, 0xffffffffffffL); }
-                else { in.skipValue(); in.rep.kindMismatch++; }
+                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
+                    v.b7 = (int) in.integer(false, 0L, 0x7fL);
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+            } else if ("b13".equals(key)) {
+                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
+                    v.b13 = (int) in.integer(false, 0L, 0x1fffL);
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+            } else if ("b23".equals(key)) {
+                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
+                    v.b23 = (int) in.integer(false, 0L, 0x7fffffL);
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+            } else if ("b3".equals(key)) {
+                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
+                    v.b3 = (int) in.integer(false, 0L, 0x7L);
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+            } else if ("b32".equals(key)) {
+                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
+                    v.b32 = (int) in.integer(false, 0L, 0xffffffffL);
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+            } else if ("b11".equals(key)) {
+                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
+                    v.b11 = (int) in.integer(false, 0L, 0x7ffL);
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+            } else if ("b19".equals(key)) {
+                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
+                    v.b19 = (int) in.integer(false, 0L, 0x7ffffL);
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+            } else if ("b48".equals(key)) {
+                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
+                    v.b48 = in.integer(false, 0L, 0xffffffffffffL);
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
             } else {
-                in.skipValue(); in.rep.unknown++;
+                in.skipValue();
+                in.rep.unknown++;
             }
             c = in.peek();
-            if (c == ',') { in.p++; continue; }
-            if (c == '}') { in.p++; return; }
-            in.bad = true; return;
+            if (c == ',') {
+                in.p++;
+                continue;
+            }
+            if (c == '}') {
+                in.p++;
+                return;
+            }
+            in.bad = true;
+            return;
         }
     }
-
 }
