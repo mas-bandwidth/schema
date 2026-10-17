@@ -12708,6 +12708,25 @@ in build version (§20.5).
   save and `Lock` all return failure with the cycle named. Nothing
   recurses away. A region loaded from a wire is not re-proved, and a save
   from it reproduces what it was given.
+- **What the default read refuses, and what it forgives** (§6.5, Go
+  first; the owner read policy of 2026-10-17: writers always strict, reads
+  forgiving only where that costs nearly nothing, and no security lost).
+  The plain read names (`Load`, `LoadBuilder`, `FromJson`, `FixedLoad`,
+  `LoadMessages`) forgive what is cheap and safe to forgive: an `unknown`
+  field (evolution: a newer writer's field this build skips), a `widened`
+  field (the value decoded exactly), and `retained` (a report on retention,
+  not a loss). Each is counted on the report and the read succeeds. The plain
+  read refuses, with one typed reason and no recovered value, every read that
+  crosses a security or meaning boundary: an integrity mismatch (the CRC does
+  not match), a clamped value (out of its declared bounds), a kind mismatch,
+  framing damage, an unknown form, a build-version mismatch, and a missing
+  required field (no defined value). A caller who needs the recovered value
+  past one of those boundaries asks for it by name, through the `...Tolerant`
+  twin, which keeps the value and counts the report. **Writers are strict and
+  have no tolerant twin**: a write that cannot be made as declared refuses
+  (the cycle and the size cap of §3.1 and §4.6, a non-finite float in text,
+  §16.2, an element past a bound, §2.9) rather than putting a wire on the
+  disk that the strict read would refuse.
 - **A field id colliding with any of the three reserved ids, the node table's
   `0xFFFFFFFFFFFFFFFF`, the announcement's build version
   `0xFFFFFFFFFFFFFFFE` or the announcement's vocabulary
