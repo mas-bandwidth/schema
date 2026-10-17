@@ -15353,6 +15353,102 @@ or the tables baseline (§18), and adding or removing it costs a stored file
 nothing. Go carries it first; every other target refuses a unit that uses it,
 centrally, by name.
 
+### 16.11 Generated round-trip and damage tests: `schema testgen`
+
+**Every adopter wrote the same tests by hand, per table: a value through the
+three forms and back, and a damaged input refused by name.** `schema testgen`
+writes them from the declaration, so the guarantees §3, §6.5, §16.2 and §16.8
+make are held for a unit's own tables by tests nobody typed.
+
+```
+schema generate --lang go --out gen  tables/examples
+schema testgen  --lang go --out gen  tables/examples
+go test ./gen
+```
+
+**What it writes.** One test file per unit file that declares a root table,
+`<Base>Table_gen_test.go` beside the `<Base>Table.go` `generate` writes, in the
+generated package, using the generated API and the standard library only. A
+ROOT TABLE here is every table the file declares, `fixed table` and `table`
+alike; a generated map entry or text-list element record is not one. The file
+assumes the unit was generated with the default surface (§8.8): it calls the
+binary, base64 and JSON carriers. A table whose `forms` declaration (§2.12)
+leaves out `wire` or `json` is REFUSED BY NAME at testgen, naming the table and
+the form, because its sample is spelled in the JSON form and its round trip
+crosses the wire.
+
+**The samples.** For each root table the file carries a fixed list of SAMPLE
+values, each spelled as a JSON text (§16.2) that the generator builds from the
+declaration alone. The list is the same on every run of the same declaration:
+no randomness, no clock, no seed. Each sample is named:
+
+- `defaults`: `{}`, so every field at its declared default, every optional
+  ABSENT, every union `None`, every pointer null. A `| required` field (§2.3),
+  which a text must carry, is written at its `low` value.
+- `low`: every bounded field AT ITS LOW BOUND — an integer, `bits(N)`, fixed
+  point or compressed float at its declared or implied minimum, a string or a
+  byte buffer empty, a counted array at its minimum count, an enum at its first
+  variant, a flags set empty, a `bool` false; every optional PRESENT; every
+  union at its first arm; every pointer to a table not already on the path a
+  present node.
+- `high`: every bounded field AT ITS HIGH BOUND — the maximum value, a
+  `string(N)` or `bytes(N)` of N bytes, a `[..N]` array of N elements, an enum
+  at its last variant, every flag set, a `bool` true; an unbounded collection
+  (`[]T`, `map`, `*bytes`, `*string`) of two elements; optionals present;
+  unions at their first arm.
+- `inside`: every bounded field strictly INSIDE its bounds where the range
+  leaves room (one past the minimum, one element, one byte); optionals
+  present; unions at their first arm.
+- `arm_<k>`, for each k from 1 to one less than the largest arm count of any
+  union the table reaches: the `inside` sample with every union at arm
+  `k` modulo its own arm count, so EVERY ARM of every union is written by at
+  least one sample.
+
+A text-list element that may be absent (`?string(M)`) is written absent once in
+`high`; an optional map value present. A pointer to a table already on the
+path is null, so a recursive declaration has finite samples. A deprecated field
+(§2.10) is never written. A field kind the generator does not spell is REFUSED
+BY NAME at testgen, naming the field, never skipped.
+
+**The round trip.** For each sample, the test reads the text with `FromJson`
+and requires a SILENT report (§4): the sample matches the schema exactly, so a
+clamp, a kind mismatch or an unknown key is a defect of the generator, named.
+It saves that value to the binary wire, then reads the value back through each
+of the three forms:
+
+1. the binary wire, through `<Name>ReadStrict` (§6.5);
+2. base64 text, through `<Name>SaveText` then `<Name>LoadText` (§16.8), with
+   the text required to be the standard base64 of the wire;
+3. JSON text, through `<Name>ToJson` then `<Name>FromJson` (§16.1), with a
+   silent report.
+
+**Each read is equal to what was written**: the value read saves to exactly
+the wire bytes the original saved to, and writes exactly the JSON text the
+original wrote. Equality is the wire's and the text's, not the storage's, so
+it holds for both classes and over the arena of a variable table.
+
+**The damage refusals.** For each root table, the `high` sample's wire and
+texts are damaged and each damage is refused BY ITS NAMED REASON through the
+strict read, never by a bare failure:
+
+- a TRUNCATED wire (the form byte alone, and the wire less its last byte),
+  through `ReadStrict`: refused, `wire_damaged` or `truncated` (§3, the framing
+  check), and nothing returned;
+- a FLIPPED FORM BYTE (`2`, `9` and `255` in place of the first byte), through
+  `ReadStrict`: refused, `unknown_form` (§3, THE FIRST BYTE);
+- BASE64 DAMAGE (a character outside the alphabet, and the text less its last
+  character), through `LoadText`: refused, `base64_damaged` (§16.8);
+- JSON OF THE WRONG SHAPE (a document cut off inside its object), through
+  `FromJson`: false, the report `Malformed`, `Err()` `malformed` (§16.2).
+
+**What the file is.** Every test opens with `t.Parallel()`; it uses no time,
+no sockets and no network, and reads and writes no file: it is a unit test
+under the house rule. The file is GENERATED, so a schema edit is followed by
+`testgen` as it is by `generate`, and the file is never edited by hand.
+
+Go carries `testgen` first; every other `--lang` is refused by name, in the
+compiler, until its own turn.
+
 ## 17. Packing: a directory tree that mirrors a root table
 
 `schema pack` assembles ONE table instance from a directory tree and writes
