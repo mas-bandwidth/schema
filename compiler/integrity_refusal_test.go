@@ -34,7 +34,6 @@ func TestIntegrityRefusedOffGo(t *testing.T) {
 		{"empty value", `table T | integrity = ""`, "integrity takes one quoted check name"},
 		{"non-string value", `table T | integrity = 32`, "integrity takes one quoted check name"},
 		{"bare key", `table T | integrity`, "integrity"},
-		{"fixed table", `fixed table T | integrity = "crc32c"`, "fixed table T: integrity is refused"},
 	} {
 		errs := checkErrors(t, "package probe\n"+tc.line+"\n{\n    x int32\n}\n")
 		if len(errs) == 0 {
@@ -44,5 +43,11 @@ func TestIntegrityRefusedOffGo(t *testing.T) {
 		if !strings.Contains(errs[0].Error(), tc.want) {
 			t.Errorf("%s: %v, want it to name %q", tc.name, errs[0], tc.want)
 		}
+
+	}
+	// A fixed table may carry the key now that its message-form batch carries
+	// the trailer (docs/SPEC-TABLES.md §2.14, §3.3).
+	if errs := checkErrors(t, "package probe\nfixed table T | integrity = \"crc32c\"\n{\n    x int32\n}\n"); len(errs) != 0 {
+		t.Errorf("fixed table integrity: %v", errs)
 	}
 }

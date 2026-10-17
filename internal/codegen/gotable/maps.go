@@ -2,8 +2,26 @@ package gotable
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
+
+// optionalMapJson is the JSON walk's one change for an OPTIONAL MAP
+// (docs/SPEC-TABLES.md §2.8, §16.2), made only in a unit that declares one so
+// every other unit's walk is the same bytes it was: a `null` reads as ABSENT
+// and puts the field back at its defaults, and a map's defaults are the empty
+// sixteen-byte slot, never the ENTRY table its descriptor's Table names.
+func optionalMapJson(u *ir.Unit, s string) string {
+	if len(ir.OptionalMapFields(u)) == 0 {
+		return s
+	}
+	old := "\t\t\t\tif f.Table != nil {\n\t\t\t\t\tf.Table().Reset(unsafe.Add(base, uintptr(f.Offset)))"
+	if !strings.Contains(s, old) {
+		panic("gotable: the JSON walk lost the optional-reset line optionalMapJson replaces")
+	}
+	return strings.Replace(s, old, "\t\t\t\tif f.Map {\n\t\t\t\t\tclear(unsafe.Slice((*byte)(unsafe.Add(base, uintptr(f.Offset))), 16))\n\t\t\t\t} else if f.Table != nil {\n\t\t\t\t\tf.Table().Reset(unsafe.Add(base, uintptr(f.Offset)))", 1)
+}
 
 func (g *tableGen) mapDescriptor(f *ir.Field) string {
 	for i, field := range g.owner.Fields {
