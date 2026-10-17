@@ -1,5 +1,5 @@
 // The refusal tests' "unchanged" claim, computed at test time (docs/SPEC-TABLES.md
-// §2.13, §2.13.1): a construct Go carries first and every other target refuses
+// §2.13, §2.13.1, §2.8): a construct Go carries first and every other target refuses
 // leaves the generated output of the declarations that do not use it unchanged.
 // No digest of generated output is committed, so an emitter change that touches
 // every unit moves nothing here, while a change keyed on the construct still
@@ -44,7 +44,7 @@ type unchangedProbe struct {
 }
 
 // checkRefusalUnchanged is the computed check (docs/SPEC-TABLES.md §2.13,
-// §2.13.1). For the carrier (go) it generates base+using and base+control and
+// §2.13.1, and §2.8 for the optional map). For the carrier (go) it generates base+using and base+control and
 // cuts each output into top-level Go declarations; a declaration belongs to a
 // keep declaration when its name, or its method's receiver, is the keep name
 // or the keep name followed by an upper-case letter (Word, WordBuilder,
@@ -279,7 +279,7 @@ func compilerGenerate(c *Compiler) generateFunc {
 var unchangedTargets = []string{"go", "cpp"}
 
 func allUnchangedProbes() []unchangedProbe {
-	return append(append([]unchangedProbe(nil), stringArraysProbes...), unboundedTextProbes...)
+	return append(append(append([]unchangedProbe(nil), stringArraysProbes...), unboundedTextProbes...), plainMapProbes...)
 }
 
 func TestRefusalUnchangedIgnoresTrivialEmitterChange(t *testing.T) {
