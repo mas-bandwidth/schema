@@ -441,7 +441,7 @@ func TableTypeSpelling(f *Field) string {
 		// map[K]T and map[K]*T are two declarations
 		key, value := MapKeyField(f), MapValueField(f)
 		spelling := "map[" + TableTypeSpelling(key)
-		if key.Type.Kind == TString {
+		if key.Type.Kind == TString && !key.Type.Unbounded {
 			spelling += "(" + itoa(int(key.Type.Size)) + ")"
 		}
 		spelling += "]"
@@ -486,8 +486,10 @@ func FieldTypeSpelling(f *Field) string {
 	}
 	switch f.Type.Kind {
 	case TString, TWString, TBytes:
-		if f.Type.Pointer {
-			return prefix + TableTypeSpelling(f) // *bytes / *string: a buffer at its used size
+		if f.Type.Pointer || f.Type.Unbounded {
+			// *bytes / *string: a buffer at its used size; a bare `string`:
+			// unbounded text (docs/SPEC-TABLES.md §2.13.1)
+			return prefix + TableTypeSpelling(f)
 		}
 		return prefix + TableTypeSpelling(f) + "(" + itoa64(f.Type.Size) + ")"
 	}

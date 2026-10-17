@@ -42,6 +42,8 @@ var docExamples = []docExample{
 	{"../docs/SPEC-TABLES.md", "name    string(16)", 1},               // §16.7, one declaration, two texts
 	{"../docs/USAGE.md", "table OpenDocument", 1},                     // messages: a union whose arms are tables
 	{"../docs/USAGE.md", "table Node", 1},                             // pointers
+	{"../docs/SPEC-TABLES.md", "table Where", 1},                      // §2.13.1, unbounded text
+	{"../docs/USAGE.md", "table Where", 1},                            // unbounded text in lists and map keys
 	{"../docs/USAGE.md", "table Config", 1},                           // Tables from Go: the variable class, one unit
 	{"../docs/USAGE.md", "fixed table Marker", 1},                     // Tables from Go: the fixed class, its own unit
 }

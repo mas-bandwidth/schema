@@ -46,6 +46,12 @@ type checker struct {
 	unions   map[string]*ir.Union
 	tables   map[string]*ir.Struct // `table` declarations (docs/SPEC-TABLES.md)
 
+	// unboundedText is set while a text-list ELEMENT or a map KEY resolves
+	// (docs/SPEC-TABLES.md §2.13.1): the two places a bare `string` stands.
+	// mapValue is set while a map VALUE resolves, so a bare `string` there is
+	// refused naming the value.
+	unboundedText, mapValue bool
+
 	// the GENERATED entry tables of the `map` fields resolved so far, in
 	// synthesis order — innermost first, so a header emitting them in list
 	// order declares an inner entry before the outer one that holds it
@@ -1593,6 +1599,17 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 				c.errf(f.Type.Pos, "field %s: *wstring is specified ahead of its implementation and no backend emits it (docs/SPEC-TABLES.md §2.5); declare *string for an unbounded byte buffer, or wstring(N) in a `type` for inline wide text (SPEC §4.12, schema#522)", f.Name)
 				return nil
 			}
+		}
+		if f.Type.Unbounded && !f.Type.Pointer {
+			// a bare `string` — UNBOUNDED text (docs/SPEC-TABLES.md §2.13.1):
+			// legal as a text-list element and a map key, through this one
+			// path, and refused by name everywhere else
+			if !c.unboundedText {
+				c.refuseBareString(owner, f, inTable)
+				return nil
+			}
+			out.Type = ir.FieldType{Kind: ir.TString, Unbounded: true}
+			break
 		}
 		if f.Type.Pointer {
 			// `*bytes` / `*string` — a BYTE BUFFER at its used size

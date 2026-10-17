@@ -107,3 +107,77 @@ func TableArrayRoots(u *Unit) []string {
 
 // UnitHasTextLists reports whether any table of the unit holds a text list.
 func UnitHasTextLists(u *Unit) bool { return len(TableTextLists(u)) > 0 }
+
+// TextListUnbounded reports a text list whose ELEMENT is unbounded text,
+// `[]string`, `[]?string`, `[..N]string` or `[..N]?string` (docs/SPEC-TABLES.md
+// §2.13.1): the element record's value is one blob slot, not string(M).
+func TextListUnbounded(f *Field) bool {
+	st := f.TextListElem()
+	return st != nil && st.Fields[0].Type.TextUnbounded()
+}
+
+// MapKeyUnbounded reports a map whose KEY is unbounded text, `map[string]V`
+// (docs/SPEC-TABLES.md §2.13.1).
+func MapKeyUnbounded(f *Field) bool {
+	return f != nil && f.IsMap() && f.MapEntry != nil && len(f.MapEntry.Fields) > 0 && f.MapEntry.Fields[0].Type.TextUnbounded()
+}
+
+// TableUnboundedTexts lists the fields holding unbounded text (§2.13.1), a text
+// list with an unbounded element or a map with an unbounded key, as
+// `Table.field` (a map entry's own fields named under the map that generates
+// it), sorted — the names a target that does not carry the construct refuses.
+func TableUnboundedTexts(u *Unit) []string {
+	var out []string
+	for name, st := range u.Tables {
+		if st == nil || st.TextElem {
+			continue
+		}
+		holder := name
+		if st.MapEntryOf != "" {
+			holder = st.MapEntryOf
+		}
+		for _, f := range st.Fields {
+			if TextListUnbounded(f) || MapKeyUnbounded(f) {
+				out = append(out, holder+"."+f.Name)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// UnitHasUnboundedText reports whether any table of the unit holds unbounded
+// text (§2.13.1).
+func UnitHasUnboundedText(u *Unit) bool {
+	for _, st := range u.Tables {
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.Type.TextUnbounded() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// UnitMapKeyUnbounded reports whether `Table.field`, a name
+// [TableUnboundedTexts] lists, is a map with an unbounded key.
+func UnitMapKeyUnbounded(u *Unit, name string) bool {
+	for tname, st := range u.Tables {
+		if st == nil || st.TextElem {
+			continue
+		}
+		holder := tname
+		if st.MapEntryOf != "" {
+			holder = st.MapEntryOf
+		}
+		for _, f := range st.Fields {
+			if holder+"."+f.Name == name && MapKeyUnbounded(f) {
+				return true
+			}
+		}
+	}
+	return false
+}

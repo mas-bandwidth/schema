@@ -6,7 +6,9 @@ import (
 )
 
 func unitHasContainers(u *ir.Unit) bool {
-	return len(ir.ListFields(u)) != 0 || len(ir.MapFields(u)) != 0
+	// unbounded text (docs/SPEC-TABLES.md §2.13.1) carves its blob records
+	// from the node's extent, as a container carves its elements
+	return len(ir.ListFields(u)) != 0 || len(ir.MapFields(u)) != 0 || ir.UnitHasUnboundedText(u)
 }
 func containerElementType(u *ir.Unit, f *ir.Field) string {
 	if f.IsMap() {
