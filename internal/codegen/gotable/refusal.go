@@ -62,6 +62,10 @@ func(m TableBuildVersionMismatch) Error() string {const digits="0123456789abcdef
 // the record they were missing, and Error() is the report's own reason.
 type TableMissingRequired struct { Fields string }
 func(m TableMissingRequired) Error() string {return "missing_required: "+m.Fields}
+// TableFixedRefusal is the typed error of a fixed-form refusal: Error() is the
+// refusal's own §3.4 reason, never unknown_form (docs/SPEC-TABLES.md §6.5).
+type TableFixedRefusal struct { Reason string }
+func(r TableFixedRefusal) Error() string {return r.Reason}
 // Err is the report's typed error (docs/SPEC-TABLES.md §6.5, docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched and missing-required
@@ -69,7 +73,9 @@ func(m TableMissingRequired) Error() string {return "missing_required: "+m.Field
 func(r *TableReport) Err() error {
 if r==nil {return nil}
 if r.Reason=="build_version_mismatch" {return TableBuildVersionMismatch{Peer:r.BuildVersionPeer,Own:r.BuildVersionOwn}}
-if r.Verdict==TableOpenRefused || r.Reason=="unsupported wire form" || r.Reason=="newer_form" || r.Reason=="message_form_as_file" || r.Reason=="message form requires an announced vocabulary and a message reader" {return TableRefuseUnknownForm}
+if r.Verdict==TableOpenRefused {
+if r.Reason=="newer_form" || r.Reason=="previous_form" || r.Reason=="message_form_as_file" || r.Reason=="unsupported wire form" || r.Reason=="message form requires an announced vocabulary and a message reader" {return TableRefuseUnknownForm}
+return TableFixedRefusal{Reason:r.Reason}}
 if r.Verdict==TableOpenDamaged {return TableRefuseWireDamaged}
 if r.MissingRequired>0 {const p="missing_required: ";f:=r.Reason;if len(f)>=len(p)&&f[:len(p)]==p{f=f[len(p):]};return TableMissingRequired{Fields:f}}
 if r.Malformed {return TableRefuseMalformed}
