@@ -1134,8 +1134,8 @@ each by name:
 - **retain** — the retaining load, measure and save (§6.6) gate exactly as
   load, measure and save do;
 - **cook** — the cooked form's sizing and writer (§7) follow T's edges only
-  when present; an absent T is written as its defaults, every reference
-  null, with its presence byte clear;
+  when present; every reference in an absent T is written null, with its
+  presence byte clear;
 - **the JSON writer and reader** (§16) — the writer writes no key for an
   absent T and numbers no node behind it; the reader leaves T at its
   defaults on a missing key or `null`, and sets presence only on a value
