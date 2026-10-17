@@ -57,8 +57,12 @@ generated/go/.stamp: bin/schema $(SCHEMAS)
 # is ONE walk, and the way to hold that is to compare the emitted bytes. One
 # walker per unit — Go emits it into <Home>TableJson.go — and the same bytes in
 # every unit of the corpus.
-.PHONY: tables-go-fixedform
-tables-go-fixedform: $(SERIALIZE_GO_RUNTIME)/go.mod
+.PHONY: tables-go-fixedform tables-go-sibling-runtime
+tables-go-sibling-runtime: $(SERIALIZE_GO_RUNTIME)/go.mod
+	@if [ "$(SERIALIZE_GO_RUNTIME)" = "$(SERIALIZE_GO_FETCHED)" ] && [ ! -e "$(CURDIR)/../serialize.go" ]; then \
+		ln -s "$(CURDIR)/build/serialize.go" "$(CURDIR)/../serialize.go"; \
+	fi
+tables-go-fixedform: tables-fixedform-corpus tables-go-sibling-runtime
 	sh test/slowgate/proof tables-go-fixedform \
 		'TestFixedFormCountAndLengthOverBoundRefuseByName TestFixedFormRoundTrip TestFixedFormHostileBoolByte TestFixedFormHostileUnionTag TestFixedFormArgLaneOldEncodingControl TestFixedFormClampLiveCount TestFixedFormRecordBound TestFixedFormIdentityEqualsCompiled TestFixedFormZeroBehindNarrowerArm TestFixedPlanMaxCoversEveryLineagePlan TestTimestampKindInGo TestFixedLoadAllocatesNothingPerCall TestFixedLoadNamesEveryRefusal TestFixedFormWriteSideRefusesInEveryGoBuild TestGoTableWritersRefuseWhatTheirReadersRefuse TestFixedLoadUnknownHashIsLayoutUnknown' \
 		./internal/codegen/gotable -run 'TestFixedForm|TestFixedPlanMaxCoversEveryLineagePlan|TestTimestampKindInGo|TestFixedLoadAllocatesNothingPerCall|TestFixedFormCountAndLengthOverBoundRefuseByName|TestFixedLoadNamesEveryRefusal|TestFixedFormWriteSideRefusesInEveryGoBuild|TestGoTableWritersRefuseWhatTheirReadersRefuse|TestFixedLoadUnknownHashIsLayoutUnknown' -count=1
