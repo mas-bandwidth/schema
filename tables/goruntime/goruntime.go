@@ -127,6 +127,7 @@ const (
 	TableRefuseClamped
 	TableRefuseKindMismatch
 	TableRefuseBase64Damaged
+	TableRefuseIntegrityMismatch
 )
 
 func (r TableRefuseReason) Error() string {
@@ -173,6 +174,8 @@ func (r TableRefuseReason) Error() string {
 		return "kind_mismatch"
 	case TableRefuseBase64Damaged:
 		return "base64_damaged"
+	case TableRefuseIntegrityMismatch:
+		return "integrity_mismatch"
 	}
 	return "invalid refusal reason"
 }
@@ -225,6 +228,9 @@ func (r *TableReport) Err() error {
 	}
 	if r.Verdict == TableOpenRefused || r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
 		return TableRefuseUnknownForm
+	}
+	if r.Reason == "integrity_mismatch" {
+		return TableRefuseIntegrityMismatch
 	}
 	if r.Verdict == TableOpenDamaged {
 		return TableRefuseWireDamaged
@@ -399,6 +405,8 @@ const (
 	TableFixedReasonTextIllFormed        = "text_ill_formed"
 	TableFixedReasonTruncated            = "truncated"
 	TableFixedReasonReservedNotZero      = "reserved_not_zero"
+	TableFixedReasonCountOverBound       = "count_over_bound"
+	TableFixedReasonLengthOverBound      = "length_over_bound"
 )
 
 const (
@@ -788,6 +796,12 @@ func TableFixedCopyRun(d, s []byte, n uint32) {
 }
 
 func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) string {
+	// REFUSE is total even for direct callers of the runner: the generated load
+	// performs this pre-scan too, but the compiled-plan tests and any future
+	// internal caller must not observe the old clamp-and-write path.
+	if why := TableFixedTextRefusal(plan, count, src); why != "" {
+		return why
+	}
 	// READ(plan, split, ...) (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.4): the plan is
 	// partitioned unguarded-first (§4.1), so the split is the first guarded
 	// index; entries below it run WITHOUT a guard test and only the guarded
@@ -851,36 +865,16 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 		case TableFixedCount:
 			v := int32(TableFixedGet32(src[p.Src:]))
-			if v < 0 {
-				v = 0
-				report.Clamped++
-			} else if v > int32(p.Size) {
-				v = int32(p.Size)
-				report.Clamped++
-			}
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 		case TableFixedText:
+			v := int32(TableFixedGet32(src[p.Src:]))
 			unit := uint32(1)
 			if p.Meta == TableFixedTextWide {
 				unit = 2
 			}
 			capn := p.Size / unit
-			v := int32(TableFixedGet32(src[p.Src:]))
-			if v < 0 {
-				v = 0
-				report.Clamped++
-			} else if uint32(v) > capn {
-				v = int32(capn)
-				report.Clamped++
-			}
-			// THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE, and a
-			// violation REFUSES BY NAME, the verdict the packet reader gives
-			// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8): the
-			// length above CLAMPS and counts; the bytes it kept are checked now,
-			// over v units and never over the span.
-			if TableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-				return TableFixedReasonTextIllFormed
-			}
+			// tableFixedTextRefusal above already proved the used extent and
+			// content; this path only lands the validated value and live bytes.
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 			TableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
 			if p.Meta != TableFixedTextBytes && uint32(v) < capn {
@@ -1114,24 +1108,20 @@ func TableFixedUnitsIllFormed(units []uint16) bool {
 	return false
 }
 
-// tableFixedTextRefusal is the text CONTENT refusal as a PRE-SCAN of the plan's
-// text entries, run before the caller's storage is touched. It walks each text
-// entry under its own guard, clamps its length exactly as the scatter will, and
-// answers the one name an ill-formed payload refuses with
-// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8). §5.8: "REFUSE
-// is total: no counter moves, nothing is decoded, and not one destination byte
-// is written — the prefill included", so the check lives here rather than only
-// inside the scatter, where an earlier entry's write would already have landed.
-// It writes nothing and moves no counter.
+// tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count and
+// text entries, run before the caller's storage is touched. A count or a text
+// length past the PLAN's bound refuses by name — count_over_bound /
+// length_over_bound — and an ill-formed payload refuses text_ill_formed
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11,
+// §5.8 row 8). REFUSE is total: no counter moves, nothing is decoded, and not
+// one destination byte is written. It walks each entry under its own guards,
+// writes nothing and moves no counter.
 func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
 	for i := int32(0); i < count; i++ {
 		p := plan[i]
-		if p.Op != TableFixedText {
-			continue
-		}
 		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2): an arm's
 		// entry runs only under its own tag, and one that does not run cannot
-		// refuse.
+		// refuse. An arm inside an arm answers the outer tag too (§4.1).
 		if p.Guard != TableFixedNoGuard && TableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
 			continue
 		}
@@ -1142,19 +1132,25 @@ func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
 			continue
 		}
-		unit := uint32(1)
-		if p.Meta == TableFixedTextWide {
-			unit = 2
-		}
-		capn := p.Size / unit
-		v := int32(TableFixedGet32(src[p.Src:]))
-		if v < 0 {
-			v = 0
-		} else if uint32(v) > capn {
-			v = int32(capn)
-		}
-		if TableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-			return TableFixedReasonTextIllFormed
+		switch p.Op {
+		case TableFixedCount:
+			v := int32(TableFixedGet32(src[p.Src:]))
+			if v < 0 || v > int32(p.Size) {
+				return TableFixedReasonCountOverBound
+			}
+		case TableFixedText:
+			unit := uint32(1)
+			if p.Meta == TableFixedTextWide {
+				unit = 2
+			}
+			capn := p.Size / unit
+			v := int32(TableFixedGet32(src[p.Src:]))
+			if v < 0 || uint32(v) > capn {
+				return TableFixedReasonLengthOverBound
+			}
+			if TableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
+				return TableFixedReasonTextIllFormed
+			}
 		}
 	}
 	return ""
@@ -1981,4 +1977,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xd5c0e360c0ad6001
+const Version uint64 = 0xf0987862d0f3b241
