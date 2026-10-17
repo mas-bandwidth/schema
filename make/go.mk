@@ -62,6 +62,21 @@ tables-go-fixedform:
 		./internal/codegen/gotable -run 'TestFixedForm|TestFixedPlanMaxCoversEveryLineagePlan|TestTimestampKindInGo|TestFixedLoadAllocatesNothingPerCall|TestFixedLoadNamesEveryRefusal|TestGoTableWritersRefuseWhatTheirReadersRefuse|TestFixedLoadUnknownHashIsLayoutUnknown' -count=1
 test-go: tables-go-fixedform
 
+# THE OPTIONAL SHARED GO RUNTIME (docs/SPEC-TABLES.md §8.4). tables/goruntime is
+# GENERATED from the emitter, never edited: `make go-runtime` rewrites it, and
+# the gate fails when the checked-in package is not what the emitter derives, or
+# when a unit generated with runtime=shared stops producing the standalone
+# unit's wires and reports.
+.PHONY: go-runtime tables-go-shared-runtime
+go-runtime:
+	SCHEMA_WRITE_GORUNTIME=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run TestGoSharedRuntimePackageIsCurrent
+
+tables-go-shared-runtime:
+	sh test/slowgate/proof tables-go-shared-runtime \
+		'TestGoSharedRuntimePackageIsCurrent TestGoSharedRuntimeIsOptionalAndEquivalent TestGoSharedRuntimeCoversTheCorpora' \
+		./internal/codegen/gotable -run 'TestGoSharedRuntime' -count=1
+test-go: tables-go-shared-runtime
+
 .PHONY: tables-go-json-walk
 tables-go-json-walk: build/tables-generated-go/.stamp
 	@rm -rf build/json-walk-go && mkdir -p build/json-walk-go

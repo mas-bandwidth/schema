@@ -26,7 +26,14 @@ func (t goTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) 
 // unit's lock once (compiler/lineage.go) and hands the lineage down as DATA, so
 // gotable opens no file and a build ships a reader for every layout the lock
 // records.
-func (goTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
+func (goTarget) GenerateLineage(u *ir.Unit, opts Options, lineage *FixedLineage) (map[string][]byte, error) {
+	// the optional shared runtime (docs/SPEC-TABLES.md §8.4): absent, empty or
+	// "standalone" is the default and changes no byte; "shared" imports
+	// tables/goruntime instead of emitting the table-independent machinery
+	rt, err := gotable.ParseRuntime(opts["runtime"])
+	if err != nil {
+		return nil, err
+	}
 	// Wide text is carried by both packet and table surfaces.
 	if err := refuseWideText(u, "go"); err != nil {
 		return nil, err
@@ -42,7 +49,7 @@ func (goTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (m
 	// TABLE-wire codecs and the reflection descriptors (SPEC-TABLES.md); a
 	// table-free unit's output is byte-identical to what the packet emitter
 	// alone produces
-	tables, err := gotable.GenerateLineage(u, goTableLineage(u, lineage))
+	tables, err := gotable.GenerateRuntime(u, goTableLineage(u, lineage), rt)
 	if err != nil {
 		return nil, err
 	}
