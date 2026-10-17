@@ -727,8 +727,14 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 			keyId = "func(uint64)uint64{return 0}"
 		}
 	}
-	g.pf("\t{Name: %q, Json: %q, TypeName: %q, DeclaredTypeName:%q, Id: 0x%04x, Kind: %d, IsArray: %v, Counted: %v, Optional: %v, Unbounded: %v,\n",
-		f.Name, json, tableFieldTypeName(f), ir.TableTypeSpelling(f), id, kind, isArray, counted, f.Type.Optional, f.IsList() || f.IsMap())
+	// Unbounded is written only where it is true: a map or an unbounded []T
+	// says so, and every other field keeps the line it had (docs/SPEC-TABLES.md §8.1).
+	unbounded := ""
+	if f.IsList() || f.IsMap() {
+		unbounded = ", Unbounded: true"
+	}
+	g.pf("\t{Name: %q, Json: %q, TypeName: %q, DeclaredTypeName:%q, Id: 0x%04x, Kind: %d, IsArray: %v, Counted: %v, Optional: %v%s,\n",
+		f.Name, json, tableFieldTypeName(f), ir.TableTypeSpelling(f), id, kind, isArray, counted, f.Type.Optional, unbounded)
 	g.pf("\t\tArrayBound: %s, Offset: %s, ElemSize: %s, CountOffset: %s, PresentOffset: %s,\n",
 		bound, offset, elemSize, countOffset, presentOffset)
 	if g.viewPacket == nil {
