@@ -8674,6 +8674,15 @@ free to mean null. It is the same value null takes on the wire, where index
 `0` is null (§3.1), so the two encodings agree on their one reserved value
 and a walk that meets a zero does the same thing on both sides.
 
+**A WRITE THAT MEETS AN ARENA-ENCODED REFERENCE WITH NO ARENA REFUSES.** The
+form in hand says which encoding a slot holds, and a write handed no arena is
+reading a region; while a builder is mutable its references are arena offsets,
+so `Measure`, `Save`, `ToJson`, `CookMeasure`, the retaining and message
+writes and every `...Reason` twin refuse one by name — `arena_required` — and
+write nothing, rather than read the offset as a delta and write a silent
+zero. Passing the builder's arena, or writing the region `Lock` produced,
+where every reference is already a delta, is unaffected.
+
 **THE SLOT IS EIGHT BYTES AND SIGNED, so ONE REGION REACHES EVERYTHING.**
 Every delta runs from a slot to a node inside the same region, so a slot as
 wide as the offsets it subtracts can express every reference any region can

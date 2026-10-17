@@ -4131,6 +4131,12 @@ The `MeasureReason`, `LoadMeasureReason`, `CookMeasureReason`, and builder
 `PackMeasureReason` variants return `(int64, error)`. Success returns a literal
 `nil`; refusals carry `TableRefuseReason`, usable with `errors.As` or direct
 comparison. The existing integer measure and boolean open calls remain available.
+A write of a mutable builder's root that is handed no arena refuses
+`TableRefuseArenaRequired` (`arena_required`) from every writer and its
+`...Reason` twin, because the builder's references are arena slots until
+`Lock` (docs/SPEC-TABLES.md §6.3); pass `&builder.Arena`, or write the locked
+`AsConst()` region, which needs no arena. A table type with no reference
+writes the same either way.
 Cook and block handles also provide `Open(base, bytes) error`. A damaged file
 trailer returns `TableRefuseWireDamaged` (`wire_damaged`) from
 `LoadMeasureReason`; this is distinct from a format refusal and from the
