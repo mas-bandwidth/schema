@@ -3400,7 +3400,7 @@ var targetReserved = func() map[string][]string {
 		char8_t char16_t char32_t class compl concept const consteval constexpr constinit
 		const_cast continue co_await co_return co_yield decltype default delete do double
 		dynamic_cast else enum explicit export extern false float for friend goto if inline
-		int long mutable namespace new noexcept not not_eq nullptr operator or or_eq private
+		int long mutable namespace new noexcept not not_eq nullptr operator or or_eq out private
 		protected public register reinterpret_cast requires return short signed sizeof static
 		static_assert static_cast struct switch template this thread_local throw true try
 		typedef typeid typename union unsigned using virtual void volatile wchar_t while xor xor_eq`)
@@ -3410,11 +3410,12 @@ var targetReserved = func() map[string][]string {
 		new null object operator out override params private protected public readonly ref
 		return sbyte sealed short sizeof stackalloc static string struct switch this throw
 		true try typeof uint ulong unchecked unsafe ushort using virtual void volatile while`)
-	add("Go", `break case chan const continue default defer else fallthrough for func go goto
-		if import interface map package range return select struct switch type var`)
-	add("Rust", `as async await break const continue crate dyn else enum extern false fn for
-		if impl in let loop match mod move mut pub ref return self Self static struct super
-		trait true type unsafe use where while`)
+	add("Go", `break byte case chan const continue default defer else fallthrough false for func go goto
+		if import interface map package range ref return select struct switch true type unsafe var`)
+	add("Rust", `abstract as async await become box break char const continue crate do dyn
+		else enum extern false final fn for if impl in let loop macro match mod move mut
+		override priv pub ref return self Self static struct super trait true try type typeof
+		unsafe unsized use virtual where while yield`)
 	out := map[string][]string{}
 	for w, langs := range m {
 		l := make([]string, 0, len(langs))
