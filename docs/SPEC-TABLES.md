@@ -1957,7 +1957,14 @@ storage needs a bound, and a bound would buy only a CLAMP, which for a map
 would drop entries by key order, a quieter loss than an array's dropped
 tail. What a program gets instead is §6.5's defense, unchanged.
 `LoadMeasure` answers from the framing, and the caller owns the allocation
-precisely so it can refuse a number it did not expect. A map takes no
+precisely so it can refuse a number it did not expect. `LoadMeasureReason`
+refuses `wire_damaged` the same framing damage `Load` marks malformed: a root
+or node body that runs past its end or lacks its terminating zero reference, and
+a node scan that is not whole. Value-level events — clamping, kind mismatch,
+ill-formed text, unknown ids — stay the load's business and never fail the
+measure. The tolerant region load keeps the prefix it already read: it sizes its
+region from the framing-only measure, so a body cut at its tail still recovers a
+value while its report names the damage. A map takes no
 default and has no `?map`: a fresh map is empty, and an empty map is elided
 under §3's by-value elision rule, the rule that elides an empty array.
 
