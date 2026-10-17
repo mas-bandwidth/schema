@@ -3914,6 +3914,21 @@ In Go, `HandoverRulesAppend(&h, "a")` appends (false past either bound),
 strings. Only Go generates either construct today; every other `--lang`
 refuses it by name.
 
+A text list can also bound the SUM of its elements' bytes, so one record never
+holds the count times `M`:
+
+```
+table Handover
+{
+    rules [..16]string(64) | total = 256   // 256 bytes of text across the list
+}
+```
+
+`Save` and `Measure` return -1 for a value past the total, `HandoverRulesAppend`
+returns false for the element that would cross it, and a read keeps the
+elements that fit (in order), drops the rest and counts `clamped`, naming the
+field, so `HandoverReadStrict` refuses it (docs/SPEC-TABLES.md §2.13).
+
 ### Unbounded text in lists and map keys
 
 When no code bounds a list's elements or a map's keys, leave the bound off
