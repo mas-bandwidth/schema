@@ -3906,6 +3906,134 @@ four as well. A declaration under any of them is refused naming the field.
 centrally, at generation** (§2.12's rule), naming the construct, the field and
 the target, so no other emitter is edited.
 
+### 2.14 The integrity check: `integrity`
+
+**A table may declare that its saved file carries a checksum.** The binary
+wire and its base64 text carry no check of their own, so a byte flipped on a
+disk or in a channel decodes as a different value whenever the flipped byte
+still frames: a real 421-byte record showed 56 to 112 structural and 47
+numeric silent wrong decodes over its single-byte flips. The valued table-line
+key `integrity` closes that:
+
+```
+table Ledger | integrity = "crc32c"
+{
+    balance int64
+}
+```
+
+**The spelling fits SPEC §4.2's valued keys**, as `forms` does (§2.12): one
+quoted string from a closed vocabulary. The vocabulary today is one value,
+`crc32c`: CRC-32C, the Castagnoli polynomial (`0x1EDC6F41`, reflected
+`0x82F63B78`, initial value and final XOR `0xFFFFFFFF`), the check iSCSI, SCTP
+and ext4 use, chosen because it is hardware-accelerated on amd64 and arm64 and
+in every language's standard library or one table away. A later value is
+appended to the vocabulary and never replaces one. A value outside it is
+refused by name, as is an empty value, a non-string value and a bare
+`integrity` (a tag is a different thing).
+
+**WHAT IT DECLARES: the VARIABLE-FORM FILE whose ROOT is this table carries
+the INTEGRITY TRAILER** (§3): four bytes, little-endian, the CRC-32C of every
+byte of the file before them, written after the id table and so the last four
+bytes of the file. The key speaks of the FILE, and so of the ROOT only: the
+same table nested in another table's body, or reached through a pointer of a
+pointered save, is a body inside some root's file and carries no trailer of
+its own. One file has one trailer, governed by its root's declaration.
+
+**A WRITER** emits the variable form exactly as §3 says and then appends the
+trailer. The measure counts it, so `Measure` answers four bytes more than the
+same value under an undeclared table and `Save` writes exactly that many.
+
+**A READER CHECKS THE TRAILER BEFORE IT DECODES ANY FIELD.** Order, with
+THE FIRST BYTE's rule kept:
+
+1. **The form byte is read first.** An empty file is framing damage and a form
+   byte other than `1` is §3's refusal (or the form's own reader), exactly as
+   for an undeclared table, so a file that is both a newer form and damaged
+   is a refusal.
+2. **A form-`1` file shorter than five bytes cannot hold the trailer**, and a
+   file whose last four bytes are not the CRC-32C of the bytes before them is
+   refused, **`integrity_mismatch`**. Nothing is decoded: the id table is not
+   resolved and no body is walked.
+3. **The trailer is then removed** and the rest is read as §3's file, form
+   byte, root body and id table, with every rule of §3 and §4 unchanged.
+
+**THE NAME, ON EACH READ.** The STRICT read (§6.5) and the base64 text
+read (`LoadText`, §16.8) refuse a mismatch with the typed reason
+`integrity_mismatch`. The TOLERANT read counts it as the whole-file damage
+of §3's first malformed rule: the report's `malformed` is set, its reason
+names `integrity_mismatch`, the verdict is damage, nothing is decoded and one
+event is counted. A measure of a load (`LoadMeasure`) answers `-1` and its
+reason form `integrity_mismatch`.
+
+**WHAT IT DETECTS, stated as arithmetic.** A CRC of degree 32 detects every
+error confined to one burst of 32 bits or fewer, so every single-bit flip and
+every damaged single byte, whatever the XOR, is refused; any other damage
+pattern passes with probability `2^-32`. It is a check against ACCIDENT and
+nothing else: anyone who can write the file can write a matching trailer, so
+it says nothing about who wrote it. **Where integrity against a hostile writer
+is wanted it is still a SIGNATURE over the whole file** (§7, §13.4), and this
+key does not replace one.
+
+**THE TWO MISMATCHED READERS, both by name and never as data:**
+
+- **A reader of a table WITHOUT the key, given a file WITH the trailer**,
+  reads the last eight bytes as the entry count, and those are the high half
+  of the real count, zero for any file under 32 GiB, then the checksum. When
+  the checksum is nonzero the count is at least `2^32`, which runs past the
+  front of the file, so the whole wire is `malformed` by §3's first rule. When
+  it is zero the count reads as `0`, and the real id table's bytes are left
+  inside the body: a root that writes a field names reference `1` or more,
+  above the count, `malformed`; a root that writes none ends at its terminator
+  with the real count's bytes left over, `malformed`. There is no third case.
+- **A reader of a table WITH the key, given a file WITHOUT the trailer**,
+  compares the last four bytes, the high half of the real entry count and so
+  zero, with the CRC-32C of the bytes before them, and refuses
+  `integrity_mismatch` unless that CRC is zero, one file in `2^32`. Then the
+  four stripped bytes leave the real count's low half as the HIGH half of the
+  count the reader reads, at least `2^32` whenever the file names an id, which
+  runs past the front of the file; and a file that names no id is ten bytes,
+  six once stripped, under §3's nine-byte minimum. `malformed` either way, so
+  there is no case that reads as data.
+
+**WHAT IT ENTERS, AND WHAT IT DOES NOT.** The key is part of the table's
+declaration, so every build of the unit agrees on it. It is **not** part of
+the projection (SPEC §3.1), **not** part of the build version (§20), **not**
+in the fixed-table lock (§2.10: the key is refused on a `fixed table`, below)
+and **not** in the tables baseline (§18). Those four record identity and
+layout, the names, ids, kinds and offsets a reader resolves, and the trailer
+is none of them: it is framing at the end of one file. Moving it moves no
+byte of any undeclared table's file, and every Go unit without the key emits
+what it emitted before, save the one new refusal name the runtime carries.
+
+**THE EVOLUTION RULE: adding or removing `integrity` is a framing change to
+that table's files, and it is LOUD in both directions.** A file written
+before the key was added is refused by the new reader (`integrity_mismatch`),
+and a file written after is `malformed` to the old one (above); neither ever
+reads as a value. So a deployment that adds the key, or drops it, rewrites
+its stored files across the change: load each under the build that wrote it
+and save it under the new one. Because the change cannot go unnoticed, the
+baseline does not have to catch it, which is why it is not recorded there.
+
+**THE FIXED FORM AND THE MESSAGE FORM ARE FOLLOW-ONS.** Form `3` (§3.4) and
+form `2` (§3.3) carry their own framing, and each gets the trailer in its own
+change (schema-go-wire-integrity-fixed-form, schema-go-wire-integrity-message-form).
+Until then a `fixed table` that declares `integrity` is refused by name at
+check, since the class carries form `3` and is the one class that rides the
+message form (§3.3: "`fixed table T` may ride here, a plain `table T` may
+not"). A plain `table` carries neither, so the key on it is complete. The
+cook (§7) and the block form (§19) are trusted accelerators whose integrity
+answer is a signature, and the key does not touch them.
+
+**BASE64 TEXT carries the trailer with no rule of its own**: it is the base64
+of the binary file (§16.8), trailer included, and `LoadText` decodes it and
+reads the binary file, so a flipped character that still decodes is a flipped
+byte and is refused `integrity_mismatch`.
+
+**Go carries the construct first, and every other target refuses it by name,
+centrally, at generation** (§2.12's rule), naming the construct, the table and
+the target, so no other emitter is edited.
+
 ## 3. The wire
 
 **The wire is neutral.** It carries none of schema's packing opinions, no
@@ -4020,6 +4148,12 @@ adding to it.
   names them by position. **Any byte between the root's terminator and the
   table's first entry is `malformed`**, because no field claims it and the
   two ends of the file have met.
+- **The INTEGRITY TRAILER, only when the root table declares `integrity`**
+  (§2.14): four bytes, the little-endian CRC-32C of every byte before them,
+  after the id table and so the last four bytes of the file. A reader checks
+  it after the form byte and before it locates the id table, and then reads
+  the file without it, so every rule below speaks of the file with the
+  trailer removed.
 
 **A body is a sequence of FIELDS, each `id reference, kind (u8), payload`,
 terminated by a ZERO REFERENCE.** The terminator is one byte, the value `0`,
@@ -12312,6 +12446,9 @@ in build version (§20.5).
   answers that same reason. Builder `PackMeasureReason` follows the
   same rule. `invalid_value` and `allocation_failed` distinguish Go
   authoring failures from file count, form, blob-size, and cycle refusals.
+  A file whose root declares `integrity` (§2.14) and whose CRC-32C trailer
+  does not match returns `TableRefuseIntegrityMismatch` (`integrity_mismatch`)
+  from the strict read and `LoadText`, and from `LoadMeasureReason`.
   A damaged file trailer returns Go's `TableRefuseWireDamaged`
   (`wire_damaged`), since an error return cannot express the C++ measure's
   untouched reason out-parameter. It is damage, separate from the file refusal
