@@ -1337,6 +1337,12 @@ if report.Unknown != 0 || report.KindMismatch != 0 || report.Clamped != 0 {
 }
 ```
 
+An integer field's declared range is carried EXACTLY on the descriptor:
+`RangeIntMin`/`RangeIntMax` (int64) for a signed kind, `RangeUintMin`/
+`RangeUintMax` (uint64) for an unsigned kind, beside the float64
+`RangeMin`/`RangeMax` pair that stays for float and fixed-point ranges
+(SPEC-TABLES.md §8.1).
+
 The report is a PARAMETER rather than a member of the reader, which is the one
 place the Rust codecs read differently from the C++ ones: a reader holding
 `&mut TableReport` could not hand a sub-reader out of its own buffer while that
