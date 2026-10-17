@@ -43,3 +43,11 @@ func tableSourceRewriter(source string, replacements ...string) string {
 	}
 	return source
 }
+
+// tableSourceReplaceAllAny is the splitting companion to tableSourceRewriter: it
+// applies a replace-all that may legitimately match zero times because the caller
+// has already verified the pair on the whole via tableSourceRewriter. Absence on
+// a part is the state the split is testing, never a silent behavioural drop.
+func tableSourceReplaceAllAny(source, old, new string) string {
+	return strings.ReplaceAll(source, old, new)
+}

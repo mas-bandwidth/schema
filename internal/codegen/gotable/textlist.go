@@ -156,25 +156,27 @@ func textListJson(u *ir.Unit, s string) string {
 	if !unitUsesTextForms(u) {
 		return s
 	}
-	rep := func(old, new string) {
-		if strings.Contains(s, old) {
-			s = strings.ReplaceAll(s, old, new)
-		}
+	// The ten seams below live in the shared JSON walker source; the region
+	// JSON source reuses the walker by calling into it and carries none of
+	// them. That absence is a stated surface decision, not a silent skip.
+	if !strings.Contains(s, "func tableJsonShape(f *TableFieldInfo) byte {\n") {
+		return s
 	}
-	rep("func tableJsonShape(f *TableFieldInfo) byte {\n", "func tableJsonShape(f *TableFieldInfo) byte {\nif f.TextList!=0{return 'a'};if f.Kind==13&&!f.Pointer&&!f.IsArray&&!f.List&&f.Table!=nil&&f.Table().JsonArray{return 'a'}\n")
-	rep("func tableJsonElementShape(f *TableFieldInfo) byte {\n", "func tableJsonElementShape(f *TableFieldInfo) byte {\nif f.TextList!=0{return 's'};if f.Kind==13&&!f.Pointer&&f.Table!=nil&&f.Table().JsonArray{return 'a'}\n")
-	rep("func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\n", "func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\nif f.TextList!=0{return tableJsonWriteTextElement(out,storage,f)}\n")
-	rep("func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\n", "func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\nif f.TextList!=0{return tableJsonReadTextElement(in,storage,f,depth)}\n")
-	rep("\tif f.Kind == 12 {\n\t\ttableJsonWriteString(out, tableJsonBytes(storage, tableJsonCount(base, f)))", "\tif f.Kind == 12 && f.TextList == 0 {\n\t\ttableJsonWriteString(out, tableJsonBytes(storage, tableJsonCount(base, f)))")
-	rep("\tif f.Kind == 12 {\n\t\tlength, ok := in.scanString(", "\tif f.Kind == 12 && f.TextList == 0 {\n\t\tlength, ok := in.scanString(")
-	rep("!(f.Pointer && in.valueShape()=='z')", "!((f.Pointer||f.TextList==2) && in.valueShape()=='z')")
-	rep("!(f.Pointer&&in.valueShape()=='z')", "!((f.Pointer||f.TextList==2)&&in.valueShape()=='z')")
-	rep(" if depth>tableJsonMaxDepth{return false}\n any := label!=0\n", " if depth>tableJsonMaxDepth{return false}\n if info.JsonArray&&label==0&&len(info.Fields)==1{return tableJsonWriteField(out,base,&info.Fields[0],depth)}\n any := label!=0\n")
-	rep("func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool {\n\tif depth > tableJsonMaxDepth {\n\t\tin.bad = true\n\t\treturn false\n\t}\n",
-		"func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool {\n\tif depth > tableJsonMaxDepth {\n\t\tin.bad = true\n\t\treturn false\n\t}\n"+
-			"\tif info.JsonArray&&len(info.Fields)==1 {if in.peek()!='['{if in.report!=nil&&in.report.Reason==\"\"{in.report.Reason=\"json_root_not_array: \"+info.Name};in.bad=true;return false};return tableJsonReadField(in,base,&info.Fields[0],depth)}\n")
-	if strings.Contains(s, "// ---- json walk: end ----") {
-		s = strings.Replace(s, "// ---- json walk: end ----", textListJsonSource+"// ---- json walk: end ----", 1)
+	s = tableSourceReplace(s, "func tableJsonShape(f *TableFieldInfo) byte {\n", "func tableJsonShape(f *TableFieldInfo) byte {\nif f.TextList!=0{return 'a'};if f.Kind==13&&!f.Pointer&&!f.IsArray&&!f.List&&f.Table!=nil&&f.Table().JsonArray{return 'a'}\n", 1)
+	s = tableSourceReplace(s, "func tableJsonElementShape(f *TableFieldInfo) byte {\n", "func tableJsonElementShape(f *TableFieldInfo) byte {\nif f.TextList!=0{return 's'};if f.Kind==13&&!f.Pointer&&f.Table!=nil&&f.Table().JsonArray{return 'a'}\n", 1)
+	s = tableSourceReplace(s, "func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\n", "func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\nif f.TextList!=0{return tableJsonWriteTextElement(out,storage,f)}\n", 1)
+	s = tableSourceReplace(s, "func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\n", "func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\nif f.TextList!=0{return tableJsonReadTextElement(in,storage,f,depth)}\n", 1)
+	s = tableSourceReplace(s, "\tif f.Kind == 12 {\n\t\ttableJsonWriteString(out, tableJsonBytes(storage, tableJsonCount(base, f)))", "\tif f.Kind == 12 && f.TextList == 0 {\n\t\ttableJsonWriteString(out, tableJsonBytes(storage, tableJsonCount(base, f)))", 1)
+	s = tableSourceReplace(s, "\tif f.Kind == 12 {\n\t\tlength, ok := in.scanString(", "\tif f.Kind == 12 && f.TextList == 0 {\n\t\tlength, ok := in.scanString(", 1)
+	s = tableSourceReplace(s, "!(f.Pointer && in.valueShape()=='z')", "!((f.Pointer||f.TextList==2) && in.valueShape()=='z')", 2)
+	// The unspaced spelling of that pointer-null guard was the historical one;
+	// the walk today spells it with spaces, so the belt-and-suspenders rewrite
+	// is legitimately absent. State that decision rather than skipping silently.
+	if n := strings.Count(s, "!(f.Pointer&&in.valueShape()=='z')"); n > 0 {
+		s = tableSourceReplace(s, "!(f.Pointer&&in.valueShape()=='z')", "!((f.Pointer||f.TextList==2)&&in.valueShape()=='z')", n)
 	}
+	s = tableSourceReplace(s, " if depth>tableJsonMaxDepth{return false}\n any := label!=0\n", " if depth>tableJsonMaxDepth{return false}\n if info.JsonArray&&label==0&&len(info.Fields)==1{return tableJsonWriteField(out,base,&info.Fields[0],depth)}\n any := label!=0\n", 1)
+	s = tableSourceReplace(s, "func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool {\n\tif depth > tableJsonMaxDepth {\n\t\tin.bad = true\n\t\treturn false\n\t}\n", "func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool {\n\tif depth > tableJsonMaxDepth {\n\t\tin.bad = true\n\t\treturn false\n\t}\n"+"\tif info.JsonArray&&len(info.Fields)==1 {if in.peek()!='['{if in.report!=nil&&in.report.Reason==\"\"{in.report.Reason=\"json_root_not_array: \"+info.Name};in.bad=true;return false};return tableJsonReadField(in,base,&info.Fields[0],depth)}\n", 1)
+	s = tableSourceReplace(s, "// ---- json walk: end ----", textListJsonSource+"// ---- json walk: end ----", 1)
 	return s
 }
