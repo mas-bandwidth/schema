@@ -307,8 +307,7 @@ func tableRegionFromJson(value unsafe.Pointer,info *TableTypeInfo,worker *TableW
 // The text writer refuses a blob named from two slots by name, blob_shared:
 // there is no spelling to owe, and writing the value at each slot is the
 // amplification the standard refuses (docs/SPEC-TABLES.md §2.5, §16.7).
-func tableRegionToJson(value unsafe.Pointer,info *TableTypeInfo,buffer []byte,allocator ...TableAllocator) int64 {n,_:=tableRegionToJsonReason(value,info,buffer,allocator...);return n}
-func tableRegionToJsonReason(value unsafe.Pointer,info *TableTypeInfo,buffer []byte,allocator ...TableAllocator) (int64,TableRefuseReason) {
+func tableRegionToJson(value unsafe.Pointer,info *TableTypeInfo,buffer []byte,allocator ...TableAllocator) (int64,TableRefuseReason) {
  n,ok:=tableNumber(value,info,nil,allocator...);if !ok{return -1,n.reason};defer n.Release();if n.shared{return -1,TableRefuseBlobShared};graph:=tableJsonGraph{node:func(p unsafe.Pointer)*tableJsonGraphNode{i,ok:=n.find(p);if !ok{return nil};return &n.entries[i].json}}
  for i:=range n.entries {e:=&n.entries[i];if e.info!=nil&&!tableRegionEdges(e.node,e.info,func(slot *TableRef,f *TableFieldInfo) bool {p:=tableRefAt(slot,nil);if p!=nil {graph.node(p).refs++};return true}){return -1,TableRefuseInvalidValue}}
  out:=tableJsonOut{buffer:buffer,measure:buffer==nil,graph:&graph};if !tableJsonWriteValue(&out,value,info,0){return -1,TableRefuseInvalidValue};out.put('\n');if out.overflow{return -1,TableRefuseInvalidValue};return out.offset,TableRefuseOk
