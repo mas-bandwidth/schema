@@ -3666,6 +3666,19 @@ cache, outside your module's build list: the directive adds no line to
 compiles with the same compiler, and moving the pin is editing the one line.
 `v2.5.0` is the newest tag at this writing.
 
+**Move the pin across a whole tree in one command.** `schema pin` rewrites
+the version in every `go:generate` line under the given directories and prints
+one line per file it changed:
+
+```
+schema pin v2.6.0 .
+```
+
+It refuses, by name, a version that is not a Go pseudo-version or semver tag,
+a directory that does not exist, and a tree whose pins already differ from
+each other (`--mixed-ok` accepts the tree and moves them together). Nothing
+else in the files moves, and no other file is touched.
+
 **A unit that declares only tables needs no dependency.** The generated Go
 imports the standard library alone, so the files drop into any Go module
 with nothing added to its `go.mod`. The one exception is the 128-bit widths:

@@ -15,6 +15,7 @@
 //	schema uncook     --root T --in C --out F        the cook becomes the wire again
 //	schema version                                   print the build identity
 //	schema new-leg    <lang> [--root .] [--verbose]  write a language-leg skeleton
+//	schema pin        <version> <dir>... [--mixed-ok]  move every go:generate pin to <version>
 //
 // Every command here is a few lines over the public API in
 // github.com/mas-bandwidth/schema/v2/compiler: this binary holds the CLI's
@@ -576,6 +577,8 @@ func main() {
 		if verbose {
 			fmt.Printf("uncooked %s into %s: %d wire bytes\n", *in, *out, len(wire))
 		}
+ 	case "pin":
+		cmdPin(os.Args[2:])
 	case "new-leg", "newleg":
 		// A LANGUAGE-LEG SKELETON (docs/CONTRIBUTING.md, "Adding a language"):
 		// files, makefile, harness, one passing fixture. Not a codec. The
@@ -727,6 +730,7 @@ func usage() {
   schema uncook     --root <Table> --in  <file.cook> --out <file> [--attribution <file>] [--verbose] [dir|files...]
   schema version
   schema new-leg    <lang> [--root .] [--verbose]
+  schema pin        <version> <dir>... [--mixed-ok]
 
 check handed a SAVED FILE rather than a schema source answers its FORM BYTE
 first, on one line — FORM 1 the variable form, FORM 2 the message form, FORM 3
