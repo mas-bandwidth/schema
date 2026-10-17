@@ -29,6 +29,30 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// THE TREE'S OWN SKELETONS: a `schema new-leg` leg registers make/<lang>.mk
+	// beside a tagged compiler/target_<lang>.go, and the copied make/ carries
+	// its .mk, so the fixture carries its tag line too (docs/CONTRIBUTING.md,
+	// "Adding a language"). Each one is a skip the probe names, like lua's.
+	skeletons := 1 // the planted lua
+	targets, err := filepath.Glob(filepath.Join(root, "compiler", "target_*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range targets {
+		data, err := os.ReadFile(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lang := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(target), "target_"), ".go")
+		tag := "//go:build schema_leg_" + lang
+		if lang == "lua" || !strings.HasPrefix(string(data), tag+"\n") {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(fixture, "compiler", filepath.Base(target)), []byte(tag+"\n\npackage compiler\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		skeletons++
+	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatal(err)
@@ -76,7 +100,7 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(legs) == 0 || refused+carried != len(legs)-1 {
+	if len(legs) == 0 || refused+carried != len(legs)-skeletons {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}
 	if _, err := os.Stat(filepath.Join(fixture, "build", "tables-wide-refusal", "go", "Scalars.go")); err != nil {

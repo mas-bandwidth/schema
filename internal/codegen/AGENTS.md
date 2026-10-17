@@ -23,3 +23,5 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../../AGENTS.md
 | `jstable/` | JS table emitter | `go test ./internal/codegen/jstable` | `go test ./internal/codegen/jstable` |
 | `rust/` | Rust packet emitter | `go test ./internal/codegen/rust` | `go test ./internal/codegen/rust` |
 | `rusttable/` | Rust table emitter | `go test ./internal/codegen/rusttable` | `go test ./internal/codegen/rusttable` |
+| `squirrel/` | Squirrel packet emitter | `go test ./internal/codegen/squirrel` | `go test ./internal/codegen/squirrel` |
+| `squirreltable/` | Squirrel table emitter | `go test ./internal/codegen/squirreltable` | `go test ./internal/codegen/squirreltable` |
