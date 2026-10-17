@@ -296,6 +296,11 @@ func main() {
 		c.FixedRecordLimit = *limit
 		c.TablesBaseline = true
 		c.SchemaLock = true
+		if tn := compiler.ReservedWordDisplay(*lang); tn != "" {
+			c.ReservedTargets = []string{tn}
+		} else {
+			c.ReservedTargets = []string{}
+		}
 		unit := loadUnit(c, fs.Args())
 		files, err := c.Generate(unit, *lang, compiler.Options{"surface": *surface})
 		if err != nil {
