@@ -122,6 +122,10 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		if fname, owner, ok := firstOneSidedField(u); ok {
 			return nil, fmt.Errorf("the %s target does not carry a one-sided integer range — %s: Go carries it first, and every other target refuses the construct by name until its own turn (SPEC §4.6, docs/SPEC-TABLES.md §4)", carrier, owner+"."+fname)
 		}
+		// GO CARRIES THE OPTIONAL MAP FIRST (docs/SPEC-TABLES.md §2.8)
+		if err := refuseOptionalMaps(u, carrier); err != nil {
+			return nil, err
+		}
 	}
 	if lg, takes := g.(lineageGenerator); takes {
 		lineage, err := openFixedLineage(u)

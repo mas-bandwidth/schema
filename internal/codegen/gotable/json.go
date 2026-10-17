@@ -71,7 +71,7 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	}
 	extra := tableJsonWideSource + tableJsonWStringSource + tableJsonGraphSource + tableJsonListSource + tableJsonMapSource + tableJsonMapDecimalSource + tableJsonTimestampSource + tableTimestampRuntime
 	b.WriteString("import (\n" + imports + ")\n\n")
-	b.WriteString(unboundedTextJson(u, textListJson(u, strings.Replace(walk, "// ---- json walk: end ----", extra+"// ---- json walk: end ----", 1))))
+	b.WriteString(optionalMapJson(u, unboundedTextJson(u, textListJson(u, strings.Replace(walk, "// ---- json walk: end ----", extra+"// ---- json walk: end ----", 1)))))
 	if len(variableTableNames(u)) > 0 {
 		regionJson := tableRegionJsonSource
 		if unitHasContainers(u) {

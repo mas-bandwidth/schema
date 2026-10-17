@@ -96,6 +96,26 @@ func MapFields(u *Unit) []string {
 	return out
 }
 
+// OptionalMapFields names every OPTIONAL MAP, `?map[K]V`, of a unit's table
+// closure as "Table.field", sorted (docs/SPEC-TABLES.md §2.8). Go carries the
+// construct first, and the central refusal every other target gives reads it.
+func OptionalMapFields(u *Unit) []string {
+	var out []string
+	for name := range TableClosure(u) {
+		st := memberStruct(u, name)
+		if st == nil || st.MapEntryOf != "" {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.IsMap() && f.Type.Optional {
+				out = append(out, name+"."+f.Name)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // MapEntryProjectionName is a generated entry's identity in the two
 // PROJECTIONS — the cook projection the build version digests
 // (docs/SPEC-TABLES.md §20.2) and the tables baseline (§18.1). It is
