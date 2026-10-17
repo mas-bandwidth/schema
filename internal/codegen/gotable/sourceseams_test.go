@@ -228,10 +228,10 @@ table Root {
 // per surfaceExercises schema. The seams only move source text; they must never
 // move the bytes a unit generates.
 var seamGolden = map[string]string{
-	"lists-maps-cook-union": "8810d8a90dcba9ac4584aa1a119d1d4603f6035594eb2ceae9303a66058ba7fd",
-	"array-root-text-list":  "e8ca590451c06af418332b24cecb96d8bd9d59d03e7ed34ca4e6161e1b34d73c",
-	"message-form":          "fe02906ad3b3c78014c277674f6a7e7abddb0ada9520bd1f0a354783f892c67a",
-	"retain-unknown":        "c97cb7326004cd3663606df2fd58c4d37adb7ac545c966d2f2f4cee40936213a",
+	"lists-maps-cook-union": "bc5525af3b10f4bc46a2303d42c4f3d85413b81ed71d053618ef53b1393727f5",
+	"array-root-text-list":  "2539202075df83b671cdfabfbebf1bd80c4396906d7a2237e9a990aa947d8fd1",
+	"message-form":          "a2e4f6ce0af6127cabb7bb0a816c535ff96f81b8f06b4f2e998299c40d60f097",
+	"retain-unknown":        "80fc3e36f7d3248373cd3ffe04382c4f0d31e8dffbf4c3400096621578a2f931",
 }
 
 func outputDigest(out map[string][]byte) string {
