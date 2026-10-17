@@ -1,13 +1,9 @@
-# make/checks/lua-serialize.mk — vendor the serialize port as the type wire's
-# bottom layer (docs/PORT-LUA.md, THE RUNTIME LAYOUT). The type-wire cards call
-# this library rather than a private bit reader or writer. SERIALIZE_PIN names
-# the vendored commit and one sha256 per file; vendor-serialize-lua clones the
-# port at that commit into build/serialize.lua (or uses the checkout
+# make/lua-serialize.mk — vendor the serialize port as the type wire's bottom
+# layer (docs/PORT-LUA.md, THE RUNTIME LAYOUT). The type-wire cards call this
+# library rather than a private bit reader or writer. SERIALIZE_PIN names the
+# vendored commit and one sha256 per file; vendor-serialize-lua clones the port
+# at that commit into build/serialize.lua (or uses the checkout
 # SERIALIZE_LUA_DIR names), re-copies its src files and rewrites the pin.
-#
-# It lives under make/checks because the Makefile's wildcard treats every
-# make/*.mk as a live compiler backend (tables-ports-refuse-wide-scalars); this
-# is a support fragment, included by path like the other checks.
 
 SERIALIZE_REPO    := https://github.com/mas-bandwidth/serialize.lua
 SERIALIZE_BRANCH  := sprint/serialize-lua

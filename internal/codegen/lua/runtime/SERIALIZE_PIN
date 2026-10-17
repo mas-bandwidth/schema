@@ -1,5 +1,5 @@
 # Vendored from https://github.com/mas-bandwidth/serialize.lua
-# at branch sprint/serialize-lua, commit 54bdf67c6a225a776d9246a5cc3b9bb9ad869138
+# at branch sprint/serialize-lua, commit 107a73b95bcaba9e0ed6bcc72ddfb343faf65c8b
 # (card schema-lua-serialize-vendor). Rewrite with: make vendor-serialize-lua
 sha256  390091e7ae54a157feb65e4c441c06c7a887767fc4ed1158b434f1c20d0374d6  serialize_bitpacker.lua
 sha256  2cb8113db1640660b4913816cf875f7dc7066b10a58cf063d6d90961a19296df  serialize_bits.lua
