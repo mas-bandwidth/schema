@@ -18,6 +18,13 @@ local NodeTableId = 0xffffffffffffffffi
 local StringBlobId: integer = 0x704be0d8faaffc58i
 local BytesBlobId: integer = 0x2f2ec0474f1c4fe4i
 
+local writeFields: any
+local writeField: any
+local writeElement: any
+local writeArmHeader: any
+local writeKeyed: any
+local sameBytes: any
+
 -- ---- THE WRITER: a growable byte list, LEB128 offsets and lengths (§3) -----
 
 local Writer = {}
@@ -50,39 +57,45 @@ function Writer:u32(v)
 	end
 end
 
-function Writer:u64Bytes(v)
+function Writer:u64Bytes(v: integer)
 	-- v is a Luau integer (64-bit, two's complement); its eight bytes LE
+	local x = v
 	for i = 1, 8 do
-		table.insert(self.b, tonumber(integer.band(v, 255i)))
-		v = integer.rshift(v, 8i)
+		table.insert(self.b, tonumber(integer.band(x, 255i)))
+		x = integer.rshift(x, 8i)
 	end
 end
 
 function Writer:leb(v)
-	if type(v) == "integer" then
-		while integer.uge(v, 128i) do
-			table.insert(self.b, tonumber(integer.bor(integer.band(v, 127i), 128i)))
-			v = integer.div(v, 128i)
-		end
-		table.insert(self.b, tonumber(v))
-		return
+	local n = math.floor(v)
+	while n >= 128 do
+		table.insert(self.b, (n % 128) + 128)
+		n = math.floor(n / 128)
 	end
-	local v = math.floor(v)
-	while v >= 128 do
-		table.insert(self.b, (v % 128) + 128)
-		v = math.floor(v / 128)
-	end
-	table.insert(self.b, v)
+	table.insert(self.b, n)
 end
 
 function Writer:raw(bytes)
-	for i = 1, bytes:len() do
-		table.insert(self.b, bytes:readu8(i - 1))
+	if typeof(bytes) == "string" then
+		for i = 1, bytes:len() do
+			table.insert(self.b, bytes:byte(i))
+		end
+	else
+		for i = 0, buffer.len(bytes) - 1 do
+			table.insert(self.b, buffer.readu8(bytes, i))
+		end
 	end
 end
 
 function Writer:bytes()
 	return buffer.fromstring(table.concat(self.b, ""))
+end
+
+local function blen(x)
+	if typeof(x) == "string" then
+		return x:len()
+	end
+	return buffer.len(x)
 end
 
 -- ---- IDS: intern ids in first-use order (§3), with mark/rollback for elision
@@ -176,7 +189,7 @@ local function edges(d, v, out)
 	return out
 end
 
-local function arrCount(fd, val)
+arrCount = function(fd, val)
 	if fd.array == "list" then
 		return #val
 	end
@@ -272,7 +285,7 @@ local function writeBody(d, w, ids, nodes, v, path)
 	return true
 end
 
-local function writeFields(d, w, ids, nodes, v, path)
+writeFields = function(d, w, ids, nodes, v, path)
 	for _, fd in d.fields do
 		if not writeField(fd, w, ids, nodes, v, path) then
 			return false
@@ -281,7 +294,7 @@ local function writeFields(d, w, ids, nodes, v, path)
 	return true
 end
 
-local function writeField(fd, w, ids, nodes, v, path)
+writeField = function(fd, w, ids, nodes, v, path)
 	local val = v[fd.slot]
 	if fd.s == "bool" then
 		if val ~= fd.def then
@@ -320,7 +333,7 @@ local function writeField(fd, w, ids, nodes, v, path)
 			else
 				buffer.writef64(scratch, 0, val)
 				for i = 1, 8 do
-					table.insert(w.b, scratch:readu8(i - 1))
+					table.insert(w.b, buffer.readu8(scratch, i - 1))
 				end
 			end
 		end
@@ -329,7 +342,7 @@ local function writeField(fd, w, ids, nodes, v, path)
 	if fd.s == "str" then
 		if val ~= fd.def then
 			header(w, ids, fd, 12)
-			w:leb(val:len())
+			w:leb(blen(val))
 			w:raw(val)
 		end
 		return true
@@ -339,7 +352,7 @@ local function writeField(fd, w, ids, nodes, v, path)
 			header(w, ids, fd, 14)
 			local body = Writer.new()
 			body:u8(6)
-			body:leb(val:len())
+			body:leb(blen(val))
 			body:raw(val)
 			w:leb(body:len())
 			w:raw(body:bytes())
@@ -437,19 +450,21 @@ local function writeField(fd, w, ids, nodes, v, path)
 	return false
 end
 
-local function sameBytes(a, b)
-	if a:len() ~= b:len() then
+sameBytes = function(a, b)
+	if blen(a) ~= blen(b) then
 		return false
 	end
-	for i = 1, a:len() do
-		if a:readu8(i - 1) ~= b:readu8(i - 1) then
+	for i = 0, blen(a) - 1 do
+		local ab = typeof(a) == "string" and a:byte(i + 1) or buffer.readu8(a, i)
+		local bb = typeof(b) == "string" and b:byte(i + 1) or buffer.readu8(b, i)
+		if ab ~= bb then
 			return false
 		end
 	end
 	return true
 end
 
-local function writeElement(fd, w, ids, nodes, val, path, i)
+writeElement = function(fd, w, ids, nodes, val, path, i)
 	local e = fd.e
 	if e.s == "bool" then
 		w:u8(val and 1 or 0)
@@ -470,7 +485,7 @@ local function writeElement(fd, w, ids, nodes, val, path, i)
 		else
 			buffer.writef64(scratch, 0, val)
 			for k = 1, 8 do
-				table.insert(w.b, scratch:readu8(k - 1))
+				table.insert(w.b, buffer.readu8(scratch, k - 1))
 			end
 		end
 		return true
@@ -514,7 +529,7 @@ local function writeElement(fd, w, ids, nodes, val, path, i)
 	return false
 end
 
-local function writeArmHeader(un, tag, w, ids, nodes, v, path)
+writeArmHeader = function(un, tag, w, ids, nodes, v, path)
 	local arm = un.arms[tag]
 	w:leb(ids:ref(arm.id))
 	w:u8(arm.k)
@@ -540,7 +555,7 @@ local function writeArmHeader(un, tag, w, ids, nodes, v, path)
 	if arm.s == "bytes" then
 		local val = v[arm.slot]
 		body:u8(6)
-		body:leb(val:len())
+		body:leb(blen(val))
 		body:raw(val)
 		w:leb(body:len())
 		w:raw(body:bytes())
@@ -594,7 +609,7 @@ local function writeArmHeader(un, tag, w, ids, nodes, v, path)
 		else
 			buffer.writef64(scratch, 0, v[arm.slot])
 			for k = 1, 8 do
-				table.insert(body.b, scratch:readu8(k - 1))
+				table.insert(body.b, buffer.readu8(scratch, k - 1))
 			end
 		end
 		w:leb(body:len())
@@ -626,7 +641,7 @@ local function writeArmHeader(un, tag, w, ids, nodes, v, path)
 	return false
 end
 
-local function writeKeyed(fd, w, ids, nodes, v, path)
+writeKeyed = function(fd, w, ids, nodes, v, path)
 	local mark = ids:mark()
 	local ref = ids:ref(fd.id)
 	local body = Writer.new()
@@ -641,7 +656,7 @@ local function writeKeyed(fd, w, ids, nodes, v, path)
 		end
 		local slotMark = ids:mark()
 		local keyRef = ids:ref(keyID[2])
-		local elem: Writer
+		local elem: any
 		local elemBytes
 		if fd.ek == 13 then
 			local b = Writer.new()
@@ -662,7 +677,7 @@ local function writeKeyed(fd, w, ids, nodes, v, path)
 			elemBytes = eb:bytes()
 		end
 		body:leb(keyRef)
-		body:leb(elemBytes:len())
+		body:leb(blen(elemBytes))
 		body:raw(elemBytes)
 		pairs = pairs + 1
 	end
@@ -703,7 +718,7 @@ function S.save(d, v)
 		for _, n in nodes.list do
 			sub:leb(ids:ref(n.typeId))
 			if n.v == nil then
-				sub:leb(n.body:len())
+				sub:leb(blen(n.body))
 				sub:raw(n.body)
 			else
 				local body = Writer.new()
