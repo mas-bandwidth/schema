@@ -86,6 +86,10 @@ func shorten(s string) string {
 	return s
 }
 
+// nonFiniteEngineRefusal is the engine's refusal of a non-finite float on the
+// same wire, which is what makes a refused text the plain-float card's.
+var nonFiniteEngineRefusal = regexp.MustCompile(`the engine on the same wire: float (NaN|[+-]Inf) has no JSON spelling`)
+
 var negZeroToken = regexp.MustCompile(`(^|[\[,:\s])-0(\.0+)?([,\]}\s]|$)`)
 
 // onlyNegativeZero reports whether a and b differ, and differ only by plain
@@ -122,7 +126,7 @@ var owedClasses = []owedClass{
 		card: "schema-go-plain-float-special-values",
 		why:  "a damaged wire decodes a plain float to NaN or an infinity, which the JSON writer refuses (no ruling yet on non-finite plain floats in the strict read)",
 		match: func(u *genUnit, f finding) bool {
-			return strings.HasPrefix(f.Kind, "damage-") && strings.HasSuffix(f.Kind, "-unjson") && u.has(func(t *gType) bool { return t.Kind == gFloat32 || t.Kind == gFloat64 })
+			return strings.HasPrefix(f.Kind, "damage-") && strings.HasSuffix(f.Kind, "-unjson") && nonFiniteEngineRefusal.MatchString(f.Detail)
 		},
 	},
 	{
@@ -803,6 +807,16 @@ func runSeed(t *testing.T, seed int, sabotage bool) (failing, owed []string, wro
 		a, _ := base64.StdEncoding.DecodeString(parts[2])
 		b, _ := base64.StdEncoding.DecodeString(parts[3])
 		fs = append(fs, finding{Kind: parts[0], Index: idx, A: a, B: b, Detail: parts[4]})
+	}
+	// a damaged read whose value the JSON writer refuses: ask the engine why,
+	// over the wire that value saves to (A), so the class is decided by the
+	// cause and not by what the unit holds
+	m := tabletext.NewModel(unit)
+	for k := range fs {
+		if strings.HasPrefix(fs[k].Kind, "damage-") && strings.HasSuffix(fs[k].Kind, "-unjson") {
+			_, err := tablepack.UnpackOneFile(m, "Root", fs[k].A, t.TempDir())
+			fs[k].Detail += fmt.Sprintf(" | the engine on the same wire: %v", err)
+		}
 	}
 	fs = append(fs, engineFindings(t, unit, dir)...)
 	for _, f := range fs {
