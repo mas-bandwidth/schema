@@ -221,3 +221,30 @@ func TestGoGenerateSurfaceEmitsOnlyWhatItNames(t *testing.T) {
 		t.Error("ParseSurfaces(bogus) should error")
 	}
 }
+
+// TestDefaultGenerateEqualsFullSurfaceSet pins DONE-WHEN's byte-identity claim
+// at the public default entrypoint: GenerateLineage (the no-flag path) is
+// byte-identical to GenerateLineageSurface with the explicit full set
+// (docs/SPEC-TABLES.md §8.8).
+func TestDefaultGenerateEqualsFullSurfaceSet(t *testing.T) {
+	t.Parallel()
+	u := unitFrom(t, surfaceSchema)
+	def, err := GenerateLineage(u, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	full, err := GenerateLineageSurface(u, nil, DefaultSurfaces())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(def) != len(full) {
+		t.Fatalf("default has %d files, full surface set has %d", len(def), len(full))
+	}
+	for name, data := range def {
+		if other, ok := full[name]; !ok {
+			t.Errorf("default emits %s but the full surface set does not", name)
+		} else if !bytes.Equal(data, other) {
+			t.Errorf("default and full surface set differ on %s", name)
+		}
+	}
+}
