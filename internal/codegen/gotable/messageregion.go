@@ -2,7 +2,6 @@ package gotable
 
 import (
 	"github.com/mas-bandwidth/schema/v2/ir"
-	"strings"
 )
 
 // Message batches use one caller-owned region. Every body's directory comes
@@ -17,8 +16,8 @@ func (g *tableGen) emitRegionMessage(st *ir.Struct) {
 func tableMessageRegionRuntime(u *ir.Unit) string {
 	s := goMessageRegionRuntime
 	if unitHasContainers(u) {
-		s = strings.Replace(s, "return tableMessageSkipBody(&r.Bits,r.Vocabulary,r.IndexBits,0)", "return tableMessageExtentBody(r,t,at)", 1)
-		s = strings.Replace(s, "return t.LoadMessageBody(r,p)", "r.Nodes.Carve=TableExtentCarve{Base:p,At:tableRegionRound(int64(t.Size)),Limit:size};return t.LoadMessageBody(r,p)", 1)
+		s = tableSourceReplace(s, "return tableMessageSkipBody(&r.Bits,r.Vocabulary,r.IndexBits,0)", "return tableMessageExtentBody(r,t,at)", 1)
+		s = tableSourceReplace(s, "return t.LoadMessageBody(r,p)", "r.Nodes.Carve=TableExtentCarve{Base:p,At:tableRegionRound(int64(t.Size)),Limit:size};return t.LoadMessageBody(r,p)", 1)
 		s += goMessageExtentRuntime + goMessageMapRuntime
 	}
 	return s

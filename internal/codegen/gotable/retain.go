@@ -24,7 +24,7 @@ func (g *tableGen) emitRetainRuntime() {
 	g.pf("%s", source)
 	load := tableRegionSource
 	if unitHasContainers(g.unit) {
-		load = containerRegionSource(load)
+		load = containerRegionSourceRetain(load)
 	}
 	load = tableSourceFunction(load, "func tableRegionLoad(")
 	load = tableSourceReplace(load, "func tableRegionLoad(", "func tableRegionLoadRetain(", 1)
@@ -149,6 +149,12 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	if g.surfaces.Message {
 		side.into(&side.message, func() { side.emitMessageRead(st) })
 	}
+	// The message-form reader rides only on a message surface; every other
+	// rewrite is the region body's and must be present. The whole family is
+	// validated against those stated surfaces first, so a vanished or doubled
+	// anchor panics by name (>=1, or ==0 when the surface is off) instead of
+	// silently dropping a behaviour; each half is then rewritten alone and the
+	// two halves must be the whole, byte for byte.
 	rewrites := []string{"TableMessageReader", "TableRetainMessageReader", "TableWriter", "TableRetainWriter", "TableReader", "TableRetainReader", "TableIds", "TableRetainIds"}
 	retained := func(source string) string {
 		source = retainBodyName.ReplaceAllString(source, "${1}${2}Retain")
@@ -157,14 +163,20 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 		}
 		return source
 	}
-	// the seams fail closed on the WHOLE family, exactly as before the message
-	// half had a file of its own; each half is then rewritten alone, and the
-	// two halves must be the whole, byte for byte
+	haveMessage := side.message.Len() > 0
 	whole := side.body.String() + side.message.String()
 	if !retainBodyName.MatchString(whole) {
 		panic("retaining body family has no source codecs")
 	}
-	whole = tableSourceRewriter(retainBodyName.ReplaceAllString(whole, "${1}${2}Retain"), rewrites...)
+	whole = retainBodyName.ReplaceAllString(whole, "${1}${2}Retain")
+	for i := 0; i < len(rewrites); i += 2 {
+		old, new := rewrites[i], rewrites[i+1]
+		want := -1
+		if old == "TableMessageReader" && !haveMessage {
+			want = 0
+		}
+		whole = tableSourceReplace(whole, old, new, want)
+	}
 	core, message := retained(side.body.String()), retained(side.message.String())
 	if core+message != whole {
 		panic("retaining body family does not split at the message form's seam")
