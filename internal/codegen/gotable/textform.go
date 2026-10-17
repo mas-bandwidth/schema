@@ -43,7 +43,7 @@ func generateTextFormFiles(u *ir.Unit, closure map[string]bool, home string) (ma
 	b.WriteString("// <Name>EditTextForm replaces scalar values by their token spans only. Every\n")
 	b.WriteString("// refusal is a *TableTextFormError carrying its stable name (§16.9.4).\n\n")
 	fmt.Fprintf(&b, "package %s\n\n", u.Package)
-	b.WriteString("import (\n\t\"encoding/base64\"\n\t\"math\"\n\t\"math/big\"\n\t\"sort\"\n\t\"strconv\"\n\t\"strings\"\n\t\"time\"\n\t\"unicode/utf8\"\n\t\"unsafe\"\n)\n\n")
+	b.WriteString("import (\n\t\"encoding/base64\"\n\t\"math\"\n\t\"math/big\"\n\t\"sort\"\n\t\"strconv\"\n\t\"strings\"\n\t\"unicode/utf8\"\n\t\"unsafe\"\n)\n\n")
 	b.WriteString(tableTextFormSource)
 	writeTextFormHooks(&b, u)
 	for _, f := range u.Files {
@@ -1044,15 +1044,14 @@ func (r *tableTextFormResolver) flags(v *tableTextFormNode, f *TableFieldInfo, p
 	return true
 }
 
+// timestamp reads the one strict RFC 3339 parser the JSON walk and the engine
+// read (docs/SPEC-TABLES.md §2.11, §16.9.4): lowercase t and z are accepted,
+// and a spelling section 5.6 refuses is refused here by name.
 func (r *tableTextFormResolver) timestamp(v *tableTextFormNode) bool {
 	if v.kind != '"' {
 		return r.fail(TableTextFormKindMismatch, v, v.start)
 	}
-	t, err := time.Parse(time.RFC3339Nano, string(v.text))
-	if err != nil {
-		return r.fail(TableTextFormTimestamp, v, v.start)
-	}
-	nanos, ok := tableTimestampNanos(t)
+	nanos, ok := rfc3339Parse(v.text)
 	if !ok {
 		return r.fail(TableTextFormTimestamp, v, v.start)
 	}
