@@ -109,6 +109,12 @@ A table that declares `forms` (SPEC-TABLES.md §2.12) narrows it further: the
 list intersects the table's forms, and a list naming `json`, `cook` or `block`
 for a table that does not declare that form is refused, naming the table.
 
+A default `generate --lang go` (no `--surface`) also removes stale surface
+files: any `.go` file in the output directory whose first line is the compiler's
+own header naming this unit's `.schema` file or package (SPEC-TABLES.md §8.8)
+and that this run did not write. With `--surface` nothing is removed; only
+`.go` files the compiler itself generated are ever touched.
+
 ---
 
 ## Declarations
