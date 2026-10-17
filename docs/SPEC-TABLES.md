@@ -1164,7 +1164,9 @@ table Player
 - **The reader REFUSES a record missing it.** An older record written before
   the field was required lacks it; reading it is refused with the event
   `missing_required`, naming the field. The record does not silently fall
-  back to a default — the field was declared mandatory and is not there.
+  back to a default — the field was declared mandatory and is not there. The
+  TEXT form (§16) refuses the same absence: a JSON object that omits the key
+  is refused, naming the field, exactly as the binary and base64 forms do.
 - **It is TABLE fields only.** `| required` is refused, by name, on a packet
   `type` field — a type's wire is positional and every field always rides, so
   there is no absence for a required marker to cure — and on an optional
@@ -1190,6 +1192,11 @@ table Player
   body that lacked it. A strict caller gets it by name — `ReadStrict` and
   `TableReport.Err()` answer the typed `TableMissingRequired`, whose text is
   the report's reason (§6.5), never a bare `wire_damaged`.
+- **A `| required` field whose range excludes zero takes NO default.**
+  A fresh record's field is the storage zero, which is outside the range, so
+  the writer refuses the record until the field is set; a stored record
+  lacking it is `missing_required` on read (SPEC §4.6). A declared default on
+  such a field stays legal.
 
 **Evolution** (§4). Adding `required` to a shipped field is a BREAK the
 tables baseline refuses: old records were written without it and a newer
