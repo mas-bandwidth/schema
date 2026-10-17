@@ -15,10 +15,10 @@ import (
 const plainMapSchema = "package probe\n\ntable Holder\n{\n    tags map[string(8)]int32\n    maybe ?int32\n    some ?[..4]int32\n    values map[uint32]?int32\n}\n"
 
 // plainMapDigest is the sha256 of the go and cpp outputs of plainMapSchema at
-// the base this card started from (sprint/schema-go @ caea41783528), file
+// the base this card started from (sprint/schema-go @ 3f4d111f44, re-pinned on the rebase: the base moved the go output, this card does not), file
 // names sorted, each name then its bytes (outputDigest).
 var plainMapDigest = map[string]string{
-	"go":  "170214ae5a3e8727081206948c3442ee41181486aa7347ad32699fe8e0658f2e",
+	"go":  "5864563260e2bf2706a5077faa0d4798094e548e7232ad3f451488eb4a1a5ff2",
 	"cpp": "89878cf368053213bfe10cbe20a4fe38eae626ce4a6d3af244008f811675365e",
 }
 
