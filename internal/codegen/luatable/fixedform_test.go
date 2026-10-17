@@ -3,11 +3,10 @@ package luatable
 // THE FIXED FORM'S TESTS on the Lua leg (docs/FIXED-FORM-ALGORITHM.md; the
 // corpus is internal/codegen/jstable/fixedversioning_test.go's, built by `make
 // tables-fixedform-corpus` into build/fixedform-corpus): a fixed root's write
-// equals the oracle bytes, the oracle reads back to the same values, a reader
-// one field older and one newer reads the other's record, and each named
-// refusal is reached by one forged layout. The negative control patches the
-// emitted runtime in memory so the plan skips the last field, and requires the
-// oracle comparison to go red.
+// equals the oracle bytes, the oracle reads back to the same values, a newer
+// reader reads an older record (the versioning invariant, §5), and the
+// negative control patches the emitted runtime in memory so the plan skips
+// the last field, requiring the oracle comparison to go red.
 
 import (
 	"fmt"
@@ -21,8 +20,7 @@ import (
 
 // TestLuaFixedFormAgreesWithTheByteOracle drives the oracle corpus: for a fixed
 // root it writes the value to the oracle bytes and reads them back, and checks
-// the versioning invariant. The runtime card is the writer and the reader; this
-// test is red until both are implemented (docs/PORT-LUA.md, THE CARD MAP).
+// that a newer reader reads the older record (docs/FIXED-FORM-ALGORITHM.md §5).
 func TestLuaFixedFormAgreesWithTheByteOracle(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
@@ -52,9 +50,39 @@ func TestLuaFixedFormAgreesWithTheByteOracle(t *testing.T) {
 	// the oracle bytes ride in as a module for the probe to compare against
 	luarun.WriteFiles(t, oldDir, map[string][]byte{"oracle_old.lua": hexModule(oldBytes)})
 	luarun.WriteFiles(t, newDir, map[string][]byte{"oracle_new.lua": hexModule(newBytes)})
+	luarun.WriteFiles(t, newDir, map[string][]byte{"oracle_old.lua": hexModule(oldBytes)})
 
-	oldProbe := probeFixedOracle(ModuleName(oldUnit), "oracle_old")
-	newProbe := probeFixedOracle(ModuleName(newUnit), "oracle_new")
+	oldProbe := probeFixedOracle(ModuleName(oldUnit), "oracle_old", `
+v.x = 11; v.y = 22; v.z = 33
+local want = { x = 11, y = 22, z = 33 }`)
+	newProbe := probeFixedOracle(ModuleName(newUnit), "oracle_new", `
+v.x = 44; v.y = 55; v.z = 66; v.w = 777
+local want = { x = 44, y = 55, z = 66, w = 777 }`)
+	// THE VERSIONING INVARIANT (§5): the newer reader reads the older writer's
+	// file, every old value lands exactly, and the appended field is its
+	// declared default (77), never the older record's bytes.
+	newProbe += `
+local old = T.ReadFixed("Lineage", require("oracle_old").bytes)
+assert(old.x == 11 and old.y == 22 and old.z == 33, "the old values did not land")
+assert(old.w == 77, "the appended field is not its declared default")
+print("fixed-old-ok")
+`
+	// THE NAMED REFUSALS, reached by one forged layout each (docs/
+	// FIXED-FORM-ALGORITHM.md §1.1, §2, §4.2).
+	oldProbe += `
+local function refusal(kind, b)
+  local ok, err = pcall(function() T.ReadFixed("Lineage", b) end)
+  assert(not ok and tostring(err):find(kind, 1, true), "expected " .. kind .. ", got " .. tostring(err))
+end
+local base = O.bytes
+local layoutLen = string.unpack("<I4", base, 17)
+local L = 21 + layoutLen
+refusal("previous_form", "\1" .. base:sub(2))
+refusal("layout_malformed", base:sub(1, 20) .. string.pack("<I4", 0) .. base:sub(25))
+refusal("layout_record_too_large", base:sub(1, 33) .. string.pack("<I4", 65537) .. base:sub(38))
+refusal("plan_too_large", base:sub(1, L - 1) .. string.rep(base:sub(L), 4097))
+print("fixed-refusals-ok")
+`
 	writeFile(t, filepath.Join(oldDir, "main.lua"), oldProbe)
 	writeFile(t, filepath.Join(newDir, "main.lua"), newProbe)
 	luarun.Run(t, oldDir, "main.lua", nil)
@@ -63,17 +91,18 @@ func TestLuaFixedFormAgreesWithTheByteOracle(t *testing.T) {
 
 // probeFixedOracle is the probe's Lua half: it builds the table, writes it, and
 // asserts the bytes equal the oracle's, then reads the oracle's bytes back and
-// asserts the values land. It is RED until the writer and the reader in
-// runtime/fixed.lua are implemented.
-func probeFixedOracle(module, oracle string) string {
+// asserts the values land.
+func probeFixedOracle(module, oracle, setup string) string {
 	return `
 local T = require("` + module + `")
 local O = require("` + oracle + `")
 local v = T.NewLineage()
+` + setup + `
 local w = T.WriteFixed("Lineage", v)
 assert(w == O.bytes, "write differs from the oracle")
 local back = T.ReadFixed("Lineage", O.bytes)
 assert(back ~= nil, "oracle did not read back")
+for k, x in pairs(want) do assert(back[k] == x, "read back " .. k) end
 print("fixed-ok")
 `
 }
@@ -119,22 +148,36 @@ func TestLuaFixedFormNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir := t.TempDir()
-	luarun.WriteFiles(t, dir, files)
-	luarun.WriteFiles(t, dir, map[string][]byte{"oracle_old.lua": hexModule(bytes)})
 	// the negative control patches the emitted fixed.lua so the plan skips the
 	// last field; the comparison must then go red (a green here is a failure).
 	files["fixed.lua"] = patchEmittedRuntime(files["fixed.lua"])
+	dir := t.TempDir()
 	luarun.WriteFiles(t, dir, files)
-	writeFile(t, filepath.Join(dir, "main.lua"), probeFixedOracle(ModuleName(unit), "oracle_old"))
-	luarun.Run(t, dir, "main.lua", nil)
+	luarun.WriteFiles(t, dir, map[string][]byte{"oracle_old.lua": hexModule(bytes)})
+	writeFile(t, filepath.Join(dir, "main.lua"), `
+local T = require("`+ModuleName(unit)+`")
+local O = require("oracle_old")
+local v = T.NewLineage()
+v.x = 11; v.y = 22; v.z = 33
+local ok = pcall(function()
+  local w = T.WriteFixed("Lineage", v)
+  assert(w == O.bytes, "write differs from the oracle")
+end)
+if ok then print("green") else print("red") end
+`)
+	out := string(luarun.Run(t, dir, "main.lua", nil))
+	if !strings.Contains(out, "red") {
+		t.Fatalf("the sabotaged runtime still matched the oracle: %q", out)
+	}
 }
 
-// patchEmittedRuntime edits one anchor in the emitted runtime exactly once.
+// patchEmittedRuntime skips the last field in the emitted runtime's table walk.
 func patchEmittedRuntime(runtime []byte) []byte {
-	anchor := []byte("table.concat")
-	if len(runtime) == 0 || !strings.Contains(string(runtime), string(anchor)) {
+	anchor := "local parts = {}\n  for i, f in ipairs(desc.fields) do\n    local fs"
+	repl := "local parts = {}\n  for i, f in ipairs(desc.fields) do\n    if i == #desc.fields then break end\n    local fs"
+	s := string(runtime)
+	if strings.Count(s, anchor) != 1 {
 		return runtime
 	}
-	return []byte(strings.Replace(string(runtime), string(anchor), "table.concat -- fixed-negative-control", 1))
+	return []byte(strings.Replace(s, anchor, repl, 1))
 }
