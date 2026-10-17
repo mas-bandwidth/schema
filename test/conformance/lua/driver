@@ -1,0 +1,24 @@
+#!/bin/sh
+# THE LUA LEG's driver (test/conformance/README.md; docs/PORT-LUA.md, THE
+# HARNESS).
+#
+# A driver is a command, not a binary. Every surface is handed to ONE lua
+# process, test/conformance/lua/main.lua, which reads the manifest's files with
+# the io library and answers the contract itself. While that file is absent
+# (the schema-lua-conformance-leg card writes it) the leg answers ABSENT: the
+# surface list is empty and every surface is exit 2.
+#
+# The working directory is the repository root. LUA is the pinned interpreter
+# (make/lua.mk exports it); the fallback is the repo-local dist build.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+main=test/conformance/lua/main.lua
+if [ ! -f "$main" ]; then
+	case "$2" in
+	list) exit 0 ;;
+	*) exit 2 ;;
+	esac
+fi
+lua="${LUA:-dist/lua-5.4.8/src/lua}"
+exec "$lua" "$main" "$@"
