@@ -6268,8 +6268,8 @@ read calls clean is one any writer refuses.**
   STRICT READ, BY NAME.** The variable, message and fixed forms carry the
   pattern bit for bit — a quiet NaN, a signalling NaN, a NaN with any payload,
   either sign, either infinity — and a TOLERANT read lands it exactly as
-  written and counts nothing, since nothing moved. The variable form's read
-  NAMES the field in the report's `Reason` as
+  written and counts nothing, since nothing moved. The variable and message
+  forms' reads NAME the field in the report's `Reason` as
   `non_finite: <Table>.<field>` (the first name a read records wins, as for
   `clamped`), and **THE STRICT READ (§6.5) REFUSES IT**,
   with `TableRefuseReason` `non_finite` (`TableReport.Err()` answers the same
@@ -6287,7 +6287,7 @@ read calls clean is one any writer refuses.**
 | form | `-0` | a NaN, `+Inf`, `-Inf` |
 | --- | --- | --- |
 | VARIABLE (§3) | rides (elision compares bits); read lands `-0` | rides; tolerant read lands the pattern, counts nothing, names the field in `Reason`; STRICT read refuses `non_finite` |
-| MESSAGE (§3.3) | rides (the same elision); read lands `-0` | rides; read lands the pattern and counts nothing. The form has no strict read |
+| MESSAGE (§3.3) | rides (the same elision); read lands `-0` | rides; read lands the pattern, counts nothing, names the field in `Reason`. The form has no strict read |
 | FIXED (§3.4) | carried whole; read lands `-0` | carried whole; read lands the pattern and counts nothing. The form has no strict read |
 | TEXT / JSON (§16) | written `-0`; read lands `-0`, uncounted | writer refuses (`-1`); a read cannot produce one |
 
@@ -6299,7 +6299,7 @@ comparing with `==` elides it, so until each leg adopts the bit compare the
 legs agree byte for byte on every value except that one. Each other leg owes
 three things: elision by bit pattern (Dart's `tableNarrowFloat` comparison
 included, which today gives `-0` C's `==`), the `non_finite` name on its
-variable-form read, and the refusal on its strict read with the enum value
+variable- and message-form reads, and the refusal on its strict read with the enum value
 appended. The Go gate's corpus vectors are unchanged under the rule, and the NaN pins (`testdata/wire/tables/floats_nan.bin`) are
 read tolerantly, which still lands them bit for bit. The rule is held on the
 Go leg by `internal/codegen/gotable/floatspecial_test.go`
