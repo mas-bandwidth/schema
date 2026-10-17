@@ -12245,6 +12245,7 @@ in build version (§20.5).
   Cook  CookMeasure  CookMeasureReason  CookBody  CookLayout  CookMeasureFrom  CookFrom
   Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure  Table
+  FromJsonWith  ToJsonWith  ToJsonMeasureWith
   SaveText  LoadText
   MeasureMessages  SaveMessages  LoadMessages
   LoadMessagesMeasure  SaveMessageBody  LoadMessageBody
@@ -14192,6 +14193,11 @@ carries three accessors where C++ carries a tag offset and an arm offset.
   (§17.2), and neither is checkable while the shape is unstated. It is the
   form's one formatting opinion, and it is held because a text these files
   exist for is read and diffed by people.
+- **The three bullets above are the DEFAULT, and the default is the
+  canonical text.** A caller meeting a text another library wrote may ask
+  for null-as-empty on read, or for default-eliding or compact output on
+  write, through §16.2's three OPTIONS, which are call arguments; with every
+  option off the text is this one, byte for byte.
 - **THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE.** Every writer emits
   it, `ToJson` in every backend and `schema unpack` alike, and every reader
   ACCEPTS a text with or without one, because the trailing whitespace a read
@@ -14353,6 +14359,43 @@ wire's own event that a text cannot raise at all, because a JSON number
 carries no kind for a reader to find narrower than its own. Silence means the
 text matched the schema exactly, and it means it honestly: no value a read
 calls clean can be one the writer would refuse.
+
+**THREE OPTIONS MEET A TEXT ANOTHER LIBRARY WROTE, and each is an ARGUMENT
+to one call, never a declaration.** A record adopted from a program that
+wrote its files with its own language's encoder — Go's `encoding/json` is the
+worked example — carries three habits this form does not have: `null` for an
+empty list, a field left out at its zero value, and no whitespace at all. The
+form meets each with one option, and the three ride in ONE options value
+passed beside the text or the buffer:
+
+| option | direction | the rule |
+|---|---|---|
+| **null as empty** | read | a JSON `null` where the field's row is an ARRAY — `[N]T`, `[..N]T`, `[]T`, `[]*T`, a text list, a `flags` mask, a table declared `json = "array"` — or a `map[K]V` reads exactly as `[]` or `{}` would there: the field is emptied and back at its declared defaults, last-wins like any repeated key, and NOTHING is counted. Without the option that `null` stays `kind_mismatch` (**`null`**, above). The option reaches no other row: a `?T` whose value is `null` is still ABSENT (the optional row is consulted first), a pointer's `null` is still a null pointer, an enum-keyed `[E]T`'s `null` is still `kind_mismatch`, and a `null` ELEMENT inside an array keeps its own row's verdict |
+| **omit defaults** | write | a field whose value is what an ABSENT key reads as — its declared default (SPEC §4.2) — writes no key: an empty list, map, array, string or bytes, a scalar at its default, a union at `None`, a null pointer, a nested table or type whose every field is at its default, and an absent optional, which writes no key in any mode. A PRESENT optional is written whatever its value, because its key IS its presence. The rule is decided on STORAGE, conservatively: a value the walk cannot show to be at its default is written, so the option may elide less than it could and never more, and a read of the text lands the same instance. An array ELEMENT is positional and is never elided, though the fields inside one are; a `&node` definition (§16.7) that would elide every field writes all of them, because a definition holding no field is not one |
+| **compact** | write | no whitespace outside a string: no line break, no indent, no space after a `:`, and NO TRAILING NEWLINE. The text is the pretty text with every whitespace byte outside a string removed, which is how measure and write still agree byte for byte |
+
+**Why arguments, and not table-line declarations.** All three are properties
+of a TEXT — who wrote it, and who will read it — and not of the table: one
+program reads the same table from a file `encoding/json` wrote and from a file
+this form wrote, and a declaration would force one dialect on both. None
+changes a byte on the wire or anything in a table's identity (§5), so there is
+nothing for a projection to hash, nothing for an older reader to tolerate and
+nothing another target has to refuse: a target that does not offer the options
+simply has no call that takes them. **All three off is the canonical text of
+§16.1, byte for byte**, and the goldens, `schema unpack` and §16.5's round
+trips are held over that text alone. A text written under either write option
+is still one every reader of this form reads, under any options, to the
+instance it was written from; and every reader already accepts a compact text
+and one with keys left out, so the read option is the only one a READER needs.
+
+**Backend status: Go.** The plain calls are the options at their zero value;
+the options value is `TableJsonOptions{NullAsEmpty, OmitDefaults, Compact}`
+and the calls taking it are `<T>FromJsonWith`, `<T>ToJsonMeasureWith` and
+`<T>ToJsonWith`, each the plain call's arguments with the options value
+appended (ahead of a variable table's allocators). Every other
+target owes them and offers no call. The price is stated rather than hidden:
+an omit-defaults write in Go allocates one default instance per object it
+writes, to compare against, and the plain calls still allocate nothing.
 
 ### 16.3 What the writer refuses
 
