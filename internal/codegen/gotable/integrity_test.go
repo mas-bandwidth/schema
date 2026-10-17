@@ -128,6 +128,29 @@ func TestIntegrity(t *testing.T) {
 	silent := flipAll(t, "Ledger", lw, LedgerReadStrict, LedgerLoadText, LedgerLoadMeasureReason, LedgerLoad)
 	silent += flipAll(t, "Big", bw, BigReadStrict, BigLoadText, BigLoadMeasureReason, BigLoad)
 	if silent != 0 { t.Fatalf("%d silent wrong decodes", silent) }
+	// SHIFTED FRAMING, by name (§2.14): a length or a field reference changed
+	// so the bytes of one field are read into the next. Ledger's file is form
+	// byte, then n (ref 1, kind 5, 8 bytes, offsets 1..10), then label (ref 2
+	// at 11, kind 12 at 12, length 2 at 13, "ok"), then count (ref 3 at 16).
+	// The keyless reader is the control: what it makes of the same edit is
+	// logged; the declaring reader refuses both by the check.
+	for _, shift := range []struct{ name string; at int; to byte }{
+		{"label length 2 to 4 runs into count", 13, 4},
+		{"label length 2 to 1 leaves k as a reference", 13, 1},
+		{"label field id 2 to 3 reads the text as count", 11, 3},
+		{"n field id 1 to 3 reads the int64 as count", 1, 3},
+	} {
+		bad := append([]byte(nil), lw...)
+		if bad[shift.at] == shift.to { t.Fatalf("%s: offset %d already holds %d", shift.name, shift.at, shift.to) }
+		bad[shift.at] = shift.to
+		if _, err := LedgerReadStrict(bad); !errors.Is(err, TableRefuseIntegrityMismatch) { t.Errorf("%s: ReadStrict %v, want integrity_mismatch", shift.name, err) }
+		if _, err := LedgerLoadText(base64.StdEncoding.EncodeToString(bad), nil); !errors.Is(err, TableRefuseIntegrityMismatch) { t.Errorf("%s: LoadText %v, want integrity_mismatch", shift.name, err) }
+		plain := append([]byte(nil), pw...)
+		plain[shift.at] = shift.to
+		var pr TableReport
+		pv := PlainLoad(aligned(4096), plain, &pr)
+		t.Logf("%s: keyless control reads %v with report %+v; declaring reader refuses integrity_mismatch", shift.name, pv != nil, pr)
+	}
 	// THE TWO MISMATCHED READERS (§2.14): neither reads as data
 	if _, err := LedgerReadStrict(pw); !errors.Is(err, TableRefuseIntegrityMismatch) { t.Fatalf("a keyless file under the keyed reader: %v", err) }
 	if _, err := PlainReadStrict(lw); err == nil { t.Fatal("a trailered file read clean under the keyless reader") }
