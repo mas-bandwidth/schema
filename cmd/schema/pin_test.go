@@ -50,6 +50,11 @@ var (
 	pinPkgNoPin = "package p5\n\n" +
 		"// an ordinary comment that is not a pin\n" +
 		"func NoPin() {}\n"
+
+	pinPkgCRLF = "package cr\r\n" +
+		pinDirective + "v2.5.0 generate --lang go --out .\r\n" +
+		pinDirective + "v2.5.0\r\n" +
+		"func CRLF() {}\r\n"
 )
 
 // TestPinMovesEveryGenerateLine drives the whole one-command move: every pin
@@ -92,6 +97,16 @@ func TestPinMovesEveryGenerateLine(t *testing.T) {
 		if !strings.Contains(out, f.path) {
 			t.Errorf("output does not name changed file %s:\n%s", f.path, out)
 		}
+	}
+
+	// a CRLF generate.go: the bare pin line's version carries a trailing CR,
+	// which must read as the same version as the tailed line — never a
+	// spurious mixed refusal — and keep the CR byte.
+	crlf := writePinPkg(t, root, "crlf", pinPkgCRLF)
+	wantCRLF := strings.ReplaceAll(pinPkgCRLF, "v2.5.0", want)
+	out = run(t, bin, "pin", want, crlf)
+	if got := mustRead(t, filepath.Join(crlf, "generate.go")); got != wantCRLF {
+		t.Errorf("CRLF tree did not move exactly:\n--- got ---\n%q\n--- want ---\n%q", got, wantCRLF)
 	}
 
 	// a Go pseudo-version is a valid target too

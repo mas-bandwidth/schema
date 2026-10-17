@@ -735,7 +735,7 @@ func usage() {
   schema uncook     --root <Table> --in  <file.cook> --out <file> [--attribution <file>] [--verbose] [dir|files...]
   schema version
   schema new-leg    <lang> [--root .] [--verbose]
-  schema pin        <version> <dir>... [--mixed-ok]
+  schema pin        <version> <dir>... [--mixed-ok] (dir default .)
 
 check handed a SAVED FILE rather than a schema source answers its FORM BYTE
 first, on one line — FORM 1 the variable form, FORM 2 the message form, FORM 3
