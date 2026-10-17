@@ -386,4 +386,7 @@ func TestGoJsonWriterIsStrictNegativeControl(t *testing.T) {
 	if !strings.Contains(strings.ToLower(err.Error()), "utf-8") {
 		t.Fatalf("NEGATIVE CONTROL FAILED: the gate went red, but not on invalid UTF-8: %v\n%s", err, data)
 	}
+	if !bytes.Contains(data, []byte{0xff}) {
+		t.Fatalf("NEGATIVE CONTROL FAILED: the sabotaged text has no raw 0xff byte, so the planted bug did not take effect\n%s", data)
+	}
 }
