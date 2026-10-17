@@ -63,8 +63,8 @@ func scanSourceSeams(t *testing.T) {
 		"gotable.go:746":       "asks whether the emitted unit uses serialize., to pick imports",
 		"unboundedtext.go:181": "unbounded-text JSON walker seam, out of this card's PATHS (follow-up)",
 		"unboundedtext.go:190": "unbounded-text JSON walker seam, out of this card's PATHS (follow-up)",
-		"textlist.go:267":       "textTotalJson's stated surface check on a total-bytes anchor before its exact-count replace",
-		"textlist.go:280":       "textTotalJson's stated surface check before placing textTotalJsonSource",
+		"textlist.go:275":       "textTotalJson's stated surface check on a total-bytes anchor before its exact-count replace",
+		"textlist.go:288":       "textTotalJson's stated surface check before placing textTotalJsonSource",
 	}
 	var bad []string
 	files, err := filepath.Glob("*.go")
