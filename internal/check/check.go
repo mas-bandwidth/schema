@@ -1889,6 +1889,13 @@ func (c *checker) requireDefaultInRange(f *ast.Field, out *ir.Field) {
 	if f.Default != nil {
 		return
 	}
+	if out.Required {
+		// A `| required` field takes no default: its fresh value is the
+		// storage zero, which is outside the range, so the writer refuses the
+		// record until the field is set, and a stored record lacking it is
+		// missing_required on read (docs/SPEC-TABLES.md §2.3, SPEC §4.6).
+		return
+	}
 	var rng, fix string
 	switch {
 	case out.HasIntRange && out.IntMin != nil && out.IntMax != nil:
