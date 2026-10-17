@@ -2004,8 +2004,11 @@ PRESENT writes the object, an empty one as `{}`, and `null` reads as ABSENT.
 terms: in a `fixed table` and in a `type` (packet) body, as any map is, the
 map refusal naming the construct whatever the `?`; and beside `| required`,
 by §2.3's rule that a required marker would forbid the absence that makes a
-field optional. A target that does not carry the optional map refuses a unit
-that declares one, by name (§15); Go carries it first.
+field optional. An optional map as a map's VALUE, `map[K]?map[K2]V`, is
+refused by name as a named follow-on (§15): the optional map is a FIELD's
+presence, and a table wrapping the inner map, made optional, serves. A target
+that does not carry the optional map refuses a unit that declares one, by
+name (§15); Go carries it first.
 
 **A VALUE is anything a table field can hold**: a scalar, an enum, a `flags`
 mask, `string(N)`, `wstring(N)`, `bytes(N)`, a declared `type`, a table by value, `*T`, `*wstring`,
@@ -12112,8 +12115,9 @@ in build version (§20.5).
   bytes are not), an `int128` or `uint128`, a `fixed`/`ufixed`, a `type`, a
   `table`, a pointer, an optional or a union; an
   attribute on the key (`| min`, `| max`, a default); `?map` in a `fixed
-  table` or a `type` (packet) body, as any map there, and `?map ... |
-  required` (§2.3: required forbids the absence that makes a field optional);
+  table` or a `type` (packet) body, as any map there, `?map ... |
+  required` (§2.3: required forbids the absence that makes a field optional)
+  and `?map` as a map's VALUE (a named follow-on);
   a default on a map, `| max` on a map and the bounded spellings `[..N]map` and `[N]map`; **a
   map as a UNION ARM** (§2.6), on the ground `[]T` is refused there, the
   diagnostic naming the table wrapper that serves; a
