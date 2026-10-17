@@ -14702,6 +14702,203 @@ the value `FromJson` reads from `ToJson`'s text saves to the same bytes too.
 `<Name>LoadText`, and both suffixes are in §11's claimed list: a declaration
 spelling one beside a table `<Name>` is refused naming the collision.
 
+### 16.9 The hand-editable text form: a table with its document
+
+This is a separate, STRICT authoring form for BOTH fixed and variable tables.
+It is not JSON, not a new binary form byte, and not a third carrier accepted
+implicitly by `LoadText` (§16.8). The caller selects this form and supplies the
+root table declaration. The binary wire, JSON mapping and their tolerant reads
+are unchanged. This section specifies the format; implementation availability
+must be stated separately. The Go implementation follows this standard first.
+
+The surface borrows the restricted s-expression data grammar already used by
+`docs/roadmap.sexp`: parentheses, keyword/value pairs, sequences, quoted strings
+and semicolon line comments. It does not borrow evaluation, reader macros,
+quoting, dotted pairs or executable symbols. Unlike a generic s-expression
+reader, it resolves every value against the table's field kind. Unlike a
+formatter, its document writer retains the source bytes.
+
+#### 16.9.1 Grammar and identity
+
+The following grammar is over UTF-8 bytes. `gap` may occur between any two
+tokens, including a key and its value; adjacent atom tokens need at least one
+gap. Parentheses and quotes delimit tokens without a gap.
+
+```text
+document = gap record gap EOF
+record   = "(" gap { key gap value gap } ")"
+key      = keyword | string
+value    = string | number | "true" | "false" | "null" | keyword | list
+list     = "(" gap { value gap } ")"
+keyword  = ":" name
+name     = (ASCII-letter | "_") { ASCII-letter | digit | "_" | "-" | "/" | "." }
+number   = RFC-8259-number
+string   = RFC-8259-string
+comment  = ";" { any valid UTF-8 scalar except CR or LF }
+gap      = { SP | TAB | LF | CRLF | comment }
+```
+
+A list's interpretation is supplied by its expected kind: a record, sequence,
+map or union, never guessed from its first item. Thus `()` is an empty array
+at an array site, an empty record at a record site, and None at a union site.
+Strings use JSON escapes; raw newlines, invalid UTF-8 and unpaired surrogate
+escapes are refused. A semicolon inside a string is data. A comment ends at
+LF, CRLF or EOF; a final comment needs no newline. Bare CR, BOMs, commas,
+unquoted symbols other than the three literals, and extra top-level forms
+are `text_syntax`. There is no evaluation or include mechanism.
+
+Record keys are the field KEYS of §16.4 (the `json` override, if any), matched
+case-sensitively without Unicode normalization. A key representable as `name`
+may be written `:name`; every other key is a quoted string. `:title` and
+`"title"` name the SAME key, so using both is a duplicate. A schema key may
+always be quoted. A keyword used as a value denotes an enum variant, never a
+string or a null. The expected kind disambiguates keys from enum values.
+
+There is exactly one root record. An absent ordinary field receives its schema
+default, an absent optional is absent, and a missing required field is refused.
+Defaults are semantic: the rewrite does not insert omitted keys. Present fields
+under a false guard are `text_inactive_field`; guards are evaluated after the
+whole record is read, so field order has no effect. This strict form never
+accepts data which saving would silently discard.
+
+#### 16.9.2 Mapping, field kind by field kind
+
+All declared bounds and storage widths are checked BEFORE publishing a value.
+There is no clamping, truncation, unknown-key skipping or last-wins recovery.
+The rules below replace §16.2's tolerant behavior for this form only.
+
+| Field kind | Hand-editable value and rule |
+| --- | --- |
+| Signed/unsigned integers, `bits(N)`, `int128`, `uint128` | A number of exact integral value, including integral decimal/exponent spellings; parse without passing through a binary float. Check the kind and declared range; fractional is `text_kind_mismatch`, out of range is `text_bound`. |
+| `float32`, `float64`, compressed floats | A finite number, converted by §16.2's numeric mapping, within the storage and declared bounds; overflow is `text_bound`. No NaN/Infinity tokens. The original spelling, including negative zero, remains in the document even when the field's numeric representation normalizes it. |
+| `fixed(I,F)`, `ufixed(I,F)` | Exact decimal number in whole units, scaled without an intermediate float. A fraction not representable on the Q grid is `text_kind_mismatch`; range overflow is `text_bound`. |
+| `bool` | `true` or `false` only. |
+| `string(N)`, `wstring(N)` | String; respectively at most N UTF-8 bytes or N UTF-16 code units after unescaping, with no partial code point. Over bound is `text_bound`. |
+| `bytes(N)` | String of standard-alphabet padded base64 (empty is `""`); invalid encoding or nonzero unused pad bits is `text_encoding`, decoded length over N is `text_bound`. |
+| `timestamp` | Quoted RFC 3339 timestamp within the UTC nanosecond domain of §16.2; invalid spelling/domain is `text_timestamp`. Preserve the original offset spelling. |
+| Enum | `:Variant` or `"Variant"`, including `None`; resolve the exact variant name. Unknown is `text_unknown_variant`. |
+| Flags | Sequence of enum names, e.g. `(:Shielded :Turbo)`; `()` is the zero mask. Unknown names are `text_unknown_variant`; repeated names are `text_duplicate_key`. |
+| Nested `type`, fixed or variable `table` | Record recursively; the declared kind supplies its fields. |
+| `[N]T` fixed array | Sequence of EXACTLY N elements; short and long are `text_bound`. Each element follows T's rule. |
+| `[..N]T` bounded array | Sequence of zero through N elements; count is its length. |
+| `[]T`, `[]*T` | Sequence in index order, without a schema count bound; resource limits still apply. |
+| `[E]T` enum-keyed array | Record keyed by enum variant names (`:Fighter` or `"Fighter"`); missing slots use defaults. `None` and unknown variants are `text_unknown_key`; duplicate slots are `text_duplicate_key`. |
+| `?T`, including optional arrays | Omitted field or `null` is absent; any valid T value is present. `()` at an array site is present-and-empty. |
+| Union | Record with exactly one arm key and its arm-kind value; `()` is None. Example `(:count 7)` or `(:ping null)` for a payload-free arm. Unknown arm is `text_unknown_key`, duplicate arm is `text_duplicate_key`, multiple different arms are `text_kind_mismatch`. |
+| `*T` | `null` or the pointee record, with sharing as below. |
+| `*bytes`, `*string`, `*wstring` | `null` or the corresponding string representation above, without a schema length bound; empty string is a present empty blob. |
+| `map[K]V` | Sequence of exactly two-element pairs, e.g. `(("east" 1) ("west" 2))`. K uses its scalar rule (integer keys are numbers, string keys are strings), V uses its own rule; optional values use `null` for absent. Duplicate keys after decoding are `text_duplicate_key`. Preserve source entry order, even though the semantic map has no order. |
+
+Sharing uses §16.7's construct as the QUOTED key `"&node"`: a definition is
+`("&node" 1 :id 6)`, a reference `("&node" 1)`. The label must be the first
+pair. Label syntax, document-order definitions, completed-definition-only references,
+type matching, and cycle refusal follow §16.7; failure is `text_reference`.
+All other `&`-prefixed record keys are `text_reference`, including use of the
+construct at a fixed or by-value site. A map's string key is ordinary data,
+so `"&node"` there has no reserved meaning. Blob identity is as in §16.7.
+An empty pointee cannot be first defined using the reference-only spelling;
+§16.7's empty-node rule applies unchanged. No implicit copying loses sharing.
+
+#### 16.9.3 Comments, layout and lossless edits
+
+The result of a successful read is a **document AND its typed table value**.
+The document retains the entire original byte sequence, token spans, trivia
+and field/element identity. The table alone cannot reconstruct comments. An
+API that drops the document cannot claim this section's rewrite guarantee.
+
+Comments may appear at every `gap`, including before the root, between a key
+and value, between elements and before a closing parenthesis. Attachment is
+metadata over preserved spans, not permission to move text:
+
+- Before or after the root, comments attach to the root table.
+- Within a record, a comment between a key and its value attaches to that
+  field. A comment after a complete value on the same physical line attaches
+  to the preceding field (or sequence element or map entry).
+- Otherwise a standalone comment before the next sibling attaches to that
+  next field/element/entry. A comment after an opening delimiter before the
+  first child follows this rule too; if no child follows before the closing
+  delimiter, it attaches to the enclosing table/collection.
+- A comment after a nested closing delimiter follows the enclosing context's
+  rule: it attaches to the completed field/element, not its last child.
+
+Blank lines and whitespace are retained independently of attachment. Their
+presence never changes the rules above. A standalone comment before a closing
+parenthesis belongs to that container; nested container comments belong to
+that nested value, not automatically to the root.
+
+**Read then write with no edit MUST reproduce the input byte for byte.** This
+includes comments, blank lines, field/map order, numeric and escape spellings,
+indentation, mixed LF/CRLF, trailing spaces and the presence or absence of the
+last newline. A rewrite is not a canonical serialization. An unchanged value
+must not be detected merely by comparing normalized output text.
+
+**Replacing one existing scalar value MUST replace only that value's token
+span.** Every byte before and after it stays identical, including its key,
+neighboring values on the same line and attached comments. Consequently only
+lines containing that value change. A multiline layout with the value on a
+line after its key remains multiline. Strings use escaped newlines, so a
+scalar replacement never inserts a physical newline. A semantic no-op edit
+retains the old spelling. Array-element and nested-field edits obey the same
+rule at their own spans. Multiple disjoint edits are applied by original byte
+span; offsets must not drift after an earlier replacement changes length.
+
+A compound value is edited through its children to preserve internal comments.
+An explicit whole-compound replacement may replace that value's span (only
+its lines), including its interior comments; the API must distinguish that
+operation from a leaf edit. Insert/delete/reorder are explicit structural
+operations, never inferred by regenerating a whole record from a table value.
+They require an explicit disposition for comments belonging to removed nodes;
+without one, refuse `text_edit_conflict`. This section does not prescribe a
+pretty-printer or a new-document layout. Structural editing and construction
+are not prerequisites for a conforming read/no-op/leaf-edit implementation.
+
+An edit is validated against the same schema and document limits before any
+new document/value is returned; a refusal leaves the old pair untouched.
+Unchanged shared nodes keep their labels; editing a shared node's field edits
+its definition once, so every reference observes the same value. Replacing a
+pointer reference itself is a different edit. If an edit requires label
+renumbering or changes graph structure, it is a structural operation.
+
+#### 16.9.4 Named refusals and conformance
+
+Reads are transactional: any refusal yields no usable table/document pair,
+never a partial value. Every refusal reports the stable name below, a zero-based
+byte offset (EOF may equal input length), and a field/element path where known.
+Names are separate from §4's tolerant counters; they do not increment a clamp
+and continue. Implementations may append human-readable context.
+
+| Name | Condition |
+| --- | --- |
+| `text_unknown_key` | A record key, enum-keyed slot or union arm not declared here. |
+| `text_duplicate_key` | A second decoded field, map key, keyed slot, union arm or flags name in the same container. |
+| `text_bound` | Any numeric, string, byte or count bound violated, including a short fixed array. |
+| `text_unterminated` | EOF while a string, escape, list or key/value pair is still open. A line comment at EOF alone is complete. |
+| `text_syntax` | Other lexical/grammar errors, including trailing non-trivia input. |
+| `text_kind_mismatch` | Well-formed value of the wrong expected kind/shape, or an inexact fixed fraction. |
+| `text_unknown_variant` | Unknown enum or flags name. |
+| `text_encoding` | Invalid UTF-8, string scalar escape or base64 encoding. |
+| `text_timestamp` | Invalid or unrepresentable timestamp. |
+| `text_missing_required` | A required field is absent. |
+| `text_inactive_field` | An explicit field whose guard is false. |
+| `text_reference` | Invalid sharing construct, label, type or cycle. |
+| `text_limit` | Caller-supplied byte/token/node/decoded-allocation limit or the depth cap of 128 is exceeded. |
+| `text_edit_conflict` | An edit cannot preserve the requested source spans/comment disposition. |
+
+Lex/parse the whole bounded document first; lexical/syntax failure wins over
+semantic failure, at the first failing byte. For semantic checks, walk source
+order, checking a key's identity and duplication before its value. Check
+missing required fields and guards after the containing record; use declaration
+order for ties. Report the second occurrence for duplicates, the offending
+value's start for bounds, and the closing delimiter for missing fields. A
+limit may stop work immediately before either phase completes. Callers must
+supply finite resource limits; no limit failure is accepted as a prefix read.
+
+`test/conformance/textform/` pins the source documents, typed expectations,
+byte-identical rewrites, localized edits and named refusals. These are standard
+vectors, not a claim that a reader is implemented. Implementations must compare
+bytes, not parsed equality, for rewrite and edit assertions. Use the same
+vectors for fixed and variable declarations wherever their kinds permit it.
+
 ## 17. Packing: a directory tree that mirrors a root table
 
 `schema pack` assembles ONE table instance from a directory tree and writes

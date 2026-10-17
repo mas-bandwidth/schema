@@ -1,0 +1,44 @@
+{
+  "root": "Document",
+  "forms": [
+    "fixed",
+    "variable"
+  ],
+  "fields": {
+    "schema": "uint8 [0,3]",
+    "root": "string(32)",
+    "title": "string(32)",
+    "state": "enum State { unknown, done }",
+    "count": "int32 [0,10]",
+    "enabled": "bool",
+    "text": "[..4]string(80)",
+    "nodes": "[..3]Node",
+    "pairs": "[2]int32",
+    "optional": "?string(8)",
+    "wide": "wstring(4)",
+    "bytes": "bytes(4)",
+    "signed": "int128",
+    "unsigned": "uint128",
+    "fraction": "fixed(16,16)",
+    "float": "float32",
+    "time": "timestamp",
+    "flags": "flags Features { Fast, Safe }",
+    "keyed": "[State]int32",
+    "choice": "union { count int32; ping void }"
+  },
+  "types": {
+    "Node": {
+      "id": "string(16)",
+      "title": "string(32)",
+      "state": "enum State { unknown, done }"
+    }
+  },
+  "defaults": "All unspecified scalars use the schema zero/empty/None defaults; absent optional is absent; fixed pairs and keyed slots default to zero. No required fields or guards in Document.",
+  "limits": {
+    "bytes": 65536,
+    "tokens": 8192,
+    "nodes": 4096,
+    "decoded_allocation_bytes": 65536,
+    "depth": 128
+  }
+}

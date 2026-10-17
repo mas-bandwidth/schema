@@ -1,0 +1,5 @@
+{
+  "operation": "replace_scalar",
+  "path": "nodes[0].title",
+  "value": "Changed"
+}

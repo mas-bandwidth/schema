@@ -1,0 +1,45 @@
+{
+  "root": "Document",
+  "explicit_fields": {
+    "schema": 2,
+    "state": "done",
+    "pairs": [
+      1,
+      -2
+    ],
+    "wide": "😀é",
+    "bytes": {
+      "base64": "AP8="
+    },
+    "signed": {
+      "decimal": "-170141183460469231731687303715884105728"
+    },
+    "unsigned": {
+      "decimal": "340282366920938463463374607431768211455"
+    },
+    "fraction": {
+      "raw": 1,
+      "fraction_bits": 16
+    },
+    "float": {
+      "ieee754_binary32_hex": "80000000"
+    },
+    "time": {
+      "rfc3339_utc": "2026-10-15T12:34:05Z"
+    },
+    "flags": [
+      "Fast",
+      "Safe"
+    ],
+    "keyed": {
+      "unknown": 4,
+      "done": 7
+    },
+    "choice": {
+      "ping": null
+    },
+    "optional": "",
+    "text": []
+  },
+  "remaining_fields": "contract defaults"
+}
