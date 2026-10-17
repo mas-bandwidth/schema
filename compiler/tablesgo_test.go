@@ -229,6 +229,7 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 		goRuntimeSrc + "\ntable Drift {ratio float64\n}\n",
 		goRuntimeSrc + "\ntable Texts {words []string(8)\n}\n",
 		goRuntimeSrc + "\ntable Sealed | integrity = \"crc32c\" {n int32\n}\n",
+		goRuntimeSrc + "\ntable Totals {words []string(8) | total = 16\nnames [..4]?string(8) | total = 16\n}\n",
 		goRuntimeSrc + "\ntable Unbounded {words []string\nkeys map[string]int32\n}\n",
 	} {
 		for name, data := range goFiles(t, source) {
