@@ -4022,6 +4022,16 @@ through the slot. The read path allocates nothing the bounded one does not: a
 region load carves the bytes from the extent `LoadMeasure` already counted, and
 a builder load takes them from the arena as it takes a list's elements.
 
+**THE MESSAGE FORM (§3.3) EMITS NOTHING for a table whose closure holds
+unbounded text** — the table itself, a table that holds it by value, by pointer,
+through a list, a map or a union arm, and its element records and entries —
+because a message body's string length rides in a count field whose width the
+declared bound sizes, and an unbounded element or key has no bound to size it.
+Carrying it there is a named follow-on (§15), never a clamp to zero; every
+other table of the unit keeps its message surface, and the unit's other seven
+surfaces carry the construct. The fixed (§3.4) and block (§19) forms apply only
+to fixed tables, so for this construct they are inapplicable and emit nothing.
+
 **MAP KEYS compare by BYTES, unsigned, a shorter prefix first, at any length**
 (§2.8): `Find`, `Insert` (replace included), `Erase`, `Each` and the index hash
 and compare the WHOLE key, and a key is never clamped, so two keys sharing all
@@ -13690,6 +13700,13 @@ inspects everything in the schema built:
   reachable. Closing it is the same one-line predicate the pair rule is
   already spelled as, plus a corpus unit per spelling; the page's rule is
   already the one above and nothing about it is undecided.
+- **UNBOUNDED TEXT IN THE MESSAGE FORM** (§2.13.1, §3.3). A message body
+  sizes a string's length field by its declared bound, so an unbounded element
+  or key needs a length encoding of its own there before the form can carry
+  it; until then the message form emits nothing for a table whose closure
+  holds one. Also owed: internal/baseline judging a `size=` vanishing on a text
+  value line, and `keybound=` moving to `0`, as capacity GROWTH (§18), and
+  every port but Go (§2.12's rule).
 - **THE UNIT REGISTRY IN THE SEVEN REMAINING PORTS** (§8.3, §8.7). C++ and C
   emit the registry; the remaining seven ports do not in this tree, so an enum
   VARIANT's, a flags BIT's and a record-naming ARM's `doc` and `tags` reach
