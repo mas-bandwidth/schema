@@ -3682,10 +3682,14 @@ require github.com/mas-bandwidth/serialize.go <tag>
 and all — rides the id-table wire through a builder and its arena; a fixed
 table is a positional image at declared storage widths, written and read by
 one layout hash. A unit that declares any variable table is generated
-regionally, and a regional unit emits no fixed-form surface at all: its
-`fixed table`s keep the variable wire's entry points and never grow
-`FixedSave`/`FixedLoad`. So adopt one class per unit; each recipe below
-carries its own declaration.
+regionally, and its `fixed table`s still carry the fixed form: each one
+that qualifies (the record ceiling, depth and leaf caps of
+docs/SPEC-TABLES.md §3.4) grows `FixedSave`/`FixedLoad` over the unit's
+`<Name>Row` storage, and writes the same bytes it writes in a unit with no
+variable table. Adding a variable table to a unit changes nothing for its
+fixed tables. The one exception today is a fixed table whose closure holds
+a union: in a regional unit it keeps the variable wire's entry points only,
+named as a follow-on in docs/SPEC-TABLES.md §3.4. Each recipe below carries its own declaration.
 
 The variable class, one unit. The builder owns the arena, the caller owns
 every byte:
