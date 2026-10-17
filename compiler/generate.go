@@ -116,6 +116,13 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		if err := refuseTextForms(u, carrier); err != nil {
 			return nil, err
 		}
+		// GO CARRIES `?T` OVER A VARIABLE CLOSURE FIRST (docs/SPEC-TABLES.md
+		// §2.3): every walk that follows pointer edges gates on the presence
+		// companion, and every other target refuses the construct here, once,
+		// by name, so none can write an edge an absent value does not own.
+		if fields := ir.TableOptionalPointerClosures(u); len(fields) > 0 {
+			return nil, fmt.Errorf("target %q refuses the construct optional over a variable closure on field %s — Go carries ?T whose T holds a pointer first; no other target gates its walks on presence until its turn (docs/SPEC-TABLES.md §2.3)", carrier, fields[0])
+		}
 	}
 	if lg, takes := g.(lineageGenerator); takes {
 		lineage, err := openFixedLineage(u)
