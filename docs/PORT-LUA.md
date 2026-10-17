@@ -141,6 +141,7 @@ Fixed now, for the pro cards. Never rename it.
 | `internal/codegen/lua/lua.go` | the TYPE emitter; `RegisterPass` (a later file's `init()` adds its emission step) and `RegisterRuntime` (its embedded `runtime/*.lua`), so no later card edits lua.go |
 | `internal/codegen/lua/read.go`, `write.go` | the type wire, later; each embeds `runtime/*.lua` by glob and registers it |
 | `internal/codegen/lua/runtime/*.lua` | the type-wire runtime (`bitreader.lua`, `bitwriter.lua`), emitted beside the modules |
+| `internal/codegen/lua/runtime/serialize*.lua` | the serialize port vendored verbatim from `mas-bandwidth/serialize.lua` at `sprint/serialize-lua` (card schema-lua-serialize-vendor), pin `runtime/SERIALIZE_PIN`, one `sha256 <file>` line per file; `make vendor-serialize-lua` refreshes it. The type-wire cards call this library (serialize.WriteStream/ReadStream, serializeInt/serializeFloat/...) rather than a private bit reader or writer |
 | `internal/codegen/lua/luarun/luarun.go` | the test helper |
 | `internal/codegen/luatable/luatable.go` | ONE DESCRIPTOR per table as data a single runtime walks (the `jstable/variableruntime.go` shape), the constructors, `RegisterPass` for `fixedform.go` and `messageform.go`, and the `//go:embed runtime/*.lua` glob |
 | `internal/codegen/luatable/runtime/*.lua` | the table runtime, one file per card; `descriptor.lua` (the shared descriptor walk) is the first |

@@ -1,0 +1,14 @@
+# Vendored from https://github.com/mas-bandwidth/serialize.lua
+# at branch sprint/serialize-lua, commit 54bdf67c6a225a776d9246a5cc3b9bb9ad869138
+# (card schema-lua-serialize-vendor). Rewrite with: make vendor-serialize-lua
+sha256  390091e7ae54a157feb65e4c441c06c7a887767fc4ed1158b434f1c20d0374d6  serialize_bitpacker.lua
+sha256  2cb8113db1640660b4913816cf875f7dc7066b10a58cf063d6d90961a19296df  serialize_bits.lua
+sha256  765b8e43f5ce6442431b645a18d07451fd8630d27604222eab1360ff5c2576c4  serialize_bytes.lua
+sha256  ae9a9b1475220c5038840f7f2c322a1d0c9530377af273377fdc332261e47d14  serialize_compressed_float.lua
+sha256  53a80aa0979f7520c96a78b04e68baa0e1381c3bdbdec6741040b2081885b7fc  serialize_fixed.lua
+sha256  e40f95707d158ac8b598b6f5eca78b513185e2768b9408c4db0b20f38c7990b9  serialize_float.lua
+sha256  405019c957b5c893633451c0c0fbcf00aa82c79337c6c7f253d2fa3f8a241f64  serialize_int128.lua
+sha256  c3e031ce11fdbae2012e0cb18d7aacbf728236c68086e139c32d8d1d0141ca92  serialize_int.lua
+sha256  fe451b3fc66f521c9b5e76308c6668a8269b751eb188ca4a7dbdfe3ba1fd1594  serialize_int_relative.lua
+sha256  bbdcea5362cbe32b621900790f5ef0869fa5711eba9569384b4d8d078943929c  serialize.lua
+sha256  d7712acad863902cceb6850d800049483a3aad52d6643e67c516b1309c4251cc  serialize_stream.lua
