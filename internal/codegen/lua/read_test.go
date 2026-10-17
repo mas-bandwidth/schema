@@ -30,6 +30,9 @@ func TestLuaTypeWireReadsTheGoldens(t *testing.T) {
 	dir := t.TempDir()
 	luarun.WriteFiles(t, dir, files)
 	luarun.WriteDumpProbe(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "arrange.lua"), []byte(arrangeModule), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	inputs := map[string][]byte{}
 	for _, name := range readGoldens {
@@ -62,13 +65,16 @@ func TestLuaTypeWireReadsTheGoldens(t *testing.T) {
 	}
 
 	for _, name := range readGoldens {
-		if name == "clauses" || name == "joins" {
-			continue // their per-shape streams are not embedded yet (reported)
-		}
 		name := name
 		t.Run("short/"+name, func(t *testing.T) {
 			dir := t.TempDir()
 			luarun.WriteFiles(t, dir, files)
+			luarun.WriteDumpProbe(t, dir)
+			if name == "clauses" || name == "joins" {
+				if err := os.WriteFile(filepath.Join(dir, "arrange.lua"), []byte(arrangeModule), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
 			inputsShort := map[string][]byte{name: inputs[name][:len(inputs[name])-1]}
 			if err := os.WriteFile(filepath.Join(dir, "short.lua"), []byte(shortProbe), 0o644); err != nil {
 				t.Fatal(err)
@@ -108,6 +114,9 @@ func TestLuaTypeWireReadNegativeControl(t *testing.T) {
 	dir := t.TempDir()
 	luarun.WriteFiles(t, dir, files)
 	luarun.WriteDumpProbe(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "arrange.lua"), []byte(arrangeModule), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	golden, err := os.ReadFile(filepath.Join("..", "..", "..", "testdata", "wire", "probebits.bin"))
 	if err != nil {
 		t.Fatal(err)
@@ -136,6 +145,197 @@ func TestLuaTypeWireReadNegativeControl(t *testing.T) {
 	}
 }
 
+// arrangeModule builds the per-shape expectations for the clauses and joins
+// goldens (test/go/main.go's clause/join sections) and reads every shape out
+// of its own byte slice of the golden. allShapes returns false, "refused
+// <shape>" when a read past the end refuses, and false, "mismatch <shape>"
+// when a field differs from the expectation (SPEC §4.3, §5, §6.1).
+const arrangeModule = `local serialize = require("serialize")
+local dump = require("dump")
+local C = require("Clauses")
+local J = require("Joins")
+
+local function allShapes(golden, mod, shapes)
+  local off = 1
+  for _, sh in ipairs(shapes) do
+    local n = math.ceil(sh.bits / 8)
+    if off + n - 1 > #golden then
+      return false, "refused " .. sh.tag
+    end
+    local s = serialize.ReadStream.new(string.sub(golden, off, off + n - 1))
+    local got = mod["New" .. sh.root]()
+    if not mod["Read" .. sh.root](s, got) then
+      return false, "refused " .. sh.tag
+    end
+    if dump(got) ~= dump(sh.want) then
+      return false, "mismatch " .. sh.tag .. " got " .. dump(got) .. " want " .. dump(sh.want)
+    end
+    off = off + n
+  end
+  return true, ""
+end
+
+local clauseShapes = {}
+local function addC(tag, root, bits, want)
+  clauseShapes[#clauseShapes + 1] = { tag = tag, root = root, bits = bits, want = want }
+end
+
+for _, c in ipairs({ 0, 1, 3, 4, 5, 7, 12 }) do
+  local v = C.NewW13(); v.ItemsCount = c
+  for i = 1, c do v.Items[i] = 8191 - (i - 1) * 733 end
+  addC("W13/" .. c, "W13", 4 + 13 * c, v)
+end
+for _, c in ipairs({ 0, 1, 2, 3, 4, 9 }) do
+  local v = C.NewW17(); v.ItemsCount = c
+  for i = 1, c do v.Items[i] = 131071 - (i - 1) * 11117 end
+  addC("W17/" .. c, "W17", 4 + 17 * c, v)
+end
+for _, c in ipairs({ 0, 1, 2, 3, 6 }) do
+  local v = C.NewW26(); v.ItemsCount = c
+  for i = 1, c do v.Items[i] = 67108863 - (i - 1) * 5555555 end
+  addC("W26/" .. c, "W26", 3 + 26 * c, v)
+end
+for _, c in ipairs({ 0, 1, 3, 4, 5, 20 }) do
+  local v = C.NewW1(); v.ItemsCount = c
+  for i = 1, c do v.Items[i] = (i - 1) % 2 end
+  addC("W1/" .. c, "W1", 5 + c, v)
+end
+for c = 0, 3 do
+  local v = C.NewW52(); v.ItemsCount = c
+  for i = 1, c do v.Items[i] = 4503599627370495 - (i - 1) * 123456789 end
+  addC("W52/" .. c, "W52", 2 + 52 * c, v)
+end
+for c = 0, 3 do
+  local v = C.NewW50(); v.ItemsCount = c
+  for i = 1, c do v.Items[i] = 1125899906842623 - (i - 1) * 987654321 end
+  addC("W50/" .. c, "W50", 2 + 50 * c, v)
+end
+do
+  local v = C.NewF13()
+  for i = 1, 7 do v.Items[i] = 8191 - (i - 1) * 911 end
+  addC("F13", "F13", 91, v)
+end
+for _, c in ipairs({ 0, 1, 3, 4, 5, 10 }) do
+  local v = C.NewArrTri3(); v.ItemsCount = c
+  for i = 1, c do v.Items[i].A = (i - 1) % 2; v.Items[i].B = (i - 1) % 4 end
+  addC("ArrTri3/" .. c, "ArrTri3", 4 + 3 * c, v)
+end
+do
+  local v = C.NewArrEleven()
+  for i = 1, 9 do v.Items[i].A = (i - 1) % 8; v.Items[i].B = 255 - (i - 1) * 17 end
+  addC("ArrEleven", "ArrEleven", 99, v)
+end
+for _, tag in ipairs({ "None", "A", "B" }) do
+  local v = C.NewHoldsEmptyUnion(); v.Lead = 21; v.Tail = 99
+  v.U.Type = C.EmptyUnionType[tag]
+  addC("HoldsEmptyUnion/" .. tag, "HoldsEmptyUnion", 14, v)
+end
+do
+  local e = C.NewStrs(); e.Lead = 21; e.Tail = 5
+  addC("Strs/empty", "Strs", 27, e)
+  local f = C.NewStrs(); f.Lead = 21; f.Tail = 5; f.S = "abcdefgh"
+  local b = {}
+  for i = 1, 8 do b[i] = string.char(0xF0 + i - 1) end
+  f.B = table.concat(b)
+  addC("Strs/full", "Strs", 155, f)
+  local p = C.NewStrs(); p.Lead = 21; p.Tail = 5
+  p.S = "xyz"; p.B = string.char(1, 2, 3)
+  addC("Strs/part", "Strs", 75, p)
+end
+for c = 0, 4 do
+  local v = C.NewArrNested(); v.Lead = 21; v.Tail = 5; v.ItemsCount = c
+  for i = 1, c do v.Items[i].A = (i - 1) % 8; v.Items[i].B = 200 - (i - 1) * 7 end
+  addC("ArrNested/" .. c, "ArrNested", 11 + 11 * c, v)
+end
+do
+  local v = C.NewSole(); v.Only = 5555
+  addC("Sole", "Sole", 13, v)
+end
+
+local joinShapes = {}
+local function addJ(tag, root, bits, want)
+  joinShapes[#joinShapes + 1] = { tag = tag, root = root, bits = bits, want = want }
+end
+
+for _, f in ipairs({ false, true }) do
+  local a = J.NewArmsAgree(); a.Lead = 21; a.Flag = f; a.Tail = 99
+  a.A = f and 1234 or 0; a.B = f and 0 or 1500
+  addJ("ArmsAgree/" .. tostring(f), "ArmsAgree", 24, a)
+  local d = J.NewArmsDisagree(); d.Lead = 21; d.Flag = f; d.Tail = 99
+  d.A = f and 1234 or 0; d.B = f and 0 or 5
+  addJ("ArmsDisagree/" .. tostring(f), "ArmsDisagree", f and 24 or 16, d)
+  local e = J.NewArmEmpty(); e.Lead = 21; e.Flag = f; e.Tail = 99
+  e.A = f and 456789 or 0
+  addJ("ArmEmpty/" .. tostring(f), "ArmEmpty", f and 32 or 13, e)
+  local al = J.NewArmAlign(); al.Lead = 21; al.Flag = f; al.Tail = 99
+  if f then al.S = "abcd" else al.B = 1000 end
+  addJ("ArmAlign/" .. tostring(f), "ArmAlign", f and 55 or 23, al)
+  local ae = J.NewArmAlign(); ae.Lead = 21; ae.Flag = f; ae.Tail = 99
+  if not f then ae.B = 1000 end
+  addJ("ArmAlignEmptyStr/" .. tostring(f), "ArmAlign", 23, ae)
+end
+
+for _, o in ipairs({ false, true }) do
+  for _, i in ipairs({ false, true }) do
+    local v = J.NewArmsNested(); v.Lead = 5; v.Outer = o; v.Tail = 33
+    if o then
+      v.Inner = i
+      if i then v.X = 500000000 else v.Y = 17 end
+    else
+      v.Z = 4000
+    end
+    addJ("ArmsNested/" .. tostring(o) .. tostring(i), "ArmsNested", o and (i and 40 or 16) or 23, v)
+  end
+end
+
+for _, f in ipairs({ false, true }) do
+  for c = 0, 3 do
+    local v = J.NewArmArray(); v.Lead = 21; v.Flag = f; v.Tail = 99
+    if f then
+      v.ItemsCount = c
+      for i = 1, c do v.Items[i] = 8191 - (i - 1) * 777 end
+    else
+      v.B = 300
+    end
+    addJ("ArmArray/" .. tostring(f) .. "/" .. c, "ArmArray", f and 15 + 13 * c or 22, v)
+  end
+end
+
+for _, arm in ipairs({ "None", "Narrow", "Wide" }) do
+  local v = J.NewHoldsUneven(); v.Lead = 21; v.Tail = 1500
+  local bits = 18
+  if arm == "Narrow" then v.U.Type = J.UnevenType.Narrow; v.U.Narrow.N = 5; bits = 21
+  elseif arm == "Wide" then v.U.Type = J.UnevenType.Wide; v.U.Wide.W = 123456789012; bits = 55 end
+  addJ("HoldsUneven/" .. arm, "HoldsUneven", bits, v)
+end
+
+local unevenItemBits = { 0, 5, 44, 49 }
+for c = 0, 3 do
+  local v = J.NewArrUneven(); v.Lead = 21; v.Tail = 5; v.ItemsCount = c
+  for i = 1, c do
+    if (i - 1) % 2 == 0 then
+      v.Items[i].Type = J.UnevenType.Narrow; v.Items[i].Narrow.N = (i - 1) % 8
+    else
+      v.Items[i].Type = J.UnevenType.Wide; v.Items[i].Wide.W = 99887766554 + (i - 1)
+    end
+  end
+  addJ("ArrUneven/" .. c, "ArrUneven", 10 + unevenItemBits[c + 1], v)
+end
+
+for c = 0, 3 do
+  for _, sl in ipairs({ 0, 4 }) do
+    local v = J.NewRegainAfterAlign(); v.Lead = 21; v.ItemsCount = c; v.Tail = 9
+    v.P = 0xDEADBEEF; v.Q = (1 << 29) - 7; v.R = (1 << 19) - 3
+    if sl ~= 0 then v.S = "wxyz" end
+    for i = 1, c do v.Items[i] = 8191 - (i - 1) * 999 end
+    local afterAlign = math.ceil((5 + 2 + 13 * c + 3) / 8) * 8
+    addJ("Regain/" .. c .. "/" .. sl, "RegainAfterAlign", afterAlign + 8 * sl + 84, v)
+  end
+end
+
+return { allShapes = allShapes, clauseShapes = clauseShapes, joinShapes = joinShapes }
+`
+
 const shortProbe = `local inputs = require("inputs")
 local name = next(inputs)
 local modules = { shipcreate_flags = "Types", rigidbody_moving = "Types", rigidbody_at_rest = "Types",
@@ -157,6 +357,14 @@ if name == "degenerate" then
   print("read " .. name)
   os.exit(0)
 end
+if name == "clauses" or name == "joins" then
+  local arrange = require("arrange")
+  local mod = name == "clauses" and require("Clauses") or require("Joins")
+  local shapes = name == "clauses" and arrange.clauseShapes or arrange.joinShapes
+  local ok = arrange.allShapes(inputs[name], mod, shapes)
+  if ok then print("read " .. name) else print("refused " .. name) end
+  os.exit(0)
+end
 local m = require(modules[name])
 local value = m["New" .. root[name]]()
 local stream = serialize.ReadStream.new(inputs[name])
@@ -174,6 +382,7 @@ local Types = require("Types")
 local Enums = require("Enums")
 local D = require("Degenerate")
 local serialize = require("serialize")
+local arrange = require("arrange")
 local function f32(x) return (string.unpack("<f", string.pack("<f", x))) end
 local function cf(iv, maxInt, delta, mn)
   local q = f32(f32(iv) / f32(maxInt))
@@ -329,8 +538,14 @@ do
   if ok then print("degenerate OK") end
 end
 -- clauses and joins: each golden is a concatenation of shapes, each its own
--- flushed stream; the whole golden is read here only, their per-shape field
--- expectations are named as not done in the report.
-readonly("clauses", require("Clauses"), "W13")
-readonly("joins", require("Joins"), "ArmsAgree")
+-- flushed stream; every field of every shape is checked against the value
+-- test/go/main.go builds for it (untaken sides read zero, SPEC §5).
+do
+  local ok, why = arrange.allShapes(inputs["clauses"], require("Clauses"), arrange.clauseShapes)
+  if ok then print("clauses OK") else print("clauses " .. why) end
+end
+do
+  local ok, why = arrange.allShapes(inputs["joins"], require("Joins"), arrange.joinShapes)
+  if ok then print("joins OK") else print("joins " .. why) end
+end
 `
