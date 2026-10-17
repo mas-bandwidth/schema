@@ -42,6 +42,24 @@ var TableForms = map[string]bool{
 	"cook":  true,
 }
 
+// TableIntegrityChecks is the closed vocabulary of a table's `integrity`
+// declaration (docs/SPEC-TABLES.md §2.14): `crc32c`, CRC-32C over the
+// Castagnoli polynomial, four bytes little-endian at the end of the file.
+var TableIntegrityChecks = map[string]bool{"crc32c": true}
+
+// TableIntegrityTables returns, sorted, every table of the unit that declares
+// `integrity` (docs/SPEC-TABLES.md §2.14).
+func TableIntegrityTables(u *Unit) []string {
+	var out []string
+	for name, st := range u.Tables {
+		if st != nil && st.Integrity != "" {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // DeclaredForms reports whether the table carried an explicit `forms`
 // declaration, as opposed to the default of carrying every form.
 func (s *Struct) DeclaredForms() bool { return len(s.Forms) > 0 }

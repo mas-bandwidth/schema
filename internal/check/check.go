@@ -688,6 +688,7 @@ var valuedKeys = map[string]bool{
 	"was":         true,
 	"json":        true,
 	"forms":       true,
+	"integrity":   true,
 	"cpp_native":  true,
 	"cpp_include": true,
 }
@@ -806,6 +807,24 @@ func (c *checker) tableForms(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
 	if !bad && !seen["wire"] {
 		c.errf(a.Pos, "table %s: forms = %q must include wire — the wire form is always carried (docs/SPEC-TABLES.md §2.12)", d.Name, lit.Value)
 	}
+}
+
+// tableIntegrity reads an `integrity = "crc32c"` declaration
+// (docs/SPEC-TABLES.md §2.14): one quoted check name from the closed
+// vocabulary [ir.TableIntegrityChecks]. A `fixed table` may carry it now that
+// its message-form batch carries the trailer; the fixed form's per-file
+// trailer remains its own follow-on.
+func (c *checker) tableIntegrity(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
+	lit, ok := a.Value.(*ast.StringLit)
+	if !ok || lit.Value == "" {
+		c.errf(a.Pos, `integrity takes one quoted check name, e.g. integrity = "crc32c" (docs/SPEC-TABLES.md §2.14)`)
+		return
+	}
+	if !ir.TableIntegrityChecks[lit.Value] {
+		c.errf(a.Pos, "table %s: integrity = %q names no check — the checks are crc32c (docs/SPEC-TABLES.md §2.14)", d.Name, lit.Value)
+		return
+	}
+	st.Integrity = lit.Value
 }
 
 // vocabulary spells a line kind's valued keys for a diagnostic.
@@ -1107,13 +1126,20 @@ func (c *checker) resolveBodies() {
 				// refuses a fixed table whose closure cannot hold the class.
 				st := &ir.Struct{Name: d.Name, IsTable: true, FixedDeclared: d.Fixed, Doc: d.Doc}
 				var tvalued []*ast.Attr
-				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true, "forms": true, "json": true})
+				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true, "forms": true, "json": true, "integrity": true})
 				for _, a := range tvalued {
 					if a.Key == "json" {
 						// the ARRAY ROOT (docs/SPEC-TABLES.md §16.10): a text
 						// form fact, kept out of the rename switch below so
 						// it never touches the wire identity
 						c.tableJsonRoot(d, st, a)
+						continue
+					}
+					if a.Key == "integrity" {
+						// the file's CHECKSUM TRAILER (docs/SPEC-TABLES.md
+						// §2.14): framing, kept out of the rename switch
+						// below so it never touches the wire identity
+						c.tableIntegrity(d, st, a)
 						continue
 					}
 					if a.Key == "forms" {
@@ -1863,6 +1889,13 @@ func (c *checker) requireDefaultInRange(f *ast.Field, out *ir.Field) {
 	if f.Default != nil {
 		return
 	}
+	if out.Required {
+		// A `| required` field takes no default: its fresh value is the
+		// storage zero, which is outside the range, so the writer refuses the
+		// record until the field is set, and a stored record lacking it is
+		// missing_required on read (docs/SPEC-TABLES.md §2.3, SPEC §4.6).
+		return
+	}
 	var rng, fix string
 	switch {
 	case out.HasIntRange && out.IntMin != nil && out.IntMax != nil:
@@ -2093,7 +2126,7 @@ func (c *checker) resolveAttrsInTable(f *ast.Field, out *ir.Field, inTable bool)
 	// the section's tags, and its valued entries with every refusal the
 	// vocabulary shares already drawn (a bare valued key, doc, round, an
 	// unknown or repeated key), so nothing below meets a nil value
-	tags, valued := c.qualification("field "+f.Name, "a field", f.Attrs, fieldKeys)
+	tags, valued := c.qualification("field "+f.Name, "a field", f.Attrs, fieldKeys, "total")
 	out.Tags = tags
 	// THE `deprecated` MARKER (docs/SPEC-TABLES.md §2.10). It is a TAG, not a
 	// valued key — there is nothing for it to take a value of — so it costs
@@ -2118,6 +2151,13 @@ func (c *checker) resolveAttrsInTable(f *ast.Field, out *ir.Field, inTable bool)
 		switch a.Key {
 		case "min", "max", "resolution":
 			// validated below
+		case "total":
+			// a text list's total (docs/SPEC-TABLES.md §2.13): read and placed
+			// by resolveTextListField, and refused by name on every other field
+			if out.TextTotal == 0 {
+				c.errf(a.Pos, "field %s: total applies only to a text list — | total = N bounds the sum of a [..N]string(M) or []string(M) list's element bytes in a plain table; drop the attribute (docs/SPEC-TABLES.md §2.13, §11)", f.Name)
+				return
+			}
 		case "was":
 			// rename aliasing (docs/SPEC-TABLES.md): the field's TABLE-wire id
 			// stays the hash of the OLD name, so identity survives the

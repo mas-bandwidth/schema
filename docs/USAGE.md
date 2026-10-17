@@ -762,6 +762,11 @@ Packet defaults initialize storage and do not omit fields from the wire.
 In C, call the generated `new_<type>()` constructor to apply declared defaults;
 in Go, call `New<Type>()`. Zero-filled storage alone does not apply them.
 
+A table field marked `| required` whose range excludes zero takes no default:
+its fresh value is the storage zero, which is outside the range, so the
+writer refuses the record until the field is set, and a stored record lacking
+it is `missing_required` on read (docs/SPEC-TABLES.md §2.3).
+
 A fixed default must be **exactly representable** in its format; the
 compiler refuses one that would silently round.
 
@@ -2335,9 +2340,20 @@ first. Never a locale, never a code point, never a case fold.
 **A map makes its holder VARIABLE-LENGTH**, whatever its key and value are,
 so a table declaring one rides in the arena with the pointers and has no block
 form. A `type` body refuses one by name. There is no bound on the count, no
-`| max` on a map, no `?map` and no default: a fresh map is empty, and an empty
-map elides. What bounds a read is `LoadMeasure`, whose answer the caller owns
+`| max` on a map and no default: a fresh map is empty, and an empty plain map
+elides. What bounds a read is `LoadMeasure`, whose answer the caller owns
 and can refuse.
+
+**`?map[K]V` says absent apart from empty** (SPEC-TABLES.md §2.8; Go carries
+it first, every other target refuses it by name). In a variable table,
+`tags ?map[string(8)]int32` carries a `TagsPresent` bool beside the map, as
+every `?T` does. Absent writes nothing; present always rides, so a present
+EMPTY map writes its two-byte array body (`0d 00`) and reads back present
+and empty, and a present map with entries is the plain map's bytes. In JSON
+absent is the key omitted, present-and-empty is `{}`, and `null` reads as
+absent. A reader built without the `?` reads the present-empty field as an
+empty map. `?map` is refused in a `fixed table`, a `type`, and beside
+`| required`.
 
 The surface is a builder and a reader:
 
@@ -3926,6 +3942,21 @@ In Go, `HandoverRulesAppend(&h, "a")` appends (false past either bound),
 strings. Only Go generates either construct today; every other `--lang`
 refuses it by name.
 
+A text list can also bound the SUM of its elements' bytes, so one record never
+holds the count times `M`:
+
+```
+table Handover
+{
+    rules [..16]string(64) | total = 256   // 256 bytes of text across the list
+}
+```
+
+`Save` and `Measure` return -1 for a value past the total, `HandoverRulesAppend`
+returns false for the element that would cross it, and a read keeps the
+elements that fit (in order), drops the rest and counts `clamped`, naming the
+field, so `HandoverReadStrict` refuses it (docs/SPEC-TABLES.md §2.13).
+
 ### Unbounded text in lists and map keys
 
 When no code bounds a list's elements or a map's keys, leave the bound off
@@ -3946,6 +3977,34 @@ byte), nothing is clamped for length, and the bytes live in the builder's arena,
 so in Go every append takes the worker: `WhereRecentAppend(&b.Main, v, "a")`.
 A bare `string` anywhere else is refused by name with the spelling to use.
 Only Go generates the construct today; every other `--lang` refuses it by name.
+
+### A checksum on a saved file: `integrity`
+
+A plain `table` may declare that the file it is the root of carries a CRC-32C
+trailer (docs/SPEC-TABLES.md §2.14):
+
+```
+table Ledger | integrity = "crc32c"
+{
+    balance int64
+}
+```
+
+`LedgerSave` appends four bytes, the little-endian CRC-32C of everything
+before them, and `LedgerMeasure` counts them. Every read checks them after the
+form byte and before any field: `LedgerReadStrict` and `LedgerLoadText` refuse a
+mismatch with `TableRefuseIntegrityMismatch` (`errors.Is`), and the tolerant
+`LedgerLoad` sets `malformed` with the reason `integrity_mismatch` and decodes
+nothing. Every single-bit flip and every damaged byte is caught; it guards
+against accident, not against someone rewriting the file, which is still a
+signature's job. Adding or removing the key changes the file's framing, so
+rewrite stored files across the change. A `fixed table` may carry the key too:
+its message-form batch (docs/SPEC-TABLES.md §3.3) carries one trailer for the
+whole batch, checked before the first body is decoded, so `SaveMessages` writes
+four more bytes than `MeasureMessages` would without the key and
+`LoadMessages` refuses a damaged batch with the same `integrity_mismatch` and
+decodes nothing. The fixed form's per-file trailer is still a follow-on. Only
+Go generates the key today; every other `--lang` refuses it by name.
 
 ## Embedding the compiler
 
