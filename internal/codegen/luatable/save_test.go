@@ -93,6 +93,7 @@ func TestLuaTableSaveRoundTripsEveryInstance(t *testing.T) {
 			refused[row.unit] = err.Error()
 			continue
 		}
+		t.Logf("row %s unit %s", row.caseName, row.unit)
 		out := saveInstance(t, repo, paths, row, nil)
 		instances++
 		part := strings.SplitN(out, ":", 3)

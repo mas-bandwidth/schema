@@ -71,38 +71,54 @@ end
 -- is a DATA CYCLE, and the save refuses it (nil).
 local number_nodes
 local edges
+local edge_value
+local edge_union
 
 local function count_of(fd, v)
   local s = fd.shape
   if s == "bytes" then return #v end
   if fd.list then return #v end
+  if fd.fixed then return fd.bound or 0 end
   return math.min(#v, fd.bound or 0)
+end
+
+-- one value's pointer and blob edges, in the walk's order. holder/name name
+-- the slot the value occupies (a table's field or a union arm's payload).
+edge_value = function(T, fd, val, holder, name, out)
+  local s = fd.shape
+  if s == "string_blob" or s == "bytes_blob" then
+    if val ~= nil then
+      out[#out + 1] = { blob = true, shape = s, name = name, holder = holder, val = val }
+    end
+  elseif s == "pointer" then
+    if val ~= nil and val ~= false then out[#out + 1] = { blob = false, target = fd.target, val = val } end
+  elseif s == "table" then
+    local d = T.Tables[fd.target]
+    if d then edges(T, d, val, out) end
+  elseif s == "array" then
+    local n = count_of(fd, val)
+    local e = fd.elem
+    for i = 1, n do edge_value(T, e, val[i], val, i, out) end
+  elseif s == "union" then
+    edge_union(T, T.Unions[fd.target], val, out)
+  end
+end
+
+-- a union arm's payload is a field line: its pointers, blobs, tables, arrays
+-- and nested unions are edges at the arm's position (§2.6, §3.1).
+edge_union = function(T, u, val, out)
+  local tag = val and val.tag or 0
+  if tag == 0 or u == nil then return end
+  local arm = u.arms[tag]
+  if arm == nil or arm.field == nil then return end
+  edge_value(T, arm.field, val[arm.name], val, arm.name, out)
 end
 
 -- the pointer and blob edges of one node's by-value closure, in the walk's
 -- order: fields in declaration order, array elements in index order.
 edges = function(T, desc, v, out)
   for _, fd in ipairs(desc.fields) do
-    local val = v[fd.name]
-    local s = fd.shape
-    if s == "string_blob" or s == "bytes_blob" then
-      if val ~= nil then out[#out + 1] = { blob = true, fd = fd, holder = v, val = val } end
-    elseif s == "pointer" then
-      if val ~= nil then out[#out + 1] = { blob = false, target = fd.target, val = val } end
-    elseif s == "table" then
-      local d = T.Tables[fd.target]
-      if d then edges(T, d, val, out) end
-    elseif s == "array" then
-      local n = count_of(fd, val)
-      local e = fd.elem
-      local es = e.shape
-      if es == "pointer" then
-        for i = 1, n do if val[i] ~= nil then out[#out + 1] = { blob = false, target = e.target, val = val[i] } end end
-      elseif es == "table" then
-        local d = T.Tables[e.target]
-        for i = 1, n do if d then edges(T, d, val[i], out) end end
-      end
-    end
+    edge_value(T, fd, v[fd.name], v, fd.name, out)
   end
   return out
 end
@@ -119,16 +135,16 @@ number_nodes = function(T, desc, root)
       local e = top.edges[top.i + 1]
       top.i = top.i + 1
       if e.blob then
-        if e.fd.shape == "string_blob" and type(e.val) == "string" then
+        if e.shape == "string_blob" and type(e.val) == "string" then
           local m = nodes.slots[e.holder]
           if m == nil then m = {}; nodes.slots[e.holder] = m end
-          if m[e.fd.name] == nil then
+          if m[e.name] == nil then
             nodes.list[#nodes.list + 1] = { typeId = STRING_BLOB_ID, body = e.val }
-            m[e.fd.name] = #nodes.list + 1
+            m[e.name] = #nodes.list + 1
           end
         else
           if nodes.index[e.val] == nil then
-            local tid = e.fd.shape == "string_blob" and STRING_BLOB_ID or BYTES_BLOB_ID
+            local tid = e.shape == "string_blob" and STRING_BLOB_ID or BYTES_BLOB_ID
             nodes.list[#nodes.list + 1] = { typeId = tid, body = e.val }
             nodes.index[e.val] = #nodes.list + 1
           end
@@ -162,7 +178,25 @@ local function at_default(fd, v)
   local x = v[fd.name]
   local s = fd.shape
   if s == "pointer" or s == "string_blob" or s == "bytes_blob" then return x == nil end
-  if s == "array" then return count_of(fd, x) == 0 end
+  if s == "array" then
+    local n = count_of(fd, x)
+    if n == 0 then return true end
+    if fd.list or not fd.fixed then return false end
+    local e = fd.elem
+    local es = e.shape
+    if es == "table" then return false end
+    local def = 0
+    if es == "bool" or es == "enum" or es == "pointer" or es == "string_blob" or es == "bytes_blob" then def = false
+    elseif es == "string" or es == "bytes" then def = "" end
+    for i = 1, n do
+      local e1 = x[i]
+      if e1 == nil then e1 = def end
+      if es == "union" then
+        if e1 ~= nil and e1.tag ~= 0 then return false end
+      elseif e1 ~= def then return false end
+    end
+    return true
+  end
   if s == "map" then
     local n = 0
     for _ in pairs(x or {}) do n = n + 1 end
@@ -177,43 +211,95 @@ local function id_ref(ids, id)
   return #ids.list
 end
 
+-- AN ENUM-KEYED ELEMENT (§2.4, §3.2): its payload is bare — the key's L
+-- frames it — and a zero element does not ride, so the pair is absent.
+local function id_rollback(ids, keep)
+  for i = #ids.list, keep + 1, -1 do ids.list[i] = nil end
+end
+
+local function write_keyed_one(T, ids, nodes, e, val, w)
+  local s = e.shape
+  if s == "bool" then
+    if not val then return true, false end
+    w_u8(w, 1)
+  elseif s == "int" or s == "flags" then
+    if (val or 0) == 0 then return true, false end
+    w_int(w, e.width, e.signed, val or 0)
+  elseif s == "float" then
+    if val == 0 then return true, false end
+    if e.f32 then w_raw(w, narrow_f32(val)) else w_f64(w, val) end
+  elseif s == "string" then
+    if #val == 0 then return true, false end
+    w_raw(w, val)
+  elseif s == "wstring" then
+    if #val == 0 then return true, false end
+    for i = 1, #val do w_raw(w, string.pack("<I2", val[i])) end
+  elseif s == "enum" then
+    if val == nil or val == false then return true, false end
+    local vref = 0
+    for _, var in ipairs(e.variants) do if var[1] == val then vref = id_ref(ids, var[2]); break end end
+    if vref == 0 then return false end
+    w_leb(w, vref)
+  elseif s == "pointer" then
+    if val == nil or val == false then return true, false end
+    w_leb(w, nodes.index[val] or 0)
+  elseif s == "table" then
+    local d = T.Tables[e.target]
+    if not write_body(T, ids, nodes, d, val, w) then return false end
+    return true, w.n > 1
+  elseif s == "union" then
+    local u = T.Unions[e.target]
+    if u == nil then return false end
+    if val == nil or (val.tag or 0) == 0 then return true, false end
+    if not write_union(T, ids, nodes, u, val, w) then return false end
+  elseif s == "bytes" then
+    if #val == 0 then return true, false end
+    w_u8(w, 6); w_leb(w, #val); w_raw(w, val)
+  else
+    return false
+  end
+  return true, true
+end
+
 -- THE SAVE WALK (§3, §3.1). write_field writes into the writer `w`. It
 -- returns false on a refusal; elision at the declared default writes nothing.
 write_field = function(T, ids, nodes, fd, v, w)
+  if fd.optional and not v[fd.name .. "_present"] then return true end
   local x = v[fd.name]
   local s = fd.shape
   if s == "bool" then
-    if not at_default(fd, v) then
+    if fd.optional or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, 1); w_u8(w, x and 1 or 0)
     end
   elseif s == "int" or s == "flags" then
-    if not at_default(fd, v) then
+    if fd.optional or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind); w_int(w, fd.width, fd.signed, x or 0)
     end
   elseif s == "float" then
-    if not at_default(fd, v) then
+    if fd.optional or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind)
       if fd.f32 then w_raw(w, narrow_f32(x)) else w_f64(w, x) end
     end
   elseif s == "string" then
-    if not at_default(fd, v) then
+    if fd.optional or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, 12); w_leb(w, #x); w_raw(w, x)
     end
   elseif s == "bytes" then
-    if not at_default(fd, v) then
+    if fd.optional or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, 14)
       local body = W()
       w_u8(body, 6); w_leb(body, #x); w_raw(body, x)
       w_leb(w, body.n); w_raw(w, table.concat(body.parts))
     end
   elseif s == "enum" then
-    if not at_default(fd, v) then
+    if fd.optional or not at_default(fd, v) then
+      local ref = id_ref(ids, fd.id)
       local vref = 0
       if x ~= nil then
         for _, var in ipairs(fd.variants) do if var[1] == x then vref = id_ref(ids, var[2]); break end end
       end
       if vref == 0 and x ~= nil then return false end
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, 30); w_leb(w, vref)
+      w_leb(w, ref); w_u8(w, 30); w_leb(w, vref)
     end
   elseif s == "pointer" then
     if x ~= nil then w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, nodes.index[x]) end
@@ -223,6 +309,14 @@ write_field = function(T, ids, nodes, fd, v, w)
       if s == "string_blob" and type(x) == "string" then idx = nodes.slots[v][fd.name] else idx = nodes.index[x] end
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, idx)
     end
+  elseif s == "union" then
+    local tag = x and x.tag or 0
+    if tag ~= 0 then
+      local u = T.Unions[fd.target]
+      if u == nil then return false end
+      w_leb(w, id_ref(ids, fd.id)); w_u8(w, 15)
+      if not write_union(T, ids, nodes, u, x, w) then return false end
+    end
   elseif s == "table" then
     local d = T.Tables[fd.target]
     local mark = #ids.list
@@ -230,31 +324,65 @@ write_field = function(T, ids, nodes, fd, v, w)
     local body = W()
     local ok = write_body(T, ids, nodes, d, x, body)
     if not ok then return false end
-    if body.n <= 1 then ids.list[mark + 1] = nil; return true end
+    if not fd.optional and body.n <= 1 then ids.list[mark + 1] = nil; return true end
     w_leb(w, ref); w_u8(w, 13); w_leb(w, body.n); w_raw(w, table.concat(body.parts))
   elseif s == "array" then
-    local n = count_of(fd, x)
-    if n == 0 then return true end
-    w_leb(w, id_ref(ids, fd.id)); w_u8(w, 14)
-    local body = W()
-    w_u8(body, fd.elem_kind); w_leb(body, n)
-    for i = 1, n do
-      if not write_element(T, ids, nodes, fd.elem, x[i], body) then return false end
+    if fd.keyed ~= nil then
+      local mark = #ids.list
+      local ref = id_ref(ids, fd.id)
+      local outer = W()
+      w_u8(outer, fd.elem_kind)
+      local entries = W()
+      local count = 0
+      for i = 1, fd.bound or 0 do
+        local emark = #ids.list
+        local keyref = id_ref(ids, fd.keyed[i][2])
+        local eb = W()
+        local ok, rides = write_keyed_one(T, ids, nodes, fd.elem, x[i], eb)
+        if not ok then return false end
+        if rides then
+          count = count + 1
+          w_leb(entries, keyref)
+          w_leb(entries, eb.n); w_raw(entries, table.concat(eb.parts))
+        else
+          id_rollback(ids, emark)
+        end
+      end
+      if count == 0 and not fd.optional then id_rollback(ids, mark); return true end
+      w_leb(outer, count); w_raw(outer, table.concat(entries.parts))
+      w_leb(w, ref); w_u8(w, fd.kind); w_leb(w, outer.n); w_raw(w, table.concat(outer.parts))
+    else
+      if not fd.optional and at_default(fd, v) then return true end
+      local n = count_of(fd, x)
+      w_leb(w, id_ref(ids, fd.id)); w_u8(w, 14)
+      local body = W()
+      w_u8(body, fd.elem_kind); w_leb(body, n)
+      for i = 1, n do
+        if not write_element(T, ids, nodes, fd.elem, x[i], body) then return false end
+      end
+      w_leb(w, body.n); w_raw(w, table.concat(body.parts))
     end
-    w_leb(w, body.n); w_raw(w, table.concat(body.parts))
   elseif s == "map" then
     local n = 0
     for _ in pairs(x or {}) do n = n + 1 end
-    if n == 0 then return true end
+    if n == 0 and not fd.optional then return true end
     w_leb(w, id_ref(ids, fd.id)); w_u8(w, 14)
     local body = W()
     w_u8(body, fd.elem_kind or 13); w_leb(body, n)
     local entry = T.Tables[fd.entry]
     local keyname = fd.key_field.name
     local valname = fd.value_field.name
-    for key, value in pairs(x) do
+    local keys = {}
+    for key in pairs(x) do keys[#keys + 1] = key end
+    table.sort(keys, function(a, b)
+      local kf = fd.key_field
+      if kf.shape == "string" then return a < b end
+      if kf.signed or kf.width < 8 then return a < b end
+      return math.ult(a, b)
+    end)
+    for _, key in ipairs(keys) do
       local eb = W()
-      local kv = { [keyname] = key, [valname] = value }
+      local kv = { [keyname] = key, [valname] = x[key] }
       local ok = write_body(T, ids, nodes, entry, kv, eb)
       if not ok then return false end
       w_leb(body, eb.n); w_raw(body, table.concat(eb.parts))
@@ -271,10 +399,10 @@ write_element = function(T, ids, nodes, e, val, body)
   elseif s == "float" then if e.f32 then w_raw(body, narrow_f32(val)) else w_f64(body, val) end
   elseif s == "enum" then
     local vref = 0
-    if val ~= nil then for _, var in ipairs(e.variants) do if var[1] == val then vref = id_ref(ids, var[2]); break end end end
-    if vref == 0 and val ~= nil then return false end
+    if val ~= nil and val ~= false then for _, var in ipairs(e.variants) do if var[1] == val then vref = id_ref(ids, var[2]); break end end end
+    if vref == 0 and val ~= nil and val ~= false then return false end
     w_leb(body, vref)
-  elseif s == "pointer" then w_leb(body, val == nil and 0 or (nodes.index[val] or 0))
+  elseif s == "pointer" then w_leb(body, (val == nil or val == false) and 0 or (nodes.index[val] or 0))
   elseif s == "table" then
     local d = T.Tables[e.target]
     local eb = W()
@@ -326,16 +454,20 @@ write_union_at = function(T, ids, nodes, f, val, body)
   if s == "bool" then w_u8(body, val and 1 or 0)
   elseif s == "int" or s == "flags" then w_int(body, f.width, f.signed, val or 0)
   elseif s == "float" then if f.f32 then w_raw(body, narrow_f32(val)) else w_f64(body, val) end
-  elseif s == "string" then w_leb(body, #val); w_raw(body, val)
+  elseif s == "string" then w_raw(body, val)
+  elseif s == "wstring" then
+    for i = 1, #val do w_raw(body, string.pack("<I2", val[i])) end
+  elseif s == "bytes" then
+    w_u8(body, 6); w_leb(body, #val); w_raw(body, val)
   elseif s == "enum" then
     local vref = 0
-    if val ~= nil then for _, var in ipairs(f.variants) do if var[1] == val then vref = id_ref(ids, var[2]); break end end end
-    if vref == 0 and val ~= nil then return false end
+    if val ~= nil and val ~= false then for _, var in ipairs(f.variants) do if var[1] == val then vref = id_ref(ids, var[2]); break end end end
+    if vref == 0 and val ~= nil and val ~= false then return false end
     w_leb(body, vref)
-  elseif s == "pointer" then w_leb(body, val == nil and 0 or (nodes.index[val] or 0))
+  elseif s == "pointer" then w_leb(body, (val == nil or val == false) and 0 or (nodes.index[val] or 0))
   elseif s == "table" then
     local d = T.Tables[f.target]
-    if not write_body(T, ids, nodes, d, val) then return false end
+    if not write_body(T, ids, nodes, d, val, body) then return false end
   elseif s == "union" then
     local inner = T.Unions[f.target]
     if not write_union(T, ids, nodes, inner, val, body) then return false end
