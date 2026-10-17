@@ -465,6 +465,14 @@ func fieldDesc(f *ir.Field, ordinal int) string {
 		d["counted"] = fmt.Sprint(f.Array == ir.ArrayCounted)
 		d["def"] = "null"
 		d["elem"] = render(elem, elemKeys)
+		if f.KeyEnumRef != nil {
+			p := make([]string, len(f.KeyEnumRef.Variants))
+			for i := range f.KeyEnumRef.Variants {
+				p[i] = fmt.Sprintf("[%s, %s]", squirrel.StringLit([]byte(f.KeyEnumRef.Variants[i])),
+					squirrel.HexLit(ir.TableWireId(f.KeyEnumRef.VariantWireName(i))))
+			}
+			d["keyvariants"] = "[" + strings.Join(p, ", ") + "]"
+		}
 	}
 	return render(d, fieldKeys)
 }
@@ -472,7 +480,7 @@ func fieldDesc(f *ir.Field, ordinal int) string {
 var elemKeys = []string{"kind", "shape", "bound", "signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants"}
 
 var fieldKeys = []string{"name", "member", "key", "id", "ordinal", "kind", "shape", "bound", "min", "list", "counted",
-	"signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "elem",
+	"signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "keyvariants", "elem",
 	"optional", "required", "deprecated"}
 
 // baseDesc is the facts of the field's VALUE type, which an array's element
@@ -481,7 +489,7 @@ func baseDesc(f *ir.Field) map[string]string {
 	d := map[string]string{
 		"kind": fmt.Sprint(ir.TableWireScalarKind(f)), "bound": "0", "min": "0", "list": "false", "counted": "false",
 		"signed": "false", "width": "0", "bits": "0", "lo": "null", "hi": "null", "f32": "false",
-		"def": "null", "table": "null", "variants": "null", "elem": "null",
+		"def": "null", "table": "null", "variants": "null", "keyvariants": "null", "elem": "null",
 	}
 	switch {
 	case f.Type.Blob() && f.Type.Kind == ir.TString:

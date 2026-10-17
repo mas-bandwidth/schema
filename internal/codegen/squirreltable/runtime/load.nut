@@ -506,6 +506,12 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
     for (local i = 0; i < count; i++) {
       local keyRef = leb(r);
       if (r.bad || keyRef == 0 || keyRef > table.len()) { report.malformed = true; break; }
+      local id = table[keyRef - 1];
+      local known = false;
+      if (fd.keyvariants != null) {
+        foreach (pair in fd.keyvariants) { if (pair[1] == id) { known = true; break; } }
+      }
+      if (!known) report.unknown = report.unknown + 1;
       local elen = leb(r);
       if (r.bad || r.at + elen > r.end) { report.malformed = true; break; }
       local sr = newReader(r.b, r.at, r.at + elen);
