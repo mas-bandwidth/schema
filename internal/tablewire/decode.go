@@ -897,6 +897,7 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 		for i := range fv.Elems {
 			r.rt.forget(fv.Elems[i].Tab)
 		}
+		r.rt.forgetFieldArms(fv)
 		keep := int(count)
 		switch {
 		case f.Array == ir.ArrayList:

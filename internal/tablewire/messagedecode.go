@@ -772,6 +772,7 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 	for i := range fv.Elems {
 		d.rt.forgetCellRecords(&fv.Elems[i])
 	}
+	d.rt.forgetFieldArms(fv)
 	walk := n
 	if run >= 0 && walk > kept {
 		walk = kept

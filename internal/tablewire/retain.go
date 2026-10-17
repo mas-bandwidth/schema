@@ -277,6 +277,26 @@ func (rt *retainState) forgetArm(fv *tabletext.Field, index int) {
 	}
 }
 
+// forgetFieldArms discards every arm record held under ANY occurrence of this
+// field, at every element index (docs/SPEC-TABLES.md §6.6). A repeated
+// collection occurrence replaces the earlier one whole, so an arm the earlier
+// occurrence built at an index past the new occurrence's count dies with it —
+// the count is not reached by the element-by-element forgetArm, and the record
+// would otherwise outlive the body that carried it. It is called at the point
+// the read COMMITS to replace, and never where damage resets a body the reader
+// has just decoded.
+func (rt *retainState) forgetFieldArms(fv *tabletext.Field) {
+	if rt == nil || fv == nil {
+		return
+	}
+	for k, held := range rt.arms {
+		if k.fv == fv {
+			rt.forget(held)
+			delete(rt.arms, k)
+		}
+	}
+}
+
 // lost counts one unknown this load or save could not keep. Every exclusion
 // counts it, so a caller that needs to know retention held reads ONE NUMBER
 // and never has to reason about the list (§6.6).
