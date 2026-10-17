@@ -26,12 +26,18 @@ func (t goTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) 
 // unit's lock once (compiler/lineage.go) and hands the lineage down as DATA, so
 // gotable opens no file and a build ships a reader for every layout the lock
 // records.
-func (goTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
+func (goTarget) GenerateLineage(u *ir.Unit, opts Options, lineage *FixedLineage) (map[string][]byte, error) {
 	// Wide text is carried by both packet and table surfaces.
 	if err := refuseWideText(u, "go"); err != nil {
 		return nil, err
 	}
 	if err := refuseUnported(u, "go"); err != nil {
+		return nil, err
+	}
+	// the surface list (docs/SPEC-TABLES.md §8.8): the default full set is
+	// byte-identical to today's output
+	surfaces, err := gotable.ParseSurfaces(opts["surface"])
+	if err != nil {
 		return nil, err
 	}
 	files, err := golang.Generate(u)
@@ -42,7 +48,7 @@ func (goTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (m
 	// TABLE-wire codecs and the reflection descriptors (SPEC-TABLES.md); a
 	// table-free unit's output is byte-identical to what the packet emitter
 	// alone produces
-	tables, err := gotable.GenerateLineage(u, goTableLineage(u, lineage))
+	tables, err := gotable.GenerateLineageSurface(u, goTableLineage(u, lineage), surfaces)
 	if err != nil {
 		return nil, err
 	}
