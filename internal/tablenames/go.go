@@ -218,7 +218,6 @@ func init() {
 		Name{Name: "tableRegionFromJson", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableRegionLoad", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableRegionMeasure", What: "the canonical region and graph text runtime"},
-		Name{Name: "tableRegionMeasureFraming", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableRegionPack", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableRegionRound", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableRegionSave", What: "the canonical region and graph text runtime"},

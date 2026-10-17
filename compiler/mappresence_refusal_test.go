@@ -18,7 +18,7 @@ const plainMapSchema = "package probe\n\ntable Holder\n{\n    tags map[string(8)
 // the base this card started from (sprint/schema-go @ f820a0c1f5, re-pinned on the merge of that tip: measured with the base compiler, which has no ?map, the base moved the go output from 5864563260e2 at 3f4d111f44, this card does not), file
 // names sorted, each name then its bytes (outputDigest).
 var plainMapDigest = map[string]string{
-	"go":  "4a9a301ec570525941f2cc3ad92cf30ecb0abf6990056fd085ef34ea0a141bdc",
+	"go":  "0bf931f6ac4f3f5dc39cc7281f1024bd50654b6a9fcc99943c572ac19aca9e40",
 	"cpp": "89878cf368053213bfe10cbe20a4fe38eae626ce4a6d3af244008f811675365e",
 }
 
