@@ -102,6 +102,8 @@ func TestTextListAndArrayRootRefusals(t *testing.T) {
 			"package t\ntable G | json = \"array\" {\n    a []int32\n}\ntable H {\n    p *G\n}\n"},
 		{"array root as a list-of-pointers target", "refuses a table any pointer targets, and H.ps points at it",
 			"package t\ntable G | json = \"array\" {\n    a []int32\n}\ntable H {\n    ps []*G\n}\n"},
+		{"array root as a map value's pointer target", "refuses a table any pointer targets, and H.m.value points at it",
+			"package t\ntable G | json = \"array\" {\n    a []int32\n}\ntable H {\n    m map[uint8]*G\n}\n"},
 		{"array root as a pointer arm's target", "refuses a table any pointer targets, and H.u.g points at it",
 			"package t\ntable G | json = \"array\" {\n    a []int32\n}\nunion U {\n    g *G\n}\ntable H {\n    u U\n}\n"},
 	}

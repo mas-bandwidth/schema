@@ -12,6 +12,7 @@ package check
 import (
 	"math"
 	"sort"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -200,6 +201,16 @@ func (c *checker) checkArrayRootTargets() {
 			continue
 		}
 		pos := ast.Pos{}
+		holder := name
+		if st.MapEntryOf != "" {
+			// a map's generated entry names the map field that holds it, so
+			// `map[K]*G` is refused naming `H.m.value` (§2.8)
+			holder = st.MapEntryOf
+			owner, _, _ := strings.Cut(st.MapEntryOf, ".")
+			if d, ok := c.astDecls[owner]; ok {
+				pos = d.DeclPos()
+			}
+		}
 		if d, ok := c.astDecls[name]; ok {
 			pos = d.DeclPos()
 		}
@@ -208,7 +219,7 @@ func (c *checker) checkArrayRootTargets() {
 				return
 			}
 			if target, ok := f.Type.Ref.(*ir.Struct); ok && target.JsonArray {
-				c.errf(pos, `table %s: json = "array" refuses a table any pointer targets, and %s.%s points at it — a shared node is defined under &node (§16.7) and an array has no object for that key; hold %s by value, or drop the key (docs/SPEC-TABLES.md §16.9)`, target.Name, name, where, target.Name)
+				c.errf(pos, `table %s: json = "array" refuses a table any pointer targets, and %s.%s points at it — a shared node is defined under &node (§16.7) and an array has no object for that key; hold %s by value, or drop the key (docs/SPEC-TABLES.md §16.9)`, target.Name, holder, where, target.Name)
 			}
 		}
 		for _, f := range st.Fields {
