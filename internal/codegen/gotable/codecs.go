@@ -528,7 +528,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	g.pf("// %sTableInfo is %s's reflection descriptor (docs/SPEC-TABLES.md §8).\n", st.Name, st.Name)
 	g.pf("var %sTableInfo TableTypeInfo\nfunc init() { %sTableInfo = TableTypeInfo{Name: %q, Size: uint32(unsafe.Sizeof(%s{})), NumFields: %d, Fields: %sTableFields, Reset: func(storage unsafe.Pointer) { %sReset((*%s)(storage)) }, %s} }\n\n",
 		st.Name, st.Name, st.Name, g.storageName(st.Name), len(st.Fields), st.Name, st.Name, g.storageName(st.Name),
-		annotationColumns(st.Doc, st.Tags, tagsName(st.Name, ""))+g.typeCodecColumns(st))
+		jsonArrayColumn(st)+annotationColumns(st.Doc, st.Tags, tagsName(st.Name, ""))+g.typeCodecColumns(st))
 	if g.surfaces.Message {
 		g.into(&g.message, func() { g.emitMessageDescriptorInit(st) })
 	}
@@ -735,6 +735,10 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		g.emitCookFieldColumns(st, f)
 	}
 	g.pf("\t\tHasRange: %s, RangeMin: %s, RangeMax: %s, EnumMax: %s,\n", hasRange, rangeMin, rangeMax, enumMax)
+	if f.IsTextList() {
+		// a TEXT LIST (docs/SPEC-TABLES.md §2.13): 1 for string(M) elements, 2 for ?string(M)
+		g.pf("TextList:%d,\n", textListCode(f))
+	}
 	if f.IsList() {
 		_, align := ir.ListElementLayout(g.unit, f)
 		g.pf("List:true,ElemAlign:%d,\n", align)

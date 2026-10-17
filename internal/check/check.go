@@ -1101,8 +1101,15 @@ func (c *checker) resolveBodies() {
 				// refuses a fixed table whose closure cannot hold the class.
 				st := &ir.Struct{Name: d.Name, IsTable: true, FixedDeclared: d.Fixed, Doc: d.Doc}
 				var tvalued []*ast.Attr
-				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true, "forms": true})
+				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true, "forms": true, "json": true})
 				for _, a := range tvalued {
+					if a.Key == "json" {
+						// the ARRAY ROOT (docs/SPEC-TABLES.md §16.10): a text
+						// form fact, kept out of the rename switch below so
+						// it never touches the wire identity
+						c.tableJsonRoot(d, st, a)
+						continue
+					}
 					if a.Key == "forms" {
 						// the table's FORM declaration (docs/SPEC-TABLES.md
 						// §2.12). A `forms` is not a `was`: dispatching by key
@@ -1154,6 +1161,9 @@ func (c *checker) resolveBodies() {
 			case *ast.TableDecl:
 				c.mapEntries = nil
 				c.tables[d.Name].Fields, c.tables[d.Name].Items = c.resolveBody(d.Name, d.Body, true)
+				if c.tables[d.Name].JsonArray {
+					c.checkArrayRoot(d, c.tables[d.Name])
+				}
 				if len(c.mapEntries) > 0 {
 					for _, entry := range c.mapEntries {
 						entry.Forms = append([]string(nil), c.tables[d.Name].Forms...)
@@ -1166,6 +1176,8 @@ func (c *checker) resolveBodies() {
 			}
 		}
 	}
+	// an array-root table no pointer may target (docs/SPEC-TABLES.md §16.10)
+	c.checkArrayRootTargets()
 }
 
 // resolveUnion fills a union shell's variants (SPEC §4.8): names checked over
@@ -1495,6 +1507,11 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		// §2.8). The construct hangs off the generated entry, so it resolves
 		// on its own path and comes back as an ir.TMap field.
 		return c.resolveMapField(owner, f, inTable)
+	}
+	if f.Array != nil && (f.Type.ElemOptional || f.Type.Kind == ast.ScalarString && !f.Type.Pointer) {
+		// `rules [..16]string(64)` — a TEXT LIST (docs/SPEC-TABLES.md §2.13),
+		// and `[..N]?T` for every other element, refused by name
+		return c.resolveTextListField(owner, f, inTable)
 	}
 	out := &ir.Field{Name: f.Name, Doc: f.Doc}
 
@@ -3994,6 +4011,21 @@ func (c *checker) checkClaimedNames() {
 						add(base+verb, whyList, d.DeclPos())
 					}
 					add(base+"At", whyList, d.DeclPos())
+				}
+				// AND A TEXT LIST claims its element record and its three
+				// accessors (docs/SPEC-TABLES.md §2.13, §11)
+				whyText := fmt.Sprintf("%s's generated text-list surface (docs/SPEC-TABLES.md §2.13, §11)", name)
+				for _, f := range st.Fields {
+					if !f.IsTextList() {
+						continue
+					}
+					base := name + ir.GoExportName(f.Name)
+					for _, verb := range ir.TextListVerbs {
+						if verb == "Text" {
+							continue // the element record, claimed as a closure member
+						}
+						add(base+verb, whyText, d.DeclPos())
+					}
 				}
 			}
 		}

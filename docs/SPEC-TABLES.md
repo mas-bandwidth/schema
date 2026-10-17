@@ -2672,8 +2672,9 @@ maintain. Four refusals follow from it and none is new:
   ```
 
 - **`[]map[K]V`**, as `[..N]map` and `[N]map` are refused (§11).
-- **`[]?T`**, as an array of `?T` is: an element's presence bit beside the
-  array's own count is a named follow-on (§15), and it is a different question
+- **`[]?T`**, as an array of `?T` is, for every `T` but `string(M)`: an
+  element's presence bit beside the array's own count is a named follow-on
+  (§15), and `[]?string(M)` is §2.13's text list, and it is a different question
   from `?[..N]T`, which is a presence bit on the ARRAY and landed (§2.3). **The
   answer that serves today is `[]*T` with a NULL slot**, which spells "an
   element that is not there" with the null every pointer already has (§2.1,
@@ -3780,6 +3781,128 @@ it. Every other target refuses the whole
 construct by name, centrally, at generation, and no other emitter is edited; the
 other languages carry `forms` when their turn comes.
 
+### 2.13 Text lists: `rules [..16]string(64)`
+
+**A variable table may hold a counted list of text.** In a plain (VARIABLE)
+`table`, a field may be spelled four ways:
+
+```
+table Handover
+{
+    rules [..16]string(64)      // a bounded list of text
+    first [..16]?string(64)     // a bounded list whose elements may be absent
+    repos []string(64)          // an unbounded list of text (§2.9)
+    bases []?string(64)         // an unbounded list whose elements may be absent
+}
+```
+
+Each is a list of text, every element bounded at `M` bytes of UTF-8 (the
+`string(M)` of the spelling), the count bounded at `N` for `[..N]` and by the
+data for `[]`, exactly as §2.9 bounds an unbounded array. The `?` sits AFTER
+the bound and binds to the ELEMENT: `[..N]?string(M)` is a list whose slots may
+each be absent, which is a different question from `?[..N]T`, a presence bit
+on the ARRAY (§2.3). It is the one element type for which `[]?T` and
+`[..N]?T` are not a follow-on (§2.9).
+
+**What it is for.** A program's `[]string` is the commonest shape a record
+carries, and without this section its only spelling is an array of a one-field
+word table, whose text is `[{"s":"a"}]` where every existing reader expects
+`["a"]`. A text list is spelled as what it is, and its text is the plain array.
+
+**Refused, each by name** (§11), with the diagnostic naming the variable-table
+spelling as the route where one exists:
+
+- the four spellings in a `fixed table` (§2.2), in a `type` body or a packet
+  (SPEC.md §4.6 is unchanged: the type wire carries no array of text), in a
+  union arm (§2.6), and as a map's value (§2.8). The fix the diagnostic names
+  for each is a field of a plain `table`;
+- `[N]string(M)` and `[E]string(M)`: a list of text is COUNTED, so a fixed
+  extent or an enum key names a count that cannot vary; `[..N]string(M)` is the
+  route;
+- `?[..N]string(M)` and `?[]string(M)`: a presence bit on a list of text is two
+  answers to one question, because an empty list is elided and its count's zero
+  IS its absence (§2.9); drop the `?`, or move it after the bound;
+- arrays of `wstring(N)`, `bytes(N)`, `bits(N)`, `*string` and `*bytes`: named
+  follow-ons (§15). Only `string(M)` is a text-list element today.
+
+**THE ELEMENT RECORD.** Each text list GENERATES one element record, as a map
+generates its entry (§2.8): `<Table><Field>Text`, one field named `value`
+holding `string(M)`, or `?string(M)` for the `?` spelling. It is reached only
+through the list that generates it, so it has no `Save`, `Load` or `Open` of its
+own, and in the projections (§18.1, §20.2) it takes a map entry's anonymous key,
+`<holder id>.<field id>`, so a `was` rename moves no line. The storage of the
+list IS an array of that record — the bounded list is `[N]` records and a live
+`<Field>Count`, the unbounded list a `TableList` of records (§2.9) — which is
+why the cooked form (§7), the block form (§19), the view (§8) and retain-unknown
+(§6.6) carry a text list with no rule of their own: each walks it as the array
+of records it is stored as. The element record's `?string(M)` value is the one
+place a `?` on a string is legal, and only the generator writes it: in a
+declaration `?string(N)` stays the follow-on §15 names.
+
+**ON THE WIRE (§3) a text list spends no kind and no new array shape.**
+
+- `[..N]string(M)` and `[]string(M)` ride as a kind `14` array of element kind
+  `12`: `L`, then `element kind = 12`, the count, then each element as kind
+  `12`'s payload, its own `L` and then `L` bytes of well-formed UTF-8 with no
+  zero byte among them. §3's array-element rule gains the row this needs: **for
+  element kind `12` (string) each element is preceded by its own `L`**, as an
+  element of kind `13` is, because a string is the one framed scalar.
+- `[..N]?string(M)` and `[]?string(M)` ride as a kind `14` array of element
+  kind `13`: each element is the element record's body, holding the field
+  `value` (whose id is the hash of `value`, §5, the id a map entry's value takes)
+  under kind `12` when the element is PRESENT, an empty string included, and only
+  the zero reference when it is ABSENT. That is exactly the bytes of a bounded
+  array of a one-field table, so it needs no rule at all.
+- Respelling an element between `string(M)` and `?string(M)` moves the element
+  kind between `12` and `13` and is a reported edit under §4's element-kind rule
+  (§3), never a silent one.
+
+**BOUNDS, on the write side.** The Go builder and `Save` hold the count to `N`
+and each element to `M` exactly as a bounded array of tables and a `string(N)`
+field do: `Save` and `Measure` refuse a value whose count is past `N` or whose
+element length is past `M`, or whose element is not well-formed UTF-8 or holds
+a zero byte, returning `-1` with nothing written
+(internal/codegen/gotable/write.go `emitStorageCheck` and the text rule in
+`emitWireValue`), and the generated `Append` refuses the element that would
+break either bound, returning false.
+
+**BOUNDS, on the read side, are the variable wire's tolerance, unchanged** (§4):
+a count past the reader's `N` reads the first `N` elements and counts
+`clamped`; an element past `M` clamps at a code point boundary and counts
+`clamped`; ill-formed UTF-8 or a zero byte in an element is `malformed`. A read
+that clamped an element of a text list records the field in the report's
+`Reason` as `clamped: <Table>.<field>`, so `ReadStrict` refuses it with
+`TableRefuseReason` `clamped` (`errors.Is`) and an error text naming the field.
+
+**BASE64 TEXT** (§16.8) is the padded standard base64 of this binary wire:
+nothing new. **JSON TEXT** is §16.2's text-list row: a plain array of strings.
+
+**THE GO SURFACE.** For a text list `rules` on table `Handover` the generator
+emits, beside the storage above:
+
+- `HandoverRulesText` — the element record (one field, `Value` with its
+  `ValueLength`, and `ValuePresent` for the `?` spelling);
+- `HandoverRulesTextAt(value *Handover, i int32, arena ...*TableArena) ([]byte, bool)`
+  — the element's text, a view into the storage that allocates nothing, and its
+  presence (false past the count, and false for an absent `?string(M)` element);
+- `HandoverRulesAppend(value *Handover, text string) bool` for a bounded list
+  and `HandoverRulesAppend(worker *TableWorker, value *Handover, text string) bool`
+  for an unbounded one, refusing on the bounds above;
+- `HandoverRulesAppendAbsent(...)` with the same leading parameters and no
+  text, for the `?` spelling only;
+- the count is the list's own: `RulesCount` for `[..N]`, `Rules.Count` for `[]`,
+  and an unbounded list keeps §2.9's `Add`, `Each`, `Erase` and `At` over its
+  records.
+
+**A TEXT LIST CLAIMS FOUR NAMES AGAINST ITS FIELD**, on the map's own rule
+(§2.8, §2.9): `<Table>` followed by the PascalCase of the field's name, and then
+`Text`, `TextAt`, `Append` or `AppendAbsent`; an unbounded one claims §2.9's
+four as well. A declaration under any of them is refused naming the field.
+
+**Go carries the construct first, and every other target refuses it by name,
+centrally, at generation** (§2.12's rule), naming the construct, the field and
+the target, so no other emitter is edited.
+
 ## 3. The wire
 
 **The wire is neutral.** It carries none of schema's packing opinions, no
@@ -4185,7 +4308,10 @@ one document rather than two.
   edit: it changes kind, and §4 counts it (§3.1).
   - **Array elements.** For a scalar element kind the elements sit back to
     back at that kind's fixed width. For element kind `13` (table) each
-    element is preceded by its own `L`. For element kind `15` (union) each
+    element is preceded by its own `L`. For element kind `12` (string) each
+    element is kind `12`'s payload, its own `L` then `L` bytes of
+    well-formed UTF-8 with no zero byte, the text list of §2.13 and the one
+    declaration that produces it. For element kind `15` (union) each
     element is the union payload in its place, the arm id reference, then the
     kind byte, `L` and the arm body when the id is not `0`, so a `None`
     element is the single zero byte a reader already accepts and position
@@ -4317,6 +4443,13 @@ twenty unnameable entries counts nothing at all if no body references them.
   element decodes it and clamps at its own bound. There is no order to hold and
   no key to compare, so the map's two reader events have no counterpart here,
   and a bound is a declaration-side fact that never rides.
+- **A TEXT LIST moves no kind and spends no array shape** (§2.13).
+  `[..N]string(M)` and `[]string(M)` ride as kind `14` over element kind `12`,
+  each element its own `L` and its bytes; `[..N]?string(M)` and
+  `[]?string(M)` ride as kind `14` over element kind `13`, each element a body
+  holding `value` under kind `12` when present and only the zero reference
+  when absent. A count past the reader's bound and an element past `M` clamp
+  and count; ill-formed UTF-8 or a zero byte in an element is `malformed`.
 - **Field ORDER within a body is not part of the contract.** This
   implementation writes fields in declaration order, and a reader must not
   rely on it: every field is found by its id, so any order decodes the same
@@ -11985,6 +12118,20 @@ in build version (§20.5).
   accelerate. `Erase` it does claim, and it is addressed by the element's own
   pointer (§2.9). A language whose surface is members spells these operations on
   the storage type and claims nothing at file scope for them.
+- **Text lists** (§2.13): `[..N]string(M)`, `[..N]?string(M)`, `[]string(M)`
+  and `[]?string(M)` in a `fixed table`, a `type` body, a packet, a union arm
+  or a map value, each naming a plain `table` field as the route;
+  `[N]string(M)` and `[E]string(M)`, naming `[..N]string(M)`; `?[..N]string(M)`
+  and `?[]string(M)`; an array of `wstring(N)`, `bytes(N)`, `bits(N)`,
+  `*string` or `*bytes`, each a named follow-on (§15); `[..N]?T` and `[]?T`
+  for any `T` but `string(M)`; a declaration under any name the construct
+  claims; and the construct under every target but Go, centrally.
+- **The array root** (§16.10): `json` on a table line with any value but
+  `"array"`, bare, or not a string; on a `fixed table`; on a table without
+  exactly ONE field, or whose one field is not `[..N]T` or `[]T` (`?[..N]T`,
+  `[N]T` and `[E]T` included), is guarded (`if`) or carries its own `json`
+  key; on a table any pointer targets (`*T`, `[]*T`, `[..N]*T`, a pointer
+  arm), naming the pointer field; and under every target but Go, centrally.
 - **Byte buffers** (§2.5): `*bytes` or `*string` outside a table body; a
   bound on one, `*bytes(N)` (a buffer at its used size has no bound to
   declare); a specified default on one; `?` on one (already optional); and an
@@ -14085,6 +14232,9 @@ Per kind:
 | `*string` | string, or `null` | the blob's bytes as a string, with no bound; the same two values at the empty end |
 | `*wstring` | string, or `null` | the blob's code units as a string, transcoded as `wstring(N)`'s row is, with no bound to clamp against, and the same two values at the empty end |
 | `map[K]V` | object keyed by the KEY | a string key is the string, and one longer than `N` drops its entry and counts `clamped`; an integer key is its decimal spelling, quoted, read by the integer rule above and by nothing else, so a token that rule calls `malformed` makes the key malformed and one with a fractional value or out of the key kind's range drops its entry as `kind_mismatch`; written in ASCENDING key order; a repeated key is last-wins and counted; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7); a `?T` VALUE (`map[K]?T`) is written `null` when ABSENT and as its value when PRESENT, defaults included, and read the same way: the object's key is the ENTRY and never the value's presence, so `null` is the one spelling of an absent value and any other value is present (§2.3) |
+| text list `[..N]string(M)`, `[]string(M)` | array of strings | `["a","b"]`, `[]` for an empty list, written in INDEX order (§2.13). An element that is not a string, `null` included, is `kind_mismatch`; an element longer than `M` clamps as `string(N)`'s row does, and an element past a `[..N]` bound is dropped, counted, as the bounded array's row says |
+| text list `[..N]?string(M)`, `[]?string(M)` | array of strings and `null` | `["a",null,"b"]`: a present element is its string, `""` included, and an absent element is `null`; any other JSON type is `kind_mismatch`; the bounds as above |
+| a table declared `json = "array"` | array | the table's text IS its one field's array, wherever the table appears (§16.10) |
 | `[]T`, `[]*T` unbounded array | array | the bounded array's row with NO bound, so no element is dropped and `clamped` cannot fire on the count (§2.9); `[]` is an empty list and `null` is `kind_mismatch`; a `[]*T`'s elements take the pointer row above, `&node` and all; written in INDEX order, which is the only order there is |
 
 **The one-key object is the UNION's form, and the arm's own row supplies
@@ -14898,6 +15048,47 @@ byte-identical rewrites, localized edits and named refusals. These are standard
 vectors, not a claim that a reader is implemented. Implementations must compare
 bytes, not parsed equality, for rewrite and edit assertions. Use the same
 vectors for fixed and variable declarations wherever their kinds permit it.
+
+### 16.10 The array root: `table GoalList | json = "array"`
+
+**A table whose text is a top-level array.** A JSON reader that already exists
+may expect `[...]` at the top, where every table's text is an object. The
+valued key `json` on a TABLE line declares the other shape:
+
+```
+table GoalList | json = "array"
+{
+    goals []Goal
+}
+```
+
+`GoalList`'s text is `[{...},{...}]`: the elements of its one field, written and
+read as that field's own §16.2 row, with no object around them and no key. The
+key takes the closed value `"array"`; any other value, a bare `json` tag and a
+non-string value are refused by name.
+
+**The table must be a VARIABLE table with exactly ONE field, and that field
+must be `[..N]T` or `[]T`**, for any `T` those arrays carry, §2.13's text lists
+included. Refused by name (§11): zero, two or more fields; a field that is not
+an array; `?[..N]T`, `[N]T` and `[E]T`; a guarded (`if`) field; a `json` key on
+the one field, which has no key to carry; a `fixed table`; and a table that is
+the TARGET OF ANY POINTER (`*T`, `[]*T`, `[..N]*T`, a pointer arm), naming the
+pointer field, because a shared node is defined under `&node` (§16.7) and an
+array has no object for that key to live in.
+
+**Wherever such a table appears in JSON its text is the array**: as the root, as
+a by-value field, as a map value, as a union arm, as a list element. **Reading:**
+a top-level array fills the field by its row; any other top-level value (an
+object, `null`, a scalar) is REFUSED BY NAME, `json_root_not_array`: the read
+returns false, the report is `Malformed`, and its `Reason` is
+`json_root_not_array: <Table>`. Nested, the shape mismatch is §16.2's ordinary
+`kind_mismatch`, skipped and counted.
+
+**The key changes no wire byte.** It is the text's business, as a field's `json`
+key is (§16.4): it is not in the projection, the build version (§20), the lock
+or the tables baseline (§18), and adding or removing it costs a stored file
+nothing. Go carries it first; every other target refuses a unit that uses it,
+centrally, by name.
 
 ## 17. Packing: a directory tree that mirrors a root table
 

@@ -41,6 +41,8 @@ func (g *tableGen) emitListRead(f *ir.Field, ind string) {
 	g.pf("%sfor i:=uint64(0);i<count;i++ { p:=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,slot,int32(i),int64(unsafe.Sizeof(*new(%s)))));if p==nil {r.Report.Malformed=true;break};landed:=false;for once:=true;once;once=false {\n", i, typ, typ)
 	j := i + "\t"
 	switch kind {
+	case tkString:
+		g.emitReadTextElement(f, "(*p)", j)
 	case tkTable:
 		g.pf("%selem,ok:=sub.Body();if !ok {r.Report.Malformed=true;break};\n", j)
 		g.retainReadPath("elem", "r", "i")

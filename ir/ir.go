@@ -264,8 +264,16 @@ type Struct struct {
 	// Forms only; nil when undeclared. [Struct.DeclaredForms] reports whether
 	// the declaration was written at all.
 	Forms []string
-	Doc   string   // the declaration's `///` block (SPEC §4.1), "" when none
-	Tags  []string // the declaration's tags, in declared order, inert (SPEC §4.2)
+	// TextElem marks a text list's GENERATED element record
+	// (docs/SPEC-TABLES.md §2.13): `<Table><Field>Text`, one field `value`.
+	// MapEntryOf names its holder as a map entry's does.
+	TextElem bool
+	// JsonArray is the table line's `json = "array"` (docs/SPEC-TABLES.md
+	// §16.10): the table's text form is its one field's array. A text-form
+	// fact only; it moves no wire byte.
+	JsonArray bool
+	Doc       string   // the declaration's `///` block (SPEC §4.1), "" when none
+	Tags      []string // the declaration's tags, in declared order, inert (SPEC §4.2)
 	// C++ native type mapping (SPEC §4.2, Native type mapping): when set,
 	// generated C++ declares fields of this type as ::CppNative (a hand type
 	// deriving from the generated basis struct — same layout, plus behavior)
