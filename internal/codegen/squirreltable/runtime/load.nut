@@ -179,8 +179,15 @@ local clampScalar = function(fd, kind, x, report) {
   if (typeof x == "array") return x; // a 128-bit value's range is the codec's
   local width = kindWidth(kind);
   if (fd.lo != null && typeof fd.lo == "integer") {
-    if (x < fd.lo) { x = fd.lo; report.clamped = report.clamped + 1; }
-    else if (x > fd.hi) { x = fd.hi; report.clamped = report.clamped + 1; }
+    if (kindSigned(kind)) {
+      if (x < fd.lo) { x = fd.lo; report.clamped = report.clamped + 1; }
+      else if (x > fd.hi) { x = fd.hi; report.clamped = report.clamped + 1; }
+    } else {
+      local MIN = 0x8000000000000000;
+      local xu = x ^ MIN, lou = fd.lo ^ MIN, hiu = fd.hi ^ MIN;
+      if (xu < lou) { x = fd.lo; report.clamped = report.clamped + 1; }
+      else if (xu > hiu) { x = fd.hi; report.clamped = report.clamped + 1; }
+    }
   }
   if (fd.bits != null && fd.bits > 0 && fd.bits < width * 8) {
     local max;
@@ -262,7 +269,7 @@ local blobOfRange = function(b, at, len) {
 };
 
 // mutual recursion: every load walk names one of these
-local bodyRead, readField, readFieldArray, readArrayBody, readElement, readUnionInto, readArmPayload;
+local bodyRead, readField, readFieldArray, readArrayBody, readElement, readKeyedElem, readUnionInto, readArmPayload;
 
 // THE NODE TABLE (docs/SPEC-TABLES.md §3.1): the root body's reserved field,
 // scanned before any value decode. The numbering is positional and whole or
@@ -495,16 +502,50 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
     return true;
   }
   local out = [];
-  local keyed = fd.kind == 16;
-  for (local i = 0; i < keep; i++) {
-    if (keyed) {
+  if (fd.kind == 16) {
+    for (local i = 0; i < count; i++) {
       local keyRef = leb(r);
-      if (r.bad || keyRef > table.len()) { report.malformed = true; break; }
+      if (r.bad || keyRef == 0 || keyRef > table.len()) { report.malformed = true; break; }
+      local elen = leb(r);
+      if (r.bad || r.at + elen > r.end) { report.malformed = true; break; }
+      local sr = newReader(r.b, r.at, r.at + elen);
+      local res = readKeyedElem(fd.elem, sr, ek, T, table, report, st);
+      if (!res[1]) break;
+      out.append(res[0]);
+      r.at += elen;
     }
+    v[fd.member] = out;
+    return true;
+  }
+  for (local i = 0; i < keep; i++) {
     if (!readElement(fd, fd.elem, r, T, table, out, report, st, ek)) break;
   }
   v[fd.member] = out;
   return true;
+};
+
+readKeyedElem = function(e, sr, ek, T, table, report, st) {
+  if (e.shape == "enum") {
+    local ref = leb(sr);
+    if (sr.bad || sr.at != sr.end) { report.malformed = true; return [null, false]; }
+    if (ref == 0) return [null, true];
+    if (ref > table.len()) { report.malformed = true; return [null, false]; }
+    local id = table[ref - 1];
+    local name = null;
+    foreach (pair in e.variants) { if (pair[1] == id) { name = pair[0]; break; } }
+    if (name == null) report.unknown = report.unknown + 1;
+    return [name, true];
+  }
+  if (e.shape == "tab") {
+    local d = tableDesc(T, e.table);
+    local inst = d.make();
+    bodyRead(d, sr, T, table, inst, report, st, true);
+    if (sr.at != sr.end) { report.malformed = true; return [null, false]; }
+    return [inst, true];
+  }
+  local x = readPrim(sr, ek);
+  if (x == null || sr.bad) { report.malformed = true; return [null, false]; }
+  return [x, true];
 };
 
 readElement = function(fd, e, r, T, table, out, report, st, ek) {

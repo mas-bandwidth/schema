@@ -533,8 +533,8 @@ func baseDesc(f *ir.Field) map[string]string {
 		if f.Type.Kind == ir.TBits {
 			d["bits"] = fmt.Sprint(f.Type.Width)
 		}
-		if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
-			d["lo"], d["hi"] = intLit(f, f.IntMin), intLit(f, f.IntMax)
+		if rlo, rhi, ok := ir.TableRawRange(f); ok {
+			d["lo"], d["hi"] = intLit(f, rlo), intLit(f, rhi)
 		}
 		d["def"] = scalarDefault(f)
 	}
