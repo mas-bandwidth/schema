@@ -50,10 +50,10 @@ local function w_u64(w, v) w_raw(w, string.pack("<i8", v)) end
 local function w_f64(w, v) w_raw(w, string.pack("<d", v)) end
 local function w_f32(w, v) w_raw(w, string.pack("<f", v)) end
 
-local function w_int(w, width, v)
+local function w_int(w, width, signed, v)
   if width == 1 then w_u8(w, v)
-  elseif width == 2 then w_u16(w, v)
-  elseif width == 4 then w_u32(w, v)
+  elseif width == 2 then w_raw(w, signed and string.pack("<i2", v) or string.pack("<I2", v))
+  elseif width == 4 then w_raw(w, signed and string.pack("<i4", v) or string.pack("<I4", v))
   else w_u64(w, v) end
 end
 
@@ -152,6 +152,8 @@ end
 
 local write_body
 local write_field
+local write_element
+local write_union
 
 -- ELISION AT THE DECLARED DEFAULT (§3): a pointer and a blob at nil, an array
 -- when empty, a map when empty, a nested table when its body is its terminator
@@ -186,7 +188,7 @@ write_field = function(T, ids, nodes, fd, v, w)
     end
   elseif s == "int" or s == "flags" then
     if not at_default(fd, v) then
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind); w_int(w, fd.width, x or 0)
+      w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind); w_int(w, fd.width, fd.signed, x or 0)
     end
   elseif s == "float" then
     if not at_default(fd, v) then
@@ -262,12 +264,10 @@ write_field = function(T, ids, nodes, fd, v, w)
   return true
 end
 
-local write_element
-
 write_element = function(T, ids, nodes, e, val, body)
   local s = e.shape
   if s == "bool" then w_u8(body, val and 1 or 0)
-  elseif s == "int" or s == "flags" then w_int(body, e.width, val or 0)
+  elseif s == "int" or s == "flags" then w_int(body, e.width, e.signed, val or 0)
   elseif s == "float" then if e.f32 then w_raw(body, narrow_f32(val)) else w_f64(body, val) end
   elseif s == "enum" then
     local vref = 0
@@ -302,7 +302,6 @@ write_body = function(T, ids, nodes, desc, v, w)
   return true
 end
 
-local write_union
 local write_union_at
 
 write_union = function(T, ids, nodes, u, val, w)
@@ -325,7 +324,7 @@ end
 write_union_at = function(T, ids, nodes, f, val, body)
   local s = f.shape
   if s == "bool" then w_u8(body, val and 1 or 0)
-  elseif s == "int" or s == "flags" then w_int(body, f.width, val or 0)
+  elseif s == "int" or s == "flags" then w_int(body, f.width, f.signed, val or 0)
   elseif s == "float" then if f.f32 then w_raw(body, narrow_f32(val)) else w_f64(body, val) end
   elseif s == "string" then w_leb(body, #val); w_raw(body, val)
   elseif s == "enum" then
