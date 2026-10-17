@@ -40,10 +40,10 @@ const (
 type intMode int
 
 const (
-	mNone intMode = iota // no bounds declared
-	mBothZero            // both ends hold zero
-	mExtreme             // both ends at the implied extremes
-	mExclDefault         // exclude zero with an explicit in-range default
+	mNone        intMode = iota // no bounds declared
+	mBothZero                   // both ends hold zero
+	mExtreme                    // both ends at the implied extremes
+	mExclDefault                // exclude zero with an explicit in-range default
 )
 
 type genField struct {
@@ -62,7 +62,7 @@ type genField struct {
 	StrN int
 
 	Elem *genField // element for scalar array / optional / nested
-	MaxN int        // array max length ([..N])
+	MaxN int       // array max length ([..N])
 
 	NestedName string
 }
@@ -186,10 +186,11 @@ func randomField(r *rand.Rand, enumVars []string) *genField {
 
 func randomScalar(r *rand.Rand, enumVars []string) *genField {
 	f := &genField{Name: "e"}
-	switch r.Intn(7) {
+	switch r.Intn(6) {
 	case 0:
 		f.Kind = gInt
 		f.Bits = []int{8, 32, 64}[r.Intn(3)]
+		f.Imin, f.Imax, f.IDef, _ = intBounds(f.Bits, mNone)
 	case 1:
 		f.Kind = gUint
 		f.Bits = []int{8, 32, 64}[r.Intn(3)]
@@ -199,13 +200,10 @@ func randomScalar(r *rand.Rand, enumVars []string) *genField {
 		f.Kind = gFloat64
 	case 4:
 		f.Kind = gBool
-	case 5:
+	default:
 		f.Kind = gEnum
 		f.EnumVar = enumVars[r.Intn(len(enumVars))]
 		f.EnumVal = enumPool[r.Intn(len(enumPool))]
-	default:
-		f.Kind = gString
-		f.StrN = 2 + r.Intn(8)
 	}
 	return f
 }
