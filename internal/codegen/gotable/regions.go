@@ -163,9 +163,9 @@ func (g *tableGen) emitRegionMember(st *ir.Struct) {
 		g.pf("func %sLoadBuilderTolerant(b *%sBuilder,wire []byte,report *TableReport) bool {return tableBuilderLoad(unsafe.Pointer(b.GetRoot()),b.root,&b.Main,wire,%sTableType(),%sTableType().NodeType,%d,report)}\n", n, n, n, n, blobmask)
 	}
 	g.pf("// %sLoad is the plain region read, and it is STRICT (docs/SPEC-TABLES.md §6.5): a nil root for whatever\n// %sReadStrict refuses; a supplied report receives THIS read's report, and report.Err() is the reason.\n", n, n)
-	g.pf("func %sLoad(region,wire []byte,report *TableReport) *%s {var read TableReport;root:=%sLoadTolerant(region,wire,&read);if report!=nil{*report=read};if root==nil||read.Err()!=nil{return nil};return root}\n", n, typ, n)
+	g.pf("func %sLoad(region,wire []byte,report *TableReport) *%s {read:=report;if read==nil{read=new(TableReport)}else{*read=TableReport{}};root:=%sLoadTolerant(region,wire,read);if root==nil||read.Err()!=nil{return nil};return root}\n", n, typ, n)
 	g.pf("// %sLoadBuilder is the plain builder read, and it is STRICT (docs/SPEC-TABLES.md §6.5): false for whatever\n// %sReadStrict refuses, and the builder is then only shut down; a supplied report receives THIS read's\n// report, and report.Err() is the reason.\n", n, n)
-	g.pf("func %sLoadBuilder(b *%sBuilder,wire []byte,report *TableReport) bool {var read TableReport;ok:=%sLoadBuilderTolerant(b,wire,&read);if report!=nil{*report=read};return ok&&read.Err()==nil}\n", n, n, n)
+	g.pf("func %sLoadBuilder(b *%sBuilder,wire []byte,report *TableReport) bool {read:=report;if read==nil{read=new(TableReport)}else{*read=TableReport{}};ok:=%sLoadBuilderTolerant(b,wire,read);return ok&&read.Err()==nil}\n", n, n, n)
 	// ReadStrict is §6.5's STRICT read: one call, its own builder, one typed reason.
 	g.pf("// %sReadStrict is the STRICT read (docs/SPEC-TABLES.md §6.5): one call, its own builder, one typed reason.\n", n)
 	g.pf("func %sReadStrict(wire []byte)(*%s,error){var b %sBuilder;if !b.Init(){return nil,TableRefuseAllocationFailed};var report TableReport;ok:=%sLoadBuilderTolerant(&b,wire,&report);if err:=report.Err();err!=nil||!ok{b.Shutdown();if err==nil{err=TableRefuseWireDamaged};return nil,err};if !b.Lock(){b.Shutdown();return nil,TableRefuseAllocationFailed};return b.AsConst(),nil}\n", n, typ, n, n)

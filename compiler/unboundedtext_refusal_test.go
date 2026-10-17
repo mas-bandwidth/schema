@@ -25,7 +25,7 @@ var boundedTextSchema = map[string]string{
 // every Go unit's runtime carries (docs/SPEC-TABLES.md §2.14), then once more
 // with the strict plain read names (docs/SPEC-TABLES.md §6.5).
 var boundedTextDigest = map[string]string{
-	"go":  "59b91b17e2e64b8d6bd3ba46933549971153a2e74d982881704f4613cedc868d",
+	"go":  "8365950a55115475e4f3040d0d792455feca238e82a76b65f94044faffe859c1",
 	"cpp": "ff5e30ac14304bb0ab07460f917a19a1efa46fa1c5dac34498d4bd856dfe9605",
 }
 

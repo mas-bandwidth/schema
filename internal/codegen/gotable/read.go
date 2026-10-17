@@ -202,7 +202,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("// answers false. A supplied report receives THIS read's report, and on a refusal\n")
 	g.pf("// report.Err() is the typed reason. %sLoadTolerant keeps a recovered value.\n", n)
 	g.pf("func %sLoad(value *%s, data []byte, report *TableReport) bool {\n", n, g.storageName(n))
-	g.pf("\tvar read TableReport\n\tok := %sLoadTolerant(value, data, &read)\n\tif report != nil { *report = read }\n", n)
+	g.pf("\tread := report\n\tif read == nil {\n\t\tread = new(TableReport)\n\t} else {\n\t\t*read = TableReport{}\n\t}\n\tok := %sLoadTolerant(value, data, read)\n", n)
 	g.pf("\tif !ok || read.Err() != nil { %sReset(value); return false }\n\treturn true\n}\n\n", n)
 	// ReadStrict is §6.5's STRICT read for a root whose file load is not the builder.
 	g.pf("// %sReadStrict is the STRICT read (docs/SPEC-TABLES.md §6.5): one call, one typed reason.\n", n)
