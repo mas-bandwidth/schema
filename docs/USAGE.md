@@ -1465,11 +1465,17 @@ overloading, and a free pair would have to mint a per-enum unit-level name §11
 does not claim. `grade.TableEnumId()` gives the variant's hash and whether any
 variant names the value; `(&grade).TableEnumValue(id)` resolves one back.
 
-`<Name>TableType()` returns the reflection descriptor, with the same columns
-C++ carries — including the memory ones, because `unsafe.Offsetof` and
-`unsafe.Sizeof` are constant expressions of Go's own layout model rather than a
-guess about it. That is what lets ONE generic walk drive the text form for
-every table.
+ `<Name>TableType()` returns the reflection descriptor, with the same columns
+ C++ carries — including the memory ones, because `unsafe.Offsetof` and
+ `unsafe.Sizeof` are constant expressions of Go's own layout model rather than a
+ guess about it. That is what lets ONE generic walk drive the text form for
+ every table.
+
+ **An unbounded array or map says so in its descriptor.** `TableFieldInfo.Unbounded`
+ is true for a map, an unbounded `[]T` and a text list `[]string(M)`, and such a
+ field's `ArrayBound` is `0`; every other field carries `Unbounded` false and its
+ real bound. A walker treats `Unbounded` as "no declared bound" wherever it would
+ enforce an `ArrayBound` limit (docs/SPEC-TABLES.md §8.1).
 
 **Three of those columns are FUNCTIONS in Go where C++ has pointers**, and a
 walker written from the C++ example above has to know which: `Table`, `Arms`
