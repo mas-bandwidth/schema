@@ -82,8 +82,9 @@ class Program
         var back = new New.FloatWiden();
         var r = new New.TableReport();
         byte[] scratch = Array.Empty<byte>();
+        int forgedOrdinal = 0;
         New.Schema.TableFixedWire.Run(plan, New.Schema.FloatWidenFixedSlots, body, back, r,
-            MemoryMarshal.AsBytes<NewEntry>(plan), ref scratch);
+            MemoryMarshal.AsBytes<NewEntry>(plan), ref scratch, ref forgedOrdinal);
 
         ulong got = BitConverter.DoubleToUInt64Bits(back.V);
         ulong want = Exact(bits);

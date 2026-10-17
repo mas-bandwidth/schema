@@ -146,7 +146,7 @@ func t02CppLayoutBytes(t *testing.T, src string) []byte {
 	t.Helper()
 	block := t02CppBlock(t, src, "constexpr uint8_t TFixedLayout[] = {", "\n};")
 	var out []byte
-	for _, tok := range strings.Split(block, ",") {
+	for tok := range strings.SplitSeq(block, ",") {
 		tok = strings.TrimSpace(tok)
 		if tok == "" {
 			continue
@@ -164,12 +164,12 @@ func t02CppLayoutBytes(t *testing.T, src string) []byte {
 // assertion reads TFixedLineage[] or TFixedKnown[] oldest-first.
 func t02CppHashes(block string) []uint64 {
 	var out []uint64
-	for _, line := range strings.Split(block, "\n") {
-		i := strings.Index(line, "0x")
-		if i < 0 {
+	for line := range strings.SplitSeq(block, "\n") {
+		_, after, ok := strings.Cut(line, "0x")
+		if !ok {
 			continue
 		}
-		tok := line[i+2:]
+		tok := after
 		if len(tok) < 16 {
 			continue
 		}
@@ -292,7 +292,7 @@ func t02CppR23(t *testing.T) {
 
 	report := t02CppBlock(t, src, "struct TableReport", "\n};")
 	last := ""
-	for _, line := range strings.Split(report, "\n") {
+	for line := range strings.SplitSeq(report, "\n") {
 		if trimmed := strings.TrimSpace(line); trimmed != "" {
 			last = trimmed
 		}

@@ -1171,6 +1171,11 @@ func (r *TableReader) Signed(kind uint8) int64 {
 	}
 }
 
+// tableUtf8Word is the form-1 writer's little-endian word load for its in-line
+// text test (emitTextWords): a function of the runtime file, which imports
+// encoding/binary, so the generated writers in any file of the unit can call it.
+func tableUtf8Word(p []byte) uint64 { return binary.LittleEndian.Uint64(p) }
+
 func tableWidenFloat(b uint32) uint64 {
 	if b&0x7f800000 == 0x7f800000 {
 		return uint64(b>>31)<<63 | 0x7ff0000000000000 | uint64(b&0x7fffff)<<29
@@ -1179,15 +1184,26 @@ func tableWidenFloat(b uint32) uint64 {
 }
 
 func tableUtf8Valid(data []byte) bool {
-	if !utf8.Valid(data) {
+	// One pass, eight bytes a step: z gathers the zero-byte test of every word
+	// (exact: a word has a zero byte if and only if its lane is set), hi gathers
+	// the high bits. No zero and no high bit is ASCII with no NUL; a high bit
+	// sends the text to utf8.Valid, the zero test having already been answered.
+	var hi, z uint64
+	i := 0
+	for ; i+8 <= len(data); i += 8 {
+		x := uint64(data[i]) | uint64(data[i+1])<<8 | uint64(data[i+2])<<16 | uint64(data[i+3])<<24 | uint64(data[i+4])<<32 | uint64(data[i+5])<<40 | uint64(data[i+6])<<48 | uint64(data[i+7])<<56
+		hi |= x
+		z |= (x - 0x0101010101010101) &^ x
+	}
+	for ; i < len(data); i++ {
+		c := uint64(data[i])
+		hi |= c
+		z |= (c - 1) &^ c
+	}
+	if z&0x8080808080808080 != 0 {
 		return false
 	}
-	for _, b := range data {
-		if b == 0 {
-			return false
-		}
-	}
-	return true
+	return hi&0x8080808080808080 == 0 || utf8.Valid(data)
 }
 
 func tableUtf8Clamp(data []byte, n int64) int64 {
@@ -1253,11 +1269,23 @@ const TableFixedHashAt = 8
 // report.Reason == "layout_newer" comparisons keep compiling against these
 // constants; the emitted <T>FixedLoad names every reason constant in place of
 // a string literal.
+//
+// TableFixedReasonLayoutUnknown is the Reason of a file whose header hash no
+// entry of this build's lineage holds (mas-bandwidth/schema docs/SPEC-TABLES.md §21.3, algorithm
+// §5.3 step 5). It says what the reader knows and not which way the file lies:
+// a newer writer's layout, an older one nobody locked and a damaged hash byte
+// read the same.
+//
+// TableFixedReasonLayoutNewer ("ship the reader") is RESERVED (SPEC-TABLES
+// §21.3) for a hash the lock lineage proves newer, which nothing on the wire or
+// in the lock does today, so no Go fixed load answers it; it stays exported so
+// an adopter's existing comparisons keep compiling.
 const (
 	TableFixedReasonPreviousForm         = "previous_form"
 	TableFixedReasonMessageFormAsFile    = "message_form_as_file"
 	TableFixedReasonNewerForm            = "newer_form"
 	TableFixedReasonLayoutMalformed      = "layout_malformed"
+	TableFixedReasonLayoutUnknown        = "layout_unknown"
 	TableFixedReasonLayoutNewer          = "layout_newer"
 	TableFixedReasonLayoutUnsupported    = "layout_unsupported"
 	TableFixedReasonLayoutRecordTooLarge = "layout_record_too_large"
@@ -1312,13 +1340,62 @@ const tableFixedMaxDepth int32 = 64
 // tag 0x0101 is not arm 1. Arg is the arm ordinal and carries NO BYTE LANE
 // (§5.8 row 5): a 256-arm union's ordinal does not fit a byte.
 type TableFixedEntry struct {
-	Src, Dst, Size, Aux, Guard, Arg uint32
+	Src, Dst, Size, Aux, Guard uint32
+	// Arg IS THE GUARD'S ORDINAL AT FULL WIDTH (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+	// §4.1: arg : u64, "no byte lane anywhere"): a union past 255 arms or an
+	// enum past 65535 variants holds its ordinal whole in this lane, and the
+	// compare is made against the 64-bit tag load, never a truncation of it.
+	Arg uint64
 	// Guard2 / Arg2 / ArgW2 ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO ANSWERS
 	// TO (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1): the entry runs only when BOTH tags
 	// hold their ordinal. ArgW2 of zero is "no outer tag", so a plan that never
 	// nests a union leaves the lane unset and the read is unchanged.
-	Guard2, Arg2                         uint32
+	Guard2 uint32
+	Arg2   uint64
+	// GuardIndex / GuardCount ARE THE GUARD CHAIN (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+	// §4.1): offset+count into a pool of (guard, arg, argw) links, OUTERMOST
+	// FIRST. GuardIndex is a BYTE OFFSET from the plan's own base, where the pool
+	// is laid behind the entries the way the ordinal remap tables are, so the
+	// plan stays one slice and the read loop one signature. Every guarded entry
+	// carries its whole chain; the two lanes above stay its innermost two, the
+	// special case, so the loop walks the pool only for a chain past two. The
+	// only bound on a chain is the layout's 64 (tableFixedMaxDepth).
+	GuardIndex, GuardCount               uint32
 	Op, ArgW, DstSize, Sign, Meta, ArgW2 uint8
+}
+
+// TableFixedGuardLink is ONE LINK of a guard chain (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+// §4.1): the offset of the tag it reads, the ordinal the tag must hold, and the
+// width it is compared at. A chain is a CONJUNCTION — every link must hold.
+type TableFixedGuardLink struct {
+	Guard uint32
+	Arg   uint64
+	ArgW  uint8
+}
+
+// guardLink is link j of e's chain, read out of the pool laid behind the plan's
+// entries (§4.1: offset+count into the pool). A method, so the unit's package
+// scope gains no name a schema could collide with.
+func (e TableFixedEntry) guardLink(plan []TableFixedEntry, j uint32) TableFixedGuardLink {
+	at := uintptr(e.GuardIndex) + uintptr(j)*unsafe.Sizeof(TableFixedGuardLink{})
+	return *(*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&plan[0]), at))
+}
+
+// chainHolds is whether every link of a chain PAST TWO holds: an arm inside an
+// arm inside an arm answers to EVERY enclosing tag, the outermost first
+// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1). A chain of one or two is the two-lane
+// special case, already tested on Guard and Guard2.
+func (p TableFixedEntry) chainHolds(plan []TableFixedEntry, src []byte) bool {
+	if p.GuardCount <= 2 {
+		return true
+	}
+	for j := uint32(0); j < p.GuardCount; j++ {
+		l := p.guardLink(plan, j)
+		if tableFixedTagAt(src, l.Guard, l.ArgW) != l.Arg {
+			return false
+		}
+	}
+	return true
 }
 
 type TableFixedDst struct {
@@ -1478,9 +1555,65 @@ func tableFixedPartition(plan []TableFixedEntry, n int32) int32 {
 	return split
 }
 
-func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int) tableFixedPlan {
-	raw := make([]TableFixedEntry, n)
-	written := emit(raw, 0, 0)
+// tableFixedBuildPlan runs the emitted leaf walk and lays THE GUARD CHAIN
+// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1). The walk records each entry's links
+// INNERMOST FIRST, because an inner union stamps before the outer one that
+// holds it; here they are turned OUTERMOST FIRST, the innermost two are laid on
+// the Guard and Guard2 lanes (the two-lane special case), and the whole chain is
+// laid ONCE into a pool behind the entries, deduped by content, so an entry
+// carries offset+count into it. Two entries under one chain share one slice of
+// the pool, so the coalescer compares GuardIndex and GuardCount alone.
+func tableFixedBuildPlan(emit func([]TableFixedEntry, [][]TableFixedGuardLink, uint32, uint32) int, n int) tableFixedPlan {
+	scratch := make([]TableFixedEntry, n)
+	links := make([][]TableFixedGuardLink, n)
+	written := emit(scratch, links, 0, 0)
+	var pool []TableFixedGuardLink
+	index := map[string]uint32{}
+	for i := 0; i < written; i++ {
+		chain := links[i]
+		k := len(chain)
+		if k == 0 {
+			continue
+		}
+		for a, b := 0, k-1; a < b; a, b = a+1, b-1 {
+			chain[a], chain[b] = chain[b], chain[a]
+		}
+		e := &scratch[i]
+		e.Guard, e.Arg, e.ArgW = chain[k-1].Guard, chain[k-1].Arg, chain[k-1].ArgW
+		if k >= 2 {
+			e.Guard2, e.Arg2, e.ArgW2 = chain[k-2].Guard, chain[k-2].Arg, chain[k-2].ArgW
+		}
+		kb := make([]byte, 0, k*13)
+		for _, l := range chain {
+			kb = binary.LittleEndian.AppendUint32(kb, l.Guard)
+			kb = binary.LittleEndian.AppendUint64(kb, l.Arg)
+			kb = append(kb, l.ArgW)
+		}
+		key := string(kb)
+		at, ok := index[key]
+		if !ok {
+			at = uint32(len(pool))
+			index[key] = at
+			pool = append(pool, chain...)
+		}
+		e.GuardIndex = at
+		e.GuardCount = uint32(k)
+	}
+	// THE POOL RIDES BEHIND THE ENTRIES, in the plan's own allocation, and
+	// GuardIndex becomes its byte offset from the plan's base.
+	entryBytes := int(unsafe.Sizeof(TableFixedEntry{}))
+	linkBytes := int(unsafe.Sizeof(TableFixedGuardLink{}))
+	raw := make([]TableFixedEntry, n+(len(pool)*linkBytes+entryBytes-1)/entryBytes)
+	copy(raw, scratch[:written])
+	if len(pool) > 0 {
+		base := uintptr(n * entryBytes)
+		copy(unsafe.Slice((*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&raw[0]), base)), len(pool)), pool)
+		for i := 0; i < written; i++ {
+			if raw[i].GuardCount != 0 {
+				raw[i].GuardIndex = uint32(base) + raw[i].GuardIndex*uint32(linkBytes)
+			}
+		}
+	}
 	out := 0
 	for i := 0; i < written; i++ {
 		if out > 0 && raw[out-1].Op == raw[i].Op && tableFixedRuns(raw[i].Op) &&
@@ -1488,6 +1621,7 @@ func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int
 			raw[out-1].ArgW == raw[i].ArgW && raw[out-1].Meta == raw[i].Meta &&
 			raw[out-1].Guard2 == raw[i].Guard2 && raw[out-1].Arg2 == raw[i].Arg2 &&
 			raw[out-1].ArgW2 == raw[i].ArgW2 &&
+			raw[out-1].GuardIndex == raw[i].GuardIndex && raw[out-1].GuardCount == raw[i].GuardCount &&
 			raw[out-1].Src+raw[out-1].Size == raw[i].Src &&
 			raw[out-1].Dst+raw[out-1].Size == raw[i].Dst {
 			raw[out-1].Size += raw[i].Size
@@ -1560,6 +1694,10 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 		// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): the entry
 		// runs only when the second lane's tag holds its ordinal as well.
 		if p.ArgW2 != 0 && tableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
+			continue
+		}
+		// AND EVERY TAG FURTHER OUT, the guard chain past the two lanes (§4.1).
+		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
 			continue
 		}
 		switch p.Op {
@@ -1684,7 +1822,7 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			var widened uint64
 			if bits&0x7f800000 == 0x7f800000 {
 				// THE ALL-ONES EXPONENT IS ASSEMBLED BY HAND (mas-bandwidth/schema docs/SPEC-TABLES.md
-				// §3.4, §21.2; the packet runtime's float-widen helper): the hardware
+				// §3.4, §21.2; the variable form's own float rung): the hardware
 				// f32->f64 conversion QUIETS a signalling NaN and can drop a
 				// payload bit, so the sign, the all-ones exponent and the 23-bit
 				// mantissa shifted left by 29 are carried exactly and the quiet
@@ -1733,6 +1871,9 @@ func tableFixedForgedBounds(plan []TableFixedEntry, count int32, src []byte, rep
 		// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): an entry
 		// whose second lane does not hold never lands, so it never counts.
 		if p.ArgW2 != 0 && tableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
+			continue
+		}
+		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
 			continue
 		}
 		switch p.Op {
@@ -1801,6 +1942,63 @@ func tableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 	return false
 }
 
+// tableFixedUtf8Ok is the WRITER's string rule over the used bytes: well-formed
+// UTF-8 with no zero byte, the answer unicode/utf8.Valid and a NUL scan give
+// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1, the same rule tableFixedTextIllFormed
+// holds on read). It is one pass, eight bytes a step, with no branch in the
+// loop: z gathers each word's zero-byte test, which is exact (a word has a
+// zero byte if and only if its lane is set), and hi gathers the high bits. A
+// zero refuses; text with no high bit is ASCII and passes; only text with a
+// byte at or past 0x80 goes on to utf8.Valid. The result is identical to the
+// two-pass spelling.
+func tableFixedUtf8Ok(p []byte) bool {
+	var hi, z uint64
+	i := 0
+	for ; i+8 <= len(p); i += 8 {
+		x := tableFixedGet64(p[i:])
+		hi |= x
+		z |= (x - 0x0101010101010101) &^ x
+	}
+	if i < len(p) && len(p) >= 8 {
+		// The tail as one word, overlapping bytes already tested: the test
+		// is the same answer for a byte seen twice.
+		x := tableFixedGet64(p[len(p)-8:])
+		hi |= x
+		z |= (x - 0x0101010101010101) &^ x
+	} else {
+		for ; i < len(p); i++ {
+			c := uint64(p[i])
+			hi |= c
+			z |= (c - 1) &^ c
+		}
+	}
+	if z&0x8080808080808080 != 0 {
+		return false
+	}
+	return hi&0x8080808080808080 == 0 || utf8.Valid(p)
+}
+
+// tableFixedUnitsIllFormed is the WRITER's twin of the wide arm above, over the
+// caller's own wstring storage: the used units are paired UTF-16 with no zero
+// unit (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5).
+func tableFixedUnitsIllFormed(units []uint16) bool {
+	for i := 0; i < len(units); i++ {
+		u := units[i]
+		switch {
+		case u == 0:
+			return true
+		case u >= 0xD800 && u <= 0xDBFF:
+			if i+1 >= len(units) || units[i+1] < 0xDC00 || units[i+1] > 0xDFFF {
+				return true
+			}
+			i++
+		case u >= 0xDC00 && u <= 0xDFFF:
+			return true
+		}
+	}
+	return false
+}
+
 // tableFixedTextRefusal is the text CONTENT refusal as a PRE-SCAN of the plan's
 // text entries, run before the caller's storage is touched. It walks each text
 // entry under its own guard, clamps its length exactly as the scatter will, and
@@ -1820,6 +2018,13 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		// entry runs only under its own tag, and one that does not run cannot
 		// refuse.
 		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+			continue
+		}
+		// AND THE OUTER TAGS (§4.1): the second lane, then the chain past it.
+		if p.ArgW2 != 0 && tableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
+			continue
+		}
+		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
 			continue
 		}
 		unit := uint32(1)
@@ -2168,8 +2373,33 @@ type tableFixedCompiler struct {
 	// source extent is held to.
 	record uint32
 	// argW is the CURRENT union's tag width, stamped onto every guarded push.
-	argW   uint8
-	report *TableReport
+	argW uint8
+	// chain is THE GUARD CHAIN of the arm being compiled, OUTERMOST FIRST
+	// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1): one link per enclosing union, pushed
+	// on the way into an arm and popped on the way out. chainAt is its byte
+	// offset in the pool once laid, and chainLaid whether it has been: a chain is
+	// laid once per arm, and only when an entry beneath it is pushed.
+	chain     []TableFixedGuardLink
+	chainAt   uint32
+	chainLaid bool
+	report    *TableReport
+}
+
+// layGuards lays one guard chain into the plan's pool, behind the entries and
+// 8-aligned, and answers its byte offset from the plan's base
+// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1: offset+count into a pool of links). Pool
+// storage that meets the entries is plan_too_large, as for a remap table.
+func (c *tableFixedCompiler) layGuards(links []TableFixedGuardLink) uint32 {
+	bytes := int32(unsafe.Sizeof(TableFixedGuardLink{})) * int32(len(links))
+	total := int32(unsafe.Sizeof(TableFixedEntry{})) * c.capacity
+	c.pool = (c.pool + bytes + 7) &^ 7
+	if total-c.pool < c.count*int32(unsafe.Sizeof(TableFixedEntry{})) {
+		c.overflow = true
+		return 0
+	}
+	at := uint32(total - c.pool)
+	copy(unsafe.Slice((*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&c.plan[0]), uintptr(at))), len(links)), links)
+	return at
 }
 
 // tableFixedSrcEnd is the last source byte, exclusive, an entry reads — the
@@ -2213,6 +2443,35 @@ func tableFixedPush(c *tableFixedCompiler, e TableFixedEntry) {
 	if e.Guard != tableFixedNoGuard {
 		e.ArgW = uint8(tableFixedArgWidth(c.argW))
 	}
+	// THE GUARD CHAIN (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1): an entry pushed
+	// beneath a union answers to EVERY enclosing tag, outermost first, so it
+	// carries the arm's whole chain as offset+count into the pool, and its two
+	// lanes are the chain's innermost two. Each link's tag is part of the
+	// entry's source reach, so a link past the writer's record refuses the plan
+	// whole like any other read past it.
+	if k := len(c.chain); k > 0 && e.Guard != tableFixedNoGuard {
+		in := c.chain[k-1]
+		e.Guard, e.Arg, e.ArgW = in.Guard, in.Arg, in.ArgW
+		if k >= 2 {
+			out := c.chain[k-2]
+			e.Guard2, e.Arg2, e.ArgW2 = out.Guard, out.Arg, out.ArgW
+		}
+		for _, l := range c.chain {
+			if c.record != 0 && uint64(l.Guard)+uint64(tableFixedArgWidth(l.ArgW)) > uint64(c.record) {
+				c.tooLarge = true
+				return
+			}
+		}
+		if !c.chainLaid {
+			c.chainAt = c.layGuards(c.chain)
+			c.chainLaid = true
+			if c.overflow {
+				return
+			}
+		}
+		e.GuardIndex = c.chainAt
+		e.GuardCount = uint32(k)
+	}
 	// ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE (§5.2). The
 	// bound is the writer's declared root size and not this reader's: an entry
 	// that reached past it would read the NEXT record's bytes.
@@ -2251,7 +2510,7 @@ func tableFixedLayTable(c *tableFixedCompiler, values []uint16, n int32) uint32 
 // census is whether THIS entry is the first time the peer's field is seen:
 // an array's element subtree is compiled once per element and the unknown
 // count is ONCE PER FIELD PER PEER (§5.4), so only element 0 censuses.
-func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint32, census bool) {
+func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint64, census bool) {
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	myChild := mi + 1
@@ -2289,7 +2548,7 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 	}
 }
 
-func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint32, census bool) {
+func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint64, census bool) {
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	d := dst[mi]
@@ -2410,8 +2669,18 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			for j := uint32(0); j < te.Children; j++ {
 				ta := tableFixedEntryAt(theirs, theirArm)
 				if ta.Id == ma.Id {
-					tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Aux: k + 1, Guard: theirAt, Op: tableFixedConst, Arg: j + 1})
-					tableFixedCompileEntry(c, theirs, theirArm, theirAt+theirTag, mine, myArm, dst, at, theirAt, j+1, census)
+					// THE ARM ANSWERS TO THIS TAG AND TO EVERY TAG OUTSIDE IT
+					// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1): one link is pushed
+					// on the way into the arm, the arm's own tag const included,
+					// and popped on the way out. The bound is the layout's 64:
+					// the walk that reaches here is already held to it.
+					savedAt, savedLaid := c.chainAt, c.chainLaid
+					c.chain = append(c.chain, TableFixedGuardLink{Guard: theirAt, Arg: uint64(j + 1), ArgW: c.argW})
+					c.chainLaid = false
+					tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Aux: k + 1, Guard: theirAt, Op: tableFixedConst, Arg: uint64(j + 1)})
+					tableFixedCompileEntry(c, theirs, theirArm, theirAt+theirTag, mine, myArm, dst, at, theirAt, uint64(j+1), census)
+					c.chain = c.chain[:len(c.chain)-1]
+					c.chainAt, c.chainLaid = savedAt, savedLaid
 					break
 				}
 				theirArm += tableFixedSubtree(theirs, theirArm)
@@ -2430,10 +2699,12 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		}
 		// THE TABLE IS AS LONG AS THE WRITER'S VARIANT COUNT (§5.2), not 255:
 		// capped at 255 a 300-variant writer's variant 299 read as out of the
-		// set and landed None.
+		// set and landed None. Past the uint16 length word the plan refuses
+		// by name as plan_too_large (§5.8 row 14): the plan-storage overflow,
+		// never the record-bound refusal an entry past the record earns.
 		n := te.Children
 		if n > tableFixedRemapMax {
-			c.tooLarge = true
+			c.overflow = true
 			return
 		}
 		m := make([]uint16, n)
@@ -2506,6 +2777,9 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 		if out > 0 && plan[out-1].Op == plan[i].Op && tableFixedRuns(plan[i].Op) &&
 			plan[out-1].Guard == plan[i].Guard && plan[out-1].Arg == plan[i].Arg &&
 			plan[out-1].ArgW == plan[i].ArgW && plan[out-1].Meta == plan[i].Meta &&
+			plan[out-1].Guard2 == plan[i].Guard2 && plan[out-1].Arg2 == plan[i].Arg2 &&
+			plan[out-1].ArgW2 == plan[i].ArgW2 &&
+			plan[out-1].GuardIndex == plan[i].GuardIndex && plan[out-1].GuardCount == plan[i].GuardCount &&
 			plan[out-1].Src+plan[out-1].Size == plan[i].Src &&
 			plan[out-1].Dst+plan[out-1].Size == plan[i].Dst {
 			plan[out-1].Size += plan[i].Size
@@ -2604,9 +2878,11 @@ func tableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []tabl
 // A fixed table reads BACKWARD and never forward. A file is matched on the
 // eight bytes of its header's hash against the lineage the BUILD laid down, and
 // the layout it carries is held to a BYTE COMPARISON against the bytes the lock
-// recorded — never walked. A hash the lineage does not hold is layout_newer
-// (ship the reader); a hash it holds below the floor is layout_unsupported
-// (upgrade the client). Those are the operator's two distinct answers.
+// recorded — never walked. A hash the lineage does not hold is layout_unknown
+// (a layout this build's lineage does not hold; layout_newer is reserved until
+// the lineage proves direction, SPEC-TABLES §21.3); a hash it holds below the
+// floor is layout_unsupported (upgrade the client). Those are the operator's
+// two distinct answers.
 
 // TableFixedKnownLayout is one locked layout: the wire hash a file is matched
 // on, the layout bytes verbatim with its byte length BESIDE the pointer, and
@@ -2859,33 +3135,63 @@ func MixedEntityReset(value *MixedEntity) {
 
 func MixedEntityMeasureBody(value *MixedEntity, ids *TableIds) int64 {
 	bytes := int64(1)
+	if (value.EntityId != 0) && (value.EntityId > 4095) {
+		return -1
+	}
 	if value.EntityId != 0 {
 		bytes += tableLebBytes(ids.refAtHit(11, 0x23fcfd6678e36712)) + 1 + 2
 	} // entity_id
+	if (value.PosX != 0) && (value.PosX < -16383 || value.PosX > 16383) {
+		return -1
+	}
 	if value.PosX != 0 {
 		bytes += tableLebBytes(ids.refAtHit(65, 0xcb4b37357667310e)) + 1 + 4
 	} // pos_x
+	if (value.PosY != 0) && (value.PosY < -16383 || value.PosY > 16383) {
+		return -1
+	}
 	if value.PosY != 0 {
 		bytes += tableLebBytes(ids.refAtHit(66, 0xcb4b3835766732c1)) + 1 + 4
 	} // pos_y
+	if (value.PosZ != 0) && (value.PosZ < -16383 || value.PosZ > 16383) {
+		return -1
+	}
 	if value.PosZ != 0 {
 		bytes += tableLebBytes(ids.refAtHit(64, 0xcb4b353576672da8)) + 1 + 4
 	} // pos_z
+	if (value.Yaw != 0) && (value.Yaw > 511) {
+		return -1
+	}
 	if value.Yaw != 0 {
 		bytes += tableLebBytes(ids.refAtHit(58, 0xb54d8e19798e16e8)) + 1 + 2
 	} // yaw
+	if (value.Pitch != 0) && (value.Pitch > 511) {
+		return -1
+	}
 	if value.Pitch != 0 {
 		bytes += tableLebBytes(ids.refAtHit(22, 0x53a9f665a90cc1b1)) + 1 + 2
 	} // pitch
+	if (value.VelX != 0) && (value.VelX < -2048 || value.VelX > 2047) {
+		return -1
+	}
 	if value.VelX != 0 {
 		bytes += tableLebBytes(ids.refAtHit(27, 0x6cede6b6eb60ee67)) + 1 + 4
 	} // vel_x
+	if (value.VelY != 0) && (value.VelY < -2048 || value.VelY > 2047) {
+		return -1
+	}
 	if value.VelY != 0 {
 		bytes += tableLebBytes(ids.refAtHit(26, 0x6cede5b6eb60ecb4)) + 1 + 4
 	} // vel_y
+	if (value.VelZ != 0) && (value.VelZ < -2048 || value.VelZ > 2047) {
+		return -1
+	}
 	if value.VelZ != 0 {
 		bytes += tableLebBytes(ids.refAtHit(28, 0x6cede8b6eb60f1cd)) + 1 + 4
 	} // vel_z
+	if (value.Health != 0) && (value.Health < 0 || value.Health > 1000) {
+		return -1
+	}
 	if value.Health != 0 {
 		bytes += tableLebBytes(ids.refAtHit(37, 0x7f69d4b5288ba9cf)) + 1 + 4
 	} // health
@@ -2966,6 +3272,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 			if ref := w.Ids.refAtHit(11, 0x23fcfd6678e36712); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
+			if value.EntityId > 4095 {
+				return false
+			}
 			w.Put16(uint16(value.EntityId))
 		}
 	}
@@ -2973,6 +3282,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 		if value.PosX != 0 {
 			if ref := w.Ids.refAtHit(65, 0xcb4b37357667310e); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
+			}
+			if value.PosX < -16383 || value.PosX > 16383 {
+				return false
 			}
 			w.Put32(uint32(value.PosX))
 		}
@@ -2982,6 +3294,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 			if ref := w.Ids.refAtHit(66, 0xcb4b3835766732c1); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
+			if value.PosY < -16383 || value.PosY > 16383 {
+				return false
+			}
 			w.Put32(uint32(value.PosY))
 		}
 	}
@@ -2989,6 +3304,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 		if value.PosZ != 0 {
 			if ref := w.Ids.refAtHit(64, 0xcb4b353576672da8); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
+			}
+			if value.PosZ < -16383 || value.PosZ > 16383 {
+				return false
 			}
 			w.Put32(uint32(value.PosZ))
 		}
@@ -2998,6 +3316,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 			if ref := w.Ids.refAtHit(58, 0xb54d8e19798e16e8); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
+			if value.Yaw > 511 {
+				return false
+			}
 			w.Put16(uint16(value.Yaw))
 		}
 	}
@@ -3005,6 +3326,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 		if value.Pitch != 0 {
 			if ref := w.Ids.refAtHit(22, 0x53a9f665a90cc1b1); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
+			}
+			if value.Pitch > 511 {
+				return false
 			}
 			w.Put16(uint16(value.Pitch))
 		}
@@ -3014,6 +3338,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 			if ref := w.Ids.refAtHit(27, 0x6cede6b6eb60ee67); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
+			if value.VelX < -2048 || value.VelX > 2047 {
+				return false
+			}
 			w.Put32(uint32(value.VelX))
 		}
 	}
@@ -3021,6 +3348,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 		if value.VelY != 0 {
 			if ref := w.Ids.refAtHit(26, 0x6cede5b6eb60ecb4); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
+			}
+			if value.VelY < -2048 || value.VelY > 2047 {
+				return false
 			}
 			w.Put32(uint32(value.VelY))
 		}
@@ -3030,6 +3360,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 			if ref := w.Ids.refAtHit(28, 0x6cede8b6eb60f1cd); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
+			if value.VelZ < -2048 || value.VelZ > 2047 {
+				return false
+			}
 			w.Put32(uint32(value.VelZ))
 		}
 	}
@@ -3037,6 +3370,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 		if value.Health != 0 {
 			if ref := w.Ids.refAtHit(37, 0x7f69d4b5288ba9cf); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
+			}
+			if value.Health < 0 || value.Health > 1000 {
+				return false
 			}
 			w.Put32(uint32(value.Health))
 		}
@@ -3749,9 +4085,15 @@ func MixedStatReset(value *MixedStat) {
 
 func MixedStatMeasureBody(value *MixedStat, ids *TableIds) int64 {
 	bytes := int64(1)
+	if (value.StatId != 0) && (value.StatId > 255) {
+		return -1
+	}
 	if value.StatId != 0 {
 		bytes += tableLebBytes(ids.refAtHit(38, 0x80ab75f0866dbf65)) + 1 + 1
 	} // stat_id
+	if (value.Delta != 0) && (value.Delta < -512 || value.Delta > 511) {
+		return -1
+	}
 	if value.Delta != 0 {
 		bytes += tableLebBytes(ids.refAtHit(21, 0x52076675ec13a0c1)) + 1 + 4
 	} // delta
@@ -3783,6 +4125,9 @@ func MixedStatSaveBody(w *TableWriter, value *MixedStat) bool {
 			if ref := w.Ids.refAtHit(38, 0x80ab75f0866dbf65); !w.headerPair(ref, 6) {
 				w.headerRest(ref, 6)
 			}
+			if value.StatId > 255 {
+				return false
+			}
 			w.Put8(uint8(value.StatId))
 		}
 	}
@@ -3790,6 +4135,9 @@ func MixedStatSaveBody(w *TableWriter, value *MixedStat) bool {
 		if value.Delta != 0 {
 			if ref := w.Ids.refAtHit(21, 0x52076675ec13a0c1); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
+			}
+			if value.Delta < -512 || value.Delta > 511 {
+				return false
 			}
 			w.Put32(uint32(value.Delta))
 		}
@@ -3994,12 +4342,21 @@ func MixedHitEventReset(value *MixedHitEvent) {
 
 func MixedHitEventMeasureBody(value *MixedHitEvent, ids *TableIds) int64 {
 	bytes := int64(1)
+	if (value.TargetId != 0) && (value.TargetId > 4095) {
+		return -1
+	}
 	if value.TargetId != 0 {
 		bytes += tableLebBytes(ids.refAtHit(59, 0xb7bc9ac015a25050)) + 1 + 2
 	} // target_id
+	if (value.Damage != 0) && (value.Damage < 0 || value.Damage > 4095) {
+		return -1
+	}
 	if value.Damage != 0 {
 		bytes += tableLebBytes(ids.refAtHit(36, 0x7f6308be8ab37fc0)) + 1 + 4
 	} // damage
+	if (value.HitKind != 0) && (value.HitKind < 0 || value.HitKind > 7) {
+		return -1
+	}
 	if value.HitKind != 0 {
 		bytes += tableLebBytes(ids.refAtHit(1, 0x01fbc365b059b925)) + 1 + 4
 	} // hit_kind
@@ -4034,6 +4391,9 @@ func MixedHitEventSaveBody(w *TableWriter, value *MixedHitEvent) bool {
 			if ref := w.Ids.refAtHit(59, 0xb7bc9ac015a25050); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
+			if value.TargetId > 4095 {
+				return false
+			}
 			w.Put16(uint16(value.TargetId))
 		}
 	}
@@ -4042,6 +4402,9 @@ func MixedHitEventSaveBody(w *TableWriter, value *MixedHitEvent) bool {
 			if ref := w.Ids.refAtHit(36, 0x7f6308be8ab37fc0); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
+			if value.Damage < 0 || value.Damage > 4095 {
+				return false
+			}
 			w.Put32(uint32(value.Damage))
 		}
 	}
@@ -4049,6 +4412,9 @@ func MixedHitEventSaveBody(w *TableWriter, value *MixedHitEvent) bool {
 		if value.HitKind != 0 {
 			if ref := w.Ids.refAtHit(1, 0x01fbc365b059b925); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
+			}
+			if value.HitKind < 0 || value.HitKind > 7 {
+				return false
 			}
 			w.Put32(uint32(value.HitKind))
 		}
@@ -4336,9 +4702,15 @@ func MixedChatEventReset(value *MixedChatEvent) {
 
 func MixedChatEventMeasureBody(value *MixedChatEvent, ids *TableIds) int64 {
 	bytes := int64(1)
+	if (value.Channel != 0) && (value.Channel < 0 || value.Channel > 3) {
+		return -1
+	}
 	if value.Channel != 0 {
 		bytes += tableLebBytes(ids.refAtHit(54, 0xa5013e9ad5caeda4)) + 1 + 4
 	} // channel
+	if (value.Speaker != 0) && (value.Speaker > 4095) {
+		return -1
+	}
 	if value.Speaker != 0 {
 		bytes += tableLebBytes(ids.refAtHit(76, 0xfbf1ac4d96ebd022)) + 1 + 2
 	} // speaker
@@ -4370,6 +4742,9 @@ func MixedChatEventSaveBody(w *TableWriter, value *MixedChatEvent) bool {
 			if ref := w.Ids.refAtHit(54, 0xa5013e9ad5caeda4); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
+			if value.Channel < 0 || value.Channel > 3 {
+				return false
+			}
 			w.Put32(uint32(value.Channel))
 		}
 	}
@@ -4377,6 +4752,9 @@ func MixedChatEventSaveBody(w *TableWriter, value *MixedChatEvent) bool {
 		if value.Speaker != 0 {
 			if ref := w.Ids.refAtHit(76, 0xfbf1ac4d96ebd022); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
+			}
+			if value.Speaker > 4095 {
+				return false
 			}
 			w.Put16(uint16(value.Speaker))
 		}
@@ -4595,9 +4973,15 @@ func MixedPickupEventReset(value *MixedPickupEvent) {
 
 func MixedPickupEventMeasureBody(value *MixedPickupEvent, ids *TableIds) int64 {
 	bytes := int64(1)
+	if (value.ItemId != 0) && (value.ItemId > 1023) {
+		return -1
+	}
 	if value.ItemId != 0 {
 		bytes += tableLebBytes(ids.refAtHit(48, 0x9e7fd06d864fbd56)) + 1 + 2
 	} // item_id
+	if (value.Amount != 0) && (value.Amount < 0 || value.Amount > 255) {
+		return -1
+	}
 	if value.Amount != 0 {
 		bytes += tableLebBytes(ids.refAtHit(39, 0x8113fe7ea2b16969)) + 1 + 4
 	} // amount
@@ -4629,6 +5013,9 @@ func MixedPickupEventSaveBody(w *TableWriter, value *MixedPickupEvent) bool {
 			if ref := w.Ids.refAtHit(48, 0x9e7fd06d864fbd56); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
+			if value.ItemId > 1023 {
+				return false
+			}
 			w.Put16(uint16(value.ItemId))
 		}
 	}
@@ -4636,6 +5023,9 @@ func MixedPickupEventSaveBody(w *TableWriter, value *MixedPickupEvent) bool {
 		if value.Amount != 0 {
 			if ref := w.Ids.refAtHit(39, 0x8113fe7ea2b16969); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
+			}
+			if value.Amount < 0 || value.Amount > 255 {
+				return false
 			}
 			w.Put32(uint32(value.Amount))
 		}
@@ -4921,6 +5311,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if ref := w.Ids.refAtHit(56, 0xaa38aca481f528a8); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
+			if value.Sequence > 65535 {
+				return false
+			}
 			w.Put16(uint16(value.Sequence))
 		}
 	}
@@ -4928,6 +5321,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 		if value.AckSequence != 0 {
 			if ref := w.Ids.refAtHit(4, 0x0dbe005c56697c3e); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
+			}
+			if value.AckSequence < 0 || value.AckSequence > 65535 {
+				return false
 			}
 			w.Put32(uint32(value.AckSequence))
 		}
@@ -4969,6 +5365,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if ref := w.Ids.refAtHit(20, 0x3eee6b51be54fc85); !w.headerPair(ref, 5) {
 				w.headerRest(ref, 5)
 			}
+			if value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000 {
+				return false
+			}
 			w.Put64(uint64(value.WorldTime))
 		}
 	}
@@ -4977,6 +5376,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if ref := w.Ids.refAtHit(34, 0x7bbc035f7b6d0112); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
+			if value.FrameTick > 281474976710655 {
+				return false
+			}
 			w.Put64(uint64(value.FrameTick))
 		}
 	}
@@ -4984,6 +5386,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 		if value.ServerTime != 0 {
 			if ref := w.Ids.refAtHit(18, 0x3c460475f9be69c6); !w.headerPair(ref, 22) {
 				w.headerRest(ref, 22)
+			}
+			if value.ServerTime < 0 || value.ServerTime > 16776960 {
+				return false
 			}
 			w.Put32(uint32(value.ServerTime))
 		}
@@ -5236,6 +5641,33 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if value.PlayerNameLength < 0 || value.PlayerNameLength > 15 {
 				return false
 			}
+			{
+				n := int(value.PlayerNameLength)
+				var hi, z uint64
+				p := value.PlayerName[:n]
+				if len(p) >= 8 {
+					x := tableUtf8Word(p)
+					hi |= x
+					z |= (x - 0x0101010101010101) &^ x
+					p = p[8:]
+				}
+				if len(p) > 0 {
+					if n >= 8 {
+						x := tableUtf8Word(value.PlayerName[n-8:])
+						hi |= x
+						z |= (x - 0x0101010101010101) &^ x
+					} else {
+						for _, c := range p {
+							x := uint64(c)
+							hi |= x
+							z |= (x - 1) &^ x
+						}
+					}
+				}
+				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.PlayerName[:n]) {
+					return false
+				}
+			}
 			if !w.putLebPair(uint64(value.PlayerNameLength)) {
 				w.putLebWide(uint64(value.PlayerNameLength))
 			}
@@ -5288,6 +5720,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if ref := w.Ids.refAtHit(72, 0xdbaf7be5e24296c9); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.AimX != value.AimX || value.AimX < -1.0 || value.AimX > 1.0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.AimX))
 		}
 	}
@@ -5296,6 +5731,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if ref := w.Ids.refAtHit(71, 0xdbaf7ae5e2429516); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.AimY != value.AimY || value.AimY < -1.0 || value.AimY > 1.0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.AimY))
 		}
 	}
@@ -5303,6 +5741,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 		if value.AimZ != 0.0 {
 			if ref := w.Ids.refAtHit(70, 0xdbaf79e5e2429363); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.AimZ != value.AimZ || value.AimZ < -1.0 || value.AimZ > 1.0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.AimZ))
 		}
@@ -5336,6 +5777,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if ref := w.Ids.refAtHit(68, 0xd61bdd7908af2642); !w.headerPair(ref, 18) {
 				w.headerRest(ref, 18)
 			}
+			if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
+				return false
+			}
 			w.Put128(value.Flux.Lo, value.Flux.Hi)
 		}
 	}
@@ -5344,6 +5788,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if ref := w.Ids.refAtHit(61, 0xbf30e00dc53307a9); !w.headerPair(ref, 26) {
 				w.headerRest(ref, 26)
 			}
+			if value.Ping > 64000 {
+				return false
+			}
 			w.Put16(uint16(value.Ping))
 		}
 	}
@@ -5351,6 +5798,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 		if value.CrcHint != 0 {
 			if ref := w.Ids.refAtHit(23, 0x560d6527ccd8515f); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
+			}
+			if value.CrcHint > 16777215 {
+				return false
 			}
 			w.Put32(uint32(value.CrcHint))
 		}
@@ -5372,6 +5822,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if ref := w.Ids.refAtHit(77, 0xfd29ee12a979cb69); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
+			if value.Extra < 0 || value.Extra > 255 {
+				return false
+			}
 			w.Put32(uint32(value.Extra))
 		}
 	}
@@ -5379,6 +5832,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 		if value.IdleTicks != 0 {
 			if ref := w.Ids.refAtHit(33, 0x78101ac0aa8cbcfe); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
+			}
+			if value.IdleTicks < 0 || value.IdleTicks > 15 {
+				return false
 			}
 			w.Put32(uint32(value.IdleTicks))
 		}

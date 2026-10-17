@@ -1915,6 +1915,31 @@ func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 		// the real case. A fixed default is declared in WHOLE UNITS — the same
 		// domain as the | min, max bounds — and must scale EXACTLY: v * 2^F an
 		// integer, so no rounding rule is ever involved in a default.
+		//
+		// An integer expression stays in big.Int end to end. Narrowing to
+		// float64 first rounds away the low bits above 2^53, and re-raising
+		// the precision cannot put them back, so both the exactness test and
+		// the range test would read the rounded value — an exact default of
+		// 9007199254740993 would be stored as 9007199254740992, and one equal
+		// to max 9223372036854775807 would round to 2^63 and be refused. Only
+		// a genuinely fractional (float-kind) expression takes the float path.
+		if c.exprKind(f.Default) == kindInt {
+			v, ok := c.evalInt(f.Default)
+			if !ok {
+				return
+			}
+			if out.HasIntRange && (v.Cmp(out.IntMin) < 0 || v.Cmp(out.IntMax) > 0) {
+				c.errf(f.Default.ExprPos(), "field %s: default %s is outside its range [%s, %s] (whole units)", f.Name, v, out.IntMin, out.IntMax)
+				return
+			}
+			raw := new(big.Int).Lsh(v, uint(out.Type.FracBits))
+			fv, _ := new(big.Float).SetInt(v).Float64()
+			out.HasDefault = true
+			out.DefInt = raw  // the RAW scaled integer — what storage initializes to
+			out.DefFloat = fv // the whole-unit value, for comments
+			out.DefExpr = nil // never render the units expression as the raw initializer
+			return
+		}
 		v, ok := c.evalFloat(f.Default)
 		if !ok {
 			return
@@ -3524,6 +3549,8 @@ func tableRuntimeClaim(gen string) string {
 		// spelling.
 		by := tablenames.By(gen)
 		switch {
+		case by&tablenames.Js != 0 && by&(tablenames.Go|tablenames.C) == 0:
+			return "the generated TABLE-wire runtime's JavaScript half, which binds its private helpers at module scope, and an ES module's scope is the file the unit's own declarations are emitted into (docs/SPEC-TABLES.md §11)"
 		case by&tablenames.Go != 0 && by&tablenames.C == 0:
 			return "the generated TABLE-wire runtime's Go half, which puts unexported names at package scope where a Go package is one namespace (docs/SPEC-TABLES.md §11)"
 		case by&tablenames.C != 0 && by&tablenames.Go == 0:

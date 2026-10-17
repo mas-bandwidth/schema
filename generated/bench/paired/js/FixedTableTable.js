@@ -24,7 +24,7 @@
 // Nothing throws: a write answers its byte count or -1, a read answers its
 // record count or -1 with the reason named in the report.
 
-import { FixedTable, FixedTableFixedDecode, FixedTableFixedWriteBody, InitFixedTable, TableFixedDecodeLayout, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm } from "./BenchTable.js";
+import { FixedTable, FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, InitFixedTable, TableBitWriter, TableFixedDecodeLayout, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
 
 // ---- FixedTable, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
 //
@@ -458,7 +458,14 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
       for (let i = 0; i < z; i++) { image[o + i] = FixedTableFixedPrefill[o + i]; }
     }
     TableFixedRun(entries, entryCount, bytes, srcView, at + 8, image, imageView, remap, report);
+    // A TEXT OP THAT REFUSED ITS CONTENT stops the read HERE, before the
+    // projection: refuse is total, no counter moves and no record lands.
+    if (report.refused !== 0) { return -1; }
     FixedTableFixedDecode(values[k], imageView, 0, report);
+    // THE IDENTITY PROJECTION'S OWN CONTENT RULE (§4.5 fix 11): the body is
+    // one COPY, so no text op ran, and the decode is where a byte string or
+    // a wide string refuses by name.
+    if (report.refused !== 0) { return -1; }
     at += recordBytes;
   }
   // THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, on a read that returns
@@ -466,5 +473,50 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
   report.unknown += censusUnknown;
   report.kindMismatch += censusKind;
   return n;
+}
+
+// THE THREE BATCH VERBS (§3.3): the primitive is a batch and a single
+// message is the batch of one. Measure sizes the buffer, Save writes one
+// buffer, Load fills the caller's storage and reports how many it read.
+export function FixedTableMeasureMessages(values, report) {
+  if (report === undefined || report === null) { report = {}; }
+  TableMessageResetReport(report);
+  if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, "batch_too_large"); return -1; }
+  const w = new TableBitWriter(null, true);
+  for (let i = 0; i < values.length; i++) {
+    if (values[i] === null || values[i] === undefined || !FixedTableSaveMessageBody(w, values[i])) { return -1; }
+  }
+  w.Align();
+  if (w.Overflow) { return -1; }
+  return 2 + (w.Bits >> 3);
+}
+
+export function FixedTableSaveMessages(values, buffer, report) {
+  if (report === undefined || report === null) { report = {}; }
+  TableMessageResetReport(report);
+  if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, "batch_too_large"); return -1; }
+  if (buffer.length < 2) { return -1; }
+  buffer[0] = 2;
+  buffer[1] = values.length - 1;
+  const w = new TableBitWriter(buffer.subarray(2), false);
+  for (let i = 0; i < values.length; i++) {
+    if (values[i] === null || values[i] === undefined || !FixedTableSaveMessageBody(w, values[i])) { return -1; }
+  }
+  w.Align();
+  if (w.Overflow) { return -1; }
+  return 2 + (w.Bits >> 3);
+}
+
+export function FixedTableLoadMessages(values, vocabulary, data, report) {
+  if (report === undefined || report === null) { report = {}; }
+  TableMessageResetReport(report);
+  const [r, count] = tableMessageBatchOpen(vocabulary, data, report);
+  if (count < 0) { return -1; }
+  if (count > values.length) { TableMessageRefuse(report, "batch_too_large"); return count; }
+  for (let i = 0; i < count; i++) {
+    if (!FixedTableLoadMessageBody(r, values[i])) { return i; }
+  }
+  if (!tableMessageBatchClose(r)) { return count; }
+  return count;
 }
 

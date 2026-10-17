@@ -122,12 +122,17 @@ func totalDetail(what string, total int64, unit string, limit int64) string {
 // saturated operand would name a number that stands for nothing.
 func CheckSizes(u *Unit) []SizeError {
 	var out []SizeError
+	// one memo for the whole unit: every record of the unit is measured
+	// through these two walks, and a shared child must be measured once
+	// across them, not once per record that names it
+	bits := newBitMemo()
+	layouts := newLayoutMemo()
 	for _, name := range sizeCheckOrder(u) {
 		st := memberStruct(u, name)
 		if st == nil {
 			continue
 		}
-		out = append(out, checkRecordSizes(u, st)...)
+		out = append(out, checkRecordSizes(u, st, bits, layouts)...)
 	}
 	if b := Blocks(u); b != nil {
 		for _, bl := range b.Tables {
@@ -155,7 +160,7 @@ func sizeCheckOrder(u *Unit) []string {
 
 // checkRecordSizes covers one record: each field's wire width and storage, then
 // the record's own totals when no field of it was already refused.
-func checkRecordSizes(u *Unit, st *Struct) []SizeError {
+func checkRecordSizes(u *Unit, st *Struct, bits *bitMemo, layouts *layoutMemo) []SizeError {
 	kind := "type"
 	if st.IsTable {
 		kind = "table"
@@ -163,8 +168,8 @@ func checkRecordSizes(u *Unit, st *Struct) []SizeError {
 	var out []SizeError
 	poisoned := false
 	for _, f := range st.Fields {
-		elemBits := maxBitsScalar(f)
-		elemBytes := fieldElemBytes(u, f)
+		elemBits := maxBitsScalar(f, bits)
+		elemBytes := fieldElemBytes(u, f, layouts)
 		if elemBits > MaxWireBits || elemBytes > MaxSizeBytes {
 			// the element's own declaration carries the diagnostic
 			poisoned = true
@@ -173,7 +178,7 @@ func checkRecordSizes(u *Unit, st *Struct) []SizeError {
 		if f.Array == ArrayNone {
 			continue
 		}
-		if MaxBitsField(f) > MaxWireBits {
+		if maxBitsField(f, bits) > MaxWireBits {
 			out = append(out, SizeError{Owner: st.Name, OwnerKind: kind, Field: f.Name,
 				Detail: productDetail("elements", f.ArrayBound, elemBits, "bits", MaxWireBits)})
 			poisoned = true
@@ -188,11 +193,11 @@ func checkRecordSizes(u *Unit, st *Struct) []SizeError {
 	if poisoned {
 		return out
 	}
-	if bits := MaxBitsStruct(st); bits > MaxWireBits {
+	if width := maxBitsStruct(st, bits); width > MaxWireBits {
 		out = append(out, SizeError{Owner: st.Name, OwnerKind: kind,
-			Detail: totalDetail("its wire width", bits, "bits", MaxWireBits)})
+			Detail: totalDetail("its wire width", width, "bits", MaxWireBits)})
 	}
-	if size := layoutRecord(u, st).Size; size > MaxSizeBytes {
+	if size := layoutRecordMemo(u, st, layouts).Size; size > MaxSizeBytes {
 		out = append(out, SizeError{Owner: st.Name, OwnerKind: kind,
 			Detail: totalDetail("its storage", size, "bytes", MaxSizeBytes)})
 	}
@@ -202,15 +207,15 @@ func checkRecordSizes(u *Unit, st *Struct) []SizeError {
 // fieldElemBytes is ONE value of a field's declared type in storage: the array
 // element, or the scalar itself. A string, a bytes and a map carry companions
 // rather than elements, so their whole storage is the value.
-func fieldElemBytes(u *Unit, f *Field) int64 {
+func fieldElemBytes(u *Unit, f *Field, m *layoutMemo) int64 {
 	var total int64
-	for _, p := range fieldPieces(u, f, false) {
+	for _, p := range fieldPiecesMemo(u, f, false, m) {
 		total = addSize(total, p.size)
 	}
 	if f.Array == ArrayNone {
 		return total
 	}
-	return elementPiece(u, f).size
+	return elementPieceMemo(u, f, m).size
 }
 
 // checkBlockSizes covers one block form: each out-of-line array at its declared

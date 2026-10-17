@@ -152,7 +152,14 @@ type bitDecoder struct {
 	// because a body carries its own node directory inside the batch's one
 	// region and a record's first step is an index into it (§3.3).
 	rt *retainState
+	// steps, when set, counts the elements the skip path WALKS one at a time
+	// and stops the walk at its limit. It is a test's instrument and nil on
+	// every real read: the skip's work is pinned by a count, never a clock.
+	steps *skipSteps
 }
+
+// skipSteps is the skip walk's element count and the count it stops at.
+type skipSteps struct{ n, limit uint64 }
 
 // dropped runs one element's read with RETENTION OFF (docs/SPEC-TABLES.md
 // §6.6). A bit stream has to be walked past, so an element the reader is
@@ -676,6 +683,13 @@ func elementRunBits(kind, elem uint8, inner ir.TableMessageShape) int64 {
 	switch int(elem) {
 	case ir.TableKindTable, ir.TableKindUnion, ir.TableKindEnum, ir.TableKindPointer:
 		return -1
+	case 0, ir.TableKindNoPayload:
+		// A NAME AND A PAYLOAD-FREE ARM RIDE NO BITS (docs/SPEC-TABLES.md
+		// §3.3), so a run of them is a zero-width run like a ranged element
+		// whose `min` equals its `max`, and it is arithmetic: walked one at a
+		// time, a count of 2^32 over one bought 2^32 iterations for a few
+		// bytes of wire. The C# reader takes them the same way.
+		return 0
 	}
 	return ir.TableMessageValueBits(elem, inner)
 }
@@ -1481,6 +1495,12 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 			return skipRun(d.r, n, run)
 		}
 		for i := uint64(0); i < n; i++ {
+			if d.steps != nil {
+				if d.steps.n++; d.steps.n >= d.steps.limit {
+					return false
+				}
+			}
+			at := d.r.off
 			if entry.Kind == ir.TableKindKeyed {
 				if _, ok := d.reference(); !ok {
 					return false
@@ -1488,6 +1508,23 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 			}
 			if !d.skip(ir.TableVocabularyEntry{Kind: shape.Elem, Shape: inner}) {
 				return false
+			}
+			// A WALKED ELEMENT THAT CONSUMED NO BITS, a nested array whose
+			// inner run is itself zero-width, is the same run in a shape the
+			// arithmetic above cannot see (docs/SPEC-TABLES.md §3.3). Its skip
+			// read nothing, so it took no branch a later element could take
+			// differently, and every element after it consumes nothing too: the
+			// rest of the run is stepped in one. A REMAINING COUNT THE BITS
+			// LEFT COULD NOT BACK IS DAMAGE, the one bit an element is held to
+			// on the list path, so a hostile count is refused here rather than
+			// carried into a retaining walk, and the walk is bounded by the
+			// batch's bits whatever the count says.
+			if d.r.off == at {
+				if n-i-1 > uint64(d.r.left()) {
+					d.report.Malformed = true
+					return false
+				}
+				return true
 			}
 		}
 		return true

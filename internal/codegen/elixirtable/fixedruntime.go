@@ -919,6 +919,13 @@ const fixedRuntimeBody = `  @moduledoc """
     {entries, n} = acc
 
     cond do
+      # A REMAP PAST THE uint16 LENGTH WORD REFUSES BY NAME (§5.2, §5.8
+      # row 14): the table is as long as the writer's variant count, and a
+      # count the length word cannot hold is plan_too_large, never a
+      # truncated table answering a wrong value.
+      Enum.any?(entries, &match?({:remap_too_large, _}, &1)) ->
+        {:error, :plan_too_large, report}
+
       any_past?(entries, record) ->
         {:error, :layout_record_too_large, report}
 
@@ -950,6 +957,7 @@ const fixedRuntimeBody = `  @moduledoc """
   defp src_end({:text, at, _dst, _aux, units, _meta}), do: at + 4 + units
   defp src_end({:count, at, _aux, _n}), do: at + 4
   defp src_end({:ordinal, at, _dst, their_size, _my_size, _remap}), do: at + their_size
+  defp src_end({:remap_too_large, _variants}), do: 0
   defp src_end({:tagcount, at, tag, _arms}), do: at + tag
   defp src_end({:const, _at, _value, _size}), do: 0
 
@@ -1522,24 +1530,34 @@ const fixedRuntimeBody = `  @moduledoc """
     end
   end
 
+  # THE REMAP TABLE CARRIES ITS OWN LENGTH IN SLOT 0 (§5.2): the tuple is
+  # {n, v1, ..., vn} where n is the WRITER's variant count and vj the
+  # reader's position of the writer's variant j, so the ordinal's bound is
+  # the length word elem(remap, 0) and never a silent truncation. A writer
+  # past the uint16 length word (65535) cannot be named by that word: the
+  # sentinel entry makes compile/5 refuse the plan as :plan_too_large
+  # (§5.8 row 14), the name the C leg's overflow carries.
   defp compile_enum_remap(theirs, ti, their_at, mine, mi, at, guard, tag, acc, report) do
     their_variants = children_at(theirs, ti)
     my_variants = children_at(mine, mi)
 
-    remap =
-      Enum.map(0..(their_variants - 1)//1, fn j ->
-        their_id = id_at(theirs, ti + 1 + j)
+    if their_variants > 65535 do
+      {push(acc, {:remap_too_large, their_variants}), report}
+    else
+      remap =
+        Enum.map(0..(their_variants - 1)//1, fn j ->
+          their_id = id_at(theirs, ti + 1 + j)
 
-        case Enum.find(0..(my_variants - 1)//1, fn k -> id_at(mine, mi + 1 + k) == their_id end) do
-          nil -> 0
-          k -> k + 1
-        end
-      end)
+          case Enum.find(0..(my_variants - 1)//1, fn k -> id_at(mine, mi + 1 + k) == their_id end) do
+            nil -> 0
+            k -> k + 1
+          end
+        end)
 
-    entry =
-      {:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi), List.to_tuple(remap)}
+      entry = {:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi), List.to_tuple([their_variants | remap])}
 
-    {guarded(acc, guard, tag, entry), report}
+      {guarded(acc, guard, tag, entry), report}
+    end
   end
 
   # THE COALESCER, and it is the only optimization a plan compiler performs: two
@@ -1848,8 +1866,11 @@ const fixedRuntimeBody = `  @moduledoc """
   end
 
   defp ordinal(raw, remap, report) do
-    if raw <= tuple_size(remap),
-      do: {elem(remap, raw - 1), report},
+    # THE LENGTH WORD IS THE BOUND (§5.2): slot 0 holds the writer's
+    # variant count n and slots 1..n the remap, so a raw past n lands None
+    # exactly as a raw past the writer's set does on every leg.
+    if raw <= elem(remap, 0),
+      do: {elem(remap, raw), report},
       else: {0, bump(report, :clamped)}
   end
 

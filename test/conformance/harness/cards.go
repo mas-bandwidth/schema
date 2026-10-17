@@ -14,6 +14,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -156,7 +157,7 @@ func readCardCases(path string) ([]cardCase, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var out []cardCase
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
@@ -199,7 +200,7 @@ func cardOutputs(surface, name, expectedDir string) ([]string, error) {
 // requireSet parses --require into the set of surfaces an absence fails.
 func requireSet(list string) map[string]bool {
 	out := map[string]bool{}
-	for _, s := range strings.Split(list, ",") {
+	for s := range strings.SplitSeq(list, ",") {
 		if s = strings.TrimSpace(s); s != "" {
 			out[s] = true
 		}
@@ -216,7 +217,7 @@ func execCardsDriver(command string) cardsDriverFn {
 		cmd.Stdout = os.Stdout
 		if err := cmd.Run(); err == nil {
 			return 0
-		} else if exit, ok := err.(*exec.ExitError); ok {
+		} else if exit, ok := errors.AsType[*exec.ExitError](err); ok {
 			return exit.ExitCode()
 		}
 		return -1
@@ -226,9 +227,11 @@ func execCardsDriver(command string) cardsDriverFn {
 // printCards prints one line per surface and returns the verdict. The line is
 // `cards <surface> pass n/m +ka`, or FAIL with the first differing case and
 // byte offset, or absent. A required surface answered absent is a failure; a
-// non-required one is printed and not.
+// non-required one is printed and not. A report that cannot be written is a
+// failed check: a verdict nobody can read is not a pass.
 func printCards(w io.Writer, results map[string]*cardResult, required map[string]bool) bool {
 	ok := true
+	var b strings.Builder
 	for _, s := range cardSurfaces {
 		r := results[s]
 		if r.total == 0 {
@@ -236,21 +239,24 @@ func printCards(w io.Writer, results map[string]*cardResult, required map[string
 		}
 		switch {
 		case len(r.failures) > 0:
-			fmt.Fprintf(w, "cards %s FAIL: %s\n", s, r.failures[0])
+			fmt.Fprintf(&b, "cards %s FAIL: %s\n", s, r.failures[0])
 			ok = false
 		case r.absent:
-			fmt.Fprintf(w, "cards %s absent\n", s)
+			fmt.Fprintf(&b, "cards %s absent\n", s)
 			if required[s] {
 				ok = false
 			}
 		default:
 			m := r.total - r.missing
-			line := fmt.Sprintf("cards %s pass %d/%d", s, r.pass, m)
+			fmt.Fprintf(&b, "cards %s pass %d/%d", s, r.pass, m)
 			if r.missing > 0 {
-				line += fmt.Sprintf(" +%da", r.missing)
+				fmt.Fprintf(&b, " +%da", r.missing)
 			}
-			fmt.Fprintln(w, line)
+			b.WriteByte('\n')
 		}
+	}
+	if _, err := io.WriteString(w, b.String()); err != nil {
+		return false
 	}
 	return ok
 }

@@ -254,7 +254,8 @@ static void negative_control()
     tblfx1::FxRoot wrong;
     tblfx1::FxRootReset( wrong );
     tblfx1::TableReport r;
-    tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded, body, (uint8_t *) &wrong, &r );
+    tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded, body, (uint8_t *) &wrong, &r,
+                           tblfx1::FxRootFixedGuards );
     const bool intact = wrong.nested.a == 33 && wrong.nested.b == 44 && wrong.renamed == 808;
     check( !intact, "NEGATIVE CONTROL: the wrong plan must NOT reproduce the record" );
 
@@ -553,7 +554,7 @@ static void form_header_cases()
     // residue, `malformed`, with nothing decoded and nothing written.
     {
         tblfx1::FxRoot v;
-        std::memset( &v, 0xAB, sizeof( v ) );
+        std::memset( (void *) &v, 0xAB, sizeof( v ) );
         const tblfx1::FxRoot poison = v;
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, good.data(), 0, plan.data(), 1024, NULL, &r );
@@ -569,7 +570,7 @@ static void form_header_cases()
     {
         const uint8_t short1[10] = { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
         tblfx1::FxRoot v;
-        std::memset( &v, 0xAB, sizeof( v ) );
+        std::memset( (void *) &v, 0xAB, sizeof( v ) );
         const tblfx1::FxRoot poison = v;
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, short1, 10, plan.data(), 1024, NULL, &r );
@@ -586,7 +587,7 @@ static void form_header_cases()
     {
         const uint8_t short2[3] = { 2, 1, 0 };
         tblfx1::FxRoot v;
-        std::memset( &v, 0xAB, sizeof( v ) );
+        std::memset( (void *) &v, 0xAB, sizeof( v ) );
         const tblfx1::FxRoot poison = v;
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, short2, 3, plan.data(), 1024, NULL, &r );
@@ -605,7 +606,7 @@ static void form_header_cases()
         std::vector<uint8_t> zero = good;
         zero[0] = 0;
         tblfx1::FxRoot v;
-        std::memset( &v, 0xAB, sizeof( v ) );
+        std::memset( (void *) &v, 0xAB, sizeof( v ) );
         const tblfx1::FxRoot poison = v;
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, zero.data(), (int64_t) zero.size(), plan.data(), 1024, NULL, &r );
@@ -624,7 +625,7 @@ static void form_header_cases()
         std::vector<uint8_t> reserved = good;
         reserved[3] = 1;
         tblfx1::FxRoot v;
-        std::memset( &v, 0xAB, sizeof( v ) );
+        std::memset( (void *) &v, 0xAB, sizeof( v ) );
         const tblfx1::FxRoot poison = v;
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, reserved.data(), (int64_t) reserved.size(), plan.data(), 1024, NULL, &r );
@@ -911,8 +912,10 @@ static void union_text_case()
         tblut1::UtRootReset( wrong );
         tblut1::TableReport r;
         const uint8_t * body = w.data() + tblut1::kTableFixedHeaderBytes + 4 + tblut1::UtRootFixedLayoutBytes + 8;
+        // The copy keeps the identity plan's pooled guard chains, so it runs
+        // against the identity plan's pool, exactly as UtRootFixedLoad does.
         tblut1::TableFixedRun( shared.data(), tblut1::UtRootFixedPlanCount, tblut1::UtRootFixedPlanGuarded,
-                               body, (uint8_t *) &wrong, &r );
+                               body, (uint8_t *) &wrong, &r, tblut1::UtRootFixedGuards );
         check( wrong.pick.b.label_length != 7 || std::strcmp( wrong.pick.b.label, "seven77" ) != 0,
                "NEGATIVE CONTROL: one shared lane really does read the arm's string wrong" );
     }
@@ -1134,7 +1137,7 @@ static void owed10_no_layout_writes_nothing_case()
     tblfu1::TableFixedPut64( w.data() + rec, 0xDEADBEEFCAFEBABEull );
 
     tblfu2::FuRoot back;
-    std::memset( &back, 0xAB, sizeof( back ) );
+    std::memset( (void *) &back, 0xAB, sizeof( back ) );
     const tblfu2::FuRoot poison = back;
     tblfu2::TableReport r;
     std::vector<tblfu2::TableFixedEntry> plan( 1024 );
@@ -1228,7 +1231,7 @@ static void bounds_case()
         tblfx1::TableReport r;
         const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
         tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded,
-                               body, (uint8_t *) &loose, &r );
+                               body, (uint8_t *) &loose, &r, tblfx1::FxRootFixedGuards );
         check( loose.renamed == 5000 && loose.gone == -7,
                "NEGATIVE CONTROL: the loop alone really does leave an out-of-range value standing" );
         check( r.clamped == 0, "NEGATIVE CONTROL: and counts nothing" );
@@ -1508,7 +1511,7 @@ static void text_content_case()
             tblfx1::TableReport r2;
             const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
             tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded,
-                                   body, (uint8_t *) &loose, &r2 );
+                                   body, (uint8_t *) &loose, &r2, tblfx1::FxRootFixedGuards );
             check( loose.label_length == 1 && (uint8_t) loose.label[0] == 0xFFu,
                    "NEGATIVE CONTROL: the loop alone really does leave a byte that is not text standing" );
             check( !r2.malformed, "NEGATIVE CONTROL: and says nothing about it" );
@@ -1562,13 +1565,13 @@ static void guard_width_case()
     plan[1].argw = 2;
 
     std::memset( dst, 0, sizeof( dst ) );
-    std::memset( &r, 0, sizeof( r ) );
+    std::memset( (void *) &r, 0, sizeof( r ) );
     tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
     check( dst[2] == 0, "GUARD WIDTH: tag 0x0101 at width 2 does not take arm 1" );
 
     src[1] = 0x00;
     std::memset( dst, 0, sizeof( dst ) );
-    std::memset( &r, 0, sizeof( r ) );
+    std::memset( (void *) &r, 0, sizeof( r ) );
     tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
     check( dst[2] == 0xAA, "GUARD WIDTH: tag 0x0001 at width 2 takes arm 1" );
 
@@ -1577,7 +1580,7 @@ static void guard_width_case()
     src[1] = 0x01;
     plan[1].argw = 1;
     std::memset( dst, 0, sizeof( dst ) );
-    std::memset( &r, 0, sizeof( r ) );
+    std::memset( (void *) &r, 0, sizeof( r ) );
     tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
     check( dst[2] == 0xAA, "NEGATIVE CONTROL: a one-byte compare really does fire arm 1 on 0x0101" );
 
