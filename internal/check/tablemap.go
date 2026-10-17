@@ -32,11 +32,11 @@ func (c *checker) resolveMapField(owner string, f *ast.Field, inTable bool) *ir.
 			f.Name)
 		return nil
 	}
-	if f.Type.Optional {
-		c.errf(m.Pos, "field %s: there is no ?map — a fresh map is empty, an empty map is elided, and its count's zero IS its absence, so a presence bit beside it would be two answers to one question; drop the ? (docs/SPEC-TABLES.md §2.8, §11)",
-			f.Name)
-		return nil
-	}
+	// `?map[K]V` is the OPTIONAL MAP (docs/SPEC-TABLES.md §2.8, read through
+	// §2.3): the field keeps its `Optional` and gains the `<field>_present`
+	// companion every optional has, claimed by the companion walk in check.go.
+	// A fixed table and a type body refuse it as they refuse any map, and
+	// `?map ... | required` is refused after resolveAttrs, below.
 	if f.Default != nil {
 		c.errf(f.Pos, "field %s: a map takes no specified default — a fresh map is empty, and empty is the only value a default could name (docs/SPEC-TABLES.md §2.8, §11)",
 			f.Name)
@@ -67,6 +67,15 @@ func (c *checker) resolveMapField(owner string, f *ast.Field, inTable bool) *ir.
 	if key == nil {
 		return nil
 	}
+	// AN OPTIONAL MAP AS A MAP'S VALUE, `map[K]?map[K2]V`, is a named
+	// follow-on (docs/SPEC-TABLES.md §2.8, §15): the optional map is a FIELD's
+	// presence, and the entry surfaces that would carry it as a value are not
+	// held by test yet
+	if m.Value.Map != nil && m.Value.Type.Optional {
+		c.errf(m.Value.Map.Pos, "field %s: an optional map as a map's VALUE is refused — ?map is a field's presence, and map[K]?map[K2]V is a named follow-on; drop the inner ?, or wrap the inner map in a table and make that value optional (docs/SPEC-TABLES.md §2.8, §15)",
+			f.Name)
+		return nil
+	}
 	value := c.resolveField(entryName, m.Value, true)
 	if value == nil {
 		return nil
@@ -84,8 +93,15 @@ func (c *checker) resolveMapField(owner string, f *ast.Field, inTable bool) *ir.
 	c.declFile[entryName] = c.declFile[owner]
 	c.mapEntries = append(c.mapEntries, entry)
 
-	out := &ir.Field{Name: f.Name, Doc: f.Doc, Type: ir.FieldType{Kind: ir.TMap}, MapEntry: entry}
+	out := &ir.Field{Name: f.Name, Doc: f.Doc, Type: ir.FieldType{Kind: ir.TMap, Optional: f.Type.Optional}, MapEntry: entry}
 	c.resolveAttrs(f, out)
+	// `?map ... | required` is refused on §2.3's terms, here because a map
+	// returns before resolveField's own required checks run (docs/SPEC-TABLES.md
+	// §2.3, §2.8, §11)
+	if out.Required && f.Type.Optional {
+		c.errf(f.Pos, "field %s: | required is refused with ? — an optional is absent or present by definition, and required would forbid the absence that makes it optional; drop one of them (docs/SPEC-TABLES.md §2.3, §2.8)", f.Name)
+		return nil
+	}
 	return out
 }
 

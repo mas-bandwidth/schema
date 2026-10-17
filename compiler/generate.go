@@ -116,6 +116,10 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		if err := refuseTextForms(u, carrier); err != nil {
 			return nil, err
 		}
+		// GO CARRIES THE OPTIONAL MAP FIRST (docs/SPEC-TABLES.md §2.8)
+		if err := refuseOptionalMaps(u, carrier); err != nil {
+			return nil, err
+		}
 	}
 	if lg, takes := g.(lineageGenerator); takes {
 		lineage, err := openFixedLineage(u)

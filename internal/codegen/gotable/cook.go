@@ -428,7 +428,11 @@ func (g *cookGen) emitBlittableField(f *ir.Field, w *cookWriter) {
 	}
 	if f.Type.Optional {
 		next()
-		g.sf("\t%sPresent bool // ?%s: one byte, in Go's model as in C++\n", name, f.Type.Name)
+		spelled := f.Type.Name
+		if f.IsMap() {
+			spelled = "map" // the optional map (docs/SPEC-TABLES.md §2.8)
+		}
+		g.sf("\t%sPresent bool // ?%s: one byte, in Go's model as in C++\n", name, spelled)
 	}
 }
 
