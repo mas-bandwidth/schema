@@ -1445,6 +1445,17 @@ method uses the shared diagnostic spelling. The package functions `RootOpen`
 and `RootBlockOpen` remain boolean conveniences over that same check. Both
 forms clear the handle on failure and allocate nothing on success.
 
+**A Go read by the plain name is strict** (docs/SPEC-TABLES.md §6.5).
+`RootLoad`, `RootLoadBuilder`, `RootFromJson`, `RootFixedLoad` and
+`RootLoadMessages` refuse a clamped, kind-mismatched, malformed, truncated or
+`missing_required` read with the refusal value they always had (`false`, a nil
+root, `-1`), and the report you pass holds that read's counters with
+`report.Err()` as the typed reason (`errors.Is(report.Err(),
+TableRefuseClamped)`). To keep a recovered value and its report, ask for it by
+name: `RootLoadTolerant`, `RootLoadBuilderTolerant`, `RootFromJsonTolerant`,
+`RootFixedLoadTolerant` and `RootLoadMessagesTolerant` take the same arguments
+and return what the plain names returned before.
+
 `string(N)` and `bytes(N)` are an `[N]byte` beside an `int32` used length,
 arrays an `[N]T` beside an `int32` used count, `?T` a value beside a
 `<Name>Present` bool, and a union its tag beside one arm per variant.

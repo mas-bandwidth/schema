@@ -92,7 +92,7 @@ func TestCfloatRangeWiden(t *testing.T) {
 		t.Fatalf("hostile: a counter that must not move did: %%+v", r)
 	}
 
-	n = %[4]sFixedLoad(back, pastData, plan, &r)
+	n = %[4]sFixedLoadTolerant(back, pastData, plan, &r)
 	if n != 1 {
 		t.Fatalf("past: the forged file reads one record, not %%d (%%+v)", n, r)
 	}

@@ -121,7 +121,7 @@ func load(t *testing.T, wire []byte) (*Where, TableReport) {
 	for uintptr(unsafe.Pointer(&region[at]))%64 != 0 {
 		at++
 	}
-	return WhereLoad(region[at:], wire, &report), report
+	return WhereLoadTolerant(region[at:], wire, &report), report
 }
 
 type whereText struct {
@@ -533,7 +533,7 @@ func TestGoTableUnboundedTextListsAndMapKeys(t *testing.T) {
 	region := make([]byte, 1<<16)
 	var r TableReport
 	clean := file(list("rules", 2, elem{raw: "a"}, elem{raw: "b"}))
-	if a := testing.AllocsPerRun(20, func() { r = TableReport{}; WhereLoad(region, claim, &r) }); a != 0 || !r.Malformed {
+	if a := testing.AllocsPerRun(20, func() { r = TableReport{}; WhereLoadTolerant(region, claim, &r) }); a != 0 || !r.Malformed {
 		t.Fatalf("count past the bytes: %v allocations, %+v", a, r)
 	}
 	if a := testing.AllocsPerRun(20, func() { r = TableReport{}; WhereLoad(region, clean, &r) }); a != 0 {
@@ -552,7 +552,7 @@ func TestGoTableUnboundedTextListsAndMapKeys(t *testing.T) {
 		t.Fatalf("respelled element %q", p)
 	}
 	wide := file(list("rules", 1, elem{raw: "1234567é"}))
-	bg := BoundedLoad(bregion, wide, &rr)
+	bg := BoundedLoadTolerant(bregion, wide, &rr)
 	if bg == nil || rr.Clamped != 1 || rr.Malformed || rr.KindMismatch != 0 {
 		t.Fatalf("nine bytes under string(8): %+v", rr)
 	}

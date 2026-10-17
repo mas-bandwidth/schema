@@ -38,7 +38,11 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	if g.retain || !st.IsTable || !st.FixedDeclared || st.IsMapEntry() {
 		return
 	}
-	g.pf("func %sLoadMessages(values []%s,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool) {if report==nil {var ignored TableReport;report=&ignored};r,count:=tableMessageBatchOpen(vocabulary,data,report);defer func(){*report=r.Report}();if count<0{return 0,false};if count>int64(len(values)){return count,tableMessageRefuse(&r.Report,\"batch_too_large\")};for i:=int64(0);i<count;i++ {if !%sLoadMessageBody(&r,&values[i]){return i,false}};return count,tableMessageBatchClose(&r)}\n", st.Name, g.storageName(st.Name), st.Name)
+	// THE PLAIN NAME IS THE STRICT READ, THE TOLERANT ONE IS NAMED (docs/SPEC-TABLES.md §6.5).
+	g.pf("// %sLoadMessagesTolerant is the TOLERANT message read (docs/SPEC-TABLES.md §6.5, §3.3): it keeps every\n// recovered value, with the counters counted onto the report passed.\n", st.Name)
+	g.pf("// %sLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever\n// %sReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every\n// value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.\n", st.Name, st.Name)
+	g.pf("func %sLoadMessages(values []%s,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool) {read:=report;if read==nil{read=new(TableReport)}else{*read=TableReport{}};count,ok:=%sLoadMessagesTolerant(values,vocabulary,data,read);if !ok{return count,false};if read.Err()!=nil{for i:=int64(0);i<count;i++{%sReset(&values[i])};return 0,false};return count,true}\n", st.Name, g.storageName(st.Name), st.Name, st.Name)
+	g.pf("func %sLoadMessagesTolerant(values []%s,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool) {if report==nil {var ignored TableReport;report=&ignored};r,count:=tableMessageBatchOpen(vocabulary,data,report);defer func(){*report=r.Report}();if count<0{return 0,false};if count>int64(len(values)){return count,tableMessageRefuse(&r.Report,\"batch_too_large\")};for i:=int64(0);i<count;i++ {if !%sLoadMessageBody(&r,&values[i]){return i,false}};return count,tableMessageBatchClose(&r)}\n", st.Name, g.storageName(st.Name), st.Name)
 }
 func (g *tableGen) emitMessageCompatibility(f *ir.Field, mine ir.TableVocabularyEntry, entry, reset, ind string) {
 	g.pf("%swidened:=false;if %s.Shape.Kind!=%d||%s.Element.Kind!=%d {\n", ind, entry, mine.Kind, entry, mine.Shape.Elem)

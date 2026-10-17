@@ -31,7 +31,7 @@ func Render(record *Record) ([]byte, Report, error) {
 		return nil, report, fmt.Errorf("cards: wire is not a card: %v", reason)
 	}
 	region := alignedRegion(n)
-	root := CardLoad(region, record.wire, &report)
+	root := CardLoadTolerant(region, record.wire, &report)
 	if root == nil {
 		return nil, report, errors.New("cards: wire is malformed")
 	}

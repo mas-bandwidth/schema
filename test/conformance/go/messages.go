@@ -126,56 +126,56 @@ var messageCodecs = []messageCodec{
 		v := new(backenddemo.TableVocabulary)
 		v.Init(make([]backenddemo.TableMessageEntry, backenddemo.TableMessageEntriesHere))
 		return v
-	}, backenddemo.AnnounceMeasure, backenddemo.Announce, backenddemo.AnnounceRead, backenddemo.LoginRequestLoadMessages, backenddemo.LoginRequestMeasureMessages, backenddemo.LoginRequestSaveMessages, func(r *backenddemo.TableReport) report {
+	}, backenddemo.AnnounceMeasure, backenddemo.Announce, backenddemo.AnnounceRead, backenddemo.LoginRequestLoadMessagesTolerant, backenddemo.LoginRequestMeasureMessages, backenddemo.LoginRequestSaveMessages, func(r *backenddemo.TableReport) report {
 		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == backenddemo.TableOpenRefused}
 	}),
 	messageRow("backenddemo", "MatchResult", backenddemo.MatchResultReset, func() *backenddemo.TableVocabulary {
 		v := new(backenddemo.TableVocabulary)
 		v.Init(make([]backenddemo.TableMessageEntry, backenddemo.TableMessageEntriesHere))
 		return v
-	}, backenddemo.AnnounceMeasure, backenddemo.Announce, backenddemo.AnnounceRead, backenddemo.MatchResultLoadMessages, backenddemo.MatchResultMeasureMessages, backenddemo.MatchResultSaveMessages, func(r *backenddemo.TableReport) report {
+	}, backenddemo.AnnounceMeasure, backenddemo.Announce, backenddemo.AnnounceRead, backenddemo.MatchResultLoadMessagesTolerant, backenddemo.MatchResultMeasureMessages, backenddemo.MatchResultSaveMessages, func(r *backenddemo.TableReport) report {
 		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == backenddemo.TableOpenRefused}
 	}),
 	messageRow("backenddemo", "StorePurchase", backenddemo.StorePurchaseReset, func() *backenddemo.TableVocabulary {
 		v := new(backenddemo.TableVocabulary)
 		v.Init(make([]backenddemo.TableMessageEntry, backenddemo.TableMessageEntriesHere))
 		return v
-	}, backenddemo.AnnounceMeasure, backenddemo.Announce, backenddemo.AnnounceRead, backenddemo.StorePurchaseLoadMessages, backenddemo.StorePurchaseMeasureMessages, backenddemo.StorePurchaseSaveMessages, func(r *backenddemo.TableReport) report {
+	}, backenddemo.AnnounceMeasure, backenddemo.Announce, backenddemo.AnnounceRead, backenddemo.StorePurchaseLoadMessagesTolerant, backenddemo.StorePurchaseMeasureMessages, backenddemo.StorePurchaseSaveMessages, func(r *backenddemo.TableReport) report {
 		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == backenddemo.TableOpenRefused}
 	}),
 	messageRow("backenddemo", "Envelope", backenddemo.EnvelopeReset, func() *backenddemo.TableVocabulary {
 		v := new(backenddemo.TableVocabulary)
 		v.Init(make([]backenddemo.TableMessageEntry, backenddemo.TableMessageEntriesHere))
 		return v
-	}, backenddemo.AnnounceMeasure, backenddemo.Announce, backenddemo.AnnounceRead, backenddemo.EnvelopeLoadMessages, backenddemo.EnvelopeMeasureMessages, backenddemo.EnvelopeSaveMessages, func(r *backenddemo.TableReport) report {
+	}, backenddemo.AnnounceMeasure, backenddemo.Announce, backenddemo.AnnounceRead, backenddemo.EnvelopeLoadMessagesTolerant, backenddemo.EnvelopeMeasureMessages, backenddemo.EnvelopeSaveMessages, func(r *backenddemo.TableReport) report {
 		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == backenddemo.TableOpenRefused}
 	}),
 	messageRow("vocabdemo", "Wide00", vocabdemo.Wide00Reset, func() *vocabdemo.TableVocabulary {
 		v := new(vocabdemo.TableVocabulary)
 		v.Init(make([]vocabdemo.TableMessageEntry, vocabdemo.TableMessageEntriesHere))
 		return v
-	}, vocabdemo.AnnounceMeasure, vocabdemo.Announce, vocabdemo.AnnounceRead, vocabdemo.Wide00LoadMessages, vocabdemo.Wide00MeasureMessages, vocabdemo.Wide00SaveMessages, func(r *vocabdemo.TableReport) report {
+	}, vocabdemo.AnnounceMeasure, vocabdemo.Announce, vocabdemo.AnnounceRead, vocabdemo.Wide00LoadMessagesTolerant, vocabdemo.Wide00MeasureMessages, vocabdemo.Wide00SaveMessages, func(r *vocabdemo.TableReport) report {
 		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == vocabdemo.TableOpenRefused}
 	}),
 	messageRow("vocabdemo", "Wide09", vocabdemo.Wide09Reset, func() *vocabdemo.TableVocabulary {
 		v := new(vocabdemo.TableVocabulary)
 		v.Init(make([]vocabdemo.TableMessageEntry, vocabdemo.TableMessageEntriesHere))
 		return v
-	}, vocabdemo.AnnounceMeasure, vocabdemo.Announce, vocabdemo.AnnounceRead, vocabdemo.Wide09LoadMessages, vocabdemo.Wide09MeasureMessages, vocabdemo.Wide09SaveMessages, func(r *vocabdemo.TableReport) report {
+	}, vocabdemo.AnnounceMeasure, vocabdemo.Announce, vocabdemo.AnnounceRead, vocabdemo.Wide09LoadMessagesTolerant, vocabdemo.Wide09MeasureMessages, vocabdemo.Wide09SaveMessages, func(r *vocabdemo.TableReport) report {
 		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == vocabdemo.TableOpenRefused}
 	}),
 	messageRow("vocab9demo", "Wide00", vocab9demo.Wide00Reset, func() *vocab9demo.TableVocabulary {
 		v := new(vocab9demo.TableVocabulary)
 		v.Init(make([]vocab9demo.TableMessageEntry, vocab9demo.TableMessageEntriesHere))
 		return v
-	}, vocab9demo.AnnounceMeasure, vocab9demo.Announce, vocab9demo.AnnounceRead, vocab9demo.Wide00LoadMessages, vocab9demo.Wide00MeasureMessages, vocab9demo.Wide00SaveMessages, func(r *vocab9demo.TableReport) report {
+	}, vocab9demo.AnnounceMeasure, vocab9demo.Announce, vocab9demo.AnnounceRead, vocab9demo.Wide00LoadMessagesTolerant, vocab9demo.Wide00MeasureMessages, vocab9demo.Wide00SaveMessages, func(r *vocab9demo.TableReport) report {
 		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == vocab9demo.TableOpenRefused}
 	}),
 	messageRow("vocab9demo", "Wide19", vocab9demo.Wide19Reset, func() *vocab9demo.TableVocabulary {
 		v := new(vocab9demo.TableVocabulary)
 		v.Init(make([]vocab9demo.TableMessageEntry, vocab9demo.TableMessageEntriesHere))
 		return v
-	}, vocab9demo.AnnounceMeasure, vocab9demo.Announce, vocab9demo.AnnounceRead, vocab9demo.Wide19LoadMessages, vocab9demo.Wide19MeasureMessages, vocab9demo.Wide19SaveMessages, func(r *vocab9demo.TableReport) report {
+	}, vocab9demo.AnnounceMeasure, vocab9demo.Announce, vocab9demo.AnnounceRead, vocab9demo.Wide19LoadMessagesTolerant, vocab9demo.Wide19MeasureMessages, vocab9demo.Wide19SaveMessages, func(r *vocab9demo.TableReport) report {
 		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == vocab9demo.TableOpenRefused}
 	}),
 }

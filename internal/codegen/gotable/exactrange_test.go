@@ -29,7 +29,7 @@ func TestExact(t *testing.T) {
 	var v Big
 	var r TableReport
 	text := []byte("{\"n\":9007199254740994,\"m\":-9223372036854775808,\"u\":18446744073709551615}")
-	if !BigFromJson(&v, text, &r) || v.N != 9007199254740993 || v.M != -9223372036854775807 || v.U != 18446744073709551614 {
+	if !BigFromJsonTolerant(&v, text, &r) || v.N != 9007199254740993 || v.M != -9223372036854775807 || v.U != 18446744073709551614 {
 		t.Fatalf("clamp read %+v report %+v", v, r)
 	}
 	v = Big{}

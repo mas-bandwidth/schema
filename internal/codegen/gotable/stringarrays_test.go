@@ -184,7 +184,7 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 	full := save(t, v, &b)
 	var report TableReport
 	region := make([]byte, 1<<16)
-	got := ListsLoad(region, full, &report)
+	got := ListsLoadTolerant(region, full, &report)
 	if got == nil || report != (TableReport{}) {
 		t.Fatalf("load %+v", report)
 	}
@@ -258,7 +258,7 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 	jb.Init()
 	defer jb.Shutdown()
 	report = TableReport{}
-	if !ListsFromJson(&jb, jtext, &report) || report != (TableReport{}) {
+	if !ListsFromJsonTolerant(&jb, jtext, &report) || report != (TableReport{}) {
 		t.Fatalf("FromJson %+v", report)
 	}
 	if !bytes.Equal(save(t, jb.GetRoot(), &jb), full) {
@@ -270,7 +270,7 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 	kb.Init()
 	defer kb.Shutdown()
 	report = TableReport{}
-	if !ListsFromJson(&kb, []byte(` + "`" + `{"rules":["a",7,null,"123456789","b","c"],"first":[null,"y"]}` + "`" + `), &report) {
+	if !ListsFromJsonTolerant(&kb, []byte(` + "`" + `{"rules":["a",7,null,"123456789","b","c"],"first":[null,"y"]}` + "`" + `), &report) {
 		t.Fatalf("FromJson %+v", report)
 	}
 	if report.KindMismatch != 2 || report.Clamped != 3 {
@@ -302,7 +302,7 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 	rb.Init()
 	defer rb.Shutdown()
 	report = TableReport{}
-	if !GoalListFromJson(&rb, []byte(` + "`" + `["a","b"]` + "`" + `), &report) || report != (TableReport{}) {
+	if !GoalListFromJsonTolerant(&rb, []byte(` + "`" + `["a","b"]` + "`" + `), &report) || report != (TableReport{}) {
 		t.Fatalf("array root read %+v", report)
 	}
 	if p, ok := GoalListGoalsTextAt(rb.GetRoot(), 1, &rb.Arena); !ok || string(p) != "b" || rb.GetRoot().Goals.Count != 2 {
@@ -312,7 +312,7 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 	bad.Init()
 	defer bad.Shutdown()
 	report = TableReport{}
-	if GoalListFromJson(&bad, []byte(` + "`" + `{"goals":["a"]}` + "`" + `), &report) || !report.Malformed || report.Reason != "json_root_not_array: GoalList" {
+	if GoalListFromJsonTolerant(&bad, []byte(` + "`" + `{"goals":["a"]}` + "`" + `), &report) || !report.Malformed || report.Reason != "json_root_not_array: GoalList" {
 		t.Fatalf("object at an array root: %+v", report)
 	}
 
@@ -323,7 +323,7 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 	hd.Init()
 	defer hd.Shutdown()
 	report = TableReport{}
-	if !HolderFromJson(&hd, []byte(` + "`" + `{"g":["x","y"],"bases":["a",null,""]}` + "`" + `), &report) || report != (TableReport{}) {
+	if !HolderFromJsonTolerant(&hd, []byte(` + "`" + `{"g":["x","y"],"bases":["a",null,""]}` + "`" + `), &report) || report != (TableReport{}) {
 		t.Fatalf("nested array root read %+v", report)
 	}
 	if !hd.Lock() {
@@ -344,14 +344,14 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 	hwire := make([]byte, HolderMeasure(hd.AsConst()))
 	HolderSave(hd.AsConst(), hwire)
 	report = TableReport{}
-	if back := HolderLoad(make([]byte, 1<<12), hwire, &report); back == nil || report != (TableReport{}) || back.Bases.Count != 3 || back.G.Goals.Count != 2 {
+	if back := HolderLoadTolerant(make([]byte, 1<<12), hwire, &report); back == nil || report != (TableReport{}) || back.Bases.Count != 3 || back.G.Goals.Count != 2 {
 		t.Fatalf("holder wire round trip %+v", report)
 	}
 	var ho HolderBuilder
 	ho.Init()
 	defer ho.Shutdown()
 	report = TableReport{}
-	if !HolderFromJson(&ho, []byte(` + "`" + `{"g":{"goals":["a"]}}` + "`" + `), &report) || report.KindMismatch != 1 {
+	if !HolderFromJsonTolerant(&ho, []byte(` + "`" + `{"g":{"goals":["a"]}}` + "`" + `), &report) || report.KindMismatch != 1 {
 		t.Fatalf("an object where the array root is: %+v", report)
 	}
 
@@ -389,7 +389,7 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 		{"length", []string{"123456789"}, 1},
 	} {
 		report = TableReport{}
-		got := ListsLoad(make([]byte, 1<<12), file(c.elements...), &report)
+		got := ListsLoadTolerant(make([]byte, 1<<12), file(c.elements...), &report)
 		if got == nil || report.Clamped != 1 || report.Malformed || got.RulesCount != c.count {
 			t.Fatalf("%s: %+v", c.name, report)
 		}
@@ -397,11 +397,11 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 			t.Fatalf("%s: ReadStrict %v", c.name, err)
 		}
 	}
-	if s, _ := text(t, ListsLoad(make([]byte, 1<<12), file("123456789"), nil), "rules", 0, nil); s != "12345678" {
+	if s, _ := text(t, ListsLoadTolerant(make([]byte, 1<<12), file("123456789"), nil), "rules", 0, nil); s != "12345678" {
 		t.Fatalf("length clamp %q", s)
 	}
 	report = TableReport{}
-	ListsLoad(make([]byte, 1<<12), file("ok", "\xff\xfe"), &report)
+	ListsLoadTolerant(make([]byte, 1<<12), file("ok", "\xff\xfe"), &report)
 	if !report.Malformed {
 		t.Fatalf("ill-formed UTF-8 element: %+v", report)
 	}

@@ -1459,7 +1459,32 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 		}
 	}
 }
+
+// TableEntityLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
+// recovered value, with the counters counted onto the report passed.
+// TableEntityLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
+// TableEntityReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
+// value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
 func TableEntityLoadMessages(values []TableEntity, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	count, ok := TableEntityLoadMessagesTolerant(values, vocabulary, data, read)
+	if !ok {
+		return count, false
+	}
+	if read.Err() != nil {
+		for i := int64(0); i < count; i++ {
+			TableEntityReset(&values[i])
+		}
+		return 0, false
+	}
+	return count, true
+}
+func TableEntityLoadMessagesTolerant(values []TableEntity, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
@@ -1648,7 +1673,32 @@ func TableStatLoadMessageBody(r *TableMessageReader, value *TableStat) bool {
 		}
 	}
 }
+
+// TableStatLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
+// recovered value, with the counters counted onto the report passed.
+// TableStatLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
+// TableStatReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
+// value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
 func TableStatLoadMessages(values []TableStat, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	count, ok := TableStatLoadMessagesTolerant(values, vocabulary, data, read)
+	if !ok {
+		return count, false
+	}
+	if read.Err() != nil {
+		for i := int64(0); i < count; i++ {
+			TableStatReset(&values[i])
+		}
+		return 0, false
+	}
+	return count, true
+}
+func TableStatLoadMessagesTolerant(values []TableStat, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
@@ -3274,7 +3324,32 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 		}
 	}
 }
+
+// TableMixedLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
+// recovered value, with the counters counted onto the report passed.
+// TableMixedLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
+// TableMixedReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
+// value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
 func TableMixedLoadMessages(values []TableMixed, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
+	}
+	count, ok := TableMixedLoadMessagesTolerant(values, vocabulary, data, read)
+	if !ok {
+		return count, false
+	}
+	if read.Err() != nil {
+		for i := int64(0); i < count; i++ {
+			TableMixedReset(&values[i])
+		}
+		return 0, false
+	}
+	return count, true
+}
+func TableMixedLoadMessagesTolerant(values []TableMixed, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored

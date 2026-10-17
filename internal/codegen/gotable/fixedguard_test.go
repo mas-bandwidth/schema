@@ -38,7 +38,7 @@ func TestForeignTwoByteTagFiresNoArm(t *testing.T) {
 	got := make([]Host, 1)
 	var r TableReport
 	plan := make([]TableFixedEntry, 4096)
-	if n := HostFixedLoad(got, buf, plan, &r); n != 1 {
+	if n := HostFixedLoadTolerant(got, buf, plan, &r); n != 1 {
 		t.Fatalf("load n=%d %+v", n, r)
 	}
 	if got[0].Pick.Type != WideTypeNone {
@@ -146,7 +146,7 @@ func TestForgedOrdinalCountsOnBothPlans(t *testing.T) {
 
 	got := make([]Host, 1)
 	var identity TableReport
-	if n := HostFixedLoad(got, buf, make([]TableFixedEntry, 256), &identity); n != 1 {
+	if n := HostFixedLoadTolerant(got, buf, make([]TableFixedEntry, 256), &identity); n != 1 {
 		t.Fatalf("load n=%d %+v", n, identity)
 	}
 	if got[0].G != GradeNone || identity.Clamped != 1 {
@@ -199,7 +199,7 @@ func TestPlanTooLargeOnTheIdentityLane(t *testing.T) {
 		t.Fatalf("save %d", n)
 	}
 	var r TableReport
-	if n := HostFixedLoad(make([]Host, 1), buf, make([]TableFixedEntry, 1), &r); n != -1 {
+	if n := HostFixedLoadTolerant(make([]Host, 1), buf, make([]TableFixedEntry, 1), &r); n != -1 {
 		t.Fatalf("a one-entry plan slice read n=%d", n)
 	}
 	if r.Reason != "plan_too_large" {
@@ -217,7 +217,7 @@ func TestARefusalHasCountersAllZeroAndAReportIsReusable(t *testing.T) {
 	form1 := make([]byte, len(buf))
 	copy(form1, buf)
 	form1[0] = 1
-	if n := HostFixedLoad(make([]Host, 1), form1, make([]TableFixedEntry, 256), &r); n != -1 {
+	if n := HostFixedLoadTolerant(make([]Host, 1), form1, make([]TableFixedEntry, 256), &r); n != -1 {
 		t.Fatalf("a form-1 file read n=%d", n)
 	}
 	if r.Reason != "previous_form" {
@@ -227,7 +227,7 @@ func TestARefusalHasCountersAllZeroAndAReportIsReusable(t *testing.T) {
 		t.Fatalf("a refusal by name has counters all zero: %+v", r)
 	}
 	// THE SAME REPORT, REUSED: a clean read reports clean.
-	if n := HostFixedLoad(make([]Host, 1), buf, make([]TableFixedEntry, 256), &r); n != 1 {
+	if n := HostFixedLoadTolerant(make([]Host, 1), buf, make([]TableFixedEntry, 256), &r); n != 1 {
 		t.Fatalf("the clean read n=%d %+v", n, r)
 	}
 	if r.Verdict == TableOpenRefused || r.Reason != "" {

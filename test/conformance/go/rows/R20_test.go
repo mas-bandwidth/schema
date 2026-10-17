@@ -361,7 +361,7 @@ func TestRowR20VocabularyIdentity(t *testing.T) {
 	var kback tblk2.Root
 	tblk2.RootReset(&kback)
 	var kr tblk2.TableReport
-	if !tblk2.RootLoad(&kback, kwire, &kr) {
+	if !tblk2.RootLoadTolerant(&kback, kwire, &kr) {
 		t.Fatalf("the respelled reader refused the file: %+v", kr)
 	}
 	if kback.Grade != 0 {

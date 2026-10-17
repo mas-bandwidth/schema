@@ -10,14 +10,14 @@ import "cards"
 func init() {
 	codecTable = append(codecTable,
 		regionRow("cards", "Card",
-			cards.CardLoadMeasure, cards.CardLoad, cards.CardMeasure, cards.CardSave,
+			cards.CardLoadMeasure, cards.CardLoadTolerant, cards.CardMeasure, cards.CardSave,
 			func(text []byte, r *cards.TableReport) (*cards.Card, []byte, bool) {
 				var b cards.CardBuilder
 				if !b.Init() {
 					return nil, nil, false
 				}
 				defer b.Shutdown()
-				ok := cards.CardFromJson(&b, text, r)
+				ok := cards.CardFromJsonTolerant(&b, text, r)
 				if !b.Lock() {
 					return nil, nil, false
 				}

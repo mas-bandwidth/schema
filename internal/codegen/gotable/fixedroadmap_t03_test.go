@@ -47,11 +47,11 @@ func t03GoTable(t *testing.T, u *ir.Unit, name string) *ir.Struct {
 	return st
 }
 
-// t03GoLoad is the emitted body of one `<T>FixedLoad(` up to its column-zero
+// t03GoLoad is the emitted body of one `<T>FixedLoadTolerant(` up to its column-zero
 // closing brace.
 func t03GoLoad(t *testing.T, src, name string) string {
 	t.Helper()
-	body := funcSource(src, "func "+name+"FixedLoad(")
+	body := funcSource(src, "func "+name+"FixedLoadTolerant(")
 	if body == "" {
 		t.Fatalf("the emitted module has no %sFixedLoad", name)
 	}

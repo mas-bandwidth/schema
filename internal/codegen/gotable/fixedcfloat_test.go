@@ -168,7 +168,7 @@ func readOne(file string, bits uint32, clamped int32) string {
 	var got [1]Reading
 	var plan [64]TableFixedEntry
 	var report TableReport
-	if n := ReadingFixedLoad(got[:], data, plan[:], &report); n != 1 {
+	if n := ReadingFixedLoadTolerant(got[:], data, plan[:], &report); n != 1 {
 		t.Fatalf("the NEW reader refused a lawful old file: n=%%d why=%%q", n, report.Reason)
 	}
 	if b := math.Float32bits(got[0].V); b != %#x {
