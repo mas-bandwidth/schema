@@ -738,6 +738,10 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	if f.IsTextList() {
 		// a TEXT LIST (docs/SPEC-TABLES.md §2.13): 1 for string(M) elements, 2 for ?string(M)
 		g.pf("TextList:%d,\n", textListCode(f))
+		if f.TextTotal > 0 {
+			// its total (§2.13): the JSON walk holds it, and names the field
+			g.pf("TextTotal:%d,TextTotalOf:%q,\n", f.TextTotal, f.TextListElem().MapEntryOf)
+		}
 	}
 	if f.IsList() {
 		_, align := ir.ListElementLayout(g.unit, f)

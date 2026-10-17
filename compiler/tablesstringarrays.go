@@ -14,6 +14,9 @@ import (
 // refuseTextForms is the named refusal [Compiler.Generate] gives every target
 // but go for a unit holding a text list or an array-root table.
 func refuseTextForms(u *ir.Unit, target string) error {
+	if fields := ir.TableTextTotals(u); len(fields) > 0 {
+		return fmt.Errorf("target %q refuses the construct text list total on field %s — | total = N on a text list is Go's first; no other target carries it until its turn (docs/SPEC-TABLES.md §2.13)", target, fields[0])
+	}
 	if fields := ir.TableTextLists(u); len(fields) > 0 {
 		return fmt.Errorf("target %q refuses the construct text list on field %s — a [..N]string(M) or []string(M) list is Go's first; no other target carries it until its turn (docs/SPEC-TABLES.md §2.13)", target, fields[0])
 	}

@@ -2069,7 +2069,7 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 	// the section's tags, and its valued entries with every refusal the
 	// vocabulary shares already drawn (a bare valued key, doc, round, an
 	// unknown or repeated key), so nothing below meets a nil value
-	tags, valued := c.qualification("field "+f.Name, "a field", f.Attrs, fieldKeys)
+	tags, valued := c.qualification("field "+f.Name, "a field", f.Attrs, fieldKeys, "total")
 	out.Tags = tags
 	// THE `deprecated` MARKER (docs/SPEC-TABLES.md §2.10). It is a TAG, not a
 	// valued key — there is nothing for it to take a value of — so it costs
@@ -2094,6 +2094,13 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 		switch a.Key {
 		case "min", "max", "resolution":
 			// validated below
+		case "total":
+			// a text list's total (docs/SPEC-TABLES.md §2.13): read and placed
+			// by resolveTextListField, and refused by name on every other field
+			if out.TextTotal == 0 {
+				c.errf(a.Pos, "field %s: total applies only to a text list — | total = N bounds the sum of a [..N]string(M) or []string(M) list's element bytes in a plain table; drop the attribute (docs/SPEC-TABLES.md §2.13, §11)", f.Name)
+				return
+			}
 		case "was":
 			// rename aliasing (docs/SPEC-TABLES.md): the field's TABLE-wire id
 			// stays the hash of the OLD name, so identity survives the

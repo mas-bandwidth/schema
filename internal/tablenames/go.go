@@ -135,6 +135,8 @@ func init() {
 		Name{Name: "TableList", What: "unbounded container storage, framing and descriptor walks"},
 		Name{Name: "TableClampedField", What: "text lists and the array root (docs/SPEC-TABLES.md §2.13, §16.10)"},
 		Name{Name: "tableTextClamped", What: "text lists and the array root (docs/SPEC-TABLES.md §2.13, §16.10)"},
+		Name{Name: "tableJsonTextBytes", What: "a text list's total (docs/SPEC-TABLES.md §2.13)"},
+		Name{Name: "tableJsonTextTotalKeep", What: "a text list's total (docs/SPEC-TABLES.md §2.13)"},
 		Name{Name: "tableJsonWriteTextElement", What: "text lists and the array root (docs/SPEC-TABLES.md §2.13, §16.10)"},
 		Name{Name: "tableJsonReadTextElement", What: "text lists and the array root (docs/SPEC-TABLES.md §2.13, §16.10)"},
 		Name{Name: "TableExtentCarve", What: "unbounded container storage, framing and descriptor walks"},
