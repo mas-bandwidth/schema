@@ -9414,9 +9414,10 @@ The builder is designed to go wide, lock-free by ownership:
   field as the binary read does**: a JSON object that leaves a `| required`
   field out counts `missing_required` once, naming the fields in its reason
   (§2.3), so the plain `FromJson` refuses it, and `FromJsonTolerant` answers
-  `false` on it too, with the count, as the binary builder read does: §2.3
-  refuses a record missing a required field in every form, so no tolerant
-  read keeps one.
+  `false` on it too, with the count, as the builder read
+  `LoadBuilderTolerant` does (§2.3 refuses the absence in the text form as
+  in the binary walk); the region read `LoadTolerant` alone still hands back
+  its root with `missing_required` counted, as it did before this rule.
   **Each keeps its signature and answers its own refusal value**: `false` for
   `Load` into a value, `LoadBuilder` and `FromJson`, a nil root for the region
   `Load`, `-1` for `FixedLoad`, and `ok == false` for `LoadMessages`, whose count is
@@ -9443,7 +9444,9 @@ The builder is designed to go wide, lock-free by ownership:
   every wire the framing walk accepts and returns the recovered value with
   the counters counted (§4); it refuses only what it refused before this rule:
   framing damage, a form it does not carry, and a body the binary walk stops
-  on, §2.3's missing required field among them. A tool that re-walks a damaged file or
+  on (a missing required field, §2.3, answers `false` from
+  `LoadBuilderTolerant` and `FromJsonTolerant`; the region `LoadTolerant`
+  returns its root with the count). A tool that re-walks a damaged file or
   reports on a fleet's mixed builds calls it by that name. The retain family
   (`LoadRetain`, `LoadRetainBuilder`, `LoadRetainMessages`, §6.6) and the
   cook's and block's `Open` are outside this rule today and keep their
