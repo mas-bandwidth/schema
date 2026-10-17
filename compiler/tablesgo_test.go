@@ -233,6 +233,15 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 			files[fmt.Sprintf("%d/%s", i, name)] = data
 		}
 	}
+	// the textform surface (docs/SPEC-TABLES.md §16.9) is selected by name
+	// only, so its runtime is scanned from a generate that names it
+	textform, err := New().Generate(unitFromSource(t, goRuntimeSrc), "go", Options{"surface": "wire,fixed,json,cook,block,view,message,retain,textform"})
+	if err != nil {
+		t.Fatalf("--lang go --surface ...,textform: %v", err)
+	}
+	for name, data := range textform {
+		files["textform/"+name] = data
+	}
 	emitted, declared := goEmittedNames(t, files)
 	if len(emitted) == 0 {
 		t.Fatal("the scan found no Table* identifier in the emitted Go at all — the scan, not the registry, is what broke")

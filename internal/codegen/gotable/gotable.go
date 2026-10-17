@@ -620,6 +620,18 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 			forms[name] = FormJson
 		}
 		maps.Copy(out, texts)
+		// the HAND-EDITABLE text form (§16.9) rides on the JSON walk, in a file
+		// of its own, only when the textform surface is named
+		if s.TextForm {
+			handTexts, err := generateTextFormFiles(u, closure, home)
+			if err != nil {
+				return nil, nil, err
+			}
+			for name := range handTexts {
+				forms[name] = FormJson
+			}
+			maps.Copy(out, handTexts)
+		}
 	}
 	if s.View {
 		view, err := generateViewFile(u, closure, armSlots)

@@ -62,6 +62,17 @@ tables-go-fixedform:
 		./internal/codegen/gotable -run 'TestFixedForm|TestFixedPlanMaxCoversEveryLineagePlan|TestTimestampKindInGo|TestFixedLoadAllocatesNothingPerCall|TestFixedFormCountAndLengthOverBoundRefuseByName|TestFixedLoadNamesEveryRefusal|TestFixedFormWriteSideRefusesInEveryGoBuild|TestGoTableWritersRefuseWhatTheirReadersRefuse|TestFixedLoadUnknownHashIsLayoutUnknown' -count=1
 test-go: tables-go-fixedform
 
+# The hand-editable text form (docs/SPEC-TABLES.md §16.9): the textform surface,
+# both table classes, held to test/conformance/textform/ (the positive vectors
+# and their oracles, the leaf edits, every refusal by name, the attachment
+# oracle and a seeded edit fuzz).
+.PHONY: tables-go-textform
+tables-go-textform:
+	sh test/slowgate/proof tables-go-textform \
+		'TestCommentedTextForm/emitted TestCommentedTextForm/fixed TestCommentedTextForm/variable' \
+		./internal/codegen/gotable -run '^TestCommentedTextForm$$' -count=1 -timeout 600s
+test-go: tables-go-textform
+
 .PHONY: tables-go-json-walk
 tables-go-json-walk: build/tables-generated-go/.stamp
 	@rm -rf build/json-walk-go && mkdir -p build/json-walk-go
