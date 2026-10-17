@@ -25,7 +25,7 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 // (docs/SPEC-TABLES.md §2.14): the enum value, its Error case and its Err line;
 // then once more with the strict plain read names (docs/SPEC-TABLES.md §6.5).
 var neitherDigest = map[string]string{
-	"go":  "REMEASURE",
+	"go":  "2f37c3dd622f69e45100cee37c61c5cc62a242fd38622376d5109e1ff07643f6",
 	"cpp": "5aabda2cf12ca342bd480b18084def13f06d87a85b6bdddeea12f955f761da1d",
 }
 

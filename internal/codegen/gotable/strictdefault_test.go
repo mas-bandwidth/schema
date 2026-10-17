@@ -86,6 +86,15 @@ table Var { n int32 = 1 | min = 0, max = 10
  req int32 | required }
 `, strictDefaultVariableProbe)
 	})
+	// An `integrity` root (§2.14) emits its own tolerant twins behind the
+	// trailer check; the plain Load and LoadBuilder over them are strict too.
+	t.Run("integrity", func(t *testing.T) {
+		t.Parallel()
+		runGenerated(t, `package probe
+table Seal | integrity = "crc32c" { n int32 = 1 | min = 0, max = 10
+ m int32 = 2 }
+`, strictDefaultIntegrityProbe)
+	})
 }
 
 // strictDefaultFixedProbe runs inside the generated fixed unit; %#v is the
@@ -245,6 +254,41 @@ func TestVariableStrict(t *testing.T) {
 			if root == nil || ok || !jok || !c.counted(tr) || !c.counted(br) || !c.counted(jr) || jb.GetRoot().N != 3 {t.Fatalf("missing_required: tolerant reads: %+v %+v %+v", tr, br, jr)}
 		} else if root == nil || !ok || !jok || !c.counted(tr) || !c.counted(br) || !c.counted(jr) {t.Fatalf("%s: a tolerant read did not keep the recovered value: %+v %+v %+v", c.name, tr, br, jr)}
 		b.Shutdown();jb.Shutdown()
+	}
+}
+`
+
+// strictDefaultIntegrityProbe runs inside the generated integrity unit: a
+// clamped wire under a good trailer, and a clean wire whose trailer is broken.
+const strictDefaultIntegrityProbe = `package probe
+import ("errors";"testing";"unsafe")
+func sealed(n byte) []byte {var ids TableIds;buf:=make([]byte,128);w:=TableWriter{Buffer:buf,Ids:&ids};w.Put8(1);w.Id(SealTableFields[0].Id);w.Put8(4);for _,b:=range []byte{n,0,0,0}{w.Put8(b)};w.Put8(0);w.Trailer();m:=tableIntegritySeal(buf,int64(w.Offset));return buf[:m]}
+func region(n int64) []byte {raw:=make([]byte,n+64);off:=int((64-uintptr(unsafe.Pointer(&raw[0]))%64)%64);return raw[off:off+int(n)]}
+func TestIntegrityStrict(t *testing.T) {
+	t.Parallel()
+	clean := sealed(3)
+	broken := append([]byte(nil), clean...)
+	broken[len(broken)-1] ^= 0x01
+	var r TableReport
+	if root := SealLoad(region(SealLoadMeasure(clean)), clean, &r); root == nil || root.N != 3 || r.Err() != nil {t.Fatalf("clean Load: %+v", r)}
+	{var b SealBuilder;if !b.Init(){t.Fatal("init")};if !SealLoadBuilder(&b, clean, &r) || b.GetRoot().N != 3 || r.Err() != nil {t.Fatalf("clean LoadBuilder: %+v", r)};b.Shutdown()}
+	if got, err := SealReadStrict(clean); err != nil || got.N != 3 {t.Fatalf("clean ReadStrict: %v", err)}
+	for _, c := range []struct{name string; wire []byte; want error; kept bool}{
+		{"clamped", sealed(100), TableRefuseClamped, true},
+		{"integrity_mismatch", broken, TableRefuseIntegrityMismatch, false},
+	} {
+		r = TableReport{}
+		if root := SealLoad(region(256), c.wire, &r); root != nil || !errors.Is(r.Err(), c.want) {t.Fatalf("%s: plain Load did not refuse by name: %+v err=%v", c.name, r, r.Err())}
+		{var b SealBuilder;if !b.Init(){t.Fatal("init")};r = TableReport{};if SealLoadBuilder(&b, c.wire, &r) || !errors.Is(r.Err(), c.want) {t.Fatalf("%s: plain LoadBuilder did not refuse by name: %+v", c.name, r)};b.Shutdown()}
+		if got, err := SealReadStrict(c.wire); got != nil || !errors.Is(err, c.want) {t.Fatalf("%s: ReadStrict %v", c.name, err)}
+		var tr, br TableReport
+		root := SealLoadTolerant(region(256), c.wire, &tr)
+		var b SealBuilder;if !b.Init(){t.Fatal("init")}
+		ok := SealLoadBuilderTolerant(&b, c.wire, &br)
+		if c.kept {
+			if root == nil || !ok || tr.Clamped != 1 || br.Clamped != 1 || root.N != 10 {t.Fatalf("%s: a tolerant read did not keep the recovered value: %+v %+v", c.name, tr, br)}
+		} else if root != nil || ok || !errors.Is(tr.Err(), c.want) || !errors.Is(br.Err(), c.want) {t.Fatalf("%s: a tolerant read took a broken trailer: %+v %+v", c.name, tr, br)}
+		b.Shutdown()
 	}
 }
 `
