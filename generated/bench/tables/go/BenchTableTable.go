@@ -4134,11 +4134,13 @@ func TableEntityLoadTolerant(value *TableEntity, data []byte, report *TableRepor
 // answers false. A supplied report receives THIS read's report, and on a refusal
 // report.Err() is the typed reason. TableEntityLoadTolerant keeps a recovered value.
 func TableEntityLoad(value *TableEntity, data []byte, report *TableReport) bool {
-	var read TableReport
-	ok := TableEntityLoadTolerant(value, data, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := TableEntityLoadTolerant(value, data, read)
 	if !ok || read.Err() != nil {
 		TableEntityReset(value)
 		return false
@@ -4422,11 +4424,13 @@ func TableStatLoadTolerant(value *TableStat, data []byte, report *TableReport) b
 // answers false. A supplied report receives THIS read's report, and on a refusal
 // report.Err() is the typed reason. TableStatLoadTolerant keeps a recovered value.
 func TableStatLoad(value *TableStat, data []byte, report *TableReport) bool {
-	var read TableReport
-	ok := TableStatLoadTolerant(value, data, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := TableStatLoadTolerant(value, data, read)
 	if !ok || read.Err() != nil {
 		TableStatReset(value)
 		return false
@@ -6230,11 +6234,13 @@ func TableMixedLoadTolerant(value *TableMixed, data []byte, report *TableReport)
 // answers false. A supplied report receives THIS read's report, and on a refusal
 // report.Err() is the typed reason. TableMixedLoadTolerant keeps a recovered value.
 func TableMixedLoad(value *TableMixed, data []byte, report *TableReport) bool {
-	var read TableReport
-	ok := TableMixedLoadTolerant(value, data, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := TableMixedLoadTolerant(value, data, read)
 	if !ok || read.Err() != nil {
 		TableMixedReset(value)
 		return false
@@ -6621,11 +6627,13 @@ func TableHitEventLoadTolerant(value *TableHitEvent, data []byte, report *TableR
 // answers false. A supplied report receives THIS read's report, and on a refusal
 // report.Err() is the typed reason. TableHitEventLoadTolerant keeps a recovered value.
 func TableHitEventLoad(value *TableHitEvent, data []byte, report *TableReport) bool {
-	var read TableReport
-	ok := TableHitEventLoadTolerant(value, data, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := TableHitEventLoadTolerant(value, data, read)
 	if !ok || read.Err() != nil {
 		TableHitEventReset(value)
 		return false
@@ -6914,11 +6922,13 @@ func TableChatEventLoadTolerant(value *TableChatEvent, data []byte, report *Tabl
 // answers false. A supplied report receives THIS read's report, and on a refusal
 // report.Err() is the typed reason. TableChatEventLoadTolerant keeps a recovered value.
 func TableChatEventLoad(value *TableChatEvent, data []byte, report *TableReport) bool {
-	var read TableReport
-	ok := TableChatEventLoadTolerant(value, data, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := TableChatEventLoadTolerant(value, data, read)
 	if !ok || read.Err() != nil {
 		TableChatEventReset(value)
 		return false
@@ -7207,11 +7217,13 @@ func TablePickupEventLoadTolerant(value *TablePickupEvent, data []byte, report *
 // answers false. A supplied report receives THIS read's report, and on a refusal
 // report.Err() is the typed reason. TablePickupEventLoadTolerant keeps a recovered value.
 func TablePickupEventLoad(value *TablePickupEvent, data []byte, report *TableReport) bool {
-	var read TableReport
-	ok := TablePickupEventLoadTolerant(value, data, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := TablePickupEventLoadTolerant(value, data, read)
 	if !ok || read.Err() != nil {
 		TablePickupEventReset(value)
 		return false
@@ -8508,11 +8520,13 @@ func TableEntityFixedSaveReason(values []TableEntity, buffer []byte) (int64, err
 // every refusal of TableEntityFixedLoadTolerant and for a read whose report.Err() is not nil, with
 // every value it had written reset. A supplied report receives THIS read's report.
 func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
-	var read TableReport
-	n := TableEntityFixedLoadTolerant(values, data, plan, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	n := TableEntityFixedLoadTolerant(values, data, plan, read)
 	if n < 0 {
 		return -1
 	}
@@ -8779,11 +8793,13 @@ func TableStatFixedSaveReason(values []TableStat, buffer []byte) (int64, error) 
 // every refusal of TableStatFixedLoadTolerant and for a read whose report.Err() is not nil, with
 // every value it had written reset. A supplied report receives THIS read's report.
 func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
-	var read TableReport
-	n := TableStatFixedLoadTolerant(values, data, plan, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	n := TableStatFixedLoadTolerant(values, data, plan, read)
 	if n < 0 {
 		return -1
 	}
@@ -9275,11 +9291,13 @@ func TableMixedFixedSaveReason(values []TableMixed, buffer []byte) (int64, error
 // every refusal of TableMixedFixedLoadTolerant and for a read whose report.Err() is not nil, with
 // every value it had written reset. A supplied report receives THIS read's report.
 func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
-	var read TableReport
-	n := TableMixedFixedLoadTolerant(values, data, plan, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	n := TableMixedFixedLoadTolerant(values, data, plan, read)
 	if n < 0 {
 		return -1
 	}

@@ -1466,11 +1466,13 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 // TableEntityReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
 func TableEntityLoadMessages(values []TableEntity, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	var read TableReport
-	count, ok := TableEntityLoadMessagesTolerant(values, vocabulary, data, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	count, ok := TableEntityLoadMessagesTolerant(values, vocabulary, data, read)
 	if !ok {
 		return count, false
 	}
@@ -1678,11 +1680,13 @@ func TableStatLoadMessageBody(r *TableMessageReader, value *TableStat) bool {
 // TableStatReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
 func TableStatLoadMessages(values []TableStat, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	var read TableReport
-	count, ok := TableStatLoadMessagesTolerant(values, vocabulary, data, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	count, ok := TableStatLoadMessagesTolerant(values, vocabulary, data, read)
 	if !ok {
 		return count, false
 	}
@@ -3327,11 +3331,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 // TableMixedReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
 func TableMixedLoadMessages(values []TableMixed, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	var read TableReport
-	count, ok := TableMixedLoadMessagesTolerant(values, vocabulary, data, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	count, ok := TableMixedLoadMessagesTolerant(values, vocabulary, data, read)
 	if !ok {
 		return count, false
 	}

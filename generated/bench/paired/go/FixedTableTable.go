@@ -226,11 +226,13 @@ func FixedTableLoadTolerant(value *FixedTable, data []byte, report *TableReport)
 // answers false. A supplied report receives THIS read's report, and on a refusal
 // report.Err() is the typed reason. FixedTableLoadTolerant keeps a recovered value.
 func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
-	var read TableReport
-	ok := FixedTableLoadTolerant(value, data, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := FixedTableLoadTolerant(value, data, read)
 	if !ok || read.Err() != nil {
 		FixedTableReset(value)
 		return false
@@ -1669,11 +1671,13 @@ func FixedTableFixedSaveReason(values []FixedTable, buffer []byte) (int64, error
 // every refusal of FixedTableFixedLoadTolerant and for a read whose report.Err() is not nil, with
 // every value it had written reset. A supplied report receives THIS read's report.
 func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
-	var read TableReport
-	n := FixedTableFixedLoadTolerant(values, data, plan, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	n := FixedTableFixedLoadTolerant(values, data, plan, read)
 	if n < 0 {
 		return -1
 	}

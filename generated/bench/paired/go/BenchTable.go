@@ -4074,11 +4074,13 @@ func MixedEntityLoadTolerant(value *MixedEntity, data []byte, report *TableRepor
 // answers false. A supplied report receives THIS read's report, and on a refusal
 // report.Err() is the typed reason. MixedEntityLoadTolerant keeps a recovered value.
 func MixedEntityLoad(value *MixedEntity, data []byte, report *TableReport) bool {
-	var read TableReport
-	ok := MixedEntityLoadTolerant(value, data, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := MixedEntityLoadTolerant(value, data, read)
 	if !ok || read.Err() != nil {
 		MixedEntityReset(value)
 		return false
@@ -4351,11 +4353,13 @@ func MixedStatLoadTolerant(value *MixedStat, data []byte, report *TableReport) b
 // answers false. A supplied report receives THIS read's report, and on a refusal
 // report.Err() is the typed reason. MixedStatLoadTolerant keeps a recovered value.
 func MixedStatLoad(value *MixedStat, data []byte, report *TableReport) bool {
-	var read TableReport
-	ok := MixedStatLoadTolerant(value, data, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := MixedStatLoadTolerant(value, data, read)
 	if !ok || read.Err() != nil {
 		MixedStatReset(value)
 		return false
@@ -4735,11 +4739,13 @@ func MixedHitEventLoadTolerant(value *MixedHitEvent, data []byte, report *TableR
 // answers false. A supplied report receives THIS read's report, and on a refusal
 // report.Err() is the typed reason. MixedHitEventLoadTolerant keeps a recovered value.
 func MixedHitEventLoad(value *MixedHitEvent, data []byte, report *TableReport) bool {
-	var read TableReport
-	ok := MixedHitEventLoadTolerant(value, data, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := MixedHitEventLoadTolerant(value, data, read)
 	if !ok || read.Err() != nil {
 		MixedHitEventReset(value)
 		return false
@@ -5028,11 +5034,13 @@ func MixedChatEventLoadTolerant(value *MixedChatEvent, data []byte, report *Tabl
 // answers false. A supplied report receives THIS read's report, and on a refusal
 // report.Err() is the typed reason. MixedChatEventLoadTolerant keeps a recovered value.
 func MixedChatEventLoad(value *MixedChatEvent, data []byte, report *TableReport) bool {
-	var read TableReport
-	ok := MixedChatEventLoadTolerant(value, data, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := MixedChatEventLoadTolerant(value, data, read)
 	if !ok || read.Err() != nil {
 		MixedChatEventReset(value)
 		return false
@@ -5321,11 +5329,13 @@ func MixedPickupEventLoadTolerant(value *MixedPickupEvent, data []byte, report *
 // answers false. A supplied report receives THIS read's report, and on a refusal
 // report.Err() is the typed reason. MixedPickupEventLoadTolerant keeps a recovered value.
 func MixedPickupEventLoad(value *MixedPickupEvent, data []byte, report *TableReport) bool {
-	var read TableReport
-	ok := MixedPickupEventLoadTolerant(value, data, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := MixedPickupEventLoadTolerant(value, data, read)
 	if !ok || read.Err() != nil {
 		MixedPickupEventReset(value)
 		return false
@@ -7083,11 +7093,13 @@ func BenchMixedLoadTolerant(value *BenchMixed, data []byte, report *TableReport)
 // answers false. A supplied report receives THIS read's report, and on a refusal
 // report.Err() is the typed reason. BenchMixedLoadTolerant keeps a recovered value.
 func BenchMixedLoad(value *BenchMixed, data []byte, report *TableReport) bool {
-	var read TableReport
-	ok := BenchMixedLoadTolerant(value, data, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := BenchMixedLoadTolerant(value, data, read)
 	if !ok || read.Err() != nil {
 		BenchMixedReset(value)
 		return false

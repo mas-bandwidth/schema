@@ -3000,11 +3000,13 @@ func TableEntityFromJsonTolerant(value *TableEntity, text []byte, report *TableR
 // defaults and answers false. A supplied report receives THIS read's report,
 // and on a refusal report.Err() is the typed reason.
 func TableEntityFromJson(value *TableEntity, text []byte, report *TableReport) bool {
-	var read TableReport
-	ok := TableEntityFromJsonTolerant(value, text, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := TableEntityFromJsonTolerant(value, text, read)
 	if !ok || read.Err() != nil {
 		TableEntityReset(value)
 		return false
@@ -3086,11 +3088,13 @@ func TableStatFromJsonTolerant(value *TableStat, text []byte, report *TableRepor
 // defaults and answers false. A supplied report receives THIS read's report,
 // and on a refusal report.Err() is the typed reason.
 func TableStatFromJson(value *TableStat, text []byte, report *TableReport) bool {
-	var read TableReport
-	ok := TableStatFromJsonTolerant(value, text, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := TableStatFromJsonTolerant(value, text, read)
 	if !ok || read.Err() != nil {
 		TableStatReset(value)
 		return false
@@ -3172,11 +3176,13 @@ func TableMixedFromJsonTolerant(value *TableMixed, text []byte, report *TableRep
 // defaults and answers false. A supplied report receives THIS read's report,
 // and on a refusal report.Err() is the typed reason.
 func TableMixedFromJson(value *TableMixed, text []byte, report *TableReport) bool {
-	var read TableReport
-	ok := TableMixedFromJsonTolerant(value, text, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := TableMixedFromJsonTolerant(value, text, read)
 	if !ok || read.Err() != nil {
 		TableMixedReset(value)
 		return false
@@ -3258,11 +3264,13 @@ func TableHitEventFromJsonTolerant(value *TableHitEvent, text []byte, report *Ta
 // defaults and answers false. A supplied report receives THIS read's report,
 // and on a refusal report.Err() is the typed reason.
 func TableHitEventFromJson(value *TableHitEvent, text []byte, report *TableReport) bool {
-	var read TableReport
-	ok := TableHitEventFromJsonTolerant(value, text, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := TableHitEventFromJsonTolerant(value, text, read)
 	if !ok || read.Err() != nil {
 		TableHitEventReset(value)
 		return false
@@ -3344,11 +3352,13 @@ func TableChatEventFromJsonTolerant(value *TableChatEvent, text []byte, report *
 // defaults and answers false. A supplied report receives THIS read's report,
 // and on a refusal report.Err() is the typed reason.
 func TableChatEventFromJson(value *TableChatEvent, text []byte, report *TableReport) bool {
-	var read TableReport
-	ok := TableChatEventFromJsonTolerant(value, text, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := TableChatEventFromJsonTolerant(value, text, read)
 	if !ok || read.Err() != nil {
 		TableChatEventReset(value)
 		return false
@@ -3430,11 +3440,13 @@ func TablePickupEventFromJsonTolerant(value *TablePickupEvent, text []byte, repo
 // defaults and answers false. A supplied report receives THIS read's report,
 // and on a refusal report.Err() is the typed reason.
 func TablePickupEventFromJson(value *TablePickupEvent, text []byte, report *TableReport) bool {
-	var read TableReport
-	ok := TablePickupEventFromJsonTolerant(value, text, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := TablePickupEventFromJsonTolerant(value, text, read)
 	if !ok || read.Err() != nil {
 		TablePickupEventReset(value)
 		return false

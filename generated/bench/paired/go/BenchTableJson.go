@@ -3000,11 +3000,13 @@ func MixedEntityFromJsonTolerant(value *MixedEntity, text []byte, report *TableR
 // defaults and answers false. A supplied report receives THIS read's report,
 // and on a refusal report.Err() is the typed reason.
 func MixedEntityFromJson(value *MixedEntity, text []byte, report *TableReport) bool {
-	var read TableReport
-	ok := MixedEntityFromJsonTolerant(value, text, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := MixedEntityFromJsonTolerant(value, text, read)
 	if !ok || read.Err() != nil {
 		MixedEntityReset(value)
 		return false
@@ -3086,11 +3088,13 @@ func MixedStatFromJsonTolerant(value *MixedStat, text []byte, report *TableRepor
 // defaults and answers false. A supplied report receives THIS read's report,
 // and on a refusal report.Err() is the typed reason.
 func MixedStatFromJson(value *MixedStat, text []byte, report *TableReport) bool {
-	var read TableReport
-	ok := MixedStatFromJsonTolerant(value, text, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := MixedStatFromJsonTolerant(value, text, read)
 	if !ok || read.Err() != nil {
 		MixedStatReset(value)
 		return false
@@ -3172,11 +3176,13 @@ func MixedHitEventFromJsonTolerant(value *MixedHitEvent, text []byte, report *Ta
 // defaults and answers false. A supplied report receives THIS read's report,
 // and on a refusal report.Err() is the typed reason.
 func MixedHitEventFromJson(value *MixedHitEvent, text []byte, report *TableReport) bool {
-	var read TableReport
-	ok := MixedHitEventFromJsonTolerant(value, text, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := MixedHitEventFromJsonTolerant(value, text, read)
 	if !ok || read.Err() != nil {
 		MixedHitEventReset(value)
 		return false
@@ -3258,11 +3264,13 @@ func MixedChatEventFromJsonTolerant(value *MixedChatEvent, text []byte, report *
 // defaults and answers false. A supplied report receives THIS read's report,
 // and on a refusal report.Err() is the typed reason.
 func MixedChatEventFromJson(value *MixedChatEvent, text []byte, report *TableReport) bool {
-	var read TableReport
-	ok := MixedChatEventFromJsonTolerant(value, text, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := MixedChatEventFromJsonTolerant(value, text, read)
 	if !ok || read.Err() != nil {
 		MixedChatEventReset(value)
 		return false
@@ -3344,11 +3352,13 @@ func MixedPickupEventFromJsonTolerant(value *MixedPickupEvent, text []byte, repo
 // defaults and answers false. A supplied report receives THIS read's report,
 // and on a refusal report.Err() is the typed reason.
 func MixedPickupEventFromJson(value *MixedPickupEvent, text []byte, report *TableReport) bool {
-	var read TableReport
-	ok := MixedPickupEventFromJsonTolerant(value, text, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := MixedPickupEventFromJsonTolerant(value, text, read)
 	if !ok || read.Err() != nil {
 		MixedPickupEventReset(value)
 		return false
@@ -3430,11 +3440,13 @@ func BenchMixedFromJsonTolerant(value *BenchMixed, text []byte, report *TableRep
 // defaults and answers false. A supplied report receives THIS read's report,
 // and on a refusal report.Err() is the typed reason.
 func BenchMixedFromJson(value *BenchMixed, text []byte, report *TableReport) bool {
-	var read TableReport
-	ok := BenchMixedFromJsonTolerant(value, text, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := BenchMixedFromJsonTolerant(value, text, read)
 	if !ok || read.Err() != nil {
 		BenchMixedReset(value)
 		return false
@@ -3516,11 +3528,13 @@ func FixedTableFromJsonTolerant(value *FixedTable, text []byte, report *TableRep
 // defaults and answers false. A supplied report receives THIS read's report,
 // and on a refusal report.Err() is the typed reason.
 func FixedTableFromJson(value *FixedTable, text []byte, report *TableReport) bool {
-	var read TableReport
-	ok := FixedTableFromJsonTolerant(value, text, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	ok := FixedTableFromJsonTolerant(value, text, read)
 	if !ok || read.Err() != nil {
 		FixedTableReset(value)
 		return false

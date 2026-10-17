@@ -131,11 +131,13 @@ func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
 // FixedTableReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
 func FixedTableLoadMessages(values []FixedTable, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	var read TableReport
-	count, ok := FixedTableLoadMessagesTolerant(values, vocabulary, data, &read)
-	if report != nil {
-		*report = read
+	read := report
+	if read == nil {
+		read = new(TableReport)
+	} else {
+		*read = TableReport{}
 	}
+	count, ok := FixedTableLoadMessagesTolerant(values, vocabulary, data, read)
 	if !ok {
 		return count, false
 	}
