@@ -29,18 +29,17 @@ func init() {
 // shared walk. The runtime builds its plan from this data and the descriptors
 // (docs/FIXED-FORM-ALGORITHM.md §4).
 func emitFixedForm(g *luau.Gen) error {
-	st := g.Require(RuntimeModule)
 	for _, t := range ir.TableFixedFormRoots(g.Unit) {
 		if g.Unit.DeclFile[t.Name] != g.File.Base {
 			continue
 		}
-		emitRootData(g, st, t)
+		emitRootData(g, t)
 	}
 	return nil
 }
 
 // emitRootData writes one root's fixed-form data block.
-func emitRootData(g *luau.Gen, st string, root *ir.Struct) {
+func emitRootData(g *luau.Gen, root *ir.Struct) {
 	entries := ir.TableFixedWalkRoot(root)
 	layout := ir.TableFixedLayoutBytes(entries)
 	hash := ir.TableFixedLayoutHash(layout, root)
@@ -49,7 +48,7 @@ func emitRootData(g *luau.Gen, st string, root *ir.Struct) {
 	g.Pf("-- %s: fixed form, form byte 3 (docs/SPEC-TABLES.md §3.4)\n", name)
 	g.Pf("%s.%sFixedHash = %s\n", g.Self, name, luau.IntegerLit(new(big.Int).SetUint64(hash)))
 	g.Pf("%s.%sFixedRecordBytes = %d\n", g.Self, name, record)
-	g.Pf("%s.%sFixedLayout = %s.fixed_layout({\n", g.Self, name, st)
+	g.Pf("%s.%sFixedLayout = %s.fixed_layout({\n", g.Self, name, g.Require("fixed"))
 	for _, e := range entries {
 		g.Pf("\t{ id = %s, kind = %d, size = %d, children = %d }, -- %s\n",
 			luau.IntegerLit(new(big.Int).SetUint64(e.ID)), e.Kind, e.Size, e.Children, e.Note)
