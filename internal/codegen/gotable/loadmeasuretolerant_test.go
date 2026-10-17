@@ -21,3 +21,16 @@ func TestGoLoadMeasureSizesTheTolerantLoadOfDamagedFraming(t *testing.T) {
  }
  `)
 }
+
+// A schema table may take a name the generated runtime does not reserve: the one
+// measure body adds no package-scope name (regionMeasureFraming was one, unregistered,
+// so a table by that name passed the checker and the generated package did not build).
+func TestGoTableNamedRegionMeasureFramingStillBuilds(t *testing.T) {
+	t.Parallel()
+	runGenerated(t, `package probe
+ table regionMeasureFraming { alpha int64 }
+ `, `package probe
+ import "testing"
+ func TestBuilds(t *testing.T){}
+ `)
+}
