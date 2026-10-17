@@ -3878,7 +3878,9 @@ break either bound, returning false.
 **BOUNDS, on the read side, are the variable wire's tolerance, unchanged** (§4):
 a count past the reader's `N` reads the first `N` elements and counts
 `clamped`; an element past `M` clamps at a code point boundary and counts
-`clamped`; ill-formed UTF-8 or a zero byte in an element is `malformed`. A read
+`clamped`; ill-formed UTF-8 or a zero byte in an element is `malformed`. The
+JSON text holds the same rule at its own entry: an element or a map key whose
+string decodes to `U+0000` refuses the read (§16.3). A read
 that clamped an element of a text list records the field in the report's
 `Reason` as `clamped: <Table>.<field>`, so `ReadStrict` refuses it with
 `TableRefuseReason` `clamped` (`errors.Is`) and an error text naming the field.
@@ -4000,7 +4002,8 @@ record's u32 length.
 **THE TEXT FORM (§16.2)** is the plain shape: an array of strings (with `null`
 for an absent `?` element) and an object with plain keys. An unbounded element
 is never clamped and an unbounded key never dropped for its length; a repeated
-key is last-wins and counted `duplicate`, as for every map.
+key is last-wins and counted `duplicate`, as for every map. An element or key
+whose string decodes to `U+0000` refuses the read (§16.3).
 
 **STORAGE: the blob record of §2.5, reached by a slot in the element record.**
 A bounded element is `[M+1]byte` and an `int32` length, which an unbounded one
@@ -8277,7 +8280,9 @@ has:
   at the same three positions of a kind `33` payload. Each must count exactly
   ONE `malformed`, leave the field at its declared default and let the parent
   read on past `L` (§3, §4). **A leg that stores any of them fails the value
-  requirement below**, which is what makes this a gate and not a wish;
+  requirement below**, which is what makes this a gate and not a wish. The
+  JSON text meets the same zero by refusing the read (§16.3), so no form stores
+  what this one counts;
 - **the FORM BYTE** set to `0`, to `6`, and to `0xFF`, which must be a named
   refusal and never damage (§3). It is `6` and none of `2`, `3`, `4` or `5`,
   because `2` and `3` are KNOWN forms with rules of their own (§3.3, §3.4) and
@@ -14601,7 +14606,8 @@ conforming parser can read.
 **The two text types answer DIFFERENTLY, because the two failures are
 different things.** A NARROW field's interior ZERO BYTE is `U+0000`, a
 perfectly good code point that JSON has an escape for, so it is written
-`\u0000` and the text round-trips it exactly. A WIDE field's UNPAIRED
+`\u0000` — and only ever for storage a program built, because no read, the
+text's included, puts one there (below). A WIDE field's UNPAIRED
 SURROGATE is not a code point at all, encodes to nothing, and is written as
 one `U+FFFD` per ill-formed unit. Each type then takes the other half of the
 same distinction: a narrow field's ill-formed UTF-8 sequence is not a code
@@ -14612,6 +14618,37 @@ is replaced — and the two types are named separately only because each meets
 it through a different defect. RFC 8259 requires a JSON text to be valid UTF-8, and a
 text this form emits must be readable by any conforming parser, not only by
 schema's own reader.
+
+**A ZERO IN TEXT TAKES ONE RULE IN EVERY FORM: NO READ STORES IT** (ruled
+2026-10-17, from the Go fuzz campaign). `U+0000` is a code point, but no wire
+carries it: a zero byte in a kind `12` payload, a `*string` blob, a text-list
+element or a text map key, and a zero unit in a kind `33` payload or a
+`*wstring` blob, is `malformed` on the table wire (§2.13, §3, §4.2), and the
+packet wire refuses it terminally (SPEC.md §4.7, §4.12). So a JSON string the
+read would PLACE in text storage — a `string(N)`, `*string`, `wstring(N)` or
+`*wstring` value, a text-list element, bounded or not, and a map key, whose
+key is a JSON string whatever its kind (§16.2) — and that decodes to `U+0000` (it can only arrive as the `\u0000` escape, a raw
+control byte being no string body at all) **refuses the read**: `FromJson`
+returns false, the report is `Malformed`, and `Reason` reads
+`text_holds_zero: <Table>.<field>` for the innermost field that held it. One
+event is one `Malformed`, as §4.2 counts it on the wire. The text's answer is
+the refusal and not the wire's per-field tolerance because a text is
+authoring input: it is the form's answer to every value it cannot place by
+name rather than by range (a timestamp that names no instant, a reserved `&`
+key, §16.2, §16.7), and a read that dropped the field quietly would turn a
+person's typing into a silent loss. A string the read only SKIPS — the value
+of an unknown key, an object key naming a field — stores nothing and is not
+this event. **The other answer, the wire and every writer carrying the zero,
+was considered and refused**: it would reverse the long-standing content rule
+every table reader and the packet wire already hold, and break `string(N)`'s
+C and C++ storage, which is a valid C string after every read (USAGE.md), to
+admit a value only one form could produce. With this rule an instance any read
+produced, wire or text, is one the writer re-saves and the strict reader
+accepts, which is §5's guarantee held across the forms. The writer half above
+is unchanged: storage a program built holding a zero still writes `\u0000`,
+and the text it writes is one this read refuses, which is the honest answer
+for a value no wire can carry. Held first in Go (`internal/codegen/gotable/
+json.go`, `scanText`); every other backend keeps its behaviour until its port.
 
 ### 16.4 The key: `json`
 

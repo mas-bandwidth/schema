@@ -3576,6 +3576,12 @@ byte on the wire.
 or a set flags bit no variant names, an invalid union tag, or a non-finite
 float. The text it does emit is always valid JSON and valid UTF-8.
 
+**A zero in text is refused on read, as the wire refuses it**: a `\u0000` in
+a JSON string bound for any text field, list element or map key makes
+`FromJson` return false with the report `Malformed` and `Reason`
+`text_holds_zero: <Table>.<field>`, because no wire carries a zero in text and
+an instance a read produced must be one `Save` can write (SPEC-TABLES.md §16.3).
+
 ### Carrying a table over a text channel
 
 A text channel is a pipe a wire byte cannot cross as-is — a bus body, a log
