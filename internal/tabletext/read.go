@@ -58,6 +58,7 @@ func (m *Model) Read(inst *Instance, text []byte, report *Report) bool {
 	if m.IsVariable(inst.Def.Name) {
 		in.graph = map[uint64]labelEntry{}
 	}
+	in.byteOrderMark()
 	ok := in.readTable(inst, 0)
 	if ok {
 		in.space()
@@ -105,6 +106,16 @@ func (in *reader) space() {
 			in.bad = true
 		}
 		return
+	}
+}
+
+// byteOrderMark skips a leading UTF-8 byte-order mark (docs/SPEC-TABLES.md
+// §16.2, §16.11): EF BB BF as the text's first three bytes and nowhere else.
+// RFC 8259 §8.1 lets a parser ignore it, it costs one comparison, and it is
+// not data. No writer emits one.
+func (in *reader) byteOrderMark() {
+	if in.pos == 0 && len(in.text) >= 3 && in.text[0] == 0xEF && in.text[1] == 0xBB && in.text[2] == 0xBF {
+		in.pos = 3
 	}
 }
 

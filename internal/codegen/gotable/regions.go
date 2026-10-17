@@ -293,7 +293,7 @@ const tableRegionJsonSource = `
 func tableRegionFromJson(value unsafe.Pointer,info *TableTypeInfo,worker *TableWorker,text []byte,report *TableReport) bool {
  if report==nil {var ignored TableReport;report=&ignored};if value==nil {report.Malformed=true;return false}
  graph:=tableJsonGraph{alloc:worker.Alloc,allocate:worker.Arena.Allocator.alloc,release:worker.Arena.Allocator.free};defer graph.close()
- in:=tableJsonIn{text:text,report:report,graph:&graph};info.Reset(value);ok:=tableJsonReadTable(&in,value,info,0);in.space();if !ok||in.bad||in.pos!=len(text){report.Malformed=true;return false};return true
+ in:=tableJsonIn{text:text,report:report,graph:&graph};info.Reset(value);in.byteOrderMark();ok:=tableJsonReadTable(&in,value,info,0);in.space();if !ok||in.bad||in.pos!=len(text){report.Malformed=true;return false};return true
 }
 func tableRegionToJson(value unsafe.Pointer,info *TableTypeInfo,buffer []byte,allocator ...TableAllocator) int64 {
  n,ok:=tableNumber(value,info,nil,allocator...);if !ok{return -1};defer n.Release();graph:=tableJsonGraph{node:func(p unsafe.Pointer)*tableJsonGraphNode{i,ok:=n.find(p);if !ok{return nil};return &n.entries[i].json}}
