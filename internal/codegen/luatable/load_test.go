@@ -11,30 +11,30 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 )
 
-// reportRow is one report row of MANIFEST.txt: the case, the unit, the root
-// and the wire file.
-type reportRow struct {
+// manifestRow is one report or instance row of MANIFEST.txt: the case, the
+// unit, the root and the wire file.
+type manifestRow struct {
 	caseName string
 	unit     string
 	root     string
 	wire     string
 }
 
-// reportRows reads the report lines of the tables conformance manifest.
-func reportRows(t *testing.T, path string) []reportRow {
+// manifestRows reads one row kind (report, instance) of the tables manifest.
+func manifestRows(t *testing.T, path, kind string) []manifestRow {
 	t.Helper()
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var rows []reportRow
+	var rows []manifestRow
 	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
 			continue
 		}
-		if f[0] == "report" && len(f) >= 5 {
-			rows = append(rows, reportRow{caseName: f[1], unit: f[2], root: f[3], wire: f[4]})
+		if f[0] == kind && len(f) >= 5 {
+			rows = append(rows, manifestRow{caseName: f[1], unit: f[2], root: f[3], wire: f[4]})
 		}
 	}
 	return rows
@@ -60,9 +60,9 @@ func reportsExpect(t *testing.T, path string) map[string]string {
 	return m
 }
 
-// loadProbe is the Lua main for one report case: it requires the table module
-// and the load runtime, reads the wire from inputs.lua, loads and prints the
-// report line u,k,w,c,d,m,verdict.
+// loadProbe is the Lua main for one row: it requires the table module and the
+// load runtime, reads the wire from inputs.lua, loads and prints the report
+// line u,k,w,c,d,m,verdict.
 func loadProbe(module, root string) string {
 	return `local T = require("` + module + `")
 local load = require("load")
@@ -78,84 +78,197 @@ print(string.format("%d,%d,%d,%d,%d,%s,%s",
 `
 }
 
-// TestLuaTableLoadMatchesTheReports runs the variable form's tolerant load over
-// every report row of the tables conformance manifest whose unit the Lua
-// target generates, and compares the report surface line with reports.txt.
-func TestLuaTableLoadMatchesTheReports(t *testing.T) {
-	t.Parallel()
+// manifestUnits reads the unit lines (key -> schema paths).
+func manifestUnits(t *testing.T, path string) map[string][]string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	units := map[string][]string{}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		f := strings.Fields(line)
+		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
+			continue
+		}
+		if f[0] == "unit" && len(f) >= 3 {
+			units[f[1]] = f[2:]
+		}
+	}
+	if len(units) == 0 {
+		t.Fatal("the manifest names no unit")
+	}
+	return units
+}
+
+// loadRow generates a manifest row's unit (with the emitted load runtime
+// optionally patched), loads its wire and returns the report line.
+func loadRow(t *testing.T, repo string, paths []string, row manifestRow, patch func([]byte) []byte) string {
+	t.Helper()
+	u := luarun.LoadUnit(t, paths...)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("unit %s: %v", row.unit, err)
+	}
+	if patch != nil {
+		src, ok := files["load.lua"]
+		if !ok {
+			t.Fatal("the emitted unit has no load.lua")
+		}
+		files["load.lua"] = patch(src)
+	}
+	dir := t.TempDir()
+	luarun.WriteFiles(t, dir, files)
+	probe := loadProbe(ModuleName(u), row.root)
+	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wireData, err := os.ReadFile(filepath.Join(repo, row.wire))
+	if err != nil {
+		t.Fatalf("case %s: read wire %s: %v", row.caseName, row.wire, err)
+	}
+	return strings.TrimRight(string(luarun.Run(t, dir, "main.lua", map[string][]byte{"wire": wireData})), "\n")
+}
+
+// reportComparison is the manifest's report rows checked against reports.txt.
+type reportComparison struct {
+	compared    int
+	refusedRows int
+	refused     map[string]string
+	missing     []string
+	mismatches  []string
+	instance    int
+	instances   int
+}
+
+// compareReports loads every report row whose unit the target generates and
+// compares its report surface line with reports.txt; every instance row is
+// loaded and must not be refused. patch, when set, edits the emitted runtime
+// in memory (the negative control's one anchor).
+func compareReports(t *testing.T, patch func([]byte) []byte) reportComparison {
+	t.Helper()
 	repo := filepath.Join("..", "..", "..")
 	manifestPath := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
-	rows := reportRows(t, manifestPath)
 	expect := reportsExpect(t, filepath.Join(repo, "testdata", "conformance", "tables", "reports.txt"))
-	units, _ := manifest(t, manifestPath)
-
-	keys := make([]string, 0, len(units))
-	for k := range units {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+	units := manifestUnits(t, manifestPath)
 	unitFiles := map[string][]string{}
-	for _, k := range keys {
-		var paths []string
-		for _, p := range units[k] {
-			paths = append(paths, filepath.Join(repo, p))
+	for k, paths := range units {
+		var full []string
+		for _, p := range paths {
+			full = append(full, filepath.Join(repo, p))
 		}
-		unitFiles[k] = paths
+		unitFiles[k] = full
 	}
+	res := reportComparison{refused: map[string]string{}}
 
-	compared := 0
-	var refusedUnits []string
-	missing := []string{}
-	for _, row := range rows {
+	for _, row := range manifestRows(t, manifestPath, "report") {
 		paths, ok := unitFiles[row.unit]
 		if !ok {
+			res.missing = append(res.missing, row.caseName)
+			continue
+		}
+		if msg, refused := res.refused[row.unit]; refused {
+			_ = msg
+			res.refusedRows++
 			continue
 		}
 		u := luarun.LoadUnit(t, paths...)
-		files, err := Generate(u)
-		if err != nil {
-			refusedUnits = append(refusedUnits, fmt.Sprintf("%s: %v", row.unit, err))
+		if _, err := Generate(u); err != nil {
+			res.refused[row.unit] = err.Error()
+			res.refusedRows++
 			continue
 		}
-		dir := t.TempDir()
-		luarun.WriteFiles(t, dir, files)
-		probe := loadProbe(ModuleName(u), row.root)
-		if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		wireData, err := os.ReadFile(filepath.Join(repo, row.wire))
-		if err != nil {
-			t.Fatalf("case %s: read wire %s: %v", row.caseName, row.wire, err)
-		}
-		out := strings.TrimRight(string(luarun.Run(t, dir, "main.lua", map[string][]byte{"wire": wireData})), "\n")
+		out := loadRow(t, repo, paths, row, patch)
 		want, ok := expect[row.caseName]
 		if !ok {
-			missing = append(missing, row.caseName)
+			res.missing = append(res.missing, row.caseName)
 			continue
 		}
 		if out != want {
-			t.Errorf("report %s:\nlua:  %s\nwant: %s", row.caseName, out, want)
+			res.mismatches = append(res.mismatches, fmt.Sprintf("report %s:\nlua:  %s\nwant: %s", row.caseName, out, want))
 			continue
 		}
-		compared++
+		res.compared++
 	}
-	for _, r := range refusedUnits {
-		t.Logf("refused unit: %s", r)
+
+	for _, row := range manifestRows(t, manifestPath, "instance") {
+		paths, ok := unitFiles[row.unit]
+		if !ok {
+			res.missing = append(res.missing, row.caseName)
+			continue
+		}
+		if _, refused := res.refused[row.unit]; refused {
+			continue
+		}
+		u := luarun.LoadUnit(t, paths...)
+		if _, err := Generate(u); err != nil {
+			res.refused[row.unit] = err.Error()
+			continue
+		}
+		out := loadRow(t, repo, paths, row, patch)
+		res.instances++
+		if strings.HasSuffix(out, ",refused") {
+			res.mismatches = append(res.mismatches, fmt.Sprintf("instance %s: refused", row.caseName))
+			continue
+		}
+		res.instance++
 	}
-	if len(missing) > 0 {
-		t.Errorf("report rows with no reports.txt entry: %v", missing)
-	}
-	if compared == 0 {
-		t.Fatalf("no report row compared (%d refused units)", len(refusedUnits))
-	}
-	t.Logf("%d report rows compared (%d refused units)", compared, len(refusedUnits))
-	_ = len(refusedUnits)
+	return res
 }
 
-// TestLuaTableLoadNegativeControl patches the emitted load runtime in memory —
-// one anchor, matched exactly once — so a duplicate field id is not counted,
-// and requires the reports comparison to go red.
+// TestLuaTableLoadMatchesTheReports runs the variable form's tolerant load over
+// every report row of the tables conformance manifest whose unit the Lua
+// target generates, and compares the report surface line with reports.txt.
+// Every instance row loads and is not refused; refused units are counted and
+// named (docs/SPEC-TABLES.md §4; test/conformance/README.md).
+func TestLuaTableLoadMatchesTheReports(t *testing.T) {
+	t.Parallel()
+	res := compareReports(t, nil)
+	for _, r := range res.mismatches {
+		t.Error(r)
+	}
+	for _, c := range res.missing {
+		t.Errorf("row %s has no manifest unit or reports.txt entry", c)
+	}
+	names := make([]string, 0, len(res.refused))
+	for unit := range res.refused {
+		names = append(names, unit)
+	}
+	sort.Strings(names)
+	for _, unit := range names {
+		t.Logf("refused unit %s: %s", unit, res.refused[unit])
+	}
+	if res.compared == 0 {
+		t.Fatalf("no report row compared (%d refused rows)", res.refusedRows)
+	}
+	t.Logf("%d report rows compared, %d refused row(s) in %d unit(s); %d/%d instance rows load",
+		res.compared, res.refusedRows, len(res.refused), res.instance, res.instances)
+}
+
+// TestLuaTableLoadNegativeControl patches the emitted runtime in memory — one
+// anchor, matched exactly once — so an id this table cannot name is not
+// counted, and requires the reports comparison to go red.
 func TestLuaTableLoadNegativeControl(t *testing.T) {
 	t.Parallel()
-	t.Skip("negative control: requires an anchor in the load runtime that counts duplicate ids, not yet implemented")
+	const anchor = `      if fd == nil then
+        report.unknown = report.unknown + 1
+        if not skip(r, kind) then report.malformed = true; return false end`
+	const sabotaged = `      if fd == nil then
+        if not skip(r, kind) then report.malformed = true; return false end`
+	var patched int
+	patch := func(src []byte) []byte {
+		if n := strings.Count(string(src), anchor); n != 1 {
+			t.Fatalf("the negative-control anchor is matched %d times, want exactly once", n)
+		}
+		patched++
+		return []byte(strings.Replace(string(src), anchor, sabotaged, 1))
+	}
+	res := compareReports(t, patch)
+	if patched == 0 {
+		t.Fatal("the negative control patched no emitted runtime")
+	}
+	if len(res.mismatches) == 0 {
+		t.Fatalf("the sabotaged load still matched reports.txt (%d rows compared)", res.compared)
+	}
+	t.Logf("%d of %d report rows diverge with the unknown-id counter removed", len(res.mismatches), res.compared+len(res.mismatches))
 }
