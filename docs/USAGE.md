@@ -113,6 +113,12 @@ for a table that does not declare that form is refused, naming the table.
 
 ## Declarations
 
+A declaration's name and its fields' names are checked against the reserved
+words of the targets being generated (SPEC §4.6): `schema generate --lang L`
+checks L's words only, and `schema check` — and every command that names no
+target — checks every target's, one diagnostic per name listing every checked
+target it collides with. No escaping machinery; rename at the source.
+
 ### const
 
 ```

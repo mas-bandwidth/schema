@@ -805,7 +805,11 @@ A table body is a type body — the field grammar of SPEC §4.2, hosted by
 compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
 `if` branches, and declared types as field groups. (The last two are the
 variable class's: a guarded field and a plain nested table are refused in a
-`fixed table` — §2.2.) Nine additions:
+`fixed table` — §2.2.) A table's declared name and its fields' names pass the
+same target-name safety as packet declarations (SPEC.md §4.6), narrowed to the
+targets being generated: `schema generate --lang L` checks L's reserved words
+only, and `schema check` — and every command that names no target — checks
+every target's. Nine additions:
 
 - **Tables nest.** A named table is a field type (above); nesting is by
   value, and a bounded array of tables is a collection. A table may not
