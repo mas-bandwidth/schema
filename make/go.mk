@@ -62,6 +62,17 @@ tables-go-fixedform:
 		./internal/codegen/gotable -run 'TestFixedForm|TestFixedPlanMaxCoversEveryLineagePlan|TestTimestampKindInGo|TestFixedLoadAllocatesNothingPerCall|TestFixedFormCountAndLengthOverBoundRefuseByName|TestFixedLoadNamesEveryRefusal|TestFixedFormWriteSideRefusesInEveryGoBuild|TestGoTableWritersRefuseWhatTheirReadersRefuse|TestFixedLoadUnknownHashIsLayoutUnknown' -count=1
 test-go: tables-go-fixedform
 
+# The hand-editable text form (docs/SPEC-TABLES.md §16.9): the textform surface,
+# both table classes, held to test/conformance/textform/ (the positive vectors
+# and their oracles, the leaf edits, every refusal by name, the attachment
+# oracle and a seeded edit fuzz).
+.PHONY: tables-go-textform
+tables-go-textform:
+	sh test/slowgate/proof tables-go-textform \
+		'TestCommentedTextForm/emitted TestCommentedTextForm/fixed TestCommentedTextForm/variable' \
+		./internal/codegen/gotable -run '^TestCommentedTextForm$$' -count=1 -timeout 600s
+test-go: tables-go-textform
+
 .PHONY: tables-go-json-walk
 tables-go-json-walk: build/tables-generated-go/.stamp
 	@rm -rf build/json-walk-go && mkdir -p build/json-walk-go
@@ -418,6 +429,16 @@ tables-go-standalone: build/tables-generated-go/.stamp
 .PHONY: tables-go-soak
 tables-go-soak: build/tables-generated-go/.stamp
 	cd test/go-tables && go test -run Soak -timeout 0 -soak $(SOAK) -v .
+
+# FUZZ-TABLES-GO: the permanent native fuzz target over the table compiler
+# front end and the Go table emitter (internal/fuzz/tablefrontend_test.go).
+# The long campaign runs by hand or on the certify nightly, never in ci-fast or
+# ci-full. FUZZTIME and FUZZPARALLEL default to 10m and 4.
+FUZZTIME ?= 10m
+FUZZPARALLEL ?= 4
+.PHONY: fuzz-tables-go
+fuzz-tables-go:
+	go test ./internal/fuzz/ -run '^$$' -fuzz '^FuzzTableFrontEnd$$' -fuzztime $(FUZZTIME) -parallel $(FUZZPARALLEL)
 
 .PHONY: tables-go-fuzz
 tables-go-fuzz: build/tables-generated-go/.stamp build/conformance-harness

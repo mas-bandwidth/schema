@@ -40,6 +40,11 @@ func (g *tableGen) emitMapSurface(st *ir.Struct, f *ir.Field) {
 		kt = "string"
 		kv = "tableMapKey{text:[]byte(key)}"
 	}
+	if key.Type.TextUnbounded() {
+		// an UNBOUNDED key (docs/SPEC-TABLES.md §2.13.1): the same spelling,
+		// any length, compared whole
+		kv = "tableMapKey{text:unsafe.Slice(unsafe.StringData(key),len(key))}"
+	}
 	holder := "*TableMap[" + entry + "]"
 	desc := g.mapDescriptor(f)
 	g.pf("func %sInsert(worker *TableWorker,holder %s,key %s) *%s {p,_:=tableMapPlace(worker,(*tableContainer)(unsafe.Pointer(holder)),%s,%s);if p==nil{return nil};entry:=(*%s)(p);value:=entry;", name, holder, kt, typ, desc, kv, entry)
@@ -53,6 +58,9 @@ func (g *tableGen) emitMapSurface(st *ir.Struct, f *ir.Field) {
 	keyexpr := "entry.Key"
 	if key.Type.Kind == ir.TString {
 		keyexpr = "string(entry.Key[:entry.KeyLength])"
+	}
+	if key.Type.TextUnbounded() {
+		keyexpr = "tableTextString(&entry.Key,tableOptionalArena(arena))"
 	}
 	g.pf("func %sEach(holder %s,visit func(%s,*%s)bool,arena ...*TableArena) bool {c:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)),int64(unsafe.Sizeof(%s{})),tableOptionalArena(arena));for i:=int32(0);i<holder.Count;i++ {entry:=(*%s)(c.Next());if entry==nil||!visit(%s,%s){return false}};return true }\n", name, holder, kt, typ, entry, entry, keyexpr, access)
 	g.pf("func %sIndexMeasure(holder %s) int64 {return tableMapIndexMeasure(holder.Count)}\n", name, holder)
@@ -72,7 +80,12 @@ func (g *tableGen) emitMapRead(f *ir.Field, ind string) {
 	if g.retain {
 		keyReader = "elem.tableRetainPlainReader"
 	}
-	g.pf("%sfor i:=uint64(0);i<count;i++ {elem,ok:=sub.Body();if !ok {r.Report.Malformed=true;break};key,bad,over,wide,whole:=tableMapReadKey(%s,&field.Table().Fields[0]);if wide&&!widened {widened=true;r.Report.Widened++};if bad {r.Report.KindMismatch++;*holder=tableContainer{};break};if !whole {r.Report.Malformed=true;break};if over {r.Report.Clamped++;continue};order:= -1;if prior!=nil {order=tableMapKeyOrder(last,key,&field.Table().Fields[0])};if order>0 {r.Report.Malformed=true;break};p:=prior;if order==0 {r.Report.Duplicate++}else {p=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,holder,holder.Count,%d));if p==nil {r.Report.Malformed=true;break};if sub.Nodes.Carve.Worker==nil {holder.Count++}};\n", ind, keyReader, entry, layout.Size)
+	named := ""
+	if ir.MapKeyUnbounded(f) {
+		// an UNBOUNDED key's damage names the map (docs/SPEC-TABLES.md §2.13.1)
+		named = fmt.Sprintf("tableTextMalformed(r.Report,%q);", f.MapEntry.MapEntryOf)
+	}
+	g.pf("%sfor i:=uint64(0);i<count;i++ {elem,ok:=sub.Body();if !ok {r.Report.Malformed=true;"+named+"break};key,bad,over,wide,whole:=tableMapReadKey(%s,&field.Table().Fields[0]);if wide&&!widened {widened=true;r.Report.Widened++};if bad {r.Report.KindMismatch++;*holder=tableContainer{};break};if !whole {r.Report.Malformed=true;"+named+"break};if over {r.Report.Clamped++;continue};order:= -1;if prior!=nil {order=tableMapKeyOrder(last,key,&field.Table().Fields[0])};if order>0 {r.Report.Malformed=true;"+named+"break};p:=prior;if order==0 {r.Report.Duplicate++}else {p=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,holder,holder.Count,%d));if p==nil {r.Report.Malformed=true;break};if sub.Nodes.Carve.Worker==nil {holder.Count++}};\n", ind, keyReader, entry, layout.Size)
 	g.retainReadPath("elem", "r", "holder.Count-1")
 	g.pf("%sLoadBody(&elem,p);\n", f.MapEntry.Name)
 	g.emitCarveReturn("sub", "elem", ind)

@@ -1908,8 +1908,12 @@ nowhere else in the grammar and buy nothing over the bracket.
 **Keys are BOUNDED STRINGS and INTEGERS, and nothing else.** `K` is
 `string(N)` or one of `int8` through `int64`, `uint8` through `uint64`,
 bare. No `| min`, no `| max`, no default, because a key is an identity and
-clamping an identity merges two entries. Every other key is refused by name,
-each with its reason in the diagnostic:
+clamping an identity merges two entries. **A key may also be UNBOUNDED text,
+`map[string]V`** (§2.13.1): it rides as kind `12` in the entry exactly as a
+`string(N)` key does, is stored as the blob slot §2.13.1 states, and compares by
+the order below at ANY length, so it is never clamped and never dropped for its
+length. Every other key is refused by name, each with its reason in the
+diagnostic:
 
 - **A `wstring(N)` key** (SPEC.md §4.12), because a map's entries ride in
   ASCENDING KEY ORDER and wide text has no byte order worth standardizing on.
@@ -1944,7 +1948,8 @@ each with its reason in the diagnostic:
 **The ORDER is total, and it is the same in nine languages.** Integers
 compare by VALUE, signed for the signed kinds and unsigned for the unsigned.
 Strings compare by BYTES, unsigned, a shorter string that is a prefix of a
-longer one first: `memcmp` over the common length, then the lengths. Never a
+longer one first: `memcmp` over the common length, then the lengths, at any
+length, an unbounded key's included (§2.13.1). Never a
 locale, never a code point, never a case fold. A port whose language has no
 unsigned compare spells one and says so at the site. Java spells
 `Long.compareUnsigned`, and a string compares its BYTES and never its
@@ -2674,7 +2679,8 @@ maintain. Four refusals follow from it and none is new:
 - **`[]map[K]V`**, as `[..N]map` and `[N]map` are refused (§11).
 - **`[]?T`**, as an array of `?T` is, for every `T` but `string(M)`: an
   element's presence bit beside the array's own count is a named follow-on
-  (§15), and `[]?string(M)` is §2.13's text list, and it is a different question
+  (§15), and `[]?string(M)` and `[]?string` are §2.13's text lists (§2.13.1),
+  and it is a different question
   from `?[..N]T`, which is a presence bit on the ARRAY and landed (§2.3). **The
   answer that serves today is `[]*T` with a NULL slot**, which spells "an
   element that is not there" with the null every pointer already has (§2.1,
@@ -3906,6 +3912,150 @@ four as well. A declaration under any of them is refused naming the field.
 centrally, at generation** (§2.12's rule), naming the construct, the field and
 the target, so no other emitter is edited.
 
+#### 2.13.1 Unbounded text: `[]string` and `map[string]V`
+
+**A variable table's text list may leave its ELEMENT unbounded, and a map may
+leave its KEY unbounded.** Five spellings, in a plain `table` body only:
+
+```
+table Where
+{
+    receipts []string            // an unbounded list of unbounded text
+    running  []?string           // ... whose elements may be absent
+    recent   [..64]string        // at most 64 elements, each unbounded
+    pending  [..64]?string       // ... whose elements may be absent
+    rows     map[string]FriendRow  // a map whose key is unbounded text
+}
+```
+
+The count bound is §2.13's own (`[..N]` holds `N`, `[]` holds what the data
+holds); only the ELEMENT'S, or the KEY'S, length loses its bound. The bare word
+is the spelling because it is `*string`'s own bare form (§2.5): a bound is
+written as `(N)`, and no `(N)` means none. **What it is for**: a record whose
+lines, names and keys no code bounds (receipt lines, friend lists, configuration
+names used as keys) had two choices, both forbidden — invent a cap that clamps
+real data, or wrap each element in a one-field table whose text is
+`[{"s":"a"}]`. The shape stays: a plain array of strings, an object with plain
+keys.
+
+**A bare `string` is refused everywhere else, each by name** (§11), the
+diagnostic naming the route: a plain field (`string(N)` for inline text,
+`*string` for a buffer at its used size, §2.5); `[N]string` and `[E]string`
+(a text list is counted: `[..N]string`); `?[]string` and `?[..N]string` (drop
+the leading `?`, or write it after the bound); a `type` body or a packet
+(SPEC.md §4.6: the type wire carries no unbounded text); a union arm (§2.6); a
+map VALUE (`map[K]string`: hold `string(N)` or `*string`, or wrap the text in
+a table); `map[?string]V` (a key is an identity and has no absence); and a
+`fixed table` (§2.2), naming the variable-table spelling. Unbounded `wstring`,
+`bytes` and `bits` elements, and arrays of `*string` or `*bytes`, stay named
+follow-ons (§15).
+
+**THE WIRE MOVES NO BYTE AND SPENDS NO KIND.** An unbounded element rides
+exactly as a bounded one (§2.13): kind `14` over element kind `12`, each element
+its own `L` and bytes, or element kind `13` over the element record for the `?`
+spelling; an unbounded key is kind `12` in the entry body exactly as a
+`string(N)` key is (§2.8, §3). The bound was always a declaration-side fact
+that never rides, so respelling `string(M)` to `string` and back moves no byte
+and no kind: a `string` reader reads a `string(M)` writer's bytes equal, and a
+`string(M)` reader reads an unbounded writer's longer element clamped at a code
+point boundary, counted `clamped`, as any tightened bound does (§4).
+
+**THE PROJECTIONS see the respell.** The element record's `value` (and the
+entry's `key`) renders in the build version's cook projection (§20.2) with
+`text=unbounded` and no `bound=`, and its storage is the eight-byte slot below,
+so its `size=` differs from any `string(M)`'s: a respell moves the build
+version exactly as a bound change does at BASE. In the tables baseline (§18) the
+unbounded value renders with no `size=` and the unbounded key with
+`keybound=0` (a value no `string(N)` key can carry, `N >= 2`), so the line is a
+different line from any `string(M)`'s.
+
+**NO CAP IS INVENTED.** The only limits on an unbounded element or key are the
+wire's own, each with its own named refusal, and none is a silent clamp:
+
+- **the reader's framing**: an `L` past its body's remaining bytes is
+  `malformed` (§4's framing-damage rule), checked before anything is copied,
+  and nothing is allocated from an `L` the bytes do not hold; a count claiming
+  more elements than its body's bytes can hold is refused `count_over_length`
+  (`TableRefuseCountOverLength`) at measure time, before any allocation, for a
+  `[]` list exactly as for any other §2.9 list, and a `[..N]` count past its
+  bytes reads what the bytes hold and is `malformed`;
+- **int32 count storage** (§2.9, §6.1): a `[]` count past `2^31 - 1` is
+  `count_over_extent_cap` (`TableRefuseCountOverExtentCap`);
+- **the blob record's u32 length** (§2.5, below): an element or key whose
+  length does not fit `2^32 - 1` is `blob_over_size_cap`
+  (`TableRefuseBlobOverSizeCap`), the refusal every blob already meets;
+- **§6.5's caller-owned allocation**: `LoadMeasure` answers the region size
+  from the framing before any allocation, and the caller refuses a number it did
+  not expect; the builder's arena refuses past its segments.
+
+An unbounded element never counts `clamped` for its length. A `[..N]` list's
+COUNT still clamps at `N` and counts `clamped`, naming the field (§2.13).
+
+**THE WRITE SIDE** holds the count to `N` and refuses an element or key that is
+ill-formed UTF-8 or holds a zero byte at `Append` / `Insert` (false) and at
+`Save` and `Measure` (`-1`, nothing written), as §2.13 states for the bounded
+element. There is no length bound beyond what the storage holds, the blob
+record's u32 length.
+
+**THE TEXT FORM (§16.2)** is the plain shape: an array of strings (with `null`
+for an absent `?` element) and an object with plain keys. An unbounded element
+is never clamped and an unbounded key never dropped for its length; a repeated
+key is last-wins and counted `duplicate`, as for every map.
+
+**STORAGE: the blob record of §2.5, reached by a slot in the element record.**
+A bounded element is `[M+1]byte` and an `int32` length, which an unbounded one
+cannot be. An unbounded `value` (and an unbounded `key`) is ONE eight-byte
+`TableRef` slot (§6.3) naming a blob record — `u32 length`, `u32 zero`, the
+bytes, one zero byte — the record `*string`'s node is: allocated in the
+builder's arena on the authoring side (the slot an arena reference), and
+packed at its used size, rounded to eight, inside the holder's node EXTENT in a
+region and in a cook (the slot a self-relative delta), exactly where a list's
+elements lie (§2.9). A null slot is the empty string. **The WIRE stays kind
+`12`, never `17`**: the record is a storage fact, not a node, so it takes no
+node index, no directory entry and no sharing (§3.1), and the slot is not an
+edge the numbering walks. So the cook (§7, the extent written in walk order),
+the view (§8, the descriptor's `Unbounded` column), retain-unknown (§6.6, the
+element walked as the record it is) and the region (§6.3, the extent measured
+from the framing and carved, never allocated) carry it, and a map's `Find`,
+`Insert`, `Erase`, `Each` and the index (`Index`, `IndexFind`) read the key
+through the slot. The read path allocates nothing the bounded one does not: a
+region load carves the bytes from the extent `LoadMeasure` already counted, and
+a builder load takes them from the arena as it takes a list's elements.
+
+**THE MESSAGE FORM (§3.3) EMITS NOTHING for a table whose closure holds
+unbounded text** — the table itself, a table that holds it by value, by pointer,
+through a list, a map or a union arm, and its element records and entries —
+because a message body's string length rides in a count field whose width the
+declared bound sizes, and an unbounded element or key has no bound to size it.
+Carrying it there is a named follow-on (§15), never a clamp to zero; every
+other table of the unit keeps its message surface, and the unit's other seven
+surfaces carry the construct. The fixed (§3.4) and block (§19) forms apply only
+to fixed tables, so for this construct they are inapplicable and emit nothing.
+
+**MAP KEYS compare by BYTES, unsigned, a shorter prefix first, at any length**
+(§2.8): `Find`, `Insert` (replace included), `Erase`, `Each` and the index hash
+and compare the WHOLE key, and a key is never clamped, so two keys sharing all
+but their last byte stay two entries in key order whatever their length.
+
+**THE GO SURFACE** is §2.13's and §2.8's with the slot in place of the inline
+buffer. The element record `<Table><Field>Text` holds `Value TableRef` (and
+`ValuePresent` for `?`), no `ValueLength`; the entry `<Table><Field>Entry`
+holds `Key TableRef`. `<Table><Field>TextAt(value, i, arena ...*TableArena) ([]byte, bool)` is a view into the blob that allocates nothing;
+`<Table><Field>Append(worker *TableWorker, value *<Table>, text string) bool`
+and `AppendAbsent(worker, value)` take the WORKER for every unbounded-element
+list, the bounded `[..N]` count included, because the bytes are allocated;
+the map's `Insert(worker, holder, key string)`, `Find(arena, holder, key)`,
+`Erase(arena, holder, key)`, `Each(holder, visit func(string, *V) bool, arena...)` keep their spellings. The runtime adds `TableMalformedField`, a
+strict read's `malformed` refusal naming the text list or map
+(`<Table>.<field>`) whose element or key it refused (`errors.Is(err, TableRefuseMalformed)` holds), beside §2.13's `TableClampedField`. The claimed
+names are §2.13's and §2.8's, unchanged; an unbounded text list claims its
+element record and its accessors on the same rule.
+
+**Go carries the construct first; every other target refuses it by name,
+centrally, at generation** (§2.12's rule), naming the construct, the field and
+the target. A unit that uses neither spelling generates byte-identical output
+to what it did before this section, for every target.
+
 ### 2.14 The integrity check: `integrity`
 
 **A table may declare that its saved file carries a checksum.** The binary
@@ -4033,6 +4183,7 @@ byte and is refused `integrity_mismatch`.
 **Go carries the construct first, and every other target refuses it by name,
 centrally, at generation** (§2.12's rule), naming the construct, the table and
 the target, so no other emitter is edited.
+
 
 ## 3. The wire
 
@@ -4448,7 +4599,8 @@ one document rather than two.
     element is preceded by its own `L`. For element kind `12` (string) each
     element is kind `12`'s payload, its own `L` then `L` bytes of
     well-formed UTF-8 with no zero byte, the text list of §2.13 and the one
-    declaration that produces it. For element kind `15` (union) each
+    declaration that produces it; an unbounded element (`[]string`, §2.13.1)
+    rides exactly so, its `L` the only length there is. For element kind `15` (union) each
     element is the union payload in its place, the arm id reference, then the
     kind byte, `L` and the arm body when the id is not `0`, so a `None`
     element is the single zero byte a reader already accepts and position
@@ -4587,6 +4739,13 @@ twenty unnameable entries counts nothing at all if no body references them.
   holding `value` under kind `12` when present and only the zero reference
   when absent. A count past the reader's bound and an element past `M` clamp
   and count; ill-formed UTF-8 or a zero byte in an element is `malformed`.
+  **An UNBOUNDED element or key (§2.13.1) moves no kind either**: `string(M)`
+  respelled `string` and back is the bound edit above, so a reader that drops
+  the bound reads every element and key equal, and a reader that adds one
+  clamps the element at a code point boundary and counts `clamped`, and skips a
+  longer key's entry counted `clamped` (§2.8). An element or key `L` past its
+  body is `malformed`, a count past what its bytes can hold is
+  `count_over_length`, and neither allocates from the claim.
 - **Field ORDER within a body is not part of the contract.** This
   implementation writes fields in declaration order, and a reader must not
   rely on it: every field is found by its id, so any order decodes the same
@@ -7418,6 +7577,37 @@ between the two forms** — which is the surprise the keyword exists to prevent.
   KEYWORD.** `ir.VariableTables` is its complement and `ir.TableFixedRoots` is
   the declared set, so every emitter switches on one flag with one origin.
 
+#### A VARIABLE TABLE IN THE UNIT CHANGES NOTHING FOR ITS FIXED TABLES
+
+**THE FIXED FORM IS CARRIED BY EVERY FIXED TABLE THAT QUALIFIES FOR IT,
+WHATEVER ELSE THE UNIT HOLDS.** The qualification is the one this section
+already names and nothing more: the record ceiling (65536), the walk's depth
+bound and the generator's leaf cap (4096). A unit that also declares a variable
+table is generated over the unit's canonical `<Name>Row` storage (§7, §11), and
+its fixed tables carry the same six form-`3` entry points over that storage
+(`<T>FixedMeasure`, `<T>FixedSave`, `<T>FixedSaveReason`, `<T>FixedLoad`, and
+the `<T>FixedLeaves` and `<T>FixedWriteBody` the plan and the template are made
+of) and write THE SAME BYTES, record for record, that the same declarations
+write in a unit with no variable table. Every refusal this form names answers
+the same in both units. The layout is the declaration's and the storage is the
+port's, so a port whose storage differs between the two units (a `string(N)`
+held in an `N+1` buffer, padding the Row lays down) takes its destinations from
+its own compiler's `offsetof` and `sizeof` over the storage it actually holds,
+as THE PLAN'S DESTINATIONS rule below already requires.
+
+Source: the v1.5 adoption, where adding one variable table to a unit silently
+dropped every fixed table's form-`3` surface and its fixed tables rode the
+ordinary table wire. That is the surprise the keyword exists to prevent.
+
+- **FOLLOW-ON, NAMED: A UNION IN A REGIONAL UNIT'S FIXED TABLE.** In a unit that
+  holds a variable table a union is stored as its overlay Row (a tag and one
+  payload extent, arms reached through accessors) and not as one member per
+  arm, so the Go leg's per-arm destinations do not exist there. Until the Go
+  leg lays a union's arms over the overlay, a fixed table whose closure holds a
+  union keeps form `1` in a regional unit, decided at compile time by a named
+  predicate (`fixedRowHoldsUnion`) and never at run time. The same table in a
+  unit with no variable table carries form `3` as before.
+
 ---
 
 #### THE ONE READER PATH: A PLAN
@@ -8410,6 +8600,24 @@ its counters from the engine, and the `report` surface — which already loads a
 wire and compares the six counters in every language — is where it lives.
 The evolution seams and the pointer-spelling cases there are exactly that
 shape already.
+
+### 4.3 One-sided integer ranges
+
+On a field of a `table` or a `fixed table` whose type is an integer
+(`int8`..`int64`, `uint8`..`uint64`), a one-sided range declares the two-sided
+one: `| min = A` alone means `| min = A, max = <the type's maximum>` and
+`| max = B` alone means `| min = <the type's minimum>, max = B`. The one-sided
+spelling IS the two-sided declaration — the same projection, build version,
+lock line, tables baseline row, wire and generated code, byte for byte. A
+one-sided range is still refused by name on a float, a fixed-point, `int128`
+or `uint128` field, a timestamp or a named type, beside `resolution`, and on
+a field of a `type` body or a packet (SPEC §4.6). A one-sided range whose
+given side excludes zero needs a default in range exactly as a two-sided one
+does (SPEC §4.6). The compiler fills the missing side from the type's limit
+before the two-sided path runs and carries the field a `RangeOneSided`
+flag that is not in the projection. Go carries the construct first: every
+other target refuses a unit with any such field by name at generation
+(SPEC §4.6).
 
 ## 5. Identity: the name hash, `was`, and the collision refusal
 
@@ -11246,6 +11454,15 @@ them — whole units for a fixed field — and the two exact columns are what
 let the text form (§16) read and write these kinds without a double on the
 path, and without parsing `type_name`.
 
+**An integer field carries its EXACT RANGE, beside the `double` pair.** A
+ranged integer's bounds — a signed `TInt`'s as two `int64` columns, an
+unsigned `TInt`'s and a `bits(N)`'s as two `uint64` columns — are carried
+exactly, because a `double` cannot hold every int64 or uint64 value and a
+bound past 2^53 loses precision. The `double` columns keep the declared
+bounds for a walker that only shows them, and stay for float and fixed-point
+ranges. The exact columns are what let the text form (§16) clamp an integer
+read to its declared range without a double on the path.
+
 **An optional field carries its presence companion.** `optional` marks the
 field and `present_offset` names the `<field>_present` bool, exactly as
 `counted` and `count_offset` name a count companion — so a walker can read
@@ -11983,7 +12200,7 @@ appears in any generated file but the view pair.
 
 ### 8.8 The `--surface` flag
 
-The Go target can emit a subset of the table surfaces. `generate --lang go --surface <list>` takes a comma-separated list drawn from these eight names:
+The Go target can emit a subset of the table surfaces. `generate --lang go --surface <list>` takes a comma-separated list drawn from these nine names:
 
 - **wire** — the TABLE-wire codecs (`<Name>Measure/<Name>Save/<Name>Load`)
   and the reflection descriptors.
@@ -11994,9 +12211,13 @@ The Go target can emit a subset of the table surfaces. `generate --lang go --sur
 - **view** — the view file, `<Package>View.go` (§8.2–§8.7).
 - **message** — the message-form codecs (§3.3).
 - **retain** — the retain codecs.
+- **textform** — the hand-editable text form, `<Base>TableTextForm.go` (§16.9).
 
-The default is the full set: a generate without `--surface` is byte-identical
-to one with `--surface wire,fixed,json,cook,block,view,message,retain`.
+The default is the full set of the first eight: a generate without `--surface`
+is byte-identical to one with `--surface wire,fixed,json,cook,block,view,message,retain`.
+`textform` is the one surface a generate emits only when it is named, so adding
+it moved no default output; it rides on the JSON walk, so it implies `json`
+and through it `wire`.
 
 **Dependencies resolve automatically and are named here.** `wire` is the
 base surface and cannot be dropped on its own: `fixed`, `json`, `cook`,
@@ -12010,6 +12231,13 @@ it refuses is one naming `json`, `cook` or `block` for a table whose `forms`
 declaration leaves that form out, and the default full set refuses nothing.
 
 Only the Go target honors the flag; any other `--lang` refuses it by name.
+
+**A default generate removes stale surface files.** A `generate --lang go`
+without `--surface` removes from the output directory every `.go` file whose
+first line is exactly the compiler's own header naming a `.schema` file of this
+unit (`// Code generated by the schema compiler from <file>.schema. DO NOT EDIT.`) or this unit's package (`// Code generated by the schema compiler for package <pkg>. DO NOT EDIT.`) and that this run did not write; with `--surface`
+it removes nothing; no other file is ever touched; `--verbose` lists each
+removal.
 
 ## 9. Relocatable, and built wide
 
@@ -12263,6 +12491,12 @@ in build version (§20.5).
   `*string` or `*bytes`, each a named follow-on (§15); `[..N]?T` and `[]?T`
   for any `T` but `string(M)`; a declaration under any name the construct
   claims; and the construct under every target but Go, centrally.
+- **Unbounded text** (§2.13.1): a bare `string` as a plain field (naming
+  `string(N)` and `*string`), in `[N]string` and `[E]string` (naming
+  `[..N]string`), in `?[]string` and `?[..N]string`, in a `type` body, a
+  packet, a union arm, a map VALUE and a `fixed table` (naming the plain
+  `table` spelling), and as `map[?string]V`; and both constructs under every
+  target but Go, centrally.
 - **The array root** (§16.10): `json` on a table line with any value but
   `"array"`, bare, or not a string; on a `fixed table`; on a table without
   exactly ONE field, or whose one field is not `[..N]T` or `[]T` (`?[..N]T`,
@@ -13669,6 +13903,13 @@ inspects everything in the schema built:
   reachable. Closing it is the same one-line predicate the pair rule is
   already spelled as, plus a corpus unit per spelling; the page's rule is
   already the one above and nothing about it is undecided.
+- **UNBOUNDED TEXT IN THE MESSAGE FORM** (§2.13.1, §3.3). A message body
+  sizes a string's length field by its declared bound, so an unbounded element
+  or key needs a length encoding of its own there before the form can carry
+  it; until then the message form emits nothing for a table whose closure
+  holds one. Also owed: internal/baseline judging a `size=` vanishing on a text
+  value line, and `keybound=` moving to `0`, as capacity GROWTH (§18), and
+  every port but Go (§2.12's rule).
 - **THE UNIT REGISTRY IN THE SEVEN REMAINING PORTS** (§8.3, §8.7). C++ and C
   emit the registry; the remaining seven ports do not in this tree, so an enum
   VARIANT's, a flags BIT's and a record-naming ARM's `doc` and `tags` reach
@@ -14373,6 +14614,9 @@ Per kind:
 | `*wstring` | string, or `null` | the blob's code units as a string, transcoded as `wstring(N)`'s row is, with no bound to clamp against, and the same two values at the empty end |
 | `map[K]V` | object keyed by the KEY | a string key is the string, and one longer than `N` drops its entry and counts `clamped`; an integer key is its decimal spelling, quoted, read by the integer rule above and by nothing else, so a token that rule calls `malformed` makes the key malformed and one with a fractional value or out of the key kind's range drops its entry as `kind_mismatch`; written in ASCENDING key order; a repeated key is last-wins and counted; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7); a `?T` VALUE (`map[K]?T`) is written `null` when ABSENT and as its value when PRESENT, defaults included, and read the same way: the object's key is the ENTRY and never the value's presence, so `null` is the one spelling of an absent value and any other value is present (§2.3) |
 | text list `[..N]string(M)`, `[]string(M)` | array of strings | `["a","b"]`, `[]` for an empty list, written in INDEX order (§2.13). An element that is not a string, `null` included, is `kind_mismatch`; an element longer than `M` clamps as `string(N)`'s row does, and an element past a `[..N]` bound is dropped, counted, as the bounded array's row says |
+| unbounded text list `[]string`, `[..N]string` | array of strings | `["a","b"]` as above, with NO element bound: no element is clamped and `clamped` never fires for a length; a `[..N]` count past `N` is dropped, counted (§2.13.1) |
+| unbounded text list `[]?string`, `[..N]?string` | array of strings and `null` | as the `?string(M)` row, with no element bound |
+| `map[string]V` unbounded key | object keyed by the KEY | the map row with NO key bound: no key is dropped for its length; a repeated key is last-wins and counted (§2.13.1) |
 | text list `[..N]?string(M)`, `[]?string(M)` | array of strings and `null` | `["a",null,"b"]`: a present element is its string, `""` included, and an absent element is `null`; any other JSON type is `kind_mismatch`; the bounds as above |
 | a table declared `json = "array"` | array | the table's text IS its one field's array, wherever the table appears (§16.10) |
 | `[]T`, `[]*T` unbounded array | array | the bounded array's row with NO bound, so no element is dropped and `clamped` cannot fire on the count (§2.9); `[]` is an empty list and `null` is `kind_mismatch`; a `[]*T`'s elements take the pointer row above, `&node` and all; written in INDEX order, which is the only order there is |
@@ -15074,7 +15318,7 @@ The rules below replace §16.2's tolerant behavior for this form only.
 | `[]T`, `[]*T` | Sequence in index order, without a schema count bound; resource limits still apply. |
 | `[E]T` enum-keyed array | Record keyed by enum variant names (`:Fighter` or `"Fighter"`); missing slots use defaults. `None` and unknown variants are `text_unknown_key`; duplicate slots are `text_duplicate_key`. |
 | `?T`, including optional arrays | Omitted field or `null` is absent; any valid T value is present. `()` at an array site is present-and-empty. |
-| Union | Record with exactly one arm key and its arm-kind value; `()` is None. Example `(:count 7)` or `(:ping null)` for a payload-free arm. Unknown arm is `text_unknown_key`, duplicate arm is `text_duplicate_key`, multiple different arms are `text_kind_mismatch`. |
+| Union | Record with exactly one arm key and its arm-kind value; `()` is None. Example `(:amount 7)` or `(:ping null)` for a payload-free arm. Unknown arm is `text_unknown_key`, duplicate arm is `text_duplicate_key`, multiple different arms are `text_kind_mismatch`. |
 | `*T` | `null` or the pointee record, with sharing as below. |
 | `*bytes`, `*string`, `*wstring` | `null` or the corresponding string representation above, without a schema length bound; empty string is a present empty blob. |
 | `map[K]V` | Sequence of exactly two-element pairs, e.g. `(("east" 1) ("west" 2))`. K uses its scalar rule (integer keys are numbers, string keys are strings), V uses its own rule; optional values use `null` for absent. Duplicate keys after decoding are `text_duplicate_key`. Preserve source entry order, even though the semantic map has no order. |
@@ -15188,6 +15432,22 @@ byte-identical rewrites, localized edits and named refusals. These are standard
 vectors, not a claim that a reader is implemented. Implementations must compare
 bytes, not parsed equality, for rewrite and edit assertions. Use the same
 vectors for fixed and variable declarations wherever their kinds permit it.
+
+**The Go implementation** is the `textform` surface (§8.8). Per table and
+type the JSON form carries: `<Name>LoadTextForm(text, limits)` returns the
+document, the typed value and nil, or nil, nil and a `*TableTextFormError`
+holding the name, offset and path above; `<Name>SaveTextForm(document)` writes
+the retained bytes; `<Name>EditTextForm(document, edits...)` performs leaf
+edits, each a path and the new token, by original span, keeping a semantic
+no-op's spelling and reading the edited document back before returning it.
+The reader resolves the document strictly against the descriptors (§8), then
+lands the value through the JSON walk (§16) from the canonical JSON of the
+same value; any count in that walk's report is refused rather than trusted.
+Structural edits are not implemented: they refuse as `text_edit_conflict`.
+One ordering is weaker than the rule above: whether a list is a record is
+known only from its kind, so a record's pairing (an odd item count, a key that
+is not a keyword or a string) is checked while resolving, and a semantic
+failure earlier in source order is reported first.
 
 ### 16.10 The array root: `table GoalList | json = "array"`
 
@@ -15526,6 +15786,14 @@ have carried. **Every other token keeps judging exactly as it did**: `elem=`,
 `type=`, `enum=`, `union=` and `kind=` are unmoved by the array's class, so an
 element retyped, a referent swapped or a kind changed refuses under the shape
 that was there and under the shape that replaces it alike.
+
+**UNBOUNDED TEXT (§2.13.1) RENDERS ITS OWN LINE.** A text list's unbounded
+`value` renders with no `size=` token, and an unbounded map key as
+`keybound=0`, a value no `string(N)` key carries (`N >= 2`), so neither line is
+any `string(M)` line. The check judges the moved token by its existing rule;
+treating a `size=` vanishing on a `value` line, and `keybound=` moving to `0`,
+as a capacity GROWTH rather than a shrink is owed to internal/baseline, which
+this construct's first card did not edit.
 
 **AND IT BUMPS NO RENDERING VERSION.** The bump rule asks whether this
 rendering emits a token an older one did not, on a line an untouched schema
@@ -16914,6 +17182,11 @@ of declaration it names"*:
   where a fixed or bounded array's line carries its ELEMENT's kind: the two
   spellings are one wire (§2.9) and two storages, and this projection digests
   storage.
+- **`text=unbounded`** marks an UNBOUNDED text element's `value` or an
+  unbounded map `key` (§2.13.1), which carries no `bound=`: its storage is the
+  eight-byte blob slot, so its `size=` is eight, and the line differs from any
+  `string(M)` line by both tokens. Respelling `string(M)` as `string` moves the
+  build version exactly as moving `M` does.
 
 - **A MAP's generated ENTRY takes a `record` line of its own, and it is
   ANONYMOUS.** The line carries the HOLDER's wire id and the MAP FIELD's wire

@@ -17,10 +17,16 @@ type Surfaces struct {
 	View    bool
 	Message bool
 	Retain  bool
+	// TextForm is the hand-editable text form (docs/SPEC-TABLES.md §16.9),
+	// <Base>TableTextForm.go. It is SELECTED BY NAME and never in the default
+	// set, so a default generate is byte-identical with or without it; it
+	// rides on the JSON text form, so naming it implies json (and so wire).
+	TextForm bool
 }
 
-// DefaultSurfaces is the full set: a generate without --surface is byte-identical
-// to one with --surface wire,fixed,json,cook,block,view,message,retain.
+// DefaultSurfaces is the default set: a generate without --surface is
+// byte-identical to one with --surface wire,fixed,json,cook,block,view,message,retain.
+// The textform surface is the one not in it: it is emitted only when named.
 func DefaultSurfaces() Surfaces {
 	return Surfaces{Wire: true, Fixed: true, JSON: true, Cook: true, Block: true, View: true, Message: true, Retain: true}
 }
@@ -57,8 +63,12 @@ func ParseSurfaces(list string) (Surfaces, error) {
 		case "retain":
 			s.Retain = true
 			s.Wire = true
+		case "textform":
+			s.TextForm = true
+			s.JSON = true
+			s.Wire = true
 		default:
-			return s, fmt.Errorf("unknown surface %q — the eight are wire,fixed,json,cook,block,view,message,retain (docs/SPEC-TABLES.md §8.8)", item)
+			return s, fmt.Errorf("unknown surface %q — the nine are wire,fixed,json,cook,block,view,message,retain,textform (docs/SPEC-TABLES.md §8.8)", item)
 		}
 	}
 	return s, nil

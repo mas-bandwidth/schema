@@ -123,6 +123,12 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		if err := refuseTextForms(u, carrier); err != nil {
 			return nil, err
 		}
+		// GO CARRIES THE ONE-SIDED INTEGER RANGE FIRST (docs/SPEC-TABLES.md §4,
+		// SPEC §4.6): every other target refuses a unit that uses it, here,
+		// once, by name, so no other emitter is edited.
+		if fname, owner, ok := firstOneSidedField(u); ok {
+			return nil, fmt.Errorf("the %s target does not carry a one-sided integer range — %s: Go carries it first, and every other target refuses the construct by name until its own turn (SPEC §4.6, docs/SPEC-TABLES.md §4)", carrier, owner+"."+fname)
+		}
 	}
 	if lg, takes := g.(lineageGenerator); takes {
 		lineage, err := openFixedLineage(u)
@@ -168,6 +174,26 @@ func firstFormsTable(u *ir.Unit) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// firstOneSidedField returns the first table field declared with a one-sided
+// integer range (its missing side filled from the type's limit) and its table's
+// name. The central refusal for every target but go reads it
+// (docs/SPEC-TABLES.md §4).
+func firstOneSidedField(u *ir.Unit) (fname, owner string, ok bool) {
+	names := make([]string, 0, len(u.Tables))
+	for name := range u.Tables {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		for _, f := range u.Tables[name].Fields {
+			if f.RangeOneSided {
+				return f.Name, name, true
+			}
+		}
+	}
+	return "", "", false
 }
 
 // englishList joins names for a sentence: "c, cpp, cs, go, js and rust".

@@ -688,6 +688,11 @@ func fieldPiecesMemo(u *Unit, f *Field, projection bool, m *layoutMemo) []storag
 		// other, and the region delta is what sizes it: at eight bytes one
 		// region reaches everything, which is the scale §7 is built for.
 		pieces = append(pieces, storagePiece{size: 8, align: 8})
+	case f.Type.TextUnbounded():
+		// UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): one TableRef slot,
+		// EIGHT bytes at eight, naming the blob record §2.5 defines — the
+		// pointer slot's own shape, though the wire carries the text inline
+		pieces = append(pieces, storagePiece{size: 8, align: 8})
 	case f.Type.Kind == TString:
 		pieces = append(pieces, storagePiece{size: addSize(f.Type.Size, 1), align: 1}) // char[N+1]
 		pieces = append(pieces, storagePiece{size: 4, align: 4})                       // int32 length

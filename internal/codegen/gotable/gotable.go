@@ -74,6 +74,9 @@ type tableGen struct {
 	home     bool // this file carries the unit's shared table runtime
 	anyKeyed bool
 	owner    *ir.Struct // the closure member whose codec is being emitted
+	// messageSkip is the set of tables the message form emits nothing for
+	// (docs/SPEC-TABLES.md §2.13.1), computed once, in a unit with unbounded text
+	messageSkip map[string]bool
 
 	types  strings.Builder // the table storage structs
 	body   strings.Builder // everything else
@@ -464,14 +467,14 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 		g.pf("// BuildVersion is the unit's build version (docs/SPEC-TABLES.md §20): the\n// one digest a block carries and BlockOpen compares, and the fact §3.3's\n// announcement carries before the first body so a peer's build is knowable.\nconst BuildVersion uint64 = 0x%016x\n\n", ir.BuildVersion(u))
 		// the message form's TYPES are the core's: the descriptor's message
 		// columns are typed by them, and the core declares the descriptor
-		g.pf("%s", textListRuntime(u, tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageCoreTypes(u)+tableFixedRuntime))
+		g.pf("%s", unboundedTextRuntime(u, textListRuntime(u, tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageCoreTypes(u)+tableFixedRuntime)))
 		if s.Message {
 			g.into(&g.message, func() { g.pf("%s", tableMessageRuntime(u)) })
 		}
 		if len(ir.TableIntegrityTables(u)) > 0 {
 			g.pf("%s", tableIntegritySource)
 		}
-		cookRuntime = tableCookWriteSource(u)
+		cookRuntime = unboundedTextCook(u, tableCookWriteSource(u))
 		g.emitUnitBlittableRows(blocks)
 		if regional {
 			g.emitRegionRuntime(blocks)
@@ -536,7 +539,7 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 			if s.Cook && (!st.IsTable || st.CarriesForm("cook")) {
 				g.into(&g.cook, func() { g.emitCookWriteSurface(st) })
 			}
-			if s.Message {
+			if s.Message && g.messageCarries(st) {
 				g.into(&g.message, func() {
 					g.emitMessageWrite(st)
 					g.emitMessageRead(st)
@@ -623,6 +626,18 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 			forms[name] = FormJson
 		}
 		maps.Copy(out, texts)
+		// the HAND-EDITABLE text form (§16.9) rides on the JSON walk, in a file
+		// of its own, only when the textform surface is named
+		if s.TextForm {
+			handTexts, err := generateTextFormFiles(u, closure, home)
+			if err != nil {
+				return nil, nil, err
+			}
+			for name := range handTexts {
+				forms[name] = FormJson
+			}
+			maps.Copy(out, handTexts)
+		}
 	}
 	if s.View {
 		view, err := generateViewFile(u, closure, armSlots)
@@ -1042,6 +1057,12 @@ type TableFieldInfo struct {
  HasRange bool    // a declared [min, max] (int or float)
 	RangeMin float64 // NOTE: int64 ranges beyond 2^53 lose precision here
 	RangeMax float64
+	// EXACT integer ranges (docs/SPEC-TABLES.md §8.1): a signed integer kind
+	// fills RangeIntMin/RangeIntMax, an unsigned kind (and bits(N)) fills
+	// RangeUintMin/RangeUintMax, beside the float64 pair which stays for float
+	// and fixed-point ranges. Zero on every other field.
+	RangeIntMin, RangeIntMax int64
+	RangeUintMin, RangeUintMax uint64
 
 	// EnumMax bounds the vocabulary: enums, the highest valid value (None = 0
 	// is always valid); unions, the arm count (tag range [0, EnumMax]); a
