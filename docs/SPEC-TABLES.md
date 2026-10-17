@@ -4213,7 +4213,7 @@ key does not replace one.
 **WHAT IT ENTERS, AND WHAT IT DOES NOT.** The key is part of the table's
 declaration, so every build of the unit agrees on it. It is **not** part of
 the projection (SPEC §3.1), **not** part of the build version (§20), **not**
-in the fixed-table lock (§2.10: the key is refused on a `fixed table`, below)
+in the fixed-table lock (§2.10; a `fixed table` may declare it now that its message-form batch carries the trailer, below)
 and **not** in the tables baseline (§18). Those four record identity and
 layout, the names, ids, kinds and offsets a reader resolves, and the trailer
 is none of them: it is framing at the end of one file. Moving it moves no
