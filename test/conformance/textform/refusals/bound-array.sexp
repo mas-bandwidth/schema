@@ -1,1 +1,1 @@
-(:text ("a" "b" "c" "d" "e"))
+(:text ((:line "a") (:line "b") (:line "c") (:line "d") (:line "e")))

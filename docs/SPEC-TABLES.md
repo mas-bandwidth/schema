@@ -14944,7 +14944,7 @@ The rules below replace §16.2's tolerant behavior for this form only.
 | `[]T`, `[]*T` | Sequence in index order, without a schema count bound; resource limits still apply. |
 | `[E]T` enum-keyed array | Record keyed by enum variant names (`:Fighter` or `"Fighter"`); missing slots use defaults. `None` and unknown variants are `text_unknown_key`; duplicate slots are `text_duplicate_key`. |
 | `?T`, including optional arrays | Omitted field or `null` is absent; any valid T value is present. `()` at an array site is present-and-empty. |
-| Union | Record with exactly one arm key and its arm-kind value; `()` is None. Example `(:count 7)` or `(:ping null)` for a payload-free arm. Unknown arm is `text_unknown_key`, duplicate arm is `text_duplicate_key`, multiple different arms are `text_kind_mismatch`. |
+| Union | Record with exactly one arm key and its arm-kind value; `()` is None. Example `(:amount 7)` or `(:ping null)` for a payload-free arm. Unknown arm is `text_unknown_key`, duplicate arm is `text_duplicate_key`, multiple different arms are `text_kind_mismatch`. |
 | `*T` | `null` or the pointee record, with sharing as below. |
 | `*bytes`, `*string`, `*wstring` | `null` or the corresponding string representation above, without a schema length bound; empty string is a present empty blob. |
 | `map[K]V` | Sequence of exactly two-element pairs, e.g. `(("east" 1) ("west" 2))`. K uses its scalar rule (integer keys are numbers, string keys are strings), V uses its own rule; optional values use `null` for absent. Duplicate keys after decoding are `text_duplicate_key`. Preserve source entry order, even though the semantic map has no order. |
