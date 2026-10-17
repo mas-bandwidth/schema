@@ -71,6 +71,13 @@ type Compiler struct {
 	// exposes it as `--fixed-record-limit` (docs/SPEC-TABLES.md §3.4).
 	FixedRecordLimit int64
 
+	// ReservedTargets restricts SPEC.md §4.6's reserved-word checks (the
+	// checker's own display names: "C++", "C#", "Go", "Rust"); nil checks every
+	// target, an empty slice checks none. The generate command sets it from
+	// --lang; every command that names no target leaves it nil and checks every
+	// target's words.
+	ReservedTargets []string
+
 	// SchemaLock turns on the SCHEMA LOCK check (docs/SPEC-TABLES.md §2.10):
 	// when a schema.lock sits in the unit's directory, Load compares every
 	// FIXED table's field sequence against the locked one and REFUSES ANY
@@ -109,6 +116,23 @@ func New() *Compiler {
 		}
 	}
 	return c
+}
+
+// ReservedWordDisplay maps a --lang token to the display name the checker's
+// §4.6 reserved-word tables use for that target; a target with no reserved-word
+// list returns "" (its words are never checked).
+func ReservedWordDisplay(lang string) string {
+	switch lang {
+	case "go":
+		return "Go"
+	case "cpp":
+		return "C++"
+	case "cs", "csharp":
+		return "C#"
+	case "rust":
+		return "Rust"
+	}
+	return ""
 }
 
 // Diagnostics is a compilation's error list — every parse and check error the
@@ -166,7 +190,13 @@ func (c *Compiler) Load(paths []string) (*ir.Unit, error) {
 	if len(diags) > 0 {
 		return nil, diags
 	}
-	u, cerrs := check.Unit(files)
+	var u *ir.Unit
+	var cerrs []error
+	if c.ReservedTargets != nil {
+		u, cerrs = check.UnitForTargets(files, c.ReservedTargets)
+	} else {
+		u, cerrs = check.Unit(files)
+	}
 	if len(cerrs) > 0 {
 		return nil, Diagnostics(cerrs)
 	}

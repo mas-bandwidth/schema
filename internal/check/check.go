@@ -85,6 +85,12 @@ type checker struct {
 	// closure reaches the union, and a refused field is still the author
 	// holding it where they held it (docs/SPEC-TABLES.md §2.6).
 	unionNamedBy map[string][]string
+
+	// reservedTargets narrows §4.6's reserved-word checks to these target
+	// languages' words (display names from targetReserved); nil checks every
+	// target. The generate command sets it from --lang; every command that
+	// names no target leaves it nil.
+	reservedTargets []string
 }
 
 type constEntry struct {
@@ -109,23 +115,35 @@ func versioned(msg string) string {
 	return msg + "\nschema " + version.Version()
 }
 
-// Unit checks the files and lowers them to IR. Files may arrive in any order;
-// the unit is processed in sorted-basename order, so everything derived from
-// it is deterministic.
+// Unit checks the files against every target's reserved words and lowers them
+// to IR. Files may arrive in any order; the unit is processed in
+// sorted-basename order, so everything derived from it is deterministic.
 func Unit(files []SourceFile) (*ir.Unit, []error) {
+	return unitForTargets(files, nil)
+}
+
+// UnitForTargets is Unit with the §4.6 reserved-word check narrowed to the
+// named target languages' words (display names from targetReserved); nil means
+// every target, an empty slice means none. Every other check is identical.
+func UnitForTargets(files []SourceFile, targets []string) (*ir.Unit, []error) {
+	return unitForTargets(files, targets)
+}
+
+func unitForTargets(files []SourceFile, targets []string) (*ir.Unit, []error) {
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
 
 	c := &checker{
-		files:         files,
-		astDecls:      map[string]ast.Decl{},
-		declFile:      map[string]string{},
-		constant:      map[string]*constEntry{},
-		enums:         map[string]*ir.Enum{},
-		flagsD:        map[string]*ir.Flags{},
-		structs:       map[string]*ir.Struct{},
-		unions:        map[string]*ir.Union{},
-		tables:        map[string]*ir.Struct{},
-		mapEntriesFor: map[string][]*ir.Struct{},
+		files:           files,
+		reservedTargets: targets,
+		astDecls:        map[string]ast.Decl{},
+		declFile:        map[string]string{},
+		constant:        map[string]*constEntry{},
+		enums:           map[string]*ir.Enum{},
+		flagsD:          map[string]*ir.Flags{},
+		structs:         map[string]*ir.Struct{},
+		unions:          map[string]*ir.Union{},
+		tables:          map[string]*ir.Struct{},
+		mapEntriesFor:   map[string][]*ir.Struct{},
 		unit: &ir.Unit{
 			DeclFile: map[string]string{},
 			Consts:   map[string]*ir.Const{},
@@ -295,9 +313,9 @@ func (c *checker) checkNativeMapping() {
 // target's namespace/module/package concept verbatim (SPEC §6.1), which exposes
 // it to three collision classes no declaration or field name can hit.
 func (c *checker) checkPackageName(name string, pos ast.Pos) {
-	if lang, ok := targetReserved[name]; ok {
+	if langs := c.reservedTargetLangs(name); len(langs) > 0 {
 		c.errf(pos, "package name %q is a reserved word in %s (the package ident becomes the target's namespace/module/package name verbatim) — rename the package; no escaping machinery (SPEC §4.6)",
-			name, lang)
+			name, listReservedLangs(langs))
 		return
 	}
 	if libcNamespaceScope[name] {
@@ -1210,8 +1228,8 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 			c.errf(v.Pos, "variant %s is a compile error — its exported spelling equals the union's own name, which C# refuses (CS0542); rename at the source (SPEC §4.6)", v.Name)
 			continue
 		}
-		if lang, bad := targetReserved[v.Name]; bad {
-			c.errf(v.Pos, "variant %s is a reserved word in %s — rename at the source, no escaping machinery (SPEC §4.6)", v.Name, lang)
+		if langs := c.reservedTargetLangs(v.Name); len(langs) > 0 {
+			c.errf(v.Pos, "variant %s is a reserved word in %s — rename at the source, no escaping machinery (SPEC §4.6)", v.Name, listReservedLangs(langs))
 			continue
 		}
 		if prev, dup := seen[exported]; dup {
@@ -3363,16 +3381,19 @@ func describeTableJsonField(f *ir.Field) string {
 
 // ---- target-name safety (SPEC §4.6) ----
 
-// targetReserved is the union of the four target languages' reserved words.
-// A declaration or field using one is rejected: no escaping machinery, rename
-// at the source.
-var targetReserved = func() map[string]string {
-	m := map[string]string{}
+// targetReserved maps each reserved word of the target languages to the SORTED
+// list of targets that reserve it. A declaration or field using one is
+// rejected: no escaping machinery, rename at the source. The checker consults
+// it against the targets being generated (§4.6): a word reserved only in a
+// target the run does not generate is not refused.
+var targetReserved = func() map[string][]string {
+	m := map[string]map[string]bool{}
 	add := func(lang, words string) {
 		for w := range strings.FieldsSeq(words) {
-			if _, ok := m[w]; !ok {
-				m[w] = lang
+			if m[w] == nil {
+				m[w] = map[string]bool{}
 			}
+			m[w][lang] = true
 		}
 	}
 	add("C++", `alignas alignof and and_eq asm auto bitand bitor bool break case catch char
@@ -3394,8 +3415,53 @@ var targetReserved = func() map[string]string {
 	add("Rust", `as async await break const continue crate dyn else enum extern false fn for
 		if impl in let loop match mod move mut pub ref return self Self static struct super
 		trait true type unsafe use where while`)
-	return m
+	out := map[string][]string{}
+	for w, langs := range m {
+		l := make([]string, 0, len(langs))
+		for lang := range langs {
+			l = append(l, lang)
+		}
+		sort.Strings(l)
+		out[w] = l
+	}
+	return out
 }()
+
+// reservedTargetLangs returns the targets the checked run must flag `name` for:
+// every target that reserves it, narrowed to the targets being generated when
+// the checker carries a non-nil reservedTargets, and every target when it does
+// not (§4.6). A name no target reserves returns nil.
+func (c *checker) reservedTargetLangs(name string) []string {
+	langs := targetReserved[name]
+	if len(langs) == 0 || c.reservedTargets == nil {
+		return langs
+	}
+	var out []string
+	for _, l := range langs {
+		for _, t := range c.reservedTargets {
+			if l == t {
+				out = append(out, l)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// listReservedLangs joins the checked targets a name collides with into one
+// diagnostic's target list: "C++", "C++ and C#", "C++, C#, and Go".
+func listReservedLangs(langs []string) string {
+	switch len(langs) {
+	case 0:
+		return ""
+	case 1:
+		return langs[0]
+	case 2:
+		return langs[0] + " and " + langs[1]
+	default:
+		return strings.Join(langs[:len(langs)-1], ", ") + ", and " + langs[len(langs)-1]
+	}
+}
 
 // libcNamespaceScope is the C standard library's identifier set as a generated
 // C++ translation unit sees it at namespace scope: the functions, types and
@@ -3501,9 +3567,9 @@ func goExportName(name string) string {
 
 func (c *checker) checkTargetNames() {
 	checkName := func(name string, pos ast.Pos, what string) {
-		if lang, ok := targetReserved[name]; ok {
+		if langs := c.reservedTargetLangs(name); len(langs) > 0 {
 			c.errf(pos, "%s %q is a reserved word in %s — rename at the source; no escaping machinery (SPEC §4.6)",
-				what, name, lang)
+				what, name, listReservedLangs(langs))
 		}
 	}
 	for _, f := range c.files {

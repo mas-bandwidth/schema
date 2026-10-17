@@ -297,6 +297,13 @@ func main() {
 		c.FixedRecordLimit = *limit
 		c.TablesBaseline = true
 		c.SchemaLock = true
+		// SPEC.md §4.6: generate --lang L checks L's words only. A target with
+		// no reserved-word list of its own has no words to narrow to, so
+		// ReservedTargets stays nil and the check covers every target's words
+		// rather than none.
+		if tn := compiler.ReservedWordDisplay(*lang); tn != "" {
+			c.ReservedTargets = []string{tn}
+		}
 		unit := loadUnit(c, fs.Args())
 		files, err := c.Generate(unit, *lang, compiler.Options{"surface": *surface})
 		if err != nil {
