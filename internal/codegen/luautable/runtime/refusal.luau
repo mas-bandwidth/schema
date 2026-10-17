@@ -8,7 +8,9 @@
 -- integrity_mismatch are returned before any read.
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
-local S = {}
+local S = require("./schema_tables")
+local L = require("./load")
+
 local M = {}
 
 -- The tolerant load's report (docs/SPEC-TABLES.md §4). The counters the
@@ -16,11 +18,12 @@ local M = {}
 export type Report = {
 	unknown: number,
 	kind_mismatch: number,
+	kindMismatch: number,
 	widened: number,
 	clamped: number,
 	duplicate: number,
 	malformed: boolean,
-	refused: string?,
+	refused: number?,
 	field: string?,
 }
 
@@ -28,10 +31,12 @@ local function newReport(): Report
 	return {
 		unknown = 0,
 		kind_mismatch = 0,
+		kindMismatch = 0,
 		widened = 0,
 		clamped = 0,
 		duplicate = 0,
 		malformed = false,
+		refused = 0,
 	}
 end
 
@@ -53,33 +58,53 @@ end
 -- answer, and a named refusal instead of a slow damaged value. It runs the
 -- tolerant load over the form byte, then converts the report's bad counters
 -- into the name the caller sees.
-function M.ReadStrict(wire: buffer, root: { { any } }, load: (buffer, any, Report) -> (any, boolean)): (any, string?)
+-- The first field the strict read can name is the root descriptor's first
+-- field, since the landed tolerant load (load.luau) keeps only counters and
+-- not the field that raised each one.
+local function fieldName(root: string, report: Report): string
+	if report.field ~= nil then
+		return tostring(report.field)
+	end
+	local ok, desc = pcall(S.lookup, root)
+	if ok and desc ~= nil and desc.fields ~= nil and desc.fields[1] ~= nil then
+		return tostring(desc.fields[1].name)
+	end
+	return "field"
+end
+
+function M.ReadStrict(wire: buffer, root: string, load: ((buffer, string, any) -> (any, boolean))?): (any, string?)
 	if buffer.len(wire) < 1 then
 		return nil, "malformed"
 	end
-	if buffer.readu8(wire, 0) ~= 1 then
-		local form = buffer.readu8(wire, 0)
+	local form = buffer.readu8(wire, 0)
+	if form ~= 1 then
 		return nil, formRefusal(form)
 	end
 	local report = newReport()
-	local value, ok = load(wire, root, report)
-	if not ok then
-		return value, (report.refused :: string?) or "wire_damaged"
+	local value
+	if load ~= nil then
+		local ok
+		value, ok = load(wire, root, report)
+		if not ok then
+			return value, (report.refused :: any) or "wire_damaged"
+		end
+	else
+		value = L.load(root, wire, report)
 	end
 	if report.clamped > 0 then
-		return value, "clamped:" .. tostring(report.field)
+		return value, "clamped:" .. fieldName(root, report)
 	end
 	if report.unknown > 0 then
-		return value, "unknown:" .. tostring(report.field)
+		return value, "unknown:" .. fieldName(root, report)
 	end
-	if report.kind_mismatch > 0 then
-		return value, "kind_mismatch:" .. tostring(report.field)
+	if report.kind_mismatch > 0 or report.kindMismatch > 0 then
+		return value, "kind_mismatch:" .. fieldName(root, report)
 	end
 	if report.duplicate > 0 then
-		return value, "duplicate:" .. tostring(report.field)
+		return value, "duplicate:" .. fieldName(root, report)
 	end
 	if report.malformed then
-		return value, "malformed:" .. tostring(report.field)
+		return value, "malformed:" .. fieldName(root, report)
 	end
 	return value, nil
 end
