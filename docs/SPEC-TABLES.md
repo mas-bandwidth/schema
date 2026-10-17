@@ -1559,10 +1559,30 @@ when its slot is non-null, and reads back as a non-null buffer of length zero.
 That is the presence rule every pointer-shaped spelling lives under (§3), and
 it is what `bytes(N)` cannot say without spending a field.
 
-**A blob is a NODE, so it has identity and sharing** (§3.1, §6.2): two slots
-that name one blob name one node on the wire, in a region and in a cook —
-one body, written once, read back as one. The text form is the one place a
-blob cannot be shared (§16.7).
+**A blob is OWNED BY ONE SLOT** (§3.1, §6.2), and the ruling is stated in
+Postel's terms: WRITTEN STRICT, READ TOLERANT, and REFUSED BY NAME ON THE
+STRICT READ. A blob is a node, so a wire can spell two slots naming one blob
+record; that wire is malformed by name, `blob_shared`. **Every writer refuses
+to emit it**: `Measure` and `Save` answer `-1` with `blob_shared` on the reason
+path, the base64 carrier (§16.8) refuses with the same reason, and the text
+writer (§16.7) refuses the graph by the same name. The walk that numbers the
+nodes already meets the second slot, so the refusal is one test there and
+costs nothing else. **The TOLERANT read** (`Load`, the builder load) accepts
+the wire: it keeps the value, both slots naming the ONE node it decoded and
+never a copy per slot, and counts each extra naming in the report's
+`blob_shared` counter. **The STRICT read** (§6.5) refuses it by name. The
+accepting rulings are refused because they lose security: spelling the
+blob's value at each slot in the text, or un-sharing it in `Save` by writing
+a copy per slot, each turns a wire into an output many times its size with
+no cap to stop it (4096 slots naming one 64 KiB blob is an 86 KB wire and
+about 358 MB of base64; a `[..65535]` list naming one 1 MiB blob is about
+91 GB), and security outranks acceptance. A region made by a tolerant read
+holds the one node and its one body, as it holds any node; `Lock` and `Cook`
+pack the graph as they find it, and a later `Save` or text write of that value
+refuses. **The C++ reference and the `tables/blobs` corpus's shared-blob
+instance differ from this standard**: the reference still writes a blob named
+from two slots, and the corpus still carries that instance as a legal wire.
+Their port is parked by the owner, and this ruling does not edit them.
 
 **The read is a pointer and a length, and it allocates nothing.** In C++,
 `TableBytesAt( ctx, node->data )` answers a `TableBytesView` — `data` and
@@ -9264,6 +9284,7 @@ The builder is designed to go wide, lock-free by ownership:
   | `plan_too_large` | a fixed-form layout whose compiled plan does not fit the plan storage the caller declared (§3.4), which is the announced vocabulary's `vocabulary_too_large` for the same reason and on the same rule: this codec never allocates |
   | `count_over_extent_cap` | a count above the `int32` extent cap (§2.2), which no region can hold whatever its size |
   | `blob_over_size_cap` | a blob whose length is past the derived-size cap (§3.1, §11) |
+  | `blob_shared` | one blob record named from two slots (§2.5): every writer refuses to emit it, the tolerant read keeps the one node and counts it, and the strict read refuses it |
   | `data_cycle` | a data cycle reached from a builder, which is the AUTHORING side's `-1` and the one value here that is not about a wire (§3.1, §7.6) |
 
   **`data_cycle` IS THE ONE VALUE WITH NO CARRIER TODAY, and the ruling is
@@ -9307,15 +9328,16 @@ The builder is designed to go wide, lock-free by ownership:
 - **The STRICT read** — one call, `<Name>ReadStrict( wire )`, that answers
   the root or refuses. It refuses, with ONE typed reason, a read that is
   malformed, clamped, kind-mismatched, of an unknown form, wire-damaged,
-  build-version-mismatched or missing a required field (§2.3). It does NOT refuse `unknown`, `widened` or
+  build-version-mismatched, missing a required field (§2.3) or naming one
+  blob from two slots (`blob_shared`, §2.5). It does NOT refuse `unknown`, `widened` or
   `retained` alone: `unknown` is evolution, `widened` decoded exactly, and
   `retained` reports on retention rather than on a loss (the cards facade's
   `ReadStrict`, docs/CARDS.md: `Unknown`, `Retained` and `Widened` alone are
   not loss). The reason is `TableRefuseReason`, the same enum a measure's
   `-1` carries, or `TableBuildVersionMismatch` for the announcement's strict
   refusal (§3.3), or `TableMissingRequired` naming the missing field (§2.3), so the language's typed-error test matches it (`errors.Is`
-  in Go). Values this read adds (`malformed`, `clamped`, `kind_mismatch`)
-  are appended to that enum and never renumbered. `TableReport.Err()`
+  in Go). Values this read adds (`malformed`, `clamped`, `kind_mismatch`,
+  `blob_shared`) are appended to that enum and never renumbered. `TableReport.Err()`
   answers the same reason for every counter this read refuses, and nil on a
   clean read and on a read whose only counters are `unknown`, `widened` or
   `retained`. The call owns its builder: the caller does not measure, does
@@ -14169,10 +14191,11 @@ inspects everything in the schema built:
   its arena and its region, the three reserved type ids in its load dispatch,
   the text form's three spellings, and the cook layout's blob case, held to the
   `tables/blobs` instances the harness carries.
-- **A SHARED BLOB in the text form** (§16.7): a blob's text is a string, which
-  has no first key to carry `&node`, so a blob named from two slots has no
-  spelling and the writer refuses the graph. The relative-file include above
-  is the natural one — two slots naming one file — and the two land together.
+- **A SHARED BLOB in the text form** is CLOSED (§2.5, §16.7): a blob is owned
+  by one slot, every writer refuses a graph that names one blob from two slots
+  by name (`blob_shared`), and the strict read refuses the wire, so there is no
+  spelling for the text form to owe. The relative-file include above stands on
+  its own.
 - **An ARRAY OF BYTE BUFFERS**, `[..N]*bytes` and `[N]*bytes`: the landed
   array of pointers (§2.1, §3.1) with a blob node as the element. The slot
   array and its elision rules carry over unchanged; what it needs decided is
@@ -15142,12 +15165,13 @@ slot writes its bytes and a `*wstring` slot its transcoded units as a JSON
 string, `null` for a null reference, and the
 reader allocates a blob of exactly the decoded length in the builder's arena;
 a `*bytes` body that is not base64 is `kind_mismatch` with the reference left
-null, as a `bytes(N)` body is with the field left at its default. A string
-has no first key to carry `&node`, so a blob named from more than one slot has
-no definition this form can spell, and the writer refuses the graph as it
-refuses a shared node with nothing to write — the corpus carries that
-instance on the wire alone, marked `no-text` on its line, and the include by
-relative file that would give it a spelling is named in §15.
+null, as a `bytes(N)` body is with the field left at its default. A blob is
+owned by one slot (§2.5), so a graph in which two slots name one blob is one
+no writer emits: the text writer refuses it BY NAME, `blob_shared`, the same
+reason the wire writer answers, and there is no spelling to owe. A string has
+no first key to carry `&node`, and writing the value at each slot is the
+amplification §2.5 refuses. The corpus's shared-blob instance, marked
+`no-text` on its line, is the parked C++ reference's (§2.5).
 
 **What a reader builds.** The variable class is not held by value (§6.2), so
 its text form reads through the BUILDER, and writes from the CONST root of a
