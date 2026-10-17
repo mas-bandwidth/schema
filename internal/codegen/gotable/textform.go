@@ -70,9 +70,18 @@ func writeTextFormHooks(b *strings.Builder, u *ir.Unit) {
 	if unitUsesTextForms(u) {
 		b.WriteString("func tableTextFormList(f *TableFieldInfo) uint8 { return f.TextList }\n\n")
 		b.WriteString("func tableTextFormArrayRoot(t *TableTypeInfo) bool { return t.JsonArray }\n\n")
+		// the Unbounded column exists only in a unit that uses unbounded text
+		// (docs/SPEC-TABLES.md §2.13.1); the hand-editable text form reads and
+		// writes those elements and keys with no length bound (§16.9.2).
+		if ir.UnitHasUnboundedText(u) {
+			b.WriteString("func tableTextFormUnbounded(f *TableFieldInfo) bool { return f.Unbounded }\n\n")
+		} else {
+			b.WriteString("func tableTextFormUnbounded(f *TableFieldInfo) bool { return false }\n\n")
+		}
 	} else {
 		b.WriteString("func tableTextFormList(f *TableFieldInfo) uint8 { return 0 }\n\n")
 		b.WriteString("func tableTextFormArrayRoot(t *TableTypeInfo) bool { return false }\n\n")
+		b.WriteString("func tableTextFormUnbounded(f *TableFieldInfo) bool { return false }\n\n")
 	}
 	required := map[string][]string{}
 	for name, st := range u.Tables {
@@ -916,7 +925,11 @@ func (r *tableTextFormResolver) scalar(v *tableTextFormNode, f *TableFieldInfo, 
 			r.raw("null")
 			return true
 		}
-		return r.text(v, f.Table().Fields[0].ArrayBound, false)
+		bound := f.Table().Fields[0].ArrayBound
+		if tableTextFormUnbounded(&f.Table().Fields[0]) {
+			bound = -1
+		}
+		return r.text(v, bound, false)
 	}
 	switch {
 	case f.Pointer:
@@ -1387,7 +1400,11 @@ func (r *tableTextFormResolver) mapping(v *tableTextFormNode, f *TableFieldInfo,
 		mark := len(r.out)
 		var ok bool
 		if key.Kind == 12 {
-			ok = r.text(k, key.ArrayBound, false)
+			bound := key.ArrayBound
+			if tableTextFormUnbounded(key) {
+				bound = -1
+			}
+			ok = r.text(k, bound, false)
 		} else {
 			ok = r.integer(k, key)
 		}
