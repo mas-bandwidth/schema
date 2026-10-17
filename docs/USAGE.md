@@ -3970,9 +3970,12 @@ mismatch with `TableRefuseIntegrityMismatch` (`errors.Is`), and the tolerant
 nothing. Every single-bit flip and every damaged byte is caught; it guards
 against accident, not against someone rewriting the file, which is still a
 signature's job. Adding or removing the key changes the file's framing, so
-rewrite stored files across the change. A `fixed table` refuses the key until
-the fixed and message forms carry it, and only Go generates it today; every
-other `--lang` refuses it by name.
+rewrite stored files across the change. A `fixed table` may declare it too:
+`PointFixedSave` appends the same trailer after the last record,
+`PointFixedMeasure` counts it, and `PointFixedLoad` checks it before it reads
+the layout, answering `-1` with the reason `integrity_mismatch` and landing no
+record. Message batches do not carry it yet. Only Go generates the key today;
+every other `--lang` refuses it by name.
 
 ## Embedding the compiler
 

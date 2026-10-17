@@ -16,9 +16,17 @@ var tableIntegrityTable = crc32.MakeTable(crc32.Castagnoli)
 // the whole-file damage named integrity_mismatch.
 func tableIntegrityOpen(wire []byte, report *TableReport) ([]byte, bool) {
  if len(wire) == 0 || wire[0] != 1 { return wire, true }
- if n := len(wire) - 4; n >= 1 && binary.LittleEndian.Uint32(wire[n:]) == crc32.Checksum(wire[:n], tableIntegrityTable) { return wire[:n], true }
+ if tableIntegrityHolds(wire) { return wire[:len(wire)-4], true }
  if report != nil { report.Verdict = TableOpenDamaged; report.Malformed = true; report.Reason = "integrity_mismatch" }
  return nil, false
+}
+
+// tableIntegrityHolds is §2.14's check, the one both forms read through (the
+// fixed form's at §3.4, THE FRAMING): a file of at least five bytes whose last
+// four are the CRC-32C of every byte before them.
+func tableIntegrityHolds(wire []byte) bool {
+ n := len(wire) - 4
+ return n >= 1 && binary.LittleEndian.Uint32(wire[n:]) == crc32.Checksum(wire[:n], tableIntegrityTable)
 }
 
 // tableIntegritySeal is §2.14's write: the trailer after a file of n bytes,

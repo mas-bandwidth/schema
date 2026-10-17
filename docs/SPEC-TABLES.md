@@ -4146,8 +4146,9 @@ appended to the vocabulary and never replaces one. A value outside it is
 refused by name, as is an empty value, a non-string value and a bare
 `integrity` (a tag is a different thing).
 
-**WHAT IT DECLARES: the VARIABLE-FORM FILE whose ROOT is this table carries
-the INTEGRITY TRAILER** (§3): four bytes, little-endian, the CRC-32C of every
+**WHAT IT DECLARES: the FILE whose ROOT is this table carries the INTEGRITY
+TRAILER**, the variable form's (§3) and, for a `fixed table`, the fixed
+form's (§3.4, below): four bytes, little-endian, the CRC-32C of every
 byte of the file before them, written after the id table and so the last four
 bytes of the file. The key speaks of the FILE, and so of the ROOT only: the
 same table nested in another table's body, or reached through a pointer of a
@@ -4213,7 +4214,7 @@ key does not replace one.
 **WHAT IT ENTERS, AND WHAT IT DOES NOT.** The key is part of the table's
 declaration, so every build of the unit agrees on it. It is **not** part of
 the projection (SPEC §3.1), **not** part of the build version (§20), **not**
-in the fixed-table lock (§2.10: the key is refused on a `fixed table`, below)
+in the fixed-table lock (§2.10: the layout and its hash do not move)
 and **not** in the tables baseline (§18). Those four record identity and
 layout, the names, ids, kinds and offsets a reader resolves, and the trailer
 is none of them: it is framing at the end of one file. Moving it moves no
@@ -4229,15 +4230,67 @@ its stored files across the change: load each under the build that wrote it
 and save it under the new one. Because the change cannot go unnoticed, the
 baseline does not have to catch it, which is why it is not recorded there.
 
-**THE FIXED FORM AND THE MESSAGE FORM ARE FOLLOW-ONS.** Form `3` (§3.4) and
-form `2` (§3.3) carry their own framing, and each gets the trailer in its own
-change (schema-go-wire-integrity-fixed-form, schema-go-wire-integrity-message-form).
-Until then a `fixed table` that declares `integrity` is refused by name at
-check, since the class carries form `3` and is the one class that rides the
-message form (§3.3: "`fixed table T` may ride here, a plain `table T` may
-not"). A plain `table` carries neither, so the key on it is complete. The
-cook (§7) and the block form (§19) are trusted accelerators whose integrity
-answer is a signature, and the key does not touch them.
+**THE FIXED FORM CARRIES THE TRAILER ONCE PER FILE** (§3.4, THE FRAMING). A
+`fixed table` that declares `integrity` writes its form-`3` file exactly as
+§3.4 says and then appends the same four bytes: little-endian, the CRC-32C of
+**every byte of the file before them** (the form byte, the reserved bytes, the
+header's layout hash, the layout's length, the layout, and every record, each
+record's own hash included), after the last record and so the last four bytes
+of the file. One file has one trailer, as above.
+
+**WHY ONCE PER FILE, AND NOT ONCE PER RECORD.** The check exists so that a
+reader refuses a damaged record BEFORE it decodes one, and a fixed-form reader
+already holds the whole file before it decodes anything: the record count is
+arithmetic over the file's length (§3.4, "THE RECORDS FILL THE REST OF THE
+FILE"), so the last four bytes are where the reader is standing anyway. One
+trailer over the file refuses a damaged record before ANY record is touched,
+and before the layout every record is read under is compared or selected; and
+it is the only placement that covers the header and the layout too, which a
+per-record check would leave bare while paying four bytes on every record of
+the form whose design is that a record carries nothing a reader does not need.
+A per-record check would buy one thing, landing the undamaged records of a
+damaged file, and §3.4's read is total over the batch (a refusal at record
+`k` lands none), so that is a thing this form never does.
+
+**A FIXED READER CHECKS IT IN §2.14's ORDER, the form byte's rule kept:**
+
+1. **The form byte is read first.** No first byte is `truncated`, and a byte
+   other than `3` keeps its §3.4 name (`previous_form`, `message_form_as_file`,
+   `newer_form`), exactly as for an undeclared table.
+2. **A form-`3` file shorter than five bytes cannot hold the trailer**, and a
+   file whose last four bytes are not the CRC-32C of the bytes before them is
+   refused **`integrity_mismatch`**, the variable form's name and no new one.
+   Nothing is decoded: the header's hash is not selected, the layout is not
+   compared, no record is touched and no counter moves. The report is the
+   whole-file damage of the variable form's tolerant read: `malformed` set,
+   the reason `integrity_mismatch`, the verdict damage, and nothing landed in
+   the caller's records.
+3. **The trailer is then removed** and the rest is read as §3.4's file, with
+   every rule of §3.4 unchanged: the twenty-byte minimum, the reserved bytes,
+   the layout's length, the lineage, and `truncated` for bytes left over.
+
+**A writer's measure counts the trailer**: the fixed measure of `count`
+records answers four bytes more than an undeclared table's, and the save
+writes exactly that many. **THE TWO MISMATCHED FIXED READERS, by name:** a
+reader WITHOUT the key given a trailered file finds four bytes past its last
+whole record, and a record is at least nine bytes, so the remainder is never a
+record: `truncated`. A reader WITH the key given a file without the trailer
+refuses `integrity_mismatch` unless the last four bytes happen to be the
+CRC-32C of the rest, one file in `2^32`; and then the stripped file is four
+bytes short of a whole record, `truncated`, or, with no record at all, four
+bytes short of its own layout, `layout_malformed`. Neither reads as data.
+
+**THE MESSAGE FORM IS THE FOLLOW-ON (schema-go-wire-integrity-message-form),
+and its trailer will sit ONCE PER BATCH.** A batch (§3.3) arrives whole, one
+datagram or one frame behind one form byte, so its reader holds every byte of
+it before it decodes the first body: one trailer after the batch's last body
+refuses a damaged body before any body of the batch is decoded, at four bytes
+a batch rather than four a body, and it covers the batch's own framing, which
+a per-body check would not. Until that change lands, a declaring table's
+message batches carry no trailer, and this key's promise is the table's
+FILES, both forms of them. The cook (§7) and the block form (§19) are trusted
+accelerators whose integrity answer is a signature, and the key does not
+touch them.
 
 **BASE64 TEXT carries the trailer with no rule of its own**: it is the base64
 of the binary file (§16.8), trailer included, and `LoadText` decodes it and
@@ -7850,6 +7903,14 @@ reason (§5.3's joint table).
     knows the record size from the layout, so the count is arithmetic; **BYTES
     LEFT OVER ARE `malformed`**, named `truncated`, which is §3's rule for the
     same reason, that the two ends of the file have met.
+- **THE INTEGRITY TRAILER, only when the root declares `integrity`** (§2.14):
+  four bytes, the little-endian CRC-32C of every byte before them, after the
+  last record and so the last four bytes of the file. A reader checks it after
+  the form byte and before anything else, refuses a mismatch
+  `integrity_mismatch` with nothing decoded, and then reads the file without
+  it, so every rule of this section speaks of the file with the trailer
+  removed; "the records fill the rest of the file" is the rest before the
+  trailer.
 - **A ONE-RECORD FILE PAYS FOR THE WHOLE LAYOUT**, and that is stated rather
   than hidden: this form is for many records of one small type, which is what
   the owner said it was for — *"effectively, fixed tables should only be used
@@ -12751,6 +12812,9 @@ in build version (§20.5).
   A file whose root declares `integrity` (§2.14) and whose CRC-32C trailer
   does not match returns `TableRefuseIntegrityMismatch` (`integrity_mismatch`)
   from the strict read and `LoadText`, and from `LoadMeasureReason`.
+  The fixed form's `FixedLoad` answers the same damage with `-1` and a report
+  whose reason is `integrity_mismatch`, so `report.Err()` is
+  `TableRefuseIntegrityMismatch`.
   A damaged file trailer returns Go's `TableRefuseWireDamaged`
   (`wire_damaged`), since an error return cannot express the C++ measure's
   untouched reason out-parameter. It is damage, separate from the file refusal
