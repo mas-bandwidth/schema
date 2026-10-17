@@ -280,19 +280,57 @@ func TableRawRange(f *Field) (lo, hi *big.Int, ok bool) {
 }
 
 // TableWideFields lists every field of a unit's table closure that rides
-// under a wide kind, as `Member.field spelling` lines in closure order — what
-// a backend without those kinds refuses BY NAME rather than emitting a second
-// wire for (docs/SPEC-TABLES.md §15).
+// under a wide kind — and every wide ARM of a union the closure reaches, an
+// arm being a field line (§2.6) — as `Member.field spelling` lines in closure
+// order: what a backend without those kinds refuses BY NAME rather than
+// emitting a second wire for (docs/SPEC-TABLES.md §15).
 func TableWideFields(u *Unit) []string {
 	closure := TableClosure(u)
 	var out []string
+	seenUnion := map[*Union]bool{}
+	// an ARM is a field line (§2.6): it rides under a wide kind exactly as a
+	// struct's field does, so a union reachable from the closure is walked too
+	// — recursively, because an arm that is another union reaches through that
+	// union's own arms. A payload-free arm (v.F == nil) has no kind to name.
+	var walkUnion func(un *Union)
+	walkUnion = func(un *Union) {
+		if un == nil || seenUnion[un] {
+			return
+		}
+		seenUnion[un] = true
+		for _, v := range un.Variants {
+			if v.F == nil {
+				continue
+			}
+			if TableKindWide(TableScalarKind(v.F)) {
+				out = append(out, un.Name+"."+v.Name+" "+TableTypeSpelling(v.F))
+			}
+			if v.F.Type.Kind == TNamed {
+				if inner, ok := v.F.Type.Ref.(*Union); ok {
+					walkUnion(inner)
+				}
+			}
+		}
+	}
+	walkFields := func(fields []*Field) {
+		for _, f := range fields {
+			if f.Type.Kind != TNamed {
+				continue
+			}
+			if un, ok := f.Type.Ref.(*Union); ok {
+				walkUnion(un)
+			}
+		}
+	}
 	for _, f := range u.Files {
 		for _, st := range f.Tables {
 			out = appendWideFields(out, st)
+			walkFields(st.Fields)
 		}
 		for _, d := range f.Decls {
 			if st, ok := d.(*Struct); ok && closure[st.Name] {
 				out = appendWideFields(out, st)
+				walkFields(st.Fields)
 			}
 		}
 	}

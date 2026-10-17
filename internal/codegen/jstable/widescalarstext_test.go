@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -456,3 +457,7 @@ for (const r of spec.refusals ?? []) {
   console.log("WRITE " + r.name + (ok ? " OK" : " DIFF save " + (s === null ? "null" : hexOf(s)) + " measure " + n));
 }
 `
+
+// itoa spells a report counter for the probe's expected line (main's lint
+// retired the production copy in fixedform.go, which only this test read).
+func itoa(v int64) string { return strconv.FormatInt(v, 10) }

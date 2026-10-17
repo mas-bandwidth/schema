@@ -180,6 +180,31 @@ func init() {
 		Name{Name: "TableFixedDstCounted", What: "my side's lane saying whether an array carries a count ahead of its elements"},
 		Name{Name: "TableFixedDstArg", What: "my side's lane holding a text field's flavour"},
 
+		// ---- THE MESSAGE FORM AND ITS ANNOUNCEMENT (docs/SPEC-TABLES.md §3.3),
+		// emitted into the same <Package>Table.js. The same rule as the fixed
+		// form's: every one is a module-scope binding of the file the unit's own
+		// declarations are emitted into, so none is Scoped, the unexported ones
+		// included, and the view file spells none of them, so none is View. The
+		// names this backend shares with another (TableMessageReader,
+		// TableVocabulary, tableMessageCount, ...) are registered beside it too.
+		Name{Name: "TableMessageBatchMax", What: "the announced message bit codec: the batch bound"},
+		Name{Name: "TableMessageRefBitsHere", What: "the announced message bit codec: this build's reference width"},
+		Name{Name: "TableMessageEntriesHere", What: "the announced message bit codec: this build's vocabulary size"},
+		Name{Name: "TableVocabulary", What: "the vocabulary an announcement resolves into (§3.3)"},
+		Name{Name: "TableMessageReader", What: "the announcement's bounded form-1 reader: the body, the id trailer and the framing pre-walk"},
+		Name{Name: "TableMessageBits", What: "the bit length of a count"},
+		Name{Name: "TableMessageKnownKind", What: "whether a kind is in the closed set"},
+		Name{Name: "TableMessageShape", What: "an announced payload shape"},
+		Name{Name: "TableBitReader", What: "the message body's bit reader"},
+		Name{Name: "TableBitWriter", What: "the message body's bit writer"},
+		Name{Name: "tableMessageCount", What: "the message bit codec: read a count under its shape"},
+		Name{Name: "tableMessageSkip", What: "the message bit codec: step over one unknown field's payload"},
+		Name{Name: "tableMessageSkipBody", What: "the message bit codec: step over one unknown body"},
+		Name{Name: "tableMessageReadScalar", What: "the message bit codec: read one scalar under its shape"},
+		Name{Name: "tableMessageWriteScalar", What: "the message bit codec: write one scalar under its shape"},
+		Name{Name: "tableMessageBatchOpen", What: "the message bit codec: the batch's open"},
+		Name{Name: "tableMessageBatchClose", What: "the message bit codec: the batch's close"},
+
 		Name{Name: "BuildVersion", What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust, Java, Elixir and JavaScript put it at unit scope — Java in a file of its own name, Elixir as a module, JavaScript as a module-scope export — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},
 
 		// THE VIEW (docs/SPEC-TABLES.md §8.3, §8.5): the module-scope bindings of

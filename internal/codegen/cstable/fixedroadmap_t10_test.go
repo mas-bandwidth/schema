@@ -109,13 +109,6 @@ func TestFixedRoadmapCSharpT10Optionals(t *testing.T) {
 	}
 }
 
-// t10WriteBody reads the generated TFixedWriteBody's statements back, so an
-// assertion names the write of a construct and not the whole file.
-func t10WriteBody(t *testing.T, src string) string {
-	t.Helper()
-	return t02Norm(t02Block(t, src, "public static void TFixedWriteBody(", "public static void"))
-}
-
 // t10ResetBody reads the generated TableReset(T)'s statements.
 func t10ResetBody(t *testing.T, src string) string {
 	t.Helper()
@@ -558,8 +551,8 @@ func t10OptionalScalarsRow(t *testing.T) {
 		"optional-scalars: the scalar's payload is read into the value")
 	t02Has(t, slots, "new TableFixedSlot<T>(setRaw: (t, v) => t.MarkPresent = v != 0, reset: (t) => { t.MarkPresent = false; }),",
 		"optional-scalars: the enum's present byte is read into the present bool")
-	t02Has(t, slots, "if (v > 2) { t.Mark = 0; if (rep != null) rep.Clamped++; } else { t.Mark = (Grade)v; }",
-		"optional-scalars: the enum ordinal is read, bounded at its declared top")
+	t02Has(t, slots, "(t, v, rep) => { t.Mark = (Grade)v; }",
+		"optional-scalars: the enum ordinal lands raw and the bounds pass clamps it (§5.4)")
 }
 
 // t10OptionalArraysRow: optional-arrays [capability] "Optional arrays: valid-data

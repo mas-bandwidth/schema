@@ -70,7 +70,9 @@ func TestRustEmitsTableModules(t *testing.T) {
 }
 
 // TestRustPointeredTablesEmitAccelerators: pointered tables emit their cook
-// reader and records without wire codecs.
+// reader and records, and — since the variable class rides the Rust leg's
+// variable wire (internal/codegen/rusttable/variableclass_test.go) — their
+// wire codec beside them.
 func TestRustPointeredTablesEmitAccelerators(t *testing.T) {
 	c := New()
 	u := unitFromSource(t, packetSrc+`
@@ -84,14 +86,17 @@ table Node
 	if err != nil {
 		t.Fatalf("--lang rust refused a pointered unit outright: %v", err)
 	}
-	cooks := 0
+	cooks, wires := 0, 0
 	for name := range files {
-		if strings.HasSuffix(name, "_table.rs") || name == "table_runtime.rs" {
-			t.Errorf("--lang rust emitted the WIRE surface %s for a pointered unit", name)
+		if strings.HasSuffix(name, "_table.rs") {
+			wires++
 		}
 		if strings.HasSuffix(name, "_cook.rs") {
 			cooks++
 		}
+	}
+	if wires == 0 {
+		t.Error("--lang rust emitted no variable-wire codec for a pointered unit (docs/SPEC-TABLES.md §3.1)")
 	}
 	if cooks == 0 {
 		t.Error("--lang rust emitted no cook reader for a pointered unit — a root is any table (docs/SPEC-TABLES.md §7)")
@@ -132,9 +137,20 @@ table Node
 // claim until internal/check makes it in the mapped space too. It does now,
 // and TestRustRuntimeConstantsClaimInTheMappedSpace below is what holds it.
 func TestRustTableRuntimeNamesAreClaimed(t *testing.T) {
+	// runtimeSrc reaches the fixed form's runtime; variableRuntimeSrc reaches
+	// the VARIABLE wire's (internal/codegen/rusttable/variable.go) — the node
+	// numbering, the node reader and the scalar ladder — which a unit with no
+	// carried variable table never emits, so the scan covers both.
 	files, err := New().Generate(unitFromSource(t, runtimeSrc), "rust", Options{})
 	if err != nil {
 		t.Fatal(err)
+	}
+	variableFiles, err := New().Generate(unitFromSource(t, variableRuntimeSrc), "rust", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range variableFiles {
+		files["variable/"+name] = data
 	}
 	pascal := regexp.MustCompile(`\bTable[A-Za-z0-9_]*\b`)
 	// BUILD_VERSION is the one unit-level name the generated table sources
@@ -182,6 +198,22 @@ func TestRustTableRuntimeNamesAreClaimed(t *testing.T) {
 		}
 	}
 }
+
+// variableRuntimeSrc is a unit whose variable table the Rust variable wire
+// carries — a pointer, a blob and a list — so the variable runtime is emitted
+// whole (docs/SPEC-TABLES.md §3, §3.1, §2.5, §2.9).
+const variableRuntimeSrc = `package probe
+
+fixed table Item { n int32 }
+
+table Node
+{
+    value int32
+    next  *Node
+    data  *bytes
+    items []Item
+}
+`
 
 // fixedFormSrc reaches every shape §3.4's constant-size table names that this
 // port carries: scalars at four widths, floats, a bool, an enum, a flags mask,
