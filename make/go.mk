@@ -69,7 +69,7 @@ test-go: tables-go-fixedform
 # unit's wires and reports.
 .PHONY: go-runtime tables-go-shared-runtime
 go-runtime:
-	SCHEMA_WRITE_GORUNTIME=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run TestGoSharedRuntimePackageIsCurrent
+	SCHEMA_SLOW=1 SCHEMA_WRITE_GORUNTIME=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run TestGoSharedRuntimePackageIsCurrent
 
 tables-go-shared-runtime:
 	sh test/slowgate/proof tables-go-shared-runtime \
