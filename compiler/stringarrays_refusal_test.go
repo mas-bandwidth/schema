@@ -19,9 +19,11 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 
 // neitherDigest is the sha256 of the go and cpp outputs of neitherSchema at
 // the base this card started from (sprint/schema-go @ f001d67e2086), file
-// names sorted, each name then its bytes.
+// names sorted, each name then its bytes. The go digest moved once since,
+// on purpose: docs/SPEC-TABLES.md 16.2 added the JSON options to the Go text
+// runtime every unit carries (schema-go-legacy-json-options).
 var neitherDigest = map[string]string{
-	"go":  "d42ee1edcf7b577a3b3d99b8d219fddaff5d55309676b3f8b27c1121ae21ab90",
+	"go":  "adddfc06c88b8737d7b0785e1a184605b375125cc538567de1ee56f506b16a03",
 	"cpp": "5aabda2cf12ca342bd480b18084def13f06d87a85b6bdddeea12f955f761da1d",
 }
 
