@@ -364,6 +364,16 @@ or in the lock proves that today, so no reader that has taken this rule (Go
 today) answers it yet; the legs that have not taken it still answer
 `layout_newer` (SPEC-TABLES.md §21.3). A refused load moves no counter.
 
+**A FIXED TABLE'S REFUSAL IS REPORTED BY ITS NAME.** The strict error of a
+fixed-form refusal is the refusal's own §3.4 reason (`layout_unknown`,
+`count_over_bound`, `plan_too_large`, ...), never `unknown_form`. Only a
+form-byte refusal — `newer_form`, `previous_form`, `message_form_as_file`, or
+an unsupported wire form — answers `unknown_form` (§6.5). A message-form
+refusal answers a named error when its reason is itself a fixed reason:
+`batch_too_large` is named on both the fixed and the message paths, so a
+message refusal of it answers `TableFixedRefusal{batch_too_large}`; every
+other message-form refusal answers `unknown_form`.
+
 **Two more counters ride on the same struct and stay zero unless a caller asks
 for them**: `retained` and `retain_lost`, the retain-unknown pair
 (SPEC-TABLES.md §6.6). They report on RETENTION and not on the read. A

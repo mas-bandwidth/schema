@@ -8915,6 +8915,23 @@ The builder is designed to go wide, lock-free by ownership:
   not `Init`, and does not check the counters by hand. Go emits it for each
   root; the citation on the emitter is this section.
 
+  **A FIXED-FORM REFUSAL'S STRICT ERROR IS ITS OWN NAME.** For a refused
+  fixed report whose reason is a fixed reason other than a form-byte one, the
+  typed error is that reason itself — `layout_unknown`, `count_over_bound`,
+  `plan_too_large`, and so on — never `unknown_form`. Only a form-byte
+  refusal (`newer_form`, `previous_form`, `message_form_as_file`, an
+  unsupported wire form) answers `unknown_form`. A Go strict read returns
+  `TableFixedRefusal{Reason}` for the former and `TableRefuseUnknownForm`
+  (so `errors.Is` works) for the latter.
+
+  **A message-form refusal answers a named error when its reason is itself a
+  fixed reason.** `batch_too_large` is one: it is named on both the fixed and
+  the message path (§7's message form names it on both sides), so a message
+  refusal of it is `TableFixedRefusal{batch_too_large}`. Every other
+  message-form refusal — `no_vocabulary`, `vocabulary_too_large`,
+  `second_announcement`, and the form-byte ones — answers
+  `TableRefuseUnknownForm`.
+
 Contract split, stated once: the AUTHORING path (builder growth, `Lock`)
 may allocate; the reading path allocates nothing of its own — the caller
 owns the region, and `LoadMeasure` exists so it can.
