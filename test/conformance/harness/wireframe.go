@@ -260,7 +260,8 @@ func (s *frameScanner) payload(off, end int, kind uint8, nodeTable bool) int {
 		ir.TableKindI32, ir.TableKindU32, ir.TableKindF32, ir.TableKindI64, ir.TableKindU64, ir.TableKindF64,
 		ir.TableKindI128, ir.TableKindU128,
 		ir.TableKindFixed8, ir.TableKindFixed16, ir.TableKindFixed32, ir.TableKindFixed64, ir.TableKindFixed128,
-		ir.TableKindUFixed8, ir.TableKindUFixed16, ir.TableKindUFixed32, ir.TableKindUFixed64, ir.TableKindUFixed128:
+		ir.TableKindUFixed8, ir.TableKindUFixed16, ir.TableKindUFixed32, ir.TableKindUFixed64, ir.TableKindUFixed128,
+		ir.TableKindTimestamp:
 		w := kindWidth(int(kind))
 		if off+w > end {
 			return -1
@@ -460,7 +461,9 @@ func kindWidth(kind int) int {
 		return 2
 	case ir.TableKindI32, ir.TableKindU32, ir.TableKindF32, ir.TableKindPointer, ir.TableKindFixed32, ir.TableKindUFixed32:
 		return 4
-	case ir.TableKindI64, ir.TableKindU64, ir.TableKindF64, ir.TableKindFixed64, ir.TableKindUFixed64:
+	case ir.TableKindI64, ir.TableKindU64, ir.TableKindF64, ir.TableKindFixed64, ir.TableKindUFixed64,
+		ir.TableKindTimestamp:
+		// kind 36, the timestamp, is an eight-byte value (docs/SPEC-TABLES.md §3)
 		return 8
 	case ir.TableKindI128, ir.TableKindU128, ir.TableKindFixed128, ir.TableKindUFixed128:
 		return 16
@@ -472,8 +475,11 @@ func kindWidth(kind int) int {
 // closed set, the escape kind 31 and the payload-free kind 32, kind 33, the
 // RESERVED kind 34, which no writer emits and a reader of this major cannot
 // skip, so it must land as framing damage and never as an escape (§3, §4.2),
-// and one past it, outside the set on the high side.
-const wireKindLast = ir.TableKindReservedFloat16
+// 35, the fixed layout's optional wrapper, which never rides a record and so
+// is damage too, the timestamp kind 36, an eight-byte value every reader
+// skips at its width (§3, §2.11), and one past it, outside the set on the
+// high side.
+const wireKindLast = ir.TableKindTimestamp
 
 // ---------------------------------------------------------------------------
 // the passes

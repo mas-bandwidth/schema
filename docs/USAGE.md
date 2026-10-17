@@ -815,7 +815,8 @@ the whole point... checks are *DEBUG ONLY*"). C# has `Debug.Assert` and
 build, so the C# backend asserts too — the same idiom the serialize.cs runtime
 it calls has always used for its own write path.
 Go has no assert idiom, so it returns
-`ErrValueOutOfRange`; JavaScript likewise returns failure
+`ErrValueOutOfRange` (and its table writers refuse with
+`TableRefuseInvalidValue`, below); JavaScript likewise returns failure
 rather than invent an assert. Dart has `assert` — active under
 `--enable-asserts`, compiled out of release and AOT builds — so the Dart
 writer asserts, exactly like C++; Java's `assert` is active under `-ea` and
@@ -833,6 +834,29 @@ raises in Elixir, silently writes the truncated low bits in a C++ or C release
 or count past its array's end panics there on the slice instead, the
 language's own bounds check, which no profile removes), Dart AOT or
 default-JVM build, and returns failure in the others.
+
+**Go tables are held to the stricter rule, in every build** (2026-10-15: "Go
+table writers, variable and fixed, refuse out-of-contract values by name").
+A Go table has no debug build to compile a check out of, and a record its own
+reader would clamp or refuse is a record the writer should never have made. So
+a Go table save — `<T>Save` for a variable or a fixed-size table and
+`<T>FixedSave` for the fixed form — **refuses** a value off its declared
+`min`/`max`, a count past its array's `Max`, a length past its text or bytes
+bound `N`, ill-formed UTF-8 in a `string`, and a NUL in a `string`, by name:
+the save returns `-1` and the `...Reason` twin (`<T>MeasureReason`,
+`<T>FixedSaveReason`) returns `TableRefuseInvalidValue`. Nothing is clamped on
+the way out and nothing is written for a refused fixed batch. The cost is one
+comparison per ranged field, one per count and length, and one word-at-a-time
+scan over the used bytes of each string (ASCII passes on the word test; only
+text with a byte at or past 0x80 is asked of `utf8.Valid`). The fixed writer
+pays for its check by storing only the live extent, as
+[FIXED-FORM-ALGORITHM.md](FIXED-FORM-ALGORITHM.md) §3.1 always said it must: a
+counted array's `count` elements and a text field's `length` bytes, onto the
+zeroed template, never all `Max` and never the slack of the caller's storage.
+The write path is benchmarked before and after (`TestGoTableWriterSpeedTable`,
+a functional test: `NOVA_WRITER_BENCH=1`) under a speed gate: a save may not
+get slower than the before-run's spread. The packet writers and the other
+languages' table writers are unchanged by this paragraph.
 
 Do not build on any of it. **Keep your values inside their declared bounds on
 the write side** — your simulation already knows they are, and that is the only
@@ -1298,6 +1322,19 @@ The report is a PARAMETER rather than a member of the reader, which is the one
 place the Rust codecs read differently from the C++ ones: a reader holding
 `&mut TableReport` could not hand a sub-reader out of its own buffer while that
 borrow stood. One report, one caller, the same six counters.
+
+**Every refusal of the fixed form's load has a name, and the names are EXPORTED
+string constants** (docs/FIXED-FORM-ALGORITHM.md §5.3): `TableFixedReasonPreviousForm`,
+`TableFixedReasonMessageFormAsFile`, `TableFixedReasonNewerForm`,
+`TableFixedReasonLayoutMalformed`, `TableFixedReasonLayoutNewer`,
+`TableFixedReasonLayoutUnsupported`, `TableFixedReasonLayoutRecordTooLarge`,
+`TableFixedReasonPlanTooLarge`, `TableFixedReasonBatchTooLarge`,
+`TableFixedReasonNoLayout`, `TableFixedReasonTextIllFormed`, and the two
+framing-damage names `TableFixedReasonTruncated` and
+`TableFixedReasonReservedNotZero`. Compare `report.Reason == example.TableFixedReasonNewerForm` rather than spelling the literal. A short
+input, a sub-twenty-byte header or a ragged tail set `report.Malformed` beside
+`TableFixedReasonTruncated`; a nonzero reserved byte sets it beside
+`TableFixedReasonReservedNotZero`.
 
 `string(N)` and `bytes(N)` are a `[u8; N]` beside an `i32` used length, arrays
 a `[T; N]` beside an `i32` used count, `?T` a value beside a `<name>_present`
@@ -2465,6 +2502,45 @@ C++ and the tool carry the construct today; every other backend refuses a
 unit that declares one, by name, and the ports are a named follow-on
 (SPEC-TABLES.md §15).
 
+### Timestamps: `opened_at timestamp`
+
+A `timestamp` field is a count of nanoseconds since the Unix epoch, and `0`
+is the zero time — `1970-01-01T00:00:00Z`. It is the convention you were
+writing by hand as an `int64` with a hand-rolled range check, made a kind, so
+the wire and the text form agree without you writing any of it (SPEC.md
+§4.13, SPEC-TABLES.md §2.11).
+
+```
+fixed table Session
+{
+    n         int32
+    opened_at timestamp
+}
+```
+
+In Go the field holds the count, and the `time.Time` is a pair of methods
+generated beside it, UTC on read:
+
+```go
+var s Session
+err := s.SetOpenedAtTime(time.Unix(0, 1760531645123456789)) // stores the count
+when := s.OpenedAtTime()                                      // a time.Time in UTC
+```
+
+`SetOpenedAtTime` refuses a time outside `Time.UnixNano`'s domain — the years
+1678 through 2262 — with a `TableTimestampError` naming the field, and
+stores nothing; Go's zero `time.Time{}` stores `0`. `FromJson` refuses a
+string that is not RFC 3339 by name (`Reason` is `timestamp_not_rfc3339: opened_at`), and `ToJson` writes `"2026-10-15T12:34:05.123456789Z"`.
+
+A timestamp is its own kind on the variable wire, not an `int64`: a field
+respelled between the two there is a kind mismatch, skipped and counted, and
+neither spelling widens into the other. In a `fixed table` the slot is an
+`int64`'s and the layout names it as one, so the fixed form does not tell the
+two apart. It is a bare TABLE field only in this major — a `timestamp` in a
+packet `type`, in an array, optional, map value or union arm is refused by
+name — and **Go carries it first**: every other target refuses the construct
+by name until its own card.
+
 ### The block form: rows another language points at
 
 Some data is not a file and not a message. It is a block you rebuild every
@@ -3102,7 +3178,11 @@ table, the facts under the shared field ids are unchanged**: a twin
 declaration carrying the same id under a different default is refused,
 because every stored body's elided value would quietly change meaning.
 Also refused: a second `was` aimed at the field's intermediate spelling,
-naming both names and the one that is correct.
+naming both names and the one that is correct; and a `| required` marker
+ADDED, to a shipped field or on a new field, because every record written
+before it lacks the field and a newer reader refuses it as `missing_required`
+(removing the marker passes: the writer just starts eliding again;
+SPEC-TABLES.md §2.3).
 Warned, because the read report already counts what is lost: a bound or a
 string capacity shrunk, a declared range tightened from either end (or
 declared where the field had none — every stored value outside it clamps on
@@ -3456,6 +3536,57 @@ byte on the wire.
 or a set flags bit no variant names, an invalid union tag, or a non-finite
 float. The text it does emit is always valid JSON and valid UTF-8.
 
+### Carrying a table over a text channel
+
+A text channel is a pipe a wire byte cannot cross as-is — a bus body, a log
+line, a config field, a terminal. In Go every table — `fixed table` and
+plain `table` alike — has two text carriers:
+
+- **Base64 of the binary wire** (`SaveText` / `LoadText`): the text is the
+  wire's bytes, `encoding/base64` standard alphabet, padded, whole. It keeps
+  the form byte, the framing check and every versioning guarantee of the
+  wire, and it is opaque — no field is readable, nothing is editable. Use it
+  when machines talk to machines and the wire itself would have been ideal.
+- **The JSON text form** (`FromJson` / `ToJson`, above): for a human to read,
+  diff or edit.
+
+Both readers refuse damaged or newer input by name. `LoadText` returns a typed
+refusal: `base64_damaged` when the body does not decode, `unknown_form` when
+the decoded wire's form byte is one this build does not carry, and
+`wire_damaged` for framing damage. `LoadText` is the strict read: it refuses
+whenever the read's report holds an error (`TableReport.Err()` — `malformed`,
+`clamped`, `kind_mismatch`, ...), even when the tolerant load recovered a
+value, so a damaged-but-recovered wire never comes back as a value with a nil
+error. `unknown`, `widened` and `retained` alone do not refuse. A supplied
+`report` receives that one read's report. `FromJson` returns false with
+`report` set `malformed` when the JSON document is damaged.
+
+For a plain (variable) table the pair has that class's shape:
+`<Name>SaveText(value, context...)` takes `Save`'s write context, and
+`<Name>LoadText(text, &report)` reads into a builder of its own and returns
+the locked root, as `<Name>ReadStrict` does. Either carrier is byte for byte:
+what it reads back saves to the same wire bytes the original saved to
+(docs/SPEC-TABLES.md §16.8).
+
+```go
+// Machines: base64 of the wire — lossless, opaque, keeps the form byte and
+// every versioning guarantee; pick it when the wire itself would be ideal.
+text, err := example.ShipConfigSaveText(&ship)
+if err != nil { /* refuse */ }
+loaded, err := example.ShipConfigLoadText(text, &report)
+if err != nil { /* base64_damaged | unknown_form | wire_damaged | malformed | clamped | ... */ }
+
+// A person: the JSON form, for reading, diffing or editing.
+buf := make([]byte, example.ShipConfigToJsonMeasure(&ship))
+n := example.ShipConfigToJson(&ship, buf)
+var edited example.ShipConfigBuilder // ShipConfig is a plain table: a builder
+if !edited.Init() { /* allocation_failed */ }
+defer edited.Shutdown()
+if !example.ShipConfigFromJson(&edited, buf[:n], &report) {
+	// report.Malformed: the JSON document is damaged.
+}
+```
+
 ### Packing a directory into a table
 
 `schema pack` builds ONE table instance from a directory tree that mirrors
@@ -3493,6 +3624,206 @@ and names any hidden non-JSON file the walk passed over.
 `pack` reads the texts with its own engine inside the compiler rather than by
 calling generated code — the compiler is a Go program — so the tree carries a
 second implementation of the same wire, held to the backends by goldens.
+
+### Tables from Go
+
+The Go recipe in one place: pin the compiler, generate, wire the module, and
+save and load each class. Every Go block below is a complete test body — the
+repository compiles and runs each one against the schema block beside it
+(`TestUsageGoTablesRecipeRuns`), so a block pasted into a `_test.go` next to
+the generated files runs as printed.
+
+**Pin the compiler in a `go:generate` line**, in a Go file of the package
+that owns the schema:
+
+```
+//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@v2.5.0 generate --lang go --out .
+```
+
+`go run` with an `@version` suffix resolves the package from the module
+cache, outside your module's build list: the directive adds no line to
+`go.mod`, needs no `require` and no `replace`, and runs unchanged under
+`-mod=readonly`. The tag IS the pin — every machine that runs `go generate`
+compiles with the same compiler, and moving the pin is editing the one line.
+`v2.5.0` is the newest tag at this writing.
+
+**A unit that declares only tables needs no dependency.** The generated Go
+imports the standard library alone, so the files drop into any Go module
+with nothing added to its `go.mod`. The one exception is the 128-bit widths:
+a field of `int128`, `uint128` or a 128-bit `fixed`/`ufixed` stores in the
+generated code as `serialize.Int128`/`serialize.Uint128`, so the unit imports
+`github.com/mas-bandwidth/serialize.go` — and then the module carries the
+one dependency, resolved at a tagged version with NO `replace`:
+
+```
+require github.com/mas-bandwidth/serialize.go <tag>
+```
+
+**The two classes are two units.** A variable table — a `table`, pointers
+and all — rides the id-table wire through a builder and its arena; a fixed
+table is a positional image at declared storage widths, written and read by
+one layout hash. A unit that declares any variable table is generated
+regionally, and a regional unit emits no fixed-form surface at all: its
+`fixed table`s keep the variable wire's entry points and never grow
+`FixedSave`/`FixedLoad`. So adopt one class per unit; each recipe below
+carries its own declaration.
+
+The variable class, one unit. The builder owns the arena, the caller owns
+every byte:
+
+```
+package demo
+
+table Config
+{
+    name   string(32)
+    volume int32 = 7 | min = 0, max = 11
+}
+```
+
+```go
+package demo
+
+import "testing"
+
+func TestConfigRoundTrip(t *testing.T) {
+	var source ConfigBuilder
+	if !source.Init() { // the builder owns its arena; Init refuses a failed allocation
+		t.Fatal("builder allocation failed")
+	}
+	defer source.Shutdown()
+	source.GetRoot().Volume = 9
+
+	size, err := ConfigMeasureReason(source.GetRoot(), &source.Arena)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire := make([]byte, size)
+	if ConfigSave(source.GetRoot(), wire, &source.Arena) != size {
+		t.Fatal("save failed")
+	}
+
+	var loaded ConfigBuilder
+	if !loaded.Init() {
+		t.Fatal("builder allocation failed")
+	}
+	defer loaded.Shutdown()
+	var report TableReport
+	if !ConfigLoadBuilder(&loaded, wire, &report) || report.Malformed {
+		t.Fatalf("load failed: %+v", report)
+	}
+	if !loaded.Lock() { // packs the region; GetRoot answers nil from here
+		t.Fatal("packing failed")
+	}
+	if loaded.AsConst().Volume != 9 {
+		t.Fatal("round trip changed the value")
+	}
+	// The report is the permissive contract's ledger: silence — all zero —
+	// means the data matched this reader's schema exactly.
+	if report != (TableReport{}) {
+		t.Fatalf("a same-build read must be silent: %+v", report)
+	}
+}
+```
+
+Every tolerance event lands in that report — `Unknown` for a field this
+build does not name, `Widened` for a compatible wider kind, `KindMismatch`
+for a known id whose kind changed, `Clamped` for an out-of-range value — and
+`Malformed` for framing damage, which keeps what it decoded and reads on
+past the damaged level. Nothing on this path allocates, and `Shutdown` is
+yours to call: stop readers and workers first. A read that wants no builder
+hands `ConfigLoad` a region — sized by `ConfigLoadMeasure(wire)` — and gets
+the value back as a pointer into it.
+
+The fixed class, its own unit. The same declaration also carries the
+variable wire's entry points — `MarkerMeasure`, `MarkerSave`, `MarkerLoad`,
+the tolerant form-1 codec with the same report — but the fixed form is the
+positional one, and each entry point refuses the other's byte by name:
+
+```
+package demo
+
+fixed table Marker
+{
+    x   int32
+    y   int32
+    tag string(8)
+}
+```
+
+```go
+package demo
+
+import "testing"
+
+func TestMarkerFixedRoundTrip(t *testing.T) {
+	values := []Marker{{X: 4242, Y: -7}}
+	copy(values[0].Tag[:], "hi")
+	values[0].TagLength = 2
+
+	need := MarkerFixedMeasure(int64(len(values)))
+	buf := make([]byte, need)
+	if n := MarkerFixedSave(values, buf); n != need {
+		t.Fatalf("save wrote %d of %d", n, need)
+	}
+
+	// The plan is caller-owned scratch — this codec never allocates — and
+	// the generated plan's own entry count is its size.
+	plan := make([]TableFixedEntry, MarkerFixedPlan.Count)
+	got := make([]Marker, len(values))
+	var report TableReport
+	if n := MarkerFixedLoad(got, buf, plan, &report); n != int64(len(values)) {
+		t.Fatalf("load: n=%d report=%+v", n, report)
+	}
+	if got[0] != values[0] {
+		t.Fatalf("round trip: %+v", got[0])
+	}
+
+	// The form byte names itself: the variable form's 1 is previous_form.
+	var form1 TableReport
+	if n := MarkerFixedLoad(got, []byte{1}, plan, &form1); n >= 0 ||
+		form1.Reason != "previous_form" || form1.Verdict != TableOpenRefused {
+		t.Fatalf("a form-1 byte must refuse by name: n=%d report=%+v", n, form1)
+	}
+}
+```
+
+The fixed form's refusals land in `TableReport.Reason`, each under its own
+name: `previous_form`, a form-1 file, the variable form this build is newer
+than; `message_form_as_file`, form 2, a form this build carries through
+another surface; `newer_form`, a form byte the registry has not assigned;
+`layout_unknown`, a layout hash this build's lineage does not hold, reported
+with the file's hash and nothing else (a flipped hash byte, an older layout
+nobody locked and a newer writer's layout all read this way: it does not say
+which, and it never says "ship a newer reader", because nothing in the lock
+proves a hash newer; `layout_newer` is reserved for that proof, and Go is the
+first leg to answer this way); `layout_unsupported`, a layout this build once
+served and has retired; `layout_malformed`, a header that is not a layout, or
+a known hash whose layout bytes differ; `no_layout`, a record whose hash
+names nothing; `plan_too_large`, a plan slice smaller than the plan the load
+selected; `batch_too_large`, more records than the destination slice holds.
+Framing damage sets `Malformed` rather than a name.
+
+**Lock the unit before the first edit.** A fixed table's layout is a promise
+to every record already written: the generated `MarkerFixedKnown` holds
+every layout the lock has recorded, oldest first, and the floor below which
+a served layout was retired. `schema.lock` is the committed record — a unit
+with no lock promises nothing — and `schema lock` is the one command that
+writes it, refusing every edit the append-only rule refuses and accepting an
+append the moment it records it:
+
+```
+$ schema lock configs/          # writes schema.lock, beside the schema that promised
+$ git add configs/schema.lock   # the append lands in the same commit as the schema change
+```
+
+From then on `schema check` — and so `schema generate` — refuses an edit the
+lock has not recorded: a reorder, a removal, a widening, a kind change, a
+default or a range that moved. A field appended at the bottom, a variant or
+an arm appended at the end, and a `deprecated` marker are the append-only
+class; each is refused as STALE until `schema lock` writes it down. A rename
+with `was` moves nothing and is no change to catch up to, and `schema lock --retire Marker@0x<hash> --reason "…"` is the file's one non-append edit,
+read years later by whoever asks why.
 
 ---
 
@@ -3732,7 +4063,22 @@ comparison. The existing integer measure and boolean open calls remain available
 Cook and block handles also provide `Open(base, bytes) error`. A damaged file
 trailer returns `TableRefuseWireDamaged` (`wire_damaged`) from
 `LoadMeasureReason`; this is distinct from a format refusal and from the
-accelerator-only `truncated` reason.
+accelerator-only `truncated` reason. `<Name>ReadStrict(wire)` is the one-call
+strict read (docs/SPEC-TABLES.md §6.5): it builds its own builder and returns
+`(*<Name>, error)`. The error is a `TableRefuseReason` (`clamped`,
+`kind_mismatch`, `malformed`, `unknown_form`, `wire_damaged`), a
+`TableBuildVersionMismatch`, or a `TableMissingRequired` whose `Fields` names
+the `| required` field the record lacks, at whatever depth (`missing_required: x`), so `errors.Is` or `errors.As` matches it. `unknown`, `widened`
+and `retained` alone do not refuse. `TableReport.Err()` answers the same
+reason.
+
+A fixed table's `<T>FixedLoad` still takes a plan slice, and a slice shorter
+than the selected plan refuses `plan_too_large`
+(docs/FIXED-FORM-ALGORITHM.md §5.2). The generated code exports
+`<T>FixedPlanMax`, the largest entry count over the identity plan and every
+lineage plan. A plan slice of that length never refuses `plan_too_large` for
+a layout the lineage holds; one entry fewer refuses the largest plan by that
+same name. Size the slice with `make([]TableFixedEntry, <T>FixedPlanMax)`.
 
 This complete example uses the `tables/pointers` generated package; `make
 tables-go-usage` runs it directly from this page.
@@ -3754,6 +4100,10 @@ func main() {
     wire := make([]byte, size)
     if graphdemo.SceneSave(source.GetRoot(), wire, &source.Arena) != size {
         panic("save failed")
+    }
+    strict, err := graphdemo.SceneReadStrict(wire)
+    if err != nil || strict.Version != 7 {
+        panic(err)
     }
 
     var loaded graphdemo.SceneBuilder
@@ -3779,8 +4129,20 @@ that return descriptors without allocating, avoiding Go initialization cycles.
 An outside packet type's descriptor follows its native Go storage; nested
 packet dependencies have private descriptors when a table `Row` has different
 offsets. `DeclaredTypeName` carries the complete schema spelling. The
-`<Package>View.go` file is optional and no codec depends on it; table-free
+ `<Package>View.go` file is optional and no codec depends on it; table-free
 units remain the separate packet-view follow-on.
+
+Generated Go is lint-clean. It passes `go vet` and `staticcheck`; the bench
+gate runs both where it has them, so the emitted package does not trip an
+adopter's path linters (a value-receiver method never assigns to a receiver
+field, staticcheck SA4005). Every generated file's header names the `.schema`
+file it came from, or says `for package <p>` when there is none — a synthesized
+home or view file names no source. A file names `serialize.go` only when it
+imports it, so a unit whose tables never widen does not mention a dependency it
+does not use. And a path a generated comment cites — the tables spec page, the
+Go packet emitter, the table-names package — is prefixed with the schema
+repository's name (`mas-bandwidth/schema`, then the page), so an adopter's path
+linter reads it as another repository's path rather than its own.
 
 **Elixir** — Elixir 1.20 on Erlang/OTP 29, built to issue #167's measured
 directives from the serialize.elixir port. Generated code is

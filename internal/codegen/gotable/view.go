@@ -17,7 +17,7 @@ func generateViewFile(u *ir.Unit, closure map[string]bool, arms map[string]int) 
 	types := slices.Sorted(maps.Keys(u.Structs))
 	tables := slices.Sorted(maps.Keys(u.Tables))
 	unions := slices.Sorted(maps.Keys(u.Unions))
-	g := &tableGen{unit: u, file: &ir.File{Base: base}, viewPacket: map[string]int{}, viewUnions: map[string]int{}, unionArmSlot: arms}
+	g := &tableGen{unit: u, viewPacket: map[string]int{}, viewUnions: map[string]int{}, unionArmSlot: arms}
 	for i, n := range types {
 		g.viewPacket[n] = i
 	}

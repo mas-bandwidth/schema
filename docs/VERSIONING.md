@@ -314,6 +314,8 @@ does today.
 | a guard added or removed | nothing | passes | nothing |
 | a `json =` key changed | nothing on the wire | passes | nothing |
 | a `///` doc comment or a tag added, changed or removed (SPEC.md §4.1, §4.2) | nothing: neither is a fact a codec reads | passes; neither enters a baseline row | **nothing**, and the protocol id does not move either, so annotating a shipped schema is a free edit |
+| `\| required` added to a shipped table field | a reader refuses the record with `missing_required` (the field is named) | **refuses** (the baseline's `required` token; a NEW `\| required` field on a shipped table is refused too) | **nothing**: no cooked or blocked byte moves, and the protocol id does not move either: it hashes the `type` wire, which a table field never reaches (SPEC-TABLES.md §2.3) |
+| `\| required` removed from a table field | nothing — the writer starts eliding at the default again | passes | **nothing**, and the protocol id does not move either |
 | a table renamed bare | nothing when it is held by value (a declaration name is not on the wire); every pointer to it reads null and counts `unknown` when it is a pointer target | warns | moves |
 | a table renamed under `was` | nothing: the node type id is the old name's hash (SPEC-TABLES.md §5) | passes, and the file records the declared name beside the wire name | **nothing**, and the protocol id does not move either |
 | a retired name re-added with a new meaning | **silent** | **passes today**; the ledger is #441 | moves |
@@ -342,6 +344,25 @@ split it needs. A tool that wants to know *which* field was clamped re-walks
 the file with the descriptors, the per-field facts every table's generated
 header carries; per-event attribution on the generated read path is additive
 and safe to add after 3.0.0.
+
+**The STRICT read** (SPEC-TABLES.md §6.5) is the one call that turns this
+report into a refusal. It refuses, with one typed reason, a read that is
+malformed, clamped, kind-mismatched, of an unknown form, wire-damaged or
+build-version-mismatched. It does not refuse `unknown`, `widened` or
+`retained` alone. `TableReport.Err()` answers that same reason, and nil when
+the strict read would accept — a clean read, or one whose only counters are
+those three.
+
+**A fixed table's file can be refused before any counter exists**, and the
+refusal says what the reader knows. `layout_unsupported` is a layout the
+reader's lineage holds and has retired: upgrade the client. `layout_unknown` is
+a layout hash the lineage does not hold, reported with the file's hash and
+nothing else: it may be a newer writer's, an older layout nobody locked, or a
+damaged header, and it does not say which. `layout_newer` ("ship the reader")
+is reserved for a hash the lock lineage proves newer, and nothing on the wire
+or in the lock proves that today, so no reader that has taken this rule (Go
+today) answers it yet; the legs that have not taken it still answer
+`layout_newer` (SPEC-TABLES.md §21.3). A refused load moves no counter.
 
 **Two more counters ride on the same struct and stay zero unless a caller asks
 for them**: `retained` and `retain_lost`, the retain-unknown pair

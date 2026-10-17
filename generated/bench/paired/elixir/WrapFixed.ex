@@ -333,23 +333,23 @@ defmodule Bench.WrapFixed do
     # refusal is caught, with no destination byte landed and every counter
     # left at zero.
     try do
-    with :ok <- R.batch_within(byte_size(records), size + 8, bcap),
-         {:ok, bodies} <- fixed_table_fixed_split(records, hash, size, []) do
-      {values, report} =
-        Enum.map_reduce(bodies, report, fn body, report ->
-          {image, report} = R.run(plan, R.detach(body, copy), @fixed_table_prefill, report)
-          {value, c, m} = fixed_table_fixed_decode(image, 0, false)
-          {value, R.damaged(R.clamped(report, c), m)}
-        end)
+      with :ok <- R.batch_within(byte_size(records), size + 8, bcap),
+           {:ok, bodies} <- fixed_table_fixed_split(records, hash, size, []) do
+        {values, report} =
+          Enum.map_reduce(bodies, report, fn body, report ->
+            {image, report} = R.run(plan, R.detach(body, copy), @fixed_table_prefill, report)
+            {value, c, m} = fixed_table_fixed_decode(image, 0, false)
+            {value, R.damaged(R.clamped(report, c), m)}
+          end)
 
-      # THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, and only on a read that
-      # RETURNS (§5.9 #6): §5.4 says once per peer and never per record, and a
-      # refusal that came after would have moved a counter.
-      {:ok, values, R.census(report, census_u, census_k)}
-    else
-      {:error, :malformed} -> {:error, :malformed, %{report | malformed: true}}
-      {:error, why} -> {:error, why, report}
-    end
+        # THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, and only on a read that
+        # RETURNS (§5.9 #6): §5.4 says once per peer and never per record, and a
+        # refusal that came after would have moved a counter.
+        {:ok, values, R.census(report, census_u, census_k)}
+      else
+        {:error, :malformed} -> {:error, :malformed, %{report | malformed: true}}
+        {:error, why} -> {:error, why, report}
+      end
     catch
       :throw, {:refuse, why} -> {:error, why, report}
     end

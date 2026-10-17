@@ -35,12 +35,10 @@ func pointerTargetId(f *ir.Field) uint64 {
 func (g *tableGen) typeCodecColumns(st *ir.Struct) string {
 	columns := fmt.Sprintf(", Id:0x%016x, Variable:%v, SaveBody:func(w *TableWriter,p unsafe.Pointer) bool { return %sSaveBody(w,(*%s)(p)) }, LoadBody:func(r TableReader,p unsafe.Pointer) bool { return %sLoadBody(&r,(*%s)(p)) }", ir.TableWireId(st.WireName()), ir.VariableTables(g.unit)[st.Name], st.Name, g.storageName(st.Name), st.Name, g.storageName(st.Name))
 	if g.regional {
-		columns += fmt.Sprintf(",LoadMessageBodyRetain:func(r TableRetainMessageReader,p unsafe.Pointer)(TableRetainMessageReader,bool){ok:=%sLoadMessageBodyRetain(&r,(*%s)(p));return r,ok}", st.Name, g.storageName(st.Name))
 		columns += fmt.Sprintf(",SaveBodyRetain:func(w *TableRetainWriter,p unsafe.Pointer)bool{return %sSaveBodyRetain(w,(*%s)(p))},LoadBodyRetain:func(r TableRetainReader,p unsafe.Pointer)bool{return %sLoadBodyRetain(&r,(*%s)(p))}", st.Name, g.storageName(st.Name), st.Name, g.storageName(st.Name))
 	}
 	ml := ir.RecordLayout(g.unit, st)
 	columns += fmt.Sprintf(", CookSize:%d, CookAlign:%d", ml.Size, ml.Align)
-	columns += fmt.Sprintf(", SaveMessageBody:func(w *TableMessageWriter,p unsafe.Pointer)bool{return %sSaveMessageBody(w,(*%s)(p))},LoadMessageBody:func(r TableMessageReader,p unsafe.Pointer)(TableMessageReader,bool){ok:=%sLoadMessageBody(&r,(*%s)(p));return r,ok}", st.Name, g.storageName(st.Name), st.Name, g.storageName(st.Name))
 
 	if g.regional && ir.VariableTables(g.unit)[st.Name] {
 		var nodes strings.Builder
@@ -53,28 +51,67 @@ func (g *tableGen) typeCodecColumns(st *ir.Struct) string {
 	}
 	return columns
 }
-func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
-	// Cook and block own most rows. Emit only closure members they do not reach.
-	ck := cookUnitOf(g.unit)
-	missing := map[string]*ir.MemberLayout{}
-	for n := range ir.TableClosure(g.unit) {
-		if ck.members[n] == nil && (blocks == nil || blocks.Layout(n) == nil) {
-			if st := cookMember(g.unit, n); st != nil {
-				missing[n] = ir.RecordLayout(g.unit, st)
-			}
+
+// emitMessageDescriptorInit links the descriptor's MESSAGE columns from the
+// message form's own file. They are the closures the descriptor literal carried
+// before the forms were split, spelled as they were; they are assigned in an
+// init() of <Base>TableMessage.go because a core literal that named
+// <Name>SaveMessageBody would not compile without the form. Go runs a package's
+// init functions file by file in the order the files are presented, which the
+// go command makes lexical, and <Base>Table.go sorts before
+// <Base>TableMessage.go ('.' < 'M'), so the core's literal is in place first
+// (docs/SPEC-TABLES.md, "GO's optional forms").
+func (g *tableGen) emitMessageDescriptorInit(st *ir.Struct) {
+	n := st.Name
+	typ := g.storageName(st.Name)
+	g.pf("func init() {\n")
+	if g.regional {
+		g.pf("%sTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader,p unsafe.Pointer)(TableRetainMessageReader,bool){ok:=%sLoadMessageBodyRetain(&r,(*%s)(p));return r,ok}\n", n, n, typ)
+	}
+	g.pf("%sTableInfo.SaveMessageBody = func(w *TableMessageWriter,p unsafe.Pointer)bool{return %sSaveMessageBody(w,(*%s)(p))}\n", n, n, typ)
+	g.pf("%sTableInfo.LoadMessageBody = func(r TableMessageReader,p unsafe.Pointer)(TableMessageReader,bool){ok:=%sLoadMessageBody(&r,(*%s)(p));return r,ok}\n", n, n, typ)
+	g.pf("}\n\n")
+}
+func (g *tableGen) emitUnitBlittableRows(blocks *ir.BlockUnit) {
+	if blocks != nil && blockHome(g.unit, blocks) != "" {
+		bg := &blockGen{unit: g.unit, blocks: blocks}
+		for _, name := range blocks.Order {
+			bg.emitBlittable(name)
 		}
+		g.types.WriteString(bg.structs.String())
 	}
-	cg := &cookGen{unit: g.unit, cook: &cookUnit{members: missing}}
-	names := make([]string, 0, len(missing))
-	for n := range missing {
-		names = append(names, n)
-	}
-	slices.Sort(names)
-	for _, n := range names {
-		cg.emitBlittable(n)
+	ck := cookUnitOf(g.unit)
+	cg := &cookGen{unit: g.unit, cook: ck, blocks: blocks}
+	for _, name := range ck.order {
+		if cg.blockHasRecord(name) {
+			continue
+		}
+		cg.emitBlittable(name)
 	}
 	g.types.WriteString(cg.structs.String())
-	names = names[:0]
+	if g.regional {
+		missing := map[string]*ir.MemberLayout{}
+		for n := range ir.TableClosure(g.unit) {
+			if ck.members[n] == nil && (blocks == nil || blocks.Layout(n) == nil) {
+				if st := cookMember(g.unit, n); st != nil {
+					missing[n] = ir.RecordLayout(g.unit, st)
+				}
+			}
+		}
+		mg := &cookGen{unit: g.unit, cook: &cookUnit{members: missing}}
+		names := make([]string, 0, len(missing))
+		for n := range missing {
+			names = append(names, n)
+		}
+		slices.Sort(names)
+		for _, n := range names {
+			mg.emitBlittable(n)
+		}
+		g.types.WriteString(mg.structs.String())
+	}
+}
+func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
+	names := make([]string, 0, len(g.unionArmSlot))
 	for n := range g.unionArmSlot {
 		names = append(names, n)
 	}
@@ -88,7 +125,7 @@ func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
 	}
 	g.pf("const tableRegionAlign int64 = %d\n", ir.TableRegionAlign(g.unit))
 	g.pf("const tableBytesTypeId uint64=0x%016x\nconst tableStringTypeId uint64=0x%016x\n", ir.TableWireId("bytes"), ir.TableWireId("string"))
-	source := tableRegionSource + tableRegionJsonSource + tableRegionBlobSource + tableBuilderLoadSource
+	source := tableRegionSource + tableRegionBlobSource + tableBuilderLoadSource
 	if unitHasContainers(g.unit) {
 		source = containerRegionSource(source)
 		source += tableContainerSource + tableMapSource
@@ -118,6 +155,9 @@ func (g *tableGen) emitRegionMember(st *ir.Struct) {
 	g.pf("func %sMeasureReason(value *%s,context ...TableWriteContext)(int64,error){arena,allocator:=tableWriteOptions(context);size,reason:=tableRegionSaveReason(unsafe.Pointer(value),%sTableType(),nil,true,arena,allocator);return size,tableRefuseError(reason)}\n", n, typ, n)
 	g.pf("func %sSave(value *%s,buffer []byte,context ...TableWriteContext) int64 { arena,allocator:=tableWriteOptions(context);return tableRegionSave(unsafe.Pointer(value),%sTableType(),buffer,false,arena,allocator) }\n", n, typ, n)
 	g.pf("func %sLoadBuilder(b *%sBuilder,wire []byte,report *TableReport) bool {return tableBuilderLoad(unsafe.Pointer(b.GetRoot()),b.root,&b.Main,wire,%sTableType(),%sTableType().NodeType,%d,report)}\n", n, n, n, n, blobmask)
+	// ReadStrict is §6.5's STRICT read: one call, its own builder, one typed reason.
+	g.pf("// %sReadStrict is the STRICT read (docs/SPEC-TABLES.md §6.5): one call, its own builder, one typed reason.\n", n)
+	g.pf("func %sReadStrict(wire []byte)(*%s,error){var b %sBuilder;if !b.Init(){return nil,TableRefuseAllocationFailed};var report TableReport;ok:=%sLoadBuilder(&b,wire,&report);if err:=report.Err();err!=nil||!ok{b.Shutdown();if err==nil{err=TableRefuseWireDamaged};return nil,err};if !b.Lock(){b.Shutdown();return nil,TableRefuseAllocationFailed};return b.AsConst(),nil}\n", n, typ, n, n)
 	g.pf("type %sBuilder struct { Arena TableArena; Main TableWorker; root TableRef; region,allocation []byte }\n", n)
 	g.pf("func (b *%sBuilder) Init(allocator ...TableAllocator) bool { if b.region!=nil||!b.Arena.Init(allocator...){return false};b.Main=TableWorker{Arena:&b.Arena};p,ref:=b.Main.Alloc(int64(unsafe.Sizeof(%s{})));b.root=ref;if p==nil{b.Arena.Shutdown();b.root=0;return false};%sReset((*%s)(p));return true }\n", n, typ, n, typ)
 	g.pf("func (b *%sBuilder) GetRoot() *%s { if b.Arena.Locked {return nil};return (*%s)(b.Arena.At(b.root)) }\n", n, typ, typ)

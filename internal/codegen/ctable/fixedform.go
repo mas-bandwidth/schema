@@ -227,11 +227,13 @@ func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED %s void %s( uint8_t * b, const %s * value )\n{\n",
 		tableInlineMacro(g.unit.Package), g.sym(st.Name, "fixed_write_body"), st.Name)
 	g.pf("    (void) b; (void) value;\n")
+	g.fixedTable, g.fixedLoop = st.Name, 0
 	off := int64(0)
 	for _, f := range st.Fields {
 		g.emitFixedWriteField(f, off, "b", "value->", 4)
 		off += ir.TableFixedFieldBytes(f)
 	}
+	g.fixedTable = ""
 	g.pf("}\n\n")
 }
 
@@ -281,18 +283,18 @@ func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string
 func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base int64, count string, buf, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	elem := ir.TableFixedElementBytes(f)
-	// THE COUNTER IS NAMED BY ITS NESTING LEVEL: an array arm inside an array
-	// of unions is a loop inside a loop in one body, and a second `i` would
-	// shadow the first — which -Wshadow refuses (the C++ twin's fixedLoopVar).
-	loop := fixedLoopVar(g.fixedLoopDepth)
-	g.fixedLoopDepth++
-	g.pf("%s{\n%s    int64_t %s;\n%s    for ( %s = 0; %s < (int64_t) %s; ++%s )\n%s    {\n", ind, ind, loop, ind, loop, loop, count, loop, ind)
-	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s + %d + %s * %d", buf, base, loop, elem), expr+"["+loop+"]", indent+8)
+	// A loop NESTS when an array arm rides inside an array of unions, and the
+	// C leg builds with -Wshadow: each level gets its own counter, the
+	// outermost keeping `i` (the reference's fixedLoopVar).
+	i := fixedLoopVar(g.fixedLoop)
+	g.fixedLoop++
+	g.pf("%s{\n%s    int64_t %s;\n%s    for ( %s = 0; %s < (int64_t) %s; ++%s )\n%s    {\n", ind, ind, i, ind, i, i, count, i, ind)
+	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s + %d + %s * %d", buf, base, i, elem), expr+"["+i+"]", indent+8)
 	g.pf("%s    }\n%s}\n", ind, ind)
-	g.fixedLoopDepth--
+	g.fixedLoop--
 }
 
-// fixedLoopVar names the write body's element-loop counter for a nesting
+// fixedLoopVar names a fixed write body's element-loop counter for a nesting
 // level: `i`, then `i1`, `i2`, ...
 func fixedLoopVar(depth int) string {
 	if depth == 0 {
@@ -301,49 +303,27 @@ func fixedLoopVar(depth int) string {
 	return fmt.Sprintf("i%d", depth)
 }
 
-/*
-emitFixedWriteArm is one union arm's fixed-form store, the C twin of the C++
-reference's (internal/codegen/cpptable/fixedform.go emitFixedWriteArm). An
-
-	arm's value and companion live inside the arm's own unnamed struct —
-	`value` beside `value_length` or `value_count` (§2.6) — so a text, bytes
-	or array arm is written through those, never as one scalar store of the
-	whole arm (which is what spelled `table_fixed_put0` for a string arm). A
-	payload-free arm has no storage: the tag alone is its whole record.
-*/
+// emitFixedWriteArm is ONE UNION ARM's fixed-form store, the C twin of the
+// reference's (cpptable emitFixedWriteArm): an arm is a whole field spelling,
+// not an element, so a text, bytes or array arm takes the payload store —
+// the used LENGTH or COUNT, then the units — with the arm's own storage
+// spellings (`.as.<arm>.value` beside `.as.<arm>.value_length` / `_count`,
+// §2.6). Reading such an arm as an element is what printed `uint0_t` and
+// `table_fixed_put0`: TableFixedStorageBytes has no width for a string. A
+// payload-free arm writes nothing under the tag.
 func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, off int64, buf, expr string, indent int) {
 	if v.Void() {
 		return
 	}
-	f := v.F
-	ind := strings.Repeat(" ", indent)
-	value := armValue(expr, v)
-	count := expr + ".as." + v.Name + ".value_length"
-	if f.Array == ir.ArrayCounted {
-		count = expr + ".as." + v.Name + ".value_count"
+	arm := *v.F
+	val := expr + ".as."
+	if armCompanioned(v) {
+		val = expr + ".as." + v.Name + "."
+		arm.Name = "value"
+	} else {
+		arm.Name = v.Name
 	}
-	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
-		unit := int64(1)
-		if f.Type.Kind == ir.TWString {
-			unit = 2
-		}
-		g.fixedWriteBound(count, f.Type.Size, "length", ind)
-		g.pf("%stable_fixed_put32( %s + %d, (uint32_t) %s );\n", ind, buf, off, count)
-		scale := ""
-		if unit != 1 {
-			scale = fmt.Sprintf("%d * ", unit)
-		}
-		g.pf("%smemcpy( %s + %d, %s, (size_t) ( %s%s ) );\n", ind, buf, off+4, value, scale, count)
-	case f.Array == ir.ArrayFixed:
-		g.emitFixedWriteLoop(f, off, strconv.FormatInt(f.ArrayBound, 10), buf, value, indent)
-	case f.Array == ir.ArrayCounted:
-		g.fixedWriteBound(count, f.ArrayBound, "count", ind)
-		g.pf("%stable_fixed_put32( %s + %d, (uint32_t) %s );\n", ind, buf, off, count)
-		g.emitFixedWriteLoop(f, off+ir.TableFixedCountBytes, count, buf, value, indent)
-	default:
-		g.emitFixedWriteElement(f, off, buf, value, indent)
-	}
+	g.emitFixedWritePayload(&arm, off, buf, val, indent)
 }
 
 /*
@@ -379,7 +359,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			g.pf("%s%s( %s + %d, &%s );\n", ind, g.sym(r.Name, "fixed_write_body"), buf, off, expr)
 			return
 		case *ir.Union:
-			tag := int64(ir.StorageBitsFor(r.Max) / 8)
+			tag := g.intBytes(g.fixedTable, f.Name+" (the "+r.Name+" tag)", int64(ir.StorageBitsFor(r.Max)/8))
 			g.pf("%stable_fixed_put%d( %s + %d, (uint%d_t) %s.type );\n", ind, tag*8, buf, off, tag*8, expr)
 			g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
 			for _, v := range r.Variants {
@@ -393,7 +373,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			g.pf("%s    default: break;\n%s}\n", ind, ind)
 			return
 		case *ir.Enum:
-			w := int64(r.StorageBits / 8)
+			w := g.intBytes(g.fixedTable, f.Name, int64(r.StorageBits/8))
 			g.pf("%stable_fixed_put%d( %s + %d, (uint%d_t) %s );\n", ind, w*8, buf, off, w*8, expr)
 			return
 		case *ir.Flags:
@@ -418,6 +398,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			}
 			return
 		}
+		w = g.intBytes(g.fixedTable, f.Name, w)
 		g.pf("%stable_fixed_put%d( %s + %d, (uint%d_t) %s );\n", ind, w*8, buf, off, w*8, expr)
 	}
 }
