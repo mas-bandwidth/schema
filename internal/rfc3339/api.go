@@ -5,5 +5,5 @@ package rfc3339
 // instant outside Time.UnixNano's domain (docs/SPEC-TABLES.md §2.11, §16.2).
 // It reads only its argument, reads no clock and allocates nothing.
 func Parse(text []byte) (int64, bool) {
-	return tableRFC3339Parse(text)
+	return rfc3339Parse(text)
 }

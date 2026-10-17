@@ -23,7 +23,7 @@ var boundedTextSchema = map[string]string{
 // (outputDigest). The Go digest was re-pinned at head: the strict timestamp
 // parser now rides in every Go text form (docs/SPEC-TABLES.md §2.11, §16.2).
 var boundedTextDigest = map[string]string{
-	"go":  "c3b60cfd550f380f7a809d279a994a6eed97ca69bf7e07461e9c77bdbf935b3b",
+	"go":  "5d5175ad08dc8c5084a1e4c76d04ff8e3f22d5694ba6fba1f12bd653a35d6411",
 	"cpp": "ff5e30ac14304bb0ab07460f917a19a1efa46fa1c5dac34498d4bd856dfe9605",
 }
 

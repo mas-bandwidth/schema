@@ -137,7 +137,7 @@ func TestGoTimestampStrictRFC3339(t *testing.T) {
 	if jsonGo == "" {
 		t.Fatal("no generated TableJson.go")
 	}
-	fragment := rfc3339.Source[strings.Index(rfc3339.Source, "func tableRFC3339Parse"):]
+	fragment := rfc3339.Source[strings.Index(rfc3339.Source, "func rfc3339Parse"):]
 	formatted, err := format.Source([]byte("package p\n\n" + fragment))
 	if err != nil {
 		t.Fatalf("the parser source does not format: %v", err)

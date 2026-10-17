@@ -22,7 +22,7 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 // head: the strict timestamp parser now rides in every Go text form
 // (docs/SPEC-TABLES.md §2.11, §16.2).
 var neitherDigest = map[string]string{
-	"go":  "a0817eaed87c76d6373f6c95ab3768fb427e4ec272b5d44071c940c34ffcab80",
+	"go":  "79147c89d21a7496121c61ad44bf95645f5613aa3145f7e0444d04c43906ace9",
 	"cpp": "5aabda2cf12ca342bd480b18084def13f06d87a85b6bdddeea12f955f761da1d",
 }
 

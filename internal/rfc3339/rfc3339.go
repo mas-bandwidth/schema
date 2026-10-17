@@ -1,6 +1,6 @@
 package rfc3339
 
-// tableRFC3339Parse reads exactly RFC 3339 §5.6's `date-time` production and
+// rfc3339Parse reads exactly RFC 3339 §5.6's `date-time` production and
 // answers its UTC nanosecond count, or false. The spelling is the standard's,
 // with the section's own allowance that `T` and `Z` may be lower case
 // (docs/SPEC-TABLES.md §2.11, §16.2):
@@ -20,7 +20,7 @@ package rfc3339
 // fraction, so an instant outside int64's nanosecond range — the years 1678
 // through 2262, Time.UnixNano's domain — names no count and is refused too.
 // The parser reads only its argument and allocates nothing.
-func tableRFC3339Parse(text []byte) (int64, bool) {
+func rfc3339Parse(text []byte) (int64, bool) {
 	// the shortest production is "2006-01-02T15:04:05Z"
 	if len(text) < 20 {
 		return 0, false
@@ -35,29 +35,29 @@ func tableRFC3339Parse(text []byte) (int64, bool) {
 
 	year := 0
 	for i := 0; i < 4; i++ {
-		d, ok := tableRFC3339Digit(text, i)
+		d, ok := rfc3339Digit(text, i)
 		if !ok {
 			return 0, false
 		}
 		year = year*10 + d
 	}
-	month, ok := tableRFC3339Two(text, 5)
+	month, ok := rfc3339Two(text, 5)
 	if !ok {
 		return 0, false
 	}
-	day, ok := tableRFC3339Two(text, 8)
+	day, ok := rfc3339Two(text, 8)
 	if !ok {
 		return 0, false
 	}
-	hour, ok := tableRFC3339Two(text, 11)
+	hour, ok := rfc3339Two(text, 11)
 	if !ok {
 		return 0, false
 	}
-	minute, ok := tableRFC3339Two(text, 14)
+	minute, ok := rfc3339Two(text, 14)
 	if !ok {
 		return 0, false
 	}
-	second, ok := tableRFC3339Two(text, 17)
+	second, ok := rfc3339Two(text, 17)
 	if !ok {
 		return 0, false
 	}
@@ -65,7 +65,7 @@ func tableRFC3339Parse(text []byte) (int64, bool) {
 	if month < 1 || month > 12 {
 		return 0, false
 	}
-	if day < 1 || day > tableRFC3339MonthDays(year, month) {
+	if day < 1 || day > rfc3339MonthDays(year, month) {
 		return 0, false
 	}
 	if hour > 23 || minute > 59 || second > 59 { // §2.11 refuses the leap second
@@ -109,7 +109,7 @@ func tableRFC3339Parse(text []byte) (int64, bool) {
 			sign = -1
 		}
 		index++
-		offsetHour, ok := tableRFC3339Two(text, index)
+		offsetHour, ok := rfc3339Two(text, index)
 		if !ok {
 			return 0, false
 		}
@@ -118,7 +118,7 @@ func tableRFC3339Parse(text []byte) (int64, bool) {
 			return 0, false
 		}
 		index++
-		offsetMinute, ok := tableRFC3339Two(text, index)
+		offsetMinute, ok := rfc3339Two(text, index)
 		if !ok {
 			return 0, false
 		}
@@ -134,7 +134,7 @@ func tableRFC3339Parse(text []byte) (int64, bool) {
 		return 0, false
 	}
 
-	seconds := tableRFC3339Days(year, month, day)*86400 +
+	seconds := rfc3339Days(year, month, day)*86400 +
 		int64(hour*3600+minute*60+second) - offset
 
 	// Time.UnixNano's domain: the second before 1677-09-21T00:12:43 is
@@ -159,8 +159,8 @@ func tableRFC3339Parse(text []byte) (int64, bool) {
 	return seconds*1000000000 + nanos, true
 }
 
-// tableRFC3339Digit is one ASCII decimal digit at index i.
-func tableRFC3339Digit(text []byte, i int) (int, bool) {
+// rfc3339Digit is one ASCII decimal digit at index i.
+func rfc3339Digit(text []byte, i int) (int, bool) {
 	if i < 0 || i >= len(text) {
 		return 0, false
 	}
@@ -171,34 +171,34 @@ func tableRFC3339Digit(text []byte, i int) (int, bool) {
 	return int(c - '0'), true
 }
 
-// tableRFC3339Two is a two-digit field at index i.
-func tableRFC3339Two(text []byte, i int) (int, bool) {
-	high, ok := tableRFC3339Digit(text, i)
+// rfc3339Two is a two-digit field at index i.
+func rfc3339Two(text []byte, i int) (int, bool) {
+	high, ok := rfc3339Digit(text, i)
 	if !ok {
 		return 0, false
 	}
-	low, ok := tableRFC3339Digit(text, i+1)
+	low, ok := rfc3339Digit(text, i+1)
 	if !ok {
 		return 0, false
 	}
 	return high*10 + low, true
 }
 
-// tableRFC3339Leap is the Gregorian rule RFC 3339's full-date inherits from
+// rfc3339Leap is the Gregorian rule RFC 3339's full-date inherits from
 // ISO 8601: a year divisible by 4, except a century not divisible by 400.
-func tableRFC3339Leap(year int) bool {
+func rfc3339Leap(year int) bool {
 	return year%4 == 0 && (year%100 != 0 || year%400 == 0)
 }
 
-// tableRFC3339MonthDays is the number of days in one month of one year.
-func tableRFC3339MonthDays(year, month int) int {
+// rfc3339MonthDays is the number of days in one month of one year.
+func rfc3339MonthDays(year, month int) int {
 	switch month {
 	case 1, 3, 5, 7, 8, 10, 12:
 		return 31
 	case 4, 6, 9, 11:
 		return 30
 	case 2:
-		if tableRFC3339Leap(year) {
+		if rfc3339Leap(year) {
 			return 29
 		}
 		return 28
@@ -206,10 +206,10 @@ func tableRFC3339MonthDays(year, month int) int {
 	return 0
 }
 
-// tableRFC3339Days is the number of days from 1970-01-01 to year-month-day,
+// rfc3339Days is the number of days from 1970-01-01 to year-month-day,
 // negative before the epoch. It is the civil-days algorithm, exact for the
 // four-digit years RFC 3339 allows.
-func tableRFC3339Days(year, month, day int) int64 {
+func rfc3339Days(year, month, day int) int64 {
 	y := int64(year)
 	m := int64(month)
 	if m <= 2 {

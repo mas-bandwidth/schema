@@ -2071,7 +2071,7 @@ func tableJsonReadTimestamp(in *tableJsonIn, storage unsafe.Pointer, f *TableFie
 		}
 		text = text[:n]
 	}
-	nanos, named := tableRFC3339Parse(text)
+	nanos, named := rfc3339Parse(text)
 	if !named {
 		in.report.Reason = "timestamp_not_rfc3339: " + f.Name
 		in.bad = true
