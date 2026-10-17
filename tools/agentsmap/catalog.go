@@ -113,6 +113,8 @@ var catalog = []Entry{
 	e("internal/codegen/jstable", "JS table emitter", "go test ./internal/codegen/jstable", "go test ./internal/codegen/jstable"),
 	e("internal/codegen/rust", "Rust packet emitter", "go test ./internal/codegen/rust", "go test ./internal/codegen/rust"),
 	e("internal/codegen/rusttable", "Rust table emitter", "go test ./internal/codegen/rusttable", "go test ./internal/codegen/rusttable"),
+	e("internal/codegen/squirrel", "Squirrel packet emitter", "go test ./internal/codegen/squirrel", "go test ./internal/codegen/squirrel"),
+	e("internal/codegen/squirreltable", "Squirrel table emitter", "go test ./internal/codegen/squirreltable", "go test ./internal/codegen/squirreltable"),
 
 	// tables/
 	e("tables/arms", "union-arm traversal corpus", "make check", "bin/schema check tables/arms"),

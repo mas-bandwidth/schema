@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -78,6 +79,52 @@ func TestSqrunRoundTripsInputs(t *testing.T) {
 		if string(lines[i]) != string(want[i]) {
 			t.Errorf("line %d: got %x, want %x", i, lines[i], want[i])
 		}
+	}
+}
+
+// fatalTB records the Fatalf a helper under test makes and ends the helper's
+// goroutine as testing.T does, so a test can hold that the helper failed.
+type fatalTB struct {
+	testing.TB
+	failed bool
+	msg    string
+}
+
+func (f *fatalTB) Helper() {}
+
+func (f *fatalTB) Fatal(args ...any) {
+	f.failed, f.msg = true, fmt.Sprint(args...)
+	runtime.Goexit()
+}
+
+func (f *fatalTB) Fatalf(format string, args ...any) {
+	f.failed, f.msg = true, fmt.Sprintf(format, args...)
+	runtime.Goexit()
+}
+
+// TestSqrunFailsAScriptThatThrows pins the stderr rule of sqrun.Run
+// (docs/PORT-SQUIRREL.md, THE HARNESS): sq 3.2 exits 0 on an uncaught runtime
+// error and reports it only on stderr, so a script that throws must fail Run,
+// never hand back its partial stdout as a pass.
+func TestSqrunFailsAScriptThatThrows(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	main := "print(\"before\\n\");\nthrow \"boom\";\n"
+	if err := os.WriteFile(filepath.Join(dir, "main.nut"), []byte(main), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ftb := &fatalTB{TB: t}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		sqrun.Run(ftb, dir, "main.nut", nil)
+	}()
+	<-done
+	if !ftb.failed {
+		t.Fatalf("sqrun.Run passed a script that throws at runtime")
+	}
+	if !strings.Contains(ftb.msg, "boom") {
+		t.Errorf("the failure does not carry the script's error: %s", ftb.msg)
 	}
 }
 
