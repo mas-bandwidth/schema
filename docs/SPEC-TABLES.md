@@ -8911,9 +8911,18 @@ The builder is designed to go wide, lock-free by ownership:
   are appended to that enum and never renumbered. `TableReport.Err()`
   answers the same reason for every counter this read refuses, and nil on a
   clean read and on a read whose only counters are `unknown`, `widened` or
-  `retained`. The call owns its builder: the caller does not measure, does
-  not `Init`, and does not check the counters by hand. Go emits it for each
-  root; the citation on the emitter is this section.
+   `retained`. The call owns its builder: the caller does not measure, does
+   not `Init`, and does not check the counters by hand. Go emits it for each
+   root; the citation on the emitter is this section.
+
+   **A FIXED-FORM REFUSAL'S STRICT ERROR IS ITS OWN NAME.** For a refused
+   fixed report whose reason is a fixed reason other than a form-byte one, the
+   typed error is that reason itself — `layout_unknown`, `count_over_bound`,
+   `plan_too_large`, and so on — never `unknown_form`. Only a form-byte
+   refusal (`newer_form`, `previous_form`, `message_form_as_file`, an
+   unsupported wire form) answers `unknown_form`. A Go strict read returns
+   `TableFixedRefusal{Reason}` for the former and `TableRefuseUnknownForm`
+   (so `errors.Is` works) for the latter.
 
 Contract split, stated once: the AUTHORING path (builder growth, `Lock`)
 may allocate; the reading path allocates nothing of its own — the caller
