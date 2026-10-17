@@ -1190,6 +1190,11 @@ table Player
   body that lacked it. A strict caller gets it by name — `ReadStrict` and
   `TableReport.Err()` answer the typed `TableMissingRequired`, whose text is
   the report's reason (§6.5), never a bare `wire_damaged`.
+- **A `| required` field whose range excludes zero takes NO default.**
+  A fresh record's field is the storage zero, which is outside the range, so
+  the writer refuses the record until the field is set; a stored record
+  lacking it is `missing_required` on read (SPEC §4.6). A declared default on
+  such a field stays legal.
 
 **Evolution** (§4). Adding `required` to a shipped field is a BREAK the
 tables baseline refuses: old records were written without it and a newer
