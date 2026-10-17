@@ -3833,9 +3833,12 @@ own, and in the projections (§18.1, §20.2) it takes a map entry's anonymous ke
 `<holder id>.<field id>`, so a `was` rename moves no line. The storage of the
 list IS an array of that record — the bounded list is `[N]` records and a live
 `<Field>Count`, the unbounded list a `TableList` of records (§2.9) — which is
-why the cooked form (§7), the block form (§19), the view (§8) and retain-unknown
-(§6.6) carry a text list with no rule of their own: each walks it as the array
-of records it is stored as. The element record's `?string(M)` value is the one
+why the cooked form (§7), the view (§8) and retain-unknown (§6.6) carry a text
+list with no rule of their own: each walks it as the array of records it is
+stored as. The fixed, block (§19) and message forms apply only to fixed tables,
+so for a text list, which lives only in a variable table, they are inapplicable
+and emit nothing for its table (not a refusal), as for an equal variable table
+holding an array of records. The element record's `?string(M)` value is the one
 place a `?` on a string is legal, and only the generator writes it: in a
 declaration `?string(N)` stays the follow-on §15 names.
 
