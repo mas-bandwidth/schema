@@ -22,7 +22,7 @@ var boundedTextSchema = map[string]string{
 // boundedTextSchema at the base this card started from (sprint/schema-go @
 // caea41783), file names sorted, each name then its bytes (outputDigest).
 var boundedTextDigest = map[string]string{
-	"go":  "59edbf5793951b460761ee5cf78895cbb3dbe3d02fd1a6ebcb12623d122a8a4e",
+	"go":  "1bda53fa6d449646f6f6204194c7156d6fc49af66ac263d4f24f725008220b08",
 	"cpp": "ff5e30ac14304bb0ab07460f917a19a1efa46fa1c5dac34498d4bd856dfe9605",
 }
 

@@ -97,7 +97,7 @@ func (g *tableGen) emitArithMeasureField(f *ir.Field, cond, ind string) {
 	id := ir.TableFieldWireId(f)
 	ride := cond
 	if !f.Type.Optional && !f.Required {
-		elide := expr + " != " + fieldDefaultExpr(f)
+		elide := g.elideDiffers(f, expr, fieldDefaultExpr(f))
 		if ride != "" {
 			ride += " && " + elide
 		} else {
@@ -295,18 +295,37 @@ func (g *tableGen) emitFieldRides(f *ir.Field, expr, ind string) string {
 		if isStructRef(f.Type) && !f.Type.Pointer {
 			return "true"
 		}
-		lhs, def := expr+"[i]", fieldDefaultExpr(f)
+		differs := g.elideDiffers(f, expr+"[i]", fieldDefaultExpr(f))
 		if isUnionRef(f.Type) {
-			lhs += ".Type"
-			def = f.Type.Name + "TypeNone"
+			differs = expr + "[i].Type != " + f.Type.Name + "TypeNone"
 		}
-		g.pf("%sallDefault := true; for i := range %s { if %s != %s { allDefault = false; break } }\n", ind, expr, lhs, def)
+		g.pf("%sallDefault := true; for i := range %s { if %s { allDefault = false; break } }\n", ind, expr, differs)
 		return "!allDefault"
 	}
 	if isUnionRef(f.Type) {
 		return expr + ".Type != " + f.Type.Name + "TypeNone"
 	}
-	return expr + " != " + fieldDefaultExpr(f)
+	return g.elideDiffers(f, expr, fieldDefaultExpr(f))
+}
+
+// elideDiffers is the default-elision test: the field rides when it differs
+// from its default. A PLAIN float compares BIT PATTERNS, not values
+// (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL VALUES"): under ==, -0
+// equals +0 and would be elided and read back as +0, so the wire and the text
+// of one value would disagree. A compressed float keeps ==, because its -0 IS
+// +0 by §3.3's compressed-float rule.
+func (g *tableGen) elideDiffers(f *ir.Field, lhs, def string) string {
+	if !f.HasFloatRange {
+		switch f.Type.Kind {
+		case ir.TFloat32:
+			g.needsMath = true
+			return "math.Float32bits(" + lhs + ") != math.Float32bits(" + def + ")"
+		case ir.TFloat64:
+			g.needsMath = true
+			return "math.Float64bits(" + lhs + ") != math.Float64bits(" + def + ")"
+		}
+	}
+	return lhs + " != " + def
 }
 
 // framed adds the ordinary value's L. A union arm already supplies its own
@@ -499,7 +518,7 @@ func (g *tableGen) emitWireArrayElement(f *ir.Field, expr, writer, ind string) {
 	g.pf("%smark := %s.Ids.Count\n%sid, named := %s(i+1).TableEnumId(); if !named { return false }; ref := %s.Ids.Ref(id); start := %s.Ids.Count\n", i, writer, i, f.KeyEnum, writer, writer)
 	g.pf("%s%s := TableWriter{Measuring:true, Ids:%s.Ids}\n", i, element, writer)
 	g.emitWireValue(&elem, expr, element, i, false)
-	cond := expr + " != " + fieldDefaultExpr(&elem)
+	cond := g.elideDiffers(&elem, expr, fieldDefaultExpr(&elem))
 	if isStructRef(elem.Type) {
 		cond = element + ".Offset > 1"
 	} else if isUnionRef(elem.Type) {
