@@ -11,10 +11,10 @@
     "state": "enum State { unknown, done }",
     "count": "int32 [0,10]",
     "enabled": "bool",
-    "text": "[..4]string(80)",
+    "text": "[..4]TextItem",
     "nodes": "[..3]Node",
     "pairs": "[2]int32",
-    "optional": "?string(8)",
+    "optional": "?[..4]int32",
     "wide": "wstring(4)",
     "bytes": "bytes(4)",
     "signed": "int128",
@@ -24,9 +24,12 @@
     "time": "timestamp",
     "flags": "flags Features { Fast, Safe }",
     "keyed": "[State]int32",
-    "choice": "union { count int32; ping void }"
+    "choice": "union { amount int32; ping void }"
   },
   "types": {
+    "TextItem": {
+      "line": "string(80)"
+    },
     "Node": {
       "id": "string(16)",
       "title": "string(32)",

@@ -104,6 +104,9 @@ schema generate --lang go --surface wire,json --out generated/go .
 `--surface` takes a comma-separated list of the table surfaces (SPEC-TABLES.md
 §8.8). Its default is the full set — the command above without `--surface` is
 byte-identical to the one with `--surface wire,fixed,json,cook,block,view,message,retain`.
+The one surface outside the default is `textform`, the hand-editable text form
+(below, "Hand-edited tables and comments"): it is emitted only when named, and
+naming it implies `json` and `wire`.
 Only the Go target accepts it; any other `--lang` refuses the flag by name.
 A table that declares `forms` (SPEC-TABLES.md §2.12) narrows it further: the
 list intersects the table's forms, and a list naming `json`, `cook` or `block`
@@ -4453,10 +4456,35 @@ the document to rewrite it byte for byte or change a single value in place.
 The table value alone cannot retain layout. Unknown and duplicate keys,
 over-bound values and unterminated forms are named refusals, not repairs.
 
-This is the standard and its conformance contract; it does not yet promise a
-generated Go reader or writer. That implementation follows separately. Existing
-roadmap/work-file grammars need declared tables and explicit migration: tagged
-records and positional IDs in older work files are not accepted implicitly.
+The Go target generates it on the `textform` surface, which a generate names
+explicitly (it is not in the default set): `schema generate --lang go --surface wire,fixed,json,cook,block,view,message,retain,textform`. Every table and type
+the JSON form carries, fixed and plain alike, then gets three functions in
+`<Base>TableTextForm.go`, which imports the standard library only:
+
+```go
+doc, ship, err := example.ShipConfigLoadTextForm(text, example.TableTextFormDefaultLimits())
+if err != nil {
+	var refusal *example.TableTextFormError // .Name is the §16.9.4 name, .Offset and .Path say where
+	errors.As(err, &refusal)
+}
+same, _ := example.ShipConfigSaveTextForm(doc) // the input, byte for byte
+edited, ship, err := example.ShipConfigEditTextForm(doc,
+	example.TableTextFormEdit{Path: "name", Text: `"Renamed"`},
+	example.TableTextFormEdit{Path: "weapons[0].damage", Text: "12"})
+```
+
+`LoadTextForm` returns the document and the typed value (for a plain table,
+the locked root of a builder of its own, as `LoadText` does). `SaveTextForm`
+writes the retained document. `EditTextForm` replaces existing scalar values:
+each edit's `Text` is one token of the form, replaced at its original span,
+so only that value's line changes; a semantically equal value keeps the old
+spelling; the edited document is read again under the same limits and a
+refusal leaves the old document as it was. Inserting, deleting or replacing a
+whole compound is a structural edit and refuses as `text_edit_conflict`. The
+document also answers `Comments()` (each comment with the path it attaches
+to), `Span(path)`, `Paths()` and `Scalar(path)`. Existing roadmap/work-file
+grammars need declared tables and explicit migration: tagged records and
+positional IDs in older work files are not accepted implicitly.
 
 Do not use this document form for data only a program reads. Use the binary
 table wire, or padded base64 of that wire on text-only channels (§16.8); use

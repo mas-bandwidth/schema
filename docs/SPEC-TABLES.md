@@ -12035,7 +12035,7 @@ appears in any generated file but the view pair.
 
 ### 8.8 The `--surface` flag
 
-The Go target can emit a subset of the table surfaces. `generate --lang go --surface <list>` takes a comma-separated list drawn from these eight names:
+The Go target can emit a subset of the table surfaces. `generate --lang go --surface <list>` takes a comma-separated list drawn from these nine names:
 
 - **wire** — the TABLE-wire codecs (`<Name>Measure/<Name>Save/<Name>Load`)
   and the reflection descriptors.
@@ -12046,9 +12046,13 @@ The Go target can emit a subset of the table surfaces. `generate --lang go --sur
 - **view** — the view file, `<Package>View.go` (§8.2–§8.7).
 - **message** — the message-form codecs (§3.3).
 - **retain** — the retain codecs.
+- **textform** — the hand-editable text form, `<Base>TableTextForm.go` (§16.9).
 
-The default is the full set: a generate without `--surface` is byte-identical
-to one with `--surface wire,fixed,json,cook,block,view,message,retain`.
+The default is the full set of the first eight: a generate without `--surface`
+is byte-identical to one with `--surface wire,fixed,json,cook,block,view,message,retain`.
+`textform` is the one surface a generate emits only when it is named, so adding
+it moved no default output; it rides on the JSON walk, so it implies `json`
+and through it `wire`.
 
 **Dependencies resolve automatically and are named here.** `wire` is the
 base surface and cannot be dropped on its own: `fixed`, `json`, `cook`,
@@ -15146,7 +15150,7 @@ The rules below replace §16.2's tolerant behavior for this form only.
 | `[]T`, `[]*T` | Sequence in index order, without a schema count bound; resource limits still apply. |
 | `[E]T` enum-keyed array | Record keyed by enum variant names (`:Fighter` or `"Fighter"`); missing slots use defaults. `None` and unknown variants are `text_unknown_key`; duplicate slots are `text_duplicate_key`. |
 | `?T`, including optional arrays | Omitted field or `null` is absent; any valid T value is present. `()` at an array site is present-and-empty. |
-| Union | Record with exactly one arm key and its arm-kind value; `()` is None. Example `(:count 7)` or `(:ping null)` for a payload-free arm. Unknown arm is `text_unknown_key`, duplicate arm is `text_duplicate_key`, multiple different arms are `text_kind_mismatch`. |
+| Union | Record with exactly one arm key and its arm-kind value; `()` is None. Example `(:amount 7)` or `(:ping null)` for a payload-free arm. Unknown arm is `text_unknown_key`, duplicate arm is `text_duplicate_key`, multiple different arms are `text_kind_mismatch`. |
 | `*T` | `null` or the pointee record, with sharing as below. |
 | `*bytes`, `*string`, `*wstring` | `null` or the corresponding string representation above, without a schema length bound; empty string is a present empty blob. |
 | `map[K]V` | Sequence of exactly two-element pairs, e.g. `(("east" 1) ("west" 2))`. K uses its scalar rule (integer keys are numbers, string keys are strings), V uses its own rule; optional values use `null` for absent. Duplicate keys after decoding are `text_duplicate_key`. Preserve source entry order, even though the semantic map has no order. |
@@ -15260,6 +15264,22 @@ byte-identical rewrites, localized edits and named refusals. These are standard
 vectors, not a claim that a reader is implemented. Implementations must compare
 bytes, not parsed equality, for rewrite and edit assertions. Use the same
 vectors for fixed and variable declarations wherever their kinds permit it.
+
+**The Go implementation** is the `textform` surface (§8.8). Per table and
+type the JSON form carries: `<Name>LoadTextForm(text, limits)` returns the
+document, the typed value and nil, or nil, nil and a `*TableTextFormError`
+holding the name, offset and path above; `<Name>SaveTextForm(document)` writes
+the retained bytes; `<Name>EditTextForm(document, edits...)` performs leaf
+edits, each a path and the new token, by original span, keeping a semantic
+no-op's spelling and reading the edited document back before returning it.
+The reader resolves the document strictly against the descriptors (§8), then
+lands the value through the JSON walk (§16) from the canonical JSON of the
+same value; any count in that walk's report is refused rather than trusted.
+Structural edits are not implemented: they refuse as `text_edit_conflict`.
+One ordering is weaker than the rule above: whether a list is a record is
+known only from its kind, so a record's pairing (an odd item count, a key that
+is not a keyword or a string) is checked while resolving, and a semantic
+failure earlier in source order is reported first.
 
 ### 16.10 The array root: `table GoalList | json = "array"`
 
