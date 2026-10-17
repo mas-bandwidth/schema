@@ -90,8 +90,12 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 			}
 			if ir.VariableTables(u)[n] {
 				fmt.Fprintf(&b, "func %sFromJson(builder *%sBuilder,text []byte,report *TableReport) bool { if builder.Arena.Locked {return false};return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()),%sTableType(),&builder.Main,text,report) }\n", n, n, n)
-				fmt.Fprintf(&b, "func %sToJsonMeasure(value *%s,allocator ...TableAllocator) int64 {return tableRegionToJson(unsafe.Pointer(value),%sTableType(),nil,allocator...)}\n", n, storageName(u, n), n)
-				fmt.Fprintf(&b, "func %sToJson(value *%s,buffer []byte,allocator ...TableAllocator) int64 {return tableRegionToJson(unsafe.Pointer(value),%sTableType(),buffer,allocator...)}\n\n", n, storageName(u, n), n)
+				fmt.Fprintf(&b, "func %sToJsonMeasure(value *%s,allocator ...TableAllocator) int64 {n,_:=tableRegionToJson(unsafe.Pointer(value),%sTableType(),nil,allocator...);return n}\n", n, storageName(u, n), n)
+				fmt.Fprintf(&b, "func %sToJson(value *%s,buffer []byte,allocator ...TableAllocator) int64 {n,_:=tableRegionToJson(unsafe.Pointer(value),%sTableType(),buffer,allocator...);return n}\n", n, storageName(u, n), n)
+				// the reason twin of ToJsonMeasure, as MeasureReason is Measure's: a
+				// blob named from two slots is refused by name, blob_shared
+				// (docs/SPEC-TABLES.md §2.5, §16.7), never a bare -1
+				fmt.Fprintf(&b, "func %sToJsonMeasureReason(value *%s,allocator ...TableAllocator)(int64,error){size,reason:=tableRegionToJson(unsafe.Pointer(value),%sTableType(),nil,allocator...);return size,tableRefuseError(reason)}\n\n", n, storageName(u, n), n)
 				writeVariableTextCarrier(&b, n, storageName(u, n))
 				continue
 			}

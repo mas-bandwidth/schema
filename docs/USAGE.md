@@ -4203,8 +4203,14 @@ size varies with the schema (2,240 bytes in the lists unit). `make
 tables-go-allocator` certifies the pinned toolchain. Set
 `SCHEMA_GO_ALLOC_ANY_GO=1` only to observe another version without certifying it.
 
-The `MeasureReason`, `LoadMeasureReason`, `CookMeasureReason`, and builder
-`PackMeasureReason` variants return `(int64, error)`. Success returns a literal
+The `MeasureReason`, `LoadMeasureReason`, `CookMeasureReason`, builder
+`PackMeasureReason` and variable-table `ToJsonMeasureReason` variants return
+`(int64, error)`. A blob is owned by one slot (docs/SPEC-TABLES.md §2.5): a
+value whose two slots name one blob is refused by every writer with
+`TableRefuseBlobShared` (`blob_shared`) — `MeasureReason`, `Save`, `SaveText`,
+`ToJsonMeasureReason` (and `ToJsonMeasure`/`ToJson` answer `-1`) — while a
+tolerant `Load` or `LoadBuilder` keeps the one node, counts
+`TableReport.BlobShared`, and `ReadStrict`/`LoadText` refuse `blob_shared`. Success returns a literal
 `nil`; refusals carry `TableRefuseReason`, usable with `errors.As` or direct
 comparison. The existing integer measure and boolean open calls remain available.
 Cook and block handles also provide `Open(base, bytes) error`. `LoadMeasureReason`

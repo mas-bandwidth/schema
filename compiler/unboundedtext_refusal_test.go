@@ -22,9 +22,12 @@ var boundedTextSchema = map[string]string{
 // boundedTextSchema at the base this card started from (sprint/schema-go @
 // caea41783), file names sorted, each name then its bytes (outputDigest).
 // The go digest moved once since, by the integrity_mismatch refusal name
-// every Go unit's runtime carries (docs/SPEC-TABLES.md §2.14).
+// every Go unit's runtime carries (docs/SPEC-TABLES.md §2.14), and again by
+// blob_shared (§2.5): its refusal name, TableReport.BlobShared, and the
+// runtime's refusal of a blob named from two slots, in the file and the
+// message form.
 var boundedTextDigest = map[string]string{
-	"go":  "7432b2a79e647f86c32fdd5ee55e97c92430fe9b51d0923bd231f0135253843f",
+	"go":  "f9d143aa07dad6a583257de5394f656f19711555e24ff2880cb736ce7a5b2960",
 	"cpp": "ff5e30ac14304bb0ab07460f917a19a1efa46fa1c5dac34498d4bd856dfe9605",
 }
 
