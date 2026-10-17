@@ -21,8 +21,10 @@ var boundedTextSchema = map[string]string{
 // boundedTextDigest is the sha256 of the go and cpp outputs of
 // boundedTextSchema at the base this card started from (sprint/schema-go @
 // caea41783), file names sorted, each name then its bytes (outputDigest).
+// The go digest was re-pinned when TableFieldInfo gained Unbounded
+// (docs/SPEC-TABLES.md §8.1), which moves every unit's descriptor and runtime.
 var boundedTextDigest = map[string]string{
-	"go":  "5a2a1da84e38a79d0994e682683cb588a8739b912fb6e956a0b2163530f9045d",
+	"go":  "0523f561ed7f1465c68360786037602a9e07b39810cf39181e94d04f6725d558",
 	"cpp": "ff5e30ac14304bb0ab07460f917a19a1efa46fa1c5dac34498d4bd856dfe9605",
 }
 

@@ -19,9 +19,11 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 
 // neitherDigest is the sha256 of the go and cpp outputs of neitherSchema at
 // the base this card started from (sprint/schema-go @ f001d67e2086), file
-// names sorted, each name then its bytes.
+// names sorted, each name then its bytes. The go digest was re-pinned when
+// TableFieldInfo gained Unbounded (docs/SPEC-TABLES.md §8.1), which moves every
+// Go unit's descriptor and runtime; the cpp output did not move.
 var neitherDigest = map[string]string{
-	"go":  "d174d997b33d85eca4dbf8df2ce6777eda2316073423bcfc0ab9608ae4539881",
+	"go":  "9dc2579d664882070ff9f73002091daf37f48a7ff4c0aaae19650dd74daa413f",
 	"cpp": "5aabda2cf12ca342bd480b18084def13f06d87a85b6bdddeea12f955f761da1d",
 }
 

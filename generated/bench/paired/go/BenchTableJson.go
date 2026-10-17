@@ -63,7 +63,7 @@ func tableJsonCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
 	if count < 0 {
 		count = 0
 	}
-	if count > f.ArrayBound {
+	if !f.Unbounded && count > f.ArrayBound {
 		count = f.ArrayBound
 	}
 	return count

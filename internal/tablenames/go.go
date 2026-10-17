@@ -285,6 +285,7 @@ func init() {
 		Name{Name: "TableEnumValue", What: "a table-wire variant id -> its enum value"},
 		Name{Name: "TableKeyed", What: "an enum-keyed array's slot storage"},
 		Name{Name: "Table", What: "TableFieldInfo's nested-table column", Scoped: true},
+		Name{Name: "Unbounded", What: "TableFieldInfo's no-declared-bound column (docs/SPEC-TABLES.md §8.1)", Scoped: true},
 		Name{Name: "TableBlockTriple", What: "one array's (offset_of, count, stride)"},
 		Name{Name: "TableBlockRows", What: "one array's rows, iterated at the pitch the instance gives"},
 		Name{Name: "TableBlockFieldInfo", What: "a block field's reflection descriptor"},
