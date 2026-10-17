@@ -1039,6 +1039,12 @@ type TableFieldInfo struct {
  HasRange bool    // a declared [min, max] (int or float)
 	RangeMin float64 // NOTE: int64 ranges beyond 2^53 lose precision here
 	RangeMax float64
+	// EXACT integer ranges (docs/SPEC-TABLES.md §8.1): a signed integer kind
+	// fills RangeIntMin/RangeIntMax, an unsigned kind (and bits(N)) fills
+	// RangeUintMin/RangeUintMax, beside the float64 pair which stays for float
+	// and fixed-point ranges. Zero on every other field.
+	RangeIntMin, RangeIntMax int64
+	RangeUintMin, RangeUintMax uint64
 
 	// EnumMax bounds the vocabulary: enums, the highest valid value (None = 0
 	// is always valid); unions, the arm count (tag range [0, EnumMax]); a
