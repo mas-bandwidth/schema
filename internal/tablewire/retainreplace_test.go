@@ -2,6 +2,8 @@ package tablewire_test
 
 import (
 	"encoding/binary"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -57,6 +59,67 @@ func retainReplacedListWire(k, n2 int) []byte {
 	return b.finish()
 }
 
+// retainReplacedListSenderUnit is the peer's own declaration: `Inner` carries a
+// field the reader below cannot name, so the arm at index `k` of the first
+// `items` occurrence retains a record the reader's own build never sees. The
+// message form has no byte-framed length to damage, so the first occurrence is
+// well framed and the second occurrence alone replaces it (§3.3, §6.6).
+const retainReplacedListSenderUnit = `package readq
+
+fixed table Inner
+{
+    value  int32 = 0 | min = 0, max = 1000
+    future int32
+}
+
+union Pick
+{
+    alpha Inner
+    beta  int32
+}
+
+table Node
+{
+    items []Pick
+}
+`
+
+// retainReplacedListMessageBatch writes the same two-occurrence shape in the
+// MESSAGE form: the first `items` carries `n` elements with the arm at index
+// `k` naming a body that holds the reader's unknown `future`, and the second
+// carries `n2` elements and replaces the first whole.
+func retainReplacedListMessageBatch(t *testing.T, k, n2 int) (*tablewire.Vocabulary, []byte) {
+	t.Helper()
+	sender := listModel(t, retainReplacedListSenderUnit)
+	const n = 16
+	arm := func(i int) string {
+		if i == k {
+			return `{"alpha":{"value":1,"future":7}}`
+		}
+		return `{"beta":0}`
+	}
+	first := make([]string, n)
+	for i := range first {
+		first[i] = arm(i)
+	}
+	second := make([]string, n2)
+	for i := range second {
+		second[i] = `{"beta":0}`
+	}
+	source := place(t, sender, "Node", fmt.Sprintf(`{"items":[%s]}`, strings.Join(first, ",")))
+	next := place(t, sender, "Node", fmt.Sprintf(`{"items":[%s]}`, strings.Join(second, ",")))
+	source.Fields = append(source.Fields, next.Fields[0])
+	batch, err := tablewire.EncodeMessages(sender, []*tabletext.Instance{source})
+	if err != nil {
+		t.Fatal(err)
+	}
+	vocabulary := &tablewire.Vocabulary{}
+	if err := vocabulary.AnnounceRead(ir.TableAnnouncement(sender.Unit), &tabletext.Report{}); err != nil {
+		t.Fatal(err)
+	}
+	return vocabulary, batch
+}
+
 func TestRetainOracleForgetsEveryArmOfAReplacedList(t *testing.T) {
 	t.Parallel()
 	m := retainArmOccurrenceModel(t)
@@ -85,6 +148,37 @@ func TestRetainOracleForgetsEveryArmOfAReplacedList(t *testing.T) {
 			}
 			if report.Retained != 1 {
 				t.Fatalf("load: retained=%d, want 1: the damaged arm's unknown field should still be retained", report.Retained)
+			}
+			var save tabletext.Report
+			if _, err := tablewire.EncodeRetain(m, inst, &retain, &save); err != nil {
+				t.Fatal(err)
+			}
+			if save.RetainLost != 0 {
+				t.Fatalf("save: retain_lost=%d, want 0: the replaced occurrence's earlier arm has no record to lose", save.RetainLost)
+			}
+		})
+	}
+	// THE MESSAGE FORM'S TWIN (§3.3, §6.6): the same replacement commits at the
+	// array's count and align, and the arm record held under an index the new
+	// occurrence never reaches dies there. Without forgetFieldArms the earlier
+	// index keeps its handle and the save reports retain_lost.
+	for _, tc := range cases {
+		tc := tc
+		t.Run("message-"+tc.name, func(t *testing.T) {
+			t.Parallel()
+			vocabulary, batch := retainReplacedListMessageBatch(t, tc.k, tc.n2)
+			inst := m.New(m.Lookup("Node"))
+			retain := tablewire.Retain{Capacity: 8192, IdCapacity: 1024}
+			var report tabletext.Report
+			n, ok, err := tablewire.DecodeRetainMessages(m, []*tabletext.Instance{inst}, batch, vocabulary, []*tablewire.Retain{&retain}, &report)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n != 1 || !ok || report.Malformed {
+				t.Fatalf("load: n=%d ok=%v report %+v", n, ok, report)
+			}
+			if report.Retained != 1 {
+				t.Fatalf("load: retained=%d, want 1: the arm's unknown field should still be retained", report.Retained)
 			}
 			var save tabletext.Report
 			if _, err := tablewire.EncodeRetain(m, inst, &retain, &save); err != nil {
