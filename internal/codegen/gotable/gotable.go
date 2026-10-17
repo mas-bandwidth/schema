@@ -471,6 +471,9 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 		if s.Message {
 			g.into(&g.message, func() { g.pf("%s", tableMessageRuntime(u)) })
 		}
+		if len(ir.TableIntegrityTables(u)) > 0 {
+			g.pf("%s", tableIntegritySource)
+		}
 		cookRuntime = unboundedTextCook(u, tableCookWriteSource(u))
 		g.emitUnitBlittableRows(blocks)
 		if regional {
@@ -771,7 +774,7 @@ func (g *tableGen) assemble() ([]byte, error) {
 	fmt.Fprintf(&h, "package %s\n\n", g.unit.Package)
 	var std []string
 	if g.home {
-		std = append(std, `"encoding/binary"`, `"unicode/utf8"`)
+		std = append(std, `"encoding/binary"`, `"hash/crc32"`, `"unicode/utf8"`)
 	}
 	if g.home && g.regional {
 		std = append(std, `"sync"`, `"sync/atomic"`)

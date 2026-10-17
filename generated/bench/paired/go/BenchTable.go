@@ -510,6 +510,7 @@ const (
 	TableRefuseClamped
 	TableRefuseKindMismatch
 	TableRefuseBase64Damaged
+	TableRefuseIntegrityMismatch
 )
 
 func (r TableRefuseReason) Error() string {
@@ -556,6 +557,8 @@ func (r TableRefuseReason) Error() string {
 		return "kind_mismatch"
 	case TableRefuseBase64Damaged:
 		return "base64_damaged"
+	case TableRefuseIntegrityMismatch:
+		return "integrity_mismatch"
 	}
 	return "invalid refusal reason"
 }
@@ -607,6 +610,9 @@ func (r *TableReport) Err() error {
 	}
 	if r.Verdict == TableOpenRefused || r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
 		return TableRefuseUnknownForm
+	}
+	if r.Reason == "integrity_mismatch" {
+		return TableRefuseIntegrityMismatch
 	}
 	if r.Verdict == TableOpenDamaged {
 		return TableRefuseWireDamaged

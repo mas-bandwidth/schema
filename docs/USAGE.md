@@ -3950,6 +3950,30 @@ so in Go every append takes the worker: `WhereRecentAppend(&b.Main, v, "a")`.
 A bare `string` anywhere else is refused by name with the spelling to use.
 Only Go generates the construct today; every other `--lang` refuses it by name.
 
+### A checksum on a saved file: `integrity`
+
+A plain `table` may declare that the file it is the root of carries a CRC-32C
+trailer (docs/SPEC-TABLES.md §2.14):
+
+```
+table Ledger | integrity = "crc32c"
+{
+    balance int64
+}
+```
+
+`LedgerSave` appends four bytes, the little-endian CRC-32C of everything
+before them, and `LedgerMeasure` counts them. Every read checks them after the
+form byte and before any field: `LedgerReadStrict` and `LedgerLoadText` refuse a
+mismatch with `TableRefuseIntegrityMismatch` (`errors.Is`), and the tolerant
+`LedgerLoad` sets `malformed` with the reason `integrity_mismatch` and decodes
+nothing. Every single-bit flip and every damaged byte is caught; it guards
+against accident, not against someone rewriting the file, which is still a
+signature's job. Adding or removing the key changes the file's framing, so
+rewrite stored files across the change. A `fixed table` refuses the key until
+the fixed and message forms carry it, and only Go generates it today; every
+other `--lang` refuses it by name.
+
 ## Embedding the compiler
 
 The compiler is a Go library as well as a binary. `cmd/schema` is a client of
