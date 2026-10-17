@@ -1844,11 +1844,23 @@ ship.loadouts_count   = 0;
 `?` is refused on a pointer (already optional), a union (`None` is its
 absence), and on strings and `bytes` — those carry a length whose framing
 already rides when the field does; wrap one in a table and make that
-optional. It is also refused where the value could hold pointer edges — a
-variable-length closure, an array of pointers, an array of unions — until
-the authoring walks gate on presence (a named follow-on), and on an
-enum-keyed array, whose slots elide by name. An optional takes no
-specified default: presence is its only default.
+optional. It is also refused on an optional array that could hold pointer
+edges — an array of pointers, an array of unions, an array of a table that
+holds a pointer — a named follow-on, and on an enum-keyed array, whose
+slots elide by name. An optional takes no specified default: presence is
+its only default.
+
+A plain `?T` whose `T` holds a pointer IS allowed (Go first; every other
+target refuses it by name). Every walk — save, measure, load, retain,
+cook, the JSON writer and reader — follows `T`'s pointers only while the
+field is present, so an absent value, or one made absent after it was set,
+writes no node for whatever its pointers still hold:
+
+```go
+outer.InnerPresent = true
+TableStringEmplace(&b.Main, &outer.Inner.Text, []byte("hi")) // rides, one node
+outer.InnerPresent = false                                    // writes no node
+```
 
 ### Enum-keyed arrays: `ships [ShipType]ShipConfig`
 
