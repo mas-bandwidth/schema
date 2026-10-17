@@ -8833,7 +8833,10 @@ the form in hand always says which:
   and a whole region relocates by plain `memcpy` with zero fix-up — which
   is the strongest form §9's relocatability can take.
 
-Lock and Load both produce the region encoding; Lock is already
+**The arena encoding needs the arena.** A write (measure or save) that meets
+an ARENA-encoded reference and was handed no arena to resolve it refuses by
+name (`arena_required`); a region reference is self-relative and never needs
+one. Lock and Load both produce the region encoding; Lock is already
 rewriting layout, so the conversion is free.
 
 **A region reference has no required sign.** A region is packed in the

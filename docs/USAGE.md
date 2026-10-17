@@ -1429,7 +1429,10 @@ For a loaded or locked root, pass `&pair` as the final argument to wire,
 message and cook writers to supply temporary storage. The same argument accepts
 `&builder.Arena` for authoring references. `TableWriteContext` selects these two
 existing inputs without treating an allocator as an address space. JSON and
-retaining file writers take the pair directly as their final argument.
+retaining file writers take the pair directly as their final argument. Writing
+an unlocked builder's root (`GetRoot`) without passing its arena refuses with
+`arena_required` (SPEC-TABLES.md §6.3): the root's references are arena offsets
+that no writer can resolve without the arena.
 Every buffer whose size grows with the graph goes through that pair. With
 caller-backed scratch on Go 1.26.0, JSON and cook measurement and writing
 allocate zero Go objects; wire, message and retaining file measurement and
