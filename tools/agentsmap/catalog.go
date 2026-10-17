@@ -111,6 +111,8 @@ var catalog = []Entry{
 	e("internal/codegen/javatable", "Java table emitter", "go test ./internal/codegen/javatable", "go test ./internal/codegen/javatable"),
 	e("internal/codegen/js", "JS packet emitter", "go test ./internal/codegen/js", "go test ./internal/codegen/js"),
 	e("internal/codegen/jstable", "JS table emitter", "go test ./internal/codegen/jstable", "go test ./internal/codegen/jstable"),
+	e("internal/codegen/lua", "Lua packet emitter (docs/PORT-LUA.md)", "make test-lua", "go test ./internal/codegen/lua"),
+	e("internal/codegen/luatable", "Lua table emitter (docs/PORT-LUA.md)", "make test-lua", "go test ./internal/codegen/luatable"),
 	e("internal/codegen/rust", "Rust packet emitter", "go test ./internal/codegen/rust", "go test ./internal/codegen/rust"),
 	e("internal/codegen/rusttable", "Rust table emitter", "go test ./internal/codegen/rusttable", "go test ./internal/codegen/rusttable"),
 
@@ -178,6 +180,7 @@ var catalog = []Entry{
 	e("test/js", "JS packet tests", "make test-js", "make test-js"),
 	e("test/js-ludicrous", "JS int128 tests", "make test-js", "make test-js"),
 	e("test/js-tables", "JS table tests", "make test-js", "make test-js"),
+	e("test/lua", "Lua interpreter harness", "make test-lua", "make test-lua"),
 	e("test/packet-defaults", "packet default-value gates", "make test", "make test"),
 	e("test/packet-text", "packet UTF-8 gates", "make test", "make test"),
 	e("test/packet-void", "packet void-arm gates", "make test", "make test"),

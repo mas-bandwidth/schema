@@ -21,5 +21,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../../AGENTS.md
 | `javatable/` | Java table emitter | `go test ./internal/codegen/javatable` | `go test ./internal/codegen/javatable` |
 | `js/` | JS packet emitter | `go test ./internal/codegen/js` | `go test ./internal/codegen/js` |
 | `jstable/` | JS table emitter | `go test ./internal/codegen/jstable` | `go test ./internal/codegen/jstable` |
+| `lua/` | Lua packet emitter (docs/PORT-LUA.md) | `make test-lua` | `go test ./internal/codegen/lua` |
+| `luatable/` | Lua table emitter (docs/PORT-LUA.md) | `make test-lua` | `go test ./internal/codegen/luatable` |
 | `rust/` | Rust packet emitter | `go test ./internal/codegen/rust` | `go test ./internal/codegen/rust` |
 | `rusttable/` | Rust table emitter | `go test ./internal/codegen/rusttable` | `go test ./internal/codegen/rusttable` |
