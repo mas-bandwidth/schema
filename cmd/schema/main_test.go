@@ -293,10 +293,18 @@ func TestReadOnlyTreeRunsEveryReadingCommand(t *testing.T) {
 // its value.
 func TestNonGoTargetRefusesSurfaceByPresence(t *testing.T) {
 	t.Parallel()
-	bin := buildCLI(t)
-	dir, _ := writeUnit(t, t.TempDir())
-	cmd := exec.Command(bin, "generate", "--lang", "cpp", "--surface=", dir)
-	if out, err := cmd.CombinedOutput(); err == nil {
-		t.Fatalf("schema generate --lang cpp --surface= must exit nonzero, got 0\n%s", out)
+	for _, lang := range []string{"cpp", "cs", "java", "dart", "js", "elixir", "rust"} {
+		if err := refuseSurfaceForTarget(true, lang); err == nil {
+			t.Fatalf("refuseSurfaceForTarget(true, %q) must refuse by presence, got nil", lang)
+		}
+	}
+	// the Go target honors the flag; the flag's absence is honored everywhere.
+	if err := refuseSurfaceForTarget(true, "go"); err != nil {
+		t.Fatalf("refuseSurfaceForTarget(true, \"go\") must not refuse, got %v", err)
+	}
+	for _, lang := range []string{"go", "cpp", "cs", "java", "dart", "js", "elixir", "rust"} {
+		if err := refuseSurfaceForTarget(false, lang); err != nil {
+			t.Fatalf("refuseSurfaceForTarget(false, %q) must not refuse, got %v", lang, err)
+		}
 	}
 }

@@ -290,8 +290,8 @@ func main() {
 				surfaceSet = true
 			}
 		})
-		if surfaceSet && *lang != "go" {
-			fail(fmt.Errorf("the %s target refuses the --surface flag by name; only the go target honors it (SPEC-TABLES.md §8.8)", *lang))
+		if err := refuseSurfaceForTarget(surfaceSet, *lang); err != nil {
+			fail(err)
 		}
 		c.FixedRecordLimit = *limit
 		c.TablesBaseline = true
@@ -766,6 +766,16 @@ func fail(err error) {
 		os.Exit(1)
 	}
 	fatalf("%v", err)
+}
+
+// refuseSurfaceForTarget returns an error when a non-Go target is handed the
+// --surface flag: the flag is refused by name, not by value, so the empty
+// `--surface=` is refused too (SPEC §8.8).
+func refuseSurfaceForTarget(surfaceSet bool, lang string) error {
+	if surfaceSet && lang != "go" {
+		return fmt.Errorf("the %s target refuses the --surface flag by name; only the go target honors it (SPEC-TABLES.md §8.8)", lang)
+	}
+	return nil
 }
 
 // wireFile is one argument that named a SAVED FILE rather than a schema
