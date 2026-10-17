@@ -463,6 +463,15 @@ width on the wire unless you give a range.
 health int32 | min = 0, max = MaxHealth
 ```
 
+On a table field, the range may be one-sided: the type's own limit stands in
+for the missing side, so `count int64 | min = 0` is exactly
+`count int64 | min = 0, max = 9223372036854775807` and
+`hi int32 | max = 100` is exactly `hi int32 | min = -2147483648, max = 100`
+(SPEC-TABLES.md §4.13). The one-sided spelling is the two-sided declaration —
+the same wire and generated code, byte for byte. It applies to integer table
+fields only; on a float, fixed-point, `int128`/`uint128`, timestamp or named
+type, beside `resolution`, or on a `type`/packet field it is refused by name.
+
 The range is **part of the type**, and the wire cost follows from it. This
 is the single most useful feature in the language: 1001 values need 10 bits,
 so that is what it writes.

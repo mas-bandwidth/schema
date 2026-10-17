@@ -444,7 +444,13 @@ type Field struct {
 	DefExpr    Expr   // for symbolic rendering
 
 	// resolved wire refinements
-	HasIntRange   bool
+	HasIntRange bool
+	// RangeOneSided marks an integer field whose range was declared with one
+	// side and filled from the type's own limit (docs/SPEC-TABLES.md §4, SPEC
+	// §4.6). It is a checker bookkeeping flag, not a projection token: the
+	// filled range is the two-sided declaration, so it moves no wire byte and
+	// no build or protocol id.
+	RangeOneSided bool
 	IntMin        *big.Int
 	IntMax        *big.Int
 	IntMinExpr    Expr // for symbolic rendering in generated code

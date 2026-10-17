@@ -8277,6 +8277,24 @@ wire and compares the six counters in every language — is where it lives.
 The evolution seams and the pointer-spelling cases there are exactly that
 shape already.
 
+### 4.13 One-sided integer ranges
+
+On a field of a `table` or a `fixed table` whose type is an integer
+(`int8`..`int64`, `uint8`..`uint64`), a one-sided range declares the two-sided
+one: `| min = A` alone means `| min = A, max = <the type's maximum>` and
+`| max = B` alone means `| min = <the type's minimum>, max = B`. The one-sided
+spelling IS the two-sided declaration — the same projection, build version,
+lock line, tables baseline row, wire and generated code, byte for byte. A
+one-sided range is still refused by name on a float, a fixed-point, `int128`
+or `uint128` field, a timestamp or a named type, beside `resolution`, and on
+a field of a `type` body or a packet (SPEC §4.6). A one-sided range whose
+given side excludes zero needs a default in range exactly as a two-sided one
+does (SPEC §4.6). The compiler fills the missing side from the type's limit
+before the two-sided path runs and carries the field a `RangeOneSided`
+flag that is not in the projection. Go carries the construct first: every
+other target refuses a unit with any such field by name at generation
+(SPEC §4.6).
+
 ## 5. Identity: the name hash, `was`, and the collision refusal
 
 **ONE HASH SERVES EVERY VOCABULARY, at one width.** A field's wire id, an
