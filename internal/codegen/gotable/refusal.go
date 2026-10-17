@@ -27,6 +27,9 @@ TableRefuseClamped
 TableRefuseKindMismatch
 TableRefuseBase64Damaged
 TableRefuseIntegrityMismatch
+// TableRefuseBlobShared: one blob record named from two slots (docs/SPEC-TABLES.md
+// §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
+TableRefuseBlobShared
 )
 func(r TableRefuseReason) Error()string{switch r {
 case TableRefuseOk:return "ok"
@@ -51,6 +54,7 @@ case TableRefuseClamped:return "clamped"
 case TableRefuseKindMismatch:return "kind_mismatch"
 case TableRefuseBase64Damaged:return "base64_damaged"
 case TableRefuseIntegrityMismatch:return "integrity_mismatch"
+case TableRefuseBlobShared:return "blob_shared"
 };return "invalid refusal reason"}
 func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{return nil};return reason}
 // TableBuildVersionMismatch is the typed error a strict announcement refusal
@@ -66,8 +70,8 @@ type TableMissingRequired struct { Fields string }
 func(m TableMissingRequired) Error() string {return "missing_required: "+m.Fields}
 // Err is the report's typed error (docs/SPEC-TABLES.md §6.5, docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
-// unknown form, wire-damaged, build-version-mismatched and missing-required
-// (§2.3, naming the field), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
+// unknown form, wire-damaged, build-version-mismatched, missing-required
+// (§2.3, naming the field) and blob_shared (§2.5), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
 func(r *TableReport) Err() error {
 if r==nil {return nil}
 if r.Reason=="build_version_mismatch" {return TableBuildVersionMismatch{Peer:r.BuildVersionPeer,Own:r.BuildVersionOwn}}
@@ -76,6 +80,9 @@ if r.Reason=="integrity_mismatch" {return TableRefuseIntegrityMismatch}
 if r.Verdict==TableOpenDamaged {return TableRefuseWireDamaged}
 if r.MissingRequired>0 {const p="missing_required: ";f:=r.Reason;if len(f)>=len(p)&&f[:len(p)]==p{f=f[len(p):]};return TableMissingRequired{Fields:f}}
 if r.Malformed {return TableRefuseMalformed}
+// A blob named from two slots (SPEC-TABLES §2.5, §6.5): the tolerant read keeps
+// the one node and counts it; the strict read refuses it by name.
+if r.BlobShared>0 {return TableRefuseBlobShared}
 if r.Clamped>0 {return TableRefuseClamped}
 if r.KindMismatch>0 {return TableRefuseKindMismatch}
 return nil}
