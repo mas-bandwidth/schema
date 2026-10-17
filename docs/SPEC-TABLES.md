@@ -1164,7 +1164,9 @@ table Player
 - **The reader REFUSES a record missing it.** An older record written before
   the field was required lacks it; reading it is refused with the event
   `missing_required`, naming the field. The record does not silently fall
-  back to a default — the field was declared mandatory and is not there.
+  back to a default — the field was declared mandatory and is not there. The
+  TEXT form (§16) refuses the same absence: a JSON object that omits the key
+  is refused, naming the field, exactly as the binary and base64 forms do.
 - **It is TABLE fields only.** `| required` is refused, by name, on a packet
   `type` field — a type's wire is positional and every field always rides, so
   there is no absence for a required marker to cure — and on an optional
