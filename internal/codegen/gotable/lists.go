@@ -140,20 +140,12 @@ func tableWireUnionExtent(r *TableReader,f *TableFieldInfo,at *int64)TableRefuse
 `
 
 // Keep the extent machinery out of units which have no containers.
-func containerRegionSource(s string) string {
-	// The directory-structure "nodes:=" seam lives in the builder-load source
-	// (tableBuilderLoadSource); the retain path passes only the region wire
-	// source (tableRegionSource) and legitimately lacks it. Stated decision,
-	// not a silent skip.
-	if strings.Contains(s, "nodes:=TableNodeMap{Entries:directory,Arena:true}") {
+// builderLoad states whether the caller also concatenated tableBuilderLoadSource,
+// the only surface carrying the directory-to-node-map seam. The surface is a
+// parameter, never a probe of the text, so a moved anchor panics.
+func containerRegionSource(s string, builderLoad bool) string {
+	if builderLoad {
 		s = tableSourceReplace(s, "nodes:=TableNodeMap{Entries:directory,Arena:true}", "nodes:=TableNodeMap{Entries:directory,Arena:true,Carve:TableExtentCarve{Worker:worker}}", 1)
-	}
-	// The graph-authoring seam lives in the region TEXT source
-	// (tableRegionJsonSource), not in the region wire source this function
-	// edits; the two are patched at their own call sites. Absence here is
-	// that stated surface decision, not a silent skip.
-	if strings.Contains(s, "graph:=tableJsonGraph{alloc:worker.Alloc,") {
-		s = tableSourceReplace(s, "graph:=tableJsonGraph{alloc:worker.Alloc,", "graph:=tableJsonGraph{mapPlace:func(p unsafe.Pointer,f *TableFieldInfo,key tableMapKey)(unsafe.Pointer,bool){return tableMapPlace(worker,(*tableContainer)(p),f,key)},listAdd:func(p unsafe.Pointer,size int64)unsafe.Pointer{return tableContainerAppend(worker,(*tableContainer)(p),size)},alloc:worker.Alloc,", 1)
 	}
 	s = tableSourceReplace(s, "type TableNodeMap struct {", "type TableNodeMap struct { Carve TableExtentCarve;", 1)
 	s = tableSourceReplace(s, "return tableRegionRound(int64(t.Size)),TableRefuseOk", "return tableWireNodeBytesReason(body,t)", 1)
@@ -161,18 +153,12 @@ func containerRegionSource(s string) string {
 	s = tableSourceReplace(s, "used:=tableRegionRound(int64(root.Size));k:=", "used:=tableWireNodeBytes(r,root);k:=", 1)
 	s = tableSourceReplace(s, "body.Nodes=nodes;t.LoadBody(body,p)", "carve:=TableExtentCarve{Base:p,At:tableRegionRound(int64(t.Size)),Limit:tableWireNodeBytes(body,t)};body.Nodes=nodes;body.Nodes.Carve=carve;t.LoadBody(body,p)", 1)
 	s = tableSourceReplace(s, "r.Nodes=nodes;r.Nested=false;root.LoadBody(r,base)", "carve:=TableExtentCarve{Base:base,At:tableRegionRound(int64(root.Size)),Limit:tableWireNodeBytes(r,root)};r.Nodes=nodes;r.Nodes.Carve=carve;r.Nested=false;root.LoadBody(r,base)", 1)
-	s = tableSourceReplace(s, "tableRegionEdges(p,t,func", "tableRegionEdges(p,t,a,func", -1)
-	s = tableSourceReplace(s, "tableRegionEdges(base unsafe.Pointer,info *TableTypeInfo,visit", "tableRegionEdges(base unsafe.Pointer,info *TableTypeInfo,a *TableArena,visit", -1)
-	s = tableSourceReplace(s, "tableRegionValueEdges(p unsafe.Pointer,f *TableFieldInfo,visit", "tableRegionValueEdges(p unsafe.Pointer,f *TableFieldInfo,a *TableArena,visit", -1)
-	s = tableSourceReplace(s, "tableRegionEdges(p,f.Table(),visit)", "tableRegionEdges(p,f.Table(),a,visit)", -1)
-	s = tableSourceReplace(s, "tableRegionValueEdges(at,f,visit)", "tableRegionValueEdges(at,f,a,visit)", -1)
-	s = tableSourceReplace(s, "af,visit)", "af,a,visit)", -1)
-	// The pack-time "e.info" edge seam is the container pack source's, not the
-	// region wire source's; the region JSON source carries it and it is patched
-	// at containerRegionJsonSource. Absence here is that stated decision.
-	if strings.Contains(s, "tableRegionEdges(e.node,e.info,func") {
-		s = tableSourceReplace(s, "tableRegionEdges(e.node,e.info,func", "tableRegionEdges(e.node,e.info,nil,func", -1)
-	}
+	s = tableSourceReplace(s, "tableRegionEdges(p,t,func", "tableRegionEdges(p,t,a,func", 1)
+	s = tableSourceReplace(s, "tableRegionEdges(base unsafe.Pointer,info *TableTypeInfo,visit", "tableRegionEdges(base unsafe.Pointer,info *TableTypeInfo,a *TableArena,visit", 1)
+	s = tableSourceReplace(s, "tableRegionValueEdges(p unsafe.Pointer,f *TableFieldInfo,visit", "tableRegionValueEdges(p unsafe.Pointer,f *TableFieldInfo,a *TableArena,visit", 1)
+	s = tableSourceReplace(s, "tableRegionEdges(p,f.Table(),visit)", "tableRegionEdges(p,f.Table(),a,visit)", 1)
+	s = tableSourceReplace(s, "tableRegionValueEdges(at,f,visit)", "tableRegionValueEdges(at,f,a,visit)", 1)
+	s = tableSourceReplace(s, "af,visit)", "af,a,visit)", 1)
 	s = tableSourceReplace(s, "p:=unsafe.Add(base,f.Offset);count:=int32(1);", `p:=unsafe.Add(base,f.Offset);if f.List||f.Map {if !tableRegionContainerEdges((*tableContainer)(p),f,a,visit){return false};continue};count:=int32(1);`, 1)
 	s = tableSourceReplace(s, "if e.info!=nil {return tableRegionRound(int64(e.info.Size))}", "if e.info!=nil {extent:=tableExtentBytes(e.node,e.info,a);if extent<0{return -1};return tableRegionRound(tableRegionRound(int64(e.info.Size))+extent)}", 1)
 	s += `
@@ -188,7 +174,7 @@ func tableRegionContainerEdges(h *tableContainer,f *TableFieldInfo,a *TableArena
 
 func containerRegionJsonSource(s string) string {
 	s = tableSourceReplace(s, "graph:=tableJsonGraph{alloc:worker.Alloc,", "graph:=tableJsonGraph{mapPlace:func(p unsafe.Pointer,f *TableFieldInfo,key tableMapKey)(unsafe.Pointer,bool){return tableMapPlace(worker,(*tableContainer)(p),f,key)},listAdd:func(p unsafe.Pointer,size int64)unsafe.Pointer{return tableContainerAppend(worker,(*tableContainer)(p),size)},alloc:worker.Alloc,", 1)
-	s = tableSourceReplace(s, "tableRegionEdges(e.node,e.info,func", "tableRegionEdges(e.node,e.info,nil,func", -1)
+	s = tableSourceReplace(s, "tableRegionEdges(e.node,e.info,func", "tableRegionEdges(e.node,e.info,nil,func", 1)
 	return s
 }
 

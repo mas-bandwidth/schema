@@ -18,7 +18,7 @@ func tableWireRuntime(u *ir.Unit) string {
 	if len(variableTableNames(u)) > 0 {
 		source = tableSourceReplace(source, "type TableIds struct {", "type TableIds struct {\nNumbering *TableNumbering", 1)
 		source = tableSourceReplace(source, "type TableReader struct {", "type TableReader struct {\nNodes TableNodeMap", 1)
-		source = tableSourceReplace(source, "Ids:r.Ids, Nested:true", "Ids:r.Ids, Nested:true, Nodes:r.Nodes", -1)
+		source = tableSourceReplace(source, "Ids:r.Ids, Nested:true", "Ids:r.Ids, Nested:true, Nodes:r.Nodes", 1)
 	}
 	if unitDeclaresTableKind(u, ir.TableKindF64) {
 		source = tableSourceReplace(source, "func tableUtf8Valid", tableWidenFloatSource+"func tableUtf8Valid", 1)

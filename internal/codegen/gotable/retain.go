@@ -1,8 +1,10 @@
 package gotable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/ir"
 	"regexp"
+	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // Retention has its own readers, writers and id interner. The ordinary family
@@ -23,7 +25,7 @@ func (g *tableGen) emitRetainRuntime() {
 	g.pf("%s", source)
 	load := tableRegionSource
 	if unitHasContainers(g.unit) {
-		load = containerRegionSource(load)
+		load = containerRegionSource(load, false)
 	}
 	load = tableSourceFunction(load, "func tableRegionLoad(")
 	load = tableSourceReplace(load, "func tableRegionLoad(", "func tableRegionLoadRetain(", 1)
@@ -150,21 +152,38 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	}
 	rewrites := []string{"TableMessageReader", "TableRetainMessageReader", "TableWriter", "TableRetainWriter", "TableReader", "TableRetainReader", "TableIds", "TableRetainIds"}
 	retained := func(source string) string {
-		source = retainBodyName.ReplaceAllString(source, "${1}${2}Retain")
-		for i := 0; i < len(rewrites); i += 2 {
-			source = tableSourceReplaceAllAny(source, rewrites[i], rewrites[i+1])
-		}
-		return source
+		return retainBodyName.ReplaceAllString(source, "${1}${2}Retain")
 	}
 	// the seams fail closed on the WHOLE family, exactly as before the message
-	// half had a file of its own; each half is then rewritten alone, and the
-	// two halves must be the whole, byte for byte
+	// half had a file of its own; each half is then rewritten alone to the
+	// counts the whole stated, and the two halves must be the whole, byte for
+	// byte
 	whole := side.body.String() + side.message.String()
 	if !retainBodyName.MatchString(whole) {
 		panic("retaining body family has no source codecs")
 	}
-	whole = tableSourceRewriter(retainBodyName.ReplaceAllString(whole, "${1}${2}Retain"), rewrites...)
-	core, message := retained(side.body.String()), retained(side.message.String())
+	family := retained(whole)
+	whole = family
+	for i := 0; i < len(rewrites); i += 2 {
+		// A surface that emits no message family legitimately states zero here;
+		// the exact count still makes a doubled anchor panic.
+		whole = tableSourceReplaceCount(whole, rewrites[i], rewrites[i+1], strings.Count(family, rewrites[i]))
+	}
+	coreBody, messageBody := retained(side.body.String()), retained(side.message.String())
+	if coreBody+messageBody != family {
+		panic("retaining body family does not split at the message form's seam")
+	}
+	core, message := coreBody, messageBody
+	for i := 0; i < len(rewrites); i += 2 {
+		old, new := rewrites[i], rewrites[i+1]
+		want := strings.Count(family, old)
+		coreCount, messageCount := strings.Count(coreBody, old), strings.Count(messageBody, old)
+		if coreCount+messageCount != want {
+			panic("retaining body family does not split " + old + " at the message form's seam")
+		}
+		core = tableSourceReplaceCount(core, old, new, coreCount)
+		message = tableSourceReplaceCount(message, old, new, messageCount)
+	}
 	if core+message != whole {
 		panic("retaining body family does not split at the message form's seam")
 	}

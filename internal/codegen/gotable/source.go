@@ -44,10 +44,12 @@ func tableSourceRewriter(source string, replacements ...string) string {
 	return source
 }
 
-// tableSourceReplaceAllAny is the splitting companion to tableSourceRewriter: it
-// applies a replace-all that may legitimately match zero times because the caller
-// has already verified the pair on the whole via tableSourceRewriter. Absence on
-// a part is the state the split is testing, never a silent behavioural drop.
-func tableSourceReplaceAllAny(source, old, new string) string {
-	return strings.ReplaceAll(source, old, new)
+// tableSourceReplaceCount applies old -> new to exactly count occurrences. A
+// zero count is a stated absence the caller has verified by summing the parts
+// against the whole, never a silent behavioural drop.
+func tableSourceReplaceCount(source, old, new string, count int) string {
+	if got := strings.Count(source, old); got != count {
+		panic(fmt.Sprintf("Go table source seam %q occurs %d times, want %d", old, got, count))
+	}
+	return strings.Replace(source, old, new, count)
 }

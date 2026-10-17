@@ -127,7 +127,7 @@ func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
 	g.pf("const tableBytesTypeId uint64=0x%016x\nconst tableStringTypeId uint64=0x%016x\n", ir.TableWireId("bytes"), ir.TableWireId("string"))
 	source := tableRegionSource + tableRegionBlobSource + tableBuilderLoadSource
 	if unitHasContainers(g.unit) {
-		source = containerRegionSource(source)
+		source = containerRegionSource(source, true)
 		source += tableContainerSource + tableMapSource
 	}
 	g.pf("%s", source)
