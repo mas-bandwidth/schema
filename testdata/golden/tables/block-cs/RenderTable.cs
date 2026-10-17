@@ -3074,6 +3074,273 @@ namespace Blockdemo
             new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Fov = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Fov = (float)d, reset: (t) => { t.Fov = 0.0f; }),
         };
 
+        private static void RenderCameraFixedSetRaw(RenderCamera t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 1: t.Position.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 2: t.Position.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 3: t.Rotation.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 4: t.Rotation.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 5: t.Rotation.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 6: t.Rotation.W = BitConverter.UInt64BitsToDouble(v); break;
+                case 7: t.CameraId = unchecked((uint)v); break;
+                case 8: t.CameraType = unchecked((uint)v); break;
+                case 9: t.TargetObjectId = unchecked((uint)v); break;
+                case 10: t.Fov = BitConverter.UInt32BitsToSingle((uint)v); break;
+                default: break;
+            }
+        }
+
+        private static void RenderCameraFixedSetDouble(RenderCamera t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = d; break;
+                case 1: t.Position.Y = d; break;
+                case 2: t.Position.Z = d; break;
+                case 3: t.Rotation.X = d; break;
+                case 4: t.Rotation.Y = d; break;
+                case 5: t.Rotation.Z = d; break;
+                case 6: t.Rotation.W = d; break;
+                case 10: t.Fov = (float)d; break;
+                default: break;
+            }
+        }
+
+        private static void RenderCameraFixedSetWide(RenderCamera t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderCameraFixedSetBytes(RenderCamera t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderCameraFixedSetChars(RenderCamera t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderCameraFixedResetSlot(RenderCamera t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Position.X = 0.0; } break;
+                case 1: { t.Position.Y = 0.0; } break;
+                case 2: { t.Position.Z = 0.0; } break;
+                case 3: { t.Rotation.X = 0.0; } break;
+                case 4: { t.Rotation.Y = 0.0; } break;
+                case 5: { t.Rotation.Z = 0.0; } break;
+                case 6: { t.Rotation.W = 1.0; } break;
+                case 7: { t.CameraId = 0; } break;
+                case 8: { t.CameraType = 0; } break;
+                case 9: { t.TargetObjectId = 0; } break;
+                case 10: { t.Fov = 0.0f; } break;
+                default: break;
+            }
+        }
+
+        public static void RenderCameraFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RenderCamera dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RenderCameraFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RenderCameraFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderCamera dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { RenderCameraFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { RenderCameraFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { RenderCameraFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { RenderCameraFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            RenderCameraFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { RenderCameraFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        RenderCameraFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        RenderCameraFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        RenderCameraFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        RenderCameraFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            RenderCameraFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            RenderCameraFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        RenderCameraFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            RenderCameraFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            RenderCameraFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        RenderCameraFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        RenderCameraFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
+
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
         // identity plan it is empty and the identity read writes no slot twice.
@@ -3301,9 +3568,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RenderCamera(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCameraFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCameraFixedSlots, values[k]); }
+                RenderCameraFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RenderCameraFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RenderCameraFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RenderCameraFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -3341,7 +3610,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RenderCameraFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RenderCameraFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -3443,6 +3712,283 @@ namespace Blockdemo
             new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.HasTargetLock = v != 0, reset: (t) => { t.HasTargetLock = false; }),
             new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.PredictedExplode = v != 0, reset: (t) => { t.PredictedExplode = false; }),
         };
+
+        private static void RenderShipFixedSetRaw(RenderShip t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 1: t.Position.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 2: t.Position.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 3: t.Rotation.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 4: t.Rotation.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 5: t.Rotation.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 6: t.Rotation.W = BitConverter.UInt64BitsToDouble(v); break;
+                case 7: t.Flags = v; break;
+                case 8: t.ObjectId = unchecked((uint)v); break;
+                case 9: t.TargetObjectId = unchecked((uint)v); break;
+                case 10: t.Thrust = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 11: t.ObjectSequence = unchecked((byte)v); break;
+                case 12: { t.ShipType = (ShipType)v; } break;
+                case 13: { t.Team = (Team)v; } break;
+                case 14: t.HasTargetLock = v != 0; break;
+                case 15: t.PredictedExplode = v != 0; break;
+                default: break;
+            }
+        }
+
+        private static void RenderShipFixedSetDouble(RenderShip t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = d; break;
+                case 1: t.Position.Y = d; break;
+                case 2: t.Position.Z = d; break;
+                case 3: t.Rotation.X = d; break;
+                case 4: t.Rotation.Y = d; break;
+                case 5: t.Rotation.Z = d; break;
+                case 6: t.Rotation.W = d; break;
+                case 10: t.Thrust = (float)d; break;
+                default: break;
+            }
+        }
+
+        private static void RenderShipFixedSetWide(RenderShip t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderShipFixedSetBytes(RenderShip t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderShipFixedSetChars(RenderShip t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderShipFixedResetSlot(RenderShip t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Position.X = 0.0; } break;
+                case 1: { t.Position.Y = 0.0; } break;
+                case 2: { t.Position.Z = 0.0; } break;
+                case 3: { t.Rotation.X = 0.0; } break;
+                case 4: { t.Rotation.Y = 0.0; } break;
+                case 5: { t.Rotation.Z = 0.0; } break;
+                case 6: { t.Rotation.W = 1.0; } break;
+                case 7: { t.Flags = 0; } break;
+                case 8: { t.ObjectId = 0; } break;
+                case 9: { t.TargetObjectId = 0; } break;
+                case 10: { t.Thrust = 0.0f; } break;
+                case 11: { t.ObjectSequence = 0; } break;
+                case 12: { t.ShipType = global::Blockdemo.ShipType.None; } break;
+                case 13: { t.Team = global::Blockdemo.Team.None; } break;
+                case 14: { t.HasTargetLock = false; } break;
+                case 15: { t.PredictedExplode = false; } break;
+                default: break;
+            }
+        }
+
+        public static void RenderShipFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RenderShip dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RenderShipFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RenderShipFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderShip dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { RenderShipFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { RenderShipFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { RenderShipFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { RenderShipFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            RenderShipFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { RenderShipFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        RenderShipFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        RenderShipFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        RenderShipFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        RenderShipFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            RenderShipFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            RenderShipFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        RenderShipFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            RenderShipFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            RenderShipFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        RenderShipFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        RenderShipFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -3688,9 +4234,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RenderShip(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderShipFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderShipFixedSlots, values[k]); }
+                RenderShipFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RenderShipFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RenderShipFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RenderShipFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -3729,7 +4277,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RenderShipFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RenderShipFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -3811,6 +4359,271 @@ namespace Blockdemo
             new TableFixedSlot<RenderTurret>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
             new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.HasTargetLock = v != 0, reset: (t) => { t.HasTargetLock = false; }),
         };
+
+        private static void RenderTurretFixedSetRaw(RenderTurret t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Rotation.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 1: t.Rotation.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 2: t.Rotation.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 3: t.Rotation.W = BitConverter.UInt64BitsToDouble(v); break;
+                case 4: t.Flags = unchecked((ulong)v); break;
+                case 5: t.ObjectId = unchecked((uint)v); break;
+                case 6: t.ParentObjectId = unchecked((uint)v); break;
+                case 7: t.TurretIndex = unchecked((uint)v); break;
+                case 8: t.TargetObjectId = unchecked((uint)v); break;
+                case 9: t.ObjectSequence = unchecked((byte)v); break;
+                case 10: { t.Team = (Team)v; } break;
+                case 11: t.HasTargetLock = v != 0; break;
+                default: break;
+            }
+        }
+
+        private static void RenderTurretFixedSetDouble(RenderTurret t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Rotation.X = d; break;
+                case 1: t.Rotation.Y = d; break;
+                case 2: t.Rotation.Z = d; break;
+                case 3: t.Rotation.W = d; break;
+                default: break;
+            }
+        }
+
+        private static void RenderTurretFixedSetWide(RenderTurret t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderTurretFixedSetBytes(RenderTurret t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderTurretFixedSetChars(RenderTurret t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderTurretFixedResetSlot(RenderTurret t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Rotation.X = 0.0; } break;
+                case 1: { t.Rotation.Y = 0.0; } break;
+                case 2: { t.Rotation.Z = 0.0; } break;
+                case 3: { t.Rotation.W = 1.0; } break;
+                case 4: { t.Flags = 0; } break;
+                case 5: { t.ObjectId = 0; } break;
+                case 6: { t.ParentObjectId = 0; } break;
+                case 7: { t.TurretIndex = 0; } break;
+                case 8: { t.TargetObjectId = 0; } break;
+                case 9: { t.ObjectSequence = 0; } break;
+                case 10: { t.Team = global::Blockdemo.Team.None; } break;
+                case 11: { t.HasTargetLock = false; } break;
+                default: break;
+            }
+        }
+
+        public static void RenderTurretFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RenderTurret dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RenderTurretFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RenderTurretFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderTurret dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { RenderTurretFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { RenderTurretFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { RenderTurretFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { RenderTurretFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            RenderTurretFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { RenderTurretFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        RenderTurretFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        RenderTurretFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        RenderTurretFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        RenderTurretFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            RenderTurretFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            RenderTurretFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        RenderTurretFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            RenderTurretFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            RenderTurretFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        RenderTurretFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        RenderTurretFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -4044,9 +4857,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RenderTurret(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderTurretFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderTurretFixedSlots, values[k]); }
+                RenderTurretFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RenderTurretFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RenderTurretFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RenderTurretFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -4085,7 +4900,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RenderTurretFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RenderTurretFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -4173,6 +4988,274 @@ namespace Blockdemo
             new TableFixedSlot<RenderMissile>(setRawReport: (t, v, rep) => { t.MissileType = (MissileType)v; }, reset: (t) => { t.MissileType = global::Blockdemo.MissileType.None; }),
             new TableFixedSlot<RenderMissile>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
         };
+
+        private static void RenderMissileFixedSetRaw(RenderMissile t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 1: t.Position.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 2: t.Position.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 3: t.Rotation.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 4: t.Rotation.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 5: t.Rotation.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 6: t.Rotation.W = BitConverter.UInt64BitsToDouble(v); break;
+                case 7: t.Flags = unchecked((ulong)v); break;
+                case 8: t.ObjectId = unchecked((uint)v); break;
+                case 9: t.ObjectSequence = unchecked((byte)v); break;
+                case 10: { t.MissileType = (MissileType)v; } break;
+                case 11: { t.Team = (Team)v; } break;
+                default: break;
+            }
+        }
+
+        private static void RenderMissileFixedSetDouble(RenderMissile t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = d; break;
+                case 1: t.Position.Y = d; break;
+                case 2: t.Position.Z = d; break;
+                case 3: t.Rotation.X = d; break;
+                case 4: t.Rotation.Y = d; break;
+                case 5: t.Rotation.Z = d; break;
+                case 6: t.Rotation.W = d; break;
+                default: break;
+            }
+        }
+
+        private static void RenderMissileFixedSetWide(RenderMissile t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderMissileFixedSetBytes(RenderMissile t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderMissileFixedSetChars(RenderMissile t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderMissileFixedResetSlot(RenderMissile t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Position.X = 0.0; } break;
+                case 1: { t.Position.Y = 0.0; } break;
+                case 2: { t.Position.Z = 0.0; } break;
+                case 3: { t.Rotation.X = 0.0; } break;
+                case 4: { t.Rotation.Y = 0.0; } break;
+                case 5: { t.Rotation.Z = 0.0; } break;
+                case 6: { t.Rotation.W = 1.0; } break;
+                case 7: { t.Flags = 0; } break;
+                case 8: { t.ObjectId = 0; } break;
+                case 9: { t.ObjectSequence = 0; } break;
+                case 10: { t.MissileType = global::Blockdemo.MissileType.None; } break;
+                case 11: { t.Team = global::Blockdemo.Team.None; } break;
+                default: break;
+            }
+        }
+
+        public static void RenderMissileFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RenderMissile dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RenderMissileFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RenderMissileFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderMissile dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { RenderMissileFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { RenderMissileFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { RenderMissileFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { RenderMissileFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            RenderMissileFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { RenderMissileFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        RenderMissileFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        RenderMissileFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        RenderMissileFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        RenderMissileFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            RenderMissileFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            RenderMissileFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        RenderMissileFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            RenderMissileFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            RenderMissileFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        RenderMissileFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        RenderMissileFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -4409,9 +5492,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RenderMissile(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderMissileFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderMissileFixedSlots, values[k]); }
+                RenderMissileFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RenderMissileFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RenderMissileFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RenderMissileFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -4450,7 +5535,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RenderMissileFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RenderMissileFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -4540,6 +5625,274 @@ namespace Blockdemo
             new TableFixedSlot<RenderDynamicProp>(setRawReport: (t, v, rep) => { t.PropType = (PropType)v; }, reset: (t) => { t.PropType = global::Blockdemo.PropType.None; }),
             new TableFixedSlot<RenderDynamicProp>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
         };
+
+        private static void RenderDynamicPropFixedSetRaw(RenderDynamicProp t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 1: t.Position.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 2: t.Position.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 3: t.Rotation.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 4: t.Rotation.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 5: t.Rotation.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 6: t.Rotation.W = BitConverter.UInt64BitsToDouble(v); break;
+                case 7: t.Flags = unchecked((ulong)v); break;
+                case 8: t.ObjectId = unchecked((uint)v); break;
+                case 9: t.ObjectSequence = unchecked((byte)v); break;
+                case 10: { t.PropType = (PropType)v; } break;
+                case 11: { t.Team = (Team)v; } break;
+                default: break;
+            }
+        }
+
+        private static void RenderDynamicPropFixedSetDouble(RenderDynamicProp t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = d; break;
+                case 1: t.Position.Y = d; break;
+                case 2: t.Position.Z = d; break;
+                case 3: t.Rotation.X = d; break;
+                case 4: t.Rotation.Y = d; break;
+                case 5: t.Rotation.Z = d; break;
+                case 6: t.Rotation.W = d; break;
+                default: break;
+            }
+        }
+
+        private static void RenderDynamicPropFixedSetWide(RenderDynamicProp t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderDynamicPropFixedSetBytes(RenderDynamicProp t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderDynamicPropFixedSetChars(RenderDynamicProp t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderDynamicPropFixedResetSlot(RenderDynamicProp t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Position.X = 0.0; } break;
+                case 1: { t.Position.Y = 0.0; } break;
+                case 2: { t.Position.Z = 0.0; } break;
+                case 3: { t.Rotation.X = 0.0; } break;
+                case 4: { t.Rotation.Y = 0.0; } break;
+                case 5: { t.Rotation.Z = 0.0; } break;
+                case 6: { t.Rotation.W = 1.0; } break;
+                case 7: { t.Flags = 0; } break;
+                case 8: { t.ObjectId = 0; } break;
+                case 9: { t.ObjectSequence = 0; } break;
+                case 10: { t.PropType = global::Blockdemo.PropType.None; } break;
+                case 11: { t.Team = global::Blockdemo.Team.None; } break;
+                default: break;
+            }
+        }
+
+        public static void RenderDynamicPropFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RenderDynamicProp dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RenderDynamicPropFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RenderDynamicPropFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderDynamicProp dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { RenderDynamicPropFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { RenderDynamicPropFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { RenderDynamicPropFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { RenderDynamicPropFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            RenderDynamicPropFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { RenderDynamicPropFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        RenderDynamicPropFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        RenderDynamicPropFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        RenderDynamicPropFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        RenderDynamicPropFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            RenderDynamicPropFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            RenderDynamicPropFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        RenderDynamicPropFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            RenderDynamicPropFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            RenderDynamicPropFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        RenderDynamicPropFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        RenderDynamicPropFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -4777,9 +6130,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RenderDynamicProp(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderDynamicPropFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderDynamicPropFixedSlots, values[k]); }
+                RenderDynamicPropFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RenderDynamicPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RenderDynamicPropFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RenderDynamicPropFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -4818,7 +6173,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RenderDynamicPropFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RenderDynamicPropFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -4908,6 +6263,275 @@ namespace Blockdemo
             new TableFixedSlot<RenderStaticProp>(setRawReport: (t, v, rep) => { t.PropType = (PropType)v; }, reset: (t) => { t.PropType = global::Blockdemo.PropType.None; }),
             new TableFixedSlot<RenderStaticProp>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
         };
+
+        private static void RenderStaticPropFixedSetRaw(RenderStaticProp t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 1: t.Position.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 2: t.Position.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 3: t.Rotation.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 4: t.Rotation.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 5: t.Rotation.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 6: t.Rotation.W = BitConverter.UInt64BitsToDouble(v); break;
+                case 7: t.Scale = BitConverter.UInt64BitsToDouble(v); break;
+                case 8: t.Flags = unchecked((ulong)v); break;
+                case 9: t.StaticPropId = unchecked((uint)v); break;
+                case 10: { t.PropType = (PropType)v; } break;
+                case 11: { t.Team = (Team)v; } break;
+                default: break;
+            }
+        }
+
+        private static void RenderStaticPropFixedSetDouble(RenderStaticProp t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = d; break;
+                case 1: t.Position.Y = d; break;
+                case 2: t.Position.Z = d; break;
+                case 3: t.Rotation.X = d; break;
+                case 4: t.Rotation.Y = d; break;
+                case 5: t.Rotation.Z = d; break;
+                case 6: t.Rotation.W = d; break;
+                case 7: t.Scale = d; break;
+                default: break;
+            }
+        }
+
+        private static void RenderStaticPropFixedSetWide(RenderStaticProp t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderStaticPropFixedSetBytes(RenderStaticProp t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderStaticPropFixedSetChars(RenderStaticProp t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderStaticPropFixedResetSlot(RenderStaticProp t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Position.X = 0.0; } break;
+                case 1: { t.Position.Y = 0.0; } break;
+                case 2: { t.Position.Z = 0.0; } break;
+                case 3: { t.Rotation.X = 0.0; } break;
+                case 4: { t.Rotation.Y = 0.0; } break;
+                case 5: { t.Rotation.Z = 0.0; } break;
+                case 6: { t.Rotation.W = 1.0; } break;
+                case 7: { t.Scale = 0.0; } break;
+                case 8: { t.Flags = 0; } break;
+                case 9: { t.StaticPropId = 0; } break;
+                case 10: { t.PropType = global::Blockdemo.PropType.None; } break;
+                case 11: { t.Team = global::Blockdemo.Team.None; } break;
+                default: break;
+            }
+        }
+
+        public static void RenderStaticPropFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RenderStaticProp dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RenderStaticPropFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RenderStaticPropFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderStaticProp dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { RenderStaticPropFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { RenderStaticPropFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { RenderStaticPropFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { RenderStaticPropFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            RenderStaticPropFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { RenderStaticPropFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        RenderStaticPropFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        RenderStaticPropFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        RenderStaticPropFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        RenderStaticPropFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            RenderStaticPropFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            RenderStaticPropFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        RenderStaticPropFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            RenderStaticPropFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            RenderStaticPropFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        RenderStaticPropFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        RenderStaticPropFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -5145,9 +6769,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RenderStaticProp(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderStaticPropFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderStaticPropFixedSlots, values[k]); }
+                RenderStaticPropFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RenderStaticPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RenderStaticPropFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RenderStaticPropFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -5186,7 +6812,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RenderStaticPropFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RenderStaticPropFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -5279,6 +6905,277 @@ namespace Blockdemo
             new TableFixedSlot<RenderCosmeticProp>(setRawReport: (t, v, rep) => { t.PropType = (PropType)v; }, reset: (t) => { t.PropType = global::Blockdemo.PropType.None; }),
             new TableFixedSlot<RenderCosmeticProp>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
         };
+
+        private static void RenderCosmeticPropFixedSetRaw(RenderCosmeticProp t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 1: t.Position.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 2: t.Position.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 3: t.Rotation.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 4: t.Rotation.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 5: t.Rotation.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 6: t.Rotation.W = BitConverter.UInt64BitsToDouble(v); break;
+                case 7: t.Scale = BitConverter.UInt64BitsToDouble(v); break;
+                case 8: t.Flags = unchecked((ulong)v); break;
+                case 9: t.CosmeticPropId = unchecked((uint)v); break;
+                case 10: t.PropSequence = unchecked((byte)v); break;
+                case 11: { t.PropType = (PropType)v; } break;
+                case 12: { t.Team = (Team)v; } break;
+                default: break;
+            }
+        }
+
+        private static void RenderCosmeticPropFixedSetDouble(RenderCosmeticProp t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = d; break;
+                case 1: t.Position.Y = d; break;
+                case 2: t.Position.Z = d; break;
+                case 3: t.Rotation.X = d; break;
+                case 4: t.Rotation.Y = d; break;
+                case 5: t.Rotation.Z = d; break;
+                case 6: t.Rotation.W = d; break;
+                case 7: t.Scale = d; break;
+                default: break;
+            }
+        }
+
+        private static void RenderCosmeticPropFixedSetWide(RenderCosmeticProp t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderCosmeticPropFixedSetBytes(RenderCosmeticProp t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderCosmeticPropFixedSetChars(RenderCosmeticProp t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderCosmeticPropFixedResetSlot(RenderCosmeticProp t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Position.X = 0.0; } break;
+                case 1: { t.Position.Y = 0.0; } break;
+                case 2: { t.Position.Z = 0.0; } break;
+                case 3: { t.Rotation.X = 0.0; } break;
+                case 4: { t.Rotation.Y = 0.0; } break;
+                case 5: { t.Rotation.Z = 0.0; } break;
+                case 6: { t.Rotation.W = 1.0; } break;
+                case 7: { t.Scale = 0.0; } break;
+                case 8: { t.Flags = 0; } break;
+                case 9: { t.CosmeticPropId = 0; } break;
+                case 10: { t.PropSequence = 0; } break;
+                case 11: { t.PropType = global::Blockdemo.PropType.None; } break;
+                case 12: { t.Team = global::Blockdemo.Team.None; } break;
+                default: break;
+            }
+        }
+
+        public static void RenderCosmeticPropFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RenderCosmeticProp dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RenderCosmeticPropFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RenderCosmeticPropFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderCosmeticProp dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { RenderCosmeticPropFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { RenderCosmeticPropFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { RenderCosmeticPropFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { RenderCosmeticPropFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            RenderCosmeticPropFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { RenderCosmeticPropFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        RenderCosmeticPropFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        RenderCosmeticPropFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        RenderCosmeticPropFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        RenderCosmeticPropFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            RenderCosmeticPropFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            RenderCosmeticPropFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        RenderCosmeticPropFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            RenderCosmeticPropFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            RenderCosmeticPropFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        RenderCosmeticPropFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        RenderCosmeticPropFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -5518,9 +7415,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RenderCosmeticProp(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCosmeticPropFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCosmeticPropFixedSlots, values[k]); }
+                RenderCosmeticPropFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RenderCosmeticPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RenderCosmeticPropFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RenderCosmeticPropFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -5559,7 +7458,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RenderCosmeticPropFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RenderCosmeticPropFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -5641,6 +7540,270 @@ namespace Blockdemo
             new TableFixedSlot<RenderLaser>(setRawReport: (t, v, rep) => { t.LaserType = (LaserType)v; }, reset: (t) => { t.LaserType = global::Blockdemo.LaserType.None; }),
             new TableFixedSlot<RenderLaser>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
         };
+
+        private static void RenderLaserFixedSetRaw(RenderLaser t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Start.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 1: t.Start.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 2: t.Start.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 3: t.Finish.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 4: t.Finish.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 5: t.Finish.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 6: t.T = BitConverter.UInt64BitsToDouble(v); break;
+                case 7: t.LaserId = unchecked((uint)v); break;
+                case 8: { t.LaserType = (LaserType)v; } break;
+                case 9: { t.Team = (Team)v; } break;
+                default: break;
+            }
+        }
+
+        private static void RenderLaserFixedSetDouble(RenderLaser t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Start.X = d; break;
+                case 1: t.Start.Y = d; break;
+                case 2: t.Start.Z = d; break;
+                case 3: t.Finish.X = d; break;
+                case 4: t.Finish.Y = d; break;
+                case 5: t.Finish.Z = d; break;
+                case 6: t.T = d; break;
+                default: break;
+            }
+        }
+
+        private static void RenderLaserFixedSetWide(RenderLaser t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderLaserFixedSetBytes(RenderLaser t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderLaserFixedSetChars(RenderLaser t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderLaserFixedResetSlot(RenderLaser t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Start.X = 0.0; } break;
+                case 1: { t.Start.Y = 0.0; } break;
+                case 2: { t.Start.Z = 0.0; } break;
+                case 3: { t.Finish.X = 0.0; } break;
+                case 4: { t.Finish.Y = 0.0; } break;
+                case 5: { t.Finish.Z = 0.0; } break;
+                case 6: { t.T = 0.0; } break;
+                case 7: { t.LaserId = 0; } break;
+                case 8: { t.LaserType = global::Blockdemo.LaserType.None; } break;
+                case 9: { t.Team = global::Blockdemo.Team.None; } break;
+                default: break;
+            }
+        }
+
+        public static void RenderLaserFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RenderLaser dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RenderLaserFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RenderLaserFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderLaser dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { RenderLaserFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { RenderLaserFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { RenderLaserFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { RenderLaserFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            RenderLaserFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { RenderLaserFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        RenderLaserFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        RenderLaserFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        RenderLaserFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        RenderLaserFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            RenderLaserFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            RenderLaserFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        RenderLaserFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            RenderLaserFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            RenderLaserFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        RenderLaserFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        RenderLaserFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -5873,9 +8036,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RenderLaser(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderLaserFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderLaserFixedSlots, values[k]); }
+                RenderLaserFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RenderLaserFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RenderLaserFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RenderLaserFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -5914,7 +8079,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RenderLaserFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RenderLaserFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -6002,6 +8167,275 @@ namespace Blockdemo
             new TableFixedSlot<RenderExplosion>(setRawReport: (t, v, rep) => { t.ExplosionType = (ExplosionType)v; }, reset: (t) => { t.ExplosionType = global::Blockdemo.ExplosionType.None; }),
             new TableFixedSlot<RenderExplosion>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
         };
+
+        private static void RenderExplosionFixedSetRaw(RenderExplosion t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 1: t.Position.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 2: t.Position.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 3: t.Rotation.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 4: t.Rotation.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 5: t.Rotation.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 6: t.Rotation.W = BitConverter.UInt64BitsToDouble(v); break;
+                case 7: t.T = BitConverter.UInt64BitsToDouble(v); break;
+                case 8: t.ExplosionId = unchecked((uint)v); break;
+                case 9: t.ParentObjectId = unchecked((uint)v); break;
+                case 10: { t.ExplosionType = (ExplosionType)v; } break;
+                case 11: { t.Team = (Team)v; } break;
+                default: break;
+            }
+        }
+
+        private static void RenderExplosionFixedSetDouble(RenderExplosion t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = d; break;
+                case 1: t.Position.Y = d; break;
+                case 2: t.Position.Z = d; break;
+                case 3: t.Rotation.X = d; break;
+                case 4: t.Rotation.Y = d; break;
+                case 5: t.Rotation.Z = d; break;
+                case 6: t.Rotation.W = d; break;
+                case 7: t.T = d; break;
+                default: break;
+            }
+        }
+
+        private static void RenderExplosionFixedSetWide(RenderExplosion t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderExplosionFixedSetBytes(RenderExplosion t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderExplosionFixedSetChars(RenderExplosion t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderExplosionFixedResetSlot(RenderExplosion t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Position.X = 0.0; } break;
+                case 1: { t.Position.Y = 0.0; } break;
+                case 2: { t.Position.Z = 0.0; } break;
+                case 3: { t.Rotation.X = 0.0; } break;
+                case 4: { t.Rotation.Y = 0.0; } break;
+                case 5: { t.Rotation.Z = 0.0; } break;
+                case 6: { t.Rotation.W = 1.0; } break;
+                case 7: { t.T = 0.0; } break;
+                case 8: { t.ExplosionId = 0; } break;
+                case 9: { t.ParentObjectId = 0; } break;
+                case 10: { t.ExplosionType = global::Blockdemo.ExplosionType.None; } break;
+                case 11: { t.Team = global::Blockdemo.Team.None; } break;
+                default: break;
+            }
+        }
+
+        public static void RenderExplosionFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RenderExplosion dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RenderExplosionFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RenderExplosionFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderExplosion dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { RenderExplosionFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { RenderExplosionFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { RenderExplosionFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { RenderExplosionFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            RenderExplosionFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { RenderExplosionFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        RenderExplosionFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        RenderExplosionFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        RenderExplosionFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        RenderExplosionFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            RenderExplosionFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            RenderExplosionFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        RenderExplosionFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            RenderExplosionFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            RenderExplosionFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        RenderExplosionFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        RenderExplosionFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -6238,9 +8672,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RenderExplosion(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderExplosionFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderExplosionFixedSlots, values[k]); }
+                RenderExplosionFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RenderExplosionFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RenderExplosionFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RenderExplosionFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -6279,7 +8715,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RenderExplosionFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RenderExplosionFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }

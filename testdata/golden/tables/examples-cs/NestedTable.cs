@@ -315,74 +315,74 @@ namespace Tabledemo
             new TableFixedDst(3, 8, 2, 1, 0), // weapons
             new TableFixedDst(0, 0, 0, 0, 0), // element
             new TableFixedDst(0, 0, 0, 0, 0), // damage
-            new TableFixedDst(0, 0, 0, 0, 0), // speed
-            new TableFixedDst(0, 0, 0, 0, 0), // penetration
-            new TableFixedDst(0, 0, 0, 0, 0), // channel
-            new TableFixedDst(0, 0, 0, 0, 0), // homing
-            new TableFixedDst(0, 0, 0, 0, 0), // effect
+            new TableFixedDst(1, 0, 0, 0, 0), // speed
+            new TableFixedDst(2, 0, 0, 0, 0), // penetration
+            new TableFixedDst(3, 0, 0, 0, 0), // channel
+            new TableFixedDst(4, 0, 0, 0, 0), // homing
+            new TableFixedDst(6, 0, 5, 0, 0), // effect
             new TableFixedDst(0, 0, 0, 0, 0), // buff
             new TableFixedDst(0, 0, 0, 0, 0), // multiplier
-            new TableFixedDst(0, 0, 0, 0, 0), // debuff
+            new TableFixedDst(1, 0, 0, 0, 0), // debuff
             new TableFixedDst(0, 0, 0, 0, 0), // amount
             new TableFixedDst(68, 60, 67, 1, 0), // profiles
             new TableFixedDst(0, 0, 0, 0, 0), // element
-            new TableFixedDst(0, 0, 0, 0, 0), // name
-            new TableFixedDst(0, 0, 0, 0, 0), // icon
+            new TableFixedDst(0, 0, 1, 0, 1), // name
+            new TableFixedDst(3, 1, 2, 1, 3), // icon
             new TableFixedDst(0, 0, 0, 0, 0), // u8
-            new TableFixedDst(0, 0, 0, 0, 0), // experience
-            new TableFixedDst(0, 0, 0, 0, 0), // tilt
-            new TableFixedDst(0, 0, 0, 0, 0), // heading
-            new TableFixedDst(0, 0, 0, 0, 0), // timestamp
-            new TableFixedDst(0, 0, 0, 0, 0), // badge
-            new TableFixedDst(0, 0, 0, 0, 0), // port
-            new TableFixedDst(0, 0, 0, 0, 0), // epoch
-            new TableFixedDst(0, 0, 0, 0, 0), // precision
-            new TableFixedDst(0, 0, 0, 0, 0), // ratings
+            new TableFixedDst(4, 0, 0, 0, 0), // experience
+            new TableFixedDst(5, 0, 0, 0, 0), // tilt
+            new TableFixedDst(6, 0, 0, 0, 0), // heading
+            new TableFixedDst(7, 0, 0, 0, 0), // timestamp
+            new TableFixedDst(8, 0, 0, 0, 0), // badge
+            new TableFixedDst(9, 0, 0, 0, 0), // port
+            new TableFixedDst(10, 0, 0, 0, 0), // epoch
+            new TableFixedDst(11, 0, 0, 0, 0), // precision
+            new TableFixedDst(12, 0, 0, 0, 0), // ratings
             new TableFixedDst(0, 0, 0, 0, 0), // element
-            new TableFixedDst(0, 0, 0, 0, 0), // has_loadout
-            new TableFixedDst(0, 0, 0, 0, 0), // loadout
+            new TableFixedDst(13, 0, 0, 0, 0), // has_loadout
+            new TableFixedDst(14, 0, 0, 0, 0), // loadout
             new TableFixedDst(0, 0, 0, 0, 0), // grade
             new TableFixedDst(0, 0, 0, 0, 0), // Bronze
             new TableFixedDst(0, 0, 0, 0, 0), // Silver
             new TableFixedDst(0, 0, 0, 0, 0), // Gold
-            new TableFixedDst(0, 0, 0, 0, 0), // grades
+            new TableFixedDst(2, 0, 1, 1, 0), // grades
             new TableFixedDst(0, 0, 0, 0, 0), // element
             new TableFixedDst(0, 0, 0, 0, 0), // Bronze
             new TableFixedDst(0, 0, 0, 0, 0), // Silver
             new TableFixedDst(0, 0, 0, 0, 0), // Gold
-            new TableFixedDst(0, 0, 0, 0, 0), // podium
+            new TableFixedDst(3, 0, 0, 0, 0), // podium
             new TableFixedDst(0, 0, 0, 0, 0), // element
             new TableFixedDst(0, 0, 0, 0, 0), // Bronze
             new TableFixedDst(0, 0, 0, 0, 0), // Silver
             new TableFixedDst(0, 0, 0, 0, 0), // Gold
-            new TableFixedDst(0, 0, 0, 0, 0), // perks
-            new TableFixedDst(0, 0, 0, 0, 0), // primary
+            new TableFixedDst(4, 0, 0, 0, 0), // perks
+            new TableFixedDst(5, 0, 0, 0, 0), // primary
             new TableFixedDst(0, 0, 0, 0, 0), // damage
-            new TableFixedDst(0, 0, 0, 0, 0), // speed
-            new TableFixedDst(0, 0, 0, 0, 0), // penetration
-            new TableFixedDst(0, 0, 0, 0, 0), // channel
-            new TableFixedDst(0, 0, 0, 0, 0), // homing
-            new TableFixedDst(0, 0, 0, 0, 0), // effect
+            new TableFixedDst(1, 0, 0, 0, 0), // speed
+            new TableFixedDst(2, 0, 0, 0, 0), // penetration
+            new TableFixedDst(3, 0, 0, 0, 0), // channel
+            new TableFixedDst(4, 0, 0, 0, 0), // homing
+            new TableFixedDst(6, 0, 5, 0, 0), // effect
             new TableFixedDst(0, 0, 0, 0, 0), // buff
             new TableFixedDst(0, 0, 0, 0, 0), // multiplier
-            new TableFixedDst(0, 0, 0, 0, 0), // debuff
+            new TableFixedDst(1, 0, 0, 0, 0), // debuff
             new TableFixedDst(0, 0, 0, 0, 0), // amount
-            new TableFixedDst(0, 0, 0, 0, 0), // backups
+            new TableFixedDst(13, 8, 0, 0, 0), // backups
             new TableFixedDst(0, 0, 0, 0, 0), // element
             new TableFixedDst(0, 0, 0, 0, 0), // damage
-            new TableFixedDst(0, 0, 0, 0, 0), // speed
-            new TableFixedDst(0, 0, 0, 0, 0), // penetration
-            new TableFixedDst(0, 0, 0, 0, 0), // channel
-            new TableFixedDst(0, 0, 0, 0, 0), // homing
-            new TableFixedDst(0, 0, 0, 0, 0), // effect
+            new TableFixedDst(1, 0, 0, 0, 0), // speed
+            new TableFixedDst(2, 0, 0, 0, 0), // penetration
+            new TableFixedDst(3, 0, 0, 0, 0), // channel
+            new TableFixedDst(4, 0, 0, 0, 0), // homing
+            new TableFixedDst(6, 0, 5, 0, 0), // effect
             new TableFixedDst(0, 0, 0, 0, 0), // buff
             new TableFixedDst(0, 0, 0, 0, 0), // multiplier
-            new TableFixedDst(0, 0, 0, 0, 0), // debuff
+            new TableFixedDst(1, 0, 0, 0, 0), // debuff
             new TableFixedDst(0, 0, 0, 0, 0), // amount
-            new TableFixedDst(0, 0, 0, 0, 0), // attachments
+            new TableFixedDst(30, 2, 29, 1, 0), // attachments
             new TableFixedDst(0, 0, 0, 0, 0), // element
             new TableFixedDst(0, 0, 0, 0, 0), // slot
-            new TableFixedDst(0, 0, 0, 0, 0), // power
+            new TableFixedDst(1, 0, 0, 0, 0), // power
             new TableFixedDst(308, 0, 0, 0, 0), // count
         };
 
@@ -697,6 +697,957 @@ namespace Tabledemo
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[7].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Attachments[7].Power = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Attachments[7].Power = 1.0f; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Count = unchecked((int)v), reset: (t) => { t.Count = 1; }),
         };
+
+        private static void ArchiveConfigFixedSetRaw(ArchiveConfig t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Root.VersionNoteLength = (int)v; break;
+                case 2: t.Root.WeaponsCount = (int)v; break;
+                case 3: t.Root.Weapons[0].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 4: t.Root.Weapons[0].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 5: t.Root.Weapons[0].Penetration = unchecked((int)v); break;
+                case 6: t.Root.Weapons[0].Channel = (uint)v; break;
+                case 7: t.Root.Weapons[0].Homing = v != 0; break;
+                case 8: { t.Root.Weapons[0].Effect.Type = (EffectType)v; } break;
+                case 9: t.Root.Weapons[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 10: t.Root.Weapons[0].Effect.Debuff.Amount = unchecked((int)v); break;
+                case 11: t.Root.Weapons[1].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 12: t.Root.Weapons[1].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 13: t.Root.Weapons[1].Penetration = unchecked((int)v); break;
+                case 14: t.Root.Weapons[1].Channel = (uint)v; break;
+                case 15: t.Root.Weapons[1].Homing = v != 0; break;
+                case 16: { t.Root.Weapons[1].Effect.Type = (EffectType)v; } break;
+                case 17: t.Root.Weapons[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 18: t.Root.Weapons[1].Effect.Debuff.Amount = unchecked((int)v); break;
+                case 19: t.Root.Weapons[2].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 20: t.Root.Weapons[2].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 21: t.Root.Weapons[2].Penetration = unchecked((int)v); break;
+                case 22: t.Root.Weapons[2].Channel = (uint)v; break;
+                case 23: t.Root.Weapons[2].Homing = v != 0; break;
+                case 24: { t.Root.Weapons[2].Effect.Type = (EffectType)v; } break;
+                case 25: t.Root.Weapons[2].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 26: t.Root.Weapons[2].Effect.Debuff.Amount = unchecked((int)v); break;
+                case 27: t.Root.Weapons[3].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 28: t.Root.Weapons[3].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 29: t.Root.Weapons[3].Penetration = unchecked((int)v); break;
+                case 30: t.Root.Weapons[3].Channel = (uint)v; break;
+                case 31: t.Root.Weapons[3].Homing = v != 0; break;
+                case 32: { t.Root.Weapons[3].Effect.Type = (EffectType)v; } break;
+                case 33: t.Root.Weapons[3].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 34: t.Root.Weapons[3].Effect.Debuff.Amount = unchecked((int)v); break;
+                case 35: t.Root.Weapons[4].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 36: t.Root.Weapons[4].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 37: t.Root.Weapons[4].Penetration = unchecked((int)v); break;
+                case 38: t.Root.Weapons[4].Channel = (uint)v; break;
+                case 39: t.Root.Weapons[4].Homing = v != 0; break;
+                case 40: { t.Root.Weapons[4].Effect.Type = (EffectType)v; } break;
+                case 41: t.Root.Weapons[4].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 42: t.Root.Weapons[4].Effect.Debuff.Amount = unchecked((int)v); break;
+                case 43: t.Root.Weapons[5].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 44: t.Root.Weapons[5].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 45: t.Root.Weapons[5].Penetration = unchecked((int)v); break;
+                case 46: t.Root.Weapons[5].Channel = (uint)v; break;
+                case 47: t.Root.Weapons[5].Homing = v != 0; break;
+                case 48: { t.Root.Weapons[5].Effect.Type = (EffectType)v; } break;
+                case 49: t.Root.Weapons[5].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 50: t.Root.Weapons[5].Effect.Debuff.Amount = unchecked((int)v); break;
+                case 51: t.Root.Weapons[6].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 52: t.Root.Weapons[6].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 53: t.Root.Weapons[6].Penetration = unchecked((int)v); break;
+                case 54: t.Root.Weapons[6].Channel = (uint)v; break;
+                case 55: t.Root.Weapons[6].Homing = v != 0; break;
+                case 56: { t.Root.Weapons[6].Effect.Type = (EffectType)v; } break;
+                case 57: t.Root.Weapons[6].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 58: t.Root.Weapons[6].Effect.Debuff.Amount = unchecked((int)v); break;
+                case 59: t.Root.Weapons[7].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 60: t.Root.Weapons[7].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 61: t.Root.Weapons[7].Penetration = unchecked((int)v); break;
+                case 62: t.Root.Weapons[7].Channel = (uint)v; break;
+                case 63: t.Root.Weapons[7].Homing = v != 0; break;
+                case 64: { t.Root.Weapons[7].Effect.Type = (EffectType)v; } break;
+                case 65: t.Root.Weapons[7].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 66: t.Root.Weapons[7].Effect.Debuff.Amount = unchecked((int)v); break;
+                case 67: t.Root.ProfilesCount = (int)v; break;
+                case 68: t.Root.Profiles[0].NameLength = (int)v; break;
+                case 70: t.Root.Profiles[0].IconLength = (int)v; break;
+                case 72: t.Root.Profiles[0].Experience = unchecked((uint)v); break;
+                case 73: t.Root.Profiles[0].Tilt = unchecked((sbyte)v); break;
+                case 74: t.Root.Profiles[0].Heading = unchecked((short)v); break;
+                case 75: t.Root.Profiles[0].Timestamp = unchecked((long)v); break;
+                case 76: t.Root.Profiles[0].Badge = unchecked((byte)v); break;
+                case 77: t.Root.Profiles[0].Port = unchecked((ushort)v); break;
+                case 78: t.Root.Profiles[0].Epoch = unchecked((ulong)v); break;
+                case 79: t.Root.Profiles[0].Precision = BitConverter.UInt64BitsToDouble(v); break;
+                case 81: t.Root.Profiles[0].HasLoadout = v != 0; break;
+                case 82: { t.Root.Profiles[0].Loadout.Grade = (Grade)v; } break;
+                case 83: t.Root.Profiles[0].Loadout.GradesCount = (int)v; break;
+                case 86: t.Root.Profiles[0].Loadout.Perks = v; break;
+                case 87: t.Root.Profiles[0].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 88: t.Root.Profiles[0].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 89: t.Root.Profiles[0].Loadout.Primary.Penetration = unchecked((int)v); break;
+                case 90: t.Root.Profiles[0].Loadout.Primary.Channel = (uint)v; break;
+                case 91: t.Root.Profiles[0].Loadout.Primary.Homing = v != 0; break;
+                case 92: { t.Root.Profiles[0].Loadout.Primary.Effect.Type = (EffectType)v; } break;
+                case 93: t.Root.Profiles[0].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 94: t.Root.Profiles[0].Loadout.Primary.Effect.Debuff.Amount = unchecked((int)v); break;
+                case 95: t.Root.Profiles[0].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 96: t.Root.Profiles[0].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 97: t.Root.Profiles[0].Loadout.Backups[0].Penetration = unchecked((int)v); break;
+                case 98: t.Root.Profiles[0].Loadout.Backups[0].Channel = (uint)v; break;
+                case 99: t.Root.Profiles[0].Loadout.Backups[0].Homing = v != 0; break;
+                case 100: { t.Root.Profiles[0].Loadout.Backups[0].Effect.Type = (EffectType)v; } break;
+                case 101: t.Root.Profiles[0].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 102: t.Root.Profiles[0].Loadout.Backups[0].Effect.Debuff.Amount = unchecked((int)v); break;
+                case 103: t.Root.Profiles[0].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 104: t.Root.Profiles[0].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 105: t.Root.Profiles[0].Loadout.Backups[1].Penetration = unchecked((int)v); break;
+                case 106: t.Root.Profiles[0].Loadout.Backups[1].Channel = (uint)v; break;
+                case 107: t.Root.Profiles[0].Loadout.Backups[1].Homing = v != 0; break;
+                case 108: { t.Root.Profiles[0].Loadout.Backups[1].Effect.Type = (EffectType)v; } break;
+                case 109: t.Root.Profiles[0].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 110: t.Root.Profiles[0].Loadout.Backups[1].Effect.Debuff.Amount = unchecked((int)v); break;
+                case 111: t.Root.Profiles[0].Loadout.AttachmentsCount = (int)v; break;
+                case 112: t.Root.Profiles[0].Loadout.Attachments[0].Slot = unchecked((int)v); break;
+                case 113: t.Root.Profiles[0].Loadout.Attachments[0].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 114: t.Root.Profiles[0].Loadout.Attachments[1].Slot = unchecked((int)v); break;
+                case 115: t.Root.Profiles[0].Loadout.Attachments[1].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 116: t.Root.Profiles[0].Loadout.Attachments[2].Slot = unchecked((int)v); break;
+                case 117: t.Root.Profiles[0].Loadout.Attachments[2].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 118: t.Root.Profiles[0].Loadout.Attachments[3].Slot = unchecked((int)v); break;
+                case 119: t.Root.Profiles[0].Loadout.Attachments[3].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 120: t.Root.Profiles[0].Loadout.Attachments[4].Slot = unchecked((int)v); break;
+                case 121: t.Root.Profiles[0].Loadout.Attachments[4].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 122: t.Root.Profiles[0].Loadout.Attachments[5].Slot = unchecked((int)v); break;
+                case 123: t.Root.Profiles[0].Loadout.Attachments[5].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 124: t.Root.Profiles[0].Loadout.Attachments[6].Slot = unchecked((int)v); break;
+                case 125: t.Root.Profiles[0].Loadout.Attachments[6].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 126: t.Root.Profiles[0].Loadout.Attachments[7].Slot = unchecked((int)v); break;
+                case 127: t.Root.Profiles[0].Loadout.Attachments[7].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 128: t.Root.Profiles[1].NameLength = (int)v; break;
+                case 130: t.Root.Profiles[1].IconLength = (int)v; break;
+                case 132: t.Root.Profiles[1].Experience = unchecked((uint)v); break;
+                case 133: t.Root.Profiles[1].Tilt = unchecked((sbyte)v); break;
+                case 134: t.Root.Profiles[1].Heading = unchecked((short)v); break;
+                case 135: t.Root.Profiles[1].Timestamp = unchecked((long)v); break;
+                case 136: t.Root.Profiles[1].Badge = unchecked((byte)v); break;
+                case 137: t.Root.Profiles[1].Port = unchecked((ushort)v); break;
+                case 138: t.Root.Profiles[1].Epoch = unchecked((ulong)v); break;
+                case 139: t.Root.Profiles[1].Precision = BitConverter.UInt64BitsToDouble(v); break;
+                case 141: t.Root.Profiles[1].HasLoadout = v != 0; break;
+                case 142: { t.Root.Profiles[1].Loadout.Grade = (Grade)v; } break;
+                case 143: t.Root.Profiles[1].Loadout.GradesCount = (int)v; break;
+                case 146: t.Root.Profiles[1].Loadout.Perks = v; break;
+                case 147: t.Root.Profiles[1].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 148: t.Root.Profiles[1].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 149: t.Root.Profiles[1].Loadout.Primary.Penetration = unchecked((int)v); break;
+                case 150: t.Root.Profiles[1].Loadout.Primary.Channel = (uint)v; break;
+                case 151: t.Root.Profiles[1].Loadout.Primary.Homing = v != 0; break;
+                case 152: { t.Root.Profiles[1].Loadout.Primary.Effect.Type = (EffectType)v; } break;
+                case 153: t.Root.Profiles[1].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 154: t.Root.Profiles[1].Loadout.Primary.Effect.Debuff.Amount = unchecked((int)v); break;
+                case 155: t.Root.Profiles[1].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 156: t.Root.Profiles[1].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 157: t.Root.Profiles[1].Loadout.Backups[0].Penetration = unchecked((int)v); break;
+                case 158: t.Root.Profiles[1].Loadout.Backups[0].Channel = (uint)v; break;
+                case 159: t.Root.Profiles[1].Loadout.Backups[0].Homing = v != 0; break;
+                case 160: { t.Root.Profiles[1].Loadout.Backups[0].Effect.Type = (EffectType)v; } break;
+                case 161: t.Root.Profiles[1].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 162: t.Root.Profiles[1].Loadout.Backups[0].Effect.Debuff.Amount = unchecked((int)v); break;
+                case 163: t.Root.Profiles[1].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 164: t.Root.Profiles[1].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 165: t.Root.Profiles[1].Loadout.Backups[1].Penetration = unchecked((int)v); break;
+                case 166: t.Root.Profiles[1].Loadout.Backups[1].Channel = (uint)v; break;
+                case 167: t.Root.Profiles[1].Loadout.Backups[1].Homing = v != 0; break;
+                case 168: { t.Root.Profiles[1].Loadout.Backups[1].Effect.Type = (EffectType)v; } break;
+                case 169: t.Root.Profiles[1].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 170: t.Root.Profiles[1].Loadout.Backups[1].Effect.Debuff.Amount = unchecked((int)v); break;
+                case 171: t.Root.Profiles[1].Loadout.AttachmentsCount = (int)v; break;
+                case 172: t.Root.Profiles[1].Loadout.Attachments[0].Slot = unchecked((int)v); break;
+                case 173: t.Root.Profiles[1].Loadout.Attachments[0].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 174: t.Root.Profiles[1].Loadout.Attachments[1].Slot = unchecked((int)v); break;
+                case 175: t.Root.Profiles[1].Loadout.Attachments[1].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 176: t.Root.Profiles[1].Loadout.Attachments[2].Slot = unchecked((int)v); break;
+                case 177: t.Root.Profiles[1].Loadout.Attachments[2].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 178: t.Root.Profiles[1].Loadout.Attachments[3].Slot = unchecked((int)v); break;
+                case 179: t.Root.Profiles[1].Loadout.Attachments[3].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 180: t.Root.Profiles[1].Loadout.Attachments[4].Slot = unchecked((int)v); break;
+                case 181: t.Root.Profiles[1].Loadout.Attachments[4].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 182: t.Root.Profiles[1].Loadout.Attachments[5].Slot = unchecked((int)v); break;
+                case 183: t.Root.Profiles[1].Loadout.Attachments[5].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 184: t.Root.Profiles[1].Loadout.Attachments[6].Slot = unchecked((int)v); break;
+                case 185: t.Root.Profiles[1].Loadout.Attachments[6].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 186: t.Root.Profiles[1].Loadout.Attachments[7].Slot = unchecked((int)v); break;
+                case 187: t.Root.Profiles[1].Loadout.Attachments[7].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 188: t.Root.Profiles[2].NameLength = (int)v; break;
+                case 190: t.Root.Profiles[2].IconLength = (int)v; break;
+                case 192: t.Root.Profiles[2].Experience = unchecked((uint)v); break;
+                case 193: t.Root.Profiles[2].Tilt = unchecked((sbyte)v); break;
+                case 194: t.Root.Profiles[2].Heading = unchecked((short)v); break;
+                case 195: t.Root.Profiles[2].Timestamp = unchecked((long)v); break;
+                case 196: t.Root.Profiles[2].Badge = unchecked((byte)v); break;
+                case 197: t.Root.Profiles[2].Port = unchecked((ushort)v); break;
+                case 198: t.Root.Profiles[2].Epoch = unchecked((ulong)v); break;
+                case 199: t.Root.Profiles[2].Precision = BitConverter.UInt64BitsToDouble(v); break;
+                case 201: t.Root.Profiles[2].HasLoadout = v != 0; break;
+                case 202: { t.Root.Profiles[2].Loadout.Grade = (Grade)v; } break;
+                case 203: t.Root.Profiles[2].Loadout.GradesCount = (int)v; break;
+                case 206: t.Root.Profiles[2].Loadout.Perks = v; break;
+                case 207: t.Root.Profiles[2].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 208: t.Root.Profiles[2].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 209: t.Root.Profiles[2].Loadout.Primary.Penetration = unchecked((int)v); break;
+                case 210: t.Root.Profiles[2].Loadout.Primary.Channel = (uint)v; break;
+                case 211: t.Root.Profiles[2].Loadout.Primary.Homing = v != 0; break;
+                case 212: { t.Root.Profiles[2].Loadout.Primary.Effect.Type = (EffectType)v; } break;
+                case 213: t.Root.Profiles[2].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 214: t.Root.Profiles[2].Loadout.Primary.Effect.Debuff.Amount = unchecked((int)v); break;
+                case 215: t.Root.Profiles[2].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 216: t.Root.Profiles[2].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 217: t.Root.Profiles[2].Loadout.Backups[0].Penetration = unchecked((int)v); break;
+                case 218: t.Root.Profiles[2].Loadout.Backups[0].Channel = (uint)v; break;
+                case 219: t.Root.Profiles[2].Loadout.Backups[0].Homing = v != 0; break;
+                case 220: { t.Root.Profiles[2].Loadout.Backups[0].Effect.Type = (EffectType)v; } break;
+                case 221: t.Root.Profiles[2].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 222: t.Root.Profiles[2].Loadout.Backups[0].Effect.Debuff.Amount = unchecked((int)v); break;
+                case 223: t.Root.Profiles[2].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 224: t.Root.Profiles[2].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 225: t.Root.Profiles[2].Loadout.Backups[1].Penetration = unchecked((int)v); break;
+                case 226: t.Root.Profiles[2].Loadout.Backups[1].Channel = (uint)v; break;
+                case 227: t.Root.Profiles[2].Loadout.Backups[1].Homing = v != 0; break;
+                case 228: { t.Root.Profiles[2].Loadout.Backups[1].Effect.Type = (EffectType)v; } break;
+                case 229: t.Root.Profiles[2].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 230: t.Root.Profiles[2].Loadout.Backups[1].Effect.Debuff.Amount = unchecked((int)v); break;
+                case 231: t.Root.Profiles[2].Loadout.AttachmentsCount = (int)v; break;
+                case 232: t.Root.Profiles[2].Loadout.Attachments[0].Slot = unchecked((int)v); break;
+                case 233: t.Root.Profiles[2].Loadout.Attachments[0].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 234: t.Root.Profiles[2].Loadout.Attachments[1].Slot = unchecked((int)v); break;
+                case 235: t.Root.Profiles[2].Loadout.Attachments[1].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 236: t.Root.Profiles[2].Loadout.Attachments[2].Slot = unchecked((int)v); break;
+                case 237: t.Root.Profiles[2].Loadout.Attachments[2].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 238: t.Root.Profiles[2].Loadout.Attachments[3].Slot = unchecked((int)v); break;
+                case 239: t.Root.Profiles[2].Loadout.Attachments[3].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 240: t.Root.Profiles[2].Loadout.Attachments[4].Slot = unchecked((int)v); break;
+                case 241: t.Root.Profiles[2].Loadout.Attachments[4].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 242: t.Root.Profiles[2].Loadout.Attachments[5].Slot = unchecked((int)v); break;
+                case 243: t.Root.Profiles[2].Loadout.Attachments[5].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 244: t.Root.Profiles[2].Loadout.Attachments[6].Slot = unchecked((int)v); break;
+                case 245: t.Root.Profiles[2].Loadout.Attachments[6].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 246: t.Root.Profiles[2].Loadout.Attachments[7].Slot = unchecked((int)v); break;
+                case 247: t.Root.Profiles[2].Loadout.Attachments[7].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 248: t.Root.Profiles[3].NameLength = (int)v; break;
+                case 250: t.Root.Profiles[3].IconLength = (int)v; break;
+                case 252: t.Root.Profiles[3].Experience = unchecked((uint)v); break;
+                case 253: t.Root.Profiles[3].Tilt = unchecked((sbyte)v); break;
+                case 254: t.Root.Profiles[3].Heading = unchecked((short)v); break;
+                case 255: t.Root.Profiles[3].Timestamp = unchecked((long)v); break;
+                case 256: t.Root.Profiles[3].Badge = unchecked((byte)v); break;
+                case 257: t.Root.Profiles[3].Port = unchecked((ushort)v); break;
+                case 258: t.Root.Profiles[3].Epoch = unchecked((ulong)v); break;
+                case 259: t.Root.Profiles[3].Precision = BitConverter.UInt64BitsToDouble(v); break;
+                case 261: t.Root.Profiles[3].HasLoadout = v != 0; break;
+                case 262: { t.Root.Profiles[3].Loadout.Grade = (Grade)v; } break;
+                case 263: t.Root.Profiles[3].Loadout.GradesCount = (int)v; break;
+                case 266: t.Root.Profiles[3].Loadout.Perks = v; break;
+                case 267: t.Root.Profiles[3].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 268: t.Root.Profiles[3].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 269: t.Root.Profiles[3].Loadout.Primary.Penetration = unchecked((int)v); break;
+                case 270: t.Root.Profiles[3].Loadout.Primary.Channel = (uint)v; break;
+                case 271: t.Root.Profiles[3].Loadout.Primary.Homing = v != 0; break;
+                case 272: { t.Root.Profiles[3].Loadout.Primary.Effect.Type = (EffectType)v; } break;
+                case 273: t.Root.Profiles[3].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 274: t.Root.Profiles[3].Loadout.Primary.Effect.Debuff.Amount = unchecked((int)v); break;
+                case 275: t.Root.Profiles[3].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 276: t.Root.Profiles[3].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 277: t.Root.Profiles[3].Loadout.Backups[0].Penetration = unchecked((int)v); break;
+                case 278: t.Root.Profiles[3].Loadout.Backups[0].Channel = (uint)v; break;
+                case 279: t.Root.Profiles[3].Loadout.Backups[0].Homing = v != 0; break;
+                case 280: { t.Root.Profiles[3].Loadout.Backups[0].Effect.Type = (EffectType)v; } break;
+                case 281: t.Root.Profiles[3].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 282: t.Root.Profiles[3].Loadout.Backups[0].Effect.Debuff.Amount = unchecked((int)v); break;
+                case 283: t.Root.Profiles[3].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 284: t.Root.Profiles[3].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 285: t.Root.Profiles[3].Loadout.Backups[1].Penetration = unchecked((int)v); break;
+                case 286: t.Root.Profiles[3].Loadout.Backups[1].Channel = (uint)v; break;
+                case 287: t.Root.Profiles[3].Loadout.Backups[1].Homing = v != 0; break;
+                case 288: { t.Root.Profiles[3].Loadout.Backups[1].Effect.Type = (EffectType)v; } break;
+                case 289: t.Root.Profiles[3].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 290: t.Root.Profiles[3].Loadout.Backups[1].Effect.Debuff.Amount = unchecked((int)v); break;
+                case 291: t.Root.Profiles[3].Loadout.AttachmentsCount = (int)v; break;
+                case 292: t.Root.Profiles[3].Loadout.Attachments[0].Slot = unchecked((int)v); break;
+                case 293: t.Root.Profiles[3].Loadout.Attachments[0].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 294: t.Root.Profiles[3].Loadout.Attachments[1].Slot = unchecked((int)v); break;
+                case 295: t.Root.Profiles[3].Loadout.Attachments[1].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 296: t.Root.Profiles[3].Loadout.Attachments[2].Slot = unchecked((int)v); break;
+                case 297: t.Root.Profiles[3].Loadout.Attachments[2].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 298: t.Root.Profiles[3].Loadout.Attachments[3].Slot = unchecked((int)v); break;
+                case 299: t.Root.Profiles[3].Loadout.Attachments[3].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 300: t.Root.Profiles[3].Loadout.Attachments[4].Slot = unchecked((int)v); break;
+                case 301: t.Root.Profiles[3].Loadout.Attachments[4].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 302: t.Root.Profiles[3].Loadout.Attachments[5].Slot = unchecked((int)v); break;
+                case 303: t.Root.Profiles[3].Loadout.Attachments[5].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 304: t.Root.Profiles[3].Loadout.Attachments[6].Slot = unchecked((int)v); break;
+                case 305: t.Root.Profiles[3].Loadout.Attachments[6].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 306: t.Root.Profiles[3].Loadout.Attachments[7].Slot = unchecked((int)v); break;
+                case 307: t.Root.Profiles[3].Loadout.Attachments[7].Power = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 308: t.Count = unchecked((int)v); break;
+                default: break;
+            }
+        }
+
+        private static void ArchiveConfigFixedSetDouble(ArchiveConfig t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 3: t.Root.Weapons[0].Damage = (float)d; break;
+                case 4: t.Root.Weapons[0].Speed = (float)d; break;
+                case 9: t.Root.Weapons[0].Effect.Buff.Multiplier = (float)d; break;
+                case 11: t.Root.Weapons[1].Damage = (float)d; break;
+                case 12: t.Root.Weapons[1].Speed = (float)d; break;
+                case 17: t.Root.Weapons[1].Effect.Buff.Multiplier = (float)d; break;
+                case 19: t.Root.Weapons[2].Damage = (float)d; break;
+                case 20: t.Root.Weapons[2].Speed = (float)d; break;
+                case 25: t.Root.Weapons[2].Effect.Buff.Multiplier = (float)d; break;
+                case 27: t.Root.Weapons[3].Damage = (float)d; break;
+                case 28: t.Root.Weapons[3].Speed = (float)d; break;
+                case 33: t.Root.Weapons[3].Effect.Buff.Multiplier = (float)d; break;
+                case 35: t.Root.Weapons[4].Damage = (float)d; break;
+                case 36: t.Root.Weapons[4].Speed = (float)d; break;
+                case 41: t.Root.Weapons[4].Effect.Buff.Multiplier = (float)d; break;
+                case 43: t.Root.Weapons[5].Damage = (float)d; break;
+                case 44: t.Root.Weapons[5].Speed = (float)d; break;
+                case 49: t.Root.Weapons[5].Effect.Buff.Multiplier = (float)d; break;
+                case 51: t.Root.Weapons[6].Damage = (float)d; break;
+                case 52: t.Root.Weapons[6].Speed = (float)d; break;
+                case 57: t.Root.Weapons[6].Effect.Buff.Multiplier = (float)d; break;
+                case 59: t.Root.Weapons[7].Damage = (float)d; break;
+                case 60: t.Root.Weapons[7].Speed = (float)d; break;
+                case 65: t.Root.Weapons[7].Effect.Buff.Multiplier = (float)d; break;
+                case 79: t.Root.Profiles[0].Precision = d; break;
+                case 87: t.Root.Profiles[0].Loadout.Primary.Damage = (float)d; break;
+                case 88: t.Root.Profiles[0].Loadout.Primary.Speed = (float)d; break;
+                case 93: t.Root.Profiles[0].Loadout.Primary.Effect.Buff.Multiplier = (float)d; break;
+                case 95: t.Root.Profiles[0].Loadout.Backups[0].Damage = (float)d; break;
+                case 96: t.Root.Profiles[0].Loadout.Backups[0].Speed = (float)d; break;
+                case 101: t.Root.Profiles[0].Loadout.Backups[0].Effect.Buff.Multiplier = (float)d; break;
+                case 103: t.Root.Profiles[0].Loadout.Backups[1].Damage = (float)d; break;
+                case 104: t.Root.Profiles[0].Loadout.Backups[1].Speed = (float)d; break;
+                case 109: t.Root.Profiles[0].Loadout.Backups[1].Effect.Buff.Multiplier = (float)d; break;
+                case 113: t.Root.Profiles[0].Loadout.Attachments[0].Power = (float)d; break;
+                case 115: t.Root.Profiles[0].Loadout.Attachments[1].Power = (float)d; break;
+                case 117: t.Root.Profiles[0].Loadout.Attachments[2].Power = (float)d; break;
+                case 119: t.Root.Profiles[0].Loadout.Attachments[3].Power = (float)d; break;
+                case 121: t.Root.Profiles[0].Loadout.Attachments[4].Power = (float)d; break;
+                case 123: t.Root.Profiles[0].Loadout.Attachments[5].Power = (float)d; break;
+                case 125: t.Root.Profiles[0].Loadout.Attachments[6].Power = (float)d; break;
+                case 127: t.Root.Profiles[0].Loadout.Attachments[7].Power = (float)d; break;
+                case 139: t.Root.Profiles[1].Precision = d; break;
+                case 147: t.Root.Profiles[1].Loadout.Primary.Damage = (float)d; break;
+                case 148: t.Root.Profiles[1].Loadout.Primary.Speed = (float)d; break;
+                case 153: t.Root.Profiles[1].Loadout.Primary.Effect.Buff.Multiplier = (float)d; break;
+                case 155: t.Root.Profiles[1].Loadout.Backups[0].Damage = (float)d; break;
+                case 156: t.Root.Profiles[1].Loadout.Backups[0].Speed = (float)d; break;
+                case 161: t.Root.Profiles[1].Loadout.Backups[0].Effect.Buff.Multiplier = (float)d; break;
+                case 163: t.Root.Profiles[1].Loadout.Backups[1].Damage = (float)d; break;
+                case 164: t.Root.Profiles[1].Loadout.Backups[1].Speed = (float)d; break;
+                case 169: t.Root.Profiles[1].Loadout.Backups[1].Effect.Buff.Multiplier = (float)d; break;
+                case 173: t.Root.Profiles[1].Loadout.Attachments[0].Power = (float)d; break;
+                case 175: t.Root.Profiles[1].Loadout.Attachments[1].Power = (float)d; break;
+                case 177: t.Root.Profiles[1].Loadout.Attachments[2].Power = (float)d; break;
+                case 179: t.Root.Profiles[1].Loadout.Attachments[3].Power = (float)d; break;
+                case 181: t.Root.Profiles[1].Loadout.Attachments[4].Power = (float)d; break;
+                case 183: t.Root.Profiles[1].Loadout.Attachments[5].Power = (float)d; break;
+                case 185: t.Root.Profiles[1].Loadout.Attachments[6].Power = (float)d; break;
+                case 187: t.Root.Profiles[1].Loadout.Attachments[7].Power = (float)d; break;
+                case 199: t.Root.Profiles[2].Precision = d; break;
+                case 207: t.Root.Profiles[2].Loadout.Primary.Damage = (float)d; break;
+                case 208: t.Root.Profiles[2].Loadout.Primary.Speed = (float)d; break;
+                case 213: t.Root.Profiles[2].Loadout.Primary.Effect.Buff.Multiplier = (float)d; break;
+                case 215: t.Root.Profiles[2].Loadout.Backups[0].Damage = (float)d; break;
+                case 216: t.Root.Profiles[2].Loadout.Backups[0].Speed = (float)d; break;
+                case 221: t.Root.Profiles[2].Loadout.Backups[0].Effect.Buff.Multiplier = (float)d; break;
+                case 223: t.Root.Profiles[2].Loadout.Backups[1].Damage = (float)d; break;
+                case 224: t.Root.Profiles[2].Loadout.Backups[1].Speed = (float)d; break;
+                case 229: t.Root.Profiles[2].Loadout.Backups[1].Effect.Buff.Multiplier = (float)d; break;
+                case 233: t.Root.Profiles[2].Loadout.Attachments[0].Power = (float)d; break;
+                case 235: t.Root.Profiles[2].Loadout.Attachments[1].Power = (float)d; break;
+                case 237: t.Root.Profiles[2].Loadout.Attachments[2].Power = (float)d; break;
+                case 239: t.Root.Profiles[2].Loadout.Attachments[3].Power = (float)d; break;
+                case 241: t.Root.Profiles[2].Loadout.Attachments[4].Power = (float)d; break;
+                case 243: t.Root.Profiles[2].Loadout.Attachments[5].Power = (float)d; break;
+                case 245: t.Root.Profiles[2].Loadout.Attachments[6].Power = (float)d; break;
+                case 247: t.Root.Profiles[2].Loadout.Attachments[7].Power = (float)d; break;
+                case 259: t.Root.Profiles[3].Precision = d; break;
+                case 267: t.Root.Profiles[3].Loadout.Primary.Damage = (float)d; break;
+                case 268: t.Root.Profiles[3].Loadout.Primary.Speed = (float)d; break;
+                case 273: t.Root.Profiles[3].Loadout.Primary.Effect.Buff.Multiplier = (float)d; break;
+                case 275: t.Root.Profiles[3].Loadout.Backups[0].Damage = (float)d; break;
+                case 276: t.Root.Profiles[3].Loadout.Backups[0].Speed = (float)d; break;
+                case 281: t.Root.Profiles[3].Loadout.Backups[0].Effect.Buff.Multiplier = (float)d; break;
+                case 283: t.Root.Profiles[3].Loadout.Backups[1].Damage = (float)d; break;
+                case 284: t.Root.Profiles[3].Loadout.Backups[1].Speed = (float)d; break;
+                case 289: t.Root.Profiles[3].Loadout.Backups[1].Effect.Buff.Multiplier = (float)d; break;
+                case 293: t.Root.Profiles[3].Loadout.Attachments[0].Power = (float)d; break;
+                case 295: t.Root.Profiles[3].Loadout.Attachments[1].Power = (float)d; break;
+                case 297: t.Root.Profiles[3].Loadout.Attachments[2].Power = (float)d; break;
+                case 299: t.Root.Profiles[3].Loadout.Attachments[3].Power = (float)d; break;
+                case 301: t.Root.Profiles[3].Loadout.Attachments[4].Power = (float)d; break;
+                case 303: t.Root.Profiles[3].Loadout.Attachments[5].Power = (float)d; break;
+                case 305: t.Root.Profiles[3].Loadout.Attachments[6].Power = (float)d; break;
+                case 307: t.Root.Profiles[3].Loadout.Attachments[7].Power = (float)d; break;
+                default: break;
+            }
+        }
+
+        private static void ArchiveConfigFixedSetWide(ArchiveConfig t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void ArchiveConfigFixedSetBytes(ArchiveConfig t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                case 1: { if (t.Root.VersionNote != null) b.Slice(0, Math.Min(b.Length, t.Root.VersionNote.Length)).CopyTo(t.Root.VersionNote); } break;
+                case 69: { if (t.Root.Profiles[0].Name != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Name.Length)).CopyTo(t.Root.Profiles[0].Name); } break;
+                case 71: { if (t.Root.Profiles[0].Icon != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Icon.Length)).CopyTo(t.Root.Profiles[0].Icon); } break;
+                case 80: { if (t.Root.Profiles[0].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Ratings.Length * 4))).CopyTo(t.Root.Profiles[0].Ratings); } break;
+                case 84: { if (t.Root.Profiles[0].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[0].Loadout.Grades); } break;
+                case 85: { if (t.Root.Profiles[0].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[0].Loadout.Podium); } break;
+                case 129: { if (t.Root.Profiles[1].Name != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Name.Length)).CopyTo(t.Root.Profiles[1].Name); } break;
+                case 131: { if (t.Root.Profiles[1].Icon != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Icon.Length)).CopyTo(t.Root.Profiles[1].Icon); } break;
+                case 140: { if (t.Root.Profiles[1].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Ratings.Length * 4))).CopyTo(t.Root.Profiles[1].Ratings); } break;
+                case 144: { if (t.Root.Profiles[1].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[1].Loadout.Grades); } break;
+                case 145: { if (t.Root.Profiles[1].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[1].Loadout.Podium); } break;
+                case 189: { if (t.Root.Profiles[2].Name != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Name.Length)).CopyTo(t.Root.Profiles[2].Name); } break;
+                case 191: { if (t.Root.Profiles[2].Icon != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Icon.Length)).CopyTo(t.Root.Profiles[2].Icon); } break;
+                case 200: { if (t.Root.Profiles[2].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Ratings.Length * 4))).CopyTo(t.Root.Profiles[2].Ratings); } break;
+                case 204: { if (t.Root.Profiles[2].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[2].Loadout.Grades); } break;
+                case 205: { if (t.Root.Profiles[2].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[2].Loadout.Podium); } break;
+                case 249: { if (t.Root.Profiles[3].Name != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Name.Length)).CopyTo(t.Root.Profiles[3].Name); } break;
+                case 251: { if (t.Root.Profiles[3].Icon != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Icon.Length)).CopyTo(t.Root.Profiles[3].Icon); } break;
+                case 260: { if (t.Root.Profiles[3].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Ratings.Length * 4))).CopyTo(t.Root.Profiles[3].Ratings); } break;
+                case 264: { if (t.Root.Profiles[3].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[3].Loadout.Grades); } break;
+                case 265: { if (t.Root.Profiles[3].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[3].Loadout.Podium); } break;
+                default: break;
+            }
+        }
+
+        private static void ArchiveConfigFixedSetChars(ArchiveConfig t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void ArchiveConfigFixedResetSlot(ArchiveConfig t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Root.VersionNoteLength = 0; } break;
+                case 1: { if (t.Root.VersionNote != null) { Array.Clear(t.Root.VersionNote, 0, t.Root.VersionNote.Length); } } break;
+                case 2: { t.Root.WeaponsCount = 0; } break;
+                case 3: { t.Root.Weapons[0].Damage = 21.0f; } break;
+                case 4: { t.Root.Weapons[0].Speed = 500.0f; } break;
+                case 5: { t.Root.Weapons[0].Penetration = 1; } break;
+                case 6: { t.Root.Weapons[0].Channel = 0; } break;
+                case 7: { t.Root.Weapons[0].Homing = false; } break;
+                case 8: { t.Root.Weapons[0].Effect.Type = EffectType.None; } break;
+                case 9: { t.Root.Weapons[0].Effect.Buff.Multiplier = 1.0f; } break;
+                case 10: { t.Root.Weapons[0].Effect.Debuff.Amount = 0; } break;
+                case 11: { t.Root.Weapons[1].Damage = 21.0f; } break;
+                case 12: { t.Root.Weapons[1].Speed = 500.0f; } break;
+                case 13: { t.Root.Weapons[1].Penetration = 1; } break;
+                case 14: { t.Root.Weapons[1].Channel = 0; } break;
+                case 15: { t.Root.Weapons[1].Homing = false; } break;
+                case 16: { t.Root.Weapons[1].Effect.Type = EffectType.None; } break;
+                case 17: { t.Root.Weapons[1].Effect.Buff.Multiplier = 1.0f; } break;
+                case 18: { t.Root.Weapons[1].Effect.Debuff.Amount = 0; } break;
+                case 19: { t.Root.Weapons[2].Damage = 21.0f; } break;
+                case 20: { t.Root.Weapons[2].Speed = 500.0f; } break;
+                case 21: { t.Root.Weapons[2].Penetration = 1; } break;
+                case 22: { t.Root.Weapons[2].Channel = 0; } break;
+                case 23: { t.Root.Weapons[2].Homing = false; } break;
+                case 24: { t.Root.Weapons[2].Effect.Type = EffectType.None; } break;
+                case 25: { t.Root.Weapons[2].Effect.Buff.Multiplier = 1.0f; } break;
+                case 26: { t.Root.Weapons[2].Effect.Debuff.Amount = 0; } break;
+                case 27: { t.Root.Weapons[3].Damage = 21.0f; } break;
+                case 28: { t.Root.Weapons[3].Speed = 500.0f; } break;
+                case 29: { t.Root.Weapons[3].Penetration = 1; } break;
+                case 30: { t.Root.Weapons[3].Channel = 0; } break;
+                case 31: { t.Root.Weapons[3].Homing = false; } break;
+                case 32: { t.Root.Weapons[3].Effect.Type = EffectType.None; } break;
+                case 33: { t.Root.Weapons[3].Effect.Buff.Multiplier = 1.0f; } break;
+                case 34: { t.Root.Weapons[3].Effect.Debuff.Amount = 0; } break;
+                case 35: { t.Root.Weapons[4].Damage = 21.0f; } break;
+                case 36: { t.Root.Weapons[4].Speed = 500.0f; } break;
+                case 37: { t.Root.Weapons[4].Penetration = 1; } break;
+                case 38: { t.Root.Weapons[4].Channel = 0; } break;
+                case 39: { t.Root.Weapons[4].Homing = false; } break;
+                case 40: { t.Root.Weapons[4].Effect.Type = EffectType.None; } break;
+                case 41: { t.Root.Weapons[4].Effect.Buff.Multiplier = 1.0f; } break;
+                case 42: { t.Root.Weapons[4].Effect.Debuff.Amount = 0; } break;
+                case 43: { t.Root.Weapons[5].Damage = 21.0f; } break;
+                case 44: { t.Root.Weapons[5].Speed = 500.0f; } break;
+                case 45: { t.Root.Weapons[5].Penetration = 1; } break;
+                case 46: { t.Root.Weapons[5].Channel = 0; } break;
+                case 47: { t.Root.Weapons[5].Homing = false; } break;
+                case 48: { t.Root.Weapons[5].Effect.Type = EffectType.None; } break;
+                case 49: { t.Root.Weapons[5].Effect.Buff.Multiplier = 1.0f; } break;
+                case 50: { t.Root.Weapons[5].Effect.Debuff.Amount = 0; } break;
+                case 51: { t.Root.Weapons[6].Damage = 21.0f; } break;
+                case 52: { t.Root.Weapons[6].Speed = 500.0f; } break;
+                case 53: { t.Root.Weapons[6].Penetration = 1; } break;
+                case 54: { t.Root.Weapons[6].Channel = 0; } break;
+                case 55: { t.Root.Weapons[6].Homing = false; } break;
+                case 56: { t.Root.Weapons[6].Effect.Type = EffectType.None; } break;
+                case 57: { t.Root.Weapons[6].Effect.Buff.Multiplier = 1.0f; } break;
+                case 58: { t.Root.Weapons[6].Effect.Debuff.Amount = 0; } break;
+                case 59: { t.Root.Weapons[7].Damage = 21.0f; } break;
+                case 60: { t.Root.Weapons[7].Speed = 500.0f; } break;
+                case 61: { t.Root.Weapons[7].Penetration = 1; } break;
+                case 62: { t.Root.Weapons[7].Channel = 0; } break;
+                case 63: { t.Root.Weapons[7].Homing = false; } break;
+                case 64: { t.Root.Weapons[7].Effect.Type = EffectType.None; } break;
+                case 65: { t.Root.Weapons[7].Effect.Buff.Multiplier = 1.0f; } break;
+                case 66: { t.Root.Weapons[7].Effect.Debuff.Amount = 0; } break;
+                case 67: { t.Root.ProfilesCount = 0; } break;
+                case 68: { t.Root.Profiles[0].NameLength = 0; } break;
+                case 69: { if (t.Root.Profiles[0].Name != null) { Array.Clear(t.Root.Profiles[0].Name, 0, t.Root.Profiles[0].Name.Length); } } break;
+                case 70: { t.Root.Profiles[0].IconLength = 0; } break;
+                case 71: { if (t.Root.Profiles[0].Icon != null) { Array.Clear(t.Root.Profiles[0].Icon, 0, t.Root.Profiles[0].Icon.Length); } } break;
+                case 72: { t.Root.Profiles[0].Experience = 0; } break;
+                case 73: { t.Root.Profiles[0].Tilt = 0; } break;
+                case 74: { t.Root.Profiles[0].Heading = 0; } break;
+                case 75: { t.Root.Profiles[0].Timestamp = 0; } break;
+                case 76: { t.Root.Profiles[0].Badge = 0; } break;
+                case 77: { t.Root.Profiles[0].Port = 0; } break;
+                case 78: { t.Root.Profiles[0].Epoch = 0; } break;
+                case 79: { t.Root.Profiles[0].Precision = 0.0; } break;
+                case 80: { if (t.Root.Profiles[0].Ratings != null) Array.Clear(t.Root.Profiles[0].Ratings, 0, t.Root.Profiles[0].Ratings.Length); } break;
+                case 81: { t.Root.Profiles[0].HasLoadout = false; } break;
+                case 82: { t.Root.Profiles[0].Loadout.Grade = global::Tabledemo.Grade.Silver; } break;
+                case 83: { t.Root.Profiles[0].Loadout.GradesCount = 0; } break;
+                case 84: { if (t.Root.Profiles[0].Loadout.Grades != null) Array.Clear(t.Root.Profiles[0].Loadout.Grades, 0, t.Root.Profiles[0].Loadout.Grades.Length); } break;
+                case 85: { if (t.Root.Profiles[0].Loadout.Podium != null) Array.Clear(t.Root.Profiles[0].Loadout.Podium, 0, t.Root.Profiles[0].Loadout.Podium.Length); } break;
+                case 86: { t.Root.Profiles[0].Loadout.Perks = 0; } break;
+                case 87: { t.Root.Profiles[0].Loadout.Primary.Damage = 21.0f; } break;
+                case 88: { t.Root.Profiles[0].Loadout.Primary.Speed = 500.0f; } break;
+                case 89: { t.Root.Profiles[0].Loadout.Primary.Penetration = 1; } break;
+                case 90: { t.Root.Profiles[0].Loadout.Primary.Channel = 0; } break;
+                case 91: { t.Root.Profiles[0].Loadout.Primary.Homing = false; } break;
+                case 92: { t.Root.Profiles[0].Loadout.Primary.Effect.Type = EffectType.None; } break;
+                case 93: { t.Root.Profiles[0].Loadout.Primary.Effect.Buff.Multiplier = 1.0f; } break;
+                case 94: { t.Root.Profiles[0].Loadout.Primary.Effect.Debuff.Amount = 0; } break;
+                case 95: { t.Root.Profiles[0].Loadout.Backups[0].Damage = 21.0f; } break;
+                case 96: { t.Root.Profiles[0].Loadout.Backups[0].Speed = 500.0f; } break;
+                case 97: { t.Root.Profiles[0].Loadout.Backups[0].Penetration = 1; } break;
+                case 98: { t.Root.Profiles[0].Loadout.Backups[0].Channel = 0; } break;
+                case 99: { t.Root.Profiles[0].Loadout.Backups[0].Homing = false; } break;
+                case 100: { t.Root.Profiles[0].Loadout.Backups[0].Effect.Type = EffectType.None; } break;
+                case 101: { t.Root.Profiles[0].Loadout.Backups[0].Effect.Buff.Multiplier = 1.0f; } break;
+                case 102: { t.Root.Profiles[0].Loadout.Backups[0].Effect.Debuff.Amount = 0; } break;
+                case 103: { t.Root.Profiles[0].Loadout.Backups[1].Damage = 21.0f; } break;
+                case 104: { t.Root.Profiles[0].Loadout.Backups[1].Speed = 500.0f; } break;
+                case 105: { t.Root.Profiles[0].Loadout.Backups[1].Penetration = 1; } break;
+                case 106: { t.Root.Profiles[0].Loadout.Backups[1].Channel = 0; } break;
+                case 107: { t.Root.Profiles[0].Loadout.Backups[1].Homing = false; } break;
+                case 108: { t.Root.Profiles[0].Loadout.Backups[1].Effect.Type = EffectType.None; } break;
+                case 109: { t.Root.Profiles[0].Loadout.Backups[1].Effect.Buff.Multiplier = 1.0f; } break;
+                case 110: { t.Root.Profiles[0].Loadout.Backups[1].Effect.Debuff.Amount = 0; } break;
+                case 111: { t.Root.Profiles[0].Loadout.AttachmentsCount = 0; } break;
+                case 112: { t.Root.Profiles[0].Loadout.Attachments[0].Slot = 0; } break;
+                case 113: { t.Root.Profiles[0].Loadout.Attachments[0].Power = 1.0f; } break;
+                case 114: { t.Root.Profiles[0].Loadout.Attachments[1].Slot = 0; } break;
+                case 115: { t.Root.Profiles[0].Loadout.Attachments[1].Power = 1.0f; } break;
+                case 116: { t.Root.Profiles[0].Loadout.Attachments[2].Slot = 0; } break;
+                case 117: { t.Root.Profiles[0].Loadout.Attachments[2].Power = 1.0f; } break;
+                case 118: { t.Root.Profiles[0].Loadout.Attachments[3].Slot = 0; } break;
+                case 119: { t.Root.Profiles[0].Loadout.Attachments[3].Power = 1.0f; } break;
+                case 120: { t.Root.Profiles[0].Loadout.Attachments[4].Slot = 0; } break;
+                case 121: { t.Root.Profiles[0].Loadout.Attachments[4].Power = 1.0f; } break;
+                case 122: { t.Root.Profiles[0].Loadout.Attachments[5].Slot = 0; } break;
+                case 123: { t.Root.Profiles[0].Loadout.Attachments[5].Power = 1.0f; } break;
+                case 124: { t.Root.Profiles[0].Loadout.Attachments[6].Slot = 0; } break;
+                case 125: { t.Root.Profiles[0].Loadout.Attachments[6].Power = 1.0f; } break;
+                case 126: { t.Root.Profiles[0].Loadout.Attachments[7].Slot = 0; } break;
+                case 127: { t.Root.Profiles[0].Loadout.Attachments[7].Power = 1.0f; } break;
+                case 128: { t.Root.Profiles[1].NameLength = 0; } break;
+                case 129: { if (t.Root.Profiles[1].Name != null) { Array.Clear(t.Root.Profiles[1].Name, 0, t.Root.Profiles[1].Name.Length); } } break;
+                case 130: { t.Root.Profiles[1].IconLength = 0; } break;
+                case 131: { if (t.Root.Profiles[1].Icon != null) { Array.Clear(t.Root.Profiles[1].Icon, 0, t.Root.Profiles[1].Icon.Length); } } break;
+                case 132: { t.Root.Profiles[1].Experience = 0; } break;
+                case 133: { t.Root.Profiles[1].Tilt = 0; } break;
+                case 134: { t.Root.Profiles[1].Heading = 0; } break;
+                case 135: { t.Root.Profiles[1].Timestamp = 0; } break;
+                case 136: { t.Root.Profiles[1].Badge = 0; } break;
+                case 137: { t.Root.Profiles[1].Port = 0; } break;
+                case 138: { t.Root.Profiles[1].Epoch = 0; } break;
+                case 139: { t.Root.Profiles[1].Precision = 0.0; } break;
+                case 140: { if (t.Root.Profiles[1].Ratings != null) Array.Clear(t.Root.Profiles[1].Ratings, 0, t.Root.Profiles[1].Ratings.Length); } break;
+                case 141: { t.Root.Profiles[1].HasLoadout = false; } break;
+                case 142: { t.Root.Profiles[1].Loadout.Grade = global::Tabledemo.Grade.Silver; } break;
+                case 143: { t.Root.Profiles[1].Loadout.GradesCount = 0; } break;
+                case 144: { if (t.Root.Profiles[1].Loadout.Grades != null) Array.Clear(t.Root.Profiles[1].Loadout.Grades, 0, t.Root.Profiles[1].Loadout.Grades.Length); } break;
+                case 145: { if (t.Root.Profiles[1].Loadout.Podium != null) Array.Clear(t.Root.Profiles[1].Loadout.Podium, 0, t.Root.Profiles[1].Loadout.Podium.Length); } break;
+                case 146: { t.Root.Profiles[1].Loadout.Perks = 0; } break;
+                case 147: { t.Root.Profiles[1].Loadout.Primary.Damage = 21.0f; } break;
+                case 148: { t.Root.Profiles[1].Loadout.Primary.Speed = 500.0f; } break;
+                case 149: { t.Root.Profiles[1].Loadout.Primary.Penetration = 1; } break;
+                case 150: { t.Root.Profiles[1].Loadout.Primary.Channel = 0; } break;
+                case 151: { t.Root.Profiles[1].Loadout.Primary.Homing = false; } break;
+                case 152: { t.Root.Profiles[1].Loadout.Primary.Effect.Type = EffectType.None; } break;
+                case 153: { t.Root.Profiles[1].Loadout.Primary.Effect.Buff.Multiplier = 1.0f; } break;
+                case 154: { t.Root.Profiles[1].Loadout.Primary.Effect.Debuff.Amount = 0; } break;
+                case 155: { t.Root.Profiles[1].Loadout.Backups[0].Damage = 21.0f; } break;
+                case 156: { t.Root.Profiles[1].Loadout.Backups[0].Speed = 500.0f; } break;
+                case 157: { t.Root.Profiles[1].Loadout.Backups[0].Penetration = 1; } break;
+                case 158: { t.Root.Profiles[1].Loadout.Backups[0].Channel = 0; } break;
+                case 159: { t.Root.Profiles[1].Loadout.Backups[0].Homing = false; } break;
+                case 160: { t.Root.Profiles[1].Loadout.Backups[0].Effect.Type = EffectType.None; } break;
+                case 161: { t.Root.Profiles[1].Loadout.Backups[0].Effect.Buff.Multiplier = 1.0f; } break;
+                case 162: { t.Root.Profiles[1].Loadout.Backups[0].Effect.Debuff.Amount = 0; } break;
+                case 163: { t.Root.Profiles[1].Loadout.Backups[1].Damage = 21.0f; } break;
+                case 164: { t.Root.Profiles[1].Loadout.Backups[1].Speed = 500.0f; } break;
+                case 165: { t.Root.Profiles[1].Loadout.Backups[1].Penetration = 1; } break;
+                case 166: { t.Root.Profiles[1].Loadout.Backups[1].Channel = 0; } break;
+                case 167: { t.Root.Profiles[1].Loadout.Backups[1].Homing = false; } break;
+                case 168: { t.Root.Profiles[1].Loadout.Backups[1].Effect.Type = EffectType.None; } break;
+                case 169: { t.Root.Profiles[1].Loadout.Backups[1].Effect.Buff.Multiplier = 1.0f; } break;
+                case 170: { t.Root.Profiles[1].Loadout.Backups[1].Effect.Debuff.Amount = 0; } break;
+                case 171: { t.Root.Profiles[1].Loadout.AttachmentsCount = 0; } break;
+                case 172: { t.Root.Profiles[1].Loadout.Attachments[0].Slot = 0; } break;
+                case 173: { t.Root.Profiles[1].Loadout.Attachments[0].Power = 1.0f; } break;
+                case 174: { t.Root.Profiles[1].Loadout.Attachments[1].Slot = 0; } break;
+                case 175: { t.Root.Profiles[1].Loadout.Attachments[1].Power = 1.0f; } break;
+                case 176: { t.Root.Profiles[1].Loadout.Attachments[2].Slot = 0; } break;
+                case 177: { t.Root.Profiles[1].Loadout.Attachments[2].Power = 1.0f; } break;
+                case 178: { t.Root.Profiles[1].Loadout.Attachments[3].Slot = 0; } break;
+                case 179: { t.Root.Profiles[1].Loadout.Attachments[3].Power = 1.0f; } break;
+                case 180: { t.Root.Profiles[1].Loadout.Attachments[4].Slot = 0; } break;
+                case 181: { t.Root.Profiles[1].Loadout.Attachments[4].Power = 1.0f; } break;
+                case 182: { t.Root.Profiles[1].Loadout.Attachments[5].Slot = 0; } break;
+                case 183: { t.Root.Profiles[1].Loadout.Attachments[5].Power = 1.0f; } break;
+                case 184: { t.Root.Profiles[1].Loadout.Attachments[6].Slot = 0; } break;
+                case 185: { t.Root.Profiles[1].Loadout.Attachments[6].Power = 1.0f; } break;
+                case 186: { t.Root.Profiles[1].Loadout.Attachments[7].Slot = 0; } break;
+                case 187: { t.Root.Profiles[1].Loadout.Attachments[7].Power = 1.0f; } break;
+                case 188: { t.Root.Profiles[2].NameLength = 0; } break;
+                case 189: { if (t.Root.Profiles[2].Name != null) { Array.Clear(t.Root.Profiles[2].Name, 0, t.Root.Profiles[2].Name.Length); } } break;
+                case 190: { t.Root.Profiles[2].IconLength = 0; } break;
+                case 191: { if (t.Root.Profiles[2].Icon != null) { Array.Clear(t.Root.Profiles[2].Icon, 0, t.Root.Profiles[2].Icon.Length); } } break;
+                case 192: { t.Root.Profiles[2].Experience = 0; } break;
+                case 193: { t.Root.Profiles[2].Tilt = 0; } break;
+                case 194: { t.Root.Profiles[2].Heading = 0; } break;
+                case 195: { t.Root.Profiles[2].Timestamp = 0; } break;
+                case 196: { t.Root.Profiles[2].Badge = 0; } break;
+                case 197: { t.Root.Profiles[2].Port = 0; } break;
+                case 198: { t.Root.Profiles[2].Epoch = 0; } break;
+                case 199: { t.Root.Profiles[2].Precision = 0.0; } break;
+                case 200: { if (t.Root.Profiles[2].Ratings != null) Array.Clear(t.Root.Profiles[2].Ratings, 0, t.Root.Profiles[2].Ratings.Length); } break;
+                case 201: { t.Root.Profiles[2].HasLoadout = false; } break;
+                case 202: { t.Root.Profiles[2].Loadout.Grade = global::Tabledemo.Grade.Silver; } break;
+                case 203: { t.Root.Profiles[2].Loadout.GradesCount = 0; } break;
+                case 204: { if (t.Root.Profiles[2].Loadout.Grades != null) Array.Clear(t.Root.Profiles[2].Loadout.Grades, 0, t.Root.Profiles[2].Loadout.Grades.Length); } break;
+                case 205: { if (t.Root.Profiles[2].Loadout.Podium != null) Array.Clear(t.Root.Profiles[2].Loadout.Podium, 0, t.Root.Profiles[2].Loadout.Podium.Length); } break;
+                case 206: { t.Root.Profiles[2].Loadout.Perks = 0; } break;
+                case 207: { t.Root.Profiles[2].Loadout.Primary.Damage = 21.0f; } break;
+                case 208: { t.Root.Profiles[2].Loadout.Primary.Speed = 500.0f; } break;
+                case 209: { t.Root.Profiles[2].Loadout.Primary.Penetration = 1; } break;
+                case 210: { t.Root.Profiles[2].Loadout.Primary.Channel = 0; } break;
+                case 211: { t.Root.Profiles[2].Loadout.Primary.Homing = false; } break;
+                case 212: { t.Root.Profiles[2].Loadout.Primary.Effect.Type = EffectType.None; } break;
+                case 213: { t.Root.Profiles[2].Loadout.Primary.Effect.Buff.Multiplier = 1.0f; } break;
+                case 214: { t.Root.Profiles[2].Loadout.Primary.Effect.Debuff.Amount = 0; } break;
+                case 215: { t.Root.Profiles[2].Loadout.Backups[0].Damage = 21.0f; } break;
+                case 216: { t.Root.Profiles[2].Loadout.Backups[0].Speed = 500.0f; } break;
+                case 217: { t.Root.Profiles[2].Loadout.Backups[0].Penetration = 1; } break;
+                case 218: { t.Root.Profiles[2].Loadout.Backups[0].Channel = 0; } break;
+                case 219: { t.Root.Profiles[2].Loadout.Backups[0].Homing = false; } break;
+                case 220: { t.Root.Profiles[2].Loadout.Backups[0].Effect.Type = EffectType.None; } break;
+                case 221: { t.Root.Profiles[2].Loadout.Backups[0].Effect.Buff.Multiplier = 1.0f; } break;
+                case 222: { t.Root.Profiles[2].Loadout.Backups[0].Effect.Debuff.Amount = 0; } break;
+                case 223: { t.Root.Profiles[2].Loadout.Backups[1].Damage = 21.0f; } break;
+                case 224: { t.Root.Profiles[2].Loadout.Backups[1].Speed = 500.0f; } break;
+                case 225: { t.Root.Profiles[2].Loadout.Backups[1].Penetration = 1; } break;
+                case 226: { t.Root.Profiles[2].Loadout.Backups[1].Channel = 0; } break;
+                case 227: { t.Root.Profiles[2].Loadout.Backups[1].Homing = false; } break;
+                case 228: { t.Root.Profiles[2].Loadout.Backups[1].Effect.Type = EffectType.None; } break;
+                case 229: { t.Root.Profiles[2].Loadout.Backups[1].Effect.Buff.Multiplier = 1.0f; } break;
+                case 230: { t.Root.Profiles[2].Loadout.Backups[1].Effect.Debuff.Amount = 0; } break;
+                case 231: { t.Root.Profiles[2].Loadout.AttachmentsCount = 0; } break;
+                case 232: { t.Root.Profiles[2].Loadout.Attachments[0].Slot = 0; } break;
+                case 233: { t.Root.Profiles[2].Loadout.Attachments[0].Power = 1.0f; } break;
+                case 234: { t.Root.Profiles[2].Loadout.Attachments[1].Slot = 0; } break;
+                case 235: { t.Root.Profiles[2].Loadout.Attachments[1].Power = 1.0f; } break;
+                case 236: { t.Root.Profiles[2].Loadout.Attachments[2].Slot = 0; } break;
+                case 237: { t.Root.Profiles[2].Loadout.Attachments[2].Power = 1.0f; } break;
+                case 238: { t.Root.Profiles[2].Loadout.Attachments[3].Slot = 0; } break;
+                case 239: { t.Root.Profiles[2].Loadout.Attachments[3].Power = 1.0f; } break;
+                case 240: { t.Root.Profiles[2].Loadout.Attachments[4].Slot = 0; } break;
+                case 241: { t.Root.Profiles[2].Loadout.Attachments[4].Power = 1.0f; } break;
+                case 242: { t.Root.Profiles[2].Loadout.Attachments[5].Slot = 0; } break;
+                case 243: { t.Root.Profiles[2].Loadout.Attachments[5].Power = 1.0f; } break;
+                case 244: { t.Root.Profiles[2].Loadout.Attachments[6].Slot = 0; } break;
+                case 245: { t.Root.Profiles[2].Loadout.Attachments[6].Power = 1.0f; } break;
+                case 246: { t.Root.Profiles[2].Loadout.Attachments[7].Slot = 0; } break;
+                case 247: { t.Root.Profiles[2].Loadout.Attachments[7].Power = 1.0f; } break;
+                case 248: { t.Root.Profiles[3].NameLength = 0; } break;
+                case 249: { if (t.Root.Profiles[3].Name != null) { Array.Clear(t.Root.Profiles[3].Name, 0, t.Root.Profiles[3].Name.Length); } } break;
+                case 250: { t.Root.Profiles[3].IconLength = 0; } break;
+                case 251: { if (t.Root.Profiles[3].Icon != null) { Array.Clear(t.Root.Profiles[3].Icon, 0, t.Root.Profiles[3].Icon.Length); } } break;
+                case 252: { t.Root.Profiles[3].Experience = 0; } break;
+                case 253: { t.Root.Profiles[3].Tilt = 0; } break;
+                case 254: { t.Root.Profiles[3].Heading = 0; } break;
+                case 255: { t.Root.Profiles[3].Timestamp = 0; } break;
+                case 256: { t.Root.Profiles[3].Badge = 0; } break;
+                case 257: { t.Root.Profiles[3].Port = 0; } break;
+                case 258: { t.Root.Profiles[3].Epoch = 0; } break;
+                case 259: { t.Root.Profiles[3].Precision = 0.0; } break;
+                case 260: { if (t.Root.Profiles[3].Ratings != null) Array.Clear(t.Root.Profiles[3].Ratings, 0, t.Root.Profiles[3].Ratings.Length); } break;
+                case 261: { t.Root.Profiles[3].HasLoadout = false; } break;
+                case 262: { t.Root.Profiles[3].Loadout.Grade = global::Tabledemo.Grade.Silver; } break;
+                case 263: { t.Root.Profiles[3].Loadout.GradesCount = 0; } break;
+                case 264: { if (t.Root.Profiles[3].Loadout.Grades != null) Array.Clear(t.Root.Profiles[3].Loadout.Grades, 0, t.Root.Profiles[3].Loadout.Grades.Length); } break;
+                case 265: { if (t.Root.Profiles[3].Loadout.Podium != null) Array.Clear(t.Root.Profiles[3].Loadout.Podium, 0, t.Root.Profiles[3].Loadout.Podium.Length); } break;
+                case 266: { t.Root.Profiles[3].Loadout.Perks = 0; } break;
+                case 267: { t.Root.Profiles[3].Loadout.Primary.Damage = 21.0f; } break;
+                case 268: { t.Root.Profiles[3].Loadout.Primary.Speed = 500.0f; } break;
+                case 269: { t.Root.Profiles[3].Loadout.Primary.Penetration = 1; } break;
+                case 270: { t.Root.Profiles[3].Loadout.Primary.Channel = 0; } break;
+                case 271: { t.Root.Profiles[3].Loadout.Primary.Homing = false; } break;
+                case 272: { t.Root.Profiles[3].Loadout.Primary.Effect.Type = EffectType.None; } break;
+                case 273: { t.Root.Profiles[3].Loadout.Primary.Effect.Buff.Multiplier = 1.0f; } break;
+                case 274: { t.Root.Profiles[3].Loadout.Primary.Effect.Debuff.Amount = 0; } break;
+                case 275: { t.Root.Profiles[3].Loadout.Backups[0].Damage = 21.0f; } break;
+                case 276: { t.Root.Profiles[3].Loadout.Backups[0].Speed = 500.0f; } break;
+                case 277: { t.Root.Profiles[3].Loadout.Backups[0].Penetration = 1; } break;
+                case 278: { t.Root.Profiles[3].Loadout.Backups[0].Channel = 0; } break;
+                case 279: { t.Root.Profiles[3].Loadout.Backups[0].Homing = false; } break;
+                case 280: { t.Root.Profiles[3].Loadout.Backups[0].Effect.Type = EffectType.None; } break;
+                case 281: { t.Root.Profiles[3].Loadout.Backups[0].Effect.Buff.Multiplier = 1.0f; } break;
+                case 282: { t.Root.Profiles[3].Loadout.Backups[0].Effect.Debuff.Amount = 0; } break;
+                case 283: { t.Root.Profiles[3].Loadout.Backups[1].Damage = 21.0f; } break;
+                case 284: { t.Root.Profiles[3].Loadout.Backups[1].Speed = 500.0f; } break;
+                case 285: { t.Root.Profiles[3].Loadout.Backups[1].Penetration = 1; } break;
+                case 286: { t.Root.Profiles[3].Loadout.Backups[1].Channel = 0; } break;
+                case 287: { t.Root.Profiles[3].Loadout.Backups[1].Homing = false; } break;
+                case 288: { t.Root.Profiles[3].Loadout.Backups[1].Effect.Type = EffectType.None; } break;
+                case 289: { t.Root.Profiles[3].Loadout.Backups[1].Effect.Buff.Multiplier = 1.0f; } break;
+                case 290: { t.Root.Profiles[3].Loadout.Backups[1].Effect.Debuff.Amount = 0; } break;
+                case 291: { t.Root.Profiles[3].Loadout.AttachmentsCount = 0; } break;
+                case 292: { t.Root.Profiles[3].Loadout.Attachments[0].Slot = 0; } break;
+                case 293: { t.Root.Profiles[3].Loadout.Attachments[0].Power = 1.0f; } break;
+                case 294: { t.Root.Profiles[3].Loadout.Attachments[1].Slot = 0; } break;
+                case 295: { t.Root.Profiles[3].Loadout.Attachments[1].Power = 1.0f; } break;
+                case 296: { t.Root.Profiles[3].Loadout.Attachments[2].Slot = 0; } break;
+                case 297: { t.Root.Profiles[3].Loadout.Attachments[2].Power = 1.0f; } break;
+                case 298: { t.Root.Profiles[3].Loadout.Attachments[3].Slot = 0; } break;
+                case 299: { t.Root.Profiles[3].Loadout.Attachments[3].Power = 1.0f; } break;
+                case 300: { t.Root.Profiles[3].Loadout.Attachments[4].Slot = 0; } break;
+                case 301: { t.Root.Profiles[3].Loadout.Attachments[4].Power = 1.0f; } break;
+                case 302: { t.Root.Profiles[3].Loadout.Attachments[5].Slot = 0; } break;
+                case 303: { t.Root.Profiles[3].Loadout.Attachments[5].Power = 1.0f; } break;
+                case 304: { t.Root.Profiles[3].Loadout.Attachments[6].Slot = 0; } break;
+                case 305: { t.Root.Profiles[3].Loadout.Attachments[6].Power = 1.0f; } break;
+                case 306: { t.Root.Profiles[3].Loadout.Attachments[7].Slot = 0; } break;
+                case 307: { t.Root.Profiles[3].Loadout.Attachments[7].Power = 1.0f; } break;
+                case 308: { t.Count = 1; } break;
+                default: break;
+            }
+        }
+
+        public static void ArchiveConfigFixedFillRun(ReadOnlySpan<TableFixedFill> fill, ArchiveConfig dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    ArchiveConfigFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string ArchiveConfigFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            ArchiveConfig dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { ArchiveConfigFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { ArchiveConfigFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { ArchiveConfigFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { ArchiveConfigFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            ArchiveConfigFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { ArchiveConfigFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        ArchiveConfigFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        ArchiveConfigFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        ArchiveConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        ArchiveConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            ArchiveConfigFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            ArchiveConfigFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        ArchiveConfigFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            ArchiveConfigFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            ArchiveConfigFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        ArchiveConfigFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        ArchiveConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -1278,9 +2229,11 @@ namespace Tabledemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new ArchiveConfig(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), ArchiveConfigFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), ArchiveConfigFixedSlots, values[k]); }
+                ArchiveConfigFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, ArchiveConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, ArchiveConfigFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = ArchiveConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -1319,7 +2272,7 @@ namespace Tabledemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, ArchiveConfigFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = ArchiveConfigFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }

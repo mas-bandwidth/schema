@@ -42,21 +42,18 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 		{"form_byte", "a form a reader does not know is a REFUSAL by name and never damage ... a reader handed a form-`2` wire where a file was expected refuses by name."},
 	}
 	for _, clause := range clauses {
-		clause := clause
 		t.Run(clause.name, func(t *testing.T) {
 			t.Parallel()
 			csHeldAssert(t, out, err, "clause/"+clause.name)
 		})
 	}
 	for _, conn := range csHeldConns {
-		conn := conn
 		t.Run("connection_"+conn.key, func(t *testing.T) {
 			t.Parallel()
 			csHeldAssert(t, out, err, "row/"+conn.key)
 		})
 	}
 	for _, conn := range csHeldRuntimeConns {
-		conn := conn
 		t.Run("connection_"+conn.key, func(t *testing.T) {
 			t.Parallel()
 			rowOut, rowErr := csHeldRuntimeAttempt(t, conn)
@@ -79,14 +76,12 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 		})
 	}
 	for _, msg := range csHeldMsgs {
-		msg := msg
 		t.Run("message_"+msg.name, func(t *testing.T) {
 			t.Parallel()
 			csHeldAssert(t, out, err, "row/"+msg.name)
 		})
 	}
 	for _, row := range csHeldNotRun {
-		row := row
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
 			t.Skip("not run: " + row.why)

@@ -25,10 +25,10 @@ var update = flag.Bool("update", false, "rewrite the Go-produced retained golden
 // Every rule this file pins is proved to BITE (docs/SPEC-TABLES.md §6.6, §8):
 // sabotaging retain_capture to return None reds
 // TestCardConstructsRetainUnknownFields ("the retained load's counters are
-// wrong: LOAD unknown=4 retained=0 retain_lost=4"), sabotaging the
+// wrong: LOAD unknown=5 retained=0 retain_lost=5"), sabotaging the
 // bytes.capacity() check reds TestRetentionCapacityIsALoss ("a buffer one byte
-// short kept or mis-counted records: LOAD unknown=4 retained=2
-// retain_lost=2"), and a driver whose save drops the retained tail diverges
+// short kept or mis-counted records: LOAD unknown=5 retained=2
+// retain_lost=3"), and a driver whose save drops the retained tail diverges
 // under cards-rust-retain-fuzz ("the leg saves 621 bytes, the oracle 633").
 
 // cardDescriptors pins docs/SPEC-TABLES.md §8.1, §8.3: the generated card
@@ -427,10 +427,15 @@ func TestCardConstructsRetainUnknownFields(t *testing.T) {
 		t.Fatalf("the older declaration's retained round trip did not run: %v\n%s", err, out)
 	}
 	text := string(out)
-	if !strings.Contains(text, "LOAD unknown=4 retained=2 retain_lost=2") {
+	// THE ORACLE'S COUNTERS (internal/tablewire DecodeRetain/EncodeRetain on
+	// this input): the three unknown fields, the unknown enum variant, and the
+	// *string blob RECORD the older root cannot place — no *string edge sits
+	// below it — which is skipped by its length, counted unknown once and, on a
+	// retaining load, lost (docs/SPEC-TABLES.md §3.1, §6.6)
+	if !strings.Contains(text, "LOAD unknown=5 retained=2 retain_lost=3") {
 		t.Errorf("the retained load's counters are wrong:\n%s", text)
 	}
-	if !strings.Contains(text, "SAVE retained=2 retain_lost=2") {
+	if !strings.Contains(text, "SAVE retained=2 retain_lost=3") {
 		t.Errorf("the retained save's counters are wrong:\n%s", text)
 	}
 
@@ -496,7 +501,7 @@ func TestRetentionCapacityIsALoss(t *testing.T) {
 		t.Fatalf("the retained round trip did not run: %v\n%s", err, out)
 	}
 	text := string(out)
-	if !strings.Contains(text, "retained=0") || !strings.Contains(text, "retain_lost=4") {
+	if !strings.Contains(text, "retained=0") || !strings.Contains(text, "retain_lost=5") {
 		t.Errorf("a buffer one byte short kept or mis-counted records:\n%s", text)
 	}
 
@@ -508,10 +513,10 @@ func TestRetentionCapacityIsALoss(t *testing.T) {
 		t.Fatalf("the retained round trip did not run: %v\n%s", err, out)
 	}
 	text = string(out)
-	if !strings.Contains(text, "LOAD unknown=4 retained=2 retain_lost=2") {
+	if !strings.Contains(text, "LOAD unknown=5 retained=2 retain_lost=3") {
 		t.Errorf("an id list one entry short changed the load counters:\n%s", text)
 	}
-	if !strings.Contains(text, "SAVE retained=2 retain_lost=4") {
+	if !strings.Contains(text, "SAVE retained=2 retain_lost=5") {
 		t.Errorf("the id list overflow was not reported as loss:\n%s", text)
 	}
 

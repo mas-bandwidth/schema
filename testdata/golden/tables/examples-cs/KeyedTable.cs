@@ -1252,6 +1252,249 @@ namespace Tabledemo
             new TableFixedSlot<TeamConfig>(setBytes: (t, b, l) => { if (t.Banner != null) b.Slice(0, Math.Min(b.Length, t.Banner.Length)).CopyTo(t.Banner); }, reset: (t) => { if (t.Banner != null) { Array.Clear(t.Banner, 0, t.Banner.Length); } }),
         };
 
+        private static void TeamConfigFixedSetRaw(TeamConfig t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.SpawnCount = unchecked((int)v); break;
+                case 1: t.BannerLength = (int)v; break;
+                default: break;
+            }
+        }
+
+        private static void TeamConfigFixedSetDouble(TeamConfig t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void TeamConfigFixedSetWide(TeamConfig t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void TeamConfigFixedSetBytes(TeamConfig t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                case 2: { if (t.Banner != null) b.Slice(0, Math.Min(b.Length, t.Banner.Length)).CopyTo(t.Banner); } break;
+                default: break;
+            }
+        }
+
+        private static void TeamConfigFixedSetChars(TeamConfig t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void TeamConfigFixedResetSlot(TeamConfig t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.SpawnCount = 4; } break;
+                case 1: { t.BannerLength = 0; } break;
+                case 2: { if (t.Banner != null) { Array.Clear(t.Banner, 0, t.Banner.Length); } } break;
+                default: break;
+            }
+        }
+
+        public static void TeamConfigFixedFillRun(ReadOnlySpan<TableFixedFill> fill, TeamConfig dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    TeamConfigFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string TeamConfigFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            TeamConfig dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { TeamConfigFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { TeamConfigFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { TeamConfigFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { TeamConfigFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            TeamConfigFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { TeamConfigFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        TeamConfigFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        TeamConfigFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        TeamConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        TeamConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            TeamConfigFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            TeamConfigFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        TeamConfigFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            TeamConfigFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            TeamConfigFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        TeamConfigFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        TeamConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
+
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
         // identity plan it is empty and the identity read writes no slot twice.
@@ -1458,9 +1701,11 @@ namespace Tabledemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new TeamConfig(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TeamConfigFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TeamConfigFixedSlots, values[k]); }
+                TeamConfigFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, TeamConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, TeamConfigFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = TeamConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -1499,7 +1744,7 @@ namespace Tabledemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, TeamConfigFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = TeamConfigFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -1528,6 +1773,248 @@ namespace Tabledemo
             new TableFixedSlot<GunnerConfig>(setRaw: (t, v) => t.Reaction = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Reaction = (float)d, reset: (t) => { t.Reaction = 0.2f; }),
             new TableFixedSlot<GunnerConfig>(setRaw: (t, v) => t.Tracking = v != 0, reset: (t) => { t.Tracking = false; }),
         };
+
+        private static void GunnerConfigFixedSetRaw(GunnerConfig t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Reaction = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 1: t.Tracking = v != 0; break;
+                default: break;
+            }
+        }
+
+        private static void GunnerConfigFixedSetDouble(GunnerConfig t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Reaction = (float)d; break;
+                default: break;
+            }
+        }
+
+        private static void GunnerConfigFixedSetWide(GunnerConfig t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void GunnerConfigFixedSetBytes(GunnerConfig t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void GunnerConfigFixedSetChars(GunnerConfig t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void GunnerConfigFixedResetSlot(GunnerConfig t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Reaction = 0.2f; } break;
+                case 1: { t.Tracking = false; } break;
+                default: break;
+            }
+        }
+
+        public static void GunnerConfigFixedFillRun(ReadOnlySpan<TableFixedFill> fill, GunnerConfig dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    GunnerConfigFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string GunnerConfigFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            GunnerConfig dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { GunnerConfigFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { GunnerConfigFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { GunnerConfigFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { GunnerConfigFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            GunnerConfigFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { GunnerConfigFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        GunnerConfigFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        GunnerConfigFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        GunnerConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        GunnerConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            GunnerConfigFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            GunnerConfigFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        GunnerConfigFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            GunnerConfigFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            GunnerConfigFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        GunnerConfigFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        GunnerConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -1735,9 +2222,11 @@ namespace Tabledemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new GunnerConfig(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), GunnerConfigFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), GunnerConfigFixedSlots, values[k]); }
+                GunnerConfigFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, GunnerConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, GunnerConfigFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = GunnerConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -1775,7 +2264,7 @@ namespace Tabledemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, GunnerConfigFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = GunnerConfigFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -1815,6 +2304,256 @@ namespace Tabledemo
             new TableFixedSlot<TurretConfig>(setRaw: (t, v) => t.Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Gunner.Reaction = (float)d, reset: (t) => { t.Gunner.Reaction = 0.2f; }),
             new TableFixedSlot<TurretConfig>(setRaw: (t, v) => t.Gunner.Tracking = v != 0, reset: (t) => { t.Gunner.Tracking = false; }),
         };
+
+        private static void TurretConfigFixedSetRaw(TurretConfig t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 1: t.Cooldown = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 2: t.GunnerPresent = v != 0; break;
+                case 3: t.Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 4: t.Gunner.Tracking = v != 0; break;
+                default: break;
+            }
+        }
+
+        private static void TurretConfigFixedSetDouble(TurretConfig t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Damage = (float)d; break;
+                case 1: t.Cooldown = (float)d; break;
+                case 3: t.Gunner.Reaction = (float)d; break;
+                default: break;
+            }
+        }
+
+        private static void TurretConfigFixedSetWide(TurretConfig t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void TurretConfigFixedSetBytes(TurretConfig t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void TurretConfigFixedSetChars(TurretConfig t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void TurretConfigFixedResetSlot(TurretConfig t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Damage = 10.0f; } break;
+                case 1: { t.Cooldown = 0.5f; } break;
+                case 2: { t.GunnerPresent = false; } break;
+                case 3: { t.Gunner.Reaction = 0.2f; } break;
+                case 4: { t.Gunner.Tracking = false; } break;
+                default: break;
+            }
+        }
+
+        public static void TurretConfigFixedFillRun(ReadOnlySpan<TableFixedFill> fill, TurretConfig dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    TurretConfigFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string TurretConfigFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            TurretConfig dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { TurretConfigFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { TurretConfigFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { TurretConfigFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { TurretConfigFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            TurretConfigFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { TurretConfigFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        TurretConfigFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        TurretConfigFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        TurretConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        TurretConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            TurretConfigFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            TurretConfigFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        TurretConfigFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            TurretConfigFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            TurretConfigFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        TurretConfigFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        TurretConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -2029,9 +2768,11 @@ namespace Tabledemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new TurretConfig(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TurretConfigFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TurretConfigFixedSlots, values[k]); }
+                TurretConfigFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, TurretConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, TurretConfigFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = TurretConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -2069,7 +2810,7 @@ namespace Tabledemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, TurretConfigFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = TurretConfigFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -2112,11 +2853,11 @@ namespace Tabledemo
             new TableFixedDst(0, 0, 0, 0, 0), // Mine
             new TableFixedDst(0, 0, 0, 0, 0), // element
             new TableFixedDst(0, 0, 0, 0, 0), // damage
-            new TableFixedDst(0, 0, 0, 0, 0), // cooldown
-            new TableFixedDst(0, 0, 0, 0, 0), // gunner ?
-            new TableFixedDst(0, 0, 0, 0, 0), // gunner
+            new TableFixedDst(1, 0, 0, 0, 0), // cooldown
+            new TableFixedDst(0, 0, 2, 0, 0), // gunner ?
+            new TableFixedDst(3, 0, 0, 0, 0), // gunner
             new TableFixedDst(0, 0, 0, 0, 0), // reaction
-            new TableFixedDst(0, 0, 0, 0, 0), // tracking
+            new TableFixedDst(1, 0, 0, 0, 0), // tracking
         };
 
         public static readonly TableFixedSlot<HullConfig>[] HullConfigFixedSlots = new TableFixedSlot<HullConfig>[] {
@@ -2138,6 +2879,288 @@ namespace Tabledemo
             new TableFixedSlot<HullConfig>(setRaw: (t, v) => t.Turrets.Slots[2].Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Turrets.Slots[2].Gunner.Reaction = (float)d, reset: (t) => { t.Turrets.Slots[2].Gunner.Reaction = 0.2f; }),
             new TableFixedSlot<HullConfig>(setRaw: (t, v) => t.Turrets.Slots[2].Gunner.Tracking = v != 0, reset: (t) => { t.Turrets.Slots[2].Gunner.Tracking = false; }),
         };
+
+        private static void HullConfigFixedSetRaw(HullConfig t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Health = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 1: t.Mass = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 2: t.Turrets.Slots[0].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 3: t.Turrets.Slots[0].Cooldown = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 4: t.Turrets.Slots[0].GunnerPresent = v != 0; break;
+                case 5: t.Turrets.Slots[0].Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 6: t.Turrets.Slots[0].Gunner.Tracking = v != 0; break;
+                case 7: t.Turrets.Slots[1].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 8: t.Turrets.Slots[1].Cooldown = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 9: t.Turrets.Slots[1].GunnerPresent = v != 0; break;
+                case 10: t.Turrets.Slots[1].Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 11: t.Turrets.Slots[1].Gunner.Tracking = v != 0; break;
+                case 12: t.Turrets.Slots[2].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 13: t.Turrets.Slots[2].Cooldown = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 14: t.Turrets.Slots[2].GunnerPresent = v != 0; break;
+                case 15: t.Turrets.Slots[2].Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 16: t.Turrets.Slots[2].Gunner.Tracking = v != 0; break;
+                default: break;
+            }
+        }
+
+        private static void HullConfigFixedSetDouble(HullConfig t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Health = (float)d; break;
+                case 1: t.Mass = (float)d; break;
+                case 2: t.Turrets.Slots[0].Damage = (float)d; break;
+                case 3: t.Turrets.Slots[0].Cooldown = (float)d; break;
+                case 5: t.Turrets.Slots[0].Gunner.Reaction = (float)d; break;
+                case 7: t.Turrets.Slots[1].Damage = (float)d; break;
+                case 8: t.Turrets.Slots[1].Cooldown = (float)d; break;
+                case 10: t.Turrets.Slots[1].Gunner.Reaction = (float)d; break;
+                case 12: t.Turrets.Slots[2].Damage = (float)d; break;
+                case 13: t.Turrets.Slots[2].Cooldown = (float)d; break;
+                case 15: t.Turrets.Slots[2].Gunner.Reaction = (float)d; break;
+                default: break;
+            }
+        }
+
+        private static void HullConfigFixedSetWide(HullConfig t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void HullConfigFixedSetBytes(HullConfig t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void HullConfigFixedSetChars(HullConfig t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void HullConfigFixedResetSlot(HullConfig t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Health = 100.0f; } break;
+                case 1: { t.Mass = 1.0f; } break;
+                case 2: { t.Turrets.Slots[0].Damage = 10.0f; } break;
+                case 3: { t.Turrets.Slots[0].Cooldown = 0.5f; } break;
+                case 4: { t.Turrets.Slots[0].GunnerPresent = false; } break;
+                case 5: { t.Turrets.Slots[0].Gunner.Reaction = 0.2f; } break;
+                case 6: { t.Turrets.Slots[0].Gunner.Tracking = false; } break;
+                case 7: { t.Turrets.Slots[1].Damage = 10.0f; } break;
+                case 8: { t.Turrets.Slots[1].Cooldown = 0.5f; } break;
+                case 9: { t.Turrets.Slots[1].GunnerPresent = false; } break;
+                case 10: { t.Turrets.Slots[1].Gunner.Reaction = 0.2f; } break;
+                case 11: { t.Turrets.Slots[1].Gunner.Tracking = false; } break;
+                case 12: { t.Turrets.Slots[2].Damage = 10.0f; } break;
+                case 13: { t.Turrets.Slots[2].Cooldown = 0.5f; } break;
+                case 14: { t.Turrets.Slots[2].GunnerPresent = false; } break;
+                case 15: { t.Turrets.Slots[2].Gunner.Reaction = 0.2f; } break;
+                case 16: { t.Turrets.Slots[2].Gunner.Tracking = false; } break;
+                default: break;
+            }
+        }
+
+        public static void HullConfigFixedFillRun(ReadOnlySpan<TableFixedFill> fill, HullConfig dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    HullConfigFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string HullConfigFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            HullConfig dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { HullConfigFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { HullConfigFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { HullConfigFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { HullConfigFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            HullConfigFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { HullConfigFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        HullConfigFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        HullConfigFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        HullConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        HullConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            HullConfigFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            HullConfigFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        HullConfigFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            HullConfigFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            HullConfigFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        HullConfigFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        HullConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -2373,9 +3396,11 @@ namespace Tabledemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new HullConfig(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), HullConfigFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), HullConfigFixedSlots, values[k]); }
+                HullConfigFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, HullConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, HullConfigFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = HullConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -2413,7 +3438,7 @@ namespace Tabledemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, HullConfigFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = HullConfigFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -2488,7 +3513,7 @@ namespace Tabledemo
             new TableFixedDst(0, 0, 0, 0, 0), // Green
             new TableFixedDst(0, 0, 0, 0, 0), // element
             new TableFixedDst(0, 0, 0, 0, 0), // spawn_count
-            new TableFixedDst(0, 0, 0, 0, 0), // banner
+            new TableFixedDst(1, 0, 2, 0, 1), // banner
             new TableFixedDst(9, 17, 0, 0, 0), // hulls
             new TableFixedDst(0, 0, 0, 0, 0), // Hull
             new TableFixedDst(0, 0, 0, 0, 0), // Interceptor
@@ -2496,19 +3521,19 @@ namespace Tabledemo
             new TableFixedDst(0, 0, 0, 0, 0), // Freighter
             new TableFixedDst(0, 0, 0, 0, 0), // element
             new TableFixedDst(0, 0, 0, 0, 0), // health
-            new TableFixedDst(0, 0, 0, 0, 0), // mass
-            new TableFixedDst(0, 0, 0, 0, 0), // turrets
+            new TableFixedDst(1, 0, 0, 0, 0), // mass
+            new TableFixedDst(2, 5, 0, 0, 0), // turrets
             new TableFixedDst(0, 0, 0, 0, 0), // Weapon
             new TableFixedDst(0, 0, 0, 0, 0), // Cannon
             new TableFixedDst(0, 0, 0, 0, 0), // Missile
             new TableFixedDst(0, 0, 0, 0, 0), // Mine
             new TableFixedDst(0, 0, 0, 0, 0), // element
             new TableFixedDst(0, 0, 0, 0, 0), // damage
-            new TableFixedDst(0, 0, 0, 0, 0), // cooldown
-            new TableFixedDst(0, 0, 0, 0, 0), // gunner ?
-            new TableFixedDst(0, 0, 0, 0, 0), // gunner
+            new TableFixedDst(1, 0, 0, 0, 0), // cooldown
+            new TableFixedDst(0, 0, 2, 0, 0), // gunner ?
+            new TableFixedDst(3, 0, 0, 0, 0), // gunner
             new TableFixedDst(0, 0, 0, 0, 0), // reaction
-            new TableFixedDst(0, 0, 0, 0, 0), // tracking
+            new TableFixedDst(1, 0, 0, 0, 0), // tracking
             new TableFixedDst(60, 0, 0, 0, 0), // scores
             new TableFixedDst(0, 1, 0, 0, 0), // per_team
             new TableFixedDst(0, 0, 0, 0, 0), // Team
@@ -2583,6 +3608,402 @@ namespace Tabledemo
             new TableFixedSlot<KeyedConfig>(setRaw: (t, v) => t.Scores.PerTeam[1] = unchecked((int)v), reset: (t) => { t.Scores.PerTeam[1] = 0; }),
             new TableFixedSlot<KeyedConfig>(setRaw: (t, v) => t.Scores.PerTeam[2] = unchecked((int)v), reset: (t) => { t.Scores.PerTeam[2] = 0; }),
         };
+
+        private static void KeyedConfigFixedSetRaw(KeyedConfig t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Teams.Slots[0].SpawnCount = unchecked((int)v); break;
+                case 1: t.Teams.Slots[0].BannerLength = (int)v; break;
+                case 3: t.Teams.Slots[1].SpawnCount = unchecked((int)v); break;
+                case 4: t.Teams.Slots[1].BannerLength = (int)v; break;
+                case 6: t.Teams.Slots[2].SpawnCount = unchecked((int)v); break;
+                case 7: t.Teams.Slots[2].BannerLength = (int)v; break;
+                case 9: t.Hulls.Slots[0].Health = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 10: t.Hulls.Slots[0].Mass = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 11: t.Hulls.Slots[0].Turrets.Slots[0].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 12: t.Hulls.Slots[0].Turrets.Slots[0].Cooldown = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 13: t.Hulls.Slots[0].Turrets.Slots[0].GunnerPresent = v != 0; break;
+                case 14: t.Hulls.Slots[0].Turrets.Slots[0].Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 15: t.Hulls.Slots[0].Turrets.Slots[0].Gunner.Tracking = v != 0; break;
+                case 16: t.Hulls.Slots[0].Turrets.Slots[1].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 17: t.Hulls.Slots[0].Turrets.Slots[1].Cooldown = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 18: t.Hulls.Slots[0].Turrets.Slots[1].GunnerPresent = v != 0; break;
+                case 19: t.Hulls.Slots[0].Turrets.Slots[1].Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 20: t.Hulls.Slots[0].Turrets.Slots[1].Gunner.Tracking = v != 0; break;
+                case 21: t.Hulls.Slots[0].Turrets.Slots[2].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 22: t.Hulls.Slots[0].Turrets.Slots[2].Cooldown = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 23: t.Hulls.Slots[0].Turrets.Slots[2].GunnerPresent = v != 0; break;
+                case 24: t.Hulls.Slots[0].Turrets.Slots[2].Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 25: t.Hulls.Slots[0].Turrets.Slots[2].Gunner.Tracking = v != 0; break;
+                case 26: t.Hulls.Slots[1].Health = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 27: t.Hulls.Slots[1].Mass = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 28: t.Hulls.Slots[1].Turrets.Slots[0].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 29: t.Hulls.Slots[1].Turrets.Slots[0].Cooldown = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 30: t.Hulls.Slots[1].Turrets.Slots[0].GunnerPresent = v != 0; break;
+                case 31: t.Hulls.Slots[1].Turrets.Slots[0].Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 32: t.Hulls.Slots[1].Turrets.Slots[0].Gunner.Tracking = v != 0; break;
+                case 33: t.Hulls.Slots[1].Turrets.Slots[1].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 34: t.Hulls.Slots[1].Turrets.Slots[1].Cooldown = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 35: t.Hulls.Slots[1].Turrets.Slots[1].GunnerPresent = v != 0; break;
+                case 36: t.Hulls.Slots[1].Turrets.Slots[1].Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 37: t.Hulls.Slots[1].Turrets.Slots[1].Gunner.Tracking = v != 0; break;
+                case 38: t.Hulls.Slots[1].Turrets.Slots[2].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 39: t.Hulls.Slots[1].Turrets.Slots[2].Cooldown = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 40: t.Hulls.Slots[1].Turrets.Slots[2].GunnerPresent = v != 0; break;
+                case 41: t.Hulls.Slots[1].Turrets.Slots[2].Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 42: t.Hulls.Slots[1].Turrets.Slots[2].Gunner.Tracking = v != 0; break;
+                case 43: t.Hulls.Slots[2].Health = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 44: t.Hulls.Slots[2].Mass = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 45: t.Hulls.Slots[2].Turrets.Slots[0].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 46: t.Hulls.Slots[2].Turrets.Slots[0].Cooldown = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 47: t.Hulls.Slots[2].Turrets.Slots[0].GunnerPresent = v != 0; break;
+                case 48: t.Hulls.Slots[2].Turrets.Slots[0].Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 49: t.Hulls.Slots[2].Turrets.Slots[0].Gunner.Tracking = v != 0; break;
+                case 50: t.Hulls.Slots[2].Turrets.Slots[1].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 51: t.Hulls.Slots[2].Turrets.Slots[1].Cooldown = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 52: t.Hulls.Slots[2].Turrets.Slots[1].GunnerPresent = v != 0; break;
+                case 53: t.Hulls.Slots[2].Turrets.Slots[1].Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 54: t.Hulls.Slots[2].Turrets.Slots[1].Gunner.Tracking = v != 0; break;
+                case 55: t.Hulls.Slots[2].Turrets.Slots[2].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 56: t.Hulls.Slots[2].Turrets.Slots[2].Cooldown = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 57: t.Hulls.Slots[2].Turrets.Slots[2].GunnerPresent = v != 0; break;
+                case 58: t.Hulls.Slots[2].Turrets.Slots[2].Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 59: t.Hulls.Slots[2].Turrets.Slots[2].Gunner.Tracking = v != 0; break;
+                case 60: t.Scores.PerTeam[0] = unchecked((int)v); break;
+                case 61: t.Scores.PerTeam[1] = unchecked((int)v); break;
+                case 62: t.Scores.PerTeam[2] = unchecked((int)v); break;
+                default: break;
+            }
+        }
+
+        private static void KeyedConfigFixedSetDouble(KeyedConfig t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 9: t.Hulls.Slots[0].Health = (float)d; break;
+                case 10: t.Hulls.Slots[0].Mass = (float)d; break;
+                case 11: t.Hulls.Slots[0].Turrets.Slots[0].Damage = (float)d; break;
+                case 12: t.Hulls.Slots[0].Turrets.Slots[0].Cooldown = (float)d; break;
+                case 14: t.Hulls.Slots[0].Turrets.Slots[0].Gunner.Reaction = (float)d; break;
+                case 16: t.Hulls.Slots[0].Turrets.Slots[1].Damage = (float)d; break;
+                case 17: t.Hulls.Slots[0].Turrets.Slots[1].Cooldown = (float)d; break;
+                case 19: t.Hulls.Slots[0].Turrets.Slots[1].Gunner.Reaction = (float)d; break;
+                case 21: t.Hulls.Slots[0].Turrets.Slots[2].Damage = (float)d; break;
+                case 22: t.Hulls.Slots[0].Turrets.Slots[2].Cooldown = (float)d; break;
+                case 24: t.Hulls.Slots[0].Turrets.Slots[2].Gunner.Reaction = (float)d; break;
+                case 26: t.Hulls.Slots[1].Health = (float)d; break;
+                case 27: t.Hulls.Slots[1].Mass = (float)d; break;
+                case 28: t.Hulls.Slots[1].Turrets.Slots[0].Damage = (float)d; break;
+                case 29: t.Hulls.Slots[1].Turrets.Slots[0].Cooldown = (float)d; break;
+                case 31: t.Hulls.Slots[1].Turrets.Slots[0].Gunner.Reaction = (float)d; break;
+                case 33: t.Hulls.Slots[1].Turrets.Slots[1].Damage = (float)d; break;
+                case 34: t.Hulls.Slots[1].Turrets.Slots[1].Cooldown = (float)d; break;
+                case 36: t.Hulls.Slots[1].Turrets.Slots[1].Gunner.Reaction = (float)d; break;
+                case 38: t.Hulls.Slots[1].Turrets.Slots[2].Damage = (float)d; break;
+                case 39: t.Hulls.Slots[1].Turrets.Slots[2].Cooldown = (float)d; break;
+                case 41: t.Hulls.Slots[1].Turrets.Slots[2].Gunner.Reaction = (float)d; break;
+                case 43: t.Hulls.Slots[2].Health = (float)d; break;
+                case 44: t.Hulls.Slots[2].Mass = (float)d; break;
+                case 45: t.Hulls.Slots[2].Turrets.Slots[0].Damage = (float)d; break;
+                case 46: t.Hulls.Slots[2].Turrets.Slots[0].Cooldown = (float)d; break;
+                case 48: t.Hulls.Slots[2].Turrets.Slots[0].Gunner.Reaction = (float)d; break;
+                case 50: t.Hulls.Slots[2].Turrets.Slots[1].Damage = (float)d; break;
+                case 51: t.Hulls.Slots[2].Turrets.Slots[1].Cooldown = (float)d; break;
+                case 53: t.Hulls.Slots[2].Turrets.Slots[1].Gunner.Reaction = (float)d; break;
+                case 55: t.Hulls.Slots[2].Turrets.Slots[2].Damage = (float)d; break;
+                case 56: t.Hulls.Slots[2].Turrets.Slots[2].Cooldown = (float)d; break;
+                case 58: t.Hulls.Slots[2].Turrets.Slots[2].Gunner.Reaction = (float)d; break;
+                default: break;
+            }
+        }
+
+        private static void KeyedConfigFixedSetWide(KeyedConfig t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void KeyedConfigFixedSetBytes(KeyedConfig t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                case 2: { if (t.Teams.Slots[0].Banner != null) b.Slice(0, Math.Min(b.Length, t.Teams.Slots[0].Banner.Length)).CopyTo(t.Teams.Slots[0].Banner); } break;
+                case 5: { if (t.Teams.Slots[1].Banner != null) b.Slice(0, Math.Min(b.Length, t.Teams.Slots[1].Banner.Length)).CopyTo(t.Teams.Slots[1].Banner); } break;
+                case 8: { if (t.Teams.Slots[2].Banner != null) b.Slice(0, Math.Min(b.Length, t.Teams.Slots[2].Banner.Length)).CopyTo(t.Teams.Slots[2].Banner); } break;
+                default: break;
+            }
+        }
+
+        private static void KeyedConfigFixedSetChars(KeyedConfig t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void KeyedConfigFixedResetSlot(KeyedConfig t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Teams.Slots[0].SpawnCount = 4; } break;
+                case 1: { t.Teams.Slots[0].BannerLength = 0; } break;
+                case 2: { if (t.Teams.Slots[0].Banner != null) { Array.Clear(t.Teams.Slots[0].Banner, 0, t.Teams.Slots[0].Banner.Length); } } break;
+                case 3: { t.Teams.Slots[1].SpawnCount = 4; } break;
+                case 4: { t.Teams.Slots[1].BannerLength = 0; } break;
+                case 5: { if (t.Teams.Slots[1].Banner != null) { Array.Clear(t.Teams.Slots[1].Banner, 0, t.Teams.Slots[1].Banner.Length); } } break;
+                case 6: { t.Teams.Slots[2].SpawnCount = 4; } break;
+                case 7: { t.Teams.Slots[2].BannerLength = 0; } break;
+                case 8: { if (t.Teams.Slots[2].Banner != null) { Array.Clear(t.Teams.Slots[2].Banner, 0, t.Teams.Slots[2].Banner.Length); } } break;
+                case 9: { t.Hulls.Slots[0].Health = 100.0f; } break;
+                case 10: { t.Hulls.Slots[0].Mass = 1.0f; } break;
+                case 11: { t.Hulls.Slots[0].Turrets.Slots[0].Damage = 10.0f; } break;
+                case 12: { t.Hulls.Slots[0].Turrets.Slots[0].Cooldown = 0.5f; } break;
+                case 13: { t.Hulls.Slots[0].Turrets.Slots[0].GunnerPresent = false; } break;
+                case 14: { t.Hulls.Slots[0].Turrets.Slots[0].Gunner.Reaction = 0.2f; } break;
+                case 15: { t.Hulls.Slots[0].Turrets.Slots[0].Gunner.Tracking = false; } break;
+                case 16: { t.Hulls.Slots[0].Turrets.Slots[1].Damage = 10.0f; } break;
+                case 17: { t.Hulls.Slots[0].Turrets.Slots[1].Cooldown = 0.5f; } break;
+                case 18: { t.Hulls.Slots[0].Turrets.Slots[1].GunnerPresent = false; } break;
+                case 19: { t.Hulls.Slots[0].Turrets.Slots[1].Gunner.Reaction = 0.2f; } break;
+                case 20: { t.Hulls.Slots[0].Turrets.Slots[1].Gunner.Tracking = false; } break;
+                case 21: { t.Hulls.Slots[0].Turrets.Slots[2].Damage = 10.0f; } break;
+                case 22: { t.Hulls.Slots[0].Turrets.Slots[2].Cooldown = 0.5f; } break;
+                case 23: { t.Hulls.Slots[0].Turrets.Slots[2].GunnerPresent = false; } break;
+                case 24: { t.Hulls.Slots[0].Turrets.Slots[2].Gunner.Reaction = 0.2f; } break;
+                case 25: { t.Hulls.Slots[0].Turrets.Slots[2].Gunner.Tracking = false; } break;
+                case 26: { t.Hulls.Slots[1].Health = 100.0f; } break;
+                case 27: { t.Hulls.Slots[1].Mass = 1.0f; } break;
+                case 28: { t.Hulls.Slots[1].Turrets.Slots[0].Damage = 10.0f; } break;
+                case 29: { t.Hulls.Slots[1].Turrets.Slots[0].Cooldown = 0.5f; } break;
+                case 30: { t.Hulls.Slots[1].Turrets.Slots[0].GunnerPresent = false; } break;
+                case 31: { t.Hulls.Slots[1].Turrets.Slots[0].Gunner.Reaction = 0.2f; } break;
+                case 32: { t.Hulls.Slots[1].Turrets.Slots[0].Gunner.Tracking = false; } break;
+                case 33: { t.Hulls.Slots[1].Turrets.Slots[1].Damage = 10.0f; } break;
+                case 34: { t.Hulls.Slots[1].Turrets.Slots[1].Cooldown = 0.5f; } break;
+                case 35: { t.Hulls.Slots[1].Turrets.Slots[1].GunnerPresent = false; } break;
+                case 36: { t.Hulls.Slots[1].Turrets.Slots[1].Gunner.Reaction = 0.2f; } break;
+                case 37: { t.Hulls.Slots[1].Turrets.Slots[1].Gunner.Tracking = false; } break;
+                case 38: { t.Hulls.Slots[1].Turrets.Slots[2].Damage = 10.0f; } break;
+                case 39: { t.Hulls.Slots[1].Turrets.Slots[2].Cooldown = 0.5f; } break;
+                case 40: { t.Hulls.Slots[1].Turrets.Slots[2].GunnerPresent = false; } break;
+                case 41: { t.Hulls.Slots[1].Turrets.Slots[2].Gunner.Reaction = 0.2f; } break;
+                case 42: { t.Hulls.Slots[1].Turrets.Slots[2].Gunner.Tracking = false; } break;
+                case 43: { t.Hulls.Slots[2].Health = 100.0f; } break;
+                case 44: { t.Hulls.Slots[2].Mass = 1.0f; } break;
+                case 45: { t.Hulls.Slots[2].Turrets.Slots[0].Damage = 10.0f; } break;
+                case 46: { t.Hulls.Slots[2].Turrets.Slots[0].Cooldown = 0.5f; } break;
+                case 47: { t.Hulls.Slots[2].Turrets.Slots[0].GunnerPresent = false; } break;
+                case 48: { t.Hulls.Slots[2].Turrets.Slots[0].Gunner.Reaction = 0.2f; } break;
+                case 49: { t.Hulls.Slots[2].Turrets.Slots[0].Gunner.Tracking = false; } break;
+                case 50: { t.Hulls.Slots[2].Turrets.Slots[1].Damage = 10.0f; } break;
+                case 51: { t.Hulls.Slots[2].Turrets.Slots[1].Cooldown = 0.5f; } break;
+                case 52: { t.Hulls.Slots[2].Turrets.Slots[1].GunnerPresent = false; } break;
+                case 53: { t.Hulls.Slots[2].Turrets.Slots[1].Gunner.Reaction = 0.2f; } break;
+                case 54: { t.Hulls.Slots[2].Turrets.Slots[1].Gunner.Tracking = false; } break;
+                case 55: { t.Hulls.Slots[2].Turrets.Slots[2].Damage = 10.0f; } break;
+                case 56: { t.Hulls.Slots[2].Turrets.Slots[2].Cooldown = 0.5f; } break;
+                case 57: { t.Hulls.Slots[2].Turrets.Slots[2].GunnerPresent = false; } break;
+                case 58: { t.Hulls.Slots[2].Turrets.Slots[2].Gunner.Reaction = 0.2f; } break;
+                case 59: { t.Hulls.Slots[2].Turrets.Slots[2].Gunner.Tracking = false; } break;
+                case 60: { t.Scores.PerTeam[0] = 0; } break;
+                case 61: { t.Scores.PerTeam[1] = 0; } break;
+                case 62: { t.Scores.PerTeam[2] = 0; } break;
+                default: break;
+            }
+        }
+
+        public static void KeyedConfigFixedFillRun(ReadOnlySpan<TableFixedFill> fill, KeyedConfig dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    KeyedConfigFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string KeyedConfigFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            KeyedConfig dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { KeyedConfigFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { KeyedConfigFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { KeyedConfigFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { KeyedConfigFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            KeyedConfigFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { KeyedConfigFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        KeyedConfigFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        KeyedConfigFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        KeyedConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        KeyedConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            KeyedConfigFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            KeyedConfigFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        KeyedConfigFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            KeyedConfigFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            KeyedConfigFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        KeyedConfigFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        KeyedConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -2883,9 +4304,11 @@ namespace Tabledemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new KeyedConfig(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), KeyedConfigFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), KeyedConfigFixedSlots, values[k]); }
+                KeyedConfigFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, KeyedConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, KeyedConfigFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = KeyedConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -2924,7 +4347,7 @@ namespace Tabledemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, KeyedConfigFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = KeyedConfigFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }

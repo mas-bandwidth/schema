@@ -75,8 +75,8 @@ namespace Wide
         // which is what a `ref` cannot carry across a field access.
         public byte* Region { get { return region; } }
         public long RegionLength { get { return regionLength; } }
-        public CaptionRow* RootPointer { get { return (CaptionRow*) region; } }
-        public ref readonly CaptionRow Root { get { return ref *(CaptionRow*) region; } }
+        public CaptionRow* RootPointer { get { return (CaptionRow*)region; } }
+        public ref readonly CaptionRow Root { get { return ref *(CaptionRow*)region; } }
 
         // Open checks the header and POINTS, and this is the WHOLE check
         // (docs/SPEC-TABLES.md §7): the magic read bytewise, the byte order it
@@ -103,8 +103,8 @@ namespace Wide
             TableCookLayout.Verify();
             if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }
             if (length < 64) { reason = TableRefuseReason.truncated; return false; }
-            byte* at = (byte*) pointer;
-            ulong bytes = (ulong) length;
+            byte* at = (byte*)pointer;
+            ulong bytes = (ulong)length;
 
             // THE MAGIC, read BYTEWISE before anything else: it is what establishes
             // the byte order every other header word is written in. A cook of the
@@ -138,7 +138,7 @@ namespace Wide
             // THE DATA OFFSET IS DERIVED, never a header field: a fact a reader
             // computes is a fact two writers cannot disagree about, and it is 64 for
             // every unit this language can declare.
-            ulong dataOffset = ((ulong) 64 + alignment - 1) & ~(alignment - 1);
+            ulong dataOffset = ((ulong)64 + alignment - 1) & ~(alignment - 1);
 
             // THE TWO PART LENGTHS against the length the caller passed. The whole
             // file is dataOffset + data + attribution, and a size that is not exactly
@@ -163,9 +163,9 @@ namespace Wide
             // aligned; one that is not is a caller's buffer this form cannot be read
             // out of. The alignment divides 64, so the derived data offset carries
             // the property from the file's base to the region's.
-            if ((((ulong) at) % alignment) != 0) { reason = TableRefuseReason.unaligned_base; return false; }
+            if ((((ulong)at) % alignment) != 0) { reason = TableRefuseReason.unaligned_base; return false; }
 
-            cook = new CaptionCook(at + dataOffset, (long) dataLength);
+            cook = new CaptionCook(at + dataOffset, (long)dataLength);
             return true;
         }
 
@@ -183,7 +183,7 @@ namespace Wide
         {
             fixed (byte* p = bytes)
             {
-                return Open(out cook, (IntPtr) p, bytes.Length);
+                return Open(out cook, (IntPtr)p, bytes.Length);
             }
         }
 
@@ -200,7 +200,7 @@ namespace Wide
         {
             long delta = *slot;
             if (delta == 0) { return null; }
-            return (CaptionRow*) ((byte*) slot + delta);
+            return (CaptionRow*)((byte*)slot + delta);
         }
 
         // The pieces a consumer reads THROUGH rather than at: each is a SPAN over
@@ -220,7 +220,10 @@ namespace Wide
         // field column, so a walker reaches the whole graph from the root.
         private static readonly TableCookInfo cookRecordCaption = new TableCookInfo
         {
-            Name = "Caption", Size = 108, Align = 4, NumFields = 4,
+            Name = "Caption",
+            Size = 108,
+            Align = 4,
+            NumFields = 4,
             Fields = new TableCookFieldInfo[]
             {
                 new TableCookFieldInfo { Name = "title", Offset = 0, Size = 20, ElemSize = 20, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = null },
@@ -232,7 +235,10 @@ namespace Wide
 
         private static readonly TableCookInfo cookRecordLine = new TableCookInfo
         {
-            Name = "Line", Size = 16, Align = 4, NumFields = 1,
+            Name = "Line",
+            Size = 16,
+            Align = 4,
+            NumFields = 1,
             Fields = new TableCookFieldInfo[]
             {
                 new TableCookFieldInfo { Name = "text", Offset = 0, Size = 16, ElemSize = 16, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = null },
@@ -280,8 +286,8 @@ namespace Wide
         // which is what a `ref` cannot carry across a field access.
         public byte* Region { get { return region; } }
         public long RegionLength { get { return regionLength; } }
-        public StampRow* RootPointer { get { return (StampRow*) region; } }
-        public ref readonly StampRow Root { get { return ref *(StampRow*) region; } }
+        public StampRow* RootPointer { get { return (StampRow*)region; } }
+        public ref readonly StampRow Root { get { return ref *(StampRow*)region; } }
 
         // Open checks the header and POINTS, and this is the WHOLE check
         // (docs/SPEC-TABLES.md §7): the magic read bytewise, the byte order it
@@ -308,8 +314,8 @@ namespace Wide
             TableCookLayout.Verify();
             if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }
             if (length < 64) { reason = TableRefuseReason.truncated; return false; }
-            byte* at = (byte*) pointer;
-            ulong bytes = (ulong) length;
+            byte* at = (byte*)pointer;
+            ulong bytes = (ulong)length;
 
             // THE MAGIC, read BYTEWISE before anything else: it is what establishes
             // the byte order every other header word is written in. A cook of the
@@ -343,7 +349,7 @@ namespace Wide
             // THE DATA OFFSET IS DERIVED, never a header field: a fact a reader
             // computes is a fact two writers cannot disagree about, and it is 64 for
             // every unit this language can declare.
-            ulong dataOffset = ((ulong) 64 + alignment - 1) & ~(alignment - 1);
+            ulong dataOffset = ((ulong)64 + alignment - 1) & ~(alignment - 1);
 
             // THE TWO PART LENGTHS against the length the caller passed. The whole
             // file is dataOffset + data + attribution, and a size that is not exactly
@@ -368,9 +374,9 @@ namespace Wide
             // aligned; one that is not is a caller's buffer this form cannot be read
             // out of. The alignment divides 64, so the derived data offset carries
             // the property from the file's base to the region's.
-            if ((((ulong) at) % alignment) != 0) { reason = TableRefuseReason.unaligned_base; return false; }
+            if ((((ulong)at) % alignment) != 0) { reason = TableRefuseReason.unaligned_base; return false; }
 
-            cook = new StampCook(at + dataOffset, (long) dataLength);
+            cook = new StampCook(at + dataOffset, (long)dataLength);
             return true;
         }
 
@@ -388,7 +394,7 @@ namespace Wide
         {
             fixed (byte* p = bytes)
             {
-                return Open(out cook, (IntPtr) p, bytes.Length);
+                return Open(out cook, (IntPtr)p, bytes.Length);
             }
         }
 
@@ -405,7 +411,7 @@ namespace Wide
         {
             long delta = *slot;
             if (delta == 0) { return null; }
-            return (StampRow*) ((byte*) slot + delta);
+            return (StampRow*)((byte*)slot + delta);
         }
 
         // The pieces a consumer reads THROUGH rather than at: each is a SPAN over
@@ -418,7 +424,10 @@ namespace Wide
         // field column, so a walker reaches the whole graph from the root.
         private static readonly TableCookInfo cookRecordStamp = new TableCookInfo
         {
-            Name = "Stamp", Size = 20, Align = 4, NumFields = 2,
+            Name = "Stamp",
+            Size = 20,
+            Align = 4,
+            NumFields = 2,
             Fields = new TableCookFieldInfo[]
             {
                 new TableCookFieldInfo { Name = "label", Offset = 0, Size = 16, ElemSize = 16, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = null },

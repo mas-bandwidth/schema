@@ -6077,7 +6077,7 @@ build/schema_test_fixedform_dump: tables-fixedform-corpus-check build/tables-gen
 	    -Ibuild/tables-generated/examples -Ibuild/tables-generated-fxw/fxw \
 	    -Ibuild/tables-generated/vnum \
 	    $(VLISTS_INCLUDES) \
-	    -I$(SERIALIZE) test/tables/fixedform_dump.cpp -o $@
+	    -I$(SERIALIZE_RUNTIME) test/tables/fixedform_dump.cpp -o $@
 
 build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump
 	@rm -rf build/fixedform-corpus
@@ -6096,14 +6096,100 @@ tables-fixedform-corpus: build/fixedform-corpus/.stamp
 	@echo "fixed form: the C++ reference's byte oracle is in build/fixedform-corpus"
 	@echo "fixed form: what each file holds is in build/fixedform-corpus/manifest.txt ($$(wc -l < build/fixedform-corpus/manifest.txt | tr -d ' ') lines)"
 
-# THE SIBLING RUNTIME IS A STATED BENCH PREREQUISITE. The oracle dump links the
-# C++ reference, which includes serialize.h from the guard checkout $(SERIALIZE)
-# (a sibling of this repo, the same checkout the C++ targets are built against).
-# Refuse by name when it is absent instead of failing mid-generate with a
-# cryptic include error.
+# THE CORPUS FINDS ITS OWN RUNTIME (the "Fix, this attempt" rule). The oracle
+# dump links the C++ reference, which includes serialize.h from the checkout
+# $(SERIALIZE) (normally a sibling of this repo, the same checkout the C++
+# targets are built against). A clean bench workspace has no sibling repo, so
+# when no explicit SERIALIZE was named the corpus fetches the pinned runtime
+# (serialize @ $(SERIALIZE_PIN), the checkout docs/TUTORIAL.md names) INSIDE the
+# workspace and compiles against that. A SERIALIZE named on the command line
+# (or in the environment) that is absent still refuses by name, and so does a
+# fetch that fails or produces no header: a gate with no blade is the exact
+# silence this refusal exists to forbid.
+SERIALIZE_PIN     ?= v1.16.2
+SERIALIZE_REPO    ?= https://github.com/mas-bandwidth/serialize.git
+SERIALIZE_FETCHED := build/serialize
+SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SERIALIZE_FETCHED))
+
+# THE GO PROBES FIND THEIR OWN RUNTIME THE SAME WAY. The versioning probes'
+# go.mod replaces github.com/mas-bandwidth/serialize.go with the sibling
+# checkout $(SERIALIZE_GO) (make/go.mk's default, ../serialize.go), and
+# fixedversioning_test.go:1126 used to hard-code that sibling four levels up
+# with nothing staging it. A clean bench has no sibling, so when no explicit
+# SERIALIZE_GO was named this fetches the pinned Go runtime (serialize.go @
+# $(SERIALIZE_GO_PIN), the tag .github/workflows/certify.yml names) into
+# build/serialize.go. A SERIALIZE_GO named on the command line (or in the
+# environment) that is absent still refuses by name, and so does a fetch that
+# fails or produces no go.mod: a gate with no blade is the exact silence this
+# refusal exists to forbid. The check target repeats that refusal in its own
+# recipe: once build/serialize.go/go.mod exists, a named-but-absent SERIALIZE_GO
+# still resolves SERIALIZE_GO_RUNTIME to the fetched copy, the file prerequisite
+# is up to date, and a phony target with only that prerequisite would report
+# nothing to be done.
+SERIALIZE_GO_PIN     ?= v1.15.1
+SERIALIZE_GO_REPO    ?= https://github.com/mas-bandwidth/serialize.go.git
+SERIALIZE_GO_FETCHED := build/serialize.go
+SERIALIZE_GO_RUNTIME := $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))
+
+# THE FLEET'S BENCHES MIRROR THE REPOSITORIES THEY WORK ON, and a local clone is
+# offline, unthrottled and byte-for-byte the pinned tag. $NOVA_MIRRORS names a
+# directory of bare mirrors laid out as <owner>/<repo>.git (for example
+# $NOVA_MIRRORS/mas-bandwidth/serialize.git), which is why the runtime fetches
+# below try that layout FIRST and fall back to the network repository
+# ($(SERIALIZE_REPO)/$(SERIALIZE_GO_REPO)) only when NOVA_MIRRORS is unset, when
+# the mirror is absent, or when the mirror clone fails (for example the mirror
+# lacks the pin tag). file:// makes git honour --depth against a local path. A
+# failure from BOTH still refuses by name, as before; the pins are unchanged.
+#
+# fetch-runtime PIN MIRROR-REL REPO DEST WHAT — clone DEST at tag PIN from
+# $NOVA_MIRRORS/MIRROR-REL first, else from REPO, saying which source it used.
+# WHAT names the runtime ("C" or "Go") in the echo. Returns non-zero when both
+# clones fail, so the caller refuses by name.
+define fetch-runtime
+if test -n "$(NOVA_MIRRORS)" && test -d "$(NOVA_MIRRORS)/$(2)" && \
+   git clone --depth 1 --branch "$(1)" "file://$(NOVA_MIRRORS)/$(2)" "$(4)"; then \
+	echo "tables $(5) versioning: fetched $(1) from the mirror $(NOVA_MIRRORS)/$(2) into $(4)"; \
+else \
+	rm -rf "$(4)"; \
+	echo "tables $(5) versioning: fetching $(3) @ $(1) into $(4)"; \
+	git clone --depth 1 --branch "$(1)" "$(3)" "$(4)"; \
+fi
+endef
+
+$(SERIALIZE_GO_RUNTIME)/go.mod:
+	@if test -f "$(SERIALIZE_GO)/go.mod"; then :; \
+	elif test "$(origin SERIALIZE_GO)" != "file"; then \
+		echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent; name it as a bench prerequisite" >&2; \
+		exit 1; \
+	else \
+		echo "tables Go versioning: no sibling runtime at '$(SERIALIZE_GO)'; fetching $(SERIALIZE_GO_PIN) into $(SERIALIZE_GO_RUNTIME)"; \
+		rm -rf "$(SERIALIZE_GO_RUNTIME)"; \
+		mkdir -p "$(dir $(SERIALIZE_GO_RUNTIME))"; \
+		$(call fetch-runtime,$(SERIALIZE_GO_PIN),mas-bandwidth/serialize.go.git,$(SERIALIZE_GO_REPO),$(SERIALIZE_GO_RUNTIME),Go) \
+			|| { echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent, and the fetch of $(SERIALIZE_GO_REPO) @ $(SERIALIZE_GO_PIN) failed; name it as a bench prerequisite" >&2; exit 1; }; \
+	fi
+	@test -f "$@" || { echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent, and the fetch produced no $(SERIALIZE_GO_RUNTIME)/go.mod; name it as a bench prerequisite" >&2; exit 1; }
+
+$(SERIALIZE_RUNTIME)/serialize.h:
+	@if test -f "$(SERIALIZE)/serialize.h"; then :; \
+	elif test "$(origin SERIALIZE)" != "file"; then \
+		echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent; name it as a bench prerequisite" >&2; \
+		exit 1; \
+	else \
+		echo "tables C versioning: no sibling runtime at '$(SERIALIZE)'; fetching $(SERIALIZE_PIN) into $(SERIALIZE_RUNTIME)"; \
+		rm -rf "$(SERIALIZE_RUNTIME)"; \
+		mkdir -p "$(dir $(SERIALIZE_RUNTIME))"; \
+		$(call fetch-runtime,$(SERIALIZE_PIN),mas-bandwidth/serialize.git,$(SERIALIZE_REPO),$(SERIALIZE_RUNTIME),C) \
+			|| { echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent, and the fetch of $(SERIALIZE_REPO) @ $(SERIALIZE_PIN) failed; name it as a bench prerequisite" >&2; exit 1; }; \
+	fi
+	@test -f "$@" || { echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent, and the fetch produced no $(SERIALIZE_RUNTIME)/serialize.h; name it as a bench prerequisite" >&2; exit 1; }
+
 .PHONY: tables-fixedform-corpus-check
-tables-fixedform-corpus-check:
-	@test -f $(SERIALIZE)/serialize.h || { echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent; name it as a bench prerequisite" >&2; exit 1; }
+tables-fixedform-corpus-check: $(SERIALIZE_RUNTIME)/serialize.h $(SERIALIZE_GO_RUNTIME)/go.mod
+	@if test "$(origin SERIALIZE_GO)" != "file" && ! test -f "$(SERIALIZE_GO)/go.mod"; then \
+		echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent; name it as a bench prerequisite" >&2; \
+		exit 1; \
+	fi
 
 .PHONY: tables-fixedform-corpus
 

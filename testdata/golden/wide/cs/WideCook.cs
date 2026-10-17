@@ -159,25 +159,25 @@ namespace Wide
             TableBlockLayout.Verify();
             {
                 CaptionRow probe = default;
-                byte* at = (byte*) &probe;
+                byte* at = (byte*)&probe;
                 Size("CaptionRow", Unsafe.SizeOf<CaptionRow>(), 108);
-                Offset("CaptionRow.Title", (byte*) probe.Title - at, 0);
-                Offset("CaptionRow.Line", (byte*) &probe.Line - at, 20);
-                Offset("CaptionRow.Lines", (byte*) &probe.Lines0 - at, 36);
-                Offset("CaptionRow.Body", (byte*) &probe.Body - at, 88);
+                Offset("CaptionRow.Title", (byte*)probe.Title - at, 0);
+                Offset("CaptionRow.Line", (byte*)&probe.Line - at, 20);
+                Offset("CaptionRow.Lines", (byte*)&probe.Lines0 - at, 36);
+                Offset("CaptionRow.Body", (byte*)&probe.Body - at, 88);
             }
             {
                 LineRow probe = default;
-                byte* at = (byte*) &probe;
+                byte* at = (byte*)&probe;
                 Size("LineRow", Unsafe.SizeOf<LineRow>(), 16);
-                Offset("LineRow.Text", (byte*) probe.Text - at, 0);
+                Offset("LineRow.Text", (byte*)probe.Text - at, 0);
             }
             {
                 StampRow probe = default;
-                byte* at = (byte*) &probe;
+                byte* at = (byte*)&probe;
                 Size("StampRow", Unsafe.SizeOf<StampRow>(), 20);
-                Offset("StampRow.Label", (byte*) probe.Label - at, 0);
-                Offset("StampRow.Seq", (byte*) &probe.Seq - at, 16);
+                Offset("StampRow.Label", (byte*)probe.Label - at, 0);
+                Offset("StampRow.Seq", (byte*)&probe.Seq - at, 16);
             }
             Size("BodyRow", Unsafe.SizeOf<BodyRow>(), 20);
             { BodyRow probe = default; byte* at = (byte*)&probe; Offset("BodyRow.Type", (byte*)&probe.Type - at, 0); Offset("BodyRow.Wide", (byte*)probe.Wide - at, 4); Offset("BodyRow.Narrow", (byte*)probe.Narrow - at, 4); Offset("BodyRow.Tally", (byte*)&probe.Tally - at, 4); }

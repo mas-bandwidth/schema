@@ -52,7 +52,6 @@ func TestMessageFormAnnounceElixir(t *testing.T) {
 	t.Run("announcement_constant", func(t *testing.T) {
 		t.Parallel()
 		for _, name := range []string{"backenddemo", "vocabdemo", "vocab9demo"} {
-			name := name
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
 				u := messageLoadUnit(t, root, units[name])
@@ -75,7 +74,6 @@ func TestMessageFormAnnounceElixir(t *testing.T) {
 	t.Run("announce_read", func(t *testing.T) {
 		t.Parallel()
 		for _, name := range []string{"backenddemo", "vocabdemo", "vocab9demo"} {
-			name := name
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
 				u := messageLoadUnit(t, root, units[name])

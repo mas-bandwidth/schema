@@ -229,6 +229,13 @@ func fixedLocalUnions(closure []*ir.Struct) []*ir.Union {
 			if v.F.Array != ir.ArrayNone || v.F.KeyEnum != "" || v.F.Type.Kind != ir.TNamed {
 				local = true
 			}
+			// A UNION WHOSE ARM IS A UNION is a table union (SPEC-TABLES §2.6):
+			// internal/codegen/dart never declares it, so its storage is this
+			// emitter's, and its arms answer to the OUTER tag through the guard
+			// chain (docs/FIXED-FORM-ALGORITHM.md §4.1).
+			if _, ok := v.F.Type.Ref.(*ir.Union); ok {
+				local = true
+			}
 		}
 		if local {
 			seen[un.Name] = true
@@ -319,6 +326,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	body := fixedTypeBytes(st)
 	prefill := fixedPrefillBytes(st)
 	plan, split := fixedIdentityPlan(st)
+	guardPool := fixedIdentityGuards(plan)
 	lower := lowerFirst(st.Name)
 
 	// exactly the names the surface below spells, and no more: the analyzer
@@ -414,12 +422,24 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		if e.note != "" {
 			note = " // " + e.note
 		}
-		g.pf("  %d, %d, %d, %d, %d, %d, %d, %d, %d,%s\n",
-			e.op, e.src, e.dst, e.size, e.aux, e.guard, e.arg, e.meta, e.argw, note)
+		g.pf("  %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d,%s\n",
+			e.op, e.src, e.dst, e.size, e.aux, e.guard, e.arg, e.meta, e.argw, e.guards, e.gcount, note)
 	}
 	g.pf("]);\n")
 	g.pf("%s", fixedFormatOn)
 	g.pf("const int %sFixedIdentityCount = %d;\n\n", lower, len(plan))
+	// THE GUARD CHAIN'S POOL (docs/FIXED-FORM-ALGORITHM.md §4.1): the links of
+	// every chain past one, OUTERMOST FIRST, three ints a link; the identity
+	// read hands it to the run as the plan's own pool.
+	g.pf("/// THE GUARD CHAIN'S POOL for the identity plan (§4.1): offset+count from an\n")
+	g.pf("/// entry's guards lanes, (guard, arg, argw) a link, outermost first.\n")
+	g.pf("%s", fixedFormatOff)
+	g.pf("final Int32List %sFixedIdentityGuards = Int32List.fromList(const <int>[\n", lower)
+	for i := 0; i+2 < len(guardPool); i += 3 {
+		g.pf("  %d, %d, %d,\n", guardPool[i], guardPool[i+1], guardPool[i+2])
+	}
+	g.pf("]);\n")
+	g.pf("%s\n", fixedFormatOn)
 	g.pf("/// THE SPLIT: the index the identity plan's GUARDED half starts at — the\n")
 	g.pf("/// number of unguarded entries (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4,\n")
 	g.pf("/// §5.9 #42). Every entry below it carries no guard and every entry at or\n")
@@ -629,7 +649,9 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  // the rule is the type's value bytes minus what the plan lands, and the\n")
 	g.pf("  // identity plan lands all of them.\n")
 	g.pf("  var fillCount = 0;\n")
-	g.pf("  var remap = plan.remap;\n")
+	// THE IDENTITY PLAN'S POOL IS ITS GUARD CHAINS (§4.1): it carries no remap
+	// table, and a lineage lane below brings its own.
+	g.pf("  var remap = %sFixedIdentityGuards;\n", lower)
 	g.pf("  // THE COMPILE CENSUS IS THE PLAN'S OWN NUMBERS, carried onto the report\n")
 	g.pf("  // ONCE after the record loop and only on a read that returns (§5.9 #6):\n")
 	g.pf("  // once per peer, never per record, and REFUSE moves no counter at all.\n")
