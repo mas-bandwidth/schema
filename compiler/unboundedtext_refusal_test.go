@@ -24,7 +24,7 @@ var boundedTextSchema = map[string]string{
 // The go digest moved once since, by the integrity_mismatch refusal name
 // every Go unit's runtime carries (docs/SPEC-TABLES.md §2.14).
 var boundedTextDigest = map[string]string{
-	"go":  "7432b2a79e647f86c32fdd5ee55e97c92430fe9b51d0923bd231f0135253843f",
+	"go":  "3f6b4ef6799ecf5d4f5e422346339c060518bde8debf65c4c4140c2e56f5a6e7",
 	"cpp": "ff5e30ac14304bb0ab07460f917a19a1efa46fa1c5dac34498d4bd856dfe9605",
 }
 
