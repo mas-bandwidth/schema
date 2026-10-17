@@ -2025,6 +2025,18 @@ func tableJsonWrite(value unsafe.Pointer, info *TableTypeInfo, buffer []byte) in
 // whole text is refused, the report is Malformed and its Reason names the
 // field.
 const tableJsonTimestampSource = `
+// tableJsonTimestampMax is the longest RFC 3339 spelling this reader accepts,
+// in bytes. RFC 3339's only unbounded production is the seconds-fraction
+// "." 1*DIGIT; the fixed skeleton takes at most 26 bytes (the 10-byte date, the
+// 'T', the 8-byte time, the '.', and the 6-byte offset), so the 255-byte bound
+// allows a fraction of up to 229 digits, and a spelling longer than it is not
+// accepted at all. The reader's timestamp scan reads one RFC 3339 string and
+// truncates a fraction longer than nine digits to nanoseconds exactly as the
+// engine does (docs/SPEC-TABLES.md §16.2): truncation, never rounding. A string
+// that does not parse as RFC 3339, or names an instant outside Time.UnixNano's
+// domain, or is longer than the bound, is REFUSED BY NAME with no clamped count.
+const tableJsonTimestampMax = 255
+
 func tableJsonWriteTimestamp(out *tableJsonOut, storage unsafe.Pointer) bool {
 	var scratch [48]byte
 	tableJsonWriteString(out, time.Unix(0, *(*int64)(storage)).UTC().AppendFormat(scratch[:0], time.RFC3339Nano))
@@ -2032,9 +2044,18 @@ func tableJsonWriteTimestamp(out *tableJsonOut, storage unsafe.Pointer) bool {
 }
 
 func tableJsonReadTimestamp(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo) bool {
-	var text [64]byte
-	n, ok := in.scanString(text[:63])
+	var text [tableJsonTimestampMax]byte
+	clampedBefore := in.report.Clamped
+	n, ok := in.scanString(text[:])
 	if !ok {
+		return false
+	}
+	if in.report.Clamped != clampedBefore {
+		// a string longer than the bound: refused by name, never clamped, read
+		// without allocation proportional to its length
+		in.report.Clamped = clampedBefore
+		in.report.Reason = "timestamp_not_rfc3339: " + f.Name
+		in.bad = true
 		return false
 	}
 	t, err := time.Parse(time.RFC3339Nano, string(text[:n]))
