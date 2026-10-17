@@ -3970,9 +3970,13 @@ mismatch with `TableRefuseIntegrityMismatch` (`errors.Is`), and the tolerant
 nothing. Every single-bit flip and every damaged byte is caught; it guards
 against accident, not against someone rewriting the file, which is still a
 signature's job. Adding or removing the key changes the file's framing, so
-rewrite stored files across the change. A `fixed table` refuses the key until
-the fixed and message forms carry it, and only Go generates it today; every
-other `--lang` refuses it by name.
+rewrite stored files across the change. A `fixed table` may carry the key too:
+its message-form batch (docs/SPEC-TABLES.md §3.3) carries one trailer for the
+whole batch, checked before the first body is decoded, so `SaveMessages` writes
+four more bytes than `MeasureMessages` would without the key and
+`LoadMessages` refuses a damaged batch with the same `integrity_mismatch` and
+decodes nothing. The fixed form's per-file trailer is still a follow-on. Only
+Go generates the key today; every other `--lang` refuses it by name.
 
 ## Embedding the compiler
 
