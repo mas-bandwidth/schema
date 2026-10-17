@@ -1,0 +1,17 @@
+{
+  "root": "Graph",
+  "forms": [
+    "variable"
+  ],
+  "fields": {
+    "items": "[]*Node",
+    "lookup": "map[string(8)]?int32",
+    "blob": "*bytes"
+  },
+  "types": {
+    "Node": {
+      "id": "int32"
+    }
+  },
+  "limits": "same as contract.json"
+}

@@ -14791,7 +14791,7 @@ The rules below replace §16.2's tolerant behavior for this form only.
 
 Sharing uses §16.7's construct as the QUOTED key `"&node"`: a definition is
 `("&node" 1 :id 6)`, a reference `("&node" 1)`. The label must be the first
-pair. Labels, first-definition order, completed-definition-only references,
+pair. Label syntax, document-order definitions, completed-definition-only references,
 type matching, and cycle refusal follow §16.7; failure is `text_reference`.
 All other `&`-prefixed record keys are `text_reference`, including use of the
 construct at a fixed or by-value site. A map's string key is ordinary data,

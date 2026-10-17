@@ -1,0 +1,26 @@
+{
+  "root": "Document",
+  "explicit_fields": {
+    "schema": 1,
+    "root": "schema/goal",
+    "title": "Schema roadmap",
+    "nodes": [
+      {
+        "id": "one",
+        "title": "First",
+        "state": "unknown"
+      },
+      {
+        "id": "two",
+        "title": "Second",
+        "state": "done"
+      }
+    ],
+    "text": [
+      "a ; semicolon is data",
+      "line\nwith escape"
+    ],
+    "count": 2
+  },
+  "remaining_fields": "contract defaults"
+}
