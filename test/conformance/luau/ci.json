@@ -1,0 +1,2 @@
+{"targets": "build/conformance-harness build/conformance-luau",
+ "luau": "0.741"}
