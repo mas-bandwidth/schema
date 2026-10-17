@@ -132,4 +132,12 @@ function S.lookup(name: string): any
 	return d
 end
 
+-- fixed_layout is the FIXED FORM's layout constructor (docs/SPEC-TABLES.md
+-- §3.4): the walk's entries as frozen data a load path reads to build its plan.
+-- A layout is a constant, exactly as a descriptor is.
+function S.fixed_layout(entries: { any }): { any }
+	table.freeze(entries :: any)
+	return entries
+end
+
 return table.freeze(S)
