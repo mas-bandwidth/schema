@@ -655,6 +655,8 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 
 	hasRange := "false"
 	rangeMin, rangeMax := "0.0", "0.0"
+	rangeIntMin, rangeIntMax := "0", "0"
+	rangeUintMin, rangeUintMax := "0", "0"
 	if f.Type.Kind == ir.TBits && !f.HasIntRange {
 		// bits(N) declares its range by its WIDTH: [0, 2^N - 1]. The codec has
 		// always clamped a read to it (docs/SPEC-TABLES.md §4); carrying it here is
@@ -663,10 +665,19 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
 		hasRange = "true"
 		rangeMin, rangeMax = "0.0", bigToDouble(max)
+		rangeUintMin, rangeUintMax = "0", max.String()
 	}
 	if f.HasIntRange {
 		hasRange = "true"
 		rangeMin, rangeMax = bigToDouble(f.IntMin), bigToDouble(f.IntMax)
+		// an integer field carries its EXACT range beside the float64 pair
+		// (docs/SPEC-TABLES.md §8.1): signed kinds as two int64s, unsigned as
+		// two uint64s
+		if f.Type.Signed {
+			rangeIntMin, rangeIntMax = f.IntMin.String(), f.IntMax.String()
+		} else {
+			rangeUintMin, rangeUintMax = f.IntMin.String(), f.IntMax.String()
+		}
 	} else if f.HasFloatRange {
 		hasRange = "true"
 		rangeMin, rangeMax = formatFloat64(f.FMin), formatFloat64(f.FMax)
@@ -734,7 +745,18 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	if g.viewPacket == nil {
 		g.emitCookFieldColumns(st, f)
 	}
-	g.pf("\t\tHasRange: %s, RangeMin: %s, RangeMax: %s, EnumMax: %s,\n", hasRange, rangeMin, rangeMax, enumMax)
+	// the EXACT integer-range pair (docs/SPEC-TABLES.md §8.1) rides only a
+	// field with an integer range, so a field that has none emits the same
+	// descriptor row as before
+	exact := ""
+	if f.HasIntRange || f.Type.Kind == ir.TBits {
+		if f.Type.Signed {
+			exact = fmt.Sprintf(", RangeIntMin: %s, RangeIntMax: %s", rangeIntMin, rangeIntMax)
+		} else {
+			exact = fmt.Sprintf(", RangeUintMin: %s, RangeUintMax: %s", rangeUintMin, rangeUintMax)
+		}
+	}
+	g.pf("\t\tHasRange: %s, RangeMin: %s, RangeMax: %s%s, EnumMax: %s,\n", hasRange, rangeMin, rangeMax, exact, enumMax)
 	if f.IsTextList() {
 		// a TEXT LIST (docs/SPEC-TABLES.md §2.13): 1 for string(M) elements, 2 for ?string(M)
 		g.pf("TextList:%d,\n", textListCode(f))

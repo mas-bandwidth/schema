@@ -11112,6 +11112,15 @@ them — whole units for a fixed field — and the two exact columns are what
 let the text form (§16) read and write these kinds without a double on the
 path, and without parsing `type_name`.
 
+**An integer field carries its EXACT RANGE, beside the `double` pair.** A
+ranged integer's bounds — a signed `TInt`'s as two `int64` columns, an
+unsigned `TInt`'s and a `bits(N)`'s as two `uint64` columns — are carried
+exactly, because a `double` cannot hold every int64 or uint64 value and a
+bound past 2^53 loses precision. The `double` columns keep the declared
+bounds for a walker that only shows them, and stay for float and fixed-point
+ranges. The exact columns are what let the text form (§16) clamp an integer
+read to its declared range without a double on the path.
+
 **An optional field carries its presence companion.** `optional` marks the
 field and `present_offset` names the `<field>_present` bool, exactly as
 `counted` and `count_offset` name a count companion — so a walker can read
