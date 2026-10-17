@@ -615,6 +615,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 20000.0) + 0.5).floor();
+    if (v > 20000) v = 20000;
   }
   scratch |= v << scratchBits;
   scratchBits += 15;
@@ -765,6 +766,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 16.0) + 0.5).floor();
+    if (v > 16) v = 16;
   }
   scratch |= v << scratchBits;
   scratchBits += 5;
@@ -956,6 +958,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 360.0) + 0.5).floor();
+    if (v > 360) v = 360;
   }
   scratch |= v << scratchBits;
   scratchBits += 9;
@@ -1006,6 +1009,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 60.0) + 0.5).floor();
+    if (v > 60) v = 60;
   }
   scratch |= v << scratchBits;
   scratchBits += 6;
@@ -1036,6 +1040,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 800.0) + 0.5).floor();
+    if (v > 800) v = 800;
   }
   scratch |= v << scratchBits;
   scratchBits += 10;
@@ -1055,6 +1060,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 2000.0) + 0.5).floor();
+    if (v > 2000) v = 2000;
   }
   scratch |= v << scratchBits;
   scratchBits += 11;
@@ -1085,6 +1091,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 500.0) + 0.5).floor();
+    if (v > 500) v = 500;
   }
   scratch |= v << scratchBits;
   scratchBits += 9;
@@ -1104,6 +1111,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 10000.0) + 0.5).floor();
+    if (v > 10000) v = 10000;
   }
   scratch |= v << scratchBits;
   scratchBits += 14;

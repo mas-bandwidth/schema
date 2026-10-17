@@ -433,7 +433,13 @@ func (g *wireGen) emit() {
 	for _, st := range g.closure {
 		g.emitNumber(st)
 	}
-	for _, st := range g.roots {
+	// §16: a declared table can be named directly in a text tree even when
+	// another table holds it by value. Give every carried declaration public
+	// entry points; generated map-entry tables remain implementation details.
+	for _, st := range g.closure {
+		if !st.IsTable || st.IsMapEntry() {
+			continue
+		}
 		g.emitSave(st)
 		g.emitLoad(st)
 		g.emitMeasure(st)

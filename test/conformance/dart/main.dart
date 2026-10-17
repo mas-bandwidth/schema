@@ -10,6 +10,7 @@
 // The working directory is the repository root, which is the contract: every
 // path in the manifest is repo-relative, so this driver never resolves one.
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -25,6 +26,11 @@ import '../../../build/tables-generated-dart/blobs/AssetsCook.dart' as assets;
 import '../../../build/tables-generated-dart/lists/ListdemoWire.dart' as listdemo;
 import '../../../build/tables-generated-dart/maps/MapdemoWire.dart' as mapdemo;
 import '../../../build/tables-generated-dart/messages/MessagedemoWire.dart' as messagedemo;
+import '../../../build/tables-generated-dart/backend/BackenddemoWire.dart' as backenddemo;
+import '../../../build/tables-generated-dart/stream/StreamdemoWire.dart' as streamdemo;
+import '../../../build/tables-generated-dart/examples/TabledemoWire.dart' as tabledemo;
+import '../../../build/tables-generated-dart/vocab/VocabdemoWire.dart' as vocabdemo;
+import '../../../build/tables-generated-dart/vocab9/Vocab9demoWire.dart' as vocab9demo;
 import '../../../build/tables-generated-dart-scalars/scalars/ScalardemoWire.dart' as scalardemo;
 import '../../../build/tables-generated-dart/wide/WideWire.dart' as widedemo;
 import '../../../build/tables-generated-dart/v1/Tblv1Wire.dart' as tblv1;
@@ -33,6 +39,11 @@ import '../../../build/tables-generated-dart/w1/Tblw1Wire.dart' as tblw1;
 import '../../../build/tables-generated-dart/w2/Tblw2Wire.dart' as tblw2;
 import '../../../build/tables-generated-dart/r1/Tblr1Wire.dart' as tblr1;
 import '../../../build/tables-generated-dart/r2/Tblr2Wire.dart' as tblr2;
+import '../../../build/tables-generated-dart/g1/Tblg1Wire.dart' as tblg1;
+import '../../../build/tables-generated-dart/m1/Tblm1Wire.dart' as tblm1;
+import '../../../build/tables-generated-dart/m2/Tblm2Wire.dart' as tblm2;
+import '../../../build/tables-generated-dart/p1/Tblp1Wire.dart' as tblp1;
+import '../../../build/tables-generated-dart/p3/Tblp3Wire.dart' as tblp3;
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -795,6 +806,56 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       return widedemo.captionWireSave(widedemo.captionFromJson(text));
     case 'widedemo Stamp':
       return widedemo.stampWireSave(widedemo.stampFromJson(text));
+    case 'listdemo Army':
+      return listdemo.armyWireSave(listdemo.armyFromJson(text));
+    case 'listdemo Mixed':
+      return listdemo.mixedWireSave(listdemo.mixedFromJson(text));
+    case 'streamdemo Feed':
+      return streamdemo.feedWireSave(streamdemo.feedFromJson(text));
+    case 'tabledemo ArchiveConfig':
+      return tabledemo.archiveConfigWireSave(tabledemo.archiveConfigFromJson(text));
+    case 'tabledemo KeyedConfig':
+      return tabledemo.keyedConfigWireSave(tabledemo.keyedConfigFromJson(text));
+    case 'tabledemo WideBlob':
+      return tabledemo.wideBlobWireSave(tabledemo.wideBlobFromJson(text));
+    case 'tblg1 Guarded':
+      return tblg1.guardedWireSave(tblg1.guardedFromJson(text));
+    case 'tblm1 Msg':
+      return tblm1.msgWireSave(tblm1.msgFromJson(text));
+    case 'tblm2 Msg':
+      return tblm2.msgWireSave(tblm2.msgFromJson(text));
+    case 'tblp1 Chain':
+      return tblp1.chainWireSave(tblp1.chainFromJson(text));
+    case 'tblp3 Chain':
+      return tblp3.chainWireSave(tblp3.chainFromJson(text));
+    case 'tblr1 Cfg':
+      return tblr1.cfgWireSave(tblr1.cfgFromJson(text));
+    case 'tblr2 Cfg':
+      return tblr2.cfgWireSave(tblr2.cfgFromJson(text));
+    case 'tblv1 Cfg':
+      return tblv1.cfgWireSave(tblv1.cfgFromJson(text));
+    case 'tblv2 Cfg':
+      return tblv2.cfgWireSave(tblv2.cfgFromJson(text));
+    case 'vocabdemo Wide00':
+      return vocabdemo.wide00WireSave(vocabdemo.wide00FromJson(text));
+    case 'vocabdemo Wide09':
+      return vocabdemo.wide09WireSave(vocabdemo.wide09FromJson(text));
+    case 'vocab9demo Wide00':
+      return vocab9demo.wide00WireSave(vocab9demo.wide00FromJson(text));
+    case 'vocab9demo Wide19':
+      return vocab9demo.wide19WireSave(vocab9demo.wide19FromJson(text));
+    case 'backenddemo LoginRequest':
+      return backenddemo.loginRequestWireSave(backenddemo.loginRequestFromJson(text));
+    case 'backenddemo MatchResult':
+      return backenddemo.matchResultWireSave(backenddemo.matchResultFromJson(text));
+    case 'backenddemo StorePurchase':
+      return backenddemo.storePurchaseWireSave(backenddemo.storePurchaseFromJson(text));
+    case 'tabledemo LoadoutConfig':
+      return tabledemo.loadoutConfigWireSave(tabledemo.loadoutConfigFromJson(text));
+    case 'tabledemo ProfileConfig':
+      return tabledemo.profileConfigWireSave(tabledemo.profileConfigFromJson(text));
+    case 'tabledemo RootConfig':
+      return tabledemo.rootConfigWireSave(tabledemo.rootConfigFromJson(text));
   }
   return null;
 }
@@ -849,6 +910,56 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       return widedemo.captionToJson(widedemo.captionWireLoad(wire));
     case 'widedemo Stamp':
       return widedemo.stampToJson(widedemo.stampWireLoad(wire));
+    case 'listdemo Army':
+      return listdemo.armyToJson(listdemo.armyWireLoad(wire));
+    case 'listdemo Mixed':
+      return listdemo.mixedToJson(listdemo.mixedWireLoad(wire));
+    case 'streamdemo Feed':
+      return streamdemo.feedToJson(streamdemo.feedWireLoad(wire));
+    case 'tabledemo ArchiveConfig':
+      return tabledemo.archiveConfigToJson(tabledemo.archiveConfigWireLoad(wire));
+    case 'tabledemo KeyedConfig':
+      return tabledemo.keyedConfigToJson(tabledemo.keyedConfigWireLoad(wire));
+    case 'tabledemo WideBlob':
+      return tabledemo.wideBlobToJson(tabledemo.wideBlobWireLoad(wire));
+    case 'tblg1 Guarded':
+      return tblg1.guardedToJson(tblg1.guardedWireLoad(wire));
+    case 'tblm1 Msg':
+      return tblm1.msgToJson(tblm1.msgWireLoad(wire));
+    case 'tblm2 Msg':
+      return tblm2.msgToJson(tblm2.msgWireLoad(wire));
+    case 'tblp1 Chain':
+      return tblp1.chainToJson(tblp1.chainWireLoad(wire));
+    case 'tblp3 Chain':
+      return tblp3.chainToJson(tblp3.chainWireLoad(wire));
+    case 'tblr1 Cfg':
+      return tblr1.cfgToJson(tblr1.cfgWireLoad(wire));
+    case 'tblr2 Cfg':
+      return tblr2.cfgToJson(tblr2.cfgWireLoad(wire));
+    case 'tblv1 Cfg':
+      return tblv1.cfgToJson(tblv1.cfgWireLoad(wire));
+    case 'tblv2 Cfg':
+      return tblv2.cfgToJson(tblv2.cfgWireLoad(wire));
+    case 'vocabdemo Wide00':
+      return vocabdemo.wide00ToJson(vocabdemo.wide00WireLoad(wire));
+    case 'vocabdemo Wide09':
+      return vocabdemo.wide09ToJson(vocabdemo.wide09WireLoad(wire));
+    case 'vocab9demo Wide00':
+      return vocab9demo.wide00ToJson(vocab9demo.wide00WireLoad(wire));
+    case 'vocab9demo Wide19':
+      return vocab9demo.wide19ToJson(vocab9demo.wide19WireLoad(wire));
+    case 'backenddemo LoginRequest':
+      return backenddemo.loginRequestToJson(backenddemo.loginRequestWireLoad(wire));
+    case 'backenddemo MatchResult':
+      return backenddemo.matchResultToJson(backenddemo.matchResultWireLoad(wire));
+    case 'backenddemo StorePurchase':
+      return backenddemo.storePurchaseToJson(backenddemo.storePurchaseWireLoad(wire));
+    case 'tabledemo LoadoutConfig':
+      return tabledemo.loadoutConfigToJson(tabledemo.loadoutConfigWireLoad(wire));
+    case 'tabledemo ProfileConfig':
+      return tabledemo.profileConfigToJson(tabledemo.profileConfigWireLoad(wire));
+    case 'tabledemo RootConfig':
+      return tabledemo.rootConfigToJson(tabledemo.rootConfigWireLoad(wire));
   }
   return null;
 }
@@ -1121,6 +1232,62 @@ int surfaceJsonWrite(String outDir) {
   return 0;
 }
 
+// §16.3 and §17.5: a hostile tree reports the actual tolerant text-read
+// counters, or refuses a malformed text. A missing codec is explicit.
+String? jsonHostileReport(String unit, String root, String text) {
+  dynamic r;
+  try {
+    switch ('$unit $root') {
+      case 'tabledemo RootConfig':
+        r = tabledemo.TableTextReport();
+        tabledemo.rootConfigFromJson(text, r);
+        break;
+      case 'tabledemo PackConfig':
+        r = tabledemo.TableTextReport();
+        tabledemo.packConfigFromJson(text, r);
+        break;
+      case 'blobdemo Catalog':
+        r = blobdemo.TableTextReport();
+        blobdemo.catalogFromJson(text, r);
+        break;
+      case 'graphdemo Scene':
+        r = graphdemo.TableTextReport();
+        graphdemo.sceneFromJson(text, r);
+        break;
+      case 'messagedemo ToolMessage':
+        r = messagedemo.TableTextReport();
+        messagedemo.toolMessageFromJson(text, r);
+        break;
+      case 'scalars SimState':
+        r = scalardemo.TableTextReport();
+        scalardemo.simStateFromJson(text, r);
+        break;
+      case 'streamdemo Feed':
+        r = streamdemo.TableTextReport();
+        streamdemo.feedFromJson(text, r);
+        break;
+      default:
+        return null;
+    }
+  } catch (_) {
+    return 'refused\n';
+  }
+  return '${r.unknown},${r.kindMismatch},0,${r.clamped},${r.duplicate},false,read\n';
+}
+
+int surfaceJsonHostile(String outDir) {
+  for (final f in kind('json-hostile')) {
+    final text = utf8.decode(File('${f[4]}/${f[3]}.json').readAsBytesSync(), allowMalformed: true);
+    final verdict = jsonHostileReport(f[2], f[3], text);
+    if (verdict == null) {
+      spillAbsent(outDir, f[1]);
+      continue;
+    }
+    File('$outDir/${f[1]}').writeAsStringSync(verdict);
+  }
+  return 0;
+}
+
 int surfaceReport(String outDir) {
   for (final f in kind('report')) {
     final line = loadReport(f[2], f[3], File(f[4]).readAsBytesSync());
@@ -1140,7 +1307,7 @@ const String surfaces =
     // accelerators and the forgery surfaces stay. The wire fuzzer's roots are
     // another card's.
     ''
-    'wire\njson-read\njson-write\nreport\n'
+    'wire\njson-read\njson-write\njson-hostile\nreport\n'
     'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
     'forgery\ncook-forgery\n';
 
@@ -1315,6 +1482,8 @@ int run(List<String> args) {
       return surfaceJsonRead(out);
     case 'json-write':
       return surfaceJsonWrite(out);
+    case 'json-hostile':
+      return surfaceJsonHostile(out);
     case 'report':
       return surfaceReport(out);
     case 'cook':
