@@ -50,7 +50,7 @@ func messageEntryLiteral(e ir.TableVocabularyEntry) string {
 func tableMessageCoreTypes(u *ir.Unit) string {
 	types := goMessageCoreTypes
 	if len(variableTableNames(u)) > 0 {
-		types = strings.Replace(types, "type TableMessageReader struct {", "type TableMessageReader struct { Nodes TableNodeMap;", 1)
+		types = tableSourceReplace(types, "type TableMessageReader struct {", "type TableMessageReader struct { Nodes TableNodeMap;", 1)
 		types += "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64; Clamped int32; Numbering *TableNumbering; numbering TableNumbering }\n"
 	} else {
 		types += "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64; Clamped int32 }\n"

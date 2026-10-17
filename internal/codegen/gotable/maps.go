@@ -2,7 +2,6 @@ package gotable
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -17,10 +16,7 @@ func optionalMapJson(u *ir.Unit, s string) string {
 		return s
 	}
 	old := "\t\t\t\tif f.Table != nil {\n\t\t\t\t\tf.Table().Reset(unsafe.Add(base, uintptr(f.Offset)))"
-	if !strings.Contains(s, old) {
-		panic("gotable: the JSON walk lost the optional-reset line optionalMapJson replaces")
-	}
-	return strings.Replace(s, old, "\t\t\t\tif f.Map {\n\t\t\t\t\tclear(unsafe.Slice((*byte)(unsafe.Add(base, uintptr(f.Offset))), 16))\n\t\t\t\t} else if f.Table != nil {\n\t\t\t\t\tf.Table().Reset(unsafe.Add(base, uintptr(f.Offset)))", 1)
+	return tableSourceReplace(s, old, "\t\t\t\tif f.Map {\n\t\t\t\t\tclear(unsafe.Slice((*byte)(unsafe.Add(base, uintptr(f.Offset))), 16))\n\t\t\t\t} else if f.Table != nil {\n\t\t\t\t\tf.Table().Reset(unsafe.Add(base, uintptr(f.Offset)))", 1)
 }
 
 func (g *tableGen) mapDescriptor(f *ir.Field) string {
