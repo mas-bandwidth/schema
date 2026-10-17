@@ -149,18 +149,11 @@ func containerRegionSource(s string) string {
 	s = strings.Replace(s, "used:=tableRegionRound(int64(root.Size));k:=", "used:=tableWireNodeBytes(r,root);k:=", 1)
 	s = strings.Replace(s, "body.Nodes=nodes;t.LoadBody(body,p)", "carve:=TableExtentCarve{Base:p,At:tableRegionRound(int64(t.Size)),Limit:tableWireNodeBytes(body,t)};body.Nodes=nodes;body.Nodes.Carve=carve;t.LoadBody(body,p)", 1)
 	s = strings.Replace(s, "r.Nodes=nodes;r.Nested=false;root.LoadBody(r,base)", "carve:=TableExtentCarve{Base:base,At:tableRegionRound(int64(root.Size)),Limit:tableWireNodeBytes(r,root)};r.Nodes=nodes;r.Nodes.Carve=carve;r.Nested=false;root.LoadBody(r,base)", 1)
-	s = strings.ReplaceAll(s, "tableRegionEdges(p,t,func", "tableRegionEdges(p,t,a,func")
-	s = strings.ReplaceAll(s, "tableRegionEdges(base unsafe.Pointer,info *TableTypeInfo,visit", "tableRegionEdges(base unsafe.Pointer,info *TableTypeInfo,a *TableArena,visit")
-	s = strings.ReplaceAll(s, "tableRegionValueEdges(p unsafe.Pointer,f *TableFieldInfo,visit", "tableRegionValueEdges(p unsafe.Pointer,f *TableFieldInfo,a *TableArena,visit")
-	s = strings.ReplaceAll(s, "tableRegionEdges(p,f.Table(),visit)", "tableRegionEdges(p,f.Table(),a,visit)")
-	s = strings.ReplaceAll(s, "tableRegionValueEdges(at,f,visit)", "tableRegionValueEdges(at,f,a,visit)")
-	s = strings.ReplaceAll(s, "af,visit)", "af,a,visit)")
-	s = strings.ReplaceAll(s, "tableRegionEdges(e.node,e.info,func", "tableRegionEdges(e.node,e.info,nil,func")
-	s = strings.Replace(s, "p:=unsafe.Add(base,f.Offset);count:=int32(1);", `p:=unsafe.Add(base,f.Offset);if f.List||f.Map {if !tableRegionContainerEdges((*tableContainer)(p),f,a,visit){return false};continue};count:=int32(1);`, 1)
+	s = strings.Replace(s, "p:=unsafe.Add(base,f.Offset);count:=int32(1);", `p:=unsafe.Add(base,f.Offset);if f.List||f.Map {if !tableRegionContainerEdges((*tableContainer)(p),f,a,required,visit){return false};continue};count:=int32(1);`, 1)
 	s = strings.Replace(s, "if e.info!=nil {return tableRegionRound(int64(e.info.Size))}", "if e.info!=nil {extent:=tableExtentBytes(e.node,e.info,a);if extent<0{return -1};return tableRegionRound(tableRegionRound(int64(e.info.Size))+extent)}", 1)
 	s += `
-func tableRegionContainerEdges(h *tableContainer,f *TableFieldInfo,a *TableArena,visit func(*TableRef,*TableFieldInfo)bool)bool {
- if h.Count<0{return false};cursor:=tableMapCursor(h,f,a);defer cursor.Release();for j:=int32(0);j<h.Count;j++{elem:=cursor.Next();if elem==nil||!tableRegionValueEdges(elem,f,a,visit){return false}};return true
+func tableRegionContainerEdges(h *tableContainer,f *TableFieldInfo,a *TableArena,required bool,visit func(*TableRef,*TableFieldInfo)bool)bool {
+ if h.Count<0{return false};if required&&h.Ref!=0{return false};cursor:=tableMapCursor(h,f,a);defer cursor.Release();for j:=int32(0);j<h.Count;j++{elem:=cursor.Next();if elem==nil||!tableRegionValueEdges(elem,f,a,required,visit){return false}};return true
 }
 `
 	start := strings.Index(s, "func tableRegionPack(")
@@ -171,7 +164,7 @@ func tableRegionContainerEdges(h *tableContainer,f *TableFieldInfo,a *TableArena
 
 func containerRegionJsonSource(s string) string {
 	s = strings.Replace(s, "graph:=tableJsonGraph{alloc:worker.Alloc,", "graph:=tableJsonGraph{mapPlace:func(p unsafe.Pointer,f *TableFieldInfo,key tableMapKey)(unsafe.Pointer,bool){return tableMapPlace(worker,(*tableContainer)(p),f,key)},listAdd:func(p unsafe.Pointer,size int64)unsafe.Pointer{return tableContainerAppend(worker,(*tableContainer)(p),size)},alloc:worker.Alloc,", 1)
-	s = strings.ReplaceAll(s, "tableRegionEdges(e.node,e.info,func", "tableRegionEdges(e.node,e.info,nil,func")
+	s = strings.ReplaceAll(s, "tableRegionEdges(e.node,e.info,func", "tableRegionEdges(e.node,e.info,nil,false,func")
 	return s
 }
 
@@ -179,7 +172,7 @@ const tableContainerPackSource = `
 func tableRegionPack(root unsafe.Pointer,info *TableTypeInfo,a *TableArena) ([]byte,[]byte,bool) {
  total:=tableRegionPackMeasure(root,info,a);if total<0{return nil,nil,false};n,ok:=tableNumber(root,info,a);if !ok{return nil,nil,false};defer n.Release();size:=tablePackOffsets(&n);if size<0||size!=total{return nil,nil,false}
  allocation:=a.Allocator.alloc(size);if allocation==nil{return nil,nil,false};region:=allocation[:size];clear(region);base:=unsafe.Pointer(&region[0])
- for i:=range n.entries {e:=&n.entries[i];p:=unsafe.Add(base,e.offset);if e.info==nil {length:=8+int(uint64(*(*uint32)(e.node)));copy(unsafe.Slice((*byte)(p),length),unsafe.Slice((*byte)(e.node),length));continue};copy(unsafe.Slice((*byte)(p),e.info.Size),unsafe.Slice((*byte)(e.node),e.info.Size));at:=tableRegionRound(int64(e.info.Size));if !tableExtentWalk(e.node,p,e.info,a,p,&at){a.Allocator.free(allocation);return nil,nil,false};if !tableRegionEdges(p,e.info,nil,func(slot *TableRef,f *TableFieldInfo) bool {if *slot==0{return true};target:=a.At(*slot);idx,ok:=n.find(target);if !ok{return false};*slot=int64(uintptr(unsafe.Add(base,n.entries[idx].offset))-uintptr(unsafe.Pointer(slot)));return true}){a.Allocator.free(allocation);return nil,nil,false}}
+ for i:=range n.entries {e:=&n.entries[i];p:=unsafe.Add(base,e.offset);if e.info==nil {length:=8+int(uint64(*(*uint32)(e.node)));copy(unsafe.Slice((*byte)(p),length),unsafe.Slice((*byte)(e.node),length));continue};copy(unsafe.Slice((*byte)(p),e.info.Size),unsafe.Slice((*byte)(e.node),e.info.Size));at:=tableRegionRound(int64(e.info.Size));if !tableExtentWalk(e.node,p,e.info,a,p,&at){a.Allocator.free(allocation);return nil,nil,false};if !tableRegionEdges(p,e.info,nil,false,func(slot *TableRef,f *TableFieldInfo) bool {if *slot==0{return true};target:=a.At(*slot);idx,ok:=n.find(target);if !ok{return false};*slot=int64(uintptr(unsafe.Add(base,n.entries[idx].offset))-uintptr(unsafe.Pointer(slot)));return true}){a.Allocator.free(allocation);return nil,nil,false}}
  return region,allocation,true
 }
 `

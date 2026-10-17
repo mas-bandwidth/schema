@@ -188,8 +188,15 @@ type TableArena struct {
  initialized bool
  mutex sync.Mutex
 }
-func (a *TableArena) Init(allocator ...TableAllocator) bool {if a==nil||a.initialized{return false};pair:=TableAllocator{};if len(allocator)>0{pair=allocator[0]};if !pair.valid(){return false};a.Allocator=pair;a.Locked=false;a.initialized=true;a.next.Store(uint64(tableArenaSlabBytes));return true}
-func (a *TableArena) Shutdown() {for i:=range a.segments{if s:=a.segments[i].Swap(nil);s!=nil {if s.owned{a.Allocator.free(s.data)};*s=tableArenaSegment{}}};a.initialized=false;a.next.Store(0)}
+var tableArenaLiveSet struct { sync.RWMutex; arenas []*TableArena }
+func tableArenaRegister(a *TableArena) {tableArenaLiveSet.Lock();tableArenaLiveSet.arenas=append(tableArenaLiveSet.arenas,a);tableArenaLiveSet.Unlock()}
+func tableArenaUnregister(a *TableArena) {tableArenaLiveSet.Lock();for i,p:=range tableArenaLiveSet.arenas {if p==a {tableArenaLiveSet.arenas=append(tableArenaLiveSet.arenas[:i],tableArenaLiveSet.arenas[i+1:]...);break}};tableArenaLiveSet.Unlock()}
+// tableArenaLive reports whether p is inside a live builder arena. A write
+// handed no arena uses it to tell an arena-encoded root (§6.3) from a packed
+// region, whose references are already deltas.
+func tableArenaLive(p unsafe.Pointer) bool {if p==nil{return false};tableArenaLiveSet.RLock();defer tableArenaLiveSet.RUnlock();at:=uintptr(p);for _,a:=range tableArenaLiveSet.arenas {if a==nil{continue};n:=a.next.Load();for i:=0;i<len(a.segments)&&uint64(i)*uint64(tableArenaSegmentBytes)<n;i++ {s:=a.segments[i].Load();if s==nil||len(s.data)==0{continue};base:=uintptr(unsafe.Pointer(&s.data[0]));if at>=base&&at<base+uintptr(len(s.data)){return true}}};return false}
+func (a *TableArena) Init(allocator ...TableAllocator) bool {if a==nil||a.initialized{return false};pair:=TableAllocator{};if len(allocator)>0{pair=allocator[0]};if !pair.valid(){return false};a.Allocator=pair;a.Locked=false;a.initialized=true;a.next.Store(uint64(tableArenaSlabBytes));tableArenaRegister(a);return true}
+func (a *TableArena) Shutdown() {tableArenaUnregister(a);for i:=range a.segments{if s:=a.segments[i].Swap(nil);s!=nil {if s.owned{a.Allocator.free(s.data)};*s=tableArenaSegment{}}};a.initialized=false;a.next.Store(0)}
 func (a *TableArena) At(ref TableRef) unsafe.Pointer { if ref<=0 || ref>=tableArenaSegmentBytes*tableArenaSegments {return nil};s:=a.segments[ref/tableArenaSegmentBytes].Load();if s==nil{return nil};return unsafe.Pointer(&s.data[ref%tableArenaSegmentBytes]) }
 func (a *TableArena) grab(bytes int64) (int64,int64) {
  if !a.initialized || a.Locked || bytes<=0 {return 0,0}
@@ -211,7 +218,7 @@ func tableRegionRound(n int64) int64 {return (n+tableRegionAlign-1)& -tableRegio
 type tableNodeEntry struct { json tableJsonGraphNode; node unsafe.Pointer; info *TableTypeInfo; id uint64; open bool; offset int64 }
 // The root and arena keep the source storage live while pointer-free backing
 // allocations hold the index and entries. Temporary storage is released by caller.
-type TableNumbering struct { reason TableRefuseReason; arena *TableArena; root unsafe.Pointer; allocator TableAllocator; entries []tableNodeEntry; buckets []uint64; memory,indexMemory []byte }
+type TableNumbering struct { reason TableRefuseReason; arena *TableArena; arenaRequired bool; root unsafe.Pointer; allocator TableAllocator; entries []tableNodeEntry; buckets []uint64; memory,indexMemory []byte }
 func (n *TableNumbering) Release() {n.allocator.free(n.memory);n.allocator.free(n.indexMemory);n.memory=nil;n.indexMemory=nil;n.entries=nil;n.buckets=nil;n.root=nil}
 func (n *TableNumbering) find(p unsafe.Pointer)(int,bool) {if p==nil||len(n.buckets)==0{return 0,false};h:=uint64(uintptr(p));h^=h>>33;h*=0xff51afd7ed558ccd;h^=h>>33;mask:=uint64(len(n.buckets)-1);for slot:=h&mask;;slot=(slot+1)&mask {v:=n.buckets[slot];if v==0{return int(slot),false};if n.entries[v-1].node==p{return int(v-1),true}}}
 func (n *TableNumbering) grow()bool {
@@ -227,16 +234,16 @@ func (n *TableNumbering) Index(slot *TableRef)(uint64,bool){if n==nil{return 0,f
 func (n *TableNumbering) visit(p unsafe.Pointer,t *TableTypeInfo,id uint64)bool {
  if p==nil{return true};if i,ok:=n.find(p);ok{if n.entries[i].open{n.reason=TableRefuseDataCycle;return false};if n.entries[i].id!=id{n.reason=TableRefuseInvalidValue;return false};return true}
  if len(n.entries)==cap(n.entries)&&!n.grow(){n.reason=TableRefuseAllocationFailed;return false};slot,_:=n.find(p);i:=len(n.entries);n.entries=n.entries[:i+1];n.entries[i]=tableNodeEntry{node:p,info:t,id:id,open:true};n.buckets[slot]=uint64(i+1);a:=n.arena
- if t!=nil&&!tableRegionEdges(p,t,func(slot *TableRef,f *TableFieldInfo)bool {var target *TableTypeInfo;if f.Table!=nil{target=f.Table()};return n.visit(tableRefAt(slot,a),target,f.TargetId)}){return false};n.entries[i].open=false;return true
+ if t!=nil&&!tableRegionEdges(p,t,a,n.arenaRequired,func(slot *TableRef,f *TableFieldInfo)bool {var target *TableTypeInfo;if f.Table!=nil{target=f.Table()};return n.visit(tableRefAt(slot,a),target,f.TargetId)}){if n.reason==TableRefuseOk&&n.arenaRequired{n.reason=TableRefuseArenaRequired};return false};n.entries[i].open=false;return true
 }
-func tableNumber(root unsafe.Pointer,info *TableTypeInfo,a *TableArena,allocator ...TableAllocator)(TableNumbering,bool){n:=TableNumbering{arena:a,root:root};if a!=nil{n.allocator=a.Allocator};if len(allocator)>0{n.allocator=allocator[0]};if root==nil||!n.visit(root,info,info.Id){if n.reason==TableRefuseOk{n.reason=TableRefuseInvalidValue};n.Release();return n,false};return n,true}
-func tableRegionEdges(base unsafe.Pointer,info *TableTypeInfo,visit func(*TableRef,*TableFieldInfo) bool) bool {
- for i:=range info.Fields {f:=&info.Fields[i];if !tableJsonGuardHolds(base,info,f.Guard) || f.Optional && !*(*bool)(unsafe.Add(base,f.PresentOffset)){continue};p:=unsafe.Add(base,f.Offset);count:=int32(1);if f.IsArray {count=tableRegionCount(base,f);if count<0 || count>f.ArrayBound{return false}};for j:=int32(0);j<count;j++ {at:=unsafe.Add(p,uintptr(j)*uintptr(f.ElemSize));if !tableRegionValueEdges(at,f,visit){return false}} };return true
+func tableNumber(root unsafe.Pointer,info *TableTypeInfo,a *TableArena,allocator ...TableAllocator)(TableNumbering,bool){n:=TableNumbering{arena:a,root:root};if a!=nil{n.allocator=a.Allocator};if len(allocator)>0{n.allocator=allocator[0]};if a==nil&&root!=nil&&tableArenaLive(root){n.arenaRequired=true};if root==nil||!n.visit(root,info,info.Id){if n.reason==TableRefuseOk{n.reason=TableRefuseInvalidValue};n.Release();return n,false};return n,true}
+func tableRegionEdges(base unsafe.Pointer,info *TableTypeInfo,a *TableArena,required bool,visit func(*TableRef,*TableFieldInfo) bool) bool {
+ for i:=range info.Fields {f:=&info.Fields[i];if !tableJsonGuardHolds(base,info,f.Guard) || f.Optional && !*(*bool)(unsafe.Add(base,f.PresentOffset)){continue};p:=unsafe.Add(base,f.Offset);count:=int32(1);if f.IsArray {count=tableRegionCount(base,f);if count<0 || count>f.ArrayBound{return false}};for j:=int32(0);j<count;j++ {at:=unsafe.Add(p,uintptr(j)*uintptr(f.ElemSize));if !tableRegionValueEdges(at,f,a,required,visit){return false}} };return true
 }
-func tableRegionValueEdges(p unsafe.Pointer,f *TableFieldInfo,visit func(*TableRef,*TableFieldInfo) bool) bool {
- if f.Pointer {return visit((*TableRef)(p),f)}
- if f.Kind==13 && f.Table!=nil {return tableRegionEdges(p,f.Table(),visit)}
- if f.Kind==15 && f.Arms!=nil {arms:=f.Arms();tag:=tableJsonGetRaw(unsafe.Add(p,arms.TagOffset),arms.TagSize);if tag>=uint64(len(arms.Arms)){return false};if tag!=0 {arm:=&arms.Arms[tag];if arm.Void{return true};af:=&arm.Field;at:=unsafe.Add(p,af.Offset);count:=int32(1);if af.IsArray {count=tableRegionCount(p,af);if count<0 || count>af.ArrayBound{return false}};for j:=int32(0);j<count;j++ {if !tableRegionValueEdges(unsafe.Add(at,uintptr(j)*uintptr(af.ElemSize)),af,visit){return false}}} };return true
+func tableRegionValueEdges(p unsafe.Pointer,f *TableFieldInfo,a *TableArena,required bool,visit func(*TableRef,*TableFieldInfo) bool) bool {
+ if f.Pointer {if required && *(*TableRef)(p)!=0{return false};return visit((*TableRef)(p),f)}
+ if f.Kind==13 && f.Table!=nil {return tableRegionEdges(p,f.Table(),a,required,visit)}
+ if f.Kind==15 && f.Arms!=nil {arms:=f.Arms();tag:=tableJsonGetRaw(unsafe.Add(p,arms.TagOffset),arms.TagSize);if tag>=uint64(len(arms.Arms)){return false};if tag!=0 {arm:=&arms.Arms[tag];if arm.Void{return true};af:=&arm.Field;at:=unsafe.Add(p,af.Offset);count:=int32(1);if af.IsArray {count=tableRegionCount(p,af);if count<0 || count>af.ArrayBound{return false}};for j:=int32(0);j<count;j++ {if !tableRegionValueEdges(unsafe.Add(at,uintptr(j)*uintptr(af.ElemSize)),af,a,required,visit){return false}}} };return true
 }
 func tableNodeWrite(w *TableWriter,e *tableNodeEntry) bool { if e.info!=nil{return e.info.SaveBody(w,e.node)};length:=uint64(*(*uint32)(e.node));w.Raw(unsafe.Slice((*byte)(unsafe.Add(e.node,8)),int(length)));return !w.Overflow }
 func tableNodeMeasure(w *TableWriter,ids *TableIds,e *tableNodeEntry)int64 {*w=TableWriter{Measuring:true,Ids:ids};if !tableNodeWrite(w,e){return -1};return w.Offset}
@@ -281,7 +288,7 @@ func tablePackOffsets(n *TableNumbering)int64 {size:=int64(0);for i:=range n.ent
 func tableRegionPackMeasure(root unsafe.Pointer,info *TableTypeInfo,a *TableArena)int64{n,_:=tableRegionPackMeasureReason(root,info,a);return n}
 func tableRegionPackMeasureReason(root unsafe.Pointer,info *TableTypeInfo,a *TableArena)(int64,TableRefuseReason){n,ok:=tableNumber(root,info,a);if !ok{return -1,n.reason};defer n.Release();size:=tablePackOffsets(&n);if size<0{return -1,TableRefuseInvalidValue};return size,TableRefuseOk}
 func tableRegionPack(root unsafe.Pointer,info *TableTypeInfo,a *TableArena) ([]byte,[]byte,bool) {
- total:=tableRegionPackMeasure(root,info,a);if total<0{return nil,nil,false};n,ok:=tableNumber(root,info,a);if !ok{return nil,nil,false};defer n.Release();size:=tablePackOffsets(&n);if size<0||size!=total{return nil,nil,false};allocation:=a.Allocator.alloc(size);if allocation==nil{return nil,nil,false};region:=allocation[:size];clear(region);base:=unsafe.Pointer(&region[0]);for i:=range n.entries {e:=&n.entries[i];p:=unsafe.Add(base,e.offset);if e.info==nil {copy(unsafe.Slice((*byte)(p),8+int(uint64(*(*uint32)(e.node)))),unsafe.Slice((*byte)(e.node),8+int(uint64(*(*uint32)(e.node)))));continue};copy(unsafe.Slice((*byte)(p),int(e.info.Size)),unsafe.Slice((*byte)(e.node),int(e.info.Size)));if !tableRegionEdges(p,e.info,func(slot *TableRef,f *TableFieldInfo) bool {if *slot==0{return true};target:=a.At(*slot);idx,ok:=n.find(target);if !ok{return false};*slot=int64(uintptr(unsafe.Add(base,n.entries[idx].offset))-uintptr(unsafe.Pointer(slot)));return true}){a.Allocator.free(allocation);return nil,nil,false} };return region,allocation,true
+ total:=tableRegionPackMeasure(root,info,a);if total<0{return nil,nil,false};n,ok:=tableNumber(root,info,a);if !ok{return nil,nil,false};defer n.Release();size:=tablePackOffsets(&n);if size<0||size!=total{return nil,nil,false};allocation:=a.Allocator.alloc(size);if allocation==nil{return nil,nil,false};region:=allocation[:size];clear(region);base:=unsafe.Pointer(&region[0]);for i:=range n.entries {e:=&n.entries[i];p:=unsafe.Add(base,e.offset);if e.info==nil {copy(unsafe.Slice((*byte)(p),8+int(uint64(*(*uint32)(e.node)))),unsafe.Slice((*byte)(e.node),8+int(uint64(*(*uint32)(e.node)))));continue};copy(unsafe.Slice((*byte)(p),int(e.info.Size)),unsafe.Slice((*byte)(e.node),int(e.info.Size)));if !tableRegionEdges(p,e.info,nil,false,func(slot *TableRef,f *TableFieldInfo) bool {if *slot==0{return true};target:=a.At(*slot);idx,ok:=n.find(target);if !ok{return false};*slot=int64(uintptr(unsafe.Add(base,n.entries[idx].offset))-uintptr(unsafe.Pointer(slot)));return true}){a.Allocator.free(allocation);return nil,nil,false} };return region,allocation,true
 }
 `
 
@@ -293,7 +300,7 @@ func tableRegionFromJson(value unsafe.Pointer,info *TableTypeInfo,worker *TableW
 }
 func tableRegionToJson(value unsafe.Pointer,info *TableTypeInfo,buffer []byte,allocator ...TableAllocator) int64 {
  n,ok:=tableNumber(value,info,nil,allocator...);if !ok{return -1};defer n.Release();graph:=tableJsonGraph{node:func(p unsafe.Pointer)*tableJsonGraphNode{i,ok:=n.find(p);if !ok{return nil};return &n.entries[i].json}}
- for i:=range n.entries {e:=&n.entries[i];if e.info!=nil&&!tableRegionEdges(e.node,e.info,func(slot *TableRef,f *TableFieldInfo) bool {p:=tableRefAt(slot,nil);if p!=nil {graph.node(p).refs++};return true}){return -1}}
+ for i:=range n.entries {e:=&n.entries[i];if e.info!=nil&&!tableRegionEdges(e.node,e.info,nil,false,func(slot *TableRef,f *TableFieldInfo) bool {p:=tableRefAt(slot,nil);if p!=nil {graph.node(p).refs++};return true}){return -1}}
  out:=tableJsonOut{buffer:buffer,measure:buffer==nil,graph:&graph};if !tableJsonWriteValue(&out,value,info,0){return -1};out.put('\n');if out.overflow{return -1};return out.offset
 }
 `

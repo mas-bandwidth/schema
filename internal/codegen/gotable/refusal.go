@@ -26,6 +26,7 @@ TableRefuseMalformed
 TableRefuseClamped
 TableRefuseKindMismatch
 TableRefuseBase64Damaged
+TableRefuseArenaRequired
 )
 func(r TableRefuseReason) Error()string{switch r {
 case TableRefuseOk:return "ok"
@@ -49,6 +50,7 @@ case TableRefuseMalformed:return "malformed"
 case TableRefuseClamped:return "clamped"
 case TableRefuseKindMismatch:return "kind_mismatch"
 case TableRefuseBase64Damaged:return "base64_damaged"
+case TableRefuseArenaRequired:return "arena_required"
 };return "invalid refusal reason"}
 func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{return nil};return reason}
 // TableBuildVersionMismatch is the typed error a strict announcement refusal
