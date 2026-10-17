@@ -139,6 +139,18 @@ func init() {
 		Name{Name: "tableJsonTextTotalKeep", What: "a text list's total (docs/SPEC-TABLES.md §2.13)"},
 		Name{Name: "tableJsonWriteTextElement", What: "text lists and the array root (docs/SPEC-TABLES.md §2.13, §16.10)"},
 		Name{Name: "tableJsonReadTextElement", What: "text lists and the array root (docs/SPEC-TABLES.md §2.13, §16.10)"},
+		Name{Name: "TableMalformedField", What: "unbounded text list elements and map keys (docs/SPEC-TABLES.md §2.13.1)"},
+		Name{Name: "tableTextBytes", What: "unbounded text list elements and map keys (docs/SPEC-TABLES.md §2.13.1)"},
+		Name{Name: "tableTextString", What: "unbounded text list elements and map keys (docs/SPEC-TABLES.md §2.13.1)"},
+		Name{Name: "tableTextRides", What: "unbounded text list elements and map keys (docs/SPEC-TABLES.md §2.13.1)"},
+		Name{Name: "tableTextStore", What: "unbounded text list elements and map keys (docs/SPEC-TABLES.md §2.13.1)"},
+		Name{Name: "tableTextStoreWith", What: "unbounded text list elements and map keys (docs/SPEC-TABLES.md §2.13.1)"},
+		Name{Name: "tableTextPlace", What: "unbounded text list elements and map keys (docs/SPEC-TABLES.md §2.13.1)"},
+		Name{Name: "tableTextExtentAdd", What: "unbounded text list elements and map keys (docs/SPEC-TABLES.md §2.13.1)"},
+		Name{Name: "tableTextExtentValue", What: "unbounded text list elements and map keys (docs/SPEC-TABLES.md §2.13.1)"},
+		Name{Name: "tableMapStoreKeyed", What: "unbounded text list elements and map keys (docs/SPEC-TABLES.md §2.13.1)"},
+		Name{Name: "tableTextMalformed", What: "unbounded text list elements and map keys (docs/SPEC-TABLES.md §2.13.1)"},
+		Name{Name: "tableJsonReadText", What: "unbounded text list elements and map keys (docs/SPEC-TABLES.md §2.13.1)"},
 		Name{Name: "TableExtentCarve", What: "unbounded container storage, framing and descriptor walks"},
 		Name{Name: "tableContainer", What: "unbounded container storage, framing and descriptor walks"},
 		Name{Name: "tableContainerAppend", What: "unbounded container storage, framing and descriptor walks"},
@@ -251,6 +263,16 @@ func init() {
 		Name{Name: "TableReader", What: "the wire reader over the caller's buffer"},
 		Name{Name: "TableTypeInfo", What: "a table's reflection descriptor"},
 		Name{Name: "TableFieldInfo", What: "a field's reflection descriptor"},
+		// the EXACT integer-range members of the descriptor (docs/SPEC-TABLES.md
+		// §8.1): signed kinds fill the int64 pair, unsigned kinds (and bits(N))
+		// the uint64 pair, beside the float64 pair that stays for float and
+		// fixed-point ranges. They are members reached through their owner, so
+		// no declaration can collide with them; registered so the honest scan
+		// has an answer for every name it finds.
+		Name{Name: "RangeIntMin", What: "an integer-ranged field's exact signed lower bound", Scoped: true},
+		Name{Name: "RangeIntMax", What: "an integer-ranged field's exact signed upper bound", Scoped: true},
+		Name{Name: "RangeUintMin", What: "an unsigned-integer-ranged field's exact lower bound", Scoped: true},
+		Name{Name: "RangeUintMax", What: "an unsigned-integer-ranged field's exact upper bound", Scoped: true},
 		// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1, §8.7): every field row
 		// and every declaration row with no `///` block names this ONE
 		// definition, so absence costs a unit no string data and a printer

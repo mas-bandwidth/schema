@@ -106,6 +106,16 @@ type retainedField struct {
 // shape the walk cannot take. It bounds the recursion and nothing else.
 const retainDepthCap = 64
 
+// armKey names one union cell by the FIELD OCCURRENCE it belongs to rather than
+// by its address (docs/SPEC-TABLES.md §6.6, THE PATH): the field plus, for an
+// array of unions, the element index. A positional array grows its slot slice
+// while it decodes, so a cell's ADDRESS moves under a reallocation and cannot
+// name an occurrence; the field's address and the element index are stable.
+type armKey struct {
+	fv    *tabletext.Field
+	index int // -1 for a field's own union cell, else the element index
+}
+
 // retainState is what a retaining read carries beside the plain one: the
 // caller's stores, and the set of ids this build can spell, which is what
 // decides WHICH STORE an id inside a retained record takes at save.
@@ -116,8 +126,10 @@ type retainState struct {
 	// whose arm is written AGAIN is one of §6.6's four occurrences, and the
 	// earlier arm's records go with it whatever became of that occurrence: an
 	// arm whose own framing was damaged leaves no body on the cell at all, so
-	// the handle is held here instead of being read back off the value.
-	arms map[*tabletext.Cell]*tabletext.Instance
+	// the handle is held here instead of being read back off the value. It is
+	// keyed by the occurrence (armKey), never by the cell's address, because a
+	// slice append can move an array element's cell.
+	arms map[armKey]*tabletext.Instance
 	// A damaged map may clear Entries after earlier entries retained fields.
 	// Keep those bodies until a later occurrence supersedes the whole map.
 	maps map[*tabletext.Field][]*tabletext.Instance
@@ -129,7 +141,7 @@ func newRetainState(m *tabletext.Model, store *Retain) *retainState {
 	for _, id := range ir.TableWireIds(m.Unit) {
 		known[id] = true
 	}
-	return &retainState{store: store, known: known, arms: map[*tabletext.Cell]*tabletext.Instance{}, maps: map[*tabletext.Field][]*tabletext.Instance{}}
+	return &retainState{store: store, known: known, arms: map[armKey]*tabletext.Instance{}, maps: map[*tabletext.Field][]*tabletext.Instance{}}
 }
 
 // forget DISCARDS every record held under a body the wire is about to write
@@ -229,27 +241,39 @@ func (rt *retainState) forgetField(fv *tabletext.Field) {
 	if rt == nil {
 		return
 	}
-	rt.forgetArm(&fv.Cell)
+	rt.forgetArm(fv, -1)
 }
 
-// builtArm remembers the body this occurrence of a union cell built.
-func (rt *retainState) builtArm(cell *tabletext.Cell, payload *tabletext.Instance) {
+// builtArm remembers the body this occurrence of a union cell built, under the
+// occurrence's own key (the field and the element index) rather than the cell's
+// address, which a slice append can move (§6.6).
+func (rt *retainState) builtArm(fv *tabletext.Field, index int, payload *tabletext.Instance) {
 	if rt == nil {
 		return
 	}
-	rt.arms[cell] = payload
+	rt.arms[armKey{fv, index}] = payload
 }
 
 // forgetArm discards the records the PREVIOUS occurrence of a union cell held,
 // whether or not that occurrence left a body standing on the cell (§6.6).
-func (rt *retainState) forgetArm(cell *tabletext.Cell) {
-	if rt == nil {
+func (rt *retainState) forgetArm(fv *tabletext.Field, index int) {
+	if rt == nil || fv == nil {
 		return
 	}
+	var cell *tabletext.Cell
+	if index < 0 {
+		cell = &fv.Cell
+	} else {
+		if index >= len(fv.Elems) {
+			return
+		}
+		cell = &fv.Elems[index]
+	}
 	rt.forget(cell.Tab)
-	if held := rt.arms[cell]; held != nil {
+	k := armKey{fv, index}
+	if held := rt.arms[k]; held != nil {
 		rt.forget(held)
-		delete(rt.arms, cell)
+		delete(rt.arms, k)
 	}
 }
 

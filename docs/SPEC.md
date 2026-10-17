@@ -1347,6 +1347,18 @@ All compile errors with positions:
   `int8 | min = 0, max = 1000` is a compile error — the range determines the
   wire, the type name determines the storage, and a legal wire value the
   storage truncates would be silent corruption that passes read validation.
+- **A one-sided integer range on a table field is the two-sided declaration:**
+  on a field of a `table` or a `fixed table` whose type is an integer
+  (`int8`..`int64`, `uint8`..`uint64`), `| min = A` alone means
+  `| min = A, max = <the type's maximum>` and `| max = B` alone means
+  `| min = <the type's minimum>, max = B` (docs/SPEC-TABLES.md §4). The
+  one-sided spelling IS the two-sided declaration: the same projection, build
+  version, lock line, tables baseline row, wire and generated code, byte for
+  byte. A one-sided range is still refused by name on a float, a fixed-point,
+  `int128` or `uint128` field, a timestamp or a named type, beside
+  `resolution`, and on a field of a `type` body or a packet — the sentence
+  below is scoped to those. A one-sided range whose given side excludes zero
+  needs a default in range exactly as a two-sided one does.
 - **A range that excludes zero requires a declared default in range:**
   `x uint8 | min = 1, max = 255` is a compile error, because zero
   initialization is the rule (§4.2) and a field whose range starts above zero

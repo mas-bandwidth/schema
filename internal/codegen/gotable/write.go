@@ -257,7 +257,10 @@ func (g *tableGen) emitStorageCheck(f *ir.Field, expr, ind string) {
 		}
 		return
 	}
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
+	if f.Type.TextUnbounded() {
+		// unbounded text (docs/SPEC-TABLES.md §2.13.1): no length bound beyond
+		// the blob record's own, which the text rule below reads
+	} else if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
 		g.pf("%sif %sLength < 0 || %sLength > %d { return false }\n", ind, expr, expr, f.Type.Size)
 	} else if f.Array == ir.ArrayCounted {
 		g.pf("%sif %sCount < 0 || %sCount > %d { return false }\n", ind, expr, expr, f.ArrayBound)
@@ -275,6 +278,10 @@ func (g *tableGen) emitFieldRides(f *ir.Field, expr, ind string) string {
 	}
 	if f.Type.Pointer && f.Array == ir.ArrayNone {
 		return expr + " != 0"
+	}
+	if f.Type.TextUnbounded() {
+		// unbounded text rides when it holds a byte (docs/SPEC-TABLES.md §2.13.1)
+		return "tableTextRides(&" + expr + ",w.Ids.Numbering.arena)"
 	}
 	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
 		return byteValueRides(f, expr)
@@ -320,6 +327,14 @@ func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed b
 		g.pf("%s} else { index,ok := %s.Ids.Numbering.Index(&%s);if !ok {return false}\n", ind, writer, expr)
 		g.emitPutLeb(ind+"\t", writer, "index")
 		g.pf("%s}\n", ind)
+	case f.Type.TextUnbounded():
+		// UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): the blob's bytes under
+		// kind 12, refused when not well-formed UTF-8 or holding a zero byte
+		g.pf("%s{ text,ok:=tableTextBytes(&%s,%s.Ids.Numbering.arena);if !ok||!tableUtf8Valid(text) {return false}\n", ind, expr, writer)
+		if framed {
+			g.emitPutLeb(ind+"\t", writer, "uint64(len(text))")
+		}
+		g.pf("%s\t%s.Raw(text) }\n", ind, writer)
 	case f.Type.Kind == ir.TString:
 		// THE WRITE-SIDE TEXT RULE (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/USAGE.md
 		// "Writes are the caller's responsibility"): the reader refuses text that

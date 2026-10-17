@@ -407,6 +407,10 @@ func (g *blockGen) emitBlittableField(f *ir.Field, projection bool, w *blockWrit
 		return
 	}
 	switch {
+	case f.Type.TextUnbounded():
+		// UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): the eight-byte slot
+		next()
+		g.sf("\t%s int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)\n", name)
 	case f.Type.Kind == ir.TWString:
 		next()
 		g.sf("\t%s [%d]uint16\n", name, f.Type.Size+1)

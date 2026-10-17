@@ -34,6 +34,8 @@ func (g *tableGen) emitCookFieldColumns(st *ir.Struct, f *ir.Field) {
 	case f.IsList():
 		element, _ = ir.ListElementLayout(g.unit, f)
 		count = offset + 8
+	case f.Type.TextUnbounded():
+		// the blob slot (docs/SPEC-TABLES.md §2.13.1): eight bytes, no companion
 	case !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
 		count = pieces[1].Offset
 		element = 1

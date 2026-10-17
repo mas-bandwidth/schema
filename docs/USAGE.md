@@ -109,6 +109,12 @@ A table that declares `forms` (SPEC-TABLES.md §2.12) narrows it further: the
 list intersects the table's forms, and a list naming `json`, `cook` or `block`
 for a table that does not declare that form is refused, naming the table.
 
+A default `generate --lang go` (no `--surface`) also removes stale surface
+files: any `.go` file in the output directory whose first line is the compiler's
+own header naming this unit's `.schema` file or package (SPEC-TABLES.md §8.8)
+and that this run did not write. With `--surface` nothing is removed; only
+`.go` files the compiler itself generated are ever touched.
+
 ---
 
 ## Declarations
@@ -456,6 +462,15 @@ width on the wire unless you give a range.
 ```
 health int32 | min = 0, max = MaxHealth
 ```
+
+On a table field, the range may be one-sided: the type's own limit stands in
+for the missing side, so `count int64 | min = 0` is exactly
+`count int64 | min = 0, max = 9223372036854775807` and
+`hi int32 | max = 100` is exactly `hi int32 | min = -2147483648, max = 100`
+(SPEC-TABLES.md §4.3). The one-sided spelling is the two-sided declaration —
+the same wire and generated code, byte for byte. It applies to integer table
+fields only; on a float, fixed-point, `int128`/`uint128`, timestamp or named
+type, beside `resolution`, or on a `type`/packet field it is refused by name.
 
 The range is **part of the type**, and the wire cost follows from it. This
 is the single most useful feature in the language: 1001 values need 10 bits,
@@ -1336,6 +1351,12 @@ if report.Unknown != 0 || report.KindMismatch != 0 || report.Clamped != 0 {
     // fully usable; log the counts so drift is visible
 }
 ```
+
+An integer field's declared range is carried EXACTLY on the descriptor:
+`RangeIntMin`/`RangeIntMax` (int64) for a signed kind, `RangeUintMin`/
+`RangeUintMax` (uint64) for an unsigned kind, beside the float64
+`RangeMin`/`RangeMax` pair that stays for float and fixed-point ranges
+(SPEC-TABLES.md §8.1).
 
 The report is a PARAMETER rather than a member of the reader, which is the one
 place the Rust codecs read differently from the C++ ones: a reader holding
@@ -3666,6 +3687,21 @@ cache, outside your module's build list: the directive adds no line to
 compiles with the same compiler, and moving the pin is editing the one line.
 `v2.5.0` is the newest tag at this writing.
 
+**Move the pin across a whole tree in one command.** `schema pin` rewrites
+the version in every `go:generate` line under the given directories and prints
+one line per file it changed:
+
+```
+schema pin v2.6.0 .
+```
+
+It refuses, by name, a version that is not a Go pseudo-version or semver tag,
+a directory that does not exist or holds no pin line (an empty directory is
+the same refusal, never a silent success), and a tree whose pins already
+differ from each other (`--mixed-ok` accepts the tree and moves them
+together; the flag may sit before or after the directories). Nothing else in
+the files moves, and no other file is touched.
+
 **A unit that declares only tables needs no dependency.** The generated Go
 imports the standard library alone, so the files drop into any Go module
 with nothing added to its `go.mod`. The one exception is the 128-bit widths:
@@ -3885,6 +3921,27 @@ table Handover
 returns false for the element that would cross it, and a read keeps the
 elements that fit (in order), drops the rest and counts `clamped`, naming the
 field, so `HandoverReadStrict` refuses it (docs/SPEC-TABLES.md §2.13).
+
+### Unbounded text in lists and map keys
+
+When no code bounds a list's elements or a map's keys, leave the bound off
+(docs/SPEC-TABLES.md §2.13.1), in a plain `table` only:
+
+```
+table Where
+{
+    receipts []string              // ["a","b"] in JSON, each element any length
+    running  []?string             // ["a",null]
+    recent   [..64]string          // at most 64 elements, each any length
+    rows     map[string]FriendRow  // {"any key": {...}}
+}
+```
+
+The wire is the bounded spelling's (respelling `string(M)` as `string` moves no
+byte), nothing is clamped for length, and the bytes live in the builder's arena,
+so in Go every append takes the worker: `WhereRecentAppend(&b.Main, v, "a")`.
+A bare `string` anywhere else is refused by name with the spelling to use.
+Only Go generates the construct today; every other `--lang` refuses it by name.
 
 ## Embedding the compiler
 

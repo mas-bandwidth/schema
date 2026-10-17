@@ -233,6 +233,9 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	switch {
 	case f.Type.Kind == ir.TWString:
 		g.tf("\t%s [%d]uint16\n\t%sLength int32\n", name, f.Type.Size, name)
+	case f.Type.TextUnbounded():
+		// UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): one slot naming a blob record
+		g.tf("\t%s TableRef // string: unbounded text, a blob record (docs/SPEC-TABLES.md §2.13.1)\n", name)
 	case f.Type.Kind == ir.TString:
 		g.tf("\t%s [%d]byte // string(%s): max length, used length beside it\n",
 			name, f.Type.Size, ir.RenderExpr(f.Type.SizeExpr))
@@ -396,6 +399,8 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 
 	case f.Type.Kind == ir.TWString:
 		g.pf("clear(value.%s[:]);value.%sLength=0\n", name, name)
+	case f.Type.TextUnbounded():
+		g.pf("value.%s=0\n", name)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.pf("\tclear(value.%s[:])\n", name)
 		g.pf("\tvalue.%sLength = %d\n", name, len(f.DefBytes))
@@ -529,7 +534,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	g.pf("var %sTableInfo TableTypeInfo\nfunc init() { %sTableInfo = TableTypeInfo{Name: %q, Size: uint32(unsafe.Sizeof(%s{})), NumFields: %d, Fields: %sTableFields, Reset: func(storage unsafe.Pointer) { %sReset((*%s)(storage)) }, %s} }\n\n",
 		st.Name, st.Name, st.Name, g.storageName(st.Name), len(st.Fields), st.Name, st.Name, g.storageName(st.Name),
 		jsonArrayColumn(st)+annotationColumns(st.Doc, st.Tags, tagsName(st.Name, ""))+g.typeCodecColumns(st))
-	if g.surfaces.Message {
+	if g.surfaces.Message && g.messageCarries(st) {
 		g.into(&g.message, func() { g.emitMessageDescriptorInit(st) })
 	}
 	g.pf("// %sTableType returns %s's reflection descriptor.\n", st.Name, st.Name)
@@ -583,7 +588,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		kind = tkU8
 	}
 	isArray := f.IsMap() || f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Pointer) || f.KeyEnum != ""
-	counted := f.Array == ir.ArrayCounted || !f.Type.Pointer && (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString)
+	counted := f.Array == ir.ArrayCounted || !f.Type.Pointer && !f.Type.TextUnbounded() && (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString)
 
 	// the count column, spelled the way the storage spells its own extent: a
 	// keyed array DERIVES it from the key enum, so nothing outside the array
@@ -655,6 +660,8 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 
 	hasRange := "false"
 	rangeMin, rangeMax := "0.0", "0.0"
+	rangeIntMin, rangeIntMax := "0", "0"
+	rangeUintMin, rangeUintMax := "0", "0"
 	if f.Type.Kind == ir.TBits && !f.HasIntRange {
 		// bits(N) declares its range by its WIDTH: [0, 2^N - 1]. The codec has
 		// always clamped a read to it (docs/SPEC-TABLES.md §4); carrying it here is
@@ -663,10 +670,19 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
 		hasRange = "true"
 		rangeMin, rangeMax = "0.0", bigToDouble(max)
+		rangeUintMin, rangeUintMax = "0", max.String()
 	}
 	if f.HasIntRange {
 		hasRange = "true"
 		rangeMin, rangeMax = bigToDouble(f.IntMin), bigToDouble(f.IntMax)
+		// an integer field carries its EXACT range beside the float64 pair
+		// (docs/SPEC-TABLES.md §8.1): signed kinds as two int64s, unsigned as
+		// two uint64s
+		if f.Type.Signed {
+			rangeIntMin, rangeIntMax = f.IntMin.String(), f.IntMax.String()
+		} else {
+			rangeUintMin, rangeUintMax = f.IntMin.String(), f.IntMax.String()
+		}
 	} else if f.HasFloatRange {
 		hasRange = "true"
 		rangeMin, rangeMax = formatFloat64(f.FMin), formatFloat64(f.FMax)
@@ -734,7 +750,22 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	if g.viewPacket == nil {
 		g.emitCookFieldColumns(st, f)
 	}
-	g.pf("\t\tHasRange: %s, RangeMin: %s, RangeMax: %s, EnumMax: %s,\n", hasRange, rangeMin, rangeMax, enumMax)
+	// the EXACT integer-range pair (docs/SPEC-TABLES.md §8.1) rides only a
+	// field with an integer range, so a field that has none emits the same
+	// descriptor row as before
+	exact := ""
+	// the EXACT int64/uint64 pair rides only a kind whose narrow JSON path reads
+	// it — int8..int64, uint8..uint64 and bits (docs/SPEC-TABLES.md §8.1).
+	// The wide kinds (18–29: int128, uint128 and the fixed-point family) clamp
+	// via WideRange and their bounds may not fit 64 bits, so they emit no pair.
+	if (f.HasIntRange || f.Type.Kind == ir.TBits) && !ir.TableKindWide(kind) {
+		if f.Type.Signed {
+			exact = fmt.Sprintf(", RangeIntMin: %s, RangeIntMax: %s", rangeIntMin, rangeIntMax)
+		} else {
+			exact = fmt.Sprintf(", RangeUintMin: %s, RangeUintMax: %s", rangeUintMin, rangeUintMax)
+		}
+	}
+	g.pf("\t\tHasRange: %s, RangeMin: %s, RangeMax: %s%s, EnumMax: %s,\n", hasRange, rangeMin, rangeMax, exact, enumMax)
 	if f.IsTextList() {
 		// a TEXT LIST (docs/SPEC-TABLES.md §2.13): 1 for string(M) elements, 2 for ?string(M)
 		g.pf("TextList:%d,\n", textListCode(f))
@@ -742,6 +773,10 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 			// its total (§2.13): the JSON walk holds it, and names the field
 			g.pf("TextTotal:%d,TextTotalOf:%q,\n", f.TextTotal, f.TextListElem().MapEntryOf)
 		}
+	}
+	if f.Type.TextUnbounded() {
+		// UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): the slot names a blob record
+		g.pf("Unbounded:true,\n")
 	}
 	if f.IsList() {
 		_, align := ir.ListElementLayout(g.unit, f)
