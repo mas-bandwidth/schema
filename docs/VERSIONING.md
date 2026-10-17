@@ -353,6 +353,18 @@ build-version-mismatched. It does not refuse `unknown`, `widened` or
 the strict read would accept — a clean read, or one whose only counters are
 those three.
 
+**In Go the plain name IS the strict read** (SPEC-TABLES.md §6.5, Go first).
+`<Name>Load`, `<Name>LoadBuilder`, `<Name>FromJson`, `<Name>FixedLoad` and
+`<Name>LoadMessages` refuse every read `ReadStrict` refuses, `missing_required`
+included, keep their signatures, and leave THIS read's report in the one the
+caller passes, so `report.Err()` is the typed reason on a refusal. The
+tolerant read, which hands back the recovered value with the counters above
+counted, is `<Name>LoadTolerant`, `<Name>LoadBuilderTolerant`,
+`<Name>FromJsonTolerant`, `<Name>FixedLoadTolerant` and
+`<Name>LoadMessagesTolerant`: a reader that wants the severity split above
+calls it by that name. Every other target's plain name stays tolerant until
+its emitter takes the rule.
+
 **A fixed table's file can be refused before any counter exists**, and the
 refusal says what the reader knows. `layout_unsupported` is a layout the
 reader's lineage holds and has retired: upgrade the client. `layout_unknown` is
