@@ -5,6 +5,8 @@
 # the serialize.go runtime the generated Go targets, a sibling checkout;
 # test/go/go.mod and its ludicrous twin carry the same relative path
 SERIALIZE_GO ?= ../serialize.go
+SERIALIZE_GO_FETCHED := build/serialize.go
+SERIALIZE_GO_RUNTIME := $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))
 
 build/packet-text/go/.stamp: bin/schema test/packet-text/Narrow.schema make/go.mk
 	./bin/schema generate --lang go --out build/packet-text/go test/packet-text/Narrow.schema
@@ -55,8 +57,12 @@ generated/go/.stamp: bin/schema $(SCHEMAS)
 # is ONE walk, and the way to hold that is to compare the emitted bytes. One
 # walker per unit — Go emits it into <Home>TableJson.go — and the same bytes in
 # every unit of the corpus.
-.PHONY: tables-go-fixedform
-tables-go-fixedform:
+.PHONY: tables-go-fixedform tables-go-sibling-runtime
+tables-go-sibling-runtime: $(SERIALIZE_GO_RUNTIME)/go.mod
+	@if [ "$(SERIALIZE_GO_RUNTIME)" = "$(SERIALIZE_GO_FETCHED)" ] && [ ! -e "$(CURDIR)/../serialize.go" ]; then \
+		ln -s "$(CURDIR)/build/serialize.go" "$(CURDIR)/../serialize.go"; \
+	fi
+tables-go-fixedform: tables-fixedform-corpus tables-go-sibling-runtime
 	sh test/slowgate/proof tables-go-fixedform \
 		'TestFixedFormCountAndLengthOverBoundRefuseByName TestFixedFormRoundTrip TestFixedFormHostileBoolByte TestFixedFormHostileUnionTag TestFixedFormArgLaneOldEncodingControl TestFixedFormClampLiveCount TestFixedFormRecordBound TestFixedFormIdentityEqualsCompiled TestFixedFormZeroBehindNarrowerArm TestFixedPlanMaxCoversEveryLineagePlan TestTimestampKindInGo TestFixedLoadAllocatesNothingPerCall TestFixedLoadNamesEveryRefusal TestFixedFormWriteSideRefusesInEveryGoBuild TestGoTableWritersRefuseWhatTheirReadersRefuse TestFixedLoadUnknownHashIsLayoutUnknown' \
 		./internal/codegen/gotable -run 'TestFixedForm|TestFixedPlanMaxCoversEveryLineagePlan|TestTimestampKindInGo|TestFixedLoadAllocatesNothingPerCall|TestFixedFormCountAndLengthOverBoundRefuseByName|TestFixedLoadNamesEveryRefusal|TestFixedFormWriteSideRefusesInEveryGoBuild|TestGoTableWritersRefuseWhatTheirReadersRefuse|TestFixedLoadUnknownHashIsLayoutUnknown' -count=1
@@ -866,7 +872,7 @@ test-go: tables-go-versioning
 # sets SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a FAILURE: under this
 # name a missing corpus can never pass silently.
 .PHONY: tables-go-versioning
-tables-go-versioning: tables-fixedform-corpus
+tables-go-versioning: tables-fixedform-corpus $(SERIALIZE_GO_RUNTIME)/go.mod
 	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/gotable/ -count=1 -run 'TestFixedVersioning|TestHash|TestFloor|TestLineageMerge|TestFixedRoadmapGoT02Plans|TestFixedRoadmapGoT12ConformanceHostile'
 	@echo 'tables Go versioning: §5 read both columns of every row against the C++ reference bytes'
 
