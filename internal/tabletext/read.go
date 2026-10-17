@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -163,6 +164,9 @@ func Shape(f *ir.Field) byte {
 		return 's'
 	case FlagsOf(f) != nil:
 		return 'a'
+	case f.Type.Timestamp:
+		// §16.2's timestamp row: an RFC 3339 string, never the count's number
+		return 's'
 	case f.Type.Kind == ir.TBool:
 		return 'b'
 	}
@@ -178,6 +182,8 @@ func ElementShape(f *ir.Field) byte {
 		return 's'
 	case FlagsOf(f) != nil:
 		return 'a'
+	case f.Type.Timestamp:
+		return 's'
 	case f.Type.Kind == ir.TBool:
 		return 'b'
 	}
@@ -1186,6 +1192,10 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 // readScalar places one value at one cell: a nested object, a union, a
 // vocabulary, or a number.
 func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
+	if f.Type.Timestamp {
+		// §16.2's timestamp row is a string, not the int64 it stores
+		return in.readTimestamp(cell, f)
+	}
 	if un := UnionOf(f); un != nil {
 		return in.readUnion(cell, un, depth)
 	}
@@ -1248,6 +1258,29 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 	}
 	in.bad = true
 	return false
+}
+
+// readTimestamp places §16.2's timestamp row: one RFC 3339 string, read from
+// any spelling of the instant (an offset included), landing its UTC nanosecond
+// count (docs/SPEC-TABLES.md §2.11). A string that does not parse, or names an
+// instant outside Time.UnixNano's domain, is REFUSED BY NAME: the read fails,
+// the report is Malformed and its Reason is `timestamp_not_rfc3339: <field>`,
+// exactly as the generated Go walk refuses it (§16.2).
+func (in *reader) readTimestamp(cell *Cell, f *ir.Field) bool {
+	text, _, ok := in.scanString(-1)
+	if !ok {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339Nano, string(text))
+	named := err == nil && !t.Before(time.Unix(0, -1<<63)) && !t.After(time.Unix(0, 1<<63-1))
+	if !named {
+		in.report.Reason = "timestamp_not_rfc3339: " + f.Name
+		in.bad = true
+		return false
+	}
+	cell.I = t.UnixNano()
+	cell.U = uint64(cell.I)
+	return true
 }
 
 // placeFloat converts a number token into a float field. A magnitude the
