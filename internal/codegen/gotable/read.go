@@ -215,6 +215,8 @@ func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 	case f.Type.Kind == ir.TWString:
 		g.pf("%ssub,ok:=r.Body();if !ok {r.Report.Malformed=true;return false}\n", ind)
 		g.emitReadWString(f, expr, "sub", ind, "r.Report.Malformed=true;break")
+	case f.Type.TextUnbounded():
+		g.emitReadUnboundedText(f, expr, ind)
 	case f.Type.Kind == ir.TString:
 		g.pf("%ssub, ok := r.Body(); if !ok { r.Report.Malformed = true; return false }\n", ind)
 		g.pf("%sif !tableUtf8Valid(sub.Buffer) { r.Report.Malformed = true;\n", ind)

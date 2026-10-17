@@ -229,8 +229,13 @@ type ScalarType struct {
 	// checker takes it on `string(M)` only and refuses every other element
 	// by name.
 	ElemOptional bool
-	Name         string // ScalarNamed
-	Pos          Pos
+	// Unbounded marks a bare `string` with no `(N)`: UNBOUNDED text
+	// (docs/SPEC-TABLES.md §2.13.1). The grammar takes it wherever a field
+	// type stands; the checker accepts it as a variable table's text-list
+	// element and as a map key, and refuses every other placement by name.
+	Unbounded bool
+	Name      string // ScalarNamed
+	Pos       Pos
 }
 
 type ConstField struct {

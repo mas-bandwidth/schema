@@ -533,7 +533,17 @@ type FieldType struct {
 	// because every layout, row and cooked record already stores it as the
 	// int64 it is; only the consumers that name a kind or a spelling ask.
 	Timestamp bool
+
+	// Unbounded marks a TString with no declared N (Size 0): a text-list
+	// element or a map key spelled bare `string` (docs/SPEC-TABLES.md
+	// §2.13.1). Its storage is one TableRef slot naming a blob record (§2.5);
+	// its wire is kind 12 exactly as string(N)'s.
+	Unbounded bool
 }
+
+// TextUnbounded reports an unbounded text value: a bare `string` element or key
+// (docs/SPEC-TABLES.md §2.13.1).
+func (t FieldType) TextUnbounded() bool { return t.Kind == TString && t.Unbounded && !t.Pointer }
 
 // Blob reports a BYTE BUFFER field — `*bytes` or `*string` (docs/SPEC-TABLES.md
 // §2.5): a pointer whose target is a blob node rather than a table. Every

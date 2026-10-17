@@ -3898,6 +3898,27 @@ In Go, `HandoverRulesAppend(&h, "a")` appends (false past either bound),
 strings. Only Go generates either construct today; every other `--lang`
 refuses it by name.
 
+### Unbounded text in lists and map keys
+
+When no code bounds a list's elements or a map's keys, leave the bound off
+(docs/SPEC-TABLES.md §2.13.1), in a plain `table` only:
+
+```
+table Where
+{
+    receipts []string              // ["a","b"] in JSON, each element any length
+    running  []?string             // ["a",null]
+    recent   [..64]string          // at most 64 elements, each any length
+    rows     map[string]FriendRow  // {"any key": {...}}
+}
+```
+
+The wire is the bounded spelling's (respelling `string(M)` as `string` moves no
+byte), nothing is clamped for length, and the bytes live in the builder's arena,
+so in Go every append takes the worker: `WhereRecentAppend(&b.Main, v, "a")`.
+A bare `string` anywhere else is refused by name with the spelling to use.
+Only Go generates the construct today; every other `--lang` refuses it by name.
+
 ## Embedding the compiler
 
 The compiler is a Go library as well as a binary. `cmd/schema` is a client of

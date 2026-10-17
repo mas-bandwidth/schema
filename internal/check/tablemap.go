@@ -67,7 +67,10 @@ func (c *checker) resolveMapField(owner string, f *ast.Field, inTable bool) *ir.
 	if key == nil {
 		return nil
 	}
+	savedValue := c.mapValue
+	c.mapValue = true
 	value := c.resolveField(entryName, m.Value, true)
+	c.mapValue = savedValue
 	if value == nil {
 		return nil
 	}
@@ -188,7 +191,12 @@ func (c *checker) resolveMapKey(f *ast.Field, m *ast.MapType) *ir.Field {
 	// the key resolves through the ordinary field path, so `string(N)`'s bound
 	// is validated once, in one place
 	keyAst := &ast.Field{Name: ir.MapKeyFieldName, Pos: k.Pos, Type: k}
+	// an UNBOUNDED key, `map[string]V` (§2.13.1), resolves through the same
+	// path, which takes the bare word here and in a text-list element only
+	saved := c.unboundedText
+	c.unboundedText = true
 	key := c.resolveField(f.Name, keyAst, true)
+	c.unboundedText = saved
 	if key == nil {
 		return nil
 	}
