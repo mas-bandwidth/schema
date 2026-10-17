@@ -21,8 +21,10 @@ var boundedTextSchema = map[string]string{
 // boundedTextDigest is the sha256 of the go and cpp outputs of
 // boundedTextSchema at the base this card started from (sprint/schema-go @
 // caea41783), file names sorted, each name then its bytes (outputDigest).
+// The go digest moved once since, by the integrity_mismatch refusal name
+// every Go unit's runtime carries (docs/SPEC-TABLES.md §2.14).
 var boundedTextDigest = map[string]string{
-	"go":  "5a2a1da84e38a79d0994e682683cb588a8739b912fb6e956a0b2163530f9045d",
+	"go":  "7432b2a79e647f86c32fdd5ee55e97c92430fe9b51d0923bd231f0135253843f",
 	"cpp": "ff5e30ac14304bb0ab07460f917a19a1efa46fa1c5dac34498d4bd856dfe9605",
 }
 
