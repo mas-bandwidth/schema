@@ -3846,6 +3846,31 @@ read years later by whoever asks why.
 
 ---
 
+### Text lists and array-root tables
+
+A plain `table` may hold a list of text directly (docs/SPEC-TABLES.md §2.13):
+
+```
+table Handover
+{
+    rules [..16]string(64)    // ["a","b"] in JSON
+    first [..16]?string(64)   // ["a",null] — an element may be absent
+    repos []string(64)        // unbounded
+}
+
+table GoalList | json = "array"   // its JSON text is a top-level array (§16.10)
+{
+    goals []string(64)
+}
+```
+
+In Go, `HandoverRulesAppend(&h, "a")` appends (false past either bound),
+`HandoverRulesTextAt(&h, i)` reads an element without allocating, and
+`HandoverFirstAppendAbsent(&h)` appends an absent element. On the wire a
+`string(M)` list is kind 14 over element kind 12; in JSON it is a plain array of
+strings. Only Go generates either construct today; every other `--lang`
+refuses it by name.
+
 ## Embedding the compiler
 
 The compiler is a Go library as well as a binary. `cmd/schema` is a client of

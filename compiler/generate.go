@@ -111,6 +111,11 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		if tname, ok := firstFormsTable(u); ok {
 			return nil, fmt.Errorf("target %q refuses the construct forms on table %s — Go carries it first; no other target honours it until its turn (docs/SPEC-TABLES.md §2.12)", carrier, tname)
 		}
+		// GO CARRIES TEXT LISTS AND THE ARRAY ROOT FIRST (docs/SPEC-TABLES.md
+		// §2.13, §16.10): every other target refuses them here, once, by name
+		if err := refuseTextForms(u, carrier); err != nil {
+			return nil, err
+		}
 	}
 	if lg, takes := g.(lineageGenerator); takes {
 		lineage, err := openFixedLineage(u)

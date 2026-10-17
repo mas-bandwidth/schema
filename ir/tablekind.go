@@ -172,6 +172,12 @@ func TableScalarKind(f *Field) int {
 		case *Flags:
 			return TableKindU64
 		case *Struct:
+			// A PLAIN TEXT LIST rides as an array of element kind 12
+			// (docs/SPEC-TABLES.md §2.13, §3): each element its own L and
+			// bytes, though its storage is an array of the element record
+			if TextListPlain(f) {
+				return TableKindString
+			}
 			// A POINTER to a table is a NODE INDEX, not a nested body: it rides
 			// as four bytes under kind 17 into the flat node table
 			// (docs/SPEC-TABLES.md §3.1). Spending the distinct kind costs no

@@ -220,7 +220,11 @@ func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 		g.pf("%sif !tableUtf8Valid(sub.Buffer) { r.Report.Malformed = true;\n", ind)
 		g.emitTableResetField(f)
 		g.pf("break }\n")
-		g.pf("%skeep := int64(len(sub.Buffer)); if keep > %d { keep = tableUtf8Clamp(sub.Buffer, %d); r.Report.Clamped++ }\n", ind, f.Type.Size, f.Type.Size)
+		if holder := g.textValueHolder(f); holder != "" {
+			g.pf("%skeep := int64(len(sub.Buffer)); if keep > %d { keep = tableUtf8Clamp(sub.Buffer, %d); r.Report.Clamped++; tableTextClamped(r.Report, %q) }\n", ind, f.Type.Size, f.Type.Size, holder)
+		} else {
+			g.pf("%skeep := int64(len(sub.Buffer)); if keep > %d { keep = tableUtf8Clamp(sub.Buffer, %d); r.Report.Clamped++ }\n", ind, f.Type.Size, f.Type.Size)
+		}
 		g.pf("%sclear(%s[:]); copy(%s[:keep], sub.Buffer); %sLength = int32(keep)\n", ind, expr, expr, expr)
 	case kind == tkTable:
 		g.pf("%ssub, ok := r.Body(); if !ok { r.Report.Malformed = true; return false }\n", ind)
@@ -292,7 +296,12 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		}
 		g.pf("%s}\n", i)
 	} else {
-		g.pf("%skeep := count; if keep > %d { keep = %d; r.Report.Clamped++ }\n", i, bound, bound)
+		if ir.IsTextListField(f) {
+			// a text list's count clamp names the field (docs/SPEC-TABLES.md §2.13)
+			g.pf("%skeep := count; if keep > %d { keep = %d; r.Report.Clamped++; tableTextClamped(r.Report, %q) }\n", i, bound, bound, f.TextListElem().MapEntryOf)
+		} else {
+			g.pf("%skeep := count; if keep > %d { keep = %d; r.Report.Clamped++ }\n", i, bound, bound)
+		}
 		counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes
 		if counted {
 			companion := expr + "Count"
@@ -304,6 +313,8 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		g.pf("%sfor i := uint64(0); i < keep; i++ {\n", i)
 		j := i + "\t"
 		switch kind {
+		case tkString:
+			g.emitReadTextElement(f, expr+"[i]", j)
 		case tkTable:
 			g.pf("%selem, ok := sub.Body(); if !ok { r.Report.Malformed = true; break }\n", j)
 			g.retainReadPath("elem", "r", "i")
