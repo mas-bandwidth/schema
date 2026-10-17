@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -541,6 +542,13 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 		return writeFloat(w, cell.F, true)
 	case ir.TableKindF64:
 		return writeFloat(w, cell.F, false)
+	case ir.TableKindTimestamp:
+		// §16.2's timestamp row: RFC 3339 with nanoseconds and a Z offset, the
+		// zero time spelled "1970-01-01T00:00:00Z" — byte for byte what the
+		// generated Go writer spells for the same count (docs/SPEC-TABLES.md §2.11)
+		var scratch [48]byte
+		writeString(w, time.Unix(0, cell.I).UTC().AppendFormat(scratch[:0], time.RFC3339Nano))
+		return nil
 	case ir.TableKindI8, ir.TableKindI16, ir.TableKindI32, ir.TableKindI64:
 		w.raw(strconv.FormatInt(cell.I, 10))
 		return nil
