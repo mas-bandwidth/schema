@@ -299,7 +299,11 @@ func (p *packer) readTableText(inst *tabletext.Instance, path string, text []byt
 	p.m.Read(inst, text, &r)
 	p.report.Add(r)
 	if r.Malformed {
-		p.refusef("%s: not one JSON text for table %s (docs/SPEC-TABLES.md §17.3)", path, inst.Def.Name)
+		if r.Reason != "" {
+			p.refusef("%s: %s (docs/SPEC-TABLES.md §17.3)", path, r.Reason)
+		} else {
+			p.refusef("%s: not one JSON text for table %s (docs/SPEC-TABLES.md §17.3)", path, inst.Def.Name)
+		}
 	}
 }
 
@@ -308,7 +312,11 @@ func (p *packer) readFieldText(fv *tabletext.Field, path string, text []byte) {
 	p.m.ReadValue(fv, text, &r)
 	p.report.Add(r)
 	if r.Malformed {
-		p.refusef("%s: not one JSON value for field %q (docs/SPEC-TABLES.md §17.3)", path, ir.TableFieldJsonKey(fv.Def))
+		if r.Reason != "" {
+			p.refusef("%s: %s (docs/SPEC-TABLES.md §17.3)", path, r.Reason)
+		} else {
+			p.refusef("%s: not one JSON value for field %q (docs/SPEC-TABLES.md §17.3)", path, ir.TableFieldJsonKey(fv.Def))
+		}
 	}
 }
 
