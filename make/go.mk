@@ -664,7 +664,9 @@ test-go: tables-go-accessor-descriptor-agreement tables-go-accessor-negative-con
 # requires the home to move.
 .PHONY: tables-go-runtime-home tables-go-runtime-home-negative-control
 tables-go-runtime-home:
-	go test ./internal/codegen/gotable -run '^TestSharedRuntimeHomeIsPackageNamed$$' -count=1
+	sh test/slowgate/proof tables-go-runtime-home \
+		'TestSharedRuntimeHomeIsPackageNamed' \
+		./internal/codegen/gotable -run '^TestSharedRuntimeHomeIsPackageNamed$$' -count=1
 tables-go-runtime-home-negative-control: bin/schema
 	@mkdir -p build
 	@sed 's|home := ir.GoExportName(u.Package)|home := ir.ProtocolIdHome(u) // SABOTAGED: back to the file order|' \
@@ -915,7 +917,9 @@ test-go: tables-go-usage
 # it needs no SCHEMA_SLOW.
 .PHONY: tables-go-subsets
 tables-go-subsets:
-	go test -count=1 -timeout 600s ./internal/codegen/gotable/ -run '^TestGoTableCompilesWithAnySubsetOfItsForms$$'
+	sh test/slowgate/proof tables-go-subsets \
+		'TestGoTableCompilesWithAnySubsetOfItsForms' \
+		./internal/codegen/gotable -run '^TestGoTableCompilesWithAnySubsetOfItsForms$$' -count=1 -timeout 600s
 test-go: tables-go-subsets
 
 # I13 (docs/PORTING.md:1278): the go leg's text differential against a third
