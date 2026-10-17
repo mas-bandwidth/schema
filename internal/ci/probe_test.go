@@ -29,6 +29,12 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// make/lua-serialize.mk is a support fragment for vendor-serialize-lua
+	// (docs/PORT-LUA.md, THE RUNTIME LAYOUT), not a compiler backend; drop it
+	// from the fixture so the registry probe counts only live legs.
+	if err := os.Remove(filepath.Join(fixture, "make", "lua-serialize.mk")); err != nil {
+		t.Fatal(err)
+	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatal(err)
