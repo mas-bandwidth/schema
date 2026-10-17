@@ -17,11 +17,12 @@ import (
 // a map, and a json key on a field.
 const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntable Holder\n{\n    name string(16) | json = \"label\"\n    words [..4]Word\n    more []Word\n    index map[string(8)]int32\n}\n"
 
-// neitherDigest is the sha256 of the go and cpp outputs of neitherSchema at
-// the base this card started from (sprint/schema-go @ f001d67e2086), file
-// names sorted, each name then its bytes.
+// neitherDigest is the sha256 of the go and cpp outputs of neitherSchema,
+// file names sorted, each name then its bytes. The Go digest was re-pinned at
+// head: the strict timestamp parser now rides in every Go text form
+// (docs/SPEC-TABLES.md §2.11, §16.2).
 var neitherDigest = map[string]string{
-	"go":  "d33ef71acf7fe567f8768e015e19dee78e57abfedfbad019fe9d16f654219a58",
+	"go":  "a0817eaed87c76d6373f6c95ab3768fb427e4ec272b5d44071c940c34ffcab80",
 	"cpp": "5aabda2cf12ca342bd480b18084def13f06d87a85b6bdddeea12f955f761da1d",
 }
 

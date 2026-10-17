@@ -235,6 +235,12 @@ func init() {
 		Name{Name: "TableTimestampError", What: "the timestamp kind's text form and Go value"},
 		Name{Name: "tableTimestampNanos", What: "the timestamp kind's text form and Go value"},
 		Name{Name: "tableTimestampTime", What: "the timestamp kind's text form and Go value"},
+		Name{Name: "tableRFC3339Parse", What: "the strict RFC 3339 timestamp text parser (docs/SPEC-TABLES.md §2.11, §16.2)"},
+		Name{Name: "tableRFC3339Digit", What: "the strict RFC 3339 timestamp text parser (docs/SPEC-TABLES.md §2.11, §16.2)"},
+		Name{Name: "tableRFC3339Two", What: "the strict RFC 3339 timestamp text parser (docs/SPEC-TABLES.md §2.11, §16.2)"},
+		Name{Name: "tableRFC3339Leap", What: "the strict RFC 3339 timestamp text parser (docs/SPEC-TABLES.md §2.11, §16.2)"},
+		Name{Name: "tableRFC3339MonthDays", What: "the strict RFC 3339 timestamp text parser (docs/SPEC-TABLES.md §2.11, §16.2)"},
+		Name{Name: "tableRFC3339Days", What: "the strict RFC 3339 timestamp text parser (docs/SPEC-TABLES.md §2.11, §16.2)"},
 		Name{Name: "tableJsonReadWide", What: "exact wide scalar text conversion"},
 		Name{Name: "tableJsonWriteWide", What: "exact wide scalar text conversion"},
 
