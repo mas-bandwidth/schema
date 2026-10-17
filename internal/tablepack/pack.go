@@ -9,6 +9,7 @@
 package tablepack
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -59,6 +60,7 @@ func Pack(m *tabletext.Model, root, dir string) ([]byte, []string, tabletext.Rep
 	if err := p.rootTree(inst, root, dir); err != nil {
 		return nil, p.skipped, *p.report, err
 	}
+	p.refuseZeroByteText(inst)
 	if len(p.refusals) > 0 {
 		return nil, p.skipped, *p.report, p.refusals
 	}
@@ -100,6 +102,7 @@ func PackMessages(m *tabletext.Model, trees []MessageTree) ([]byte, []string, ta
 		if err := p.rootTree(inst, tree.Root, tree.Dir); err != nil {
 			return nil, p.skipped, *p.report, err
 		}
+		p.refuseZeroByteText(inst)
 		insts = append(insts, inst)
 	}
 	if len(p.refusals) > 0 {
@@ -310,6 +313,90 @@ func (p *packer) readFieldText(fv *tabletext.Field, path string, text []byte) {
 	if r.Malformed {
 		p.refusef("%s: not one JSON value for field %q (docs/SPEC-TABLES.md §17.3)", path, ir.TableFieldJsonKey(fv.Def))
 	}
+}
+
+// refuseZeroByteText refuses a pack whose instance would place a U+0000 in a
+// narrow text — a string(N), a *string, a map's string key, or a text-list
+// element — naming the field, because the Go writer's read side refuses such a
+// value too (docs/SPEC-TABLES.md §3, §4.2).
+func (p *packer) refuseZeroByteText(inst *tabletext.Instance) {
+	if z := zeroByteTextPath(inst); z != "" {
+		p.refusef("text_zero_byte: %s (docs/SPEC-TABLES.md §3, §4.2)", z)
+	}
+}
+
+// zeroByteTextPath walks inst through its by-value storage and returns the
+// dot-joined JSON-key path of the first narrow text that holds a U+0000, or ""
+// when none does.
+func zeroByteTextPath(inst *tabletext.Instance) string {
+	return zeroByteInstancePath(inst, "")
+}
+
+func zeroByteInstancePath(inst *tabletext.Instance, prefix string) string {
+	for i := range inst.Fields {
+		fv := &inst.Fields[i]
+		p := prefix
+		if p != "" {
+			p += "."
+		}
+		p += ir.TableFieldJsonKey(fv.Def)
+		if s := zeroByteFieldPath(fv, p); s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+func zeroByteFieldPath(fv *tabletext.Field, path string) string {
+	f := fv.Def
+	switch {
+	case f.IsMap():
+		for j := range fv.Entries {
+			entry := fv.Entries[j].Tab
+			if entry == nil {
+				continue
+			}
+			if s := zeroByteInstancePath(entry, path); s != "" {
+				return s
+			}
+		}
+	case f.Array != ir.ArrayNone:
+		for j := range fv.Elems {
+			if s := zeroByteCellPath(&fv.Elems[j], f, fmt.Sprintf("%s[%d]", path, j)); s != "" {
+				return s
+			}
+		}
+	default:
+		if s := zeroByteCellPath(&fv.Cell, f, path); s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+func zeroByteCellPath(cell *tabletext.Cell, f *ir.Field, path string) string {
+	switch {
+	case f.Type.Blob():
+		if cell.Blob != nil && bytes.IndexByte(cell.Blob.Data, 0) >= 0 {
+			return path
+		}
+	case f.Type.Kind == ir.TString:
+		if bytes.IndexByte(cell.Str, 0) >= 0 {
+			return path
+		}
+	case f.Type.Kind == ir.TNamed:
+		if cell.Tab != nil {
+			if s := zeroByteInstancePath(cell.Tab, path); s != "" {
+				return s
+			}
+		}
+		if cell.Node != nil {
+			if s := zeroByteInstancePath(cell.Node, path); s != "" {
+				return s
+			}
+		}
+	}
+	return ""
 }
 
 // entryKey is the field key or variant name an entry names: a directory's own
