@@ -2,7 +2,7 @@
 // §2.3, SPEC §4.6): the field compiles with a declared default, its fresh value is the
 // storage zero — which is outside the range, so Save refuses it — and once set it saves
 // and round-trips, while a record that never carried the field is missing_required on
-// a strict read.
+// a strict read in the binary, base64 and JSON forms alike.
 package gotable
 
 import "testing"
@@ -39,6 +39,16 @@ func TestReq(t *testing.T){
 	OldExactSave(&old, buf)
 	var m TableMissingRequired
 	if _, err := ExactReadStrict(buf); err == nil || !errors.As(err, &m) || m.Fields != "ver" { t.Fatalf("ReadStrict missing field error %v (%T), want TableMissingRequired{ver}", err, err) }
+	// the JSON form refuses the same absence (SPEC-TABLES §2.3, §16): an
+	// object without ver is missing_required, not a silent zero outside [7,7].
+	var jb ExactBuilder
+	if !jb.Init() { t.Fatal("builder init") }
+	defer jb.Shutdown()
+	var rep TableReport
+	if ExactFromJson(&jb, []byte("{\"hp\":5}"), &rep) { t.Fatal("JSON without ver was accepted") }
+	if !errors.As(rep.Err(), &m) || m.Fields != "ver" { t.Fatalf("JSON missing field error %v (%T), want TableMissingRequired{ver}", rep.Err(), rep.Err()) }
+	rep = TableReport{}
+	if !ExactFromJson(&jb, []byte("{\"ver\":7}"), &rep) || rep.Err() != nil { t.Fatalf("JSON with ver refused: %+v", rep) }
 }
 `
 	runGenerated(t, schema, body)
