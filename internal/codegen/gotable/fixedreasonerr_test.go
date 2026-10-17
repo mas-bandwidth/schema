@@ -9,7 +9,8 @@ import (
 // refusal is the refusal's own §3.4 reason, never unknown_form. A real fixed
 // file with a wrong layout hash and one with a count past its bound each give
 // errors.As TableFixedRefusal (layout_unknown, count_over_bound); a form-1
-// byte is a form-byte refusal and stays TableRefuseUnknownForm under errors.Is.
+// byte is a form-byte refusal and a message-form refusal is not a fixed-form
+// reason, so both stay TableRefuseUnknownForm under errors.Is.
 func TestGoFixedRefusalErrKeepsItsName(t *testing.T) {
 	t.Parallel()
 	runGenerated(t, `package probe
@@ -69,6 +70,22 @@ func TestFixedRefusalErrKeepsItsName(t *testing.T) {
 	}
 	if err := r.Err(); !errors.Is(err, TableRefuseUnknownForm) || err.Error() != "unknown_form" {
 		t.Fatalf("previous_form Err: %v (%T), want TableRefuseUnknownForm", err, err)
+	}
+
+	values := []*Root{&one}
+	messages := make([]byte, RootMeasureMessages(values, nil))
+	var send TableReport
+	if n := RootSaveMessages(values, messages, &send); n != int64(len(messages)) {
+		t.Fatalf("save messages: n=%d %+v", n, send)
+	}
+	var vocab TableVocabulary
+	vocab.Init(make([]TableMessageEntry, TableMessageEntriesHere))
+	r = TableReport{}
+	if n, ok := RootLoadMessages(dst, &vocab, messages, &r); ok || n != 0 || r.Reason != "no_vocabulary" {
+		t.Fatalf("no_vocabulary not refused: n=%d ok=%v reason=%q", n, ok, r.Reason)
+	}
+	if err := r.Err(); !errors.Is(err, TableRefuseUnknownForm) || err.Error() != "unknown_form" {
+		t.Fatalf("no_vocabulary Err: %v (%T), want TableRefuseUnknownForm", err, err)
 	}
 }
 `)

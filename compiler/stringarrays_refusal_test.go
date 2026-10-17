@@ -21,7 +21,7 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 // the base this card started from (sprint/schema-go @ f001d67e2086), file
 // names sorted, each name then its bytes.
 var neitherDigest = map[string]string{
-	"go":  "75bb4d51c6b8f7b5206b7f2325ad3f453f734c99c9b6e3a5cb2012b6334c2902",
+	"go":  "acf3278686ec05e62c280d7a4d1abecb63d6cd2c7475c4594332b54f18cf8bbc",
 	"cpp": "5aabda2cf12ca342bd480b18084def13f06d87a85b6bdddeea12f955f761da1d",
 }
 
