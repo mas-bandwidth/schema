@@ -4064,7 +4064,8 @@ record's u32 length.
 **THE TEXT FORM (§16.2)** is the plain shape: an array of strings (with `null`
 for an absent `?` element) and an object with plain keys. An unbounded element
 is never clamped and an unbounded key never dropped for its length; a repeated
-key is last-wins and counted `duplicate`, as for every map.
+key is last-wins and counted `duplicate`, as for every map. The hand-editable
+text form (§16.9) reads and writes these as §16.9.2 states.
 
 **STORAGE: the blob record of §2.5, reached by a slot in the element record.**
 A bounded element is `[M+1]byte` and an `int32` length, which an unbounded one
@@ -15376,6 +15377,7 @@ The rules below replace §16.2's tolerant behavior for this form only.
 | `fixed(I,F)`, `ufixed(I,F)` | Exact decimal number in whole units, scaled without an intermediate float. A fraction not representable on the Q grid is `text_kind_mismatch`; range overflow is `text_bound`. |
 | `bool` | `true` or `false` only. |
 | `string(N)`, `wstring(N)` | String; respectively at most N UTF-8 bytes or N UTF-16 code units after unescaping, with no partial code point. Over bound is `text_bound`. |
+| `[]string`, `[]?string`, `[..N]string`, `[..N]?string` elements and a `map[string]V` key (§2.13.1) | A string without a schema length bound; a `?` element is `null` or a string; a `[..N]` count over N is `text_bound`; resource limits (§16.9.4) still apply. |
 | `bytes(N)` | String of standard-alphabet padded base64 (empty is `""`); invalid encoding or nonzero unused pad bits is `text_encoding`, decoded length over N is `text_bound`. |
 | `timestamp` | Quoted RFC 3339 timestamp within the UTC nanosecond domain of §16.2; invalid spelling/domain is `text_timestamp`. Preserve the original offset spelling. |
 | Enum | `:Variant` or `"Variant"`, including `None`; resolve the exact variant name. Unknown is `text_unknown_variant`. |
