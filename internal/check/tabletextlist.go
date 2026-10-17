@@ -97,6 +97,12 @@ func (c *checker) resolveTextListField(owner string, f *ast.Field, inTable bool)
 	if value == nil {
 		return nil
 	}
+	// a TOTAL on an UNBOUNDED element (docs/SPEC-TABLES.md §2.13, §2.13.1): no
+	// Go writer or reader path holds it there yet, so it is refused by name
+	if total > 0 && value.Type.TextUnbounded() {
+		c.errf(f.Pos, "field %s: total on a list of unbounded elements (%s) is a named follow-on — the elements live in the builder's arena and no writer or reader holds a total there yet; bound the element as string(M) to declare a total (docs/SPEC-TABLES.md §2.13, §2.13.1, §11)", f.Name, spelling)
+		return nil
+	}
 	// the one place a `?` on a string is legal, and only the generator
 	// writes it (§2.13): the element's presence
 	value.Type.Optional = f.Type.ElemOptional
