@@ -3829,7 +3829,16 @@ spelling as the route where one exists:
   answers to one question, because an empty list is elided and its count's zero
   IS its absence (§2.9); drop the `?`, or move it after the bound;
 - arrays of `wstring(N)`, `bytes(N)`, `bits(N)`, `*string` and `*bytes`: named
-  follow-ons (§15). Only `string(M)` is a text-list element today.
+  follow-ons (§15). Only `string(M)` is a text-list element today;
+- `| total = N` (below) on any field that is not a text list, and `N` below 1
+  or not an integer. A text list in a `fixed table`, a `type` body, a packet,
+  a union arm or a map value is already refused as the construct, so its
+  total is refused with it, naming the variable-table route.
+- `| total = N` on a list of UNBOUNDED elements, `[]string`, `[]?string`,
+  `[..N]string` and `[..N]?string` (§2.13.1): its elements live in the
+  builder's arena, and no Go writer or reader path holds a total there yet, so
+  it is a named follow-on, refused naming the bounded `string(M)` element as
+  the route.
 
 **THE ELEMENT RECORD.** Each text list GENERATES one element record, as a map
 generates its entry (§2.8): `<Table><Field>Text`, one field named `value`
@@ -3882,6 +3891,61 @@ a count past the reader's `N` reads the first `N` elements and counts
 that clamped an element of a text list records the field in the report's
 `Reason` as `clamped: <Table>.<field>`, so `ReadStrict` refuses it with
 `TableRefuseReason` `clamped` (`errors.Is`) and an error text naming the field.
+
+**THE TOTAL: `| total = N`.** A list of `[..N]` elements of `M` bytes each
+bounds every element and the count, and nothing bounds their SUM, so what one
+record may hold is the count times `M`, and for `[]` the data alone. A text
+list in a variable table takes ONE valued attribute that bounds the sum:
+
+```
+table Handover
+{
+    rules [..16]string(64) | total = 256   // 16 elements, 64 bytes each, 256 bytes in all
+    repos []?string(64)    | total = 4096
+}
+```
+
+`total = N` says **the sum of the elements' byte lengths is at most `N`**. The
+length is the element's UTF-8 byte count, the `string(M)` length; an absent
+element of the `?` spelling and a present empty one count zero. `N` is an
+integer constant expression of at least `1`, evaluated as a bound is. It
+applies to all four spellings, and it moves no wire byte: the list rides
+exactly as above, so a writer that declares no total and a reader that does
+read each other's bytes under §4.
+
+- **On the write side it is held the way the count bound is** (`[..N]`, at
+  BASE): `Save`, `Measure`, and every `SaveBody` and `MeasureBody` a nested,
+  regional or retaining write reaches, REFUSE a value whose sum is past `N`,
+  returning `-1` with nothing written; the generated `Append` REFUSES the
+  element that would carry the sum past `N`, returning false, and the stored
+  value does not move. `ToJson` and `ToJsonMeasure` refuse the value too,
+  returning `-1`, so no Go writer emits a wire or a text the declaration
+  forbids.
+- **On the read side it is the variable wire's tolerance** (§4): the reader
+  keeps the longest PREFIX of the list whose sum is within `N`, each element
+  first clamped at `M` as above, and DROPS the first element that would carry
+  the sum past `N` and every element after it, counting `clamped` ONCE for the
+  field and recording `clamped: <Table>.<field>` in the report's `Reason`, so
+  `ReadStrict` refuses it with `TableRefuseReason` `clamped` (`errors.Is`) and
+  an error text naming the field. It is a prefix, as the count's clamp is, so
+  a short element after a long one is dropped too and the kept elements are
+  always the first ones. A count past `[..N]` is clamped first, and both are
+  counted.
+- **JSON TEXT follows the same rule**, element for element (§16.2): the read
+  keeps the prefix within `N` and drops the rest, counted once and named; the
+  write refuses past it. BASE64 TEXT is the binary wire and reads by it.
+- **The cooked form's check (§7.4) does not read it**, as it does not read a
+  declared range: every element stays bounded by `M` and the count by its
+  array, so no total can steer a walker, and a cook is the storage a load or a
+  builder of this build already held to it.
+- **It is a BOUND, recorded where bounds are.** The tables baseline records it
+  as `total=N` on the list's field line (§18.1), and a total TIGHTENED, or
+  declared where the list had none, WARNS as a range tightened does: the read
+  gains a clamp, the row §4.1 counts `clamped` for (§18.2); a total grown or
+  removed passes. The cook projection carries it as `total=N` (§20.1's
+  meaning group, §20.2), because a load that drops elements changes what the
+  storage holds while moving no offset, and the Go descriptor publishes it as
+  `TextTotal` (§8.1).
 
 **BASE64 TEXT** (§16.8) is the padded standard base64 of this binary wire:
 nothing new. **JSON TEXT** is §16.2's text-list row: a plain array of strings.
@@ -8221,6 +8285,7 @@ only.
 | a field or a union ARM changed between an `enum` and its raw integer | `kind_mismatch` | **refuses** | **moves** |
 | a union ARM's declared TYPE changed | `kind_mismatch` where the arm's kind moved, `malformed` where its `L` no longer frames its kind | **refuses** | **moves** |
 | a declared RANGE tightened — a maximum lowered, a minimum raised, or a range declared where the field had none | `clamped` | **warns** — the `min=`/`max=` tokens are extents like a capacity (§18.1) | **moves** |
+| a text list's `total` tightened, or declared where the list had none (§2.13) | `clamped`, once for the field, the elements past the total dropped | **warns** — the `total=` token is an extent like a capacity (§18.1) | **moves**: the cook projection carries `total=` (§20.2) |
 | a fixed field's `F` moved under the same storage width | silent — the kind carries the width and the signedness, and `F` is a declaration-side fact like a resolution (§3) | **refuses** — the `frac=` token is a fixed fact (§18.1) | **moves** |
 | an `enum`'s or a `union`'s variant order or names moved | `unknown` for a name this reader lacks; a reorder is silent and safe | warns on a removal or a vanished name | **moves**, and the protocol id with it where a `type` reaches the declaration: both vocabularies project their ordered names, and only within the closure over the unit's types (SPEC.md §3.1) |
 | a field added, removed or reordered | `unknown` for an id this reader lacks; an absent field defaults | passes; a removal AND an addition in one table in one edit **warn** as the pair a bare rename leaves (§18.2) | **moves** |
@@ -12356,7 +12421,10 @@ in build version (§20.5).
   and `?[]string(M)`; an array of `wstring(N)`, `bytes(N)`, `bits(N)`,
   `*string` or `*bytes`, each a named follow-on (§15); `[..N]?T` and `[]?T`
   for any `T` but `string(M)`; a declaration under any name the construct
-  claims; and the construct under every target but Go, centrally.
+  claims; and the construct under every target but Go, centrally. Its
+  `| total = N` on any other field, on a list of unbounded elements
+  (§2.13.1), with `N` below 1 or not an integer, and under every target but
+  Go, centrally, naming the total.
 - **Unbounded text** (§2.13.1): a bare `string` as a plain field (naming
   `string(N)` and `*string`), in `[N]string` and `[E]string` (naming
   `[..N]string`), in `?[]string` and `?[..N]string`, in a `type` body, a
@@ -15716,6 +15784,13 @@ width is the `kind` this file already holds fixed. A fixed field's bounds
 are its WHOLE-UNIT bounds, recorded beside the `frac=` that puts them on the
 raw scale (§4).
 
+**A TEXT LIST'S TOTAL IS AN EXTENT, and it is recorded like a capacity**
+(§2.13): `total=N` on the list's field line, after its `bound=` where it has
+one. A reader drops the elements past its OWN total and counts `clamped`, so a
+tightened total is a data edit exactly as a tightened range is. A list that
+declares none records no token, so every committed baseline regenerates
+byte-identically and the rendering version does not move.
+
 **Presence is RECORDED and judged on nothing.** An optional's presence
 companion is a fact in the file so a person reading a diff can see it, but
 a field moving between `T`, `?T` and `*T` moves no byte (§3.1) and passes
@@ -15782,7 +15857,8 @@ committed file whenever one is there, and:
   entries already are (§2.8), because the read gains the order check and a
   wire whose pairs were not ascending reads short; a declared
   RANGE tightened, from either end, or declared where the field or the ARM
-  had none; an
+  had none; a text list's `total=` lowered, or declared where the list had
+  none (§2.13); an
   enum variant or a union arm removed; a DECLARATION renamed, or otherwise no
   longer in the closure under its baseline name (§18.3); a field REMOVED and
   a field ADDED in one table in one edit, which is the shape a bare rename
@@ -15797,8 +15873,8 @@ committed file whenever one is there, and:
   and a field that already pairs its key is told nothing.
 - **PASSES, in silence** — everything the wire absorbs: fields added,
   removed, reordered or renamed under `was`; enum variants and union arms
-  added anywhere or renamed under `was`; flags variants APPENDED at the end; bounds, capacities and
-  ranges grown, **a bounded array's bound REMOVED for `[]T` included** (§2.9),
+  added anywhere or renamed under `was`; flags variants APPENDED at the end; bounds, capacities,
+  ranges and a text list's `total=` grown or removed, **a bounded array's bound REMOVED for `[]T` included** (§2.9),
   which is the largest growth there is; a bounded array made fixed or the
   reverse; a field moved
   between `T`, `?T` and `*T`.
@@ -16928,6 +17004,10 @@ the type wire, on what the region looks like, and on what a load puts in it.
      stored variant unknown and a reorder lands it on a different ordinal;
    - every `union`'s **arm order and names** — the same two facts one level
      up: the wire resolves an arm by name hash and the slot stores its tag;
+   - every text list's **`total`** (§2.13): a load drops the elements past
+     the READER's total and counts `clamped`, so tightening it changes what a
+     load stores while moving no offset, no size and no wire id, as a range
+     does;
    - every `flags`' **variant BIT POSITIONS**. A mask rides raw and a load
      copies it verbatim (§3), so a reorder or an in-place rename changes what
      every stored and every cooked bit MEANS while moving no offset and no
@@ -16983,6 +17063,7 @@ keep, so it belongs in `none` with its reason or the token belongs on the line.
 | a specified DEFAULT | **meaning** | `default=` — an elided field materializes it (§3) |
 | a declared `min`/`max`; a compressed float's range; `bits(N)`'s implied range | **meaning** | `min=` / `max=` — §4 clamps a load to the reader's bounds |
 | a compressed float's RESOLUTION | **meaning** | `step=` |
+| a text list's `total` (§2.13) | **meaning** | `total=` on the list's field line — §2.13 drops a load's elements past the reader's total |
 | an `enum`'s variant order and names | **meaning** | the `variant` lines — the wire carries a name hash, the slot the stored value (§3) |
 | a `union`'s arm order and names | **meaning** | the `arm` lines, the same one level up |
 | a `flags`' variant order and names | **meaning** | the `flags` lines (§20.2), each variant with its BIT POSITION. A mask rides raw, so the position is what a stored bit means, and a reorder or an in-place rename remaps every cooked mask with nothing on the wire to say so (§4.1) |
@@ -17050,6 +17131,7 @@ record <Name> sizeof=<n> alignof=<n>
         [ bound=<n> ] [ key=<Name> ]
         [ optional=true ]
         [ default=<v> ] [ min=<v> ] [ max=<v> ] [ step=<v> ]
+        [ total=<n> ]
 ```
 
 **The optional tokens appear in that order and only where the fact exists**,
