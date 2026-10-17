@@ -217,3 +217,82 @@ fixed table FoxAll
 `, probe)
 	})
 }
+
+// TestSurfaceIntersectsDeclaredForms pins how a --surface request composes with
+// a table's `forms` declaration (docs/SPEC-TABLES.md §2.12). Ping is a fixed
+// table so the block form exists for it at all (§19 blocks are fixed-only). A table carries
+// json, cook or block only when its declaration allows it AND the surface set
+// asks for it; wire is always carried. The default (full) surface set refuses
+// nothing; an explicit list naming a form a declaring table does not carry is
+// refused by name, naming the table, the surface and the table's forms value.
+func TestSurfaceIntersectsDeclaredForms(t *testing.T) {
+	t.Parallel()
+	const schema = `package probe
+table Pong | forms = "wire,json"
+{
+    x int32
+}
+fixed table Ping
+{
+    x int32
+}
+`
+	type carries struct{ json, cook, block bool }
+	marks := func(name string) (json, cook, block string) {
+		return "func " + name + "FromJson(", "func " + name + "CookFrom(", "type " + name + "Block"
+	}
+	for _, tc := range []struct {
+		name    string
+		surface string
+		pong    carries
+		ping    carries
+		refuse  []string // substrings the refusal must name; nil means no refusal
+	}{
+		{name: "default", surface: "", pong: carries{json: true}, ping: carries{json: true, cook: true, block: true}},
+		{name: "wire,json", surface: "wire,json", pong: carries{json: true}, ping: carries{json: true}},
+		{name: "wire,cook", surface: "wire,cook", refuse: []string{"Pong", "cook", `"wire,json"`, "§2.12"}},
+		{name: "wire", surface: "wire"},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s, err := ParseSurfaces(tc.surface)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, err := GenerateLineageSurface(unitFrom(t, schema), nil, s)
+			if tc.refuse != nil {
+				if err == nil {
+					t.Fatalf("--surface %s was not refused although Pong declares forms = \"wire,json\"", tc.surface)
+				}
+				for _, want := range tc.refuse {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("refusal %q does not name %q", err, want)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("--surface %q refused: %v", tc.surface, err)
+			}
+			src := joinedSource(out)
+			if !strings.Contains(src, "func PongSave(") || !strings.Contains(src, "func PingSave(") {
+				t.Fatalf("the wire form is missing for --surface %q", tc.surface)
+			}
+			for _, row := range []struct {
+				table string
+				want  carries
+			}{{"Pong", tc.pong}, {"Ping", tc.ping}} {
+				j, c, b := marks(row.table)
+				for _, m := range []struct {
+					mark string
+					want bool
+				}{{j, row.want.json}, {c, row.want.cook}, {b, row.want.block}} {
+					if got := strings.Contains(src, m.mark); got != m.want {
+						t.Errorf("--surface %q: %s present=%v, want %v", tc.surface, m.mark, got, m.want)
+					}
+				}
+			}
+		})
+	}
+}

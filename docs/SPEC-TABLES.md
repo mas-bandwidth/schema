@@ -3759,9 +3759,24 @@ what the table carries.
 Go honours it per table: a table that declares `forms` gets only the surfaces of
 the forms it carries (`<Base>Table.go` for `wire`, `<Home>TableJson.go` entries
 for `json`, `<Base>Block.go` for `block` and `<Base>Cook.go` for `cook`), and a
-form no table in the unit carries emits no surface file at all. The intersection
-with a `--surface` request is the intersection — a `--surface` naming a form the
-table does not declare is refused by name. Every other target refuses the whole
+form no table in the unit carries emits no surface file at all.
+
+**`--surface` (§8.8) intersects the declaration.** A table carries `json`,
+`cook` or `block` only when its `forms` declaration allows it AND the surface
+list asks for it; `wire` is always carried, and the four surfaces outside the
+forms vocabulary (`fixed`, `view`, `message`, `retain`) are governed by the
+list alone. So with `table Pong | forms = "wire,json"` beside an undeclared
+`table Ping`, no `--surface` gives Pong `json` and Ping every form,
+`--surface wire,json` gives both `json` and neither `cook` nor `block`, and
+`--surface wire` gives neither of them any of the three. A list that names
+`json`, `cook` or `block` for a table whose declaration leaves it out is
+refused by name — the error names the table (the first declaring table in
+sorted name order; a synthesized map entry is never named), the surface and
+the table's `forms` value — so `--surface wire,cook` on the unit above is
+refused naming Pong, `cook` and `"wire,json"`. Only an explicit list refuses:
+the default full set, which a list naming all eight surfaces is byte-identical
+to (§8.8), refuses nothing, since a table's declaration has already narrowed
+it. Every other target refuses the whole
 construct by name, centrally, at generation, and no other emitter is edited; the
 other languages carry `forms` when their turn comes.
 
@@ -11718,8 +11733,10 @@ base surface and cannot be dropped on its own: `fixed`, `json`, `cook`,
 the accelerators drive off the wire codecs and the descriptor vocabulary, and
 `fixed` and `view` both emit code that reads the wire form), so selecting any
 of them implies `wire`. No other surface implies another.
-The emitter never refuses a list — it emits exactly the named surfaces plus
-whatever the named ones imply.
+The emitter emits exactly the named surfaces plus whatever the named ones
+imply, intersected with each table's `forms` declaration (§2.12); the one list
+it refuses is one naming `json`, `cook` or `block` for a table whose `forms`
+declaration leaves that form out, and the default full set refuses nothing.
 
 Only the Go target honors the flag; any other `--lang` refuses it by name.
 

@@ -273,9 +273,49 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 // (docs/SPEC-TABLES.md §8.8): only the named surfaces' files and functions are
 // emitted, with wire kept as the base. The default full set is byte-identical
 // to GenerateLineage.
+//
+// The surface list intersects each table's `forms` declaration
+// (docs/SPEC-TABLES.md §2.12): a table carries json, cook or block only when
+// its declaration allows it AND the list asks for it. A list naming one of
+// those forms that a declaring table does not carry is refused by name; the
+// default full set refuses nothing.
 func GenerateLineageSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces) (map[string][]byte, error) {
+	if err := refuseUndeclaredSurface(u, s); err != nil {
+		return nil, err
+	}
 	out, _, err := generateForms(u, lineage, s)
 	return out, err
+}
+
+// refuseUndeclaredSurface is §2.12's refusal: an explicit surface list (any
+// set but the default full one) that names json, cook or block for a table
+// whose `forms` declaration leaves it out. The first declaring table in sorted
+// name order is named; synthesized map entries inherit their owner's forms and
+// are never named. The surfaces outside the forms vocabulary (fixed, view,
+// message, retain) are governed by the list alone.
+func refuseUndeclaredSurface(u *ir.Unit, s Surfaces) error {
+	if s == DefaultSurfaces() {
+		return nil
+	}
+	asked := []struct {
+		form string
+		on   bool
+	}{{"json", s.JSON}, {"cook", s.Cook}, {"block", s.Block}}
+	tables := make([]*ir.Struct, 0, len(u.Tables))
+	for _, t := range u.Tables {
+		if !t.IsMapEntry() && t.DeclaredForms() {
+			tables = append(tables, t)
+		}
+	}
+	sort.Slice(tables, func(i, j int) bool { return tables[i].Name < tables[j].Name })
+	for _, t := range tables {
+		for _, a := range asked {
+			if a.on && !t.CarriesForm(a.form) {
+				return fmt.Errorf("--surface asks for %s, but table %s declares forms = %q, which does not carry it: a --surface naming a form the table does not declare is refused (docs/SPEC-TABLES.md §2.12)", a.form, t.Name, strings.Join(t.Forms, ","))
+			}
+		}
+	}
+	return nil
 }
 
 // formAllowed reports whether the unit's tables let the named form be emitted
