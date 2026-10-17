@@ -978,10 +978,10 @@ func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 			r.report.Malformed = true
 			return false
 		}
-		r.rt.forgetArm(&fv.Elems[i])
+		r.rt.forgetArm(fv, i)
 		fv.Elems[i].U = 0
 		fv.Elems[i].Tab = nil
-		return r.unionCell(&fv.Elems[i], f)
+		return r.unionCell(&fv.Elems[i], fv, i)
 	}
 	if f.Type.Pointer {
 		// an element of an array of pointers: a node index, bounds-checked and
@@ -1131,17 +1131,20 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 	return true
 }
 
-func (r *wireReader) union(fv *tabletext.Field) bool { return r.unionCell(&fv.Cell, fv.Def) }
+func (r *wireReader) union(fv *tabletext.Field) bool { return r.unionCell(&fv.Cell, fv, -1) }
 
 // unionCell decodes the union framing into one cell — a field's, or an element
 // of an array of unions (§3). AN ARM HEADER IS A FIELD HEADER: the arm id
-// reference, the arm's KIND byte, `L`, then `L` bytes of arm payload.
-func (r *wireReader) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
+// reference, the arm's KIND byte, `L`, then `L` bytes of arm payload. The arm
+// handle is keyed by the occurrence (the field and the element index), never by
+// the cell's address, which a slice append can move (§6.6).
+func (r *wireReader) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index int) bool {
+	f := fv.Def
 	un := tabletext.UnionOf(f)
 	// A UNION WHOSE ARM IS WRITTEN AGAIN, THE SAME ARM OR ANOTHER, is one of
 	// §6.6's four occurrences: the earlier arm body's records go with it, and
 	// the discard moves neither counter.
-	r.rt.forgetArm(cell)
+	r.rt.forgetArm(fv, index)
 	ref, ok := r.leb()
 	if !ok {
 		r.report.Malformed = true
@@ -1223,7 +1226,7 @@ func (r *wireReader) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 		arm := un.Variants[tag-1]
 		if arm.Body() {
 			payload := r.m.New(arm.Ref)
-			r.rt.builtArm(cell, payload)
+			r.rt.builtArm(fv, index, payload)
 			sub.bodyAt(payload, true)
 			if r.countRefused() {
 				return false
@@ -1331,7 +1334,7 @@ func (r *wireReader) arm(cell *tabletext.Cell, arm ir.UnionVariant, tag, n int) 
 			return false
 		}
 	case tabletext.UnionOf(f) != nil:
-		ok = r.unionCell(&fv.Cell, f)
+		ok = r.unionCell(&fv.Cell, fv, -1)
 	case tabletext.EnumOf(f) != nil:
 		ok = r.enumCell(&fv.Cell, f)
 		if ok && r.off != n {
