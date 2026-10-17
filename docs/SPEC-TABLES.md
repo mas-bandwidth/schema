@@ -1841,13 +1841,13 @@ those cases, so its fixed-class pass is untouched.
 
 ### 2.7 The block form is not declared
 
-**Nothing in a declaration selects it, and nothing is refused for asking.**
-Every FIXED table has a block form — a THIRD projection beside its wire (§3)
-and its cook (§7), in which the table's own bounded arrays are laid out of
-line at a fixed pitch so a consumer in another language points at their rows
-instead of parsing them. A VARIABLE-LENGTH table has none, and the mode (§2.2)
-is the whole of the rule: a pointer anywhere in the closure means no fixed
-pitch anywhere in it.
+**By default nothing in a declaration selects it, and nothing is refused for asking.**
+Unless a table restricts its surfaces with `forms` (§2.12), every FIXED table
+has a block form — a THIRD projection beside its wire (§3) and its cook (§7),
+in which the table's own bounded arrays are laid out of line at a fixed pitch
+so a consumer in another language points at their rows instead of parsing them.
+A VARIABLE-LENGTH table has none, and the mode (§2.2) is the whole of the rule:
+a pointer anywhere in the closure means no fixed pitch anywhere in it.
 
 **It needs no marker because it costs a declaration nothing.** The form is
 emitted ON THE SIDE, in files of its own, and a consumer that does not include
@@ -3721,6 +3721,64 @@ yet tested with it. **A kind-`36` field a reader does not name skips by §3's
 first skip row, a fixed width of eight:** the Go runtime and the shared width
 table both recognize kind `36` as an eight-byte payload, so an unnamed or
 kind-mismatched `timestamp` field is skipped cleanly.
+
+### 2.12 The forms a table carries: `forms`
+
+**What a table carries is a property of the table, not of one generate call.** A
+table line may declare the FORMS it carries — the surfaces a backend emits for
+it — with the valued key `forms`:
+
+```
+table Pong | forms = "wire,json"
+{
+    x int32
+}
+```
+
+**The spelling fits SPEC §4.2's valued keys.** A valued key takes one value, and
+the quoted string is a legal one (the `was` key uses it too); a comma-separated
+list inside the string names several forms without a parser change. The forms
+are the closed vocabulary `wire` (the id-table wire, its storage and codecs),
+`json` (the text form, §16), `block` (the block accelerator, §2.7, §19) and
+`cook` (the cooked-form accelerator, §7). `wire` is the foundational form and is
+always carried: every declaration of `forms` must include `wire`. A name outside
+the closed vocabulary is refused by name, as is an empty form element, a
+repeated form name, a declaration that leaves `wire` out, a bare `forms` (a tag
+is a different thing) and a non-string value.
+
+**The default is every form — today's behaviour.** A table with no `forms`
+line carries each form its backend emits, exactly as before; the declaration
+only ever restricts. Synthesized map entry tables (§2.8) inherit their owning
+table's `forms` declaration. It changes no wire byte — it is not part of the
+projection (SPEC §3.1) and not part of the build version (§20) — so adding or
+removing a `forms` line costs no redeploy of the bytes. It is part of the
+table's declaration, not of one generate call: every build of the unit agrees on
+what the table carries.
+
+**A backend either honours the declaration or refuses the construct by name.**
+Go honours it per table: a table that declares `forms` gets only the surfaces of
+the forms it carries (`<Base>Table.go` for `wire`, `<Home>TableJson.go` entries
+for `json`, `<Base>Block.go` for `block` and `<Base>Cook.go` for `cook`), and a
+form no table in the unit carries emits no surface file at all.
+
+**`--surface` (§8.8) intersects the declaration.** A table carries `json`,
+`cook` or `block` only when its `forms` declaration allows it AND the surface
+list asks for it; `wire` is always carried, and the four surfaces outside the
+forms vocabulary (`fixed`, `view`, `message`, `retain`) are governed by the
+list alone. So with `table Pong | forms = "wire,json"` beside an undeclared
+`table Ping`, no `--surface` gives Pong `json` and Ping every form,
+`--surface wire,json` gives both `json` and neither `cook` nor `block`, and
+`--surface wire` gives neither of them any of the three. A list that names
+`json`, `cook` or `block` for a table whose declaration leaves it out is
+refused by name — the error names the table (the first declaring table in
+sorted name order; a synthesized map entry is never named), the surface and
+the table's `forms` value — so `--surface wire,cook` on the unit above is
+refused naming Pong, `cook` and `"wire,json"`. Only an explicit list refuses:
+the default full set, which a list naming all eight surfaces is byte-identical
+to (§8.8), refuses nothing, since a table's declaration has already narrowed
+it. Every other target refuses the whole
+construct by name, centrally, at generation, and no other emitter is edited; the
+other languages carry `forms` when their turn comes.
 
 ## 3. The wire
 
@@ -11675,8 +11733,10 @@ base surface and cannot be dropped on its own: `fixed`, `json`, `cook`,
 the accelerators drive off the wire codecs and the descriptor vocabulary, and
 `fixed` and `view` both emit code that reads the wire form), so selecting any
 of them implies `wire`. No other surface implies another.
-The emitter never refuses a list — it emits exactly the named surfaces plus
-whatever the named ones imply.
+The emitter emits exactly the named surfaces plus whatever the named ones
+imply, intersected with each table's `forms` declaration (§2.12); the one list
+it refuses is one naming `json`, `cook` or `block` for a table whose `forms`
+declaration leaves that form out, and the default full set refuses nothing.
 
 Only the Go target honors the flag; any other `--lang` refuses it by name.
 

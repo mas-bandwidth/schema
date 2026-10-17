@@ -60,7 +60,13 @@ func generateCookFiles(u *ir.Unit, blocks *ir.BlockUnit, writerRuntime string, w
 	// anywhere" is the whole requirement.
 	home := ck.home(u)
 	for _, f := range u.Files {
-		if len(f.Tables) == 0 && f.Base != home {
+		hasCook := f.Base == home
+		for _, st := range f.Tables {
+			if ck.opens(st.Name) {
+				hasCook = true
+			}
+		}
+		if !hasCook {
 			continue
 		}
 		g := &cookGen{unit: u, file: f, cook: ck, blocks: blocks, home: f.Base == home,
@@ -130,7 +136,7 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	sort.Strings(names)
 	for _, name := range names {
 		st := u.Tables[name]
-		if st.IsMapEntry() {
+		if st.IsMapEntry() || !st.CarriesForm("cook") {
 			continue
 		}
 		c.tables = append(c.tables, st)

@@ -105,6 +105,9 @@ schema generate --lang go --surface wire,json --out generated/go .
 §8.8). Its default is the full set — the command above without `--surface` is
 byte-identical to the one with `--surface wire,fixed,json,cook,block,view,message,retain`.
 Only the Go target accepts it; any other `--lang` refuses the flag by name.
+A table that declares `forms` (SPEC-TABLES.md §2.12) narrows it further: the
+list intersects the table's forms, and a list naming `json`, `cook` or `block`
+for a table that does not declare that form is refused, naming the table.
 
 ---
 

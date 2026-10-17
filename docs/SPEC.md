@@ -599,7 +599,8 @@ TableDecl   = "table" ident ( Block
             | AttrSection NL Block ) NL .               // the TABLE wire, SPEC-TABLES.md —
                                                         // a type body, plus pointers and `was`.
                                                         // A table declaration's qualification
-                                                        // carries TAGS and `was` (§4.2)
+                                                        // carries TAGS, `was` and `forms`
+                                                        // (§4.2, SPEC-TABLES.md §2.12)
 
 Block       = "{" { Item } "}" .
 Item        = Field | ConstField | Reserved | Align | If .
@@ -934,15 +935,16 @@ sequence    uint16
   declarations take the `cpp_native`/`cpp_include` pair (below); a field of a
   **table** body takes `was` (below) and `json` (SPEC-TABLES.md §16.4), a
   field of a **type** that a table closure reaches takes `was` and `json`
-  on the same terms, a **table** declaration, an **enum variant** and a
-  union **arm** take `was` (below), and a **union** declaration, a
-  **constant** and a **flags variant** take no valued key at all. **The
+  on the same terms, a **table** declaration takes `was` (below) and
+  `forms` (SPEC-TABLES.md §2.12), an **enum variant** and a union **arm**
+  take `was` (below), and a **union** declaration, a **constant** and a
+  **flags variant** take no valued key at all. **The
   VALUELESS half is open at every one of them** — that is the tag, below.
 - **A bare identifier that spells a known valued key is refused by name**,
   never taken as a tag: `| min` draws "min takes a value: write min = 0". The
   open namespace must not be able to swallow a typo in the closed one.
   **The lookup is against the UNION of every valued key the language has, on
-  every line kind** — `min`, `max`, `resolution`, `was`, `json`,
+  every line kind** — `min`, `max`, `resolution`, `was`, `json`, `forms`,
   `cpp_native`, `cpp_include` — **plus the keys refused by name**
   (`doc`, `round`; §4.11). It is deliberately not the line's own vocabulary:
   `| min` on a `string(N)` field, where `min` was never legal, is the exact

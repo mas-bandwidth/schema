@@ -681,6 +681,7 @@ var valuedKeys = map[string]bool{
 	"resolution":  true,
 	"was":         true,
 	"json":        true,
+	"forms":       true,
 	"cpp_native":  true,
 	"cpp_include": true,
 }
@@ -760,6 +761,45 @@ func (c *checker) qualification(where, kind string, attrs []ast.Attr, takes map[
 		}
 	}
 	return tags, valued
+}
+
+// tableForms reads a `forms = "wire,json"` declaration (docs/SPEC-TABLES.md
+// §2.12): a comma-separated quoted string of form names from the closed
+// vocabulary. A form outside it is refused by name; a spelling that is not a
+// quoted string is refused too. The table carries exactly the named forms —
+// the Go backend honours them, every other backend refuses the whole construct
+// by name (compiler/generate.go).
+func (c *checker) tableForms(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
+	lit, ok := a.Value.(*ast.StringLit)
+	if !ok || lit.Value == "" {
+		c.errf(a.Pos, `forms takes a comma-separated quoted list of form names, e.g. forms = "wire,json" (docs/SPEC-TABLES.md §2.12)`)
+		return
+	}
+	seen := map[string]bool{}
+	bad := false
+	for _, raw := range strings.Split(lit.Value, ",") {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			c.errf(a.Pos, "table %s: forms = %q contains an empty form name — write a comma-separated list of wire, json, block, cook (docs/SPEC-TABLES.md §2.12)", d.Name, lit.Value)
+			bad = true
+			continue
+		}
+		if !ir.TableForms[name] {
+			c.errf(a.Pos, "table %s: forms = %q names no form — the forms are wire, json, block and cook (docs/SPEC-TABLES.md §2.12)", d.Name, name)
+			bad = true
+			continue
+		}
+		if seen[name] {
+			c.errf(a.Pos, "table %s: forms = %q repeats form %q — each form may be named at most once (docs/SPEC-TABLES.md §2.12)", d.Name, lit.Value, name)
+			bad = true
+			continue
+		}
+		seen[name] = true
+		st.Forms = append(st.Forms, name)
+	}
+	if !bad && !seen["wire"] {
+		c.errf(a.Pos, "table %s: forms = %q must include wire — the wire form is always carried (docs/SPEC-TABLES.md §2.12)", d.Name, lit.Value)
+	}
 }
 
 // vocabulary spells a line kind's valued keys for a diagnostic.
@@ -1061,8 +1101,18 @@ func (c *checker) resolveBodies() {
 				// refuses a fixed table whose closure cannot hold the class.
 				st := &ir.Struct{Name: d.Name, IsTable: true, FixedDeclared: d.Fixed, Doc: d.Doc}
 				var tvalued []*ast.Attr
-				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true})
+				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true, "forms": true})
 				for _, a := range tvalued {
+					if a.Key == "forms" {
+						// the table's FORM declaration (docs/SPEC-TABLES.md
+						// §2.12). A `forms` is not a `was`: dispatching by key
+						// here keeps it out of the rename switch below, so a
+						// declared form never touches WasName and can never
+						// move the wire identity (docs/SPEC-TABLES.md §3.1,
+						// §5).
+						c.tableForms(d, st, a)
+						continue
+					}
 					// the table's RENAME (docs/SPEC-TABLES.md §5): its node
 					// type id stays the hash of the OLD name, so every
 					// stored record of that name still reads as this table
@@ -1105,6 +1155,9 @@ func (c *checker) resolveBodies() {
 				c.mapEntries = nil
 				c.tables[d.Name].Fields, c.tables[d.Name].Items = c.resolveBody(d.Name, d.Body, true)
 				if len(c.mapEntries) > 0 {
+					for _, entry := range c.mapEntries {
+						entry.Forms = append([]string(nil), c.tables[d.Name].Forms...)
+					}
 					c.mapEntriesFor[d.Name] = c.mapEntries
 					c.mapEntries = nil
 				}
