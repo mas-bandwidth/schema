@@ -144,8 +144,10 @@ func TestLuaTableSaveNegativeControl(t *testing.T) {
 		}
 		unitFiles[k] = full
 	}
-	const anchor = `    if body.n <= 1 then ids.list[mark + 1] = nil; return true end`
-	const sabotaged = `    if false then ids.list[mark + 1] = nil; return true end`
+	// the last rule of at_default (docs/SPEC-TABLES.md §3): a scalar field
+	// equal to its declared default is elided; sabotaged, it always rides
+	const anchor = "  return x == fd.default\n"
+	const sabotaged = "  return false\n"
 	var patched int
 	var diverged int
 	compared := 0

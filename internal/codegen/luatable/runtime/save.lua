@@ -74,6 +74,30 @@ local edges
 local edge_value
 local edge_union
 
+-- A MAP'S ENTRIES IN ASCENDING KEY ORDER (§2.8, §3.1; internal/tablewire
+-- nodes.go MapEntryOrder): one entry table per key, built once per map and
+-- shared by the numbering and the write, so a blob slot the numbering keys by
+-- its holder is the slot the write finds.
+local function map_entries(cache, fd, x)
+  if x == nil then return {} end
+  local got = cache[x]
+  if got ~= nil then return got end
+  local kf = fd.key_field
+  local keys = {}
+  for key in pairs(x) do keys[#keys + 1] = key end
+  table.sort(keys, function(a, b)
+    if kf.shape == "string" then return a < b end
+    if kf.signed or kf.width < 8 then return a < b end
+    return math.ult(a, b)
+  end)
+  local keyname = kf.name
+  local valname = fd.value_field.name
+  got = {}
+  for i, key in ipairs(keys) do got[i] = { [keyname] = key, [valname] = x[key] } end
+  cache[x] = got
+  return got
+end
+
 local function count_of(fd, v)
   local s = fd.shape
   if s == "bytes" then return #v end
@@ -83,8 +107,9 @@ local function count_of(fd, v)
 end
 
 -- one value's pointer and blob edges, in the walk's order. holder/name name
--- the slot the value occupies (a table's field or a union arm's payload).
-edge_value = function(T, fd, val, holder, name, out)
+-- the slot the value occupies (a table's field or a union arm's payload);
+-- cache holds each map's entries (map_entries).
+edge_value = function(T, fd, val, holder, name, out, cache)
   local s = fd.shape
   if s == "string_blob" or s == "bytes_blob" then
     if val ~= nil then
@@ -94,40 +119,45 @@ edge_value = function(T, fd, val, holder, name, out)
     if val ~= nil and val ~= false then out[#out + 1] = { blob = false, target = fd.target, val = val } end
   elseif s == "table" then
     local d = T.Tables[fd.target]
-    if d then edges(T, d, val, out) end
+    if d then edges(T, d, val, out, cache) end
   elseif s == "array" then
     local n = count_of(fd, val)
     local e = fd.elem
-    for i = 1, n do edge_value(T, e, val[i], val, i, out) end
+    for i = 1, n do edge_value(T, e, val[i], val, i, out, cache) end
   elseif s == "union" then
-    edge_union(T, T.Unions[fd.target], val, out)
+    edge_union(T, T.Unions[fd.target], val, out, cache)
+  elseif s == "map" then
+    -- A MAP IS A BY-VALUE EDGE at its field's position (§2.8, §3.1): its
+    -- entries in ascending key order, each descended before the next
+    local d = T.Tables[fd.entry]
+    for _, kv in ipairs(map_entries(cache, fd, val)) do edges(T, d, kv, out, cache) end
   end
 end
 
 -- a union arm's payload is a field line: its pointers, blobs, tables, arrays
 -- and nested unions are edges at the arm's position (§2.6, §3.1).
-edge_union = function(T, u, val, out)
+edge_union = function(T, u, val, out, cache)
   local tag = val and val.tag or 0
   if tag == 0 or u == nil then return end
   local arm = u.arms[tag]
   if arm == nil or arm.field == nil then return end
-  edge_value(T, arm.field, val[arm.name], val, arm.name, out)
+  edge_value(T, arm.field, val[arm.name], val, arm.name, out, cache)
 end
 
 -- the pointer and blob edges of one node's by-value closure, in the walk's
 -- order: fields in declaration order, array elements in index order.
-edges = function(T, desc, v, out)
+edges = function(T, desc, v, out, cache)
   for _, fd in ipairs(desc.fields) do
-    edge_value(T, fd, v[fd.name], v, fd.name, out)
+    edge_value(T, fd, v[fd.name], v, fd.name, out, cache)
   end
   return out
 end
 
 number_nodes = function(T, desc, root)
-  local nodes = { list = {}, index = {}, slots = {} }
+  local nodes = { list = {}, index = {}, slots = {}, entries = {} }
   nodes.index[root] = 1
   local open = { [root] = true }
-  local stack = { { v = root, edges = edges(T, desc, root, {}), i = 0 } }
+  local stack = { { v = root, edges = edges(T, desc, root, {}, nodes.entries), i = 0 } }
   while #stack > 0 do
     local top = stack[#stack]
     if top.i >= #top.edges then open[top.v] = nil; stack[#stack] = nil
@@ -158,7 +188,7 @@ number_nodes = function(T, desc, root)
           nodes.list[#nodes.list + 1] = { typeId = d.type_id, codec = d, v = e.val }
           nodes.index[e.val] = #nodes.list + 1
           open[e.val] = true
-          stack[#stack + 1] = { v = e.val, edges = edges(T, d, e.val, {}), i = 0 }
+          stack[#stack + 1] = { v = e.val, edges = edges(T, d, e.val, {}, nodes.entries), i = 0 }
         end
       end
     end
@@ -202,6 +232,7 @@ local function at_default(fd, v)
     for _ in pairs(x or {}) do n = n + 1 end
     return n == 0
   end
+  if s == "wstring" then return x == nil or #x == 0 end
   return x == fd.default
 end
 
@@ -283,6 +314,13 @@ write_field = function(T, ids, nodes, fd, v, w)
   elseif s == "string" then
     if fd.optional or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, 12); w_leb(w, #x); w_raw(w, x)
+    end
+  elseif s == "wstring" then
+    -- WIDE TEXT (§2.13, gotable write.go TWString): its UTF-16 code units,
+    -- little-endian, L their byte count; it rides when it holds a unit
+    if fd.optional or not at_default(fd, v) then
+      w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind); w_leb(w, #x * 2)
+      for i = 1, #x do w_raw(w, string.pack("<I2", x[i])) end
     end
   elseif s == "bytes" then
     if fd.optional or not at_default(fd, v) then
@@ -370,19 +408,8 @@ write_field = function(T, ids, nodes, fd, v, w)
     local body = W()
     w_u8(body, fd.elem_kind or 13); w_leb(body, n)
     local entry = T.Tables[fd.entry]
-    local keyname = fd.key_field.name
-    local valname = fd.value_field.name
-    local keys = {}
-    for key in pairs(x) do keys[#keys + 1] = key end
-    table.sort(keys, function(a, b)
-      local kf = fd.key_field
-      if kf.shape == "string" then return a < b end
-      if kf.signed or kf.width < 8 then return a < b end
-      return math.ult(a, b)
-    end)
-    for _, key in ipairs(keys) do
+    for _, kv in ipairs(map_entries(nodes.entries, fd, x)) do
       local eb = W()
-      local kv = { [keyname] = key, [valname] = x[key] }
       local ok = write_body(T, ids, nodes, entry, kv, eb)
       if not ok then return false end
       w_leb(body, eb.n); w_raw(body, table.concat(eb.parts))
