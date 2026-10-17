@@ -227,7 +227,7 @@ func (n *TableNumbering) Index(slot *TableRef)(uint64,bool){if n==nil{return 0,f
 func (n *TableNumbering) visit(p unsafe.Pointer,t *TableTypeInfo,id uint64)bool {
  if p==nil{return true};if i,ok:=n.find(p);ok{if n.entries[i].open{n.reason=TableRefuseDataCycle;return false};if n.entries[i].id!=id{n.reason=TableRefuseInvalidValue;return false};return true}
  if len(n.entries)==cap(n.entries)&&!n.grow(){n.reason=TableRefuseAllocationFailed;return false};slot,_:=n.find(p);i:=len(n.entries);n.entries=n.entries[:i+1];n.entries[i]=tableNodeEntry{node:p,info:t,id:id,open:true};n.buckets[slot]=uint64(i+1);a:=n.arena
- if t!=nil&&!tableRegionEdges(p,t,func(slot *TableRef,f *TableFieldInfo)bool {var target *TableTypeInfo;if f.Table!=nil{target=f.Table()};return n.visit(tableRefAt(slot,a),target,f.TargetId)}){return false};n.entries[i].open=false;return true
+  if t!=nil&&!tableRegionEdges(p,t,func(slot *TableRef,f *TableFieldInfo)bool {if a==nil&&*slot>=tableArenaSlabBytes{n.reason=TableRefuseArenaRequired;return false};var target *TableTypeInfo;if f.Table!=nil{target=f.Table()};return n.visit(tableRefAt(slot,a),target,f.TargetId)}){return false};n.entries[i].open=false;return true
 }
 func tableNumber(root unsafe.Pointer,info *TableTypeInfo,a *TableArena,allocator ...TableAllocator)(TableNumbering,bool){n:=TableNumbering{arena:a,root:root};if a!=nil{n.allocator=a.Allocator};if len(allocator)>0{n.allocator=allocator[0]};if root==nil||!n.visit(root,info,info.Id){if n.reason==TableRefuseOk{n.reason=TableRefuseInvalidValue};n.Release();return n,false};return n,true}
 func tableRegionEdges(base unsafe.Pointer,info *TableTypeInfo,visit func(*TableRef,*TableFieldInfo) bool) bool {
