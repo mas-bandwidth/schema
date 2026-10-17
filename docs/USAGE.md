@@ -742,7 +742,12 @@ wires. C and Go carry them on the packet wire and refuse defaults reachable
 from a table; the other six targets refuse a unit declaring these defaults.
 Packet defaults initialize storage and do not omit fields from the wire.
 In C, call the generated `new_<type>()` constructor to apply declared defaults;
-in Go, call `New<Type>()`. Zero-filled storage alone does not apply them.
+ in Go, call `New<Type>()`. Zero-filled storage alone does not apply them.
+
+A table field marked `| required` whose range excludes zero takes no default:
+its fresh value is the storage zero, which is outside the range, so the
+writer refuses the record until the field is set, and a stored record lacking
+it is `missing_required` on read (docs/SPEC-TABLES.md §2.3).
 
 A fixed default must be **exactly representable** in its format; the
 compiler refuses one that would silently round.
