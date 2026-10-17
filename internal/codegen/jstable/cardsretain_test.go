@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"flag"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -67,9 +68,7 @@ func goRetainedSave(t *testing.T) []byte {
 		if err != nil {
 			t.Fatalf("gotable.Generate(%s): %v", pkg, err)
 		}
-		for k, v := range tf {
-			gf[k] = v
-		}
+		maps.Copy(gf, tf)
 		for name, data := range gf {
 			p := filepath.Join(dir, pkg, name)
 			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -94,9 +93,9 @@ func goRetainedSave(t *testing.T) []byte {
 	if err != nil {
 		t.Fatalf("Go retain probe failed: %v\n%s", err, out)
 	}
-	for _, line := range strings.Split(string(out), "\n") {
-		if strings.HasPrefix(line, "RETAINED_HEX ") {
-			raw, err := hex.DecodeString(strings.TrimPrefix(line, "RETAINED_HEX "))
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if after, ok := strings.CutPrefix(line, "RETAINED_HEX "); ok {
+			raw, err := hex.DecodeString(after)
 			if err != nil {
 				t.Fatalf("decode retained hex: %v", err)
 			}
@@ -184,9 +183,9 @@ func retainedGolden(t *testing.T) []byte {
 // savedHexFromOutput parses the SAVED_HEX line the retain probe prints.
 func savedHexFromOutput(t *testing.T, out string) []byte {
 	t.Helper()
-	for _, line := range strings.Split(out, "\n") {
-		if strings.HasPrefix(line, "SAVED_HEX ") {
-			b, err := hex.DecodeString(strings.TrimPrefix(line, "SAVED_HEX "))
+	for line := range strings.SplitSeq(out, "\n") {
+		if after, ok := strings.CutPrefix(line, "SAVED_HEX "); ok {
+			b, err := hex.DecodeString(after)
 			if err != nil {
 				t.Fatalf("decode saved hex: %v", err)
 			}

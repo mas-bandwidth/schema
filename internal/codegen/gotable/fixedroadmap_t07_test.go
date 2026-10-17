@@ -273,20 +273,20 @@ func t07GoW8(t *testing.T) {
 func t07DstRows(t *testing.T, src string) map[string][]string {
 	t.Helper()
 	const open = "var RootFixedDst = []TableFixedDst{"
-	i := strings.Index(src, open)
-	if i < 0 {
+	_, after, ok := strings.Cut(src, open)
+	if !ok {
 		t.Fatal("the emitted surface carries no RootFixedDst")
 	}
-	rest := src[i+len(open):]
-	j := strings.Index(rest, "\n}")
-	if j < 0 {
+	rest := after
+	before0, _, ok0 := strings.Cut(rest, "\n}")
+	if !ok0 {
 		t.Fatal("RootFixedDst does not close")
 	}
 	out := map[string][]string{}
-	for _, line := range strings.Split(rest[:j], "\n") {
+	for line := range strings.SplitSeq(before0, "\n") {
 		name := ""
-		if k := strings.Index(line, "// "); k >= 0 {
-			name = strings.TrimSpace(line[k+3:])
+		if _, after, ok := strings.Cut(line, "// "); ok {
+			name = strings.TrimSpace(after)
 		}
 		if name == "" {
 			continue

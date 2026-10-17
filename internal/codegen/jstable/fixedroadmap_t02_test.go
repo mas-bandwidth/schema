@@ -130,7 +130,7 @@ func t02Has(t *testing.T, got, want, what string) {
 func t02Bytes(t *testing.T, src, start, end string) []byte {
 	t.Helper()
 	var out []byte
-	for _, tok := range strings.Split(t02Block(t, src, start, end), ",") {
+	for tok := range strings.SplitSeq(t02Block(t, src, start, end), ",") {
 		tok = strings.TrimSpace(tok)
 		if tok == "" {
 			continue

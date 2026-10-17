@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -8,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestNewLegRefusesExistingTargets(t *testing.T) {
@@ -86,6 +89,7 @@ func TestNewLegLuaFiles(t *testing.T) {
 }
 
 func TestNewLegLuaFixturePasses(t *testing.T) {
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated lua leg fixture)")
 	files, err := NewLeg("lua")
 	if err != nil {
 		t.Fatal(err)
@@ -131,7 +135,7 @@ func TestNewLegBenchScaffoldIsUnavailable(t *testing.T) {
 		if err == nil {
 			t.Fatalf("%s exited 0, want unavailable exit 2", action)
 		}
-		exit, ok := err.(*exec.ExitError)
+		exit, ok := errors.AsType[*exec.ExitError](err)
 		if !ok || exit.ExitCode() != 2 {
 			t.Fatalf("%s: err=%v, want exit 2", action, err)
 		}

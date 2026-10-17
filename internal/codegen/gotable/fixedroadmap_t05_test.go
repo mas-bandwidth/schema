@@ -24,6 +24,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestFixedRoadmapGoT05Evolution(t *testing.T) {
@@ -72,11 +74,11 @@ func t05Refusal(t *testing.T) string {
 func t05TextOp(t *testing.T) string {
 	t.Helper()
 	src := t05Run(t)
-	i := strings.Index(src, "case tableFixedText:")
-	if i < 0 {
+	_, after, ok := strings.Cut(src, "case tableFixedText:")
+	if !ok {
 		t.Fatal("t05: the read loop carries no `case tableFixedText:`")
 	}
-	rest := src[i+len("case tableFixedText:"):]
+	rest := after
 	if j := strings.Index(rest, "\n\t\tcase tableFixed"); j >= 0 {
 		rest = rest[:j]
 	}
@@ -190,6 +192,7 @@ func t05GoR24(t *testing.T) {
 // under a bare `go test`.
 func t05RunProbe(t *testing.T, schema, probe string) ([]byte, error) {
 	t.Helper()
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated probe)")
 	files, err := Generate(unitFrom(t, schema))
 	if err != nil {
 		t.Fatalf("t05: Generate: %v", err)

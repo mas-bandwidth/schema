@@ -271,7 +271,6 @@ func TestFixedRoadmapRustT13LayoutHashCollision(t *testing.T) {
 		{"length-longer", "a held hash over a longer layout length must refuse layout_malformed before any record"},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.id, func(t *testing.T) {
 			t.Parallel()
 			if line := t13Line(out, c.id); line != "T13 "+c.id+" ok" {
@@ -284,7 +283,7 @@ func TestFixedRoadmapRustT13LayoutHashCollision(t *testing.T) {
 // t13Line is the probe's one line for a check id.
 func t13Line(out, id string) string {
 	prefix := "T13 " + id + " "
-	for _, l := range strings.Split(out, "\n") {
+	for l := range strings.SplitSeq(out, "\n") {
 		if strings.HasPrefix(l, prefix) {
 			return l
 		}
