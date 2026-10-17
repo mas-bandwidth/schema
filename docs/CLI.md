@@ -11,3 +11,8 @@ name a version that is not a Go pseudo-version or semver tag, a directory that
 does not exist or holds no pin line, and a mixed tree without `--mixed-ok`,
 exiting 1 without changing any file. See USAGE.md's Go adoption notes for the
 bump recipe.
+
+`schema generate --lang L` checks declared names and field names against L's
+reserved words only (SPEC §4.6); `schema check` — and every command that names
+no target — checks every target's words, one diagnostic per name listing every
+checked target it collides with.
