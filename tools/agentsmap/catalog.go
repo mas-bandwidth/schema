@@ -79,6 +79,7 @@ var catalog = []Entry{
 	e("internal/format", "schemafmt", "go test ./internal/format", "go test ./internal/format"),
 	e("internal/fuzz", "seeded fuzz corpus", "go test ./internal/fuzz", "go test ./internal/fuzz"),
 	e("internal/goldens", "source, id, and wire pins", "go test ./internal/goldens", "make update-goldens"),
+	e("internal/jsontestsuite", "JSONTestSuite oracle harness", "go test ./internal/tabletext", "go test ./internal/tabletext -run JSONTestSuite"),
 	e("internal/listwalk", "unbounded-array walk", "go test ./internal/listwalk", "go test ./internal/listwalk"),
 	e("internal/lockfile", "schema.lock lineage", "go test ./internal/lockfile", "go test ./internal/lockfile"),
 	e("internal/parser", "recursive-descent parser", "go test ./internal/parser", "go test ./internal/parser"),
@@ -135,6 +136,7 @@ var catalog = []Entry{
 	// testdata/
 	e("testdata/conformance", "table conformance dumps", "make conformance", "make conformance"),
 	e("testdata/golden", "generated-source goldens", "go test ./internal/goldens", "make update-goldens"),
+	e("testdata/jsontestsuite", "vendored JSONTestSuite (MIT)", "go test ./internal/tabletext", "go test ./internal/tabletext -run JSONTestSuite"),
 	e("testdata/wire", "pinned wire bytes", "go test ./internal/goldens", "make update-goldens"),
 
 	// tools/

@@ -14738,7 +14738,7 @@ Per kind:
 | `int128`, `uint128` | number | a decimal integer, exact past 2^53 in both directions: `340282366920938463463374607431768211455` reads back as itself. Integral forms read as for every integer; a fractional value is `kind_mismatch` |
 | `bool` | `true` / `false` | |
 | `string(N)` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted |
-| `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), so one there was built in code, and §16.3 writes it as `U+FFFD` |
+| `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), and no text can either: ill-formed UTF-8, or a lone or out-of-order surrogate escape, is REFUSED BY NAME on read (`string_not_utf8`, `string_lone_surrogate`, §16.3), never transcoded to `U+FFFD`. So one in storage was built in code, and §16.3 writes it as `U+FFFD` |
 | `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted |
 | `timestamp` | string, RFC 3339 with nanoseconds | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any RFC 3339 spelling of the same instant, an offset included, which lands as its UTC nanosecond count. **A string that does not parse as RFC 3339 — or names an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false, the report is `Malformed` and its `Reason` is `timestamp_not_rfc3339: <field>`. A NUMBER token is not a refusal but the dialect's own wrong-JSON-type rule (§16.1): skipped, counted as a kind mismatch, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13) |
 | enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted |
@@ -14835,6 +14835,8 @@ what the first occurrence left, and a repeated table or union key
 re-establishes the whole value at its defaults before placing it.
 **Trailing commas** in objects and arrays are accepted on read — the
 authoring files this section exists for carry them — and never written.
+**A leading UTF-8 byte-order mark** — `EF BB BF` as a text's first three
+bytes, and nowhere else — is skipped on read and never written (§16.11).
 
 **COMMENTS are accepted on read and NEVER written.** `//` runs to the end of
 the line **or to the END OF INPUT, whichever comes first**, so a text whose
@@ -14900,14 +14902,20 @@ STORAGE A PROGRAM BUILT and about nothing else.** No wire puts ill-formed text
 into storage: the packet wire refuses it terminally (SPEC.md §4.7, §4.12) and
 the table wire counts it `malformed` and leaves the field at its declared
 default (§3, §4). **NEITHER DOES A TEXT**, and this is the same rule met at
-the point the defect ENTERS: RFC 8259 requires a JSON text to be valid UTF-8,
-so a byte in a string body that is not part of a well-formed sequence is not
-a code point either, and the READ replaces it with one `U+FFFD` exactly as a
-lone surrogate escape reads — one per sequence, counted as nothing, and then
-clamped at a code point boundary like any other. Without it the text form
-would build storage the wire cannot carry, and §5's guarantee that an
-instance a tolerant load produced is always one the reference can re-save
-would hold for the wire and not for the text. What remains is an instance
+the point the defect ENTERS. RFC 8259 requires a JSON text to be valid UTF-8,
+so a string whose bytes are not a well-formed UTF-8 sequence, or whose `\u`
+escapes name a LONE or OUT-OF-ORDER surrogate, does not spell a code point,
+and **the READ REFUSES IT BY NAME at every string site** — a field's value, a
+key, a value the walk skips, a `wstring` — rather than replacing it: the read
+returns false, the report is `Malformed`, and its `Reason` is
+`string_not_utf8: <key>` or `string_lone_surrogate: <key>`, `<key>` being the
+key whose name or value held it and `<root>` at the top. **A silent
+replacement would make two different texts one value**: `{"s":"\ud800"}` and
+`{"s":"\xff"}` would both land `U+FFFD` under a clean report, exactly as
+`{"s":"\ufffd"}` does, and a reader that cannot tell those apart has lost the
+text's integrity without saying so. Refusing also keeps §5's guarantee for the
+text as it holds for the wire: an instance a read produced is always one the
+reference can re-save. §16.11 holds both readers to it over an outside corpus. What remains is an instance
 built in code, and the writer answers for it rather than emitting a text no
 conforming parser can read.
 
@@ -15630,6 +15638,119 @@ key is (§16.4): it is not in the projection, the build version (§20), the lock
 or the tables baseline (§18), and adding or removing it costs a stored file
 nothing. Go carries it first; every other target refuses a unit that uses it,
 centrally, by name.
+
+### 16.11 The outside oracle: JSONTestSuite
+
+**The JSON reader is held to an outside corpus, not only to schema's own.**
+JSONTestSuite (github.com/nst/JSONTestSuite, MIT) is vendored byte for byte at
+commit `1ef36fa01286` under `testdata/jsontestsuite/test_parsing/`: 318 files,
+each named for what RFC 8259 asks of a parser. A `y_` file must be accepted, an
+`n_` file must be refused, and an `i_` file is left to the parser.
+`testdata/jsontestsuite/SHA256SUMS` pins every byte, and `SOURCE` says where
+they came from.
+
+**What this section rules is the JSON LAYER, and both readers meet it**: the
+tool's engine (`internal/tabletext`) and the generated Go walk (`tableJsonIn`).
+The layer is a leading byte-order mark if there is one, then ONE whole value
+under RFC 8259's grammar, then whitespace, then the end of the input, under the
+three caps both walks carry: depth 128, a key of 255 bytes, a number token of
+511 bytes. **The table walk above it is not ruled here**: clamps,
+`kind_mismatch` and duplicate counts (§16.2) decide what an accepted value
+means for a field, and they never turn a refusal into an acceptance.
+
+**The rule under every row: write strictly; read forgivingly only where that
+is nearly free; never lose a bound; security trumps.**
+
+- **`y_`: every file is accepted.** A file that repeats a key is accepted at
+  this layer; §16.2's last-wins-and-counted is the walk's rule, not the
+  layer's.
+- **`n_`: every file is refused** (false, `Malformed`), and a mismatch names
+  the file, except the rows below marked `accept (dialect)`.
+- **`i_`: every file has a row**, with its verdict and its reason. A file the
+  corpus adds without a row is an error that names it, and so is a row that
+  names no file.
+
+**THE DIALECT.** §16.2 accepts trailing commas and comments on read, on
+purpose, for the hand-edited texts §16.9 exists for. Accepting them costs
+nothing and weakens no bound, and neither writer ever emits either, so a text
+this form writes is RFC 8259 and any conforming parser reads it. They are the
+only `n_` files the reader accepts, and each is a row below.
+
+**THE BYTE-ORDER MARK.** A text whose first three bytes are `EF BB BF` reads as
+the text after them. RFC 8259 §8.1 lets a parser ignore a leading mark,
+skipping it costs one comparison, and the mark is not data, so no value it
+precedes changes. Only the UTF-8 mark, and only at the very start: anywhere
+else those bytes are not JSON, and a UTF-16 text is not UTF-8 at all. No writer
+emits one.
+
+**ILL-FORMED TEXT IS REFUSED BY NAME** (§16.3): `string_not_utf8` for bytes
+that are not well-formed UTF-8, `string_lone_surrogate` for a lone or
+out-of-order surrogate escape, at every string site. A silent `U+FFFD` would
+make two texts one value; this is the security rule, and it is not traded for
+leniency.
+
+The table below is read by `internal/jsontestsuite` out of this file, which is
+its one source; no test carries a copy. A file with no row takes its prefix's
+verdict.
+
+| file | verdict | reason |
+|---|---|---|
+| `n_array_extra_comma.json` | accept (dialect) | a trailing comma, accepted on read for hand-edited texts and never written (§16.2) |
+| `n_array_number_and_comma.json` | accept (dialect) | a trailing comma, accepted on read for hand-edited texts and never written (§16.2) |
+| `n_object_trailing_comma.json` | accept (dialect) | a trailing comma, accepted on read for hand-edited texts and never written (§16.2) |
+| `n_object_trailing_comment.json` | accept (dialect) | a `/* */` comment, accepted on read for hand-edited texts and never written (§16.2) |
+| `n_object_trailing_comment_slash_open.json` | accept (dialect) | a `//` comment that runs to the end of input, accepted on read and never written (§16.2) |
+| `n_structure_object_with_comment.json` | accept (dialect) | a `/* */` comment between a key and its value, accepted on read and never written (§16.2) |
+| `i_number_double_huge_neg_exp.json` | accept | the 511-byte token cap bounds the work; the walk clamps or counts `kind_mismatch`, and no infinity is stored (§16.2) |
+| `i_number_huge_exp.json` | accept | the 511-byte token cap bounds the work; the walk clamps or counts `kind_mismatch`, and no infinity is stored (§16.2) |
+| `i_number_neg_int_huge_exp.json` | accept | the 511-byte token cap bounds the work; the walk clamps or counts `kind_mismatch`, and no infinity is stored (§16.2) |
+| `i_number_pos_double_huge_exp.json` | accept | the 511-byte token cap bounds the work; the walk clamps or counts `kind_mismatch`, and no infinity is stored (§16.2) |
+| `i_number_real_neg_overflow.json` | accept | the 511-byte token cap bounds the work; the walk clamps or counts `kind_mismatch`, and no infinity is stored (§16.2) |
+| `i_number_real_pos_overflow.json` | accept | the 511-byte token cap bounds the work; the walk clamps or counts `kind_mismatch`, and no infinity is stored (§16.2) |
+| `i_number_real_underflow.json` | accept | the 511-byte token cap bounds the work; the walk clamps or counts `kind_mismatch`, and no infinity is stored (§16.2) |
+| `i_number_too_big_neg_int.json` | accept | the 511-byte token cap bounds the work; the walk clamps or counts `kind_mismatch`, and no infinity is stored (§16.2) |
+| `i_number_too_big_pos_int.json` | accept | the 511-byte token cap bounds the work; the walk clamps or counts `kind_mismatch`, and no infinity is stored (§16.2) |
+| `i_number_very_big_negative_int.json` | accept | the 511-byte token cap bounds the work; the walk clamps or counts `kind_mismatch`, and no infinity is stored (§16.2) |
+| `i_string_UTF-8_invalid_sequence.json` | refuse | `string_not_utf8`: bytes that are not well-formed UTF-8 (§16.3) |
+| `i_string_UTF8_surrogate_U+D800.json` | refuse | `string_not_utf8`: a surrogate encoded as UTF-8 bytes is not well-formed UTF-8 (§16.3) |
+| `i_string_invalid_utf-8.json` | refuse | `string_not_utf8`: bytes that are not well-formed UTF-8 (§16.3) |
+| `i_string_iso_latin_1.json` | refuse | `string_not_utf8`: a Latin-1 byte is not well-formed UTF-8 (§16.3) |
+| `i_string_lone_utf8_continuation_byte.json` | refuse | `string_not_utf8`: a continuation byte with no lead (§16.3) |
+| `i_string_not_in_unicode_range.json` | refuse | `string_not_utf8`: a sequence past U+10FFFF (§16.3) |
+| `i_string_overlong_sequence_2_bytes.json` | refuse | `string_not_utf8`: an overlong encoding (§16.3) |
+| `i_string_overlong_sequence_6_bytes.json` | refuse | `string_not_utf8`: an overlong encoding (§16.3) |
+| `i_string_overlong_sequence_6_bytes_null.json` | refuse | `string_not_utf8`: an overlong encoding of zero (§16.3) |
+| `i_string_truncated-utf-8.json` | refuse | `string_not_utf8`: a sequence cut short (§16.3) |
+| `i_object_key_lone_2nd_surrogate.json` | refuse | `string_lone_surrogate`: a low surrogate escape alone, in a key (§16.3) |
+| `i_string_1st_surrogate_but_2nd_missing.json` | refuse | `string_lone_surrogate`: a high surrogate escape with no low half (§16.3) |
+| `i_string_1st_valid_surrogate_2nd_invalid.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by a non-surrogate escape (§16.3) |
+| `i_string_incomplete_surrogate_and_escape_valid.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by another escape (§16.3) |
+| `i_string_incomplete_surrogate_pair.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by plain text (§16.3) |
+| `i_string_incomplete_surrogates_escape_valid.json` | refuse | `string_lone_surrogate`: two high surrogate escapes (§16.3) |
+| `i_string_invalid_lonely_surrogate.json` | refuse | `string_lone_surrogate`: a high surrogate escape alone (§16.3) |
+| `i_string_invalid_surrogate.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by plain text (§16.3) |
+| `i_string_inverted_surrogates_U+1D11E.json` | refuse | `string_lone_surrogate`: the low half escaped before the high (§16.3) |
+| `i_string_lone_second_surrogate.json` | refuse | `string_lone_surrogate`: a low surrogate escape alone (§16.3) |
+| `i_string_UTF-16LE_with_BOM.json` | refuse | not UTF-8: a JSON text is UTF-8 (RFC 8259 §8.1), and a UTF-16 mark starts no value |
+| `i_string_utf16BE_no_BOM.json` | refuse | not UTF-8: a JSON text is UTF-8 (RFC 8259 §8.1), and a zero byte starts no value |
+| `i_string_utf16LE_no_BOM.json` | refuse | not UTF-8: a JSON text is UTF-8 (RFC 8259 §8.1), and a zero byte inside an array is not JSON |
+| `i_structure_500_nested_arrays.json` | refuse | past the depth cap of 128, which is a bound and not a preference |
+| `i_structure_UTF-8_BOM_empty_object.json` | accept | a leading UTF-8 byte-order mark is skipped (RFC 8259 §8.1): one comparison, and no value changes |
+
+**PENDING.** `testdata/jsontestsuite/PENDING.tsv` names each file a reader at
+this commit does not yet meet, one per line as `<file>` TAB `<card>`, with the
+card that meets it. A pending file may disagree with its row and the harness
+lists it; a pending file that AGREES is a failure, "met: remove it from
+PENDING", so the list cannot outlive the gap it names.
+
+**Held by test.** `TestJSONTestSuiteEngine` drives every file through the
+engine's layer in its own package; `TestJSONTestSuiteGenerated` drives every
+file through the emitted walk inside a generated unit (`SCHEMA_SLOW=1`), where
+each file's walk allocates nothing (§16.1) and its best of three runs is under
+10 ms, the corpus under 2 s. `TestJSONTestSuitePolicyWitness` is the reversed
+witness: flipping a `y_` row and an `i_` row is named by exactly those two
+files, a deleted `i_` row is named by the loader, and a dropped PENDING line is
+named by its file.
 
 ## 17. Packing: a directory tree that mirrors a root table
 

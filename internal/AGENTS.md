@@ -12,6 +12,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `format/` | schemafmt | `go test ./internal/format` | `go test ./internal/format` |
 | `fuzz/` | seeded fuzz corpus | `go test ./internal/fuzz` | `go test ./internal/fuzz` |
 | `goldens/` | source, id, and wire pins | `go test ./internal/goldens` | `make update-goldens` |
+| `jsontestsuite/` | JSONTestSuite oracle harness | `go test ./internal/tabletext` | `go test ./internal/tabletext -run JSONTestSuite` |
 | `listwalk/` | unbounded-array walk | `go test ./internal/listwalk` | `go test ./internal/listwalk` |
 | `lockfile/` | schema.lock lineage | `go test ./internal/lockfile` | `go test ./internal/lockfile` |
 | `parser/` | recursive-descent parser | `go test ./internal/parser` | `go test ./internal/parser` |
