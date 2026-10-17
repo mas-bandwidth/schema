@@ -138,18 +138,19 @@ Erlang/OTP 29.0.5 + Elixir 1.20.4; unpack them under `dist/` per the Makefile's
 JAVAC=javac ELIXIR=elixir MIX=mix` if compatible versions are on your PATH).
 
 The serialize runtimes must be checked out as **siblings** of this
-repository:
+repository, each at the tag CI pins for it (the `SERIALIZE*_TAG` lines of
+`.github/workflows/ci-full.yml`). `make siblings` clones every one that is
+absent at its pin, from `$NOVA_MIRRORS` when a mirror is there and from GitHub
+otherwise, and leaves a present checkout as it is; `make siblings-check` names
+each sibling and fails while any is absent. The slow compiler tests
+(`SCHEMA_SLOW=1 go test ./compiler/`) need them as much as `make test` does:
 
 ```bash
-git clone https://github.com/mas-bandwidth/serialize.git
-git clone https://github.com/mas-bandwidth/serialize.c.git
-git clone https://github.com/mas-bandwidth/serialize.go.git
-git clone https://github.com/mas-bandwidth/serialize.js.git
-git clone https://github.com/mas-bandwidth/serialize.rs.git
-git clone https://github.com/mas-bandwidth/serialize.cs.git
-# no serialize.dart or serialize.java clone: generated Dart and Java are self-contained
 git clone https://github.com/mas-bandwidth/schema.git
-cd schema && make test
+cd schema
+make siblings   # ../serialize ../serialize.c ../serialize.cs ../serialize.go ../serialize.js ../serialize.rs
+# no serialize.dart or serialize.java clone: generated Dart and Java are self-contained
+make test
 ```
 
 `make test` builds the compiler, generates the corpus in all nine languages,

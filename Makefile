@@ -6114,6 +6114,45 @@ else \
 fi
 endef
 
+# THE SIBLINGS, IN ONE VERB. `go test ./compiler/` under SCHEMA_SLOW=1 and
+# `make test` compile generated code against the serialize runtimes checked out
+# BESIDE this repository (../serialize, ../serialize.c, ../serialize.cs,
+# ../serialize.go, ../serialize.js, ../serialize.rs: the SERIALIZE* defaults,
+# and the ../../serialize.* paths the compiler tests resolve). A fresh clone
+# has none of them, and a test that needs one fails naming the missing sibling.
+# `make siblings` clones each one that is absent, at the tag CI pins for it
+# (the SERIALIZE*_TAG lines of .github/workflows/ci-full.yml, read here and
+# never restated), from $NOVA_MIRRORS/mas-bandwidth/<repo>.git when that mirror
+# exists and from GitHub otherwise. A sibling already present is left as it is
+# and its checkout is named, so a hand-kept checkout at another ref is never
+# overwritten. A clone that fails refuses by name. `make siblings-check` names
+# each sibling with its pin and fails when any is absent, touching nothing.
+SIBLINGS_PARENT := $(abspath ..)
+SIBLINGS_PINS   := .github/workflows/ci-full.yml
+# <sibling dir>:<ci-full.yml variable>
+SIBLINGS_LIST   := serialize:SERIALIZE_TAG serialize.c:SERIALIZE_C_TAG serialize.cs:SERIALIZE_CS_TAG \
+                   serialize.go:SERIALIZE_GO_TAG serialize.js:SERIALIZE_JS_TAG serialize.rs:SERIALIZE_RS_TAG
+SIBLINGS_BASE   ?= https://github.com/mas-bandwidth
+
+.PHONY: siblings siblings-check
+siblings:
+	@set -e; for s in $(SIBLINGS_LIST); do \
+		n=$${s%%:*}; v=$${s#*:}; d="$(SIBLINGS_PARENT)/$$n"; \
+		pin=$$(sed -n "s/^[[:space:]]*$$v:[[:space:]]*\([^[:space:]#]*\).*/\1/p" $(SIBLINGS_PINS) | head -1); \
+		test -n "$$pin" || { echo "siblings: $(SIBLINGS_PINS) names no $$v, so $$n has no pin" >&2; exit 1; }; \
+		if test -d "$$d"; then echo "siblings: $$n present at $$d (left as it is; CI pins $$pin)"; continue; fi; \
+		$(call fetch-runtime,$$pin,mas-bandwidth/$$n.git,$(SIBLINGS_BASE)/$$n.git,$$d,$$n) \
+			|| { echo "siblings: cloning $$n @ $$pin into $$d failed; name it as a bench prerequisite" >&2; exit 1; }; \
+	done
+
+siblings-check:
+	@missing=0; for s in $(SIBLINGS_LIST); do \
+		n=$${s%%:*}; v=$${s#*:}; d="$(SIBLINGS_PARENT)/$$n"; \
+		pin=$$(sed -n "s/^[[:space:]]*$$v:[[:space:]]*\([^[:space:]#]*\).*/\1/p" $(SIBLINGS_PINS) | head -1); \
+		if test -d "$$d"; then echo "siblings: $$n present at $$d (CI pins $$pin)"; \
+		else echo "siblings: $$n ABSENT at $$d (CI pins $$pin; make siblings clones it)" >&2; missing=1; fi; \
+	done; exit $$missing
+
 $(SERIALIZE_GO_RUNTIME)/go.mod:
 	@if test -f "$(SERIALIZE_GO)/go.mod"; then :; \
 	elif test "$(origin SERIALIZE_GO)" != "file"; then \
