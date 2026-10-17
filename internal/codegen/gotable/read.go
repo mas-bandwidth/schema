@@ -312,6 +312,9 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 			}
 			g.pf("%sprevious := %s; decoded := int32(0)\n", i, companion)
 		}
+		if f.TextTotal > 0 {
+			g.pf("%sspent := int64(0)\n", i)
+		}
 		g.pf("%sfor i := uint64(0); i < keep; i++ {\n", i)
 		j := i + "\t"
 		switch kind {
@@ -329,6 +332,7 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		default:
 			g.emitReadScalar(f, expr+"[i]", "sub", "elemKind", j, "r.Report.Malformed = true; break")
 		}
+		g.emitTextTotalRead(f, expr+"[i]", j)
 		if counted {
 			g.pf("%sdecoded = int32(i+1)\n", j)
 		}

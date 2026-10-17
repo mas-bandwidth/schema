@@ -40,6 +40,9 @@ func (g *tableGen) emitListRead(f *ir.Field, ind string) {
 	g.pf("%sif !ok {r.Report.Malformed=true;break};if elemKind!=%d { if !tableKindWidens(elemKind,%d) {r.Report.KindMismatch++;break};r.Report.Widened++ }\n", i, kind, kind)
 	g.retainDiscard("r")
 	g.pf("%sslot:=(*tableContainer)(unsafe.Pointer(&%s));if !tableContainerFill(&sub.Nodes.Carve,slot,count,int64(unsafe.Sizeof(*new(%s))),%d) {if sub.Nodes.Carve.Refused {r.Take(sub);return false};r.Report.Malformed=true;break};slot.Count=0\n", i, expr, typ, align)
+	if f.TextTotal > 0 {
+		g.pf("%sspent:=int64(0)\n", i)
+	}
 	g.pf("%sfor i:=uint64(0);i<count;i++ { p:=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,slot,int32(i),int64(unsafe.Sizeof(*new(%s)))));if p==nil {r.Report.Malformed=true;break};landed:=false;for once:=true;once;once=false {\n", i, typ, typ)
 	j := i + "\t"
 	switch kind {
@@ -57,6 +60,7 @@ func (g *tableGen) emitListRead(f *ir.Field, ind string) {
 	default:
 		g.emitReadScalar(f, "(*p)", "sub", "elemKind", j, "r.Report.Malformed=true;break")
 	}
+	g.emitTextTotalRead(f, "(*p)", j)
 	g.pf("%slanded=true };if !landed { if sub.Nodes.Carve.Worker!=nil {tableContainerErase(sub.Nodes.Carve.Worker.Arena,slot,unsafe.Pointer(p),int64(unsafe.Sizeof(*p)))};break };if sub.Nodes.Carve.Worker==nil {slot.Count++}\n%s}\n", j, i)
 	g.emitCarveReturn("r", "sub", i)
 	g.pf("%s}\n", ind)
