@@ -3834,6 +3834,11 @@ spelling as the route where one exists:
   or not an integer. A text list in a `fixed table`, a `type` body, a packet,
   a union arm or a map value is already refused as the construct, so its
   total is refused with it, naming the variable-table route.
+- `| total = N` on a list of UNBOUNDED elements, `[]string`, `[]?string`,
+  `[..N]string` and `[..N]?string` (§2.13.1): its elements live in the
+  builder's arena, and no Go writer or reader path holds a total there yet, so
+  it is a named follow-on, refused naming the bounded `string(M)` element as
+  the route.
 
 **THE ELEMENT RECORD.** Each text list GENERATES one element record, as a map
 generates its entry (§2.8): `<Table><Field>Text`, one field named `value`
@@ -12382,8 +12387,9 @@ in build version (§20.5).
   `*string` or `*bytes`, each a named follow-on (§15); `[..N]?T` and `[]?T`
   for any `T` but `string(M)`; a declaration under any name the construct
   claims; and the construct under every target but Go, centrally. Its
-  `| total = N` on any other field, with `N` below 1 or not an integer, and
-  under every target but Go, centrally, naming the total.
+  `| total = N` on any other field, on a list of unbounded elements
+  (§2.13.1), with `N` below 1 or not an integer, and under every target but
+  Go, centrally, naming the total.
 - **Unbounded text** (§2.13.1): a bare `string` as a plain field (naming
   `string(N)` and `*string`), in `[N]string` and `[E]string` (naming
   `[..N]string`), in `?[]string` and `?[..N]string`, in a `type` body, a
