@@ -64,7 +64,6 @@ func roundtrip(t *testing.T, v Root) Root {
 func TestFixedRoadmapGoT10FloatsComposites(t *testing.T) {
 	t.Parallel()
 	for _, tc := range t10Cases {
-		tc := tc
 		t.Run(tc.id, func(t *testing.T) {
 			t.Parallel()
 			t10Run(t, tc.schema, tc.probe, tc.tableOnly)

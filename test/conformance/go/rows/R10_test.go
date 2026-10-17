@@ -12,7 +12,7 @@ import (
 // (docs/FIXED-FORM-ALGORITHM.md §5.6, line 967; docs/roadmap.sexp go/R10).
 //
 // The fixed-form reader refuses a layout the lock has never seen BY NAME —
-// "layout_newer" — before any byte-walk of the layout. The header's hash is
+// "layout_unknown" — before any byte-walk of the layout. The header's hash is
 // the file's, taken at the offset the prologue names; the reader does not
 // re-derive a digest from the layout behind it, because the wire carries no
 // digest to recompute, and the byte comparison of the layout to the lock's
@@ -87,7 +87,7 @@ func TestRowR10(t *testing.T) {
 	// assert that a stranger's layout is refused by name is to lay down a
 	// VALID length (matching the file's actual layout size) and a hostily
 	// shaped layout behind it — a layout a reader that walked the stranger
-	// would crash on. The reader must refuse "layout_newer" and report THE
+	// would crash on. The reader must refuse "layout_unknown" and report THE
 	// FILE'S hash, because there is no third thing to check and the hash
 	// is taken from the prologue as given.
 	stranger := make([]byte, len(data))
@@ -120,8 +120,8 @@ func TestRowR10(t *testing.T) {
 	if sReport.Verdict != tblp3.TableOpenRefused {
 		t.Fatalf("stranger's layout: verdict=%v, want TableOpenRefused", sReport.Verdict)
 	}
-	if sReport.Reason != "layout_newer" {
-		t.Fatalf("stranger's layout: reason=%q, want \"layout_newer\"", sReport.Reason)
+	if sReport.Reason != "layout_unknown" {
+		t.Fatalf("stranger's layout: reason=%q, want \"layout_unknown\"", sReport.Reason)
 	}
 	if sReport.LayoutHash != strangerHash {
 		t.Fatalf("stranger's layout: layout_hash=0x%016x, want 0x%016x (the file's)",
@@ -143,7 +143,7 @@ func TestRowR10(t *testing.T) {
 	// layout byte at offset TableFixedHeaderBytes+4 (= the first layout byte)
 	// differs from the lock's bytes. A reader that recomputed the hash from
 	// the corrupted layout would see a digest that is NOT in ChainFixedKnown
-	// and refuse "layout_newer". A reader that takes the file's header hash
+	// and refuse "layout_unknown". A reader that takes the file's header hash
 	// AS GIVEN and compares the layout bytes to the lock's bytes refuses
 	// "layout_malformed" — because the hash on the file is exactly the
 	// compiled constant and the layout behind it does not match.
@@ -170,10 +170,10 @@ func TestRowR10(t *testing.T) {
 	}
 	if kReport.Reason != "layout_malformed" {
 		t.Fatalf("known-hash bad-layout: reason=%q, want \"layout_malformed\" "+
-			"(a recompute of the hash from the layout would answer \"layout_newer\")",
+			"(a recompute of the hash from the layout would answer \"layout_unknown\")",
 			kReport.Reason)
 	}
-	// Only the two named-hash refusals (layout_newer, layout_unsupported)
+	// Only the two named-hash refusals (layout_unknown, layout_unsupported)
 	// report the file's hash; layout_malformed does not, because the bytes
 	// failed the comparison the lock holds, and no third thing is checked.
 	if kReport.LayoutHash != 0 {

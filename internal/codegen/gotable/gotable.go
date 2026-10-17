@@ -103,6 +103,7 @@ type tableGen struct {
 	viewUnions    map[string]int
 	viewNoIds     bool
 	idOrdinal     map[uint64]int // compile-time slot of each id TableWireIds names
+	surfaces      Surfaces       // the surface list (docs/SPEC-TABLES.md §8.8)
 
 	// Every union declaration reached by this unit's table closure has one
 	// immutable descriptor slot, shared by fields, arrays and nested arms.
@@ -248,7 +249,7 @@ const (
 // files of its own, so leaving one out is leaving its files out, and what is
 // left is exactly what GenerateLineage emits for the forms that remain.
 func GenerateOmitting(u *ir.Unit, lineage map[string][]FixedLineageEntry, omit Form) (map[string][]byte, error) {
-	out, forms, err := generateForms(u, lineage)
+	out, forms, err := generateForms(u, lineage, DefaultSurfaces())
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +266,15 @@ func GenerateOmitting(u *ir.Unit, lineage map[string][]FixedLineageEntry, omit F
 // (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
 // every table then carries the one entry it can always compute: its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
-	out, _, err := generateForms(u, lineage)
+	return GenerateLineageSurface(u, lineage, DefaultSurfaces())
+}
+
+// GenerateLineageSurface is GenerateLineage with a surface list
+// (docs/SPEC-TABLES.md §8.8): only the named surfaces' files and functions are
+// emitted, with wire kept as the base. The default full set is byte-identical
+// to GenerateLineage.
+func GenerateLineageSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces) (map[string][]byte, error) {
+	out, _, err := generateForms(u, lineage, s)
 	return out, err
 }
 
@@ -357,15 +366,15 @@ func filterBlocks(b *ir.BlockUnit) *ir.BlockUnit {
 
 // generateForms is the whole output, and the optional form each file belongs
 // to (0 for the core).
-func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, map[string]Form, error) {
+func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces) (map[string][]byte, map[string]Form, error) {
 	forms := map[string]Form{}
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, forms, nil
 	}
 	blocks := filterBlocks(ir.Blocks(u))
 	out := map[string][]byte{}
-	var err error
-	if formAllowed(u, "block") {
+	if s.Block && formAllowed(u, "block") {
+		var err error
 		out, err = generateBlockFiles(u, blocks)
 		if err != nil {
 			return nil, nil, err
@@ -416,7 +425,9 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[stri
 		// the message form's TYPES are the core's: the descriptor's message
 		// columns are typed by them, and the core declares the descriptor
 		g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageCoreTypes(u)+tableFixedRuntime)
-		g.into(&g.message, func() { g.pf("%s", tableMessageRuntime(u)) })
+		if s.Message {
+			g.into(&g.message, func() { g.pf("%s", tableMessageRuntime(u)) })
+		}
 		cookRuntime = tableCookWriteSource(u)
 		g.emitUnitBlittableRows(blocks)
 		if regional {
@@ -450,7 +461,7 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[stri
 	runtimeWritten := false
 	cookWriters := map[string]string{}
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage}
+		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage, surfaces: s}
 		members := fileMembers(f, closure)
 		if g.home {
 			emitRuntime(g)
@@ -476,17 +487,21 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[stri
 			g.emitTableWrite(st)
 			g.emitTableSave(st)
 			g.emitTableRead(st)
-			g.emitRetainMember(st)
-			if !st.IsTable || st.CarriesForm("cook") {
+			if s.Retain {
+				g.emitRetainMember(st)
+			}
+			if s.Cook && (!st.IsTable || st.CarriesForm("cook")) {
 				g.into(&g.cook, func() { g.emitCookWriteSurface(st) })
 			}
-			g.into(&g.message, func() {
-				g.emitMessageWrite(st)
-				g.emitMessageRead(st)
-				if regional {
-					g.emitRegionMessage(st)
-				}
-			})
+			if s.Message {
+				g.into(&g.message, func() {
+					g.emitMessageWrite(st)
+					g.emitMessageRead(st)
+					if regional {
+						g.emitRegionMessage(st)
+					}
+				})
+			}
 			if regional {
 				g.emitRegionMember(st)
 				for _, f := range st.Fields {
@@ -498,7 +513,9 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[stri
 				}
 			}
 		}
-		g.emitFixedForm(members)
+		if s.Fixed {
+			g.emitFixedForm(members)
+		}
 		if len(members) > 0 {
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----\n\n")
 			for _, st := range members {
@@ -512,8 +529,10 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[stri
 			return nil, nil, err
 		}
 		out[f.Base+"Table.go"] = src
-		if err := g.emitForm(out, forms, f.Base+"TableMessage.go", FormMessage, &g.message); err != nil {
-			return nil, nil, err
+		if s.Message {
+			if err := g.emitForm(out, forms, f.Base+"TableMessage.go", FormMessage, &g.message); err != nil {
+				return nil, nil, err
+			}
 		}
 		cookWriters[f.Base] = g.cook.String()
 	}
@@ -522,18 +541,20 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[stri
 	// either way — that is the whole rule, and it is what keeps an
 	// earlier-sorting file from moving it (§19.2).
 	if !runtimeWritten {
-		g := &tableGen{unit: u, home: true, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage}
+		g := &tableGen{unit: u, home: true, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage, surfaces: s}
 		emitRuntime(g)
 		src, err := g.assemble()
 		if err != nil {
 			return nil, nil, err
 		}
 		out[home+"Table.go"] = src
-		if err := g.emitForm(out, forms, home+"TableMessage.go", FormMessage, &g.message); err != nil {
-			return nil, nil, err
+		if s.Message {
+			if err := g.emitForm(out, forms, home+"TableMessage.go", FormMessage, &g.message); err != nil {
+				return nil, nil, err
+			}
 		}
 	}
-	if formAllowed(u, "cook") {
+	if s.Cook && formAllowed(u, "cook") {
 		cooks, err := generateCookFiles(u, blocks, cookRuntime, cookWriters)
 		if err != nil {
 			return nil, nil, err
@@ -547,7 +568,7 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[stri
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
 	// descriptors, in its own file so a project that never reads or writes a
 	// text does not compile it
-	if formAllowed(u, "json") {
+	if s.JSON && formAllowed(u, "json") {
 		texts, err := generateJsonFiles(u, closure, home)
 		if err != nil {
 			return nil, nil, err
@@ -557,11 +578,13 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[stri
 		}
 		maps.Copy(out, texts)
 	}
-	view, err := generateViewFile(u, closure, armSlots)
-	if err != nil {
-		return nil, nil, err
+	if s.View {
+		view, err := generateViewFile(u, closure, armSlots)
+		if err != nil {
+			return nil, nil, err
+		}
+		maps.Copy(out, view)
 	}
-	maps.Copy(out, view)
 	return out, forms, nil
 }
 

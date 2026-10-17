@@ -109,12 +109,12 @@ func t02KnownRows(t *testing.T, text, snake string) []t02Known {
 		t.Fatalf("the generated source publishes no %s_fixed_known", snake)
 	}
 	rest := text[at+len(marker):]
-	end := strings.Index(rest, "\n};")
-	if end < 0 {
+	before, _, ok := strings.Cut(rest, "\n};")
+	if !ok {
 		t.Fatalf("the emitted %s_fixed_known does not close", snake)
 	}
 	var out []t02Known
-	for _, m := range t02KnownRow.FindAllStringSubmatch(rest[:end], -1) {
+	for _, m := range t02KnownRow.FindAllStringSubmatch(before, -1) {
 		h, err := strconv.ParseUint(m[1], 16, 64)
 		if err != nil {
 			t.Fatalf("known hash %q: %v", m[1], err)
@@ -157,12 +157,12 @@ func t02Array(t *testing.T, text, name string) []byte {
 		t.Fatalf("the generated source publishes no %s", name)
 	}
 	rest := text[at+len(marker):]
-	end := strings.Index(rest, "};")
-	if end < 0 {
+	before, _, ok := strings.Cut(rest, "};")
+	if !ok {
 		t.Fatalf("the emitted %s does not close", name)
 	}
 	var out []byte
-	for _, f := range strings.Split(rest[:end], ",") {
+	for f := range strings.SplitSeq(before, ",") {
 		f = strings.TrimSpace(f)
 		if f == "" {
 			continue
@@ -331,7 +331,11 @@ func t02R23(t *testing.T) {
 	if n := strings.Count(tableFixedRuntime, "layout_hash = "); n != 1 {
 		t.Errorf("R23: layout_hash is written %d times in the runtime, want exactly one (the backward-read refusal)", n)
 	}
-	refuse := tableFixedRuntime[strings.Index(tableFixedRuntime, "table_fixed_refuse_hash"):]
+	refuseAt := strings.Index(tableFixedRuntime, "table_fixed_refuse_hash")
+	if refuseAt < 0 {
+		t.Fatal("R23: the runtime has no table_fixed_refuse_hash")
+	}
+	refuse := tableFixedRuntime[refuseAt:]
 	if !strings.Contains(refuse, "report->layout_hash = hash;") {
 		t.Errorf("R23: the one layout_hash store is not the file-hash refusal — zero on every other path (§5.9 #7)")
 	}
@@ -392,7 +396,7 @@ func t02R26(t *testing.T) {
 // t02W14: W14 "plan dst == offsetof/sizeof". §4.1's Op `dst` is "a byte offset
 // into the READER's storage"; fixedform.go's opening note: "every offset and
 // every size the plan depends on is asserted against offsetof and sizeof, so a
-// layout this generator got wrong is a build error and never a wrong read."
+// layout this generator got wrong is a build error and never a wrong read.".
 func t02W14(t *testing.T) {
 	text, _, st := t02NewerWithOlder(t)
 	snake := ir.RustSnake(st.Name)
@@ -419,11 +423,11 @@ func t02W14(t *testing.T) {
 		t.Fatalf("W14: the emitted unit carries no %s_fixed_plan", snake)
 	}
 	body := text[at:]
-	end := strings.Index(body, "\n};")
-	if end < 0 {
+	before, _, ok := strings.Cut(body, "\n};")
+	if !ok {
 		t.Fatalf("W14: %s_fixed_plan does not close", snake)
 	}
-	dsts := planRe.FindAllStringSubmatch(body[:end], -1)
+	dsts := planRe.FindAllStringSubmatch(before, -1)
 	if len(dsts) == 0 {
 		t.Fatalf("W14: %s_fixed_plan carries no entries", snake)
 	}

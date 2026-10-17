@@ -95,6 +95,17 @@ Run the same command with `--lang c`, `--lang cs`, `--lang elixir`, `--lang go`,
 language — writing the
 **same bits**.
 
+The Go target can narrow what it emits to the surfaces your build uses:
+
+```
+schema generate --lang go --surface wire,json --out generated/go .
+```
+
+`--surface` takes a comma-separated list of the table surfaces (SPEC-TABLES.md
+§8.8). Its default is the full set — the command above without `--surface` is
+byte-identical to the one with `--surface wire,fixed,json,cook,block,view,message,retain`.
+Only the Go target accepts it; any other `--lang` refuses the flag by name.
+
 ---
 
 ## Declarations
@@ -815,7 +826,8 @@ the whole point... checks are *DEBUG ONLY*"). C# has `Debug.Assert` and
 build, so the C# backend asserts too — the same idiom the serialize.cs runtime
 it calls has always used for its own write path.
 Go has no assert idiom, so it returns
-`ErrValueOutOfRange`; JavaScript likewise returns failure
+`ErrValueOutOfRange` (and its table writers refuse with
+`TableRefuseInvalidValue`, below); JavaScript likewise returns failure
 rather than invent an assert. Dart has `assert` — active under
 `--enable-asserts`, compiled out of release and AOT builds — so the Dart
 writer asserts, exactly like C++; Java's `assert` is active under `-ea` and
@@ -833,6 +845,29 @@ raises in Elixir, silently writes the truncated low bits in a C++ or C release
 or count past its array's end panics there on the slice instead, the
 language's own bounds check, which no profile removes), Dart AOT or
 default-JVM build, and returns failure in the others.
+
+**Go tables are held to the stricter rule, in every build** (2026-10-15: "Go
+table writers, variable and fixed, refuse out-of-contract values by name").
+A Go table has no debug build to compile a check out of, and a record its own
+reader would clamp or refuse is a record the writer should never have made. So
+a Go table save — `<T>Save` for a variable or a fixed-size table and
+`<T>FixedSave` for the fixed form — **refuses** a value off its declared
+`min`/`max`, a count past its array's `Max`, a length past its text or bytes
+bound `N`, ill-formed UTF-8 in a `string`, and a NUL in a `string`, by name:
+the save returns `-1` and the `...Reason` twin (`<T>MeasureReason`,
+`<T>FixedSaveReason`) returns `TableRefuseInvalidValue`. Nothing is clamped on
+the way out and nothing is written for a refused fixed batch. The cost is one
+comparison per ranged field, one per count and length, and one word-at-a-time
+scan over the used bytes of each string (ASCII passes on the word test; only
+text with a byte at or past 0x80 is asked of `utf8.Valid`). The fixed writer
+pays for its check by storing only the live extent, as
+[FIXED-FORM-ALGORITHM.md](FIXED-FORM-ALGORITHM.md) §3.1 always said it must: a
+counted array's `count` elements and a text field's `length` bytes, onto the
+zeroed template, never all `Max` and never the slack of the caller's storage.
+The write path is benchmarked before and after (`TestGoTableWriterSpeedTable`,
+a functional test: `NOVA_WRITER_BENCH=1`) under a speed gate: a save may not
+get slower than the before-run's spread. The packet writers and the other
+languages' table writers are unchanged by this paragraph.
 
 Do not build on any of it. **Keep your values inside their declared bounds on
 the write side** — your simulation already knows they are, and that is the only
@@ -3512,6 +3547,57 @@ byte on the wire.
 or a set flags bit no variant names, an invalid union tag, or a non-finite
 float. The text it does emit is always valid JSON and valid UTF-8.
 
+### Carrying a table over a text channel
+
+A text channel is a pipe a wire byte cannot cross as-is — a bus body, a log
+line, a config field, a terminal. In Go every table — `fixed table` and
+plain `table` alike — has two text carriers:
+
+- **Base64 of the binary wire** (`SaveText` / `LoadText`): the text is the
+  wire's bytes, `encoding/base64` standard alphabet, padded, whole. It keeps
+  the form byte, the framing check and every versioning guarantee of the
+  wire, and it is opaque — no field is readable, nothing is editable. Use it
+  when machines talk to machines and the wire itself would have been ideal.
+- **The JSON text form** (`FromJson` / `ToJson`, above): for a human to read,
+  diff or edit.
+
+Both readers refuse damaged or newer input by name. `LoadText` returns a typed
+refusal: `base64_damaged` when the body does not decode, `unknown_form` when
+the decoded wire's form byte is one this build does not carry, and
+`wire_damaged` for framing damage. `LoadText` is the strict read: it refuses
+whenever the read's report holds an error (`TableReport.Err()` — `malformed`,
+`clamped`, `kind_mismatch`, ...), even when the tolerant load recovered a
+value, so a damaged-but-recovered wire never comes back as a value with a nil
+error. `unknown`, `widened` and `retained` alone do not refuse. A supplied
+`report` receives that one read's report. `FromJson` returns false with
+`report` set `malformed` when the JSON document is damaged.
+
+For a plain (variable) table the pair has that class's shape:
+`<Name>SaveText(value, context...)` takes `Save`'s write context, and
+`<Name>LoadText(text, &report)` reads into a builder of its own and returns
+the locked root, as `<Name>ReadStrict` does. Either carrier is byte for byte:
+what it reads back saves to the same wire bytes the original saved to
+(docs/SPEC-TABLES.md §16.8).
+
+```go
+// Machines: base64 of the wire — lossless, opaque, keeps the form byte and
+// every versioning guarantee; pick it when the wire itself would be ideal.
+text, err := example.ShipConfigSaveText(&ship)
+if err != nil { /* refuse */ }
+loaded, err := example.ShipConfigLoadText(text, &report)
+if err != nil { /* base64_damaged | unknown_form | wire_damaged | malformed | clamped | ... */ }
+
+// A person: the JSON form, for reading, diffing or editing.
+buf := make([]byte, example.ShipConfigToJsonMeasure(&ship))
+n := example.ShipConfigToJson(&ship, buf)
+var edited example.ShipConfigBuilder // ShipConfig is a plain table: a builder
+if !edited.Init() { /* allocation_failed */ }
+defer edited.Shutdown()
+if !example.ShipConfigFromJson(&edited, buf[:n], &report) {
+	// report.Malformed: the JSON document is damaged.
+}
+```
+
 ### Packing a directory into a table
 
 `schema pack` builds ONE table instance from a directory tree that mirrors
@@ -3717,8 +3803,12 @@ The fixed form's refusals land in `TableReport.Reason`, each under its own
 name: `previous_form`, a form-1 file, the variable form this build is newer
 than; `message_form_as_file`, form 2, a form this build carries through
 another surface; `newer_form`, a form byte the registry has not assigned;
-`layout_newer`, a layout hash this build has never served, reported with the
-file's hash and nothing else; `layout_unsupported`, a layout this build once
+`layout_unknown`, a layout hash this build's lineage does not hold, reported
+with the file's hash and nothing else (a flipped hash byte, an older layout
+nobody locked and a newer writer's layout all read this way: it does not say
+which, and it never says "ship a newer reader", because nothing in the lock
+proves a hash newer; `layout_newer` is reserved for that proof, and Go is the
+first leg to answer this way); `layout_unsupported`, a layout this build once
 served and has retired; `layout_malformed`, a header that is not a layout, or
 a known hash whose layout bytes differ; `no_layout`, a record whose hash
 names nothing; `plan_too_large`, a plan slice smaller than the plan the load

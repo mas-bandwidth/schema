@@ -325,7 +325,6 @@ func TestFixedRoadmapRustT10CompositesOptionals(t *testing.T) {
 		{"text-bytes-flags-defaults/rust/valid-data", "text-bytes-flags-defaults"},
 	}
 	for _, task := range tasks {
-		task := task
 		t.Run(task.id, func(t *testing.T) {
 			t.Parallel()
 			if line := t10Line(out, task.say); line != "T10 "+task.say+" ok" {
@@ -338,7 +337,7 @@ func TestFixedRoadmapRustT10CompositesOptionals(t *testing.T) {
 // t10Line is the probe's one line for a task id.
 func t10Line(out, id string) string {
 	prefix := "T10 " + id + " "
-	for _, l := range strings.Split(out, "\n") {
+	for l := range strings.SplitSeq(out, "\n") {
 		if strings.HasPrefix(l, prefix) {
 			return l
 		}

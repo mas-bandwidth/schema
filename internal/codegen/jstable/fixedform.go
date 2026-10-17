@@ -578,5 +578,3 @@ func tableVariableRefusals(st *ir.Struct) (out []string) {
 	}
 	return out
 }
-
-func itoa(v int64) string { return fmt.Sprintf("%d", v) }

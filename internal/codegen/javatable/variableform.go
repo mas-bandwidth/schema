@@ -1545,11 +1545,12 @@ func writeIntFieldRead(b *strings.Builder, f *ir.Field, m string) {
 			widen = append(widen, 4)
 		}
 	}
-	cond := fmt.Sprintf("kind == %d", k)
+	var cond strings.Builder
+	fmt.Fprintf(&cond, "kind == %d", k)
 	for _, w := range widen {
-		cond += fmt.Sprintf(" || kind == %d", w)
+		fmt.Fprintf(&cond, " || kind == %d", w)
 	}
-	fmt.Fprintf(b, "                if (%s) {\n", cond)
+	fmt.Fprintf(b, "                if (%s) {\n", cond.String())
 	fmt.Fprintf(b, "                    if (kind == %d) { if (r.has(%s)) { v.%s = %s; } else { report.malformed = true; r.fail = true; } }\n", k, has, m, read)
 	for _, w := range widen {
 		wread, whas := "", ""

@@ -280,14 +280,24 @@ func main() {
 		fs := flag.NewFlagSet("generate", flag.ExitOnError)
 		lang := fs.String("lang", "cpp", "target language ("+strings.Join(c.Targets(), ", ")+")")
 		out := fs.String("out", "generated", "output directory")
+		surface := fs.String("surface", "", "for --lang go: the table surfaces to emit, comma-separated from wire,fixed,json,cook,block,view,message,retain (default: all; SPEC-TABLES.md §8.8)")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		limit := fs.Int64("fixed-record-limit", 0, "refuse any FIXED table whose record body exceeds this many `bytes` (0 = no refusal; §3.4 warns at 4096 and drops the form at 65536 regardless)")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		surfaceSet := false
+		fs.Visit(func(f *flag.Flag) {
+			if f.Name == "surface" {
+				surfaceSet = true
+			}
+		})
+		if err := refuseSurfaceForTarget(surfaceSet, *lang); err != nil {
+			fail(err)
+		}
 		c.FixedRecordLimit = *limit
 		c.TablesBaseline = true
 		c.SchemaLock = true
 		unit := loadUnit(c, fs.Args())
-		files, err := c.Generate(unit, *lang, compiler.Options{})
+		files, err := c.Generate(unit, *lang, compiler.Options{"surface": *surface})
 		if err != nil {
 			fail(err)
 		}
@@ -756,6 +766,16 @@ func fail(err error) {
 		os.Exit(1)
 	}
 	fatalf("%v", err)
+}
+
+// refuseSurfaceForTarget returns an error when a non-Go target is handed the
+// --surface flag: the flag is refused by name, not by value, so the empty
+// `--surface=` is refused too (SPEC §8.8).
+func refuseSurfaceForTarget(surfaceSet bool, lang string) error {
+	if surfaceSet && lang != "go" {
+		return fmt.Errorf("the %s target refuses the --surface flag by name; only the go target honors it (SPEC-TABLES.md §8.8)", lang)
+	}
+	return nil
 }
 
 // wireFile is one argument that named a SAVED FILE rather than a schema
