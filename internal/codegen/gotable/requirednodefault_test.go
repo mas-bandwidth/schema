@@ -5,7 +5,11 @@
 // a strict read in the binary, base64 and JSON forms alike.
 package gotable
 
-import "testing"
+import (
+	"sort"
+	"strings"
+	"testing"
+)
 
 func TestGoRequiredExactFieldHasNoDefault(t *testing.T) {
 	t.Parallel()
@@ -83,4 +87,47 @@ func TestReq(t *testing.T){
 }
 `
 	runGenerated(t, schema, body)
+}
+
+// TestGoRequiredGeneratedDeterministic pins the text form's generated output to
+// byte-identical bytes across runs. The required-field registry is a Go map
+// literal, so its entries must be emitted in sorted table order or the
+// generated unit is non-deterministic (docs/SPEC-TABLES.md §2.3).
+func TestGoRequiredGeneratedDeterministic(t *testing.T) {
+	t.Parallel()
+	const schema = `package probe
+table A
+{
+    ver uint8 | min = 7, max = 7, required
+}
+table B
+{
+    id uint8 | required
+}
+table C
+{
+    flag uint8 | min = 1, max = 3, required
+}
+`
+	var ref string
+	var keys []string
+	for i := 0; i < 20; i++ {
+		out := generate(t, schema)
+		if i == 0 {
+			for k := range out {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+		}
+		var b strings.Builder
+		for _, k := range keys {
+			b.Write(out[k])
+		}
+		got := b.String()
+		if i == 0 {
+			ref = got
+		} else if got != ref {
+			t.Fatalf("run %d: generated output differs from the first run", i)
+		}
+	}
 }

@@ -17,6 +17,7 @@ package gotable
 import (
 	"fmt"
 	"go/format"
+	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -252,9 +253,15 @@ func tableJsonRequiredSource(tables map[string][]string) string {
 // held to that table's own list, so a non-required field in another table that
 // shares a required field's name is not refused.
 var tableJsonRequiredByTable = map[string][]string{`)
-	for name, names := range tables {
+	names := make([]string, 0, len(tables))
+	for name := range tables {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		fields := tables[name]
 		fmt.Fprintf(&b, "\n\t%q: {", name)
-		for i, n := range names {
+		for i, n := range fields {
 			if i > 0 {
 				b.WriteString(", ")
 			}
