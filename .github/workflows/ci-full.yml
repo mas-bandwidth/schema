@@ -320,6 +320,12 @@ jobs:
           SCHEMA_SLOW: '1'
         run: go test $(go list ./... | grep -v '/internal/codegen/')
 
+      # THE GO CONFORMANCE ROWS GATE: the merge/nightly full-leg run of the
+      # gate ci-fast's go-test-touched runs on a touched diff.
+      - name: go conformance rows gate
+        if: matrix.group == 'unit-rest'
+        run: make conformance-go-rows
+
       # AND THE ACCOUNTING FOR THE TWO STEPS ABOVE (schema#988, G5). The two
       # steps set SCHEMA_SLOW=1, so on this lane every gated test runs; that is
       # exactly why the accounting belongs here. It runs the DEFAULT half once
