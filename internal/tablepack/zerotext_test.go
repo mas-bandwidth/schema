@@ -70,7 +70,10 @@ func TestEnginePackRefusesZeroByteInText(t *testing.T) {
 		`{"m":{"a\u0000b":1}}`)
 	packCase("text list element",
 		"table Root { lst [..4]string(8) }",
-		`{"lst":[{"value":"a"},{"value":"b\u0000c"}]}`)
+		`{"lst":["a","b\u0000c"]}`)
+	packCase("string in a union arm",
+		"union U {\n    A string(8)\n    B uint32\n}\ntable Root {\n    u U\n}",
+		`{"u":{"A":"a\u0000b"}}`)
 
 	t.Run("bytes holding a zero byte packs and unpacks silent", func(t *testing.T) {
 		t.Parallel()

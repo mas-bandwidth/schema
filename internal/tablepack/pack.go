@@ -379,6 +379,11 @@ func zeroByteFieldPath(fv *tabletext.Field, path string) string {
 }
 
 func zeroByteCellPath(cell *tabletext.Cell, f *ir.Field, path string) string {
+	if cell.Arm != nil {
+		if s := zeroByteFieldPath(cell.Arm, path); s != "" {
+			return s
+		}
+	}
 	switch {
 	// A *string buffer is text and refuses a U+0000; a *bytes buffer is bytes
 	// and carries any value (docs/SPEC-TABLES.md §3.1).
