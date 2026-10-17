@@ -24,7 +24,7 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 // the integrity_mismatch refusal name every Go unit's runtime carries
 // (docs/SPEC-TABLES.md §2.14): the enum value, its Error case and its Err line.
 var neitherDigest = map[string]string{
-	"go":  "6cc2b169e14b33f8b43bdae40d590e570e41ffa33f52489c18b7dfc240382219",
+	"go":  "664c3c5adbde609d7a9906548259352053d802f121397a068628a55988acc588",
 	"cpp": "5aabda2cf12ca342bd480b18084def13f06d87a85b6bdddeea12f955f761da1d",
 }
 
