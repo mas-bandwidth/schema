@@ -4360,3 +4360,24 @@ bit-identity — if they ever disagree by one bit, the build fails.
 
 For the exact rules — grammar, wire law, every edge case — see
 [SPEC.md](SPEC.md).
+
+## Hand-edited tables and comments
+
+Use the [hand-editable text form](SPEC-TABLES.md#169-the-hand-editable-text-form-a-table-with-its-document)
+for data people edit by hand and review as diffs: roadmaps, work plans and
+annotated configuration. Its restricted s-expressions retain semicolon comments,
+blank lines and source order. Read into a document plus its typed table; keep
+the document to rewrite it byte for byte or change a single value in place.
+The table value alone cannot retain layout. Unknown and duplicate keys,
+over-bound values and unterminated forms are named refusals, not repairs.
+
+This is the standard and its conformance contract; it does not yet promise a
+generated Go reader or writer. That implementation follows separately. Existing
+roadmap/work-file grammars need declared tables and explicit migration: tagged
+records and positional IDs in older work files are not accepted implicitly.
+
+Do not use this document form for data only a program reads. Use the binary
+table wire, or padded base64 of that wire on text-only channels (§16.8); use
+the JSON form for ordinary inspection/interchange where preserving comments
+and original formatting is unnecessary. `FromJson`/`ToJson` drops comments,
+and `LoadText` is the base64 carrier, so neither is a lossless document editor.
