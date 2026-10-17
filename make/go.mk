@@ -419,6 +419,16 @@ tables-go-standalone: build/tables-generated-go/.stamp
 tables-go-soak: build/tables-generated-go/.stamp
 	cd test/go-tables && go test -run Soak -timeout 0 -soak $(SOAK) -v .
 
+# FUZZ-TABLES-GO: the permanent native fuzz target over the table compiler
+# front end and the Go table emitter (internal/fuzz/tablefrontend_test.go).
+# The long campaign runs by hand or on the certify nightly, never in ci-fast or
+# ci-full. FUZZTIME and FUZZPARALLEL default to 10m and 4.
+FUZZTIME ?= 10m
+FUZZPARALLEL ?= 4
+.PHONY: fuzz-tables-go
+fuzz-tables-go:
+	go test ./internal/fuzz/ -run '^$$' -fuzz '^FuzzTableFrontEnd$$' -fuzztime $(FUZZTIME) -parallel $(FUZZPARALLEL)
+
 .PHONY: tables-go-fuzz
 tables-go-fuzz: build/tables-generated-go/.stamp build/conformance-harness
 	./build/conformance-harness run --drivers /dev/null --work build/conformance > /dev/null 2>&1 || true
