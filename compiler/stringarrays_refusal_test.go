@@ -19,9 +19,11 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 
 // neitherDigest is the sha256 of the go and cpp outputs of neitherSchema at
 // the base this card started from (sprint/schema-go @ f001d67e2086), file
-// names sorted, each name then its bytes.
+// names sorted, each name then its bytes. The go digest moved once since, by
+// the integrity_mismatch refusal name every Go unit's runtime carries
+// (docs/SPEC-TABLES.md §2.14): the enum value, its Error case and its Err line.
 var neitherDigest = map[string]string{
-	"go":  "d42ee1edcf7b577a3b3d99b8d219fddaff5d55309676b3f8b27c1121ae21ab90",
+	"go":  "3df9b1829925726f012d590ed1c3005da57d2e56677e2f9081e0bdedc8a63419",
 	"cpp": "5aabda2cf12ca342bd480b18084def13f06d87a85b6bdddeea12f955f761da1d",
 }
 

@@ -682,6 +682,7 @@ var valuedKeys = map[string]bool{
 	"was":         true,
 	"json":        true,
 	"forms":       true,
+	"integrity":   true,
 	"cpp_native":  true,
 	"cpp_include": true,
 }
@@ -800,6 +801,27 @@ func (c *checker) tableForms(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
 	if !bad && !seen["wire"] {
 		c.errf(a.Pos, "table %s: forms = %q must include wire — the wire form is always carried (docs/SPEC-TABLES.md §2.12)", d.Name, lit.Value)
 	}
+}
+
+// tableIntegrity reads an `integrity = "crc32c"` declaration
+// (docs/SPEC-TABLES.md §2.14): one quoted check name from the closed
+// vocabulary [ir.TableIntegrityChecks]. A `fixed table` refuses it by name
+// until the fixed form and the message form carry the trailer.
+func (c *checker) tableIntegrity(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
+	lit, ok := a.Value.(*ast.StringLit)
+	if !ok || lit.Value == "" {
+		c.errf(a.Pos, `integrity takes one quoted check name, e.g. integrity = "crc32c" (docs/SPEC-TABLES.md §2.14)`)
+		return
+	}
+	if !ir.TableIntegrityChecks[lit.Value] {
+		c.errf(a.Pos, "table %s: integrity = %q names no check — the checks are crc32c (docs/SPEC-TABLES.md §2.14)", d.Name, lit.Value)
+		return
+	}
+	if d.Fixed {
+		c.errf(a.Pos, "fixed table %s: integrity is refused on a fixed table until the fixed form and the message form carry the trailer (docs/SPEC-TABLES.md §2.14)", d.Name)
+		return
+	}
+	st.Integrity = lit.Value
 }
 
 // vocabulary spells a line kind's valued keys for a diagnostic.
@@ -1101,13 +1123,20 @@ func (c *checker) resolveBodies() {
 				// refuses a fixed table whose closure cannot hold the class.
 				st := &ir.Struct{Name: d.Name, IsTable: true, FixedDeclared: d.Fixed, Doc: d.Doc}
 				var tvalued []*ast.Attr
-				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true, "forms": true, "json": true})
+				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true, "forms": true, "json": true, "integrity": true})
 				for _, a := range tvalued {
 					if a.Key == "json" {
 						// the ARRAY ROOT (docs/SPEC-TABLES.md §16.10): a text
 						// form fact, kept out of the rename switch below so
 						// it never touches the wire identity
 						c.tableJsonRoot(d, st, a)
+						continue
+					}
+					if a.Key == "integrity" {
+						// the file's CHECKSUM TRAILER (docs/SPEC-TABLES.md
+						// §2.14): framing, kept out of the rename switch
+						// below so it never touches the wire identity
+						c.tableIntegrity(d, st, a)
 						continue
 					}
 					if a.Key == "forms" {
