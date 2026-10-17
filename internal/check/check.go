@@ -4181,6 +4181,9 @@ var tableGeneratedVerbs = []string{
 	"LoadBodyRetain", "LoadMessageBodyRetain", "MeasureBodyRetain", "SaveBodyRetain", "SaveBodyFieldsRetain",
 	"MeasureWireRetain", "SaveWireRetain", "NodeBodyRetain",
 	"FromJson", "ToJson", "ToJsonMeasure",
+	// docs/SPEC-TABLES.md §16.2's three options ride in the Go backend's With
+	// calls beside the plain three, so their suffixes are claimed on the same rule
+	"FromJsonWith", "ToJsonWith", "ToJsonMeasureWith",
 	// the TEXT TRANSPORT helpers (docs/SPEC-TABLES.md §16.8): the Go backend
 	// emits <Name>SaveText and <Name>LoadText beside the JSON functions, for
 	// base64 of the binary wire, so both suffixes are claimed on this list's own

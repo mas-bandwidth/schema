@@ -3494,6 +3494,24 @@ all the same, so what it costs is legible — and the LINKER drops what nothing
 calls, so a binary that never reads or writes a text carries none of it. The
 Go read and write paths allocate NOTHING at all, measured rather than asserted.
 
+Go also takes a text `encoding/json` wrote, and writes one back in its
+habits, through three options passed to the `With` calls (SPEC-TABLES §16.2):
+
+```go
+legacy := example.TableJsonOptions{NullAsEmpty: true, OmitDefaults: true, Compact: true}
+example.ShipConfigFromJsonWith(&ship, text, &report, legacy) // "tags": null reads as []
+buffer = make([]byte, example.ShipConfigToJsonMeasureWith(&ship, legacy))
+example.ShipConfigToJsonWith(&ship, buffer, legacy)          // {"hull":3}, no newline
+```
+
+`NullAsEmpty` reads `null` as an empty list or map instead of a kind
+mismatch; `OmitDefaults` leaves out every field at its default; `Compact`
+writes no whitespace. They are arguments, never declarations, because they
+describe a text rather than the table; with all three off the plain calls'
+canonical text is unchanged. The price is stated: an `OmitDefaults` write
+allocates one default instance per object it writes, to compare against; the
+plain calls still allocate nothing.
+
 In JavaScript the text is a string — the language's own currency for it — so
 there is no measure call and no buffer: `ToJson` answers the text, `FromJson`
 takes it (or the `Uint8Array` of one read straight off a file) and hands the
