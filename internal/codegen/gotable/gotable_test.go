@@ -75,9 +75,47 @@ fixed table Ship
 	if len(seen) != 2 {
 		t.Fatalf("expected two tag lists, got %v", seen)
 	}
-	for name, n := range seen {
+ 	for name, n := range seen {
 		if n != 1 {
 			t.Fatalf("tag list %s is declared %d times: two rows share one package-level name", name, n)
+		}
+	}
+}
+
+// TestOneSidedRangeGeneratedByteIdentical pins that a one-sided range (`| min =
+// A` alone) lowers to the two-sided declaration and generates byte-identical
+// Go (docs/SPEC-TABLES.md §4). It lives here, not in internal/check, because
+// gotable imports internal/check, and internal/check's own tests importing
+// gotable would form an import cycle.
+func TestOneSidedRangeGeneratedByteIdentical(t *testing.T) {
+	t.Parallel()
+	one := generate(t, `package t
+table OneSided
+{
+    a int64 | min = 0
+    b uint16 | max = 9
+    c int8 | min = -3
+}
+`)
+	two := generate(t, `package t
+table OneSided
+{
+    a int64 | min = 0, max = 9223372036854775807
+    b uint16 | min = 0, max = 9
+    c int8 | min = -3, max = 127
+}
+`)
+	if len(one) != len(two) {
+		t.Fatalf("file counts differ: one-sided %d, two-sided %d", len(one), len(two))
+	}
+	for name, one := range one {
+		two, ok := two[name]
+		if !ok {
+			t.Errorf("file %s present one-sided, absent two-sided", name)
+			continue
+		}
+		if string(one) != string(two) {
+			t.Errorf("file %s is not byte-identical between the spellings", name)
 		}
 	}
 }

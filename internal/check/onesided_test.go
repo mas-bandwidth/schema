@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -54,45 +53,6 @@ table OneSided
 			}
 			if f.IntMax.String() != w.max {
 				t.Errorf("%s: want IntMax=%s, got %s", f.Name, w.max, f.IntMax)
-			}
-		}
-	})
-	t.Run("generated go byte-identical to the two-sided spelling", func(t *testing.T) {
-		one := checkUnit(t, `package t
-table OneSided
-{
-    a int64 | min = 0
-    b uint16 | max = 9
-    c int8 | min = -3
-}
-`)
-		two := checkUnit(t, `package t
-table OneSided
-{
-    a int64 | min = 0, max = 9223372036854775807
-    b uint16 | min = 0, max = 9
-    c int8 | min = -3, max = 127
-}
-`)
-		oneFiles, err := gotable.Generate(one)
-		if err != nil {
-			t.Fatalf("gotable.Generate(one-sided): %v", err)
-		}
-		twoFiles, err := gotable.Generate(two)
-		if err != nil {
-			t.Fatalf("gotable.Generate(two-sided): %v", err)
-		}
-		if len(oneFiles) != len(twoFiles) {
-			t.Fatalf("file counts differ: one-sided %d, two-sided %d", len(oneFiles), len(twoFiles))
-		}
-		for name, one := range oneFiles {
-			two, ok := twoFiles[name]
-			if !ok {
-				t.Errorf("file %s present one-sided, absent two-sided", name)
-				continue
-			}
-			if string(one) != string(two) {
-				t.Errorf("file %s is not byte-identical between the spellings", name)
 			}
 		}
 	})
