@@ -100,12 +100,17 @@ func TestForgedCountLandsTheWritersBound(t *testing.T) {
 	binary.LittleEndian.PutUint32(record, 7)
 	var got Host
 	HostReset(&got)
-	tableFixedRun(plan, made, record, tableFixedOverlay(unsafe.Pointer(&got), unsafe.Sizeof(got)), &r)
-	if got.XsCount != 4 {
-		t.Fatalf("a forged 7 over the WRITER's bound of 4 landed %d", got.XsCount)
+	pdst := tableFixedOverlay(unsafe.Pointer(&got), unsafe.Sizeof(got))
+	for i := range pdst {
+		pdst[i] = 0x5A
 	}
-	if r.Clamped != 1 {
-		t.Fatalf("the clamp counts once, got %d (%+v)", r.Clamped, r)
+	if why := tableFixedRun(plan, made, record, pdst, &r); why != "count_over_bound" {
+		t.Fatalf("a forged 7 over the WRITER's bound of 4 refused %q, want count_over_bound", why)
+	}
+	for i, b := range pdst {
+		if b != 0x5A {
+			t.Fatalf("the refusal wrote destination byte %d: 0x%02X (§5.8: not one destination byte)", i, b)
+		}
 	}
 }
 `)

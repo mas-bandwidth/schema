@@ -109,21 +109,25 @@ func t07GoC14(t *testing.T) {
 // emits: §3.1 "Slack is UNSPECIFIED on read and not a refusal: a reader
 // validates the USED UNITS only, and non-zero slack is not `malformed`, not a
 // refusal, and moves no counter." The text op holds the length word to the
-// plan's own capacity and counts that clamp; past the used length it copies the
-// payload whole and never inspects, refuses or counts a slack byte.
+// plan's own capacity and refuses an overbound length; past the used length it
+// copies the payload whole and never inspects, refuses or counts a slack byte.
 func t07GoW4(t *testing.T) {
-	block := t07RuntimeCase(t, "tableFixedText", "tableFixedOrdinal")
+	block := funcSource(tableFixedRuntime, "func tableFixedTextRefusal(")
+	run := funcSource(tableFixedRuntime, "func tableFixedRun(")
 	if !strings.Contains(block, "capn := p.Size / unit") {
 		t.Error("W4: the used length is held to the plan's own capacity (§3.1)")
 	}
-	if !strings.Contains(block, "} else if uint32(v) > capn {") || !strings.Contains(block, "report.Clamped++") {
-		t.Error("W4: a length past the capacity clamps and counts, once (§3.1)")
+	if !strings.Contains(block, "if v < 0 || uint32(v) > capn") || !strings.Contains(block, "return TableFixedReasonLengthOverBound") {
+		t.Error("W4: a length past the capacity refuses by name, once (§3.1, §4.5)")
 	}
-	if !strings.Contains(block, "binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))") {
+	if !strings.Contains(t07RuntimeCase(t, "tableFixedText", "tableFixedOrdinal"), "binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))") {
 		t.Error("W4: the reader lands the USED length (§3.1)")
 	}
-	if strings.Contains(block, "Malformed") || strings.Contains(block, "Refuse") {
-		t.Error("W4: non-zero slack is not malformed and not a refusal; the reader validates the used units only (§3.1)")
+	if strings.Contains(block, "Malformed") {
+		t.Error("W4: non-zero slack is not malformed; the pre-scan validates only used units (§3.1)")
+	}
+	if !strings.Contains(run, "if why := tableFixedTextRefusal(plan, count, src); why != \"\" {") {
+		t.Error("W4: the direct runner does not pre-scan before writes")
 	}
 }
 

@@ -2342,11 +2342,8 @@ func TestWideText(t *testing.T) {
 	}
 	got = make([]FxWide, 2)
 	rep = TableReport{}
-	if n := FxWideFixedLoad(got, forged, plan, &rep); n != 2 {
-		t.Fatalf("forged load %d %+v", n, rep)
-	}
-	if got[1].CaptionLength != 8 || rep.Clamped != 1 {
-		t.Fatalf("CODE UNITS: a byte-legal length 16 on wstring(8) landed length %d, clamped=%d; want 8 and exactly one clamp", got[1].CaptionLength, rep.Clamped)
+	if n := FxWideFixedLoad(got, forged, plan, &rep); n >= 0 || rep.Reason != "length_over_bound" {
+		t.Fatalf("CODE UNITS: a byte-legal length 16 on wstring(8) landed n=%d reason=%q, want length_over_bound", n, rep.Reason)
 	}
 }
 `)
@@ -2477,48 +2474,39 @@ func TestTextLengthClamp(t *testing.T) {
 		t.Fatalf("text_length_clamp: the needle occurs more than once, so the search is not a locator")
 	}
 	// base[at+4:] is the length word. The cap is the field's own bound, 8.
-	cases := []struct {
-		name        string
-		forge       uint32
-		want        uint32
-		wantClamped int32
-	}{
-		{"at the bound: admitted, no clamp", 8, 8, 0},
-		{"one past the bound: clamped down", 9, 8, 1},
-		{"all ones reads signed -1: clamped up to zero", 0xFFFFFFFF, 0, 1},
-	}
-	for _, c := range cases {
+	// AT THE BOUND IS ADMITTED; PAST IT — OR NEGATIVE — REFUSES BY NAME
+	// (length_over_bound), the OWNER RULE (2026-10-15) replacing the clamp.
+	for _, c := range []struct{ name string; forge uint32; wantRefuse bool }{
+		{"at the bound: admitted", 8, false},
+		{"one past the bound: refused", 9, true},
+		{"all ones reads signed -1: refused", 0xFFFFFFFF, true},
+	} {
 		buf := append([]byte(nil), base...)
 		binary.LittleEndian.PutUint32(buf[at+4:], c.forge)
 		got := make([]Text, 1)
 		var r TableReport
 		plan := make([]TableFixedEntry, 256)
 		n := TextFixedLoad(got, buf, plan, &r)
+		if c.wantRefuse {
+			if n >= 0 || r.Reason != "length_over_bound" {
+				t.Fatalf("%s: n=%d reason=%q, want length_over_bound: %+v", c.name, n, r.Reason, r)
+			}
+			continue
+		}
 		if n != 1 {
 			t.Fatalf("%s: the forged file reads one record, n=%d %+v", c.name, n, r)
 		}
-		if got[0].LabelLength != int32(c.want) {
-			t.Fatalf("%s: the length landed %d, not %d (never the forged %d): %+v",
-				c.name, got[0].LabelLength, c.want, c.forge, got[0])
+		if got[0].LabelLength != 8 {
+			t.Fatalf("%s: the length landed %d, not 8: %+v", c.name, got[0].LabelLength, got[0])
 		}
-		if c.want > 0 && string(got[0].Label[:c.want]) != "abcdefgh" {
-			t.Fatalf("%s: the used bytes landed %q, not \"abcdefgh\": %+v",
-				c.name, got[0].Label[:c.want], got[0])
+		if string(got[0].Label[:8]) != "abcdefgh" {
+			t.Fatalf("%s: the used bytes landed %q", c.name, got[0].Label[:8])
 		}
-		if c.want == 0 && got[0].Label[0] != 0 {
-			t.Fatalf("%s: the terminator did not zero the used length: %+v", c.name, got[0])
-		}
-		if r.Clamped != c.wantClamped {
-			t.Fatalf("%s: Clamped=%d, want %d — once per field: %+v", c.name, r.Clamped, c.wantClamped, r)
+		if r.Clamped != 0 || r.Reason != "" || r.Verdict == TableOpenRefused {
+			t.Fatalf("%s: an admitted length must move nothing: %+v", c.name, r)
 		}
 		if got[0].Lead != 0xAAAAAAAA || got[0].Trail != 0xBBBBBBBB {
-			t.Fatalf("%s: the clamp moved a neighbour: %+v", c.name, got[0])
-		}
-		if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Duplicate != 0 {
-			t.Fatalf("%s: a counter other than Clamped moved: %+v", c.name, r)
-		}
-		if r.Malformed || r.Verdict == TableOpenRefused || r.Reason != "" {
-			t.Fatalf("%s: a forged length reads clean, not a refusal: %+v", c.name, r)
+			t.Fatalf("%s: a mislaid size moved a neighbour: %+v", c.name, got[0])
 		}
 	}
 }
@@ -3197,7 +3185,7 @@ func TestWriteSideRefusesByName(t *testing.T) {
 
 	// THE READ SIDE STAYS THE WIRE'S DEFENCE. A FOREIGN writer is not held by
 	// this writer's contract, so forge the image the refused save would have
-	// made: the reader still clamps the count and the length, and counts them.
+	// made: the reader refuses the count and length by name before any landing.
 	full := lawful
 	full.NameLength = 8
 	copy(full.Name[:], "abcdefgh")
@@ -3209,12 +3197,22 @@ func TestWriteSideRefusesByName(t *testing.T) {
 	tableFixedPut32(body[0:], 7)
 	tableFixedPut32(body[20:], 9)
 	var fr TableReport
-	fgot := make([]Host, 1)
-	if n := HostFixedLoad(fgot, forged, plan, &fr); n != 1 {
-		t.Fatalf("forged load %d %+v", n, fr)
+	fgot := []Host{{Tail: 0x5A, MarksCount: 4, NameLength: 8}}
+	for i := range fgot[0].Marks {
+		fgot[0].Marks[i] = 0x5A
 	}
-	if fgot[0].MarksCount != 4 || fgot[0].NameLength != 8 || fr.Clamped == 0 || fgot[0].Tail != 7 {
-		t.Fatalf("the read side must clamp a foreign writer's count and length and count it: %+v %+v", fgot[0], fr)
+	for i := range fgot[0].Name {
+		fgot[0].Name[i] = 0x5A
+	}
+	before := fgot[0]
+	if n := HostFixedLoad(fgot, forged, plan, &fr); n >= 0 || fr.Reason != TableFixedReasonCountOverBound {
+		t.Fatalf("forged load %d reason=%q, want count_over_bound", n, fr.Reason)
+	}
+	if fr.Unknown != 0 || fr.KindMismatch != 0 || fr.Widened != 0 || fr.Clamped != 0 || fr.Duplicate != 0 || fr.Retained != 0 || fr.RetainLost != 0 || fr.Malformed {
+		t.Fatalf("forged refusal moved a counter or marked malformed: %+v", fr)
+	}
+	if fgot[0] != before {
+		t.Fatalf("forged refusal touched destination: before=%+v after=%+v", before, fgot[0])
 	}
 }
 `)

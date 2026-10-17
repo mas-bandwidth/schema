@@ -662,6 +662,11 @@ reader takes — which is why the debug assert is worth having, and why
 keeping the count in range is your job. The READ refuses an out-of-range
 count in every build, in all nine.
 
+On a fixed table (SPEC-TABLES.md §3.4) the refusal has a name: a count past
+its bound is `count_over_bound` and a text length past its bound is
+`length_over_bound`, checked before any destination byte is written; the
+record is refused, never clamped.
+
 ### Composition
 
 Types nest freely. A composed field writes its parts inline — no pointers,
