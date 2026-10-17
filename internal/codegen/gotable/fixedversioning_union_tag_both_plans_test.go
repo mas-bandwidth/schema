@@ -59,7 +59,7 @@ func TestUnionTag(t *testing.T) {
 	back := make([]%[2]s, 8)
 	var r TableReport
 	plan := make([]TableFixedEntry, 4096)
-	n := %[2]sFixedLoad(back, data, plan, &r)
+	n := %[2]sFixedLoadTolerant(back, data, plan, &r)
 	if n != 1 {
 		t.Fatalf("union_tag_both_plans: the forged file reads one record, n=%%d %%+v", n, r)
 	}
@@ -106,7 +106,7 @@ func TestUnionTag(t *testing.T) {
 	back := make([]%[2]s, 8)
 	var r TableReport
 	plan := make([]TableFixedEntry, 4096)
-	n := %[2]sFixedLoad(back, data, plan, &r)
+	n := %[2]sFixedLoadTolerant(back, data, plan, &r)
 	if n != 1 {
 		t.Fatalf("union_tag_both_plans: the forged file reads one record, n=%%d %%+v", n, r)
 	}
