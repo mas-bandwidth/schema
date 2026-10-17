@@ -378,7 +378,7 @@ func (g *tableGen) nextWireWriter() string {
 const arrayLengthCacheBytes = 1024
 
 func (g *tableGen) cacheArrayLengths(f *ir.Field) bool {
-	return !g.regional && !g.retain && f.KeyEnum == "" && !f.Type.Pointer && isStructRef(f.Type) &&
+	return !g.regional && !g.retain && f.KeyEnum == "" && !f.Type.Pointer && isStructRef(f.Type) && !ir.TextListPlain(f) &&
 		(f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted) && f.ArrayBound > 0 && f.ArrayBound <= arrayLengthCacheBytes/8
 }
 
@@ -455,6 +455,17 @@ func (g *tableGen) emitWireArrayElement(f *ir.Field, expr, writer, ind string) {
 	g.retainIndex = "i"
 	g.retainArm = false
 	defer func() { g.retainIndex = oldIndex; g.retainArm = oldArm }()
+	if ir.TextListPlain(f) {
+		// A PLAIN TEXT LIST's element is kind 12's payload (docs/SPEC-TABLES.md
+		// §2.13, §3): its own L and its bytes, written from the element record's
+		// value under string(M)'s own storage check and text rule
+		g.wireSerial++ // keep the temporary-name sequence the record path takes
+		value := *ir.TextListValue(f)
+		g.pf("%s{ text := &%s\n", ind, expr)
+		g.emitWireValue(&value, "text."+member(&value), writer, ind+"\t", true)
+		g.pf("%s}\n", ind)
+		return
+	}
 	element := g.nextWireWriter()
 	elem := *f
 	elem.Array = ir.ArrayNone
