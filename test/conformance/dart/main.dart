@@ -27,6 +27,12 @@ import '../../../build/tables-generated-dart/maps/MapdemoWire.dart' as mapdemo;
 import '../../../build/tables-generated-dart/messages/MessagedemoWire.dart' as messagedemo;
 import '../../../build/tables-generated-dart-scalars/scalars/ScalardemoWire.dart' as scalardemo;
 import '../../../build/tables-generated-dart/wide/WideWire.dart' as widedemo;
+import '../../../build/tables-generated-dart/v1/Tblv1Wire.dart' as tblv1;
+import '../../../build/tables-generated-dart/v2/Tblv2Wire.dart' as tblv2;
+import '../../../build/tables-generated-dart/w1/Tblw1Wire.dart' as tblw1;
+import '../../../build/tables-generated-dart/w2/Tblw2Wire.dart' as tblw2;
+import '../../../build/tables-generated-dart/r1/Tblr1Wire.dart' as tblr1;
+import '../../../build/tables-generated-dart/r2/Tblr2Wire.dart' as tblr2;
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -662,8 +668,9 @@ int surfaceCook(String outDir) {
 // scalars and widedemo answer the same four for every root: maps, unions and
 // their arrays, keyed and fixed arrays, optionals, flags, wstring and the wide
 // scalars on form 1 and in the text (docs/SPEC-TABLES.md §2.3, §2.6, §2.8, §3,
-// §15, §16). Every other unit stays absent. no-text rows are not asked for a
-// text.
+// §15, §16). The V, W and R evolution units answer wire and report on form 1;
+// W1/W2 also exercise default-bearing text round trips.
+// Other unsupported rows stay absent. no-text rows are not asked for a text.
 bool noTextRow(List<String> f) => f.length > 5 && f[5] == 'no-text';
 
 void spillAbsent(String outDir, String name) {
@@ -678,6 +685,18 @@ String _reportLine(int unknown, int kind, int widened, int clamped, bool malform
 
 Uint8List? wireResave(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'tblv1 Cfg':
+      return tblv1.cfgWireSave(tblv1.cfgWireLoad(wire));
+    case 'tblv2 Cfg':
+      return tblv2.cfgWireSave(tblv2.cfgWireLoad(wire));
+    case 'tblw1 Fleet':
+      return tblw1.fleetWireSave(tblw1.fleetWireLoad(wire));
+    case 'tblw2 Fleet':
+      return tblw2.fleetWireSave(tblw2.fleetWireLoad(wire));
+    case 'tblr1 Cfg':
+      return tblr1.cfgWireSave(tblr1.cfgWireLoad(wire));
+    case 'tblr2 Cfg':
+      return tblr2.cfgWireSave(tblr2.cfgWireLoad(wire));
     case 'graphdemo Scene':
       return graphdemo.sceneWireSave(graphdemo.sceneWireLoad(wire));
     case 'blobdemo Catalog':
@@ -728,6 +747,10 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
 
 Uint8List? jsonReadSave(String unit, String root, String text) {
   switch ('$unit $root') {
+    case 'tblw1 Fleet':
+      return tblw1.fleetWireSave(tblw1.fleetFromJson(text));
+    case 'tblw2 Fleet':
+      return tblw2.fleetWireSave(tblw2.fleetFromJson(text));
     case 'graphdemo Scene':
       return graphdemo.sceneWireSave(graphdemo.sceneFromJson(text));
     case 'blobdemo Catalog':
@@ -778,6 +801,10 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
 
 String? jsonWriteText(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'tblw1 Fleet':
+      return tblw1.fleetToJson(tblw1.fleetWireLoad(wire));
+    case 'tblw2 Fleet':
+      return tblw2.fleetToJson(tblw2.fleetWireLoad(wire));
     case 'graphdemo Scene':
       return graphdemo.sceneToJson(graphdemo.sceneWireLoad(wire));
     case 'blobdemo Catalog':
@@ -828,6 +855,30 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
 
 String? loadReport(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'tblv1 Cfg':
+      final r = tblv1.TableWireReport();
+      tblv1.cfgWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'tblv2 Cfg':
+      final r = tblv2.TableWireReport();
+      tblv2.cfgWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'tblw1 Fleet':
+      final r = tblw1.TableWireReport();
+      tblw1.fleetWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'tblw2 Fleet':
+      final r = tblw2.TableWireReport();
+      tblw2.fleetWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'tblr1 Cfg':
+      final r = tblr1.TableWireReport();
+      tblr1.cfgWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'tblr2 Cfg':
+      final r = tblr2.TableWireReport();
+      tblr2.cfgWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
     case 'graphdemo Scene':
       final r = graphdemo.TableWireReport();
       graphdemo.sceneWireLoad(wire, r);

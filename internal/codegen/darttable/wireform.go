@@ -1255,7 +1255,10 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tw.putBytes(b);\n", ind)
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TBytes: // bytes(N) rides as kind 14 over element kind 6 (§3); the String holds one byte a code unit (latin1), so every byte value survives
-		g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+		// §5: a declared bytes default is storage, not a field occurrence.
+		// Comparing with emptiness would write the default into an otherwise
+		// empty body and change the Go oracle's canonical wire.
+		g.pf("%sif (%s != %s) {\n", ind, expr, g.stringDefault(f))
 		g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 		g.pf("%s\tfinal b = latin1.encode(%s);\n", ind, expr)
 		g.pf("%s\tfinal s = w.sub();\n", ind)
