@@ -148,7 +148,7 @@ func TestMessage(t *testing.T) {
 		}
 		got := make([]Reading, 1)
 		var rrep TableReport
-		if n, ok := ReadingLoadMessages(got, &vocab, buf, &rrep); n != 1 || !ok {
+		if n, ok := ReadingLoadMessagesTolerant(got, &vocab, buf, &rrep); n != 1 || !ok {
 			t.Fatalf("message %s: load n=%d ok=%v %+v", c.name, n, ok, rrep)
 		}
 		if rrep.Clamped != 0 {
@@ -205,7 +205,7 @@ func TestFixed(t *testing.T) {
 		var got [1]Reading
 		var plan [64]TableFixedEntry
 		var rep TableReport
-		if n := ReadingFixedLoad(got[:], buf, plan[:], &rep); n != 1 {
+		if n := ReadingFixedLoadTolerant(got[:], buf, plan[:], &rep); n != 1 {
 			t.Fatalf("fixed %s: load n=%d why=%q", c.name, n, rep.Reason)
 		}
 		if rep.Clamped != c.counts {
@@ -246,7 +246,7 @@ func TestVariable(t *testing.T) {
 		}
 		var got Reading
 		var rep TableReport
-		if !ReadingLoad(&got, buf, &rep) {
+		if !ReadingLoadTolerant(&got, buf, &rep) {
 			t.Fatalf("variable %s: load %+v", c.name, rep)
 		}
 		if rep.Clamped != c.counts {
@@ -303,7 +303,7 @@ func TestText(t *testing.T) {
 		}
 		var got Reading
 		var rep TableReport
-		if !ReadingFromJson(&got, buf, &rep) {
+		if !ReadingFromJsonTolerant(&got, buf, &rep) {
 			t.Fatalf("text %s: read %+v of %s", c.name, rep, buf)
 		}
 		if rep.Clamped != c.counts || rep.KindMismatch != 0 {
@@ -313,7 +313,7 @@ func TestText(t *testing.T) {
 	}
 	var got Reading
 	var rep TableReport
-	if !ReadingFromJson(&got, []byte("{\"a\": -0, \"b\": -0.0}\n"), &rep) {
+	if !ReadingFromJsonTolerant(&got, []byte("{\"a\": -0, \"b\": -0.0}\n"), &rep) {
 		t.Fatalf("text -0 by hand: %+v", rep)
 	}
 	cfLanded(t, "text", cfCases[1], got)

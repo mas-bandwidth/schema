@@ -41,7 +41,7 @@ func TestFixedGoT19PayloadFreeLines(t *testing.T) {
 	if !strings.Contains(src, "func RootFixedSave(") {
 		t.Fatal("RootFixedSave not emitted")
 	}
-	if !strings.Contains(src, "func RootFixedLoad(") {
+	if !strings.Contains(src, "func RootFixedLoadTolerant(") {
 		t.Fatal("RootFixedLoad not emitted")
 	}
 	// The tag for the union is always written.
@@ -126,7 +126,7 @@ func TestPayloadFreeArmsZeroStorage(t *testing.T) {
 		back := make([]Root, 1)
 		plan := make([]TableFixedEntry, 256)
 		var r TableReport
-		if n := RootFixedLoad(back, buf, plan, &r); n != 1 || r != (TableReport{}) {
+		if n := RootFixedLoadTolerant(back, buf, plan, &r); n != 1 || r != (TableReport{}) {
 			t.Fatalf("load for zero: n=%d r=%+v", n, r)
 		}
 		if back[0].Pick.Type != tag || back[0].Lead != 0x12345678 || back[0].Trail != 0x07654321 {
@@ -156,7 +156,7 @@ func TestTagPastArmSet(t *testing.T) {
 	back := make([]Root, 1)
 	plan := make([]TableFixedEntry, 256)
 	var r TableReport
-	n := RootFixedLoad(back, buf, plan, &r)
+	n := RootFixedLoadTolerant(back, buf, plan, &r)
 	if n != 1 || back[0].Pick.Type != PickTypeNone || r.Clamped != 1 {
 		t.Fatalf("past tag: n=%d type=%v clamped=%d r=%+v", n, back[0].Pick.Type, r.Clamped, r)
 	}
@@ -179,7 +179,7 @@ func roundtrip(t *testing.T, v Root) Root {
 	back := make([]Root, 1)
 	plan := make([]TableFixedEntry, 256)
 	var r TableReport
-	if n := RootFixedLoad(back, buf, plan, &r); n != 1 || r != (TableReport{}) {
+	if n := RootFixedLoadTolerant(back, buf, plan, &r); n != 1 || r != (TableReport{}) {
 		t.Fatalf("load returned %d, report %+v", n, r)
 	}
 	return back[0]

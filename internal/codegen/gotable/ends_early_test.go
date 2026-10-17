@@ -58,7 +58,7 @@ func checkEarly(t *testing.T, name string, wire []byte) {
 	r, open := tableOpen(wire, &ignored)
 	var value Root
 	var report TableReport
-	ok := RootLoad(&value, wire, &report)
+	ok := RootLoadTolerant(&value, wire, &report)
 	if open != TableOpenOk {
 		if report.Verdict != open {
 			t.Fatalf("%s: open %d load %d", name, open, report.Verdict)
@@ -123,7 +123,7 @@ func TestRootReadAnswersOwnEarlyEnd(t *testing.T) {
 		checkEarly(t, "mismatch-then-end", got)
 		var value Root
 		var report TableReport
-		ok := RootLoad(&value, got, &report)
+		ok := RootLoadTolerant(&value, got, &report)
 		if trailing == 0 {
 			if !ok || report.Verdict != TableOpenOk || value.A != 1 || report.KindMismatch != 1 || report.Malformed {
 				t.Fatalf("two fields no trailing: ok=%v a=%d report=%+v", ok, value.A, report)
@@ -147,7 +147,7 @@ func TestRootReadAnswersOwnEarlyEnd(t *testing.T) {
 		clean := finish(&w, 0)
 		var value Root
 		var report TableReport
-		if !RootLoad(&value, clean, &report) || report.Unknown != 1 || value.A != 11 || report.Malformed {
+		if !RootLoadTolerant(&value, clean, &report) || report.Unknown != 1 || value.A != 11 || report.Malformed {
 			t.Fatalf("unknown kept: a=%d report=%+v", value.A, report)
 		}
 		var ids2 TableIds
@@ -164,7 +164,7 @@ func TestRootReadAnswersOwnEarlyEnd(t *testing.T) {
 		checkEarly(t, "unknown-then-early-end", early)
 		var after Root
 		var damaged TableReport
-		if RootLoad(&after, early, &damaged) || damaged.Verdict != TableOpenDamaged || damaged.Unknown != 0 || after.A != 5 {
+		if RootLoadTolerant(&after, early, &damaged) || damaged.Verdict != TableOpenDamaged || damaged.Unknown != 0 || after.A != 5 {
 			t.Fatalf("unknown then early: a=%d report=%+v", after.A, damaged)
 		}
 		// The C++ analogue of this walk increments unknown before the
@@ -173,7 +173,7 @@ func TestRootReadAnswersOwnEarlyEnd(t *testing.T) {
 		// leave MaxInt32, default a, and Damaged.
 		var seededVal Root
 		seeded := TableReport{Unknown: math.MaxInt32}
-		if RootLoad(&seededVal, early, &seeded) || seeded.Verdict != TableOpenDamaged || seeded.Unknown != math.MaxInt32 || seededVal.A != 5 {
+		if RootLoadTolerant(&seededVal, early, &seeded) || seeded.Verdict != TableOpenDamaged || seeded.Unknown != math.MaxInt32 || seededVal.A != 5 {
 			t.Fatalf("seeded unknown then early: a=%d report=%+v", seededVal.A, seeded)
 		}
 	}
@@ -193,7 +193,7 @@ func TestRootReadAnswersOwnEarlyEnd(t *testing.T) {
 		checkEarly(t, "reserved-id-before-early-end", got)
 		var value Root
 		var report TableReport
-		ok := RootLoad(&value, got, &report)
+		ok := RootLoadTolerant(&value, got, &report)
 		if trailing == 0 {
 			if ok || report.Verdict != TableOpenBodyStopped || !report.Malformed || value.A != 77 {
 				t.Fatalf("reserved trailing 0: ok=%v a=%d report=%+v", ok, value.A, report)

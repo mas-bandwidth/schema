@@ -136,7 +136,7 @@ func TestMatchedWidthRoundTrip(t *testing.T) {
 		t.Fatal("save")
 	}
 	var report TableReport
-	if !RootLoad(&loaded, wire, &report) || report != (TableReport{}) || loaded.A != 0x1234 || loaded.B != -400 {
+	if !RootLoadTolerant(&loaded, wire, &report) || report != (TableReport{}) || loaded.A != 0x1234 || loaded.B != -400 {
 		t.Fatalf("round trip %+v loaded=%+v", report, loaded)
 	}
 }
@@ -155,7 +155,7 @@ func TestWidenArmReadsWireWidth(t *testing.T) {
 	got := finish(&w)
 	var loaded Root
 	var report TableReport
-	if !RootLoad(&loaded, got, &report) || report.Widened != 2 || report.KindMismatch != 0 || report.Malformed || loaded.A != 9 || loaded.B != 7 {
+	if !RootLoadTolerant(&loaded, got, &report) || report.Widened != 2 || report.KindMismatch != 0 || report.Malformed || loaded.A != 9 || loaded.B != 7 {
 		t.Fatalf("widen: a=%d b=%d report=%+v", loaded.A, loaded.B, report)
 	}
 }
@@ -171,7 +171,7 @@ func TestMatchedWidthMismatchSkips(t *testing.T) {
 	got := finish(&w)
 	var loaded Root
 	var report TableReport
-	if !RootLoad(&loaded, got, &report) || report.KindMismatch != 1 || report.Widened != 0 || loaded.B != 0 {
+	if !RootLoadTolerant(&loaded, got, &report) || report.KindMismatch != 1 || report.Widened != 0 || loaded.B != 0 {
 		t.Fatalf("mismatch: b=%d report=%+v", loaded.B, report)
 	}
 }
