@@ -9901,7 +9901,11 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   malformed, clamped, kind-mismatched, of an unknown form, wire-damaged,
   build-version-mismatched, missing a required field (§2.3), holding a
   non-finite plain float (`non_finite`, §3.3, a plain float's special values) or
-  naming one blob from two slots (`blob_shared`, §2.5). It does NOT refuse `unknown`, `widened` or
+  naming one blob from two slots (`blob_shared`, §2.5). The clamped refusal
+  NAMES the clamped field, `<Table>.<field>`, as the other refusals name
+  theirs: a strict read of a past-bound wire answers the clamped refusal with
+  the field's name (`clamped: <Table>.<field>`, `TableClampedField`), so a
+  strict caller can say which field was clamped. It does NOT refuse `unknown`, `widened` or
   `retained` alone: `unknown` is evolution, `widened` decoded exactly, and
   `retained` reports on retention rather than on a loss (the cards facade's
   `ReadStrict`, docs/CARDS.md: `Unknown`, `Retained` and `Widened` alone are
@@ -13564,23 +13568,33 @@ in build version (§20.5).
   NodeStorage  NodePlace  NodeAlloc  NodeBody
   Cook  CookMeasure  CookMeasureReason  CookBody  CookLayout  CookMeasureFrom  CookFrom
   Open  TableFields  TableInfo
-  FromJson  ToJson  ToJsonMeasure  Table
+  FromJson  ToJson  ToJsonMeasure  ToJsonMeasureReason  Table
   FromJsonWith  ToJsonWith  ToJsonMeasureWith
-  SaveText  LoadText
+  SaveText  LoadText  LoadTextForm  SaveTextForm  EditTextForm
   LoadTolerant  LoadBuilderTolerant  FromJsonTolerant  FixedLoadTolerant  LoadMessagesTolerant
-  FromJsonTolerantWith
+  FromJsonTolerantWith  ReadStrict
   MeasureMessages  SaveMessages  LoadMessages
   LoadMessagesMeasure  SaveMessageBody  LoadMessageBody
   LoadRetain LoadRetainBuilder  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages
   LoadBodyRetain LoadMessageBodyRetain  MeasureBodyRetain  SaveBodyRetain  SaveBodyFieldsRetain
   MeasureWireRetain  SaveWireRetain  NodeBodyRetain
-  FixedMeasure  FixedSave  FixedLoad  FixedWriteBody  FixedLeaves
+  FixedMeasure  FixedSave  FixedSaveReason  FixedLoad  FixedWriteBody  FixedLeaves
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedCover
-  FixedClamp  FixedClampBody
+  FixedClamp  FixedClampBody  FixedCheckBody  FixedCheckBodyExact
+  FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedKnown  FixedFloor  FixedLineagePlans
   ```
+
+  The Go templates also use Add, Erase, Each, Insert, Find,
+  IndexMeasure, Index, IndexFind, Append, AppendAbsent and TextAt
+  after field-qualified prefixes for list, map and text-list helpers (§2.8,
+  §2.9 and §2.13), and Type is the union tag type (§2.6); none of these is
+  emitted from the bare table name, so none is claimed here — a declaration
+  spelling one is not a collision. The fixed-form image and hole names and the
+  maximum plan capacity are package-level Go data (§3.4), and GenPastBound is
+  the exported bound probe helper (§4).
 
   The last six of the `Fixed` rows are the READING TIER's, and they are the
   price a language with no struct layout pays for the same form. Where the
@@ -15656,7 +15670,13 @@ value the field's width cannot represent is `kind_mismatch`, so an
 infinity is never stored. **A token that is not a JSON number at all** —
 `1-2`, `5+`, `1.2.3`, `--3` — is `malformed`: the token grammar is RFC
 8259's, and a typo in an authoring file is a diagnostic, never a clamped
-value.
+value. **A token's LENGTH is never the reason it is refused**: a valid
+number is read by its value however many bytes it spans, within the
+document's own size bound. There is no separate number-length limit, so a
+`1.` followed by six hundred zeros is the float `1.0` and a `1` followed by
+six hundred zeros is an out-of-range integer clamped by the rules above,
+not a `malformed` token. Both engines land the same bytes and counters for
+one, as they do for every other token.
 
 **The wide kinds convert EXACTLY, and nothing on their path is a double.**
 A fixed field's token is the value in whole units; the reader scales it by

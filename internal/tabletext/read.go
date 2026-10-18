@@ -23,9 +23,8 @@ import (
 // The caps the generated walk carries, mirrored so a text one side refuses is
 // refused by the other.
 const (
-	maxJsonDepth  = 128
-	maxJsonKey    = 255
-	maxJsonNumber = 511
+	maxJsonDepth = 128
+	maxJsonKey   = 255
 )
 
 type reader struct {
@@ -541,7 +540,10 @@ func (in *reader) walkNumber() (integral, ok bool) {
 	return integral, true
 }
 
-// scanNumber is the same production with the token kept for conversion.
+// scanNumber is the same production with the token kept for conversion. The
+// token's LENGTH is never the reason it is called malformed: a valid RFC 8259
+// number of any length within the document's own size is read by its value
+// (docs/SPEC-TABLES.md §16.2 Numbers).
 func (in *reader) scanNumber() (token string, integral bool, ok bool) {
 	in.space()
 	start := in.pos
@@ -549,8 +551,7 @@ func (in *reader) scanNumber() (token string, integral bool, ok bool) {
 	if !ok {
 		return "", false, false
 	}
-	n := in.pos - start
-	if n <= 0 || n > maxJsonNumber {
+	if in.pos <= start {
 		return "", false, false
 	}
 	return string(in.text[start:in.pos]), integral, true
@@ -1451,6 +1452,17 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 			return false
 		}
 		if v := EnumValue(e, string(name)); v >= 0 {
+			if VariantDeprecated(e, v) {
+				// A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT
+				// (docs/SPEC-TABLES.md §2.15), and an ARRAY or keyed ELEMENT as
+				// the ELEMENT's default (None). It is never counted unknown.
+				if f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsList() || f.IsMap() {
+					cell.U = 0
+				} else {
+					*cell = in.m.fieldDefault(f)
+				}
+				return true
+			}
 			cell.U = uint64(v)
 			return true
 		}

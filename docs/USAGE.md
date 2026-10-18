@@ -1531,7 +1531,7 @@ forms clear the handle on failure and allocate nothing on success.
 `RootLoadMessages` refuse a clamped, kind-mismatched, malformed, truncated or
 `missing_required` read with the refusal value they always had (`false`, a nil
 root, `-1`), and the report you pass holds that read's counters with
-`report.Err()` as the typed reason (`errors.Is(report.Err(), TableRefuseClamped)`). To keep a recovered value and its report, ask for it by
+ `report.Err()` as the typed reason (`errors.Is(report.Err(), TableRefuseClamped)`). A clamped refusal is `TableClampedField` and names the clamped field (`clamped: <Table>.<field>`, docs/SPEC-TABLES.md §6.5). To keep a recovered value and its report, ask for it by
 name: `RootLoadTolerant`, `RootLoadBuilderTolerant`, `RootFromJsonTolerant`,
 `RootFixedLoadTolerant` and `RootLoadMessagesTolerant` take the same arguments
 and return what the plain names returned before. `RootFromJsonWith` (the JSON
