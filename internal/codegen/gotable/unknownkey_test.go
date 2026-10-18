@@ -45,6 +45,7 @@ func TestUnknownKeys(t *testing.T) {
   {"nested", "{\"at\":" + stamp + ",\"child\":{\"bt\":" + stamp + ",\"n\":3}}", 1, []string{"/child/bt"}, func() bool { return v.At != 0 && v.Child.At == 0 && v.Child.N == 3 }},
   {"element", "{\"items\":[{},{\"n\":1},{\"bt\":" + stamp + ",\"n\":2}]}", 1, []string{"/items/2/bt"}, func() bool { return v.Items[1].N == 1 && v.Items[2].N == 2 && v.Items[2].At == 0 }},
   {"enum", "{\"kind\":\"Gamma\"}", 1, []string{"/kind"}, func() bool { return v.Kind == KindNone }},
+  {"enum-long", "{\"kind\":\"" + strings.Repeat("g", 300) + "\"}", 1, []string{"/kind"}, func() bool { return v.Kind == KindNone }},
   {"escaped", "{\"a~b/c\":1, /* a comment */ \"child\":{\"x\":[1,{\"y\":2}],\"n\":4,},}", 2, []string{"/a~0b~1c", "/child/x"}, func() bool { return v.Child.N == 4 }},
  }
  for _, rd := range reads {
@@ -146,6 +147,17 @@ func TestUnknownKeys(t *testing.T) {
    var r TableReport
    ok := rd.root(&b, []byte("{\""+long+"\":{\"zz\":1},\"child\":{\"bt\":1}}"), &r)
    if !ok || r.Err() != nil || r.Unknown != 2 || r.Clamped != 0 || !slices.Equal(r.UnknownKeys(), []string{"/" + long[:255], "/child/bt"}) { t.Fatalf("%s long key: %v %v %+v %q", rd.name, ok, r.Err(), r, r.UnknownKeys()) }
+   b.Shutdown()
+  }
+  // an over-long keyed-slot key, union arm and flags name are unknown only too
+  for _, c := range []struct{ text, path string }{
+   {"{\"slots\":{\"" + long + "\":{\"n\":1}}}", "/slots/" + long[:255]},
+   {"{\"payload\":{\"" + long + "\":1}}", "/payload/" + long[:255]},
+   {"{\"caps\":[\"Fly\",\"" + long + "\"]}", "/caps/1"},
+  } {
+   var b RootBuilder; b.Init()
+   var r TableReport
+   if !rd.root(&b, []byte(c.text), &r) || r.Err() != nil || r.Unknown != 1 || r.Clamped != 0 || !slices.Equal(r.UnknownKeys(), []string{c.path}) { t.Fatalf("%s long name %s: %v %+v %q", rd.name, c.path[:6], r.Err(), r, r.UnknownKeys()) }
    b.Shutdown()
   }
   // an over-long key whose first 255 bytes spell a declared 255-byte name is
