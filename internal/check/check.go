@@ -329,9 +329,40 @@ func (c *checker) checkPackageName(name string, pos ast.Pos) {
 			name, name, name)
 		return
 	}
+	if c.targetChecked("C++") && cppLibcPackageNames[name] {
+		c.errf(pos, "package name %q collides with a C standard library identifier visible at C++ namespace scope (the generated `namespace %s` cannot be declared beside libc's %s) — rename the package (SPEC §4.6)",
+			name, name, name)
+		return
+	}
 	if name == "main" {
 		c.errf(pos, "package name \"main\" makes the generated Go a program package that cannot be imported (\"function main is undeclared in the main package\") — rename the package (SPEC §4.6)")
 	}
+}
+
+// targetChecked reports whether the target `lang` is among the targets the
+// checked run generates; a run that names no target checks every target.
+func (c *checker) targetChecked(lang string) bool {
+	if c.reservedTargets == nil {
+		return true
+	}
+	for _, t := range c.reservedTargets {
+		if t == lang {
+			return true
+		}
+	}
+	return false
+}
+
+// cppLibcPackageNames is the C standard library's sys/select.h and sys/types.h
+// identifiers that are NOT C++ keywords (so the reserved-word tables do not
+// carry them) but that libc still declares at namespace scope next to a
+// generated `namespace <name>` — a redefinition clang rejects (SPEC §4.6). The
+// refusal is scoped to the C++ target's package-name check, not the general
+// reserved-word tables, because only a package becomes a namespace.
+var cppLibcPackageNames = map[string]bool{
+	"select": true,
+	"ulong":  true,
+	"ushort": true,
 }
 
 func (c *checker) collectDecls() {
@@ -3516,8 +3547,8 @@ var targetReserved = func() map[string][]string {
 		dynamic_cast else enum explicit export extern false float for friend goto if inline
 		int long mutable namespace new noexcept not not_eq nullptr operator or or_eq out private
 		protected public register reinterpret_cast requires return short signed sizeof static
-		static_assert static_cast struct switch template this thread_local throw true try
-		typedef typeid typename union unsigned using virtual void volatile wchar_t while xor xor_eq`)
+ 		static_assert static_cast struct switch template this thread_local throw true try
+ 		typedef typeid typename union unsigned using virtual void volatile wchar_t while xor xor_eq`)
 	add("C#", `abstract as base bool break byte case catch char checked class const continue
 		decimal default delegate do double else enum event explicit extern false finally fixed
 		float for foreach goto if implicit in int interface internal is lock long namespace
@@ -3541,6 +3572,14 @@ var targetReserved = func() map[string][]string {
 	}
 	return out
 }()
+
+// ReservedWords reports every reserved word and the targets that reserve it
+// (§4.6), exactly as the checker sees them. It is a test hook the CLI's
+// generate tests use to pin the reserved-word tables without hardcoding copies
+// of them.
+func ReservedWords() map[string][]string {
+	return targetReserved
+}
 
 // reservedTargetLangs returns the targets the checked run must flag `name` for:
 // every target that reserves it, narrowed to the targets being generated when

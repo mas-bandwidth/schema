@@ -120,7 +120,9 @@ func New() *Compiler {
 
 // ReservedWordDisplay maps a --lang token to the display name the checker's
 // §4.6 reserved-word tables use for that target; a target with no reserved-word
-// list returns "" (its words are never checked).
+// list returns "". The caller leaves ReservedTargets nil for such a target (or
+// for `schema check`, which names no target) so the checker covers every
+// target's words rather than none.
 func ReservedWordDisplay(lang string) string {
 	switch lang {
 	case "go":

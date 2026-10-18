@@ -594,7 +594,7 @@ func TestFixedPrefillResetsEachUnionArm(t *testing.T) {
 union Shape
 {
     dot Dot
-    box Box
+    rect Box
 }
 
 type Dot { x int32 = 12 }
@@ -615,7 +615,7 @@ fixed table Root
 	if prefill[0] != 0 {
 		t.Fatalf("the union tag is %d, None is 0 and it is written LAST", prefill[0])
 	}
-	// THE ARMS OVERWRITE EACH OTHER IN DECLARED ORDER, so `box` — the last arm
+	// THE ARMS OVERWRITE EACH OTHER IN DECLARED ORDER, so `rect` — the last arm
 	// — owns the overlay, and `h = 55` stands four bytes into it.
 	if got := int32(binary.LittleEndian.Uint32(prefill[1:])); got != 34 {
 		t.Fatalf("the last arm's first field is %d, `w int32 = 34` belongs there", got)
