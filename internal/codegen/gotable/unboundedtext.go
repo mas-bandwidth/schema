@@ -1,10 +1,22 @@
-// Unbounded text in the Go table backend (docs/SPEC-TABLES.md §2.13.1): a text list whose element is a bare `string` and a map whose key is one.
+// Unbounded text in the Go table backend (docs/SPEC-TABLES.md §2.13.1): a text
+// list whose element is a bare `string` and a map whose key is one.
+//
+// The element record's `value` and the entry's `key` are ONE TableRef slot
+// naming the blob record §2.5 defines (u32 length, u32 zero, the bytes, one
+// zero byte): an arena reference in a builder, a self-relative delta into the
+// holder's node extent in a region and a cook. The wire is kind 12 exactly as
+// string(N)'s. What this file adds is the generated read of one element or key,
+// the accessors, and the runtime's slot functions — the last as replacements on
+// the runtime sources, made only in a unit that uses the construct, so every
+// other unit's output is byte-identical to what it was.
 package gotable
 
 import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+// unboundedHolder names the text list or map (`Table.field`) an unbounded
+// value of the current record belongs to, for the report's Reason.
 func (g *tableGen) unboundedHolder(f *ir.Field) string {
 	if holder := g.textValueHolder(f); holder != "" {
 		return holder
@@ -18,7 +30,9 @@ func (g *tableGen) unboundedHolder(f *ir.Field) string {
 	return f.Name
 }
 
-// emitReadUnboundedText reads one unbounded value inside its record's body (§2.13.1): its L, then well-formed UTF-8 with no zero byte, placed as a blob record carved from the node's extent (or the builder's arena).
+// emitReadUnboundedText reads one unbounded value inside its record's body
+// (§2.13.1): its L, then well-formed UTF-8 with no zero byte, placed as a blob
+// record carved from the node's extent (or the builder's arena). Never clamped.
 func (g *tableGen) emitReadUnboundedText(f *ir.Field, expr, ind string) {
 	holder := g.unboundedHolder(f)
 	g.pf("%ssub, ok := r.Body(); if !ok { r.Report.Malformed = true; tableTextMalformed(r.Report, %q); return false }\n", ind, holder)
@@ -26,7 +40,8 @@ func (g *tableGen) emitReadUnboundedText(f *ir.Field, expr, ind string) {
 	g.pf("%sif !tableTextPlace(&r.Nodes.Carve, &%s, sub.Buffer) { if r.Nodes.Carve.Refused { return false }; r.Report.Malformed = true; tableTextMalformed(r.Report, %q); break }\n", ind, expr, holder)
 }
 
-// emitReadUnboundedTextElement reads one element of a plain unbounded text list (§2.13.1, §3): its own L and bytes under element kind 12.
+// emitReadUnboundedTextElement reads one element of a plain unbounded text
+// list (§2.13.1, §3): its own L and bytes under element kind 12.
 func (g *tableGen) emitReadUnboundedTextElement(f *ir.Field, expr, ind string) {
 	v := ir.TextListValue(f)
 	value := expr + "." + member(v)
@@ -36,21 +51,12 @@ func (g *tableGen) emitReadUnboundedTextElement(f *ir.Field, expr, ind string) {
 	g.pf("%sif !tableTextPlace(&sub.Nodes.Carve, &%s, elem.Buffer) { if sub.Nodes.Carve.Refused { r.Take(sub); return false }; r.Report.Malformed = true; tableTextMalformed(r.Report, %q); break }\n", ind, value, holder)
 }
 
-// emitUnboundedTextListSurface emits an unbounded-element text list's accessors (§2.13.1): TextAt, a view into the blob that allocates nothing, and Append (and AppendAbsent) taking the worker, because the bytes are allocated, for the bounded [..N] count too.
+// emitUnboundedTextListSurface emits an unbounded-element text list's
+// accessors (§2.13.1): TextAt, a view into the blob that allocates nothing,
+// and Append (and AppendAbsent) taking the worker, because the bytes are
+// allocated, for the bounded [..N] count too.
 func (g *tableGen) emitUnboundedTextListSurface(st *ir.Struct, f *ir.Field) {
-	name := st.Name + ir.GoExportName(f.Name)
-	storage := g.storageName(st.Name)
-	elem := f.Type.Name
-	v := ir.TextListValue(f)
-	field := member(f)
-	val := member(v)
-	optional := ir.TextListOptional(f)
-	absent := ""
-	present := ""
-	if optional {
-		absent = "||!p." + val + "Present"
-		present = "p." + val + "Present=true;"
-	}
+	name, storage, elem, field, val, absent, present, optional := g.textListNames(st, f)
 	g.pf("// %sTextAt is element i of %s.%s (docs/SPEC-TABLES.md §2.13.1): a view into its\n", name, st.Name, f.Name)
 	g.pf("// blob record that allocates nothing, and false past the count or for an absent element.\n")
 	if f.IsList() {
@@ -60,7 +66,8 @@ func (g *tableGen) emitUnboundedTextListSurface(st *ir.Struct, f *ir.Field) {
 		g.pf("func %sTextAt(value *%s,i int32,arena ...*TableArena)([]byte,bool){if value==nil||i<0||i>=value.%sCount||value.%sCount>%d{return nil,false};p:=&value.%s[i];if false%s{return nil,false};return tableTextBytes(&p.%s,tableOptionalArena(arena))}\n",
 			name, storage, field, field, f.ArrayBound, field, absent, val)
 	}
-	// the write-side text rule (§2.13, §2.13.1): a zero byte and ill-formed UTF-8 are refused at the append, as Save refuses them; no length bound.
+	// the write-side text rule (§2.13, §2.13.1): a zero byte and ill-formed
+	// UTF-8 are refused at the append, as Save refuses them; no length bound
 	valid := "if !tableUtf8Valid(unsafe.Slice(unsafe.StringData(text),len(text))){return false};"
 	g.needsUnsafe()
 	g.pf("// %sAppend appends one element to %s.%s, false past the count bound or when\n", name, st.Name, f.Name)
@@ -83,6 +90,9 @@ func (g *tableGen) emitUnboundedTextListSurface(st *ir.Struct, f *ir.Field) {
 	}
 }
 
+// unboundedTextRuntimeSource is the slot runtime (§2.13.1, §2.5): reading,
+// placing and storing a blob record behind a TableRef, the extent a wire
+// read carves, and the strict read's malformed refusal naming the field.
 const unboundedTextRuntimeSource = `
 // tableTextBytes is the text an unbounded slot names (docs/SPEC-TABLES.md
 // §2.13.1): its blob record's bytes, nil for a null slot, which is the empty
@@ -115,6 +125,9 @@ func (e TableMalformedField) Error() string { return "malformed: " + e.Field }
 func (e TableMalformedField) Is(target error) bool { return target == TableRefuseMalformed }
 `
 
+// unboundedTextRuntime is the core runtime with the descriptor's Unbounded
+// column, the malformed error and the map key's slot, in a unit that uses
+// unbounded text and nowhere else.
 func unboundedTextRuntime(u *ir.Unit, s string) string {
 	if !ir.UnitHasUnboundedText(u) {
 		return s
@@ -127,6 +140,8 @@ func unboundedTextRuntime(u *ir.Unit, s string) string {
 	return s + unboundedTextRuntimeSource
 }
 
+// unboundedTextRegion is the region and container runtime with the slot's
+// extent on the wire read and the pack, and the map's arena-mode key reads.
 func unboundedTextRegion(u *ir.Unit, s string) string {
 	if !ir.UnitHasUnboundedText(u) {
 		return s
@@ -142,6 +157,11 @@ func unboundedTextRegion(u *ir.Unit, s string) string {
 	return s
 }
 
+// unboundedTextJson is the text form's walk with the slot's plain string, in
+// a unit that uses unbounded text and nowhere else (§2.13.1, §16.2). walk
+// states whether s is the shared JSON walker: the region JSON source reuses the
+// walker's helpers but carries none of these six anchors, so that surface is a
+// parameter, not a probe of the text.
 func unboundedTextJson(u *ir.Unit, s string, walk bool) string {
 	if !ir.UnitHasUnboundedText(u) {
 		return s
@@ -151,7 +171,9 @@ func unboundedTextJson(u *ir.Unit, s string, walk bool) string {
 	}
 	s = tableSourceReplace(s, "func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\n", "func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\nif f.Unbounded{t,ok:=tableTextBytes((*TableRef)(storage),nil);if !ok{return false};tableJsonWriteString(out,t);return true}\n", 1)
 	s = tableSourceReplace(s, " if f.Kind==33 {units:=unsafe.Slice((*uint16)(storage),f.ArrayBound)", " if f.Unbounded {return tableJsonReadText(in,(*TableRef)(storage))}\n if f.Kind==33 {units:=unsafe.Slice((*uint16)(storage),f.ArrayBound)", 1)
-	// The write-element anchor lives in textListJsonSource, which textListJson inserts only for a unit that uses text forms; a unit whose only unbounded text is a map key carries it zero times, so that count is stated here.
+	// The write-element anchor lives in textListJsonSource, which textListJson
+	// inserts only for a unit that uses text forms; a unit whose only unbounded
+	// text is a map key carries it zero times, so that count is stated here.
 	textListCount := 1
 	if !unitUsesTextForms(u) {
 		textListCount = 0
@@ -163,12 +185,14 @@ func unboundedTextJson(u *ir.Unit, s string, walk bool) string {
 	return s
 }
 
-// unboundedTextJsonSource reads one unbounded string into a blob record the graph's arena holds (§16.2): never clamped.
+// unboundedTextJsonSource reads one unbounded string into a blob record the
+// graph's arena holds (§16.2): never clamped.
 const unboundedTextJsonSource = `
 func tableJsonReadText(in *tableJsonIn,slot *TableRef)bool{*slot=0;probe:=*in;n,ok:=probe.scanString(nil);if !ok{in.bad=true;return false};if n==0{_,ok=in.scanString(nil);return ok};if in.graph==nil||in.graph.alloc==nil{in.bad=true;return false};memory,ref:=in.graph.alloc(9+int64(n));if memory==nil{in.bad=true;return false};*(*TableBlob)(memory)=TableBlob{Length:uint32(n)};if _,ok=in.scanString(unsafe.Slice((*byte)(unsafe.Add(memory,8)),int(n)));!ok{return false};*slot=ref;return true}
 `
 
-// unboundedTextCook is the cook writer with the slot packed into the extent, in a unit that uses unbounded text and nowhere else (§2.13.1, §7).
+// unboundedTextCook is the cook writer with the slot packed into the extent,
+// in a unit that uses unbounded text and nowhere else (§2.13.1, §7).
 func unboundedTextCook(u *ir.Unit, s string) string {
 	if !ir.UnitHasUnboundedText(u) {
 		return s
@@ -179,7 +203,11 @@ func(w *tableCookWriter) text(slot unsafe.Pointer,at int64,live bool)bool{if w.n
 `
 }
 
-// messageCarries reports whether the message form emits st (docs/SPEC-TABLES.md §3.3, §2.13.1): every table but one whose closure holds unbounded text.
+// messageCarries reports whether the message form emits st (docs/SPEC-TABLES.md
+// §3.3, §2.13.1): every table but one whose closure holds unbounded text. A
+// message body's string length rides in a count field sized by the declared
+// bound, and an unbounded element or key has none to size it, so the form
+// emits nothing for such a table — a named follow-on, never a clamp to zero.
 func (g *tableGen) messageCarries(st *ir.Struct) bool {
 	if !ir.UnitHasUnboundedText(g.unit) {
 		return true
@@ -190,7 +218,8 @@ func (g *tableGen) messageCarries(st *ir.Struct) bool {
 	return !g.messageSkip[st.Name]
 }
 
-// unboundedTextClosure is the set of tables that hold unbounded text or reach a table that does, by value, by pointer, through a list, a map or a union.
+// unboundedTextClosure is the set of tables that hold unbounded text or reach
+// a table that does, by value, by pointer, through a list, a map or a union.
 func unboundedTextClosure(u *ir.Unit) map[string]bool {
 	out := map[string]bool{}
 	for name, st := range u.Tables {
