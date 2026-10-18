@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestGenerateChecksOnlyItsTargetsWords(t *testing.T) {
@@ -39,6 +40,77 @@ func TestGenerateChecksOnlyItsTargetsWords(t *testing.T) {
 	}
 }
 
+// schemaKeywords is the schema grammar's own keyword set (internal/scanner): a
+// word in it is refused by the parser before any target reserved-word check, so
+// it cannot be exercised as an identifier in a generated name position.
+var schemaKeywords = map[string]bool{
+	"package": true, "const": true, "enum": true, "type": true,
+	"table": true, "map": true, "message": true, "object": true,
+	"if": true, "else": true, "switch": true, "case": true,
+	"align": true, "reserved": true, "bits": true, "bool": true,
+	"float32": true, "float64": true, "string": true, "wstring": true,
+	"bytes": true, "fixed": true, "ufixed": true,
+	"int8": true, "int16": true, "int32": true, "int64": true,
+	"uint8": true, "uint16": true, "uint32": true, "uint64": true,
+	"int128": true, "uint128": true, "int": true, "uint": true,
+}
+
+// goReservedWords is the authoritative set of Go reserved words (the Go spec's
+// keyword list) that the checker must refuse for --lang go. The test holds it
+// by hand — the Go keyword set is fixed — and asserts the checker's own table
+// reports each of them as Go-reserved, so a mutation that drops a word from
+// check.go's Go list fails here: the word stops being reported as Go-reserved,
+// and this test notices.
+var goReservedWords = strings.Fields(`break byte case chan const continue default defer else fallthrough false for func go goto if import interface map package range ref return select struct switch true type unsafe var`)
+
+// TestGenerateGoRefusesGoReservedWords pins the Go half of §4.6: every Go
+// reserved word must be refused by generate --lang go (SPEC §4.6).
+// Schema-keyword words (const, type, map, ...) are refused by the grammar
+// before the reserved-word check, so they cannot be exercised as identifiers;
+// they still must be reported as Go-reserved by check.ReservedWords().
+func TestGenerateGoRefusesGoReservedWords(t *testing.T) {
+	t.Parallel()
+	bin := buildCLI(t)
+
+	goReserved := map[string]bool{}
+	for w, langs := range check.ReservedWords() {
+		for _, l := range langs {
+			if l == "Go" {
+				goReserved[w] = true
+				break
+			}
+		}
+	}
+
+	for _, w := range goReservedWords {
+		if !goReserved[w] {
+			t.Errorf("check.ReservedWords() does not report Go-reserved word %q", w)
+			continue
+		}
+		if schemaKeywords[w] {
+			continue
+		}
+		w := w
+		t.Run(w, func(t *testing.T) {
+			t.Parallel()
+			work := t.TempDir()
+			dir := filepath.Join(work, "unit")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(dir, "W.schema")
+			src := fmt.Sprintf("package t\ntype %s {\n  a int32\n}\n", w)
+			if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			out, status := runFail(t, bin, "generate", "--lang", "go", "--out", filepath.Join(work, "out"), dir)
+			if status != 1 || !strings.Contains(out, `"`+w+`" is a reserved word`) {
+				t.Errorf("generate --lang go on Go-reserved word %q: exit %d, want 1 with a reserved-word refusal\n%s", w, status, out)
+			}
+		})
+	}
+}
+
 // Every targetReserved word the Go checker does not refuse must yield
 // compilable Go: `generate --lang go` on a unit holding it as a declaration
 // name, a field, an enum, an enum variant, and the package name exits 0, and
@@ -50,21 +122,27 @@ func TestGenerateChecksOnlyItsTargetsWords(t *testing.T) {
 // SerializeBits64/Err, which the stub provides.
 func TestGenerateGoCompilesNonGoReservedWords(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "one go build per non-Go reserved word")
 	bin := buildCLI(t)
 	work := t.TempDir()
 
-	goWords := map[string]bool{}
-	for _, w := range strings.Fields(`break byte case chan const continue default defer else fallthrough false for func go goto if import interface map package range ref return select struct switch true type unsafe var`) {
-		goWords[w] = true
-	}
-	// The words under test come from the checker's own table (check.ReservedWords)
-	// — not from copies here — so this pins internal/check's targetReserved
-	// against the Go emitter's real behavior. A word the Go emitter cannot
-	// carry as an identifier must be refused for --lang go; a non-Go word that
-	// is not refused must emit Go that compiles.
+	// The non-Go words under test come from the checker's own table
+	// (check.ReservedWords) — not from copies here — so this pins
+	// internal/check's targetReserved against the Go emitter's real behavior: a
+	// non-Go word that is not refused must emit Go that compiles. Schema-keyword
+	// words never reach Go emission (the grammar refuses them), so they are
+	// left out.
+	reserved := check.ReservedWords()
 	var words []string
-	for w := range check.ReservedWords() {
-		if !goWords[w] {
+	for w, langs := range reserved {
+		goReserves := false
+		for _, l := range langs {
+			if l == "Go" {
+				goReserves = true
+				break
+			}
+		}
+		if !goReserves && !schemaKeywords[w] {
 			words = append(words, w)
 		}
 	}
@@ -103,9 +181,13 @@ func (s *ReadStream) Err() error { return s.err }
 		name string
 		mk   func(w string) string
 	}{
-		{"type", func(w string) string { return fmt.Sprintf("package t\ntype %s {\n  a int32\n}\ntype F {\n  %s int32\n}\n", w, w) }},
-		{"table", func(w string) string { return fmt.Sprintf("package t\ntable %s {\n  a int32\n}\nenum E { %s }\n", w, w) }},
-		{"enum", func(w string) string { return fmt.Sprintf("package t\tenum %s { a }\n", w) }},
+		{"type", func(w string) string {
+			return fmt.Sprintf("package t\ntype %s {\n  a int32\n}\ntype F {\n  %s int32\n}\n", w, w)
+		}},
+		{"table", func(w string) string {
+			return fmt.Sprintf("package t\ntable %s {\n  a int32\n}\nenum E { %s }\n", w, w)
+		}},
+		{"enum", func(w string) string { return fmt.Sprintf("package t\nenum %s { a }\n", w) }},
 		{"package", func(w string) string { return fmt.Sprintf("package %s\ntype T { a int32 }\n", w) }},
 	}
 
@@ -141,13 +223,10 @@ func (s *ReadStream) Err() error { return s.err }
 					return
 				}
 				if outBytes, err := exec.Command(bin, "generate", "--lang", "go", "--out", out, dir).CombinedOutput(); err != nil {
-					// A word the schema language itself refuses (int, uint, bool,
-					// object, fixed, ...) never reaches Go emission; it is not the
-					// defect under test. A reserved-word refusal of a non-Go word
-					// is.
-					if strings.Contains(string(outBytes), "reserved word") {
-						fail("generate refused %q: %s", w, outBytes)
-					}
+					// Any generate failure is a defect: a non-Go word must not be
+					// refused for --lang go. (Schema-keyword words were filtered
+					// out above, so no grammar refusal should appear.)
+					fail("generate failed for non-Go word %q: %s", w, outBytes)
 					return
 				}
 				mod := fmt.Sprintf("module t\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %s\n", runtime)

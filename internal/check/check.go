@@ -371,9 +371,9 @@ func (c *checker) checksLang(lang string) bool {
 // (g++ rejects it) — even though none is a C++ keyword. They are refused only
 // at namespace scope and only when C++ is a checked target (SPEC §4.6).
 var cppNamespaceCollisions = map[string]bool{
-	"select":  true,
-	"ulong":   true,
-	"ushort":  true,
+	"select": true,
+	"ulong":  true,
+	"ushort": true,
 }
 
 func (c *checker) collectDecls() {
