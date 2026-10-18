@@ -4177,11 +4177,19 @@ generated `<Name>GenPastBound` helper writes a wire one past each range,
 `bits(N)`, `string(N)` and `[..N]` count, and each probe checks that the
 tolerant read clamps it to the bound and counts `clamped`, and that
 `ReadStrict` refuses it `clamped`. Regenerate it whenever you regenerate
-the code. Per table it also emits `Fuzz<Name>Wire`, `Fuzz<Name>Text` and
-`Fuzz<Name>Json`, seeded with each sample's encodings (trimmed to 4 KiB) and at
-most 256 deterministic single-byte mutations of them, asserting the read never panics and accepts only a named refusal or a
-canonical re-encoding. Only `--lang go` is carried today; every other target
-refuses by name.
+the code. Only `--lang go` is carried today; every other target refuses by
+name.
+
+The same file carries three fuzz targets per table, `Fuzz<Table>Wire`,
+`Fuzz<Table>Text` and `Fuzz<Table>Json` (docs/SPEC-TABLES.md §16.11). They are
+seeded with each sample's own encodings (trimmed to 4 KiB) and at most 256
+deterministic single-byte mutations of them, and they require, for every input, that the read never panics and is either
+refused by a named reason or decodes to a value that re-encodes to exactly the
+input (on the wire, a shorter respelling of the same value such as an
+explicit default also passes, as does a read whose report names what it set
+aside, such as an unknown field).
+`go test` runs the seeds; `go test -fuzz '^FuzzPatrolWire$' ./gen` fuzzes from
+them for as long as you let it.
 
 ## Embedding the compiler
 

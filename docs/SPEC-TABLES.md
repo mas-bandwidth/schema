@@ -16800,35 +16800,92 @@ For each probe, `Test<Name>GenBoundProbes` requires:
    (`TableRefuseClamped`, `errors.Is`), returning nothing. The subtest is
    named by the probe, so a failure names the field and the bound.
 
-**What the file is.** Every test opens with `t.Parallel()`; it uses no time,
+**The fuzz targets.** For each root table the file carries three Go fuzz
+targets, one per form, named `Fuzz<Table>Wire`, `Fuzz<Table>Text` and
+`Fuzz<Table>Json`: the binary wire through `<Name>ReadStrict` (§6.5), base64
+text through `<Name>LoadText` (§16.8), and JSON text through `<Name>FromJson`
+(§16.1). A generated reader must never panic on damaged input, and a damaged
+input must never decode silently to a value other than the one it spells. The
+gate on every language's reader is `harness wire-fuzz` (§4.2), over the
+conformance corpus; these targets hold the same claim for a unit's own tables,
+from its own samples, in its own package.
+
+- THE SEEDS are each sample's own encodings in that target's form: the wire
+  `<Name>Save` writes, the text `<Name>SaveText` writes and the text
+  `<Name>ToJson` writes, for every sample in the list above, in that order.
+- THE SEED CORPUS IS BOUNDED AND DETERMINISTIC. Seeding every byte of every
+  seed does not scale: one 280 KB sample, mutated at every byte, made
+  millions of seeds and 94 GiB of memory. So a target's corpus is, in this
+  order: every seed, trimmed FOR SEEDING ONLY to a representative 4 KiB (its
+  first 2 KiB and its last 2 KiB) when it is longer, so no seed exceeds
+  4 KiB (the round trip above keeps the full sample); then AT MOST 256
+  SINGLE-BYTE MUTATIONS. For those, 85 byte positions are shared out round
+  robin across the target's seeds, no seed taking more positions than it has
+  bytes; within a seed they are its first 16 and its last 16 bytes, then an
+  even fixed stride over the bytes between, stopping at the seed's share;
+  and each position takes each of the values `0x00`, `0x01` and `0xff`, the
+  seed with that one byte replaced, a mutation. Every mutation is a seed of
+  the target's corpus. The list is fixed by the declaration: no randomness,
+  no clock. The bound is on the seed corpus only; at fuzz time the fuzzer
+  explores past it. The generator's own gate pins the count and the bytes of
+  every target's seeds, and holds the seed run under 1 GiB of memory.
+- THE ASSERTION, for every input (a seed, a mutation, or an input the fuzzing
+  engine makes): the read NEVER PANICS, and it is one of four things.
+  1. REFUSED BY A NAMED REASON: the strict read returns no value and a typed
+     error (§6.5) that names its reason — a `TableRefuseReason` other than
+     `ok`, a `TableMissingRequired` or a `TableBuildVersionMismatch`; for
+     JSON, `FromJson` returns false or true, with a report whose `Err()` is
+     such an error. A bare failure, `false` with no error, is a defect of the
+     reader.
+  2. ACCEPTED, AND CANONICAL: the value read re-encodes in the same form to
+     EXACTLY the input (the wire `Save` writes, the text `SaveText` writes,
+     the text `ToJson` writes).
+  3. ACCEPTED, AND A RESPELLING THE WIRE ALLOWS (the wire and the base64
+     text that carries it, never the JSON text): the value read re-encodes
+     to FEWER bytes than the input, and that re-encoding reads back with a
+     silent report to a value that re-encodes to it again. The binary wire
+     spells one value two ways in exactly two places: a field written AT
+     ITS DEFAULT, which every writer elides (§3) and every reader lands as
+     the default it is, and a field id carried twice, whose last occurrence
+     wins (§4). Both re-encode shorter. The JSON form has no respelling: its
+     canonical text writes every field (§16.1), so a JSON re-encoding
+     differs from the input only on a wrong decode. THIS CLASS IS THE
+     TARGET'S BLIND SPOT, and it is named rather than hidden: it ties the
+     re-encoding to itself and not to the input, so a reader that landed a
+     damaged field as its DEFAULT, or kept the first of two repeated ids,
+     would pass here. The round trip above pins every field of every sample,
+     not of a damaged input. Tying the two together needs the input
+     normalised on the wire (its explicit defaults and superseded repeats
+     removed) and is a named follow-on.
+  4. ACCEPTED, AND THE REPORT SAYS WHAT WAS SET ASIDE: the value read
+     re-encodes to other bytes, and the tolerant read of the same input (the
+     wire's `<Name>Load` or `<Name>LoadBuilder`, `LoadText` and `FromJson`
+     with a report) returns a report that is not silent (§4.1): an unknown
+     field (§4, the newer data a reader keeps going past), a widened value, a
+     retained or retain-lost record (§6.6), a repeated text key.
+  So a SILENT wrong decode the target lets through is a canonical one or one
+  in item 3's blind spot, and the integrity check (§2.14), when the table
+  declares it, refuses both. A value the read accepts and its own writer
+  then refuses also fails. A panic, an unnamed refusal or a silent
+  non-canonical accept fails the target, naming the input in hex, and the
+  re-encoding in hex when it is a silent wire accept.
+- THE MUTATION IS COARSE ON THE TEXTS. A byte set to `0x00`, `0x01` or
+  `0xff` is never printable ASCII, so nearly every mutation of a base64 or
+  JSON seed is refused by the text's own decoder before the wire behind it
+  is reached; the mutations are the corpus, and `-fuzz` (below) is what
+  explores the texts.
+
+`go test` runs each target over its bounded seed corpus as a unit test:
+deterministic, no clock, and no file but a failing input a fuzzer run left
+under the package's `testdata/fuzz`, which `go test` replays. `go test -fuzz '^Fuzz<Table>Wire$'` runs it
+as a fuzzer from the same seeds; that is the long run, and it is the
+operator's, behind the slow gate, never a unit test.
+
+**What the file is.** Every test opens with `t.Parallel()` (a fuzz target,
+which `testing.F` runs as one test, carries no `Parallel`); it uses no time,
 no sockets and no network, and reads and writes no file: it is a unit test
 under the house rule. The file is GENERATED, so a schema edit is followed by
 `testgen` as it is by `generate`, and the file is never edited by hand.
-
-**The fuzz targets.** Per root table the file emits three fuzz targets,
-`Fuzz<Name>Wire`, `Fuzz<Name>Text` and `Fuzz<Name>Json`, each seeded with the
-sample values' own encodings (the wire bytes, the base64 text, the JSON text)
-and with single-byte mutations of them. For every input the target asserts:
-the read NEVER panics (a panic is a defect, a failing test); it is REFUSED with
-a named reason; or it DECODES to a value whose re-encoding is exactly the input
-— so a silent wrong decode can only be a canonical one, which the integrity
-check, when declared, refuses. A panic or a non-canonical accept the corpus
-finds is a defect in the reader, named with the input, never fixed here.
-
-**The seed corpus is bounded and deterministic.** Seeding every byte of every
-sample does not scale (one 280 KB sample made millions of seeds and 94 GiB of
-memory), so each target's seeds are, in this order: every sample encoding,
-trimmed for seeding only to a representative 4 KiB (its first 2 KiB and its
-last 2 KiB) when it is longer, so no seed exceeds 4 KiB, while the round-trip
-tests keep the full sample; then at most 256 mutations. For the mutations, 85
-byte positions are shared out round robin across the target's samples, no
-sample taking more positions than it has bytes; within a sample they are its
-first 16 and last 16 bytes, then an even fixed stride over the bytes between,
-stopping at the sample's share; each position takes each of the values 0x00,
-0x01 and 0xff. The same declaration always yields the same seeds. The bound is
-on the seed corpus only: at fuzz time the fuzzer explores past it. The
-generator's own gate pins the seed count and the total seed bytes, and keeps
-the seed run under 1 GiB of memory.
 
 Go carries `testgen` first; every other `--lang` is refused by name, in the
 compiler, until its own turn.
