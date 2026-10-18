@@ -1046,6 +1046,12 @@ type TableFieldInfo struct {
 	Optional bool   // a ?T field: a <Name>Present bool decides whether it rides
 
 	ArrayBound    int32  // array capacity / string max length; 0 for plain scalars
+	// UnboundedContainer marks a container with no declared count bound — a
+	// map, an unbounded array []T, or an unbounded text list []string(M) —
+	// so a walker can tell it from a bound of 2^31-1 (docs/SPEC-TABLES.md
+	// §8.1). Distinct from Unbounded, which marks an unbounded-text slot
+	// (§2.13.1).
+	UnboundedContainer bool
 	Offset        uint32 // unsafe.Offsetof the storage member
 	ElemSize      uint32 // unsafe.Sizeof the member (element size for arrays)
 	CountOffset   uint32 // unsafe.Offsetof the count/length companion, or 0xffffffff

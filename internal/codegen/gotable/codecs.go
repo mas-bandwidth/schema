@@ -642,7 +642,10 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	if f.IsList() || f.IsMap() {
 		elemSize = fmt.Sprintf("uint32(unsafe.Sizeof(*new(%s)))", containerElementType(g.unit, f))
 		counted = true
-		bound = "2147483647"
+		// a map, an unbounded array []T and an unbounded text list []string(M)
+		// carry no declared bound on their ELEMENT COUNT, so array_bound is 0
+		// and UnboundedContainer is true (docs/SPEC-TABLES.md §8.1)
+		bound = "0"
 		countOffset = "(" + offset + ")+8"
 	}
 	if f.IsMap() {
@@ -783,6 +786,9 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		g.pf("List:true,ElemAlign:%d,\n", align)
 	} else if f.IsMap() {
 		g.pf("Map:true,ElemAlign:%d,\n", ir.RecordLayout(g.unit, f.MapEntry).Align)
+	}
+	if f.IsList() || f.IsMap() {
+		g.pf("UnboundedContainer:true,\n")
 	}
 	g.pf("\t\tFracBits:%d, Pointer:%v, TargetId:0x%016x,\n", f.Type.FracBits, f.Type.Pointer, pointerTargetId(f))
 	if ir.TableKindWide(kind) {
