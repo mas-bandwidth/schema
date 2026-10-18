@@ -19,6 +19,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"os"
@@ -27,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/check"
@@ -45,12 +47,15 @@ type expectedClass struct {
 	match func(u *genUnit, line string) bool
 }
 
+// The ids below were each looked up with `nova-sprint card <id>` on 2026-10-18
+// (verifiedClassCards in tablediff_classes_test.go pins that list): a class
+// whose owner cannot be found is not owed, it is a finding.
 var expectedClasses = []expectedClass{
 	{
-		id:  "schema-go-engine-timestamp-text",
-		why: "the engine's text walk has no timestamp arm, so it writes the raw count where the Go leg writes RFC 3339 text (docs/SPEC-TABLES.md §2.11, §16)",
+		id:  "schema-tabletext-timestamp-text",
+		why: "the engine's text walk spells a timestamp differently from the Go leg's RFC 3339 text (docs/SPEC-TABLES.md §2.11, §16); filed only when every differing leaf is the same instant in two spellings",
 		match: func(u *genUnit, line string) bool {
-			if !u.hasTimestamp() || !strings.HasPrefix(line, "engine") {
+			if !u.hasTimestamp() || !strings.HasPrefix(line, "engine ") {
 				return false
 			}
 			parts := strings.Fields(line)
@@ -62,45 +67,20 @@ var expectedClasses = []expectedClass{
 			if err1 != nil || err2 != nil {
 				return false
 			}
-			var legAny, engAny any
-			if json.Unmarshal(legRaw, &legAny) != nil || json.Unmarshal(engRaw, &engAny) != nil {
+			legAny, ok1 := decodeNumbers(legRaw)
+			engAny, ok2 := decodeNumbers(engRaw)
+			if !ok1 || !ok2 {
 				return false
 			}
-			eq, ts := classifyDiff(legAny, engAny)
-			return !eq && ts
+			eq, tsOnly := classifyDiff(legAny, engAny)
+			return !eq && tsOnly
 		},
 	},
 	{
-		id:  "schema-go-plain-float-negative-zero",
-		why: "a plain (non-compressed) float's -0 is written as 0 by the leg's wire read, so the round-trip text differs in the sign bit alone",
+		id:  "schema-go-plain-float-special-values",
+		why: "a plain (non-compressed) float's -0 is written as 0 by one path, so the two texts differ by whole -0 against 0 number tokens and nothing else (docs/SPEC-TABLES.md §3.3)",
 		match: func(u *genUnit, line string) bool {
 			return u.hasFloat() && onlyNegativeZero(line)
-		},
-	},
-	{
-		id:  "schema-go-json-64-bit-range-clamp",
-		why: "a 64-bit integer at the implied extreme is refused by FromJson (the JSON number walk clamps through a narrower carrier)",
-		match: func(u *genUnit, line string) bool {
-			if !strings.HasPrefix(line, "fromjson ") {
-				return false
-			}
-			parts := strings.Fields(line)
-			if len(parts) != 3 {
-				return false
-			}
-			raw, err := base64.StdEncoding.DecodeString(parts[2])
-			if err != nil {
-				return false
-			}
-			s := string(raw)
-			return strings.Contains(s, "9223372036854775807") || strings.Contains(s, "-9223372036854775808") || strings.Contains(s, "18446744073709551615")
-		},
-	},
-	{
-		id:  "schema-go-wire-integrity-check",
-		why: "a damaged wire may decode to a silent wrong value until the wire integrity check lands; wrong-value decodes are counted and printed, never failed",
-		match: func(u *genUnit, line string) bool {
-			return strings.HasPrefix(line, "wrongvalue")
 		},
 	},
 }
@@ -133,9 +113,14 @@ func fieldHasKind(f *genField, k genKind) bool {
 	return fieldHasKind(f.Elem, k)
 }
 
-// onlyNegativeZero reports whether two base64 JSON payloads on a divergence line
-// differ only by a whole numeric token -0 against 0 (never by sign loss on a
-// nonzero float, an exponent change, or a "-0" inside a string).
+// onlyNegativeZero reports whether the two base64 JSON payloads on a divergence
+// line differ ONLY by whole number tokens -0 against 0, with at least one such
+// pair. Both texts are walked token by token with json.Decoder.UseNumber, and
+// the raw bytes of every token (with the separators and whitespace before it)
+// must be identical except at a -0/0 pair; the bytes after the last token must
+// be identical too. So a 64-bit integer off by one, a float that lost its sign
+// or exponent, reordered keys, 1e2 against 100, an escape against the literal
+// character, a trailing space, and two identical texts are all NOT masked.
 func onlyNegativeZero(line string) bool {
 	parts := strings.Fields(line)
 	if len(parts) != 3 {
@@ -146,125 +131,171 @@ func onlyNegativeZero(line string) bool {
 	if err1 != nil || err2 != nil {
 		return false
 	}
-	var va, vb any
-	if json.Unmarshal(a, &va) != nil || json.Unmarshal(b, &vb) != nil {
-		return false
-	}
-	return sameExceptNegZero(va, vb)
+	return onlyNegativeZeroText(a, b)
 }
 
-// sameExceptNegZero reports whether two decoded JSON trees are equal except that
-// a -0 float token is allowed to compare equal to 0. Any other difference (a
-// sign loss on a nonzero float, a changed exponent, a different string) is a
-// mismatch.
-func sameExceptNegZero(x, y any) bool {
-	switch a := x.(type) {
-	case float64:
-		b, ok := y.(float64)
-		return ok && a == b
-	case map[string]any:
-		b, ok := y.(map[string]any)
-		if !ok || len(a) != len(b) {
+func onlyNegativeZeroText(a, b []byte) bool {
+	da := json.NewDecoder(bytes.NewReader(a))
+	db := json.NewDecoder(bytes.NewReader(b))
+	da.UseNumber()
+	db.UseNumber()
+	var offA, offB int64
+	pairs := 0
+	for {
+		ta, ea := da.Token()
+		tb, eb := db.Token()
+		if ea == io.EOF && eb == io.EOF {
+			break
+		}
+		if ea != nil || eb != nil {
 			return false
 		}
-		for k, av := range a {
-			bv, ok := b[k]
-			if !ok || !sameExceptNegZero(av, bv) {
-				return false
-			}
+		rawA := a[offA:da.InputOffset()]
+		rawB := b[offB:db.InputOffset()]
+		offA, offB = da.InputOffset(), db.InputOffset()
+		if bytes.Equal(rawA, rawB) {
+			continue
 		}
-		return true
-	case []any:
-		b, ok := y.([]any)
-		if !ok || len(a) != len(b) {
+		na, okA := ta.(json.Number)
+		nb, okB := tb.(json.Number)
+		if !okA || !okB || !negZeroPair(string(na), string(nb)) {
 			return false
 		}
-		for i := range a {
-			if !sameExceptNegZero(a[i], b[i]) {
-				return false
-			}
+		// The bytes before the number (separators, whitespace) must agree.
+		if !bytes.Equal(rawA[:len(rawA)-len(na)], rawB[:len(rawB)-len(nb)]) {
+			return false
 		}
-		return true
-	case string:
-		b, ok := y.(string)
-		return ok && a == b
-	case bool:
-		b, ok := y.(bool)
-		return ok && a == b
-	case nil:
-		return y == nil
-	default:
-		return false
+		pairs++
 	}
+	return pairs > 0 && bytes.Equal(a[offA:], b[offB:])
 }
 
-// classifyDiff compares two decoded JSON trees and reports whether they are
-// byte-equal (eq) and whether any difference is a cross of a JSON string
-// against a JSON number (ts) — the signature of the engine's timestamp-arm gap,
-// where the engine writes the raw count and the Go leg writes RFC 3339 text.
-// No other difference counts as a timestamp-form difference.
-func classifyDiff(x, y any) (eq, ts bool) {
+// negZeroPair reports whether x and y are the same zero spelling, one of them
+// with a leading minus sign: "-0" against "0", "-0.0" against "0.0".
+func negZeroPair(x, y string) bool {
+	if len(x) < len(y) {
+		x, y = y, x
+	}
+	if x != "-"+y || strings.HasPrefix(y, "-") {
+		return false
+	}
+	f, err := strconv.ParseFloat(y, 64)
+	return err == nil && f == 0
+}
+
+// decodeNumbers decodes one JSON text keeping every number as its json.Number
+// spelling, and refuses trailing data.
+func decodeNumbers(raw []byte) (any, bool) {
+	d := json.NewDecoder(bytes.NewReader(raw))
+	d.UseNumber()
+	var v any
+	if d.Decode(&v) != nil {
+		return nil, false
+	}
+	if _, err := d.Token(); err != io.EOF {
+		return nil, false
+	}
+	return v, true
+}
+
+// classifyDiff compares two JSON trees decoded by decodeNumbers. eq reports
+// whether they are equal; tsOnly reports whether they differ and EVERY
+// differing leaf is a timestamp spelling (isTimestampSpelling): the same instant
+// as RFC 3339 text on one side and its UTC nanosecond count, or another RFC 3339
+// spelling, on the other. Any other difference anywhere in the tree — a wrong
+// bool, a wrong int, a missing key, a changed length — makes tsOnly false, so a
+// timestamp crossing can never mask a second bug on the same line.
+func classifyDiff(x, y any) (eq, tsOnly bool) {
+	eq, ok := diffWalk(x, y)
+	return eq, !eq && ok
+}
+
+// diffWalk returns whether x and y are equal, and whether every difference
+// found is a timestamp spelling.
+func diffWalk(x, y any) (eq, allTs bool) {
 	switch a := x.(type) {
-	case float64:
-		if b, ok := y.(float64); ok {
-			return a == b, false
-		}
-		if _, ok := y.(string); ok {
-			return false, true
-		}
-		return false, false
-	case string:
-		if b, ok := y.(string); ok {
-			return a == b, false
-		}
-		if _, ok := y.(float64); ok {
-			return false, true
-		}
-		return false, false
-	case bool:
-		b, ok := y.(bool)
-		return ok && a == b, false
-	case nil:
-		return y == nil, false
 	case map[string]any:
 		b, ok := y.(map[string]any)
 		if !ok || len(a) != len(b) {
 			return false, false
 		}
-		eq, ts := true, false
+		eq, allTs = true, true
 		for k, av := range a {
 			bv, ok := b[k]
 			if !ok {
 				return false, false
 			}
-			e, t := classifyDiff(av, bv)
+			e, t := diffWalk(av, bv)
 			if !e {
 				eq = false
-			}
-			if t {
-				ts = true
+				if !t {
+					allTs = false
+				}
 			}
 		}
-		return eq, ts
+		return eq, allTs
 	case []any:
 		b, ok := y.([]any)
 		if !ok || len(a) != len(b) {
 			return false, false
 		}
-		eq, ts := true, false
+		eq, allTs = true, true
 		for i := range a {
-			e, t := classifyDiff(a[i], b[i])
+			e, t := diffWalk(a[i], b[i])
 			if !e {
 				eq = false
-			}
-			if t {
-				ts = true
+				if !t {
+					allTs = false
+				}
 			}
 		}
-		return eq, ts
+		return eq, allTs
+	case json.Number:
+		if b, ok := y.(json.Number); ok && a == b {
+			return true, true
+		}
+		return false, isTimestampSpelling(x, y)
+	case string:
+		if b, ok := y.(string); ok && a == b {
+			return true, true
+		}
+		return false, isTimestampSpelling(x, y)
+	case bool:
+		b, ok := y.(bool)
+		return ok && a == b, false
+	case nil:
+		return y == nil, false
 	default:
 		return false, false
 	}
+}
+
+// isTimestampSpelling reports whether two differing leaves name the same
+// instant: an RFC 3339 string (docs/SPEC-TABLES.md §2.11) against its UTC
+// nanosecond count, or two RFC 3339 strings of the same instant.
+func isTimestampSpelling(x, y any) bool {
+	nanos := func(v any) (int64, bool) {
+		switch s := v.(type) {
+		case string:
+			tm, err := time.Parse(time.RFC3339Nano, s)
+			if err != nil {
+				return 0, false
+			}
+			return tm.UnixNano(), true
+		case json.Number:
+			n, err := strconv.ParseInt(string(s), 10, 64)
+			return n, err == nil
+		}
+		return 0, false
+	}
+	_, xs := x.(string)
+	_, ys := y.(string)
+	if !xs && !ys {
+		return false // two counts that differ are a wrong value, not a spelling
+	}
+	nx, ok1 := nanos(x)
+	ny, ok2 := nanos(y)
+	return ok1 && ok2 && nx == ny
 }
 
 func tableUnit(t *testing.T, src string) *ir.Unit {
@@ -616,7 +647,7 @@ func engineCheck(u *genUnit, seed, i int, wire, legJSON, engineJSON []byte, pack
 		line := "engine " + base64.StdEncoding.EncodeToString(legJSON) + " " + base64.StdEncoding.EncodeToString(engineJSON)
 		owned := false
 		for _, c := range expectedClasses {
-			if c.match(u, line) || (u.hasFloat() && c.id == "schema-go-plain-float-negative-zero" && onlyNegativeZero(line)) {
+			if c.match(u, line) {
 				expected = append(expected, fmt.Sprintf("seed %d inst %d: %s: engine text differs from leg text", seed, i, c.id))
 				owned = true
 				break
@@ -625,7 +656,9 @@ func engineCheck(u *genUnit, seed, i int, wire, legJSON, engineJSON []byte, pack
 		if !owned {
 			unexpected = append(unexpected, fmt.Sprintf("seed %d inst %d: unexpected engine/leg text divergence\nleg: %s\nengine: %s", seed, i, legJSON, engineJSON))
 		}
-		return unexpected, expected
+		// No early return: an owed text class never skips the Pack
+		// direction below, which must still give the leg's wire back from
+		// the leg's text.
 	}
 	wireBack, report2, err := pack(legJSON)
 	if err != nil {
@@ -649,16 +682,31 @@ func shorten(s string) string {
 	return s
 }
 
-// tableDiffOptedIn reports whether the two tests below run in this process.
+// tableDiffOptIn skips the two tests below unless SCHEMA_TABLE_DIFF=1, which
+// only `make fuzz-tables-diff` (make/go.mk) sets. They compile and run a
+// generated unit per seed under -race, so they are a nightly campaign
+// (certify.yml), never part of ci-fast or ci-full: ci-full's SCHEMA_SLOW=1
+// `go test` over ./internal/fuzz still runs the crasher corpus and the property
+// and oracle tests, and skips only these two here.
+func tableDiffOptIn(t *testing.T) {
+	t.Helper()
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs generated units) and the engine")
+	if !tableDiffOptedIn(os.Getenv) {
+		t.Skip("SCHEMA_TABLE_DIFF: the random-schema table differential is a nightly campaign; run it with make fuzz-tables-diff (it sets SCHEMA_TABLE_DIFF=1)")
+	}
+}
+
+// tableDiffOptedIn reports whether the two tests below run in this process:
+// only when SCHEMA_TABLE_DIFF=1, never on SCHEMA_SLOW=1 alone.
 func tableDiffOptedIn(getenv func(string) string) bool {
-	return getenv("SCHEMA_SLOW") == "1" || getenv("SCHEMA_REQUIRE_CORPUS") != ""
+	return getenv("SCHEMA_TABLE_DIFF") == "1"
 }
 
 // TestRandomTableDifferential is the gate: seeds SCHEMA_TABLE_DIFF_FROM..TO
 // (default 0..4), each generated, compiled and run under -race.
 func TestRandomTableDifferential(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs generated units) and the engine")
+	tableDiffOptIn(t)
 	from, to := 0, 4
 	if v := os.Getenv("SCHEMA_TABLE_DIFF_FROM"); v != "" {
 		from, _ = strconv.Atoi(v)
@@ -689,7 +737,7 @@ func TestRandomTableDifferential(t *testing.T) {
 // error.
 func TestRandomTableDifferentialNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs generated units)")
+	tableDiffOptIn(t)
 	unexpected, _ := runSeed(t, rand.New(rand.NewSource(0)), 0, true)
 	if len(unexpected) == 0 {
 		t.Fatalf("NEGATIVE CONTROL FAILED: a flipped probe comparison left the gate green")

@@ -992,8 +992,9 @@ test-go: tables-go-text-differential
 # generated VALID units through compiler.New().Generate, the generated Go leg
 # under -race, every read/write path, every damage, hostile JSON plants and the
 # compiler's engine in both directions. Nightly in certify.yml, never in
-# ci-fast or ci-full.
+# ci-fast or ci-full: SCHEMA_TABLE_DIFF=1, set only here, is what opts the two
+# tests in; ci-full's SCHEMA_SLOW=1 run of ./internal/fuzz skips them.
 .PHONY: fuzz-tables-diff
 fuzz-tables-diff:
-	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF_TO=200 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferential$$' -v
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferentialNegativeControl$$' -v
+	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 SCHEMA_TABLE_DIFF_TO=200 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferential$$' -v
+	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferentialNegativeControl$$' -v

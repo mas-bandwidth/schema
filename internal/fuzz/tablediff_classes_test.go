@@ -227,6 +227,9 @@ func TestCiFullKeepsFuzzAndOnlyMakeOptsIn(t *testing.T) {
 			if !strings.HasPrefix(line, "\t") {
 				inTarget = strings.HasPrefix(line, "fuzz-tables-diff:")
 			}
+			if strings.HasPrefix(strings.TrimSpace(line), "#") {
+				continue // a comment sets nothing
+			}
 			if strings.Contains(line, "SCHEMA_TABLE_DIFF:") || strings.Contains(line, "SCHEMA_TABLE_DIFF=1") {
 				if !(f == "../../make/go.mk" && inTarget) {
 					t.Errorf("%s sets SCHEMA_TABLE_DIFF outside make fuzz-tables-diff: %s", f, strings.TrimSpace(line))
