@@ -1682,10 +1682,20 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int, pas
 			return
 		case *ir.Enum:
 			if chk {
+				if enumHasDeprecated(r) {
+					// A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15).
+					g.pf("%sif %s.TableEnumDeprecated() { return false }\n", ind, expr)
+				}
 				g.pf("%sif uint64(%s) > %d { return false }\n", ind, expr, r.Max)
 			} else {
 				g.pf("%sif uint64(%s) > %d { %s = %sNone; (*clamped)++ }\n",
 					ind, expr, r.Max, expr, f.Type.Name)
+				if enumHasDeprecated(r) {
+					// A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT, and as
+					// the ELEMENT default, without counting (docs/SPEC-TABLES.md
+					// §2.15).
+					g.pf("%sif %s.TableEnumDeprecated() { %s = %s }\n", ind, expr, expr, fieldDefaultExpr(f))
+				}
 			}
 			return
 		}

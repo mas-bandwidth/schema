@@ -463,8 +463,8 @@ const (
 	tableJsonMaxDepth = 128
 	// A key longer than this cannot name a field, so it is skipped as unknown.
 	tableJsonMaxKey = 256
-	// The longest numeric token the walk will convert. Anything longer is a
-	// value no field can hold and counts as a kind mismatch.
+	// The buffer extent for an integer map KEY's spelling and the wide kinds'
+	// formatting scratch. A VALUE's number token has no such bound (§16.2).
 	tableJsonMaxNumber = 512
 )
 
@@ -947,6 +947,12 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 	}
 	if tableJsonIsEnum(f) {
 		value := tableJsonGetRaw(storage, f.ElemSize)
+		// A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md
+		// §2.15): the caller's value is retired, so the text writer names it
+		// invalid rather than emitting a name a reader no longer takes.
+		if f.EnumDeprecated != nil && f.EnumDeprecated(value) {
+			return false
+		}
 		// a value no variant names has no text spelling, exactly as it has no
 		// wire identity: the writer REFUSES rather than writing None over it,
 		// the rule measure and save already apply (§5)
@@ -1558,20 +1564,19 @@ func (in *tableJsonIn) walkNumber() (integral bool, ok bool) {
 	return whole, true
 }
 
-// the same production, with the token kept for conversion
-func (in *tableJsonIn) scanNumber(token []byte) (n int32, integral bool, ok bool) {
+// the same production, with the token kept for conversion. A valid RFC 8259
+// number of any length within the document is read by its value (§16.2).
+func (in *tableJsonIn) scanNumber() (token []byte, integral bool, ok bool) {
 	in.space()
 	start := in.pos
 	integral, ok = in.walkNumber()
 	if !ok {
-		return 0, false, false
+		return nil, false, false
 	}
-	count := in.pos - start
-	if count <= 0 || count >= len(token) {
-		return 0, false, false
+	if in.pos <= start {
+		return nil, false, false
 	}
-	copy(token, in.text[start:in.pos])
-	return int32(count), integral, true
+	return in.text[start:in.pos], integral, true
 }
 
 // the token's exact double. Go's strconv is locale-free, so unlike the C++
@@ -1801,6 +1806,13 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		}
 		for v := int64(0); v <= f.EnumMax; v++ {
 			if tableJsonNameIs(f.EnumName(uint64(v)), name[:nameLength]) {
+				if f.EnumDeprecated != nil && f.EnumDeprecated(uint64(v)) {
+					// A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED
+					// DEFAULT (docs/SPEC-TABLES.md §2.15), and is never
+					// counted unknown.
+					tableJsonSetRaw(storage, f.ElemSize, f.EnumDefault)
+					return true
+				}
 				tableJsonSetRaw(storage, f.ElemSize, uint64(v))
 				return true
 			}
@@ -1883,13 +1895,11 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		tableJsonSetRaw(storage, f.ElemSize, 0)
 		return true
 	}
-	var scratch [tableJsonMaxNumber]byte
-	length, integral, ok := in.scanNumber(scratch[:])
+	token, integral, ok := in.scanNumber()
 	if !ok {
 		in.bad = true
 		return false
 	}
-	token := scratch[:length]
  if f.Kind>=18 && f.Kind<=29 {return tableJsonReadWide(in,token,storage,f)}
 	if f.Kind == 10 || f.Kind == 11 {
 		single := f.Kind == 10

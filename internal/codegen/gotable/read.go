@@ -252,7 +252,7 @@ func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 		g.emitTableResetField(f)
 		g.pf("break }\n")
 		if holder := g.textValueHolder(f); holder != "" {
-			g.pf("%skeep := int64(len(sub.Buffer)); if keep > %d { keep = tableUtf8Clamp(sub.Buffer, %d); r.Report.Clamped++; tableTextClamped(r.Report, %q) }\n", ind, f.Type.Size, f.Type.Size, holder)
+			g.pf("%skeep := int64(len(sub.Buffer)); if keep > %d { keep = tableUtf8Clamp(sub.Buffer, %d); r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q) }\n", ind, f.Type.Size, f.Type.Size, holder)
 		} else {
 			g.pf("%skeep := int64(len(sub.Buffer)); if keep > %d { keep = tableUtf8Clamp(sub.Buffer, %d); r.Report.Clamped++ }\n", ind, f.Type.Size, f.Type.Size)
 		}
@@ -329,7 +329,7 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 	} else {
 		if ir.IsTextListField(f) {
 			// a text list's count clamp names the field (docs/SPEC-TABLES.md §2.13)
-			g.pf("%skeep := count; if keep > %d { keep = %d; r.Report.Clamped++; tableTextClamped(r.Report, %q) }\n", i, bound, bound, f.TextListElem().MapEntryOf)
+			g.pf("%skeep := count; if keep > %d { keep = %d; r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q) }\n", i, bound, bound, f.TextListElem().MapEntryOf)
 		} else {
 			g.pf("%skeep := count; if keep > %d { keep = %d; r.Report.Clamped++ }\n", i, bound, bound)
 		}
@@ -541,7 +541,7 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 	if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 		kind = tkU8
 	}
-	if enumRef(f) != nil {
+	if e := enumRef(f); e != nil {
 		g.pf("%s{\n%s\tvariantRef, ok := %s.Leb(); if !ok { %s }\n", ind, ind, rdr, onBad)
 		g.pf("%s\tif variantRef == 0 { %s = %sNone } else {\n", ind, expr, f.Type.Name)
 		g.pf("%s\t\tid, ok := %s.Resolve(variantRef); if !ok { %s }\n", ind, rdr, onBad)
@@ -549,7 +549,14 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		if g.retain {
 			g.pf("if r.Retain!=nil{r.Report.RetainLost++}")
 		}
-		g.pf(" }\n%s\t}\n%s}\n", ind, ind)
+		g.pf(" }")
+		if enumHasDeprecated(e) {
+			// A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT, and as the
+			// ELEMENT default inside an array, list, map or keyed array; it is
+			// never counted unknown (docs/SPEC-TABLES.md §2.15).
+			g.pf(" else if %s.TableEnumDeprecated() { %s }", expr, deprecatedLand(f, expr))
+		}
+		g.pf("\n%s\t}\n%s}\n", ind, ind)
 		return
 	}
 	if f.Type.Width == 128 && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) {
@@ -582,7 +589,7 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 			if kind == tkF32 {
 				lo, hi = formatFloat32(f.FMin), formatFloat32(f.FMax)
 			}
-			g.pf("%s\t%s\n", ind, compressedFloatClamp("v", lo, hi, "r.Report.Clamped++"))
+			g.pf("%s\t%s\n", ind, compressedFloatClamp("v", lo, hi, fmt.Sprintf("r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q)", g.floatOwner(f))))
 		} else {
 			// A PLAIN float's NaN or infinity lands as its pattern and counts
 			// nothing, and the read NAMES it so the strict read refuses it as
@@ -597,11 +604,11 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		if f.HasIntRange {
 			rlo, rhi, _ := ir.TableRawRange(f)
 			lo, hi := goIntLit(rlo, signed, 8), goIntLit(rhi, signed, 8)
-			g.pf("%s\tif v < %s { v = %s; r.Report.Clamped++ } else if v > %s { v = %s; r.Report.Clamped++ }\n", ind, lo, lo, hi, hi)
+			g.pf("%s\tif v < %s { v = %s; r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q) } else if v > %s { v = %s; r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q) }\n", ind, lo, lo, g.floatOwner(f), hi, hi, g.floatOwner(f))
 		}
 		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 			max := uint64(1)<<f.Type.Width - 1
-			g.pf("%s\tif v > %d { v = %d; r.Report.Clamped++ }\n", ind, max, max)
+			g.pf("%s\tif v > %d { v = %d; r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q) }\n", ind, max, max, g.floatOwner(f))
 		}
 		typ := goFieldType(f.Type)
 		if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
@@ -609,6 +616,13 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		}
 		g.pf("%s\t%s = %s(v)\n%s}\n", ind, expr, typ, ind)
 	}
+}
+
+// deprecatedLand is the assignment a reader makes when it meets a deprecated
+// variant (docs/SPEC-TABLES.md §2.15): the field's declared default, or None
+// for an element of an array, list, map or keyed array.
+func deprecatedLand(f *ir.Field, expr string) string {
+	return fmt.Sprintf("%s = %s", expr, fieldDefaultExpr(f))
 }
 
 func knownKindWidth(wireKind string) int {

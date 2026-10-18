@@ -26,9 +26,9 @@ var plainMapProbes = func() []unchangedProbe {
 	base := map[string]string{"go": plainMapSchema, "cpp": plainMapSchema}
 	keep := []string{"Holder"}
 	return []unchangedProbe{
-		{"optional map", base, "table Zmap\n{\n    tags ?map[string(8)]int32\n}\n", "table Zmap\n{\n    tags map[string(8)]int32\n}\n", keep, "optional map on field Zmap.tags", usesOptionalMap},
-		{"optional map behind a table", base, "table Zinner\n{\n    by_id ?map[uint32]int32\n}\ntable Zouter\n{\n    inner Zinner\n}\n", "table Zinner\n{\n    by_id map[uint32]int32\n}\ntable Zouter\n{\n    inner Zinner\n}\n", keep, "optional map on field Zinner.by_id", usesOptionalMap},
-		{"optional map of maps", base, "table Zmap\n{\n    nest ?map[uint8]map[uint8]int32\n}\n", "table Zmap\n{\n    nest map[uint8]map[uint8]int32\n}\n", keep, "optional map on field Zmap.nest", usesOptionalMap},
+		{"optional map", base, "table Zmap\n{\n    tags ?map[string(8)]int32\n}\n", "table Zmap\n{\n    tags map[string(8)]int32\n}\n", keep, "optional map on field Zmap.tags", usesOptionalMap, carryOptionalMap},
+		{"optional map behind a table", base, "table Zinner\n{\n    by_id ?map[uint32]int32\n}\ntable Zouter\n{\n    inner Zinner\n}\n", "table Zinner\n{\n    by_id map[uint32]int32\n}\ntable Zouter\n{\n    inner Zinner\n}\n", keep, "optional map on field Zinner.by_id", usesOptionalMap, carryOptionalMap},
+		{"optional map of maps", base, "table Zmap\n{\n    nest ?map[uint8]map[uint8]int32\n}\n", "table Zmap\n{\n    nest map[uint8]map[uint8]int32\n}\n", keep, "optional map on field Zmap.nest", usesOptionalMap, carryOptionalMap},
 	}
 }()
 
@@ -46,7 +46,7 @@ func TestMapPresenceRefusedOffGo(t *testing.T) {
 		u := unitFromSource(t, tc.src)
 		for _, lang := range c.Targets() {
 			_, err := c.Generate(u, lang, nil)
-			if lang == "go" {
+			if carries(lang, carryOptionalMap) {
 				if err != nil {
 					t.Errorf("%s: go refused: %v", tc.name, err)
 				}
