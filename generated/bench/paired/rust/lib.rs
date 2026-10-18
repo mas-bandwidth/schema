@@ -27,6 +27,8 @@ mod fixedtable; // no items — documentation only
 // the whole surface and the saving is opt-in.
 mod bench_fixed;
 pub use bench_fixed::*;
+mod bench_message;
+pub use bench_message::*;
 mod bench_records;
 pub use bench_records::*;
 mod bench_table;
@@ -39,9 +41,13 @@ mod fixed_runtime;
 pub use fixed_runtime::*;
 mod fixedtable_fixed;
 pub use fixedtable_fixed::*;
+mod fixedtable_message;
+pub use fixedtable_message::*;
 mod fixedtable_records;
 pub use fixedtable_records::*;
 mod message_runtime;
 pub use message_runtime::*;
+mod unit_view;
+pub use unit_view::*;
 mod variable_runtime;
 pub use variable_runtime::*;

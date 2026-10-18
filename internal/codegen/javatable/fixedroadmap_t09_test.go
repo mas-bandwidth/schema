@@ -295,7 +295,7 @@ fixed table T
 	t09RequireClean(t, "optional-arrays", r, 4)
 
 	// the fresh value is the absence: every optional is false, every payload
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		if got := r.fresh[fmt.Sprintf("f%d.xsPresent", i)]; got != "false" {
 			t.Errorf("optional-arrays: a fresh xsPresent = %s, want false", got)
 		}

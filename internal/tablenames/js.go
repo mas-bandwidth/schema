@@ -196,6 +196,42 @@ func init() {
 		Name{Name: "tableMessageBatchOpen", What: "the message bit codec: the batch's open"},
 		Name{Name: "tableMessageBatchClose", What: "the message bit codec: the batch's close"},
 
+		// ---- THE MESSAGE AND BATCH FORMS (docs/SPEC-TABLES.md §3.3, §6),
+		// which JavaScript carries whole. Every one of these is a MODULE-SCOPE
+		// BINDING of the unit's <Package>Table.js, so every one can collide with
+		// a declaration and every one is claimed, exactly as the fixed form's are.
+		Name{Name: "TableMessageOpen", What: "§3.3's open: unframes the packet body and returns it with a verdict"},
+		Name{Name: "TableMessageOpenFramed", What: "the open that also rejects an ends-early body"},
+		Name{Name: "TableMessageOpenOk", What: "open verdict 0: the frame opened"},
+		Name{Name: "TableMessageOpenRefused", What: "open verdict 1: the receiver refused"},
+		Name{Name: "TableMessageOpenDamaged", What: "open verdict 2: the bytes are damaged"},
+		Name{Name: "TableAnnounceRead", What: "§3.3's announce reader: resolves the receiver once and reads the packet"},
+		Name{Name: "TableMessageAnnouncement", What: "the unit's announcement packet as bytes (§3.3)"},
+		Name{Name: "TableMessageVersionId", What: "the reserved version id constant (BigInt)"},
+		Name{Name: "TableMessageVocabularyId", What: "the reserved vocabulary id constant (BigInt)"},
+		Name{Name: "TableMessageNodeId", What: "the reserved node id constant (BigInt)"},
+		Name{Name: "TableMessageRead64", What: "read a little-endian u64 from a buffer at an offset"},
+		Name{Name: "TableMessageKindBytes", What: "the number of bytes a kind occupies (§6)"},
+		Name{Name: "TableMessageKindBits", What: "the number of bits a kind occupies (§6)"},
+		Name{Name: "TableMessageShapeRead", What: "read one shape from the vocabulary for a kind"},
+		Name{Name: "TableMessageShapeEqual", What: "whether two shapes are equal"},
+		Name{Name: "TableMessageEntryRead", What: "read one message entry from the vocabulary"},
+		Name{Name: "TableMessageEntryEqual", What: "whether two message entries are equal"},
+		Name{Name: "TableMessageRefuse", What: "records a refusal reason on the report"},
+		Name{Name: "TableMessageWords", What: "a Uint32Array over the float32 scratch, for bit access"},
+		Name{Name: "TableMessageFloat", What: "a Float32Array(1) scratch for f32<->bits conversion"},
+		Name{Name: "TableMessageFloat32Bits", What: "a value's f32 bit pattern as a BigInt"},
+		Name{Name: "TableMessageFloat32FromBits", What: "an f32 value from a bit pattern"},
+		Name{Name: "TableMessageFloat64", What: "a Float64Array(1) scratch for f64<->bits conversion"},
+		Name{Name: "TableMessageFloat64Bits", What: "a value's f64 bit pattern as a BigInt"},
+		Name{Name: "TableMessageFloat64FromBits", What: "an f64 value from a bit pattern"},
+		Name{Name: "TableMessageDoubleWords", What: "a BigUint64Array over the float64 scratch, for bit access"},
+		Name{Name: "TableMessageBatchReader", What: "the batch reader: a subarray view with the vocabulary and the report (§6)"},
+		Name{Name: "TableMessageResetReport", What: "zeroes a report for reuse"},
+		Name{Name: "tableMessageCountBits", What: "counts the bits an integer value occupies in a bit reader (§6)"},
+		Name{Name: "tableMessageEntry", What: "resolves a vocabulary reference to a message entry, with the count"},
+		Name{Name: "TableFixedTextOk", What: "whether a text payload's bytes are well-formed for its flavour (fixed form)"},
+
 		Name{Name: "BuildVersion", What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust, Java, Elixir and JavaScript put it at unit scope — Java in a file of its own name, Elixir as a module, JavaScript as a module-scope export — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},
 	)
 }

@@ -211,8 +211,8 @@ func TestExportedSurfaceMovesNeitherWire(t *testing.T) {
 		protocolId   uint64
 		buildVersion uint64
 	}{
-		{"examples", corpusDir, 0x8656ae68c06b97a7, 0x3084078b2f7d571e},
-		{"examples128", corpus128Dir, 0xf4a226f4166d919b, 0x0d3e83382e3a72ee},
+		{"examples", corpusDir, 0x8656ae68c06b97a7, 0xab0249f6d48f66b7},
+		{"examples128", corpus128Dir, 0xf4a226f4166d919b, 0xed877961fe248833},
 	} {
 		t.Run(unit.name, func(t *testing.T) {
 			u := loadCorpusDir(t, unit.dir)
@@ -339,8 +339,15 @@ func TestWideTextIsRefusedByEveryOtherTarget(t *testing.T) {
 		// internal/codegen/darttable scopes that refusal to the two
 		// accelerators by name. It still refuses THIS unit, for the unrelated
 		// reason that Caption.schema puts `was =` on a union arm, so leaving
-		// it in the loop below would only pin the wrong refusal.
-		if target == "cpp" || target == "c" || target == "cs" || target == "go" || target == "dart" {
+		// it in the loop below would only pin the wrong refusal. Rust, Java,
+		// JavaScript and Elixir joined on 2026-10-13 (5da823d67, "wide text
+		// rides in table closures on rust, java, js and elixir"), and they too
+		// refuse THIS unit only for its `was =` arm. Every built-in target now
+		// carries the construct, so the loop is the guard for the next target;
+		// compiler's TestWideTextInATableClosureRefusesMissingCarriers pins the
+		// by-name refusal itself.
+		switch target {
+		case "cpp", "c", "cs", "go", "dart", "rust", "java", "js", "elixir":
 			continue
 		}
 		if _, err := schema.Generate(u, target, nil); err == nil {

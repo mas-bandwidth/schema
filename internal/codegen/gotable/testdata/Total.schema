@@ -1,0 +1,10 @@
+package listdemo
+
+// THE TOTAL SEAMS (§2.13): a bounded text list keeps only the prefix within its
+// total on a JSON read; an unbounded text list erases the element past its
+// total through the region graph's listDrop; a plain []string list reaches the
+// unbounded text reader. This corpus exists so the go emitter's byte-for-byte
+// generation compare (STEP 5b) measures these seams.
+table Bounded { rules [..16]string(64) | total = 256 }
+table Unbounded { repos []?string(64) | total = 4096 }
+table Plain { names []string }

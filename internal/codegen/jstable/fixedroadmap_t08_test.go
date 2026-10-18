@@ -130,7 +130,7 @@ fixed table T
 	}
 	// The RUN: the leg's own TableFixedCompile builds the plan and the guard lane
 	// and `split` are read off it. TableFixedNoGuard is -1 and a plan entry is
-	// TableFixedLanes (9) int32 lanes (fixedruntime.go); the guard is lane 5.
+	// TableFixedLanes (11) int32 lanes (fixedruntime.go); the guard is lane 5.
 	t08Play(t, src, `const theirs = new TableFixedLayoutView();
 if (!TableFixedParseLayout(TFixedLayout, 0, TFixedLayout.length, theirs)) { fail("the layout did not parse"); }
 const dst = new Int32Array(theirs.count * 5);
@@ -173,13 +173,13 @@ func t08P1(t *testing.T) {
 		t.Errorf("P1: every entry of a flat plan is unguarded; split = %d of %d", guarded, len(plan))
 	}
 	_, src := t08Emit(t, t02Flat)
-	// The emitted plan IS the compiled one: nine int32 lanes (TableFixedLanes),
+	// The emitted plan IS the compiled one: eleven int32 lanes (TableFixedLanes),
 	// and the lanes carry the same op, src, dst, size and guard the IR states.
 	lanes := strings.Split(t02Block(t, src, "const TFixedIdentity = new Int32Array([", "]);"), ",")
-	if len(lanes) != 9 {
-		t.Fatalf("P1: the identity plan has %d lanes, want 9: %q", len(lanes), lanes)
+	if len(lanes) != 11 {
+		t.Fatalf("P1: the identity plan has %d lanes, want 11: %q", len(lanes), lanes)
 	}
-	nums := make([]int, 9)
+	nums := make([]int, 11)
 	for i, l := range lanes {
 		n, err := strconv.Atoi(strings.TrimSpace(l))
 		if err != nil {

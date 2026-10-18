@@ -3,6 +3,7 @@ package cstable
 import (
 	"encoding/binary"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -328,11 +329,6 @@ type fixedGuardLink struct {
 	argw  byte
 }
 
-// fixedGuardLinkBytes is a link as the pool lays it: guard u32, arg u64 and
-// argw u8, little-endian, the same thirteen bytes the runtime's compiled pool
-// lays behind its entries (TableFixedWire.GuardLinkBytes).
-const fixedGuardLinkBytes = 13
-
 // fixedGuardPool is THE GUARD CHAIN laid down (docs/FIXED-FORM-ALGORITHM.md
 // §4.1): every entry whose chain runs past the two lanes gets offset+count into
 // one pool of links, OUTERMOST FIRST, deduped by content so two entries under
@@ -349,8 +345,7 @@ func fixedGuardPool(plan []fixedPlanEntry) []byte {
 		}
 		var key strings.Builder
 		var laid []byte
-		for k := len(links) - 1; k >= 0; k-- {
-			l := links[k]
+		for _, l := range slices.Backward(links) {
 			fmt.Fprintf(&key, "%d:%d:%d;", l.guard, l.arg, l.argw)
 			laid = binary.LittleEndian.AppendUint32(laid, uint32(l.guard))
 			laid = binary.LittleEndian.AppendUint64(laid, l.arg)
@@ -388,7 +383,7 @@ func fixedGuardPool(plan []fixedPlanEntry) []byte {
 func fixedPartitionPlan(plan []fixedPlanEntry) ([]fixedPlanEntry, int) {
 	out := make([]fixedPlanEntry, 0, len(plan))
 	split := 0
-	for pass := 0; pass < 2; pass++ {
+	for pass := range 2 {
 		for _, e := range plan {
 			if (e.guard != kFixedNoGuard) != (pass == 1) {
 				continue
