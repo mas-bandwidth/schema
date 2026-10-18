@@ -576,17 +576,16 @@ func TestNullPerKind(t *testing.T) {
 // not well-formed — which the storage permits and a lone surrogate escape can
 // introduce — is written as U+FFFD, one per bad byte, never raw.
 func TestWriterEmitsValidUTF8(t *testing.T) {
-	// a lone surrogate escape READS as U+FFFD rather than manufacturing CESU-8
-	_, inst, r := read(t, "GunnerSettings", `{ "callsign": "\uD800x" }`)
-	if !r.Silent() {
-		t.Fatalf("expected silence, got %+v", r)
-	}
-	if got := field(t, inst, "callsign").Cell.Str; !bytes.Equal(got, []byte("�x")) {
-		t.Fatalf("a lone lead surrogate must read as U+FFFD, got % x", got)
-	}
-	_, inst, _ = read(t, "GunnerSettings", `{ "callsign": "\uDC00x" }`)
-	if got := field(t, inst, "callsign").Cell.Str; !bytes.Equal(got, []byte("�x")) {
-		t.Fatalf("a lone trail surrogate must read as U+FFFD, got % x", got)
+	// a lone or out-of-order surrogate escape is REFUSED BY NAME on read, never
+	// replaced with U+FFFD (§16.3)
+	for _, text := range []string{
+		`{ "callsign": "\uD800x" }`,
+		`{ "callsign": "\uDC00x" }`,
+	} {
+		_, _, r := read(t, "GunnerSettings", text)
+		if !r.Malformed || r.Reason != "string_lone_surrogate: GunnerSettings.callsign" {
+			t.Fatalf("%s: report %+v, want Malformed with Reason string_lone_surrogate: GunnerSettings.callsign", text, r)
+		}
 	}
 	// a raw ill-formed byte is REPLACED WHERE IT ENTERS, on the same terms as
 	// the lone surrogate escape above (§3, §16.3), so storage never holds one
