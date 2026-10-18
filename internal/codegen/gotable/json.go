@@ -254,14 +254,23 @@ func writeVariableTextCarrier(b *strings.Builder, n, storage string) {
 // without one emits the walker byte for byte as before, so the text form's
 // generated output changes only where the marker is used.
 func tableJsonRequiredWalk(walk string, u *ir.Unit) string {
+	guarded := unitHasGuardedRequired(u)
 	start := strings.Index(walk, "func tableJsonReadTableFields(")
 	if start >= 0 {
 		end := strings.Index(walk[start:], "\n}\n")
 		if end >= 0 {
 			end += start + 3
 			body := walk[start:end]
-			body = tableSourceReplace(body, "\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tif c == 0 {", "\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, info, &seen)\n\t\t}\n\t\tif c == 0 {", 1)
-			body = tableSourceReplace(body, "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true", "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, info, &seen)\n\t\t}\n\t\tin.bad = true", 1)
+			// A unit with no required field under a guard keeps the old call
+			// and close text byte for byte, so generated Go changes only for
+			// tables that hold one (docs/SPEC-TABLES.md §2.3, §3).
+			if guarded {
+				body = tableSourceReplace(body, "\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tif c == 0 {", "\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, base, info, &seen)\n\t\t}\n\t\tif c == 0 {", 1)
+				body = tableSourceReplace(body, "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true", "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, base, info, &seen)\n\t\t}\n\t\tin.bad = true", 1)
+			} else {
+				body = tableSourceReplace(body, "\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tif c == 0 {", "\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, info, &seen)\n\t\t}\n\t\tif c == 0 {", 1)
+				body = tableSourceReplace(body, "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true", "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn tableJsonRequireSeen(in, info, &seen)\n\t\t}\n\t\tin.bad = true", 1)
+			}
 			walk = walk[:start] + body + walk[end:]
 		}
 	}
@@ -269,7 +278,7 @@ func tableJsonRequiredWalk(walk string, u *ir.Unit) string {
 	// a text that leaves it out is refused as missing_required, so the write
 	// would not read back to the instance it came from
 	walk = tableSourceReplace(walk, tableJsonOmitAnchor, "\t\tif def != nil && !tableJsonNameIn(tableJsonRequiredFor(info), f.Name) && tableJsonAtDefault(base, def, f) {\n", 1)
-	return tableSourceReplace(walk, "// ---- json walk: end ----", tableJsonRequiredSource(tableJsonRequiredTables(u))+"// ---- json walk: end ----", 1)
+	return tableSourceReplace(walk, "// ---- json walk: end ----", tableJsonRequiredSource(tableJsonRequiredTables(u), guarded)+"// ---- json walk: end ----", 1)
 }
 
 // tableJsonOmitAnchor is the writer's omit-defaults test in the generic walk,
@@ -296,11 +305,27 @@ func tableJsonRequiredTables(u *ir.Unit) map[string][]string {
 	return tables
 }
 
+// unitHasGuardedRequired reports whether any table holds a required field in
+// an if branch (docs/SPEC-TABLES.md §2.3, §3).
+func unitHasGuardedRequired(u *ir.Unit) bool {
+	for _, st := range u.Tables {
+		guards := tableGuardStrings(st)
+		for _, f := range st.Fields {
+			if f.Required && guards[f.Name] != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // tableJsonRequiredSource is the close-of-object check tableJsonRequiredWalk
 // splices into a unit that declares a required field. It carries a per-table
 // registry of required field names, so a table's own required fields are what
-// its close is held to, never a same-named field in another table.
-func tableJsonRequiredSource(tables map[string][]string) string {
+// its close is held to, never a same-named field in another table. A unit with
+// a required field under a guard gets the guard-aware close; every other unit
+// keeps the text it had.
+func tableJsonRequiredSource(tables map[string][]string, guarded bool) string {
 	var b strings.Builder
 	b.WriteString(`
 // tableJsonRequiredByTable names, per table, the fields marked required
@@ -329,7 +354,44 @@ var tableJsonRequiredByTable = map[string][]string{`)
 
 func tableJsonRequiredFor(info *TableTypeInfo) []string { return tableJsonRequiredByTable[info.Name] }
 
-// tableJsonRequireSeen closes ONE object: every field marked required
+`)
+	if guarded {
+		b.WriteString(`// tableJsonRequireSeen closes ONE object: every field marked required
+// (docs/SPEC-TABLES.md §2.3) must have been named, and one that was not is
+// refused as missing_required, in declaration order, exactly as the binary
+// reader refuses a record that omitted it. A required field inside an if
+// guard is demanded only while its guard holds (§2.3, §3): with the branch
+// off it is absent and no refusal is owed. The bounded seen bitmap is the
+// duplicate tracker; a table with more than 512 fields keeps its old reading
+// for the fields past the window.
+func tableJsonRequireSeen(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, seen *[8]uint64) bool {
+	required := tableJsonRequiredFor(info)
+	var missing string
+	for i := range info.Fields {
+		f := &info.Fields[i]
+		if i >= 512 || !tableJsonNameIn(required, f.Name) {
+			continue
+		}
+		if f.Guard != "" && !tableJsonGuardHolds(base, info, f.Guard) {
+			continue
+		}
+		if seen[i>>6]&(uint64(1)<<(i&63)) == 0 {
+			if missing != "" {
+				missing += ", "
+			}
+			missing += f.Name
+		}
+	}
+	if missing == "" {
+		return true
+	}
+	in.report.MissingRequired++
+	in.report.Reason = "missing_required: " + missing
+	return false
+}
+`)
+	} else {
+		b.WriteString(`// tableJsonRequireSeen closes ONE object: every field marked required
 // (docs/SPEC-TABLES.md §2.3) must have been named, and one that was not is
 // refused as missing_required, in declaration order, exactly as the binary
 // reader refuses a record that omitted it. The bounded seen bitmap is the
@@ -357,7 +419,9 @@ func tableJsonRequireSeen(in *tableJsonIn, info *TableTypeInfo, seen *[8]uint64)
 	in.report.Reason = "missing_required: " + missing
 	return false
 }
-
+`)
+	}
+	b.WriteString(`
 func tableJsonNameIn(names []string, name string) bool {
 	for _, n := range names {
 		if n == name {
