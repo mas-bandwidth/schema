@@ -53,7 +53,12 @@ func strictJSON(text []byte) error {
 		return err
 	}
 	if !json.Valid(body) {
-		return fmt.Errorf("not valid JSON at offset 0")
+		var v any
+		off := int64(0)
+		if se, ok := json.Unmarshal(body, &v).(*json.SyntaxError); ok {
+			off = se.Offset
+		}
+		return fmt.Errorf("not valid JSON at offset %d", off)
 	}
 	return nil
 }
@@ -269,18 +274,20 @@ func TestGoJsonWriterIsStrict(t *testing.T) {
 
 	t.Run("textdifferential", func(t *testing.T) {
 		dir := t.TempDir()
-		textDiffDirMu.Lock()
-		defer textDiffDirMu.Unlock()
-		os.Setenv("SCHEMA_TEXT_DIFF_DIR", dir)
-		defer os.Unsetenv("SCHEMA_TEXT_DIFF_DIR")
-		os.Setenv("SCHEMA_TEXT_DIFF_SEED", strconv.Itoa(textDifferentialSeed))
-		defer os.Unsetenv("SCHEMA_TEXT_DIFF_SEED")
-		os.Setenv("SCHEMA_TEXT_DIFF_N", strconv.Itoa(textDifferentialN))
-		defer os.Unsetenv("SCHEMA_TEXT_DIFF_N")
-		out, err := runGeneratedEdited(t, textDifferentialSchema, textDifferentialProbe, nil)
-		if err != nil {
-			t.Fatalf("text differential probe: %v\n%s", err, out)
-		}
+		func() {
+			textDiffDirMu.Lock()
+			defer textDiffDirMu.Unlock()
+			os.Setenv("SCHEMA_TEXT_DIFF_DIR", dir)
+			defer os.Unsetenv("SCHEMA_TEXT_DIFF_DIR")
+			os.Setenv("SCHEMA_TEXT_DIFF_SEED", strconv.Itoa(textDifferentialSeed))
+			defer os.Unsetenv("SCHEMA_TEXT_DIFF_SEED")
+			os.Setenv("SCHEMA_TEXT_DIFF_N", strconv.Itoa(textDifferentialN))
+			defer os.Unsetenv("SCHEMA_TEXT_DIFF_N")
+			out, err := runGeneratedEdited(t, textDifferentialSchema, textDifferentialProbe, nil)
+			if err != nil {
+				t.Fatalf("text differential probe: %v\n%s", err, out)
+			}
+		}()
 		u := unitFrom(t, textDifferentialSchema)
 		m := tabletext.NewModel(u)
 		for i := range textDifferentialN {
@@ -325,6 +332,16 @@ func TestGoJsonWriterIsStrict(t *testing.T) {
 			}
 			if n := bytes.Count(data, []byte("\xef\xbf\xbd")); n != 2 {
 				t.Fatalf("%s: %d U+FFFD, want 2 (one for the bad byte, one for the unpaired surrogate)", name, n)
+			}
+			// §16.3: each U+FFFD stands where its ill-formed input was: the
+			// 0xff byte opening s, the unpaired 0xd800 opening w.
+			for _, want := range []string{
+				"\"s\": \"\xef\xbf\xbd\\u0000\\u001f\x7f\"",
+				"\"w\": \"\xef\xbf\xbd\\u0000\"",
+			} {
+				if !bytes.Contains(data, []byte(want)) {
+					t.Fatalf("%s: missing %q:\n%s", name, want, data)
+				}
 			}
 		}
 		data, err := os.ReadFile(filepath.Join(dir, "out1.json"))
