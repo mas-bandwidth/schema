@@ -2367,11 +2367,9 @@ SPEC-TABLES §15.
 
 ### Maps: `ships map[string(32)]ShipConfig`
 
-*Specified and carried by the C++ reference and the tool. Every other backend
-refuses a unit that declares one, by name, because a map makes its holder
-variable, and the ports are a named follow-on
-([#380](https://github.com/mas-bandwidth/schema/issues/380),
-SPEC-TABLES.md §11, §15).*
+*Specified and carried by the C++ reference, Go and the tool. The other
+backends refuse a unit that declares one, by name, because a map makes its
+holder variable (SPEC-TABLES.md §11, §15).*
 
 A map is a **lookup the runtime provides over entries the wire carries as a
 sorted array**. It spends no wire kind and invents no encoding: on the wire,
@@ -2462,7 +2460,9 @@ into storage you own and never stored in a file:
 `Entry`, `Insert`, `Find`, `Erase`, `Each`, `IndexMeasure`, `Index` and
 `IndexFind`. A `Fleet` with a `ships` map therefore claims `FleetShipsEntry`,
 `FleetShipsInsert` and the rest, and a declaration spelling any of the eight
-is refused naming the map.
+is refused naming the map. **Go carries the same eight names** over its
+`*TableMap[T]` handle, `Each` visiting in ascending key order as the locked
+form does.
 
 **Evolution.** A repeated key on read is last-wins and counts `duplicate`. A
 DESCENDING key is not something a conforming writer produces, so the map keeps
@@ -2481,12 +2481,12 @@ its quoted decimal spelling, entries in ascending key order.
 
 ### Unbounded arrays: `placements []Placement`
 
-*Carried by the C++ reference: the `TableList` runtime, the builder's `Add`,
-`Each` and `Erase`, the wire, the region, the cook, the text form and the
-descriptors, held by the `tables/lists` corpus. `pack`, `unpack` and
-`cook-check` read and write one; the tool's `cook` and `uncook` halves do not
-yet, and every port refuses a unit that declares one, by name
-(SPEC-TABLES.md §2.9, §15).*
+*Carried by the C++ reference and Go: the `TableList` runtime, the builder's
+`Add`, `Each` and `Erase`, the wire, the region, the cook, the text form and
+the descriptors, held by the `tables/lists` corpus. `pack`, `unpack`, `cook`,
+`uncook` and `cook-check` read and write one; only a map is refused by the
+tool's cook, by name (§2.8), and every other port refuses a unit that declares
+one (SPEC-TABLES.md §2.9, §15).*
 
 
 **An unbounded array is a counted array whose count the DATA decides.** It is
@@ -2637,9 +2637,8 @@ SUB-DOCUMENT — another document's wire bytes, carried opaquely and handed to
 its own `Load` only when something asks for it. That is a pattern, not a
 construct: `*bytes` plus a second call (SPEC-TABLES.md §2.5).
 
-C++ and the tool carry the construct today; every other backend refuses a
-unit that declares one, by name, and the ports are a named follow-on
-(SPEC-TABLES.md §15).
+C++, Go and the tool carry the construct today; every other backend refuses a
+unit that declares one, by name (SPEC-TABLES.md §15).
 
 ### Timestamps: `opened_at timestamp`
 
@@ -2708,9 +2707,9 @@ points.
 You reach for it by INCLUDING it. The form is generated on the side, in
 `<Base>Block.h` / `<Base>Block.cpp` beside the unit's `<Base>Table.h`, in
 `<Base>Block.cs` plus the unit's one runtime home `<Package>Block.cs` for C#,
-and in `<base>_block.rs` beside `block_runtime.rs` for Rust — so a project that
-never blocks a table compiles none of it, and the table sources are the same
-bytes either way:
+in `<base>_block.rs` beside `block_runtime.rs` for Rust, and in
+`<Base>Block.go` for Go — so a project that never blocks a table compiles none
+of it, and the table sources are the same bytes either way:
 
 ```cpp
 #include "RenderTable.h"                      // the ordinary table surface
@@ -2794,9 +2793,10 @@ alignment, every array's count against its declared maximum and every array's
 extent, and then you index. On a refusal it hands back the reason beside the
 null — the same `TableRefuseReason` a cook's `Open` fills, with `bad_layout`
 for a pitch, a count, an offset or an extent the prologue states that
-disagrees with this build's (SPEC-TABLES.md §19.2). *That enum is specified
-and no backend writes it yet, so an `Open` answers the null alone today
-([#523](https://github.com/mas-bandwidth/schema/issues/523)).*
+disagrees with this build's (SPEC-TABLES.md §19.2). Go's `Open(base, bytes)`
+answers that `TableRefuseReason` as its `error` today; the other backends
+answer the null alone
+([#523](https://github.com/mas-bandwidth/schema/issues/523)).
 
 **That alignment check binds the CONSUMER, and it is the one that surprises.**
 A block's base is 64-byte aligned because the producer's storage is; a consumer
@@ -2841,13 +2841,16 @@ this side allocates: the bytes are yours, from wherever you got them.
 
 ### The cooked form: point at a file instead of parsing it
 
-*The TOOL, every READ side, and the C++ WRITE side are built (SPEC-TABLES.md
-§7, §7.6, schema#251). `schema cook`, `schema cook-check` and `schema uncook`
-produce, validate and read back cooked files, in either byte order; the C++
-backend emits `<Root>Open` and the C# backend emits `<Root>Cook.Open`, for
-every table; and C++ emits `<Root>Cook` and `<Root>CookMeasure` for every
-table, fixed or pointered, whose bytes are the tool's. In every other language,
-your tools write the cook with `schema cook` and your game opens it.*
+*The TOOL, every READ side, and the C++ and Go WRITE sides are built
+(SPEC-TABLES.md §7, §7.6, schema#251). `schema cook`, `schema cook-check` and
+`schema uncook` produce, validate and read back cooked files, in either byte
+order; the C++ backend emits `<Root>Open`, the C# backend emits
+`<Root>Cook.Open` and the Go backend emits `<Root>Open`, for every table; and
+C++ emits `<Root>Cook` and `<Root>CookMeasure` while Go emits
+`<Root>CookMeasure`, `<Root>CookMeasureReason` and `<Root>CookFrom`, for every
+table, fixed or pointered, whose bytes are the tool's. A write side may live in
+ANY port; the bytes are the tool's whichever port wrote them. In every other
+language, your tools write the cook with `schema cook` and your game opens it.*
 
 **A cook is not a wire protocol — it is a load-trusted-data-from-tools
 protocol.** A wire crosses a boundary between builds; a cook crosses none. Your
@@ -3010,12 +3013,14 @@ like every other, and it is the same call:
 const Settings * settings = graphdemo::SettingsOpen( bytes, length );
 ```
 
-**And C++ WRITES a cook too.** Your tools do not have to shell out to the
-compiler to lay one out: `CookMeasure` answers the whole file's length and
-`Cook` writes exactly that many bytes into your buffer. The bytes are `schema
-cook`'s, byte for byte — the tool is the reference and the conformance harness
-holds the two to one file over every instance it carries — so a cook your
-editor wrote and a cook your build farm ran the tool for are the same artifact.
+**A port WRITES a cook too, and a write side may live in ANY port.** Your tools
+do not have to shell out to the compiler to lay one out: `CookMeasure` answers
+the whole file's length and `Cook` writes exactly that many bytes into your
+buffer (Go's spellings are `<Root>CookMeasure`, `<Root>CookMeasureReason` and
+`<Root>CookFrom`). The bytes are `schema cook`'s, byte for byte — the tool is
+the reference and the conformance harness holds the two to one file over every
+instance it carries — so a cook your editor wrote and a cook your build farm
+ran the tool for are the same artifact.
 
 ```cpp
 // measure, then write: the buffer is yours and nothing here allocates
@@ -3414,10 +3419,10 @@ pointer-free, arrays inline with their `_count`/`_length` companions — so a
 value can be memcpy'd, mmap'd or shared across processes and still walked
 through descriptor offsets. Generated `static_assert`s enforce it.
 
-Tables are generated for every `--lang` today — C++ and C carry both
-classes, the other seven the fixed class, and a pointered unit's WIRE
-surface is refused by name in those seven while their two accelerators read
-one in full. Every scalar the type wire carries rides in a table: `fixed`/`ufixed`
+Tables are generated for every `--lang` today — C++, C and Go carry both classes,
+the other six the fixed class, and a pointered unit's WIRE surface is refused by
+name in those six while their two accelerators read one in full.
+Every scalar the type wire carries rides in a table: `fixed`/`ufixed`
 as their raw scaled integer under a fixed kind of their storage width, with
 the whole-unit bounds clamping on the raw scale and the text in whole units
 (`1.5`), `int128`/`uint128` under kinds of their own, sixteen bytes low
@@ -3493,9 +3498,10 @@ for ( int32_t i = 0; i < unit->num_tables; i++ )   // then unit->types, the same
 
 `unit->tables` is every table in the unit and `unit->types` every type —
 both complete, and every entry points at the same `TableTypeInfo` the
-section above walks, so one printer serves both. C++ carries the registry
-today; the other eight targets emit no view file yet, and a unit that
-declares no table gets none in C++ either (SPEC-TABLES.md §8.3, §15).
+section above walks, so one printer serves both. C++ emits
+`<Package>View.h`/`.cpp` and Go emits `<Package>View.go`; the other seven
+targets emit no view file yet, and a unit that declares no table gets none in
+C++ or Go either (SPEC-TABLES.md §8.3, §15).
 
 Each set is ordered by declaration name, so a listing does not churn when a
 file is renamed or a declaration moves between files.
@@ -3626,9 +3632,9 @@ const ship = ShipConfigFromJson(text, report);       // one instance, from a str
 const back = ShipConfigToJson(ship);                 // the canonical text, as a string
 ```
 
-Every writer ends the text with exactly one newline, and every reader accepts a
-text with or without one — so a text is the same text in a file, in a diff and
-in a pipe.
+Every writer ends the text with exactly one newline — except Go's `Compact`
+option, which writes none — and every reader accepts a text with or without one
+— so a text is the same text in a file, in a diff and in a pipe.
 
 **A pointered table has the same text**, read into its builder and written
 from a region's const root, in C++:
@@ -3677,7 +3683,10 @@ pointered root as one `<Root>.json`.
 defaults, exactly as an absent field on the wire does; unknown keys, wrong
 JSON types and out-of-range numbers land in the same report the wire uses,
 plus one counter the wire never raises — `duplicate`, for a key the text gave
-twice. `ToJson` writes every field, defaults included — a text is for people —
+twice. In Go, `FromJson` is the strict read: it refuses whenever `report.Err()`
+is set, even when the tolerant walk recovered a value, and `FromJsonTolerant`
+is the twin that keeps that value (§6.5). `ToJson` writes every field, defaults
+included — a text is for people —
 and it is pretty-printed: one entry per line, two-space indent.
 
 The mapping is the obvious one: enums and flags by variant NAME, a union as
@@ -3724,8 +3733,8 @@ whenever the read's report holds an error (`TableReport.Err()` — `malformed`,
 `clamped`, `kind_mismatch`, ...), even when the tolerant load recovered a
 value, so a damaged-but-recovered wire never comes back as a value with a nil
 error. `unknown`, `widened` and `retained` alone do not refuse. A supplied
-`report` receives that one read's report. `FromJson` returns false with
-`report` set `malformed` when the JSON document is damaged.
+`report` receives that one read's report. A JSON document that is damaged
+leaves `report` set `malformed`.
 
 For a plain (variable) table the pair has that class's shape:
 `<Name>SaveText(value, context...)` takes `Save`'s write context, and
@@ -3914,8 +3923,11 @@ func TestConfigRoundTrip(t *testing.T) {
 Every tolerance event lands in that report — `Unknown` for a field this
 build does not name, `Widened` for a compatible wider kind, `KindMismatch`
 for a known id whose kind changed, `Clamped` for an out-of-range value — and
-`Malformed` for framing damage, which keeps what it decoded and reads on
-past the damaged level. Nothing on this path allocates, and `Shutdown` is
+`Malformed` for framing damage, which the TOLERANT reads keep and read on
+past. The plain `ConfigLoadBuilder` and `ConfigFromJson` are the strict reads:
+they refuse whenever `report.Err()` is set (§6.5), even when the tolerant walk
+recovered a value, and `ConfigLoadBuilderTolerant` and `ConfigFromJsonTolerant`
+are the twins that keep it. Nothing on this path allocates, and `Shutdown` is
 yours to call: stop readers and workers first. A read that wants no builder
 hands `ConfigLoad` a region — sized by `ConfigLoadMeasure(wire)` — and gets
 the value back as a pointer into it.
@@ -4030,10 +4042,10 @@ table GoalList | json = "array"   // its JSON text is a top-level array (§16.10
 }
 ```
 
-In Go, `HandoverRulesAppend(&h, "a")` appends (false past either bound),
-`HandoverRulesTextAt(&h, i)` reads an element without allocating, and
-`HandoverFirstAppendAbsent(&h)` appends an absent element. On the wire a
-`string(M)` list is kind 14 over element kind 12; in JSON it is a plain array of
+In Go, `HandoverRulesAppend(&h, "a")` appends, and is false past either bound,
+for a zero byte, or for ill-formed UTF-8; `HandoverRulesTextAt(&h, i)` reads an
+element without allocating, and `HandoverFirstAppendAbsent(&h)` appends an
+absent element. On the wire a `string(M)` list is kind 14 over element kind 12; in JSON it is a plain array of
 strings. Only Go generates either construct today; every other `--lang`
 refuses it by name.
 
@@ -4088,10 +4100,11 @@ table Ledger | integrity = "crc32c"
 `LedgerSave` appends four bytes, the little-endian CRC-32C of everything
 before them, and `LedgerMeasure` counts them. Every read checks them after the
 form byte and before any field: `LedgerReadStrict` and `LedgerLoadText` refuse a
-mismatch with `TableRefuseIntegrityMismatch` (`errors.Is`), and the tolerant
-`LedgerLoad` sets `malformed` with the reason `integrity_mismatch` and decodes
-nothing. Every single-bit flip and every damaged byte is caught; it guards
-against accident, not against someone rewriting the file, which is still a
+mismatch with `TableRefuseIntegrityMismatch` (`errors.Is`); `LedgerLoadTolerant`
+checks the trailer first and sets `malformed` with the reason
+`integrity_mismatch`, and the plain `LedgerLoad` refuses it (§6.5). Both decode
+nothing on a mismatch. Every single-bit flip and every damaged byte is caught;
+it guards against accident, not against someone rewriting the file, which is still a
 signature's job. Adding or removing the key changes the file's framing, so
 rewrite stored files across the change. A `fixed table` may declare it too:
 `PointFixedSave` appends the same trailer after the last record,
@@ -4155,8 +4168,9 @@ for name, data := range files {
 
 `Generate` writes nothing: it returns the emitted files keyed by name, so the
 bytes can go to a build directory, an archive, or straight into a comparison.
-`Options` carries per-target settings for registered generators; the
-built-in targets read none today.
+`Options` carries per-target settings for registered generators; the built-in
+Go target reads its `runtime` and `surface` options today, and the rest read
+none (SPEC-TABLES.md §8.4, §8.8).
 
 A unit that does not compile comes back as `compiler.Diagnostics`, the whole
 error list rather than the first one:
@@ -4247,8 +4261,8 @@ backends disagree with each other here), and `ir.ExprHasEnumMax` reports an
 the resolved value and keep the schema form in a comment, as the built-in
 backends do.
 
-`compiler.Version()` and `compiler.UserAgent()` report which build of the
-compiler is running, for a tool that stamps its own output.
+`compiler.UserAgent()` reports which build of the compiler is running, for a
+tool that stamps its own output.
 
 The exported surface of `compiler` and `ir` is under semver from the release
 that first carries it; everything under `internal/` is not
