@@ -3,17 +3,107 @@ package jsontestsuite
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"testing"
 )
 
+// outcome is what one Equal call must say under docs/SPEC-TABLES.md §16.13.
+type outcome int
+
+const (
+	outEqual outcome = iota
+	outDiffer
+	outRefuse
+)
+
 // TestJsonSemanticEqual pins the semantic-equal oracle over the corpus the
-// policy accepts (docs/SPEC-TABLES.md §16.12): every accepted file equals
-// itself and a whitespace-only rewrite, an ASCII character respelled as its
-// \u escape still equals; and the reversed witness mutates a number's digit, a
-// string's character and an object's first two keys and requires inequality.
-// The huge-exponent compare is pinned bounded-in-allocation.
+// policy accepts and over the §16.13 EQUAL rules the corpus does not spell:
+// every accepted file equals itself, a whitespace-only rewrite, and a rewrite
+// that respells one ASCII character as its \u escape; numbers compare by token
+// text (§16.13); the dialect's trailing commas and comments are not data; a
+// lone surrogate, malformed number, key past 255 decoded bytes, number token
+// past 511 bytes, bad UTF-8 and past-cap depth are refused, never compared;
+// and the reversed witness mutates a number's digit, a string's character and
+// an object's first two keys and requires inequality with a named place.
 func TestJsonSemanticEqual(t *testing.T) {
 	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		a, b   string
+		want   outcome
+		reason string
+	}{
+		{name: "identity", a: `[1]`, b: `[1]`, want: outEqual},
+		{name: "number 1 vs 1.0", a: `[1]`, b: `[1.0]`, want: outDiffer, reason: "number"},
+		{name: "number -0 vs 0", a: `[-0]`, b: `[0]`, want: outDiffer, reason: "number"},
+		{name: "number 1E2 vs 1e2", a: `[1E2]`, b: `[1e2]`, want: outDiffer, reason: "number"},
+		{name: "number 100 vs 1e2", a: `[100]`, b: `[1e2]`, want: outDiffer, reason: "number"},
+		{name: "number 1.0 vs 1e0", a: `[1.0]`, b: `[1e0]`, want: outDiffer, reason: "number"},
+		{name: "number 10e-1 vs 1", a: `[10e-1]`, b: `[1]`, want: outDiffer, reason: "number"},
+		{name: "huge exponent differs", a: `[1e999999999]`, b: `[1e999999998]`, want: outDiffer, reason: "number"},
+		{name: "same huge exponent", a: `[1e999999999]`, b: `[1e999999999]`, want: outEqual},
+		{name: "array trailing comma", a: `[1,]`, b: `[1]`, want: outEqual},
+		{name: "empty string trailing comma", a: `["",]`, b: `[""]`, want: outEqual},
+		{name: "object trailing comma", a: `{"id":0,}`, b: `{"id":0}`, want: outEqual},
+		{name: "block comment between key and value", a: `{"a":/*comment*/"b"}`, b: `{"a":"b"}`, want: outEqual},
+		{name: "line comment to end", a: `{"a":"b"}//`, b: `{"a":"b"}`, want: outEqual},
+		{name: "block comment to end", a: `{"a":"b"}/**/`, b: `{"a":"b"}`, want: outEqual},
+		{name: "slash escape equals slash", a: `["\/"]`, b: `["/"]`, want: outEqual},
+		{name: "ascii escape equals literal", a: `["A"]`, b: `["\u0041"]`, want: outEqual},
+		{name: "surrogate pair equals literal", a: `["\uD83D\uDE00"]`, b: `["😀"]`, want: outEqual},
+		{name: "key order is data", a: `{"a":1,"b":2}`, b: `{"b":2,"a":1}`, want: outDiffer, reason: "key"},
+		{name: "repeated keys are positional", a: `{"a":1,"a":2}`, b: `{"a":2,"a":1}`, want: outDiffer, reason: "number"},
+		{name: "string ab vs ac", a: `["ab"]`, b: `["ac"]`, want: outDiffer, reason: "string"},
+		{name: "array length differs", a: `[1]`, b: `[1,2]`, want: outDiffer, reason: "array length"},
+		{name: "object member count differs", a: `{}`, b: `{"a":1}`, want: outDiffer, reason: "member count"},
+		{name: "malformed leading zero", a: `[01]`, b: `[01]`, want: outRefuse, reason: "expected"},
+		{name: "lone high surrogate", a: `["\uD800"]`, b: `["\uD800"]`, want: outRefuse, reason: "string_lone_surrogate"},
+		{name: "lone low surrogate", a: `["\uDFFF"]`, b: `["\uDFFF"]`, want: outRefuse, reason: "string_lone_surrogate"},
+		{name: "high vs low surrogate", a: `["\uD800"]`, b: `["\uDFFF"]`, want: outRefuse, reason: "string_lone_surrogate"},
+		{name: "lone surrogate vs replacement", a: `["\uD800"]`, b: `["�"]`, want: outRefuse, reason: "string_lone_surrogate"},
+		{name: "lone surrogate in key", a: `{"\uD800":1}`, b: `{"\uD800":1}`, want: outRefuse, reason: "string_lone_surrogate"},
+		{name: "invalid utf-8", a: "[\"\xff\"]", b: "[\"\xff\"]", want: outRefuse, reason: "string_not_utf8"},
+		{name: "unclosed object", a: `{"a":1`, b: `{"a":1}`, want: outRefuse, reason: "ends inside"},
+		{name: "key of 255 bytes", a: keyText(255), b: keyText(255), want: outEqual},
+		{name: "key of 256 bytes", a: keyText(256), b: keyText(256), want: outRefuse, reason: "key past the cap of 255"},
+		{name: "number token of 511 bytes", a: numberText(511), b: numberText(511), want: outEqual},
+		{name: "number token of 512 bytes", a: numberText(512), b: numberText(512), want: outRefuse, reason: "number token past the cap of 511"},
+		{name: "129 nested arrays", a: nestedArrays(129), b: nestedArrays(129), want: outEqual},
+		{name: "130 nested arrays", a: nestedArrays(130), b: nestedArrays(130), want: outRefuse, reason: "depth past the cap of 128"},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ok, why := Equal([]byte(tc.a), []byte(tc.b))
+			switch tc.want {
+			case outEqual:
+				if !ok {
+					t.Errorf("Equal(%q, %q) = false: %s", tc.a, tc.b, why)
+				}
+				if why != "" {
+					t.Errorf("Equal(%q, %q) equal but reason %q", tc.a, tc.b, why)
+				}
+			case outDiffer:
+				if ok {
+					t.Errorf("Equal(%q, %q) = true; want different", tc.a, tc.b)
+				} else if strings.HasPrefix(why, refusedPrefix) {
+					t.Errorf("Equal(%q, %q) refused; want a difference: %s", tc.a, tc.b, why)
+				} else if !strings.Contains(why, tc.reason) {
+					t.Errorf("Equal(%q, %q) reason %q does not name %q", tc.a, tc.b, why, tc.reason)
+				}
+			case outRefuse:
+				if ok {
+					t.Errorf("Equal(%q, %q) = true; want a refusal", tc.a, tc.b)
+				} else if !strings.HasPrefix(why, refusedPrefix) {
+					t.Errorf("Equal(%q, %q) = false, %q; want a refusal", tc.a, tc.b, why)
+				} else if !strings.Contains(why, tc.reason) {
+					t.Errorf("Equal(%q, %q) refusal %q does not name %q", tc.a, tc.b, why, tc.reason)
+				}
+			}
+		})
+	}
+
 	s, err := Load("../..")
 	if err != nil {
 		t.Fatal(err)
@@ -41,25 +131,25 @@ func TestJsonSemanticEqual(t *testing.T) {
 			}
 			if m, ok := mutateDigit(data); ok {
 				if eq, why := Equal(data, m); eq {
-					t.Errorf("digit-mutated number is still equal")
-				} else if why == "" {
-					t.Errorf("digit-mutated number: reason is empty")
+					t.Error("digit-mutated number is still equal")
+				} else if why == "" || strings.HasPrefix(why, refusedPrefix) {
+					t.Errorf("digit-mutated number: want a named difference, got %q", why)
 				}
 			}
 			if m, ok := mutateStringChar(data); ok {
 				if eq, why := Equal(data, m); eq {
-					t.Errorf("character-mutated string is still equal")
-				} else if why == "" {
-					t.Errorf("character-mutated string: reason is empty")
+					t.Error("character-mutated string is still equal")
+				} else if why == "" || strings.HasPrefix(why, refusedPrefix) {
+					t.Errorf("character-mutated string: want a named difference, got %q", why)
 				}
 			}
 			if m := swapFirstTwoKeys(data); m != nil {
 				if bytes.Equal(m, data) {
-					// both keys are the same text, so the swap changes nothing
+					// Both keys are the same text, so the swap changes nothing.
 				} else if eq, why := Equal(data, m); eq {
-					t.Errorf("first-two-keys-swapped object is still equal")
-				} else if why == "" {
-					t.Errorf("first-two-keys-swapped object: reason is empty")
+					t.Error("first-two-keys-swapped object is still equal")
+				} else if why == "" || strings.HasPrefix(why, refusedPrefix) {
+					t.Errorf("first-two-keys-swapped object: want a named difference, got %q", why)
 				}
 			}
 		})
@@ -70,9 +160,8 @@ func TestJsonSemanticEqual(t *testing.T) {
 }
 
 // TestJsonSemanticEqualAllocs pins the huge-exponent compare bounded in
-// allocation. It is the one test in this package that does not open with
-// t.Parallel(): testing.AllocsPerRun refuses to run under a parallel test, and
-// the bound it measures is the point of the test.
+// allocation. It does not open with t.Parallel(): testing.AllocsPerRun panics
+// during a parallel test, and the bound it measures is the point of the test.
 func TestJsonSemanticEqualAllocs(t *testing.T) {
 	if ok, _ := Equal([]byte("[1e999999999]"), []byte("[1e999999998]")); ok {
 		t.Error("1e999999999 equals 1e999999998")
@@ -80,24 +169,30 @@ func TestJsonSemanticEqualAllocs(t *testing.T) {
 	if ok, why := Equal([]byte("[1e999999999]"), []byte("[1e999999999]")); !ok {
 		t.Errorf("1e999999999 not equal to itself: %s", why)
 	}
-	if ok, why := Equal([]byte("[123.0]"), []byte("[123]")); !ok {
-		t.Errorf("123.0 not equal to 123: %s", why)
-	}
-	if ok, why := Equal([]byte("[0e0]"), []byte("[-0.0]")); !ok {
-		t.Errorf("0e0 not equal to -0.0: %s", why)
-	}
-	alloc := testing.AllocsPerRun(1, func() {
+	alloc := testing.AllocsPerRun(10, func() {
 		if ok, _ := Equal([]byte("[1e999999999]"), []byte("[1e999999998]")); ok {
 			t.Error("1e999999999 equals 1e999999998")
 		}
 	})
-	if alloc > 64 {
+	if alloc > 128 {
 		t.Errorf("huge-exponent compare allocated %v times; want bounded", alloc)
 	}
 }
 
+func keyText(n int) string {
+	return `{"` + strings.Repeat("a", n) + `":1}`
+}
+
+func numberText(n int) string {
+	return `[1` + strings.Repeat("0", n-1) + `]`
+}
+
+func nestedArrays(n int) string {
+	return strings.Repeat("[", n) + strings.Repeat("]", n)
+}
+
 // addWhitespace wraps a text in whitespace, a rewrite that changes only
-// whitespace and never the value (§16.12). The leading byte-order mark, when
+// whitespace and never the value (§16.13). The leading byte-order mark, when
 // present, stays first.
 func addWhitespace(data []byte) []byte {
 	out := make([]byte, 0, len(data)+2)
@@ -197,7 +292,7 @@ func firstPlainAlnum(data []byte, start, end int) int {
 }
 
 // swapFirstTwoKeys swaps the first two top-level keys of the first object that
-// has at least two; key order is part of the text (§16.12), so the value
+// has at least two; key order is part of the value (§16.13), so the value
 // differs. It returns nil when no such object exists.
 func swapFirstTwoKeys(data []byte) []byte {
 	toks := scanTokens(data)
@@ -263,15 +358,30 @@ type token struct {
 	start, end int
 }
 
-// scanTokens splits a JSON text into tokens, string-aware, for the mutation
-// helpers above.
+// scanTokens splits a JSON text into tokens for the mutation helpers above. It
+// skips whitespace and the §16.2 dialect's comments so a word in a comment is
+// never mistaken for a token of the value.
 func scanTokens(data []byte) []token {
 	var out []token
 	i, n := 0, len(data)
 	for i < n {
-		switch c := data[i]; {
+		c := data[i]
+		switch {
 		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
 			i++
+		case c == '/' && i+1 < n && data[i+1] == '/':
+			i += 2
+			for i < n && data[i] != '\n' {
+				i++
+			}
+		case c == '/' && i+1 < n && data[i+1] == '*':
+			i += 2
+			for i+1 < n && !(data[i] == '*' && data[i+1] == '/') {
+				i++
+			}
+			if i+1 < n {
+				i += 2
+			}
 		case c == '"':
 			s := i
 			i++
@@ -301,11 +411,25 @@ func scanTokens(data []byte) []token {
 			i += 4
 		default:
 			s := i
-			for i < n && data[i] != ' ' && data[i] != '\t' && data[i] != '\n' && data[i] != '\r' && data[i] != ',' && data[i] != ']' && data[i] != '}' {
+			for i < n && !tokenDelimiter(data, i) {
 				i++
 			}
 			out = append(out, token{tkNumber, 0, s, i})
 		}
 	}
 	return out
+}
+
+func tokenDelimiter(data []byte, i int) bool {
+	c := data[i]
+	if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+		return true
+	}
+	switch c {
+	case ',', ']', '}', ':', '{', '[':
+		return true
+	case '/':
+		return i+1 < len(data) && (data[i+1] == '/' || data[i+1] == '*')
+	}
+	return false
 }

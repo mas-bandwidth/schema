@@ -1,37 +1,68 @@
 // Equal is the semantic-equal oracle for JSON texts, by docs/SPEC-TABLES.md
-// §16.12: two JSON LAYER texts hold the same value when they read as one value
-// each under §16.12's grammar and the values are equal. Whitespace between
-// tokens is insignificant, a string spelling an ASCII character as its \u
-// escape is the same string, object members are compared positionally (key
-// order is part of the text), and a number is compared by its value without
-// being expanded (1e999999999 compares in constant memory). The walk is bounded
-// by §16.12's caps: depth 128. Standard library only.
+// §16.13 EQUAL: each text is read with §16.12's layer plus the construct's
+// refusals, and two values are equal when they are the same kind, numbers are
+// equal exactly when their token texts are equal byte for byte, strings when
+// their decoded UTF-8 bytes are equal, arrays element by element, and objects
+// member by member in order (a repeated key compared where it stands).
+// Whitespace, a leading byte-order mark, comments and trailing commas are not
+// data (§16.2, §16.12). The walk is bounded by §16.12's caps: depth 128, a key
+// of 255 decoded bytes, a number token of 511 bytes. No number is ever
+// expanded. Standard library only.
 package jsontestsuite
 
 import (
 	"bytes"
 	"fmt"
-	"math/big"
-	"strconv"
+	"unicode/utf8"
 )
 
-// Equal reports whether the two JSON texts hold the same value and, if not,
-// where they first differ (a path into the text).
+// §16.12's caps, held by both texts before anything is compared.
+const (
+	maxDepth       = 128
+	maxKeyBytes    = 255
+	maxNumberBytes = 511
+)
+
+// refusedPrefix marks a refusal rather than an inequality: §16.13 says that if
+// either text is refused, Equal refuses too. The two-value signature has no
+// third return, so a refusal is false with this prefix and the reason.
+const refusedPrefix = "refused: "
+
+// Equal reports whether the two JSON texts hold the same value under
+// §16.13's EQUAL. When they do not, it returns false and the path where they
+// first differ. When either text is not well-formed under §16.12's layer
+// (including a key past 255 decoded bytes and a number token past 511 bytes),
+// it refuses: false with a reason beginning "refused: ".
 func Equal(a, b []byte) (bool, string) {
 	ra := &reader{data: a}
 	rb := &reader{data: b}
-	skipBOM(ra)
-	skipBOM(rb)
+	ra.skipBOM()
+	rb.skipBOM()
 	ok, why := eqValue(ra, rb, 0, "$")
 	if !ok {
 		return false, why
 	}
-	ra.skipWS()
-	rb.skipWS()
-	if ra.i != len(ra.data) || rb.i != len(rb.data) {
-		return false, fmt.Sprintf("$: trailing input differs (byte %d)", ra.i)
+	if !ra.skipSpace() {
+		return refuse("$", "unterminated comment in a")
+	}
+	if !rb.skipSpace() {
+		return refuse("$", "unterminated comment in b")
+	}
+	if ra.i != len(ra.data) {
+		return refuse("$", "trailing input in a at byte %d", ra.i)
+	}
+	if rb.i != len(rb.data) {
+		return refuse("$", "trailing input in b at byte %d", rb.i)
 	}
 	return true, ""
+}
+
+func refuse(path, format string, args ...any) (bool, string) {
+	return false, refusal(path, format, args...)
+}
+
+func refusal(path, format string, args ...any) string {
+	return refusedPrefix + path + ": " + fmt.Sprintf(format, args...)
 }
 
 // reader walks one JSON text.
@@ -40,40 +71,54 @@ type reader struct {
 	i    int
 }
 
-// skipWS advances over whitespace and, as the §16.2 dialect accepts on read
-// (§16.12), comments: `/* */` and `//` to end of line or input.
-func (r *reader) skipWS() {
+// skipBOM skips a leading UTF-8 byte-order mark (RFC 8259 §8.1; §16.12), the
+// only place those bytes are not data.
+func (r *reader) skipBOM() {
+	if r.i+3 <= len(r.data) && r.data[r.i] == 0xEF && r.data[r.i+1] == 0xBB && r.data[r.i+2] == 0xBF {
+		r.i += 3
+	}
+}
+
+// skipSpace advances over whitespace and, as the §16.2 dialect accepts on
+// read (§16.12), comments: `/* */` and `//` to end of line or input. It reports
+// false for an unterminated block comment, which is not a comment.
+func (r *reader) skipSpace() bool {
 	for r.i < len(r.data) {
 		switch r.data[r.i] {
 		case ' ', '\t', '\n', '\r':
 			r.i++
 		case '/':
-			if r.i+1 < len(r.data) && r.data[r.i+1] == '*' {
+			if r.i+1 >= len(r.data) {
+				return true
+			}
+			switch r.data[r.i+1] {
+			case '*':
 				r.i += 2
-				for r.i+1 < len(r.data) && !(r.data[r.i] == '*' && r.data[r.i+1] == '/') {
+				closed := false
+				for r.i+1 < len(r.data) {
+					if r.data[r.i] == '*' && r.data[r.i+1] == '/' {
+						r.i += 2
+						closed = true
+						break
+					}
 					r.i++
 				}
-				r.i += 2
-			} else if r.i+1 < len(r.data) && r.data[r.i+1] == '/' {
+				if !closed {
+					return false
+				}
+			case '/':
 				r.i += 2
 				for r.i < len(r.data) && r.data[r.i] != '\n' {
 					r.i++
 				}
-			} else {
-				return
+			default:
+				return true
 			}
 		default:
-			return
+			return true
 		}
 	}
-}
-
-// skipBOM skips a leading UTF-8 byte-order mark (RFC 8259 §8.1; §16.12), the
-// only place those bytes are not data.
-func skipBOM(r *reader) {
-	if r.i+3 <= len(r.data) && r.data[r.i] == 0xEF && r.data[r.i+1] == 0xBB && r.data[r.i+2] == 0xBF {
-		r.i += 3
-	}
+	return true
 }
 
 type kind int
@@ -84,8 +129,10 @@ const (
 	kObj
 	kArr
 	kLit
+	kBad
 )
 
+// kindOf names the value a first byte starts, or kBad when it starts none.
 func kindOf(c byte) kind {
 	switch c {
 	case '{':
@@ -96,39 +143,63 @@ func kindOf(c byte) kind {
 		return kStr
 	case 't', 'f', 'n':
 		return kLit
-	default:
+	case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
 		return kNum
+	default:
+		return kBad
 	}
 }
 
 func kindName(c byte) string {
-	switch c {
-	case '{':
+	switch kindOf(c) {
+	case kObj:
 		return "object"
-	case '[':
+	case kArr:
 		return "array"
-	case '"':
+	case kStr:
 		return "string"
-	case 't', 'f', 'n':
+	case kLit:
 		return "literal"
-	default:
+	case kNum:
 		return "number"
+	default:
+		return fmt.Sprintf("unexpected byte %q", c)
 	}
 }
 
+// eqValue compares two values under §16.13's EQUAL. depth is the depth of the
+// value's container, the root's container at 0 (§16.12).
 func eqValue(ra, rb *reader, depth int, path string) (bool, string) {
-	if depth > 128 {
-		return false, path + ": past the depth cap of 128 (§16.12)"
+	if !ra.skipSpace() {
+		return refuse(path, "unterminated comment in a")
 	}
-	ra.skipWS()
-	rb.skipWS()
-	if ra.i >= len(ra.data) || rb.i >= len(rb.data) {
-		return false, path + ": one text ends early"
+	if !rb.skipSpace() {
+		return refuse(path, "unterminated comment in b")
+	}
+	if ra.i >= len(ra.data) {
+		return refuse(path, "text a ends where a value is expected")
+	}
+	if rb.i >= len(rb.data) {
+		return refuse(path, "text b ends where a value is expected")
 	}
 	ca, cb := ra.data[ra.i], rb.data[rb.i]
 	ka, kb := kindOf(ca), kindOf(cb)
+	if ka == kBad {
+		return refuse(path, "%s in a", kindName(ca))
+	}
+	if kb == kBad {
+		return refuse(path, "%s in b", kindName(cb))
+	}
+	// §16.12 counts containers: the root's container is depth 0 and a
+	// container whose depth is past 128 is refused.
+	if (ka == kObj || ka == kArr) && depth > maxDepth {
+		return refuse(path, "depth past the cap of 128 in a")
+	}
+	if (kb == kObj || kb == kArr) && depth > maxDepth {
+		return refuse(path, "depth past the cap of 128 in b")
+	}
 	if ka != kb {
-		return false, fmt.Sprintf("%s: %s vs %s (byte %d)", path, kindName(ca), kindName(cb), ra.i)
+		return false, fmt.Sprintf("%s: %s != %s", path, kindName(ca), kindName(cb))
 	}
 	switch ka {
 	case kObj:
@@ -148,44 +219,104 @@ func eqObject(ra, rb *reader, depth int, path string) (bool, string) {
 	ra.i++
 	rb.i++
 	for {
-		ra.skipWS()
-		rb.skipWS()
-		if ra.i < len(ra.data) && rb.i < len(rb.data) && ra.data[ra.i] == '}' && rb.data[rb.i] == '}' {
-			ra.i++
-			rb.i++
-			return true, ""
+		if !ra.skipSpace() {
+			return refuse(path, "unterminated comment in a")
 		}
-		ka, oka := ra.parseString()
-		kb, okb := rb.parseString()
-		if !oka || !okb {
-			return false, path + ": bad key"
+		if !rb.skipSpace() {
+			return refuse(path, "unterminated comment in b")
 		}
-		if ka != kb {
+		if ra.i >= len(ra.data) {
+			return refuse(path, "text a ends inside an object")
+		}
+		if rb.i >= len(rb.data) {
+			return refuse(path, "text b ends inside an object")
+		}
+		closeA := ra.i < len(ra.data) && ra.data[ra.i] == '}'
+		closeB := rb.i < len(rb.data) && rb.data[rb.i] == '}'
+		if closeA || closeB {
+			if closeA && closeB {
+				ra.i++
+				rb.i++
+				return true, ""
+			}
+			return false, path + ": object member count differs"
+		}
+		ka, okA, whyA := ra.parseString(path, maxKeyBytes, "key")
+		if !okA {
+			return false, whyA
+		}
+		kb, okB, whyB := rb.parseString(path, maxKeyBytes, "key")
+		if !okB {
+			return false, whyB
+		}
+		if !bytes.Equal(ka, kb) {
 			return false, fmt.Sprintf("%s: key %q != %q", path, ka, kb)
 		}
-		ra.skipWS()
-		rb.skipWS()
-		if ra.i >= len(ra.data) || rb.i >= len(rb.data) || ra.data[ra.i] != ':' || rb.data[rb.i] != ':' {
-			return false, path + ": expected ':'"
+		member := path + "." + string(ka)
+		if !ra.skipSpace() {
+			return refuse(member, "unterminated comment in a")
+		}
+		if !rb.skipSpace() {
+			return refuse(member, "unterminated comment in b")
+		}
+		if ra.i >= len(ra.data) || ra.data[ra.i] != ':' {
+			return refuse(member, "expected ':' in a")
+		}
+		if rb.i >= len(rb.data) || rb.data[rb.i] != ':' {
+			return refuse(member, "expected ':' in b")
 		}
 		ra.i++
 		rb.i++
-		if ok, why := eqValue(ra, rb, depth+1, path+"."+ka); !ok {
+		if ok, why := eqValue(ra, rb, depth+1, member); !ok {
 			return false, why
 		}
-		ra.skipWS()
-		rb.skipWS()
-		if ra.i < len(ra.data) && rb.i < len(rb.data) && ra.data[ra.i] == ',' && rb.data[rb.i] == ',' {
-			ra.i++
-			rb.i++
-			continue
+		if !ra.skipSpace() {
+			return refuse(member, "unterminated comment in a")
 		}
-		if ra.i < len(ra.data) && rb.i < len(rb.data) && ra.data[ra.i] == '}' && rb.data[rb.i] == '}' {
+		if !rb.skipSpace() {
+			return refuse(member, "unterminated comment in b")
+		}
+		if ra.i >= len(ra.data) {
+			return refuse(member, "text a ends inside an object")
+		}
+		if rb.i >= len(rb.data) {
+			return refuse(member, "text b ends inside an object")
+		}
+		closeA = ra.i < len(ra.data) && ra.data[ra.i] == '}'
+		closeB = rb.i < len(rb.data) && rb.data[rb.i] == '}'
+		commaA := ra.i < len(ra.data) && ra.data[ra.i] == ','
+		commaB := rb.i < len(rb.data) && rb.data[rb.i] == ','
+		if closeA && closeB {
 			ra.i++
 			rb.i++
 			return true, ""
 		}
-		return false, path + ": object structure differs"
+		if closeA || closeB {
+			// One side is done; the other must be spelling a trailing
+			// comma, or it holds more members and the count differs.
+			if closeA && !commaB {
+				return false, path + ": object member count differs"
+			}
+			if closeB && !commaA {
+				return false, path + ": object member count differs"
+			}
+		} else {
+			if !commaA {
+				return refuse(member, "expected ',' in b")
+			}
+			if !commaB {
+				return refuse(member, "expected ',' in a")
+			}
+		}
+		// A trailing comma before the closing brace is the §16.2 dialect
+		// and is not data, so one side may spell it and the other not
+		// (§16.13). The next turn's close check decides.
+		if commaA {
+			ra.i++
+		}
+		if commaB {
+			rb.i++
+		}
 	}
 }
 
@@ -194,243 +325,303 @@ func eqArray(ra, rb *reader, depth int, path string) (bool, string) {
 	rb.i++
 	idx := 0
 	for {
-		ra.skipWS()
-		rb.skipWS()
-		if ra.i < len(ra.data) && rb.i < len(rb.data) && ra.data[ra.i] == ']' && rb.data[rb.i] == ']' {
-			ra.i++
-			rb.i++
-			return true, ""
+		if !ra.skipSpace() {
+			return refuse(path, "unterminated comment in a")
+		}
+		if !rb.skipSpace() {
+			return refuse(path, "unterminated comment in b")
+		}
+		if ra.i >= len(ra.data) {
+			return refuse(path, "text a ends inside an array")
+		}
+		if rb.i >= len(rb.data) {
+			return refuse(path, "text b ends inside an array")
+		}
+		closeA := ra.i < len(ra.data) && ra.data[ra.i] == ']'
+		closeB := rb.i < len(rb.data) && rb.data[rb.i] == ']'
+		if closeA || closeB {
+			if closeA && closeB {
+				ra.i++
+				rb.i++
+				return true, ""
+			}
+			return false, path + ": array length differs"
 		}
 		child := fmt.Sprintf("%s[%d]", path, idx)
 		if ok, why := eqValue(ra, rb, depth+1, child); !ok {
 			return false, why
 		}
-		idx++
-		ra.skipWS()
-		rb.skipWS()
-		if ra.i < len(ra.data) && rb.i < len(rb.data) && ra.data[ra.i] == ',' && rb.data[rb.i] == ',' {
-			ra.i++
-			rb.i++
-			continue
+		if !ra.skipSpace() {
+			return refuse(child, "unterminated comment in a")
 		}
-		if ra.i < len(ra.data) && rb.i < len(rb.data) && ra.data[ra.i] == ']' && rb.data[rb.i] == ']' {
+		if !rb.skipSpace() {
+			return refuse(child, "unterminated comment in b")
+		}
+		if ra.i >= len(ra.data) {
+			return refuse(child, "text a ends inside an array")
+		}
+		if rb.i >= len(rb.data) {
+			return refuse(child, "text b ends inside an array")
+		}
+		closeA = ra.i < len(ra.data) && ra.data[ra.i] == ']'
+		closeB = rb.i < len(rb.data) && rb.data[rb.i] == ']'
+		commaA := ra.i < len(ra.data) && ra.data[ra.i] == ','
+		commaB := rb.i < len(rb.data) && rb.data[rb.i] == ','
+		if closeA && closeB {
 			ra.i++
 			rb.i++
 			return true, ""
 		}
-		return false, path + ": array structure differs"
+		if closeA || closeB {
+			// One side is done; the other must be spelling a trailing
+			// comma, or it holds more elements and the length differs.
+			if closeA && !commaB {
+				return false, path + ": array length differs"
+			}
+			if closeB && !commaA {
+				return false, path + ": array length differs"
+			}
+		} else {
+			if !commaA {
+				return refuse(child, "expected ',' in b")
+			}
+			if !commaB {
+				return refuse(child, "expected ',' in a")
+			}
+		}
+		// A trailing comma is the §16.2 dialect and is not data. The next
+		// turn's close check decides.
+		if commaA {
+			ra.i++
+		}
+		if commaB {
+			rb.i++
+		}
+		idx++
 	}
 }
 
 func eqString(ra, rb *reader, path string) (bool, string) {
-	sa, oka := ra.parseString()
-	sb, okb := rb.parseString()
-	if !oka || !okb {
-		return false, path + ": bad string"
+	sa, okA, whyA := ra.parseString(path, -1, "string")
+	if !okA {
+		return false, whyA
 	}
-	if sa != sb {
-		return false, path + ": string differs"
+	sb, okB, whyB := rb.parseString(path, -1, "string")
+	if !okB {
+		return false, whyB
+	}
+	if !bytes.Equal(sa, sb) {
+		return false, fmt.Sprintf("%s: string %q != %q", path, sa, sb)
 	}
 	return true, ""
 }
 
 func eqLiteral(ra, rb *reader, path string) (bool, string) {
-	lits := map[byte]string{'t': "true", 'f': "false", 'n': "null"}
-	la := lits[ra.data[ra.i]]
-	lb := lits[rb.data[rb.i]]
+	la, okA, whyA := ra.parseLiteral(path)
+	if !okA {
+		return false, whyA
+	}
+	lb, okB, whyB := rb.parseLiteral(path)
+	if !okB {
+		return false, whyB
+	}
 	if la != lb {
-		return false, path + ": literal differs"
+		return false, fmt.Sprintf("%s: literal %s != %s", path, la, lb)
 	}
-	if !bytes.Equal(ra.data[ra.i:ra.i+len(la)], []byte(la)) || !bytes.Equal(rb.data[rb.i:rb.i+len(lb)], []byte(lb)) {
-		return false, path + ": bad literal"
-	}
-	ra.i += len(la)
-	rb.i += len(lb)
 	return true, ""
 }
 
-func eqNumber(ra, rb *reader, path string) (bool, string) {
-	na, ta, oka := ra.parseNumber()
-	nb, tb, okb := rb.parseNumber()
-	if !oka || !okb {
-		return false, path + ": bad number"
+// parseLiteral reads one of RFC 8259's three literals.
+func (r *reader) parseLiteral(path string) (string, bool, string) {
+	lits := map[byte]string{'t': "true", 'f': "false", 'n': "null"}
+	lit, ok := lits[r.data[r.i]]
+	if !ok {
+		return "", false, refusal(path, "bad literal")
 	}
-	if !numbersEqual(na, nb) {
+	if r.i+len(lit) > len(r.data) || !bytes.Equal(r.data[r.i:r.i+len(lit)], []byte(lit)) {
+		return "", false, refusal(path, "bad literal")
+	}
+	r.i += len(lit)
+	return lit, true, ""
+}
+
+func eqNumber(ra, rb *reader, path string) (bool, string) {
+	ta, okA, whyA := ra.parseNumber(path)
+	if !okA {
+		return false, whyA
+	}
+	tb, okB, whyB := rb.parseNumber(path)
+	if !okB {
+		return false, whyB
+	}
+	// §16.13 EQUAL: two numbers are equal exactly when their token texts are
+	// equal byte for byte, so 1.0, 1e0 and 10e-1 are three different numbers
+	// and -0 is not 0.
+	if !bytes.Equal(ta, tb) {
 		return false, fmt.Sprintf("%s: number %s != %s", path, ta, tb)
 	}
 	return true, ""
 }
 
-// number is a JSON number kept unexpanded: value = ±dig·10^(exp−frac), where
-// exp is arbitrary precision (§16.12's number token cap is 511 bytes) so a
-// beam like 1e999999999 compares in constant memory.
-type number struct {
-	neg  bool
-	dig  *big.Int
-	exp  *big.Int
-	frac int
-}
-
-func (r *reader) parseNumber() (number, string, bool) {
+// parseNumber reads RFC 8259's number production and returns its token, never
+// a value (§16.13: the token is copied, never parsed), refusing a token past
+// 511 bytes.
+func (r *reader) parseNumber(path string) ([]byte, bool, string) {
 	start := r.i
-	neg := false
 	if r.i < len(r.data) && r.data[r.i] == '-' {
-		neg = true
 		r.i++
 	}
-	intStart := r.i
-	for r.i < len(r.data) && r.data[r.i] >= '0' && r.data[r.i] <= '9' {
-		r.i++
+	if r.i >= len(r.data) {
+		return nil, false, refusal(path, "number has no integer part")
 	}
-	intPart := string(r.data[intStart:r.i])
-	fracPart := ""
+	switch c := r.data[r.i]; {
+	case c == '0':
+		r.i++
+	case c >= '1' && c <= '9':
+		for r.i < len(r.data) && r.data[r.i] >= '0' && r.data[r.i] <= '9' {
+			r.i++
+		}
+	default:
+		return nil, false, refusal(path, "number has no integer part")
+	}
 	if r.i < len(r.data) && r.data[r.i] == '.' {
 		r.i++
-		fStart := r.i
+		if r.i >= len(r.data) || r.data[r.i] < '0' || r.data[r.i] > '9' {
+			return nil, false, refusal(path, "number has no fraction digits")
+		}
 		for r.i < len(r.data) && r.data[r.i] >= '0' && r.data[r.i] <= '9' {
 			r.i++
 		}
-		fracPart = string(r.data[fStart:r.i])
 	}
-	e := new(big.Int)
 	if r.i < len(r.data) && (r.data[r.i] == 'e' || r.data[r.i] == 'E') {
 		r.i++
-		esign := 1
 		if r.i < len(r.data) && (r.data[r.i] == '+' || r.data[r.i] == '-') {
-			if r.data[r.i] == '-' {
-				esign = -1
-			}
 			r.i++
 		}
-		eStart := r.i
+		if r.i >= len(r.data) || r.data[r.i] < '0' || r.data[r.i] > '9' {
+			return nil, false, refusal(path, "number has no exponent digits")
+		}
 		for r.i < len(r.data) && r.data[r.i] >= '0' && r.data[r.i] <= '9' {
 			r.i++
 		}
-		if _, ok := e.SetString(string(r.data[eStart:r.i]), 10); !ok {
-			return number{}, "", false
-		}
-		if esign < 0 {
-			e.Neg(e)
-		}
 	}
-	allDigits := intPart + fracPart
-	d := new(big.Int)
-	if allDigits == "" {
-		d.SetInt64(0)
-	} else if _, ok := d.SetString(allDigits, 10); !ok {
-		return number{}, "", false
+	if r.i-start > maxNumberBytes {
+		return nil, false, refusal(path, "number token past the cap of 511 bytes")
 	}
-	tok := string(r.data[start:r.i])
-	return number{neg: neg, dig: d, exp: e, frac: len(fracPart)}, tok, true
+	return r.data[start:r.i], true, ""
 }
 
-func numbersEqual(a, b number) bool {
-	za := a.dig.Sign() == 0
-	zb := b.dig.Sign() == 0
-	if za && zb {
-		return true
-	}
-	if za != zb {
-		return false
-	}
-	if a.neg != b.neg {
-		return false
-	}
-	return cmpMagnitude(a, b) == 0
-}
-
-func cmpMagnitude(a, b number) int {
-	lenA := len(a.dig.Text(10))
-	lenB := len(b.dig.Text(10))
-	cA := new(big.Int).Sub(new(big.Int).Set(a.exp), big.NewInt(int64(a.frac)))
-	cA.Add(cA, big.NewInt(int64(lenA)))
-	cB := new(big.Int).Sub(new(big.Int).Set(b.exp), big.NewInt(int64(b.frac)))
-	cB.Add(cB, big.NewInt(int64(lenB)))
-	if cmp := cA.Cmp(cB); cmp != 0 {
-		return cmp
-	}
-	p := lenA
-	if lenB > p {
-		p = lenB
-	}
-	p--
-	x := new(big.Int).Mul(new(big.Int).Set(a.dig), pow10(p-lenA+1))
-	y := new(big.Int).Mul(new(big.Int).Set(b.dig), pow10(p-lenB+1))
-	return x.Cmp(y)
-}
-
-func pow10(e int) *big.Int {
-	if e < 0 {
-		e = 0
-	}
-	return new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(e)), nil)
-}
-
-// parseString reads a JSON string token from the open quote and returns its
-// decoded value (docs/SPEC-TABLES.md §16.3: \u escapes decode; a surrogate
-// pair combines; the text is well-formed UTF-8).
-func (r *reader) parseString() (string, bool) {
+// parseString reads a JSON string and returns its decoded UTF-8 bytes
+// (§16.3): escapes are resolved, a surrogate pair combines, well-formed UTF-8
+// is required, and a lone or out-of-order surrogate is refused rather than
+// silently folded to U+FFFD. max is the decoded byte cap, -1 for a value's
+// string and 255 for an object key (§16.12, §16.13).
+func (r *reader) parseString(path string, max int, what string) ([]byte, bool, string) {
 	if r.i >= len(r.data) || r.data[r.i] != '"' {
-		return "", false
+		return nil, false, refusal(path, "%s does not open with a quote", what)
 	}
 	r.i++
-	var b bytes.Buffer
+	out := make([]byte, 0, 16)
 	for r.i < len(r.data) {
 		c := r.data[r.i]
 		if c == '"' {
 			r.i++
-			return b.String(), true
+			if max >= 0 && len(out) > max {
+				return nil, false, refusal(path, "%s past the cap of %d decoded bytes", what, max)
+			}
+			return out, true, ""
 		}
 		if c == '\\' {
 			r.i++
 			if r.i >= len(r.data) {
-				return "", false
+				return nil, false, refusal(path, "escape cut short in %s", what)
 			}
 			switch e := r.data[r.i]; e {
 			case '"', '\\', '/':
-				b.WriteByte(e)
+				out = append(out, e)
 				r.i++
 			case 'b':
-				b.WriteByte('\b')
+				out = append(out, '\b')
 				r.i++
 			case 'f':
-				b.WriteByte('\f')
+				out = append(out, '\f')
 				r.i++
 			case 'n':
-				b.WriteByte('\n')
+				out = append(out, '\n')
 				r.i++
 			case 'r':
-				b.WriteByte('\r')
+				out = append(out, '\r')
 				r.i++
 			case 't':
-				b.WriteByte('\t')
+				out = append(out, '\t')
 				r.i++
 			case 'u':
 				r.i++
-				if r.i+4 > len(r.data) {
-					return "", false
+				n, ok := r.hex4()
+				if !ok {
+					return nil, false, refusal(path, "bad \\u escape in %s", what)
 				}
-				n, err := strconv.ParseUint(string(r.data[r.i:r.i+4]), 16, 32)
-				if err != nil {
-					return "", false
-				}
-				r.i += 4
-				if n >= 0xD800 && n <= 0xDBFF && r.i+6 <= len(r.data) && r.data[r.i] == '\\' && r.data[r.i+1] == 'u' {
-					lo, err := strconv.ParseUint(string(r.data[r.i+2:r.i+6]), 16, 32)
-					if err == nil && lo >= 0xDC00 && lo <= 0xDFFF {
-						b.WriteRune(rune(0x10000 + (n-0xD800)<<10 + (lo - 0xDC00)))
-						r.i += 6
-						continue
+				switch {
+				case n >= 0xD800 && n <= 0xDBFF:
+					// A high half must be followed by a low half.
+					if r.i+6 > len(r.data) || r.data[r.i] != '\\' || r.data[r.i+1] != 'u' {
+						return nil, false, refusal(path, "string_lone_surrogate in %s", what)
 					}
+					r.i += 2
+					lo, ok := r.hex4()
+					if !ok || lo < 0xDC00 || lo > 0xDFFF {
+						return nil, false, refusal(path, "string_lone_surrogate in %s", what)
+					}
+					out = utf8.AppendRune(out, rune(0x10000+(n-0xD800)<<10+(lo-0xDC00)))
+				case n >= 0xDC00 && n <= 0xDFFF:
+					return nil, false, refusal(path, "string_lone_surrogate in %s", what)
+				default:
+					out = utf8.AppendRune(out, rune(n))
 				}
-				b.WriteRune(rune(n))
 			default:
-				return "", false
+				return nil, false, refusal(path, "bad escape \\%c in %s", e, what)
 			}
 			continue
 		}
-		b.WriteByte(c)
-		r.i++
+		if c < 0x20 {
+			return nil, false, refusal(path, "raw control byte 0x%02x in %s", c, what)
+		}
+		if c < utf8.RuneSelf {
+			out = append(out, c)
+			r.i++
+			continue
+		}
+		run, size := utf8.DecodeRune(r.data[r.i:])
+		if run == utf8.RuneError && size == 1 {
+			return nil, false, refusal(path, "string_not_utf8 in %s", what)
+		}
+		out = append(out, r.data[r.i:r.i+size]...)
+		r.i += size
 	}
-	return "", false
+	return nil, false, refusal(path, "%s is not closed", what)
+}
+
+// hex4 reads four hexadecimal digits and returns their value.
+func (r *reader) hex4() (int, bool) {
+	if r.i+4 > len(r.data) {
+		return 0, false
+	}
+	n := 0
+	for k := 0; k < 4; k++ {
+		c := r.data[r.i+k]
+		var d int
+		switch {
+		case c >= '0' && c <= '9':
+			d = int(c - '0')
+		case c >= 'a' && c <= 'f':
+			d = int(c-'a') + 10
+		case c >= 'A' && c <= 'F':
+			d = int(c-'A') + 10
+		default:
+			return 0, false
+		}
+		n = n<<4 | d
+	}
+	r.i += 4
+	return n, true
 }
