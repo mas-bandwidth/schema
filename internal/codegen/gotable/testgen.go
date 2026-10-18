@@ -702,9 +702,9 @@ func testgenFuzzHelpers(b *strings.Builder, base string) {
 	fmt.Fprintf(b, "func fuzz%sNamed(err error) bool {\n", base)
 	b.WriteString("\tvar reason TableRefuseReason\n\tif errors.As(err, &reason) {\n\t\treturn reason != TableRefuseOk && reason.Error() != \"invalid refusal reason\"\n\t}\n")
 	b.WriteString("\tvar missing TableMissingRequired\n\tvar build TableBuildVersionMismatch\n\treturn errors.As(err, &missing) || errors.As(err, &build)\n}\n")
-	fmt.Fprintf(b, "\n// fuzz%sSilent reports whether a tolerant read's report is silent (SPEC-TABLES\n// §4.1): nothing set aside, nothing refused.\n", base)
+	fmt.Fprintf(b, "\n// fuzz%sSilent reports whether a tolerant read's report is silent (SPEC-TABLES\n// §4.1): the whole report at its zero value, as a sample's read must be.\n", base)
 	fmt.Fprintf(b, "func fuzz%sSilent(r *TableReport) bool {\n", base)
-	b.WriteString("\treturn r.Err() == nil && r.Unknown == 0 && r.Widened == 0 && r.Retained == 0 && r.RetainLost == 0 && r.Duplicate == 0\n}\n")
+	b.WriteString("\treturn *r == (TableReport{})\n}\n")
 	fmt.Fprintf(b, "\n// fuzz%sInput spells a failing input: its length, its flip position when it is\n// a flip, and its first 256 bytes in hex.\n", base)
 	fmt.Fprintf(b, "func fuzz%sInput(data []byte, at int) string {\n", base)
 	b.WriteString("\ts := strconv.Itoa(len(data)) + \" bytes\"\n\tif at >= 0 {\n\t\ts += \", flipped at byte \" + strconv.Itoa(at)\n\t}\n")
@@ -774,8 +774,9 @@ func testgenFuzz(b *strings.Builder, base string, st *ir.Struct, variable bool, 
 	fmt.Fprintf(b, "\t\tgot, err := %sReadStrict(data)\n\t\tif err != nil {\n\t\t\tif got != nil || !fuzz%sNamed(err) {\n\t\t\t\tt.Fatalf(\"wire %%s: refused without a named reason: %%v\", fuzz%sInput(data, at), err)\n\t\t\t}\n\t\t\treturn\n\t\t}\n", n, base, base)
 	fmt.Fprintf(b, "\t\tif got == nil {\n\t\t\tt.Fatalf(\"wire %%s: accepted with no value\", fuzz%sInput(data, at))\n\t\t}\n", base)
 	fmt.Fprintf(b, "\t\tagain := make([]byte, max(%sMeasure(got), 0))\n\t\tsaved := %sSave(got, again) == int64(len(again))\n", n, n)
-	b.WriteString("\t\tif saved && bytes.Equal(again, data) {\n\t\t\treturn\n\t\t}\n")
-	fmt.Fprintf(b, "\t\tif saved && len(again) < len(data) && fuzz%sRespelled(again) {\n\t\t\treturn\n\t\t}\n", n)
+	fmt.Fprintf(b, "\t\tif !saved {\n\t\t\tt.Fatalf(\"wire %%s: accepted a value Save refuses\", fuzz%sInput(data, at))\n\t\t}\n", base)
+	b.WriteString("\t\tif bytes.Equal(again, data) {\n\t\t\treturn\n\t\t}\n")
+	fmt.Fprintf(b, "\t\tif len(again) < len(data) && fuzz%sRespelled(again) {\n\t\t\treturn\n\t\t}\n", n)
 	b.WriteString("\t\tvar r TableReport\n" + tolerant("\t\t", "data"))
 	fmt.Fprintf(b, "\t\tif fuzz%sSilent(&r) {\n\t\t\tt.Fatalf(\"wire %%s: accepted silently, and re-encodes to %%d other bytes\", fuzz%sInput(data, at), len(again))\n\t\t}\n\t}\n", base, base)
 	fmt.Fprintf(b, "\tfuzz%sFlips(f, wire, check)\n\tf.Fuzz(func(t *testing.T, data []byte) { check(t, data, -1) })\n}\n", base)
@@ -785,10 +786,10 @@ func testgenFuzz(b *strings.Builder, base string, st *ir.Struct, variable bool, 
 	fmt.Fprintf(b, "func Fuzz%sText(f *testing.F) {\n\t_, text, _ := fuzz%sSeeds(f)\n\tcheck := func(t testing.TB, data []byte, at int) {\n\t\tt.Helper()\n\t\tvar r TableReport\n", n, n)
 	fmt.Fprintf(b, "\t\tgot, err := %sLoadText(string(data), &r)\n\t\tif err != nil {\n\t\t\tif got != nil || !fuzz%sNamed(err) {\n\t\t\t\tt.Fatalf(\"text %%s: refused without a named reason: %%v\", fuzz%sInput(data, at), err)\n\t\t\t}\n\t\t\treturn\n\t\t}\n", n, base, base)
 	fmt.Fprintf(b, "\t\tif got == nil {\n\t\t\tt.Fatalf(\"text %%s: accepted with no value\", fuzz%sInput(data, at))\n\t\t}\n", base)
-	fmt.Fprintf(b, "\t\tagain, err := %sSaveText(got)\n\t\tif err == nil && again == string(data) {\n\t\t\treturn\n\t\t}\n", n)
+	fmt.Fprintf(b, "\t\tagain, err := %sSaveText(got)\n\t\tif err != nil {\n\t\t\tt.Fatalf(\"text %%s: accepted a value SaveText refuses: %%v\", fuzz%sInput(data, at), err)\n\t\t}\n\t\tif again == string(data) {\n\t\t\treturn\n\t\t}\n", n, base)
 	// §16.11 item 3 holds on the wire the text carries, never on the base64:
 	// the input's own base64 must be the standard spelling of its bytes
-	b.WriteString("\t\tif err == nil && len(again) < len(data) {\n")
+	b.WriteString("\t\tif len(again) < len(data) {\n")
 	b.WriteString("\t\t\tin, inErr := base64.StdEncoding.DecodeString(string(data))\n\t\t\tout, outErr := base64.StdEncoding.DecodeString(again)\n")
 	fmt.Fprintf(b, "\t\t\tif inErr == nil && outErr == nil && base64.StdEncoding.EncodeToString(in) == string(data) && len(out) < len(in) && fuzz%sRespelled(out) {\n\t\t\t\treturn\n\t\t\t}\n\t\t}\n", n)
 	fmt.Fprintf(b, "\t\tif fuzz%sSilent(&r) {\n\t\t\tt.Fatalf(\"text %%s: accepted silently, and re-encodes to other text\", fuzz%sInput(data, at))\n\t\t}\n\t}\n", base, base)
@@ -807,7 +808,7 @@ func testgenFuzz(b *strings.Builder, base string, st *ir.Struct, variable bool, 
 	if variable {
 		b.WriteString("\t\tv := jb.AsConst()\n")
 	}
-	fmt.Fprintf(b, "\t\tagain := make([]byte, max(%sToJsonMeasure(v), 0))\n\t\tif %sToJson(v, again) == int64(len(again)) && bytes.Equal(again, data) {\n\t\t\treturn\n\t\t}\n", n, n)
+	fmt.Fprintf(b, "\t\tagain := make([]byte, max(%sToJsonMeasure(v), 0))\n\t\tif %sToJson(v, again) != int64(len(again)) || len(again) == 0 {\n\t\t\tt.Fatalf(\"json %%s: accepted a value ToJson refuses\", fuzz%sInput(data, at))\n\t\t}\n\t\tif bytes.Equal(again, data) {\n\t\t\treturn\n\t\t}\n", n, n, base)
 	fmt.Fprintf(b, "\t\tif fuzz%sSilent(&r) {\n\t\t\tt.Fatalf(\"json %%s: accepted silently, and re-encodes to %%d other bytes\", fuzz%sInput(data, at), len(again))\n\t\t}\n\t}\n", base, base)
 	fmt.Fprintf(b, "\tfuzz%sFlips(f, json, check)\n\tf.Fuzz(func(t *testing.T, data []byte) { check(t, data, -1) })\n}\n", base)
 }

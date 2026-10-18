@@ -21,15 +21,15 @@ var testgenFuzzDefects = []struct{ target, name, hex string }{
 	// (Patrol.active of the defaults sample, flipped) reads as true with a
 	// silent report and re-encodes as 0x01.
 	{"FuzzPatrolWire", "bool_payload_not_0_or_1", "010101fe020a0000c03f0301010404e8030000006f0c6f030b798065400e20a08a498122bdcfaa557f0e7f245050a215c09abcb70400000000000000"},
-	// A JSON text is UTF-8 (RFC 8259, §16.3); an ill-formed byte 0x9e inside
-	// WideBlob.label reads as U+FFFD with a silent report and re-encodes as
-	// the three bytes ef bf bd.
 	// The base64 text is the standard base64 of the wire (§16.8); a last
 	// character whose padding bits are not zero (B for A before ==, found by
 	// `go test -fuzz` in under a second, not by the corpus) reads as the same
 	// wire with a silent report, because LoadText decodes with the lenient
 	// alphabet rather than the strict one.
 	{"FuzzWeaponConfigText", "base64_padding_bits_not_zero", hex.EncodeToString([]byte("AQAAAAAAAAAAAB=="))},
+	// A JSON text is UTF-8 (RFC 8259, §16.3); an ill-formed byte 0x9e inside
+	// WideBlob.label reads as U+FFFD with a silent report and re-encodes as
+	// the three bytes ef bf bd.
 	{"FuzzWideBlobJson", "json_string_ill_formed_utf8", hex.EncodeToString([]byte("{\n  \"label\": \"\x9e\",\n  \"payload\": \"Wg==\",\n  \"samples\": [\n    1\n  ]\n}\n"))},
 }
 
@@ -99,6 +99,17 @@ func TestGoTestgenFuzzTargets(t *testing.T) {
 	t.Run("seeds_and_flips_pass", func(t *testing.T) {
 		t.Parallel()
 		out, err := runGeneratedUnit(t, u, stub, defects, "-v", "-timeout", "540s", "-run", "^Fuzz")
+		// EVERY FLIP IS A SEED (§16.11): a target whose corpus holds no more
+		// entries than its samples has lost its flips
+		total := 0
+		for _, fn := range want {
+			n := bytes.Count(out, []byte("=== RUN   "+fn+"/seed#"))
+			if n <= 8 {
+				t.Errorf("emitted fuzz target %s ran %d seed corpus entries: its flips are missing", fn, n)
+			}
+			total += n
+		}
+		t.Logf("%d seed corpus entries ran across %d targets", total, len(want))
 		if err != nil {
 			t.Fatalf("emitted fuzz targets over their seeds and flips: %v\n%s\n%s", err, failures(out), tail(out))
 		}
