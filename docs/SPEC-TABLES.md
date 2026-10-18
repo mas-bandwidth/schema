@@ -6685,13 +6685,11 @@ away, so element zero is element zero either way.
 
 #### Form byte `2` keeps its number, and the byte body is replaced
 
-**THE BITPACKED BODY TAKES FORM BYTE `2`. It does not take `3`.** The byte-framed
-message body landed in this repository (#549) and was never released: no tagged
-version carries it, the eight ports never grew a message verb, and the only
-readers that ever existed are the C++ reference and the compiler's own engine in
-this tree. **A form byte with no reader outside the tree that defines it is a
-number, not a wire**, so there is nothing to be compatible with and nothing to
-carry.
+**THE BITPACKED BODY TAKES FORM BYTE `2`. It does not take `3`.** An earlier
+byte-framed body for form `2` landed in this repository (#549) but was never
+released. Before release, its body was replaced in place by bitpacking. The
+C++ reference, Go and the compiler's own engine read and write the current
+bitpacked form-`2` path; no released tag carries the earlier byte framing.
 
 The alternative was to take `3` and leave `2` as a form no writer writes. It was
 declined because it costs forever what it saves once: every reader in nine
@@ -6916,13 +6914,12 @@ compressed float's quantization is not a §4 row, because §4 has none for it: i
 is the third of the three ways this form changes a value across the forms
 (above), and it is pinned by the round trip's own rows rather than by §4's.
 
-**WHERE THE FORM IS CARRIED.** The C++ reference and the compiler's own engine
-carry the BITPACKED body under form byte `2`, and every form-`2` golden in the
-corpus is its. The eight ports carry the VARIABLE form alone: a port's
-`LoadMessages`, `MeasureMessages` and `SaveMessages` are a named follow-on
-beside the wire-form work M20 already registers (test/conformance/README.md),
-and the harness's `message` surface prints ABSENT for each rather than failing
-it.
+**WHERE THE FORM IS CARRIED.** The C++ reference, Go and the compiler's own
+engine carry the BITPACKED body under form byte `2`, and every form-`2` golden
+in the corpus is its. The other seven language backends carry the VARIABLE form
+alone: their `LoadMessages`, `MeasureMessages` and `SaveMessages` are a named
+follow-on beside the wire-form work M20 already registers
+(test/conformance/README.md).
 
 ---
 
@@ -10670,11 +10667,12 @@ base-alignment check a BEAM binary cannot carry (§7.1's alignment word, and the
 backend status in §2). A game points at a cook the tooling produced, whichever
 language it reads from. **A cook writer may exist in any port**: tools are
 what write cooked data, and a tool is written in whatever language its author
-chose. The WRITE side (`Cook` and `CookMeasure`, §7.6) is emitted by the C,
-C++ and Go backends for every table, fixed or pointered, and its bytes are the
-tool's, byte for byte, in both byte orders over every instance the corpus
-carries; the other languages' writers are named follow-ons (§15), and until
-one lands that build runs the tool.
+chose. C, C++ and Go write
+  cooks of either class today (`Cook` and `CookMeasure`, §7.6) for every table,
+  fixed or pointered, and their bytes are the tool's, byte for byte, in both
+  byte orders over every instance the corpus carries. The other languages'
+  writers are named follow-ons (§15), and until one lands that build runs the
+  tool.
 
 **THE SCALE THE COOK IS BUILT FOR, stated as the requirement it is** —
 *"Assume we have say, 100mbs or many gigabytes of data in Assets.bin at some
@@ -14927,7 +14925,7 @@ inspects everything in the schema built:
   a catalog is re-cooked when any table in its unit moves (§7).
   Everything about it is a decision — who declares the set, what proves two
   versions interchangeable — and none of that is decided here.
-- **THE COOK's WRITE SIDE in the remaining languages.** C, C++ and Go write
+- **THE COOK's WRITE SIDE in the remaining languages.** C++, C and Go write
   cooks of either class today and their bytes are the tool's (§7.6); a writer
   may exist in any port. Go's is the claimed name-first triple
   `<Name>CookMeasure`, `<Name>CookMeasureReason` and `<Name>CookFrom`, whose
