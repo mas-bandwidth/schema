@@ -20,6 +20,7 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -648,7 +649,9 @@ func (u *genUnit) randomValue(b *strings.Builder, r *rand.Rand, f *genField) {
 		}
 		fmt.Fprintf(b, "%q", b64.EncodeToString(raw))
 	case gTimestamp:
-		fmt.Fprintf(b, "%d", r.Int63n(1<<40))
+		// a timestamp's text is an RFC 3339 string (docs/SPEC-TABLES.md §16.2);
+		// a bare integer is kind_mismatch, which the strict read refuses
+		fmt.Fprintf(b, "%q", time.Unix(0, r.Int63n(1<<40)).UTC().Format(time.RFC3339Nano))
 	case gScalarArray, gFixedArray, gOpenArray:
 		m := 1
 		if f.Kind == gScalarArray || f.Kind == gOpenArray {
