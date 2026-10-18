@@ -411,17 +411,7 @@ var pinnedDigest = regexp.MustCompile("[`\"][0-9a-fA-F]{64}[`\"]")
 // pinnedDigestAllowed names, by file and the declaration holding the literals,
 // the committed digests the guard lets stand, each with its reason. An entry
 // that no longer pins anything is itself refused, so the list cannot go stale.
-var pinnedDigestAllowed = map[string]string{
-	// The seams card's BASE-equivalence claim (DefaultSurfaces output did not
-	// move when the source seams landed) compares against the BASE compiler,
-	// which no differential inside a unit test can hold, and it lives in
-	// package gotable, where checkRefusalUnchanged cannot reach. No card
-	// converts it yet; the proposed conversion (drop the digest comparison,
-	// keep the determinism and seam-marker assertions, and run the
-	// base-against-head generated-output diff at card time) is named in this
-	// card's report. Until a card does that, it is allowed here.
-	"sourceseams_test.go:seamGolden": "BASE-equivalence pin of the gotable source seams; not a refusal claim",
-}
+var pinnedDigestAllowed = map[string]string{}
 
 // pinnedDigestDecl is a package-level declaration opening a multi-line
 // composite literal, whose name is the one an allowed digest is keyed by. The
