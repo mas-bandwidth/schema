@@ -682,10 +682,13 @@ read_array_body = function(T, ctx, fd, sub)
   if fd.keyed ~= nil then
     local out = {}
     for i = 1, fd.bound do out[i] = zero_elem(T, fd.elem) end
-    local keep = count
-    if count > fd.bound then keep = fd.bound; report.clamped = report.clamped + 1 end
-    for _ = 1, keep do
-      if sub.at >= sub.lim then report.malformed = true; break end
+    -- AN ENUM-KEYED BODY places its triples BY KEY (docs/SPEC-TABLES.md §3.2;
+    -- decode.go keyed): its count is never clamped, since a slot this reader
+    -- cannot name is skipped and counted unknown, and a slot lands once per
+    -- triple whatever the count says.
+    local i = 0
+    while math.ult(i, count) do
+      i = i + 1
       local keyref = r_leb(sub)
       if sub.bad or keyref == 0 or above(keyref, #ctx.table) then report.malformed = true; break end
       local n = r_leb(sub)
@@ -706,9 +709,10 @@ read_array_body = function(T, ctx, fd, sub)
             ctx.pending[#ctx.pending + 1] = { holder = out, key = slot, index = idx, d = e }
           end
         elseif es == "enum" then
+          -- a slot's value is read inside its own L, which also skips its
+          -- slack (§3.2): only a reference that cannot be read is damage
           local x, ok = enum_read(ctx.table, body, e, report)
-          if not ok or body.at ~= body.lim then report.malformed = true
-          else out[slot] = (x == nil) and false or x end
+          if ok then out[slot] = (x == nil) and false or x end
         elseif es == "table" then
           local d = T.Tables[e.target]
           local inst = fresh(T, d)
@@ -738,8 +742,7 @@ read_array_body = function(T, ctx, fd, sub)
           if not ok then report.malformed = true else out[slot] = units end
         else
           local x = scalar_at(body, e, ek, report)
-          if x == nil or body.at ~= body.lim then report.malformed = true
-          else out[slot] = x end
+          if x ~= nil then out[slot] = x end
         end
       end
       sub.at = sub.at + n
