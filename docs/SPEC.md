@@ -506,7 +506,13 @@ from this projection rather than carried in it.
   float64 string wstring bytes fixed ufixed`, and the integer family `int8
   int16 int32 int64 uint8 uint16 uint32 uint64 int128 uint128` — plus `int` and
   `uint`, reserved so `int` gets a "did you mean int32?" diagnostic instead
-  of a parse error. Reserved words cannot be used as names. Attribute keys
+  of a parse error. Reserved words cannot be used as names — except inside an
+  `enum` or `flags` body, where a variant name may be any identifier-shaped
+  word, a reserved word included, because a variant name is only ever read
+  inside its own declaration's body or after `E.` and so never meets a type
+  position. The words a variant still may not be are those already refused:
+  `None` and `Max` on an enum, `Count` on flags, and a target's own reserved
+  words (SPEC §4.6). Attribute keys
   (`min`, `max`, `resolution`, ...) are contextual — they live only right of
   `|` and are not reserved.
 - **Newlines terminate declarations and fields — there are no semicolons,
@@ -586,9 +592,14 @@ Enum        = "enum" ident ( VariantList
             | AttrSection NL VariantList ) NL .
 VariantList = "{" [ Variant { VariantSep Variant } [ VariantSep ] ] "}" .
 Variant     = ident [ AttrSection ] .                              // the qualification carries TAGS,
-                                                                   // and on an enum variant `was`,
-                                                                   // the rename (§4.2); a flags
-                                                                   // variant takes tags alone
+                                                                    // and on an enum variant `was`,
+                                                                    // the rename (§4.2); a flags
+                                                                    // variant takes tags alone.
+                                                                    // `ident` here INCLUDES reserved
+                                                                    // words (§4.1): a variant name is
+                                                                    // read only inside its own body or
+                                                                    // after `E.`, never at a type
+                                                                    // position
 VariantSep  = "," | NL .                                           // a comma, or the newline that
                                                                    // ends a qualified variant's line;
                                                                    // a trailing separator is OK
