@@ -277,6 +277,8 @@ local readScalar = function(r, T, v, fd, shape) {
     local ref = get(r, v.RefBits), id = idAt(v, ref);
     if (ref == 0) return null;
     if (id == null) { r.bad = true; return null; }
+    local entry=v.Entries[ref-1];
+    if(entry.Shape.Kind!=0||(entry.Id==0xfffffffffffffffd||entry.Id==0xfffffffffffffffe||entry.Id==0xffffffffffffffff)){r.bad=true;return null;}
     foreach (p in fd.variants) if (p[1] == id) return p[0];
     r.unknown++; return null;
   }
@@ -364,6 +366,7 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
     local ref=get(r,v.RefBits);if(r.bad)return;
     local id=idAt(v,ref),ud=T[fd.table+"Descriptor"],u=ud.make(),arm=null;
     if(ref!=0&&id==null){r.bad=true;return;}
+    if(ref!=0){local entry=v.Entries[ref-1];if(entry.Shape.Kind==0||(entry.Id==0xfffffffffffffffd||entry.Id==0xfffffffffffffffe||entry.Id==0xffffffffffffffff)){r.bad=true;return;}}
     foreach(a in ud.arms)if(a.id==id)arm=a;
     if(arm==null&&ref!=0){if(ref>v.Count){r.bad=true;return;}r.unknown++;skipPeerEntry(T,v,r,v.Entries[ref-1],depth+1);owner[member]=u;return;}
     if(arm!=null){u.Type=arm.tag;if(arm.payload!=null)readPayload(T,v,r,arm.payload,u,arm.member,depth+1,v.Entries[ref-1]);}

@@ -125,6 +125,29 @@ func messageBatchTwoUnknownString(refBits int, slot uint64, value string, bound 
 	}
 	return out
 }
+func messageBatchEnumField(refBits int, fieldSlot, variantSlot uint64) []byte {
+	out := []byte{2, 0}
+	bits := 16
+	put := func(value uint64, width int) {
+		for i := 0; i < width; i++ {
+			at := bits / 8
+			if at == len(out) {
+				out = append(out, 0)
+			}
+			if (value>>i)&1 != 0 {
+				out[at] |= 1 << (bits % 8)
+			}
+			bits++
+		}
+	}
+	put(fieldSlot, refBits)
+	put(variantSlot, refBits)
+	put(0, refBits)
+	for bits%8 != 0 {
+		put(0, 1)
+	}
+	return out
+}
 func messageBatchWithInnerRef(refBits int, slot, inner uint64) []byte {
 	out := []byte{2, 0}
 	bits := 16
@@ -333,6 +356,31 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 		peerPlayerID.Shape.Bits = 64
 		peerPlayerID.Shape.Base = big.NewInt(0)
 		inputs["changed_shape_ann"] = announcementWithChangedEntry(units["backenddemo"], playerID, peerPlayerID)
+		region := units["backenddemo"].Enums["Region"]
+		variantID := ir.TableWireId(region.VariantWireName(0))
+		variantEntry := ir.TableVocabularyEntry{Id: variantID}
+		wrongEnumEntry := ir.TableVocabularyEntry{Id: variantID, Kind: ir.TableKindU64}
+		inputs["wrong_enum_sort_ann"] = announcementWithChangedEntry(units["backenddemo"], variantEntry, wrongEnumEntry)
+		vocab := ir.TableVocabulary(units["backenddemo"])
+		variantSlot, regionSlot := 0, 0
+		for i, e := range vocab {
+			if e.Id == variantID {
+				variantSlot = i + 1
+			}
+		}
+		for _, field := range units["backenddemo"].Tables["LoginRequest"].Fields {
+			if field.Name == "region" {
+				id := ir.TableFieldWireId(field)
+				for i, e := range vocab {
+					if e.Id == id {
+						regionSlot = i + 1
+					}
+				}
+			}
+		}
+		inputs["wrong_enum_sort_batch"] = messageBatchEnumField(ir.TableMessageRefBits(len(vocab)), uint64(regionSlot), uint64(variantSlot))
+		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={};local ar={};T.AnnounceRead(v,I["wrong_enum_sort_ann"],ar);local out=[T.LoginRequest()];local rr={};local n=T.LoginRequestLoadMessages(out,v,I["wrong_enum_sort_batch"],rr);if(n==0&&rr.malformed)print("wrong_enum_sort:ok\n");else print("wrong_enum_sort:fail:"+n+":"+rr.malformed+"\n"); }
+`)
 		purchase := units["backenddemo"].Tables["StorePurchase"]
 		var sku ir.TableVocabularyEntry
 		for _, field := range purchase.Fields {
@@ -419,6 +467,9 @@ func TestSquirrelMessageFormMatchesTheGoldens(t *testing.T) {
 	if !strings.Contains(out, "unknown_body:ok") {
 		t.Errorf("peer-only shaped body field was not skipped by its announced shape: %s", out)
 	}
+	if !strings.Contains(out, "wrong_enum_sort:ok") {
+		t.Errorf("known enum accepted an announced payload kind: %s", out)
+	}
 	if !strings.Contains(out, "changed_shape:ok") {
 		t.Errorf("known field was not decoded by its changed peer shape: %s", out)
 	}
@@ -467,11 +518,36 @@ func TestSquirrelMessageFormSetsPresentOptionalField(t *testing.T) {
 		}
 		writeFile(t, filepath.Join(dir, name), b)
 	}
+	armFound := false
+	var voidEntry ir.TableVocabularyEntry
+	union := u.Unions["ToolBody"]
+	if union == nil {
+		union = u.TableUnions["ToolBody"]
+	}
+	if union == nil {
+		t.Fatal("ToolBody union missing")
+	}
+	for _, arm := range union.Variants {
+		if arm.Void() && arm.Name == "ack" {
+			voidEntry = ir.TableArmEntry(arm)
+			armFound = true
+		}
+	}
+	if !armFound {
+		t.Fatal("ToolBody ack void arm missing")
+	}
+	wrongVoid := voidEntry
+	wrongVoid.Kind = 0
+	inputs := map[string][]byte{"wrong_union_sort_ann": announcementWithChangedEntry(u, voidEntry, wrongVoid)}
 	module := squirreltable.ModuleName(u)
 	script := fmt.Sprintf(`local T=dofile("schema_module.nut",true).require(%q); local v={};local ar={}; if(!T.AnnounceRead(v,T.TableMessageAnnouncement,ar)){print("announce:fail\n");return;} local x=T.InsertText();x.Modes=[];x.ModesPresent=true;local mr={};local z=T.InsertTextMeasureMessages([x],mr);local b=blob(z);local sr={};T.InsertTextSaveMessages([x],b,sr);local out=[T.InsertText()];local rr={};local n=T.InsertTextLoadMessages(out,v,b,rr);if(n==1&&out[0].ModesPresent)print("optional:ok\n");else print("optional:fail:"+n+":"+rr.malformed+"\n");`, module)
+	script += `local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require("` + module + `");local x=T.ToolMessage();local tag=0;foreach(a in T.ToolBodyDescriptor.arms)if(a.member=="Ack")tag=a.tag;x.Body.Type=tag;local mr={};local z=T.ToolMessageMeasureMessages([x],mr);local b=blob(z);local sr={};T.ToolMessageSaveMessages([x],b,sr);local v={};local ar={};T.AnnounceRead(v,I["wrong_union_sort_ann"],ar);local out=[T.ToolMessage()];local rr={};local n=T.ToolMessageLoadMessages(out,v,b,rr);if(n==0&&rr.malformed)print("wrong_union_sort:ok\n");else print("wrong_union_sort:fail:"+n+":"+rr.malformed+"\n");`
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
-	out := string(sqrun.Run(t, dir, "main.nut", nil))
+	out := string(sqrun.Run(t, dir, "main.nut", inputs))
 	if !strings.Contains(out, "optional:ok") {
 		t.Fatalf("present optional field did not round trip: %s", out)
+	}
+	if !strings.Contains(out, "wrong_union_sort:ok") {
+		t.Fatalf("known void union arm accepted kind zero: %s", out)
 	}
 }
