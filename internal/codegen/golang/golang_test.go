@@ -89,7 +89,7 @@ func TestEnumExtentEmitted(t *testing.T) {
 		"enum Weapon | max = 15\n{ Laser, Missile }\n\n" +
 		"type Box { w Weapon }\n\n" +
 		"type Ball { y uint8 }\n\n" +
-		"union Shape {\n    box  Box\n    ball Ball\n}\n"
+		"union Shape {\n    rect  Box\n    ball Ball\n}\n"
 	f, perrs := parser.Parse("Extent.schema", []byte(src))
 	if len(perrs) > 0 {
 		t.Fatalf("parse: %v", perrs[0])
@@ -271,7 +271,7 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 	src := "package t\n\n" +
 		"type Box { x uint8 }\n\n" +
 		"type Ball { r uint16 }\n\n" +
-		"union Shape {\n    box  Box\n    ball Ball\n}\n\n" +
+		"union Shape {\n    rect  Box\n    ball Ball\n}\n\n" +
 		"type Holder { shape Shape }\n"
 	f, perrs := parser.Parse("Unions.schema", []byte(src))
 	if len(perrs) > 0 {

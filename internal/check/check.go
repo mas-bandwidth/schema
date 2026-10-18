@@ -3542,6 +3542,13 @@ var targetReserved = func() map[string][]string {
 	return out
 }()
 
+// ReservedWords returns the §4.6 reserved-word map, word to the sorted list of
+// targets that reserve it. It exists for the CLI's tests to pin the table
+// against the emitters.
+func ReservedWords() map[string][]string {
+	return targetReserved
+}
+
 // reservedTargetLangs returns the targets the checked run must flag `name` for:
 // every target that reserves it, narrowed to the targets being generated when
 // the checker carries a non-nil reservedTargets, and every target when it does
@@ -3665,6 +3672,9 @@ var libcNamespaceScope = func() map[string]bool {
 		`iswalnum iswalpha iswblank iswcntrl iswdigit iswgraph iswlower iswprint
 		 iswpunct iswspace iswupper iswxdigit iswctype towctrans towlower towupper
 		 wctrans wctrans_t wctype wctype_t`,
+		// <sys/select.h> and <sys/types.h> — the POSIX names a schema package
+		// collides with beside the libc includes the generated C++ pulls in
+		`select ulong ushort`,
 	} {
 		for w := range strings.FieldsSeq(words) {
 			m[w] = true
