@@ -76,6 +76,7 @@ func TestLuaTableSaveRoundTripsEveryInstance(t *testing.T) {
 		unitFiles[k] = full
 	}
 	refused := map[string]string{}
+	refusedRows := map[string][]string{}
 	compared := 0
 	instances := 0
 	var mismatches []string
@@ -86,11 +87,13 @@ func TestLuaTableSaveRoundTripsEveryInstance(t *testing.T) {
 			continue
 		}
 		if _, refusedUnit := refused[row.unit]; refusedUnit {
+			refusedRows[row.unit] = append(refusedRows[row.unit], row.caseName)
 			continue
 		}
 		u := luarun.LoadUnit(t, paths...)
 		if _, err := Generate(u); err != nil {
 			refused[row.unit] = err.Error()
+			refusedRows[row.unit] = append(refusedRows[row.unit], row.caseName)
 			continue
 		}
 		t.Logf("row %s unit %s", row.caseName, row.unit)
@@ -117,7 +120,7 @@ func TestLuaTableSaveRoundTripsEveryInstance(t *testing.T) {
 	}
 	sort.Strings(names)
 	for _, unit := range names {
-		t.Logf("refused unit %s: %s", unit, refused[unit])
+		t.Logf("refused unit %s (instances %s): %s", unit, strings.Join(refusedRows[unit], ", "), refused[unit])
 	}
 	for _, m := range mismatches {
 		t.Error(m)
@@ -125,7 +128,11 @@ func TestLuaTableSaveRoundTripsEveryInstance(t *testing.T) {
 	if compared == 0 {
 		t.Fatalf("no instance round-tripped (%d instances, %d refused)", instances, len(refused))
 	}
-	t.Logf("%d of %d instances round-trip byte-for-byte; %d refused unit(s)", compared, instances, len(refused))
+	skipped := 0
+	for _, rows := range refusedRows {
+		skipped += len(rows)
+	}
+	t.Logf("%d of %d instances round-trip byte-for-byte; %d refused unit(s) holding %d instance(s)", compared, instances, len(refused), skipped)
 }
 
 // TestLuaTableSaveNegativeControl patches the emitted runtime in memory — one
