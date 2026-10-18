@@ -96,8 +96,8 @@ test-go: conformance-go-rows
 .PHONY: conformance-go-rows-negative-control
 conformance-go-rows-negative-control: build/tables-generated-go/.stamp build/fixedform-corpus/.stamp $(SERIALIZE_GO_RUNTIME)/go.mod
 	@mkdir -p build/rows-planted
-	@printf 'package main\n\nimport "testing"\n\nfunc TestRowZZPlanted(t *testing.T) {\n\tt.Parallel()\n\tt.Fatal("planted failing row")\n}\n' > build/rows-planted/ZZ_planted_test.go
-	@printf '{"Replace":{"%s/test/conformance/go/rows/ZZ_planted_test.go":"%s/build/rows-planted/ZZ_planted_test.go"}}\n' "$(CURDIR)" "$(CURDIR)" > build/rows-planted/overlay.json
+	@printf 'package main\n\nimport "testing"\n\nfunc TestRowZZPlanted(t *testing.T) {\n\tt.Parallel()\n\tt.Fatal("planted failing row")\n}\n' > build/rows-planted/_ZZ_planted_test.go
+	@printf '{"Replace":{"%s/test/conformance/go/rows/ZZ_planted_test.go":"%s/build/rows-planted/_ZZ_planted_test.go"}}\n' "$(CURDIR)" "$(CURDIR)" > build/rows-planted/overlay.json
 	@ROWS_PKG=./rows && cd test/conformance/go && if GOFLAGS="$${GOFLAGS:+$$GOFLAGS }-trimpath=false" SCHEMA_SLOW=1 go test -overlay=$(CURDIR)/build/rows-planted/overlay.json $$ROWS_PKG -count=1 -timeout 600s > $(CURDIR)/build/rows-planted/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: the planted failing row did not redden the gate'; cat $(CURDIR)/build/rows-planted/log; exit 1; fi
 	@grep -Fq 'planted failing row' build/rows-planted/log || { echo 'NEGATIVE CONTROL FAILED: the gate went red, but not on the planted row'; cat build/rows-planted/log; exit 1; }
 	@echo 'negative control: the planted failing row turns conformance-go-rows red'
