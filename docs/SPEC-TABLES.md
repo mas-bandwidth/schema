@@ -10667,11 +10667,12 @@ base-alignment check a BEAM binary cannot carry (§7.1's alignment word, and the
 backend status in §2). A game points at a cook the tooling produced, whichever
 language it reads from. **A cook writer may exist in any port**: tools are
 what write cooked data, and a tool is written in whatever language its author
-chose. The WRITE side (`Cook` and `CookMeasure`, §7.6) is emitted by the C,
-C++ and Go backends for every table, fixed or pointered, and its bytes are the
-tool's, byte for byte, in both byte orders over every instance the corpus
-carries; the other languages' writers are named follow-ons (§15), and until
-one lands that build runs the tool.
+chose. C, C++ and Go write
+  cooks of either class today (`Cook` and `CookMeasure`, §7.6) for every table,
+  fixed or pointered, and their bytes are the tool's, byte for byte, in both
+  byte orders over every instance the corpus carries. The other languages'
+  writers are named follow-ons (§15), and until one lands that build runs the
+  tool.
 
 **THE SCALE THE COOK IS BUILT FOR, stated as the requirement it is** —
 *"Assume we have say, 100mbs or many gigabytes of data in Assets.bin at some
@@ -14924,7 +14925,7 @@ inspects everything in the schema built:
   a catalog is re-cooked when any table in its unit moves (§7).
   Everything about it is a decision — who declares the set, what proves two
   versions interchangeable — and none of that is decided here.
-- **THE COOK's WRITE SIDE in the remaining languages.** C, C++ and Go write
+- **THE COOK's WRITE SIDE in the remaining languages.** C++, C and Go write
   cooks of either class today and their bytes are the tool's (§7.6); a writer
   may exist in any port. Go's is the claimed name-first triple
   `<Name>CookMeasure`, `<Name>CookMeasureReason` and `<Name>CookFrom`, whose
