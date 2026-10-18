@@ -12724,15 +12724,17 @@ vocabulary a table carries is §8.1's and rides where it always did. The gate
 asks "did the registry leak out of its file?", never "is there a descriptor
 here?" — §2.2's own distinction between machinery and columns.
 
-#### The shared Go runtime (optional)
+#### The shared Go runtime (the default)
 
-**The adopter chooses: standalone, or shared.** The Go target emits the
-table-independent runtime into each unit's home file by default
-(`runtime` unset, empty or `standalone`), and that output is byte-identical
-to every build before the option existed. With the generator option
-`runtime: shared` the home file instead imports `tables/goruntime` in this
-module (`github.com/mas-bandwidth/schema/v2/tables/goruntime`) and aliases
-the shared declarations in; any other value is refused by name.
+**Shared is the default; standalone is the named option.** The Go target's
+home file imports `tables/goruntime` in this module
+(`github.com/mas-bandwidth/schema/v2/tables/goruntime`) and aliases the
+shared declarations in (`runtime` unset, empty or `shared`). With the
+generator option `runtime: standalone` the unit instead carries the
+table-independent runtime in its home file, and that output is byte-identical
+to every build before the option existed. `shared` and `standalone` keep
+their meanings; any other value is refused by name, and the refusal names
+shared as the default.
 
 **One source.** A declaration is SHARED when the emitter writes it
 byte-identically for every unit shape (fixed-only, variable, wide text, every
