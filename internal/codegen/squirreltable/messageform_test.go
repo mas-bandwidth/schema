@@ -81,7 +81,7 @@ func announcementWithChangedEntry(u *ir.Unit, target, replacement ir.TableVocabu
 	entries := ir.TableVocabulary(u)
 	found := false
 	for i := range entries {
-		if entries[i].Key() == target.Key() {
+		if entries[i].Id == target.Id {
 			entries[i] = replacement
 			found = true
 		}
@@ -624,53 +624,323 @@ func TestSquirrelKeyedMessagePairs(t *testing.T) {
 func TestSquirrelBytesMessagePairs(t *testing.T) {
 	t.Parallel()
 	root, err := sqrun.RepoRoot()
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	paths := map[string][]string{}
-	for _, u := range manifestUnits(t, filepath.Join(root, "testdata/conformance/tables/MANIFEST.txt")) { paths[u.key] = u.paths }
+	for _, u := range manifestUnits(t, filepath.Join(root, "testdata/conformance/tables/MANIFEST.txt")) {
+		paths[u.key] = u.paths
+	}
 	u := loadUnit(t, root, paths["tabledemo"])
 	dir := t.TempDir()
-	for name, b := range squirrelMessageFiles(t, u, nil) { if !strings.Contains(name, "/") { writeFile(t, filepath.Join(dir, name), b) } }
+	for name, b := range squirrelMessageFiles(t, u, nil) {
+		if !strings.Contains(name, "/") {
+			writeFile(t, filepath.Join(dir, name), b)
+		}
+	}
 	script := fmt.Sprintf(`local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,T.TableMessageAnnouncement,ar)){print("bytes:announce_fail\n");return;}local x=T.ProfileConfig();local b=blob(2);b[0]=0x41;b[1]=0x42;x.Icon=b;local mr={};local z=T.ProfileConfigMeasureMessages([x],mr);local wire=blob(z);local sr={};local w=T.ProfileConfigSaveMessages([x],wire,sr);local out=[T.ProfileConfig()];local rr={};local n=T.ProfileConfigLoadMessages(out,v,wire,rr);if(n==1&&w==z&&out[0].Icon.len()==2&&out[0].Icon[0]==0x41&&out[0].Icon[1]==0x42&&!rr.malformed)print("bytes:ok\n");else print("bytes:fail:"+n+":"+rr.malformed+":"+rr.unknown+"\n");`, squirreltable.ModuleName(u))
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
 	inputs := map[string][]byte{"ann": announcementWithEntries(u, ir.TableVocabulary(u))}
 	out := string(sqrun.Run(t, dir, "main.nut", inputs))
-	if !strings.Contains(out, "bytes:ok") { t.Fatalf("bytes message pair round trip failed: %s", out) }
+	if !strings.Contains(out, "bytes:ok") {
+		t.Fatalf("bytes message pair round trip failed: %s", out)
+	}
 }
-
 
 func TestSquirrelKeyedMessageEvolution(t *testing.T) {
 	t.Parallel()
 	root, err := sqrun.RepoRoot()
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	paths := map[string][]string{}
-	for _, u := range manifestUnits(t, filepath.Join(root, "testdata/conformance/tables/MANIFEST.txt")) { paths[u.key] = u.paths }
+	for _, u := range manifestUnits(t, filepath.Join(root, "testdata/conformance/tables/MANIFEST.txt")) {
+		paths[u.key] = u.paths
+	}
 	u := loadUnit(t, root, paths["tabledemo"])
 	dir := t.TempDir()
-	for name, b := range squirrelMessageFiles(t, u, nil) { if !strings.Contains(name, "/") { writeFile(t, filepath.Join(dir, name), b) } }
+	for name, b := range squirrelMessageFiles(t, u, nil) {
+		if !strings.Contains(name, "/") {
+			writeFile(t, filepath.Join(dir, name), b)
+		}
+	}
 	encode := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local x=T.KeyedConfig();x.Teams[1].SpawnCount=17;x.Hulls[2].Health=42.5;local r={};local n=T.KeyedConfigMeasureMessages([x],r);local b=blob(n);local s={};T.KeyedConfigSaveMessages([x],b,s);hexline(b);`, squirreltable.ModuleName(u))
 	writeFile(t, filepath.Join(dir, "encode.nut"), []byte(encode))
 	encoded, err := sqrun.HexLines(sqrun.Run(t, dir, "encode.nut", nil))
-	if err != nil { t.Fatal(err) }
-	if len(encoded) != 1 { t.Fatalf("encoder returned %d message batches", len(encoded)) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(encoded) != 1 {
+		t.Fatalf("encoder returned %d message batches", len(encoded))
+	}
 	entries := ir.TableVocabulary(u)
 	peer := ir.TableVocabularyEntry{Id: ir.TableWireId("Dreadnought"), Kind: 0}
-	for _, e := range entries { if e.Id == peer.Id { t.Fatal("evolution key already exists in current vocabulary") } }
+	for _, e := range entries {
+		if e.Id == peer.Id {
+			t.Fatal("evolution key already exists in current vocabulary")
+		}
+	}
 	peerAnnouncement, peerCount := announcementWithPeerEntry(u, peer)
 	refBits := ir.TableMessageRefBits(len(entries))
-	if peerCount != len(entries)+1 || ir.TableMessageRefBits(peerCount) != refBits { t.Fatalf("peer vocabulary changed reference width: old=%d new=%d refBits=%d", len(entries), peerCount, refBits) }
+	if peerCount != len(entries)+1 || ir.TableMessageRefBits(peerCount) != refBits {
+		t.Fatalf("peer vocabulary changed reference width: old=%d new=%d refBits=%d", len(entries), peerCount, refBits)
+	}
 	var teams ir.TableVocabularyEntry
-	for _, e := range entries { if e.Id == ir.TableWireId("teams") { teams = e; break } }
-	if teams.Id == 0 || teams.Kind != 16 { t.Fatalf("teams keyed-array vocabulary entry missing: %+v", teams) }
+	for _, e := range entries {
+		if e.Id == ir.TableWireId("teams") {
+			teams = e
+			break
+		}
+	}
+	if teams.Id == 0 || teams.Kind != 16 {
+		t.Fatalf("teams keyed-array vocabulary entry missing: %+v", teams)
+	}
 	bit := 16 + refBits + ir.TableMessageCountBits(teams.Shape)
 	unknownKeyRef := uint64(len(entries) + 1) // appended after the current vocabulary
 	for i := 0; i < refBits; i++ {
 		at := bit + i
-		if at/8 >= len(encoded[0]) { t.Fatalf("key ref patch bit %d exceeds %d-byte message", at, len(encoded[0])) }
+		if at/8 >= len(encoded[0]) {
+			t.Fatalf("key ref patch bit %d exceeds %d-byte message", at, len(encoded[0]))
+		}
 		mask := byte(1 << (at % 8))
-		if (unknownKeyRef>>i)&1 == 1 { encoded[0][at/8] |= mask } else { encoded[0][at/8] &^= mask }
+		if (unknownKeyRef>>i)&1 == 1 {
+			encoded[0][at/8] |= mask
+		} else {
+			encoded[0][at/8] &^= mask
+		}
 	}
 	decode := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("evolution:announce_fail\\n");return;}local out=[T.KeyedConfig()];local rr={};local n=T.KeyedConfigLoadMessages(out,v,I.batch,rr);if(n==1&&rr.unknown==1&&!rr.malformed&&out[0].Teams[1].SpawnCount==17&&out[0].Hulls[2].Health==42.5)print("evolution:ok\\n");else print("evolution:fail:"+n+":"+rr.unknown+":"+rr.malformed+":"+out[0].Teams[1].SpawnCount+":"+out[0].Hulls[2].Health+"\\n");`, squirreltable.ModuleName(u))
 	writeFile(t, filepath.Join(dir, "decode.nut"), []byte(decode))
 	out := string(sqrun.Run(t, dir, "decode.nut", map[string][]byte{"peerann": peerAnnouncement, "batch": encoded[0]}))
-	if !strings.Contains(out, "evolution:ok") { t.Fatalf("keyed message evolution failed: %s", out) }
+	if !strings.Contains(out, "evolution:ok") {
+		t.Fatalf("keyed message evolution failed: %s", out)
+	}
+}
+
+func TestSquirrelQuantizedFloatAndDynamicArrayMessagePairs(t *testing.T) {
+	t.Parallel()
+	root, err := sqrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := loadUnit(t, root, []string{"test/tables/Bases.schema"})
+	dir := t.TempDir()
+	for name, b := range squirrelMessageFiles(t, u, nil) {
+		if !strings.Contains(name, "/") {
+			writeFile(t, filepath.Join(dir, name), b)
+		}
+	}
+	qshape := ir.TableMessageShape{Packing: ir.TableMessageQuantized, Bits: ir.CompressedFloatBits(0, 10, .01), QMin: 0, QMax: 10, QRes: .01}
+	wshape := ir.TableMessageShape{Packing: ir.TableMessageQuantized, Bits: ir.CompressedFloatBits(-100, 100, .01), QMin: -100, QMax: 100, QRes: .01}
+	qwant := ir.TableMessageDequantize(qshape, ir.TableMessageQuantize(qshape, float32(3.14159)))
+	wwant := ir.TableMessageDequantize(wshape, ir.TableMessageQuantize(wshape, float32(-12.345)))
+	script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,T.TableMessageAnnouncement,ar)){print("packed:announce_fail\n");return;}local x=T.Bases();x.Q=3.14159;x.Wide=-12.345;x.SmallA=-2;x.Few[0]=11;x.Few[1]=22;local mr={};local z=T.BasesMeasureMessages([x],mr);local b=blob(z);local sr={};local w=T.BasesSaveMessages([x],b,sr);local out=[T.Bases()];local rr={};local n=T.BasesLoadMessages(out,v,b,rr);if(n==1&&w==z&&!rr.malformed&&out[0].Q>%g-0.00001&&out[0].Q<%g+0.00001&&out[0].Wide > %g-0.0001&&out[0].Wide < %g+0.0001&&out[0].SmallA==-2&&out[0].Few.len()==2&&out[0].Few[0]==11&&out[0].Few[1]==22)print("packed:ok\n");else print("packed:fail:"+n+":"+rr.malformed+":"+out[0].Q+":"+out[0].Wide+":"+out[0].SmallA+":"+out[0].Few.len()+"\n");`, squirreltable.ModuleName(u), qwant, qwant, wwant, wwant)
+	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
+	out := string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"ann": announcementWithEntries(u, ir.TableVocabulary(u))}))
+	if !strings.Contains(out, "packed:ok") {
+		t.Fatalf("quantized float/dynamic array message pair failed: %s", out)
+	}
+}
+
+func TestSquirrelFlagsMessagePairs(t *testing.T) {
+	t.Parallel()
+	root, err := sqrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	units := manifestUnits(t, filepath.Join(root, "testdata/conformance/tables/MANIFEST.txt"))
+	var paths []string
+	for _, unit := range units {
+		if unit.key == "tabledemo" {
+			paths = unit.paths
+			break
+		}
+	}
+	if paths == nil {
+		t.Fatal("tabledemo manifest unit missing")
+	}
+	u := loadUnit(t, root, paths)
+	dir := t.TempDir()
+	for name, b := range squirrelMessageFiles(t, u, nil) {
+		if !strings.Contains(name, "/") {
+			writeFile(t, filepath.Join(dir, name), b)
+		}
+	}
+	script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,T.TableMessageAnnouncement,ar)){print("flags:announce_fail\n");return;}local x=T.LoadoutConfig();x.Perks=5;local mr={};local z=T.LoadoutConfigMeasureMessages([x],mr);local b=blob(z);local sr={};local w=T.LoadoutConfigSaveMessages([x],b,sr);local out=[T.LoadoutConfig()];local rr={};local n=T.LoadoutConfigLoadMessages(out,v,b,rr);if(n==1&&w==z&&out[0].Perks==5&&!rr.malformed)print("flags:ok\n");else print("flags:fail:"+n+":"+out[0].Perks+":"+rr.malformed+"\n");`, squirreltable.ModuleName(u))
+	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
+	out := string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"ann": announcementWithEntries(u, ir.TableVocabulary(u))}))
+	if !strings.Contains(out, "flags:ok") {
+		t.Fatalf("flags message pair failed: %s", out)
+	}
+}
+
+func TestSquirrelMessageWidensAndSignExtends(t *testing.T) {
+	t.Parallel()
+	root, err := sqrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := loadUnit(t, root, []string{"test/tables/Bases.schema"})
+	dir := t.TempDir()
+	for name, b := range squirrelMessageFiles(t, u, nil) {
+		if !strings.Contains(name, "/") {
+			writeFile(t, filepath.Join(dir, name), b)
+		}
+	}
+	entries := ir.TableVocabulary(u)
+	changed := append([]ir.TableVocabularyEntry(nil), entries...)
+	var smallSlot uint64
+	for i, e := range entries {
+		if e.Id == ir.TableWireId("small_a") {
+			smallSlot = uint64(i + 1)
+			changed[i] = ir.TableVocabularyEntry{Id: e.Id, Kind: ir.TableKindI8, Shape: ir.TableMessageShape{Packing: ir.TableMessageRaw}}
+		}
+	}
+	if smallSlot == 0 {
+		t.Fatal("small_a vocabulary field missing")
+	}
+	ann := announcementWithEntries(u, changed)
+	refBits := ir.TableMessageRefBits(len(entries))
+	batch := messageBatchScalar(refBits, smallSlot, 0xfe, 8)
+	script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("widen:announce_fail\n");return;}local out=[T.Bases()];local rr={};local n=T.BasesLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].SmallA==-2&&rr.widened==1&&rr.kindMismatch==0&&!rr.malformed)print("widen:ok\n");else print("widen:fail:"+n+":"+out[0].SmallA+":"+rr.widened+":"+rr.kindMismatch+":"+rr.malformed+"\n");`, squirreltable.ModuleName(u))
+	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
+	out := string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"peerann": ann, "batch": batch}))
+	if !strings.Contains(out, "widen:ok") {
+		t.Fatalf("signed and float widening message read failed: %s", out)
+	}
+}
+
+func messageBatchScalar(refBits int, slot uint64, value uint64, width int) []byte {
+	out := []byte{2, 0}
+	bit := 16
+	put := func(x uint64, n int) {
+		for i := 0; i < n; i++ {
+			at := bit / 8
+			if at == len(out) {
+				out = append(out, 0)
+			}
+			if (x>>i)&1 != 0 {
+				out[at] |= 1 << (bit % 8)
+			}
+			bit++
+		}
+	}
+	put(slot, refBits)
+	put(value, width)
+	put(0, refBits)
+	for bit%8 != 0 {
+		put(0, 1)
+	}
+	return out
+}
+
+func TestSquirrelMessageWidenFloat32ToFloat64(t *testing.T) {
+	t.Parallel()
+	root, err := sqrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	units := manifestUnits(t, filepath.Join(root, "testdata/conformance/tables/MANIFEST.txt"))
+	var paths []string
+	for _, unit := range units {
+		if unit.key == "tabledemo" {
+			paths = unit.paths
+			break
+		}
+	}
+	if paths == nil {
+		t.Fatal("tabledemo manifest unit missing")
+	}
+	u := loadUnit(t, root, paths)
+	dir := t.TempDir()
+	for name, b := range squirrelMessageFiles(t, u, nil) {
+		if !strings.Contains(name, "/") {
+			writeFile(t, filepath.Join(dir, name), b)
+		}
+	}
+	entries := ir.TableVocabulary(u)
+	var target ir.TableVocabularyEntry
+	var slot uint64
+	for i, e := range entries {
+		if e.Id == ir.TableWireId("precision") {
+			target = e
+			slot = uint64(i + 1)
+			break
+		}
+	}
+	if slot == 0 {
+		t.Fatal("precision vocabulary entry missing")
+	}
+	peer := ir.TableVocabularyEntry{Id: target.Id, Kind: ir.TableKindF32, Shape: ir.TableMessageShape{Packing: ir.TableMessageRaw}}
+	ann := announcementWithChangedEntry(u, target, peer)
+	batch := messageBatchScalar(ir.TableMessageRefBits(len(entries)), slot, 0x3fa00000, 32)
+	script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("widen-float:announce_fail\n");return;}local out=[T.ProfileConfig()];local rr={};local n=T.ProfileConfigLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].Precision==1.25&&rr.widened==1&&rr.kindMismatch==0&&!rr.malformed)print("widen-float:ok\n");else print("widen-float:fail:"+n+":"+out[0].Precision+":"+rr.widened+":"+rr.kindMismatch+":"+rr.malformed+"\n");`, squirreltable.ModuleName(u))
+	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
+	out := string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"peerann": ann, "batch": batch}))
+	if !strings.Contains(out, "widen-float:ok") {
+		t.Fatalf("float widening message read failed: %s", out)
+	}
+}
+
+func TestSquirrelMessageWidenArrayElements(t *testing.T) {
+	t.Parallel()
+	root, err := sqrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := loadUnit(t, root, []string{"test/tables/Bases.schema"})
+	dir := t.TempDir()
+	for name, b := range squirrelMessageFiles(t, u, nil) {
+		if !strings.Contains(name, "/") {
+			writeFile(t, filepath.Join(dir, name), b)
+		}
+	}
+	entries := ir.TableVocabulary(u)
+	changed := append([]ir.TableVocabularyEntry(nil), entries...)
+	var slot uint64
+	for i, e := range entries {
+		if e.Id == ir.TableWireId("few") {
+			slot = uint64(i + 1)
+			changed[i].Shape.Elem = ir.TableKindU16
+			changed[i].Shape.Inner = &ir.TableMessageShape{Packing: ir.TableMessageRaw}
+		}
+	}
+	if slot == 0 {
+		t.Fatal("few vocabulary field missing")
+	}
+	ann := announcementWithEntries(u, changed)
+	batch := messageBatchArrayElements(ir.TableMessageRefBits(len(entries)), slot, []uint64{5, 7})
+	script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("widen-array:announce_fail\n");return;}local out=[T.Bases()];local rr={};local n=T.BasesLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].Few.len()==2&&out[0].Few[0]==5&&out[0].Few[1]==7&&rr.widened==2&&rr.kindMismatch==0&&!rr.malformed)print("widen-array:ok\n");else print("widen-array:fail:"+n+":"+out[0].Few.len()+":"+rr.widened+":"+rr.kindMismatch+":"+rr.malformed+"\n");`, squirreltable.ModuleName(u))
+	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
+	out := string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"peerann": ann, "batch": batch}))
+	if !strings.Contains(out, "widen-array:ok") {
+		t.Fatalf("array element widening failed: %s", out)
+	}
+}
+
+func messageBatchArrayElements(refBits int, slot uint64, values []uint64) []byte {
+	out := []byte{2, 0}
+	bit := 16
+	put := func(x uint64, n int) {
+		for i := 0; i < n; i++ {
+			at := bit / 8
+			if at == len(out) {
+				out = append(out, 0)
+			}
+			if (x>>i)&1 != 0 {
+				out[at] |= 1 << (bit % 8)
+			}
+			bit++
+		}
+	}
+	put(slot, refBits)
+	put(0, 2)
+	for _, v := range values {
+		put(v, 16)
+	}
+	put(0, refBits)
+	for bit%8 != 0 {
+		put(0, 1)
+	}
+	return out
 }

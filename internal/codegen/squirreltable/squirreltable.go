@@ -477,10 +477,10 @@ func fieldDesc(f *ir.Field, ordinal int) string {
 	return render(d, fieldKeys)
 }
 
-var elemKeys = []string{"kind", "shape", "bound", "signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants"}
+var elemKeys = []string{"kind", "shape", "bound", "signed", "width", "bits", "lo", "hi", "f32", "qbits", "qmin", "qdelta", "qcount", "flagbits", "def", "table", "variants"}
 
 var fieldKeys = []string{"name", "member", "key", "id", "ordinal", "kind", "shape", "bound", "min", "list", "counted",
-	"signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "keyvariants", "elem",
+	"signed", "width", "bits", "lo", "hi", "f32", "qbits", "qmin", "qdelta", "qcount", "flagbits", "def", "table", "variants", "keyvariants", "elem",
 	"optional", "required", "deprecated"}
 
 // baseDesc is the facts of the field's VALUE type, which an array's element
@@ -489,6 +489,7 @@ func baseDesc(f *ir.Field) map[string]string {
 	d := map[string]string{
 		"kind": fmt.Sprint(ir.TableWireScalarKind(f)), "bound": "0", "min": "0", "list": "false", "counted": "false",
 		"signed": "false", "width": "0", "bits": "0", "lo": "null", "hi": "null", "f32": "false",
+		"qbits": "0", "qmin": "0.0", "qdelta": "0.0", "qcount": "0", "flagbits": "0",
 		"def": "null", "table": "null", "variants": "null", "keyvariants": "null", "elem": "null",
 	}
 	switch {
@@ -518,6 +519,7 @@ func baseDesc(f *ir.Field) map[string]string {
 	case isFlags(f):
 		d["shape"] = `"flags"`
 		d["width"] = "8"
+		d["flagbits"] = fmt.Sprint(f.Type.Ref.(*ir.Flags).WireBits)
 		d["def"] = scalarDefault(f)
 	case f.Type.Kind == ir.TString:
 		d["shape"] = `"str"`
@@ -533,6 +535,16 @@ func baseDesc(f *ir.Field) map[string]string {
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		d["shape"] = `"float"`
 		d["f32"] = fmt.Sprint(f.Type.Kind == ir.TFloat32)
+		if f.Type.Kind == ir.TFloat32 && f.HasFloatRange {
+			shape := ir.TableMessageShape{Packing: ir.TableMessageQuantized, Bits: ir.CompressedFloatBits(f.FMin, f.FMax, f.Resolution), QMin: float32(f.FMin), QMax: float32(f.FMax), QRes: float32(f.Resolution)}
+			count, delta, ok := ir.TableMessageQuantization(shape)
+			if ok {
+				d["qbits"] = fmt.Sprint(shape.Bits)
+				d["qmin"] = squirrel.Float32Lit(float64(shape.QMin))
+				d["qdelta"] = squirrel.Float32Lit(float64(delta))
+				d["qcount"] = fmt.Sprint(count)
+			}
+		}
 		d["def"] = scalarDefault(f)
 	default:
 		d["shape"] = `"int"`

@@ -44,6 +44,7 @@ local readLeb = function(b, state) {
   }
   state.bad=true; state.at=start; return 0;
 };
+local messageNarrowF32, messageWidenF32;
 local parseShape;
 parseShape = function(b, state, kind) {
   local s={Kind=kind,Bits=-1,Packing=0,Base=0,Min=0,Max=0,ElemKind=0,Element=null,QMin=0.0,QDelta=0.0,QCount=0};
@@ -57,10 +58,10 @@ parseShape = function(b, state, kind) {
     if(s.Packing==1&&kind!=10){local bits=readLeb(b,state);if(state.bad||bits>s.Bits){state.bad=true;return s;}s.Bits=bits;if(kind>=18){if(state.at+16>state.end){state.bad=true;return s;}s.Base=readU64(b,state.at);state.at+=16;}else{local raw=readLeb(b,state);if(state.bad)return s;s.Base=(kind>=2&&kind<=5)?((raw>>1)^(-(raw&1))):raw;}return s;}
     if(s.Packing==2&&kind==10){
       if(state.at+12>state.end){state.bad=true;return s;}
-      local lo=casti2f(readU32(b,state.at)),hi=casti2f(readU32(b,state.at+4)),res=casti2f(readU32(b,state.at+8));state.at+=12;
+      local lo=messageWidenF32(readU32(b,state.at)),hi=messageWidenF32(readU32(b,state.at+4)),res=messageWidenF32(readU32(b,state.at+8));state.at+=12;
       if(!(lo<hi)||!(res>0)){state.bad=true;return s;}
-      local delta=hi-lo,steps=delta/res;if(!(steps>=1)||steps>4294967040.0){state.bad=true;return s;}
-      s.QMin=lo;s.QDelta=delta;s.QCount=ceil(steps);s.Bits=0;local q=s.QCount;while(q>0){s.Bits++;q=q>>1;}return s;
+      local delta=messageWidenF32(messageNarrowF32(hi-lo)),steps=messageWidenF32(messageNarrowF32(delta/res));if(!(steps>=1)||steps>4294967040.0){state.bad=true;return s;}
+      s.QMin=lo;s.QDelta=delta;s.QCount=ceil(steps).tointeger();s.Bits=0;local q=s.QCount;while(q>0){s.Bits++;q=q>>1;}return s;
     }
     state.bad=true;return s;
   }
@@ -194,7 +195,7 @@ local messageRoundShift = function(full, shift) {
   if (rem > half || (rem == half && (q & 1) != 0)) q++;
   return q;
 };
-local messageNarrowF32 = function(x) {
+messageNarrowF32 = function(x) {
   local b=castf2i(x), sign=(b >>> 63)&1, exp=(b >>> 52)&0x7ff, mant=b&0xfffffffffffff;
   if(exp==0x7ff){if(mant==0)return (sign<<31)|0x7f800000;local payload=(mant>>>29)&0x007fffff;if(payload==0)payload=0x00400000;return (sign<<31)|0x7f800000|payload;}
   if(exp==0)return sign<<31;
@@ -204,8 +205,8 @@ local messageNarrowF32 = function(x) {
   if(e>127)return (sign<<31)|0x7f800000;
   return (sign<<31)|((e+127)<<23)|(q&0x007fffff);
 };
-local messageWidenF32 = function(bits) {
-  bits=bits&0xffffffff;local sign=bits&0x80000000,exp=(bits>>>23)&0xff,mant=bits&0x007fffff,high=0;
+messageWidenF32 = function(bits) {
+  bits=bits.tointeger()&0xffffffff;local sign=bits&0x80000000,exp=(bits>>>23)&0xff,mant=bits&0x007fffff,high=0;
   if(sign!=0)high=0x8000000000000000;
   if(exp==0xff){high=high|0x7ff0000000000000;if(mant!=0)high=high|(mant<<29);}
   else if(exp==0){if(mant!=0){local e=-126;while((mant&0x800000)==0){mant=mant<<1;e--;}mant=mant&0x007fffff;high=high|((e+1023)<<52)|(mant<<29);}}
@@ -250,7 +251,7 @@ local findField = function(T, id) {
 };
 local numberBits = function(fd) {
   if (fd.shape == "bool") return 1;
-  if (fd.shape == "flags") return fd.variants != null ? fd.variants.len() : 0;
+  if (fd.shape == "flags") return fd.flagbits;
   if (fd.lo != null && fd.hi != null) return bitCount(fd.hi - fd.lo);
   if (fd.bits > 0) return fd.bits;
   return fd.width * 8;
@@ -280,6 +281,7 @@ local writePayload;
 local readBody;
 local readPayload;
 local skipPayload;
+local kindWidens;
 
 local writeScalar = function(T, w, fd, value) {
   local kind = fd.kind, bits = numberBits(fd);
@@ -290,7 +292,14 @@ local writeScalar = function(T, w, fd, value) {
     put(w, ref, T.TableMessageRefBitsHere); return;
   }
   if (fd.shape == "float") {
-    if (fd.f32) put(w, messageNarrowF32(value), 32);
+    if (fd.f32 && fd.qcount > 0) {
+      local v=messageWidenF32(messageNarrowF32(value)), norm=messageWidenF32(messageNarrowF32((v-fd.qmin)/fd.qdelta));
+      if(!(norm>=0))norm=0;else if(!(norm<=1))norm=1;
+      local scaled=messageWidenF32(messageNarrowF32(norm*fd.qcount));
+      local index=floor(messageWidenF32(messageNarrowF32(scaled+0.5))).tointeger();
+      if(index>fd.qcount)index=fd.qcount;
+      put(w,index,fd.qbits);
+    } else if (fd.f32) put(w, messageNarrowF32(value), 32);
     else put(w, castf2i(value), 64);
     return;
   }
@@ -311,14 +320,16 @@ local readScalar = function(r, T, v, fd, shape) {
     r.unknown++; return null;
   }
   if (fd.shape == "float") {
-    if (fd.f32 && shape.Packing==2) {local index=get(r,shape.Bits);if(index>shape.QCount)index=shape.QCount;return casti2f(castf2i(shape.QMin+casti2f(castf2i(index.tofloat()/shape.QCount))*shape.QDelta));}
-    if (fd.f32) return messageWidenF32(get(r, 32));
+    if (shape.Kind==10 && shape.Packing==2) {local index=get(r,shape.Bits);if(index>shape.QCount)index=shape.QCount;local ratio=messageWidenF32(messageNarrowF32(index.tofloat()/shape.QCount));local scaled=messageWidenF32(messageNarrowF32(ratio*shape.QDelta));return messageWidenF32(messageNarrowF32(scaled+shape.QMin));}
+    if (shape.Kind==10) return messageWidenF32(get(r, 32));
     return casti2f(get(r, 64));
   }
   local bits = shape.Bits, x = get(r, bits);
   if (shape.Packing == 1) x += shape.Base;
-  else if (fd.shape == "int" && fd.lo != null) x += fd.lo;
-  if (fd.shape == "int" && fd.signed && fd.width * 8 < 64 && (x & (1 << (fd.width*8-1))) != 0) x -= (1 << (fd.width*8));
+  else {
+    if (shape.Kind>=2 && shape.Kind<=5) {local sw=8<<(shape.Kind-2);if(sw<64 && (x&(1<<(sw-1)))!=0)x-=(1<<sw);}
+  }
+  if (fd.shape == "int" && fd.lo != null && fd.hi != null) {if(x<fd.lo){x=fd.lo;r.clamped++;}else if(x>fd.hi){x=fd.hi;r.clamped++;}}
   return x;
 };
 
@@ -388,7 +399,8 @@ skipPayload = function(T, v, r, fd, depth) {
 
 readPayload = function(T, v, r, fd, owner, member, depth, entry) {
   if (depth > 128) { r.bad = true; return; }
-  if(entry.Kind!=fd.kind){r.kindMismatch++;skipPeerEntry(T,v,r,entry,depth);return;}
+  if(entry.Kind!=fd.kind&&!kindWidens(entry.Kind,fd.kind)){r.kindMismatch++;skipPeerEntry(T,v,r,entry,depth);return;}
+  if(entry.Kind!=fd.kind)r.widened++;
   if (fd.shape == "str") {
     local n=get(r,entry.Shape.Bits);if(r.bad||n>entry.Shape.Max){r.bad=true;return;}
     if(!alignRead(r)){r.bad=true;return;}
@@ -419,10 +431,11 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
     if(r.bad||n<shape.Min||n>shape.Max){r.bad=true;return;}
     local kept=n<fd.bound?n:fd.bound;if(kept<n)r.clamped++;
     if(entry.Element.Kind==6&&!alignRead(r)){r.bad=true;return;}
-    local keyed=(fd.keyvariants != null),a=keyed?owner[member]:[];if(!keyed)for(local j=0;j<fd.bound;j++)a.append(fd.elem.def);
+    local keyed=(fd.keyvariants != null),a=keyed?owner[member]:[];if(!keyed){local size=((fd.list||fd.counted)?kept:fd.bound);for(local j=0;j<size;j++)a.append(fd.elem.def);}
     for(local i=0;i<n;i++){
       local index=i;
       if(keyed){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||(ke.Id==0xfffffffffffffffd||ke.Id==0xfffffffffffffffe||ke.Id==0xffffffffffffffff)){r.bad=true;return;}index=-1;for(local j=0;j<fd.keyvariants.len();j++)if(fd.keyvariants[j][1]==ke.Id)index=j;if(index<0){r.unknown++;skipPeerEntry(T,v,r,entry.Element,depth+1);if(r.bad)return;continue;}}
+      if(entry.Element.Kind!=fd.elem.kind&&!kindWidens(entry.Element.Kind,fd.elem.kind)){r.kindMismatch++;skipPeerEntry(T,v,r,entry.Element,depth+1);if(r.bad)return;continue;}
       local holder={value=null};readPayload(T,v,r,fd.elem,holder,"value",depth+1,entry.Element);if(index<kept)a[index]=holder.value;if(r.bad)return;
     }
     owner[member]=a;return;
@@ -444,6 +457,14 @@ writeBody = function(T, w, d, value, depth) {
   put(w,0,T.TableMessageRefBitsHere);
 };
 
+kindWidens = function(kind, declared) {
+  if(declared>=3&&declared<=5)return kind>=2&&kind<declared;
+  if(declared==18)return kind>=2&&kind<=5;
+  if(declared>=7&&declared<=9)return kind>=6&&kind<declared;
+  if(declared==19)return kind>=6&&kind<=9;
+  return declared==11&&kind==10;
+};
+
 readBody = function(T, v, r, d, value, depth) {
   if(depth>128){r.bad=true;return;}
   for(;;){
@@ -453,7 +474,7 @@ readBody = function(T, v, r, d, value, depth) {
     if(id==0xfffffffffffffffd||id==0xfffffffffffffffe||id==0xffffffffffffffff){r.bad=true;return;}
     local entry=v.Entries[ref-1],fd=null;if(id in d.byId)fd=d.byId[id];
     if(fd==null){r.unknown++;skipPeerEntry(T,v,r,entry,depth+1);if(r.bad)return;continue;}
-    if(entry.Kind!=fd.kind){r.kindMismatch++;skipPeerEntry(T,v,r,entry,depth+1);if(r.bad)return;continue;}
+    if(entry.Kind!=fd.kind&&!kindWidens(entry.Kind,fd.kind)){r.kindMismatch++;skipPeerEntry(T,v,r,entry,depth+1);if(r.bad)return;continue;}
     if(fd.optional)value[fd.member + "Present"] = true;
     readPayload(T,v,r,fd,value,fd.member,depth+1,entry);
     if(r.bad)return;
@@ -490,11 +511,11 @@ _M.LoadMessages <- function(T, root, storage, v, bytes, report) {
   local d=T.Descriptors[root];
   if(d==null||!d.fixed)return refuse(report,"message_form_plain_table:"+root);
   if(storage.len()<count)return refuse(report,"batch_too_large");
-  local r={b=bytes,bits=16,bad=false,unknown=0,kindMismatch=0,clamped=0};
+  local r={b=bytes,bits=16,bad=false,unknown=0,kindMismatch=0,widened=0,clamped=0};
   for(local k=0;k<count;k++){
     local before=r.bits;readBody(T,v,r,d,storage[k],0);
-    if(report!=null){report.unknown+=r.unknown;report.kindMismatch+=r.kindMismatch;report.clamped+=r.clamped;}
-    r.unknown=0;r.kindMismatch=0;r.clamped=0;
+    if(report!=null){report.unknown+=r.unknown;report.kindMismatch+=r.kindMismatch;report.widened+=r.widened;report.clamped+=r.clamped;}
+    r.unknown=0;r.kindMismatch=0;r.widened=0;r.clamped=0;
     if(r.bad){if(report!=null)report.malformed<-true;return k;}
     if(r.bits==before){if(report!=null)report.malformed<-true;return k;}
   }
