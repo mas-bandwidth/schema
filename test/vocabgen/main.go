@@ -46,6 +46,12 @@ func main() {
 package %s
 
 `, filepath.Base(*out), *pkg, *tables, *out, *tables, *tables*fields, boundary(*tables*fields), refBits(*tables*fields), *pkg)
+	if *pkg == "vocabdemo" {
+		// The default unit carries a negative constant so the view corpus holds
+		// docs/SPEC-TABLES.md §8.3's signed int_value. vocab9demo is generated
+		// for the reference width alone and keeps the schema it already has.
+		b.WriteString("const WideNegative = -5\n\n")
+	}
 	for t := range *tables {
 		// `fixed table`, because THE MESSAGE FORM IS A FIXED TABLE'S
 		// (docs/SPEC-TABLES.md §2.2, §3.3, #823) and this unit exists for the

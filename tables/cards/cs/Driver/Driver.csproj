@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The card conformance driver program (tables/cards/conformance/
+       FORMAT.md): answers the driver contract over the facade library.
+       Built once into build/cards-driver-cs by the Makefile's
+       cards-cs-driver target; the executable tables/cards/cs/cards-driver script
+       dispatches to it. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>CardsDriver</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <ProjectReference Include="../Cards.csproj" />
+  </ItemGroup>
+
+</Project>

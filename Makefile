@@ -2451,11 +2451,16 @@ check-zero-range-negative-control: bin/schema test/zero_range_negative_main.cpp
 # clean. It is targeted rather than blanket, so the two DIRECT spellings must
 # stay refused under the same sabotage: a control that turned the whole rule
 # off would go red for a reason that says nothing about the fold.
+#
+# An enum has no Count (SPEC §4.2): E.Count is refused as an expression, so
+# the corpus shapes that spell E.Count stop at that refusal and their rows pin
+# it, apart from the provenance walk. The negative control therefore runs on
+# the shapes that fold through Max alone.
 .PHONY: check-enum-bound-negative-control
 check-enum-bound-negative-control: bin/schema
 	@mkdir -p build/enum-bound
-	@set -e; for u in BodyMax:ShipType.Max BodyCount:ShipType.Count \
-		BodyConstMax:SlotCount BodyConstCount:SlotCount BodyFolded:SlotCount; do \
+	@set -e; for u in BodyMax:ShipType.Max BodyConstMax:SlotCount \
+		BodyFolded:SlotCount; do \
 		unit=$${u%%:*}; bound=$${u#*:}; \
 		if ./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1; then \
 			echo "GATE FAILED: $$unit.schema compiled in a table body"; exit 1; \
@@ -2465,8 +2470,16 @@ check-enum-bound-negative-control: bin/schema
 		grep -q "spell it \[ShipType\]int32" build/enum-bound/$$unit.log || \
 			{ echo "GATE FAILED: $$unit.schema names no fix"; cat build/enum-bound/$$unit.log; exit 1; }; \
 	done
-	@set -e; for u in ArmMax:ShipType.Max ArmCount:ShipType.Count \
-		ArmConstMax:SlotCount ArmConstCount:SlotCount ArmFolded:SlotCount; do \
+	@set -e; for unit in BodyCount BodyConstCount; do \
+		if ./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1; then \
+			echo "GATE FAILED: $$unit.schema compiled — an enum has no Count"; exit 1; \
+		fi; \
+		grep -q "enum ShipType has no Count" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema was refused, but not as an enum's own Count"; cat build/enum-bound/$$unit.log; exit 1; }; \
+		grep -q "write ShipType.Max" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema names no fix"; cat build/enum-bound/$$unit.log; exit 1; }; \
+	done
+	@set -e; for u in ArmMax:ShipType.Max ArmConstMax:SlotCount; do \
 		unit=$${u%%:*}; bound=$${u#*:}; \
 		if ./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1; then \
 			echo "GATE FAILED: $$unit.schema compiled in a union arm"; exit 1; \
@@ -2476,7 +2489,16 @@ check-enum-bound-negative-control: bin/schema
 		grep -q "table Fleet's field payload reaches Payload" build/enum-bound/$$unit.log || \
 			{ echo "GATE FAILED: $$unit.schema names no table reaching the union"; cat build/enum-bound/$$unit.log; exit 1; }; \
 	done
-	@set -e; for unit in BodyConstMax BodyConstCount BodyFolded ArmConstMax ArmConstCount ArmFolded; do \
+	@set -e; for unit in ArmCount ArmConstCount ArmFolded; do \
+		if ./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1; then \
+			echo "GATE FAILED: $$unit.schema compiled — an enum has no Count"; exit 1; \
+		fi; \
+		grep -q "enum ShipType has no Count" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema was refused, but not as an enum's own Count"; cat build/enum-bound/$$unit.log; exit 1; }; \
+		grep -q "write ShipType.Max" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema names no fix"; cat build/enum-bound/$$unit.log; exit 1; }; \
+	done
+	@set -e; for unit in BodyConstMax BodyFolded ArmConstMax; do \
 		grep -q "the bound SlotCount folds from ShipType\." build/enum-bound/$$unit.log || \
 			{ echo "GATE FAILED: $$unit.schema names no constant, and the constant is all a reader can see"; cat build/enum-bound/$$unit.log; exit 1; }; \
 	done
@@ -2484,7 +2506,7 @@ check-enum-bound-negative-control: bin/schema
 		./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1 || \
 			{ echo "POSITIVE CONTROL FAILED: $$unit.schema did not compile"; cat build/enum-bound/$$unit.log; exit 1; }; \
 	done
-	@echo "gate: ten shapes refused on the bound's provenance, three controls compile"
+	@echo "gate: five shapes refused on the bound's provenance, five on E.Count, three controls compile"
 	@sed 's|if entry == nil \|\| entry.decl == nil \|\| visiting\[e.Name\] {|if true { // SABOTAGED: the constant fold removed from the bound check|' \
 		internal/check/tablekeyed.go > build/tablekeyed-no-fold.gotext
 	@grep -q SABOTAGED build/tablekeyed-no-fold.gotext || \
@@ -2492,16 +2514,16 @@ check-enum-bound-negative-control: bin/schema
 	@printf '{"Replace":{"%s/internal/check/tablekeyed.go":"%s/build/tablekeyed-no-fold.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/enum-bound-no-fold-overlay.json
 	@go build -overlay=build/enum-bound-no-fold-overlay.json -o build/schema-no-enum-bound-fold ./cmd/schema
-	@set -e; for unit in BodyConstMax BodyConstCount BodyFolded ArmConstMax ArmConstCount ArmFolded; do \
+	@set -e; for unit in BodyConstMax BodyFolded ArmConstMax; do \
 		./build/schema-no-enum-bound-fold check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit-nofold.log 2>&1 || \
 			{ echo "NEGATIVE CONTROL FAILED: $$unit.schema was still refused without the constant fold, so the fold is not what refuses it"; cat build/enum-bound/$$unit-nofold.log; exit 1; }; \
 	done
-	@set -e; for unit in BodyMax BodyCount ArmMax ArmCount; do \
+	@set -e; for unit in BodyMax ArmMax; do \
 		if ./build/schema-no-enum-bound-fold check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit-nofold.log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: $$unit.schema compiled too, so the sabotage removed the whole rule and not the fold"; exit 1; \
 		fi; \
 	done
-	@echo "negative control: without the constant fold, six folded rows compile clean and the four direct spellings stay refused"
+	@echo "negative control: without the constant fold, three folded rows compile clean and the two direct spellings stay refused"
 
 # THE VARIANT-ORDER NEGATIVE CONTROL (SPEC §3.1, issue #462). An enum value
 # rides as its declaration ordinal and a flags variant as its bit position, so
@@ -6069,22 +6091,85 @@ SERIALIZE_REPO    ?= https://github.com/mas-bandwidth/serialize.git
 SERIALIZE_FETCHED := build/serialize
 SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SERIALIZE_FETCHED))
 
+# THE GO PROBES FIND THEIR OWN RUNTIME THE SAME WAY. The versioning probes'
+# go.mod replaces github.com/mas-bandwidth/serialize.go with the sibling
+# checkout $(SERIALIZE_GO) (make/go.mk's default, ../serialize.go), and
+# fixedversioning_test.go:1126 used to hard-code that sibling four levels up
+# with nothing staging it. A clean bench has no sibling, so when no explicit
+# SERIALIZE_GO was named this fetches the pinned Go runtime (serialize.go @
+# $(SERIALIZE_GO_PIN), the tag .github/workflows/certify.yml names) into
+# build/serialize.go. A SERIALIZE_GO named on the command line (or in the
+# environment) that is absent still refuses by name, and so does a fetch that
+# fails or produces no go.mod: a gate with no blade is the exact silence this
+# refusal exists to forbid. The check target repeats that refusal in its own
+# recipe: once build/serialize.go/go.mod exists, a named-but-absent SERIALIZE_GO
+# still resolves SERIALIZE_GO_RUNTIME to the fetched copy, the file prerequisite
+# is up to date, and a phony target with only that prerequisite would report
+# nothing to be done.
+SERIALIZE_GO_PIN     ?= v1.15.1
+SERIALIZE_GO_REPO    ?= https://github.com/mas-bandwidth/serialize.go.git
+SERIALIZE_GO_FETCHED := build/serialize.go
+SERIALIZE_GO_RUNTIME := $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))
+
+# THE FLEET'S BENCHES MIRROR THE REPOSITORIES THEY WORK ON, and a local clone is
+# offline, unthrottled and byte-for-byte the pinned tag. $NOVA_MIRRORS names a
+# directory of bare mirrors laid out as <owner>/<repo>.git (for example
+# $NOVA_MIRRORS/mas-bandwidth/serialize.git), which is why the runtime fetches
+# below try that layout FIRST and fall back to the network repository
+# ($(SERIALIZE_REPO)/$(SERIALIZE_GO_REPO)) only when NOVA_MIRRORS is unset, when
+# the mirror is absent, or when the mirror clone fails (for example the mirror
+# lacks the pin tag). file:// makes git honour --depth against a local path. A
+# failure from BOTH still refuses by name, as before; the pins are unchanged.
+#
+# fetch-runtime PIN MIRROR-REL REPO DEST WHAT — clone DEST at tag PIN from
+# $NOVA_MIRRORS/MIRROR-REL first, else from REPO, saying which source it used.
+# WHAT names the runtime ("C" or "Go") in the echo. Returns non-zero when both
+# clones fail, so the caller refuses by name.
+define fetch-runtime
+if test -n "$(NOVA_MIRRORS)" && test -d "$(NOVA_MIRRORS)/$(2)" && \
+   git clone --depth 1 --branch "$(1)" "file://$(NOVA_MIRRORS)/$(2)" "$(4)"; then \
+	echo "tables $(5) versioning: fetched $(1) from the mirror $(NOVA_MIRRORS)/$(2) into $(4)"; \
+else \
+	rm -rf "$(4)"; \
+	echo "tables $(5) versioning: fetching $(3) @ $(1) into $(4)"; \
+	git clone --depth 1 --branch "$(1)" "$(3)" "$(4)"; \
+fi
+endef
+
+$(SERIALIZE_GO_RUNTIME)/go.mod:
+	@if test -f "$(SERIALIZE_GO)/go.mod"; then :; \
+	elif test "$(origin SERIALIZE_GO)" != "file"; then \
+		echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent; name it as a bench prerequisite" >&2; \
+		exit 1; \
+	else \
+		echo "tables Go versioning: no sibling runtime at '$(SERIALIZE_GO)'; fetching $(SERIALIZE_GO_PIN) into $(SERIALIZE_GO_RUNTIME)"; \
+		rm -rf "$(SERIALIZE_GO_RUNTIME)"; \
+		mkdir -p "$(dir $(SERIALIZE_GO_RUNTIME))"; \
+		$(call fetch-runtime,$(SERIALIZE_GO_PIN),mas-bandwidth/serialize.go.git,$(SERIALIZE_GO_REPO),$(SERIALIZE_GO_RUNTIME),Go) \
+			|| { echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent, and the fetch of $(SERIALIZE_GO_REPO) @ $(SERIALIZE_GO_PIN) failed; name it as a bench prerequisite" >&2; exit 1; }; \
+	fi
+	@test -f "$@" || { echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent, and the fetch produced no $(SERIALIZE_GO_RUNTIME)/go.mod; name it as a bench prerequisite" >&2; exit 1; }
+
 $(SERIALIZE_RUNTIME)/serialize.h:
 	@if test -f "$(SERIALIZE)/serialize.h"; then :; \
 	elif test "$(origin SERIALIZE)" != "file"; then \
 		echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent; name it as a bench prerequisite" >&2; \
 		exit 1; \
 	else \
-		echo "tables C versioning: no sibling runtime at '$(SERIALIZE)'; fetching $(SERIALIZE_REPO) @ $(SERIALIZE_PIN) into $(SERIALIZE_RUNTIME)"; \
+		echo "tables C versioning: no sibling runtime at '$(SERIALIZE)'; fetching $(SERIALIZE_PIN) into $(SERIALIZE_RUNTIME)"; \
 		rm -rf "$(SERIALIZE_RUNTIME)"; \
 		mkdir -p "$(dir $(SERIALIZE_RUNTIME))"; \
-		git clone --depth 1 --branch "$(SERIALIZE_PIN)" "$(SERIALIZE_REPO)" "$(SERIALIZE_RUNTIME)" \
+		$(call fetch-runtime,$(SERIALIZE_PIN),mas-bandwidth/serialize.git,$(SERIALIZE_REPO),$(SERIALIZE_RUNTIME),C) \
 			|| { echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent, and the fetch of $(SERIALIZE_REPO) @ $(SERIALIZE_PIN) failed; name it as a bench prerequisite" >&2; exit 1; }; \
 	fi
 	@test -f "$@" || { echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent, and the fetch produced no $(SERIALIZE_RUNTIME)/serialize.h; name it as a bench prerequisite" >&2; exit 1; }
 
 .PHONY: tables-fixedform-corpus-check
-tables-fixedform-corpus-check: $(SERIALIZE_RUNTIME)/serialize.h
+tables-fixedform-corpus-check: $(SERIALIZE_RUNTIME)/serialize.h $(SERIALIZE_GO_RUNTIME)/go.mod
+	@if test "$(origin SERIALIZE_GO)" != "file" && ! test -f "$(SERIALIZE_GO)/go.mod"; then \
+		echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent; name it as a bench prerequisite" >&2; \
+		exit 1; \
+	fi
 
 .PHONY: tables-fixedform-corpus
 

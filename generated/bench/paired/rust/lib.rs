@@ -37,3 +37,5 @@ mod fixedtable_fixed;
 pub use fixedtable_fixed::*;
 mod fixedtable_records;
 pub use fixedtable_records::*;
+mod message_runtime;
+pub use message_runtime::*;

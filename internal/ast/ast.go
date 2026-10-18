@@ -224,8 +224,18 @@ type ScalarType struct {
 	// (docs/SPEC-TABLES.md §2.3). Table bodies only; the checker refuses every
 	// other placement by name.
 	Optional bool
-	Name     string // ScalarNamed
-	Pos      Pos
+	// ElemOptional marks `[..N]?T` / `[]?T`: the `?` written AFTER an array
+	// bound, binding to the ELEMENT (docs/SPEC-TABLES.md §2.13). The
+	// checker takes it on `string(M)` only and refuses every other element
+	// by name.
+	ElemOptional bool
+	// Unbounded marks a bare `string` with no `(N)`: UNBOUNDED text
+	// (docs/SPEC-TABLES.md §2.13.1). The grammar takes it wherever a field
+	// type stands; the checker accepts it as a variable table's text-list
+	// element and as a map key, and refuses every other placement by name.
+	Unbounded bool
+	Name      string // ScalarNamed
+	Pos       Pos
 }
 
 type ConstField struct {

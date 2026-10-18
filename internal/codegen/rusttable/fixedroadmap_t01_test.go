@@ -17,9 +17,12 @@ import (
 // behaviour are held by TestFixedFormRaggedTail and the other files of this
 // package; the subtests below carry only the clauses those do not assert.
 //
-// rust/F12 (a second layout for a held hash) has no subtest: the rust leg has
-// no announcement carrier to refuse it on, and the page names no rust surface
-// for one, so the card reports it not-done and never decides the surface here.
+// rust/F12 (a second layout for a held hash) is held by
+// fixedroadmap_t13_test.go's TestFixedRoadmapRustT13LayoutHashCollision: the
+// fixed FILE's own header carries the held hash and its layout, so the refusal
+// is reachable with no announcement carrier, and a known hash over layout bytes
+// that differ by one — or over a different layout length — is `layout_malformed`
+// (§5.3 step 7, rows 4 and 5).
 //
 // THE NAME OF THE PER-RECORD REFUSAL (§5.9 #25): the page's name is
 // `no_layout`; a leg carrying form 1's words keeps `no_block` until the whole-leg

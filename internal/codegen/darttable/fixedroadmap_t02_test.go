@@ -111,7 +111,7 @@ func t02Rows(t *testing.T, src, name string) [][]int64 {
 	t.Helper()
 	block := t02Block(t, src, name+" = Int32List.fromList(const <int>[", "]);")
 	var rows [][]int64
-	for _, line := range strings.Split(block, "\n") {
+	for line := range strings.SplitSeq(block, "\n") {
 		if i := strings.Index(line, "//"); i >= 0 {
 			line = line[:i]
 		}
@@ -308,7 +308,7 @@ func t02R23(t *testing.T) {
 		decls = decls[:i]
 	}
 	last := ""
-	for _, line := range strings.Split(decls, "\n") {
+	for line := range strings.SplitSeq(decls, "\n") {
 		s := strings.TrimSpace(line)
 		if s == "" || strings.HasPrefix(s, "//") || strings.HasPrefix(s, "}") {
 			continue

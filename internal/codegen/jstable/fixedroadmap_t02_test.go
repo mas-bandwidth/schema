@@ -130,7 +130,7 @@ func t02Has(t *testing.T, got, want, what string) {
 func t02Bytes(t *testing.T, src, start, end string) []byte {
 	t.Helper()
 	var out []byte
-	for _, tok := range strings.Split(t02Block(t, src, start, end), ",") {
+	for tok := range strings.SplitSeq(t02Block(t, src, start, end), ",") {
 		tok = strings.TrimSpace(tok)
 		if tok == "" {
 			continue
@@ -345,7 +345,7 @@ func t02W14(t *testing.T) {
 	// root's offsetof — and size sizeof(T).
 	lanes := strings.Split(t02Block(t, src, "const TFixedIdentity = new Int32Array([", "]);"), ",")
 	if len(lanes) < 4 {
-		t.Fatalf("W14: the identity plan has %d lanes, want nine: %q", len(lanes), lanes)
+		t.Fatalf("W14: the identity plan has %d lanes, want eleven: %q", len(lanes), lanes)
 	}
 	dst, err := strconv.Atoi(strings.TrimSpace(lanes[2]))
 	if err != nil {

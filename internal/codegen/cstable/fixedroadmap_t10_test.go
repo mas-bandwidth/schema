@@ -109,13 +109,6 @@ func TestFixedRoadmapCSharpT10Optionals(t *testing.T) {
 	}
 }
 
-// t10WriteBody reads the generated TFixedWriteBody's statements back, so an
-// assertion names the write of a construct and not the whole file.
-func t10WriteBody(t *testing.T, src string) string {
-	t.Helper()
-	return t02Norm(t02Block(t, src, "public static void TFixedWriteBody(", "public static void"))
-}
-
 // t10ResetBody reads the generated TableReset(T)'s statements.
 func t10ResetBody(t *testing.T, src string) string {
 	t.Helper()
