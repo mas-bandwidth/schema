@@ -15023,7 +15023,10 @@ name rather than by range (a timestamp that names no instant, a reserved `&`
 key, §16.2, §16.7), and a read that dropped the field quietly would turn a
 person's typing into a silent loss. A string the read only SKIPS — the value
 of an unknown key, an object key naming a field — stores nothing and is not
-this event. **The other answer, the wire and every writer carrying the zero,
+this event. A map key the read DROPS for its length (over a string
+key's bound, or too long to be any integer) is not skipped: it is still a key
+bound for text storage, so a zero in it refuses the read the same way, and in
+every Go reader alike. **The other answer, the wire and every writer carrying the zero,
 was considered and refused**: it would reverse the long-standing content rule
 every table reader and the packet wire already hold, and break `string(N)`'s
 C and C++ storage, which is a valid C string after every read (USAGE.md), to
