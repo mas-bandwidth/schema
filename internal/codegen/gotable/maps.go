@@ -2,15 +2,10 @@ package gotable
 
 import (
 	"fmt"
-
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// optionalMapJson is the JSON walk's one change for an OPTIONAL MAP
-// (docs/SPEC-TABLES.md §2.8, §16.2), made only in a unit that declares one so
-// every other unit's walk is the same bytes it was: a `null` reads as ABSENT
-// and puts the field back at its defaults, and a map's defaults are the empty
-// sixteen-byte slot, never the ENTRY table its descriptor's Table names.
+// optionalMapJson is the JSON walk's one change for an OPTIONAL MAP (docs/SPEC-TABLES.md §2.8, §16.2), made only in a unit that declares one so every other unit's walk is the same bytes it was: a `null` reads as ABSENT and puts the field back at its defaults, and a map's defaults are the empty sixteen-byte slot, never the ENTRY table its descriptor's Table names.
 func optionalMapJson(u *ir.Unit, s string) string {
 	if len(ir.OptionalMapFields(u)) == 0 {
 		return s
@@ -18,7 +13,6 @@ func optionalMapJson(u *ir.Unit, s string) string {
 	old := "\t\t\t\tif f.Table != nil {\n\t\t\t\t\tf.Table().Reset(unsafe.Add(base, uintptr(f.Offset)))"
 	return tableSourceReplace(s, old, "\t\t\t\tif f.Map {\n\t\t\t\t\tclear(unsafe.Slice((*byte)(unsafe.Add(base, uintptr(f.Offset))), 16))\n\t\t\t\t} else if f.Table != nil {\n\t\t\t\t\tf.Table().Reset(unsafe.Add(base, uintptr(f.Offset)))", 1)
 }
-
 func (g *tableGen) mapDescriptor(f *ir.Field) string {
 	for i, field := range g.owner.Fields {
 		if field == f {
@@ -55,8 +49,7 @@ func (g *tableGen) emitMapSurface(st *ir.Struct, f *ir.Field) {
 		kv = "tableMapKey{text:[]byte(key)}"
 	}
 	if key.Type.TextUnbounded() {
-		// an UNBOUNDED key (docs/SPEC-TABLES.md §2.13.1): the same spelling,
-		// any length, compared whole
+		// an UNBOUNDED key (docs/SPEC-TABLES.md §2.13.1): the same spelling, any length, compared whole
 		kv = "tableMapKey{text:unsafe.Slice(unsafe.StringData(key),len(key))}"
 	}
 	holder := "*TableMap[" + entry + "]"
@@ -132,15 +125,7 @@ func tableMapIndex(h *tableContainer,f *TableFieldInfo,storage []byte) TableMapI
 func tableMapIndexFind(index TableMapIndex,h *tableContainer,f *TableFieldInfo,key tableMapKey) unsafe.Pointer {if len(index.slots)==0{return tableMapFind(h,f,key,nil)};kf:=&f.Table().Fields[0];if !tableMapKeyValid(key,kf)||h.Ref==0{return nil};base:=unsafe.Add(unsafe.Pointer(h),h.Ref);at:=tableMapHash(key,kf)&uint64(len(index.slots)-1);for i:=0;i<len(index.slots);i++ {slot:=index.slots[at];if slot==0{return nil};if slot<0||slot>h.Count{return nil};p:=unsafe.Add(base,int64(slot-1)*int64(f.ElemSize));if tableMapKeyOrder(tableMapStoredKey(p,kf),key,kf)==0{return p};at=(at+1)&uint64(len(index.slots)-1)};return nil}
 `
 
-// tableJsonMapSource reads and writes a map in the JSON text form. A map key is
-// a JSON string whatever its kind (docs/SPEC-TABLES.md 16.2), so a key that
-// decodes to U+0000 refuses the read as ONE Malformed event (16.3, counted as
-// 4.2 counts it on the wire): an integer key whose scan refused returns at
-// once and is never also counted a kind mismatch. A key the read DROPS for its
-// length (over a string key's bound, or no integer at all) is still a key: the
-// probe scans every key as text bound for storage into an empty buffer and a
-// scratch report first, so a zero in it refuses the same way, as the pack text
-// reader refuses it; its drop is counted as before (Clamped, KindMismatch).
+// tableJsonMapSource reads and writes a map in the JSON text form. A map key is a JSON string whatever its kind (docs/SPEC-TABLES.md 16.2), so a key that decodes to U+0000 refuses the read as ONE Malformed event (16.3, counted as 4.2 counts it on the wire): an integer key whose scan refused returns at once and is never also counted a kind mismatch. A key the read DROPS for its length (over a string key's bound, or no integer at all) is still a key: the probe scans every key as text bound for storage into an empty buffer and a scratch report first, so a zero in it refuses the same way, as the pack text reader refuses it; its drop is counted as before (Clamped, KindMismatch).
 const tableJsonMapSource = `
 func tableJsonWriteMap(out *tableJsonOut,p unsafe.Pointer,f *TableFieldInfo,depth int32)bool {if depth>tableJsonMaxDepth{return false};count:=*(*int32)(unsafe.Add(p,8));if count<0{return false};out.put('{');if count>0 {ref:=*(*int64)(p);if ref==0{return false};base:=unsafe.Add(p,ref);entry:=f.Table();key,value:=&entry.Fields[0],&entry.Fields[1];for i:=int32(0);i<count;i++ {if i>0{out.put(',')};out.line(depth+1);at:=unsafe.Add(base,int64(i)*int64(f.ElemSize));k:=tableMapStoredKey(at,key);if key.Kind==12 {tableJsonWriteString(out,k.text)}else{out.put('"');if key.Kind>=2&&key.Kind<=5 {tableJsonWriteSigned(out,int64(k.raw))}else{tableJsonWriteUnsigned(out,k.raw)};out.put('"')};out.text(": ");if value.Optional&&!*(*bool)(unsafe.Add(at,value.PresentOffset)){out.text("null")}else if !tableJsonWriteField(out,at,value,depth+1){return false}};out.line(depth)};out.put('}');return true}
 func tableJsonReadMap(in *tableJsonIn,p unsafe.Pointer,f *TableFieldInfo,depth int32)bool {if depth>tableJsonMaxDepth||in.peek()!='{'||in.graph==nil||in.graph.mapPlace==nil {in.bad=true;return false};clear(unsafe.Slice((*byte)(p),16));in.pos++;entry:=f.Table();key,value:=&entry.Fields[0],&entry.Fields[1]
@@ -150,7 +135,6 @@ func tableJsonReadMap(in *tableJsonIn,p unsafe.Pointer,f *TableFieldInfo,depth i
 }
 func tableJsonMapInteger(text []byte,f *TableFieldInfo)(uint64,bool) {var report TableReport;in:=tableJsonIn{text:text,report:&report};integral,ok:=in.walkNumber();if !ok||in.pos!=len(text){return 0,false};_ = integral;v,ok:=tableJsonDecimalKey(text,f.Kind>=2&&f.Kind<=5,int(f.ElemSize)*8);return v,ok}
 `
-
 const tableJsonMapDecimalSource = `
 // Decimal normalization preserves every uint64 bit and accepts integral
 // exponent/fraction spellings without a binary floating-point conversion.

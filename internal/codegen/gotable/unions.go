@@ -5,8 +5,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// Table-only unions share the packet emitter's tag-plus-arms storage. Field
-// payloads retain the same companion names as ordinary table fields.
 func (g *tableGen) emitTableUnion(un *ir.Union) {
 	width := 32
 	if g.regional {
@@ -37,8 +35,6 @@ func (g *tableGen) emitTableUnion(un *ir.Union) {
 	g.pf("};return \"???\" }\n")
 }
 
-// An overlay has one canonical payload extent. Accessors expose typed views
-// without storing Go pointers in the record or duplicating inactive arms.
 func (g *tableGen) emitUnionRow(un *ir.Union) {
 	size, align, tag, offset := ir.UnionLayout(g.unit, un)
 	tagType := un.Name + "Type"

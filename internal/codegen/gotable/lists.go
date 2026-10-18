@@ -6,8 +6,7 @@ import (
 )
 
 func unitHasContainers(u *ir.Unit) bool {
-	// unbounded text (docs/SPEC-TABLES.md §2.13.1) carves its blob records
-	// from the node's extent, as a container carves its elements
+	// unbounded text (docs/SPEC-TABLES.md §2.13.1) carves its blob records from the node's extent, as a container carves its elements
 	return len(ir.ListFields(u)) != 0 || len(ir.MapFields(u)) != 0 || ir.UnitHasUnboundedText(u)
 }
 func containerElementType(u *ir.Unit, f *ir.Field) string {
@@ -28,7 +27,6 @@ func (g *tableGen) emitListSurface(st *ir.Struct, f *ir.Field) {
 	g.pf("func %sErase(arena *TableArena,holder %s,element *%s)bool {return tableContainerErase(arena,(*tableContainer)(unsafe.Pointer(holder)),unsafe.Pointer(element),int64(unsafe.Sizeof(*element)))}\n", name, holder, typ)
 	g.pf("func %sEach(holder %s,visit func(*%s)bool,arena ...*TableArena)bool {cursor:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)),int64(unsafe.Sizeof(*new(%s))),tableOptionalArena(arena));for i:=int32(0);i<holder.Count;i++ {p:=(*%s)(cursor.Next());if p==nil||!visit(p){return false}};return true}\n", name, holder, typ, typ, typ)
 }
-
 func (g *tableGen) emitListRead(f *ir.Field, ind string) {
 	expr := "value." + member(f)
 	typ := containerElementType(g.unit, f)
@@ -102,8 +100,6 @@ func (g *tableGen) emitListWrite(f *ir.Field, expr, writer, ind string, framed b
 	g.pf("%s }\n%s}\n", ind, ind)
 }
 
-// The holder is POD in both lives. Arena chunks never move, so appending
-// cannot invalidate an element handle. Const storage is one contiguous array.
 const tableContainerSource = `
 type tableContainer struct { Ref int64; Count int32; _ int32 }
 type TableList[T any] struct { Ref int64; Count int32; _ int32 }
@@ -145,20 +141,16 @@ func tableWireUnionExtent(r *TableReader,f *TableFieldInfo,at *int64)TableRefuse
 
 `
 
-// Keep the extent machinery out of units which have no containers.
 func containerRegionSource(s string) string {
 	s = tableSourceReplace(s, "nodes:=TableNodeMap{Entries:directory,Arena:true}", "nodes:=TableNodeMap{Entries:directory,Arena:true,Carve:TableExtentCarve{Worker:worker}}", 1)
 	return containerRegionSourceCommon(s)
 }
 
-// containerRegionSourceRetain is the retain region loader, which never
-// concatenates tableBuilderLoadSource; its directory-to-node-map seam is stated
-// absent rather than probed.
+// containerRegionSourceRetain is the retain region loader, which never concatenates tableBuilderLoadSource; its directory-to-node-map seam is stated absent rather than probed.
 func containerRegionSourceRetain(s string) string {
 	s = tableSourceReplace(s, "nodes:=TableNodeMap{Entries:directory,Arena:true}", "nodes:=TableNodeMap{Entries:directory,Arena:true,Carve:TableExtentCarve{Worker:worker}}", 0)
 	return containerRegionSourceCommon(s)
 }
-
 func containerRegionSourceCommon(s string) string {
 	s = tableSourceReplace(s, "type TableNodeMap struct {", "type TableNodeMap struct { Carve TableExtentCarve;", 1)
 	s = tableSourceReplace(s, "return tableRegionRound(int64(t.Size)),TableRefuseOk", "return tableWireNodeBytesReason(body,t)", 1)
@@ -172,8 +164,7 @@ func containerRegionSourceCommon(s string) string {
 	s = tableSourceReplace(s, "tableRegionEdges(p,f.Table(),visit)", "tableRegionEdges(p,f.Table(),a,visit)", 1)
 	s = tableSourceReplace(s, "tableRegionValueEdges(at,f,visit)", "tableRegionValueEdges(at,f,a,visit)", 1)
 	s = tableSourceReplace(s, "af,visit)", "af,a,visit)", 1)
-	// The walker's per-entry edges seam lives in the JSON region source, not
-	// the load source this helper carries; state its absence here.
+	// The walker's per-entry edges seam lives in the JSON region source, not the load source this helper carries; state its absence here.
 	s = tableSourceReplace(s, "tableRegionEdges(e.node,e.info,func", "tableRegionEdges(e.node,e.info,nil,func", 0)
 	s = tableSourceReplace(s, "p:=unsafe.Add(base,f.Offset);count:=int32(1);", `p:=unsafe.Add(base,f.Offset);if f.List||f.Map {if !tableRegionContainerEdges((*tableContainer)(p),f,a,visit){return false};continue};count:=int32(1);`, 1)
 	s = tableSourceReplace(s, "if e.info!=nil {return tableRegionRound(int64(e.info.Size))}", "if e.info!=nil {extent:=tableExtentBytes(e.node,e.info,a);if extent<0{return -1};return tableRegionRound(tableRegionRound(int64(e.info.Size))+extent)}", 1)
@@ -187,7 +178,6 @@ func tableRegionContainerEdges(h *tableContainer,f *TableFieldInfo,a *TableArena
 	s = s[:start] + tableContainerPackSource + s[end:]
 	return s
 }
-
 func containerRegionJsonSource(s string) string {
 	s = tableSourceReplace(s, "graph:=tableJsonGraph{alloc:worker.Alloc,", "graph:=tableJsonGraph{mapPlace:func(p unsafe.Pointer,f *TableFieldInfo,key tableMapKey)(unsafe.Pointer,bool){return tableMapPlace(worker,(*tableContainer)(p),f,key)},listAdd:func(p unsafe.Pointer,size int64)unsafe.Pointer{return tableContainerAppend(worker,(*tableContainer)(p),size)},alloc:worker.Alloc,", 1)
 	s = tableSourceReplace(s, "tableRegionEdges(e.node,e.info,func", "tableRegionEdges(e.node,e.info,nil,func", 1)
@@ -203,8 +193,6 @@ func tableRegionPack(root unsafe.Pointer,info *TableTypeInfo,a *TableArena) ([]b
 }
 `
 
-// Container JSON stays in the unit-independent descriptor walk. Only the
-// authoring allocation callback knows about the arena's chunk representation.
 const tableJsonListSource = `
 func tableJsonWriteList(out *tableJsonOut,holder unsafe.Pointer,f *TableFieldInfo,depth int32) bool {
  count:=*(*int32)(unsafe.Add(holder,8));if count<0{return false};if count==0{out.text("[]");return true};ref:=*(*int64)(holder);if ref==0{return false};p:=unsafe.Add(holder,ref);out.put('[');for i:=int32(0);i<count;i++ {if i>0{out.put(',')};out.line(depth+1);if !tableJsonWriteScalar(out,unsafe.Add(p,uintptr(i)*uintptr(f.ElemSize)),f,depth+1){return false}};out.line(depth);out.put(']');return true

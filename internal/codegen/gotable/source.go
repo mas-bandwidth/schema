@@ -5,8 +5,6 @@ import (
 	"strings"
 )
 
-// Runtime specialization must fail closed if its source seam moves. A missing
-// replacement otherwise emits a valid-looking codec with a different contract.
 func tableSourceIndex(source, marker string) int {
 	if count := strings.Count(source, marker); count != 1 {
 		panic(fmt.Sprintf("Go table source seam %q occurs %d times, want one", marker, count))

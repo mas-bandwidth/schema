@@ -4,27 +4,20 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/ir"
 	"math/big"
 	"strconv"
 	"strings"
-
-	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// Testgen writes the generated round-trip and damage tests of a unit
-// (docs/SPEC-TABLES.md §16.11): one <Base>Table_gen_test.go per unit file that
-// declares a root table, in the generated package, calling the generated API
-// and the standard library only. It writes nothing; the caller places the
-// files beside what Generate wrote. The output is deterministic to the byte:
-// every sample is built from the declaration alone.
+// Testgen writes the generated round-trip and damage tests of a unit (docs/SPEC-TABLES.md §16.11): one <Base>Table_gen_test.go per unit file that declares a root table, in the generated package, calling the generated API and the standard library only. It writes nothing; the caller places the files beside what Generate wrote. The output is deterministic to the byte: every sample is built from the declaration alone.
 func Testgen(u *ir.Unit) (map[string][]byte, error) {
 	variable := ir.VariableTables(u)
 	out := map[string][]byte{}
 	for _, f := range u.Files {
 		var roots []*ir.Struct
 		for _, st := range f.Tables {
-			// §16.11: a ROOT TABLE is every declared table; a generated map
-			// entry or text-list element record is not one
+			// §16.11: a ROOT TABLE is every declared table; a generated map entry or text-list element record is not one
 			if st.IsTable && !st.IsMapEntry() {
 				roots = append(roots, st)
 			}
@@ -34,8 +27,7 @@ func Testgen(u *ir.Unit) (map[string][]byte, error) {
 		}
 		var body strings.Builder
 		for _, st := range roots {
-			// §16.11: the sample is spelled in the JSON form and the round
-			// trip crosses the wire, so a table without either is refused
+			// §16.11: the sample is spelled in the JSON form and the round trip crosses the wire, so a table without either is refused
 			for _, form := range []string{"wire", "json"} {
 				if !st.CarriesForm(form) {
 					return nil, fmt.Errorf("testgen: table %s does not carry the %s form, and its generated tests spell the sample in JSON and cross the wire (docs/SPEC-TABLES.md §16.11)", st.Name, form)
@@ -82,8 +74,7 @@ type tgSample struct {
 	expr string // a Go expression whose value is the sample's JSON text
 }
 
-// testgenSamples builds a root table's samples (§16.11): defaults, low, high,
-// inside, and arm_<k> for every arm past the first of the widest union.
+// testgenSamples builds a root table's samples (§16.11): defaults, low, high, inside, and arm_<k> for every arm past the first of the widest union.
 func testgenSamples(st *ir.Struct) ([]tgSample, error) {
 	arms := testgenMaxArms(st, map[*ir.Struct]bool{}, map[*ir.Union]bool{})
 	var out []tgSample
@@ -110,7 +101,6 @@ func testgenSamples(st *ir.Struct) ([]tgSample, error) {
 	return out, nil
 }
 
-// testgenMaxArms is the largest arm count of any union the table reaches.
 func testgenMaxArms(st *ir.Struct, seen map[*ir.Struct]bool, useen map[*ir.Union]bool) int {
 	if st == nil || seen[st] {
 		return 0
@@ -146,28 +136,23 @@ func testgenMaxArms(st *ir.Struct, seen map[*ir.Struct]bool, useen map[*ir.Union
 	return n
 }
 
-// tgJSON accumulates a Go expression that concatenates literal JSON with
-// computed runs (a long string, a long array), so a sample at a 70000 bound
-// is a short line of source.
+// tgJSON accumulates a Go expression that concatenates literal JSON with computed runs (a long string, a long array), so a sample at a 70000 bound is a short line of source.
 type tgJSON struct {
 	parts []string
 	lit   strings.Builder
 }
 
 func (j *tgJSON) raw(s string) { j.lit.WriteString(s) }
-
 func (j *tgJSON) code(e string) {
 	j.flush()
 	j.parts = append(j.parts, e)
 }
-
 func (j *tgJSON) flush() {
 	if j.lit.Len() > 0 {
 		j.parts = append(j.parts, strconv.Quote(j.lit.String()))
 		j.lit.Reset()
 	}
 }
-
 func (j *tgJSON) expr() string {
 	j.flush()
 	if len(j.parts) == 0 {
@@ -176,16 +161,14 @@ func (j *tgJSON) expr() string {
 	return strings.Join(j.parts, " + ")
 }
 
-// tgGen spells one sample. path holds the tables on the current pointer path,
-// so a recursive declaration ends in null (§16.11).
+// tgGen spells one sample. path holds the tables on the current pointer path, so a recursive declaration ends in null (§16.11).
 type tgGen struct {
 	mode int
 	arm  int
 	path map[string]bool
 }
 
-// table writes a table or type body as its JSON object, or as its one field's
-// array for a `json = "array"` table (§16.10).
+// table writes a table or type body as its JSON object, or as its one field's array for a `json = "array"` table (§16.10).
 func (g *tgGen) table(j *tgJSON, st *ir.Struct) error {
 	if st.JsonArray {
 		if len(st.Fields) != 1 {
@@ -233,8 +216,7 @@ func (g *tgGen) table(j *tgJSON, st *ir.Struct) error {
 	return nil
 }
 
-// value writes one field line's JSON value by its §16.2 row. whole is false
-// when writing an ELEMENT of the field's array.
+// value writes one field line's JSON value by its §16.2 row. whole is false when writing an ELEMENT of the field's array.
 func (g *tgGen) value(j *tgJSON, f *ir.Field, whole bool) error {
 	if whole && f.IsMap() {
 		return g.mapValue(j, f)
@@ -323,7 +305,6 @@ func (g *tgGen) pick(lo, hi *big.Int) *big.Int {
 	return lo
 }
 
-// length chooses a bounded extent: empty, the bound, or one inside it.
 func (g *tgGen) length(bound int64) int64 {
 	switch g.mode {
 	case tgLow:
@@ -333,7 +314,6 @@ func (g *tgGen) length(bound int64) int64 {
 	}
 	return min(1, bound)
 }
-
 func (g *tgGen) variant(vs []string) string {
 	switch g.mode {
 	case tgLow:
@@ -344,8 +324,6 @@ func (g *tgGen) variant(vs []string) string {
 	return vs[len(vs)/2]
 }
 
-// float spells a float: a compressed float's own range, else values every
-// width holds exactly.
 func (g *tgGen) float(f *ir.Field) string {
 	if f.HasFloatRange {
 		v := f.FMin
@@ -397,8 +375,7 @@ func (g *tgGen) bytesValue(j *tgJSON, n int64) {
 	j.raw(`"`)
 }
 
-// pointer writes `*T` as the pointee's object, or null when T is on the path;
-// `*bytes`, `*string` and `*wstring` as their blob (§2.5, §16.2).
+// pointer writes `*T` as the pointee's object, or null when T is on the path; `*bytes`, `*string` and `*wstring` as their blob (§2.5, §16.2).
 func (g *tgGen) pointer(j *tgJSON, f *ir.Field) error {
 	t := f.Type
 	switch t.Kind {
@@ -526,8 +503,7 @@ func (g *tgGen) array(j *tgJSON, f *ir.Field) error {
 	return nil
 }
 
-// mapValue writes `map[K]V` as an object keyed in ascending order (§2.8,
-// §16.2): empty, two entries or one.
+// mapValue writes `map[K]V` as an object keyed in ascending order (§2.8, §16.2): empty, two entries or one.
 func (g *tgGen) mapValue(j *tgJSON, f *ir.Field) error {
 	key, val := ir.MapKeyField(f), ir.MapValueField(f)
 	n := g.unbounded()
@@ -560,8 +536,7 @@ func (g *tgGen) mapValue(j *tgJSON, f *ir.Field) error {
 	return nil
 }
 
-// testgenIntRange is an integer-like field's range on the scale its JSON
-// token carries: declared, else implied by its storage.
+// testgenIntRange is an integer-like field's range on the scale its JSON token carries: declared, else implied by its storage.
 func testgenIntRange(f *ir.Field) (lo, hi *big.Int) {
 	if lo, hi, ok := ir.TableRawRange(f); ok {
 		return lo, hi
@@ -576,15 +551,13 @@ func testgenIntRange(f *ir.Field) (lo, hi *big.Int) {
 	return big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(width)), big.NewInt(1))
 }
 
-// testgenFixedDecimal spells a fixed-point raw value in whole units, exactly
-// (§16.2's fixed row).
+// testgenFixedDecimal spells a fixed-point raw value in whole units, exactly (§16.2's fixed row).
 func testgenFixedDecimal(raw *big.Int, frac int) string {
 	r := new(big.Rat).SetFrac(raw, new(big.Int).Lsh(big.NewInt(1), uint(frac)))
 	return r.FloatString(max(frac, 1))
 }
 
-// testgenRoundTrip writes Test<Name>GenRoundTrip: every sample read equal
-// through the binary wire, base64 text and JSON text (§16.11).
+// testgenRoundTrip writes Test<Name>GenRoundTrip: every sample read equal through the binary wire, base64 text and JSON text (§16.11).
 func testgenRoundTrip(b *strings.Builder, st *ir.Struct, variable bool, samples []tgSample) {
 	n := st.Name
 	fmt.Fprintf(b, "\n// Test%sGenRoundTrip reads every sample of %s back through the binary wire,\n// base64 text and JSON text, each equal to what was written (SPEC-TABLES §16.11).\n", n, n)
@@ -607,8 +580,7 @@ func testgenRoundTrip(b *strings.Builder, st *ir.Struct, variable bool, samples 
 	b.WriteString("\t\t})\n\t}\n}\n")
 }
 
-// testgenDamage writes Test<Name>GenDamage: the high sample's wire and texts,
-// damaged, each refused by its named reason (§16.11).
+// testgenDamage writes Test<Name>GenDamage: the high sample's wire and texts, damaged, each refused by its named reason (§16.11).
 func testgenDamage(b *strings.Builder, st *ir.Struct, variable bool, samples []tgSample) {
 	n := st.Name
 	high := samples[0].expr
@@ -637,7 +609,6 @@ func testgenDamage(b *strings.Builder, st *ir.Struct, variable bool, samples []t
 	b.WriteString("\tif ok || !jr.Malformed || !errors.Is(jr.Err(), TableRefuseMalformed) {\n\t\tt.Fatalf(\"a JSON document cut off inside its value: report %+v, want malformed\", jr)\n\t}\n}\n")
 }
 
-// testgenSave writes the subtest's save closure: a value's wire and JSON text.
 func testgenSave(b *strings.Builder, n string) {
 	b.WriteString("\t\t\tsave := func(leg string, value *" + n + ") ([]byte, []byte) {\n\t\t\t\tt.Helper()\n")
 	fmt.Fprintf(b, "\t\t\t\twire := make([]byte, max(%sMeasure(value), 0))\n\t\t\t\tif %sSave(value, wire) != int64(len(wire)) || len(wire) == 0 {\n\t\t\t\t\tt.Fatalf(\"%%s: Save refused\", leg)\n\t\t\t\t}\n", n, n)
@@ -645,12 +616,10 @@ func testgenSave(b *strings.Builder, n string) {
 	b.WriteString("\t\t\t\treturn wire, jsonText\n\t\t\t}\n")
 }
 
-// testgenSample writes the sample's read into v, with a silent report.
 func testgenSample(b *strings.Builder, n string, variable bool, text string) {
 	b.WriteString("\t\t\tvar r TableReport\n")
 	testgenSampleAt(b, "\t\t\t", n, variable, text)
 }
-
 func testgenSampleAt(b *strings.Builder, in, n string, variable bool, text string) {
 	if variable {
 		fmt.Fprintf(b, "%svar sb %sBuilder\n%sif !sb.Init() {\n%s\tt.Fatal(\"builder init\")\n%s}\n%sdefer sb.Shutdown()\n", in, n, in, in, in, in)
@@ -662,12 +631,9 @@ func testgenSampleAt(b *strings.Builder, in, n string, variable bool, text strin
 	fmt.Fprintf(b, "%s\tt.Fatalf(\"FromJson of the sample: report %%+v\", r)\n%s}\n", in, in)
 }
 
-// testgenFromJson writes a JSON read of text into a fresh value named v,
-// leaving ok and the report jr.
 func testgenFromJson(b *strings.Builder, n string, variable bool, text, v, jr string) {
 	testgenFromJsonAt(b, "\t\t\t", n, variable, text, v, jr)
 }
-
 func testgenFromJsonAt(b *strings.Builder, in, n string, variable bool, text, v, jr string) {
 	fmt.Fprintf(b, "%svar %s TableReport\n", in, jr)
 	if variable {

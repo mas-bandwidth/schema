@@ -2,9 +2,8 @@ package gotable
 
 import (
 	"fmt"
-	"math/big"
-
 	"github.com/mas-bandwidth/schema/v2/ir"
+	"math/big"
 )
 
 func wideLanes(v *big.Int) (lo, hi *big.Int) {
@@ -15,7 +14,6 @@ func wideLanes(v *big.Int) (lo, hi *big.Int) {
 	mask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1))
 	return new(big.Int).And(u, mask), new(big.Int).Rsh(u, 64)
 }
-
 func wideLiteral(v *big.Int, signed bool) string {
 	lo, hi := wideLanes(v)
 	typ := "serialize.Uint128"
@@ -24,7 +22,6 @@ func wideLiteral(v *big.Int, signed bool) string {
 	}
 	return fmt.Sprintf("(%s{Lo:%s, Hi:%s})", typ, lo, hi)
 }
-
 func (g *tableGen) emitReadWide(f *ir.Field, expr, rdr, kind, ind, onBad string) {
 	if knownKindWidth(kind) == 16 {
 		g.pf("%sif !%s.Has(16) { %s }\n", ind, rdr, onBad)

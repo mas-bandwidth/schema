@@ -2,9 +2,7 @@ package gotable
 
 import "github.com/mas-bandwidth/schema/v2/ir"
 
-// tableIntegritySource is the integrity trailer's runtime (docs/SPEC-TABLES.md
-// §2.14), emitted into the home file only when a table of the unit declares
-// `integrity`, so a unit without one carries none of it.
+// tableIntegritySource is the integrity trailer's runtime (docs/SPEC-TABLES.md §2.14), emitted into the home file only when a table of the unit declares `integrity`, so a unit without one carries none of it.
 const tableIntegritySource = `
 // tableIntegrityTable is CRC-32C, the Castagnoli polynomial (docs/SPEC-TABLES.md §2.14).
 var tableIntegrityTable = crc32.MakeTable(crc32.Castagnoli)
@@ -39,16 +37,12 @@ func tableIntegritySeal(buffer []byte, n int64) int64 {
 
 `
 
-// emitIntegrityMember is the variable root's file surface for a table that
-// declares `integrity` (docs/SPEC-TABLES.md §2.14): the same calls as
-// emitRegionMember's, the measure counting the four trailer bytes, the save
-// sealing them, and every read checking them before the open.
+// emitIntegrityMember is the variable root's file surface for a table that declares `integrity` (docs/SPEC-TABLES.md §2.14): the same calls as emitRegionMember's, the measure counting the four trailer bytes, the save sealing them, and every read checking them before the open.
 func (g *tableGen) emitIntegrityMember(st *ir.Struct, blobmask int) {
 	n, typ := st.Name, g.storageName(st.Name)
 	g.pf("func %sLoadMeasure(wire []byte) int64 { wire,ok:=tableIntegrityOpen(wire,nil);if !ok {return -1};n,_,_:=tableRegionMeasure(wire,%sTableType(),%sTableType().NodeType,%d);return n }\n", n, n, n, blobmask)
 	g.pf("func %sLoadMeasureReason(wire []byte)(int64,error){wire,ok:=tableIntegrityOpen(wire,nil);if !ok {return -1,TableRefuseIntegrityMismatch};size,_,_,reason:=tableRegionMeasureReason(wire,%sTableType(),%sTableType().NodeType,%d);return size,tableRefuseError(reason)}\n", n, n, n, blobmask)
-	// The plain %sLoad and %sLoadBuilder are emitted by emitRegionMember as the STRICT reads over these
-	// tolerant twins (docs/SPEC-TABLES.md §6.5); the trailer check runs inside each twin.
+	// The plain %sLoad and %sLoadBuilder are emitted by emitRegionMember as the STRICT reads over these tolerant twins (docs/SPEC-TABLES.md §6.5); the trailer check runs inside each twin.
 	g.pf("// %sLoadTolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5, §2.14): the trailer is checked first,\n// then every wire the framing walk accepts returns the recovered root, with the counters counted onto the report.\n", n)
 	g.pf("func %sLoadTolerant(region,wire []byte,report *TableReport) *%s { wire,ok:=tableIntegrityOpen(wire,report);if !ok {return nil};return (*%s)(tableRegionLoad(region,wire,%sTableType(),%sTableType().NodeType,%d,report)) }\n", n, typ, typ, n, n, blobmask)
 	g.pf("func %sMeasure(value *%s,context ...TableWriteContext) int64 { arena,allocator:=tableWriteOptions(context);size:=tableRegionSave(unsafe.Pointer(value),%sTableType(),nil,true,arena,allocator);if size<0 {return size};return size+4 }\n", n, typ, n)
@@ -58,9 +52,7 @@ func (g *tableGen) emitIntegrityMember(st *ir.Struct, blobmask int) {
 	g.pf("func %sLoadBuilderTolerant(b *%sBuilder,wire []byte,report *TableReport) bool {wire,ok:=tableIntegrityOpen(wire,report);if !ok {return false};return tableBuilderLoad(unsafe.Pointer(b.GetRoot()),b.root,&b.Main,wire,%sTableType(),%sTableType().NodeType,%d,report)}\n", n, n, n, n, blobmask)
 }
 
-// emitIntegrityRetain is the retaining round trip's file surface for a table
-// that declares `integrity` (docs/SPEC-TABLES.md §2.14, §6.6): the same three
-// calls as the plain member's, with the trailer checked, counted and sealed.
+// emitIntegrityRetain is the retaining round trip's file surface for a table that declares `integrity` (docs/SPEC-TABLES.md §2.14, §6.6): the same three calls as the plain member's, with the trailer checked, counted and sealed.
 func (g *tableGen) emitIntegrityRetain(st *ir.Struct, blobs int) {
 	n, typ := st.Name, g.storageName(st.Name)
 	g.pf("func %sLoadRetain(region,wire []byte,retain *TableRetain,report *TableReport)*%s{wire,ok:=tableIntegrityOpen(wire,report);if !ok {return nil};return (*%s)(tableRegionLoadRetain(region,wire,%sTableType(),%sTableType().NodeType,%d,report,retain))}\n", n, typ, typ, n, n, blobs)
