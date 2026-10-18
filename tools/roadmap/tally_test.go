@@ -3,16 +3,16 @@ package roadmap
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 	"testing"
 )
 
-// ROADMAP.md is generated end to end by tools/roadmap/render.lisp from
+// ROADMAP.md is generated end to end by nova-tools tools/roadmap from
 // docs/roadmap.sexp and docs/roadmap-evidence/*.sexp. Every table sits between
-// a pair of generated-block markers; these tests hold the page to that shape
-// where sbcl is absent, and to the renderer's exact output where it is present.
+// a pair of generated-block markers; these tests hold the page to that shape.
+// The page is held to the renderer's exact output by `make roadmap-check`, which
+// the fast CI lane runs (it fetches the generator, so it is not a unit test here).
 
 var (
 	startMarkerRx   = regexp.MustCompile(`^<!-- nova-work:([a-z0-9-]+):start -->$`)
@@ -270,38 +270,5 @@ func TestTablesWithDifferentAxesPassIndependently(t *testing.T) {
 	crossed := "<!-- nova-work:a:start -->\n<!-- nova-work:b:end -->\n| feature | c1 |\n|---|---|\n| f1 | ✅ |\n"
 	if err := checkRoadmapText(crossed); err == nil {
 		t.Fatal("expected mismatched block markers to be rejected, but passed")
-	}
-}
-
-func sbclOrSkip(t *testing.T) string {
-	t.Helper()
-	sbcl, err := exec.LookPath("sbcl")
-	if err != nil {
-		t.Skip("sbcl not installed on host; skipping the Lisp renderer (make roadmap-check runs it where sbcl is)")
-	}
-	return sbcl
-}
-
-// TestLispRendererSuite invokes the Common Lisp roadmap validation suite if sbcl is installed.
-func TestLispRendererSuite(t *testing.T) {
-	sbcl := sbclOrSkip(t)
-	cmd := exec.Command(sbcl, "--script", "tools/roadmap/test.lisp")
-	cmd.Dir = "../.."
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("sbcl test.lisp failed: %v\noutput:\n%s", err, string(out))
-	}
-}
-
-// TestRoadmapIsGeneratedFromTheData holds the committed ROADMAP.md to what
-// render.lisp makes of docs/roadmap.sexp and docs/roadmap-evidence/, where
-// sbcl is installed (the same check as `make roadmap-check`).
-func TestRoadmapIsGeneratedFromTheData(t *testing.T) {
-	sbcl := sbclOrSkip(t)
-	cmd := exec.Command(sbcl, "--script", "tools/roadmap/render.lisp", "--check", "docs/roadmap.sexp", "ROADMAP.md")
-	cmd.Dir = "../.."
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("ROADMAP.md is not what the data renders; run: make roadmap\n%s", string(out))
 	}
 }
