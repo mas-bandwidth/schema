@@ -7,10 +7,12 @@ import (
 )
 
 // TestGoUncoveredEmitters covers the emitter surface no other test reaches.
-// GenerateOmitting is the omit path; the two region emitters it used to name
-// were empty comment-only stubs, so they were removed rather than tested (a
-// no-op function has no emitted behaviour to pin). The message and retain
-// forms below keep the behaviour those stubs stood beside under test.
+// GenerateOmitting is the omit path; emitRegionMessage and
+// emitRetainMessageSurface are comment-only stubs, so a profile shows them at
+// 0.0% however often their call sites run (a statement-less function cannot
+// cover a statement). They are listed as removal candidates in the report; the
+// message and retain forms below keep the behaviour their call sites frame
+// under test.
 func TestGoUncoveredEmitters(t *testing.T) {
 	t.Parallel()
 	t.Run("GenerateOmitting_omits_only_the_named_form", func(t *testing.T) {

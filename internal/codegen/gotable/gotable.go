@@ -557,6 +557,9 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 				g.into(&g.message, func() {
 					g.emitMessageWrite(st)
 					g.emitMessageRead(st)
+					if regional {
+						g.emitRegionMessage(st)
+					}
 				})
 			}
 			if regional {
