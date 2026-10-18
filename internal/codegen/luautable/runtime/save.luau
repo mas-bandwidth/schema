@@ -382,7 +382,7 @@ writeField = function(fd, w, ids, nodes, v, path)
 	if fd.s == "sblob" or fd.s == "bblob" then
 		if val ~= nil then
 			local index
-			if val.s == "sblob" and type(val) == "string" then
+			if fd.s == "sblob" and type(val) == "string" then
 				index = nodes.slots[v][fd.slot]
 			else
 				index = nodes.index[val]
