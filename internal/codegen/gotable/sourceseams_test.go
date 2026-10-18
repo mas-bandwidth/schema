@@ -60,22 +60,27 @@ var seamProbeAllow = map[string]seamAllow{
 	seamContentKey("gotable.go", `si, sj := !strings.Contains(paths[i], "."), !strings.Contains(paths[j], ".")`):      {1, "sorts the emitted unit's import paths for ordering (stdlib first); operates on path strings, never on emitted or runtime source"},
 }
 
-// scanSourceSeams is half (a). The allow-listed non-seam string replacements
-// inside the package are:
-//   - source.go — the fail-closed helper, the definitional home of the seam
-//     machinery,
-//   - gotable.go — indentation of a generated line, not a runtime-source seam
-//     (it rewrites the emitted text's line prefixes, never an anchor), and
-//   - retain.go — the retain family's per-half rewrite, validated on the whole
-//     by tableSourceReplace before it runs.
+// scanSourceSeams is half (a). The content-key allow-list admits exactly these
+// non-seam string operations in the package, each stated with the count the
+// file holds today:
+//   1. source.go — the fail-closed seam helpers tableSourceReplace/
+//      tableSourceIndex/tableSourceRewriter, the definitional home of the seam
+//      machinery;
+//   2. block.go, cook.go, gotable.go — the import probes that ask whether the
+//      emitted unit uses serialize., to pick imports;
+//   3. gotable.go — indentation of a generated line, not a runtime-source seam
+//      (it rewrites the emitted text's line prefixes, never an anchor);
+//   4. retain.go — the retain family's per-half rewrite, validated on the
+//      whole by tableSourceReplace before it runs;
+//   5. gotable.go — the emitted-import sort, which orders the emitted unit's
+//      import paths (stdlib first). It operates on import path strings, never
+//      on emitted or runtime source, and is accepted as a non-seam under the
+//      coordinator ruling for schema-go-source-seams-allowlist-by-content.w3.
 //
 // The Contains/Count scan closes the sibling hole: a seam gated by probing the
 // anchor text fails open when the anchor moves, and wrapper helpers hide it.
 // A Replace inside a rep closure named by an allow-listed probe is that same
 // seam, not a second one, so only the probe line is listed.
-// The only allow-listed probes are the emitted-text checks that decide whether
-// the emitted unit uses serialize., plus the emitted-import sort in gotable.go
-// that orders import paths (stdlib first) and so touches no source text.
 func scanSourceSeams(t *testing.T) {
 	t.Helper()
 	var bad []string
