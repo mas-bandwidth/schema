@@ -1367,6 +1367,13 @@ All compile errors with positions:
   `fixed`/`ufixed` and compressed-float ranges alike. An array takes no
   specified default, so an array field's ELEMENT range must reach zero.
 
+  **A field marked `| required` (docs/SPEC-TABLES.md §2.3) is exempt and
+  takes no default:** its fresh value is the storage zero, which is outside
+  the range, so the writer refuses the record until the field is set, and a
+  stored record lacking it is `missing_required` on read. A declared default
+  on such a field stays legal. The text form refuses the same absence: a JSON
+  object that omits the key is refused, naming the field.
+
   **A counted array's COUNT bound is the stated exception, and it is legal.**
   `[A..B]T` with A above zero compiles with no declared default, because the
   count is born at A rather than at zero (§4.2) and so is never outside its

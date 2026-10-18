@@ -17,18 +17,18 @@ import (
 // a map, and a json key on a field.
 const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntable Holder\n{\n    name string(16) | json = \"label\"\n    words [..4]Word\n    more []Word\n    index map[string(8)]int32\n}\n"
 
-// neitherDigest is the sha256 of the go and cpp outputs of neitherSchema at
-// the base this card started from (sprint/schema-go @ f001d67e2086), file
+// neitherDigest is the sha256 of the go and cpp outputs of neitherSchema, file
 // names sorted, each name then its bytes. The go digest is recomputed on the
-// merge of sprint/schema-go @ 3f4d111f4442: it moves from that base only by
-// the integrity_mismatch refusal name every Go unit's runtime carries
-// (docs/SPEC-TABLES.md §2.14): the enum value, its Error case and its Err line.
-// It moves again, on the merge of sprint/schema-go @ f820a0c1f, only by the
-// JSON reader lines of internal/codegen/gotable/json.go that refuse a U+0000
-// bound for text storage (docs/SPEC-TABLES.md §16.3): the zero flag, scanKey,
-// the scanText name argument and the text_holds_zero reason.
+// merge of sprint/schema-go @ 60047ec8c2ff: it moves from the base by the
+// integrity_mismatch refusal name every Go unit's runtime carries
+// (docs/SPEC-TABLES.md §2.14) and by the strict timestamp parser that now rides
+// in every Go text form (§2.11, §16.2).
+// It moves again, on the merge of sprint/schema-go @ cc25e39f7, only by this
+// card's json.go zero rule: the JSON reader lines of
+// internal/codegen/gotable/json.go that refuse a U+0000 bound for text storage
+// (docs/SPEC-TABLES.md §16.3).
 var neitherDigest = map[string]string{
-	"go":  "7e7839602c93a8cd6b98041555eeb13e102c0d532e898474df40f06c16a2ef9c",
+	"go":  "24e03300743fc73b17aa767565e55371d629eed6116f0272186dd76dd545edbf",
 	"cpp": "5aabda2cf12ca342bd480b18084def13f06d87a85b6bdddeea12f955f761da1d",
 }
 

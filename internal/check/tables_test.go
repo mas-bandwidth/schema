@@ -316,14 +316,23 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { m map[uint32 | min = 1]int32 }\n"},
 		{name: "a default on the key is refused by name", want: "a map KEY takes no default",
 			src: "package t\ntable Tab { m map[uint32 = 5]int32 }\n"},
-		// the map itself takes no bound, no ?, no default and no attribute: a
-		// map's count is unbounded by design and its empty IS its absence
+		// the map itself takes no bound, no default and no attribute: a map's
+		// count is unbounded by design; `?map` is the optional map (§2.8),
+		// refused only where any map is and beside `| required`
 		{name: "a bounded map is refused by name", want: "a map takes no array bound",
 			src: "package t\ntable Tab { m [..4]map[uint32]int32 }\n"},
 		{name: "a fixed array of maps is refused by name", want: "a map takes no array bound",
 			src: "package t\ntable Tab { m [4]map[uint32]int32 }\n"},
-		{name: "an optional map is refused by name", want: "there is no ?map",
-			src: "package t\ntable Tab { m ?map[uint32]int32 }\n"},
+		{name: "an optional map in a type body is refused by name", want: "a MAP is a table-only construct",
+			src: "package t\ntype P { m ?map[uint32]int32 }\n"},
+		{name: "an optional map in a fixed table is refused by name", want: "is a map",
+			src: "package t\nfixed table Tab { m ?map[uint32]int32 }\n"},
+		{name: "an optional map marked required is refused by name", want: "| required is refused with ?",
+			src: "package t\ntable Tab { m ?map[uint32]int32 | required }\n"},
+		{name: "an optional map as a map's value is refused by name", want: "an optional map as a map's VALUE is refused",
+			src: "package t\ntable Tab { m map[uint8]?map[uint8]int32 }\n"},
+		{name: "an optional map claims its presence companion", want: "the generated presence companion",
+			src: "package t\ntable Tab {\n m ?map[uint32]int32\n m_present bool\n}\n"},
 		{name: "a default on a map is refused by name", want: "a map takes no specified default",
 			src: "package t\ntable Tab { m map[uint32]int32 = 0 }\n"},
 		{name: "an attribute on a map is refused by name", want: "does not apply to a map",
