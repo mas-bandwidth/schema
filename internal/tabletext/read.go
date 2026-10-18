@@ -8,6 +8,7 @@ package tabletext
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"math"
 	"math/big"
@@ -1027,73 +1028,76 @@ func (in *reader) skippedAmpersand(key string) bool {
 	return true
 }
 
-// readBase64 decodes a `bytes(N)` body six bits at a time, exactly as the
-// generated walk does: a body that is not base64 is the wrong SHAPE for the
-// kind, so the field keeps its default and the event is counted.
+// readBase64 decodes a `bytes(N)` body as CANONICAL standard base64
+// (docs/SPEC-TABLES.md §16.2, §16.8): the text card's rule is Strict() plus
+// EncodedLen(len(decoded)). A body that is base64 but not that exact encoding
+// keeps its decoded bytes and names the defect in Reason, which is the tolerant
+// read's report; the generated strict read refuses the same name. A body outside
+// the alphabet is the wrong SHAPE for the kind, so the field keeps its default
+// and the event is counted, exactly as before.
 func (in *reader) readBase64(fv *Field) bool {
-	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 	if in.peek() != '"' {
 		in.bad = true
 		return false
 	}
 	in.pos++
-	// bytes RE-ESTABLISH before decoding: a repeated key places a whole value,
-	// and six-bits-at-a-time decoding cannot overlay one
+	start := in.pos
+	for in.pos < len(in.text) && in.text[in.pos] != '"' {
+		in.pos++
+	}
+	if in.pos >= len(in.text) {
+		in.bad = true
+		return false
+	}
+	body := string(in.text[start:in.pos])
+	in.pos++
+	// bytes RE-ESTABLISH before decoding: a repeated key places a whole value
 	fv.Cell.Str = nil
 	fv.Count = 0
-	bound := int(fv.Def.Type.Size)
-	if fv.Def.Type.Pointer {
-		bound = -1 // a *bytes has no bound to clamp against
-	}
-	var out []byte
-	var accumulator uint32
-	held := 0
-	clamped, malformed := false, false
-	for {
-		if in.pos >= len(in.text) {
-			in.bad = true
-			return false
+	data, err := base64.StdEncoding.Strict().DecodeString(body)
+	canonical := err == nil && len(body) == base64.StdEncoding.EncodedLen(len(data))
+	if !canonical {
+		lenient, ok := readBase64Lenient(body)
+		if !ok {
+			in.report.KindMismatch++
+			return true
 		}
-		c := in.text[in.pos]
-		in.pos++
-		if c == '"' {
-			break
-		}
-		if c == '=' || malformed {
-			continue
-		}
-		at := -1
-		for i := range len(alphabet) {
-			if alphabet[i] == c {
-				at = i
-				break
-			}
-		}
-		if at < 0 {
-			malformed = true
-			continue
-		}
-		accumulator = accumulator<<6 | uint32(at)
-		held += 6
-		if held >= 8 {
-			held -= 8
-			if bound < 0 || len(out) < bound {
-				out = append(out, byte(accumulator>>held))
-			} else {
-				clamped = true
-			}
+		data = lenient
+		if in.report.Reason == "" {
+			in.report.Reason = "base64_not_canonical: " + fv.Def.Name
 		}
 	}
-	if malformed {
-		in.report.KindMismatch++
-		return true
-	}
-	if clamped {
+	if bound := int(fv.Def.Type.Size); !fv.Def.Type.Pointer && len(data) > bound {
+		data = data[:bound]
 		in.report.Clamped++
 	}
-	fv.Cell.Str = out
-	fv.Count = len(out)
+	fv.Cell.Str = data
+	fv.Count = len(data)
 	return true
+}
+
+// readBase64Lenient decodes a body with its padding and whitespace removed, so
+// a non-canonical body still lands its bytes and is reported, not dropped
+// (docs/SPEC-TABLES.md §16.2). A byte outside the alphabet, or a length raw
+// base64 cannot decode, means the body is not base64 at all.
+func readBase64Lenient(body string) ([]byte, bool) {
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+	clean := make([]byte, 0, len(body))
+	for i := 0; i < len(body); i++ {
+		c := body[i]
+		if c == '=' || c == ' ' || c == '\t' || c == '\r' || c == '\n' {
+			continue
+		}
+		if !strings.ContainsRune(alphabet, rune(c)) {
+			return nil, false
+		}
+		clean = append(clean, c)
+	}
+	data, err := base64.RawStdEncoding.DecodeString(string(clean))
+	if err != nil {
+		return nil, false
+	}
+	return data, true
 }
 
 func (in *reader) readArray(fv *Field, depth int) bool {

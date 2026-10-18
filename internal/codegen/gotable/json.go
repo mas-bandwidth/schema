@@ -730,6 +730,7 @@ var tableJsonBase64Decode = [256]int8{
 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 }
 
+
 func tableJsonWriteBase64(out *tableJsonOut, data []byte) {
 	out.put('"')
 	var quad [4]byte
@@ -2032,85 +2033,68 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 	}
 	if tableJsonIsBytes(f) {
 		// A base64 body carries no escapes, so a backslash in one is simply
-		// not an alphabet character. Validate the stream and its padding before
-		// touching storage, so a malformed body leaves the declared default.
+		// not an alphabet character. docs/SPEC-TABLES.md §16.2, §16.8: the body
+		// is CANONICAL base64. Strict() plus EncodedLen is the text card's rule;
+		// a body that is base64 but not that exact encoding is base64_not_canonical
+		// (the tolerant read keeps the bytes and reports it; the strict read
+		// refuses it), and a body outside the alphabet is the wrong shape.
 		if in.peek() != '"' {
 			in.bad = true
 			return false
 		}
 		in.pos++
-		mark := in.pos
-		symbols := 0
-		pad := 0
-		malformed := false
-		for {
-			if in.pos >= len(in.text) {
-				in.bad = true
-				return false
-			}
-			c := in.text[in.pos]
+		start := in.pos
+		for in.pos < len(in.text) && in.text[in.pos] != '"' {
 			in.pos++
-			if c == '"' {
-				break
-			}
-			if malformed {
-				continue
-			}
-			if c == '=' {
-				pad++
-				continue
-			}
-			if pad > 0 {
-				malformed = true
-				continue
-			}
-			at := tableJsonBase64Decode[c]
-			if at < 0 {
-				malformed = true
-				continue
-			}
-			symbols++
 		}
-		if !malformed {
-			if pad > 0 {
-				if pad > 2 || (symbols+pad)%4 != 0 || symbols%4 < 2 {
-					malformed = true
+		if in.pos >= len(in.text) {
+			in.bad = true
+			return false
+		}
+		body := string(in.text[start:in.pos])
+		in.pos++
+		data, err := base64.StdEncoding.Strict().DecodeString(body)
+		canonical := err == nil && len(body) == base64.StdEncoding.EncodedLen(len(data))
+		if !canonical {
+			// decode with the padding and whitespace removed, so the tolerant
+			// read keeps a non-canonical body's bytes; a body outside the
+			// alphabet is the wrong shape for the kind and keeps its default
+			clean := make([]byte, 0, len(body))
+			valid := true
+			for i := 0; i < len(body); i++ {
+				c := body[i]
+				if c == '=' || c == ' ' || c == '\t' || c == '\r' || c == '\n' {
+					continue
 				}
-			} else if symbols%4 == 1 {
-				malformed = true
+				if tableJsonBase64Decode[c] < 0 {
+					valid = false
+					break
+				}
+				clean = append(clean, c)
 			}
-		}
-		if malformed {
-			// a body that is not base64 is the wrong shape for the kind: the
-			// field keeps its default and the event is counted
-			in.report.KindMismatch++
-			return true
+			var decodeErr error
+			if valid {
+				data, decodeErr = base64.RawStdEncoding.DecodeString(string(clean))
+			}
+			if !valid || decodeErr != nil {
+				in.report.KindMismatch++
+				return true
+			}
+			if in.report.Reason == "" {
+				in.report.Reason = "base64_not_canonical: " + f.Name
+			}
 		}
 		buffer := tableJsonBytes(storage, f.ArrayBound)
 		clear(buffer)
 		tableJsonSetCount(base, f, 0)
 		placed := int32(0)
-		accumulator := uint32(0)
-		held := int32(0)
 		clamped := false
-		for at := mark; ; at++ {
-			c := in.text[at]
-			if c == '"' || c == '=' {
-				break
-			}
-			symbol := tableJsonBase64Decode[c]
-			accumulator = accumulator<<6 | uint32(symbol)
-			held += 6
-			if held >= 8 {
-				held -= 8
-				if placed < f.ArrayBound {
-					buffer[placed] = byte(accumulator >> held)
-					placed++
-				} else {
-					clamped = true
-				}
-			}
+		if int32(len(data)) > f.ArrayBound {
+			data = data[:f.ArrayBound]
+			clamped = true
 		}
+		copy(buffer, data)
+		placed = int32(len(data))
 		if clamped {
 			in.report.Clamped++
 		}
