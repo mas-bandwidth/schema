@@ -3699,7 +3699,8 @@ plain `table` alike — has two text carriers:
 
 Both readers refuse damaged or newer input by name. `LoadText` returns a typed
 refusal: `base64_damaged` when the body does not decode, `base64_not_canonical`
-when it decodes but is not canonical, `unknown_form` when the decoded wire's
+when dropping its CR/LF bytes it decodes but is not canonical, `unknown_form`
+when the decoded wire's
 form byte is one this build does not carry, and `wire_damaged` for framing
 damage. `LoadText` is the strict read: it refuses
 whenever the read's report holds an error (`TableReport.Err()` — `malformed`,

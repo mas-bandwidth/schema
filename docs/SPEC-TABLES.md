@@ -15832,13 +15832,16 @@ choice is what this section is about. **EVERY TABLE HAS BOTH**: a `fixed table` 
   and refusal rules of §16.2 and §16.3. Use it when a person must inspect or
   change the value in transit.
 
-Both readers refuse damaged or newer input BY NAME. A base64 body that does
-not decode is `base64_damaged`; a body that decodes but is not canonical — a
-pad bit set, padding wrong, or a byte inside the text that is not from the
-alphabet or `=` — the STRICT read (`LoadText`, which is the strict read) refuses
-by name `base64_not_canonical`. A tolerant read of the carrier, where one
-exists, accepts the non-canonical text and reports it `malformed`; today there
-is no tolerant text carrier, so this card adds none. A decoded wire the binary
+Both readers refuse damaged or newer input BY NAME. The rule is mechanical. A
+text is `base64_not_canonical` when dropping its CR and LF bytes leaves padded
+standard base64 that decodes, but the text is not exactly the canonical
+encoding of those bytes — a pad bit set, or a CR or LF present — and the
+STRICT read (`LoadText`, which is the strict read) refuses it by that name.
+Every other failure is `base64_damaged`: a byte that is neither in the
+standard alphabet nor `=`, a missing, extra or misplaced `=`, and any text
+that does not decode. A tolerant read of the carrier, where one exists,
+accepts the non-canonical text and reports it `malformed`. No tolerant text
+carrier exists today. A decoded wire the binary
 reader refuses is the
 wire reader's own refusal — a form byte this build does not carry, `unknown_form`
 (§3, THE FIRST BYTE), and framing damage, `wire_damaged` or `truncated`
