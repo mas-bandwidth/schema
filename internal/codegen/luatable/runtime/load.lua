@@ -908,7 +908,9 @@ read_union = function(T, ctx, u, r)
 end
 
 -- RESOLUTION (§3.1, decodenodes.go resolveCell): 0 is null, 1 is the root
--- (checked against the reader's own root type), k + 1 is record k.
+-- (checked against the reader's own root type), k + 1 is record k. A blob
+-- record resolves to its NODE BOX, so two slots naming one record land one
+-- Lua reference and two distinct records of equal bytes stay two (§3.1, §6.3).
 local function resolve(ctx, root, rootdesc)
   local report = ctx.report
   local good = ctx.good
@@ -925,9 +927,9 @@ local function resolve(ctx, root, rootdesc)
         local node = ctx.nodes[p.index - 1]
         if node ~= nil then
           if d.shape == "string_blob" then
-            if node.kind == "s" then value = node.blob else report.kindMismatch = report.kindMismatch + 1 end
+            if node.kind == "s" then value = node.box else report.kindMismatch = report.kindMismatch + 1 end
           elseif d.shape == "bytes_blob" then
-            if node.kind == "b" then value = node.blob else report.kindMismatch = report.kindMismatch + 1 end
+            if node.kind == "b" then value = node.box else report.kindMismatch = report.kindMismatch + 1 end
           elseif node.kind == "t" and node.codec.name == d.target then
             value = node.value
           else
@@ -958,15 +960,21 @@ function L.Load(T, name, bytes, report)
   local ctx = { table = o.table, report = report, pending = {}, nodes = {}, good = raw ~= nil }
   if raw ~= nil then
     for _, rec in ipairs(raw) do
+      -- A BLOB NODE KEEPS ITS IDENTITY (§3.1: every reachable node is written
+      -- once and two references to one node are one node; §6.3: sharing and a
+      -- back-reference are the same fact). A Lua string is a value, so two
+      -- equal-content blobs would be one key; the node is boxed instead, and
+      -- every slot naming it resolves to the SAME box, as a *T slot resolves
+      -- to the same instance table.
       if rec.tid == STRING_BLOB_ID then
         if utf8_ok(rec.body) then
-          ctx.nodes[#ctx.nodes + 1] = { kind = "s", blob = rec.body }
+          ctx.nodes[#ctx.nodes + 1] = { kind = "s", blob = rec.body, box = { value = rec.body } }
         else
           report.malformed = true
           ctx.nodes[#ctx.nodes + 1] = nil
         end
       elseif rec.tid == BYTES_BLOB_ID then
-        ctx.nodes[#ctx.nodes + 1] = { kind = "b", blob = rec.body }
+        ctx.nodes[#ctx.nodes + 1] = { kind = "b", blob = rec.body, box = { value = rec.body } }
       else
         local subdesc = nil
         for _, d in pairs(T.Tables) do if d.type_id == rec.tid then subdesc = d end end
