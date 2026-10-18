@@ -3524,7 +3524,8 @@ example.ShipConfigToJsonWith(&ship, buffer, legacy)          // {"hull":3}, no n
 ```
 
 `NullAsEmpty` reads `null` as an empty list or map instead of a kind
-mismatch; `OmitDefaults` leaves out every field at its default; `Compact`
+mismatch; `OmitDefaults` leaves out every field at its default but a
+`required` one, which a reader would refuse without its key; `Compact`
 writes no whitespace. They are arguments, never declarations, because they
 describe a text rather than the table; with all three off the plain calls'
 canonical text is unchanged. The price is stated: an `OmitDefaults` write
