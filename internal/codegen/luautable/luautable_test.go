@@ -22,9 +22,6 @@ const root = "../../.."
 // refusal it gives (docs/PORT-LUAU.md, THE CARD MAP). A unit that starts or
 // stops refusing turns this test red until the list says so.
 var refused = map[string]string{
-	// tables/lists declares Save.schema, whose module would fold onto the
-	// runtime's save.luau (docs/PORT-LUAU.md, THE RUNTIME LAYOUT): refused by name
-	"listdemo": "schema file Save.schema collides with the Luau runtime module save.luau",
 }
 
 // TestLuauTableDescriptorsLoad generates each unit of
