@@ -519,117 +519,37 @@ read_array_body = function(T, ctx, fd, sub)
       report.widened = report.widened + 1
     end
     local entry = T.Tables[fd.entry]
-    local kf = fd.key_field
-    local vf = fd.value_field
+    local keyname = fd.key_field.name
+    local valname = fd.value_field.name
     local out = {}
-    local last, landed = nil, false
-    local function key_order(a, b)
-      if kf.shape == "string" then
-        if a == b then return 0 end
-        return a < b and -1 or 1
-      end
-      if a == b then return 0 end
-      if kf.signed then return a < b and -1 or 1 end
-      return math.ult(a, b) and -1 or 1
-    end
-    local function scan_key(body)
-      -- THE KEY SCAN (§2.8, decode.go mapKey): the key is read BEFORE the
-      -- entry's body decodes, so a body whose scan cannot reach its terminator
-      -- is malformed and contributes no other counter.
-      local want = kf.kind
-      local key = kf.default
-      local kindBad, entryWidened = false, false
-      local sr = { b = body.b, at = body.at, lim = body.lim, bad = false }
-      while true do
-        local ref = r_leb(sr)
-        if sr.bad then return key, false, kindBad, entryWidened end
-        if ref == 0 then return key, sr.at == sr.lim, kindBad, entryWidened end
-        if ref > #ctx.table or sr.at >= sr.lim then return key, false, kindBad, entryWidened end
-        local kind = r_u8(sr)
-        local id = ctx.table[ref]
-        if id == kf.id then
-          if kind ~= want then
-            if widens(kind, want) then
-              local scratch = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-                                clamped = 0, widened = 0, duplicate = 0 }
-              local x = scalar_at(sr, kf, kind, scratch)
-              if x == nil then return key, false, kindBad, entryWidened end
-              key = x
-              entryWidened = true
-              else
-                kindBad = true
-                if not skip(sr, kind) then return key, false, kindBad, entryWidened end
-              end
-          else
-            if kf.shape == "string" then
-              local n = r_leb(sr)
-              if sr.bad or sr.at + n > sr.lim then return key, false, kindBad, entryWidened end
-              local raw = r_bytes(sr, n)
-              if not utf8_ok(raw) then return key, false, kindBad, entryWidened end
-              key = raw
-            else
-              local scratch = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-                                clamped = 0, widened = 0, duplicate = 0 }
-              local x = scalar_at(sr, kf, kind, scratch)
-              if x == nil then return key, false, kindBad, entryWidened end
-              key = x
-            end
-          end
-        else
-          if not skip(sr, kind) then return key, false, kindBad, entryWidened end
-        end
-      end
-    end
+    local seen = {}
     for i = 1, count do
       if sub.at >= sub.lim then report.malformed = true; break end
       local n = r_leb(sub)
       if sub.bad or sub.at + n > sub.lim then report.malformed = true; break end
-      local endpos = sub.at + n
-      local body = new_reader(sub.b, sub.at, endpos)
-      local key, keyOk, kindBad, entryWidened = scan_key(body)
-      if entryWidened then report.widened = report.widened + 1 end
-      if kindBad then
-        report.kindMismatch = report.kindMismatch + 1
-        out = {}
-        break
-      end
-      if not keyOk then report.malformed = true; break end
-      if kf.bound ~= nil and kf.shape == "string" and #key > kf.bound then
-        report.clamped = report.clamped + 1
-        sub.at = endpos
-      else
-        local inst = fresh(T, entry)
-        local ok = read_body(T, ctx, entry, body, inst, true)
-        if not ok or body.at ~= body.lim then report.malformed = true; break end
-        local order = 0
-        if landed then order = key_order(last, key) end
-        if order > 0 then report.malformed = true; break end
-        local value = inst[vf.name]
-        local duplicate = landed and order == 0
-        if duplicate then report.duplicate = report.duplicate + 1 end
-        -- THE MAP IS THE DECODED ENTRY'S (§2.8, decode.go mapField), so a key
-        -- field the entry body could not name lands at its declared default;
-        -- the SCANNED key chose the order and the duplicate, not the slot.
-        local dkey = inst[kf.name]
-        if vf.shape == "pointer" or vf.shape == "string_blob" or vf.shape == "bytes_blob" then
-          local queued = false
-          for j = #ctx.pending, 1, -1 do
-            local pp = ctx.pending[j]
-            if pp.holder == inst then
-              pp.holder = out
-              pp.key = dkey
-              pp.map = true
-              queued = true
-            end
+      local body = new_reader(sub.b, sub.at, sub.at + n)
+      local inst = fresh(T, entry)
+      read_body(T, ctx, entry, body, inst, true)
+      if body.at ~= body.lim then report.malformed = true end
+      sub.at = sub.at + n
+      local key = inst[keyname]
+      if seen[key] then report.duplicate = report.duplicate + 1 else seen[key] = true end
+      -- A VALUE THAT IS A POINTER OR BLOB is queued for RESOLUTION (§3.1)
+      -- against the entry's instance, so copying it here would take the nil
+      -- placeholder before resolve fills it. Point the queued slot at the map
+      -- itself under the entry's key, so resolve lands the resolved value
+      -- there (§3.1: a map value is a pointer field of the generated entry).
+      local vf = fd.value_field
+      if vf.shape == "pointer" or vf.shape == "string_blob" or vf.shape == "bytes_blob" then
+        for j = #ctx.pending, 1, -1 do
+          local pp = ctx.pending[j]
+          if pp.holder == inst then
+            pp.holder = out
+            pp.key = key
           end
-          -- a value field the entry body could not name is still a NULL
-          -- value, and the map key survives it (§2.8)
-          if not queued then out[dkey] = false end
-        else
-          out[dkey] = value
         end
-        last, landed = key, true
-        sub.at = endpos
+      else
+        out[key] = inst[valname]
       end
     end
     return out
@@ -1005,7 +925,7 @@ local function resolve(ctx, root, rootdesc)
         report.malformed = true
       else
         local node = ctx.nodes[p.index - 1]
-        if node ~= nil and node.kind ~= "unknown" then
+        if node ~= nil then
           if d.shape == "string_blob" then
             if node.kind == "s" then value = node.box else report.kindMismatch = report.kindMismatch + 1 end
           elseif d.shape == "bytes_blob" then
@@ -1015,6 +935,8 @@ local function resolve(ctx, root, rootdesc)
           else
             report.kindMismatch = report.kindMismatch + 1
           end
+        elseif d.shape == "pointer" then
+          value = false
         end
       end
     end
@@ -1023,8 +945,7 @@ local function resolve(ctx, root, rootdesc)
     -- placeholder (§3.1's "A null slot is index 0 ... and it rides in its
     -- place"): read_element stored it, so an assignment of nil here must not
     -- drop the trailing null and the count.
-    if value ~= nil then p.holder[p.key] = value
-    elseif p.map then p.holder[p.key] = false end
+    if value ~= nil then p.holder[p.key] = value end
   end
 end
 
@@ -1050,10 +971,7 @@ function L.Load(T, name, bytes, report)
           ctx.nodes[#ctx.nodes + 1] = { kind = "s", blob = rec.body, box = { value = rec.body } }
         else
           report.malformed = true
-          -- A NODE WHOSE TYPE ID THIS READER CANNOT NAME KEEPS ITS INDEX
-          -- (§3.1, decodenodes.go): the numbering is positional, so the slot
-          -- stays and every pointer naming it reads null.
-          ctx.nodes[#ctx.nodes + 1] = { kind = "unknown" }
+          ctx.nodes[#ctx.nodes + 1] = nil
         end
       elseif rec.tid == BYTES_BLOB_ID then
         ctx.nodes[#ctx.nodes + 1] = { kind = "b", blob = rec.body, box = { value = rec.body } }
@@ -1062,8 +980,7 @@ function L.Load(T, name, bytes, report)
         for _, d in pairs(T.Tables) do if d.type_id == rec.tid then subdesc = d end end
         if subdesc == nil then
           report.unknown = report.unknown + 1
-          -- KEEPS ITS INDEX (§3.1): the record is foreign, not absent
-          ctx.nodes[#ctx.nodes + 1] = { kind = "unknown" }
+          ctx.nodes[#ctx.nodes + 1] = nil
         else
           local inst = fresh(T, subdesc)
           ctx.nodes[#ctx.nodes + 1] = { kind = "t", codec = subdesc, value = inst, body = rec.body }

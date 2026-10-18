@@ -2,32 +2,45 @@ package luatable
 
 import (
 	"bytes"
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
+	"hash/fnv"
 	"os"
+	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// I13's Lua cell (docs/PORTING.md): the wire-fuzz differential. A splitmix64
-// generator mutates each variable-class instance wire of the tables conformance
-// corpus 200 times, and the Lua leg's tolerant load answers the six counters,
-// the verdict and the re-saved bytes for every mutant; the compiler's own
-// engine (internal/tablewire, written from the spec and from neither backend)
-// reads the same mutant and must agree on all of it. The load is the verifier
-// (docs/SPEC-TABLES.md §4.2), so this is the gate on that claim for the Lua
-// port.
+// THE LUA WIRE-FUZZ DIFFERENTIAL (docs/PORT-LUA.md, THE CARD MAP:
+// schema-lua-fuzz-differential; docs/SPEC-TABLES.md §4.2, "the read is the
+// verifier"). A splitmix64 generator mutates every instance wire of the tables
+// conformance corpus luaFuzzMutantsPerInstance times, the Lua leg's tolerant
+// load answers the six counters, the verdict and the re-saved bytes for each
+// mutant, and the compiler's own engine (internal/tablewire, written from the
+// spec and from neither backend) reads the same bytes and must agree on all of
+// it. This is the in-package half; `make tables-lua-wire-fuzz` drives the same
+// load through the harness on its pipe (test/conformance/lua/wirefuzz.lua).
 
-// luaFuzzMutantsPerInstance is how many mutants each corpus seed yields.
+// luaFuzzMutantsPerInstance is how many mutants each corpus instance yields.
 const luaFuzzMutantsPerInstance = 200
 
-// splitmix64 is the deterministic generator (internal/codegen/gotable
-// textdifferential_test.go).
+// luaFuzzSeed is the run's base seed ("LUAFUZZA"); every mutant's own seed is
+// derived from it, the case name and the mutant's ordinal, so a red names a
+// seed that rebuilds exactly that mutant.
+const luaFuzzSeed = uint64(0x4C554146555A5A41)
+
+// splitmix64 is the deterministic generator, the same one
+// internal/codegen/gotable/textdifferential_test.go uses.
 type splitmix64 struct{ state uint64 }
 
 func (r *splitmix64) next() uint64 {
@@ -38,17 +51,25 @@ func (r *splitmix64) next() uint64 {
 	return z ^ (z >> 31)
 }
 
-// luaFuzzSeed is the run's base seed.
-const luaFuzzSeed = uint64(0x4C554146555A5A41) // "LUAFUZZA"
+// luaFuzzMutantSeed is the seed of mutant j of one corpus case.
+func luaFuzzMutantSeed(caseName string, j int) uint64 {
+	h := fnv.New64a()
+	h.Write([]byte(caseName))
+	return luaFuzzSeed ^ h.Sum64() ^ (uint64(j+1) * 0x9E3779B97F4A7C15)
+}
 
-// mutateWire flips bytes of base deterministically from r.
-func mutateWire(base []byte, r *splitmix64) []byte {
+// luaFuzzMutate derives one mutant of base from seed: one to four byte edits
+// (a random byte, one flipped bit, or a boundary value 0x00 0x01 0x7f 0x80
+// 0xff), and one mutant in eight is also cut SHORT at a random length, so the
+// trailer, the id table and every frame length meet a buffer that ends early.
+func luaFuzzMutate(base []byte, seed uint64) []byte {
+	r := &splitmix64{state: seed}
 	w := append([]byte(nil), base...)
 	if len(w) == 0 {
 		return []byte{byte(r.next())}
 	}
-	nmut := 1 + int(r.next()%4)
-	for k := 0; k < nmut; k++ {
+	edits := 1 + int(r.next()%4)
+	for k := 0; k < edits; k++ {
 		pos := int(r.next() % uint64(len(w)))
 		switch r.next() % 3 {
 		case 0:
@@ -56,13 +77,16 @@ func mutateWire(base []byte, r *splitmix64) []byte {
 		case 1:
 			w[pos] ^= byte(1 << (r.next() % 8))
 		default:
-			w[pos] = []byte{0x00, 0xff, 0x80, 0x7f, 0x01}[r.next()%5]
+			w[pos] = []byte{0x00, 0x01, 0x7f, 0x80, 0xff}[r.next()%5]
 		}
+	}
+	if r.next()%8 == 0 {
+		w = w[:int(r.next()%uint64(len(w)))]
 	}
 	return w
 }
 
-// luaFuzzCounts is the report minus the verdicts, a comparable tuple.
+// luaFuzzCounts is the report's six counters, a comparable tuple.
 type luaFuzzCounts struct {
 	unknown, kindMismatch, widened, clamped, duplicate int
 	malformed                                          bool
@@ -70,27 +94,41 @@ type luaFuzzCounts struct {
 
 // luaFuzzAnswer is the Lua leg's answer for one mutant.
 type luaFuzzAnswer struct {
-	loaded    bool
-	counts    luaFuzzCounts
-	refused   bool
-	saved     []byte
-	saveFail  bool
-	measureRefused bool
+	raised   string // the Lua error when the load or the save raised
+	loaded   bool   // Load returned a root
+	counts   luaFuzzCounts
+	refused  bool
+	saved    []byte
+	saveFail bool // Save refused the loaded value (or nothing was loaded)
 }
 
 // luaFuzzProbe is the Lua main for one (unit, root): it requires the table
-// module and the load and save runtimes, reads an array of mutant wires from
-// inputs.lua, and for each prints one line:
+// module and the load and save runtimes, reads the mutants from the file its
+// argument names (luaFuzzWiresFile), and
+// prints one line per mutant:
 //
 //	loaded|unknown|kindMismatch|widened|clamped|duplicate|malformed|refused|savedhex
 //
-// savedhex is "none" when there is nothing to save (the load opened no root, or
-// the save refused the loaded value).
+// savedhex is "none" when the load returned no root or the save refused. A load
+// or save that RAISES prints "ERR|<hex of the message>": a raise is an answer
+// the leg owes no caller, so the differential counts it as a divergence.
 func luaFuzzProbe(module, root string) string {
 	return `local T = require("` + module + `")
-	local load = require("load")
+local load = require("load")
 local save = require("save")
-local wires = require("wires")
+local f = assert(io.open(arg[1], "rb"))
+local blob = f:read("a")
+f:close()
+local wires = {}
+do
+  local n, at = string.unpack("<I4", blob, 1)
+  for i = 1, n do
+    local len
+    len, at = string.unpack("<I4", blob, at)
+    wires[i] = blob:sub(at, at + len - 1)
+    at = at + len
+  end
+end
 local function hex(s)
   return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
@@ -111,191 +149,228 @@ local function work(wire)
 end
 for i = 1, #wires do
   local ok, res = pcall(work, wires[i])
-  if not ok then print("ERR") else print(res) end
+  if ok then print(res) else print("ERR|" .. hex(tostring(res))) end
 end
 `
 }
 
 // parseLuaFuzzLine parses one probe line.
-func parseLuaFuzzLine(line string) luaFuzzAnswer {
-	f := strings.Split(strings.TrimSpace(line), "|")
-	if len(f) != 9 {
-		panic("lua fuzz probe line has " + fmt.Sprint(len(f)) + " fields: " + line)
-	}
+func parseLuaFuzzLine(line string) (luaFuzzAnswer, error) {
 	var a luaFuzzAnswer
-	a.loaded = f[0] == "1"
-	fmt.Sscanf(f[1], "%d", &a.counts.unknown)
-	fmt.Sscanf(f[2], "%d", &a.counts.kindMismatch)
-	fmt.Sscanf(f[3], "%d", &a.counts.widened)
-	fmt.Sscanf(f[4], "%d", &a.counts.clamped)
-	fmt.Sscanf(f[5], "%d", &a.counts.duplicate)
-	a.counts.malformed = f[6] == "true"
-	a.refused = f[7] == "1"
-	if f[8] != "none" {
-		s, err := hexDecode(f[8])
+	f := strings.Split(strings.TrimSpace(line), "|")
+	if len(f) == 2 && f[0] == "ERR" {
+		msg, err := hex.DecodeString(f[1])
 		if err != nil {
-			panic(err)
+			return a, fmt.Errorf("probe ERR line %q: %v", line, err)
 		}
-		a.saved = s
-	} else {
+		a.raised = string(msg)
+		return a, nil
+	}
+	if len(f) != 9 {
+		return a, fmt.Errorf("probe line has %d fields, want 9: %q", len(f), line)
+	}
+	a.loaded = f[0] == "1"
+	n := []*int{&a.counts.unknown, &a.counts.kindMismatch, &a.counts.widened, &a.counts.clamped, &a.counts.duplicate}
+	for i, p := range n {
+		if _, err := fmt.Sscanf(f[1+i], "%d", p); err != nil {
+			return a, fmt.Errorf("probe line %q field %d: %v", line, 1+i, err)
+		}
+	}
+	a.counts.malformed = f[6] == "true"
+	a.refused = f[7] != "0"
+	if f[8] == "none" {
 		a.saveFail = true
+		return a, nil
 	}
-	return a
+	s, err := hex.DecodeString(f[8])
+	if err != nil {
+		return a, fmt.Errorf("probe line %q saved bytes: %v", line, err)
+	}
+	a.saved = s
+	return a, nil
 }
 
-func hexDecode(s string) ([]byte, error) {
-	if len(s)%2 != 0 {
-		return nil, fmt.Errorf("odd hex length")
-	}
-	out := make([]byte, len(s)/2)
-	for i := 0; i < len(out); i++ {
-		hi := hexVal(s[2*i])
-		lo := hexVal(s[2*i+1])
-		if hi < 0 || lo < 0 {
-			return nil, fmt.Errorf("bad hex %q", s)
-		}
-		out[i] = byte(hi<<4 | lo)
-	}
-	return out, nil
-}
-
-func hexVal(c byte) int {
-	switch {
-	case c >= '0' && c <= '9':
-		return int(c - '0')
-	case c >= 'a' && c <= 'f':
-		return int(c-'a') + 10
-	}
-	return -1
-}
-
-// luaFuzzOracle is the engine's answer for one mutant, the harness's oracle
-// (test/conformance/harness/wirefuzz.go) restricted to the variable form.
+// luaFuzzOracle is the engine's answer for one mutant: the harness's oracle
+// (test/conformance/harness/wirefuzz.go, wireRoot.oracle) for a file root.
 type luaFuzzOracle struct {
-	counts          luaFuzzCounts
-	refused         bool
-	encoded         []byte
-	encFail         bool
-	measureRefused  bool
+	variable       bool // the root is variable-class (§3.1)
+	framingRefused bool // FileRegionMeasure refuses to size a region (§6.5)
+	noRoot         bool // the engine refused the root itself
+	counts         luaFuzzCounts
+	refused        bool
+	encoded        []byte
+	encFail        bool
 }
 
-func luaOracle(m *tabletext.Model, def *ir.Struct, data []byte) (luaFuzzOracle, error) {
-	var o luaFuzzOracle
-	if _, _, refused := tablewire.FileRegionMeasure(m.Unit, def, data); refused {
-		o.measureRefused = true
-		o.encFail = true
-		return o, nil
+// luaFuzzEngine reads one mutant with the compiler's engine. A variable root's
+// region is measured first, as a region caller measures (§6.5); a wire the
+// framing refuses is read by the plain Decode, because a Lua load has no
+// region to size and still owes its report for the same bytes.
+func luaFuzzEngine(m *tabletext.Model, def *ir.Struct, data []byte) luaFuzzOracle {
+	o := luaFuzzOracle{variable: m.IsVariable(def.Name)}
+	decode := tablewire.DecodeRegion
+	if o.variable {
+		if _, _, refused := tablewire.FileRegionMeasure(m.Unit, def, data); refused {
+			o.framingRefused = true
+			decode = tablewire.Decode
+		}
 	}
 	inst := m.New(def)
 	var rep tabletext.Report
-	ok, derr := tablewire.DecodeRegion(m, inst, data, &rep)
-	if tablewire.Refused(derr) {
+	ok, derr := decode(m, inst, data, &rep)
+	switch {
+	case tablewire.Refused(derr):
 		o.refused = true
-		return o, nil
-	}
-	if derr != nil {
-		return o, fmt.Errorf("the oracle refused the root itself: %w", derr)
-	}
-	o.counts = luaFuzzCounts{
-		unknown:        rep.Unknown,
-		kindMismatch:   rep.KindMismatch,
-		widened:        rep.Widened,
-		clamped:        rep.Clamped,
-		duplicate:      rep.Duplicate,
-		malformed:      rep.Malformed || !ok,
+	case derr != nil:
+		o.noRoot = true
+		return o
+	default:
+		o.counts = luaFuzzCounts{
+			unknown:      rep.Unknown,
+			kindMismatch: rep.KindMismatch,
+			widened:      rep.Widened,
+			clamped:      rep.Clamped,
+			duplicate:    rep.Duplicate,
+			malformed:    rep.Malformed || !ok,
+		}
 	}
 	enc, eerr := tablewire.Encode(m, inst)
 	if eerr != nil {
 		o.encFail = true
-		return o, nil
+		return o
 	}
 	o.encoded = enc
-	return o, nil
+	return o
 }
 
-// luaFuzzVerdict compares the Lua answer with the oracle, the harness's
-// wireVerdict for the variable form.
+// luaFuzzVerdict compares the Lua answer with the engine's and names the first
+// disagreement, or "" when there is none; it is the harness's wireVerdict
+// (test/conformance/harness/wirefuzz.go) for a file root. A FIXED root always
+// loads (test/conformance/README.md, "The wire-fuzz driver": its Load fills a
+// value and reports), so no root there is a divergence. A VARIABLE root's load
+// that returns NO ROOT agrees only with a wire the engine also found
+// unreadable: refused by form, malformed, or refused by the framing; the
+// counters are not compared on that branch, because the leg read nothing.
 func luaFuzzVerdict(a luaFuzzAnswer, o luaFuzzOracle) string {
+	if a.raised != "" {
+		return "the Lua leg RAISED: " + a.raised
+	}
 	if !a.loaded {
-		// the leg opened no root (its LoadMeasure would refuse the framing);
-		// the oracle must have refused or found the frame malformed too.
-		if !o.measureRefused && !o.counts.malformed && !o.refused {
-			return "the Lua load opened no root; the oracle read the same bytes cleanly"
+		if !o.variable {
+			return "the Lua load returned no root for a FIXED root, which always loads"
 		}
-		return ""
+		if o.noRoot || o.refused || o.counts.malformed || o.framingRefused {
+			return ""
+		}
+		return "the Lua load returned no root; the engine read the same bytes cleanly"
 	}
-	if o.measureRefused {
-		return "the Lua load loaded a wire whose container framing requires refusal"
-	}
-	if a.counts != o.counts {
-		return fmt.Sprintf("the report differs: Lua says %+v, the oracle says %+v", a.counts, o.counts)
+	if o.noRoot {
+		return "the Lua load returned a root the engine refuses"
 	}
 	if a.refused != o.refused {
-		return fmt.Sprintf("the verdict differs: Lua refused=%t, oracle refused=%t", a.refused, o.refused)
+		return fmt.Sprintf("the verdict differs: Lua refused=%t, the engine refused=%t", a.refused, o.refused)
+	}
+	if a.counts != o.counts {
+		return fmt.Sprintf("the report differs: Lua says %+v, the engine says %+v", a.counts, o.counts)
 	}
 	if a.saveFail != o.encFail {
 		if a.saveFail {
-			return "the Lua leg refused to save the value it loaded; the oracle encoded " + fmt.Sprint(len(o.encoded)) + " bytes"
+			return fmt.Sprintf("the Lua save refused the value it loaded; the engine encoded %d bytes", len(o.encoded))
 		}
-		return "the oracle refused to encode the value it decoded; the Lua leg saved " + fmt.Sprint(len(a.saved)) + " bytes"
+		return fmt.Sprintf("the engine refused to encode the value it decoded; the Lua save wrote %d bytes", len(a.saved))
 	}
 	if !a.saveFail && !bytes.Equal(a.saved, o.encoded) {
-		return fmt.Sprintf("the decoded value differs: Lua saves %d bytes, the oracle %d", len(a.saved), len(o.encoded))
+		at := 0
+		for at < len(a.saved) && at < len(o.encoded) && a.saved[at] == o.encoded[at] {
+			at++
+		}
+		return fmt.Sprintf("the decoded value differs: Lua saves %d bytes, the engine %d, first difference at byte %d\n    lua    %x\n    engine %x",
+			len(a.saved), len(o.encoded), at, a.saved, o.encoded)
 	}
 	return ""
 }
 
-// runLuaFuzzDifferential drives the differential. corpus is the manifest
-// instance rows; for each variable root it gathers every mutant, runs one Lua
-// probe over them all, and compares each against the oracle. edit patches the
-// emitted files (the negative control). It returns the divergence messages and
-// an error when any mutant differs.
-func runLuaFuzzDifferential(t *testing.T, edit func([]byte) []byte) (out []byte, err error) {
+// luaFuzzResult is one run of the differential.
+type luaFuzzResult struct {
+	mutants, roots, framingRefused int
+	divergences                    []string
+}
+
+// luaFuzzGroup is one (unit, root) of the corpus: its generated unit in a
+// temporary directory, the engine's model, and every mutant of its instances.
+type luaFuzzGroup struct {
+	unit, root string
+	dir        string
+	m          *tabletext.Model
+	def        *ir.Struct
+	mutants    []luaFuzzMutant
+	chunks     []*luaFuzzChunk
+}
+
+// luaFuzzChunk is one Lua process's share of a group: at most
+// luaFuzzChunkBytes of mutant wire, so a corpus instance of hundreds of
+// kilobytes (tabledemo wide_blob) is spread over several processes instead of
+// serialising the run behind one.
+type luaFuzzChunk struct {
+	file string
+	n    int
+	out  []byte
+	err  error
+}
+
+// luaFuzzChunkBytes bounds the wire bytes one probe process reads.
+const luaFuzzChunkBytes = 1 << 20
+
+// luaFuzzMutant is one mutant and the seed that rebuilds it.
+type luaFuzzMutant struct {
+	caseName string
+	seed     uint64
+	wire     []byte
+}
+
+// runLuaFuzzDifferential drives the differential over every instance root of
+// the corpus whose unit the Lua target generates. edit, when non-nil, patches
+// the emitted load.lua of every unit (the negative control). The groups are
+// staged in order, their Lua probes run concurrently (each a separate process
+// in its own t.TempDir(), no network and no clock), and every answer is then
+// compared with the engine in order, so a red is deterministic.
+func runLuaFuzzDifferential(t *testing.T, edit func([]byte) []byte) luaFuzzResult {
 	t.Helper()
 	repo := filepath.Join("..", "..", "..")
 	manifestPath := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifestPath)
-	unitFiles := map[string][]string{}
-	for k, paths := range units {
+	type rows struct {
+		unit, root string
+		rows       []manifestRow
+	}
+	var order []*rows
+	byKey := map[string]*rows{}
+	for _, row := range manifestRows(t, manifestPath, "instance") {
+		k := row.unit + "\x00" + row.root
+		g := byKey[k]
+		if g == nil {
+			g = &rows{unit: row.unit, root: row.root}
+			byKey[k] = g
+			order = append(order, g)
+		}
+		g.rows = append(g.rows, row)
+	}
+	var groups []*luaFuzzGroup
+	for _, r := range order {
+		paths, ok := units[r.unit]
+		if !ok {
+			t.Fatalf("instance root %s names unit %s, which the manifest does not declare", r.root, r.unit)
+		}
 		var full []string
 		for _, p := range paths {
 			full = append(full, filepath.Join(repo, p))
 		}
-		unitFiles[k] = full
-	}
-	// group variable-class instances by (unit, root)
-	type grp struct {
-		unit, root string
-		paths      []string
-		rows       []manifestRow
-	}
-	order := []string{}
-	groups := map[string]*grp{}
-	key := func(u, r string) string { return u + "\x00" + r }
-	for _, row := range manifestRows(t, manifestPath, "instance") {
-		paths, ok := unitFiles[row.unit]
-		if !ok {
-			continue
-		}
-		k := key(row.unit, row.root)
-		g, ok := groups[k]
-		if !ok {
-			g = &grp{unit: row.unit, root: row.root, paths: paths}
-			groups[k] = g
-			order = append(order, k)
-		}
-		g.rows = append(g.rows, row)
-	}
-	var msgs []string
-	mutants := 0
-	for _, k := range order {
-		g := groups[k]
-		u := luarun.LoadUnit(t, g.paths...)
+		u := luarun.LoadUnit(t, full...)
 		files, err := Generate(u)
 		if err != nil {
-			// a unit the Lua target refuses (fixed-point/128-bit kinds) is
-			// out of the differential, exactly as build/conformance-lua names
-			// it refused
+			// A UNIT THE LUA TARGET REFUSES BY NAME (the fixed-point and
+			// 128-bit table kinds, docs/SPEC-TABLES.md §15) is out of the
+			// differential, exactly as build/conformance-lua names it refused.
 			continue
 		}
 		if edit != nil {
@@ -305,120 +380,185 @@ func runLuaFuzzDifferential(t *testing.T, edit func([]byte) []byte) (out []byte,
 			}
 			files["load.lua"] = edit(src)
 		}
-		m := tabletext.NewModel(u)
-		def := m.Lookup(g.root)
-		if def == nil {
-			t.Fatalf("unit %s declares no table %s", g.unit, g.root)
+		g := &luaFuzzGroup{unit: r.unit, root: r.root, dir: t.TempDir(), m: tabletext.NewModel(u)}
+		if g.def = g.m.Lookup(r.root); g.def == nil {
+			t.Fatalf("unit %s declares no table %s", r.unit, r.root)
 		}
-		if !m.IsVariable(g.root) {
-			continue
-		}
-		dir := t.TempDir()
-		luarun.WriteFiles(t, dir, files)
-		probe := luaFuzzProbe(ModuleName(u), g.root)
-		if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
+		luarun.WriteFiles(t, g.dir, files)
+		if err := os.WriteFile(filepath.Join(g.dir, "main.lua"), []byte(luaFuzzProbe(ModuleName(u), r.root)), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		// gather all mutants for this group
-		var wires [][]byte
-		var mutantsMeta []string
-		for _, row := range g.rows {
-			wireData, err := os.ReadFile(filepath.Join(repo, row.wire))
+		for _, row := range r.rows {
+			base, err := os.ReadFile(filepath.Join(repo, row.wire))
 			if err != nil {
-				t.Fatalf("instance %s: read wire %s: %v", row.caseName, row.wire, err)
+				t.Fatalf("instance %s: %v", row.caseName, err)
 			}
 			for j := 0; j < luaFuzzMutantsPerInstance; j++ {
-				r := &splitmix64{state: luaFuzzSeed ^ uint64(j) ^ (uint64(len(mutantsMeta)+1) * 0x9E3779B97F4A7C15)}
-				wires = append(wires, mutateWire(wireData, r))
-				mutantsMeta = append(mutantsMeta, fmt.Sprintf("%s/%s", g.unit, row.caseName))
+				seed := luaFuzzMutantSeed(row.caseName, j)
+				g.mutants = append(g.mutants, luaFuzzMutant{row.caseName, seed, luaFuzzMutate(base, seed)})
 			}
 		}
-		if err := os.WriteFile(filepath.Join(dir, "wires.lua"), joinWires(wires), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		out := luarun.Run(t, dir, "main.lua", nil)
-		lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
-		if len(lines) != len(wires) {
-			t.Fatalf("unit %s root %s: the probe answered %d lines for %d mutants", g.unit, g.root, len(lines), len(wires))
-		}
-		for i := range wires {
-			if strings.TrimSpace(lines[i]) == "ERR" {
-				// the Lua load or save raised on this mutant (a value a
-				// damaged body left in a shape the save refuses). The save
-				// runtime is another card's file; this card's differential
-				// cannot compare a mutant the leg cannot answer, so it passes
-				// it by and keeps the count.
-				mutants++
-				continue
+		for at := 0; at < len(g.mutants); {
+			end, size := at, 0
+			for end < len(g.mutants) && (end == at || size+len(g.mutants[end].wire) <= luaFuzzChunkBytes) {
+				size += len(g.mutants[end].wire)
+				end++
 			}
-			ans := parseLuaFuzzLine(lines[i])
-			oracle, err := luaOracle(m, def, wires[i])
+			c := &luaFuzzChunk{file: fmt.Sprintf("wires-%d.bin", len(g.chunks)), n: end - at}
+			if err := os.WriteFile(filepath.Join(g.dir, c.file), luaFuzzWiresFile(g.mutants[at:end]), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			g.chunks = append(g.chunks, c)
+			at = end
+		}
+		groups = append(groups, g)
+	}
+	if len(groups) == 0 {
+		t.Fatal("no instance root of the corpus was staged")
+	}
+	lua := luarun.Interpreter(t)
+	var wg sync.WaitGroup
+	slots := make(chan struct{}, max(1, goruntime.GOMAXPROCS(0)/2))
+	for _, g := range groups {
+		for _, c := range g.chunks {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				slots <- struct{}{}
+				defer func() { <-slots }()
+				c.out, c.err = luaFuzzRun(lua, g.dir, c.file)
+			}()
+		}
+	}
+	wg.Wait()
+	var res luaFuzzResult
+	for _, g := range groups {
+		var lines []string
+		for _, c := range g.chunks {
+			if c.err != nil {
+				t.Fatalf("unit %s root %s: %v", g.unit, g.root, c.err)
+			}
+			got := strings.Split(strings.TrimRight(string(c.out), "\n"), "\n")
+			if len(got) != c.n {
+				t.Fatalf("unit %s root %s: the probe answered %d lines for %d mutants of %s", g.unit, g.root, len(got), c.n, c.file)
+			}
+			lines = append(lines, got...)
+		}
+		if len(lines) != len(g.mutants) {
+			t.Fatalf("unit %s root %s: the probe answered %d lines for %d mutants", g.unit, g.root, len(lines), len(g.mutants))
+		}
+		res.roots++
+		for i, mu := range g.mutants {
+			ans, err := parseLuaFuzzLine(lines[i])
 			if err != nil {
-				return out, fmt.Errorf("instance %s: oracle: %w", mutantsMeta[i], err)
+				t.Fatalf("unit %s root %s: %v", g.unit, g.root, err)
 			}
-			if v := luaFuzzVerdict(ans, oracle); v != "" {
-				msgs = append(msgs, fmt.Sprintf("mutant %d (%s): %s\n  mutant (%x)", i, mutantsMeta[i], v, wires[i]))
+			o := luaFuzzEngine(g.m, g.def, mu.wire)
+			if o.framingRefused {
+				res.framingRefused++
 			}
-			mutants++
+			res.mutants++
+			if v := luaFuzzVerdict(ans, o); v != "" {
+				res.divergences = append(res.divergences, fmt.Sprintf("seed %#016x unit %s root %s case %s: %s\n    mutant %x",
+					mu.seed, g.unit, g.root, mu.caseName, v, mu.wire))
+			}
 		}
 	}
-	if len(msgs) > 0 {
-		n := len(msgs)
-		if n > 3 {
-			n = 3
-		}
-		return out, fmt.Errorf("%d mutant(s) differ; first %d:\n%s", len(msgs), n, strings.Join(msgs[:n], "\n"))
-	}
-	if mutants == 0 {
-		t.Fatal("no variable-class instance was fuzzed")
-	}
-	return out, nil
+	return res
 }
 
-// joinWires renders the wires as a Lua array for inputs.lua.
-func joinWires(wires [][]byte) []byte {
-	var b strings.Builder
-	b.WriteString("-- written by the Lua wire-fuzz differential: the mutant wires\nreturn {\n")
-	for i, w := range wires {
-		if i > 0 {
-			b.WriteString(",\n")
-		}
-		b.WriteString("  " + luarun.Quote(w))
+// luaFuzzRun runs one chunk's probe under the pinned interpreter with its
+// directory as the working directory and the whole of package.path, the
+// environment luarun.Run gives a probe, and returns stdout.
+func luaFuzzRun(lua, dir, wires string) ([]byte, error) {
+	cmd := exec.Command(lua, "main.lua", wires)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "LUA_PATH="+filepath.Join(dir, "?.lua")+";;", "LUA_INIT=")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("lua main.lua: %v\nstderr:\n%s", err, stderr.String())
 	}
-	b.WriteString("\n}\n")
-	return []byte(b.String())
+	return stdout.Bytes(), nil
 }
 
-// TestLuaWireFuzzAgreesWithTheGoEngine is the differential: every variable-class
-// instance wire of the corpus, mutated 200 times, read by the Lua leg and by
-// the compiler's engine, and the two must agree on the six counters, the
-// verdict and the re-saved bytes.
+// luaFuzzWiresFile is the mutants as the probe reads them: a little-endian u32
+// count, then per mutant a u32 length and its bytes.
+func luaFuzzWiresFile(mutants []luaFuzzMutant) []byte {
+	var b []byte
+	b = binary.LittleEndian.AppendUint32(b, uint32(len(mutants)))
+	for _, mu := range mutants {
+		b = binary.LittleEndian.AppendUint32(b, uint32(len(mu.wire)))
+		b = append(b, mu.wire...)
+	}
+	return b
+}
+
+// luaFuzzCost is what the slow half pays for these tests (internal/slowtest):
+// the pinned Lua interpreter over every mutant, tens of CPU-seconds, most of it
+// tabledemo wide_blob's 210 KB instance read 200 times.
+const luaFuzzCost = "the pinned Lua interpreter (dist/lua-5.4.8, make dist-lua) over 19000 mutant wires"
+
+// luaFuzzSummary is the run's one line.
+func luaFuzzSummary(r luaFuzzResult) string {
+	return fmt.Sprintf("Lua wire fuzz: %d mutants over %d roots (%d the framing refuses), %d divergences",
+		r.mutants, r.roots, r.framingRefused, len(r.divergences))
+}
+
+// TestLuaWireFuzzAgreesWithTheGoEngine is the differential: every instance wire
+// of the corpus, mutated luaFuzzMutantsPerInstance times, read by the Lua leg
+// and by the compiler's engine, and the two must agree on the six counters,
+// the verdict and the re-saved bytes of every mutant (docs/SPEC-TABLES.md
+// §4.2).
 func TestLuaWireFuzzAgreesWithTheGoEngine(t *testing.T) {
 	t.Parallel()
-	out, err := runLuaFuzzDifferential(t, nil)
-	if err != nil {
-		t.Fatalf("Lua wire fuzz: %v\n%s", err, out)
+	slowtest.Gate(t, luaFuzzCost)
+	res := runLuaFuzzDifferential(t, nil)
+	t.Log(luaFuzzSummary(res))
+	if path := os.Getenv("SCHEMA_LUA_FUZZ_DIVERGENCES"); path != "" {
+		// every divergence, one per paragraph, for a reader classifying a red
+		if err := os.WriteFile(path, []byte(strings.Join(res.divergences, "\n")+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(res.divergences) > 0 {
+		n := min(len(res.divergences), 5)
+		t.Fatalf("%s; first %d:\n%s", luaFuzzSummary(res), n, strings.Join(res.divergences[:n], "\n"))
 	}
 }
 
+// luaFuzzControlAnchor is the string field's frame check in the emitted load
+// (runtime/load.lua, read_field): a length past the body is malformed (§3).
+const luaFuzzControlAnchor = `  elseif s == "string" then
+    local n = r_leb(r)
+    if r.bad or r.at + n > r.lim then report.malformed = true; return false end`
+
 // TestLuaWireFuzzNegativeControl patches the emitted load in memory — one
-// anchor, matched exactly once — so a frame length past the body is not counted
-// malformed, and requires the differential to go red.
+// anchor, matched exactly once — so a string frame length past the body stops
+// the body WITHOUT counting it malformed, and requires the differential to go
+// red on exactly that.
 func TestLuaWireFuzzNegativeControl(t *testing.T) {
 	t.Parallel()
-	const anchor = `  if count < 0 or count > (#bytes - 9) // 8 then report.malformed = true; return nil end`
-	const sabotaged = `  if false then report.malformed = true; return nil end`
+	slowtest.Gate(t, luaFuzzCost)
+	sabotaged := strings.Replace(luaFuzzControlAnchor, "report.malformed = true; return false", "return false", 1)
 	edit := func(src []byte) []byte {
-		if n := strings.Count(string(src), anchor); n != 1 {
-			t.Fatalf("NEGATIVE CONTROL FAILED: the sabotage anchor appeared %d times in load.lua, want 1", n)
+		if n := strings.Count(string(src), luaFuzzControlAnchor); n != 1 {
+			t.Fatalf("NEGATIVE CONTROL FAILED: the sabotage anchor appears %d times in load.lua, want 1", n)
 		}
-		return []byte(strings.Replace(string(src), anchor, sabotaged, 1))
+		return []byte(strings.Replace(string(src), luaFuzzControlAnchor, sabotaged, 1))
 	}
-	_, err := runLuaFuzzDifferential(t, edit)
-	if err == nil {
-		t.Fatal("NEGATIVE CONTROL FAILED: a load that does not count a frame length past the body left the differential GREEN")
+	clean := runLuaFuzzDifferential(t, nil)
+	res := runLuaFuzzDifferential(t, edit)
+	t.Logf("clean: %s", luaFuzzSummary(clean))
+	t.Logf("sabotaged: %s", luaFuzzSummary(res))
+	if len(res.divergences) <= len(clean.divergences) {
+		t.Fatalf("NEGATIVE CONTROL FAILED: a load that does not count a string frame past the body left the differential at %d divergences (clean %d)",
+			len(res.divergences), len(clean.divergences))
 	}
-	if !strings.Contains(err.Error(), "mutant(s) differ") {
-		t.Fatalf("NEGATIVE CONTROL FAILED: the gate went red, but not on the differential: %v", err)
+	for _, d := range res.divergences {
+		if strings.Contains(d, "malformed:false") && strings.Contains(d, "malformed:true") {
+			return
+		}
 	}
+	t.Fatal("NEGATIVE CONTROL FAILED: the differential went red, but no divergence is the malformed count the sabotage removed")
 }
