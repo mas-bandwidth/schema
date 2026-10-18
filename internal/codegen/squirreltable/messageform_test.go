@@ -1,6 +1,7 @@
 package squirreltable_test
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,6 +42,23 @@ func readMessageRows(t *testing.T, root string) (map[string]squirrelMessageConne
 		}
 	}
 	return connections, rows
+}
+
+func addUnknownAnnouncementField(src []byte, id uint64) []byte {
+	count := binary.LittleEndian.Uint64(src[len(src)-8:])
+	start := len(src) - 8 - int(count)*8
+	if count != 2 || start < 2 || src[start-1] != 0 {
+		panic("unexpected announcement framing")
+	}
+	out := append([]byte(nil), src[:start-1]...)
+	out = append(out, 3, 6, 0x5a, 0)
+	out = append(out, src[start:len(src)-8]...)
+	var word [8]byte
+	binary.LittleEndian.PutUint64(word[:], id)
+	out = append(out, word[:]...)
+	binary.LittleEndian.PutUint64(word[:], count+1)
+	out = append(out, word[:]...)
+	return out
 }
 
 func mustRead(t *testing.T, path string) []byte {
@@ -130,6 +148,28 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 		fmt.Fprintf(&script, " local out=[%s]; local rr={}; local n=T.%sLoadMessages(out,v,I[%q],rr); if(n!=%d) print(%q+\":load:\"+n+\":\"+rr.reason+\":\"+rr.malformed+\"\\n\"); %s\n", strings.Join(constructors, ","), row.root, row.name+"_batch", count, row.name, guard)
 		fmt.Fprintf(&script, " local mr={}; local size=T.%sMeasureMessages(out,mr); local b=blob(size); local sr={}; local got=T.%sSaveMessages(out,b,sr); if(got!=size || !same(b,I[%q])) print(%q+\":save:\"+got+\":\"+size+\"\\n\"); else print(%q+\":ok\\n\");%s\n", row.root, row.root, row.name+"_batch", row.name, row.name, closing)
 	}
+	for _, key := range []string{"backend_conn", "vocab_conn", "vocab9_conn"} {
+		conn, ok := connections[key]
+		if !ok {
+			continue
+		}
+		u := units[conn.unit]
+		name := "parsed_" + conn.unit
+		inputs[name+"_ann"] = addUnknownAnnouncementField(mustRead(t, filepath.Join(root, conn.file)), 0x0123456789abcdef)
+		module := squirreltable.ModuleName(u)
+		fmt.Fprintf(&script, `{ local T=dofile(%q,true).require(%q); local v={}; local ar={}; if(T.AnnounceRead(v,I[%q],ar) && ar.unknown==1) print(%q+":ok\n"); else print(%q+":fail:"+ar.reason+":"+ar.malformed+"\n"); }`+"\n", conn.unit+"/schema_module.nut", module, name+"_ann", name, name)
+	}
+	if conn, ok := connections["vocab_conn"]; ok {
+		peer := mustRead(t, filepath.Join(root, conn.file))
+		inputs["alternate_ann"] = peer
+		inputs["alternate_unknown_ann"] = addUnknownAnnouncementField(peer, 0x0123456789abcdef)
+		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; if(T.AnnounceRead(v,I["alternate_ann"],ar)) print("alternate:ok:"+v.Count+"\n"); else print("alternate:fail:"+ar.reason+":"+ar.malformed+"\n"); }
+`)
+		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; if(T.AnnounceRead(v,I["alternate_unknown_ann"],ar) && ar.unknown==1) print("alternate_unknown:ok\n"); else print("alternate_unknown:fail:"+ar.unknown+":"+ar.reason+":"+ar.malformed+"\n"); }
+`)
+		script.WriteString(`{ local T=dofile("vocabdemo/schema_module.nut",true).require("VocabdemoTables"); local v={}; local ar={}; if(!T.AnnounceRead(v,I["alternate_unknown_ann"],ar) || ar.unknown!=1) print("alternate_batch:announce_fail\n"); else { local out=[T.Wide09()]; local rr={}; local n=T.Wide09LoadMessages(out,v,I["vocab_wide_batch"],rr); local m={}; local z=T.Wide09MeasureMessages(out,m); local b=blob(z); local sr={}; local w=T.Wide09SaveMessages(out,b,sr); if(n==1 && w==z && same(b,I["vocab_wide_batch"])) print("alternate_batch:ok\n"); else print("alternate_batch:fail:"+n+":"+rr.malformed+"\n"); } }
+`)
+	}
 	if units["backenddemo"] != nil {
 		inputs["backend_ann"] = mustRead(t, filepath.Join(root, connections["backend_conn"].file))
 		inputs["damaged"] = mustRead(t, filepath.Join(root, "testdata/wire/tables/backend_batch_damaged_second_message.bin"))
@@ -177,6 +217,20 @@ func TestSquirrelMessageFormMatchesTheGoldens(t *testing.T) {
 		if !strings.Contains(out, row.name+":ok") {
 			t.Errorf("%s failed message round trip: %s", row.name, out)
 		}
+	}
+	if !strings.Contains(out, "alternate:ok:") {
+		t.Errorf("alternate peer announcement did not resolve: %s", out)
+	}
+	if !strings.Contains(out, "alternate_unknown:ok") {
+		t.Errorf("unknown announcement field was not skipped and counted: %s", out)
+	}
+	for _, unit := range []string{"backenddemo", "vocabdemo", "vocab9demo"} {
+		if !strings.Contains(out, "parsed_"+unit+":ok") {
+			t.Errorf("generic peer announcement parsing failed for %s: %s", unit, out)
+		}
+	}
+	if !strings.Contains(out, "alternate_batch:ok") {
+		t.Errorf("batch did not load through an alternate peer announcement: %s", out)
 	}
 	if !strings.Contains(out, "damage:ok") {
 		t.Errorf("damage in second body was not terminal for the batch: %s", out)
