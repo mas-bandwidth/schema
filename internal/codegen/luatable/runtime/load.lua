@@ -13,6 +13,8 @@
 -- THE REPORT (docs/SPEC-TABLES.md §4): the six counters and the verdict. The
 -- caller owns it; the codec never makes one. A load returns the root value
 -- and fills the report.
+local D = require("descriptor")
+
 local L = {}
 
 local NODE_TABLE_ID = -1         -- 0xffffffffffffffff
@@ -155,7 +157,7 @@ local function skip(r, kind)
   end
   if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 or kind == 33 then
     local n = r_leb(r)
-    if r.bad or r.at + n > r.lim then return false end
+    if r.bad or n < 0 or r.at + n > r.lim then return false end
     r.at = r.at + n
     return true
   end
@@ -166,7 +168,7 @@ local function skip(r, kind)
       if r.at + 1 > r.lim then return false end
       r_u8(r)
       local n = r_leb(r)
-      if r.bad or r.at + n > r.lim then return false end
+      if r.bad or n < 0 or r.at + n > r.lim then return false end
       r.at = r.at + n
     end
     return true
@@ -219,7 +221,7 @@ local function node_scan(bytes, o, report)
     local ref = r_leb(w)
     if w.bad then break end
     if ref == 0 then break end
-    if ref > #o.table then break end
+    if ref < 0 or ref > #o.table then break end
     if w.at >= w.lim then break end
     local id = o.table[ref]
     local kind = r_u8(w)
@@ -227,7 +229,7 @@ local function node_scan(bytes, o, report)
       present = true
       if kind ~= 12 then bad = true; break end
       local n = r_leb(w)
-      if w.bad or w.at + n > w.lim then bad = true; break end
+      if w.bad or n < 0 or w.at + n > w.lim then bad = true; break end
       payload = string.sub(w.b, w.at + 1, w.at + n)
       w.at = w.at + n
     elseif not skip(w, kind) then
@@ -242,9 +244,9 @@ local function node_scan(bytes, o, report)
   local raw = {}
   while rec.at < rec.lim do
     local tref = r_leb(rec)
-    if rec.bad or tref == 0 or tref > #o.table then report.malformed = true; return nil end
+    if rec.bad or tref <= 0 or tref > #o.table then report.malformed = true; return nil end
     local n = r_leb(rec)
-    if rec.bad or rec.at + n > rec.lim then report.malformed = true; return nil end
+    if rec.bad or n < 0 or rec.at + n > rec.lim then report.malformed = true; return nil end
     raw[#raw + 1] = { tid = o.table[tref], body = string.sub(payload, rec.at + 1, rec.at + n) }
     rec.at = rec.at + n
   end
@@ -1005,6 +1007,203 @@ function L.Load(T, name, bytes, report)
   read_body(T, ctx, desc, new_reader(bytes, 1, o.lim), root, false)
   resolve(ctx, root, desc)
   return root
+end
+
+-- THE EXTENT WALK (docs/SPEC-TABLES.md §6.5, §8.5; internal/tablewire/extent.go):
+-- LoadMeasure(T, name, bytes) ports tablewire.FileRegionMeasure(u, root, data):
+-- the same walk of the framing, the same refusals, the same rounding; returns
+-- the byte count or nil, and changes nothing in Load.
+
+local function round_up(n, a)
+  return (n + a - 1) & -a
+end
+
+local function round_region(n, align)
+  return (n + align - 1) & -align
+end
+
+-- trailer(data) in internal/tablewire/decode.go: locates the ID table from the
+-- end of the wire without running bodyExtent's early-terminator check.
+local function measure_trailer(bytes)
+  if type(bytes) ~= "string" or #bytes < 9 or bytes:byte(1) ~= 1 then return nil end
+  local count = string.unpack("<i8", bytes, #bytes - 7)
+  if count < 0 or count > (#bytes - 9) // 8 then return nil end
+  local endpos = #bytes - 8 - count * 8
+  local table_ids = {}
+  local seen = {}
+  for i = 0, count - 1 do
+    local id = string.unpack("<i8", bytes, endpos + i * 8 + 1)
+    if seen[id] then return nil end
+    seen[id] = true
+    table_ids[i + 1] = id
+  end
+  return { table = table_ids, lim = endpos }
+end
+
+local function extent_body(r)
+  local n = r_leb(r)
+  if r.bad or n < 0 or n > r.lim - r.at then
+    r.at = r.lim
+    return nil, nil
+  end
+  local at = r.at
+  r.at = at + n
+  return at, at + n
+end
+
+local function arm_is_pointer(f)
+  if f == nil then return false end
+  local s = f.shape
+  if s == "pointer" or s == "string_blob" or s == "bytes_blob" then return true end
+  if s == "array" and f.elem ~= nil then
+    local es = f.elem.shape
+    if es == "pointer" or es == "string_blob" or es == "bytes_blob" then return true end
+  end
+  return false
+end
+
+local measure_record, measure_field, measure_union
+
+measure_record = function(T, ids, scan, desc, b, at, lim)
+  local r = new_reader(b, at, lim)
+  while true do
+    local ref = r_leb(r)
+    if r.bad or ref <= 0 then return true end
+    if ref > #ids or r.at >= r.lim then return true end
+    local id = ids[ref]
+    local kind = r_u8(r)
+    local f = desc ~= nil and D.by_id(desc, id) or nil
+    if f == nil then
+      if not skip(r, kind) then return true end
+    elseif kind == 15 and f.shape == "union" then
+      local un = T.Unions[f.target]
+      if un ~= nil then
+        if not measure_union(T, ids, scan, un, r) then return false end
+      else
+        if not skip(r, kind) then return true end
+      end
+    elseif kind ~= 13 and kind ~= 14 and kind ~= 16 then
+      if not skip(r, kind) then return true end
+    else
+      local pat, plim = extent_body(r)
+      if pat == nil then return true end
+      if kind == f.kind then
+        if not measure_field(T, ids, scan, f, r.b, pat, plim) then return false end
+      end
+    end
+  end
+end
+
+measure_field = function(T, ids, scan, f, b, at, lim)
+  if f.shape == "pointer" or f.shape == "string_blob" or f.shape == "bytes_blob" then
+    return true
+  end
+  if f.shape == "map" or f.shape == "array" then
+    local r = new_reader(b, at, lim)
+    if r.lim - r.at < 2 then return true end
+    local kind = r_u8(r)
+    local expected = (f.shape == "map") and 13 or f.elem_kind
+    if kind ~= expected and not widens(kind, expected) then return true end
+    local count = r_leb(r)
+    if r.bad then return true end
+    if f.shape == "map" or f.list then
+      local size, align
+      if f.shape == "map" then
+        local entry = T.Tables[f.entry]
+        size, align = entry.size, entry.align
+      else
+        size, align = D.list_layout(T, f)
+      end
+      if count < 0 or count > 0x7fffffff then return false end
+      local floor = width_of(kind)
+      if kind == 17 then floor = 1 end
+      if kind == 13 then floor = 2 end
+      if floor < 1 then floor = 1 end
+      if count > (r.lim - r.at) // floor then return false end
+      scan.at = round_up(scan.at, align) + count * size
+    end
+    if kind ~= 13 and kind ~= 15 then return true end
+    local keyed = (f.shape == "array" and f.keyed ~= nil)
+    local i = 0
+    while i < count and r.at < r.lim do
+      i = i + 1
+      if keyed then
+        r_leb(r)
+        if r.bad then return true end
+      end
+      if kind == 15 then
+        local un = T.Unions[f.elem.target]
+        if un ~= nil then
+          if not measure_union(T, ids, scan, un, r) then return false end
+        end
+      else
+        local pat, plim = extent_body(r)
+        if pat == nil then return true end
+        local st = (f.shape == "map") and T.Tables[f.entry] or T.Tables[f.elem.target]
+        if st ~= nil and not measure_record(T, ids, scan, st, r.b, pat, plim) then return false end
+      end
+    end
+    return true
+  end
+  if f.shape == "table" then
+    return measure_record(T, ids, scan, T.Tables[f.target], b, at, lim)
+  end
+  return true
+end
+
+measure_union = function(T, ids, scan, un, r)
+  local ref = r_leb(r)
+  if r.bad then r.at = r.lim; return true end
+  if ref == 0 then return true end
+  if ref < 0 or ref > #ids or r.at >= r.lim then r.at = r.lim; return true end
+  local id = ids[ref]
+  r_u8(r)
+  local pat, plim = extent_body(r)
+  if pat == nil then return true end
+  if un == nil then return true end
+  for _, arm in ipairs(un.arms) do
+    if arm.id == id and arm.field ~= nil and not arm_is_pointer(arm.field) then
+      if arm.field.shape == "union" then
+        local arm_r = new_reader(r.b, pat, plim)
+        return measure_union(T, ids, scan, T.Unions[arm.field.target], arm_r)
+      end
+      return measure_field(T, ids, scan, arm.field, r.b, pat, plim)
+    end
+  end
+  return true
+end
+
+function L.LoadMeasure(T, name, bytes)
+  local desc = T.Tables[name]
+  if desc == nil then return nil end
+  local o = measure_trailer(bytes)
+  if o == nil then return nil end
+  local align = D.region_align(T, desc)
+  local function size_of(st, b, at, lim)
+    local scan = { at = 0 }
+    if not measure_record(T, o.table, scan, st, b, at, lim) then return 0, false end
+    return round_region(round_region(D.record_size(st), align) + scan.at, align), true
+  end
+  local total, ok = size_of(desc, bytes, 1, o.lim)
+  if not ok then return nil end
+  local raw = node_scan(bytes, o, {})
+  if raw == nil then return nil end
+  local nodes, string_blob, bytes_blob = D.pointer_reachable(T, desc)
+  for _, rec in ipairs(raw) do
+    local st = nodes[rec.tid]
+    if st ~= nil then
+      local n, rok = size_of(st, rec.body, 0, #rec.body)
+      if not rok then return nil end
+      total = total + n
+    elseif (rec.tid == BYTES_BLOB_ID and bytes_blob) or (rec.tid == STRING_BLOB_ID and string_blob) then
+      local blen = #rec.body
+      if blen > 0xffffffff then return nil end
+      local n = 8 + blen
+      if rec.tid == STRING_BLOB_ID then n = n + 1 end
+      total = total + round_region(n, align)
+    end
+  end
+  return total + (#raw + 1) * 16
 end
 
 return L

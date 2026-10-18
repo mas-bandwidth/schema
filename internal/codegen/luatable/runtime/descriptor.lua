@@ -110,4 +110,95 @@ function D.check_defaults(T, name, v, where)
   return nil
 end
 
+-- D.region_align returns the unit's region alignment (docs/SPEC-TABLES.md §7.1,
+-- §8.5; ir.TableRegionAlign) carried on the module or on a table descriptor.
+function D.region_align(T, desc)
+  if T ~= nil and T.RegionAlign ~= nil then return T.RegionAlign end
+  if T ~= nil and T.Registry ~= nil and T.Registry.region_align ~= nil then return T.Registry.region_align end
+  if desc ~= nil and desc.region_align ~= nil then return desc.region_align end
+  return 8
+end
+
+-- D.record_size returns a record descriptor's fixed byte size (ir.RecordLayout).
+function D.record_size(desc)
+  return desc.size
+end
+
+-- D.list_layout returns the element size and alignment of an array/list field
+-- (ir.ListElementLayout) from its descriptor.
+function D.list_layout(T, f)
+  if f.elem_size ~= nil and f.elem_align ~= nil then
+    return f.elem_size, f.elem_align
+  end
+  local e = f.elem
+  if e == nil then return 0, 1 end
+  if e.shape == "table" and T ~= nil and T.Tables ~= nil then
+    local sub = T.Tables[e.target]
+    if sub ~= nil then return sub.size, sub.align end
+  end
+  return 0, 1
+end
+
+-- D.pointer_reachable walks the declaration graph from root (a table descriptor
+-- or name in T.Tables) and returns (nodes, string_blob, bytes_blob) matching
+-- ir.PointerReachable and ir.PointerReachableBlobs:
+--   nodes: map from type_id -> table descriptor for every pointer-reachable table
+--   string_blob: true if a *string [blob] field is reachable from root
+--   bytes_blob: true if a *bytes [blob] or *[N]u8 [blob] field is reachable
+function D.pointer_reachable(T, root)
+  local start = type(root) == "table" and root or (T.Tables and T.Tables[root])
+  local nodes = {}
+  local string_blob = false
+  local bytes_blob = false
+  if start == nil then return nodes, false, false end
+  local visited = {}
+  local visit_struct, visit_field, visit_elem
+  visit_elem = function(e, parent_f)
+    if e == nil then return end
+    local s = e.shape
+    if s == "pointer" then
+      local target = T.Tables[e.target]
+      if target ~= nil then
+        nodes[target.type_id] = target
+        visit_struct(target)
+      end
+    elseif s == "string_blob" then
+      string_blob = true
+    elseif s == "bytes_blob" then
+      bytes_blob = true
+    elseif s == "table" then
+      local target = T.Tables[e.target]
+      if target ~= nil then visit_struct(target) end
+    elseif s == "union" then
+      local un = T.Unions and T.Unions[e.target]
+      if un ~= nil then
+        for _, arm in ipairs(un.arms) do
+          if arm.field ~= nil then visit_field(arm.field) end
+        end
+      end
+    end
+  end
+  visit_field = function(f)
+    if f == nil then return end
+    if f.shape == "map" then
+      local entry = T.Tables[f.entry]
+      if entry ~= nil then visit_struct(entry) end
+      return
+    elseif f.shape == "array" then
+      visit_elem(f.elem, f)
+      return
+    end
+    visit_elem(f, f)
+  end
+  visit_struct = function(st)
+    if st == nil or visited[st.name] then return end
+    visited[st.name] = true
+    for _, f in ipairs(st.fields) do
+      visit_field(f)
+    end
+  end
+  visit_struct(start)
+  return nodes, string_blob, bytes_blob
+end
+
 return D
