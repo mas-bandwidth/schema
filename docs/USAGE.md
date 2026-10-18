@@ -2887,16 +2887,18 @@ this side allocates: the bytes are yours, from wherever you got them.
 
 ### The cooked form: point at a file instead of parsing it
 
-*The TOOL, every READ side, and the C++ and Go WRITE sides are built
-(SPEC-TABLES.md §7, §7.6, schema#251). `schema cook`, `schema cook-check` and
-`schema uncook` produce, validate and read back cooked files, in either byte
-order; the C++ backend emits `<Root>Open`, the C# backend emits
-`<Root>Cook.Open` and the Go backend emits `<Root>Open`, for every table; and
-C++ emits `<Root>Cook` and `<Root>CookMeasure` while Go emits
-`<Root>CookMeasure`, `<Root>CookMeasureReason` and `<Root>CookFrom`, for every
-table, fixed or pointered, whose bytes are the tool's. A write side may live in
-ANY port; the bytes are the tool's whichever port wrote them. In every other
-language, your tools write the cook with `schema cook` and your game opens it.*
+*The TOOL, every READ side, and the C, C++ and Go WRITE sides are built
+(SPEC-TABLES.md §7, §7.6, schema#251). A cook writer may exist in any port:
+tools write cooked data in whatever language their author chose. `schema cook`,
+`schema cook-check` and `schema uncook` produce, validate and read back cooked
+files, in either byte order; the C++ backend emits `<Root>Open`, the C# backend
+emits `<Root>Cook.Open` and the Go backend emits `<Root>Open`, for every table
+that declares `cook` (a declaration omitting `cook` gets no `Open`; see
+SPEC-TABLES.md §2.12);
+and C, C++ and Go emit their cook writers for every table that declares `cook`,
+fixed or pointered, whose bytes are the tool's. Go's spellings are `<Root>CookMeasure`,
+`<Root>CookMeasureReason` and `<Root>CookFrom`. In other languages, your tools
+write the cook with `schema cook` and your game opens it.*
 
 **A cook is not a wire protocol — it is a load-trusted-data-from-tools
 protocol.** A wire crosses a boundary between builds; a cook crosses none. Your
