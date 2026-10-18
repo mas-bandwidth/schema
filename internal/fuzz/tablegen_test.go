@@ -2,20 +2,23 @@ package fuzz_test
 
 // tablegen_test.go is the seeded generator half of the random-schema
 // differential harness (card schema-go-fuzz-random-table-differential). It
-// builds VALID table units (fixed Root) from a math/rand seed and writes JSON
-// text for any value in range, with the bias to both ends the card names.
+// builds VALID table units from a math/rand seed and writes JSON text for any
+// value in range, with the bias to both ends the card names.
 //
 // The generator only builds constructs the checker accepts: one-sided ranges,
 // ranges excluding zero without a default, arrays of bytes/timestamp,
 // ?varstring, ? over a variable closure, attributes on a map and text lists in
 // fixed tables are all in the campaign's refusal census and never produced
-// here.
+// here. The kinds it covers are the scalars, text, bounded and open lists,
+// maps, pointers, nested (inner) tables and unions the harness's round-trip
+// and engine legs drive.
 
 import (
 	"encoding/base64"
 	"fmt"
 	"math"
 	"math/rand"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -33,9 +36,14 @@ const (
 	gString
 	gBytes
 	gTimestamp
-	gScalarArray
-	gOptScalar
-	gNested
+	gScalarArray // [..N]scalar
+	gOptScalar   // ?scalar or ?fixedTable
+	gNested      // inner table by value
+	gMap         // map[K]V
+	gPointer     // *Table / *string / *bytes
+	gUnion       // union reference
+	gFixedArray  // [N]scalar
+	gOpenArray   // []scalar
 )
 
 // intRange mode for signed/unsigned scalars.
@@ -63,16 +71,32 @@ type genField struct {
 
 	StrN int
 
-	Elem *genField // element for scalar array / optional / nested
+	Elem *genField // element for scalar array / optional / nested / map value / pointer
 	MaxN int       // array max length ([..N])
 
-	NestedName string
+	NestedName string    // table name for gNested / gPointer
+	UnionName  string    // union name for gUnion
+	MapKey     *genField // key field for gMap
+
+	variable bool // the construct needs a variable table (map/pointer/union/open array)
+}
+
+type genTable struct {
+	Name   string
+	Fixed  bool
+	Fields []*genField
+}
+
+type genUnion struct {
+	Name string
+	Arms []*genField
 }
 
 type genUnit struct {
-	Enums  []string // enum type names (0-2)
-	Fields []*genField
-	Root   *genField // container; fields listed in Fields
+	Enums  []string
+	Unions []*genUnion
+	Inner  []*genTable
+	Root   *genTable
 }
 
 func pickIntMode(r *rand.Rand) intMode {
@@ -107,7 +131,6 @@ func intBounds(bits int, mode intMode) (min, max, def int64, hasDef bool) {
 	case mExtreme:
 		return min, max, 0, false
 	case mExclDefault:
-		// exclude zero; a default in range, explicit
 		if bits <= 16 {
 			return 1, max, 1, true
 		}
@@ -143,10 +166,159 @@ func uintBounds(bits int, mode intMode) (min, max uint64, def uint64, hasDef boo
 
 var enumPool = []string{"Red", "Green", "Blue"}
 
-// randomField builds one field.
-func randomField(r *rand.Rand, enumVars []string) *genField {
-	k := r.Intn(12)
+// randIntInRange draws uniformly in [lo,hi], handling full-width spans where
+// lo and hi are the signed extremes.
+func randIntInRange(r *rand.Rand, lo, hi int64) int64 {
+	if lo == hi {
+		return lo
+	}
+	span := uint64(hi) - uint64(lo) + 1
+	if span == 0 {
+		return lo + int64(r.Uint64())
+	}
+	return lo + int64(r.Uint64()%span)
+}
+
+// randUintInRange draws uniformly in [lo,hi], handling full-width spans.
+func randUintInRange(r *rand.Rand, lo, hi uint64) uint64 {
+	if lo == hi {
+		return lo
+	}
+	span := hi - lo + 1
+	if span == 0 {
+		return r.Uint64()
+	}
+	return lo + r.Uint64()%span
+}
+
+// randomScalar returns a scalar element (for arrays, map values and optional
+// payloads). It never produces bytes or timestamp, which arrays refuse.
+func randomScalar(r *rand.Rand, enumVars []string) *genField {
+	f := &genField{Name: "e"}
+	switch r.Intn(7) {
+	case 0:
+		f.Kind = gInt
+		f.Bits = []int{8, 32, 64}[r.Intn(3)]
+		f.Imin, f.Imax, f.IDef, _ = intBounds(f.Bits, mNone)
+	case 1:
+		f.Kind = gUint
+		f.Bits = []int{8, 32, 64}[r.Intn(3)]
+	case 2:
+		f.Kind = gFloat32
+	case 3:
+		f.Kind = gFloat64
+	case 4:
+		f.Kind = gBool
+	case 5:
+		f.Kind = gEnum
+		f.EnumVar = enumVars[r.Intn(len(enumVars))]
+		f.EnumVal = enumPool[r.Intn(len(enumPool))]
+	default:
+		f.Kind = gString
+		f.StrN = 2 + r.Intn(16)
+	}
+	return f
+}
+
+// randomMapValue returns a map value: a scalar or a nested (inner) table.
+func randomMapValue(r *rand.Rand, enumVars []string, tables []*genTable) *genField {
+	if len(tables) > 0 && r.Intn(3) == 0 {
+		t := tables[r.Intn(len(tables))]
+		f := &genField{Kind: gNested, NestedName: t.Name, Elem: nil}
+		if !t.Fixed {
+			f.variable = true
+		}
+		return f
+	}
+	return randomScalar(r, enumVars)
+}
+
+// randomKey returns a map key field (string or integer).
+// randomArrayElem returns an element for a fixed or bounded array. The checker
+// refuses arrays of bytes, timestamp and string (a [N]string(N) is a text
+// list, a variable-table construct), so only the non-text scalars remain.
+func randomArrayElem(r *rand.Rand, enumVars []string) *genField {
+	f := &genField{Name: "e"}
+	switch r.Intn(6) {
+	case 0:
+		f.Kind = gInt
+		f.Bits = []int{8, 32, 64}[r.Intn(3)]
+		f.Imin, f.Imax, f.IDef, _ = intBounds(f.Bits, mNone)
+	case 1:
+		f.Kind = gUint
+		f.Bits = []int{8, 32, 64}[r.Intn(3)]
+	case 2:
+		f.Kind = gFloat32
+	case 3:
+		f.Kind = gFloat64
+	case 4:
+		f.Kind = gBool
+	default:
+		f.Kind = gEnum
+		f.EnumVar = enumVars[r.Intn(len(enumVars))]
+		f.EnumVal = enumPool[r.Intn(len(enumPool))]
+	}
+	return f
+}
+
+// randomOptScalar returns a scalar payload for ?T (a fixed table or a non-text
+// scalar). The checker refuses ?string(N), ?bytes and ?timestamp.
+func randomOptScalar(r *rand.Rand, enumVars []string) *genField {
+	f := &genField{Name: "e"}
+	switch r.Intn(6) {
+	case 0:
+		f.Kind = gInt
+		f.Bits = []int{8, 32, 64}[r.Intn(3)]
+		f.Imin, f.Imax, f.IDef, _ = intBounds(f.Bits, mNone)
+	case 1:
+		f.Kind = gUint
+		f.Bits = []int{8, 32, 64}[r.Intn(3)]
+	case 2:
+		f.Kind = gFloat32
+	case 3:
+		f.Kind = gFloat64
+	case 4:
+		f.Kind = gBool
+	default:
+		f.Kind = gEnum
+		f.EnumVar = enumVars[r.Intn(len(enumVars))]
+		f.EnumVal = enumPool[r.Intn(len(enumPool))]
+	}
+	return f
+}
+
+func randomKey(r *rand.Rand) *genField {
+	f := &genField{Name: "k"}
+	switch r.Intn(3) {
+	case 0:
+		f.Kind = gString
+		f.StrN = 2 + r.Intn(16)
+	case 1:
+		f.Kind = gInt
+		f.Bits = []int{8, 32, 64}[r.Intn(3)]
+		f.Imin, f.Imax, _, _ = intBounds(f.Bits, mNone)
+	default:
+		f.Kind = gUint
+		f.Bits = []int{8, 32, 64}[r.Intn(3)]
+	}
+	return f
+}
+
+// randomField builds one field of a table, using the already-declared enums,
+// unions and inner tables. It only builds constructs that stay inside a FIXED
+// table (the harness's probe drives the fixed table's value API): no maps, no
+// pointers, no unbounded arrays — those need a variable table and a builder
+// probe leg, which is out of scope for this card's core harness. Nested inner
+// tables are referenced by value and are themselves fixed.
+func randomField(r *rand.Rand, enumVars []string, unions []*genUnion, tables []*genTable) *genField {
 	f := &genField{Name: fmt.Sprintf("f%d", r.Intn(100000))}
+	var fixedTables []*genTable
+	for _, t := range tables {
+		if t.Fixed {
+			fixedTables = append(fixedTables, t)
+		}
+	}
+	k := r.Intn(18)
 	switch {
 	case k < 2:
 		f.Kind = gInt
@@ -177,35 +349,34 @@ func randomField(r *rand.Rand, enumVars []string) *genField {
 		f.Kind = gTimestamp
 	case k == 10:
 		f.Kind = gScalarArray
-		f.Elem = randomScalar(r, enumVars)
+		f.Elem = randomArrayElem(r, enumVars)
 		f.MaxN = 1 + r.Intn(4)
 	case k == 11:
 		f.Kind = gOptScalar
-		f.Elem = randomScalar(r, enumVars)
-	}
-	return f
-}
-
-func randomScalar(r *rand.Rand, enumVars []string) *genField {
-	f := &genField{Name: "e"}
-	switch r.Intn(6) {
-	case 0:
+		f.Elem = randomOptScalar(r, enumVars)
+	case k == 12:
+		f.Kind = gFixedArray
+		f.Elem = randomArrayElem(r, enumVars)
+		f.MaxN = 1 + r.Intn(4)
+	case k == 13 && len(fixedTables) > 0:
+		t := fixedTables[r.Intn(len(fixedTables))]
+		f.Kind = gNested
+		f.NestedName = t.Name
+	case k == 14 && len(unions) > 0:
+		f.Kind = gUnion
+		f.UnionName = unions[r.Intn(len(unions))].Name
+	case k == 15 && len(fixedTables) > 0:
+		t := fixedTables[r.Intn(len(fixedTables))]
+		f.Kind = gNested
+		f.NestedName = t.Name
+	case k == 16 && len(fixedTables) > 0:
+		t := fixedTables[r.Intn(len(fixedTables))]
+		f.Kind = gOptScalar
+		f.Elem = &genField{Kind: gNested, NestedName: t.Name}
+	default:
 		f.Kind = gInt
 		f.Bits = []int{8, 32, 64}[r.Intn(3)]
 		f.Imin, f.Imax, f.IDef, _ = intBounds(f.Bits, mNone)
-	case 1:
-		f.Kind = gUint
-		f.Bits = []int{8, 32, 64}[r.Intn(3)]
-	case 2:
-		f.Kind = gFloat32
-	case 3:
-		f.Kind = gFloat64
-	case 4:
-		f.Kind = gBool
-	default:
-		f.Kind = gEnum
-		f.EnumVar = enumVars[r.Intn(len(enumVars))]
-		f.EnumVal = enumPool[r.Intn(len(enumPool))]
 	}
 	return f
 }
@@ -232,10 +403,26 @@ func typeName(f *genField, enumVars []string) string {
 		return "timestamp"
 	case gScalarArray:
 		return fmt.Sprintf("[..%d]%s", f.MaxN, typeName(f.Elem, enumVars))
+	case gFixedArray:
+		return fmt.Sprintf("[%d]%s", f.MaxN, typeName(f.Elem, enumVars))
+	case gOpenArray:
+		return "[]" + typeName(f.Elem, enumVars)
 	case gOptScalar:
 		return "?" + typeName(f.Elem, enumVars)
 	case gNested:
 		return f.NestedName
+	case gMap:
+		return fmt.Sprintf("map[%s]%s", typeName(f.MapKey, enumVars), typeName(f.Elem, enumVars))
+	case gPointer:
+		if f.Elem != nil && (f.Elem.Kind == gString || f.Elem.Kind == gBytes) {
+			if f.Elem.Kind == gString {
+				return "*string"
+			}
+			return "*bytes"
+		}
+		return "*" + typeName(f.Elem, enumVars)
+	case gUnion:
+		return f.UnionName
 	}
 	return "bool"
 }
@@ -270,46 +457,94 @@ func fieldDecl(f *genField, enumVars []string) string {
 	return fmt.Sprintf("%s %s", f.Name, t)
 }
 
-// randomSchema produces a valid schema source for a fixed Root, the unit
-// model, and the enum variable names.
+// tableSource renders a table declaration (fixed or variable).
+func tableSource(t *genTable, enumVars []string) string {
+	var b strings.Builder
+	if t.Fixed {
+		b.WriteString("fixed table " + t.Name + " {\n")
+	} else {
+		b.WriteString("table " + t.Name + " {\n")
+	}
+	for _, f := range t.Fields {
+		b.WriteString(" " + fieldDecl(f, enumVars) + "\n")
+	}
+	b.WriteString("}\n")
+	return b.String()
+}
+
 func randomSchema(r *rand.Rand) (string, *genUnit) {
 	u := &genUnit{}
-	ne := r.Intn(3)
+	ne := 1 + r.Intn(2)
 	for i := 0; i < ne; i++ {
 		u.Enums = append(u.Enums, fmt.Sprintf("Enum%d", i))
-	}
-	if len(u.Enums) == 0 {
-		u.Enums = append(u.Enums, "Enum0")
 	}
 	var b strings.Builder
 	b.WriteString("package probe\n")
 	for _, en := range u.Enums {
-		members := enumPool
-		if len(members) == 0 {
-			members = []string{"M0"}
+		b.WriteString(fmt.Sprintf("enum %s { %s }\n", en, strings.Join(enumPool, ", ")))
+	}
+	// inner tables (always fixed), referenced by value from Root or a field
+	ni := r.Intn(3)
+	for i := 0; i < ni; i++ {
+		t := &genTable{Name: fmt.Sprintf("Inner%d", i), Fixed: true}
+		nf := 1 + r.Intn(3)
+		for j := 0; j < nf; j++ {
+			f := randomField(r, u.Enums, nil, nil)
+			f.Name = fmt.Sprintf("g%d", j)
+			t.Fields = append(t.Fields, f)
 		}
-		b.WriteString(fmt.Sprintf("enum %s { %s }\n", en, strings.Join(members, ", ")))
+		u.Inner = append(u.Inner, t)
 	}
-	n := 1 + r.Intn(8)
-	b.WriteString("fixed table Root {\n")
+	// unions: scalar arms only (a pointer arm would force a variable table,
+	// which needs a builder probe leg), every one referenced from Root
+	nu := r.Intn(3)
+	for i := 0; i < nu; i++ {
+		un := &genUnion{Name: fmt.Sprintf("U%d", i)}
+		un.Arms = append(un.Arms, &genField{Name: "a", Kind: gInt, Bits: 32})
+		un.Arms = append(un.Arms, &genField{Name: "b", Kind: gInt, Bits: 64})
+		b.WriteString("union " + un.Name + " {\n")
+		for _, arm := range un.Arms {
+			b.WriteString(" " + arm.Name + " " + typeName(arm, u.Enums) + "\n")
+		}
+		b.WriteString("}\n")
+		u.Unions = append(u.Unions, un)
+	}
+	// the Root is a fixed table; every construct the generator emits stays
+	// fixed-compatible, so the probe drives the fixed table's value API
+	root := &genTable{Name: "Root", Fixed: true}
+	n := 1 + r.Intn(6)
 	for i := 0; i < n; i++ {
-		f := randomField(r, u.Enums)
-		u.Fields = append(u.Fields, f)
-		b.WriteString(" " + fieldDecl(f, u.Enums) + "\n")
+		f := randomField(r, u.Enums, u.Unions, u.Inner)
+		f.Name = fmt.Sprintf("f%d", i)
+		root.Fields = append(root.Fields, f)
 	}
-	b.WriteString("}\n")
+	// every union is referenced from Root
+	for _, un := range u.Unions {
+		ref := false
+		for _, f := range root.Fields {
+			if f.Kind == gUnion && f.UnionName == un.Name {
+				ref = true
+				break
+			}
+		}
+		if !ref {
+			f := &genField{Name: fmt.Sprintf("u%d", len(root.Fields)), Kind: gUnion, UnionName: un.Name}
+			root.Fields = append(root.Fields, f)
+		}
+	}
+	u.Root = root
+	for _, t := range u.Inner {
+		b.WriteString(tableSource(t, u.Enums))
+	}
+	b.WriteString(tableSource(root, u.Enums))
 	return b.String(), u
 }
 
-// jsonPool drives text values: escapes, U+2028, astral code points,
-// multi-byte UTF-8.
 var jsonPool = []string{"hello", "a\"b", "line\nbreak", "\u2028", "🌍", "é\u00e9", "tab\there", "\\backslash", "{}[]"}
 
 func pickText(r *rand.Rand, n int) string {
 	s := jsonPool[r.Intn(len(jsonPool))]
 	if len(s) > n {
-		// truncate at a rune boundary so the text stays valid UTF-8 and the
-		// Go %q spelling stays valid JSON (never \xNN escapes)
 		cut := n
 		for cut > 0 && !utf8.RuneStart(s[cut]) {
 			cut--
@@ -321,25 +556,51 @@ func pickText(r *rand.Rand, n int) string {
 
 var b64 = base64.StdEncoding
 
-// randomValue writes JSON for one field value into b.
-func randomValue(b *strings.Builder, r *rand.Rand, f *genField) {
+// innerTable finds an inner table by name.
+func (u *genUnit) innerTable(name string) *genTable {
+	for _, t := range u.Inner {
+		if t.Name == name {
+			return t
+		}
+	}
+	return nil
+}
+
+func (u *genUnit) union(name string) *genUnion {
+	for _, un := range u.Unions {
+		if un.Name == name {
+			return un
+		}
+	}
+	return nil
+}
+
+// randomValue writes JSON for one field value into b. It needs the unit for
+// nested tables and unions.
+func (u *genUnit) randomValue(b *strings.Builder, r *rand.Rand, f *genField) {
 	switch f.Kind {
 	case gInt:
-		var v int64
 		min, max := f.Imin, f.Imax
-		if r.Intn(2) == 0 {
+		var v int64
+		switch r.Intn(3) {
+		case 0:
 			v = min
-		} else {
+		case 1:
 			v = max
+		default:
+			v = randIntInRange(r, min, max)
 		}
 		fmt.Fprintf(b, "%d", v)
 	case gUint:
 		min, max, _, _ := uintBounds(f.Bits, f.IMode)
 		var v uint64
-		if r.Intn(2) == 0 {
+		switch r.Intn(3) {
+		case 0:
 			v = min
-		} else {
+		case 1:
 			v = max
+		default:
+			v = randUintInRange(r, min, max)
 		}
 		fmt.Fprintf(b, "%d", v)
 	case gFloat32:
@@ -379,8 +640,6 @@ func randomValue(b *strings.Builder, r *rand.Rand, f *genField) {
 	case gString:
 		fmt.Fprintf(b, "%q", pickText(r, f.StrN))
 	case gBytes:
-		// bytes(N) is a base64 string (SPEC-TABLES §16.2), standard alphabet,
-		// padded on write.
 		nb := 1 + r.Intn(f.StrN)
 		raw := make([]byte, nb)
 		if _, err := r.Read(raw); err != nil {
@@ -390,41 +649,118 @@ func randomValue(b *strings.Builder, r *rand.Rand, f *genField) {
 		fmt.Fprintf(b, "%q", b64.EncodeToString(raw))
 	case gTimestamp:
 		fmt.Fprintf(b, "%d", r.Int63n(1<<40))
-	case gScalarArray:
-		m := 1 + r.Intn(f.MaxN)
+	case gScalarArray, gFixedArray, gOpenArray:
+		m := 1
+		if f.Kind == gScalarArray || f.Kind == gOpenArray {
+			m = 1 + r.Intn(f.MaxN)
+		} else {
+			m = f.MaxN
+		}
 		b.WriteString("[")
 		for i := 0; i < m; i++ {
 			if i > 0 {
 				b.WriteString(",")
 			}
-			randomValue(b, r, f.Elem)
+			u.randomValue(b, r, f.Elem)
 		}
 		b.WriteString("]")
 	case gOptScalar:
 		if r.Intn(3) == 0 {
 			b.WriteString("null")
 		} else {
-			randomValue(b, r, f.Elem)
+			u.randomValue(b, r, f.Elem)
 		}
+	case gNested:
+		u.writeTableValue(b, r, u.innerTable(f.NestedName))
+	case gMap:
+		nk := 1 + r.Intn(3)
+		b.WriteString("{")
+		for i := 0; i < nk; i++ {
+			if i > 0 {
+				b.WriteString(",")
+			}
+			u.writeKey(b, r, f.MapKey)
+			b.WriteString(":")
+			u.randomValue(b, r, f.Elem)
+		}
+		b.WriteString("}")
+	case gPointer:
+		switch f.Elem.Kind {
+		case gNested:
+			u.writeTableValue(b, r, u.innerTable(f.Elem.NestedName))
+		case gString:
+			fmt.Fprintf(b, "%q", pickText(r, f.Elem.StrN))
+		case gBytes:
+			nb := 1 + r.Intn(f.Elem.StrN)
+			raw := make([]byte, nb)
+			if _, err := r.Read(raw); err != nil {
+				b.WriteString(`""`)
+				break
+			}
+			fmt.Fprintf(b, "%q", b64.EncodeToString(raw))
+		default:
+			u.randomValue(b, r, f.Elem)
+		}
+	case gUnion:
+		un := u.union(f.UnionName)
+		if un == nil || len(un.Arms) == 0 || r.Intn(4) == 0 {
+			b.WriteString("{}")
+			break
+		}
+		arm := un.Arms[r.Intn(len(un.Arms))]
+		fmt.Fprintf(b, "{%q:", arm.Name)
+		u.randomValue(b, r, arm)
+		b.WriteString("}")
 	}
 }
 
-// randomJSON writes the Root value for instance i (0 = {}).
+// writeKey writes a JSON map key.
+func (u *genUnit) writeKey(b *strings.Builder, r *rand.Rand, f *genField) {
+	switch f.Kind {
+	case gString:
+		fmt.Fprintf(b, "%q", pickText(r, f.StrN))
+	case gInt:
+		v := randIntInRange(r, f.Imin, f.Imax)
+		fmt.Fprintf(b, "%q", strconv.FormatInt(v, 10))
+	case gUint:
+		min, max, _, _ := uintBounds(f.Bits, f.IMode)
+		v := randUintInRange(r, min, max)
+		fmt.Fprintf(b, "%q", strconv.FormatUint(v, 10))
+	default:
+		fmt.Fprintf(b, "%q", "k")
+	}
+}
+
+// writeTableValue writes a table object value with every field set.
+func (u *genUnit) writeTableValue(b *strings.Builder, r *rand.Rand, t *genTable) {
+	b.WriteString("{")
+	first := true
+	for _, f := range t.Fields {
+		if !first {
+			b.WriteString(",")
+		}
+		first = false
+		fmt.Fprintf(b, "%q:", f.Name)
+		u.randomValue(b, r, f)
+	}
+	b.WriteString("}")
+}
+
 func randomJSON(r *rand.Rand, u *genUnit, i int) string {
 	var b strings.Builder
 	b.WriteString("{")
-	first := true
 	if i == 0 {
 		b.WriteString("}")
 		return b.String()
 	}
-	for _, f := range u.Fields {
+	first := true
+	for _, f := range u.Root.Fields {
 		if !first {
 			b.WriteString(",")
 		}
 		first = false
 		fmt.Fprintf(&b, "%q:", f.Name)
-		randomValue(&b, r, f)
+		u.randomValue(&b, r, f)
 	}
 	b.WriteString("}")
 	return b.String()
