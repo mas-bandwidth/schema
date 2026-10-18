@@ -443,6 +443,10 @@ func TestBoundsPassProbe(t *testing.T) {
 					record(&div, "boundsaccepted %s ok=%v err=%v report=%+v", name, ok, pr.Err(), pr)
 					return
 				}
+				var rv Root
+				RootReset(&rv)
+				var rr TableReport
+				probeFromJSONValue(&rv, decoded, &rr)
 				// The strict read refused and reset to defaults, so the CLAMPED
 				// value is observed through the tolerant read, which keeps the
 				// recovered value (§6.5): it must sit exactly at the declared/
@@ -468,20 +472,24 @@ func TestBoundsPassProbe(t *testing.T) {
 						return
 					}
 				}
-				checkAcceptedOrClampedRoundTrip(&div, name, &defVal)
+				checkAcceptedOrClampedRoundTrip(&div, name, &rv)
 			case "must_kind_mismatch":
 				if ok || pr.Err() == nil || pr.KindMismatch <= 0 {
 					record(&div, "boundsaccepted %s ok=%v err=%v report=%+v", name, ok, pr.Err(), pr)
 					return
 				}
+				var rv Root
+				RootReset(&rv)
+				var rr TableReport
+				probeFromJSONValue(&rv, decoded, &rr)
 				// A kind mismatch leaves the field at its declared default.
-				gotJSON := make([]byte, RootToJsonMeasure(&defVal))
-				RootToJson(&defVal, gotJSON)
+				gotJSON := make([]byte, RootToJsonMeasure(&rv))
+				RootToJson(&rv, gotJSON)
 				if !bytes.Equal(gotJSON, defJSON) {
 					record(&div, "boundskindmismatchnotdefault %s got=%s want=%s", name, b64(gotJSON), b64(defJSON))
 					return
 				}
-				checkAcceptedOrClampedRoundTrip(&div, name, &defVal)
+				checkAcceptedOrClampedRoundTrip(&div, name, &rv)
 			case "must_refuse_named":
 				if ok || pr.Err() == nil || pr.Reason == "" {
 					record(&div, "boundsaccepted %s ok=%v err=%v report=%+v", name, ok, pr.Err(), pr)
