@@ -784,11 +784,10 @@ func ReadEmptyB(stream *serialize.ReadStream, value *EmptyB) error {
 type EmptyUnionType uint8
 
 const (
-	EmptyUnionTypeNone  EmptyUnionType = 0
-	EmptyUnionTypeA     EmptyUnionType = 1
-	EmptyUnionTypeB     EmptyUnionType = 2
-	EmptyUnionTypeCount EmptyUnionType = 2 // the declared variant count (SPEC §4.2)
-	EmptyUnionTypeMax   EmptyUnionType = 2 // the exported extent (SPEC §4.2)
+	EmptyUnionTypeNone EmptyUnionType = 0
+	EmptyUnionTypeA    EmptyUnionType = 1
+	EmptyUnionTypeB    EmptyUnionType = 2
+	EmptyUnionTypeMax  EmptyUnionType = 2 // the exported extent (SPEC §4.2)
 )
 
 // EnumNameEmptyUnionType: debug/log/tooling name for any EmptyUnionType wire value —

@@ -2,8 +2,22 @@ package gotable
 
 import (
 	"fmt"
+
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
+
+// optionalMapJson is the JSON walk's one change for an OPTIONAL MAP
+// (docs/SPEC-TABLES.md §2.8, §16.2), made only in a unit that declares one so
+// every other unit's walk is the same bytes it was: a `null` reads as ABSENT
+// and puts the field back at its defaults, and a map's defaults are the empty
+// sixteen-byte slot, never the ENTRY table its descriptor's Table names.
+func optionalMapJson(u *ir.Unit, s string) string {
+	if len(ir.OptionalMapFields(u)) == 0 {
+		return s
+	}
+	old := "\t\t\t\tif f.Table != nil {\n\t\t\t\t\tf.Table().Reset(unsafe.Add(base, uintptr(f.Offset)))"
+	return tableSourceReplace(s, old, "\t\t\t\tif f.Map {\n\t\t\t\t\tclear(unsafe.Slice((*byte)(unsafe.Add(base, uintptr(f.Offset))), 16))\n\t\t\t\t} else if f.Table != nil {\n\t\t\t\t\tf.Table().Reset(unsafe.Add(base, uintptr(f.Offset)))", 1)
+}
 
 func (g *tableGen) mapDescriptor(f *ir.Field) string {
 	for i, field := range g.owner.Fields {
@@ -40,6 +54,11 @@ func (g *tableGen) emitMapSurface(st *ir.Struct, f *ir.Field) {
 		kt = "string"
 		kv = "tableMapKey{text:[]byte(key)}"
 	}
+	if key.Type.TextUnbounded() {
+		// an UNBOUNDED key (docs/SPEC-TABLES.md §2.13.1): the same spelling,
+		// any length, compared whole
+		kv = "tableMapKey{text:unsafe.Slice(unsafe.StringData(key),len(key))}"
+	}
 	holder := "*TableMap[" + entry + "]"
 	desc := g.mapDescriptor(f)
 	g.pf("func %sInsert(worker *TableWorker,holder %s,key %s) *%s {p,_:=tableMapPlace(worker,(*tableContainer)(unsafe.Pointer(holder)),%s,%s);if p==nil{return nil};entry:=(*%s)(p);value:=entry;", name, holder, kt, typ, desc, kv, entry)
@@ -53,6 +72,9 @@ func (g *tableGen) emitMapSurface(st *ir.Struct, f *ir.Field) {
 	keyexpr := "entry.Key"
 	if key.Type.Kind == ir.TString {
 		keyexpr = "string(entry.Key[:entry.KeyLength])"
+	}
+	if key.Type.TextUnbounded() {
+		keyexpr = "tableTextString(&entry.Key,tableOptionalArena(arena))"
 	}
 	g.pf("func %sEach(holder %s,visit func(%s,*%s)bool,arena ...*TableArena) bool {c:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)),int64(unsafe.Sizeof(%s{})),tableOptionalArena(arena));for i:=int32(0);i<holder.Count;i++ {entry:=(*%s)(c.Next());if entry==nil||!visit(%s,%s){return false}};return true }\n", name, holder, kt, typ, entry, entry, keyexpr, access)
 	g.pf("func %sIndexMeasure(holder %s) int64 {return tableMapIndexMeasure(holder.Count)}\n", name, holder)
@@ -72,7 +94,12 @@ func (g *tableGen) emitMapRead(f *ir.Field, ind string) {
 	if g.retain {
 		keyReader = "elem.tableRetainPlainReader"
 	}
-	g.pf("%sfor i:=uint64(0);i<count;i++ {elem,ok:=sub.Body();if !ok {r.Report.Malformed=true;break};key,bad,over,wide,whole:=tableMapReadKey(%s,&field.Table().Fields[0]);if wide&&!widened {widened=true;r.Report.Widened++};if bad {r.Report.KindMismatch++;*holder=tableContainer{};break};if !whole {r.Report.Malformed=true;break};if over {r.Report.Clamped++;continue};order:= -1;if prior!=nil {order=tableMapKeyOrder(last,key,&field.Table().Fields[0])};if order>0 {r.Report.Malformed=true;break};p:=prior;if order==0 {r.Report.Duplicate++}else {p=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,holder,holder.Count,%d));if p==nil {r.Report.Malformed=true;break};if sub.Nodes.Carve.Worker==nil {holder.Count++}};\n", ind, keyReader, entry, layout.Size)
+	named := ""
+	if ir.MapKeyUnbounded(f) {
+		// an UNBOUNDED key's damage names the map (docs/SPEC-TABLES.md §2.13.1)
+		named = fmt.Sprintf("tableTextMalformed(r.Report,%q);", f.MapEntry.MapEntryOf)
+	}
+	g.pf("%sfor i:=uint64(0);i<count;i++ {elem,ok:=sub.Body();if !ok {r.Report.Malformed=true;"+named+"break};key,bad,over,wide,whole:=tableMapReadKey(%s,&field.Table().Fields[0]);if wide&&!widened {widened=true;r.Report.Widened++};if bad {r.Report.KindMismatch++;*holder=tableContainer{};break};if !whole {r.Report.Malformed=true;"+named+"break};if over {r.Report.Clamped++;continue};order:= -1;if prior!=nil {order=tableMapKeyOrder(last,key,&field.Table().Fields[0])};if order>0 {r.Report.Malformed=true;"+named+"break};p:=prior;if order==0 {r.Report.Duplicate++}else {p=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,holder,holder.Count,%d));if p==nil {r.Report.Malformed=true;break};if sub.Nodes.Carve.Worker==nil {holder.Count++}};\n", ind, keyReader, entry, layout.Size)
 	g.retainReadPath("elem", "r", "holder.Count-1")
 	g.pf("%sLoadBody(&elem,p);\n", f.MapEntry.Name)
 	g.emitCarveReturn("sub", "elem", ind)
@@ -105,16 +132,20 @@ func tableMapIndex(h *tableContainer,f *TableFieldInfo,storage []byte) TableMapI
 func tableMapIndexFind(index TableMapIndex,h *tableContainer,f *TableFieldInfo,key tableMapKey) unsafe.Pointer {if len(index.slots)==0{return tableMapFind(h,f,key,nil)};kf:=&f.Table().Fields[0];if !tableMapKeyValid(key,kf)||h.Ref==0{return nil};base:=unsafe.Add(unsafe.Pointer(h),h.Ref);at:=tableMapHash(key,kf)&uint64(len(index.slots)-1);for i:=0;i<len(index.slots);i++ {slot:=index.slots[at];if slot==0{return nil};if slot<0||slot>h.Count{return nil};p:=unsafe.Add(base,int64(slot-1)*int64(f.ElemSize));if tableMapKeyOrder(tableMapStoredKey(p,kf),key,kf)==0{return p};at=(at+1)&uint64(len(index.slots)-1)};return nil}
 `
 
+// tableJsonMapSource reads and writes a map in the JSON text form. A map key is
+// a JSON string whatever its kind (docs/SPEC-TABLES.md 16.2), so a key that
+// decodes to U+0000 refuses the read as ONE Malformed event (16.3, counted as
+// 4.2 counts it on the wire): an integer key whose scan refused returns at
+// once and is never also counted a kind mismatch. A key the read DROPS for its
+// length (over a string key's bound, or no integer at all) is still a key: the
+// probe scans every key as text bound for storage into an empty buffer and a
+// scratch report first, so a zero in it refuses the same way, as the pack text
+// reader refuses it; its drop is counted as before (Clamped, KindMismatch).
 const tableJsonMapSource = `
-type tableMapKey struct { text []byte; raw uint64 }
-func tableMapKeyValid(k tableMapKey,f *TableFieldInfo)bool {return f.Kind!=12||k.raw==0&&len(k.text)<=int(f.ArrayBound)}
-func tableMapStoredKey(p unsafe.Pointer,f *TableFieldInfo)tableMapKey {key:=tableMapKey{};if f.Kind==12 {n:=*(*int32)(unsafe.Add(p,f.CountOffset));if n<0||n>f.ArrayBound{return tableMapKey{text:nil,raw:1}};key.text=unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),int(n))}else{key.raw=tableJsonGetRaw(unsafe.Add(p,f.Offset),f.ElemSize);if f.Kind>=2&&f.Kind<=5 {key.raw=uint64(tableJsonGetSigned(unsafe.Add(p,f.Offset),f.ElemSize))}};return key}
-func tableMapStoreKey(p unsafe.Pointer,f *TableFieldInfo,k tableMapKey) {if f.Kind==12 {clear(unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),int(f.ArrayBound)+1));copy(unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),len(k.text)),k.text);*(*int32)(unsafe.Add(p,f.CountOffset))=int32(len(k.text))}else{tableJsonSetRaw(unsafe.Add(p,f.Offset),f.ElemSize,k.raw)}}
-func tableMapKeyOrder(a,b tableMapKey,f *TableFieldInfo)int {if f.Kind==12 {for i:=0;i<len(a.text)&&i<len(b.text);i++ {if a.text[i]<b.text[i]{return -1};if a.text[i]>b.text[i]{return 1}};if len(a.text)<len(b.text){return -1};if len(a.text)>len(b.text){return 1};return 0};if f.Kind>=2&&f.Kind<=5 {if int64(a.raw)<int64(b.raw){return -1};if int64(a.raw)>int64(b.raw){return 1};return 0};if a.raw<b.raw{return -1};if a.raw>b.raw{return 1};return 0}
 func tableJsonWriteMap(out *tableJsonOut,p unsafe.Pointer,f *TableFieldInfo,depth int32)bool {if depth>tableJsonMaxDepth{return false};count:=*(*int32)(unsafe.Add(p,8));if count<0{return false};out.put('{');if count>0 {ref:=*(*int64)(p);if ref==0{return false};base:=unsafe.Add(p,ref);entry:=f.Table();key,value:=&entry.Fields[0],&entry.Fields[1];for i:=int32(0);i<count;i++ {if i>0{out.put(',')};out.line(depth+1);at:=unsafe.Add(base,int64(i)*int64(f.ElemSize));k:=tableMapStoredKey(at,key);if key.Kind==12 {tableJsonWriteString(out,k.text)}else{out.put('"');if key.Kind>=2&&key.Kind<=5 {tableJsonWriteSigned(out,int64(k.raw))}else{tableJsonWriteUnsigned(out,k.raw)};out.put('"')};out.text(": ");if value.Optional&&!*(*bool)(unsafe.Add(at,value.PresentOffset)){out.text("null")}else if !tableJsonWriteField(out,at,value,depth+1){return false}};out.line(depth)};out.put('}');return true}
 func tableJsonReadMap(in *tableJsonIn,p unsafe.Pointer,f *TableFieldInfo,depth int32)bool {if depth>tableJsonMaxDepth||in.peek()!='{'||in.graph==nil||in.graph.mapPlace==nil {in.bad=true;return false};clear(unsafe.Slice((*byte)(p),16));in.pos++;entry:=f.Table();key,value:=&entry.Fields[0],&entry.Fields[1]
- for {if in.peek()=='}'{in.pos++;return true};probe:=*in;n,ok:=probe.scanString(nil);if !ok {in.bad=true;return false};good:=true;var k tableMapKey
- if key.Kind==12 {if n>key.ArrayBound {in.report.Clamped++;in.pos=probe.pos;good=false}else{memory,_:=in.graph.alloc(int64(n)+1);if memory==nil{in.bad=true;return false};k.text=unsafe.Slice((*byte)(memory),int(n));_,ok=in.scanString(k.text)}}else{var text [tableJsonMaxNumber]byte;if n>tableJsonMaxNumber {in.pos=probe.pos;good=false}else{_,ok=in.scanString(text[:n]);k.raw,good=tableJsonMapInteger(text[:n],key)};if !good{in.report.KindMismatch++}}
+ for {if in.peek()=='}'{in.pos++;return true};probe:=*in;n,ok:=probe.scanString(nil);if !ok {in.bad=true;return false};{zero:=*in;var r TableReport;zero.report=&r;var none [0]byte;if _,ok:=zero.scanString(none[:]);!ok&&zero.zero {in.zero=true;in.bad=true;return false}};good:=true;var k tableMapKey
+ if key.Kind==12 {if n>key.ArrayBound {in.report.Clamped++;in.pos=probe.pos;good=false}else{memory,_:=in.graph.alloc(int64(n)+1);if memory==nil{in.bad=true;return false};k.text=unsafe.Slice((*byte)(memory),int(n));_,ok=in.scanString(k.text)}}else{var text [tableJsonMaxNumber]byte;if n>tableJsonMaxNumber {in.pos=probe.pos;good=false}else{_,ok=in.scanString(text[:n]);if !ok {return false};k.raw,good=tableJsonMapInteger(text[:n],key)};if !good{in.report.KindMismatch++}}
  if !ok||in.peek()!=':' {in.bad=true;return false};in.pos++;if !good {tableJsonDropLabel(in);if !in.skipValue(depth+1){return false}}else{slot,duplicate:=in.graph.mapPlace(p,f,k);if slot==nil {in.bad=true;return false};if duplicate{in.report.Duplicate++};entry.Reset(slot);tableMapStoreKey(slot,key,k);shape:=in.valueShape();if value.Optional&&shape=='z' {if !in.literal("null"){return false}}else if shape!=tableJsonShape(value)&&!(value.Pointer&&shape=='z'){in.report.KindMismatch++;tableJsonDropLabel(in);if !in.skipValue(depth+1){return false}}else{if !tableJsonReadField(in,slot,value,depth+1){return false};if value.Optional{*(*bool)(unsafe.Add(slot,value.PresentOffset))=true}}};c:=in.peek();if c==','{in.pos++;continue};if c=='}'{in.pos++;return true};in.bad=true;return false }
 }
 func tableJsonMapInteger(text []byte,f *TableFieldInfo)(uint64,bool) {var report TableReport;in:=tableJsonIn{text:text,report:&report};integral,ok:=in.walkNumber();if !ok||in.pos!=len(text){return 0,false};_ = integral;v,ok:=tableJsonDecimalKey(text,f.Kind>=2&&f.Kind<=5,int(f.ElemSize)*8);return v,ok}

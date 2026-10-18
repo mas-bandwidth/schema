@@ -109,21 +109,25 @@ func t07GoC14(t *testing.T) {
 // emits: §3.1 "Slack is UNSPECIFIED on read and not a refusal: a reader
 // validates the USED UNITS only, and non-zero slack is not `malformed`, not a
 // refusal, and moves no counter." The text op holds the length word to the
-// plan's own capacity and counts that clamp; past the used length it copies the
-// payload whole and never inspects, refuses or counts a slack byte.
+// plan's own capacity and refuses an overbound length; past the used length it
+// copies the payload whole and never inspects, refuses or counts a slack byte.
 func t07GoW4(t *testing.T) {
-	block := t07RuntimeCase(t, "tableFixedText", "tableFixedOrdinal")
+	block := funcSource(tableFixedRuntime, "func tableFixedTextRefusal(")
+	run := funcSource(tableFixedRuntime, "func tableFixedRun(")
 	if !strings.Contains(block, "capn := p.Size / unit") {
 		t.Error("W4: the used length is held to the plan's own capacity (§3.1)")
 	}
-	if !strings.Contains(block, "} else if uint32(v) > capn {") || !strings.Contains(block, "report.Clamped++") {
-		t.Error("W4: a length past the capacity clamps and counts, once (§3.1)")
+	if !strings.Contains(block, "if v < 0 || uint32(v) > capn") || !strings.Contains(block, "return TableFixedReasonLengthOverBound") {
+		t.Error("W4: a length past the capacity refuses by name, once (§3.1, §4.5)")
 	}
-	if !strings.Contains(block, "binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))") {
+	if !strings.Contains(t07RuntimeCase(t, "tableFixedText", "tableFixedOrdinal"), "binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))") {
 		t.Error("W4: the reader lands the USED length (§3.1)")
 	}
-	if strings.Contains(block, "Malformed") || strings.Contains(block, "Refuse") {
-		t.Error("W4: non-zero slack is not malformed and not a refusal; the reader validates the used units only (§3.1)")
+	if strings.Contains(block, "Malformed") {
+		t.Error("W4: non-zero slack is not malformed; the pre-scan validates only used units (§3.1)")
+	}
+	if !strings.Contains(run, "if why := tableFixedTextRefusal(plan, count, src); why != \"\" {") {
+		t.Error("W4: the direct runner does not pre-scan before writes")
 	}
 }
 
@@ -151,12 +155,15 @@ func t07RuntimeCase(t *testing.T, op, next string) string {
 // loop". The prefill is the hole list, copied one hole at a time, and never a
 // whole-record copy that would clobber what the plan lands.
 func t07GoW9(t *testing.T) {
-	load := funcSource(t07Emitted(t), "func RootFixedLoad(")
+	load := funcSource(t07Emitted(t), "func RootFixedLoadTolerant(")
 	if load == "" {
 		t.Fatal("RootFixedLoad is not emitted")
 	}
-	if !strings.Contains(load, "holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))") {
-		t.Error("W9: the prefill ranges are the plan's UNWRITTEN ranges (§4.3)")
+	if strings.Contains(load, "tableFixedHoles") {
+		t.Error("W9: the load path still computes the hole list per call; §4.3 lays it once per plan")
+	}
+	if !strings.Contains(load, "holes = RootFixedLineageHoles[pick]") {
+		t.Error("W9: the hole list is laid once beside the plan, never computed per call (§4.3)")
 	}
 	if !strings.Contains(load, "copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])") {
 		t.Error("W9: only the holes take the declared defaults (§4.3)")

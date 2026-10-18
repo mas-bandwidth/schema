@@ -108,7 +108,6 @@ const (
 	DefaultChoiceTypeNone   DefaultChoiceType = 0
 	DefaultChoiceTypeFirst  DefaultChoiceType = 1
 	DefaultChoiceTypeSecond DefaultChoiceType = 2
-	DefaultChoiceTypeCount  DefaultChoiceType = 2 // the declared variant count (SPEC §4.2)
 	DefaultChoiceTypeMax    DefaultChoiceType = 2 // the exported extent (SPEC §4.2)
 )
 
@@ -271,7 +270,6 @@ const (
 	DefaultBulkChoiceTypeNone   DefaultBulkChoiceType = 0
 	DefaultBulkChoiceTypeFirst  DefaultBulkChoiceType = 1
 	DefaultBulkChoiceTypeSecond DefaultBulkChoiceType = 2
-	DefaultBulkChoiceTypeCount  DefaultBulkChoiceType = 2 // the declared variant count (SPEC §4.2)
 	DefaultBulkChoiceTypeMax    DefaultBulkChoiceType = 2 // the exported extent (SPEC §4.2)
 )
 
