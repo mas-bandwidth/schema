@@ -4,15 +4,50 @@
 // one-sided spelling IS the two-sided declaration. Still refused by name on a
 // float, fixed point, int128, uint128, timestamp or named type, beside
 // resolution, and on a `type` body or packet field.
-package check
+package check_test
 
 import (
 	"strings"
 	"testing"
 
+	check "github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
+
+func runUnit(t *testing.T, sources map[string]string) []error {
+	t.Helper()
+	var files []check.SourceFile
+	for name, src := range sources {
+		f, perrs := parser.Parse(name, []byte(src))
+		if len(perrs) > 0 {
+			return perrs
+		}
+		files = append(files, check.SourceFile{
+			Path:  name,
+			Name:  name,
+			Base:  strings.TrimSuffix(name, ".schema"),
+			Bytes: []byte(src),
+			AST:   f,
+		})
+	}
+	_, errs := check.Unit(files)
+	return errs
+}
+
+func checkUnit(t *testing.T, src string) *ir.Unit {
+	t.Helper()
+	f, perrs := parser.Parse("T.schema", []byte(src))
+	if len(perrs) > 0 {
+		t.Fatal(perrs)
+	}
+	u, errs := check.Unit([]check.SourceFile{{Path: "T.schema", Name: "T.schema", Base: "T", Bytes: []byte(src), AST: f}})
+	if len(errs) > 0 {
+		t.Fatal(errs)
+	}
+	return u
+}
 
 func TestOneSidedIntegerRange(t *testing.T) {
 	t.Parallel()
