@@ -163,6 +163,7 @@ func (r *TableReader) wireValueExtent(f *TableFieldInfo,kind uint8,at *int64,nod
  case 12:body,ok:=r.Body();if !ok||nodes>=0&&!tableUtf8Valid(body.Buffer){return bad}
  case 17:index,ok:=r.Leb();if !ok||nodes>=0&&index>uint64(nodes)+1{return bad}
  case 30:ref,ok:=r.Leb();if !ok{return bad};if ref!=0{if _,ok=r.Resolve(ref);!ok{return bad}}
+ case 1:if !r.Has(1){return bad};if r.Get8()>1&&nodes>=0{return bad}
  default:if !r.Skip(kind){return bad}}
  return TableRefuseOk}
 func tableWireArrayExtent(r TableReader,f *TableFieldInfo,keyed,arm bool,at *int64,nodes int64)TableRefuseReason{bad:=TableRefuseOk;if nodes>=0{bad=TableRefuseWireDamaged};if len(r.Buffer)<2{return TableRefuseOk};kind:=r.Get8();count,ok:=r.Leb();if !ok{return bad};if kind!=f.Kind&&!tableKindWidens(kind,f.Kind){return TableRefuseOk};if f.List||f.Map{if count>math.MaxInt32{return TableRefuseCountOverExtentCap};floor:=tableKindBytes(kind);if kind==13{floor=2};if floor<1{floor=1};if count>uint64((int64(len(r.Buffer))-r.Offset)/floor){return TableRefuseCountOverLength};*at=(*at+int64(f.ElemAlign)-1)& -int64(f.ElemAlign);*at+=int64(count)*int64(f.ElemSize)}
@@ -177,7 +178,7 @@ func tableWireUnionExtent(r *TableReader,f *TableFieldInfo,at *int64,nodes int64
   case want==17||want==30:framing:=body;if _,ok:=framing.Leb();!ok||framing.Offset!=int64(len(framing.Buffer)){return bad};return body.wireValueExtent(af,want,at,nodes)
   case want==12:if !tableUtf8Valid(body.Buffer){return bad};return TableRefuseOk
   case want==15:return tableWireUnionExtent(&body,af,at,nodes)}
-  if n:=tableKindBytes(want);n>0&&int64(len(body.Buffer))!=n{return bad};return TableRefuseOk}
+  if n:=tableKindBytes(want);n>0&&int64(len(body.Buffer))!=n{return bad};if want==1&&body.Buffer[0]>1{return bad};return TableRefuseOk}
  if arm.Void||arm.Field.Pointer{return TableRefuseOk};if af.IsArray{return tableWireArrayExtent(body,af,af.KeyName!=nil,false,at,nodes)};if af.Kind==13&&af.Table!=nil{return tableWireExtent(&body,af.Table(),at,nodes)};if af.Kind==15{return tableWireUnionExtent(&body,af,at,nodes)}};return TableRefuseOk}
 `
 

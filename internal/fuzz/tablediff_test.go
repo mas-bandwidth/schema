@@ -252,10 +252,18 @@ func runGeneratedTableUnit(t *testing.T, u *ir.Unit, testSource string, env map[
 	if err != nil {
 		return nil, err
 	}
+	// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4): a
+	// default-generated unit imports tables/goruntime, so the probe module
+	// requires schema/v2 and replaces it with this checkout, as
+	// internal/codegen/gotable/sharedruntime_test.go does
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		return nil, err
+	}
 	if ir.VariableTables(u)["Root"] && !strings.Contains(testSource, "probeFromJSON") && !strings.Contains(testSource, "RootBuilder") {
 		testSource = strings.ReplaceAll(testSource, "RootFromJson(", "probeFromJSONValue(")
 	}
-	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
+	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\nreplace github.com/mas-bandwidth/schema/v2 => %q\n", runtime, root))
 	files["helpers_test.go"] = []byte(probeHelpersSource(u))
 	files["values_test.go"] = []byte(testSource)
 	for name, data := range files {

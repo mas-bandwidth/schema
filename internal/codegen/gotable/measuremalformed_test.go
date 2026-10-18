@@ -438,9 +438,9 @@ var measureMalformedSeed1Probe = `package probe
  `
 
 // measureMalformedDigests are the tolerant load's recovery digests at BASE
-// (sprint/schema-go 9cce3341c), one per unit: a change to the strict measure
+// (sprint/schema-go 454596324; the wire-bool-not-0-or-1 landing moved them), one per unit: a change to the strict measure
 // that moves any of them changed what the tolerant load recovers.
-var measureMalformedDigests = map[int]string{2: "377257c6fcb61a24", 4: "976981395e503c5f", 1: "79ab60578f430ac5"}
+var measureMalformedDigests = map[int]string{2: "87deb3208575b8e9", 4: "6cb634cea503ef64", 1: "3c349a4882bff250"}
 
 func measureMalformedProbe(seed int, probe string) string {
 	return strings.Replace(probe, "@@DIGEST@@", measureMalformedDigests[seed], 1)
