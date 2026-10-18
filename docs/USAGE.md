@@ -1468,8 +1468,11 @@ message and cook writers to supply temporary storage. The same argument accepts
 existing inputs without treating an allocator as an address space. JSON and
 retaining file writers take the pair directly as their final argument. Writing
 an unlocked builder's root (`GetRoot`) without passing its arena refuses with
-`arena_required` (SPEC-TABLES.md §6.3): the root's references are arena offsets
-that no writer can resolve without the arena.
+`arena_required` (SPEC-TABLES.md §6.3): the root's references, its pointers
+and its list and map headers alike, are marked arena offsets that no writer
+can resolve without the arena. A locked or loaded root's references are
+self-relative and never need one. A map `Find` handed no arena on an unlocked
+root finds nothing rather than reading arena offsets as distances.
 Every buffer whose size grows with the graph goes through that pair. With
 caller-backed scratch on Go 1.26.0, JSON and cook measurement and writing
 allocate zero Go objects; wire, message and retaining file measurement and

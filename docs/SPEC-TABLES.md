@@ -9352,8 +9352,10 @@ an ARENA-encoded (marked) reference and was handed no arena to resolve it
 refuses by name (`arena_required`) and writes nothing. An unmarked reference
 is a region reference: self-relative, resolved without an arena even when one
 is handed, so a locked region writes the same bytes whatever builder state
-sits beside it, and a delta of any size is legal. Lock and Load both produce the region encoding; Lock is already
-rewriting layout, so the conversion is free.
+sits beside it, and a delta of any size is legal. The refusal covers every
+reference a write walks: a pointer, a blob, and a list's or map's header.
+Lock and Load both produce the region encoding; Lock is already rewriting
+layout, so the conversion is free.
 
 **A region reference has no required sign.** A region is packed in the
 same depth-first pre-order the wire numbers nodes in (§3.1), so a node's
