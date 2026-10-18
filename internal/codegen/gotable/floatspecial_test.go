@@ -641,9 +641,86 @@ func TestKeyed(t *testing.T) {
 }
 `
 
+// fsNegSchema declares a -0 default (docs/SPEC-TABLES.md §3.3, "-0 IS A VALUE,
+// AND IT RIDES"): Reset stores -0's own bits, a -0 under it is elided, and a
+// +0 under it rides, in a fixed and a variable table.
+const fsNegSchema = `package probe
+
+fixed table Neg
+{
+    a float32 = -0.0
+    b float64 = -0.0
+}
+
+table NegV
+{
+    a float32 = -0.0
+    b float64 = -0.0
+}
+`
+
+const fsNegProbe = `package probe
+
+import (
+	"math"
+	"testing"
+)
+
+func TestNegativeZeroDefault(t *testing.T) {
+	var r Neg
+	NegReset(&r)
+	if math.Float32bits(r.A) != 0x80000000 || math.Float64bits(r.B) != 0x8000000000000000 {
+		t.Fatalf("fixed reset: %#x %#x, want the -0 default's own bits", math.Float32bits(r.A), math.Float64bits(r.B))
+	}
+	var w NegV
+	NegVReset(&w)
+	if math.Float32bits(w.A) != 0x80000000 || math.Float64bits(w.B) != 0x8000000000000000 {
+		t.Fatalf("variable reset: %#x %#x, want the -0 default's own bits", math.Float32bits(w.A), math.Float64bits(w.B))
+	}
+	empty := int64(NegMeasure(&r))
+	emptyV := int64(NegVMeasure(&w))
+	for _, c := range []struct {
+		name string
+		b32  uint32
+		b64  uint64
+	}{
+		{"minus_zero", 0x80000000, 0x8000000000000000},
+		{"plus_zero", 0, 0},
+	} {
+		rides := c.b64 == 0
+		var v Neg
+		NegReset(&v)
+		v.A, v.B = math.Float32frombits(c.b32), math.Float64frombits(c.b64)
+		wire := make([]byte, NegMeasure(&v))
+		NegSave(&v, wire)
+		if got := int64(len(wire)) > empty; got != rides {
+			t.Errorf("fixed %s: %d bytes against the default's %d, want it to ride exactly when its bits differ from -0", c.name, len(wire), empty)
+		}
+		var got Neg
+		var rep TableReport
+		if !NegLoad(&got, wire, &rep) || math.Float32bits(got.A) != c.b32 || math.Float64bits(got.B) != c.b64 || rep.Err() != nil {
+			t.Errorf("fixed %s: landed %#x %#x %+v", c.name, math.Float32bits(got.A), math.Float64bits(got.B), rep)
+		}
+		var vv NegV
+		NegVReset(&vv)
+		vv.A, vv.B = math.Float32frombits(c.b32), math.Float64frombits(c.b64)
+		wireV := make([]byte, NegVMeasure(&vv))
+		NegVSave(&vv, wireV)
+		if got := int64(len(wireV)) > emptyV; got != rides {
+			t.Errorf("variable %s: %d bytes against the default's %d, want it to ride exactly when its bits differ from -0", c.name, len(wireV), emptyV)
+		}
+		gotV, err := NegVReadStrict(wireV)
+		if err != nil || math.Float32bits(gotV.A) != c.b32 || math.Float64bits(gotV.B) != c.b64 {
+			t.Errorf("variable %s: strict read %v", c.name, err)
+		}
+	}
+}
+`
+
 func TestGoPlainFloatSpecialValuesAgreeAcrossForms(t *testing.T) {
 	t.Parallel()
 	runGenerated(t, fsSchema, fsProbe)
 	runGenerated(t, fsFlatSchema, fsFlatProbe)
 	runGenerated(t, fsKeyedSchema, fsKeyedProbe)
+	runGenerated(t, fsNegSchema, fsNegProbe)
 }
