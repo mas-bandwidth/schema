@@ -1006,6 +1006,10 @@ type TableReport struct {
 	// became required. The refusal names the field in Reason.
 	MissingRequired int32
 	Malformed bool // framing damage; decode stopped, partial result kept
+	// BlobShared counts the extra slots that named a blob record another slot
+	// already named (docs/SPEC-TABLES.md §2.5): the tolerant read keeps the one
+	// node, never a copy per slot, and the strict read refuses blob_shared.
+	BlobShared int32
 	// BuildVersionPeer and BuildVersionOwn are the two build versions a strict
 	// announcement refusal carries (docs/SPEC-TABLES.md §3.3): the peer's
 	// announcement and this unit's own. They are zero on every other read.
@@ -1046,6 +1050,11 @@ const TableDocNone = ""
 type TableFieldInfo struct {
  CookOffset, CookElemSize, CookCountOffset, CookPresentOffset uint32
  List, Map bool // unbounded by-value containers
+ // UnboundedContainer is the ONE TELL of a container with no declared bound
+ // (docs/SPEC-TABLES.md §8.1): true on a map, a []T and a text list
+ // []string(M), with ArrayBound 0 beside it; false on every other field. It
+ // is not Unbounded, which marks unbounded TEXT (§2.13.1).
+ UnboundedContainer bool
  ElemAlign uint32
 	Name     string // schema field name, e.g. "health"
 	Json     string // the TEXT form's key: the json = "key" attribute, else Name (§16.3)

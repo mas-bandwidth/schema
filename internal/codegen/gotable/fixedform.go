@@ -1007,7 +1007,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,\n")
 	g.pf("// then the layout behind its u32 length, then the records to the end of it.\n")
 	g.pf("func %sFixedMeasure(count int64) int64 {\n", st.Name)
-	g.pf("\treturn TableFixedHeaderBytes + 4 + int64(len(%sFixedLayout)) + count*%sFixedRecordBytes\n}\n\n", st.Name, st.Name)
+	// THE INTEGRITY TRAILER is counted (docs/SPEC-TABLES.md §2.14, §3.4 THE
+	// FRAMING): four bytes after the last record, only when the table declares it.
+	trailer := ""
+	if st.Integrity != "" {
+		trailer = " + 4"
+	}
+	g.pf("\treturn TableFixedHeaderBytes + 4 + int64(len(%sFixedLayout)) + count*%sFixedRecordBytes%s\n}\n\n", st.Name, st.Name, trailer)
 
 	// THE WRITE-SIDE CONTRACT (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/USAGE.md
 	// "Writes are the caller's responsibility"): Go has no debug-only idiom, so
@@ -1041,7 +1047,14 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("\t\t%sFixedWriteBody(at[8:], &values[k])\n", st.Name)
 	g.pf("\t\tat = at[%sFixedRecordBytes:]\n", st.Name)
-	g.pf("\t}\n\treturn need\n}\n\n")
+	g.pf("\t}\n")
+	if st.Integrity != "" {
+		// THE SEAL (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): the CRC-32C of
+		// every byte before it, through the variable form's tableIntegritySeal.
+		g.pf("\treturn tableIntegritySeal(buffer, need-4)\n}\n\n")
+	} else {
+		g.pf("\treturn need\n}\n\n")
+	}
 
 	// THE NAMED TWIN: -1 is two refusals, and the reason says which. A buffer
 	// short of the measure is TableRefuseTruncated (the caller's sizing), and a
@@ -1080,6 +1093,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\tcase 2: // the MESSAGE form: a form this build carries, through another surface\n\t\t\treturn tableFixedRefuse(report, TableFixedReasonMessageFormAsFile)\n")
 	g.pf("\t\t}\n")
 	g.pf("\t\treturn tableFixedRefuse(report, TableFixedReasonNewerForm)\n\t}\n")
+	// THE INTEGRITY TRAILER, AFTER THE FORM BYTE AND BEFORE ANYTHING ELSE
+	// (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): a mismatch is whole-file
+	// damage named integrity_mismatch, the variable form's report from
+	// tableIntegrityOpen, with no layout compared and no record touched; then
+	// every rule below reads the file without its trailer.
+	if st.Integrity != "" {
+		g.pf("\tif !tableIntegrityHolds(data) {\n\t\treport.Verdict = TableOpenDamaged\n\t\treport.Malformed = true\n\t\treport.Reason = \"integrity_mismatch\"\n\t\treturn -1\n\t}\n")
+		g.pf("\tdata = data[:len(data)-4]\n")
+	}
 	// STEP 2: the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which
 	// are REFUSED and not ignored so they stay spendable later (§3.4, §5.3).
 	g.pf("\tif len(data) < TableFixedHeaderBytes+4 {\n\t\treport.Malformed = true\n\t\treport.Reason = TableFixedReasonTruncated\n\t\treturn -1\n\t}\n")

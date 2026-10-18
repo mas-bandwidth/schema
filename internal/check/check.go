@@ -871,9 +871,9 @@ func (c *checker) tableForms(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
 
 // tableIntegrity reads an `integrity = "crc32c"` declaration
 // (docs/SPEC-TABLES.md §2.14): one quoted check name from the closed
-// vocabulary [ir.TableIntegrityChecks]. A `fixed table` may carry it now that
-// its message-form batch carries the trailer; the fixed form's per-file
-// trailer remains its own follow-on.
+// vocabulary [ir.TableIntegrityChecks]. A `fixed table` takes it too: its
+// form-3 file carries the trailer once per file (§2.14, §3.4), and its
+// message-form batch carries it once per batch (§2.14, §3.3).
 func (c *checker) tableIntegrity(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
 	lit, ok := a.Value.(*ast.StringLit)
 	if !ok || lit.Value == "" {

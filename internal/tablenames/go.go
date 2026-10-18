@@ -275,6 +275,10 @@ func init() {
 		Name{Name: "RangeIntMax", What: "an integer-ranged field's exact signed upper bound", Scoped: true},
 		Name{Name: "RangeUintMin", What: "an unsigned-integer-ranged field's exact lower bound", Scoped: true},
 		Name{Name: "RangeUintMax", What: "an unsigned-integer-ranged field's exact upper bound", Scoped: true},
+		// the CONTAINER column of the descriptor (docs/SPEC-TABLES.md §8.1): a
+		// map, a []T or a text list with no declared bound, ArrayBound 0
+		// beside it. A member reached through its owner, like the range pair.
+		Name{Name: "UnboundedContainer", What: "a field descriptor's no-declared-bound container column", Scoped: true},
 		// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1, §8.7): every field row
 		// and every declaration row with no `///` block names this ONE
 		// definition, so absence costs a unit no string data and a printer
@@ -399,8 +403,10 @@ func init() {
 		Name{Name: "TableMissingRequired", What: "strict read refusal of a record lacking a | required field, naming it (docs/SPEC-TABLES.md §2.3)"},
 		Name{Name: "TableRefuseBase64Damaged", What: "a base64 text-transport body that does not decode (docs/SPEC-TABLES.md §16.8)"},
 		Name{Name: "TableRefuseIntegrityMismatch", What: "a declaring root's file whose CRC-32C trailer does not match (docs/SPEC-TABLES.md §2.14)"},
+		Name{Name: "TableRefuseBlobShared", What: "one blob record named from two slots, refused by every writer and the strict read (docs/SPEC-TABLES.md §2.5)"},
 		Name{Name: "tableIntegrityTable", What: "the integrity trailer's CRC-32C table (docs/SPEC-TABLES.md §2.14)"},
 		Name{Name: "tableIntegrityOpen", What: "the integrity trailer's check on read (docs/SPEC-TABLES.md §2.14)"},
+		Name{Name: "tableIntegrityHolds", What: "the integrity trailer's CRC-32C comparison, both forms (docs/SPEC-TABLES.md §2.14, §3.4)"},
 		Name{Name: "tableIntegritySeal", What: "the integrity trailer's append on write (docs/SPEC-TABLES.md §2.14)"},
 		Name{Name: "TableRefuseNonFinite", What: "strict read refusal of a NaN or an infinity in a plain float32/float64 (docs/SPEC-TABLES.md §3.3, a plain float's special values)"},
 		Name{Name: "tableNonFinite", What: "names a NaN or an infinity a read landed in a plain float32/float64 (docs/SPEC-TABLES.md §3.3, a plain float's special values)"},
