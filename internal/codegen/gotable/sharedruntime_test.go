@@ -204,6 +204,7 @@ var constOverflow = regexp.MustCompile(`overflows|Version`)
 // reports either way (docs/SPEC-TABLES.md §8.4).
 func TestGoSharedRuntimeIsOptionalAndEquivalent(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	for _, tc := range []struct{ name, schema, test string }{
 		{"fixed", sharedFixedSchema, sharedFixedTest},
 		{"variable", sharedVariableSchema, sharedVariableTest},
