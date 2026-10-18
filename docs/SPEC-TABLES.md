@@ -16132,8 +16132,8 @@ from its own samples, in its own package.
   is flipped at every byte of its first 1024 and its last 1024, and between
   them at every p-th byte from byte 1024, where p is the smallest prime at
   least (n - 2048) / 2048 rounded up, for a seed of n bytes, so no more than
-  2048 interior bytes, and a periodic run is cut at every phase of each period
-  the prime does not divide; those flips are checked by the target before it
+  2048 interior bytes, and a periodic run long enough to hold p periods is cut
+  at every phase of each period the prime does not divide; those flips are checked by the target before it
   fuzzes, in place, so the corpus never holds one copy of a long seed per
   flip. Every flip list is fixed by the seed: no
   randomness, no clock.
@@ -16142,8 +16142,9 @@ from its own samples, in its own package.
   1. REFUSED BY A NAMED REASON: the strict read returns no value and a typed
      error (§6.5) that names its reason — a `TableRefuseReason` other than
      `ok`, a `TableMissingRequired` or a `TableBuildVersionMismatch`; for
-     JSON, `FromJson` returns false or a report whose `Err()` is such an
-     error. A bare failure is a defect of the reader.
+     JSON, `FromJson` returns false or true, with a report whose `Err()` is
+     such an error. A bare failure, `false` with no error, is a defect of the
+     reader.
   2. ACCEPTED, AND CANONICAL: the value read re-encodes in the same form to
      EXACTLY the input (the wire `Save` writes, the text `SaveText` writes,
      the text `ToJson` writes).
@@ -16156,22 +16157,34 @@ from its own samples, in its own package.
      the default it is, and a field id carried twice, whose last occurrence
      wins (§4). Both re-encode shorter. The JSON form has no respelling: its
      canonical text writes every field (§16.1), so a JSON re-encoding
-     differs from the input only on a wrong decode. A reader that silently
-     dropped a field would hide in this class; the round trip above, which
-     pins every field of every sample through each form, is what holds that.
+     differs from the input only on a wrong decode. THIS CLASS IS THE
+     TARGET'S BLIND SPOT, and it is named rather than hidden: it ties the
+     re-encoding to itself and not to the input, so a reader that landed a
+     damaged field as its DEFAULT, or kept the first of two repeated ids,
+     would pass here. The round trip above pins every field of every sample,
+     not of a damaged input. Tying the two together needs the input
+     normalised on the wire (its explicit defaults and superseded repeats
+     removed) and is a named follow-on.
   4. ACCEPTED, AND THE REPORT SAYS WHAT WAS SET ASIDE: the value read
      re-encodes to other bytes, and the tolerant read of the same input (the
      wire's `<Name>Load` or `<Name>LoadBuilder`, `LoadText` and `FromJson`
      with a report) returns a report that is not silent (§4.1): an unknown
      field (§4, the newer data a reader keeps going past), a widened value, a
      retained or retain-lost record (§6.6), a repeated text key.
-  So a SILENT wrong decode can only be a canonical one, which the integrity
-  check (§2.14), when the table declares it, refuses. A panic, an unnamed
-  refusal or a silent non-canonical accept fails the target, naming the input
-  in hex and its position when it is a flip.
+  So a SILENT wrong decode the target lets through is a canonical one or one
+  in item 3's blind spot, and the integrity check (§2.14), when the table
+  declares it, refuses both. A value the read accepts and its own writer
+  then refuses also fails. A panic, an unnamed refusal or a silent
+  non-canonical accept fails the target, naming the input in hex, and its
+  position when it is a flip checked in place.
+- THE FLIP IS COARSE ON THE TEXTS. The complement of an ASCII byte is never
+  ASCII, so nearly every flip of a base64 or JSON seed is refused by the
+  text's own decoder before the wire behind it is reached; the flips are
+  the corpus, and `-fuzz` (below) is what explores the texts.
 
 `go test` runs each target over its seed corpus and its flips as a unit test:
-deterministic, no clock, no file. `go test -fuzz '^Fuzz<Table>Wire$'` runs it
+deterministic, no clock, and no file but a failing input a fuzzer run left
+under the package's `testdata/fuzz`, which `go test` replays. `go test -fuzz '^Fuzz<Table>Wire$'` runs it
 as a fuzzer from the same seeds; that is the long run, and it is the
 operator's, behind the slow gate, never a unit test.
 
