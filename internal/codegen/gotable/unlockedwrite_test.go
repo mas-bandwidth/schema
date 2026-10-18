@@ -232,3 +232,56 @@ func TestGoContainerWritesWithoutArenaRefuse(t *testing.T){
 }
 `)
 }
+
+// A LOCKED map's header is an unmarked, self-relative reference: handed an
+// arena (its own, shut down by Lock, or a live builder's) the wire, cook, JSON
+// and message writers write byte for byte what they write with none
+// (docs/SPEC-TABLES.md §6.3). Before tableMapCursor read the mark, the wire
+// measure handed &b.Arena SIGSEGVd (the r6 read's repro).
+func TestGoLockedMapWithArenaWritesAsWithout(t *testing.T) {
+	t.Parallel()
+	runGenerated(t, `package probe
+table Mp { m map[int32]uint64 }
+`, `package probe
+import("bytes";"testing";"unsafe")
+func messageBytes(t *testing.T,p unsafe.Pointer,a *TableArena)[]byte{t.Helper();w:=TableMessageWriter{TableBitWriter:TableBitWriter{Measuring:true}};if !tableMessageRegionWrite(&w,p,MpTableType(),a){t.Fatalf("message measure (arena %v)",a!=nil)};buf:=make([]byte,(w.Bits+7)/8);w=TableMessageWriter{TableBitWriter:TableBitWriter{Buffer:buf}};if !tableMessageRegionWrite(&w,p,MpTableType(),a)||w.Overflow{t.Fatalf("message write (arena %v)",a!=nil)};return buf}
+func TestGoLockedMapWithArenaWritesAsWithout(t *testing.T){
+ t.Parallel()
+ var b MpBuilder
+ if !b.Init(){t.Fatal("init")}
+ defer b.Shutdown()
+ for k:=int32(3);k>0;k--{v:=MpMInsert(&b.Main,&b.GetRoot().M,k);if v==nil{t.Fatal("insert")};*v=uint64(k)*10}
+ if !b.Lock(){t.Fatal("lock")}
+ var live MpBuilder
+ if !live.Init(){t.Fatal("init live")}
+ defer live.Shutdown()
+ if v:=MpMInsert(&live.Main,&live.GetRoot().M,9);v==nil{t.Fatal("insert live")}
+ root:=b.AsConst()
+ size,err:=MpMeasureReason(root)
+ if err!=nil||size<=0{t.Fatalf("locked measure=%d %v",size,err)}
+ wire:=make([]byte,size)
+ if n:=MpSave(root,wire);n!=size{t.Fatalf("locked save=%d",n)}
+ cookSize,err:=MpCookMeasureReason(root)
+ if err!=nil||cookSize<=0{t.Fatalf("locked cook measure=%d %v",cookSize,err)}
+ cook:=make([]byte,cookSize)
+ if !MpCookFrom(root,cook,TableByteOrderLittle){t.Fatal("locked cook")}
+ json:=make([]byte,MpToJsonMeasure(root))
+ if n:=MpToJson(root,json);n!=int64(len(json)){t.Fatalf("locked json=%d",n)}
+ message:=messageBytes(t,unsafe.Pointer(root),nil)
+ for _,c:=range []struct{name string;arena *TableArena}{{"its own locked arena",&b.Arena},{"a live builder's arena",&live.Arena}}{
+  got,err:=MpMeasureReason(root,c.arena)
+  if err!=nil||got!=size{t.Errorf("%s: wire measure %d %v want %d",c.name,got,err,size);continue}
+  w:=make([]byte,size)
+  if n:=MpSave(root,w,c.arena);n!=size||!bytes.Equal(w,wire){t.Errorf("%s: wire differs (%d)",c.name,n)}
+  cs,err:=MpCookMeasureReason(root,c.arena)
+  if err!=nil||cs!=cookSize{t.Errorf("%s: cook measure %d %v want %d",c.name,cs,err,cookSize);continue}
+  ck:=make([]byte,cookSize)
+  if !MpCookFrom(root,ck,TableByteOrderLittle,c.arena)||!bytes.Equal(ck,cook){t.Errorf("%s: cook differs",c.name)}
+  if m:=messageBytes(t,unsafe.Pointer(root),c.arena);!bytes.Equal(m,message){t.Errorf("%s: message differs",c.name)}
+  if p:=MpMFind(c.arena,&root.M,2);p==nil||*p!=20{t.Errorf("%s: Find: %v",c.name,p)}
+ }
+ js:=make([]byte,len(json))
+ if n:=MpToJson(root,js);n!=int64(len(json))||!bytes.Equal(js,json){t.Errorf("json not stable")}
+}
+`)
+}
