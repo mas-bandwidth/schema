@@ -157,6 +157,37 @@ func TestGoWriteOfNoReferenceBuilderIgnoresArena(t *testing.T){
 `)
 }
 
+// An abandoned unlocked builder is not retained by any process-global arena
+// registry (docs/SPEC-TABLES.md §6.3): the marked slots are self-describing and
+// need an arena only while the caller holds the builder.
+func TestGoAbandonedBuilderIsCollectable(t *testing.T) {
+	t.Parallel()
+	runGenerated(t, `package probe
+ table Root { s *string
+ xs []int32 }
+`, `package probe
+import("runtime";"testing";"weak")
+func abandonBuilder() weak.Pointer[RootBuilder] {
+ b:=new(RootBuilder)
+ if !b.Init(){panic("init")}
+ var report TableReport
+ if !RootFromJson(b,[]byte("{\"s\":\"hello\",\"xs\":[1,2,3]}"),&report){panic("fromjson")}
+ p:=weak.Make(b)
+ runtime.KeepAlive(b)
+ return p
+}
+func TestGoAbandonedBuilderIsCollectable(t *testing.T) {
+ t.Parallel()
+ p:=abandonBuilder()
+ for i:=0;i<10;i++ {
+  runtime.GC()
+  if p.Value()==nil{return}
+ }
+ t.Fatal("abandoned builder remains reachable after repeated garbage collection")
+}
+`)
+}
+
 // A root whose first reference is a list or map header refuses arena_required
 // too (docs/SPEC-TABLES.md §6.3): a list-only root, a list of tables holding
 // a *string, and a map root, through the wire, cook, JSON and message writers.
