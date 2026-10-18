@@ -27,12 +27,85 @@ func TestGoJsonLegacyOptions(t *testing.T) {
 		t.Parallel()
 		runGenerated(t, jsonLegacyRequiredSchema, jsonLegacyRequiredProbe)
 	})
+	t.Run("fixed", func(t *testing.T) {
+		t.Parallel()
+		runGenerated(t, jsonLegacyFixedSchema, jsonLegacyFixedProbe)
+	})
 }
+
+// jsonLegacyFixedSchema is a FIXED table, whose JSON calls take the value
+// itself and run tableJsonRead / tableJsonWrite, not the builder path the
+// variable tables above use (docs/SPEC-TABLES.md §16.2 holds for both).
+const jsonLegacyFixedSchema = `package probe
+
+fixed table F
+{
+    slots [..3]int32
+    n int32
+}
+`
+
+const jsonLegacyFixedProbe = `package probe
+
+import "testing"
+
+var legacy = TableJsonOptions{NullAsEmpty: true, OmitDefaults: true, Compact: true}
+
+func writeF(t *testing.T, v *F, options TableJsonOptions) string {
+	t.Helper()
+	n := FToJsonMeasureWith(v, options)
+	if n < 0 {
+		t.Fatal("ToJsonMeasureWith refused")
+	}
+	buf := make([]byte, n)
+	if got := FToJsonWith(v, buf, options); got != n {
+		t.Fatalf("ToJsonWith wrote %d, measure said %d", got, n)
+	}
+	return string(buf)
+}
+
+func TestGoJsonLegacyOptions(t *testing.T) {
+	t.Parallel()
+	const nullText = "{\"slots\":null,\"n\":3}"
+	var v F
+	FReset(&v)
+	var r TableReport
+	if !FFromJsonWith(&v, []byte(nullText), &r, TableJsonOptions{}) || r.KindMismatch != 1 {
+		t.Fatalf("without NullAsEmpty: report %+v, want kind_mismatch 1", r)
+	}
+	FReset(&v)
+	r = TableReport{}
+	if !FFromJsonWith(&v, []byte(nullText), &r, legacy) || r != (TableReport{}) || v.N != 3 || v.SlotsCount != 0 {
+		t.Fatalf("NullAsEmpty: report %+v n %d slots %d", r, v.N, v.SlotsCount)
+	}
+	if got := writeF(t, &v, legacy); got != "{\"n\":3}" {
+		t.Fatalf("n = 3 under OmitDefaults+Compact writes %q", got)
+	}
+	var zero F
+	FReset(&zero)
+	if got := writeF(t, &zero, legacy); got != "{}" {
+		t.Fatalf("zero under OmitDefaults+Compact writes %q", got)
+	}
+	plain := make([]byte, FToJsonMeasure(&zero))
+	if FToJson(&zero, plain) != int64(len(plain)) || writeF(t, &zero, TableJsonOptions{}) != string(plain) {
+		t.Fatal("the zero options value does not write the plain text")
+	}
+	for _, o := range []TableJsonOptions{{OmitDefaults: true}, {Compact: true}, legacy} {
+		var back F
+		FReset(&back)
+		r = TableReport{}
+		if !FFromJsonWith(&back, []byte(writeF(t, &v, o)), &r, TableJsonOptions{}) || r != (TableReport{}) || back != v {
+			t.Fatalf("options %+v: does not read back equal: report %+v", o, r)
+		}
+	}
+}
+`
 
 // jsonLegacyRequiredSchema holds a field marked required (docs/SPEC-TABLES.md
 // §2.3) at the root and inside an array element. Omit defaults never elides
 // one (§16.2): a text that leaves it out is refused as missing_required, so the
-// write would not read back.
+// write would not read back. A nested table wholly at its default (one) is
+// still elided whole: its key absent reads as its defaults, never as missing.
 const jsonLegacyRequiredSchema = `package probe
 
 table Inner
@@ -46,6 +119,7 @@ table R
     a int32 | required
     b int32
     kids []Inner
+    one Inner
 }
 `
 
