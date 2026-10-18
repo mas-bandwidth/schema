@@ -179,7 +179,8 @@ func containerRegionSourceCommon(s string) string {
 	s = tableSourceReplace(s, "if e.info!=nil {return tableRegionRound(int64(e.info.Size))}", "if e.info!=nil {extent:=tableExtentBytes(e.node,e.info,a);if extent<0{return -1};return tableRegionRound(tableRegionRound(int64(e.info.Size))+extent)}", 1)
 	s += `
 func tableRegionContainerEdges(h *tableContainer,f *TableFieldInfo,a *TableArena,visit func(*TableRef,*TableFieldInfo)bool)bool {
- if h.Count<0{return false};cursor:=tableMapCursor(h,f,a);defer cursor.Release();for j:=int32(0);j<h.Count;j++{elem:=cursor.Next();if elem==nil||!tableRegionValueEdges(elem,f,a,visit){return false}};return true
+ // A marked header with no arena goes to visit, which refuses it arena_required (docs/SPEC-TABLES.md §6.3).
+ if h.Count<0{return false};if a==nil&&h.Count>0&&tableArenaMarked(h.Ref){visit(&h.Ref,f);return false};cursor:=tableMapCursor(h,f,a);defer cursor.Release();for j:=int32(0);j<h.Count;j++{elem:=cursor.Next();if elem==nil||!tableRegionValueEdges(elem,f,a,visit){return false}};return true
 }
 `
 	start := strings.Index(s, "func tableRegionPack(")

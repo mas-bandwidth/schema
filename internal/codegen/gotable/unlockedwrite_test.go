@@ -156,3 +156,67 @@ func TestGoWriteOfNoReferenceBuilderIgnoresArena(t *testing.T){
 }
 `)
 }
+
+// A root whose first reference is a list or map header refuses arena_required
+// too (docs/SPEC-TABLES.md §6.3): a list-only root, a list of tables holding
+// a *string, and a map root, through the wire, cook, JSON and message writers.
+// A no-arena Find on an unlocked builder's map finds nothing and never reads an
+// arena offset as a distance; with the arena it finds the entry.
+func TestGoContainerWritesWithoutArenaRefuse(t *testing.T) {
+	t.Parallel()
+	runGenerated(t, `package probe
+table Inner { s *string }
+table Lst { xs []int32 }
+table Tl { items []Inner }
+table Mp { m map[int32]uint64 }
+`, `package probe
+import("errors";"testing";"unsafe")
+func message(p unsafe.Pointer,t *TableTypeInfo,a *TableArena)bool{w:=TableMessageWriter{TableBitWriter:TableBitWriter{Measuring:true}};return tableMessageRegionWrite(&w,p,t,a)}
+func refused(t *testing.T,name string,size int64,err error){t.Helper();if size!=-1||!errors.Is(err,TableRefuseArenaRequired){t.Errorf("%s: %d %v want -1 arena_required",name,size,err)}}
+func TestGoContainerWritesWithoutArenaRefuse(t *testing.T){
+ t.Parallel()
+ var l LstBuilder
+ if !l.Init(){t.Fatal("init")}
+ defer l.Shutdown()
+ for i:=0;i<3;i++{p:=LstXsAdd(&l.Main,&l.GetRoot().Xs);if p==nil{t.Fatal("add")};*p=int32(i)}
+ lr:=l.GetRoot()
+ n,err:=LstMeasureReason(lr);refused(t,"list measure",n,err)
+ if got:=LstSave(lr,make([]byte,64));got!=-1{t.Errorf("list save=%d",got)}
+ n,err=LstCookMeasureReason(lr);refused(t,"list cook",n,err)
+ if got:=LstToJsonMeasure(lr);got!=-1{t.Errorf("list json=%d",got)}
+ if message(unsafe.Pointer(lr),LstTableType(),nil){t.Errorf("list message write without arena succeeded")}
+ if !message(unsafe.Pointer(lr),LstTableType(),&l.Arena){t.Errorf("list message write with arena failed")}
+ if got:=LstMeasure(lr,&l.Arena);got<=0{t.Errorf("list measure with arena=%d",got)}
+ var tl TlBuilder
+ if !tl.Init(){t.Fatal("init")}
+ defer tl.Shutdown()
+ item:=TlItemsAdd(&tl.Main,&tl.GetRoot().Items)
+ if item==nil{t.Fatal("add")}
+ text,ref:=tl.Main.AllocString(2)
+ if text==nil{t.Fatal("alloc")}
+ copy(text,"hi");item.S=ref
+ tr:=tl.GetRoot()
+ n,err=TlMeasureReason(tr);refused(t,"list of tables measure",n,err)
+ n,err=TlCookMeasureReason(tr);refused(t,"list of tables cook",n,err)
+ if message(unsafe.Pointer(tr),TlTableType(),nil){t.Errorf("list of tables message write without arena succeeded")}
+ if got:=TlMeasure(tr,&tl.Arena);got<=0{t.Errorf("list of tables measure with arena=%d",got)}
+ var m MpBuilder
+ if !m.Init(){t.Fatal("init")}
+ defer m.Shutdown()
+ v:=MpMInsert(&m.Main,&m.GetRoot().M,1)
+ if v==nil{t.Fatal("insert")}
+ *v=5
+ mr:=m.GetRoot()
+ n,err=MpMeasureReason(mr);refused(t,"map measure",n,err)
+ n,err=MpCookMeasureReason(mr);refused(t,"map cook",n,err)
+ if got:=MpToJsonMeasure(mr);got!=-1{t.Errorf("map json=%d",got)}
+ if message(unsafe.Pointer(mr),MpTableType(),nil){t.Errorf("map message write without arena succeeded")}
+ if MpMFind(nil,&mr.M,1)!=nil{t.Errorf("no-arena Find on an unlocked map found an entry")}
+ if p:=MpMFind(&m.Arena,&mr.M,1);p==nil||*p!=5{t.Errorf("Find with the arena: %v",p)}
+ storage:=make([]byte,MpMIndexMeasure(&mr.M))
+ index:=MpMIndex(&mr.M,storage)
+ if MpMIndexFind(index,&mr.M,1)!=nil{t.Errorf("no-arena IndexFind on an unlocked map found an entry")}
+ if got:=MpMeasure(mr,&m.Arena);got<=0{t.Errorf("map measure with arena=%d",got)}
+}
+`)
+}
