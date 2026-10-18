@@ -408,6 +408,24 @@ var unitNumber = regexp.MustCompile(`\b[0-9]+\b`)
 // string form: a sha256 committed beside the code whose output it pins.
 var pinnedDigest = regexp.MustCompile("[`\"][0-9a-fA-F]{64}[`\"]")
 
+// pinnedDigestAllowed names, by file and the declaration holding the literals,
+// the committed digests the guard lets stand, each with its reason. An entry
+// that no longer pins anything is itself refused, so the list cannot go stale.
+var pinnedDigestAllowed = map[string]string{
+	// The seams card's BASE-equivalence claim (DefaultSurfaces output did not
+	// move when the source seams landed) compares against the BASE compiler,
+	// which no differential inside a unit test can hold, and it lives in
+	// package gotable, where checkRefusalUnchanged cannot reach. Its own card
+	// converts it (proposed: drop the digest comparison and keep the
+	// determinism and seam-marker assertions, with the base-against-head
+	// generated-output diff run at card time); until then it is allowed here.
+	"sourceseams_test.go:seamGolden": "BASE-equivalence pin of the gotable source seams; not a refusal claim",
+}
+
+// pinnedDigestDecl is a package-level declaration opening a composite literal,
+// whose name is the one an allowed digest is keyed by.
+var pinnedDigestDecl = regexp.MustCompile(`^(?:var|const) ([A-Za-z_][A-Za-z0-9_]*)\b`)
+
 func TestNoPinnedGeneratedOutputDigest(t *testing.T) {
 	t.Parallel()
 	var names []string
@@ -422,15 +440,33 @@ func TestNoPinnedGeneratedOutputDigest(t *testing.T) {
 		t.Fatal("no test files found")
 	}
 	sort.Strings(names)
+	seen := map[string]bool{}
 	for _, name := range names {
 		b, err := os.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
 		}
+		decl := ""
 		for i, line := range strings.Split(string(b), "\n") {
-			if pinnedDigest.MatchString(line) {
-				t.Errorf("%s:%d pins a digest; compute the claim at test time (checkRefusalUnchanged): %s", name, i+1, strings.TrimSpace(line))
+			if m := pinnedDigestDecl.FindStringSubmatch(line); m != nil {
+				decl = m[1]
+			} else if strings.HasPrefix(line, "}") || strings.HasPrefix(line, "func ") {
+				decl = ""
 			}
+			if !pinnedDigest.MatchString(line) {
+				continue
+			}
+			key := filepath.Base(name) + ":" + decl
+			if _, ok := pinnedDigestAllowed[key]; ok && decl != "" {
+				seen[key] = true
+				continue
+			}
+			t.Errorf("%s:%d pins a digest; compute the claim at test time (checkRefusalUnchanged): %s", name, i+1, strings.TrimSpace(line))
+		}
+	}
+	for key, reason := range pinnedDigestAllowed {
+		if !seen[key] {
+			t.Errorf("pinnedDigestAllowed names %s (%s), which pins no digest any more; remove the entry", key, reason)
 		}
 	}
 }
