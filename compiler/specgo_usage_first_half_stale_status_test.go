@@ -18,6 +18,11 @@ func TestSpecGoUsageFirstHalfStaleStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := string(b)
+	specBytes, err := os.ReadFile("../docs/SPEC-TABLES.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := string(specBytes)
 
 	has := func(want string) {
 		t.Helper()
@@ -64,9 +69,17 @@ func TestSpecGoUsageFirstHalfStaleStatus(t *testing.T) {
 	has("and by Go; the seven other backends")
 	notHas("the eight other backends still write its previous")
 
-	// message form: Go carries the bitpacked form 2.
-	has("The C++ backend, the tool and Go carry a")
-	notHas("The C++ backend and the tool carry a form-`2`")
+	// message form: Go carries the bitpacked form 2 in USAGE and SPEC.
+	has("The C++ reference, the tool and Go read and write the bitpacked form-`2`")
+	has("other seven language backends carry the variable form alone")
+	notHas("ahead of its implementation")
+	notHas("its body is byte framed")
+	if !strings.Contains(spec, "The C++ reference, Go and the compiler's own\nengine carry the BITPACKED body under form byte `2`") {
+		t.Error("SPEC-TABLES.md does not list Go as a form-2 carrier")
+	}
+	if strings.Contains(spec, "The eight ports carry the VARIABLE form alone") {
+		t.Error("SPEC-TABLES.md still excludes Go from the form-2 carriers")
+	}
 
 	// messages, table arms: Go carries table-armed unions.
 	has("The C++ reference, the tool and Go carry")

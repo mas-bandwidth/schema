@@ -1871,11 +1871,11 @@ disagree about a field:
 $ schema unpack --in backend_conn.bin tables/backend
 ```
 
-**The bitpacked body is specified ahead of its implementation**, on the terms
-SPEC-TABLES.md §3.3 and §6.6 take. The C++ backend, the tool and Go carry a
-form-`2` path today and its body is byte framed, which the codec change that
-lands §3.3 replaces in place, re-pinning the corpus with it. The other seven
-targets carry the variable form alone.
+**FORM BYTE `2` CARRIES THE BITPACKED MESSAGE BODY** (SPEC-TABLES.md §3.3,
+§6.6). The C++ reference, the tool and Go read and write the bitpacked form-`2`
+path. An earlier byte-framed body for form `2` was never released; bitpacking
+replaced it before release, and the form-`2` corpus pins the current body. The
+other seven language backends carry the variable form alone.
 
 ### Nesting: a root table IS a format
 
