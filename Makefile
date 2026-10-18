@@ -5689,6 +5689,8 @@ include make/checks/packet-defaults.mk
 include make/checks/packet-text.mk
 include make/checks/table-base64.mk
 include make/checks/generated-tree.mk
+include make/checks/lua-conformance.mk
+include make/checks/lua-fuzz.mk
 
 # THE CONFORMANCE MATRIX (test/conformance/README.md): every discovered driver
 # over every surface it lists. The reference leg is C++ and is built here; the

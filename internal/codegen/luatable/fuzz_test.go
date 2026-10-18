@@ -40,18 +40,6 @@ const luaFuzzMutantsPerInstance = 200
 // seed that rebuilds exactly that mutant.
 const luaFuzzSeed = uint64(0x4C554146555A5A41)
 
-// splitmix64 is the deterministic generator, the same one
-// internal/codegen/gotable/textdifferential_test.go uses.
-type splitmix64 struct{ state uint64 }
-
-func (r *splitmix64) next() uint64 {
-	r.state += 0x9E3779B97F4A7C15
-	z := r.state
-	z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9
-	z = (z ^ (z >> 27)) * 0x94D049BB133111EB
-	return z ^ (z >> 31)
-}
-
 // luaFuzzMutantSeed is the seed of mutant j of one corpus case.
 func luaFuzzMutantSeed(caseName string, j int) uint64 {
 	h := fnv.New64a()
@@ -548,9 +536,11 @@ func TestLuaWireFuzzAgreesWithTheGoEngine(t *testing.T) {
 
 // luaFuzzControlAnchor is the string field's frame check in the emitted load
 // (runtime/load.lua, read_field): a length past the body is malformed (§3).
+// The "string" branch is matched so the anchor is unique (the "wstring" branch
+// carries the same frame check but a different elseif line).
 const luaFuzzControlAnchor = `  elseif s == "string" then
     local n = r_leb(r)
-    if r.bad or r.at + n > r.lim then report.malformed = true; return false end`
+    if r.bad or not fits(r, n) then report.malformed = true; return false end`
 
 // TestLuaWireFuzzNegativeControl patches the emitted load in memory — one
 // anchor, matched exactly once — so a string frame length past the body stops
