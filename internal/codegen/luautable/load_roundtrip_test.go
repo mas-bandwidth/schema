@@ -250,7 +250,11 @@ local function encode_array(fd, arr, owner)
 	if fd.array == "keyed" and fd.keyvs ~= nil then
 		local parts = {}
 		for i, kv in fd.keyvs do
-			if arr[i] ~= nil then parts[#parts + 1] = q(kv[1]) .. ":" .. encode_value(fd.e, arr[i], owner) end
+			if arr[i] ~= nil then
+				local inner
+				if flagsOf[fd] ~= nil then inner = flags_text(flagsOf[fd], arr[i]) else inner = encode_value(fd.e, arr[i], owner) end
+				parts[#parts + 1] = q(kv[1]) .. ":" .. inner
+			end
 		end
 		return "{" .. table.concat(parts, ",") .. "}"
 	end
@@ -260,6 +264,8 @@ local function encode_array(fd, arr, owner)
 	local parts = {}
 	for i = 1, n do
 		local x = arr[i]
+		-- a hole in a pointer list is a loader defect: a null is false (§2.1)
+		if x == nil and fd.e ~= nil and fd.e.s == "ptr" and fd.array == "list" then return q("hole in a pointer list") end
 		if x == nil then x = default_value(fd.e) end
 		if flagsOf[fd] ~= nil then parts[#parts + 1] = flags_text(flagsOf[fd], x)
 		else parts[#parts + 1] = encode_value(fd.e, x, owner) end
@@ -340,7 +346,6 @@ count_walk = function(fd, val)
 		if val ~= false then
 			if counts[val] == nil then
 				counts[val] = 1
-				count_walk(nil, nil)
 				local desc = S.lookup(fd.t)
 				for _, f in desc.fields do
 					if f.present == nil or val[f.present] then count_walk(f, val[f.slot]) end
@@ -464,6 +469,7 @@ func TestLuauTableLoadRoundTripsEveryCleanInstance(t *testing.T) {
 	units, _ := readManifest(t)
 	cache := map[string]*generatedUnit{}
 	var compared []string
+	var noText []string
 	var failures []string
 	for _, row := range manifestRows(t) {
 		if row.kind != "instance" {
@@ -475,6 +481,7 @@ func TestLuauTableLoadRoundTripsEveryCleanInstance(t *testing.T) {
 		golden := filepath.Join(root, "testdata", "conformance", "tables", "json", row.caseName+".json")
 		want, err := os.ReadFile(golden)
 		if os.IsNotExist(err) {
+			noText = append(noText, row.caseName)
 			continue
 		}
 		if err != nil {
@@ -506,6 +513,8 @@ func TestLuauTableLoadRoundTripsEveryCleanInstance(t *testing.T) {
 	}
 	sort.Strings(compared)
 	t.Logf("%d instance rows compared: %s", len(compared), strings.Join(compared, " "))
+	sort.Strings(noText)
+	t.Logf("%d instance rows have no text under testdata/conformance/tables/json: %s", len(noText), strings.Join(noText, " "))
 	if len(compared) == 0 {
 		t.Fatal("no instance row compared")
 	}

@@ -494,6 +494,9 @@ local function key_token(v: any, fd: any): any
 	return "n" .. tostring(v)
 end
 
+-- Each entry is one instance holding its key and its value (§2.8): a pointer
+-- or blob value is queued against the instance and lands there when it
+-- resolves (§3.1), never copied before.
 read_map = function(fd: any, r: any, report: any, v: any): boolean
 	local n = r_leb(r)
 	if r.bad or r.at + n > r.e then report.malformed = true; return false end
@@ -531,6 +534,8 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 							local x = scalar_at(body, keyfd, kind, report)
 							if x == nil then break end
 							keyVal = x
+							-- a widened key is the entry's key all the same (§4, §2.8)
+							if keyfd.slot ~= nil then inst[keyfd.slot] = x end
 							if not widened then widened = true; report.widened = report.widened + 1 end
 						else
 							kindBad = true
@@ -553,6 +558,8 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 						if widens(kind, efd.k) then
 							local x = scalar_at(body, efd, kind, report)
 							if x == nil then break end
+							-- a widened value is stored under its key (§4, §2.8)
+							if efd.slot ~= nil then inst[efd.slot] = x end
 							report.widened = report.widened + 1
 						else
 							report.kindMismatch = report.kindMismatch + 1
@@ -689,6 +696,9 @@ read_array = function(fd: any, r: any, report: any, v: any): boolean
 	return true
 end
 
+-- ONE ARRAY ELEMENT (docs/SPEC-TABLES.md §2.9, §3.1): a pointer element is a
+-- node reference stored in its list at its index once it resolves, a null
+-- as false so the list is never cut short.
 read_element = function(fd: any, r: any, e: any, out: any, report: any, ek: number): boolean
 	if e == nil then
 		local x = scalar_at(r, {}, ek, report)
@@ -757,6 +767,8 @@ read_union = function(fd: any, r: any, report: any): any
 				local x = scalar_at(sub, arm, kind, report)
 				if x ~= nil then
 					report.widened = report.widened + 1
+					-- a widened arm selects its arm (§4, §2.6)
+					inst.Type = arm.tag
 					if arm.slot ~= nil then inst[arm.slot] = x end
 				end
 			else report.malformed = true end
@@ -800,6 +812,9 @@ read_union = function(fd: any, r: any, report: any): any
 	return inst
 end
 
+-- ONE FIELD (docs/SPEC-TABLES.md §3): every value read is stored in its slot;
+-- a string or text field holds its bytes as a Luau string (§3), so a map's
+-- string key is its key (§2.8).
 read_field = function(fd: any, r: any, v: any): boolean
 	local s = fd.s
 	if s == "bool" or s == "int" or s == "float" then
