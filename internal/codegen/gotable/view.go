@@ -205,7 +205,14 @@ func generateViewFile(u *ir.Unit, closure map[string]bool, arms map[string]int) 
 		if c.IsFloat {
 			real = formatFloat64(c.Float)
 		} else if c.Int != nil {
-			integer = int64(c.Int.Uint64())
+			// docs/SPEC-TABLES.md §8.3: int_value is the folded value, so a
+			// negative constant keeps its sign. A value outside int64 keeps the
+			// two's-complement pattern the column holds, as the C++ emitter does.
+			if c.Int.IsInt64() {
+				integer = c.Int.Int64()
+			} else {
+				integer = int64(c.Int.Uint64())
+			}
 		}
 		g.pf("{Name:%q,File:%q,TypeName:%q,IsFloat:%v,IntValue:%d,FloatValue:%s,%s},\n", n, viewFile(u, n), c.Storage, c.IsFloat, integer, real, viewAnnotation(c.Doc, c.Tags))
 	}
