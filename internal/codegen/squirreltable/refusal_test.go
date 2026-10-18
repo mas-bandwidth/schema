@@ -76,15 +76,14 @@ func strictName(t *testing.T, row, pinned string) string {
 
 // formName is ReadStrict's form-byte refusal for a file whose first byte is b
 // at a root with a fixed reader or not (a declared fixed root the Squirrel
-// fixed form does not carry is read as form 1) (docs/SPEC-TABLES.md, The three wires:
-// neither class borrows the other's form; §3, §6.5), or "" when the form is
-// the root's own.
+// fixed form does not carry is read as form 1; and ReadStrict at a
+// declared-fixed root reads a form-1 file as the variable form, the accepting
+// read) (docs/SPEC-TABLES.md, The three wires: neither class borrows the
+// other's form; §6.5, the ruling), or "" when the form is the root's own.
 func formName(b byte, fixed bool) string {
 	switch {
-	case fixed && b == 3, !fixed && b == 1:
+	case b == 1, fixed && b == 3:
 		return ""
-	case fixed && b == 1:
-		return "previous_form"
 	case b == 2:
 		return "message_form_as_file"
 	}
@@ -302,8 +301,9 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		refusalCase{key: "variable_message", unit: "streamdemo", root: "Feed", input: "form_v2", form: 2, want: "message_form_as_file", field: "-"},
 		refusalCase{key: "variable_fixed", unit: "streamdemo", root: "Feed", input: "form_v3", form: 3, want: "newer_form", field: "-"},
 		refusalCase{key: "variable_unknown", unit: "streamdemo", root: "Feed", input: "form_v127", form: 127, want: "newer_form", field: "-"},
-		// a fixed root: form 1 is OLDER, previous_form (§3.4, The three wires)
-		refusalCase{key: "fixed_previous", unit: fixedUnit, root: fixedRoot, input: "form_f1", form: 1, want: "previous_form", field: "-"},
+		// a fixed root: form 1 is READ as the variable form (the ruling, §6.5);
+		// a lone form byte is the framing's damage, not previous_form
+		refusalCase{key: "fixed_previous", unit: fixedUnit, root: fixedRoot, input: "form_f1", form: 1, want: "wire_damaged", field: "-"},
 		refusalCase{key: "fixed_message", unit: fixedUnit, root: fixedRoot, input: "form_f2", form: 2, want: "message_form_as_file", field: "-"},
 		refusalCase{key: "fixed_newer", unit: fixedUnit, root: fixedRoot, input: "form_f9", form: 9, want: "newer_form", field: "-"},
 		// a form-3 byte at a fixed root goes to its own fixed reader, which
@@ -369,10 +369,111 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		}
 	}
 	for _, name := range []string{"malformed", "wire_damaged", "clamped", "kind_mismatch",
-		"previous_form", "message_form_as_file", "newer_form", "integrity_mismatch", "ok"} {
+		"message_form_as_file", "newer_form", "integrity_mismatch", "ok"} {
 		if names[name] == 0 {
 			t.Errorf("no case answered %s", name)
 		}
 	}
 	t.Logf("%d report rows compared, %d cases in all; names %v", compared, len(cases), names)
+}
+
+// strictReadFormOnePrelude is the form-1-at-fixed-root probe: ReadStrict over
+// one wire, printing whether it answered the root or null, its reason, and the
+// §4 counters (docs/SPEC-TABLES.md §6.5, §4).
+const strictReadFormOnePrelude = `local inputs = dofile("inputs.nut", true);
+local run = function(unit, mod, root, key) {
+  local schema = dofile(unit + "/schema_module.nut", true);
+  local T = schema.require(mod);
+  local R = schema.require("schema_table_refusal");
+  local report = {};
+  local v = R.ReadStrict(T, root, inputs[key], report);
+  print(key + "|" + (v == null ? "null" : "root") + "|" +
+        (report.reason == null ? "-" : report.reason) + "|" +
+        report.unknown + "," + report.kindMismatch + "," + report.widened + "," +
+        report.clamped + "," + report.duplicate + "\n");
+};
+`
+
+// TestSquirrelStrictReadReadsFormOneAtFixedRoot pins the ruling: ReadStrict at
+// a declared-fixed root READS a form-1 file as the variable form, so the
+// v1_cfg_as_v2 corpus row (tblv2 Cfg over the v1_cfg wire file) is no longer
+// refused as previous_form. Its report matches the row's counters in reports.txt
+// (docs/SPEC-TABLES.md §6.5, the ruling).
+func TestSquirrelStrictReadReadsFormOneAtFixedRoot(t *testing.T) {
+	t.Parallel()
+	root, err := sqrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt")
+	units := manifestUnits(t, manifest)
+	var paths []string
+	for _, u := range units {
+		if u.key == "tblv2" {
+			paths = u.paths
+		}
+	}
+	if paths == nil {
+		t.Fatal("the manifest declares no tblv2 unit")
+	}
+	unit := loadUnit(t, root, paths)
+	if cfg := unit.Tables["Cfg"]; cfg == nil || !cfg.FixedDeclared {
+		t.Fatal("tblv2 Cfg is not a declared-fixed root")
+	}
+	data, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "v1_cfg.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) == 0 || data[0] != 1 {
+		t.Fatalf("v1_cfg.bin carries form byte %d, want 1 (the variable form)", data[0])
+	}
+	pinned := readReportCounts(t, filepath.Join(root, "testdata", "conformance", "tables", "reports.txt"))["v1_cfg_as_v2"]
+	const wantReport = "1,1,0,1,0,false,read"
+	if pinned != wantReport {
+		t.Fatalf("v1_cfg_as_v2 pinned report %q, want %q", pinned, wantReport)
+	}
+	files, err := squirrel.Generate(unit)
+	if err != nil {
+		t.Fatalf("tblv2: the type surface refused: %v", err)
+	}
+	tables, err := squirreltable.Generate(unit)
+	if err != nil {
+		t.Fatalf("tblv2: the table surface refused: %v", err)
+	}
+	dir := t.TempDir()
+	out := filepath.Join(dir, "tblv2")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, d := range files {
+		writeFile(t, filepath.Join(out, name), d)
+	}
+	for name, d := range tables {
+		writeFile(t, filepath.Join(out, name), d)
+	}
+	mod := squirreltable.ModuleName(unit)
+	var p strings.Builder
+	p.WriteString(strictReadFormOnePrelude)
+	fmt.Fprintf(&p, "run(%q, %q, %q, %q);\n", "tblv2", mod, "Cfg", "v1cfg")
+	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
+	stdout := sqrun.Run(t, dir, "main.nut", map[string][]byte{"v1cfg": data})
+	parts := strings.Split(strings.TrimRight(string(stdout), "\n"), "|")
+	if len(parts) != 4 || parts[0] != "v1cfg" {
+		t.Fatalf("probe line %q is not key|value|reason|counters", string(stdout))
+	}
+	reason := parts[2]
+	if reason == "previous_form" {
+		t.Errorf("ReadStrict at a declared-fixed root refuses a form-1 file as previous_form; the ruling reads it")
+	}
+	if want := strictName(t, "v1_cfg_as_v2", pinned); reason != want {
+		t.Errorf("ReadStrict at a declared-fixed root refuses %q, want %q (the variable-form read's own strict name)", reason, want)
+	}
+	if (reason == "-") != (parts[1] == "root") {
+		t.Errorf("ReadStrict answered %q and %q together; it answers one or the other", parts[1], reason)
+	}
+	wantCounters := wantReport[:len(wantReport)-len(",false,read")]
+	if parts[3] != wantCounters {
+		t.Errorf("the read reports %q, want the row's counters %q", parts[3], wantCounters)
+	}
+	t.Logf("v1_cfg_as_v2 at a declared-fixed root: value %s, reason %s, counters %s", parts[1], reason, parts[3])
 }
