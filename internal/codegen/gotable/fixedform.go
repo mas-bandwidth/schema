@@ -475,7 +475,9 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range order {
 		g.emitFixedLeafWalk(st)
 		g.emitFixedWriteBody(st, false)
-		g.emitFixedWriteBody(st, true)
+		if fixedHasDeprecatedField(st) {
+			g.emitFixedWriteBody(st, true)
+		}
 	}
 	for _, st := range order {
 		if fixedHasDeprecatedField(st) {
@@ -941,11 +943,10 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, dest, expr string, depth, 
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			fn := r.Name + "FixedWriteBody"
-			if defaultMode {
-				fn = r.Name + "FixedWriteDefaultBody"
-			}
-			g.pf("%s%s(%s, &%s)\n", ind, fn, dest, expr)
+			// Default images start from the type's Reset value. A nested
+			// normal writer therefore emits its live defaults and substitutes
+			// any deprecated slots from its own default image.
+			g.pf("%s%sFixedWriteBody(%s, &%s)\n", ind, r.Name, dest, expr)
 			return
 		case *ir.Union:
 			tag := int64(ir.StorageBitsFor(r.Max) / 8)
