@@ -109,14 +109,16 @@ func probeUnit(u *ir.Unit, roots map[string]bool) (string, string) {
 	var want []string
 	p.WriteString(walker)
 	fmt.Fprintf(&p, "local T = require(%q)\n", ModuleName(u))
+	fmt.Fprintf(&p, "assert(T.RegionAlign == %d and T.Registry.region_align == %d, \"region_align\")\n", ir.TableRegionAlign(u), ir.TableRegionAlign(u))
 	closure, _ := closure(u)
 	for _, st := range closure {
 		var fields []string
 		for _, f := range st.Fields {
 			fields = append(fields, fmt.Sprintf("%016x:%d", ir.TableFieldWireId(f), ir.TableWireFieldKind(f)))
 		}
-		fmt.Fprintf(&p, "describe(T, %q)\n", st.Name)
-		want = append(want, fmt.Sprintf("table %s %016x [%s] ok", st.Name, ir.TableWireId(st.WireName()), strings.Join(fields, " ")))
+		layout := ir.RecordLayout(u, st)
+		fmt.Fprintf(&p, "describe(T, %q, %d, %d)\n", st.Name, layout.Size, layout.Align)
+		want = append(want, fmt.Sprintf("table %s %016x %d:%d [%s] ok", st.Name, ir.TableWireId(st.WireName()), layout.Size, layout.Align, strings.Join(fields, " ")))
 	}
 	names := make([]string, 0, len(roots))
 	for r := range roots {
@@ -135,9 +137,11 @@ func probeUnit(u *ir.Unit, roots map[string]bool) (string, string) {
 // (runtime/descriptor.lua); root checks the registry names a manifest root.
 const walker = `
 local D = require("descriptor")
-function describe(mod, name)
+function describe(mod, name, size, align)
   local d = mod.Tables[name]
   assert(d ~= nil and d.name == name, "no descriptor for " .. name)
+  assert(d.size == size and d.align == align and D.record_size(d) == size, name .. ": record size/align")
+  assert(D.region_align(mod, d) == mod.RegionAlign, name .. ": region_align")
   local ids = {}
   for i, f in ipairs(d.fields) do
     assert(f.ordinal == i, name .. "." .. f.name .. ": ordinal out of place")
@@ -146,7 +150,7 @@ function describe(mod, name)
   end
   local err = D.check_defaults(mod, name, mod["New" .. name]())
   if err then error(err) end
-  print(string.format("table %s %016x [%s] ok", name, d.type_id, table.concat(ids, " ")))
+  print(string.format("table %s %016x %d:%d [%s] ok", name, d.type_id, d.size, d.align, table.concat(ids, " ")))
 end
 function root(mod, name)
   local found = false

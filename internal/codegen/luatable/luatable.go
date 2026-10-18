@@ -195,8 +195,10 @@ func emit(m *Module) {
 	m.Printf("-- descriptor per table and per table-side union, and a constructor per table.\n")
 	m.Printf("-- Field descriptors: name, key (the JSON key, §16.3), id (the wire id, §5),\n")
 	m.Printf("-- ordinal, kind (the wire kind, §3), shape, then what the shape needs.\n\n")
+	regionAlign := ir.TableRegionAlign(u)
 	m.Printf("local _M = {}\n\n")
-	m.Printf("_M.Package = %q\n\n", u.Package)
+	m.Printf("_M.Package = %q\n", u.Package)
+	m.Printf("_M.RegionAlign = %d\n\n", regionAlign)
 	m.Printf("-- the table descriptors, by name (docs/SPEC-TABLES.md §8.1)\n")
 	m.Printf("_M.Tables = {}\n\n")
 	variable := ir.VariableTables(u)
@@ -212,7 +214,7 @@ func emit(m *Module) {
 		emitConstructor(m, st)
 	}
 	m.Printf("-- the unit registry (docs/SPEC-TABLES.md §8.3): every table, by name\n")
-	m.Printf("_M.Registry = { package = %q, tables = {", u.Package)
+	m.Printf("_M.Registry = { package = %q, region_align = %d, tables = {", u.Package, regionAlign)
 	for i, st := range m.Closure {
 		if i > 0 {
 			m.Printf(",")
@@ -226,15 +228,20 @@ func emit(m *Module) {
 // name, its type id (§3.1), whether it is variable by declaration (§2.2), and
 // its fields in declaration order.
 func emitDescriptor(m *Module, st *ir.Struct, variable bool) {
+	layout := ir.RecordLayout(m.Unit, st)
+	regionAlign := ir.TableRegionAlign(m.Unit)
 	m.Printf("_M.Tables[%q] = {\n", st.Name)
 	m.Printf("  name = %q,\n", st.Name)
 	m.Printf("  type_id = %s,\n", idLit(ir.TableWireId(st.WireName())))
 	m.Printf("  table = %v,\n", st.IsTable)
 	m.Printf("  variable = %v,\n", variable)
 	m.Printf("  map_entry = %v,\n", st.MapEntryOf != "")
+	m.Printf("  size = %d,\n", layout.Size)
+	m.Printf("  align = %d,\n", layout.Align)
+	m.Printf("  region_align = %d,\n", regionAlign)
 	m.Printf("  fields = {\n")
 	for i, f := range st.Fields {
-		m.Printf("    %s,\n", FieldDescriptor(f, i+1))
+		m.Printf("    %s,\n", fieldDescriptor(m.Unit, f, i+1))
 	}
 	m.Printf("  },\n")
 	m.Printf("}\n\n")
@@ -255,7 +262,7 @@ func emitUnionDescriptor(m *Module, un *ir.Union) {
 		}
 		field := "nil"
 		if v.F != nil {
-			field = FieldDescriptor(v.F, i+1)
+			field = fieldDescriptor(m.Unit, v.F, i+1)
 		}
 		m.Printf("    { name = %q, tag = %d, id = %s, field = %s },\n", v.Name, i+1, idLit(ir.TableWireId(wire)), field)
 	}
@@ -265,6 +272,10 @@ func emitUnionDescriptor(m *Module, un *ir.Union) {
 
 // FieldDescriptor renders one field's descriptor as a Lua table constructor.
 func FieldDescriptor(f *ir.Field, ordinal int) string {
+	return fieldDescriptor(nil, f, ordinal)
+}
+
+func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "{ name = %q, key = %q, id = %s, ordinal = %d, kind = %d, ",
 		f.Name, ir.TableFieldJsonKey(f), idLit(ir.TableFieldWireId(f)), ordinal, ir.TableWireFieldKind(f))
@@ -280,10 +291,11 @@ func FieldDescriptor(f *ir.Field, ordinal int) string {
 	switch {
 	case f.MapEntry != nil:
 		fmt.Fprintf(&b, "shape = \"map\", entry = %q, key_field = %s, value_field = %s }",
-			f.MapEntry.Name, FieldDescriptor(f.MapEntry.Fields[0], 1), FieldDescriptor(f.MapEntry.Fields[1], 2))
+			f.MapEntry.Name, fieldDescriptor(u, f.MapEntry.Fields[0], 1), fieldDescriptor(u, f.MapEntry.Fields[1], 2))
 	case f.Array != ir.ArrayNone:
-		fmt.Fprintf(&b, "shape = \"array\", list = %v, fixed = %v, min = %d, bound = %d, elem_kind = %d, ",
-			f.Array == ir.ArrayList, f.Array == ir.ArrayFixed, f.ArrayMin, f.ArrayBound, ir.TableWireElemKind(f))
+		elemSize, elemAlign := ir.ListElementLayout(u, f)
+		fmt.Fprintf(&b, "shape = \"array\", list = %v, fixed = %v, min = %d, bound = %d, elem_kind = %d, elem_size = %d, elem_align = %d, ",
+			f.Array == ir.ArrayList, f.Array == ir.ArrayFixed, f.ArrayMin, f.ArrayBound, ir.TableWireElemKind(f), elemSize, elemAlign)
 		if f.KeyEnumRef != nil {
 			fmt.Fprintf(&b, "keyed = %s, ", variants(f.KeyEnumRef))
 		}
