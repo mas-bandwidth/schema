@@ -114,17 +114,15 @@ func refuseTableArms(u *ir.Unit, target string) error {
 	if slices.Contains(tableArmTargets, target) {
 		return nil
 	}
-	if len(u.TableUnions) == 0 {
+	fields := ir.TableUnionFields(u, func(un *ir.Union) bool {
+		return u.TableUnions[un.Name] != nil
+	})
+	if len(fields) == 0 {
 		return nil
 	}
-	names := make([]string, 0, len(u.TableUnions))
-	for name := range u.TableUnions {
-		names = append(names, name)
-	}
-	sort.Strings(names)
 	carry, flags := carriers(tableArmTargets)
 	return fmt.Errorf("unit declares a union a TABLE CLOSURE holds (%s) — the table side of a union, whose arms are field lines of any type, is %s only today, and the %s form is a named follow-on; generate with %s, or move the union and its tables to their own unit (docs/SPEC-TABLES.md §2.6, §11)",
-		englishList(names), englishList(carry), target, englishList(flags))
+		englishList(fields), englishList(carry), target, englishList(flags))
 }
 
 // refuseUnionArrays is the named refusal every target without the form gives
@@ -238,13 +236,20 @@ func refuseVoidArms(u *ir.Unit, target string) error {
 	if slices.Contains(tableArmTargets, target) {
 		return nil
 	}
-	names := ir.TableVoidArmUnions(u)
-	if len(names) == 0 {
+	fields := ir.TableUnionFields(u, func(un *ir.Union) bool {
+		for _, v := range un.Variants {
+			if v.Void() {
+				return true
+			}
+		}
+		return false
+	})
+	if len(fields) == 0 {
 		return nil
 	}
 	carry, flags := carriers(tableArmTargets)
 	return fmt.Errorf("unit puts a union with a payload-free arm in a table closure (%s) — the table side of a payload-free arm is %s only today, and the %s form is a named follow-on; generate with %s, or move the union and its tables to their own unit (docs/SPEC-TABLES.md §2.6, §11)",
-		englishList(names), englishList(carry), target, englishList(flags))
+		englishList(fields), englishList(carry), target, englishList(flags))
 }
 
 // refuseUnported bundles the refusals a port gives a unit that declares a
