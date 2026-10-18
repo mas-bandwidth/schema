@@ -21,7 +21,9 @@
 package bench
 
 import (
+	"bytes"
 	"encoding/base64"
+	"io"
 	"math"
 	"strconv"
 	"time"
@@ -1684,6 +1686,53 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 	return true
 }
 
+type tableJsonBase64Sink struct {
+	buffer []byte
+	used   int
+}
+
+func (w *tableJsonBase64Sink) Write(p []byte) (int, error) {
+	if w.used < len(w.buffer) {
+		w.used += copy(w.buffer[w.used:], p)
+	}
+	return len(p), nil
+}
+
+type tableJsonBase64LenientReader struct {
+	body []byte
+	pos  int
+}
+
+func (r *tableJsonBase64LenientReader) Read(p []byte) (int, error) {
+	n := 0
+	for n < len(p) && r.pos < len(r.body) {
+		c := r.body[r.pos]
+		r.pos++
+		if c == '=' || c == ' ' || c == '\t' || c == '\r' || c == '\n' {
+			continue
+		}
+		p[n] = c
+		n++
+	}
+	if n == 0 {
+		return 0, io.EOF
+	}
+	return n, nil
+}
+
+// tableJsonDecodeBase64 applies StdEncoding.Strict and the canonical EncodedLen rule from mas-bandwidth/schema docs/SPEC-TABLES.md §§16.2, 16.8 while retaining only the field's bounded prefix.
+func tableJsonDecodeBase64(body, buffer []byte) (int, bool, bool) {
+	writer := &tableJsonBase64Sink{buffer: buffer}
+	decoded, err := io.Copy(writer, base64.NewDecoder(base64.StdEncoding.Strict(), bytes.NewReader(body)))
+	if err == nil && len(body) == base64.StdEncoding.EncodedLen(int(decoded)) {
+		return int(decoded), true, true
+	}
+	clear(buffer)
+	writer.used = 0
+	decoded, err = io.Copy(writer, base64.NewDecoder(base64.RawStdEncoding, &tableJsonBase64LenientReader{body: body}))
+	return int(decoded), false, err == nil
+}
+
 func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	storage := unsafe.Add(base, uintptr(f.Offset))
 	if f.Map {
@@ -1730,56 +1779,32 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 			in.bad = true
 			return false
 		}
-		body := string(in.text[start:in.pos])
+		body := in.text[start:in.pos]
 		in.pos++
-		data, err := base64.StdEncoding.Strict().DecodeString(body)
-		canonical := err == nil && len(body) == base64.StdEncoding.EncodedLen(len(data))
-		if !canonical {
-			// decode with the padding and whitespace removed, so the tolerant
-			// read keeps a non-canonical body's bytes; a body outside the
-			// alphabet is the wrong shape for the kind and keeps its default
-			clean := make([]byte, 0, len(body))
-			valid := true
-			for i := 0; i < len(body); i++ {
-				c := body[i]
-				if c == '=' || c == ' ' || c == '\t' || c == '\r' || c == '\n' {
-					continue
-				}
-				if tableJsonBase64Decode[c] < 0 {
-					valid = false
-					break
-				}
-				clean = append(clean, c)
-			}
-			var decodeErr error
-			if valid {
-				data, decodeErr = base64.RawStdEncoding.DecodeString(string(clean))
-			}
-			if !valid || decodeErr != nil {
-				in.report.KindMismatch++
-				return true
-			}
-			if in.report.Reason == "" {
-				in.report.Reason = "base64_not_canonical: " + f.Name
-			}
+		fieldBuffer := tableJsonBytes(storage, f.ArrayBound)
+		buffer := make([]byte, len(fieldBuffer))
+		decoded, canonical, valid := tableJsonDecodeBase64(body, buffer)
+		if !valid {
+			in.report.KindMismatch++
+			return true
 		}
-		buffer := tableJsonBytes(storage, f.ArrayBound)
-		clear(buffer)
+		copy(fieldBuffer, buffer)
 		tableJsonSetCount(base, f, 0)
-		placed := int32(0)
-		clamped := false
-		if int32(len(data)) > f.ArrayBound {
-			data = data[:f.ArrayBound]
-			clamped = true
+		if !canonical && in.report.Reason == "" {
+			in.report.Reason = "base64_not_canonical: " + f.Name
 		}
-		copy(buffer, data)
-		placed = int32(len(data))
+		placed := len(buffer)
+		clamped := decoded > placed
+		if !clamped {
+			placed = decoded
+		}
 		if clamped {
 			in.report.Clamped++
 		}
-		tableJsonSetCount(base, f, placed)
+		tableJsonSetCount(base, f, int32(placed))
 		return true
 	}
+
 	if tableJsonIsKeyed(f) {
 		if in.peek() != '{' {
 			in.bad = true
