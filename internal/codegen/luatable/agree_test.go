@@ -208,6 +208,9 @@ func TestLuaTableDamagedReportsAndResavesAgree(t *testing.T) {
 		{"resave_list_kind_mismatch_keeps_field", "list_mixed", "01010e051e03020304050e12090203000000000000000400000000000000010e1a0f03070d0d080401000000090402800000000a040407000000000b0e0e040300000000320000006400000000c599f782764e0ad9ec2202864cfc63af522602864cfe63af052802864cff63afa82e867084edf24abbf00c9bccfb2d73b145c34435abfe73071702864cf563af541502864cf463afc07fb38abe08637f68b77fae4c0cf6520b00000000000000"},
 		// a map entry whose pointer value is null stays an entry (§2.8, §3.1)
 		{"resave_map_null_value", "blob_shared_string", "01010e140d0208010c01610311020008020c016203110200040c09010506736861726564009f76486aa7da01abec107f36184ac93dea0ce83094fde47cfffffffffffff7ff58fcaffad8e04b700500000000000000"},
+		// a pointer under a false guard is not written and not numbered (§3,
+		// §3.1): its target takes no node, so the re-save writes one record
+		{"resave_guard_false_drops_guarded_pointer", "guard_true_both_edges", "01010101021102031103040c13020507ff04010000000005070604020000000000c740a70b985d73d744e5f7fadfa6c4f7c15dd12f298f25e3ffffffffffffffff8db6f6d2c61cbd66ea0ce83094fde47c0600000000000000"},
 	}
 	for _, c := range cases {
 		c := c
