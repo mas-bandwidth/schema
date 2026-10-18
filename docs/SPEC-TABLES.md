@@ -15785,6 +15785,14 @@ a variant name the enum does not have, a `None.json`, a file that is not
 JSON. Everything §16 counts is counted here too, aggregated across the
 tree, so a pack of a hundred files reports once.
 
+**A `malformed` text is refused naming the file — a field file, a whole-table
+file, an array element file or an enum-keyed slot file — and, when that read's
+report carries the named Reason §16.2 gives it, that Reason too.** The refusal
+is `<path>: <reason> (docs/SPEC-TABLES.md §17.3)` — `c/Root.json: timestamp_not_rfc3339: at (docs/SPEC-TABLES.md §17.3)` for a timestamp that
+does not parse, `json_root_not_array: <Table>` for an array-root table read as
+an object — and the generic `<path>: not one JSON ...` wording stands only
+when the malformed text names no rule (§16.2).
+
 Three rules complete it, because a packer is a TOOL and a tool's edges are
 part of what it promises:
 
