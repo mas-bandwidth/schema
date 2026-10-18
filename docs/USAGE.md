@@ -209,6 +209,13 @@ declared variant count is `Max`, and one number gets one name. A flags
 declaration exports `Count` instead, since it has no `Max`. `Count` is not a
 reserved variant name on an enum, and not a reserved arm name on a union.
 
+A variant name may be any identifier-shaped word, a schema reserved word
+included — `enum FieldType { text, int, enum, list, bool }` is legal —
+because a variant name is only ever read inside its own body or after
+`FieldType.`, never at a type position. The refusals that remain are `None`
+and `Max` on an enum, `Count` on flags, and a target's own reserved words
+(SPEC §4.6), so `int` is the JSON word `int`.
+
 A union's tag enum carries the debug-name function too, in the same nine
 spellings the declared enum uses, so logging which arm arrived is the same
 call either way.
