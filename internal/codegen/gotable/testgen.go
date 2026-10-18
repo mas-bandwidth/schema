@@ -47,6 +47,7 @@ func Testgen(u *ir.Unit) (map[string][]byte, error) {
 			}
 			testgenRoundTrip(&body, st, variable[st.Name], samples)
 			testgenDamage(&body, st, variable[st.Name], samples)
+			testgenFuzz(&body, st, variable[st.Name], samples)
 			if err := testgenBoundProbes(&body, st, variable[st.Name]); err != nil {
 				return nil, err
 			}
@@ -685,4 +686,67 @@ func testgenFromJsonAt(b *strings.Builder, in, n string, variable bool, text, v,
 		fmt.Fprintf(b, "%s%s := new(%s)\n", in, v, n)
 	}
 	fmt.Fprintf(b, "%sok := %sFromJson(%s, %s, &%s)\n", in, n, target, text, jr)
+}
+
+// testgenFuzz writes, per root table, Fuzz<Name>Wire, Fuzz<Name>Text and
+// Fuzz<Name>Json: each seeded with the sample values' own encodings and every
+// single-byte flip of them, asserting every input is refused with a named
+// reason or decodes to a value whose re-encoding is exactly the input, and
+// that the read never panics (§16.11).
+func testgenFuzz(b *strings.Builder, st *ir.Struct, variable bool, samples []tgSample) {
+	n := st.Name
+	forms := []struct{ suffix, form, in string }{
+		{"Wire", "wire", "[]byte"},
+		{"Text", "text", "string"},
+		{"Json", "json", "[]byte"},
+	}
+	for _, fm := range forms {
+		fmt.Fprintf(b, "\n// Fuzz%s%s runs %s's %s seed corpus: each sample encoding and every\n// single-byte flip of it, asserting the read never panics and accepts only a\n// named refusal or a canonical re-encoding (SPEC-TABLES §16.11).\n", n, fm.suffix, n, fm.form)
+		fmt.Fprintf(b, "func Fuzz%s%s(f *testing.F) {\n", n, fm.suffix)
+		if fm.in == "string" {
+			b.WriteString("\tseed := func(s string) {\n\t\tf.Add(s)\n\t\tfor i := range s {\n\t\t\tfor _, c := range []byte{0x00, 0x01, 0xff} {\n\t\t\t\tfl := []byte(s)\n\t\t\t\tfl[i] = c\n\t\t\t\tf.Add(string(fl))\n\t\t\t}\n\t\t}\n\t}\n")
+		} else {
+			b.WriteString("\tseed := func(s []byte) {\n\t\tf.Add(s)\n\t\tfor i := range s {\n\t\t\tfor _, c := range []byte{0x00, 0x01, 0xff} {\n\t\t\t\tfl := bytes.Clone(s)\n\t\t\t\tfl[i] = c\n\t\t\t\tf.Add(fl)\n\t\t\t}\n\t\t}\n\t}\n")
+		}
+		for _, s := range samples {
+			b.WriteString("\t{\n\t\tvar r TableReport\n")
+			if fm.form == "json" {
+				fmt.Fprintf(b, "\t\tseed([]byte(%s))\n", s.expr)
+			} else {
+				testgenFuzzDecode(b, "\t\t", n, variable, s.expr)
+				switch fm.form {
+				case "wire":
+					fmt.Fprintf(b, "\t\tw := make([]byte, %sMeasure(v))\n\t\tif %sSave(v, w) != int64(len(w)) { panic(\"save\") }\n\t\tseed(w)\n", n, n)
+				case "text":
+					fmt.Fprintf(b, "\t\ttxt, err := %sSaveText(v)\n\t\tif err != nil { panic(err) }\n\t\tseed(txt)\n", n)
+				}
+			}
+			b.WriteString("\t}\n")
+		}
+		switch fm.form {
+		case "wire":
+			fmt.Fprintf(b, "\tf.Fuzz(func(t *testing.T, b []byte) {\n\t\tgot, err := %sReadStrict(b)\n\t\tif err != nil { return }\n\t\tre := make([]byte, max(%sMeasure(got), 0))\n\t\tn := %sSave(got, re)\n\t\tif n != len(b) || !bytes.Equal(re[:n], b) {\n\t\t\tt.Errorf(\"accepted non-canonical wire %%x -> %%x\", b, re[:n])\n\t\t}\n\t})\n}\n", n, n, n)
+		case "text":
+			fmt.Fprintf(b, "\tf.Fuzz(func(t *testing.T, s string) {\n\t\tgot, err := %sLoadText(s, nil)\n\t\tif err != nil { return }\n\t\tre, err := %sSaveText(got)\n\t\tif err != nil || re != s {\n\t\t\tt.Errorf(\"accepted non-canonical text %%q -> %%q\", s, re)\n\t\t}\n\t})\n}\n", n, n)
+		case "json":
+			fmt.Fprintf(b, "\tf.Fuzz(func(t *testing.T, j []byte) {\n\t\tvar jr TableReport\n")
+			if variable {
+				fmt.Fprintf(b, "\t\tvar jb %sBuilder\n\t\tif !jb.Init() { return }\n\t\tdefer jb.Shutdown()\n\t\tok := %sFromJson(&jb, j, &jr) && jb.Lock()\n\t\tif !ok || jr != (TableReport{}) { return }\n\t\tv := jb.AsConst()\n", n, n)
+			} else {
+				fmt.Fprintf(b, "\t\tv := new(%s)\n\t\tok := %sFromJson(v, j, &jr)\n\t\tif !ok || jr != (TableReport{}) { return }\n", n, n)
+			}
+			fmt.Fprintf(b, "\t\tre := make([]byte, max(%sToJsonMeasure(v), 0))\n\t\tn := %sToJson(v, re)\n\t\tif n != len(j) || !bytes.Equal(re[:n], j) {\n\t\t\tt.Errorf(\"accepted non-canonical json %%x -> %%x\", j, re[:n])\n\t\t}\n\t})\n}\n", n, n)
+		}
+	}
+}
+
+// testgenFuzzDecode writes a sample's JSON text into v, panicking on a sample
+// defect, so v is in scope for the per-form seed capture that follows.
+func testgenFuzzDecode(b *strings.Builder, in, n string, variable bool, expr string) {
+	if variable {
+		fmt.Fprintf(b, "%svar sb %sBuilder\n%sif !sb.Init() { panic(\"builder init\") }\n%sdefer sb.Shutdown()\n", in, n, in, in)
+		fmt.Fprintf(b, "%sif !%sFromJson(&sb, []byte(%s), &r) || r != (TableReport{}) || !sb.Lock() { panic(\"sample\") }\n%sv := sb.AsConst()\n", in, n, expr, in)
+		return
+	}
+	fmt.Fprintf(b, "%sv := new(%s)\n%sif !%sFromJson(v, []byte(%s), &r) { panic(\"sample\") }\n", in, n, in, n, expr)
 }
