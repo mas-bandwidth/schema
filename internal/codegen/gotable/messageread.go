@@ -17,7 +17,7 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 		mine := ir.TableFieldEntry(f)
 		g.pf("case 0x%016x:{\n", mine.Id)
 		g.emitMessageCompatibility(f, mine, "entry", "", "\t")
-		g.emitMessageReadValue(f, "value."+member(f), "entry", "\t")
+		g.emitMessageReadValue(f, "value."+member(f), "entry", "\t", false)
 		if f.Type.Optional {
 			g.pf("value.%sPresent=true\n", member(f))
 		}
@@ -67,7 +67,7 @@ func (g *tableGen) emitMessageCompatibility(f *ir.Field, mine ir.TableVocabulary
 	}
 	g.pf("%sif %s {widened=true}else{%s;r.Report.KindMismatch++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,%s,0){r.Report.Malformed=true;return false};break}\n%s}\n", ind, compat, reset, entry, ind)
 }
-func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string) {
+func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string, element bool) {
 	bad := "r.Report.Malformed=true;return false"
 	switch {
 	case f.IsMap():
@@ -121,7 +121,7 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string) {
 					restore = g.retainMessagePush(fmt.Sprint(ordinal + 1))
 				}
 				g.emitMessageArmReset(un, v, expr)
-				g.emitMessageReadValue(v.F, g.unionArmExpr(un, v, expr), arm, ind+"\t")
+				g.emitMessageReadValue(v.F, g.unionArmExpr(un, v, expr), arm, ind+"\t", false)
 				if restore != "" {
 					g.retainMessagePop(restore)
 				}
@@ -143,7 +143,17 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string) {
 		if g.retain {
 			extra = "if r.Retain!=nil{r.Report.RetainLost++}"
 		}
-		g.pf("%s{ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};if ref==0{%s=%sNone}else{id,ok:=r.Vocabulary.Name(ref);if !ok{%s};if !%s.TableEnumValue(id){r.Report.Unknown++;%s}}}\n", ind, bad, expr, f.Type.Name, bad, expr, extra)
+		g.pf("%s{ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};if ref==0{%s=%sNone}else{id,ok:=r.Vocabulary.Name(ref);if !ok{%s};if !%s.TableEnumValue(id){r.Report.Unknown++;%s}", ind, bad, expr, f.Type.Name, bad, expr, extra)
+		if enumHasDeprecated(enumRef(f)) {
+			land := fieldDefaultExpr(f)
+			if element {
+				land = f.Type.Name + "None"
+			}
+			// A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, and
+			// as the ELEMENT default for an element (§2.15), never unknown.
+			g.pf("else if %s.TableEnumDeprecated() { %s = %s }", expr, expr, land)
+		}
+		g.pf("}}\n")
 	default:
 		scalar := g.nextWireWriter()
 		readerType := "TableReader"
@@ -179,7 +189,7 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 			g.pf("store:=r.Retain;if !known&&store!=nil{r.Report.RetainLost++;r.Retain=nil}\n")
 			g.retainIndex = "int(key)-1"
 		}
-		g.emitMessageReadValue(messageElement(f), "(*p)", "element", ind+"\t")
+		g.emitMessageReadValue(messageElement(f), "(*p)", "element", ind+"\t", true)
 		if g.retain {
 			g.pf("r.Retain=store\n")
 		}
@@ -190,7 +200,7 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 		if g.retain {
 			g.pf("store:=r.Retain;if i>=keep{r.Retain=nil}\n")
 		}
-		g.emitMessageReadValue(messageElement(f), "(*p)", "element", ind+"\t")
+		g.emitMessageReadValue(messageElement(f), "(*p)", "element", ind+"\t", true)
 		if g.retain {
 			g.pf("r.Retain=store\n")
 		}

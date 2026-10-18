@@ -110,6 +110,9 @@ func (g *tableGen) emitArithMeasureField(f *ir.Field, cond, ind string) {
 			g.pf("%sif %s {\n", ind, ride)
 			inner = ind + "\t"
 		}
+		if enumHasDeprecated(e) {
+			g.pf("%sif %s.TableEnumDeprecated() { return -1 }\n", inner, expr)
+		}
 		g.pf("%sref := ids.refAtHit(%d, 0x%016x)\n", inner, g.knownOrdinal(id), id)
 		g.pf("%svar vref uint64\n", inner)
 		g.pf("%sswitch %s {\n", inner, expr)
@@ -597,6 +600,11 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 
 func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {
 	if e := enumRef(f); e != nil {
+		if enumHasDeprecated(e) {
+			// A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md
+			// §2.15): the value is the caller's, so it is invalid_value.
+			g.pf("%sif %s.TableEnumDeprecated() { return false }\n", ind, expr)
+		}
 		// Each arm is a compile-time id, so RefAt is one load and one
 		// compare. None is still reference zero and is not interned.
 		g.pf("%sswitch %s {\n%scase %sNone:\n", ind, expr, ind, e.Name)
