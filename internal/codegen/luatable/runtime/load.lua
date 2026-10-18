@@ -950,11 +950,19 @@ local function resolve(ctx, root, rootdesc)
 end
 
 -- Load loads a form-1 wire for table `name` of module T into a fresh value,
--- fills report, and returns the value (or nil when refused).
+-- fills report, and returns the value. A FIXED root (no pointer in its
+-- by-value closure, docs/SPEC-TABLES.md §2.2) ALWAYS LOADS (§4.2, §6.5;
+-- internal/tablewire decodeWith): a wire refused by its form byte (§3) or one
+-- that does not open (an empty or short wire, an unreadable trailer, bytes
+-- after the root's terminator) answers the root at its defaults, with the
+-- report saying what happened. Only a VARIABLE root answers nil there.
 function L.Load(T, name, bytes, report)
-  local o = open(bytes, report)
-  if o == nil then return nil end
   local desc = T.Tables[name]
+  local o = open(bytes, report)
+  if o == nil then
+    if desc ~= nil and not desc.variable then return fresh(T, desc) end
+    return nil
+  end
   if desc == nil then report.malformed = true; return nil end
   local raw = node_scan(bytes, o, report)
   local ctx = { table = o.table, report = report, pending = {}, nodes = {}, good = raw ~= nil }
