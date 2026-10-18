@@ -7,7 +7,7 @@ package tablenames
 // declaration can collide with them. They are registered anyway, the way a
 // scoped runtime name is: the registry answers for every spelling the emitted
 // text carries.
-const Squirrel Backend = 1 << 9
+const Squirrel Backend = 1 << 11 // 1<<9 is Lua's and 1<<10 is Luau's, on their own streams
 
 func init() {
 	define(Squirrel,
