@@ -118,8 +118,9 @@ func TestFixedDeprecatedSlotIsTheDeclaredDefault(t *testing.T) {
 
 	setPeerBytes(body)
 	back := make([]T, 1)
+	plan := make([]TableFixedEntry, TFixedPlanMax)
 	var r TableReport
-	if n := TFixedLoad(back, buf, &r); n != 1 || r != (TableReport{}) {
+	if n := TFixedLoad(back, buf, plan, &r); n != 1 || r != (TableReport{}) {
 		t.Fatalf("identity load %d, report %+v", n, r)
 	}
 	assertDeprecatedDefaults(t, back[0])
