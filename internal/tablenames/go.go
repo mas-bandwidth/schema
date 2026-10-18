@@ -406,6 +406,7 @@ func init() {
 		Name{Name: "tableJsonRequireSeen", What: "the text read's required-field refusal, per table (docs/SPEC-TABLES.md §2.3, §6.5)"},
 		Name{Name: "tableJsonNameIn", What: "the text read's required-field refusal, per table (docs/SPEC-TABLES.md §2.3, §6.5)"},
 		Name{Name: "TableRefuseBase64Damaged", What: "a base64 text-transport body that does not decode (docs/SPEC-TABLES.md §16.8)"},
+		Name{Name: "TableRefuseBase64NotCanonical", What: "a base64 text-transport body that decodes but is not canonical (docs/SPEC-TABLES.md §16.8)"},
 		Name{Name: "TableRefuseIntegrityMismatch", What: "a declaring root's file whose CRC-32C trailer does not match (docs/SPEC-TABLES.md §2.14)"},
 		Name{Name: "TableRefuseBlobShared", What: "one blob record named from two slots, refused by every writer and the strict read (docs/SPEC-TABLES.md §2.5)"},
 		Name{Name: "tableIntegrityTable", What: "the integrity trailer's CRC-32C table (docs/SPEC-TABLES.md §2.14)"},

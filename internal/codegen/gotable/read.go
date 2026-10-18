@@ -16,11 +16,16 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	}
 	// `| required` fields (docs/SPEC-TABLES.md §2.3): each gets a seen flag,
 	// set when its id rides, and a record that ends without one is refused
-	// with missing_required naming the field.
+	// with missing_required naming the field. A required field inside an `if`
+	// guard is demanded only while its guard holds — with the branch off it is
+	// absent and no refusal is owed (§2.3, §3).
+	guards := tableGuardExprs(st)
 	var req []*ir.Field
+	var reqGuard []string
 	for _, f := range st.Fields {
 		if f.Required {
 			req = append(req, f)
+			reqGuard = append(reqGuard, guards[f.Name])
 		}
 	}
 	reqIdx := map[*ir.Field]int{}
@@ -38,13 +43,21 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("\t\tif ref == 0 {\n")
 		parts := make([]string, len(req))
 		for i := range req {
-			parts[i] = fmt.Sprintf("!reqSeen%d", i)
+			if reqGuard[i] != "" {
+				parts[i] = fmt.Sprintf("(!reqSeen%d) && (%s)", i, reqGuard[i])
+			} else {
+				parts[i] = fmt.Sprintf("!reqSeen%d", i)
+			}
 		}
 		g.pf("\t\t\tif %s {\n", strings.Join(parts, " || "))
 		g.pf("\t\t\t\tr.Report.MissingRequired++\n")
 		g.pf("\t\t\t\tmissingReq := \"\"\n")
 		for i, n := range requiredFieldNames(req) {
-			g.pf("\t\t\t\tif !reqSeen%d { if missingReq != \"\" { missingReq += \", \" }; missingReq += %q }\n", i, n)
+			if reqGuard[i] != "" {
+				g.pf("\t\t\t\tif !reqSeen%d && (%s) { if missingReq != \"\" { missingReq += \", \" }; missingReq += %q }\n", i, reqGuard[i], n)
+			} else {
+				g.pf("\t\t\t\tif !reqSeen%d { if missingReq != \"\" { missingReq += \", \" }; missingReq += %q }\n", i, n)
+			}
 		}
 		g.pf("\t\t\t\tr.Report.Reason = \"missing_required: \" + missingReq\n")
 		g.pf("\t\t\t\treturn false\n")

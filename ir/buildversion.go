@@ -254,7 +254,7 @@ func cookArmLine(u *Unit, un *Union, tag int, v UnionVariant, enums map[string]*
 		// and nothing else, exactly as it always did — so a unit whose arms
 		// all name declared types projects exactly as it did before arms
 		// could be anything else, and its build version does not move
-		return fmt.Sprintf("    arm %d %s payload=%s\n", tag, v.WireName(), v.Type)
+		return fmt.Sprintf("    arm %d %s payload=%s\n", tag, v.WireName(), v.DeclaredType())
 	}
 	size, align := ArmLayout(u, v)
 	fl := FieldLayout{Field: v.F, Offset: armOffset, Size: size, Align: align}
