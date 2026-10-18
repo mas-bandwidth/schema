@@ -83,7 +83,7 @@ func (c *Compiler) Cook(u *ir.Unit, root string, wire []byte, opts CookOptions) 
 	check, err := tablecook.Check(m, out)
 	if err != nil {
 		if opts.NoAttribution {
-			h, herr := tablecook.ReadHeader(out, ir.BuildVersion(u))
+			h, herr := tablecook.ReadHeader(out, ir.BuildVersion(u), ir.RecordLayout(u, st).Align)
 			if herr != nil {
 				return nil, rep, publicReport(wr), herr
 			}
