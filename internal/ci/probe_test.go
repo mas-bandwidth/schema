@@ -29,12 +29,13 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// make/squirrel-serialize.mk and make/squirrel-conformance.mk are not
-	// language backends (docs/PORT-SQUIRREL.md, THE RUNTIME LAYOUT: the type
-	// wire's bottom layer; THE CARD MAP: the conformance leg). They carry no
-	// compiler/target_*.go and refuse no unit, so they are not legs of the
-	// wide-scalar probe; drop them from the fixture before the probe runs.
-	for _, mk := range []string{"squirrel-serialize.mk", "squirrel-conformance.mk"} {
+	// make/squirrel-serialize.mk, make/squirrel-conformance.mk and
+	// make/squirrel-fuzz.mk are not language backends (docs/PORT-SQUIRREL.md,
+	// THE RUNTIME LAYOUT: the type wire's bottom layer; THE CARD MAP: the
+	// conformance leg and the wire fuzzer). They carry no compiler/target_*.go
+	// and refuse no unit, so they are not legs of the wide-scalar probe; drop
+	// them from the fixture before the probe runs.
+	for _, mk := range []string{"squirrel-serialize.mk", "squirrel-conformance.mk", "squirrel-fuzz.mk"} {
 		if err := os.Remove(filepath.Join(fixture, "make", mk)); err != nil {
 			t.Fatal(err)
 		}

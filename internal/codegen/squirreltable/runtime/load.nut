@@ -256,7 +256,9 @@ local utf8Decode = function(b, at, len) {
     if (cp < min || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) {
       return { s = s, ok = false, used = i };
     }
-    s = s + format("%c", cp);
+    // a Squirrel string holds BYTES: the sequence just validated is kept as
+    // its own UTF-8 bytes, never as format("%c", cp), which keeps one byte
+    for (local k = 0; k <= need; k++) s = s + format("%c", b[at + i + k] & 0xff);
     i += 1 + need;
   }
   return { s = s, ok = true, used = len };
@@ -267,6 +269,14 @@ local blobOfRange = function(b, at, len) {
   for (local i = 0; i < len; i++) out.writen(b[at + i] & 0xff, 'b');
   return out;
 };
+
+// WHAT AN ARRAY BODY ANSWERS (docs/SPEC-TABLES.md §2.3, §2.6, §3, §4): the
+// body was this array's (SELECTED, a short inert body included); its count
+// was damaged (DAMAGED: a field still rode, so an optional is present, while
+// an arm holding it is not selected); or it declared another element kind
+// (FOREIGN: the field keeps its declared default, an optional stays absent,
+// and an arm reads None)
+local ARRAY_SELECTED = 0, ARRAY_DAMAGED = 1, ARRAY_FOREIGN = 2;
 
 // mutual recursion: every load walk names one of these
 local bodyRead, readField, readFieldArray, readArrayBody, readElement, readKeyedElem, readUnionInto, readArmPayload;
@@ -321,9 +331,9 @@ local tableDesc = function(T, name) { return T.Descriptors[name]; };
 // ONE BODY (docs/SPEC-TABLES.md §3, §4): fields by id in any order, a field
 // this table cannot name skipped by its kind and counted unknown, a kind that
 // widens decoded at its own width and counted widened, any other kind a kind
-// mismatch skipped whole. A repeated id is counted duplicate and last wins.
+// mismatch skipped whole. A repeated id is read again and the last wins,
+// silently: duplicate is never raised for a field id (§4).
 bodyRead = function(c, r, T, table, v, report, st, nested) {
-  local seen = {};
   for (;;) {
     local ref = leb(r);
     if (r.bad) { report.malformed = true; return false; }
@@ -349,8 +359,9 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
       continue;
     }
     local fd = c.byId[id];
-    if (id in seen) { report.duplicate = report.duplicate + 1; }
-    seen[id] <- true;
+    // a field id met again in one body is read again and the last wins; it
+    // is not a `duplicate`, which is a MAP KEY met twice (docs/SPEC-TABLES.md
+    // §4, §2.8), and this target carries no map
     if (kind != fd.kind) {
       if (widens(kind, fd.kind)) {
         local x = readPrim(r, kind);
@@ -462,9 +473,9 @@ readFieldArray = function(fd, r, T, table, v, report, st) {
   local L = leb(r);
   if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
   local sub = newReader(r.b, r.at, r.at + L);
-  readArrayBody(fd, sub, T, table, v, report, st);
+  local sel = readArrayBody(fd, sub, T, table, v, report, st);
   r.at += L;
-  if (fd.optional) v[fd.member + "Present"] = true;
+  if (fd.optional && sel != ARRAY_FOREIGN) v[fd.member + "Present"] = true;
   return true;
 };
 
@@ -473,22 +484,24 @@ readFieldArray = function(fd, r, T, table, v, report, st) {
 // element kind that is not this array's (and does not widen) is a kind
 // mismatch and keeps the field; a bounded array's excess is clamped.
 readArrayBody = function(fd, r, T, table, v, report, st) {
-  if (r.end - r.at < 2) return true;
+  if (r.end - r.at < 2) return ARRAY_SELECTED;
   local ek = u8(r);
   local count = leb(r);
-  if (r.bad) { report.malformed = true; return true; }
+  if (r.bad) { report.malformed = true; return ARRAY_DAMAGED; }
   local want = fd.shape == "bytes" ? 6 : fd.elem.kind;
   if (ek != want) {
     if (!widens(ek, want)) {
       report.kindMismatch = report.kindMismatch + 1;
-      return true;
+      return ARRAY_FOREIGN;
     }
     report.widened = report.widened + 1;
   }
   local keep = count;
   if (fd.list) {
-    if (count > 0x7fffffff) { v[fd.member] = []; report.malformed = true; return true; }
-  } else if (count > fd.bound) {
+    if (count > 0x7fffffff) { v[fd.member] = []; report.malformed = true; return ARRAY_SELECTED; }
+  } else if (count > fd.bound && fd.kind != 16) {
+    // a keyed body's count is how many triples ride, each landing at its own
+    // key's slot, so it is never clamped (docs/SPEC-TABLES.md §2.4)
     keep = fd.bound;
     report.clamped = report.clamped + 1;
   }
@@ -499,7 +512,7 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
       out.writen(u8(r), 'b');
     }
     v[fd.member] = out;
-    return true;
+    return ARRAY_SELECTED;
   }
   local out = [];
   if (fd.kind == 16) {
@@ -518,29 +531,49 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
           if (fd.keyvariants[k][1] == id) { slot = k; break; }
         }
       }
-      if (slot < 0) report.unknown = report.unknown + 1;
       local elen = leb(r);
       if (r.bad || r.at + elen > r.end) { report.malformed = true; break; }
+      if (slot < 0) {
+        // a slot this reader cannot name is counted once and skipped by its
+        // length, never decoded (docs/SPEC-TABLES.md §2.4, §4)
+        report.unknown = report.unknown + 1;
+        r.at += elen;
+        continue;
+      }
       local sr = newReader(r.b, r.at, r.at + elen);
       local res = readKeyedElem(fd.elem, sr, ek, T, table, report, st);
-      if (!res[1]) break;
-      if (slot >= 0) out[slot] = res[0];
+      if (res[1]) out[slot] = res[0];
       r.at += elen;
     }
     v[fd.member] = out;
-    return true;
+    return ARRAY_SELECTED;
   }
   for (local i = 0; i < keep; i++) {
     if (!readElement(fd, fd.elem, r, T, table, out, report, st, ek)) break;
   }
+  if (!fd.list && !fd.counted) {
+    // A FIXED [N] ARRAY KEEPS ITS N SLOTS (docs/SPEC-TABLES.md §2.9, §4): the
+    // decoded prefix lands first, and a slot the body did not reach keeps the
+    // value it held. The prefix array is the one kept, because a pointer
+    // element's pending resolution holds it.
+    local cur = v[fd.member];
+    if (cur != null && cur.len() == fd.bound) {
+      for (local i = out.len(); i < cur.len(); i++) out.append(cur[i]);
+    }
+  }
   v[fd.member] = out;
-  return true;
+  return ARRAY_SELECTED;
 };
 
+// ONE KEYED SLOT'S VALUE (docs/SPEC-TABLES.md §2.4, §4), read inside the
+// slot's own length. It answers [value, lands]: a value too damaged to read
+// leaves the slot as it was, and the walk always goes on to the next triple,
+// past this one's length; a table element that does not fill its length
+// exactly is damage and the slot reads the table's defaults.
 readKeyedElem = function(e, sr, ek, T, table, report, st) {
   if (e.shape == "enum") {
     local ref = leb(sr);
-    if (sr.bad || sr.at != sr.end) { report.malformed = true; return [null, false]; }
+    if (sr.bad) { report.malformed = true; return [null, false]; }
     if (ref == 0) return [null, true];
     if (ref > table.len()) { report.malformed = true; return [null, false]; }
     local id = table[ref - 1];
@@ -553,12 +586,12 @@ readKeyedElem = function(e, sr, ek, T, table, report, st) {
     local d = tableDesc(T, e.table);
     local inst = d.make();
     bodyRead(d, sr, T, table, inst, report, st, true);
-    if (sr.at != sr.end) { report.malformed = true; return [null, false]; }
+    if (sr.at != sr.end) { report.malformed = true; inst = d.make(); }
     return [inst, true];
   }
   local x = readPrim(sr, ek);
   if (x == null || sr.bad) { report.malformed = true; return [null, false]; }
-  return [x, true];
+  return [clampScalar(e, ek, x, report), true];
 };
 
 readElement = function(fd, e, r, T, table, out, report, st, ek) {
@@ -603,7 +636,9 @@ readElement = function(fd, e, r, T, table, out, report, st, ek) {
   }
   local x = readPrim(r, ek);
   if (x == null || r.bad) { report.malformed = true; return false; }
-  out.append(x);
+  // an element's declared range and bit width clamp as a field's do
+  // (docs/SPEC-TABLES.md §4)
+  out.append(clampScalar(e, ek, x, report));
   return true;
 };
 
@@ -715,11 +750,13 @@ readArmPayload = function(arm, sub, wireKind, T, table, inst, report, st) {
     local u = unionDesc(T, p.table);
     local child = u.make();
     inst[p.member] = child;
-    if (!readUnionInto(sub, T, table, u, child, report, st)) return false;
+    // damage inside this arm's own L is the arm's framing damage: the outer
+    // union reads None and the parent reads on past L (docs/SPEC-TABLES.md §3)
+    if (!readUnionInto(sub, T, table, u, child, report, st)) inst.Type = 0;
     return true;
   }
   if (shape == "bytes" || shape == "arr") {
-    readArrayBody(p, sub, T, table, inst, report, st);
+    if (readArrayBody(p, sub, T, table, inst, report, st) != ARRAY_SELECTED) inst.Type = 0;
     return true;
   }
   return false;
@@ -775,7 +812,9 @@ _M.load <- function(T, rootName, bytes, report) {
   if ((bytes[0] & 0xff) != FORM_VARIABLE) { report.refused = true; return null; }
   if (bytes.len() < 9) { report.malformed = true; return null; }
   local count = u64At(bytes, bytes.len() - 8);
-  if (count < 0 || count * 8 > bytes.len() - 9) { report.malformed = true; return null; }
+  // the count is bounded by division, never by count * 8, which wraps for a
+  // count past 2^60 (docs/SPEC-TABLES.md §3: the id table is inside the file)
+  if (count < 0 || count > (bytes.len() - 9) / 8) { report.malformed = true; return null; }
   local end = bytes.len() - 8 - count * 8;
   local table = [];
   local seen = {};
@@ -805,7 +844,10 @@ _M.load <- function(T, rootName, bytes, report) {
   local v = c.make();
   local byType = {};
   foreach (name, d in T.Descriptors) { byType[d.typeId] <- d; }
-  local raw = nodeScan(bytes, table, end, report);
+  // only a VARIABLE-class root owns the node table (docs/SPEC-TABLES.md
+  // §3.1): a value-only root has no pointer and no numbering, and the
+  // reserved id in its body is a field it cannot name, counted unknown
+  local raw = c.variable ? nodeScan(bytes, table, end, report) : [];
   local st = { good = raw != null, nodes = [], root = v, pending = [] };
   if (raw != null) {
     foreach (rec in raw) {
@@ -832,7 +874,12 @@ _M.load <- function(T, rootName, bytes, report) {
       bodyRead(n.d, newReader(n.b, n.at, n.end), T, table, n.v, report, st, true);
     }
   }
-  bodyRead(c, newReader(bytes, 1, end), T, table, v, report, st, false);
+  local finished = bodyRead(c, newReader(bytes, 1, end), T, table, v, report, st, false);
   resolve(st, c, report);
+  // WHETHER THE ROOT BODY READ TO ITS OWN TERMINATOR (docs/SPEC-TABLES.md §4,
+  // §4.2): a builder whose root body stopped holds a partial value, which a
+  // builder caller discards. It is told only to a caller whose report
+  // declares the slot `stopped`; the value is returned either way.
+  if ("stopped" in report) report.stopped = !finished;
   return v;
 };

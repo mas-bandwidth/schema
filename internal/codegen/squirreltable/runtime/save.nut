@@ -16,6 +16,21 @@ local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4;
 
 local FORM_VARIABLE = 1;
 
+// THE GUARD'S ELISION (docs/SPEC-TABLES.md §4, §16.2): a field inside an
+// `if` group rides only while every [member, want] pair of its composed
+// condition (the `guard` slot internal/codegen/squirreltable/json.go emits)
+// holds on the same instance; a field on the untaken side is neither written
+// nor numbered, exactly as the text form's guardHolds (json.nut) and the
+// engine's GuardHolds elide it. A field with no guard slot always rides.
+local guardHolds = function(fd, v) {
+  if (!("guard" in fd) || fd.guard == null) return true;
+  foreach (term in fd.guard) {
+    if (term[0] == null) return false;
+    if ((v[term[0]] ? true : false) != term[1]) return false;
+  }
+  return true;
+};
+
 local newWriter = function() { return { b = [] }; };
 local wu8 = function(w, v) { w.b.append(v & 0xff); };
 
@@ -198,6 +213,7 @@ local shapeEdges = function(T, d, val, out) {
 
 edgesOf = function(T, c, v, out) {
   foreach (fd in c.fields) {
+    if (!guardHolds(fd, v)) continue;
     if (fd.optional && !v[fd.member + "Present"]) continue;
     local val = v[fd.member];
     if (fd.shape == "tab" && val == null) continue;
@@ -314,6 +330,7 @@ writeTabBody = function(T, d, val, w, ids, nodes, root) {
 // the fields of one body in declaration order, then its zero reference
 local writeFields = function(T, c, v, w, ids, nodes, root) {
   foreach (fd in c.fields) {
+    if (!guardHolds(fd, v)) continue;
     local present = !fd.optional || v[fd.member + "Present"];
     if (!present) continue;
     local val = v[fd.member];
