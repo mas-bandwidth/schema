@@ -2485,8 +2485,8 @@ into storage you own and never stored in a file:
 `IndexFind`. A `Fleet` with a `ships` map therefore claims `FleetShipsEntry`,
 `FleetShipsInsert` and the rest, and a declaration spelling any of the eight
 is refused naming the map. **Go carries the same eight names** over its
-`*TableMap[T]` handle, `Each` visiting in ascending key order as the locked
-form does.
+`*TableMap[T]` handle: `Each` visits a builder's entries in INSERTION order,
+and a locked, loaded or opened holder's in ascending key order.
 
 **Evolution.** A repeated key on read is last-wins and counts `duplicate`. A
 DESCENDING key is not something a conforming writer produces, so the map keeps

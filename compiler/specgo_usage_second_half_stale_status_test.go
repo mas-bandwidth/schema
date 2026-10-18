@@ -30,6 +30,13 @@ var usageChecks = []usageCheck{
 		stale:   "Every other backend\nrefuses a unit that declares one",
 	},
 	{
+		name:    "maps' Each order",
+		section: "### Maps: `ships map[string(32)]ShipConfig`",
+		end:     "### Unbounded arrays:",
+		want:    "INSERTION order",
+		stale:   "`Each` visiting in ascending key order",
+	},
+	{
 		name:    "unbounded arrays",
 		section: "### Unbounded arrays:",
 		end:     "### Byte buffers:",
