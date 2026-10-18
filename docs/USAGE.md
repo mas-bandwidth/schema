@@ -145,8 +145,14 @@ words of the targets being generated (SPEC §4.6): `schema generate --lang L`
 checks L's words only, and `schema check` — and every command that names no
 target — checks every target's, one diagnostic per name listing every checked
 target it collides with. A target with no reserved-word list of its own checks
-every target's words rather than none. No escaping machinery; rename at the
-source.
+every target's words rather than none. Go is the exception (SPEC §4.6, the Go
+escape): `generate --lang go` accepts a Go word as a field name, a variant or
+a union arm (Go emits them exported, `select` → `Select`) and as a table name,
+which it emits with one trailing underscore (`table func` → `type func_
+struct`, `func_Load`, `func_Save`); the wire, the ids and the JSON keys keep
+the schema name. A declaration named `func_` beside that table is refused as a
+collision with the escape. Every other declaration kind, and every other
+target, still refuses its reserved words; rename at the source.
 
 ### const
 

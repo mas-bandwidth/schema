@@ -1480,7 +1480,39 @@ All compile errors with positions:
   `class`, ...), or that collides with another name after Go export-casing
   (`atRest` → `AtRest`), is rejected, with one diagnostic per name listing
   every checked target it collides with; every collision in the unit is
-  reported in the same run. No escaping machinery; rename at the source.
+  reported in the same run. Outside the Go escape below there is no escaping
+  machinery; rename at the source.
+- **The Go escape.** Go is the one target that carries a reserved word
+  instead of refusing it. Under `--lang go`, a name that is one of Go's words
+  in the checker's list (a Go keyword, or a predeclared identifier the Go
+  output would collide with, such as `byte` or `true`) is not refused in
+  these positions:
+  (1) a field name, a union arm name, and an enum or flags variant: Go never
+  emits these bare. A field and an arm are emitted under their exported
+  spelling (`select` → `Select`, `select_count` → `SelectCount`), a variant
+  under its declaration's name followed by the variant (`Kind { go }` →
+  `Kindgo`), and no Go keyword or predeclared identifier is spelled either
+  way, so no escape is needed;
+  (2) a `table` name, which Go emits verbatim as the type's identifier, is
+  emitted as the name followed by ONE underscore: `table func` is
+  `type func_ struct`, and every Go name derived from the table takes the
+  escaped spelling (`func_Reset`, `func_Measure`, `func_Load`).
+  The escape is the Go spelling and nothing else: the wire name, every id,
+  the JSON keys, the projections (the protocol id's, the build version's,
+  the fixed layout's), the descriptors' and the view's names, and every
+  diagnostic name the schema name, unchanged, so a table's Go output and its
+  C++ output carry one identity. The escape cannot collide with a generated
+  name: a Go word is lowercase letters only, every name generated from a
+  declaration joins that declaration's name to a capitalised verb or prefix
+  (`Reset`, `Write`, `Init`, ...), and §6.1's length, count and presence
+  companions are members inside the type rather than package-scope names, so
+  `w_` and `w_Verb` are spelled by nothing generated except the escaped
+  table's own. A declaration actually named `w_` (or one whose generated
+  names include an escaped table's) is refused by name, as a collision with
+  the escape, in a run that generates Go. Every other declaration kind
+  (`type`, `enum`, `flags`, `union`, `const`) and the package name keep
+  refusing Go's words by name until the Go emitter carries the escape for
+  them, and every other target keeps refusing its own words by name.
 - **Package-name safety:** the package ident maps to every target's
   namespace/module/package concept verbatim (§6.1), which exposes it to three
   collision classes no declaration or field name can hit, each refused with a
