@@ -157,7 +157,7 @@ ancestors:
 				if id.Name == "_" {
 					return false
 				}
-				return identifierHasRead(id.Name, enclosingFunction(call, parents), parents)
+				return identifierHasRead(id, enclosingFunction(call, parents), parents)
 			}
 		}
 	case *ast.ValueSpec:
@@ -166,7 +166,7 @@ ancestors:
 			if id.Name == "_" {
 				return false
 			}
-			return identifierHasRead(id.Name, enclosingFunction(call, parents), parents)
+			return identifierHasRead(id, enclosingFunction(call, parents), parents)
 		}
 	case *ast.ExprStmt, *ast.GoStmt, *ast.DeferStmt:
 		return false
@@ -184,8 +184,8 @@ func enclosingFunction(node ast.Node, parents map[ast.Node]ast.Node) ast.Node {
 	return nil
 }
 
-func identifierHasRead(name string, function ast.Node, parents map[ast.Node]ast.Node) bool {
-	if function == nil {
+func identifierHasRead(target *ast.Ident, function ast.Node, parents map[ast.Node]ast.Node) bool {
+	if target == nil || target.Obj == nil || function == nil {
 		return false
 	}
 	read := false
@@ -194,7 +194,7 @@ func identifierHasRead(name string, function ast.Node, parents map[ast.Node]ast.
 			return !read
 		}
 		id, ok := node.(*ast.Ident)
-		if !ok || id.Name != name || isIdentifierWrite(id, parents) || isSelectorName(id, parents) {
+		if !ok || id.Obj != target.Obj || isIdentifierWrite(id, parents) || isSelectorName(id, parents) {
 			return true
 		}
 		if isDiscardedError(id, parents) {
@@ -268,6 +268,7 @@ func TestGeneratedHelperResultsCheckerForms(t *testing.T) {
 		{"blank assignment", "package p; func f(){ _, _ = runGeneratedUnit() }", 1},
 		{"unused error", "package p; func f(){ out, err := runGeneratedUnit(); _ = out }", 1},
 		{"only discarded error", "package p; func f(){ out, err := runGeneratedUnit(); _ = out; _ = err }", 1},
+		{"shadowed read", "package p; func f(){ out, err := runGeneratedUnit(); _ = out; func(){ err := error(nil); _ = err }() }", 1},
 		{"checked error", "package p; func f(){ out, err := runGeneratedUnit(); _ = out; if err != nil {} }", 0},
 		{"asserted error", "package p; func f(t T){ _, err := runGeneratedUnit(); assertNoError(t, err) }", 0},
 		{"returned error", "package p; func wrap()([]byte,error){ return runGeneratedUnit() }", 0},
