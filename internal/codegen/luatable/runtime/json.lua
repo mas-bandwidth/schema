@@ -1392,6 +1392,21 @@ local function count_of(fd, v)
   return math.min(#v, fd.bound or 0)
 end
 
+-- A GUARDED FIELD RIDES ONLY WHEN ITS GUARD HOLDS (docs/SPEC-TABLES.md §3: a
+-- field under a false guard is elided whatever its storage holds; §3.1: it is
+-- not an edge, so its target takes no node). fd.guard is the conjunction of
+-- the field's `if` branch conditions, each a bool field of the same body and
+-- the value it must hold (luatable.go emitDescriptor; tabletext.Guards); a
+-- field with no guard always rides. A bool not set reads false.
+local function guard_holds(fd, v)
+  local g = fd.guard
+  if g == nil then return true end
+  for _, t in ipairs(g) do
+    if (v[t.field] == true) ~= t.want then return false end
+  end
+  return true
+end
+
 -- THE NUMBERING PASS (§16.7): how many slots name each node, and whether the
 -- graph has a cycle, which the text refuses as the wire does (§3.1).
 local edge_value, edge_union, edges
@@ -1432,7 +1447,7 @@ end
 
 edges = function(T, desc, v, out, cache)
   for _, fd in ipairs(desc.fields) do
-    if not (fd.optional and not v[fd.name .. "_present"]) then
+    if guard_holds(fd, v) and not (fd.optional and not v[fd.name .. "_present"]) then
       edge_value(T, fd, v[fd.name], v, fd.name, out, cache)
     end
   end
@@ -1470,7 +1485,7 @@ local write_value, write_table, write_pointer, write_field, write_fields
 
 write_fields = function(T, desc, v, depth, g, w, any)
   for _, fd in ipairs(desc.fields) do
-    if not (fd.optional and not v[fd.name .. "_present"]) then
+    if guard_holds(fd, v) and not (fd.optional and not v[fd.name .. "_present"]) then
       if not any then put(w, '{') else put(w, ',') end
       any = true
       line(w, depth + 1)
