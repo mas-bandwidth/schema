@@ -85,20 +85,78 @@ local fieldOf = function(locals) {
 
 // A pointer-array ELEMENT's pending slot (load.nut's readElement) carries an
 // element descriptor with no name: the field is the one whose array IS that
-// slot's holder, found on the root or on a node record in resolve's frame
-// (`st`, and `root`, the root's descriptor). A holder nested deeper (inside
-// an inline table, a union arm or an element) is not searched: resolve's
-// frame holds no descriptor for it, and that counter answers a null field.
-local holderField = function(locals) {
+// slot's holder, found below the root or below a node record in resolve's
+// frame (`st`, and `root`, the root's descriptor). The holder may sit nested
+// deeper — inside an inline table, a union arm or an array element — so the
+// search walks the descriptor tree each owner carries, from the owner's own
+// fields down through its table fields, its union arms and its array
+// elements' tables and unions, and answers the field whose array is the
+// holder, exactly as the top-level case does. The walk is bounded by the
+// instances already visited and by the depth of the descriptor tree
+// (descriptors can refer back to themselves through pointers, which resolve
+// only after this walk and hold no nested value here).
+local holderField = function(locals, T) {
   if (!("p" in locals) || !("st" in locals) || !("root" in locals)) return null;
   local p = locals.p, st = locals.st;
   if (typeof p != "table" || !("holder" in p) || typeof p.holder != "array") return null;
+  if (T == null || typeof T != "table") return null;
   local owners = [[locals.root, st.root]];
   foreach (n in st.nodes) if (n != null && n.kind == "t") owners.append([n.d, n.v]);
-  foreach (o in owners) {
-    foreach (f in o[0].fields) {
-      if ((f.member in o[1]) && o[1][f.member] == p.holder) return f.name;
+  local maxDepth = 0;
+  foreach (k, d in T.Descriptors) if (typeof d == "table" && ("fields" in d)) maxDepth++;
+  local descend = null;
+  local search = function(desc, inst, depth) {
+    if (depth > maxDepth || inst == null || (typeof inst != "table" && typeof inst != "instance")) return null;
+    if (desc == null || typeof desc != "table") return null;
+    if ("fields" in desc) {
+      foreach (f in desc.fields) {
+        if (!(f.member in inst)) continue;
+        local v = inst[f.member];
+        if (v == p.holder) return f.name;
+        local r = descend(f, v, depth + 1);
+        if (r != null) return r;
+      }
+      return null;
     }
+    if ("arms" in desc) {
+      local tag = inst.Type;
+      foreach (a in desc.arms) {
+        if (a.tag != tag) continue;
+        if (a.payload == null) return null;
+        if (!(a.member in inst)) return null;
+        local v = inst[a.member];
+        if (v == p.holder) return a.payload.name;
+        return descend(a.payload, v, depth + 1);
+      }
+      return null;
+    }
+    return null;
+  };
+  descend = function(f, v, depth) {
+    if (v == null) return null;
+    if (typeof v == "table" || typeof v == "instance") {
+      if (f.shape == "tab" && ("table" in f) && f.table != null) return search(T.Descriptors[f.table], v, depth);
+      if (f.shape == "union" && ("table" in f) && f.table != null) return search(T[f.table + "Descriptor"], v, depth);
+      return null;
+    }
+    if (typeof v == "array") {
+      if (f.shape != "arr" || !("elem" in f) || f.elem == null) return null;
+      local e = f.elem;
+      foreach (el in v) {
+        local r = null;
+        if (e.shape == "tab" && ("table" in e) && e.table != null && (typeof el == "table" || typeof el == "instance"))
+          r = search(T.Descriptors[e.table], el, depth);
+        else if (e.shape == "union" && ("table" in e) && e.table != null && (typeof el == "table" || typeof el == "instance"))
+          r = search(T[e.table + "Descriptor"], el, depth);
+        if (r != null) return r;
+      }
+      return null;
+    }
+    return null;
+  };
+  foreach (o in owners) {
+    local r = search(o[0], o[1], 0);
+    if (r != null) return r;
   }
   return null;
 };
@@ -117,13 +175,21 @@ local witness = function(store, first) {
       if (!moved || (k in first)) return;
       local name = null;
       local idName = null;
+      local T = null;
+      for (local lv = 2; ; lv++) {
+        local si = ::getstackinfos(lv);
+        if (si == null) break;
+        local fr = si.locals;
+        if ("_strictFrame" in fr) break;
+        if (T == null && "T" in fr && typeof fr.T == "table") { T = fr.T; break; }
+      }
       for (local lv = 2; ; lv++) {
         local si = ::getstackinfos(lv);
         if (si == null) break;
         local locals = si.locals;
         if ("_strictFrame" in locals) break;
         name = fieldOf(locals);
-        if (name == null) name = holderField(locals);
+        if (name == null) name = holderField(locals, T);
         if (name != null) break;
         // a record of a type this build cannot name (the node scan's `rec`)
         // is named by its type id, ahead of any stale loop `id` beside it
