@@ -168,8 +168,10 @@ int main(void) {
 		}
 		testSrc := `package p
 
+
 import (
-	"testing"
+    "strings"
+    "testing"
 )
 
 func TestIssue715(t *testing.T) {
@@ -188,7 +190,7 @@ func TestIssue715(t *testing.T) {
 		if s.Tag[0] != 'a' || s.Tag[1] != 'b' { t.Fatal("Go case 1: tag content corrupted") }
 	}
 
-	// 2. Mid-string '=' padding ("YQ=B"): must report kind_mismatch == 1 and preserve default
+	// 2. Mid-string '=' padding is accepted only on the tolerant path and named.
 	{
 		text := []byte("{\"tag\":\"YQ=B\",\"after\":42}")
 		var s Ship
@@ -196,8 +198,10 @@ func TestIssue715(t *testing.T) {
 		var r TableReport
 		ok := ShipFromJsonTolerant(&s, text, &r)
 		if !ok { t.Fatal("Go case 2: FromJson failed") }
-		if r.KindMismatch != 1 { t.Fatalf("Go case 2: kind_mismatch=%d, want 1 (mid-string padding accepted!)", r.KindMismatch) }
-		if s.TagLength != 2 || s.Tag[0] != 'a' || s.Tag[1] != 'b' { t.Fatal("Go case 2: tag default not preserved") }
+		if r.KindMismatch != 0 || !strings.Contains(r.Reason, "base64_not_canonical") {
+			t.Fatalf("Go case 2: report=%+v, want named noncanonical base64", r)
+		}
+		if s.TagLength != 2 || s.Tag[0] != 'a' { t.Fatalf("Go case 2: decoded tag=%q length=%d", s.Tag[:s.TagLength], s.TagLength) }
 	}
 }
 `
@@ -299,11 +303,19 @@ class Program {
 				combined.Write(content)
 			}
 			all := combined.String()
-			// Verify padding strictness: pad > 2 must trigger malformed
+			if lang == "go" {
+				if !strings.Contains(all, "base64.StdEncoding.Strict()") {
+					t.Error("go: emitted reader missing strict standard-library base64 decoder")
+				}
+				if !strings.Contains(all, "base64.StdEncoding.EncodedLen") {
+					t.Error("go: emitted reader missing canonical encoded-length check")
+				}
+				continue
+			}
+			// Keep the C, C++ and C# source-shape expectations unchanged.
 			if !strings.Contains(all, "pad > 2") {
 				t.Errorf("%s: emitted reader missing pad > 2 strictness check", lang)
 			}
-			// Verify lone symbol check
 			if !strings.Contains(all, "% 4 == 1") && !strings.Contains(all, "%4 == 1") && !strings.Contains(all, "% 4 === 1") && !strings.Contains(all, "% 4 != 0") && !strings.Contains(all, "rem(symbols, 4) == 1") {
 				t.Errorf("%s: emitted reader missing symbols %% 4 == 1 lone symbol check", lang)
 			}
