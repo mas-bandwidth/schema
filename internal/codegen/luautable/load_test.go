@@ -82,6 +82,11 @@ type generatedUnit struct {
 	files  map[string][]byte
 	loaded bool
 	err    error
+	// flags maps "<Descriptor>.<field or arm>" to the flags declaration's
+	// variant names, bit i first (docs/SPEC-TABLES.md §16.2, the flags row):
+	// the descriptor names no flags type, so the round-trip writer reads
+	// them from here.
+	flags map[string][]string
 }
 
 // keyPair is one enum variant of a keyed array's key enum: its name and the
@@ -100,7 +105,15 @@ type keyPair struct {
 func keyedMeta(u *ir.Unit) map[string]map[string][]keyPair {
 	out := map[string]map[string][]keyPair{}
 	for _, f := range u.Files {
-		for _, t := range f.Tables {
+		// a keyed array may sit in a table or in a `type` the tables use
+		// (ScoreBoard's per_team, docs/SPEC-TABLES.md §2.4)
+		structs := append([]*ir.Struct(nil), f.Tables...)
+		for _, d := range f.Decls {
+			if st, ok := d.(*ir.Struct); ok {
+				structs = append(structs, st)
+			}
+		}
+		for _, t := range structs {
 			for _, fld := range t.Fields {
 				if fld.KeyEnum == "" || fld.KeyEnumRef == nil {
 					continue
@@ -204,7 +217,55 @@ func generateUnit(t *testing.T, units map[string][]string, key string) *generate
 		}
 	}
 	injectKeyVs(t, g, keyedMeta(u))
+	g.flags = flagsMeta(u)
 	return g
+}
+
+// flagsMeta names every field, map entry field and union arm whose type is a
+// `flags` declaration, keyed "<Descriptor>.<field or arm>", with the flags'
+// variant names (docs/SPEC-TABLES.md §16.2: flags are an array of variant
+// names). An array of flags is named by its field.
+func flagsMeta(u *ir.Unit) map[string][]string {
+	out := map[string][]string{}
+	seen := map[*ir.Struct]bool{}
+	field := func(owner string, f *ir.Field) {
+		if f == nil {
+			return
+		}
+		if fl, ok := f.Type.Ref.(*ir.Flags); ok {
+			out[owner+"."+f.Name] = fl.Variants
+		}
+	}
+	var walk func(st *ir.Struct)
+	walk = func(st *ir.Struct) {
+		if st == nil || seen[st] {
+			return
+		}
+		seen[st] = true
+		for _, f := range st.Fields {
+			field(st.Name, f)
+			walk(f.MapEntry)
+		}
+	}
+	for _, m := range []map[string]*ir.Struct{u.Structs, u.Tables} {
+		for _, st := range m {
+			walk(st)
+		}
+	}
+	for _, m := range []map[string]*ir.Union{u.Unions, u.TableUnions} {
+		for _, un := range m {
+			for _, v := range un.Variants {
+				if v.F == nil {
+					continue
+				}
+				if fl, ok := v.F.Type.Ref.(*ir.Flags); ok {
+					out[un.Name+"."+v.Name] = fl.Variants
+				}
+				walk(v.F.MapEntry)
+			}
+		}
+	}
+	return out
 }
 
 // loadProbe is the Luau main for one case: it loads every table module (which

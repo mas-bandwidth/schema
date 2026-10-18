@@ -786,7 +786,12 @@ read_union = function(fd: any, r: any, report: any): any
 			-- count, then the elements, no second length (§3, the arm payload table)
 			local out = {}
 			if not read_array_payload(arm, sub, report, out) then inst.Type = 0 end
-			if arm.slot ~= nil then inst[arm.slot] = out end
+			if arm.slot ~= nil then
+				inst[arm.slot] = out
+				-- a counted arm keeps its count beside it, as read_array
+				-- does for a counted field (docs/SPEC-TABLES.md §2.9)
+				if arm.array == "counted" then inst[arm.slot .. "Count"] = #out end
+			end
 		else
 			read_field(arm, sub, inst)
 		end

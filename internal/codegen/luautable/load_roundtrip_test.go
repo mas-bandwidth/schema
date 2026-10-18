@@ -3,6 +3,7 @@ package luautable_test
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -21,11 +22,19 @@ const roundtripMain = `local S = require("./schema_tables")
 local load = require("./load")
 local inputs = require("./inputs")
 
-local flags = {}
-local function collect(mod)
-	for k, v in pairs(mod) do
-		if type(k) == "string" and string.sub(k, 1, 8) == "FlagName" and type(v) == "function" then
-			flags[string.sub(k, 9)] = v
+-- flagsOf maps a field, arm or array descriptor to its flags' variant names
+-- (§16.2, the flags row), from the FLAGS table the Go side writes
+local flagsOf = {}
+for key, names in FLAGS do
+	local dot = string.find(key, ".", 1, true)
+	local ok, d = pcall(S.lookup, string.sub(key, 1, dot - 1))
+	local fname = string.sub(key, dot + 1)
+	if ok and d ~= nil then
+		for _, f in d.fields or {} do
+			if f.name == fname then flagsOf[f] = names end
+		end
+		for _, a in d.arms or {} do
+			if a.name == fname then flagsOf[a] = names end
 		end
 	end
 end
@@ -40,14 +49,124 @@ local function is128(x)
 	return type(x) == "table" and x.lo ~= nil and x.hi ~= nil
 end
 
-local function num(x)
-	if typeof(x) == "integer" then return tostring(x) end
-	if is128(x) then
-		local hi = tonumber(tostring(x.hi)) or 0
-		local lo = tonumber(tostring(x.lo)) or 0
-		return string.format("%.0f", hi * 18446744073709551616.0 + lo)
+-- EXACT NUMBERS (§16.2, Numbers: "nothing on their path is a double"). A
+-- magnitude is little-endian 16-bit limbs; an integer or Int128 is read by
+-- its bits, signed or not as its field declares.
+local function limbs64(x, out)
+	for i = 0, 3 do
+		out[#out + 1] = integer.tonumber(integer.band(integer.rshift(x, integer.create(16 * i)), integer.create(0xffff)))
+	end
+end
+
+local function magnitude(x, signed)
+	local m = {}
+	if is128(x) then limbs64(x.lo, m); limbs64(x.hi, m)
+	elseif typeof(x) == "integer" then limbs64(x, m)
+	else
+		local neg = x < 0
+		local a = math.abs(x)
+		while a > 0 do m[#m + 1] = a % 65536; a = math.floor(a / 65536) end
+		return neg, m
+	end
+	if signed ~= false and m[#m] >= 0x8000 then
+		-- two's complement: invert, add one
+		local carry = 1
+		for i = 1, #m do
+			local y = (65535 - m[i]) + carry
+			m[i] = y % 65536
+			carry = math.floor(y / 65536)
+		end
+		return true, m
+	end
+	return false, m
+end
+
+local function mul_small(m, k)
+	local carry = 0
+	for i = 1, #m do
+		local y = m[i] * k + carry
+		m[i] = y % 65536
+		carry = math.floor(y / 65536)
+	end
+	while carry > 0 do m[#m + 1] = carry % 65536; carry = math.floor(carry / 65536) end
+end
+
+local function digits(m)
+	local chunks = {}
+	local w = table.clone(m)
+	while true do
+		local zero = true
+		for i = 1, #w do if w[i] ~= 0 then zero = false; break end end
+		if zero then break end
+		local rem = 0
+		for i = #w, 1, -1 do
+			local y = rem * 65536 + w[i]
+			w[i] = math.floor(y / 10000)
+			rem = y % 10000
+		end
+		table.insert(chunks, 1, rem)
+	end
+	if #chunks == 0 then return "0" end
+	local parts = { tostring(chunks[1]) }
+	for i = 2, #chunks do parts[i] = string.format("%04d", chunks[i]) end
+	return table.concat(parts)
+end
+
+-- an integer field's value: its decimal digits, exact past 2^53
+local function int_text(x, signed)
+	local neg, m = magnitude(x, signed)
+	local d = digits(m)
+	if neg and d ~= "0" then return "-" .. d end
+	return d
+end
+
+-- a fixed field's value: raw / 2^F as the exact decimal (§16.2, the fixed
+-- row), raw * 5^F with the point F digits from the right
+local function fixed_text(x, signed, fbits)
+	local neg, m = magnitude(x, signed)
+	for _ = 1, fbits do mul_small(m, 5) end
+	local d = digits(m)
+	while #d <= fbits do d = "0" .. d end
+	local whole = string.sub(d, 1, #d - fbits)
+	local frac = string.gsub(string.sub(d, #d - fbits + 1), "0+$", "")
+	local out = whole
+	if frac ~= "" then out = whole .. "." .. frac end
+	if neg and out ~= "0" then out = "-" .. out end
+	return out
+end
+
+-- a float's value: the shortest decimal that reads back as the same float32
+-- or float64 (§16.2, the float row)
+local function as_f32(x)
+	local b = buffer.create(4)
+	buffer.writef32(b, 0, x)
+	return buffer.readf32(b, 0)
+end
+
+local function float_text(x, is32)
+	if x ~= x or x == math.huge or x == -math.huge then return "null" end
+	for p = 1, 17 do
+		local s = string.format("%." .. p .. "g", x)
+		local y = tonumber(s)
+		if y ~= nil and ((is32 and as_f32(y) == x) or (not is32 and y == x)) then return s end
 	end
 	return string.format("%.17g", x)
+end
+
+local function num(x)
+	if typeof(x) == "integer" or is128(x) then return int_text(x, true) end
+	if x == math.floor(x) and math.abs(x) < 2 ^ 53 then return string.format("%.0f", x) end
+	return float_text(x, false)
+end
+
+local function flags_text(names, mask)
+	local m = mask or 0
+	if typeof(m) ~= "integer" then m = integer.create(m) end
+	local parts = {}
+	for i, name in names do
+		if integer.btest(m, integer.lshift(1i, integer.create(i - 1))) then parts[#parts + 1] = q(name) end
+	end
+	return "[" .. table.concat(parts, ",") .. "]"
 end
 
 local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -142,7 +261,8 @@ local function encode_array(fd, arr, owner)
 	for i = 1, n do
 		local x = arr[i]
 		if x == nil then x = default_value(fd.e) end
-		parts[#parts + 1] = encode_value(fd.e, x, owner)
+		if flagsOf[fd] ~= nil then parts[#parts + 1] = flags_text(flagsOf[fd], x)
+		else parts[#parts + 1] = encode_value(fd.e, x, owner) end
 	end
 	return "[" .. table.concat(parts, ",") .. "]"
 end
@@ -152,27 +272,11 @@ encode_value = function(fd, val, owner)
 	local s = fd.s
 	if s == "bool" then return tostring(val == true) end
 	if s == "int" then
-		local fn = flags[fd.slot]
-		if fn ~= nil and owner ~= nil then
-			local parts = {}
-			local mask = owner[fd.slot] or 0
-			if typeof(mask) == "integer" then mask = tonumber(tostring(mask)) or 0 end
-			for i = 0, 63 do
-				local bit = 2 ^ i
-				if mask % (bit * 2) >= bit then
-					local name = fn(i)
-					if name ~= "???" then parts[#parts + 1] = q(name) end
-				end
-			end
-			return "[" .. table.concat(parts, ",") .. "]"
-		end
-		if fd.fbits ~= nil and fd.fbits > 0 then
-			local x = tonumber(tostring(val)) or 0
-			return num(x / (2 ^ fd.fbits))
-		end
-		return num(val)
+		if flagsOf[fd] ~= nil then return flags_text(flagsOf[fd], val) end
+		if fd.fbits ~= nil and fd.fbits > 0 then return fixed_text(val or 0, fd.signed, fd.fbits) end
+		return int_text(val or 0, fd.signed)
 	end
-	if s == "float" then return num(val) end
+	if s == "float" then return float_text(val or 0, fd.kw == 4 or fd.k == 10) end
 	if s == "str" or s == "text" then return q(str_value(fd, val, owner)) end
 	if s == "bytes" then
 		if type(val) == "table" then
@@ -268,7 +372,6 @@ count_walk = function(fd, val)
 	end
 end
 
-for _, name in Modules do collect(name) end
 
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 local v = load.load(ROOT, inputs.wire, report)
@@ -290,6 +393,20 @@ func roundtripProbe(g *generatedUnit, rootName string) string {
 		}
 	}
 	sort.Strings(mods)
+	b.WriteString("local FLAGS = {\n")
+	var keys []string
+	for k := range g.flags {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		fmt.Fprintf(&b, "\t[%q] = {", k)
+		for _, n := range g.flags[k] {
+			fmt.Fprintf(&b, " %q,", n)
+		}
+		b.WriteString(" },\n")
+	}
+	b.WriteString("}\n")
 	b.WriteString("local Modules = {}\n")
 	for _, m := range mods {
 		fmt.Fprintf(&b, "Modules[#Modules + 1] = require(\"./%s\")\n", m)
@@ -298,14 +415,17 @@ func roundtripProbe(g *generatedUnit, rootName string) string {
 	return b.String()
 }
 
+// normalizeNumbers replaces each json.Number with its exact rational value,
+// so 1000000.0 and 1000000 are one value and no wide or fixed value passes
+// through a double (docs/SPEC-TABLES.md §16.2, Numbers).
 func normalizeNumbers(v any) any {
 	switch x := v.(type) {
 	case json.Number:
-		f, err := strconv.ParseFloat(x.String(), 64)
-		if err != nil {
-			return x.String()
+		r, ok := new(big.Rat).SetString(x.String())
+		if !ok {
+			return "number:" + x.String()
 		}
-		return f
+		return "number:" + r.RatString()
 	case map[string]any:
 		out := make(map[string]any, len(x))
 		for k, val := range x {
