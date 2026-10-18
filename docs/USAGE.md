@@ -1010,7 +1010,9 @@ skipped by their kind, absent fields take their declared defaults, a field
 whose kind changed is skipped rather than misdecoded, a field whose kind
 merely GREW — an integer to a wider integer of the same signedness, or
 `float32` to `float64` — decodes exactly and counts `widened`, and
-out-of-range values are clamped. Every such event is counted in a report;
+out-of-range values are clamped. Every such event is counted in a report, and
+the strict read's clamped refusal names the field it clamped (`clamped:
+<Table>.<field>`, docs/SPEC-TABLES.md §6.5);
 framing damage stops the damaged nesting level, keeps what it decoded there
 and reads on past the field's own length, so one bad subtable never takes
 down the rest of the file. Tables never touch the protocol id —
