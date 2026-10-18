@@ -95,7 +95,8 @@ table Root { m map[string(8)]Child
  p *Child
  slots [Key]Child
  caps Caps
- payload Payload }
+ payload Payload
+ lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll int32 }
 table Items | json = "array"
 { entries []Child }
 `, `package probe
@@ -137,15 +138,28 @@ func TestUnknownKeys(t *testing.T) {
    if c.unknown == 0 && (r != (TableReport{}) || r.UnknownPaths != nil) { t.Fatalf("%s clean: %+v", rd.name, r) }
    b.Shutdown()
   }
-  // a key past the 255-byte key bound is named by its first 255 bytes; the
-  // read also counts the clamped key, which the strict read refuses as it did
-  // at BASE, and the path is named either way
+  // a key past the 255-byte key bound is named by its first 255 bytes and
+  // counted unknown ONLY, never clamped: every read, strict or tolerant,
+  // accepts it with Err() nil (16.2), as it accepts a shorter unknown key
   {
    var b RootBuilder; b.Init()
    var r TableReport
    ok := rd.root(&b, []byte("{\""+long+"\":{\"zz\":1},\"child\":{\"bt\":1}}"), &r)
-   strict := !strings.Contains(rd.name, "Tolerant")
-   if ok == strict || r.Unknown != 2 || r.Clamped != 1 || !slices.Equal(r.UnknownKeys(), []string{"/" + long[:255], "/child/bt"}) { t.Fatalf("%s long key: %v %v %+v %q", rd.name, ok, r.Err(), r, r.UnknownKeys()) }
+   if !ok || r.Err() != nil || r.Unknown != 2 || r.Clamped != 0 || !slices.Equal(r.UnknownKeys(), []string{"/" + long[:255], "/child/bt"}) { t.Fatalf("%s long key: %v %v %+v %q", rd.name, ok, r.Err(), r, r.UnknownKeys()) }
+   b.Shutdown()
+  }
+  // an over-long key whose first 255 bytes spell a declared 255-byte name is
+  // still unknown: the cut name never stands in for the field (16.2)
+  {
+   name := strings.Repeat("l", 255)
+   var b RootBuilder; b.Init()
+   var r TableReport
+   ok := rd.root(&b, []byte("{\""+name+"x\":7}"), &r)
+   if !ok || r.Err() != nil || r.Unknown != 1 || r.Clamped != 0 || b.GetRoot().Lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll != 0 || !slices.Equal(r.UnknownKeys(), []string{"/" + name}) { t.Fatalf("%s long name: %v %v %+v %q", rd.name, ok, r.Err(), r, r.UnknownKeys()) }
+   b.Shutdown()
+   b.Init()
+   r = TableReport{}
+   if !rd.root(&b, []byte("{\""+name+"\":7}"), &r) || r != (TableReport{}) || b.GetRoot().Lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll != 7 { t.Fatalf("%s exact name: %+v", rd.name, r) }
    b.Shutdown()
   }
   // a json = "array" root: the first step is the element index

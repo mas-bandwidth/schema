@@ -1227,6 +1227,11 @@ type tableJsonIn struct {
 	// zero is set when the walk stopped on a U+0000 bound for text storage
 	// (docs/SPEC-TABLES.md 16.3): the field loop names the field in Reason
 	zero bool
+	// longKey is set when the last scanKey met a name past the 255-byte key
+	// bound (docs/SPEC-TABLES.md 16.2): that name matches nothing, so it is
+	// counted unknown and never clamped, and its first 255 bytes can never
+	// stand in for a declared name
+	longKey bool
 }
 
 func (in *tableJsonIn) space() {
@@ -1477,10 +1482,20 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 			}
 		}
 	}
-	if clamped {
+	if name {
+		// a NAME is compared, never stored: an over-long one is unknown, not
+		// clamped (docs/SPEC-TABLES.md 16.2)
+		in.longKey = clamped
+	} else if clamped {
 		in.report.Clamped++
 	}
 	return placed, true
+}
+
+// keyIs compares the name the last scanKey read with a declared name; a name
+// past the key bound is never any declared name (docs/SPEC-TABLES.md 16.2).
+func (in *tableJsonIn) keyIs(name string, key []byte) bool {
+	return !in.longKey && tableJsonNameIs(name, key)
 }
 
 // walkNumber scans one number, to JSON's OWN grammar (RFC 8259 §6) and not to a
@@ -1837,7 +1852,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		in.pos++
 		tag := int64(0)
 		for t := int64(1); t <= f.EnumMax; t++ {
-			if tableJsonNameIs(f.EnumName(uint64(t)), key[:keyLength]) {
+			if in.keyIs(f.EnumName(uint64(t)), key[:keyLength]) {
 				tag = t
 				break
 			}
@@ -1887,7 +1902,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 			return false
 		}
 		for v := int64(0); v <= f.EnumMax; v++ {
-			if tableJsonNameIs(f.EnumName(uint64(v)), name[:nameLength]) {
+			if in.keyIs(f.EnumName(uint64(v)), name[:nameLength]) {
 				tableJsonSetRaw(storage, f.ElemSize, uint64(v))
 				return true
 			}
@@ -1930,7 +1945,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 				}
 				found := false
 				for bit := int64(0); bit <= f.EnumMax; bit++ {
-					if tableJsonNameIs(f.EnumName(uint64(bit)), name[:nameLength]) {
+					if in.keyIs(f.EnumName(uint64(bit)), name[:nameLength]) {
 						bits |= uint64(1) << bit
 						found = true
 						break
@@ -2279,7 +2294,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 				if !tableJsonKeyedSlotValid(f, v) {
 					continue
 				}
-				if tableJsonNameIs(f.KeyName(tableJsonKeyedSlotKey(v)), key[:keyLength]) {
+				if in.keyIs(f.KeyName(tableJsonKeyedSlotKey(v)), key[:keyLength]) {
 					slot = v
 					break
 				}
@@ -2439,7 +2454,7 @@ func tableJsonReadTableFields(in *tableJsonIn,base unsafe.Pointer,info *TableTyp
 		in.pos++
 		index := -1
 		for i := range info.Fields {
-			if tableJsonNameIs(info.Fields[i].Json, key[:keyLength]) {
+			if in.keyIs(info.Fields[i].Json, key[:keyLength]) {
 				index = i
 				break
 			}
