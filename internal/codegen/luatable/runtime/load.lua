@@ -1009,8 +1009,11 @@ read_union = function(T, ctx, u, r)
   elseif s == "union" then
     local inner = T.Unions[f.target]
     if inner == nil then report.malformed = true; return none end
+    -- an arm that is another union is that union's own arm header inside
+    -- this arm's L (decode.go arm): its damage reads None, and slack after it
+    -- is skipped by the outer L, uncounted
     local x = read_union(T, ctx, inner, sub)
-    if x == nil or sub.at ~= sub.lim then report.malformed = true; return none end
+    if x == nil then return none end
     out[arm.name] = x
     return out
   elseif s == "table" then
