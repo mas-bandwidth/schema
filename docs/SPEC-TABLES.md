@@ -16845,7 +16845,8 @@ from its own samples, in its own package.
   engine makes): the read NEVER PANICS, and it is one of four things.
   1. REFUSED BY A NAMED REASON: the strict read returns no value and a typed
      error (§6.5) that names its reason — a `TableRefuseReason` other than
-     `ok`, a `TableMissingRequired` or a `TableBuildVersionMismatch`; for
+     `ok`, a `TableClampedField` or `TableMalformedField` naming the field it
+     refused, a `TableMissingRequired` or a `TableBuildVersionMismatch`; for
      JSON, `FromJson` returns false or true, with a report whose `Err()` is
      such an error. A bare failure, `false` with no error, is a defect of the
      reader.

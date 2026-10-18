@@ -14,11 +14,13 @@ import (
 )
 
 // testgenFuzzDefects are the reader defects the generated fuzz targets found
-// on tables/examples (SPEC-TABLES §16.11): each a silent non-canonical accept,
-// named by the input that shows it. They are not fixed by this card. Each is
-// committed, as Go's fuzzing engine writes a failing input, under the
-// generated package's testdata/fuzz in the t.TempDir() run only, so the run
-// names it by file.
+// on tables/examples in pass 1 (SPEC-TABLES §16.11): each a silent
+// non-canonical accept, named by the input that shows it. They were fixed by
+// their own cards (schema-go-wire-bool-not-0-or-1,
+// schema-go-text-base64-canonical, schema-go-json-refuses-invalid-utf8), not by
+// this one, and are kept as replayed regressions: each is committed, as Go's
+// fuzzing engine writes a failing input, under the generated package's
+// testdata/fuzz in the t.TempDir() run only, and must now pass.
 var testgenFuzzDefects = []struct{ target, name, hex string }{
 	// The binary wire's bool payload is `0` or `1` (§3); a byte of 0xfe
 	// (Patrol.active of the defaults sample, flipped) reads as true with a
