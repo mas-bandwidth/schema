@@ -816,6 +816,13 @@ every target's. A target with no reserved-word list of its own has no words
 to narrow to, so `generate` on it checks every target's words rather than
 none. Nine additions:
 
+An enum's or flags' variant names are one exception to the reserved-word rule
+(SPEC §4.1): a variant may be named a type word such as `bool`, `int`, or
+`enum`, because a variant name is only ever read inside its own declaration's
+body or after `E.` and never meets a type position. A table's closure is
+therefore unaffected — it reads variants by name, and the per-target
+reserved-word check still refuses any name a target cannot spell by name.
+
 - **Tables nest.** A named table is a field type (above); nesting is by
   value, and a bounded array of tables is a collection. A table may not
   contain itself BY VALUE, directly or through any chain — that recursion
