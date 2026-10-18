@@ -356,7 +356,14 @@ the strict read would accept — a clean read, or one whose only counters are
 those three.
 
 **A fixed table's file can be refused before any counter exists**, and the
-refusal says what the reader knows. `layout_unsupported` is a layout the
+refusal says what the reader knows. Its strict error is the refusal's OWN NAME
+(`layout_unknown`, `layout_newer`, `layout_unsupported`, `layout_malformed`,
+`count_over_bound`, `plan_too_large`, `batch_too_large`, ... — the §3.4 name),
+reported as `TableFixedRefusal` in Go, and never the generic `unknown_form`.
+Only a form-byte refusal — `newer_form`, `previous_form`,
+`message_form_as_file`, or an unsupported wire form — is `unknown_form`,
+because there the reader does not carry the FORM rather than the layout.
+`layout_unsupported` is a layout the
 reader's lineage holds and has retired: upgrade the client. `layout_unknown` is
 a layout hash the lineage does not hold, reported with the file's hash and
 nothing else: it may be a newer writer's, an older layout nobody locked, or a
