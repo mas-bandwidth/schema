@@ -15,10 +15,6 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("r.Retain.discard(r.Path,false,0)\n")
 	}
 	// `| required` fields (docs/SPEC-TABLES.md §2.3): each gets a seen flag,
-	// set when its id rides, and a record that ends without one is refused
-	// with missing_required naming the field. A required field inside an `if`
-	// guard is demanded only while its guard holds — with the branch off it is
-	// absent and no refusal is owed (§2.3, §3).
 	guards := tableGuardExprs(st)
 	var req []*ir.Field
 	var reqGuard []string
@@ -66,25 +62,12 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("\t\t}\n")
 	} else if unitHasRequired(g.unit) {
 		// A BODY BELOW THIS ONE that was refused for a missing required field
-		// refuses this one too (docs/SPEC-TABLES.md §2.3): the report is shared
-		// down the walk, so a nested table, an element, a map entry or a node
-		// body that set MissingRequired stops every body above it, and the
-		// whole record is refused naming the field — never read as a parent
-		// with a defaulted child. A unit with no required field pays nothing.
 		g.pf("\t\tif ref == 0 { return r.Report.MissingRequired == missingBefore }\n")
 	} else {
 		g.pf("\t\tif ref == 0 { return true }\n")
 	}
 	g.pf("\t\tfieldID, ok := r.Resolve(ref); if !ok || !r.Has(1) { r.Report.Malformed = true; return false }\n")
 	// THE FIELD HEADER IS READ WHOLE BEFORE A RESERVED ID IS JUDGED, as the
-	// oracle reads it (internal/tablewire bodyAt). A reserved id in a body
-	// that is not its transport is MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3),
-	// and that is framing damage: the level stops and KEEPS WHAT IT DECODED
-	// there (§4). Where it stops is what the caller's "terminator is the last
-	// byte of L" check reads (§3), so stopping before the kind byte left the
-	// cursor one byte short and threw away the decoded prefix the oracle keeps
-	// — a union arm read None where the reference kept the arm (wire fuzz
-	// seed 24845619678, stream_chain).
 	g.pf("\t\tkind := r.Get8()\n")
 	g.pf("\t\tif fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff { r.Report.Malformed = true; return false }\n")
 	g.pf("\t\tswitch fieldID {\n")
@@ -120,19 +103,6 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		}
 	}
 	// THE NODE TABLE'S RESERVED ID, AND ONLY WHERE IT IS THIS BODY'S OWN
-	// TRANSPORT (docs/SPEC-TABLES.md §3.1). A VARIABLE root's body carries the
-	// numbering under `0xFFFFFFFFFFFFFFFF`, and this loop runs over that body
-	// after the graph path has already read it, so the field is stepped over in
-	// silence — it is not an unknown FIELD, it is this reader's own transport.
-	//
-	// A FIXED-CLASS table gets NO such arm even in a regional unit, because it
-	// has no numbering: for it the reserved id is an id it cannot name, and §3.1
-	// says exactly what that costs — "a reader that cannot name the id skips the
-	// field by its `L` and counts it unknown, once (§4). No new skip rule." The
-	// arm used to ride on every table of a regional unit, which made this leg
-	// answer `unknown=0` where the C++ reference and the compiler's own reader
-	// both answer `unknown=1`; the wire fuzzer found it the day a fixed root
-	// landed in a regional unit (#823).
 	if g.regional && ir.VariableTables(g.unit)[st.Name] {
 		g.pf("case 0xffffffffffffffff: if !r.Skip(kind) { r.Report.Malformed=true;return false }\n")
 	}
@@ -146,16 +116,6 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	}
 	if g.hasFixedForm(st) {
 		// IT CARRIES BOTH FORMS AND EACH ENTRY POINT CARRIES ONE (§3.4, §15).
-		// <T>FixedLoad reads form 3 and names a form-1 file `previous_form`;
-		// this <T>Load reads form 1 and names a form-3 file `newer_form`. The
-		// `fixed table` keyword (#823) decides what a WRITER emits, not which
-		// bytes a reader of the variable form can still be handed: the shared
-		// corpus pins `v1_cfg_as_v2` at `read` over a form-1 file of a DECLARED
-		// fixed root, the C++ reference reads it there (cpptable/fixedform.go's
-		// header: "a fixed-table type's reader accepts both, by the form byte"),
-		// and a leg that refused it alone would be the one leg disagreeing with
-		// the reference. The dispatch §15 names as the follow-on is what would
-		// let one entry point answer both; it is not this one refusing.
 		g.pf("// %s also carries the FIXED form (form 3): %sFixedLoad reads that one and\n", n, n)
 		g.pf("// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry\n")
 		g.pf("// point and reads form 1, whether or not the table was DECLARED fixed\n")
@@ -285,9 +245,6 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 	g.pf("%sif len(sub.Buffer) >= 2 {\n", ind)
 	i := ind + "\t"
 	// The reference reads the element kind and count from the enclosing
-	// reader before bounding the elements by L. Preserve its report events
-	// when a damaged count extends beyond L, while Has still bounds every
-	// element read to the declared body.
 	g.pf("%sheader := sub; header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]\n", i)
 	g.pf("%selemKind := header.Get8(); count, ok := header.Leb(); sub.Offset = header.Offset\n", i)
 	g.pf("%sif !ok { r.Report.Malformed = true } else {\n", i)
@@ -592,9 +549,6 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 			g.pf("%s\t%s\n", ind, compressedFloatClamp("v", lo, hi, fmt.Sprintf("r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q)", g.floatOwner(f))))
 		} else {
 			// A PLAIN float's NaN or infinity lands as its pattern and counts
-			// nothing, and the read NAMES it so the strict read refuses it as
-			// non_finite (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL
-			// VALUES"; §6.5): the text writer has no spelling for one (§16.3).
 			g.pf("%s\tif v != v || v-v != 0 { tableNonFinite(&r.Report.Reason, %q) }\n", ind, g.floatOwner(f))
 		}
 		g.pf("%s\t%s = v\n%s}\n", ind, expr, ind)
@@ -700,11 +654,6 @@ func unitHasRequired(u *ir.Unit) bool {
 }
 
 // floatOwner names a float field as <Owner>.<field> for the report's
-// non_finite reason (docs/SPEC-TABLES.md §3.3), the owner being the table,
-// type or union that declares it. A field the unit does not hold by pointer
-// (the message form's element copy, messageElement) is named by the closure
-// member whose codec is being emitted when that member declares a field of
-// its name, and by its own name only past that.
 func (g *tableGen) floatOwner(f *ir.Field) string {
 	for _, m := range []map[string]*ir.Struct{g.unit.Tables, g.unit.Structs} {
 		for _, st := range m {

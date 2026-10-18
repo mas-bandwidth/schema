@@ -1,32 +1,4 @@
 // Package gotable emits a unit's Go table surface (docs/SPEC-TABLES.md): the
-// TABLE-wire codecs and the reflection descriptors in <Base>Table.go, the
-// TEXT form in <Base>TableJson.go, and the two ACCELERATORS on the side in
-// <Base>Block.go (§19) and <Base>Cook.go (§7). One file per unit file,
-// emitted only when the unit declares tables.
-//
-// The C++ backend (internal/codegen/cpptable) is the REFERENCE: this port
-// follows its framing, elision decisions, clamps and recovery rules. The
-// compiler engine (internal/tablewire) is the independent conformance oracle.
-// The contract is docs/SPEC-TABLES.md, including the id-table wire (form 1, the variable form). Where Go
-// forces a different spelling the reason is stated at the site.
-//
-// Storage follows the Go PACKET emitter's conventions exactly
-// (internal/codegen/golang): structs with exported fields, string(N) and
-// bytes(N) as [N]byte beside an int32 used length, arrays as [N]T beside an
-// int32 used count, enum-keyed arrays as [E.Max]T, unions as a tag beside one
-// arm per variant. That is not a free choice — a table's closure contains
-// plain `type` declarations whose storage the packet emitter already wrote,
-// and the table codecs decode into those very structs. One unit, one spelling.
-//
-// The codecs are FREE FUNCTIONS taking a *T, name-first (<Name>Measure,
-// <Name>Save, <Name>Load), which is both §11's claimed surface and the Go
-// packet emitter's own shape. NOTHING ON THE READ PATH ALLOCATES: every buffer
-// is inside the value the caller owns, sub-readers are stack values, and Load
-// overlays in place after restoring the declared defaults.
-//
-// Variable units use canonical POD Row storage, a segmented builder arena,
-// and caller-owned regions with self-relative references. LoadMeasure derives
-// the exact region size from framing; Load fills it without allocation.
 package gotable
 
 import (
@@ -53,10 +25,6 @@ import (
 )
 
 // table-wire kinds (docs/SPEC-TABLES.md §3) — the numbers are the wire's, not a
-// backend's, and they are duplicated from cpptable deliberately: a port that
-// derived them from the reference emitter's private helpers would break the
-// day the two files disagree, and this way a disagreement shows up in the
-// shared golden bytes instead.
 const (
 	tkBool   = 1
 	tkI8     = 2
@@ -92,10 +60,6 @@ type tableGen struct {
 	indent string          // extra per-line indent while emitting inside a branch guard
 
 	// The OPTIONAL forms this generator emits beside the core: pf writes to
-	// out while a form's declarations are being emitted (into), and to body
-	// otherwise. The emitters run in one order on one generator either way, so
-	// a form's declarations are the bytes they always were; only their file
-	// moves (docs/SPEC-TABLES.md, "GO's optional forms").
 	out     *strings.Builder
 	message strings.Builder // the MESSAGE form: <Base>TableMessage.go
 	cook    strings.Builder // the COOK form's write entry points: <Base>Cook.go
@@ -159,9 +123,6 @@ func unionArmSlots(u *ir.Unit, _ map[string]bool) map[string]int {
 }
 
 // needsUnsafe marks this file as reaching for the layout model — every
-// descriptor does, through unsafe.Sizeof and unsafe.Offsetof, which are
-// CONSTANT EXPRESSIONS of the compiler's own model rather than a guess about
-// it (docs/SPEC-TABLES.md §8).
 func (g *tableGen) needsUnsafe() { g.unsafeUsed = true }
 
 func (g *tableGen) tf(format string, args ...any) {
@@ -196,22 +157,6 @@ func (g *tableGen) into(b *strings.Builder, emit func()) {
 }
 
 // runtimeHome is the basename of the file that carries a unit's shared Go table
-// runtime — TableReport, the reflection descriptors, the wire and message
-// runtimes, the text walk's home, the region machinery when the unit is
-// variable. IT IS THE PACKAGE, and nothing else.
-//
-// A Go package is one namespace across its files, so a shared runtime need only
-// be emitted ONCE, ANYWHERE — and "anywhere" wants a name that does not move.
-// Any rule that picks a FILE picks it off the file order, and relocates the
-// runtime the day the unit gains a file that sorts earlier: correct output, and
-// a diff nobody can read (#347). The package names one home per unit and never
-// moves. A unit whose own <Package>.schema exists carries the runtime in that
-// file's generated output — same name, one file, no collision; every other unit
-// gets the file emitted FOR it, which is what makes the home unconditional.
-//
-// A file basename that differs from the package ONLY BY CASE is the same file
-// name on a case-insensitive filesystem and two on a case-sensitive one, so the
-// match is case-insensitive and the FILE's spelling wins.
 func runtimeHome(u *ir.Unit) string {
 	home := ir.GoExportName(u.Package)
 	for _, f := range u.Files {
@@ -240,10 +185,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 }
 
 // Form is one OPTIONAL form of a unit's Go table output, as a set of bits
-// (docs/SPEC-TABLES.md, "GO's optional forms"). The core — every
-// <Base>Table.go and the unit's <Package>View.go — is never optional; each form
-// is a set of files that only ADD that form's entry points, so any subset of
-// them may be left out and the package still compiles.
 type Form uint8
 
 const (
@@ -257,9 +198,6 @@ const (
 )
 
 // GenerateOmitting is GenerateLineage without the files of the forms omit
-// names. The files are the emitter's own: each optional form is emitted into
-// files of its own, so leaving one out is leaving its files out, and what is
-// left is exactly what GenerateLineage emits for the forms that remain.
 func GenerateOmitting(u *ir.Unit, lineage map[string][]FixedLineageEntry, omit Form) (map[string][]byte, error) {
 	out, forms, err := generateForms(u, lineage, DefaultSurfaces())
 	if err != nil {
@@ -274,23 +212,11 @@ func GenerateOmitting(u *ir.Unit, lineage map[string][]FixedLineageEntry, omit F
 }
 
 // GenerateLineage is Generate with the LINEAGE the build holds for each fixed
-// table: the locked layouts, OLDEST FIRST, the current one last
-// (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
-// every table then carries the one entry it can always compute: its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	return GenerateLineageSurface(u, lineage, DefaultSurfaces())
 }
 
 // GenerateLineageSurface is GenerateLineage with a surface list
-// (docs/SPEC-TABLES.md §8.8): only the named surfaces' files and functions are
-// emitted, with wire kept as the base. The default full set is byte-identical
-// to GenerateLineage.
-//
-// The surface list intersects each table's `forms` declaration
-// (docs/SPEC-TABLES.md §2.12): a table carries json, cook or block only when
-// its declaration allows it AND the list asks for it. A list naming one of
-// those forms that a declaring table does not carry is refused by name; the
-// default full set refuses nothing.
 func GenerateLineageSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces) (map[string][]byte, error) {
 	if err := refuseUndeclaredSurface(u, s); err != nil {
 		return nil, err
@@ -300,11 +226,6 @@ func GenerateLineageSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, 
 }
 
 // refuseUndeclaredSurface is §2.12's refusal: an explicit surface list (any
-// set but the default full one) that names json, cook or block for a table
-// whose `forms` declaration leaves it out. The first declaring table in sorted
-// name order is named; synthesized map entries inherit their owner's forms and
-// are never named. The surfaces outside the forms vocabulary (fixed, view,
-// message, retain) are governed by the list alone.
 func refuseUndeclaredSurface(u *ir.Unit, s Surfaces) error {
 	if s == DefaultSurfaces() {
 		return nil
@@ -331,11 +252,6 @@ func refuseUndeclaredSurface(u *ir.Unit, s Surfaces) error {
 }
 
 // formAllowed reports whether the unit's tables let the named form be emitted
-// (docs/SPEC-TABLES.md §2.12). With no `forms` declaration every form is
-// allowed — today's behaviour. With any declaration, only a form some table
-// carries is emitted: a form no table declares is skipped, so a unit whose
-// tables declare `forms = "wire"` gets the wire's Table.go and neither the
-// block, the cook nor the text form.
 func formAllowed(u *ir.Unit, form string) bool {
 	declared := false
 	for _, t := range u.Tables {
@@ -462,18 +378,10 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 	home := runtimeHome(u)
 	anyKeyed := unitHasKeyedArray(u, closure)
 	// the identity pair of an enum is emitted ONCE per unit, by the file that
-	// declares it: a Go package is one namespace across its files, so a second
-	// definition is a compile error rather than C++'s harmless re-inclusion
-	// behind a guard
 	usedEnums := closureEnums(u, closure)
 	armSlots := unionArmSlots(u, closure)
 	idOrdinal := wireIdOrdinals(u)
 	// the shared runtime is emitted ONCE, into the package's own home file,
-	// whether or not a schema file names the package (docs/SPEC-TABLES.md
-	// §19.2). Extracted so the synthesized home and a file that happens to be
-	// named for the package emit the same bytes.
-	// the cook form's write half: the unit's writer runtime, and each file's
-	// <Name>CookFrom entry points, carried into that file's <Base>Cook.go
 	cookRuntime := ""
 	emitRuntime := func(g *tableGen) {
 		g.needsMath = true
@@ -600,9 +508,6 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 		cookWriters[f.Base] = g.cook.String()
 	}
 	// No file of the unit is named for the package, so the home is emitted FOR
-	// the unit rather than for a file. The runtime lands in <Package>Table.go
-	// either way — that is the whole rule, and it is what keeps an
-	// earlier-sorting file from moving it (§19.2).
 	if !runtimeWritten {
 		g := &tableGen{unit: u, home: true, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage, surfaces: s}
 		emitRuntime(g)
@@ -714,9 +619,6 @@ func (g *tableGen) assembleForm(name string, form Form, body string) ([]byte, er
 var formImports = []string{`"encoding/binary"`, `"unicode/utf8"`, `"sync"`, `"sync/atomic"`, `"slices"`, `"math"`, `"time"`, `"unsafe"`, `"github.com/mas-bandwidth/serialize.go"`}
 
 // usedImports keeps the imports body refers to: a selector on an identifier
-// the file does not declare (go/parser leaves it unresolved) names a package.
-// A file of one form references only what it uses, so an import the core
-// needed and the form does not is not spelled — Go refuses an unused import.
 func usedImports(body string, candidates []string) []string {
 	f, err := parser.ParseFile(token.NewFileSet(), "", "package p\n\n"+body, 0)
 	if err != nil {
@@ -823,10 +725,6 @@ func (g *tableGen) assemble() ([]byte, error) {
 	return src, nil
 }
 
-// repoPrefix marks every bare reference to this repository's own paths that a
-// generated comment cites — docs/... and internal/... — with the repository's
-// name, so an adopter's path linter reads them as another repository's rather
-// than its own (docs/USAGE.md Go notes).
 var repoPrefixRe = regexp.MustCompile(`(docs|internal)/`)
 
 func isPathWordByte(c byte) bool {
@@ -834,11 +732,6 @@ func isPathWordByte(c byte) bool {
 }
 
 // repoPrefix marks every bare reference to this repository's own paths that a
-// generated comment cites — docs/... and internal/... — with the repository's
-// name, so an adopter's path linter reads them as another repository's rather
-// than its own. A path already inside a longer one (an import like
-// github.com/mas-bandwidth/schema/v2/internal/ast) is left alone: it is
-// preceded by a word byte or a slash, which a bare citation never is.
 func repoPrefix(src string) string {
 	idxs := repoPrefixRe.FindAllStringIndex(src, -1)
 	if len(idxs) == 0 {
@@ -864,9 +757,6 @@ func repoPrefix(src string) string {
 }
 
 // goImports renders an import block the way gofmt would have written it: a
-// lone import takes the one-line form, which is what a hand-written file of
-// this shape looks like. go/format does not rewrite the grouping, so the
-// emitter picks it.
 func goImports(paths []string) string {
 	switch len(paths) {
 	case 0:
@@ -966,9 +856,6 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 }
 
 // tableRuntime is the unit's shared table runtime, emitted into ONE file per
-// unit (<Package>Table.go, the package's home). C++ emits it into every header
-// behind an include guard; a Go package is one namespace across its files, so a
-// second copy would be a redeclaration error instead.
 func tableRuntime() string {
 	return `// TableReport is the table-wire read report — the permissive contract's
 // ledger. Silence (all zero) means the data matched this reader's schema
@@ -1284,22 +1171,6 @@ func tableJsonGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string)
 }
 
 // tableKeyedAccessor is the enum-keyed array's one indexing helper
-// (docs/SPEC-TABLES.md §2.4). Emitted only into a unit that declares a keyed array,
-// so a unit without one is byte-identical to what it was.
-//
-// WHAT GO SPELLS DIFFERENTLY, stated where a reader meets it. C++ has an
-// operator[] on a storage template and C# an indexer on a generic class; Go
-// has neither operator overloading nor generic array extents, so an enum-keyed
-// array's STORAGE IS the plain array the schema means — [E.Max]T, the key k at
-// index k-1, which is also exactly what the packet emitter writes for the same
-// declaration on the type wire. The extent is still derived and named nowhere
-// else: it is the generated E.Max constant and no other number.
-//
-// The SHIFT and the None refusal live here, in one function, so no call site
-// in any language spells either (§2.4). A None key is a program error and this
-// panics in EVERY build — the C++ abort and the C# throw, in Go's spelling —
-// because the storage holds no slot for None and indexing one byte before an
-// array is not a thing a config read may do.
 const tableKeyedAccessor = `// TableKeyed indexes an enum-keyed array's slots BY KEY: the storage shifts
 // left, so the key k lives at index k-1 and nothing is stored for None
 // (docs/SPEC-TABLES.md §2.4). It hands back a pointer, so the same call reads and
@@ -1343,15 +1214,6 @@ func timestampFields(st *ir.Struct) []*ir.Field {
 }
 
 // emitTimestampAccessors is the Go VALUE of a timestamp (docs/SPEC-TABLES.md
-// §2.11): a time.Time, in UTC on read, through two methods beside the field.
-//
-// The field itself is the int64 count and has to be: a table's storage is the
-// blittable record the cook, the block and the fixed form lay out at declared
-// widths (§19, §20), and a time.Time carries a pointer. So the time.Time is the
-// accessor pair, and the REFUSAL a time outside Time.UnixNano's domain owes
-// ("by name, on write") is the setter's: the count it would store does not
-// exist, so nothing is stored and the error names the field. Every int64 the
-// field can hold is a time, so nothing downstream of the setter can refuse.
 func (g *tableGen) emitTimestampAccessors(st *ir.Struct) {
 	fields := timestampFields(st)
 	if len(fields) == 0 || st.IsMapEntry() {
@@ -1375,15 +1237,6 @@ func (g *tableGen) emitTimestampAccessors(st *ir.Struct) {
 }
 
 // ---- the shared Go runtime (docs/SPEC-TABLES.md §8.4) ----
-//
-// Shared is the default: a unit's home file imports tables/goruntime for the
-// declarations the emitter writes identically for EVERY unit shape, instead of
-// carrying a copy of them. Standalone is the named option and stays
-// byte-identical to every build before the option existed. There is one
-// source: the package's text is the emitter's own text for those declarations
-// (sharedRuntime derives it from the emitter's output for the probe units
-// below), so the package and the inline copy cannot drift, and a test fails
-// when the checked-in package and the emitter disagree.
 
 // SharedRuntimeImport is the import path of the shared Go runtime package.
 const SharedRuntimeImport = "github.com/mas-bandwidth/schema/v2/tables/goruntime"
@@ -1403,9 +1256,6 @@ const (
 )
 
 // ParseRuntime reads the generator option `runtime` (docs/SPEC-TABLES.md
-// §8.4): absent, empty or "shared" is shared; "standalone" is the named
-// standalone option; anything else is refused by name, naming shared as the
-// default.
 func ParseRuntime(v string) (Runtime, error) {
 	switch v {
 	case "", "shared":
@@ -1424,10 +1274,6 @@ func GenerateRuntime(u *ir.Unit, lineage map[string][]FixedLineageEntry, rt Runt
 }
 
 // GenerateRuntimeSurface is GenerateRuntime over a surface list
-// (docs/SPEC-TABLES.md §8.8): RuntimeStandalone returns exactly
-// GenerateLineageSurface's bytes, and the default full set is GenerateRuntime.
-// RuntimeShared, §8.4's default, cuts the shared declarations and aliases them
-// to SharedRuntimeImport.
 func GenerateRuntimeSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces, rt Runtime) (map[string][]byte, error) {
 	out, err := GenerateLineageSurface(u, lineage, s)
 	if err != nil || rt == RuntimeStandalone || len(out) == 0 {
@@ -1485,11 +1331,6 @@ func SharedRuntimeFiles() (map[string][]byte, error) {
 }
 
 // sharedProbes are the unit shapes whose runtime files decide what is shared:
-// the home <Package>Table.go and the home's <Package>TableMessage.go, where the
-// MESSAGE form's runtime lives. A declaration is shared only when every probe's
-// runtime files carry it byte-for-byte. Together they switch on every conditional the runtime emitter
-// has: fixed-only and variable units, containers, wide text, float64, keyed
-// arrays and unions.
 var sharedProbes = []string{
 	"package probe\nfixed table A { n int32 }\n",
 	`package probe
@@ -2025,11 +1866,6 @@ func rtStructFields(text string) (string, []string, bool) {
 }
 
 // rtKeyLiterals spells every unkeyed composite literal of a shared struct type
-// with its field names, the same value. In a shared unit the type is an alias
-// of the package's, and go vet's composites check refuses an unkeyed literal of
-// a struct type another package declares; the standalone unit, which declares
-// the type itself, is untouched. pre is prepended to parse a file's body that
-// has no package clause of its own ("" for a whole file).
 func rtKeyLiterals(src string, fields map[string][]string, pre string) (string, error) {
 	fs := token.NewFileSet()
 	f, err := parser.ParseFile(fs, "", pre+src, parser.ParseComments)
@@ -2102,9 +1938,6 @@ func rtKeyLiterals(src string, fields map[string][]string, pre string) (string, 
 const sharedRuntimePackage = "goruntime"
 
 // rtRename spells every package-level name in rename by its exported name. A
-// bijection on identifiers preserves every binding, a field or method name
-// never changes (buildSharedRuntime checks the two sets are disjoint), and the
-// result is formatted.
 func rtRename(src string, rename map[string]string) string {
 	fs := token.NewFileSet()
 	f, err := parser.ParseFile(fs, "", src, parser.ParseComments)
@@ -2220,10 +2053,6 @@ func rtShim(text string, rename map[string]string) (string, error) {
 }
 
 // apply cuts a standalone runtime file's shared declarations. The home file
-// (home true) gains the import and the shim in their place; the home's
-// <Package>TableMessage.go only loses them, and reaches them through the home's
-// shim. A declaration the unit spells differently from the package is an
-// error, never a silent second copy.
 func (sr *sharedRuntime) apply(src []byte, home bool) ([]byte, error) {
 	decls, f, err := rtParseDecls("home", src)
 	if err != nil {
@@ -2326,16 +2155,6 @@ var goWords = sync.OnceValue(func() map[string]bool {
 })
 
 // goEscapeTables is the Go escape (SPEC.md §4.6): a DECLARED table whose name
-// is a Go word is emitted under ir.GoEscape's spelling, `table func` as the Go
-// type `func_`, so every Go name derived from it (`func_Reset`, `func_Load`)
-// takes the escaped spelling. It returns a COPY of the unit with those tables
-// respelled and every reference to them following, the declared name kept on
-// each as SchemaName (ir.Struct.DeclaredName), which every id, projection,
-// descriptor and diagnostic reads; the caller's unit is never touched, since
-// another target may emit it next. A unit with no such table is returned as it
-// is, so its output is byte-identical. Fields, arms and variants need no
-// escape (Go emits them exported or prefixed), and the checker refuses Go's
-// words for every other declaration kind, so tables are the one respelling.
 func goEscapeTables(u *ir.Unit) *ir.Unit {
 	rename := map[string]string{}
 	for name, st := range u.Tables {
