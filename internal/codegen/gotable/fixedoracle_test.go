@@ -247,7 +247,7 @@ func TestOracleAndHostile(t *testing.T) {
 		planCap  int
 		want     TableReport
 	}
-	refused := func(why string) TableReport { return TableReport{Verdict: TableOpenRefused, Reason: why} }
+	refused := func(why string) TableReport { return TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: why} }
 	controls := []control{
 		{name: "previous_form", forge: func(b []byte) []byte { b[0] = 1; return b }, want: refused("previous_form")},
 		{name: "message_form_as_file", forge: func(b []byte) []byte { b[0] = 2; return b }, want: refused("message_form_as_file")},
@@ -256,7 +256,7 @@ func TestOracleAndHostile(t *testing.T) {
 		{name: "layout_unknown", forge: func(b []byte) []byte {
 			binary.LittleEndian.PutUint64(b[TableFixedHashAt:], hash^1)
 			return b
-		}, want: TableReport{Verdict: TableOpenRefused, Reason: "layout_unknown", LayoutHash: hash ^ 1}},
+		}, want: TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_unknown", LayoutHash: hash ^ 1}},
 		{name: "layout length past the file", forge: func(b []byte) []byte {
 			binary.LittleEndian.PutUint32(b[TableFixedHeaderBytes:], uint32(len(b)))
 			return b

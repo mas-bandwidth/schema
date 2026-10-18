@@ -2401,7 +2401,7 @@ func TestLayoutMalformedTruncated(t *testing.T) {
 	tableFixedPut32(ref[TableFixedHeaderBytes:], 100)
 	got = []Point{{X: -1, Y: -1}}
 	r = TableReport{}
-	if n := PointFixedLoad(got, ref, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_malformed"}) || got[0] != (Point{X: -1, Y: -1}) {
+	if n := PointFixedLoad(got, ref, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_malformed"}) || got[0] != (Point{X: -1, Y: -1}) {
 		t.Fatalf("declared length 100 in a twenty-byte file: n=%d report=%+v dest=%+v", n, r, got[0])
 	}
 
@@ -2412,7 +2412,7 @@ func TestLayoutMalformedTruncated(t *testing.T) {
 	short := buf[:TableFixedHeaderBytes+4+int(tableFixedGet32(buf[TableFixedHeaderBytes:]))-1]
 	got = []Point{{X: -1, Y: -1}}
 	r = TableReport{}
-	if n := PointFixedLoad(got, short, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_malformed"}) || got[0] != (Point{X: -1, Y: -1}) {
+	if n := PointFixedLoad(got, short, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_malformed"}) || got[0] != (Point{X: -1, Y: -1}) {
 		t.Fatalf("a file truncated one byte into its own layout: n=%d report=%+v dest=%+v", n, r, got[0])
 	}
 }
