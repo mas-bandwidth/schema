@@ -11656,6 +11656,11 @@ before this section, so the rule is here, one shape for both:
   exactly this: **the field's `offset` names an `int64` REFERENCE, not the
   first element**, and a walker resolves it before it steps. That is one
   comparison in a generic walk and no new column in nine ports.
+- **`UnboundedContainer` names the no-declared-bound shape with one meaning**:
+  it is set on every map, `[]T` and `[]string(M)` field, whose `array_bound`
+  is `0`, and false on every bounded array and scalar. It is distinct from the
+  `Unbounded` column §2.13.1 (unbounded TEXT: a slot naming a blob record), so
+  a walker can tell an unbounded container from unbounded text by name.
 - **`table` names the ELEMENT's descriptor**: the generated entry's for a map
   (§2.8), the element type's own for a list of tables, and NULL for a list of
   scalars, exactly as a bounded array of scalars leaves it NULL.
