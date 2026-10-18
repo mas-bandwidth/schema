@@ -1,3 +1,4 @@
+--!strict
 -- json.lua — the Lua table runtime's TEXT FORM (docs/SPEC-TABLES.md §16,
 -- §16.1–§16.7; docs/PORT-LUA.md, THE CARD MAP). A port of the JavaScript leg's
 -- variable text walk (internal/codegen/jstable/variableruntime.go) and of the
@@ -13,6 +14,10 @@
 -- `{ "&node": N }` after that (§16.7).
 local J = {}
 
+-- one JSON text under the reader's cursor: p is the next byte, bad latches a
+-- malformed text (§16.1)
+type Input = { t: string, p: number, bad: boolean }
+
 local MAX_DEPTH = 128
 local MAX_KEY = 255
 local MAX_NUMBER = 511
@@ -26,8 +31,8 @@ local FLOAT32_DIGITS = 17
 -- Luau has no bitwise operators; bit32 is enough for every value below it (a
 -- UTF-8 sequence, a base64 triplet, a flags mask) (docs/PORT-LUAU.md).
 local band, bor, bnot = bit32.band, bit32.bor, bit32.bnot
-local function lshift(a, n) return a * 2 ^ n end
-local function rshift(a, n) return math.floor(a / 2 ^ n) end
+local function lshift(a: number, n: number): number return a * 2 ^ n end
+local function rshift(a: number, n: number): number return math.floor(a / 2 ^ n) end
 local function ult(a: number, b: number): boolean
   if a < 0 then
     if b >= 0 then return true end
@@ -41,7 +46,7 @@ end
 -- UTF-8
 ----------------------------------------------------------------------------
 
-local function utf8_encode(code)
+local function utf8_encode(code: number): string
   if code < 0x80 then
     return string.char(code)
   elseif code < 0x800 then
@@ -54,7 +59,7 @@ local function utf8_encode(code)
 end
 
 -- the length of one WELL-FORMED UTF-8 sequence at s[i], or -1 (§16.3)
-local function utf8_seq(s, i)
+local function utf8_seq(s: string, i: number): number
   local c = s:byte(i)
   if c == nil then return -1 end
   if c < 0x80 then return 1 end
@@ -76,7 +81,7 @@ local function utf8_seq(s, i)
   return want
 end
 
-local function utf8_decode(s)
+local function utf8_decode(s: string): number
   local c = s:byte(1)
   if c < 0x80 then return c end
   local code, at
@@ -91,9 +96,9 @@ end
 -- the reader (§16.2)
 ----------------------------------------------------------------------------
 
-local function new_in(text) return { t = text, p = 1, bad = false } end
+local function new_in(text: string): Input return { t = text, p = 1, bad = false } end
 
-local function space(inp)
+local function space(inp: Input)
   while inp.p <= #inp.t do
     local c = inp.t:byte(inp.p)
     if c == 32 or c == 9 or c == 10 or c == 13 then
@@ -117,13 +122,13 @@ local function space(inp)
   end
 end
 
-local function peek(inp)
+local function peek(inp: Input): string?
   space(inp)
   if inp.p <= #inp.t then return inp.t:sub(inp.p, inp.p) end
   return nil
 end
 
-local function literal(inp, word)
+local function literal(inp: Input, word: string): boolean
   if inp.t:sub(inp.p, inp.p + #word - 1) == word then
     inp.p = inp.p + #word
     return true
@@ -132,7 +137,7 @@ local function literal(inp, word)
   return false
 end
 
-local function hex4(inp)
+local function hex4(inp: Input): number?
   if inp.p + 3 > #inp.t then return nil end
   local s = inp.t:sub(inp.p, inp.p + 3)
   if not s:match("^%x%x%x%x$") then return nil end
@@ -142,7 +147,7 @@ end
 
 -- ONE STRING BODY CHARACTER as UTF-8: an escape's code point or one UTF-8
 -- sequence read whole, so a clamp lands only between code points (§16.3).
-local function scan_unit(inp)
+local function scan_unit(inp: Input): (string?, boolean, boolean)
   if inp.p > #inp.t then inp.bad = true; return nil, false, false end
   local c = inp.t:byte(inp.p)
   if c == 34 then inp.p = inp.p + 1; return nil, true, true end
@@ -204,7 +209,7 @@ local function scan_unit(inp)
 end
 
 -- ONE JSON string into bytes, clamped at cap bytes (cap < 0 unbounded)
-local function scan_string(inp, cap)
+local function scan_string(inp: Input, cap: number): (string?, boolean, boolean)
   if peek(inp) ~= '"' then inp.bad = true; return nil, false, false end
   inp.p = inp.p + 1
   local out, n, clamped = {}, 0, false
@@ -212,18 +217,19 @@ local function scan_string(inp, cap)
     local unit, done, ok = scan_unit(inp)
     if not ok then return nil, false, false end
     if done then break end
-    if clamped or (cap >= 0 and n + #unit > cap) then
+    local u = unit :: string -- ok and not done: scan_unit returned a unit
+    if clamped or (cap >= 0 and n + #u > cap) then
       clamped = true
     else
-      out[#out + 1] = unit
-      n = n + #unit
+      out[#out + 1] = u
+      n = n + #u
     end
   end
   return table.concat(out), clamped, true
 end
 
 -- ONE JSON string into UTF-16 code units, clamped at cap units (§16.2)
-local function scan_wstring(inp, cap)
+local function scan_wstring(inp: Input, cap: number): ({ number }?, boolean, boolean)
   if peek(inp) ~= '"' then inp.bad = true; return nil, false, false end
   inp.p = inp.p + 1
   local out, n, clamped = {}, 0, false
@@ -231,7 +237,7 @@ local function scan_wstring(inp, cap)
     local unit, done, ok = scan_unit(inp)
     if not ok then return nil, false, false end
     if done then break end
-    local code = utf8_decode(unit)
+    local code = utf8_decode(unit :: string) -- ok and not done: a unit
     local units
     if code < 0x10000 then
       units = { code }
@@ -250,10 +256,10 @@ local function scan_wstring(inp, cap)
 end
 
 -- ONE RFC 8259 number; the token kept for conversion
-local function scan_number(inp)
+local function scan_number(inp: Input): string?
   space(inp)
   local start = inp.p
-  local function digit()
+  local function digit(): boolean
     local b = inp.t:byte(inp.p)
     return b ~= nil and b >= 48 and b <= 57
   end
@@ -285,7 +291,7 @@ local function scan_number(inp)
   return inp.t:sub(start, inp.p - 1)
 end
 
-local function scan_label(inp)
+local function scan_label(inp: Input): number?
   space(inp)
   local c = inp.t:byte(inp.p)
   if c == nil or c < 49 or c > 57 then inp.bad = true; return nil end
@@ -305,11 +311,11 @@ local function scan_label(inp)
   return v
 end
 
-local skip_value
+local skip_value: (Input, number, any) -> boolean
 
 -- a skipped OBJECT may still be a pointer's: `&node` opening it takes its
 -- label with no node, so a later reference reads null (§16.7)
-local function skip_container(inp, close, depth, graph)
+local function skip_container(inp: Input, close: string, depth: number, graph: any): boolean
   if depth > MAX_DEPTH then inp.bad = true; return false end
   inp.p = inp.p + 1
   local first = true
@@ -319,8 +325,9 @@ local function skip_container(inp, close, depth, graph)
     if c == nil then inp.bad = true; return false end
     local labelled = false
     if close == '}' then
-      local key, _, ok = scan_string(inp, MAX_KEY)
+      local scanned, _, ok = scan_string(inp, MAX_KEY)
       if not ok then return false end
+      local key = scanned :: string -- an ok scan returns its string
       if peek(inp) ~= ':' then inp.bad = true; return false end
       inp.p = inp.p + 1
       if key ~= "" and key:sub(1, 1) == "&" and graph ~= nil then
@@ -353,7 +360,7 @@ local function skip_container(inp, close, depth, graph)
   end
 end
 
-skip_value = function(inp, depth, graph)
+skip_value = function(inp: Input, depth: number, graph: any): boolean
   local c = peek(inp)
   if c == '{' then return skip_container(inp, '}', depth, graph) end
   if c == '[' then return skip_container(inp, ']', depth, graph) end
@@ -370,15 +377,15 @@ end
 -- storage helpers
 ----------------------------------------------------------------------------
 
-local function fresh(T, desc)
+local function fresh(T: any, desc: any): any
   if desc == nil then return {} end
   if desc.new ~= nil then return desc.new() end
-  local ctor = T["New" .. desc.name]
+  local ctor: (() -> any)? = T["New" .. desc.name]
   if ctor == nil then return {} end
   return ctor()
 end
 
-local function zero_elem(T, e)
+local function zero_elem(T: any, e: any): any
   local s = e.shape
   if s == "bool" then return false end
   if s == "int" then
@@ -400,7 +407,7 @@ local function zero_elem(T, e)
   return nil
 end
 
-local function shape_of(d)
+local function shape_of(d: any): string
   local s = d.shape
   if s == "bool" then return 'b' end
   if s == "string" or s == "wstring" or s == "bytes" then return 's' end
@@ -416,7 +423,7 @@ local function shape_of(d)
 end
 
 -- the JSON shape of the value at the cursor, without consuming it (§16.2)
-local function value_shape(inp)
+local function value_shape(inp: Input): string?
   local c = peek(inp)
   if c == '{' then return 'o' end
   if c == '[' then return 'a' end
@@ -427,7 +434,7 @@ local function value_shape(inp)
   return 'n'
 end
 
-local function find_key(desc, key)
+local function find_key(desc: any, key: string): any
   for _, fd in ipairs(desc.fields) do
     if fd.key == key then return fd end
   end
@@ -566,8 +573,8 @@ local function place_integer(fd: any, token: string, integral: boolean, report: 
     if typeof(a) == "integer" and typeof(b) == "integer" then
       if integer.lt(a, b) then return -1 elseif integer.gt(a, b) then return 1 else return 0 end
     end
-    local x = typeof(a) == "integer" and integer.tonumber(a) or a
-    local y = typeof(b) == "integer" and integer.tonumber(b) or b
+    local x: number = if typeof(a) == "integer" then integer.tonumber(a) else a
+    local y: number = if typeof(b) == "integer" then integer.tonumber(b) else b
     if x < y then return -1 elseif x > y then return 1 else return 0 end
   end
   if fd.lo ~= nil and fd.hi ~= nil then
@@ -617,7 +624,7 @@ end
 
 -- a × m + add, for m and add at most 65536
 local function bn_muladd(a: { number }, m: number, add: number): { number }
-  local out = table.create(#a + 2)
+  local out = table.create(#a + 2) :: { number }
   local carry = add
   for i = 1, #a do
     local x = a[i] * m + carry
@@ -634,7 +641,7 @@ end
 
 -- a ÷ d and the remainder, for d at most 65536
 local function bn_divmod(a: { number }, d: number): ({ number }, number)
-  local out = table.create(#a)
+  local out = table.create(#a) :: { number }
   local rem = 0
   for i = #a, 1, -1 do
     local x = rem * BN_BASE + a[i]
@@ -826,7 +833,7 @@ local function place_wide(fd: any, token: string, report: any): any
 end
 
 -- one map key: the token is the whole string and must be a JSON number
-local function map_int_key(fd, key)
+local function map_int_key(fd: any, key: string): (any, string?)
   local probe = new_in(key)
   local token = scan_number(probe)
   if token == nil or probe.p ~= #key + 1 then return false, "malformed" end
@@ -842,10 +849,10 @@ end
 -- the read walk
 ----------------------------------------------------------------------------
 
-local read_value
-local parse_timestamp
+local read_value: (any, any, Input, any, any, number, any, any, boolean) -> boolean
+local parse_timestamp: (text: string) -> number?
 
-local function read_keys(T, desc, inp, v, depth, first_key, graph, report)
+local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, first_key: string?, graph: any, report: any): boolean
   local seen = {}
   while true do
     local key
@@ -906,14 +913,14 @@ local function read_keys(T, desc, inp, v, depth, first_key, graph, report)
   end
 end
 
-local function read_table(T, desc, inp, v, depth, graph, report)
+local function read_table(T: any, desc: any, inp: Input, v: any, depth: number, graph: any, report: any): boolean
   if depth > MAX_DEPTH then inp.bad = true; return false end
   if peek(inp) ~= '{' then inp.bad = true; return false end
   inp.p = inp.p + 1
   return read_keys(T, desc, inp, v, depth, nil, graph, report)
 end
 
-local function read_pointer(T, d, inp, holder, key, depth, graph, report)
+local function read_pointer(T: any, d: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any): boolean
   if depth + 1 > MAX_DEPTH then inp.bad = true; return false end
   if peek(inp) ~= '{' then inp.bad = true; return false end
   inp.p = inp.p + 1
@@ -964,7 +971,7 @@ local function read_pointer(T, d, inp, holder, key, depth, graph, report)
   return true
 end
 
-local function read_base64(inp, bound, report)
+local function read_base64(inp: Input, bound: number, report: any): (string | false)?
   if peek(inp) ~= '"' then inp.bad = true; return nil end
   inp.p = inp.p + 1
   local out = {}
@@ -1002,7 +1009,7 @@ local function read_base64(inp, bound, report)
   return table.concat(out)
 end
 
-local function read_array(T, fd, inp, holder, key, depth, graph, report)
+local function read_array(T: any, fd: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any): boolean
   if peek(inp) ~= '[' then inp.bad = true; return false end
   inp.p = inp.p + 1
   local out = {}
@@ -1051,7 +1058,7 @@ local function read_array(T, fd, inp, holder, key, depth, graph, report)
   return true
 end
 
-local function read_map(T, fd, inp, holder, key, depth, graph, report)
+local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any): boolean
   if peek(inp) ~= '{' then inp.bad = true; return false end
   inp.p = inp.p + 1
   local out, seen = {}, {}
@@ -1115,7 +1122,7 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report)
     else
       if seen[kval] then report.duplicate = report.duplicate + 1 end
       seen[kval] = true
-      local tmp = {}
+      local tmp: { v: any } = { v = nil }
       if not read_value(T, fd.value_field, inp, tmp, "v", depth + 1, graph, report, true) then
         return false
       end
@@ -1136,7 +1143,7 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report)
   return true
 end
 
-local function read_keyed(T, fd, inp, holder, key, depth, graph, report)
+local function read_keyed(T: any, fd: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any): boolean
   if peek(inp) ~= '{' then inp.bad = true; return false end
   inp.p = inp.p + 1
   local out = {}
@@ -1185,7 +1192,7 @@ local function read_keyed(T, fd, inp, holder, key, depth, graph, report)
   return true
 end
 
-local function read_union(T, u, inp, depth, graph, report)
+local function read_union(T: any, u: any, inp: Input, depth: number, graph: any, report: any): any
   if peek(inp) ~= '{' then inp.bad = true; return nil end
   inp.p = inp.p + 1
   if peek(inp) == '}' then inp.p = inp.p + 1; return { tag = 0 } end
@@ -1195,7 +1202,7 @@ local function read_union(T, u, inp, depth, graph, report)
   local name = inp.t:sub(start + 1, inp.p - 2)
   if peek(inp) ~= ':' then inp.bad = true; return nil end
   inp.p = inp.p + 1
-  local tag, arm = 0, nil
+  local tag: number, arm: any = 0, nil
   for i, a in ipairs(u.arms) do if a.name == name then tag, arm = i, a; break end end
   local out = { tag = 0 }
   if tag == 0 then
@@ -1234,7 +1241,7 @@ local function read_union(T, u, inp, depth, graph, report)
   return nil
 end
 
-read_value = function(T, d, inp, holder, key, depth, graph, report, elem)
+read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any, elem: boolean): boolean
   local s = d.shape
   if s == "pointer" then
     return read_pointer(T, d, inp, holder, key, depth, graph, report)
@@ -1383,7 +1390,7 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem)
     if d.timestamp then
       local text, _, ok = scan_string(inp, -1)
       if not ok then return false end
-      local ns = parse_timestamp(text)
+      local ns = parse_timestamp(text :: string) -- an ok scan returns its string
       if ns == nil then
         report.malformed = true
         inp.bad = true
@@ -1408,19 +1415,21 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem)
   return false
 end
 
-parse_timestamp = function(text)
-  local y, m, d, hh, mm, ss, rest = text:match(
+parse_timestamp = function(text: string): number?
+  local ys, ms, ds, hs, mins, secs_text, rest_text = text:match(
     "^(%d%d%d%d)%-(%d%d)%-(%d%d)[Tt](%d%d):(%d%d):(%d%d)(.*)$")
-  if y == nil then return nil end
-  y, m, d, hh, mm, ss = tonumber(y), tonumber(m), tonumber(d),
-    tonumber(hh), tonumber(mm), tonumber(ss)
+  if ys == nil then return nil end
+  -- every capture matched digits, so each converts (the pattern above)
+  local y, m, d = tonumber(ys) :: number, tonumber(ms) :: number, tonumber(ds) :: number
+  local hh, mm, ss = tonumber(hs) :: number, tonumber(mins) :: number, tonumber(secs_text) :: number
+  local rest = rest_text :: string
   local frac, tail = 0, rest
   if rest:sub(1, 1) == "." then
     local digits = rest:match("^%.(%d+)")
     if digits == nil then return nil end
     tail = rest:sub(#digits + 2)
     digits = (digits .. "000000000"):sub(1, 9)
-    frac = tonumber(digits)
+    frac = tonumber(digits) :: number
   end
   local offset = 0
   if tail == "Z" or tail == "z" then
@@ -1428,7 +1437,7 @@ parse_timestamp = function(text)
   else
     local sign, oh, om = tail:match("^([+-])(%d%d):(%d%d)$")
     if sign == nil then return nil end
-    offset = (tonumber(oh) * 60 + tonumber(om)) * 60
+    offset = ((tonumber(oh) :: number) * 60 + (tonumber(om) :: number)) * 60
     if sign == "-" then offset = -offset end
   end
   -- days_from_civil (Hinnant), the inverse of civil_from_days below
@@ -1443,7 +1452,7 @@ parse_timestamp = function(text)
 end
 
 -- ONE TEXT: the root's object and nothing after it (§16.1)
-local function core_from(T, name, text, report)
+local function core_from(T: any, name: string, text: string, report: any): any
   local desc = T.Tables[name]
   if desc == nil then report.malformed = true; return nil end
   local inp = new_in(text)
@@ -1463,14 +1472,14 @@ end
 -- the write walk (§16.1, §16.3, §16.7)
 ----------------------------------------------------------------------------
 
-local function W() return { parts = {} } end
-local function raw(w, s) w.parts[#w.parts + 1] = s end
-local function put(w, c) w.parts[#w.parts + 1] = c end
-local function line(w, depth)
+local function W(): any return { parts = {} } end
+local function raw(w: any, s: string) w.parts[#w.parts + 1] = s end
+local function put(w: any, c: string) w.parts[#w.parts + 1] = c end
+local function line(w: any, depth: number)
   w.parts[#w.parts + 1] = "\n" .. string.rep("  ", depth)
 end
 
-local function write_string(w, s)
+local function write_string(w: any, s: string)
   local hex = "0123456789abcdef"
   put(w, '"')
   local i = 1
@@ -1498,7 +1507,7 @@ local function write_string(w, s)
   put(w, '"')
 end
 
-local function write_wstring(w, units)
+local function write_wstring(w: any, units: { number })
   local hex = "0123456789abcdef"
   put(w, '"')
   local i = 1
@@ -1529,7 +1538,7 @@ local function write_wstring(w, units)
   put(w, '"')
 end
 
-local function write_base64(w, data)
+local function write_base64(w: any, data: string)
   put(w, '"')
   local i = 1
   while #data - i + 1 >= 3 do
@@ -1604,7 +1613,10 @@ local function int_text(fd: any, v: any): string
   end
   if fd.signed then return string.format("%d", v) end
   if v >= 0 then return string.format("%d", v) end
-  return string.format("%u", integer.create(v))
+  -- luau-analyze 0.741 types string.format's %u argument as number, while the
+  -- runtime formats an integer's unsigned 64 bits (docs/PORT-LUAU.md, THE TYPE
+  -- MAPPING): the integer crosses the builtin's signature as any
+  return string.format("%u", integer.create(v) :: any)
 end
 
 -- a 128-bit value shifted right by sh bits, logically
@@ -1649,7 +1661,7 @@ local function fixed_text(fd: any, x: any): string
   return text .. (digits:gsub("0+$", ""))
 end
 
-local function civil_from_days(z)
+local function civil_from_days(z: number): (number, number, number)
   z = z + 719468
   local era = (z >= 0 and z or z - 146096) // 146097
   local doe = z - era * 146097
@@ -1663,7 +1675,7 @@ local function civil_from_days(z)
   return y, m, d
 end
 
-local function write_timestamp(w, ns)
+local function write_timestamp(w: any, ns: number)
   local day = 86400000000000
   local days = ns // day
   local rem = ns - days * day
@@ -1679,11 +1691,11 @@ local function write_timestamp(w, ns)
   raw(w, 'Z"')
 end
 
-local function format_g(v, prec)
+local function format_g(v: number, prec: number): string
   return string.format("%." .. prec .. "g", v)
 end
 
-local function float_text(v, single)
+local function float_text(v: number, single: boolean): string?
   if v ~= v or v == math.huge or v == -math.huge then return nil end
   -- the sabotage the negative control makes: a float32 at another precision
   -- is spelled in scientific form at exactly that many significant digits
@@ -1709,7 +1721,7 @@ end
 
 -- a map's entries in ascending key order, bytewise for strings, the key's own
 -- signedness for integers (§2.8)
-local function bytes_less(a, b)
+local function bytes_less(a: string, b: string): boolean
   local n = math.min(#a, #b)
   local i = 1
   while i <= n do
@@ -1726,14 +1738,14 @@ local function bytes_less(a, b)
   return #a < #b
 end
 
-local function map_entries(cache, fd, x)
+local function map_entries(cache: any, fd: any, x: any): { any }
   if x == nil then return {} end
   local got = cache[x]
   if got ~= nil then return got end
   local kf = fd.key_field
   local keys = {}
   for key in pairs(x) do keys[#keys + 1] = key end
-  table.sort(keys, function(a, b)
+  table.sort(keys, function(a: any, b: any): boolean
     if kf.shape == "string" then return bytes_less(a, b) end
     if kf.signed then return a < b end
     return ult(a, b)
@@ -1744,7 +1756,7 @@ local function map_entries(cache, fd, x)
   return got
 end
 
-local function count_of(fd, v)
+local function count_of(fd: any, v: any): number
   local s = fd.shape
   if s == "bytes" then return #v end
   if fd.list then return #v end
@@ -1754,8 +1766,10 @@ end
 
 -- THE NUMBERING PASS (§16.7): how many slots name each node, and whether the
 -- graph has a cycle, which the text refuses as the wire does (§3.1).
-local edge_value, edge_union, edges
-edge_value = function(T, fd, val, holder, name, out, cache)
+local edge_value: (any, any, any, any, any, { any }, any) -> ()
+local edge_union: (any, any, any, { any }, any) -> ()
+local edges: (any, any, any, { any }, any) -> { any }
+edge_value = function(T: any, fd: any, val: any, holder: any, name: any, out: { any }, cache: any)
   local s = fd.shape
   if s == "string_blob" or s == "bytes_blob" then
     -- a blob is a node too (§3.1): counted by its box, never descended
@@ -1782,7 +1796,7 @@ edge_value = function(T, fd, val, holder, name, out, cache)
   end
 end
 
-edge_union = function(T, u, val, out, cache)
+edge_union = function(T: any, u: any, val: any, out: { any }, cache: any)
   local tag = val and val.tag or 0
   if tag == 0 or u == nil then return end
   local arm = u.arms[tag]
@@ -1790,7 +1804,7 @@ edge_union = function(T, u, val, out, cache)
   edge_value(T, arm.field, val[arm.name], val, arm.name, out, cache)
 end
 
-edges = function(T, desc, v, out, cache)
+edges = function(T: any, desc: any, v: any, out: { any }, cache: any): { any }
   for _, fd in ipairs(desc.fields) do
     if not (fd.optional and not v[fd.name .. "_present"]) then
       edge_value(T, fd, v[fd.name], v, fd.name, out, cache)
@@ -1799,8 +1813,8 @@ edges = function(T, desc, v, out, cache)
   return out
 end
 
-local function count_nodes(T, desc, root)
-  local g = { count = {}, labels = {}, next = 0 }
+local function count_nodes(T: any, desc: any, root: any): any
+  local g: any = { count = {}, labels = {}, next = 0 }
   local open = { [root] = true }
   local cache = {}
   local stack = { { v = root, edges = edges(T, desc, root, {}, cache), i = 0 } }
@@ -1826,9 +1840,13 @@ local function count_nodes(T, desc, root)
   return g
 end
 
-local write_value, write_table, write_pointer, write_field, write_fields
+local write_value: (any, any, any, number, any, any, boolean) -> boolean
+local write_table: (any, any, any, number, any, any) -> boolean
+local write_pointer: (T: any, target: string, node: any, depth: number, g: any, w: any) -> boolean
+local write_field: (any, any, any, number, any, any) -> boolean
+local write_fields: (any, any, any, number, any, any, boolean) -> (boolean, boolean)
 
-write_fields = function(T, desc, v, depth, g, w, any)
+write_fields = function(T: any, desc: any, v: any, depth: number, g: any, w: any, any: boolean): (boolean, boolean)
   for _, fd in ipairs(desc.fields) do
     if not (fd.optional and not v[fd.name .. "_present"]) then
       if not any then put(w, '{') else put(w, ',') end
@@ -1842,7 +1860,7 @@ write_fields = function(T, desc, v, depth, g, w, any)
   return true, any
 end
 
-write_table = function(T, desc, v, depth, g, w)
+write_table = function(T: any, desc: any, v: any, depth: number, g: any, w: any): boolean
   if depth > MAX_DEPTH then return false end
   local ok, any = write_fields(T, desc, v, depth, g, w, false)
   if not ok then return false end
@@ -1852,7 +1870,7 @@ write_table = function(T, desc, v, depth, g, w)
   return true
 end
 
-write_pointer = function(T, target, node, depth, g, w)
+write_pointer = function(T: any, target: string, node: any, depth: number, g: any, w: any): boolean
   if node == nil or node == false then raw(w, "null"); return true end
   local count = g.count[node] or 0
   local desc = T.Tables[target]
@@ -1882,7 +1900,7 @@ write_pointer = function(T, target, node, depth, g, w)
   return true
 end
 
-local function write_union(T, u, val, depth, g, w)
+local function write_union(T: any, u: any, val: any, depth: number, g: any, w: any): boolean
   local tag = val and val.tag or 0
   if tag == 0 then raw(w, "{}"); return true end
   local arm = u and u.arms[tag]
@@ -1901,7 +1919,7 @@ local function write_union(T, u, val, depth, g, w)
   return true
 end
 
-local function write_array(T, fd, val, depth, g, w)
+local function write_array(T: any, fd: any, val: any, depth: number, g: any, w: any): boolean
   local n = count_of(fd, val)
   if n == 0 then raw(w, "[]"); return true end
   put(w, '[')
@@ -1917,7 +1935,7 @@ local function write_array(T, fd, val, depth, g, w)
   return true
 end
 
-local function write_keyed(T, fd, val, depth, g, w)
+local function write_keyed(T: any, fd: any, val: any, depth: number, g: any, w: any): boolean
   local n = fd.bound or 0
   if n == 0 then raw(w, "{}"); return true end
   put(w, '{')
@@ -1937,7 +1955,7 @@ local function write_keyed(T, fd, val, depth, g, w)
   return true
 end
 
-local function write_map(T, fd, val, depth, g, w)
+local function write_map(T: any, fd: any, val: any, depth: number, g: any, w: any): boolean
   local keys = map_entries({}, fd, val)
   if #keys == 0 then raw(w, "{}"); return true end
   local kf = fd.key_field
@@ -1958,10 +1976,10 @@ local function write_map(T, fd, val, depth, g, w)
   return true
 end
 
-write_value = function(T, d, val, depth, g, w, elem)
+write_value = function(T: any, d: any, val: any, depth: number, g: any, w: any, elem: boolean): boolean
   local s = d.shape
   if s == "pointer" then
-    return write_pointer(T, d.target, val, depth, g, w)
+    return write_pointer(T, d.target :: string, val, depth, g, w)
   elseif s == "string" then
     write_string(w, val or "")
     return true
@@ -2006,7 +2024,7 @@ write_value = function(T, d, val, depth, g, w, elem)
     local seen = 0
     put(w, '[')
     local first = true
-    local names = d.variants or {}
+    local names: { string } = d.variants or {}
     for i, name in ipairs(names) do
       if (band(bits, lshift(1, i - 1))) ~= 0 then
         if not first then put(w, ',') end
@@ -2036,7 +2054,7 @@ write_value = function(T, d, val, depth, g, w, elem)
   return false
 end
 
-write_field = function(T, fd, v, depth, g, w)
+write_field = function(T: any, fd: any, v: any, depth: number, g: any, w: any): boolean
   local ok
   if fd.shape == "pointer" then
     ok = write_pointer(T, fd.target, v[fd.name], depth, g, w)
@@ -2047,7 +2065,7 @@ write_field = function(T, fd, v, depth, g, w)
 end
 
 -- ONE INSTANCE as ONE text (§16.1): a trailing newline belongs to the form.
-local function core_to(T, name, v)
+local function core_to(T: any, name: string, v: any): string?
   local desc = T.Tables[name]
   if desc == nil or v == nil then return nil end
   local g = count_nodes(T, desc, v)
@@ -2069,7 +2087,9 @@ end
 local St = require("./schema_tables")
 local MAP_KEY_ID: integer = 0x3dc94a19365b10eci
 
-local adapt_field, adapt_table, adapt_union
+local adapt_field: (any, any) -> any
+local adapt_table: (any) -> any
+local adapt_union: (any) -> any
 local TCache: any = {}
 local UCache: any = {}
 
@@ -2249,7 +2269,8 @@ local function enum_number(fd: any, name: string): number
   return 0
 end
 
-local to_lua, from_lua
+local to_lua: (any, any, any, any) -> any
+local from_lua: (any, any, any, any) -> any
 
 local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
   local s = fd.shape
@@ -2503,7 +2524,7 @@ from_lua = function(desc: any, v: any, A: any, memo: any): any
   return out
 end
 
-local function adapted(root: string): any
+local function adapted(root: string): (any, any, any)
   local desc = St.lookup(root)
   local A = { Tables = {}, Unions = {} }
   local t = adapt_table(desc)
@@ -2521,7 +2542,7 @@ function J.FromJson(root: string, text: buffer, report: any): any
   return from_lua(adesc, lua, A, memo)
 end
 
-function J.ToJson(root: string, v: any): buffer
+function J.ToJson(root: string, v: any): buffer?
   local desc, A, adesc = adapted(root)
   local memo = { l2u = {}, u2l = {}, len = {} }
   local lua = to_lua(adesc, v, A, memo)
