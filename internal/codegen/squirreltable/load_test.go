@@ -322,7 +322,10 @@ func TestSquirrelTableLoadNegativeControl(t *testing.T) {
 		writeFile(t, filepath.Join(out, name), data)
 	}
 
-	// a form-1 root body carrying field `a` twice: last wins, duplicate once
+	// a form-1 root body carrying field `a` twice: legal input whose last
+	// occurrence wins SILENTLY — duplicate is never raised for a field id on
+	// the wire (docs/SPEC-TABLES.md §4: "a wire read leaves it zero for every
+	// field id")
 	cfg := unit.Tables["Cfg"]
 	var a *ir.Field
 	for _, f := range cfg.Fields {
@@ -343,26 +346,41 @@ func TestSquirrelTableLoadNegativeControl(t *testing.T) {
 		wire = append(wire, byte(id>>(8*i)))
 	}
 	wire = append(wire, 1, 0, 0, 0, 0, 0, 0, 0)
+	// and a body carrying an id Cfg cannot name: skipped by its kind and
+	// counted unknown (§4), the counter the control removes
+	const unknownId = uint64(0x1122334455667788)
+	unk := []byte{1, 1, kind, 1, 0, 0, 0, 0}
+	for i := 0; i < 8; i++ {
+		unk = append(unk, byte(unknownId>>(8*i)))
+	}
+	unk = append(unk, 1, 0, 0, 0, 0, 0, 0, 0)
 
 	mod := squirreltable.ModuleName(unit)
 	var p strings.Builder
 	p.WriteString(loadPrelude)
 	fmt.Fprintf(&p, "run(%q, %q, %q, %q);\n", "tblv1", mod, "Cfg", "dup")
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
-	inputs := map[string][]byte{"dup": wire}
-	want := "0,0,0,0,1,false,read"
+	inputs := map[string][]byte{"dup": wire, "unk": unk}
+	if got := reportLine(t, sqrun.Run(t, dir, "main.nut", inputs)); got != "0,0,0,0,0,false,read" {
+		t.Fatalf("a repeated field id reports %q, want %q", got, "0,0,0,0,0,false,read")
+	}
+	p.Reset()
+	p.WriteString(loadPrelude)
+	fmt.Fprintf(&p, "run(%q, %q, %q, %q);\n", "tblv1", mod, "Cfg", "unk")
+	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
+	want := "1,0,0,0,0,false,read"
 
 	got := reportLine(t, sqrun.Run(t, dir, "main.nut", inputs))
 	if got != want {
 		t.Fatalf("the load reports %q, want %q", got, want)
 	}
 
-	const anchor = "report.duplicate = report.duplicate + 1;"
+	const anchor = "    if (!(id in c.byId)) {\n      report.unknown = report.unknown + 1;\n"
 	runtime := squirreltable.Runtime()["schema_table_load.nut"]
 	if n := strings.Count(string(runtime), anchor); n != 1 {
 		t.Fatalf("the negative control's anchor appears %d times in the emitted runtime, want exactly once", n)
 	}
-	patched := strings.Replace(string(runtime), anchor, "report.duplicate = report.duplicate;", 1)
+	patched := strings.Replace(string(runtime), anchor, "    if (!(id in c.byId)) {\n      report.unknown = report.unknown;\n", 1)
 	writeFile(t, filepath.Join(out, "schema_table_load.nut"), []byte(patched))
 
 	got = reportLine(t, sqrun.Run(t, dir, "main.nut", inputs))
@@ -370,7 +388,7 @@ func TestSquirrelTableLoadNegativeControl(t *testing.T) {
 		t.Fatalf("the patched runtime still reports %q; the reports comparison did not go red", got)
 	}
 	if got != "0,0,0,0,0,false,read" {
-		t.Fatalf("the patched runtime reports %q, want the duplicate counter gone", got)
+		t.Fatalf("the patched runtime reports %q, want the unknown counter gone", got)
 	}
 	t.Logf("unpatched %q, patched %q: the reports comparison goes red", want, got)
 }

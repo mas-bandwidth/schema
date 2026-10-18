@@ -340,11 +340,18 @@ func runWireFuzzDifferential(t *testing.T, edit func(name string, src []byte) []
 	var generated, refused []string
 	for _, mu := range manifestUnits(t, manifest) {
 		out := filepath.Join(dir, mu.key)
-		gen := exec.Command(schema, append([]string{"generate", "--lang", "squirrel", "--out", out}, mu.paths...)...)
+		ctx, cancel := slowtest.ProbeContext(t)
+		gen := exec.CommandContext(ctx, schema, append([]string{"generate", "--lang", "squirrel", "--out", out}, mu.paths...)...)
 		gen.Dir = repo
-		if _, err := gen.CombinedOutput(); err != nil {
-			// a unit the target refuses by name is no seed (build/conformance-
-			// squirrel/REFUSED.txt)
+		msg, err := gen.CombinedOutput()
+		cancel()
+		if err != nil {
+			// a unit the target REFUSES BY NAME is no seed (build/conformance-
+			// squirrel/REFUSED.txt): every refusal is a `schema:` line naming
+			// the target. Anything else — a crash, a deadline — is a red.
+			if !strings.Contains(string(msg), "schema: ") || !strings.Contains(string(msg), "squirrel") || strings.Contains(string(msg), "panic") {
+				t.Fatalf("generating unit %s failed without a refusal by name: %v\n%s", mu.key, err, msg)
+			}
 			_ = os.RemoveAll(out)
 			refused = append(refused, mu.key)
 			continue
@@ -393,8 +400,14 @@ func runWireFuzzDifferential(t *testing.T, edit func(name string, src []byte) []
 	t.Logf("%d instance seeds over %d roots", len(seeds), len(roster))
 
 	mutants := 0
+	carried := make([]int, len(roster)) // how many arms carry each root
 	for _, builder := range []bool{false, true} {
 		leg, known := startFuzzLeg(t, dir, builder, roster)
+		for i, k := range known {
+			if k {
+				carried[i]++
+			}
+		}
 		for si, s := range seeds {
 			if !known[s.root] {
 				continue
@@ -441,6 +454,16 @@ func runWireFuzzDifferential(t *testing.T, edit func(name string, src []byte) []
 		if err := leg.cmd.Wait(); err != nil || leg.stderr.Len() > 0 {
 			return mutants, fmt.Errorf("the driver (builder arm %t) did not leave cleanly at EOF: %v\n%s", builder, err, leg.stderr.String())
 		}
+	}
+	// NOTHING PASSES BY BEING SKIPPED: every root of a generated unit is
+	// carried by exactly one arm, and every seed yielded all its mutants
+	for i, n := range carried {
+		if n != 1 {
+			return mutants, fmt.Errorf("the driver carried %s.%s in %d arms, want exactly one", roster[i].unit, roster[i].root, n)
+		}
+	}
+	if want := len(seeds) * fuzzMutantsPerInstance; mutants != want {
+		return mutants, fmt.Errorf("compared %d mutants, want %d (%d seeds x %d)", mutants, want, len(seeds), fuzzMutantsPerInstance)
 	}
 	return mutants, nil
 }

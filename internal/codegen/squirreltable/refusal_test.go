@@ -231,7 +231,9 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		}
 		return b
 	}
-	// the field id twice: last wins, counted duplicate, and the field is id
+	// the field id twice: legal input, the last wins silently, and duplicate
+	// stays zero (docs/SPEC-TABLES.md §4: a wire read never raises it for a
+	// field id)
 	dup := []byte{1, 1, kind, 1, 0, 0, 0, 1, kind, 2, 0, 0, 0, 0}
 	inputs["dup"] = append(dup, idTable(wid)...)
 	// a known field, then an id Feed cannot name: skipped by its kind, counted
@@ -283,9 +285,10 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 	}
 
 	cases = append(cases,
-		// duplicate and unknown alone READ (§6.5, §4: last wins; unknown is
-		// evolution), and the report still counts each with its field
-		refusalCase{key: "duplicate", unit: "streamdemo", root: "Feed", input: "dup", form: -1, want: "ok", field: "-", side: "duplicate:id"},
+		// a repeated field and an unknown one READ (§6.5, §4: last wins;
+		// unknown is evolution); unknown is counted with its field, and a
+		// repeated field id counts no duplicate at all (§4)
+		refusalCase{key: "duplicate", unit: "streamdemo", root: "Feed", input: "dup", form: -1, want: "ok", field: "-", side: "duplicate:0:-"},
 		refusalCase{key: "unknown", unit: "streamdemo", root: "Feed", input: "unknown", form: -1, want: "ok", field: "-", side: fmt.Sprintf("unknown:#%016x", unknownId)},
 		refusalCase{key: "clean", unit: "streamdemo", root: "Feed", input: "clean_plain", form: -1, want: "ok", field: "-"},
 		refusalCase{key: "integrity_ok", unit: "streamdemo", root: "Feed", input: "integrity_ok", form: -1, integrity: true, want: "ok", field: "-"},
@@ -359,13 +362,18 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 			t.Errorf("%s: %s names no field", c.key, reason)
 		}
 		if c.side != "" {
+			// side is counter:field (counted once) or counter:count:field
 			counter, f, _ := strings.Cut(c.side, ":")
+			wantSide := "1:" + f
+			if strings.Contains(f, ":") {
+				wantSide = f
+			}
 			got := parts[3]
 			if counter == "duplicate" {
 				got = parts[4]
 			}
-			if got != "1:"+f {
-				t.Errorf("%s: the report counts %s as %q, want %q", c.key, counter, got, "1:"+f)
+			if got != wantSide {
+				t.Errorf("%s: the report counts %s as %q, want %q", c.key, counter, got, wantSide)
 			}
 		}
 	}

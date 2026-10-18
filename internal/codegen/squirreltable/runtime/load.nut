@@ -331,7 +331,8 @@ local tableDesc = function(T, name) { return T.Descriptors[name]; };
 // ONE BODY (docs/SPEC-TABLES.md §3, §4): fields by id in any order, a field
 // this table cannot name skipped by its kind and counted unknown, a kind that
 // widens decoded at its own width and counted widened, any other kind a kind
-// mismatch skipped whole. A repeated id is counted duplicate and last wins.
+// mismatch skipped whole. A repeated id is read again and the last wins,
+// silently: duplicate is never raised for a field id (§4).
 bodyRead = function(c, r, T, table, v, report, st, nested) {
   for (;;) {
     local ref = leb(r);
@@ -552,12 +553,12 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
   }
   if (!fd.list && !fd.counted) {
     // A FIXED [N] ARRAY KEEPS ITS N SLOTS (docs/SPEC-TABLES.md §2.9, §4): the
-    // decoded prefix lands in place, and a slot the body did not reach keeps
-    // the value it held
+    // decoded prefix lands first, and a slot the body did not reach keeps the
+    // value it held. The prefix array is the one kept, because a pointer
+    // element's pending resolution holds it.
     local cur = v[fd.member];
     if (cur != null && cur.len() == fd.bound) {
-      foreach (i, x in out) cur[i] = x;
-      out = cur;
+      for (local i = out.len(); i < cur.len(); i++) out.append(cur[i]);
     }
   }
   v[fd.member] = out;
