@@ -1093,6 +1093,14 @@ type TableFieldInfo struct {
 	// for every other kind — a FLAGS field's variants have no per-variant wire
 	// id (§4), so a nil here beside a non-nil EnumName is what says "flags".
 	VariantId func(value uint64) uint64
+	// EnumDefault is the ordinal an enum read lands when the wire or text names
+	// a variant marked | deprecated (docs/SPEC-TABLES.md §2.15): the FIELD's
+	// declared default, or 0 (None) for an array, list, map or keyed ELEMENT.
+	EnumDefault uint64
+	// EnumDeprecated says whether a value names a deprecated variant (§2.15). A
+	// reader lands EnumDefault; a strict writer refuses the value. nil when the
+	// enum carries no marker.
+	EnumDeprecated func(value uint64) bool
 
 	// an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4, §8): the array has one slot
 	// per variant of KeyTypeName, indexed by the variant's value, and its

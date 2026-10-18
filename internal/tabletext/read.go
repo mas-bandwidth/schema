@@ -1451,6 +1451,17 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 			return false
 		}
 		if v := EnumValue(e, string(name)); v >= 0 {
+			if VariantDeprecated(e, v) {
+				// A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT
+				// (docs/SPEC-TABLES.md §2.15), and an ARRAY or keyed ELEMENT as
+				// the ELEMENT's default (None). It is never counted unknown.
+				if f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsList() || f.IsMap() {
+					cell.U = 0
+				} else {
+					*cell = in.m.fieldDefault(f)
+				}
+				return true
+			}
 			cell.U = uint64(v)
 			return true
 		}

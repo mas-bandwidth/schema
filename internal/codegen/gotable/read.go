@@ -541,7 +541,7 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 	if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 		kind = tkU8
 	}
-	if enumRef(f) != nil {
+	if e := enumRef(f); e != nil {
 		g.pf("%s{\n%s\tvariantRef, ok := %s.Leb(); if !ok { %s }\n", ind, ind, rdr, onBad)
 		g.pf("%s\tif variantRef == 0 { %s = %sNone } else {\n", ind, expr, f.Type.Name)
 		g.pf("%s\t\tid, ok := %s.Resolve(variantRef); if !ok { %s }\n", ind, rdr, onBad)
@@ -549,7 +549,14 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		if g.retain {
 			g.pf("if r.Retain!=nil{r.Report.RetainLost++}")
 		}
-		g.pf(" }\n%s\t}\n%s}\n", ind, ind)
+		g.pf(" }")
+		if enumHasDeprecated(e) {
+			// A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT, and as the
+			// ELEMENT default inside an array, list, map or keyed array; it is
+			// never counted unknown (docs/SPEC-TABLES.md §2.15).
+			g.pf(" else if %s.TableEnumDeprecated() { %s }", expr, deprecatedLand(f, expr))
+		}
+		g.pf("\n%s\t}\n%s}\n", ind, ind)
 		return
 	}
 	if f.Type.Width == 128 && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) {
@@ -609,6 +616,13 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		}
 		g.pf("%s\t%s = %s(v)\n%s}\n", ind, expr, typ, ind)
 	}
+}
+
+// deprecatedLand is the assignment a reader makes when it meets a deprecated
+// variant (docs/SPEC-TABLES.md §2.15): the field's declared default, or None
+// for an element of an array, list, map or keyed array.
+func deprecatedLand(f *ir.Field, expr string) string {
+	return fmt.Sprintf("%s = %s", expr, fieldDefaultExpr(f))
 }
 
 func knownKindWidth(wireKind string) int {
