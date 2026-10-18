@@ -206,6 +206,7 @@ func cookOuter(t *testing.T, v *Outer) []byte {
 }
 
 func TestOptionalVariableClosure(t *testing.T) {
+	t.Parallel()
 	// ABSENT, FRESH: the baseline every absent measure is pinned against
 	var fresh OuterBuilder
 	if !fresh.Init() {
@@ -302,11 +303,29 @@ func TestOptionalVariableClosure(t *testing.T) {
 	if n := OuterCookMeasure(v, &b.Arena); n != absentCook {
 		t.Fatalf("cleared cook measure %d want %d", n, absentCook)
 	}
+	// the cooked writer itself, on the cleared builder value: it opens absent,
+	// and the reference the cleared T still holds is written null (§7)
+	ccooked := aligned(absentCook)
+	if !OuterCookFrom(v, ccooked, TableByteOrderLittle, &b.Arena) {
+		t.Fatal("cleared cook")
+	}
+	var ccook OuterCook
+	if !OuterOpen(&ccook, unsafe.Pointer(&ccooked[0]), int64(len(ccooked))) {
+		t.Fatal("cleared cook open")
+	}
+	if croot := (*Outer)(ccook.Region); croot.InnerPresent || croot.Inner.Text != 0 || croot.Tail != 5 {
+		t.Fatalf("cleared cooked present=%v text=%d tail=%d", croot.InnerPresent, croot.Inner.Text, croot.Tail)
+	}
 	if n := b.PackMeasure(); n != absentPack {
 		t.Fatalf("cleared pack measure %d want %d", n, absentPack)
 	}
 	if !b.Lock() || b.AsConst().InnerPresent || int64(len(b.Region())) != absentPack {
 		t.Fatalf("cleared Lock packed %d want %d", len(b.Region()), absentPack)
+	}
+	// Lock's pack writes the absent T at its defaults, every pointer null,
+	// never the stale arena reference the cleared storage still held
+	if b.AsConst().Inner.Text != 0 {
+		t.Fatalf("the locked cleared value holds a stale reference %d", b.AsConst().Inner.Text)
 	}
 	if !bytes.Equal(saveOuter(t, b.AsConst()), absent) {
 		t.Fatal("the locked cleared value writes a stale node")

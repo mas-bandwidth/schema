@@ -130,8 +130,29 @@ func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
 		source = containerRegionSource(source)
 		source += tableContainerSource + tableMapSource
 	}
-	g.pf("%s", unboundedTextRegion(g.unit, source))
+	source = unboundedTextRegion(g.unit, source)
+	// §2.3: an absent ?T over a variable closure owns no node, so Lock's pack
+	// writes it at its declared defaults, every pointer null, exactly as load
+	// leaves it, never the stale arena reference its storage may still hold;
+	// emitted only where the construct is, so no other unit moves
+	if len(ir.TableOptionalPointerClosures(g.unit)) > 0 {
+		source = tableSourceReplace(source, ";if !tableRegionEdges(p,e.info,func(slot *TableRef,f *TableFieldInfo) bool {if *slot==0{return true};target:=a.At(*slot)", ";tableRegionClearAbsent(p,e.info);if !tableRegionEdges(p,e.info,func(slot *TableRef,f *TableFieldInfo) bool {if *slot==0{return true};target:=a.At(*slot)", 1)
+		source += tableRegionClearAbsentSource
+	}
+	g.pf("%s", source)
 }
+
+// tableRegionClearAbsentSource resets, in a packed node, every absent scalar
+// ?T of a table type to its declared defaults (docs/SPEC-TABLES.md §2.3), and
+// descends into the present nested tables, whose own absent ?U it resets too.
+const tableRegionClearAbsentSource = `func tableRegionClearAbsent(base unsafe.Pointer,info *TableTypeInfo){
+ for i:=range info.Fields {f:=&info.Fields[i];if !tableJsonGuardHolds(base,info,f.Guard){continue};at:=unsafe.Add(base,f.Offset)
+  if f.Optional && !*(*bool)(unsafe.Add(base,f.PresentOffset)) {if !f.IsArray && f.Table!=nil {f.Table().Reset(at)};continue}
+  if f.Kind==13 && f.Table!=nil {count:=int32(1);if f.IsArray {count=tableRegionCount(base,f);if count<0 || count>f.ArrayBound{continue}};for j:=int32(0);j<count;j++ {tableRegionClearAbsent(unsafe.Add(at,uintptr(j)*uintptr(f.ElemSize)),f.Table())}}
+ }
+}
+`
+
 func (g *tableGen) emitRegionMember(st *ir.Struct) {
 	n, typ := st.Name, g.storageName(st.Name)
 	if ir.PointerTargets(g.unit)[n] {
