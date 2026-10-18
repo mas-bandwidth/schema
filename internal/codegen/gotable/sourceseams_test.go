@@ -57,6 +57,7 @@ var seamProbeAllow = map[string]seamAllow{
 	seamContentKey("block.go", `if strings.Contains(g.structs.String(), "serialize.") {`):                             {1, "asks whether the emitted unit uses serialize., to pick imports"},
 	seamContentKey("cook.go", `if strings.Contains(g.structs.String(), "serialize.") {`):                              {1, "asks whether the emitted unit uses serialize., to pick imports"},
 	seamContentKey("gotable.go", `usesSerialize := strings.Contains(g.types.String()+g.body.String(), "serialize.")`): {1, "asks whether the emitted unit uses serialize., to pick imports"},
+	seamContentKey("gotable.go", `si, sj := !strings.Contains(paths[i], "."), !strings.Contains(paths[j], ".")`):      {1, "sorts the emitted unit's import paths for ordering (stdlib first); operates on path strings, never on emitted or runtime source"},
 }
 
 // scanSourceSeams is half (a). The allow-listed non-seam string replacements
@@ -73,7 +74,8 @@ var seamProbeAllow = map[string]seamAllow{
 // A Replace inside a rep closure named by an allow-listed probe is that same
 // seam, not a second one, so only the probe line is listed.
 // The only allow-listed probes are the emitted-text checks that decide whether
-// the emitted unit uses serialize.
+// the emitted unit uses serialize., plus the emitted-import sort in gotable.go
+// that orders import paths (stdlib first) and so touches no source text.
 func scanSourceSeams(t *testing.T) {
 	t.Helper()
 	var bad []string
@@ -178,12 +180,14 @@ func TestGoSourceSeamsAllowListIsByContent(t *testing.T) {
 	const (
 		indent = `s = g.indent + strings.ReplaceAll(s, "\n", "\n"+g.indent)`
 		probe  = `usesSerialize := strings.Contains(g.types.String()+g.body.String(), "serialize.")`
+		sortI  = `si, sj := !strings.Contains(paths[i], "."), !strings.Contains(paths[j], ".")`
 	)
 	listed := []string{
 		"func (g *tableGen) pf(format string, args ...any) {",
 		indent,
 		"",
 		probe,
+		sortI,
 		"}",
 	}
 	if bad := seamAllowFindings("gotable.go", listed); len(bad) != 0 {
@@ -198,7 +202,7 @@ func TestGoSourceSeamsAllowListIsByContent(t *testing.T) {
 	if len(bad) != 1 || !strings.Contains(bad[0], "gotable.go") || !strings.Contains(bad[0], "occurs 2 times") || !strings.Contains(bad[0], "allow-list says 1") {
 		t.Fatalf("an extra matching line should be one finding naming file, text and counts, got:\n%s", strings.Join(bad, "\n"))
 	}
-	bad = seamAllowFindings("gotable.go", []string{indent})
+	bad = seamAllowFindings("gotable.go", []string{indent, sortI})
 	if len(bad) != 1 || !strings.Contains(bad[0], "gotable.go") || !strings.Contains(bad[0], "occurs 0 times") || !strings.Contains(bad[0], "allow-list says 1") {
 		t.Fatalf("a stale allow-list entry should be one finding naming file, text and counts, got:\n%s", strings.Join(bad, "\n"))
 	}
