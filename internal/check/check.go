@@ -4239,18 +4239,9 @@ func (c *checker) checkClaimedNames() {
 					}
 					base := name + ir.GoExportName(f.Name)
 					for _, verb := range ir.MapFieldVerbs {
-						// a field-qualified spelling that coincides with a
-						// reserved bare table-prefixed verb is already claimed
-						// by the table surface, and the two are the same
-						// symbol, so the map surface has nothing new to claim
-						if bareReserved(ir.GoExportName(f.Name) + verb) {
-							continue
-						}
 						add(base+verb, whyMap, d.DeclPos())
 					}
-					if !bareReserved(ir.GoExportName(f.Name) + "FindMut") {
-						add(base+"FindMut", whyMap, d.DeclPos())
-					}
+					add(base+"FindMut", whyMap, d.DeclPos())
 				}
 				// AND AN UNBOUNDED ARRAY claims four names on the table
 				// that declares it: <Table><Field> followed by Add, Each,
@@ -4265,14 +4256,9 @@ func (c *checker) checkClaimedNames() {
 					}
 					base := name + ir.GoExportName(f.Name)
 					for _, verb := range ir.ListFieldVerbs {
-						if bareReserved(ir.GoExportName(f.Name) + verb) {
-							continue
-						}
 						add(base+verb, whyList, d.DeclPos())
 					}
-					if !bareReserved(ir.GoExportName(f.Name) + "At") {
-						add(base+"At", whyList, d.DeclPos())
-					}
+					add(base+"At", whyList, d.DeclPos())
 				}
 				// AND A TEXT LIST claims its element record and its three
 				// accessors (docs/SPEC-TABLES.md §2.13, §11)
@@ -4285,9 +4271,6 @@ func (c *checker) checkClaimedNames() {
 					for _, verb := range ir.TextListVerbs {
 						if verb == "Text" {
 							continue // the element record, claimed as a closure member
-						}
-						if bareReserved(ir.GoExportName(f.Name) + verb) {
-							continue
 						}
 						add(base+verb, whyText, d.DeclPos())
 					}
@@ -4461,12 +4444,7 @@ var tableGeneratedVerbs = []string{
 	// maximum plan capacity for each root table (docs/SPEC-TABLES.md §3.4).
 	// The bound probe is also an exported package-level helper emitted for
 	// each root (docs/SPEC-TABLES.md, “The bound probes”, §4).
-	// These Go helper families use the same suffixes after field-qualified
-	// prefixes for list/map access, text lists and union tags (§2.6, §2.8,
-	// §2.9, §2.13); the bare table-prefixed forms are reserved here too.
 	"FixedResetImage", "FixedHoles", "FixedLineageHoles", "FixedPlanMax", "GenPastBound",
-	"Add", "Erase", "Each", "Insert", "Find", "IndexMeasure", "Index", "IndexFind",
-	"Append", "AppendAbsent", "TextAt", "Type",
 	// THE READING TIER'S OWN SIX (internal/codegen/jstable). A language with no
 	// struct layout cannot land a plan at `offsetof( T, member )`, so it lands
 	// it in a canonical body image and then PROJECTS that image into the
@@ -4511,22 +4489,6 @@ var tableGeneratedVerbs = []string{
 	// <Name>` — and an extension is applicable only where its NAME is in
 	// scope, so the name is real and is claimed like any other.
 	"Table",
-}
-
-// bareReserved reports whether suffix is one of the reserved bare
-// table-prefixed spellings in tableGeneratedVerbs. The checker claims each of
-// those for every closure member's name, so a field-qualified surface (map,
-// list or text list) whose emitted spelling would coincide with one of them is
-// claiming the SAME symbol the table surface already claims — not a second
-// symbol — and has nothing further to add (docs/SPEC-TABLES.md §2.8, §2.9,
-// §2.13, §11).
-func bareReserved(suffix string) bool {
-	for _, v := range tableGeneratedVerbs {
-		if v == suffix {
-			return true
-		}
-	}
-	return false
 }
 
 // dartTableMembers are the TABLE VERBS the Dart backend puts on the VALUE:
