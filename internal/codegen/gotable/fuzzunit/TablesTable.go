@@ -1333,7 +1333,16 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			value.Homing = r.Get8() != 0
+			{
+				b := r.Get8()
+				if b > 1 {
+					r.Report.Malformed = true
+					if r.Report.Reason == "" {
+						r.Report.Reason = "malformed: Homing"
+					}
+				}
+				value.Homing = b != 0
+			}
 		case 0x36c1c83b51f24394: // effect
 			if kind != 15 {
 				r.Report.KindMismatch++
@@ -1799,7 +1808,16 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 				r.Report.Malformed = true
 				return false
 			}
-			value.Homing = r.Get8() != 0
+			{
+				b := r.Get8()
+				if b > 1 {
+					r.Report.Malformed = true
+					if r.Report.Reason == "" {
+						r.Report.Reason = "malformed: Homing"
+					}
+				}
+				value.Homing = b != 0
+			}
 		case 0x36c1c83b51f24394: // effect
 			if kind != 15 {
 				r.Report.KindMismatch++
@@ -4168,7 +4186,16 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			value.HasLoadout = r.Get8() != 0
+			{
+				b := r.Get8()
+				if b > 1 {
+					r.Report.Malformed = true
+					if r.Report.Reason == "" {
+						r.Report.Reason = "malformed: HasLoadout"
+					}
+				}
+				value.HasLoadout = b != 0
+			}
 		case 0x5759ce7586bbb5a3: // loadout
 			if kind != 13 {
 				r.Report.KindMismatch++
@@ -4985,7 +5012,16 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				r.Report.Malformed = true
 				return false
 			}
-			value.HasLoadout = r.Get8() != 0
+			{
+				b := r.Get8()
+				if b > 1 {
+					r.Report.Malformed = true
+					if r.Report.Reason == "" {
+						r.Report.Reason = "malformed: HasLoadout"
+					}
+				}
+				value.HasLoadout = b != 0
+			}
 		case 0x5759ce7586bbb5a3: // loadout
 			if kind != 13 {
 				r.Report.KindMismatch++

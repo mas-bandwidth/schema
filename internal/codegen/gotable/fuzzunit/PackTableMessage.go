@@ -97,7 +97,16 @@ func GunnerSettingsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Gun
 						r.Report.Malformed = true
 						return false
 					}
-					value.Tracking = payload2.Get8() != 0
+					{
+						b := payload2.Get8()
+						if b > 1 {
+							r.Report.Malformed = true
+							if r.Report.Reason == "" {
+								r.Report.Reason = "malformed: Tracking"
+							}
+						}
+						value.Tracking = b != 0
+					}
 				}
 				if widened {
 					r.Report.Widened++
@@ -315,7 +324,16 @@ func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings)
 						r.Report.Malformed = true
 						return false
 					}
-					value.Tracking = payload2.Get8() != 0
+					{
+						b := payload2.Get8()
+						if b > 1 {
+							r.Report.Malformed = true
+							if r.Report.Reason == "" {
+								r.Report.Reason = "malformed: Tracking"
+							}
+						}
+						value.Tracking = b != 0
+					}
 				}
 				if widened {
 					r.Report.Widened++

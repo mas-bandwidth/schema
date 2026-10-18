@@ -743,7 +743,16 @@ func WeaponConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Weapo
 						r.Report.Malformed = true
 						return false
 					}
-					value.Homing = payload12.Get8() != 0
+					{
+						b := payload12.Get8()
+						if b > 1 {
+							r.Report.Malformed = true
+							if r.Report.Reason == "" {
+								r.Report.Reason = "malformed: Homing"
+							}
+						}
+						value.Homing = b != 0
+					}
 				}
 				if widened {
 					r.Report.Widened++
@@ -1184,7 +1193,16 @@ func WeaponConfigLoadMessageBody(r *TableMessageReader, value *WeaponConfig) boo
 						r.Report.Malformed = true
 						return false
 					}
-					value.Homing = payload14.Get8() != 0
+					{
+						b := payload14.Get8()
+						if b > 1 {
+							r.Report.Malformed = true
+							if r.Report.Reason == "" {
+								r.Report.Reason = "malformed: Homing"
+							}
+						}
+						value.Homing = b != 0
+					}
 				}
 				if widened {
 					r.Report.Widened++
@@ -2852,7 +2870,16 @@ func ProfileConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Prof
 						r.Report.Malformed = true
 						return false
 					}
-					value.HasLoadout = payload18.Get8() != 0
+					{
+						b := payload18.Get8()
+						if b > 1 {
+							r.Report.Malformed = true
+							if r.Report.Reason == "" {
+								r.Report.Reason = "malformed: HasLoadout"
+							}
+						}
+						value.HasLoadout = b != 0
+					}
 				}
 				if widened {
 					r.Report.Widened++
@@ -3544,7 +3571,16 @@ func ProfileConfigLoadMessageBody(r *TableMessageReader, value *ProfileConfig) b
 						r.Report.Malformed = true
 						return false
 					}
-					value.HasLoadout = payload45.Get8() != 0
+					{
+						b := payload45.Get8()
+						if b > 1 {
+							r.Report.Malformed = true
+							if r.Report.Reason == "" {
+								r.Report.Reason = "malformed: HasLoadout"
+							}
+						}
+						value.HasLoadout = b != 0
+					}
 				}
 				if widened {
 					r.Report.Widened++

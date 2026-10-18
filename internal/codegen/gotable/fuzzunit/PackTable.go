@@ -283,7 +283,16 @@ func GunnerSettingsLoadBody(r *TableReader, value *GunnerSettings) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			value.Tracking = r.Get8() != 0
+			{
+				b := r.Get8()
+				if b > 1 {
+					r.Report.Malformed = true
+					if r.Report.Reason == "" {
+						r.Report.Reason = "malformed: Tracking"
+					}
+				}
+				value.Tracking = b != 0
+			}
 		case 0x5bc44627b9848818: // callsign
 			if kind != 12 {
 				r.Report.KindMismatch++
@@ -580,7 +589,16 @@ func GunnerSettingsLoadBodyRetain(r *TableRetainReader, value *GunnerSettings) b
 				r.Report.Malformed = true
 				return false
 			}
-			value.Tracking = r.Get8() != 0
+			{
+				b := r.Get8()
+				if b > 1 {
+					r.Report.Malformed = true
+					if r.Report.Reason == "" {
+						r.Report.Reason = "malformed: Tracking"
+					}
+				}
+				value.Tracking = b != 0
+			}
 		case 0x5bc44627b9848818: // callsign
 			if kind != 12 {
 				r.Report.KindMismatch++

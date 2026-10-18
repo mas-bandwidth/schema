@@ -189,7 +189,16 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			value.Active = r.Get8() != 0
+			{
+				b := r.Get8()
+				if b > 1 {
+					r.Report.Malformed = true
+					if r.Report.Reason == "" {
+						r.Report.Reason = "malformed: Active"
+					}
+				}
+				value.Active = b != 0
+			}
 		case 0x2281498aa0200e40: // speed
 			if kind != 10 {
 				r.Report.KindMismatch++
@@ -223,7 +232,16 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			value.HasTarget = r.Get8() != 0
+			{
+				b := r.Get8()
+				if b > 1 {
+					r.Report.Malformed = true
+					if r.Report.Reason == "" {
+						r.Report.Reason = "malformed: HasTarget"
+					}
+				}
+				value.HasTarget = b != 0
+			}
 		case 0xb7bc9ac015a25050: // target_id
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
@@ -511,7 +529,16 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			value.Active = r.Get8() != 0
+			{
+				b := r.Get8()
+				if b > 1 {
+					r.Report.Malformed = true
+					if r.Report.Reason == "" {
+						r.Report.Reason = "malformed: Active"
+					}
+				}
+				value.Active = b != 0
+			}
 		case 0x2281498aa0200e40: // speed
 			if kind != 10 {
 				r.Report.KindMismatch++
@@ -545,7 +572,16 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			value.HasTarget = r.Get8() != 0
+			{
+				b := r.Get8()
+				if b > 1 {
+					r.Report.Malformed = true
+					if r.Report.Reason == "" {
+						r.Report.Reason = "malformed: HasTarget"
+					}
+				}
+				value.HasTarget = b != 0
+			}
 		case 0xb7bc9ac015a25050: // target_id
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {

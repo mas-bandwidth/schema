@@ -59,7 +59,16 @@ func PatrolLoadMessageBodyRetain(r *TableRetainMessageReader, value *Patrol) boo
 						r.Report.Malformed = true
 						return false
 					}
-					value.Active = payload1.Get8() != 0
+					{
+						b := payload1.Get8()
+						if b > 1 {
+							r.Report.Malformed = true
+							if r.Report.Reason == "" {
+								r.Report.Reason = "malformed: Active"
+							}
+						}
+						value.Active = b != 0
+					}
 				}
 				if widened {
 					r.Report.Widened++
@@ -129,7 +138,16 @@ func PatrolLoadMessageBodyRetain(r *TableRetainMessageReader, value *Patrol) boo
 						r.Report.Malformed = true
 						return false
 					}
-					value.HasTarget = payload3.Get8() != 0
+					{
+						b := payload3.Get8()
+						if b > 1 {
+							r.Report.Malformed = true
+							if r.Report.Reason == "" {
+								r.Report.Reason = "malformed: HasTarget"
+							}
+						}
+						value.HasTarget = b != 0
+					}
 				}
 				if widened {
 					r.Report.Widened++
@@ -375,7 +393,16 @@ func PatrolLoadMessageBody(r *TableMessageReader, value *Patrol) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					value.Active = payload1.Get8() != 0
+					{
+						b := payload1.Get8()
+						if b > 1 {
+							r.Report.Malformed = true
+							if r.Report.Reason == "" {
+								r.Report.Reason = "malformed: Active"
+							}
+						}
+						value.Active = b != 0
+					}
 				}
 				if widened {
 					r.Report.Widened++
@@ -445,7 +472,16 @@ func PatrolLoadMessageBody(r *TableMessageReader, value *Patrol) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					value.HasTarget = payload3.Get8() != 0
+					{
+						b := payload3.Get8()
+						if b > 1 {
+							r.Report.Malformed = true
+							if r.Report.Reason == "" {
+								r.Report.Reason = "malformed: HasTarget"
+							}
+						}
+						value.HasTarget = b != 0
+					}
 				}
 				if widened {
 					r.Report.Widened++

@@ -25,9 +25,8 @@ const (
 	GradeBronze Grade = 1
 	GradeSilver Grade = 2
 	// The top rank. A profile that reaches it keeps it.
-	GradeGold  Grade = 3
-	GradeCount Grade = 3 // the declared variant count (SPEC §4.2)
-	GradeMax   Grade = 3 // the exported extent (SPEC §4.2)
+	GradeGold Grade = 3
+	GradeMax  Grade = 3 // the exported extent (SPEC §4.2)
 )
 
 // EnumNameGrade: debug/log/tooling name for any Grade wire value —
@@ -168,7 +167,6 @@ const (
 	// A multiplier that rides while the effect is live.
 	EffectTypeBuff   EffectType = 1
 	EffectTypeDebuff EffectType = 2
-	EffectTypeCount  EffectType = 2 // the declared variant count (SPEC §4.2)
 	EffectTypeMax    EffectType = 2 // the exported extent (SPEC §4.2)
 )
 

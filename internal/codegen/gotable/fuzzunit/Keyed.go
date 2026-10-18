@@ -15,7 +15,6 @@ const (
 	TeamRed   Team = 1
 	TeamBlue  Team = 2
 	TeamGreen Team = 3
-	TeamCount Team = 3 // the declared variant count (SPEC §4.2)
 	TeamMax   Team = 3 // the exported extent (SPEC §4.2)
 )
 
@@ -43,7 +42,6 @@ const (
 	HullInterceptor Hull = 1
 	HullGunship     Hull = 2
 	HullFreighter   Hull = 3
-	HullCount       Hull = 3 // the declared variant count (SPEC §4.2)
 	HullMax         Hull = 3 // the exported extent (SPEC §4.2)
 )
 
@@ -71,7 +69,6 @@ const (
 	WeaponCannon  Weapon = 1
 	WeaponMissile Weapon = 2
 	WeaponMine    Weapon = 3
-	WeaponCount   Weapon = 3 // the declared variant count (SPEC §4.2)
 	WeaponMax     Weapon = 3 // the exported extent (SPEC §4.2)
 )
 

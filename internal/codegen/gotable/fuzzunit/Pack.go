@@ -14,7 +14,6 @@ const (
 	ShipTypeFighter ShipType = 1
 	ShipTypeBomber  ShipType = 2
 	ShipTypeScout   ShipType = 3
-	ShipTypeCount   ShipType = 3 // the declared variant count (SPEC §4.2)
 	ShipTypeMax     ShipType = 3 // the exported extent (SPEC §4.2)
 )
 
@@ -42,7 +41,6 @@ const (
 	DifficultyEasy   Difficulty = 1
 	DifficultyNormal Difficulty = 2
 	DifficultyHard   Difficulty = 3
-	DifficultyCount  Difficulty = 3 // the declared variant count (SPEC §4.2)
 	DifficultyMax    Difficulty = 3 // the exported extent (SPEC §4.2)
 )
 
