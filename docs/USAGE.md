@@ -233,6 +233,30 @@ each target's own: `EnumName(value)` in C++ (overloaded per enum),
 `enum_name_ship_type` in C/Rust/Elixir — returning the variant's declared
 spelling for any wire value, out-of-set values included (`"???"`).
 
+#### Deprecated variants
+
+A variant may be retired in place with the same `| deprecated` marker a field
+takes:
+
+```
+enum ShipType
+{
+    Fighter
+    Bomber    | deprecated   // retired in place: the ordinal stays
+    Scout
+}
+```
+
+The variant keeps its name and ordinal for life; the slot is never reused, and
+a new variant never takes either. On a locked enum, adding the marker is a
+widening; removing or renumbering a variant is still refused, and taking the
+marker off again — undeprecating — is refused by the lock. A reader that meets
+the variant yields the field's declared default, never `None` for an unknown
+name; a strict writer refuses a value that holds it with `invalid_value`; and
+a field default, a key enum's bound or a `const` naming it is refused by name.
+The generated constant stays, with the language's deprecation marker on it (Go:
+a `// Deprecated:` comment). The rule in full is docs/SPEC-TABLES.md §2.15.
+
 ### flags
 
 ```
