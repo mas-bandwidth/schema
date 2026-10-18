@@ -591,6 +591,233 @@ local function place_integer(fd: any, token: string, integral: boolean, report: 
   return v
 end
 
+----------------------------------------------------------------------------
+-- the WIDE kinds, exactly (docs/SPEC-TABLES.md §16.2, the fixed(I, F) and
+-- int128/uint128 rows and **Numbers**; internal/tabletext/wide.go): a fixed
+-- token is the value in whole units scaled by 2^F, a 128-bit token is its
+-- digits, and nothing on the path is a double. The arithmetic is a small
+-- unsigned big integer in base-10^7 limbs (little-endian), exact in a double
+-- for every product below 2^53 (docs/PORT-LUAU.md, THE TYPE MAPPING: the
+-- storage is the raw scaled integer at width I+F).
+----------------------------------------------------------------------------
+
+local BN_BASE = 10000000
+
+local function bn_norm(a: { number }): { number }
+  while #a > 1 and a[#a] == 0 do a[#a] = nil end
+  return a
+end
+
+-- a × m + add, for m and add at most 65536
+local function bn_muladd(a: { number }, m: number, add: number): { number }
+  local out = table.create(#a + 2)
+  local carry = add
+  for i = 1, #a do
+    local x = a[i] * m + carry
+    carry = math.floor(x / BN_BASE)
+    out[i] = x - carry * BN_BASE
+  end
+  while carry > 0 do
+    local q = math.floor(carry / BN_BASE)
+    out[#out + 1] = carry - q * BN_BASE
+    carry = q
+  end
+  return bn_norm(out)
+end
+
+-- a ÷ d and the remainder, for d at most 65536
+local function bn_divmod(a: { number }, d: number): ({ number }, number)
+  local out = table.create(#a)
+  local rem = 0
+  for i = #a, 1, -1 do
+    local x = rem * BN_BASE + a[i]
+    local q = math.floor(x / d)
+    out[i] = q
+    rem = x - q * d
+  end
+  return bn_norm(out), rem
+end
+
+local function bn_cmp(a: { number }, b: { number }): number
+  if #a ~= #b then return #a < #b and -1 or 1 end
+  for i = #a, 1, -1 do
+    if a[i] ~= b[i] then return a[i] < b[i] and -1 or 1 end
+  end
+  return 0
+end
+
+local function bn_from_digits(s: string): { number }
+  local a = {}
+  local i = #s
+  while i >= 1 do
+    local j = math.max(1, i - 6)
+    a[#a + 1] = tonumber(s:sub(j, i)) :: number
+    i = j - 1
+  end
+  if #a == 0 then a[1] = 0 end
+  return bn_norm(a)
+end
+
+local function bn_digits(a: { number }): string
+  local parts = { tostring(a[#a]) }
+  for i = #a - 1, 1, -1 do parts[#parts + 1] = string.format("%07d", a[i]) end
+  return table.concat(parts)
+end
+
+-- an unsigned 128-bit {lo, hi} as a big integer, sixteen bits at a time
+local function bn_from_u128(v: any): { number }
+  local a = { 0 }
+  for k = 7, 0, -1 do
+    local word = k >= 4 and v.hi or v.lo
+    local piece = integer.band(integer.rshift(word, integer.create((k % 4) * 16)), 0xffffi)
+    a = bn_muladd(a, 65536, integer.tonumber(piece))
+  end
+  return a
+end
+
+-- a big integer below 2^128 as an unsigned {lo, hi}
+local function bn_to_u128(a: { number }): any
+  local lo, hi = 0i, 0i
+  for k = 0, 7 do
+    local piece
+    a, piece = bn_divmod(a, 65536)
+    local p = integer.lshift(integer.create(piece), integer.create((k % 4) * 16))
+    if k < 4 then lo = integer.bor(lo, p) else hi = integer.bor(hi, p) end
+  end
+  return { lo = lo, hi = hi }
+end
+
+local function u128_negate(v: any): any
+  local lo = integer.add(integer.bnot(v.lo), 1i)
+  local hi = integer.add(integer.bnot(v.hi), lo == 0i and 1i or 0i)
+  return { lo = lo, hi = hi }
+end
+
+local BN_2_127 = bn_from_digits("170141183460469231731687303715884105728")
+local BN_U128_MAX = bn_from_digits("340282366920938463463374607431768211455")
+local WIDE_BAND = 40 -- wide.go's wideDecimalBand
+
+-- the 128-bit domain of a kind's signedness: the saturation bound a text value
+-- clamps to before the declared range (§16.2 **Numbers**; wide.go wideLimits)
+local function wide_limits(signed: boolean): (any, any)
+  if signed then
+    return { lo = 0i, hi = integer.bnot(0x7fffffffffffffffi) }, { lo = -1i, hi = 0x7fffffffffffffffi }
+  end
+  return { lo = 0i, hi = 0i }, { lo = -1i, hi = -1i }
+end
+
+-- one number token into a wide kind's RAW 128-bit integer, the value × 2^F
+-- (§16.2 **Numbers**; wide.go ParseWide): exact is false when the value is not
+-- representable in Q I.F (kind_mismatch), saturated when the magnitude clamped
+-- to the storage domain (counted clamped).
+local function wide_parse(fd: any, token: string): (any, boolean, boolean)
+  local i = 1
+  local negative = false
+  local c = token:sub(1, 1)
+  if c == "-" or c == "+" then negative = c == "-"; i = 2 end
+  local int_digits = token:match("^%d*", i) :: string
+  i = i + #int_digits
+  local frac_digits = ""
+  if token:sub(i, i) == "." then
+    frac_digits = token:match("^%d*", i + 1) :: string
+    i = i + 1 + #frac_digits
+  end
+  local exp = 0
+  c = token:sub(i, i)
+  if c == "e" or c == "E" then
+    i = i + 1
+    local exp_negative = false
+    c = token:sub(i, i)
+    if c == "-" or c == "+" then exp_negative = c == "-"; i = i + 1 end
+    for k = i, #token do
+      local b = token:byte(k)
+      if b < 48 or b > 57 then break end
+      if exp < 100000 then exp = exp * 10 + (b - 48) end
+    end
+    if exp_negative then exp = -exp end
+  end
+  local digits = int_digits .. frac_digits
+  local point = #int_digits + exp
+  local lead = #(digits:match("^0*") :: string)
+  digits = digits:sub(lead + 1)
+  point = point - lead
+  digits = digits:gsub("0+$", "")
+  local signed = fd.signed ~= false
+  local lo, hi = wide_limits(signed)
+  if digits == "" then return { lo = 0i, hi = 0i }, true, false end
+  if point > WIDE_BAND then
+    if negative then return lo, true, true end
+    return hi, true, true
+  end
+  if point < -WIDE_BAND then return nil, false, false end
+  local m = bn_from_digits(digits)
+  local f = fd.fbits or 0
+  for _ = 1, f // 16 do m = bn_muladd(m, 65536, 0) end
+  if f % 16 > 0 then m = bn_muladd(m, 2 ^ (f % 16), 0) end
+  local scale = point - #digits
+  if scale >= 0 then
+    for _ = 1, scale do m = bn_muladd(m, 10, 0) end
+  else
+    for _ = 1, -scale do
+      local rem
+      m, rem = bn_divmod(m, 10)
+      if rem ~= 0 then return nil, false, false end
+    end
+  end
+  if negative then
+    if not signed then return lo, true, true end
+    if bn_cmp(m, BN_2_127) > 0 then return lo, true, true end
+    return u128_negate(bn_to_u128(m)), true, false
+  end
+  if (signed and bn_cmp(m, BN_2_127) >= 0) or (not signed and bn_cmp(m, BN_U128_MAX) > 0) then
+    return hi, true, true
+  end
+  return bn_to_u128(m), true, false
+end
+
+-- a 128-bit value shifted left by sh bits (a fixed bound in whole units to the
+-- raw scale, §4; ir.TableRawRange)
+local function wide_shl(v: any, sh: number): any
+  if sh == 0 then return v end
+  if sh >= 128 then return { lo = 0i, hi = 0i } end
+  if sh >= 64 then return { lo = 0i, hi = integer.lshift(v.lo, integer.create(sh - 64)) } end
+  local hi = integer.bor(integer.lshift(v.hi, integer.create(sh)), integer.rshift(v.lo, integer.create(64 - sh)))
+  return { lo = integer.lshift(v.lo, integer.create(sh)), hi = hi }
+end
+
+-- a value of the field's storage domain as a 128-bit {lo, hi}, sign-extended
+-- for a signed kind (docs/PORT-LUAU.md, THE TYPE MAPPING)
+local function wide_of(fd: any, x: any): any
+  if typeof(x) == "table" then return x end
+  local v = typeof(x) == "integer" and x or integer.create(x)
+  local hi = (fd.signed ~= false and integer.lt(v, 0i)) and -1i or 0i
+  return { lo = v, hi = hi }
+end
+
+local function wide_ucmp(a: any, b: any): number
+  if a.hi ~= b.hi then return integer.ult(a.hi, b.hi) and -1 or 1 end
+  if a.lo ~= b.lo then return integer.ult(a.lo, b.lo) and -1 or 1 end
+  return 0
+end
+
+-- §16.2: a wide field's token placed exactly, saturated, then clamped to the
+-- declared range on the raw scale (wide.go WideClamp; read.go placeWide)
+local function place_wide(fd: any, token: string, report: any): any
+  local raw, exact, saturated = wide_parse(fd, token)
+  if not exact then report.kindMismatch = report.kindMismatch + 1; return nil end
+  if saturated then report.clamped = report.clamped + 1 end
+  if fd.lo ~= nil and fd.hi ~= nil then
+    local f = fd.fbits or 0
+    local lo, hi = wide_shl(wide_of(fd, fd.lo), f), wide_shl(wide_of(fd, fd.hi), f)
+    local cmp = fd.signed ~= false and int128_cmp or wide_ucmp
+    if cmp(raw, lo) < 0 then raw = lo; report.clamped = report.clamped + 1
+    elseif cmp(raw, hi) > 0 then raw = hi; report.clamped = report.clamped + 1 end
+  end
+  if fd.dom == "int128" then return raw end
+  if fd.dom == "integer" then return raw.lo end
+  return integer.tonumber(raw.lo)
+end
+
 -- one map key: the token is the whole string and must be a JSON number
 local function map_int_key(fd, key)
   local probe = new_in(key)
@@ -1160,8 +1387,13 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem)
     end
     local token = scan_number(inp)
     if token == nil then inp.bad = true; return false end
-    local integral = not (token:find("[%.eE]") ~= nil)
-    local v = place_integer(d, token, integral, report)
+    local v
+    if d.fbits ~= nil or d.dom == "int128" then
+      v = place_wide(d, token, report)
+    else
+      local integral = not (token:find("[%.eE]") ~= nil)
+      v = place_integer(d, token, integral, report)
+    end
     if v ~= nil then holder[key] = v end
     return true
   end
@@ -1366,6 +1598,48 @@ local function int_text(fd: any, v: any): string
   if fd.signed then return string.format("%d", v) end
   if v >= 0 then return string.format("%d", v) end
   return string.format("%u", integer.create(v))
+end
+
+-- a 128-bit value shifted right by sh bits, logically
+local function wide_shr(v: any, sh: number): any
+  if sh == 0 then return v end
+  if sh >= 128 then return { lo = 0i, hi = 0i } end
+  if sh >= 64 then return { lo = integer.rshift(v.hi, integer.create(sh - 64)), hi = 0i } end
+  local lo = integer.bor(integer.rshift(v.lo, integer.create(sh)), integer.lshift(v.hi, integer.create(64 - sh)))
+  return { lo = lo, hi = integer.rshift(v.hi, integer.create(sh)) }
+end
+
+-- a 128-bit value's low sh bits
+local function wide_low(v: any, sh: number): any
+  if sh >= 128 then return v end
+  if sh >= 64 then
+    if sh == 64 then return { lo = v.lo, hi = 0i } end
+    return { lo = v.lo, hi = integer.band(v.hi, integer.sub(integer.lshift(1i, integer.create(sh - 64)), 1i)) }
+  end
+  if sh == 0 then return { lo = 0i, hi = 0i } end
+  return { lo = integer.band(v.lo, integer.sub(integer.lshift(1i, integer.create(sh)), 1i)), hi = 0i }
+end
+
+-- a fixed field's raw value as §16.2's text: the shortest EXACT decimal in
+-- whole units with at least one fractional digit, `1.0`, `-0.25`,
+-- `3.0000152587890625` (wide.go FormatWide). The fraction r / 2^F is
+-- r × 5^F / 10^F, so its F decimal digits are r × 5^F, zero-padded, with
+-- the trailing zeros dropped; no float is on the path.
+local function fixed_text(fd: any, x: any): string
+  local v = wide_of(fd, x)
+  local f = fd.fbits or 0
+  local negative = fd.signed ~= false and integer.lt(v.hi, 0i)
+  local mag = negative and u128_negate(v) or v
+  local whole = u128_text(wide_shr(mag, f))
+  local frac = wide_low(mag, f)
+  local text = (negative and "-" or "") .. whole .. "."
+  if frac.lo == 0i and frac.hi == 0i then return text .. "0" end
+  local n = bn_from_u128(frac)
+  for _ = 1, f // 6 do n = bn_muladd(n, 15625, 0) end
+  for _ = 1, f % 6 do n = bn_muladd(n, 5, 0) end
+  local digits = bn_digits(n)
+  digits = string.rep("0", f - #digits) .. digits
+  return text .. (digits:gsub("0+$", ""))
 end
 
 local function civil_from_days(z)
@@ -1749,7 +2023,7 @@ write_value = function(T, d, val, depth, g, w, elem)
     return true
   elseif s == "int" then
     if d.timestamp then write_timestamp(w, val); return true end
-    raw(w, int_text(d, val))
+    raw(w, d.fbits ~= nil and fixed_text(d, val) or int_text(d, val))
     return true
   end
   return false
@@ -2004,6 +2278,8 @@ local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
         out[arm.slot] = conv_to_lua(arm.field, x[arm.name], A, memo)
         if arm.raw.s == "str" then out[arm.slot .. "Length"] = #x[arm.name] end
         if arm.raw.s == "bytes" then out[arm.slot .. "Length"] = #x[arm.name] end
+        -- a counted array arm carries its Count, as a table field does
+        if arm.raw.s == "arr" and arm.raw.array == "counted" then out[arm.slot .. "Count"] = #x[arm.name] end
       end
     end
     return out
@@ -2014,7 +2290,21 @@ local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
       return out
     end
     local out = {}
-    for i = 1, #x do out[i] = conv_to_lua(fd.elem, x[i], A, memo) end
+    -- a fixed or keyed array rides at its bound (§16.2: fewer elements pad
+    -- with defaults), so a slot the walk left empty (an enum at None, a
+    -- scalar the text never named) lands at its zero as Load lands it
+    local n = #x
+    if (fd.fixed or fd.keyed ~= nil) and (fd.bound or 0) > n then n = fd.bound end
+    local e = fd.elem
+    for i = 1, n do
+      local xi = x[i]
+      if xi == nil and e.shape ~= "table" and e.shape ~= "union" and e.shape ~= "array" and e.shape ~= "map" then
+        if e.shape == "int" and e.dom == "integer" then xi = 0i
+        elseif e.shape == "int" and e.dom == "int128" then xi = { lo = 0i, hi = 0i }
+        else xi = zero_elem(A, e) end
+      end
+      out[i] = conv_to_lua(e, xi, A, memo)
+    end
     return out
   elseif s == "map" then
     local out = {}
@@ -2048,8 +2338,24 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
   elseif s == "string" then
     if x == nil then return "" end
     return to_string(x, memo.len[x])
-  elseif s == "wstring" then return wide_units(to_string(x, memo.len[x]))
-  elseif s == "bytes" or s == "string_blob" or s == "bytes_blob" then
+  elseif s == "wstring" then
+    -- a wstring's Length counts UTF-16 code units, two bytes each (§16.2, the
+    -- wstring(N) row; docs/PORT-LUAU.md, THE TYPE MAPPING)
+    local n = memo.len[x]
+    return wide_units(to_string(x, n ~= nil and n * 2 or nil))
+  elseif s == "string_blob" or s == "bytes_blob" then
+    -- a loaded blob is its own node (§3.1, §16.7): it crosses as a box, one per
+    -- Luau buffer, so two empty blobs stay two nodes and one buffer named
+    -- twice stays one (the writer refuses that graph)
+    if x == nil or x == false then return nil end
+    memo.blob = memo.blob or {}
+    local box = memo.blob[x]
+    if box == nil then
+      box = { value = to_string(x, memo.len[x]) }
+      memo.blob[x] = box
+    end
+    return box
+  elseif s == "bytes" then
     if x == nil or x == false then return nil end
     return to_string(x, memo.len[x])
   elseif s == "enum" then
@@ -2071,6 +2377,10 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
           memo.len = memo.len or {}
           memo.len[x[arm.slot]] = x[arm.slot .. "Length"] or 0
         end
+        -- a counted array arm rides at its Count, as a table field does
+        if arm.raw.s == "arr" and arm.raw.array == "counted" then
+          memo.count[x[arm.slot]] = x[arm.slot .. "Count"] or 0
+        end
         out[arm.name] = conv_from_lua(arm.field, x[arm.slot], A, memo)
       end
     end
@@ -2079,13 +2389,15 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
     local out = {}
     local n = memo.count[x]
     if n == nil then n = #x end
-    if n > #x then n = #x end
     if fd.elem.shape == "pointer" then
+      -- a null element is nil in the Luau storage and false in the walk's
+      -- array, so a null past the last live one still counts (§2.5, §16.2)
       for i = 1, n do
         local e = x[i]
-        if e == false then out[i] = false else out[i] = conv_from_lua(fd.elem, e, A, memo) end
+        if e == nil or e == false then out[i] = false else out[i] = conv_from_lua(fd.elem, e, A, memo) end
       end
     else
+      if n > #x then n = #x end
       for i = 1, n do out[i] = conv_from_lua(fd.elem, x[i], A, memo) end
     end
     return out
@@ -2157,7 +2469,9 @@ from_lua = function(desc: any, v: any, A: any, memo: any): any
   for _, fd in desc.fields do
     local lv = v[fd.raw.slot or fd.raw.name]
     if fd.raw.present ~= nil then
-      if v[fd.raw.present] then
+      -- the walk marks a present optional as <slot>_present (§2.3); the Luau
+      -- value carries it in the descriptor's own present slot
+      if v[fd.name .. "_present"] then
         out[fd.name] = conv_to_lua(fd, lv, A, memo)
         out[fd.raw.present] = true
         if fd.raw.s == "str" then
