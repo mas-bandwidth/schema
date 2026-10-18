@@ -9,7 +9,7 @@ import (
 )
 
 // jsonLayerAccepts is the engine's JSON LAYER over one whole text
-// (docs/SPEC-TABLES.md §16.11): the leading byte-order mark, one value, then
+// (docs/SPEC-TABLES.md §16.12): the leading byte-order mark, one value, then
 // whitespace, then the end of the input, under the reader's three caps. It
 // drives the reader the table walk drives, in-package, with no new API.
 func jsonLayerAccepts(text []byte) bool {
@@ -30,7 +30,7 @@ func engineVerdicts(s *jsontestsuite.Suite) map[string]bool {
 }
 
 // TestJSONTestSuiteEngine holds the engine's JSON layer to JSONTestSuite
-// (docs/SPEC-TABLES.md §16.11): every vendored file, against the table the
+// (docs/SPEC-TABLES.md §16.12): every vendored file, against the table the
 // standard carries, with PENDING's files allowed to disagree and logged.
 func TestJSONTestSuiteEngine(t *testing.T) {
 	t.Parallel()

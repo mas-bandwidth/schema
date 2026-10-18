@@ -6,6 +6,7 @@ package gotable
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 	"strings"
@@ -116,11 +117,21 @@ func fieldDefaultExpr(f *ir.Field) string {
 		}
 		return "false"
 	case ir.TFloat32:
+		if f.HasDefault && !f.HasFloatRange && f.DefFloat == 0 && math.Signbit(f.DefFloat) {
+			// a declared -0 default (docs/SPEC-TABLES.md §3.3, "-0 IS A VALUE,
+			// AND IT RIDES", for a plain float; a compressed float's -0 is +0): Go
+			// folds the constant -0.0 to +0, so the plain default
+			// is spelled as an expression that keeps the sign bit
+			return "float32(math.Copysign(0, -1))"
+		}
 		if f.HasDefault {
 			return formatFloat32(f.DefFloat)
 		}
 		return "0.0"
 	case ir.TFloat64:
+		if f.HasDefault && !f.HasFloatRange && f.DefFloat == 0 && math.Signbit(f.DefFloat) {
+			return "math.Copysign(0, -1)" // a declared -0 default (§3.3), as for float32
+		}
 		if f.HasDefault {
 			return formatFloat64(f.DefFloat)
 		}
@@ -642,7 +653,9 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	if f.IsList() || f.IsMap() {
 		elemSize = fmt.Sprintf("uint32(unsafe.Sizeof(*new(%s)))", containerElementType(g.unit, f))
 		counted = true
-		bound = "2147483647"
+		// no declared bound: ArrayBound 0, and the UnboundedContainer column
+		// below is the tell (docs/SPEC-TABLES.md §8.1)
+		bound = "0"
 		countOffset = "(" + offset + ")+8"
 	}
 	if f.IsMap() {
@@ -783,6 +796,11 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		g.pf("List:true,ElemAlign:%d,\n", align)
 	} else if f.IsMap() {
 		g.pf("Map:true,ElemAlign:%d,\n", ir.RecordLayout(g.unit, f.MapEntry).Align)
+	}
+	if f.IsList() || f.IsMap() {
+		// a CONTAINER WITH NO DECLARED BOUND (docs/SPEC-TABLES.md §8.1): the one
+		// tell, beside ArrayBound 0; not the §2.13.1 Unbounded (text) column
+		g.pf("UnboundedContainer:true,\n")
 	}
 	g.pf("\t\tFracBits:%d, Pointer:%v, TargetId:0x%016x,\n", f.Type.FracBits, f.Type.Pointer, pointerTargetId(f))
 	if ir.TableKindWide(kind) {

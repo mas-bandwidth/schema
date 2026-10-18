@@ -345,7 +345,7 @@ func (p *packer) readFieldText(fv *tabletext.Field, path string, text []byte) {
 // value too (docs/SPEC-TABLES.md §3, §4.2).
 func (p *packer) refuseZeroByteText(inst *tabletext.Instance) {
 	if z := zeroByteTextPath(inst); z != "" {
-		p.refusef("text_zero_byte: %s (docs/SPEC-TABLES.md §3, §4.2)", z)
+		p.refusef("text_holds_zero: %s (docs/SPEC-TABLES.md §16.3)", z)
 	}
 }
 

@@ -11,7 +11,7 @@ import (
 
 // jsonTestSuiteProbe is the file runGeneratedEdited adds to the generated
 // package: the emitted walk's JSON LAYER over one whole text
-// (docs/SPEC-TABLES.md §16.11) — the leading byte-order mark, one value, then
+// (docs/SPEC-TABLES.md §16.12) — the leading byte-order mark, one value, then
 // whitespace, then the end of the input — reached in-package, as the per-table
 // FromJson reaches it.
 const jsonTestSuiteProbe = `package probe
@@ -111,7 +111,7 @@ func TestJSONTestSuiteProbe(t *testing.T) {
 `
 
 // TestJSONTestSuiteGenerated holds the emitted Go walk to JSONTestSuite
-// (docs/SPEC-TABLES.md §16.11), in a generated unit (SCHEMA_SLOW=1): every
+// (docs/SPEC-TABLES.md §16.12), in a generated unit (SCHEMA_SLOW=1): every
 // vendored file against the standard's table, PENDING's files allowed to
 // disagree and logged, with the walk's memory and time bounds held inside the
 // generated process.

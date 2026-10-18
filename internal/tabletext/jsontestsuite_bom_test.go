@@ -6,7 +6,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
-// TestJSONByteOrderMarkAtTheEntry pins docs/SPEC-TABLES.md §16.2 and §16.11 at
+// TestJSONByteOrderMarkAtTheEntry pins docs/SPEC-TABLES.md §16.2 and §16.12 at
 // the engine's whole-text entry, Model.Read: a leading UTF-8 byte-order mark is
 // skipped and lands the same instance and the same report as the text without
 // it; the mark anywhere else, or cut short, is not JSON.

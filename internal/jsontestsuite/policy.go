@@ -1,5 +1,5 @@
 // Package jsontestsuite holds schema's JSON readers to JSONTestSuite, the
-// outside oracle docs/SPEC-TABLES.md §16.11 rules over. It reads the policy
+// outside oracle docs/SPEC-TABLES.md §16.12 rules over. It reads the policy
 // table out of the standard itself (the one source; no test carries a copy),
 // checks every vendored file against SHA256SUMS, and compares a reader's
 // verdicts with the table's. Standard library only.
@@ -18,7 +18,7 @@ import (
 	"strings"
 )
 
-// The paths under the repository root, as §16.11 names them.
+// The paths under the repository root, as §16.12 names them.
 const (
 	SpecPath    = "docs/SPEC-TABLES.md"
 	CorpusDir   = "testdata/jsontestsuite/test_parsing"
@@ -27,13 +27,13 @@ const (
 )
 
 const (
-	sectionHeading = "### 16.11 "
+	sectionHeading = "### 16.12 "
 	verdictAccept  = "accept"
 	verdictDialect = "accept (dialect)"
 	verdictRefuse  = "refuse"
 )
 
-// Row is one line of §16.11's table.
+// Row is one line of §16.12's table.
 type Row struct {
 	File    string
 	Accept  bool
@@ -44,7 +44,7 @@ type Row struct {
 // Suite is the corpus and its policy, resolved: every file's expected verdict.
 type Suite struct {
 	Files   map[string][]byte // file name -> its bytes, every one checked against SHA256SUMS
-	Rows    map[string]Row    // §16.11's table, keyed by file
+	Rows    map[string]Row    // §16.12's table, keyed by file
 	Pending map[string]string // file -> the card that meets it (PENDING.tsv)
 	Accept  map[string]bool   // file -> the expected verdict, true = accepted
 }
@@ -59,7 +59,7 @@ func (s *Suite) Names() []string {
 	return names
 }
 
-// Load reads the policy table out of docs/SPEC-TABLES.md §16.11, every corpus
+// Load reads the policy table out of docs/SPEC-TABLES.md §16.12, every corpus
 // file (each checked against SHA256SUMS) and PENDING.tsv under root, and
 // resolves each file's expected verdict.
 func Load(root string) (*Suite, error) {
@@ -143,14 +143,14 @@ func readCorpus(root string) (map[string][]byte, error) {
 	return files, nil
 }
 
-// ParseTable reads §16.11's table out of the standard's text: the rows of the
-// first markdown table after the `### 16.11` heading and before the next
+// ParseTable reads §16.12's table out of the standard's text: the rows of the
+// first markdown table after the `### 16.12` heading and before the next
 // heading, each `| `file` | verdict | reason |`.
 func ParseTable(spec []byte) (map[string]Row, error) {
 	text := string(spec)
 	start := strings.Index(text, "\n"+sectionHeading)
 	if start < 0 {
-		return nil, errors.New("jsontestsuite: docs/SPEC-TABLES.md has no §16.11")
+		return nil, errors.New("jsontestsuite: docs/SPEC-TABLES.md has no §16.12")
 	}
 	body := text[start+1:]
 	if next := strings.Index(body[len(sectionHeading):], "\n#"); next >= 0 {
@@ -168,7 +168,7 @@ func ParseTable(spec []byte) (map[string]Row, error) {
 		}
 		if !seenHeader {
 			if len(cells) != 3 || cells[0] != "file" || cells[1] != "verdict" || cells[2] != "reason" {
-				return nil, fmt.Errorf("jsontestsuite: §16.11's table header is not | file | verdict | reason |: %q", line)
+				return nil, fmt.Errorf("jsontestsuite: §16.12's table header is not | file | verdict | reason |: %q", line)
 			}
 			seenHeader = true
 			continue
@@ -179,11 +179,11 @@ func ParseTable(spec []byte) (map[string]Row, error) {
 		// a reason may itself carry a `|` only inside backticks, which the
 		// table never does; three cells is the shape
 		if len(cells) != 3 {
-			return nil, fmt.Errorf("jsontestsuite: §16.11 row is not three cells: %q", line)
+			return nil, fmt.Errorf("jsontestsuite: §16.12 row is not three cells: %q", line)
 		}
 		file := strings.Trim(cells[0], "`")
 		if file == cells[0] || file == "" {
-			return nil, fmt.Errorf("jsontestsuite: §16.11 row's file is not one backticked name: %q", line)
+			return nil, fmt.Errorf("jsontestsuite: §16.12 row's file is not one backticked name: %q", line)
 		}
 		row := Row{File: file, Reason: cells[2]}
 		switch cells[1] {
@@ -207,7 +207,7 @@ func ParseTable(spec []byte) (map[string]Row, error) {
 		rows[file] = row
 	}
 	if !seenHeader {
-		return nil, errors.New("jsontestsuite: §16.11 has no policy table")
+		return nil, errors.New("jsontestsuite: §16.12 has no policy table")
 	}
 	return rows, nil
 }
@@ -231,7 +231,7 @@ func ParsePending(text []byte) (map[string]string, error) {
 	return pending, nil
 }
 
-// Resolve gives every file its expected verdict (docs/SPEC-TABLES.md §16.11):
+// Resolve gives every file its expected verdict (docs/SPEC-TABLES.md §16.12):
 // its row, else accept for y_ and refuse for n_. An i_ file with no row, a row
 // naming no file, a file of no known prefix and a PENDING line naming no file
 // are errors, each naming the file.
@@ -249,14 +249,14 @@ func Resolve(files map[string][]byte, rows map[string]Row, pending map[string]st
 		case strings.HasPrefix(name, "n_"):
 			s.Accept[name] = false
 		case strings.HasPrefix(name, "i_"):
-			errs = append(errs, fmt.Errorf("%s: an i_ file with no row in §16.11", name))
+			errs = append(errs, fmt.Errorf("%s: an i_ file with no row in §16.12", name))
 		default:
 			errs = append(errs, fmt.Errorf("%s: not a y_, n_ or i_ file", name))
 		}
 	}
 	for name := range rows {
 		if _, ok := files[name]; !ok {
-			errs = append(errs, fmt.Errorf("%s: a §16.11 row naming no file", name))
+			errs = append(errs, fmt.Errorf("%s: a §16.12 row naming no file", name))
 		}
 	}
 	for name := range pending {
@@ -286,7 +286,7 @@ func Check(s *Suite, got map[string]bool) (mismatches, pending []string) {
 		card, isPending := s.Pending[name]
 		switch {
 		case have == want && isPending:
-			mismatches = append(mismatches, fmt.Sprintf("%s: %s as §16.11 rules; met: remove it from PENDING (%s)", name, word(have), card))
+			mismatches = append(mismatches, fmt.Sprintf("%s: %s as §16.12 rules; met: remove it from PENDING (%s)", name, word(have), card))
 		case have != want && isPending:
 			pending = append(pending, fmt.Sprintf("%s: want %s, got %s; pending %s", name, word(want), word(have), card))
 		case have != want:
