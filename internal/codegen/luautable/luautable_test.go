@@ -21,7 +21,11 @@ const root = "../../.."
 // refused is every manifest unit the Luau table surface refuses, with the
 // refusal it gives (docs/PORT-LUAU.md, THE CARD MAP). A unit that starts or
 // stops refusing turns this test red until the list says so.
-var refused = map[string]string{}
+var refused = map[string]string{
+	// mapdemo's Text.schema collides with text.luau, the base64 text carrier
+	// this runtime now emits beside every unit (docs/PORT-LUAU.md, §16.8).
+	"mapdemo": "schema file Text.schema collides with the Luau runtime module text.luau the target emits beside the generated modules; rename the file",
+}
 
 // TestLuauTableDescriptorsLoad generates each unit of
 // testdata/conformance/tables/MANIFEST.txt for luau, loads every
