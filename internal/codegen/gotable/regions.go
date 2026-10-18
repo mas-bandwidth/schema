@@ -125,7 +125,7 @@ func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
 	}
 	g.pf("const tableRegionAlign int64 = %d\n", ir.TableRegionAlign(g.unit))
 	g.pf("const tableBytesTypeId uint64=0x%016x\nconst tableStringTypeId uint64=0x%016x\n", ir.TableWireId("bytes"), ir.TableWireId("string"))
-	source := tableRegionSource + tableRegionBlobSource + tableBuilderLoadSource + tableWireStrictSource
+	source := tableRegionSource + tableRegionBlobSource + tableBuilderLoadSource + tableWireExtentSource
 	if unitHasContainers(g.unit) {
 		source = containerRegionSource(source)
 		source += tableContainerSource + tableMapSource
@@ -333,7 +333,7 @@ func tableRegionMeasure(wire []byte,root *TableTypeInfo,nodeType func(uint64)*Ta
 // framing damage. A trailing true makes it tolerant: it skips the framing walk and the
 // whole-scan check, so tableRegionMeasure and tableRegionLoad keep the decoded prefix
 // of a damaged wire (docs/SPEC-TABLES.md section 4). No new package-scope name.
-func tableRegionMeasureReason(wire []byte,root *TableTypeInfo,nodeType func(uint64)*TableTypeInfo,blobs int,tolerant ...bool)(int64,int64,TableOpenVerdict,TableRefuseReason){strict:=len(tolerant)==0||!tolerant[0];var ignored TableReport;r,verdict:=tableOpenFramed(wire,&ignored);if verdict!=TableOpenOk{reason:=TableRefuseWireDamaged;if verdict==TableOpenRefused{reason=TableRefuseUnknownForm};return -1,0,verdict,reason};if strict{probe:=r;probe.Offset=0;framed:=true;for{ref,ok:=probe.Leb();if !ok{framed=false;break};if ref==0{break};id,ok:=probe.Resolve(ref);if !ok||!probe.Has(1){framed=false;break};kind:=probe.Get8();if id==0xffffffffffffffff{if kind!=12{framed=false;break};if _,ok:=probe.Body();!ok{framed=false;break}}else if !probe.Skip(kind){framed=false;break}};if !framed||probe.Offset!=int64(len(probe.Buffer)){return -1,0,TableOpenDamaged,TableRefuseWireDamaged}};data:=tableRegionRound(int64(root.Size));s:=tableNodeScanBegin(r);for{id,body,ok:=s.next();if !ok{break};n,reason:=tableNodeStorageReason(id,body,nodeType,blobs);if n== -2{return -1,0,TableOpenRefused,reason};if n>0{data+=n}};if strict&&!s.whole(){return -1,0,TableOpenDamaged,TableRefuseWireDamaged};if strict&&!root.damageWire(r.Buffer,r.Ids,nodeType,blobs){return -1,0,TableOpenDamaged,TableRefuseWireDamaged};attribution:=int64(s.records+1)*16;return data+attribution,attribution,TableOpenOk,TableRefuseOk}
+func tableRegionMeasureReason(wire []byte,root *TableTypeInfo,nodeType func(uint64)*TableTypeInfo,blobs int,tolerant ...bool)(int64,int64,TableOpenVerdict,TableRefuseReason){strict:=len(tolerant)==0||!tolerant[0];var ignored TableReport;r,verdict:=tableOpenFramed(wire,&ignored);if verdict!=TableOpenOk{reason:=TableRefuseWireDamaged;if verdict==TableOpenRefused{reason=TableRefuseUnknownForm};return -1,0,verdict,reason};if strict{probe:=r;probe.Offset=0;framed:=true;for{ref,ok:=probe.Leb();if !ok{framed=false;break};if ref==0{break};id,ok:=probe.Resolve(ref);if !ok||!probe.Has(1){framed=false;break};kind:=probe.Get8();if id==0xffffffffffffffff{if kind!=12{framed=false;break};if _,ok:=probe.Body();!ok{framed=false;break}}else if !probe.Skip(kind){framed=false;break}};if !framed||probe.Offset!=int64(len(probe.Buffer)){return -1,0,TableOpenDamaged,TableRefuseWireDamaged}};data:=tableRegionRound(int64(root.Size));s:=tableNodeScanBegin(r);for{id,body,ok:=s.next();if !ok{break};n,reason:=tableNodeStorageReason(id,body,nodeType,blobs);if n== -2{return -1,0,TableOpenRefused,reason};if n>0{data+=n}};if strict&&!s.whole(){return -1,0,TableOpenDamaged,TableRefuseWireDamaged};if strict{w:=TableReader{Buffer:r.Buffer,Ids:r.Ids};at:=int64(0);nodes:=int64(s.records);scan:=tableNodeScanBegin(w);for{id,body,ok:=scan.next();if !ok{break};if id==tableStringTypeId&&blobs&2!=0&&!tableUtf8Valid(body.Buffer){return -1,0,TableOpenDamaged,TableRefuseWireDamaged};if t:=nodeType(id);t!=nil&&tableWireExtent(&body,t,&at,nodes)!=TableRefuseOk{return -1,0,TableOpenDamaged,TableRefuseWireDamaged}};if tableWireExtent(&w,root,&at,nodes)!=TableRefuseOk{return -1,0,TableOpenDamaged,TableRefuseWireDamaged}};attribution:=int64(s.records+1)*16;return data+attribution,attribution,TableOpenOk,TableRefuseOk}
 
 func tableRegionLoad(region,wire []byte,root *TableTypeInfo,nodeType func(uint64)*TableTypeInfo,blobs int,report *TableReport) unsafe.Pointer {
  if report==nil {var ignored TableReport;report=&ignored};r,verdict:=tableOpenFramed(wire,report);report.Verdict=verdict;if verdict!=TableOpenOk {if verdict==TableOpenDamaged{report.Malformed=true}else {report.Reason="unsupported wire form"};return nil}
@@ -366,100 +366,6 @@ func tableRegionToJson(value unsafe.Pointer,info *TableTypeInfo,buffer []byte,op
  n,ok:=tableNumber(value,info,nil,allocator...);if !ok{return -1,n.reason};defer n.Release();if n.shared{return -1,TableRefuseBlobShared};graph:=tableJsonGraph{node:func(p unsafe.Pointer)*tableJsonGraphNode{i,ok:=n.find(p);if !ok{return nil};return &n.entries[i].json}}
  for i:=range n.entries {e:=&n.entries[i];if e.info!=nil&&!tableRegionEdges(e.node,e.info,func(slot *TableRef,f *TableFieldInfo) bool {p:=tableRefAt(slot,nil);if p!=nil {graph.node(p).refs++};return true}){return -1,TableRefuseInvalidValue}}
  out:=tableJsonOut{buffer:buffer,measure:buffer==nil,graph:&graph,omit:options.OmitDefaults,compact:options.Compact};if !tableJsonWriteValue(&out,value,info,0){return -1,TableRefuseInvalidValue};out.put('\n');if out.overflow{return -1,TableRefuseInvalidValue};return out.offset,TableRefuseOk
-}
-`
-
-// tableWireStrictSource is the strict measure's damage walk (card
-// schema-go-fuzz-measure-accepts-malformed). LoadMeasureReason answers -1 with
-// wire_damaged exactly when the tolerant load would count the wire malformed,
-// so it walks every body the load walks, in the load's order, with the load's
-// own reader steps (Leb, Resolve, Body, Skip, Has) and the field descriptors,
-// and stores nothing: each check below names the LoadBody line it mirrors
-// (read.go emitReadField/emitReadArray/emitReadUnion/emitReadArm/
-// emitReadArmArray, lists.go emitListRead, maps.go emitMapRead, regions.go
-// tableRegionLoad). A value-level event the load counts without the malformed
-// flag (kind_mismatch, clamped, unknown, duplicate) passes, as it passes the
-// load; it also ends the walk where it ends the load's.
-const tableWireStrictSource = `
-func (root *TableTypeInfo) damageWire(buffer,ids []byte,nodeType func(uint64)*TableTypeInfo,blobs int)bool{
- // a reader of its own: the walk's recursion leaks its reader's content, and the
- // caller's reader carries the caller's report, which must stay on its stack
- r:=TableReader{Buffer:buffer,Ids:ids};s:=tableNodeScanBegin(r);for{if _,_,ok:=s.next();!ok{break}};if !s.whole(){return true}
- nodes:=s.records;s=tableNodeScanBegin(r)
- for{id,body,ok:=s.next();if !ok{break};if id==tableStringTypeId&&blobs&2!=0&&!tableUtf8Valid(body.Buffer){return false};if t:=nodeType(id);t!=nil&&!body.damageBody(t,true,nodes){return false}}
- return r.damageBody(root,false,nodes)
-}
-func (f *TableFieldInfo) damageKind()uint8{if f.IsArray{if f.KeyName!=nil{return 16};return 14};return f.Kind}
-func (r *TableReader) damageBody(t *TableTypeInfo,nested bool,nodes uint64)bool{
- for{
-  ref,ok:=r.Leb();if !ok{return false};if ref==0{return true}
-  id,ok:=r.Resolve(ref);if !ok||!r.Has(1){return false}
-  kind:=r.Get8();if id==0xfffffffffffffffe||id==0xfffffffffffffffd||nested&&id==0xffffffffffffffff{return false}
-  var f *TableFieldInfo;for i:=range t.Fields{if t.Fields[i].Id==id{f=&t.Fields[i];break}}
-  if f==nil{if !r.Skip(kind){return false};continue}
-  if want:=f.damageKind();kind!=want{if !f.IsArray&&tableKindWidens(kind,want){if !r.Has(tableKindBytes(kind)){return false};r.Offset+=tableKindBytes(kind);continue};if !r.Skip(kind){return false};continue}
-  if !r.damageField(f,kind,nodes){return false}
- }
-}
-func (r *TableReader) damageField(f *TableFieldInfo,kind uint8,nodes uint64)bool{
- switch{
- case f.IsArray:
-  sub,ok:=r.Body();if !ok{return false};if len(sub.Buffer)<2{return true}
-  header:=sub;header.Buffer=r.Buffer[r.Offset-int64(len(sub.Buffer)):];elemKind:=header.Get8();count,ok:=header.Leb();sub.Offset=header.Offset;if !ok{return false}
-  return sub.damageElems(f,elemKind,count,kind==16,nodes)
- case f.Kind==15:return r.damageUnion(f,nodes)
- }
- return r.damageValue(f,kind,nodes)
-}
-func (r *TableReader) damageValue(f *TableFieldInfo,kind uint8,nodes uint64)bool{
- switch kind{
- case 17:index,ok:=r.Leb();return ok&&index<=nodes+1
- case 30:ref,ok:=r.Leb();if !ok{return false};if ref!=0{if _,ok=r.Resolve(ref);!ok{return false}};return true
- case 12:sub,ok:=r.Body();return ok&&tableUtf8Valid(sub.Buffer)
- case 13:sub,ok:=r.Body();if !ok||!sub.damageBody(f.Table(),true,nodes){return false};return sub.Offset==int64(len(sub.Buffer))
- case 15:return r.damageUnion(f,nodes)
- }
- if n:=tableKindBytes(kind);n>0{if !r.Has(n){return false};r.Offset+=n;return true};return r.Skip(kind)
-}
-func (sub *TableReader) damageElems(f *TableFieldInfo,elemKind uint8,count uint64,keyed bool,nodes uint64)bool{
- switch{
- case f.Map:return true // map arm
- case f.List:
-  if elemKind!=f.Kind&&!tableKindWidens(elemKind,f.Kind){return true}
-  for i:=uint64(0);i<count;i++{if f.Kind==15{if !sub.damageUnion(f,nodes){return false};continue};if !sub.damageValue(f,elemKind,nodes){return false}}
-  return true
- }
- if elemKind!=f.Kind&&!tableKindWidens(elemKind,f.Kind){return true}
- if keyed{for i:=uint64(0);i<count;i++{key,ok:=sub.Leb();if !ok{return false};if _,ok=sub.Resolve(key);!ok{return false};elem,ok:=sub.Body();if !ok{return false};if f.Kind==13{if !elem.damageBody(f.Table(),true,nodes)||elem.Offset!=int64(len(elem.Buffer)){return false}}else if f.Kind==15{if !elem.damageUnion(f,nodes){return false}}else if !elem.damageValue(f,elemKind,nodes){return false}};return true}
- keep:=count;if f.ArrayBound>0&&keep>uint64(f.ArrayBound){keep=uint64(f.ArrayBound)}
- for i:=uint64(0);i<keep;i++{if f.Kind==15{if !sub.damageUnion(f,nodes){return false};continue};if !sub.damageValue(f,elemKind,nodes){return false}}
- return true
-}
-func (r *TableReader) damageElem(t *TableTypeInfo,nodes uint64)bool{elem,ok:=r.Body();return ok&&elem.damageBody(t,true,nodes)}
-func (r *TableReader) damageUnion(f *TableFieldInfo,nodes uint64)bool{
- armRef,ok:=r.Leb();if !ok{return false};if armRef==0{return true}
- armID,ok:=r.Resolve(armRef);if !ok||!r.Has(1){return false}
- armKind:=r.Get8();arm,ok:=r.Body();if !ok{return false}
- u:=f.Arms();for i:=1;i<len(u.Arms);i++{
-  if f.VariantId(uint64(i))!=armID{continue}
-  a:=&u.Arms[i];if a.Void{if armKind!=32{return true};return len(arm.Buffer)==0}
-  af:=&a.Field;want:=af.damageKind()
-  if armKind!=want{if af.IsArray||!tableKindWidens(armKind,want){return true};return int64(len(arm.Buffer))==tableKindBytes(armKind)}
-  switch{
-  case af.IsArray:
-   if !arm.Has(2){return true};elemKind:=arm.Get8();count,ok:=arm.Leb();if !ok{return false};if elemKind!=af.Kind&&!tableKindWidens(elemKind,af.Kind){return true}
-   keep:=count;if af.ArrayBound>0&&keep>uint64(af.ArrayBound){keep=uint64(af.ArrayBound)}
-   for j:=uint64(0);j<keep;j++{if af.Kind==13{if !arm.damageElem(af.Table(),nodes){return false};continue};if af.Kind==15{if !arm.damageUnion(af,nodes){return false};continue};if !arm.damageValue(af,elemKind,nodes){return false}}
-   return true
-  case want==13&&!af.Pointer:return arm.damageBody(af.Table(),true,nodes)&&arm.Offset==int64(len(arm.Buffer))
-  case want==17||want==30:framing:=arm;if _,ok:=framing.Leb();!ok||framing.Offset!=int64(len(framing.Buffer)){return false};return arm.damageValue(af,want,nodes)
-  case want==12:return tableUtf8Valid(arm.Buffer)
-  case want==15:return arm.damageUnion(af,nodes)
-  }
-  if n:=tableKindBytes(want);n>0{return int64(len(arm.Buffer))==n}
-  return true
- }
- return true
 }
 `
 
