@@ -4,16 +4,13 @@
 #
 # Every surface is handed to ONE Luau program, test/conformance/luau/main.luau,
 # under the pinned interpreter. The interpreter has no io library, so this
-# script is the host shim both ways: the manifest goes IN as source (a module
-# build/conformance-luau/driver/manifest.luau holding its text as a string
-# literal, which main.luau requires), and the answers come OUT on stdout, one
-# line per case — the case name, a space, the answer's bytes as lowercase hex —
-# which this script writes as one file per case into <outdir> (a case the leg
-# cannot answer is the line "<case> absent", written as <case>.absent).
-#
-# While main.luau is absent the leg answers ABSENT: `list` prints nothing and
-# every surface exits 2. The surfaces' cards add main.luau and the list grows
-# with them (docs/PORT-LUAU.md, THE CARD MAP).
+# script is the host shim both ways: the derived manifest and every fixture it
+# names go IN as source (modules build/conformance-luau/driver/manifest.luau
+# and inputs.luau, which main.luau requires), and the answers come OUT on
+# stdout, one line per case — the case name, a space, the answer's bytes as
+# lowercase hex — which this script writes as one file per case into <outdir>
+# (a case the leg cannot answer is the line "<case> absent", written as
+# <case>.absent).
 #
 # The working directory is the repository root.
 #
@@ -29,14 +26,60 @@ if [ ! -f "$main" ]; then
 fi
 dir=build/conformance-luau/driver
 mkdir -p "$dir" || exit 1
-perl -e 'local $/; my $t = <STDIN>; my $h = unpack("H*", $t); $h =~ s/(..)/\\x$1/g; print "return \"$h\"\n";' <"$1" >"$dir/manifest.luau" || exit 1
+perl -e '
+local $/;
+my $manifest = <STDIN>;
+my $esc = sub {
+	my $h = unpack("H*", $_[0]);
+	$h =~ s/(..)/\\x$1/g;
+	return $h;
+};
+open(my $m, ">", $ARGV[0] . "/manifest.luau") or die "$ARGV[0]/manifest.luau: $!";
+print $m "return \"" . $esc->($manifest) . "\"\n";
+close $m;
+my %want;
+for my $line (split /\n/, $manifest) {
+	$line =~ s/^\s+|\s+$//g;
+	next if $line eq "" || $line =~ /^#/;
+	my @f = split /\s+/, $line;
+	if ($f[0] eq "instance" || $f[0] eq "report") { $want{$f[4]} = 1 if defined $f[4]; }
+	elsif ($f[0] eq "message") { $want{$f[5]} = 1 if defined $f[5]; }
+	elsif ($f[0] eq "connection") { $want{$f[4]} = 1 if defined $f[4]; }
+}
+open(my $i, ">", $ARGV[0] . "/inputs.luau") or die "$ARGV[0]/inputs.luau: $!";
+print $i "return {\n";
+for my $path (sort keys %want) {
+	next unless -f $path;
+	open(my $in, "<:raw", $path) or die "$path: $!";
+	my $data = <$in>;
+	close $in;
+	$data = "" unless defined $data;
+	print $i "\t[\"" . $path . "\"] = buffer.fromstring(\"" . $esc->($data) . "\"),\n";
+}
+print $i "}\n";
+close $i;
+' "$dir" <"$1" || exit 1
+gen=${LUAU_CONFORMANCE_GENERATED:-build/conformance-luau}
+perl -e '
+print "return {\n";
+for my $d (glob($ARGV[0] . "/*")) {
+	next unless -d $d;
+	my ($unit) = $d =~ m{/([^/]+)$};
+	my @mods = map { m{/([^/]+)\.luau$}; $1 } glob($d . "/*Table.luau");
+	next unless @mods;
+	print "\t[\"" . $unit . "\"] = { ";
+	print join(", ", map { "\"" . $_ . "\"" } sort @mods);
+	print " },\n";
+}
+print "}\n";
+' "$gen" >"$dir/units.luau" || exit 1
 case "$2" in
 list)
-	exec "$luau" "$main" -a list
+	exec "$luau" "$main" -a list "${LUAU_CONFORMANCE_GENERATED:-build/conformance-luau}"
 	;;
 *)
 	mkdir -p "$3" || exit 1
-	"$luau" "$main" -a "$2" >"$dir/$2.out"
+	"$luau" "$main" -a "$2" "${LUAU_CONFORMANCE_GENERATED:-build/conformance-luau}" >"$dir/$2.out"
 	status=$?
 	[ "$status" -eq 0 ] || exit "$status"
 	LUAU_OUTDIR=$3 perl -ne 'chomp; my ($c, $h) = split / /, $_, 2; next unless defined $c && $c ne ""; if (defined $h && $h eq "absent") { open(my $f, ">", "$ENV{LUAU_OUTDIR}/$c.absent") or die; close $f; next } open(my $f, ">:raw", "$ENV{LUAU_OUTDIR}/$c") or die "$c: $!"; print $f pack("H*", defined $h ? $h : ""); close $f;' <"$dir/$2.out"
