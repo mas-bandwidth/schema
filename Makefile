@@ -5641,7 +5641,9 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 # conformance matrix holds it to the corpus — or stops with the diagnostic that
 # names the fields and the follow-on. A `schema new-leg` skeleton has
 # make/<lang>.mk but no `--lang` yet; that is a skip, not a gate failure.
-# Nothing here lists a language.
+# Nothing here lists a language. A hyphenated make/<leg>-<surface>.mk is a
+# companion fragment of a leg (make/luau-serialize.mk, docs/PORT-LUAU.md), not
+# a port, so the registry skips it.
 .PHONY: tables-ports-refuse-wide-scalars
 tables-ports-refuse-wide-scalars: bin/schema
 	@rm -rf build/tables-wide-refusal && mkdir -p build/tables-wide-refusal
@@ -5649,6 +5651,7 @@ tables-ports-refuse-wide-scalars: bin/schema
 	@printf 'module wide-scalar-probe\n\ngo 1.26\n' > build/tables-wide-refusal/go.mod
 	@carry=0; refuse=0; \
 	for lang in $(patsubst make/%.mk,%,$(wildcard make/*.mk)); do \
+		case "$$lang" in *-*) continue;; esac; \
 		if ./bin/schema generate --lang $$lang --out build/tables-wide-refusal/$$lang tables/scalars > build/tables-wide-refusal/$$lang.log 2>&1; then \
 			carry=$$((carry+1)); continue; \
 		fi; \

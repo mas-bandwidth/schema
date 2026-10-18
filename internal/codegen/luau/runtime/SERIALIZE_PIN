@@ -1,0 +1,17 @@
+# Vendored serialize.luau pin (docs/PORT-LUAU.md, THE RUNTIME LAYOUT).
+# Format: repository <url>, commit <sha>, then one line per vendored file:
+#   sha256  <hash>  <file>
+# The files are copied verbatim from the port's src/ directory at the commit.
+repository https://github.com/mas-bandwidth/serialize.luau.git
+commit e9acef6fee5efbb1c7b33a25843dba9aa59f6b22
+sha256  6ebe60c7d2b14de7621bc2747d0859f944c4ac6925f318cce3a9c145932e04a0  serialize.luau
+sha256  3352c1feaa93d554f28befef0a59bcfd44c41866af7fb1396ee77ef0b27a7340  serialize_bitpacker.luau
+sha256  2b633fc7350a1d654de06cb545f425344544bf237f024db9982508f46cbccbaf  serialize_bits.luau
+sha256  36ff50b693a8470df92525bfcd7f6b60e86871125286dd70cc00fb2bc9bff77d  serialize_bytes.luau
+sha256  d27ca4fc9097f7e6632890f702d161af7ad2a65a7bf8185caa07344dc0978f00  serialize_compressed_float.luau
+sha256  926969368dc640bdc62b479b36e7ddb44116cb8cf04b0d927036cf37d97a8c65  serialize_fixed.luau
+sha256  e67b54ea49c3a5f098a053be31a8efc656f1f82d68120f0b50ad43c482e8ce70  serialize_float.luau
+sha256  5a14159f4fb71f9fdaa0ccef4fe3893c1c8d09a11ec934eae6f64dfbaecc0fa8  serialize_int.luau
+sha256  d01a0d864005f7e7b12aedc7da77fa90b7daffac9cc1eafa7b8be14848a740a9  serialize_int128.luau
+sha256  aa5c6012b2464dcd13bec7779c394e4e45cc8b4173e6df26312c2441eab22d47  serialize_int_relative.luau
+sha256  cee908faa814dbceaa6bd788e8e7bad9fe457f928ec43793efaa166a49fb3a51  serialize_stream.luau
