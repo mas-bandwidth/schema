@@ -318,7 +318,9 @@ func tableJsonRequiredTables(u *ir.Unit) map[string][]string {
 			}
 		}
 		if len(names) > 0 {
-			tables[st.Name] = names
+			// keyed as the descriptor names the table: the declared name
+			// (SPEC.md §4.6, the Go escape)
+			tables[st.DeclaredName()] = names
 		}
 	}
 	return tables
@@ -1228,6 +1230,10 @@ type tableJsonIn struct {
 	// zero is set when the walk stopped on a U+0000 bound for text storage
 	// (docs/SPEC-TABLES.md 16.3): the field loop names the field in Reason
 	zero bool
+	// utf8 is set when the walk stopped on a byte sequence that is not
+	// well-formed UTF-8 (16.3): the read refuses it by name rather than
+	// replacing it silently with U+FFFD
+	utf8 bool
 }
 
 func (in *tableJsonIn) space() {
@@ -1252,6 +1258,14 @@ func (in *tableJsonIn) space() {
             }
         }
 		return
+	}
+}
+
+// a leading UTF-8 byte-order mark is skipped, at the very start and nowhere
+// else, and never written (docs/SPEC-TABLES.md §16.2, §16.12; RFC 8259 §8.1)
+func (in *tableJsonIn) byteOrderMark() {
+	if in.pos == 0 && len(in.text) >= 3 && in.text[0] == 0xEF && in.text[1] == 0xBB && in.text[2] == 0xBF {
+		in.pos = 3
 	}
 }
 
@@ -1444,10 +1458,17 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 		case c < 0x20:
 			in.bad = true // a raw control character is not a JSON string body
 			return 0, false
-		default:
+        default:
             code, n := utf8.DecodeRune(in.text[in.pos:])
             if code == utf8.RuneError && n == 1 {
-                unitLength = tableJsonEncodeUtf8(0xfffd, unit[:])
+                // 16.3: a byte sequence that is not well-formed UTF-8 is
+                // refused by name rather than replaced with U+FFFD
+                in.utf8 = true
+                if in.report.Reason == "" {
+                    in.report.Reason = "string_not_utf8: <root>"
+                }
+                in.bad = true
+                return 0, false
             } else {
                 unitLength = int32(n)
                 copy(unit[:], in.text[in.pos:in.pos+n])
@@ -2429,6 +2450,7 @@ func tableJsonRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 	}
 	in := tableJsonIn{text: text, report: report, nullEmpty: options.NullAsEmpty}
 	info.Reset(value)
+	in.byteOrderMark()
 	ok := tableJsonReadTable(&in, value, info, 0)
 	if ok {
 		// the canonical text ends with ONE newline and a text without one is

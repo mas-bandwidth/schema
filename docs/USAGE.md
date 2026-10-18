@@ -145,8 +145,13 @@ words of the targets being generated (SPEC §4.6): `schema generate --lang L`
 checks L's words only, and `schema check` — and every command that names no
 target — checks every target's, one diagnostic per name listing every checked
 target it collides with. A target with no reserved-word list of its own checks
-every target's words rather than none. No escaping machinery; rename at the
-source.
+every target's words rather than none. Go is the exception (SPEC §4.6, the Go
+escape): `generate --lang go` accepts a Go word as a field name, a variant or
+a union arm (Go emits them exported, `select` → `Select`) and as a table name,
+which it emits with one trailing underscore (`table func` → `type func_ struct`, `func_Load`, `func_Save`); the wire, the ids and the JSON keys keep
+the schema name. A declaration named `func_` beside that table is refused as a
+collision with the escape. Every other declaration kind, and every other
+target, still refuses its reserved words; rename at the source.
 
 ### const
 
@@ -4109,7 +4114,11 @@ every table it builds deterministic sample values from the declaration (fields
 at their bounds and inside them, every union arm, every optional present and
 absent) and checks that each reads back equal through the binary wire, base64
 text and JSON text; then it damages the wire and the texts and checks that each
-damage is refused by its named reason. Regenerate it whenever you regenerate
+damage is refused by its named reason. It also probes every declared bound: a
+generated `<Name>GenPastBound` helper writes a wire one past each range,
+`bits(N)`, `string(N)` and `[..N]` count, and each probe checks that the
+tolerant read clamps it to the bound and counts `clamped`, and that
+`ReadStrict` refuses it `clamped`. Regenerate it whenever you regenerate
 the code. Only `--lang go` is carried today; every other target refuses by
 name.
 

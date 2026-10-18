@@ -643,7 +643,7 @@ func (g *cookGen) emitRecordDescriptor(record string) {
 	g.wroteDescriptor[record] = true
 	slot := g.cook.slot[record]
 	g.hf("\ttableCookRecords[%d] = TableCookInfo{\n", slot)
-	g.hf("\t\tName: %q, Size: %d, Align: %d, NumFields: %d,\n", record, ml.Size, ml.Align, len(ml.Fields))
+	g.hf("\t\tName: %q, Size: %d, Align: %d, NumFields: %d,\n", declaredName(g.unit, record), ml.Size, ml.Align, len(ml.Fields))
 	g.hf("\t\tFields: []TableCookFieldInfo{\n")
 	var fieldIndex []string
 	for _, fl := range ml.Fields {

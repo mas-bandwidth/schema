@@ -42,6 +42,10 @@ type reader struct {
 	// zero is set when the walk stopped on a U+0000 bound for text storage
 	// (docs/SPEC-TABLES.md §16.3): the field loop names the field in Reason
 	zero bool
+	// utf8 is set when the walk stopped on a byte sequence that is not
+	// well-formed UTF-8 (§16.3): the read refuses it by name rather than
+	// replacing it silently with U+FFFD
+	utf8 bool
 }
 
 // labelEntry is what an `&node` label defined: its node and the node's table,
@@ -62,6 +66,7 @@ func (m *Model) Read(inst *Instance, text []byte, report *Report) bool {
 	if m.IsVariable(inst.Def.Name) {
 		in.graph = map[uint64]labelEntry{}
 	}
+	in.byteOrderMark()
 	ok := in.readTable(inst, 0)
 	if ok {
 		in.space()
@@ -109,6 +114,16 @@ func (in *reader) space() {
 			in.bad = true
 		}
 		return
+	}
+}
+
+// byteOrderMark skips a leading UTF-8 byte-order mark (docs/SPEC-TABLES.md
+// §16.2, §16.12): EF BB BF as the text's first three bytes and nowhere else.
+// RFC 8259 §8.1 lets a parser ignore it, it costs one comparison, and it is
+// not data. No writer emits one.
+func (in *reader) byteOrderMark() {
+	if in.pos == 0 && len(in.text) >= 3 && in.text[0] == 0xEF && in.text[1] == 0xBB && in.text[2] == 0xBF {
+		in.pos = 3
 	}
 }
 
@@ -348,14 +363,18 @@ func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
 				unit = append(unit, in.text[in.pos])
 				in.pos++
 			}
-			// A SEQUENCE THAT IS NOT A CODE POINT READS AS U+FFFD, which is
-			// §16.3's rule at the point the defect ENTERS rather than at the
-			// point it leaves: a lone surrogate escape already reads that way
-			// above, RFC 8259 requires a JSON text to be valid UTF-8, and a
-			// kind 12 payload is well-formed UTF-8 (§3), so storage the text
-			// form built has to be storage the wire can carry (§5).
+			// A SEQUENCE THAT IS NOT A CODE POINT IS REFUSED BY NAME
+			// (§16.3): RFC 8259 requires a JSON text to be valid UTF-8, and
+			// a silent U+FFFD would make two different texts one value.
+			// The lone-surrogate escape above still reads as U+FFFD; that is
+			// the sibling card schema-go-json-refuses-lone-surrogates.
 			if !utf8.Valid(unit) {
-				unit = encodeUTF8(0xfffd)
+				in.utf8 = true
+				if in.report.Reason == "" {
+					in.report.Reason = "string_not_utf8: <root>"
+				}
+				in.bad = true
+				return nil, false, false
 			}
 		}
 		return unit, false, true
@@ -1967,6 +1986,7 @@ func bigToFloat(v *big.Int) float64 {
 // `?T`, and nothing is coerced.
 func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 	in := &reader{text: text, report: report, m: m}
+	in.byteOrderMark() // §16.2, §16.12: a whole text, so its leading mark is skipped
 	m.reset(fv)
 	var ok bool
 	switch shape := in.valueShape(); {
@@ -2000,6 +2020,7 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 // that become a bounded array's elements in name order.
 func (m *Model) ReadElement(fv *Field, slot int, text []byte, report *Report) bool {
 	in := &reader{text: text, report: report, m: m}
+	in.byteOrderMark() // §16.2, §16.12: a whole text, so its leading mark is skipped
 	fv.Elems[slot] = m.elementZero(fv.Def)
 	var ok bool
 	if in.valueShape() != ElementShape(fv.Def) {
