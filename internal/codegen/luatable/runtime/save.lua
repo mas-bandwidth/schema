@@ -44,8 +44,6 @@ local function w_leb(w, v)
   w_raw(w, table.concat(out))
 end
 
-local function w_u16(w, v) w_raw(w, string.pack("<I2", v)) end
-local function w_u32(w, v) w_raw(w, string.pack("<I4", v)) end
 local function w_u64(w, v) w_raw(w, string.pack("<i8", v)) end
 local function w_f64(w, v) w_raw(w, string.pack("<d", v)) end
 local function w_f32(w, v) w_raw(w, string.pack("<f", v)) end
@@ -78,6 +76,26 @@ local edge_union
 -- nodes.go MapEntryOrder): one entry table per key, built once per map and
 -- shared by the numbering and the write, so a blob slot the numbering keys by
 -- its holder is the slot the write finds.
+-- BYTEWISE KEY ORDER (§2.8): Lua's string < is strcoll, which is bytewise
+-- only under the C locale, so a string key is ordered by its unsigned bytes
+-- here, a shorter prefix first, whatever locale the host runs.
+local function bytes_less(a, b)
+  local n = math.min(#a, #b)
+  local i = 1
+  while i <= n do
+    local j = math.min(i + 255, n)
+    local ca, cb = a:sub(i, j), b:sub(i, j)
+    if ca ~= cb then
+      for k = 1, j - i + 1 do
+        local x, y = ca:byte(k), cb:byte(k)
+        if x ~= y then return x < y end
+      end
+    end
+    i = j + 1
+  end
+  return #a < #b
+end
+
 local function map_entries(cache, fd, x)
   if x == nil then return {} end
   local got = cache[x]
@@ -86,7 +104,7 @@ local function map_entries(cache, fd, x)
   local keys = {}
   for key in pairs(x) do keys[#keys + 1] = key end
   table.sort(keys, function(a, b)
-    if kf.shape == "string" then return a < b end
+    if kf.shape == "string" then return bytes_less(a, b) end
     if kf.signed or kf.width < 8 then return a < b end
     return math.ult(a, b)
   end)
@@ -573,6 +591,8 @@ function S.Save(T, name, v)
 end
 
 -- THE MEASURE: the length of what Save would write — the saved length.
+-- It mirrors jstable (variableform.go emitRootCodec: Measure is the length
+-- of TableVariableSave), so it is equal to the saved length by construction.
 function S.Measure(T, name, v)
   local saved = S.Save(T, name, v)
   if saved == nil then return nil end
