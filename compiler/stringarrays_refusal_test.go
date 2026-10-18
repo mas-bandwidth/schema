@@ -23,12 +23,12 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 // integrity_mismatch refusal name every Go unit's runtime carries
 // (docs/SPEC-TABLES.md §2.14) and by the strict timestamp parser that now rides
 // in every Go text form (§2.11, §16.2).
-// It moves again, on the merge of sprint/schema-go @ cc25e39f7, only by this
+// It moves again, on the merge of sprint/schema-go @ 9ec407a4b, only by this
 // card's zero rule: the JSON reader lines of internal/codegen/gotable/json.go
 // and maps.go that refuse a U+0000 bound for text storage
 // (docs/SPEC-TABLES.md §16.3).
 var neitherDigest = map[string]string{
-	"go":  "3570737d3212f3ee9ff5c8679eda9aa95a58b93d65ab61504298a87e35b5b4da",
+	"go":  "db73cfc4db0cc949958f6609f5b178c77cf96add22df18368ec54f091148563a",
 	"cpp": "5aabda2cf12ca342bd480b18084def13f06d87a85b6bdddeea12f955f761da1d",
 }
 

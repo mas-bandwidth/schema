@@ -2778,14 +2778,23 @@ func tableJsonReadMap(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, dept
 			in.bad = true
 			return false
 		}
+		{
+			zero := *in
+			var r TableReport
+			zero.report = &r
+			var none [0]byte
+			if _, ok := zero.scanString(none[:]); !ok && zero.zero {
+				in.zero = true
+				in.bad = true
+				return false
+			}
+		}
 		good := true
 		var k tableMapKey
 		if key.Kind == 12 {
 			if n > key.ArrayBound {
-				var none [0]byte
-				if _, ok = in.scanString(none[:]); !ok {
-					return false
-				}
+				in.report.Clamped++
+				in.pos = probe.pos
 				good = false
 			} else {
 				memory, _ := in.graph.alloc(int64(n) + 1)
@@ -2799,12 +2808,7 @@ func tableJsonReadMap(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, dept
 		} else {
 			var text [tableJsonMaxNumber]byte
 			if n > tableJsonMaxNumber {
-				clamped := in.report.Clamped
-				_, ok = in.scanString(text[:0])
-				in.report.Clamped = clamped
-				if !ok {
-					return false
-				}
+				in.pos = probe.pos
 				good = false
 			} else {
 				_, ok = in.scanString(text[:n])

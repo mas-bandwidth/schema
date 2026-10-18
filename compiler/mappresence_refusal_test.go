@@ -19,12 +19,12 @@ const plainMapSchema = "package probe\n\ntable Holder\n{\n    tags map[string(8)
 // names sorted, each name then its bytes (outputDigest). The go digest was
 // re-pinned at head: the strict timestamp parser now rides in every Go text
 // form (docs/SPEC-TABLES.md §2.11, §16.2). It moves again, on the merge of
-// sprint/schema-go @ cc25e39f7, only by the zero rule of
+// sprint/schema-go @ 9ec407a4b, only by the zero rule of
 // schema-go-text-zero-byte-one-rule: the JSON reader lines of
 // internal/codegen/gotable/json.go and maps.go that refuse a U+0000 bound for text storage
 // (docs/SPEC-TABLES.md §16.3).
 var plainMapDigest = map[string]string{
-	"go":  "6aabe0e0917d757e0332c3ab1520070cb4373eed52d4cd503f2b518b3e3e6e05",
+	"go":  "1edf93a55188c3c313e22b550382a439d0ff45ee4e62827b477d32f874de0815",
 	"cpp": "89878cf368053213bfe10cbe20a4fe38eae626ce4a6d3af244008f811675365e",
 }
 

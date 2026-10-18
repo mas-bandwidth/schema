@@ -275,12 +275,12 @@ table Root { m ?map[int32]Leaf }
 // cc25e39f7 by schema-go-text-zero-byte-one-rule, whose JSON reader lines in
 // json.go and maps.go (docs/SPEC-TABLES.md 16.3) move every unit's bytes.
 var seamGolden = map[string]string{
-	"lists-maps-cook-union": "16b18c0f8b39a3ff3bb5353ca0e2562eeb53a1cc45e4593d5bdc8e6347c290af",
-	"array-root-text-list":  "63568905fc45f3b64ba74fd3680f864618c073a77145955886c811c2c7b4796b",
-	"message-form":          "e31afd522bb2f16f1446bb92c6ba6a1023b4c99e1e208b3a1cc5dc58f869104b",
-	"retain-unknown":        "828a947465ad7b20b83fc9b452af95bd95cab61b97fc17153f368636287ba3cf",
-	"text-total-seams":      "c998911499014c00a2f53484c148d3c6ed94a11c6dfe702ee5749e6037da5e33",
-	"optional-map":          "5b861a44292a6bdb39aba746c46eb39a2cd4683e56cf25a6fc536485572cdf8f",
+	"lists-maps-cook-union": "f755d341c2181291831f31ac0f5837d57802b42229fd5a1a65fcd2855c555d47",
+	"array-root-text-list":  "c1e7f593b0982742f9770b27d391eab9a0c4c81662161de0d206690e3fa6203b",
+	"message-form":          "11063aa64a08bc22bc57cdd1e76b0afe2d1e3048a7fbf1e3346baa39fa391b82",
+	"retain-unknown":        "27cc2ec9b247218f0a66beaceb2e872dd3506b86b40b34258aa0d3b299ebcd41",
+	"text-total-seams":      "fb6f80a1e420c49dce11306b08cb43987cbf6d16d90c109c8b272cce01edb2fd",
+	"optional-map":          "797b702ad158754286a55a1e7e8808ba6e94e8adfb48429e2a2b83e067ac28e4",
 }
 
 func outputDigest(out map[string][]byte) string {
