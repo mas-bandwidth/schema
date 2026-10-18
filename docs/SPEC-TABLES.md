@@ -1257,6 +1257,12 @@ table Player
   the writer refuses the record until the field is set; a stored record
   lacking it is `missing_required` on read (SPEC §4.6). A declared default on
   such a field stays legal.
+- **A `| required` field inside an `if` guard applies only while the guard
+  holds.** With the branch off the field is absent from the wire and from
+  defaults — the guard's own rule, §3 — and a read does not demand it, so a
+  record from a branch that was off never refuses `missing_required` for it.
+  With the branch on, the required rule above applies in full: the field must
+  ride and a read demands it.
 
 **Evolution** (§4). Adding `required` to a shipped field is a BREAK the
 tables baseline refuses: old records were written without it and a newer
@@ -5059,7 +5065,9 @@ twenty unnameable entries counts nothing at all if no body references them.
   an `if` branch that does not run writes none of its fields, so a guarded
   group rides only when its guard is true. That is what makes a guard an
   optional GROUP on the wire and not merely in the language, and the text
-  form defers to this rule rather than restating it (§16.2).
+  form defers to this rule rather than restating it (§16.2). The same rule
+  bounds `| required` (§2.3): a required field in an off branch is absent
+  and is not demanded, because its guard never held.
   **PRESENCE, not content, decides the two pointer-shaped spellings.** An
   absent `?T` and a null `*T` are not written, and a present optional and a
   non-null pointer are ALWAYS written, even when the value is entirely

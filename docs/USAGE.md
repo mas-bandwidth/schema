@@ -762,6 +762,11 @@ if ( !value.at_rest )
 **A read zeroes the untaken side.** You never inherit a stale value from a
 previous packet through a branch that was not taken this time.
 
+**A `| required` field inside a branch applies only while the branch is
+taken.** With the branch off the field is absent and a read does not demand
+it; with the branch on it must ride and a read refuses a record missing it
+with `missing_required`.
+
 ---
 
 ## Defaults
