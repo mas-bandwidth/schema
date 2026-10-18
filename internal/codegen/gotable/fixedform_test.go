@@ -33,7 +33,7 @@ fixed table Point {
 		"const TableFixedHeaderBytes = 16",
 		"const TableFixedHashAt = 8",
 		"func PointFixedSave(",
-		"func PointFixedLoad(",
+		"func PointFixedLoadTolerant(",
 		"func PointFixedMeasure(",
 		"TableFixedReasonLayoutMalformed",
 		"TableFixedReasonNoLayout",
@@ -60,10 +60,10 @@ fixed table Point {
 	// stays the variable form's entry point and still reads form 1 — the pair is
 	// held next door by TestFixedFormForm1RefusalLivesInFixedLoad, and the
 	// variable half by TestForm1OfVariableTableStillLoads.
-	if funcSource(body, "func PointLoad(") == "" {
+	if funcSource(body, "func PointLoadTolerant(") == "" {
 		t.Fatal("PointLoad was not emitted")
 	}
-	fixedLoad := funcSource(body, "func PointFixedLoad(")
+	fixedLoad := funcSource(body, "func PointFixedLoadTolerant(")
 	if fixedLoad == "" {
 		t.Fatal("PointFixedLoad was not emitted")
 	}
@@ -118,7 +118,7 @@ fixed table Point {
 			body += string(data)
 		}
 	}
-	load := funcSource(body, "func PointLoad(")
+	load := funcSource(body, "func PointLoadTolerant(")
 	if load == "" {
 		t.Fatal("PointLoad was not emitted")
 	}
@@ -128,7 +128,7 @@ fixed table Point {
 	if strings.Contains(load, "previous_form") {
 		t.Error("PointLoad, the form-1 entry point, refuses form 1")
 	}
-	fixedLoad := funcSource(body, "func PointFixedLoad(")
+	fixedLoad := funcSource(body, "func PointFixedLoadTolerant(")
 	if !strings.Contains(fixedLoad, "TableFixedReasonPreviousForm") || !strings.Contains(fixedLoad, "tableFixedRefuse") {
 		t.Error("PointFixedLoad does not name a form-1 file previous_form")
 	}
@@ -168,7 +168,7 @@ func TestRoundTrip(t *testing.T) {
 	got := make([]Point, 1)
 	var r TableReport
 	plan := make([]TableFixedEntry, 64)
-	if n := PointFixedLoad(got, buf, plan, &r); n != 1 || r != (TableReport{}) || got[0] != one {
+	if n := PointFixedLoadTolerant(got, buf, plan, &r); n != 1 || r != (TableReport{}) || got[0] != one {
 		t.Fatalf("got %+v report %+v n=%d", got[0], r, n)
 	}
 	// EVERY ASSIGNED FORM BYTE HAS ITS OWN NAME (docs/SPEC-TABLES.md §3, THE
@@ -186,7 +186,7 @@ func TestRoundTrip(t *testing.T) {
 		wrong := append([]byte(nil), buf...)
 		wrong[0] = form
 		r = TableReport{}
-		if n := PointFixedLoad(got, wrong, plan, &r); n >= 0 || r.Reason != want || r.Verdict != TableOpenRefused || r.Malformed {
+		if n := PointFixedLoadTolerant(got, wrong, plan, &r); n >= 0 || r.Reason != want || r.Verdict != TableOpenRefused || r.Malformed {
 			t.Fatalf("FixedLoad form %d: want %s, got %d %+v", form, want, n, r)
 		}
 	}
@@ -200,13 +200,13 @@ func TestRoundTrip(t *testing.T) {
 	// Hash chooses first (bill §12.4): a known hash whose layout bytes differ
 	// is layout_malformed. The seven §1.1 names are for a layout that is not
 	// a layout; they do not fire against a header this build has locked.
-	if n := PointFixedLoad(got, broken, plan, &r); n >= 0 || r.Reason != "layout_malformed" {
+	if n := PointFixedLoadTolerant(got, broken, plan, &r); n >= 0 || r.Reason != "layout_malformed" {
 		t.Fatalf("known hash, different layout bytes: %d %+v", n, r)
 	}
 	lying := append([]byte(nil), buf...)
 	lying[TableFixedHeaderBytes+4+len(PointFixedLayout)] ^= 0xFF
 	r = TableReport{}
-	if n := PointFixedLoad(got, lying, plan, &r); n >= 0 || r.Reason != "no_layout" {
+	if n := PointFixedLoadTolerant(got, lying, plan, &r); n >= 0 || r.Reason != "no_layout" {
 		t.Fatalf("a record whose hash names no layout: %d %+v", n, r)
 	}
 }
@@ -378,7 +378,7 @@ func TestWriteReadWriteIsByteIdentical(t *testing.T) {
 	back := make([]Root, 1)
 	var r TableReport
 	plan := make([]TableFixedEntry, 256)
-	if n := RootFixedLoad(back, buf, plan, &r); n != 1 || r != (TableReport{}) {
+	if n := RootFixedLoadTolerant(back, buf, plan, &r); n != 1 || r != (TableReport{}) {
 		t.Fatalf("load %d %+v", n, r)
 	}
 	again := make([]byte, need)
@@ -486,7 +486,7 @@ func TestHashCheckedLast(t *testing.T) {
 	// CONTROL 1 — THE RULE'S LEGITIMATE VALUE: the file's own, known hash. The
 	// same loader reads it, so the refusals below are the hash and the length
 	// and not the fixture.
-	if n := PointFixedLoad(got, buf, plan, &r); n != 1 || r != (TableReport{}) || got[0] != one {
+	if n := PointFixedLoadTolerant(got, buf, plan, &r); n != 1 || r != (TableReport{}) || got[0] != one {
 		t.Fatalf("the file with its own hash reads: n=%d got=%+v report=%+v", n, got[0], r)
 	}
 
@@ -498,7 +498,7 @@ func TestHashCheckedLast(t *testing.T) {
 	flipped := binary.LittleEndian.Uint64(unknown[TableFixedHashAt:]) ^ 0xFFFFFFFFFFFFFFFF
 	binary.LittleEndian.PutUint64(unknown[TableFixedHashAt:], flipped)
 	r = TableReport{}
-	if n := PointFixedLoad(got, unknown, plan, &r); n != -1 || r.Reason != "layout_unknown" || r.LayoutHash != flipped || r.Malformed {
+	if n := PointFixedLoadTolerant(got, unknown, plan, &r); n != -1 || r.Reason != "layout_unknown" || r.LayoutHash != flipped || r.Malformed {
 		t.Fatalf("an unknown header hash is layout_unknown carrying the file's hash: n=%d report=%+v", n, r)
 	}
 
@@ -508,7 +508,7 @@ func TestHashCheckedLast(t *testing.T) {
 	overrun := append([]byte(nil), unknown...)
 	binary.LittleEndian.PutUint32(overrun[TableFixedHeaderBytes:], uint32(len(overrun)))
 	r = TableReport{}
-	if n := PointFixedLoad(got, overrun, plan, &r); n != -1 || r.Reason != "layout_malformed" || r.Malformed {
+	if n := PointFixedLoadTolerant(got, overrun, plan, &r); n != -1 || r.Reason != "layout_malformed" || r.Malformed {
 		t.Fatalf("the layout framing is checked BEFORE the hash: n=%d report=%+v", n, r)
 	}
 }
@@ -579,7 +579,7 @@ func TestPlanPath(t *testing.T) {
 		back := make([]tblfx1.FxRoot, 1)
 		var r tblfx1.TableReport
 		plan := make([]tblfx1.TableFixedEntry, 1024)
-		n := tblfx1.FxRootFixedLoad(back, w1, plan, &r)
+		n := tblfx1.FxRootFixedLoadTolerant(back, w1, plan, &r)
 		if n != 1 || back[0].Keep != 4242 || back[0].Narrow != 40000 || back[0].Renamed != 321 || back[0].Gone != 654 {
 			t.Fatalf("same schema: %+v n=%d r=%+v", back[0], n, r)
 		}
@@ -603,7 +603,7 @@ func TestPlanPath(t *testing.T) {
 		back := make([]tblfx1.FxRoot, 1)
 		var r tblfx1.TableReport
 		plan := make([]tblfx1.TableFixedEntry, 1024)
-		if n := tblfx1.FxRootFixedLoad(back, wb, plan, &r); n != 1 {
+		if n := tblfx1.FxRootFixedLoadTolerant(back, wb, plan, &r); n != 1 {
 			t.Fatalf("RANGE identity n=%d %+v", n, r)
 		}
 		if back[0].Renamed != 1000 || back[0].Gone != 0 || r.Clamped != 2 {
@@ -612,7 +612,7 @@ func TestPlanPath(t *testing.T) {
 		back2 := make([]tblfx2.FxRoot, 1)
 		var r2 tblfx2.TableReport
 		plan2 := make([]tblfx2.TableFixedEntry, 2048)
-		if n := tblfx2.FxRootFixedLoad(back2, wb, plan2, &r2); n != 1 {
+		if n := tblfx2.FxRootFixedLoadTolerant(back2, wb, plan2, &r2); n != 1 {
 			t.Fatalf("RANGE compiled n=%d %+v", n, r2)
 		}
 		if back2[0].RenamedTo != 1000 || r2.Clamped != 1 {
@@ -626,7 +626,7 @@ func TestPlanPath(t *testing.T) {
 		back[0].Keep = 1
 		var r tblfx2.TableReport
 		plan := make([]tblfx2.TableFixedEntry, 1024)
-		n := tblfx2.FxRootFixedLoad(back, w1, plan, &r)
+		n := tblfx2.FxRootFixedLoadTolerant(back, w1, plan, &r)
 		if n != 1 {
 			t.Fatalf("older writer n=%d r=%+v", n, r)
 		}
@@ -670,7 +670,7 @@ func TestPlanPath(t *testing.T) {
 		back[0].Narrow = 99
 		var r tblfx1.TableReport
 		plan := make([]tblfx1.TableFixedEntry, 1024)
-		n := tblfx1.FxRootFixedLoad(back, w2, plan, &r)
+		n := tblfx1.FxRootFixedLoadTolerant(back, w2, plan, &r)
 		if n != 1 {
 			t.Fatalf("newer writer n=%d r=%+v", n, r)
 		}
@@ -700,7 +700,7 @@ func TestPlanPath(t *testing.T) {
 		var r tblfx1.TableReport
 		plan := make([]tblfx1.TableFixedEntry, 1024)
 		v := make([]tblfx1.FxRoot, 1)
-		n := tblfx1.FxRootFixedLoad(v, broken, plan, &r)
+		n := tblfx1.FxRootFixedLoadTolerant(v, broken, plan, &r)
 		// RULE 1 BY ITS OWN NAME: 4 + 17*count is not the length given. The
 		// seven rules run before the header's hash is checked, so a broken
 		// layout is never reported as a lying header (§1.1, §2.1 step 5).
@@ -714,7 +714,7 @@ func TestPlanPath(t *testing.T) {
 		var r tblfx1.TableReport
 		plan := make([]tblfx1.TableFixedEntry, 1024)
 		v := make([]tblfx1.FxRoot, 1)
-		n := tblfx1.FxRootFixedLoad(v, other, plan, &r)
+		n := tblfx1.FxRootFixedLoadTolerant(v, other, plan, &r)
 		if n >= 0 || r.Reason != "newer_form" || r.Malformed {
 			t.Fatalf("newer_form: n=%d %+v", n, r)
 		}
@@ -723,7 +723,7 @@ func TestPlanPath(t *testing.T) {
 		var r tblfx1.TableReport
 		tiny := make([]tblfx1.TableFixedEntry, 1)
 		v := make([]tblfx1.FxRoot, 1)
-		n := tblfx1.FxRootFixedLoad(v, w2, tiny, &r)
+		n := tblfx1.FxRootFixedLoadTolerant(v, w2, tiny, &r)
 		if n >= 0 || r.Reason != "plan_too_large" {
 			t.Fatalf("plan_too_large: n=%d %+v", n, r)
 		}
@@ -798,7 +798,7 @@ func TestForm1LoadReadsAndFixedLoadRefuses(t *testing.T) {
 	}
 	var got Point
 	var r TableReport
-	if !PointLoad(&got, form1, &r) {
+	if !PointLoadTolerant(&got, form1, &r) {
 		t.Fatalf("form-1 Load of a DECLARED fixed table refused: %+v", r)
 	}
 	if r.Reason != "" || r.Verdict != TableOpenOk || r.Malformed {
@@ -810,9 +810,9 @@ func TestForm1LoadReadsAndFixedLoadRefuses(t *testing.T) {
 	batch := make([]Point, 1)
 	r = TableReport{}
 	plan := make([]TableFixedEntry, 64)
-	n := PointFixedLoad(batch, form1, plan, &r)
+	n := PointFixedLoadTolerant(batch, form1, plan, &r)
 	if n >= 0 || r.Reason != "previous_form" || r.Verdict != TableOpenRefused {
-		t.Fatalf("FixedLoad(form1): n=%d %+v", n, r)
+		t.Fatalf("FixedLoadTolerant(form1): n=%d %+v", n, r)
 	}
 }
 `)
@@ -857,7 +857,7 @@ func TestFixedFormRefuseIsTotal(t *testing.T) {
 	dst[7] = poison
 	var r TableReport
 	plan := make([]TableFixedEntry, 64)
-	n := PointFixedLoad(batch, form1, plan, &r)
+	n := PointFixedLoadTolerant(batch, form1, plan, &r)
 	if n >= 0 || r.Reason != "previous_form" || r.Verdict != TableOpenRefused {
 		t.Fatalf("REFUSE is total: want refusal, got n=%d %+v", n, r)
 	}
@@ -908,7 +908,7 @@ func TestForm1VariableLoad(t *testing.T) {
 	off := (-uintptr(unsafe.Pointer(&raw[0]))) & 15
 	region := raw[off : off+uintptr(size)]
 	var r TableReport
-	got := NodeLoad(region, form1, &r)
+	got := NodeLoadTolerant(region, form1, &r)
 	if got == nil || r != (TableReport{}) || got.N != 9 {
 		t.Fatalf("variable form-1 Load: %+v report %+v", got, r)
 	}
@@ -1003,7 +1003,7 @@ func TestHostileBoolOnTheIdentityPath(t *testing.T) {
 	got := make([]Host, 1)
 	var r TableReport
 	plan := make([]TableFixedEntry, 256)
-	if n := HostFixedLoad(got, buf, plan, &r); n != 1 {
+	if n := HostFixedLoadTolerant(got, buf, plan, &r); n != 1 {
 		t.Fatalf("load n=%d %+v", n, r)
 	}
 	wantHostile(t, "identity plan", got[0], r)
@@ -1111,7 +1111,7 @@ func TestUnknownTagIsNoneAndCounts(t *testing.T) {
 	got := make([]Host, 1)
 	var r TableReport
 	plan := make([]TableFixedEntry, 256)
-	if n := HostFixedLoad(got, buf, plan, &r); n != 1 || got[0].Pick.Type != PickTypeChat || got[0].Pick.Chat.Volume != 4242 {
+	if n := HostFixedLoadTolerant(got, buf, plan, &r); n != 1 || got[0].Pick.Type != PickTypeChat || got[0].Pick.Chat.Volume != 4242 {
 		t.Fatalf("known arm: n=%d %+v %+v", n, got[0], r)
 	}
 	if r != (TableReport{}) || got[0].Tail != 9 {
@@ -1124,7 +1124,7 @@ func TestUnknownTagIsNoneAndCounts(t *testing.T) {
 		hostile[len(hostile)-HostFixedRecordBytes+8] = tag
 		got = make([]Host, 1)
 		r = TableReport{}
-		if n := HostFixedLoad(got, hostile, plan, &r); n != 1 {
+		if n := HostFixedLoadTolerant(got, hostile, plan, &r); n != 1 {
 			t.Fatalf("tag %d: n=%d %+v", tag, n, r)
 		}
 		if got[0].Pick.Type != PickTypeNone {
@@ -1142,7 +1142,7 @@ func TestUnknownTagIsNoneAndCounts(t *testing.T) {
 	none[len(none)-HostFixedRecordBytes+8] = 0
 	got = make([]Host, 1)
 	r = TableReport{}
-	if n := HostFixedLoad(got, none, plan, &r); n != 1 || got[0].Pick.Type != PickTypeNone || r != (TableReport{}) {
+	if n := HostFixedLoadTolerant(got, none, plan, &r); n != 1 || got[0].Pick.Type != PickTypeNone || r != (TableReport{}) {
 		t.Fatalf("None is not unknown: n=%d %+v %+v", n, got[0], r)
 	}
 }
@@ -1238,7 +1238,7 @@ func TestHostileByteSweep(t *testing.T) {
 		got := make([]Host, 1)
 		var r TableReport
 		plan := make([]TableFixedEntry, 256)
-		if n := HostFixedLoad(got, clean, plan, &r); n != 1 {
+		if n := HostFixedLoadTolerant(got, clean, plan, &r); n != 1 {
 			t.Fatalf("clean read n=%d %+v", n, r)
 		}
 		if r.Verdict != TableOpenOk || r.Reason != "" || r.Malformed || r.Clamped != 0 {
@@ -1259,7 +1259,7 @@ func TestHostileByteSweep(t *testing.T) {
 			got := make([]Host, 1)
 			var r TableReport
 			plan := make([]TableFixedEntry, 256)
-			n := HostFixedLoad(got, hit, plan, &r)
+			n := HostFixedLoadTolerant(got, hit, plan, &r)
 			what := fmt.Sprintf("record byte %d poison 0x%02x", at, sweepPoison[p])
 			if n < 0 {
 				named := r.Verdict == TableOpenRefused && r.Reason != ""
@@ -1393,7 +1393,7 @@ func TestArgLane(t *testing.T) {
 	same := make([]tblw.Root, 1)
 	var wr tblw.TableReport
 	wplan := make([]tblw.TableFixedEntry, 256)
-	if n := tblw.RootFixedLoad(same, buf, wplan, &wr); n != 1 || same[0].Pick.Type != tblw.PickTypeB || string(same[0].Pick.B.S[:same[0].Pick.B.SLength]) != "hi" {
+	if n := tblw.RootFixedLoadTolerant(same, buf, wplan, &wr); n != 1 || same[0].Pick.Type != tblw.PickTypeB || string(same[0].Pick.B.S[:same[0].Pick.B.SLength]) != "hi" {
 		t.Fatalf("identity: n=%d %+v %+v", n, same[0], wr)
 	}
 
@@ -1401,7 +1401,7 @@ func TestArgLane(t *testing.T) {
 	got[0].Tail = 99
 	var r tblr.TableReport
 	plan := make([]tblr.TableFixedEntry, 256)
-	if n := tblr.RootFixedLoad(got, buf, plan, &r); n != 1 {
+	if n := tblr.RootFixedLoadTolerant(got, buf, plan, &r); n != 1 {
 		t.Fatalf("compiled n=%d %+v", n, r)
 	}
 	if got[0].Pick.Type != tblr.PickTypeB {
@@ -1639,7 +1639,7 @@ func TestPlanPartition(t *testing.T) {
 	got := make([]Writer, 1)
 	var r TableReport
 	plan := make([]TableFixedEntry, 64)
-	if n := WriterFixedLoad(got, buf, plan, &r); n != 1 || r != (TableReport{}) {
+	if n := WriterFixedLoadTolerant(got, buf, plan, &r); n != 1 || r != (TableReport{}) {
 		t.Fatalf("partitioned identity read n=%d %+v", n, r)
 	}
 	if got[0].Head != 41 || got[0].Pick.Type != PickTypeB || string(got[0].Pick.B.S[:got[0].Pick.B.SLength]) != "seven77" || got[0].Pick.B.M != 1234 || got[0].Tail != 99 {
@@ -1788,7 +1788,7 @@ func TestRecordBound(t *testing.T) {
 	got := make([]Host, 1)
 	HostReset(&got[0])
 	var r TableReport
-	n := HostFixedLoad(got, file, make([]TableFixedEntry, 256), &r)
+	n := HostFixedLoadTolerant(got, file, make([]TableFixedEntry, 256), &r)
 	if n >= 0 || r.Reason != "layout_unknown" || r.Verdict != TableOpenRefused {
 		t.Fatalf("W10: LOAD of the same bytes is not refused: n=%d %+v", n, r)
 	}
@@ -1877,7 +1877,7 @@ fixed table Cfg {
 	if !strings.Contains(clampBody, "if value.NotePresent") {
 		t.Error("an absent optional's payload must not be held to a bound")
 	}
-	load := funcSource(body, "func CfgFixedLoad(")
+	load := funcSource(body, "func CfgFixedLoadTolerant(")
 	if !strings.Contains(load, "CfgFixedClamp(&values[k], report)") {
 		t.Error("FixedLoad must call the storage pass after the run, both paths")
 	}
@@ -1947,7 +1947,7 @@ func TestLiveCount(t *testing.T) {
 	got := make([]Root, 1)
 	var r TableReport
 	plan := make([]TableFixedEntry, 256)
-	if n := RootFixedLoad(got, buf, plan, &r); n != 1 {
+	if n := RootFixedLoadTolerant(got, buf, plan, &r); n != 1 {
 		t.Fatalf("load %d %+v", n, r)
 	}
 	if got[0].N != 10 || r.Clamped != 2 {
@@ -1966,7 +1966,7 @@ func TestLiveCount(t *testing.T) {
 	}
 	got = make([]Root, 1)
 	r = TableReport{}
-	if n := RootFixedLoad(got, tb, plan, &r); n != 1 {
+	if n := RootFixedLoadTolerant(got, tb, plan, &r); n != 1 {
 		t.Fatalf("tag load %d %+v", n, r)
 	}
 	if got[0].Pick.Type != PickTypeNone || r.Clamped != 1 || r.Unknown != 0 {
@@ -1982,7 +1982,7 @@ func TestLiveCount(t *testing.T) {
 	}
 	got = make([]Root, 1)
 	r = TableReport{}
-	if n := RootFixedLoad(got, eb, plan, &r); n != 1 {
+	if n := RootFixedLoadTolerant(got, eb, plan, &r); n != 1 {
 		t.Fatalf("enum load %d %+v", n, r)
 	}
 	if got[0].Grade != GradeNone || r.Clamped != 1 {
@@ -1999,7 +1999,7 @@ func TestLiveCount(t *testing.T) {
 	}
 	got = make([]Root, 1)
 	r = TableReport{}
-	if n := RootFixedLoad(got, ab, plan, &r); n != 1 {
+	if n := RootFixedLoadTolerant(got, ab, plan, &r); n != 1 {
 		t.Fatalf("arm load %d %+v", n, r)
 	}
 	if r.Clamped != 0 {
@@ -2298,7 +2298,7 @@ func TestWideText(t *testing.T) {
 	got := make([]FxWide, 2)
 	var rep TableReport
 	plan := make([]TableFixedEntry, 256)
-	if n := FxWideFixedLoad(got, buf, plan, &rep); n != 2 {
+	if n := FxWideFixedLoadTolerant(got, buf, plan, &rep); n != 2 {
 		t.Fatalf("load %d %+v", n, rep)
 	}
 	if rep != (TableReport{}) {
@@ -2342,7 +2342,7 @@ func TestWideText(t *testing.T) {
 	}
 	got = make([]FxWide, 2)
 	rep = TableReport{}
-	if n := FxWideFixedLoad(got, forged, plan, &rep); n >= 0 || rep.Reason != "length_over_bound" {
+	if n := FxWideFixedLoadTolerant(got, forged, plan, &rep); n >= 0 || rep.Reason != "length_over_bound" {
 		t.Fatalf("CODE UNITS: a byte-legal length 16 on wstring(8) landed n=%d reason=%q, want length_over_bound", n, rep.Reason)
 	}
 }
@@ -2390,7 +2390,7 @@ func TestLayoutMalformedTruncated(t *testing.T) {
 	plan := make([]TableFixedEntry, 64)
 
 	// CONTROL 1: the unbroken file reads clean.
-	if n := PointFixedLoad(got, buf, plan, &r); n != 1 || r != (TableReport{}) || got[0] != one {
+	if n := PointFixedLoadTolerant(got, buf, plan, &r); n != 1 || r != (TableReport{}) || got[0] != one {
 		t.Fatalf("the good file does not read back: n=%d got=%+v report=%+v", n, got[0], r)
 	}
 
@@ -2401,7 +2401,7 @@ func TestLayoutMalformedTruncated(t *testing.T) {
 	tableFixedPut32(ref[TableFixedHeaderBytes:], 100)
 	got = []Point{{X: -1, Y: -1}}
 	r = TableReport{}
-	if n := PointFixedLoad(got, ref, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_malformed"}) || got[0] != (Point{X: -1, Y: -1}) {
+	if n := PointFixedLoadTolerant(got, ref, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_malformed"}) || got[0] != (Point{X: -1, Y: -1}) {
 		t.Fatalf("declared length 100 in a twenty-byte file: n=%d report=%+v dest=%+v", n, r, got[0])
 	}
 
@@ -2412,7 +2412,7 @@ func TestLayoutMalformedTruncated(t *testing.T) {
 	short := buf[:TableFixedHeaderBytes+4+int(tableFixedGet32(buf[TableFixedHeaderBytes:]))-1]
 	got = []Point{{X: -1, Y: -1}}
 	r = TableReport{}
-	if n := PointFixedLoad(got, short, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_malformed"}) || got[0] != (Point{X: -1, Y: -1}) {
+	if n := PointFixedLoadTolerant(got, short, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_malformed"}) || got[0] != (Point{X: -1, Y: -1}) {
 		t.Fatalf("a file truncated one byte into its own layout: n=%d report=%+v dest=%+v", n, r, got[0])
 	}
 }
@@ -2486,7 +2486,7 @@ func TestTextLengthClamp(t *testing.T) {
 		got := make([]Text, 1)
 		var r TableReport
 		plan := make([]TableFixedEntry, 256)
-		n := TextFixedLoad(got, buf, plan, &r)
+		n := TextFixedLoadTolerant(got, buf, plan, &r)
 		if c.wantRefuse {
 			if n >= 0 || r.Reason != "length_over_bound" {
 				t.Fatalf("%s: n=%d reason=%q, want length_over_bound: %+v", c.name, n, r.Reason, r)
@@ -2570,7 +2570,7 @@ func TestRead(t *testing.T) {
 	back := make([]OptionalAdd, 2)
 	plan := make([]TableFixedEntry, 4096)
 	var r TableReport
-	n := OptionalAddFixedLoad(back, data, plan, &r)
+	n := OptionalAddFixedLoadTolerant(back, data, plan, &r)
 	if n != 1 || r.Reason != "" || r.Malformed || r.Verdict == TableOpenRefused {
 		t.Fatalf("the ?T reader refused the plain writer's file: n=%%d %%+v", n, r)
 	}
@@ -2679,7 +2679,7 @@ func TestWrongPlanGoesRed(t *testing.T) {
     plan := make([]TableFixedEntry, 1024)
     var r TableReport
     old := make([]FxOld, 1)
-    if n := FxOldFixedLoad(old, w2, plan, &r); n >= 0 || r.Reason != "layout_unknown" {
+    if n := FxOldFixedLoadTolerant(old, w2, plan, &r); n >= 0 || r.Reason != "layout_unknown" {
         t.Fatalf("the loader did not refuse a file under another layout: n=%d %+v", n, r)
     }
     if r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Malformed {
@@ -2721,7 +2721,7 @@ func TestWrongPlanGoesRed(t *testing.T) {
     }
     back := make([]FxOld, 1)
     r = TableReport{}
-    if n := FxOldFixedLoad(back, w1, plan, &r); n != 1 ||
+    if n := FxOldFixedLoadTolerant(back, w1, plan, &r); n != 1 ||
         back[0].Renamed != 321 || back[0].Nested.A != 111 || r != (TableReport{}) {
         t.Fatalf("the right plan must reproduce its own record: n=%d %+v %+v", n, back[0], r)
     }
@@ -2789,7 +2789,7 @@ func TestAbsentOptionalSkipsStore(t *testing.T) {
 	back := make([]Chain, 1)
 	var r TableReport
 	plan := make([]TableFixedEntry, 256)
-	if n := ChainFixedLoad(back, buf, plan, &r); n != 1 {
+	if n := ChainFixedLoadTolerant(back, buf, plan, &r); n != 1 {
 		t.Fatalf("absent optional: the record reads %d %+v", n, r)
 	}
 	if back[0].LinkPresent {
@@ -2921,7 +2921,7 @@ func oneRound(t *testing.T, in Probe) (Probe, TableReport) {
 	got := make([]Probe, 1)
 	var r TableReport
 	plan := make([]TableFixedEntry, 256)
-	if n := ProbeFixedLoad(got, buf, plan, &r); n != 1 {
+	if n := ProbeFixedLoadTolerant(got, buf, plan, &r); n != 1 {
 		t.Fatalf("load %d %+v", n, r)
 	}
 	return got[0], r
@@ -2999,7 +2999,7 @@ func TestDuplicateStaysZero(t *testing.T) {
 	got := make([]Root, 1)
 	var r TableReport
 	plan := make([]TableFixedEntry, 256)
-	if n := RootFixedLoad(got, buf, plan, &r); n != 1 {
+	if n := RootFixedLoadTolerant(got, buf, plan, &r); n != 1 {
 		t.Fatalf("identity n=%d %+v", n, r)
 	}
 	if got[0].Slots[0].N != 11 || got[0].Slots[2].N != 33 || got[0].Seq != 44 {
@@ -3088,7 +3088,7 @@ func TestReadSlackUnspecified(t *testing.T) {
 	got := make([]Slack, 1)
 	var r TableReport
 	plan := make([]TableFixedEntry, 256)
-	if n := SlackFixedLoad(got, buf, plan, &r); n != 1 {
+	if n := SlackFixedLoadTolerant(got, buf, plan, &r); n != 1 {
 		t.Fatalf("a peer's garbage in the slack refused the record: n=%d %+v", n, r)
 	}
 	if r != (TableReport{}) {
@@ -3151,7 +3151,7 @@ func TestWriteSideRefusesByName(t *testing.T) {
 	got := make([]Host, 1)
 	var r TableReport
 	plan := make([]TableFixedEntry, 256)
-	if n := HostFixedLoad(got, lb, plan, &r); n != 1 {
+	if n := HostFixedLoadTolerant(got, lb, plan, &r); n != 1 {
 		t.Fatalf("lawful load %d %+v", n, r)
 	}
 	if got[0].MarksCount != 2 || got[0].NameLength != 3 || r.Clamped != 0 {
@@ -3205,7 +3205,7 @@ func TestWriteSideRefusesByName(t *testing.T) {
 		fgot[0].Name[i] = 0x5A
 	}
 	before := fgot[0]
-	if n := HostFixedLoad(fgot, forged, plan, &fr); n >= 0 || fr.Reason != TableFixedReasonCountOverBound {
+	if n := HostFixedLoadTolerant(fgot, forged, plan, &fr); n >= 0 || fr.Reason != TableFixedReasonCountOverBound {
 		t.Fatalf("forged load %d reason=%q, want count_over_bound", n, fr.Reason)
 	}
 	if fr.Unknown != 0 || fr.KindMismatch != 0 || fr.Widened != 0 || fr.Clamped != 0 || fr.Duplicate != 0 || fr.Retained != 0 || fr.RetainLost != 0 || fr.Malformed {
@@ -3289,7 +3289,7 @@ func TestIdentityEqualsCompiled(t *testing.T) {
 	id := make([]Root, 1)
 	var ri TableReport
 	iplan := make([]TableFixedEntry, 4096)
-	if n := RootFixedLoad(id, buf, iplan, &ri); n != 1 {
+	if n := RootFixedLoadTolerant(id, buf, iplan, &ri); n != 1 {
 		t.Fatalf("P1: the identity read returned %d (%+v), want one record", n, ri)
 	}
 	if ri != (TableReport{}) {
