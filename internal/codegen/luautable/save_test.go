@@ -1,7 +1,6 @@
 package luautable_test
 
 import (
-	"bufio"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -15,8 +14,9 @@ import (
 )
 
 // saveProbe is the Luau main for one instance: it loads every table module
-// (which registers the descriptors), loads the wire at the root, saves it
-// through save.luau, and prints the saved bytes as a hex line then the measure.
+// (which registers the descriptors), loads the wire at the root through
+// load.luau, saves the value through save.luau, and prints the saved bytes as
+// one hex line, then the measure (docs/PORT-LUAU.md, THE HARNESS).
 func saveProbe(g *generatedUnit, rootName string) string {
 	var b strings.Builder
 	b.WriteString("local inputs = require(\"./inputs\")\nlocal load = require(\"./load\")\nlocal save = require(\"./save\")\nlocal St = require(\"./schema_tables\")\n")
@@ -36,25 +36,26 @@ func saveProbe(g *generatedUnit, rootName string) string {
 	b.WriteString("if report.refused > 0 then print(\"REFUSED\"); return end\n")
 	fmt.Fprintf(&b, "local d = St.lookup(%s)\n", q)
 	b.WriteString("local out = save.save(d, v)\n")
-	b.WriteString("if out == nil then print(\"SAVENIL\"); return end\n")
-	b.WriteString("local parts = table.create(buffer.len(out.bytes))\n")
-	b.WriteString("for i = 0, buffer.len(out.bytes) - 1 do\n")
-	b.WriteString("\tparts[i + 1] = string.format(\"%02x\", buffer.readu8(out.bytes, i))\n")
+	b.WriteString("local measure = save.measure(d, v)\n")
+	b.WriteString("if out == nil or measure == nil then print(\"SAVENIL\"); return end\n")
+	b.WriteString("local parts = table.create(buffer.len(out))\n")
+	b.WriteString("for i = 0, buffer.len(out) - 1 do\n")
+	b.WriteString("\tparts[i + 1] = string.format(\"%02x\", buffer.readu8(out, i))\n")
 	b.WriteString("end\n")
-	b.WriteString("print(table.concat(parts))\n")
-	b.WriteString("print(out.measure)\n")
+	b.WriteString("print(\"x\" .. table.concat(parts))\n")
+	b.WriteString("print(measure)\n")
 	return b.String()
 }
 
 // saveRoot loads one instance's wire file into a Luau value and saves it
 // through the emitted save.luau under the pinned interpreter, returning the
 // saved bytes and the measure.
-func saveRoot(t *testing.T, g *generatedUnit, key, root string) ([]byte, int, error) {
+func saveRoot(t *testing.T, g *generatedUnit, wire []byte, root string) ([]byte, int, error) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(saveProbe(g, root)), 0o644); err != nil {
 		return nil, 0, err
 	}
-	out := strings.TrimSpace(string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"wire": wireBytes(t, key, root)})))
+	out := strings.TrimSpace(string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"wire": wire})))
 	if out == "REFUSED" {
 		return nil, 0, fmt.Errorf("the load refused the wire")
 	}
@@ -62,158 +63,162 @@ func saveRoot(t *testing.T, g *generatedUnit, key, root string) ([]byte, int, er
 		return nil, 0, fmt.Errorf("the save refused")
 	}
 	lines := strings.Split(out, "\n")
-	if len(lines) < 2 {
+	if len(lines) != 2 || !strings.HasPrefix(lines[0], "x") {
 		return nil, 0, fmt.Errorf("unexpected output %q", out)
 	}
-	saved, err := hex.DecodeString(lines[0])
+	saved, err := hex.DecodeString(strings.TrimPrefix(lines[0], "x"))
 	if err != nil {
 		return nil, 0, fmt.Errorf("bad hex line %q: %v", lines[0], err)
 	}
-	var measure int
-	if _, err := fmt.Sscanf(lines[1], "%d", &measure); err != nil {
+	measure, err := strconv.Atoi(lines[1])
+	if err != nil {
 		return nil, 0, fmt.Errorf("bad measure line %q: %v", lines[1], err)
 	}
 	return saved, measure, nil
 }
 
-// wireBytes returns the conformance wire file's bytes for one instance.
-func wireBytes(t *testing.T, key, inst string) []byte {
-	t.Helper()
-	f, err := os.Open(filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		fields := strings.Fields(sc.Text())
-		if len(fields) >= 5 && fields[0] == "instance" && fields[2] == key && fields[3] == inst {
-			data, err := os.ReadFile(filepath.Join(root, fields[4]))
-			if err != nil {
-				t.Fatalf("instance %s/%s: %v", key, inst, err)
-			}
-			return data
+// firstDiff names the first byte at which two wires differ.
+func firstDiff(a, b []byte) string {
+	for i := 0; i < len(a) && i < len(b); i++ {
+		if a[i] != b[i] {
+			return fmt.Sprintf("first difference at byte %d: saved %02x, wire %02x", i, a[i], b[i])
 		}
 	}
-	return nil
+	return fmt.Sprintf("one is a prefix of the other at byte %d", min(len(a), len(b)))
+}
+
+// instanceRows is every instance row of the tables manifest, in file order,
+// grouped by unit: one row per wire file (a root can have several).
+func instanceRows(t *testing.T) map[string][]reportRow {
+	t.Helper()
+	out := map[string][]reportRow{}
+	for _, row := range manifestRows(t) {
+		if row.kind == "instance" {
+			out[row.unit] = append(out[row.unit], row)
+		}
+	}
+	return out
+}
+
+func rowWire(t *testing.T, row reportRow) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, row.wire))
+	if err != nil {
+		t.Fatalf("instance %s: %v", row.caseName, err)
+	}
+	return data
 }
 
 // TestLuauTableSaveRoundTripsEveryInstance is the variable table wire's SAVE
-// conformance gate (docs/SPEC-TABLES.md §3): for every instance row of the
-// tables manifest whose unit the Luau target generates, load the wire file,
-// save it through the emitted save.luau walk, and byte-compare against the
-// same file. Measure equals the saved length.
+// conformance gate (docs/SPEC-TABLES.md §3, §3.1): for every instance row of
+// the tables manifest whose unit the Luau target generates, load the wire
+// file, save the value through the emitted save.luau walk, and byte-compare
+// against the same file (the conformance wire surface). Measure equals the
+// saved length. A unit the target refuses is named with its reason, and its
+// instances are counted out.
 func TestLuauTableSaveRoundTripsEveryInstance(t *testing.T) {
 	t.Parallel()
-	units, roots := readManifest(t)
-	if len(units) == 0 {
-		t.Fatal("the manifest names no units")
-	}
-	generated := 0
-	compared := 0
+	units, _ := readManifest(t)
+	rows := instanceRows(t)
 	var keys []string
-	for k := range units {
+	for k := range rows {
+		if _, ok := units[k]; !ok {
+			t.Errorf("instance rows name unit %s, which the manifest does not declare", k)
+			continue
+		}
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	total, compared, refusedRows := 0, 0, 0
 	for _, key := range keys {
+		total += len(rows[key])
 		g := generateUnit(t, units, key)
 		if g.err != nil {
-			t.Logf("luau refuses unit %s: %v", key, g.err)
+			refusedRows += len(rows[key])
+			t.Logf("refused unit: %s (%d instances): %v", key, len(rows[key]), g.err)
 			continue
 		}
-		generated++
-		for _, root := range roots[key] {
-			wire := wireBytes(t, key, root)
-			if wire == nil {
-				t.Errorf("instance %s/%s: no wire file found", key, root)
-				continue
-			}
-			saved, measure, err := saveRoot(t, g, key, root)
+		for _, row := range rows[key] {
+			wire := rowWire(t, row)
+			saved, measure, err := saveRoot(t, g, wire, row.root)
 			if err != nil {
-				t.Errorf("instance %s/%s: %v", key, root, err)
+				t.Errorf("instance %s (%s/%s): %v", row.caseName, key, row.root, err)
 				continue
 			}
 			if string(saved) != string(wire) {
-				t.Errorf("instance %s/%s: save length %d != wire length %d", key, root, len(saved), len(wire))
+				t.Errorf("instance %s (%s/%s): the save is not the wire: %d bytes saved, %d in the file; %s", row.caseName, key, row.root, len(saved), len(wire), firstDiff(saved, wire))
 				continue
 			}
 			if measure != len(saved) {
-				t.Errorf("instance %s/%s: measure %d != saved length %d", key, root, measure, len(saved))
+				t.Errorf("instance %s (%s/%s): measure %d != saved length %d", row.caseName, key, row.root, measure, len(saved))
 				continue
 			}
 			compared++
 		}
 	}
-	if generated == 0 {
-		t.Fatal("no unit generated")
+	if compared == 0 {
+		t.Fatal("no instance compared")
 	}
-	t.Logf("compared %d instances", compared)
+	if compared+refusedRows != total {
+		t.Errorf("%d instances compared and %d of refused units, of %d in the manifest", compared, refusedRows, total)
+	}
+	t.Logf("compared %d instances byte for byte (%d in the manifest, %d of refused units)", compared, total, refusedRows)
 }
 
 // TestLuauTableSaveNegativeControl patches the emitted save.luau in memory —
-// one anchor, matched exactly once — so a field at its declared default is
-// written rather than elided, and requires the byte comparison to go red
-// (docs/SPEC-TABLES.md §3 elision).
+// one anchor, matched exactly once — so a scalar field at its declared
+// default is written rather than elided, and requires the byte comparison to
+// go red on an instance that round-trips clean unpatched (docs/SPEC-TABLES.md
+// §3 elision).
 func TestLuauTableSaveNegativeControl(t *testing.T) {
 	t.Parallel()
-	units, roots := readManifest(t)
-	if len(units) == 0 {
-		t.Fatal("the manifest names no units")
-	}
+	units, _ := readManifest(t)
+	rows := instanceRows(t)
 	var keys []string
-	for k := range units {
-		if len(roots[k]) > 0 {
+	for k := range rows {
+		if _, ok := units[k]; ok {
 			keys = append(keys, k)
 		}
 	}
 	sort.Strings(keys)
-	tested := false
+	const anchor = "\tif at_default(fd, val) then return true end\n"
 	for _, key := range keys {
 		g := generateUnit(t, units, key)
 		if g.err != nil {
 			continue
 		}
-		root := roots[key][0]
-		wire := wireBytes(t, key, root)
-		if wire == nil {
-			continue
+		for _, row := range rows[key] {
+			r := row.root
+			wire := rowWire(t, row)
+			saved, _, err := saveRoot(t, g, wire, r)
+			if err != nil || string(saved) != string(wire) {
+				continue // the round-trip gate names it; the control needs a clean baseline
+			}
+			path := filepath.Join(g.dir, "save.luau")
+			src, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Count(string(src), anchor) != 1 {
+				t.Fatalf("the scalar elision anchor is not in the emitted runtime exactly once")
+			}
+			patched := strings.Replace(string(src), anchor, "\tif false then return true end\n", 1)
+			if err := os.WriteFile(path, []byte(patched), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			got, _, err := saveRoot(t, g, wire, r)
+			if werr := os.WriteFile(path, src, 0o644); werr != nil {
+				t.Fatal(werr)
+			}
+			if err != nil {
+				t.Fatalf("instance %s/%s: the patched runtime failed: %v", key, r, err)
+			}
+			if string(got) == string(wire) {
+				continue // every scalar of this instance rides; try the next one
+			}
+			t.Logf("instance %s/%s: the save comparison went red after patching the elision (%d bytes, wire %d)", key, r, len(got), len(wire))
+			return
 		}
-		saved, _, err := saveRoot(t, g, key, root)
-		if err != nil {
-			continue
-		}
-		if string(saved) != string(wire) {
-			t.Skip("control baseline already red; no elision to falsify")
-		}
-		path := filepath.Join(g.dir, "save.luau")
-		src, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		const anchor = "if val ~= fd.def then\n\t\t\theader(w, ids, fd, 1)\n\t\t\tw:u8(val and 1 or 0)"
-		if strings.Count(string(src), anchor) != 1 {
-			t.Fatalf("the bool elision anchor is not in the emitted runtime exactly once")
-		}
-		patched := strings.Replace(string(src), anchor, "if true then\n\t\t\theader(w, ids, fd, 1)\n\t\t\tw:u8(val and 1 or 0)", 1)
-		if patched == string(src) {
-			t.Fatal("the patch changed nothing")
-		}
-		if err := os.WriteFile(path, []byte(patched), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		got, _, err := saveRoot(t, g, key, root)
-		if err != nil {
-			t.Fatalf("the patched runtime failed: %v", err)
-		}
-		if string(got) == string(wire) {
-			t.Fatalf("the patched runtime still elides the defaulted field")
-		}
-		tested = true
-		t.Logf("the save comparison went red after patching the elision")
-		break
 	}
-	if !tested {
-		t.Skip("no unit generated that round-trips")
-	}
+	t.Fatal("no clean instance went red under the patched elision: the control proves nothing")
 }

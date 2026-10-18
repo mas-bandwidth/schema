@@ -1,187 +1,332 @@
 --!strict
--- save.luau — the VARIABLE table wire's SAVE walk (docs/SPEC-TABLES.md §3,
--- §3.1), driven by the descriptors schema_tables.luau registers: one walk per
--- table, byte for byte against the reference (internal/tablewire/encode.go and
--- the JavaScript leg internal/codegen/jstable/variableruntime.go). The form
--- byte, the root's fields, elision at the declared default, and the node table
--- for pointers in first-visit order. Every rule lives once here; the port of
--- the reference engine is the authority.
+-- save.luau — the Luau table runtime's VARIABLE FORM (form 1) SAVE and its
+-- MEASURE (docs/SPEC-TABLES.md §3, §3.1, §6.3; docs/PORT-LUAU.md, THE CARD
+-- MAP). A port of the Go reference engine (internal/tablewire encode.go,
+-- nodes.go, nodetable.go) and of the JavaScript leg's THE SAVE and ONE FIELD
+-- (internal/codegen/jstable/variableruntime.go), over the Luau values of
+-- docs/PORT-LUAU.md's THE TYPE MAPPING. Emitted beside the unit's
+-- <Base>Table.luau modules by internal/codegen/luautable, which embeds
+-- runtime/*.luau by glob.
+--
+-- The save is DRIVEN BY THE DESCRIPTOR (docs/SPEC-TABLES.md §8.1): the form
+-- byte, the root's fields in declared order with each elided at its declared
+-- default, the node table LAST in the root body for the pointers in
+-- first-visit order, the terminator, then the id table in first-use order and
+-- its count. MEASURE is the same walk over a writer that counts and stores
+-- nothing, so measure and save cannot be two rules.
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 local St = require("./schema_tables")
 
 local S = {}
 
+-- THE FORM BYTE AND THE RESERVED IDS (docs/SPEC-TABLES.md §3, §3.1, §5)
 local Form = 1
-local NodeTableId = 0xffffffffffffffffi
+local NodeTableId: integer = -1i                  -- 0xffffffffffffffff
+local StringBlobId: integer = 0x704be0d8faaffc58i -- FNV-1a 64 of "string"
+local BytesBlobId: integer = 0x2f2ec0474f1c4fe4i  -- FNV-1a 64 of "bytes"
+local MapKeyId: integer = 0x3dc94a19365b10eci     -- FNV-1a 64 of "key"
 
-local StringBlobId: integer = 0x704be0d8faaffc58i
-local BytesBlobId: integer = 0x2f2ec0474f1c4fe4i
+-- ---- THE WRITER (docs/SPEC-TABLES.md §3): little-endian, LEB128 lengths --
+-- A measuring writer (count = true) stores nothing and only counts.
 
-local writeFields: any
-local writeField: any
-local writeElement: any
-local writeArmHeader: any
-local writeKeyed: any
-local sameBytes: any
-
--- ---- THE WRITER: a growable byte list, LEB128 offsets and lengths (§3) -----
-
-local Writer = {}
-Writer.__index = Writer
-
-function Writer.new()
-	local self = { b = {} }
-	return setmetatable(self, Writer)
+local function new_writer(count: boolean): any
+	if count then return { b = nil, n = 0, count = true } end
+	return { b = buffer.create(64), n = 0, count = false }
 end
 
-function Writer:len()
-	return #self.b
+local function reserve(w: any, k: number)
+	local need = w.n + k
+	local cap = buffer.len(w.b)
+	if need <= cap then return end
+	while cap < need do cap = cap * 2 end
+	local nb = buffer.create(cap)
+	buffer.copy(nb, 0, w.b, 0, w.n)
+	w.b = nb
 end
 
-function Writer:u8(v)
-	table.insert(self.b, v % 256)
+local function w_u8(w: any, v: number)
+	if not w.count then reserve(w, 1); buffer.writeu8(w.b, w.n, v) end
+	w.n = w.n + 1
 end
 
-function Writer:u16(v)
-	local v = math.floor(v) % 65536
-	table.insert(self.b, v % 256)
-	table.insert(self.b, math.floor(v / 256) % 256)
-end
-
-function Writer:u32(v)
-	local v = math.floor(v) % 4294967296
-	for i = 1, 4 do
-		table.insert(self.b, v % 256)
-		v = math.floor(v / 256)
-	end
-end
-
-function Writer:u64Bytes(v: integer)
-	-- v is a Luau integer (64-bit, two's complement); its eight bytes LE
-	local x = v
-	for i = 1, 8 do
-		table.insert(self.b, tonumber(integer.band(x, 255i)))
-		x = integer.rshift(x, 8i)
-	end
-end
-
-function Writer:leb(v)
-	local n = math.floor(v)
-	while n >= 128 do
-		table.insert(self.b, (n % 128) + 128)
-		n = math.floor(n / 128)
-	end
-	table.insert(self.b, n)
-end
-
-function Writer:raw(bytes)
-	if typeof(bytes) == "string" then
-		for i = 1, bytes:len() do
-			table.insert(self.b, bytes:byte(i))
-		end
-	else
-		for i = 0, buffer.len(bytes) - 1 do
-			table.insert(self.b, buffer.readu8(bytes, i))
+-- a 1, 2 or 4 byte integer at its width, two's complement (§3)
+local function w_small(w: any, width: number, signed: boolean, v: number)
+	if not w.count then
+		reserve(w, width)
+		if width == 1 then
+			if signed then buffer.writei8(w.b, w.n, v) else buffer.writeu8(w.b, w.n, v) end
+		elseif width == 2 then
+			if signed then buffer.writei16(w.b, w.n, v) else buffer.writeu16(w.b, w.n, v) end
+		else
+			if signed then buffer.writei32(w.b, w.n, v) else buffer.writeu32(w.b, w.n, v) end
 		end
 	end
+	w.n = w.n + width
 end
 
-function Writer:bytes()
-	return buffer.fromstring(table.concat(self.b, ""))
+-- a 64-bit value is the integer's own bit pattern (docs/PORT-LUAU.md, 64-BIT)
+local function w_int(w: any, v: integer)
+	if not w.count then reserve(w, 8); buffer.writeinteger(w.b, w.n, v) end
+	w.n = w.n + 8
 end
 
-local function blen(x)
-	if typeof(x) == "string" then
-		return x:len()
+local function w_f64(w: any, v: number)
+	if not w.count then reserve(w, 8); buffer.writef64(w.b, w.n, v) end
+	w.n = w.n + 8
+end
+
+-- THE ONE CANONICAL SPELLING of a length, count, index or reference (§3)
+local function w_leb(w: any, v: number)
+	while v >= 128 do
+		w_u8(w, (v % 128) + 128)
+		v = math.floor(v / 128)
 	end
-	return buffer.len(x)
+	w_u8(w, v)
 end
 
--- ---- IDS: intern ids in first-use order (§3), with mark/rollback for elision
-
-local Ids = {}
-Ids.__index = Ids
-
-function Ids.new()
-	return setmetatable({ list = {}, index = {} }, Ids)
+local function w_raw(w: any, src: buffer, at: number, n: number)
+	if not w.count then reserve(w, n); buffer.copy(w.b, w.n, src, at, n) end
+	w.n = w.n + n
 end
 
-function Ids:ref(id)
-	local r = self.index[id]
-	if r ~= nil then
-		return r
-	end
-	table.insert(self.list, id)
-	local n = #self.list
-	self.index[id] = n
+-- a nested writer's bytes, framed by the caller
+local function w_sub(w: any, sub: any)
+	if not w.count then reserve(w, sub.n); buffer.copy(w.b, w.n, sub.b, 0, sub.n) end
+	w.n = w.n + sub.n
+end
+
+local function leb_len(v: number): number
+	local n = 1
+	while v >= 128 do n = n + 1; v = math.floor(v / 128) end
 	return n
 end
 
-function Ids:mark()
-	return #self.list
+-- ---- THE ID TABLE (§3): ids interned in first-use order, with a mark and a
+-- rollback so an elided field costs the id table nothing either
+
+local function new_ids(): any
+	return { list = {}, index = {} }
 end
 
-function Ids:rollback(m)
-	while #self.list > m do
-		local id = table.remove(self.list)
-		self.index[id] = nil
+local function ref(ids: any, id: integer): number
+	local r = ids.index[id]
+	if r ~= nil then return r end
+	ids.list[#ids.list + 1] = id
+	ids.index[id] = #ids.list
+	return #ids.list
+end
+
+local function mark(ids: any): number
+	return #ids.list
+end
+
+local function rollback(ids: any, m: number)
+	while #ids.list > m do
+		local id = ids.list[#ids.list]
+		ids.list[#ids.list] = nil
+		ids.index[id] = nil
 	end
 end
 
--- ---- FLOAT BIT SURGERY (docs/SPEC-TABLES.md §3; NarrowF32) --------------
+-- ---- FLOATS RIDE AS THEIR BITS (§3; internal/tablewire NarrowF32) --------
 
 local scratch = buffer.create(8)
 
-local function narrowF32(v)
+-- a float32 NaN's payload rides in the top of the double's mantissa, by bit
+-- surgery rather than through a conversion that would set the quiet bit; any
+-- other double converts as Go's float32(v) does (docs/PORT-LUAU.md, BYTE BUFFERS)
+local function narrow_f32(v: number): number
 	if v ~= v then
 		buffer.writef64(scratch, 0, v)
 		local lo = buffer.readu32(scratch, 0)
 		local hi = buffer.readu32(scratch, 4)
-		local payload = ((hi % 1048576) * 8 + math.floor(lo / 536870912)) % 8388608
-		if payload == 0 then
-			payload = 4194304
-		end
-		local sign = math.floor(hi / 2147483648) * 2147483648
-		return sign + 2139095040 + payload
+		local payload = bit32.band(bit32.bor(bit32.lshift(bit32.band(hi, 0xfffff), 3), bit32.rshift(lo, 29)), 0x7fffff)
+		if payload == 0 then payload = 0x400000 end
+		return bit32.bor(bit32.band(hi, 0x80000000), 0x7f800000, payload)
 	end
 	buffer.writef32(scratch, 0, v)
 	return buffer.readu32(scratch, 0)
 end
 
-local function fround(v)
+local function fround(v: number): number
 	buffer.writef32(scratch, 0, v)
 	return buffer.readf32(scratch, 0)
 end
 
--- ---- THE NUMBERING: first-visit pre-order over pointer edges (§3.1) ------
+-- ---- VALUES (docs/PORT-LUAU.md, THE TYPE MAPPING) -------------------------
 
-local arrCount
+-- a number or an integer as the other domain, so a default spelled in one
+-- compares with a value held in the other
+local function as_number(v: any): any
+	if typeof(v) == "integer" then return integer.tonumber(v) end
+	return v
+end
 
-local function edges(d, v, out)
+local function same_int(a: any, b: any): boolean
+	if typeof(a) == "table" or typeof(b) == "table" then
+		local alo = typeof(a) == "table" and a.lo or 0i
+		local ahi = typeof(a) == "table" and a.hi or 0i
+		local blo = typeof(b) == "table" and b.lo or 0i
+		local bhi = typeof(b) == "table" and b.hi or 0i
+		return alo == blo and ahi == bhi
+	end
+	if typeof(a) == typeof(b) then return a == b end
+	return as_number(a) == as_number(b)
+end
+
+-- the used bytes of a string(N), wstring(N) or bytes(N) value: its buffer and
+-- the length beside it, in bytes
+local function used(v: any, slot: string, wide: boolean?): (buffer?, number)
+	local b = v[slot]
+	if typeof(b) ~= "buffer" then return nil, 0 end
+	local n = v[slot .. "Length"]
+	if n == nil then n = buffer.len(b) end
+	if wide then n = n * 2 end
+	return b, n
+end
+
+local function equals_string(b: buffer?, n: number, def: string?): boolean
+	local d = def or ""
+	if b == nil then return #d == 0 end
+	if n ~= #d then return false end
+	return buffer.readstring(b, 0, n) == d
+end
+
+-- the live count of an array: a list's length, a counted array's count
+-- beside it, a fixed array's bound (§2.9)
+local function live_count(fd: any, holder: any, val: any): number
+	if fd.array == "list" then
+		if typeof(val) == "buffer" then return buffer.len(val) end
+		-- a list of pointers carries its live length as n when it holds null
+		-- slots (the table.pack convention load.luau writes)
+		if typeof(val.n) == "number" then return val.n end
+		return #val
+	end
+	if fd.array == "counted" then
+		local c = holder[fd.slot .. "Count"]
+		if c == nil then c = 0 end
+		return math.min(c, fd.bound)
+	end
+	return fd.bound
+end
+
+local function elem_at(val: any, i: number): any
+	if typeof(val) == "buffer" then return buffer.readu8(val, i - 1) end
+	return val[i]
+end
+
+-- ---- MAP ORDER (§2.8; internal/tabletext MapKeyOrder): ascending by key, a
+-- string key by its bytes, a signed integer key signed, every other unsigned
+
+local function bytes_less(a: buffer, an: number, b: buffer, bn: number): boolean
+	local n = math.min(an, bn)
+	for i = 0, n - 1 do
+		local x = buffer.readu8(a, i)
+		local y = buffer.readu8(b, i)
+		if x ~= y then return x < y end
+	end
+	return an < bn
+end
+
+local function key_less(keyfd: any, a: any, b: any): boolean
+	local ka = a[keyfd.slot]
+	local kb = b[keyfd.slot]
+	if typeof(ka) == "buffer" then
+		local _, an = used(a, keyfd.slot, false)
+		local _, bn = used(b, keyfd.slot, false)
+		return bytes_less(ka, an, kb, bn)
+	end
+	if typeof(ka) == "table" then
+		if ka.hi ~= kb.hi then
+			if keyfd.signed then return integer.lt(ka.hi, kb.hi) end
+			return integer.ult(ka.hi, kb.hi)
+		end
+		return integer.ult(ka.lo, kb.lo)
+	end
+	if typeof(ka) == "integer" then
+		if keyfd.signed then return integer.lt(ka, kb) end
+		return integer.ult(ka, kb)
+	end
+	if typeof(ka) == "boolean" then return (not ka) and kb end
+	return ka < kb
+end
+
+local function map_order(fd: any, entries: { any }): { any }
+	local entry = St.lookup(fd.t)
+	local keyfd: any = nil
+	for _, f in entry.fields do
+		if f.id == MapKeyId then keyfd = f end
+	end
+	local order = table.clone(entries)
+	if keyfd ~= nil then
+		table.sort(order, function(a: any, b: any): boolean return key_less(keyfd, a, b) end)
+	end
+	return order
+end
+
+-- ---- THE NUMBERING (docs/SPEC-TABLES.md §3.1; internal/tablewire nodes.go) -
+--
+-- The first-visit order of a depth-first pre-order walk from the root over
+-- POINTER EDGES, descending through every by-value edge to reach them. Node
+-- index 1 is the root and record k is index k + 1. A reference to a node whose
+-- descent is still open is a DATA CYCLE, and the save refuses it. A field the
+-- writer does not write is not an edge: an absent optional, a slot past a
+-- counted array's live count, an arm that is not set.
+
+local edges: any
+
+local function arm_edges(fd: any, u: any, out: { any })
+	if u == nil or u.Type == nil or u.Type == 0 then return end
+	local un = St.lookup(fd.t)
+	local arm = un.arms[u.Type]
+	if arm == nil or arm.s == "void" then return end
+	local val = u[arm.slot]
+	if arm.s == "tab" then
+		edges(St.lookup(arm.t), val, out)
+	elseif arm.s == "sblob" or arm.s == "bblob" then
+		if val ~= nil then out[#out + 1] = { blob = arm.s, val = val } end
+	elseif arm.s == "ptr" then
+		if val ~= nil then out[#out + 1] = { d = St.lookup(arm.t), val = val } end
+	elseif arm.s == "arr" and arm.e ~= nil and arm.e.s == "ptr" then
+		local d = St.lookup(arm.e.t)
+		for i = 1, live_count(arm, u, val) do
+			if val[i] ~= nil then out[#out + 1] = { d = d, val = val[i] } end
+		end
+	elseif arm.s == "union" then
+		arm_edges(arm, val, out)
+	end
+end
+
+edges = function(d: any, v: any, out: { any }): { any }
 	for _, fd in d.fields do
+		if fd.present ~= nil and not v[fd.present] then continue end
 		local val = v[fd.slot]
-		if fd.s == "sblob" or fd.s == "bblob" then
-			if val ~= nil then
-				table.insert(out, { blob = true, fd = fd, holder = v, val = val })
-			end
-		elseif fd.s == "ptr" then
-			if val ~= nil then
-				table.insert(out, { blob = false, d = St.lookup(fd.t), val = val })
-			end
-		elseif fd.s == "tab" then
+		local s = fd.s
+		if s == "sblob" or s == "bblob" then
+			if val ~= nil then out[#out + 1] = { blob = s, val = val } end
+		elseif s == "ptr" then
+			if val ~= nil then out[#out + 1] = { d = St.lookup(fd.t), val = val } end
+		elseif s == "union" then
+			arm_edges(fd, val, out)
+		elseif s == "map" then
+			local entry = St.lookup(fd.t)
+			for _, ev in map_order(fd, val) do edges(entry, ev, out) end
+		elseif s == "tab" then
 			edges(St.lookup(fd.t), val, out)
-		elseif fd.s == "arr" then
-			local n = arrCount(fd, val)
-			if fd.e.s == "ptr" then
-				for i = 1, n do
-					if val[i] ~= nil then
-						table.insert(out, { blob = false, d = St.lookup(fd.e.t), val = val[i] })
-					end
+		elseif s == "arr" then
+			local e = fd.e
+			if e.s == "ptr" then
+				local pd = St.lookup(e.t)
+				for i = 1, live_count(fd, v, val) do
+					if val[i] ~= nil then out[#out + 1] = { d = pd, val = val[i] } end
 				end
-			elseif fd.e.s == "tab" then
-				for i = 1, n do
-					edges(St.lookup(fd.e.t), val[i], out)
+			elseif e.s == "union" then
+				for i = 1, live_count(fd, v, val) do arm_edges(e, val[i], out) end
+			elseif e.s == "tab" then
+				local td = St.lookup(e.t)
+				for i = 1, live_count(fd, v, val) do
+					if val[i] ~= nil then edges(td, val[i], out) end
 				end
 			end
 		end
@@ -189,555 +334,504 @@ local function edges(d, v, out)
 	return out
 end
 
-arrCount = function(fd, val)
-	if fd.array == "list" then
-		return #val
-	end
-	return math.min(#val, fd.bound)
-end
-
-local function blobNode(nodes, holder, fd, val)
-	local typeId = fd.s == "sblob" and StringBlobId or BytesBlobId
-	if fd.s == "sblob" and type(val) == "string" then
-		local m = nodes.slots[holder]
-		if m == nil then
-			m = {}
-			nodes.slots[holder] = m
-		end
-		if m[fd.slot] == nil then
-			table.insert(nodes.list, { typeId = typeId, body = val, v = nil })
-			m[fd.slot] = #nodes.list + 1
-		end
-		return
-	end
-	if nodes.index[val] ~= nil then
-		return
-	end
-	table.insert(nodes.list, { typeId = typeId, body = val, v = nil })
-	nodes.index[val] = #nodes.list + 1
-end
-
-local function number(d, root)
-	local nodes = { list = {}, index = {}, slots = {} }
+-- THE WALK HOLDS ITS OWN STACK: a pointer chain is as deep as it is long, and
+-- the interpreter's call stack is not the bound. Only one node's by-value
+-- closure recurses, and that nesting is the schema's, never the data's.
+local function number(d: any, root: any): any
+	local nodes: any = { list = {}, index = {} }
 	nodes.index[root] = 1
-	local open = { [root] = true }
+	local open: { [any]: boolean } = { [root] = true }
 	local stack = { { v = root, edges = edges(d, root, {}), i = 0 } }
 	while #stack > 0 do
 		local top = stack[#stack]
 		if top.i >= #top.edges then
 			open[top.v] = nil
-			table.remove(stack)
+			stack[#stack] = nil
 		else
 			top.i = top.i + 1
 			local e = top.edges[top.i]
-			if e.blob then
-				blobNode(nodes, e.holder, e.fd, e.val)
-			elseif open[e.val] then
-				return nil
-			elseif nodes.index[e.val] == nil then
-				table.insert(nodes.list, { typeId = e.d.id, d = e.d, v = e.val })
-				nodes.index[e.val] = #nodes.list + 1
-				open[e.val] = true
-				table.insert(stack, { v = e.val, edges = edges(e.d, e.val, {}), i = 0 })
+			if open[e.val] then return nil end
+			if nodes.index[e.val] == nil then
+				if e.blob ~= nil then
+					-- a BYTE BUFFER is numbered as every node is and reaches nothing (§2.5)
+					nodes.list[#nodes.list + 1] = { typeId = e.blob == "sblob" and StringBlobId or BytesBlobId, blob = e.val }
+					nodes.index[e.val] = #nodes.list + 1
+				else
+					nodes.list[#nodes.list + 1] = { typeId = e.d.id, d = e.d, v = e.val }
+					nodes.index[e.val] = #nodes.list + 1
+					open[e.val] = true
+					stack[#stack + 1] = { v = e.val, edges = edges(e.d, e.val, {}), i = 0 }
+				end
 			end
 		end
 	end
 	return nodes
 end
 
--- ---- INT AND ENUM WRITING -------------------------------------------------
+-- ---- THE SAVE WALK (docs/SPEC-TABLES.md §3; internal/tablewire encode.go) --
 
-local function writeInt(w, width, v)
-	if width == 1 then
-		w:u8(v)
-	elseif width == 2 then
-		w:u16(v)
-	elseif width == 4 then
-		w:u32(v)
+local write_fields: any
+local write_value: any
+local write_arm_header: any
+
+local function header(c: any, w: any, id: integer, kind: number)
+	w_leb(w, ref(c.ids, id))
+	w_u8(w, kind)
+end
+
+-- an enum value's reference: the variant name's id, 0 for None, and -1 for a
+-- value no variant names, which the save refuses (§5)
+local function enum_ref(c: any, e: any, val: any): number
+	local n = as_number(val)
+	if n == nil or n == 0 then return 0 end
+	local pair = e.vs[n]
+	if pair == nil then return -1 end
+	return ref(c.ids, pair[2])
+end
+
+-- one integer-shaped value at its kind's width (§3): a 128-bit value is its
+-- two halves low first, a 64-bit one the integer's bits, a narrower one its
+-- low bytes
+local function write_int(w: any, e: any, val: any)
+	local kw = e.kw
+	if kw == 16 then
+		w_int(w, val.lo)
+		w_int(w, val.hi)
+	elseif kw == 8 then
+		if typeof(val) ~= "integer" then val = integer.create(val) end
+		w_int(w, val)
 	else
-		w:u64Bytes(v)
+		w_small(w, kw, e.signed == true, as_number(val))
 	end
 end
 
-local function enumRef(e, ids, val)
-	if val == 0 then
-		return 0
-	end
-	local pair = e.vs[val]
-	if pair ~= nil then
-		return ids:ref(pair[2])
-	end
-	return -1
-end
-
-local function header(w, ids, fd, kind)
-	w:leb(ids:ref(fd.id))
-	w:u8(kind)
-end
-
--- ---- THE SAVE WALK (docs/SPEC-TABLES.md §3) ----------------------------
-
-local function writeBody(d, w, ids, nodes, v, path)
-	if not writeFields(d, w, ids, nodes, v, path) then
-		return false
-	end
-	w:u8(0)
+-- one body: its fields in declaration order, then the one-byte zero reference
+-- that terminates it
+local function write_body(c: any, d: any, w: any, v: any): boolean
+	if not write_fields(c, d, w, v) then return false end
+	w_u8(w, 0)
 	return true
 end
 
-writeFields = function(d, w, ids, nodes, v, path)
-	for _, fd in d.fields do
-		if not writeField(fd, w, ids, nodes, v, path) then
-			return false
-		end
-	end
-	return true
+local function body_of(c: any, d: any, v: any): any
+	local b = new_writer(c.count)
+	if not write_body(c, d, b, v) then return nil end
+	return b
 end
 
-writeField = function(fd, w, ids, nodes, v, path)
-	local val = v[fd.slot]
-	if fd.s == "bool" then
-		if val ~= fd.def then
-			header(w, ids, fd, 1)
-			w:u8(val and 1 or 0)
-		end
-		return true
-	end
-	if fd.s == "int" then
-		if fd.dom == "int128" then
-			local def = fd.def
-			if val.lo ~= def.lo or val.hi ~= def.hi then
-				header(w, ids, fd, fd.k)
-				w:u64Bytes(val.lo)
-				w:u64Bytes(val.hi)
-			end
-			return true
-		end
-		if val ~= fd.def then
-			header(w, ids, fd, fd.k)
-			writeInt(w, fd.kw, val)
-		end
-		return true
-	end
-	if fd.s == "float" then
-		local diff
-		if fd.f32 then
-			diff = fround(val) ~= fround(fd.def)
-		else
-			diff = val ~= fd.def
-		end
-		if diff then
-			header(w, ids, fd, fd.k)
-			if fd.f32 then
-				w:u32(narrowF32(val))
-			else
-				buffer.writef64(scratch, 0, val)
-				for i = 1, 8 do
-					table.insert(w.b, buffer.readu8(scratch, i - 1))
-				end
-			end
-		end
-		return true
-	end
-	if fd.s == "str" then
-		if val ~= fd.def then
-			header(w, ids, fd, 12)
-			w:leb(blen(val))
-			w:raw(val)
-		end
-		return true
-	end
-	if fd.s == "bytes" then
-		if not sameBytes(val, fd.def) then
-			header(w, ids, fd, 14)
-			local body = Writer.new()
-			body:u8(6)
-			body:leb(blen(val))
-			body:raw(val)
-			w:leb(body:len())
-			w:raw(body:bytes())
-		end
-		return true
-	end
-	if fd.s == "enum" then
-		if val ~= fd.def then
-			local ref = ids:ref(fd.id)
-			local vref = enumRef(fd, ids, val)
-			if vref < 0 then
-				return false
-			end
-			w:leb(ref)
-			w:u8(30)
-			w:leb(vref)
-		end
-		return true
-	end
-	if fd.s == "ptr" then
-		if val ~= nil then
-			header(w, ids, fd, 17)
-			w:leb(nodes.index[val])
-		end
-		return true
-	end
-	if fd.s == "sblob" or fd.s == "bblob" then
-		if val ~= nil then
-			local index
-			if fd.s == "sblob" and type(val) == "string" then
-				index = nodes.slots[v][fd.slot]
-			else
-				index = nodes.index[val]
-			end
-			header(w, ids, fd, 17)
-			w:leb(index)
-		end
-		return true
-	end
-	if fd.s == "union" then
+-- one element at its element kind's own framing (§2.9, §3): a table element
+-- carries its own length, a pointer its node index (0 is null), an enum its
+-- variant reference, a text element its own L, a scalar its width. lens is
+-- the Length array beside an array of string(N).
+write_value = function(c: any, e: any, w: any, val: any, len: number?): boolean
+	local s = e.s
+	if s == "bool" then
+		w_u8(w, val and 1 or 0)
+	elseif s == "int" then
+		write_int(w, e, val)
+	elseif s == "float" then
+		if e.f32 then w_small(w, 4, false, narrow_f32(val)) else w_f64(w, val) end
+	elseif s == "enum" then
+		local vref = enum_ref(c, e, val)
+		if vref < 0 then return false end
+		w_leb(w, vref)
+	elseif s == "ptr" or s == "sblob" or s == "bblob" then
+		w_leb(w, val == nil and 0 or c.nodes.index[val])
+	elseif s == "tab" then
+		local b = body_of(c, St.lookup(e.t), val)
+		if b == nil then return false end
+		w_leb(w, b.n)
+		w_sub(w, b)
+	elseif s == "union" then
 		if val == nil or val.Type == 0 then
+			w_leb(w, 0) -- a None element is the single zero byte: position is identity
 			return true
 		end
-		local un = St.lookup(fd.t)
-		if val.Type > #un.arms then
-			return false
-		end
-		w:leb(ids:ref(fd.id))
-		w:u8(15)
-		return writeArmHeader(un, val.Type, w, ids, nodes, val, path)
-	end
-	if fd.s == "tab" then
-		local mark = ids:mark()
-		local ref = ids:ref(fd.id)
-		local body = Writer.new()
-		local sub = St.lookup(fd.t)
-		table.insert(path, { o = fd.o, i = 0 })
-		local ok = writeBody(sub, body, ids, nodes, val, path)
-		table.remove(path)
-		if not ok then
-			return false
-		end
-		if body:len() <= 1 then
-			ids:rollback(mark)
-			return true
-		end
-		w:leb(ref)
-		w:u8(13)
-		w:leb(body:len())
-		w:raw(body:bytes())
-		return true
-	end
-	if fd.s == "arr" then
-		if fd.array == "keyed" then
-			return writeKeyed(fd, w, ids, nodes, val, path)
-		end
-		local n = arrCount(fd, val)
-		if n == 0 then
-			return true
-		end
-		w:leb(ids:ref(fd.id))
-		w:u8(14)
-		local body = Writer.new()
-		body:u8(fd.ek)
-		body:leb(n)
-		for i = 1, n do
-			if not writeElement(fd, body, ids, nodes, val[i], path, i) then
-				return false
-			end
-		end
-		w:leb(body:len())
-		w:raw(body:bytes())
-		return true
-	end
-	return false
-end
-
-sameBytes = function(a, b)
-	if blen(a) ~= blen(b) then
+		return write_arm_header(c, St.lookup(e.t), w, val)
+	elseif s == "str" or s == "text" then
+		local n = 0
+		if typeof(val) == "buffer" then n = len or buffer.len(val) end
+		if e.wide then n = n * 2 end
+		w_leb(w, n)
+		if n > 0 then w_raw(w, val, 0, n) end
+	else
 		return false
-	end
-	for i = 0, blen(a) - 1 do
-		local ab = typeof(a) == "string" and a:byte(i + 1) or buffer.readu8(a, i)
-		local bb = typeof(b) == "string" and b:byte(i + 1) or buffer.readu8(b, i)
-		if ab ~= bb then
-			return false
-		end
 	end
 	return true
 end
 
-writeElement = function(fd, w, ids, nodes, val, path, i)
-	local e = fd.e
-	if e.s == "bool" then
-		w:u8(val and 1 or 0)
-		return true
+-- a positional array body under kind 14: the element kind, the count, then
+-- the elements
+local function write_array(c: any, fd: any, w: any, holder: any, val: any, count: number): boolean
+	header(c, w, fd.id, 14)
+	local b = new_writer(c.count)
+	w_u8(b, fd.ek)
+	w_leb(b, count)
+	local lens = holder[fd.slot .. "Length"]
+	for i = 1, count do
+		local len: number? = nil
+		if typeof(lens) == "table" then len = lens[i] end
+		if not write_value(c, fd.e, b, elem_at(val, i), len) then return false end
 	end
-	if e.s == "int" then
-		if e.dom == "int128" then
-			w:u64Bytes(val.lo)
-			w:u64Bytes(val.hi)
-		else
-			writeInt(w, e.kw, val)
-		end
-		return true
+	w_leb(w, b.n)
+	w_sub(w, b)
+	return true
+end
+
+-- the element's default, the value a reader prefills (§3, §5): zero, None,
+-- null, empty
+local function elem_is_default(e: any, val: any, len: number?): boolean
+	local s = e.s
+	if s == "bool" then return val == false or val == nil end
+	if s == "int" then return same_int(val, 0) end
+	if s == "float" then
+		if e.f32 then return fround(val) == 0 end
+		return val == 0
 	end
-	if e.s == "float" then
-		if e.f32 then
-			w:u32(narrowF32(val))
-		else
-			buffer.writef64(scratch, 0, val)
-			for k = 1, 8 do
-				table.insert(w.b, buffer.readu8(scratch, k - 1))
-			end
-		end
-		return true
-	end
-	if e.s == "enum" then
-		local vref = enumRef(e, ids, val)
-		if vref < 0 then
-			return false
-		end
-		w:leb(vref)
-		return true
-	end
-	if e.s == "ptr" then
-		w:leb(val == nil and 0 or nodes.index[val])
-		return true
-	end
-	if e.s == "tab" then
-		local body = Writer.new()
-		local sub = St.lookup(e.t)
-		table.insert(path, { o = fd.o, i = i })
-		local ok = writeBody(sub, body, ids, nodes, val, path)
-		table.remove(path)
-		if not ok then
-			return false
-		end
-		w:leb(body:len())
-		w:raw(body:bytes())
-		return true
-	end
-	if e.s == "union" then
-		if val.Type == 0 then
-			w:leb(0)
-			return true
-		end
-		local un = St.lookup(e.t)
-		if val.Type > #un.arms then
-			return false
-		end
-		return writeArmHeader(un, val.Type, w, ids, nodes, val, path)
+	if s == "enum" then return as_number(val) == 0 end
+	if s == "ptr" or s == "sblob" or s == "bblob" then return val == nil end
+	if s == "union" then return val == nil or val.Type == 0 end
+	if s == "str" or s == "text" then
+		if typeof(val) ~= "buffer" then return true end
+		return (len or buffer.len(val)) == 0
 	end
 	return false
 end
 
-writeArmHeader = function(un, tag, w, ids, nodes, v, path)
-	local arm = un.arms[tag]
-	w:leb(ids:ref(arm.id))
-	w:u8(arm.k)
-	local body = Writer.new()
-	if arm.s == "void" then
-		w:leb(0)
-		return true
-	end
-	if arm.s == "tab" then
-		local sub = St.lookup(arm.t)
-		if not writeBody(sub, body, ids, nodes, v[arm.slot], path) then
-			return false
-		end
-		w:leb(body:len())
-		w:raw(body:bytes())
-		return true
-	end
-	if arm.s == "ptr" then
-		local val = v[arm.slot]
-		w:leb(val == nil and 0 or nodes.index[val])
-		return true
-	end
-	if arm.s == "bytes" then
-		local val = v[arm.slot]
-		body:u8(6)
-		body:leb(blen(val))
-		body:raw(val)
-		w:leb(body:len())
-		w:raw(body:bytes())
-		return true
-	end
-	if arm.s == "arr" then
-		local n = arrCount(arm, v[arm.slot])
-		body:u8(arm.ek)
-		body:leb(n)
-		for i = 1, n do
-			if not writeElement(arm, body, ids, nodes, v[arm.slot][i], path, i) then
-				return false
-			end
-		end
-		w:leb(body:len())
-		w:raw(body:bytes())
-		return true
-	end
-	if arm.s == "union" then
-		local val = v[arm.slot]
-		if val.Type == 0 then
-			body:leb(0)
-		else
-			local inner = St.lookup(arm.t)
-			if val.Type > #inner.arms then
-				return false
-			end
-			if not writeArmHeader(inner, val.Type, body, ids, nodes, val, path) then
-				return false
-			end
-		end
-		w:leb(body:len())
-		w:raw(body:bytes())
-		return true
-	end
-	if arm.s == "int" then
-		local val = v[arm.slot]
-		if arm.dom == "int128" then
-			body:u64Bytes(val.lo)
-			body:u64Bytes(val.hi)
-		else
-			writeInt(body, arm.kw, val)
-		end
-		w:leb(body:len())
-		w:raw(body:bytes())
-		return true
-	end
-	if arm.s == "float" then
-		if arm.f32 then
-			body:u32(narrowF32(v[arm.slot]))
-		else
-			buffer.writef64(scratch, 0, v[arm.slot])
-			for k = 1, 8 do
-				table.insert(body.b, buffer.readu8(scratch, k - 1))
-			end
-		end
-		w:leb(body:len())
-		w:raw(body:bytes())
-		return true
-	end
-	if arm.s == "str" then
-		body:raw(v[arm.slot])
-		w:leb(body:len())
-		w:raw(body:bytes())
-		return true
-	end
-	if arm.s == "bool" then
-		body:u8(v[arm.slot] and 1 or 0)
-		w:leb(body:len())
-		w:raw(body:bytes())
-		return true
-	end
-	if arm.s == "enum" then
-		local vref = enumRef(arm, ids, v[arm.slot])
-		if vref < 0 then
-			return false
-		end
-		body:leb(vref)
-		w:leb(body:len())
-		w:raw(body:bytes())
-		return true
-	end
-	return false
-end
-
-writeKeyed = function(fd, w, ids, nodes, v, path)
-	local mark = ids:mark()
-	local ref = ids:ref(fd.id)
-	local body = Writer.new()
+-- AN ENUM-KEYED ARRAY (docs/SPEC-TABLES.md §3.2): kind 16, then one (key
+-- reference, L, element) triple per slot that is not at its default, in
+-- variant order. An array with no such slot is not written at all.
+local function write_keyed(c: any, fd: any, w: any, val: any): boolean
+	local m = mark(c.ids)
+	local fref = ref(c.ids, fd.id)
+	local body = new_writer(c.count)
 	local pairs = 0
-	for slot = 1, #v do
-		if v[slot] == nil then
-			continue
-		end
-		local keyID = fd.e.vs[slot]
-		if keyID == nil then
-			return false
-		end
-		local slotMark = ids:mark()
-		local keyRef = ids:ref(keyID[2])
-		local elem: any
-		local elemBytes
-		if fd.ek == 13 then
-			local b = Writer.new()
-			local sub = St.lookup(fd.e.t)
-			if not writeBody(sub, b, ids, nodes, v[slot], path) then
-				return false
-			end
-			if b:len() <= 1 then
-				ids:rollback(slotMark)
-				continue
-			end
-			elemBytes = b:bytes()
+	local e = fd.e
+	for slot = 1, fd.bound do
+		local keyvs = fd.keyvs
+		if keyvs == nil or keyvs[slot] == nil then return false end
+		local sm = mark(c.ids)
+		local kref = ref(c.ids, keyvs[slot][2])
+		local x = val[slot]
+		local eb: any
+		if e.s == "tab" then
+			eb = body_of(c, St.lookup(e.t), x)
+			if eb == nil then return false end
+			if eb.n <= 1 then rollback(c.ids, sm); continue end
 		else
-			local eb = Writer.new()
-			if not writeElement(fd, eb, ids, nodes, v[slot], path, slot) then
-				return false
-			end
-			elemBytes = eb:bytes()
+			if elem_is_default(e, x, nil) then rollback(c.ids, sm); continue end
+			eb = new_writer(c.count)
+			if not write_value(c, e, eb, x, nil) then return false end
 		end
-		body:leb(keyRef)
-		body:leb(blen(elemBytes))
-		body:raw(elemBytes)
+		w_leb(body, kref)
+		w_leb(body, eb.n)
+		w_sub(body, eb)
 		pairs = pairs + 1
 	end
 	if pairs == 0 then
-		ids:rollback(mark)
+		rollback(c.ids, m)
 		return true
 	end
-	w:leb(ref)
-	w:u8(16)
-	local inner = Writer.new()
-	inner:u8(fd.ek)
-	inner:leb(pairs)
-	inner:raw(body:bytes())
-	w:leb(inner:len())
-	w:raw(inner:bytes())
+	w_leb(w, fref)
+	w_u8(w, 16)
+	local inner = new_writer(c.count)
+	w_u8(inner, fd.ek)
+	w_leb(inner, pairs)
+	w_sub(inner, body)
+	w_leb(w, inner.n)
+	w_sub(w, inner)
 	return true
 end
 
--- ---- THE SAVE (docs/SPEC-TABLES.md §3, §3.1) --------------------------
-
-function S.save(d, v)
-	local nodes = number(d, v)
-	if nodes == nil then
-		return nil
+-- A MAP (§2.8): kind 14 over element kind 13, its entries in ASCENDING KEY
+-- ORDER, each entry's body always riding (identity is the key). An empty map
+-- elides.
+local function write_map(c: any, fd: any, w: any, val: any): boolean
+	if val == nil or #val == 0 then return true end
+	header(c, w, fd.id, 14)
+	local entry = St.lookup(fd.t)
+	local b = new_writer(c.count)
+	w_u8(b, 13)
+	w_leb(b, #val)
+	for _, ev in map_order(fd, val) do
+		local eb = body_of(c, entry, ev)
+		if eb == nil then return false end
+		w_leb(b, eb.n)
+		w_sub(b, eb)
 	end
-	local w = Writer.new()
-	w:u8(Form)
-	local ids = Ids.new()
-	local path = {}
-	if not writeFields(d, w, ids, nodes, v, path) then
-		return nil
-	end
-	if #nodes.list > 0 then
-		w:leb(ids:ref(NodeTableId))
-		w:u8(12)
-		local sub = Writer.new()
-		sub:leb(#nodes.list)
-		for _, n in nodes.list do
-			sub:leb(ids:ref(n.typeId))
-			if n.v == nil then
-				sub:leb(blen(n.body))
-				sub:raw(n.body)
-			else
-				local body = Writer.new()
-				if not writeBody(n.d, body, ids, nodes, n.v, path) then
-					return nil
-				end
-				sub:leb(body:len())
-				sub:raw(body:bytes())
-			end
-		end
-		w:leb(sub:len())
-		w:raw(sub:bytes())
-	end
-	w:u8(0)
-	for _, id in ids.list do
-		w:u64Bytes(id)
-	end
-	w:u64Bytes(integer.fromstring(tostring(#ids.list)))
-	return { bytes = w:bytes(), measure = w:len() }
+	w_leb(w, b.n)
+	w_sub(w, b)
+	return true
 end
 
-return S
+-- ONE ARM's payload, the bytes under its L (§3's arm payload table): a table
+-- body, a node index, a string's bytes with no length of their own, the array
+-- body for bytes(N) and an array, the union payload in place, or the value at
+-- its width.
+local function arm_payload(c: any, arm: any, w: any, u: any): boolean
+	local s = arm.s
+	local val = u[arm.slot]
+	if s == "tab" then
+		return write_body(c, St.lookup(arm.t), w, val)
+	elseif s == "ptr" or s == "sblob" or s == "bblob" then
+		w_leb(w, val == nil and 0 or c.nodes.index[val])
+	elseif s == "str" then
+		local b, n = used(u, arm.slot, arm.wide)
+		if b ~= nil and n > 0 then w_raw(w, b, 0, n) end
+	elseif s == "text" then
+		if typeof(val) == "buffer" then w_raw(w, val, 0, buffer.len(val)) end
+	elseif s == "bytes" then
+		local b, n = used(u, arm.slot, false)
+		w_u8(w, 6) -- bytes ride as an array of u8 (§2.5)
+		w_leb(w, n)
+		if b ~= nil and n > 0 then w_raw(w, b, 0, n) end
+	elseif s == "arr" then
+		local count = live_count(arm, u, val)
+		w_u8(w, arm.ek)
+		w_leb(w, count)
+		local lens = u[arm.slot .. "Length"]
+		for i = 1, count do
+			local len: number? = nil
+			if typeof(lens) == "table" then len = lens[i] end
+			if not write_value(c, arm.e, w, elem_at(val, i), len) then return false end
+		end
+	elseif s == "union" then
+		if val == nil or val.Type == 0 then
+			w_leb(w, 0) -- the inner union's None: L = 1 and that one zero byte (§3)
+		else
+			return write_arm_header(c, St.lookup(arm.t), w, val)
+		end
+	else
+		return write_value(c, arm, w, val, nil)
+	end
+	return true
+end
+
+-- AN ARM HEADER IS A FIELD HEADER (§3): the arm id reference, the arm's kind
+-- byte (32 for a payload-free arm, §2.6), L, then L bytes of payload. A tag no
+-- arm names has no wire identity, and the save refuses it (§5).
+write_arm_header = function(c: any, un: any, w: any, u: any): boolean
+	local arm = un.arms[u.Type]
+	if arm == nil then return false end
+	w_leb(w, ref(c.ids, arm.id))
+	if arm.s == "void" then
+		w_u8(w, 32)
+		w_leb(w, 0)
+		return true
+	end
+	w_u8(w, arm.k)
+	local b = new_writer(c.count)
+	if not arm_payload(c, arm, b, u) then return false end
+	w_leb(w, b.n)
+	w_sub(w, b)
+	return true
+end
+
+-- a scalar or an enum at its declared default (§3, internal/tablewire
+-- cellIsDefault): a float32 compares as a float32, an integer in either domain
+local function at_default(fd: any, val: any): boolean
+	local s = fd.s
+	if s == "bool" then return (val == true) == (fd.def == true) end
+	if s == "float" then
+		if fd.f32 then return fround(val) == fround(fd.def) end
+		return val == fd.def
+	end
+	if s == "int" then return same_int(val, fd.def) end
+	return as_number(val) == as_number(fd.def)
+end
+
+-- ONE FIELD, elided at its declared default (§3): a pointer and a blob at
+-- null, a scalar at its default, a string at its default bytes, an array when
+-- empty (a fixed one when every element is at its default; a fixed array of
+-- tables always rides), a map when empty, a union at None, a nested table when
+-- its body is its terminator alone, the field's id rolled back with it. A
+-- present optional always rides; an absent one never does (§2.3).
+local function write_field(c: any, fd: any, w: any, v: any): boolean
+	local s = fd.s
+	local val = v[fd.slot]
+
+	if s == "ptr" or s == "sblob" or s == "bblob" then
+		-- NULL IS INDEX 0 AND NULL IS ELIDED; a non-null pointer always rides (§3.1)
+		if val == nil then return true end
+		header(c, w, fd.id, 17)
+		w_leb(w, c.nodes.index[val])
+		return true
+	end
+	if s == "map" then
+		return write_map(c, fd, w, val)
+	end
+	if fd.present ~= nil then
+		if not v[fd.present] then return true end
+		if s == "arr" then
+			return write_array(c, fd, w, v, val, live_count(fd, v, val))
+		elseif s == "tab" then
+			local fref = ref(c.ids, fd.id)
+			local b = body_of(c, St.lookup(fd.t), val)
+			if b == nil then return false end
+			w_leb(w, fref)
+			w_u8(w, 13)
+			w_leb(w, b.n)
+			w_sub(w, b)
+			return true
+		end
+		header(c, w, fd.id, fd.k)
+		if s == "str" then
+			local b, n = used(v, fd.slot, fd.wide)
+			return write_value(c, { s = "text" }, w, b, n)
+		elseif s == "union" then
+			if val == nil or val.Type == 0 then w_leb(w, 0); return true end
+			return write_arm_header(c, St.lookup(fd.t), w, val)
+		end
+		return write_value(c, fd, w, val, nil)
+	end
+	if s == "arr" and fd.array == "keyed" then
+		return write_keyed(c, fd, w, val)
+	end
+	if s == "str" then
+		local b, n = used(v, fd.slot, fd.wide)
+		if fd.wide then
+			if n == 0 then return true end -- wide text takes no specified default
+		elseif equals_string(b, n, fd.def) then
+			return true
+		end
+		header(c, w, fd.id, fd.k)
+		w_leb(w, n)
+		if b ~= nil and n > 0 then w_raw(w, b, 0, n) end
+		return true
+	end
+	if s == "text" then
+		if typeof(val) ~= "buffer" or buffer.len(val) == 0 then return true end
+		header(c, w, fd.id, 12)
+		w_leb(w, buffer.len(val))
+		w_raw(w, val, 0, buffer.len(val))
+		return true
+	end
+	if s == "bytes" then
+		local b, n = used(v, fd.slot, false)
+		if equals_string(b, n, fd.def) then return true end
+		-- L IS THE ARRAY BODY'S LENGTH (§3): the element kind, the count's own
+		-- LEB128 bytes, then the bytes
+		header(c, w, fd.id, 14)
+		w_leb(w, 1 + leb_len(n) + n)
+		w_u8(w, 6)
+		w_leb(w, n)
+		if b ~= nil and n > 0 then w_raw(w, b, 0, n) end
+		return true
+	end
+	if s == "arr" then
+		if fd.array == "list" or fd.array == "counted" then
+			local n = live_count(fd, v, val)
+			if n == 0 then return true end
+			return write_array(c, fd, w, v, val, n)
+		end
+		if fd.e.s == "tab" then
+			-- a fixed array of tables always rides: position is identity there
+			return write_array(c, fd, w, v, val, fd.bound)
+		end
+		local lens = v[fd.slot .. "Length"]
+		local all = true
+		for i = 1, fd.bound do
+			local len: number? = nil
+			if typeof(lens) == "table" then len = lens[i] end
+			if not elem_is_default(fd.e, elem_at(val, i), len) then all = false; break end
+		end
+		if all then return true end
+		return write_array(c, fd, w, v, val, fd.bound)
+	end
+	if s == "union" then
+		if val == nil or val.Type == 0 then return true end -- None elides
+		local un = St.lookup(fd.t)
+		if un.arms[val.Type] == nil then return false end
+		w_leb(w, ref(c.ids, fd.id))
+		w_u8(w, 15)
+		return write_arm_header(c, un, w, val)
+	end
+	if s == "tab" then
+		-- AN ELIDED FIELD COSTS NOTHING IN THE ID TABLE EITHER (§3): intern the
+		-- id, build the body that decides, undo both when it is the terminator
+		local m = mark(c.ids)
+		local fref = ref(c.ids, fd.id)
+		local b = body_of(c, St.lookup(fd.t), val)
+		if b == nil then return false end
+		if b.n <= 1 then
+			rollback(c.ids, m)
+			return true
+		end
+		w_leb(w, fref)
+		w_u8(w, 13)
+		w_leb(w, b.n)
+		w_sub(w, b)
+		return true
+	end
+	-- a scalar or an enum, elided at its declared default
+	if s ~= "bool" and s ~= "float" and s ~= "int" and s ~= "enum" then return false end
+	if at_default(fd, val) then return true end
+	header(c, w, fd.id, fd.k)
+	return write_value(c, fd, w, val, nil)
+end
+
+write_fields = function(c: any, d: any, w: any, v: any): boolean
+	for _, fd in d.fields do
+		if not write_field(c, fd, w, v) then return false end
+	end
+	return true
+end
+
+-- THE SAVE (docs/SPEC-TABLES.md §3, §3.1): the form byte, the root's fields,
+-- the node table LAST in the root body under the reserved id at kind 12 (a
+-- root that reaches no nodes writes none), the terminator, then the id table
+-- and its count. A data cycle or a value with no wire identity refuses (nil).
+local function walk(d: any, v: any, count: boolean): any
+	local nodes = number(d, v)
+	if nodes == nil then return nil end
+	local c = { ids = new_ids(), nodes = nodes, count = count }
+	local w = new_writer(count)
+	w_u8(w, Form)
+	if not write_fields(c, d, w, v) then return nil end
+	if #nodes.list > 0 then
+		w_leb(w, ref(c.ids, NodeTableId))
+		w_u8(w, 12)
+		local p = new_writer(count)
+		w_leb(p, #nodes.list)
+		for _, n in nodes.list do
+			w_leb(p, ref(c.ids, n.typeId))
+			if n.blob ~= nil then
+				-- a BYTE BUFFER's record is the bytes themselves (§2.5)
+				w_leb(p, buffer.len(n.blob))
+				w_raw(p, n.blob, 0, buffer.len(n.blob))
+			else
+				local b = body_of(c, n.d, n.v)
+				if b == nil then return nil end
+				w_leb(p, b.n)
+				w_sub(p, b)
+			end
+		end
+		w_leb(w, p.n)
+		w_sub(w, p)
+	end
+	w_u8(w, 0) -- the root body ends at its own zero reference
+	-- THE ID TABLE IS THE LAST THING IN THE FILE: the entries, then the count
+	for _, id in c.ids.list do w_int(w, id) end
+	w_int(w, integer.create(#c.ids.list))
+	return w
+end
+
+-- Save is the root value's form-1 wire as a buffer of exactly its bytes, or
+-- nil when the save refuses (a data cycle, a value with no wire identity).
+function S.save(d: any, v: any): buffer?
+	local w = walk(d, v, false)
+	if w == nil then return nil end
+	local out = buffer.create(w.n)
+	buffer.copy(out, 0, w.b, 0, w.n)
+	return out
+end
+
+-- Measure is the length Save writes, by the same walk storing nothing, or nil
+-- when the save refuses.
+function S.measure(d: any, v: any): number?
+	local w = walk(d, v, true)
+	if w == nil then return nil end
+	return w.n
+end
+
+return table.freeze(S)

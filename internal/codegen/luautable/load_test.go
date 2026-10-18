@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -91,7 +92,7 @@ type keyPair struct {
 	id   uint64
 }
 
-// keyedMeta maps a file base to its table fields that are enum-keyed arrays,
+// keyedMeta maps a file base to its table and packet-type fields that are enum-keyed arrays,
 // each to its key enum's variants. The emitter (luautable.go) does not yet
 // carry a keyed array's key variants in the descriptor — that change is
 // outside this card's PATHS — so the test reconstructs them from the IR
@@ -100,7 +101,15 @@ type keyPair struct {
 func keyedMeta(u *ir.Unit) map[string]map[string][]keyPair {
 	out := map[string]map[string][]keyPair{}
 	for _, f := range u.Files {
-		for _, t := range f.Tables {
+		// a table, or a packet type a table reaches by value: a plain type may
+		// spell a keyed array too, and it rides keyed on the table wire
+		structs := append([]*ir.Struct{}, f.Tables...)
+		for _, d := range f.Decls {
+			if st, ok := d.(*ir.Struct); ok && !slices.Contains(structs, st) {
+				structs = append(structs, st)
+			}
+		}
+		for _, t := range structs {
 			for _, fld := range t.Fields {
 				if fld.KeyEnum == "" || fld.KeyEnumRef == nil {
 					continue
