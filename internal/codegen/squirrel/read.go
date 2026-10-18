@@ -52,18 +52,24 @@ func readDecl(m *Module, d ir.Decl) {
 	}
 }
 
-// readScratch is the { value = ... } holder every read call shares, declared
-// at module scope on first use. Squirrel is single threaded per VM, and a
-// holder is always consumed in the same call that fills it, so one per module
-// is safe — the design's twin of the runtime's own shared FLOAT_SCRATCH.
+// readScratch is the { value = ... } holder every read call in one function
+// shares, declared once at the top of the function body (never lazily inside
+// a branch or loop, whose scope would end before a later use). A holder is
+// always consumed in the same call that fills it — the design's twin of the
+// runtime's own shared FLOAT_SCRATCH.
 type readScratch struct {
 	used bool
 }
 
+// declare emits the holder at the top of a read function's body.
+func (r *readScratch) declare(m *Module) {
+	m.Printf("  local _rs = { value = 0 };\n")
+	r.used = true
+}
+
 func (r *readScratch) decl(m *Module) string {
 	if !r.used {
-		m.Printf("local _rs = { value = 0 };\n")
-		r.used = true
+		r.declare(m)
 	}
 	return "_rs"
 }
@@ -78,6 +84,7 @@ func emitReadStruct(m *Module, st *ir.Struct) {
 		m.Printf("  // empty body — presence is the payload (SPEC §4.6)\n")
 	} else {
 		rs := &readScratch{}
+		rs.declare(m)
 		emitReadItems(m, st.Items, "  ", rs)
 	}
 	m.Printf("  return true;\n};\n\n")
@@ -214,9 +221,11 @@ func emitReadArray(m *Module, f *ir.Field, target, ind string, rs *readScratch) 
 		m.Printf("%sfor (local i = 0; i < %d; i++) {\n", ind, f.ArrayBound)
 	}
 	elem := target + "[i]"
-	if isByteElem(f.Type) {
+	if isByteElem(f.Type) && !f.HasIntRange {
 		// a [N]uint8 element is an 8-bit read; the per-element loop is
-		// byte-identical to the bulk path at any alignment
+		// byte-identical to the bulk path at any alignment. A ranged uint8
+		// element (Clauses W1's [..20]uint8 in [0, 1]) rides the ranged
+		// call instead, in its minimal bits (SPEC §4.3)
 		m.Printf("%s  if (!stream.serializeBits(%s, 8)) return false;\n", ind, scratch)
 		m.Printf("%s  %s = %s.value;\n", ind, elem, scratch)
 	} else {

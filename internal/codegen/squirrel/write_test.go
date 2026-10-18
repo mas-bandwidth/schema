@@ -149,34 +149,17 @@ func writeSquirrelTypeWire(t *testing.T, files map[string][]byte) map[string][]b
 	return got
 }
 
-// typeWireProbe builds the fourteen pinned instances test/go/main.go builds
-// and prints each written wire as one lowercase-hex line. Every write goes
+// typeWireProbe writes the fourteen pinned instances typeWireCases builds and
+// prints each written wire as one lowercase-hex line. Every write goes
 // through a WriteStream over a blob; the stream's latched error is never
-// swallowed (a false throws, naming the golden). Degenerate writes its twelve
-// shapes back to back into one stream; clauses and joins write each shape into
-// its own flushed stream and concatenate, the way every emitter produces their
-// mid-byte goldens.
-const typeWireProbe = `local schema = dofile("schema_module.nut", true);
-local serialize = dofile("serialize.nut", true);
-dofile("inputs.nut", true); // defines ::hexline
-
-local Types = schema.require("Types");
-local Wire = schema.require("Wire");
-local Enums = schema.require("Enums");
-local Degenerate = schema.require("Degenerate");
-local Clauses = schema.require("Clauses");
-local Joins = schema.require("Joins");
-
+// swallowed (a false throws, naming the golden). A "one" or "seq" case writes
+// its shapes back to back into one stream (degenerate's twelve); a "parts"
+// case writes each shape into its own flushed stream and concatenates, the
+// way every emitter produces the clauses and joins mid-byte goldens.
+const typeWireProbe = typeWireCases + `
 local emit = function(name, data) {
   print(name + " ");
   ::hexline(data);
-};
-
-local one = function(name, mod, type, v) {
-  local ws = serialize.WriteStream(blob(2048));
-  if (!mod["Write" + type](ws, v)) throw name + ": write failed: " + ws.error();
-  ws.flush();
-  emit(name, ws.data());
 };
 
 local cat = function(parts) {
@@ -191,15 +174,69 @@ local cat = function(parts) {
   return out;
 };
 
-local part = function(mod, type, v) {
-  local ws = serialize.WriteStream(blob(2048));
-  if (!mod["Write" + type](ws, v)) throw type + ": write failed: " + ws.error();
-  ws.flush();
-  return ws.data();
-};
+foreach (c in ::typeWireCases(false)) {
+  if (c.mode == "parts") {
+    local parts = [];
+    foreach (it in c.items) {
+      local ws = serialize.WriteStream(blob(2048));
+      if (!it.m["Write" + it.t](ws, it.v)) throw c.name + " " + it.t + ": write failed: " + ws.error();
+      ws.flush();
+      parts.append(ws.data());
+    }
+    emit(c.name, cat(parts));
+  } else {
+    local ws = serialize.WriteStream(blob(2048));
+    foreach (it in c.items) {
+      if (!it.m["Write" + it.t](ws, it.v)) throw c.name + " " + it.t + ": write failed: " + ws.error();
+    }
+    ws.flush();
+    emit(c.name, ws.data());
+  }
+}
+`
+
+// typeWireCases is the Squirrel prelude both type-wire probes share: it loads
+// the generated modules and the vendored serialize port, and defines
+// ::typeWireCases(want), the fourteen pinned instances test/go/main.go builds,
+// in its order, as { name, mode, items = [{ m, t, v }] }. want = false is the
+// value written; want = true is the value a read of the golden must produce:
+// the same instance with the untaken side of every wire branch zero (SPEC §5),
+// exactly as test/go/main.go states its read-back expectations (the at-rest
+// RigidBody, every Joins shape) and, for CompressedProbe, the reconstructed
+// step values main.go checks (float32 per-op arithmetic, SPEC §4.3).
+const typeWireCases = `local schema = dofile("schema_module.nut", true);
+local serialize = dofile("serialize.nut", true);
+local in_ = dofile("inputs.nut", true); // the goldens, name -> blob; defines ::hexline
+
+local Types = schema.require("Types");
+local Wire = schema.require("Wire");
+local Enums = schema.require("Enums");
+local Degenerate = schema.require("Degenerate");
+local Clauses = schema.require("Clauses");
+local Joins = schema.require("Joins");
 
 local setBytes = function(b, s) {
   for (local i = 0; i < s.len(); i++) b[i] = s[i] & 0xff;
+};
+
+// f32 rounds a double to the nearest float32, the reader's per-op arithmetic
+local f32 = function(x) {
+  local b = blob(4);
+  b.writen(x, 'f');
+  b.seek(0);
+  return b.readn('f');
+};
+
+local seq = function(n) {
+  local out = [];
+  for (local i = 0; i < n; i++) out.append(i);
+  return out;
+};
+
+::typeWireCases <- function(want) {
+local cases = [];
+local one = function(name, mod, type, v) {
+  cases.append({ name = name, mode = "one", items = [{ m = mod, t = type, v = v }] });
 };
 
 // ---- shipcreate_flags ----
@@ -218,7 +255,9 @@ local setBytes = function(b, s) {
 }
 
 // ---- rigidbody_moving and rigidbody_at_rest ----
-{
+// the at-rest read zeroes both velocities (SPEC §5), though the written
+// value had them set
+local rigidBody = function(atRest) {
   local v = Types.RigidBody();
   v.Position.X = 1.5;
   v.Position.Y = -2.5;
@@ -227,17 +266,19 @@ local setBytes = function(b, s) {
   v.Orientation.Y = 0.2;
   v.Orientation.Z = 0.3;
   v.Orientation.W = 0.9;
-  v.AtRest = false;
-  v.LinearVelocity.X = 10.0;
-  v.LinearVelocity.Y = 20.0;
-  v.LinearVelocity.Z = -3.0;
-  v.AngularVelocity.X = 0.25;
-  v.AngularVelocity.Y = 0.5;
-  v.AngularVelocity.Z = 0.75;
-  one("rigidbody_moving", Types, "RigidBody", v);
-  v.AtRest = true;
-  one("rigidbody_at_rest", Types, "RigidBody", v);
-}
+  v.AtRest = atRest;
+  if (!want || !atRest) {
+    v.LinearVelocity.X = 10.0;
+    v.LinearVelocity.Y = 20.0;
+    v.LinearVelocity.Z = -3.0;
+    v.AngularVelocity.X = 0.25;
+    v.AngularVelocity.Y = 0.5;
+    v.AngularVelocity.Z = 0.75;
+  }
+  return v;
+};
+one("rigidbody_moving", Types, "RigidBody", rigidBody(false));
+one("rigidbody_at_rest", Types, "RigidBody", rigidBody(true));
 
 // ---- chat ----
 {
@@ -260,6 +301,12 @@ local setBytes = function(b, s) {
   local v = Wire.CompressedProbe();
   v.Boundary = 0.005;
   v.Offset = -4.8585;
+  if (want) {
+    // main.go: boundary reconstructs integer 1, offset integer 142, in
+    // float32 per-op arithmetic (the FMA-boundary vectors, SPEC §7.2 gate 7)
+    v.Boundary = f32(f32(f32(1.0 / 1000.0) * 10.0));
+    v.Offset = f32(f32(f32(142.0 / 10000.0) * 10.0) - 5.0);
+  }
   one("compressed_probe", Wire, "CompressedProbe", v);
 }
 
@@ -360,9 +407,9 @@ one("inputpacket", Types, "InputPacket", inputPacket());
 
 // ---- degenerate: twelve shapes, one stream, in the C++ test's order ----
 {
-  local ws = serialize.WriteStream(blob(2048));
+  local items = [];
   local w = function(type, v) {
-    if (!Degenerate["Write" + type](ws, v)) throw "degenerate " + type + ": " + ws.error();
+    items.append({ m = Degenerate, t = type, v = v });
   };
 
   local vec2 = Degenerate.Vec2();
@@ -440,59 +487,56 @@ one("inputpacket", Types, "InputPacket", inputPacket());
   straddle.Inner.C = 0x33333;
   w("TrioStraddle", straddle);
 
-  ws.flush();
-  emit("degenerate", ws.data());
+  cases.append({ name = "degenerate", mode = "seq", items = items });
 }
 
 // ---- clauses: mid-byte arrangements, one stream per shape, concatenated ----
 {
   local parts = [];
-  local seq = function(n) {
-    local out = [];
-    for (local i = 0; i < n; i++) out.append(i);
-    return out;
+  local part = function(mod, type, v) {
+    parts.append({ m = mod, t = type, v = v });
   };
 
   foreach (c in [0, 1, 3, 4, 5, 7, 12]) {
     local v = Clauses.W13();
     v.ItemsCount = c;
     foreach (i in seq(c)) v.Items[i] = 8191 - i * 733;
-    parts.append(part(Clauses, "W13", v));
+    part(Clauses, "W13", v);
   }
   foreach (c in [0, 1, 2, 3, 4, 9]) {
     local v = Clauses.W17();
     v.ItemsCount = c;
     foreach (i in seq(c)) v.Items[i] = 131071 - i * 11117;
-    parts.append(part(Clauses, "W17", v));
+    part(Clauses, "W17", v);
   }
   foreach (c in [0, 1, 2, 3, 6]) {
     local v = Clauses.W26();
     v.ItemsCount = c;
     foreach (i in seq(c)) v.Items[i] = 67108863 - i * 5555555;
-    parts.append(part(Clauses, "W26", v));
+    part(Clauses, "W26", v);
   }
   foreach (c in [0, 1, 3, 4, 5, 20]) {
     local v = Clauses.W1();
     v.ItemsCount = c;
     foreach (i in seq(c)) v.Items[i] = i % 2;
-    parts.append(part(Clauses, "W1", v));
+    part(Clauses, "W1", v);
   }
   foreach (c in [0, 1, 2, 3]) {
     local v = Clauses.W52();
     v.ItemsCount = c;
     foreach (i in seq(c)) v.Items[i] = 4503599627370495 - i * 123456789;
-    parts.append(part(Clauses, "W52", v));
+    part(Clauses, "W52", v);
   }
   foreach (c in [0, 1, 2, 3]) {
     local v = Clauses.W50();
     v.ItemsCount = c;
     foreach (i in seq(c)) v.Items[i] = 1125899906842623 - i * 987654321;
-    parts.append(part(Clauses, "W50", v));
+    part(Clauses, "W50", v);
   }
 
   local f13 = Clauses.F13();
   foreach (i in seq(7)) f13.Items[i] = 8191 - i * 911;
-  parts.append(part(Clauses, "F13", f13));
+  part(Clauses, "F13", f13);
 
   foreach (c in [0, 1, 3, 4, 5, 10]) {
     local v = Clauses.ArrTri3();
@@ -501,7 +545,7 @@ one("inputpacket", Types, "InputPacket", inputPacket());
       v.Items[i].A = i % 2;
       v.Items[i].B = i % 4;
     }
-    parts.append(part(Clauses, "ArrTri3", v));
+    part(Clauses, "ArrTri3", v);
   }
 
   local arrEleven = Clauses.ArrEleven();
@@ -509,14 +553,14 @@ one("inputpacket", Types, "InputPacket", inputPacket());
     arrEleven.Items[i].A = i % 8;
     arrEleven.Items[i].B = 255 - i * 17;
   }
-  parts.append(part(Clauses, "ArrEleven", arrEleven));
+  part(Clauses, "ArrEleven", arrEleven);
 
   foreach (tag in [Clauses.EmptyUnionType.None, Clauses.EmptyUnionType.A, Clauses.EmptyUnionType.B]) {
     local v = Clauses.HoldsEmptyUnion();
     v.Lead = 21;
     v.Tail = 99;
     v.U.Type = tag;
-    parts.append(part(Clauses, "HoldsEmptyUnion", v));
+    part(Clauses, "HoldsEmptyUnion", v);
   }
 
   local strsAt = function(s, b) {
@@ -529,9 +573,9 @@ one("inputpacket", Types, "InputPacket", inputPacket());
     v.BLength = b.len();
     return v;
   };
-  parts.append(part(Clauses, "Strs", strsAt("", "")));
-  parts.append(part(Clauses, "Strs", strsAt("abcdefgh", "\xf0\xf1\xf2\xf3\xf4\xf5\xf6\xf7")));
-  parts.append(part(Clauses, "Strs", strsAt("xyz", "\x01\x02\x03")));
+  part(Clauses, "Strs", strsAt("", ""));
+  part(Clauses, "Strs", strsAt("abcdefgh", "\xf0\xf1\xf2\xf3\xf4\xf5\xf6\xf7"));
+  part(Clauses, "Strs", strsAt("xyz", "\x01\x02\x03"));
 
   foreach (c in [0, 1, 2, 3, 4]) {
     local v = Clauses.ArrNested();
@@ -542,64 +586,65 @@ one("inputpacket", Types, "InputPacket", inputPacket());
       v.Items[i].A = i % 8;
       v.Items[i].B = 200 - i * 7;
     }
-    parts.append(part(Clauses, "ArrNested", v));
+    part(Clauses, "ArrNested", v);
   }
 
   local sole = Clauses.Sole();
   sole.Only = 5555;
-  parts.append(part(Clauses, "Sole", sole));
+  part(Clauses, "Sole", sole);
 
-  emit("clauses", cat(parts));
+  cases.append({ name = "clauses", mode = "parts", items = parts });
 }
 
 // ---- joins: branches on both arms, unequal unions, aligns ----
 {
   local parts = [];
-  local seq = function(n) {
-    local out = [];
-    for (local i = 0; i < n; i++) out.append(i);
-    return out;
+  local part = function(mod, type, v) {
+    parts.append({ m = mod, t = type, v = v });
   };
 
   foreach (f in [false, true]) {
     local agree = Joins.ArmsAgree();
     agree.Lead = 21;
     agree.Flag = f;
-    agree.A = 1234;
-    agree.B = 1500;
+    // the untaken arm reads back zero (SPEC §5), main.go's want
+    if (!want || f) agree.A = 1234;
+    if (!want || !f) agree.B = 1500;
     agree.Tail = 99;
-    parts.append(part(Joins, "ArmsAgree", agree));
+    part(Joins, "ArmsAgree", agree);
 
     local disagree = Joins.ArmsDisagree();
     disagree.Lead = 21;
     disagree.Flag = f;
-    disagree.A = 1234;
-    disagree.B = 5;
+    if (!want || f) disagree.A = 1234;
+    if (!want || !f) disagree.B = 5;
     disagree.Tail = 99;
-    parts.append(part(Joins, "ArmsDisagree", disagree));
+    part(Joins, "ArmsDisagree", disagree);
 
     local armEmpty = Joins.ArmEmpty();
     armEmpty.Lead = 21;
     armEmpty.Flag = f;
-    armEmpty.A = 456789;
+    if (!want || f) armEmpty.A = 456789;
     armEmpty.Tail = 99;
-    parts.append(part(Joins, "ArmEmpty", armEmpty));
+    part(Joins, "ArmEmpty", armEmpty);
 
     local alignStr = Joins.ArmAlign();
     alignStr.Lead = 21;
     alignStr.Flag = f;
-    setBytes(alignStr.S, "abcd");
-    alignStr.SLength = 4;
-    alignStr.B = 1000;
+    if (!want || f) {
+      setBytes(alignStr.S, "abcd");
+      alignStr.SLength = 4;
+    }
+    if (!want || !f) alignStr.B = 1000;
     alignStr.Tail = 99;
-    parts.append(part(Joins, "ArmAlign", alignStr));
+    part(Joins, "ArmAlign", alignStr);
 
     local alignEmpty = Joins.ArmAlign();
     alignEmpty.Lead = 21;
     alignEmpty.Flag = f;
-    alignEmpty.B = 1000;
+    if (!want || !f) alignEmpty.B = 1000;
     alignEmpty.Tail = 99;
-    parts.append(part(Joins, "ArmAlign", alignEmpty));
+    part(Joins, "ArmAlign", alignEmpty);
   }
 
   foreach (o in [false, true]) {
@@ -607,12 +652,12 @@ one("inputpacket", Types, "InputPacket", inputPacket());
       local v = Joins.ArmsNested();
       v.Lead = 5;
       v.Outer = o;
-      v.Inner = i;
-      v.X = 500000000;
-      v.Y = 17;
-      v.Z = 4000;
+      if (!want || o) v.Inner = i;
+      if (!want || (o && i)) v.X = 500000000;
+      if (!want || (o && !i)) v.Y = 17;
+      if (!want || !o) v.Z = 4000;
       v.Tail = 33;
-      parts.append(part(Joins, "ArmsNested", v));
+      part(Joins, "ArmsNested", v);
     }
   }
 
@@ -621,11 +666,13 @@ one("inputpacket", Types, "InputPacket", inputPacket());
       local v = Joins.ArmArray();
       v.Lead = 21;
       v.Flag = f;
-      v.ItemsCount = c;
-      v.B = 300;
+      if (!want || !f) v.B = 300;
       v.Tail = 99;
-      foreach (i in seq(c)) v.Items[i] = 8191 - i * 777;
-      parts.append(part(Joins, "ArmArray", v));
+      if (!want || f) {
+        v.ItemsCount = c;
+        foreach (i in seq(c)) v.Items[i] = 8191 - i * 777;
+      }
+      part(Joins, "ArmArray", v);
     }
   }
 
@@ -636,7 +683,7 @@ one("inputpacket", Types, "InputPacket", inputPacket());
     v.U.Type = tag;
     if (tag == Joins.UnevenType.Narrow) v.U.Narrow.N = 5;
     if (tag == Joins.UnevenType.Wide) v.U.Wide.W = 123456789012;
-    parts.append(part(Joins, "HoldsUneven", v));
+    part(Joins, "HoldsUneven", v);
   }
 
   foreach (c in [0, 1, 2, 3]) {
@@ -653,7 +700,7 @@ one("inputpacket", Types, "InputPacket", inputPacket());
         v.Items[i].Wide.W = 99887766554 + i;
       }
     }
-    parts.append(part(Joins, "ArrUneven", v));
+    part(Joins, "ArrUneven", v);
   }
 
   foreach (c in [0, 1, 2, 3]) {
@@ -668,10 +715,13 @@ one("inputpacket", Types, "InputPacket", inputPacket());
       v.Tail = 9;
       if (sl > 0) setBytes(v.S, "wxyz");
       foreach (i in seq(c)) v.Items[i] = 8191 - i * 999;
-      parts.append(part(Joins, "RegainAfterAlign", v));
+      part(Joins, "RegainAfterAlign", v);
     }
   }
 
-  emit("joins", cat(parts));
+  cases.append({ name = "joins", mode = "parts", items = parts });
 }
+
+return cases;
+};
 `
