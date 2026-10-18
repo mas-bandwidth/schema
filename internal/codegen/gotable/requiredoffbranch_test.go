@@ -103,4 +103,31 @@ func TestReq(t *testing.T){
 }
 `
 	runGenerated(t, schema, body)
+	runTextFormUnit(t, schema, map[string]string{"requiredoffbranch_test.go": textformBody})
 }
+
+// textformBody pins the hand-editable TEXT form of the same rule
+// (docs/SPEC-TABLES.md §2.3, §16.9, <T>LoadTextForm): with the branch off a
+// default Current loads, while with the branch on a missing req is refused with
+// text_missing_required.
+const textformBody = `package probe
+import ("errors";"testing")
+func TestReqTextForm(t *testing.T){
+	for text, want := range map[string]string{
+		"()": "",
+		"(:active false)": "",
+		"(:active true)": "text_missing_required",
+		"(:active true :req 3)": "",
+	} {
+		_, _, err := CurrentLoadTextForm([]byte(text), TableTextFormDefaultLimits())
+		if want == "" {
+			if err != nil { t.Errorf("%s: %v", text, err) }
+			continue
+		}
+		var e *TableTextFormError
+		if !errors.As(err, &e) || e.Name != want {
+			t.Errorf("%s: %v, want %s", text, err, want)
+		}
+	}
+}
+`
