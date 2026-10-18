@@ -947,6 +947,12 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 	}
 	if tableJsonIsEnum(f) {
 		value := tableJsonGetRaw(storage, f.ElemSize)
+		// A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md
+		// §2.15): the caller's value is retired, so the text writer names it
+		// invalid rather than emitting a name a reader no longer takes.
+		if f.EnumDeprecated != nil && f.EnumDeprecated(value) {
+			return false
+		}
 		// a value no variant names has no text spelling, exactly as it has no
 		// wire identity: the writer REFUSES rather than writing None over it,
 		// the rule measure and save already apply (§5)
@@ -1801,6 +1807,13 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		}
 		for v := int64(0); v <= f.EnumMax; v++ {
 			if tableJsonNameIs(f.EnumName(uint64(v)), name[:nameLength]) {
+				if f.EnumDeprecated != nil && f.EnumDeprecated(uint64(v)) {
+					// A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED
+					// DEFAULT (docs/SPEC-TABLES.md §2.15), and is never
+					// counted unknown.
+					tableJsonSetRaw(storage, f.ElemSize, f.EnumDefault)
+					return true
+				}
 				tableJsonSetRaw(storage, f.ElemSize, uint64(v))
 				return true
 			}
