@@ -656,8 +656,10 @@ func unitHasRequired(u *ir.Unit) bool {
 
 // floatOwner names a float field as <Owner>.<field> for the report's
 // non_finite reason (docs/SPEC-TABLES.md §3.3), the owner being the table,
-// type or union that declares it; a field the unit does not hold by pointer
-// (an element copy) is named by its own name.
+// type or union that declares it. A field the unit does not hold by pointer
+// (the message form's element copy, messageElement) is named by the closure
+// member whose codec is being emitted when that member declares a field of
+// its name, and by its own name only past that.
 func (g *tableGen) floatOwner(f *ir.Field) string {
 	for _, m := range []map[string]*ir.Struct{g.unit.Tables, g.unit.Structs} {
 		for _, st := range m {
@@ -674,6 +676,13 @@ func (g *tableGen) floatOwner(f *ir.Field) string {
 				if u.Variants[i].F == f {
 					return u.Name + "." + f.Name
 				}
+			}
+		}
+	}
+	if g.owner != nil {
+		for _, x := range g.owner.Fields {
+			if x.Name == f.Name {
+				return g.owner.Name + "." + f.Name
 			}
 		}
 	}

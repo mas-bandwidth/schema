@@ -154,8 +154,8 @@ func named(t *testing.T, form string, c fsCase, r *TableReport) {
 		}
 		return
 	}
-	if !strings.HasPrefix(r.Reason, "non_finite: ") || !errors.Is(r.Err(), TableRefuseNonFinite) {
-		t.Errorf("%s %s: Reason %q Err %v, want non_finite named and refused", form, c.name, r.Reason, r.Err())
+	if !(strings.HasPrefix(r.Reason, "non_finite: Root.") || strings.HasPrefix(r.Reason, "non_finite: Var.")) || !errors.Is(r.Err(), TableRefuseNonFinite) {
+		t.Errorf("%s %s: Reason %q Err %v, want non_finite named as <Table>.<field> and refused", form, c.name, r.Reason, r.Err())
 	}
 }
 
@@ -263,7 +263,7 @@ func TestRoot(t *testing.T) {
 			t.Fatalf("message %s: load %d %v %+v", c.name, k, ok, mrep)
 		}
 		landed(t, "message", c, rootBits(&msgs[0]), want)
-		silent(t, "message", c, &mrep)
+		named(t, "message", c, &mrep)
 	}
 }
 
@@ -386,6 +386,70 @@ func TestFlippedPayload(t *testing.T) {
 		} else if !c.finite {
 			strictRefused(t, "var flip", c, err)
 		}
+	}
+}
+
+// A HAND-BUILT FLOAT32 WIRE: the same flip on a four-byte payload.
+func TestFlippedFloat32Payload(t *testing.T) {
+	half := []byte{0, 0, 0, 0x3F} // 0.5 as a float32, little-endian
+	for _, c := range fsCases {
+		to := []byte{byte(c.b32), byte(c.b32 >> 8), byte(c.b32 >> 16), byte(c.b32 >> 24)}
+		var r Root
+		RootReset(&r)
+		r.A = 0.5
+		wire := make([]byte, RootMeasure(&r))
+		RootSave(&r, wire)
+		i := bytes.Index(wire, half)
+		if i < 0 || bytes.Index(wire[i+4:], half) >= 0 {
+			t.Fatalf("%s: want exactly one float32 0.5 payload in % x", c.name, wire)
+		}
+		copy(wire[i:], to)
+		var got Root
+		var rep TableReport
+		if !RootLoad(&got, wire, &rep) || math.Float32bits(got.A) != c.b32 {
+			t.Errorf("root flip32 %s: landed %#x ok %+v", c.name, math.Float32bits(got.A), rep)
+		}
+		named(t, "root flip32", c, &rep)
+		if _, err := RootReadStrict(wire); c.finite && err != nil {
+			t.Errorf("root flip32 %s: strict %v", c.name, err)
+		} else if !c.finite {
+			strictRefused(t, "root flip32", c, err)
+		}
+	}
+}
+
+// AN ELEMENT is named by the table that declares its array, in the variable
+// wire and in the message form alike (§3.3: non_finite: <Table>.<field>).
+func TestElementNamedByItsTable(t *testing.T) {
+	var v Root
+	RootReset(&v)
+	v.Xs, v.XsCount = [3]float64{0, math.NaN(), 0}, 3
+	wire := make([]byte, RootMeasure(&v))
+	RootSave(&v, wire)
+	var got Root
+	var rep TableReport
+	RootLoad(&got, wire, &rep)
+	if rep.Reason != "non_finite: Root.xs" {
+		t.Errorf("wire: Reason %q, want non_finite: Root.xs", rep.Reason)
+	}
+	values := []*Root{&v}
+	var wrep TableReport
+	buf := make([]byte, RootMeasureMessages(values, nil))
+	RootSaveMessages(values, buf, &wrep)
+	ann := make([]byte, AnnounceMeasure())
+	Announce(ann)
+	var storage [64]TableMessageEntry
+	var vocab TableVocabulary
+	vocab.Init(storage[:])
+	var arep TableReport
+	if !AnnounceRead(&vocab, ann, &arep) {
+		t.Fatalf("announce read: %+v", arep)
+	}
+	msgs := make([]Root, 1)
+	var mrep TableReport
+	RootLoadMessages(msgs, &vocab, buf, &mrep)
+	if mrep.Reason != "non_finite: Root.xs" || !errors.Is(mrep.Err(), TableRefuseNonFinite) {
+		t.Errorf("message: Reason %q Err %v, want non_finite: Root.xs refused", mrep.Reason, mrep.Err())
 	}
 }
 
@@ -518,8 +582,68 @@ func TestFixed(t *testing.T) {
 }
 `
 
+// THE ENUM-KEYED SLOT elides by the same bit compare (write.go's keyed
+// elision): a -0 in one slot rides, a +0 is elided, and the strict read refuses
+// a non-finite slot by name.
+const fsKeyedSchema = `package probe
+
+enum Level { Low, High }
+
+fixed table Keyed
+{
+    ks [Level]float64
+}
+`
+
+const fsKeyedProbe = `package probe
+
+import (
+	"errors"
+	"math"
+	"testing"
+)
+
+func TestKeyed(t *testing.T) {
+	var empty Keyed
+	KeyedReset(&empty)
+	base := KeyedMeasure(&empty)
+	for _, c := range []struct {
+		name   string
+		b64    uint64
+		finite bool
+	}{
+		{"plus_zero", 0, true},
+		{"minus_zero", 0x8000000000000000, true},
+		{"nan_payload", 0x7FF00DEFACED0001, false},
+		{"minus_inf", 0xFFF0000000000000, false},
+	} {
+		var v Keyed
+		KeyedReset(&v)
+		v.Ks[1] = math.Float64frombits(c.b64)
+		wire := make([]byte, KeyedMeasure(&v))
+		KeyedSave(&v, wire)
+		if rides := int64(len(wire)) > base; rides != (c.b64 != 0) {
+			t.Errorf("keyed %s: %d bytes against the empty %d, want the slot to ride exactly when its bits are not +0", c.name, len(wire), base)
+		}
+		var got Keyed
+		var rep TableReport
+		if !KeyedLoad(&got, wire, &rep) || math.Float64bits(got.Ks[1]) != c.b64 || math.Float64bits(got.Ks[0]) != 0 {
+			t.Errorf("keyed %s: landed %#x %#x %+v", c.name, math.Float64bits(got.Ks[0]), math.Float64bits(got.Ks[1]), rep)
+		}
+		_, err := KeyedReadStrict(wire)
+		if c.finite && err != nil {
+			t.Errorf("keyed %s: strict %v", c.name, err)
+		}
+		if !c.finite && (!errors.Is(err, TableRefuseNonFinite) || rep.Reason != "non_finite: Keyed.ks") {
+			t.Errorf("keyed %s: strict %v, Reason %q, want non_finite: Keyed.ks", c.name, err, rep.Reason)
+		}
+	}
+}
+`
+
 func TestGoPlainFloatSpecialValuesAgreeAcrossForms(t *testing.T) {
 	t.Parallel()
 	runGenerated(t, fsSchema, fsProbe)
 	runGenerated(t, fsFlatSchema, fsFlatProbe)
+	runGenerated(t, fsKeyedSchema, fsKeyedProbe)
 }
