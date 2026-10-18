@@ -27,7 +27,9 @@ func TestGoEnumVariantTypeWords(t *testing.T) {
 	if len(cerrs) > 0 {
 		t.Fatalf("check: %v", cerrs[0])
 	}
-	runGeneratedUnit(t, u, enumTypeWordProbe, nil)
+	if out, err := runGeneratedUnit(t, u, enumTypeWordProbe, nil); err != nil {
+		t.Fatalf("generated unit: %v\n%s", err, out)
+	}
 }
 
 const enumTypeWordSchema = `package probe
@@ -40,7 +42,7 @@ enum FieldType {
     bool
 }
 
-table Root {
+fixed table Root {
     kind FieldType
 }
 `
@@ -49,9 +51,12 @@ const enumTypeWordProbe = `package probe
 import("testing";"bytes";"encoding/base64")
 func TestEnumWords(t *testing.T) {
 	for _, tc := range []struct{ kind FieldType; word string }{
-		{FieldTypeInt, "int"}, {FieldTypeEnum, "enum"}, {FieldTypeBool, "bool"},
-		{FieldTypeText, "text"}, {FieldTypeList, "list"},
+		{FieldTypeint, "int"}, {FieldTypeenum, "enum"}, {FieldTypebool, "bool"},
+		{FieldTypetext, "text"}, {FieldTypelist, "list"},
 	} {
+		if got := EnumNameFieldType(tc.kind); got != tc.word {
+			t.Fatalf("name %s: %q", tc.word, got)
+		}
 		var v, got Root
 		RootReset(&v)
 		v.Kind = tc.kind
@@ -66,14 +71,15 @@ func TestEnumWords(t *testing.T) {
 		}
 		a := make([]byte, 128)
 		na := RootToJson(&v, a)
-		if na < 0 || !bytes.Contains(a[:na], []byte("\"kind\":\""+tc.word+"\"")) {
-			t.Fatalf("json %s: %s", tc.word, a[:max(na, 0)])
+		if na < 0 || !bytes.Contains(a[:na], []byte("\"kind\": \""+tc.word+"\"")) {
+			t.Fatalf("json %s: %d %s", tc.word, na, a)
 		}
-		b64, err := RootSaveText(&v, nil)
+		b64, err := RootSaveText(&v)
 		if err != nil || b64 != base64.StdEncoding.EncodeToString(b) {
 			t.Fatalf("base64 %s: %v", tc.word, err)
 		}
-		if back, err := RootLoadText(b64, nil); err != nil || back.Kind != tc.kind {
+		back, err := RootLoadText(b64, &r)
+		if err != nil || back == nil || back.Kind != tc.kind {
 			t.Fatalf("load text %s: %v", tc.word, err)
 		}
 	}
