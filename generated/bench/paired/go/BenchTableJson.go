@@ -838,6 +838,11 @@ type tableJsonIn struct {
 	// zero is set when the walk stopped on a U+0000 bound for text storage
 	// (mas-bandwidth/schema docs/SPEC-TABLES.md 16.3): the field loop names the field in Reason
 	zero bool
+	// longKey is set when the last scanKey met a name past the 255-byte key
+	// bound (mas-bandwidth/schema docs/SPEC-TABLES.md 16.2): that name matches nothing, so it is
+	// counted unknown and never clamped, and its first 255 bytes can never
+	// stand in for a declared name
+	longKey bool
 	// utf8 is set when the walk stopped on a byte sequence that is not
 	// well-formed UTF-8 (16.3): the read refuses it by name rather than
 	// replacing it silently with U+FFFD
@@ -1121,10 +1126,20 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 			}
 		}
 	}
-	if clamped {
+	if name {
+		// a NAME is compared, never stored: an over-long one is unknown, not
+		// clamped (mas-bandwidth/schema docs/SPEC-TABLES.md 16.2)
+		in.longKey = clamped
+	} else if clamped {
 		in.report.Clamped++
 	}
 	return placed, true
+}
+
+// keyIs compares the name the last scanKey read with a declared name; a name
+// past the key bound is never any declared name (mas-bandwidth/schema docs/SPEC-TABLES.md 16.2).
+func (in *tableJsonIn) keyIs(name string, key []byte) bool {
+	return !in.longKey && tableJsonNameIs(name, key)
 }
 
 // walkNumber scans one number, to JSON's OWN grammar (RFC 8259 §6) and not to a
@@ -1354,6 +1369,104 @@ func tableJsonNameIs(name string, key []byte) bool {
 	return true
 }
 
+// nameUnknown names the unknown the read has just counted
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2): the RFC 6901 key path of the value that starts
+// at text offset at, kept for the first 16 unknowns on the report. Both
+// helpers are methods so that they claim no name a schema could declare. The read carries no path state of its own: the path is recovered by
+// re-walking the text's structure up to at, so a read that counts no unknown
+// pays nothing and allocates nothing, and every nesting — table, array, list,
+// map, keyed slot, union arm, array root — is named by the text's own steps.
+func (in *tableJsonIn) nameUnknown(at int) {
+	const keep = 16 // the bound mas-bandwidth/schema docs/SPEC-TABLES.md §16.2 states
+	r := in.report
+	if r.UnknownPaths != nil && len(*r.UnknownPaths) >= keep {
+		return
+	}
+	path := in.pathAt(at)
+	if r.UnknownPaths == nil {
+		r.UnknownPaths = new([]string)
+	}
+	*r.UnknownPaths = append(*r.UnknownPaths, path)
+}
+
+// pathAt is the RFC 6901 JSON Pointer of the value starting at offset
+// at of a text the read has already walked up to there (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.2): one step per open object (its current key, decoded, with ~ written ~0
+// and / written ~1) or open array (its zero-based element index). It walks on a
+// copy with a scratch report, so the read's own counters and state are never
+// touched; comments and trailing commas are the read's own grammar.
+func (in *tableJsonIn) pathAt(at int) string {
+	type step struct {
+		object, keyed bool
+		index         int
+		key           []byte
+	}
+	var scratch TableReport
+	w := tableJsonIn{text: in.text[:at], report: &scratch}
+	var stack []step
+walk:
+	for {
+		c := w.peek()
+		if c == 0 || w.bad {
+			break
+		}
+		top := len(stack) - 1
+		switch c {
+		case '{', '[':
+			stack = append(stack, step{object: c == '{'})
+			w.pos++
+		case '}', ']':
+			if top >= 0 {
+				stack = stack[:top]
+			}
+			w.pos++
+		case ',':
+			if top >= 0 {
+				if stack[top].object {
+					stack[top].keyed = false
+				} else {
+					stack[top].index++
+				}
+			}
+			w.pos++
+		case '"':
+			if top >= 0 && stack[top].object && !stack[top].keyed {
+				var key [tableJsonMaxKey]byte
+				n, ok := w.scanKey(key[:tableJsonMaxKey-1])
+				if !ok {
+					break walk
+				}
+				stack[top].key = append(stack[top].key[:0], key[:n]...)
+				stack[top].keyed = true
+			} else if _, ok := w.scanString(nil); !ok {
+				break walk
+			}
+		default:
+			// a number or a literal, or the ':' between a key and its value
+			w.pos++
+		}
+	}
+	var path []byte
+	for _, s := range stack {
+		path = append(path, '/')
+		if !s.object {
+			path = strconv.AppendInt(path, int64(s.index), 10)
+			continue
+		}
+		for _, b := range s.key {
+			switch b {
+			case '~':
+				path = append(path, '~', '0')
+			case '/':
+				path = append(path, '~', '1')
+			default:
+				path = append(path, b)
+			}
+		}
+	}
+	return string(path)
+}
+
 // tableJsonReadScalar places one scalar at one storage address.
 func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	if f.Pointer {
@@ -1385,13 +1498,14 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		in.pos++
 		tag := int64(0)
 		for t := int64(1); t <= f.EnumMax; t++ {
-			if tableJsonNameIs(f.EnumName(uint64(t)), key[:keyLength]) {
+			if in.keyIs(f.EnumName(uint64(t)), key[:keyLength]) {
 				tag = t
 				break
 			}
 		}
 		if tag == 0 {
 			in.report.Unknown++
+			in.nameUnknown(in.pos)
 			if !in.skipValue(depth + 1) {
 				return false
 			}
@@ -1439,12 +1553,13 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 	}
 	if tableJsonIsEnum(f) {
 		var name [tableJsonMaxKey]byte
+		at := in.pos
 		nameLength, ok := in.scanKey(name[:tableJsonMaxKey-1])
 		if !ok {
 			return false
 		}
 		for v := int64(0); v <= f.EnumMax; v++ {
-			if tableJsonNameIs(f.EnumName(uint64(v)), name[:nameLength]) {
+			if in.keyIs(f.EnumName(uint64(v)), name[:nameLength]) {
 				tableJsonSetRaw(storage, f.ElemSize, uint64(v))
 				return true
 			}
@@ -1453,6 +1568,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		// exactly as an unknown variant id does on the wire (§4)
 		tableJsonSetRaw(storage, f.ElemSize, 0)
 		in.report.Unknown++
+		in.nameUnknown(at)
 		return true
 	}
 	if tableJsonIsFlags(f) {
@@ -1479,13 +1595,14 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 				}
 			} else {
 				var name [tableJsonMaxKey]byte
+				at := in.pos
 				nameLength, ok := in.scanKey(name[:tableJsonMaxKey-1])
 				if !ok {
 					return false
 				}
 				found := false
 				for bit := int64(0); bit <= f.EnumMax; bit++ {
-					if tableJsonNameIs(f.EnumName(uint64(bit)), name[:nameLength]) {
+					if in.keyIs(f.EnumName(uint64(bit)), name[:nameLength]) {
 						bits |= uint64(1) << bit
 						found = true
 						break
@@ -1493,6 +1610,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 				}
 				if !found {
 					in.report.Unknown++
+					in.nameUnknown(at)
 				}
 			}
 			c = in.peek()
@@ -1857,7 +1975,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 				if !tableJsonKeyedSlotValid(f, v) {
 					continue
 				}
-				if tableJsonNameIs(f.KeyName(tableJsonKeyedSlotKey(v)), key[:keyLength]) {
+				if in.keyIs(f.KeyName(tableJsonKeyedSlotKey(v)), key[:keyLength]) {
 					slot = v
 					break
 				}
@@ -1872,6 +1990,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 			switch {
 			case slot < 0:
 				in.report.Unknown++
+				in.nameUnknown(in.pos)
 				if !in.skipValue(depth + 1) {
 					return false
 				}
@@ -2016,7 +2135,7 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 		in.pos++
 		index := -1
 		for i := range info.Fields {
-			if tableJsonNameIs(info.Fields[i].Json, key[:keyLength]) {
+			if in.keyIs(info.Fields[i].Json, key[:keyLength]) {
 				index = i
 				break
 			}
@@ -2031,6 +2150,7 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 		}
 		if index < 0 {
 			in.report.Unknown++
+			in.nameUnknown(in.pos)
 			if !in.skipValue(depth + 1) {
 				return false
 			}
