@@ -1276,6 +1276,7 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
     local before = report.kindMismatch
     local out = read_base64(inp, -1, report)
     if out == nil then return false end
+    -- KNOWN: `elem and false or nil` is always nil; schema-luau-json-elem-reads-are-not-nil
     if report.kindMismatch ~= before then holder[key] = elem and false or nil
     else holder[key] = { value = out == false and "" or out } end
     return true
@@ -1301,12 +1302,14 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
     if not ok then return false end
     local name = inp.t:sub(start + 1, inp.p - 2)
     if name == "None" then
+      -- KNOWN: `elem and false or nil` is always nil; schema-luau-json-elem-reads-are-not-nil
       holder[key] = elem and false or nil
       return true
     end
     for _, v in ipairs(d.variants) do
       if v[1] == name then holder[key] = name; return true end
     end
+    -- KNOWN: `elem and false or nil` is always nil; schema-luau-json-elem-reads-are-not-nil
     holder[key] = elem and false or nil
     report.unknown = report.unknown + 1
     return true
