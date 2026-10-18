@@ -129,6 +129,7 @@ const (
 	TableRefuseBase64Damaged
 	TableRefuseIntegrityMismatch
 	TableRefuseNonFinite
+	TableRefuseArenaRequired
 )
 
 func (r TableRefuseReason) Error() string {
@@ -179,6 +180,8 @@ func (r TableRefuseReason) Error() string {
 		return "integrity_mismatch"
 	case TableRefuseNonFinite:
 		return "non_finite"
+	case TableRefuseArenaRequired:
+		return "arena_required"
 	}
 	return "invalid refusal reason"
 }
@@ -2001,4 +2004,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x107d560783ec58fa
+const Version uint64 = 0xc150774715ef63f2

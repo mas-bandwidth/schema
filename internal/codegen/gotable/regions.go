@@ -219,6 +219,11 @@ type TableRef = int64
 const tableArenaSegmentBytes int64 = 1<<20
 const tableArenaSlabBytes int64 = 1<<16
 const tableArenaSegments = 4096
+// tableArenaMark is the ARENA MARK (docs/SPEC-TABLES.md §6.3): every arena
+// reference a worker hands out or a builder load resolves carries it, and no
+// region delta can, so a slot's own form says which encoding it holds.
+const tableArenaMark TableRef = 1<<62
+func tableArenaMarked(ref TableRef) bool {return ref>0&&ref&tableArenaMark!=0}
 
 type tableArenaSegment struct { data []byte; owned bool }
 type TableArena struct {
@@ -237,7 +242,7 @@ func (a *TableArena) Init(allocator ...TableAllocator) bool {if a==nil||a.initia
 // (docs/SPEC-TABLES.md §6.4, "Building on many threads").
 func (a *TableArena) initSized(first int64, allocator ...TableAllocator) bool {if !a.Init(allocator...){return false};if first<=0{return true};first=(first+tableArenaSlabBytes-1)& -tableArenaSlabBytes;if first<tableArenaSlabBytes{first=tableArenaSlabBytes};if first>=tableArenaSegmentBytes{return true};a.first=first;a.next.Store(uint64(tableRegionAlign));return true}
 func (a *TableArena) Shutdown() {for i:=range a.segments{if s:=a.segments[i].Swap(nil);s!=nil {if s.owned{a.Allocator.free(s.data)};*s=tableArenaSegment{}}};a.initialized=false;a.next.Store(0)}
-func (a *TableArena) At(ref TableRef) unsafe.Pointer { if ref<=0 || ref>=tableArenaSegmentBytes*tableArenaSegments {return nil};s:=a.segments[ref/tableArenaSegmentBytes].Load();if s==nil{return nil};return unsafe.Pointer(&s.data[ref%tableArenaSegmentBytes]) }
+func (a *TableArena) At(ref TableRef) unsafe.Pointer { if ref<=0 {return nil};ref&^=tableArenaMark;if ref==0 || ref>=tableArenaSegmentBytes*tableArenaSegments {return nil};s:=a.segments[ref/tableArenaSegmentBytes].Load();if s==nil{return nil};return unsafe.Pointer(&s.data[ref%tableArenaSegmentBytes]) }
 func (a *TableArena) grab(bytes int64) (int64,int64) {
  if !a.initialized || a.Locked || bytes<=0 {return 0,0}
  span:=bytes>tableArenaSlabBytes
@@ -249,9 +254,13 @@ func (a *TableArena) grab(bytes int64) (int64,int64) {
  return int64(at),int64(end)
 }
 type TableWorker struct { Arena *TableArena; front,end int64; refused bool }
-func (w *TableWorker) Alloc(n int64) (unsafe.Pointer,TableRef) { if w==nil || w.Arena==nil || w.Arena.Locked || n<=0 {return nil,0};n=tableRegionRound(n);if n>tableArenaSlabBytes {at,_:=w.Arena.grab(n);return w.Arena.At(at),at};if w.front+n>w.end {w.front,w.end=w.Arena.grab(n);if w.front==0{return nil,0}};at:=w.front;w.front+=n;return w.Arena.At(at),at }
+func (w *TableWorker) Alloc(n int64) (unsafe.Pointer,TableRef) { if w==nil || w.Arena==nil || w.Arena.Locked || n<=0 {return nil,0};n=tableRegionRound(n);if n>tableArenaSlabBytes {at,_:=w.Arena.grab(n);return tableArenaHandOut(w.Arena,at)};if w.front+n>w.end {w.front,w.end=w.Arena.grab(n);if w.front==0{return nil,0}};at:=w.front;w.front+=n;return tableArenaHandOut(w.Arena,at) }
+// tableArenaHandOut is an arena offset as the reference a slot holds: marked (§6.3).
+func tableArenaHandOut(a *TableArena,at int64) (unsafe.Pointer,TableRef) {p:=a.At(at);if p==nil{return nil,0};return p,at|tableArenaMark}
 func tableOptionalArena(a []*TableArena) *TableArena { if len(a)>0 {return a[0]};return nil }
-func tableRefAt(slot *TableRef,a *TableArena) unsafe.Pointer { if slot==nil || *slot==0 {return nil};if a!=nil{return a.At(*slot)};return unsafe.Add(unsafe.Pointer(slot),*slot) }
+// tableRefAt chooses the encoding from the slot's form (§6.3): a marked slot
+// is an arena offset and needs the arena; any other is self-relative.
+func tableRefAt(slot *TableRef,a *TableArena) unsafe.Pointer { if slot==nil || *slot==0 {return nil};if tableArenaMarked(*slot){if a==nil{return nil};return a.At(*slot)};return unsafe.Add(unsafe.Pointer(slot),*slot) }
 func tableRegionCount(base unsafe.Pointer,f *TableFieldInfo) int32 {if f.Counted {return *(*int32)(unsafe.Add(base,f.CountOffset))};return f.ArrayBound}
 func tableRegionRound(n int64) int64 {return (n+tableRegionAlign-1)& -tableRegionAlign}
 
@@ -274,7 +283,7 @@ func (n *TableNumbering) Index(slot *TableRef)(uint64,bool){if n==nil{return 0,f
 func (n *TableNumbering) visit(p unsafe.Pointer,t *TableTypeInfo,id uint64)bool {
  if p==nil{return true};if i,ok:=n.find(p);ok{if n.entries[i].open{n.reason=TableRefuseDataCycle;return false};if n.entries[i].id!=id{n.reason=TableRefuseInvalidValue;return false};return true}
  if len(n.entries)==cap(n.entries)&&!n.grow(){n.reason=TableRefuseAllocationFailed;return false};slot,_:=n.find(p);i:=len(n.entries);n.entries=n.entries[:i+1];n.entries[i]=tableNodeEntry{node:p,info:t,id:id,open:true};n.buckets[slot]=uint64(i+1);a:=n.arena
-  if t!=nil&&!tableRegionEdges(p,t,func(slot *TableRef,f *TableFieldInfo)bool {if a==nil&&*slot>=tableArenaSlabBytes{n.reason=TableRefuseArenaRequired;return false};var target *TableTypeInfo;if f.Table!=nil{target=f.Table()};return n.visit(tableRefAt(slot,a),target,f.TargetId)}){return false};n.entries[i].open=false;return true
+ if t!=nil&&!tableRegionEdges(p,t,func(slot *TableRef,f *TableFieldInfo)bool {if a==nil&&tableArenaMarked(*slot){n.reason=TableRefuseArenaRequired;return false};var target *TableTypeInfo;if f.Table!=nil{target=f.Table()};return n.visit(tableRefAt(slot,a),target,f.TargetId)}){return false};n.entries[i].open=false;return true
 }
 func tableNumber(root unsafe.Pointer,info *TableTypeInfo,a *TableArena,allocator ...TableAllocator)(TableNumbering,bool){n:=TableNumbering{arena:a,root:root};if a!=nil{n.allocator=a.Allocator};if len(allocator)>0{n.allocator=allocator[0]};if root==nil||!n.visit(root,info,info.Id){if n.reason==TableRefuseOk{n.reason=TableRefuseInvalidValue};n.Release();return n,false};return n,true}
 func tableRegionEdges(base unsafe.Pointer,info *TableTypeInfo,visit func(*TableRef,*TableFieldInfo) bool) bool {
@@ -299,7 +308,7 @@ func tableRegionSaveReason(root unsafe.Pointer,info *TableTypeInfo,buffer []byte
 
 type TableNodeDirEntry struct { Offset,TypeId uint64 }
 type TableNodeMap struct { Base unsafe.Pointer; Entries []TableNodeDirEntry; Good bool; Arena bool }
-func (m TableNodeMap) Resolve(slot *TableRef,index,target uint64,r *TableReport) { *slot=0;if index==0||!m.Good{return};if index>uint64(len(m.Entries)){r.Malformed=true;return};entry:=m.Entries[index-1];if entry.Offset==^uint64(0){return};if entry.TypeId!=target{r.KindMismatch++;return};if m.Arena {*slot=int64(entry.Offset)} else {*slot=int64(uintptr(unsafe.Add(m.Base,entry.Offset))-uintptr(unsafe.Pointer(slot)))} }
+func (m TableNodeMap) Resolve(slot *TableRef,index,target uint64,r *TableReport) { *slot=0;if index==0||!m.Good{return};if index>uint64(len(m.Entries)){r.Malformed=true;return};entry:=m.Entries[index-1];if entry.Offset==^uint64(0){return};if entry.TypeId!=target{r.KindMismatch++;return};if m.Arena {*slot=int64(entry.Offset)|tableArenaMark} else {*slot=int64(uintptr(unsafe.Add(m.Base,entry.Offset))-uintptr(unsafe.Pointer(slot)))} }
 
 type tableNodeScan struct { payload TableReader; declared,records uint64; present,bad bool }
 func tableNodeScanBegin(r TableReader) tableNodeScan {

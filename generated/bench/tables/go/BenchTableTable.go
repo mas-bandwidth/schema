@@ -568,6 +568,7 @@ const (
 	TableRefuseBase64Damaged
 	TableRefuseIntegrityMismatch
 	TableRefuseNonFinite
+	TableRefuseArenaRequired
 )
 
 func (r TableRefuseReason) Error() string {
@@ -618,6 +619,8 @@ func (r TableRefuseReason) Error() string {
 		return "integrity_mismatch"
 	case TableRefuseNonFinite:
 		return "non_finite"
+	case TableRefuseArenaRequired:
+		return "arena_required"
 	}
 	return "invalid refusal reason"
 }
