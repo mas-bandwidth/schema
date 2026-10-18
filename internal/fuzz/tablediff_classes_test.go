@@ -32,6 +32,8 @@ func classUnit() *genUnit {
 		{Name: "b", Kind: gBool},
 		{Name: "i", Kind: gInt, Bits: 64},
 		{Name: "f", Kind: gFloat64},
+		{Name: "s", Kind: gString, StrN: 40},
+		{Name: "m", Kind: gMap, MapKey: &genField{Kind: gString, StrN: 40}, Elem: &genField{Name: "v", Kind: gInt, Bits: 32}},
 	}}}
 }
 
@@ -76,7 +78,11 @@ func TestTimestampClassMasksOnlyTimestampSpellings(t *testing.T) {
 		{"timestamp crossing plus extra whitespace", `{"t":"` + ts + `","a":1}`, `{"t":` + n + ` , "a":1}`, false},
 		{"timestamp crossing plus a collapsed duplicate key", `{"t":"` + ts + `","a":1,"a":2}`, `{"t":` + n + `,"a":2}`, false},
 		{"timestamp crossing plus a trailing space", `{"t":"` + ts + `"}`, `{"t":` + n + `} `, false},
-		{"timestamp crossing in a nested table", `{"x":{"t":"` + ts + `"}}`, `{"x":{"t":` + n + `}}`, true},
+		{"the same instant in two offsets", `{"t":"2026-10-15T12:34:05Z"}`, `{"t":"2026-10-15T08:34:05-04:00"}`, true},
+		{"a changed timestamp-looking object key", `{"m":{"2026-10-15T12:34:05Z":1}}`, `{"m":{"2026-10-15T08:34:05-04:00":1}}`, false},
+		{"a changed timestamp-looking key at the top", `{"2026-10-15T12:34:05Z":1}`, `{"2026-10-15T08:34:05-04:00":1}`, false},
+		{"an ordinary string holding a timestamp spelling", `{"s":"2026-10-15T12:34:05Z"}`, `{"s":"2026-10-15T08:34:05-04:00"}`, false},
+		{"an int field holding a count against timestamp text", `{"i":` + n + `}`, `{"i":"` + ts + `"}`, false},
 	}
 	for _, c := range cases {
 		got := maskedBy(u, pairLine("engine", c.leg, c.eng))
@@ -102,7 +108,7 @@ func TestNegativeZeroClassMasksOnlyMinusZeroPairs(t *testing.T) {
 		{"2^53+1 against 2^53", `{"i":9007199254740993}`, `{"i":9007199254740992}`, false},
 		{"reordered keys", `{"f":0,"i":5}`, `{"i":5,"f":0}`, false},
 		{"1e2 against 100", `{"f":1e2}`, `{"f":100}`, false},
-		{"an escape against the literal character", `{"s":"é"}`, `{"s":"é"}`, false},
+		{"an escape against the literal character", "{\"s\":\"\\u00e9\"}", `{"s":"é"}`, false},
 		{"identical texts", `{"f":-0}`, `{"f":-0}`, false},
 		{"a trailing space", `{"f":1}`, `{"f":1} `, false},
 		{"-0 pair plus a trailing space", `{"f":-0}`, `{"f":0} `, false},
@@ -149,6 +155,46 @@ func TestClassesSeeKindsInInnerTablesAndUnions(t *testing.T) {
 	plain := &genUnit{Root: &genTable{Name: "Root", Fields: []*genField{{Name: "i", Kind: gInt, Bits: 32}}}}
 	if plain.hasFloat() || plain.hasTimestamp() {
 		t.Errorf("a unit with one int field holds a float or a timestamp")
+	}
+}
+
+// TestTimestampClassFollowsTypedPaths: the timestamp class masks a leaf only
+// at a path the schema types as timestamp, through inner tables, optionals,
+// pointers, arrays, map values and union arms.
+func TestTimestampClassFollowsTypedPaths(t *testing.T) {
+	t.Parallel()
+	const a, b = "2026-10-15T12:34:05Z", "2026-10-15T08:34:05-04:00"
+	inner := &genTable{Name: "Inner", Fields: []*genField{{Name: "t", Kind: gTimestamp}, {Name: "s", Kind: gString, StrN: 40}}}
+	un := &genUnion{Name: "U", Arms: []*genField{{Name: "p", Kind: gPointer, Elem: &genField{Kind: gNested, NestedName: "Inner"}}, {Name: "n", Kind: gInt, Bits: 32}}}
+	u := &genUnit{Inner: []*genTable{inner}, Unions: []*genUnion{un}, Root: &genTable{Name: "Root", Fields: []*genField{
+		{Name: "x", Kind: gNested, NestedName: "Inner"},
+		{Name: "o", Kind: gOptScalar, Elem: &genField{Kind: gNested, NestedName: "Inner"}},
+		{Name: "l", Kind: gOpenArray, Elem: &genField{Kind: gTimestamp}},
+		{Name: "m", Kind: gMap, MapKey: &genField{Kind: gString, StrN: 40}, Elem: &genField{Kind: gNested, NestedName: "Inner"}},
+		{Name: "u", Kind: gUnion, UnionName: "U"},
+	}}}
+	cases := []struct {
+		name, leg, eng string
+		masked         bool
+	}{
+		{"inner table timestamp", `{"x":{"t":"` + a + `"}}`, `{"x":{"t":"` + b + `"}}`, true},
+		{"inner table string", `{"x":{"s":"` + a + `"}}`, `{"x":{"s":"` + b + `"}}`, false},
+		{"optional inner table timestamp", `{"o":{"t":"` + a + `"}}`, `{"o":{"t":"` + b + `"}}`, true},
+		{"list of timestamps", `{"l":["` + a + `","` + a + `"]}`, `{"l":["` + a + `","` + b + `"]}`, true},
+		{"map value table timestamp", `{"m":{"k":{"t":"` + a + `"}}}`, `{"m":{"k":{"t":"` + b + `"}}}`, true},
+		{"map key changed", `{"m":{"` + a + `":{"t":"` + a + `"}}}`, `{"m":{"` + b + `":{"t":"` + a + `"}}}`, false},
+		{"union arm through a pointer", `{"u":{"p":{"t":"` + a + `"}}}`, `{"u":{"p":{"t":"` + b + `"}}}`, true},
+		{"union int arm", `{"u":{"n":"` + a + `"}}`, `{"u":{"n":"` + b + `"}}`, false},
+		{"a field the schema does not have", `{"zz":"` + a + `"}`, `{"zz":"` + b + `"}`, false},
+	}
+	for _, c := range cases {
+		got := maskedBy(u, pairLine("engine", c.leg, c.eng))
+		if c.masked && got == "" {
+			t.Errorf("%s: not masked, want it filed under the timestamp class", c.name)
+		}
+		if !c.masked && got != "" {
+			t.Errorf("%s: masked by %s, want an unexpected divergence", c.name, got)
+		}
 	}
 }
 
