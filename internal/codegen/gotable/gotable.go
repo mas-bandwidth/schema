@@ -1,4 +1,8 @@
 // Package gotable emits a unit's Go table surface (docs/SPEC-TABLES.md): the
+// TABLE-wire codecs and the reflection descriptors in <Base>Table.go, the TEXT
+// form in <Base>TableJson.go, and the ACCELERATORS in <Base>Block.go (§19) and
+// <Base>Cook.go (§7). The C++ backend is the REFERENCE; internal/tablewire is
+// the independent oracle. Nothing on the read path allocates.
 package gotable
 
 import (
@@ -24,7 +28,9 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// table-wire kinds (docs/SPEC-TABLES.md §3) — the numbers are the wire's, not a
+// table-wire kinds (docs/SPEC-TABLES.md §3): the numbers are the wire's, not a
+// backend's, and they are duplicated from cpptable so a disagreement shows up
+// in the shared golden bytes.
 const (
 	tkBool   = 1
 	tkI8     = 2
@@ -60,6 +66,8 @@ type tableGen struct {
 	indent string          // extra per-line indent while emitting inside a branch guard
 
 	// The OPTIONAL forms this generator emits beside the core: pf writes to
+	// out while a form's declarations are being emitted (into), and to body
+	// otherwise (docs/SPEC-TABLES.md, "GO's optional forms").
 	out     *strings.Builder
 	message strings.Builder // the MESSAGE form: <Base>TableMessage.go
 	cook    strings.Builder // the COOK form's write entry points: <Base>Cook.go
@@ -123,6 +131,8 @@ func unionArmSlots(u *ir.Unit, _ map[string]bool) map[string]int {
 }
 
 // needsUnsafe marks this file as reaching for the layout model — every
+// descriptor does, through unsafe.Sizeof and unsafe.Offsetof, constant
+// expressions of the compiler's own model (docs/SPEC-TABLES.md §8).
 func (g *tableGen) needsUnsafe() { g.unsafeUsed = true }
 
 func (g *tableGen) tf(format string, args ...any) {
@@ -157,6 +167,12 @@ func (g *tableGen) into(b *strings.Builder, emit func()) {
 }
 
 // runtimeHome is the basename of the file that carries a unit's shared Go table
+// runtime — TableReport, the descriptors and the wire, message, text and region
+// runtimes. A Go package is one namespace across its files, so the runtime is
+// emitted once, in one home per unit, rather than in whichever file sorts first
+// (docs/SPEC-TABLES.md §19.2). A file basename that differs from the package
+// only by case is the same file on a case-insensitive filesystem, so the match
+// is case-insensitive and the file's spelling wins.
 func runtimeHome(u *ir.Unit) string {
 	home := ir.GoExportName(u.Package)
 	for _, f := range u.Files {
@@ -184,7 +200,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	return GenerateLineage(u, nil)
 }
 
-// Form is one OPTIONAL form of a unit's Go table output, as a set of bits
+// Form is one OPTIONAL form of a unit's Go table output, as a set of bits (docs/SPEC-TABLES.md, "GO's optional forms"); the core is never optional.
 type Form uint8
 
 const (
@@ -197,7 +213,7 @@ const (
 	FormsAll = FormJson | FormCook | FormBlock | FormMessage
 )
 
-// GenerateOmitting is GenerateLineage without the files of the forms omit
+// GenerateOmitting is GenerateLineage without the files of the forms omit names: each optional form owns its files, so what is left is exactly what the remaining forms emit (docs/SPEC-TABLES.md, "GO's optional forms").
 func GenerateOmitting(u *ir.Unit, lineage map[string][]FixedLineageEntry, omit Form) (map[string][]byte, error) {
 	out, forms, err := generateForms(u, lineage, DefaultSurfaces())
 	if err != nil {
@@ -211,12 +227,12 @@ func GenerateOmitting(u *ir.Unit, lineage map[string][]FixedLineageEntry, omit F
 	return out, nil
 }
 
-// GenerateLineage is Generate with the LINEAGE the build holds for each fixed
+// GenerateLineage is Generate with the LINEAGE the build holds for each fixed table: the locked layouts, oldest first, the current one last (docs/FIXED-FORM-ALGORITHM.md §5.2); a nil map is a build with no lock.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	return GenerateLineageSurface(u, lineage, DefaultSurfaces())
 }
 
-// GenerateLineageSurface is GenerateLineage with a surface list
+// GenerateLineageSurface is GenerateLineage with a surface list (docs/SPEC-TABLES.md §8.8); the list intersects each table's forms declaration (§2.12) and an undeclared form is refused by name.
 func GenerateLineageSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces) (map[string][]byte, error) {
 	if err := refuseUndeclaredSurface(u, s); err != nil {
 		return nil, err
@@ -225,7 +241,7 @@ func GenerateLineageSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, 
 	return out, err
 }
 
-// refuseUndeclaredSurface is §2.12's refusal: an explicit surface list (any
+// refuseUndeclaredSurface is §2.12's refusal (docs/SPEC-TABLES.md): an explicit surface list naming json, cook or block for a table whose forms declaration leaves it out.
 func refuseUndeclaredSurface(u *ir.Unit, s Surfaces) error {
 	if s == DefaultSurfaces() {
 		return nil
@@ -251,7 +267,7 @@ func refuseUndeclaredSurface(u *ir.Unit, s Surfaces) error {
 	return nil
 }
 
-// formAllowed reports whether the unit's tables let the named form be emitted
+// formAllowed reports whether the unit's tables let the named form be emitted (docs/SPEC-TABLES.md §2.12): with no forms declaration every form is allowed, otherwise only a form some table carries.
 func formAllowed(u *ir.Unit, form string) bool {
 	declared := false
 	for _, t := range u.Tables {
@@ -378,10 +394,12 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 	home := runtimeHome(u)
 	anyKeyed := unitHasKeyedArray(u, closure)
 	// the identity pair of an enum is emitted ONCE per unit, by the file that
+	// declares it: a Go package is one namespace, so a second definition is a compile error.
 	usedEnums := closureEnums(u, closure)
 	armSlots := unionArmSlots(u, closure)
 	idOrdinal := wireIdOrdinals(u)
 	// the shared runtime is emitted ONCE, into the package's own home file,
+	// whether or not a schema file names the package (docs/SPEC-TABLES.md §19.2).
 	cookRuntime := ""
 	emitRuntime := func(g *tableGen) {
 		g.needsMath = true
@@ -508,6 +526,7 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 		cookWriters[f.Base] = g.cook.String()
 	}
 	// No file of the unit is named for the package, so the home is emitted FOR
+	// the unit, in <Package>Table.go, which keeps an earlier-sorting file from moving it (§19.2).
 	if !runtimeWritten {
 		g := &tableGen{unit: u, home: true, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage, surfaces: s}
 		emitRuntime(g)
@@ -618,7 +637,7 @@ func (g *tableGen) assembleForm(name string, form Form, body string) ([]byte, er
 // a core file spells them.
 var formImports = []string{`"encoding/binary"`, `"unicode/utf8"`, `"sync"`, `"sync/atomic"`, `"slices"`, `"math"`, `"time"`, `"unsafe"`, `"github.com/mas-bandwidth/serialize.go"`}
 
-// usedImports keeps the imports body refers to: a selector on an identifier
+// usedImports keeps the imports body refers to: a selector on an identifier the file does not declare names a package; Go refuses an unused import.
 func usedImports(body string, candidates []string) []string {
 	f, err := parser.ParseFile(token.NewFileSet(), "", "package p\n\n"+body, 0)
 	if err != nil {
@@ -731,7 +750,7 @@ func isPathWordByte(c byte) bool {
 	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
 
-// repoPrefix marks every bare reference to this repository's own paths that a
+// repoPrefix marks every bare reference to this repository's own paths that a generated comment cites — docs/... and internal/... — with the repository's name, so an adopter's path linter reads them as another repository's (docs/USAGE.md Go notes).
 func repoPrefix(src string) string {
 	idxs := repoPrefixRe.FindAllStringIndex(src, -1)
 	if len(idxs) == 0 {
@@ -756,7 +775,7 @@ func repoPrefix(src string) string {
 	return b.String()
 }
 
-// goImports renders an import block the way gofmt would have written it: a
+// goImports renders an import block the way gofmt would have written it: a lone import takes the one-line form; go/format does not rewrite grouping, so the emitter picks it.
 func goImports(paths []string) string {
 	switch len(paths) {
 	case 0:
@@ -855,7 +874,7 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 	return false
 }
 
-// tableRuntime is the unit's shared table runtime, emitted into ONE file per
+// tableRuntime is the unit's shared table runtime, emitted into ONE file per unit (<Package>Table.go, the package's home); a Go package is one namespace, so a second copy would redeclare.
 func tableRuntime() string {
 	return `// TableReport is the table-wire read report — the permissive contract's
 // ledger. Silence (all zero) means the data matched this reader's schema
@@ -1170,7 +1189,7 @@ func tableJsonGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string)
 `
 }
 
-// tableKeyedAccessor is the enum-keyed array's one indexing helper
+// tableKeyedAccessor is the enum-keyed array's one indexing helper (docs/SPEC-TABLES.md §2.4): Go has no operator overloading, so the storage is [E.Max]T with key k at index k-1, and the shift and None refusal live here.
 const tableKeyedAccessor = `// TableKeyed indexes an enum-keyed array's slots BY KEY: the storage shifts
 // left, so the key k lives at index k-1 and nothing is stored for None
 // (docs/SPEC-TABLES.md §2.4). It hands back a pointer, so the same call reads and
@@ -1213,7 +1232,7 @@ func timestampFields(st *ir.Struct) []*ir.Field {
 	return out
 }
 
-// emitTimestampAccessors is the Go VALUE of a timestamp (docs/SPEC-TABLES.md
+// emitTimestampAccessors is the Go VALUE of a timestamp (docs/SPEC-TABLES.md §2.11): a time.Time in UTC through an accessor pair, since the stored field stays the blittable int64 count.
 func (g *tableGen) emitTimestampAccessors(st *ir.Struct) {
 	fields := timestampFields(st)
 	if len(fields) == 0 || st.IsMapEntry() {
@@ -1255,7 +1274,7 @@ const (
 	RuntimeShared
 )
 
-// ParseRuntime reads the generator option `runtime` (docs/SPEC-TABLES.md
+// ParseRuntime reads the generator option `runtime` (docs/SPEC-TABLES.md §8.4): absent, empty or "shared" is shared, "standalone" is the named option, anything else is refused by name.
 func ParseRuntime(v string) (Runtime, error) {
 	switch v {
 	case "", "shared":
@@ -1273,7 +1292,7 @@ func GenerateRuntime(u *ir.Unit, lineage map[string][]FixedLineageEntry, rt Runt
 	return GenerateRuntimeSurface(u, lineage, DefaultSurfaces(), rt)
 }
 
-// GenerateRuntimeSurface is GenerateRuntime over a surface list
+// GenerateRuntimeSurface is GenerateRuntime over a surface list (docs/SPEC-TABLES.md §8.8): standalone returns GenerateLineageSurface's bytes, shared cuts the shared declarations and aliases them to SharedRuntimeImport (§8.4).
 func GenerateRuntimeSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces, rt Runtime) (map[string][]byte, error) {
 	out, err := GenerateLineageSurface(u, lineage, s)
 	if err != nil || rt == RuntimeStandalone || len(out) == 0 {
@@ -1330,7 +1349,7 @@ func SharedRuntimeFiles() (map[string][]byte, error) {
 	return map[string][]byte{SharedRuntimeFile: sr.pkg}, nil
 }
 
-// sharedProbes are the unit shapes whose runtime files decide what is shared:
+// sharedProbes are the unit shapes whose runtime files decide what is shared: the home <Package>Table.go and its TableMessage.go; a declaration is shared only when every probe carries it byte-for-byte.
 var sharedProbes = []string{
 	"package probe\nfixed table A { n int32 }\n",
 	`package probe
@@ -1865,7 +1884,7 @@ func rtStructFields(text string) (string, []string, bool) {
 	return ts.Name.Name, names, len(names) > 0
 }
 
-// rtKeyLiterals spells every unkeyed composite literal of a shared struct type
+// rtKeyLiterals spells every unkeyed composite literal of a shared struct type with its field names: go vet refuses an unkeyed literal of another package's struct, and pre is prepended for a body with no package clause.
 func rtKeyLiterals(src string, fields map[string][]string, pre string) (string, error) {
 	fs := token.NewFileSet()
 	f, err := parser.ParseFile(fs, "", pre+src, parser.ParseComments)
@@ -1937,7 +1956,7 @@ func rtKeyLiterals(src string, fields map[string][]string, pre string) (string, 
 
 const sharedRuntimePackage = "goruntime"
 
-// rtRename spells every package-level name in rename by its exported name. A
+// rtRename spells every package-level name in rename by its exported name: a bijection on identifiers preserves every binding, and a field or method name never changes.
 func rtRename(src string, rename map[string]string) string {
 	fs := token.NewFileSet()
 	f, err := parser.ParseFile(fs, "", src, parser.ParseComments)
@@ -2052,7 +2071,7 @@ func rtShim(text string, rename map[string]string) (string, error) {
 	return b.String() + "\n", nil
 }
 
-// apply cuts a standalone runtime file's shared declarations. The home file
+// apply cuts a standalone runtime file's shared declarations: the home file gains the import and the shim in their place; the home's TableMessage.go only loses them and reaches them through the shim.
 func (sr *sharedRuntime) apply(src []byte, home bool) ([]byte, error) {
 	decls, f, err := rtParseDecls("home", src)
 	if err != nil {
@@ -2154,7 +2173,7 @@ var goWords = sync.OnceValue(func() map[string]bool {
 	return out
 })
 
-// goEscapeTables is the Go escape (SPEC.md §4.6): a DECLARED table whose name
+// goEscapeTables is the Go escape (SPEC.md §4.6): a DECLARED table whose name is a Go word is emitted under ir.GoEscape's spelling, e.g. table func as type func_, with every derived name following.
 func goEscapeTables(u *ir.Unit) *ir.Unit {
 	rename := map[string]string{}
 	for name, st := range u.Tables {

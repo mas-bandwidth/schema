@@ -14,7 +14,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	if g.retain {
 		g.pf("r.Retain.discard(r.Path,false,0)\n")
 	}
-	// `| required` fields (docs/SPEC-TABLES.md §2.3): each gets a seen flag,
+	// `| required` fields (docs/SPEC-TABLES.md §2.3): each gets a seen flag, and a record that ends without one is refused with missing_required naming the field; a guarded field is demanded only while its guard holds.
 	guards := tableGuardExprs(st)
 	var req []*ir.Field
 	var reqGuard []string
@@ -61,13 +61,13 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("\t\t\treturn r.Report.MissingRequired == missingBefore\n")
 		g.pf("\t\t}\n")
 	} else if unitHasRequired(g.unit) {
-		// A BODY BELOW THIS ONE that was refused for a missing required field
+		// A BODY BELOW THIS ONE that was refused for a missing required field refuses this one too (docs/SPEC-TABLES.md §2.3): the report is shared down the walk.
 		g.pf("\t\tif ref == 0 { return r.Report.MissingRequired == missingBefore }\n")
 	} else {
 		g.pf("\t\tif ref == 0 { return true }\n")
 	}
 	g.pf("\t\tfieldID, ok := r.Resolve(ref); if !ok || !r.Has(1) { r.Report.Malformed = true; return false }\n")
-	// THE FIELD HEADER IS READ WHOLE BEFORE A RESERVED ID IS JUDGED, as the
+	// THE FIELD HEADER IS READ WHOLE BEFORE A RESERVED ID IS JUDGED, as the oracle reads it (internal/tablewire bodyAt): a reserved id in a body that is not its transport is MALFORMED framing damage (docs/SPEC-TABLES.md §3.1, §3.3, §4).
 	g.pf("\t\tkind := r.Get8()\n")
 	g.pf("\t\tif fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff { r.Report.Malformed = true; return false }\n")
 	g.pf("\t\tswitch fieldID {\n")
@@ -102,7 +102,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			g.pf("\t\t\treqSeen%d = true\n", idx)
 		}
 	}
-	// THE NODE TABLE'S RESERVED ID, AND ONLY WHERE IT IS THIS BODY'S OWN
+	// THE NODE TABLE'S RESERVED ID, AND ONLY WHERE IT IS THIS BODY'S OWN TRANSPORT (docs/SPEC-TABLES.md §3.1): a variable root's body carries it, while a fixed-class table has no numbering and counts it unknown once (§4).
 	if g.regional && ir.VariableTables(g.unit)[st.Name] {
 		g.pf("case 0xffffffffffffffff: if !r.Skip(kind) { r.Report.Malformed=true;return false }\n")
 	}
@@ -244,7 +244,7 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 	g.pf("%ssub, ok := r.Body(); if !ok { r.Report.Malformed = true; return false }\n", ind)
 	g.pf("%sif len(sub.Buffer) >= 2 {\n", ind)
 	i := ind + "\t"
-	// The reference reads the element kind and count from the enclosing
+	// The reference reads the element kind and count from the enclosing reader before bounding the elements by L; this preserves its report events when a damaged count extends beyond L.
 	g.pf("%sheader := sub; header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]\n", i)
 	g.pf("%selemKind := header.Get8(); count, ok := header.Leb(); sub.Offset = header.Offset\n", i)
 	g.pf("%sif !ok { r.Report.Malformed = true } else {\n", i)
@@ -548,7 +548,7 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 			}
 			g.pf("%s\t%s\n", ind, compressedFloatClamp("v", lo, hi, fmt.Sprintf("r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q)", g.floatOwner(f))))
 		} else {
-			// A PLAIN float's NaN or infinity lands as its pattern and counts
+			// A PLAIN float's NaN or infinity lands as its pattern and counts nothing, and the read NAMES it so the strict read refuses it as non_finite (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL VALUES"; §6.5, §16.3).
 			g.pf("%s\tif v != v || v-v != 0 { tableNonFinite(&r.Report.Reason, %q) }\n", ind, g.floatOwner(f))
 		}
 		g.pf("%s\t%s = v\n%s}\n", ind, expr, ind)
@@ -653,7 +653,7 @@ func unitHasRequired(u *ir.Unit) bool {
 	return false
 }
 
-// floatOwner names a float field as <Owner>.<field> for the report's
+// floatOwner names a float field as <Owner>.<field> for the report's non_finite reason (docs/SPEC-TABLES.md §3.3), the owner being the table, type or union that declares it.
 func (g *tableGen) floatOwner(f *ir.Field) string {
 	for _, m := range []map[string]*ir.Struct{g.unit.Tables, g.unit.Structs} {
 		for _, st := range m {
