@@ -71,6 +71,12 @@ func TestTimestampClassMasksOnlyTimestampSpellings(t *testing.T) {
 		{"a string that is no timestamp against a number", `{"t":"abc"}`, `{"t":` + n + `}`, false},
 		{"a wrong int alone", `{"i":5}`, `{"i":6}`, false},
 		{"identical texts", `{"t":"` + ts + `"}`, `{"t":"` + ts + `"}`, false},
+		{"timestamp crossing plus an escape against the literal", `{"t":"` + ts + `","s":"\u00e9"}`, `{"t":` + n + `,"s":"é"}`, false},
+		{"timestamp crossing plus reordered keys", `{"t":"` + ts + `","a":1,"b":2}`, `{"b":2,"t":` + n + `,"a":1}`, false},
+		{"timestamp crossing plus extra whitespace", `{"t":"` + ts + `","a":1}`, `{"t":` + n + ` , "a":1}`, false},
+		{"timestamp crossing plus a collapsed duplicate key", `{"t":"` + ts + `","a":1,"a":2}`, `{"t":` + n + `,"a":2}`, false},
+		{"timestamp crossing plus a trailing space", `{"t":"` + ts + `"}`, `{"t":` + n + `} `, false},
+		{"timestamp crossing in a nested table", `{"x":{"t":"` + ts + `"}}`, `{"x":{"t":` + n + `}}`, true},
 	}
 	for _, c := range cases {
 		got := maskedBy(u, pairLine("engine", c.leg, c.eng))
@@ -103,6 +109,8 @@ func TestNegativeZeroClassMasksOnlyMinusZeroPairs(t *testing.T) {
 		{"sign loss on a nonzero float", `{"f":-0.5}`, `{"f":0.5}`, false},
 		{"-0 pair plus a wrong int", `{"f":-0,"i":5}`, `{"f":0,"i":6}`, false},
 		{"\"-0\" inside a string", `{"s":"-0"}`, `{"s":"0"}`, false},
+		{"a -0 lost on one side and invented on the other", `[[-0],[0]]`, `[[0],[-0]]`, false},
+		{"two top-level values", `-0 1`, `0 1`, false},
 	}
 	for _, c := range cases {
 		for _, kind := range []string{"roundtrip", "engine"} {
@@ -114,6 +122,33 @@ func TestNegativeZeroClassMasksOnlyMinusZeroPairs(t *testing.T) {
 				t.Errorf("%s (%s line): masked by %s, want an unexpected divergence", c.name, kind, got)
 			}
 		}
+	}
+}
+
+// TestClassesSeeKindsInInnerTablesAndUnions: a float or timestamp held only
+// inside an inner table, behind a pointer or in a union arm still makes the
+// unit one that holds it (seed 184 at 0..200: -0 in an inner table's field).
+func TestClassesSeeKindsInInnerTablesAndUnions(t *testing.T) {
+	t.Parallel()
+	inner := &genTable{Name: "Inner", Fields: []*genField{{Name: "g0", Kind: gFloat64}}}
+	stamp := &genTable{Name: "Stamp", Fields: []*genField{{Name: "g0", Kind: gTimestamp}}}
+	un := &genUnion{Name: "U", Arms: []*genField{{Name: "a", Kind: gPointer, NestedName: "Stamp"}}}
+	nested := &genUnit{Inner: []*genTable{inner, stamp}, Unions: []*genUnion{un}, Root: &genTable{Name: "Root", Fields: []*genField{
+		{Name: "f0", Kind: gNested, NestedName: "Inner"},
+		{Name: "u1", Kind: gUnion, UnionName: "U"},
+	}}}
+	if !nested.hasFloat() {
+		t.Errorf("a float64 inside an inner table is not seen by hasFloat")
+	}
+	if !nested.hasTimestamp() {
+		t.Errorf("a timestamp inside a union arm's table is not seen by hasTimestamp")
+	}
+	if got := maskedBy(nested, pairLine("roundtrip", `{"f0":{"g0":-0}}`, `{"f0":{"g0":0}}`)); got == "" {
+		t.Errorf("-0 against 0 in an inner table's float is not masked")
+	}
+	plain := &genUnit{Root: &genTable{Name: "Root", Fields: []*genField{{Name: "i", Kind: gInt, Bits: 32}}}}
+	if plain.hasFloat() || plain.hasTimestamp() {
+		t.Errorf("a unit with one int field holds a float or a timestamp")
 	}
 }
 
