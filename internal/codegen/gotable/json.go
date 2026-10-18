@@ -2201,17 +2201,21 @@ func tableJsonReadTimestamp(in *tableJsonIn, storage unsafe.Pointer, f *TableFie
 		return false
 	}
 	in.pos = start
+	// A timestamp is not text storage (docs/SPEC-TABLES.md 16.3): its spelling
+	// is scanned with scanKey, so a U+0000 in it falls through to the RFC 3339
+	// parse and is refused by that name (timestamp_not_rfc3339), as the pack
+	// text reader refuses it.
 	var scratch [64]byte
 	var text []byte
 	if int(length) <= len(scratch) {
-		n, ok := in.scanString(scratch[:])
+		n, ok := in.scanKey(scratch[:])
 		if !ok {
 			return false
 		}
 		text = scratch[:n]
 	} else {
 		text = make([]byte, length)
-		n, ok := in.scanString(text)
+		n, ok := in.scanKey(text)
 		if !ok {
 			return false
 		}

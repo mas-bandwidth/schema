@@ -9,7 +9,9 @@ import "testing"
 // writer refuses or a wire Go's strict reader refuses (§2.13, §4.2). Each row
 // plants \u0000 at the front, the middle and the end of a string(8), a
 // *string, a []string(8) element, a [..4]?string(8) element and a
-// map[string(8)]int32 key, then a wstring(8) and a nested table's string(8):
+// map[string(8)]int32 key, then a wstring(8), a nested table's string(8) and a map[int32]int32
+// key (one Malformed, no kind mismatch), and a timestamp, which is not text
+// storage and refuses by its own name, timestamp_not_rfc3339:
 // the read is refused, and whatever value it left measures, saves, reads
 // back through ReadStrict and writes the same JSON text. A \u0001 control in
 // the same place reads clean and round-trips, and a zero the read only SKIPS
@@ -37,6 +39,8 @@ table Root
     m map[string(8)]int32
     w wstring(8)
     i Inner
+    at timestamp
+    k map[int32]int32
 }
 `
 
@@ -114,8 +118,20 @@ func TestTextZero(t *testing.T) {
 		{"m", "{\"m\":{\"ok\":1,\"%s\":2}}"},
 		{"w", "{\"w\":\"%s\"}"},
 		{"i", "{\"i\":{\"n\":\"%s\"}}"},
+		{"at", "{\"at\":\"%s\"}"},
+		{"k", "{\"k\":{\"7\":1,\"%s\":2}}"},
 	}
-	where := map[string]string{"s": "Root.s", "t": "Root.t", "l": "Root.l", "o": "Root.o", "m": "Root.m", "w": "Root.w", "i": "Inner.n"}
+	where := map[string]string{"s": "Root.s", "t": "Root.t", "l": "Root.l", "o": "Root.o", "m": "Root.m", "w": "Root.w", "i": "Inner.n", "k": "Root.k"}
+	// a timestamp is not text storage: its zero falls through to the RFC 3339
+	// parse and is refused by that name, as the pack text reader refuses it;
+	// an integer map key that decodes to U+0000 is ONE Malformed event and
+	// never also a kind mismatch (16.3, 4.2)
+	reason := func(name string) string {
+		if name == "at" {
+			return "timestamp_not_rfc3339: at"
+		}
+		return "text_holds_zero: " + where[name]
+	}
 	for _, f := range fields {
 		for _, at := range []string{"\\u0000ab", "a\\u0000b", "ab\\u0000"} {
 			text := strings.Replace(f.text, "%s", at, 1)
@@ -128,12 +144,15 @@ func TestTextZero(t *testing.T) {
 			if RootFromJson(&b, []byte(text), &report) {
 				t.Fatalf("%s: FromJson accepted a zero in text (%+v)", what, report)
 			}
-			if !report.Malformed || report.Reason != "text_holds_zero: "+where[f.name] ||
+			if !report.Malformed || report.Reason != reason(f.name) ||
 				report.Clamped != 0 || report.KindMismatch != 0 || report.Unknown != 0 {
 				t.Fatalf("%s: report %+v", what, report)
 			}
 			carry(t, what, &b)
 			b.Shutdown()
+			if f.name == "at" || f.name == "k" {
+				continue // a \u0001 is no instant and no integer either
+			}
 			// the control: a \u0001 in the same place is ordinary text
 			control := strings.Replace(text, "\\u0000", "\\u0001", 1)
 			var c RootBuilder
