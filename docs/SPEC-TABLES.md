@@ -17241,10 +17241,9 @@ no content hash, no protocol id, no length prefix around the whole. A
 caller that wants an envelope writes its own few lines around these bytes,
 which is §1's promise that schema imposes no envelope. `unpack` is the
 inverse — it writes the tree back out of a `.bin` — which is the tool round
-trip §1 promises, and `unpack` → `pack` is byte-stable, WITH §16.3's ONE
-CARVE-OUT: a string holding bytes that are not well-formed UTF-8 is written as
-`U+FFFD`, one per bad byte, so its text can be longer than the bytes were and
-the field's own bound then clamps it. That lap is not byte-identical, it is
+trip §1 promises, and `unpack` → `pack` is byte-stable, with the
+ill-formed UTF-8 case handled under §16.3: its text can be longer than the
+bytes were and the field's own bound then clamps it. That lap is not byte-identical, it is
 COUNTED (`clamped`, which §17.4 makes a nonzero exit), and the FIXED POINT IS
 REACHED IN ONE LAP — after the first write every string is well-formed, so the
 second text and the third agree. **The carve-out is narrower than it was**:
