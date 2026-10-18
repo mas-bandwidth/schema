@@ -29,13 +29,15 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// make/squirrel-serialize.mk is the vendored serialize vendor target, not a
-	// language backend (docs/PORT-SQUIRREL.md, THE RUNTIME LAYOUT: the type
-	// wire's bottom layer). It carries no compiler/target_*.go and refuses no
-	// unit, so it is not a leg of the wide-scalar probe; drop it from the
-	// fixture before the probe runs.
-	if err := os.Remove(filepath.Join(fixture, "make", "squirrel-serialize.mk")); err != nil {
-		t.Fatal(err)
+	// make/squirrel-serialize.mk and make/squirrel-conformance.mk are not
+	// language backends (docs/PORT-SQUIRREL.md, THE RUNTIME LAYOUT: the type
+	// wire's bottom layer; THE CARD MAP: the conformance leg). They carry no
+	// compiler/target_*.go and refuse no unit, so they are not legs of the
+	// wide-scalar probe; drop them from the fixture before the probe runs.
+	for _, mk := range []string{"squirrel-serialize.mk", "squirrel-conformance.mk"} {
+		if err := os.Remove(filepath.Join(fixture, "make", mk)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// THE TREE'S OWN SKELETONS: a `schema new-leg` leg registers make/<lang>.mk
 	// beside a tagged compiler/target_<lang>.go, and the copied make/ carries
