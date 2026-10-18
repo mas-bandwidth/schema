@@ -316,10 +316,8 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype V { x uint8 }\nconst N = V.Count\n"},
 		{name: "Count reference undefined", want: "undefined enum or flags",
 			src: "package t\nconst N = F.Count\n"},
-		{name: "variant named Count", want: "carries its declared variant count as the member Count",
-			src: "package t\nenum E { A, Count }\n"},
-		{name: "a decl collides with an enum's generated Count constant (Go)", want: "generated Count constant",
-			src: "package t\nenum Weapon { Laser }\nconst WeaponCount = 3\n"},
+		{name: "Count reference to an enum", want: "has no Count",
+			src: "package t\nenum E { A }\nconst N = E.Count\n"},
 		{name: "65 flags variants overflow uint64 storage", want: "one bit per variant, up to 64",
 			src: "package t\nflags F { " + flags65 + " }\n"},
 		// ---- unions (SPEC §4.8) ----
@@ -333,13 +331,6 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\nunion U {\n    u Box\n}\ntype Box { x uint8 }\n"},
 		{name: "union variants colliding after export mapping", want: "both become BoxA",
 			src: "package t\nunion U {\n    box_a Box\n    boxA Box\n}\ntype Box { x uint8 }\n"},
-		// COUNT IS RESERVED ON EVERY UNION, packet and table closure alike:
-		// both tag enums carry the member, so the arm would define it twice
-		// (SPEC §4.8, §4.11, docs/SPEC-TABLES.md §2.6)
-		{name: "union variant named count on a packet union (exported spelling)", want: "carries its declared variant count as the member Count",
-			src: "package t\nunion U {\n    count Box\n}\ntype Box { x uint8 }\ntype T { u U }\n"},
-		{name: "union variant named count on a table-closure union (exported spelling)", want: "carries its declared variant count as the member Count",
-			src: "package t\ntable Box { x uint8 }\nunion U {\n    thing Box\n    count int32 | min = 0, max = 100\n}\ntable Root { u U }\n"},
 		// AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an enum, a
 		// scalar, a string, an array, a pointer and a union are arms, and
 		// what refuses them OUTSIDE a table closure is the closure rule —
@@ -763,10 +754,6 @@ func TestGoodCornersStillCompile(t *testing.T) {
 			src: "package t\nflags F { " + strings.Replace(flags65, ", V64", "", 1) + " }\n"},
 		{name: "F.Count in a constant expression",
 			src: "package t\nflags F { A, B }\nconst N = F.Count\n"},
-		{name: "E.Count in a constant expression, headroom included",
-			src: "package t\nenum E | max = 15\n{ A, B }\nconst N = E.Count\n"},
-		{name: "E.Count as an array bound",
-			src: "package t\nenum E | max = 15\n{ A, B }\ntype T { xs [..E.Count]uint8 }\n"},
 		{name: "a // comment terminates the qualification section",
 			src: "package t\ntype T { h int16 | min = 0, max = 5 // the section ends here\n}\n"},
 		{name: "a qualified declaration's body opens on the next line",
@@ -916,15 +903,16 @@ func TestCReservedMacroNeighborsAccepted(t *testing.T) {
 }
 
 // ONE MISTAKE, ONE DIAGNOSTIC (#447 F-01, #521 G-02). A variant that IS one of
-// the three names an enum generates for itself used to draw four errors: the
+// the two names an enum generates for itself used to draw four errors: the
 // rule, then the same fact restated as a Go-symbol collision, a Rust
 // associated-const collision and a C #define collision. The actionable line
-// was one of four, and it was a beginner's first enum mistake.
+// was one of four, and it was a beginner's first enum mistake. Count is not
+// among them: an enum has no Count (SPEC §4.2), so it is an ordinary variant.
 //
 // Reverting reservedEnumVariant's two uses in checkClaimedNames turns this red
-// at four errors for None and Count and four for Max.
+// at four errors for None and four for Max.
 func TestReservedEnumVariantDrawsOneDiagnostic(t *testing.T) {
-	for _, reserved := range []string{"None", "Max", "Count"} {
+	for _, reserved := range []string{"None", "Max"} {
 		errs := runUnit(t, map[string]string{
 			"Bad.schema": "package t\nenum E { " + reserved + ", Fighter }\n",
 		})
