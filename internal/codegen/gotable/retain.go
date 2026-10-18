@@ -109,7 +109,7 @@ var retainBodyName = regexp.MustCompile(`\b([A-Za-z_][A-Za-z_0-9]*)(LoadMessageB
 func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	if st.IsTable && !st.IsMapEntry() {
 		for _, verb := range []string{"LoadRetainBuilder", "SaveRetainMessages"} {
-			g.pf("const %s%s = %q\n", st.Name, verb, st.Name+": retention requires a region round trip through the VARIABLE form")
+			g.pf("const %s%s = %q\n", st.Name, verb, st.DeclaredName()+": retention requires a region round trip through the VARIABLE form")
 		}
 		if !ir.VariableTables(g.unit)[st.Name] {
 			// The message form is a FIXED table's (docs/SPEC-TABLES.md §3.3):
@@ -118,9 +118,9 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 			// root has no region, so the form's LoadRetainMessages is refused by
 			// name beside its SaveRetainMessages refusal rather than left as a
 			// missing symbol.
-			g.pf("const %sLoadRetainMessages = %q\n", st.Name, st.Name+": retention requires a region round trip through the VARIABLE form")
+			g.pf("const %sLoadRetainMessages = %q\n", st.Name, st.DeclaredName()+": retention requires a region round trip through the VARIABLE form")
 			for _, verb := range []string{"LoadRetain", "MeasureRetain", "SaveRetain"} {
-				g.pf("const %s%s = %q\n", st.Name, verb, st.Name+": retention requires a variable root and its region directory")
+				g.pf("const %s%s = %q\n", st.Name, verb, st.DeclaredName()+": retention requires a variable root and its region directory")
 			}
 		} else {
 			n := st.Name
