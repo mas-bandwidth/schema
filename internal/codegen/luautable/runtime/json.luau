@@ -381,7 +381,14 @@ end
 local function zero_elem(T, e)
   local s = e.shape
   if s == "bool" then return false end
-  if s == "int" or s == "flags" then return 0 end
+  if s == "int" then
+    -- the zero of the element's own storage domain (docs/PORT-LUAU.md, THE
+    -- TYPE MAPPING): an Int128 at 128 bits, an integer at 64
+    if e.dom == "int128" then return { lo = 0i, hi = 0i } end
+    if e.dom == "integer" then return 0i end
+    return 0
+  end
+  if s == "flags" then return 0 end
   if s == "float" then return 0.0 end
   if s == "string" or s == "bytes" then return "" end
   if s == "wstring" then return {} end
@@ -2299,9 +2306,7 @@ local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
     for i = 1, n do
       local xi = x[i]
       if xi == nil and e.shape ~= "table" and e.shape ~= "union" and e.shape ~= "array" and e.shape ~= "map" then
-        if e.shape == "int" and e.dom == "integer" then xi = 0i
-        elseif e.shape == "int" and e.dom == "int128" then xi = { lo = 0i, hi = 0i }
-        else xi = zero_elem(A, e) end
+        xi = zero_elem(A, e)
       end
       out[i] = conv_to_lua(e, xi, A, memo)
     end
@@ -2389,6 +2394,7 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
     local out = {}
     local n = memo.count[x]
     if n == nil then n = #x end
+    if (fd.bound or 0) > 0 and n > fd.bound then n = fd.bound end
     if fd.elem.shape == "pointer" then
       -- a null element is nil in the Luau storage and false in the walk's
       -- array, so a null past the last live one still counts (§2.5, §16.2)
