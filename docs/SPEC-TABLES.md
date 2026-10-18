@@ -15447,7 +15447,7 @@ Per kind:
 | `int128`, `uint128` | number | a decimal integer, exact past 2^53 in both directions: `340282366920938463463374607431768211455` reads back as itself. Integral forms read as for every integer; a fractional value is `kind_mismatch` |
 | `bool` | `true` / `false` | |
 | `string(N)` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted |
-| `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), and no text can either: ill-formed UTF-8, or a lone or out-of-order surrogate escape, is REFUSED BY NAME on read (`string_not_utf8`, `string_lone_surrogate`, §16.3), never transcoded to `U+FFFD`. So one in storage was built in code, and §16.3 writes it as `U+FFFD` |
+| `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), and no text can either: ill-formed UTF-8, or a lone or out-of-order surrogate escape, is REFUSED BY NAME on read (`string_not_utf8`, `string_lone_surrogate`, §16.3), never transcoded to `U+FFFD`. So one in storage was built in code, and §16.3's maximal-subpart rule writes it as `U+FFFD` |
 | `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted |
 | `timestamp` | string, strict RFC 3339 §5.6 date-time | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any spelling RFC 3339 §5.6 accepts of the same instant, which lands as its UTC nanosecond count. The spelling is EXACTLY the `date-time` production: four-digit year `0000`–`9999`; month `01`–`12`; day valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`; second `00`–`59`; a fraction of one or more digits after a dot, truncated to nanoseconds; and `Z`, `z`, or an offset whose hours are `00`–`23` and minutes `00`–`59`; nothing before or after. A comma is not a fraction separator, and second `60` is refused (§2.11). **A string outside that spelling — or one naming an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false, the report is `Malformed` and its `Reason` is `timestamp_not_rfc3339: <field>`. A NUMBER token is not a refusal but the dialect's own wrong-JSON-type rule (§16.1): skipped, counted as a kind mismatch, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13). The writer drops a fraction's trailing zeros and omits it on a whole second, as `RFC3339Nano` spells it; the text form writes any count, and a time outside the years 1678–2262 is refused only where it enters through the accessor that stores a `time.Time`, as `timestamp_out_of_range` (§2.11) |
 | enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted. A deprecated variant keeps its name and reads as the field's declared default, never as unknown, and a writer refuses a value that holds one (§2.15) |
@@ -15698,15 +15698,33 @@ perfectly good code point that JSON has an escape for, so it is written
 `\u0000` — and only ever for storage a program built, because no read, the
 text's included, puts one there (below). A WIDE field's UNPAIRED
 SURROGATE is not a code point at all, encodes to nothing, and is written as
-one `U+FFFD` per ill-formed unit. Each type then takes the other half of the
-same distinction: a narrow field's ill-formed UTF-8 sequence is not a code
-point either and writes `U+FFFD`, one per sequence, and a wide field's zero
-unit is `U+0000` and writes `\u0000`. **The rule underneath both is one
-rule** — a code point is escaped and preserved, and what is not a code point
-is replaced — and the two types are named separately only because each meets
-it through a different defect. RFC 8259 requires a JSON text to be valid UTF-8, and a
+one `U+FFFD`, because one unpaired surrogate is one ill-formed unit. Each
+type then takes the other half of the same distinction: a narrow field's
+ill-formed UTF-8 sequence is not a code point either and writes `U+FFFD`,
+one per maximal subpart, and a wide field's zero unit is `U+0000` and writes
+`\u0000`. **The rule underneath both is one rule** — a code point is
+escaped and preserved, and what is not a code point is replaced — and the
+two types are named separately only because each meets it through a
+different defect. RFC 8259 requires a JSON text to be valid UTF-8, and a
 text this form emits must be readable by any conforming parser, not only by
 schema's own reader.
+
+**A MAXIMAL SUBPART is the unit of that replacement**, so "one `U+FFFD` per
+ill-formed sequence" means one per maximal subpart: the longest prefix of
+the remaining ill-formed bytes, beginning at the first unconvertible byte,
+that is itself a prefix of some well-formed UTF-8 sequence,
+or, when no such prefix exists, that one byte
+(The Unicode Standard, chapter 3, "U+FFFD substitution of maximal
+subparts", Definition D93b). A byte that cannot extend the current
+subpart begins the next, so one ill-formed run can produce several
+`U+FFFD`. The unit holds for every reader and every writer of the text
+form: a reader that replaced rather than refusing would use it, and the
+read in fact REFUSES ill-formed text by name (above), so it is the two
+writers, narrow and wide, that emit the replacement. Worked from the bytes
+a writer's storage holds:
+`E2 82 41` writes `U+FFFD` then `A`; `F0 80 80 80` writes four `U+FFFD`;
+`ED A0 80` (a surrogate) writes three; `C0 AF` writes two;
+`F4 90 80 80` writes four; and a lone `FF` writes one.
 
 **The writer's escapes are the seven short escapes and nothing else.** `\"`,
 `\\`, `\b`, `\f`, `\n`, `\r` and `\t` are written as those escapes; every
