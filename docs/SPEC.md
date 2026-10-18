@@ -1483,7 +1483,8 @@ All compile errors with positions:
   reported in the same run. Outside the Go escape below there is no escaping
   machinery; rename at the source.
 - **The Go escape.** Go is the one target that carries a reserved word
-  instead of refusing it. Under `--lang go`, a name that is one of Go's words
+  instead of refusing it. Under `--lang go` (and in `schema check`, whose Go
+  half is the same rule), a name that is one of Go's words
   in the checker's list (a Go keyword, or a predeclared identifier the Go
   output would collide with, such as `byte` or `true`) is not refused in
   these positions:
@@ -1500,7 +1501,7 @@ All compile errors with positions:
   The escape is the Go spelling and nothing else: the wire name, every id,
   the JSON keys, the projections (the protocol id's, the build version's,
   the fixed layout's), the descriptors' and the view's names, and every
-  diagnostic name the schema name, unchanged, so a table's Go output and its
+  diagnostic keep the schema name, unchanged, so a table's Go output and its
   C++ output carry one identity. The escape cannot collide with a generated
   name: a Go word is lowercase letters only, every name generated from a
   declaration joins that declaration's name to a capitalised verb or prefix
