@@ -9796,7 +9796,8 @@ SceneSaveRetain( scene, &retain, buffer, size, &report );
 ```
 
 `LoadRetain` takes the region and the wire and ANSWERS the root, exactly as
-`Load` does (§6.5), and the root it answers is what `MeasureRetain` and
+`LoadTolerant` does (§6.5: the retain family keeps the tolerant answer; in Go
+the plain `Load` is strict), and the root it answers is what `MeasureRetain` and
 `SaveRetain` take. The retention buffer is the one argument the three share,
 and it is the same buffer across all three by construction.
 
