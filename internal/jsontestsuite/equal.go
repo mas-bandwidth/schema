@@ -33,7 +33,18 @@ const refusedPrefix = "refused: "
 // first differ. When either text is not well-formed under §16.12's layer
 // (including a key past 255 decoded bytes and a number token past 511 bytes),
 // it refuses: false with a reason beginning "refused: ".
+//
+// §16.13 says that if either text is refused, Equal refuses too and gives no
+// answer. So each text is validated completely under §16.12's layer before any
+// difference is reported: a malformed tail can never be hidden behind an
+// earlier structural difference.
 func Equal(a, b []byte) (bool, string) {
+	if ok, why := validate(a, "a"); !ok {
+		return false, why
+	}
+	if ok, why := validate(b, "b"); !ok {
+		return false, why
+	}
 	ra := &reader{data: a}
 	rb := &reader{data: b}
 	ra.skipBOM()
@@ -119,6 +130,146 @@ func (r *reader) skipSpace() bool {
 		}
 	}
 	return true
+}
+
+// validate reads one whole JSON text under §16.12's layer and reports a
+// refusal with the text's name. It applies the same caps as the comparison
+// walk: depth 128, a key of 255 decoded bytes, a number token of 511 bytes,
+// UTF-8 and surrogate refusals, the §16.2 dialect's comments and trailing
+// commas, and "one whole value" followed by whitespace and the end.
+func validate(data []byte, which string) (bool, string) {
+	r := &reader{data: data}
+	r.skipBOM()
+	if ok, why := skipValue(r, 0, "$"); !ok {
+		return false, why + " in " + which
+	}
+	if !r.skipSpace() {
+		return refuse("$", "unterminated comment in %s", which)
+	}
+	if r.i != len(r.data) {
+		return refuse("$", "trailing input in %s at byte %d", which, r.i)
+	}
+	return true, ""
+}
+
+// skipValue reads one value's whole subtree, checking §16.12's grammar and
+// caps without comparing anything. depth is the depth of the value's
+// container, the root's container at 0.
+func skipValue(r *reader, depth int, path string) (bool, string) {
+	if !r.skipSpace() {
+		return refuse(path, "unterminated comment")
+	}
+	if r.i >= len(r.data) {
+		return refuse(path, "text ends where a value is expected")
+	}
+	c := r.data[r.i]
+	switch kindOf(c) {
+	case kBad:
+		return refuse(path, "%s", kindName(c))
+	case kObj:
+		if depth > maxDepth {
+			return refuse(path, "depth past the cap of 128")
+		}
+		return skipObject(r, depth, path)
+	case kArr:
+		if depth > maxDepth {
+			return refuse(path, "depth past the cap of 128")
+		}
+		return skipArray(r, depth, path)
+	case kStr:
+		_, ok, why := r.parseString(path, -1, "string")
+		return ok, why
+	case kLit:
+		_, ok, why := r.parseLiteral(path)
+		return ok, why
+	default:
+		_, ok, why := r.parseNumber(path)
+		return ok, why
+	}
+}
+
+// skipObject reads an object's members under §16.12, accepting the §16.2
+// dialect's trailing comma and refusing a member that is not a key, a colon
+// and a value.
+func skipObject(r *reader, depth int, path string) (bool, string) {
+	r.i++
+	for {
+		if !r.skipSpace() {
+			return refuse(path, "unterminated comment")
+		}
+		if r.i >= len(r.data) {
+			return refuse(path, "text ends inside an object")
+		}
+		if r.data[r.i] == '}' {
+			r.i++
+			return true, ""
+		}
+		_, ok, why := r.parseString(path, maxKeyBytes, "key")
+		if !ok {
+			return false, why
+		}
+		if !r.skipSpace() {
+			return refuse(path, "unterminated comment")
+		}
+		if r.i >= len(r.data) || r.data[r.i] != ':' {
+			return refuse(path, "expected ':'")
+		}
+		r.i++
+		if ok, why := skipValue(r, depth+1, path); !ok {
+			return false, why
+		}
+		if !r.skipSpace() {
+			return refuse(path, "unterminated comment")
+		}
+		if r.i >= len(r.data) {
+			return refuse(path, "text ends inside an object")
+		}
+		switch r.data[r.i] {
+		case '}':
+			r.i++
+			return true, ""
+		case ',':
+			r.i++
+		default:
+			return refuse(path, "expected ','")
+		}
+	}
+}
+
+// skipArray reads an array's elements under §16.12, accepting the §16.2
+// dialect's trailing comma.
+func skipArray(r *reader, depth int, path string) (bool, string) {
+	r.i++
+	for {
+		if !r.skipSpace() {
+			return refuse(path, "unterminated comment")
+		}
+		if r.i >= len(r.data) {
+			return refuse(path, "text ends inside an array")
+		}
+		if r.data[r.i] == ']' {
+			r.i++
+			return true, ""
+		}
+		if ok, why := skipValue(r, depth+1, path); !ok {
+			return false, why
+		}
+		if !r.skipSpace() {
+			return refuse(path, "unterminated comment")
+		}
+		if r.i >= len(r.data) {
+			return refuse(path, "text ends inside an array")
+		}
+		switch r.data[r.i] {
+		case ']':
+			r.i++
+			return true, ""
+		case ',':
+			r.i++
+		default:
+			return refuse(path, "expected ','")
+		}
+	}
 }
 
 type kind int

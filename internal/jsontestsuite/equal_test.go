@@ -58,6 +58,18 @@ func TestJsonSemanticEqual(t *testing.T) {
 		{name: "array length differs", a: `[1]`, b: `[1,2]`, want: outDiffer, reason: "array length"},
 		{name: "object member count differs", a: `{}`, b: `{"a":1}`, want: outDiffer, reason: "member count"},
 		{name: "malformed leading zero", a: `[01]`, b: `[01]`, want: outRefuse, reason: "expected"},
+		// §16.13: a refusal is no answer, so a malformed tail is named
+		// even when the same position holds an earlier difference. One
+		// witness per early-return path of the comparison walk.
+		{name: "kind differs, both malformed tails", a: `[1,01]`, b: `[2,01]`, want: outRefuse, reason: "expected ','"},
+		{name: "number differs, malformed b tail", a: `[1]`, b: `[2,01]`, want: outRefuse, reason: "expected ','"},
+		{name: "string differs, malformed b tail", a: `["a"]`, b: `["b",01]`, want: outRefuse, reason: "expected ','"},
+		{name: "literal differs, malformed b tail", a: `[true]`, b: `[false,01]`, want: outRefuse, reason: "expected ','"},
+		{name: "array length differs, malformed b element", a: `[]`, b: `[1,01]`, want: outRefuse, reason: "expected ','"},
+		{name: "object member count differs, malformed b tail", a: `{}`, b: `{"a":1,01}`, want: outRefuse, reason: "key does not open with a quote"},
+		{name: "key differs, malformed b tail", a: `{"a":1}`, b: `{"b":1,01}`, want: outRefuse, reason: "key does not open with a quote"},
+		{name: "equal prefix, malformed a tail", a: `[1] 01`, b: `[1]`, want: outRefuse, reason: "trailing input"},
+		{name: "equal prefix, malformed b tail", a: `[1]`, b: `[1] 01`, want: outRefuse, reason: "trailing input"},
 		{name: "lone high surrogate", a: `["\uD800"]`, b: `["\uD800"]`, want: outRefuse, reason: "string_lone_surrogate"},
 		{name: "lone low surrogate", a: `["\uDFFF"]`, b: `["\uDFFF"]`, want: outRefuse, reason: "string_lone_surrogate"},
 		{name: "high vs low surrogate", a: `["\uD800"]`, b: `["\uDFFF"]`, want: outRefuse, reason: "string_lone_surrogate"},
