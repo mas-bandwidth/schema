@@ -152,7 +152,7 @@ func containerRegionSource(s string) string {
 	// key readers live with the container runtime, so the arm is patched in here
 	s = tableSourceReplace(s, " case f.Map:return true // map arm\n", ` case f.Map: // maps.go emitMapRead: entry bodies, whole keys in ascending order
   if elemKind!=13{return true};kf:=&f.Table().Fields[0];var last tableMapKey;prior:=false
-  for i:=uint64(0);i<count;i++{elem,ok:=sub.Body();if !ok{return false};key,bad,over,_,whole:=tableMapReadKey(elem,kf);if bad{return true};if !whole{return false};if over{continue};if prior&&tableMapKeyOrder(last,key,kf)>0{return false};if !tableWireStrict(&elem,f.Table(),true,nodes){return false};last=key;prior=true}
+  for i:=uint64(0);i<count;i++{elem,ok:=sub.Body();if !ok{return false};key,bad,over,_,whole:=tableMapReadKey(elem,kf);if bad{return true};if !whole{return false};if over{continue};if prior&&tableMapKeyOrder(last,key,kf)>0{return false};if !elem.damageBody(f.Table(),true,nodes){return false};last=key;prior=true}
   return true
 `, 1)
 	return containerRegionSourceCommon(s)
