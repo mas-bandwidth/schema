@@ -352,6 +352,11 @@ jobs:
         run: go mod tidy -diff
       - name: go vet
         run: go vet ./...
+      # ROADMAP.md is generated from docs/roadmap.sexp and docs/roadmap-evidence/
+      # by nova-tools tools/roadmap (tools/roadmap/roadmap.mk pins it); the page
+      # must be exactly what the data renders.
+      - name: ROADMAP.md is what the data renders
+        run: make roadmap-check
       # MODERNIZE (issue #1424). The full `lint` job runs this on a branch push
       # but a pull request into fixed-table-form skips it, because that job is
       # gated behind the `full-ci` label; `lint-fast` has no such gate and runs
@@ -376,11 +381,6 @@ jobs:
         run: go test ./internal/ci/
       - name: bench scripts parse
         run: bash -n bench/run.sh
-      # ROADMAP.md is generated from docs/roadmap.sexp and docs/roadmap-evidence/
-      # by nova-tools tools/roadmap (tools/roadmap/roadmap.mk pins it); the page
-      # must be exactly what the data renders.
-      - name: ROADMAP.md is what the data renders
-        run: make roadmap-check
 
   # THE BLOCK ZERO-COST GATE, byte-identity half (the `generated` job's third
   # step in ci-full.yml). The committed tables goldens must equal a fresh
