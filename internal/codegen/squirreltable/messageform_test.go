@@ -594,3 +594,45 @@ func TestSquirrelMessageFormSetsPresentOptionalField(t *testing.T) {
 		t.Fatalf("known void union arm accepted kind zero: %s", out)
 	}
 }
+
+func TestSquirrelKeyedMessagePairs(t *testing.T) {
+	t.Parallel()
+	root, err := sqrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := map[string][]string{}
+	for _, u := range manifestUnits(t, filepath.Join(root, "testdata/conformance/tables/MANIFEST.txt")) {
+		paths[u.key] = u.paths
+	}
+	u := loadUnit(t, root, paths["tabledemo"])
+	dir := t.TempDir()
+	for name, b := range squirrelMessageFiles(t, u, nil) {
+		if !strings.Contains(name, "/") {
+			writeFile(t, filepath.Join(dir, name), b)
+		}
+	}
+	script := fmt.Sprintf(`local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,T.TableMessageAnnouncement,ar)){print("keyed:announce_fail:"+T.TableMessageAnnouncement.len()+":"+ar.reason+":"+ar.malformed+"\n");return;}local x=T.KeyedConfig();x.Teams[1].SpawnCount=17;x.Hulls[2].Health=42.5;local mr={};local z=T.KeyedConfigMeasureMessages([x],mr);local b=blob(z);local sr={};local w=T.KeyedConfigSaveMessages([x],b,sr);local out=[T.KeyedConfig()];local rr={};local n=T.KeyedConfigLoadMessages(out,v,b,rr);if(n==1&&w==z&&out[0].Teams[1].SpawnCount==17&&out[0].Hulls[2].Health==42.5&&!rr.malformed)print("keyed:ok\n");else print("keyed:fail:"+n+":"+rr.malformed+":"+rr.unknown+":"+out[0].Teams[0].SpawnCount+":"+out[0].Teams[1].SpawnCount+":"+out[0].Teams[2].SpawnCount+":"+out[0].Hulls[0].Health+":"+out[0].Hulls[1].Health+":"+out[0].Hulls[2].Health+"\n");`, squirreltable.ModuleName(u))
+	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
+	inputs := map[string][]byte{"ann": announcementWithEntries(u, ir.TableVocabulary(u))}
+	out := string(sqrun.Run(t, dir, "main.nut", inputs))
+	if !strings.Contains(out, "keyed:ok") {
+		t.Fatalf("keyed message pair round trip failed: %s", out)
+	}
+}
+
+func TestSquirrelBytesMessagePairs(t *testing.T) {
+	t.Parallel()
+	root, err := sqrun.RepoRoot()
+	if err != nil { t.Fatal(err) }
+	paths := map[string][]string{}
+	for _, u := range manifestUnits(t, filepath.Join(root, "testdata/conformance/tables/MANIFEST.txt")) { paths[u.key] = u.paths }
+	u := loadUnit(t, root, paths["tabledemo"])
+	dir := t.TempDir()
+	for name, b := range squirrelMessageFiles(t, u, nil) { if !strings.Contains(name, "/") { writeFile(t, filepath.Join(dir, name), b) } }
+	script := fmt.Sprintf(`local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,T.TableMessageAnnouncement,ar)){print("bytes:announce_fail\n");return;}local x=T.ProfileConfig();local b=blob(2);b[0]=0x41;b[1]=0x42;x.Icon=b;local mr={};local z=T.ProfileConfigMeasureMessages([x],mr);local wire=blob(z);local sr={};local w=T.ProfileConfigSaveMessages([x],wire,sr);local out=[T.ProfileConfig()];local rr={};local n=T.ProfileConfigLoadMessages(out,v,wire,rr);if(n==1&&w==z&&out[0].Icon.len()==2&&out[0].Icon[0]==0x41&&out[0].Icon[1]==0x42&&!rr.malformed)print("bytes:ok\n");else print("bytes:fail:"+n+":"+rr.malformed+":"+rr.unknown+"\n");`, squirreltable.ModuleName(u))
+	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
+	inputs := map[string][]byte{"ann": announcementWithEntries(u, ir.TableVocabulary(u))}
+	out := string(sqrun.Run(t, dir, "main.nut", inputs))
+	if !strings.Contains(out, "bytes:ok") { t.Fatalf("bytes message pair round trip failed: %s", out) }
+}

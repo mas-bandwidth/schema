@@ -64,6 +64,7 @@ parseShape = function(b, state, kind) {
     }
     state.bad=true;return s;
   }
+  if(kind==11)return s;
   if(kind==12||kind==33){s.Max=readLeb(b,state);if(state.bad||s.Max>2147483647){state.bad=true;return s;}s.Bits=0;local m=s.Max;while(m>0){s.Bits++;m=m>>1;}return s;}
   if(kind==14||kind==16){if(kind==14)s.Min=readLeb(b,state);s.Max=readLeb(b,state);if(state.bad||s.Max>4294967295||s.Min>s.Max||state.at>=state.end){state.bad=true;return s;}s.Bits=0;local m=s.Max-s.Min;while(m>0){s.Bits++;m=m>>1;}s.ElemKind=b[state.at]&0xff;state.at++;if(s.ElemKind>33||s.ElemKind==12||s.ElemKind==33){state.bad=true;return s;}s.Element=parseShape(b,state,s.ElemKind);return s;}
   if(kind==0||kind==13||kind==15||kind==17||kind==30||kind==31||kind==32){return s;}
@@ -86,6 +87,7 @@ local parseVocabulary = function(words) {
     if(ids.len()>4096)state.bad=true;
   }
   if(state.at!=state.end)state.bad=true;
+
   return [ids,entries,!state.bad];
 };
 local skipFileKind;
@@ -184,6 +186,32 @@ local alignRead = function(r) {
   local n = (-r.bits) & 7, v = get(r, n);
   return !r.bad && v == 0;
 };
+// Float32 message scalars narrow and widen by the same bit surgery as the
+// file-form runtime; castf2i/casti2f reinterpret binary64 values only.
+local messageRoundShift = function(full, shift) {
+  if (shift <= 0) return full << (-shift);
+  local q = full >>> shift, rem = full & ((1 << shift) - 1), half = 1 << (shift - 1);
+  if (rem > half || (rem == half && (q & 1) != 0)) q++;
+  return q;
+};
+local messageNarrowF32 = function(x) {
+  local b=castf2i(x), sign=(b >>> 63)&1, exp=(b >>> 52)&0x7ff, mant=b&0xfffffffffffff;
+  if(exp==0x7ff){if(mant==0)return (sign<<31)|0x7f800000;local payload=(mant>>>29)&0x007fffff;if(payload==0)payload=0x00400000;return (sign<<31)|0x7f800000|payload;}
+  if(exp==0)return sign<<31;
+  local e=exp-1023;
+  if(e < -126){local shift=-e-97;if(shift>=54)return sign<<31;local full=0x10000000000000|mant,q=messageRoundShift(full,shift);if(q>=0x800000)return (sign<<31)|0x00800000;return (sign<<31)|(q&0x007fffff);}
+  local q=messageRoundShift(0x10000000000000|mant,29);if(q>=0x1000000){q=q>>>1;e++;}
+  if(e>127)return (sign<<31)|0x7f800000;
+  return (sign<<31)|((e+127)<<23)|(q&0x007fffff);
+};
+local messageWidenF32 = function(bits) {
+  bits=bits&0xffffffff;local sign=bits&0x80000000,exp=(bits>>>23)&0xff,mant=bits&0x007fffff,high=0;
+  if(sign!=0)high=0x8000000000000000;
+  if(exp==0xff){high=high|0x7ff0000000000000;if(mant!=0)high=high|(mant<<29);}
+  else if(exp==0){if(mant!=0){local e=-126;while((mant&0x800000)==0){mant=mant<<1;e--;}mant=mant&0x007fffff;high=high|((e+1023)<<52)|(mant<<29);}}
+  else high=high|((exp-127+1023)<<52)|(mant<<29);
+  return casti2f(high);
+};
 local bitCount = function(n) {
   local bits = 0;
   while (n > 0) { bits++; n = n >> 1; }
@@ -200,7 +228,7 @@ skipPeerEntry = function(T,v,r,e,depth) {
   if(k==15){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local arm=v.Entries[ref-1];if(arm==null||arm.Shape.Kind==0||(arm.Id==0xfffffffffffffffd||arm.Id==0xfffffffffffffffe||arm.Id==0xffffffffffffffff)){r.bad=true;return;}skipPeerEntry(T,v,r,arm,depth+1);return;}
   if(k==12||k==33){local n=get(r,sh.Bits);if(r.bad||n>sh.Max){r.bad=true;return;}if(k==12&&!alignRead(r)){r.bad=true;return;}skip(r,n*(k==12?8:16));return;}
   if(k==31){if(!alignRead(r)){r.bad=true;return;}local n=get(r,32);if(r.bad)return;skip(r,n*8);return;}
-  if(k==14||k==16){local n=get(r,sh.Bits)+sh.Min;if(r.bad||n>sh.Max){r.bad=true;return;}if(k==14&&e.Element.Kind==6&&!alignRead(r)){r.bad=true;return;}for(local i=0;i<n;i++){if(k==16){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}}skipPeerEntry(T,v,r,e.Element,depth+1);if(r.bad)return;}return;}
+  if(k==14||k==16){local n=get(r,sh.Bits)+sh.Min;if(r.bad||n>sh.Max){r.bad=true;return;}if(k==14&&e.Element.Kind==6&&!alignRead(r)){r.bad=true;return;}for(local i=0;i<n;i++){if(k==16){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||(ke.Id==0xfffffffffffffffd||ke.Id==0xfffffffffffffffe||ke.Id==0xffffffffffffffff)){r.bad=true;return;}}skipPeerEntry(T,v,r,e.Element,depth+1);if(r.bad)return;}return;}
   if(k==17){r.bad=true;return;}
   if(sh.Bits<0){r.bad=true;return;}skip(r,sh.Bits);
 };
@@ -228,7 +256,7 @@ local numberBits = function(fd) {
   return fd.width * 8;
 };
 local defaultValue = function(fd, value, owner) {
-  if (fd.optional) return !owner[fd.member + "Present"];
+  if (("optional" in fd) && fd.optional) return !owner[fd.member + "Present"];
   if (fd.shape == "str") return value == fd.def;
   if (fd.shape == "bytes") {
     if (value.len() != fd.def.len()) return false;
@@ -236,7 +264,7 @@ local defaultValue = function(fd, value, owner) {
     return true;
   }
   if (fd.shape == "arr") {
-    if (fd.list || fd.counted) return value.len() == 0;
+    if ((("list" in fd) && fd.list) || (("counted" in fd) && fd.counted)) return value.len() == 0;
     if (fd.elem.shape == "tab" || fd.elem.shape == "union") return false;
     for (local i = 0; i < value.len(); i++) if (value[i] != fd.elem.def) return false;
     return true;
@@ -262,7 +290,7 @@ local writeScalar = function(T, w, fd, value) {
     put(w, ref, T.TableMessageRefBitsHere); return;
   }
   if (fd.shape == "float") {
-    if (fd.f32) put(w, castf2i(value) & 0xffffffff, 32);
+    if (fd.f32) put(w, messageNarrowF32(value), 32);
     else put(w, castf2i(value), 64);
     return;
   }
@@ -284,7 +312,7 @@ local readScalar = function(r, T, v, fd, shape) {
   }
   if (fd.shape == "float") {
     if (fd.f32 && shape.Packing==2) {local index=get(r,shape.Bits);if(index>shape.QCount)index=shape.QCount;return casti2f(castf2i(shape.QMin+casti2f(castf2i(index.tofloat()/shape.QCount))*shape.QDelta));}
-    if (fd.f32) return casti2f(get(r, 32));
+    if (fd.f32) return messageWidenF32(get(r, 32));
     return casti2f(get(r, 64));
   }
   local bits = shape.Bits, x = get(r, bits);
@@ -314,11 +342,22 @@ writePayload = function(T, w, fd, value, depth) {
     return;
   }
   if (fd.shape == "arr") {
+    // §3.3: kind 14 bytes count/alignment/raw octets; kind 16 count then key/element pairs.
     local n = value.len();
     if (n < fd.min || n > fd.bound) { w.bad = true; return; }
-    if (fd.list || fd.counted) put(w, n - fd.min, bitCount(fd.bound - fd.min));
+    local keyed = (fd.keyvariants != null), present = 0;
+    if (keyed) { for(local i=0;i<n;i++) if(!defaultValue(fd.elem,value[i],value)) present++; put(w,present,bitCount(fd.bound-fd.min)); }
+    else if (fd.list || fd.counted || fd.elem.shape == "bytes") put(w, n - fd.min, bitCount(fd.bound - fd.min));
     local e = fd.elem;
-    for (local i = 0; i < n; i++) writePayload(T, w, e, value[i], depth + 1);
+    if (!keyed && e.shape == "bytes") {
+      alignWrite(w);
+      for(local i=0;i<n;i++) put(w,value[i]&0xff,8);
+      return;
+    }
+    for (local i = 0; i < n; i++) {
+      if(keyed){if(defaultValue(e,value[i],value))continue;local key=findSlot(T,fd.keyvariants[i][1]);if(key==0){w.bad=true;return;}put(w,key,T.TableMessageRefBitsHere);}
+      writePayload(T, w, e, value[i], depth + 1);
+    }
     return;
   }
   writeScalar(T, w, fd, value);
@@ -338,8 +377,10 @@ skipPayload = function(T, v, r, fd, depth) {
     if(arm==null){r.bad=true;return;} if(arm.payload!=null) skipPayload(T,v,r,arm.payload,depth+1); return;
   }
   if (fd.shape == "arr") {
-    local n = fd.list || fd.counted ? get(r, bitCount(fd.bound-fd.min)) + fd.min : fd.bound;
-    for(local i=0;i<n;i++) skipPayload(T,v,r,fd.elem,depth+1); return;
+    // §3.3: consume byte alignment and raw kind-6 elements, or keyed refs before each peer element.
+    local n = fd.list || fd.counted || fd.elem.shape == "bytes" || (fd.keyvariants != null) ? get(r, bitCount(fd.bound-fd.min)) + fd.min : fd.bound;
+    if(fd.elem.shape == "bytes") { if(!alignRead(r)){r.bad=true;return;} skip(r,n*8); return; }
+    for(local i=0;i<n;i++){if((fd.keyvariants != null)){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||(ke.Id==0xfffffffffffffffd||ke.Id==0xfffffffffffffffe||ke.Id==0xffffffffffffffff)){r.bad=true;return;}}skipPayload(T,v,r,fd.elem,depth+1);} return;
   }
   if(fd.shape=="enum"){local ref=get(r,v.RefBits);if(ref>v.Count)r.bad=true;return;}
   skip(r, numberBits(fd));
@@ -373,12 +414,17 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
     owner[member]=u;return;
   }
   if(fd.shape=="arr"){
+    // §3.3: kind 14 counts and aligns byte elements; kind 16 restores each element by key name.
     local shape=entry.Shape,n=get(r,shape.Bits)+shape.Min;
     if(r.bad||n<shape.Min||n>shape.Max){r.bad=true;return;}
     local kept=n<fd.bound?n:fd.bound;if(kept<n)r.clamped++;
     if(entry.Element.Kind==6&&!alignRead(r)){r.bad=true;return;}
-    local a=[];
-    for(local i=0;i<n;i++){local holder={value=null};readPayload(T,v,r,fd.elem,holder,"value",depth+1,entry.Element);if(i<kept)a.append(holder.value);if(r.bad)return;}
+    local keyed=(fd.keyvariants != null),a=keyed?owner[member]:[];if(!keyed)for(local j=0;j<fd.bound;j++)a.append(fd.elem.def);
+    for(local i=0;i<n;i++){
+      local index=i;
+      if(keyed){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||(ke.Id==0xfffffffffffffffd||ke.Id==0xfffffffffffffffe||ke.Id==0xffffffffffffffff)){r.bad=true;return;}index=-1;for(local j=0;j<fd.keyvariants.len();j++)if(fd.keyvariants[j][1]==ke.Id)index=j;if(index<0){r.unknown++;skipPeerEntry(T,v,r,entry.Element,depth+1);if(r.bad)return;continue;}}
+      local holder={value=null};readPayload(T,v,r,fd.elem,holder,"value",depth+1,entry.Element);if(index<kept)a[index]=holder.value;if(r.bad)return;
+    }
     owner[member]=a;return;
   }
   owner[member]=readScalar(r,T,v,fd,entry.Shape);
