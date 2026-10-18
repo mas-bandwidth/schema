@@ -26,6 +26,7 @@ TableRefuseMalformed
 TableRefuseClamped
 TableRefuseKindMismatch
 TableRefuseBase64Damaged
+TableRefuseBase64NotCanonical
 TableRefuseIntegrityMismatch
 TableRefuseNonFinite
 // TableRefuseBlobShared: one blob record named from two slots (docs/SPEC-TABLES.md
@@ -54,6 +55,7 @@ case TableRefuseMalformed:return "malformed"
 case TableRefuseClamped:return "clamped"
 case TableRefuseKindMismatch:return "kind_mismatch"
 case TableRefuseBase64Damaged:return "base64_damaged"
+case TableRefuseBase64NotCanonical:return "base64_not_canonical"
 case TableRefuseIntegrityMismatch:return "integrity_mismatch"
 case TableRefuseNonFinite:return "non_finite"
 case TableRefuseBlobShared:return "blob_shared"
