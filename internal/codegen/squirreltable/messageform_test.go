@@ -148,6 +148,29 @@ func messageBatchEnumField(refBits int, fieldSlot, variantSlot uint64) []byte {
 	}
 	return out
 }
+func messageBatchRefs(refBits int, refs ...uint64) []byte {
+	out := []byte{2, 0}
+	bits := 16
+	put := func(value uint64, width int) {
+		for i := 0; i < width; i++ {
+			at := bits / 8
+			if at == len(out) {
+				out = append(out, 0)
+			}
+			if (value>>i)&1 != 0 {
+				out[at] |= 1 << (bits % 8)
+			}
+			bits++
+		}
+	}
+	for _, ref := range refs {
+		put(ref, refBits)
+	}
+	for bits%8 != 0 {
+		put(0, 1)
+	}
+	return out
+}
 func messageBatchWithInnerRef(refBits int, slot, inner uint64) []byte {
 	out := []byte{2, 0}
 	bits := 16
@@ -343,6 +366,21 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 	if units["backenddemo"] != nil {
 		inputs["backend_ann"] = mustRead(t, filepath.Join(root, connections["backend_conn"].file))
 		inputs["damaged"] = mustRead(t, filepath.Join(root, "testdata/wire/tables/backend_batch_damaged_second_message.bin"))
+		vocab := ir.TableVocabulary(units["backenddemo"])
+		nodeSlot := 0
+		for i, e := range vocab {
+			if e.Id == ir.TableNodeWireId {
+				nodeSlot = i + 1
+			}
+		}
+		inputs["reserved_node_batch"] = messageBatchRefs(ir.TableMessageRefBits(len(vocab)), uint64(nodeSlot), 0)
+		nestedAnn, nestedCount := announcementWithPeerEntry(units["backenddemo"], ir.TableVocabularyEntry{Id: 0x334567890abcdef1, Kind: ir.TableKindTable})
+		inputs["reserved_nested_ann"] = nestedAnn
+		inputs["reserved_nested_batch"] = messageBatchRefs(ir.TableMessageRefBits(nestedCount), uint64(nestedCount), uint64(nodeSlot), 0, 0)
+		script.WriteString(`{local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables");local v={};local ar={};T.AnnounceRead(v,I["backend_ann"],ar);local out=[T.LoginRequest()];local rr={};local n=T.LoginRequestLoadMessages(out,v,I["reserved_node_batch"],rr);if(n==0&&rr.malformed)print("reserved_node:ok\n");else print("reserved_node:fail:"+n+":"+rr.malformed+"\n");}
+`)
+		script.WriteString(`{local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables");local v={};local ar={};T.AnnounceRead(v,I["reserved_nested_ann"],ar);local out=[T.LoginRequest()];local rr={};local n=T.LoginRequestLoadMessages(out,v,I["reserved_nested_batch"],rr);if(n==0&&rr.malformed)print("reserved_nested:ok\n");else print("reserved_nested:fail:"+n+":"+rr.malformed+"\n");}
+`)
 		login := units["backenddemo"].Tables["LoginRequest"]
 		var playerID ir.TableVocabularyEntry
 		for _, field := range login.Fields {
@@ -361,7 +399,6 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 		variantEntry := ir.TableVocabularyEntry{Id: variantID}
 		wrongEnumEntry := ir.TableVocabularyEntry{Id: variantID, Kind: ir.TableKindU64}
 		inputs["wrong_enum_sort_ann"] = announcementWithChangedEntry(units["backenddemo"], variantEntry, wrongEnumEntry)
-		vocab := ir.TableVocabulary(units["backenddemo"])
 		variantSlot, regionSlot := 0, 0
 		for i, e := range vocab {
 			if e.Id == variantID {
@@ -475,6 +512,12 @@ func TestSquirrelMessageFormMatchesTheGoldens(t *testing.T) {
 	}
 	if !strings.Contains(out, "wide_string_clamp:ok") {
 		t.Errorf("widened string bound was not clamped and reported: %s", out)
+	}
+	if !strings.Contains(out, "reserved_node:ok") {
+		t.Errorf("reserved node ID was accepted as a body field: %s", out)
+	}
+	if !strings.Contains(out, "reserved_nested:ok") {
+		t.Errorf("reserved node ID was accepted in a nested peer body: %s", out)
 	}
 	if !strings.Contains(out, "damage:ok") {
 		t.Errorf("damage in second body was not terminal for the batch: %s", out)

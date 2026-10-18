@@ -195,9 +195,9 @@ skipPeerEntry = function(T,v,r,e,depth) {
   if(depth>128){r.bad=true;return;}
   local sh=e.Shape,k=sh.Kind;
   if(k==0||k==32)return;
-  if(k==30){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local en=v.Entries[ref-1];if(en==null||en.Shape.Kind!=0||en.Id>=0xfffffffffffffffd)r.bad=true;return;}
+  if(k==30){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local en=v.Entries[ref-1];if(en==null||en.Shape.Kind!=0||(en.Id==0xfffffffffffffffd||en.Id==0xfffffffffffffffe||en.Id==0xffffffffffffffff))r.bad=true;return;}
   if(k==13){skipPeerBody(T,v,r,depth+1);return;}
-  if(k==15){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local arm=v.Entries[ref-1];if(arm==null||arm.Shape.Kind==0||arm.Id>=0xfffffffffffffffd){r.bad=true;return;}skipPeerEntry(T,v,r,arm,depth+1);return;}
+  if(k==15){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local arm=v.Entries[ref-1];if(arm==null||arm.Shape.Kind==0||(arm.Id==0xfffffffffffffffd||arm.Id==0xfffffffffffffffe||arm.Id==0xffffffffffffffff)){r.bad=true;return;}skipPeerEntry(T,v,r,arm,depth+1);return;}
   if(k==12||k==33){local n=get(r,sh.Bits);if(r.bad||n>sh.Max){r.bad=true;return;}if(k==12&&!alignRead(r)){r.bad=true;return;}skip(r,n*(k==12?8:16));return;}
   if(k==31){if(!alignRead(r)){r.bad=true;return;}local n=get(r,32);if(r.bad)return;skip(r,n*8);return;}
   if(k==14||k==16){local n=get(r,sh.Bits)+sh.Min;if(r.bad||n>sh.Max){r.bad=true;return;}if(k==14&&e.Element.Kind==6&&!alignRead(r)){r.bad=true;return;}for(local i=0;i<n;i++){if(k==16){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}}skipPeerEntry(T,v,r,e.Element,depth+1);if(r.bad)return;}return;}
@@ -206,7 +206,7 @@ skipPeerEntry = function(T,v,r,e,depth) {
 };
 skipPeerBody = function(T,v,r,depth) {
   if(depth>128){r.bad=true;return;}
-  for(;;){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Entries.len()){r.bad=true;return;}skipPeerEntry(T,v,r,v.Entries[ref-1],depth+1);if(r.bad)return;}
+  for(;;){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Entries.len()){r.bad=true;return;}local entry=v.Entries[ref-1];if(entry.Id==0xfffffffffffffffd||entry.Id==0xfffffffffffffffe||entry.Id==0xffffffffffffffff){r.bad=true;return;}skipPeerEntry(T,v,r,entry,depth+1);if(r.bad)return;}
 };
 local findSlot = function(T, id) {
   for (local i = 0; i < T.TableMessageIds.len(); i++) if (T.TableMessageIds[i] == id) return i + 1;
@@ -404,6 +404,7 @@ readBody = function(T, v, r, d, value, depth) {
     local ref=get(r,v.RefBits);if(r.bad)return;
     if(ref==0)return;
     local id=idAt(v,ref);if(id==null||ref>v.Entries.len()){r.bad=true;return;}
+    if(id==0xfffffffffffffffd||id==0xfffffffffffffffe||id==0xffffffffffffffff){r.bad=true;return;}
     local entry=v.Entries[ref-1],fd=null;if(id in d.byId)fd=d.byId[id];
     if(fd==null){r.unknown++;skipPeerEntry(T,v,r,entry,depth+1);if(r.bad)return;continue;}
     if(entry.Kind!=fd.kind){r.kindMismatch++;skipPeerEntry(T,v,r,entry,depth+1);if(r.bad)return;continue;}
