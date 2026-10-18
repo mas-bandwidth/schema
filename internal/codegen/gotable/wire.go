@@ -68,10 +68,7 @@ func unitDeclaresTableKind(u *ir.Unit, kind int) bool {
 		return false
 	}
 	for name := range ir.TableClosure(u) {
-		st := u.Tables[name]
-		if st == nil {
-			st = u.Structs[name]
-		}
+		st := ir.ClosureMember(u, name)
 		if st == nil {
 			continue
 		}

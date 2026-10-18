@@ -890,27 +890,16 @@ func variableTableNames(u *ir.Unit) []string {
 	if len(variable) == 0 {
 		return nil
 	}
-	names := make([]string, 0, len(variable))
-	for name := range variable {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(variable))
 	return names
 }
 
 // closureEnums is every enum whose values ride in the unit's table closure.
 func closureEnums(u *ir.Unit, closure map[string]bool) map[string]*ir.Enum {
 	used := map[string]*ir.Enum{}
-	names := make([]string, 0, len(closure))
-	for name := range closure {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(closure))
 	for _, name := range names {
-		st := u.Tables[name]
-		if st == nil {
-			st = u.Structs[name]
-		}
+		st := ir.ClosureMember(u, name)
 		if st == nil {
 			continue
 		}
@@ -963,10 +952,7 @@ func fileEnums(f *ir.File, used map[string]*ir.Enum) []*ir.Enum {
 // array, which is what decides whether the unit carries the keyed accessor.
 func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 	for name := range closure {
-		st := u.Tables[name]
-		if st == nil {
-			st = u.Structs[name]
-		}
+		st := ir.ClosureMember(u, name)
 		if st == nil {
 			continue
 		}
@@ -1715,11 +1701,7 @@ func buildSharedRuntime() (*sharedRuntime, error) {
 			return nil, fmt.Errorf("shared runtime probe: %w", err)
 		}
 		var p probe
-		names := make([]string, 0, len(files))
-		for n := range files {
-			names = append(names, n)
-		}
-		sort.Strings(names)
+		names := slices.Sorted(maps.Keys(files))
 		for _, n := range names {
 			ds, f, err := rtParseDecls(n, files[n])
 			if err != nil {
