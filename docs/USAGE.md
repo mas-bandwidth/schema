@@ -856,10 +856,6 @@ the payload.** The
 per-target columns are normative in [SPEC.md](SPEC.md) §6.3. Write
 buffers are a multiple of 8 in every language.
 
-For table files, inspect the strict report's named refusal: a fixed-form
-refusal reports its section 3.4 reason (such as `layout_unknown`), while an
-unsupported form byte reports `unknown_form` (SPEC-TABLES.md section 6.5).
-
 That covers ranges, counts past an array bound, string lengths past their
 maximum, enum values outside the declared range, and reads that run past the
 end of the buffer.
