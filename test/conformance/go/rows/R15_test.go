@@ -3,19 +3,21 @@ package main
 // THE GO CELL go/R15 (docs/roadmap.sexp:1976): "the four forward-read clamps
 // are retired — count clamp across bounds, range clamp across versions, remap
 // of an unknown variant to None, drop-and-count of an unknown field: each is
-// layout_newer now".
+// layout_newer now". The cell's title predates SPEC-TABLES §21.3: a hash the
+// lineage does not hold is `layout_unknown` on Go, and `layout_newer` is
+// reserved until the lock lineage proves direction.
 //
-// THE LAW. docs/FIXED-FORM-ALGORITHM.md:970 (§5.6): "The count clamp across
-// bounds, the range clamp across versions, the remap of an unknown variant to
-// `None`, the drop-and-count of an unknown field — all forward reads, now
-// `layout_newer`."
+// THE LAW. docs/FIXED-FORM-ALGORITHM.md §5.6: "The count clamp across bounds,
+// the range clamp across versions, the remap of an unknown variant to `None`,
+// the drop-and-count of an unknown field — all forward reads, now refused at
+// step 5 before any record: `layout_unknown` on Go".
 //
 // The reader a fixed table rides is matched on the EIGHT BYTES of its header's
 // hash against the lineage the BUILD laid down (docs/FIXED-FORM-ALGORITHM.md
 // §5: "A fixed table reads BACKWARD and never forward. A file is matched on
 // the eight bytes of its header's hash ... and the layout it carries is held
 // to a BYTE COMPARISON against the bytes the lock recorded — never walked.
-// A hash the lineage does not hold is layout_newer"). Every forward read —
+// A hash the lineage does not hold is a refusal"; on Go, layout_unknown). Every forward read —
 // a count clamped to the reader's bound, a ranged scalar clamped to THIS
 // build's bounds, a variant remapped to None, a field dropped and counted —
 // is a read of a layout the lineage does not hold, and the law retires all
@@ -26,15 +28,15 @@ package main
 //
 //   1. count clamp across bounds   — an UNKNOWN hash whose body's counted
 //      array's count word exceeds any possible bound (0xFFFFFFFF) must land
-//      layout_newer, not a clamped read.
+//      layout_unknown, not a clamped read.
 //   2. range clamp across versions — an UNKNOWN hash whose body's ranged
 //      scalar holds a value past the reader's declared max must land
-//      layout_newer, not a clamped read.
+//      layout_unknown, not a clamped read.
 //   3. remap of an unknown variant to None — an UNKNOWN hash whose body's
-//      union tag names no arm must land layout_newer, not None with an
+//      union tag names no arm must land layout_unknown, not None with an
 //      unknown counted.
 //   4. drop-and-count of an unknown field — an UNKNOWN hash whose layout
-//      carries a field id this build does not declare must land layout_newer,
+//      carries a field id this build does not declare must land layout_unknown,
 //      not a read with unknown counted.
 //
 // The vector is derived from the law and the generator's own file shape:
@@ -104,10 +106,10 @@ func TestRowR15(t *testing.T) {
 	// THE REFUSAL BY NAME, all four of the title's clauses at once: the hash
 	// is in no lineage entry, so count clamps, range clamps, variant remaps
 	// and unknown-field drops are all forward reads the reader never reaches.
-	if rep.Reason != "layout_newer" {
-		t.Errorf("reason=%q, want layout_newer (the four forward-read clamps retired)", rep.Reason)
+	if rep.Reason != "layout_unknown" {
+		t.Errorf("reason=%q, want layout_unknown (the four forward-read clamps retired)", rep.Reason)
 	} else {
-		fmt.Printf("PASS: reason=layout_newer (count clamp, range clamp, variant remap, unknown-field drop are all retired)\n")
+		fmt.Printf("PASS: reason=layout_unknown (count clamp, range clamp, variant remap, unknown-field drop are all retired)\n")
 	}
 
 	// THE FILE'S HASH AND NOTHING ELSE (§5.3): the refusal reports the file's
@@ -133,7 +135,7 @@ func TestRowR15(t *testing.T) {
 		fmt.Printf("PASS: Clamped=0 (no count clamp, no range clamp)\n")
 	}
 	if rep.Malformed {
-		t.Errorf("Malformed=true, want false (layout_newer is a refusal, not damage)")
+		t.Errorf("Malformed=true, want false (layout_unknown is a refusal, not damage)")
 	} else {
 		fmt.Printf("PASS: Malformed=false\n")
 	}
