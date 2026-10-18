@@ -61,6 +61,7 @@ func scanSourceSeams(t *testing.T) {
 		"block.go:166":         "asks whether the emitted unit uses serialize., to pick imports",
 		"cook.go:310":          "asks whether the emitted unit uses serialize., to pick imports",
 		"gotable.go:746":       "asks whether the emitted unit uses serialize., to pick imports",
+		"testgen.go:58":        "asks whether the emitted test file uses strings., to pick imports",
 		"unboundedtext.go:181": "unbounded-text JSON walker seam, out of this card's PATHS (follow-up)",
 		"unboundedtext.go:190": "unbounded-text JSON walker seam, out of this card's PATHS (follow-up)",
 		"maps.go:20":           "optional-map JSON walker seam, out of this card's PATHS (follow-up)",
