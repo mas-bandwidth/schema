@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -272,9 +273,9 @@ func TestGoJsonWriterIsStrict(t *testing.T) {
 		defer textDiffDirMu.Unlock()
 		os.Setenv("SCHEMA_TEXT_DIFF_DIR", dir)
 		defer os.Unsetenv("SCHEMA_TEXT_DIFF_DIR")
-		os.Setenv("SCHEMA_TEXT_DIFF_SEED", "24845619678")
+		os.Setenv("SCHEMA_TEXT_DIFF_SEED", strconv.Itoa(textDifferentialSeed))
 		defer os.Unsetenv("SCHEMA_TEXT_DIFF_SEED")
-		os.Setenv("SCHEMA_TEXT_DIFF_N", "200")
+		os.Setenv("SCHEMA_TEXT_DIFF_N", strconv.Itoa(textDifferentialN))
 		defer os.Unsetenv("SCHEMA_TEXT_DIFF_N")
 		out, err := runGeneratedEdited(t, textDifferentialSchema, textDifferentialProbe, nil)
 		if err != nil {
@@ -330,8 +331,17 @@ func TestGoJsonWriterIsStrict(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !bytes.Contains(data, []byte("-0")) {
-			t.Fatalf("out1: float64 -0 did not write as -0:\n%s", data)
+		// A -0 is spelled -0 (docs/SPEC-TABLES.md, the special-values table:
+		// TEXT / JSON row); out0 holds the smallest subnormal, never -0.
+		if !bytes.Contains(data, []byte("\"f\": -0,\n")) {
+			t.Fatalf("out1: float64 -0 did not write as \"f\": -0:\n%s", data)
+		}
+		data0, err := os.ReadFile(filepath.Join(dir, "out0.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(data0, []byte("\"f\": -0")) || bytes.Contains(data0, []byte("\"f\": 0,")) {
+			t.Fatalf("out0: the smallest subnormal wrote as a zero:\n%s", data0)
 		}
 	})
 }
@@ -392,5 +402,6 @@ func TestGoJsonWriterIsStrictNegativeControl(t *testing.T) {
 		if !strings.Contains(err.Error(), "invalid UTF-8") {
 			t.Fatalf("NEGATIVE CONTROL FAILED: the gate went red, but not on invalid UTF-8: %v", err)
 		}
+		t.Logf("negative control: strictJSON refused the sabotaged text: %v", err)
 	})
 }
