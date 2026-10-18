@@ -132,75 +132,29 @@ func tableExtentWalk(base,dest unsafe.Pointer,info *TableTypeInfo,a *TableArena,
 func tableExtentContainer(p,q unsafe.Pointer,f *TableFieldInfo,a *TableArena,region unsafe.Pointer,at *int64)bool {h:=(*tableContainer)(p);if h.Count<0{return false};if h.Count==0 {if q!=nil {*(*tableContainer)(q)=tableContainer{}};return true};*at=(*at+int64(f.ElemAlign)-1)& -int64(f.ElemAlign);start:=*at;*at+=int64(h.Count)*int64(f.ElemSize);if *at<start{return false};cursor:=tableMapCursor(h,f,a);defer cursor.Release();if q!=nil {out:=(*tableContainer)(q);out.Count=h.Count;out.Ref=int64(uintptr(unsafe.Add(region,start))-uintptr(q))};for j:=int32(0);j<h.Count;j++ {elem:=cursor.Next();if elem==nil{return false};var placed unsafe.Pointer;if q!=nil {placed=unsafe.Add(region,start+int64(j)*int64(f.ElemSize));copy(unsafe.Slice((*byte)(placed),f.ElemSize),unsafe.Slice((*byte)(elem),f.ElemSize))};if !tableExtentValue(elem,placed,f,a,region,at){return false}};return true}
 
 func tableExtentValue(p,q unsafe.Pointer,f *TableFieldInfo,a *TableArena,region unsafe.Pointer,at *int64) bool {if f.Pointer{return true};if f.Kind==13&&f.Table!=nil{return tableExtentWalk(p,q,f.Table(),a,region,at)};if f.Kind==15&&f.Arms!=nil {u:=f.Arms();tag:=tableJsonGetRaw(unsafe.Add(p,u.TagOffset),u.TagSize);if tag>=uint64(len(u.Arms)){return false};if tag==0||u.Arms[tag].Void{return true};arm:=&u.Arms[tag].Field;var placed unsafe.Pointer;if q!=nil{placed=unsafe.Add(q,arm.Offset)};count:=int32(1);if arm.IsArray {count=tableRegionCount(p,arm);if count<0||count>arm.ArrayBound{return false}};for j:=int32(0);j<count;j++ {var out unsafe.Pointer;if placed!=nil{out=unsafe.Add(placed,uintptr(j)*uintptr(arm.ElemSize))};if !tableExtentValue(unsafe.Add(p,uintptr(arm.Offset)+uintptr(j)*uintptr(arm.ElemSize)),out,arm,a,region,at){return false}};return true};return true}
-`
-
-const tableWireExtentSource = `
 func tableWireNodeBytes(r TableReader,t *TableTypeInfo)int64{n,_:=tableWireNodeBytesReason(r,t);return n}
-func tableWireNodeBytesReason(r TableReader,t *TableTypeInfo,strict ...bool)(int64,TableRefuseReason){at:=int64(0);if reason:=tableWireExtent(r,t,&at,strict...);reason!=TableRefuseOk{return -2,reason};return tableRegionRound(tableRegionRound(int64(t.Size))+at),TableRefuseOk}
-func tableWireExtent(r TableReader,t *TableTypeInfo,at *int64,strict ...bool)TableRefuseReason{
- damaged:=len(strict)>0&&strict[0]
- bad:=func()TableRefuseReason{if damaged{return TableRefuseWireDamaged};return TableRefuseOk}
- for{ref,ok:=r.Leb();if !ok{return bad()};if ref==0{return TableRefuseOk};id,ok:=r.Resolve(ref);if !ok||!r.Has(1){return bad()};kind:=r.Get8();var f *TableFieldInfo;for i:=range t.Fields{if t.Fields[i].Id==id{f=&t.Fields[i];break}};if f==nil{if !r.Skip(kind){return bad()};continue}
-  if damaged&&kind==12{body,ok:=r.Body();if !ok||!tableUtf8Valid(body.Buffer){return TableRefuseWireDamaged};continue}
-  if kind==15&&f.Kind==15&&!f.IsArray{if reason:=tableWireUnionExtent(&r,f,at,strict...);reason!=TableRefuseOk{return reason};continue}
-  if kind==13&&f.Kind==13&&!f.IsArray&&!f.Pointer{body,ok:=r.Body();if !ok{return bad()};if reason:=tableWireExtent(body,f.Table(),at,strict...);reason!=TableRefuseOk{return reason};if damaged&&body.Offset!=int64(len(body.Buffer)){return TableRefuseWireDamaged};continue}
-  if (kind==14&&f.KeyName==nil||kind==16&&f.KeyName!=nil)&&f.IsArray{body,ok:=r.Body();if !ok{return bad()};if reason:=tableWireArrayExtent(body,f,kind==16,at,strict...);reason!=TableRefuseOk{return reason};continue};if !r.Skip(kind){return bad()}
- }
-}
-func tableWireArrayExtent(r TableReader,f *TableFieldInfo,keyed bool,at *int64,strict ...bool)TableRefuseReason{
- damaged:=len(strict)>0&&strict[0]
- if len(r.Buffer)<2{return TableRefuseOk}
- kind:=r.Get8();count,ok:=r.Leb();if !ok{if damaged{return TableRefuseWireDamaged};return TableRefuseOk}
- if kind!=f.Kind&&!tableKindWidens(kind,f.Kind){return TableRefuseOk}
- keep:=count
- if f.IsArray&&!f.List&&!f.Map&&f.ArrayBound>0&&keep>uint64(f.ArrayBound){keep=uint64(f.ArrayBound)}
- if f.List||f.Map{if count>math.MaxInt32{return TableRefuseCountOverExtentCap};floor:=tableKindBytes(kind);if kind==13{floor=2};if floor<1{floor=1};if count>uint64((int64(len(r.Buffer))-r.Offset)/floor){return TableRefuseCountOverLength};*at=(*at+int64(f.ElemAlign)-1)& -int64(f.ElemAlign);*at+=int64(count)*int64(f.ElemSize)}
- if damaged{
-  for i:=uint64(0);i<keep;i++{
-   if keyed{if _,ok:=r.Leb();!ok{return TableRefuseWireDamaged}}
-   switch kind{
-   case 12:
-    body,ok:=r.Body();if !ok||!tableUtf8Valid(body.Buffer){return TableRefuseWireDamaged}
-   case 13:
-    body,ok:=r.Body();if !ok{return TableRefuseWireDamaged};if reason:=tableWireExtent(body,f.Table(),at,true);reason!=TableRefuseOk{return reason};if body.Offset!=int64(len(body.Buffer)){return TableRefuseWireDamaged}
-   case 15:
-    if reason:=tableWireUnionExtent(&r,f,at,true);reason!=TableRefuseOk{return reason}
-   default:
-    w:=tableKindBytes(kind);if w<=0{w=1};if !r.Has(w){return TableRefuseWireDamaged};r.Offset+=w
-   }
-  }
-  return TableRefuseOk
- }
- if kind!=13&&kind!=15{return TableRefuseOk}
- for i:=uint64(0);i<count&&r.Has(1);i++{if keyed{if _,ok:=r.Leb();!ok{return TableRefuseOk}};if kind==13{body,ok:=r.Body();if !ok{return TableRefuseOk};if reason:=tableWireExtent(body,f.Table(),at);reason!=TableRefuseOk{return reason}}else if reason:=tableWireUnionExtent(&r,f,at);reason!=TableRefuseOk{return reason}}
- return TableRefuseOk
-}
-func tableWireUnionExtent(r *TableReader,f *TableFieldInfo,at *int64,strict ...bool)TableRefuseReason{
- damaged:=len(strict)>0&&strict[0]
- bad:=func()TableRefuseReason{if damaged{return TableRefuseWireDamaged};return TableRefuseOk}
- ref,ok:=r.Leb();if !ok{r.Offset=int64(len(r.Buffer));return bad()};if ref==0{return TableRefuseOk}
- id,ok:=r.Resolve(ref);if !ok||!r.Has(1){r.Offset=int64(len(r.Buffer));return bad()}
- kind:=r.Get8();body,ok:=r.Body();if !ok{r.Offset=int64(len(r.Buffer));return bad()}
- u:=f.Arms()
- for i:=1;i<len(u.Arms);i++{
-  if f.VariantId(uint64(i))!=id{continue}
-  arm:=&u.Arms[i]
-  if arm.Void{if damaged&&len(body.Buffer)!=0{return TableRefuseWireDamaged};return TableRefuseOk}
-  if arm.Field.Pointer{return TableRefuseOk}
-  af:=&arm.Field
-  if af.IsArray{return tableWireArrayExtent(body,af,af.KeyName!=nil,at,strict...)}
-  if af.Kind==13&&af.Table!=nil{return tableWireExtent(body,af.Table(),at,strict...)}
-  if af.Kind==15{return tableWireUnionExtent(&body,af,at,strict...)}
-  if damaged{if kind!=uint8(af.Kind)&&!tableKindWidens(kind,uint8(af.Kind)){return TableRefuseOk};if !body.Has(tableKindBytes(kind)){return TableRefuseWireDamaged}}
-  return TableRefuseOk
- }
- return TableRefuseOk
-}
+func tableWireNodeBytesReason(r TableReader,t *TableTypeInfo)(int64,TableRefuseReason){at:=int64(0);if reason:=tableWireExtent(r,t,&at);reason!=TableRefuseOk{return -2,reason};return tableRegionRound(tableRegionRound(int64(t.Size))+at),TableRefuseOk}
+func tableWireExtent(r TableReader,t *TableTypeInfo,at *int64)TableRefuseReason{for{ref,ok:=r.Leb();if !ok||ref==0{return TableRefuseOk};id,ok:=r.Resolve(ref);if !ok||!r.Has(1){return TableRefuseOk};kind:=r.Get8();var f *TableFieldInfo;for i:=range t.Fields{if t.Fields[i].Id==id{f=&t.Fields[i];break}};if f==nil{if !r.Skip(kind){return TableRefuseOk};continue}
+ if kind==15&&f.Kind==15&&!f.IsArray{if reason:=tableWireUnionExtent(&r,f,at);reason!=TableRefuseOk{return reason};continue}
+ if kind==13&&f.Kind==13&&!f.IsArray&&!f.Pointer{body,ok:=r.Body();if !ok{return TableRefuseOk};if reason:=tableWireExtent(body,f.Table(),at);reason!=TableRefuseOk{return reason};continue}
+ if (kind==14&&f.KeyName==nil||kind==16&&f.KeyName!=nil)&&f.IsArray{body,ok:=r.Body();if !ok{return TableRefuseOk};if reason:=tableWireArrayExtent(body,f,kind==16,at);reason!=TableRefuseOk{return reason};continue};if !r.Skip(kind){return TableRefuseOk}
+}}
+func tableWireArrayExtent(r TableReader,f *TableFieldInfo,keyed bool,at *int64)TableRefuseReason{if len(r.Buffer)<2{return TableRefuseOk};kind:=r.Get8();count,ok:=r.Leb();if !ok{return TableRefuseOk};if kind!=f.Kind&&!tableKindWidens(kind,f.Kind){return TableRefuseOk};if f.List||f.Map{if count>math.MaxInt32{return TableRefuseCountOverExtentCap};floor:=tableKindBytes(kind);if kind==13{floor=2};if floor<1{floor=1};if count>uint64((int64(len(r.Buffer))-r.Offset)/floor){return TableRefuseCountOverLength};*at=(*at+int64(f.ElemAlign)-1)& -int64(f.ElemAlign);*at+=int64(count)*int64(f.ElemSize)}
+ if kind!=13&&kind!=15{return TableRefuseOk};for i:=uint64(0);i<count&&r.Has(1);i++{if keyed{if _,ok:=r.Leb();!ok{return TableRefuseOk}};if kind==13{body,ok:=r.Body();if !ok{return TableRefuseOk};if reason:=tableWireExtent(body,f.Table(),at);reason!=TableRefuseOk{return reason}}else if reason:=tableWireUnionExtent(&r,f,at);reason!=TableRefuseOk{return reason}};return TableRefuseOk}
+func tableWireUnionExtent(r *TableReader,f *TableFieldInfo,at *int64)TableRefuseReason{ref,ok:=r.Leb();if !ok{r.Offset=int64(len(r.Buffer));return TableRefuseOk};if ref==0{return TableRefuseOk};id,ok:=r.Resolve(ref);if !ok||!r.Has(1){r.Offset=int64(len(r.Buffer));return TableRefuseOk};r.Get8();body,ok:=r.Body();if !ok{r.Offset=int64(len(r.Buffer));return TableRefuseOk};u:=f.Arms();for i:=1;i<len(u.Arms);i++{if f.VariantId(uint64(i))!=id{continue};arm:=&u.Arms[i];if arm.Void||arm.Field.Pointer{return TableRefuseOk};af:=&arm.Field;if af.IsArray{return tableWireArrayExtent(body,af,af.KeyName!=nil,at)};if af.Kind==13&&af.Table!=nil{return tableWireExtent(body,af.Table(),at)};if af.Kind==15{return tableWireUnionExtent(&body,af,at)}};return TableRefuseOk}
+
 `
 
 // Keep the extent machinery out of units which have no containers.
 func containerRegionSource(s string) string {
 	s = tableSourceReplace(s, "nodes:=TableNodeMap{Entries:directory,Arena:true}", "nodes:=TableNodeMap{Entries:directory,Arena:true,Carve:TableExtentCarve{Worker:worker}}", 1)
+	// the strict measure's map arm (regions.go tableWireStrictSource): a map's
+	// key readers live with the container runtime, so the arm is patched in here
+	s = tableSourceReplace(s, " case f.Map:return true // map arm\n", ` case f.Map: // maps.go emitMapRead: entry bodies, whole keys in ascending order
+  if elemKind!=13{return true};kf:=&f.Table().Fields[0];var last tableMapKey;prior:=false
+  for i:=uint64(0);i<count;i++{elem,ok:=sub.Body();if !ok{return false};key,bad,over,_,whole:=tableMapReadKey(elem,kf);if bad{return true};if !whole{return false};if over{continue};if prior&&tableMapKeyOrder(last,key,kf)>0{return false};if !tableWireStrict(&elem,f.Table(),true,nodes){return false};last=key;prior=true}
+  return true
+`, 1)
 	return containerRegionSourceCommon(s)
 }
 
@@ -215,7 +169,7 @@ func containerRegionSourceRetain(s string) string {
 func containerRegionSourceCommon(s string) string {
 	s = tableSourceReplace(s, "type TableNodeMap struct {", "type TableNodeMap struct { Carve TableExtentCarve;", 1)
 	s = tableSourceReplace(s, "return tableRegionRound(int64(t.Size)),TableRefuseOk", "return tableWireNodeBytesReason(body,t)", 1)
-	s = tableSourceReplace(s, "data:=tableRegionRound(int64(root.Size));s:=", "data,reason:=tableWireNodeBytesReason(r,root,strict);if data<0{return -1,0,TableOpenRefused,reason};s:=", 1)
+	s = tableSourceReplace(s, "data:=tableRegionRound(int64(root.Size));s:=", "data,reason:=tableWireNodeBytesReason(r,root);if data<0{return -1,0,TableOpenRefused,reason};s:=", 1)
 	s = tableSourceReplace(s, "used:=tableRegionRound(int64(root.Size));k:=", "used:=tableWireNodeBytes(r,root);k:=", 1)
 	s = tableSourceReplace(s, "body.Nodes=nodes;t.LoadBody(body,p)", "carve:=TableExtentCarve{Base:p,At:tableRegionRound(int64(t.Size)),Limit:tableWireNodeBytes(body,t)};body.Nodes=nodes;body.Nodes.Carve=carve;t.LoadBody(body,p)", 1)
 	s = tableSourceReplace(s, "r.Nodes=nodes;r.Nested=false;root.LoadBody(r,base)", "carve:=TableExtentCarve{Base:base,At:tableRegionRound(int64(root.Size)),Limit:tableWireNodeBytes(r,root)};r.Nodes=nodes;r.Nodes.Carve=carve;r.Nested=false;root.LoadBody(r,base)", 1)
