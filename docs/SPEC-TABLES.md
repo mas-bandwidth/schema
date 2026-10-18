@@ -16821,9 +16821,12 @@ from its own samples, in its own package.
   4 KiB (the round trip above keeps the full sample); then AT MOST 256
   SINGLE-BYTE MUTATIONS. For those, 85 byte positions are shared out round
   robin across the target's seeds, no seed taking more positions than it has
-  bytes; within a seed they are its first 16 and its last 16 bytes, then an
-  even fixed stride over the bytes between, stopping at the seed's share;
-  and each position takes each of the values `0x00`, `0x01` and `0xff`, the
+  bytes. A seed whose share covers all its bytes is mutated at every byte;
+  otherwise its positions are its first and last bytes, 16 at each end when
+  the share holds 48 or more and a third of the share at each end when it
+  does not, and the rest of the share at an even fixed stride over the bytes
+  between, so the middle of every seed is reached. Each position takes each
+  of the values `0x00`, `0x01` and `0xff` the byte does not already hold, the
   seed with that one byte replaced, a mutation. Every mutation is a seed of
   the target's corpus. The list is fixed by the declaration: no randomness,
   no clock. The bound is on the seed corpus only; at fuzz time the fuzzer

@@ -691,8 +691,8 @@ func testgenFromJsonAt(b *strings.Builder, in, n string, variable bool, text, v,
 
 // The bounded seed corpus of §16.11: no seed over tgSeedCeiling bytes (a longer
 // sample is trimmed to its first and last half of it), at most tgSeedMutations
-// mutation seeds per target, and tgSeedEnds bytes at each end of a sample
-// mutated before the stride between.
+// mutation seeds per target, and at most tgSeedEnds bytes at each end of a
+// sample mutated besides the stride between.
 const (
 	tgSeedCeiling   = 4096
 	tgSeedMutations = 256
@@ -711,9 +711,9 @@ func testgenFuzzHelpers(b *strings.Builder, base string) {
 	fmt.Fprintf(b, "\n// fuzz%sSilent reports whether a tolerant read's report is silent (SPEC-TABLES\n// §4.1): the whole report at its zero value, as a sample's read must be.\n", base)
 	fmt.Fprintf(b, "func fuzz%sSilent(r *TableReport) bool {\n", base)
 	b.WriteString("\treturn *r == (TableReport{})\n}\n")
-	fmt.Fprintf(b, "\n// fuzz%sInput spells a failing input: its length, its flip position when it is\n// a flip, and its first 256 bytes in hex.\n", base)
+	fmt.Fprintf(b, "\n// fuzz%sInput spells a failing input: its length, a position when one is\n// given (at >= 0), and its first 256 bytes in hex.\n", base)
 	fmt.Fprintf(b, "func fuzz%sInput(data []byte, at int) string {\n", base)
-	b.WriteString("\ts := strconv.Itoa(len(data)) + \" bytes\"\n\tif at >= 0 {\n\t\ts += \", flipped at byte \" + strconv.Itoa(at)\n\t}\n")
+	b.WriteString("\ts := strconv.Itoa(len(data)) + \" bytes\"\n\tif at >= 0 {\n\t\ts += \", at byte \" + strconv.Itoa(at)\n\t}\n")
 	b.WriteString("\tif len(data) > 256 {\n\t\treturn s + \", \" + hex.EncodeToString(data[:256]) + \"...\"\n\t}\n\treturn s + \", \" + hex.EncodeToString(data)\n}\n")
 	fmt.Fprintf(b, `
 // fuzz%[1]sBound turns a target's sample encodings into its bounded, deterministic
@@ -723,8 +723,11 @@ func testgenFuzzHelpers(b *strings.Builder, base string) {
 // Then at most %[4]d mutations: %[5]d byte positions are shared out round robin
 // across the samples, no sample taking more positions than it has bytes, and
 // each position takes each of the values 0x00, 0x01 and 0xff. Within a sample
-// the positions are its first %[6]d and last %[6]d bytes, then an even fixed
-// stride over the bytes between them, stopping at the sample's share.
+// the positions are its first and last bytes, %[6]d at each end when its share
+// holds three times that, else a third of its share at each end, and the rest
+// at an even fixed stride over the bytes between, so the middle of a sample
+// is always reached. A value the byte already holds is skipped, as it is the
+// sample itself.
 func fuzz%[1]sBound(samples [][]byte) (seeds [][]byte, mutations int) {
 	trimmed := make([][]byte, len(samples))
 	for i, s := range samples {
@@ -755,23 +758,22 @@ func fuzz%[1]sBound(samples [][]byte) (seeds [][]byte, mutations int) {
 				at = append(at, k)
 			}
 		} else {
-			head := min(%[6]d, (p+1)/2)
-			tail := min(%[6]d, p-head)
-			for k := 0; k < head; k++ {
-				at = append(at, k)
+			ends := min(%[6]d, p/3)
+			for k := 0; k < ends; k++ {
+				at = append(at, k, l-1-k)
 			}
-			for k := 0; k < tail; k++ {
-				at = append(at, l-1-k)
-			}
-			if m := p - head - tail; m > 0 {
-				stride := (l - %[7]d) / (m + 1)
+			if m := p - 2*ends; m > 0 {
+				stride := (l - 2*ends) / (m + 1)
 				for k := 1; k <= m; k++ {
-					at = append(at, %[6]d+stride*k)
+					at = append(at, ends-1+stride*k)
 				}
 			}
 		}
 		for _, a := range at {
 			for _, c := range []byte{0x00, 0x01, 0xff} {
+				if s[a] == c {
+					continue
+				}
 				m := bytes.Clone(s)
 				m[a] = c
 				seeds = append(seeds, m)
@@ -792,7 +794,7 @@ func fuzz%[1]sSeed(f *testing.F, samples [][]byte) {
 		f.Add(seed)
 	}
 }
-`, base, tgSeedCeiling, tgSeedCeiling/2, tgSeedMutations, tgSeedMutations/3, tgSeedEnds, 2*tgSeedEnds)
+`, base, tgSeedCeiling, tgSeedCeiling/2, tgSeedMutations, tgSeedMutations/3, tgSeedEnds)
 }
 
 // testgenFuzz writes the table's seeds and its three fuzz targets,

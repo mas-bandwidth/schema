@@ -42,11 +42,11 @@ var testgenFuzzDefects = []struct{ target, name, hex string }{
 // back unseen to the unbounded corpus that once reached 94 GiB RSS. Raise a
 // total only on purpose, to the figure the gate logs.
 const (
-	fuzzPinMutationsPerTarget = tgSeedMutations // at most 256 mutation seeds per target
-	fuzzPinSeedBytes          = tgSeedCeiling   // no seed over 4 KiB
-	fuzzPinTotalSeeds         = 15000           // every seed of every target: 14778 when pinned
-	fuzzPinTotalSeedBytes     = 6500000         // every seed's bytes: 6282984 when pinned
-	fuzzPinSeedMemory         = 1 << 30         // the seed run stays under 1 GiB
+	fuzzPinMutationsPerTarget = 256     // at most 256 mutation seeds per target, as a literal: never tgSeedMutations
+	fuzzPinSeedBytes          = 4096    // no seed over 4 KiB, as a literal: never tgSeedCeiling
+	fuzzPinTotalSeeds         = 15000   // every seed of every target: 13847 when pinned
+	fuzzPinTotalSeedBytes     = 6500000 // every seed's bytes: 6027309 when pinned
+	fuzzPinSeedMemory         = 1 << 30 // the seed run stays under 1 GiB
 )
 
 // TestGoTestgenFuzzTargets is the gate of the generated fuzz targets
