@@ -32,34 +32,52 @@ func TestGoSourceSeamsFailClosed(t *testing.T) {
 	generateEverySurface(t)
 }
 
-// scanSourceSeams is half (a). The only non-seam string replacements inside the
-// package are:
-//   - source.go:40 — the fail-closed helper, the definitional home of the seam
+// seamAllow is one allow-list entry: the exact number of times a file must
+// hold the trimmed source line, and why that line is not a runtime-source seam.
+type seamAllow struct {
+	count  int
+	reason string
+}
+
+// seamContentKey is the allow-list key: a file name and the trimmed source
+// line, never a line number, so moving a seam cannot turn the scan red.
+func seamContentKey(fn, line string) string {
+	return fn + ": " + strings.TrimSpace(line)
+}
+
+var seamReplaceAllow = map[string]seamAllow{
+	seamContentKey("source.go", `return strings.Replace(source, old, replacement, count)`):         {1, "tableSourceReplace's core replace, the defined seam helper"},
+	seamContentKey("gotable.go", `s = g.indent + strings.ReplaceAll(s, "\n", "\n"+g.indent)`):      {1, "indentation of an emitted line, not a runtime-source seam"},
+	seamContentKey("retain.go", `source = strings.ReplaceAll(source, rewrites[i], rewrites[i+1])`): {1, "retain family per-half rewrite, validated on the whole by tableSourceReplace above"},
+}
+
+var seamProbeAllow = map[string]seamAllow{
+	seamContentKey("source.go", `if count := strings.Count(source, marker); count != 1 {`):                            {1, "tableSourceIndex counts the marker it is given, the seam helper"},
+	seamContentKey("source.go", `got := strings.Count(source, old)`):                                                  {1, "tableSourceReplace counts the anchor it is given, the seam helper"},
+	seamContentKey("block.go", `if strings.Contains(g.structs.String(), "serialize.") {`):                             {1, "asks whether the emitted unit uses serialize., to pick imports"},
+	seamContentKey("cook.go", `if strings.Contains(g.structs.String(), "serialize.") {`):                              {1, "asks whether the emitted unit uses serialize., to pick imports"},
+	seamContentKey("gotable.go", `usesSerialize := strings.Contains(g.types.String()+g.body.String(), "serialize.")`): {1, "asks whether the emitted unit uses serialize., to pick imports"},
+	seamContentKey("gotable.go", `si, sj := !strings.Contains(paths[i], "."), !strings.Contains(paths[j], ".")`):      {1, "sorts the emitted unit's import paths for ordering (stdlib first); operates on path strings, never on emitted or runtime source"},
+}
+
+// scanSourceSeams is half (a). The allow-listed non-seam string replacements
+// inside the package are:
+//   - source.go — the fail-closed helper, the definitional home of the seam
 //     machinery,
-//   - gotable.go:169 — indentation of a generated line, not a runtime-source
-//     seam (it rewrites the emitted text's line prefixes, never an anchor), and
-//   - retain.go:166 — the retain family's per-half rewrite, validated on the
-//     whole by tableSourceReplace before it runs.
+//   - gotable.go — indentation of a generated line, not a runtime-source seam
+//     (it rewrites the emitted text's line prefixes, never an anchor), and
+//   - retain.go — the retain family's per-half rewrite, validated on the whole
+//     by tableSourceReplace before it runs.
 //
 // The Contains/Count scan closes the sibling hole: a seam gated by probing the
 // anchor text fails open when the anchor moves, and wrapper helpers hide it.
 // A Replace inside a rep closure named by an allow-listed probe is that same
 // seam, not a second one, so only the probe line is listed.
-// The only non-seam probes are the emitted-text checks that decide imports.
+// The only allow-listed probes are the emitted-text checks that decide whether
+// the emitted unit uses serialize., plus the emitted-import sort in gotable.go
+// that orders import paths (stdlib first) and so touches no source text.
 func scanSourceSeams(t *testing.T) {
 	t.Helper()
-	replaceAllow := map[string]string{
-		"source.go:40":   "tableSourceReplace's core replace, the defined seam helper",
-		"gotable.go:169": "indentation of an emitted line, not a runtime-source seam",
-		"retain.go:166":  "retain family per-half rewrite, validated on the whole by tableSourceReplace above",
-	}
-	probeAllow := map[string]string{
-		"source.go:11":   "tableSourceIndex counts the marker it is given, the seam helper",
-		"source.go:32":   "tableSourceReplace counts the anchor it is given, the seam helper",
-		"block.go:166":   "asks whether the emitted unit uses serialize., to pick imports",
-		"cook.go:310":    "asks whether the emitted unit uses serialize., to pick imports",
-		"gotable.go:746": "asks whether the emitted unit uses serialize., to pick imports",
-	}
 	var bad []string
 	files, err := filepath.Glob("*.go")
 	if err != nil {
@@ -73,47 +91,121 @@ func scanSourceSeams(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		lines := strings.Split(string(data), "\n")
-		for i, line := range lines {
-			loc := fmt.Sprintf("%s:%d", fn, i+1)
-			switch {
-			case strings.Contains(line, "strings.ReplaceAll(") || strings.Contains(line, "strings.Replace("):
-				if reason, ok := replaceAllow[loc]; ok {
-					t.Logf("allowlisted %s: %s", loc, reason)
-					continue
-				}
-				if reason, ok := probeClosure(fn, lines, i, probeAllow); ok {
-					t.Logf("allowlisted %s through its probe: %s", loc, reason)
-					continue
-				}
-				bad = append(bad, loc+"  "+strings.TrimSpace(line))
-			case strings.Contains(line, "strings.Contains(") || strings.Contains(line, "strings.Count("):
-				if reason, ok := probeAllow[loc]; ok {
-					t.Logf("allowlisted %s: %s", loc, reason)
-					continue
-				}
-				bad = append(bad, loc+"  "+strings.TrimSpace(line))
-			}
-		}
+		bad = append(bad, seamAllowFindings(fn, strings.Split(string(data), "\n"))...)
 	}
 	if len(bad) > 0 {
 		t.Errorf("seam source outside source.go is probed or replaced directly:\n%s", strings.Join(bad, "\n"))
 	}
 }
 
+// seamAllowFindings is the allow-list check over a file name and its lines. It
+// fails closed both ways: a seam-looking line beyond an allow entry's count is
+// a finding, and an allow entry whose file now holds fewer matches than its
+// count is a finding too.
+func seamAllowFindings(fn string, lines []string) []string {
+	counts := map[string]int{}
+	for _, line := range lines {
+		text := strings.TrimSpace(line)
+		if strings.Contains(text, "strings.ReplaceAll(") || strings.Contains(text, "strings.Replace(") ||
+			strings.Contains(text, "strings.Contains(") || strings.Contains(text, "strings.Count(") {
+			counts[seamContentKey(fn, text)]++
+		}
+	}
+	var bad []string
+	for i, line := range lines {
+		loc := fmt.Sprintf("%s:%d", fn, i+1)
+		text := strings.TrimSpace(line)
+		key := seamContentKey(fn, text)
+		switch {
+		case strings.Contains(line, "strings.ReplaceAll(") || strings.Contains(line, "strings.Replace("):
+			if _, ok := seamReplaceAllow[key]; ok {
+				continue
+			}
+			if _, ok := seamProbeAllow[key]; ok {
+				continue
+			}
+			if _, ok := probeClosure(fn, lines, i); ok {
+				continue
+			}
+			bad = append(bad, loc+"  "+text)
+		case strings.Contains(line, "strings.Contains(") || strings.Contains(line, "strings.Count("):
+			if _, ok := seamProbeAllow[key]; ok {
+				continue
+			}
+			bad = append(bad, loc+"  "+text)
+		}
+	}
+	for key, allow := range seamReplaceAllow {
+		bad = append(bad, seamCountFindings(fn, key, counts, allow)...)
+	}
+	for key, allow := range seamProbeAllow {
+		bad = append(bad, seamCountFindings(fn, key, counts, allow)...)
+	}
+	sort.Strings(bad)
+	return bad
+}
+
+// seamCountFindings reports an allow-list entry whose file holds a different
+// number of matches than the entry states, naming the file, text and counts.
+func seamCountFindings(fn, key string, counts map[string]int, allow seamAllow) []string {
+	prefix := fn + ": "
+	if !strings.HasPrefix(key, prefix) || counts[key] == allow.count {
+		return nil
+	}
+	return []string{fmt.Sprintf("%s %q occurs %d times, allow-list says %d", fn, strings.TrimPrefix(key, prefix), counts[key], allow.count)}
+}
+
 // probeClosure reports the allow-listed Contains/Count probe that a Replace on
 // line i implements. A seam written as a rep closure probes its anchor and then
-// replaces it; the probe line is the seam's single allow-list entry.
-func probeClosure(fn string, lines []string, i int, probeAllow map[string]string) (string, bool) {
+// replaces it; the probe line is the seam's single allow-list entry, keyed by
+// its content.
+func probeClosure(fn string, lines []string, i int) (string, bool) {
 	for j := i - 1; j >= 0 && i-j <= 8; j-- {
 		if !strings.Contains(lines[j], "strings.Contains(") && !strings.Contains(lines[j], "strings.Count(") {
 			continue
 		}
-		if reason, ok := probeAllow[fmt.Sprintf("%s:%d", fn, j+1)]; ok {
-			return reason, true
+		if allow, ok := seamProbeAllow[seamContentKey(fn, lines[j])]; ok {
+			return allow.reason, true
 		}
 	}
 	return "", false
+}
+
+// TestGoSourceSeamsAllowListIsByContent pins the allow-list to file name, line
+// text and count, never line number: a listed line moved stays green, one
+// extra matching line is a finding, and a listed entry with fewer matches than
+// its count is a finding.
+func TestGoSourceSeamsAllowListIsByContent(t *testing.T) {
+	t.Parallel()
+	const (
+		indent = `s = g.indent + strings.ReplaceAll(s, "\n", "\n"+g.indent)`
+		probe  = `usesSerialize := strings.Contains(g.types.String()+g.body.String(), "serialize.")`
+		sortI  = `si, sj := !strings.Contains(paths[i], "."), !strings.Contains(paths[j], ".")`
+	)
+	listed := []string{
+		"func (g *tableGen) pf(format string, args ...any) {",
+		indent,
+		"",
+		probe,
+		sortI,
+		"}",
+	}
+	if bad := seamAllowFindings("gotable.go", listed); len(bad) != 0 {
+		t.Fatalf("listed lines should stay green, got findings:\n%s", strings.Join(bad, "\n"))
+	}
+	moved := append([]string{"", "", "// padding", "", ""}, listed...)
+	if bad := seamAllowFindings("gotable.go", moved); len(bad) != 0 {
+		t.Fatalf("listed lines at other line numbers should stay green, got findings:\n%s", strings.Join(bad, "\n"))
+	}
+	extra := append(append([]string{}, listed...), "", indent)
+	bad := seamAllowFindings("gotable.go", extra)
+	if len(bad) != 1 || !strings.Contains(bad[0], "gotable.go") || !strings.Contains(bad[0], "occurs 2 times") || !strings.Contains(bad[0], "allow-list says 1") {
+		t.Fatalf("an extra matching line should be one finding naming file, text and counts, got:\n%s", strings.Join(bad, "\n"))
+	}
+	bad = seamAllowFindings("gotable.go", []string{indent, sortI})
+	if len(bad) != 1 || !strings.Contains(bad[0], "gotable.go") || !strings.Contains(bad[0], "occurs 0 times") || !strings.Contains(bad[0], "allow-list says 1") {
+		t.Fatalf("a stale allow-list entry should be one finding naming file, text and counts, got:\n%s", strings.Join(bad, "\n"))
+	}
 }
 
 // negativeControlFailClosed is half (d): an anchor broken in a copy of a source
