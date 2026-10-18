@@ -74,10 +74,15 @@ func TestUsageGoNamesAreEmitted(t *testing.T) {
 			continue
 		}
 		declared := usageGoDeclaredNames(t, f.body, currentSchema, name)
-		re := regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `[A-Z]\w*`)
-		for _, id := range re.FindAllString(f.body, -1) {
-			if !declared[id] {
-				t.Errorf("%s line %d: %s is called but the generated Go declares no func or type of that name", "../docs/USAGE.md", f.line, id)
+		calls, types := usageGoTableNames(t, f.body, name)
+		for id := range calls {
+			if kind := declared[id]; kind != "func" && kind != "type" {
+				t.Errorf("%s line %d: %s is called but generated Go declares no func or type of that name", "../docs/USAGE.md", f.line, id)
+			}
+		}
+		for id := range types {
+			if declared[id] != "type" {
+				t.Errorf("%s line %d: %s is used as a type but generated Go declares no type of that name", "../docs/USAGE.md", f.line, id)
 			}
 		}
 	}
@@ -111,15 +116,15 @@ func usageTableName(body string) string {
 }
 
 // usageGoDeclaredNames generates the unit's Go in a temp dir and returns the
-// set of every top-level func, type, var and const the output declares.
-func usageGoDeclaredNames(t *testing.T, goBlock, schema, table string) map[string]bool {
+// kind of each top-level func and type the output declares.
+func usageGoDeclaredNames(t *testing.T, goBlock, schema, table string) map[string]string {
 	t.Helper()
 	dir := t.TempDir()
 	files, err := New().Generate(unitFromSource(t, schema), "go", Options{})
 	if err != nil {
 		t.Fatalf("generate go for %s at doc line: %v", table, err)
 	}
-	declared := map[string]bool{}
+	declared := map[string]string{}
 	for name, content := range files {
 		if err := os.WriteFile(dir+"/"+name, content, 0o644); err != nil {
 			t.Fatalf("write generated %s: %v", name, err)
@@ -132,16 +137,11 @@ func usageGoDeclaredNames(t *testing.T, goBlock, schema, table string) map[strin
 		for _, decl := range f.Decls {
 			switch d := decl.(type) {
 			case *ast.FuncDecl:
-				declared[d.Name.Name] = true
+				declared[d.Name.Name] = "func"
 			case *ast.GenDecl:
 				for _, spec := range d.Specs {
-					switch s := spec.(type) {
-					case *ast.TypeSpec:
-						declared[s.Name.Name] = true
-					case *ast.ValueSpec:
-						for _, n := range s.Names {
-							declared[n.Name] = true
-						}
+					if s, ok := spec.(*ast.TypeSpec); ok {
+						declared[s.Name.Name] = "type"
 					}
 				}
 			}
@@ -151,4 +151,47 @@ func usageGoDeclaredNames(t *testing.T, goBlock, schema, table string) map[strin
 		t.Fatalf("%s: template unit generated no Go files", table)
 	}
 	return declared
+}
+
+// usageGoTableNames finds table-prefixed identifiers used as calls or types
+// in a Go recipe. Value references, such as a generated fixed plan, are not
+// API names that the recipe calls.
+func usageGoTableNames(t *testing.T, goBlock, table string) (map[string]bool, map[string]bool) {
+	t.Helper()
+	file, err := parser.ParseFile(token.NewFileSet(), "usage.go", goBlock, 0)
+	if err != nil {
+		t.Fatalf("parse Go usage block: %v", err)
+	}
+	re := regexp.MustCompile(`^` + regexp.QuoteMeta(table) + `[A-Z]\w*$`)
+	calls, types := map[string]bool{}, map[string]bool{}
+	addType := func(expr ast.Expr) {
+		if expr == nil {
+			return
+		}
+		ast.Inspect(expr, func(node ast.Node) bool {
+			if id, ok := node.(*ast.Ident); ok && re.MatchString(id.Name) {
+				types[id.Name] = true
+			}
+			return true
+		})
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		switch n := node.(type) {
+		case *ast.CallExpr:
+			if id, ok := n.Fun.(*ast.Ident); ok && re.MatchString(id.Name) {
+				calls[id.Name] = true
+			}
+			if id, ok := n.Fun.(*ast.Ident); ok && (id.Name == "make" || id.Name == "new") && len(n.Args) > 0 {
+				addType(n.Args[0])
+			}
+		case *ast.ValueSpec:
+			addType(n.Type)
+		case *ast.Field:
+			addType(n.Type)
+		case *ast.CompositeLit:
+			addType(n.Type)
+		}
+		return true
+	})
+	return calls, types
 }
