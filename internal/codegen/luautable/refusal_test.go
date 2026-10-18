@@ -149,20 +149,21 @@ func emittedRoots(g *generatedUnit) map[string]emittedRoot {
 	return out
 }
 
-// sealDescriptor writes `integrity = "crc32c"` into the emitted descriptor of
-// root, the fact §2.14's table-line key declares. The emitter does not carry
-// the key into the descriptor yet (luautable.go is outside this card), so the
-// test lays it in the way load_test.go's injectKeyVs lays in the key variants.
-func sealDescriptor(t *testing.T, g *generatedUnit, root string) {
+// emittedIntegrity requires the emitted descriptor of root to carry the
+// table line's `integrity = "crc32c"` (docs/SPEC-TABLES.md §2.14): the strict
+// read checks the trailer by that entry, so a unit that declares the key and
+// emits no entry would read its trailer as framing damage.
+func emittedIntegrity(t *testing.T, g *generatedUnit, root string) {
 	t.Helper()
-	anchor := fmt.Sprintf("_T.%sDescriptor = _schema_tables.table({\n\tname = %q,\n", root, root)
-	for name, data := range g.files {
-		if !strings.Contains(string(data), anchor) {
+	anchor := fmt.Sprintf("_T.%sDescriptor = _schema_tables.table({\n", root)
+	for _, data := range g.files {
+		i := strings.Index(string(data), anchor)
+		if i < 0 {
 			continue
 		}
-		g.files[name] = []byte(strings.Replace(string(data), anchor, anchor+"\tintegrity = \"crc32c\",\n", 1))
-		if err := os.WriteFile(filepath.Join(g.dir, name), g.files[name], 0o644); err != nil {
-			t.Fatal(err)
+		end := strings.Index(string(data[i:]), "\n})")
+		if end < 0 || !strings.Contains(string(data[i:i+end]), "\tintegrity = \"crc32c\",\n") {
+			t.Fatalf("%sDescriptor declares integrity = \"crc32c\" in its schema but the emitted descriptor carries no integrity entry", root)
 		}
 		return
 	}
@@ -338,7 +339,7 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 	// a table that declares the trailer, with the same field, so Feed's wire
 	// is its wire (§2.14)
 	seal := generateFiles(t, map[string]string{"Seal.schema": "package seal\n\ntable Ledger | integrity = \"crc32c\"\n{\n    id uint32\n}\n"})
-	sealDescriptor(t, seal, "Ledger")
+	emittedIntegrity(t, seal, "Ledger")
 	gens["seal"], roots["seal"] = seal, emittedRoots(seal)
 	broken := append([]byte{}, sealed...)
 	broken[len(broken)-1] ^= 0x01

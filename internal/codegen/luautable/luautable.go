@@ -252,6 +252,12 @@ func emitDescriptor(g *luau.Gen, t *ir.Struct, ctors string) {
 	g.Pf("\ttable = %v,\n", t.IsTable)
 	g.Pf("\tfixed = %v,\n", t.FixedDeclared)
 	g.Pf("\tvariable = %v,\n", ir.VariableTables(g.Unit)[t.Name])
+	// the table line's `integrity` key (docs/SPEC-TABLES.md §2.14): a
+	// declaring table's file carries the trailer, and refusal.luau's strict
+	// read checks it before any field, by this entry
+	if t.Integrity != "" {
+		g.Pf("\tintegrity = %q,\n", t.Integrity)
+	}
 	var placeable []string
 	for _, r := range ir.PointerReachable(t) {
 		placeable = append(placeable, fmt.Sprintf("%q", r.Name))
