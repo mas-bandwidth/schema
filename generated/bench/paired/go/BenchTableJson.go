@@ -3541,9 +3541,10 @@ func MixedEntitySaveText(value *MixedEntity) (string, error) {
 // whenever the read's report holds an error (TableReport.Err), whatever
 // LoadTolerant answered, so a recovered value never comes back. It refuses
 // by name: base64_damaged when the body does not decode, base64_not_canonical
-// when it decodes but is not canonical (a pad bit set, or an embedded
-// whitespace or newline), unknown_form when the decoded wire's form byte is
-// not one this build carries, wire_damaged for framing damage, and the
+// when it decodes but is not canonical (a pad bit set, an embedded CR or
+// LF, or a length other than EncodedLen(len(wire))), unknown_form when the
+// decoded wire's form byte is not one this build carries, wire_damaged for
+// framing damage, and the
 // report's own reason (malformed, clamped, kind_mismatch, ...) otherwise. A
 // nil report is allowed; a supplied one receives THIS read's report, so
 // earlier counts in it never decide.
@@ -3659,9 +3660,10 @@ func MixedStatSaveText(value *MixedStat) (string, error) {
 // whenever the read's report holds an error (TableReport.Err), whatever
 // LoadTolerant answered, so a recovered value never comes back. It refuses
 // by name: base64_damaged when the body does not decode, base64_not_canonical
-// when it decodes but is not canonical (a pad bit set, or an embedded
-// whitespace or newline), unknown_form when the decoded wire's form byte is
-// not one this build carries, wire_damaged for framing damage, and the
+// when it decodes but is not canonical (a pad bit set, an embedded CR or
+// LF, or a length other than EncodedLen(len(wire))), unknown_form when the
+// decoded wire's form byte is not one this build carries, wire_damaged for
+// framing damage, and the
 // report's own reason (malformed, clamped, kind_mismatch, ...) otherwise. A
 // nil report is allowed; a supplied one receives THIS read's report, so
 // earlier counts in it never decide.
@@ -3777,9 +3779,10 @@ func MixedHitEventSaveText(value *MixedHitEvent) (string, error) {
 // whenever the read's report holds an error (TableReport.Err), whatever
 // LoadTolerant answered, so a recovered value never comes back. It refuses
 // by name: base64_damaged when the body does not decode, base64_not_canonical
-// when it decodes but is not canonical (a pad bit set, or an embedded
-// whitespace or newline), unknown_form when the decoded wire's form byte is
-// not one this build carries, wire_damaged for framing damage, and the
+// when it decodes but is not canonical (a pad bit set, an embedded CR or
+// LF, or a length other than EncodedLen(len(wire))), unknown_form when the
+// decoded wire's form byte is not one this build carries, wire_damaged for
+// framing damage, and the
 // report's own reason (malformed, clamped, kind_mismatch, ...) otherwise. A
 // nil report is allowed; a supplied one receives THIS read's report, so
 // earlier counts in it never decide.
@@ -3895,9 +3898,10 @@ func MixedChatEventSaveText(value *MixedChatEvent) (string, error) {
 // whenever the read's report holds an error (TableReport.Err), whatever
 // LoadTolerant answered, so a recovered value never comes back. It refuses
 // by name: base64_damaged when the body does not decode, base64_not_canonical
-// when it decodes but is not canonical (a pad bit set, or an embedded
-// whitespace or newline), unknown_form when the decoded wire's form byte is
-// not one this build carries, wire_damaged for framing damage, and the
+// when it decodes but is not canonical (a pad bit set, an embedded CR or
+// LF, or a length other than EncodedLen(len(wire))), unknown_form when the
+// decoded wire's form byte is not one this build carries, wire_damaged for
+// framing damage, and the
 // report's own reason (malformed, clamped, kind_mismatch, ...) otherwise. A
 // nil report is allowed; a supplied one receives THIS read's report, so
 // earlier counts in it never decide.
@@ -4013,9 +4017,10 @@ func MixedPickupEventSaveText(value *MixedPickupEvent) (string, error) {
 // whenever the read's report holds an error (TableReport.Err), whatever
 // LoadTolerant answered, so a recovered value never comes back. It refuses
 // by name: base64_damaged when the body does not decode, base64_not_canonical
-// when it decodes but is not canonical (a pad bit set, or an embedded
-// whitespace or newline), unknown_form when the decoded wire's form byte is
-// not one this build carries, wire_damaged for framing damage, and the
+// when it decodes but is not canonical (a pad bit set, an embedded CR or
+// LF, or a length other than EncodedLen(len(wire))), unknown_form when the
+// decoded wire's form byte is not one this build carries, wire_damaged for
+// framing damage, and the
 // report's own reason (malformed, clamped, kind_mismatch, ...) otherwise. A
 // nil report is allowed; a supplied one receives THIS read's report, so
 // earlier counts in it never decide.
@@ -4131,9 +4136,10 @@ func BenchMixedSaveText(value *BenchMixed) (string, error) {
 // whenever the read's report holds an error (TableReport.Err), whatever
 // LoadTolerant answered, so a recovered value never comes back. It refuses
 // by name: base64_damaged when the body does not decode, base64_not_canonical
-// when it decodes but is not canonical (a pad bit set, or an embedded
-// whitespace or newline), unknown_form when the decoded wire's form byte is
-// not one this build carries, wire_damaged for framing damage, and the
+// when it decodes but is not canonical (a pad bit set, an embedded CR or
+// LF, or a length other than EncodedLen(len(wire))), unknown_form when the
+// decoded wire's form byte is not one this build carries, wire_damaged for
+// framing damage, and the
 // report's own reason (malformed, clamped, kind_mismatch, ...) otherwise. A
 // nil report is allowed; a supplied one receives THIS read's report, so
 // earlier counts in it never decide.
@@ -4249,9 +4255,10 @@ func FixedTableSaveText(value *FixedTable) (string, error) {
 // whenever the read's report holds an error (TableReport.Err), whatever
 // LoadTolerant answered, so a recovered value never comes back. It refuses
 // by name: base64_damaged when the body does not decode, base64_not_canonical
-// when it decodes but is not canonical (a pad bit set, or an embedded
-// whitespace or newline), unknown_form when the decoded wire's form byte is
-// not one this build carries, wire_damaged for framing damage, and the
+// when it decodes but is not canonical (a pad bit set, an embedded CR or
+// LF, or a length other than EncodedLen(len(wire))), unknown_form when the
+// decoded wire's form byte is not one this build carries, wire_damaged for
+// framing damage, and the
 // report's own reason (malformed, clamped, kind_mismatch, ...) otherwise. A
 // nil report is allowed; a supplied one receives THIS read's report, so
 // earlier counts in it never decide.

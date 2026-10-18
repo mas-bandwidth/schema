@@ -55,6 +55,18 @@ func TestFixedWeaponConfig(t *testing.T) {
 	if _, err := WeaponConfigLoadText(bad, &r); !errors.Is(err, TableRefuseBase64Damaged) {
 		t.Fatalf("byte outside alphabet: err=%%v", err)
 	}
+	// a space is not CR or LF, so it is base64_damaged
+	sp := text[:10] + " " + text[10:]
+	if _, err := WeaponConfigLoadText(sp, &r); !errors.Is(err, TableRefuseBase64Damaged) {
+		t.Fatalf("embedded space: err=%%v", err)
+	}
+	// a missing or extra '=' is base64_damaged
+	if _, err := WeaponConfigLoadText("AQAAAAAAAAAAAB=", &r); !errors.Is(err, TableRefuseBase64Damaged) {
+		t.Fatalf("missing pad: err=%%v", err)
+	}
+	if _, err := WeaponConfigLoadText("AQAAAAAAAAAAAB===", &r); !errors.Is(err, TableRefuseBase64Damaged) {
+		t.Fatalf("extra pad: err=%%v", err)
+	}
 }
 `))
 	guardedSchema, err := os.ReadFile("../../../tables/examples/Guarded.schema")
@@ -88,6 +100,17 @@ func TestVariablePatrol(t *testing.T) {
 	mid := text[:10] + "\n" + text[10:]
 	if _, err := PatrolLoadText(mid, &r); !errors.Is(err, TableRefuseBase64NotCanonical) {
 		t.Fatalf("mid newline: err=%%v", err)
+	}
+	// a space, missing '=' and extra '=' stay base64_damaged
+	sp := text[:10] + " " + text[10:]
+	if _, err := PatrolLoadText(sp, &r); !errors.Is(err, TableRefuseBase64Damaged) {
+		t.Fatalf("embedded space: err=%%v", err)
+	}
+	if _, err := PatrolLoadText("AQAAAAAAAAAAAB=", &r); !errors.Is(err, TableRefuseBase64Damaged) {
+		t.Fatalf("missing pad: err=%%v", err)
+	}
+	if _, err := PatrolLoadText("AQAAAAAAAAAAAB===", &r); !errors.Is(err, TableRefuseBase64Damaged) {
+		t.Fatalf("extra pad: err=%%v", err)
 	}
 }
 `))
