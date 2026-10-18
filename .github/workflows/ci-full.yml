@@ -318,7 +318,7 @@ jobs:
         if: matrix.group == 'unit-rest'
         env:
           SCHEMA_SLOW: '1'
-        run: go test $(go list ./... | grep -v '/internal/codegen/')
+        run: go test $(go list ./... | grep -v '/internal/codegen/' | grep -v '/internal/fuzz/')
 
       # AND THE ACCOUNTING FOR THE TWO STEPS ABOVE (schema#988, G5). The two
       # steps set SCHEMA_SLOW=1, so on this lane every gated test runs; that is

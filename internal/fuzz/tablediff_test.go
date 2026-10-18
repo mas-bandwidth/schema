@@ -17,6 +17,7 @@ package fuzz_test
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/rand"
@@ -49,14 +50,14 @@ var expectedClasses = []expectedClass{
 		id:  "schema-go-engine-timestamp-text",
 		why: "the engine's text walk has no timestamp arm, so it writes the raw count (0) where the Go leg writes RFC 3339 (docs/SPEC-TABLES.md §2.11, §16)",
 		match: func(u *genUnit, line string) bool {
-			return u.hasTimestamp() && (strings.HasPrefix(line, "roundtrip") || strings.HasPrefix(line, "loadtext") || strings.HasPrefix(line, "engine"))
+			return u.hasTimestamp() && strings.HasPrefix(line, "engine")
 		},
 	},
 	{
 		id:  "schema-go-plain-float-negative-zero",
 		why: "a plain (non-compressed) float's -0 is written as 0 by the leg's wire read, so the round-trip text differs in the sign bit alone",
 		match: func(u *genUnit, line string) bool {
-			return u.hasFloat() && strings.HasPrefix(line, "roundtrip") && onlyNegativeZero(line)
+			return u.hasFloat() && onlyNegativeZero(line)
 		},
 	},
 	{
@@ -115,8 +116,9 @@ func fieldHasKind(f *genField, k genKind) bool {
 	return fieldHasKind(f.Elem, k)
 }
 
-// onlyNegativeZero reports whether two base64 payloads on a divergence line
-// differ only by a -0/0 spelling.
+// onlyNegativeZero reports whether two base64 JSON payloads on a divergence line
+// differ only by a whole numeric token -0 against 0 (never by sign loss on a
+// nonzero float, an exponent change, or a "-0" inside a string).
 func onlyNegativeZero(line string) bool {
 	parts := strings.Fields(line)
 	if len(parts) != 3 {
@@ -127,7 +129,56 @@ func onlyNegativeZero(line string) bool {
 	if err1 != nil || err2 != nil {
 		return false
 	}
-	return string(a) != string(b) && string(bytes.ReplaceAll(a, []byte("-0"), []byte("0"))) == string(bytes.ReplaceAll(b, []byte("-0"), []byte("0")))
+	var va, vb any
+	if json.Unmarshal(a, &va) != nil || json.Unmarshal(b, &vb) != nil {
+		return false
+	}
+	return sameExceptNegZero(va, vb)
+}
+
+// sameExceptNegZero reports whether two decoded JSON trees are equal except that
+// a -0 float token is allowed to compare equal to 0. Any other difference (a
+// sign loss on a nonzero float, a changed exponent, a different string) is a
+// mismatch.
+func sameExceptNegZero(x, y any) bool {
+	switch a := x.(type) {
+	case float64:
+		b, ok := y.(float64)
+		return ok && a == b
+	case map[string]any:
+		b, ok := y.(map[string]any)
+		if !ok || len(a) != len(b) {
+			return false
+		}
+		for k, av := range a {
+			bv, ok := b[k]
+			if !ok || !sameExceptNegZero(av, bv) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		b, ok := y.([]any)
+		if !ok || len(a) != len(b) {
+			return false
+		}
+		for i := range a {
+			if !sameExceptNegZero(a[i], b[i]) {
+				return false
+			}
+		}
+		return true
+	case string:
+		b, ok := y.(string)
+		return ok && a == b
+	case bool:
+		b, ok := y.(bool)
+		return ok && a == b
+	case nil:
+		return y == nil
+	default:
+		return false
+	}
 }
 
 func tableUnit(t *testing.T, src string) *ir.Unit {
@@ -230,6 +281,13 @@ func TestProbe(t *testing.T) {
 		if err := os.WriteFile(dir+"/inst-"+strconv.Itoa(i)+".json", tj, 0o600); err != nil {
 			t.Fatal(err)
 		}
+		wire := make([]byte, RootMeasure(&v))
+		if RootSave(&v, wire) != int64(len(wire)) {
+			record(&div, "save %d", i)
+		}
+		if err := os.WriteFile(dir+"/inst-"+strconv.Itoa(i)+".wire", wire, 0o600); err != nil {
+			t.Fatal(err)
+		}
 		var v2 Root
 		RootReset(&v2)
 		if RootFromJson(&v2, tj, &report) {
@@ -237,15 +295,12 @@ func TestProbe(t *testing.T) {
 			if RootToJson(&v2, tj2) != int64(len(tj2)) || string(tj2) != string(tj) {
 				record(&div, "fromjsontojson %d %s %s", i, b64(tj), b64(tj2))
 			}
+			w2 := make([]byte, RootMeasure(&v2))
+			if RootSave(&v2, w2) != int64(len(w2)) || string(w2) != string(wire) {
+				record(&div, "fromjsontojsonresave %d", i)
+			}
 		} else {
 			record(&div, "fromjsontojsonrefuse %d %s", i, b64(tj))
-		}
-		wire := make([]byte, RootMeasure(&v))
-		if RootSave(&v, wire) != int64(len(wire)) {
-			record(&div, "save %d", i)
-		}
-		if err := os.WriteFile(dir+"/inst-"+strconv.Itoa(i)+".wire", wire, 0o600); err != nil {
-			t.Fatal(err)
 		}
 		got, err := RootReadStrict(wire)
 		if err != nil || got == nil {
@@ -257,6 +312,10 @@ func TestProbe(t *testing.T) {
 			}
 			if string(gj) != string(tj) {
 				record(&div, "roundtrip %s %s", b64(tj), b64(gj))
+			}
+			gw := make([]byte, RootMeasure(got))
+			if RootSave(got, gw) != int64(len(gw)) || string(gw) != string(wire) {
+				record(&div, "strictresave %d", i)
 			}
 		}
 		st := base64.StdEncoding.EncodeToString(wire)
@@ -279,6 +338,17 @@ func TestProbe(t *testing.T) {
 		RootReset(&loaded)
 		if !RootLoad(&loaded, wire, &report) {
 			record(&div, "loadrefuse %d", i)
+		} else {
+			lj := make([]byte, RootToJsonMeasure(&loaded))
+			if RootToJson(&loaded, lj) != int64(len(lj)) {
+				record(&div, "loadtojson %d", i)
+			} else if string(lj) != string(tj) {
+				record(&div, "loadroundtrip %s %s", b64(tj), b64(lj))
+			}
+			lw := make([]byte, RootMeasure(&loaded))
+			if RootSave(&loaded, lw) != int64(len(lw)) || string(lw) != string(wire) {
+				record(&div, "loadresave %d", i)
+			}
 		}
 		var wg sync.WaitGroup
 		for g := 0; g < 4; g++ {
