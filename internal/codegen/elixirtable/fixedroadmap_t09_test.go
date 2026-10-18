@@ -341,7 +341,7 @@ type Box
 union Shape
 {
     dot Dot
-    box Box
+    rect Box
 }
 
 fixed table T { s Shape }
@@ -349,9 +349,9 @@ fixed table T { s Shape }
 	t09Probe(t, u, "T", `  d = %Probe.Shape{type: 1, dot: %Probe.Dot{x: -7}}
   {:ok, [rd], _} = @@LOAD@@(@@SAVE@@([%Probe.T{s: d}]))
   check(rd.s.type == 1 and rd.s.dot.x == -7, "the Dot arm does not round-trip: #{inspect(rd.s)}")
-  b = %Probe.Shape{type: 2, box: %Probe.Box{w: 34, h: 55}}
+  b = %Probe.Shape{type: 2, rect: %Probe.Box{w: 34, h: 55}}
   {:ok, [rb], _} = @@LOAD@@(@@SAVE@@([%Probe.T{s: b}]))
-  check(rb.s.type == 2 and rb.s.box.w == 34 and rb.s.box.h == 55, "the Box arm does not round-trip: #{inspect(rb.s)}")
+  check(rb.s.type == 2 and rb.s.rect.w == 34 and rb.s.rect.h == 55, "the Box arm does not round-trip: #{inspect(rb.s)}")
   none = %Probe.Shape{}
   {:ok, [rn], _} = @@LOAD@@(@@SAVE@@([%Probe.T{s: none}]))
   check(rn.s.type == 0, "None (tag 0) does not round-trip: #{inspect(rn.s)}")`)
@@ -373,19 +373,19 @@ type Box
 union Shape
 {
     dot Dot
-    box Box
+    rect Box
 }
 
 fixed table T { s [3] Shape }
 `)
-	t09Probe(t, u, "T", `  elems = [%Probe.Shape{type: 1, dot: %Probe.Dot{x: 11}}, %Probe.Shape{}, %Probe.Shape{type: 2, box: %Probe.Box{w: -22, h: 33}}]
+	t09Probe(t, u, "T", `  elems = [%Probe.Shape{type: 1, dot: %Probe.Dot{x: 11}}, %Probe.Shape{}, %Probe.Shape{type: 2, rect: %Probe.Box{w: -22, h: 33}}]
   {:ok, [r], rep} = @@LOAD@@(@@SAVE@@([%Probe.T{s: elems}]))
   check(rep.malformed == false, "an array of unions read is clean: #{inspect(rep)}")
   check(length(r.s) == 3, "an array of three unions read back a different length: #{length(r.s)}")
   [e0, e1, e2] = r.s
   check(e0.type == 1 and e0.dot.x == 11, "element 0 does not round-trip: #{inspect(e0)}")
   check(e1.type == 0, "the None element does not round-trip: #{inspect(e1)}")
-  check(e2.type == 2 and e2.box.w == -22 and e2.box.h == 33, "element 2 does not round-trip: #{inspect(e2)}")`)
+  check(e2.type == 2 and e2.rect.w == -22 and e2.rect.h == 33, "element 2 does not round-trip: #{inspect(e2)}")`)
 }
 
 // t09UnionFieldArms holds union-field-arms to §3.4 for the arm shape this leg

@@ -206,6 +206,12 @@ jobs:
       - name: fuzz tables front end
         run: make fuzz-tables-go FUZZTIME=10m
 
+      # The random-schema table differential: seeds 0..200 of generated VALID
+      # table units through the Go leg under -race and the compiler's engine,
+      # with every owed divergence class printed with its open card id.
+      - name: random-schema table differential (200 seeds)
+        run: make fuzz-tables-diff
+
   # EVERY PORT'S RELEASE GATE, by name. A port whose `make test` half had to
   # stay cheap puts its expensive half — the soak, the allocation gate at
   # scale, the fuzz oracle's own negative control — behind one

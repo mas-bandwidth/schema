@@ -433,7 +433,7 @@ func TableTypeSpelling(f *Field) string {
 	case TBytes:
 		return "bytes"
 	case TNamed:
-		return f.Type.Name
+		return f.Type.DeclaredName()
 	case TMap:
 		// a MAP spells its two halves (docs/SPEC-TABLES.md §2.8), so a
 		// descriptor and a diagnostic name the declaration a reader wrote —

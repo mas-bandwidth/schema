@@ -63,7 +63,7 @@ func TestTimestampKindInGo(t *testing.T) {
 	for _, want := range []string{
 		"func (v *Session) StartedTime() time.Time",           // the Go value is a time.Time, UTC on read
 		"func (v *Session) SetStartedTime(t time.Time) error", // and the write refuses what UnixNano cannot count
-		"func SessionFixedLoad(",
+		"func SessionFixedLoadTolerant(",
 		"Kind: 36", // the descriptor names the timestamp kind
 	} {
 		if !strings.Contains(tableGo, want) {
@@ -125,7 +125,7 @@ func TestVariableWire(t *testing.T) {
   if SessionSave(&v, b) != int64(len(b)) { t.Fatalf("%s: save", c.name) }
   var got Session
   var r TableReport
-  if !SessionLoad(&got, b, &r) || r != (TableReport{}) { t.Fatalf("%s: load %+v", c.name, r) }
+  if !SessionLoadTolerant(&got, b, &r) || r != (TableReport{}) { t.Fatalf("%s: load %+v", c.name, r) }
   if got != v { t.Fatalf("%s: %+v vs %+v", c.name, got, v) }
   if got.StartedTime().UnixNano() != c.n || got.EndedTime().UnixNano() != -c.n/2 { t.Fatalf("%s: %v %v", c.name, got.StartedTime(), got.EndedTime()) }
   if got.StartedTime().Location() != time.UTC { t.Fatalf("%s: not UTC: %v", c.name, got.StartedTime().Location()) }
@@ -147,7 +147,7 @@ func TestZeroTimeIsAbsent(t *testing.T) {
  if len(a) >= 16 { t.Fatalf("two zero timestamps cost %d bytes", len(a)) }
  var v Session
  var r TableReport
- if !SessionLoad(&v, a, &r) || !v.StartedTime().Equal(time.Unix(0, 0)) || v.StartedTime().UnixNano() != 0 { t.Fatalf("zero time reads as %v", v.StartedTime()) }
+ if !SessionLoadTolerant(&v, a, &r) || !v.StartedTime().Equal(time.Unix(0, 0)) || v.StartedTime().UnixNano() != 0 { t.Fatalf("zero time reads as %v", v.StartedTime()) }
 }
 
 // a time outside Time.UnixNano's domain has no count: the setter REFUSES it,
@@ -183,7 +183,7 @@ func TestFixedForm(t *testing.T) {
   out := make([]Session, 2)
   plan := make([]TableFixedEntry, SessionFixedPlan.Count)
   var r TableReport
-  if SessionFixedLoad(out, buf, plan, &r) != 2 || r != (TableReport{}) { t.Fatalf("%s: load %+v", c.name, r) }
+  if SessionFixedLoadTolerant(out, buf, plan, &r) != 2 || r != (TableReport{}) { t.Fatalf("%s: load %+v", c.name, r) }
   if out[0] != in[0] || out[1] != in[1] { t.Fatalf("%s: %+v vs %+v", c.name, out, in) }
   if out[0].StartedTime().UnixNano() != c.n || out[0].StartedTime().Location() != time.UTC { t.Fatalf("%s: %v", c.name, out[0].StartedTime()) }
  }
@@ -198,7 +198,7 @@ func TestJson(t *testing.T) {
   if SessionToJson(&v, text) != int64(len(text)) { t.Fatalf("%s: write", c.name) }
   var got Session
   var r TableReport
-  if !SessionFromJson(&got, text, &r) || r != (TableReport{}) || got != v { t.Fatalf("%s: read %q %+v %+v", c.name, text, r, got) }
+  if !SessionFromJsonTolerant(&got, text, &r) || r != (TableReport{}) || got != v { t.Fatalf("%s: read %q %+v %+v", c.name, text, r, got) }
  }
  // the spelling: RFC 3339 with nanoseconds and a Z, the zero time as the epoch
  v := Session{Started: 1760531645123456789}
@@ -209,7 +209,7 @@ func TestJson(t *testing.T) {
  // an offset spelling of the same instant lands as the same count
  var got Session
  var r TableReport
- if !SessionFromJson(&got, []byte("{\"started\":\"1970-01-01T01:00:00.000000001+01:00\"}"), &r) || got.Started != 1 { t.Fatalf("offset spelling: %d %+v", got.Started, r) }
+ if !SessionFromJsonTolerant(&got, []byte("{\"started\":\"1970-01-01T01:00:00.000000001+01:00\"}"), &r) || got.Started != 1 { t.Fatalf("offset spelling: %d %+v", got.Started, r) }
 }
 
 func TestJsonRefusesByName(t *testing.T) {
@@ -222,13 +222,13 @@ func TestJsonRefusesByName(t *testing.T) {
  } {
   got := Session{N: 9}
   var r TableReport
-  if SessionFromJson(&got, []byte(bad), &r) { t.Fatalf("%s accepted", bad) }
+  if SessionFromJsonTolerant(&got, []byte(bad), &r) { t.Fatalf("%s accepted", bad) }
   if !r.Malformed || !strings.HasPrefix(r.Reason, "timestamp_not_rfc3339: started") { t.Fatalf("%s: unnamed refusal %+v", bad, r) }
  }
  // a number token is the wrong JSON type: skipped and counted, never coerced
  var got Session
  var r TableReport
- if !SessionFromJson(&got, []byte("{\"started\":1760531645123456789}"), &r) || r.KindMismatch != 1 || got.Started != 0 { t.Fatalf("number: %+v %d", r, got.Started) }
+ if !SessionFromJsonTolerant(&got, []byte("{\"started\":1760531645123456789}"), &r) || r.KindMismatch != 1 || got.Started != 0 { t.Fatalf("number: %+v %d", r, got.Started) }
 }
 
 // the kind is its own on the variable wire: an int64 count under kind 5 is a
@@ -246,7 +246,7 @@ func TestKindIsItsOwn(t *testing.T) {
  b[i+1] = 5
  var got Session
  var r TableReport
- SessionLoad(&got, b, &r)
+ SessionLoadTolerant(&got, b, &r)
  if r.KindMismatch != 1 || r.Malformed || got.Started != 0 { t.Fatalf("int64 under a timestamp field: %+v %d", r, got.Started) }
  // and the reverse: a kind-36 payload under an int32 field (n) and anended field skips cleanly
  v2 := Session{Started: 1760531645123456789, Ended: 42}
@@ -262,7 +262,7 @@ func TestKindIsItsOwn(t *testing.T) {
  copy(b2[idIdx:idIdx+8], nBytes[:])
  got = Session{}
  r = TableReport{}
- if !SessionLoad(&got, b2, &r) || r.KindMismatch != 1 || r.Malformed || got.N != 0 || got.Ended != 42 {
+ if !SessionLoadTolerant(&got, b2, &r) || r.KindMismatch != 1 || r.Malformed || got.N != 0 || got.Ended != 42 {
   t.Fatalf("kind 36 skipped over int32 field: %+v %+v", r, got)
  }
 }
@@ -291,7 +291,7 @@ func TestVariableClass(t *testing.T) {
   if !loaded.Init() { t.Fatal("builder") }
   defer loaded.Shutdown()
   var report TableReport
-  if !EventLoadBuilder(&loaded, wire, &report) || report != (TableReport{}) { t.Fatalf("load %+v", report) }
+  if !EventLoadBuilderTolerant(&loaded, wire, &report) || report != (TableReport{}) { t.Fatalf("load %+v", report) }
   if !loaded.Lock() { t.Fatal("lock") }
   got := loaded.AsConst()
   if got.OpenedAt != n || got.ClosedAt != -n/2 || got.Id != 7 { t.Fatalf("%d: %+v", n, *got) }
