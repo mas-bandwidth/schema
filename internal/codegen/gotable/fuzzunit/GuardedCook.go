@@ -807,6 +807,9 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, l
 		return true
 	}
 	value := tableJsonGetRaw(p, f.ElemSize)
+	if f.EnumDeprecated != nil && f.EnumDeprecated(value) {
+		return false
+	}
 	if f.Kind == 1 {
 		value = 0
 		if *(*bool)(p) {
