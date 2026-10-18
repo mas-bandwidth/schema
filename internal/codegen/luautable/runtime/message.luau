@@ -63,6 +63,27 @@ local function skip(r: any, width: number): boolean
 	return true
 end
 
+-- put writes a reference back at a bit offset already read: only a deprecated
+-- enum reference is ever rewritten, at the same width (docs/SPEC-TABLES.md §2.15).
+local function put(r: any, at: number, width: number, value: number)
+	if width <= 0 then return end
+	local sh = at % 8
+	local byteAt = math.floor(at / 8)
+	local got = 0
+	while got < width do
+		local take = math.min(8 - sh, width - got)
+		local byte = buffer.readu8(r.b, byteAt)
+		local cur = math.floor(byte / 2 ^ sh) % 2 ^ take
+		local chunk = math.floor(value / 2 ^ got) % 2 ^ take
+		if chunk ~= cur then
+			buffer.writeu8(r.b, byteAt, byte - cur * 2 ^ sh + chunk * 2 ^ sh)
+		end
+		got = got + take
+		sh = sh + take
+		if sh == 8 then sh = 0; byteAt = byteAt + 1 end
+	end
+end
+
 local function align(r: any): boolean
 	local width = (8 - r.off % 8) % 8
 	if width == 0 then return true end
@@ -298,6 +319,41 @@ end
 local skipShape: any
 local skipBody: any
 
+-- fieldById finds one descriptor field under a body's announced field id, so
+-- the walk can tell an enum value from any other reference (§2.15).
+local fieldMaps = setmetatable({}, { __mode = "k" })
+local function fieldById(desc: any, id: integer): any
+	if desc == nil or desc.fields == nil then return nil end
+	local m = fieldMaps[desc]
+	if m == nil then
+		m = {}
+		for _, f in desc.fields do m[f.id] = f end
+		fieldMaps[desc] = m
+	end
+	return m[id]
+end
+
+-- named gives an array's element descriptor its owning field's name, so a
+-- refusal names <Table>.<field> even when the deprecated value is an element.
+local function named(f: any, name: string): any
+	if f == nil or f.name ~= nil then return f end
+	return { s = f.s, t = f.t, vs = f.vs, def = f.def, e = f.e, name = name }
+end
+
+local function variantIndex(vs: any, id: integer): number
+	for i, pair in vs do
+		if pair[2] == id then return i end
+	end
+	return 0
+end
+
+local function refOfId(st: any, id: integer): number
+	for i = 1, st.v.count do
+		if st.v.entries[i].id == id then return i end
+	end
+	return 0
+end
+
 local function countOf(r: any, s: any): (number, boolean)
 	local bits = bitsReq(s.min, s.max)
 	local raw, ok = get(r, bits)
@@ -305,38 +361,68 @@ local function countOf(r: any, s: any): (number, boolean)
 	return raw + s.min, true
 end
 
-skipBody = function(r: any, st: any): boolean
+skipBody = function(r: any, st: any, desc: any, dep: any): boolean
 	while true do
 		local ref, ok = get(r, st.refBits)
 			if not ok then return false end
 		if ref == 0 then return true end
 		local e = entryOf(st.v, ref)
 		if e == nil or reserved(e.id) then return false end
-		if not skipShape(r, st, e) then return false end
+		if dep ~= nil and desc ~= nil then dep.table = desc.name end
+		if not skipShape(r, st, e, fieldById(desc, e.id), dep) then return false end
 	end
 end
 
-skipShape = function(r: any, st: any, e: any): boolean
+skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 	local k = e.shape.kind
 	if k == 0 or k == 32 then return true end
 	if k == 30 then
+		local at = r.off
 		local ref, ok = get(r, st.refBits)
 		if not ok then return false end
 		if ref == 0 then return true end
 		local en = entryOf(st.v, ref)
-		return en ~= nil and not reserved(en.id) and en.shape.kind == 0
+		if en == nil or reserved(en.id) or en.shape.kind ~= 0 then return false end
+		-- A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT (the
+		-- ELEMENT's default for an element) and never counts unknown
+		-- (docs/SPEC-TABLES.md §2.15); a strict write refuses it by name.
+		if fd ~= nil and fd.vs ~= nil and dep ~= nil then
+			local ord = variantIndex(fd.vs, en.id)
+			if ord > 0 and fd.vs[ord][3] == true then
+				dep.found = true
+				if dep.field == nil then dep.field = (dep.table or "?") .. "." .. (fd.name or "?") end
+				if dep.write then
+					local def = fd.def or 0
+					local newref = 0
+					if def ~= 0 then
+						local p = fd.vs[def]
+						if p ~= nil then newref = refOfId(st, p[2]) end
+					end
+					put(r, at, st.refBits, newref)
+				end
+			end
+		end
+		return true
 	elseif k == 17 then
 		if st.indexBits <= 0 then return false end
 		return skip(r, st.indexBits)
 	elseif k == 13 then
-		return skipBody(r, st)
+		local sub = nil
+		if fd ~= nil and fd.s == "tab" then sub = S.lookup(fd.t) end
+		return skipBody(r, st, sub, dep)
 	elseif k == 15 then
 		local ref, ok = get(r, st.refBits)
 		if not ok then return false end
 		if ref == 0 then return true end
 		local arm = entryOf(st.v, ref)
 		if arm == nil or reserved(arm.id) or arm.shape.kind == 0 then return false end
-		return skipShape(r, st, arm)
+		local armFd = nil
+		if fd ~= nil and fd.s == "union" then
+			for _, a in S.lookup(fd.t).arms do
+				if a.id == arm.id then armFd = a; break end
+			end
+		end
+		return skipShape(r, st, arm, armFd, dep)
 	elseif k == 12 or k == 33 then
 		local n, ok = countOf(r, e.shape)
 		if not ok then return false end
@@ -345,13 +431,21 @@ skipShape = function(r: any, st: any, e: any): boolean
 	elseif k == 14 or k == 16 then
 		local n, ok = countOf(r, e.shape)
 		if not ok then return false end
+		local ef = nil
+		if fd ~= nil then
+			if fd.e ~= nil then ef = named(fd.e, fd.name)
+			elseif fd.s == "map" then ef = { s = "tab", t = fd.t, name = fd.name } end
+		end
 		if k == 16 then
 			for _ = 1, n do
 				local key, kok = get(r, st.refBits)
 				if not kok then return false end
 				local ken = entryOf(st.v, key)
 				if ken == nil or reserved(ken.id) or ken.shape.kind ~= 0 then return false end
-				if not skipShape(r, st, { shape = e.element }) then return false end
+				-- A KEYED ARRAY's key is a slot, not a caller value: the key
+				-- may name a retired variant and the element is what is read
+				-- and written (Go's variantWireId key=true, §2.15).
+				if not skipShape(r, st, { shape = e.element }, ef, dep) then return false end
 			end
 			return true
 		end
@@ -361,7 +455,7 @@ skipShape = function(r: any, st: any, e: any): boolean
 			return skip(r, n * e.element.bits)
 		end
 		for _ = 1, n do
-			if not skipShape(r, st, { shape = e.element }) then return false end
+			if not skipShape(r, st, { shape = e.element }, ef, dep) then return false end
 		end
 		return true
 	elseif k == 31 then
@@ -375,7 +469,7 @@ end
 -- skipRoot reads a body, whose first field is the NODE TABLE when a variable
 -- root reaches one (docs/SPEC-TABLES.md §3.3: "THE NODE TABLE, WHEN A MESSAGE
 -- HAS ONE, IS THE FIRST FIELD OF THE ROOT BODY").
-local function skipRoot(r: any, st: any, desc: any): boolean
+local function skipRoot(r: any, st: any, desc: any, dep: any): boolean
 	if desc.variable then
 		local at = r.off
 		local ref, ok = get(r, st.refBits)
@@ -395,17 +489,17 @@ local function skipRoot(r: any, st: any, desc: any): boolean
 					if te.id == BYTES_ID or te.id == STRING_ID then
 						local n, bok = get(r, 32)
 						if not bok or not align(r) or not skip(r, n * 8) then return false end
-					elseif not skipBody(r, st) then
+					elseif not skipBody(r, st, nil, dep) then
 						return false
 					end
 				end
-				return skipBody(r, st)
+				return skipBody(r, st, desc, dep)
 			end
 		end
 		r.off = at
 	end
 	st.indexBits = 0
-	return skipBody(r, st)
+	return skipBody(r, st, desc, dep)
 end
 
 -- ---- the surface (docs/SPEC-TABLES.md §3.3, "THE BATCH SURFACE'S FIVE
@@ -423,6 +517,31 @@ local function reset(report: any)
 	report.widened = 0
 end
 
+-- walkBodies finds the M bodies, and -- when write is set -- rewrites each
+-- deprecated enum reference to the field or element default as it goes
+-- (docs/SPEC-TABLES.md §2.15). The caller only asks for the rewriting pass on
+-- a copy, so a clean batch allocates nothing and the caller's buffer is never
+-- changed.
+local function walkBodies(v: any, data: buffer, desc: any, count: number, write: boolean): (number, any, boolean, any)
+	local st = { v = v, refBits = v.refBits, indexBits = 0 }
+	local r = newReader(data, 16)
+	local dep = { write = write, found = false, field = nil, table = nil }
+	local bodies = {}
+	local at = 0
+	for i = 1, count do
+		local from = r.off
+		if not skipRoot(r, st, desc, dep) then
+			return i - 1, bodies, true, dep
+		end
+		at = at + 1
+		bodies[at] = { buffer = data, from = from, to = r.off }
+	end
+	if not align(r) or r.off ~= r.n then
+		return count, bodies, true, dep
+	end
+	return count, bodies, false, dep
+end
+
 function M.LoadMessages(v: any, root: string, data: buffer, capacity: number, report: any?): (number, any)
 	if report == nil then report = {} end
 	reset(report)
@@ -437,24 +556,22 @@ function M.LoadMessages(v: any, root: string, data: buffer, capacity: number, re
 		return count, {}
 	end
 	local desc = S.lookup(root)
-	local st = { v = v, refBits = v.refBits, indexBits = 0 }
-	local r = newReader(data, 16)
-	local bodies = {}
-	local at = 0
-	for i = 1, count do
-		local from = r.off
-		if not skipRoot(r, st, desc) then
-			report.malformed = true
-			return i - 1, bodies
-		end
-		at = at + 1
-		bodies[at] = { buffer = data, from = from, to = r.off }
-	end
-	if not align(r) or r.off ~= r.n then
+	local got, bodies, malformed, dep = walkBodies(v, data, desc, count, false)
+	if malformed then
 		report.malformed = true
-		return count, bodies
+		return got, bodies
 	end
-	return count, bodies
+	if dep.found then
+		local copy = buffer.create(len)
+		buffer.copy(copy, 0, data, 0, len)
+		local got2, bodies2, malformed2 = walkBodies(v, copy, desc, count, true)
+		if malformed2 then
+			report.malformed = true
+			return got2, bodies2
+		end
+		return got2, bodies2
+	end
+	return got, bodies
 end
 
 local function bodyBits(bodies: any): number
@@ -465,12 +582,42 @@ local function bodyBits(bodies: any): number
 	return bits
 end
 
+-- deprecatedField is the strict write's refusal: a body handed to a writer
+-- that still holds a deprecated variant names <Table>.<field>, exactly as a
+-- value does (docs/SPEC-TABLES.md §2.15). Bodies returned by LoadMessages are
+-- already normalized and find none.
+local function deprecatedField(v: any, root: string, bodies: any): string?
+	local desc = S.lookup(root)
+	for _, b in bodies do
+		local st = { v = v, refBits = v.refBits, indexBits = 0 }
+		local r = newReader(b.buffer, b.from)
+		r.n = b.to
+		local dep = { write = false, found = false, field = nil, table = nil }
+		if skipRoot(r, st, desc, dep) and dep.found then
+			return dep.field or "?"
+		end
+	end
+	return nil
+end
+
+local function refuseDeprecated(report: any, field: string): boolean
+	report.verdict = 1
+	report.reason = "invalid_value"
+	report.field = field
+	return false
+end
+
 function M.MeasureMessages(v: any, root: string, bodies: any, report: any?): number
 	if report == nil then report = {} end
 	reset(report)
 	local n = #bodies
 	if n < 1 or n > BATCH_MAX then
 		refuse(report, "batch_too_large")
+		return -1
+	end
+	local bad = deprecatedField(v, root, bodies)
+	if bad ~= nil then
+		refuseDeprecated(report, bad)
 		return -1
 	end
 	return 2 + math.ceil(bodyBits(bodies) / 8)
@@ -499,6 +646,11 @@ function M.SaveMessages(v: any, root: string, bodies: any, report: any?): (buffe
 	local n = #bodies
 	if n < 1 or n > BATCH_MAX then
 		refuse(report, "batch_too_large")
+		return nil, -1
+	end
+	local bad = deprecatedField(v, root, bodies)
+	if bad ~= nil then
+		refuseDeprecated(report, bad)
 		return nil, -1
 	end
 	local bits = bodyBits(bodies)
