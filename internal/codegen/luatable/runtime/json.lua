@@ -948,16 +948,21 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem)
     holder[key] = out == false and "" or out
     return true
   elseif s == "string_blob" then
+    -- A BLOB IS A NODE (docs/SPEC-TABLES.md §16.2 `*string`, §3.1): the read
+    -- boxes it as { value = <bytes> }, as load.lua does, so it keeps an
+    -- identity the save numbers by (docs/PORT-LUA.md, storage table).
     local out, _, ok = scan_string(inp, -1)
     if not ok then return false end
-    holder[key] = out
+    holder[key] = { value = out }
     return true
   elseif s == "bytes_blob" then
+    -- §16.2 `*bytes`: a body that is not base64 is kind_mismatch, the
+    -- reference left null; a decoded body is boxed as the `*string` row is.
     local before = report.kindMismatch
     local out = read_base64(inp, -1, report)
     if out == nil then return false end
-    if report.kindMismatch ~= before then holder[key] = nil
-    else holder[key] = out end
+    if report.kindMismatch ~= before then holder[key] = elem and false or nil
+    else holder[key] = { value = out == false and "" or out } end
     return true
   elseif s == "array" then
     if d.keyed ~= nil then return read_keyed(T, d, inp, holder, key, depth, graph, report) end
@@ -1375,7 +1380,10 @@ end
 local edge_value, edge_union, edges
 edge_value = function(T, fd, val, holder, name, out, cache)
   local s = fd.shape
-  if s == "pointer" then
+  if s == "string_blob" or s == "bytes_blob" then
+    -- a blob is a node too (§3.1): counted by its box, never descended
+    if val ~= nil and val ~= false then out[#out + 1] = { blob = true, val = val } end
+  elseif s == "pointer" then
     if val ~= nil and val ~= false then out[#out + 1] = { target = fd.target, val = val } end
   elseif s == "table" then
     local d = T.Tables[fd.target]
@@ -1427,10 +1435,10 @@ local function count_nodes(T, desc, root)
     else
       local e = top.edges[top.i + 1]
       top.i = top.i + 1
-      if open[e.val] then return nil end
+      if not e.blob and open[e.val] then return nil end
       local n = (g.count[e.val] or 0) + 1
       g.count[e.val] = n
-      if n == 1 then
+      if n == 1 and not e.blob then
         local d = T.Tables[e.target]
         if d == nil then return nil end
         open[e.val] = true
@@ -1586,11 +1594,16 @@ write_value = function(T, d, val, depth, g, w, elem)
   elseif s == "bytes" then
     write_base64(w, val or "")
     return true
-  elseif s == "string_blob" then
-    if val == nil then raw(w, "null") else write_string(w, val) end
-    return true
-  elseif s == "bytes_blob" then
-    if val == nil then raw(w, "null") else write_base64(w, val) end
+  elseif s == "string_blob" or s == "bytes_blob" then
+    -- §16.2 `*bytes`/`*string`, docs/SPEC-TABLES.md §16.7 (the byte buffer
+    -- paragraph): the blob is written in place and takes no label, so a blob
+    -- named from more than one slot has no spelling and the writer refuses
+    -- the graph. A loaded blob is its node box (load.lua); a plain string
+    -- built in code is accepted as save.lua accepts it.
+    if val == nil or val == false then raw(w, "null"); return true end
+    if (g.count[val] or 0) > 1 then return false end
+    local body = type(val) == "table" and val.value or val
+    if s == "string_blob" then write_string(w, body) else write_base64(w, body) end
     return true
   elseif s == "table" then
     local desc = T.Tables[d.target]
