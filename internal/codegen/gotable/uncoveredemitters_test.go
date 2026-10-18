@@ -1,17 +1,19 @@
 package gotable
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
 
-// TestGoUncoveredEmitters covers the three emitters no other test reaches:
-// GenerateOmitting (the omitted surface is absent), emitRegionMessage (reached
-// by a regional unit that carries the message form), and emitRetainMessageSurface
-// (reached by the retain surface; the fixed root's LoadRetainMessages refusal).
+// TestGoUncoveredEmitters covers the emitter surface no other test reaches.
+// GenerateOmitting is the omit path; the two region emitters it used to name
+// were empty comment-only stubs, so they were removed rather than tested (a
+// no-op function has no emitted behaviour to pin). The message and retain
+// forms below keep the behaviour those stubs stood beside under test.
 func TestGoUncoveredEmitters(t *testing.T) {
 	t.Parallel()
-	t.Run("GenerateOmitting_omits_cook_surface", func(t *testing.T) {
+	t.Run("GenerateOmitting_omits_only_the_named_form", func(t *testing.T) {
 		t.Parallel()
 		u := unitFrom(t, `package probe
 fixed table Root { x int32 }
@@ -42,12 +44,28 @@ fixed table Root { x int32 }
 			t.Fatal("the core ProbeTable.go is missing when the Cook form is omitted")
 		}
 	})
-	t.Run("emitRegionMessage_reached_by_regional_message_unit", func(t *testing.T) {
+	t.Run("GenerateOmitting_nothing_is_Generate", func(t *testing.T) {
 		t.Parallel()
-		// A unit that declares a variable table is REGIONAL (gotable.go, regional
-		// := len(variableTableNames(u)) > 0), so the message form of its fixed
-		// table reaches emitRegionMessage. Pin that the message batch surface the
-		// generation path emits still round-trips.
+		u := unitFrom(t, `package probe
+fixed table Root { x int32 }
+`)
+		full, err := Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := GenerateOmitting(u, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(full, out) {
+			t.Fatalf("omitting no form changed the output: %d files vs %d", len(full), len(out))
+		}
+	})
+	t.Run("message_form_round_trips", func(t *testing.T) {
+		t.Parallel()
+		// A unit that declares a variable table is REGIONAL, so the message
+		// form of its fixed table is emitted beside the region surface. Pin
+		// that the batch it writes measures and reads back.
 		runGenerated(t, `package probe
 table V { a int32 }
 fixed table Root { b int32 }
@@ -63,11 +81,10 @@ func TestRegionMessageSave(t *testing.T){
 }
 `)
 	})
-	t.Run("emitRetainMessageSurface_pins_fixed_retain_refusal", func(t *testing.T) {
+	t.Run("fixed_root_refuses_retain_messages_by_name", func(t *testing.T) {
 		t.Parallel()
-		// The retain surface reaches emitRetainMessageSurface; a fixed table's
-		// root has no region, so the generated code refuses LoadRetainMessages by
-		// name exactly as the surface's supporting comment states.
+		// A fixed table's root has no region, so the generated code refuses
+		// LoadRetainMessages by name (docs/SPEC-TABLES.md §3.3, §6.6).
 		runGenerated(t, `package probe
 fixed table Root { b int32 }
 `, `package probe
