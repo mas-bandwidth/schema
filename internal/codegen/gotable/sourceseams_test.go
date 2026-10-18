@@ -44,9 +44,7 @@ func TestGoSourceSeamsFailClosed(t *testing.T) {
 // The Contains/Count scan closes the sibling hole: a seam gated by probing the
 // anchor text fails open when the anchor moves, and wrapper helpers hide it.
 // A Replace inside a rep closure named by an allow-listed probe is that same
-// seam, not a second one, so only the probe line is listed. unboundedtext.go
-// and maps.go are the sibling seams this card's PATHS do not name; they are
-// tracked for a follow-up.
+// seam, not a second one, so only the probe line is listed.
 // The only non-seam probes are the emitted-text checks that decide imports.
 func scanSourceSeams(t *testing.T) {
 	t.Helper()
@@ -56,14 +54,11 @@ func scanSourceSeams(t *testing.T) {
 		"retain.go:166":  "retain family per-half rewrite, validated on the whole by tableSourceReplace above",
 	}
 	probeAllow := map[string]string{
-		"source.go:11":         "tableSourceIndex counts the marker it is given, the seam helper",
-		"source.go:32":         "tableSourceReplace counts the anchor it is given, the seam helper",
-		"block.go:166":         "asks whether the emitted unit uses serialize., to pick imports",
-		"cook.go:310":          "asks whether the emitted unit uses serialize., to pick imports",
-		"gotable.go:746":       "asks whether the emitted unit uses serialize., to pick imports",
-		"unboundedtext.go:181": "unbounded-text JSON walker seam, out of this card's PATHS (follow-up)",
-		"unboundedtext.go:190": "unbounded-text JSON walker seam, out of this card's PATHS (follow-up)",
-		"maps.go:20":           "optional-map JSON walker seam, out of this card's PATHS (follow-up)",
+		"source.go:11":   "tableSourceIndex counts the marker it is given, the seam helper",
+		"source.go:32":   "tableSourceReplace counts the anchor it is given, the seam helper",
+		"block.go:166":   "asks whether the emitted unit uses serialize., to pick imports",
+		"cook.go:310":    "asks whether the emitted unit uses serialize., to pick imports",
+		"gotable.go:746": "asks whether the emitted unit uses serialize., to pick imports",
 	}
 	var bad []string
 	files, err := filepath.Glob("*.go")
@@ -259,13 +254,26 @@ table Plain { names []string }
 			"tableJsonReadText(",      // the plain []string element reader
 		},
 	},
+	{
+		name: "optional-map",
+		schema: `package probe
+table Leaf { v int32 }
+table Root { m ?map[int32]Leaf }
+`,
+		// The optional map's reset seam: a `null` reads as ABSENT and puts the
+		// field back at its defaults. The marker exists only through the seam's
+		// patch, so a silent drop removes it.
+		want: []string{
+			"if f.Map {",
+		},
+	},
 }
 
 // seamGolden is the DefaultSurfaces digest at BASE (sprint/schema-go tip), one
 // per surfaceExercises schema. The seams only move source text; they must never
-// move the bytes a unit generates. All five were re-pinned for blob_shared
-// (docs/SPEC-TABLES.md §2.5, §16.7) on the merge of sprint/schema-go @
-// cc25e39f7: the runtime gains its enum value, Error case and Err line and
+// move the bytes a unit generates. All six were re-pinned for blob_shared
+// (docs/SPEC-TABLES.md §2.5, §16.7) on the merges of sprint/schema-go @
+// cc25e39f7 and @ 8694cf96c: the runtime gains its enum value, Error case and Err line and
 // TableReport.BlobShared, and the writers and file loads refuse or count a blob
 // named from two slots. The seams themselves move no bytes.
 var seamGolden = map[string]string{
@@ -274,6 +282,7 @@ var seamGolden = map[string]string{
 	"message-form":          "43b641875a46512c140dc49152480c72f51e38bb47c025430112c0ddb31fc67c",
 	"retain-unknown":        "bf199db792d8158d8b3e5d09012cb24fdf5ed474d7f00634ff753f47ecf706be",
 	"text-total-seams":      "10ad43aad48659a82fcf30ecc0e7e017ee1cbaac16edd793c5f26a5b6723b4e9",
+	"optional-map":          "09b183fe529493e7a47d49eb21a692e4f9a894f9d75a8d1458e311403d629c4e",
 }
 
 func outputDigest(out map[string][]byte) string {
