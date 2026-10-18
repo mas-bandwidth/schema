@@ -1485,7 +1485,7 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 		cell.B = false
 		return true
 	}
-	token, integral, ok := in.scanNumber()
+	token, _, ok := in.scanNumber()
 	if !ok {
 		in.bad = true
 		return false
@@ -1500,7 +1500,7 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 	if kind == ir.TableKindU16 || kind == ir.TableKindU32 || kind == ir.TableKindU64 ||
 		kind == ir.TableKindI8 || kind == ir.TableKindI16 || kind == ir.TableKindI32 || kind == ir.TableKindI64 ||
 		kind == ir.TableKindU8 {
-		return in.placeInteger(cell, f, token, integral, kind)
+		return in.placeInteger(cell, f, token, kind)
 	}
 	in.bad = true
 	return false
@@ -1586,10 +1586,12 @@ func (in *reader) placeFloat(cell *Cell, f *ir.Field, token string, single bool)
 // NUMBER TYPE, so an integer field takes any token whose VALUE is integral,
 // however it was spelled — 2, 2.0 and 1e3 are all the integers this walk
 // places — and only a genuinely fractional value is the wrong shape for it
-// (docs/SPEC-TABLES.md §16.2).
-func (in *reader) placeInteger(cell *Cell, f *ir.Field, token string, integral bool, kind int) bool {
+// (docs/SPEC-TABLES.md §16.2). The read is EXACT, on the token's own digits and
+// never through a float64: 9007199254740993.0 is itself, not the mantissa's
+// 9007199254740992, and 1.0000000000000001 is a fraction.
+func (in *reader) placeInteger(cell *Cell, f *ir.Field, token string, kind int) bool {
 	signed := kind >= ir.TableKindI8 && kind <= ir.TableKindI64
-	number := interpretInteger(token, integral)
+	number := interpretIntegerExact(token)
 	if !number.finite || number.fractional {
 		in.report.KindMismatch++
 		return true
@@ -1800,12 +1802,11 @@ func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 // whole entry, because a key is an identity and a clamped one is two entries
 // merged. That difference is the only difference between them.
 //
-// THE KEY READS ITS TOKEN EXACTLY AND A FIELD READS IT THROUGH THE FLOAT64, and
-// that is the one place the two interpretations part. A key is an IDENTITY, so
-// two spellings a 53-bit mantissa cannot tell apart are two keys and the key
-// path carries interpretIntegerExact below. A field's value is a quantity under
-// a clamp, and its interpretation is the one the C, Go and Rust ports read the
-// same texts with, so it lives here and reads as they read.
+// EVERY INTEGER TARGET READS THE TOKEN EXACTLY, field and key alike
+// (docs/SPEC-TABLES.md §16.2, Numbers): the token's own digits decide, so
+// 9007199254740993.0 is that value rather than the one a float64 rounds it to,
+// 1.0000000000000001 is a fraction, and nothing is ever truncated through a
+// 53-bit mantissa.
 type jsonInteger struct {
 	magnitude  uint64 // |value|, exact for every integral token 64 bits hold
 	negative   bool
@@ -1814,72 +1815,20 @@ type jsonInteger struct {
 	finite     bool // false: no integer target holds it at all
 }
 
-// interpretInteger is THE FIELD'S INTERPRETATION: it reads the token digit by
-// digit so no width and no locale can move it, and goes through a float64 only
-// where the spelling carries a fraction or an exponent.
-func interpretInteger(token string, integral bool) jsonInteger {
-	out := jsonInteger{finite: true}
-	if integral {
-		i := 0
-		if i < len(token) && token[i] == '-' { // walkNumber refuses a leading plus
-			out.negative = true
-			i++
-		}
-		for ; i < len(token); i++ {
-			digit := uint64(token[i] - '0')
-			if out.magnitude > (math.MaxUint64-digit)/10 {
-				out.magnitude = math.MaxUint64
-				out.saturated = true
-				break
-			}
-			out.magnitude = out.magnitude*10 + digit
-		}
-		if out.magnitude == 0 {
-			out.negative = false // -0 IS zero
-		}
-		return out
-	}
-	d, err := strconv.ParseFloat(token, 64)
-	if (err != nil && !errors.Is(err, strconv.ErrRange)) || math.IsInf(d, 0) || math.IsNaN(d) {
-		out.finite = false
-		return out
-	}
-	out.negative = math.Signbit(d)
-	whole := math.Abs(d)
-	// THE DOMAIN IS ESTABLISHED BEFORE THE CAST: a magnitude past what
-	// sixty-four bits hold is answered here, so no value ever reaches a
-	// conversion that is undefined for it
-	if whole >= 18446744073709551616.0 {
-		out.magnitude = math.MaxUint64
-		out.saturated = true
-		return out
-	}
-	truncated := uint64(whole)
-	if float64(truncated) != whole {
-		out.fractional = true
-		return out
-	}
-	out.magnitude = truncated
-	if out.magnitude == 0 {
-		out.negative = false
-	}
-	return out
-}
-
 // decimalBand is where a token is answered without arithmetic: 10^20 is above
 // MaxUint64 whatever the digits are, so a point past it saturates, and a token
 // spelling 1e999999999 costs nothing to refuse.
 const decimalBand = 20
 
-// interpretIntegerExact is THE MAP KEY'S INTERPRETATION and no other path's: it
-// reads the token's own digits where they stand, so no 53-bit mantissa decides
-// the identity of a 64-bit key. The int and frac runs are one digit string with
-// the point after `point` of them, and the exponent moves the point rather than
-// the digits, which is the normalization the wide kinds already use (ParseWide)
-// over one 64-bit lane. A zero fraction is the integer the token spells at every
-// magnitude the kind holds, so 9007199254740993.0 is that key rather than the
-// one a float64 rounds it to. No exact reader has an infinity, so `finite` is
-// true here always.
+// interpretIntegerExact is THE INTERPRETATION for every integer field and every
+// map key: it reads the token's own digits where they stand, so no 53-bit
+// mantissa decides the value or the identity of a 64-bit number. The int and
+// frac runs are one digit string with the point after `point` of them, and the
+// exponent moves the point rather than the digits, which is the normalization
+// the wide kinds already use (ParseWide) over one 64-bit lane. A zero fraction
+// is the integer the token spells at every magnitude the kind holds, so
+// 9007199254740993.0 is that value rather than the one a float64 rounds it to.
+// No exact reader has an infinity, so `finite` is true here always.
 func interpretIntegerExact(token string) jsonInteger {
 	out := jsonInteger{finite: true}
 	i := 0
