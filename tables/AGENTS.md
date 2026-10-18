@@ -8,6 +8,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `backend/` | message-form backend corpus | `make check` | `bin/schema check tables/backend` |
 | `blobs/` | byte-buffer corpus | `make check` | `bin/schema check tables/blobs` |
 | `block/` | block-form corpus | `make check` | `bin/schema check tables/block` |
+| `goruntime/` | optional shared Go table runtime (generated) | `make tables-go-shared-runtime` | `make go-runtime` |
 | `blockhome/` | block-home corpus | `make check` | `bin/schema check tables/blockhome` |
 | `cards/` | work-card corpus | `make cards-test` | `make cards-test` |
 | `examples/` | table examples corpus | `make check` | `bin/schema check tables/examples` |
