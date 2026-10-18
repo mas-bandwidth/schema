@@ -83,12 +83,38 @@ func jsonModules(g *generatedUnit) string {
 	return b.String()
 }
 
+// jsonFlags is the Luau preamble that hands the emitted runtime the flags
+// variant names the descriptor does not carry (docs/SPEC-TABLES.md §16.2, the
+// flags row: an array of variant names, in bit order).
+func jsonFlags(g *generatedUnit) string {
+	var names []string
+	for k := range g.flags {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	var b strings.Builder
+	b.WriteString("local SCHEMA_JSON_FLAGS = {\n")
+	for _, k := range names {
+		fmt.Fprintf(&b, "[%q] = {", k)
+		for i, v := range g.flags[k] {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			fmt.Fprintf(&b, "%q", v)
+		}
+		b.WriteString("},\n")
+	}
+	b.WriteString("}\n")
+	return b.String()
+}
+
 // jsonInstanceProbe runs both directions of §16.1 in one process: FromJson of
 // the text then Save, and Load of the wire then ToJson. It prints the saved
 // wire as hex, the written text as hex, and one character per direction saying
 // whether it reported malformed.
 func jsonInstanceProbe(g *generatedUnit, rootName string) string {
-	return jsonModules(g) + fmt.Sprintf(`local json = require("./json")
+	return jsonModules(g) + jsonFlags(g) + fmt.Sprintf(`local json = require("./json")
+json.SetFlags(SCHEMA_JSON_FLAGS)
 local load = require("./load")
 local save = require("./save")
 local St = require("./schema_tables")
@@ -121,7 +147,8 @@ print((r1.malformed and "1" or "0") .. (r2.malformed and "1" or "0"))
 // jsonHostileProbe reads one hostile text and prints the manifest's verdict
 // line (`u,k,w,c,d,m,verdict`, or `refused`), docs/SPEC-TABLES.md §16.2, §4.
 func jsonHostileProbe(g *generatedUnit, rootName string) string {
-	return jsonModules(g) + fmt.Sprintf(`local json = require("./json")
+	return jsonModules(g) + jsonFlags(g) + fmt.Sprintf(`local json = require("./json")
+json.SetFlags(SCHEMA_JSON_FLAGS)
 local inputs = require("./inputs")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 local v = json.FromJson(%q, inputs.text, report)
