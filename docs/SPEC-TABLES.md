@@ -15321,7 +15321,13 @@ value the field's width cannot represent is `kind_mismatch`, so an
 infinity is never stored. **A token that is not a JSON number at all** —
 `1-2`, `5+`, `1.2.3`, `--3` — is `malformed`: the token grammar is RFC
 8259's, and a typo in an authoring file is a diagnostic, never a clamped
-value.
+value. **A token's LENGTH is never the reason it is refused**: a valid
+number is read by its value however many bytes it spans, within the
+document's own size bound. There is no separate number-length limit, so a
+`1.` followed by six hundred zeros is the float `1.0` and a `1` followed by
+six hundred zeros is an out-of-range integer clamped by the rules above,
+not a `malformed` token. Both engines land the same bytes and counters for
+one, as they do for every other token.
 
 **The wide kinds convert EXACTLY, and nothing on their path is a double.**
 A fixed field's token is the value in whole units; the reader scales it by
