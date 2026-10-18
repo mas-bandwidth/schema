@@ -22,6 +22,16 @@ TableRefuseDataCycle
 TableRefuseInvalidValue
 TableRefuseAllocationFailed
 TableRefuseWireDamaged
+TableRefuseMalformed
+TableRefuseClamped
+TableRefuseKindMismatch
+TableRefuseBase64Damaged
+TableRefuseBase64NotCanonical
+TableRefuseIntegrityMismatch
+TableRefuseNonFinite
+// TableRefuseBlobShared: one blob record named from two slots (docs/SPEC-TABLES.md
+// §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
+TableRefuseBlobShared
 )
 func(r TableRefuseReason) Error()string{switch r {
 case TableRefuseOk:return "ok"
@@ -41,14 +51,95 @@ case TableRefuseDataCycle:return "data_cycle"
 case TableRefuseInvalidValue:return "invalid_value"
 case TableRefuseAllocationFailed:return "allocation_failed"
 case TableRefuseWireDamaged:return "wire_damaged"
+case TableRefuseMalformed:return "malformed"
+case TableRefuseClamped:return "clamped"
+case TableRefuseKindMismatch:return "kind_mismatch"
+case TableRefuseBase64Damaged:return "base64_damaged"
+case TableRefuseBase64NotCanonical:return "base64_not_canonical"
+case TableRefuseIntegrityMismatch:return "integrity_mismatch"
+case TableRefuseNonFinite:return "non_finite"
+case TableRefuseBlobShared:return "blob_shared"
 };return "invalid refusal reason"}
 func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{return nil};return reason}
 // TableBuildVersionMismatch is the typed error a strict announcement refusal
 // reports (docs/SPEC-TABLES.md §3.3): the peer's build version and the
 // reader's own, each a 64-bit number.
 type TableBuildVersionMismatch struct { Peer, Own uint64 }
-func(m TableBuildVersionMismatch) Error() string {const digits="0123456789abcdef";var peer,own [16]byte;for i:=15;i>=0;i-- {peer[i]=digits[m.Peer&0xf];m.Peer>>=4};for i:=15;i>=0;i-- {own[i]=digits[m.Own&0xf];m.Own>>=4};return "build_version_mismatch: peer 0x"+string(peer[:])+" own 0x"+string(own[:])}
-// Err is the report's typed error: the strict build-version refusal as a
-// TableBuildVersionMismatch (docs/SPEC-TABLES.md §3.3), nil on a clean read.
-func(r *TableReport) Err() error {if r!=nil&&r.Reason=="build_version_mismatch"{return TableBuildVersionMismatch{Peer:r.BuildVersionPeer,Own:r.BuildVersionOwn}};return nil}
+func(m TableBuildVersionMismatch) Error() string {const digits="0123456789abcdef";var peer,own [16]byte;p,o:=m.Peer,m.Own;for i:=15;i>=0;i-- {peer[i]=digits[p&0xf];p>>=4};for i:=15;i>=0;i-- {own[i]=digits[o&0xf];o>>=4};return "build_version_mismatch: peer 0x"+string(peer[:])+" own 0x"+string(own[:])}
+// TableMissingRequired is the typed error a strict read reports for a record
+// that lacks a | required field (docs/SPEC-TABLES.md §2.3): Fields names the
+// missing fields, comma-separated in declaration order, at whatever depth of
+// the record they were missing, and Error() is the report's own reason.
+type TableMissingRequired struct { Fields string }
+func(m TableMissingRequired) Error() string {return "missing_required: "+m.Fields}
+// TableFixedRefusal is the typed error a strict read reports for a fixed-form
+// refusal that has a name (docs/SPEC-TABLES.md §6.5): Reason is the refusal's
+// own name (the §3.4 reason), and Error() is that name. The four form-byte
+// refusals (previous_form, message_form_as_file, newer_form and the unsupported
+// wire form) keep answering TableRefuseUnknownForm so errors.Is keeps working.
+type TableFixedRefusal struct { Reason string }
+func(f TableFixedRefusal) Error() string {return f.Reason}
+// tableFixedReasonNamed reports whether a fixed-form refusal's Reason is one of
+// the NAMED layout/plan reasons — the refusals that answer BY NAME rather than
+// as unknown_form (docs/SPEC-TABLES.md §3.4, §6.5). The four form-byte reasons
+// are the exceptions. integrity_mismatch is raised Damaged, never Refused, so it
+// needs no entry here.
+func tableFixedReasonNamed(reason string) bool {
+	switch reason {
+	case "previous_form", "message_form_as_file", "newer_form":
+		return false
+	case "layout_malformed", "layout_unknown", "layout_newer", "layout_unsupported",
+		"layout_record_too_large", "plan_too_large", "batch_too_large", "no_layout",
+		"text_ill_formed", "truncated", "reserved_not_zero", "count_over_bound", "length_over_bound":
+		return true
+	}
+	return false
+}
+// Err is the report's typed error (docs/SPEC-TABLES.md §6.5, docs/VERSIONING.md
+// The read report). A strict read refuses malformed, clamped, kind-mismatched,
+// unknown form, wire-damaged, build-version-mismatched, missing-required
+// (§2.3, naming the field), a non-finite plain float (§3.3, a plain float's
+// special values: non_finite, named in Reason) and blob_shared (§2.5), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
+func(r *TableReport) Err() error {
+if r==nil {return nil}
+if r.Reason=="build_version_mismatch" {return TableBuildVersionMismatch{Peer:r.BuildVersionPeer,Own:r.BuildVersionOwn}}
+if r.FixedRaised && r.Verdict==TableOpenRefused {
+	if tableFixedReasonNamed(r.Reason) {return TableFixedRefusal{Reason:r.Reason}}
+	return TableRefuseUnknownForm
+}
+if r.Verdict==TableOpenRefused || r.Reason=="unsupported wire form" || r.Reason=="newer_form" || r.Reason=="message_form_as_file" || r.Reason=="message form requires an announced vocabulary and a message reader" {return TableRefuseUnknownForm}
+if r.Reason=="integrity_mismatch" {return TableRefuseIntegrityMismatch}
+if r.Verdict==TableOpenDamaged {return TableRefuseWireDamaged}
+if r.MissingRequired>0 {const p="missing_required: ";f:=r.Reason;if len(f)>=len(p)&&f[:len(p)]==p{f=f[len(p):]};return TableMissingRequired{Fields:f}}
+if r.Malformed {return TableRefuseMalformed}
+// A blob named from two slots (SPEC-TABLES §2.5, §6.5): the tolerant read keeps
+// the one node and counts it; the strict read refuses it by name.
+if r.BlobShared>0 {return TableRefuseBlobShared}
+if r.Clamped>0 {if r.ClampedField!=""{return TableClampedField{Field:r.ClampedField}};return TableRefuseClamped}
+if r.KindMismatch>0 {return TableRefuseKindMismatch}
+{const p="non_finite: ";if len(r.Reason)>=len(p)&&r.Reason[:len(p)]==p {return TableRefuseNonFinite}}
+return nil}
+// tableNonFinite names a plain float32/float64 the read landed as a NaN or an
+// infinity (docs/SPEC-TABLES.md §3.3, a plain float's special values): the
+// pattern lands as written and counts nothing, and the name is what the
+// strict read refuses as non_finite. The first name a read records wins. It
+// takes the report's Reason, not a method on TableReport, so the shared runtime
+// (§8.4) can export it: generated code outside the shared set reaches no
+// unexported member, and the file reader's *TableReport and the message
+// reader's TableReport value both pass &r.Report.Reason.
+func tableNonFinite(reason *string,field string){if *reason==""{*reason="non_finite: "+field}}
+// tableTextClamped names the field whose value a read clamped (docs/SPEC-TABLES.md
+// §6.5), so a strict read can say which field. The first name a read records
+// wins, as for non_finite. It lands in the report's own ClampedField slot,
+// apart from Reason: Reason may already carry a non_finite name, and the
+// clamped refusal must not lose its field to it. The slot is named by pointer
+// so the same emitted call compiles in every reader context (the table read's
+// *TableReader, the message read's TableMessageReader).
+func tableTextClamped(clampedField *string,field string){if clampedField!=nil&&*clampedField==""{*clampedField=field}}
+// TableClampedField is a strict read's clamped refusal naming the field it clamped
+// (docs/SPEC-TABLES.md §6.5): errors.Is(err, TableRefuseClamped) holds.
+type TableClampedField struct{ Field string }
+func (e TableClampedField) Error() string { return "clamped: " + e.Field }
+func (e TableClampedField) Is(target error) bool { return target == TableRefuseClamped }
+
 `
