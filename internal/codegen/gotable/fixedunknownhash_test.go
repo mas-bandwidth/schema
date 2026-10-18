@@ -149,7 +149,7 @@ func refuse(t *testing.T, what string, file []byte, reason string, hash uint64) 
 	}
 	var r TableReport
 	n := PointFixedLoad(got, file, plan, &r)
-	if n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: reason, LayoutHash: hash}) {
+	if n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: reason, LayoutHash: hash}) {
 		t.Fatalf("%s: want %s carrying 0x%016x and nothing else; got n=%d report=%+v", what, reason, hash, n, r)
 	}
 	for i := range got {
