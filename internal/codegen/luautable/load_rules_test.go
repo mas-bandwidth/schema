@@ -168,7 +168,8 @@ local load = require("./load")
 require("./BoxTable")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 local v = load.load("Box", inputs.wire, report)
-print(v.S .. "|" .. %s)`, report)
+-- a string(N) is a buffer and its used Length (docs/PORT-LUAU.md, THE TYPE MAPPING)
+print(buffer.readstring(v.S, 0, v.SLength) .. "|" .. %s)`, report)
 		want := "ab|0,0,0,1,0,false"
 		if got := run(t, g, main, w); got != want {
 			t.Errorf("clamp-utf8:\ngot:  %s\nwant: %s", got, want)
@@ -191,7 +192,11 @@ local load = require("./load")
 require("./BoxTable")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 local v = load.load("Box", inputs.wire, report)
-print(v.W .. "|" .. %s)`, report)
+-- a wstring(N) is a buffer of UTF-16LE code units and its Length in units
+-- (docs/PORT-LUAU.md, THE TYPE MAPPING): the kept units print as UTF-8
+local units = {}
+for i = 0, v.WLength - 1 do units[#units + 1] = utf8.char(buffer.readu16(v.W, i * 2)) end
+print(table.concat(units) .. "|" .. %s)`, report)
 		want := "a|0,0,0,1,0,false"
 		if got := run(t, g, main, w); got != want {
 			t.Errorf("clamp-wide:\ngot:  %s\nwant: %s", got, want)

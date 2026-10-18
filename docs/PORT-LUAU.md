@@ -90,7 +90,9 @@ declared class is a descriptor fact (`fixed`), not a storage difference.
 | a bare `string` element or map key (§2.13.1) | `buffer?` | `nil` |
 | `?T` (§2.3) | the value, and `<Name>Present: boolean` beside it | the value at its zero, `Present = false` |
 | `[]T` (§2.9) and text lists (§2.13) | a 1-based array `{T}`, its length the data's | `{}` |
+| `[]*T`, `[]*string`, `[]*bytes` (a list of pointers, §2.9) | `{T \| false}`: a null in the list is `false`, never `nil`, so the list is never cut short, and its length rides as `n: number` beside the elements (the `table.pack` convention), which the save reads | `{}` |
 | `[..N]*T`, `[N]*T` | `{T?}`, nil-filled, and the count where counted | `table.create(N)` |
+| an enum field, element, map key or keyed-array value | the variant's NUMBER, `None` 0, as for a packet type above; never its name, so the load stores and the save reads one shape | the default variant's number, else `0` |
 | `map[K]V` (§2.8) | `{Entry}`, an array of the generated `<Table><Field>Entry` table `{ Key, Value }`, which the save walk sorts by key | `{}` |
 | a union with table arms (§2.6) | as a packet union, in the table module; an arm is a field line, so it takes that field's value | `Type = 0` |
 | `\| required`, `\| deprecated`, `was`, `json = "…"`, `forms`, `integrity` | no storage: descriptor facts (`required`, `deprecated`, the id's source name, `json`) and generation facts | — |
