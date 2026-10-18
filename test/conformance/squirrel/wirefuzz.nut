@@ -13,7 +13,7 @@
 // carry yet, so those entries answer 0 too: the roster is the form-1 file
 // roots the target generates.
 
-local in = ::stdin;
+local input = ::stdin;
 local out = ::stdout;
 
 local u8 = function(b) { return b.readn('b'); };
@@ -62,13 +62,13 @@ local root = ".";
 
 // roster: (unit, root, form, retain). form=1 and retain=0 is the leg's
 // answer; form=2 (message) and retain=1 are not carried.
-local count = u32(in);
+local count = u32(input);
 local avail = blob(count);
 for (local i = 0; i < count; i++) {
-  local unit = text(in);
-  local rname = text(in);
-  local form = u8(in);
-  local retain = u8(in);
+  local unit = text(input);
+  local rname = text(input);
+  local form = u8(input);
+  local retain = u8(input);
   local a = (form == 1 && retain == 0) ? 1 : 0;
   avail[i] = a;
   out.writen(a, 'b');
@@ -77,10 +77,10 @@ out.flush();
 
 // mutants
 while (true) {
-  local idx = u32(in);
-  local size = u32(in);
-  if (in.len() < size) break;
-  local wire = in.readblob(size);
+  local idx = u32(input);
+  local size = u32(input);
+  if (input.len() < size) break;
+  local wire = input.readblob(size);
   // roster lookup: we only answer form-1 entries; a form-2 or retain index is
   // unsupported and is not sent by the harness (available was 0).
   local loaded = 0;

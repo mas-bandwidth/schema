@@ -59,11 +59,28 @@ local run = function(unit, mod, root, key) {
     unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
     duplicate = 0, malformed = false, refused = false
   };
-  local v = L.load(T, root, inputs[key], report);
-  local loaded = v == null ? 0 : 1;
+  // The Go engine always resaves the instance state it is left with, and a
+  // throw must never kill the run: the emitted load/save can only report.
+  // A read past the buffer is framing damage (docs/SPEC-TABLES.md §3, §4),
+  // so a throw is malformed, and the instance is then the empty one the save
+  // draws from, exactly as the engine resaves its fresh instance.
+  local v = null;
+  local b = null;
+  try {
+    v = L.load(T, root, inputs[key], report);
+  } catch (e) {
+    report.malformed = true;
+    v = null;
+  }
   if (v == null) v = T.Descriptors[root].make();
-  local b = S.save(T, root, v);
-  local h = b == null ? "" : hexof(b);
+  try {
+    b = S.save(T, root, v);
+  } catch (e) {
+    report.malformed = true;
+    b = null;
+  }
+  local loaded = (report.refused || report.malformed) ? 0 : 1;
+  local h = b == null ? "-" : hexof(b);
   print(key + " " + loaded + " " + report.unknown.tostring() + "," +
         report.kindMismatch.tostring() + "," + report.widened.tostring() + "," +
         report.clamped.tostring() + "," + report.duplicate.tostring() + " " +
@@ -89,7 +106,7 @@ func parseFuzzLines(t *testing.T, out []byte) map[string]fuzzRow {
 	rows := map[string]fuzzRow{}
 	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
 		f := strings.Fields(line)
-		if len(f) != 8 {
+		if len(f) != 6 {
 			t.Fatalf("fuzz line %q is not key loaded u,k,w,c,d malformed refused hex", line)
 		}
 		var r fuzzRow
@@ -97,9 +114,9 @@ func parseFuzzLines(t *testing.T, out []byte) map[string]fuzzRow {
 		fmt.Sscanf(f[2], "%d,%d,%d,%d,%d", &r.unknown, &r.kindMismatch, &r.widened, &r.clamped, &r.duplicate)
 		fmt.Sscanf(f[3], "%d", &r.malformed)
 		fmt.Sscanf(f[4], "%d", &r.refused)
-		r.savedHex = f[5]
-		// the remaining fields (the hex can wrap only as one field because the
-		// probe writes it without spaces)
+		if f[5] != "-" {
+			r.savedHex = f[5]
+		}
 		rows[f[0]] = r
 	}
 	return rows
@@ -275,14 +292,17 @@ func TestSquirrelWireFuzzAgreesWithTheGoEngine(t *testing.T) {
 // red on the malformed flag.
 func TestSquirrelWireFuzzNegativeControl(t *testing.T) {
 	t.Parallel()
-	const anchor = "if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }"
+	// one anchor, matched exactly once: the form-byte gate that refuses a
+	// non-variable wire (docs/SPEC-TABLES.md §3). Sabotaging it makes a wire
+	// the engine refuses by form be read by the Squirrel side, so the
+	// differential goes red on the refused flag.
+	const anchor = "  if ((bytes[0] & 0xff) != FORM_VARIABLE) { report.refused = true; return null; }\n"
 	_, err := runWireFuzzDifferential(t, func(files map[string][]byte) {
 		runtime := squirreltable.Runtime()["schema_table_load.nut"]
 		if n := strings.Count(string(runtime), anchor); n != 1 {
 			t.Fatalf("the negative control's anchor appears %d times in the emitted runtime, want exactly once", n)
 		}
-		patched := strings.Replace(string(runtime), anchor,
-			"if (r.bad) { report.malformed = true; return false; }", 1)
+		patched := strings.Replace(string(runtime), anchor, "  if (false) { report.refused = true; return null; }\n", 1)
 		files["schema_table_load.nut"] = []byte(patched)
 	})
 	if err == nil {
