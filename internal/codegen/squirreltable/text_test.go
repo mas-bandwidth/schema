@@ -263,8 +263,8 @@ func TestSquirrelBase64TextNegativeControl(t *testing.T) {
 	}
 	fields := strings.Fields(first)
 	if len(fields) >= 3 && fields[1] != "loadrefused" && fields[1] != "savenull" {
-		if fields[1] == want {
-			t.Fatalf("unpatched SaveText equals Go base64 %q, want a differing wire", want)
+		if fields[1] != want {
+			t.Fatalf("unpatched SaveText %q, want Go base64 %q", fields[1], want)
 		}
 	} else {
 		t.Fatalf("probe failed before save: %q", first)
