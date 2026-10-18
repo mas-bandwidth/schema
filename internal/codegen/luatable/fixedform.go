@@ -9,10 +9,77 @@ package luatable
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
+
+// FixedLineageEntry is ONE locked layout of one fixed table
+// (docs/FIXED-FORM-ALGORITHM.md §5.2): the wire hash a file is matched on, the
+// layout bytes verbatim, and the whole record size (the eight hash bytes and
+// the body). Retired and Reason are the operator's floor marks.
+type FixedLineageEntry struct {
+	Wire    uint64
+	Layout  []byte
+	Record  int64
+	Retired bool
+	Reason  string
+}
+
+// FixedLineageOf computes the entry a unit's OWN build locks for table `name`.
+// It is how a test states an older entry without a lock.
+func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
+	for _, st := range fixedRoots(u) {
+		if st.Name != name {
+			continue
+		}
+		entries := ir.TableFixedWalkRoot(st)
+		layout := ir.TableFixedLayoutBytes(entries)
+		return FixedLineageEntry{
+			Wire:   ir.TableFixedLayoutHash(layout, st),
+			Layout: layout,
+			Record: fixedHashBytes + fixedTypeBytes(st),
+		}, true
+	}
+	return FixedLineageEntry{}, false
+}
+
+// fixedLineageFor is the lineage the emitter lays down for one table: the
+// entries the build handed it, OLDEST FIRST, with the table's OWN entry
+// appended last when the lineage does not already end on it. The floor is
+// 1 + the highest retired index, or 0 when none is (§5.2).
+func fixedLineageFor(handed []FixedLineageEntry, own FixedLineageEntry) ([]FixedLineageEntry, int) {
+	entries := append([]FixedLineageEntry(nil), handed...)
+	last := len(entries) - 1
+	if last < 0 || entries[last].Wire != own.Wire {
+		entries = append(entries, own)
+	}
+	floor := 0
+	for i, e := range entries {
+		if e.Retired {
+			floor = i + 1
+		}
+	}
+	return entries, floor
+}
+
+// pendingLineage carries the caller's lineage to the registered fixed-form
+// pass without widening [Module]. The pass runs inside Generate, which has no
+// lineage argument; GenerateLineage stores it for the duration of one call.
+var pendingLineage sync.Map // *ir.Unit -> map[string][]FixedLineageEntry
+
+// GenerateLineage is [Generate] with the LINEAGE the build holds for each fixed
+// table (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.9 #1). [Generate] is the same
+// call with no lineage, so a unit with no lock keeps exactly today's behaviour
+// for its own hash.
+func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	if len(lineage) > 0 {
+		pendingLineage.Store(u, lineage)
+		defer pendingLineage.Delete(u)
+	}
+	return Generate(u)
+}
 
 // fixedKindOptional is the ONE kind §3.4's block adds to §3's closed set: the
 // OPTIONAL WRAPPER, one child, whose size is one present byte plus the child's.
@@ -313,6 +380,8 @@ func emitFixedForm(m *Module) error {
 		size := fixedTypeBytes(st)
 		m.Printf("_M.Fixed[%q] = { size = %d, table = %q }\n", st.Name, size, st.Name)
 	}
+	lineage, _ := pendingLineage.Load(m.Unit)
+	handed, _ := lineage.(map[string][]FixedLineageEntry)
 	// THE LAYOUT AND ITS HASH ride in the header (docs/FIXED-FORM-ALGORITHM.md
 	// §1, §2): the same walk the C++ reference takes, so the bytes this leg
 	// writes and the header it names are the oracle's own.
@@ -322,6 +391,23 @@ func emitFixedForm(m *Module) error {
 		hash := ir.TableFixedLayoutHash(layout, st)
 		m.Printf("_M.Fixed[%q].layout = %s\n", st.Name, lua.ByteString(layout))
 		m.Printf("_M.Fixed[%q].hash = %s\n", st.Name, idLit(hash))
+		// THE KNOWN LAYOUTS (docs/FIXED-FORM-ALGORITHM.md §5.2): one entry per
+		// locked layout, OLDEST FIRST, the current one LAST. A file is matched
+		// on the hash and read under THE LOCK'S layout bytes; its own are
+		// compared and never walked. A RETIRED entry stays here forever — the
+		// floor cuts it.
+		known, floor := fixedLineageFor(handed[st.Name], FixedLineageEntry{
+			Wire: hash, Layout: layout, Record: fixedHashBytes + fixedTypeBytes(st),
+		})
+		m.Printf("_M.Fixed[%q].known = {\n", st.Name)
+		for _, e := range known {
+			if e.Retired {
+				m.Printf("  -- RETIRED: %s\n", e.Reason)
+			}
+			m.Printf("  { hash = %s, layout = %s, record = %d },\n", idLit(e.Wire), lua.ByteString(e.Layout), e.Record)
+		}
+		m.Printf("}\n")
+		m.Printf("_M.Fixed[%q].floor = %d\n", st.Name, floor)
 	}
 	emitFixedTables(m, roots)
 	m.Printf("\nfunction _M.ReadFixed(name, buf)\n")
