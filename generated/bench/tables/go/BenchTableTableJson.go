@@ -838,6 +838,10 @@ type tableJsonIn struct {
 	// zero is set when the walk stopped on a U+0000 bound for text storage
 	// (mas-bandwidth/schema docs/SPEC-TABLES.md 16.3): the field loop names the field in Reason
 	zero bool
+	// utf8 is set when the walk stopped on a byte sequence that is not
+	// well-formed UTF-8 (16.3): the read refuses it by name rather than
+	// replacing it silently with U+FFFD
+	utf8 bool
 }
 
 func (in *tableJsonIn) space() {
@@ -1072,7 +1076,14 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 		default:
 			code, n := utf8.DecodeRune(in.text[in.pos:])
 			if code == utf8.RuneError && n == 1 {
-				unitLength = tableJsonEncodeUtf8(0xfffd, unit[:])
+				// 16.3: a byte sequence that is not well-formed UTF-8 is
+				// refused by name rather than replaced with U+FFFD
+				in.utf8 = true
+				if in.report.Reason == "" {
+					in.report.Reason = "string_not_utf8: <root>"
+				}
+				in.bad = true
+				return 0, false
 			} else {
 				unitLength = int32(n)
 				copy(unit[:], in.text[in.pos:in.pos+n])

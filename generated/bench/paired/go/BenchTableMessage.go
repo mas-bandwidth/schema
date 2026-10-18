@@ -235,6 +235,7 @@ func Announce(buffer []byte) int64 {
 }
 func tableMessageRefuse(r *TableReport, reason string) bool {
 	r.Verdict = TableOpenRefused
+	r.FixedRaised = false
 	r.Reason = reason
 	return false
 }
