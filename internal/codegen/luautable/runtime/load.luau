@@ -473,6 +473,26 @@ local function entry_key(keyfd: any, inst: any): any
 	return key_token(k)
 end
 
+-- A CLAMP KEEPS WHOLE CODE POINTS (docs/SPEC-TABLES.md §3, KIND 12 / 33): a
+-- string past its bound keeps the last whole UTF-8 code point within it, and
+-- a wide string its first N code units less an orphan high surrogate.
+local function clamp_utf8(b: buffer, at: number, keep: number): number
+	while keep > 0 do
+		local x = buffer.readu8(b, at + keep)
+		if x < 0x80 or x > 0xBF then break end
+		keep = keep - 1
+	end
+	return keep
+end
+
+local function clamp_wide(b: buffer, at: number, units: number): number
+	if units > 0 then
+		local last = buffer.readu16(b, at + (units - 1) * 2)
+		if last >= 0xD800 and last <= 0xDBFF then units = units - 1 end
+	end
+	return units
+end
+
 -- a string(N), wstring(N) or bytes(N) value lands in its buffer with its used
 -- length beside it (docs/PORT-LUAU.md, THE TYPE MAPPING; SPEC §4.7)
 local function store_bytes(v: any, slot: string, src: buffer, at: number, nbytes: number, length: number)
@@ -614,10 +634,15 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 				for i, kv in fd.keyvs do
 					if kv[2] == keyID then at = i; break end
 				end
-				if at == 0 then report.unknown = report.unknown + 1 end
 			end
 			local elemLen = r_leb(sub)
 			if sub.bad or sub.at + elemLen > sub.e then report.malformed = true; break end
+			-- a key this reader cannot name is skipped by its length (§2.4, §3.2)
+			if at == 0 then
+				report.unknown = report.unknown + 1
+				sub.at = sub.at + elemLen
+				continue
+			end
 			local payload = new_reader(sub.b, sub.at, sub.at + elemLen)
 			sub.at = sub.at + elemLen
 			local x: any = nil
@@ -762,7 +787,7 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 			-- a wstring element: L is a byte length, twice the code units (§3)
 			if n % 2 ~= 0 then report.malformed = true; r.at = r.at + n; return true end
 			local units = n / 2
-			if e.bound ~= nil and units > e.bound then units = e.bound; report.clamped = report.clamped + 1 end
+			if e.bound ~= nil and units > e.bound then units = clamp_wide(r.b, r.at, e.bound); report.clamped = report.clamped + 1 end
 			local b = dst[i]
 			if typeof(b) ~= "buffer" or buffer.len(b) < units * 2 then b = buffer.create(units * 2); dst[i] = b end
 			buffer.fill(b, 0, 0)
@@ -780,7 +805,7 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 			dst[i] = copy_out(r.b, r.at, n)
 		else
 			local keep = n
-			if e.bound ~= nil and keep > e.bound then keep = e.bound; report.clamped = report.clamped + 1 end
+			if e.bound ~= nil and keep > e.bound then keep = clamp_utf8(r.b, r.at, e.bound); report.clamped = report.clamped + 1 end
 			local b = dst[i]
 			if typeof(b) ~= "buffer" or buffer.len(b) < keep then b = buffer.create(keep); dst[i] = b end
 			buffer.fill(b, 0, 0)
@@ -806,12 +831,12 @@ local function read_arm(arm: any, sub: any, u: any): boolean
 		if arm.wide then
 			if n % 2 ~= 0 then _report.malformed = true; sub.at = sub.e; return false end
 			local units = n / 2
-			if arm.bound ~= nil and units > arm.bound then units = arm.bound; _report.clamped = _report.clamped + 1 end
+			if arm.bound ~= nil and units > arm.bound then units = clamp_wide(sub.b, sub.at, arm.bound); _report.clamped = _report.clamped + 1 end
 			store_bytes(u, arm.slot, sub.b, sub.at, units * 2, units)
 		else
 			if not utf8_ok(sub.b, sub.at, n) then _report.malformed = true; sub.at = sub.e; return false end
 			local keep = n
-			if arm.bound ~= nil and keep > arm.bound then keep = arm.bound; _report.clamped = _report.clamped + 1 end
+			if arm.bound ~= nil and keep > arm.bound then keep = clamp_utf8(sub.b, sub.at, arm.bound); _report.clamped = _report.clamped + 1 end
 			store_bytes(u, arm.slot, sub.b, sub.at, keep, keep)
 		end
 		sub.at = sub.e
@@ -893,7 +918,7 @@ read_field = function(fd: any, r: any, v: any): boolean
 		if fd.wide then
 			if n % 2 ~= 0 then _report.malformed = true; r.at = r.at + n; return true end
 			local units = n / 2
-			if fd.bound ~= nil and units > fd.bound then units = fd.bound; _report.clamped = _report.clamped + 1 end
+			if fd.bound ~= nil and units > fd.bound then units = clamp_wide(r.b, r.at, fd.bound); _report.clamped = _report.clamped + 1 end
 			if fd.slot ~= nil and v ~= nil then store_bytes(v, fd.slot, r.b, r.at, units * 2, units) end
 			r.at = r.at + n
 			return true
@@ -904,7 +929,7 @@ read_field = function(fd: any, r: any, v: any): boolean
 			return true
 		end
 		local keep = n
-		if fd.bound ~= nil and n > fd.bound then keep = fd.bound; _report.clamped = _report.clamped + 1 end
+		if fd.bound ~= nil and n > fd.bound then keep = clamp_utf8(r.b, r.at, fd.bound); _report.clamped = _report.clamped + 1 end
 		if fd.slot ~= nil and v ~= nil then store_bytes(v, fd.slot, r.b, r.at, keep, keep) end
 		r.at = r.at + n
 		return true
