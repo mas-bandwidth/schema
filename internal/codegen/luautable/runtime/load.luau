@@ -507,7 +507,7 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 		if ek ~= 13 then report.kindMismatch = report.kindMismatch + 1; r.at = endpos; return true end
 		local entry = S.lookup(fd.t)
 		local keyfd = fields_by_id(entry)[MapKeyId]
-		local seen: { [any]: boolean } = {}
+		local seen: { [any]: number } = {} -- key token -> its entry index, last-wins (§2.8)
 		local widened = false
 		for _ = 1, count do
 			local elemLen = r_leb(sub)
