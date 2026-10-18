@@ -17,7 +17,7 @@ func TestOptionalVariableRefusedOffGo(t *testing.T) {
 	u := unitFromSource(t, src)
 	for _, lang := range c.Targets() {
 		_, err := c.Generate(u, lang, nil)
-		if lang == "go" {
+		if carries(lang, carryOptionalVariableClosure) {
 			if err != nil {
 				t.Errorf("go refused: %v", err)
 			}
