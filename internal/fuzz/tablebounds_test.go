@@ -30,8 +30,9 @@ type boundCase struct {
 	name string
 	mode string // "must_accept", "must_clamp", "must_kind_mismatch", "must_refuse_named", "must_unknown"
 	text string
-	// For must_clamp or must_kind_mismatch on tolerant read, expected JSON of the single field
-	// or expected round-trip check.
+	// want is the single-field JSON document the read must store for a
+	// must_clamp case: a clamp keeps the value at the declared/implied bound.
+	want string
 }
 
 func isRootScalarField(f *genField) bool {
@@ -62,6 +63,27 @@ func impliedUintBounds(bits int) (lo, hi *big.Int) {
 
 func singleFieldDoc(fieldName, rawVal string) string {
 	return fmt.Sprintf("{%q:%s}", fieldName, rawVal)
+}
+
+// intClampWant returns the JSON spellings of the lower and upper clamp targets
+// for a signed integer field: the declared bounds when a range is declared,
+// else the storage-width implied bounds.
+func intClampWant(f *genField) (lo, hi string) {
+	if f.IMode == mExtreme || f.IMode == mExclDefault {
+		return strconv.FormatInt(f.Imin, 10), strconv.FormatInt(f.Imax, 10)
+	}
+	impLo, impHi := impliedIntBounds(f.Bits)
+	return impLo.String(), impHi.String()
+}
+
+// uintClampWant is intClampWant for unsigned fields.
+func uintClampWant(f *genField) (lo, hi string) {
+	if f.IMode == mExtreme || f.IMode == mExclDefault {
+		umin, umax, _, _ := uintBounds(f.Bits, f.IMode)
+		return strconv.FormatUint(umin, 10), strconv.FormatUint(umax, 10)
+	}
+	impLo, impHi := impliedUintBounds(f.Bits)
+	return impLo.String(), impHi.String()
 }
 
 func inRangeRawValue(f *genField) string {
@@ -102,6 +124,12 @@ func buildFieldBoundCases(u *genUnit, sabotage bool) []boundCase {
 					mode: "must_clamp",
 					text: singleFieldDoc(f.Name, inRangeRawValue(f)),
 				})
+				// The bound-oracle negative control: a clamp case whose expected
+				// post-clamp value is deliberately the adjacent in-range value,
+				// so the gate must go red on the want mismatch.
+				if cc := sabotageClampWantCase(u); cc != nil {
+					cases = append(cases, *cc)
+				}
 				return cases
 			}
 		}
@@ -131,13 +159,17 @@ func buildFieldBoundCases(u *genUnit, sabotage bool) []boundCase {
 				minMinus1 := new(big.Int).Sub(big.NewInt(f.Imin), one).String()
 				maxPlus1 := new(big.Int).Add(big.NewInt(f.Imax), one).String()
 				cases = append(cases,
-					boundCase{name: fn + "_min_minus_1", mode: "must_clamp", text: singleFieldDoc(fn, minMinus1)},
-					boundCase{name: fn + "_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, maxPlus1)},
+					boundCase{name: fn + "_min_minus_1", mode: "must_clamp", text: singleFieldDoc(fn, minMinus1), want: singleFieldDoc(fn, strconv.FormatInt(f.Imin, 10))},
+					boundCase{name: fn + "_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, maxPlus1), want: singleFieldDoc(fn, strconv.FormatInt(f.Imax, 10))},
 				)
 			}
+			// An implied case clamps to the declared bound when a range is
+			// declared (a value past the declared range stops there), else to
+			// the storage-width implied bound.
+			wantLo, wantHi := intClampWant(f)
 			cases = append(cases,
-				boundCase{name: fn + "_implied_min_minus_1", mode: "must_clamp", text: singleFieldDoc(fn, impLoMinus1)},
-				boundCase{name: fn + "_implied_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, impHiPlus1)},
+				boundCase{name: fn + "_implied_min_minus_1", mode: "must_clamp", text: singleFieldDoc(fn, impLoMinus1), want: singleFieldDoc(fn, wantLo)},
+				boundCase{name: fn + "_implied_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, impHiPlus1), want: singleFieldDoc(fn, wantHi)},
 				boundCase{name: fn + "_1e400", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "1e400")},
 				boundCase{name: fn + "_2_5", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "2.5")},
 				boundCase{name: fn + "_str_7", mode: "must_kind_mismatch", text: singleFieldDoc(fn, `"7"`)},
@@ -153,13 +185,14 @@ func buildFieldBoundCases(u *genUnit, sabotage bool) []boundCase {
 				minMinus1 := new(big.Int).Sub(new(big.Int).SetUint64(umin), one).String()
 				maxPlus1 := new(big.Int).Add(new(big.Int).SetUint64(umax), one).String()
 				cases = append(cases,
-					boundCase{name: fn + "_min_minus_1", mode: "must_clamp", text: singleFieldDoc(fn, minMinus1)},
-					boundCase{name: fn + "_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, maxPlus1)},
+					boundCase{name: fn + "_min_minus_1", mode: "must_clamp", text: singleFieldDoc(fn, minMinus1), want: singleFieldDoc(fn, strconv.FormatUint(umin, 10))},
+					boundCase{name: fn + "_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, maxPlus1), want: singleFieldDoc(fn, strconv.FormatUint(umax, 10))},
 				)
 			}
+			wantLo, wantHi := uintClampWant(f)
 			cases = append(cases,
-				boundCase{name: fn + "_implied_min_minus_1", mode: "must_clamp", text: singleFieldDoc(fn, impLoMinus1)},
-				boundCase{name: fn + "_implied_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, impHiPlus1)},
+				boundCase{name: fn + "_implied_min_minus_1", mode: "must_clamp", text: singleFieldDoc(fn, impLoMinus1), want: singleFieldDoc(fn, wantLo)},
+				boundCase{name: fn + "_implied_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, impHiPlus1), want: singleFieldDoc(fn, wantHi)},
 				boundCase{name: fn + "_1e400", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "1e400")},
 				boundCase{name: fn + "_2_5", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "2.5")},
 				boundCase{name: fn + "_str_7", mode: "must_kind_mismatch", text: singleFieldDoc(fn, `"7"`)},
@@ -211,11 +244,12 @@ func buildFieldBoundCases(u *genUnit, sabotage bool) []boundCase {
 			)
 		case gString:
 			overStr := fmt.Sprintf("%q", strings.Repeat("a", f.StrN+1))
+			wantStr := fmt.Sprintf("%q", strings.Repeat("a", f.StrN))
 			cases = append(cases,
 				boundCase{name: fn + "_min_minus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "-1")},
-				boundCase{name: fn + "_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, overStr)},
+				boundCase{name: fn + "_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, overStr), want: singleFieldDoc(fn, wantStr)},
 				boundCase{name: fn + "_implied_min_minus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "-1")},
-				boundCase{name: fn + "_implied_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, overStr)},
+				boundCase{name: fn + "_implied_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, overStr), want: singleFieldDoc(fn, wantStr)},
 				boundCase{name: fn + "_1e400", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "1e400")},
 				boundCase{name: fn + "_2_5", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "2.5")},
 				boundCase{name: fn + "_str_7", mode: "must_accept", text: singleFieldDoc(fn, `"7"`)},
@@ -223,11 +257,12 @@ func buildFieldBoundCases(u *genUnit, sabotage bool) []boundCase {
 			)
 		case gBytes:
 			overBytes := fmt.Sprintf("%q", base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x62}, f.StrN+1)))
+			wantBytes := fmt.Sprintf("%q", base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x62}, f.StrN)))
 			cases = append(cases,
 				boundCase{name: fn + "_min_minus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "-1")},
-				boundCase{name: fn + "_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, overBytes)},
+				boundCase{name: fn + "_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, overBytes), want: singleFieldDoc(fn, wantBytes)},
 				boundCase{name: fn + "_implied_min_minus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "-1")},
-				boundCase{name: fn + "_implied_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, overBytes)},
+				boundCase{name: fn + "_implied_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, overBytes), want: singleFieldDoc(fn, wantBytes)},
 				boundCase{name: fn + "_1e400", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "1e400")},
 				boundCase{name: fn + "_2_5", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "2.5")},
 				boundCase{name: fn + "_str_7", mode: "must_kind_mismatch", text: singleFieldDoc(fn, `"7"`)},
@@ -247,6 +282,44 @@ func buildFieldBoundCases(u *genUnit, sabotage bool) []boundCase {
 		}
 	}
 	return cases
+}
+
+// sabotageClampWantCase builds a clamp case with an intentionally wrong
+// expected post-clamp value (the adjacent in-range value) for the first Root
+// integer scalar field, demonstrating the independent bound oracle: the probe
+// must observe a (boundsclampwanted divergence when the stored clamp lands at
+// the bound but the case expects the adjacent in-range value.
+func sabotageClampWantCase(u *genUnit) *boundCase {
+	one := big.NewInt(1)
+	for _, f := range u.Root.Fields {
+		switch f.Kind {
+		case gInt:
+			impLo, _ := impliedIntBounds(f.Bits)
+			belowMin := new(big.Int).Sub(impLo, one).String()
+			wantLo, _ := intClampWant(f)
+			wantBound, _ := new(big.Int).SetString(wantLo, 10)
+			wantAdj := new(big.Int).Add(wantBound, one).String()
+			return &boundCase{
+				name: "sabotage_clamp_want_" + f.Name,
+				mode: "must_clamp",
+				text: singleFieldDoc(f.Name, belowMin),
+				want: singleFieldDoc(f.Name, wantAdj),
+			}
+		case gUint:
+			impLo, _ := impliedUintBounds(f.Bits)
+			belowMin := new(big.Int).Sub(impLo, one).String()
+			wantLo, _ := uintClampWant(f)
+			wantBound, _ := new(big.Int).SetString(wantLo, 10)
+			wantAdj := new(big.Int).Add(wantBound, one).String()
+			return &boundCase{
+				name: "sabotage_clamp_want_" + f.Name,
+				mode: "must_clamp",
+				text: singleFieldDoc(f.Name, belowMin),
+				want: singleFieldDoc(f.Name, wantAdj),
+			}
+		}
+	}
+	return nil
 }
 
 var tableBoundsPassProbe = `package probe
@@ -328,14 +401,21 @@ func TestBoundsPassProbe(t *testing.T) {
 		if line == "" {
 			continue
 		}
-		parts := strings.SplitN(line, " ", 3)
-		if len(parts) != 3 {
+		parts := strings.SplitN(line, " ", 4)
+		if len(parts) != 4 {
 			t.Fatalf("bad bounds line: %q", line)
 		}
-		name, mode, payloadB64 := parts[0], parts[1], parts[2]
+		name, mode, payloadB64, wantB64 := parts[0], parts[1], parts[2], parts[3]
 		decoded, err := base64.StdEncoding.DecodeString(payloadB64)
 		if err != nil {
 			t.Fatalf("decode %s: %v", name, err)
+		}
+		var wantRaw []byte
+		if wantB64 != "-" {
+			wantRaw, err = base64.StdEncoding.DecodeString(wantB64)
+			if err != nil {
+				t.Fatalf("decode want %s: %v", name, err)
+			}
 		}
 
 		func() {
@@ -367,8 +447,31 @@ func TestBoundsPassProbe(t *testing.T) {
 					record(&div, "boundsaccepted %s ok=%v err=%v report=%+v", name, ok, pr.Err(), pr)
 					return
 				}
-				// Even though strict RootFromJson refused the clamp, the stored value in pv
-				// is clamped to the declared bound and must be in-range (measures, saves, loads, and round-trips).
+				// The strict read refused and reset to defaults, so the CLAMPED
+				// value is observed through the tolerant read, which keeps the
+				// recovered value (§6.5): it must sit exactly at the declared/
+				// implied bound (a clamp keeps the value at the bound).
+				if len(wantRaw) > 0 {
+					var tv Root
+					var tr TableReport
+					RootReset(&tv)
+					RootFromJsonTolerant(&tv, decoded, &tr)
+					gotJSON := make([]byte, RootToJsonMeasure(&tv))
+					RootToJson(&tv, gotJSON)
+					var wantV Root
+					var wantR TableReport
+					RootReset(&wantV)
+					if !RootFromJson(&wantV, wantRaw, &wantR) || wantR.Err() != nil {
+						record(&div, "boundswantrefused %s err=%v", name, wantR.Err())
+						return
+					}
+					wantJSON := make([]byte, RootToJsonMeasure(&wantV))
+					RootToJson(&wantV, wantJSON)
+					if !bytes.Equal(gotJSON, wantJSON) {
+						record(&div, "boundsclampwanted %s got=%s want=%s", name, b64(gotJSON), b64(wantJSON))
+						return
+					}
+				}
 				checkAcceptedOrClampedRoundTrip(&div, name, &pv)
 			case "must_kind_mismatch":
 				if ok || pr.Err() == nil || pr.KindMismatch <= 0 {
@@ -407,7 +510,11 @@ func runBoundsSeed(t *testing.T, r *rand.Rand, seed int, sabotage bool) (unexpec
 	cases := buildFieldBoundCases(u, sabotage)
 	var lines []string
 	for _, c := range cases {
-		lines = append(lines, fmt.Sprintf("%s %s %s", c.name, c.mode, base64.StdEncoding.EncodeToString([]byte(c.text))))
+		want := "-"
+		if c.mode == "must_clamp" && c.want != "" {
+			want = base64.StdEncoding.EncodeToString([]byte(c.want))
+		}
+		lines = append(lines, fmt.Sprintf("%s %s %s %s", c.name, c.mode, base64.StdEncoding.EncodeToString([]byte(c.text)), want))
 	}
 	if err := os.WriteFile(filepath.Join(dir, "bounds.txt"), []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -476,6 +583,12 @@ func TestRandomTableBoundsPass(t *testing.T) {
 		}
 		if !strings.Contains(strings.Join(unexpected, "\n"), "unexpected divergence") {
 			t.Fatalf("NEGATIVE CONTROL FAILED: the gate went red, but not on an unexpected divergence: %v", unexpected)
+		}
+		// The bound oracle's negative control must itself turn red: the
+		// sabotaged clamp case expects the adjacent in-range value, so the
+		// probe must report a boundsclampwanted divergence.
+		if !strings.Contains(strings.Join(unexpected, "\n"), "boundsclampwanted") {
+			t.Fatalf("NEGATIVE CONTROL FAILED: the bound oracle was not exercised: %v", unexpected)
 		}
 	})
 }
