@@ -35,8 +35,9 @@ const (
 	tableJsonMaxDepth = 128
 	// A key longer than this cannot name a field, so it is skipped as unknown.
 	tableJsonMaxKey = 256
-	// The longest numeric token the walk will convert. Anything longer is a
-	// value no field can hold and counts as a kind mismatch.
+	// The buffer extent for an integer map KEY's spelling and the wide kinds'
+	// formatting scratch. A VALUE's number token has no such bound: §16.2 reads
+	// a valid token by its value, so its length is the document's own size.
 	tableJsonMaxNumber = 512
 )
 
@@ -1189,20 +1190,21 @@ func (in *tableJsonIn) walkNumber() (integral bool, ok bool) {
 	return whole, true
 }
 
-// the same production, with the token kept for conversion
-func (in *tableJsonIn) scanNumber(token []byte) (n int32, integral bool, ok bool) {
+// the same production, with the token kept for conversion. The token is a
+// slice of the text itself, so a valid RFC 8259 number of any length within
+// the document's own size is read by its value: its LENGTH is never the
+// reason it is called malformed (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2 Numbers).
+func (in *tableJsonIn) scanNumber() (token []byte, integral bool, ok bool) {
 	in.space()
 	start := in.pos
 	integral, ok = in.walkNumber()
 	if !ok {
-		return 0, false, false
+		return nil, false, false
 	}
-	count := in.pos - start
-	if count <= 0 || count >= len(token) {
-		return 0, false, false
+	if in.pos <= start {
+		return nil, false, false
 	}
-	copy(token, in.text[start:in.pos])
-	return int32(count), integral, true
+	return in.text[start:in.pos], integral, true
 }
 
 // the token's exact double. Go's strconv is locale-free, so unlike the C++
@@ -1527,13 +1529,11 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		tableJsonSetRaw(storage, f.ElemSize, 0)
 		return true
 	}
-	var scratch [tableJsonMaxNumber]byte
-	length, integral, ok := in.scanNumber(scratch[:])
+	token, integral, ok := in.scanNumber()
 	if !ok {
 		in.bad = true
 		return false
 	}
-	token := scratch[:length]
 	if f.Kind >= 18 && f.Kind <= 29 {
 		return tableJsonReadWide(in, token, storage, f)
 	}
@@ -2384,15 +2384,34 @@ func tableJsonReadWide(in *tableJsonIn, token []byte, storage unsafe.Pointer, f 
 		in.report.KindMismatch++
 		return true
 	default:
-		var fd [tableJsonMaxNumber + 48]byte
+		// §16.2 reads a wide value EXACTLY, and a Q I.F storage is I+F=128 bits,
+		// so F is at most 127 and a dyadic value has at most F decimal places.
+		// Digits past 128 can only make the token inexact: a nonzero one is the
+		// wrong shape, never something the fraction bits below need to see.
+		var fd [128]byte
 		fn := 0
+		sticky := false
 		for z := point; z < 0; z++ {
-			fd[fn] = 0
+			if fn < len(fd) {
+				fd[fn] = 0
+			}
 			fn++
 		}
 		for k := max(point, 0) + start; k < end; k++ {
-			fd[fn] = digit(k) - '0'
+			d := digit(k) - '0'
+			if fn < len(fd) {
+				fd[fn] = d
+			} else if d != 0 {
+				sticky = true
+			}
 			fn++
+		}
+		if fn > len(fd) {
+			fn = len(fd)
+		}
+		if sticky {
+			in.report.KindMismatch++
+			return true
 		}
 		var fraction tableJsonWide
 		for b := 0; b < frac; b++ {
