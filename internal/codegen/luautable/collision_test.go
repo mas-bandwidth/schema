@@ -10,11 +10,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 )
 
-// TestLuauNoCorpusModuleFoldsOntoTheRuntime pins that no manifest unit emits a
-// module whose name folds case onto a runtime module beside it
-// (docs/PORT-LUAU.md, THE RUNTIME LAYOUT, "never renamed"). A schema file
-// whose module would collide with a runtime module is refused by name; the
-// corpus may not smuggle one in as a <Base>.luau or <Base>Table.luau.
+// TestLuauNoCorpusModuleFoldsOntoTheRuntime pins that a manifest unit either
+// emits no module whose name folds case onto a runtime module beside it, or is
+// refused by name for exactly that collision (docs/PORT-LUAU.md, THE RUNTIME
+// LAYOUT, "never renamed"; the refused list in luautable_test.go). The corpus
+// may not smuggle one in as a <Base>.luau or <Base>Table.luau and still generate.
 func TestLuauNoCorpusModuleFoldsOntoTheRuntime(t *testing.T) {
 	t.Parallel()
 	units, _ := readManifest(t)
@@ -53,6 +53,9 @@ func TestLuauNoCorpusModuleFoldsOntoTheRuntime(t *testing.T) {
 			base := strings.TrimSuffix(filepath.Base(p), ".schema")
 			for _, mod := range []string{base + ".luau", base + "Table.luau"} {
 				if rt, ok := runtimes[strings.ToLower(mod)]; ok {
+					if _, isRefused := refused[key]; isRefused {
+						continue // the surface refuses the unit by name for this collision
+					}
 					t.Errorf("unit %s: schema file %s folds case onto the runtime module %s", key, filepath.Base(p), rt)
 				}
 			}
