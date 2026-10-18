@@ -76,13 +76,16 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	}
 	extra := tableJsonWideSource + tableJsonWStringSource + tableJsonGraphSource + tableJsonListSource + tableJsonMapSource + tableJsonMapDecimalSource + timestampParserSource() + tableJsonTimestampSource + tableTimestampRuntime
 	b.WriteString("import (\n" + imports + ")\n\n")
-	b.WriteString(optionalMapJson(u, unboundedTextJson(u, textListJson(u, tableSourceReplace(walk, "// ---- json walk: end ----", extra+"// ---- json walk: end ----", 1), true))))
+	b.WriteString(optionalMapJson(u, unboundedTextJson(u, textListJson(u, tableSourceReplace(walk, "// ---- json walk: end ----", extra+"// ---- json walk: end ----", 1), true), true)))
 	if len(variableTableNames(u)) > 0 {
 		regionJson := tableRegionJsonSource
 		if unitHasContainers(u) {
 			regionJson = containerRegionJsonSource(regionJson)
 		}
-		b.WriteString(unboundedTextJson(u, textListJson(u, regionJson, false)))
+		// The region JSON source reuses the walker's helpers but carries none of
+		// the six unbounded-text anchors (each occurs zero times here), so
+		// unboundedTextJson is not applied to it: a walk decision, not a probe.
+		b.WriteString(textListJson(u, regionJson, false))
 	}
 
 	// the per-member surface, in the order the closure declares it, so the
