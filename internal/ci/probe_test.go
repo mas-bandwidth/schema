@@ -35,6 +35,12 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err := os.Remove(filepath.Join(fixture, "make", "lua-serialize.mk")); err != nil {
 		t.Fatal(err)
 	}
+	// make/lua-conformance.mk is this leg's conformance negative-control support
+	// fragment (test/conformance/README.md), not a compiler backend; drop it
+	// from the fixture the same way.
+	if err := os.Remove(filepath.Join(fixture, "make", "lua-conformance.mk")); err != nil {
+		t.Fatal(err)
+	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatal(err)
