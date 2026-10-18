@@ -636,3 +636,41 @@ func TestSquirrelBytesMessagePairs(t *testing.T) {
 	out := string(sqrun.Run(t, dir, "main.nut", inputs))
 	if !strings.Contains(out, "bytes:ok") { t.Fatalf("bytes message pair round trip failed: %s", out) }
 }
+
+
+func TestSquirrelKeyedMessageEvolution(t *testing.T) {
+	t.Parallel()
+	root, err := sqrun.RepoRoot()
+	if err != nil { t.Fatal(err) }
+	paths := map[string][]string{}
+	for _, u := range manifestUnits(t, filepath.Join(root, "testdata/conformance/tables/MANIFEST.txt")) { paths[u.key] = u.paths }
+	u := loadUnit(t, root, paths["tabledemo"])
+	dir := t.TempDir()
+	for name, b := range squirrelMessageFiles(t, u, nil) { if !strings.Contains(name, "/") { writeFile(t, filepath.Join(dir, name), b) } }
+	encode := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local x=T.KeyedConfig();x.Teams[1].SpawnCount=17;x.Hulls[2].Health=42.5;local r={};local n=T.KeyedConfigMeasureMessages([x],r);local b=blob(n);local s={};T.KeyedConfigSaveMessages([x],b,s);hexline(b);`, squirreltable.ModuleName(u))
+	writeFile(t, filepath.Join(dir, "encode.nut"), []byte(encode))
+	encoded, err := sqrun.HexLines(sqrun.Run(t, dir, "encode.nut", nil))
+	if err != nil { t.Fatal(err) }
+	if len(encoded) != 1 { t.Fatalf("encoder returned %d message batches", len(encoded)) }
+	entries := ir.TableVocabulary(u)
+	peer := ir.TableVocabularyEntry{Id: ir.TableWireId("Dreadnought"), Kind: 0}
+	for _, e := range entries { if e.Id == peer.Id { t.Fatal("evolution key already exists in current vocabulary") } }
+	peerAnnouncement, peerCount := announcementWithPeerEntry(u, peer)
+	refBits := ir.TableMessageRefBits(len(entries))
+	if peerCount != len(entries)+1 || ir.TableMessageRefBits(peerCount) != refBits { t.Fatalf("peer vocabulary changed reference width: old=%d new=%d refBits=%d", len(entries), peerCount, refBits) }
+	var teams ir.TableVocabularyEntry
+	for _, e := range entries { if e.Id == ir.TableWireId("teams") { teams = e; break } }
+	if teams.Id == 0 || teams.Kind != 16 { t.Fatalf("teams keyed-array vocabulary entry missing: %+v", teams) }
+	bit := 16 + refBits + ir.TableMessageCountBits(teams.Shape)
+	unknownKeyRef := uint64(len(entries) + 1) // appended after the current vocabulary
+	for i := 0; i < refBits; i++ {
+		at := bit + i
+		if at/8 >= len(encoded[0]) { t.Fatalf("key ref patch bit %d exceeds %d-byte message", at, len(encoded[0])) }
+		mask := byte(1 << (at % 8))
+		if (unknownKeyRef>>i)&1 == 1 { encoded[0][at/8] |= mask } else { encoded[0][at/8] &^= mask }
+	}
+	decode := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("evolution:announce_fail\\n");return;}local out=[T.KeyedConfig()];local rr={};local n=T.KeyedConfigLoadMessages(out,v,I.batch,rr);if(n==1&&rr.unknown==1&&!rr.malformed&&out[0].Teams[1].SpawnCount==17&&out[0].Hulls[2].Health==42.5)print("evolution:ok\\n");else print("evolution:fail:"+n+":"+rr.unknown+":"+rr.malformed+":"+out[0].Teams[1].SpawnCount+":"+out[0].Hulls[2].Health+"\\n");`, squirreltable.ModuleName(u))
+	writeFile(t, filepath.Join(dir, "decode.nut"), []byte(decode))
+	out := string(sqrun.Run(t, dir, "decode.nut", map[string][]byte{"peerann": peerAnnouncement, "batch": encoded[0]}))
+	if !strings.Contains(out, "evolution:ok") { t.Fatalf("keyed message evolution failed: %s", out) }
+}
