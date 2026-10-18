@@ -148,3 +148,36 @@ func TestJSFixedLanesAgree(t *testing.T) {
 		t.Errorf("NEGATIVE CONTROL: one drifted site drew %q, want exactly P1's lane slice", got)
 	}
 }
+
+// TestJSFixedLaneCountIsReadFromTheRuntime reads the lane count from the
+// EMITTED runtime rather than trusting a hand-written constant, and requires
+// every roadmap site that restates the count to equal it, so the count is never
+// restated by hand again.
+func TestJSFixedLaneCountIsReadFromTheRuntime(t *testing.T) {
+	t.Parallel()
+
+	_, src := t02Table(t, t02Flat)
+	m := runtimeLanesRe.FindStringSubmatch(src)
+	if m == nil {
+		t.Fatal("the emitted runtime exports no TableFixedLanes")
+	}
+	width, _ := strconv.Atoi(m[1])
+	if width < 1 {
+		t.Fatalf("the emitted TableFixedLanes is %d", width)
+	}
+
+	files := map[string]string{}
+	for _, s := range laneSites {
+		if _, ok := files[s.file]; ok {
+			continue
+		}
+		b, err := os.ReadFile(s.file)
+		if err != nil {
+			t.Fatalf("read %s: %v", s.file, err)
+		}
+		files[s.file] = string(b)
+	}
+	for _, d := range laneDisagreements(width, files, laneSites) {
+		t.Error(d)
+	}
+}
