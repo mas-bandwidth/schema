@@ -185,6 +185,8 @@ func TestDiagnostics(t *testing.T) {
 		// have none, so the key diagnostic names string(N) (§2.8, §11)
 		{name: "a wstring map key", want: "a wstring(N) key is refused",
 			src: "package t\ntable T { m map[wstring(4)]uint8 }\n"},
+		{name: "a map as a union arm is refused by name", want: "a map is not an arm",
+			src: "package t\nunion U { m map[uint8]int32 }\ntable Root { u U }\n"},
 		{name: "array bound zero", want: "below 1",
 			src: "package t\ntype T { a [0]uint8 }\n"},
 		{name: "count range backwards", want: "0 <= Min < N",
