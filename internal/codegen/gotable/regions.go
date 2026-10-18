@@ -8,9 +8,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// A variable unit uses the canonical POD rows throughout its table closure.
-// Packet types keep their established spelling; a plain type reached by the
-// table uses its Row in the table codecs. No Go pointer is stored in a region.
+// A variable unit uses the canonical POD rows throughout its table closure;
+// packet types keep their established spelling (docs/SPEC-TABLES.md §8).
 func storageName(u *ir.Unit, n string) string {
 	if len(variableTableNames(u)) > 0 && u.Tables[n] == nil {
 		return n + "Row"
@@ -53,14 +52,9 @@ func (g *tableGen) typeCodecColumns(st *ir.Struct) string {
 }
 
 // emitMessageDescriptorInit links the descriptor's MESSAGE columns from the
-// message form's own file. They are the closures the descriptor literal carried
-// before the forms were split, spelled as they were; they are assigned in an
-// init() of <Base>TableMessage.go because a core literal that named
-// <Name>SaveMessageBody would not compile without the form. Go runs a package's
-// init functions file by file in the order the files are presented, which the
-// go command makes lexical, and <Base>Table.go sorts before
-// <Base>TableMessage.go ('.' < 'M'), so the core's literal is in place first
-// (docs/SPEC-TABLES.md, "GO's optional forms").
+// message form's own file, in an init() of <Base>TableMessage.go: <Base>Table.go
+// sorts before it, so the core literal is in place first (docs/SPEC-TABLES.md,
+// "GO's optional forms").
 func (g *tableGen) emitMessageDescriptorInit(st *ir.Struct) {
 	n := st.Name
 	typ := g.storageName(st.Name)

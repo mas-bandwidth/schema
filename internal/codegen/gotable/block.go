@@ -1,32 +1,7 @@
-// The BLOCK FORM in Go (docs/SPEC-TABLES.md §19): the READ half, emitted ON
-// THE SIDE into <Base>Block.go.
-//
-// NOTHING DECLARES IT. Every fixed table has a block form; a consumer compiles
-// this file only if it uses one, and <Base>Table.go carries not one symbol of
-// it. The C++ side is the producer (§19.1's builder) and this side is the
-// consumer: it POINTS at bytes another language wrote and reads rows in place,
-// with no marshalling and no copy at the boundary.
-//
-// Two ways to read one block, and both come from one declaration (§19.2): the
-// DESCRIPTORS, which carry the projection's own layout and retire a hand-kept
-// mirror, and the generated BLITTABLE STRUCT beside them, which is the typed
-// fast path a per-frame job uses.
-//
-// THE LAYOUT MODEL IS NAMED (§19.3): every size and offset asserted here is
-// Go's own — unsafe.Sizeof, unsafe.Offsetof and unsafe.Alignof, which are what
-// a pointer conversion actually indexes with. A bool in a row is ONE byte, one
-// in C++ and one here.
-//
-// The blittable records are a SECOND set of structs beside the table wire's
-// storage, taking §11's claimed <Name>Row suffix, for the reason the C# port's
-// do: the wire's storage is spelled the way the Go PACKET emitter spells it —
-// `string(N)` as [N]byte, for one — and the C ABI record is `char[N+1]`. One
-// declaration cannot be two types, so the accelerator's record takes the
-// claimed suffix.
-//
-// ALLOCATION: none of it. The bytes belong to the consumer — a []byte it owns,
-// an mmap, or memory a producer handed across — and this side takes a pointer
-// and a length and points.
+// The BLOCK FORM in Go (docs/SPEC-TABLES.md §19): the READ half, emitted on
+// the side into <Base>Block.go. This side points at bytes another language
+// wrote and reads rows in place, through descriptors and blittable structs
+// (§19.2, §19.3), with no marshalling, no copy and no allocation.
 package gotable
 
 import (
@@ -47,13 +22,8 @@ func generateBlockFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, er
 		return out, nil
 	}
 	// THE BLOCK HOME is the first file, by declaration order, that declares a
-	// table WITH a block form — never the protocol id's home, which may
-	// declare no table at all. The runtime lands there (the blittable records
-	// are the core's, in the TABLE source), once per unit: a Go package is one
-	// namespace across its files, so
-	// "emitted once, anywhere" is the whole requirement. C++ takes the other
-	// road — its primitives ride in EVERY <Base>Block.h behind a `#ifndef` —
-	// because a C++ consumer may include one header alone.
+	// table WITH a block form: a Go package is one namespace across its files,
+	// so the runtime is emitted once, there.
 	home := blockHome(u, blocks)
 	if home == "" {
 		return out, nil
@@ -74,10 +44,9 @@ func generateBlockFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, er
 	return out, nil
 }
 
-// blockHome is the file the unit's shared block runtime and every blittable
-// record are emitted into: the first, by declaration order, that declares a
-// table with a block form. Empty when the unit has no block form at all, in
-// which case no file needs the runtime.
+// blockHome is the file the shared block runtime and every blittable record
+// are emitted into: the first, by declaration order, that declares a table
+// with a block form. Empty when the unit has no block form at all.
 func blockHome(u *ir.Unit, blocks *ir.BlockUnit) string {
 	for _, f := range u.Files {
 		for _, st := range f.Tables {
@@ -112,8 +81,7 @@ func (g *blockGen) emit() {
 		g.rf("%s", blockRuntime())
 		g.rf("%s", blockBuildRuntime)
 	}
-	// every marked table's PROJECTION is a record too, and it belongs to the
-	// file that declares the table
+	// every marked table's PROJECTION belongs to the file that declares it
 	for _, st := range g.file.Tables {
 		if bl := g.blocks.Block(st.Name); bl != nil {
 			g.emitProjection(bl)
@@ -345,20 +313,13 @@ func (g *blockGen) emitProjection(bl *ir.BlockLayout) {
 }
 
 // emitBlittableFields walks one record's computed layout and emits its fields
-// with generated padding between them.
-//
-// `projection` is the whole of what decides whether a bounded array becomes a
-// TRIPLE or stays INLINE, and it is load-bearing (docs/SPEC-TABLES.md §2.7):
-// DEPTH ONE, BOUNDED ONLY — only the block-form TABLE'S OWN bounded arrays of
-// structs are laid out of line, and every array at any depth inside a row or
-// inside a record a row nests is inline storage exactly where it always was.
+// with generated padding between them. `projection` decides whether a bounded
+// array becomes a TRIPLE or stays INLINE (docs/SPEC-TABLES.md §2.7).
 func (g *blockGen) emitBlittableFields(ml *ir.MemberLayout, at int64, projection bool) {
 	w := &blockWriter{g: g, at: at}
 	for _, fl := range ml.Fields {
-		// Pad to each PIECE of the field, not only to the field: a field's own
-		// storage can carry interior padding — a `string(N)` buffer followed
-		// by its int32 length is the ordinary case — and padding only between
-		// fields slides every field after it.
+		// Pad to each PIECE of the field: its own storage can carry interior
+		// padding, and padding only between fields slides every field after it.
 		w.pieces = ir.BlockFieldPieceOffsets(g.unit, fl.Field, fl.Offset, projection)
 		w.piece = 0
 		g.emitBlittableField(fl.Field, projection, w)
@@ -366,9 +327,8 @@ func (g *blockGen) emitBlittableFields(ml *ir.MemberLayout, at int64, projection
 	w.pad(ml.Size) // the trailing padding is part of the record, and stating it costs nothing
 }
 
-// blockWriter lays a record out piece by piece, padding to the offset the
-// compiler's model gives each one and advancing past the bytes it takes. It
-// exists because a field is not always one piece (§19.3).
+// blockWriter lays a record out piece by piece: a field is not always one
+// piece (docs/SPEC-TABLES.md §19.3).
 type blockWriter struct {
 	g      *blockGen
 	at     int64
@@ -376,8 +336,7 @@ type blockWriter struct {
 	piece  int
 }
 
-// pad fills to an offset with a BLANK field, which Go gives no name and no
-// accessor — the bytes are the record's, not a member's.
+// pad fills to an offset with a BLANK field: the bytes are the record's.
 func (w *blockWriter) pad(to int64) {
 	if w.at >= to {
 		return
@@ -386,8 +345,7 @@ func (w *blockWriter) pad(to int64) {
 	w.at = to
 }
 
-// next pads to the next piece's offset and accounts for the bytes it takes;
-// the caller emits the piece's own spelling between the two.
+// next pads to the next piece's offset and accounts for its bytes.
 func (w *blockWriter) next() {
 	if w.piece >= len(w.pieces) {
 		return
@@ -416,14 +374,13 @@ func (g *blockGen) emitBlittableField(f *ir.Field, projection bool, w *blockWrit
 		g.sf("\t%s [%d]uint16\n", name, f.Type.Size+1)
 		next()
 		g.sf("\t%sLength int32\n", name)
-	case f.Type.Kind == ir.TString:
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+		label, width, note := "string", f.Type.Size+1, "max length"
+		if f.Type.Kind == ir.TBytes {
+			label, width, note = "bytes", f.Type.Size, "fixed buffer"
+		}
 		next()
-		g.sf("\t%s [%d]byte // string(%d): max length, used length beside it\n", name, f.Type.Size+1, f.Type.Size)
-		next()
-		g.sf("\t%sLength int32\n", name)
-	case f.Type.Kind == ir.TBytes:
-		next()
-		g.sf("\t%s [%d]byte // bytes(%d): fixed buffer, used length beside it\n", name, f.Type.Size, f.Type.Size)
+		g.sf("\t%s [%d]byte // %s(%d): %s, used length beside it\n", name, width, label, f.Type.Size, note)
 		next()
 		g.sf("\t%sLength int32\n", name)
 	case f.KeyEnum != "", f.Array == ir.ArrayFixed, f.Array == ir.ArrayCounted:
@@ -443,13 +400,9 @@ func (g *blockGen) emitBlittableField(f *ir.Field, projection bool, w *blockWrit
 	}
 }
 
-// goBlittableType maps a field's declared type to its Go blittable spelling,
-// for both accelerators: a cooked record and a block row are one set of structs
-// from one layout model, so they are spelled by one function (§7).
-//
-// A bool is ONE byte, which is what this form asserts (§19.3). An enum takes
-// its own generated named type, whose width the layout check proves against
-// the model's; a flags field is a uint64 in every target.
+// goBlittableType maps a field's declared type to its Go blittable spelling
+// (docs/SPEC-TABLES.md §7, §19.3): a bool is ONE byte, an enum takes its own
+// generated type, and a flags field is a uint64 in every target.
 func goBlittableType(u *ir.Unit, t ir.FieldType) string {
 	switch t.Kind {
 	case ir.TBool, ir.TFloat32, ir.TFloat64, ir.TInt, ir.TFixed, ir.TBits:
@@ -470,15 +423,9 @@ func goBlittableType(u *ir.Unit, t ir.FieldType) string {
 // ---- the layout check (docs/SPEC-TABLES.md §19.3) ----
 
 // emitLayoutCheck emits the generated check, run ONCE at package
-// initialisation: every size, alignment and offset the C++ side static_asserts,
-// asserted here against Go's own model. Go could state most of it at compile
-// time, but not with a message a person can act on, so it states it where the
-// program starts and REFUSES — naming the record, the field, the offset the
-// compiler derived and the one THIS runtime produced.
-//
-// Neither side's layout is inferred from the other's: both are checked against
-// their own runtime's model, which is the only way a two-language contract can
-// be held by a compiler that generates both halves.
+// initialisation: every size, alignment and offset is asserted against Go's
+// own model, and a disagreement REFUSES with the record, the field and both
+// numbers (docs/SPEC-TABLES.md §19.3).
 func (g *blockGen) emitLayoutCheck() {
 	g.needsFmt = true
 	g.hf("// The LAYOUT CONTRACT's Go half (docs/SPEC-TABLES.md §19.3), run ONCE at\n")
@@ -669,11 +616,8 @@ func blockStartAlign(a ir.BlockArray) int64 {
 }
 
 // emitAllDescriptors writes the unit's whole block descriptor graph into the
-// home file: the projection of every marked table, then every record their
-// arrays and nestings reach. It is ONE package-level slice, and that is a §11
-// fact rather than a taste — a name derived from a DECLARATION's own spelling
-// is a name a declaration can collide with, and the checker has no machinery
-// for a prefix-and-name product. One fixed name is one claim.
+// home file as ONE package-level slice (docs/SPEC-TABLES.md §11): one fixed
+// name is one claim.
 func (g *blockGen) emitAllDescriptors() {
 	g.hf("// tableBlockRecords is the unit's whole block descriptor graph: constant\n")
 	g.hf("// data, so a reflective read costs a lookup and not a parse. Every record\n")
@@ -700,17 +644,14 @@ func (g *blockGen) emitAllDescriptors() {
 }
 
 // blockRecordKey names one descriptor slot: a marked table's PROJECTION, or a
-// record its arrays and nestings reach. A table can be both a block root and
-// another block's row, and the two differ by the prologue, so they are two
-// slots.
+// record its arrays and nestings reach. They differ by the prologue.
 type blockRecordKey struct {
 	projection string
 	record     string
 }
 
 // blockSlots numbers every descriptor the unit's blocks reach, in a stable
-// order, so the emitted text is deterministic and every file can name a slot
-// the home file will emit.
+// order: the emitted text is deterministic and every file can name a slot.
 type blockSlots struct {
 	order []blockRecordKey
 	index map[blockRecordKey]int
@@ -782,14 +723,13 @@ func (g *blockGen) emitBlockRecordDescriptor(slot int, ml *ir.MemberLayout, bl *
 }
 
 // blockElement is one field's element column: a closure over the slot the home
-// file gives that record. It is a FUNCTION and not an address because the graph
-// is written as one slice literal, which cannot name its own elements.
+// file gives that record. It is a function because the slice cannot name its
+// own elements.
 func (g *blockGen) blockElement(key blockRecordKey) string {
 	return fmt.Sprintf("func() *TableBlockInfo { return &tableBlockRecords[%d] }", g.slots.at(key))
 }
 
-// blockGoOffset spells a companion's offset, or the absent marker every other
-// 32-bit offset column in the descriptors uses.
+// blockGoOffset spells a companion's offset, or the absent 0xffffffff marker.
 func blockGoOffset(offset int64) string {
 	if offset < 0 {
 		return "0xffffffff"
