@@ -27,7 +27,7 @@ var boundedTextSchema = map[string]string{
 // It moves again by blob_shared (§2.5): its refusal name,
 // TableReport.BlobShared, and the runtime's refusal of a blob named from two
 // slots, in the file and the message form (re-pinned on the merge of
-// sprint/schema-go @ 9c5fc1244).
+// sprint/schema-go @ 9c5fc1244, and held unchanged on the merge of @ 8694cf96c).
 var boundedTextDigest = map[string]string{
 	"go":  "09432c3808f67345e93792a89099a78118874685391b2fcd04e7918932003ea8",
 	"cpp": "ff5e30ac14304bb0ab07460f917a19a1efa46fa1c5dac34498d4bd856dfe9605",

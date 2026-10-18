@@ -26,7 +26,7 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 // its enum value, Error case and Err line, TableReport.BlobShared, the file
 // loads' Resolve and the writers' refusal of a blob named from two slots, and
 // the message form's region writer and reader holding the same ruling
-// (re-pinned on the merge of sprint/schema-go @ 9c5fc1244).
+// (re-pinned on the merge of sprint/schema-go @ 9c5fc1244, and held unchanged on the merge of @ 8694cf96c).
 var neitherDigest = map[string]string{
 	"go":  "8452ee4848444d48f467887d825a8e6fee74dd6d8cc7e39ddc0ab85c62898b20",
 	"cpp": "5aabda2cf12ca342bd480b18084def13f06d87a85b6bdddeea12f955f761da1d",

@@ -22,7 +22,7 @@ const plainMapSchema = "package probe\n\ntable Holder\n{\n    tags map[string(8)
 // (§2.5): its enum value, Error case and Err line, TableReport.BlobShared,
 // the file loads' Resolve and the writers' refusal of a blob named from two
 // slots, and the message form's region writer and reader holding the same
-// ruling (re-pinned on the merge of sprint/schema-go @ 9c5fc1244).
+// ruling (re-pinned on the merge of sprint/schema-go @ 9c5fc1244, and held unchanged on the merge of @ 8694cf96c).
 var plainMapDigest = map[string]string{
 	"go":  "744ded8e99a544b1f98727090df54ea11e55dfb0efa4e7b784943394ae9e10cf",
 	"cpp": "89878cf368053213bfe10cbe20a4fe38eae626ce4a6d3af244008f811675365e",
