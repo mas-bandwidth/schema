@@ -21,16 +21,21 @@ const plainMapSchema = "package probe\n\ntable Holder\n{\n    tags map[string(8)
 // (checkRefusalUnchanged): each optional map beside plainMapSchema, against
 // the same declarations with the plain map in its place, so the two units
 // differ by the construct alone.
-var plainMapProbes = func() []unchangedProbe {
+// optionalMapSupport is what only a unit declaring an optional map carries in
+// its Go output (gotable optionalMapJson, docs/SPEC-TABLES.md §2.8, §16.2): the
+// JSON walk's null that clears the map's slot.
+var optionalMapSupport = []string{"clear(unsafe.Slice((*byte)(unsafe.Add(base, uintptr(f.Offset))), 16))"}
+
+var plainMapProbes = withSupport(optionalMapSupport, func() []unchangedProbe {
 	usesOptionalMap := func(u *ir.Unit) bool { return u != nil && refuseOptionalMaps(u, "cpp") != nil }
 	base := map[string]string{"go": plainMapSchema, "cpp": plainMapSchema}
 	keep := []string{"Holder"}
 	return []unchangedProbe{
-		{"optional map", base, "table Zmap\n{\n    tags ?map[string(8)]int32\n}\n", "table Zmap\n{\n    tags map[string(8)]int32\n}\n", keep, "optional map on field Zmap.tags", usesOptionalMap},
-		{"optional map behind a table", base, "table Zinner\n{\n    by_id ?map[uint32]int32\n}\ntable Zouter\n{\n    inner Zinner\n}\n", "table Zinner\n{\n    by_id map[uint32]int32\n}\ntable Zouter\n{\n    inner Zinner\n}\n", keep, "optional map on field Zinner.by_id", usesOptionalMap},
-		{"optional map of maps", base, "table Zmap\n{\n    nest ?map[uint8]map[uint8]int32\n}\n", "table Zmap\n{\n    nest map[uint8]map[uint8]int32\n}\n", keep, "optional map on field Zmap.nest", usesOptionalMap},
+		{"optional map", base, "table Zmap\n{\n    tags ?map[string(8)]int32\n}\n", "table Zmap\n{\n    tags map[string(8)]int32\n}\n", keep, "optional map on field Zmap.tags", usesOptionalMap, nil},
+		{"optional map behind a table", base, "table Zinner\n{\n    by_id ?map[uint32]int32\n}\ntable Zouter\n{\n    inner Zinner\n}\n", "table Zinner\n{\n    by_id map[uint32]int32\n}\ntable Zouter\n{\n    inner Zinner\n}\n", keep, "optional map on field Zinner.by_id", usesOptionalMap, nil},
+		{"optional map of maps", base, "table Zmap\n{\n    nest ?map[uint8]map[uint8]int32\n}\n", "table Zmap\n{\n    nest map[uint8]map[uint8]int32\n}\n", keep, "optional map on field Zmap.nest", usesOptionalMap, nil},
 	}
-}()
+}())
 
 func TestMapPresenceRefusedOffGo(t *testing.T) {
 	t.Parallel()

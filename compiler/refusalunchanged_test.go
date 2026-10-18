@@ -41,6 +41,21 @@ type unchangedProbe struct {
 	keep      []string          // the declarations of base, by name
 	refusal   string            // what a refusing target's error must name
 	uses      func(*ir.Unit) bool
+	// support is text that only a unit using the construct carries in its Go
+	// output (its runtime, outside every declaration of keep): each must be in
+	// the using unit's output and in neither the control's nor the base's, so
+	// the construct's support emitted into every unit is a leak too. It is a
+	// short list of names, not a digest: an emitter change that leaves the
+	// support where it was moves nothing.
+	support []string
+}
+
+// withSupport gives each probe of a construct the construct's support text.
+func withSupport(support []string, ps []unchangedProbe) []unchangedProbe {
+	for i := range ps {
+		ps[i].support = support
+	}
+	return ps
 }
 
 // checkRefusalUnchanged is the computed check (docs/SPEC-TABLES.md §2.13,
@@ -55,7 +70,7 @@ type unchangedProbe struct {
 // keep declaration (a width, a bound, an offset, a wire constant) is compared
 // as it is. Code that is the unit's
 // as a whole (runtime, registries, the build version) belongs to no keep
-// declaration and may carry the construct's support. For a refusing target
+// declaration and is not compared byte for byte. For a refusing target
 // the construct's unit must be refused by name (the refusal is central, in
 // Generate, before any emitter runs, so no construct-keyed byte reaches its
 // output), and the base must still generate. The keep declarations' unit
@@ -65,6 +80,10 @@ type unchangedProbe struct {
 // refAtHit(11, ...) to refAtHit(10, ...), and every text list probe moves
 // WordSaveMessageBody from w.Put(8, TableMessageRefBitsHere) to
 // w.Put(7, TableMessageRefBitsHere). Those two positions are the ones masked.
+// The unit-wide code is held by the probe's support text instead
+// (supportStaysHome): the construct's runtime must be in the using unit's
+// output and in neither the control's nor the base unit's, so support emitted
+// into every unit is a leak although no keep declaration moves.
 func checkRefusalUnchanged(gen generateFunc, targets []string, p unchangedProbe) error {
 	var errs []string
 	for _, lang := range targets {
@@ -92,6 +111,12 @@ func checkRefusalUnchanged(gen generateFunc, targets []string, p unchangedProbe)
 			errs = append(errs, fmt.Sprintf("%s: target %s: the control unit: %v", p.construct, lang, err))
 			continue
 		}
+		alone, err := genSource(gen, src, lang)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("%s: target %s: the base unit: %v", p.construct, lang, err))
+			continue
+		}
+		errs = append(errs, supportStaysHome(p, lang, with, without, alone)...)
 		a, err := keepDecls(with, p.keep)
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("%s: target %s: %v", p.construct, lang, err))
@@ -135,6 +160,43 @@ func checkRefusalUnchanged(gen generateFunc, targets []string, p unchangedProbe)
 	}
 	return nil
 }
+
+// supportStaysHome is the second half of the claim: the construct's support
+// (p.support) is in the using unit's Go output and in no output of a unit
+// that does not use it, the control and the base alone. A support text
+// missing from the using unit is a stale probe and fails too, so a rename in
+// the emitter cannot empty the check.
+func supportStaysHome(p unchangedProbe, lang string, with, without, alone map[string][]byte) []string {
+	var errs []string
+	for _, s := range p.support {
+		if !outputContains(with, s) {
+			errs = append(errs, fmt.Sprintf("%s: target %s: the support text %q is not in the output of a unit that uses the construct (a stale probe)", p.construct, lang, s))
+		}
+		for _, other := range []struct {
+			name  string
+			files map[string][]byte
+		}{{"the control unit", without}, {"the base unit", alone}} {
+			if outputContains(other.files, s) {
+				errs = append(errs, fmt.Sprintf("%s: target %s: the construct's support %q reached %s, which does not use it", p.construct, lang, s, other.name))
+			}
+		}
+	}
+	return errs
+}
+
+// outputContains reports whether a generated Go file holds s, every run of
+// spaces and tabs read as one space on both sides (gofmt aligns columns).
+func outputContains(files map[string][]byte, s string) bool {
+	want := spaceRun.ReplaceAll([]byte(s), []byte(" "))
+	for name, b := range files {
+		if strings.HasSuffix(name, ".go") && bytes.Contains(spaceRun.ReplaceAll(b, []byte(" ")), want) {
+			return true
+		}
+	}
+	return false
+}
+
+var spaceRun = regexp.MustCompile(`[ \t]+`)
 
 // unitFromText is unitFromSource for a check that returns its failure.
 func unitFromText(src string) (*ir.Unit, error) {
@@ -363,6 +425,45 @@ func TestRefusalUnchangedCatchesConstructKeyedLeak(t *testing.T) {
 		for _, want := range []string{p.construct + ":", "target go", "declaration ", fn + ","} {
 			if !strings.Contains(msg, want) {
 				t.Errorf("%s: the number leak failure does not name %q: %s", p.construct, want, msg)
+			}
+		}
+	}
+}
+
+func TestRefusalUnchangedCatchesSupportLeak(t *testing.T) {
+	t.Parallel()
+	c := New()
+	for _, p := range allUnchangedProbes() {
+		p := p
+		if len(p.support) == 0 {
+			t.Errorf("%s: the probe names no support text", p.construct)
+			continue
+		}
+		// the construct's support is emitted into every unit, used or not
+		// (gotable textListRuntime with its unitUsesTextForms guard gone): the
+		// support text joins the end of every Go file of every unit
+		planted := func(u *ir.Unit, lang string) (map[string][]byte, error) {
+			files, err := c.Generate(u, lang, nil)
+			if err != nil || p.uses(u) {
+				return files, err
+			}
+			out := make(map[string][]byte, len(files))
+			for name, b := range files {
+				if strings.HasSuffix(name, ".go") {
+					b = append(append(append([]byte(nil), b...), "\n// planted support leak: "...), p.support[0]...)
+				}
+				out[name] = b
+			}
+			return out, nil
+		}
+		err := checkRefusalUnchanged(planted, unchangedTargets, p)
+		if err == nil {
+			t.Errorf("%s: the construct's support emitted into every unit passed the check", p.construct)
+			continue
+		}
+		for _, want := range []string{p.construct + ":", "target go", "reached the base unit", fmt.Sprintf("%q", p.support[0])} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%s: the support leak failure does not name %q: %v", p.construct, want, err)
 			}
 		}
 	}

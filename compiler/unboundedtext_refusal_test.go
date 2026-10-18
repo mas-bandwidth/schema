@@ -24,7 +24,12 @@ var boundedTextSchema = map[string]string{
 // (checkRefusalUnchanged): each unbounded construct beside
 // boundedTextSchema, against the same field with a bounded string, so the two
 // units differ by the construct alone.
-var unboundedTextProbes = func() []unchangedProbe {
+// unboundedTextSupport is what only a unit using unbounded text carries in its
+// Go output (gotable unboundedTextRuntime, docs/SPEC-TABLES.md §2.13.1): the
+// descriptor's Unbounded column and the blob reader.
+var unboundedTextSupport = []string{"Unbounded bool //", "func tableTextBytes("}
+
+var unboundedTextProbes = withSupport(unboundedTextSupport, func() []unchangedProbe {
 	usesUnbounded := func(u *ir.Unit) bool {
 		if u == nil {
 			return false
@@ -37,7 +42,7 @@ var unboundedTextProbes = func() []unchangedProbe {
 		return unchangedProbe{construct, boundedTextSchema,
 			"table Where\n{\n    " + field + " " + using + "\n}\n",
 			"table Where\n{\n    " + field + " " + control + "\n}\n",
-			keep, want, usesUnbounded}
+			keep, want, usesUnbounded, nil}
 	}
 	return []unchangedProbe{
 		probe("[]string", "rules", "[]string", "[]string(8)", "unbounded text-list element on field Where.rules"),
@@ -47,7 +52,7 @@ var unboundedTextProbes = func() []unchangedProbe {
 		probe("map[string]V", "byname", "map[string]int32", "map[string(8)]int32", "unbounded map key on field Where.byname"),
 		probe("map[string]V in a map value", "nested", "map[uint8]map[string]int32", "map[uint8]map[string(8)]int32", "unbounded map key on field Where.nested.value"),
 	}
-}()
+}())
 
 func TestUnboundedTextRefusedOffGo(t *testing.T) {
 	t.Parallel()
