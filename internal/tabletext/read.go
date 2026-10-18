@@ -1046,9 +1046,12 @@ func (in *reader) skippedAmpersand(key string) bool {
 	return true
 }
 
-// readBase64 decodes a `bytes(N)` body six bits at a time, exactly as the
-// generated walk does: a body that is not base64 is the wrong SHAPE for the
-// kind, so the field keeps its default and the event is counted.
+// readBase64 decodes a `bytes(N)` body six bits at a time with the padding
+// grammar of docs/SPEC-TABLES.md §16.2: standard-alphabet symbols, then zero,
+// one or two `=`, and nothing after; a padded body's length is a multiple of
+// four, and a lone final symbol is not base64. A body outside that grammar is
+// the wrong SHAPE for the kind, so the field keeps its default and the event
+// is counted — exactly as the generated walk does.
 func (in *reader) readBase64(fv *Field) bool {
 	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 	if in.peek() != '"' {
@@ -1064,10 +1067,9 @@ func (in *reader) readBase64(fv *Field) bool {
 	if fv.Def.Type.Pointer {
 		bound = -1 // a *bytes has no bound to clamp against
 	}
-	var out []byte
-	var accumulator uint32
-	held := 0
-	clamped, malformed := false, false
+	mark := in.pos
+	symbols, pad := 0, 0
+	malformed := false
 	for {
 		if in.pos >= len(in.text) {
 			in.bad = true
@@ -1078,7 +1080,15 @@ func (in *reader) readBase64(fv *Field) bool {
 		if c == '"' {
 			break
 		}
-		if c == '=' || malformed {
+		if malformed {
+			continue
+		}
+		if c == '=' {
+			pad++
+			continue
+		}
+		if pad > 0 {
+			malformed = true
 			continue
 		}
 		at := -1
@@ -1092,7 +1102,38 @@ func (in *reader) readBase64(fv *Field) bool {
 			malformed = true
 			continue
 		}
-		accumulator = accumulator<<6 | uint32(at)
+		symbols++
+	}
+	if !malformed {
+		if pad > 0 {
+			if pad > 2 || (symbols+pad)%4 != 0 || symbols%4 < 2 {
+				malformed = true
+			}
+		} else if symbols%4 == 1 {
+			malformed = true
+		}
+	}
+	if malformed {
+		in.report.KindMismatch++
+		return true
+	}
+	var out []byte
+	var accumulator uint32
+	held := 0
+	clamped := false
+	for at := mark; ; at++ {
+		c := in.text[at]
+		if c == '"' || c == '=' {
+			break
+		}
+		symbol := 0
+		for i := range len(alphabet) {
+			if alphabet[i] == c {
+				symbol = i
+				break
+			}
+		}
+		accumulator = accumulator<<6 | uint32(symbol)
 		held += 6
 		if held >= 8 {
 			held -= 8
@@ -1102,10 +1143,6 @@ func (in *reader) readBase64(fv *Field) bool {
 				clamped = true
 			}
 		}
-	}
-	if malformed {
-		in.report.KindMismatch++
-		return true
 	}
 	if clamped {
 		in.report.Clamped++
