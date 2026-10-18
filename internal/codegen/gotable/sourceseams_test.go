@@ -263,13 +263,14 @@ table Plain { names []string }
 
 // seamGolden is the DefaultSurfaces digest at BASE (sprint/schema-go tip), one
 // per surfaceExercises schema. The seams only move source text; they must never
-// move the bytes a unit generates.
+// move the bytes a unit generates. Four re-pinned by the tolerant measure flag
+// (load-measure-stays-tolerant), which moves every unit's runtime text.
 var seamGolden = map[string]string{
-	"lists-maps-cook-union": "dfde67642c0edbe585df1e14a8e84a804e4a82e14ff39047572e24bc969ea423",
-	"array-root-text-list":  "c58290f38ec15085bfdee280707c7230a5b727b41436501816cf4491b7eab432",
+	"lists-maps-cook-union": "c08340199d0c691a74b2ae2c0554203373ce35f6b3893fa840e316a298269629",
+	"array-root-text-list":  "5755a6d5b7fba9a8015e2e2bf305c742fcbdc931c004bb3d1e31b6e5b1eabee3",
 	"message-form":          "a2e4f6ce0af6127cabb7bb0a816c535ff96f81b8f06b4f2e998299c40d60f097",
-	"retain-unknown":        "066c8f027f7e21e4864add3d76d7d9f4c7df62779c4972f79b2e1f59b3b69668",
-	"text-total-seams":      "a9073d1f02312301b3cfe370e2045d47e45edac802b22b9f09a37d5ed7a909ec",
+	"retain-unknown":        "0871c7c68f3a36308e9e33eb7217761b61374d706bcbd1efb8951dd564c4fc04",
+	"text-total-seams":      "efc89fc1e797717fbd887fda3565e03c1890d6c08ddedb9133a5d9f3d107e131",
 }
 
 func outputDigest(out map[string][]byte) string {
