@@ -59,10 +59,18 @@ func TestRowR26(t *testing.T) {
 		t.Fatal("lane.Why check must precede lane.Entries assignment")
 	}
 
-	if !strings.Contains(code, `out[i].Why = "layout_malformed"`) {
+	// The lineage plans' Why field is recorded in the per-package runtime file
+	// (Tblv2Table.go), named by the TableFixedReason constants.
+	runtimeFile := filepath.Join(root, "build", "tables-generated-go", "v2", "Tblv2Table.go")
+	runtimeBytes, err := os.ReadFile(runtimeFile)
+	if err != nil {
+		t.Fatalf("failed to read Tblv2Table.go: %v", err)
+	}
+	runtimeSrc := string(runtimeBytes)
+	if !strings.Contains(runtimeSrc, "out[i].Why = TableFixedReasonLayoutMalformed") {
 		t.Fatal("tableFixedLineagePlans must record layout_malformed on parse/compile failure")
 	}
-	if !strings.Contains(code, `out[i].Why = "plan_too_large"`) {
+	if !strings.Contains(runtimeSrc, "out[i].Why = TableFixedReasonPlanTooLarge") {
 		t.Fatal("tableFixedLineagePlans must record plan_too_large when room exhausted")
 	}
 
