@@ -2098,101 +2098,51 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 		return true
 	}
 	if tableJsonIsBytes(f) {
-		// A bytes field is a JSON string whose decoded value is base64
-		// (docs/SPEC-TABLES.md §16.2), so undo the string's JSON escapes first
-		// and read base64 from the decoded text. Both the padding check and the
-		// decode run over that text; an escape that decodes to a byte outside
-		// the alphabet is not base64. Nothing touches storage until the check
-		// passes, so a malformed body leaves the declared default.
-		start := in.pos
-		rawLength, ok := in.scanKey(nil)
-		if !ok {
+		// A base64 body carries no escapes, so a backslash in one is simply
+		// not an alphabet character. docs/SPEC-TABLES.md §16.2, §16.8: the body
+		// is CANONICAL base64. Strict() plus EncodedLen is the text card's rule;
+		// a body that is base64 but not that exact encoding is base64_not_canonical
+		// (the tolerant read keeps the bytes and reports it; the strict read
+		// refuses it), and a body outside the alphabet is the wrong shape.
+		if in.peek() != '"' {
+			in.bad = true
 			return false
 		}
-		in.pos = start
-		var scratch [256]byte
-		var raw []byte
-		if int(rawLength) <= len(scratch) {
-			n, ok := in.scanKey(scratch[:])
-			if !ok {
-				return false
-			}
-			raw = scratch[:n]
-		} else {
-			raw = make([]byte, rawLength)
-			n, ok := in.scanKey(raw)
-			if !ok {
-				return false
-			}
-			raw = raw[:n]
+		in.pos++
+		start := in.pos
+		for in.pos < len(in.text) && in.text[in.pos] != '"' {
+			in.pos++
 		}
-		symbols := 0
-		pad := 0
-		malformed := false
-		for _, c := range raw {
-			if malformed {
-				continue
-			}
-			if c == '=' {
-				pad++
-				continue
-			}
-			if pad > 0 {
-				malformed = true
-				continue
-			}
-			at := tableJsonBase64Decode[c]
-			if at < 0 {
-				malformed = true
-				continue
-			}
-			symbols++
+		if in.pos >= len(in.text) {
+			in.bad = true
+			return false
 		}
-		if !malformed {
-			if pad > 0 {
-				if pad > 2 || (symbols+pad)%4 != 0 || symbols%4 < 2 {
-					malformed = true
-				}
-			} else if symbols%4 == 1 {
-				malformed = true
-			}
-		}
-		if malformed {
-			// a body that is not base64 is the wrong shape for the kind: the
-			// field keeps its default and the event is counted
+		body := in.text[start:in.pos]
+		in.pos++
+		fieldBuffer := tableJsonBytes(storage, f.ArrayBound)
+		buffer := make([]byte, len(fieldBuffer))
+		decoded, canonical, valid := tableJsonDecodeBase64(body, buffer)
+		if !valid {
 			in.report.KindMismatch++
 			return true
 		}
-		buffer := tableJsonBytes(storage, f.ArrayBound)
-		clear(buffer)
+		copy(fieldBuffer, buffer)
 		tableJsonSetCount(base, f, 0)
-		placed := int32(0)
-		accumulator := uint32(0)
-		held := int32(0)
-		clamped := false
-		for _, c := range raw {
-			if c == '=' {
-				break
-			}
-			symbol := tableJsonBase64Decode[c]
-			accumulator = accumulator<<6 | uint32(symbol)
-			held += 6
-			if held >= 8 {
-				held -= 8
-				if placed < f.ArrayBound {
-					buffer[placed] = byte(accumulator >> held)
-					placed++
-				} else {
-					clamped = true
-				}
-			}
+		if !canonical && in.report.Reason == "" {
+			in.report.Reason = "base64_not_canonical: " + f.Name
+		}
+		placed := len(buffer)
+		clamped := decoded > placed
+		if !clamped {
+			placed = decoded
 		}
 		if clamped {
 			in.report.Clamped++
 		}
-		tableJsonSetCount(base, f, placed)
+		tableJsonSetCount(base, f, int32(placed))
 		return true
 	}
+
 	if tableJsonIsKeyed(f) {
 		if in.peek() != '{' {
 			in.bad = true

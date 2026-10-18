@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"errors"
+	"io"
 	"math"
 	"math/big"
 	"sort"
@@ -1069,103 +1070,110 @@ func (in *reader) skippedAmpersand(key string) bool {
 	return true
 }
 
-// readBase64 decodes a `bytes(N)` body six bits at a time with the padding
-// grammar of docs/SPEC-TABLES.md §16.2: standard-alphabet symbols, then zero,
-// one or two `=`, and nothing after; a padded body's length is a multiple of
-// four, and a lone final symbol is not base64. A body outside that grammar is
-// the wrong SHAPE for the kind, so the field keeps its default and the event
-// is counted — exactly as the generated walk does.
-//
-// A bytes field is a JSON string whose decoded value is base64 (§16.2), so the
-// string's JSON escapes are undone first and BOTH passes below run over the
-// decoded text. An escape that decodes to a byte outside the alphabet is not
-// base64 and stays kind_mismatch.
+// readBase64 decodes a `bytes(N)` body as CANONICAL standard base64
+// (docs/SPEC-TABLES.md §16.2, §16.8): the text card's rule is Strict() plus
+// EncodedLen(len(decoded)). A body that is base64 but not that exact encoding
+// keeps its decoded bytes and names the defect in Reason, which is the tolerant
+// read's report; the generated strict read refuses the same name. A body outside
+// the alphabet is the wrong SHAPE for the kind, so the field keeps its default
+// and the event is counted, exactly as before.
 func (in *reader) readBase64(fv *Field) bool {
-	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-	raw, _, ok := in.scanString(-1)
-	if !ok {
+	if in.peek() != '"' {
+		in.bad = true
 		return false
 	}
-	// bytes RE-ESTABLISH before decoding: a repeated key places a whole value,
-	// and six-bits-at-a-time decoding cannot overlay one
-	fv.Cell.Str = nil
-	fv.Count = 0
+	in.pos++
+	start := in.pos
+	for in.pos < len(in.text) && in.text[in.pos] != '"' {
+		in.pos++
+	}
+	if in.pos >= len(in.text) {
+		in.bad = true
+		return false
+	}
+	body := in.text[start:in.pos]
+	in.pos++
+	// Decode to scratch first: an undecodable body keeps the field's prior
+	// default/value, while a repeated valid key replaces the whole value.
 	bound := int(fv.Def.Type.Size)
-	if fv.Def.Type.Pointer {
-		bound = -1 // a *bytes has no bound to clamp against
-	}
-	symbols, pad := 0, 0
-	malformed := false
-	for _, c := range raw {
-		if malformed {
-			continue
-		}
-		if c == '=' {
-			pad++
-			continue
-		}
-		if pad > 0 {
-			malformed = true
-			continue
-		}
-		at := -1
-		for i := range len(alphabet) {
-			if alphabet[i] == c {
-				at = i
-				break
-			}
-		}
-		if at < 0 {
-			malformed = true
-			continue
-		}
-		symbols++
-	}
-	if !malformed {
-		if pad > 0 {
-			if pad > 2 || (symbols+pad)%4 != 0 || symbols%4 < 2 {
-				malformed = true
-			}
-		} else if symbols%4 == 1 {
-			malformed = true
+	var data []byte
+	decoded := 0
+	canonical := false
+	valid := false
+	if !fv.Def.Type.Pointer {
+		data = make([]byte, bound)
+		decoded, canonical, valid = decodeBase64Bounded(body, data)
+	} else {
+		decoded, canonical, valid = decodeBase64Bounded(body, nil)
+		if valid {
+			data = make([]byte, decoded)
+			decoded, canonical, valid = decodeBase64Bounded(body, data)
 		}
 	}
-	if malformed {
+	if !valid {
 		in.report.KindMismatch++
 		return true
 	}
-	var out []byte
-	var accumulator uint32
-	held := 0
-	clamped := false
-	for _, c := range raw {
-		if c == '=' {
-			break
-		}
-		symbol := 0
-		for i := range len(alphabet) {
-			if alphabet[i] == c {
-				symbol = i
-				break
-			}
-		}
-		accumulator = accumulator<<6 | uint32(symbol)
-		held += 6
-		if held >= 8 {
-			held -= 8
-			if bound < 0 || len(out) < bound {
-				out = append(out, byte(accumulator>>held))
-			} else {
-				clamped = true
-			}
-		}
+	fv.Cell.Str = nil
+	fv.Count = 0
+	if !canonical && in.report.Reason == "" {
+		in.report.Reason = "base64_not_canonical: " + fv.Def.Name
 	}
-	if clamped {
+	if decoded > len(data) {
+		decoded = len(data)
 		in.report.Clamped++
 	}
-	fv.Cell.Str = out
-	fv.Count = len(out)
+	fv.Cell.Str = data[:decoded]
+	fv.Count = decoded
 	return true
+}
+
+// base64BoundedWriter counts the full decoded stream while retaining only the caller's bounded prefix.
+type base64BoundedWriter struct {
+	dst  []byte
+	used int
+}
+
+func (w *base64BoundedWriter) Write(p []byte) (int, error) {
+	if w.used < len(w.dst) {
+		w.used += copy(w.dst[w.used:], p)
+	}
+	return len(p), nil
+}
+
+type base64LenientReader struct {
+	body []byte
+	pos  int
+}
+
+func (r *base64LenientReader) Read(p []byte) (int, error) {
+	n := 0
+	for n < len(p) && r.pos < len(r.body) {
+		c := r.body[r.pos]
+		r.pos++
+		if c == '=' || c == ' ' || c == '\t' || c == '\r' || c == '\n' {
+			continue
+		}
+		p[n] = c
+		n++
+	}
+	if n == 0 {
+		return 0, io.EOF
+	}
+	return n, nil
+}
+
+// decodeBase64Bounded applies StdEncoding.Strict and the canonical EncodedLen rule from docs/SPEC-TABLES.md §§16.2, 16.8 while retaining at most len(dst) decoded bytes.
+func decodeBase64Bounded(body, dst []byte) (int, bool, bool) {
+	writer := &base64BoundedWriter{dst: dst}
+	decoded, err := io.Copy(writer, base64.NewDecoder(base64.StdEncoding.Strict(), bytes.NewReader(body)))
+	if err == nil && len(body) == base64.StdEncoding.EncodedLen(int(decoded)) {
+		return int(decoded), true, true
+	}
+	clear(dst)
+	writer.used = 0
+	decoded, err = io.Copy(writer, base64.NewDecoder(base64.RawStdEncoding, &base64LenientReader{body: body}))
+	return int(decoded), false, err == nil
 }
 
 func (in *reader) readArray(fv *Field, depth int) bool {
