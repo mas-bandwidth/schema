@@ -9901,7 +9901,11 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   malformed, clamped, kind-mismatched, of an unknown form, wire-damaged,
   build-version-mismatched, missing a required field (§2.3), holding a
   non-finite plain float (`non_finite`, §3.3, a plain float's special values) or
-  naming one blob from two slots (`blob_shared`, §2.5). It does NOT refuse `unknown`, `widened` or
+  naming one blob from two slots (`blob_shared`, §2.5). The clamped refusal
+  NAMES the clamped field, `<Table>.<field>`, as the other refusals name
+  theirs: a strict read of a past-bound wire answers the clamped refusal with
+  the field's name (`clamped: <Table>.<field>`, `TableClampedField`), so a
+  strict caller can say which field was clamped. It does NOT refuse `unknown`, `widened` or
   `retained` alone: `unknown` is evolution, `widened` decoded exactly, and
   `retained` reports on retention rather than on a loss (the cards facade's
   `ReadStrict`, docs/CARDS.md: `Unknown`, `Retained` and `Widened` alone are
