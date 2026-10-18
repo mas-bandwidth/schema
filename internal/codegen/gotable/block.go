@@ -48,8 +48,9 @@ func generateBlockFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, er
 	}
 	// THE BLOCK HOME is the first file, by declaration order, that declares a
 	// table WITH a block form — never the protocol id's home, which may
-	// declare no table at all. The runtime and every blittable record land
-	// there, once per unit: a Go package is one namespace across its files, so
+	// declare no table at all. The runtime lands there (the blittable records
+	// are the core's, in the TABLE source), once per unit: a Go package is one
+	// namespace across its files, so
 	// "emitted once, anywhere" is the whole requirement. C++ takes the other
 	// road — its primitives ride in EVERY <Base>Block.h behind a `#ifndef` —
 	// because a C++ consumer may include one header alone.
@@ -110,14 +111,6 @@ func (g *blockGen) emit() {
 		g.needsUnsafe = true
 		g.rf("%s", blockRuntime())
 		g.rf("%s", blockBuildRuntime)
-		// EVERY blittable record of the unit, here and nowhere else. Not the
-		// file that DECLARES the type: a record a block form reaches is often
-		// declared in a file of `type`s alone, which gets no Block.go of its
-		// own, and a consumer would then reference a struct nothing emitted.
-		// One definition per unit, in a file that exists.
-		for _, name := range g.blocks.Order {
-			g.emitBlittable(name)
-		}
 	}
 	// every marked table's PROJECTION is a record too, and it belongs to the
 	// file that declares the table
@@ -151,7 +144,8 @@ func (g *blockGen) assemble() ([]byte, error) {
 	h.WriteString("//\n")
 	h.WriteString("// NOTHING DECLARES THIS FORM. Every fixed table has one, and it is emitted on\n")
 	h.WriteString("// the side: compile this file when you build or read a block. The unit's\n")
-	h.WriteString("// <Base>Table.go carries not one symbol of it.\n")
+	h.WriteString("// <Base>Table.go carries none of its entry points; the blittable <Name>Row\n")
+	h.WriteString("// records it lays out are the core's, shared with the cooked form.\n")
 	h.WriteString("//\n")
 	h.WriteString("// It is UNSAFE by nature, not by taste: a block is memory another language\n")
 	h.WriteString("// wrote, and pointing at it without a copy is the whole point (§12.1).\n")
@@ -191,7 +185,7 @@ func (g *blockGen) assemble() ([]byte, error) {
 		h.WriteString("\n")
 	}
 	h.WriteString(g.handles.String())
-	src, err := format.Source([]byte(h.String()))
+	src, err := format.Source([]byte(repoPrefix(h.String())))
 	if err != nil {
 		return nil, fmt.Errorf("generated Go for %sBlock.go does not parse — a compiler bug, not a schema error: %w", g.file.Base, err)
 	}
@@ -413,6 +407,10 @@ func (g *blockGen) emitBlittableField(f *ir.Field, projection bool, w *blockWrit
 		return
 	}
 	switch {
+	case f.Type.TextUnbounded():
+		// UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): the eight-byte slot
+		next()
+		g.sf("\t%s int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)\n", name)
 	case f.Type.Kind == ir.TWString:
 		next()
 		g.sf("\t%s [%d]uint16\n", name, f.Type.Size+1)
@@ -454,25 +452,8 @@ func (g *blockGen) emitBlittableField(f *ir.Field, projection bool, w *blockWrit
 // the model's; a flags field is a uint64 in every target.
 func goBlittableType(u *ir.Unit, t ir.FieldType) string {
 	switch t.Kind {
-	case ir.TBool:
-		return "bool"
-	case ir.TFloat32:
-		return "float32"
-	case ir.TFloat64:
-		return "float64"
-	case ir.TInt, ir.TFixed:
-		if t.Width == 128 {
-			return goFieldType(t)
-		}
-		if t.Signed {
-			return fmt.Sprintf("int%d", t.Width)
-		}
-		return fmt.Sprintf("uint%d", t.Width)
-	case ir.TBits:
-		if t.Width <= 32 {
-			return "uint32"
-		}
-		return "uint64"
+	case ir.TBool, ir.TFloat32, ir.TFloat64, ir.TInt, ir.TFixed, ir.TBits:
+		return goFieldType(t)
 	case ir.TNamed:
 		switch t.Ref.(type) {
 		case *ir.Enum:
@@ -760,9 +741,9 @@ func (g *blockGen) emitBlockRecordDescriptor(slot int, ml *ir.MemberLayout, bl *
 		return
 	}
 	projection := bl != nil
-	name := ml.Name
+	name := declaredName(g.unit, ml.Name)
 	if projection {
-		name = bl.Table.Name
+		name = bl.Table.DeclaredName()
 	}
 	g.hf("\ttableBlockRecords[%d] = TableBlockInfo{\n", slot)
 	g.hf("\t\tName: %q, BuildVersion: BuildVersion, Size: %d, Align: %d, NumFields: %d,\n",

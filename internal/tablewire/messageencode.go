@@ -285,7 +285,7 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 // and the ZERO REFERENCE for None, the one value that names no entry (§3).
 func encodeBitEnum(e *bitEncoder, w *bitWriter, f *ir.Field, cell *tabletext.Cell) error {
 	en := tabletext.EnumOf(f)
-	vid, none, err := variantWireId(en, cell.U, f.Name)
+	vid, none, err := variantWireId(en, cell.U, f.Name, false)
 	if err != nil {
 		return err
 	}
@@ -496,7 +496,7 @@ func encodeBitKeyed(e *bitEncoder, w *bitWriter, fv *tabletext.Field, entry ir.T
 	var present []presentSlot
 	for slot := tabletext.KeyedFirstSlot(); slot < tabletext.KeyedSlotCount(f); slot++ {
 		cell := &fv.Elems[slot]
-		keyID, none, err := variantWireId(f.KeyEnumRef, uint64(tabletext.KeyedSlotValue(f, slot)), f.Name)
+		keyID, none, err := variantWireId(f.KeyEnumRef, uint64(tabletext.KeyedSlotValue(f, slot)), f.Name, true)
 		if err != nil {
 			return err
 		}
