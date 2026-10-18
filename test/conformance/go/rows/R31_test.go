@@ -24,9 +24,11 @@ import (
 // 1. The generated code uses full-width comparison at tag's own width
 // 2. The tableFixedTagAt function loads guards at full width into uint64
 func TestRowR31(t *testing.T) {
-	// Read the generated code from M1 which has union tags
+	// Read the generated code from M1 which has union tags. The fixed-form
+	// runtime is emitted into Tblm1Table.go (the per-package runtime file), not
+	// M1Table.go.
 	root := findRepoRoot(t)
-	codePath := filepath.Join(root, "build", "tables-generated-go", "m1", "M1Table.go")
+	codePath := filepath.Join(root, "build", "tables-generated-go", "m1", "Tblm1Table.go")
 	code, err := os.ReadFile(codePath)
 	if err != nil {
 		t.Fatalf("failed to read M1Table.go: %v", err)
