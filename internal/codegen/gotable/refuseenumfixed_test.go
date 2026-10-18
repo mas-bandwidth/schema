@@ -2,6 +2,7 @@ package gotable
 
 import (
 	"bytes"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -90,6 +91,48 @@ func TestReasonsAreMembers(t *testing.T) {
 	}
 }
 `)
+
+	// text_ill_formed: a fixed-form TEXT payload that is not valid UTF-8
+	// (SPEC-TABLES §3.4), driven by the same Row unit
+	// TestFixedLoadNamesEveryRefusal uses.
+	runGenerated(t, `package probe
+fixed table Row {
+    s string(16)
+}
+`, `package probe
+import (
+	"encoding/binary"
+	"errors"
+	"testing"
+)
+
+func TestTextIllFormedIsMember(t *testing.T) {
+	row := Row{S: [16]byte{'h', 'e', 'l', 'l', 'o'}, SLength: 5}
+	need := RowFixedMeasure(1)
+	buf := make([]byte, need)
+	if n := RowFixedSave([]Row{row}, buf); n != need {
+		t.Fatalf("save %d", n)
+	}
+	layoutLen := int(binary.LittleEndian.Uint32(buf[TableFixedHeaderBytes:]))
+	recordsAt := TableFixedHeaderBytes + 4 + layoutLen
+	bad := append([]byte(nil), buf...)
+	copy(bad[recordsAt+12:], []byte{0xC0, 0xAF})
+	var r TableReport
+	got := make([]Row, 1)
+	plan := make([]TableFixedEntry, 64)
+	if n := RowFixedLoad(got, bad, plan, &r); n != -1 || r.Reason != "text_ill_formed" {
+		t.Fatalf("text_ill_formed: n=%d reason=%q", n, r.Reason)
+	}
+	if err := r.Err(); err == nil || !errors.Is(err, TableRefuseTextIllFormed) {
+		t.Fatalf("text_ill_formed: Err()=%v", err)
+	}
+}
+`)
+	// layout_unsupported and layout_record_too_large each need a multi-version
+	// lineage, so each gets its own generated unit, as
+	// TestFixedLoadNamesEveryRefusal drives them.
+	testFixedReasonsUnsupported(t)
+	testFixedReasonsRecordTooLarge(t)
 }
 
 // TestNoFixedReasonNamesRemain pins the retirement of the fixed form's own
@@ -131,4 +174,85 @@ func TestNoFixedReasonNamesRemain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// testFixedReasonsUnsupported proves layout_unsupported through the emitted
+// <T>FixedLoad (SPEC-TABLES §21.3): an older generation is retired, the floor
+// rises to 1, and a file carrying the retired generation's hash refuses with
+// Reason `layout_unsupported`, and its Err() is TableRefuseLayoutUnsupported,
+// so errors.Is(err, TableRefuseLayoutUnsupported) holds.
+func testFixedReasonsUnsupported(t *testing.T) {
+	t.Helper()
+	older := "package probe\n\nfixed table Ping {\n    x int32\n}\n"
+	reader := "package probe\n\nfixed table Ping {\n    x int32 = 1\n    y int32 = 2\n}\n"
+	e, ok := FixedLineageOf(unitOf(t, older), "Ping")
+	if !ok {
+		t.Fatal("no lineage entry for the retired Ping generation")
+	}
+	e.Retired = true
+	e.Reason = "retired by the test's lock"
+	runGeneratedLineageProbe(t, reader, map[string][]FixedLineageEntry{"Ping": {e}}, fmt.Sprintf(`package probe
+import ("encoding/binary"; "errors"; "testing")
+
+func TestLayoutUnsupportedIsMember(t *testing.T) {
+	back := make([]Ping, 8)
+	plan := make([]TableFixedEntry, 4096)
+	file := make([]byte, TableFixedHeaderBytes+4)
+	file[0] = TableFixedForm
+	binary.LittleEndian.PutUint64(file[TableFixedHashAt:], %d)
+	var r TableReport
+	if n := PingFixedLoad(back, file, plan, &r); n != -1 || r.Reason != "layout_unsupported" {
+		t.Fatalf("layout_unsupported: n=%%d reason=%%q", n, r.Reason)
+	}
+	if err := r.Err(); err == nil || !errors.Is(err, TableRefuseLayoutUnsupported) {
+		t.Fatalf("layout_unsupported: Err()=%%v", err)
+	}
+}
+`, e.Wire))
+}
+
+// testFixedReasonsRecordTooLarge proves layout_record_too_large through the
+// emitted <T>FixedLoad (SPEC-TABLES §21.3): the lineage holds a §1.1-valid
+// layout whose plan refuses WHOLE, and a file carrying that layout's hash
+// refuses with Reason `layout_record_too_large`, and its Err() is
+// TableRefuseLayoutRecordTooLarge, so errors.Is(err,
+// TableRefuseLayoutRecordTooLarge) holds.
+func testFixedReasonsRecordTooLarge(t *testing.T) {
+	t.Helper()
+	reader := "package probe\n\nfixed table Host {\n    keep uint32 = 7\n    label string(8) = \"hi\"\n    blob bytes(6)\n}\n"
+	own, ok := FixedLineageOf(unitOf(t, reader), "Host")
+	if !ok {
+		t.Fatal("no lineage entry for the Host table")
+	}
+	hostile := hostileTooLargeLayout(t, own.Layout)
+	const wire uint64 = 0xDEADBEEFCAFEF00D
+	lineage := map[string][]FixedLineageEntry{"Host": {{Wire: wire, Layout: hostile, Record: 4}}}
+	var b strings.Builder
+	for i, c := range hostile {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "%d", c)
+	}
+	runGeneratedLineageProbe(t, reader, lineage, fmt.Sprintf(`package probe
+import ("encoding/binary"; "errors"; "testing")
+
+func TestLayoutRecordTooLargeIsMember(t *testing.T) {
+	layout := []byte{%s}
+	file := make([]byte, TableFixedHeaderBytes+4+len(layout))
+	file[0] = TableFixedForm
+	binary.LittleEndian.PutUint64(file[TableFixedHashAt:], %d)
+	binary.LittleEndian.PutUint32(file[TableFixedHeaderBytes:], uint32(len(layout)))
+	copy(file[TableFixedHeaderBytes+4:], layout)
+	back := make([]Host, 1)
+	plan := make([]TableFixedEntry, 256)
+	var r TableReport
+	if n := HostFixedLoad(back, file, plan, &r); n != -1 || r.Reason != "layout_record_too_large" {
+		t.Fatalf("layout_record_too_large: n=%%d reason=%%q", n, r.Reason)
+	}
+	if err := r.Err(); err == nil || !errors.Is(err, TableRefuseLayoutRecordTooLarge) {
+		t.Fatalf("layout_record_too_large: Err()=%%v", err)
+	}
+}
+`, b.String(), wire))
 }
