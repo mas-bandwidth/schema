@@ -100,14 +100,17 @@ func strictName(t *testing.T, row, pinned string) string {
 
 // formName is ReadStrict's form-byte refusal for a file whose first byte is b
 // at a root, or "" when the root reads the form (docs/SPEC-TABLES.md, The
-// three wires; §3, §3.4, §6.5): form 1 is read at every root, the declared
-// fixed ones included; form 3 belongs to a fixed root's own reader (whose
-// names are its own) and is newer_form at a variable one; form 2 is
-// message_form_as_file; any other byte is newer_form.
+// three wires; §3, §3.4, §6.5): a declared fixed root reads form 3 through its
+// own fixed reader (whose names are its own) and refuses form 1 as
+// previous_form; a variable root reads form 1 and refuses form 3 as
+// newer_form; form 2 is message_form_as_file at either; any other byte is
+// newer_form.
 func formName(b byte, fixed bool) string {
 	switch {
-	case b == 1, b == 3 && fixed:
+	case b == 1 && !fixed, b == 3 && fixed:
 		return ""
+	case b == 1:
+		return "previous_form"
 	case b == 2:
 		return "message_form_as_file"
 	}
@@ -220,39 +223,14 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 	// (or union arm, the innermost holder) the row's schema pair moves, and a
 	// new counter row fails until its field is pinned here
 	pinnedFields := map[string]string{
-		"v1_cfg_as_v2":             "slots",
-		"v1_seams_as_v2":           "a",
-		"v2_cfg_as_v1":             "tally",
-		"v2_seams_as_v1":           "a",
-		"p2_as_p3":                 "link",
-		"p2_empty_as_p3":           "link",
-		"p2_as_p1":                 "link",
-		"p2_empty_as_p1":           "link",
 		"p1_as_p2":                 "link",
 		"p3_as_p2":                 "link",
 		"parts_elem_kind":          "parts",
 		"parts_count_past_bound":   "parts",
 		"parts_index_out_of_range": "parts",
-		"batch_elem_kind":          "history",
-		"trace_elem_kind":          "trace",
-		"trace_count_past_bound":   "trace",
-		"escape_named_field":       "sequence",
-		"escape_arm":               "ping",
-		"escape_element":           "history",
-		"nopayload_named_field":    "sequence",
-		"k1_as_k2":                 "grade",
-		"k2_as_k1":                 "grade",
-		"a2_arm_enum_as_int":       "a",
-		"a2_arm_pointer_as_int":    "a",
-		"a2_arm_bytes_as_string":   "c",
-		"a2_arm_length_off_width":  "b",
-		"a1_arm_one_width_as_a2":   "b",
-		"a1_arm_as_string_as_a2":   "c",
-		"a1_arm_as_body_as_a2":     "d",
-		"scalars_full_as_2":        "position",
-		"scalars_edges_as_2":       "position",
 	}
 	compared := 0
+	pinUsed := map[string]bool{}
 	for _, r := range rows {
 		if r.kind != "report" {
 			continue
@@ -287,6 +265,7 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 			t.Fatalf("%s: a form-3 report row; the fixed reader's name is not derived here", r.caseName)
 		default:
 			movedBy[want]++
+			pinUsed[r.caseName] = true
 			if want != "ok" && field == "" {
 				t.Errorf("%s refuses as %s and its field is not pinned: pin it in pinnedFields", r.caseName, want)
 			}
@@ -299,6 +278,13 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 	}
 	if compared == 0 {
 		t.Fatal("no report row reached a generated unit")
+	}
+	// a pin no counter row reads is stale: its row now answers a form byte
+	// (a declared fixed root's form-1 file is previous_form) or reads clean
+	for k := range pinnedFields {
+		if !pinUsed[k] {
+			t.Errorf("pinnedFields[%q] is read by no counter row: drop it", k)
+		}
 	}
 	// every counter §6.5 refuses on does so on at least one pinned row
 	for _, name := range []string{"kind_mismatch", "clamped", "malformed"} {
@@ -432,9 +418,10 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 		refusalCase{key: "variable_message", unit: "streamdemo", root: "Feed", input: "empty", form: 2, want: "message_form_as_file", field: "-"},
 		refusalCase{key: "variable_fixed", unit: "streamdemo", root: "Feed", input: "empty", form: 3, want: "newer_form", field: "-"},
 		refusalCase{key: "variable_unknown", unit: "streamdemo", root: "Feed", input: "empty", form: 127, want: "newer_form", field: "-"},
-		// a fixed root: form 1 is READ (a one-byte file is the framing's
-		// damage), form 2 a message, an unknown byte newer
-		refusalCase{key: "fixed_variable_form", unit: fixedUnit, root: fixedRoot, input: "empty", form: 1, want: "wire_damaged", field: "-"},
+		// a fixed root: form 1 is previous_form, named by the form byte
+		// before anything behind it (The three wires, §3.4), form 2 a
+		// message, an unknown byte newer
+		refusalCase{key: "fixed_variable_form", unit: fixedUnit, root: fixedRoot, input: "empty", form: 1, want: "previous_form", field: "-"},
 		refusalCase{key: "fixed_message", unit: fixedUnit, root: fixedRoot, input: "empty", form: 2, want: "message_form_as_file", field: "-"},
 		refusalCase{key: "fixed_newer", unit: fixedUnit, root: fixedRoot, input: "empty", form: 9, want: "newer_form", field: "-"},
 		// a form-3 byte at a fixed root goes to its own fixed reader, which
@@ -449,8 +436,8 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 		refusalCase{key: "fixed_layout_newer", unit: fixedUnit, root: fixedRoot, input: "fixed_layout_newer", form: -1, saved: 2, flip: true, want: "layout_newer", field: "-"},
 	)
 	// a declared fixed root with no Luau fixed layout: form 3 is not carried
-	// by this call, unknown_form, and its form 1 is read (a one-byte file is
-	// the framing's damage). A record past §3.4's 65536-byte ceiling is one
+	// by this call, unknown_form, and its form 1 is still previous_form: the
+	// class is the declaration's, not the layout's. A record past §3.4's 65536-byte ceiling is one
 	// by construction: the fixed form is not emitted for it and the class is
 	// kept; the corpus's own, when it has one, is a case too
 	big := generateFiles(t, map[string]string{"Big.schema": "package big\n\nfixed table Big\n{\n    a [70000]uint8\n}\n"})
@@ -460,7 +447,7 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 	}
 	cases = append(cases,
 		refusalCase{key: "bare_fixed_form3", unit: "big", root: "Big", input: "empty", form: 3, want: "unknown_form", field: "-"},
-		refusalCase{key: "bare_fixed_form1", unit: "big", root: "Big", input: "empty", form: 1, want: "wire_damaged", field: "-"},
+		refusalCase{key: "bare_fixed_form1", unit: "big", root: "Big", input: "empty", form: 1, want: "previous_form", field: "-"},
 	)
 	if bareRoot != "" {
 		cases = append(cases, refusalCase{key: "corpus_bare_fixed_form3", unit: bareUnit, root: bareRoot, input: "empty", form: 3, want: "unknown_form", field: "-"})
@@ -548,7 +535,7 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 		}
 	}
 	for _, name := range []string{"malformed", "wire_damaged", "clamped", "kind_mismatch",
-		"message_form_as_file", "newer_form", "unknown_form", "integrity_mismatch", "layout_malformed", "layout_newer", "ok"} {
+		"message_form_as_file", "newer_form", "previous_form", "unknown_form", "integrity_mismatch", "layout_malformed", "layout_newer", "ok"} {
 		if names[name] == 0 {
 			t.Errorf("no case answered %s", name)
 		}

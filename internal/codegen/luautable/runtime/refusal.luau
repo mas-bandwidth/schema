@@ -8,7 +8,7 @@
 -- and Go's TableReport.Err() answers: wire_damaged (the file's own framing),
 -- malformed, clamped and kind_mismatch, each with the first field the walk saw
 -- move it; a form byte the root's own form does not read (message_form_as_file,
--- newer_form, unknown_form); integrity_mismatch; and the fixed reader's own
+-- newer_form, previous_form, unknown_form); integrity_mismatch; and the fixed reader's own
 -- names for a form-3 file. It does NOT refuse unknown, widened or duplicate
 -- alone (§6.5: unknown is evolution, widened decoded exactly; a repeated map
 -- key is last-wins, §2.8, §4): those stay counted on the report, with the
@@ -452,14 +452,17 @@ end
 -- is the <Base>Table module that declares root; report is the caller's.
 --
 -- NEITHER CLASS BORROWS THE OTHER'S FORM (docs/SPEC-TABLES.md, The three
--- wires; §3, §3.4): form 1 is the variable form, which every table reads,
--- the declared-fixed ones included, as Go, C++ and the corpus do; form 3 is
--- the fixed form, read by a fixed root's own reader and newer_form at a
--- variable root (§6.5's previous_form is only a form THIS form is ahead of,
--- and nothing is behind form 1); a declared fixed root this build emits no
--- fixed layout for does not carry form 3 at all, unknown_form. Form 2 is
--- message_form_as_file at either. A form byte the root does not read moves no
--- counter (§3, §6.5).
+-- wires; §3, §3.4, §6.5): a reader emitted for one class refuses the other's
+-- form BY NAME, and a form byte's refusal says which direction. A DECLARED
+-- FIXED root is read the way Go's <T>FixedLoad and fixed.luau's own reader
+-- answer it: form 3 goes to its fixed reader (unknown_form when this build
+-- emits no fixed layout for it), form 1 is previous_form ("A form-1 file
+-- handed to a fixed root is previous_form — a NAMED REFUSAL, never a slow
+-- read down the variable wire"), form 2 message_form_as_file, any other byte
+-- newer_form. A VARIABLE root reads form 1, and form 3 or any other byte it
+-- does not carry is newer_form, form 2 message_form_as_file. The form byte is
+-- answered before anything behind it, so a one-byte file names its form. A
+-- form byte the root does not read moves no counter (§3, §6.5).
 function R.ReadStrict(T: any, root: string, bytes: buffer?, report: any?): any
 	local rep: any = report or {}
 	reset(rep)
@@ -472,8 +475,11 @@ function R.ReadStrict(T: any, root: string, bytes: buffer?, report: any?): any
 	local b = bytes :: buffer
 	local form = buffer.readu8(b, 0)
 	if form == FORM_MESSAGE then rep.reason = "message_form_as_file"; return nil end
-	if form == FORM_FIXED then
-		if not d.fixed then rep.reason = "newer_form"; return nil end
+	if d.fixed then
+		-- the fixed reader's form registry (docs/SPEC-TABLES.md §3, §3.4,
+		-- The three wires): 1 is behind it, previous_form
+		if form == FORM_VARIABLE then rep.reason = "previous_form"; return nil end
+		if form ~= FORM_FIXED then rep.reason = "newer_form"; return nil end
 		if T == nil or T[root .. "FixedLayout"] == nil then rep.reason = "unknown_form"; return nil end
 		return readFixed(T, root, b, rep)
 	end
@@ -520,7 +526,7 @@ end
 -- the names this file answers, for a caller that wants the spelling rather
 -- than the reason string (docs/SPEC-TABLES.md §11, §6.5)
 R.ReadStrictNames = table.freeze({
-	message_form_as_file = true, newer_form = true, unknown_form = true,
+	message_form_as_file = true, newer_form = true, previous_form = true, unknown_form = true,
 	integrity_mismatch = true, wire_damaged = true,
 	malformed = true, clamped = true, kind_mismatch = true,
 	-- the fixed reader's own, answered through fixed.luau for a form-3 file
