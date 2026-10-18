@@ -1974,6 +1974,7 @@ func bigToFloat(v *big.Int) float64 {
 // `?T`, and nothing is coerced.
 func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 	in := &reader{text: text, report: report, m: m}
+	in.byteOrderMark() // §16.2, §16.11: a whole text, so its leading mark is skipped
 	m.reset(fv)
 	var ok bool
 	switch shape := in.valueShape(); {
@@ -2007,6 +2008,7 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 // that become a bounded array's elements in name order.
 func (m *Model) ReadElement(fv *Field, slot int, text []byte, report *Report) bool {
 	in := &reader{text: text, report: report, m: m}
+	in.byteOrderMark() // §16.2, §16.11: a whole text, so its leading mark is skipped
 	fv.Elems[slot] = m.elementZero(fv.Def)
 	var ok bool
 	if in.valueShape() != ElementShape(fv.Def) {

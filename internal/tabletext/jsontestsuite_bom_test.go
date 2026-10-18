@@ -33,3 +33,39 @@ func TestJSONByteOrderMarkAtTheEntry(t *testing.T) {
 		}
 	}
 }
+
+// TestJSONByteOrderMarkAtThePackerEntries pins the same rule at the packer's
+// two whole-text entries (docs/SPEC-TABLES.md §17.1, "every rule is §16's"):
+// ReadValue and ReadElement skip a leading mark exactly as Model.Read does,
+// and a mark anywhere else is not JSON.
+func TestJSONByteOrderMarkAtThePackerEntries(t *testing.T) {
+	t.Parallel()
+	m, inst, _ := read(t, "GlobalSettings", `{}`)
+	fv := field(t, inst, "tick_rate")
+	for _, tc := range []struct {
+		text string
+		ok   bool
+	}{{"90", true}, {"\xEF\xBB\xBF90", true}, {" \xEF\xBB\xBF90", false}, {"\xEF\xBB90", false}, {"\xEF\xBB\xBF\xEF\xBB\xBF90", false}} {
+		var r tabletext.Report
+		if got := m.ReadValue(fv, []byte(tc.text), &r); got != tc.ok || r.Malformed == tc.ok {
+			t.Errorf("ReadValue %q: ok %v report %+v, want ok %v", tc.text, got, r, tc.ok)
+		}
+		if tc.ok && fv.Cell.U != 90 {
+			t.Errorf("ReadValue %q placed %d", tc.text, fv.Cell.U)
+		}
+	}
+	m, inst, _ = read(t, "ProfileConfig", `{}`)
+	ev := field(t, inst, "ratings")
+	for _, tc := range []struct {
+		text string
+		ok   bool
+	}{{"2.5", true}, {"\xEF\xBB\xBF2.5", true}, {" \xEF\xBB\xBF2.5", false}, {"\xEF\xBB2.5", false}} {
+		var r tabletext.Report
+		if got := m.ReadElement(ev, 0, []byte(tc.text), &r); got != tc.ok || r.Malformed == tc.ok {
+			t.Errorf("ReadElement %q: ok %v report %+v, want ok %v", tc.text, got, r, tc.ok)
+		}
+		if tc.ok && float32(ev.Elems[0].F) != 2.5 {
+			t.Errorf("ReadElement %q placed %v", tc.text, ev.Elems[0].F)
+		}
+	}
+}
