@@ -533,9 +533,24 @@ read_array_body = function(T, ctx, fd, sub)
       if body.at ~= body.lim then report.malformed = true end
       sub.at = sub.at + n
       local key = inst[keyname]
-      local value = inst[valname]
       if seen[key] then report.duplicate = report.duplicate + 1 else seen[key] = true end
-      out[key] = value
+      -- A VALUE THAT IS A POINTER OR BLOB is queued for RESOLUTION (§3.1)
+      -- against the entry's instance, so copying it here would take the nil
+      -- placeholder before resolve fills it. Point the queued slot at the map
+      -- itself under the entry's key, so resolve lands the resolved value
+      -- there (§3.1: a map value is a pointer field of the generated entry).
+      local vf = fd.value_field
+      if vf.shape == "pointer" or vf.shape == "string_blob" or vf.shape == "bytes_blob" then
+        for j = #ctx.pending, 1, -1 do
+          local pp = ctx.pending[j]
+          if pp.holder == inst then
+            pp.holder = out
+            pp.key = key
+          end
+        end
+      else
+        out[key] = inst[valname]
+      end
     end
     return out
   end
@@ -923,7 +938,12 @@ local function resolve(ctx, root, rootdesc)
         end
       end
     end
-    p.holder[p.key] = value
+    -- §3.1: 0 is null and null is elided, so a null slot resolves to nil —
+    -- a pointer field of a table is absent. A LIST element keeps its false
+    -- placeholder (§3.1's "A null slot is index 0 ... and it rides in its
+    -- place"): read_element stored it, so an assignment of nil here must not
+    -- drop the trailing null and the count.
+    if value ~= nil then p.holder[p.key] = value end
   end
 end
 
