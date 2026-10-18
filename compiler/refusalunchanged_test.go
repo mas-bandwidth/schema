@@ -161,12 +161,15 @@ func genSource(gen generateFunc, src, lang string) (map[string][]byte, error) {
 
 // unitOrdinal is a number in generated Go that is the unit's as a whole and
 // moves whenever the unit gains a wire id or a vocabulary entry, so it differs
-// between the using and the control unit with no leak. There are exactly two
+// between the using and the control unit with no leak. The probes reach two
 // such positions in a keep declaration's code: the first argument of refAtHit
 // (the id's ordinal in TableWireIds, gotable knownOrdinal) and the slot written
 // by Put at TableMessageRefBitsHere (the entry's index in the message
 // vocabulary, gotable messageSlot, never 0; a written 0 is the None slot and
-// stays compared). Only those are masked: a construct-keyed number anywhere
+// stays compared). A third, the first argument of IdAt (an enum field's
+// knownOrdinal, gotable write.go), is reached by no probe, since none declares
+// an enum; a probe that adds one adds IdAt here. Only those are masked: a
+// construct-keyed number anywhere
 // else in a non-using declaration (a width, a bound, an offset, a return
 // value, a wire constant) still differs.
 var unitOrdinal = regexp.MustCompile(`(refAtHit\()[0-9]+(,)|(\.Put\()[1-9][0-9]*(, ?TableMessageRefBitsHere\))`)
@@ -314,36 +317,43 @@ func TestRefusalUnchangedCatchesConstructKeyedLeak(t *testing.T) {
 	c := New()
 	for _, p := range allUnchangedProbes() {
 		p := p
-		decl := regexp.MustCompile(`(?m)^((?:func|type|var|const) ` + regexp.QuoteMeta(p.keep[0]) + `\b)`)
-		// only when the unit uses the construct, the first declaration that
-		// does not use it gains a line
-		planted := func(u *ir.Unit, lang string) (map[string][]byte, error) {
-			files, err := c.Generate(u, lang, nil)
-			if err != nil || !p.uses(u) {
-				return files, err
-			}
-			out := make(map[string][]byte, len(files))
-			for name, b := range files {
-				out[name] = decl.ReplaceAll(b, []byte("// planted construct-keyed leak\n$1"))
-			}
-			return out, nil
+		// only when the unit uses the construct, a declaration that does not
+		// use it gains a line: the first keep name, and the last when there
+		// are more, so both ends of the keep list are shown caught
+		leakInto := []string{p.keep[0]}
+		if last := p.keep[len(p.keep)-1]; last != p.keep[0] {
+			leakInto = append(leakInto, last)
 		}
-		err := checkRefusalUnchanged(planted, unchangedTargets, p)
-		if err == nil {
-			t.Errorf("%s: a construct-keyed leak into %s passed the check", p.construct, p.keep[0])
-			continue
-		}
-		msg := err.Error()
-		for _, want := range []string{p.construct + ":", "target go", "declaration ", " " + p.keep[0]} {
-			if !strings.Contains(msg, want) {
-				t.Errorf("%s: the failure does not name %q: %s", p.construct, want, msg)
+		for _, k := range leakInto {
+			decl := regexp.MustCompile(`(?m)^((?:func|type|var|const) ` + regexp.QuoteMeta(k) + `\b)`)
+			planted := func(u *ir.Unit, lang string) (map[string][]byte, error) {
+				files, err := c.Generate(u, lang, nil)
+				if err != nil || !p.uses(u) {
+					return files, err
+				}
+				out := make(map[string][]byte, len(files))
+				for name, b := range files {
+					out[name] = decl.ReplaceAll(b, []byte("// planted construct-keyed leak\n$1"))
+				}
+				return out, nil
+			}
+			err := checkRefusalUnchanged(planted, unchangedTargets, p)
+			if err == nil {
+				t.Errorf("%s: a construct-keyed leak into %s passed the check", p.construct, k)
+				continue
+			}
+			msg := err.Error()
+			for _, want := range []string{p.construct + ":", "target go", "declaration ", " " + k} {
+				if !strings.Contains(msg, want) {
+					t.Errorf("%s: the failure does not name %q: %s", p.construct, want, msg)
+				}
 			}
 		}
 		// only when the unit uses the construct, a number in the code of a
 		// declaration that does not use it changes (a width, bound or return
 		// value of keep[0]'s MeasureBody gains a digit): the mask must not hide it
 		fn := "func " + p.keep[0] + "MeasureBody"
-		planted = func(u *ir.Unit, lang string) (map[string][]byte, error) {
+		planted := func(u *ir.Unit, lang string) (map[string][]byte, error) {
 			files, err := c.Generate(u, lang, nil)
 			if err != nil || !p.uses(u) {
 				return files, err
@@ -354,12 +364,12 @@ func TestRefusalUnchangedCatchesConstructKeyedLeak(t *testing.T) {
 			}
 			return out, nil
 		}
-		err = checkRefusalUnchanged(planted, unchangedTargets, p)
+		err := checkRefusalUnchanged(planted, unchangedTargets, p)
 		if err == nil {
 			t.Errorf("%s: a construct-keyed number leak into %s passed the check", p.construct, fn)
 			continue
 		}
-		msg = err.Error()
+		msg := err.Error()
 		for _, want := range []string{p.construct + ":", "target go", "declaration ", fn + ","} {
 			if !strings.Contains(msg, want) {
 				t.Errorf("%s: the number leak failure does not name %q: %s", p.construct, want, msg)
@@ -394,9 +404,9 @@ func plantNumberLeak(b []byte, fn string) []byte {
 // unitNumber is a decimal integer literal, for plantNumberLeak.
 var unitNumber = regexp.MustCompile(`\b[0-9]+\b`)
 
-// pinnedDigest is a quoted 64-hex-digit literal: a sha256 committed beside the
-// code whose output it pins.
-var pinnedDigest = regexp.MustCompile(`"[0-9a-f]{64}"`)
+// pinnedDigest is a quoted 64-hex-digit literal, in either case and in either
+// string form: a sha256 committed beside the code whose output it pins.
+var pinnedDigest = regexp.MustCompile("[`\"][0-9a-fA-F]{64}[`\"]")
 
 func TestNoPinnedGeneratedOutputDigest(t *testing.T) {
 	t.Parallel()
