@@ -32,6 +32,7 @@ TableRefuseNonFinite
 // TableRefuseBlobShared: one blob record named from two slots (docs/SPEC-TABLES.md
 // §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
 TableRefuseBlobShared
+TableRefuseArenaRequired
 )
 func(r TableRefuseReason) Error()string{switch r {
 case TableRefuseOk:return "ok"
@@ -59,6 +60,7 @@ case TableRefuseBase64NotCanonical:return "base64_not_canonical"
 case TableRefuseIntegrityMismatch:return "integrity_mismatch"
 case TableRefuseNonFinite:return "non_finite"
 case TableRefuseBlobShared:return "blob_shared"
+case TableRefuseArenaRequired:return "arena_required"
 };return "invalid refusal reason"}
 func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{return nil};return reason}
 // TableBuildVersionMismatch is the typed error a strict announcement refusal

@@ -9548,14 +9548,25 @@ scene_builder_shutdown( &builder );           /* releases the arena and the regi
 A pointer's eight-byte slot means different things in the two forms, and
 the form in hand always says which:
 
-- **In the arena**, it is the node's arena offset.
+- **In the arena**, it is the node's arena offset carrying the ARENA MARK,
+  bit 62. No region delta can carry it — a delta runs between two addresses
+  of one region, far inside 2^62 either way — so the slot ITSELF says which
+  encoding it holds, and a walk never tells them apart by a reference's
+  size, by an address, or by asking the builder.
 - **In a region**, it is the SELF-RELATIVE byte delta from the slot's own
   address. A deref is therefore one add and needs no base pointer at all,
   and a whole region relocates by plain `memcpy` with zero fix-up — which
   is the strongest form §9's relocatability can take.
 
-Lock and Load both produce the region encoding; Lock is already
-rewriting layout, so the conversion is free.
+**The arena encoding needs the arena.** A write (measure or save) that meets
+an ARENA-encoded (marked) reference and was handed no arena to resolve it
+refuses by name (`arena_required`) and writes nothing. An unmarked reference
+is a region reference: self-relative, resolved without an arena even when one
+is handed, so a locked region writes the same bytes whatever builder state
+sits beside it, and a delta of any size is legal. The refusal covers every
+reference a write walks: a pointer, a blob, and a list's or map's header.
+Lock and Load both produce the region encoding; Lock is already rewriting
+layout, so the conversion is free.
 
 **A region reference has no required sign.** A region is packed in the
 same depth-first pre-order the wire numbers nodes in (§3.1), so a node's

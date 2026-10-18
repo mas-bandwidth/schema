@@ -586,11 +586,14 @@ func (g *cookGen) emitAt(st *ir.Struct) {
 	g.hf("// It takes the SLOT and not its value, because a self-relative delta means\n")
 	g.hf("// nothing without the address it is relative to.\n")
 	if len(variableTableNames(g.unit)) > 0 {
+		// The encoding is the slot's own (docs/SPEC-TABLES.md §6.3): a marked
+		// slot is an arena offset and needs the arena, any other is
+		// self-relative whatever arena is handed. tableRefAt decides.
 		g.hf("func %sAt(slot *int64, arena ...*TableArena) *%sRow {\n", name, name)
-		g.hf("if len(arena)>0 && arena[0]!=nil { return (*%sRow)(arena[0].At(*slot)) }\n", name)
-	} else {
-		g.hf("func %sAt(slot *int64) *%sRow {\n", name, name)
+		g.hf("\treturn (*%sRow)(tableRefAt(slot, tableOptionalArena(arena)))\n}\n\n", name)
+		return
 	}
+	g.hf("func %sAt(slot *int64) *%sRow {\n", name, name)
 
 	g.hf("\tdelta := *slot\n")
 	g.hf("\tif delta == 0 {\n\t\treturn nil\n\t}\n")
