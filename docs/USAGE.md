@@ -209,6 +209,13 @@ declared variant count is `Max`, and one number gets one name. A flags
 declaration exports `Count` instead, since it has no `Max`. `Count` is not a
 reserved variant name on an enum, and not a reserved arm name on a union.
 
+A variant name may be any identifier-shaped word, a schema reserved word
+included — `enum FieldType { text, int, enum, list, bool }` is legal —
+because a variant name is only ever read inside its own body or after
+`FieldType.`, never at a type position. The refusals that remain are `None`
+and `Max` on an enum, `Count` on flags, and a target's own reserved words
+(SPEC §4.6), so `int` is the JSON word `int`.
+
 A union's tag enum carries the debug-name function too, in the same nine
 spellings the declared enum uses, so logging which arm arrived is the same
 call either way.
@@ -225,6 +232,30 @@ each target's own: `EnumName(value)` in C++ (overloaded per enum),
 `EnumNameShipType` in C#/Go/JS, `enumNameShipType` in Dart/Java, and
 `enum_name_ship_type` in C/Rust/Elixir — returning the variant's declared
 spelling for any wire value, out-of-set values included (`"???"`).
+
+#### Deprecated variants
+
+A variant may be retired in place with the same `| deprecated` marker a field
+takes:
+
+```
+enum ShipType
+{
+    Fighter
+    Bomber    | deprecated   // retired in place: the ordinal stays
+    Scout
+}
+```
+
+The variant keeps its name and ordinal for life; the slot is never reused, and
+a new variant never takes either. On a locked enum, adding the marker is a
+widening; removing or renumbering a variant is still refused, and taking the
+marker off again — undeprecating — is refused by the lock. A reader that meets
+the variant yields the field's declared default, never `None` for an unknown
+name; a strict writer refuses a value that holds it with `invalid_value`; and
+a field default, a key enum's bound or a `const` naming it is refused by name.
+The generated constant stays, with the language's deprecation marker on it (Go:
+a `// Deprecated:` comment). The rule in full is docs/SPEC-TABLES.md §2.15.
 
 ### flags
 
@@ -3967,9 +3998,11 @@ func TestMarkerFixedRoundTrip(t *testing.T) {
 ```
 
 The fixed form's refusals land in `TableReport.Reason`, each under its own
-name: `previous_form`, a form-1 file, the variable form this build is newer
-than; `message_form_as_file`, form 2, a form this build carries through
-another surface; `newer_form`, a form byte the registry has not assigned;
+member of the one `TableRefuseReason` enum (docs/SPEC-TABLES.md §6.5), the
+same set every port declares: `previous_form`, a form-1 file, the variable
+form this build is newer than; `message_form_as_file`, form 2, a form this
+build carries through another surface; `newer_form`, a form byte the registry
+has not assigned; `unknown_form`, a form byte this call does not carry;
 `layout_unknown`, a layout hash this build's lineage does not hold, reported
 with the file's hash and nothing else (a flipped hash byte, an older layout
 nobody locked and a newer writer's layout all read this way: it does not say
@@ -3979,8 +4012,16 @@ first leg to answer this way); `layout_unsupported`, a layout this build once
 served and has retired; `layout_malformed`, a header that is not a layout, or
 a known hash whose layout bytes differ; `no_layout`, a record whose hash
 names nothing; `plan_too_large`, a plan slice smaller than the plan the load
-selected; `batch_too_large`, more records than the destination slice holds.
-Framing damage sets `Malformed` rather than a name.
+selected; `layout_record_too_large`, a record past the form's 65536-byte
+bound; `batch_too_large`, more records than the destination slice holds;
+`text_ill_formed`, `count_over_bound` and `length_over_bound`, a text
+payload, count or length past its plan's bound; the framing-damage names
+`truncated` and `reserved_not_zero`; and the lock-init parse names
+`layout_count_mismatch`, `layout_kind_unknown`, `layout_kind_invalid`,
+`layout_size_mismatch`, `layout_tree_unclosed` and `layout_too_deep`, kept
+because the lock-init parse of the build's own lineage still reaches them.
+`invalid_value` is the fixed writer's save reason. Framing damage sets
+`Malformed` rather than a name.
 
 **Lock the unit before the first edit.** A fixed table's layout is a promise
 to every record already written: the generated `MarkerFixedKnown` holds
@@ -4113,7 +4154,11 @@ every table it builds deterministic sample values from the declaration (fields
 at their bounds and inside them, every union arm, every optional present and
 absent) and checks that each reads back equal through the binary wire, base64
 text and JSON text; then it damages the wire and the texts and checks that each
-damage is refused by its named reason. Regenerate it whenever you regenerate
+damage is refused by its named reason. It also probes every declared bound: a
+generated `<Name>GenPastBound` helper writes a wire one past each range,
+`bits(N)`, `string(N)` and `[..N]` count, and each probe checks that the
+tolerant read clamps it to the bound and counts `clamped`, and that
+`ReadStrict` refuses it `clamped`. Regenerate it whenever you regenerate
 the code. Only `--lang go` is carried today; every other target refuses by
 name.
 
@@ -4369,7 +4414,13 @@ strict read (docs/SPEC-TABLES.md §6.5): it builds its own builder and returns
 `TableBuildVersionMismatch`, or a `TableMissingRequired` whose `Fields` names
 the `| required` field the record lacks, at whatever depth (`missing_required: x`), so `errors.Is` or `errors.As` matches it. `unknown`, `widened`
 and `retained` alone do not refuse. `TableReport.Err()` answers the same
-reason.
+reason. On a fixed table (SPEC-TABLES.md section 3.4) a refusal answers BY NAME: a
+fixed-form refusal's `Err()` is a `TableFixedRefusal` whose `Reason` is the
+refusal's own name (`layout_unknown`, `plan_too_large`, `count_over_bound`,
+...), never `unknown_form` - except the four form-byte refusals
+(`previous_form`, `message_form_as_file`, `newer_form` and the unsupported
+wire form), which keep answering `TableRefuseUnknownForm` so `errors.Is`
+stays working on them.
 
 A fixed table's `<T>FixedLoad` still takes a plan slice, and a slice shorter
 than the selected plan refuses `plan_too_large`
