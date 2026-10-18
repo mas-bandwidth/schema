@@ -113,8 +113,11 @@ type TableMap[T any] struct { Ref int64; Count int32; _ int32 }
 func (m *TableMap[T]) Clear(){*m=TableMap[T]{}}
 func (m *TableMap[T]) At(index int32,arena ...*TableArena)*T {if m==nil||index<0||index>=m.Count{return nil};c:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(m)),int64(unsafe.Sizeof(*new(T))),tableOptionalArena(arena));return (*T)(c.At(index))}
 func (c *tableContainerCursor) Release(){if c.memory!=nil {c.arena.Allocator.free(c.memory);c.memory=nil;c.order=nil}}
+// tableMapCursor walks a map in key order. Only a marked (arena) header is
+// sorted through the arena; an unmarked header is a region's, self-relative,
+// and walks in place whatever arena is handed (docs/SPEC-TABLES.md §6.3).
 func tableMapCursor(h *tableContainer,f *TableFieldInfo,a *TableArena) tableContainerCursor {
- c:=tableContainerCursorBegin(h,int64(f.ElemSize),a);if !f.Map||a==nil||h.Count==0{return c};bad:=tableContainerCursor{arena:a};if h.Count<0||h.Ref==0{return bad};memory:=a.Allocator.alloc(int64(h.Count)*8);if memory==nil{return bad};order:=unsafe.Slice((*int64)(unsafe.Pointer(&memory[0])),int(h.Count));head:=(*tableContainerHead)(a.At(h.Ref));n:=0
+ c:=tableContainerCursorBegin(h,int64(f.ElemSize),a);if !f.Map||a==nil||h.Count==0||!tableArenaMarked(h.Ref){return c};bad:=tableContainerCursor{arena:a};if h.Count<0||h.Ref==0{return bad};memory:=a.Allocator.alloc(int64(h.Count)*8);if memory==nil{return bad};order:=unsafe.Slice((*int64)(unsafe.Pointer(&memory[0])),int(h.Count));head:=(*tableContainerHead)(a.At(h.Ref));n:=0
  for ref:=head.First;ref!=0; {chunk:=(*tableContainerChunk)(a.At(ref));if chunk==nil {a.Allocator.free(memory);return bad};for i:=int32(0);i<chunk.Count;i++ {if chunk.Dead&(uint64(1)<<uint(i))!=0{continue};if n>=len(order){a.Allocator.free(memory);return bad};order[n]=ref+32+int64(i)*int64(f.ElemSize);n++};ref=chunk.Next};if n!=len(order) {a.Allocator.free(memory);return bad};key:=&f.Table().Fields[0]
  slices.SortFunc(order,func(x,y int64)int{return tableMapKeyOrder(tableMapStoredKey(a.At(x),key),tableMapStoredKey(a.At(y),key),key)})
  for i,ref:=range order {k:=tableMapStoredKey(a.At(ref),key);if !tableMapKeyValid(k,key)||i>0&&tableMapKeyOrder(tableMapStoredKey(a.At(order[i-1]),key),k,key)>=0 {a.Allocator.free(memory);return bad}}

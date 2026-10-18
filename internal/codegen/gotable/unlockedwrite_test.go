@@ -161,7 +161,9 @@ func TestGoWriteOfNoReferenceBuilderIgnoresArena(t *testing.T){
 // too (docs/SPEC-TABLES.md §6.3): a list-only root, a list of tables holding
 // a *string, and a map root, through the wire, cook, JSON and message writers.
 // A no-arena Find on an unlocked builder's map finds nothing and never reads an
-// arena offset as a distance; with the arena it finds the entry.
+// arena offset as a distance; with the arena it finds the entry. A LOCKED map
+// handed an arena (its own, shut down, or a live builder's) measures and finds
+// exactly as with none: its header is self-relative (§6.3).
 func TestGoContainerWritesWithoutArenaRefuse(t *testing.T) {
 	t.Parallel()
 	runGenerated(t, `package probe
@@ -217,6 +219,16 @@ func TestGoContainerWritesWithoutArenaRefuse(t *testing.T){
  index:=MpMIndex(&mr.M,storage)
  if MpMIndexFind(index,&mr.M,1)!=nil{t.Errorf("no-arena IndexFind on an unlocked map found an entry")}
  if got:=MpMeasure(mr,&m.Arena);got<=0{t.Errorf("map measure with arena=%d",got)}
+ if !m.Lock(){t.Fatal("lock map")}
+ want,err:=MpMeasureReason(m.AsConst())
+ if err!=nil||want<=0{t.Fatalf("locked map measure=%d %v",want,err)}
+ if got,err:=MpMeasureReason(m.AsConst(),&m.Arena);err!=nil||got!=want{t.Errorf("locked map handed its locked arena: %d %v want %d",got,err,want)}
+ var live MpBuilder
+ if !live.Init(){t.Fatal("init live")}
+ defer live.Shutdown()
+ if v:=MpMInsert(&live.Main,&live.GetRoot().M,2);v==nil{t.Fatal("insert live")}
+ if got,err:=MpMeasureReason(m.AsConst(),&live.Arena);err!=nil||got!=want{t.Errorf("locked map handed a live arena: %d %v want %d",got,err,want)}
+ if p:=MpMFind(&live.Arena,&m.AsConst().M,1);p==nil||*p!=5{t.Errorf("locked map Find with a live arena: %v",p)}
 }
 `)
 }
