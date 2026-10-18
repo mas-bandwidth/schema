@@ -14839,8 +14839,8 @@ inspects everything in the schema built:
   root, so a builder writes its text after `Lock`; a write over the arena
   would resolve slots through the arena context the wire's `Save( builder )`
   already carries, and nothing in the form changes.
-- **THE EXPANDED TREE of a variable root** (§17.2). A variable root packs and
-  unpacks as one `<Root>.json`, because labels are a text's own. A tree of
+- **THE EXPANDED TREE of a root that needs labels** (§17.2). Such a root packs
+  and unpacks as one `<Root>.json`, because labels are a text's own. A tree of
   `<field>.json` files that shared nodes across its files would need the pack
   to number across the tree in an order the files fix, which is the tree
   becoming a format; nothing here decides whether that is wanted.
@@ -15243,8 +15243,8 @@ TableReport report;
 ShipConfig ship;
 if ( !ShipConfigFromJson( ship, text, text_bytes, &report ) )
 {
-    // the text is not JSON (report.malformed) — the instance holds what
-    // was placed before the stop
+    // the text is not JSON (report.malformed) — the instance is reset to
+    // its declared defaults (§6.5)
 }
 
 int64_t size = ShipConfigToJsonMeasure( ship );      // exact bytes, writes nothing
@@ -15270,8 +15270,8 @@ TableReport report = new TableReport();
 ShipConfig ship = new ShipConfig();
 if (!Schema.ShipConfigFromJson(ship, text, report))
 {
-    // the text is not JSON (report.Malformed) — the instance holds what
-    // was placed before the stop
+    // the text is not JSON (report.Malformed) — the instance is reset to
+    // its declared defaults (§6.5)
 }
 
 long size = Schema.ShipConfigToJsonMeasure(ship);   // exact bytes, writes nothing
@@ -15342,9 +15342,9 @@ the form, and the output must be byte-identical to the goldens down to a float's
 because the next port meets them too.**
 
 **THE TOOL TAKES BOTH DIRECTIONS.** `schema pack` and `schema unpack` take a
-variable root as one text (§16.7, §17.2), and the round trip is the gate: a
-text that lost a pointer, or a node's identity, cannot pack back to the bytes
-it came from.
+root that needs labels as one text (§16.7, §17.2), and the round trip is the
+gate: a text that lost a pointer, or a node's identity, cannot pack back to
+the bytes it came from.
 
 **Rust's walk allocates nothing, and that is a gate rather than a claim**:
 numbers format through a stack sink the size of the C++ walker's own
@@ -15396,7 +15396,7 @@ carries three accessors where C++ carries a tag offset and an arm offset.
   order, defaults included — a text is for people and tools, and a text
   that elides is a text a reader has to know the schema to complete.
   Measure and write agree byte for byte, the wire's invariant (§9) carried
-  across.
+  across, and the writer's escape vocabulary is §16.3's.
 - **`ToJson` is PRETTY-PRINTED**, and the shape is part of the contract:
   one entry per line, two-space indent per nesting level. Measure must
   equal write byte for byte and `unpack` → `pack` must be byte-stable
@@ -15420,6 +15420,12 @@ carries three accessors where C++ carries a tag offset and an arm offset.
   which is a concession each new port would have had to rediscover. The
   goldens carry the byte; a text carrying two newlines, or none, is a text a
   reader still accepts and a writer never produces.
+- **THE ROOT OBJECT IS THE WHOLE TEXT.** Trailing whitespace after the root
+  object is skipped, but **data after the root object is `malformed`**: the
+  read returns false and the report is `Malformed`. A whole text is one root
+  object, not the first value in a stream, so a second value, a stray
+  delimiter or any other non-whitespace byte after the closing brace refuses
+  the read rather than being ignored.
 
 ### 16.2 The mapping, field kind by field kind
 
@@ -15437,15 +15443,15 @@ Per kind:
 | `string(N)` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted |
 | `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), and no text can either: ill-formed UTF-8, or a lone or out-of-order surrogate escape, is REFUSED BY NAME on read (`string_not_utf8`, `string_lone_surrogate`, §16.3), never transcoded to `U+FFFD`. So one in storage was built in code, and §16.3 writes it as `U+FFFD` |
 | `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted |
-| `timestamp` | string, strict RFC 3339 §5.6 date-time | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any spelling RFC 3339 §5.6 accepts of the same instant, which lands as its UTC nanosecond count. The spelling is EXACTLY the `date-time` production: four-digit year `0000`–`9999`; month `01`–`12`; day valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`; second `00`–`59`; a fraction of one or more digits after a dot, truncated to nanoseconds; and `Z`, `z`, or an offset whose hours are `00`–`23` and minutes `00`–`59`; nothing before or after. A comma is not a fraction separator, and second `60` is refused (§2.11). **A string outside that spelling — or one naming an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false, the report is `Malformed` and its `Reason` is `timestamp_not_rfc3339: <field>`. A NUMBER token is not a refusal but the dialect's own wrong-JSON-type rule (§16.1): skipped, counted as a kind mismatch, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13) |
+| `timestamp` | string, strict RFC 3339 §5.6 date-time | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any spelling RFC 3339 §5.6 accepts of the same instant, which lands as its UTC nanosecond count. The spelling is EXACTLY the `date-time` production: four-digit year `0000`–`9999`; month `01`–`12`; day valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`; second `00`–`59`; a fraction of one or more digits after a dot, truncated to nanoseconds; and `Z`, `z`, or an offset whose hours are `00`–`23` and minutes `00`–`59`; nothing before or after. A comma is not a fraction separator, and second `60` is refused (§2.11). **A string outside that spelling — or one naming an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false, the report is `Malformed` and its `Reason` is `timestamp_not_rfc3339: <field>`. A NUMBER token is not a refusal but the dialect's own wrong-JSON-type rule (§16.1): skipped, counted as a kind mismatch, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13). The writer drops a fraction's trailing zeros and omits it on a whole second, as `RFC3339Nano` spells it; the text form writes any count, and a time outside the years 1678–2262 is refused only where it enters through the accessor that stores a `time.Time`, as `timestamp_out_of_range` (§2.11) |
 | enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted. A deprecated variant keeps its name and reads as the field's declared default, never as unknown, and a writer refuses a value that holds one (§2.15) |
-| flags | array of variant names | `["Shielded", "Turbo"]`; an empty mask writes as `[]`; an unknown name is skipped, counted |
+| flags | array of variant names | `["Shielded", "Turbo"]`; an empty mask writes as `[]`; an unknown name is skipped, counted; a flags element that is not a string is `kind_mismatch`, skipped and counted |
 | `[N]T` fixed array | array | fewer elements pad with defaults; more are dropped, counted |
 | `[..N]T` bounded array | array | count = length; more than N are dropped, counted |
 | `[E]T` enum-keyed array | object keyed by VARIANT NAME | `{ "Fighter": {...}, "Bomber": {...} }`; an absent key keeps that slot's defaults; a **repeated variant key is last-wins and counted**, as any duplicate key is; an unknown key is skipped and counted, and **`"None"` is such a key** — it names no slot (§2.4) |
 | nested `type` / `table` | object | the same walk, recursively |
 | `?T` optional | the value, the key absent, or `null` | **presence of the KEY is presence, with `null` the one exception**: a key present sets the field present whatever its value, EXCEPT `null`, which is the absence itself and puts the field back at its declared default (below); an absent key leaves it absent. `ToJson` writes present optionals only. An optional ARRAY (§2.3) is this row over the array's: the key present with `[]` is present-and-empty, and `ToJson` writes a present empty array as `[]` |
-| union | object with ONE key, the arm name | `{ "buff": { "multiplier": 2.0 } }`; `None` writes as `{}`; `{}` or absent reads as None; two keys is malformed. A `table` arm (§2.6) is the same object form. **The arm's VALUE takes the arm's own row of this table**, because an arm is a field line: a scalar arm is a number (`{ "count": 7 }`), a string arm a string, an enum arm its variant name, a `flags` arm its name array, an array arm an array, a pointer arm the pointee's object or `null`, and a PAYLOAD-FREE arm `null` (`{ "ping": null }`), which selects that arm and holds nothing. An arm value of the wrong shape is `kind_mismatch`, the counter a key of the wrong JSON type raises anywhere in this form (below): the union reads `None` and the enclosing object reads on. An ARRAY of unions (§2.6) is an array of this row, a `None` element as `{}` in its place |
+| union | object with ONE key, the arm name | `{ "buff": { "multiplier": 2.0 } }`; `None` writes as `{}`; `{}` or absent reads as None; two keys is malformed. An arm name the union's tag does not name, or `None` as the key, is skipped and counted `unknown`, and the union reads `None`. A `table` arm (§2.6) is the same object form. **The arm's VALUE takes the arm's own row of this table**, because an arm is a field line: a scalar arm is a number (`{ "count": 7 }`), a string arm a string, an enum arm its variant name, a `flags` arm its name array, an array arm an array, a pointer arm the pointee's object or `null`, and a PAYLOAD-FREE arm `null` (`{ "ping": null }`), which selects that arm and holds nothing. An arm value of the wrong shape is `kind_mismatch`, the counter a key of the wrong JSON type raises anywhere in this form (below): the union reads `None` and the enclosing object reads on. An ARRAY of unions (§2.6) is an array of this row, a `None` element as `{}` in its place |
 | pointer `*T` | object, or `null` | the pointee's object in place; `null` is a null pointer. A node named MORE THAN ONCE is defined once under `&node`, with its fields, and named by `&node` alone after — §16.7's one construct, and the only thing this form adds for the variable class. An ARRAY of pointers (§2.1) is an array of this row, and a slot may define or name a node any other slot or field does |
 | `*bytes` | string, base64, or `null` | the blob in place, as `bytes(N)` spells its bytes, with NO bound to clamp against; `""` is a present blob of length zero and `null` is a null reference (§2.5). A body that is not base64 is `kind_mismatch`, the reference left null |
 | `*string` | string, or `null` | the blob's bytes as a string, with no bound; the same two values at the empty end |
@@ -15473,7 +15479,8 @@ references and the identity §3.1 preserves on the wire survives the round trip.
 The writer carries its own visit bound — a cyclic structure is refused at save
 (§3.1) but expressible in a region, and writing one in place would not
 terminate — and it carries this section's depth cap, because a pointer chain
-nests as deep as it is long.
+nests as deep as it is long. **The cap is 128**: a read that nests deeper is
+`malformed`, and a write that would nest deeper returns -1 (§16.3).
 
 **Numbers.** JSON has ONE number type, so an integer field accepts any
 token whose VALUE is integral — `2`, `2.0` and `1e3` are the integers 2, 2
@@ -15526,7 +15533,9 @@ from the same data land the same instance.
 
 **Unknown keys** are skipped and counted in `report.unknown`. **Duplicate
 keys**: the last occurrence wins and the repeat is counted in
-`report.duplicate` (§4). Last-wins applies to a WHOLE value: a repeated
+`report.duplicate` (§4), but repeats are counted only for fields at an index
+below 512; a table with more fields still reads, its repeats simply stop being
+counted. Last-wins applies to a WHOLE value: a repeated
 array key replaces the array outright rather than overlaying a prefix on
 what the first occurrence left, and a repeated table or union key
 re-establishes the whole value at its defaults before placing it.
@@ -15546,7 +15555,7 @@ are legal wherever whitespace is, which is between tokens and nowhere inside
 one. A `//` or a `/*` inside a string is ordinary text, because a string ends
 at its own closing quote and nothing scans for a delimiter within it, and an
 UNCLOSED `/*` is `malformed`, on the same terms an unclosed string is: the
-read stops there and the instance holds what was placed before the stop. This
+read stops there and the instance is reset to its declared defaults (§6.5). This
 is the trailing comma's rule at one more construct, and it is here for the
 same reason: the authoring files this section exists for carry comments, and a
 form a person edits by hand that refuses an explanation beside a value sends
@@ -15625,6 +15634,13 @@ written as something else.
   names** — refused by the NAME, not by a bound, so a vocabulary that
   disagrees with its own extent cannot slip through as a placeholder.
 - **A union tag outside its arm range.**
+- **A graph nested past 128** (§16.2): the writer carries the reader's depth
+  cap, so it never produces a text its own reader would refuse.
+- **A blob named from two slots** — `blob_shared` (§2.5): a blob is owned by
+  one slot, and there is no spelling that writes it once for two owners.
+- **A `&node` definition that would hold no field** — an empty or all-absent
+  table named twice — because a definition holding no field is not one
+  (§16.2, §16.7).
 - **A non-finite float.** The read path cannot produce one (above), so an
   instance that came from a text is always writable; one built in code with
   an infinity in it is refused, and says so.
@@ -15675,6 +15691,14 @@ it through a different defect. RFC 8259 requires a JSON text to be valid UTF-8, 
 text this form emits must be readable by any conforming parser, not only by
 schema's own reader.
 
+**The writer's escapes are the seven short escapes and nothing else.** `\"`,
+`\\`, `\b`, `\f`, `\n`, `\r` and `\t` are written as those escapes; every
+other byte below `0x20` is written `\u00xx` in LOWERCASE hex, so no `\u` escape
+names anything but a control byte and none names a surrogate; `/` is never
+escaped; and `DEL` (`0x7f`) and every non-ASCII code point are written RAW as
+UTF-8, as RFC 8259 permits. This is the whole escape vocabulary of both
+writers, `ToJson` and `schema unpack` alike (§16.12).
+
 **A ZERO IN TEXT TAKES ONE RULE IN EVERY FORM: NO READ STORES IT** (ruled
 2026-10-17, from the Go fuzz campaign). `U+0000` is a code point, but no wire
 carries it: a zero byte in a kind `12` payload, a `*string` blob, a text-list
@@ -15724,10 +15748,11 @@ ship_type ShipType | json = "type"
 
 The field reads from and writes to `"type"`. Two fields of one table whose
 keys collide are refused at compile time, naming both, as wire ids are
-(§5); `json` on a field no table closure reaches is refused (§11). **The
-attribute changes no byte on the wire**: keys are the text's business, ids
-are the wire's, and a schema may add, change or remove a `json` key without
-touching a stored file.
+(§5); `json` on a field no table closure reaches is refused (§11); and
+`json = ""` is refused at compile time, because an empty key names nothing.
+**The attribute changes no byte on the wire**: keys are the text's business,
+ids are the wire's, and a schema may add, change or remove a `json` key
+without touching a stored file.
 
 ### 16.5 Held by test
 
@@ -16068,12 +16093,15 @@ half is byte-identical across the pointered units of the corpus and reaches no
 pointer-free one (`make tables-json-graph-walk`) — the zero-cost property
 (§2.2), holding for the text form.
 
-**`schema pack` and `schema unpack` take a variable root, as ONE text** (§17.2).
-Labels are a text's own, so a tree of `<field>.json` files — the expanded shape —
-would split a root across texts that cannot name each other's nodes: `unpack`
-writes `<Root>.json` for a variable root whichever shape is asked for, and
-`pack` refuses a tree of fields under one by name, before a file is read. The
-round trip is the gate: a text that lost a pointer, or a node's identity,
+**`schema pack` and `schema unpack` take a root that needs labels, as ONE
+text** (§17.2). Labels are a text's own, so a tree of `<field>.json` files —
+the expanded shape — would split a root across texts that cannot name each
+other's nodes: `unpack` writes `<Root>.json` for a root whose by-value closure
+holds an arena edge — a pointer (a blob included), a map or an unbounded array
+(the `NeedsLabels` question) — whichever shape is asked for, and `pack`
+refuses a tree of fields under one by name, before a file is read. A variable
+root that holds no arena edge needs no label and packs as any fixed root does.
+The round trip is the gate: a text that lost a pointer, or a node's identity,
 cannot pack back to the bytes it came from.
 
 **Held by test.**
@@ -16366,8 +16394,12 @@ order, checking a key's identity and duplication before its value. Check
 missing required fields and guards after the containing record; use declaration
 order for ties. Report the second occurrence for duplicates, the offending
 value's start for bounds, and the closing delimiter for missing fields. A
-limit may stop work immediately before either phase completes. Callers must
-supply finite resource limits; no limit failure is accepted as a prefix read.
+limit may stop work immediately before either phase completes. A zero or
+negative limit takes the contract defaults — 65536 bytes, 8192 tokens, 4096
+nodes and 65536 decoded-allocation bytes — and `Depth` is clamped to 128, so a
+caller that supplies nothing or a nonsense value still reads a bounded
+document. An explicit limit that is exceeded refuses as `text_limit`, and no
+limit failure is accepted as a prefix read.
 
 `test/conformance/textform/` pins the source documents, typed expectations,
 byte-identical rewrites, localized edits and named refusals. These are standard
@@ -16757,11 +16789,14 @@ The tree MIRRORS the root table's shape, and nothing else:
   fields;
 - a plain **`<field>.json` at any level** is that field's value verbatim;
 - the **root may simply be one `<Root>.json`**;
-- a **VARIABLE root is that one file and nothing else** (§16.7): a shared node
-  is named by a label a TEXT owns, and a tree of fields would split the root
-  across texts that cannot name each other's nodes. `unpack` writes the one
-  file for such a root whichever shape is asked for, and `pack` refuses a tree
-  of fields under one by name;
+- a **root whose by-value closure holds an ARENA EDGE — a pointer (a blob
+  included), a map or an unbounded array (the `NeedsLabels` question) — is
+  that one file and nothing else** (§16.7): a shared node is named by a label
+  a TEXT owns, and a tree of fields would split the root across texts that
+  cannot name each other's nodes. `unpack` writes the one file for such a root
+  whichever shape is asked for, and `pack` refuses a tree of fields under one
+  by name. A variable root that holds no arena edge — a guarded table, say —
+  needs no label and packs and unpacks as any fixed root does;
 - a **byte buffer** (§2.5) is inline base64 in that file, as §16.2 spells it;
   a blob held in the tree as a file of its own, named by a relative path, is
   the include named in §15.
