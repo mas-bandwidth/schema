@@ -146,7 +146,7 @@ func TestSpecGoS18S20BaselineBlockBuildVersion(t *testing.T) {
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
 			for _, pin := range row.checks {
-				body := specSection(t, page, pin.section)
+				body := specSection18(t, page, pin.section)
 				if !strings.Contains(body, pin.holds) {
 					t.Errorf("§%s does not hold %q", pin.section, pin.holds)
 				}
@@ -158,10 +158,10 @@ func TestSpecGoS18S20BaselineBlockBuildVersion(t *testing.T) {
 	}
 }
 
-// specSection returns one section's text, from its heading to the next heading
+// specSection18 returns one section's text, from its heading to the next heading
 // of the same or a higher level. Whitespace is collapsed so a sentence that
 // wraps in the page still matches a one-line literal.
-func specSection(t *testing.T, page, section string) string {
+func specSection18(t *testing.T, page, section string) string {
 	t.Helper()
 
 	starts := map[string]string{
