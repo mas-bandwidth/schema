@@ -14724,9 +14724,9 @@ inspects everything in the schema built:
   sizes a string's length field by its declared bound, so an unbounded element
   or key needs a length encoding of its own there before the form can carry
   it; until then the message form emits nothing for a table whose closure
-  holds one. internal/baseline judging a `size=` vanishing on a text value line
-  as capacity GROWTH (§18) is DONE; the `keybound=` moving to `0` half of that
-  rule is still owed, as is every port but Go (§2.12's rule).
+  holds one. internal/baseline judges both capacity-growth halves — a `size=`
+  vanishing on a text value line and `keybound=` moving to `0` — as capacity
+  GROWTH (§18). Still owed: every port but Go (§2.12's rule).
 - **THE UNIT REGISTRY IN THE SIX REMAINING PORTS** (§8.3, §8.7). C++, C and Go
   emit the registry; the remaining six ports do not in this tree, so an enum
   VARIANT's, a flags BIT's and a record-naming ARM's `doc` and `tags` reach
@@ -17006,9 +17006,8 @@ that was there and under the shape that replaces it alike.
 `value` renders with no `size=` token, and an unbounded map key as
 `keybound=0`, a value no `string(N)` key carries (`N >= 2`), so neither line is
 any `string(M)` line. The check judges the moved token by its existing rule;
-treating a `size=` vanishing on a `value` line, and `keybound=` moving to `0`,
-as a capacity GROWTH rather than a shrink is owed to internal/baseline, which
-this construct's first card did not edit.
+a `size=` vanishing on a `value` line, and `keybound=` moving to `0`, are
+judged as a capacity GROWTH rather than a shrink by internal/baseline.
 
 **AND IT BUMPS NO RENDERING VERSION.** The bump rule asks whether this
 rendering emits a token an older one did not, on a line an untouched schema
