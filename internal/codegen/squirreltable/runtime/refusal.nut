@@ -1,11 +1,15 @@
 // THE STRICT READ AND ITS NAMED REFUSALS (docs/SPEC-TABLES.md §6.5, §11,
-// §2.14). ReadStrict answers the root or refuses with ONE name: a counter the
-// tolerant load moved (clamped, unknown, kind_mismatch, duplicate, malformed),
-// with the first field the walk saw move it; a form byte the root's own form
-// does not read; or a checksum that does not match. It is a wrapper over
-// schema_table_load's tolerant walk and edits nothing in it: the counters are
-// the load's report (docs/SPEC-TABLES.md §4), and the field is read off the
-// walk's own frame at the moment a counter first moves (THE WITNESS, below).
+// §2.14). ReadStrict answers the root or refuses with ONE name, the set §6.5
+// states and Go's TableReport.Err() answers: wire_damaged (the file's own
+// framing), malformed, clamped and kind_mismatch, each with the first field
+// the walk saw move it; a form byte the root's own form does not read
+// (previous_form, message_form_as_file, newer_form); and integrity_mismatch.
+// It does NOT refuse unknown, widened or duplicate alone (§6.5: unknown is
+// evolution, widened decoded exactly; a repeat is last-wins, §4): those stay
+// counted on the report. It is a wrapper over schema_table_load's tolerant
+// walk and edits nothing in it: the counters are the load's report (§4), and
+// the field is read off the walk's own frame when a counter first moves (THE
+// WITNESS, below).
 local _M = vargv[0];
 local _load = vargv[1]("schema_table_load");
 
@@ -79,6 +83,24 @@ local fieldOf = function(locals) {
   return null;
 };
 
+// A pointer-array ELEMENT's pending slot (load.nut's readElement) carries an
+// element descriptor with no name: the field is the one whose array IS that
+// slot's holder, found on the root or on a node record in resolve's frame
+// (`st`, and `root`, the root's descriptor).
+local holderField = function(locals) {
+  if (!("p" in locals) || !("st" in locals) || !("root" in locals)) return null;
+  local p = locals.p, st = locals.st;
+  if (typeof p != "table" || !("holder" in p) || typeof p.holder != "array") return null;
+  local owners = [[locals.root, st.root]];
+  foreach (n in st.nodes) if (n != null && n.kind == "t") owners.append([n.d, n.v]);
+  foreach (o in owners) {
+    foreach (f in o[0].fields) {
+      if ((f.member in o[1]) && o[1][f.member] == p.holder) return f.name;
+    }
+  }
+  return null;
+};
+
 local witness = function(store, first) {
   local r = {};
   r.setdelegate({
@@ -93,23 +115,31 @@ local witness = function(store, first) {
       if (!moved || (k in first)) return;
       local name = null;
       local idName = null;
+      // damage the load's OWN frame finds (it alone holds rootName: the form
+      // byte's file too short, the id table, the root body's early end) is
+      // the file's framing, wire_damaged, as Go's tableOpen answers it
+      local top = ::getstackinfos(2);
+      if (k == "malformed" && top != null && ("rootName" in top.locals)) store.framing <- true;
       for (local lv = 2; ; lv++) {
         local si = ::getstackinfos(lv);
         if (si == null) break;
         local locals = si.locals;
         if ("_strictFrame" in locals) break;
         name = fieldOf(locals);
+        if (name == null) name = holderField(locals);
         if (name != null) break;
         // a record of a type this build cannot name (the node scan's `rec`)
         // is named by its type id, ahead of any stale loop `id` beside it
         if (idName == null && ("rec" in locals) && typeof locals.rec == "table" &&
             ("tid" in locals.rec) && typeof locals.rec.tid == "integer")
           idName = format("#%016x", locals.rec.tid);
-        if (idName == null && ("id" in locals) && typeof locals.id == "integer")
+        // only bodyRead's `id` (its frame holds the table descriptor `c`) is a
+        // FIELD id; an enum reader's `id` is a variant's
+        if (idName == null && ("c" in locals) && ("id" in locals) && typeof locals.id == "integer")
           idName = format("#%016x", locals.id);
       }
       // an id this build cannot name is the field the walk saw, ahead of any
-      // field that holds it (bodyRead counts it before its fd is in scope)
+      // field that holds it (bodyRead counts it before its fd is in scope).
       if (idName != null && k == "unknown") name = idName;
       first[k] <- name;
     }
@@ -122,46 +152,21 @@ local reset = function(report) {
   foreach (k, _ in COUNTERS) report[k] <- (k == "malformed" || k == "refused") ? false : 0;
   report.reason <- null;
   report.field <- null;
-};
-
-// ReadStrictFixed(T, root, bytes, report): the FIXED reader's strict entry
-// (§3.4). It reads form 3 only, through the root's own <Root>FixedLoad, which
-// names its own refusals (layout_malformed, no_layout, ...); a form-1 file is
-// one this form is AHEAD of, previous_form; a form-2 batch is
-// message_form_as_file; every other byte is newer_form (§3, §6.5's table). A
-// root this build carries no fixed reader for answers newer_form for every
-// byte but 1 and 2: the form exists, and this build does not read it.
-_M.ReadStrictFixed <- function(T, root, bytes, report) {
-  if (report == null) report = {};
-  reset(report);
-  if (bytes == null || bytes.len() < 1) {
-    report.malformed = true;
-    report.reason = "malformed";
-    return null;
-  }
-  local form = bytes[0] & 0xff;
-  if (form == FORM_VARIABLE) { report.reason = "previous_form"; return null; }
-  if (form == FORM_MESSAGE) { report.reason = "message_form_as_file"; return null; }
-  if (form != FORM_FIXED || !((root + "FixedLoad") in T)) { report.reason = "newer_form"; return null; }
-  local out = [T.Descriptors[root].make()];
-  local n = T[root + "FixedLoad"](bytes, out, 1);
-  if (n < 0) { report.reason = T.FixedReason; return null; }
-  if (n != 1) { report.malformed = true; report.reason = "malformed"; return null; }
-  return out[0];
+  report.unknownField <- null;
+  report.duplicateField <- null;
 };
 
 // ReadStrict(T, root, bytes, report): the root instance or null, with
 // report.reason the name of the first refusal (§6.5's vocabulary, the same
 // spellings in every port) and report.field the first field the walk saw move
 // that counter (null for a form byte, a trailer, or damage no field holds).
-// It reads BY THE FORM BYTE, as the C++ reference's reader of a fixed-table
-// type does and as Go's variable Load does (gotable/read.go): form 1 is the
-// variable file and is read strictly here whether or not the table was
-// DECLARED fixed (the corpus pins v1_cfg_as_v2 at read); form 3 is the fixed
-// file and goes to ReadStrictFixed, which is where a form-1 file at a fixed
-// reader is previous_form; form 2 is message_form_as_file; anything else is
-// newer_form. A form byte the root does not read moves no counter (§3, §6.5);
-// a tolerant counter does (§4, §11).
+// NEITHER CLASS BORROWS THE OTHER'S FORM (docs/SPEC-TABLES.md, The three
+// wires): a fixed root reads form 3 through its own <Root>FixedLoad, which
+// names its own refusals, and a form-1 file handed to it is previous_form; a
+// variable root reads form 1, and a form-3 file is newer_form (§6.5's
+// previous_form is only a form THIS form is ahead of). Form 2 is
+// message_form_as_file at either. A form byte the root does not read moves
+// no counter (§3, §6.5).
 _M.ReadStrict <- function(T, root, bytes, report) {
   local _strictFrame = true;
   if (report == null) report = {};
@@ -169,11 +174,20 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   local d = T.Descriptors[root];
   if (bytes == null || bytes.len() < 1) {
     report.malformed = true;
-    report.reason = "malformed";
+    report.reason = "wire_damaged";
     return null;
   }
   local form = bytes[0] & 0xff;
-  if (form == FORM_FIXED && d.fixed) return _M.ReadStrictFixed(T, root, bytes, report);
+  if (d.fixed) {
+    if (form == FORM_VARIABLE) { report.reason = "previous_form"; return null; }
+    if (form == FORM_MESSAGE) { report.reason = "message_form_as_file"; return null; }
+    if (form != FORM_FIXED || !((root + "FixedLoad") in T)) { report.reason = "newer_form"; return null; }
+    local out = [d.make()];
+    local n = T[root + "FixedLoad"](bytes, out, 1);
+    if (n < 0) { report.reason = T.FixedReason; return null; }
+    if (n != 1) { report.malformed = true; report.reason = "wire_damaged"; return null; }
+    return out[0];
+  }
   if (form != FORM_VARIABLE) {
     report.reason = form == FORM_MESSAGE ? "message_form_as_file" : "newer_form";
     return null;
@@ -188,15 +202,22 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   local first = {};
   local v = _load.load(T, root, bytes, witness(store, first));
   foreach (k, _ in COUNTERS) report[k] = store[k];
-  // damage first, then the counters in one fixed order, so one wire always
-  // answers one name (§11)
-  foreach (k in ["malformed", "duplicate", "clamped", "unknown", "kindMismatch"]) {
+  // damage first, then the counters in Err()'s order, so one wire always
+  // answers one name (§6.5, §11); unknown, widened and duplicate alone read
+  if (store.malformed && ("framing" in store)) {
+    report.reason = "wire_damaged";
+    return null;
+  }
+  foreach (k in ["malformed", "clamped", "kindMismatch"]) {
     local moved = typeof store[k] == "bool" ? store[k] : store[k] > 0;
     if (!moved) continue;
     report.reason = COUNTERS[k];
     report.field = (k in first) ? first[k] : null;
     return null;
   }
+  // the fields of the counters that do not refuse, for a caller that asks
+  report.unknownField = ("unknown" in first) ? first.unknown : null;
+  report.duplicateField = ("duplicate" in first) ? first.duplicate : null;
   return v;
 };
 
@@ -204,6 +225,9 @@ _M.ReadStrict <- function(T, root, bytes, report) {
 // the reason string (docs/SPEC-TABLES.md §11, §6.5)
 _M.ReadStrictNames <- {
   previous_form = true, message_form_as_file = true, newer_form = true,
-  integrity_mismatch = true, clamped = true, unknown = true,
-  kind_mismatch = true, duplicate = true, malformed = true
+  integrity_mismatch = true, wire_damaged = true, malformed = true,
+  clamped = true, kind_mismatch = true,
+  // the fixed reader's own, answered through <Root>FixedLoad (§3.4)
+  layout_malformed = true, layout_record_too_large = true, no_layout = true,
+  plan_too_large = true
 };

@@ -20,7 +20,7 @@ import (
 // and prints its named reason and the field it names (docs/SPEC-TABLES.md
 // §6.5, §11, §2.14).
 const refusalsPrelude = `local inputs = dofile("inputs.nut", true);
-local run = function(unit, mod, root, key, form, integrity, fixedEntry) {
+local run = function(unit, mod, root, key, form, integrity) {
   local schema = dofile(unit + "/schema_module.nut", true);
   local T = schema.require(mod);
   local R = schema.require("schema_table_refusal");
@@ -29,10 +29,12 @@ local run = function(unit, mod, root, key, form, integrity, fixedEntry) {
   local d = T.Descriptors[root];
   if (integrity) { d.integrity <- "crc32c"; } else if ("integrity" in d) { delete d.integrity; }
   local report = {};
-  local v = fixedEntry ? R.ReadStrictFixed(T, root, b, report) : R.ReadStrict(T, root, b, report);
+  local v = R.ReadStrict(T, root, b, report);
   if ((v == null) != (report.reason != null)) throw "ReadStrict answered a value and a reason together, or neither";
-  print(key + "|" + (report.reason == null ? "ok" : report.reason) + "|" +
-        (report.field == null ? "-" : report.field) + "\n");
+  local nn = function(x) { return x == null ? "-" : x; };
+  print(key + "|" + (report.reason == null ? "ok" : report.reason) + "|" + nn(report.field) + "|" +
+        report.unknown + ":" + nn(report.unknownField) + "|" +
+        report.duplicate + ":" + nn(report.duplicateField) + "\n");
 };
 `
 
@@ -43,44 +45,45 @@ type refusalCase struct {
 	input     string
 	form      int // -1 for the input's own bytes
 	integrity bool
-	fixed     bool // through ReadStrictFixed, the fixed reader's entry
+	side      string // for a read: "unknown:<field>" or "duplicate:<field>" it must still count
 	want      string
 	field     string // "" for any field; "-" for none
 }
 
-// strictName is the one name §11 gives a pinned report (u,k,w,c,d,m,verdict
-// of testdata/conformance/tables/reports.txt) under ReadStrict's order:
-// damage first, then duplicate, clamped, unknown, kind_mismatch. widened is
-// not a refusal (§4's rung). "" is a clean read.
-func strictName(t *testing.T, row, pinned string) (string, string) {
+// strictName is the one name §6.5 gives a pinned report (u,k,w,c,d,m,verdict
+// of testdata/conformance/tables/reports.txt) under ReadStrict's order, Go's
+// TableReport.Err(): malformed, then clamped, then kind_mismatch. unknown,
+// widened and duplicate alone are not refusals (§6.5: unknown is evolution,
+// widened decoded exactly). "ok" is a clean read.
+func strictName(t *testing.T, row, pinned string) string {
 	t.Helper()
 	f := strings.Split(pinned, ",")
 	if len(f) != 7 {
 		t.Fatalf("%s: pinned report %q is not u,k,w,c,d,m,verdict", row, pinned)
 	}
 	switch {
+	case f[5] == "true" && f[6] == "read":
+		return "malformed"
 	case f[5] == "true":
-		return "malformed", "malformed"
-	case f[4] != "0":
-		return "duplicate", "duplicate"
+		return "wire_damaged"
 	case f[3] != "0":
-		return "clamped", "clamped"
-	case f[0] != "0":
-		return "unknown", "unknown"
+		return "clamped"
 	case f[1] != "0":
-		return "kind_mismatch", "kindMismatch"
+		return "kind_mismatch"
 	}
-	return "ok", ""
+	return "ok"
 }
 
 // formName is ReadStrict's form-byte refusal for a file whose first byte is b
-// (§3, §6.5): it reads by the form byte, so form 1 is read whatever the
-// root's declaration, form 2 is a batch handed to a file root, and every
-// other byte but a fixed root's own 3 is newer. "" is a form it reads.
+// at a root declared fixed or not (docs/SPEC-TABLES.md, The three wires:
+// neither class borrows the other's form; §3, §6.5), or "" when the form is
+// the root's own.
 func formName(b byte, fixed bool) string {
 	switch {
-	case b == 1, fixed && b == 3:
+	case fixed && b == 3, !fixed && b == 1:
 		return ""
+	case fixed && b == 1:
+		return "previous_form"
 	case b == 2:
 		return "message_form_as_file"
 	}
@@ -151,6 +154,15 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 
 	var cases []refusalCase
 	moved := map[string]int{}
+	// the first field the walk saw, pinned exactly where the schema says it
+	// (the wire files are named for it); every other counter row must name one
+	pinnedFields := map[string]string{
+		"parts_elem_kind":         "parts",
+		"parts_count_past_bound":  "parts",
+		"trace_elem_kind":         "trace",
+		"trace_count_past_bound":  "trace",
+		"a2_arm_length_off_width": "b",
+	}
 	compared := 0
 	for _, r := range rows {
 		if refused[r.unit] {
@@ -165,19 +177,18 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 			t.Fatalf("report row %s has no pinned report", r.name)
 		}
 		inputs[r.name] = data
-		want, counter := strictName(t, r.name, p)
-		field := ""
+		want := strictName(t, r.name, p)
+		field := pinnedFields[r.name]
 		if len(data) == 0 {
-			want = "malformed"
+			want = "wire_damaged"
 		} else if f := formName(data[0], isFixed(r.unit, r.root)); f != "" {
-			want, counter, field = f, "", "-"
+			want, field = f, "-"
 		} else if data[0] == 3 {
 			t.Fatalf("%s: a form-3 report row; the fixed reader's name is not derived here", r.name)
-		}
-		if counter != "" {
+		} else {
 			moved[want]++
 		}
-		if want == "ok" {
+		if want == "ok" || want == "wire_damaged" {
 			field = "-"
 		}
 		cases = append(cases, refusalCase{key: r.name, unit: r.unit, root: r.root, input: r.name, form: -1, want: want, field: field})
@@ -186,21 +197,8 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 	if compared == 0 {
 		t.Fatal("no report row reached a generated unit")
 	}
-	// p2_as_p1: P1's Chain is a fixed, by-value table, so the node table
-	// field a pointered writer puts in the root body (the reserved id
-	// 0xffffffffffffffff, §3.1) is a field it cannot name: unknown, and named
-	// by that id
-	if !refused["tblp1"] && !refused["tblp2"] {
-		for i := range cases {
-			if cases[i].key == "p2_as_p1" {
-				cases[i].field = "#ffffffffffffffff"
-			}
-		}
-	}
-	// every counter §11 names refuses on at least one pinned row (unknown,
-	// kind_mismatch, clamped, malformed) or on the constructed wire below
-	// (duplicate: no manifest row moves it)
-	for _, name := range []string{"unknown", "kind_mismatch", "clamped", "malformed"} {
+	// every counter §6.5 refuses on does so on at least one pinned row
+	for _, name := range []string{"kind_mismatch", "clamped", "malformed"} {
 		if moved[name] == 0 {
 			t.Errorf("no generated report row refuses as %s", name)
 		}
@@ -251,6 +249,9 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 	inputs["integrity_bad"] = broken
 	inputs["integrity_short"] = []byte{1, 0, 0, 0}
 	inputs["clean_plain"] = clean
+	// a root body whose terminator comes before its own end: framing damage
+	early := []byte{1, 0, 1, kind, 9, 0, 0, 0, 0}
+	inputs["early_end"] = append(early, idTable(wid)...)
 
 	// a fixed root for the forged form bytes at a fixed reader
 	fixedUnit, fixedRoot := "", ""
@@ -269,31 +270,32 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 	}
 
 	cases = append(cases,
-		refusalCase{key: "duplicate", unit: "streamdemo", root: "Feed", input: "dup", form: -1, want: "duplicate", field: "id"},
-		refusalCase{key: "unknown", unit: "streamdemo", root: "Feed", input: "unknown", form: -1, want: "unknown", field: fmt.Sprintf("#%016x", unknownId)},
+		// duplicate and unknown alone READ (§6.5, §4: last wins; unknown is
+		// evolution), and the report still counts each with its field
+		refusalCase{key: "duplicate", unit: "streamdemo", root: "Feed", input: "dup", form: -1, want: "ok", field: "-", side: "duplicate:id"},
+		refusalCase{key: "unknown", unit: "streamdemo", root: "Feed", input: "unknown", form: -1, want: "ok", field: "-", side: fmt.Sprintf("unknown:#%016x", unknownId)},
 		refusalCase{key: "clean", unit: "streamdemo", root: "Feed", input: "clean_plain", form: -1, want: "ok", field: "-"},
 		refusalCase{key: "integrity_ok", unit: "streamdemo", root: "Feed", input: "integrity_ok", form: -1, integrity: true, want: "ok", field: "-"},
 		refusalCase{key: "integrity_mismatch", unit: "streamdemo", root: "Feed", input: "integrity_bad", form: -1, integrity: true, want: "integrity_mismatch", field: "-"},
 		refusalCase{key: "integrity_short", unit: "streamdemo", root: "Feed", input: "integrity_short", form: -1, integrity: true, want: "integrity_mismatch", field: "-"},
-		// a trailer read by a table without the key is §2.14's mismatched reader:
-		// damage by §3's rules, never a value
-		refusalCase{key: "integrity_unexpected", unit: "streamdemo", root: "Feed", input: "integrity_ok", form: -1, want: "malformed"},
+		// a trailer read by a table without the key is §2.14's mismatched
+		// reader: the count runs past the front of the file, the framing's damage
+		refusalCase{key: "integrity_unexpected", unit: "streamdemo", root: "Feed", input: "integrity_ok", form: -1, want: "wire_damaged", field: "-"},
+		// the file's own framing: empty, too short for the id table, and a root
+		// body that ends before the id table does (Go's tableOpen damage)
+		refusalCase{key: "variable_empty", unit: "streamdemo", root: "Feed", input: "empty", form: -1, want: "wire_damaged", field: "-"},
+		refusalCase{key: "variable_short", unit: "streamdemo", root: "Feed", input: "form_v1", form: 1, want: "wire_damaged", field: "-"},
+		refusalCase{key: "variable_early_end", unit: "streamdemo", root: "Feed", input: "early_end", form: -1, want: "wire_damaged", field: "-"},
 		refusalCase{key: "variable_message", unit: "streamdemo", root: "Feed", input: "form_v2", form: 2, want: "message_form_as_file", field: "-"},
 		refusalCase{key: "variable_fixed", unit: "streamdemo", root: "Feed", input: "form_v3", form: 3, want: "newer_form", field: "-"},
 		refusalCase{key: "variable_unknown", unit: "streamdemo", root: "Feed", input: "form_v127", form: 127, want: "newer_form", field: "-"},
-		refusalCase{key: "variable_empty", unit: "streamdemo", root: "Feed", input: "empty", form: -1, want: "malformed", field: "-"},
-		// the same fixed root's form-1 file read BY THE FORM BYTE is the
-		// variable file, not a refusal (the C++ reference's reader accepts both)
-		refusalCase{key: "fixed_reads_variable", unit: fixedUnit, root: fixedRoot, input: "form_f1", form: 1, want: "malformed", field: "-"},
-		// the fixed reader's own entry: form 1 is OLDER, previous_form (§3.4)
-		refusalCase{key: "fixed_previous", unit: fixedUnit, root: fixedRoot, input: "form_f1", form: 1, fixed: true, want: "previous_form", field: "-"},
-		refusalCase{key: "fixed_message", unit: fixedUnit, root: fixedRoot, input: "form_f2", form: 2, fixed: true, want: "message_form_as_file", field: "-"},
-		refusalCase{key: "fixed_newer", unit: fixedUnit, root: fixedRoot, input: "form_f9", form: 9, fixed: true, want: "newer_form", field: "-"},
-		refusalCase{key: "fixed_newer_strict", unit: fixedUnit, root: fixedRoot, input: "form_f9", form: 9, want: "newer_form", field: "-"},
+		// a fixed root: form 1 is OLDER, previous_form (§3.4, The three wires)
+		refusalCase{key: "fixed_previous", unit: fixedUnit, root: fixedRoot, input: "form_f1", form: 1, want: "previous_form", field: "-"},
+		refusalCase{key: "fixed_message", unit: fixedUnit, root: fixedRoot, input: "form_f2", form: 2, want: "message_form_as_file", field: "-"},
+		refusalCase{key: "fixed_newer", unit: fixedUnit, root: fixedRoot, input: "form_f9", form: 9, want: "newer_form", field: "-"},
 		// a form-3 byte at a fixed root goes to its own fixed reader, which
-		// names a header too short to hold a layout (§3.4), from both entries
+		// names a header too short to hold a layout (§3.4)
 		refusalCase{key: "fixed_own_reader", unit: fixedUnit, root: fixedRoot, input: "form_f3", form: 3, want: "layout_malformed", field: "-"},
-		refusalCase{key: "fixed_own_reader_fixed", unit: fixedUnit, root: fixedRoot, input: "form_f3", form: 3, fixed: true, want: "layout_malformed", field: "-"},
 	)
 	inputs["empty"] = []byte{}
 
@@ -307,7 +309,7 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		if _, ok := inputs[c.input]; !ok {
 			inputs[c.input] = []byte{}
 		}
-		fmt.Fprintf(&p, "run(%q, %q, %q, %q, %s, %t, %t);\n", c.unit, mods[c.unit], c.root, c.input, form, c.integrity, c.fixed)
+		fmt.Fprintf(&p, "run(%q, %q, %q, %q, %s, %t);\n", c.unit, mods[c.unit], c.root, c.input, form, c.integrity)
 	}
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
 	out := sqrun.Run(t, dir, "main.nut", inputs)
@@ -318,7 +320,7 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 	names := map[string]int{}
 	for i, c := range cases {
 		parts := strings.Split(lines[i], "|")
-		if len(parts) != 3 || parts[0] != c.input {
+		if len(parts) != 5 || parts[0] != c.input {
 			t.Fatalf("probe line %q is not case %s's input, reason and field", lines[i], c.key)
 		}
 		reason, field := parts[1], parts[2]
@@ -330,11 +332,21 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		switch {
 		case c.field != "" && field != c.field:
 			t.Errorf("%s: %s names field %q, want %q", c.key, reason, field, c.field)
-		case c.field == "" && reason != "malformed" && field == "-":
+		case c.field == "" && field == "-":
 			t.Errorf("%s: %s names no field", c.key, reason)
 		}
+		if c.side != "" {
+			counter, f, _ := strings.Cut(c.side, ":")
+			got := parts[3]
+			if counter == "duplicate" {
+				got = parts[4]
+			}
+			if got != "1:"+f {
+				t.Errorf("%s: the report counts %s as %q, want %q", c.key, counter, got, "1:"+f)
+			}
+		}
 	}
-	for _, name := range []string{"malformed", "duplicate", "clamped", "unknown", "kind_mismatch",
+	for _, name := range []string{"malformed", "wire_damaged", "clamped", "kind_mismatch",
 		"previous_form", "message_form_as_file", "newer_form", "integrity_mismatch", "ok"} {
 		if names[name] == 0 {
 			t.Errorf("no case answered %s", name)
