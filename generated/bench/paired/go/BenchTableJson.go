@@ -844,6 +844,15 @@ type tableJsonIn struct {
 	// zero is set when the walk stopped on a U+0000 bound for text storage
 	// (mas-bandwidth/schema docs/SPEC-TABLES.md 16.3): the field loop names the field in Reason
 	zero bool
+	// loneSurrogate is set when the walk stopped on a lone or out-of-order
+	// surrogate escape (mas-bandwidth/schema docs/SPEC-TABLES.md 16.3): refused by name, never
+	// replaced with U+FFFD
+	loneSurrogate bool
+	// keyText and keyLength hold the object key whose value the walk is
+	// scanning, so a lone surrogate in a skipped value names that key (16.3);
+	// zero length at the top, which the refusal spells <root>.
+	keyText   [tableJsonMaxKey]byte
+	keyLength int32
 	// utf8 is set when the walk stopped on a byte sequence that is not
 	// well-formed UTF-8 (16.3): the read refuses it by name rather than
 	// replacing it silently with U+FFFD
@@ -1057,12 +1066,13 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 						in.pos = mark // a lone lead surrogate rides as itself
 					}
 				}
-				// a surrogate half that never found its partner has no UTF-8
-				// encoding: encoding it anyway would manufacture CESU-8 —
-				// invalid UTF-8 — out of input that was valid JSON, so it reads
-				// as the replacement character
+				// a lone or out-of-order surrogate escape names no code point
+				// (mas-bandwidth/schema docs/SPEC-TABLES.md 16.3): refused by name at every string
+				// site, never silently replaced with U+FFFD
 				if code >= 0xd800 && code <= 0xdfff {
-					code = 0xfffd
+					in.loneSurrogate = true
+					in.bad = true
+					return 0, false
 				}
 				// mas-bandwidth/schema docs/SPEC-TABLES.md 16.3: a U+0000 bound for text storage
 				// refuses the read (narrow and wide alike)
@@ -1271,11 +1281,28 @@ func tableJsonTokenInteger(token []byte, isSigned bool) (value int64, saturated 
 	return int64(magnitude), false
 }
 
+// nameLone names a lone or out-of-order surrogate refusal (16.3) by the key
+// whose value held it, and <root> when no key has been read yet. A refusal
+// already named by a nested field keeps that name.
+func (in *tableJsonIn) nameLone() {
+	if !in.loneSurrogate || in.report.Reason != "" {
+		return
+	}
+	if in.keyLength == 0 {
+		in.report.Reason = "string_lone_surrogate: <root>"
+		return
+	}
+	in.report.Reason = "string_lone_surrogate: " + string(in.keyText[:in.keyLength])
+}
+
 func (in *tableJsonIn) skipContainer(closing byte, depth int32) bool {
 	if depth > tableJsonMaxDepth {
 		in.bad = true
 		return false
 	}
+	savedText := in.keyText
+	savedLength := in.keyLength
+	defer func() { in.keyText = savedText; in.keyLength = savedLength }()
 	in.pos++ // the opening bracket
 	for {
 		c := in.peek()
@@ -1288,7 +1315,10 @@ func (in *tableJsonIn) skipContainer(closing byte, depth int32) bool {
 			return false
 		}
 		if closing == '}' {
-			if _, ok := in.scanString(nil); !ok {
+			var key [tableJsonMaxKey]byte
+			keyLength, ok := in.scanKey(key[:tableJsonMaxKey-1])
+			if !ok {
+				in.nameLone()
 				return false
 			}
 			if in.peek() != ':' {
@@ -1296,6 +1326,8 @@ func (in *tableJsonIn) skipContainer(closing byte, depth int32) bool {
 				return false
 			}
 			in.pos++
+			in.keyLength = keyLength
+			copy(in.keyText[:], key[:keyLength])
 		}
 		if !in.skipValue(depth + 1) {
 			return false
@@ -1323,6 +1355,9 @@ func (in *tableJsonIn) skipValue(depth int32) bool {
 		return in.skipContainer(']', depth)
 	case '"':
 		_, ok := in.scanString(nil)
+		if !ok {
+			in.nameLone()
+		}
 		return ok
 	case 't':
 		return in.literal("true")
@@ -1993,6 +2028,9 @@ func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInf
 		in.bad = true
 		return false
 	}
+	savedText := in.keyText
+	savedLength := in.keyLength
+	defer func() { in.keyText = savedText; in.keyLength = savedLength }()
 	if in.peek() != '{' {
 		in.bad = true
 		return false
@@ -2017,6 +2055,7 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 		var key [tableJsonMaxKey]byte
 		keyLength, ok := in.scanKey(key[:tableJsonMaxKey-1])
 		if !ok {
+			in.nameLone()
 			return false
 		}
 		if in.peek() != ':' {
@@ -2024,6 +2063,8 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 			return false
 		}
 		in.pos++
+		in.keyLength = keyLength
+		copy(in.keyText[:], key[:keyLength])
 		index := -1
 		for i := range info.Fields {
 			if tableJsonNameIs(info.Fields[i].Json, key[:keyLength]) {
@@ -2083,9 +2124,14 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 					}
 				} else if !tableJsonReadField(in, base, f, depth) {
 					// mas-bandwidth/schema docs/SPEC-TABLES.md 16.3: the innermost field that held
-					// a zero in text is the one the refusal names
-					if in.zero && in.report.Reason == "" {
-						in.report.Reason = "text_holds_zero: " + info.Name + "." + f.Name
+					// a zero in text, or a lone or out-of-order surrogate
+					// escape, is the one the refusal names
+					if in.report.Reason == "" {
+						if in.zero {
+							in.report.Reason = "text_holds_zero: " + info.Name + "." + f.Name
+						} else if in.loneSurrogate {
+							in.report.Reason = "string_lone_surrogate: " + info.Name + "." + f.Name
+						}
 					}
 					return false
 				}
@@ -2157,6 +2203,9 @@ func tableJsonRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 	}
 	if in.bad || !ok {
 		report.Malformed = true
+		if report.Reason == "" {
+			in.nameLone()
+		}
 		return false
 	}
 	return true
