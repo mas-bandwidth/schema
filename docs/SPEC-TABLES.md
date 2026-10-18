@@ -16138,7 +16138,7 @@ from its own samples, in its own package.
   flip. Every flip list is fixed by the seed: no
   randomness, no clock.
 - THE ASSERTION, for every input (a seed, a flip, or an input the fuzzing
-  engine makes): the read NEVER PANICS, and it is one of three things.
+  engine makes): the read NEVER PANICS, and it is one of four things.
   1. REFUSED BY A NAMED REASON: the strict read returns no value and a typed
      error (§6.5) that names its reason — a `TableRefuseReason` other than
      `ok`, a `TableMissingRequired` or a `TableBuildVersionMismatch`; for
@@ -16147,7 +16147,19 @@ from its own samples, in its own package.
   2. ACCEPTED, AND CANONICAL: the value read re-encodes in the same form to
      EXACTLY the input (the wire `Save` writes, the text `SaveText` writes,
      the text `ToJson` writes).
-  3. ACCEPTED, AND THE REPORT SAYS WHAT WAS SET ASIDE: the value read
+  3. ACCEPTED, AND A RESPELLING THE WIRE ALLOWS (the wire and the base64
+     text that carries it, never the JSON text): the value read re-encodes
+     to FEWER bytes than the input, and that re-encoding reads back with a
+     silent report to a value that re-encodes to it again. The binary wire
+     spells one value two ways in exactly two places: a field written AT
+     ITS DEFAULT, which every writer elides (§3) and every reader lands as
+     the default it is, and a field id carried twice, whose last occurrence
+     wins (§4). Both re-encode shorter. The JSON form has no respelling: its
+     canonical text writes every field (§16.1), so a JSON re-encoding
+     differs from the input only on a wrong decode. A reader that silently
+     dropped a field would hide in this class; the round trip above, which
+     pins every field of every sample through each form, is what holds that.
+  4. ACCEPTED, AND THE REPORT SAYS WHAT WAS SET ASIDE: the value read
      re-encodes to other bytes, and the tolerant read of the same input (the
      wire's `<Name>Load` or `<Name>LoadBuilder`, `LoadText` and `FromJson`
      with a report) returns a report that is not silent (§4.1): an unknown

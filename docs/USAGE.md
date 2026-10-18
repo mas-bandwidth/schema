@@ -4099,7 +4099,9 @@ The same file carries three fuzz targets per table, `Fuzz<Table>Wire`,
 seeded with each sample's own encodings and every single-byte flip of them,
 and they require, for every input, that the read never panics and is either
 refused by a named reason or decodes to a value that re-encodes to exactly the
-input (or whose report names what it set aside, such as an unknown field).
+input (on the wire, a shorter respelling of the same value such as an
+explicit default also passes, as does a read whose report names what it set
+aside, such as an unknown field).
 `go test` runs the seeds; `go test -fuzz '^FuzzPatrolWire$' ./gen` fuzzes from
 them for as long as you let it.
 
