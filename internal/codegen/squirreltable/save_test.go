@@ -180,7 +180,7 @@ func TestSquirrelTableSaveRoundTripsEveryInstance(t *testing.T) {
 			refusedRows++
 		}
 	}
-	if compared != len(instances)-refusedRows {
+	if compared == 0 || compared != len(instances)-refusedRows {
 		t.Errorf("compared %d of %d instance rows; %d rows in %d refused units", compared, len(instances), refusedRows, len(refused))
 	}
 	t.Logf("compared %d of %d instance rows; %d rows in %d refused units", compared, len(instances), refusedRows, len(refused))

@@ -507,7 +507,7 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
     // slot k is variant k's value, and a default slot is simply absent from
     // the wire and keeps the constructor's born value.
     out = v[fd.member];
-    if (out == null || out.len() == 0) out = array(fd.bound);
+    if (out == null || out.len() == 0) out = array(fd.bound, fd.elem.def);
     for (local i = 0; i < count; i++) {
       local keyRef = leb(r);
       if (r.bad || keyRef == 0 || keyRef > table.len()) { report.malformed = true; break; }

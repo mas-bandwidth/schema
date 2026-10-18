@@ -279,6 +279,9 @@ local indexOfBlob = function(nodes, kind, val) {
 // one field's value inside an array body or an arm payload (no id, no kind)
 local writePrim, writeElement, writeValue, writeUnionValue, writeTabBody, writeBare;
 
+// ONE SCALAR VALUE (docs/SPEC-TABLES.md §3): a bool one byte, an integer or
+// flags little-endian at its width, a float32 narrowed and a float64 whole,
+// an enum as a reference into the id table (§5).
 writePrim = function(w, d, val, ids) {
   if (d.shape == "bool") { wu8(w, val ? 1 : 0); return true; }
   if (d.shape == "float") {
@@ -319,18 +322,6 @@ local writeFields = function(T, c, v, w, ids, nodes, root) {
   return true;
 };
 
-local keyedSlotRides = function(T, e, v) {
-  if (e.shape == "tab") {
-    local body = newWriter();
-    if (!writeFields(T, tableDesc(T, e.table), v, body, newIds(), [], null)) return true;
-    return body.b.len() > 1;
-  }
-  if (e.shape == "union") return v != null && v.Type != null && v.Type != 0;
-  if (e.shape == "ptr" || e.shape == "sblob" || e.shape == "bblob") return v != null;
-  if (e.shape == "float" && e.f32) return narrowF32(v) != narrowF32(e.def);
-  return !scalarDefault(v, e.def);
-};
-
 local writeArrayBody = function(T, d, val, w, ids, nodes, root) {
   local e = d.elem;
   wu8(w, e.kind == 0 ? 6 : e.kind);
@@ -345,7 +336,7 @@ local writeArrayBody = function(T, d, val, w, ids, nodes, root) {
       local rides = false;
       if (e.shape == "tab") {
         local probe = newWriter();
-        writeBare(T, e, val[i], probe, newIds(), nodes, root);
+        if (!writeBare(T, e, val[i], probe, newIds(), nodes, root)) return -1;
         rides = probe.b.len() > 1;
       } else if (e.shape == "union") {
         rides = val[i] != null && val[i].Type != null && val[i].Type != 0;
@@ -398,6 +389,8 @@ local writeArrayBody = function(T, d, val, w, ids, nodes, root) {
 };
 
 
+// AN ARRAY FIELD RIDES (docs/SPEC-TABLES.md §3): a list or counted array when
+// it holds any element, a fixed array when any element is not its default.
 local arrayRides = function(fd, val) {
   local n = val.len();
   if (n == 0) return false;
@@ -405,7 +398,7 @@ local arrayRides = function(fd, val) {
   local e = fd.elem;
   if (e.shape == "tab") return true;
   if (e.shape == "union") {
-    for (local i = 0; i < n; i++) { if (val[i].Type != 0) return true; }
+    for (local i = 0; i < n; i++) { if (val[i] != null && val[i].Type != null && val[i].Type != 0) return true; }
     return false;
   }
   if (e.shape == "ptr") {
@@ -418,6 +411,9 @@ local arrayRides = function(fd, val) {
   return false;
 };
 
+// A UNION VALUE (docs/SPEC-TABLES.md §3): the arm reference (0 for none),
+// then the payload kind, its length and the payload; a payload-free arm
+// rides as kind 32 with length 0.
 writeUnionValue = function(T, u, inst, w, ids, nodes, root) {
   local t = inst.Type;
   if (t == null || t == 0) { wleb(w, 0); return true; }
