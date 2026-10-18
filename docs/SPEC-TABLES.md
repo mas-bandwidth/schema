@@ -8043,9 +8043,9 @@ holds for that hash, compiled at initialization from the lock's own layout bytes
 (§21.5). **A reader never parses a stranger's layout**: a hash outside the
 build's lineage is refused `layout_unknown` before any record (§21.3), and a
 known hash whose file layout bytes are not the lock's bytes for that hash is
-`layout_malformed`. The identity plan carries `copy`, `count` and `text`; a
-lineage plan adds only the ops an older layout needs — `ordinal`, `widen`,
-`widenF`, `const`, `bool` and `tag` — and **no plan op clamps**. Neither plan is
+`layout_malformed`. The identity plan carries `copy`, `count`, `text` and
+`bool`; a lineage plan adds only the ops an older layout needs — `ordinal`,
+`widen`, `widenF`, `const` and `tag` — and **no plan op clamps**. Neither plan is
 a shorter or a longer road than the other: one path, one set of cases to test.
 
 ```
@@ -8070,11 +8070,11 @@ the bounds pass that runs after the loop, over storage, for either plan:
   | `widenF` | widen an `f32` source to `f64`, carrying a NaN's payload bit for bit, `widened` counts |
   | `const` | write the constant at `aux` into the destination, for an absent arm or a default the reader's storage needs |
   | `bool` | normalise a source byte to `0` or `1`: a byte that is not zero is true |
-  | `tag` | read a union tag, resolve it to the reader's own arm, and run that arm's sub-plan; a tag naming no arm lands `None` and counts `unknown` |
+  | `tag` | read a union tag and land it in the destination; a value past the reader's own arm count lands `None` and counts `unknown`, and arms are guarded entries the loop runs below, not here |
 
 **THERE IS NO `union` OP**: a union is a `tag` entry and its arms' guarded
-entries. The op table's home is `docs/FIXED-FORM-ALGORITHM.md` §5.2, which is
-where a port reads the semantics of every row above.
+entries. The op table's home is `docs/FIXED-FORM-ALGORITHM.md` §4.1, with §4.5
+semantics, and that is where a port reads the meaning of every row above.
 
 **A READ IS A PREFILL, A LOOP, AND THE BOUNDS PASS, AND NOTHING ELSE.**
 
@@ -8114,12 +8114,13 @@ arithmetic, its whole constant size being one entry's worth of `src` advance.
 
 **THE IDENTITY PLAN IS A STATIC CONSTANT BAKED INTO THE GENERATED READER.** When
 a record's hash equals the reader's own, the plan is the one the compiler
-already wrote. **IT CARRIES THREE OPS AND NOT ONE**: a `copy` for every field
-whose wire image is its storage image, a `count` for a `[Min..Max]T`, and a
-`text` for a `string(N)`, a `wstring(N)` or a `bytes(N)` — because a count and a
-length are numbers the reader HOLDS TO ITS OWN BOUND before it moves the units
-behind them, and a copy holds nothing. The other six ops are a lineage plan's
-alone. **ADJACENT RUNS ARE COALESCED** — two neighbouring `copy` entries whose
+already wrote. **IT CARRIES FOUR OPS AND NOT ONE**: a `copy` for every field
+whose wire image is its storage image, a `count` for a `[Min..Max]T`, a `text`
+for a `string(N)`, a `wstring(N)` or a `bytes(N)`, and a `bool` for a bool or a
+presence byte — because a count, a length and a bool are numbers the reader
+HOLDS TO ITS OWN BOUND or normalises before it moves the units behind them, and
+a copy holds nothing. The other five ops are a lineage plan's alone.
+**ADJACENT RUNS ARE COALESCED** — two neighbouring `copy` entries whose
 source and destination both advance together are one entry, so a record whose
 declared order matches its storage layout collapses to a handful of runs.
 Coalescing is the only optimization a plan compiler performs and it is performed
