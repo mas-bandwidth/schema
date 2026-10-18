@@ -23,9 +23,8 @@ import (
 // The caps the generated walk carries, mirrored so a text one side refuses is
 // refused by the other.
 const (
-	maxJsonDepth  = 128
-	maxJsonKey    = 255
-	maxJsonNumber = 511
+	maxJsonDepth = 128
+	maxJsonKey   = 255
 )
 
 type reader struct {
@@ -541,7 +540,10 @@ func (in *reader) walkNumber() (integral, ok bool) {
 	return integral, true
 }
 
-// scanNumber is the same production with the token kept for conversion.
+// scanNumber is the same production with the token kept for conversion. The
+// token's LENGTH is never the reason it is called malformed: a valid RFC 8259
+// number of any length within the document's own size is read by its value
+// (docs/SPEC-TABLES.md §16.2 Numbers).
 func (in *reader) scanNumber() (token string, integral bool, ok bool) {
 	in.space()
 	start := in.pos
@@ -549,8 +551,7 @@ func (in *reader) scanNumber() (token string, integral bool, ok bool) {
 	if !ok {
 		return "", false, false
 	}
-	n := in.pos - start
-	if n <= 0 || n > maxJsonNumber {
+	if in.pos <= start {
 		return "", false, false
 	}
 	return string(in.text[start:in.pos]), integral, true
@@ -1074,13 +1075,17 @@ func (in *reader) skippedAmpersand(key string) bool {
 // four, and a lone final symbol is not base64. A body outside that grammar is
 // the wrong SHAPE for the kind, so the field keeps its default and the event
 // is counted — exactly as the generated walk does.
+//
+// A bytes field is a JSON string whose decoded value is base64 (§16.2), so the
+// string's JSON escapes are undone first and BOTH passes below run over the
+// decoded text. An escape that decodes to a byte outside the alphabet is not
+// base64 and stays kind_mismatch.
 func (in *reader) readBase64(fv *Field) bool {
 	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-	if in.peek() != '"' {
-		in.bad = true
+	raw, _, ok := in.scanString(-1)
+	if !ok {
 		return false
 	}
-	in.pos++
 	// bytes RE-ESTABLISH before decoding: a repeated key places a whole value,
 	// and six-bits-at-a-time decoding cannot overlay one
 	fv.Cell.Str = nil
@@ -1089,19 +1094,9 @@ func (in *reader) readBase64(fv *Field) bool {
 	if fv.Def.Type.Pointer {
 		bound = -1 // a *bytes has no bound to clamp against
 	}
-	mark := in.pos
 	symbols, pad := 0, 0
 	malformed := false
-	for {
-		if in.pos >= len(in.text) {
-			in.bad = true
-			return false
-		}
-		c := in.text[in.pos]
-		in.pos++
-		if c == '"' {
-			break
-		}
+	for _, c := range raw {
 		if malformed {
 			continue
 		}
@@ -1143,9 +1138,8 @@ func (in *reader) readBase64(fv *Field) bool {
 	var accumulator uint32
 	held := 0
 	clamped := false
-	for at := mark; ; at++ {
-		c := in.text[at]
-		if c == '"' || c == '=' {
+	for _, c := range raw {
+		if c == '=' {
 			break
 		}
 		symbol := 0
@@ -1458,6 +1452,17 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 			return false
 		}
 		if v := EnumValue(e, string(name)); v >= 0 {
+			if VariantDeprecated(e, v) {
+				// A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT
+				// (docs/SPEC-TABLES.md §2.15), and an ARRAY or keyed ELEMENT as
+				// the ELEMENT's default (None). It is never counted unknown.
+				if f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsList() || f.IsMap() {
+					cell.U = 0
+				} else {
+					*cell = in.m.fieldDefault(f)
+				}
+				return true
+			}
 			cell.U = uint64(v)
 			return true
 		}

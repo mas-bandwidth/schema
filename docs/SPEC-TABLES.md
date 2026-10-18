@@ -1492,10 +1492,12 @@ BODY AND A UNION ARM, and `[E]T` is the table form.** The rule follows the
 bound's PROVENANCE rather than its spelling, and it is stated here once for
 the whole page:
 
-- **The BOUND is what it looks at.** `[E.Max]T` and `[E.Count]T` name the
-  enum directly, and `[N]T` where `const N = E.Max` or `const N = E.Count`
-  names it through a constant, at any depth of constant arithmetic (SPEC.md
-  §4.2). A bound that folds from an enum is one bound however it is spelled.
+- **The BOUND is what it looks at.** `[E.Max]T` names the enum directly, and
+  `[N]T` where `const N = E.Max` names it through a constant, at any depth of
+  constant arithmetic (SPEC.md §4.2). An enum has no `Count` (SPEC §4.2): its
+  declared variant count is its `Max`, so `[E.Count]T` is not a bound spelling
+  at all — `E.Count` is refused as an expression naming the enum. A bound that
+  folds from an enum is one bound however it is spelled.
 - **THE SCOPE IS A TABLE BODY AND A UNION ARM.** A table body's own field
   takes the refusal, and so does a field of a union arm that body carries,
   in every spelling the bound has above. The same array held by a `type` a
@@ -1554,9 +1556,10 @@ reaches keeps the spelling until schema#606 rules.
 the checker must refuse, and each is red if the unit compiles or if the
 diagnostic does not name the field, the enum and the fix.
 
-- **The BOUND's own shapes, in a table body**: `[E.Max]T`, `[E.Count]T`,
-  `[N]T` under `const N = E.Max`, and one more under a constant that folds
-  through another constant.
+- **The BOUND's own shapes, in a table body**: `[E.Max]T`, `[N]T` under
+  `const N = E.Max`, and one more under a constant that folds through another
+  constant. An enum has no `Count` (SPEC §4.2), so `[E.Count]T` is not a
+  bound spelling; `E.Count` is refused as an expression naming the enum.
 - **The UNION ARM's shape**: the same array in a field of a union arm the
   table body carries, its diagnostic naming the arm as well.
 - **The CONTROLS hold the other edge**: a packet-wire unit is untouched, a
@@ -1569,8 +1572,10 @@ diagnostic does not name the field, the enum and the fix.
 
 **CHECKER STATUS: THE REFUSAL FOLLOWS THE PROVENANCE.** `schema check` refuses
 every spelling above in a table body and in a union arm, reading the bound's
-provenance and not its text: `[E.Max]T`, `[E.Count]T`, and `[N]T` under a
-`const N` that folds from either at any depth of constant arithmetic. The
+provenance and not its text: `[E.Max]T`, and `[N]T` under a
+`const N` that folds from it at any depth of constant arithmetic. An enum has
+no `Count` (SPEC §4.2), so `[E.Count]T` is not a bound spelling; `E.Count` is
+refused as an expression naming the enum. The
 diagnostic names the field, the enum, the constant where the bound reaches the
 enum through one, and `[E]T` as the fix; an arm's names the arm and the table
 that reaches the union. `[E]T` is not itself admitted as an arm (§2.6, §15),
@@ -1900,19 +1905,19 @@ nine backends is the named follow-on (§15).
 
 **THE TAG SHAPE IS THE PACKET TAG ENUM'S, MEMBER FOR MEMBER.** A different
 emitter writes it, so it is worth saying what it writes: `<Union>Type` carries
-`None = 0`, then each variant in declared order dense from 1, then `Count` (the
-declared variant count, `None` excluded) and `Max` (the exported extent), and
-beside the enum the DEBUG-NAME function that takes any value, out-of-set
-included, and returns the variant's spelling or the fixed unknown marker
-(SPEC §4.2, §4.8). It is the same construct to a reader: one logging which
-body arrived writes `EnumName( edit.body.type )` whichever union it holds, so
-it presents the same surface. Nothing on the read or write path calls the
-function and no generated code does. The table layer is the C++ reference's
-(§11, §15), so this shape has ONE emitter where the packet shape has nine.
-`Count` is therefore a REFUSED ARM NAME here as it is on a packet union
-(SPEC §4.11): the member exists, so an arm exporting `Count` would define it
-twice, which C++ refuses as a redefinition. The refusal is over the exported
-spelling, so `count` goes with it.
+`None = 0`, then each variant in declared order dense from 1, then `Max` (the
+exported extent), and beside the enum the DEBUG-NAME function that takes any
+value, out-of-set included, and returns the variant's spelling or the fixed
+unknown marker (SPEC §4.2, §4.8). An enum exports no `Count`: its declared
+variant count is its `Max`, so the tag carries no Count member (SPEC §4.2,
+the 2026-09-13 ruling). It is the same construct to a reader: one logging
+which body arrived writes `EnumName( edit.body.type )` whichever union it
+holds, so it presents the same surface. Nothing on the read or write path
+calls the function and no generated code does. The table layer is the C++
+reference's (§11, §15), so this shape has ONE emitter where the packet shape
+has nine. `Count` is therefore an ordinary ARM NAME here as it is on a packet
+union (SPEC §4.11): no member exists to collide with it, so an arm exporting
+`Count` is accepted, over the exported spelling, so `count` goes with it.
 
 - **A union declared for the TYPE wire keeps refusing table arms.** Types
   are value semantics and their wire is positional; a table arm is a
@@ -4767,7 +4772,7 @@ one document rather than two.
 
   | kind | payload |
   |---|---|
-  | `1` bool | 1 byte, `0` or `1` |
+  | `1` bool | 1 byte, `0` or `1` (below) |
   | `2`–`5` i8/i16/i32/i64 | 1/2/4/8 bytes, two's complement |
   | `6`–`9` u8/u16/u32/u64 | 1/2/4/8 bytes |
   | `10` f32, `11` f64 | 4/8 bytes, the IEEE-754 bit pattern, with NO CANONICALISATION (below) |
@@ -4785,6 +4790,13 @@ one document rather than two.
   | `32` no payload | `L`, then `L` bytes, and this form writes `L = 0` |
   | `33` wstring | `L`, then `L` bytes, which are `L / 2` UTF-16 code units, each two bytes little-endian, SURROGATES PAIRED and no zero unit among them. An ODD `L` is malformed, and so is ill-formed content (below). No terminator |
   | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch, counted, never reinterpreted, and NEITHER SPELLING WIDENS INTO THE OTHER (§4). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
+
+  **A `1` BOOL'S PAYLOAD IS ONE BYTE, AND `0` AND `1` ARE THE ONLY LEGAL VALUES.**
+  A writer writes only `0` or `1`. On the VARIABLE wire a reader that meets any
+  OTHER byte takes the value as `true`, counts the event as `malformed` NAMING
+  THE FIELD (the existing counter; no new one), and keeps reading; the strict
+  read (§6.5) therefore refuses it as `malformed`. The FIXED form keeps its own
+  rule (§3.4), unchanged.
 
   **A FLOAT RIDES AS ITS IEEE-754 BIT PATTERN, WITH NO CANONICALISATION**
   (SPEC.md §4.3). Kind `10` is the four bytes the field holds and kind `11`
@@ -9683,6 +9695,11 @@ The builder is designed to go wide, lock-free by ownership:
 
 ### 6.5 The two load paths
 
+**A `1` BOOL byte that is neither `0` nor `1` is MALFORMED on this read**: the
+TOLERANT read keeps the value (`true`) and counts the field `malformed` by name;
+the STRICT read refuses it as `malformed` (§3). The FIXED form carries its own
+rule (§3.4), unchanged.
+
 **Strict error identity.** A strict read of a fixed-form file returns the
 fixed refusal's own section 3.4 reason by name: `layout_unknown` remains
 `layout_unknown`, `count_over_bound` remains `count_over_bound`, and so on.
@@ -10633,8 +10650,8 @@ const Scene * scene = SceneOpen( bytes, length ); // point at it, or NULL
 
 `schema cook` writes the file; the runtime only ever points at one.
 
-**Backend status: the TOOL, EVERY READ SIDE, and the C++ WRITE side for BOTH
-classes are built (schema#251).** `schema cook`, `schema cook-check` and
+**Backend status: the TOOL, EVERY READ SIDE, and the C, C++ and Go WRITE sides
+for BOTH classes are built (schema#251).** `schema cook`, `schema cook-check` and
 `schema uncook` produce, validate and read back the form below, in both byte
 orders, over the same IR the emitters consume — and `wire → cook → wire` is
 byte-identical over the corpus, which is what proves the accelerator loses no
@@ -10647,11 +10664,13 @@ backend `<Root>Cook::open`, and the Elixir
 backend `cook_open_<root>`, which takes a `lead` beside the bytes for the
 base-alignment check a BEAM binary cannot carry (§7.1's alignment word, and the
 backend status in §2). A game points at a cook the tooling produced, whichever
-language it reads from. The WRITE side (`Cook` and `CookMeasure`, §7.6) is
-emitted by the C++ backend for every table, fixed or pointered, and its bytes
-are the tool's, byte for byte, in both byte orders over every instance the
-corpus carries; every other language's writer is a named follow-on (§15), and
-until it lands that build runs the tool.
+language it reads from. **A cook writer may exist in any port**: tools are
+what write cooked data, and a tool is written in whatever language its author
+chose. The WRITE side (`Cook` and `CookMeasure`, §7.6) is emitted by the C,
+C++ and Go backends for every table, fixed or pointered, and its bytes are the
+tool's, byte for byte, in both byte orders over every instance the corpus
+carries; the other languages' writers are named follow-ons (§15), and until
+one lands that build runs the tool.
 
 **THE SCALE THE COOK IS BUILT FOR, stated as the requirement it is** —
 *"Assume we have say, 100mbs or many gigabytes of data in Assets.bin at some
@@ -10957,9 +10976,10 @@ the wire, and keeps the flexibility that comes with it.
   into every comparison. A caller holding an `int64_t` from a `stat` casts once,
   at the call site, where the sign is still its own business.
 
-  **A ROOT IS ANY TABLE, and every table gets one.** Nothing on this page
-  narrows which table a cook may be rooted at, and two things say it is any of
-  them: `schema cook --root` names a TABLE and refuses anything else — a `type`
+  **A ROOT IS ANY TABLE, and every table gets one — unless its `forms`
+  declaration omits `cook` (§2.12), in which case that table gets no `Open`.**
+  Nothing on this page narrows which table a cook may be rooted at, and two
+  things say it is any of them: `schema cook --root` names a TABLE and refuses anything else — a `type`
   is not a node and has no type id (§3.1) — and §11 claims the spelling on every
   closure member. So the emission is per table, in every unit that declares one,
   and a FIXED root is not a second case: its cook is one region of one node
@@ -10999,19 +11019,24 @@ the wire, and keeps the flexibility that comes with it.
   | | C++ | C# | Go | JavaScript | Dart |
   |---|---|---|---|---|---|
   | open | `bool XOpen( const XCook *& cook, const void * base, int64_t bytes )` | `bool XCook.Open(out XCook cook, IntPtr p, long n)` | `bool XOpen(cook *XCook, base unsafe.Pointer, length int64) bool` | `XCook.Open(bytes: Uint8Array)` — the handle, or `null` for bytes that are not this build's; a caller's error (no `Uint8Array`, a view at an unaligned `byteOffset`) throws with the fix named | `XCook? XCook.open(Uint8List? bytes, int at, int length)` — null is the refusal |
+  | open, typed reason | — | — | `func (cook *XCook) Open(base, length) error` returning `TableRefuseReason`, beside the bool `XOpen` that forwards to it | — | — |
   | the handle | the root pointer itself | `readonly struct XCook` | `type XCook struct { Region unsafe.Pointer; RegionLength int64 }` | `{ Bytes, View, Region, Length }` — the region's offset inside the caller's view, and its length | `final class XCook` over `bytes`, its `region` offset and `length` |
   | the root | the return | `cook.Root` / `cook.RootPointer` | `cook.Root() *XRow` | `cook.Region`, the byte offset the root's accessors take | `cook.root(into)` — the cursor `cook.cursor()` made, lent and moved onto the root; no allocating twin |
-  | deref | `const T * t = XAt( slot )` | `XRow* r = Schema.XAt(slot)` | `r := XAt(slot)`, `slot *int64` | `XCook.At(cook, slot)` — the target's offset, or `null` for a null reference; a delta that leaves the region throws a `RangeError` naming the cook as corrupt | `row.<field>(into)` moves a lent `TRow` cursor; an escaping delta answers `TableCookRef.outside` |
+  | deref | `const T * t = XAt( slot )` | `XRow* r = Schema.XAt(slot)` | `r := XAt(slot)` with `slot *int64`; the signature is `XAt(slot *int64, arena ...*TableArena)`, the variadic arena naming the unlocked builder's storage | `XCook.At(cook, slot)` — the target's offset, or `null` for a null reference; a delta that leaves the region throws a `RangeError` naming the cook as corrupt | `row.<field>(into)` moves a lent `TRow` cursor; an escaping delta answers `TableCookRef.outside` |
   | the record | the generated struct | `XRow` (§11's claimed suffix) | `XRow`, the same claim | `XRow`, a frozen object of accessors over `(view, at)`: no struct to declare, so the offsets ARE the record | `XRow`, the same claim — a cursor of `(view, at)`, since Dart has no struct |
   | the descriptors | `XCook::Type()` | `XCook.Type` | `cook.Type() *TableCookInfo` | `XCook.Type` | `XCook.type`, a `const TableCookInfo` |
-  | §7.1's facts | `XCook::RegionAlignment` etc. | the same constants | `cook.RegionAlignment()`, `RootSize()`, `RootAlign()` — methods, which §11 leaves a language free to make them | `XCook.RegionAlignment`, `RootSize`, `RootAlign` | `XRow.rowSize` and `XRow.rowAlign`, `static const` on every record; the region alignment is the header's, read at `open` |
+  | §7.1's facts | `XCook::RegionAlignment` etc. | the same constants | `cook.RegionAlignment()`, `RootSize()`, `RootAlign()` — methods, which §11 leaves a language free to make them; `RegionAlignment()` is the UNIT's ceiling, the max over every cook closure, and not the opened file's per-region header word | `XCook.RegionAlignment`, `RootSize`, `RootAlign` | `XRow.rowSize` and `XRow.rowAlign`, `static const` on every record; the region alignment is the header's, read at `open` |
 
   **THE GENERATED STRUCT IS THE COOKED RECORD**, and the backend asserts it
   rather than assuming it: every record a unit's files declare carries
   `static_assert`s on its `sizeof`, its `alignof` and every field's `offsetof`
   against the numbers the compiler folded into the build version, so a compiler
   that lays a record out differently fails to BUILD, naming the record and the
-  field (§20.3).
+  field (§20.3). **Go's layout contract is an `init()` panic** on a record
+  size, an alignment or a field offset that disagrees with the model, beside
+  C++'s `static_assert` and C#'s `Verify`; C# has no `static_assert` and Go
+  says it where the program starts rather than in a constant expression,
+  because a person needs a message to act on.
 - **THE C# SURFACE, for the same reason the C++ one is here**: a consumer
   written from this page needs the spelling, and §19.2 already sets the shape a
   C# accelerator takes. **C# has no free functions**, so the claimed verbs are
@@ -11363,7 +11388,9 @@ fields would get wrong:
   and a mapped cook's `TableBytesAt` is a pointer into the data part at the
   header plus eight. **A `*wstring` blob's `length` is EVEN**, on kind `33`'s
   terms (§3), so its units are two-aligned at the header plus eight and the
-  terminator is the two bytes after them.
+  terminator is the two bytes after them. **The `*wstring` blob node is
+  specified ahead of its implementation, as §2.5 says**: the checker refuses
+  `*wstring`, and no backend emits it yet.
 - **A MAP's ENTRIES are BY-VALUE RECORDS INSIDE THE HOLDER'S NODE EXTENT**
   (§2.8): after the record's own storage, `count × sizeof( Entry )` at the
   entry's alignment, in ASCENDING KEY ORDER, one array per map the record
@@ -11373,7 +11400,12 @@ fields would get wrong:
   position for them; `schema cook-check` bounds each array inside its node as
   it bounds a count companion, walks each entry's pointer slots as it walks a
   bounded array's elements, and CHECKS THE ORDER, because a cook `Find` cannot
-  search is a forgery.
+  search is a forgery. **`schema cook` and `schema uncook` refuse every
+  map-bearing unit BY NAME**, because the tool's engine does not lay out the
+  entry arrays yet (§15); a generated runtime writer is not held to that
+  absence, and Go's map cook is held by an independent layout test,
+  `TestCookWriterMapExtentLayout`. The refusal is the tool's and not the
+  format's: a map is laid out above exactly as any value is.
 - **AN UNBOUNDED ARRAY's ELEMENTS are laid the same way** (§2.9): after the
   record's own storage, `count × sizeof( T )` at the element's alignment, in
   INDEX order, zero slack. Lists and maps are ONE POPULATION in that extent,
@@ -11827,6 +11859,25 @@ whose `arena` points at the builder's arena. `TableByteOrder_Little` and
 `TableAllocator` argument. The default pair is the builder's when a context
 names one, and the `schema_allocate`/`schema_release` hooks otherwise.
 
+**THE GO SURFACE** is the claimed name-first triple, and it is held to the
+tool's bytes byte for byte as the C and C++ writers are:
+
+```go
+func SettingsCookMeasure(value *Settings) int64
+func SettingsCookMeasureReason(value *Settings) (int64, error)
+func SettingsCookFrom(value *Settings, buffer []byte, order TableByteOrder) bool
+```
+
+A pointered root's measure and write take a `context ...TableWriteContext`
+instead, and the context names the builder's arena or the allocator the
+numbering runs through; a fixed root's takes the value, the buffer and the
+order and nothing else. The reason form's error is the `TableRefuseReason`
+value of §7's vocabulary; for refusals it reports, `CookFrom` answers
+`false`. Fixed-root `CookMeasure` is a layout constant even for a nil or
+invalid value, and fixed-root `CookMeasureReason` returns that constant with
+no error. Its `CookFrom` still validates the value and buffer, so its refusal
+does not imply a non-`ok` measurement reason.
+
 - **IT IS A MEASURE/WRITE SPLIT, exactly as the wire's is** (§6.1).
   `CookMeasure` answers the whole file's length — the header, the data part and
   the attribution part — in `int64_t`, because a cook's part lengths are 64
@@ -11912,6 +11963,19 @@ bool    SceneCook( const SceneBuilder & builder, void * out, uint64_t capacity, 
   the same input. A region `Load` produced holds null in every such slot, so a
   cook of a loaded wire never meets the case; a built structure that does has a
   pointer in storage its own count says is dead.
+- **THE GO WRITER NAMES ITS REFUSALS.** For pointered roots, an invalid
+  value (including a nil root, a counted used count below zero or above `N`,
+  a union tag past the arms, or a negative count or non-empty container in dead
+  storage) makes `CookMeasure` answer `-1` and `CookMeasureReason` return
+  `invalid_value`; a reference whose descent is still open returns
+  `data_cycle`, and a numbering that cannot grow returns `allocation_failed`.
+  `CookFrom` answers `false` for invalid order, value or short buffer. For fixed roots,
+  `CookMeasure` remains the structural constant and `CookMeasureReason`
+  returns it with no error even for invalid values; `CookFrom` validates the
+  value, buffer and order and answers `false` on refusal. A map-bearing root is
+  the TOOL's refusal and not the runtime writer's (§7.2): the Go writer lays
+  out the entry arrays, and §7.2 names the independent layout test that holds
+  them.
 - **WHAT ALLOCATES, AND THROUGH WHAT.** The caller still owns the OUTPUT
   buffer and nothing is allocated toward it. What the pointered writer
   allocates is the NUMBERING — the identity map, the entry array, and one
@@ -13242,12 +13306,13 @@ in build version (§20.5).
   default on an optional; and a field whose name collides with an
   optional's `<field>_present` companion.
 - **Enum-keyed arrays** (§2.4): **a POSITIONAL array whose bound folds from
-  an enum, in a TABLE BODY and a UNION ARM**, which is `[E.Max]T`,
-  `[E.Count]T` and
-  `[N]T` under a `const N` that folds from either, a compile error naming the
+  an enum, in a TABLE BODY and a UNION ARM**, which is `[E.Max]T` and
+  `[N]T` under a `const N` that folds from it, a compile error naming the
   field, the enum and `[E]T` as the fix, because an ordinal-indexed array is a
   positional vocabulary and a table has one, `flags` (§2.4, §4.1, SPEC.md
-  §3.1). The refusal follows the bound's PROVENANCE and not its spelling, on
+  §3.1). An enum has no `Count` (SPEC §4.2), so `[E.Count]T` is not a bound
+  spelling; `E.Count` is refused as an expression naming the enum. The refusal
+  follows the bound's PROVENANCE and not its spelling, on
   the scope §2.4 states. The spelling stays legal
   in a `type` no table reaches, where it is a plain array; a bound naming a `flags`
   declaration (a mask names no single slot); a bounded keyed array, `[..E]`
@@ -13259,10 +13324,11 @@ in build version (§20.5).
   table closure, `| max = K` headroom and variant id collisions, each
   diagnostic naming the keying field that pulled the enum in. A slot value no variant names is a SAVE failure, not a silent `None`
   (§3.2).
-  **CHECKER STATUS: `[E.Max]T`, `[E.Count]T` and `[N]T` under a `const N` that
-  folds from either are all refused in a table body and in a union arm**, on
-  the bound's provenance, and an arm's diagnostic names the arm and the table
-  that reaches the union (§2.4).
+  **CHECKER STATUS: `[E.Max]T` and `[N]T` under a `const N` that folds from it
+  are all refused in a table body and in a union arm**, on the bound's
+  provenance, and an arm's diagnostic names the arm and the table that reaches
+  the union (§2.4). An enum has no `Count` (SPEC §4.2): `E.Count` is refused
+  as an expression naming the enum, so `[E.Count]T` never becomes a bound.
   **RULING STATUS: the type-held case is ruled on schema#606**, and until
   then a `type` a table reaches is not refused (§2.4).
 - **Maps** (§2.8): a map in a `type` body; a key that is an enum (the
@@ -13426,12 +13492,12 @@ in build version (§20.5).
   of tables; each refusal naming the table wrapper that serves. `was` on an arm takes, a
   payload-free arm included (§2.6, §5); it is refused only where no table
   reaches the union, like `was` on an enum variant.
-- **An ARM NAMED `Count`** (§2.6), over the EXPORTED spelling, so `count` is
-  refused too. The tag shape a table-closure union gets carries the declared
-  variant count as the member `Count`, exactly as a packet union's tag enum
-  does (SPEC §4.2, §4.8, §4.11), so the arm would define the member twice and
-  C++ refuses that as a redefinition. It is the reservation `None` and `Max`
-  already carry, reaching every union because the member is on every union.
+- **An ARM NAMED `Count` is accepted** (§2.6), over the EXPORTED spelling, so
+  `count` goes with it. An enum has no `Count` (SPEC §4.2, the 2026-09-13
+  ruling): a tag enum's declared variant count is its `Max`, so the tag shape
+  carries no Count member and an arm named Count collides with nothing. It is
+  an ordinary arm name on a union, as `Count` is an ordinary variant name on an
+  enum. `None` and `Max` keep the reservation the generated members carry.
 - **An array of unions** (§2.6): the enum-KEYED spelling `[E]Body`, a named
   follow-on (§15) where the bounded `[..N]Body` and `[N]Body` are not; and
   **an array of unions in a table closure under every backend but C, C++, C#
@@ -13498,23 +13564,33 @@ in build version (§20.5).
   NodeStorage  NodePlace  NodeAlloc  NodeBody
   Cook  CookMeasure  CookMeasureReason  CookBody  CookLayout  CookMeasureFrom  CookFrom
   Open  TableFields  TableInfo
-  FromJson  ToJson  ToJsonMeasure  Table
+  FromJson  ToJson  ToJsonMeasure  ToJsonMeasureReason  Table
   FromJsonWith  ToJsonWith  ToJsonMeasureWith
-  SaveText  LoadText
+  SaveText  LoadText  LoadTextForm  SaveTextForm  EditTextForm
   LoadTolerant  LoadBuilderTolerant  FromJsonTolerant  FixedLoadTolerant  LoadMessagesTolerant
-  FromJsonTolerantWith
+  FromJsonTolerantWith  ReadStrict
   MeasureMessages  SaveMessages  LoadMessages
   LoadMessagesMeasure  SaveMessageBody  LoadMessageBody
   LoadRetain LoadRetainBuilder  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages
   LoadBodyRetain LoadMessageBodyRetain  MeasureBodyRetain  SaveBodyRetain  SaveBodyFieldsRetain
   MeasureWireRetain  SaveWireRetain  NodeBodyRetain
-  FixedMeasure  FixedSave  FixedLoad  FixedWriteBody  FixedLeaves
+  FixedMeasure  FixedSave  FixedSaveReason  FixedLoad  FixedWriteBody  FixedLeaves
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedCover
-  FixedClamp  FixedClampBody
+  FixedClamp  FixedClampBody  FixedCheckBody  FixedCheckBodyExact
+  FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedKnown  FixedFloor  FixedLineagePlans
   ```
+
+  The Go templates also use Add, Erase, Each, Insert, Find,
+  IndexMeasure, Index, IndexFind, Append, AppendAbsent and TextAt
+  after field-qualified prefixes for list, map and text-list helpers (§2.8,
+  §2.9 and §2.13), and Type is the union tag type (§2.6); none of these is
+  emitted from the bare table name, so none is claimed here — a declaration
+  spelling one is not a collision. The fixed-form image and hole names and the
+  maximum plan capacity are package-level Go data (§3.4), and GenPastBound is
+  the exported bound probe helper (§4).
 
   The last six of the `Fixed` rows are the READING TIER's, and they are the
   price a language with no struct layout pays for the same form. Where the
@@ -14847,9 +14923,11 @@ inspects everything in the schema built:
   a catalog is re-cooked when any table in its unit moves (§7).
   Everything about it is a decision — who declares the set, what proves two
   versions interchangeable — and none of that is decided here.
-- **THE COOK's WRITE SIDE in the remaining languages.** C++, C and Go write
+- **THE COOK's WRITE SIDE in the remaining languages.** C, C++ and Go write
   cooks of either class today and their bytes are the tool's (§7.6); a writer
-  may exist in any port, and Go's is one. Every other language's writer is the
+  may exist in any port. Go's is the claimed name-first triple
+  `<Name>CookMeasure`, `<Name>CookMeasureReason` and `<Name>CookFrom`, whose
+  surface §7.6 states. Every other language's writer is the
   same feature in that language's own idiom, held to the same `cook-write`
   surface — a language writes, the harness compares to the tool's bytes — and
   a pointered root's needs what the C++ one needed: the depth-first numbering
@@ -15588,7 +15666,13 @@ value the field's width cannot represent is `kind_mismatch`, so an
 infinity is never stored. **A token that is not a JSON number at all** —
 `1-2`, `5+`, `1.2.3`, `--3` — is `malformed`: the token grammar is RFC
 8259's, and a typo in an authoring file is a diagnostic, never a clamped
-value.
+value. **A token's LENGTH is never the reason it is refused**: a valid
+number is read by its value however many bytes it spans, within the
+document's own size bound. There is no separate number-length limit, so a
+`1.` followed by six hundred zeros is the float `1.0` and a `1` followed by
+six hundred zeros is an out-of-range integer clamped by the rules above,
+not a `malformed` token. Both engines land the same bytes and counters for
+one, as they do for every other token.
 
 **The wide kinds convert EXACTLY, and nothing on their path is a double.**
 A fixed field's token is the value in whole units; the reader scales it by
