@@ -159,9 +159,11 @@ local reset = function(report) {
 // that counter (null for a form byte, a trailer, or damage no field holds).
 // NEITHER CLASS BORROWS THE OTHER'S FORM (docs/SPEC-TABLES.md, The three
 // wires): a fixed root with a fixed reader reads form 3 through its own <Root>FixedLoad, which
-// names its own refusals, and a form-1 file handed to it is previous_form; a
-// variable root reads form 1, and a form-3 file is newer_form (§6.5's
-// previous_form is only a form THIS form is ahead of). Form 2 is
+// names its own refusals (and answers previous_form for a form byte 1 it is
+// handed, §3.4); ReadStrict at a declared-fixed root READS a form-1 file as
+// the variable form, the accepting read (the ruling, docs/SPEC-TABLES.md
+// §6.5). A variable root reads form 1, and a form-3 file at it is newer_form
+// (§6.5's previous_form is only a form THIS form is ahead of). Form 2 is
 // message_form_as_file at either. A form byte the root does not read moves
 // no counter (§3, §6.5).
 _M.ReadStrict <- function(T, root, bytes, report) {
@@ -181,10 +183,7 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   // unknown_form, and its form 1 is read as a variable root's
   local fixedReader = d.fixed && ((root + "FixedLoad") in T);
   if (d.fixed && !fixedReader && form == FORM_FIXED) { report.reason = "unknown_form"; return null; }
-  if (fixedReader) {
-    if (form == FORM_VARIABLE) { report.reason = "previous_form"; return null; }
-    if (form == FORM_MESSAGE) { report.reason = "message_form_as_file"; return null; }
-    if (form != FORM_FIXED) { report.reason = "newer_form"; return null; }
+  if (fixedReader && form == FORM_FIXED) {
     local out = [d.make()];
     local n = T[root + "FixedLoad"](bytes, out, 1);
     if (n < 0) { report.reason = T.FixedReason; return null; }
