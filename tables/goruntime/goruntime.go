@@ -29,6 +29,11 @@ type TableReport struct {
 	Retained, RetainLost int32
 	Verdict              TableOpenVerdict // unsupported form is distinct from damage
 	Reason               string           // why the form was refused; empty for a file read
+	// FixedRaised is true only on a FIXED form's refusal (§6.5): a refusal
+	// that has a name answers it BY NAME (via TableFixedRefusal), and the four
+	// form-byte refusals keep answering unknown_form. Message-form refusals
+	// clear it, so a reused report still answers unknown_form on the message path.
+	FixedRaised bool
 	Widened              int32            // a compatible wider kind preserved the value
 	Unknown              int32            // unknown field ids skipped (newer data)
 	KindMismatch         int32            // known id, changed type — skipped, never misdecoded
@@ -215,6 +220,31 @@ type TableMissingRequired struct{ Fields string }
 
 func (m TableMissingRequired) Error() string { return "missing_required: " + m.Fields }
 
+// TableFixedRefusal is the typed error a strict read reports for a fixed-form
+// refusal that has a name (§6.5): Reason is the refusal's own name (the §3.4
+// reason), and Error() is that name. The four form-byte refusals (previous_form,
+// message_form_as_file, newer_form and the unsupported wire form) keep answering
+// TableRefuseUnknownForm so errors.Is keeps working.
+type TableFixedRefusal struct{ Reason string }
+
+func (f TableFixedRefusal) Error() string { return f.Reason }
+
+// tableFixedReasonNamed reports whether a fixed-form refusal's Reason is one of
+// the NAMED layout/plan reasons — the refusals that answer BY NAME rather than
+// as unknown_form (§3.4, §6.5). The four form-byte reasons are the exceptions.
+// integrity_mismatch is raised Damaged, never Refused, so it needs no entry here.
+func tableFixedReasonNamed(reason string) bool {
+	switch reason {
+	case "previous_form", "message_form_as_file", "newer_form":
+		return false
+	case "layout_malformed", "layout_unknown", "layout_newer", "layout_unsupported",
+		"layout_record_too_large", "plan_too_large", "batch_too_large", "no_layout",
+		"text_ill_formed", "truncated", "reserved_not_zero", "count_over_bound", "length_over_bound":
+		return true
+	}
+	return false
+}
+
 // Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched and missing-required
@@ -225,6 +255,12 @@ func (r *TableReport) Err() error {
 	}
 	if r.Reason == "build_version_mismatch" {
 		return TableBuildVersionMismatch{Peer: r.BuildVersionPeer, Own: r.BuildVersionOwn}
+	}
+	if r.FixedRaised && r.Verdict == TableOpenRefused {
+		if tableFixedReasonNamed(r.Reason) {
+			return TableFixedRefusal{Reason: r.Reason}
+		}
+		return TableRefuseUnknownForm
 	}
 	if r.Verdict == TableOpenRefused || r.Reason == "unsupported wire form" || r.Reason == "newer_form" || r.Reason == "message_form_as_file" || r.Reason == "message form requires an announced vocabulary and a message reader" {
 		return TableRefuseUnknownForm
@@ -1636,6 +1672,7 @@ func TableFixedRefuse(report *TableReport, reason string) int64 {
 	*report = TableReport{}
 	report.LayoutHash = hash
 	report.Verdict = TableOpenRefused
+	report.FixedRaised = true
 	report.Reason = reason
 	return -1
 }
@@ -1773,6 +1810,7 @@ func (v *TableVocabulary) Name(ref uint64) (uint64, bool) {
 
 func TableMessageRefuse(r *TableReport, reason string) bool {
 	r.Verdict = TableOpenRefused
+	r.FixedRaised = false
 	r.Reason = reason
 	return false
 }
