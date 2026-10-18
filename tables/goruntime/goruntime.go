@@ -297,14 +297,6 @@ func TableNonFinite(reason *string, field string) {
 	}
 }
 
-// tableClampedName names the field a read clamped (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5):
-// the first clamp a read sees wins, and the strict read's refusal carries it.
-func TableClampedName(reason *string, field string) {
-	if reason != nil && *reason == "" {
-		*reason = "clamped: " + field
-	}
-}
-
 // TableClampedField is a strict read's clamped refusal naming the field it
 // clamped (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): errors.Is(err, TableRefuseClamped) holds.
 type TableClampedField struct{ Field string }
@@ -2035,4 +2027,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xe5a257f117c799b9
+const Version uint64 = 0x059603b13ced9485

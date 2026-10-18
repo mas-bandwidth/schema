@@ -708,6 +708,10 @@ func (r *TableReport) Err() error {
 		return TableRefuseBlobShared
 	}
 	if r.Clamped > 0 {
+		const p = "clamped: "
+		if len(r.Reason) > len(p) && r.Reason[:len(p)] == p {
+			return TableClampedField{Field: r.Reason[len(p):]}
+		}
 		return TableRefuseClamped
 	}
 	if r.KindMismatch > 0 {
@@ -735,6 +739,13 @@ func tableNonFinite(reason *string, field string) {
 		*reason = "non_finite: " + field
 	}
 }
+
+// TableClampedField is a strict read's clamped refusal naming the field it
+// clamped (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): errors.Is(err, TableRefuseClamped) holds.
+type TableClampedField struct{ Field string }
+
+func (e TableClampedField) Error() string        { return "clamped: " + e.Field }
+func (e TableClampedField) Is(target error) bool { return target == TableRefuseClamped }
 
 const tableIdCapacity = 78
 const tableIdBuckets = 256
@@ -3610,6 +3621,9 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableEntity.entity_id"
+							}
 						}
 						value.EntityId = uint32(v)
 					}
@@ -3632,6 +3646,9 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v > 4095 {
 					v = 4095
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableEntity.entity_id"
+					}
 				}
 				value.EntityId = uint32(v)
 			}
@@ -3647,9 +3664,15 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v < -16383 {
 							v = -16383
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableEntity.pos_x"
+							}
 						} else if v > 16383 {
 							v = 16383
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableEntity.pos_x"
+							}
 						}
 						value.PosX = int32(v)
 					}
@@ -3672,9 +3695,15 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v < -16383 {
 					v = -16383
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableEntity.pos_x"
+					}
 				} else if v > 16383 {
 					v = 16383
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableEntity.pos_x"
+					}
 				}
 				value.PosX = int32(v)
 			}
@@ -3690,9 +3719,15 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v < -16383 {
 							v = -16383
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableEntity.pos_y"
+							}
 						} else if v > 16383 {
 							v = 16383
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableEntity.pos_y"
+							}
 						}
 						value.PosY = int32(v)
 					}
@@ -3715,9 +3750,15 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v < -16383 {
 					v = -16383
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableEntity.pos_y"
+					}
 				} else if v > 16383 {
 					v = 16383
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableEntity.pos_y"
+					}
 				}
 				value.PosY = int32(v)
 			}
@@ -3733,9 +3774,15 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v < -16383 {
 							v = -16383
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableEntity.pos_z"
+							}
 						} else if v > 16383 {
 							v = 16383
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableEntity.pos_z"
+							}
 						}
 						value.PosZ = int32(v)
 					}
@@ -3758,9 +3805,15 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v < -16383 {
 					v = -16383
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableEntity.pos_z"
+					}
 				} else if v > 16383 {
 					v = 16383
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableEntity.pos_z"
+					}
 				}
 				value.PosZ = int32(v)
 			}
@@ -3776,6 +3829,9 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v > 511 {
 							v = 511
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableEntity.yaw"
+							}
 						}
 						value.Yaw = uint32(v)
 					}
@@ -3798,6 +3854,9 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v > 511 {
 					v = 511
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableEntity.yaw"
+					}
 				}
 				value.Yaw = uint32(v)
 			}
@@ -3813,6 +3872,9 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v > 511 {
 							v = 511
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableEntity.pitch"
+							}
 						}
 						value.Pitch = uint32(v)
 					}
@@ -3835,6 +3897,9 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v > 511 {
 					v = 511
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableEntity.pitch"
+					}
 				}
 				value.Pitch = uint32(v)
 			}
@@ -3850,9 +3915,15 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v < -2048 {
 							v = -2048
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableEntity.vel_x"
+							}
 						} else if v > 2047 {
 							v = 2047
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableEntity.vel_x"
+							}
 						}
 						value.VelX = int32(v)
 					}
@@ -3875,9 +3946,15 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v < -2048 {
 					v = -2048
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableEntity.vel_x"
+					}
 				} else if v > 2047 {
 					v = 2047
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableEntity.vel_x"
+					}
 				}
 				value.VelX = int32(v)
 			}
@@ -3893,9 +3970,15 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v < -2048 {
 							v = -2048
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableEntity.vel_y"
+							}
 						} else if v > 2047 {
 							v = 2047
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableEntity.vel_y"
+							}
 						}
 						value.VelY = int32(v)
 					}
@@ -3918,9 +4001,15 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v < -2048 {
 					v = -2048
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableEntity.vel_y"
+					}
 				} else if v > 2047 {
 					v = 2047
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableEntity.vel_y"
+					}
 				}
 				value.VelY = int32(v)
 			}
@@ -3936,9 +4025,15 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v < -2048 {
 							v = -2048
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableEntity.vel_z"
+							}
 						} else if v > 2047 {
 							v = 2047
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableEntity.vel_z"
+							}
 						}
 						value.VelZ = int32(v)
 					}
@@ -3961,9 +4056,15 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v < -2048 {
 					v = -2048
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableEntity.vel_z"
+					}
 				} else if v > 2047 {
 					v = 2047
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableEntity.vel_z"
+					}
 				}
 				value.VelZ = int32(v)
 			}
@@ -3979,9 +4080,15 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableEntity.health"
+							}
 						} else if v > 1000 {
 							v = 1000
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableEntity.health"
+							}
 						}
 						value.Health = int32(v)
 					}
@@ -4004,9 +4111,15 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableEntity.health"
+					}
 				} else if v > 1000 {
 					v = 1000
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableEntity.health"
+					}
 				}
 				value.Health = int32(v)
 			}
@@ -4339,6 +4452,9 @@ func TableStatLoadBody(r *TableReader, value *TableStat) bool {
 				if v > 255 {
 					v = 255
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableStat.stat_id"
+					}
 				}
 				value.StatId = uint32(v)
 			}
@@ -4354,9 +4470,15 @@ func TableStatLoadBody(r *TableReader, value *TableStat) bool {
 						if v < -512 {
 							v = -512
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableStat.delta"
+							}
 						} else if v > 511 {
 							v = 511
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableStat.delta"
+							}
 						}
 						value.Delta = int32(v)
 					}
@@ -4379,9 +4501,15 @@ func TableStatLoadBody(r *TableReader, value *TableStat) bool {
 				if v < -512 {
 					v = -512
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableStat.delta"
+					}
 				} else if v > 511 {
 					v = 511
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableStat.delta"
+					}
 				}
 				value.Delta = int32(v)
 			}
@@ -5202,6 +5330,9 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v > 65535 {
 							v = 65535
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableMixed.sequence"
+							}
 						}
 						value.Sequence = uint32(v)
 					}
@@ -5224,6 +5355,9 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v > 65535 {
 					v = 65535
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.sequence"
+					}
 				}
 				value.Sequence = uint32(v)
 			}
@@ -5239,9 +5373,15 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableMixed.ack_sequence"
+							}
 						} else if v > 65535 {
 							v = 65535
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableMixed.ack_sequence"
+							}
 						}
 						value.AckSequence = int32(v)
 					}
@@ -5264,9 +5404,15 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.ack_sequence"
+					}
 				} else if v > 65535 {
 					v = 65535
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.ack_sequence"
+					}
 				}
 				value.AckSequence = int32(v)
 			}
@@ -5282,6 +5428,9 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v > 4294967295 {
 							v = 4294967295
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableMixed.ack_bits"
+							}
 						}
 						value.AckBits = uint32(v)
 					}
@@ -5304,6 +5453,9 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v > 4294967295 {
 					v = 4294967295
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.ack_bits"
+					}
 				}
 				value.AckBits = uint32(v)
 			}
@@ -5377,9 +5529,15 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableMixed.nonce"
+							}
 						} else if v > 9223372036854775807 {
 							v = 9223372036854775807
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableMixed.nonce"
+							}
 						}
 						value.Nonce = uint64(v)
 					}
@@ -5402,9 +5560,15 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v < 1 {
 					v = 1
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.nonce"
+					}
 				} else if v > 9223372036854775807 {
 					v = 9223372036854775807
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.nonce"
+					}
 				}
 				value.Nonce = uint64(v)
 			}
@@ -5420,9 +5584,15 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v < -1000000000000 {
 							v = -1000000000000
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableMixed.world_time"
+							}
 						} else if v > 1000000000000 {
 							v = 1000000000000
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableMixed.world_time"
+							}
 						}
 						value.WorldTime = int64(v)
 					}
@@ -5445,9 +5615,15 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v < -1000000000000 {
 					v = -1000000000000
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.world_time"
+					}
 				} else if v > 1000000000000 {
 					v = 1000000000000
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.world_time"
+					}
 				}
 				value.WorldTime = int64(v)
 			}
@@ -5463,6 +5639,9 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v > 281474976710655 {
 							v = 281474976710655
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableMixed.frame_tick"
+							}
 						}
 						value.FrameTick = uint64(v)
 					}
@@ -5485,6 +5664,9 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v > 281474976710655 {
 					v = 281474976710655
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.frame_tick"
+					}
 				}
 				value.FrameTick = uint64(v)
 			}
@@ -5506,12 +5688,21 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v != v {
 					v = 0.0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.server_time"
+					}
 				} else if v < 0.0 {
 					v = 0.0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.server_time"
+					}
 				} else if v > 65535.0 {
 					v = 65535.0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.server_time"
+					}
 				} else if v == 0 {
 					v = 0
 				}
@@ -5837,12 +6028,21 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v != v {
 					v = -1.0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.aim_x"
+					}
 				} else if v < -1.0 {
 					v = -1.0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.aim_x"
+					}
 				} else if v > 1.0 {
 					v = 1.0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.aim_x"
+					}
 				} else if v == 0 {
 					v = 0
 				}
@@ -5866,12 +6066,21 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v != v {
 					v = -1.0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.aim_y"
+					}
 				} else if v < -1.0 {
 					v = -1.0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.aim_y"
+					}
 				} else if v > 1.0 {
 					v = 1.0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.aim_y"
+					}
 				} else if v == 0 {
 					v = 0
 				}
@@ -5895,12 +6104,21 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v != v {
 					v = -1.0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.aim_z"
+					}
 				} else if v < -1.0 {
 					v = -1.0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.aim_z"
+					}
 				} else if v > 1.0 {
 					v = 1.0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.aim_z"
+					}
 				} else if v == 0 {
 					v = 0
 				}
@@ -6007,9 +6225,15 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v < -1000000000000000000 {
 							v = -1000000000000000000
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableMixed.flux"
+							}
 						} else if v > 1000000000000000000 {
 							v = 1000000000000000000
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableMixed.flux"
+							}
 						}
 						value.Flux = int64(v)
 					}
@@ -6032,9 +6256,15 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v < -1000000000000000000 {
 					v = -1000000000000000000
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.flux"
+					}
 				} else if v > 1000000000000000000 {
 					v = 1000000000000000000
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.flux"
+					}
 				}
 				value.Flux = int64(v)
 			}
@@ -6056,12 +6286,21 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v != v {
 					v = 0.0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.ping"
+					}
 				} else if v < 0.0 {
 					v = 0.0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.ping"
+					}
 				} else if v > 250.0 {
 					v = 250.0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.ping"
+					}
 				} else if v == 0 {
 					v = 0
 				}
@@ -6079,6 +6318,9 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v > 16777215 {
 							v = 16777215
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableMixed.crc_hint"
+							}
 						}
 						value.CrcHint = uint32(v)
 					}
@@ -6101,6 +6343,9 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v > 16777215 {
 					v = 16777215
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.crc_hint"
+					}
 				}
 				value.CrcHint = uint32(v)
 			}
@@ -6130,9 +6375,15 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableMixed.extra"
+							}
 						} else if v > 255 {
 							v = 255
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableMixed.extra"
+							}
 						}
 						value.Extra = int32(v)
 					}
@@ -6155,9 +6406,15 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.extra"
+					}
 				} else if v > 255 {
 					v = 255
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.extra"
+					}
 				}
 				value.Extra = int32(v)
 			}
@@ -6173,9 +6430,15 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableMixed.idle_ticks"
+							}
 						} else if v > 15 {
 							v = 15
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableMixed.idle_ticks"
+							}
 						}
 						value.IdleTicks = int32(v)
 					}
@@ -6198,9 +6461,15 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.idle_ticks"
+					}
 				} else if v > 15 {
 					v = 15
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableMixed.idle_ticks"
+					}
 				}
 				value.IdleTicks = int32(v)
 			}
@@ -6476,6 +6745,9 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 						if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableHitEvent.target_id"
+							}
 						}
 						value.TargetId = uint32(v)
 					}
@@ -6498,6 +6770,9 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 				if v > 4095 {
 					v = 4095
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableHitEvent.target_id"
+					}
 				}
 				value.TargetId = uint32(v)
 			}
@@ -6513,9 +6788,15 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableHitEvent.damage"
+							}
 						} else if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableHitEvent.damage"
+							}
 						}
 						value.Damage = int32(v)
 					}
@@ -6538,9 +6819,15 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableHitEvent.damage"
+					}
 				} else if v > 4095 {
 					v = 4095
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableHitEvent.damage"
+					}
 				}
 				value.Damage = int32(v)
 			}
@@ -6556,9 +6843,15 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableHitEvent.hit_kind"
+							}
 						} else if v > 7 {
 							v = 7
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableHitEvent.hit_kind"
+							}
 						}
 						value.HitKind = int32(v)
 					}
@@ -6581,9 +6874,15 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableHitEvent.hit_kind"
+					}
 				} else if v > 7 {
 					v = 7
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableHitEvent.hit_kind"
+					}
 				}
 				value.HitKind = int32(v)
 			}
@@ -6828,9 +7127,15 @@ func TableChatEventLoadBody(r *TableReader, value *TableChatEvent) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableChatEvent.channel"
+							}
 						} else if v > 3 {
 							v = 3
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableChatEvent.channel"
+							}
 						}
 						value.Channel = int32(v)
 					}
@@ -6853,9 +7158,15 @@ func TableChatEventLoadBody(r *TableReader, value *TableChatEvent) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableChatEvent.channel"
+					}
 				} else if v > 3 {
 					v = 3
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableChatEvent.channel"
+					}
 				}
 				value.Channel = int32(v)
 			}
@@ -6871,6 +7182,9 @@ func TableChatEventLoadBody(r *TableReader, value *TableChatEvent) bool {
 						if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TableChatEvent.speaker"
+							}
 						}
 						value.Speaker = uint32(v)
 					}
@@ -6893,6 +7207,9 @@ func TableChatEventLoadBody(r *TableReader, value *TableChatEvent) bool {
 				if v > 4095 {
 					v = 4095
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TableChatEvent.speaker"
+					}
 				}
 				value.Speaker = uint32(v)
 			}
@@ -7123,6 +7440,9 @@ func TablePickupEventLoadBody(r *TableReader, value *TablePickupEvent) bool {
 						if v > 1023 {
 							v = 1023
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TablePickupEvent.item_id"
+							}
 						}
 						value.ItemId = uint32(v)
 					}
@@ -7145,6 +7465,9 @@ func TablePickupEventLoadBody(r *TableReader, value *TablePickupEvent) bool {
 				if v > 1023 {
 					v = 1023
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TablePickupEvent.item_id"
+					}
 				}
 				value.ItemId = uint32(v)
 			}
@@ -7160,9 +7483,15 @@ func TablePickupEventLoadBody(r *TableReader, value *TablePickupEvent) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TablePickupEvent.amount"
+							}
 						} else if v > 255 {
 							v = 255
 							r.Report.Clamped++
+							if r.Report.Reason == "" {
+								r.Report.Reason = "clamped: " + "TablePickupEvent.amount"
+							}
 						}
 						value.Amount = int32(v)
 					}
@@ -7185,9 +7514,15 @@ func TablePickupEventLoadBody(r *TableReader, value *TablePickupEvent) bool {
 				if v < 0 {
 					v = 0
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TablePickupEvent.amount"
+					}
 				} else if v > 255 {
 					v = 255
 					r.Report.Clamped++
+					if r.Report.Reason == "" {
+						r.Report.Reason = "clamped: " + "TablePickupEvent.amount"
+					}
 				}
 				value.Amount = int32(v)
 			}

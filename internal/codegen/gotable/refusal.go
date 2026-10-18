@@ -100,9 +100,6 @@ return nil}
 // reader's TableReport value both pass &r.Report.Reason.
 func tableNonFinite(reason *string,field string){if *reason==""{*reason="non_finite: "+field}}
 
-// tableClampedName names the field a read clamped (docs/SPEC-TABLES.md §6.5):
-// the first clamp a read sees wins, and the strict read's refusal carries it.
-func tableClampedName(reason *string,field string){if reason!=nil&&*reason==""{*reason="clamped: "+field}}
 
 // TableClampedField is a strict read's clamped refusal naming the field it
 // clamped (docs/SPEC-TABLES.md §6.5): errors.Is(err, TableRefuseClamped) holds.

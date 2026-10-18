@@ -567,7 +567,7 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 			if kind == tkF32 {
 				lo, hi = formatFloat32(f.FMin), formatFloat32(f.FMax)
 			}
-			clamped := fmt.Sprintf("r.Report.Clamped++; tableClampedName(&r.Report.Reason, %q)", g.floatOwner(f))
+			clamped := fmt.Sprintf("r.Report.Clamped++; if r.Report.Reason==\"\" { r.Report.Reason=\"clamped: \"+%q }", g.floatOwner(f))
 			g.pf("%s\t%s\n", ind, compressedFloatClamp("v", lo, hi, clamped))
 		} else {
 			// A PLAIN float's NaN or infinity lands as its pattern and counts
@@ -584,11 +584,11 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		if f.HasIntRange {
 			rlo, rhi, _ := ir.TableRawRange(f)
 			lo, hi := goIntLit(rlo, signed, 8), goIntLit(rhi, signed, 8)
-			g.pf("%s\tif v < %s { v = %s; r.Report.Clamped++; tableClampedName(&r.Report.Reason, %q) } else if v > %s { v = %s; r.Report.Clamped++; tableClampedName(&r.Report.Reason, %q) }\n", ind, lo, lo, name, hi, hi, name)
+			g.pf("%s\tif v < %s { v = %s; r.Report.Clamped++; if r.Report.Reason==\"\" { r.Report.Reason=\"clamped: \"+%q } } else if v > %s { v = %s; r.Report.Clamped++; if r.Report.Reason==\"\" { r.Report.Reason=\"clamped: \"+%q } }\n", ind, lo, lo, name, hi, hi, name)
 		}
 		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 			max := uint64(1)<<f.Type.Width - 1
-			g.pf("%s\tif v > %d { v = %d; r.Report.Clamped++; tableClampedName(&r.Report.Reason, %q) }\n", ind, max, max, name)
+			g.pf("%s\tif v > %d { v = %d; r.Report.Clamped++; if r.Report.Reason==\"\" { r.Report.Reason=\"clamped: \"+%q } }\n", ind, max, max, name)
 		}
 		typ := goFieldType(f.Type)
 		if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
