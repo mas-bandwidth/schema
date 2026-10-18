@@ -23,6 +23,30 @@ local MESSAGE_VOCABULARY_ID = -3 -- 0xfffffffffffffffd
 local STRING_BLOB_ID = 0x704be0d8faaffc58
 local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4
 
+-- CRC-32C, the Castagnoli polynomial reflected (0x82F63B78) with the initial
+-- value and final XOR §2.14 names. ONE TABLE, built once on first use, is the
+-- check save.lua seals and load.lua and refusal.lua verify (docs/SPEC-TABLES.md
+-- §2.14, §3.4).
+local crc_table = nil
+
+function L.crc32c(bytes)
+  if crc_table == nil then
+    crc_table = {}
+    for i = 0, 255 do
+      local c = i
+      for _ = 1, 8 do
+        if c & 1 == 1 then c = (c >> 1) ~ 0x82f63b78 else c = c >> 1 end
+      end
+      crc_table[i] = c
+    end
+  end
+  local crc = 0xffffffff
+  for i = 1, #bytes do
+    crc = crc_table[(crc ~ bytes:byte(i)) & 0xff] ~ (crc >> 8)
+  end
+  return crc ~ 0xffffffff
+end
+
 -- THE READER (docs/PORT-LUA.md, BYTE BUFFERS): a Lua string of immutable
 -- bytes and a 0-based cursor with a limit for a nested body.
 local function new_reader(b, at, lim)
@@ -1133,6 +1157,21 @@ end
 -- report saying what happened. Only a VARIABLE root answers nil there.
 function L.Load(T, name, bytes, report)
   local desc = T.Tables[name]
+  -- THE INTEGRITY TRAILER (§2.14, §3.4): a declaring root's form-1 file ends
+  -- with the little-endian CRC-32C of every byte before it. The form byte is
+  -- read first, so a file of another form passes through to the open that
+  -- names it; a form-1 file shorter than five bytes or one whose trailer does
+  -- not match is the whole-file damage integrity_mismatch, and nothing is
+  -- decoded. The trailer is then removed and every rule below speaks of the
+  -- file without it (it is outside the region measure).
+  if desc ~= nil and desc.integrity ~= nil and #bytes >= 1 and bytes:byte(1) == 1 then
+    if #bytes < 5 then report.malformed = true; report.reason = "integrity_mismatch"; return nil end
+    local n = #bytes - 4
+    if string.unpack("<I4", bytes, n + 1) ~= L.crc32c(bytes:sub(1, n)) then
+      report.malformed = true; report.reason = "integrity_mismatch"; return nil
+    end
+    bytes = bytes:sub(1, n)
+  end
   local o = open(bytes, report)
   if o == nil then
     if desc ~= nil and not desc.variable then return fresh(T, desc) end
@@ -1354,6 +1393,15 @@ end
 function L.LoadMeasure(T, name, bytes)
   local desc = T.Tables[name]
   if desc == nil then return nil end
+  -- THE TRAILER IS OUTSIDE THE REGION MEASURE (§2.14, §3.4): a declaring
+  -- root's file is checked and stripped first, exactly as the load does, and a
+  -- mismatch answers nil.
+  if desc.integrity ~= nil and #bytes >= 1 and bytes:byte(1) == 1 then
+    if #bytes < 5 then return nil end
+    local n = #bytes - 4
+    if string.unpack("<I4", bytes, n + 1) ~= L.crc32c(bytes:sub(1, n)) then return nil end
+    bytes = bytes:sub(1, n)
+  end
   local o = measure_trailer(bytes)
   if o == nil then return nil end
   local align = D.region_align(T, desc)
