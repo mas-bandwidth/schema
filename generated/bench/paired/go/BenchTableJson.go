@@ -385,14 +385,62 @@ func tableJsonUtf8(s []byte) (code int32, width int32) {
 	return code, want
 }
 
+// tableJsonMaximalSubpart is the length in bytes of the maximal subpart at
+// s[0]: the longest prefix of the remaining ill-formed bytes, beginning at the
+// first unconvertible byte, that is itself a prefix of some well-formed UTF-8
+// sequence, or one byte when no such prefix exists (mas-bandwidth/schema docs/SPEC-TABLES.md §16.3;
+// The Unicode Standard, Definition D93b). The writer emits one U+FFFD per
+// maximal subpart, so a lead byte plus the continuations it can still carry is
+// one replacement, while a byte that cannot extend it begins the next.
+func tableJsonMaximalSubpart(s []byte) int {
+	lead := s[0]
+	var want int
+	lo, hi := byte(0x80), byte(0xbf)
+	switch {
+	case lead >= 0xc2 && lead <= 0xdf:
+		want = 2
+	case lead >= 0xe0 && lead <= 0xef:
+		want = 3
+		if lead == 0xe0 {
+			lo = 0xa0 // E0 80 would be an overlong form
+		}
+		if lead == 0xed {
+			hi = 0x9f // ED A0 would be a surrogate half
+		}
+	case lead >= 0xf0 && lead <= 0xf4:
+		want = 4
+		if lead == 0xf0 {
+			lo = 0x90 // F0 80 would be an overlong form
+		}
+		if lead == 0xf4 {
+			hi = 0x8f // F4 90 would be past U+10FFFF
+		}
+	default:
+		return 1
+	}
+	n := 1
+	for n < want && n < len(s) {
+		c := s[n]
+		if n == 1 {
+			if c < lo || c > hi {
+				break
+			}
+		} else if c < 0x80 || c > 0xbf {
+			break
+		}
+		n++
+	}
+	return n
+}
+
 // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1). The read path is
 // byte-transparent — the wire imposes no encoding (§3) and a string may hold
 // anything — so the WRITER is where that obligation is met: a byte that is not
-// part of a well-formed sequence is written as U+FFFD, one per bad byte, and
-// never raw. A text this walk writes is therefore readable by any conforming
-// parser, which a raw byte would not be. The cost is stated plainly: for a
-// string holding invalid UTF-8, the round trip is NOT byte-identical, because
-// the alternative is emitting a text that is not JSON.
+// part of a well-formed sequence is written as U+FFFD, one per maximal
+// subpart, and never raw. A text this walk writes is therefore readable by any
+// conforming parser, which a raw byte would not be. The cost is stated plainly:
+// for a string holding invalid UTF-8, the round trip is NOT byte-identical,
+// because the alternative is emitting a text that is not JSON.
 func tableJsonWriteString(out *tableJsonOut, s []byte) {
 	out.put('"')
 	tableJsonWriteStringBody(out, s)
@@ -430,7 +478,9 @@ func tableJsonWriteStringBody(out *tableJsonOut, s []byte) {
 			default:
 				_, width := tableJsonUtf8(s[i:])
 				if width == 0 {
-					out.text("�") // one per bad byte
+					n := tableJsonMaximalSubpart(s[i:])
+					out.text("�") // one per maximal subpart (mas-bandwidth/schema docs/SPEC-TABLES.md §16.3)
+					i += n - 1
 				} else {
 					out.raw(s[i : i+int(width)])
 					i += int(width) - 1

@@ -642,12 +642,60 @@ func utf8Sequence(s []byte) int {
 	return want
 }
 
+// utf8MaximalSubpart is the length in bytes of the maximal subpart at s[0]:
+// the longest prefix of the remaining ill-formed bytes, beginning at the first
+// unconvertible byte, that is itself a prefix of some well-formed UTF-8
+// sequence, or one byte when no such prefix exists (docs/SPEC-TABLES.md §16.3;
+// The Unicode Standard, Definition D93b). The writer emits one U+FFFD per
+// maximal subpart, so a lead byte plus the continuations it can still carry is
+// one replacement, while a byte that cannot extend it begins the next.
+func utf8MaximalSubpart(s []byte) int {
+	lead := s[0]
+	var want int
+	lo, hi := byte(0x80), byte(0xbf)
+	switch {
+	case lead >= 0xc2 && lead <= 0xdf:
+		want = 2
+	case lead >= 0xe0 && lead <= 0xef:
+		want = 3
+		if lead == 0xe0 {
+			lo = 0xa0 // E0 80 would be an overlong form
+		}
+		if lead == 0xed {
+			hi = 0x9f // ED A0 would be a surrogate half
+		}
+	case lead >= 0xf0 && lead <= 0xf4:
+		want = 4
+		if lead == 0xf0 {
+			lo = 0x90 // F0 80 would be an overlong form
+		}
+		if lead == 0xf4 {
+			hi = 0x8f // F4 90 would be past U+10FFFF
+		}
+	default:
+		return 1
+	}
+	n := 1
+	for n < want && n < len(s) {
+		c := s[n]
+		if n == 1 {
+			if c < lo || c > hi {
+				break
+			}
+		} else if c < 0x80 || c > 0xbf {
+			break
+		}
+		n++
+	}
+	return n
+}
+
 // writeString emits one JSON string. A JSON text MUST be valid UTF-8 (RFC 8259
 // §8.1). The read path is byte-transparent — the wire imposes no encoding (§3)
 // and a string may hold anything — so the WRITER is where that obligation is
 // met: a byte that is not part of a well-formed sequence is written as U+FFFD,
-// one per bad byte, and never raw (docs/SPEC-TABLES.md §16.3). The cost is stated
-// plainly: for a string holding invalid UTF-8 the round trip is NOT
+// one per maximal subpart, and never raw (docs/SPEC-TABLES.md §16.3). The cost
+// is stated plainly: for a string holding invalid UTF-8 the round trip is NOT
 // byte-identical, because the alternative is emitting a text that is not JSON.
 func writeString(w *writer, s []byte) {
 	const hex = "0123456789abcdef"
@@ -679,7 +727,9 @@ func writeString(w *writer, s []byte) {
 				w.put(c)
 			default:
 				if width := utf8Sequence(s[i:]); width < 0 {
-					w.raw("\ufffd") // U+FFFD, one per bad byte
+					n := utf8MaximalSubpart(s[i:])
+					w.raw("\ufffd") // U+FFFD, one per maximal subpart (docs/SPEC-TABLES.md §16.3)
+					i += n - 1
 				} else {
 					w.raw(string(s[i : i+width]))
 					i += width - 1
