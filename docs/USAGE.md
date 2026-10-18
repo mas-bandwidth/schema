@@ -3721,7 +3721,8 @@ and it is pretty-printed: one entry per line, two-space indent.
 The mapping is the obvious one: enums and flags by variant NAME, a union as
 an object with one key, an enum-keyed array as an object keyed by variant
 name, a `?T` optional present exactly when its key is present, `bytes(N)` as
-base64. **JSON has one number type**, so `2`, `2.0` and `1e3` all read into an
+canonical base64 — the strict read refuses a non-canonical body
+`base64_not_canonical` and the tolerant read accepts and reports it. **JSON has one number type**, so `2`, `2.0` and `1e3` all read into an
 integer field; a genuinely fractional value there is a kind mismatch, and a
 token that is not a JSON number at all — `1-2`, `1.2.3` — is malformed rather
 than quietly clamped. Trailing commas are accepted on read and never written.
