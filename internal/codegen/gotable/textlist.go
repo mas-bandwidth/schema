@@ -58,7 +58,7 @@ func (g *tableGen) emitReadTextElement(f *ir.Field, expr, ind string) {
 	value := expr + "." + member(v)
 	g.pf("%selem, ok := sub.Body(); if !ok { r.Report.Malformed = true; break }\n", ind)
 	g.pf("%sif !tableUtf8Valid(elem.Buffer) { r.Report.Malformed = true; %sReset(&%s); break }\n", ind, f.Type.Name, expr)
-	g.pf("%skeep := int64(len(elem.Buffer)); if keep > %d { keep = tableUtf8Clamp(elem.Buffer, %d); r.Report.Clamped++; tableTextClamped(r.Report, %q) }\n", ind, m, m, f.TextListElem().MapEntryOf)
+	g.pf("%skeep := int64(len(elem.Buffer)); if keep > %d { keep = tableUtf8Clamp(elem.Buffer, %d); r.Report.Clamped++; tableTextClamped(&r.Report.Reason, %q) }\n", ind, m, m, f.TextListElem().MapEntryOf)
 	g.pf("%sclear(%s[:]); copy(%s[:keep], elem.Buffer); %sLength = int32(keep)\n", ind, value, value, value)
 }
 
@@ -178,24 +178,11 @@ func unitUsesTextForms(u *ir.Unit) bool {
 	return ir.UnitHasTextLists(u) || len(ir.TableArrayRoots(u)) > 0
 }
 
-// textListRuntimeSource is the runtime a text-list unit adds: the clamp that
-// names its field (§2.13) and the typed error ReadStrict returns for it.
-const textListRuntimeSource = `
-// tableTextClamped names the text list whose count or element a read clamped
-// (docs/SPEC-TABLES.md §2.13), so a strict read can say which field.
-func tableTextClamped(r *TableReport,field string){if r!=nil&&r.Reason==""{r.Reason="clamped: "+field}}
-
-// TableClampedField is a strict read's clamped refusal naming the text list it
-// clamped (docs/SPEC-TABLES.md §2.13): errors.Is(err, TableRefuseClamped) holds.
-type TableClampedField struct{ Field string }
-
-func (e TableClampedField) Error() string { return "clamped: " + e.Field }
-func (e TableClampedField) Is(target error) bool { return target == TableRefuseClamped }
-`
-
 // textListRuntime is the core runtime with the two descriptor columns and the
 // clamped error, in a unit that uses a text list or an array root and nowhere
-// else.
+// else. The clamp-naming helper (tableTextClamped) and the typed clamped error
+// (TableClampedField) live in the core refusal source (§6.5), so every unit
+// that clamps a scalar can name it too.
 func textListRuntime(u *ir.Unit, s string) string {
 	if !unitUsesTextForms(u) {
 		return s
@@ -205,8 +192,7 @@ func textListRuntime(u *ir.Unit, s string) string {
 		s = tableSourceReplace(s, "TextList uint8 // a text list (docs/SPEC-TABLES.md §2.13): 1 string(M) elements, 2 ?string(M)\n", "TextList uint8 // a text list (docs/SPEC-TABLES.md §2.13): 1 string(M) elements, 2 ?string(M)\nTextTotal int64 // its | total = N (§2.13): the most bytes its elements hold in all, 0 for none\nTextTotalOf string // the Table.field a clamp of the total names\n", 1)
 	}
 	s = tableSourceReplace(s, "type TableTypeInfo struct {\n", "type TableTypeInfo struct {\nJsonArray bool // json = \"array\" (docs/SPEC-TABLES.md §16.10): the text is the one field's array\n", 1)
-	s = tableSourceReplace(s, "if r.Clamped>0 {return TableRefuseClamped}", "if r.Clamped>0 {const p=\"clamped: \";if len(r.Reason)>len(p)&&r.Reason[:len(p)]==p{return TableClampedField{Field:r.Reason[len(p):]}};return TableRefuseClamped}", 1)
-	return s + textListRuntimeSource
+	return s
 }
 
 // textListJsonSource is the text form's plain element of a text list (§16.2).
@@ -256,7 +242,7 @@ func tableJsonTextBytes(p unsafe.Pointer,count int32,f *TableFieldInfo)int64{v:=
 // tableJsonTextTotalKeep adds one read element to the running total and says
 // whether it is kept: the first element past the total is reset, counted
 // clamped once and the field named (docs/SPEC-TABLES.md §2.13).
-func tableJsonTextTotalKeep(in *tableJsonIn,p unsafe.Pointer,f *TableFieldInfo,spent *int64)bool{*spent+=tableJsonTextBytes(p,1,f);if *spent<=f.TextTotal{return true};f.Table().Reset(p);in.report.Clamped++;tableTextClamped(in.report,f.TextTotalOf);return false}
+func tableJsonTextTotalKeep(in *tableJsonIn,p unsafe.Pointer,f *TableFieldInfo,spent *int64)bool{*spent+=tableJsonTextBytes(p,1,f);if *spent<=f.TextTotal{return true};f.Table().Reset(p);in.report.Clamped++;tableTextClamped(&in.report.Reason,f.TextTotalOf);return false}
 `
 
 // textTotalJson is the text form's walk holding a text list's total (§2.13):
