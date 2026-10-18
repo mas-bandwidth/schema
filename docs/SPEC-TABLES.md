@@ -16808,12 +16808,27 @@ under the house rule. The file is GENERATED, so a schema edit is followed by
 **The fuzz targets.** Per root table the file emits three fuzz targets,
 `Fuzz<Name>Wire`, `Fuzz<Name>Text` and `Fuzz<Name>Json`, each seeded with the
 sample values' own encodings (the wire bytes, the base64 text, the JSON text)
-and with every single-byte flip of each. For every input the target asserts:
+and with single-byte mutations of them. For every input the target asserts:
 the read NEVER panics (a panic is a defect, a failing test); it is REFUSED with
 a named reason; or it DECODES to a value whose re-encoding is exactly the input
 — so a silent wrong decode can only be a canonical one, which the integrity
 check, when declared, refuses. A panic or a non-canonical accept the corpus
 finds is a defect in the reader, named with the input, never fixed here.
+
+**The seed corpus is bounded and deterministic.** Seeding every byte of every
+sample does not scale (one 280 KB sample made millions of seeds and 94 GiB of
+memory), so each target's seeds are, in this order: every sample encoding,
+trimmed for seeding only to a representative 4 KiB (its first 2 KiB and its
+last 2 KiB) when it is longer, so no seed exceeds 4 KiB, while the round-trip
+tests keep the full sample; then at most 256 mutations. For the mutations, 85
+byte positions are shared out round robin across the target's samples, no
+sample taking more positions than it has bytes; within a sample they are its
+first 16 and last 16 bytes, then an even fixed stride over the bytes between,
+stopping at the sample's share; each position takes each of the values 0x00,
+0x01 and 0xff. The same declaration always yields the same seeds. The bound is
+on the seed corpus only: at fuzz time the fuzzer explores past it. The
+generator's own gate pins the seed count and the total seed bytes, and keeps
+the seed run under 1 GiB of memory.
 
 Go carries `testgen` first; every other `--lang` is refused by name, in the
 compiler, until its own turn.

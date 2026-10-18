@@ -4178,8 +4178,8 @@ generated `<Name>GenPastBound` helper writes a wire one past each range,
 tolerant read clamps it to the bound and counts `clamped`, and that
 `ReadStrict` refuses it `clamped`. Regenerate it whenever you regenerate
 the code. Per table it also emits `Fuzz<Name>Wire`, `Fuzz<Name>Text` and
-`Fuzz<Name>Json`, seeded with each sample's encodings and every single-byte flip
-of them, asserting the read never panics and accepts only a named refusal or a
+`Fuzz<Name>Json`, seeded with each sample's encodings (trimmed to 4 KiB) and at
+most 256 deterministic single-byte mutations of them, asserting the read never panics and accepts only a named refusal or a
 canonical re-encoding. Only `--lang go` is carried today; every other target
 refuses by name.
 
