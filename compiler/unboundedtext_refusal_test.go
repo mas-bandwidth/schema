@@ -23,9 +23,11 @@ var boundedTextSchema = map[string]string{
 // (outputDigest). The go digest is recomputed on the merge of sprint/schema-go
 // @ 60047ec8c2ff: it moves from the base by the integrity_mismatch refusal
 // name every Go unit's runtime carries (docs/SPEC-TABLES.md §2.14) and by the
-// strict timestamp parser that now rides in every Go text form (§2.11, §16.2).
+// strict timestamp parser that now rides in every Go text form (§2.11, §16.2),
+// and by the §8.1 UnboundedContainer column and ArrayBound 0 an unbounded text
+// list and map carry.
 var boundedTextDigest = map[string]string{
-	"go":  "24770f0dd481c85feef10f2243ce6bb63a9bcdb98421bb77d07ae435427010d2",
+	"go":  "51be1cb1a8e733b325a6a2079738e07550515871758e2023bec70f34875082ec",
 	"cpp": "ff5e30ac14304bb0ab07460f917a19a1efa46fa1c5dac34498d4bd856dfe9605",
 }
 

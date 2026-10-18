@@ -642,7 +642,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	if f.IsList() || f.IsMap() {
 		elemSize = fmt.Sprintf("uint32(unsafe.Sizeof(*new(%s)))", containerElementType(g.unit, f))
 		counted = true
-		bound = "2147483647"
+		bound = "0"
 		countOffset = "(" + offset + ")+8"
 	}
 	if f.IsMap() {
@@ -781,8 +781,10 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	if f.IsList() {
 		_, align := ir.ListElementLayout(g.unit, f)
 		g.pf("List:true,ElemAlign:%d,\n", align)
+		g.pf("UnboundedContainer:true,\n")
 	} else if f.IsMap() {
 		g.pf("Map:true,ElemAlign:%d,\n", ir.RecordLayout(g.unit, f.MapEntry).Align)
+		g.pf("UnboundedContainer:true,\n")
 	}
 	g.pf("\t\tFracBits:%d, Pointer:%v, TargetId:0x%016x,\n", f.Type.FracBits, f.Type.Pointer, pointerTargetId(f))
 	if ir.TableKindWide(kind) {
