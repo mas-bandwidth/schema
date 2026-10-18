@@ -2870,9 +2870,11 @@ this side allocates: the bytes are yours, from wherever you got them.
 tools write cooked data in whatever language their author chose. `schema cook`,
 `schema cook-check` and `schema uncook` produce, validate and read back cooked
 files, in either byte order; the C++ backend emits `<Root>Open`, the C# backend
-emits `<Root>Cook.Open` and the Go backend emits `<Root>Open`, for every table;
-and C, C++ and Go emit their cook writers for every table, fixed or pointered,
-whose bytes are the tool's. Go's spellings are `<Root>CookMeasure`,
+emits `<Root>Cook.Open` and the Go backend emits `<Root>Open`, for every table
+that declares `cook` (a declaration omitting `cook` gets no `Open`; see
+SPEC-TABLES.md §2.12);
+and C, C++ and Go emit their cook writers for every table that declares `cook`,
+fixed or pointered, whose bytes are the tool's. Go's spellings are `<Root>CookMeasure`,
 `<Root>CookMeasureReason` and `<Root>CookFrom`. In other languages, your tools
 write the cook with `schema cook` and your game opens it.*
 

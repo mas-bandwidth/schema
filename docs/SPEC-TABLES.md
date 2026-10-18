@@ -11855,8 +11855,11 @@ A pointered root's measure and write take a `context ...TableWriteContext`
 instead, and the context names the builder's arena or the allocator the
 numbering runs through; a fixed root's takes the value, the buffer and the
 order and nothing else. The reason form's error is the `TableRefuseReason`
-value of §7's vocabulary, and `CookFrom` answers `false` where that form
-answers a non-`ok` reason.
+value of §7's vocabulary; for refusals it reports, `CookFrom` answers
+`false`. Fixed-root `CookMeasure` is a layout constant even for a nil or
+invalid value, and fixed-root `CookMeasureReason` returns that constant with
+no error. Its `CookFrom` still validates the value and buffer, so its refusal
+does not imply a non-`ok` measurement reason.
 
 - **IT IS A MEASURE/WRITE SPLIT, exactly as the wire's is** (§6.1).
   `CookMeasure` answers the whole file's length — the header, the data part and
@@ -11943,12 +11946,16 @@ bool    SceneCook( const SceneBuilder & builder, void * out, uint64_t capacity, 
   the same input. A region `Load` produced holds null in every such slot, so a
   cook of a loaded wire never meets the case; a built structure that does has a
   pointer in storage its own count says is dead.
-- **THE GO WRITER NAMES ITS REFUSALS.** An order word other than `1` or `2`,
-  a nil value, a counted used count below zero or above `N`, a union tag past
-  the arms, and a negative count or a non-empty container in dead storage each
-  answer `false` or `-1` with `invalid_value`; the reason form also returns
-  `data_cycle` for a reference whose descent is still open and
-  `allocation_failed` when the numbering cannot grow. A map-bearing root is
+- **THE GO WRITER NAMES ITS REFUSALS.** For pointered roots, an invalid
+  value (including a nil root, a counted used count below zero or above `N`,
+  a union tag past the arms, or a negative count or non-empty container in dead
+  storage) makes `CookMeasure` answer `-1` and `CookMeasureReason` return
+  `invalid_value`; a reference whose descent is still open returns
+  `data_cycle`, and a numbering that cannot grow returns `allocation_failed`.
+  `CookFrom` answers `false` for invalid order, value or short buffer. For fixed roots,
+  `CookMeasure` remains the structural constant and `CookMeasureReason`
+  returns it with no error even for invalid values; `CookFrom` validates the
+  value, buffer and order and answers `false` on refusal. A map-bearing root is
   the TOOL's refusal and not the runtime writer's (§7.2): the Go writer lays
   out the entry arrays, and §7.2 names the independent layout test that holds
   them.
