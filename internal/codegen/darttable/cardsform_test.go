@@ -162,10 +162,8 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 						t.Errorf("refusal message %q does not name %q (docs/SPEC-TABLES.md §11: the table, the field and the construct)", msg, want)
 					}
 				}
-			} else {
-				if err != nil {
-					t.Errorf("unexpected refusal: %v", err)
-				}
+			} else if err != nil {
+				t.Errorf("unexpected refusal: %v", err)
 			}
 		})
 	}
@@ -187,7 +185,6 @@ func TestCardDeclarationsPinTheVariableFormGap(t *testing.T) {
 	t.Parallel()
 
 	for _, name := range []string{"base.schema", "new.schema"} {
-		name := name
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			src, err := os.ReadFile(filepath.Join("testdata", "cards", name))

@@ -1,6 +1,7 @@
 package elixirtable
 
 import (
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,9 +24,7 @@ func generateElixir(t *testing.T, u *ir.Unit) map[string][]byte {
 	if err != nil {
 		t.Fatalf("generate table: %v", err)
 	}
-	for k, v := range tables {
-		files[k] = v
-	}
+	maps.Copy(files, tables)
 	return files
 }
 

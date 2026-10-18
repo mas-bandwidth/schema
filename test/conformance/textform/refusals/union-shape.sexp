@@ -1,0 +1,1 @@
+(:choice (:amount 2 :ping null))

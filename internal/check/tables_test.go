@@ -95,6 +95,14 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { x int32 }\ntype TableReport { y int32 }\n"},
 		{name: "a declaration colliding with generated table codecs", want: "generated TABLE-wire functions",
 			src: "package t\ntable Tab { x int32 }\ntype TabLoad { y int32 }\n"},
+		// the Go text-transport helpers (docs/SPEC-TABLES.md §16.8, §11): the Go backend
+		// emits <Name>SaveText and <Name>LoadText, so a schema declaring Root and
+		// either name must be refused by name at the checker, not redeclared in
+		// the generated package
+		{name: "a declaration colliding with the text transport's save", want: "TabSaveText",
+			src: "package t\ntable Tab { x int32 }\ntype TabSaveText { y int32 }\n"},
+		{name: "a declaration colliding with the text transport's load", want: "TabLoadText",
+			src: "package t\ntable Tab { x int32 }\ntype TabLoadText { y int32 }\n"},
 		{name: "a declaration colliding with the mutable-life surface", want: "generated TABLE-wire functions",
 			src: "package t\ntable Tab { x int32 }\ntype TabBuilder { y int32 }\n"},
 		// THE FIXED FORM'S SPELLINGS (docs/SPEC-TABLES.md §3.4, §11), and the
@@ -207,6 +215,8 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntype A { x int32 }\nunion U { a A }\ntable Tab { xs ?[..4]U }\n"},
 		{name: "an optional array takes no specified default", want: "an optional field takes no specified default",
 			src: "package t\ntable Tab { xs ?[..4]int32 = 5 }\n"},
+		{name: "an optional array whose element closure is variable is a named follow-on", want: "? on a value whose closure is variable-length",
+			src: "package t\ntable Leaf { value int32\n    next *Leaf }\ntable Tab { xs ?[..2]Leaf }\n"},
 		{name: "an optional string is a named follow-on", want: "? on string(N) is a named follow-on",
 			src: "package t\ntable Tab { s ?string(8) }\n"},
 		{name: "an optional bytes is a named follow-on", want: "? on bytes(N) is a named follow-on",
@@ -304,14 +314,23 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { m map[uint32 | min = 1]int32 }\n"},
 		{name: "a default on the key is refused by name", want: "a map KEY takes no default",
 			src: "package t\ntable Tab { m map[uint32 = 5]int32 }\n"},
-		// the map itself takes no bound, no ?, no default and no attribute: a
-		// map's count is unbounded by design and its empty IS its absence
+		// the map itself takes no bound, no default and no attribute: a map's
+		// count is unbounded by design; `?map` is the optional map (§2.8),
+		// refused only where any map is and beside `| required`
 		{name: "a bounded map is refused by name", want: "a map takes no array bound",
 			src: "package t\ntable Tab { m [..4]map[uint32]int32 }\n"},
 		{name: "a fixed array of maps is refused by name", want: "a map takes no array bound",
 			src: "package t\ntable Tab { m [4]map[uint32]int32 }\n"},
-		{name: "an optional map is refused by name", want: "there is no ?map",
-			src: "package t\ntable Tab { m ?map[uint32]int32 }\n"},
+		{name: "an optional map in a type body is refused by name", want: "a MAP is a table-only construct",
+			src: "package t\ntype P { m ?map[uint32]int32 }\n"},
+		{name: "an optional map in a fixed table is refused by name", want: "is a map",
+			src: "package t\nfixed table Tab { m ?map[uint32]int32 }\n"},
+		{name: "an optional map marked required is refused by name", want: "| required is refused with ?",
+			src: "package t\ntable Tab { m ?map[uint32]int32 | required }\n"},
+		{name: "an optional map as a map's value is refused by name", want: "an optional map as a map's VALUE is refused",
+			src: "package t\ntable Tab { m map[uint8]?map[uint8]int32 }\n"},
+		{name: "an optional map claims its presence companion", want: "the generated presence companion",
+			src: "package t\ntable Tab {\n m ?map[uint32]int32\n m_present bool\n}\n"},
 		{name: "a default on a map is refused by name", want: "a map takes no specified default",
 			src: "package t\ntable Tab { m map[uint32]int32 = 0 }\n"},
 		{name: "an attribute on a map is refused by name", want: "does not apply to a map",
@@ -1620,13 +1639,14 @@ type Loadout {
 // TestEnumBoundProvenanceCorpus is §2.4's "HELD BY TEST: one diagnostics row a
 // SHAPE, red first", read from the corpus rather than restated here.
 //
-// THE RULE FOLLOWS THE BOUND'S PROVENANCE AND NOT ITS SPELLING. `[E.Max]T`,
-// `[E.Count]T` and `[N]T` under a `const N` that folds from either are one
-// bound, so one file a shape stands in test/tables/enumbound and this test
-// holds each to its answer: the refused shapes in a TABLE BODY and in a UNION
-// ARM, and the three controls that hold the other edge. A row is red if the
-// unit compiles, or if the diagnostic stops naming the field, the enum, the
-// constant the field spells, and `[E]T` as the fix.
+// THE RULE FOLLOWS THE BOUND'S PROVENANCE AND NOT ITS SPELLING. `[E.Max]T`
+// and `[N]T` under a `const N` that folds from it are one bound, so one file
+// a shape stands in test/tables/enumbound and this test holds each to its
+// answer: the refused shapes in a TABLE BODY and in a UNION ARM, and the
+// controls that hold the other edge. An enum has no Count (SPEC §4.2), so the
+// corpus files that spell E.Count stop at that refusal, which their rows pin.
+// A row is red if the unit compiles, or if the diagnostic stops naming the
+// field, the enum, the constant the field spells, and `[E]T` as the fix.
 //
 // The corpus is read rather than inlined because the same files are what
 // `check-enum-bound-negative-control` runs the compiler over: a shape stated
@@ -1642,15 +1662,16 @@ func TestEnumBoundProvenanceCorpus(t *testing.T) {
 		{file: "BodyMax.schema", want: []string{
 			"table Fleet: field ships", "[ShipType.Max]int32 is refused in a table body",
 			"spell it [ShipType]int32"}},
+		// E.Count is not an expression at all (SPEC §4.2, the 2026-09-13
+		// ruling): the corpus file stops at the enum reference before the
+		// bound provenance walk can run, so its row pins that refusal.
 		{file: "BodyCount.schema", want: []string{
-			"table Fleet: field ships", "[ShipType.Count]int32 is refused in a table body",
-			"spell it [ShipType]int32"}},
+			"enum ShipType has no Count", "write ShipType.Max"}},
 		{file: "BodyConstMax.schema", want: []string{
 			"table Fleet: field ships", "[SlotCount]int32 is refused in a table body",
 			"the bound SlotCount folds from ShipType.Max", "spell it [ShipType]int32"}},
 		{file: "BodyConstCount.schema", want: []string{
-			"table Fleet: field ships", "[SlotCount]int32 is refused in a table body",
-			"the bound SlotCount folds from ShipType.Count", "spell it [ShipType]int32"}},
+			"enum ShipType has no Count", "write ShipType.Max"}},
 		{file: "BodyFolded.schema", want: []string{
 			"table Fleet: field ships", "[SlotCount]int32 is refused in a table body",
 			"the bound SlotCount folds from ShipType.Max", "spell it [ShipType]int32"}},
@@ -1662,26 +1683,21 @@ func TestEnumBoundProvenanceCorpus(t *testing.T) {
 			"union Payload: arm ships", "[ShipType.Max]int32 is refused in a union arm",
 			"table Fleet's field payload reaches Payload", "spell it [ShipType]int32"}},
 		{file: "ArmCount.schema", want: []string{
-			"union Payload: arm ships", "[ShipType.Count]int32 is refused in a union arm",
-			"table Fleet's field payload reaches Payload", "spell it [ShipType]int32"}},
+			"enum ShipType has no Count", "write ShipType.Max"}},
 		{file: "ArmConstMax.schema", want: []string{
 			"union Payload: arm ships", "[SlotCount]int32 is refused in a union arm",
 			"the bound SlotCount folds from ShipType.Max",
 			"table Fleet's field payload reaches Payload", "spell it [ShipType]int32"}},
 		{file: "ArmConstCount.schema", want: []string{
-			"union Payload: arm ships", "[SlotCount]int32 is refused in a union arm",
-			"the bound SlotCount folds from ShipType.Count",
-			"table Fleet's field payload reaches Payload", "spell it [ShipType]int32"}},
+			"enum ShipType has no Count", "write ShipType.Max"}},
 		{file: "ArmFolded.schema", want: []string{
-			"union Payload: arm ships", "[SlotCount]int32 is refused in a union arm",
-			"the bound SlotCount folds from ShipType.Count",
-			"table Fleet's field payload reaches Payload", "spell it [ShipType]int32"}},
+			"enum ShipType has no Count", "write ShipType.Max"}},
 
 		// THE CONTROLS HOLD THE OTHER EDGE (§2.4): the packet wire is
 		// untouched, a bound that folds from no enum stands wherever it is
 		// spelled, and the `type`-held case schema#606 rules on keeps the
-		// spelling: it compiles, and its table body keys the array
-		// (TestTypeHeldEnumExtentArrayRidesKeyed).
+		// spelling. An enum has no Count (SPEC §4.2), so the packet control
+		// spells the fold through Max alone.
 		{file: "ControlPacket.schema"},
 		{file: "ControlPlain.schema"},
 		{file: "ControlTypeHeld.schema"},

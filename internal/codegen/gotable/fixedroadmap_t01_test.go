@@ -54,7 +54,7 @@ func r7IdentityLaneIsAnIndexComparison(t *testing.T, schema string) {
 			body += string(data)
 		}
 	}
-	load := funcSource(body, "func PointFixedLoad(")
+	load := funcSource(body, "func PointFixedLoadTolerant(")
 	if load == "" {
 		t.Fatal("PointFixedLoad was not emitted")
 	}
@@ -125,15 +125,14 @@ func TestF9(t *testing.T) {
 		file := cleanFile(t, records)
 		exact := make([]Point, records)
 		r := dirty()
-		if n := PointFixedLoad(exact, file, plan, &r); n != int64(records) || r != (TableReport{}) {
+		if n := PointFixedLoadTolerant(exact, file, plan, &r); n != int64(records) || r != (TableReport{}) {
 			t.Fatalf("capacity == records (%d) must read: n=%d %+v", records, n, r)
 		}
 		for short := 0; short < records; short++ {
 			dst, bytes := poisoned(short + 1)
 			dst = dst[:short]
 			r = dirty()
-			if n := PointFixedLoad(dst, file, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "batch_too_large"}) {
-				t.Fatalf("records=%d capacity=%d: n=%d %+v", records, short, n, r)
+			if n := PointFixedLoadTolerant(dst, file, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "batch_too_large"}) {				t.Fatalf("records=%d capacity=%d: n=%d %+v", records, short, n, r)
 			}
 			if !untouched(bytes) {
 				t.Fatalf("records=%d capacity=%d: batch_too_large wrote destination bytes", records, short)
@@ -159,9 +158,8 @@ func TestF10(t *testing.T) {
 			forged[recordAt()+rec*int(PointFixedRecordBytes)+b] ^= 0x01
 			dst, bytes := poisoned(2)
 			r := dirty()
-			n := PointFixedLoad(dst, forged, plan, &r)
-			if n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "no_layout"}) {
-				t.Fatalf("record %d byte %d: n=%d %+v", rec, b, n, r)
+			n := PointFixedLoadTolerant(dst, forged, plan, &r)
+			if n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "no_layout"}) {				t.Fatalf("record %d byte %d: n=%d %+v", rec, b, n, r)
 			}
 			// record 0 is the one whose destination the page promises
 			// untouched: record k's is written before k+1's hash is read
@@ -177,8 +175,8 @@ func TestF10(t *testing.T) {
 }
 `
 
-// go/R8, "a hash in no lineage entry → layout_newer, reporting the file's hash
-// AND NOTHING ELSE". §5.3 steps 5 and 6: outside the lineage is layout_newer,
+// go/R8, "a hash in no lineage entry → layout_unknown, reporting the file's hash
+// AND NOTHING ELSE". §5.3 steps 5 and 6: outside the lineage is layout_unknown,
 // and it reports THE FILE'S hash and nothing else. The whole report is compared
 // in one != over a dirty report, so a stale counter, Malformed or any field
 // added later fails; the destination stays poisoned. Each of the sixty-four
@@ -197,11 +195,10 @@ func TestR8(t *testing.T) {
 		binary.LittleEndian.PutUint64(forged[TableFixedHashAt:], want)
 		dst, bytes := poisoned(1)
 		r := dirty()
-		if n := PointFixedLoad(dst, forged, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_newer", LayoutHash: want}) {
-			t.Fatalf("bit %d: n=%d %+v", bit, n, r)
+		if n := PointFixedLoadTolerant(dst, forged, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_unknown", LayoutHash: want}) {			t.Fatalf("bit %d: n=%d %+v", bit, n, r)
 		}
 		if !untouched(bytes) {
-			t.Fatalf("bit %d: layout_newer wrote destination bytes", bit)
+			t.Fatalf("bit %d: layout_unknown wrote destination bytes", bit)
 		}
 	}
 }
@@ -221,12 +218,12 @@ func TestR9(t *testing.T) {
 	file := cleanFile(t, 1)
 	const layoutAt = TableFixedHeaderBytes + 4
 	layoutLen := int(binary.LittleEndian.Uint32(file[TableFixedHeaderBytes:]))
-	want := TableReport{Verdict: TableOpenRefused, Reason: "layout_malformed"}
+	want := TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_malformed"}
 	refuses := func(what string, forged []byte) {
 		t.Helper()
 		dst, bytes := poisoned(1)
 		r := dirty()
-		if n := PointFixedLoad(dst, forged, plan, &r); n != -1 || r != want {
+		if n := PointFixedLoadTolerant(dst, forged, plan, &r); n != -1 || r != want {
 			t.Fatalf("%s: n=%d %+v", what, n, r)
 		}
 		if !untouched(bytes) {
@@ -293,19 +290,19 @@ func TestR9(t *testing.T) {
 }
 `
 
-// go/R13, "REFUSE is total: refused+reason and malformed are never both set,
-// every counter stays zero, and not one destination byte is written". §5.3: a
-// refusal by name moves no counter and writes nothing; the answers that are
-// damage set Malformed and no reason. Every refusal this reader has before a
-// record lands (previous_form, message_form_as_file, newer_form, layout_malformed,
-// layout_newer, plan_too_large, batch_too_large) and every malformed arm (empty,
+// go/R13, "REFUSE is total: every counter stays zero, and not one destination
+// byte is written". §5.3: a refusal by name moves no counter and writes nothing;
+// the framing-damage answers set Malformed beside their name (truncated,
+// reserved_not_zero). Every refusal this reader has before a record lands
+// (previous_form, message_form_as_file, newer_form, layout_malformed,
+// layout_unknown, plan_too_large, batch_too_large) and every malformed arm (empty,
 // short, reserved byte, ragged) is forged from a clean file, read into a
 // poisoned destination with a dirty report, and the whole report compared.
 const r13RefuseIsTotal = t01Prelude + `
 func TestR13(t *testing.T) {
 	file := cleanFile(t, 2)
 	plan := make([]TableFixedEntry, 64)
-	refused := func(reason string) TableReport { return TableReport{Verdict: TableOpenRefused, Reason: reason} }
+	refused := func(reason string) TableReport { return TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: reason} }
 	cases := []struct {
 		what string
 		file []byte
@@ -333,15 +330,15 @@ func TestR13(t *testing.T) {
 	add("plan_too_large", file, 2, plan[:0], refused("plan_too_large"))
 	add("batch_too_large", file, 1, plan, refused("batch_too_large"))
 	add("no_layout", forge(func(b []byte) []byte { b[len(b)-2*int(PointFixedRecordBytes)] ^= 1; return b }), 2, plan, refused("no_layout"))
-	add("malformed empty", nil, 2, plan, TableReport{Malformed: true})
-	add("malformed short", file[:TableFixedHeaderBytes], 2, plan, TableReport{Malformed: true})
-	add("malformed reserved byte", forge(func(b []byte) []byte { b[3] = 1; return b }), 2, plan, TableReport{Malformed: true})
-	add("malformed ragged", append(append([]byte(nil), file...), 0), 2, plan, TableReport{Malformed: true})
+ 	add("malformed empty", nil, 2, plan, TableReport{Malformed: true, Reason: "truncated"})
+ 	add("malformed short", file[:TableFixedHeaderBytes], 2, plan, TableReport{Malformed: true, Reason: "truncated"})
+ 	add("malformed reserved byte", forge(func(b []byte) []byte { b[3] = 1; return b }), 2, plan, TableReport{Malformed: true, Reason: "reserved_not_zero"})
+ 	add("malformed ragged", append(append([]byte(nil), file...), 0), 2, plan, TableReport{Malformed: true, Reason: "truncated"})
 	for _, c := range cases {
 		dst, bytes := poisoned(2)
 		dst = dst[:c.cap]
 		r := dirty()
-		if n := PointFixedLoad(dst, c.file, c.plan, &r); n != -1 || r != c.want {
+		if n := PointFixedLoadTolerant(dst, c.file, c.plan, &r); n != -1 || r != c.want {
 			t.Fatalf("%s: n=%d %+v", c.what, n, r)
 		}
 		if r.Verdict == TableOpenRefused && r.Malformed {
@@ -351,12 +348,11 @@ func TestR13(t *testing.T) {
 			t.Fatalf("%s: wrote destination bytes", c.what)
 		}
 	}
-	// layout_newer carries the file's hash and nothing else
+	// layout_unknown carries the file's hash and nothing else
 	forged := forge(func(b []byte) []byte { b[TableFixedHashAt] ^= 1; return b })
 	dst, bytes := poisoned(2)
 	r := dirty()
-	if n := PointFixedLoad(dst, forged, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_newer", LayoutHash: binary.LittleEndian.Uint64(forged[TableFixedHashAt:])}) || !untouched(bytes) {
-		t.Fatalf("layout_newer: n=%d %+v", n, r)
+	if n := PointFixedLoadTolerant(dst, forged, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_unknown", LayoutHash: binary.LittleEndian.Uint64(forged[TableFixedHashAt:])}) || !untouched(bytes) {		t.Fatalf("layout_unknown: n=%d %+v", n, r)
 	}
 }
 `

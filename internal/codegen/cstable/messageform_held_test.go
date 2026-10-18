@@ -42,21 +42,18 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 		{"form_byte", "a form a reader does not know is a REFUSAL by name and never damage ... a reader handed a form-`2` wire where a file was expected refuses by name."},
 	}
 	for _, clause := range clauses {
-		clause := clause
 		t.Run(clause.name, func(t *testing.T) {
 			t.Parallel()
 			csHeldAssert(t, out, err, "clause/"+clause.name)
 		})
 	}
 	for _, conn := range csHeldConns {
-		conn := conn
 		t.Run("connection_"+conn.key, func(t *testing.T) {
 			t.Parallel()
 			csHeldAssert(t, out, err, "row/"+conn.key)
 		})
 	}
 	for _, conn := range csHeldRuntimeConns {
-		conn := conn
 		t.Run("connection_"+conn.key, func(t *testing.T) {
 			t.Parallel()
 			rowOut, rowErr := csHeldRuntimeAttempt(t, conn)
@@ -74,14 +71,12 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 		})
 	}
 	for _, msg := range csHeldMsgs {
-		msg := msg
 		t.Run("message_"+msg.name, func(t *testing.T) {
 			t.Parallel()
 			csHeldAssert(t, out, err, "row/"+msg.name)
 		})
 	}
 	for _, row := range csHeldNotRun {
-		row := row
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
 			t.Skip("not run: " + row.why)
@@ -661,17 +656,17 @@ var csHeldRuntimeUnits = []csHeldUnit{
 type csHeldConn struct{ key, pkg, wire, version string }
 
 var csHeldConns = []csHeldConn{
-	{"backend_conn", "backenddemo", "backend_conn.bin", "0x851cdd594a04b3fd"},
-	{"vocab_conn", "vocabdemo", "vocab_conn.bin", "0xfc8907630599b68c"},
-	{"vocab9_conn", "vocab9demo", "vocab9_conn.bin", "0xbf9435fb11bd7357"},
+	{"backend_conn", "backenddemo", "backend_conn.bin", "0xb26d9d6c050117f0"},
+	{"vocab_conn", "vocabdemo", "vocab_conn.bin", "0xd9664a7639d9a134"},
+	{"vocab9_conn", "vocab9demo", "vocab9_conn.bin", "0x49d0eb14999f0285"},
 }
 
 // csHeldRuntimeConns are the two `connection` rows of MANIFEST.txt the main
 // build cannot carry (csHeldRuntimeUnits), each with its announcement wire and
 // the build version the row pins.
 var csHeldRuntimeConns = []csHeldConn{
-	{"graph_conn", "graphdemo", "graph_conn.bin", "0x8478eba1cb4a55e5"},
-	{"retain_conn", "tblr2", "retain_conn.bin", "0x59185ac86252d03a"},
+	{"graph_conn", "graphdemo", "graph_conn.bin", "0xa6069b3ec0d99c3c"},
+	{"retain_conn", "tblr2", "retain_conn.bin", "0x64d6fb9798602c12"},
 }
 
 // csHeldMsg is one MANIFEST `message` row: one value in BOTH forms, the file
