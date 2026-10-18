@@ -1045,6 +1045,11 @@ const TableDocNone = ""
 type TableFieldInfo struct {
  CookOffset, CookElemSize, CookCountOffset, CookPresentOffset uint32
  List, Map bool // unbounded by-value containers
+ // UnboundedContainer is the ONE TELL of a container with no declared bound
+ // (docs/SPEC-TABLES.md §8.1): true on a map, a []T and a text list
+ // []string(M), with ArrayBound 0 beside it; false on every other field. It
+ // is not Unbounded, which marks unbounded TEXT (§2.13.1).
+ UnboundedContainer bool
  ElemAlign uint32
 	Name     string // schema field name, e.g. "health"
 	Json     string // the TEXT form's key: the json = "key" attribute, else Name (§16.3)

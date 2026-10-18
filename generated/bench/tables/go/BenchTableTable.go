@@ -255,18 +255,23 @@ const TableDocNone = ""
 type TableFieldInfo struct {
 	CookOffset, CookElemSize, CookCountOffset, CookPresentOffset uint32
 	List, Map                                                    bool // unbounded by-value containers
-	ElemAlign                                                    uint32
-	Name                                                         string // schema field name, e.g. "health"
-	Json                                                         string // the TEXT form's key: the json = "key" attribute, else Name (§16.3)
-	TypeName                                                     string // schema element type, e.g. "float32", "Grade"
-	DeclaredTypeName                                             string // complete schema spelling including arrays, bounds and pointers
-	Id                                                           uint64 // table-wire field id (name hash; the was alias's hash after a rename)
-	Pointer                                                      bool
-	TargetId                                                     uint64
-	Kind                                                         uint8 // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
-	IsArray                                                      bool  // fixed or counted array (bytes included)
-	Counted                                                      bool  // a <Name>Count/<Name>Length int32 companion exists
-	Optional                                                     bool  // a ?T field: a <Name>Present bool decides whether it rides
+	// UnboundedContainer is the ONE TELL of a container with no declared bound
+	// (mas-bandwidth/schema docs/SPEC-TABLES.md §8.1): true on a map, a []T and a text list
+	// []string(M), with ArrayBound 0 beside it; false on every other field. It
+	// is not Unbounded, which marks unbounded TEXT (§2.13.1).
+	UnboundedContainer bool
+	ElemAlign          uint32
+	Name               string // schema field name, e.g. "health"
+	Json               string // the TEXT form's key: the json = "key" attribute, else Name (§16.3)
+	TypeName           string // schema element type, e.g. "float32", "Grade"
+	DeclaredTypeName   string // complete schema spelling including arrays, bounds and pointers
+	Id                 uint64 // table-wire field id (name hash; the was alias's hash after a rename)
+	Pointer            bool
+	TargetId           uint64
+	Kind               uint8 // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
+	IsArray            bool  // fixed or counted array (bytes included)
+	Counted            bool  // a <Name>Count/<Name>Length int32 companion exists
+	Optional           bool  // a ?T field: a <Name>Present bool decides whether it rides
 
 	ArrayBound    int32  // array capacity / string max length; 0 for plain scalars
 	Offset        uint32 // unsafe.Offsetof the storage member
