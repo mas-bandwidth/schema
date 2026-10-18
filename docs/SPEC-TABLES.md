@@ -9412,7 +9412,8 @@ const Scene * scene = builder.AsConst();       // CONST: one packed region
 - **Builder** — a growable arena. `Alloc<T>()` hands back a node that is
   usable both as the pointer to write fields through and as the reference
   to store in a pointer field. `AllocBytes( n )`, `AllocString( n )` and
-  `AllocWString( n )` hand
+  `AllocWString( n )` — the wide member, which §2.5 specifies ahead of its
+  implementation and the checker refuses by name — hand
   back a BLOB node the same way (§2.5), the first two of exactly `n` BYTES and
   **`AllocWString( n )` of exactly `n` CODE UNITS**, which is `2 * n` bytes in
   the node plus its terminating zero unit — the argument is a unit count
@@ -9594,7 +9595,9 @@ carries and the reason a region hands back a C string with no copy. **A
 `*wstring` blob is that same header and two more zero bytes**: its `length` is
 the byte length, always EVEN, its data is `length / 2` code units two bytes
 each, and the terminating ZERO UNIT is what `wstring(N)`'s `char16_t[N + 1]`
-storage carries for the same reason (§7.2). The units begin at offset eight,
+storage carries for the same reason (§7.2). **The blob is specified ahead of
+its implementation (§2.5), and the checker refuses `*wstring` by name.** The
+units begin at offset eight,
 so they are two-aligned by construction and a region hands back a terminated
 `char16_t` string with no copy. Its
 alignment is the unit's and its extent runs to the next entry as every node's
@@ -9691,7 +9694,10 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   byte for `string` and two for `wstring` (§6.3) — and it reports the
   DATA bytes and the ATTRIBUTION bytes separately (§6.3), because the
   caller may place them apart and may release the attribution once `Load`
-  returns. `Load` is two passes over the same records: it fills the node
+  returns. **Go's `LoadMeasure` answers the data and attribution as one
+  COMBINED size and its `Load` writes the directory inside the region at
+  `base + data`; the split surface is a follow-on there.** `Load` is two
+  passes over the same records: it fills the node
   directory from the framing, then decodes each body into its own
   storage, so a forward index resolves without scratch. The load path
   allocates nothing. **For a unit that declares a MAP (§2.8) or an UNBOUNDED
@@ -9713,6 +9719,12 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   did not expect. The caller owns the allocation precisely so it
   can refuse a number it did not expect; nothing in the runtime decides
   that for it.
+- **The plain `LoadMeasure` and `LoadMeasureReason` PURPOSELY DISAGREE on a
+  damaged wire.** `LoadMeasure` sizes the tolerant `Load`, so it keeps the
+  decoded prefix and answers a size; `LoadMeasureReason` refuses that same
+  wire `wire_damaged`, because the reason path is the strict read's. A caller
+  that knows it will run the tolerant read takes the first, and one that needs
+  the reason takes the second.
 - **A `-1` CARRIES A REASON, and it is the SAME ENUM the accelerators'
   refusals carry: `TableRefuseReason`** (§7, §11). `Open` and `BlockOpen` answer
   a null beside a value of it (§7, §19.2), and a call that answers `-1`
@@ -9820,16 +9832,12 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   literals, so all five are KEPT and the row names the reachable line; the
   same check keeps `layout_too_deep`. No member was retired.
 
-  **`data_cycle` IS THE ONE VALUE WITH NO CARRIER TODAY, and the ruling is
-  that it gets one rather than that it loses its name**: `LoadMeasure` is the
-  only measure that takes the out-parameter, while the cycle is refused by
-  `Measure`, `CookMeasure`, `Save`, `Cook` and `Lock` (§3.1, §7.6), each of
-  which answers a bare `-1` or `false`. A value no call can write is a case
-  that exists only in the vocabulary, so **`Measure` and `CookMeasure` take
-  the same trailing `TableRefuseReason *` `LoadMeasure` takes**, written on
-  the refusal path only, and the enum keeps one value per clause with nothing
-  hiding behind another. Threading it through the pack walk is a named
-  follow-on rather than part of the row that introduced the enum.
+  **`data_cycle` IS CARRIED, and Go is its first carrier**: `MeasureReason`,
+  `CookMeasureReason` and `PackMeasureReason` write it on the refusal path
+  beside `Measure`, `CookMeasure` and `PackMeasure` (§3.1, §7.6), so the
+  value names the refusal rather than existing only in the vocabulary. The
+  enum keeps one value per clause with nothing hiding behind another, and a
+  measure that has no reason twin keeps its bare `-1`.
 
   **A REFUSAL MOVES NO COUNTER** (§4): nothing was decoded, so there is nothing
   to report, and the reason is where the answer lives. **This shares a surface
@@ -9852,7 +9860,9 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   writes its count value, one for a blob past the cap writes
   `blob_over_size_cap`, and a measure that answers a size writes nothing. A
   `-1` for a trailer that cannot be read whole, which is damage and not a
-  refusal, writes nothing either. Every port spells the same set: a port
+  refusal, writes nothing in the C++ reference; Go's `LoadMeasureReason`
+  answers `wire_damaged` for it, the exception §11 states. Every port spells
+  the same set: a port
   lacking a member it can never answer still declares it, so no caller has to
   know which port emitted a name before comparing it (§15).
 - **Into a builder** — the tool's path. The same tolerant decode into a
@@ -10069,6 +10079,10 @@ and it is the same buffer across all three by construction.
 - **`LoadMeasure` is untouched.** It sizes the region from the framing and says
   nothing about retention, and a caller sizes the retention buffer from its own
   policy rather than from the wire.
+- **A root that declares `integrity` (§2.14) keeps its trailer through the
+  round trip.** `LoadRetain` opens the CRC-32C trailer before it decodes, and
+  `MeasureRetain` and `SaveRetain` seal it and add the four bytes, exactly as
+  the plain family does.
 - **`SaveRetain` REFUSES A NULL REPORT and returns `-1`.** `MeasureRetain` and
   `SaveRetain` drop the same records under the same walk, so `Measure`'s answer
   always suffices, and the save is the only place a caller learns that a record
@@ -10572,12 +10586,15 @@ that carried it, the retained tail at the end of its own body and the two
 stores numbered into one trailer in merged first-use order. The leg's own two
 negative controls, one per engine, stand beside the fuzzer's (§4.2).
 
-**Backend status: the C++ REFERENCE and the ORACLE carry it, and no port
-does.** The reference emits `TableRetain`, the three verbs on every
-variable-class root, the refusal on every fixed-class one, the MESSAGE form's
-own `LoadRetainMessages` beside them (§3.3), and a second family of body
-functions beside the three the wire already had, so `Load`, `Measure` and
-`Save` are unchanged. What is still owed is the eight ports.
+**Backend status: the C++ REFERENCE, the ORACLE and GO carry it.** Go emits
+`TableRetain`, `LoadRetain`, `MeasureRetain` and `SaveRetain` on every
+variable-class root, the named refusals on every fixed-class one, and it runs
+the conformance `retain` and `retain-message` rows. The reference emits
+`TableRetain`, the three verbs on every variable-class root, the refusal on
+every fixed-class one, the MESSAGE form's own `LoadRetainMessages` beside them
+(§3.3), and a second family of body functions beside the three the wire
+already had, so `Load`, `Measure` and `Save` are unchanged. What is still owed
+is the other seven ports.
 
 ## 7. The cooked form
 
