@@ -1,17 +1,4 @@
-// The HAND-EDITABLE text form: a table with its document (docs/SPEC-TABLES.md
-// §16.9), the strict authoring form for fixed and variable tables alike.
-//
-// It is the textform surface (§8.8), selected by name and never part of the
-// default set: a default generate is byte-identical with or without this file.
-// It rides on the JSON text form (§16), and that is the design rather than a
-// shortcut. The reader resolves every value against the reflection
-// descriptors (§8) STRICTLY, refusing by name everything §16.9.4 names, and
-// transcodes the accepted document into the canonical JSON of the same
-// value; the existing JSON walk then lands it. Every place §16.2 would clamp,
-// skip or last-wins was refused before the walk ran, so the walk's report is
-// zero on every accepted document, and a nonzero report is refused rather
-// than trusted. The document keeps the source bytes, so a rewrite is the
-// source and a leaf edit replaces one token span (§16.9.3).
+// The HAND-EDITABLE text form: a table with its document (docs/SPEC-TABLES.md §16.9), the strict authoring form for fixed and variable tables alike.
 package gotable
 
 import (
@@ -23,9 +10,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// generateTextFormFiles emits the unit's hand-editable text form: the strict
-// reader once, three hooks the unit decides, and three wrappers per member
-// that also carries the JSON form.
+// generateTextFormFiles emits the unit's hand-editable text form: the strict reader once, three hooks the unit decides, and three wrappers per member that also carries the JSON form.
 func generateTextFormFiles(u *ir.Unit, closure map[string]bool, home string) (map[string][]byte, error) {
 	var b strings.Builder
 	if unitHasFile(u, home) {
@@ -62,10 +47,6 @@ func generateTextFormFiles(u *ir.Unit, closure map[string]bool, home string) (ma
 	return map[string][]byte{home + "TableTextForm.go": src}, nil
 }
 
-// writeTextFormHooks emits the three answers the generic reader cannot read off
-// a descriptor in every unit: the text-list column and the array-root flag
-// exist only in a unit that declares one (§2.13, §16.10), and `| required`
-// (§2.3) has no descriptor column, so the unit lists its required fields.
 func writeTextFormHooks(b *strings.Builder, u *ir.Unit) {
 	if unitUsesTextForms(u) {
 		b.WriteString("func tableTextFormList(f *TableFieldInfo) uint8 { return f.TextList }\n\n")
@@ -74,10 +55,7 @@ func writeTextFormHooks(b *strings.Builder, u *ir.Unit) {
 		b.WriteString("func tableTextFormList(f *TableFieldInfo) uint8 { return 0 }\n\n")
 		b.WriteString("func tableTextFormArrayRoot(t *TableTypeInfo) bool { return false }\n\n")
 	}
-	// tableTextFormUnbounded reports an unbounded text-list element or map key
-	// (§2.13.1, §16.9.2): it has no schema length bound, so the text form reads
-	// it with a negative bound. The descriptor's Unbounded column exists only in
-	// a unit that uses unbounded text, hence the per-unit helper.
+	// tableTextFormUnbounded reports an unbounded text-list element or map key (§2.13.1, §16.9.2): it has no schema length bound, so the text form reads it with a negative bound.
 	if ir.UnitHasUnboundedText(u) {
 		b.WriteString("func tableTextFormUnbounded(f *TableFieldInfo) bool { return f.Unbounded }\n\n")
 	} else {
@@ -87,8 +65,7 @@ func writeTextFormHooks(b *strings.Builder, u *ir.Unit) {
 	for _, st := range u.Tables {
 		for _, f := range st.Fields {
 			if f.Required {
-				// keyed as the descriptor names the table: the declared
-				// name (SPEC.md §4.6, the Go escape)
+				// keyed as the descriptor names the table: the declared name (SPEC.md §4.6, the Go escape).
 				name := st.DeclaredName()
 				required[name] = append(required[name], f.Name)
 			}
@@ -117,9 +94,6 @@ func writeTextFormHooks(b *strings.Builder, u *ir.Unit) {
 	b.WriteString("\treturn false\n}\n\n")
 }
 
-// writeTextFormSurface is one member's three entry points. A variable table's
-// value lives in a region, so its load returns the locked root of a builder of
-// its own, as <Name>LoadText does (§16.8).
 func writeTextFormSurface(b *strings.Builder, n, storage string, variable bool) {
 	fmt.Fprintf(b, "// %sLoadTextForm reads one %s from the hand-editable text form\n", n, n)
 	b.WriteString("// (docs/SPEC-TABLES.md §16.9): the document AND its typed value, or a\n")
@@ -161,7 +135,6 @@ func writeTextFormSurface(b *strings.Builder, n, storage string, variable bool) 
 	fmt.Fprintf(b, "\treturn %sLoadTextForm(text, doc.limits)\n}\n\n", n)
 }
 
-// tableTextFormSource is the strict reader, the same bytes in every unit.
 const tableTextFormSource = `// ---- hand-editable text form (docs/SPEC-TABLES.md §16.9): begin ----
 
 // The stable refusal names (§16.9.4).
