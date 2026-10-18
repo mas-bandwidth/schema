@@ -483,10 +483,7 @@ func intRangePath(min, max *big.Int) string {
 	return "bits64"
 }
 
-var (
-	maxInt64  = big.NewInt(math.MaxInt64)
-	maxUint64 = new(big.Int).SetUint64(math.MaxUint64)
-)
+var maxUint64 = new(big.Int).SetUint64(math.MaxUint64)
 
 func ZeroValue(g *Gen, t ir.FieldType) string {
 	switch t.Kind {
