@@ -70,6 +70,26 @@ func TestJsonValueDeclaration(t *testing.T) {
 		if !u.Tables["JsonValue"].IsJsonValue() {
 			t.Fatal(`json = "value" not recorded on the table in the IR`)
 		}
+		// The marker is a table-carried IR fact: copying the table preserves it,
+		// and checking a separate same-named ordinary table does not inherit it.
+		copied := *u.Tables["JsonValue"]
+		if !copied.IsJsonValue() {
+			t.Fatal(`copying a json = "value" table lost its IR marker`)
+		}
+		plainSrc := "package probe\ntable JsonValue { text *bytes }\n"
+		plainFile, parseErrs := parser.Parse("Plain.schema", []byte(plainSrc))
+		if len(parseErrs) != 0 {
+			t.Fatalf("parse plain unit: %v", parseErrs[0])
+		}
+		plain, plainErrs := check.Unit([]check.SourceFile{{
+			Path: "Plain.schema", Name: "Plain.schema", Base: "Plain", Bytes: []byte(plainSrc), AST: plainFile,
+		}})
+		if len(plainErrs) != 0 {
+			t.Fatalf("check plain unit: %v", plainErrs[0])
+		}
+		if plain.Tables["JsonValue"].IsJsonValue() {
+			t.Fatal(`json = "value" marker leaked to a separately checked same-named table`)
+		}
 		files, err := New().Generate(u, "go", Options{"runtime": "standalone"})
 		if err != nil {
 			t.Fatalf("go refused the accepted declaration: %v", err)

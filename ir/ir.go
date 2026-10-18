@@ -290,6 +290,10 @@ type Struct struct {
 	// §16.10): the table's text form is its one field's array. A text-form
 	// fact only; it moves no wire byte.
 	JsonArray bool
+	// JsonValue is the table line's `json = "value"` (§16.13): its text is
+	// the raw JSON value held by the declaration's tape. A text-form fact only;
+	// it moves no wire byte.
+	JsonValue bool
 	Doc       string   // the declaration's `///` block (SPEC §4.1), "" when none
 	Tags      []string // the declaration's tags, in declared order, inert (SPEC §4.2)
 	// C++ native type mapping (SPEC §4.2, Native type mapping): when set,

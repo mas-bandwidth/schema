@@ -9,29 +9,18 @@ package ir
 
 import (
 	"sort"
-	"sync"
 )
-
-// jsonValues marks the tables declared `json = "value"`. It is kept beside the
-// declarations rather than in [Struct] so the marker cannot drift into a
-// projection or a baseline by accident: nothing that walks the IR sees it
-// unless it asks for this construct.
-var jsonValues sync.Map // map[*Struct]struct{}
 
 // MarkJsonValue records that st is declared `json = "value"` (§16.13).
 func (s *Struct) MarkJsonValue() {
 	if s != nil {
-		jsonValues.Store(s, struct{}{})
+		s.JsonValue = true
 	}
 }
 
 // IsJsonValue reports a table declared `json = "value"` (§16.13).
 func (s *Struct) IsJsonValue() bool {
-	if s == nil {
-		return false
-	}
-	_, ok := jsonValues.Load(s)
-	return ok
+	return s != nil && s.JsonValue
 }
 
 // TableJsonValues lists the tables declared `json = "value"` (§16.13), sorted —
@@ -39,7 +28,7 @@ func (s *Struct) IsJsonValue() bool {
 func TableJsonValues(u *Unit) []string {
 	var out []string
 	for name, st := range u.Tables {
-		if st != nil && st.IsJsonValue() {
+		if st != nil && st.JsonValue {
 			out = append(out, name)
 		}
 	}
