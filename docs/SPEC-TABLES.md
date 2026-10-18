@@ -11872,15 +11872,16 @@ tree is ever spelled by a doc or a tag. Documenting and tagging a shipped
 schema is a free edit, and that is the property the open namespace rests on.
 
 **PORT STATUS: every target carries the DECLARATION and FIELD columns; the
-C++ reference carries the REGISTRY rows beside them.** All nine targets carry
-`doc`, `num_tags` and `tags` on `TableFieldInfo` and on `TableTypeInfo`,
+C++, C and Go registries carry the REGISTRY rows beside them.** All nine
+targets carry `doc`, `num_tags` and `tags` on `TableFieldInfo` and on
+`TableTypeInfo`,
 filled from the `///` block (SPEC.md §4.1) and the tags (SPEC.md §4.2) the
 compiler reads at every line kind. An enum VARIANT's, a flags BIT's and a
 record-naming ARM's annotation ride the registry rows the placement rule above
-names, so reaching them means compiling `<Package>View.*` — which the C++
-backend emits and the eight ports do not yet (§8.3). Their users reach a
-variant's, a bit's and a record-naming arm's annotation through the generated
-comments until the view lands in their backend.
+names, so reaching them means compiling `<Package>View.*` — which the C++,
+C and Go backends emit and the other ports do not yet (§8.3). Their users
+reach a variant's, a bit's and a record-naming arm's annotation through the
+generated comments until the view lands in their backend.
 
 **A field carries WHERE IT LIVES, and the spelling is the language's.** C++
 carries an offset and a width, because its storage is one flat struct; a
@@ -11894,6 +11895,14 @@ accessors carries no storage-struct size, because the number describes
 nothing it can use; and a walk in such a backend allocates no more than a
 walk in C++, because the accessors are built once with the descriptor and
 cached with it.
+
+**Go's descriptor carries a few columns of its own, and they are
+implementation detail.** `DeclaredTypeName` repeats the complete schema
+spelling including arrays, bounds and pointers; `CookOffset`,
+`CookElemSize`, `CookCountOffset` and `CookPresentOffset` on a field, with
+`CookSize` and `CookAlign` on a type, carry the cook accelerator's own
+positions (§7); and `TextList` is the text-list code (§2.13). A walker
+written against this section reads none of them.
 
 **A `bits(N)` field carries its IMPLIED RANGE.** `bits(N)` declares
 `[0, 2^N − 1]` by its width rather than by an attribute, and the codec has
@@ -11980,7 +11989,8 @@ written rule before this section, so the rule is here, one shape for both:
   map's key is a field of the entry and a walker meets it there, and a list has
   no key at all.
 
-**ONE FUNCTION COLUMN SERVES BOTH, and it is `place`.** What the ONE text walk
+**ONE FUNCTION COLUMN SERVES BOTH in the reference spelling, and it is
+`place`.** What the ONE text walk
 cannot spell for itself it still cannot spell: placing an entry by key in a
 `TableMap<Entry>` or appending an element to a `TableList<T>` needs the type
 the walk has no name for, so a resolver stays where a resolver is needed, and
@@ -11992,6 +12002,12 @@ array's, the container from `UnboundedContainer`, the count from
 one column nothing about the two constructs is inferred from a column of
 their own. A unit that has neither construct carries no `place`
 column, which is §2.2's gate doing its job.
+
+**Go spells the same two constructs without a `place` column.** Its `List`
+and `Map` bools say which of the two a field is, `ElemAlign` carries the
+element's alignment, and the JSON graph walk's own `mapPlace` and `listAdd`
+callbacks do the placement, so `place` is the reference's spelling of the
+resolver rather than a column of the vocabulary.
 
 **The public currency is the KEY; the storage index is private** (§2.4).
 `array_bound` on a keyed field is the STORAGE EXTENT, `E.Max` — derived
@@ -12020,8 +12036,9 @@ walk — the text form (§16) among them — at the union. Arms are indexed
 descriptor in the payload's place**, the same `TableFieldInfo` a field of
 that type would carry, so a generic walk meets an arm's kind, width,
 bounds, capacity and `_length` or `_count` companion where it meets a
-field's, and an arm needs no descriptor vocabulary of its own. **The two
-descriptors are the arm's `payload` and its `field`** (§8.3), and exactly
+field's, and an arm needs no descriptor vocabulary of its own. **The
+registry's two descriptors are the arm's `payload` and its `field`** (§8.3),
+and exactly
 one of them is non-NULL on an arm with a payload. Both are NULL at index 0
 and on a PAYLOAD-FREE arm (§2.6), which has no storage to describe.
 
@@ -12029,6 +12046,13 @@ and on a PAYLOAD-FREE arm (§2.6), which has no storage to describe.
 the tag at offset 0 and the overlay after it, so a walker adds one base and
 reads the tag, an arm's payload and an arm's field descriptor through the
 same arithmetic.
+
+**Go's arm descriptor carries three columns of its own spelling.** A
+`TableUnionArmInfo` holds a `Void` flag for the payload-free arm, a per-arm
+`Reset` that establishes the selected payload's defaults, and a `Field`
+filled on every non-void arm — beside `Table` when the arm names a record —
+so the shape of an arm is readable without consulting the registry's
+`payload`/`field` pair above.
 
 **A flags field carries its BIT NAMES**: a bit-index→name function bounded
 by **the highest declared BIT INDEX** — not a count, so a walker loops
@@ -12039,10 +12063,11 @@ name function is what identifies a flags field, and a `ViewVariant` row for a
 bit carries `0` in its `id` column (below).
 
 **AN ID COLUMN SAYS "NO TABLE-WIRE IDENTITY" WITH `0`**, one value
-everywhere a descriptor has no id to give. `0` is the value no declared name
-folds to, and the wire already reads it that way: `None` rides as the zero
+everywhere a descriptor has no id to give. `0` is the id the wire reserves
+for `None`, and the wire already reads it that way: `None` rides as the zero
 REFERENCE and names no variant (§3, §3.2), so a tool testing an id against
-`0` tests the same thing on a descriptor column as it does on the wire. So
+`0` tests the same thing on a descriptor column as it does on the wire. A
+name whose hash is zero is an ordinary id, not this value. So
 **`key_id( 0 )` is `0`**, with `key_name( 0 )` reading `"None"` beside it,
 because the columns are functions of the KEY and `None` is a key the enum
 has. No storage index maps to it (§2.4), so nothing a walker
@@ -12101,8 +12126,8 @@ These columns exist in every unit, whatever its mode — they describe the
 LANGUAGE, and a fixed-size table can declare all of them. Only the two
 POINTER columns below are conditional (§2.2).
 
-A unit that has pointers carries three more facts, and a unit that has
-none carries not one of them (§2.2): a field's **`is_pointer`** flag —
+A unit that has pointers carries three more facts (§2.2): a field's
+**`is_pointer`** flag —
 whose `table` member then names the TARGET table's descriptor and whose
 `elem_size` is the reference slot's width, and whose `table` is NULL for a
 BYTE BUFFER (§2.5), where `type_name` says `bytes` or `string` and the slot
@@ -12115,11 +12140,28 @@ compile-time refusals those ids bring (§11) apply to EVERY unit, as the
 25 generated spellings do, because a unit gains and loses pointers as an
 edit and a name that was free yesterday must not become a collision
 tomorrow. A self-referential pointer resolves to its own type's
-descriptor. Where pointers exist the descriptors are CONSTANT-INITIALISED
-data and a target is the ADDRESS of another descriptor, so `Node` naming
+descriptor. Where pointers exist the reference spelling initializes the
+descriptors as constant data and a target is the ADDRESS of another
+descriptor, so `Node` naming
 itself through `*Node` is expressible directly: no first-use link, which
 could not have been written both race-free and recursion-safe, and no
-mutable state anywhere on the surface. This is the surface
+mutable state anywhere on the surface.
+
+**Go's spelling is ONE descriptor struct for every unit.** `TableFieldInfo`
+declares `Pointer` and `TargetId`, and `TableTypeInfo` declares `Variable`,
+on every descriptor, a pointer-free unit included, with false and zero where
+no pointer exists; a pointer-free unit carries the columns only because its
+spelling declares them, and they still say nothing there.
+
+**Go's descriptors are exported package variables filled in `init()`.**
+They are zero at package initialization and assigned in a generated `init()`,
+immutable by convention rather than by the language, so a walk that reads one
+sees any mutation made to it. The typed `<Name>Save` entry points are
+generated from the declarations and read the storage directly, so they do not
+observe a mutation of `TableFieldInfo` or `TableTypeInfo`, and Go has no
+descriptor-driven generic save that would.
+
+This is the surface
 editors and tools build on — walk properties by name, print a value, diff
 two, bind a property grid — with no RTTI and no schema files at runtime.
 
@@ -12182,8 +12224,9 @@ table closure reaches carries `id = 0` on every variant row** — the
 registry's `ViewVariant.id` (§8.3) and a descriptor's `variant_id()`
 function (§8.1) alike — and **an enum-keyed array whose KEY enum no table
 closure reaches carries `key_id( key )` of `0` for every key**. `0` is the
-value no declared name folds to (§5), and it already spells "no table-wire
-identity here" in the two places the columns state it: a flags bit's id, and
+id the wire reserves for `None` (§5, §8.1), and it already spells "no
+table-wire identity here" in the two places the columns state it: a flags
+bit's id, and
 the `None` key of a keyed array. A vocabulary a closure
 reaches carries its checked ids exactly as it did before.
 
@@ -12211,10 +12254,12 @@ function per unit, name-first in the unit's own namespace beside
 `ProtocolId` (SPEC §6.1), answering with the set of everything the build
 declared:
 
-**PORT STATUS: C++ and C emit the registry.** C++ emits its pair for units
+**PORT STATUS: C++, C and Go emit the registry.** C++ emits its pair for units
 that declare a table. C emits `<Package>View.h` and `<Package>View.c` for
 every unit, including a table-free unit, with `unit_view()` as its entry point.
-The independently generated listing in §8.7 checks both. The C registry and
+Go emits `<Package>View.go` for every unit, with `UnitView()` and all six sets,
+and the §8.7 corpus gate holds it (`TestGoUnitViewCorpus`). The
+independently generated listing in §8.7 checks all three. The C registry and
 its descriptors are immutable static data, with program lifetime; they own no
 decoded region. A caller using a descriptor to inspect a value must still keep
 that value's storage alive. Other ports' registries remain follow-ons (§15).
@@ -12339,6 +12384,11 @@ const UnitViewInfo * UnitView();
   its own (§8.1). Tag 0 carries no payload and says so with every
   column NULL, and a PAYLOAD-FREE arm (§2.6) does the same, its name and
   its tag being all there is of it.
+- **Go carries the table union's payload base on its `ViewVocabulary`.**
+  `PayloadOffset` is the offset of that payload within the table-union row,
+  the base §8.1's arm offsets are taken from, and it is zero on every enum,
+  flags and non-table-union vocabulary. It is a column of Go's spelling, not
+  a second rule.
 - **A CONSTANT carries its name, its declared storage and its folded
   value** — the one declaration kind with no runtime surface of its own
   before this section. An implicitly typed constant reports the storage it
@@ -12383,7 +12433,10 @@ const UnitViewInfo * UnitView();
   factory rather than held as a value, because C# gives no initialization
   order across a partial class's files and a registry names every
   declaration in the unit — the same reason the C# field descriptor reaches
-  its nested table through one. The entry point is `Schema.UnitView()`.
+  its nested table through one. The entry point is `Schema.UnitView()`. In Go
+  the registry and its descriptors are package variables filled in `init()`,
+  immutable by convention (§8.1), and `UnitView()` returns the address of the
+  one registry; it allocates nothing.
 
 ### 8.4 What it costs: the include rule
 
@@ -12464,7 +12517,7 @@ byte-identical while it is made.
 
 **The view is one generated file per UNIT, not per schema file** —
 `<Package>View.h` and `<Package>View.cpp` in C++, `<Package>View.h` and
-`<Package>View.c` in C, `<Package>View.cs` in C#.
+`<Package>View.c` in C, `<Package>View.cs` in C#, `<Package>View.go` in Go.
 **The name is `capitalize(package)` followed by `View`** in every target
 that emits one: `package tabledemo` gives `TabledemoView.h`. It is a FILE
 name, and generated file names are basename-shaped in every target, so it
