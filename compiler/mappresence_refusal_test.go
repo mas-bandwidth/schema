@@ -1,12 +1,15 @@
 // The OPTIONAL MAP is carried by Go first (docs/SPEC-TABLES.md §2.8): every
 // other target refuses `?map[K]V` BY NAME, centrally, in Generate, including
-// the targets that carry a plain map, and a unit holding only a plain map
-// generates exactly what it did before the construct existed.
+// the targets that carry a plain map, and the declarations holding only a
+// plain map generate the same code whether or not the unit beside them uses
+// one (checkRefusalUnchanged).
 package compiler
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // plainMapSchema holds a plain map beside the shapes the optional map shares
@@ -14,19 +17,20 @@ import (
 // whose VALUE is optional.
 const plainMapSchema = "package probe\n\ntable Holder\n{\n    tags map[string(8)]int32\n    maybe ?int32\n    some ?[..4]int32\n    values map[uint32]?int32\n}\n"
 
-// plainMapDigest is the sha256 of the go and cpp outputs of plainMapSchema at
-// the base this card started from (sprint/schema-go @ f820a0c1f5, re-pinned on the merge of that tip: measured with the base compiler, which has no ?map, the base moved the go output from 5864563260e2 at 3f4d111f44, this card does not), file
-// names sorted, each name then its bytes (outputDigest). The go digest was
-// re-pinned at head: the strict timestamp parser now rides in every Go text
-// form (docs/SPEC-TABLES.md §2.11, §16.2). It moves again by blob_shared
-// (§2.5): its enum value, Error case and Err line, TableReport.BlobShared,
-// the file loads' Resolve and the writers' refusal of a blob named from two
-// slots, and the message form's region writer and reader holding the same
-// ruling (re-pinned on the merge of sprint/schema-go @ 9c5fc1244, and held unchanged on the merge of @ 8694cf96c).
-var plainMapDigest = map[string]string{
-	"go":  "744ded8e99a544b1f98727090df54ea11e55dfb0efa4e7b784943394ae9e10cf",
-	"cpp": "89878cf368053213bfe10cbe20a4fe38eae626ce4a6d3af244008f811675365e",
-}
+// plainMapProbes are the differentials of the "unchanged" claim
+// (checkRefusalUnchanged): each optional map beside plainMapSchema, against
+// the same declarations with the plain map in its place, so the two units
+// differ by the construct alone.
+var plainMapProbes = func() []unchangedProbe {
+	usesOptionalMap := func(u *ir.Unit) bool { return u != nil && refuseOptionalMaps(u, "cpp") != nil }
+	base := map[string]string{"go": plainMapSchema, "cpp": plainMapSchema}
+	keep := []string{"Holder"}
+	return []unchangedProbe{
+		{"optional map", base, "table Zmap\n{\n    tags ?map[string(8)]int32\n}\n", "table Zmap\n{\n    tags map[string(8)]int32\n}\n", keep, "optional map on field Zmap.tags", usesOptionalMap},
+		{"optional map behind a table", base, "table Zinner\n{\n    by_id ?map[uint32]int32\n}\ntable Zouter\n{\n    inner Zinner\n}\n", "table Zinner\n{\n    by_id map[uint32]int32\n}\ntable Zouter\n{\n    inner Zinner\n}\n", keep, "optional map on field Zinner.by_id", usesOptionalMap},
+		{"optional map of maps", base, "table Zmap\n{\n    nest ?map[uint8]map[uint8]int32\n}\n", "table Zmap\n{\n    nest map[uint8]map[uint8]int32\n}\n", keep, "optional map on field Zmap.nest", usesOptionalMap},
+	}
+}()
 
 func TestMapPresenceRefusedOffGo(t *testing.T) {
 	t.Parallel()
@@ -58,14 +62,9 @@ func TestMapPresenceRefusedOffGo(t *testing.T) {
 			}
 		}
 	}
-	u := unitFromSource(t, plainMapSchema)
-	for lang, want := range plainMapDigest {
-		files, err := c.Generate(u, lang, nil)
-		if err != nil {
-			t.Fatalf("%s: %v", lang, err)
-		}
-		if got := outputDigest(files); got != want {
-			t.Errorf("%s: a unit holding only a plain map moved its output: digest %s, base %s", lang, got, want)
+	for _, p := range plainMapProbes {
+		if err := checkRefusalUnchanged(compilerGenerate(c), unchangedTargets, p); err != nil {
+			t.Error(err)
 		}
 	}
 }
