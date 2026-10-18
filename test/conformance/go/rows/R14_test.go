@@ -131,7 +131,7 @@ func TestRowR14(t *testing.T) {
 			t.Fatalf("cannot read generated code: %v", err)
 		}
 		src := string(data)
-		if !strings.Contains(src, "out[i].Why = TableFixedReasonLayoutRecordTooLarge") {
+		if !strings.Contains(src, "out[i].Why = TableRefuseLayoutRecordTooLarge.Error()") {
 			t.Fatal("R14: tableFixedLineagePlans does not map -3 to layout_record_too_large")
 		}
 		t.Log("PASS lineage-path: tableFixedLineagePlans maps -3 to layout_record_too_large")
@@ -204,7 +204,7 @@ func TestRowR14LayoutRecordTooLargeByName(t *testing.T) {
 		t.Fatal("tableFixedCompile does not return -3 on tooLarge")
 	}
 	// The lineage plans map the refusal by name.
-	if !strings.Contains(src, "out[i].Why = TableFixedReasonLayoutRecordTooLarge") {
+	if !strings.Contains(src, "out[i].Why = TableRefuseLayoutRecordTooLarge.Error()") {
 		t.Fatal("tableFixedLineagePlans does not map -3 to layout_record_too_large")
 	}
 	t.Log("PASS layout_record_too_large spelled in the generated runtime (Tblp3Table.go)")
