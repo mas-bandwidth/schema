@@ -17,7 +17,6 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -43,7 +42,7 @@ func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
 		// The TOTAL poison ("deep") is the row's own: a union arm is emitted
 		// final, and the shallow poison skips final fields, so it would leave the
 		// arm's own zero rather than the 0x5A that proves the poison reached it.
-		out, err := exec.Command(javaBin, "-ea", "-cp", classes, col.class, oldFile, "deep").CombinedOutput()
+		out, err := boundedCommand(t, javaBin, "-ea", "-cp", classes, col.class, oldFile, "deep").CombinedOutput()
 		if err != nil {
 			t.Fatalf("java %s %s deep: %v\n%s", col.class, filepath.Base(oldFile), err, out)
 		}
