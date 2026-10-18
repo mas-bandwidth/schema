@@ -80,14 +80,21 @@ local narrowF32 = function(x) {
   }
   if (exp == 0) { return sign << 31; }
   local e = exp - 1023;
-  local full = 0x10000000000000 | mant; // 53 bits, the implicit one included
-  local shift = 29;
-  if (e < -126) shift = 29 + (-126 - e);
-  local q = roundShift(full, shift);
   if (e < -126) {
-    // a subnormal (or zero); a carry into bit 23 is the smallest normal
+    // a float32 SUBNORMAL (docs/SPEC-TABLES.md §3): the value is
+    // 1.mantissa * 2^e = N * 2^(e-52), and the subnormal unit is 2^-149,
+    // so the significand is N >> (-e-97), rounded to nearest, ties to even.
+    local s = -e - 97;
+    if (s >= 54) return sign << 31;
+    local N = 0x10000000000000 | mant;
+    local half = 1 << (s - 1);
+    local q = (N + half) >>> s;
+    if (((N & ((1 << s) - 1)) == half) && (q & 1)) q = q - 1;
+    if (q == 0x800000) return (sign << 31) | 0x00800000;
     return (sign << 31) | (q & 0x007fffff);
   }
+  local full = 0x10000000000000 | mant; // 53 bits, the implicit one included
+  local q = roundShift(full, 29);
   if (q >= 0x1000000) { q = q >>> 1; e = e + 1; }
   if (e > 127) return (sign << 31) | 0x7f800000;
   return (sign << 31) | ((e + 127) << 23) | (q & 0x007fffff);
