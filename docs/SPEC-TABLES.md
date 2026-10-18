@@ -10647,8 +10647,8 @@ const Scene * scene = SceneOpen( bytes, length ); // point at it, or NULL
 
 `schema cook` writes the file; the runtime only ever points at one.
 
-**Backend status: the TOOL, EVERY READ SIDE, and the C++ WRITE side for BOTH
-classes are built (schema#251).** `schema cook`, `schema cook-check` and
+**Backend status: the TOOL, EVERY READ SIDE, and the C, C++ and Go WRITE sides
+for BOTH classes are built (schema#251).** `schema cook`, `schema cook-check` and
 `schema uncook` produce, validate and read back the form below, in both byte
 orders, over the same IR the emitters consume — and `wire → cook → wire` is
 byte-identical over the corpus, which is what proves the accelerator loses no
@@ -10661,11 +10661,13 @@ backend `<Root>Cook::open`, and the Elixir
 backend `cook_open_<root>`, which takes a `lead` beside the bytes for the
 base-alignment check a BEAM binary cannot carry (§7.1's alignment word, and the
 backend status in §2). A game points at a cook the tooling produced, whichever
-language it reads from. The WRITE side (`Cook` and `CookMeasure`, §7.6) is
-emitted by the C++ backend for every table, fixed or pointered, and its bytes
-are the tool's, byte for byte, in both byte orders over every instance the
-corpus carries; every other language's writer is a named follow-on (§15), and
-until it lands that build runs the tool.
+language it reads from. **A cook writer may exist in any port**: tools are
+what write cooked data, and a tool is written in whatever language its author
+chose. The WRITE side (`Cook` and `CookMeasure`, §7.6) is emitted by the C,
+C++ and Go backends for every table, fixed or pointered, and its bytes are the
+tool's, byte for byte, in both byte orders over every instance the corpus
+carries; the other languages' writers are named follow-ons (§15), and until
+one lands that build runs the tool.
 
 **THE SCALE THE COOK IS BUILT FOR, stated as the requirement it is** —
 *"Assume we have say, 100mbs or many gigabytes of data in Assets.bin at some
@@ -10971,9 +10973,10 @@ the wire, and keeps the flexibility that comes with it.
   into every comparison. A caller holding an `int64_t` from a `stat` casts once,
   at the call site, where the sign is still its own business.
 
-  **A ROOT IS ANY TABLE, and every table gets one.** Nothing on this page
-  narrows which table a cook may be rooted at, and two things say it is any of
-  them: `schema cook --root` names a TABLE and refuses anything else — a `type`
+  **A ROOT IS ANY TABLE, and every table gets one — unless its `forms`
+  declaration omits `cook` (§2.12), in which case that table gets no `Open`.**
+  Nothing on this page narrows which table a cook may be rooted at, and two
+  things say it is any of them: `schema cook --root` names a TABLE and refuses anything else — a `type`
   is not a node and has no type id (§3.1) — and §11 claims the spelling on every
   closure member. So the emission is per table, in every unit that declares one,
   and a FIXED root is not a second case: its cook is one region of one node
@@ -11013,19 +11016,24 @@ the wire, and keeps the flexibility that comes with it.
   | | C++ | C# | Go | JavaScript | Dart |
   |---|---|---|---|---|---|
   | open | `bool XOpen( const XCook *& cook, const void * base, int64_t bytes )` | `bool XCook.Open(out XCook cook, IntPtr p, long n)` | `bool XOpen(cook *XCook, base unsafe.Pointer, length int64) bool` | `XCook.Open(bytes: Uint8Array)` — the handle, or `null` for bytes that are not this build's; a caller's error (no `Uint8Array`, a view at an unaligned `byteOffset`) throws with the fix named | `XCook? XCook.open(Uint8List? bytes, int at, int length)` — null is the refusal |
+  | open, typed reason | — | — | `func (cook *XCook) Open(base, length) error` returning `TableRefuseReason`, beside the bool `XOpen` that forwards to it | — | — |
   | the handle | the root pointer itself | `readonly struct XCook` | `type XCook struct { Region unsafe.Pointer; RegionLength int64 }` | `{ Bytes, View, Region, Length }` — the region's offset inside the caller's view, and its length | `final class XCook` over `bytes`, its `region` offset and `length` |
   | the root | the return | `cook.Root` / `cook.RootPointer` | `cook.Root() *XRow` | `cook.Region`, the byte offset the root's accessors take | `cook.root(into)` — the cursor `cook.cursor()` made, lent and moved onto the root; no allocating twin |
-  | deref | `const T * t = XAt( slot )` | `XRow* r = Schema.XAt(slot)` | `r := XAt(slot)`, `slot *int64` | `XCook.At(cook, slot)` — the target's offset, or `null` for a null reference; a delta that leaves the region throws a `RangeError` naming the cook as corrupt | `row.<field>(into)` moves a lent `TRow` cursor; an escaping delta answers `TableCookRef.outside` |
+  | deref | `const T * t = XAt( slot )` | `XRow* r = Schema.XAt(slot)` | `r := XAt(slot)` with `slot *int64`; the signature is `XAt(slot *int64, arena ...*TableArena)`, the variadic arena naming the unlocked builder's storage | `XCook.At(cook, slot)` — the target's offset, or `null` for a null reference; a delta that leaves the region throws a `RangeError` naming the cook as corrupt | `row.<field>(into)` moves a lent `TRow` cursor; an escaping delta answers `TableCookRef.outside` |
   | the record | the generated struct | `XRow` (§11's claimed suffix) | `XRow`, the same claim | `XRow`, a frozen object of accessors over `(view, at)`: no struct to declare, so the offsets ARE the record | `XRow`, the same claim — a cursor of `(view, at)`, since Dart has no struct |
   | the descriptors | `XCook::Type()` | `XCook.Type` | `cook.Type() *TableCookInfo` | `XCook.Type` | `XCook.type`, a `const TableCookInfo` |
-  | §7.1's facts | `XCook::RegionAlignment` etc. | the same constants | `cook.RegionAlignment()`, `RootSize()`, `RootAlign()` — methods, which §11 leaves a language free to make them | `XCook.RegionAlignment`, `RootSize`, `RootAlign` | `XRow.rowSize` and `XRow.rowAlign`, `static const` on every record; the region alignment is the header's, read at `open` |
+  | §7.1's facts | `XCook::RegionAlignment` etc. | the same constants | `cook.RegionAlignment()`, `RootSize()`, `RootAlign()` — methods, which §11 leaves a language free to make them; `RegionAlignment()` is the UNIT's ceiling, the max over every cook closure, and not the opened file's per-region header word | `XCook.RegionAlignment`, `RootSize`, `RootAlign` | `XRow.rowSize` and `XRow.rowAlign`, `static const` on every record; the region alignment is the header's, read at `open` |
 
   **THE GENERATED STRUCT IS THE COOKED RECORD**, and the backend asserts it
   rather than assuming it: every record a unit's files declare carries
   `static_assert`s on its `sizeof`, its `alignof` and every field's `offsetof`
   against the numbers the compiler folded into the build version, so a compiler
   that lays a record out differently fails to BUILD, naming the record and the
-  field (§20.3).
+  field (§20.3). **Go's layout contract is an `init()` panic** on a record
+  size, an alignment or a field offset that disagrees with the model, beside
+  C++'s `static_assert` and C#'s `Verify`; C# has no `static_assert` and Go
+  says it where the program starts rather than in a constant expression,
+  because a person needs a message to act on.
 - **THE C# SURFACE, for the same reason the C++ one is here**: a consumer
   written from this page needs the spelling, and §19.2 already sets the shape a
   C# accelerator takes. **C# has no free functions**, so the claimed verbs are
@@ -11377,7 +11385,9 @@ fields would get wrong:
   and a mapped cook's `TableBytesAt` is a pointer into the data part at the
   header plus eight. **A `*wstring` blob's `length` is EVEN**, on kind `33`'s
   terms (§3), so its units are two-aligned at the header plus eight and the
-  terminator is the two bytes after them.
+  terminator is the two bytes after them. **The `*wstring` blob node is
+  specified ahead of its implementation, as §2.5 says**: the checker refuses
+  `*wstring`, and no backend emits it yet.
 - **A MAP's ENTRIES are BY-VALUE RECORDS INSIDE THE HOLDER'S NODE EXTENT**
   (§2.8): after the record's own storage, `count × sizeof( Entry )` at the
   entry's alignment, in ASCENDING KEY ORDER, one array per map the record
@@ -11387,7 +11397,12 @@ fields would get wrong:
   position for them; `schema cook-check` bounds each array inside its node as
   it bounds a count companion, walks each entry's pointer slots as it walks a
   bounded array's elements, and CHECKS THE ORDER, because a cook `Find` cannot
-  search is a forgery.
+  search is a forgery. **`schema cook` and `schema uncook` refuse every
+  map-bearing unit BY NAME**, because the tool's engine does not lay out the
+  entry arrays yet (§15); a generated runtime writer is not held to that
+  absence, and Go's map cook is held by an independent layout test,
+  `TestCookWriterMapExtentLayout`. The refusal is the tool's and not the
+  format's: a map is laid out above exactly as any value is.
 - **AN UNBOUNDED ARRAY's ELEMENTS are laid the same way** (§2.9): after the
   record's own storage, `count × sizeof( T )` at the element's alignment, in
   INDEX order, zero slack. Lists and maps are ONE POPULATION in that extent,
@@ -11841,6 +11856,25 @@ whose `arena` points at the builder's arena. `TableByteOrder_Little` and
 `TableAllocator` argument. The default pair is the builder's when a context
 names one, and the `schema_allocate`/`schema_release` hooks otherwise.
 
+**THE GO SURFACE** is the claimed name-first triple, and it is held to the
+tool's bytes byte for byte as the C and C++ writers are:
+
+```go
+func SettingsCookMeasure(value *Settings) int64
+func SettingsCookMeasureReason(value *Settings) (int64, error)
+func SettingsCookFrom(value *Settings, buffer []byte, order TableByteOrder) bool
+```
+
+A pointered root's measure and write take a `context ...TableWriteContext`
+instead, and the context names the builder's arena or the allocator the
+numbering runs through; a fixed root's takes the value, the buffer and the
+order and nothing else. The reason form's error is the `TableRefuseReason`
+value of §7's vocabulary; for refusals it reports, `CookFrom` answers
+`false`. Fixed-root `CookMeasure` is a layout constant even for a nil or
+invalid value, and fixed-root `CookMeasureReason` returns that constant with
+no error. Its `CookFrom` still validates the value and buffer, so its refusal
+does not imply a non-`ok` measurement reason.
+
 - **IT IS A MEASURE/WRITE SPLIT, exactly as the wire's is** (§6.1).
   `CookMeasure` answers the whole file's length — the header, the data part and
   the attribution part — in `int64_t`, because a cook's part lengths are 64
@@ -11926,6 +11960,19 @@ bool    SceneCook( const SceneBuilder & builder, void * out, uint64_t capacity, 
   the same input. A region `Load` produced holds null in every such slot, so a
   cook of a loaded wire never meets the case; a built structure that does has a
   pointer in storage its own count says is dead.
+- **THE GO WRITER NAMES ITS REFUSALS.** For pointered roots, an invalid
+  value (including a nil root, a counted used count below zero or above `N`,
+  a union tag past the arms, or a negative count or non-empty container in dead
+  storage) makes `CookMeasure` answer `-1` and `CookMeasureReason` return
+  `invalid_value`; a reference whose descent is still open returns
+  `data_cycle`, and a numbering that cannot grow returns `allocation_failed`.
+  `CookFrom` answers `false` for invalid order, value or short buffer. For fixed roots,
+  `CookMeasure` remains the structural constant and `CookMeasureReason`
+  returns it with no error even for invalid values; `CookFrom` validates the
+  value, buffer and order and answers `false` on refusal. A map-bearing root is
+  the TOOL's refusal and not the runtime writer's (§7.2): the Go writer lays
+  out the entry arrays, and §7.2 names the independent layout test that holds
+  them.
 - **WHAT ALLOCATES, AND THROUGH WHAT.** The caller still owns the OUTPUT
   buffer and nothing is allocated toward it. What the pointered writer
   allocates is the NUMBERING — the identity map, the entry array, and one
@@ -14863,9 +14910,11 @@ inspects everything in the schema built:
   a catalog is re-cooked when any table in its unit moves (§7).
   Everything about it is a decision — who declares the set, what proves two
   versions interchangeable — and none of that is decided here.
-- **THE COOK's WRITE SIDE in the remaining languages.** C++, C and Go write
+- **THE COOK's WRITE SIDE in the remaining languages.** C, C++ and Go write
   cooks of either class today and their bytes are the tool's (§7.6); a writer
-  may exist in any port, and Go's is one. Every other language's writer is the
+  may exist in any port. Go's is the claimed name-first triple
+  `<Name>CookMeasure`, `<Name>CookMeasureReason` and `<Name>CookFrom`, whose
+  surface §7.6 states. Every other language's writer is the
   same feature in that language's own idiom, held to the same `cook-write`
   surface — a language writes, the harness compares to the tool's bytes — and
   a pointered root's needs what the C++ one needed: the depth-first numbering
