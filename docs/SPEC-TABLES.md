@@ -12402,10 +12402,11 @@ on every descriptor, a pointer-free unit included, with false and zero where
 no pointer exists; a pointer-free unit carries the columns only because its
 spelling declares them, and they still say nothing there.
 
-**Go's descriptors are exported package variables filled in `init()`.**
-They are zero at package initialization and assigned in a generated `init()`,
-immutable by convention rather than by the language, so a walk that reads one
-sees any mutation made to it. A variable root's `<Name>Save` numbers its graph
+**Go's descriptor structs are exported package variables, immutable by
+convention.** A unit's `<Name>TableInfo` is filled in `init()`, while its
+`<Name>TableFields` slice is a statically initialized package var (a composite
+literal), so neither is handed a value twice; a walk that reads one sees any
+mutation made to it. A variable root's `<Name>Save` numbers its graph
 and writes each node through `<Name>TableType()` (`info.Fields`, `f.Table()`,
 `f.TargetId` and `info.SaveBody`), so it observes a mutation of
 `TableFieldInfo` or `TableTypeInfo`, whereas a fixed root's typed `SaveBody`
@@ -12685,9 +12686,10 @@ const UnitViewInfo * UnitView();
   order across a partial class's files and a registry names every
   declaration in the unit — the same reason the C# field descriptor reaches
   its nested table through one. The entry point is `Schema.UnitView()`. In Go
-  the registry and its descriptors are package variables filled in `init()`,
-  immutable by convention (§8.1), and `UnitView()` returns the address of the
-  one registry; it allocates nothing.
+  the registry `tableUnitView` is a statically initialized package var (a
+  composite literal), and only the view's packet descriptors are filled in
+  `init()`; both are immutable by convention (§8.1), and `UnitView()` returns
+  the address of the one registry; it allocates nothing.
 
 ### 8.4 What it costs: the include rule
 
