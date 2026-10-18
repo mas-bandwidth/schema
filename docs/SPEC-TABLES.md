@@ -9570,25 +9570,101 @@ The builder is designed to go wide, lock-free by ownership:
   clause with nothing invented and nothing hiding behind another value, so what
   this side adds is one value per refusal it distinguishes:
 
-  | value | what refused, and where it is stated |
+  <!-- refusal-names:begin -->
+  | member | what refused, and where it is stated |
   |---|---|
-  | `previous_form` | a form byte THIS FORM IS AHEAD OF (§3, §3.4). The registry is ordered, so a reader that meets a byte it does not carry names WHICH DIRECTION: the VARIABLE form handed to a FIXED reader is OLDER, and calling that `newer_form` would send a caller looking for a build that does not exist. The bytes are the same refusal either way — nothing decoded, no counter moved — and only the name of it differs |
-  | `unknown_form` | a form byte THIS CALL does not carry (§3). The read never begins, so it is a refusal and not damage, which is what §3 already says of it. **A FILE'S MEASURE ANSWERS IT FOR ANY BYTE THAT IS NOT THE VARIABLE FORM**, form `2` included: a build that carries the message form carries it through the message surface (§3.3), and a batch handed to a file root is a form its file measure does not read. The `Load` beside it distinguishes the two, answering `message_form_as_file` where the byte is `2` and `newer_form` otherwise, because a report has room to say which and a `-1` has one value |
+  | `not_a_cook` | the bytes are not a cook at all: neither this build's magic nor its byte reversal (§7, §7.1) |
+  | `foreign_order` | the magic is this build's constant byte-reversed: a cook of the other byte order (§7.1, §15) |
+  | `wrong_build_version` | the cook's `build_version` word is not this build's (§20). The announcement's own strict refusal is the typed `build_version_mismatch` below |
+  | `reserved_not_zero` | a reserved word or byte that must be zero is not (§3, §7, §21.3) |
+  | `bad_alignment` | the `alignment` word is not a power of two, is outside 8 through 64, or is not a multiple of the root's own `alignof` (§7) |
+  | `truncated` | a file or buffer shorter than its framing, or a fixed record whose inputs run past the bytes given (§3, §7) |
+  | `unaligned_base` | the caller's base pointer is null, or not aligned for the region the header names (§7) |
+  | `bad_layout` | the block accelerator's layout word, pitch, count or offset does not describe its arrays (§7, §19) |
+  | `unknown_form` | a form byte THIS CALL does not carry (§3). A file's measure answers it for any byte that is not the variable form, form `2` included, because a batch belongs to the message surface (§3.3); the `Load` beside it answers `message_form_as_file` for `2` and `newer_form` otherwise, because a report has room to say which and a `-1` has one value |
   | `count_over_length` | an array or map count whose elements cannot fit the field's own `L` (§2.8, §2.9) |
-  | `no_layout` | a FIXED-form record whose hash names no LAYOUT this reader holds (§3.4 — the layout is what form 1 called the vocabulary block). Nothing is decoded and no counter moves; the reader states the hash so the application can ask for that layout |
-  | `layout_malformed` | bytes handed to the fixed form as a layout that are not one, after the seven named rules below have had their say: fewer bytes than a header, or none at all (§3.4). The layout is refused WHOLE and sets nothing |
-  | `layout_count_mismatch` | the entry count does not fit the layout's length exactly — `4 + 17 * count` is not the length given, or the count is `0` (§3.4) |
-  | `layout_kind_unknown` | an entry at a kind OUTSIDE §3's closed set (§3.4). A fixed form's kind set is CLOSED, so an unknown kind means a newer FORM BYTE and a different form, not a newer layout of this one; it is refused rather than stepped over |
-  | `layout_kind_invalid` | a kind this build KNOWS, used in a way its own definition does not allow (§3.4): a root that is not a table, an optional wrapper or an array without exactly one child, an enum-keyed array without exactly two, an enum whose children are not variants, a leaf with children |
-  | `layout_size_mismatch` | an entry's stated constant size is not one its kind admits, or not the one its children account for (§3.4) |
-  | `layout_tree_unclosed` | the pre-order child walk does not consume exactly the entries (§3.4): the tree runs out of layout, or the layout outlasts the tree |
-  | `layout_too_deep` | a nesting depth past what this reader walks (§3.4). A bound on the WALK and not on the wire, so a hostile layout cannot spend a reader's stack before another rule fires |
-  | `layout_record_too_large` | a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode, and the same number the compiler stops emitting the form at |
-  | `plan_too_large` | a fixed-form layout whose compiled plan does not fit the plan storage the caller declared (§3.4), which is the announced vocabulary's `vocabulary_too_large` for the same reason and on the same rule: this codec never allocates |
   | `count_over_extent_cap` | a count above the `int32` extent cap (§2.2), which no region can hold whatever its size |
   | `blob_over_size_cap` | a blob whose length is past the derived-size cap (§3.1, §11) |
-  | `blob_shared` | one blob record named from two slots (§2.5): every writer refuses to emit it, the tolerant read keeps the one node and counts it, and the strict read refuses it |
   | `data_cycle` | a data cycle reached from a builder, which is the AUTHORING side's `-1` and the one value here that is not about a wire (§3.1, §7.6) |
+  | `invalid_value` | a writer handed a value outside the declaration: a count past its maximum, a value off min or max, an ordinal past its set, ill-formed text. The fixed writer answers it as its save reason (§3.1, §11) |
+  | `allocation_failed` | an allocation the codec asked for was refused (§7.6) |
+  | `wire_damaged` | a read that reached damage rather than a refusal: the report's verdict is damage (§4) |
+  | `malformed` | a tolerant read that saw a malformed body; the report counts it (§4) |
+  | `clamped` | a tolerant read that clamped a value to its declared bound; the report counts it (§4) |
+  | `kind_mismatch` | a wire field whose kind does not match the declaration; the report counts it (§4) |
+  | `base64_damaged` | base64 text with a byte outside the alphabet, or the wrong padding (§16.8) |
+  | `base64_not_canonical` | base64 text that decodes but is not the canonical spelling of its bytes (§16.8) |
+  | `integrity_mismatch` | the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19) |
+  | `non_finite` | a plain float the read landed as a NaN or an infinity (§3.3). The report's reason is `non_finite: <field>` |
+  | `blob_shared` | one blob record named from two slots (§2.5): every writer refuses to emit it, the tolerant read keeps the one node and counts it, and the strict read refuses it |
+  | `build_version_mismatch` | the strict announcement read's typed refusal: the peer's build version and the reader's own do not match, carried as `TableBuildVersionMismatch` (§3.3) |
+  | `missing_required` | a record lacks a field declared required (§2.3). The reason is `missing_required: <fields>` and the typed `TableMissingRequired` names them |
+  | `previous_form` | a form byte THIS FORM IS AHEAD OF (§3, §3.4). The registry is ordered, so a reader that meets a byte it does not carry names WHICH DIRECTION: the VARIABLE form handed to a FIXED reader is OLDER, and calling that `newer_form` would send a caller looking for a build that does not exist. The bytes are the same refusal either way — nothing decoded, no counter moved — and only the name of it differs |
+  | `newer_form` | a form byte this reader does not carry and is not older than its own (§3, §3.4, §21.3): the fixed load's answer for a byte it does not carry, and the file `Load`'s answer where the byte is not `2` |
+  | `message_form_as_file` | a message batch, form byte `2`, handed to a file or fixed reader whose table lives in the message surface (§3.3). The old prose reason "message form requires an announced vocabulary and a message reader" is this member |
+  | `layout_unknown` | a fixed file's header hash that no entry of this build's lineage holds (§3.4, §21.3, algorithm §5.3 step 5). Nothing is decoded and no counter moves; the reader states the hash so the application can ask for that layout |
+  | `layout_unsupported` | the hash IS in the lineage, below its floor: an older, retired layout, so upgrade the client (§21.3) |
+  | `layout_newer` | RESERVED: a hash the lineage PROVES newer than this reader's own (§21.3). Go answers `layout_unknown` and no reader that has taken §21.3 emits this; the legs that have not taken it still do, and every port declares the member |
+  | `layout_malformed` | bytes handed to the fixed form as a layout that are not one, after the seven named rules below have had their say: fewer bytes than a header, or none at all (§3.4). Also the name a malformed lock lineage entry reports (§21.3). The layout is refused WHOLE and sets nothing |
+  | `layout_count_mismatch` | the entry count does not fit the layout's length exactly — `4 + 17 * count` is not the length given, or the count is `0` (§3.4). KEPT by the lineage rule: the lock-init parse still reaches it at `fixedruntime.go:1085` through the call at `:1681` |
+  | `layout_kind_unknown` | an entry at a kind OUTSIDE §3's closed set (§3.4). A fixed form's kind set is CLOSED, so an unknown kind means a newer FORM BYTE and a different form, not a newer layout of this one; it is refused rather than stepped over. KEPT: the lock-init parse still reaches it at `fixedruntime.go:907` and `:1056` through the call at `:1681` |
+  | `layout_kind_invalid` | a kind this build KNOWS, used in a way its own definition does not allow (§3.4): a root that is not a table, an optional wrapper or an array without exactly one child, an enum-keyed array without exactly two, an enum whose children are not variants, a leaf with children. KEPT: the lock-init parse still reaches it at `fixedruntime.go:957`, `:970`, `:979` and their siblings through the call at `:1681` |
+  | `layout_size_mismatch` | an entry's stated constant size is not one its kind admits, or not the one its children account for (§3.4). KEPT: the lock-init parse still reaches it at `fixedruntime.go:952`, `:965`, `:974` and their siblings through the call at `:1681` |
+  | `layout_tree_unclosed` | the pre-order child walk does not consume exactly the entries (§3.4): the tree runs out of layout, or the layout outlasts the tree. KEPT: the lock-init parse still reaches it at `fixedruntime.go:896` and `:1106` through the call at `:1681` |
+  | `layout_too_deep` | a nesting depth past what this reader walks (§3.4). A bound on the WALK and not on the wire, so a hostile layout cannot spend a reader's stack before another rule fires. KEPT: the lock-init parse still reaches it at `fixedruntime.go:900` through the call at `:1681` |
+  | `layout_record_too_large` | a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode, and the same number the compiler stops emitting the form at (§3.4, §21.3) |
+  | `plan_too_large` | a fixed-form layout whose compiled plan does not fit the plan storage the caller declared (§3.4), which is the announced vocabulary's `vocabulary_too_large` for the same reason and on the same rule: this codec never allocates |
+  | `no_layout` | a FIXED-form record whose hash names no LAYOUT this reader holds (§3.4, §21.3 — the layout is what form 1 called the vocabulary block). Nothing is decoded and no counter moves; the reader states the hash so the application can ask for that layout |
+  | `batch_too_large` | a message batch past the form's batch bound (§3.3), or a fixed save whose value list is past the batch bound (§3.4) |
+  | `text_ill_formed` | a fixed-form TEXT payload that is not the declared text kind: not valid UTF-8, or a wide or bytes payload that does not decode (§3.4) |
+  | `count_over_bound` | a fixed record's count past the count bound its plan declares (§3.4) |
+  | `length_over_bound` | a fixed text or blob length past the length bound its plan declares (§3.4) |
+  | `no_vocabulary` | a message batch read before any vocabulary was announced (§3.3) |
+  | `second_announcement` | a second announcement on a vocabulary that already has one, or after a refusal (§3.3) |
+  | `vocabulary_too_large` | an announced vocabulary past the reader's declared byte or entry storage (§3.3); the fixed plan's `plan_too_large` is the same rule on the same codec |
+  | `text_unknown_key` | a record key, enum-keyed slot or union arm not declared here (§16.9.4) |
+  | `text_duplicate_key` | a second decoded field, map key, keyed slot, union arm or flags name in the same container (§16.9.4) |
+  | `text_bound` | any numeric, string, byte or count bound violated, including a short fixed array (§16.9.4) |
+  | `text_unterminated` | EOF while a string, escape, list or key/value pair is still open; a line comment at EOF alone is complete (§16.9.4) |
+  | `text_syntax` | other lexical or grammar errors, including trailing non-trivia input (§16.9.4) |
+  | `text_kind_mismatch` | a well-formed value of the wrong expected kind or shape, or an inexact fixed fraction (§16.9.4) |
+  | `text_unknown_variant` | an unknown enum or flags name (§16.9.4) |
+  | `text_encoding` | invalid UTF-8, a string scalar escape or a base64 encoding (§16.9.4) |
+  | `text_timestamp` | an invalid or unrepresentable timestamp (§16.9.4) |
+  | `text_missing_required` | a required field is absent (§16.9.4). The binary and JSON reads name the same absence `missing_required`, above |
+  | `text_inactive_field` | an explicit field whose guard is false (§16.9.4) |
+  | `text_reference` | an invalid sharing construct, label, type or cycle (§16.9.4) |
+  | `text_limit` | a caller-supplied byte, token, node or decoded-allocation limit is exceeded, or the depth cap of 128 (§16.9.4) |
+  | `text_edit_conflict` | an edit cannot preserve the requested source spans or comment disposition (§16.9.4) |
+  | `json_root_not_array` | an array-root table's text is not a top-level array (§16.10). The report's reason is `json_root_not_array: <Table>` |
+  | `text_holds_zero` | a text field that holds a NUL where the declaration does not allow one (§16.3). The report's reason is `text_holds_zero: <Table>.<field>` |
+  | `timestamp_not_rfc3339` | a timestamp string outside RFC 3339 §5.6's exact `date-time` production (§2.11). The report's reason is `timestamp_not_rfc3339: <field>` |
+  | `timestamp_out_of_range` | a `time.Time` whose nanoseconds do not fit an `int64`: outside the years 1678 through 2262 (§2.11). Carried as the typed `TableTimestampError`, whose `Error()` is `timestamp_out_of_range: <field> <time> is outside the years 1678 through 2262` |
+  <!-- refusal-names:end -->
+
+  **THE TABLE IS THE WHOLE ENUM, AND EVERY PORT SPELLS THE SAME SET.**
+  `TableRefuseReason` is one closed enum shared by the load, measure, cook,
+  fixed-form, message and text paths; a port declares every member of the
+  table above even when its own implementation can never answer it, so the
+  names, their order and their spelling agree in all nine ports and a caller
+  may compare against any of them. The rows whose reason carries a
+  `": <Table>.<field>"` suffix (`missing_required`, `non_finite`,
+  `json_root_not_array`, `text_holds_zero`, `timestamp_not_rfc3339`) are
+  spelled the same way in the first column: the enum member is the name before
+  the colon and the suffix is the report's field.
+
+  **What the lineage model retired, and what it kept.** A fixed reader never
+  parses a stranger's layout: it matches the file's hash against the lock's
+  lineage, and a hash it does not hold is `layout_unknown` before any layout
+  byte is walked (§21.3). The five parse-rule names the old table listed —
+  `layout_count_mismatch`, `layout_kind_unknown`, `layout_kind_invalid`,
+  `layout_size_mismatch`, `layout_tree_unclosed` — were candidates for
+  retirement, and each was checked against the one parse Go still runs: the
+  lock-init path that lays the lineage plans from the lock's own bytes
+  (`fixedruntime.go:1675-1697`, the call at `:1681`). All five are still
+  reachable from that call through `tableFixedParseLayout` and its `c.fail`
+  literals, so all five are KEPT and the row names the reachable line; the
+  same check keeps `layout_too_deep`. No member was retired.
 
   **`data_cycle` IS THE ONE VALUE WITH NO CARRIER TODAY, and the ruling is
   that it gets one rather than that it loses its name**: `LoadMeasure` is the
@@ -9613,16 +9689,18 @@ The builder is designed to go wide, lock-free by ownership:
   an exception, `Result` in Rust, an error value in Go, the language's
   standard error idiom in C#, Java, JavaScript and Dart, and a tagged tuple in
   Elixir. The C++ reference spells `TableRefuseReason` in every unit, with
-  §7's eight values first in the order the check runs them, then
-  `bad_layout`, then the five above, and `LoadMeasure` takes it as a trailing
-  out-parameter, `TableRefuseReason * reason_out = NULL`, so a caller that
-  does not ask keeps the signature it had. It is written on the refusal path
-  only: a `-1` for a form byte this build does not carry writes
-  `unknown_form`, one for a count writes its count value, one for a blob past
-  the cap writes `blob_over_size_cap`, and a measure that answers a size
-  writes nothing. A `-1` for a trailer that cannot be read whole, which is
-  damage and not a refusal, writes nothing either. No port spells the enum
-  yet; each claims it with the wire form it lacks (§15).
+  §7's values first in the order the check runs them, then `bad_layout`, then
+  the fixed-form, report-only, message and text values above in table order,
+  and `LoadMeasure` takes it as a trailing out-parameter,
+  `TableRefuseReason * reason_out = NULL`, so a caller that does not ask keeps
+  the signature it had. It is written on the refusal path only: a `-1` for a
+  form byte this build does not carry writes `unknown_form`, one for a count
+  writes its count value, one for a blob past the cap writes
+  `blob_over_size_cap`, and a measure that answers a size writes nothing. A
+  `-1` for a trailer that cannot be read whole, which is damage and not a
+  refusal, writes nothing either. Every port spells the same set: a port
+  lacking a member it can never answer still declares it, so no caller has to
+  know which port emitted a name before comparing it (§15).
 - **Into a builder** — the tool's path. The same tolerant decode into a
   fresh builder, so loaded data can be edited and locked again. **Its own
   refusal is a NULL** rather than a `-1`, and the report it leaves behind is
