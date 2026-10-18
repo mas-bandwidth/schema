@@ -61,6 +61,7 @@ func (m *Model) Read(inst *Instance, text []byte, report *Report) bool {
 	if m.IsVariable(inst.Def.Name) {
 		in.graph = map[uint64]labelEntry{}
 	}
+	in.byteOrderMark()
 	ok := in.readTable(inst, 0)
 	if ok {
 		in.space()
@@ -108,6 +109,16 @@ func (in *reader) space() {
 			in.bad = true
 		}
 		return
+	}
+}
+
+// byteOrderMark skips a leading UTF-8 byte-order mark (docs/SPEC-TABLES.md
+// §16.2, §16.12): EF BB BF as the text's first three bytes and nowhere else.
+// RFC 8259 §8.1 lets a parser ignore it, it costs one comparison, and it is
+// not data. No writer emits one.
+func (in *reader) byteOrderMark() {
+	if in.pos == 0 && len(in.text) >= 3 && in.text[0] == 0xEF && in.text[1] == 0xBB && in.text[2] == 0xBF {
+		in.pos = 3
 	}
 }
 
@@ -1963,6 +1974,7 @@ func bigToFloat(v *big.Int) float64 {
 // `?T`, and nothing is coerced.
 func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 	in := &reader{text: text, report: report, m: m}
+	in.byteOrderMark() // §16.2, §16.12: a whole text, so its leading mark is skipped
 	m.reset(fv)
 	var ok bool
 	switch shape := in.valueShape(); {
@@ -1996,6 +2008,7 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 // that become a bounded array's elements in name order.
 func (m *Model) ReadElement(fv *Field, slot int, text []byte, report *Report) bool {
 	in := &reader{text: text, report: report, m: m}
+	in.byteOrderMark() // §16.2, §16.12: a whole text, so its leading mark is skipped
 	fv.Elems[slot] = m.elementZero(fv.Def)
 	var ok bool
 	if in.valueShape() != ElementShape(fv.Def) {
