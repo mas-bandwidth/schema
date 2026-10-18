@@ -154,7 +154,7 @@ end
 -- a union arm's payload is a field line: its pointers, blobs, tables, arrays
 -- and nested unions are edges at the arm's position (§2.6, §3.1).
 edge_union = function(T, u, val, out, cache)
-  local tag = val and val.tag or 0
+  local tag = type(val) == "table" and val.tag or 0
   if tag == 0 or u == nil then return end
   local arm = u.arms[tag]
   if arm == nil or arm.field == nil then return end
@@ -162,8 +162,11 @@ edge_union = function(T, u, val, out, cache)
 end
 
 -- the pointer and blob edges of one node's by-value closure, in the walk's
--- order: fields in declaration order, array elements in index order.
+-- order: fields in declaration order, array elements in index order. An absent
+-- by-value node (nil) holds only its declared defaults and no pointer or blob
+-- edge (§3, §4.2).
 edges = function(T, desc, v, out, cache)
+  if v == nil then return out end
   for _, fd in ipairs(desc.fields) do
     edge_value(T, fd, v[fd.name], v, fd.name, out, cache)
   end
@@ -235,10 +238,14 @@ local function at_default(fd, v)
     elseif es == "string" or es == "bytes" then def = "" end
     for i = 1, n do
       local e1 = x[i]
-      if e1 == nil then e1 = def end
       if es == "union" then
-        if e1 ~= nil and e1.tag ~= 0 then return false end
-      elseif e1 ~= def then return false end
+        -- a non-table element in a union array saves as the default union,
+        -- tag 0 (§2.6, §4.2)
+        if type(e1) == "table" and (e1.tag or 0) ~= 0 then return false end
+      else
+        if e1 == nil then e1 = def end
+        if e1 ~= def then return false end
+      end
     end
     return true
   end
@@ -274,13 +281,13 @@ local function write_keyed_one(T, ids, nodes, e, val, w)
     if (val or 0) == 0 then return true, false end
     w_int(w, e.width, e.signed, val or 0)
   elseif s == "float" then
-    if val == 0 then return true, false end
+    if (val or 0) == 0 then return true, false end
     if e.f32 then w_raw(w, narrow_f32(val)) else w_f64(w, val) end
   elseif s == "string" then
-    if #val == 0 then return true, false end
+    if val == nil or #val == 0 then return true, false end
     w_raw(w, val)
   elseif s == "wstring" then
-    if #val == 0 then return true, false end
+    if val == nil or #val == 0 then return true, false end
     for i = 1, #val do w_raw(w, string.pack("<I2", val[i])) end
   elseif s == "enum" then
     if val == nil or val == false then return true, false end
@@ -298,10 +305,10 @@ local function write_keyed_one(T, ids, nodes, e, val, w)
   elseif s == "union" then
     local u = T.Unions[e.target]
     if u == nil then return false end
-    if val == nil or (val.tag or 0) == 0 then return true, false end
+    if type(val) ~= "table" or (val.tag or 0) == 0 then return true, false end
     if not write_union(T, ids, nodes, u, val, w) then return false end
   elseif s == "bytes" then
-    if #val == 0 then return true, false end
+    if val == nil or #val == 0 then return true, false end
     w_u8(w, 6); w_leb(w, #val); w_raw(w, val)
   else
     return false
@@ -442,7 +449,7 @@ write_element = function(T, ids, nodes, e, val, body)
   local s = e.shape
   if s == "bool" then w_u8(body, val and 1 or 0)
   elseif s == "int" or s == "flags" then w_int(body, e.width, e.signed, val or 0)
-  elseif s == "float" then if e.f32 then w_raw(body, narrow_f32(val)) else w_f64(body, val) end
+  elseif s == "float" then if e.f32 then w_raw(body, narrow_f32(val or 0.0)) else w_f64(body, val or 0.0) end
   elseif s == "enum" then
     local vref = 0
     if val ~= nil and val ~= false then for _, var in ipairs(e.variants) do if var[1] == val then vref = id_ref(ids, var[2]); break end end end
@@ -458,12 +465,13 @@ write_element = function(T, ids, nodes, e, val, body)
     local u = T.Unions[e.target]
     if u == nil then return false end
     if not write_union(T, ids, nodes, u, val, body) then return false end
-  elseif s == "string" then w_leb(body, #val); w_raw(body, val)
+  elseif s == "string" then val = val or ""; w_leb(body, #val); w_raw(body, val)
   elseif s == "wstring" then
+    val = val or {}
     local parts = {}
     for i = 1, #val do parts[#parts + 1] = string.pack("<I2", val[i]) end
     w_leb(body, #table.concat(parts)); w_raw(body, table.concat(parts))
-  elseif s == "bytes" then w_leb(body, #val); w_raw(body, val)
+  elseif s == "bytes" then val = val or ""; w_leb(body, #val); w_raw(body, val)
   else
     -- a blob element (the checker refuses an array of byte buffers, §15) or
     -- any shape the save does not carry refuses
@@ -472,9 +480,13 @@ write_element = function(T, ids, nodes, e, val, body)
   return true
 end
 
+-- A nil by-value node saves as its default: every field at its declared
+-- default is elided in form 1, leaving the terminator byte (§3, §4.2).
 write_body = function(T, ids, nodes, desc, v, w)
-  for _, fd in ipairs(desc.fields) do
-    if not write_field(T, ids, nodes, fd, v, w) then return false end
+  if v ~= nil then
+    for _, fd in ipairs(desc.fields) do
+      if not write_field(T, ids, nodes, fd, v, w) then return false end
+    end
   end
   w_u8(w, 0)
   return true
@@ -483,7 +495,7 @@ end
 local write_union_at
 
 write_union = function(T, ids, nodes, u, val, w)
-  local tag = val.tag or 0
+  local tag = type(val) == "table" and val.tag or 0
   if tag == 0 then w_leb(w, 0); return true end
   local arm = u.arms[tag]
   if arm == nil then return false end
