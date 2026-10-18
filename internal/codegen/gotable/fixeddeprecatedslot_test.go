@@ -12,7 +12,10 @@ func TestFixedDeprecatedSlotIsTheDeclaredDefault(t *testing.T) {
 	t.Parallel()
 	runGenerated(t, `package probe
 
-type Child { retired uint8 = 7 | deprecated; value uint16 = 9 }
+type Child {
+    retired uint8 = 7 | deprecated
+    value uint16 = 9
+}
 fixed table T
 {
     a int32
