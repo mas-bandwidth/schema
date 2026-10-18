@@ -1626,10 +1626,31 @@ when its slot is non-null, and reads back as a non-null buffer of length zero.
 That is the presence rule every pointer-shaped spelling lives under (§3), and
 it is what `bytes(N)` cannot say without spending a field.
 
-**A blob is a NODE, so it has identity and sharing** (§3.1, §6.2): two slots
-that name one blob name one node on the wire, in a region and in a cook —
-one body, written once, read back as one. The text form is the one place a
-blob cannot be shared (§16.7).
+**A blob is OWNED BY ONE SLOT** (§3.1, §6.2), and the ruling is stated in
+Postel's terms: WRITTEN STRICT, READ TOLERANT, and REFUSED BY NAME ON THE
+STRICT READ. A blob is a node, so a wire can spell two slots naming one blob
+record; that wire is malformed by name, `blob_shared`. **Every writer of the
+wire, the message form or the text refuses to emit it**: `Measure` and `Save`
+answer `-1` with `blob_shared` on the reason path, the message writer refuses
+with the same reason, the base64 carrier (§16.8) refuses with the same reason,
+and the text writer (§16.7) refuses the graph by the same name. The walk that numbers the
+nodes already meets the second slot, so the refusal is one test there and
+costs nothing else. **The TOLERANT read** (`Load`, the builder load) accepts
+the wire: it keeps the value, both slots naming the ONE node it decoded and
+never a copy per slot, and counts each extra naming in the report's
+`blob_shared` counter. **The STRICT read** (§6.5) refuses it by name. The
+accepting rulings are refused because they lose security: spelling the
+blob's value at each slot in the text, or un-sharing it in `Save` by writing
+a copy per slot, each turns a wire into an output many times its size with
+no cap to stop it (4096 slots naming one 64 KiB blob is an 86 KB wire and
+about 358 MB of base64; a `[..65535]` list naming one 1 MiB blob is about
+91 GB), and security outranks acceptance. A region made by a tolerant read
+holds the one node and its one body, as it holds any node; `Lock` and `Cook`
+pack the graph as they find it, and a later `Save` or text write of that value
+refuses. **The C++ reference and the `tables/blobs` corpus's shared-blob
+instance differ from this standard**: the reference still writes a blob named
+from two slots, and the corpus still carries that instance as a legal wire.
+Their port is parked by the owner, and this ruling does not edit them.
 
 **The read is a pointer and a length, and it allocates nothing.** In C++,
 `TableBytesAt( ctx, node->data )` answers a `TableBytesView` — `data` and
@@ -3080,11 +3101,12 @@ the cook's bytes, and a loaded region.
   refusal §7.6 gives a pointer in that position. **Every `-1` here carries its
   REASON**, from the one enum §6.5 states and the accelerators share.
 - **THE DESCRIPTORS DESCRIBE IT AS A COUNTED ARRAY WITH NO BOUND** (§8.1):
-  `array_bound` is `0`, which reads as "no declared bound", and a walker takes
-  its extent from the COUNT COMPANION exactly as it does for a `[..N]T`. The
-  element storage is reached through the reference rather than found inline,
-  which is what a map's entries already are. No descriptor column is added and
-  none moves.
+  the `UnboundedContainer` column is set and `array_bound` is `0` beside it,
+  which reads as "no declared bound", and a walker takes its extent from the
+  COUNT COMPANION exactly as it does for a `[..N]T`. The element storage is
+  reached through the reference rather than found inline, which is what a
+  map's entries already are. That one column is the whole addition, and no
+  other column moves.
 - **What that buys is what the cook exists for.** Zero bytes past the elements
   themselves, `Open` still O(1) and untouched, indexing in place with one
   multiply, `memcpy` relocation intact because the one reference is
@@ -9555,6 +9577,7 @@ The builder is designed to go wide, lock-free by ownership:
   | `plan_too_large` | a fixed-form layout whose compiled plan does not fit the plan storage the caller declared (§3.4), which is the announced vocabulary's `vocabulary_too_large` for the same reason and on the same rule: this codec never allocates |
   | `count_over_extent_cap` | a count above the `int32` extent cap (§2.2), which no region can hold whatever its size |
   | `blob_over_size_cap` | a blob whose length is past the derived-size cap (§3.1, §11) |
+  | `blob_shared` | one blob record named from two slots (§2.5): every writer refuses to emit it, the tolerant read keeps the one node and counts it, and the strict read refuses it |
   | `data_cycle` | a data cycle reached from a builder, which is the AUTHORING side's `-1` and the one value here that is not about a wire (§3.1, §7.6) |
 
   **`data_cycle` IS THE ONE VALUE WITH NO CARRIER TODAY, and the ruling is
@@ -9598,8 +9621,9 @@ The builder is designed to go wide, lock-free by ownership:
 - **The STRICT read** — one call, `<Name>ReadStrict( wire )`, that answers
   the root or refuses. It refuses, with ONE typed reason, a read that is
   malformed, clamped, kind-mismatched, of an unknown form, wire-damaged,
-  build-version-mismatched, missing a required field (§2.3) or holding a
-  non-finite plain float (`non_finite`, §3.3, a plain float's special values). It does NOT refuse `unknown`, `widened` or
+  build-version-mismatched, missing a required field (§2.3), holding a
+  non-finite plain float (`non_finite`, §3.3, a plain float's special values) or
+  naming one blob from two slots (`blob_shared`, §2.5). It does NOT refuse `unknown`, `widened` or
   `retained` alone: `unknown` is evolution, `widened` decoded exactly, and
   `retained` reports on retention rather than on a loss (the cards facade's
   `ReadStrict`, docs/CARDS.md: `Unknown`, `Retained` and `Widened` alone are
@@ -9607,7 +9631,7 @@ The builder is designed to go wide, lock-free by ownership:
   `-1` carries, or `TableBuildVersionMismatch` for the announcement's strict
   refusal (§3.3), or `TableMissingRequired` naming the missing field (§2.3), so the language's typed-error test matches it (`errors.Is`
   in Go). Values this read adds (`malformed`, `clamped`, `kind_mismatch`)
-  (and `non_finite`) are appended to that enum and never renumbered. `TableReport.Err()`
+  (and `non_finite`, then `blob_shared`) are appended to that enum and never renumbered. `TableReport.Err()`
   answers the same reason for every counter this read refuses, and nil on a
   clean read and on a read whose only counters are `unknown`, `widened` or
   `retained`. The call owns its builder: the caller does not measure, does
@@ -11835,8 +11859,8 @@ unaffected: a keyed array OF enums carries both (§2.4). A positional array
 leaves all three NULL.
 
 **A MAP AND AN UNBOUNDED ARRAY ARE ARRAY FIELDS WHOSE ELEMENTS ARE NOT
-INLINE, and `array_bound = 0` is what says so.** Neither had a written rule
-before this section, so the rule is here, one shape for both:
+INLINE, and the `UnboundedContainer` column is what says so.** Neither had a
+written rule before this section, so the rule is here, one shape for both:
 
 - **`kind` is the ELEMENT kind, as on every array line**: `13` for a map, the
   generated entry being a table; the element's own kind for a list, and `17`
@@ -11849,13 +11873,28 @@ before this section, so the rule is here, one shape for both:
 - **`counted` is set and `count_offset` names the `int32` count**, which sits
   beside the reference in the sixteen-byte slot (§7.2), so a walker reads the
   live extent where it reads any counted array's.
-- **`array_bound` IS `0`, and it is the ONE TELL**. Every other array shape has
-  a bound of at least one, since a fixed or bounded array with `N < 1` is
-  refused (SPEC.md §4.6) and a keyed array's is `E.Max`, so zero is free and
-  means
-  exactly this: **the field's `offset` names an `int64` REFERENCE, not the
-  first element**, and a walker resolves it before it steps. That is one
-  comparison in a generic walk and no new column in nine ports.
+- **`UnboundedContainer` IS SET, and it is the ONE TELL.** It is true on
+  every field that is a container with no declared bound — a map, a `[]T`, a
+  text list `[]string(M)` (§2.13) — and false on every other field: a fixed,
+  bounded or keyed array, a string, bytes, a scalar. It has ONE meaning:
+  **the field's `offset` names an `int64` REFERENCE, not the first element**,
+  and a walker resolves it before it steps, then takes the live extent from
+  the count. That is one comparison in a generic walk.
+- **`UnboundedContainer` is not `Unbounded`.** The `Unbounded` column (§2.13.1)
+  marks unbounded TEXT, a slot naming a blob record, and says nothing about a
+  container. A text list of unbounded text, `[]string`, carries both, each in
+  its own place: `UnboundedContainer` on the list's field, `Unbounded` on the
+  element's (the `value` field of the element descriptor `table` names), so a
+  walker tells an unbounded container from unbounded text by name and never
+  by inference.
+- **`array_bound` IS `0` beside it**, never a stand-in maximum such as
+  `2^31 - 1`: a container has no declared bound, so its bound column names
+  none, and a reader that holds `array_bound` as a limit holds
+  `UnboundedContainer` as NO limit. Zero alone is not the tell — a plain
+  scalar's bound is `0` too — so a walker reads the container from
+  `UnboundedContainer` and never infers it from the bound. (The zero cannot
+  collide with a declared bound: a fixed or bounded array with `N < 1` is
+  refused, SPEC.md §4.6, and a keyed array's is `E.Max`.)
 - **`table` names the ELEMENT's descriptor**: the generated entry's for a map
   (§2.8), the element type's own for a list of tables, and NULL for a list of
   scalars, exactly as a bounded array of scalars leaves it NULL.
@@ -11870,10 +11909,11 @@ cannot spell for itself it still cannot spell: placing an entry by key in a
 the walk has no name for, so a resolver stays where a resolver is needed, and
 it is one column, `place( worker, slot, key, key_length, key_value )`, which a
 map reads as an insert by key and a list reads as an append. The SHAPE is read
-from `kind`, `is_array`, `counted`, `element_size` and `array_bound = 0` like
-every other array's, the count from `count_offset`, and the array from the
-reference at `offset`, so nothing about the two constructs is inferred from a
-column of their own. A unit that has neither construct carries no `place`
+from `kind`, `is_array`, `counted` and `element_size` like every other
+array's, the container from `UnboundedContainer`, the count from
+`count_offset`, and the array from the reference at `offset`, so beside that
+one column nothing about the two constructs is inferred from a column of
+their own. A unit that has neither construct carries no `place`
 column, which is §2.2's gate doing its job.
 
 **The public currency is the KEY; the storage index is private** (§2.4).
@@ -14518,10 +14558,11 @@ inspects everything in the schema built:
   its arena and its region, the three reserved type ids in its load dispatch,
   the text form's three spellings, and the cook layout's blob case, held to the
   `tables/blobs` instances the harness carries.
-- **A SHARED BLOB in the text form** (§16.7): a blob's text is a string, which
-  has no first key to carry `&node`, so a blob named from two slots has no
-  spelling and the writer refuses the graph. The relative-file include above
-  is the natural one — two slots naming one file — and the two land together.
+- **A SHARED BLOB in the text form** is CLOSED (§2.5, §16.7): a blob is owned
+  by one slot, every writer refuses a graph that names one blob from two slots
+  by name (`blob_shared`), and the strict read refuses the wire, so there is no
+  spelling for the text form to owe. The relative-file include above stands on
+  its own.
 - **An ARRAY OF BYTE BUFFERS**, `[..N]*bytes` and `[N]*bytes`: the landed
   array of pointers (§2.1, §3.1) with a blob node as the element. The slot
   array and its elision rules carry over unchanged; what it needs decided is
@@ -15576,12 +15617,13 @@ slot writes its bytes and a `*wstring` slot its transcoded units as a JSON
 string, `null` for a null reference, and the
 reader allocates a blob of exactly the decoded length in the builder's arena;
 a `*bytes` body that is not base64 is `kind_mismatch` with the reference left
-null, as a `bytes(N)` body is with the field left at its default. A string
-has no first key to carry `&node`, so a blob named from more than one slot has
-no definition this form can spell, and the writer refuses the graph as it
-refuses a shared node with nothing to write — the corpus carries that
-instance on the wire alone, marked `no-text` on its line, and the include by
-relative file that would give it a spelling is named in §15.
+null, as a `bytes(N)` body is with the field left at its default. A blob is
+owned by one slot (§2.5), so a graph in which two slots name one blob is one
+no writer emits: the text writer refuses it BY NAME, `blob_shared`, the same
+reason the wire writer answers, and there is no spelling to owe. A string has
+no first key to carry `&node`, and writing the value at each slot is the
+amplification §2.5 refuses. The corpus's shared-blob instance, marked
+`no-text` on its line, is the parked C++ reference's (§2.5).
 
 **What a reader builds.** The variable class is not held by value (§6.2), so
 its text form reads through the BUILDER, and writes from the CONST root of a
@@ -15992,6 +16034,102 @@ key is (§16.4): it is not in the projection, the build version (§20), the lock
 or the tables baseline (§18), and adding or removing it costs a stored file
 nothing. Go carries it first; every other target refuses a unit that uses it,
 centrally, by name.
+
+### 16.11 Generated round-trip and damage tests: `schema testgen`
+
+**Every adopter wrote the same tests by hand, per table: a value through the
+three forms and back, and a damaged input refused by name.** `schema testgen`
+writes them from the declaration, so the guarantees §3, §6.5, §16.2 and §16.8
+make are held for a unit's own tables by tests nobody typed.
+
+```
+schema generate --lang go --out gen  tables/examples
+schema testgen  --lang go --out gen  tables/examples
+go test ./gen
+```
+
+**What it writes.** One test file per unit file that declares a root table,
+`<Base>Table_gen_test.go` beside the `<Base>Table.go` `generate` writes, in the
+generated package, using the generated API and the standard library only. A
+ROOT TABLE here is every table the file declares, `fixed table` and `table`
+alike; a generated map entry or text-list element record is not one. The file
+assumes the unit was generated with the default surface (§8.8): it calls the
+binary, base64 and JSON carriers. A table whose `forms` declaration (§2.12)
+leaves out `wire` or `json` is REFUSED BY NAME at testgen, naming the table and
+the form, because its sample is spelled in the JSON form and its round trip
+crosses the wire.
+
+**The samples.** For each root table the file carries a fixed list of SAMPLE
+values, each spelled as a JSON text (§16.2) that the generator builds from the
+declaration alone. The list is the same on every run of the same declaration:
+no randomness, no clock, no seed. Each sample is named:
+
+- `defaults`: `{}`, so every field at its declared default, every optional
+  ABSENT, every union `None`, every pointer null. A `| required` field (§2.3),
+  which a text must carry, is written at its `low` value.
+- `low`: every bounded field AT ITS LOW BOUND — an integer, `bits(N)`, fixed
+  point or compressed float at its declared or implied minimum, a string or a
+  byte buffer empty, a counted array at its minimum count, an enum at its first
+  variant, a flags set empty, a `bool` false; every optional PRESENT; every
+  union at its first arm; every pointer to a table not already on the path a
+  present node.
+- `high`: every bounded field AT ITS HIGH BOUND — the maximum value, a
+  `string(N)` or `bytes(N)` of N bytes, a `[..N]` array of N elements, an enum
+  at its last variant, every flag set, a `bool` true; an unbounded collection
+  (`[]T`, `map`, `*bytes`, `*string`) of two elements; optionals present;
+  unions at their first arm.
+- `inside`: every bounded field strictly INSIDE its bounds where the range
+  leaves room (one past the minimum, one element, one byte); optionals
+  present; unions at their first arm.
+- `arm_<k>`, for each k from 1 to one less than the largest arm count of any
+  union the table reaches: the `inside` sample with every union at arm
+  `k` modulo its own arm count, so EVERY ARM of every union is written by at
+  least one sample.
+
+A text-list element that may be absent (`?string(M)`) is written absent once in
+`high`; an optional map value present. A pointer to a table already on the
+path is null, so a recursive declaration has finite samples. A deprecated field
+(§2.10) is never written. A field kind the generator does not spell is REFUSED
+BY NAME at testgen, naming the field, never skipped.
+
+**The round trip.** For each sample, the test reads the text with `FromJson`
+and requires a SILENT report (§4): the sample matches the schema exactly, so a
+clamp, a kind mismatch or an unknown key is a defect of the generator, named.
+It saves that value to the binary wire, then reads the value back through each
+of the three forms:
+
+1. the binary wire, through `<Name>ReadStrict` (§6.5);
+2. base64 text, through `<Name>SaveText` then `<Name>LoadText` (§16.8), with
+   the text required to be the standard base64 of the wire;
+3. JSON text, through `<Name>ToJson` then `<Name>FromJson` (§16.1), with a
+   silent report.
+
+**Each read is equal to what was written**: the value read saves to exactly
+the wire bytes the original saved to, and writes exactly the JSON text the
+original wrote. Equality is the wire's and the text's, not the storage's, so
+it holds for both classes and over the arena of a variable table.
+
+**The damage refusals.** For each root table, the `high` sample's wire and
+texts are damaged and each damage is refused BY ITS NAMED REASON through the
+strict read, never by a bare failure:
+
+- a TRUNCATED wire (the form byte alone, and the wire less its last byte),
+  through `ReadStrict`: refused, `wire_damaged` or `truncated` (§3, the framing
+  check), and nothing returned;
+- a FLIPPED FORM BYTE (`2`, `9` and `255` in place of the first byte), through
+  `ReadStrict`: refused, `unknown_form` (§3, THE FIRST BYTE);
+- BASE64 DAMAGE (a character outside the alphabet, and the text less its last
+  character), through `LoadText`: refused, `base64_damaged` (§16.8);
+- JSON OF THE WRONG SHAPE (a document cut off inside its object), through
+  `FromJson`: false, the report `Malformed`, `Err()` `malformed` (§16.2).
+
+**What the file is.** Every test opens with `t.Parallel()`; it uses no time,
+no sockets and no network, and reads and writes no file: it is a unit test
+under the house rule. The file is GENERATED, so a schema edit is followed by
+`testgen` as it is by `generate`, and the file is never edited by hand.
+
+Go carries `testgen` first; every other `--lang` is refused by name, in the
+compiler, until its own turn.
 
 ## 17. Packing: a directory tree that mirrors a root table
 

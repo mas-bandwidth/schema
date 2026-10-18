@@ -1517,6 +1517,14 @@ C++ carries — including the memory ones, because `unsafe.Offsetof` and
 guess about it. That is what lets ONE generic walk drive the text form for
 every table.
 
+**A container with no declared bound says so by name.** A map, a `[]T` and a
+text list `[]string(M)` report `UnboundedContainer: true` with `ArrayBound: 0`
+beside it (docs/SPEC-TABLES.md §8.1), never a stand-in maximum, so a walker
+can tell "no bound" from a bound of `2^31 - 1`; a `[..4]T` reports `false` and
+`4`. It is a different column from `Unbounded`, which marks unbounded TEXT, a
+slot naming a blob record (§2.13.1): a `[]string` list carries
+`UnboundedContainer` on its own field and `Unbounded` on its element's.
+
 **Three of those columns are FUNCTIONS in Go where C++ has pointers**, and a
 walker written from the C++ example above has to know which: `Table`, `Arms`
 and a keyed field's `KeyId`/`KeyName` are called rather than dereferenced, so
@@ -4072,6 +4080,26 @@ key and `LoadMessages` refuses a damaged batch with the same
 `integrity_mismatch` and decodes nothing. Only Go generates the key today;
 every other `--lang` refuses it by name.
 
+### Generated tests: `schema testgen`
+
+The round-trip and damage tests every table owes are written for you
+(docs/SPEC-TABLES.md §16.11):
+
+```
+schema generate --lang go --out gen tables/examples
+schema testgen  --lang go --out gen tables/examples
+go test ./gen
+```
+
+`testgen` writes `<Base>Table_gen_test.go` beside each `<Base>Table.go`. For
+every table it builds deterministic sample values from the declaration (fields
+at their bounds and inside them, every union arm, every optional present and
+absent) and checks that each reads back equal through the binary wire, base64
+text and JSON text; then it damages the wire and the texts and checks that each
+damage is refused by its named reason. Regenerate it whenever you regenerate
+the code. Only `--lang go` is carried today; every other target refuses by
+name.
+
 ## Embedding the compiler
 
 The compiler is a Go library as well as a binary. `cmd/schema` is a client of
@@ -4301,8 +4329,14 @@ size varies with the schema (2,240 bytes in the lists unit). `make
 tables-go-allocator` certifies the pinned toolchain. Set
 `SCHEMA_GO_ALLOC_ANY_GO=1` only to observe another version without certifying it.
 
-The `MeasureReason`, `LoadMeasureReason`, `CookMeasureReason`, and builder
-`PackMeasureReason` variants return `(int64, error)`. Success returns a literal
+The `MeasureReason`, `LoadMeasureReason`, `CookMeasureReason`, builder
+`PackMeasureReason` and variable-table `ToJsonMeasureReason` variants return
+`(int64, error)`. A blob is owned by one slot (docs/SPEC-TABLES.md §2.5): a
+value whose two slots name one blob is refused by every writer with
+`TableRefuseBlobShared` (`blob_shared`) — `MeasureReason`, `Save`, `SaveText`,
+`ToJsonMeasureReason` (and `ToJsonMeasure`/`ToJson` answer `-1`) — while a
+tolerant `Load` or `LoadBuilder` keeps the one node, counts
+`TableReport.BlobShared`, and `ReadStrict`/`LoadText` refuse `blob_shared`. Success returns a literal
 `nil`; refusals carry `TableRefuseReason`, usable with `errors.As` or direct
 comparison. The existing integer measure and boolean open calls remain available.
 Cook and block handles also provide `Open(base, bytes) error`. `LoadMeasureReason`

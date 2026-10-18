@@ -87,6 +87,9 @@ var probeAllow = map[string][]contentAllow{
 		{"usesSerialize := strings.Contains(g.types.String()+g.body.String(), \"serialize.\")", 1, "asks whether the emitted unit uses serialize., to pick imports"},
 		{"si, sj := !strings.Contains(paths[i], \".\"), !strings.Contains(paths[j], \".\")", 1, "classifies emitted import path strings for ordering, never patches emitted source (Rowan ruling)"},
 	},
+	"testgen.go": {
+		{"if strings.Contains(body.String(), \"strings.\") {", 1, "asks whether the emitted test file uses strings., to pick imports"},
+	},
 }
 
 func scanSourceSeams(t *testing.T) {
