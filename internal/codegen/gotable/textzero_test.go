@@ -156,7 +156,9 @@ func TestTextZero(t *testing.T) {
 			// the control: a \u0001 in the same place is ordinary text
 			control := strings.Replace(text, "\\u0000", "\\u0001", 1)
 			var c RootBuilder
-			c.Init()
+			if !c.Init() {
+				t.Fatal("init")
+			}
 			report = TableReport{}
 			if !RootFromJson(&c, []byte(control), &report) || report != (TableReport{}) {
 				t.Fatalf("%s: the control did not read clean (%+v)", control, report)
@@ -167,10 +169,33 @@ func TestTextZero(t *testing.T) {
 			c.Shutdown()
 		}
 	}
+	// a key dropped for its length is still a key: a zero in it refuses the
+	// read the same way, one Malformed, never also a clamp or a kind mismatch
+	for _, k := range []struct{ text, field string }{
+		{"{\"m\":{\"abcdefgh\\u0000\":2}}", "Root.m"},
+		{"{\"k\":{\"" + strings.Repeat("1", 600) + "\\u0000\":2}}", "Root.k"},
+	} {
+		var b RootBuilder
+		if !b.Init() {
+			t.Fatal("init")
+		}
+		var report TableReport
+		if RootFromJson(&b, []byte(k.text), &report) {
+			t.Fatalf("%s: FromJson accepted a zero in a dropped key (%+v)", k.text, report)
+		}
+		if !report.Malformed || report.Reason != "text_holds_zero: "+k.field ||
+			report.Clamped != 0 || report.KindMismatch != 0 {
+			t.Fatalf("%s: report %+v", k.text, report)
+		}
+		carry(t, k.text, &b)
+		b.Shutdown()
+	}
 	// a zero the read only skips stores nothing and is not the event
 	for _, text := range []string{"{\"zz\":\"a\\u0000b\"}", "{\"t\\u0000\":\"x\"}"} {
 		var b RootBuilder
-		b.Init()
+		if !b.Init() {
+			t.Fatal("init")
+		}
 		var report TableReport
 		if !RootFromJson(&b, []byte(text), &report) || report.Malformed || report.Unknown != 1 {
 			t.Fatalf("%s: a skipped zero %+v", text, report)
