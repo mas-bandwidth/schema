@@ -801,11 +801,25 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report)
         kval = v
       end
     end
-    if not skip and value_shape(inp) ~= shape_of(fd.value_field) then
+    -- §16.2 map row and the `*T`/`*bytes`/`*string` rows: a pointer or blob
+    -- VALUE may be `null`, a present entry holding a null reference (false,
+    -- the null element, since a Lua table cannot hold nil), as the Go
+    -- reference map reader keeps it.
+    local vf = fd.value_field
+    local null_ref = false
+    if not skip and value_shape(inp) == 'z' and (vf.shape == "pointer"
+        or vf.shape == "string_blob" or vf.shape == "bytes_blob") then
+      null_ref = true
+    elseif not skip and value_shape(inp) ~= shape_of(vf) then
       report.kindMismatch = report.kindMismatch + 1
       skip = true
     end
-    if skip then
+    if null_ref then
+      literal(inp, "null")
+      if seen[kval] then report.duplicate = report.duplicate + 1 end
+      seen[kval] = true
+      out[kval] = false
+    elseif skip then
       if not skip_value(inp, depth + 1, graph) then return false end
     else
       if seen[kval] then report.duplicate = report.duplicate + 1 end
@@ -904,7 +918,10 @@ local function read_union(T, u, inp, depth, graph, report)
       literal(inp, "null")
       out.tag = tag
     end
-  elseif arm.field.shape == "pointer" and value_shape(inp) == 'z' then
+  elseif (arm.field.shape == "pointer" or arm.field.shape == "string_blob"
+      or arm.field.shape == "bytes_blob") and value_shape(inp) == 'z' then
+    -- §16.2 union row: the arm takes its own row, and a pointer or blob arm
+    -- reads `null` as the arm selected with a null reference
     literal(inp, "null")
     out.tag = tag
   elseif value_shape(inp) ~= shape_of(arm.field) then
@@ -1599,7 +1616,8 @@ write_value = function(T, d, val, depth, g, w, elem)
     -- paragraph): the blob is written in place and takes no label, so a blob
     -- named from more than one slot has no spelling and the writer refuses
     -- the graph. A loaded blob is its node box (load.lua); a plain string
-    -- built in code is accepted as save.lua accepts it.
+    -- built in code is accepted as save.lua accepts it, and as there equal
+    -- plain strings in two slots are ONE node, so the writer refuses them.
     if val == nil or val == false then raw(w, "null"); return true end
     if (g.count[val] or 0) > 1 then return false end
     local body = type(val) == "table" and val.value or val

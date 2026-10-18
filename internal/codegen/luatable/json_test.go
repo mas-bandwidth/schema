@@ -358,3 +358,58 @@ if text == nil then print("nil") else print((text:gsub(".", function(c) return s
 	}
 	t.Logf("%d of %d corpus json-write comparisons diverge with float32 at six significant digits", diverged, compared)
 }
+
+// TestLuaJsonReadsNullReferences pins docs/SPEC-TABLES.md §16.2's null rows
+// where no corpus row reaches them: a `null` map VALUE of a `*bytes` map is a
+// present entry holding a null reference, and a `null` payload on a `*bytes`
+// union arm selects that arm with a null reference. Neither counts
+// kind_mismatch, and each writes back as the same `null`.
+func TestLuaJsonReadsNullReferences(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	schemaPath := filepath.Join(dir, "N.schema")
+	if err := os.WriteFile(schemaPath, []byte(`package n
+union Payload
+{
+    data *bytes
+    tally int32
+}
+table N
+{
+    blobs map[int32]*bytes
+    body  Payload
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := compiler.GatherPaths([]string{dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	module := ModuleName(u)
+	probe := `local T = require("` + module + `")
+local J = require("json")
+local inputs = require("inputs")
+local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+local v = J.FromJson(T, "N", inputs.text, report)
+local has = v ~= nil and v.blobs[7] == false and v.blobs[8] ~= nil and v.blobs[8].value == "\1\2"
+local arm = v ~= nil and v.body.tag == 1 and v.body.data == nil
+print(string.format("km=%d entries=%s arm=%s", report.kindMismatch, tostring(has), tostring(arm)))
+local text = v and J.ToJson(T, "N", v)
+print(text or "nil")
+`
+	inputs := map[string][]byte{"text": []byte("{ \"blobs\": { \"7\": null, \"8\": \"AQI=\" }, \"body\": { \"data\": null } }\n")}
+	out := jsonRun(t, paths, module, "N", probe, inputs, nil)
+	lines := strings.SplitN(out, "\n", 2)
+	if lines[0] != "km=0 entries=true arm=true" {
+		t.Fatalf("null references read wrong: %q", out)
+	}
+	if len(lines) < 2 || !strings.Contains(lines[1], "\"7\": null") || !strings.Contains(lines[1], "\"data\": null") {
+		t.Fatalf("null references did not write back as null: %q", out)
+	}
+	t.Logf("a null *bytes map value and a null *bytes arm read without kind_mismatch and write back as null")
+}
