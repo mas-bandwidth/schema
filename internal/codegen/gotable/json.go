@@ -345,7 +345,9 @@ func tableJsonFinite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0
 
 // tableJsonCount is a counted field's companion: a string's length, a bytes'
 // length, a counted array's count. Bounded by the declared extent on the way
-// out, so a storage invariant a caller broke cannot walk off the end.
+// out, so a storage invariant a caller broke cannot walk off the end. A
+// container with no declared bound has no extent to clamp to: UnboundedContainer
+// is no limit (docs/SPEC-TABLES.md §8.1).
 func tableJsonCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
 	if !f.Counted {
 		return f.ArrayBound
@@ -354,7 +356,7 @@ func tableJsonCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
 	if count < 0 {
 		count = 0
 	}
-	if count > f.ArrayBound {
+	if !f.UnboundedContainer && count > f.ArrayBound {
 		count = f.ArrayBound
 	}
 	return count

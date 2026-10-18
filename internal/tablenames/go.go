@@ -275,6 +275,10 @@ func init() {
 		Name{Name: "RangeIntMax", What: "an integer-ranged field's exact signed upper bound", Scoped: true},
 		Name{Name: "RangeUintMin", What: "an unsigned-integer-ranged field's exact lower bound", Scoped: true},
 		Name{Name: "RangeUintMax", What: "an unsigned-integer-ranged field's exact upper bound", Scoped: true},
+		// the CONTAINER column of the descriptor (docs/SPEC-TABLES.md §8.1): a
+		// map, a []T or a text list with no declared bound, ArrayBound 0
+		// beside it. A member reached through its owner, like the range pair.
+		Name{Name: "UnboundedContainer", What: "a field descriptor's no-declared-bound container column", Scoped: true},
 		// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1, §8.7): every field row
 		// and every declaration row with no `///` block names this ONE
 		// definition, so absence costs a unit no string data and a printer
