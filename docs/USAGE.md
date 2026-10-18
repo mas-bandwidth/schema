@@ -4105,6 +4105,17 @@ damage is refused by its named reason. Regenerate it whenever you regenerate
 the code. Only `--lang go` is carried today; every other target refuses by
 name.
 
+The same file carries three fuzz targets per table, `Fuzz<Table>Wire`,
+`Fuzz<Table>Text` and `Fuzz<Table>Json` (docs/SPEC-TABLES.md §16.11). They are
+seeded with each sample's own encodings and every single-byte flip of them,
+and they require, for every input, that the read never panics and is either
+refused by a named reason or decodes to a value that re-encodes to exactly the
+input (on the wire, a shorter respelling of the same value such as an
+explicit default also passes, as does a read whose report names what it set
+aside, such as an unknown field).
+`go test` runs the seeds; `go test -fuzz '^FuzzPatrolWire$' ./gen` fuzzes from
+them for as long as you let it.
+
 ## Embedding the compiler
 
 The compiler is a Go library as well as a binary. `cmd/schema` is a client of

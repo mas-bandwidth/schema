@@ -7,8 +7,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// Testgen returns a unit's generated round-trip and damage tests for target,
-// keyed by output file name (docs/SPEC-TABLES.md §16.11). Like Generate it
+// Testgen returns a unit's generated round-trip and damage tests and its fuzz
+// targets for target, keyed by output file name (docs/SPEC-TABLES.md §16.11). Like Generate it
 // writes nothing. GO CARRIES IT FIRST: every other target is refused here,
 // once, by name, so no other emitter is edited.
 func (c *Compiler) Testgen(u *ir.Unit, target string) (map[string][]byte, error) {
