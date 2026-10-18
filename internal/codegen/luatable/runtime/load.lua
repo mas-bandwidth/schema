@@ -447,6 +447,17 @@ local function zero_elem(T, e)
   return false
 end
 
+-- an array's zero (§2.9): a fixed array holds its bound of zero elements,
+-- every other array and a byte string are empty
+local function zero_array(T, f)
+  if f.shape == "bytes" then return "" end
+  local out = {}
+  if f.fixed then
+    for i = 1, f.bound do out[i] = zero_elem(T, f.elem) end
+  end
+  return out
+end
+
 -- one element of an array body (docs/SPEC-TABLES.md §2.9, §3)
 read_element = function(T, ctx, e, ek, sub, out, index)
   local s = e.shape
@@ -572,16 +583,25 @@ end
 -- header is inert; a damaged count is malformed and keeps the field; an
 -- element kind that is not this array's (and does not widen) is a kind
 -- mismatch and keeps the field; a bounded array's excess is clamped.
-read_array_body = function(T, ctx, fd, sub)
+--
+-- A BODY'S HEADER IS READ AGAINST THE PARENT (decode.go subTo): `hdr` is
+-- positioned at the body and bounded by the reader that carries it, because a
+-- canonical count is up to ten bytes and L may be shorter; a count spelled
+-- past `endpos` leaves no element bytes. It returns the value, or nil to keep
+-- the field's own, and false second when the element kind is not this
+-- array's: the payload is not this array's, so an optional stays absent and an
+-- arm holding it is not selected (§2.3, §3).
+read_array_body = function(T, ctx, fd, hdr, endpos)
   local report = ctx.report
-  local ek = r_u8(sub)
-  local count = r_leb(sub)
-  if sub.bad then report.malformed = true; return nil end
+  local ek = r_u8(hdr)
+  local count = r_leb(hdr)
+  if hdr.bad then report.malformed = true; return nil end
+  local sub = new_reader(hdr.b, hdr.at, math.max(hdr.at, endpos))
 
   if fd.shape == "bytes" then
     local expected = 6
     if ek ~= expected then
-      if not widens(ek, expected) then report.kindMismatch = report.kindMismatch + 1; return "" end
+      if not widens(ek, expected) then report.kindMismatch = report.kindMismatch + 1; return nil, false end
       report.widened = report.widened + 1
     end
     local keep = count
@@ -599,7 +619,7 @@ read_array_body = function(T, ctx, fd, sub)
     -- that is not 13 is the array kind mismatch of §4 and the field keeps
     -- what it holds; then every entry's KEY is scanned before its body is
     -- read, ascending against the last entry that landed.
-    if ek ~= 13 then report.kindMismatch = report.kindMismatch + 1; return nil end
+    if ek ~= 13 then report.kindMismatch = report.kindMismatch + 1; return nil, true end
     if above(count, 0x7fffffff) then report.malformed = true; return {} end
     local entry = T.Tables[fd.entry]
     local kf = fd.key_field
@@ -678,7 +698,7 @@ read_array_body = function(T, ctx, fd, sub)
 
   local expected = fd.elem_kind
   if ek ~= expected then
-    if not widens(ek, expected) then report.kindMismatch = report.kindMismatch + 1; return {} end
+    if not widens(ek, expected) then report.kindMismatch = report.kindMismatch + 1; return nil, false end
     report.widened = report.widened + 1
   end
 
@@ -913,13 +933,14 @@ read_field = function(T, ctx, fd, r, v)
     local n = r_leb(r)
     if r.bad or not fits(r, n) then report.malformed = true; return false end
     local endpos = r.at + n
+    local selected = true
     if n >= 2 then
-      local sub = new_reader(r.b, r.at, endpos)
-      local out = read_array_body(T, ctx, fd, sub)
+      local out, sel = read_array_body(T, ctx, fd, new_reader(r.b, r.at, r.lim), endpos)
       if out ~= nil then v[fd.name] = out end
+      selected = sel ~= false
     end
     r.at = endpos
-    if fd.optional then v[fd.name .. "_present"] = true end
+    if fd.optional and selected then v[fd.name .. "_present"] = true end
     return true
   end
   return false
@@ -1029,8 +1050,15 @@ read_union = function(T, ctx, u, r)
     out[arm.name] = inst
     return out
   elseif s == "array" or s == "map" or s == "bytes" then
-    local x = read_array_body(T, ctx, f, sub)
-    if x == nil then return none end
+    -- an arm's payload is framed by the arm's L (decode.go arm, arrayBody):
+    -- shorter than its own header it is inert and the arm holds its zero;
+    -- damage, or another array's element kind, reads None
+    if n < 2 then
+      out[arm.name] = zero_array(T, f)
+      return out
+    end
+    local x, sel = read_array_body(T, ctx, f, sub, sub.lim)
+    if x == nil or sel == false then return none end
     out[arm.name] = x
     return out
   end
