@@ -62,6 +62,19 @@ local function r_leb(r)
   return 0
 end
 
+-- A LEB128 VALUE IS AN UNSIGNED 64-BIT NUMBER (docs/SPEC-TABLES.md §3;
+-- decode.go reads it as a uint64): one at or past 2^63 is a negative Lua
+-- integer, so a reference, a length or a count is bounded UNSIGNED, never by a
+-- signed `>`. above(v, n) is v > n unsigned; fits(r, n) is "n more bytes lie
+-- inside this body".
+local function above(v, n)
+  return math.ult(n, v)
+end
+
+local function fits(r, n)
+  return r.at <= r.lim and not math.ult(r.lim - r.at, n)
+end
+
 local function r_i8(r)
   local v = r_u8(r)
   if v >= 0x80 then return v - 0x100 end
@@ -202,7 +215,7 @@ local function open(bytes, report)
       if w.at ~= w.lim then report.malformed = true; return nil end
       break
     end
-    if ref > #table_ids then break end
+    if above(ref, #table_ids) then break end
     if w.at >= w.lim then break end
     local kind = r_u8(w)
     if not skip(w, kind) then break end
@@ -244,7 +257,7 @@ local function node_scan(bytes, o, report)
   local raw = {}
   while rec.at < rec.lim do
     local tref = r_leb(rec)
-    if rec.bad or tref <= 0 or tref > #o.table then report.malformed = true; return nil end
+    if rec.bad or tref == 0 or above(tref, #o.table) then report.malformed = true; return nil end
     local n = r_leb(rec)
     if rec.bad or n < 0 or rec.at + n > rec.lim then report.malformed = true; return nil end
     raw[#raw + 1] = { tid = o.table[tref], body = string.sub(payload, rec.at + 1, rec.at + n) }
@@ -390,7 +403,7 @@ local function enum_read(atable, r, d, report)
   local ref = r_leb(r)
   if r.bad then report.malformed = true; return nil, false end
   if ref == 0 then return nil, true end
-  if ref > #atable then report.malformed = true; return nil, false end
+  if above(ref, #atable) then report.malformed = true; return nil, false end
   local id = atable[ref]
   for _, v in ipairs(d.variants) do
     if v[2] == id then return v[1], true end
@@ -444,7 +457,7 @@ read_element = function(T, ctx, e, ek, sub, out, index)
     return (x == nil) and false or x, true
   elseif s == "table" then
     local n = r_leb(sub)
-    if sub.bad or sub.at + n > sub.lim then ctx.report.malformed = true; return false, false end
+    if sub.bad or not fits(sub, n) then ctx.report.malformed = true; return false, false end
     local d = T.Tables[e.target]
     local inst = fresh(T, d)
     local body = new_reader(sub.b, sub.at, sub.at + n)
@@ -460,7 +473,7 @@ read_element = function(T, ctx, e, ek, sub, out, index)
     return x, true
   elseif s == "string" then
     local n = r_leb(sub)
-    if sub.bad or sub.at + n > sub.lim then ctx.report.malformed = true; return false end
+    if sub.bad or not fits(sub, n) then ctx.report.malformed = true; return false end
     local raw = r_bytes(sub, n)
     if not utf8_ok(raw) then ctx.report.malformed = true; return e.default or "", true end
     if e.bound ~= nil and e.bound > 0 and #raw > e.bound then
@@ -470,7 +483,7 @@ read_element = function(T, ctx, e, ek, sub, out, index)
     return raw, true
   elseif s == "wstring" then
     local n = r_leb(sub)
-    if sub.bad or sub.at + n > sub.lim then ctx.report.malformed = true; return false end
+    if sub.bad or not fits(sub, n) then ctx.report.malformed = true; return false end
     local raw = r_bytes(sub, n)
     local ok, units = wstring_ok(raw)
     if not ok then ctx.report.malformed = true; return {}, true end
@@ -505,7 +518,7 @@ read_array_body = function(T, ctx, fd, sub)
       report.widened = report.widened + 1
     end
     local keep = count
-    if fd.bound ~= nil and count > fd.bound then keep = fd.bound; report.clamped = report.clamped + 1 end
+    if fd.bound ~= nil and above(count, fd.bound) then keep = fd.bound; report.clamped = report.clamped + 1 end
     local out = {}
     for i = 1, keep do
       if sub.at >= sub.lim then report.malformed = true; break end
@@ -528,7 +541,7 @@ read_array_body = function(T, ctx, fd, sub)
     for i = 1, count do
       if sub.at >= sub.lim then report.malformed = true; break end
       local n = r_leb(sub)
-      if sub.bad or sub.at + n > sub.lim then report.malformed = true; break end
+      if sub.bad or not fits(sub, n) then report.malformed = true; break end
       local body = new_reader(sub.b, sub.at, sub.at + n)
       local inst = fresh(T, entry)
       read_body(T, ctx, entry, body, inst, true)
@@ -571,9 +584,9 @@ read_array_body = function(T, ctx, fd, sub)
     for _ = 1, keep do
       if sub.at >= sub.lim then report.malformed = true; break end
       local keyref = r_leb(sub)
-      if sub.bad or keyref == 0 or keyref > #ctx.table then report.malformed = true; break end
+      if sub.bad or keyref == 0 or above(keyref, #ctx.table) then report.malformed = true; break end
       local n = r_leb(sub)
-      if sub.bad or sub.at + n > sub.lim then report.malformed = true; break end
+      if sub.bad or not fits(sub, n) then report.malformed = true; break end
       local slot = nil
       local keyid = ctx.table[keyref]
       for k, v in ipairs(fd.keyed) do if v[2] == keyid then slot = k end end
@@ -637,8 +650,8 @@ read_array_body = function(T, ctx, fd, sub)
   end
   local keep = count
   if fd.list then
-    if count > 0x7fffffff then report.malformed = true; return {} end
-  elseif count > fd.bound then
+    if above(count, 0x7fffffff) then report.malformed = true; return {} end
+  elseif above(count, fd.bound) then
     keep = fd.bound
     report.clamped = report.clamped + 1
   end
@@ -661,7 +674,7 @@ read_body = function(T, ctx, desc, r, v, nested)
     local ref = r_leb(r)
     if r.bad then report.malformed = true; return false end
     if ref == 0 then return true end
-    if ref > #ctx.table then report.malformed = true; return false end
+    if above(ref, #ctx.table) then report.malformed = true; return false end
     if r.at >= r.lim then report.malformed = true; return false end
     local kind = r_u8(r)
     local id = ctx.table[ref]
@@ -716,7 +729,7 @@ read_field = function(T, ctx, fd, r, v)
     return true
   elseif s == "string" then
     local n = r_leb(r)
-    if r.bad or r.at + n > r.lim then report.malformed = true; return false end
+    if r.bad or not fits(r, n) then report.malformed = true; return false end
     local raw = r_bytes(r, n)
     if not utf8_ok(raw) then
       report.malformed = true
@@ -733,7 +746,7 @@ read_field = function(T, ctx, fd, r, v)
     return true
   elseif s == "wstring" then
     local n = r_leb(r)
-    if r.bad or r.at + n > r.lim then report.malformed = true; return false end
+    if r.bad or not fits(r, n) then report.malformed = true; return false end
     local raw = r_bytes(r, n)
     local ok, units = wstring_ok(raw)
     if not ok then
@@ -766,7 +779,7 @@ read_field = function(T, ctx, fd, r, v)
     return true
   elseif s == "table" then
     local n = r_leb(r)
-    if r.bad or r.at + n > r.lim then report.malformed = true; return false end
+    if r.bad or not fits(r, n) then report.malformed = true; return false end
     local d = T.Tables[fd.target]
     local inst = fresh(T, d)
     local body = new_reader(r.b, r.at, r.at + n)
@@ -786,7 +799,7 @@ read_field = function(T, ctx, fd, r, v)
     return true
   elseif s == "array" or s == "map" or s == "bytes" then
     local n = r_leb(r)
-    if r.bad or r.at + n > r.lim then report.malformed = true; return false end
+    if r.bad or not fits(r, n) then report.malformed = true; return false end
     local endpos = r.at + n
     if n >= 2 then
       local sub = new_reader(r.b, r.at, endpos)
@@ -808,12 +821,12 @@ read_union = function(T, ctx, u, r)
   local armref = r_leb(r)
   if r.bad then report.malformed = true; return nil end
   if armref == 0 then return { tag = 0 } end
-  if armref > #ctx.table then report.malformed = true; return nil end
+  if above(armref, #ctx.table) then report.malformed = true; return nil end
   local armid = ctx.table[armref]
   if r.at >= r.lim then report.malformed = true; return nil end
   local armkind = r_u8(r)
   local n = r_leb(r)
-  if r.bad or r.at + n > r.lim then report.malformed = true; return nil end
+  if r.bad or not fits(r, n) then report.malformed = true; return nil end
   local sub = new_reader(r.b, r.at, r.at + n)
   r.at = r.at + n
   local arm = nil
@@ -923,7 +936,7 @@ local function resolve(ctx, root, rootdesc)
       if p.index == 1 then
         if d.shape == "pointer" and d.target == rootdesc.name then value = root
         else report.kindMismatch = report.kindMismatch + 1 end
-      elseif p.index - 1 > #ctx.nodes then
+      elseif above(p.index - 1, #ctx.nodes) then
         report.malformed = true
       else
         local node = ctx.nodes[p.index - 1]
