@@ -12873,13 +12873,13 @@ in build version (§20.5).
   (status, above): all nine carry the table wire, so a `table` declaration
   alone is refused by nobody. What a port refuses is a CONSTRUCT it lacks,
   each named below and each naming its follow-on, never silently ignored.
-- **A VARIABLE-LENGTH table's WIRE SURFACE under the C#, Dart, Elixir, Go,
-  Java, JavaScript and Rust backends** — every port carries the fixed class on
+- **A VARIABLE-LENGTH table's WIRE SURFACE under the C#, Dart, Elixir,
+  Java, JavaScript and Rust backends** — those ports carry the fixed class on
   the
   wire; their variable class there (the arena, the builder, the region, the
   node-table codec) is a named follow-on, and a pointered unit gets no
   `<Base>Table.cs`, no `<Base>Table.dart`, no `<Base>Table.ex`, no
-  `<Base>Table.go`, no `<Base>Table.java`, no `<Base>Table.js` and no
+  `<Base>Table.java`, no `<Base>Table.js` and no
   `<base>_table.rs` at all, with
   the refusal NAMED in every source the unit does emit rather than left as a
   missing symbol — in JavaScript, a banner at the head of every
@@ -12916,9 +12916,11 @@ in build version (§20.5).
   keyed body elides slots by name, §3.2), and `?[..E]T`/`?[A..E]T` under
   §2.4's own refusal, which stands with the `?` and without it; `?` on an
   array of pointers, on
-  an array of unions, and on any value whose closure is VARIABLE (one
-  named follow-on, §15 — an absent field is not an edge, and the authoring
-  walks gate on presence when it lands). The bounded arrays `?[..N]T` and
+  an array of unions, and on an optional ARRAY or a MAP VALUE over a
+  variable closure (one named follow-on, §15 — an absent field is not an
+  edge, and the authoring walks gate on presence when it lands). **A scalar
+  `?T` over a variable closure is legal on Go**, and every other target
+  refuses it centrally by name (§2.3, §15). The bounded arrays `?[..N]T` and
   `?[N]T` of everything else are legal (§2.3). Also refused: a specified
   default on an optional; and a field whose name collides with an
   optional's `<field>_present` companion.
@@ -13036,11 +13038,26 @@ in build version (§20.5).
   bound on one, `*bytes(N)` (a buffer at its used size has no bound to
   declare); a specified default on one; `?` on one (already optional); and an
   array of them, `[..N]*bytes` and `[N]*bytes`, which is the array-of-pointers
-  follow-on (§15). And a unit that declares one under every backend but C++,
-  named in the refusal, because the ports are a named follow-on (§15).
-  **`*wstring` is the third spelling and takes every clause above**, its bound
-  `*wstring(N)` refused with the other two, because a buffer at its used size
-  has no bound to declare whatever units it holds (§2.5).
+  follow-on (§15). **C, C++, C#, Go, Elixir and JavaScript carry `*bytes` and
+  `*string`; Rust, Dart and Java carry `*string` only**, and a unit that
+  declares a spelling its target does not carry is refused by name, because
+  the rest are a named follow-on (§15).
+  **`*wstring` is the third spelling and is refused by name under every
+  backend**, its bound `*wstring(N)` refused with the other two, because a
+  buffer at its used size has no bound to declare whatever units it holds
+  (§2.5).
+- **This section is not exhaustive**: the refusals of a `forms` or
+  `integrity` declaration's own spelling (§2.12, §2.14), of `| required` on a
+  `type` field, with `?`, or on a fixed field (§2.3), of an `if` naming a
+  field marked `| deprecated` (§2.10), and of a `timestamp` outside a bare
+  table field body (§2.11) are stated in those sections.
+- **The central Go-first refusal** is one rule in the compiler: a target
+  whose carrier is not Go refuses a unit that uses a construct Go carries
+  first, once and by name, naming the construct, the field or table, and the
+  target. It covers `| required` (§2.3), `forms` (§2.12), `integrity` (§2.14),
+  a one-sided integer range (§4.3), an optional scalar over a variable closure
+  (§2.3), `?map` (§2.8), `timestamp` (§2.11) and testgen (§16.11), as well as
+  the text lists, unbounded text and array root named above.
 - **The block form** (§2.7), each refusal naming the table and the field or
   declaration at fault. **Nothing declares the form, so nothing is refused
   FOR it** — a table that cannot have one simply has none (§19) — and there
@@ -13079,16 +13096,17 @@ in build version (§20.5).
   makes it one. **A payload-free arm is outside the class**: it has no
   payload, so it rides the packet wire as its tag alone and a `type` body
   takes it in all nine backends (SPEC §4.8). **A payload-free arm reached by
-  a table closure is carried by C and C++**, and the other seven targets refuse it
+  a table closure is carried by C, C++, C# and Go**, and the other five targets refuse it
   naming the union and the target. And **a TABLE-CLOSURE union under every
-  backend but C and C++** is refused naming the union and the target: the ports are
+  backend but C, C++, C# and Go** is refused naming the union and the target: the ports are
   a named follow-on (§15), and a port that emitted the union would name a
   table it never declares, or overlay storage its fixed-class codecs never met.
 - **On an ARM** (§2.6, which states each reason): a specified default; `?`;
-  `json`; an enum-keyed array `[E]T`; an `if` guard; and **a MAP
-  (§2.8) or an UNBOUNDED ARRAY (§2.9)**, whose elements live in the holder's
-  NODE EXTENT and would make that extent depend on the union's tag, each
-  refusal naming the table wrapper that serves. `was` on an arm takes, a
+  `json`; an enum-keyed array `[E]T`; an `if` guard; **a MAP (§2.8) or an
+  UNBOUNDED ARRAY (§2.9)**, whose elements live in the holder's NODE EXTENT
+  and would make that extent depend on the union's tag; and **an ARRAY OF
+  TABLES, `[..N]T` or `[N]T`** (§2.6), an arm being one table and not an array
+  of tables; each refusal naming the table wrapper that serves. `was` on an arm takes, a
   payload-free arm included (§2.6, §5); it is refused only where no table
   reaches the union, like `was` on an enum variant.
 - **An ARM NAMED `Count`** (§2.6), over the EXPORTED spelling, so `count` is
@@ -13099,9 +13117,9 @@ in build version (§20.5).
   already carry, reaching every union because the member is on every union.
 - **An array of unions** (§2.6): the enum-KEYED spelling `[E]Body`, a named
   follow-on (§15) where the bounded `[..N]Body` and `[N]Body` are not; and
-  **an array of unions in a table closure under every backend but C++**,
-  refused naming the field and the target — the ports' fixed-class codecs
-  never met one, and the form is a named follow-on (§15).
+  **an array of unions in a table closure under every backend but C, C++, C#
+  and Go**, refused naming the field and the target — the remaining ports'
+  fixed-class codecs never met one, and the form is a named follow-on (§15).
 - **The text form's key** (§16): `json = "..."` on a field no table closure
   reaches — keys are a table-wire construct; two fields of one table whose
   JSON keys collide, naming both, as wire ids do (§5); and a key beginning
@@ -13130,14 +13148,17 @@ in build version (§20.5).
   read refuses, with one typed reason and no recovered value, every read that
   crosses a security or meaning boundary: an integrity mismatch (the CRC does
   not match), a clamped value (out of its declared bounds), a kind mismatch,
-  framing damage, an unknown form, a build-version mismatch, and a missing
-  required field (no defined value). A caller who needs the recovered value
+  framing damage, an unknown form, a build-version mismatch, a missing
+  required field (no defined value), a blob shared by two slots
+  (`blob_shared`), and a non-finite plain float (`non_finite`). A caller who
+  needs the recovered value
   past one of those boundaries asks for it by name, through the `...Tolerant`
   twin, which keeps the value and counts the report. **Writers are strict and
   have no tolerant twin**: a write that cannot be made as declared refuses
   (the cycle and the size cap of §3.1 and §4.6, a non-finite float in text,
-  §16.2, an element past a bound, §2.9) rather than putting a wire on the
-  disk that the strict read would refuse.
+  §16.2, a blob shared by two slots (§2.5, `blob_shared`), an element past a
+  bound, §2.9)
+  rather than putting a wire on the disk that the strict read would refuse.
 - **A field id colliding with any of the three reserved ids, the node table's
   `0xFFFFFFFFFFFFFFFF`, the announcement's build version
   `0xFFFFFFFFFFFFFFFE` or the announcement's vocabulary
@@ -13243,10 +13264,8 @@ in build version (§20.5).
   clauses and the accelerator-only `truncated` reason. Builder
   `PackMeasureReason` is a method, so it adds no package-level name claim.
 
-  Go spells message region sizing `<T>LoadMessagesMeasure(vocabulary, data)`
-  because its file sizing verb `<T>LoadMeasure(wire)` cannot be overloaded.
-  `<T>LoadMessages` takes a slice of values for a fixed root, or a slice of
-  root pointers plus one caller-owned region for a variable root. Its
+  Go's message form is fixed roots only: `<T>LoadMessages` takes a slice of
+  values, and no variable root gets a message reader or its region sizing. Its
   `SaveMessageBody` and `LoadMessageBody` helpers are package-level functions,
   so their suffixes are claimed too.
 
