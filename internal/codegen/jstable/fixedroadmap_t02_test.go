@@ -345,7 +345,7 @@ func t02W14(t *testing.T) {
 	// root's offsetof — and size sizeof(T).
 	lanes := strings.Split(t02Block(t, src, "const TFixedIdentity = new Int32Array([", "]);"), ",")
 	if len(lanes) < 4 {
-		t.Fatalf("W14: the identity plan has %d lanes, want nine: %q", len(lanes), lanes)
+		t.Fatalf("W14: the identity plan has %d lanes, want eleven: %q", len(lanes), lanes)
 	}
 	dst, err := strconv.Atoi(strings.TrimSpace(lanes[2]))
 	if err != nil {

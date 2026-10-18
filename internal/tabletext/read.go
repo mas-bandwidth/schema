@@ -14,9 +14,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 	"unicode/utf8"
 
+	"github.com/mas-bandwidth/schema/v2/internal/rfc3339"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -38,6 +38,9 @@ type reader struct {
 	// node each `&node` defined, keyed by the label. nil for a fixed root,
 	// which is what makes the reserved prefix a refusal there.
 	graph map[uint64]labelEntry
+	// zero is set when the walk stopped on a U+0000 bound for text storage
+	// (docs/SPEC-TABLES.md §16.3): the field loop names the field in Reason
+	zero bool
 }
 
 // labelEntry is what an `&node` label defined: its node and the node's table,
@@ -363,7 +366,26 @@ func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
 // the field is clamped AT A CODE POINT BOUNDARY and never cut through a
 // multi-byte character. capacity < 0 is unbounded; the returned bool is
 // whether the scan succeeded, and clamped whether anything was dropped.
+// scanString is for a string the walk only COMPARES or SKIPS — an object key,
+// an enum, flag or union name, a skipped value — and stores nothing.
 func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
+	return in.scanText(capacity, false)
+}
+
+// scanStored scans a string the walk PLACES in text storage: a string(N) or
+// *string value, a text-list element, a map key.
+//
+// A ZERO IN TEXT TAKES ONE RULE IN EVERY FORM (docs/SPEC-TABLES.md §16.3,
+// §2.13, §4.2): a stored string that decodes to U+0000 refuses the read,
+// because no wire carries a zero in text and a read must never place a value
+// the wire writer carries and the wire reader then calls malformed. Only the
+// \u0000 escape can produce one; a raw control byte is already not JSON. The
+// generated Go walk's scanText holds the same rule.
+func (in *reader) scanStored(capacity int) (out []byte, clamped bool, ok bool) {
+	return in.scanText(capacity, true)
+}
+
+func (in *reader) scanText(capacity int, store bool) (out []byte, clamped bool, ok bool) {
 	if in.peek() != '"' {
 		in.bad = true
 		return nil, false, false
@@ -376,6 +398,11 @@ func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
 		}
 		if done {
 			break
+		}
+		if store && len(unit) == 1 && unit[0] == 0 {
+			in.zero = true // §16.3: a zero bound for text storage
+			in.bad = true
+			return nil, false, false
 		}
 		// A CLAMP IS A PREFIX. Once one code point does not fit, the scan stops
 		// placing: a later SHORTER code point sliding into the room the long one
@@ -413,6 +440,13 @@ func (in *reader) scanWString(capacity int) (out []uint16, clamped bool, ok bool
 			break
 		}
 		code, _ := utf8.DecodeRune(unit)
+		if code == 0 {
+			// §16.3: a wide scan always stores, and a zero unit is the
+			// same event as a narrow zero byte
+			in.zero = true
+			in.bad = true
+			return nil, false, false
+		}
 		var units []uint16
 		if code < 0x10000 {
 			units = []uint16{uint16(code)}
@@ -623,7 +657,11 @@ func (in *reader) readTable(inst *Instance, depth int) bool {
 			in.bad = true
 			return false
 		}
-		return in.readField(&inst.Fields[0], depth)
+		if !in.readField(&inst.Fields[0], depth) {
+			in.nameZero(inst, &inst.Fields[0])
+			return false
+		}
+		return true
 	}
 	if in.peek() != '{' {
 		in.bad = true
@@ -708,6 +746,7 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 						return false
 					}
 				} else if !in.readField(fv, depth) {
+					in.nameZero(inst, fv)
 					return false
 				}
 				// PRESENCE of the KEY is presence (docs/SPEC-TABLES.md §16.2):
@@ -734,6 +773,15 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 	}
 }
 
+// nameZero names the innermost field whose read stopped on a zero bound for
+// text storage (docs/SPEC-TABLES.md §16.3): `text_holds_zero: <Table>.<field>`.
+// A nested table names its own field first, so an outer one never overwrites it.
+func (in *reader) nameZero(inst *Instance, fv *Field) {
+	if in.zero && in.report.Reason == "" {
+		in.report.Reason = "text_holds_zero: " + inst.Def.Name + "." + fv.Def.Name
+	}
+}
+
 func (in *reader) readField(fv *Field, depth int) bool {
 	f := fv.Def
 	switch {
@@ -746,7 +794,7 @@ func (in *reader) readField(fv *Field, depth int) bool {
 		if f.Type.Pointer {
 			bound = -1 // a *string has no bound to clamp against (§16.2)
 		}
-		out, clamped, ok := in.scanString(bound)
+		out, clamped, ok := in.scanStored(bound)
 		if !ok {
 			return false
 		}
@@ -821,7 +869,7 @@ func (in *reader) scanLabel() (uint64, bool) {
 func (in *reader) readBlob(fv *Field) bool {
 	fv.Cell.Blob = nil
 	if fv.Def.Type.Kind == ir.TString {
-		out, _, ok := in.scanString(-1)
+		out, _, ok := in.scanStored(-1)
 		if !ok {
 			return false
 		}
@@ -1193,7 +1241,7 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 			}
 			placed++
 		default:
-			out, clamped, ok := in.scanString(boundM)
+			out, clamped, ok := in.scanStored(boundM)
 			if !ok {
 				return false
 			}
@@ -1380,25 +1428,26 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 	return false
 }
 
-// readTimestamp places §16.2's timestamp row: one RFC 3339 string, read from
-// any spelling of the instant (an offset included), landing its UTC nanosecond
-// count (docs/SPEC-TABLES.md §2.11). A string that does not parse, or names an
+// readTimestamp places §16.2's timestamp row: one strict RFC 3339 §5.6
+// date-time (docs/SPEC-TABLES.md §2.11), read from any spelling the standard
+// allows of the instant — an offset included, T and Z in either case — landing
+// its UTC nanosecond count. The one parser is internal/rfc3339, which the
+// generated Go walk carries as its own source, so the engine and the leg accept
+// and refuse the same spellings. A string the parser refuses, or one naming an
 // instant outside Time.UnixNano's domain, is REFUSED BY NAME: the read fails,
-// the report is Malformed and its Reason is `timestamp_not_rfc3339: <field>`,
-// exactly as the generated Go walk refuses it (§16.2).
+// the report is Malformed and its Reason is `timestamp_not_rfc3339: <field>`.
 func (in *reader) readTimestamp(cell *Cell, f *ir.Field) bool {
 	text, _, ok := in.scanString(-1)
 	if !ok {
 		return false
 	}
-	t, err := time.Parse(time.RFC3339Nano, string(text))
-	named := err == nil && !t.Before(time.Unix(0, -1<<63)) && !t.After(time.Unix(0, 1<<63-1))
+	nanos, named := rfc3339.Parse(text)
 	if !named {
 		in.report.Reason = "timestamp_not_rfc3339: " + f.Name
 		in.bad = true
 		return false
 	}
-	cell.I = t.UnixNano()
+	cell.I = nanos
 	cell.U = uint64(cell.I)
 	return true
 }
@@ -2020,7 +2069,7 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 			in.bad = true
 			return false
 		}
-		key, over, ok := in.scanString(maxJsonKey)
+		key, over, ok := in.scanStored(maxJsonKey)
 		if !ok {
 			return false
 		}

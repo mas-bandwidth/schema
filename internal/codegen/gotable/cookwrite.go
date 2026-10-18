@@ -2,7 +2,6 @@ package gotable
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -79,7 +78,13 @@ func tableCookWriteSource(u *ir.Unit) string {
 func(w *tableCookWriter) container(p unsafe.Pointer,f *TableFieldInfo,at int64,live bool)bool{return false}
 `
 	}
-	s = strings.Replace(s, "type tableCookWriter struct {", "type tableCookWriter struct { numbering *TableNumbering;", 1)
+	s = tableSourceReplace(s, "type tableCookWriter struct {", "type tableCookWriter struct { numbering *TableNumbering;", 1)
+	// §2.3: an absent ?T over a variable closure owns no node, so the cooked
+	// writer follows its references only while it rides and writes them null
+	// otherwise; emitted only where the construct is, so no other unit moves
+	if len(ir.TableOptionalPointerClosures(u)) > 0 {
+		s = tableSourceReplace(s, " if f.Pointer{return w.reference((*int64)(p),at)}\n", " if f.Pointer{if !live{return true};return w.reference((*int64)(p),at)}\n", 1)
+	}
 	s += goCookRegionWriteRuntime
 	if !unitHasContainers(u) {
 		s += "func(w *tableCookWriter) container(p unsafe.Pointer,f *TableFieldInfo,at int64,live bool)bool{return false}\n"
