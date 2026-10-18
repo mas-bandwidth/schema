@@ -3,6 +3,7 @@ package tablecook_test
 import (
 	"bytes"
 	"encoding/binary"
+	"math"
 	"math/rand"
 	"os"
 	"strconv"
@@ -332,6 +333,20 @@ func TestReadHeaderAlignmentIsOpensRule(t *testing.T) {
 			}
 		})
 	}
+	// COOK-CHECK READS THE ALIGNMENT WORD BEFORE ReadHeader REFUSES IT, to find
+	// the root's alignof, so an alignment that overflows that read (§7.1) must
+	// be refused rather than panic.
+	t.Run("an alignment that overflows the root read", func(t *testing.T) {
+		t.Parallel()
+		f := setAlign(uint64(math.MaxInt64 - 100))
+		ord.PutUint64(f[24:], 100)
+		_, err := tablecook.Check(m, f)
+		if err == nil {
+			t.Errorf("FAILED: cook-check accepted an alignment of %d", math.MaxInt64-100)
+		} else if !strings.Contains(err.Error(), "bad_alignment") {
+			t.Errorf("FAILED: cook-check refusal %q does not name bad_alignment", err.Error())
+		}
+	})
 }
 
 func slotOffset(t *testing.T, u *ir.Unit, m *tabletext.Model, record, field string, piece int) int64 {

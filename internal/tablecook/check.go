@@ -100,9 +100,19 @@ func rootAlignmentOf(m *tabletext.Model, file []byte) int64 {
 	default:
 		return ir.RegionAlignFloor
 	}
+	// §7.1: the alignment word is untrusted, and it is used to derive an
+	// offset below, so it is validated before any arithmetic — a forged word
+	// must not be able to wrap the offset past these guards.
 	align := int64(ord.Uint64(file[offAlign:]))
-	attrib := alignUp(HeaderBytes, align) + int64(ord.Uint64(file[offDataLen:]))
-	if attrib+16 > int64(len(file)) || attrib < 0 {
+	if align < ir.RegionAlignFloor || align > 64 || align&(align-1) != 0 {
+		return ir.RegionAlignFloor
+	}
+	dataLength := int64(ord.Uint64(file[offDataLen:]))
+	if dataLength < 0 || dataLength > int64(len(file)) {
+		return ir.RegionAlignFloor
+	}
+	attrib := alignUp(HeaderBytes, align) + dataLength
+	if attrib < 0 || attrib+16 > int64(len(file)) {
 		return ir.RegionAlignFloor
 	}
 	st := typeIdIndex(m)[ord.Uint64(file[attrib+8:])]
