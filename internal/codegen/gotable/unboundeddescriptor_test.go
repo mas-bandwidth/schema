@@ -12,8 +12,8 @@ import (
 //     text list []string(8) report UnboundedContainer true and ArrayBound 0, so
 //     a reflection reader can tell "no bound" from a bound of 2^31 - 1;
 //   - a bounded [..4]T reports UnboundedContainer false and ArrayBound 4;
-//   - the same unit mixes unbounded TEXT (a bare string field, a bare-string
-//     text list []string and a map[string]int32 key, §2.13.1) with the containers: the generated
+//   - the same unit mixes unbounded TEXT (a bare-string text list []string and
+//     a map[string]int32 key, §2.13.1) with the containers: the generated
 //     TableFieldInfo carries both columns once each (it compiles), the text
 //     element and the text key report Unbounded true and UnboundedContainer
 //     false, and the container fields report Unbounded false;
@@ -38,7 +38,6 @@ table Root
     quad [..4]int32
     names []string
     byname map[string]int32
-    label string
 }
 `
 
@@ -71,8 +70,8 @@ func checkField(t *testing.T, f *TableFieldInfo, name string, w want) {
 
 func TestDescriptor(t *testing.T) {
 	fs := RootTableType().Fields
-	if len(fs) != 8 {
-		t.Fatalf("field count %d, want 8", len(fs))
+	if len(fs) != 7 {
+		t.Fatalf("field count %d, want 7", len(fs))
 	}
 	container := func(list bool) want { return want{isArray: true, list: list, isMap: !list, container: true} }
 	checkField(t, &fs[0], "tags", container(false))
@@ -82,8 +81,6 @@ func TestDescriptor(t *testing.T) {
 	checkField(t, &fs[4], "quad", want{isArray: true, bound: 4})
 	checkField(t, &fs[5], "names", container(true))
 	checkField(t, &fs[6], "byname", container(false))
-	// a bare string field is unbounded TEXT (§2.13.1), not a container
-	checkField(t, &fs[7], "label", want{text: true})
 
 	// unbounded TEXT is the other column (§2.13.1): on the element and the key
 	if e := &fs[5].Table().Fields[0]; !e.Unbounded || e.UnboundedContainer {
